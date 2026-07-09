@@ -1,0 +1,15 @@
+{
+  "id": "mimo-code-vps-C",
+  "rol": "coder",
+  "grupo": "C",
+  "modelo_router": "cerebras-coder",
+  "backend": "Cerebras via LiteLLM 127.0.0.1:4000",
+  "router_endpoint": "http://127.0.0.1:4000/v1",
+  "openclaw_endpoint": "http://127.0.0.1:18789/v1",
+  "version": "1.1.0",
+  "created": "2026-07-09T09:50:00Z",
+  "last_heartbeat": null,
+  "status": "ready",
+  "skills_source": "/opt/nct/skills/vault/approved",
+  "memory_db": "/opt/nct/memory/mimo-code-vps-C/state.db"
+}
