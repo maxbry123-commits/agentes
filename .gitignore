@@ -1,0 +1,15 @@
+# Memoria (no subir al repo)
+*/memory/state.db
+*/memory/state.db-*
+
+# Logs locales
+*/logs/*.log
+
+# Sesiones
+*/sessions/*
+
+# Artefactos
+*/artifacts/*
+
+# .gitkeeps
+*.gitkeep

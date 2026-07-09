@@ -1,0 +1,13 @@
+{
+  "id": "claude-code-B",
+  "rol": "verifier",
+  "modelo": "cerebras-verifier",
+  "backend": "cerebras-via-litellm",
+  "endpoint": "http://127.0.0.1:4000/v1",
+  "memoria_db": "/opt/nct/memory/claude-code-B/state.db",
+  "workspace": "/opt/nct/repos/agentes/claude-code-B/workspace",
+  "sandbox": "/opt/nct/repos/agentes/claude-code-B/sandbox",
+  "skills_source": "/opt/nct/skills/vault/approved",
+  "created": "2026-07-09T09:12:09Z",
+  "status": "ready"
+}
