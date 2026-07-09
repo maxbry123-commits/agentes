@@ -1,22 +1,27 @@
-# Repo `agentes` — 4 subagentes de NCT
+# Repo `agentes` — NCT
 
-Este repo contiene los 4 subagentes que viven dentro del VPS:
-
-| Subagente | Rol | Modelo Cerebras | Función |
+| Subagente | Grupo | Tipo | Modelo Cerebras |
 |---|---|---|---|
-| **claude-code-A** | coder | `gemma-4-31b` | Escribe código |
-| **claude-code-B** | verifier | `gpt-oss-120b` | Revisa y corrige |
-| **mimo-code-A** | coder | `gemma-4-31b` | Escribe código |
-| **mimo-code-B** | verifier | `gpt-oss-120b` | Revisa y corrige |
+| openclaw/ | - | orquestador | gpt-oss-120b / gemma-4-31b |
+| **claude-code-vps-A** | A | coder | gemma-4-31b |
+| **claude-code-vps-B** | B | verifier | gpt-oss-120b |
+| **mimo-code-vps-A** | A | coder | gemma-4-31b |
+| **mimo-code-vps-B** | B | verifier | gpt-oss-120b |
 
-## Flujo de trabajo
-1. coder (A) escribe el código
-2. verifier (B) lo revisa y corrige
-3. Se commitea y pushea a la rama
-4. OpenClaw orquesta ambos
+## Distribución de trabajo
+
+| Trabaja en | Responsable |
+|---|---|
+| **GitHub** (código, docs, configs) | claude-code-vps-A (coder) + claude-code-vps-B (verifier) |
+| **VPS** (instalar, monitorear, mantener) | mimo-code-vps-A (coder) + mimo-code-vps-B (verifier) |
+| **Orquestación** | OpenClaw + Mavis (router) |
+
+## Flujo coder→verifier
+1. coder (A) escribe código o docs
+2. verifier (B) audita: lista 3 puntos OK/BUG
+3. Si BUG: el coder reescribe
+4. Si OK: commit + push
 
 ## Skill Router
-Los 4 subagentes consultan skills únicamente desde `/opt/nct/skills/vault/approved/`. Nunca descargan skills por su cuenta.
-
-## Memoria
-Cada subagente tiene su BD SQLite independiente en `/opt/nct/memory/<subagente>/state.db` con permisos 600.
+Todos los agentes consultan skills en `/opt/nct/skills/vault/approved/`.
+Ninguno descarga skills por su cuenta.
