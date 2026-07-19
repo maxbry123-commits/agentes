@@ -1,0 +1,17 @@
+[Unit]
+Description=Core V8 Orchestrator (port 9095)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/orquestador-universal/orchestrator_core_v8
+ExecStart=/usr/bin/python3 /opt/orquestador-universal/orchestrator_core_v8/orchestrator_core_v8.py --port 9095
+Restart=always
+RestartSec=5
+StandardOutput=append:/tmp/core_v8_v11.log
+StandardError=append:/tmp/core_v8_v11.log
+
+[Install]
+WantedBy=multi-user.target

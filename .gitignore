@@ -1,0 +1,87 @@
+# Secrets
+.env
+.env.local
+.env.production
+*.key
+*.pem
+*.crt
+*.secret
+
+# Backups
+*.bak
+*.bak.*
+*.clobbered.*
+*.last-good
+*.pre-update
+
+# OpenClaw runtime state
+openclaw/openclaw.json
+openclaw.json
+state/
+workspace/
+tunnels/
+plugin-skills/
+skill-workshop/
+identity/
+logs/
+.anchor*
+.cache/
+.workspace/
+
+# Node modules
+node_modules/
+.pnpm-store/
+.npm/
+.yarn/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.venv/
+venv/
+
+# Logs
+*.log
+logs/
+*.out
+*.err
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Editors
+.vscode/
+.idea/
+*.iml
+
+# Local artifacts
+/tmp/
+*.tgz
+*.tar.gz
+*.tmp
+
+# SSL/TLS
+ssl/
+certs/
+acme.sh/
+
+# Test
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Build
+dist/
+build/
+*.egg

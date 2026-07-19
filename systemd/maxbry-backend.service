@@ -1,0 +1,19 @@
+[Unit]
+Description=MAXBRY Router Backend
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/maxbry/maxbry-router
+Environment="PATH=/opt/maxbry/maxbry-router/venv/bin"
+Environment="GITHUB_TOKEN=${MAXBRY_BACKEND_TOKEN}"
+Environment="NVIDIA_NIM_KEY_BRISEIDA_DIGI=${NVIDIA_NIM_KEY_BRISEIDA_DIGI}"
+Environment="NVIDIA_NIM_KEY_BRISEIDA_MOVISTAR=${NVIDIA_NIM_KEY_BRISEIDA_MOVISTAR}"
+Environment="NVIDIA_NIM_KEY_MAXBRY_WOW=${NVIDIA_NIM_KEY_MAXBRY_WOW}"
+ExecStart=/opt/maxbry/maxbry-router/venv/bin/uvicorn app:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

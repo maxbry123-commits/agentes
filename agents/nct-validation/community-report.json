@@ -1,0 +1,9 @@
+{
+  "community_validation": {
+    "openclaw/openclaw": {"stars": 382349, "forks": 80226, "open_issues": 6280, "subscribers": 1782, "license": "NOASSERTION", "pushed_at": "2026-07-09T21:41:40Z", "archived": false, "disabled": false}
+,
+    "anthropics/claude-code": {"stars": 137066, "forks": 22042, "open_issues": 10929, "subscribers": 835, "license": null, "pushed_at": "2026-07-08T21:22:06Z", "archived": false, "disabled": false}
+,
+    "XiaomiMiMo/MiMo-Code": {"stars": 11702, "forks": 1153, "open_issues": 722, "subscribers": 62, "license": "MIT", "pushed_at": "2026-07-09T18:21:17Z", "archived": false, "disabled": false}
+  }
+}

@@ -1,0 +1,27 @@
+server {
+    listen 9443 ssl;
+    server_name _;
+    ssl_certificate /etc/ssl/certs/openclaw.crt;
+    ssl_certificate_key /etc/ssl/private/openclaw.key;
+    
+    # Para el tunnel cloudflared que entra por aca
+    # El truco: cuando llega GET /, nginx hace proxy_pass al openclaw oficial
+    # y SUB_FILTER inyecta el localStorage en el body ANTES del <script type="module">
+    
+    location / {
+        proxy_pass http://127.0.0.1:18789;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # SUB_FILTER: inyecta el localStorage con la URL y token del tunnel actual
+        # ANTES de que el bundle del openclaw se ejecute
+        sub_filter '<body>' '<body><script>localStorage.setItem("openclaw.control.settings.v1", JSON.stringify({gateway: {url: (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/", token: new URLSearchParams(location.search).get("token") || "${OC_GATEWAY_TOKEN}"}, theme: "claw", themeMode: "dark"}));</script>';
+        sub_filter_types text/html;
+        sub_filter_once off;
+    }
+}

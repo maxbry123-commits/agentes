@@ -1,0 +1,93 @@
+---
+# docker-compose.yml — Orquestador Universal v1.0
+# Levanta los 3 sandboxes de agentes + la red aislada para que el orquestador
+# los controle desde fuera. NO se expone ningún puerto al host: la comunicación
+# es solo docker exec → contenedor.
+
+version: "3.9"
+
+networks:
+  orchestrator_net:
+    driver: bridge
+    internal: true   # G3: sin salida a internet entre sandboxes
+
+volumes:
+  work_dir:
+    driver: local
+  skills_registry:
+    driver: local
+
+services:
+  claude_code:
+    build:
+      context: .
+      dockerfile: dockerfiles/claude_code.dockerfile
+    image: claude-code-sandbox:latest
+    container_name: sbx-claude-execute
+    hostname: claude_code
+    networks:
+      - orchestrator_net
+    volumes:
+      - work_dir:/work
+      - skills_registry:/skills:ro
+    environment:
+      - TZ=UTC
+      - AGENT_ROLE=claude_code
+    # G3: red interna, no acceso a internet entre sandboxes
+    # G8: recursos limitados
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
+          pids: 256
+    restart: "no"
+    command: ["sleep", "infinity"]
+
+  mimo_code:
+    build:
+      context: .
+      dockerfile: dockerfiles/mimo_code.dockerfile
+    image: mimo-code-sandbox:latest
+    container_name: sbx-mimo-verify
+    hostname: mimo_code
+    networks:
+      - orchestrator_net
+    volumes:
+      - work_dir:/work
+      - skills_registry:/skills:ro
+    environment:
+      - TZ=UTC
+      - AGENT_ROLE=mimo_code
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
+          pids: 256
+    restart: "no"
+    command: ["sleep", "infinity"]
+
+  opencode:
+    build:
+      context: .
+      dockerfile: dockerfiles/opencode.dockerfile
+    image: opencode-sandbox:latest
+    container_name: sbx-opencode-fallback
+    hostname: opencode
+    networks:
+      - orchestrator_net
+    volumes:
+      - work_dir:/work
+      - skills_registry:/skills:ro
+    environment:
+      - TZ=UTC
+      - AGENT_ROLE=opencode
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
+          pids: 256
+    restart: "no"
+    command: ["sleep", "infinity"]

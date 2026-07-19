@@ -1,0 +1,11 @@
+[Unit]
+Description=M3 NCT Watchdog Timer (every 60s)
+
+[Timer]
+OnBootSec=30
+OnUnitActiveSec=60
+AccuracySec=5
+Persistent=true
+
+[Install]
+WantedBy=timers.target

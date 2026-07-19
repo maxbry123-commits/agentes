@@ -1,0 +1,88 @@
+ </nct/runtime-baseline/runtime-lock.json 2>/dev/null
+{
+  "snapshot_date": "2026-07-10T01:49:59Z",
+  "vps": {
+    "host": "95.111.232.89",
+    "ipv6": "2a02:c207:2342:8294::1",
+    "os": "Ubuntu 24.04.4 LTS",
+    "kernel": "6.8.0-134-generic",
+    "ram_mb": 11960,
+    "cpu_cores": 6,
+    "disk_gb": 193
+  },
+  "agents": {
+    "openclaw": {
+      "version": "OpenClaw 2026.6.11 (e085fa1)",
+      "binary_path": "/usr/bin/openclaw",
+      "real_binary": "/usr/lib/node_modules/openclaw/openclaw.mjs",
+      "git_remote": "https://github.com/openclaw/openclaw.git",
+      "git_commit": "47ec6237ffbc28b9fa711799357d9745f47ad6ab",
+      "port": 18789
+    },
+    "claude_code": {
+      "version": "2.1.205 (Claude Code)",
+      "binary_path": "/usr/local/bin/claude",
+      "real_binary": "/root/.local/share/claude/versions/2.1.205",
+      "git_remote": "https://github.com/anthropics/claude-code.git",
+      "git_commit": "be02c39841a59e2ac1f35ac12285def02acdbb5a",
+      "port": null
+    },
+    "mimo_code": {
+      "version": "0.1.5",
+      "binary_path": "/usr/bin/mimo",
+      "real_binary": "/usr/lib/node_modules/@mimo-ai/cli/bin/mimo",
+      "git_remote": "https://github.com/XiaomiMiMo/MiMo-Code.git",
+      "git_commit": "649b93aefccdafbb5f2aa9920498a1a884d045bd",
+      "port": 4096
+    },
+    "litellm": {
+      "config": "/opt/litellm/cerebras-config.yaml",
+      "service": "litellm.service",
+      "port": 4000,
+      "models": [
+        "cerebras-coder",
+        "cerebras-verifier",
+        "cerebras-coder-failover",
+        "cerebras-verifier-failover"
+      ]
+    }
+  },
+  "ports": [
+    22,
+    18789,
+    4000,
+    4096,
+    8080
+  ],
+  "services": {
+    "systemd_system": [
+      "litellm.service",
+      "nct-open-webui.service",
+      "nct-telegram.service",
+      "nct-alarma.timer",
+      "nct-alarma.service"
+    ],
+    "systemd_user": [
+      "openclaw-gateway.service"
+    ],
+    "external_pids": [
+      {
+        "name": "mimocode serve",
+        "cmd": "mimo serve --port 4096 --hostname 127.0.0.1 --print-logs"
+      }
+    ]
+  },
+  "configs": {
+    "openclaw": "/root/.openclaw/openclaw.json",
+    "claude": "/root/.claude/settings.json",
+    "mimo": "/root/.mimo/mimocode.json",
+    "litellm": "/opt/litellm/cerebras-config.yaml"
+  },
+  "evidence_logs": [
+    "/opt/nct/audit/evidence/openclaw-test.log",
+    "/opt/nct/audit/evidence/claude-test.log",
+    "/opt/nct/audit/evidence/mimo-test.log",
+    "/opt/nct/audit/evidence/litellm-cerebras-coder.log",
+    "/opt/nct/audit/evidence/litellm-cerebras-verifier.log"
+  ]
+}root@vmi3428294:~# echo 

@@ -1,0 +1,12 @@
+[Unit]
+Description=NCT Sandbox TAREA-1 (memory+dispatcher)
+After=network.target nct-memory.service
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/nct/sandboxes/tarea-1
+ExecStart=/usr/bin/python3 /opt/nct/sandboxes/tarea-1/server.py
+Restart=always
+RestartSec=5
+[Install]
+WantedBy=multi-user.target

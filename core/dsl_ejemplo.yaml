@@ -1,0 +1,273 @@
+---
+# dsl_ejemplo.yaml — DSL completo con 10 loops + chat interface
+# Este archivo define TODO el despliegue para que Claude Code lo ejecute.
+
+version: "1.0"
+
+meta:
+  name: "orquestador-universal-v1"
+  description: "Chat conectado a Claude Code (ejecutor) + Mimo Code (verify/validate/repair) + OpenCode (fallback)"
+  author: "Mavis"
+
+chat_interface:
+  input_format: "markdown"
+  output_format: "markdown"
+  commands:
+    - name: "objetivo"
+      description: "Define el objetivo del workflow"
+      example: "/objetivo construir API REST"
+    - name: "planificar"
+      description: "Muestra el plan actual"
+    - name: "ejecutar"
+      description: "Lanza el workflow"
+    - name: "estado"
+      description: "Muestra el estado actual"
+    - name: "cancelar"
+      description: "Detiene el workflow"
+  error_format: "❌ [{node_id}] {error_type}: {message}"
+  success_format: "✅ [{node_id}] {summary}"
+
+orchestrator:
+  max_loops: 100
+  stop_on_complete: true
+  escalate_after: 2
+  providers:
+    mavis:
+      model: "mavis/minimax-m3"
+      api_key_env: "ORCH_API_KEY"
+    cerebras:
+      model: "cerebras/llama-3.1-70b"
+      api_key_env: "CEREBRAS_API_KEY"
+    nvidia:
+      model: "nvidia_nim/meta/llama-3.1-70b-instruct"
+      api_key_env: "NVIDIA_API_KEY"
+
+loops:
+
+  # ==========================================================================
+  # L1: Goal Lock + Plan
+  # ==========================================================================
+  - id: L1_goal_lock
+    type: plan
+    depends_on: []
+    gate: completitud
+    provider: mavis
+    model: "mavis/minimax-m3"
+    agent: claude_code
+    sandbox: "sbx-claude-execute"
+    timeout_s: 60
+    inputs:
+      objetivo: "${user.objetivo}"
+      constraints: "${user.metas}"
+    outputs:
+      - goal_hash
+      - plan
+      - tareas
+    verify:
+      inside_sandbox: false
+      command: "echo '{goal_hash}' | wc -c"  # verifica que el hash existe
+
+  # ==========================================================================
+  # L2: Consensus Plan (3 modelos en paralelo)
+  # ==========================================================================
+  - id: L2_consensus_plan
+    type: consensus
+    depends_on: [L1_goal_lock]
+    gate: coherencia
+    provider: mavis
+    agent: claude_code
+    timeout_s: 120
+    inputs:
+      goal: "${L1_goal_lock.objetivo}"
+      context: "${L1_goal_lock.plan}"
+    consensus:
+      mode: "fast"  # single | fast | full
+      models: ["mavis", "cerebras", "nvidia"]
+    outputs:
+      - chosen_agent
+      - agreement
+
+  # ==========================================================================
+  # L3: Asignar sandboxes
+  # ==========================================================================
+  - id: L3_assign_sandboxes
+    type: execute
+    depends_on: [L2_consensus_plan]
+    gate: sandbox_isolation
+    provider: mavis
+    agent: claude_code
+    timeout_s: 60
+    inputs:
+      agents: ["claude_code", "mimo_code", "opencode"]
+      work_dir: "/tmp/orch_work"
+    outputs:
+      - started_agents
+      - sandbox_count
+
+  # ==========================================================================
+  # L4: Execute (Claude Code escribe el código)
+  # ==========================================================================
+  - id: L4_execute
+    type: execute
+    depends_on: [L3_assign_sandboxes]
+    gate: completitud
+    provider: mavis
+    model: "mavis/minimax-m3"
+    agent: claude_code
+    sandbox: "sbx-claude-execute"
+    repair_max: 2
+    timeout_s: 300
+    inputs:
+      goal: "${L1_goal_lock.objetivo}"
+      plan: "${L1_goal_lock.plan}"
+      metas: "${user.metas}"
+    outputs:
+      - diff
+      - files_changed
+      - tokens_used
+    on_fail:
+      action: repair
+      target: L6_repair_if_needed
+
+  # ==========================================================================
+  # L5: Verify (Mimo Code corre pytest)
+  # ==========================================================================
+  - id: L5_verify
+    type: verify
+    depends_on: [L4_execute]
+    gate: completitud
+    provider: mavis
+    agent: mimo_code
+    sandbox: "sbx-mimo-verify"
+    timeout_s: 180
+    inputs:
+      diff: "${L4_execute.diff}"
+    verify:
+      inside_sandbox: true
+      command: "cd /work && python -m pytest --tb=short -q"
+    outputs:
+      - pytest_pass
+      - error_log
+    on_fail:
+      action: repair
+      target: L6_repair_if_needed
+
+  # ==========================================================================
+  # L6: Repair (Mimo Code genera patch si L4/L5 fallaron)
+  # ==========================================================================
+  - id: L6_repair_if_needed
+    type: repair
+    depends_on: [L5_verify]
+    gate: repairs_ok
+    provider: mavis
+    agent: mimo_code
+    sandbox: "sbx-mimo-verify"
+    repair_max: 2
+    timeout_s: 180
+    inputs:
+      original_diff: "${L4_execute.diff}"
+      error: "${L5_verify.error_log}"
+    nested_loops:
+      - F10_cleanup:
+          type: execute
+          command: "cd /work && git stash && rm -f /tmp/patch.diff"
+          timeout_s: 10
+    outputs:
+      - new_diff
+      - repair_attempts
+
+  # ==========================================================================
+  # L7: Validate (Mimo Code corre ruff/black/mypy)
+  # ==========================================================================
+  - id: L7_validate
+    type: validate
+    depends_on: [L5_verify, L6_repair_if_needed]
+    gate: formato
+    provider: mavis
+    agent: mimo_code
+    sandbox: "sbx-mimo-verify"
+    timeout_s: 120
+    inputs:
+      diff: "${L6_repair_if_needed.new_diff}"
+    verify:
+      inside_sandbox: true
+      command: |
+        cd /work && \
+        ruff check . && \
+        black --check . && \
+        mypy .
+    outputs:
+      - lint_pass
+      - lint_errors
+    on_fail:
+      action: repair
+      target: L6_repair_if_needed
+
+  # ==========================================================================
+  # L8: Repair loop (max 2 ciclos de L6→L7)
+  # ==========================================================================
+  - id: L8_repair_loop
+    type: repair
+    depends_on: [L7_validate]
+    gate: repairs_ok
+    provider: mavis
+    agent: mimo_code
+    repair_max: 2
+    inputs:
+      repair_count: "${state.repair_counts.L6_repair_if_needed}"
+    outputs:
+      - validate_passed
+      - repair_count
+
+  # ==========================================================================
+  # L9: Sentinel + OpenManus (watchdog de métricas)
+  # ==========================================================================
+  - id: L9_sentinel_watch
+    type: execute
+    depends_on: [L8_repair_loop]
+    gate: completitud
+    provider: mavis
+    agent: claude_code
+    timeout_s: 30
+    inputs:
+      state: "${state}"
+    outputs:
+      - metrics
+      - openmanus_alerts
+      - healthy
+
+  # ==========================================================================
+  # L10: Judge (3 simulaciones + baseline write)
+  # ==========================================================================
+  - id: L10_juez
+    type: judge
+    depends_on: [L9_sentinel_watch]
+    gate: completitud
+    provider: mavis
+    agent: claude_code
+    timeout_s: 60
+    inputs:
+      target: "${L8_repair_loop}"
+    judge:
+      simulations: ["real", "adversarial", "regression"]
+      baseline_path: "baseline_output.json"
+    outputs:
+      - simulations
+      - all_passed
+      - baseline_written
+
+  # ==========================================================================
+  # L11: Chat output (responde al usuario)
+  # ==========================================================================
+  - id: L11_chat_output
+    type: execute
+    depends_on: [L10_juez]
+    gate: completitud
+    provider: mavis
+    agent: claude_code
+    timeout_s: 15
+    inputs:
+      result: "${L10_juez}"
+      format: "${orchestrator.chat_interface.success_format}"
+    outputs:
+      - message_to_chat

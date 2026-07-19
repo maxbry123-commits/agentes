@@ -1,0 +1,623 @@
+{
+  "gateway": {
+    "mode": "local",
+    "port": 18789,
+    "auth": {
+      "mode": "token",
+      "token": "${OC_GATEWAY_TOKEN}"
+    },
+    "bind": "lan",
+    "controlUi": {
+      "allowInsecureAuth": true,
+      "dangerouslyDisableDeviceAuth": true,
+      "dangerouslyAllowHostHeaderOriginFallback": true,
+      "allowedOrigins": [
+        "*"
+      ]
+    },
+    "http": {
+      "endpoints": {
+        "chatCompletions": {
+          "enabled": true
+        }
+      }
+    },
+    "trustedProxies": [
+      "127.0.0.1",
+      "::1"
+    ]
+  },
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "cerebras": {
+        "baseUrl": "https://api.cerebras.ai/v1",
+        "apiKey": "${CEREBRAS_API_KEY}",
+        "api": "openai-completions",
+        "timeoutSeconds": 90,
+        "models": [
+          {
+            "id": "gemma-4-31b",
+            "name": "Cerebras Gemma 4 31B",
+            "contextWindow": 131072,
+            "maxTokens": 8192
+          },
+          {
+            "id": "gpt-oss-120b",
+            "name": "Cerebras GPT OSS 120B",
+            "contextWindow": 131072,
+            "maxTokens": 8192
+          },
+          {
+            "id": "llama-3.3-70b",
+            "name": "Cerebras Llama 3.3 70B",
+            "contextWindow": 131072,
+            "maxTokens": 8192
+          }
+        ]
+      },
+      "groq": {
+        "baseUrl": "https://api.groq.com/openai/v1",
+        "apiKey": "${GROQ_API_KEY}",
+        "api": "openai-completions",
+        "timeoutSeconds": 90,
+        "models": [
+          {
+            "id": "llama-3.1-8b-instant",
+            "name": "Groq Llama 3.1 8B Instant (560 t/s)",
+            "contextWindow": 131072,
+            "maxTokens": 131072,
+            "reasoning": false,
+            "compat": {
+              "requiresStringContent": true
+            }
+          },
+          {
+            "id": "llama-3.3-70b-versatile",
+            "name": "Groq Llama 3.3 70B Versatile",
+            "contextWindow": 131072,
+            "maxTokens": 32768,
+            "reasoning": false,
+            "compat": {
+              "requiresStringContent": true
+            }
+          }
+        ]
+      },
+      "nv-m2.7-maxbry-digi": {
+        "baseUrl": "https://integrate.api.nvidia.com/v1",
+        "apiKey": "${NVIDIA_NIM_KEY}",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "minimaxai/minimax-m3",
+            "name": "NVIDIA M3 (nv-m2.7-maxbry-digi)",
+            "contextWindow": 1000000,
+            "maxTokens": 131072,
+            "reasoning": false,
+            "compat": {
+              "requiresStringContent": true,
+              "supportsTools": false
+            }
+          }
+        ],
+        "timeoutSeconds": 120
+      },
+      "nv-m2.7-briseida-digi": {
+        "baseUrl": "https://integrate.api.nvidia.com/v1",
+        "apiKey": "${NVIDIA_NIM_KEY}",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "minimaxai/minimax-m3",
+            "name": "NVIDIA M3 (nv-m2.7-briseida-digi)",
+            "contextWindow": 1000000,
+            "maxTokens": 131072,
+            "reasoning": false,
+            "compat": {
+              "requiresStringContent": true,
+              "supportsTools": false
+            }
+          }
+        ],
+        "timeoutSeconds": 120
+      },
+      "nv-m2.7-movistar-bris": {
+        "baseUrl": "https://integrate.api.nvidia.com/v1",
+        "apiKey": "${NVIDIA_NIM_KEY}",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "minimaxai/minimax-m3",
+            "name": "NVIDIA M3 (nv-m2.7-movistar-bris)",
+            "contextWindow": 1000000,
+            "maxTokens": 131072,
+            "reasoning": false,
+            "compat": {
+              "requiresStringContent": true,
+              "supportsTools": false
+            }
+          }
+        ],
+        "timeoutSeconds": 120
+      },
+      "nv-m2.7-wow-maxbry": {
+        "baseUrl": "https://integrate.api.nvidia.com/v1",
+        "apiKey": "${NVIDIA_NIM_KEY}",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "minimaxai/minimax-m3",
+            "name": "NVIDIA M3 (nv-m2.7-wow-maxbry)",
+            "contextWindow": 1000000,
+            "maxTokens": 131072,
+            "reasoning": false,
+            "compat": {
+              "requiresStringContent": true,
+              "supportsTools": false
+            }
+          }
+        ],
+        "timeoutSeconds": 120
+      },
+      "nv-m2.7-wow-brisa": {
+        "baseUrl": "https://integrate.api.nvidia.com/v1",
+        "apiKey": "${NVIDIA_NIM_KEY}",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "minimaxai/minimax-m3",
+            "name": "NVIDIA M3 (nv-m2.7-wow-brisa)",
+            "contextWindow": 1000000,
+            "maxTokens": 131072,
+            "reasoning": false,
+            "compat": {
+              "requiresStringContent": true,
+              "supportsTools": false
+            }
+          }
+        ],
+        "timeoutSeconds": 120
+      },
+      "nv-gpt-wow-maxbry": {
+        "baseUrl": "https://integrate.api.nvidia.com/v1",
+        "apiKey": "${NVIDIA_NIM_KEY}",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "meta/llama-3.1-8b-instruct",
+            "name": "NVIDIA Llama 3.1 8B",
+            "contextWindow": 131072,
+            "maxTokens": 8192,
+            "reasoning": false,
+            "compat": {
+              "requiresStringContent": true
+            }
+          }
+        ],
+        "timeoutSeconds": 120
+      },
+      "orquestador": {
+        "baseUrl": "http://127.0.0.1:9095",
+        "apiKey": "${ORQUESTADOR_KEY}",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "orquestador",
+            "name": "Orquestador Core V8"
+          }
+        ]
+      },
+      "nvidia-kimi": {
+        "baseUrl": "https://integrate.api.nvidia.com/v1",
+        "apiKey": "${NVIDIA_NIM_KEY}",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "moonshotai/kimi-k2.6",
+            "name": "Kimi K2.6 (NVIDIA)",
+            "contextWindow": 128000,
+            "maxTokens": 8192
+          }
+        ],
+        "timeoutSeconds": 120
+      },
+      "nvidia-m3": {
+        "baseUrl": "https://integrate.api.nvidia.com/v1",
+        "apiKey": "${NVIDIA_NIM_KEY}",
+        "api": "openai-completions",
+        "timeoutSeconds": 120,
+        "models": [
+          {
+            "id": "minimaxai/minimax-m3",
+            "name": "NVIDIA M3 (key DIGI_MAXBRY)",
+            "contextWindow": 1000000,
+            "maxTokens": 131072,
+            "compat": {
+              "requiresStringContent": true,
+              "supportsTools": false
+            },
+            "reasoning": false
+          },
+          {
+            "id": "moonshotai/kimi-k2.6",
+            "name": "Kimi K2.6 (NVIDIA)",
+            "contextWindow": 128000,
+            "maxTokens": 8192,
+            "compat": {
+              "requiresStringContent": true,
+              "supportsTools": false
+            },
+            "reasoning": false
+          },
+          {
+            "id": "thinkingmachines/inkling",
+            "name": "Inkling Thinkingmachines (PENDIENTE 404 en esta key)",
+            "contextWindow": 131072,
+            "maxTokens": 8192,
+            "compat": {
+              "requiresStringContent": true,
+              "supportsTools": false
+            },
+            "reasoning": false
+          }
+        ]
+      },
+      "minimax": {
+        "baseUrl": "https://api.minimax.io/anthropic",
+        "apiKey": "${MINIMAX_API_KEY}",
+        "api": "anthropic-messages",
+        "timeoutSeconds": 120,
+        "models": [
+          {
+            "id": "MiniMax-M3",
+            "name": "MiniMax M3 (oficial, thinking adaptativo)",
+            "reasoning": true,
+            "input": [
+              "text",
+              "image"
+            ],
+            "contextWindow": 1000000,
+            "maxTokens": 131072,
+            "compat": {
+              "requiresStringContent": true
+            },
+            "params": {
+              "thinking": "adaptive"
+            }
+          },
+          {
+            "id": "MiniMax-M2.7",
+            "name": "MiniMax M2.7 (oficial, thinking deshabilitado)",
+            "reasoning": true,
+            "input": [
+              "text"
+            ],
+            "contextWindow": 196608,
+            "maxTokens": 65536,
+            "compat": {
+              "requiresStringContent": true
+            },
+            "params": {
+              "thinking": "off"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "auth": {
+    "profiles": {
+      "cerebras-primary": {
+        "provider": "cerebras",
+        "mode": "api_key"
+      },
+      "groq-primary": {
+        "provider": "groq",
+        "mode": "api_key"
+      },
+      "minimax-m3-primary": {
+        "provider": "minimax-m3",
+        "mode": "api_key"
+      },
+      "nv-m2.7-maxbry-digi-primary": {
+        "provider": "nv-m2.7-maxbry-digi",
+        "mode": "api_key"
+      },
+      "nv-m2.7-briseida-digi-primary": {
+        "provider": "nv-m2.7-briseida-digi",
+        "mode": "api_key"
+      },
+      "nv-m2.7-movistar-bris-primary": {
+        "provider": "nv-m2.7-movistar-bris",
+        "mode": "api_key"
+      },
+      "nv-m2.7-wow-maxbry-primary": {
+        "provider": "nv-m2.7-wow-maxbry",
+        "mode": "api_key"
+      },
+      "nv-m2.7-wow-brisa-primary": {
+        "provider": "nv-m2.7-wow-brisa",
+        "mode": "api_key"
+      },
+      "nv-gpt-wow-maxbry-primary": {
+        "provider": "nv-gpt-wow-maxbry",
+        "mode": "api_key"
+      }
+    }
+  },
+  "meta": {
+    "lastTouchedVersion": "2026.7.1-2",
+    "lastTouchedAt": "2026-07-19T02:02:35.920Z"
+  },
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "minimax/MiniMax-M3"
+      },
+      "models": {
+        "cerebras/*": {
+          "alias": "cerebras-all"
+        },
+        "groq/*": {
+          "alias": "groq-all"
+        },
+        "nv-m2.7-maxbry-digi/*": {
+          "alias": "m27-maxbry-all"
+        },
+        "nv-m2.7-briseida-digi/*": {
+          "alias": "m27-briseida-all"
+        },
+        "nv-m2.7-movistar-bris/*": {
+          "alias": "m27-movistar-all"
+        },
+        "nv-m2.7-wow-maxbry/*": {
+          "alias": "m27-wow-maxbry-all"
+        },
+        "nv-m2.7-wow-brisa/*": {
+          "alias": "m27-wow-brisa-all"
+        },
+        "nv-gpt-wow-maxbry/*": {
+          "alias": "gpt-nvidia-all"
+        },
+        "cerebras/gemma-4-31b": {},
+        "nv-gpt-wow-maxbry/openai/gpt-oss-120b": {},
+        "minimax-m3/MiniMax-M3": {},
+        "groq/openai/gpt-oss-120b": {},
+        "nv-m2.7-wow-maxbry/minimaxai/minimax-m2.7": {},
+        "nv-m2.7-movistar-bris/minimaxai/minimax-m2.7": {},
+        "orquestador/orquestador": {
+          "alias": "orquestador"
+        },
+        "minimax/*": {
+          "alias": "minimax-all"
+        },
+        "minimax/MiniMax-M3": {},
+        "minimax/MiniMax-M2.7": {}
+      },
+      "subagents": {
+        "maxSpawnDepth": 2,
+        "maxConcurrent": 10,
+        "maxChildrenPerAgent": 5
+      },
+      "thinkingDefault": "adaptive"
+    },
+    "list": [
+      {
+        "id": "m3-research",
+        "name": "Asistente principal",
+        "default": true,
+        "model": "minimax/MiniMax-M3"
+      },
+      {
+        "id": "m3",
+        "name": "MiniMax M3",
+        "model": "minimax/MiniMax-M3"
+      },
+      {
+        "id": "m25",
+        "name": "MiniMax M2.5",
+        "model": "minimax/MiniMax-M2.7"
+      },
+      {
+        "id": "gemma",
+        "name": "Cerebras Gemma-4",
+        "model": "cerebras/gemma-4-31b"
+      },
+      {
+        "id": "groq",
+        "name": "Groq OSS GPT",
+        "model": "groq/llama-3.1-8b-instant"
+      },
+      {
+        "id": "nvmxb",
+        "name": "NVidia M2.7 maxbry",
+        "model": "nv-m2.7-maxbry-digi/minimaxai/minimax-m2.7"
+      },
+      {
+        "id": "nvbrs",
+        "name": "NVidia M2.7 briseida",
+        "model": "nv-m2.7-briseida-digi/minimaxai/minimax-m2.7"
+      },
+      {
+        "id": "nvmos",
+        "name": "NVidia M2.7 movistar",
+        "model": "nv-m2.7-movistar-bris/minimaxai/minimax-m2.7"
+      },
+      {
+        "id": "nvwmx",
+        "name": "NVidia M2.7 wow-maxbry",
+        "model": "nv-m2.7-wow-maxbry/minimaxai/minimax-m2.7"
+      },
+      {
+        "id": "nvwbr",
+        "name": "NVidia M2.7 wow-brisa",
+        "model": "nv-m2.7-wow-brisa/minimaxai/minimax-m2.7"
+      },
+      {
+        "id": "nvgpt",
+        "name": "NVidia GPT-OSS",
+        "model": "nv-gpt-wow-maxbry/meta/llama-3.1-8b-instruct"
+      }
+    ]
+  },
+  "env": {
+    "vars": {
+      "NCT_REPOS_INDEX": "/opt/nct/config/repos_access.json",
+      "NCT_VPS_HOST": "95.111.232.89",
+      "NCT_LITELLM_URL": "http://127.0.0.1:4000"
+    }
+  },
+  "plugins": {
+    "entries": {
+      "cerebras": {
+        "enabled": true
+      },
+      "memory-lancedb": {
+        "enabled": true
+      },
+      "llm-task": {
+        "enabled": true
+      },
+      "minimax": {
+        "enabled": true
+      },
+      "groq": {
+        "enabled": true
+      },
+      "duckduckgo": {
+        "enabled": true
+      }
+    },
+    "slots": {
+      "memory": "memory-lancedb"
+    }
+  },
+  "skills": {
+    "entries": {
+      "openai-whisper": {
+        "enabled": false
+      },
+      "openai-whisper-api": {
+        "enabled": false
+      },
+      "tavily-ai-search": {
+        "config": {
+          "apiKey": "tvly-placeholder-m\u00e1s-tarde"
+        }
+      },
+      "1password": {
+        "enabled": false
+      },
+      "blogwatcher": {
+        "enabled": false
+      },
+      "blucli": {
+        "enabled": false
+      },
+      "camsnap": {
+        "enabled": false
+      },
+      "coding-agent": {
+        "enabled": false
+      },
+      "eightctl": {
+        "enabled": false
+      },
+      "gemini": {
+        "enabled": false
+      },
+      "gifgrep": {
+        "enabled": false
+      },
+      "gog": {
+        "enabled": false
+      },
+      "goplaces": {
+        "enabled": false
+      },
+      "himalaya": {
+        "enabled": false
+      },
+      "mcporter": {
+        "enabled": false
+      },
+      "nano-pdf": {
+        "enabled": false
+      },
+      "obsidian": {
+        "enabled": false
+      },
+      "openhue": {
+        "enabled": false
+      },
+      "oracle": {
+        "enabled": false
+      },
+      "ordercli": {
+        "enabled": false
+      },
+      "sag": {
+        "enabled": false
+      },
+      "session-logs": {
+        "enabled": false
+      },
+      "sherpa-onnx-tts": {
+        "enabled": false
+      },
+      "songsee": {
+        "enabled": false
+      },
+      "sonoscli": {
+        "enabled": false
+      },
+      "spotify-player": {
+        "enabled": false
+      },
+      "summarize": {
+        "enabled": false
+      },
+      "trello": {
+        "enabled": false
+      },
+      "video-frames": {
+        "enabled": false
+      },
+      "xurl": {
+        "enabled": false
+      }
+    }
+  },
+  "wizard": {
+    "lastRunAt": "2026-07-19T02:01:50.576Z",
+    "lastRunVersion": "2026.7.1-2",
+    "lastRunCommand": "doctor",
+    "lastRunMode": "local"
+  },
+  "tools": {
+    "alsoAllow": [
+      "lobster",
+      "llm-task",
+      "tavily",
+      "tavily-web-search-for-openclaw",
+      "self-improving",
+      "github",
+      "gog",
+      "openai-whisper",
+      "skill-vetter",
+      "duckduckgo-websearch",
+      "gemini-deep-research",
+      "deep-research-pro",
+      "anygen-deep-research"
+    ],
+    "web": {
+      "search": {
+        "provider": "duckduckgo"
+      },
+      "fetch": {
+        "provider": "duckduckgo"
+      }
+    }
+  }
+}

@@ -1,0 +1,16 @@
+[Unit]
+Description=NCT Claude Chat - pure code, no WebUI
+After=network.target litellm.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/nct/chat-claude
+ExecStart=/opt/nct/chat-claude/venv/bin/python3 /opt/nct/chat-claude/gradio_app.py
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/nct/claude-chat.log
+StandardError=append:/var/log/nct/claude-chat.log
+
+[Install]
+WantedBy=multi-user.target

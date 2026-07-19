@@ -1,0 +1,15 @@
+[Unit]
+Description=serveo.net reverse tunnel for OpenClaw
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/autossh -M 0 -o "ServerAliveInterval 30" -o "ServerAliveCountMax 3" -o "StrictHostKeyChecking=no" -o "BatchMode=yes" -N -R maxbry-chat:80:localhost:18789 serveo.net
+Restart=always
+RestartSec=10
+User=root
+Environment="AUTOSSH_GATETIME=0"
+Environment="AUTOSSH_PORT=0"
+
+[Install]
+WantedBy=multi-user.target

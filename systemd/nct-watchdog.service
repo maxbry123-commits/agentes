@@ -1,0 +1,10 @@
+[Unit]
+Description=M3 NCT Orchestrator Watchdog
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/nct/watchdog/nct-watchdog.sh
+RemainAfterExit=no
+User=root

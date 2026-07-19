@@ -1,0 +1,12 @@
+[Unit]
+Description=NCT Memory - persistent conversations, docs, artifacts
+After=network-online.target
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/nct/keep/nct-memory.py
+WorkingDirectory=/opt/nct
+Environment=HOME=/root
+Restart=always
+RestartSec=3
+[Install]
+WantedBy=multi-user.target

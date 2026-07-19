@@ -1,0 +1,5 @@
+routing_results:
+  - model=cerebras-coder effort=none latency=271ms response="OK" provider=cerebras-coder
+  - model=cerebras-verifier effort=low latency=1421ms response="None" provider=cerebras-verifier
+  - model=cerebras-coder-failover effort=none latency=345ms response="OK" provider=cerebras-coder-failover
+  - model=cerebras-verifier-failover effort=low latency=362ms response="None" provider=cerebras-verifier-failover

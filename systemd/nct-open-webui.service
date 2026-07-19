@@ -1,0 +1,20 @@
+[Unit]
+Description=NCT Open WebUI - maxbry chat vps
+After=network.target litellm.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/nct/apps/open-webui
+Environment=OPENAI_API_BASE=http://127.0.0.1:4000/v1
+Environment=OPENAI_API_KEY=sk-mavis-cerebras-router
+Environment=WEBUI_AUTH=False
+Environment=ENABLE_SIGNUP=False
+Environment=DEFAULT_MODELS=cerebras-coder,cerebras-verifier,chat,coder
+Environment=ENABLE_OPENAI_API=True
+ExecStart=/opt/nct/apps/open-webui/venv/bin/python3 -m open_webui serve --host 0.0.0.0 --port 8080
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

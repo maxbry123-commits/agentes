@@ -1,0 +1,12 @@
+[Unit]
+Description=NCT Chat v3 Mobile-First
+After=network.target nct-memory.service litellm.service
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/nct/keep/nct-v3
+ExecStart=/usr/bin/node /opt/nct/keep/nct-v3/server.js
+Restart=always
+RestartSec=5
+[Install]
+WantedBy=multi-user.target

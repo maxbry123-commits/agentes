@@ -1,0 +1,14 @@
+[Unit]
+Description=NCT Agent OpenClaw-VPS PERSISTENT v3 sandbox
+After=network-online.target
+StartLimitBurst=10
+StartLimitIntervalSec=60
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/nct/agents/openclaw/runtime.py
+WorkingDirectory=/opt/nct
+Environment=HOME=/root
+Restart=always
+RestartSec=3
+[Install]
+WantedBy=multi-user.target
