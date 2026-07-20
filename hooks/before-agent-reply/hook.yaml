@@ -1,0 +1,22 @@
+name: before_agent_reply
+version: 0.1.0
+trigger: agent.reply.pre
+description: "Aplica formato final (truncado 6 líneas, footer)."
+input_schema:
+  type: object
+  required: [reply_text, agent_id]
+  properties:
+    reply_text: { type: string }
+    agent_id: { type: string }
+    session_id: { type: string }
+    user_id: { type: string }
+output_schema:
+  type: object
+  required: [final_text]
+  properties:
+    final_text: { type: string }
+    truncated: { type: boolean }
+    reason: { type: string }
+handler: ./handler.py
+timeout_ms: 100
+failure_mode: pass_through

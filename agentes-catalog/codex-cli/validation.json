@@ -1,0 +1,57 @@
+{
+  "agent_id": "codex-cli",
+  "sections": {
+    "1_info_general": {
+      "id": "codex-cli",
+      "nombre": "Codex CLI",
+      "provider": "openai",
+      "model": "gpt-4o",
+      "tier": "silver",
+      "descripcion": "Agente Codex CLI. Pendiente investigaci\u00f3n y validaci\u00f3n.",
+      "endpoint": "http://127.0.0.1:8085",
+      "auth": "pendiente"
+    },
+    "2_comandos_ejecutados": [],
+    "3_verificacion_binario": {
+      "binario": "codex-cli",
+      "version_cmd": "codex-cli --version",
+      "ubicacion": "/usr/local/bin/codex-cli (a instalar)"
+    },
+    "4_mcp": {
+      "servidores": []
+    },
+    "5_api_endpoints": [
+      {
+        "method": "GET",
+        "path": "/health",
+        "auth": "bearer",
+        "status_esperado": 200
+      },
+      {
+        "method": "POST",
+        "path": "/v1/chat/completions",
+        "auth": "bearer",
+        "status_esperado": 200
+      }
+    ],
+    "6_skills_tools": {
+      "skills_instalados": [],
+      "tools_internos": [],
+      "mcps_activos": []
+    },
+    "7_test_funcional": {
+      "prompt": "PENDIENTE",
+      "respuesta_esperada": "PENDIENTE",
+      "score_minimo": 0.8
+    },
+    "8_config_persistente": {
+      "config_path": "PENDIENTE",
+      "env_vars": []
+    },
+    "9_trazabilidad_investigacion": [],
+    "10_conectividad_sistema": {
+      "habla_con": []
+    },
+    "11_tests_finales": []
+  }
+}

@@ -1,0 +1,22 @@
+name: before_tool_call
+version: 0.1.0
+trigger: tool.invoke.pre
+description: "Valida policies, redacta PII, rate-limit antes de ejecutar una tool."
+input_schema:
+  type: object
+  required: [tool_id, tool_args, agent_id]
+  properties:
+    tool_id: { type: string }
+    tool_args: { type: object }
+    agent_id: { type: string }
+    session_id: { type: string }
+output_schema:
+  type: object
+  required: [allow]
+  properties:
+    allow: { type: boolean }
+    mutated_args: { type: object }
+    reason: { type: string }
+handler: ./handler.py
+timeout_ms: 200
+failure_mode: deny   # si el handler crashea, denegar

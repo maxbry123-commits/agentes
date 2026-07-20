@@ -1,0 +1,77 @@
+openapi: 3.0.3
+info:
+  title: AI Registry API
+  version: 0.1.0
+  description: |
+    API única del AI Registry. Reemplaza a "consultar N registries y hacer joins".
+    Spec — implementación no incluida en este turno.
+servers:
+  - url: http://127.0.0.1:9100
+    description: local dev
+paths:
+  /v1/ai-registry/recommend:
+    post:
+      summary: Recomienda (agent, skill, harness, model) para una tarea.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [task]
+              properties:
+                task: { type: string }
+                context: { type: object }
+                constraints:
+                  type: array
+                  items: { type: string }
+      responses:
+        '200':
+          description: Lista ranqueada de candidatos
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ranked:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        agent:   { type: string }
+                        skill:   { type: string }
+                        harness: { type: string }
+                        model:   { type: string }
+                        score:   { type: number, minimum: 0, maximum: 1 }
+                        rationale: { type: string }
+                        estimated_cost_usd: { type: number }
+                        estimated_latency_ms: { type: number }
+                  blocked_by_policies:
+                    type: array
+                    items: { type: string }
+                  warnings:
+                    type: array
+                    items: { type: string }
+  /v1/ai-registry/cards/{kind}/{id}:
+    get:
+      summary: Devuelve la card normalizada de un entity
+      parameters:
+        - in: path
+          name: kind
+          required: true
+          schema: { type: string, enum: [agent, skill, tool, mcp, model, harness] }
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Card encontrada
+        '404':
+          description: No existe
+  /v1/ai-registry/health:
+    get:
+      summary: Liveness del AI Registry
+      responses:
+        '200':
+          description: ok

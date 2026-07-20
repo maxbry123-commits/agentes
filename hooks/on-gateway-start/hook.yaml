@@ -1,0 +1,18 @@
+name: on_gateway_start
+version: 0.1.0
+trigger: gateway.startup
+description: "Carga skills prioritarios, ping a MCPs, valida env vars."
+input_schema:
+  type: object
+  properties:
+    gateway_id: { type: string }
+    config_path: { type: string }
+output_schema:
+  type: object
+  properties:
+    init_log: { type: array, items: { type: string } }
+    loaded_skills: { type: array, items: { type: string } }
+    warnings: { type: array, items: { type: string } }
+handler: ./handler.py
+timeout_ms: 10000
+failure_mode: warn

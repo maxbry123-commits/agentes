@@ -1,0 +1,20 @@
+name: slash_reset
+version: 0.1.0
+trigger: user.message.match
+match: "^/reset\\b"
+description: "Borra contexto de la sesión, mantiene session_id."
+input_schema:
+  type: object
+  required: [user_id, session_id]
+  properties:
+    user_id: { type: string }
+    session_id: { type: string }
+output_schema:
+  type: object
+  properties:
+    session_id: { type: string }
+    cleared_keys: { type: array, items: { type: string } }
+    message_to_user: { type: string }
+handler: ./handler.py
+timeout_ms: 500
+failure_mode: pass_through

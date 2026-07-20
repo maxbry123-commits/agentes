@@ -1,0 +1,24 @@
+id: git
+version: 0.1.0
+entry: ./run.py
+required_tools: [bash]
+required_mcps: [github]
+harness_default: daytona
+tags: [vcs, git, github]
+source: core
+description: "Wrapper de git con sub-comandos seguros. Bloquea force-push a main."
+inputs:
+  type: object
+  required: [action]
+  properties:
+    action: { type: string, enum: [status, branch, commit, push, pr, clone, diff, log] }
+    repo: { type: string, default: "." }
+    name: { type: string }
+    message: { type: string }
+    title: { type: string }
+    body: { type: string }
+    base: { type: string, default: "main" }
+    force: { type: boolean, default: false }
+    files: { type: array, items: { type: string } }
+outputs:
+  type: object

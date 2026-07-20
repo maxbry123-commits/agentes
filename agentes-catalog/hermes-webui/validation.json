@@ -1,0 +1,57 @@
+{
+  "agent_id": "hermes-webui",
+  "sections": {
+    "1_info_general": {
+      "id": "hermes-webui",
+      "nombre": "Hermes WebUI",
+      "provider": "nous",
+      "model": "hermes-3",
+      "tier": "bronze",
+      "descripcion": "Agente Hermes WebUI. Pendiente investigaci\u00f3n y validaci\u00f3n.",
+      "endpoint": "http://127.0.0.1:8089",
+      "auth": "pendiente"
+    },
+    "2_comandos_ejecutados": [],
+    "3_verificacion_binario": {
+      "binario": "hermes-webui",
+      "version_cmd": "hermes-webui --version",
+      "ubicacion": "/usr/local/bin/hermes-webui (a instalar)"
+    },
+    "4_mcp": {
+      "servidores": []
+    },
+    "5_api_endpoints": [
+      {
+        "method": "GET",
+        "path": "/health",
+        "auth": "bearer",
+        "status_esperado": 200
+      },
+      {
+        "method": "POST",
+        "path": "/v1/chat/completions",
+        "auth": "bearer",
+        "status_esperado": 200
+      }
+    ],
+    "6_skills_tools": {
+      "skills_instalados": [],
+      "tools_internos": [],
+      "mcps_activos": []
+    },
+    "7_test_funcional": {
+      "prompt": "PENDIENTE",
+      "respuesta_esperada": "PENDIENTE",
+      "score_minimo": 0.8
+    },
+    "8_config_persistente": {
+      "config_path": "PENDIENTE",
+      "env_vars": []
+    },
+    "9_trazabilidad_investigacion": [],
+    "10_conectividad_sistema": {
+      "habla_con": []
+    },
+    "11_tests_finales": []
+  }
+}

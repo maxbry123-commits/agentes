@@ -1,0 +1,20 @@
+name: slash_new
+version: 0.1.0
+trigger: user.message.match
+match: "^/new\\b"
+description: "Crea sesión nueva, sin historial."
+input_schema:
+  type: object
+  required: [user_id, session_id]
+  properties:
+    user_id: { type: string }
+    session_id: { type: string }
+output_schema:
+  type: object
+  properties:
+    new_session_id: { type: string }
+    message_to_user: { type: string }
+    persist_context: { type: object }
+handler: ./handler.py
+timeout_ms: 500
+failure_mode: pass_through
