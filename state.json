@@ -75,7 +75,7 @@
     {
       "id": "T05",
       "title": "Dise\u00f1ar schema completo de los workflows (wf.deploy.docker, wf.git.pr, wf.railway.up, wf.openapi.skill-audit) y dejar spec en registry 09-workflow",
-      "status": "pending",
+      "status": "in_progress",
       "section": "H",
       "agent_responsible": "M3-implement",
       "evidence_required": [
@@ -84,8 +84,9 @@
         "nodos+edges",
         "tests de validaci\u00f3n"
       ],
-      "attempts": 0,
-      "max_attempts": 200
+      "attempts": 1,
+      "max_attempts": 200,
+      "last_change": "2026-07-20T12:26:56.503656Z"
     },
     {
       "id": "T06",
@@ -160,11 +161,11 @@
     }
   ],
   "metrics": {
-    "iterations": 4,
+    "iterations": 5,
     "tasks_done": 0,
     "tasks_failed": 0,
     "tasks_pending_at_start": 10,
-    "last_iteration_at": "2026-07-20T12:26:44.857506Z",
+    "last_iteration_at": "2026-07-20T12:26:51.425770Z",
     "last_outcome": "INIT"
   },
   "owner": "M3 (Mavis) - root session 421814358601891",
