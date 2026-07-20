@@ -91,7 +91,7 @@
     {
       "id": "T06",
       "title": "Dise\u00f1ar recomendaciones de las 100 mejoras de memoria extendida (mecanismo de scoring + retenci\u00f3n + recovery)",
-      "status": "pending",
+      "status": "in_progress",
       "section": "C",
       "agent_responsible": "M3-research",
       "evidence_required": [
@@ -99,8 +99,9 @@
         "mecanismo scoring",
         "pol\u00edtica de retenci\u00f3n"
       ],
-      "attempts": 0,
-      "max_attempts": 200
+      "attempts": 1,
+      "max_attempts": 200,
+      "last_change": "2026-07-20T12:27:02.676767Z"
     },
     {
       "id": "T07",
@@ -161,11 +162,11 @@
     }
   ],
   "metrics": {
-    "iterations": 5,
+    "iterations": 6,
     "tasks_done": 0,
     "tasks_failed": 0,
     "tasks_pending_at_start": 10,
-    "last_iteration_at": "2026-07-20T12:26:51.425770Z",
+    "last_iteration_at": "2026-07-20T12:26:57.595407Z",
     "last_outcome": "INIT"
   },
   "owner": "M3 (Mavis) - root session 421814358601891",
