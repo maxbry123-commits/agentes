@@ -27,7 +27,7 @@
     {
       "id": "T02",
       "title": "Confirmar URLs y credenciales de los 4 harnesses (Daytona, E2B, Sandbank, Mellona Hive)",
-      "status": "pending",
+      "status": "in_progress",
       "section": "D",
       "agent_responsible": "M3-research",
       "evidence_required": [
@@ -37,8 +37,9 @@
         "pricing/free tier",
         "ejemplo curl"
       ],
-      "attempts": 0,
-      "max_attempts": 200
+      "attempts": 1,
+      "max_attempts": 200,
+      "last_change": "2026-07-20T12:26:37.094499Z"
     },
     {
       "id": "T03",
@@ -157,11 +158,11 @@
     }
   ],
   "metrics": {
-    "iterations": 0,
+    "iterations": 2,
     "tasks_done": 0,
     "tasks_failed": 0,
     "tasks_pending_at_start": 10,
-    "last_iteration_at": null,
+    "last_iteration_at": "2026-07-20T12:26:32.012141Z",
     "last_outcome": "INIT"
   },
   "owner": "M3 (Mavis) - root session 421814358601891",
