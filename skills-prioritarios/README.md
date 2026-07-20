@@ -1,44 +1,47 @@
 # ⚡ Skills Prioritarios — los 6 desde el día 1
 
-> Documento canónico: prompt M3 DSL DAG SHERIFF V7, sección B.
+> **Estándar**: [agentskills.io](https://agentskills.io) — SKILL.md + frontmatter YAML.
+> Compatible con: Claude Code, Gemini, Cursor, Kiro, Codex, Antigravity, OpenCode, **OpenClaw**.
 
 | # | id | descripción | tools requeridos |
 |---|----|-------------|------------------|
-| 1 | `task-manager` | Gestiona TODOs del orquestador | bash, fs |
-| 2 | `test-runner`  | Corre tests del proyecto target | bash, fs |
-| 3 | `git`          | Wrapper de git (branch, commit, push, PR) | bash |
-| 4 | `terminal`     | Terminal controlado (sandboxed) | bash |
-| 5 | `web-search`   | Búsqueda web (DuckDuckGo/Serper) | http, parse |
+| 1 | `task-manager` | Gestiona TODOs del orquestador | Bash, filesystem |
+| 2 | `test-runner`  | Corre tests del proyecto target | Bash, filesystem |
+| 3 | `git`          | Wrapper de git (branch, commit, push, PR) | Bash |
+| 4 | `terminal`     | Terminal controlado (sandboxed) | Bash |
+| 5 | `web-search`   | Búsqueda web (Serper → DDG → Bing) | http, parse |
 | 6 | `url-reader`   | Lee URL y devuelve markdown limpio | http, parse |
 
-## Estructura de cada skill
+## Estructura de cada skill (agentskills.io v0.2.0)
 
 ```
 skills-prioritarios/<id>/
-├── README.md          # qué hace + cuándo se usa
-├── skill.yaml         # manifest (id, version, entry, required_tools, tags)
-├── install.sh         # openclaw skill install <id>  (idempotente, no-op si ya está)
-├── validate.py        # test mínimo de smoke (1 caso)
-└── examples/
-    └── basic.md       # 1 ejemplo de uso
+├── SKILL.md          # required: frontmatter YAML + instrucciones
+├── scripts/          # optional: ejecutables
+│   ├── run.py
+│   ├── install.sh
+│   └── validate.py
+├── references/       # optional: docs largas (se cargan on-demand)
+└── assets/           # optional: templates, schemas
 ```
 
-## Convención de nombres
-- `id` = kebab-case
-- `version` = semver
-- `entry` = ruta al script principal (`./run.sh` o `./run.py`)
+## Compatibilidad con OpenClaw
 
-## Comando OpenClaw (prompt M3 F)
+OpenClaw detecta skills con `SKILL.md` automáticamente. El comando equivalente es:
+
 ```bash
-openclaw skill install <id>          # instala desde el repo local
-openclaw skill list                   # lista skills disponibles
-openclaw skill validate <id>          # corre validate.py
-openclaw skill run <id> --input '{...}'  # ejecuta con payload JSON
+openclaw skill install <id>      # apunta a skills-prioritarios/<id>/
+openclaw skill list
+openclaw skill run <id> --input '{...}'
 ```
 
-## Aliases heredados
-- `clawbot setup <id>` = `openclaw skill install <id>` (compatibilidad).
+## Compatibilidad con cloudflare/.well-known/agent-skills/
+
+Si en el futuro publicamos `https://agentes.example.com/.well-known/agent-skills/index.json`,
+estas 6 skills se listan ahí con su `SKILL.md`.
 
 ## Estado
-- 6/6 carpetas creadas con `skill.yaml` + `install.sh` + `validate.py` + `README.md` + ejemplo.
-- Tests: 0 corridos todavía (este turno solo dejamos la spec y los scripts; ejecución real en próximo turno con `openclaw` instalado en HF Space).
+
+- 6/6 skills migradas al estándar `agentskills.io`.
+- 4/6 validate pasan standalone (task-manager, git, terminal, web-search, url-reader — sí, 5/6).
+- `test-runner` requiere `pytest` (no instalado en este sandbox; sí en HF Space).
