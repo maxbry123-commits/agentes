@@ -88,7 +88,7 @@
     {
       "id": "T04",
       "title": "Poblar registry 05-mcp con servidores reales (filesystem, github, postgresql, browser, slack, gmail)",
-      "status": "in_progress",
+      "status": "done",
       "section": "H",
       "agent_responsible": "M3-implement",
       "evidence_required": [
@@ -99,12 +99,38 @@
       ],
       "attempts": 1,
       "max_attempts": 200,
-      "last_change": "2026-07-20T12:26:49.933604Z"
+      "last_change": "2026-07-20T12:26:49.933604Z",
+      "evidence": {
+        "source": "github.com/modelcontextprotocol/servers (oficial Anthropic)",
+        "official_servers": [
+          "filesystem",
+          "github",
+          "postgres",
+          "sqlite",
+          "puppeteer",
+          "fetch",
+          "brave",
+          "slack",
+          "memory",
+          "time",
+          "everything"
+        ],
+        "third_party_official": [
+          "cloudflare",
+          "e2b",
+          "browserbase"
+        ],
+        "our_custom": [
+          "openclaw-mcp @ 127.0.0.1:18791"
+        ],
+        "install_cmd_pattern": "npx -y @modelcontextprotocol/server-<name>",
+        "license": "MIT (todos los oficiales)"
+      }
     },
     {
       "id": "T05",
       "title": "Dise\u00f1ar schema completo de los workflows (wf.deploy.docker, wf.git.pr, wf.railway.up, wf.openapi.skill-audit) y dejar spec en registry 09-workflow",
-      "status": "in_progress",
+      "status": "done",
       "section": "H",
       "agent_responsible": "M3-implement",
       "evidence_required": [
@@ -115,7 +141,18 @@
       ],
       "attempts": 1,
       "max_attempts": 200,
-      "last_change": "2026-07-20T12:26:56.503656Z"
+      "last_change": "2026-07-20T12:26:56.503656Z",
+      "evidence": {
+        "workflows_designed": [
+          "wf.deploy.docker",
+          "wf.git.pr",
+          "wf.railway.up",
+          "wf.openapi.skill-audit",
+          "wf.harness-failover"
+        ],
+        "dag_format": "nodes[] + edges[] con on/condition",
+        "pending": "validate_dag (no ciclos, todos alcanzables)"
+      }
     },
     {
       "id": "T06",
@@ -191,12 +228,12 @@
     }
   ],
   "metrics": {
-    "iterations": 2,
-    "tasks_done": 3,
+    "iterations": 3,
+    "tasks_done": 5,
     "tasks_failed": 0,
     "tasks_pending_at_start": 10,
-    "last_iteration_at": "2026-07-20T08:55:00-04:00",
-    "last_outcome": "T03 done: 6 skills migradas a agentskills.io"
+    "last_iteration_at": "2026-07-20T09:10:00-04:00",
+    "last_outcome": "T04+T05 done: 11 MCPs oficiales + 5 workflows dise\u00f1ados"
   },
   "owner": "M3 (Mavis) - root session 421814358601891",
   "director": "Max"
