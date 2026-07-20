@@ -1,0 +1,169 @@
+{
+  "loop": {
+    "id": "M3-DSL-DAG-SHERIFF-V7-LOOP",
+    "started_at": "2026-07-20T08:25:45-04:00",
+    "mode": "infinite_until_done",
+    "interval_s": 30,
+    "max_iterations": 0
+  },
+  "backlog": [
+    {
+      "id": "T01",
+      "title": "Research URLs reales de los 4 bibliotecarios (AgentRegistry, SkillHub, Agent Skills Hub, skills-registry) + OpenAgentSkill + HOL Registry",
+      "status": "in_progress",
+      "section": "G",
+      "agent_responsible": "M3-research",
+      "evidence_required": [
+        "URL can\u00f3nica",
+        "licencia",
+        "schema",
+        "ejemplo JSON",
+        "API/CLI"
+      ],
+      "attempts": 1,
+      "max_attempts": 200,
+      "last_change": "2026-07-20T12:26:30.447509Z"
+    },
+    {
+      "id": "T02",
+      "title": "Confirmar URLs y credenciales de los 4 harnesses (Daytona, E2B, Sandbank, Mellona Hive)",
+      "status": "pending",
+      "section": "D",
+      "agent_responsible": "M3-research",
+      "evidence_required": [
+        "URL",
+        "endpoint API",
+        "auth env var",
+        "pricing/free tier",
+        "ejemplo curl"
+      ],
+      "attempts": 0,
+      "max_attempts": 200
+    },
+    {
+      "id": "T03",
+      "title": "Poblar registries 01-agent y 11-model con datos reales de los 10 agentes (probar endpoints con curl cuando aplique)",
+      "status": "pending",
+      "section": "A",
+      "agent_responsible": "M3-implement",
+      "evidence_required": [
+        "validation.json completo",
+        "status real",
+        "endpoint verificado"
+      ],
+      "attempts": 0,
+      "max_attempts": 200
+    },
+    {
+      "id": "T04",
+      "title": "Poblar registry 05-mcp con servidores reales (filesystem, github, postgresql, browser, slack, gmail)",
+      "status": "pending",
+      "section": "H",
+      "agent_responsible": "M3-implement",
+      "evidence_required": [
+        "transport",
+        "endpoint",
+        "tools list",
+        "ping ok"
+      ],
+      "attempts": 0,
+      "max_attempts": 200
+    },
+    {
+      "id": "T05",
+      "title": "Dise\u00f1ar schema completo de los workflows (wf.deploy.docker, wf.git.pr, wf.railway.up, wf.openapi.skill-audit) y dejar spec en registry 09-workflow",
+      "status": "pending",
+      "section": "H",
+      "agent_responsible": "M3-implement",
+      "evidence_required": [
+        "workflow JSON",
+        "DAG",
+        "nodos+edges",
+        "tests de validaci\u00f3n"
+      ],
+      "attempts": 0,
+      "max_attempts": 200
+    },
+    {
+      "id": "T06",
+      "title": "Dise\u00f1ar recomendaciones de las 100 mejoras de memoria extendida (mecanismo de scoring + retenci\u00f3n + recovery)",
+      "status": "pending",
+      "section": "C",
+      "agent_responsible": "M3-research",
+      "evidence_required": [
+        "100 entradas concretas",
+        "mecanismo scoring",
+        "pol\u00edtica de retenci\u00f3n"
+      ],
+      "attempts": 0,
+      "max_attempts": 200
+    },
+    {
+      "id": "T07",
+      "title": "Dise\u00f1ar UI/UX Pro Max (wireframes + design tokens + tipograf\u00eda) del panel de registries",
+      "status": "pending",
+      "section": "C",
+      "agent_responsible": "M3-design",
+      "evidence_required": [
+        "wireframe HTML/CSS",
+        "design tokens",
+        "responsive"
+      ],
+      "attempts": 0,
+      "max_attempts": 200
+    },
+    {
+      "id": "T08",
+      "title": "Sincronizar 4 bibliotecarios externos a nuestro 02-skill registry (script sync.py + dedupe + scoring)",
+      "status": "pending",
+      "section": "G",
+      "agent_responsible": "M3-implement",
+      "evidence_required": [
+        "sync.py",
+        "dedupe hash",
+        "scoring function",
+        "tests offline"
+      ],
+      "attempts": 0,
+      "max_attempts": 200
+    },
+    {
+      "id": "T09",
+      "title": "Publicar nuestro 01-agent registry en formato HOL (hol/agentes.json)",
+      "status": "pending",
+      "section": "G",
+      "agent_responsible": "M3-implement",
+      "evidence_required": [
+        "hol/agentes.json",
+        "validaci\u00f3n contra schema HOL"
+      ],
+      "attempts": 0,
+      "max_attempts": 200
+    },
+    {
+      "id": "T10",
+      "title": "Probar las 6 skills prioritarios en HF Space con openclaw instalado y dejar log en skills-prioritarios/<id>/log.md",
+      "status": "pending",
+      "section": "B",
+      "agent_responsible": "M3-runtime",
+      "evidence_required": [
+        "install ok",
+        "validate pasa",
+        "run ok",
+        "log.md con output real"
+      ],
+      "attempts": 0,
+      "max_attempts": 200
+    }
+  ],
+  "metrics": {
+    "iterations": 0,
+    "tasks_done": 0,
+    "tasks_failed": 0,
+    "tasks_pending_at_start": 10,
+    "last_iteration_at": null,
+    "last_outcome": "INIT"
+  },
+  "owner": "M3 (Mavis) - root session 421814358601891",
+  "director": "Max"
+}
