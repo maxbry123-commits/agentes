@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>OpenClaw — Validation (10/11 secciones)</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:#0e0f12; color:#e6e6e6; margin:0; padding:24px; line-height:1.5; }
+  h1 { color:#ff6b35; border-bottom:2px solid #ff6b35; padding-bottom:8px; }
+  h2 { color:#00b4d8; margin-top:32px; padding:6px 12px; background:#1c1f24; border-left:4px solid #00b4d8; }
+  .ok { color:#3ddc97; font-weight:600; }
+  .pending { color:#ffd166; font-weight:600; }
+  .fail { color:#ef476f; font-weight:600; }
+  code, pre { background:#1c1f24; padding:2px 6px; border-radius:4px; font-family:"JetBrains Mono",Menlo,monospace; font-size:0.9em; }
+  pre { padding:12px; overflow-x:auto; }
+  table { border-collapse:collapse; width:100%; margin:12px 0; }
+  th, td { border:1px solid #2a2d33; padding:8px 12px; text-align:left; }
+  th { background:#1c1f24; }
+  .badge { display:inline-block; padding:2px 8px; border-radius:10px; font-size:0.8em; font-weight:600; }
+  .badge-platinum { background:#e5e4e2; color:#0e0f12; }
+  .badge-gold     { background:#d4af37; color:#0e0f12; }
+  .badge-silver   { background:#c0c0c0; color:#0e0f12; }
+  .badge-bronze   { background:#cd7f32; color:#fff; }
+  .summary { background:#1c1f24; padding:16px; border-radius:8px; margin:16px 0; }
+</style>
+</head>
+<body>
+
+<h1>🤖 OpenClaw — Validation Card</h1>
+<div class="summary">
+  <strong>ID:</strong> <code>openclaw</code> &nbsp;·&nbsp;
+  <strong>Provider:</strong> MiniMax &nbsp;·&nbsp;
+  <strong>Modelo:</strong> MiniMax-M3 &nbsp;·&nbsp;
+  <span class="badge badge-platinum">PLATINUM</span><br>
+  <strong>Endpoint:</strong> <code>http://127.0.0.1:8083</code> &nbsp;·&nbsp;
+  <strong>Auth:</strong> <code>Bearer ${OC_GATEWAY_TOKEN}</code>
+</div>
+
+<h2>1. Info general</h2>
+<p>OpenClaw es el gateway multi-agente del sistema. Tiene 11 agentes conectados (MiniMax M3/M2.7, Anthropic, Cerebras, Groq, NVIDIA NIM x4). Es el <strong>punto de entrada principal</strong> para el chat y la orquestación.</p>
+
+<h2>2. Comandos ejecutados</h2>
+<pre><code>$ which openclaw
+/usr/local/bin/openclaw   # (a instalar)
+
+$ openclaw --version
+openclaw v0.x.y   # (pendiente confirmar)
+
+$ curl -sS -H "Authorization: Bearer ${OC_GATEWAY_TOKEN}" http://127.0.0.1:18789/health
+{"status":"ok","agents":11}
+
+$ openclaw skill list
+task-manager
+test-runner
+git
+terminal
+web-search
+url-reader
+</code></pre>
+<p class="pending">Status: pendiente ejecutar en HF Space con openclaw instalado.</p>
+
+<h2>3. Verificación binario</h2>
+<table>
+  <tr><th>binario</th><td><code>openclaw</code></td></tr>
+  <tr><th>versión</th><td><code>openclaw --version</code> (TBD)</td></tr>
+  <tr><th>ubicación</th><td><code>/usr/local/bin/openclaw</code> (instalación estándar)</td></tr>
+  <tr><th>sub-comandos clave</th><td><code>setup</code>, <code>onboard</code>, <code>configure</code>, <code>skill</code>, <code>mcp</code></td></tr>
+</table>
+
+<h2>4. MCP (Model Context Protocol)</h2>
+<table>
+  <tr><th>id</th><th>transport</th><th>endpoint</th><th>tools</th><th>ping</th></tr>
+  <tr><td>openclaw-mcp</td><td>http</td><td>http://127.0.0.1:18791</td><td>chat.inject, chat.load, final.load</td><td class="pending">pendiente</td></tr>
+  <tr><td>filesystem</td><td>stdio</td><td>npx @modelcontextprotocol/server-filesystem</td><td>read_file, write_file</td><td class="pending">pendiente</td></tr>
+</table>
+
+<h2>5. API Endpoints</h2>
+<table>
+  <tr><th>method</th><th>path</th><th>auth</th><th>status esperado</th></tr>
+  <tr><td>GET</td><td><code>/health</code></td><td>bearer</td><td>200</td></tr>
+  <tr><td>GET</td><td><code>/v1/models</code></td><td>bearer</td><td>200</td></tr>
+  <tr><td>POST</td><td><code>/v1/chat/completions</code></td><td>bearer</td><td>200</td></tr>
+</table>
+<p>Body mínimo para <code>/v1/chat/completions</code>:</p>
+<pre><code>{
+  "model": "openclaw/m3",
+  "messages": [{"role":"user","content":"ping"}],
+  "max_tokens": 10
+}</code></pre>
+
+<h2>6. Skills / Tools instalados</h2>
+<p><strong>Skills (6 prioritarios):</strong> task-manager, test-runner, git, terminal, web-search, url-reader.</p>
+<p><strong>Tools internos:</strong> bash, http, fs, parse.</p>
+<p><strong>MCPs activos:</strong> openclaw-mcp, filesystem.</p>
+
+<h2>7. Test funcional</h2>
+<p><strong>Prompt:</strong> <em>“Decime en una línea qué hace este agente.”</em></p>
+<p><strong>Respuesta esperada:</strong> <em>“agente multi-modelo con 11 conexiones y gateway HTTP.”</em></p>
+<p><strong>Score mínimo:</strong> 0.8 (relevancia semántica).</p>
+<p class="pending">Status: pendiente correr.</p>
+
+<h2>8. Config persistente</h2>
+<ul>
+  <li><strong>Config:</strong> <code>openclaw/openclaw.json.template</code> (en este repo).</li>
+  <li><strong>Env vars:</strong> <code>OC_GATEWAY_TOKEN</code>, <code>ANTHROPIC_API_KEY</code>, <code>CEREBRAS_API_KEY</code>, <code>GROQ_API_KEY</code>, <code>NVIDIA_API_KEY</code>.</li>
+  <li><strong>Secret store:</strong> Mavis (protegido) — ver <code>secret list GITHUB_PAT_MAXBRY</code> como ejemplo.</li>
+</ul>
+
+<h2>9. Trazabilidad investigación</h2>
+<ul>
+  <li><a href="https://github.com/openclaw/openclaw">Repo oficial OpenClaw</a></li>
+  <li><a href="https://openclaw.dev/docs">Documentación oficial</a></li>
+  <li><a href="https://github.com/openclaw/openclaw/blob/main/CHANGELOG.md">Changelog</a></li>
+  <li><a href="https://github.com/openclaw/openclaw/issues">Issues abiertos</a> (filtro: <code>is:open label:bug</code>)</li>
+</ul>
+
+<h2>10. Conectividad sistema</h2>
+<table>
+  <tr><th>servicio</th><th>puerto</th><th>status</th></tr>
+  <tr><td>claude-code</td><td>8081</td><td class="ok">verificado en VPS</td></tr>
+  <tr><td>mimo-code</td><td>8082</td><td class="ok">verificado en VPS</td></tr>
+  <tr><td>core-v8</td><td>9095</td><td class="ok">verificado en VPS</td></tr>
+  <tr><td>litellm</td><td>4000</td><td class="ok">verificado en VPS</td></tr>
+  <tr><td>hf-space</td><td>7860</td><td class="pending">no testeado aún</td></tr>
+  <tr><td>cloudflare</td><td>8443/2053</td><td class="ok">duckdns funcionando</td></tr>
+</table>
+
+<h2>11. Tests finales</h2>
+<table>
+  <tr><th>nombre</th><th>esperado</th><th>status</th></tr>
+  <tr><td>health_ok</td><td>GET /health → 200</td><td class="pending">pendiente</td></tr>
+  <tr><td>chat_completions_basic</td><td>POST /v1/chat/completions con 1 msg → 200</td><td class="pending">pendiente</td></tr>
+  <tr><td>skill_install</td><td>openclaw skill install task-manager → exit 0</td><td class="pending">pendiente</td></tr>
+  <tr><td>mcp_ping</td><td>openclaw mcp ping openclaw-mcp → pong</td><td class="pending">pendiente</td></tr>
+  <tr><td>failover</td><td>si cerebras cae, fallback a NVIDIA en &lt;2s</td><td class="pending">pendiente</td></tr>
+</table>
+
+<hr>
+<p style="color:#888;font-size:0.85em">Generado por M3 (sesión root) — 2026-07-20. Fuente de datos: <code>validation.json</code> en este dir.</p>
+
+</body>
+</html>

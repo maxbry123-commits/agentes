@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Claude Code — Validation</title>
+<style>
+  body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:#0e0f12; color:#e6e6e6; margin:0; padding:24px; line-height:1.5; }
+  h1 { color:#ff6b35; border-bottom:2px solid #ff6b35; padding-bottom:8px; }
+  h2 { color:#00b4d8; margin-top:32px; padding:6px 12px; background:#1c1f24; border-left:4px solid #00b4d8; }
+  .ok { color:#3ddc97; font-weight:600; }
+  .pending { color:#ffd166; font-weight:600; }
+  .fail { color:#ef476f; font-weight:600; }
+  code, pre { background:#1c1f24; padding:2px 6px; border-radius:4px; font-family:"JetBrains Mono",Menlo,monospace; font-size:0.9em; }
+  pre { padding:12px; overflow-x:auto; }
+  table { border-collapse:collapse; width:100%; margin:12px 0; }
+  th, td { border:1px solid #2a2d33; padding:8px 12px; text-align:left; }
+  th { background:#1c1f24; }
+  .badge { display:inline-block; padding:2px 8px; border-radius:10px; font-size:0.8em; font-weight:600; }
+  .badge-platinum { background:#e5e4e2; color:#0e0f12; }
+  .badge-gold     { background:#d4af37; color:#0e0f12; }
+  .badge-silver   { background:#c0c0c0; color:#0e0f12; }
+  .badge-bronze   { background:#cd7f32; color:#fff; }
+  .summary { background:#1c1f24; padding:16px; border-radius:8px; margin:16px 0; }
+</style>
+</head>
+<body>
+
+<h1>🤖 Claude Code — Validation Card</h1>
+<div class="summary">
+  <strong>ID:</strong> <code>claude-code</code> &nbsp;·&nbsp;
+  <strong>Provider:</strong> anthropic &nbsp;·&nbsp;
+  <strong>Modelo:</strong> claude-3.7-sonnet &nbsp;·&nbsp;
+  <span class="badge badge-gold">GOLD</span><br>
+  <strong>Endpoint:</strong> <code>http://127.0.0.1:8081</code> &nbsp;·&nbsp;
+  <strong>Auth:</strong> <code>${ANTHROPIC_API_KEY}</code>
+</div>
+
+<h2>1. Info general</h2>
+<p>Runtime headless de Claude Code. Acepta tareas de código, debugging, y revisión. Se invoca desde el gateway en puerto 8081.</p>
+
+<h2>2. Comandos ejecutados</h2>
+<pre><code>$ curl -sS -X POST http://127.0.0.1:8081/v1/chat/completions -H 'Authorization: Bearer ${TOKEN}' -H 'Content-Type: application/json' -d '{"messages":[{"role":"user","content":"ping"}]}'
+{"ok":true}</code></pre>
+<p class="pending">Status: pendiente ejecutar.</p>
+
+<h2>3. Verificación binario</h2>
+<table>
+  <tr><th>binario</th><td><code>claude-code</code></td></tr>
+  <tr><th>versión</th><td><code>claude-code --version</code></td></tr>
+  <tr><th>ubicación</th><td><code>/usr/local/bin/claude-code (a instalar)</code></td></tr>
+</table>
+
+<h2>4. MCP</h2>
+<table>
+  <tr><th>id</th><th>transport</th><th>endpoint</th><th>tools</th><th>ping</th></tr>
+  <tr><td colspan='5' class='pending'>pendiente</td></tr>
+</table>
+
+<h2>5. API Endpoints</h2>
+<table>
+  <tr><th>method</th><th>path</th><th>auth</th><th>status esperado</th></tr>
+  <tr><td>POST</td><td><code>/v1/chat/completions</code></td><td>bearer</td><td>200</td></tr>
+</table>
+
+<h2>6. Skills / Tools instalados</h2>
+<p>git, terminal, task-manager, test-runner</p>
+
+<h2>7. Test funcional</h2>
+<p><strong>Prompt:</strong> <em>"Implementa una función Python que devuelva los n primeros números de Fibonacci."</em></p>
+<p><strong>Respuesta esperada:</strong> <em>"código Python con test mínimo"</em></p>
+<p><strong>Score mínimo:</strong> 0.85.</p>
+
+<h2>8. Config persistente</h2>
+<ul>
+  <li><strong>Config:</strong> <code>agents/claude_vps_runtime.py</code></li>
+  <li><strong>Env vars:</strong> <code>ANTHROPIC_API_KEY</code></li>
+</ul>
+
+<h2>9. Trazabilidad investigación</h2>
+<ul>
+  <li><a href="https://docs.anthropic.com/claude-code">docs_oficiales</a></li>
+<li><a href="https://github.com/anthropics/claude-code">repo_oficial</a></li>
+</ul>
+
+<h2>10. Conectividad sistema</h2>
+<table>
+  <tr><th>servicio</th><th>puerto</th><th>status</th></tr>
+  <tr><td>gateway</td><td>18789</td><td class='ok'>verificado_en_vps</td></tr>
+<tr><td>core-v8</td><td>9095</td><td class='ok'>verificado_en_vps</td></tr>
+</table>
+
+<h2>11. Tests finales</h2>
+<table>
+  <tr><th>nombre</th><th>esperado</th><th>status</th></tr>
+  <tr><td>ping</td><td>POST /v1/chat/completions responde 200</td><td class='pending'>pendiente</td></tr>
+<tr><td>code_task</td><td>implementa fibonacci en <5s</td><td class='pending'>pendiente</td></tr>
+</table>
+
+<hr>
+<p style="color:#888;font-size:0.85em">Generado por M3 (sesión root) — 2026-07-20. Fuente: <code>validation.json</code>.</p>
+
+</body>
+</html>

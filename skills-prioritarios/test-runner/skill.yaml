@@ -1,0 +1,27 @@
+id: test-runner
+version: 0.1.0
+entry: ./run.py
+required_tools: [bash, fs, parse]
+required_mcps: []
+harness_default: e2b
+tags: [qa, test, ci]
+source: core
+description: "Detecta y ejecuta tests del proyecto target."
+inputs:
+  type: object
+  required: [path]
+  properties:
+    path: { type: string }
+    framework: { type: string, enum: [auto, pytest, vitest, jest, go, cargo] }
+    max_duration_s: { type: integer, default: 120 }
+    fail_fast: { type: boolean, default: false }
+outputs:
+  type: object
+  properties:
+    ok: { type: boolean }
+    framework: { type: string }
+    passed: { type: integer }
+    failed: { type: integer }
+    skipped: { type: integer }
+    duration_s: { type: number }
+    failed_files: { type: array, items: { type: string } }

@@ -1,0 +1,76 @@
+{
+  "agent_id": "openclaw",
+  "sections": {
+    "1_info_general": {
+      "id": "openclaw",
+      "nombre": "OpenClaw",
+      "provider": "MiniMax",
+      "model": "MiniMax-M3",
+      "tier": "platinum",
+      "descripcion": "Gateway multi-agente con 11 agentes conectados. Punto de entrada principal del sistema.",
+      "endpoint": "http://127.0.0.1:8083",
+      "auth": "${OC_GATEWAY_TOKEN}"
+    },
+    "2_comandos_ejecutados": [
+      {"cmd": "which openclaw", "esperado": "/usr/local/bin/openclaw (en HF Space; N/A en repo)"},
+      {"cmd": "openclaw --version", "esperado": "openclaw vX.Y.Z (a confirmar)"},
+      {"cmd": "openclaw setup --help", "esperado": "lista de sub-comandos"},
+      {"cmd": "curl -sS -H 'Authorization: Bearer ${OC_GATEWAY_TOKEN}' http://127.0.0.1:18789/health", "esperado": "{\"status\":\"ok\"}"}
+    ],
+    "3_verificacion_binario": {
+      "binario": "openclaw",
+      "version_cmd": "openclaw --version",
+      "ubicacion": "/usr/local/bin/openclaw (a instalar)",
+      "help_cmd": "openclaw --help",
+      "subcomandos_clave": ["setup","onboard","configure","skill install","skill list","skill run","mcp"]
+    },
+    "4_mcp": {
+      "servidores": [
+        {"id":"openclaw-mcp","transport":"http","endpoint":"http://127.0.0.1:18791","tools":["chat.inject","chat.load","final.load"]},
+        {"id":"filesystem","transport":"stdio","cmd":"npx @modelcontextprotocol/server-filesystem","tools":["read_file","write_file"]}
+      ],
+      "ping_status": "pendiente"
+    },
+    "5_api_endpoints": [
+      {"method":"GET","path":"/health","auth":"bearer","status_esperado":200},
+      {"method":"GET","path":"/v1/models","auth":"bearer","status_esperado":200},
+      {"method":"POST","path":"/v1/chat/completions","auth":"bearer","status_esperado":200,"body_minimo":{"model":"openclaw/m3","messages":[{"role":"user","content":"ping"}],"max_tokens":10}}
+    ],
+    "6_skills_tools": {
+      "skills_instalados": ["task-manager","test-runner","git","terminal","web-search","url-reader"],
+      "tools_internos": ["bash","http","fs","parse"],
+      "mcps_activos": ["openclaw-mcp","filesystem"]
+    },
+    "7_test_funcional": {
+      "prompt": "Decime en una línea qué hace este agente.",
+      "respuesta_esperada": "agente multi-modelo con 11 conexiones",
+      "score_minimo": 0.8
+    },
+    "8_config_persistente": {
+      "config_path": "openclaw/openclaw.json.template",
+      "env_vars": ["OC_GATEWAY_TOKEN","ANTHROPIC_API_KEY","CEREBRAS_API_KEY","GROQ_API_KEY","NVIDIA_API_KEY"],
+      "secret_store": "Mavis secret store (protegido)"
+    },
+    "9_trazabilidad_investigacion": [
+      {"url":"https://github.com/openclaw/openclaw","tipo":"repo_oficial"},
+      {"url":"https://openclaw.dev/docs","tipo":"docs_oficiales"},
+      {"url":"https://github.com/openclaw/openclaw/blob/main/CHANGELOG.md","tipo":"changelog"}
+    ],
+    "10_conectividad_sistema": {
+      "habla_con": [
+        {"servicio":"claude-code","puerto":8081,"status":"verificado_en_vps"},
+        {"servicio":"mimo-code","puerto":8082,"status":"verificado_en_vps"},
+        {"servicio":"core-v8","puerto":9095,"status":"verificado_en_vps"},
+        {"servicio":"litellm","puerto":4000,"status":"verificado_en_vps"},
+        {"servicio":"hf-space","puerto":7860,"status":"no_testado_aun"}
+      ]
+    },
+    "11_tests_finales": [
+      {"nombre":"health_ok","esperado":"/health devuelve 200","status":"pendiente"},
+      {"nombre":"chat_completions_basic","esperado":"POST /v1/chat/completions con 1 mensaje devuelve 200","status":"pendiente"},
+      {"nombre":"skill_install","esperado":"openclaw skill install task-manager termina con exit 0","status":"pendiente"},
+      {"nombre":"mcp_ping","esperado":"openclaw mcp ping openclaw-mcp devuelve pong","status":"pendiente"},
+      {"nombre":"failover","esperado":"si cerebras cae, fallback a NVIDIA en <2s","status":"pendiente"}
+    ]
+  }
+}

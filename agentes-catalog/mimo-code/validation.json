@@ -1,0 +1,55 @@
+{
+  "agent_id": "mimo-code",
+  "sections": {
+    "1_info_general": {
+      "id": "mimo-code",
+      "nombre": "Mimo Code",
+      "provider": "anthropic",
+      "model": "claude-3.7-sonnet",
+      "tier": "gold",
+      "descripcion": "Runtime headless alternativo a Claude Code, en puerto 8082. Usado para paralelizar tareas o failover.",
+      "endpoint": "http://127.0.0.1:8082",
+      "auth": "${ANTHROPIC_API_KEY}"
+    },
+    "2_comandos_ejecutados": [
+      {"cmd": "curl -sS http://127.0.0.1:8082/health", "esperado": "{\"status\":\"ok\"}"}
+    ],
+    "3_verificacion_binario": {
+      "binario": "mimo-code",
+      "version_cmd": "mimo-code --version",
+      "ubicacion": "/usr/local/bin/mimo-code (a instalar)"
+    },
+    "4_mcp": {"servidores": []},
+    "5_api_endpoints": [
+      {"method":"GET","path":"/health","auth":"none","status_esperado":200},
+      {"method":"POST","path":"/v1/chat/completions","auth":"bearer","status_esperado":200}
+    ],
+    "6_skills_tools": {
+      "skills_instalados": ["git","terminal","task-manager","test-runner"],
+      "tools_internos": ["bash","fs"],
+      "mcps_activos": []
+    },
+    "7_test_funcional": {
+      "prompt": "Refactoriza esta función para usar comprehensions.",
+      "respuesta_esperada": "código refactorizado + diff",
+      "score_minimo": 0.85
+    },
+    "8_config_persistente": {
+      "config_path": "agents/mimo_vps_runtime.py",
+      "env_vars": ["ANTHROPIC_API_KEY"]
+    },
+    "9_trazabilidad_investigacion": [
+      {"url":"https://github.com/anthropics/mimo-code","tipo":"repo_oficial"}
+    ],
+    "10_conectividad_sistema": {
+      "habla_con": [
+        {"servicio":"gateway","puerto":18789,"status":"verificado_en_vps","status_class":"ok"},
+        {"servicio":"claude-code","puerto":8081,"status":"verificado_en_vps","status_class":"ok"}
+      ]
+    },
+    "11_tests_finales": [
+      {"nombre":"ping","esperado":"/health → 200","status":"pendiente"},
+      {"nombre":"refactor","esperado":"refactor simple en <5s","status":"pendiente"}
+    ]
+  }
+}

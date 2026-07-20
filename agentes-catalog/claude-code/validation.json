@@ -1,0 +1,57 @@
+{
+  "agent_id": "claude-code",
+  "sections": {
+    "1_info_general": {
+      "id": "claude-code",
+      "nombre": "Claude Code",
+      "provider": "anthropic",
+      "model": "claude-3.7-sonnet",
+      "tier": "gold",
+      "descripcion": "Runtime headless de Claude Code. Acepta tareas de código, debugging, y revisión. Se invoca desde el gateway en puerto 8081.",
+      "endpoint": "http://127.0.0.1:8081",
+      "auth": "${ANTHROPIC_API_KEY}"
+    },
+    "2_comandos_ejecutados": [
+      {"cmd": "curl -sS -X POST http://127.0.0.1:8081/v1/chat/completions -H 'Authorization: Bearer ${TOKEN}' -H 'Content-Type: application/json' -d '{\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}]}'", "esperado": "{\"ok\":true}"}
+    ],
+    "3_verificacion_binario": {
+      "binario": "claude-code",
+      "version_cmd": "claude-code --version",
+      "ubicacion": "/usr/local/bin/claude-code (a instalar)"
+    },
+    "4_mcp": {
+      "servidores": []
+    },
+    "5_api_endpoints": [
+      {"method":"POST","path":"/v1/chat/completions","auth":"bearer","status_esperado":200}
+    ],
+    "6_skills_tools": {
+      "skills_instalados": ["git","terminal","task-manager","test-runner"],
+      "tools_internos": ["bash","fs"],
+      "mcps_activos": []
+    },
+    "7_test_funcional": {
+      "prompt": "Implementa una función Python que devuelva los n primeros números de Fibonacci.",
+      "respuesta_esperada": "código Python con test mínimo",
+      "score_minimo": 0.85
+    },
+    "8_config_persistente": {
+      "config_path": "agents/claude_vps_runtime.py",
+      "env_vars": ["ANTHROPIC_API_KEY"]
+    },
+    "9_trazabilidad_investigacion": [
+      {"url":"https://docs.anthropic.com/claude-code","tipo":"docs_oficiales"},
+      {"url":"https://github.com/anthropics/claude-code","tipo":"repo_oficial"}
+    ],
+    "10_conectividad_sistema": {
+      "habla_con": [
+        {"servicio":"gateway","puerto":18789,"status":"verificado_en_vps","status_class":"ok"},
+        {"servicio":"core-v8","puerto":9095,"status":"verificado_en_vps","status_class":"ok"}
+      ]
+    },
+    "11_tests_finales": [
+      {"nombre":"ping","esperado":"POST /v1/chat/completions responde 200","status":"pendiente"},
+      {"nombre":"code_task","esperado":"implementa fibonacci en <5s","status":"pendiente"}
+    ]
+  }
+}
