@@ -1,0 +1,53 @@
+name: Publish Skill
+on:
+  release:
+    types: [published]
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Publish task-manager to HOL Registry
+        uses: hashgraph-online/skill-publish@main
+        with:
+          mode: publish
+          api-key: ${{ secrets.RB_API_KEY }}
+          skill-dir: skills-prioritarios/task-manager
+          annotate: "true"
+          github-token: ${{ github.token }}
+      - name: Publish git
+        uses: hashgraph-online/skill-publish@main
+        with:
+          mode: publish
+          api-key: ${{ secrets.RB_API_KEY }}
+          skill-dir: skills-prioritarios/git
+          annotate: "true"
+          github-token: ${{ github.token }}
+      - name: Publish terminal
+        uses: hashgraph-online/skill-publish@main
+        with:
+          mode: publish
+          api-key: ${{ secrets.RB_API_KEY }}
+          skill-dir: skills-prioritarios/terminal
+          annotate: "true"
+          github-token: ${{ github.token }}
+      - name: Publish web-search
+        uses: hashgraph-online/skill-publish@main
+        with:
+          mode: publish
+          api-key: ${{ secrets.RB_API_KEY }}
+          skill-dir: skills-prioritarios/web-search
+          annotate: "true"
+          github-token: ${{ github.token }}
+      - name: Publish url-reader
+        uses: hashgraph-online/skill-publish@main
+        with:
+          mode: publish
+          api-key: ${{ secrets.RB_API_KEY }}
+          skill-dir: skills-prioritarios/url-reader
+          annotate: "true"
+          github-token: ${{ github.token }}

@@ -1,0 +1,87 @@
+{
+  "$schema": "https://hol.org/registry/schemas/agent-card/1.0",
+  "registry": "hol.org",
+  "publisher": "maxbry123-commits",
+  "agents": [
+    {
+      "id": "openclaw",
+      "name": "OpenClaw",
+      "description": "Multi-agent LLM gateway with 11 agents connected. Serves as primary chat entrypoint for the Mavis/Maxbry stack.",
+      "version": "0.1.0",
+      "endpoint": "https://maxbry1.duckdns.org",
+      "auth": { "type": "bearer", "token_env": "OC_GATEWAY_TOKEN" },
+      "skills": ["task-manager","test-runner","git","terminal","web-search","url-reader"],
+      "mcps": [
+        {"id":"openclaw-mcp","transport":"http","endpoint":"http://127.0.0.1:18791"}
+      ],
+      "model": { "id":"MiniMax-M3", "provider":"MiniMax" },
+      "tier": "platinum",
+      "tags": ["core","gateway","multi-agent","openclaw"]
+    },
+    {
+      "id": "claude-code",
+      "name": "Claude Code",
+      "description": "Headless Claude Code runtime. Accepts code tasks, debugging, and review requests.",
+      "version": "0.1.0",
+      "endpoint": "http://127.0.0.1:8081",
+      "auth": { "type": "env", "token_env": "ANTHROPIC_API_KEY" },
+      "skills": ["git","terminal","task-manager","test-runner"],
+      "model": { "id":"claude-3.7-sonnet", "provider":"anthropic" },
+      "tier": "gold",
+      "tags": ["code","anthropic","claude"]
+    },
+    {
+      "id": "mimo-code",
+      "name": "Mimo Code",
+      "description": "Alternate headless Claude runtime, used for parallelism and failover.",
+      "version": "0.1.0",
+      "endpoint": "http://127.0.0.1:8082",
+      "auth": { "type": "env", "token_env": "ANTHROPIC_API_KEY" },
+      "skills": ["git","terminal","task-manager","test-runner"],
+      "model": { "id":"claude-3.7-sonnet", "provider":"anthropic" },
+      "tier": "gold",
+      "tags": ["code","anthropic","claude","failover"]
+    },
+    {
+      "id": "codex-cli",
+      "name": "Codex CLI",
+      "description": "OpenAI Codex CLI for code generation tasks. Tier silver — alternative to Claude Code.",
+      "version": "0.1.0",
+      "endpoint": "TBD",
+      "model": { "id":"gpt-4o", "provider":"openai" },
+      "tier": "silver",
+      "tags": ["code","openai","gpt-4o"]
+    },
+    {
+      "id": "kimi-cli",
+      "name": "Kimi CLI",
+      "description": "Moonshot Kimi CLI for long-context reasoning. Supports 128k context.",
+      "version": "0.1.0",
+      "endpoint": "TBD",
+      "model": { "id":"kimi-k2", "provider":"alibaba" },
+      "tier": "silver",
+      "tags": ["code","alibaba","kimi","long-context"]
+    },
+    {
+      "id": "nemotron",
+      "name": "Nemotron",
+      "description": "NVIDIA Nemotron LLM. GPU-backed, used for high-throughput inference.",
+      "version": "0.1.0",
+      "endpoint": "TBD",
+      "model": { "id":"llama-3.1-nemotron-70b", "provider":"nvidia" },
+      "tier": "silver",
+      "tags": ["code","nvidia","nemotron","gpu"]
+    },
+    {
+      "id": "litellm",
+      "name": "LiteLLM Router",
+      "description": "OpenAI-compatible LLM router. Currently fronting Cerebras models.",
+      "version": "0.1.0",
+      "endpoint": "http://127.0.0.1:4000",
+      "auth": { "type": "env", "token_env": "CEREBRAS_API_KEY" },
+      "model": { "id":"multi", "provider":"multi" },
+      "tier": "gold",
+      "tags": ["router","cerebras","openai-compat"]
+    }
+  ]
+}

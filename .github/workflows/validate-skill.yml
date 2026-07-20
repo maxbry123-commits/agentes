@@ -1,0 +1,50 @@
+name: Validate Skill
+on:
+  pull_request:
+    paths:
+      - 'skills-prioritarios/**'
+      - '.hol/skill-publish.yml'
+      - '.github/workflows/validate-skill.yml'
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate skill against agentskills.io
+        uses: hashgraph-online/skill-publish@main
+        with:
+          mode: validate
+          skill-dir: skills-prioritarios/task-manager
+          annotate: "false"
+      - name: Validate test-runner
+        uses: hashgraph-online/skill-publish@main
+        with:
+          mode: validate
+          skill-dir: skills-prioritarios/test-runner
+          annotate: "false"
+      - name: Validate git
+        uses: hashgraph-online/skill-publish@main
+        with:
+          mode: validate
+          skill-dir: skills-prioritarios/git
+          annotate: "false"
+      - name: Validate terminal
+        uses: hashgraph-online/skill-publish@main
+        with:
+          mode: validate
+          skill-dir: skills-prioritarios/terminal
+          annotate: "false"
+      - name: Validate web-search
+        uses: hashgraph-online/skill-publish@main
+        with:
+          mode: validate
+          skill-dir: skills-prioritarios/web-search
+          annotate: "false"
+      - name: Validate url-reader
+        uses: hashgraph-online/skill-publish@main
+        with:
+          mode: validate
+          skill-dir: skills-prioritarios/url-reader
+          annotate: "false"

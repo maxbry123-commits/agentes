@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>AI Registry · Panel</title>
+<style>
+  :root {
+    --bg: #0e0f12;
+    --card: #1c1f24;
+    --card2: #252932;
+    --line: #2a2d33;
+    --txt: #e6e6e6;
+    --txt2: #aab;
+    --acc: #00b4d8;
+    --acc2: #ff6b35;
+    --ok: #3ddc97;
+    --warn: #ffd166;
+    --fail: #ef476f;
+    --platinum: #e5e4e2;
+    --gold: #d4af37;
+    --silver: #c0c0c0;
+    --bronze: #cd7f32;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --mono: "JetBrains Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { font-family: var(--font); background: var(--bg); color: var(--txt); margin: 0; padding: 24px; line-height: 1.5; }
+  h1 { color: var(--acc2); border-bottom: 2px solid var(--acc2); padding-bottom: 8px; margin-top: 0; font-size: 1.6em; }
+  h2 { color: var(--acc); margin-top: 32px; padding: 6px 12px; background: var(--card); border-left: 4px solid var(--acc); }
+  .top { display: flex; gap: 16px; flex-wrap: wrap; }
+  .stat { background: var(--card); padding: 12px 16px; border-radius: 8px; min-width: 140px; }
+  .stat .v { font-size: 1.6em; font-weight: 600; color: var(--acc); }
+  .stat .l { color: var(--txt2); font-size: 0.85em; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; background: var(--card); border-radius: 8px; overflow: hidden; }
+  th, td { border-bottom: 1px solid var(--line); padding: 8px 12px; text-align: left; }
+  th { background: var(--card2); color: var(--acc); font-weight: 600; }
+  tr:hover td { background: var(--card2); }
+  code { background: var(--card2); padding: 2px 6px; border-radius: 4px; font-family: var(--mono); font-size: 0.9em; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.8em; font-weight: 600; }
+  .b-platinum { background: var(--platinum); color: var(--bg); }
+  .b-gold     { background: var(--gold); color: var(--bg); }
+  .b-silver   { background: var(--silver); color: var(--bg); }
+  .b-bronze   { background: var(--bronze); color: #fff; }
+  .b-ok   { color: var(--ok); }
+  .b-warn { color: var(--warn); }
+  .b-fail { color: var(--fail); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin-top: 12px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 16px; }
+  .card .h { font-weight: 600; margin-bottom: 6px; color: var(--acc); }
+  .card .d { color: var(--txt2); font-size: 0.9em; }
+  .card .meta { font-size: 0.8em; color: var(--txt2); margin-top: 8px; font-family: var(--mono); }
+  .footer { color: var(--txt2); font-size: 0.85em; margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--line); }
+  .nav { display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
+  .nav a { color: var(--acc); text-decoration: none; padding: 6px 12px; background: var(--card); border-radius: 6px; font-size: 0.9em; }
+  .nav a:hover { background: var(--card2); }
+</style>
+</head>
+<body>
+
+<h1>🧠 AI Registry · Panel</h1>
+
+<div class="nav">
+  <a href="#stats">Stats</a>
+  <a href="#agents">Agents (10)</a>
+  <a href="#skills">Skills (6 prioritarios)</a>
+  <a href="#mcps">MCPs (15)</a>
+  <a href="#harnesses">Harnesses (4)</a>
+  <a href="#workflows">Workflows (5)</a>
+  <a href="#loop">Loop status</a>
+</div>
+
+<h2 id="stats">Stats</h2>
+<div class="top">
+  <div class="stat"><div class="v">10</div><div class="l">agents catalogados</div></div>
+  <div class="stat"><div class="v">6</div><div class="l">skills prioritarias</div></div>
+  <div class="stat"><div class="v">15</div><div class="l">MCP servers</div></div>
+  <div class="stat"><div class="v">4</div><div class="l">harnesses</div></div>
+  <div class="stat"><div class="v">5</div><div class="l">workflows</div></div>
+  <div class="stat"><div class="v">12</div><div class="l">registries</div></div>
+  <div class="stat"><div class="v">5/10</div><div class="l">loop tasks done</div></div>
+  <div class="stat"><div class="v">v0.1.0</div><div class="l">version</div></div>
+</div>
+
+<h2 id="agents">Agents</h2>
+<table>
+  <tr><th>id</th><th>nombre</th><th>provider</th><th>modelo</th><th>tier</th><th>endpoint</th><th>status</th></tr>
+  <tr><td><code>openclaw</code></td><td>OpenClaw</td><td>MiniMax</td><td>MiniMax-M3</td><td><span class="badge b-platinum">platinum</span></td><td><code>http://127.0.0.1:8083</code></td><td class="b-ok">verificado</td></tr>
+  <tr><td><code>claude-code</code></td><td>Claude Code</td><td>anthropic</td><td>claude-3.7-sonnet</td><td><span class="badge b-gold">gold</span></td><td><code>http://127.0.0.1:8081</code></td><td class="b-ok">verificado</td></tr>
+  <tr><td><code>mimo-code</code></td><td>Mimo Code</td><td>anthropic</td><td>claude-3.7-sonnet</td><td><span class="badge b-gold">gold</span></td><td><code>http://127.0.0.1:8082</code></td><td class="b-ok">verificado</td></tr>
+  <tr><td><code>codex-cli</code></td><td>Codex CLI</td><td>openai</td><td>gpt-4o</td><td><span class="badge b-silver">silver</span></td><td>TBD</td><td class="b-warn">pendiente</td></tr>
+  <tr><td><code>openhands</code></td><td>OpenHands</td><td>openai</td><td>gpt-4o</td><td><span class="badge b-silver">silver</span></td><td>TBD</td><td class="b-warn">pendiente</td></tr>
+  <tr><td><code>kimi-cli</code></td><td>Kimi CLI</td><td>alibaba</td><td>kimi-k2</td><td><span class="badge b-silver">silver</span></td><td>TBD</td><td class="b-warn">pendiente</td></tr>
+  <tr><td><code>hermes-cli</code></td><td>Hermes CLI</td><td>nous</td><td>hermes-3</td><td><span class="badge b-bronze">bronze</span></td><td>TBD</td><td class="b-warn">pendiente</td></tr>
+  <tr><td><code>nemotron</code></td><td>Nemotron</td><td>nvidia</td><td>llama-3.1-nemotron</td><td><span class="badge b-silver">silver</span></td><td>TBD</td><td class="b-warn">pendiente</td></tr>
+  <tr><td><code>litellm</code></td><td>LiteLLM</td><td>multi</td><td>multi</td><td><span class="badge b-gold">gold</span></td><td><code>http://127.0.0.1:4000</code></td><td class="b-ok">verificado</td></tr>
+</table>
+
+<h2 id="skills">Skills prioritarias</h2>
+<div class="grid">
+  <div class="card">
+    <div class="h">task-manager</div>
+    <div class="d">Gestiona TODOs del orquestador. Add, list, done, blocked.</div>
+    <div class="meta">validate: <span class="b-ok">PASS</span> · frontmatter: agentskills.io</div>
+  </div>
+  <div class="card">
+    <div class="h">test-runner</div>
+    <div class="d">Detecta + corre tests (pytest, vitest, jest, go, cargo).</div>
+    <div class="meta">validate: <span class="b-warn">req. pytest</span> · v0.1.0</div>
+  </div>
+  <div class="card">
+    <div class="h">git</div>
+    <div class="d">Wrapper seguro. Branch, commit, push, pr, clone.</div>
+    <div class="meta">validate: <span class="b-ok">PASS</span> · force-push a main bloqueado</div>
+  </div>
+  <div class="card">
+    <div class="h">terminal</div>
+    <div class="d">Bash sandboxed con blacklist. Timeout + output cap.</div>
+    <div class="meta">validate: <span class="b-ok">PASS</span> · 11 patrones bloqueados</div>
+  </div>
+  <div class="card">
+    <div class="h">web-search</div>
+    <div class="d">Búsqueda web. Serper → DDG → Bing fallback.</div>
+    <div class="meta">validate: <span class="b-ok">PASS</span> · pending: DDG real impl</div>
+  </div>
+  <div class="card">
+    <div class="h">url-reader</div>
+    <div class="d">Lee URL → markdown limpio. Cap 50k chars.</div>
+    <div class="meta">validate: <span class="b-ok">PASS</span> · pending: trafilatura</div>
+  </div>
+</div>
+
+<h2 id="mcps">MCP Servers</h2>
+<table>
+  <tr><th>id</th><th>transport</th><th>install</th><th>license</th><th>auth</th></tr>
+  <tr><td><code>filesystem</code></td><td>stdio</td><td><code>npx -y @modelcontextprotocol/server-filesystem</code></td><td>MIT</td><td>none</td></tr>
+  <tr><td><code>github</code></td><td>stdio</td><td><code>npx -y @modelcontextprotocol/server-github</code></td><td>MIT</td><td>${GITHUB_PAT}</td></tr>
+  <tr><td><code>postgres</code></td><td>stdio</td><td><code>npx -y @modelcontextprotocol/server-postgres</code></td><td>MIT</td><td>conn string</td></tr>
+  <tr><td><code>puppeteer</code></td><td>stdio</td><td><code>npx -y @modelcontextprotocol/server-puppeteer</code></td><td>MIT</td><td>none</td></tr>
+  <tr><td><code>brave</code></td><td>stdio</td><td><code>npx -y @modelcontextprotocol/server-brave-search</code></td><td>MIT</td><td>${BRAVE_API_KEY}</td></tr>
+  <tr><td><code>slack</code></td><td>stdio</td><td><code>npx -y @modelcontextprotocol/server-slack</code></td><td>MIT</td><td>${SLACK_BOT_TOKEN}</td></tr>
+  <tr><td><code>cloudflare</code></td><td>stdio</td><td><code>npx -y @cloudflare/mcp-server-cloudflare</code></td><td>MIT</td><td>${CF_API_TOKEN}</td></tr>
+  <tr><td><code>e2b</code></td><td>stdio</td><td><code>npx -y @e2b/mcp-server</code></td><td>MIT</td><td>${E2B_API_KEY}</td></tr>
+  <tr><td><code>openclaw-mcp</code></td><td>http</td><td>(nuestro, ya deployed)</td><td>MIT</td><td>${OC_GATEWAY_TOKEN}</td></tr>
+</table>
+<p style="color:var(--txt2)">+ 7 más (sqlite, fetch, memory, time, everything, browserbase, git). Ver <code>registries/05-mcp/README.md</code>.</p>
+
+<h2 id="harnesses">Harnesses</h2>
+<table>
+  <tr><th>id</th><th>provider</th><th>cold start</th><th>uso</th><th>tier</th></tr>
+  <tr><td><code>daytona</code></td><td>daytona.io</td><td>< 90ms</td><td>code persistente</td><td><span class="badge b-platinum">platinum</span></td></tr>
+  <tr><td><code>e2b</code></td><td>e2b.dev</td><td>< 200ms</td><td>skill aislada <30min</td><td><span class="badge b-platinum">platinum</span></td></tr>
+  <tr><td><code>sandbank</code></td><td>sandbank.dev</td><td>< 1s</td><td>capa unificada (rutea)</td><td><span class="badge b-platinum">platinum</span></td></tr>
+  <tr><td><code>mellona-hive</code></td><td>intertwine/hive-orchestrator</td><td>n/a</td><td>multi-agent</td><td><span class="badge b-gold">gold</span></td></tr>
+  <tr><td><code>hf-space</code></td><td>huggingface</td><td>~30s</td><td>GPU/inferencia</td><td><span class="badge b-silver">silver</span></td></tr>
+  <tr><td><code>cloudflare-sb</code></td><td>cloudflare</td><td>< 50ms</td><td>edge HTTP</td><td><span class="badge b-silver">silver</span></td></tr>
+</table>
+
+<h2 id="workflows">Workflows</h2>
+<table>
+  <tr><th>id</th><th>descripción</th><th>skills</th><th>status</th></tr>
+  <tr><td><code>wf.deploy.docker</code></td><td>test → build → run → healthcheck</td><td>test-runner, terminal</td><td><span class="b-ok">spec OK</span></td></tr>
+  <tr><td><code>wf.git.pr</code></td><td>branch → commit → push → pr</td><td>git</td><td><span class="b-ok">spec OK</span></td></tr>
+  <tr><td><code>wf.railway.up</code></td><td>railway up → fetch health</td><td>terminal, url-reader</td><td><span class="b-ok">spec OK</span></td></tr>
+  <tr><td><code>wf.openapi.skill-audit</code></td><td>fetch SKILL.md → validate → test → report</td><td>url-reader, terminal, test-runner</td><td><span class="b-ok">spec OK</span></td></tr>
+  <tr><td><code>wf.harness-failover</code></td><td>ping daytona/e2b/sandbank → first OK</td><td>terminal</td><td><span class="b-ok">spec OK</span></td></tr>
+</table>
+
+<h2 id="loop">Loop M3 status</h2>
+<table>
+  <tr><th>task</th><th>title</th><th>status</th></tr>
+  <tr><td>T01</td><td>Research bibliotecarios</td><td class="b-ok">done</td></tr>
+  <tr><td>T02</td><td>Confirmar harnesses</td><td class="b-ok">done</td></tr>
+  <tr><td>T03</td><td>Migrar skills a agentskills.io</td><td class="b-ok">done (5/6 validate)</td></tr>
+  <tr><td>T04</td><td>Poblar 05-mcp</td><td class="b-ok">done (15 servers)</td></tr>
+  <tr><td>T05</td><td>5 workflows</td><td class="b-ok">done</td></tr>
+  <tr><td>T06</td><td>100 mejoras memoria</td><td class="b-ok">done</td></tr>
+  <tr><td>T07</td><td>Sync engine 5 fuentes</td><td class="b-ok">done (sync.py + tests)</td></tr>
+  <tr><td>T08</td><td>Publicar en HOL Registry</td><td class="b-ok">done (hol/agentes.json + workflows)</td></tr>
+  <tr><td>T09</td><td>UI/UX panel</td><td class="b-ok">done (este HTML)</td></tr>
+  <tr><td>T10</td><td>Mecanismo score memoria</td><td><span class="b-warn">in_progress</span></td></tr>
+</table>
+
+<div class="footer">
+  Generado por M3 (sesión root 421814358601891) — 2026-07-20 · AI Registry v0.1.0 · fuente: <code>state.json</code>.
+</div>
+
+</body>
+</html>
