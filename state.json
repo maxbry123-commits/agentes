@@ -44,7 +44,7 @@
     {
       "id": "T03",
       "title": "Poblar registries 01-agent y 11-model con datos reales de los 10 agentes (probar endpoints con curl cuando aplique)",
-      "status": "pending",
+      "status": "in_progress",
       "section": "A",
       "agent_responsible": "M3-implement",
       "evidence_required": [
@@ -52,8 +52,9 @@
         "status real",
         "endpoint verificado"
       ],
-      "attempts": 0,
-      "max_attempts": 200
+      "attempts": 1,
+      "max_attempts": 200,
+      "last_change": "2026-07-20T12:26:43.587169Z"
     },
     {
       "id": "T04",
@@ -158,11 +159,11 @@
     }
   ],
   "metrics": {
-    "iterations": 2,
+    "iterations": 3,
     "tasks_done": 0,
     "tasks_failed": 0,
     "tasks_pending_at_start": 10,
-    "last_iteration_at": "2026-07-20T12:26:32.012141Z",
+    "last_iteration_at": "2026-07-20T12:26:38.506667Z",
     "last_outcome": "INIT"
   },
   "owner": "M3 (Mavis) - root session 421814358601891",
