@@ -1,0 +1,25 @@
+services:
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: nct-n8n
+    restart: unless-stopped
+    environment:
+      N8N_HOST: 0.0.0.0
+      N8N_PORT: 5678
+      N8N_PROTOCOL: http
+      WEBHOOK_URL: http://maxbry1.duckdns.org:8443/n8n/
+      GENERIC_TIMEZONE: America/New_York
+      NODE_OPTIONS: "--max-old-space-size=1280"
+      DB_SQLITE_VACUUM_ON_STARTUP: true
+      EXECUTIONS_DATA_PRUNE: "true"
+      EXECUTIONS_DATA_MAX_AGE: "168"
+      N8N_METRICS: "false"
+      N8N_DIAGNOSTICS_ENABLED: "false"
+    volumes:
+      - /var/lib/n8n:/home/node/.n8n
+    ports:
+      - "5678:5678"
+    mem_limit: 1.5g
+
+volumes:
+  n8n_data:
