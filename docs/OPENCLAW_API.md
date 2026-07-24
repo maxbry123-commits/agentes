@@ -4,7 +4,7 @@
 **Path**: /usr/lib/node_modules/openclaw/
 **PID activo**: 452428
 **Puerto**: 18789
-**Token actual**: 8885937f5555c0ef9d538e2eefd79abe72f30892fd6cc82f (rotado FASE 26)
+**Token actual**: <REDACTED> (rotado FASE 26)
 
 ---
 
@@ -102,7 +102,7 @@ Config en `channels.entries.*.enabled`.
 
 - Modo: `token`
 - Header: `Authorization: Bearer <token>`
-- Token actual: `8885937f5555c0ef9d538e2eefd79abe72f30892fd6cc82f`
+- Token actual: `<REDACTED>`
 
 ## 📋 Comandos CLI
 
@@ -121,5 +121,5 @@ Config en `channels.entries.*.enabled`.
 
 - Local: `http://127.0.0.1:18789/`
 - DuckDNS: `https://maxbry1.duckdns.org:8443/`
-- Token query: `?token=8885937f...`
+- Token query: `?token=<REDACTED>`
 - WebSocket: `ws://127.0.0.1:18789/`
