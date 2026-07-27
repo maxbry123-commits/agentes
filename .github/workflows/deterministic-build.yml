@@ -1,0 +1,67 @@
+name: Deterministic Build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout destination
+        uses: actions/checkout@v4
+        with:
+          token: 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
+
+      - name: Configure git
+        run: |
+          git config --global user.name "deterministic-bot"
+          git config --global user.email "bot@maxbry.local"
+
+      - name: Clone and copy agents
+        env:
+          TOKEN: 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
+        run: |
+          mkdir -p agents
+
+          # OpenClaw
+          git clone --depth 1 https://github.com/openclaw/openclaw.git tmp-openclaw
+          rm -rf agents/OpenClaw agents/OpenClaw-headless
+          cp -r tmp-openclaw agents/OpenClaw
+          cp -r tmp-openclaw agents/OpenClaw-headless
+          rm -rf agents/OpenClaw/.git agents/OpenClaw-headless/.git tmp-openclaw
+
+          # Mimo-Code
+          git clone --depth 1 https://github.com/XiaomiMiMo/MiMo-Code.git tmp-mimo
+          rm -rf agents/Mimo-Code
+          cp -r tmp-mimo agents/Mimo-Code
+          rm -rf agents/Mimo-Code/.git tmp-mimo
+
+          # Codex
+          git clone --depth 1 https://github.com/openai/codex.git tmp-codex
+          rm -rf agents/Codex
+          cp -r tmp-codex agents/Codex
+          rm -rf agents/Codex/.git tmp-codex
+
+          # Kimi
+          git clone --depth 1 https://github.com/moonshotai/kimi-code.git tmp-kimi
+          rm -rf agents/Kimi
+          cp -r tmp-kimi agents/Kimi
+          rm -rf agents/Kimi/.git tmp-kimi
+
+          # Hermes
+          git clone --depth 1 https://github.com/NousResearch/hermes-agent.git tmp-hermes
+          rm -rf agents/Hermes
+          cp -r tmp-hermes agents/Hermes
+          rm -rf agents/Hermes/.git tmp-hermes
+
+          # Claude-Code placeholder (no clean public source repo)
+          mkdir -p agents/Claude-Code
+          echo "# Claude Code - install via npm @anthropic-ai/claude-code" > agents/Claude-Code/README.md
+
+      - name: Commit and push
+        env:
+          TOKEN: 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
+        run: |
+          git add -A
+          git commit -m "DETERMINISTIC BUILD agents $(date -u +%Y-%m-%dT%H:%M:%SZ)" || echo "No changes"
+          git push https://x-access-token:${TOKEN}@github.com/maxbry123-commits/agentes.git HEAD:main
