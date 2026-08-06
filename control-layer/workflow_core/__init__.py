@@ -11,6 +11,7 @@ from .policies import WorkflowPolicy
 from .providers import MemoryProvider, SandboxProvider
 from .research import ResearchFinding, ResearchRequest
 from .sheriff import DeterministicSheriff, SheriffDecision, SheriffContract
+from .skills import SkillRequirement
 from .state import WorkflowState
 from .state_machine import WorkflowStateMachine
 from .store import InMemoryWorkflowStore, WorkflowStore
@@ -24,5 +25,6 @@ __all__ = [
     "WorkflowPolicy", "DeterministicSheriff", "SheriffDecision", "SheriffContract",
     "ResearchRequest", "ResearchFinding",
     "SandboxProvider", "MemoryProvider",
+    "SkillRequirement",
     "WorkflowStore", "InMemoryWorkflowStore",
 ]
