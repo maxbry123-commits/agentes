@@ -12,6 +12,7 @@ from .policies import WorkflowPolicy
 from .providers import MemoryProvider, SandboxProvider
 from .research import ResearchFinding, ResearchRequest
 from .research_engine import ResearchEngine, ResearchResult
+from .research_sheriff import ResearchSheriff, ResearchSheriffDecision
 from .resolver import RepositoryResolver, ResolvedRepository
 from .sheriff import DeterministicSheriff, SheriffDecision, SheriffContract
 from .skills import SkillRequirement
@@ -28,6 +29,7 @@ __all__ = [
     "WorkflowEvent", "WorkflowState", "WorkflowStateMachine",
     "WorkflowPolicy", "DeterministicSheriff", "SheriffDecision", "SheriffContract",
     "ResearchRequest", "ResearchFinding", "ResearchEngine", "ResearchResult",
+    "ResearchSheriff", "ResearchSheriffDecision",
     "RepositoryResolver", "ResolvedRepository",
     "SandboxProvider", "MemoryProvider",
     "SkillRequirement",
