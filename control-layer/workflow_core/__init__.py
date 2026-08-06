@@ -8,6 +8,7 @@ from .dag_validator import DAGValidator
 from .enums import EventType, NodeStatus, WorkflowStatus
 from .events import WorkflowEvent
 from .policies import WorkflowPolicy
+from .providers import MemoryProvider, SandboxProvider
 from .research import ResearchFinding, ResearchRequest
 from .sheriff import DeterministicSheriff, SheriffDecision, SheriffContract
 from .state import WorkflowState
@@ -22,5 +23,6 @@ __all__ = [
     "WorkflowEvent", "WorkflowState", "WorkflowStateMachine",
     "WorkflowPolicy", "DeterministicSheriff", "SheriffDecision", "SheriffContract",
     "ResearchRequest", "ResearchFinding",
+    "SandboxProvider", "MemoryProvider",
     "WorkflowStore", "InMemoryWorkflowStore",
 ]
