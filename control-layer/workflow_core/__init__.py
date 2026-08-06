@@ -8,6 +8,7 @@ from .dag_patch import DAGPatch, DAGPatchEngine
 from .dag_validator import DAGValidator
 from .enums import EventType, NodeStatus, WorkflowStatus
 from .events import WorkflowEvent
+from .mirror import MirrorRecord, RepositoryMirror
 from .policies import WorkflowPolicy
 from .providers import MemoryProvider, SandboxProvider
 from .research import ResearchFinding, ResearchRequest
@@ -31,6 +32,7 @@ __all__ = [
     "ResearchRequest", "ResearchFinding", "ResearchEngine", "ResearchResult",
     "ResearchSheriff", "ResearchSheriffDecision",
     "RepositoryResolver", "ResolvedRepository",
+    "RepositoryMirror", "MirrorRecord",
     "SandboxProvider", "MemoryProvider",
     "SkillRequirement",
     "WorkflowStore", "InMemoryWorkflowStore",
