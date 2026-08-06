@@ -1,0 +1,9 @@
+{
+  "task_id": "TASK-001",
+  "repo": "agentes",
+  "group": "backend",
+  "nodes": [
+    {"id": "N001", "action": "EXEC", "command": "git ls-files", "next": "N002"},
+    {"id": "N002", "action": "VALIDATE", "next": null}
+  ]
+}
