@@ -6,11 +6,18 @@ Capa de control determinista · 90% código / 10% LLM.
 
 ```
 control-layer/
-├── workflow_core/     # Núcleo + DAG + Sheriff + Research (T-001..T-003)
+├── workflow_core/     # Núcleo + DAG + Sheriff + Research Engine
 ├── config/            # rules.yaml · registry.json · task.example.json
 ├── dsl/               # loader.py
-└── sheriff/           # gate.py
+├── sheriff/           # gate.py
+└── main.py            # entry point (load → DAG → Sheriff)
 ```
+
+## Componentes clave
+- WorkflowStateMachine (G1)
+- DeterministicSheriff + DAGValidator + DAGPatch (G3)
+- ResearchEngine + Resolver + ContextBuilder (G2)
+- SandboxProvider / MemoryProvider (Protocol stubs)
 
 ## Reglas
 - Nunca from-scratch · solo adaptar SOURCE
