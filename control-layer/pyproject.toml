@@ -1,0 +1,26 @@
+[project]
+name = "wordflow-control-layer"
+version = "0.1.0"
+description = "Deterministic control layer for Wordflow"
+requires-python = ">=3.11"
+dependencies = [
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "mypy>=1.10",
+    "ruff>=0.5"
+]
+
+[tool.pytest.ini_options]
+testpaths = ["workflow_core/tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
