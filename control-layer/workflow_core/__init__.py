@@ -1,3 +1,4 @@
+from .context import AgentContext, ContextBuilder
 from .contracts import (
     Checkpoint, ChangeProposal, Failure, Goal,
     NodeDefinition, NodeRuntime, WorkflowDefinition,
@@ -18,6 +19,7 @@ from .state_machine import WorkflowStateMachine
 from .store import InMemoryWorkflowStore, WorkflowStore
 
 __all__ = [
+    "AgentContext", "ContextBuilder",
     "Checkpoint", "ChangeProposal", "Failure", "Goal",
     "NodeDefinition", "NodeRuntime", "WorkflowDefinition",
     "DAGDefinition", "DAGPatch", "DAGPatchEngine", "DAGValidator",
