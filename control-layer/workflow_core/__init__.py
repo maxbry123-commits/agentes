@@ -12,6 +12,7 @@ from .events import WorkflowEvent
 from .mirror import MirrorRecord, RepositoryMirror
 from .policies import WorkflowPolicy
 from .providers import MemoryProvider, SandboxProvider
+from .providers_fake import FakeGitHubProvider, FakePyPIProvider
 from .research import ResearchFinding, ResearchRequest
 from .research_engine import ResearchEngine, ResearchResult
 from .research_sheriff import ResearchSheriff, ResearchSheriffDecision
@@ -36,6 +37,7 @@ __all__ = [
     "RepositoryResolver", "ResolvedRepository",
     "RepositoryMirror", "MirrorRecord",
     "SandboxProvider", "MemoryProvider",
+    "FakeGitHubProvider", "FakePyPIProvider",
     "SkillRequirement",
     "WorkflowStore", "InMemoryWorkflowStore",
 ]
