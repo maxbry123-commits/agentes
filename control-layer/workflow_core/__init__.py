@@ -6,6 +6,7 @@ from .contracts import (
 from .dag import DAGDefinition
 from .dag_patch import DAGPatch, DAGPatchEngine
 from .dag_validator import DAGValidator
+from .download import DeterministicDownloader
 from .enums import EventType, NodeStatus, WorkflowStatus
 from .events import WorkflowEvent
 from .mirror import MirrorRecord, RepositoryMirror
@@ -26,6 +27,7 @@ __all__ = [
     "Checkpoint", "ChangeProposal", "Failure", "Goal",
     "NodeDefinition", "NodeRuntime", "WorkflowDefinition",
     "DAGDefinition", "DAGPatch", "DAGPatchEngine", "DAGValidator",
+    "DeterministicDownloader",
     "EventType", "NodeStatus", "WorkflowStatus",
     "WorkflowEvent", "WorkflowState", "WorkflowStateMachine",
     "WorkflowPolicy", "DeterministicSheriff", "SheriffDecision", "SheriffContract",
