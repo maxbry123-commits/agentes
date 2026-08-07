@@ -1,0 +1,18 @@
+name: wordflow-control-layer
+version: "1.0.0"
+abi_version: "1.0.0"
+capabilities:
+  - ping
+  - route_op
+  - sheriff_gate
+contracts:
+  - C00
+  - C82
+  - C83
+  - C84
+  - C85
+mount_modes:
+  - wordflow
+  - extension
+  - dual
+entry: control-layer/extension/plugin_adapter.py
