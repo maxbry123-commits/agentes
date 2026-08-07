@@ -7,12 +7,10 @@
 | D3 | nodes agent | ✅ v2 |
 | D4 | dag | ✅ v2 |
 | D5 | loops | ✅ |
-| D6 | council | ❌ siguiente plantillas |
+| D6 | council | ✅ v2 |
 | D7 | plan/pipeline | ⚠️ templates ✅ |
-| D8 | recovery | ❌ |
+| D8 | recovery | ❌ siguiente |
 | D9 | config | ⚠️ |
 | D10 | RECETA | ❌ |
 
 Despliegue: organizador+verificar ✅ · desplegador/detector/push ❌
-
-Retoma: **D6** o **desplegador**
