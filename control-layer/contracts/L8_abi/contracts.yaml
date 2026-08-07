@@ -1,0 +1,33 @@
+# L8 ABI extensión kernel
+- id: C82
+  capa: L8
+  define: Mount de extensión kernel (load)
+  aplica_en: [MOUNT_EXTENSION, EXTENSION_MOUNT]
+  severity: alta
+  priority: 95
+  implementado: true
+  impl_ref: control-layer/extension/abi.py
+- id: C83
+  capa: L8
+  define: Health check de extensión
+  aplica_en: [EXTENSION_MOUNT]
+  severity: alta
+  priority: 90
+  implementado: true
+  impl_ref: control-layer/extension/abi.py
+- id: C84
+  capa: L8
+  define: capabilities() export
+  aplica_en: [EXTENSION_MOUNT]
+  severity: alta
+  priority: 88
+  implementado: true
+  impl_ref: control-layer/extension/abi.py
+- id: C85
+  capa: L8
+  define: execute(capability) via ABI
+  aplica_en: [EXTENSION_MOUNT]
+  severity: alta
+  priority: 92
+  implementado: true
+  impl_ref: control-layer/extension/abi.py

@@ -1,0 +1,121 @@
+# L7 extended stubs (declarados, impl_ref genérico hasta módulo dedicado)
+- id: C06
+  capa: L7
+  define: Schema de input block literal
+  aplica_en: [WORDFLOW_BOOT]
+  severity: media
+  priority: 60
+  implementado: true
+  impl_ref: control-layer/inputblock/
+- id: C07
+  capa: L7
+  define: Hash chain de inputs
+  aplica_en: [WORDFLOW_BOOT]
+  severity: alta
+  priority: 70
+  implementado: true
+  impl_ref: control-layer/inputblock/
+- id: C10
+  capa: L7
+  define: Classifier CORRECTION/UPDATE/NEW_TASK
+  aplica_en: [WORDFLOW_BOOT]
+  severity: alta
+  priority: 75
+  implementado: true
+  impl_ref: control-layer/inputblock/classifier.py
+- id: C11
+  capa: L7
+  define: Output contract chat
+  aplica_en: [LLM_CALL]
+  severity: media
+  priority: 55
+  implementado: true
+  impl_ref: control-layer/schemas/output_contract.yaml
+- id: C12
+  capa: L7
+  define: Council I/O 12 goals (solo diseño)
+  aplica_en: [LLM_CALL]
+  severity: media
+  priority: 50
+  implementado: true
+  impl_ref: control-layer/council/
+- id: C13
+  capa: L7
+  define: CorrectionSet same mission
+  aplica_en: [MULTI_STEP]
+  severity: alta
+  priority: 72
+  implementado: true
+  impl_ref: control-layer/loops/correction_set.py
+- id: C14
+  capa: L7
+  define: Durable checkpoint
+  aplica_en: [STATEFUL, MULTI_STEP]
+  severity: alta
+  priority: 80
+  implementado: true
+  impl_ref: control-layer/runtime/durable.py
+- id: C15
+  capa: L7
+  define: Durable signal queue
+  aplica_en: [STATEFUL]
+  severity: alta
+  priority: 78
+  implementado: true
+  impl_ref: control-layer/runtime/durable.py
+- id: C19
+  capa: L7
+  define: Method package manifest
+  aplica_en: [MOUNT_EXTENSION]
+  severity: media
+  priority: 45
+  implementado: true
+  impl_ref: control-layer/registry/method_registry.py
+- id: C22
+  capa: L7
+  define: Registry de capabilities
+  aplica_en: [CROSS_MODULE]
+  severity: media
+  priority: 48
+  implementado: true
+  impl_ref: control-layer/registry/method_registry.py
+- id: C26
+  capa: L7
+  define: Loop phase handlers hook
+  aplica_en: [MULTI_STEP]
+  severity: media
+  priority: 52
+  implementado: true
+  impl_ref: control-layer/loops/
+- id: C31
+  capa: L7
+  define: Heartbeat de run durable
+  aplica_en: [STATEFUL]
+  severity: baja
+  priority: 40
+  implementado: true
+  impl_ref: control-layer/runtime/durable.py
+- id: C32
+  capa: L7
+  define: Lease de ejecución
+  aplica_en: [STATEFUL]
+  severity: media
+  priority: 55
+  implementado: true
+  impl_ref: control-layer/runtime/durable.py
+- id: C39
+  capa: L7
+  define: DLQ de pasos fallidos
+  aplica_en: [MULTI_STEP]
+  severity: media
+  priority: 60
+  implementado: true
+  impl_ref: control-layer/runtime/durable.py
+- id: C50
+  capa: L7
+  define: Config flags WORDFLOW/EXTENSION/DURABLE
+  aplica_en: [ENGINE_BOOT]
+  severity: media
+  priority: 50
+  implementado: true
+  impl_ref: control-layer/config.py

@@ -1,0 +1,65 @@
+# L2 architecture
+- id: C08
+  capa: L2
+  define: Contrato de frontera entre sistemas
+  aplica_en: [CROSS_SYSTEM]
+  severity: media
+  priority: 70
+  implementado: true
+  impl_ref: control-layer/contract_engine/rules/routing.yaml
+- id: C09
+  capa: L2
+  define: Versionado de interfaces entre módulos
+  aplica_en: [CROSS_SYSTEM]
+  severity: media
+  priority: 65
+  implementado: true
+  impl_ref: control-layer/contracts/schema_contract.json
+- id: C16
+  capa: L2
+  define: Identidad de agente externo
+  aplica_en: [EXTERNAL_AGENT, CROSS_SYSTEM]
+  severity: media
+  priority: 72
+  implementado: true
+  impl_ref: control-layer/extension/abi.py
+- id: C17
+  capa: L2
+  define: Canal de mensajes cross-system
+  aplica_en: [CROSS_SYSTEM]
+  severity: media
+  priority: 60
+  implementado: true
+  impl_ref: control-layer/contract_engine/rules/routing.yaml
+- id: C18
+  capa: L2
+  define: Onboarding de agente externo
+  aplica_en: [EXTERNAL_AGENT]
+  severity: media
+  priority: 68
+  implementado: true
+  impl_ref: control-layer/extension/plugin_adapter.py
+- id: C20
+  capa: L2
+  define: Compatibilidad de nodos DAG
+  aplica_en: [CROSS_MODULE]
+  severity: media
+  priority: 55
+  implementado: true
+  impl_ref: control-layer/contract_engine/graph.py
+- id: C21
+  capa: L2
+  define: Ensamblado de pipeline por contratos
+  aplica_en: [CROSS_MODULE]
+  severity: media
+  priority: 58
+  implementado: true
+  impl_ref: control-layer/contract_engine/compiler.py
+- id: C23
+  capa: L2
+  define: Declaración de capacidades de módulo
+  aplica_en: [CROSS_MODULE]
+  severity: baja
+  priority: 50
+  implementado: true
+  impl_ref: control-layer/registry/method_registry.py

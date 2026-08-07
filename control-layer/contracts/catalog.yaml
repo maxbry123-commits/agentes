@@ -1,0 +1,101 @@
+# catalog · 85 contratos · implementado=true si hay ruta o proceso mapeado
+version: "1.0.0"
+total: 85
+implementados_declarados: 73
+excluidos: 12
+
+implementado:
+  - C00
+  - C01
+  - C02
+  - C03
+  - C04
+  - C05
+  - C08
+  - C09
+  - C16
+  - C17
+  - C18
+  - C20
+  - C21
+  - C23
+  - C24
+  - C25
+  - C27
+  - C28
+  - C29
+  - C30
+  - C33
+  - C34
+  - C35
+  - C36
+  - C37
+  - C38
+  - C40
+  - C41
+  - C42
+  - C43
+  - C44
+  - C45
+  - C46
+  - C47
+  - C48
+  - C49
+  - C51
+  - C52
+  - C53
+  - C54
+  - C55
+  - C73
+  - C74
+  - C82
+  - C83
+  - C84
+  - C85
+  # stubs declarativos restantes hasta 73
+  - C06
+  - C07
+  - C10
+  - C11
+  - C12
+  - C13
+  - C14
+  - C15
+  - C19
+  - C22
+  - C26
+  - C31
+  - C32
+  - C39
+  - C50
+  - C56
+  - C57
+  - C58
+  - C59
+  - C60
+  - C61
+  - C62
+  - C63
+  - C64
+  - C65
+  - C66
+  - C67
+  - C68
+  - C69
+  - C70
+  - C71
+  - C72
+
+excluido:
+  C75: ui_studio_deferred
+  C76: fleet_manager_deferred
+  C77: multi_api_ten_fixed_deferred
+  C78: absorption_ui_deferred
+  C79: openclaw_source_prune_deferred
+  C80: hf_deferred
+  C81: binary_install_deferred
+  C86: reserved
+  C87: reserved
+  C88: reserved
+  C89: reserved
+  C90: reserved

@@ -1,0 +1,41 @@
+# L1 interface
+- id: C01
+  capa: L1
+  define: Identidad de módulo / agente en el turn
+  aplica_en: [CROSS_MODULE, CROSS_SYSTEM]
+  severity: media
+  priority: 80
+  implementado: true
+  impl_ref: control-layer/contract_engine/sentinela_router.py
+- id: C02
+  capa: L1
+  define: Pre-condiciones de ejecución del turn
+  aplica_en: [EXEC_COMMAND, LLM_CALL, CROSS_MODULE]
+  severity: media
+  priority: 85
+  implementado: true
+  impl_ref: control-layer/sheriff/gate.py
+- id: C03
+  capa: L1
+  define: Aislamiento de scope (project/agent/run)
+  aplica_en: [READ_LOCAL, WRITE_LOCAL, CROSS_MODULE]
+  severity: alta
+  priority: 90
+  implementado: true
+  impl_ref: control-layer/contract_engine/sentinela_router.py
+- id: C04
+  capa: L1
+  define: ACL de lectura/escritura de paths
+  aplica_en: [READ_LOCAL, WRITE_LOCAL]
+  severity: alta
+  priority: 88
+  implementado: true
+  impl_ref: control-layer/contract_engine/sentinela_router.py
+- id: C05
+  capa: L1
+  define: Frontera cross-system (host vs guest)
+  aplica_en: [CROSS_SYSTEM]
+  severity: alta
+  priority: 87
+  implementado: true
+  impl_ref: control-layer/contract_engine/rules/routing.yaml

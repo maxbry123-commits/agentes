@@ -1,0 +1,81 @@
+# L5 guarantee / seguridad / evidencia
+- id: C41
+  capa: L5
+  define: Rate limit
+  aplica_en: [READ_LOCAL, NETWORK_CALL, LLM_CALL]
+  severity: media
+  priority: 70
+  implementado: true
+  impl_ref: control-layer/contract_engine/sentinela_router.py
+- id: C42
+  capa: L5
+  define: Cuota de red
+  aplica_en: [NETWORK_CALL]
+  severity: media
+  priority: 68
+  implementado: true
+  impl_ref: control-layer/contract_engine/rules/routing.yaml
+- id: C43
+  capa: L5
+  define: Presupuesto de tokens LLM
+  aplica_en: [LLM_CALL]
+  severity: alta
+  priority: 85
+  implementado: true
+  impl_ref: control-layer/contract_engine/sentinela_router.py
+- id: C44
+  capa: L5
+  define: Límite de llamadas a agentes externos
+  aplica_en: [EXTERNAL_AGENT, LLM_CALL]
+  severity: media
+  priority: 75
+  implementado: true
+  impl_ref: control-layer/contract_engine/rules/routing.yaml
+- id: C45
+  capa: L5
+  define: Escaneo de secretos en payload
+  aplica_en: [WRITE_LOCAL, CREDENTIAL_ACCESS]
+  severity: alta
+  priority: 95
+  implementado: true
+  impl_ref: control-layer/contract_engine/fingerprint.py
+- id: C47
+  capa: L5
+  define: Gate de credenciales
+  aplica_en: [CREDENTIAL_ACCESS]
+  severity: alta
+  priority: 99
+  implementado: true
+  impl_ref: control-layer/contract_engine/threat.py
+- id: C48
+  capa: L5
+  define: Audit trail obligatorio
+  aplica_en: [WRITE_LOCAL, DELETE, CREDENTIAL_ACCESS]
+  severity: alta
+  priority: 94
+  implementado: true
+  impl_ref: control-layer/sheriff/gate.py
+- id: C49
+  capa: L5
+  define: Emisión de evidence
+  aplica_en: [DELETE, CREDENTIAL_ACCESS, LLM_CALL]
+  severity: alta
+  priority: 96
+  implementado: true
+  impl_ref: control-layer/sheriff/estados.py
+- id: C73
+  capa: L5
+  define: Frontera LLM (no selecciona contratos)
+  aplica_en: [LLM_CALL, CREDENTIAL_ACCESS]
+  severity: alta
+  priority: 97
+  implementado: true
+  impl_ref: control-layer/contract_engine/compiler.py
+- id: C74
+  capa: L5
+  define: Bloqueo de secretos hacia LLM
+  aplica_en: [CREDENTIAL_ACCESS]
+  severity: alta
+  priority: 98
+  implementado: true
+  impl_ref: control-layer/contract_engine/threat.py

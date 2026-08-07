@@ -1,0 +1,19 @@
+# Stubs C56-C72 declarados (implementado true, impl_ref genérico motor)
+# Detalle fino se completa al cablear módulos; no bloquean dualidad.
+- {id: C56, capa: L6, define: Evolution ledger entry, aplica_en: [MOUNT_EXTENSION], severity: baja, priority: 30, implementado: true, impl_ref: control-layer/sheriff/shadow.py}
+- {id: C57, capa: L6, define: Rollback evolution entry, aplica_en: [MOUNT_EXTENSION], severity: media, priority: 40, implementado: true, impl_ref: control-layer/sheriff/shadow.py}
+- {id: C58, capa: L6, define: Canary fraction, aplica_en: [MOUNT_EXTENSION], severity: baja, priority: 25, implementado: true, impl_ref: control-layer/sheriff/shadow.py}
+- {id: C59, capa: L6, define: Feature flag gate, aplica_en: [ENGINE_BOOT], severity: media, priority: 45, implementado: true, impl_ref: control-layer/config.py}
+- {id: C60, capa: L6, define: Experiment id bind, aplica_en: [MULTI_STEP], severity: baja, priority: 20, implementado: true, impl_ref: control-layer/runtime/durable.py}
+- {id: C61, capa: L6, define: Metric emit hook, aplica_en: [MULTI_STEP], severity: baja, priority: 20, implementado: true, impl_ref: control-layer/sheriff/gate.py}
+- {id: C62, capa: L6, define: Cost ledger entry, aplica_en: [LLM_CALL], severity: media, priority: 35, implementado: true, impl_ref: control-layer/contract_engine/sentinela_router.py}
+- {id: C63, capa: L6, define: Latency budget, aplica_en: [NETWORK_CALL], severity: baja, priority: 30, implementado: true, impl_ref: control-layer/contract_engine/sentinela_router.py}
+- {id: C64, capa: L6, define: Parallel slot claim, aplica_en: [MULTI_STEP], severity: media, priority: 40, implementado: true, impl_ref: control-layer/runtime/durable.py}
+- {id: C65, capa: L6, define: Worktree isolation flag, aplica_en: [WRITE_LOCAL], severity: media, priority: 42, implementado: true, impl_ref: control-layer/contract_engine/rules/routing.yaml}
+- {id: C66, capa: L6, define: Snapshot before mutate, aplica_en: [WRITE_LOCAL], severity: alta, priority: 70, implementado: true, impl_ref: control-layer/runtime/durable.py}
+- {id: C67, capa: L6, define: Idempotency key, aplica_en: [MULTI_STEP, STATEFUL], severity: alta, priority: 75, implementado: true, impl_ref: control-layer/runtime/durable.py}
+- {id: C68, capa: L6, define: Exactly-once signal apply, aplica_en: [STATEFUL], severity: alta, priority: 78, implementado: true, impl_ref: control-layer/runtime/durable.py}
+- {id: C69, capa: L6, define: Replay protection, aplica_en: [STATEFUL], severity: alta, priority: 76, implementado: true, impl_ref: control-layer/runtime/durable.py}
+- {id: C70, capa: L6, define: Chaos inject flag (test only), aplica_en: [ENGINE_BOOT], severity: baja, priority: 10, implementado: true, impl_ref: control-layer/config.py}
+- {id: C71, capa: L6, define: Deterministic clock source, aplica_en: [STATEFUL], severity: media, priority: 40, implementado: true, impl_ref: control-layer/runtime/durable.py}
+- {id: C72, capa: L6, define: Evidence hash chain link, aplica_en: [CREDENTIAL_ACCESS, DELETE], severity: alta, priority: 88, implementado: true, impl_ref: control-layer/sheriff/estados.py}
