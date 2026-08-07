@@ -10,7 +10,7 @@
 | D6 | council | ✅ v2 |
 | D7 | plan/pipeline | ⚠️ templates ✅ |
 | D8 | recovery | ✅ v2 |
-| D9 | config | ⚠️ siguiente |
-| D10 | RECETA | ❌ |
+| D9 | config | ✅ v2 guía+refs |
+| D10 | RECETA | ❌ siguiente |
 
 Despliegue: organizador+verificar ✅ · desplegador/detector/push ❌
