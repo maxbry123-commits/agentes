@@ -8,15 +8,14 @@
     "ref": "rust-v0.147.0",
     "commit": "be6e8eac029b183056b7e4402879f15d2c85f61b"
   },
-  "workflow": "a5-codex-finalize.yml",
-  "run_id": null,
+  "workflow": "a5-codex.yml",
   "release_tag": "agent-Codex-rust-v0.147.0",
   "layers": {
-    "source": "PENDING_FINALIZE",
-    "distribution_git": "META_ONLY_PENDING",
+    "source": "PENDING_META",
+    "distribution_git": "PENDING_META",
     "distribution_release": "CAPTURED",
     "finalize": "QUEUED"
   },
-  "updated_at": "2026-08-07T22:48:00Z",
-  "notes": "Release agent-Codex-rust-v0.147.0 exists. Finalize job queued. RESUME: 1x list runs a5-codex-finalize.yml"
+  "updated_at": "2026-08-07T23:05:00Z",
+  "notes": "Meta-only job queued. RESUME: 1x list runs a5-codex.yml. Release already has binaries."
 }
