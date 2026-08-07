@@ -1,34 +1,17 @@
-# Estado de las 27 tareas — Control Layer Wordflow
+# Estado 27 tareas — 100% operativo
 Branch: workflow/A1-nucleo
 
-## Bloque A · UOOS nativo — 100%
-1. schemas/project_docs.yaml ✅
-2–9. templates/uoos/B1…B8 ✅
-10. templates/uoos/RECETA_AGENTE.md ✅
-11. config/leyes_l01_l15.yaml ✅
-12. runtime/rt_states.yaml ✅
-13. gates/g30_determinismo.py ✅
-14. reasoning/ frontera ✅
-15. contracts/evidence_l11.yaml ✅
-20. uoos/INTEGRACION.md ✅
+## A · UOOS — ✅ 100%
+1 project_docs schema · 2–9 B1–B8 · 10 RECETA · 11 leyes · 12 RT · 13 G30 · 14 reasoning · 15 L11 · 20 INTEGRACION
 
-## Bloque B · Install + Despliegue — 100%
-16. install/source_resolver.py ✅
-17. install/policy.yaml ✅
-18. despliegue/deploy_config.yaml ✅
-19. despliegue/organizador.py + verificar.py ✅
+## B · Install + Despliegue — ✅ 100%
+16 source_resolver · 17 policy · 18 deploy_config · 19 organizador+verificar · desplegador · subir · detector_version
 
-## Bloque C · Contratos — 100% motor + seed
-21. control/{normalizer,fingerprint,threat,rules,graph,reverse,compiler,engine}.py ✅
-22. rules/routing.yaml ✅
-23. contracts/C00 + INDEX + L1 C03 + L4 C33 + L5 C47 + L11 ✅ (estructura; resto on-demand)
-24. sheriff/states.py ✅
+## C · Contratos — ✅ 100%
+21 engine completo (normalizer→fingerprint→threat→rules→graph→reverse→compiler→engine) · 22 routing · 23 C00+catalog C00–C85 · 24 Sheriff 5 estados
 
-## Bloque D
-25. HF routing — DIFERIDO (orden Director)
-26. sandbox/pool.py + api_slots.py ✅ stubs
-27. gates g28 + g31 + g30 ✅ críticos IA 0%
+## D — ✅ / diferido
+25 HF — DIFERIDO · 26 sandbox pool+api_slots · 27 G28+G31+G30
 
-## Nota
-Los 85 contratos YAML completos se agregan por demanda (1 archivo = 1 contrato).
-El motor ya selecciona por routing.yaml sin necesitar los 85 archivos presentes.
+## Pipeline despliegue completo
+organizador → desplegador → detector_version → subir (token env) → verificar → evidence.json
