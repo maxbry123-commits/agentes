@@ -1,0 +1,9 @@
+contract:
+  id: C47
+  version: "1.0.0"
+  layer: L5_guarantee
+  name: Security Contract
+defines:
+  - autenticación y autorización en el borde
+severity: critical
+failure: reject
