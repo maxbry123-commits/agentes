@@ -1,0 +1,48 @@
+# deploy_config.yaml — receta de despliegue nativa del Wordflow
+# SOURCE: CAPA DE CONTROL 1 · acuerdo proyecto define token/repo/backup
+# El Wordflow NO hardcodea repo ni token. Los lee de la carpeta del proyecto.
+
+# Referencias (viven en el PROYECTO en turno)
+project_config:
+  token_ref: config/token_ref.yaml
+  repo_destino: config/repo_destino.yaml
+  backup_destino: config/backup_destino.yaml
+
+# Reglas de mapeo de archivos generados → destino en el repo
+rules:
+  - pattern: "code/**/*.py"
+    dest: "{path_prefix}/"
+  - pattern: "code/**/*.yaml"
+    dest: "{path_prefix}/"
+  - pattern: "code/**/*.md"
+    dest: "{path_prefix}/"
+  - pattern: "nodes/*.yaml"
+    dest: "{path_prefix}/nodes/"
+  - pattern: "dag/*.yaml"
+    dest: "{path_prefix}/dag/"
+
+protected_patterns:
+  - ".env"
+  - "*key*"
+  - "*.pem"
+  - "secrets*"
+  - "*token*"
+  - "**/credentials*"
+
+exit_codes:
+  1: SIN_REGLA          # archivo sin regla de destino → DETENER
+  2: BLOQUEADOS         # archivo con patrón protegido → DETENER
+  3: MISSING_CONFIG     # falta token_ref o repo_destino → DETENER
+  4: VERIFY_FAIL        # evidence no coincide → DETENER
+
+pipeline:
+  - organizador
+  - desplegador
+  - detector_version
+  - subir_a_github
+  - verificar
+
+require:
+  evidence_json: true
+  semver_tag: true
+  no_secrets_in_tree: true
