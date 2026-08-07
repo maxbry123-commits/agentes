@@ -1,4 +1,4 @@
-"""W05 · Input Gateway · cola 1..N sin bloquear misión."""
+"""W05+ · Input Gateway 10x · NEW_TASK siempre sin mission bind."""
 from __future__ import annotations
 
 import time
@@ -26,7 +26,7 @@ class QueuedInput:
 
 class InputGateway:
     def __init__(self, capacity: int = 50) -> None:
-        self.capacity = capacity
+        self.capacity = max(1, capacity)
         self._queue: List[QueuedInput] = []
 
     def receive(
@@ -39,7 +39,7 @@ class InputGateway:
         if len(self._queue) >= self.capacity:
             raise RuntimeError("input_queue_full")
         c: ClassifiedInput = classify_hot_input(text)
-        # NEW_TASK never binds to current mission
+        # 10x: NEW_TASK never binds current mission
         mid = None if c.kind == InputKind.NEW_TASK else mission_id
         item = QueuedInput(
             input_id="in_" + uuid.uuid4().hex[:12],
@@ -52,14 +52,21 @@ class InputGateway:
         self._queue.append(item)
         return item
 
-    def pending(self, mission_id: str | None = None) -> list[QueuedInput]:
-        if mission_id is None:
-            return list(self._queue)
-        return [q for q in self._queue if q.mission_id == mission_id or q.kind == InputKind.NEW_TASK]
+    def pending_for_mission(self, mission_id: str) -> list[QueuedInput]:
+        return [q for q in self._queue if q.mission_id == mission_id and q.kind != InputKind.NEW_TASK]
 
-    def pop_next(self, mission_id: str | None = None) -> QueuedInput | None:
+    def pending_new_tasks(self) -> list[QueuedInput]:
+        return [q for q in self._queue if q.kind == InputKind.NEW_TASK]
+
+    def pop_next_for_mission(self, mission_id: str) -> QueuedInput | None:
         for i, q in enumerate(self._queue):
-            if mission_id is None or q.mission_id == mission_id or q.kind == InputKind.NEW_TASK:
+            if q.mission_id == mission_id and q.kind != InputKind.NEW_TASK:
+                return self._queue.pop(i)
+        return None
+
+    def pop_new_task(self) -> QueuedInput | None:
+        for i, q in enumerate(self._queue):
+            if q.kind == InputKind.NEW_TASK:
                 return self._queue.pop(i)
         return None
 
