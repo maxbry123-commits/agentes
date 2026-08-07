@@ -1,0 +1,22 @@
+{
+  "agent": "Codex",
+  "task": "A5",
+  "status": "RUNNING",
+  "protocol": "TEAM-SEALS-ACQUIRE-v2.1",
+  "identity": {
+    "repository": "https://github.com/openai/codex",
+    "ref": "rust-v0.147.0",
+    "commit": "be6e8eac029b183056b7e4402879f15d2c85f61b"
+  },
+  "workflow": "a5-codex.yml",
+  "run_id": 31222211773,
+  "release_tag": "agent-Codex-rust-v0.147.0",
+  "layers": {
+    "source": "PENDING",
+    "distribution_git": "PENDING",
+    "distribution_release": "PENDING",
+    "finalize": "PENDING"
+  },
+  "updated_at": "2026-08-07T22:47:00Z",
+  "notes": "acquire OK on runner; release-staging was in progress at last poll; resume with 1x get_workflow_run"
+}
