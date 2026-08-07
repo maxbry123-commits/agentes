@@ -4,8 +4,12 @@ on:
 jobs:
   run:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - run: echo hello
+      - name: finalize meta
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash scripts/finalize_codex_meta.sh
