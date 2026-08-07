@@ -9,8 +9,8 @@
 | D5 | loops | ✅ |
 | D6 | council | ✅ v2 |
 | D7 | plan/pipeline | ⚠️ templates ✅ |
-| D8 | recovery | ❌ siguiente |
-| D9 | config | ⚠️ |
+| D8 | recovery | ✅ v2 |
+| D9 | config | ⚠️ siguiente |
 | D10 | RECETA | ❌ |
 
 Despliegue: organizador+verificar ✅ · desplegador/detector/push ❌
