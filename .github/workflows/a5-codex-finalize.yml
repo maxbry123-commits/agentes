@@ -1,0 +1,69 @@
+name: a5-codex-finalize
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Source + meta only (no dist binaries in git)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          python scripts/acquire_agent.py \
+            --id Codex \
+            --repo https://github.com/openai/codex \
+            --ref rust-v0.147.0 \
+            --commit be6e8eac029b183056b7e4402879f15d2c85f61b
+          # Drop staging and any binary >1MB from official (already on Release)
+          rm -rf agents/Codex/distribution/staging || true
+          if [ -d agents/Codex/distribution/official ]; then
+            find agents/Codex/distribution/official -type f ! -name '*.json' ! -name 'SHA256SUMS' ! -name '*.PIN.json' -size +1M -delete || true
+          fi
+          # Point pins to existing release
+          TAG=agent-Codex-rust-v0.147.0
+          for f in agents/Codex/distribution/official/*.PIN.json; do
+            [ -f "$f" ] || continue
+            python3 -c "import json,sys; p=sys.argv[1]; d=json.load(open(p)); d['conserved_url']=f'https://github.com/maxbry123-commits/agentes/releases/download/{sys.argv[2]}/{d[\"name\"]}'; d['release_tag']=sys.argv[2]; open(p,'w').write(json.dumps(d,indent=2)+chr(10))" "$f" "$TAG"
+          done
+          # Slim state
+          mkdir -p agents/_state
+          cat > agents/_state/Codex.json <<EOF
+          {
+            "agent": "Codex",
+            "task": "A5",
+            "status": "DONE",
+            "protocol": "TEAM-SEALS-ACQUIRE-v2.1",
+            "identity": {
+              "repository": "https://github.com/openai/codex",
+              "ref": "rust-v0.147.0",
+              "commit": "be6e8eac029b183056b7e4402879f15d2c85f61b"
+            },
+            "release_tag": "$TAG",
+            "layers": {
+              "source": "CAPTURED",
+              "distribution_git": "META_ONLY",
+              "distribution_release": "CAPTURED",
+              "finalize": "DONE"
+            },
+            "updated_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "notes": "Binaries on Release $TAG; git holds source+meta+pins"
+          }
+          EOF
+      - name: Commit
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add agents/Codex agents/_state/Codex.json
+          git diff --cached --quiet || (git commit -m "A5 DONE: Codex source+meta; dist on Release agent-Codex-rust-v0.147.0" && git push)
