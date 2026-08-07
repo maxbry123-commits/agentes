@@ -15,7 +15,9 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Acquire Codex v2
+      - name: Acquire Codex v2.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           python scripts/acquire_agent.py \
@@ -24,17 +26,55 @@ jobs:
             --ref rust-v0.147.0 \
             --commit be6e8eac029b183056b7e4402879f15d2c85f61b
 
-      - name: Commit snapshot
+      - name: Publish staging binaries to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          STAGING=agents/Codex/distribution/staging
+          TAG=agent-Codex-rust-v0.147.0
+          if [ -d "$STAGING" ] && ls "$STAGING"/* >/dev/null 2>&1; then
+            # remove prior release if exists
+            gh release delete "$TAG" --yes 2>/dev/null || true
+            git push origin ":refs/tags/$TAG" 2>/dev/null || true
+            gh release create "$TAG" \
+              --title "Codex distribution rust-v0.147.0" \
+              --notes "Deterministic snapshot of openai/codex@rust-v0.147.0 (be6e8eac). Large binaries stored as release assets. See agents/Codex/manifest.json" \
+              $STAGING/*
+            # record release URLs into pin files
+            python3 - <<'PY'
+import json, os, subprocess
+from pathlib import Path
+tag = "agent-Codex-rust-v0.147.0"
+official = Path("agents/Codex/distribution/official")
+for pin in official.glob("*.PIN.json"):
+    data = json.loads(pin.read_text())
+    name = data["name"]
+    # gh release view asset url
+    url = f"https://github.com/maxbry123-commits/agentes/releases/download/{tag}/{name}"
+    data["conserved_url"] = url
+    data["release_tag"] = tag
+    pin.write_text(json.dumps(data, indent=2) + "\n")
+    print("pin updated", name, url)
+PY
+            # staging must NOT be committed (too large)
+            rm -rf "$STAGING"
+          else
+            echo "No staging files (all fit in git or none found)"
+          fi
+
+      - name: Commit source + git-sized distribution + pins
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          # Codex release assets can be large; increase buffer
           git config http.postBuffer 524288000
+          # ensure staging never committed
+          rm -rf agents/Codex/distribution/staging || true
           git add agents/Codex
           if git diff --cached --quiet; then
             echo "No changes"
           else
-            git commit -m "A5: Codex v2 snapshot SOURCE+DISTRIBUTION pin rust-v0.147.0"
+            git commit -m "A5: Codex 100% SOURCE+DISTRIBUTION pin rust-v0.147.0 (v2.1)"
             git push
           fi
