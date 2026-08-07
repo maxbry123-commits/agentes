@@ -1,21 +1,20 @@
 {
   "agent": "Codex",
   "task": "A5",
-  "status": "QUEUED",
+  "status": "DONE",
   "protocol": "TEAM-SEALS-ACQUIRE-v2.1",
   "identity": {
     "repository": "https://github.com/openai/codex",
     "ref": "rust-v0.147.0",
     "commit": "be6e8eac029b183056b7e4402879f15d2c85f61b"
   },
-  "workflow": "a5-codex.yml",
   "release_tag": "agent-Codex-rust-v0.147.0",
   "layers": {
-    "source": "PENDING_META",
-    "distribution_git": "PENDING_META",
+    "source": "CAPTURED",
+    "distribution_git": "META_PINS",
     "distribution_release": "CAPTURED",
-    "finalize": "QUEUED"
+    "finalize": "DONE"
   },
-  "updated_at": "2026-08-07T23:05:00Z",
-  "notes": "Meta-only job queued. RESUME: 1x list runs a5-codex.yml. Release already has binaries."
+  "updated_at": "2026-08-07T23:07:00Z",
+  "notes": "A5 closed: source SHA verified; binaries on Release; git=pins+manifest"
 }

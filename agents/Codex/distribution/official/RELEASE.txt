@@ -1,0 +1,5 @@
+Official distribution binaries conserved on GitHub Release:
+https://github.com/maxbry123-commits/agentes/releases/tag/agent-Codex-rust-v0.147.0
+
+Upstream pin: openai/codex @ rust-v0.147.0 / be6e8eac029b183056b7e4402879f15d2c85f61b
+Re-verify: gh release download agent-Codex-rust-v0.147.0 && sha256sum *

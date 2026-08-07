@@ -1,0 +1,10 @@
+{
+  "storage": "github_release_and_upstream",
+  "release_tag": "agent-Codex-rust-v0.147.0",
+  "upstream_url": "https://github.com/openai/codex/archive/be6e8eac029b183056b7e4402879f15d2c85f61b.tar.gz",
+  "conserved_url": "https://github.com/maxbry123-commits/agentes/releases/download/agent-Codex-rust-v0.147.0/codex-src.tar.gz",
+  "sha256": "f0513d22bd932c53dd4eb267cc30d24b75c6dd6a72865178f092fb8913b9d6f1",
+  "commit": "be6e8eac029b183056b7e4402879f15d2c85f61b",
+  "ref": "rust-v0.147.0",
+  "size_bytes": 11534336
+}

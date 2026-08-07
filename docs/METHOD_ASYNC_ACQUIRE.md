@@ -1,161 +1,150 @@
-# METHOD_ASYNC_ACQUIRE — Adquisición determinista por capas (sin polling)
+# METHOD_ASYNC_ACQUIRE — Adquisición determinista por capas
 
-**Audience:** cualquier instancia de Grok / Claude / otra AI que trabaje en `maxbry123-commits/agentes`.
-
-**Objetivo:** DESCARGAR → CONSERVAR → FIJAR → VERIFICAR → REPRODUCIR  
-**sin** quedarse pegado esperando GitHub Actions ni quemar tokens en bucles de espera.
+**Repo:** `maxbry123-commits/agentes`  
+**Audience:** cualquier instancia Grok / Claude / otra AI.
 
 ---
 
-## 1. Regla de oro
+## 0. Objetivo real
 
-1. **DISPATCH** el trabajo pesado (Actions / scripts largos).
-2. **ESCRIBE STATE** en el repo.
-3. **PARA** la conversación (no hagas `sleep` + poll en bucle).
-4. En el siguiente mensaje del usuario ("Ok" / "sigue"): **RESUME** — lee state, consulta el run **una sola vez**, actúa, actualiza state, para otra vez si hace falta.
+No es solo auditar ni etiquetar.  
+Es **ADQUIRIR Y CONSERVAR** el agente completo que el proyecto distribuye:
 
-Nunca:
-- `while true: sleep; check status`
-- Esperar >1 consulta de estado por turno de chat
-- Avanzar al siguiente agente si el actual no está `DONE`
+```
+DESCARGAR → CONSERVAR → FIJAR → VERIFICAR → REPRODUCIR
+```
+
+Resultado: **DETERMINISTIC AGENT SNAPSHOT** por agente.
 
 ---
 
-## 2. Capas del pipeline
+## 1. Qué debe tener un agente al 100%
+
+### CAPA 1 — SOURCE
+
+- Árbol completo **o** archive `.tar.gz` completo del commit fijado
+- Identidad inmutable: `repository + ref/tag + commit SHA`
+- `archive.sha256` + `tree.sha256` (si árbol expandido)
+- Nunca `main` / `master` / `latest` / `HEAD` como pin final
+
+### CAPA 2 — DISTRIBUTION (oficial)
+
+Conservar lo que el proyecto **realmente publica**, en el formato que sea:
+
+- binary / executable / AppImage / deb / rpm / tar.gz / zip
+- npm tarball / PyPI wheel-sdist
+- Docker image (digest fijado)
+- paquete con varios ejecutables, runtimes, plugins, resources
+
+No inventar binarios. Si no hay distribución pública tras búsqueda sistemática → documentar; SOURCE igual se conserva.
+
+### CAPA 3 — DEPENDENCIAS Y BUILD
+
+Cuando existan: lockfiles, Dockerfile, CI workflows, toolchain notes, base image digest.
+
+### CAPA 4 — PROVENANCE / HASHES
+
+Cada artefacto: `URL + version/tag + commit + SHA256 + platform + arch`.
+
+### CAPA 5 — REBUILD (cuando sea posible)
 
 ```
-C0 DISPATCH     → lanza workflow / script  → escribe state QUEUED/RUNNING → STOP
-C1 STATE        → agents/_state/<AgentId>.json (fuente de verdad)
-C2 RESUME       → 1× get run → DONE | RUNNING | FAILED | NEED_*
-C3 SPLIT JOBS   → jobs cortos, no un monstruo:
-                  a) acquire-source     (source + locks + tree SHA)
-                  b) acquire-dist-meta  (lista assets + SHA256SUMS)
-                  c) acquire-dist-upload (Release assets grandes, async)
-                  d) acquire-finalize   (pins + manifest + commit git)
+SOURCE + deps fijas + entorno fijo → REBUILT → comparar SHA256 vs oficial
 ```
 
-### Layout físico del agente (protocolo v2.1)
+Si no es reproducible: conservar oficial igual; marcar `NOT_REPRODUCIBLE`.
+
+### Layout
 
 ```
 agents/<AgentId>/
-  source/complete-source/
-  distribution/official/     # ≤90MB + *.PIN.json + SHA256SUMS + assets.json
-  distribution/staging/      # solo en runner; NO commit; va a GitHub Release
-  distribution/rebuilt/
+  source/          # complete-source/ y/o SOURCE_PIN + archive en Release
+  distribution/
+    official/      # ≤90MB en git; >90MB → Release + *.PIN.json
+    rebuilt/
   dependencies/ build/ models/ runtime/ tools/ plugins/ provenance/ hashes/
   manifest.json
+agents/_state/<AgentId>.json
 ```
 
-Release tag de binarios grandes:
-`agent-<AgentId>-<ref>` ejemplo: `agent-Codex-rust-v0.147.0`
-
-Cada artefacto registra: `URL + version/tag + commit + SHA256 + platform + arch`.
-Prohibido anclar a `main` / `master` / `latest` / `HEAD`.
+Release tag: `agent-<AgentId>-<ref>`
 
 ---
 
-## 3. Formato de state
+## 2. Búsqueda antes de declarar ausencia
 
-Archivo: `agents/_state/<AgentId>.json`
+Orden obligatorio:
 
-```json
-{
-  "agent": "Codex",
-  "task": "A5",
-  "status": "RUNNING",
-  "protocol": "TEAM-SEALS-ACQUIRE-v2.1",
-  "identity": {
-    "repository": "https://github.com/openai/codex",
-    "ref": "rust-v0.147.0",
-    "commit": "be6e8eac029b183056b7e4402879f15d2c85f61b"
-  },
-  "workflow": "a5-codex.yml",
-  "run_id": 31222211773,
-  "release_tag": "agent-Codex-rust-v0.147.0",
-  "layers": {
-    "source": "PENDING|CAPTURED|FAILED",
-    "distribution_git": "PENDING|CAPTURED|N/A",
-    "distribution_release": "PENDING|CAPTURED|N/A",
-    "finalize": "PENDING|DONE|FAILED"
-  },
-  "updated_at": "ISO-8601",
-  "notes": "una línea"
-}
+1. repo oficial + releases + assets  
+2. package registries (npm, PyPI, crates, …)  
+3. containers (ghcr, docker hub) con digest  
+4. páginas de descarga oficiales  
+5. CI artifacts públicos  
+
+Solo entonces: artefacto específico no publicado.
+
+---
+
+## 3. Método async (sin quemar tokens)
+
+```
+C0 DISPATCH  → lanza workflow/script  → escribe state  → STOP
+C1 STATE     → agents/_state/<id>.json
+C2 RESUME    → 1 consulta de run por turno de chat
+C3 SPLIT     → source | dist-meta | dist-upload | finalize
 ```
 
-**status admitidos:**  
-`QUEUED` | `RUNNING` | `NEED_RELEASE` | `NEED_COMMIT` | `DONE` | `FAILED`
+**Prohibido:** bucles `sleep` + poll en la misma conversación.
 
-Solo `DONE` permite pasar a la siguiente tarea de instalación de agente.
+**status:** `QUEUED` | `RUNNING` | `NEED_RELEASE` | `NEED_COMMIT` | `DONE` | `FAILED`  
+Solo `DONE` permite el siguiente agente.
 
----
+### Si git no aguanta el árbol
 
-## 4. Protocolo de chat (salidas)
+1. SOURCE como `.tar.gz` en Release + SHA256 en git  
+2. Binarios grandes en el mismo Release  
+3. Git = pins + manifest + hashes  
+Sigue siendo snapshot determinista (URL + SHA + commit).
 
-- Salidas de texto: máximo ~8–12 líneas salvo listas de tareas pedidas.
-- Lista de tareas siempre en cascada (número, tema+fuente, resultado, cómo).
-- Cada 3 salidas: AUDIT cruzado con el protocolo de binario/SOURCE.
-- Al decir el usuario **Ok**: continuar la siguiente capa o RESUME del state, no re-explicar todo.
+### Workflows YAML
 
-### Turno tipo RESUME
-
-1. Leer `agents/_state/<id>.json`
-2. Si `run_id`: `get_workflow_run` **una vez**
-3. Actualizar state + reportar 4 líneas
-4. Si RUNNING → STOP ("sigue en background; Ok para retomar")
-5. Si DONE → auditar layout + hashes + marcar DONE
-6. Si FAILED → leer logs (cola), proponer fix, no inventar artefactos
+Scripts largos en `scripts/*.sh` / `scripts/*.py`.  
+Workflows **mínimos** (`run: bash scripts/...`) — YAML complejo rompe el trigger `workflow_dispatch`.
 
 ---
 
-## 5. Script canónico
+## 4. Chat / salidas
 
-`scripts/acquire_agent.py` (v2.1+)
-
-```bash
-python scripts/acquire_agent.py \
-  --id Codex \
-  --repo https://github.com/openai/codex \
-  --ref rust-v0.147.0 \
-  --commit be6e8eac029b183056b7e4402879f15d2c85f61b
-```
-
-- SOURCE completo siempre a git.
-- DISTRIBUTION: ≤ `GIT_MAX_BYTES` (90MB) → `distribution/official/`
-- > 90MB → `distribution/staging/` + `.PIN.json` en official; workflow sube staging a Release.
-- Búsqueda: GitHub releases → npm → PyPI → docker refs (sin inventar).
+- ~8–12 líneas salvo listas pedidas  
+- Lista de tareas en cascada: número, tema+fuente, resultado, cómo  
+- Cada 3 salidas: AUDIT cruzado  
+- **Ok** del usuario = RESUME o siguiente capa  
+- No tocar control-layer / Wordflow sin orden explícita  
 
 ---
 
-## 6. Control-layer
+## 5. Checklist 100%
 
-**NUNCA** borrar ni modificar la capa de control / Wordflow del repo excepto por petición explícita.
-
----
-
-## 7. Checklist 100% de un agente
-
-- [ ] `source/complete-source/` presente + `commit.txt` + tree/archive SHA256
-- [ ] `manifest.json` con identity inmutable
-- [ ] `distribution/official/SHA256SUMS` + `assets.json`
-- [ ] Binarios grandes en Release `agent-<Id>-<ref>` **o** en git si ≤90MB
-- [ ] Pins `*.PIN.json` con `conserved_url` si aplica
-- [ ] `agents/_state/<Id>.json` → `status: DONE`
-- [ ] control-layer intacto
+- [ ] identity pin (repo + ref + commit)  
+- [ ] SOURCE conservado (tree o archive + SHA256)  
+- [ ] DISTRIBUTION oficial conservada (git y/o Release) o ausencia documentada tras búsqueda  
+- [ ] `manifest.json` + `hashes/SHA256SUMS`  
+- [ ] `agents/_state/<id>.json` → `DONE`  
+- [ ] control-layer intacto  
 
 ---
 
-## 8. Tareas actuales (referencia)
+## 6. Estado de tareas
 
-| Task | Agente | Estado esperado |
-|------|--------|-----------------|
-| A1 | pipeline acquire_agent | DONE (v2.1) |
+| Task | Agente | Estado |
+|------|--------|--------|
+| A1 | pipeline | DONE |
 | A2 | OpenClaw | DONE |
 | A3 | OpenClaw-headless | DONE (alias A2) |
-| A4 | Hermes | SOURCE DONE; dist buscada |
-| A5 | Codex | RUNNING/RESUME hasta DONE |
-| A6+ | Mimo-Code … | solo tras A5 DONE |
+| A4 | Hermes | SOURCE OK |
+| A5 | Codex | DONE (Release + pins) |
+| A6+ | siguientes | tras A5 DONE |
 
 ---
 
-*TEAM SEALS / agentes — documento operativo para instancias AI.*
+*TEAM SEALS — documento operativo para instancias AI.*
