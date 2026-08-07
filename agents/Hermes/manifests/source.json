@@ -1,0 +1,9 @@
+{
+  "repo": "https://github.com/NousResearch/hermes-agent",
+  "ref": "v2026.8.3",
+  "commit": "3c27eb6234bf91b8ceee9e9071591b31e9b148cb",
+  "archive_url": "https://github.com/NousResearch/hermes-agent/archive/3c27eb6234bf91b8ceee9e9071591b31e9b148cb.tar.gz",
+  "archive_sha256": "a68e96f385768ec6c466122bf21fcb697680a5f349c9a673badfbe27752b6928",
+  "tree_sha256": "38cfc255d30634d036617f8a8ed35e3cf11e59369bfc921e949e23d8cf7b02c3",
+  "status": "PINNED"
+}
