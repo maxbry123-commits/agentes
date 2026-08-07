@@ -1,11 +1,11 @@
 """MemoryRouter · Guard + Policy + Classifier + Version + Cache."""
 from __future__ import annotations
 
-from typing import Any, List, Optional
+from typing import Any, List
 
 from memory.cache_stub import SimpleCache
 from memory.classifier import MemoryClass, classify_memory
-from memory.guard import MemoryAccessDenied, MemoryGuard
+from memory.guard import MemoryGuard
 from memory.policy import MemoryPolicy
 from memory.providers.base import MemoryProvider
 from memory.schemas.context import MemoryContext, MemoryRecord
@@ -13,21 +13,6 @@ from memory.versioning import CacheKey, VersionManager
 
 
 class MemoryRouter:
-    def __init(
-        self,
-        primary: MemoryProvider,
-        *,
-        secondary: MemoryProvider | None = None,
-        guard: MemoryGuard | None = None,
-        versions: VersionManager | None = None,
-        cache: SimpleCache | None = None,
-    ) -> None:
-        self.primary = primary
-        self.secondary = secondary
-        self.guard = guard or MemoryGuard(MemoryPolicy())
-        self.versions = versions
-        self.cache = cache or SimpleCache()
-
     def __init__(
         self,
         primary: MemoryProvider,
