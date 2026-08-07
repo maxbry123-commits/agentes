@@ -1,29 +1,32 @@
-# Plantilla B4 — DAG (UOOS Parte 1)
-# SOURCE: CAPA DE CONTROL 1 · orden topológico real
-# Un archivo por plan: dag/DAG-A001.yaml
-# El Sheriff rechaza ciclos y nodos no registrados en B3.
+# D4 Workflow DAG — dag/<id>.yaml
+# SOURCE: workflow.schema · D4 research
+# DAG = QUÉ FLUJO (no quién). Router resuelve agent por required_capabilities.
 
 dag:
-  id: DAG-A001
+  id: DAG-development
   version: "1.0.0"
   project_id: ""
 
 nodes:
-  - id: A01
+  - id: plan
     depends_on: []
-  - id: A02
-    depends_on: [A01]
-  - id: A03
-    depends_on: [A02]
+    required_capabilities: [planning]
+    timeout_seg: 600
+    on_fail: recovery_default
+  - id: implement
+    depends_on: [plan]
+    required_capabilities: [coding, debugging]
+    timeout_seg: 3600
+    on_fail: recovery_default
+  - id: review
+    depends_on: [implement]
+    required_capabilities: [review]
+    timeout_seg: 900
+    on_fail: recovery_default
 
 rules:
   no_cycles: true
-  all_nodes_must_exist_in_B3: true
-  no_skip: true                    # L08 — nunca saltar el DAG
-  entry: A01
-  exit: []                         # se completa cuando todos los nodos hoja están done
-
-notes: |
-  depends_on lista solo ids de nodos que deben estar en done
-  antes de que este nodo pase a running.
-  El Wordflow no ejecuta un nodo si sus dependencias no están done.
+  no_skip: true
+  all_caps_must_resolve: true
+  entry: plan
+  exit: [review]
