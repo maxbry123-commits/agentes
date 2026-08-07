@@ -1,0 +1,116 @@
+# routing.yaml · op_type → contratos base · 0% LLM
+# Fuente: S9 tabla de ruteo (subconjunto implementable)
+
+version: "1.0.0"
+
+routes:
+  READ_LOCAL:
+    - C03
+    - C04
+    - C28
+    - C41
+  WRITE_LOCAL:
+    - C03
+    - C04
+    - C27
+    - C29
+    - C35
+    - C45
+    - C48
+  DELETE:
+    - C29
+    - C34
+    - C35
+    - C45
+    - C47
+    - C48
+    - C49
+  EXEC_COMMAND:
+    - C02
+    - C28
+    - C33
+    - C36
+    - C43
+    - C47
+    - C48
+  NETWORK_CALL:
+    - C33
+    - C36
+    - C37
+    - C38
+    - C40
+    - C41
+    - C42
+  CROSS_MODULE:
+    - C01
+    - C02
+    - C03
+    - C20
+    - C21
+    - C23
+  CROSS_SYSTEM:
+    - C01
+    - C05
+    - C08
+    - C09
+    - C16
+    - C17
+    - C33
+  EXTERNAL_AGENT:
+    - C16
+    - C18
+    - C33
+    - C36
+    - C38
+    - C44
+    - C47
+  LLM_CALL:
+    - C02
+    - C03
+    - C28
+    - C33
+    - C36
+    - C40
+    - C41
+    - C43
+    - C44
+    - C49
+    - C73
+  CREDENTIAL_ACCESS:
+    - C45
+    - C47
+    - C48
+    - C49
+    - C73
+    - C74
+  MULTI_STEP:
+    - C24
+    - C25
+    - C29
+    - C30
+    - C34
+    - C35
+  STATEFUL:
+    - C27
+    - C30
+    - C46
+  MOUNT_EXTENSION:
+    - C51
+    - C52
+    - C53
+    - C54
+    - C55
+    - C82
+    - C83
+    - C84
+    - C85
+  ENGINE_BOOT:
+    - C00
+  EXTENSION_MOUNT:
+    - C00
+    - C82
+    - C83
+    - C84
+    - C85
+  WORDFLOW_BOOT:
+    - C00

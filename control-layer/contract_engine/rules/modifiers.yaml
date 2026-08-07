@@ -1,0 +1,20 @@
+# modifiers · añaden contratos según fingerprint / threat
+version: "1.0.0"
+
+modifiers:
+  - when: { is_secret: true }
+    add: [C45, C47, C48, C74]
+  - when: { is_network: true }
+    add: [C33, C36, C41]
+  - when: { is_exec: true }
+    add: [C28, C33, C47]
+  - when: { is_delete: true }
+    add: [C34, C35, C49]
+  - when: { band: quarantine }
+    add: [C49, C35]
+  - when: { elevated: true }
+    add: [C02, C49]
+  - when: { risk_score_gte: 8 }
+    add: [C49, C47]
+  - when: { risk_score_gte: 4 }
+    add: [C48]
