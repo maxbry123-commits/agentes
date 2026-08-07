@@ -15,7 +15,10 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Acquire Hermes snapshot
+      - name: Remove previous Hermes snapshot
+        run: rm -rf agents/Hermes
+
+      - name: Acquire Hermes v2
         run: |
           set -euo pipefail
           python scripts/acquire_agent.py \
@@ -33,6 +36,6 @@ jobs:
           if git diff --cached --quiet; then
             echo "No changes"
           else
-            git commit -m "A4: deterministic snapshot Hermes v2026.8.3 (3c27eb62)"
+            git commit -m "A4: Hermes v2 snapshot SOURCE+DISTRIBUTION pin v2026.8.3"
             git push
           fi
