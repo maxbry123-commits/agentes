@@ -1,0 +1,6 @@
+# Plantilla config/token_ref.yaml (vive en la carpeta del PROYECTO, no en el Wordflow)
+# SOURCE: acuerdo token por trabajo · secretos solo por referencia
+
+token_env: GITHUB_TOKEN
+# El valor real está en el entorno del VPS / secret manager.
+# PROHIBIDO: token: ghp_... o cualquier valor en claro.
