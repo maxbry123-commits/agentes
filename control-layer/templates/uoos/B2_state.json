@@ -1,35 +1,15 @@
 {
-  "_comment": "Plantilla B2 state.json — SOURCE: UOOS Parte 1 · CAPA DE CONTROL 1",
+  "_comment": "D2 state.json — SOLO estado vivo. NO definiciones de agentes.",
   "project_id": "",
-  "version": "1.0.0",
+  "status": "pending",
   "updated_at": "",
-  "nodes": {
-    "A01": {
-      "status": "pending",
-      "attempts": 0,
-      "last_error": null,
-      "checkpoint": null,
-      "evidence": null
-    }
-  },
+  "active_tasks": {},
+  "agents_runtime": {},
   "global": {
-    "status": "pending",
-    "current_node": null,
-    "certified": false
+    "certified": false,
+    "current_workflow": null
   },
   "rules": {
-    "allowed_status": [
-      "pending",
-      "running",
-      "validating",
-      "blocked",
-      "done",
-      "failed",
-      "recovered"
-    ],
-    "forbidden_transitions": [
-      "failed→done"
-    ],
-    "note": "failed solo puede ir a recovered, nunca directo a done"
+    "note": "Definiciones de agentes viven en nodes/*.yaml. Aquí solo status de ejecución."
   }
 }
