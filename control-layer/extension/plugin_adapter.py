@@ -6,7 +6,7 @@ El host (OpenClaw / TEAM / mock) solo habla por este adapter:
   out = adapter.on_turn(turn)
   adapter.on_unmount()
 
-No importa vendor del host. Turn normalizado → mismo motor que Wordflow.
+Monta Evolution Engine automáticamente (capability evolution.evolve).
 """
 from __future__ import annotations
 
@@ -26,8 +26,6 @@ from runtime.durable import DurableRuntime
 
 @dataclass
 class TurnInput:
-    """Turn normalizado independiente del host."""
-
     text: str
     op_type: str = "LLM_CALL"
     mission_id: str | None = None
@@ -60,13 +58,15 @@ class TurnOutput:
 
 
 class PluginAdapter:
-    """Monta WordflowExtension como plugin del host."""
+    """Monta WordflowExtension + Evolution como plugin del host."""
 
     def __init__(self, state_dir: Path | None = None) -> None:
         self.ext = WordflowExtension()
         self.runtime: DurableRuntime | None = None
         self.state_dir = Path(state_dir) if state_dir else None
         self._mounted = False
+        self.evolution_svc: Any = None
+        self.evolution_mounted: list[str] = []
 
     def on_mount(self, ctx: Mapping[str, Any] | None = None) -> dict[str, Any]:
         ctx = dict(ctx or {})
@@ -76,27 +76,41 @@ class PluginAdapter:
             self.state_dir = Path(ctx.get("state_dir") or self.state_dir or "./extension_state")
             self.runtime = DurableRuntime(self.state_dir)
         self._mounted = bool(ok)
-        return self.ext.health().to_dict()
+
+        # Auto-mount Evolution Engine → ABI (evolution.evolve + absorbed caps)
+        if ctx.get("enable_evolution", True):
+            try:
+                from extension.evolution_mount import mount_evolution
+
+                sources = str(ctx.get("evolution_sources") or "evolution/sources")
+                self.evolution_svc, self.evolution_mounted = mount_evolution(self.ext, sources_dir=sources)
+            except Exception as e:  # noqa: BLE001 — no bloquear mount del host
+                self.evolution_mounted = []
+                health = self.ext.health().to_dict()
+                health["evolution_error"] = str(e)
+                return health
+
+        health = self.ext.health().to_dict()
+        health["evolution_capabilities"] = list(self.evolution_mounted)
+        return health
 
     def on_unmount(self) -> None:
         self.ext.unload()
         self._mounted = False
+        self.evolution_svc = None
+        self.evolution_mounted = []
 
     def health(self) -> dict[str, Any]:
-        return self.ext.health().to_dict()
+        h = self.ext.health().to_dict()
+        h["evolution_capabilities"] = list(self.evolution_mounted)
+        return h
 
     def capabilities(self) -> list[str]:
         return self.ext.capabilities()
 
     def on_turn(self, turn: TurnInput | Mapping[str, Any]) -> TurnOutput:
         if not self._mounted:
-            return TurnOutput(
-                ok=False,
-                mission_id=None,
-                evidence={},
-                chat_output={},
-                error="plugin_not_mounted",
-            )
+            return TurnOutput(False, None, {}, {}, "plugin_not_mounted")
         t = turn if isinstance(turn, TurnInput) else TurnInput.from_mapping(turn)
 
         mission_id = t.mission_id
@@ -108,7 +122,33 @@ class PluginAdapter:
         payload.setdefault("text", t.text)
         payload.setdefault("goal", t.text)
 
-        # Sheriff gate via ABI (misma ruta que Wordflow)
+        # Ruta directa: evolucionar si op_type lo pide
+        if t.op_type in ("EVOLVE", "ABSORB", "evolution.evolve") or payload.get("evolve_path"):
+            evo = self.ext.execute(
+                "evolution.evolve",
+                {
+                    "path": payload.get("evolve_path") or payload.get("path") or "",
+                    "identity": payload.get("identity") or "absorbed",
+                    "source_type": payload.get("source_type") or "agent",
+                    "repo_url": payload.get("repo_url") or "",
+                    "allow_director_license": bool(payload.get("allow_director_license", False)),
+                },
+                nivel=t.nivel,
+            )
+            chat = format_output(
+                {
+                    "mission_id": mission_id or "",
+                    "status": "COMPLETED" if evo.ok else "FAILED",
+                    "summary": "evolution_ok" if evo.ok else "evolution_fail",
+                    "evidence_hash": evo.evidence_hash or "sha256:none",
+                    "sheriff_state": "GREEN" if evo.ok else "RED",
+                    "mode": "extension",
+                    "steps_done": ["mount", "evolution.evolve"],
+                    "errors": [evo.error] if evo.error else [],
+                }
+            )
+            return TurnOutput(evo.ok, mission_id, evo.to_dict(), chat, evo.error)
+
         gate = self.ext.execute(
             "sheriff_gate",
             {"op_type": t.op_type, "payload": payload},
@@ -127,13 +167,7 @@ class PluginAdapter:
                     "mode": "extension",
                 }
             )
-            return TurnOutput(
-                ok=False,
-                mission_id=mission_id,
-                evidence=gate.to_dict(),
-                chat_output=chat,
-                error=gate.error,
-            )
+            return TurnOutput(False, mission_id, gate.to_dict(), chat, gate.error)
 
         routed = self.ext.execute(
             "route_op",
@@ -160,13 +194,7 @@ class PluginAdapter:
                 "steps_done": ["mount", "sheriff_gate", "route_op"],
             }
         )
-        return TurnOutput(
-            ok=routed.ok,
-            mission_id=mission_id,
-            evidence=routed.to_dict(),
-            chat_output=chat,
-            error=routed.error,
-        )
+        return TurnOutput(routed.ok, mission_id, routed.to_dict(), chat, routed.error)
 
 
 def create_adapter(state_dir: str | Path | None = None) -> PluginAdapter:
