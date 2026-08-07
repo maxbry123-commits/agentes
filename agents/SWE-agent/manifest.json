@@ -1,0 +1,1 @@
+{"protocol":"TEAM-SEALS-ACQUIRE-v2.1","agent":"SWE-agent","identity":{"repository":"https://github.com/SWE-agent/SWE-agent","ref":"v1.1.0","commit":"0f3acafacabc0def8cc76b4e48acb4b6cf302cb9"},"source":{"archive_sha256":"385d29b3916097ac2ecb7b891dbcfe09c01b6738d38257f153306f0beca68979"},"layers":{"source":"CAPTURED"}}
