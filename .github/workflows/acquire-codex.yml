@@ -1,0 +1,40 @@
+name: acquire-codex
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  acquire:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Acquire Codex v2
+        run: |
+          set -euo pipefail
+          python scripts/acquire_agent.py \
+            --id Codex \
+            --repo https://github.com/openai/codex \
+            --ref rust-v0.147.0 \
+            --commit be6e8eac029b183056b7e4402879f15d2c85f61b
+
+      - name: Commit snapshot
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Codex release assets can be large; increase buffer
+          git config http.postBuffer 524288000
+          git add agents/Codex
+          if git diff --cached --quiet; then
+            echo "No changes"
+          else
+            git commit -m "A5: Codex v2 snapshot SOURCE+DISTRIBUTION pin rust-v0.147.0"
+            git push
+          fi
