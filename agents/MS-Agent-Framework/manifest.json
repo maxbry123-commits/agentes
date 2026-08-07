@@ -1,0 +1,1 @@
+{"agent":"MS-Agent-Framework","identity":{"repository":"https://github.com/microsoft/agent-framework","ref":"dotnet-1.17.0","python_ref":"python-1.13.0","python_commit":"e39a8a2e79c8c8987a0b9082d3ccb8665734b897"},"source":{"archive_sha256":"31a7dd0b10e50624876601f2063f8fe6b13197b5e1eca6da29479068468907de"},"layers":{"source":"CAPTURED"}}
