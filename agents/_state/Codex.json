@@ -1,7 +1,7 @@
 {
   "agent": "Codex",
   "task": "A5",
-  "status": "RUNNING",
+  "status": "NEED_COMMIT",
   "protocol": "TEAM-SEALS-ACQUIRE-v2.1",
   "identity": {
     "repository": "https://github.com/openai/codex",
@@ -12,11 +12,16 @@
   "run_id": 31222211773,
   "release_tag": "agent-Codex-rust-v0.147.0",
   "layers": {
-    "source": "PENDING",
-    "distribution_git": "PENDING",
-    "distribution_release": "PENDING",
-    "finalize": "PENDING"
+    "source": "CAPTURED_ON_RUNNER_NOT_IN_GIT",
+    "distribution_git": "FAILED_PUSH",
+    "distribution_release": "LIKELY_OK",
+    "finalize": "FAILED"
   },
-  "updated_at": "2026-08-07T22:47:00Z",
-  "notes": "acquire OK on runner; release-staging was in progress at last poll; resume with 1x get_workflow_run"
+  "job_steps": {
+    "acquire": "success",
+    "release-staging": "success",
+    "commit": "failure"
+  },
+  "updated_at": "2026-08-07T22:47:30Z",
+  "notes": "Next: finalize workflow — re-acquire source only + metadata pins; skip re-upload if release exists; commit without large trees"
 }
