@@ -1,47 +1,72 @@
-# Plantilla B6 — Tribunal 6 roles (UOOS Parte 1)
-# SOURCE: SALIDA_6 · CAPA DE CONTROL 1
-# Archivo: council/tribunal_6.yaml
+# D6 Council / Tribunal — council/*.yaml v2.0
+# SOURCE: B6 tribunal · PIPELINE sello 10 roles · Wordflow Sheriff
+# Guía de gobernanza documental + contrato de votación. Runtime opcional.
 
-tribunal:
-  id: tribunal_6
-  version: "1.0.0"
-  umbral_score: 70
-  min_approvals: 4
+schema_version: "2.0"
+kind: COUNCIL_TRIBUNAL
 
+id: tribunal_default
+version: "1.0.0"
+project_id: ""
+
+umbral_score: 70
+min_approvals: 4
+max_consecutive_fails: 3
+
+# 10 roles de gobierno (PIPELINE) — poder: VETO | score | observe
 roles:
-  sheriff:
-    pregunta: "¿violó L01-L15?"
+  DSL:
+    pregunta: "¿cumple contratos/schemas declarados?"
+    poder: score
+  DAG:
+    pregunta: "¿se respetó orden depends_on / no_skip?"
+    poder: score
+  Schema:
+    pregunta: "¿output valida contra schema del nodo?"
+    poder: score
+  Sheriff:
+    pregunta: "¿violó limits.hard / forbidden_paths / invariantes?"
     poder: VETO
-  centinela:
-    pregunta: "¿salió del sandbox / tocó protegidos / expuso secretos?"
+  Sentinela:
+    pregunta: "¿salió del sandbox / secretos / paths protegidos?"
     poder: VETO
-  juez:
-    pregunta: "¿output cumple EXACTO el schema del contrato?"
+  Juez:
+    pregunta: "¿output EXACTO al criterio_exito del contrato?"
     poder: score
-  supervisor:
-    pregunta: "¿se respetó DAG + eventos + checkpoints?"
+  Supervisor:
+    pregunta: "¿eventos, lease, checkpoints coherentes?"
     poder: score
-  validador:
-    pregunta: "¿FUNCIONA? tests/ejecución/lint reales"
+  Validador:
+    pregunta: "¿tests/lint/ejecución reales pasan?"
     poder: score
-  verificador:
-    pregunta: "¿evidencia completa y reproducible por otro agente?"
+  Verificador:
+    pregunta: "¿evidencia reproducible por otro agente?"
+    poder: score
+  Orquestador:
+    pregunta: "¿handoffs y capabilities resueltas sin bypass?"
     poder: score
 
 votacion:
-  veto_roles: [sheriff, centinela]
-  score_roles: [juez, supervisor, validador, verificador]
+  veto_roles: [Sheriff, Sentinela]
+  score_roles: [DSL, DAG, Schema, Juez, Supervisor, Validador, Verificador, Orquestador]
   regla: |
-    veto de sheriff o centinela → muerto → L04
-    score = promedio(score_roles)
-    PASA si score >= 70 Y approvals >= 4
-    3 fallos consecutivos → escalada al Director
+    1 veto → REJECT → recovery/L04
+    score = promedio(score_roles activos)
+    PASS si score >= umbral_score Y approvals >= min_approvals
+    max_consecutive_fails → escalada Director (human_gate)
 
 evidence_required:
   - nodo_id
+  - run_id
   - timestamp
   - que_se_hizo
-  - archivos_tocados   # ruta@hash_antes→hash_despues
+  - archivos_tocados
   - tests
   - score_tribunal
   - delta_vs_anterior
+
+# Alineación loops: HumanGate / RiskEngine pueden consumir veto_roles
+align_loops:
+  human_gate_on_veto: true
+  map_validador_to_phase: validar
+  map_sheriff_to_phase: validar
