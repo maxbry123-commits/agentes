@@ -1,0 +1,51 @@
+# risk_matrix · umbrales FIJOS · 0% LLM · no adaptive
+# Fuente: S9-DOC2 literal
+
+version: "1.0.0"
+
+data:
+  public: 0
+  internal: 2
+  secret: 5
+
+operation:
+  read: 1
+  write: 3
+  delete: 5
+  exec: 4
+  network: 3
+
+external:
+  none: 0
+  api: 3
+  unknown: 5
+
+# risk_score = data + operation + external
+bands:
+  normal: [0, 3]        # GREEN path si contratos OK
+  sheriff_check: [4, 7] # YELLOW o RED según contratos
+  quarantine: [8, 10]   # RED / re-route
+
+# Detectores de elevación (contenido de la operación)
+elevation_signals:
+  credential_patterns:
+    - "api_key"
+    - "api-key"
+    - "apikey"
+    - "secret"
+    - "password"
+    - "token"
+    - "private_key"
+    - "aws_access"
+    - "BEGIN RSA"
+    - "BEGIN OPENSSH"
+  network_patterns:
+    - "http://"
+    - "https://"
+    - "ftp://"
+  exec_patterns:
+    - "subprocess"
+    - "os.system"
+    - "shell=True"
+    - "eval("
+    - "exec("
