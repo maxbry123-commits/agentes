@@ -1,0 +1,132 @@
+# AGENTS_SOURCE_MANIFEST.yaml
+# TEAM SEALS / Wordflow · Deterministic source pins
+# Schema: id | repo | ref | sha256 | path | method | status
+# method: git-archive | release-asset | sparse-checkout
+# status: pending | pinned | blocked
+# Nunca main flotante. Siempre pin + SHA + SOURCE_RECEIPT.json
+
+version: 1
+updated: 2026-08-07
+owner: maxbry123-commits/agentes
+
+sources:
+  # === YA EN agents/ (canónicos, no re-clonar base) ===
+  - id: openclaw
+    path: agents/OpenClaw
+    status: existing
+  - id: openclaw-headless
+    path: agents/OpenClaw-headless
+    status: existing
+  - id: hermes
+    path: agents/Hermes
+    status: existing
+  - id: claude-code
+    path: agents/Claude-Code
+    status: existing
+  - id: codex
+    path: agents/Codex
+    status: existing
+  - id: mimo-code
+    path: agents/Mimo-Code
+    status: existing
+  - id: kimi
+    path: agents/Kimi
+    status: existing
+
+  # === A PINNEAR (A2-A13) ===
+  - id: opencode
+    repo: https://github.com/anomalyco/opencode
+    ref: TBD
+    sha256: TBD
+    path: agents/sources/OpenCode
+    method: git-archive
+    status: pending
+
+  - id: openhands
+    repo: https://github.com/OpenHands/OpenHands
+    ref: TBD
+    sha256: TBD
+    path: agents/sources/OpenHands
+    method: git-archive
+    status: pending
+
+  - id: cline
+    repo: https://github.com/cline/cline
+    ref: TBD
+    sha256: TBD
+    path: agents/sources/Cline
+    method: git-archive
+    status: pending
+
+  - id: aider
+    repo: https://github.com/Aider-AI/aider
+    ref: TBD
+    sha256: TBD
+    path: agents/sources/Aider
+    method: git-archive
+    status: pending
+
+  - id: mini-swe-agent
+    repo: https://github.com/SWE-agent/mini-swe-agent
+    ref: TBD
+    sha256: TBD
+    path: agents/sources/mini-SWE-agent
+    method: git-archive
+    status: pending
+
+  - id: kimi-cli
+    repo: https://github.com/MoonshotAI/kimi-cli
+    ref: TBD
+    sha256: TBD
+    path: agents/sources/Kimi-CLI
+    method: git-archive
+    status: pending
+
+  - id: nemo-agent-toolkit
+    repo: https://github.com/NVIDIA/NeMo-Agent-Toolkit
+    ref: TBD
+    sha256: TBD
+    path: agents/sources/NeMo-Agent-Toolkit
+    method: git-archive
+    status: pending
+
+  - id: aiq-blueprint
+    repo: https://github.com/NVIDIA-AI-Blueprints/aiq
+    ref: TBD
+    sha256: TBD
+    path: agents/sources/AI-Q-Blueprint
+    method: git-archive
+    status: pending
+
+  - id: google-adk
+    repo: https://github.com/google/adk-python
+    ref: TBD
+    sha256: TBD
+    path: agents/sources/Google-ADK
+    method: git-archive
+    status: pending
+
+  - id: ms-agent-framework
+    repo: https://github.com/microsoft/agent-framework
+    ref: TBD
+    sha256: TBD
+    path: agents/sources/MS-Agent-Framework
+    method: git-archive
+    status: pending
+
+  - id: sema-code-core
+    repo: https://github.com/midea-ai/sema-code-core
+    ref: TBD
+    sha256: TBD
+    path: agents/sources/Sema-Code
+    method: git-archive
+    status: pending
+
+  - id: jules-sdk
+    repo: https://github.com/google-labs-code/jules-sdk
+    ref: TBD
+    sha256: TBD
+    path: agents/sources/Jules-SDK
+    method: git-archive
+    status: pending
+    note: "Cloud agent; only SDK pinneable. Full Jules is SaaS."
