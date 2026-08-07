@@ -15,7 +15,10 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Acquire OpenClaw snapshot
+      - name: Remove previous OpenClaw snapshot
+        run: rm -rf agents/OpenClaw
+
+      - name: Acquire OpenClaw v2 (SOURCE + DISTRIBUTION)
         run: |
           set -euo pipefail
           python scripts/acquire_agent.py \
@@ -33,6 +36,6 @@ jobs:
           if git diff --cached --quiet; then
             echo "No changes"
           else
-            git commit -m "A2: deterministic snapshot OpenClaw v2026.7.1-2 (0790d9f5)"
+            git commit -m "A2: OpenClaw v2 snapshot SOURCE+DISTRIBUTION pin v2026.7.1-2"
             git push
           fi
