@@ -1,0 +1,47 @@
+# Plantilla B6 — Tribunal 6 roles (UOOS Parte 1)
+# SOURCE: SALIDA_6 · CAPA DE CONTROL 1
+# Archivo: council/tribunal_6.yaml
+
+tribunal:
+  id: tribunal_6
+  version: "1.0.0"
+  umbral_score: 70
+  min_approvals: 4
+
+roles:
+  sheriff:
+    pregunta: "¿violó L01-L15?"
+    poder: VETO
+  centinela:
+    pregunta: "¿salió del sandbox / tocó protegidos / expuso secretos?"
+    poder: VETO
+  juez:
+    pregunta: "¿output cumple EXACTO el schema del contrato?"
+    poder: score
+  supervisor:
+    pregunta: "¿se respetó DAG + eventos + checkpoints?"
+    poder: score
+  validador:
+    pregunta: "¿FUNCIONA? tests/ejecución/lint reales"
+    poder: score
+  verificador:
+    pregunta: "¿evidencia completa y reproducible por otro agente?"
+    poder: score
+
+votacion:
+  veto_roles: [sheriff, centinela]
+  score_roles: [juez, supervisor, validador, verificador]
+  regla: |
+    veto de sheriff o centinela → muerto → L04
+    score = promedio(score_roles)
+    PASA si score >= 70 Y approvals >= 4
+    3 fallos consecutivos → escalada al Director
+
+evidence_required:
+  - nodo_id
+  - timestamp
+  - que_se_hizo
+  - archivos_tocados   # ruta@hash_antes→hash_despues
+  - tests
+  - score_tribunal
+  - delta_vs_anterior
