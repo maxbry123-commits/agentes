@@ -1,0 +1,9 @@
+{
+  "repo": "https://github.com/openclaw/openclaw",
+  "ref": "v2026.7.1-2",
+  "commit": "0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c",
+  "archive_url": "https://github.com/openclaw/openclaw/archive/0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c.tar.gz",
+  "archive_sha256": "c387453c972ac0b399ddc742e0cef3b576cbf302d37a905b2c9767b85712aca3",
+  "tree_sha256": "5bf332fc01a991684cb4958f910e56c7ea2ad1d317439b58e849ecc3882b8538",
+  "status": "PINNED"
+}
