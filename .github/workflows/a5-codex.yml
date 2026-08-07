@@ -1,0 +1,48 @@
+name: a5-codex
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: acquire
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          python scripts/acquire_agent.py --id Codex --repo https://github.com/openai/codex --ref rust-v0.147.0 --commit be6e8eac029b183056b7e4402879f15d2c85f61b
+      - name: release-staging
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          STAGING=agents/Codex/distribution/staging
+          TAG=agent-Codex-rust-v0.147.0
+          if [ -d "$STAGING" ] && ls "$STAGING"/* >/dev/null 2>&1; then
+            gh release delete "$TAG" --yes || true
+            git push origin ":refs/tags/$TAG" || true
+            gh release create "$TAG" --title "Codex rust-v0.147.0" --notes "deterministic distribution" $STAGING/*
+            for f in agents/Codex/distribution/official/*.PIN.json; do
+              [ -f "$f" ] || continue
+              python3 -c "import json,sys; p=sys.argv[1]; d=json.load(open(p)); d['conserved_url']=f'https://github.com/maxbry123-commits/agentes/releases/download/agent-Codex-rust-v0.147.0/{d[\"name\"]}'; d['release_tag']='agent-Codex-rust-v0.147.0'; open(p,'w').write(json.dumps(d,indent=2)+chr(10))" "$f"
+            done
+            rm -rf "$STAGING"
+          fi
+      - name: commit
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          rm -rf agents/Codex/distribution/staging || true
+          git add agents/Codex
+          git diff --cached --quiet || (git commit -m "A5: Codex 100% SOURCE+DISTRIBUTION rust-v0.147.0" && git push)
