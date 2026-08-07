@@ -1,15 +1,60 @@
 {
-  "_comment": "D2 state.json — SOLO estado vivo. NO definiciones de agentes.",
+  "schema_version": "1.0",
+  "_doc": "D2 state.json — SOLO estado vivo. Definiciones de agentes en nodes/*.yaml",
   "project_id": "",
+  "run_id": "",
+  "session_id": "",
+  "workflow_id": null,
   "status": "pending",
   "updated_at": "",
-  "active_tasks": {},
-  "agents_runtime": {},
+  "version": 0,
+  "active_tasks": {
+    "TASK-EXAMPLE": {
+      "agent_id": "",
+      "status": "pending",
+      "started_at": null,
+      "updated_at": "",
+      "attempts": 0,
+      "last_error": null,
+      "checkpoint_id": null,
+      "evidence_ref": null
+    }
+  },
+  "agents_runtime": {
+    "_example_agent": {
+      "status": "idle",
+      "current_task": null
+    }
+  },
   "global": {
     "certified": false,
-    "current_workflow": null
+    "blocked": false,
+    "blocking_reason": null,
+    "current_workflow": null,
+    "rt_state": "RT-00"
   },
-  "rules": {
-    "note": "Definiciones de agentes viven en nodes/*.yaml. Aquí solo status de ejecución."
+  "recovery": {
+    "pending": [],
+    "last_recovery_at": null
+  },
+  "transitions_allowed": {
+    "task": [
+      "pending → running",
+      "running → validating",
+      "validating → done",
+      "running → failed",
+      "validating → failed",
+      "failed → recovered",
+      "recovered → running",
+      "* → cancelled"
+    ],
+    "forbidden": [
+      "failed → done"
+    ]
+  },
+  "status_enum": {
+    "project": ["pending", "running", "blocked", "completed", "failed", "cancelled"],
+    "task": ["pending", "running", "validating", "done", "failed", "recovered", "cancelled"],
+    "agent": ["idle", "busy", "cooldown", "dead"]
   }
 }
