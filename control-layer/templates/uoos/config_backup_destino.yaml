@@ -1,0 +1,3 @@
+# Plantilla config/backup_destino.yaml (carpeta del PROYECTO)
+memory_path: memory/backup/
+gdrive_folder: ""
