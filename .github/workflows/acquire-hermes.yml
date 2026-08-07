@@ -1,0 +1,38 @@
+name: acquire-hermes
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  acquire:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Acquire Hermes snapshot
+        run: |
+          set -euo pipefail
+          python scripts/acquire_agent.py \
+            --id Hermes \
+            --repo https://github.com/NousResearch/hermes-agent \
+            --ref v2026.8.3 \
+            --commit 3c27eb6234bf91b8ceee9e9071591b31e9b148cb
+
+      - name: Commit snapshot
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add agents/Hermes
+          if git diff --cached --quiet; then
+            echo "No changes"
+          else
+            git commit -m "A4: deterministic snapshot Hermes v2026.8.3 (3c27eb62)"
+            git push
+          fi
