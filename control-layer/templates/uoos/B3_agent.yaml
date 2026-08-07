@@ -1,32 +1,35 @@
-# D3 Agent — nodes/<id>.yaml
-# SOURCE: agent.schema + investigación D3 (AgentSchema, CrewAI, multi-agent catalog, agent-manifest)
-# NODE = QUIÉN. Discovery escanea nodes/*.yaml. Sheriff valida. Registry indexa capabilities.
+# D3 Agent — nodes/<id>.yaml v2.0
+# SOURCE: agent-manifest · Snap AGF · AGENT_SPEC · CrewAI · NodesLoader Wordflow
+# NODE = QUIÉN. Discovery escanea nodes/*.yaml → AgentAdapter.register_runtime
+# NO estado vivo (D2). NO DAG (D4).
 
-id: backend
+schema_version: "2.0"
+kind: AGENT_NODE
+
+id: backend                         # ^[a-z0-9][a-z0-9_-]*$ = agent_id
 version: "1.0.0"
-type: agent
+type: agent                         # agent | tool_agent | human_gate
 
-description: "Implementación y depuración de código del proyecto"
-purpose: "coding specialist for current project only"
+description: ""
+purpose: ""                         # 1 frase
 
-capabilities:
-  - coding
+capabilities:                       # Router / CapabilityRequest
+  - code_generation
   - debugging
-  - testing
 
-workflow:
-  recipe: software_engineering
-  # required_capabilities en el DAG eligen este agente vía Router
+# Prioridad de resolución (menor = preferido)
+priority: 100
 
 adapter:
-  id: temporal          # o openclaw | hermes | generic
-  entrypoint: null
+  id: generic                       # temporal | openclaw | hermes | generic
+  entrypoint: null                  # módulo:función si aplica
 
 model:
-  preferred: ""         # opcional; vacío = default del runtime
-  max_tokens: 0         # 0 = sin override
+  preferred: ""
+  max_tokens: 0
 
 budget:
+  level: tarea                      # micro|tarea|fase|proyecto
   tokens: 0
   time_seg: 0
   max_iterations: 8
@@ -34,7 +37,7 @@ budget:
 memory:
   private: true
   project: true
-  global: false         # true → Sheriff allow explícito
+  global: false
 
 permissions:
   tools:
@@ -43,12 +46,17 @@ permissions:
   denied_tools: []
 
 safety:
-  side_effect_risk: medium   # low | medium | high
+  side_effect_risk: medium          # low | medium | high
   requires_human_review: false
   network: false
   irreversible: false
 
 scope:
   project: current
+
+# Opcional: handoff documental (no runtime obligatorio)
+pipeline:
+  handoff_to: []
+  parallel_with: []
 
 notes: ""
