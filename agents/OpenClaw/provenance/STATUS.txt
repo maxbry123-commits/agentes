@@ -1,1 +1,2 @@
-NOT_PUBLISHED_OR_PENDING
+EMPTY_AFTER_SEARCH
+Fill only if official distribution requires it.
