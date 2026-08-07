@@ -1,0 +1,5 @@
+# Plantilla config/repo_destino.yaml (carpeta del PROYECTO)
+owner: maxbry123-commits
+repo: agentes
+branch: main
+path_prefix: ""
