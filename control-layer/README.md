@@ -1,33 +1,26 @@
 # Control Layer (Wordflow)
 
 Capa de control determinista · 90% código / 10% LLM.
+Compatible con Temporal, OpenClaw, Hermes o cualquier agente vía Adapter + ENCHUFE.
 
-## Estructura actual
+## Estructura
 
 ```
 control-layer/
-├── workflow_core/     # Núcleo + DAG + Sheriff + Research + Mirror + Download
-├── hf/                # 5 Spaces config + Router + Governor + Lifecycle + Queue + Repair + Context
-├── goals/             # InputGoal / OutputGoal 12 campos
-├── council/           # Council 12 roles
-├── tribunal/          # Tribunal 6 roles
-├── config/            # rules · registry · anti_escalation · policies
-├── dsl/               # loader
-├── sheriff/           # gate + anti_escalation checker
-├── scripts/
+├── workflow_core/     # Núcleo + DAG + Sheriff + Research
+├── enchufe/           # ENCHUFE UNIVERSAL v2.0 validator
+├── adapters/          # AgentAdapter + TemporalAdapter
+├── registry/          # agents.yaml + extensions.yaml
+├── extensions/        # MetaExtension
+├── hf/                # (diferido)
+├── goals/ · council/ · tribunal/ · loops/ · mission/ · contracts/
+├── config/ · dsl/ · sheriff/ · errors/
 └── main.py
 ```
 
-## Cómo probar
-
-```bash
-cd control-layer
-pip install -e ".[dev]"
-PYTHONPATH=. pytest workflow_core/tests -q
-PYTHONPATH=. python main.py
-```
-
-## SOURCE
-G01-G03 + arquitectura final de hf.md + SALIDA_1_CAPA_CONTROL_PARTE_1/2/3
+## Cómo conectar un agente nuevo
+1. Implementar `AgentAdapter` (7 funciones)
+2. Registrar en `registry/agents.yaml`
+3. Validar ficha con `enchufe.validator_v2.validar()`
 
 PR: #3
