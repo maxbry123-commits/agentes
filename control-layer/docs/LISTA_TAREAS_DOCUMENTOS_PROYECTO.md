@@ -1,26 +1,18 @@
-# Lista de tareas — documentos del proyecto (actualizada)
+# Lista tareas documentos proyecto
 
-## D1–D10
+| ID | Doc | Estado |
+|----|------|--------|
+| D1 | PROJECT_MANIFEST | ✅ v2 |
+| D2 | state.json | ✅ v2 |
+| D3 | nodes agent | ✅ v2 |
+| D4 | dag | ❌ siguiente |
+| D5 | loops | ✅ |
+| D6 | council | ❌ |
+| D7 | plan/pipeline | ⚠️ templates ✅ |
+| D8 | recovery | ❌ |
+| D9 | config | ⚠️ |
+| D10 | RECETA | ❌ |
 
-| ID | Documento | Estado | Siguiente |
-|----|-----------|--------|-----------|
-| D1 | PROJECT_MANIFEST | ✅ v2.0 | — |
-| D2 | state.json | ✅ v2.0 | — |
-| D3 | nodes/*.yaml | ⚠️ loader sí | research + plantilla v2 |
-| D4 | dag/*.yaml | ❌ | research + plantilla |
-| D5 | loops/*.yaml | ✅ B5+engine | — |
-| D6 | council | ❌ | research + plantilla |
-| D7 | plan/ + pipeline | ⚠️ templates pipeline ✅ | fases 00–20 por proyecto |
-| D8 | recovery | ❌ | research + plantilla |
-| D9 | config/ | ⚠️ deploy+token | unificar |
-| D10 | RECETA_AGENTE | ❌ | research + plantilla |
+Despliegue: organizador+verificar ✅ · desplegador/detector/push ❌
 
-## PIPELINE guía | DESPLIEGUE v2
-Templates FASE/AUDIT/GUIDE ✅ · organizador+verificar ✅ · desplegador/detector/push ❌
-
-## Retoma
-1. **D3** nodes plantilla
-2. D4 dag
-3. desplegador+detector+push
-4. D6–D8–D10
-5. runtimes reales
+Retoma: **D4** → desplegador → D6/D8/D10
