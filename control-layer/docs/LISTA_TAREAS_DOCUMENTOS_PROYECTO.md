@@ -1,4 +1,4 @@
-# Lista tareas documentos proyecto
+# Lista tareas documentos proyecto — D1–D10
 
 | ID | Doc | Estado |
 |----|------|--------|
@@ -8,9 +8,13 @@
 | D4 | dag | ✅ v2 |
 | D5 | loops | ✅ |
 | D6 | council | ✅ v2 |
-| D7 | plan/pipeline | ⚠️ templates ✅ |
+| D7 | plan/pipeline | ⚠️ templates guía ✅ (fases 00–20 por proyecto) |
 | D8 | recovery | ✅ v2 |
-| D9 | config | ✅ v2 guía+refs |
-| D10 | RECETA | ❌ siguiente |
+| D9 | config | ✅ v2 |
+| D10 | RECETA | ✅ v2 |
 
-Despliegue: organizador+verificar ✅ · desplegador/detector/push ❌
+## Pendiente fuera de plantillas D*
+- plan/pipeline/*.md fases concretas por proyecto
+- desplegador + detector_version + push
+- runtimes reales (executor_factory temporal/openclaw)
+- P1-CONVERTIDOR (opcional)
