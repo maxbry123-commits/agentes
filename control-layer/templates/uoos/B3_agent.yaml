@@ -1,0 +1,32 @@
+# Plantilla D3 — Agent (nodes/*.yaml)
+# SOURCE: agent.schema · NODE = QUIÉN (no tarea)
+# Un archivo por agente. Discovery escanea nodes/*.yaml.
+# Sheriff valida antes de Registry. No hay if agent == X en el control.
+
+id: backend
+version: "1.0.0"
+type: agent
+
+capabilities:
+  - coding
+  - debugging
+  - testing
+
+workflow:
+  recipe: software_engineering   # id de receta/flujo compatible
+
+memory:
+  private: true
+  project: true
+  global: false                  # global requiere allow explícito del Sheriff
+
+permissions:
+  tools:
+    - repository
+    - tests
+
+scope:
+  project: current
+
+# Opcional: notas de contrato (no lógica de control)
+notes: ""
