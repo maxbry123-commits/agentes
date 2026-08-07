@@ -1,20 +1,19 @@
-# Lista tareas documentos proyecto — D1–D10
+# Lista tareas — estado global
 
-| ID | Doc | Estado |
-|----|------|--------|
-| D1 | PROJECT_MANIFEST | ✅ v2 |
-| D2 | state.json | ✅ v2 |
-| D3 | nodes agent | ✅ v2 |
-| D4 | dag | ✅ v2 |
-| D5 | loops | ✅ |
-| D6 | council | ✅ v2 |
-| D7 | plan/pipeline | ⚠️ templates guía ✅ (fases 00–20 por proyecto) |
-| D8 | recovery | ✅ v2 |
-| D9 | config | ✅ v2 |
-| D10 | RECETA | ✅ v2 |
+## D1–D10 plantillas ✅
 
-## Pendiente fuera de plantillas D*
-- plan/pipeline/*.md fases concretas por proyecto
-- desplegador + detector_version + push
-- runtimes reales (executor_factory temporal/openclaw)
-- P1-CONVERTIDOR (opcional)
+## Despliegue v2
+| Item | Estado |
+|------|--------|
+| deploy_config | ✅ |
+| organizador dry-run | ✅ |
+| desplegador | ✅ |
+| detector_version + CHANGELOG | ✅ |
+| subir_a_github.sh | ✅ |
+| verificar evidence | ✅ |
+| verificar remoto ls-remote | ❌ opcional |
+
+## Pendiente
+1. runtimes reales (executor_factory temporal/openclaw)
+2. plan/pipeline fases 00–20 por proyecto concreto
+3. P1-CONVERTIDOR opcional
