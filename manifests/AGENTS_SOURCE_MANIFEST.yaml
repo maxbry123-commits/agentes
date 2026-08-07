@@ -2,7 +2,7 @@
 # TEAM SEALS / Wordflow · Deterministic source pins
 # Schema: id | repo | ref | sha256 | path | method | status
 # method: git-archive | release-asset | sparse-checkout
-# status: pending | pinned | blocked
+# status: pending | pinned | pinned-meta | blocked
 # Nunca main flotante. Siempre pin + SHA + SOURCE_RECEIPT.json
 
 version: 1
@@ -36,11 +36,13 @@ sources:
   # === A PINNEAR (A2-A13) ===
   - id: opencode
     repo: https://github.com/anomalyco/opencode
-    ref: TBD
-    sha256: TBD
+    ref: v1.18.15
+    commit: d7b115f
+    sha256: TBD-at-pull
     path: agents/sources/OpenCode
     method: git-archive
-    status: pending
+    status: pinned-meta
+    receipt: agents/sources/OpenCode/SOURCE_RECEIPT.json
 
   - id: openhands
     repo: https://github.com/OpenHands/OpenHands

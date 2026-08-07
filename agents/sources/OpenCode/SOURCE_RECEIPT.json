@@ -1,0 +1,13 @@
+{
+  "id": "opencode",
+  "repo": "https://github.com/anomalyco/opencode",
+  "ref": "v1.18.15",
+  "commit": "d7b115f",
+  "method": "git-archive",
+  "path": "agents/sources/OpenCode",
+  "pinned_at": "2026-08-07",
+  "status": "pinned-meta",
+  "note": "Full source tree not embedded in monorepo (size). Pull via scripts/pull_source.py --id opencode. SHA256 of archive computed at pull time.",
+  "license": "MIT",
+  "source_url_archive": "https://github.com/anomalyco/opencode/archive/refs/tags/v1.18.15.tar.gz"
+}
