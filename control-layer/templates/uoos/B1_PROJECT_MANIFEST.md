@@ -1,39 +1,42 @@
-# PROJECT_MANIFEST — Plantilla B1 (UOOS)
-# SOURCE: UOOS Parte 1 · CAPA DE CONTROL 1 · schema project_docs.yaml
-# El agente rellena esta plantilla. No inventa campos.
+# PROJECT_MANIFEST — Plantilla D1
+# SOURCE: project.schema · Agent Identity + Project Identity
+# Declara: esta carpeta ES un proyecto y bajo qué reglas se interpreta.
 
 ```yaml
-project:
-  id: ""                    # ej: maxbry-fromted-v1
-  name: ""                  # nombre legible
-  version: "0.1.0"          # semver
-  status: draft             # draft | active | archived
+project_id: ""                 # ej: jarvis
+project_version: "0.1.0"
+control_schema: "1.0"
+status: draft                  # draft | active | archived
+name: ""
+
+tenant_id: ""                  # opcional; default system
 
 identity:
-  what_it_is: ""            # 1-2 frases: qué es este proyecto
-  what_it_is_not: ""        # qué NO es (límites duros)
-  owner: ""                 # Director / equipo
+  what_it_is: ""
+  what_it_is_not: ""
+  owner: ""
+
+agents_source:
+  - nodes/*.yaml
+
+workflows_source:
+  - dag/*.yaml
+
+memory:
+  provider: ""                 # ej: tencent | local
+  isolation: project-agent     # project-agent | project-only | agent-only
+  shared_scope: project         # project | none
 
 limits:
   hard:
-    - "no modificar el kernel de ningún agente"
-    - "no escribir secretos en el repo"
-    - "no código desde 0 si existe source OS"
+    - "no modificar kernel de agentes"
+    - "no secretos en el repo"
+    - "no código desde 0 si existe source"
   soft: []
 
 scope:
-  in: []                    # qué sí entra en este proyecto
-  out: []                   # qué queda fuera
-
-paths:
-  code: code/
-  nodes: nodes/
-  dag: dag/
-  loops: loops/
-  council: council/
-  plan: plan/
-  recovery: recovery/
-  config: config/
+  in: []
+  out: []
 
 config_refs:
   token_ref: config/token_ref.yaml
@@ -41,16 +44,13 @@ config_refs:
   backup_destino: config/backup_destino.yaml
 
 success_criteria:
-  - "todos los nodos en done"
-  - "evidence.json presente tras despliegue"
-  - "sin secretos en el árbol del repo"
-
-notes: ""
+  - "agents discovered + sheriff OK"
+  - "evidence.json tras despliegue"
+  - "sin secretos en árbol"
 ```
 
-## Cómo rellenar (receta para el agente)
-1. `id` y `name` = identificador único del trabajo en turno.
-2. `what_it_is` / `what_it_is_not` = límites claros (L13 anti-scope-creep).
-3. `limits.hard` = no se negocian.
-4. `config_refs` apuntan a archivos que viven en la carpeta del proyecto, no en el Wordflow.
-5. No añadir secciones nuevas. Solo rellenar.
+## Reglas
+1. `project_id` único y estable.
+2. `agents_source` / `workflows_source` = de dónde Discovery lee.
+3. Memoria aislada por tenant+project+agent (nunca agent_id solo).
+4. Solo rellenar; no inventar secciones.
