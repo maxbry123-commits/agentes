@@ -1,11 +1,13 @@
-# Plantilla D3 — Agent (nodes/*.yaml)
-# SOURCE: agent.schema · NODE = QUIÉN (no tarea)
-# Un archivo por agente. Discovery escanea nodes/*.yaml.
-# Sheriff valida antes de Registry. No hay if agent == X en el control.
+# D3 Agent — nodes/<id>.yaml
+# SOURCE: agent.schema + investigación D3 (AgentSchema, CrewAI, multi-agent catalog, agent-manifest)
+# NODE = QUIÉN. Discovery escanea nodes/*.yaml. Sheriff valida. Registry indexa capabilities.
 
 id: backend
 version: "1.0.0"
 type: agent
+
+description: "Implementación y depuración de código del proyecto"
+purpose: "coding specialist for current project only"
 
 capabilities:
   - coding
@@ -13,20 +15,40 @@ capabilities:
   - testing
 
 workflow:
-  recipe: software_engineering   # id de receta/flujo compatible
+  recipe: software_engineering
+  # required_capabilities en el DAG eligen este agente vía Router
+
+adapter:
+  id: temporal          # o openclaw | hermes | generic
+  entrypoint: null
+
+model:
+  preferred: ""         # opcional; vacío = default del runtime
+  max_tokens: 0         # 0 = sin override
+
+budget:
+  tokens: 0
+  time_seg: 0
+  max_iterations: 8
 
 memory:
   private: true
   project: true
-  global: false                  # global requiere allow explícito del Sheriff
+  global: false         # true → Sheriff allow explícito
 
 permissions:
   tools:
     - repository
     - tests
+  denied_tools: []
+
+safety:
+  side_effect_risk: medium   # low | medium | high
+  requires_human_review: false
+  network: false
+  irreversible: false
 
 scope:
   project: current
 
-# Opcional: notas de contrato (no lógica de control)
 notes: ""
