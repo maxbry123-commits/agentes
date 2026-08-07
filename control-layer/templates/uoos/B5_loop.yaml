@@ -1,46 +1,35 @@
-# Plantilla B5 — Loop (UOOS Parte 1)
-# SOURCE: SALIDA_6 · 11 loops + regla del delta
-# Un archivo por loop: loops/L01.yaml … L11.yaml
-# Copiar y cambiar id/proposito. No inventar campos.
+# D5 Loop — loops/L0X.yaml
+# SOURCE: UOOS · D5 research · skills/loop_transforms.py
 
 loop:
-  id: L01                              # L01 … L11
+  id: L01
+  version: "1.0.0"
   proposito: "Planificación"
   entrada: ""
   salida:
-    criterio_convergencia: ""          # condición medible de fin
+    criterio_convergencia: ""    # predicado verificable
   max_iteraciones: 3
   presupuesto:
     tokens: 0
     tiempo_seg: 0
-    adaptativo: false                  # umbrales fijos, no ML
+    adaptativo: false
   estrategias:
     pool: []
     activa: ""
-    mutacion: "cambiar estrategia si delta < minimo"
   delta:
-    definicion: "info nueva medible respecto a la iteración anterior"
-    score_0_100: 0
-    minimo_aceptable: 10
-  checkpoint: ""
-  rollback: ""
+    minimo_aceptable: 10         # 0-100
   detectores:
-    - estancamiento                    # hash idéntico 2 veces = stop
+    - estancamiento
     - repeticion
-    - deriva_objetivo
     - tiempo_excesivo
     - tokens_excesivos
-    - degradacion
   escalada:
     1: mutar_estrategia
     2: otra_skill
-    3: replanificar_L01
+    3: replanificar
     4: escalar_orquestador
     5: escalar_Director
-  eventos: []
-  metricas_salida: []
 
 rules:
-  same_attempt_twice: PROHIBIDO        # regla del delta
+  same_attempt_twice: PROHIBIDO
   hash_identical_twice: estancamiento
-  L03_fail_to_L04_max_cycles: 3
