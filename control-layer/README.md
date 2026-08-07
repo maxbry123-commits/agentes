@@ -2,16 +2,20 @@
 
 Capa de control determinista · 90% código / 10% LLM.
 
-## Estructura
+## Estructura actual
 
 ```
 control-layer/
-├── workflow_core/     # Núcleo + DAG + Sheriff + Research Engine + Mirror + Download
-├── config/            # rules.yaml · registry.json · task.example.json · policies/
-├── dsl/               # loader.py
-├── sheriff/           # gate.py
-├── scripts/           # run_main.sh
-└── main.py            # entry point (load → DAG → Sheriff)
+├── workflow_core/     # Núcleo + DAG + Sheriff + Research + Mirror + Download
+├── hf/                # 5 Spaces config + Router + Governor + Lifecycle + Queue + Repair + Context
+├── goals/             # InputGoal / OutputGoal 12 campos
+├── council/           # Council 12 roles
+├── tribunal/          # Tribunal 6 roles
+├── config/            # rules · registry · anti_escalation · policies
+├── dsl/               # loader
+├── sheriff/           # gate + anti_escalation checker
+├── scripts/
+└── main.py
 ```
 
 ## Cómo probar
@@ -23,15 +27,7 @@ PYTHONPATH=. pytest workflow_core/tests -q
 PYTHONPATH=. python main.py
 ```
 
-## Componentes clave
-- WorkflowStateMachine (G1)
-- DeterministicSheriff + DAGValidator + DAGPatch (G3)
-- ResearchEngine + Resolver + ContextBuilder + Mirror + DeterministicDownloader (G2)
-- SandboxProvider / MemoryProvider (Protocol stubs)
-
-## Reglas
-- Nunca from-scratch · solo adaptar SOURCE
-- ≤200 LOC por archivo
-- Temporal se conecta después (HF1)
+## SOURCE
+G01-G03 + arquitectura final de hf.md + SALIDA_1_CAPA_CONTROL_PARTE_1/2/3
 
 PR: #3
