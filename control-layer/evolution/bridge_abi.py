@@ -1,4 +1,4 @@
-"""Puente UniversalPlugin ↔ extension.abi + research/opportunity/watchdog."""
+"""Puente UniversalPlugin ↔ extension.abi + wave2."""
 from __future__ import annotations
 from typing import Any
 from .plugin.universal_plugin import UniversalPlugin
@@ -10,20 +10,16 @@ except ImportError:
 
 def mount_plugin_on_extension(ext, plugin):
     mounted = []
-    if not hasattr(ext, "register"):
-        return mounted
+    if not hasattr(ext, "register"): return mounted
     def _make_handler(cap_id, plug):
         def _handler(params, nivel="MID"):
-            if not plug._loaded:
-                plug.load({})
+            if not plug._loaded: plug.load({})
             out = plug.invoke(cap_id, params)
-            if EvidenceOutput is None:
-                return out
+            if EvidenceOutput is None: return out
             return EvidenceOutput(ok=bool(out.get("ok", False)), capability=cap_id, evidence_hash=f"sha256:evo:{cap_id}", data=dict(out), error=out.get("error"))
         return _handler
     for cap in plugin.capability_ids():
-        ext.register(cap, _make_handler(cap, plugin))
-        mounted.append(cap)
+        ext.register(cap, _make_handler(cap, plugin)); mounted.append(cap)
     return mounted
 
 def mount_registry_on_extension(ext, registry):
@@ -35,15 +31,20 @@ def mount_registry_on_extension(ext, registry):
 class EvolutionExtensionService:
     def __init__(self, sources_dir="evolution/sources", extensions_dir="extensions"):
         from .controller import EvolutionControllerV2
-        self.controller = EvolutionControllerV2(sources_dir=sources_dir, extensions_dir=extensions_dir)
+        from .wave2_ops import attach_wave2
+        self.controller = attach_wave2(
+            EvolutionControllerV2(sources_dir=sources_dir, extensions_dir=extensions_dir),
+            sources_dir=sources_dir,
+        )
         self.registry = self.controller.registry
         self.graph = self.controller.graph
 
     def evolve(self, **kwargs):
         path = kwargs.get("path") or None
         r = self.controller.evolve_path(path, identity=str(kwargs.get("identity") or "unknown"), source_type=str(kwargs.get("source_type") or "agent"), repo_url=str(kwargs.get("repo_url") or ""), ref=str(kwargs.get("ref") or "main"), expected_tree_sha256=str(kwargs.get("expected_tree_sha256") or ""), allow_director_license=bool(kwargs.get("allow_director_license", False)), register=True, write_package=True)
-        self.controller.watchdog.on_evolve_result(r.to_dict())
-        return r.to_dict()
+        d = r.to_dict() if hasattr(r, "to_dict") else r
+        self.controller.watchdog.on_evolve_result(d)
+        return d
 
     def evolve_skill(self, **kwargs):
         return self.controller.evolve_skill(**kwargs)
@@ -71,8 +72,7 @@ class EvolutionExtensionService:
                 result = fn(**params)
                 if name == "evolution.evolve":
                     mount_registry_on_extension(ext, self.registry)
-                if EvidenceOutput is None:
-                    return result
+                if EvidenceOutput is None: return result
                 ok = bool(result.get("ok", True)) if isinstance(result, dict) else True
                 return EvidenceOutput(ok=ok, capability=name, evidence_hash=f"sha256:{name}", data=result if isinstance(result, dict) else {"result": result}, error=(result.get("error") if isinstance(result, dict) else None))
             return _handler
@@ -86,6 +86,5 @@ class EvolutionExtensionService:
                 "evolution.safe_invoke": self.safe_invoke,
                 "evolution.watchdog": self.watchdog_status,
             }.items():
-                ext.register(name, _wrap(name, fn))
-                mounted.append(name)
+                ext.register(name, _wrap(name, fn)); mounted.append(name)
         return mounted
