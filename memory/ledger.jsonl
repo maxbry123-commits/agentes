@@ -1,1 +1,2 @@
-{"ts":"2026-08-07T23:18:00Z","op":"bootstrap","agent":"*","status":"READY","note":"M1 osquest scaffold; agent pins A1-A17 closed"}
+{"ts":"2026-08-07T23:18:00Z","op":"bootstrap","agent":"*","status":"READY","note":"M1 osquest scaffold"}
+{"ts":"2026-08-07T23:19:00Z","op":"prune_inventory","agent":"OpenClaw,Hermes","status":"DOC_ONLY","note":"docs/PRUNE_OPENCLAW_HERMES.md + groups/roles.yaml"}
