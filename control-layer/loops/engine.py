@@ -1,24 +1,23 @@
-"""Loop Engine mínimo — orquesta SM + phases + policy + recovery + plugins.
-SOURCE: contratos v1 · 0% LLM en control flow
+"""Loop Engine — SM + phases + policy + recovery + budget + progress + risk + cache.
+SOURCE: contratos v1 · P0 wire · 0% LLM control flow
 """
 from __future__ import annotations
-from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from loops.contracts.types import (
-    DetectorResult,
-    LoopContext,
-    LoopEvent,
-    PolicyDecision,
-)
+from loops.budget_governor import BudgetGovernor, budget_from_level
+from loops.contracts.types import DetectorResult, LoopContext, LoopEvent, PolicyDecision, can_transition
 from loops.phases import PhaseRunner, PhaseResult
 from loops.plugins.base import GraphPlugin, MemoryPlugin, NoOpGraphPlugin, NoOpMemoryPlugin
 from loops.policy.engine import PolicyEngine, PolicyInput
+from loops.progress import AdaptiveIterationController, ProgressEvaluator
 from loops.recovery import RecoveryEngine, RecoveryResult
+from loops.result_cache import ResultCache, fingerprint
+from loops.risk import HumanGate, RiskEngine
 from loops.state_machine import StateMachine
+from loops.strategy_memory import StrategyMemory
 
 
 def _now() -> str:
@@ -33,6 +32,8 @@ class LoopRunResult:
     last_decision: PolicyDecision | None = None
     recovery: RecoveryResult | None = None
     closed: bool = False
+    progress_score: float | None = None
+    cache_hit: bool = False
 
 
 class LoopEngine:
@@ -43,6 +44,13 @@ class LoopEngine:
         memory: MemoryPlugin | None = None,
         graph: GraphPlugin | None = None,
         phase_handlers: dict | None = None,
+        budget_governor: BudgetGovernor | None = None,
+        strategy_memory: StrategyMemory | None = None,
+        result_cache: ResultCache | None = None,
+        risk_engine: RiskEngine | None = None,
+        human_gate: HumanGate | None = None,
+        progress_eval: ProgressEvaluator | None = None,
+        adaptive: AdaptiveIterationController | None = None,
     ):
         self.sm = StateMachine()
         self.phases = PhaseRunner(handlers=phase_handlers)
@@ -50,6 +58,15 @@ class LoopEngine:
         self.recovery = RecoveryEngine()
         self.memory = memory or NoOpMemoryPlugin()
         self.graph = graph or NoOpGraphPlugin()
+        self.budget = budget_governor or BudgetGovernor(budget_from_level("tarea"))
+        self.strategy_memory = strategy_memory or StrategyMemory()
+        self.cache = result_cache or ResultCache()
+        self.risk = risk_engine or RiskEngine()
+        self.gate = human_gate or HumanGate()
+        self.progress_eval = progress_eval or ProgressEvaluator()
+        self.adaptive = adaptive or AdaptiveIterationController(max_iter=8)
+        self._seen_idempotency: set[str] = set()
+        self._prev_progress: dict[str, float] = {}
 
     @classmethod
     def with_default_policy(cls, policy_yaml: str | Path | None = None, **kwargs: Any) -> "LoopEngine":
@@ -65,8 +82,16 @@ class LoopEngine:
         self.memory.append_event(ev)
         self.graph.on_event(ev)
 
-    def start(self, ctx: LoopContext) -> tuple[LoopContext, list[LoopEvent]]:
+    def apply_strategy_hint(self, ctx: LoopContext, task_type: str = "") -> LoopContext:
+        """StrategyMemory sugiere strategy al crear."""
+        tt = task_type or ctx.loop_id or "default"
+        ctx.strategy = self.strategy_memory.suggest_strategy(tt, default=ctx.strategy or "sequential")
+        return ctx
+
+    def start(self, ctx: LoopContext, *, task_type: str = "") -> tuple[LoopContext, list[LoopEvent]]:
         events: list[LoopEvent] = []
+        if task_type or not ctx.strategy:
+            ctx = self.apply_strategy_hint(ctx, task_type)
         if ctx.state == "CREATED":
             ctx, ev = self.sm.transition(ctx, "LOCKED", event_type="LOOP_LOCKED")
             events.append(ev)
@@ -82,30 +107,74 @@ class LoopEngine:
         *,
         detectors: list[DetectorResult] | None = None,
         goal_complete: bool = False,
-        risk_level: str = "low",
+        risk_level: str | None = None,
+        risk_actions: list[str] | None = None,
+        progress_value: Any = None,
+        progress_kind: str = "validation",
+        charge_tokens: int = 0,
+        charge_time_seg: float = 0.0,
+        task_type: str = "",
     ) -> LoopRunResult:
-        """Una iteración: phases → policy → recovery → state transition."""
         events: list[LoopEvent] = []
+
+        # idempotency
+        if ctx.idempotency_key:
+            ik = f"{ctx.run_id}:{ctx.idempotency_key}:{ctx.iteration}"
+            if ik in self._seen_idempotency:
+                return LoopRunResult(ctx=ctx, events=[], closed=False, cache_hit=True)
+            self._seen_idempotency.add(ik)
+
+        # result cache (L2 task-level)
+        fp = fingerprint(ctx.project_id, ctx.task_id, ctx.goal_id, ctx.loop_id, str(ctx.iteration))
+        cached = self.cache.get(fp)
+        if cached and isinstance(cached, dict) and cached.get("closed"):
+            return LoopRunResult(ctx=ctx, events=[], closed=True, cache_hit=True)
+
         if ctx.state == "CREATED":
-            ctx, evs = self.start(ctx)
+            ctx, evs = self.start(ctx, task_type=task_type)
             events.extend(evs)
 
         if ctx.state not in ("RUNNING", "REPAIRING"):
-            return LoopRunResult(ctx=ctx, events=events, closed=ctx.state in ("CLOSED", "FAILED", "ESCALATED", "CANCELLED"))
+            return LoopRunResult(
+                ctx=ctx,
+                events=events,
+                closed=ctx.state in ("CLOSED", "FAILED", "ESCALATED", "CANCELLED"),
+            )
 
-        # phases
+        # risk gate pre-phases
+        actions = risk_actions or ["plan", "ejecutar"]
+        assessment = self.risk.assess(actions)
+        gate = self.gate.decide(assessment)
+        effective_risk = risk_level or assessment.level
+        if gate.pause:
+            ctx, ev = self.sm.transition(ctx, "PAUSED", event_type="LOOP_PAUSED", payload={"reason": gate.reason})
+            events.append(ev)
+            self._emit(ev)
+            return LoopRunResult(ctx=ctx, events=events, closed=False)
+
+        # budget charge (iteration always counts)
+        br = self.budget.charge(
+            tokens=charge_tokens,
+            time_seg=charge_time_seg,
+            iteration=1,
+            run_id=ctx.run_id,
+        )
+        dets = list(detectors or [])
+        dets.extend(br.detectors)
+
         if ctx.state == "REPAIRING":
             ctx, ev = self.sm.transition(ctx, "RUNNING", event_type="REPAIR_COMPLETED")
             events.append(ev)
             self._emit(ev)
 
         phase_results, sheriff = self.phases.run({"run_id": ctx.run_id, "iteration": ctx.iteration})
-        ctx, ev = self.sm.transition(ctx, "VALIDATING", event_type="PHASE_COMPLETED", payload={"sheriff_ok": sheriff.ok})
+        ctx, ev = self.sm.transition(
+            ctx, "VALIDATING", event_type="PHASE_COMPLETED", payload={"sheriff_ok": sheriff.ok}
+        )
         events.append(ev)
         self._emit(ev)
 
         phase_outcome = "validation_passed" if sheriff.ok else "validation_failed"
-        dets = list(detectors or [])
         if not sheriff.ok:
             dets.append(DetectorResult(
                 detector="contract_violation",
@@ -116,6 +185,25 @@ class LoopEngine:
                 action_hint="repair",
             ))
 
+        # progress
+        prev = self._prev_progress.get(ctx.run_id)
+        pval = progress_value if progress_value is not None else sheriff.ok
+        pkind = progress_kind if progress_value is not None else "validation"
+        progress = self.progress_eval.evaluate(
+            kind=pkind, value=pval, prev_score=prev, threshold=0.1
+        )
+        self._prev_progress[ctx.run_id] = progress.progress_score
+        advice = self.adaptive.advise(progress, ctx.iteration)
+        if progress.is_stalled():
+            dets.append(DetectorResult(
+                detector="stall" if advice.suggest_action != "ESCALATE" else "no_progress",
+                severity=0.7,
+                fired_at=_now(),
+                run_id=ctx.run_id,
+                evidence=[advice.reason],
+                action_hint=advice.suggest_action.lower(),
+            ))
+
         # policy
         repair_count = int((ctx.recovery_state or {}).get("repair_count") or 0)
         decision = self.policy.evaluate(PolicyInput(
@@ -124,14 +212,29 @@ class LoopEngine:
             repair_count=repair_count,
             phase_outcome=phase_outcome,
             goal_complete=goal_complete and sheriff.ok,
-            risk_level=risk_level,
+            risk_level=str(effective_risk),
             detectors=dets,
         ))
-        ctx, ev = self.sm.transition(ctx, "DECIDING", event_type="POLICY_DECIDED", payload={"action": decision.action})
+        # adaptive override hints when policy says CONTINUE but adaptive disagrees
+        if decision.action == "CONTINUE" and advice.suggest_action in ("CLOSE", "ESCALATE", "CHANGE_STRATEGY", "REPAIR"):
+            if advice.suggest_action == "CLOSE" and goal_complete:
+                decision = PolicyDecision(
+                    action="CLOSE", run_id=ctx.run_id, reason=advice.reason, decided_at=_now()
+                )
+            elif advice.suggest_action != "CLOSE":
+                decision = PolicyDecision(
+                    action=advice.suggest_action,  # type: ignore[arg-type]
+                    run_id=ctx.run_id,
+                    reason=advice.reason,
+                    decided_at=_now(),
+                )
+
+        ctx, ev = self.sm.transition(
+            ctx, "DECIDING", event_type="POLICY_DECIDED", payload={"action": decision.action}
+        )
         events.append(ev)
         self._emit(ev)
 
-        # recovery
         rec = self.recovery.apply(ctx, decision)
         for k, v in (rec.ctx_updates or {}).items():
             if k == "recovery_state" and isinstance(v, dict):
@@ -142,7 +245,6 @@ class LoopEngine:
                 setattr(ctx, k, v)
 
         target = rec.next_state
-        # map decision events
         etype = {
             "CLOSED": "LOOP_COMPLETED",
             "ESCALATED": "LOOP_ESCALATED",
@@ -153,13 +255,8 @@ class LoopEngine:
             "RUNNING": "LOOP_CONTINUED",
         }.get(target, "DECISION_MADE")
 
-        # ensure legal transition from DECIDING
-        from loops.contracts.types import can_transition
         if not can_transition(ctx.state, target):
-            # force via known path
-            if target == "RUNNING":
-                target = "RUNNING"
-            elif target not in ("CLOSED", "ESCALATED", "FAILED", "CANCELLED", "PAUSED", "CHECKPOINT", "REPAIRING"):
+            if target not in ("CLOSED", "ESCALATED", "FAILED", "CANCELLED", "PAUSED", "CHECKPOINT", "REPAIRING", "RUNNING"):
                 target = "FAILED"
                 etype = "LOOP_FAILED"
 
@@ -171,6 +268,20 @@ class LoopEngine:
             ctx.iteration += 1
 
         closed = target in ("CLOSED", "FAILED", "ESCALATED", "CANCELLED")
+        if closed:
+            self.cache.put(fp, {"closed": True, "state": target}, level="L2", ttl_seg=7200)
+            # strategy memory record
+            from loops.strategy_memory import StrategyRecord
+            self.strategy_memory.record(StrategyRecord(
+                task_type=task_type or ctx.loop_id,
+                strategy=ctx.strategy or "sequential",
+                agent=ctx.agent_id,
+                iterations=ctx.iteration,
+                success=(target == "CLOSED"),
+                quality=progress.progress_score,
+            ))
+            self.memory.checkpoint(ctx.run_id, {"state": ctx.state, "iteration": ctx.iteration})
+
         return LoopRunResult(
             ctx=ctx,
             events=events,
@@ -178,4 +289,5 @@ class LoopEngine:
             last_decision=decision,
             recovery=rec,
             closed=closed,
+            progress_score=progress.progress_score,
         )
