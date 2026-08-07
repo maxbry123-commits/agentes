@@ -1,53 +1,52 @@
-# RECETA PARA EL AGENTE — Cómo construir los 8 documentos UOOS
-# SOURCE: UOOS Parte 1 · schema project_docs.yaml · plantillas B1–B8
-# El Wordflow entrega esta receta al agente. El agente NO inventa estructura.
+# RECETA_AGENTE — Contrato universal (D10)
+# SOURCE: cualquier agente compatible · no receta de un agente concreto
+# El Wordflow entrega ExecutionContext; el agente ejecuta y devuelve evidencia.
 
-## Orden obligatorio
-1. B1 PROJECT_MANIFEST.md
-2. B2 state.json
-3. B3 nodes/*.yaml   (uno por tarea)
-4. B4 dag/DAG-*.yaml
-5. B5 loops/L01.yaml … L11.yaml
-6. B6 council/tribunal_6.yaml
-7. B7 plan/PLAN_*.md
-8. B8 recovery/RECOVERY.yaml
-9. config/token_ref.yaml · repo_destino.yaml · backup_destino.yaml
+## Contrato (8 pasos obligatorios)
 
-## Reglas
-- Copia la plantilla de `templates/uoos/` correspondiente.
-- Solo rellena campos. No agregues secciones nuevas.
-- Campos vacíos obligatorios = rechazo por Sheriff.
-- `criterio_exito` y `rollback` deben ser verificables por máquina (comando o procedure_id).
-- Nunca pongas el valor del token. Solo la referencia en `config/token_ref.yaml`.
-- Sin source OS materializado → no escribas código desde 0 (usa install/ del Wordflow).
+1. **Recibir ExecutionContext**  
+   tenant_id · project_id · agent_id · agent_version · workflow_id · task_id · session_id · memory scopes
 
-## config/ del proyecto (variables por trabajo)
-```yaml
-# config/token_ref.yaml
-token_env: GITHUB_TOKEN          # nombre de la variable de entorno
-# nunca: token: ghp_xxxxx
+2. **Verificar identidad**  
+   agent_id del contexto == el declarado en nodes/*.yaml registrado
 
-# config/repo_destino.yaml
-owner: maxbry123-commits
-repo: agentes
-branch: main
-path_prefix: ""                  # subcarpeta opcional
+3. **Leer instrucciones del workflow**  
+   DAG / recipe del workflow_id (QUÉ FLUJO), no improvisar
 
-# config/backup_destino.yaml
-memory_path: memory/backup/
-gdrive_folder: ""                # opcional, vacío = no Drive
-```
+4. **Consultar memoria autorizada**  
+   Solo private_scope y project_scope del contexto. Nunca namespace ajeno.
 
-## Checklist antes de entregar al Wordflow
-- [ ] Los 8 docs existen en las rutas del schema
-- [ ] state.json tiene todos los nodos de B3 en pending
-- [ ] DAG sin ciclos y todos los ids existen en nodes/
-- [ ] Cada nodo tiene rollback + criterio_exito verificable
-- [ ] config/ no contiene secretos en claro
-- [ ] PROJECT_MANIFEST declara what_it_is_not y limits.hard
+5. **Ejecutar tarea**  
+   Dentro de permisos/tools del agent YAML y sandbox declarado
 
-## Qué hace el Wordflow después
-1. Valida con `schemas/project_docs.yaml`
-2. Ejecuta según DAG + loops + tribunal
-3. Si hay code/ → install determinista (si aplica) → despliegue leyendo config/
-4. Genera evidence.json
+6. **Validar resultado**  
+   criterio_exito verificable por máquina
+
+7. **Registrar experiencia**  
+   evidencia + delta (L11); no definir agentes en state.json
+
+8. **Entregar resultado al Control Layer**  
+   stdout/stderr/exit_code/artifacts + evidence_output del Adapter
+
+## Separación
+
+| Pieza | Significa |
+|-------|-----------|
+| NODE (nodes/*.yaml) | QUIÉN |
+| DAG | QUÉ FLUJO |
+| LOOP | CÓMO REPETIR |
+| MEMORY | QUÉ RECORDAR (scopes del contexto) |
+| SHERIFF | QUÉ ESTÁ PERMITIDO |
+
+## Prohibido
+- Inventar agent_id no descubierto/registrado
+- Acceder memoria de otro project/agent
+- Escribir secretos en repo
+- Saltar DAG o Sheriff
+- Código from-scratch si existe source
+
+## Checklist
+- [ ] ExecutionContext presente y completo
+- [ ] capabilities cubren required_capabilities del paso DAG
+- [ ] evidence con campos L11
+- [ ] memory solo scopes autorizados
