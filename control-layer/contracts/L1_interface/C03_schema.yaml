@@ -1,0 +1,17 @@
+# C03 — Schema Contract
+# SOURCE: SALIDA_4 Parte 1 · Grupo A
+
+contract:
+  id: C03
+  version: "1.0.0"
+  layer: L1_interface
+  name: Schema Contract
+
+defines:
+  - forma exacta de los datos, campo por campo, con tipos
+
+use_in:
+  - todo I/O
+
+severity: high
+failure: reject
