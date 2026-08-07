@@ -1,0 +1,22 @@
+# Descarga determinista TencentDB-Agent-Memory
+# NO es fork: vendor externo + adapter nuestro
+
+name: TencentDB-Agent-Memory
+org: TencentCloud
+repo_url: https://github.com/TencentCloud/TencentDB-Agent-Memory.git
+alt_url: https://github.com/Tencent/TencentDB-Agent-Memory.git
+tag: v2.0.0
+commit_sha: 0aff21a2d9f2b8a0354aaa80a2e586aab4054562
+cloned_at: "2026-08-07"
+license: MIT
+
+# Dónde vive el source tras download_deterministic.sh
+local_path: sources/tencent/TencentDB-Agent-Memory
+
+# Uso en Wordflow
+role: external_memory_engine
+modified: false
+notes:
+  - Nunca editar archivos dentro de local_path
+  - Solo providers/tencent/adapter.py habla con el motor
+  - API HTTP /v2 y /health /recall /capture (ver README.docker.md)
