@@ -1,0 +1,33 @@
+# 10 Goals de entrada · obligatorios antes de ejecutar
+version: "1.0.0"
+goals_in:
+  - id: G01_objetivo
+    required: true
+    desc: Objetivo principal medible
+  - id: G02_alcance
+    required: true
+    desc: Dentro / fuera de alcance
+  - id: G03_restricciones
+    required: true
+    desc: Restricciones técnicas y de negocio
+  - id: G04_arquitectura
+    required: false
+    desc: Decisiones de arquitectura si aplica
+  - id: G05_recursos
+    required: true
+    desc: Tiempo, tokens, agentes, presupuesto
+  - id: G06_memoria
+    required: false
+    desc: Contexto de memoria / project_id necesario
+  - id: G07_codigo_fuente
+    required: false
+    desc: Source mirror / repos de referencia
+  - id: G08_skills
+    required: false
+    desc: Skills obligatorias
+  - id: G09_criterio_done
+    required: true
+    desc: Criterios de finalización verificables
+  - id: G10_no_hacer
+    required: true
+    desc: Prohibiciones explícitas
