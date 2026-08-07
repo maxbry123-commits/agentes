@@ -1,0 +1,33 @@
+{
+  "protocol": "TEAM-SEALS-ACQUIRE-v2",
+  "goal": "DOWNLOAD_CONSERVE_PIN_VERIFY_REPRODUCE",
+  "generated_at": "2026-08-07T21:41:00+00:00",
+  "agent": "OpenClaw-headless",
+  "search_performed": [
+    {"where": "github_repo_name", "query": "openclaw-headless in:name", "result": "only 0xGval/openclaw-headless-setup (setup scripts, not agent product)"},
+    {"where": "web", "query": "openclaw-headless release binary package", "result": "headless = install mode of openclaw/openclaw, not separate package"},
+    {"where": "npm", "query": "openclaw-headless", "result": "no package"},
+    {"where": "official_docs", "result": "install.sh supports headless/CI flags on same openclaw distribution"}
+  ],
+  "identity": {
+    "repository": null,
+    "ref": null,
+    "commit": null,
+    "note": "No independent product. Headless mode uses same source+distribution as agents/OpenClaw (A2)."
+  },
+  "source": {
+    "available": false,
+    "reason": "No separate upstream repository for OpenClaw-headless as an agent product",
+    "alias_of": "agents/OpenClaw"
+  },
+  "distribution": {
+    "official": [],
+    "rebuilt": [],
+    "note": "Official distribution for headless runtime is the same npm package openclaw captured in A2"
+  },
+  "layers": {
+    "source": "NOT_FOUND_AFTER_SEARCH_AS_SEPARATE_AGENT",
+    "distribution": "NOT_FOUND_AFTER_SEARCH_AS_SEPARATE_AGENT"
+  },
+  "decision": "Do not invent artifacts. Use A2 OpenClaw snapshot for headless deployment."
+}
