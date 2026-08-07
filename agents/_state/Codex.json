@@ -1,27 +1,22 @@
 {
   "agent": "Codex",
   "task": "A5",
-  "status": "NEED_COMMIT",
+  "status": "QUEUED",
   "protocol": "TEAM-SEALS-ACQUIRE-v2.1",
   "identity": {
     "repository": "https://github.com/openai/codex",
     "ref": "rust-v0.147.0",
     "commit": "be6e8eac029b183056b7e4402879f15d2c85f61b"
   },
-  "workflow": "a5-codex.yml",
-  "run_id": 31222211773,
+  "workflow": "a5-codex-finalize.yml",
+  "run_id": null,
   "release_tag": "agent-Codex-rust-v0.147.0",
   "layers": {
-    "source": "CAPTURED_ON_RUNNER_NOT_IN_GIT",
-    "distribution_git": "FAILED_PUSH",
-    "distribution_release": "LIKELY_OK",
-    "finalize": "FAILED"
+    "source": "PENDING_FINALIZE",
+    "distribution_git": "META_ONLY_PENDING",
+    "distribution_release": "CAPTURED",
+    "finalize": "QUEUED"
   },
-  "job_steps": {
-    "acquire": "success",
-    "release-staging": "success",
-    "commit": "failure"
-  },
-  "updated_at": "2026-08-07T22:47:30Z",
-  "notes": "Next: finalize workflow — re-acquire source only + metadata pins; skip re-upload if release exists; commit without large trees"
+  "updated_at": "2026-08-07T22:48:00Z",
+  "notes": "Release agent-Codex-rust-v0.147.0 exists. Finalize job queued. RESUME: 1x list runs a5-codex-finalize.yml"
 }
