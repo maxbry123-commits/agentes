@@ -5,11 +5,37 @@ from __future__ import annotations
 from typing import Any
 from .normalizer import normalize
 from .fingerprint import build_fingerprint
-from .rules import select_contracts
 from .graph import expand
 from .reverse import reverse_ok
 from .compiler import compile_plan, ContractPlan
-from sheriff.states import decide, SheriffDecision
+
+try:
+    from sheriff.states import decide
+except ImportError:  # ejecución desde control-layer/
+    from control_layer_sheriff_fallback import decide  # type: ignore
+    # fallback inline
+    def decide(**kwargs):  # type: ignore
+        from dataclasses import dataclass
+        from enum import Enum
+
+        class S(str, Enum):
+            GREEN, YELLOW, ORANGE, RED, BLACK = "GREEN", "YELLOW", "ORANGE", "RED", "BLACK"
+
+        @dataclass(frozen=True)
+        class D:
+            state: S
+            allowed: bool
+            reason: str
+
+        if kwargs.get("permanent_block"):
+            return D(S.BLACK, False, "bloqueado permanente")
+        if kwargs.get("threat_level") == "quarantine" or not kwargs.get("contracts_ok", True) or not kwargs.get("enchufe_ok", True):
+            return D(S.RED, False, "quarantine o contrato/enchufe fallido")
+        if not kwargs.get("evidence_ok", True):
+            return D(S.ORANGE, False, "shadow: falta evidencia")
+        if kwargs.get("threat_level") == "sheriff_check":
+            return D(S.YELLOW, True, "aprobado con revisión")
+        return D(S.GREEN, True, "aprobado")
 
 
 def run_engine(
@@ -48,5 +74,9 @@ def run_engine(
             "allowed": plan.allowed and ok_rev and sheriff.allowed,
         },
         "reverse": {"ok": ok_rev, "msg": rev_msg},
-        "sheriff": {"state": sheriff.state.value, "allowed": sheriff.allowed, "reason": sheriff.reason},
+        "sheriff": {
+            "state": getattr(sheriff.state, "value", str(sheriff.state)),
+            "allowed": sheriff.allowed,
+            "reason": sheriff.reason,
+        },
     }
