@@ -1,5 +1,5 @@
-"""Loop Engine — SM + phases + policy + recovery + budget + progress + risk + cache.
-SOURCE: contratos v1 · P0 wire · 0% LLM control flow
+"""Loop Engine — SM + phases + policy + recovery + budget + progress + risk + native detectors.
+SOURCE: contratos v1 · P0+P1 wire · 0% LLM control flow
 """
 from __future__ import annotations
 from dataclasses import dataclass, field
@@ -9,6 +9,8 @@ from typing import Any
 
 from loops.budget_governor import BudgetGovernor, budget_from_level
 from loops.contracts.types import DetectorResult, LoopContext, LoopEvent, PolicyDecision, can_transition
+from loops.detectors import NativeDetectors
+from loops.event_chain import verify_chain
 from loops.phases import PhaseRunner, PhaseResult
 from loops.plugins.base import GraphPlugin, MemoryPlugin, NoOpGraphPlugin, NoOpMemoryPlugin
 from loops.policy.engine import PolicyEngine, PolicyInput
@@ -17,7 +19,7 @@ from loops.recovery import RecoveryEngine, RecoveryResult
 from loops.result_cache import ResultCache, fingerprint
 from loops.risk import HumanGate, RiskEngine
 from loops.state_machine import StateMachine
-from loops.strategy_memory import StrategyMemory
+from loops.strategy_memory import StrategyMemory, StrategyRecord
 
 
 def _now() -> str:
@@ -34,6 +36,7 @@ class LoopRunResult:
     closed: bool = False
     progress_score: float | None = None
     cache_hit: bool = False
+    chain_ok: bool | None = None
 
 
 class LoopEngine:
@@ -51,6 +54,7 @@ class LoopEngine:
         human_gate: HumanGate | None = None,
         progress_eval: ProgressEvaluator | None = None,
         adaptive: AdaptiveIterationController | None = None,
+        native_detectors: NativeDetectors | None = None,
     ):
         self.sm = StateMachine()
         self.phases = PhaseRunner(handlers=phase_handlers)
@@ -65,8 +69,10 @@ class LoopEngine:
         self.gate = human_gate or HumanGate()
         self.progress_eval = progress_eval or ProgressEvaluator()
         self.adaptive = adaptive or AdaptiveIterationController(max_iter=8)
+        self.native = native_detectors or NativeDetectors()
         self._seen_idempotency: set[str] = set()
         self._prev_progress: dict[str, float] = {}
+        self._event_log: dict[str, list[LoopEvent]] = {}
 
     @classmethod
     def with_default_policy(cls, policy_yaml: str | Path | None = None, **kwargs: Any) -> "LoopEngine":
@@ -81,9 +87,12 @@ class LoopEngine:
     def _emit(self, ev: LoopEvent) -> None:
         self.memory.append_event(ev)
         self.graph.on_event(ev)
+        self._event_log.setdefault(ev.run_id, []).append(ev)
+
+    def verify_events(self, run_id: str) -> tuple[bool, str]:
+        return verify_chain(self._event_log.get(run_id, []))
 
     def apply_strategy_hint(self, ctx: LoopContext, task_type: str = "") -> LoopContext:
-        """StrategyMemory sugiere strategy al crear."""
         tt = task_type or ctx.loop_id or "default"
         ctx.strategy = self.strategy_memory.suggest_strategy(tt, default=ctx.strategy or "sequential")
         return ctx
@@ -117,14 +126,12 @@ class LoopEngine:
     ) -> LoopRunResult:
         events: list[LoopEvent] = []
 
-        # idempotency
         if ctx.idempotency_key:
             ik = f"{ctx.run_id}:{ctx.idempotency_key}:{ctx.iteration}"
             if ik in self._seen_idempotency:
                 return LoopRunResult(ctx=ctx, events=[], closed=False, cache_hit=True)
             self._seen_idempotency.add(ik)
 
-        # result cache (L2 task-level)
         fp = fingerprint(ctx.project_id, ctx.task_id, ctx.goal_id, ctx.loop_id, str(ctx.iteration))
         cached = self.cache.get(fp)
         if cached and isinstance(cached, dict) and cached.get("closed"):
@@ -141,7 +148,6 @@ class LoopEngine:
                 closed=ctx.state in ("CLOSED", "FAILED", "ESCALATED", "CANCELLED"),
             )
 
-        # risk gate pre-phases
         actions = risk_actions or ["plan", "ejecutar"]
         assessment = self.risk.assess(actions)
         gate = self.gate.decide(assessment)
@@ -152,12 +158,8 @@ class LoopEngine:
             self._emit(ev)
             return LoopRunResult(ctx=ctx, events=events, closed=False)
 
-        # budget charge (iteration always counts)
         br = self.budget.charge(
-            tokens=charge_tokens,
-            time_seg=charge_time_seg,
-            iteration=1,
-            run_id=ctx.run_id,
+            tokens=charge_tokens, time_seg=charge_time_seg, iteration=1, run_id=ctx.run_id
         )
         dets = list(detectors or [])
         dets.extend(br.detectors)
@@ -177,56 +179,40 @@ class LoopEngine:
         phase_outcome = "validation_passed" if sheriff.ok else "validation_failed"
         if not sheriff.ok:
             dets.append(DetectorResult(
-                detector="contract_violation",
-                severity=0.95,
-                fired_at=_now(),
-                run_id=ctx.run_id,
-                evidence=[sheriff.reason],
-                action_hint="repair",
+                detector="contract_violation", severity=0.95, fired_at=_now(),
+                run_id=ctx.run_id, evidence=[sheriff.reason], action_hint="repair",
             ))
 
-        # progress
         prev = self._prev_progress.get(ctx.run_id)
         pval = progress_value if progress_value is not None else sheriff.ok
         pkind = progress_kind if progress_value is not None else "validation"
-        progress = self.progress_eval.evaluate(
-            kind=pkind, value=pval, prev_score=prev, threshold=0.1
-        )
+        progress = self.progress_eval.evaluate(kind=pkind, value=pval, prev_score=prev, threshold=0.1)
         self._prev_progress[ctx.run_id] = progress.progress_score
         advice = self.adaptive.advise(progress, ctx.iteration)
-        if progress.is_stalled():
+
+        # P1 native detectors from score history
+        dets.extend(self.native.observe(ctx.run_id, progress.progress_score))
+
+        if progress.is_stalled() and not any(d.detector == "stall" for d in dets):
             dets.append(DetectorResult(
                 detector="stall" if advice.suggest_action != "ESCALATE" else "no_progress",
-                severity=0.7,
-                fired_at=_now(),
-                run_id=ctx.run_id,
-                evidence=[advice.reason],
-                action_hint=advice.suggest_action.lower(),
+                severity=0.7, fired_at=_now(), run_id=ctx.run_id,
+                evidence=[advice.reason], action_hint=advice.suggest_action.lower(),
             ))
 
-        # policy
         repair_count = int((ctx.recovery_state or {}).get("repair_count") or 0)
         decision = self.policy.evaluate(PolicyInput(
-            run_id=ctx.run_id,
-            iteration=ctx.iteration,
-            repair_count=repair_count,
-            phase_outcome=phase_outcome,
-            goal_complete=goal_complete and sheriff.ok,
-            risk_level=str(effective_risk),
-            detectors=dets,
+            run_id=ctx.run_id, iteration=ctx.iteration, repair_count=repair_count,
+            phase_outcome=phase_outcome, goal_complete=goal_complete and sheriff.ok,
+            risk_level=str(effective_risk), detectors=dets,
         ))
-        # adaptive override hints when policy says CONTINUE but adaptive disagrees
         if decision.action == "CONTINUE" and advice.suggest_action in ("CLOSE", "ESCALATE", "CHANGE_STRATEGY", "REPAIR"):
             if advice.suggest_action == "CLOSE" and goal_complete:
-                decision = PolicyDecision(
-                    action="CLOSE", run_id=ctx.run_id, reason=advice.reason, decided_at=_now()
-                )
+                decision = PolicyDecision(action="CLOSE", run_id=ctx.run_id, reason=advice.reason, decided_at=_now())
             elif advice.suggest_action != "CLOSE":
                 decision = PolicyDecision(
                     action=advice.suggest_action,  # type: ignore[arg-type]
-                    run_id=ctx.run_id,
-                    reason=advice.reason,
-                    decided_at=_now(),
+                    run_id=ctx.run_id, reason=advice.reason, decided_at=_now(),
                 )
 
         ctx, ev = self.sm.transition(
@@ -246,19 +232,14 @@ class LoopEngine:
 
         target = rec.next_state
         etype = {
-            "CLOSED": "LOOP_COMPLETED",
-            "ESCALATED": "LOOP_ESCALATED",
-            "FAILED": "LOOP_FAILED",
-            "PAUSED": "LOOP_PAUSED",
-            "CHECKPOINT": "CHECKPOINT_CREATED",
-            "REPAIRING": "REPAIR_STARTED",
-            "RUNNING": "LOOP_CONTINUED",
+            "CLOSED": "LOOP_COMPLETED", "ESCALATED": "LOOP_ESCALATED", "FAILED": "LOOP_FAILED",
+            "PAUSED": "LOOP_PAUSED", "CHECKPOINT": "CHECKPOINT_CREATED",
+            "REPAIRING": "REPAIR_STARTED", "RUNNING": "LOOP_CONTINUED",
         }.get(target, "DECISION_MADE")
 
         if not can_transition(ctx.state, target):
             if target not in ("CLOSED", "ESCALATED", "FAILED", "CANCELLED", "PAUSED", "CHECKPOINT", "REPAIRING", "RUNNING"):
-                target = "FAILED"
-                etype = "LOOP_FAILED"
+                target, etype = "FAILED", "LOOP_FAILED"
 
         ctx, ev = self.sm.transition(ctx, target, event_type=etype, payload={"action": rec.action_applied})
         events.append(ev)
@@ -270,8 +251,6 @@ class LoopEngine:
         closed = target in ("CLOSED", "FAILED", "ESCALATED", "CANCELLED")
         if closed:
             self.cache.put(fp, {"closed": True, "state": target}, level="L2", ttl_seg=7200)
-            # strategy memory record
-            from loops.strategy_memory import StrategyRecord
             self.strategy_memory.record(StrategyRecord(
                 task_type=task_type or ctx.loop_id,
                 strategy=ctx.strategy or "sequential",
@@ -281,13 +260,11 @@ class LoopEngine:
                 quality=progress.progress_score,
             ))
             self.memory.checkpoint(ctx.run_id, {"state": ctx.state, "iteration": ctx.iteration})
+            self.native.reset(ctx.run_id)
 
+        chain_ok, _ = self.verify_events(ctx.run_id)
         return LoopRunResult(
-            ctx=ctx,
-            events=events,
-            phase_results=phase_results,
-            last_decision=decision,
-            recovery=rec,
-            closed=closed,
-            progress_score=progress.progress_score,
+            ctx=ctx, events=events, phase_results=phase_results,
+            last_decision=decision, recovery=rec, closed=closed,
+            progress_score=progress.progress_score, chain_ok=chain_ok,
         )
