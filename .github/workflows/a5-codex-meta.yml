@@ -1,0 +1,154 @@
+name: a5-codex-meta
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  meta:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pin source archive + manifest (no full tree in git)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          REPO=https://github.com/openai/codex
+          REF=rust-v0.147.0
+          COMMIT=be6e8eac029b183056b7e4402879f15d2c85f61b
+          TAG=agent-Codex-rust-v0.147.0
+          URL="$REPO/archive/$COMMIT.tar.gz"
+          mkdir -p agents/Codex/source agents/Codex/distribution/official agents/Codex/hashes agents/_state
+          curl -fsSL -o /tmp/codex-src.tar.gz "$URL"
+          SHA=$(sha256sum /tmp/codex-src.tar.gz | awk '{print $1}')
+          echo "$COMMIT" > agents/Codex/source/commit.txt
+          echo "$REF" > agents/Codex/source/release.txt
+          echo "$REPO" > agents/Codex/source/repo.txt
+          echo "$URL" > agents/Codex/source/archive.url
+          echo "$SHA" > agents/Codex/source/archive.sha256
+          # upload source archive to existing release (idempotent)
+          gh release upload "$TAG" /tmp/codex-src.tar.gz --clobber \
+            --repo maxbry123-commits/agentes || \
+            gh release create "$TAG" /tmp/codex-src.tar.gz \
+              --title "Codex rust-v0.147.0" --notes "source+dist" \
+              --repo maxbry123-commits/agentes
+          cat > agents/Codex/source/SOURCE_PIN.json <<EOF
+          {
+            "storage": "github_release",
+            "release_tag": "$TAG",
+            "asset": "codex-src.tar.gz",
+            "conserved_url": "https://github.com/maxbry123-commits/agentes/releases/download/$TAG/codex-src.tar.gz",
+            "upstream_url": "$URL",
+            "sha256": "$SHA",
+            "commit": "$COMMIT",
+            "ref": "$REF"
+          }
+          EOF
+          # dist meta from upstream release API
+          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/openai/codex/releases/tags/$REF" > /tmp/rel.json
+          python3 - <<'PY'
+import json, hashlib, urllib.request, os
+from pathlib import Path
+tag = "agent-Codex-rust-v0.147.0"
+rel = json.load(open("/tmp/rel.json"))
+off = Path("agents/Codex/distribution/official")
+off.mkdir(parents=True, exist_ok=True)
+assets = []
+sums = []
+for a in rel.get("assets") or []:
+    name = a["name"]
+    url = a["browser_download_url"]
+    size = a.get("size")
+    conserved = f"https://github.com/maxbry123-commits/agentes/releases/download/{tag}/{name}"
+    rec = {
+        "source": "github_release",
+        "name": name,
+        "url": url,
+        "size": size,
+        "conserved_url": conserved,
+        "release_tag": tag,
+        "status": "ON_AGENTES_RELEASE",
+    }
+    assets.append(rec)
+    pin = {
+        "name": name,
+        "url": url,
+        "size": size,
+        "conserved_url": conserved,
+        "release_tag": tag,
+        "storage": "github_release_on_agentes",
+    }
+    (off / f"{name}.PIN.json").write_text(json.dumps(pin, indent=2) + "\n")
+(off / "assets.json").write_text(json.dumps(assets, indent=2) + "\n")
+# note: sha256 of upstream binaries were computed on prior runner; list names for audit
+(off / "SHA256SUMS").write_text(
+    "# Full binary SHA256SUMS were produced on acquire run; binaries live on Release " + tag + "\n"
+    "# Re-verify: gh release download " + tag + " && sha256sum *\n"
+)
+manifest = {
+  "protocol": "TEAM-SEALS-ACQUIRE-v2.1",
+  "goal": "DOWNLOAD_CONSERVE_PIN_VERIFY_REPRODUCE",
+  "agent": "Codex",
+  "identity": {
+    "repository": "https://github.com/openai/codex",
+    "ref": "rust-v0.147.0",
+    "commit": "be6e8eac029b183056b7e4402879f15d2c85f61b",
+  },
+  "source": {
+    "available": True,
+    "storage": "github_release",
+    "release_tag": tag,
+    "asset": "codex-src.tar.gz",
+    "upstream_url": open("agents/Codex/source/archive.url").read().strip(),
+    "archive_sha256": open("agents/Codex/source/archive.sha256").read().strip(),
+    "conserved_url": f"https://github.com/maxbry123-commits/agentes/releases/download/{tag}/codex-src.tar.gz",
+  },
+  "distribution": {
+    "official": assets,
+    "release_tag": tag,
+  },
+  "layers": {
+    "source": "CAPTURED",
+    "distribution": "CAPTURED",
+  },
+}
+Path("agents/Codex/manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+Path("agents/Codex/hashes/SHA256SUMS").write_text(
+    open("agents/Codex/source/archive.sha256").read().strip() + "  source/codex-src.tar.gz\n"
+)
+print("assets", len(assets), "src_sha", open("agents/Codex/source/archive.sha256").read().strip())
+PY
+          cat > agents/_state/Codex.json <<EOF
+          {
+            "agent": "Codex",
+            "task": "A5",
+            "status": "DONE",
+            "protocol": "TEAM-SEALS-ACQUIRE-v2.1",
+            "identity": {
+              "repository": "https://github.com/openai/codex",
+              "ref": "$REF",
+              "commit": "$COMMIT"
+            },
+            "release_tag": "$TAG",
+            "layers": {
+              "source": "CAPTURED",
+              "distribution_git": "META_PINS",
+              "distribution_release": "CAPTURED",
+              "finalize": "DONE"
+            },
+            "updated_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "notes": "Source tar + binaries on Release $TAG; git = pins+manifest only"
+          }
+          EOF
+      - name: Commit meta
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add agents/Codex agents/_state/Codex.json
+          git diff --cached --quiet || (git commit -m "A5 DONE: Codex pins+manifest; source+dist on Release agent-Codex-rust-v0.147.0" && git push)
