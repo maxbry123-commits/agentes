@@ -1,0 +1,21 @@
+# Council 12 — pre-ejecución (SOURCE: SALIDA_1_CAPA_CONTROL_PARTE_3 §34)
+# Solo perspectivas. No agentes.
+
+roles:
+  - architect
+  - sheriff
+  - judge
+  - planner
+  - dagu
+  - openclaw
+  - security
+  - resource
+  - tester
+  - recovery
+  - auditor
+  - release
+
+# Cada rol produce: entrada · refutación · salida
+# Pipeline de aprobación:
+# Goal Analysis → Capability → Risk → Security → Compatibility →
+# Performance → DSL Review → Execution Review → Verification → Approval
