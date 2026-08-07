@@ -1,0 +1,40 @@
+# Output Contract · respuestas de chat con el agente
+# 20 componentes · schema declarativo · CHEF B (2 deterministas + 1 LLM si huecos)
+version: "1.0.0"
+
+required:
+  - mission_id
+  - status
+  - summary
+  - evidence_hash
+
+components:
+  mission_id: { type: string, desc: "id inmutable de mission" }
+  status: { type: enum, values: [RUNNING, COMPLETED, FAILED, BLOCKED, WAITING_SIGNAL] }
+  summary: { type: string, max_chars: 500, desc: "resumen factual no marketing" }
+  goal_restated: { type: string, desc: "goal tal cual, sin reinterpretar" }
+  steps_done: { type: array, items: string }
+  steps_pending: { type: array, items: string }
+  artifacts: { type: array, items: { path: string, kind: string } }
+  contracts_active: { type: array, items: string }
+  sheriff_state: { type: enum, values: [GREEN, YELLOW, ORANGE, RED, BLACK] }
+  risk_score: { type: integer, min: 0, max: 10 }
+  evidence_hash: { type: string }
+  set_hash: { type: string }
+  errors: { type: array, items: string }
+  warnings: { type: array, items: string }
+  next_action: { type: string }
+  blocked_reason: { type: string, optional: true }
+  signals_pending: { type: integer }
+  mode: { type: enum, values: [wordflow, extension, dual] }
+  chef_pass: { type: enum, values: [collect, detect, fill] }
+  raw_refs: { type: array, items: string, desc: "ids de InputBlock / checkpoint" }
+
+chef_b:
+  pass_1_collect: deterministic  # reunir artefactos y hechos
+  pass_2_detect: deterministic   # huecos / duplicados
+  pass_3_fill: llm_only_if_gaps  # una llamada solo si pass_2 encontró huecos
+  prohibido:
+    - resumir eliminando facts
+    - inventar steps_done
+    - omitir errors
