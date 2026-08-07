@@ -1,0 +1,23 @@
+# Índice de los 85 contratos — estructura de capas
+# SOURCE: SALIDA_4 · CAPA DE CONTROL 5
+# 85 declaraciones YAML + 1 motor. Completar archivos por demanda.
+
+layers:
+  C00: contracts/C00_governance.yaml
+  L1_interface: C01-C08
+  L2_architecture: C09-C22
+  L3_runtime: C23-C32
+  L4_failure: C33-C41
+  L5_guarantee: C42-C50
+  L6_evolution: C51-C55
+  L7_extended: C56-C81
+  L8_abi: C82-C85
+
+implemented_seed:
+  - C00
+  - C03
+  - L11_EVIDENCE
+
+note: |
+  Agregar un contrato = 1 YAML en su capa + 1 regla en routing si aplica.
+  No 85 módulos de lógica.
