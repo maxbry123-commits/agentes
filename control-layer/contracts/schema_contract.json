@@ -1,0 +1,83 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "maxbry://contracts/schema_contract/v1.0",
+  "title": "Wordflow Contract Declaration",
+  "description": "Schema único para C00-C85. Solo declaración YAML/JSON. 0% lógica ejecutable en el contrato.",
+  "type": "object",
+  "required": ["id", "capa", "define", "aplica_en", "severity", "priority", "implementado"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^C([0-9]{2}|00)$",
+      "description": "Identificador C00-C85"
+    },
+    "capa": {
+      "type": "string",
+      "enum": ["C00", "L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8"],
+      "description": "Capa de gobernanza"
+    },
+    "define": {
+      "type": "string",
+      "minLength": 8,
+      "description": "Qué gobierna este contrato (literal)"
+    },
+    "aplica_en": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "Tipos de operación o contextos donde aplica"
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["alta", "media", "baja"],
+      "description": "Gravedad de violación"
+    },
+    "priority": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Orden de evaluación (mayor = antes)"
+    },
+    "implementado": {
+      "type": "boolean",
+      "description": "true si hay módulo real; false si excluido o pendiente"
+    },
+    "impl_ref": {
+      "type": ["string", "null"],
+      "description": "Ruta al módulo existente (no reimplementar)"
+    },
+    "excluido_razon": {
+      "type": ["string", "null"],
+      "description": "Si implementado=false, por qué"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "default": "1.0.0"
+    },
+    "mutation": {
+      "type": "object",
+      "description": "Solo C00 define mutation.allowed / forbidden",
+      "properties": {
+        "allowed": { "type": "array", "items": { "type": "string" } },
+        "forbidden": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "authority": {
+      "type": "object",
+      "properties": {
+        "who_can_create": { "type": "string" },
+        "who_can_modify": { "type": "string" },
+        "who_can_approve": { "type": "string" }
+      }
+    },
+    "signature": {
+      "type": "object",
+      "properties": {
+        "required": { "type": "boolean" },
+        "algorithm": { "type": "string", "enum": ["gpg", "none"] }
+      }
+    }
+  }
+}

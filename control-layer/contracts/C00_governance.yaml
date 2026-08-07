@@ -1,0 +1,55 @@
+# C00 · Contrato que gobierna a los contratos
+# Núcleo dual: Wordflow (trabajo) + Extensión kernel (plugin OpenClaw/TEAM)
+# 0% LLM · Solo declaración · Firma requerida para activar el motor
+
+id: C00
+capa: C00
+version: "1.0.0"
+define: >
+  Gobierna creación, modificación y aprobación de todos los contratos C01-C85.
+  Sin C00 válido y firmado el contract_engine NO arranca.
+implementado: true
+impl_ref: control-layer/contract_engine/
+severity: alta
+priority: 100
+aplica_en:
+  - CONTRACT_MUTATION
+  - ENGINE_BOOT
+  - EXTENSION_MOUNT
+  - WORDFLOW_BOOT
+
+authority:
+  who_can_create: director
+  who_can_modify: director
+  who_can_approve: director
+
+signature:
+  required: true
+  algorithm: gpg
+
+mutation:
+  allowed:
+    - add_new_contract
+    - add_optional_field
+  forbidden:
+    - remove_contract
+    - weaken_security_check
+    - modify_C00
+    - bypass_sheriff
+    - disable_evidence
+
+# Dualidad Wordflow / Extensión kernel
+mount_modes:
+  wordflow:
+    entrypoint: control-layer/wordflow/entrypoint.py
+    description: Runtime de trabajo (code y cualquier tarea)
+  extension_kernel:
+    entrypoint: control-layer/extension/plugin_adapter.py
+    abi: control-layer/extension/abi.py
+    description: Plugin montable en OpenClaw podado / TEAM / cualquier host
+
+rules:
+  - El LLM nunca selecciona ni modifica contratos
+  - Complejidad en YAML; motor ~un solo package Python
+  - Núcleo sin imports de vendor OpenClaw
+  - Misma lib, dos entrypoints, un evidence_hash
