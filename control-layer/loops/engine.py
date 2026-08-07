@@ -1,5 +1,4 @@
-"""Loop Engine — SM + phases + policy + recovery + budget + progress + risk + native detectors.
-SOURCE: contratos v1 · P0+P1 wire · 0% LLM control flow
+"""Loop Engine — + progress from phase outputs (E) · 0% LLM control flow
 """
 from __future__ import annotations
 from dataclasses import dataclass, field
@@ -15,6 +14,7 @@ from loops.phases import PhaseRunner, PhaseResult
 from loops.plugins.base import GraphPlugin, MemoryPlugin, NoOpGraphPlugin, NoOpMemoryPlugin
 from loops.policy.engine import PolicyEngine, PolicyInput
 from loops.progress import AdaptiveIterationController, ProgressEvaluator
+from loops.progress_from_phases import progress_from_phases
 from loops.recovery import RecoveryEngine, RecoveryResult
 from loops.result_cache import ResultCache, fingerprint
 from loops.risk import HumanGate, RiskEngine
@@ -123,6 +123,7 @@ class LoopEngine:
         charge_tokens: int = 0,
         charge_time_seg: float = 0.0,
         task_type: str = "",
+        phase_context: dict[str, Any] | None = None,
     ) -> LoopRunResult:
         events: list[LoopEvent] = []
 
@@ -143,8 +144,7 @@ class LoopEngine:
 
         if ctx.state not in ("RUNNING", "REPAIRING"):
             return LoopRunResult(
-                ctx=ctx,
-                events=events,
+                ctx=ctx, events=events,
                 closed=ctx.state in ("CLOSED", "FAILED", "ESCALATED", "CANCELLED"),
             )
 
@@ -169,7 +169,14 @@ class LoopEngine:
             events.append(ev)
             self._emit(ev)
 
-        phase_results, sheriff = self.phases.run({"run_id": ctx.run_id, "iteration": ctx.iteration})
+        pctx = {
+            "run_id": ctx.run_id,
+            "iteration": ctx.iteration,
+            "strategy": ctx.strategy,
+            "inputs": ctx.inputs,
+            **(phase_context or {}),
+        }
+        phase_results, sheriff = self.phases.run(pctx)
         ctx, ev = self.sm.transition(
             ctx, "VALIDATING", event_type="PHASE_COMPLETED", payload={"sheriff_ok": sheriff.ok}
         )
@@ -184,13 +191,17 @@ class LoopEngine:
             ))
 
         prev = self._prev_progress.get(ctx.run_id)
-        pval = progress_value if progress_value is not None else sheriff.ok
-        pkind = progress_kind if progress_value is not None else "validation"
-        progress = self.progress_eval.evaluate(kind=pkind, value=pval, prev_score=prev, threshold=0.1)
+        if progress_value is not None:
+            progress = self.progress_eval.evaluate(
+                kind=progress_kind, value=progress_value, prev_score=prev, threshold=0.1
+            )
+        else:
+            # E: derive from phase outputs
+            progress = progress_from_phases(
+                phase_results, evaluator=self.progress_eval, prev_score=prev, threshold=0.1
+            )
         self._prev_progress[ctx.run_id] = progress.progress_score
         advice = self.adaptive.advise(progress, ctx.iteration)
-
-        # P1 native detectors from score history
         dets.extend(self.native.observe(ctx.run_id, progress.progress_score))
 
         if progress.is_stalled() and not any(d.detector == "stall" for d in dets):
