@@ -1,0 +1,49 @@
+# Plantilla B8 — Recovery (UOOS Parte 1)
+# SOURCE: SALIDA_6 · CAPA DE CONTROL 1
+# Archivo: recovery/RECOVERY.yaml
+
+recovery:
+  id: RECOVERY
+  version: "1.0.0"
+
+triggers:
+  - tribunal.REPARAR
+  - loop.stall
+  - timeout
+  - ley_violada
+  - crash
+
+protocolo:
+  - paso: 1
+    accion: congelar
+  - paso: 2
+    accion: diagnosticar
+  - paso: 3
+    accion: clasificar
+  - paso: 4
+    accion: restaurar          # último checkpoint — nunca arreglar sobre lo roto
+  - paso: 5
+    accion: reintentar         # con DELTA nuevo
+  - paso: 6
+    accion: validar            # Tribunal otra vez
+  - paso: 7
+    accion: documentar
+
+rules:
+  never_delete_failure_evidence: true
+  max_recoveries_same_node: 2
+  after_max: escalate_Director
+
+classify:
+  auto_recuperable:
+    - input_invalido_upstream
+    - dependencia_instalable
+    - timeout_con_checkpoint
+    - estancamiento_con_pool
+  requiere_Director:
+    - ley_violada
+    - contradiccion_documental
+    - contrato_incumplible
+    - segundo_recovery_mismo_nodo
+    - presupuesto_agotado
+    - rollback_config_fallido
