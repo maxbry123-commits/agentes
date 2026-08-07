@@ -1,0 +1,35 @@
+{
+  "_comment": "Plantilla B2 state.json — SOURCE: UOOS Parte 1 · CAPA DE CONTROL 1",
+  "project_id": "",
+  "version": "1.0.0",
+  "updated_at": "",
+  "nodes": {
+    "A01": {
+      "status": "pending",
+      "attempts": 0,
+      "last_error": null,
+      "checkpoint": null,
+      "evidence": null
+    }
+  },
+  "global": {
+    "status": "pending",
+    "current_node": null,
+    "certified": false
+  },
+  "rules": {
+    "allowed_status": [
+      "pending",
+      "running",
+      "validating",
+      "blocked",
+      "done",
+      "failed",
+      "recovered"
+    ],
+    "forbidden_transitions": [
+      "failed→done"
+    ],
+    "note": "failed solo puede ir a recovered, nunca directo a done"
+  }
+}
