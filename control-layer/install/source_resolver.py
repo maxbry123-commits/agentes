@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 import hashlib
+import json
 import urllib.request
 
 Mode = Literal["full", "sparse", "file"]
@@ -16,9 +17,10 @@ Mode = Literal["full", "sparse", "file"]
 class SourceSpec:
     url: str
     mode: Mode = "sparse"
-    paths: tuple[str, ...] = ()          # para sparse/file
+    paths: tuple[str, ...] = ()
     expected_sha256: str | None = None
     dest: str = "sources/"
+    ref: str | None = None  # branch/tag/commit
 
 
 @dataclass(frozen=True)
@@ -27,6 +29,7 @@ class SourceResult:
     dest_path: str
     sha256: str | None
     error: str | None = None
+    manifest: dict | None = None
 
 
 class SourceResolver:
@@ -36,16 +39,23 @@ class SourceResolver:
         dest = Path(spec.dest)
         dest.mkdir(parents=True, exist_ok=True)
 
+        if not spec.url:
+            return SourceResult(False, str(dest), None, "missing url")
+
         if spec.mode == "file":
             return self._download_file(spec, dest)
-        # full/sparse: en esta capa solo registramos la especificación;
-        # el fetch real lo hace el runtime con git sparse-checkout o clone.
-        return SourceResult(
-            ok=True,
-            dest_path=str(dest),
-            sha256=None,
-            error=None if spec.url else "missing url",
-        )
+
+        # full/sparse: escribe manifest para que el runtime haga git clone/sparse
+        manifest = {
+            "url": spec.url,
+            "mode": spec.mode,
+            "paths": list(spec.paths),
+            "ref": spec.ref,
+            "dest": str(dest),
+        }
+        man_path = dest / "source_manifest.json"
+        man_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        return SourceResult(True, str(dest), None, None, manifest)
 
     def _download_file(self, spec: SourceSpec, dest: Path) -> SourceResult:
         try:
