@@ -1,0 +1,18 @@
+{
+  "agent": "OpenClaw",
+  "task": "A2",
+  "status": "DONE",
+  "protocol": "TEAM-SEALS-ACQUIRE-v2.1",
+  "identity": {
+    "repository": "https://github.com/openclaw/openclaw",
+    "ref": "v2026.7.1-2",
+    "commit": "0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c"
+  },
+  "layers": {
+    "source": "CAPTURED",
+    "distribution": "CAPTURED",
+    "finalize": "DONE"
+  },
+  "updated_at": "2026-08-08T00:07:00Z",
+  "notes": "A2 closed: pin+SOURCE+DIST npm tgz verified (SHA256SUMS match); reproducibility PENDING (no bit-for-bit rebuild); OpenClaw-headless is alias of A2"
+}
