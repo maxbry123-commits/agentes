@@ -39,7 +39,6 @@ def execute_node(
     op = node.op
 
     if op == "WAIT_DEPS":
-        # parent queue must have marked deps DONE — checked externally
         return {"ok": True, "data": {"deps": node.params.get("missions")}}
 
     if op == "INVESTIGATE":
@@ -56,11 +55,16 @@ def execute_node(
         return {"ok": True, "data": r.to_dict()}
 
     if op == "PLAN":
+        store = DagStore(root)
+        existing = store.load(mission_id)
+        if existing is not None and existing.nodes:
+            # do not wipe progress
+            state["plan"] = existing.to_dict()
+            return {"ok": True, "data": {"nodes": len(existing.nodes), "reused": True}}
         dag = build_acquire_dag(mission_id, dry_run=dry_run)
-        # keep already-done investigate/plan if re-entry — store full plan once
-        DagStore(root).save(dag)
+        store.save(dag)
         state["plan"] = dag.to_dict()
-        return {"ok": True, "data": {"nodes": len(dag.nodes)}}
+        return {"ok": True, "data": {"nodes": len(dag.nodes), "reused": False}}
 
     if op == "BUDGET_ESTIMATE":
         inv = state.get("investigate") or {}
@@ -118,7 +122,6 @@ def execute_node(
         path = Path(dl.get("path") or "")
         rb = RollbackService(root)
         staging = rb.prepare_staging(mission_id)
-        # clear prior extract
         for p in staging.iterdir():
             if p.is_file():
                 p.unlink()
