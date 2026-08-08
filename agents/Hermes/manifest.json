@@ -1,247 +1,51 @@
 {
-  "protocol": "TEAM-SEALS-ACQUIRE-v2",
-  "goal": "DOWNLOAD_CONSERVE_PIN_VERIFY_REPRODUCE",
-  "generated_at": "2026-08-07T21:42:49.985661+00:00",
+  "protocol": "TEAM-SEALS-CHUNKED-ACQUIRE-v1",
   "agent": "Hermes",
+  "status": "ALL_ARTIFACTS_VERIFIED",
   "identity": {
     "repository": "https://github.com/NousResearch/hermes-agent",
     "ref": "v2026.8.3",
-    "commit": "3c27eb6234bf91b8ceee9e9071591b31e9b148cb"
-  },
-  "source": {
-    "available": true,
-    "repo": "https://github.com/NousResearch/hermes-agent",
-    "ref": "v2026.8.3",
     "commit": "3c27eb6234bf91b8ceee9e9071591b31e9b148cb",
-    "url": "https://github.com/NousResearch/hermes-agent/archive/3c27eb6234bf91b8ceee9e9071591b31e9b148cb.tar.gz",
-    "archive_sha256": "a68e96f385768ec6c466122bf21fcb697680a5f349c9a673badfbe27752b6928",
-    "tree_sha256": "38cfc255d30634d036617f8a8ed35e3cf11e59369bfc921e949e23d8cf7b02c3",
-    "path": "source/complete-source"
-  },
-  "distribution": {
-    "official": [
-      {
-        "source": "npm_registry",
-        "name": "hermes-agent-1.0.0.tgz",
-        "url": "https://registry.npmjs.org/hermes-agent/-/hermes-agent-1.0.0.tgz",
-        "package": "hermes-agent",
-        "version": "1.0.0",
-        "platform": "any",
-        "architecture": "any",
-        "status": "FAILED",
-        "error": "HTTP Error 404: Not Found"
-      },
-      {
-        "source": "dockerfile_from",
-        "name": "debian_13.4",
-        "image": "debian:13.4",
-        "url": "docker://debian:13.4",
-        "kind": "base_image_ref",
-        "platform": "container",
-        "architecture": "multi",
-        "download": false,
-        "status": "REF_ONLY_NOT_PULLED"
-      },
-      {
-        "source": "dockerfile_from",
-        "name": "ghcr.io_astral-sh_uv_0.11.6-python3.13-trixie@sha256_b3c543b6c4f23a5f2df22866bd7857e5d304b67a564f4feab6ac22044dde719b",
-        "image": "ghcr.io/astral-sh/uv:0.11.6-python3.13-trixie@sha256:b3c543b6c4f23a5f2df22866bd7857e5d304b67a564f4feab6ac22044dde719b",
-        "url": "docker://ghcr.io/astral-sh/uv:0.11.6-python3.13-trixie@sha256:b3c543b6c4f23a5f2df22866bd7857e5d304b67a564f4feab6ac22044dde719b",
-        "kind": "base_image_ref",
-        "platform": "container",
-        "architecture": "multi",
-        "download": false,
-        "status": "REF_ONLY_NOT_PULLED"
-      },
-      {
-        "source": "dockerfile_from",
-        "name": "node_26-bookworm-slim@sha256_9e6f9357d371591e32ab6f2d8a26d63bdd0d17c29eee3f4f3e7e454d9634bf73",
-        "image": "node:26-bookworm-slim@sha256:9e6f9357d371591e32ab6f2d8a26d63bdd0d17c29eee3f4f3e7e454d9634bf73",
-        "url": "docker://node:26-bookworm-slim@sha256:9e6f9357d371591e32ab6f2d8a26d63bdd0d17c29eee3f4f3e7e454d9634bf73",
-        "kind": "base_image_ref",
-        "platform": "container",
-        "architecture": "multi",
-        "download": false,
-        "status": "REF_ONLY_NOT_PULLED"
-      },
-      {
-        "source": "dockerfile_from",
-        "name": "debian_13.4",
-        "image": "debian:13.4",
-        "url": "docker://debian:13.4",
-        "kind": "base_image_ref",
-        "platform": "container",
-        "architecture": "multi",
-        "download": false,
-        "status": "REF_ONLY_NOT_PULLED"
-      },
-      {
-        "source": "dockerfile_from",
-        "name": "debian_13.4",
-        "image": "debian:13.4",
-        "url": "docker://debian:13.4",
-        "kind": "base_image_ref",
-        "platform": "container",
-        "architecture": "multi",
-        "download": false,
-        "status": "REF_ONLY_NOT_PULLED"
-      },
-      {
-        "source": "dockerfile_from",
-        "name": "ghcr.io_astral-sh_uv_0.11.6-python3.13-trixie@sha256_b3c543b6c4f23a5f2df22866bd7857e5d304b67a564f4feab6ac22044dde719b",
-        "image": "ghcr.io/astral-sh/uv:0.11.6-python3.13-trixie@sha256:b3c543b6c4f23a5f2df22866bd7857e5d304b67a564f4feab6ac22044dde719b",
-        "url": "docker://ghcr.io/astral-sh/uv:0.11.6-python3.13-trixie@sha256:b3c543b6c4f23a5f2df22866bd7857e5d304b67a564f4feab6ac22044dde719b",
-        "kind": "base_image_ref",
-        "platform": "container",
-        "architecture": "multi",
-        "download": false,
-        "status": "REF_ONLY_NOT_PULLED"
-      },
-      {
-        "source": "dockerfile_from",
-        "name": "node_26-bookworm-slim@sha256_9e6f9357d371591e32ab6f2d8a26d63bdd0d17c29eee3f4f3e7e454d9634bf73",
-        "image": "node:26-bookworm-slim@sha256:9e6f9357d371591e32ab6f2d8a26d63bdd0d17c29eee3f4f3e7e454d9634bf73",
-        "url": "docker://node:26-bookworm-slim@sha256:9e6f9357d371591e32ab6f2d8a26d63bdd0d17c29eee3f4f3e7e454d9634bf73",
-        "kind": "base_image_ref",
-        "platform": "container",
-        "architecture": "multi",
-        "download": false,
-        "status": "REF_ONLY_NOT_PULLED"
-      },
-      {
-        "source": "dockerfile_from",
-        "name": "debian_13.4",
-        "image": "debian:13.4",
-        "url": "docker://debian:13.4",
-        "kind": "base_image_ref",
-        "platform": "container",
-        "architecture": "multi",
-        "download": false,
-        "status": "REF_ONLY_NOT_PULLED"
-      },
-      {
-        "source": "registry_candidate",
-        "name": "ghcr.io_NousResearch_hermes-agent_v2026.8.3",
-        "image": "ghcr.io/NousResearch/hermes-agent:v2026.8.3",
-        "url": "docker://ghcr.io/NousResearch/hermes-agent:v2026.8.3",
-        "kind": "product_image_candidate",
-        "platform": "container",
-        "architecture": "multi",
-        "download": false,
-        "note": "candidate \u2014 verify exists before pull",
-        "status": "REF_ONLY_NOT_PULLED"
-      },
-      {
-        "source": "registry_candidate",
-        "name": "ghcr.io_NousResearch_hermes-agent_2026.8.3",
-        "image": "ghcr.io/NousResearch/hermes-agent:2026.8.3",
-        "url": "docker://ghcr.io/NousResearch/hermes-agent:2026.8.3",
-        "kind": "product_image_candidate",
-        "platform": "container",
-        "architecture": "multi",
-        "download": false,
-        "note": "candidate \u2014 verify exists before pull",
-        "status": "REF_ONLY_NOT_PULLED"
-      },
-      {
-        "source": "registry_candidate",
-        "name": "NousResearch_hermes-agent_v2026.8.3",
-        "image": "NousResearch/hermes-agent:v2026.8.3",
-        "url": "docker://NousResearch/hermes-agent:v2026.8.3",
-        "kind": "product_image_candidate",
-        "platform": "container",
-        "architecture": "multi",
-        "download": false,
-        "note": "candidate \u2014 verify exists before pull",
-        "status": "REF_ONLY_NOT_PULLED"
-      },
-      {
-        "source": "registry_candidate",
-        "name": "NousResearch_hermes-agent_2026.8.3",
-        "image": "NousResearch/hermes-agent:2026.8.3",
-        "url": "docker://NousResearch/hermes-agent:2026.8.3",
-        "kind": "product_image_candidate",
-        "platform": "container",
-        "architecture": "multi",
-        "download": false,
-        "note": "candidate \u2014 verify exists before pull",
-        "status": "REF_ONLY_NOT_PULLED"
-      }
-    ],
-    "rebuilt": [],
-    "search_performed": [
-      {
-        "where": "github_releases",
-        "count": 0
-      },
-      {
-        "where": "npm_registry",
-        "count": 1
-      },
-      {
-        "where": "pypi",
-        "count": 0
-      },
-      {
-        "where": "docker_refs",
-        "count": 12
-      }
-    ]
-  },
-  "dependencies_lockfiles": [
-    "package-lock.json",
-    "website/package-lock.json",
-    "plugins/platforms/photon/sidecar/package-lock.json",
-    "scripts/whatsapp-bridge/package-lock.json",
-    "uv.lock",
-    "optional-skills/finance/dcf-model/requirements.txt",
-    "flake.lock"
-  ],
-  "build": {
-    "markers": [
-      "Dockerfile",
-      "docker-compose.yml",
-      "pyproject.toml",
-      "setup.py",
-      "package.json",
-      "flake.nix"
-    ],
-    "dockerfiles": [
-      "Dockerfile"
-    ],
-    "workflows": [
-      ".github/workflows/lint.yml",
-      ".github/workflows/publish-e2e-evidence.yml",
-      ".github/workflows/deploy-site.yml",
-      ".github/workflows/supply-chain-audit.yml",
-      ".github/workflows/ci.yml",
-      ".github/workflows/contributor-check.yml",
-      ".github/workflows/tests.yml",
-      ".github/workflows/docker-lint.yml",
-      ".github/workflows/skills-index.yml",
-      ".github/workflows/js-tests.yml",
-      ".github/workflows/review-labels.yml",
-      ".github/workflows/skills-index-freshness.yml",
-      ".github/workflows/lockfile-diff.yml",
-      ".github/workflows/infographic-check.yml",
-      ".github/workflows/e2e-desktop.yml",
-      ".github/workflows/osv-scanner.yml",
-      ".github/workflows/js-autofix.yml",
-      ".github/workflows/label-rerun.yml",
-      ".github/workflows/docs-site-checks.yml",
-      ".github/workflows/uv-lockfile-check.yml",
-      ".github/workflows/docker.yml",
-      ".github/workflows/history-check.yml"
-    ]
-  },
-  "reproducibility": {
-    "official_sha256_list": [],
-    "rebuilt_sha256_list": [],
-    "bit_for_bit": false,
-    "status": "PENDING"
+    "pypi": "0.19.0"
   },
   "layers": {
     "source": "CAPTURED",
-    "distribution": "NOT_PUBLISHED_AFTER_SEARCH"
-  }
+    "distribution": "CAPTURED"
+  },
+  "artifacts": [
+    {
+      "filename": "hermes-agent-v2026.8.3.tar.gz",
+      "kind": "source",
+      "sha256": "370542c7219faba6300905c3b419e14e6508a31ac698a1a5174e0386990834be",
+      "size": 63365932,
+      "status": "VERIFIED"
+    },
+    {
+      "filename": "hermes_agent-0.19.0-py3-none-any.whl",
+      "kind": "distribution",
+      "source": "pypi",
+      "sha256": "bd0bac012aee38a60894781f4597dc29ee7bedb3448540249921f10d3bef327f",
+      "size": 10144439,
+      "status": "VERIFIED"
+    },
+    {
+      "filename": "hermes_agent-0.19.0.tar.gz",
+      "kind": "distribution",
+      "source": "pypi",
+      "sha256": "ac986bede64a2785436676c0ea084ec586574f8cb00a9d047e095b435d3e21c0",
+      "size": 14282599,
+      "status": "VERIFIED"
+    }
+  ],
+  "not_published": [
+    "native dmg/exe/apk on this release"
+  ],
+  "ref_only": [
+    "Docker image registry (no file asset on GitHub release)"
+  ],
+  "reproducibility": {
+    "bit_for_bit": false,
+    "status": "PENDING"
+  },
+  "updated_at": "2026-08-08T02:41:00Z"
 }
