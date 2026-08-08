@@ -44,6 +44,100 @@ Workflows mínimos + scripts/*.sh. YAML largo rompe workflow_dispatch.
 
 ---
 
+## SOURCE DOWNLOAD DETERMINISTA (OBLIGATORIO)
+
+Basado en documentación GitHub (archives estables) y práctica reproducible.
+
+### Regla de oro
+**Pin por commit SHA completo de 40 caracteres.**  
+El tag solo es etiqueta humana; puede moverse. El commit no.
+
+GitHub: un archive de un **commit ID** siempre tiene el mismo contenido de archivos.  
+Un archive de un **tag/branch** puede cambiar si el tag se mueve a otro commit.
+
+### Pin mínimo en el manifest
+```yaml
+repository: https://github.com/ORG/REPO
+tag: vX.Y.Z                    # opcional, etiqueta
+commit: <40-char-sha>          # OBLIGATORIO
+url_archive_commit: https://github.com/ORG/REPO/archive/<commit>.tar.gz
+# o:
+url_archive_tag: https://github.com/ORG/REPO/archive/refs/tags/vX.Y.Z.tar.gz
+expected_sha256: <sha256-del-artefacto>   # tras primera descarga exitosa
+dest: sources/... o agents/<Id>/source/...
+```
+
+### Método A — Archive por COMMIT (preferido para reproducibilidad)
+```bash
+URL="https://github.com/ORG/REPO/archive/<COMMIT_SHA>.tar.gz"
+curl -fsSL -o source.tar.gz "$URL"
+sha256sum source.tar.gz   # guardar en SHA256SUMS
+# opcional: gunzip -c source.tar.gz | git get-tar-commit-id
+tar -xzf source.tar.gz -C dest/
+```
+- URL fija al commit → contenido del árbol estable.
+- Guardar SHA-256 del `.tar.gz` en el repo.
+- Preferir API/archives con `:ref` = commit ID si se usa la API de GitHub.
+
+### Método B — Git clone + verificar HEAD (script estilo Wordflow/Tencent)
+```bash
+git clone --depth 1 --branch <TAG> https://github.com/ORG/REPO.git DEST
+ACTUAL=$(git -C DEST rev-parse HEAD)
+if [ "$ACTUAL" != "<COMMIT_SHA_ESPERADO>" ]; then
+  echo "SHA mismatch: got $ACTUAL want <COMMIT>" >&2
+  exit 1
+fi
+```
+- Si no coincide → **FAILED**, no marcar VERIFIED.
+- No editar archivos del vendor (modified: false).
+
+### Método C — Tag archive + verificación obligatoria
+Si solo hay URL de tag:
+1. Descargar `.../archive/refs/tags/vX.Y.Z.tar.gz`
+2. Registrar SHA-256 del archivo
+3. **Obligatorio:** obtener el commit del tag en ese momento y comprobar que sigue siendo el pin
+4. Sin paso 3 → **NO es determinista completo**
+
+### Prohibido
+- `main` / `master` / `latest` / `HEAD` flotante
+- Solo tag sin commit en el manifest
+- Marcar VERIFIED sin SHA-256 del artefacto
+- Marcar SOURCE completo si el árbol extraído está incompleto
+- Declarar 100% si solo existe el `.tar.gz` y el extract falló
+
+### Vendor externo (ej. TencentDB-Agent-Memory)
+```
+control-layer/memory/providers/<vendor>/
+  SOURCE_MANIFEST.yaml    # pin tag+commit+url
+  download_deterministic.sh
+  adapter.py              # solo nuestro código
+sources/<vendor>/<repo>/  # árbol source NO modificado
+```
+- Nunca editar dentro de `sources/<vendor>/`
+- Solo el adapter habla con el motor (HTTP)
+
+### Estados SOURCE
+| Estado | Significado |
+|--------|-------------|
+| FROZEN | pin escrito en manifest |
+| ARCHIVE_DOWNLOADED | archivo bajado, size OK |
+| ARCHIVE_VERIFIED | SHA-256 OK |
+| HEAD_VERIFIED | git rev-parse == commit pin |
+| EXTRACT_COMPLETE | árbol completo en dest |
+| VERIFIED | archive/tree + hashes + path final OK |
+| EXTRACT_PARTIAL | archive OK pero árbol incompleto → **no es 100%** |
+
+### Checklist SOURCE 100%
+- [ ] commit SHA 40 chars en manifest
+- [ ] URL no flotante (commit o tag+verify)
+- [ ] artefacto descargado
+- [ ] SHA-256 registrado en SHA256SUMS
+- [ ] HEAD o get-tar-commit-id == pin (si aplica)
+- [ ] árbol completo en path de destino
+- [ ] modified: false para vendor
+
+---
+
 ## BINARY DOWNLOAD — límites y anti-bloqueo (OBLIGATORIO)
 
 ### Máximo por archivo / chunk
