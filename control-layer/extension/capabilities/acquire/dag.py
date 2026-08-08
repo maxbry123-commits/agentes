@@ -1,9 +1,4 @@
-"""DAG + Dependency DAG · minimal deterministic graph.
-
-Nodes have id, op, depends_on, status, params.
-next() = first PENDING with all deps DONE/SKIPPED.
-Dependency DAG: child missions as depends_on on TaskQueue.
-"""
+"""DAG + Dependency DAG · deterministic acquire pipeline."""
 from __future__ import annotations
 
 import json
@@ -21,7 +16,7 @@ class DagNode:
     id: str
     op: str
     depends_on: list[str] = field(default_factory=list)
-    status: str = "PENDING"  # PENDING|DONE|FAILED|SKIPPED|RETRYABLE
+    status: str = "PENDING"
     params: dict[str, Any] = field(default_factory=dict)
     retries: int = 0
     max_retries: int = 3
@@ -76,10 +71,9 @@ class DAG:
         for n in self.nodes:
             if n.status != "PENDING":
                 continue
-            if all(idx[d].status in NODE_DONE for d in n.depends_on if d in idx):
-                # missing dep id → treat as blocking
-                if any(d not in idx for d in n.depends_on):
-                    continue
+            if any(d not in idx for d in n.depends_on):
+                continue
+            if all(idx[d].status in NODE_DONE for d in n.depends_on):
                 return n
         return None
 
@@ -122,12 +116,14 @@ class DagStore:
         return DAG.from_dict(json.loads(p.read_text(encoding="utf-8")))
 
 
-def build_acquire_dag(mission_id: str, *,
-                      dry_run: bool = False,
-                      dep_mission_ids: Iterable[str] | None = None) -> DAG:
-    """Standard acquire pipeline as DAG. Dependencies = other missions first."""
+def build_acquire_dag(
+    mission_id: str,
+    *,
+    dry_run: bool = False,
+    dep_mission_ids: Iterable[str] | None = None,
+) -> DAG:
+    """12-step acquire pipeline."""
     nodes: list[DagNode] = []
-    # optional external mission deps encoded as gate node
     deps = list(dep_mission_ids or [])
     if deps:
         nodes.append(DagNode(id="deps", op="WAIT_DEPS", params={"missions": deps}))
@@ -142,12 +138,14 @@ def build_acquire_dag(mission_id: str, *,
 
     add("investigate", "INVESTIGATE")
     add("plan", "PLAN")
+    add("source_strategy", "SOURCE_STRATEGY")
     if dry_run:
         add("budget_estimate", "BUDGET_ESTIMATE")
         return DAG(mission_id=mission_id, nodes=nodes)
 
     add("download", "DOWNLOAD")
-    add("verify", "VERIFY_SHA256")
+    add("verify_sha", "VERIFY_SHA256")
+    add("verify_commit", "VERIFY_COMMIT")
     add("index", "TAR_INDEX")
     add("extract", "EXTRACT")
     add("install", "INSTALL")
@@ -160,10 +158,6 @@ def build_dependency_missions(
     parent_id: str,
     deps: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Describe child missions for TaskQueue (npm/pip/etc as separate missions).
-
-    deps items: {id, repo?, kind, priority?}
-    """
     out = []
     for d in deps:
         cid = str(d.get("id") or d.get("name") or "dep")
