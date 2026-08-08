@@ -7,6 +7,7 @@ El host (OpenClaw / TEAM / mock) solo habla por este adapter:
   adapter.on_unmount()
 
 Monta Evolution Engine automáticamente (capability evolution.evolve).
+Monta acquire.* (Phase 0 infrastructure) en on_mount.
 """
 from __future__ import annotations
 
@@ -58,7 +59,7 @@ class TurnOutput:
 
 
 class PluginAdapter:
-    """Monta WordflowExtension + Evolution como plugin del host."""
+    """Monta WordflowExtension + Evolution + acquire como plugin del host."""
 
     def __init__(self, state_dir: Path | None = None) -> None:
         self.ext = WordflowExtension()
@@ -67,6 +68,7 @@ class PluginAdapter:
         self._mounted = False
         self.evolution_svc: Any = None
         self.evolution_mounted: list[str] = []
+        self.acquire_registered: bool = False
 
     def on_mount(self, ctx: Mapping[str, Any] | None = None) -> dict[str, Any]:
         ctx = dict(ctx or {})
@@ -76,6 +78,32 @@ class PluginAdapter:
             self.state_dir = Path(ctx.get("state_dir") or self.state_dir or "./extension_state")
             self.runtime = DurableRuntime(self.state_dir)
         self._mounted = bool(ok)
+
+        # Acquire motor (Phase 0) — generic, zero network in handlers until later phases
+        if ctx.get("enable_acquire", True):
+            try:
+                from extension.capabilities.acquire.register import register_acquire
+
+                acquire_root = ctx.get("acquire_root")
+                if acquire_root:
+                    root = Path(str(acquire_root))
+                elif self.state_dir:
+                    root = self.state_dir / "acquire"
+                else:
+                    root = Path("./acquire_state")
+                root.mkdir(parents=True, exist_ok=True)
+                register_acquire(self.ext, default_root=root)
+                self.acquire_registered = True
+                # optional auto-recover non-terminal missions
+                if ctx.get("acquire_auto_recover", False):
+                    from extension.capabilities.acquire.recover import RecoverService
+
+                    RecoverService(root).recover_all()
+            except Exception as e:  # noqa: BLE001
+                self.acquire_registered = False
+                health = self.ext.health().to_dict()
+                health["acquire_error"] = str(e)
+                # continue mount even if acquire fails to register
 
         # Auto-mount Evolution Engine → ABI (evolution.evolve + absorbed caps)
         if ctx.get("enable_evolution", True):
@@ -88,10 +116,12 @@ class PluginAdapter:
                 self.evolution_mounted = []
                 health = self.ext.health().to_dict()
                 health["evolution_error"] = str(e)
+                health["acquire_registered"] = self.acquire_registered
                 return health
 
         health = self.ext.health().to_dict()
         health["evolution_capabilities"] = list(self.evolution_mounted)
+        health["acquire_registered"] = self.acquire_registered
         return health
 
     def on_unmount(self) -> None:
@@ -99,10 +129,12 @@ class PluginAdapter:
         self._mounted = False
         self.evolution_svc = None
         self.evolution_mounted = []
+        self.acquire_registered = False
 
     def health(self) -> dict[str, Any]:
         h = self.ext.health().to_dict()
         h["evolution_capabilities"] = list(self.evolution_mounted)
+        h["acquire_registered"] = self.acquire_registered
         return h
 
     def capabilities(self) -> list[str]:
@@ -121,6 +153,37 @@ class PluginAdapter:
         payload = dict(t.payload)
         payload.setdefault("text", t.text)
         payload.setdefault("goal", t.text)
+
+        # Acquire capabilities (direct, no LLM)
+        if t.op_type.startswith("acquire.") or t.op_type in (
+            "ACQUIRE_START",
+            "ACQUIRE_RUN",
+            "ACQUIRE_STATUS",
+            "ACQUIRE_RECOVER",
+            "ACQUIRE_ROLLBACK",
+        ):
+            cap_map = {
+                "ACQUIRE_START": "acquire.start",
+                "ACQUIRE_RUN": "acquire.run_loop",
+                "ACQUIRE_STATUS": "acquire.status",
+                "ACQUIRE_RECOVER": "acquire.recover",
+                "ACQUIRE_ROLLBACK": "acquire.rollback",
+            }
+            cap = cap_map.get(t.op_type, t.op_type)
+            ev = self.ext.execute(cap, payload, nivel=t.nivel)
+            chat = format_output(
+                {
+                    "mission_id": mission_id or payload.get("mission_id") or "",
+                    "status": "COMPLETED" if ev.ok else "FAILED",
+                    "summary": cap,
+                    "evidence_hash": ev.evidence_hash or "sha256:none",
+                    "sheriff_state": "GREEN" if ev.ok else "RED",
+                    "mode": "extension",
+                    "steps_done": ["mount", cap],
+                    "errors": [ev.error] if ev.error else [],
+                }
+            )
+            return TurnOutput(ev.ok, mission_id, ev.to_dict(), chat, ev.error)
 
         # Ruta directa: evolucionar si op_type lo pide
         if t.op_type in ("EVOLVE", "ABSORB", "evolution.evolve") or payload.get("evolve_path"):
