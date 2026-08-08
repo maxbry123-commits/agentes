@@ -41,3 +41,58 @@ Workflows mínimos + scripts/*.sh. YAML largo rompe workflow_dispatch.
 ## Checklist 100%
 [ ] pin inmutable  [ ] SOURCE (tree|archive+SHA)  [ ] DIST oficial o ausencia documentada  
 [ ] deps/build si existen  [ ] manifest+SHA256SUMS  [ ] state DONE  [ ] control-layer OK
+
+---
+
+## BINARY DOWNLOAD — límites y anti-bloqueo (OBLIGATORIO)
+
+### Máximo por archivo / chunk
+| Tipo | Máximo por operación | Acción |
+|------|----------------------|--------|
+| Archivo completo | **≤ 32 MB** | Descargar entero en 1 salida, verificar SHA, STOP |
+| Archivo **> 32 MB** | **chunks de 16 MB** | 1 chunk por salida (HTTP Range), verificar chunk, checkpoint, STOP |
+| Archivo **> 100 MB** | **chunks de 16 MB** | Obligatorio chunked; nunca entero en una salida |
+| Extracción de archive | **≤ 5 archivos** por salida | Nunca carpetas enteras grandes; checkpoint de índice; STOP |
+
+### Regla de ejecución (sin quedarse pegado)
+```
+LOAD MANIFEST / CHECKPOINT
+    ↓
+SELECT next unit (1 archivo ≤32MB  OR  1 chunk 16MB  OR  ≤5 files extract)
+    ↓
+EXECUTE unit
+    ↓
+VERIFY (size + SHA si aplica)
+    ↓
+UPDATE CHECKPOINT
+    ↓
+STOP
+```
+
+**PROHIBIDO:**
+- Esperar procesos largos en la misma salida
+- Poll / sleep hasta que termine algo grande
+- Extraer árboles completos (`src/`, `extensions/`, etc.) de una vez
+- Descargar un binario >32 MB sin Range/chunks
+- Re-descargar lo ya `VERIFIED`
+
+**OBLIGATORIO:**
+- Enviar la tarea → ejecutar la unidad → parar
+- Siguiente salida lee checkpoint y continúa
+- Determinismo: tag/commit/asset id/digest; nunca `latest`
+
+### Chunked download (binarios grandes)
+```
+artifact/
+├── chunks/
+│   ├── 000000
+│   ├── 000001
+│   └── ...
+├── reconstructed/
+│   └── original-file
+└── manifest.json
+```
+Todos los chunks VERIFIED → REASSEMBLE → verify full SHA256 → STORE → STOP.
+
+### Binary ya adquirido
+Si el binario oficial ya está en el repo / `A1/binary/` con SHA verificado: **NO volver a descargar**. Solo documentar ruta + SHA.
