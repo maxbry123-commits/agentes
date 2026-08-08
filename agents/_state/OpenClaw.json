@@ -13,6 +13,17 @@
     "distribution": "CAPTURED",
     "finalize": "DONE"
   },
-  "updated_at": "2026-08-08T00:07:00Z",
-  "notes": "A2 closed: pin+SOURCE+DIST npm tgz verified (SHA256SUMS match); reproducibility PENDING (no bit-for-bit rebuild); OpenClaw-headless is alias of A2"
+  "official_artifacts_sha256sums": "agents/OpenClaw/hashes/SHA256SUMS",
+  "official_artifacts": [
+    "source archive",
+    "npm openclaw-2026.7.1.tgz",
+    "OpenClaw-2026.7.1.dmg",
+    "OpenClaw-2026.7.1.zip",
+    "OpenClaw-2026.7.1.dSYM.zip",
+    "OpenClaw-Android.apk",
+    "OpenClawCompanion-Setup-arm64.exe",
+    "OpenClawCompanion-Setup-x64.exe"
+  ],
+  "updated_at": "2026-08-08T02:40:00Z",
+  "notes": "Official downloadable distributions verified and listed in SHA256SUMS. deps materialization NOT done. bit-for-bit rebuild PENDING. Docker REF_ONLY. OpenClaw-headless alias of A2."
 }
