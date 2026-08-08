@@ -1,0 +1,13 @@
+{
+  "agent": "Hermes",
+  "status": "DONE",
+  "pin": {
+    "repository": "https://github.com/NousResearch/hermes-agent",
+    "ref": "v2026.8.3",
+    "commit": "3c27eb6234bf91b8ceee9e9071591b31e9b148cb",
+    "pypi": "0.19.0"
+  },
+  "artifacts_verified": 3,
+  "updated_at": "2026-08-08T02:28:17.701367+00:00",
+  "notes": "source archive + pypi wheel + pypi sdist VERIFIED. Docker NOT file asset (REF only). No native dmg/exe on this release."
+}
