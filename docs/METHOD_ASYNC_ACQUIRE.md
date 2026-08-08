@@ -138,6 +138,38 @@ sources/<vendor>/<repo>/  # árbol source NO modificado
 
 ---
 
+## CASO TENCENT (estado + salidas para cerrar)
+
+Pin: `TencentCloud/TencentDB-Agent-Memory` · tag `v2.0.0` · commit `0aff21a2d9f2b8a0354aaa80a2e586aab4054562`
+
+| Hecho | Pendiente |
+|-------|-----------|
+| Archive tag ~33.8 MB SHA `6ab73fd3…` (local) | Verify HEAD / archive-by-commit |
+| ~282 / 836 files extracted | 554 files remaining OR full re-extract |
+| Adapter + SOURCE_MANIFEST en control-layer | Path `sources/tencent/TencentDB-Agent-Memory` completo |
+| | SHA256SUMS + status VERIFIED en repo agentes |
+
+### Conteo de salidas (método: 1 unidad → STOP)
+
+**Camino A — cerrar verificación + metadata (sin árbol full en este entorno)**  
+~**5 salidas**:
+1. FREEZE manifest URL por commit + expected SHA  
+2. Confirm archive SHA (no re-download si match)  
+3. HEAD_VERIFIED (clone depth-1 branch tag + rev-parse)  
+4. SHA256SUMS + MASTER VERIFIED local  
+5. Push status/hashes a agentes (no subir 33MB si git limit)
+
+**Camino B — extract completo aquí a 5 files/salida**  
+554 restantes ÷ 5 ≈ **111 salidas** solo de extract (+5 de arriba) → **~116** total.  
+**Inviable** en chat; usar Camino A o extract offline desde archive VERIFIED.
+
+**Camino C — git clone depth-1 en 1–2 salidas si el entorno lo permite**  
+Si clone completa y HEAD match → **3–6 salidas** total al path oficial + metadata.
+
+Política: no declarar Tencent SOURCE 100% sin HEAD_VERIFIED + path completo o archive VERIFIED documentado como única forma de source con extract offline explícito.
+
+---
+
 ## BINARY DOWNLOAD — límites y anti-bloqueo (OBLIGATORIO)
 
 ### Máximo por archivo / chunk
