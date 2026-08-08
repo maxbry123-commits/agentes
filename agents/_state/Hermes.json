@@ -8,6 +8,7 @@
     "pypi": "0.19.0"
   },
   "artifacts_verified": 3,
-  "updated_at": "2026-08-08T02:28:17.701367+00:00",
-  "notes": "source archive + pypi wheel + pypi sdist VERIFIED. Docker NOT file asset (REF only). No native dmg/exe on this release."
+  "official_artifacts_sha256sums": "agents/Hermes/hashes/SHA256SUMS",
+  "updated_at": "2026-08-08T02:42:00Z",
+  "notes": "source + pypi wheel + pypi sdist VERIFIED. Docker REF_ONLY. deps not materialized. bit-for-bit PENDING."
 }

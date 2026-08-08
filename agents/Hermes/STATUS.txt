@@ -3,9 +3,13 @@ pin: v2026.8.3
 commit: 3c27eb6234bf91b8ceee9e9071591b31e9b148cb
 pypi: 0.19.0
 status: DONE
-artifacts:
-  - source archive VERIFIED sha256=370542c7219faba6300905c3b419e14e6508a31ac698a1a5174e0386990834be
-  - pypi wheel VERIFIED sha256=bd0bac012aee38a60894781f4597dc29ee7bedb3448540249921f10d3bef327f
-  - pypi sdist VERIFIED sha256=ac986bede64a2785436676c0ea084ec586574f8cb00a9d047e095b435d3e21c0
+
+artifacts VERIFIED:
+  source archive  sha256=370542c7219faba6300905c3b419e14e6508a31ac698a1a5174e0386990834be
+  pypi wheel      sha256=bd0bac012aee38a60894781f4597dc29ee7bedb3448540249921f10d3bef327f
+  pypi sdist      sha256=ac986bede64a2785436676c0ea084ec586574f8cb00a9d047e095b435d3e21c0
+
 docker: REF_ONLY (no file asset on release)
 native_binaries: NOT_PUBLISHED on this release
+deps_materialized: NO
+bit_for_bit_rebuild: PENDING
