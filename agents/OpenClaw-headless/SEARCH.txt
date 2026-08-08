@@ -1,6 +1,0 @@
-SEARCH LOG — OpenClaw-headless
-1. github search openclaw-headless in:name → only setup scripts repo (0xGval), not agent binary
-2. web search release/binary → headless is install/CI mode of openclaw/openclaw
-3. npm openclaw-headless → does not exist
-4. Official dist for headless = same openclaw npm tarball already in agents/OpenClaw/distribution/official/
-DECISION: no separate download; pointer to A2

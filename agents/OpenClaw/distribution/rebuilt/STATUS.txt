@@ -1,2 +1,0 @@
-PENDING_REBUILD
-Requires fixed toolchain from build/ and CI.
