@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "maxbry://contracts/universal_module_contract/v2.0",
+  "type": "object",
+  "required": ["artifact_id", "version", "estado", "categoria", "etapa", "contrato", "ejecucion", "seguridad", "firma"],
+  "properties": {
+    "artifact_id": {"type": "string"},
+    "version": {"type": "string"},
+    "estado": {"enum": ["draft", "testing", "active", "deprecated", "revoked"]},
+    "categoria": {"enum": ["pipeline", "transversal", "acelerador"]},
+    "etapa": {"enum": ["E", "P", "S", "T", "A"]},
+    "contrato": {"type": "object", "required": ["rol"]},
+    "ejecucion": {"type": "object", "required": ["kind", "transport", "runtime_type"]},
+    "seguridad": {"type": "object"},
+    "firma": {"type": "object"}
+  }
+}
