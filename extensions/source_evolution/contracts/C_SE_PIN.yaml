@@ -1,0 +1,11 @@
+id: C_SE_PIN
+name: VersionPin Contract
+version: "1.0"
+layer: source_evolution
+required_fields:
+  - schema_version
+  - pin_id
+  - source_type
+  - locator
+  - digest
+llm_control: DENY
