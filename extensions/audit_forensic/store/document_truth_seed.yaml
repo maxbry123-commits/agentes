@@ -1,0 +1,66 @@
+# DocumentTruthStore seed — A-AUD-02
+# Paths are logical anchors; content_hash filled at load if file exists in repo mirror.
+version: "1.0"
+documents:
+  - doc_id: PIPELINE20
+    path: PIPELINE/20_CONTROL_LAYER_FASE1.md
+    version: "1.0"
+    status: active
+    sections:
+      - id: "motor"
+        title: "Control layer motor Fase 1"
+        requirement_ids: ["REQ-CL-FP-01", "REQ-CL-TH-01", "REQ-CL-SH-01"]
+      - id: "G-DOC"
+        title: "G-DOC gaps closed"
+        requirement_ids: ["REQ-CL-C00"]
+
+  - doc_id: SALIDA4_FP
+    path: SALIDA4/fingerprint
+    version: "1.0"
+    status: active
+    sections:
+      - id: "§14.2"
+        title: "Fingerprint 7 dimensions 0% LLM"
+        requirement_ids: ["REQ-CL-FP-01"]
+      - id: "§14"
+        title: "Router pipeline fingerprint→compiler"
+        requirement_ids: ["REQ-CL-FP-01"]
+
+  - doc_id: SALIDA4_RISK
+    path: SALIDA4/risk
+    version: "1.0"
+    status: active
+    sections:
+      - id: "§16"
+        title: "Risk matrix 3 axes bands 0-3/4-7/8-10"
+        requirement_ids: ["REQ-CL-TH-01"]
+
+  - doc_id: SALIDA4_SHERIFF
+    path: SALIDA4/sheriff
+    version: "1.0"
+    status: active
+    sections:
+      - id: "§20"
+        title: "Sheriff 5 states GREEN..BLACK"
+        requirement_ids: ["REQ-CL-SH-01"]
+
+  - doc_id: C00
+    path: control-layer/contracts/C00_governance.yaml
+    version: "1.0"
+    status: active
+    sections:
+      - id: "root"
+        title: "Governance contract zero"
+        requirement_ids: ["REQ-CL-C00"]
+
+  - doc_id: AUDIT_SPEC
+    path: extensions/audit_forensic/schema_module.json
+    version: "1.0"
+    status: active
+    sections:
+      - id: "§4"
+        title: "EvidencePacket contract"
+        requirement_ids: ["REQ-AUD-PACKET"]
+      - id: "§1"
+        title: "Audit extension purpose"
+        requirement_ids: []
