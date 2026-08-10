@@ -1,0 +1,17 @@
+# C05 — L1 Interface. SALIDA 4
+id: C05
+layer: L1
+name: auth_boundary
+implementado: true
+critical: false
+description: "Frontera de autenticación"
+requires:
+  - C00
+forbids: []
+rules:
+  - "validar antes de ejecutar"
+checks:
+  - schema_present
+evidence:
+  type: l1_marker
+  required: true
