@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "wordflow.audit.forensic.EvidencePacket.v1",
+  "title": "EvidencePacket",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "task_id",
+    "claim_status",
+    "repo",
+    "files",
+    "doc_anchors"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "block_id": {
+      "type": ["string", "null"]
+    },
+    "claim_status": {
+      "type": "string",
+      "enum": ["COMPLETED", "PARTIAL", "FAILED"]
+    },
+    "repo": {
+      "type": "object",
+      "required": ["owner", "name", "branch", "base_commit", "final_commit"],
+      "additionalProperties": true,
+      "properties": {
+        "owner": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "branch": { "type": "string", "minLength": 1 },
+        "base_commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "final_commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        }
+      }
+    },
+    "files": {
+      "type": "object",
+      "required": ["added", "modified", "deleted"],
+      "additionalProperties": false,
+      "properties": {
+        "added": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "modified": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "deleted": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "loc_claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "added": { "type": "integer", "minimum": 0 },
+        "deleted": { "type": "integer", "minimum": 0 },
+        "net": { "type": "integer" }
+      }
+    },
+    "tests": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "claimed_passed": { "type": "integer", "minimum": 0 },
+        "claimed_total": { "type": "integer", "minimum": 0 },
+        "ci_run_id": { "type": ["string", "null"] },
+        "ci_url": { "type": ["string", "null"] }
+      }
+    },
+    "doc_anchors": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["doc_id"],
+        "additionalProperties": true,
+        "properties": {
+          "doc_id": { "type": "string", "minLength": 1 },
+          "path": { "type": "string" },
+          "section": { "type": "string" },
+          "requirement_id": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "blob_shas": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "commands_run": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "cmd": { "type": "string" },
+          "output_claim": { "type": "string" }
+        }
+      }
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "agent_id": { "type": ["string", "null"] },
+        "claim_timestamp": { "type": "string" }
+      }
+    }
+  }
+}
