@@ -1,0 +1,34 @@
+# License gate table — A-SE-03
+version: "1.0"
+licenses:
+  MIT:
+    verdict: PASS
+  Apache-2.0:
+    verdict: PASS
+  BSD-2-Clause:
+    verdict: PASS
+  BSD-3-Clause:
+    verdict: PASS
+  ISC:
+    verdict: PASS
+  Unlicense:
+    verdict: PASS
+  CC0-1.0:
+    verdict: PASS
+  MPL-2.0:
+    verdict: DIRECTOR
+  LGPL-2.1:
+    verdict: DIRECTOR
+  LGPL-3.0:
+    verdict: DIRECTOR
+  GPL-2.0:
+    verdict: STOP
+  GPL-3.0:
+    verdict: STOP
+  AGPL-3.0:
+    verdict: STOP
+  proprietary:
+    verdict: STOP
+  UNKNOWN:
+    verdict: DIRECTOR
+default: DIRECTOR
