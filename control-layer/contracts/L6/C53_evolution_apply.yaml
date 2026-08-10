@@ -1,0 +1,19 @@
+# C53 — L6 Evolution. B5 SALIDA4
+id: C53
+layer: L6
+name: evolution_apply
+implementado: true
+critical: false
+description: "Aplicación controlada de evolución"
+requires:
+  - C00
+  - C52
+forbids: []
+rules:
+  - "C53 aplica en capa L6 evolution"
+  - "sin simulación previa → DENY en C53"
+checks:
+  - evolution_apply_check
+evidence:
+  type: evolution_apply_marker
+  required: true
