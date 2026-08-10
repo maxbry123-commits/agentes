@@ -1,0 +1,18 @@
+# C17 — L2. B1 SALIDA4
+id: C17
+layer: L2
+name: sandbox_boundary
+implementado: true
+critical: false
+description: "Límites del sandbox de ejecución"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C17 aplica en capa L2"
+  - "violación → YELLOW o RED según risk_band"
+checks:
+  - sandbox_boundary_check
+evidence:
+  type: sandbox_boundary_marker
+  required: false

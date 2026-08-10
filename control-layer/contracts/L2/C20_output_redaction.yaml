@@ -1,0 +1,18 @@
+# C20 — L2. B1 SALIDA4
+id: C20
+layer: L2
+name: output_redaction
+implementado: true
+critical: false
+description: "Redacción de secretos en salida"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C20 aplica en capa L2"
+  - "violación → YELLOW o RED según risk_band"
+checks:
+  - output_redaction_check
+evidence:
+  type: output_redaction_marker
+  required: false

@@ -1,0 +1,18 @@
+# C13 — L2. B1 SALIDA4
+id: C13
+layer: L2
+name: quota_budget
+implementado: true
+critical: false
+description: "Cuota tokens/LOC/coste"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C13 aplica en capa L2"
+  - "violación → YELLOW o RED según risk_band"
+checks:
+  - quota_budget_check
+evidence:
+  type: quota_budget_marker
+  required: false

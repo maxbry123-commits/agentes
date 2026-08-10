@@ -1,0 +1,18 @@
+# C09 — L2. B1 SALIDA4
+id: C09
+layer: L2
+name: data_classification
+implementado: true
+critical: false
+description: "Clasificación de datos del payload"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C09 aplica en capa L2"
+  - "violación → YELLOW o RED según risk_band"
+checks:
+  - data_classification_check
+evidence:
+  type: data_classification_marker
+  required: false

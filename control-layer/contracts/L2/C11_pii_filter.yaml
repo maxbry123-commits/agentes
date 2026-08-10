@@ -1,0 +1,18 @@
+# C11 — L2. B1 SALIDA4
+id: C11
+layer: L2
+name: pii_filter
+implementado: true
+critical: false
+description: "Filtro PII antes de log/LLM"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C11 aplica en capa L2"
+  - "violación → YELLOW o RED según risk_band"
+checks:
+  - pii_filter_check
+evidence:
+  type: pii_filter_marker
+  required: false

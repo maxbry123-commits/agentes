@@ -1,0 +1,18 @@
+# C16 — L2. B1 SALIDA4
+id: C16
+layer: L2
+name: concurrency_lock
+implementado: true
+critical: false
+description: "Lock de recurso compartido"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C16 aplica en capa L2"
+  - "violación → YELLOW o RED según risk_band"
+checks:
+  - concurrency_lock_check
+evidence:
+  type: concurrency_lock_marker
+  required: false

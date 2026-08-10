@@ -1,0 +1,18 @@
+# C14 — L2. B1 SALIDA4
+id: C14
+layer: L2
+name: time_bound
+implementado: true
+critical: false
+description: "Ventana temporal de validez del plan"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C14 aplica en capa L2"
+  - "violación → YELLOW o RED según risk_band"
+checks:
+  - time_bound_check
+evidence:
+  type: time_bound_marker
+  required: false

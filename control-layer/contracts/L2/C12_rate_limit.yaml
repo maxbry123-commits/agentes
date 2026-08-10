@@ -1,0 +1,18 @@
+# C12 — L2. B1 SALIDA4
+id: C12
+layer: L2
+name: rate_limit
+implementado: true
+critical: false
+description: "Límites de tasa por agente/sesión"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C12 aplica en capa L2"
+  - "violación → YELLOW o RED según risk_band"
+checks:
+  - rate_limit_check
+evidence:
+  type: rate_limit_marker
+  required: false

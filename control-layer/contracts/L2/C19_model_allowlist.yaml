@@ -1,0 +1,18 @@
+# C19 — L2. B1 SALIDA4
+id: C19
+layer: L2
+name: model_allowlist
+implementado: true
+critical: false
+description: "Allowlist de modelos LLM"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C19 aplica en capa L2"
+  - "violación → YELLOW o RED según risk_band"
+checks:
+  - model_allowlist_check
+evidence:
+  type: model_allowlist_marker
+  required: false

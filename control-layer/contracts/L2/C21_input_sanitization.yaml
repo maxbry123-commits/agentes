@@ -1,0 +1,18 @@
+# C21 — L2. B1 SALIDA4
+id: C21
+layer: L2
+name: input_sanitization
+implementado: true
+critical: false
+description: "Sanitización de input no confiable"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C21 aplica en capa L2"
+  - "violación → YELLOW o RED según risk_band"
+checks:
+  - input_sanitization_check
+evidence:
+  type: input_sanitization_marker
+  required: false
