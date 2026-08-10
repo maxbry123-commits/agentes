@@ -1,0 +1,15 @@
+id: C_DEP_PUBLISH
+name: GitHubPublish Contract
+version: "1.0"
+layer: deploy
+required_fields:
+  - schema_version
+  - token_ref
+  - repository
+  - branch
+  - files
+  - commit_message
+forbidden_fields:
+  - token
+  - github_token
+llm_control: DENY

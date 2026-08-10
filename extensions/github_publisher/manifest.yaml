@@ -1,0 +1,12 @@
+# github_publisher extension manifest — A-DEP-02
+name: github_publisher
+version: "1.0.0"
+artifact_id: wordflow.extension.github_publisher
+extension_type: deploy
+abi_version: "2.0"
+kernel_min: "0.1.0"
+mount_mode: sidecar
+load_priority: 60
+llm_control: DENY
+entrypoint: engine.publisher:run_publish
+description: "Deterministic GitHub publish — token_ref only, never raw token"
