@@ -1,0 +1,16 @@
+id: C_AUDIT_PACKET
+name: EvidencePacket Contract
+version: "1.0"
+layer: audit
+required_fields:
+  - schema_version
+  - task_id
+  - claim_status
+  - repo
+  - files
+  - doc_anchors
+rules:
+  - commit_sha_40_hex
+  - doc_anchors_min_1
+  - ci_run_id_if_tests_claimed
+llm_control: DENY
