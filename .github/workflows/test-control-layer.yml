@@ -1,0 +1,28 @@
+name: test-control-layer
+on:
+  push:
+    paths:
+      - 'control-layer/**'
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: pip install pyyaml
+      - name: Run unit tests
+        run: |
+          cd control-layer
+          python -m tests.test_fingerprint
+          python -m tests.test_threat
+          python -m tests.test_rules
+          python -m tests.test_graph
+          python -m tests.test_compiler
+          python -m tests.test_sheriff
+          python -m tests.test_gate
+          python -m tests.test_integration
