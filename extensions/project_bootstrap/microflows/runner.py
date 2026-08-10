@@ -53,6 +53,8 @@ def _hash(data: Any) -> str:
     return "sha256:" + hashlib.sha256(raw).hexdigest()
 
 
+# ---------- extract_goal ----------
+
 _ACTION_VERBS = {
     "crear", "construir", "implementar", "modificar", "analizar", "instalar",
     "configurar", "desplegar", "validar", "reparar", "auditar", "documentar",
@@ -62,17 +64,23 @@ _ACTION_VERBS = {
 
 
 def extract_goal(raw_input: str, **kwargs) -> GoalStruct:
+    """
+    PASO 1-5 extract_goal (determinista).
+    Extrae meta, verbo, criterios. Formato: [Verbo] + [Objeto] + [Restricción]
+    """
     text = (raw_input or "").strip()
     if not text:
         raise ValueError("extract_goal: input vacío")
 
     lower = text.lower()
     verb = "procesar"
-    for v in _ACTION_VERBS:
-        if re.search(rf"\\b{v}\\b", lower):
+    tokens = re.findall(r"[a-záéíóúñü]+", lower)
+    for v in sorted(_ACTION_VERBS, key=len, reverse=True):
+        if v in tokens:
             verb = v
             break
 
+    # Criterios por defecto si no se detectan
     success = "objetivo cumplido con evidencia"
     failure = "no completar en el número de iteraciones permitido"
     if "éxito" in lower or "success" in lower:
@@ -96,10 +104,17 @@ def extract_goal(raw_input: str, **kwargs) -> GoalStruct:
     )
 
 
+# ---------- decompose_tasks ----------
+
 def decompose_tasks(goal: GoalStruct, max_steps: int = 8, **kwargs) -> List[TaskItem]:
+    """
+    Descompone goal en pasos atómicos.
+    Prioridad y dependencias lineales por defecto.
+    """
     if not goal or not goal.objective:
         raise ValueError("decompose_tasks: goal vacío")
 
+    # Heurística simple: dividir por puntuación / "y" / comas
     parts = re.split(r"[.;]|\by\b|,", goal.objective)
     parts = [p.strip() for p in parts if p.strip() and len(p.strip()) > 3]
     if not parts:
@@ -124,7 +139,10 @@ def decompose_tasks(goal: GoalStruct, max_steps: int = 8, **kwargs) -> List[Task
     return tasks
 
 
+# ---------- build_profile (simplificado ejecutable) ----------
+
 def build_profile(raw_docs: str = "", goal: Optional[GoalStruct] = None, **kwargs) -> Dict[str, Any]:
+    """Genera estructura de PROJECT_PROFILE.md."""
     purpose = goal.objective if goal else "proyecto sin objetivo declarado"
     return {
         "document": "PROJECT_PROFILE.md",
@@ -139,6 +157,7 @@ def build_profile(raw_docs: str = "", goal: Optional[GoalStruct] = None, **kwarg
 
 
 def build_architecture(components: Optional[List[str]] = None, **kwargs) -> Dict[str, Any]:
+    """Genera estructura de ARCHITECTURE.md."""
     comps = components or ["controllers", "services", "repositories", "models"]
     return {
         "document": "ARCHITECTURE.md",
@@ -150,6 +169,7 @@ def build_architecture(components: Optional[List[str]] = None, **kwargs) -> Dict
 
 
 def build_workflow(fases: Optional[List[str]] = None, **kwargs) -> Dict[str, Any]:
+    """Genera estructura de WORKFLOW.md."""
     fases = fases or ["analisis", "implementacion", "test", "deploy"]
     workflow = {
         "fases": {
@@ -206,6 +226,7 @@ def append_trace(decision: str, reason: str = "", source: str = "", commit: str 
     }
 
 
+# Registry de microflujos
 MICROFLUJOS: Dict[str, Callable] = {
     "extract_goal": extract_goal,
     "decompose_tasks": decompose_tasks,
