@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "source_evolution.version_pin.v1",
+  "title": "VersionPin",
+  "type": "object",
+  "required": ["schema_version", "pin_id", "source_type", "locator", "digest"],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "pin_id": { "type": "string", "minLength": 1 },
+    "source_type": {
+      "type": "string",
+      "enum": ["git", "hf", "release", "package", "url", "local"]
+    },
+    "locator": {
+      "type": "object",
+      "required": ["uri"],
+      "properties": {
+        "uri": { "type": "string" },
+        "ref": { "type": "string" },
+        "path": { "type": "string" },
+        "package_name": { "type": "string" },
+        "version": { "type": "string" }
+      }
+    },
+    "digest": {
+      "type": "object",
+      "required": ["algo", "value"],
+      "properties": {
+        "algo": { "type": "string", "enum": ["sha256", "git_commit"] },
+        "value": { "type": "string", "minLength": 7 }
+      }
+    },
+    "license": { "type": "string" },
+    "llm_control": { "type": "string", "enum": ["DENY", "ALLOW"], "default": "DENY" },
+    "meta": { "type": "object" }
+  }
+}
