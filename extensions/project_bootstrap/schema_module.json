@@ -1,0 +1,72 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "maxbry://contracts/project_bootstrap/v1.0",
+  "title": "project_bootstrap module contract",
+  "type": "object",
+  "required": ["artifact_id", "version", "estado", "categoria", "etapa", "contrato", "ejecucion", "seguridad"],
+  "properties": {
+    "artifact_id": {
+      "const": "wordflow.kernel.project_bootstrap"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "estado": {
+      "enum": ["draft", "testing", "active", "deprecated", "revoked"]
+    },
+    "categoria": {
+      "const": "transversal"
+    },
+    "etapa": {
+      "const": "P"
+    },
+    "contrato": {
+      "type": "object",
+      "required": ["rol", "consume", "expone"],
+      "properties": {
+        "rol": { "const": "service" },
+        "consume": {
+          "type": "object",
+          "required": ["datatype"],
+          "properties": {
+            "datatype": { "const": "input_block" }
+          }
+        },
+        "expone": {
+          "type": "object",
+          "required": ["datatype"],
+          "properties": {
+            "datatype": { "const": "project_model" }
+          }
+        }
+      }
+    },
+    "ejecucion": {
+      "type": "object",
+      "required": ["kind", "transport", "runtime_type", "llm_ratio"],
+      "properties": {
+        "kind": { "const": "code" },
+        "transport": { "const": "importlib" },
+        "runtime_type": { "const": "compute" },
+        "llm_ratio": {
+          "type": "number",
+          "maximum": 0.10
+        },
+        "idempotente": { "const": true },
+        "entry_point": {
+          "type": "string",
+          "pattern": "^extensions\\.project_bootstrap\\."
+        }
+      }
+    },
+    "seguridad": {
+      "type": "object",
+      "required": ["sandbox", "allow_network"],
+      "properties": {
+        "sandbox": { "const": "container" },
+        "allow_network": { "const": false }
+      }
+    }
+  }
+}
