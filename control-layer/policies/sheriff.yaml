@@ -1,0 +1,18 @@
+# policies/sheriff.yaml — SALIDA 4 §20 checks base
+version: "1.0"
+fail_closed: true
+checks:
+  - id: plan_ok
+    required: true
+  - id: has_c00
+    required: true
+  - id: risk_below_black
+    max_score: 10
+  - id: no_conflicts
+    required: true
+  - id: state_not_black
+    required: true
+actions:
+  ALLOW: [GREEN, YELLOW]
+  ESCALATE: [ORANGE]
+  DENY: [RED, BLACK]
