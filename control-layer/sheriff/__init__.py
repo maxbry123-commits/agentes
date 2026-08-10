@@ -1,13 +1,8 @@
-"""Sheriff · 5 estados · 0% LLM · gate de ejecución."""
-
-from .estados import SheriffState, Verdict, evaluate
-from .shadow import ShadowLedger, ShadowRecord, promote_candidate
+# -*- coding: utf-8 -*-
+from .states import SheriffState, can_transition, state_from_band, ALLOWED
+from .decision import SheriffDecision, decide
 
 __all__ = [
-    "SheriffState",
-    "Verdict",
-    "evaluate",
-    "ShadowLedger",
-    "ShadowRecord",
-    "promote_candidate",
+    "SheriffState", "can_transition", "state_from_band", "ALLOWED",
+    "SheriffDecision", "decide",
 ]
