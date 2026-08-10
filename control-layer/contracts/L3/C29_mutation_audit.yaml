@@ -1,0 +1,18 @@
+# C29 — L3. B2 SALIDA4
+id: C29
+layer: L3
+name: mutation_audit
+implementado: true
+critical: false
+description: "Auditoría de mutaciones"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C29 aplica en capa L3"
+  - "violación → YELLOW o RED según risk_band"
+checks:
+  - mutation_audit_check
+evidence:
+  type: mutation_audit_marker
+  required: false

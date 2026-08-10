@@ -1,0 +1,18 @@
+# C30 — L3. B2 SALIDA4
+id: C30
+layer: L3
+name: rollback_plan
+implementado: true
+critical: false
+description: "Plan de rollback obligatorio"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C30 aplica en capa L3"
+  - "violación → YELLOW o RED según risk_band"
+checks:
+  - rollback_plan_check
+evidence:
+  type: rollback_plan_marker
+  required: false

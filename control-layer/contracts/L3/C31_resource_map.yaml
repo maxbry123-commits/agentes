@@ -1,0 +1,18 @@
+# C31 — L3. B2 SALIDA4
+id: C31
+layer: L3
+name: resource_map
+implementado: true
+critical: false
+description: "Mapa de recursos declarados"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C31 aplica en capa L3"
+  - "violación → YELLOW o RED según risk_band"
+checks:
+  - resource_map_check
+evidence:
+  type: resource_map_marker
+  required: false

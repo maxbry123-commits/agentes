@@ -1,0 +1,18 @@
+# C28 — L3. B2 SALIDA4
+id: C28
+layer: L3
+name: read_guard
+implementado: true
+critical: false
+description: "Guard de lecturas de paths"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C28 aplica en capa L3"
+  - "violación → YELLOW o RED según risk_band"
+checks:
+  - read_guard_check
+evidence:
+  type: read_guard_marker
+  required: false

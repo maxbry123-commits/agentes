@@ -1,0 +1,18 @@
+# C26 — L3. B2 SALIDA4
+id: C26
+layer: L3
+name: checkpoint_restore
+implementado: true
+critical: false
+description: "Checkpoints y restore de estado"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C26 aplica en capa L3"
+  - "violación → YELLOW o RED según risk_band"
+checks:
+  - checkpoint_restore_check
+evidence:
+  type: checkpoint_restore_marker
+  required: false
