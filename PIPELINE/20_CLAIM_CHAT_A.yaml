@@ -1,0 +1,48 @@
+# CHAT_A_EXECUTOR claim — bloque Control Layer Motor MVP
+status: COMPLETED
+block: A1-A11
+repo: maxbry123-commits/agentes
+branch: main
+final_commit: PENDING_AFTER_PUSH
+paths_added:
+  - control-layer/control/fingerprint.py
+  - control-layer/control/threat.py
+  - control-layer/control/rules.py
+  - control-layer/control/graph.py
+  - control-layer/control/reverse.py
+  - control-layer/control/normalizer.py
+  - control-layer/control/compiler.py
+  - control-layer/rules/risk_matrix.yaml
+  - control-layer/rules/routing.yaml
+  - control-layer/rules/bundles.yaml
+  - control-layer/contracts/C00_governance.yaml
+  - control-layer/contracts/C01_identity.yaml
+  - control-layer/contracts/C02_intent.yaml
+  - control-layer/contracts/C03_input_schema.yaml
+  - control-layer/contracts/C04_output_schema.yaml
+  - control-layer/contracts/C05_auth_boundary.yaml
+  - control-layer/contracts/C06_scope_limit.yaml
+  - control-layer/contracts/C07_audit_trail.yaml
+  - control-layer/contracts/C08_fail_closed.yaml
+  - control-layer/sheriff/states.py
+  - control-layer/sheriff/decision.py
+  - control-layer/sheriff/gate.py
+  - control-layer/policies/sheriff.yaml
+  - control-layer/manifest.yaml
+  - control-layer/ficha.v2.json
+  - control-layer/tests/test_fingerprint.py
+  - control-layer/tests/test_threat.py
+  - control-layer/tests/test_rules.py
+  - control-layer/tests/test_graph.py
+  - control-layer/tests/test_compiler.py
+  - control-layer/tests/test_sheriff.py
+  - control-layer/tests/test_gate.py
+  - control-layer/tests/test_integration.py
+  - .github/workflows/test-control-layer.yml
+  - PIPELINE/20_CONTROL_LAYER_MOTOR_MVP.md
+  - PIPELINE/20_CLAIM_CHAT_A.yaml
+tests_local: 45 PASSED
+tests_ci: workflow_present
+notes:
+  - bloque cierra motor+Sheriff+L1+enchufe v2; NO toda Capa de Control
+  - sin validación final A11 (pendiente plan restante del Director)
