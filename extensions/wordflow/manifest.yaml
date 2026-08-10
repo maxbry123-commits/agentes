@@ -1,0 +1,14 @@
+# wordflow extension manifest — A-WF-07
+name: wordflow
+version: "1.0.0"
+artifact_id: wordflow.extension.core
+extension_type: workflow
+abi_version: "2.0"
+kernel_min: "0.1.0"
+mount_mode: sidecar
+load_priority: 40
+llm_control: DENY
+entrypoint: engine.entrypoint:run_wordflow
+description: "Wordflow core — InputBlock → Goals → Refute/Repair → Sentinel → Council → main_12"
+depends_on:
+  - wordflow.extension.audit_forensic
