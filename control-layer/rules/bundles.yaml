@@ -1,4 +1,5 @@
-# rules/bundles.yaml — SALIDA 4 §14.4 seed A3
+# rules/bundles.yaml — B0 expanded seed
+version: "1.0"
 
 security.bundle:
   requires:
@@ -13,3 +14,33 @@ runtime.bundle:
     - C28
     - C33
     - C36
+
+network.bundle:
+  requires:
+    - C33
+    - C36
+    - C37
+    - C38
+    - C40
+
+llm.bundle:
+  requires:
+    - C02
+    - C43
+    - C44
+    - C49
+    - C73
+
+deploy.bundle:
+  requires:
+    - C82
+    - C83
+    - C84
+    - C85
+    - C45
+
+governance.bundle:
+  requires:
+    - C00
+    - C01
+    - C02

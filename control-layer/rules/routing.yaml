@@ -1,5 +1,5 @@
-# rules/routing.yaml — SALIDA 4 §14/§17 seed mínimo A3
-# tipo operación → contratos obligatorios
+# rules/routing.yaml — B0 SALIDA4 §17 · 13 operation types
+# tipo operación → contratos obligatorios (seed; L2–L8 formalizan en B1–B7)
 
 READ_LOCAL:
   - C03
@@ -48,3 +48,71 @@ MOUNT_EXTENSION:
   - C83
   - C84
   - C85
+
+CODE_EXEC:
+  - C03
+  - C27
+  - C29
+  - C35
+  - C45
+  - C48
+  - C33
+
+FILE_DELETE:
+  - C03
+  - C04
+  - C27
+  - C29
+  - C45
+  - C48
+
+GIT_OP:
+  - C33
+  - C36
+  - C40
+  - C41
+  - C45
+  - C82
+
+DEPLOY:
+  - C33
+  - C36
+  - C40
+  - C45
+  - C48
+  - C82
+  - C83
+  - C85
+
+RESEARCH:
+  - C02
+  - C28
+  - C33
+  - C36
+  - C41
+  - C73
+  - C81
+
+CREDENTIAL_USE:
+  - C33
+  - C36
+  - C40
+  - C45
+  - C47
+  - C48
+  - C49
+
+STATE_WRITE:
+  - C03
+  - C04
+  - C27
+  - C28
+  - C29
+
+PARALLEL_BATCH:
+  - C03
+  - C28
+  - C33
+  - C36
+  - C41
+  - C44
