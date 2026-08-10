@@ -1,0 +1,17 @@
+# C67 — L7. B6 SALIDA4
+id: C67
+layer: L7
+name: trace_export
+implementado: true
+critical: false
+description: "Export de traces"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C67 aplica en capa L7"
+checks:
+  - trace_export_check
+evidence:
+  type: trace_export_marker
+  required: false

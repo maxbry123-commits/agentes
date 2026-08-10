@@ -1,0 +1,17 @@
+# C68 — L7. B6 SALIDA4
+id: C68
+layer: L7
+name: log_policy
+implementado: true
+critical: false
+description: "Política de logs"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C68 aplica en capa L7"
+checks:
+  - log_policy_check
+evidence:
+  type: log_policy_marker
+  required: false

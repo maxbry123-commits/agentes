@@ -1,0 +1,17 @@
+# C59 — L7. B6 SALIDA4
+id: C59
+layer: L7
+name: scheduler_fair
+implementado: true
+critical: false
+description: "Fairness del scheduler"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C59 aplica en capa L7"
+checks:
+  - scheduler_fair_check
+evidence:
+  type: scheduler_fair_marker
+  required: false

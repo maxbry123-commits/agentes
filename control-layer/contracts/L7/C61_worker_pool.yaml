@@ -1,0 +1,17 @@
+# C61 — L7. B6 SALIDA4
+id: C61
+layer: L7
+name: worker_pool
+implementado: true
+critical: false
+description: "Pool de workers acotado"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C61 aplica en capa L7"
+checks:
+  - worker_pool_check
+evidence:
+  type: worker_pool_marker
+  required: false

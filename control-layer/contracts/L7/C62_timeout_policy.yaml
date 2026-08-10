@@ -1,0 +1,17 @@
+# C62 — L7. B6 SALIDA4
+id: C62
+layer: L7
+name: timeout_policy
+implementado: true
+critical: false
+description: "Timeouts por nodo"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C62 aplica en capa L7"
+checks:
+  - timeout_policy_check
+evidence:
+  type: timeout_policy_marker
+  required: false

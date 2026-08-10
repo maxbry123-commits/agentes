@@ -1,0 +1,17 @@
+# C63 — L7. B6 SALIDA4
+id: C63
+layer: L7
+name: retry_policy
+implementado: true
+critical: false
+description: "Política de reintentos"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C63 aplica en capa L7"
+checks:
+  - retry_policy_check
+evidence:
+  type: retry_policy_marker
+  required: false

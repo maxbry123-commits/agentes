@@ -1,0 +1,17 @@
+# C57 — L7. B6 SALIDA4
+id: C57
+layer: L7
+name: dag_integrity
+implementado: true
+critical: false
+description: "Integridad de DAG"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C57 aplica en capa L7"
+checks:
+  - dag_integrity_check
+evidence:
+  type: dag_integrity_marker
+  required: false
