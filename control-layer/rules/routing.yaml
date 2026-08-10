@@ -1,0 +1,50 @@
+# rules/routing.yaml — SALIDA 4 §14/§17 seed mínimo A3
+# tipo operación → contratos obligatorios
+
+READ_LOCAL:
+  - C03
+  - C04
+  - C28
+  - C41
+
+WRITE_LOCAL:
+  - C03
+  - C04
+  - C27
+  - C29
+  - C35
+  - C45
+  - C48
+
+NETWORK_CALL:
+  - C33
+  - C36
+  - C37
+  - C38
+  - C40
+  - C41
+  - C42
+
+LLM_CALL:
+  - C02
+  - C03
+  - C28
+  - C33
+  - C36
+  - C40
+  - C41
+  - C43
+  - C44
+  - C49
+  - C73
+
+MOUNT_EXTENSION:
+  - C51
+  - C52
+  - C53
+  - C54
+  - C55
+  - C82
+  - C83
+  - C84
+  - C85

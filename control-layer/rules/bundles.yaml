@@ -1,0 +1,15 @@
+# rules/bundles.yaml — SALIDA 4 §14.4 seed A3
+
+security.bundle:
+  requires:
+    - C45
+    - C47
+    - C48
+    - C49
+
+runtime.bundle:
+  requires:
+    - C03
+    - C28
+    - C33
+    - C36
