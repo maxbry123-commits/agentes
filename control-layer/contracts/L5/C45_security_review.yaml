@@ -1,0 +1,18 @@
+# C45 — L5. B4 SALIDA4
+id: C45
+layer: L5
+name: security_review
+implementado: true
+critical: false
+description: "Revisión de seguridad obligatoria"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C45 aplica en capa L5"
+  - "violación → YELLOW o RED según risk_band"
+checks:
+  - security_review_check
+evidence:
+  type: security_review_marker
+  required: false

@@ -1,0 +1,18 @@
+# C46 — L5. B4 SALIDA4
+id: C46
+layer: L5
+name: threat_model
+implementado: true
+critical: false
+description: "Modelo de amenaza del plan"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C46 aplica en capa L5"
+  - "violación → YELLOW o RED según risk_band"
+checks:
+  - threat_model_check
+evidence:
+  type: threat_model_marker
+  required: false

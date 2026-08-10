@@ -1,0 +1,18 @@
+# C43 — L5. B4 SALIDA4
+id: C43
+layer: L5
+name: prompt_boundary
+implementado: true
+critical: false
+description: "Frontera de prompts/system"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C43 aplica en capa L5"
+  - "violación → YELLOW o RED según risk_band"
+checks:
+  - prompt_boundary_check
+evidence:
+  type: prompt_boundary_marker
+  required: false

@@ -1,0 +1,18 @@
+# C42 — L5. B4 SALIDA4
+id: C42
+layer: L5
+name: agent_identity
+implementado: true
+critical: false
+description: "Identidad de agente invocador"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C42 aplica en capa L5"
+  - "violación → YELLOW o RED según risk_band"
+checks:
+  - agent_identity_check
+evidence:
+  type: agent_identity_marker
+  required: false

@@ -1,0 +1,18 @@
+# C50 — L5. B4 SALIDA4
+id: C50
+layer: L5
+name: human_gate
+implementado: true
+critical: false
+description: "Gate humano Director"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C50 aplica en capa L5"
+  - "violación → YELLOW o RED según risk_band"
+checks:
+  - human_gate_check
+evidence:
+  type: human_gate_marker
+  required: false
