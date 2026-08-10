@@ -1,0 +1,17 @@
+# C71 — L7. B6 SALIDA4
+id: C71
+layer: L7
+name: research_source
+implementado: true
+critical: false
+description: "Fuente de investigación"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C71 aplica en capa L7"
+checks:
+  - research_source_check
+evidence:
+  type: research_source_marker
+  required: false

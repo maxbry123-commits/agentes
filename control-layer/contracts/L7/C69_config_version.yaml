@@ -1,0 +1,17 @@
+# C69 — L7. B6 SALIDA4
+id: C69
+layer: L7
+name: config_version
+implementado: true
+critical: false
+description: "Versionado de config"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C69 aplica en capa L7"
+checks:
+  - config_version_check
+evidence:
+  type: config_version_marker
+  required: false

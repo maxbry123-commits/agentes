@@ -1,0 +1,17 @@
+# C79 — L7. B6 SALIDA4
+id: C79
+layer: L7
+name: benchmark_gate
+implementado: true
+critical: false
+description: "Gate de benchmark"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C79 aplica en capa L7"
+checks:
+  - benchmark_gate_check
+evidence:
+  type: benchmark_gate_marker
+  required: false

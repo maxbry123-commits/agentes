@@ -1,0 +1,17 @@
+# C75 — L7. B6 SALIDA4
+id: C75
+layer: L7
+name: research_sandbox
+implementado: true
+critical: false
+description: "Sandbox de research"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C75 aplica en capa L7"
+checks:
+  - research_sandbox_check
+evidence:
+  type: research_sandbox_marker
+  required: false

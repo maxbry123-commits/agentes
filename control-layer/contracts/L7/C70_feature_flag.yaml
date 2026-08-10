@@ -1,0 +1,17 @@
+# C70 — L7. B6 SALIDA4
+id: C70
+layer: L7
+name: feature_flag
+implementado: true
+critical: false
+description: "Feature flags deterministas"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C70 aplica en capa L7"
+checks:
+  - feature_flag_check
+evidence:
+  type: feature_flag_marker
+  required: false

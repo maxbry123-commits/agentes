@@ -1,0 +1,17 @@
+# C74 — L7. B6 SALIDA4
+id: C74
+layer: L7
+name: research_budget
+implementado: true
+critical: false
+description: "Budget de research"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C74 aplica en capa L7"
+checks:
+  - research_budget_check
+evidence:
+  type: research_budget_marker
+  required: false
