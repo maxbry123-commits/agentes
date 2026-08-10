@@ -1,0 +1,18 @@
+# C37 — L4. B3 SALIDA4
+id: C37
+layer: L4
+name: dns_allowlist
+implementado: true
+critical: false
+description: "Allowlist DNS"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C37 aplica en capa L4"
+  - "violación → YELLOW o RED según risk_band"
+checks:
+  - dns_allowlist_check
+evidence:
+  type: dns_allowlist_marker
+  required: false

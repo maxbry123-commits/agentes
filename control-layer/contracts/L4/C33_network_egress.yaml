@@ -1,0 +1,18 @@
+# C33 — L4. B3 SALIDA4
+id: C33
+layer: L4
+name: network_egress
+implementado: true
+critical: false
+description: "Control de egress de red"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C33 aplica en capa L4"
+  - "violación → YELLOW o RED según risk_band"
+checks:
+  - network_egress_check
+evidence:
+  type: network_egress_marker
+  required: false

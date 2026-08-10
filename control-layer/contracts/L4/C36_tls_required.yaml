@@ -1,0 +1,18 @@
+# C36 — L4. B3 SALIDA4
+id: C36
+layer: L4
+name: tls_required
+implementado: true
+critical: false
+description: "TLS obligatorio en externos"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C36 aplica en capa L4"
+  - "violación → YELLOW o RED según risk_band"
+checks:
+  - tls_required_check
+evidence:
+  type: tls_required_marker
+  required: false

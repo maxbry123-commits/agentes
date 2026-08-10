@@ -1,0 +1,18 @@
+# C34 — L4. B3 SALIDA4
+id: C34
+layer: L4
+name: network_ingress
+implementado: true
+critical: false
+description: "Control de ingress de red"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C34 aplica en capa L4"
+  - "violación → YELLOW o RED según risk_band"
+checks:
+  - network_ingress_check
+evidence:
+  type: network_ingress_marker
+  required: false

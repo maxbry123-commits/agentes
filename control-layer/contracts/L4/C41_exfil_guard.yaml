@@ -1,0 +1,18 @@
+# C41 — L4. B3 SALIDA4
+id: C41
+layer: L4
+name: exfil_guard
+implementado: true
+critical: false
+description: "Guard anti-exfiltración"
+requires:
+  - C00
+forbids: []
+rules:
+  - "C41 aplica en capa L4"
+  - "violación → YELLOW o RED según risk_band"
+checks:
+  - exfil_guard_check
+evidence:
+  type: exfil_guard_marker
+  required: false
