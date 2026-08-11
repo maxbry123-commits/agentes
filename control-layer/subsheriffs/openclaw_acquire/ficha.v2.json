@@ -1,0 +1,76 @@
+{
+  "artifact_id": "wordflow.subsheriff.openclaw_acquire",
+  "version": "2.0.0",
+  "estado": "testing",
+  "categoria": "transversal",
+  "etapa": "T",
+
+  "contrato": {
+    "rol": "service",
+    "consume": null,
+    "expone": {
+      "datatype": {"family": "infra_artifact", "type": "openclaw_installation_manifest", "version": 1},
+      "schema_uri": "contracts/openclaw_acquire_manifest.schema.json"
+    }
+  },
+
+  "ejecucion": {
+    "kind": "code",
+    "transport": "stdio",
+    "runtime_type": "compute",
+    "llm_ratio": 0,
+    "idempotente": true,
+    "entry_point": "control-layer/subsheriffs/openclaw_acquire/acquire.py"
+  },
+
+  "perfiles": {
+    "n0": {"habilitada": true, "iteraciones": 1},
+    "n1": {"habilitada": true, "iteraciones": 1},
+    "n2": {"habilitada": true, "iteraciones": 1},
+    "n3": {"habilitada": true, "iteraciones": 1},
+    "n4": {"habilitada": true, "iteraciones": 1},
+    "n5": {"habilitada": true, "iteraciones": 1}
+  },
+
+  "repeticion": {"max": 2, "condicion": "si_falla_verificacion", "backoff": "1000*2^n+rand(0,1000)"},
+  "repite_en": [],
+
+  "activacion": {
+    "eventos": ["wordflow.sheriff.request:openclaw_acquire"],
+    "wake_words": [],
+    "condicion": "manual_approval_gate OR council_scheduled_infra_task"
+  },
+
+  "presupuesto": {
+    "n0": {"max_ms": 1800000, "max_costo_usd": 0},
+    "n1": {"max_ms": 1800000, "max_costo_usd": 0},
+    "n2": {"max_ms": 1800000, "max_costo_usd": 0},
+    "n3": {"max_ms": 1800000, "max_costo_usd": 0},
+    "n4": {"max_ms": 1800000, "max_costo_usd": 0},
+    "n5": {"max_ms": 1800000, "max_costo_usd": 0}
+  },
+
+  "telemetria": {
+    "metricas": ["tiempo", "errores", "reintentos", "nodos_completados", "commit_verificado"],
+    "span_otel": true
+  },
+
+  "evidencia": {
+    "produce": ["L1_static", "L2_build", "L3_runtime"],
+    "destino": "runtime/evidence/openclaw_acquire/"
+  },
+
+  "failover": {"sustituible_por": [], "compensacion": "ESCALATE_TO_DIRECTOR_ON_FAIL"},
+
+  "seguridad": {
+    "sandbox": "process",
+    "permisos": ["network:github.com", "fs:agents/OpenClaw", "exec:git", "exec:pnpm", "exec:node", "exec:openclaw"],
+    "limites": {"timeout_ms": 1800000, "deadline_ms": 2100000, "max_memoria_mb": 2048}
+  },
+
+  "salud": {"metodo": "exec", "heartbeat_interval_s": 60},
+
+  "firma": {"gpg_key_id": "PENDIENTE", "revocation_ref": "contracts/revocation_list.json"},
+
+  "trazas": {"task_id_requerido": true, "trace_id_requerido": true}
+}
