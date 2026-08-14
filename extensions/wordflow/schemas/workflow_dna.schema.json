@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "wordflow.workflow_dna.v1",
+  "title": "WorkflowDNA",
+  "type": "object",
+  "required": ["dna_id", "lock_id", "dna_hash", "created_at"],
+  "properties": {
+    "dna_id": { "type": "string" },
+    "lock_id": { "type": "string" },
+    "workflow_version": { "type": "string" },
+    "objectives": { "type": "array" },
+    "dag_digest": { "type": ["string", "null"] },
+    "policies": { "type": "object" },
+    "success_criteria": { "type": "array" },
+    "rollback": { "type": "object" },
+    "created_at": { "type": "string" },
+    "dna_hash": { "type": "string" }
+  }
+}
