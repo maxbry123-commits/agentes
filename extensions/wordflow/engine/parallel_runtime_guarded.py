@@ -1,5 +1,14 @@
 # -*- coding: utf-8 -*-
-"""GuardedParallelRuntime — T23. ParallelRuntime + Retry + CircuitBreaker. 0% LLM."""
+"""GuardedParallelRuntime — T23/G6. Retry + CircuitBreaker over ParallelRuntime.
+
+SCOPE (G6 / gap G-S4-03):
+  - IN SCOPE: parallel task handlers (sandbox/lease slots).
+  - OUT OF SCOPE: RuntimeBus engine jobs, ExecutionFacade, Manifest signing.
+  - Bus-level retry must be added beside Bus.dispatch if needed — not here.
+  - Use ParallelFacadeRuntime (G5) when tasks need engine/resource routing.
+
+0% LLM.
+"""
 from __future__ import annotations
 
 from typing import Any, Callable
@@ -7,6 +16,11 @@ from typing import Any, Callable
 from .circuit_breaker import CircuitBreaker, CircuitOpenError
 from .parallel_runtime import ParallelRuntime
 from .retry_policy import RetryExhaustedError, RetryPolicy
+
+SCOPE = {
+    "in": ["parallel_tasks", "sandbox_slots", "leases", "retry", "circuit_breaker"],
+    "out": ["runtime_bus", "execution_manifest", "execution_facade", "engine_abi"],
+}
 
 
 class GuardedParallelRuntime(ParallelRuntime):
@@ -28,8 +42,11 @@ class GuardedParallelRuntime(ParallelRuntime):
             lease_ttl_s=lease_ttl_s,
             lease_clock=lease_clock,
         )
-        self.retry = retry or RetryPolicy(max_attempts=1)  # no retry by default
+        self.retry = retry or RetryPolicy(max_attempts=1)
         self.circuit = circuit
+
+    def scope(self) -> dict[str, list[str]]:
+        return dict(SCOPE)
 
     def run(
         self,
@@ -68,4 +85,5 @@ class GuardedParallelRuntime(ParallelRuntime):
         result = super().run(guarded, max_steps=max_steps)
         result["circuit"] = self.circuit.snapshot() if self.circuit else None
         result["retry_plan"] = self.retry.plan()
+        result["scope"] = self.scope()
         return result
