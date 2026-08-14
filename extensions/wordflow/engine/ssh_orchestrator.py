@@ -25,7 +25,7 @@ class SSHTransport(Protocol):
 
 
 class FakeSSHTransport:
-    """In-memory fake — records commands, never opens sockets."""
+    """In-memory fake — never opens sockets."""
 
     def __init__(self):
         self.sessions: dict[str, dict[str, Any]] = {}
@@ -68,7 +68,7 @@ class FakeSSHTransport:
 
 
 class SSHOrchestrator:
-    """Routes remote execution via transport. Default = Fake (no network)."""
+    """Routes remote execution via transport. Default Fake."""
 
     def __init__(self, transport: SSHTransport | None = None, *,
                  allow_real: bool = False):
@@ -107,12 +107,8 @@ class SSHOrchestrator:
         *,
         payload: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Stub migration: records intent only."""
-        return self.run_remote(
-            host,
-            f"wordflow-migrate {task_id}",
-        ) | {
-            "task_id": task_id,
-            "payload_keys": list((payload or {}).keys()),
-            "mode": "stub",
-        }
+        base = self.run_remote(host, f"wordflow-migrate {task_id}")
+        base["task_id"] = task_id
+        base["payload_keys"] = list((payload or {}).keys())
+        base["mode"] = "stub"
+        return base
