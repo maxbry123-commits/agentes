@@ -96,7 +96,6 @@ def run_acquire_12(
     state["fetch_plan"] = fetch_plan
     _rec("A04", "build_fetch_plan", True, fetch_plan.get("method"))
 
-    fetch_result: dict[str, Any]
     if execute:
         f = fetcher or FakeFetcher()
         fetch_result = f.execute(fetch_plan)
@@ -124,11 +123,19 @@ def run_acquire_12(
         target_dir=target_dir,
     )
     state["install_plan"] = install_plan
-    _rec("A07", "build_install_plan", install_plan.get("status") == "PLANNED",
-         install_plan.get("status"))
+    _rec(
+        "A07",
+        "build_install_plan",
+        install_plan.get("status") == "PLANNED",
+        install_plan.get("status"),
+    )
 
     try:
-        prov = build_provenance(pin, fetch_result=fetch_result, install_plan=install_plan)
+        prov = build_provenance(
+            pin=pin,
+            fetch_result=fetch_result,
+            install_plan=install_plan,
+        )
         state["provenance"] = prov
         _rec("A08", "provenance_record", True, None)
     except Exception as e:  # pragma: no cover
