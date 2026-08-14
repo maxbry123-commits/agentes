@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "wordflow.architecture_output.v1",
+  "title": "ArchitectureOutput",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "artifact_id",
+    "files",
+    "evidence_ref"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "artifact_id": { "type": "string", "minLength": 1 },
+    "block_id": { "type": ["string", "null"] },
+    "summary": { "type": "string" },
+    "components": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "role"],
+        "properties": {
+          "id": { "type": "string" },
+          "role": { "type": "string" },
+          "depends_on": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "files": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["path", "kind"],
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "kind": {
+            "type": "string",
+            "enum": ["yaml", "json", "md", "py", "other"]
+          },
+          "description": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "evidence_ref": {
+      "type": "object",
+      "required": ["task_id", "claim_status"],
+      "properties": {
+        "task_id": { "type": "string" },
+        "claim_status": {
+          "type": "string",
+          "enum": ["PARTIAL", "COMPLETED", "REFUTADO"]
+        },
+        "doc_anchors": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}
