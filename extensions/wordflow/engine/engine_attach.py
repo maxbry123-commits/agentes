@@ -24,9 +24,13 @@ class EngineAttachRegistry:
             "memory": "FakeHermesMemory",
         }
 
-    def attach_planning(self, port: PlanningPort, *,
-                        name: str = "custom",
-                        is_real: bool = False) -> dict[str, Any]:
+    def attach_planning(
+        self,
+        port: PlanningPort,
+        *,
+        name: str = "custom",
+        is_real: bool = False,
+    ) -> dict[str, Any]:
         if is_real and not self.allow_real:
             return {
                 "ok": False,
@@ -37,9 +41,13 @@ class EngineAttachRegistry:
         self._meta["planning"] = name
         return {"ok": True, "planning": name}
 
-    def attach_memory(self, port: MemoryPort, *,
-                      name: str = "custom",
-                      is_real: bool = False) -> dict[str, Any]:
+    def attach_memory(
+        self,
+        port: MemoryPort,
+        *,
+        name: str = "custom",
+        is_real: bool = False,
+    ) -> dict[str, Any]:
         if is_real and not self.allow_real:
             return {
                 "ok": False,
@@ -55,14 +63,25 @@ class EngineAttachRegistry:
         self.allow_real = bool(flag)
         return {"ok": True, "allow_real": self.allow_real}
 
-    def plan(self, objective: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
-        return self.planning.propose(objective, context or {})
+    def plan(self, contract: dict[str, Any], form: dict[str, Any]) -> dict[str, Any]:
+        """Delegate to PlanningPort.propose(contract, form)."""
+        return self.planning.propose(contract, form)
 
-    def remember(self, key: str, value: Any) -> dict[str, Any]:
-        return self.memory.store(key, value)
-
-    def recall(self, key: str) -> dict[str, Any]:
-        return self.memory.fetch(key)
+    def refresh_memory(
+        self,
+        lock: dict[str, Any],
+        *,
+        current_step: str | None = None,
+        last_output: str | None = None,
+        checkpoint_ref: str | None = None,
+    ) -> dict[str, Any]:
+        """Delegate to MemoryPort.refresh."""
+        return self.memory.refresh(
+            lock,
+            current_step=current_step,
+            last_output=last_output,
+            checkpoint_ref=checkpoint_ref,
+        )
 
     def snapshot(self) -> dict[str, Any]:
         return {
@@ -75,7 +94,6 @@ class EngineAttachRegistry:
 
 def default_attach() -> EngineAttachRegistry:
     reg = EngineAttachRegistry()
-    # Explicit dual fake option documented in policy
     reg.attach_planning(FakeOpenClawPlanner(), name="FakeOpenClawPlanner")
     reg.attach_memory(FakeHermesMemory(), name="FakeHermesMemory")
     return reg
