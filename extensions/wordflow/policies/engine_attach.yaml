@@ -1,21 +1,30 @@
-# Engine attach policies — seed. Real OC/Hermes deferred (PIPELINE/32).
-version: "1.0"
+# engine_attach.yaml — G7 / gap G-S2-02
+# Policy for optional MemoryPort / PlanningPort hooks. 0% LLM defaults.
+schema_version: "1.0"
 
-ping:
-  interval_s: 15
-  focus_threshold: 0.5
-  # memory_refresh: call MemoryPort when focus degraded or every N interval pings
-  memory_refresh:
-    enabled: true
-    on_focus_degraded: true
-    every_n_interval_pings: 4
-    engine: hermes   # MemoryPort only; openclaw_on_ping: false
+# Real OpenClaw / Hermes: FORBIDDEN until PIPELINE/32 post-Wordflow
+allow_real_engines: false
 
 planning:
-  ports: [openclaw, hermes]  # fakes until T3
-  auto_accept_required: false
+  enabled: true
+  port: FakeOpenClawPlanner  # or FakeHermesPlanner; swap without redesign
+  on_stages: ["input_plan"]  # only 10% reasoning gap
+  auto_accept_proposals: false
 
-forbid:
-  - openclaw_on_ping
-  - rewrite_goal_lock
-  - network_in_wave0_ports
+memory:
+  enabled: true
+  port: FakeHermesMemory
+  refresh_on_ping: false      # default off; enable when MemoryPort injected
+  refresh_every_n_pings: 0   # 0 = disabled
+  on_focus_degraded: false
+
+# Push/Ping must not call OC on every tick
+push_ping:
+  openclaw_on_ping: false
+  hermes_on_ping: false
+  interval_s: 15
+
+# Classifier hints only — no network
+classifier:
+  engine_hints_allowed: true
+  network_calls: false
