@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "wordflow.memory_pack.v1",
+  "title": "MemoryPack",
+  "description": "Structured memory refresh payload. Not free chat.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "pack_id",
+    "lock_id",
+    "engine_id",
+    "pack_hash"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "pack_id": { "type": "string" },
+    "lock_id": { "type": "string" },
+    "engine_id": {
+      "type": "string",
+      "enum": ["hermes", "fake", "unknown"]
+    },
+    "facts": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "open_loops": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "constraints_echo": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "checkpoint_ref": { "type": ["string", "null"] },
+    "state": { "type": ["string", "null"] },
+    "pack_hash": { "type": "string" }
+  }
+}
