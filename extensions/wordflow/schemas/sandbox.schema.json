@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "wordflow.sandbox.v1",
+  "title": "Sandbox",
+  "description": "Logical sandbox slot. Real Docker/SSH deferred.",
+  "type": "object",
+  "required": ["sandbox_id", "status", "backend"],
+  "properties": {
+    "sandbox_id": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["FREE", "ALLOCATED", "RUNNING", "RELEASING", "ERROR"]
+    },
+    "backend": {
+      "type": "string",
+      "enum": ["logical", "docker", "ssh", "other"]
+    },
+    "task_id": { "type": ["string", "null"] },
+    "workdir": { "type": ["string", "null"] },
+    "lease_id": { "type": ["string", "null"] }
+  }
+}
