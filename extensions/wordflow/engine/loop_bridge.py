@@ -1,16 +1,17 @@
 # -*- coding: utf-8 -*-
-"""loop_bridge — G2. InputContract → Questions → Goals → GoalLock. 0% LLM.
-
-Canonical entry for main_loop / facade. Does not call engines.
-"""
+"""loop_bridge — G2/G3. Contract→Lock + echo/registers/classify/ping. 0% LLM."""
 from __future__ import annotations
 
 from typing import Any
 
+from .cognitive_registers import load_from_lock
 from .goal_lock import create_goal_lock, verify_lock_integrity
 from .goals_compiler import compile_goals
 from .input_compiler import compile_input_contract
+from .objective_echo import inject_echo
+from .push_ping import emit_ping
 from .structured_questions import answer, build_from_contract, resolve_gate
+from .task_classifier import classify_task, decision_gate
 
 
 def bridge_to_lock(
@@ -19,11 +20,6 @@ def bridge_to_lock(
     auto_answer_approver: str | None = "director",
     require_resolved: bool = True,
 ) -> dict[str, Any]:
-    """Compile raw text to GoalLock via canonical InputContract path.
-
-    If auto_answer_approver is set, answers Q12_approver only (deterministic test/bootstrap).
-    Production should pass answers explicitly via bridge_with_answers.
-    """
     contract = compile_input_contract(raw_input)
     form = build_from_contract(contract)
     if auto_answer_approver:
@@ -59,7 +55,6 @@ def bridge_with_answers(
     *,
     require_resolved: bool = True,
 ) -> dict[str, Any]:
-    """Same as bridge_to_lock but apply explicit Q* answers (no silent defaults beyond given)."""
     contract = compile_input_contract(raw_input)
     form = build_from_contract(contract)
     for qid, val in (answers or {}).items():
@@ -86,4 +81,52 @@ def bridge_with_answers(
         "goals": goals,
         "lock": lock,
         "gate": gate,
+    }
+
+
+def bridge_full(
+    raw_input: str,
+    *,
+    task_hint: str = "",
+    auto_answer_approver: str | None = "director",
+    emit_initial_ping: bool = True,
+) -> dict[str, Any]:
+    """G3: lock + objective echo + registers + task classify + optional ping."""
+    base = bridge_to_lock(
+        raw_input,
+        auto_answer_approver=auto_answer_approver,
+        require_resolved=True,
+    )
+    if not base.get("ok"):
+        return base
+
+    lock = base["lock"]
+    echo = inject_echo(lock, task_hint or "bridge_full")
+    registers = load_from_lock(lock)
+    classification = classify_task(
+        task_hint or lock.get("objective") or "",
+        lock=lock,
+    )
+    dgate = decision_gate(classification)
+
+    ping = None
+    if emit_initial_ping:
+        try:
+            ping = emit_ping(lock_id=lock.get("lock_id"), reason="bridge_full_start")
+        except TypeError:
+            # compatible signature variants
+            try:
+                ping = emit_ping(lock)
+            except Exception as exc:  # noqa: BLE001
+                ping = {"ok": False, "error": str(exc)}
+
+    return {
+        **base,
+        "ok": bool(dgate.get("ok", True)) if isinstance(dgate, dict) else True,
+        "stage": "full",
+        "echo": echo,
+        "registers": registers,
+        "classification": classification,
+        "decision_gate": dgate,
+        "ping": ping,
     }

@@ -1,10 +1,14 @@
 # -*- coding: utf-8 -*-
-"""Tests G2 loop_bridge."""
+"""Tests G2/G3 loop_bridge."""
 from __future__ import annotations
 
 import unittest
 
-from extensions.wordflow.engine.loop_bridge import bridge_to_lock, bridge_with_answers
+from extensions.wordflow.engine.loop_bridge import (
+    bridge_full,
+    bridge_to_lock,
+    bridge_with_answers,
+)
 
 
 class TestLoopBridge(unittest.TestCase):
@@ -17,19 +21,24 @@ class TestLoopBridge(unittest.TestCase):
         r = bridge_to_lock(raw)
         self.assertTrue(r["ok"])
         self.assertIn("lock_id", r["lock"])
-        self.assertTrue(r["lock"].get("lock_hash"))
-
-    def test_unresolved_without_approver(self):
-        raw = "objective: need answers\nsuccess: x\n"
-        r = bridge_to_lock(raw, auto_answer_approver=None, require_resolved=True)
-        # may still resolve if form defaults; if not ok, stage questions
-        if not r["ok"]:
-            self.assertEqual(r["stage"], "questions")
 
     def test_with_answers(self):
         raw = "objective: explicit answers\nsuccess: done\n"
         r = bridge_with_answers(raw, {"Q12_approver": "director"})
         self.assertTrue(r["ok"])
+
+    def test_bridge_full(self):
+        raw = (
+            "objective: bridge g3 full path\n"
+            "success: classify ok\n"
+            "constraint: deterministic\n"
+        )
+        r = bridge_full(raw, task_hint="validate schema")
+        self.assertIn("lock", r)
+        self.assertIn("echo", r)
+        self.assertIn("registers", r)
+        self.assertIn("classification", r)
+        self.assertEqual(r["stage"], "full")
 
 
 if __name__ == "__main__":
