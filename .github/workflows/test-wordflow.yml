@@ -2,7 +2,8 @@ name: test-wordflow
 on:
   push:
     paths:
-      - 'extensions/wordflow/**'
+      - "extensions/wordflow/**"
+      - ".github/workflows/test-wordflow.yml"
   workflow_dispatch:
 
 jobs:
@@ -15,7 +16,6 @@ jobs:
           python-version: "3.11"
       - name: Install deps
         run: pip install pyyaml
-      - name: Run wordflow tests
+      - name: Run wordflow unit tests
         run: |
-          cd extensions
-          python -m unittest discover -s wordflow/tests -v
+          python -m unittest discover -s extensions/wordflow/tests -p "test_*.py" -v
