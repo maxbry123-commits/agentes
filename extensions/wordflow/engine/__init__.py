@@ -6,6 +6,7 @@ from .sentinel import run_sentinel
 from .council import run_council, load_roles
 from .main_loop import run_main_12, load_main_12
 from .entrypoint import run_wordflow
+from .evidence_bridge import goals_out_to_evidence_packet
 
 __all__ = [
     "normalize_input_block",
@@ -22,4 +23,5 @@ __all__ = [
     "run_main_12",
     "load_main_12",
     "run_wordflow",
+    "goals_out_to_evidence_packet",
 ]

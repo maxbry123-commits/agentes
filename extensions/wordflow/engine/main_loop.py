@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""main_12 loop runner — A-WF-06. Deterministic pipeline. 0% LLM."""
+"""main_12 loop runner — A-WF-06 + W2 evidence bridge. Deterministic. 0% LLM."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -11,6 +11,7 @@ except ImportError:  # pragma: no cover
     yaml = None  # type: ignore
 
 from .council import run_council
+from .evidence_bridge import goals_out_to_evidence_packet
 from .goals_extractor import empty_goals_out, extract_goals_in
 from .input_normalizer import InputBlockError, normalize_input_block
 from .refute_repair import apply_auto_repairs, propose_repairs, refute_block
@@ -67,6 +68,7 @@ def run_main_12(
     raw: dict[str, Any] | None,
     *,
     loop_path: Path | str | None = None,
+    repo: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     cfg = load_main_12(loop_path)
     state: dict[str, Any] = {
@@ -81,6 +83,7 @@ def run_main_12(
         "council": None,
         "tasks": [],
         "goals_out": empty_goals_out(),
+        "evidence_packet": None,
         "stop_reason": None,
     }
 
@@ -184,15 +187,19 @@ def run_main_12(
         1 for g in state["goals_out"].values() if g.get("status") == "DONE"
     ))
 
-    evidence_stub = {
-        "task_id": block2.get("block_id"),
-        "claim_status": "PARTIAL",
-        "doc_anchors": block2.get("doc_refs") or [],
-    }
+    # W2: formal EvidencePacket (replaces 4-field stub)
+    packet = goals_out_to_evidence_packet(
+        block=block2,
+        goals_out=state["goals_out"],
+        tasks=tasks,
+        loop_status="RUNNING",
+        repo=repo,
+    )
+    state["evidence_packet"] = packet
     state["goals_out"]["GOUT-10"] = {
-        "name": "evidence_packet", "value": evidence_stub, "status": "DONE",
+        "name": "evidence_packet", "value": packet.get("task_id"), "status": "DONE",
     }
-    _record("S10", "build_evidence_stub", True, None)
+    _record("S10", "build_evidence_packet", True, packet.get("claim_status"))
 
     state["checkpoint"] = {
         "block_hash": block2.get("block_hash"),
@@ -206,4 +213,12 @@ def run_main_12(
     }
     _record("S12", "next_or_stop", True, plan.get("next"))
     state["status"] = "COMPLETED"
+    # refresh claim_status mapping after COMPLETED (still PARTIAL until W9)
+    state["evidence_packet"] = goals_out_to_evidence_packet(
+        block=block2,
+        goals_out=state["goals_out"],
+        tasks=tasks,
+        loop_status="COMPLETED",
+        repo=repo,
+    )
     return state
