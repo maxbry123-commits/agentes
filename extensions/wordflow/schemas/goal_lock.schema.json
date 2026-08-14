@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "wordflow.goal_lock.v1",
+  "title": "GoalLock",
+  "description": "Immutable goal object outside LLM context. Violation → discard engine output.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "lock_id",
+    "goals_id",
+    "contract_id",
+    "objective",
+    "success_criteria",
+    "constraints",
+    "forbidden",
+    "status",
+    "locked_at",
+    "lock_hash"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "lock_id": { "type": "string", "minLength": 1 },
+    "goals_id": { "type": "string" },
+    "contract_id": { "type": "string" },
+    "goals_hash": { "type": ["string", "null"] },
+    "form_hash": { "type": ["string", "null"] },
+    "objective": { "type": "string", "minLength": 1 },
+    "success_criteria": { "type": "string", "minLength": 1 },
+    "constraints": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "forbidden": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "risk_level": {
+      "type": "string",
+      "enum": ["low", "medium", "high", "unknown"]
+    },
+    "approver": {
+      "type": "string",
+      "enum": ["auto", "council", "director", "unknown"]
+    },
+    "engines_allowed": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "status": {
+      "type": "string",
+      "enum": ["LOCKED", "RELEASED", "SUPERSEDED"],
+      "description": "LOCKED is immutable. RELEASED/SUPERSEDED only via explicit runtime API."
+    },
+    "locked_at": { "type": "string" },
+    "lock_hash": { "type": "string", "minLength": 64, "maxLength": 64 }
+  }
+}
