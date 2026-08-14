@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Audit orchestrator — A-AUD-07. Packet → matrices → verdict. 0% LLM."""
+"""Audit orchestrator — A-AUD-07 + E3 report. Packet → matrices → verdict. 0% LLM."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -12,6 +12,7 @@ from .matrix_gaps import gaps_summary, run_gaps
 from .matrix_literal import literal_summary, run_literal
 from .packet_normalizer import PacketError, normalize_packet
 from .repo_truth import FakeRepoTruth, GitHubRepoTruth, RepoTruthPort
+from .report_builder import build_report
 from .requirements_loader import load_requirements
 from .verdict_engine import decide_verdict
 
@@ -46,26 +47,28 @@ def run_audit(
         packet_ok = True
         packet_flags = packet.get("flags") or {}
     except PacketError as e:
+        verdict = decide_verdict(
+            coverage_summary={"counts": {}, "total": 0, "critical_missing": []},
+            literal_summary={"counts": {}, "fails": [], "total": 0},
+            contradiction_summary={
+                "total": 0,
+                "fails": [],
+                "fail_count": 0,
+                "has_critical_fail": False,
+            },
+            gaps_summary={
+                "total": 0,
+                "critical_count": 0,
+                "critical_ids": [],
+                "has_critical_gap": False,
+            },
+            packet_ok=False,
+        )
         return {
             "ok": False,
             "packet": None,
-            "verdict": decide_verdict(
-                coverage_summary={"counts": {}, "total": 0, "critical_missing": []},
-                literal_summary={"counts": {}, "fails": [], "total": 0},
-                contradiction_summary={
-                    "total": 0,
-                    "fails": [],
-                    "fail_count": 0,
-                    "has_critical_fail": False,
-                },
-                gaps_summary={
-                    "total": 0,
-                    "critical_count": 0,
-                    "critical_ids": [],
-                    "has_critical_gap": False,
-                },
-                packet_ok=False,
-            ),
+            "verdict": verdict,
+            "report": build_report(verdict),
             "matrices": {},
             "error": {"reason_code": e.reason_code, "detail": e.detail},
         }
@@ -96,15 +99,23 @@ def run_audit(
         packet_ok=packet_ok,
     )
 
+    final_commit = (packet.get("repo") or {}).get("final_commit")
+    report = build_report(
+        verdict,
+        task_id=packet.get("task_id"),
+        final_commit=final_commit,
+    )
+
     return {
         "ok": True,
         "packet": {
             "task_id": packet.get("task_id"),
             "claim_status": packet.get("claim_status"),
-            "final_commit": (packet.get("repo") or {}).get("final_commit"),
+            "final_commit": final_commit,
             "packet_hash": packet.get("packet_hash"),
         },
         "verdict": verdict,
+        "report": report,
         "matrices": {
             "coverage": cov_rows,
             "literal": lit_rows,
