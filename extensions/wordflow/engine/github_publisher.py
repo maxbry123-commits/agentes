@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
-"""GitHubPublisher — T34. Deterministic publish contract. 0% LLM.
+"""GitHubPublisher — T34/D4. Deterministic publish contract. 0% LLM.
 
 Token never in workflow body: only token_ref → CredentialStore resolver.
-Default mode is dry_run (no network) unless executor injected.
+Default mode is dry_run unless GitDataApiExecutor injected.
 """
 from __future__ import annotations
 
-from typing import Any, Callable, Protocol
+from typing import Any, Protocol
 
 
 class CredentialStore(Protocol):
@@ -28,7 +28,6 @@ class DryRunExecutor:
         self.calls: list[dict[str, Any]] = []
 
     def publish(self, plan: dict[str, Any], token: str) -> dict[str, Any]:
-        # token presence checked but not logged
         if not token:
             return {"ok": False, "reason": "NO_TOKEN"}
         self.calls.append({k: v for k, v in plan.items() if k != "token"})
@@ -52,7 +51,6 @@ def validate_contract(contract: dict[str, Any]) -> dict[str, Any]:
     for i, f in enumerate(contract["files"]):
         if not isinstance(f, dict) or "source" not in f or "destination" not in f:
             return {"ok": False, "reason": "BAD_FILE_ENTRY", "index": i}
-    # reject inline secrets
     blob = str(contract)
     if "ghp_" in blob or "github_pat_" in blob:
         return {"ok": False, "reason": "INLINE_TOKEN_FORBIDDEN"}
@@ -81,5 +79,6 @@ class GitHubPublisher:
             "path_prefix": contract.get("path_prefix") or "",
             "files": list(contract["files"]),
             "commit_message": contract["commit_message"],
+            "content_map": dict(contract.get("content_map") or {}),
         }
         return self.executor.publish(plan, token)
