@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
-"""RuntimeBus — T2. All engine jobs pass here. No bypass. 0% LLM."""
+"""RuntimeBus — T2+T5. Manifest presence + optional verify. 0% LLM."""
 from __future__ import annotations
 
 from typing import Any, Callable
 
 from .engine_abi import Engine, apply_goal_filter, make_result
+from .execution_manifest import job_matches_manifest, verify_manifest
 from .goal_lock import verify_lock_integrity
 
 
@@ -16,22 +17,20 @@ class RuntimeBusError(Exception):
 
 
 class RuntimeBus:
-    """Dispatch jobs only with valid lock + manifest_id present.
-
-    Engines registered by engine_id. Direct engine.run() outside bus is not
-    enforced by language, but Wordflow policy: only bus.dispatch is allowed path.
-    """
+    """Dispatch jobs only with valid lock + manifest."""
 
     def __init__(
         self,
         *,
         require_manifest: bool = True,
+        verify_manifest_hash: bool = True,
         require_lock_intact: bool = True,
         apply_goal_lock: bool = True,
         on_event: Callable[[dict[str, Any]], None] | None = None,
     ):
         self._engines: dict[str, Engine] = {}
         self.require_manifest = require_manifest
+        self.verify_manifest_hash = verify_manifest_hash
         self.require_lock_intact = require_lock_intact
         self.apply_goal_lock = apply_goal_lock
         self.on_event = on_event
@@ -62,25 +61,34 @@ class RuntimeBus:
         lock: dict[str, Any] | None = None,
         manifest: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Only entry point for engine execution."""
         if not isinstance(job, dict) or not job.get("job_id"):
-            return make_result(
-                job or {},
-                status="DENIED",
-                error_code="INVALID_JOB",
-            )
+            return make_result(job or {}, status="DENIED", error_code="INVALID_JOB")
 
-        # Manifest gate (T5 will strengthen sign; T2 requires presence)
         if self.require_manifest:
             mid = job.get("manifest_id")
             if not mid:
                 res = make_result(job, status="DENIED", error_code="MANIFEST_REQUIRED")
                 self._emit("DENY", {"job_id": job["job_id"], "reason": "MANIFEST_REQUIRED"})
                 return res
-            if manifest is not None and manifest.get("manifest_id") != mid:
-                res = make_result(job, status="DENIED", error_code="MANIFEST_MISMATCH")
-                self._emit("DENY", {"job_id": job["job_id"], "reason": "MANIFEST_MISMATCH"})
+            if manifest is None:
+                res = make_result(job, status="DENIED", error_code="MANIFEST_OBJECT_REQUIRED")
+                self._emit("DENY", {"job_id": job["job_id"], "reason": "MANIFEST_OBJECT_REQUIRED"})
                 return res
+            if self.verify_manifest_hash:
+                match = job_matches_manifest(job, manifest)
+                if not match["ok"]:
+                    res = make_result(
+                        job,
+                        status="DENIED",
+                        error_code=str(match.get("reason") or "MANIFEST_VERIFY_FAIL"),
+                    )
+                    self._emit("DENY", {"job_id": job["job_id"], "reason": match.get("reason")})
+                    return res
+            else:
+                if manifest.get("manifest_id") != mid:
+                    res = make_result(job, status="DENIED", error_code="MANIFEST_MISMATCH")
+                    self._emit("DENY", {"job_id": job["job_id"], "reason": "MANIFEST_MISMATCH"})
+                    return res
 
         if self.require_lock_intact:
             if lock is None:
@@ -112,7 +120,7 @@ class RuntimeBus:
         self._emit("DISPATCH", {"job_id": job["job_id"], "engine_id": engine_id})
         try:
             raw = engine.run(job)
-        except Exception as exc:  # noqa: BLE001 — boundary
+        except Exception as exc:  # noqa: BLE001
             res = make_result(
                 job,
                 status="ERROR",
@@ -123,16 +131,10 @@ class RuntimeBus:
             return res
 
         if not isinstance(raw, dict) or "status" not in raw:
-            res = make_result(job, status="ERROR", error_code="INVALID_ENGINE_RESULT")
-            return res
+            return make_result(job, status="ERROR", error_code="INVALID_ENGINE_RESULT")
 
-        if (
-            self.apply_goal_lock
-            and lock is not None
-            and raw.get("status") == "OK"
-        ):
+        if self.apply_goal_lock and lock is not None and raw.get("status") == "OK":
             res = apply_goal_filter(lock, job, raw.get("output_text"))
-            # preserve artifacts from engine if any
             if raw.get("artifacts") and not res.get("artifacts"):
                 res = dict(res)
                 res["artifacts"] = list(raw["artifacts"])
