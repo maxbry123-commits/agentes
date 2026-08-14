@@ -1,0 +1,23 @@
+id: C_AUDIT_EVIDENCE
+name: Audit Evidence Integrity Contract
+version: "1.0"
+layer: audit
+llm_control: DENY
+required_fields:
+  - schema_version
+  - task_id
+  - claim_status
+  - repo
+  - files
+  - doc_anchors
+rules:
+  - repo_commits_40_hex
+  - files_lists_are_arrays
+  - doc_anchors_min_1
+  - blob_shas_optional_but_preferred
+  - ci_run_id_required_if_tests_claimed_passed
+  - no_secret_in_evidence
+silence_is_not_pass: true
+links:
+  packet_schema: wordflow.audit.forensic.EvidencePacket.v1
+  packet_contract: C_AUDIT_PACKET
