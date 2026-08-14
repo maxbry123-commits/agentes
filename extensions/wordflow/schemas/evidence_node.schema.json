@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "wordflow.evidence_node.v1",
+  "title": "EvidenceNode",
+  "type": "object",
+  "required": ["node_id", "kind", "created_at", "payload_hash"],
+  "properties": {
+    "node_id": { "type": "string" },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "lock",
+        "manifest",
+        "job",
+        "result",
+        "artifact",
+        "checkpoint",
+        "sheriff",
+        "mission",
+        "note"
+      ]
+    },
+    "ref_id": { "type": ["string", "null"] },
+    "created_at": { "type": "string" },
+    "payload_hash": { "type": "string" },
+    "meta": { "type": "object" }
+  }
+}
