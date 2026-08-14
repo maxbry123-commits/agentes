@@ -17,5 +17,8 @@ jobs:
       - name: Install deps
         run: pip install pyyaml
       - name: Run wordflow unit tests
+        env:
+          PYTHONPATH: ${
+{ github.workspace }}
         run: |
           python -m unittest discover -s extensions/wordflow/tests -p "test_*.py" -v
