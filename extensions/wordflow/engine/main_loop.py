@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
-"""main_12 loop runner — A-WF-06 + W2 evidence bridge. Deterministic. 0% LLM."""
+"""main_12 loop runner — A-WF-06 + W2/W6. Deterministic. 0% LLM."""
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +17,8 @@ from .goals_extractor import empty_goals_out, extract_goals_in
 from .input_normalizer import InputBlockError, normalize_input_block
 from .refute_repair import apply_auto_repairs, propose_repairs, refute_block
 from .sentinel import run_sentinel
+from .supervisor import make_checkpoint
+from .watchdog import check_watchdog, scan_state_for_secrets
 
 
 def _loop_path() -> Path:
@@ -69,8 +72,11 @@ def run_main_12(
     *,
     loop_path: Path | str | None = None,
     repo: dict[str, Any] | None = None,
+    timeout_seconds: float = 120.0,
+    checkpoint_ttl: float = 3600.0,
 ) -> dict[str, Any]:
     cfg = load_main_12(loop_path)
+    started_at = time.monotonic()
     state: dict[str, Any] = {
         "loop_id": cfg["loop_id"],
         "step_results": [],
@@ -84,6 +90,8 @@ def run_main_12(
         "tasks": [],
         "goals_out": empty_goals_out(),
         "evidence_packet": None,
+        "checkpoint": None,
+        "watchdog": None,
         "stop_reason": None,
     }
 
@@ -91,6 +99,23 @@ def run_main_12(
         state["step_results"].append(
             {"id": step_id, "name": name, "ok": ok, "detail": detail}
         )
+
+    def _watch(step_id: str, step_name: str, blobs: list[str] | None = None) -> bool:
+        """Run watchdog; on fail set state and return False."""
+        wd = check_watchdog(
+            step_id=step_id,
+            step_name=step_name,
+            started_at=started_at,
+            timeout_seconds=timeout_seconds,
+            text_blobs=blobs or scan_state_for_secrets(state),
+        )
+        state["watchdog"] = wd
+        if not wd.get("ok"):
+            state["status"] = "FAILED"
+            state["stop_reason"] = wd.get("reason") or "WATCHDOG_STOP"
+            _record(step_id, f"watchdog_{step_name}", False, wd.get("reason"))
+            return False
+        return True
 
     try:
         block = normalize_input_block(raw)
@@ -100,6 +125,9 @@ def run_main_12(
         _record("S01", "normalize_input", False, e.reason_code)
         state["status"] = "FAILED"
         state["stop_reason"] = e.reason_code
+        return state
+
+    if not _watch("S01", "normalize_input", [str(block.get("raw_text") or "")]):
         return state
 
     goals_in = extract_goals_in(block)
@@ -148,6 +176,11 @@ def run_main_12(
         "name": "sentinel_verdict", "value": sentinel.get("verdict"), "status": "DONE",
     }
     _record("S05", "sentinel", sentinel["verdict"] == "PASS", sentinel.get("reason_codes"))
+
+    # W6: watchdog after sentinel (secrets + timeout)
+    if not _watch("S05", "sentinel", [str(block2.get("raw_text") or "")]):
+        return state
+
     if sentinel["verdict"] != "PASS":
         state["status"] = "FAILED"
         state["stop_reason"] = "SENTINEL_FAIL"
@@ -187,7 +220,6 @@ def run_main_12(
         1 for g in state["goals_out"].values() if g.get("status") == "DONE"
     ))
 
-    # W2: formal EvidencePacket (replaces 4-field stub)
     packet = goals_out_to_evidence_packet(
         block=block2,
         goals_out=state["goals_out"],
@@ -201,24 +233,41 @@ def run_main_12(
     }
     _record("S10", "build_evidence_packet", True, packet.get("claim_status"))
 
-    state["checkpoint"] = {
-        "block_hash": block2.get("block_hash"),
-        "steps_ok": sum(1 for s in state["step_results"] if s["ok"]),
-        "steps_total": len(state["step_results"]),
-    }
-    _record("S11", "checkpoint", True, state["checkpoint"])
+    # W6: supervisor checkpoint with TTL
+    steps_ok = sum(1 for s in state["step_results"] if s["ok"])
+    state["checkpoint"] = make_checkpoint(
+        block_hash=block2.get("block_hash"),
+        step_id="S11",
+        step_name="checkpoint",
+        steps_ok=steps_ok,
+        steps_total=len(state["step_results"]),
+        status="RUNNING",
+        ttl_seconds=checkpoint_ttl,
+    )
+    _record("S11", "checkpoint", True, {
+        "expires_at": state["checkpoint"].get("expires_at"),
+        "steps_ok": steps_ok,
+    })
 
     state["goals_out"]["GOUT-12"] = {
         "name": "next_block_hint", "value": plan.get("next"), "status": "DONE",
     }
     _record("S12", "next_or_stop", True, plan.get("next"))
     state["status"] = "COMPLETED"
-    # refresh claim_status mapping after COMPLETED (still PARTIAL until W9)
     state["evidence_packet"] = goals_out_to_evidence_packet(
         block=block2,
         goals_out=state["goals_out"],
         tasks=tasks,
         loop_status="COMPLETED",
         repo=repo,
+    )
+    state["checkpoint"] = make_checkpoint(
+        block_hash=block2.get("block_hash"),
+        step_id="S12",
+        step_name="next_or_stop",
+        steps_ok=sum(1 for s in state["step_results"] if s["ok"]),
+        steps_total=len(state["step_results"]),
+        status="COMPLETED",
+        ttl_seconds=checkpoint_ttl,
     )
     return state

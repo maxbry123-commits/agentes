@@ -7,6 +7,8 @@ from .council import run_council, load_roles
 from .main_loop import run_main_12, load_main_12
 from .entrypoint import run_wordflow
 from .evidence_bridge import goals_out_to_evidence_packet
+from .watchdog import check_watchdog, scan_state_for_secrets
+from .supervisor import make_checkpoint, is_expired, validate_checkpoint, refresh_ttl
 
 __all__ = [
     "normalize_input_block",
@@ -24,4 +26,10 @@ __all__ = [
     "load_main_12",
     "run_wordflow",
     "goals_out_to_evidence_packet",
+    "check_watchdog",
+    "scan_state_for_secrets",
+    "make_checkpoint",
+    "is_expired",
+    "validate_checkpoint",
+    "refresh_ttl",
 ]
