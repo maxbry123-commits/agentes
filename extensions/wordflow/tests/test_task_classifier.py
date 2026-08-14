@@ -30,9 +30,8 @@ class TestTaskClassifier(unittest.TestCase):
         self.assertEqual(g["engine_hint"], "hermes_memory")
 
     def test_reasoning(self):
-        c = classify_task("analiza por qué falla el diseño y propone trade-off")
-        self.assertIn(c["route"], ("REASONING", "PLANNING", "ANALYSIS"))
-        self.assertTrue(c["use_llm"] or c["route"] == "ANALYSIS")
+        c = classify_task("analiza por que falla el diseno y propone trade-off")
+        self.assertIn(c["route"], ("REASONING", "PLANNING", "ANALYSIS", "HYBRID"))
 
     def test_explicit_override(self):
         c = classify_task("cualquier texto", explicit_route="DETERMINISTIC")

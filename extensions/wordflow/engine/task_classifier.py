@@ -8,7 +8,6 @@ import re
 import uuid
 from typing import Any
 
-# Keyword signals (Spanish + English)
 DET_PAT = re.compile(
     r"\b(git\s+(status|diff|log|add|commit)|ls\b|cat\s+|sha256|hash|json\s*schema|"
     r"validar\s+schema|compile_input|emit_ping|pytest|unittest)\b",
@@ -42,7 +41,6 @@ def classify_task(
     explicit_route: str | None = None,
     form_incomplete: bool = False,
 ) -> dict[str, Any]:
-    """Classify task text. explicit_route overrides heuristics if valid."""
     reasons: list[str] = []
     signals: dict[str, bool] = {
         "det": bool(DET_PAT.search(text or "")),
@@ -95,7 +93,6 @@ def classify_task(
         reasons.append("default_analysis")
 
     use_llm = route not in ("DETERMINISTIC", "SEARCH")
-    # SEARCH may use index/tools without LLM; mark use_llm False for pure search keywords
     if route == "SEARCH":
         use_llm = False
 
@@ -112,7 +109,6 @@ def classify_task(
 
 
 def decision_gate(classification: dict[str, Any]) -> dict[str, Any]:
-    """Gate: whether to call an engine/LLM."""
     route = classification.get("route")
     use_llm = bool(classification.get("use_llm"))
     if route == "DETERMINISTIC":
@@ -134,7 +130,7 @@ def decision_gate(classification: dict[str, Any]) -> dict[str, Any]:
     if route == "MEMORY_REFRESH":
         return {
             "ok": True,
-            "call_engine": True,  # MemoryPort when wired (post Wordflow)
+            "call_engine": True,
             "call_llm": False,
             "reason": "MEMORY_PORT_ONLY",
             "route": route,
@@ -143,7 +139,7 @@ def decision_gate(classification: dict[str, Any]) -> dict[str, Any]:
     if route == "PLANNING":
         return {
             "ok": True,
-            "call_engine": True,  # PlanningPort when wired
+            "call_engine": True,
             "call_llm": True,
             "reason": "PLANNING_PORT",
             "route": route,
