@@ -1,38 +1,27 @@
-# PIPELINE 24 — GitHub Publisher Status (Objetivo 4)
+# PIPELINE 24 — GitHub Publisher Status
 
-**llm_control:** DENY  
-**Extensión:** `extensions/github_publisher/`
+> **SUPERSEDED** — 2026-08-14  
+> Fuente de verdad: [`PIPELINE/27_AUDIT_FORENSE_GAPS_Y_PLAN.md`](27_AUDIT_FORENSE_GAPS_Y_PLAN.md)  
+> **publisher ≠ C10 github_deploy.** Seed ~15% del Obj4. C10 completo = R3 E17–E23.
 
-## Entregado A-DEP-01 … A-DEP-02
+**Extensión:** `extensions/github_publisher/`  
+**llm_control:** DENY
 
-| ID | Entrega | Estado |
-|----|---------|--------|
-| A-DEP-01 | Publisher + token_ref + FakeGitHubPort | DONE |
-| A-DEP-02 | BUILD bridge + manifest + CI | DONE |
+## Presente (seed)
 
-## Contrato
+| Pieza | Estado |
+|-------|--------|
+| token_ref + FakeGitHubPort | PRESENTE |
+| publisher.py + bridge | PRESENTE |
+| schema github_publish | PRESENTE |
+| Tests offline | PRESENTE |
 
-```
-github_publish:
-  token_ref: github_token   # NUNCA token literal
-  repository: user/repo
-  branch: main
-  files: [{source, destination, content?}]
-  commit_message: "..."
-```
+## NO presente (C10 real)
 
-## Flujo
+- `extensions/github_deploy/`
+- dry-run SIN_REGLA / BLOQUEADOS
+- Git Data API blob→tree→commit→ref
+- expected_head + no force_push
+- evidence.json + deployment_manifest
 
-```
-Wordflow BUILD/
-    → build_publish_request
-    → resolve token_ref (Credential Store)
-    → GitHubPort.create_commit
-    → commit_sha (sin token en output)
-```
-
-## Tests: 9/9 PASSED offline
-
-## Pendiente
-
-- Real GitHub Contents/Git Data API adapter (runtime)
+**No claim Obj4 COMPLETED.** → PIPELINE 27 R3.
