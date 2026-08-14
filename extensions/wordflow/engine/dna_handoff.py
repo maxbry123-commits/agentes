@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from .goal_lock import verify_lock_integrity
-from .handoff import build_handoff  # type: ignore
+from .handoff import compile_handoff, validate_handoff
 from .workflow_dna import compile_dna, verify_dna
 
 
@@ -17,7 +17,8 @@ def build_dna_handoff(
     dag_digest: str | None = None,
     success_criteria: list[Any] | None = None,
     rollback: dict[str, Any] | None = None,
-    extra: dict[str, Any] | None = None,
+    next_step: str | None = None,
+    manifest_id: str | None = None,
 ) -> dict[str, Any]:
     integ = verify_lock_integrity(lock)
     if not integ.get("ok"):
@@ -35,20 +36,12 @@ def build_dna_handoff(
     if not v.get("ok"):
         return {"ok": False, "reason": "DNA_FAIL", "detail": v}
 
-    # Prefer existing handoff builder if signature matches; else minimal package
-    package: dict[str, Any]
-    try:
-        package = build_handoff(lock=lock, dna=dna, **(extra or {}))  # type: ignore[call-arg]
-        if not isinstance(package, dict):
-            raise TypeError("handoff not dict")
-    except Exception:
-        package = {
-            "schema_version": "1.0",
-            "lock_id": lock.get("lock_id"),
-            "dna": dna,
-            "payload": dict(extra or {}),
-        }
-
+    package = compile_handoff(
+        lock,
+        next_step=next_step,
+        manifest_id=manifest_id,
+        status="READY",
+    )
     package["dna"] = dna
     package["dna_id"] = dna["dna_id"]
     package["dna_hash"] = dna["dna_hash"]
@@ -57,7 +50,7 @@ def build_dna_handoff(
 
 
 def accept_dna_handoff(package: dict[str, Any]) -> dict[str, Any]:
-    """Remote node: verify DNA before accepting work."""
+    """Remote node: verify DNA (+ handoff core) before accepting."""
     if not isinstance(package, dict):
         return {"ok": False, "reason": "INVALID_PACKAGE"}
     dna = package.get("dna")
@@ -66,9 +59,19 @@ def accept_dna_handoff(package: dict[str, Any]) -> dict[str, Any]:
     v = verify_dna(dna)
     if not v.get("ok"):
         return {"ok": False, "reason": "DNA_TAMPER", "detail": v}
+    if package.get("handoff_hash"):
+        core = {
+            k: val
+            for k, val in package.items()
+            if k not in ("dna", "dna_id", "dna_hash", "ok")
+        }
+        hv = validate_handoff(core)
+        if not hv.get("ok"):
+            return {"ok": False, "reason": "HANDOFF_FAIL", "detail": hv}
     return {
         "ok": True,
         "dna_id": dna.get("dna_id"),
         "lock_id": dna.get("lock_id"),
         "workflow_version": dna.get("workflow_version"),
+        "handoff_id": package.get("handoff_id"),
     }
