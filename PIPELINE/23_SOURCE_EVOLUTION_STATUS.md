@@ -1,38 +1,29 @@
 # PIPELINE 23 — Source Evolution Status
 
-**llm_control:** DENY  
-**Extensión:** `extensions/source_evolution/`
+> **SUPERSEDED** — 2026-08-14  
+> Fuente de verdad: [`PIPELINE/27_AUDIT_FORENSE_GAPS_Y_PLAN.md`](27_AUDIT_FORENSE_GAPS_Y_PLAN.md)  
+> Estado real SE: **PARTIAL ~25–30%** (pin/fetch/license sí; faltan loops acquire/analyze/reuse/promote, skill_compiler, GitHubAcquirePort tree/blob).
 
-## Entregado A-SE-01 … A-SE-05
+**Extensión:** `extensions/source_evolution/`  
+**llm_control:** DENY
 
-| ID | Entrega | Estado |
-|----|---------|--------|
-| A-SE-01 | VersionPin + SourceRegistry | DONE |
-| A-SE-02 | Fetch planner + FakeFetcher | DONE |
-| A-SE-03 | License gate + install planner | DONE |
-| A-SE-04 | run_acquire entrypoint + manifest | DONE |
-| A-SE-05 | Provenance + CI workflow | DONE |
+## Presente en GH
 
-## Flujo
+| Pieza | Estado |
+|-------|--------|
+| VersionPin + schema | PRESENTE |
+| Fetch planner | PRESENTE |
+| License gate | PRESENTE |
+| Install planner | PRESENTE |
+| Provenance | PRESENTE |
+| Registry seed | PRESENTE |
+| Tests offline | PRESENTE |
 
-```
-VersionPin → registry → fetch_plan → [FakeFetcher|real]
-    → license_gate → install_plan → provenance
-```
+## Gaps residuales (PIPELINE 27 R2)
 
-## Invariantes
+- loops/acquire_12, analyze_12, promote_12
+- GitHubAcquirePort get_tree/get_blob
+- skill_compiler + skill_ir
+- capability_registry reuse_decision formal
 
-- Nunca token en provenance/journal
-- install usa LOCAL_ARTIFACT (no live registry)
-- LICENSE STOP/DIRECTOR/PASS
-- digest obligatorio (sha256 | git_commit)
-
-## Tests
-
-- source_evolution: 30 tests offline
-- CI: `.github/workflows/test-source-evolution.yml`
-
-## Pendiente (siguiente)
-
-- A-DEP GitHub Publisher (objetivo 4)
-- Real git/hf adapters (fuera offline)
+**No claim COMPLETED.** → PIPELINE 27.
