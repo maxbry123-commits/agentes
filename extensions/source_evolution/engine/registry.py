@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Source registry — A-SE-01. Pin store. 0% LLM."""
+"""Source registry — A-SE-01 + E7 resolve. Pin store. 0% LLM."""
 from __future__ import annotations
 
 import json
@@ -44,6 +44,49 @@ class SourceRegistry:
             for p in self._pins.values()
             if p["digest"]["algo"] == algo and p["digest"]["value"] == v
         ]
+
+    def find_by_uri(self, uri: str) -> list[dict[str, Any]]:
+        return [
+            p for p in self._pins.values()
+            if (p.get("locator") or {}).get("uri") == uri
+        ]
+
+    def resolve(
+        self,
+        *,
+        pin_id: str | None = None,
+        uri: str | None = None,
+        digest_algo: str | None = None,
+        digest_value: str | None = None,
+    ) -> dict[str, Any]:
+        """Resolve pin deterministically.
+
+        Priority: pin_id → digest → uri (single match required).
+        Returns {ok, pin|None, reason}.
+        """
+        if pin_id:
+            pin = self.get(pin_id)
+            if pin:
+                return {"ok": True, "pin": pin, "reason": "PIN_ID"}
+            return {"ok": False, "pin": None, "reason": "PIN_NOT_FOUND"}
+
+        if digest_algo and digest_value:
+            matches = self.find_by_digest(digest_algo, digest_value)
+            if len(matches) == 1:
+                return {"ok": True, "pin": matches[0], "reason": "DIGEST"}
+            if len(matches) == 0:
+                return {"ok": False, "pin": None, "reason": "DIGEST_NOT_FOUND"}
+            return {"ok": False, "pin": None, "reason": "DIGEST_AMBIGUOUS"}
+
+        if uri:
+            matches = self.find_by_uri(uri)
+            if len(matches) == 1:
+                return {"ok": True, "pin": matches[0], "reason": "URI"}
+            if len(matches) == 0:
+                return {"ok": False, "pin": None, "reason": "URI_NOT_FOUND"}
+            return {"ok": False, "pin": None, "reason": "URI_AMBIGUOUS"}
+
+        return {"ok": False, "pin": None, "reason": "MISSING_QUERY"}
 
     def remove(self, pin_id: str) -> bool:
         if pin_id in self._pins:

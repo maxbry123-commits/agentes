@@ -1,0 +1,22 @@
+id: C_SE_REGISTRY
+name: Source Registry Resolve Contract
+version: "1.0"
+layer: source_evolution
+llm_control: DENY
+required_ops:
+  - register
+  - get
+  - resolve
+  - find_by_digest
+  - find_by_uri
+  - list_pins
+resolve_priority:
+  - pin_id
+  - digest
+  - uri
+rules:
+  - single_match_required_for_uri_digest
+  - pin_id_conflict_on_digest_mismatch
+  - empty_query_is_MISSING_QUERY
+  - no_token_in_registry_store
+store_path: store/source_registry.json
