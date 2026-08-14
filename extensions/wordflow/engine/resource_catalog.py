@@ -50,7 +50,6 @@ def make_entry(
         raise ValueError(f"invalid kind={kind}")
     if source not in ALLOWED_SOURCES:
         raise ValueError(f"invalid source={source}")
-    # Policy WAVE-0/2: remote sources not fetchable until post-Wordflow
     if source in ("hf", "github", "url") and fetchable:
         raise ValueError("fetchable=True forbidden for remote sources until post-Wordflow")
 
@@ -65,12 +64,8 @@ def make_entry(
         "content_sha256": content_sha256,
         "tags": list(tags or []),
         "size_hint_bytes": size_hint_bytes,
-        "fetchable": False if source != "local" else bool(fetchable),
+        "fetchable": bool(fetchable) if source == "local" else False,
     }
-    if source == "local":
-        body["fetchable"] = bool(fetchable)
-    else:
-        body["fetchable"] = False
     body["entry_hash"] = _hash(_entry_body(body))
     return body
 
@@ -103,10 +98,7 @@ class ResourceCatalog:
         if not self.path:
             return
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        payload = {
-            "schema_version": "1.0",
-            "entries": list(self._by_id.values()),
-        }
+        payload = {"schema_version": "1.0", "entries": list(self._by_id.values())}
         self.path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
 
     def add(self, entry: dict[str, Any]) -> dict[str, Any]:
@@ -141,7 +133,7 @@ class ResourceCatalog:
 
 
 def seed_hf_index_stub() -> list[dict[str, Any]]:
-    """Example HF-oriented index rows — fetchable always False."""
+    """HF-oriented index rows — fetchable always False."""
     return [
         make_entry(
             name="example-skill-pack",
@@ -149,7 +141,6 @@ def seed_hf_index_stub() -> list[dict[str, Any]]:
             source="hf",
             ref="hf://org/example-skill-pack",
             tags=["skill", "stub"],
-            fetchable=False,
         ),
         make_entry(
             name="example-dataset",
@@ -158,7 +149,6 @@ def seed_hf_index_stub() -> list[dict[str, Any]]:
             ref="hf://org/example-dataset",
             tags=["dataset", "stub"],
             size_hint_bytes=10_000_000,
-            fetchable=False,
         ),
         make_entry(
             name="example-adapter",
@@ -166,6 +156,5 @@ def seed_hf_index_stub() -> list[dict[str, Any]]:
             source="hf",
             ref="hf://org/example-adapter",
             tags=["adapter", "stub"],
-            fetchable=False,
         ),
     ]
