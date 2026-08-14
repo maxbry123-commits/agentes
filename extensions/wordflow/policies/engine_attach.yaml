@@ -1,0 +1,21 @@
+# Engine attach policies — seed. Real OC/Hermes deferred (PIPELINE/32).
+version: "1.0"
+
+ping:
+  interval_s: 15
+  focus_threshold: 0.5
+  # memory_refresh: call MemoryPort when focus degraded or every N interval pings
+  memory_refresh:
+    enabled: true
+    on_focus_degraded: true
+    every_n_interval_pings: 4
+    engine: hermes   # MemoryPort only; openclaw_on_ping: false
+
+planning:
+  ports: [openclaw, hermes]  # fakes until T3
+  auto_accept_required: false
+
+forbid:
+  - openclaw_on_ping
+  - rewrite_goal_lock
+  - network_in_wave0_ports
