@@ -1,0 +1,7 @@
+loop:
+  max_iterations: 20
+  completion_threshold: 0.98
+  max_new_tasks_per_iteration: 10
+  checkpoint_every_iteration: true
+model:
+  provider: mock
