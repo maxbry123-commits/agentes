@@ -1,6 +1,8 @@
 from .contract import ResourceContract, AcquisitionMode
 from .registry import ResourceRegistry, SkillResolver, DatasetResolver, AdapterResolver
 from .skill_loader import SkillLoader, SkillIR
+from .dataset_loader import DatasetLoader, DatasetPlan
+from .space_loader import SpaceAgentsLoader, SpaceContract
 
 __all__ = [
     "ResourceContract",
@@ -11,4 +13,8 @@ __all__ = [
     "AdapterResolver",
     "SkillLoader",
     "SkillIR",
+    "DatasetLoader",
+    "DatasetPlan",
+    "SpaceAgentsLoader",
+    "SpaceContract",
 ]
