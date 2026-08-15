@@ -1,0 +1,131 @@
+{
+  "catalog_version": "1.0.0",
+  "repo": "maxbry123-commits/agentes",
+  "pipeline_ref": "PIPELINE/48_ARQUITECTURA_LOOP_GATEWAY_ROUTER_V1.md",
+  "frontiers": {
+    "loop": "Continuous work + 12-stage hooks + code_path tasks",
+    "gateway": "IntelligenceGateway only path to LLM/memory",
+    "router": "External FastAPI Router Universal (ROUTER_URL)",
+    "engines": "OpenClaw/Hermes via EnginePort reasoning only",
+    "acquire": "Acquire Engine recipes (not ACQUIRE-OS product)"
+  },
+  "components": [
+    {
+      "id": "wordflow.core",
+      "path": "extensions/wordflow",
+      "kind": "control_plane",
+      "capabilities": ["goal_lock", "code_path", "docs_templates", "claim_validate"],
+      "ficha": "extensions/wordflow/ficha.v2.json",
+      "status": "materialized"
+    },
+    {
+      "id": "wordflow.engine.code_path_runner",
+      "path": "extensions/wordflow/engine/code_path_runner.py",
+      "kind": "engine",
+      "capabilities": ["quality_bar", "goal_lock", "cognitive_wire", "dual_compile"],
+      "status": "materialized"
+    },
+    {
+      "id": "wordflow.engine.cognitive_loop",
+      "path": "extensions/wordflow/engine/cognitive_loop.py",
+      "kind": "engine",
+      "capabilities": ["council_wire", "plan_wire"],
+      "status": "materialized",
+      "note": "Absorbed into continuous loop stages; not Minimax/Kimi fusion"
+    },
+    {
+      "id": "wordflow.state.ledger",
+      "path": "extensions/wordflow/state/ledger.py",
+      "kind": "state",
+      "capabilities": ["append_only_events"],
+      "status": "materialized"
+    },
+    {
+      "id": "wordflow.docs_templates",
+      "path": "extensions/wordflow/docs_templates",
+      "kind": "docs",
+      "capabilities": ["project_docs_12"],
+      "status": "materialized"
+    },
+    {
+      "id": "github_deploy",
+      "path": "extensions/github_deploy",
+      "kind": "deploy",
+      "capabilities": ["dry_run", "git_data_api_port"],
+      "status": "partial",
+      "note": "FakePort default; real port behind flag"
+    },
+    {
+      "id": "wordflow_kernel",
+      "path": "extensions/wordflow_kernel",
+      "kind": "kernel_extension",
+      "capabilities": ["forensic", "repo_truth", "gap_tasks", "checkpoint", "trace"],
+      "status": "pending_mount",
+      "source_zip": "wordflow_kernel_extension_code.zip"
+    },
+    {
+      "id": "maxbry_loop",
+      "path": "extensions/maxbry_loop",
+      "kind": "continuous_loop",
+      "capabilities": ["iteration", "gaps", "completion_score", "convergence"],
+      "status": "pending_mount",
+      "source_zip": "maxbry_continuous_loop_v2.zip",
+      "constraint": "No direct LLM; IntelligenceGateway only"
+    },
+    {
+      "id": "intelligence_gateway",
+      "path": "extensions/wordflow_kernel/gateway",
+      "kind": "gateway",
+      "capabilities": ["llm.complete", "memory.recall", "memory.capture"],
+      "status": "pending",
+      "adapters": ["MockIntelligenceGateway", "RouterHTTPGateway"]
+    },
+    {
+      "id": "engine.openclaw",
+      "path": "extensions/wordflow_kernel/engines/openclaw",
+      "kind": "engine_adapter",
+      "capabilities": ["reason_intermediate"],
+      "status": "pending_stub",
+      "role": "Wordflow <-> LLM intermediate only"
+    },
+    {
+      "id": "engine.hermes",
+      "path": "extensions/wordflow_kernel/engines/hermes",
+      "kind": "engine_adapter",
+      "capabilities": ["reason_intermediate"],
+      "status": "pending_stub",
+      "role": "Wordflow <-> LLM intermediate only"
+    },
+    {
+      "id": "acquire_engine",
+      "path": "control-layer/subsheriffs/acquire_os",
+      "kind": "sub_sheriff",
+      "capabilities": ["recipe_plan", "verify", "build", "promote"],
+      "status": "pending",
+      "note": "Named Acquire Engine; OpenClaw-40 is Recipe not motor"
+    },
+    {
+      "id": "loop.fusion_minimax_kimi",
+      "path": "extensions/wordflow_kernel/loops/fusion_minimax_kimi.yaml",
+      "kind": "loop_slot",
+      "capabilities": [],
+      "status": "deferred_R2",
+      "note": "Plugin slot only in V1"
+    },
+    {
+      "id": "ci.wordflow_code_path",
+      "path": ".github/workflows/test-wordflow-code-path.yml",
+      "kind": "ci",
+      "capabilities": ["unittest_discover"],
+      "status": "materialized"
+    }
+  ],
+  "connect_rules": [
+    "Loop never calls provider APIs directly",
+    "LLM and memory only via IntelligenceGateway",
+    "Production gateway = RouterHTTPGateway(ROUTER_URL)",
+    "Offline tests = MockIntelligenceGateway",
+    "OpenClaw/Hermes = EnginePort.reason only",
+    "Deploy default dry_run; token_ref never in workflow body"
+  ]
+}
