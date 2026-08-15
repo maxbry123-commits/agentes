@@ -1,0 +1,34 @@
+name: test-wordflow-code-path
+on:
+  push:
+    paths:
+      - 'extensions/wordflow/**'
+      - 'extensions/wordflow_kernel/**'
+      - 'extensions/maxbry_loop/**'
+      - 'extensions/github_deploy/**'
+      - '.github/workflows/test-wordflow-code-path.yml'
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: pip install pyyaml
+      - name: Run wordflow tests
+        run: |
+          set -e
+          cd extensions
+          if [ -d wordflow/tests ]; then
+            python -m unittest discover -s wordflow/tests -p 'test_*.py' -v
+          fi
+          if [ -d wordflow_kernel/tests ]; then
+            python -m unittest discover -s wordflow_kernel/tests -p 'test_*.py' -v
+          fi
+          if [ -d maxbry_loop/tests ]; then
+            python -m unittest discover -s maxbry_loop/tests -p 'test_*.py' -v
+          fi
