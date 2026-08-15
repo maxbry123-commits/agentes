@@ -1,0 +1,37 @@
+{
+  "artifact_id": "wordflow.kernel.extension",
+  "abi_version": "2.0",
+  "extension_type": "kernel_runtime",
+  "kernel_min": "1.0",
+  "mount_mode": "extension",
+  "load_priority": 10,
+  "llm_control": "DENY",
+  "provides": [
+    "forensic.audit",
+    "repo_truth",
+    "gap_to_task",
+    "checkpoint",
+    "ledger",
+    "trace",
+    "resource_registry",
+    "intelligence_gateway",
+    "engine.openclaw",
+    "engine.hermes"
+  ],
+  "contracts": {
+    "gateway": "IntelligenceGateway",
+    "engines": "EnginePort",
+    "memory_local": "MemoryPort",
+    "note": "Production LLM/memory via RouterHTTPGateway ROUTER_URL; local PersistentMemory for offline only"
+  },
+  "security": {
+    "sandbox": "optional",
+    "token_in_body": false,
+    "fail_closed": true
+  },
+  "entry_points": {
+    "workflow": "wordflow_kernel.workflow:WordflowKernel",
+    "forensic": "wordflow_kernel.forensic:ForensicEngine",
+    "gateway": "wordflow_kernel.gateway:build_gateway_from_env"
+  }
+}
