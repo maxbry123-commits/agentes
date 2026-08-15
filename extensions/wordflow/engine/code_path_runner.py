@@ -6,7 +6,7 @@ from typing import Any
 
 from .cognitive_loop import run_cognitive_loop
 from .evidence_packet import build_evidence_packet, verify_evidence_packet
-from .goal_lock import GoalLock
+from .goal_lock import lock_goals
 from .input_quality_bar import admit_or_reject
 from .skill_native_compiler import compile_skill_to_code
 
@@ -30,7 +30,16 @@ def run_code_path(
     if not q.get("ok"):
         return {"ok": False, "stage": "quality_bar", "detail": q, "llm_control": "DENY"}
 
-    lock = GoalLock().lock_goals({"raw": raw_input, "goals_in": [raw_input[:120]]})
+    locked = lock_goals({"text": raw_input, "raw": raw_input})
+    if not locked.get("ok"):
+        return {
+            "ok": False,
+            "stage": "goal_lock",
+            "detail": locked,
+            "llm_control": "DENY",
+        }
+
+    lock = locked.get("lock") or {}
     mid = mission_id or lock.get("lock_id") or ""
 
     steps = plan_steps or ["analyze", "compile", "validate", "promote"]
