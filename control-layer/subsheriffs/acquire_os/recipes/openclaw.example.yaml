@@ -1,0 +1,23 @@
+# OpenClaw as Acquire Recipe — NOT the continuous loop motor.
+# Loop uses EnginePort + IntelligenceGateway for reasoning only.
+# This recipe installs/verifies OpenClaw software when ACQUIRE_OS_ENABLED=true.
+
+artifact_id: openclaw.runtime
+source_type: git_native
+pin:
+  repo: openclaw/openclaw
+  ref: main
+  # sha: ""   # pin SHA40 in production
+build:
+  # commands must come from official docs when FETCH enabled — no hardcoded install here
+  note: PLAN_ONLY until Director enables fetch
+install:
+  note: use LOCAL_ARTIFACT after checksum
+verify:
+  checks:
+    - entrypoint_exists
+    - version_command
+role: engine_port_only
+forbidden:
+  - continuous_loop_motor
+  - direct_openai_calls_from_wordflow
