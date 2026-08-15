@@ -1,0 +1,5 @@
+ACQUIRE_OS_ENABLED: false
+dry_run: true
+llm_control: DENY
+journal:
+  allow_token_plaintext: false
