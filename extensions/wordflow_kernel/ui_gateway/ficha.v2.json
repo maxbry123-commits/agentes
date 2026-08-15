@@ -1,0 +1,13 @@
+{
+  "artifact_id": "wordflow.plugin.ui_gateway",
+  "abi_version": "2.0",
+  "extension_type": "ui_plugin",
+  "kernel_min": "1.0",
+  "mount_mode": "extension",
+  "load_priority": 80,
+  "llm_control": "DENY",
+  "provides": ["ui.chat", "ui.webui", "ui.openclaw_bridge"],
+  "entry_points": {
+    "plugin": "wordflow_kernel.ui_gateway:UIGatewayPlugin"
+  }
+}
