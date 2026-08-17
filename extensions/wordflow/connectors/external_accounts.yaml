@@ -1,0 +1,17 @@
+# Active config — token NO va aquí.
+# Secret de GitHub Actions / env: GITHUB_EXTERNAL_B_TOKEN
+# Director completa owner/repo tras crear el secret (SETUP_TOKEN_MOVIL.md)
+
+accounts:
+  - account_id: external_software_b
+    provider: github
+    credential_ref: env:GITHUB_EXTERNAL_B_TOKEN
+    owner: REPLACE_OWNER
+    repo: REPLACE_REPO
+    branch: main
+    allowed_repositories: []
+    policy:
+      can_read: true
+      can_write: false
+      can_deploy: false
+    role: software_store

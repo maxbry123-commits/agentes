@@ -1,0 +1,47 @@
+name: validate-external-github
+on:
+  workflow_dispatch:
+    inputs:
+      owner:
+        description: "GitHub owner Cuenta B"
+        required: true
+        type: string
+      repo:
+        description: "Repo name Cuenta B"
+        required: true
+        type: string
+      branch:
+        description: "Branch"
+        required: false
+        default: main
+        type: string
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install PyGithub
+        run: pip install PyGithub
+      - name: Preflight external repo (token never printed)
+        env:
+          GITHUB_EXTERNAL_B_TOKEN: ${{ secrets.GITHUB_EXTERNAL_B_TOKEN }}
+        run: |
+          python - <<'PY'
+          import os, sys
+          from github import Github
+          tok = os.environ.get("GITHUB_EXTERNAL_B_TOKEN", "")
+          if not tok:
+              print("FAIL: secret GITHUB_EXTERNAL_B_TOKEN not set")
+              sys.exit(1)
+          owner = "${{ inputs.owner }}"
+          repo_n = "${{ inputs.repo }}"
+          branch = "${{ inputs.branch }}"
+          gh = Github(tok)
+          repo = gh.get_repo(f"{owner}/{repo_n}")
+          repo.get_branch(branch)
+          print("OK", repo.full_name, "branch", branch, "private", repo.private)
+          PY
