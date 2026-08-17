@@ -1,8 +1,9 @@
 # PIPELINE 00 — MÉTODO DE TRABAJO + ARQUITECTURA DE RESPONSABILIDADES
 
-**Fecha:** 2026-08-10  
+**Fecha:** 2026-08-17 (actualizado)  
 **Estado:** LEY DE TRABAJO (inmutable hasta que Director la cambie)  
-**Aplica a:** todo código y YAML del Wordflow / Capa de Control / extensiones kernel
+**Aplica a:** todo código y YAML del Wordflow / Capa de Control / extensiones kernel  
+**Plan activo V1:** PIPELINE/52_V1_PLAN_49_TAREAS_METODO_Y_XRAY.md
 
 ---
 
@@ -14,202 +15,109 @@
 | Organización | carpetas por responsabilidad, no monolitos |
 | Edición | un archivo a la vez; no reescribir paquetes enteros |
 | Tests | cada pieza nueva con evidencia CI cuando aplique |
-
-Motivo: poder editar, reemplazar o desactivar sin romper el resto.
+| Almacenamiento | **GitHub = única verdad; prohibido sandbox como storage** |
 
 ---
 
-## 2. No mezclar configuración con ejecución
+## 2. Arquitectura canónica (no monolítica)
+
+```
+KERNEL (estable, pequeño)
+  │
+  ├── WordflowInstance A
+  ├── WordflowInstance B
+  └── WordflowInstance N
+
+EXTENSIONS / CAPABILITIES (ficha.v2 enchufe)
+```
+
+- **WordflowInstance** = ejecución/proyecto aislado (goals, state, loops, evidence).
+- **Extensión / Capability** = paquete cargable (motor, adapter, skill, connector). No es una instancia.
+- Crear otro Wordflow **no** exige reescribir el kernel; solo config/DNA + registry.
+
+---
+
+## 3. Operación COPY-FIRST (código existente)
+
+```
+COPY/MOVE → HASH OK
+IMPORTS / CONTRACT / DEPENDENCY
+        ↓ FAIL
+AGENT → PATCH / ADAPT / GENERATE (mínimo)
+```
+
+Prioridad: **COPY/MOVE → LINK/CONNECT → PATCH → ADAPT → GENERATE LAST**.  
+Nunca regenerar código que ya existe y es compatible.
+
+---
+
+## 4. No mezclar configuración con ejecución
 
 ```
 YAML  = contrato / política / definición
 .py   = runtime genérico que interpreta cualquier contrato
 ```
 
-Incorrecto:
-```
-retry.py
-recovery.py
-watchdog.py   ← lógica duplicada
-```
-
-Correcto:
-```
-loops/retry.yaml      ← define el loop
-loops/recovery.yaml
-runtime/loop_executor.py  ← ejecuta CUALQUIER loop
-```
+Loops independientes bajo `loops/*.yaml`; executor genérico los interpreta.
 
 ---
 
-## 3. Loops independientes
-
-```
-workflow/
-├── workflow.yaml          # solo referencia
-└── loops/
-    ├── main.yaml          # ejecución normal
-    ├── retry.yaml         # reintentos
-    ├── recovery.yaml      # recuperación
-    ├── evolution.yaml     # evolución de capacidades
-    └── watchdog.yaml      # supervisión
-```
-
-`workflow.yaml` referencia:
-
-```yaml
-loops:
-  - loops/main.yaml
-  - loops/retry.yaml
-  - loops/recovery.yaml
-```
-
-Un loop puede invocar otro **solo** si Schema/Sheriff lo autoriza (anti-ciclos).
-
----
-
-## 4. Seis niveles de responsabilidad
+## 5. Seis niveles de responsabilidad
 
 ```
 WORDflow
-                    │
        ┌────────────┼────────────┐
-       ↓            ↓            ↓
   DEFINITION     CONTROL      EXECUTION
-       │            │            │
        └────────────┼────────────┘
-                    ↓
-                  STATE
-                    ↓
-                 EVIDENCE
-                    ↓
-               EXTENSIONS
+                  STATE → EVIDENCE → EXTENSIONS
 ```
 
-| Nivel | Qué | Ejemplos |
-|-------|-----|----------|
-| 1 DEFINITION | qué debe hacer | workflow, schema, stages, loops |
-| 2 CONTROL | qué puede hacer | sheriff, permissions, resource limits, routing |
-| 3 EXECUTION | cómo lo hace | actions, executors, adapters, connectors |
-| 4 STATE | qué está ocurriendo | current state, queue, checkpoints, variables |
-| 5 EVIDENCE | qué ocurrió | events, trace, artifacts, results, errors |
-| 6 EXTENSIONS | qué se puede añadir | capabilities, agents, skills, plugins, adapters, runtimes |
+| Nivel | Qué |
+|-------|-----|
+| 1 DEFINITION | workflow, schema, stages, loops |
+| 2 CONTROL | sheriff, permissions, routing |
+| 3 EXECUTION | actions, adapters, connectors |
+| 4 STATE | queue, checkpoints, instance state |
+| 5 EVIDENCE | events, trace, artifacts |
+| 6 EXTENSIONS | capabilities, agents, skills, plugins |
 
 ---
 
-## 5. Estructura de carpeta recomendada (por workflow/módulo)
+## 6. Forensic X-Ray + mapa mental
 
-```
-workflow/
-├── manifest.yaml
-├── workflow.yaml
-├── inputs/
-│   ├── input.schema.yaml
-│   └── output.schema.yaml
-├── plan/
-│   ├── stages.yaml
-│   └── dependencies.yaml
-├── loops/
-│   ├── main.yaml
-│   ├── retry.yaml
-│   ├── recovery.yaml
-│   └── watchdog.yaml
-├── policies/
-│   ├── sheriff.yaml
-│   ├── resource.yaml
-│   └── security.yaml
-├── routing/
-│   ├── router.yaml
-│   └── model_policy.yaml
-├── actions/                 # ≤300 LOC c/u
-│   ├── acquire.py
-│   ├── transform.py
-│   ├── validate.py
-│   └── publish.py
-├── validators/
-│   ├── schema_validator.py
-│   └── integrity_validator.py
-├── state/
-│   └── state.yaml
-└── tests/
-```
-
-Runtime genérico (fuera del workflow concreto):
-
-```
-runtime/
-├── loop_executor.py
-├── workflow_runner.py
-└── ...
-```
-
-Extensions:
-
-```
-extensions/
-├── capabilities/
-├── agents/
-├── skills/
-├── plugins/
-├── adapters/
-├── connectors/
-└── runtimes/
-```
-
----
-
-## 6. Diagrama de montaje
-
-```
-WORDflow
-                       │
-        ┌──────────────┼──────────────┐
-        ↓              ↓              ↓
-     Schema         Sheriff        Workflow
-                                      │
-                         ┌────────────┼────────────┐
-                         ↓            ↓            ↓
-                      Loop A       Loop B       Loop C
-                         │            │            │
-                         └────────────┼────────────┘
-                                      ↓
-                                  Executor
-```
-
-Sustituir un loop ≠ tocar schema.  
-Sustituir sheriff ≠ tocar executor.  
-Nueva capability = `extensions/capabilities/X` sin reconstruir kernel.
+- Todo componente con **ID único** (`WF.xx`, `FILE.xxx`, `CONN.xxx`, …).
+- Estados: IMPLEMENTED | PARTIAL | MISSING | PENDING | PLACEHOLDER | DEPRECATED | EXTERNAL | UNKNOWN.
+- Mapa mental cascada (estilo NCT/APEX): `→ Para qué` / `→ Sin esto`.
+- HTML en GitHub al cerrar bloques de mapa (plan T41–T42).
 
 ---
 
 ## 7. Ratio determinista
 
-- **90 %** código / YAML / reglas (DEFINITION + CONTROL + EXECUTION determinista)
-- **10 %** LLM solo donde el contrato lo permita (`llm_ratio`, estados H / D+H)
-
-Sheriff y Schema bloquean LLM fuera de zona autorizada.
+- **90 %** código / YAML / reglas  
+- **10 %** LLM solo vía IntelligenceGateway / Router (nunca vendor directo en loop)
 
 ---
 
 ## 8. Método operativo CHAT_A
 
-1. Planificación tipo Cursor (mínimo tokens)
-2. Una tarea = una salida
-3. Archivos ≤ 300 LOC
-4. Commit real en GitHub → paro
-5. Claim CHAT_A_EXECUTOR con evidencia
-6. No inventar: si falta documento, pedir
-7. PIPELINE = memoria del proyecto (actualizar al cerrar bloque)
+1. Planificación tipo Cursor (mínimo tokens)  
+2. Una tarea = una salida  
+3. Archivos ≤ 300 LOC  
+4. Commit real en GitHub → paro  
+5. Claim con path + evidencia; enlaces que abren el archivo  
+6. No inventar archivos ni commits  
+7. PIPELINE = memoria del proyecto  
+8. Formato CONTROL DE TRABAJO en cada salida  
 
 ---
 
-## 9. Relación con Parte A hecha
+## 9. V1 vs V1.1
 
-`extensions/project_bootstrap/` ya sigue este espíritu:
-- ktp / microflows / resource_brain / tests en carpetas separadas
-- entrypoint orquesta sin monolito
-- manifest = contrato Enchufe v2
+| En V1 (49 tareas) | En V1.1 |
+|-------------------|--------|
+| Kernel multi-instancia + extensions | Fusión Minimax/Kimi NCT completa |
+| C100 puntos Director 100% | Fetch real masivo HF |
+| Code path + deploy contrato + mapa X-Ray | Expansión 85 contratos literales |
 
-Los siguientes módulos (loops Wordflow, sheriff, publisher, downloader) **deben** nacer ya con esta estructura.
-
-**Fuente:** instrucciones Director 2026-08-10 (método trabajo + 5+1 niveles + loops independientes).
+**Fuente:** Director 2026-08-10 + ampliación 2026-08-17 (multi-instancia, COPY-FIRST, X-Ray, plan 52).
