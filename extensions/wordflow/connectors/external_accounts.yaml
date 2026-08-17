@@ -1,11 +1,10 @@
-# Active config — token NO va aquí.
-# Secret de GitHub Actions / env: GITHUB_EXTERNAL_B_TOKEN
-# Director completa owner/repo tras crear el secret (SETUP_TOKEN_MOVIL.md)
+# Token: GitHub Actions secret EXTERNAL_GH_B_TOKEN (never in this file)
+# credential_ref maps to env var injected by workflow / runtime
 
 accounts:
   - account_id: external_software_b
     provider: github
-    credential_ref: env:GITHUB_EXTERNAL_B_TOKEN
+    credential_ref: env:EXTERNAL_GH_B_TOKEN
     owner: REPLACE_OWNER
     repo: REPLACE_REPO
     branch: main

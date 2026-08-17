@@ -1,33 +1,31 @@
-# Setup token Cuenta B — solo móvil (1 paso)
+# Setup token Cuenta B — móvil
 
-## Toca este enlace
+## Nombre del secret (obligatorio)
 
-**Crear secret (pega el token SOLO en esa pantalla de GitHub):**
+**`EXTERNAL_GH_B_TOKEN`**
+
+GitHub **prohíbe** nombres que empiecen por `GITHUB_`.
+Por eso `GITHUB_EXTERNAL_B_TOKEN` no se guardaba.
+
+## Enlace
 
 https://github.com/maxbry123-commits/agentes/settings/secrets/actions/new
 
-| Campo | Valor exacto |
-|-------|----------------|
-| Name | `GITHUB_EXTERNAL_B_TOKEN` |
-| Secret | *(tu token — solo ahí, nunca en el chat)* |
+| Campo | Valor |
+|-------|--------|
+| Name | `EXTERNAL_GH_B_TOKEN` |
+| Secret | tu token (solo en GitHub) |
 
-Guarda.
+## Después
 
-## Después del secret
-
-En el chat dile al agente **solo**:
+En el chat (sin token):
 
 ```text
-owner: abc1tienda-web
-repo: NOMBRE_EXACTO
+owner: ...
+repo: ...
 branch: main
 ```
 
-(sustituye owner/repo por los reales)
+## Check
 
-El código ya espera el secret con ese nombre. No hace falta PC ni Contabo ni pegar el token en el chat.
-
-## Comprobar (opcional)
-
-Actions → workflow `validate-external-github` → Run workflow
-(solo verifica que el secret existe y la API responde; no imprime el token)
+Workflow: `check-external-token-secret`

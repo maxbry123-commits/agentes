@@ -28,14 +28,14 @@ jobs:
         run: pip install PyGithub
       - name: Preflight external repo (token never printed)
         env:
-          GITHUB_EXTERNAL_B_TOKEN: ${{ secrets.GITHUB_EXTERNAL_B_TOKEN }}
+          EXTERNAL_GH_B_TOKEN: ${{ secrets.EXTERNAL_GH_B_TOKEN }}
         run: |
           python - <<'PY'
           import os, sys
           from github import Github
-          tok = os.environ.get("GITHUB_EXTERNAL_B_TOKEN", "")
+          tok = os.environ.get("EXTERNAL_GH_B_TOKEN", "")
           if not tok:
-              print("FAIL: secret GITHUB_EXTERNAL_B_TOKEN not set")
+              print("FAIL: secret EXTERNAL_GH_B_TOKEN not set")
               sys.exit(1)
           owner = "${{ inputs.owner }}"
           repo_n = "${{ inputs.repo }}"
