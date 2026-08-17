@@ -1,6 +1,30 @@
 # Wordflow Kernel Extension — V1
 
-Deterministic control plane for YAIWES / Wordflow. **GitHub is the source of truth.**
+Deterministic control plane for YAIWES / Wordflow. **GitHub is the source of truth for system code.**
+
+## Multi-account storage (método de trabajo)
+
+```
+Cuenta A (sistema)  →  este monorepo + router + osquestador + memoria
+Cuenta B (software) →  forks / tools / agents externos (solo almacén)
+HF                  →  datasets / models / skills grandes
+Runtime             →  donde se ejecuta tras download + verify
+```
+
+- Full method: `PIPELINE/53_MULTI_ACCOUNT_STORAGE_METHOD.md`
+- Connector: `extensions/wordflow/connectors/github_external.py`
+- Accounts: `extensions/wordflow/accounts/` — **credential_ref only, never raw token in git**
+
+When the Director enables Cuenta B, set env from secret store and register:
+
+```yaml
+account_id: external_software_b
+provider: github
+credential_ref: env:GITHUB_EXTERNAL_B_TOKEN
+allowed_repositories:
+  - abc1tienda-web/REPO_NAME
+policy: { can_read: true, can_write: false, can_deploy: false }
+```
 
 ## How to connect components
 
@@ -9,78 +33,46 @@ Deterministic control plane for YAIWES / Wordflow. **GitHub is the source of tru
 Loop / EnginePort
   → IntelligenceGateway (Mock | RouterHTTPGateway)
   → ROUTER_URL HTTP /v1/route
-  → LLM providers / tools (outside Wordflow)
 ```
-- Set `ROUTER_URL=https://your-router`
-- Never put API keys in workflow YAML; use credential_ref
-- File: `gateway/intelligence.py`, `gateway/router_http.py`
+- Files: `gateway/intelligence.py`, `gateway/router_http.py`
 
 ### 2. Memory Orchestrator
 ```text
-Workflow
-  → MemoryOrchestratorAdapter
-  → capability memory.* via Router
-  → OR local PersistentMemory (offline only)
+Workflow → MemoryOrchestratorAdapter → memory.* via Router | local PersistentMemory
 ```
-- File: `memory_slot/adapter.py`
-- Local: `memory.py` (append-only jsonl)
+- `memory_slot/adapter.py`, `memory.py`
 
 ### 3. Engines (OpenClaw / Hermes)
 ```text
-EngineRegistry.reason(name, EngineRequest, gateway)
-  → OpenClawEngine / HermesEngine stubs
-  → always via IntelligenceGateway (no direct vendor)
+EngineRegistry.reason → stubs → always via IntelligenceGateway
 ```
-- File: `engines/`
-- Acquire software separately via Acquire Recipe (`control-layer/subsheriffs/acquire_os/recipes/openclaw.example.yaml`)
+- `engines/` — software binaries via Acquire + optional Cuenta B repos
 
-### 4. Continuous loop + 12-stage hooks
-```text
-GoalLockView → goals_to_loop_state → maxbry_loop.Engine
-GoalLockView → goals_to_stage_plan → stages.DeterministicLoopEngine
-```
-- Package: `extensions/maxbry_loop/`
-- Stages: `stages/` (ADMIT…CLOSE)
-- Model: `MockModel` or `GatewayModel(gateway)`
+### 4. Continuous loop + 12-stage
+- `extensions/maxbry_loop/` + `stages/`
 
 ### 5. Forensic audit
-```text
-forensic_audit(target, requirements, claims) → EvidencePacket + recommended_tasks
-```
 - `forensic_api.py`, `repo_truth.py`, `crosscheck.py`
 
-### 6. GitHub multi-account + deploy
+### 6. GitHub multi-account + deploy + external software
 ```text
-AccountRegistry + AccountResolver → credential_ref
-GitDataAPIPort Fake (default) | Real if GITHUB_DEPLOY_REAL=1 and GITHUB_TOKEN
+AccountRegistry + AccountResolver
+  → system deploy (Cuenta A write)
+  → external read (Cuenta B credential_ref)
+GitDataAPIPort Fake | Real under flags
 ```
-- `extensions/wordflow/accounts/`
-- `extensions/github_deploy/git_data_port.py`
 
-### 7. HF resources (PLAN_ONLY fetch)
-```text
-AdapterFactory · SkillLoader · DatasetLoader · SpaceAgentsLoader
-FETCH_ENABLED=false by default
-```
-- `resources/`
+### 7. HF resources (PLAN_ONLY default)
+- `resources/` — FETCH_ENABLED=false by default
 
 ### 8. UI plugin
-```text
-UIGatewayPlugin — mount in OpenClaw webui / chat host
-```
 - `ui_gateway/`
 
 ### 9. Enchufe
-- `ficha.v2.json` at package roots; `llm_control: DENY` in kernel paths
+- `ficha.v2.json`; `llm_control: DENY` on deterministic kernel paths
 
-## Residual (post V1 / next week)
-| ID | Item |
-|----|------|
-| R2 | Kimi/Minimax fusion loops full code |
-| R2 | Real HF/GitHub bulk fetch when policy allows |
-| R2 | Full CI green matrix on every module |
-| R2 | Real OpenClaw/Hermes binaries via Acquire when enabled |
-| R0 | PIPELINE residual detail for next Grok instance |
+## Residual post V1
+Kimi/Minimax fusion full · bulk fetch · full CI matrix · real engine binaries when Acquire ON
 
 ## Tests
-Run offline unit tests under `extensions/wordflow_kernel/tests` and related packages with `python -m unittest`.
+`python -m unittest` under package `tests/` offline.
