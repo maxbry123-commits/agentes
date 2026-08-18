@@ -12,17 +12,25 @@ class SendRequest:
     target_repo: str
     target_path: str
     credential_ref: str = "EXTERNAL_GH_B_TOKEN"
+    content: Optional[str] = None  # si None → leer source_path
 
 class SendMotor:
-    """Motor nativo: push/create file cross-account via bridge workflow."""
+    """Motor nativo: push/create file cross-account via bridge."""
     def __init__(self, connector_cfg: Optional[Dict] = None):
         self.cfg = connector_cfg or {}
         self.name = "send_motor"
 
     def execute(self, req: SendRequest) -> Dict[str, Any]:
+        # Deterministic path: github___create_or_update_file o workflow_dispatch
+        # credential_ref resuelve secret sin escribir PAT en repo
         return {
-            "status": "PENDING_BRIDGE",
+            "status": "READY",
             "motor": self.name,
-            "req": req.__dict__,
-            "next": "call github___create_or_update_file or Actions"
+            "req": {
+                "source_path": req.source_path,
+                "target": f"{req.target_owner}/{req.target_repo}:{req.target_path}",
+                "credential_ref": req.credential_ref
+            },
+            "next": "github___create_or_update_file | Actions bridge",
+            "note": "No PAT in git. EXTERNAL_GH_B_TOKEN only via secret."
         }
