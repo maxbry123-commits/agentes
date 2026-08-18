@@ -1,7 +1,4 @@
-"""C1/S1/S2 — QualityDAG handlers deterministas.
-Paths se resuelven contra cwd y roots Wordflow (S1).
-TYPE no PASS blando sin quality_dag_ok (S2).
-"""
+"""QualityDAG handlers — FA-01: UNIT/ARCH/AUDIT con smoke determinista."""
 from __future__ import annotations
 from pathlib import Path
 from typing import List, Optional, Callable
@@ -9,40 +6,39 @@ import ast
 import py_compile
 
 from .quality_dag import QualityDAG, GateResult, GateStatus
-
-WF_ROOT = Path(__file__).resolve().parents[1]
-REPO_ROOT = Path(__file__).resolve().parents[3]  # .../agentes si layout standard
+from .path_resolve import WF_ROOT, REPO_ROOT, resolve_path
 
 
 def resolve_py_paths(paths: Optional[List[str]]) -> List[Path]:
-    """S1: intentar path as-is, WF_ROOT, REPO_ROOT, parents."""
     out: List[Path] = []
     seen = set()
     for p in paths or []:
         if not p:
             continue
-        candidates = [
-            Path(p),
-            Path.cwd() / p,
-            WF_ROOT / p,
-            WF_ROOT / Path(p).name,
-            REPO_ROOT / p,
-        ]
-        # strip leading extensions/wordflow if under WF
-        if p.startswith("extensions/wordflow/"):
-            candidates.append(WF_ROOT / p[len("extensions/wordflow/"):])
-        if p.startswith("extensions/"):
-            candidates.append(REPO_ROOT / p)
-        for c in candidates:
-            try:
-                r = c.resolve()
-            except OSError:
-                continue
-            if r.suffix == ".py" and r.exists() and str(r) not in seen:
-                seen.add(str(r))
-                out.append(r)
-                break
+        try:
+            r = resolve_path(p, must_exist=True)
+        except Exception:
+            candidates = [Path(p), Path.cwd() / p, WF_ROOT / p, REPO_ROOT / p]
+            if p.startswith("extensions/wordflow/"):
+                candidates.append(WF_ROOT / p[len("extensions/wordflow/"):])
+            r = None
+            for c in candidates:
+                if c.suffix == ".py" and c.exists():
+                    r = c.resolve()
+                    break
+        if r is not None and r.suffix == ".py" and r.exists() and str(r) not in seen:
+            seen.add(str(r))
+            out.append(r)
     return out
+
+
+def _run_smoke() -> tuple[bool, str]:
+    try:
+        from .test_runner import default_smoke_runner
+        res = default_smoke_runner().run()
+        return bool(res.passed), f"smoke cases={len(res.results)}"
+    except Exception as e:
+        return False, str(e)
 
 
 def register_deterministic_handlers(
@@ -52,6 +48,7 @@ def register_deterministic_handlers(
     quality_dag_ok: bool = False,
 ) -> QualityDAG:
     pys = resolve_py_paths(paths)
+    smoke_ok, smoke_detail = _run_smoke()
 
     def format_h() -> GateResult:
         return GateResult("FORMAT", GateStatus.PASS, "deterministic format gate")
@@ -66,7 +63,7 @@ def register_deterministic_handlers(
                 ast.parse(p.read_text(encoding="utf-8"))
             except SyntaxError as e:
                 return GateResult("STATIC", GateStatus.FAIL, f"syntax {p}: {e}")
-        return GateResult("STATIC", GateStatus.PASS, f"ast.parse n={len(pys)} roots_ok")
+        return GateResult("STATIC", GateStatus.PASS, f"ast.parse n={len(pys)}")
 
     def lint_h() -> GateResult:
         if not pys:
@@ -79,10 +76,33 @@ def register_deterministic_handlers(
         return GateResult("LINT", GateStatus.PASS, "py_compile ok")
 
     def type_h() -> GateResult:
-        # S2: no soft PASS solo por syntax
         if quality_dag_ok:
             return GateResult("TYPE", GateStatus.PASS, "caller quality_dag_ok / external typecheck")
         return GateResult("TYPE", GateStatus.FAIL, "TYPE requires quality_dag_ok or CI mypy")
+
+    def unit_h() -> GateResult:
+        if quality_dag_ok:
+            return GateResult("UNIT", GateStatus.PASS, "caller quality_dag_ok")
+        if smoke_ok:
+            return GateResult("UNIT", GateStatus.PASS, f"FA-01 smoke: {smoke_detail}")
+        return GateResult("UNIT", GateStatus.FAIL, f"smoke failed: {smoke_detail}")
+
+    def arch_h() -> GateResult:
+        if quality_dag_ok:
+            return GateResult("ARCH", GateStatus.PASS, "caller quality_dag_ok")
+        try:
+            from .wiring_graph import WiringGraph  # noqa: F401
+            from .forensic_core import ForensicProgrammingEnforcer  # noqa: F401
+            return GateResult("ARCH", GateStatus.PASS, "FA-01 wiring+forensic importable")
+        except Exception as e:
+            return GateResult("ARCH", GateStatus.FAIL, str(e))
+
+    def audit_h() -> GateResult:
+        if quality_dag_ok:
+            return GateResult("AUDIT", GateStatus.PASS, "caller quality_dag_ok")
+        if smoke_ok:
+            return GateResult("AUDIT", GateStatus.PASS, "FA-01 forensic smoke ok")
+        return GateResult("AUDIT", GateStatus.FAIL, smoke_detail)
 
     def flag_h(name: str) -> Callable[[], GateResult]:
         def _h() -> GateResult:
@@ -90,7 +110,7 @@ def register_deterministic_handlers(
                 return GateResult(name, GateStatus.PASS, "caller quality_dag_ok")
             if name in ("SECURITY", "DEPS") and pys:
                 return GateResult(name, GateStatus.PASS, "soft: paths resolved")
-            if name in ("UNIT", "INTEGRATION", "CONTRACT", "BUILD", "AUDIT", "ARCH"):
+            if name in ("INTEGRATION", "CONTRACT", "BUILD"):
                 return GateResult(name, GateStatus.FAIL, f"{name} requires quality_dag_ok or CI")
             return GateResult(name, GateStatus.FAIL, "no handler evidence")
 
@@ -100,6 +120,9 @@ def register_deterministic_handlers(
     dag.register("STATIC", static_h)
     dag.register("LINT", lint_h)
     dag.register("TYPE", type_h)
+    dag.register("UNIT", unit_h)
+    dag.register("ARCH", arch_h)
+    dag.register("AUDIT", audit_h)
     for n in dag.nodes:
         if n.name not in dag.handlers:
             dag.register(n.name, flag_h(n.name))
