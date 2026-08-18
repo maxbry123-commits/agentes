@@ -3,17 +3,17 @@
 from __future__ import annotations
 
 import unittest
-from unittest.mock import patch
+import inspect
 
 from extensions.wordflow.engine.code_path_runner import run_code_path
 from extensions.wordflow.engine.programming_pipeline import default_pipeline
 from extensions.wordflow.engine.programming_kwargs import full_pass_kwargs, minimal_block_kwargs
 from extensions.wordflow.standards.path_resolve import find_repo_root, default_scan_roots
 from extensions.wordflow.standards.evidence_merge import merge_evidence
-from extensions.wordflow.standards.checklist_factory import checklist_from_dict
 from extensions.wordflow.standards.evidence_verifier import EvidenceVerifier, EvidenceRef
-from extensions.wordflow.standards.fc_auto_measure import auto_measure_fc, CALLER_REQUIRED
+from extensions.wordflow.standards.fc_auto_measure import auto_measure_fc, FC_CALLER_REQUIRED
 from extensions.wordflow.standards.verdict_authority import VerdictAuthority
+from extensions.wordflow.engine import main_loop
 
 TEXT = "Objetivo: test unified programming path determinista con forensic gates Wordflow."
 
@@ -31,7 +31,7 @@ class TestBasics(unittest.TestCase):
         self.assertFalse(EvidenceVerifier().verify_ref(EvidenceRef("measure", "auto_core_placeholder"))["ok"])
 
     def test_fc_u8(self):
-        self.assertTrue(len(CALLER_REQUIRED) > 0)
+        self.assertTrue(len(FC_CALLER_REQUIRED) > 0)
         r = auto_measure_fc(deterministic_path=True)
         self.assertIn("caller_required", r)
 
@@ -75,9 +75,6 @@ class TestUnified(unittest.TestCase):
 
 class TestMain12HookU9(unittest.TestCase):
     def test_programming_path_flag_exists(self):
-        from extensions.wordflow.engine import main_loop
-        self.assertTrue(hasattr(main_loop, "run_main_12"))
-        import inspect
         sig = inspect.signature(main_loop.run_main_12)
         self.assertIn("programming_path", sig.parameters)
         self.assertIn("programming_full_pass", sig.parameters)
