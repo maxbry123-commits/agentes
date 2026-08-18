@@ -1,13 +1,13 @@
-"""C6 — auto-measure FC-01..13 conservador.
-Solo True con señal local débil/media; caller puede override.
-"""
+"""C6/U8 — auto-measure FC conservador + cobertura explícita."""
 from __future__ import annotations
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 
 from .forensic_core import FC_IDS, FC_CRITERIA
 
-WF = Path(__file__).resolve().parents[1]
+# U8: solo estos se auto-miden; el resto exige caller/CI
+FC_AUTO_COVERED = ("FC-01", "FC-09", "FC-10", "FC-12")
+FC_CALLER_REQUIRED = tuple(fid for fid in FC_IDS if fid not in FC_AUTO_COVERED)
 
 
 def auto_measure_fc(
@@ -18,18 +18,15 @@ def auto_measure_fc(
 ) -> Dict[str, Any]:
     measures = {fid: False for fid in FC_IDS}
     evidence: Dict[str, str] = {}
-    pys = [Path(p) for p in (paths or []) if p.endswith(".py")]
+    pys = [Path(p) for p in (paths or []) if str(p).endswith(".py")]
 
-    # FC-10 DETERMINISTIC_FIRST — code path is deterministic by design
     if deterministic_path:
         measures["FC-10"] = True
         evidence["FC-10"] = "code_path llm_control=DENY"
 
-    # FC-12 CI_FAIL_CLOSED — enforcer rules skip!=pass
     measures["FC-12"] = True
     evidence["FC-12"] = "forensic_core skip_equals_pass=False"
 
-    # FC-01 FILE_LOC soft: any file under 1500 lines
     for p in pys:
         if p.exists():
             n = len(p.read_text(encoding="utf-8", errors="replace").splitlines())
@@ -38,7 +35,6 @@ def auto_measure_fc(
                 evidence["FC-01"] = f"{p.name}:{n}LOC"
             break
 
-    # FC-09 NO_DEFAULT_PROD — no hardcoded token patterns in scanned files (weak)
     bad = False
     for p in pys[:20]:
         if not p.exists():
@@ -62,4 +58,7 @@ def auto_measure_fc(
         "evidence": evidence,
         "criteria": FC_CRITERIA,
         "all_true": all(measures.values()),
+        "auto_covered": list(FC_AUTO_COVERED),
+        "caller_required": list(FC_CALLER_REQUIRED),
+        "note": "U8: require_fc needs caller for FC not in auto_covered",
     }
