@@ -1,6 +1,5 @@
-"""KernelExtMotor — T0.4. Une los 3 motors + recepción/conversión como extensión nativa kernel.
-Agente sabe usar cada motor. Sub-Wordflow.
-Knowledge: si se pierde enlace reception → regenerar o devolver desde KNOWLEDGE_RECEPTION_LINKS.md
+"""KernelExtMotor — T0.4 nativo. Une SEND/CALL/DOWNLOAD + recepción.
+Knowledge: si se pierde enlace reception → get_reception_link() o KNOWLEDGE_RECEPTION_LINKS.md
 """
 from typing import Dict, Any
 from ..send.motor import SendMotor, SendRequest
@@ -19,8 +18,7 @@ class KernelExtMotor:
             "comand-Center": "https://github.com/maxbry123-commits/comand-Center/blob/main/RECEPTION_comand-Center.md",
         }
 
-    def get_reception_link(self, repo: str) -> str:
-        """Si el usuario pierde el enlace, el agente usa este método."""
+    def get_reception_link(self, repo: str = "agentes") -> str:
         return self.reception_links.get(repo, f"Crear RECEPTION_{repo}.md y devolver enlace nuevo")
 
     def dispatch(self, motor: str, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -30,6 +28,6 @@ class KernelExtMotor:
             return self.call.execute(CallRequest(**payload))
         if motor == "download":
             return self.download.execute(DownloadRequest(**payload))
-        if motor == "reception_link":
+        if motor in ("reception_link", "get_link"):
             return {"status": "OK", "link": self.get_reception_link(payload.get("repo", "agentes"))}
-        return {"status": "UNKNOWN_MOTOR", "motor": motor}
+        return {"status": "UNKNOWN_MOTOR", "motor": motor, "available": ["send", "call", "download", "reception_link"]}
