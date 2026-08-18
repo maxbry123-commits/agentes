@@ -1,12 +1,15 @@
 {
-  "version": "1.0.0",
+  "version": "1.1.0",
   "source": "component_catalog.json",
+  "task": "S06/T06",
   "connections": [
-    {"from": "wordflow.core", "to": "wordflow.engine.code_path_runner", "type": "internal"},
-    {"from": "wordflow.engine.code_path_runner", "to": "intelligence_gateway", "type": "gateway"},
-    {"from": "wordflow_kernel", "to": "engine.openclaw", "type": "adapter"},
-    {"from": "wordflow_kernel", "to": "engine.hermes", "type": "adapter"},
-    {"from": "github_deploy", "to": "wordflow.core", "type": "deploy"},
-    {"from": "acquire_engine", "to": "wordflow.core", "type": "sub_sheriff"}
+    {"id": "CONN.core_path", "from": "wordflow.core", "to": "wordflow.engine.code_path_runner", "type": "internal", "status": "PARTIAL"},
+    {"id": "CONN.path_gateway", "from": "wordflow.engine.code_path_runner", "to": "intelligence_gateway", "type": "gateway", "status": "PARTIAL"},
+    {"id": "CONN.kernel_openclaw", "from": "wordflow_kernel", "to": "engine.openclaw", "type": "adapter", "status": "PARTIAL"},
+    {"id": "CONN.kernel_hermes", "from": "wordflow_kernel", "to": "engine.hermes", "type": "adapter", "status": "PARTIAL"},
+    {"id": "CONN.deploy_core", "from": "github_deploy", "to": "wordflow.core", "type": "deploy", "status": "PARTIAL"},
+    {"id": "CONN.acquire_core", "from": "acquire_engine", "to": "wordflow.core", "type": "sub_sheriff", "status": "PARTIAL"},
+    {"id": "CONN.loop_path", "from": "maxbry_loop", "to": "wordflow.engine.code_path_runner", "type": "loop", "status": "PARTIAL"},
+    {"id": "CONN.kernel_instance", "from": "wordflow_kernel", "to": "WordflowInstance", "type": "registry", "status": "PENDING"}
   ]
 }
