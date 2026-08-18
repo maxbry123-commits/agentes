@@ -1,0 +1,42 @@
+name: phase1-restore-arquitectura-real
+
+on:
+  workflow_dispatch:
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: PHASE1 restore blob 6e8a91a2 only
+        run: |
+          set -euo pipefail
+          GOOD=6e8a91a23aa02841287bae98c63d33b8e854fe80
+          PATH_REAL=PIPELINE/ARQUITECTURA_WORDFLOW_PROGRAMMING_REAL.md
+          git checkout "$GOOD" -- "$PATH_REAL"
+          SIZE=$(wc -c < "$PATH_REAL")
+          echo "SIZE_AFTER_CHECKOUT=$SIZE"
+          test "$SIZE" -ge 20000
+          grep -q "ANEXO Y" "$PATH_REAL"
+          grep -q "X.1" "$PATH_REAL"
+          grep -q "201. Sliding window" "$PATH_REAL"
+
+      - name: Commit if changed
+        run: |
+          set -euo pipefail
+          git config user.name "phase1-restore"
+          git config user.email "phase1@users.noreply.github.com"
+          git add PIPELINE/ARQUITECTURA_WORDFLOW_PROGRAMMING_REAL.md
+          if git diff --staged --quiet; then
+            echo "Already at good blob; nothing to commit"
+          else
+            git commit -m "PHASE1: restore ARQUITECTURA_REAL from 6e8a91a2 (git checkout, no rewrite)"
+            git push
+          fi
