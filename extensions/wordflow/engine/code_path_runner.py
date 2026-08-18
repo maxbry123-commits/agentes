@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 """C-19 code_path_runner — FAIL-CLOSED · UNIFIED_RUNNER_V1.
-WIRE: ContextManifest · PreGate · QualityDAG · GapRegistry · ClosureEngine ·
-core_auto_measure · FC optional-enforced · forensic_core CORE14+4-pass.
+GR fixes: prod pre_gate · QualityDAG FORMAT deterministic · apply_adapt COPY.
 """
 from __future__ import annotations
 
+import os
+from pathlib import Path
 from typing import Any
 
 from .cognitive_loop import run_cognitive_loop
@@ -44,12 +45,15 @@ def run_code_path(
     symbol_or_stem: str = "",
     dest: str = "",
     checklist: Any | None = None,
-    require_pre_gate: bool = False,
+    require_pre_gate: bool | None = None,
     require_checklist: bool = False,
     run_quality_dag: bool = True,
     fc_results: dict[str, bool] | None = None,
     require_fc: bool = False,
     auto_measure_core: bool = True,
+    apply_adapt: bool = False,
+    import_mapping: dict[str, str] | None = None,
+    profile: str = "dev",
 ) -> dict[str, Any]:
     from extensions.wordflow.standards.forensic_core import (
         ForensicProgrammingEnforcer,
@@ -66,6 +70,13 @@ def run_code_path(
     from extensions.wordflow.standards.context_manifest import ContextManifest, ContextValidator
     from extensions.wordflow.standards.executor_gates import ExecutorPreImplementGate
     from extensions.wordflow.standards.core_auto_measure import auto_measure_core as _auto_core
+    from extensions.wordflow.standards.copy_first import copy_file_deterministic
+    from extensions.wordflow.standards.adapt_imports import adapt_file
+
+    # GR-02: prod profile forces pre_gate when symbol+dest later provided; env WORDFLOW_PROFILE
+    env_prof = os.environ.get("WORDFLOW_PROFILE", profile).lower()
+    if require_pre_gate is None:
+        require_pre_gate = env_prof == "prod"
 
     enforcer = ForensicProgrammingEnforcer()
     gap_reg = GapRegistry()
@@ -77,6 +88,8 @@ def run_code_path(
         "closure_engine": "PENDING",
         "fc_enforced": False,
         "auto_measure": "SKIP",
+        "adapt": "SKIP",
+        "profile": env_prof,
     }
 
     if require_context_manifest:
@@ -142,7 +155,7 @@ def run_code_path(
                 symbol_or_stem=symbol_or_stem,
                 dest=dest,
                 checklist=checklist,
-                require_checklist=require_checklist,
+                require_checklist=require_checklist or (env_prof == "prod"),
             )
             wire_trace["pre_gate"] = pre_gate_result
             pre_ok = bool(pre_gate_result.get("allow"))
@@ -167,6 +180,22 @@ def run_code_path(
                     "gaps": gap_reg.to_list(),
                     "wire_trace": wire_trace,
                 }
+
+            # GR-05: apply COPY/ADAPT when requested and sources exist
+            if apply_adapt and pre_ok:
+                cf = pre_gate_result.get("copy_first") or {}
+                sources = cf.get("sources") or []
+                action = cf.get("action", "")
+                if sources and dest:
+                    src = Path(sources[0])
+                    dst = Path(dest)
+                    if src.exists():
+                        if action in ("ADAPT", "COPY") and import_mapping:
+                            rewrites = adapt_file(src, dst, import_mapping)
+                            wire_trace["adapt"] = {"action": "ADAPT", "rewrites": rewrites, "src": str(src), "dest": str(dst)}
+                        else:
+                            meta = copy_file_deterministic(src, dst)
+                            wire_trace["adapt"] = meta
 
     q = admit_or_reject(raw_input)
     if not q.get("ok"):
@@ -215,12 +244,15 @@ def run_code_path(
     )
     evidence_ok = verify_evidence_packet(evidence)["ok"]
 
+    # GR-03: FORMAT always deterministic PASS; rest require quality_dag_ok
     dag_passed = bool(quality_dag_ok)
     if run_quality_dag:
         dag = QualityDAG()
 
-        def _flag_handler(name: str):
+        def _handler(name: str):
             def _h() -> GateResult:
+                if name == "FORMAT":
+                    return GateResult(name, GateStatus.PASS, "deterministic noop format gate")
                 if quality_dag_ok:
                     return GateResult(name, GateStatus.PASS, "caller quality_dag_ok")
                 return GateResult(name, GateStatus.FAIL, "quality_dag_ok False")
@@ -228,8 +260,9 @@ def run_code_path(
             return _h
 
         for n in dag.nodes:
-            dag.register(n.name, _flag_handler(n.name))
+            dag.register(n.name, _handler(n.name))
         dag_results = dag.run(fail_closed=True)
+        # FORMAT alone never enough — still need quality_dag_ok for required chain
         dag_passed = dag.passed(dag_results) and quality_dag_ok
         wire_trace["quality_dag"] = {
             "passed": dag_passed,
@@ -238,7 +271,6 @@ def run_code_path(
 
     conn = {k: bool((connectivity or {}).get(k, False)) for k in CONNECTIVITY_CHAIN}
 
-    # --- GC-08 auto-measure CORE ---
     measures: dict[str, bool] = {cid: False for cid in CORE_IDS}
     if auto_measure_core:
         am = _auto_core(
@@ -261,7 +293,6 @@ def run_code_path(
         for cid in CORE_IDS
     ]
 
-    # --- GC-07 FC ---
     fc_in = fc_results or {}
     if require_fc and not fc_in:
         fc_map = {fid: False for fid in FC_IDS}
@@ -321,6 +352,7 @@ def run_code_path(
         handoff_verified=handoff_verified,
         core_results=core_results,
         fc_results=fc_map,
+        require_fc=bool(require_fc or fc_in),
         connectivity=conn,
         counters=ctr,
         evidence_complete=bool(evidence_complete and evidence_ok),
@@ -334,8 +366,8 @@ def run_code_path(
     checklist_passed = True
     if pre_gate_result is not None:
         cl = pre_gate_result.get("checklist")
-        if require_checklist:
-            checklist_passed = bool(cl and cl.get("passed"))
+        if require_checklist or env_prof == "prod":
+            checklist_passed = bool(cl and cl.get("passed")) if cl is not None else not (require_checklist or env_prof == "prod")
         elif cl is not None:
             checklist_passed = bool(cl.get("passed", True))
 
@@ -374,4 +406,5 @@ def run_code_path(
         "verdict": "PASS" if ok else (forensic.get("verdict") or "FAIL"),
         "path": "UNIFIED_RUNNER_V1",
         "gc_status": "GC-01..12_WIRED",
+        "gr_status": "GR-01..05_CODE_FIXED",
     }
