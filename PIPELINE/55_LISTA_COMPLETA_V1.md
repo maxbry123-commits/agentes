@@ -1,8 +1,3 @@
-# PIPELINE 55 — LISTA COMPLETA V1
-**Actualizado:** 2026-08-17 22:14 (post AUDIT-5 S06–S12)
-
-### BLOQUE A: S01–S06 DONE
-### BLOQUE B: S07–S12 DONE
-### AUDIT-5: S01–S05 DONE · S06–S12 DONE
-
-Siguiente: **S13 / T13** (C100-01 VERIFY bootstrap_v1 + E2E Fake).
+# PIPELINE 55 — LISTA
+**Salida 2 DONE:** forensic_contract + VerdictAuthority + report en extensions/wordflow/standards/
+Siguiente: Salida 3 (forense 5 pasadas de todo el Wordflow → gaps en PIPELINE).
