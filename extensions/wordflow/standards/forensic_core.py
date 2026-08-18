@@ -31,6 +31,23 @@ CORE_IDS = [
 
 FC_IDS = [f"FC-{i:02d}" for i in range(1, 14)]
 
+# GR-04 — criterios explícitos (caller/CI marca bool con evidencia externa)
+FC_CRITERIA: Dict[str, str] = {
+    "FC-01": "FILE_LOC within policy thresholds",
+    "FC-02": "NO_CIRCULAR_DEPENDENCIES",
+    "FC-03": "NO_FORBIDDEN_IMPORTS",
+    "FC-04": "DOMAIN_BOUNDARIES respected",
+    "FC-05": "PORTS_ADAPTERS where required",
+    "FC-06": "CONTRACTS_VERSIONED",
+    "FC-07": "CRITICAL_PATHS_VERIFIED",
+    "FC-08": "AGENT_RUNTIME_AUTHORITY enforced",
+    "FC-09": "NO_DEFAULT_PROD credentials",
+    "FC-10": "DETERMINISTIC_FIRST on code path",
+    "FC-11": "STATE_OWNERSHIP clear",
+    "FC-12": "CI_FAIL_CLOSED skip!=pass",
+    "FC-13": "SYMBOL_CONSUMERS_TESTS impact checked",
+}
+
 CONNECTIVITY_CHAIN = [
     "DECLARED",
     "REGISTERED",
@@ -82,6 +99,7 @@ class ForensicEnforcementState:
     handoff_verified: bool = False
     core_results: List[CoreCheckResult] = field(default_factory=list)
     fc_results: Dict[str, bool] = field(default_factory=dict)
+    require_fc: bool = False
     passes: List[PassResult] = field(default_factory=list)
     connectivity: Dict[str, bool] = field(default_factory=dict)
     counters: ClosureCounters = field(default_factory=ClosureCounters)
@@ -89,7 +107,7 @@ class ForensicEnforcementState:
     final_clean_reaudit_passed: bool = False
     quality_dag_ok: bool = False
     deterministic_first_ok: bool = True
-    claim_used_as_pass: bool = False  # if True → FAIL
+    claim_used_as_pass: bool = False
 
     def core_all_pass(self) -> bool:
         if len(self.core_results) < 14:
@@ -103,6 +121,11 @@ class ForensicEnforcementState:
 
     def connectivity_ok(self) -> bool:
         return all(self.connectivity.get(k, False) for k in CONNECTIVITY_CHAIN)
+
+    def fc_ok(self) -> bool:
+        if not self.require_fc and not self.fc_results:
+            return True
+        return all(self.fc_results.get(fid, False) for fid in FC_IDS)
 
 
 class ForensicProgrammingEnforcer:
@@ -119,6 +142,7 @@ class ForensicProgrammingEnforcer:
         "open_to_closed_forbidden": True,
         "all_four_passes_required": True,
         "no_dev_bypass_required": True,
+        "fc_criteria": FC_CRITERIA,
     }
 
     def require_context(self, context_verified: bool, handoff_verified: bool) -> Optional[str]:
@@ -129,9 +153,7 @@ class ForensicProgrammingEnforcer:
         return None
 
     def run_four_passes(self, state: ForensicEnforcementState) -> List[PassResult]:
-        """Orden estricto: FAIL en pass N impide considerar pass N+1 como éxito de cierre."""
         results: List[PassResult] = []
-        # PASS 1 STRUCTURE — core 01-06 roughly
         struct_ok = all(
             c.passed for c in state.core_results if c.core_id in {"CORE-01", "CORE-02", "CORE-03", "CORE-04", "CORE-05", "CORE-06", "CORE-13"}
         ) if state.core_results else False
@@ -142,7 +164,6 @@ class ForensicProgrammingEnforcer:
             results.append(PassResult(PassName.FORENSIC_CLOSURE, False, ["blocked by PASS1"], ""))
             return results
 
-        # PASS 2 CONNECTIVITY
         conn_ok = state.connectivity_ok() and any(c.core_id == "CORE-07" and c.passed for c in state.core_results)
         results.append(PassResult(PassName.CONNECTIVITY, conn_ok, [] if conn_ok else ["connectivity chain incomplete"], "chain"))
         if not conn_ok:
@@ -150,7 +171,6 @@ class ForensicProgrammingEnforcer:
             results.append(PassResult(PassName.FORENSIC_CLOSURE, False, ["blocked by PASS2"], ""))
             return results
 
-        # PASS 3 BEHAVIOR
         beh_ok = all(
             c.passed for c in state.core_results if c.core_id in {"CORE-08", "CORE-09", "CORE-10", "CORE-11"}
         )
@@ -159,7 +179,6 @@ class ForensicProgrammingEnforcer:
             results.append(PassResult(PassName.FORENSIC_CLOSURE, False, ["blocked by PASS3"], ""))
             return results
 
-        # PASS 4 FORENSIC CLOSURE
         clos_ok = (
             state.counters.all_zero()
             and state.evidence_complete
@@ -178,13 +197,24 @@ class ForensicProgrammingEnforcer:
         if state.claim_used_as_pass:
             return {"verdict": "FAIL", "reason": "CLAIM→PASS forbidden", "rules": self.RULES}
 
-        # ensure 14 core slots
         if len(state.core_results) < 14:
             return {
                 "verdict": "FAIL",
                 "reason": "required_without_handler: CORE 01-14 incomplete",
                 "rules": self.RULES,
             }
+
+        # GR-04: FC enforce when require_fc or any fc_results provided
+        if state.require_fc or state.fc_results:
+            missing = [fid for fid in FC_IDS if not state.fc_results.get(fid, False)]
+            if missing:
+                return {
+                    "verdict": "FAIL",
+                    "reason": "FC criteria failed",
+                    "fc_failed": missing,
+                    "fc_criteria": {m: FC_CRITERIA.get(m, "") for m in missing},
+                    "rules": self.RULES,
+                }
 
         state.passes = self.run_four_passes(state)
 
@@ -205,9 +235,10 @@ class ForensicProgrammingEnforcer:
 
         return {
             "verdict": "PASS",
-            "reason": "context + CORE14 + 4 passes + counters0 + evidence + final_reaudit",
+            "reason": "context + CORE14 + FC + 4 passes + counters0 + evidence + final_reaudit",
             "passes": [asdict(p) for p in state.passes],
             "counters": state.counters.to_dict(),
             "rules": self.RULES,
             "connectivity": state.connectivity,
+            "fc_ok": state.fc_ok(),
         }
