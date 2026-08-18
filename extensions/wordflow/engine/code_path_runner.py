@@ -1,12 +1,11 @@
 # -*- coding: utf-8 -*-
-"""C-19 code_path_runner — FAIL-CLOSED forensic enforcement.
-WIRED: ContextManifest · PreGate(COPY-FIRST+Sheriff) · QualityDAG ·
-GapRegistry · ClosureEngine · forensic_core (CORE14+4-pass).
-NO VERIFIED CONTEXT → NO PROGRAMMING. REQUIRED gates no bypass.
+"""C-19 code_path_runner — FAIL-CLOSED · UNIFIED_RUNNER_V1.
+WIRE: ContextManifest · PreGate · QualityDAG · GapRegistry · ClosureEngine ·
+core_auto_measure · FC optional-enforced · forensic_core CORE14+4-pass.
 """
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from .cognitive_loop import run_cognitive_loop
 from .evidence_packet import build_evidence_packet, verify_evidence_packet
@@ -22,6 +21,10 @@ class CodePathError(Exception):
         super().__init__(f"{reason_code}: {detail}" if detail else reason_code)
 
 
+def _all_core_true(measures: dict[str, bool]) -> bool:
+    return all(measures.get(f"CORE-{i:02d}", False) for i in range(1, 15))
+
+
 def run_code_path(
     raw_input: str,
     *,
@@ -30,14 +33,12 @@ def run_code_path(
     mission_id: str = "",
     context_verified: bool = False,
     handoff_verified: bool = False,
-    # forensic measures supplied by caller/CI — never LLM self-cert alone
     core_measures: dict[str, bool] | None = None,
     connectivity: dict[str, bool] | None = None,
     counters: dict[str, int] | None = None,
     evidence_complete: bool = False,
     final_clean_reaudit_passed: bool = False,
     quality_dag_ok: bool = False,
-    # GC wires (optional inputs — fail-closed when require_* True)
     context_manifest: Any | None = None,
     require_context_manifest: bool = False,
     symbol_or_stem: str = "",
@@ -47,6 +48,8 @@ def run_code_path(
     require_checklist: bool = False,
     run_quality_dag: bool = True,
     fc_results: dict[str, bool] | None = None,
+    require_fc: bool = False,
+    auto_measure_core: bool = True,
 ) -> dict[str, Any]:
     from extensions.wordflow.standards.forensic_core import (
         ForensicProgrammingEnforcer,
@@ -62,7 +65,7 @@ def run_code_path(
     from extensions.wordflow.standards.quality_dag import QualityDAG, GateResult, GateStatus
     from extensions.wordflow.standards.context_manifest import ContextManifest, ContextValidator
     from extensions.wordflow.standards.executor_gates import ExecutorPreImplementGate
-    from extensions.wordflow.standards.checklist_sheriff import AgentChecklistClaim
+    from extensions.wordflow.standards.core_auto_measure import auto_measure_core as _auto_core
 
     enforcer = ForensicProgrammingEnforcer()
     gap_reg = GapRegistry()
@@ -73,9 +76,9 @@ def run_code_path(
         "gap_registry": "INIT",
         "closure_engine": "PENDING",
         "fc_enforced": False,
+        "auto_measure": "SKIP",
     }
 
-    # --- GC-03 ContextManifest (optional strict) ---
     if require_context_manifest:
         if context_manifest is None:
             return {
@@ -87,15 +90,12 @@ def run_code_path(
                 "wire_trace": wire_trace,
             }
         if isinstance(context_manifest, dict):
-            context_manifest = ContextManifest(**{
-                k: context_manifest[k]
-                for k in (
-                    "mission_id", "task_id", "project_docs", "architecture_docs",
-                    "task_spec", "relevant_files", "contracts", "tests",
-                    "repository_revision", "handoff_ref",
-                )
-                if k in context_manifest
-            })
+            keys = (
+                "mission_id", "task_id", "project_docs", "architecture_docs",
+                "task_spec", "relevant_files", "contracts", "tests",
+                "repository_revision", "handoff_ref",
+            )
+            context_manifest = ContextManifest(**{k: context_manifest[k] for k in keys if k in context_manifest})
         cv = ContextValidator().validate(context_manifest)
         wire_trace["context_manifest"] = cv
         if not cv.get("ok"):
@@ -121,8 +121,8 @@ def run_code_path(
             "wire_trace": wire_trace,
         }
 
-    # --- GC-01 GC-02 PreGate: COPY-FIRST + ChecklistSheriff ---
     pre_gate_result = None
+    pre_ok = False
     if require_pre_gate or symbol_or_stem or dest:
         if not symbol_or_stem or not dest:
             if require_pre_gate:
@@ -145,7 +145,8 @@ def run_code_path(
                 require_checklist=require_checklist,
             )
             wire_trace["pre_gate"] = pre_gate_result
-            if not pre_gate_result.get("allow"):
+            pre_ok = bool(pre_gate_result.get("allow"))
+            if not pre_ok:
                 gap_reg.add(
                     Gap(
                         gap_id="GC-PRE-001",
@@ -214,8 +215,6 @@ def run_code_path(
     )
     evidence_ok = verify_evidence_packet(evidence)["ok"]
 
-    # --- GC-06 QualityDAG run (handlers: flag-backed or FAIL required) ---
-    dag_results = []
     dag_passed = bool(quality_dag_ok)
     if run_quality_dag:
         dag = QualityDAG()
@@ -224,7 +223,7 @@ def run_code_path(
             def _h() -> GateResult:
                 if quality_dag_ok:
                     return GateResult(name, GateStatus.PASS, "caller quality_dag_ok")
-                return GateResult(name, GateStatus.FAIL, "quality_dag_ok False / no external measure")
+                return GateResult(name, GateStatus.FAIL, "quality_dag_ok False")
 
             return _h
 
@@ -237,38 +236,66 @@ def run_code_path(
             "results": [{"name": r.name, "status": r.status.value, "detail": r.detail} for r in dag_results],
         }
 
-    # Build enforcement state — missing CORE measure = FAIL
-    measures = core_measures or {}
-    core_results = []
-    for cid in CORE_IDS:
-        core_results.append(
-            CoreCheckResult(
-                cid,
-                bool(measures.get(cid, False)),
-                evidence=str(measures.get(cid + "_evidence", "")),
-            )
-        )
+    conn = {k: bool((connectivity or {}).get(k, False)) for k in CONNECTIVITY_CHAIN}
 
-    # --- GC-07 FC results recorded (enforce: all True if provided; else note) ---
+    # --- GC-08 auto-measure CORE ---
+    measures: dict[str, bool] = {cid: False for cid in CORE_IDS}
+    if auto_measure_core:
+        am = _auto_core(
+            caller=core_measures or {},
+            connectivity_hint=conn,
+            evidence_ok=bool(evidence_ok and evidence_complete),
+            pre_gate_ok=pre_ok,
+        )
+        measures.update(am["measures"])
+        wire_trace["auto_measure"] = am
+    elif core_measures:
+        measures.update({k: bool(v) for k, v in core_measures.items() if k in measures})
+
+    core_results = [
+        CoreCheckResult(
+            cid,
+            bool(measures.get(cid, False)),
+            evidence=str((wire_trace.get("auto_measure") or {}).get("evidence", {}).get(cid, "")),
+        )
+        for cid in CORE_IDS
+    ]
+
+    # --- GC-07 FC ---
     fc_in = fc_results or {}
-    fc_map = {fid: bool(fc_in.get(fid, False)) for fid in FC_IDS}
-    fc_all = all(fc_map.values()) if fc_in else False
-    wire_trace["fc_enforced"] = bool(fc_in)
-    wire_trace["fc_all_pass"] = fc_all
-    if fc_in and not fc_all:
+    if require_fc and not fc_in:
+        fc_map = {fid: False for fid in FC_IDS}
+        fc_all = False
+        wire_trace["fc_enforced"] = True
         gap_reg.add(
             Gap(
-                gap_id="GC-FC-001",
+                gap_id="GC-FC-000",
                 task_id="C-19",
                 mission_id=mid,
                 rule_id="FC_REQUIRED",
                 severity="blocking",
-                description="FC-01..13 not all True",
-                location="code_path_runner.fc_results",
+                description="require_fc=True but fc_results missing",
+                location="code_path_runner.fc",
             )
         )
+    else:
+        fc_map = {fid: bool(fc_in.get(fid, False)) for fid in FC_IDS}
+        fc_all = all(fc_map.values()) if (fc_in or require_fc) else True
+        wire_trace["fc_enforced"] = bool(fc_in or require_fc)
+        if (fc_in or require_fc) and not fc_all:
+            gap_reg.add(
+                Gap(
+                    gap_id="GC-FC-001",
+                    task_id="C-19",
+                    mission_id=mid,
+                    rule_id="FC_REQUIRED",
+                    severity="blocking",
+                    description="FC-01..13 not all True",
+                    location="code_path_runner.fc_results",
+                )
+            )
+    wire_trace["fc_all_pass"] = fc_all
 
-    conn = {k: bool((connectivity or {}).get(k, False)) for k in CONNECTIVITY_CHAIN}
     ctr_in = counters or {}
     ctr = ClosureCounters(
         gaps=int(ctr_in.get("gaps", 0)),
@@ -284,7 +311,6 @@ def run_code_path(
         new_gaps_after_fix=int(ctr_in.get("new_gaps_after_fix", 0)) + gap_reg.new_gaps_after_fix,
         unexpected_changes=int(ctr_in.get("unexpected_changes", 0)),
     )
-    # reflect open gaps into counters
     open_n = gap_reg.open_count()
     if open_n:
         ctr.gaps = max(ctr.gaps, open_n)
@@ -305,7 +331,6 @@ def run_code_path(
     forensic = enforcer.evaluate(state)
     forensic_pass = forensic.get("verdict") == "PASS"
 
-    # --- GC-04 GC-05 ClosureEngine + GapRegistry ---
     checklist_passed = True
     if pre_gate_result is not None:
         cl = pre_gate_result.get("checklist")
@@ -327,11 +352,9 @@ def run_code_path(
     )
     wire_trace["closure_engine"] = closure
     wire_trace["gap_registry"] = gap_reg.to_list()
+    wire_trace["core_all_true"] = _all_core_true(measures)
 
-    ok = forensic_pass and closure.get("closed") is True
-    if fc_in and not fc_all:
-        ok = False
-
+    ok = forensic_pass and closure.get("closed") is True and fc_all
     return {
         "ok": ok,
         "mission_id": mid,
@@ -344,9 +367,11 @@ def run_code_path(
         "pre_gate": pre_gate_result,
         "closure": closure,
         "gaps": gap_reg.to_list(),
+        "core_measures": measures,
         "quality_dag": wire_trace.get("quality_dag"),
         "wire_trace": wire_trace,
         "llm_control": "DENY",
         "verdict": "PASS" if ok else (forensic.get("verdict") or "FAIL"),
-        "path": "UNIFIED_RUNNER_V1",  # GC-09 signal
+        "path": "UNIFIED_RUNNER_V1",
+        "gc_status": "GC-01..12_WIRED",
     }
