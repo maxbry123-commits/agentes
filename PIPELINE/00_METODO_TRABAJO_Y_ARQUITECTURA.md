@@ -45,6 +45,7 @@ Definir: TASK_ID · OBJECTIVE · SOURCES · INPUTS · OUTPUTS · DEPENDENCIES ·
 - Registrar comandos reales.
 - Manifest obligatorio: `task_build/ARTIFACT_MANIFEST.json` (task_id, path, sources, size, lines, sha256, anchors, tests, diff_status, build_status).
 - Éxito: READY_FOR_PUBLISH · Nunca: DONE desde build.
+- **Permiso de usar sandbox en paso 1.** Al final de la salida de este paso: **confirmar con verdad si se usó sandbox o no** (no mentir).
 
 ## LOCAL_VERIFY
 test -f · wc -c/-l · sha256sum · grep anchors · (code: git diff --check + tests).  
@@ -55,20 +56,22 @@ Solo si LOCAL_VERIFY_PASS. Publicar el artefacto del manifest; sin regenerar/res
 
 ## SALIDA 2 — GITHUB_PUBLISH
 Persistir exactamente el artefacto verificado. Registrar repo/path/branch/commit. HTTP 200 ≠ prueba suficiente → READ-BACK obligatorio.
+- **Enlaces GitHub:** mostrar **solo en paso 2**, uno por cada documento **nuevo o editado** (para auditar). Si no hubo publish a GitHub → **no mostrar enlaces**.
 
 ## REMOTE_VERIFY
 Releer GitHub: size, lines, anchors, content, commit; comparar con local (sha256 si aplica).  
 Fallo: PERSISTENCE_FAILURE → REPAIR · no DONE · no cleanup · no siguiente tarea.  
 Éxito: PUBLISHED_AND_VERIFIED.
 
-## SALIDA 3 — FORENSIC_AUDIT (tras cada tarea con code / cierre)
-Dominios: METHOD · REQUIREMENTS · TRACEABILITY · SANDBOX_BUILD · LOCAL_VERIFY · PUBLISH · REMOTE · INTEGRITY · NO_UNAUTHORIZED · TESTS · DOCS.  
-Veredictos: DONE | REPAIR_REQUIRED | BLOCKED.  
-**Tras cada tarea de code:** auditoría forense de programación según FORENSIC_CODE_AUDIT + esta sección (CLAIM ≠ EVIDENCE).  
-Afirmación LLM ≠ evidencia.
+## SALIDA 3 — FORENSIC_AUDIT
+- **Solo si la tarea produjo code** (auditoría forense de programación / FORENSIC_CODE_AUDIT). Si solo docs → forense documental ligero o N/A code.
+- Si **no pasa** auditoría → **repetir paso 2 con reparación** (no DONE).
+- Dominios: METHOD · REQUIREMENTS · TRACEABILITY · SANDBOX_BUILD · LOCAL_VERIFY · PUBLISH · REMOTE · INTEGRITY · NO_UNAUTHORIZED · TESTS · DOCS.
+- Veredictos: DONE | REPAIR_REQUIRED | BLOCKED.
+- Afirmación LLM ≠ evidencia.
 
 ## TASK_COMPLETION_GATE
-DONE solo si: INTAKE + LOCAL_VERIFY + GITHUB_PUBLISHED + REMOTE_VERIFY + FORENSIC_AUDIT_DONE.
+DONE solo si: INTAKE + LOCAL_VERIFY + GITHUB_PUBLISHED + REMOTE_VERIFY + FORENSIC_AUDIT_DONE (o N/A code documentado).
 
 ## Trazabilidad post-DONE
 Persistir en GitHub `TASK_COMPLETION_RECORD` (task_id, objective, sources, outputs, paths, commit, local/remote sha, verdict, next_task).
@@ -77,7 +80,7 @@ Persistir en GitHub `TASK_COMPLETION_RECORD` (task_id, objective, sources, outpu
 Al avanzar y tocar archivos: actualizar arquitectura/trazabilidad según impacto; no regenerar fuentes; append/doc de lo tocado con evidencia.
 
 ## Recuperación de contexto
-Orden: README → MÉTODO → PIPELINE → LISTA TAREAS → COMPLETION RECORDS → TRACE → DOCS REQUERIDOS → chat audit si hace falta.  
+Orden: README → MÉTODO · PIPELINE · LISTA TAREAS · COMPLETION RECORDS · TRACE · DOCS REQUERIDOS · chat audit si hace falta.  
 No depender solo del Sandbox ni solo de memoria de chat.
 
 ## Siguiente tarea
