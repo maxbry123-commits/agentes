@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  restore:
+  restore-and-append:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -13,30 +13,41 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: PHASE1 restore blob 6e8a91a2 only
+      - name: PHASE1 restore blob 6e8a91a2
         run: |
           set -euo pipefail
           GOOD=6e8a91a23aa02841287bae98c63d33b8e854fe80
           PATH_REAL=PIPELINE/ARQUITECTURA_WORDFLOW_PROGRAMMING_REAL.md
           git checkout "$GOOD" -- "$PATH_REAL"
-          SIZE=$(wc -c < "$PATH_REAL")
-          echo "SIZE_AFTER_CHECKOUT=$SIZE"
-          test "$SIZE" -ge 20000
-          grep -q "ANEXO Y" "$PATH_REAL"
-          grep -q "X.1" "$PATH_REAL"
+          SIZE1=$(wc -c < "$PATH_REAL")
+          echo "SIZE_PHASE1=$SIZE1"
+          test "$SIZE1" -ge 20000
           grep -q "201. Sliding window" "$PATH_REAL"
+          grep -q "X.1" "$PATH_REAL"
 
-      - name: Commit if changed
+      - name: PHASE2+3 append COPY faa6 + E001-E500 (cat only)
+        run: |
+          set -euo pipefail
+          PATH_REAL=PIPELINE/ARQUITECTURA_WORDFLOW_PROGRAMMING_REAL.md
+          SIZE1=$(wc -c < "$PATH_REAL")
+          echo "" >> "$PATH_REAL"
+          echo "# === APPEND COPY faa6 A+B+C (git cat, no LLM) ===" >> "$PATH_REAL"
+          cat PIPELINE/_COPY_BLOB_faa6d95_ANEXOS_ABC.md >> "$PATH_REAL"
+          echo "" >> "$PATH_REAL"
+          echo "# === APPEND COPY E001-E500 from CURSOR_500_EXTRAS (git cat) ===" >> "$PATH_REAL"
+          cat PIPELINE/CURSOR_500_EXTRAS_PODADOS.md >> "$PATH_REAL"
+          SIZE2=$(wc -c < "$PATH_REAL")
+          echo "SIZE_AFTER_APPEND=$SIZE2"
+          test "$SIZE2" -gt "$SIZE1"
+          grep -q "## A1" "$PATH_REAL"
+          grep -q "E001" "$PATH_REAL"
+
+      - name: Commit and push
         run: |
           set -euo pipefail
           git config user.name "phase1-restore"
           git config user.email "phase1@users.noreply.github.com"
           git add PIPELINE/ARQUITECTURA_WORDFLOW_PROGRAMMING_REAL.md
-          if git diff --staged --quiet; then
-            echo "Already at good blob; nothing to commit"
-          else
-            git commit -m "PHASE1: restore ARQUITECTURA_REAL from 6e8a91a2 (git checkout, no rewrite)"
-            git push
-          fi
+          git commit -m "PHASE1-3: restore 6e8a91a2 + append faa6 + CURSOR_500 (git checkout/cat only)" || echo "no change"
+          git push
