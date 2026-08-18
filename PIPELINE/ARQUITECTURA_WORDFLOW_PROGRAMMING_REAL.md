@@ -277,3 +277,104 @@ REAL vs DOCUMENTED vs ABSENT · nota cruzada context default False actual
 Gaps §3–20 map · tabla paths canónicos · **04_3_MODOS** Función 1/2/3 íntegra
 
 **Texto completo A+B+C del restore original:** ver blob faa6d95 (enlace arriba). Este commit restaura main tras el borrado accidental da515323.
+
+---
+
+# ANEXO G — 4 DOCS × 4 PASADAS (SOLO APPEND · sin borrar nada anterior)
+
+## G0. Docs de este lote
+1. 48_ARQUITECTURA_LOOP_GATEWAY_ROUTER_V1.md  
+2. 00_METODO_TRABAJO_Y_ARQUITECTURA.md  
+3. 43_CODE_PATH_V1_ARCH_UPGRADE.md  
+4. CURSOR_200 (1–200)
+
+---
+
+## G1. 48_LOOP_GATEWAY — 4 pasadas
+| P | Hallazgo |
+|---|----------|
+| P1 | AUSENTE en main post-restore |
+| P2 | Loop→Gateway→Router; no colapsar con C-19 |
+| P3 | Prohíbe Loop→LLM directo; OpenClaw/Hermes=EnginePort |
+| P4 | Append abajo |
+
+**Contenido:**
+```
+LOOP CONTROLLER (maxbry_loop v2 + 12-stage + code-path tasks)
+  → INTELLIGENCE GATEWAY (task_id, trace_id, capability, policy, payload)
+  → ROUTER UNIVERSAL (HTTP client, otro repo)
+  → LLM PROVIDERS | MEMORY ORCHESTRATOR
+```
+Prohibido prod: Loop→OpenAI/Anthropic directo. Offline: MockAdapter.  
+Fusión: maxbry_loop v2 · 12-stage hooks · code_path como tasks · cognitive absorbed · Kimi slot R2.  
+Contratos: IntelligenceGateway · Mock · RouterHTTPGateway · EnginePort.reason · Acquire recipes YAML.  
+Bloques V1 ~38: V0 VG VK VL VF VA VH VQ VD.  
+DONE: sin LLM directo · mock tests · ROUTER_URL · EnginePort stubs · acquire · forensic gap→task · flags OFF.
+
+---
+
+## G2. 00_METODO — 4 pasadas
+| P | Hallazgo |
+|---|----------|
+| P1 | AUSENTE en main post-restore |
+| P2 | Enlaza PROGRAMMING + FORENSIC_MAP + code paths |
+| P3 | Cadena política vs cadena REAL |
+| P4 | Append abajo |
+
+**Contenido:**
+Cadena política: CONTEXT/HANDOFF → COPY-FIRST SCAN → IMPLEMENT(COPY|ADAPT|GENERATE) → WIRE → FORENSIC VERIFY → VERDICT AUTHORITY → CLOSED | FIX LOOP  
+Cadena REAL histórica: pre_gate → quality_bar → goal_lock → cognitive_loop → evidence → post_verify(VerdictAuthority)  
+COPY-FIRST: name+catalog+AST → COPY/ADAPT; GENERATE last; SOURCE→DEST+SHA  
+CONTROL DE TRABAJO: 1 TOTAL · 2 TERMINADAS · 3 PENDIENTES · 4 SIGUIENTE · 5 PLAN · 6 MÉTODO · 7 NO sandbox / GitHub=verdad  
+Nota: cadena histórica convive con §2 forensic_core; matriz §5 prioriza body actual del runner.
+
+---
+
+## G3. 43_CODE_PATH — 4 pasadas
+| P | Hallazgo |
+|---|----------|
+| P1 | AUSENTE en main post-restore |
+| P2 | 5 planos + C-21…31 > solo C-19 |
+| P3 | Planner/DAG/Blackboard/Knowledge no en runner actual |
+| P4 | Append abajo |
+
+**Contenido:**
+F40/F41/F42: Mission Planner · DAG · Blackboard · Event Bus · Policy · Context Builder · Knowledge Runtime · Expert Role Analyzer. Sin ancla Fxx → no programar.  
+Gaps G-CODE-26…40. Tareas C-21…C-31 + C-01…19 = 30 salidas V1.1.  
+5 planos: CONTROL · EXECUTION · KNOWLEDGE · STATE · OBSERVATION.  
+Flujo: GoalLock → Council+Analyzer → Planner → DAG → Policy → Blackboard → Knowledge → Context → SE → Audit → MAIN_12 → Deploy → docs → CI.  
+Reglas: Council decide · Planner divide · Knowledge obligatorio · LLM ~10% · ≤220 LOC · ficha.v2.  
+Estado doc: C-01 CLOSED · siguiente C-02.
+
+---
+
+## G4. CURSOR_200 (1–200) — 4 pasadas
+| P | Hallazgo |
+|---|----------|
+| P1 | AUSENTE en main post-restore |
+| P2 | Dataset → Applicability/Sheriff |
+| P3 | No 200 gates runtime |
+| P4 | Append bloques 1–200 abajo |
+
+**1–25 Context:** Index semántico · @file · @codebase · @docs/@web · @git diff · @commit · Rules glob · Rules telemetry · Project memory · Sticky intent · Auto tabs · Auto selection · .cursorignore · Binary exclusion · Secrets redaction · Context budget · Pin files · Multi-root · Monorepo boundary · LSP symbols · Type diagnostics · Linter input · Test failure logs · Terminal output · Debug breakpoint  
+**26–45 Plan:** Plan mode · Plan reviewed · Checkboxes · Plan→task graph · Blast radius · Risk · Test strategy · Rollback · ADR · Frozen hash · Re-plan · Parallel/serial · Human mid-plan · Max steps · Plan diff · DoD · Non-goals · Acceptance machine · Edit order · Dry-run  
+**46–75 Edit:** Hunk/file accept · Multi-file txn · Atomic rollback · Staged AI · Plan id · Allowlist · Denylist · Max files/LOC/churn · Protect main · Feature branch · Dirty unrelated · Format · Imports · Code action · Rename LSP · Extract · Move+imports · Safe delete · Stub+TODO · Snippet · Skeleton · Partial markers · Conflict · 3-way · Undo · Redo  
+**76–100 Verify:** Nearest test · Affected tests · Coverage · Typecheck · Lint · Format · Import cycle · Dead code · Complexity · Mutation · Snapshot · Visual · Contract consumers · Property · Fuzz · Bench · Mem leak · Race · Integration env · Ephemeral DB · HTTP mock · Golden · Flake · Timeout · Fail-fast  
+**101–125 Git/PR:** Branch name · Conventional · Split commits · PR template · PR from diff · Link issue · CODEOWNERS · Risk label · CI green · Merge queue · Squash · Signed · GPG · Protected paths · Draft · Stacked · Cherry-pick · Rebase · Conflict gated · Changelog · Version · Release notes · Tag · Revert · Post-merge  
+**126–150 Agent:** Tool prompts · Network/Shell allow · No sudo · Sandbox FS · Read-only · Ask vs Agent · Auto-apply off · Confirm destructive · Rate limit · Max turns/failures · Injection filter · Untrusted quarantine · Model pin · Temperature · Prompt checksum · Tool size · Exfil block · PII · Audit log · Replay · Export · Multi-agent iso · Supervisor veto  
+**151–170 Arch:** Arch unit · Layer tests · Dep matrix · No cycles · Ports/adapters · Domain purity · ADR breach · RFC · Design review · OpenAPI · Schema-first · Compat · Feature flags · Strangler · Migration dry-run · Expand/contract · Shadow · Canary · SLO · Threat model  
+**171–200 DX:** Composer · Chat-apply · Checkpoint · Restore · Image→code · Terminal agent · Background jobs · Bugbot · Inline chat · Docstring/tests · Explain · Fix diagnostics · PR from chat · Linear/Notion · MCP registry/allow · Custom modes · Memories · Privacy · Cost dashboard · Fast/slow · Tab metrics · Next-edit · Peek · Symbol search · Team rules · Rules lint · Extension conflict · Workspace trust · Rule version pin  
+**Top 15 ROI:** 53 allowlist · 55–56 max files/LOC · 26–27 plan · 46–48 accept · 77 affected tests · 79–80 type/lint · 126–128 tool/shell · 15–16 secrets/budget · 109 CI · 107 CODEOWNERS · 151–154 arch · 138–139 injection · 146/173–174 ledger · 140 model pin · 5 git diff
+
+---
+
+## G5. Cierre lote
+
+| Doc | Estado en main tras este append |
+|------|--------------------------------|
+| 48 | G1 añadido |
+| 00 | G2 añadido |
+| 43 | G3 añadido |
+| CURSOR_200 | G4 añadido |
+
+**Siguiente lote (4 docs):** CURSOR_300 · CURSOR_500 E001–E500 · (si falta) texto íntegro A/B de faa6d95 · (si falta) más de 43 diagrama.
