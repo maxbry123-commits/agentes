@@ -552,3 +552,152 @@ Pendiente **append Salida 2** en este mismo archivo:
 - texto íntegro CURSOR_500_EXTRAS (E001–E500)
 
 Sin borrar nada de lo anterior.
+
+---
+
+# ANEXO C — 3 DOCUMENTOS × 4 PASADAS (SOLO LO QUE FALTA · 2026-08-18)
+
+**Regla:** no reescribir versión final previa; solo append de gaps por documento.
+
+---
+
+## C1. DOC: WORDFLOW_PROGRAMMING_FORENSIC_MAP.md
+
+### 4 pasadas
+| Pasada | Hallazgo |
+|--------|----------|
+| P1 STRUCTURE | En REAL solo resumen B3; faltan §3–20 texto operativo |
+| P2 CONNECTIVITY | Mapa describe pre_gate→post_verify; REAL §2 describe forensic_core; ambas necesarias |
+| P3 BEHAVIOR | Component map, state machine, traceability, contracts del mapa no estaban íntegros |
+| P4 CLOSURE | Se añade abajo lo faltante; path original sigue siendo fuente canónica completa |
+
+### Faltante añadido (solo append)
+
+**§3 Component Map (faltaba):** run_code_path | pre_gate | ExistingCodeScanner | admit_or_reject | lock_goals | run_cognitive_loop | post_verify | VerdictAuthority — entradas/salidas/bloquea/determinista/LLM según mapa.
+
+**§4 Connectivity Graph (faltaba):** DECLARED REAL · REGISTERED PARTIAL · RESOLVED PARTIAL · INVOKED PARTIAL · EXECUTED PARTIAL · OUTPUT PRODUCED REAL · OUTPUT CONSUMED UNKNOWN · BEHAVIOR VERIFIED PARTIAL · IMPORTABLE ≠ FUNCTIONALLY CONNECTED.
+
+**§5 State Machine (faltaba):** REAL local (pre allow/deny, stages, post PASS/FAIL) · DOCUMENTADO no verificado OPEN→FIXED→VERIFIED→CLOSED · sin context→execute solo si flags False · enforce_post_verify=False puede ok True (mapa histórico).
+
+**§6 Context/Handoff (faltaba):** flags REAL · BLOCK si False · auto reception/ ABSENT · multi-repo reception DOC no wire runner.
+
+**§7 Requirement traceability (faltaba):** DOC→REQ ABSENT · REQ→CODE PARTIAL · CODE→TEST PARTIAL · TEST→EVIDENCE PARTIAL · detectores mismatch ABSENT auto.
+
+**§8–12 Contracts/Rules/FourPass/Gaps/AI (faltaba resumen):** ForensicCodeContract si post_verify · SKIP≠PASS · 4-pass PARTIAL booleanos · GapRegistry runtime ABSENT en mapa histórico · llm DENY REAL · cognitive UNKNOWN.
+
+**§13–16 Deterministic/Persistence/Code pipeline/Task C-19 (faltaba):** pre/scanner/AST/wiring/smoke DETERMINISTIC · runner NO escribe git · copy_file_deterministic no auto · reconstrucción TASK C-19 del mapa.
+
+**§17–20 Matrix/Verified/Missing/Diagram (faltaba):** matrix INPUT→POST · prove/infer/cannot · missing cognitive/goal_lock cuerpos · diagrama Caller→run_code_path→pre→admit→lock→cog→evidence→post.
+
+---
+
+## C2. DOC: ARQUITECTURA_WORDFLOW_PROGRAMMING.md
+
+### 4 pasadas
+| Pasada | Hallazgo |
+|--------|----------|
+| P1 STRUCTURE | B2 es resumen; faltaba tabla paths canónicos formal |
+| P2 CONNECTIVITY | Diagrama capas engine vs standards no estaba en forma original |
+| P3 BEHAVIOR | Límites §6 y multi-instancia §7 parcialmente cubiertos |
+| P4 CLOSURE | Append tabla paths + diagrama + límites explícitos restantes |
+
+### Faltante añadido (solo append)
+
+**Tabla paths canónicos (faltaba formal):**
+| Rol | Path |
+|-----|------|
+| Hot path | extensions/wordflow/engine/code_path_runner.py |
+| Pipeline | extensions/wordflow/engine/programming_pipeline.py |
+| Gates | extensions/wordflow/standards/executor_gates.py |
+| COPY-FIRST | extensions/wordflow/standards/copy_first.py |
+| Symbols AST | extensions/wordflow/standards/symbol_index.py |
+| Contract | extensions/wordflow/standards/forensic_contract.py |
+| Verdict | extensions/wordflow/standards/verdict_authority.py |
+| Smoke | extensions/wordflow/standards/test_runner.py |
+| Wiring | extensions/wordflow/standards/wiring_graph.py |
+| Scope/REQ | extensions/wordflow/standards/scope_measure.py |
+| Mission edges | extensions/wordflow/standards/mission_edges.py |
+| Catalogs | component_catalog.json, connect_catalog.json |
+| CI | .github/workflows/forensic-gates.yml |
+| Agent rules | .cursor/rules/wordflow-programming.mdc, AGENTS.md |
+
+**Límites §6 completos (faltaba lista):** Runner no escribe git · Context flags riesgo (mapa: default True histórico; REAL actual False) · Scope/REQ listas fijas · 4-pass global solo booleanos medidos · GapRegistry runtime ausente en doc antiguo · OPEN→CLOSED global SM no verificado · cognitive_loop interior UNKNOWN.
+
+---
+
+## C3. DOC: 04_ARQUITECTURA_3_MODOS.md — **AUSENTE total en REAL → copia íntegra**
+
+### 4 pasadas
+| Pasada | Hallazgo |
+|--------|----------|
+| P1 STRUCTURE | Cero contenido en REAL |
+| P2 CONNECTIVITY | Define 3 modos montaje vs núcleo determinista — no en C-19 alone |
+| P3 BEHAVIOR | Función 1/2/3 OpenClaw / capa externa / ABI extensión |
+| P4 CLOSURE | Append íntegro abajo |
+
+### Copia íntegra añadida
+
+# PIPELINE 04 — Arquitectura Dual: 3 Modos de Montaje
+
+**Fecha:** 2026-08-09 · **Estado:** ENCABEZADO ARQUITECTÓNICO OFICIAL · **Autoridad:** Director
+
+## Principio central
+El sistema (Wordflow + Capa de Control) debe poder funcionar de **tres maneras distintas** sin romper el núcleo determinista.
+
+```
+                    ┌─────────────────────────────────────┐
+                    │         NÚCLEO DETERMINISTA         │
+                    │  (Sheriff · Contratos · MYTHOS ·     │
+                    │   Recovery · Witness · Fichas)       │
+                    └─────────────────────────────────────┘
+                                      │
+          ┌───────────────────────────┼───────────────────────────┐
+          ▼                           ▼                           ▼
+   FUNCIÓN 1                   FUNCIÓN 2                   FUNCIÓN 3
+   Kernel de OpenClaw          Capa de Control             Extensión Kernel
+```
+
+## FUNCIÓN 1 — Kernel de OpenClaw (sustitución)
+- Poda y modificación del kernel de OpenClaw.
+- Se sustituye el núcleo de OpenClaw por nuestro núcleo determinista.
+- OpenClaw base para agentes TEAM / YAIWES.
+- Resultado: núcleo determinista + extensible.
+- **Clave:** modifica la estructura interna de OpenClaw.
+
+## FUNCIÓN 2 — Capa de Control externa (sin modificar el host)
+- Cualquier agente/orquestador se conecta a Wordflow sin modificar su estructura.
+- Wordflow = capa de control externa.
+- Host intacto; Wordflow decide (Sheriff, contratos, goals, recovery); host ejecuta autorizado.
+- **Clave:** zero-invasive.
+
+## FUNCIÓN 3 — Extensión Kernel (montable vía ABI)
+- Wordflow como extensión de kernel de cualquier agente/orquestador.
+- ABI (ExtensionABI + EvidenceOutput).
+- Host llama attach_to_wordflow_extension / load / execute.
+- **Clave:** plug-in montable/desmontable.
+
+## Resumen de decisión de montaje
+
+| Modo | ¿Modifica el host? | Cómo se conecta | Caso de uso principal |
+|------|--------------------|-----------------|------------------------|
+| Función 1 | Sí (poda + replace) | Sustitución de núcleo | Convertir OpenClaw en TEAM |
+| Función 2 | No | Capa de control externa | Orquestadores ya existentes |
+| Función 3 | No | ABI / Extensión kernel | Agentes que acepten plugins |
+
+## Relación con control-layer/
+Si cumple las 3 funciones → reutilizar; si incompleto → reparar selectivo; no start-from-zero ciego.
+
+## Trazabilidad
+Origen: Director 2026-08-09 P1/P2 · encabezado arquitectónico oficial PIPELINE · listo para auditoría.
+
+---
+
+## C4. Cierre de esta salida
+
+| Doc | Estado en REAL tras append |
+|------|----------------------------|
+| FORENSIC_MAP | Gaps §3–20 añadidos (C1) |
+| PROGRAMMING.md | Tabla paths + límites completos (C2) |
+| 04_3_MODOS | Copia íntegra (C3) |
+
+**Siguiente salida (docs 4–6):** 48_LOOP_GATEWAY_ROUTER · 00_METODO · 43_CODE_PATH (4 pasadas c/u, solo append faltante).
