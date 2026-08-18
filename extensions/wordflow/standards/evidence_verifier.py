@@ -1,8 +1,17 @@
-"""EvidenceVerifier — CLAIM ≠ EVIDENCE ≠ VERIFICATION."""
+"""EvidenceVerifier — CLAIM ≠ EVIDENCE ≠ VERIFICATION. T6: no placeholders."""
 from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Dict, Any
+
+FORBIDDEN_EVIDENCE_SUBSTR = (
+    "placeholder",
+    "auto_core_placeholder",
+    "TODO",
+    "TBD",
+    "claim_only",
+    "self_cert",
+)
 
 @dataclass
 class EvidenceRef:
@@ -13,16 +22,22 @@ class EvidenceVerifier:
     def verify_ref(self, ref: EvidenceRef) -> Dict[str, Any]:
         if not ref.value or not str(ref.value).strip():
             return {"ok": False, "reason": "empty evidence"}
+        val = str(ref.value).strip()
+        low = val.lower()
+        for bad in FORBIDDEN_EVIDENCE_SUBSTR:
+            if bad.lower() in low:
+                return {"ok": False, "reason": f"T6 forbidden evidence token: {bad}"}
         if ref.kind == "path":
-            p = Path(ref.value)
-            # accept repo-relative paths as claim of intent if not on disk in CI sandbox
+            p = Path(val)
             if p.exists():
                 return {"ok": True, "resolved": str(p)}
-            if ref.value.startswith("extensions/") or ref.value.startswith("PIPELINE/"):
-                return {"ok": True, "resolved": ref.value, "note": "repo-relative accepted"}
-            return {"ok": False, "reason": f"path not found: {ref.value}"}
+            if val.startswith("extensions/") or val.startswith("PIPELINE/"):
+                return {"ok": True, "resolved": val, "note": "repo-relative accepted"}
+            return {"ok": False, "reason": f"path not found: {val}"}
         if ref.kind in ("measure", "manifest", "commit", "symbol", "test"):
-            return {"ok": True, "resolved": ref.value}
+            if len(val) < 4:
+                return {"ok": False, "reason": "evidence too short"}
+            return {"ok": True, "resolved": val}
         return {"ok": False, "reason": f"unknown kind {ref.kind}"}
 
     def verify_many(self, refs: List[EvidenceRef]) -> Dict[str, Any]:
