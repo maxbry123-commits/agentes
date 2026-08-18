@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""main_12 loop runner — A-WF-06 + W2/W6. Deterministic. 0% LLM."""
+"""main_12 loop runner — A-WF-06 + W2/W6 + C4 programming_path hook. Deterministic. 0% LLM."""
 from __future__ import annotations
 
 import time
@@ -74,6 +74,8 @@ def run_main_12(
     repo: dict[str, Any] | None = None,
     timeout_seconds: float = 120.0,
     checkpoint_ttl: float = 3600.0,
+    programming_path: bool = False,
+    programming_kwargs: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     cfg = load_main_12(loop_path)
     started_at = time.monotonic()
@@ -92,6 +94,7 @@ def run_main_12(
         "evidence_packet": None,
         "checkpoint": None,
         "watchdog": None,
+        "programming": None,
         "stop_reason": None,
     }
 
@@ -101,7 +104,6 @@ def run_main_12(
         )
 
     def _watch(step_id: str, step_name: str, blobs: list[str] | None = None) -> bool:
-        """Run watchdog; on fail set state and return False."""
         wd = check_watchdog(
             step_id=step_id,
             step_name=step_name,
@@ -177,7 +179,6 @@ def run_main_12(
     }
     _record("S05", "sentinel", sentinel["verdict"] == "PASS", sentinel.get("reason_codes"))
 
-    # W6: watchdog after sentinel (secrets + timeout)
     if not _watch("S05", "sentinel", [str(block2.get("raw_text") or "")]):
         return state
 
@@ -216,6 +217,31 @@ def run_main_12(
     }
     _record("S08", "plan_cursor", True, plan)
 
+    # C4 — optional unified programming path (fail-closed; does not invent PASS)
+    if programming_path:
+        from extensions.wordflow.engine.programming_pipeline import default_pipeline
+
+        pk = dict(programming_kwargs or {})
+        text = str(block2.get("raw_text") or "")
+        prog = default_pipeline().run_unified(
+            text,
+            mission_id=str(block2.get("block_id") or "main_12"),
+            context_verified=bool(pk.pop("context_verified", True)),
+            handoff_verified=bool(pk.pop("handoff_verified", True)),
+            **pk,
+        )
+        state["programming"] = prog
+        state["goals_out"]["GOUT-09"] = {
+            "name": "programming_path",
+            "value": prog.get("verdict"),
+            "status": "DONE" if prog.get("ok") else "FAIL",
+        }
+        _record("S08b", "programming_run_unified", bool(prog.get("ok")), prog.get("verdict"))
+        if not prog.get("ok") and cfg.get("on_fail") == "stop":
+            state["status"] = "FAILED"
+            state["stop_reason"] = "PROGRAMMING_PATH_FAIL"
+            return state
+
     _record("S09", "emit_goals_out", True, sum(
         1 for g in state["goals_out"].values() if g.get("status") == "DONE"
     ))
@@ -233,7 +259,6 @@ def run_main_12(
     }
     _record("S10", "build_evidence_packet", True, packet.get("claim_status"))
 
-    # W6: supervisor checkpoint with TTL
     steps_ok = sum(1 for s in state["step_results"] if s["ok"])
     state["checkpoint"] = make_checkpoint(
         block_hash=block2.get("block_hash"),
