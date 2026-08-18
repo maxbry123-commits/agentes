@@ -1,5 +1,5 @@
 # PIPELINE 55 — LISTA COMPLETA V1
-**Actualizado:** 2026-08-17 22:10
+**Actualizado:** 2026-08-17 22:11
 
 ### BLOQUE A: S01–S06 DONE + AUDIT-5 DONE
 ### BLOQUE B
@@ -9,7 +9,7 @@
 | S08 | T08 | state.json por instance_id | DONE |
 | S09 | T09 | spawn_wordflow(config/DNA) | DONE |
 | S10 | T10 | Loader ficha.v2 → capability | DONE |
-| S11 | T11 | Bootstrap multi-instance aware | PEND |
+| S11 | T11 | Bootstrap multi-instance aware | DONE |
 | S12 | T12 | Fail_closed ficha / llm_control | PEND |
 
-Siguiente: S11.
+Siguiente: S12 (cierra Bloque B).
