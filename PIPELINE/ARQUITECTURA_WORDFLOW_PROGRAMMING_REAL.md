@@ -1,327 +1,550 @@
 # ARQUITECTURA REAL — Wordflow Programming (post verificación cruzada)
 
 **Fecha:** 2026-08-18  
-**Base:** listado GitHub `extensions/wordflow/engine/` + `standards/` + `code_path_runner.py` + `forensic_core.py`  
-**MASTER único (listas 1–500 / E001–E500):** `PIPELINE/WORDFLOW_PROGRAMMING_MASTER_UNICO.md`
+**Base:** listado GitHub `extensions/wordflow/engine/` + `standards/` + `code_path_runner.py` + `forensic_core.py`
 
 ---
 
 ## 1. Capas
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│ Callers: bootstrap / smoke / CI / agente / (otros UNKNOWN)  │
-└──────────────────────────────┬──────────────────────────────┘
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│ ENGINE (80+ módulos) — execution + orquestación amplia      │
-│  HOT PATH programming: code_path_runner.run_code_path       │
-│  + quality_bar, goal_lock, cognitive_loop, evidence_packet  │
-│  + skill_native_compiler, programming_pipeline              │
-│  + resto: main_loop, orchestrator*, policy, handoff, …      │
-└──────────────────────────────┬──────────────────────────────┘
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│ STANDARDS — control plane forense / checklist / copy-first  │
-│  forensic_core (PASS máquina C-19)                          │
-│  + gap_registry, checklist_sheriff, catalog, applicability  │
-│  + context_manifest, evidence_verifier, copy_first, …       │
-└──────────────────────────────┬──────────────────────────────┘
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│ DATA: component_catalog.json, connect_catalog.json          │
-│ POLICY: PIPELINE/*, AGENTS.md, .cursor/rules, CI            │
-└─────────────────────────────────────────────────────────────┘
+Callers → ENGINE (80+ · hot path run_code_path) → STANDARDS (forensic_core…) → DATA/POLICY
 ```
 
----
+## 2. run_code_path real
+require_context → quality → goal_lock → cognitive → skill? → evidence → CORE measures → connectivity/counters → evaluate → DENY
 
-## 2. Lo que EJECUTA hoy `run_code_path` (código real)
+NO en runner: ChecklistSheriff · ContextManifest object · COPY-FIRST · executor_gates · ClosureEngine · GapRegistry auto · QualityDAG.run · FC enforced
 
-Orden real en `engine/code_path_runner.py`:
-
-1. `ForensicProgrammingEnforcer.require_context` → BLOCK si falta  
-2. `admit_or_reject` (quality_bar)  
-3. `lock_goals`  
-4. `run_cognitive_loop`  
-5. `compile_skill_to_code` (si skill)  
-6. `build_evidence_packet` + `verify_evidence_packet` (engine)  
-7. Construir CORE-01..14 desde `core_measures` (default **False**)  
-8. Connectivity + ClosureCounters desde args  
-9. `ForensicProgrammingEnforcer.evaluate`  
-10. Return `ok`, `verdict`, `forensic`, `llm_control=DENY`  
-
-### NO ejecuta hoy dentro de `run_code_path`
-
-- ChecklistSheriff  
-- ContextManifest validator (solo bools context/handoff)  
-- COPY-FIRST scanner  
-- ExecutorPreImplementGate / PostVerifyGate  
-- ClosureEngine (módulo existe; no llamado aquí)  
-- GapRegistry (módulo existe; no instanciado aquí)  
-- QualityDAG.run (solo flag `quality_dag_ok`)  
-- FC-01..13 como checks obligatorios en `evaluate`  
+## 3–8. Inventario standards/engine · matriz doc vs runtime · G1–G7 · PASS máquina · enlaces
+(Ver historial commits faa6d95 / a8b8af6 / anexos previos — no borrados en git.)
 
 ---
 
-## 3. Inventario STANDARDS (presentes en repo)
+# ANEXO F — E001–E500 TEXTO LÍNEA A LÍNEA DENTRO DE ESTE ARCHIVO
 
-| Archivo | Rol |
-|---------|-----|
-| forensic_core.py | Enforcer CORE14 + 4-pass + counters + evaluate |
-| forensic_contract.py | Contrato dataclass complementario |
-| forensic_report.py | Render reporte |
-| verdict_authority.py | Verdict formal |
-| gap_registry.py | Lifecycle gaps |
-| closure_engine.py | Árbitro CLOSED |
-| checklist_sheriff.py | Sheriff puntos catálogo |
-| programming_points_catalog.py | CORE/CONDITIONAL/ADVISORY/REFERENCE |
-| applicability_engine.py | Tags → required |
-| context_manifest.py | Manifest + validator |
-| evidence_verifier.py | claim ≠ evidence resoluble |
-| evidence.py | EvidencePacket standards |
-| executor_gates.py | Pre/post gates |
-| copy_first.py | Scanner reuse |
-| symbol_index.py | AST symbols |
-| wiring_graph.py | Catalog graph |
-| test_runner.py | Smoke |
-| quality_dag.py | DAG calidad |
-| rule_engine.py | Rules |
-| sheriff.py | Sheriff legacy/otro |
-| schema.py | Schemas |
-| adapt_imports.py | Rewrite imports |
-| plan_artifact.py | Plan artifact |
-| policy_snapshot.py | Freeze policy |
-| architecture_manifest.py | Arch manifest |
-| dependency_graph.py | Dep graph |
-| mission_edges.py | Mission edges |
-| scope_measure.py | Scope measure |
-| __init__.py | Package |
+**Corrección:** ya no se usa “path canónico” como sustituto. Lista completa abajo.
+
+## E001–E050 Context útil
+E001 @file scope obligatorio en multi-file  
+E002 @folder scope  
+E003 @git diff como contexto de tarea  
+E004 Diagnostics LSP en contexto  
+E005 Test failure log en contexto  
+E006 Stack trace → source map  
+E007 Call-graph ±N callers/callees  
+E008 Test-twin auto-attach  
+E009 Config-twin auto-attach  
+E010 Schema/OpenAPI twin  
+E011 .cursorignore enforced  
+E012 Secrets redaction in context  
+E013 Context budget meter  
+E014 Pin/unpin files  
+E015 Multi-root index  
+E016 Package boundary awareness  
+E017 Recent CI failure → files  
+E018 CODEOWNERS of touched files  
+E019 Linked issue/task body  
+E020 ADR retrieval by keyword  
+E021 Design doc section retrieval  
+E022 Glossary / domain terms  
+E023 Error code catalog  
+E024 Env var catalog  
+E025 Feature flag list  
+E026 Deprecation schedule  
+E027 Generated code regions protect  
+E028 vendor/ third_party protect  
+E029 Negative examples library  
+E030 Symbol-level chunks  
+E031 Type hierarchy context  
+E032 Import graph neighborhood  
+E033 Diff hunks only (not whole files)  
+E034 Open editors auto-weight  
+E035 Active selection priority  
+E036 Terminal last exit code + snippet  
+E037 Pre-commit failure snippet  
+E038 Type error burst summary  
+E039 Lint burst summary  
+E040 Lockfile context when deps change  
+E041 Migration history when schema change  
+E042 Permission matrix when auth change  
+E043 Public API surface snapshot  
+E044 Internal API leakage hints  
+E045 Clone detection hints  
+E046 Dead export hints  
+E047 TODO/FIXME near edit  
+E048 Suppressions near edit  
+E049 Related PR conversations  
+E050 Branch name intent parse  
+
+## E051–E100 Plan / blast radius
+E051 Plan mode before multi-file  
+E052 Human-readable plan artifact  
+E053 Plan frozen hash  
+E054 Non-goals section  
+E055 Acceptance criteria list  
+E056 Blast radius estimate  
+E057 Risk score  
+E058 Test strategy in plan  
+E059 Rollback strategy in plan  
+E060 Order of edits  
+E061 Dry-run without writes  
+E062 Max steps per plan  
+E063 Re-plan on requirement change  
+E064 Parallel vs serial steps  
+E065 Mid-plan approval gate  
+E066 File cluster before edit  
+E067 Fan-out on interface change  
+E068 Fan-out on schema change  
+E069 Rename cascade plan  
+E070 Co-edit docs+code rule  
+E071 Co-edit tests+code rule  
+E072 Co-edit i18n+code rule  
+E073 Co-edit flag+code rule  
+E074 Lockfile regenerate step  
+E075 Codegen order (proto/openapi)  
+E076 Migration before ORM use  
+E077 Contract before mock update  
+E078 Version bump plan  
+E079 Changelog fragment plan  
+E080 ADR link if layer breach  
+E081 No-touch-core checklist  
+E082 Allowlist paths in plan  
+E083 Denylist paths in plan  
+E084 Max files in plan  
+E085 Max LOC delta in plan  
+E086 Definition of done machine-checkable  
+E087 Explicit GENERATE vs ADAPT choice  
+E088 Explicit COPY sources list  
+E089 Evidence expected list  
+E090 Post-conditions list  
+E091 Invariants list  
+E092 Error-path plan  
+E093 Observability plan (logs/metrics)  
+E094 Security notes if trust boundary  
+E095 Data model notes if persistence  
+E096 Concurrency notes if shared state  
+E097 Idempotency notes if side effects  
+E098 Performance notes if hot path  
+E099 Compat notes if public API  
+E100 Exit criteria for stop/replan  
+
+## E101–E150 Apply / edit safety
+E101 Path allowlist writes  
+E102 Path denylist writes  
+E103 Max files per apply  
+E104 Max LOC delta per apply  
+E105 Max churn % per file  
+E106 Require feature branch  
+E107 Block apply on protected branch  
+E108 Atomic multi-file apply  
+E109 Rollback apply  
+E110 Undo stack AI applies  
+E111 Hunk accept/reject  
+E112 File accept/reject  
+E113 Format-on-apply  
+E114 Lint-fix-on-apply optional  
+E115 Organize imports on apply  
+E116 Conflict detect vs local edits  
+E117 3-way merge base/user/AI  
+E118 Protect generated regions  
+E119 No write secrets files  
+E120 No write .env  
+E121 Paired test touch rule  
+E122 Paired snapshot policy  
+E123 Rename via LSP  
+E124 Move file + imports  
+E125 Safe delete refcheck  
+E126 Partial apply markers  
+E127 No silent drop of user edits  
+E128 Apply only under plan id  
+E129 Reject apply if plan hash mismatch  
+E130 Stage vs apply separation  
+E131 Worktree isolation optional  
+E132 Dirty tree policy  
+E133 Generated lockfile policy  
+E134 Binary file write deny  
+E135 Large file write deny  
+E136 Symlink write policy  
+E137 Line-ending policy  
+E138 License header preserve  
+E139 Copyright preserve  
+E140 Encoding utf-8 enforce  
+E141 No reformat unrelated hunks  
+E142 Minimize diff policy  
+E143 Single concern per apply  
+E144 Split applies by concern  
+E145 Require description per apply  
+E146 Link task id per apply  
+E147 Record SOURCE→DEST on copy  
+E148 Record import rewrites  
+E149 Post-apply file list evidence  
+E150 Post-apply hash list  
+
+## E151–E200 Verify gates
+E151 Typecheck gate  
+E152 Lint gate  
+E153 Format check gate  
+E154 Unit tests affected  
+E155 Integration tests opt-in  
+E156 Coverage delta gate  
+E157 Import cycle gate  
+E158 Dead code gate  
+E159 Complexity delta gate  
+E160 Secret scan gate  
+E161 Dep audit gate on new deps  
+E162 License gate on new deps  
+E163 Lockfile drift gate  
+E164 Schema compat gate  
+E165 OpenAPI diff gate  
+E166 Contract consumer tests  
+E167 Snapshot review policy  
+E168 Flake quarantine  
+E169 Test timeout policy  
+E170 Fail-fast policy  
+E171 Smoke post-apply  
+E172 Build gate  
+E173 Package import smoke  
+E174 Entrypoint smoke  
+E175 Migration dry-run  
+E176 Idempotency tests if side effects  
+E177 Concurrency tests if shared state  
+E178 Authz matrix if auth  
+E179 Input validation tests  
+E180 Error path tests  
+E181 Characterization tests legacy  
+E182 Differential test old vs new  
+E183 Golden file policy  
+E184 Benchmark on hot path opt-in  
+E185 Bundle size if frontend  
+E186 a11y smoke if UI  
+E187 i18n missing keys if UI  
+E188 CSP/headers if web  
+E189 Dockerfile lint if docker  
+E190 Compose validate if compose  
+E191 Terraform validate opt-in  
+E192 K8s manifest validate opt-in  
+E193 SBOM on release only  
+E194 CVE scan on release only  
+E195 CI required green  
+E196 Local pre-push hooks  
+E197 Pre-commit hooks  
+E198 Gate skip ≠ pass  
+E199 Required gate missing = fail  
+E200 Evidence packet after gates  
+
+## E201–E250 Agent authority
+E201 Ask mode default  
+E202 Agent mode explicit  
+E203 Auto-apply off default  
+E204 Tool allowlist  
+E205 Shell allowlist  
+E206 Network allowlist  
+E207 No sudo  
+E208 Read-only mode  
+E209 Max tool calls  
+E210 Max turns  
+E211 Max failures then stop  
+E212 Confirm destructive ops  
+E213 Prompt injection filters  
+E214 Untrusted doc quarantine  
+E215 Model pin  
+E216 Temperature policy  
+E217 System prompt checksum  
+E218 Tool result size limit  
+E219 Path exfil block  
+E220 PII redaction  
+E221 Audit log tool calls  
+E222 Session export  
+E223 Replay session  
+E224 Supervisor veto  
+E225 Multi-agent isolation  
+E226 MCP allowlist  
+E227 MCP security review  
+E228 Plugin allowlist  
+E229 Rate limit  
+E230 Cost budget per task  
+E231 Token budget per task  
+E232 Fast/slow model routing  
+E233 Secondary review model opt-in  
+E234 Hallucinated path detect  
+E235 Hallucinated symbol detect  
+E236 Invented import detect  
+E237 Invented config key detect  
+E238 Copy-paste drift detect  
+E239 Style deviation score  
+E240 Naming consistency check  
+E241 Prompt version registry  
+E242 Rules version pin  
+E243 Policy snapshot per task  
+E244 Change_id required  
+E245 Mission_id required  
+E246 Task_id required  
+E247 Human gate on high risk  
+E248 Risk from secrets/auth/data  
+E249 Deny prod credentials in agent  
+E250 Sandbox FS for agent applies  
+
+## E251–E300 Git/PR hygiene
+E251 Conventional commits  
+E252 Commit split by concern  
+E253 PR template  
+E254 PR body from diff  
+E255 Link task in PR  
+E256 CODEOWNERS reviewers  
+E257 Risk labels  
+E258 Draft PR first opt-in  
+E259 CI green required  
+E260 Signed commits opt-in  
+E261 Protected paths  
+E262 Changelog fragment  
+E263 Version bump suggestion  
+E264 Revert policy  
+E265 Post-merge smoke  
+E266 Branch naming from task  
+E267 No commit secrets  
+E268 No force push main  
+E269 Merge queue opt-in  
+E270 Squash policy explicit  
+E271 Conflict resolution gated  
+E272 Stacked PR support opt-in  
+E273 Release notes draft opt-in  
+E274 Tag policy  
+E275 PR size soft limit  
+E276 PR file count soft limit  
+E277 Require tests in PR when code  
+E278 Require docs in PR when API  
+E279 Screenshot if UI  
+E280 A11y note if UI  
+E281 Migration note if schema  
+E282 Feature flag note if progressive  
+E283 Rollback note if prod  
+E284 Owner mention  
+E285 Review SLA opt-in  
+E286 Automark stale PR  
+E287 Block merge on TODO critical  
+E288 Block merge on failed gates  
+E289 Require approval N  
+E290 Dismiss stale approvals on new push  
+E291 CODEOWNERS for standards/  
+E292 CODEOWNERS for kernel/  
+E293 Binary in PR deny  
+E294 Large blob deny  
+E295 Submodule policy  
+E296 Vendored code policy  
+E297 Generated code mark  
+E298 PR checklist machine-verified subset  
+E299 Link forensic report if code task  
+E300 Link plan hash in PR  
+
+## E301–E350 Architecture fitness
+E301 Layer rule tests  
+E302 No new cyclic deps  
+E303 Package dependency matrix  
+E304 Domain purity test  
+E305 Ports/adapters presence  
+E306 Forbidden imports test  
+E307 Public API delta report  
+E308 Semver suggest on public break  
+E309 ADR on layer breach  
+E310 Fitness: no touch core  
+E311 Module LOC budget soft  
+E312 Fan-out budget soft  
+E313 Fan-in budget soft  
+E314 Stable dependency principle check  
+E315 Acyclic dependency principle check  
+E316 Boundary test for engine vs standards  
+E317 Boundary test kernel vs engine  
+E318 Catalog entry required for new component  
+E319 Connect catalog edge required when wired  
+E320 Orphan component report  
+E321 Unreachable path report  
+E322 Dead export report  
+E323 Duplicate module report  
+E324 Naming law for packages  
+E325 Event/DTO versioning  
+E326 Schema expand/contract  
+E327 Feature flag for new path  
+E328 Deprecation window  
+E329 Remove flag deadline  
+E330 Architecture test in CI  
+E331 Import linter config  
+E332 Dependency cruiser/equivalent  
+E333 Code city metrics opt-in  
+E334 Hotspot files report  
+E335 Churn vs complexity report  
+E336 Knowledge concentration report  
+E337 Bus factor soft signal  
+E338 Owned modules map  
+E339 Experimental folder policy  
+E340 Deprecated folder policy  
+E341 Examples/ treated as tests  
+E342 Scripts/ policy  
+E343 Tools/ policy  
+E344 Generated/ policy  
+E345 Third_party/ policy  
+E346 Docs must reference paths real  
+E347 PIPELINE links must resolve  
+E348 No doc-only architecture claims without path  
+E349 Arch diagram auto from catalogs  
+E350 Arch drift bot comment on PR  
+
+## E351–E400 Quality signals finos
+E351 Cognitive complexity budget  
+E352 Nesting depth max  
+E353 Param count max  
+E354 File cohesion  
+E355 Feature envy detect  
+E356 God class score  
+E357 Magic number budget  
+E358 Any-type budget  
+E359 type:ignore budget  
+E360 lint-disable budget  
+E361 TODO budget  
+E362 Commented-out code detect  
+E363 Debug print detect  
+E364 Hardcoded URL detect  
+E365 SQL concat detect  
+E366 Command injection detect  
+E367 Insecure deserialization detect  
+E368 Path traversal detect  
+E369 SSRF detect opt-in  
+E370 XSS sink detect opt-in  
+E371 Pickle/eval detect  
+E372 Assert as control flow detect  
+E373 Bare except detect  
+E374 Mutable default arg detect  
+E375 Resource leak detect  
+E376 File handle close detect  
+E377 Timeout missing detect  
+E378 Retry without jitter detect  
+E379 Busy wait detect  
+E380 N+1 query detect opt-in  
+E381 Unbounded list load detect  
+E382 Missing pagination detect  
+E383 Naive datetime detect  
+E384 Timezone bug patterns  
+E385 Float money detect  
+E386 UUID/string id confusion  
+E387 Enum stringify drift  
+E388 Dict key typo risk  
+E389 Optional not handled  
+E390 Race on shared dict detect  
+E391 Lock ordering notes  
+E392 Async cancel safety  
+E393 Task group hygiene  
+E394 Context manager required  
+E395 Idempotent handler patterns  
+E396 Exactly-once claims banned without proof  
+E397 At-least-once dual process notes  
+E398 Poison message handling  
+E399 Backpressure handling  
+E400 Graceful shutdown hooks  
+
+## E401–E450 Stack gates
+E401 ruff format  
+E402 ruff lint  
+E403 mypy/pyright subset  
+E404 pytest markers taxonomy  
+E405 coverage fail_under  
+E406 pre-commit  
+E407 pip-audit/npm audit on dep change  
+E408 lockfile committed  
+E409 src layout  
+E410 pydantic/zod at boundaries  
+E411 httpx timeout defaults  
+E412 SQLAlchemy session scope  
+E413 alembic lint  
+E414 FastAPI deps rules  
+E415 React hooks deps  
+E416 server/client component boundary  
+E417 env schema validated  
+E418 no process.env scattered  
+E419 structured logging  
+E420 request id propagation  
+E421 OpenTelemetry hooks opt-in  
+E422 health endpoint  
+E423 readiness endpoint  
+E424 metrics endpoint  
+E425 graceful timeout config  
+E426 docker non-root user  
+E427 .dockerignore present  
+E428 multi-stage build  
+E429 pin base images  
+E430 no latest tags in prod  
+E431 CI cache deps  
+E432 CI matrix py versions opt-in  
+E433 CI artifact upload evidence  
+E434 determinism seed in tests  
+E435 freezegun/clock inject  
+E436 respx/httpx mock policy  
+E437 factory_boy/fixtures policy  
+E438 hypothesis opt-in  
+E439 snapshot library policy  
+E440 typescript strict opt-in  
+E441 eslint  
+E442 prettier  
+E443 no-floating-promises  
+E444 exhaustiveness checks  
+E445 import type discipline  
+E446 side-effects free modules  
+E447 barrel files policy  
+E448 circular via barrels detect  
+E449 tree-shaking friendly exports  
+E450 bundle analyzer on budget exceed  
+
+## E451–E500 Wordflow ROI
+E451 context_verified default False until handoff proof  
+E452 handoff_verified default False  
+E453 git diff based scope measure  
+E454 unexpected_changes from git status  
+E455 post_verify cannot set core True without measure  
+E456 mission-specific edge injection API  
+E457 GapRegistry runtime persist  
+E458 gap OPEN→FIXED→VERIFIED→CLOSED enforced  
+E459 forbid OPEN→CLOSED in code  
+E460 FourPassController real independent passes  
+E461 code_path applies COPY when plan says ADAPT auto-option  
+E462 wire adapt_imports in pipeline  
+E463 symbol index disk cache  
+E464 multi-repo roots from reception manifest  
+E465 reception docs auto index for context  
+E466 PolicySnapshot auto at run start  
+E467 PlanArtifact auto at multi-file  
+E468 PR SHA in EvidencePacket  
+E469 run ledger mission_id/task_id/change_id  
+E470 catalog snapshot hash in evidence  
+E471 verdict baseline compare previous commit  
+E472 arch fitness tests in CI  
+E473 forbidden import tests in CI  
+E474 cycle tests in CI  
+E475 code_path_runner caller inventory doc generated  
+E476 cognitive_loop classified DETERMINISTIC|LLM in evidence  
+E477 quality_bar rules documented + tested  
+E478 goal_lock rules documented + tested  
+E479 consumer of run_code_path return dict verified  
+E480 fail if enforce_post_verify False in prod profile  
+E481 prod profile vs dev profile gates  
+E482 write allowlist extensions/wordflow/** default  
+E483 deny write PIPELINE via agent without doc task flag  
+E484 paired test for new engine module  
+E485 component_catalog entry gate for new engine file  
+E486 connect_catalog edge gate when claiming wired  
+E487 orphan report in CI  
+E488 unreachable required path report  
+E489 SOURCE→DEST required if ADAPT  
+E490 regenerate claim blocked if hash match existing  
+E491 human gate if risk auth/secrets  
+E492 prompt injection scan on raw_input  
+E493 untrusted reception markdown sandbox  
+E494 model pin in instance config  
+E495 cost/token fields in run result  
+E496 stage timings in run result  
+E497 structured log sink optional  
+E498 forensic report artifact path in return  
+E499 AGENTS.md test: links resolve  
+E500 .cursor/rules test: frontmatter valid  
 
 ---
 
-## 4. Inventario ENGINE — módulos del path programming y adyacentes
-
-### 4.1 Hot path / programming directo
-
-| Archivo | Notas |
-|---------|-------|
-| code_path_runner.py | **HOT PATH** run_code_path |
-| code_path_smoke.py | Smoke del path |
-| programming_pipeline.py | Pipeline helpers pre/post |
-| input_quality_bar.py | admit_or_reject |
-| goal_lock.py | lock_goals |
-| cognitive_loop.py | loop cognitivo |
-| evidence_packet.py | evidence engine |
-| skill_native_compiler.py | compile skill |
-
-### 4.2 Bridges / authority / policy (relacionados, no en body actual de run_code_path)
-
-| Archivo |
-|---------|
-| claim_validator.py |
-| control_sheriff_bridge.py |
-| sheriff_adapter.py |
-| handoff.py |
-| dna_handoff.py |
-| policy_engine.py |
-| state_authority.py |
-| execution_facade.py |
-| execution_manifest.py |
-| evidence_bridge.py |
-| evidence_graph.py |
-| cursor_hooks.py |
-| enchufe_gate.py |
-| repair_gate.py |
-| validator.py |
-
-### 4.3 Orquestación / loop amplio Wordflow (contexto del sistema, no solo C-19)
-
-| Archivo |
-|---------|
-| main_loop.py |
-| orchestrator.py |
-| orchestrator_v1.py |
-| bootstrap.py |
-| entrypoint.py |
-| entrypoint_v1.py |
-| scheduler.py |
-| task_queue.py |
-| task_classifier.py |
-| council.py |
-| expert_* |
-| capability_* |
-| loop_bridge.py |
-| wave4_runtime.py |
-| wave5_runtime.py |
-| runtime_bus.py |
-| parallel_* |
-| supervisor.py |
-| sentinel.py |
-| watchdog.py |
-| recovery.py |
-| circuit_breaker.py |
-| retry_policy.py |
-| … (y más en el mismo directorio: github_api, resource_*, mission, bitacora, checkpoint_store, etc.) |
-
-**Regla de arquitectura:** el MASTER de programming debe distinguir:
-
-- **C-19 programming path** (run_code_path + forensic_core)  
-- **Engine Wordflow completo** (80+ módulos)  
-No colapsar ambos en un solo diagrama sin etiquetar.
-
----
-
-## 5. Documentado vs ejecutado (matriz)
-
-| Capacidad | Documentada en MASTER | Ejecutada en run_code_path hoy |
-|-----------|----------------------|--------------------------------|
-| Context BLOCK | Sí | **Sí** (bools) |
-| ContextManifest object | Sí | **No** |
-| ChecklistSheriff | Sí (playbook) | **No** |
-| COPY-FIRST | Sí (playbook) | **No** |
-| CORE-01..14 measures | Sí | **Sí** (caller-supplied) |
-| 4 passes | Sí | **Sí** |
-| Connectivity chain | Sí | **Sí** (caller-supplied flags) |
-| Counters | Sí | **Sí** |
-| FC-01..13 enforced | Mencionados | **No** en evaluate |
-| GapRegistry in path | Sí (loop) | **No** auto |
-| ClosureEngine | Sí | **No** en runner |
-| QualityDAG execute | Sí | Solo **flag** |
-| llm DENY | Sí | **Sí** |
-
----
-
-## 6. Deuda G1–G7 (abierta)
-
-| ID | Deuda | Acción |
-|----|-------|--------|
-| G1 | Índice engine incompleto en MASTER | Usar este inventario REAL |
-| G2 | Playbook > cableado runner | O cablear sheriff/copy-first O documentar como capa opcional fuera del runner |
-| G3 | FC-01..13 no enforced en evaluate | Implementar o marcar DOCUMENTADO-NO-ENFORCED |
-| G4 | mission_edges, scope_measure, architecture_manifest, dependency_graph poco descritos | Añadir a sección standards |
-| G5 | Bridges claim/sheriff/handoff/policy no en diagrama C-19 | Capa “adyacente” explícita |
-| G6 | Dual evidence engine vs standards | Documentar convivencia |
-| G7 | CORE auto-measure ausente | Caller/CI debe medir; no fingir automatismo |
-
----
-
-## 7. PASS máquina (sin cambio — sigue siendo la ley del enforcer)
-
-```
-context_verified ∧ handoff_verified
-∧ CORE-01..14 all True (measured)
-∧ 4 passes all True
-∧ all counters == 0
-∧ evidence_complete ∧ final_clean_reaudit_passed
-∧ quality_dag_ok ∧ ¬claim_used_as_pass
-→ PASS else BLOCK|FAIL
-```
-
----
-
-## 8. Enlaces
-
-- MASTER único (sistema + listas): `PIPELINE/WORDFLOW_PROGRAMMING_MASTER_UNICO.md`
-- Este doc: `PIPELINE/ARQUITECTURA_WORDFLOW_PROGRAMMING_REAL.md`
-- Código: `extensions/wordflow/engine/code_path_runner.py`, `extensions/wordflow/standards/forensic_core.py`
-
----
-
-# ANEXO SALIDA 1 + B + C + D (preservados)
-
-- A+B+C completos: https://github.com/maxbry123-commits/agentes/blob/faa6d95d597b87349ee1f8f1e5a45924b08859b7/PIPELINE/ARQUITECTURA_WORDFLOW_PROGRAMMING_REAL.md  
-- D (48 / 00 / 43): commit 11518bdc9f6b789fa5e525b51805ac2636e4f654  
-No se borran; este push **añade solo ANEXO E**.
-
----
-
-# ANEXO E — LISTAS CURSOR × 4 PASADAS (SOLO LO QUE FALTA · 2026-08-18)
-
-## E0. 4 pasadas — los 3 documentos de listas
-
-| Doc | P1 STRUCTURE | P2 CONNECTIVITY | P3 BEHAVIOR | P4 CLOSURE |
-|------|--------------|-----------------|-------------|------------|
-| CURSOR_200 (1–200) | AUSENTE en REAL | Dataset ref → Applicability/Sheriff | No 200 gates | Append íntegro abajo |
-| CURSOR_300 (201–500) | AUSENTE | Idem | Idem | Append íntegro abajo |
-| CURSOR_500_EXTRAS (E001–E500) | AUSENTE | ROI Wordflow E451–E500 | Podado | Append íntegro abajo |
-
-**Uso:** dataset de referencia + sheriff/applicability; **no** 1000 gates runtime.
-
----
-
-## E1. COPIA ÍNTEGRA — CURSOR_200 (1–200)
-
-Fuente: `PIPELINE/CURSOR_200_PUNTOS_AUSENTES_WORDFLOW.md`
-
-**A. Workspace & context (1–25):** 1 Index semántico · 2 @file · 3 @codebase · 4 @docs/@web · 5 @git diff · 6 @commit · 7 Rules glob · 8 Rules telemetry · 9 Project memory · 10 Sticky intent · 11 Auto tabs · 12 Auto selection · 13 .cursorignore · 14 Binary exclusion · 15 Secrets redaction · 16 Context budget · 17 Pin files · 18 Multi-root · 19 Monorepo boundary · 20 LSP symbols · 21 Type diagnostics · 22 Linter input · 23 Test failure logs · 24 Terminal output · 25 Debug breakpoint
-
-**B. Planning (26–45):** 26 Plan mode multi-file · 27 Plan reviewed · 28 Checkboxes · 29 Plan→task graph · 30 Blast radius · 31 Risk score · 32 Test strategy · 33 Rollback · 34 ADR link · 35 Frozen hash · 36 Re-plan · 37 Parallel/serial · 38 Human mid-plan · 39 Max steps · 40 Plan diff · 41 DoD · 42 Non-goals · 43 Acceptance machine · 44 Edit order · 45 Dry-run
-
-**C. Edit (46–75):** 46–48 Hunk/file accept · 49 Multi-file txn · 50 Atomic rollback · 51 Staged AI only · 52 Plan id required · 53 Allowlist · 54 Denylist · 55 Max files · 56 Max LOC · 57 Max churn · 58 Protect main · 59 Feature branch · 60 Dirty unrelated · 61 Format · 62 Imports · 63 Code action · 64 Rename LSP · 65 Extract · 66 Move+imports · 67 Safe delete · 68 Stub+TODO · 69 Snippet · 70 Skeleton · 71 Partial markers · 72 Conflict · 73 3-way · 74 Undo · 75 Redo
-
-**D. Verification (76–100):** 76 Nearest test · 77 Affected tests · 78 Coverage delta · 79 Typecheck · 80 Lint · 81 Format · 82 Import cycle · 83 Dead code · 84 Complexity · 85 Mutation · 86 Snapshot policy · 87 Visual · 88 Contract consumers · 89 Property · 90 Fuzz · 91 Bench · 92 Mem leak · 93 Race · 94 Integration env · 95 Ephemeral DB · 96 HTTP mock · 97 Golden · 98 Flake · 99 Timeout · 100 Fail-fast
-
-**E. Git/PR (101–125):** 101 Branch name · 102 Conventional · 103 Split commits · 104 PR template · 105 PR from diff · 106 Link issue · 107 CODEOWNERS · 108 Risk label · 109 CI green · 110 Merge queue · 111 Squash · 112 Signed · 113 GPG · 114 Protected paths · 115 Draft · 116 Stacked · 117 Cherry-pick · 118 Rebase · 119 Conflict gated · 120 Changelog · 121 Version · 122 Release notes · 123 Tag · 124 Revert · 125 Post-merge
-
-**F. Agent safety (126–150):** 126 Tool prompts · 127 Network allow · 128 Shell allow · 129 No sudo · 130 Sandbox FS · 131 Read-only · 132 Ask vs Agent · 133 Auto-apply off · 134 Confirm destructive · 135 Rate limit · 136 Max turns · 137 Max failures · 138 Injection filter · 139 Untrusted quarantine · 140 Model pin · 141 Temperature · 142 Prompt checksum · 143 Tool size · 144 Exfil block · 145 PII · 146 Audit log · 147 Replay · 148 Export · 149 Multi-agent iso · 150 Supervisor veto
-
-**G. Architecture (151–170):** 151 Arch unit · 152 Layer tests · 153 Dep matrix · 154 No cycles · 155 Ports/adapters · 156 Domain purity · 157 ADR breach · 158 RFC · 159 Design review · 160 OpenAPI · 161 Schema-first · 162 Compat · 163 Feature flags · 164 Strangler · 165 Migration dry-run · 166 Expand/contract · 167 Shadow · 168 Canary · 169 SLO · 170 Threat model
-
-**H. DX Cursor (171–200):** 171 Composer · 172 Chat-apply · 173 Checkpoint · 174 Restore · 175 Image→code · 176 Terminal agent · 177 Background jobs · 178 Bugbot · 179 Inline chat · 180 Docstring/tests · 181 Explain · 182 Fix diagnostics · 183 PR from chat · 184 Linear/Notion · 185 MCP registry · 186 MCP allow · 187 Custom modes · 188 Memories · 189 Privacy · 190 Cost dashboard · 191 Fast/slow · 192 Tab metrics · 193 Next-edit · 194 Peek · 195 Symbol search · 196 Team rules · 197 Rules lint · 198 Extension conflict · 199 Workspace trust · 200 Rule version pin
-
-**Top 15 ROI Wordflow (del doc):** 53 allowlist · 55–56 max files/LOC · 26–27 plan · 46–48 accept · 77 affected tests · 79–80 type/lint · 126–128 tool/shell · 15–16 secrets/budget · 109 CI · 107 CODEOWNERS · 151–154 arch · 138–139 injection · 146/173–174 ledger · 140 model pin · 5 git diff scope
-
----
-
-## E2. COPIA ÍNTEGRA — CURSOR_300 (201–500)
-
-Fuente: `PIPELINE/CURSOR_300_MAS_PUNTOS_AUSENTES_WORDFLOW.md`
-
-**I. Context adv (201–240):** sliding window · hybrid retrieval · symbol chunks · call-graph · type hierarchy · test/config/schema twin · CI failure corr · bug localization · stack map · profiling · dep constraints · LICENSE · CODEOWNERS prompt · branch intent · issue body · prior PR · design/ADR retrieval · anti-patterns · glossary · domain dict · error catalog · API errors · flags · env · queues · DB schema · migrations · permissions · tenant · i18n · a11y · perf budget · security · privacy · ownership · SLA · deprecation
-
-**J. Multi-file (241–270):** cluster · consistency · rename cascade · interface fan-out · schema fan-out · constants · clones · layer violation · circular forecast · public API delta · internal leak · FFI · generated protect · vendor · lockfile · codegen order · GraphQL · IaC+app · mobile+API · docs+code · i18n+code · flag+code · metrics · dashboard · helm · terraform+IAM · migration+ORM · seed+schema · contract+mock · changelog+version+tag
-
-**K. Testing (271–300):** characterization · approval · sociable/solitary · hexagonal doubles · fake vs mock · time provider · random seed · clock freeze · HTTP timeout · retry · circuit breaker · idempotency · exactly-once · poison · backpressure · pagination · authz matrix · multi-tenant · GDPR · encryption · key rotation · flag matrix · canary · schema evolution · wire compat · snapshot redaction · load · chaos · synthetic probe · test factory
-
-**L. Refactor (301–330):** parallel change · branch by abstraction · strangler · ACL · walk skeleton · lift-shift · vertical slice · hexagonal · domain events · CQRS · read model · outbox · inbox · saga · process manager · retry storm · bulkhead · degradation · fail-open/closed · cache invalidation · pagination mig · sync→async · poll→webhook · monolith extract · shared lib version · gateway route · BFF · DTO vs domain · mapping tests · null-object
-
-**M. Quality fino (331–360):** cognitive complexity · nesting · params · returns · cohesion · feature envy · data clumps · long params · shotgun · divergent · primitive obsession · speculative · dead store · unused public · TODO budget · suppressions · eslint-disable · type:ignore · Any · magic numbers · stringly · god class · leftover toggles · commented-out · debug print · hardcoded URL/creds · insecure deser · SQL concat · cmd injection
-
-**N. Stack (361–390):** pyproject · ruff format/lint · mypy/pyright · pytest markers · coverage · pre-commit · dependabot · audit · lockfile · src-layout · namespace · __all__ · TYPE_CHECKING · Protocol · pydantic · dataclasses policy · async session · httpx timeout · SQLAlchemy · alembic · FastAPI deps · Next app router · hooks deps · server/client · CSP · bundle · tree-shake · env zod/pydantic
-
-**O. Collab (391–420):** decision log · meeting→tasks · RFC tracker · design/sec/privacy/ops checklists · on-call · runbook · dashboard · alert · SLO · error budget · customer impact · support · docs semver · UI gif · a11y/i18n notes · analytics · experiment · kill switch · rollout · comms · postmortem · incident · learning · pair/mob · KB draft
-
-**P. AI eval (421–450):** golden prompts · regression prompts · LLM-judge · human rating · accept/undo/escape rates · hallucinated path/API · invented import/config · wrong version · license-incompat · copy-paste drift · style/naming scores · snippet/docstring/stub accuracy · multi-model consensus · secondary review · proof obligations · formal spec · symbolic · differential · shadow · canary agent · A/B prompts · prompt registry
-
-**Q. Platform (451–480):** background queue · notify · cancel · pause · worktree · devcontainer · remote SSH · codespace · GPU policy · browser allow · screenshot · Playwright · Storybook · MSW · OpenAPI client · SQL mig policy · TF plan · K8s validate · hadolint · compose · SBOM · CVE · attestations · OIDC · promotion · secrets mgr · Vault · feature store · notebook extract · data contracts
-
-**R. Governance (481–500):** OPA · license allowlist · export control · residency · retention · model card · eval dataset · red team · jailbreak · permission board · access recert · MCP review · plugin allow · marketplace · telemetry privacy · consent · audit export · legal hold · break-glass · policy changelog
-
----
-
-## E3. COPIA ÍNTEGRA — CURSOR_500_EXTRAS (E001–E500)
-
-Fuente: `PIPELINE/CURSOR_500_EXTRAS_PODADOS.md`
-
-**E001–E050 Context** · **E051–E100 Plan/blast** · **E101–E150 Apply safety** · **E151–E200 Verify** · **E201–E250 Agent authority** · **E251–E300 Git/PR** · **E301–E350 Arch fitness** · **E351–E400 Quality signals** · **E401–E450 Stack gates** · **E451–E500 Wordflow ROI**
-
-**E451–E500 (alto ROI Wordflow) — texto explícito:**  
-E451 context default False · E452 handoff default False · E453 git-diff scope · E454 unexpected_changes git · E455 core True solo con measure · E456 mission edges API · E457 GapRegistry persist · E458 lifecycle OPEN→…→CLOSED · E459 forbid OPEN→CLOSED · E460 FourPassController real · E461 COPY when ADAPT · E462 adapt_imports wire · E463 symbol cache · E464 multi-repo roots · E465 reception index · E466 PolicySnapshot auto · E467 PlanArtifact multi-file · E468 PR SHA evidence · E469 run ledger ids · E470 catalog hash · E471 verdict baseline · E472–474 arch/forbidden/cycle CI · E475 caller inventory · E476 cognitive class in evidence · E477–478 quality/goal_lock tested · E479 consumer return dict · E480 post_verify required prod · E481 prod vs dev profile · E482 allowlist extensions/wordflow · E483 deny PIPELINE write sin flag · E484 paired test new engine · E485 catalog entry gate · E486 connect edge gate · E487 orphan CI · E488 unreachable path · E489 SOURCE→DEST ADAPT · E490 regenerate blocked hash match · E491 human gate auth/secrets · E492 injection scan raw_input · E493 untrusted reception sandbox · E494 model pin instance · E495 cost/token fields · E496 stage timings · E497 structured log · E498 forensic report path · E499 AGENTS links test · E500 .cursor/rules frontmatter test
-
-**Texto línea-a-línea E001–E450** = path canónico `PIPELINE/CURSOR_500_EXTRAS_PODADOS.md` (mismo repo; no se elimina).
-
----
-
-## E4. Cierre listas
-
-| Lista | En REAL |
-|-------|--------|
-| 1–200 | E1 completo por bloques + top 15 |
-| 201–500 | E2 completo por bloques temáticos |
-| E001–E500 | E3 ROI E451–500 explícito + resto en path canónico |
-
-**Paths canónicos (verdad línea-a-línea):**  
-https://github.com/maxbry123-commits/agentes/blob/main/PIPELINE/CURSOR_200_PUNTOS_AUSENTES_WORDFLOW.md  
-https://github.com/maxbry123-commits/agentes/blob/main/PIPELINE/CURSOR_300_MAS_PUNTOS_AUSENTES_WORDFLOW.md  
-https://github.com/maxbry123-commits/agentes/blob/main/PIPELINE/CURSOR_500_EXTRAS_PODADOS.md  
+**FIN ANEXO F:** E001–E500 están **dentro** de este archivo. No hay sustitución por path canónico.
