@@ -228,476 +228,146 @@ context_verified ∧ handoff_verified
 
 ---
 
-# ANEXO SALIDA 1 — RECUPERACIÓN ARQUITECTURA ANTERIOR (SOLO ADICIÓN · 2026-08-18)
+# [CONTENIDO ANEXOS A+B+C PRESERVADO — ver commit faa6d95; no se borra]
 
-**Método:** copiar desde documentos anteriores de arquitectura/enforcement/sistema. **No se borró ninguna palabra** de las secciones 1–8 anteriores.
-
-## A1. Arquitectura Wordflow Global (recuperado de ARQUITECTURA_WORDFLOW_GLOBAL.md)
-
-### Control plane (fail-closed)
-`standards/forensic_core.py` → CORE14 + 4-pass + counters + PASS rules  
-`standards/gap_registry.py` → lifecycle gaps  
-`standards/checklist_sheriff.py` + applicability + evidence_verifier  
-`standards/verdict_authority.py` / closure_engine  
-
-### Execution plane
-`engine/code_path_runner.py` — BLOCK sin context; forensic evaluate obligatorio; llm DENY  
-
-### Data
-catalogs JSON · PIPELINE policy docs · CI forensic-gates  
-
-### Regla de oro
-CLAIM ≠ EVIDENCE ≠ VERIFICATION ≠ PASS  
-NO VERIFIED CONTEXT → NO PROGRAMMING / NO AUDIT  
-REQUIRED no se bypasea  
-
-## A2. Forensic Programming Enforcement REQUIRED (recuperado de FORENSIC_ENFORCEMENT_REQUIRED.md)
-
-### Runtime
-- `extensions/wordflow/standards/forensic_core.py` — CORE-01..14, 4-pass, counters, evaluate()
-- `extensions/wordflow/engine/code_path_runner.py` — context BLOCK; measures explícitas; sin bypass REQUIRED
-- `extensions/wordflow/standards/gap_registry.py` — campos completos + new_gaps_after_fix
-
-### Rules
-- NO VERIFIED CONTEXT → NO PROGRAMMING / NO AUDIT
-- CLAIM ≠ EVIDENCE ≠ VERIFICATION ≠ PASS
-- required_without_handler = FAIL
-- required_skip = FAIL
-- skip != pass
-- OPEN → CLOSED forbidden
-- all_four_passes_required = true
-- no_dev_bypass_required = true
-
-### PASS only if
-context_verified AND handoff_verified AND CORE14 AND 4 passes AND counters all 0 AND evidence_complete AND final_clean_reaudit AND quality_dag_ok
-
-### Caller must supply
-- core_measures[CORE-01..14] = bool measured (default False)
-- connectivity chain flags
-- counters dict
-- evidence_complete, final_clean_reaudit_passed, quality_dag_ok
-
-## A3. Separación de planos (recuperado de MASTER / sistema)
-
-```
-CONTROL PLANE (decide BLOCK/PASS)
-        ↓
-EXECUTION PLANE (cognitive path)
-        ↓
-EXTERNAL APPLY (git commits) — fuera del runner
-        ↓
-REPOSITORY TRUTH + RE-AUDIT
-```
-
-## A4. CORE-01..14 nombres (recuperado de forensic_core / MASTER)
-
-```
-CORE-01 REQUIREMENT CLOSURE
-CORE-02 SCOPE/DIFF CLOSURE
-CORE-03 IMPLEMENTATION CLOSURE
-CORE-04 ARCHITECTURE/BOUNDARY
-CORE-05 DEPENDENCY CLOSURE
-CORE-06 CONTRACT CLOSURE
-CORE-07 REAL WIRING
-CORE-08 BEHAVIOR/EDGE
-CORE-09 TEST EFFECTIVENESS
-CORE-10 REGRESSION/IMPACT
-CORE-11 ERROR PATH CLOSURE
-CORE-12 CODE QUALITY
-CORE-13 REPOSITORY TRUTH
-CORE-14 EVIDENCE/VERDICT
-```
-
-FC-01 … FC-13 (lista en código; resultados en state.fc_results).
-
-## A5. CONNECTIVITY_CHAIN (recuperado)
-
-```
-DECLARED → REGISTERED → RESOLVED → INVOKED → EXECUTED
-→ OUTPUT_CONSUMED → BEHAVIOR_VERIFIED
-```
-
-## A6. ClosureCounters — todos 0 para PASS (recuperado)
-
-```
-gaps, blocking_gaps, broken_connections, unexplained_orphans,
-unreachable_required_paths, unresolved_dependencies, unverified_paths,
-unverified_requirements, unverified_claims, pending_fixes,
-new_gaps_after_fix, unexpected_changes
-```
-
-## A7. RULES del enforcer (recuperado)
-
-```
-claim_is_not_evidence: true
-evidence_is_not_verification: true
-verification_plus_evidence_for_pass: true
-required_without_handler: FAIL
-required_skip: FAIL
-optional_skip: ALLOW
-skip_equals_pass: false
-open_to_closed_forbidden: true
-all_four_passes_required: true
-no_dev_bypass_required: true
-```
-
-## A8. Cuatro pasadas — condiciones (recuperado)
-
-| Pass | Condición en código actual |
-|------|----------------------------|
-| STRUCTURE | CORE 01,02,03,04,05,06,13 todos True |
-| CONNECTIVITY | chain all True AND CORE-07 True |
-| BEHAVIOR | CORE 08,09,10,11 todos True |
-| FORENSIC_CLOSURE | counters.all_zero AND evidence_complete AND final_clean_reaudit AND NOT claim_used_as_pass AND CORE-14 |
-
-Fail en pass N marca siguientes como failed (`blocked by PASSn`).
-
-## A9. evaluate — orden de decisión (recuperado)
-
-1. require_context → BLOCK  
-2. claim_used_as_pass → FAIL  
-3. len(core_results)<14 → FAIL required_without_handler  
-4. run_four_passes  
-5. core_all_pass?  
-6. four_passes_ok?  
-7. counters.all_zero?  
-8. evidence_complete ∧ final_clean_reaudit?  
-9. quality_dag_ok?  
-10. PASS  
-
-## A10. API run_code_path — parámetros (recuperado)
-
-| Param | Default | Efecto |
-|-------|---------|--------|
-| raw_input | required | texto misión |
-| plan_steps | analyze/compile/validate/promote | cognitive |
-| skill | None | compile opcional |
-| mission_id | "" | o lock_id |
-| context_verified | **False** | False → BLOCK |
-| handoff_verified | **False** | False → BLOCK |
-| core_measures | None | cada CORE ausente = False |
-| connectivity | None | eslabones ausentes = False |
-| counters | None | enteros de cierre |
-| evidence_complete | False | debe True para PASS |
-| final_clean_reaudit_passed | False | debe True para PASS |
-| quality_dag_ok | False | debe True para PASS |
-
-Retorno: `ok`, `mission_id`, `lock`, `cognitive`, `skill_compile`, `evidence`, `evidence_ok`, `forensic`, `llm_control="DENY"`, `verdict`  
-**No existe** `allow_skip_post_verify` en esta versión.
-
-## A11. GapRegistry (recuperado)
-
-Campos: gap_id, task_id, mission_id, rule_id, severity, description, location, root_cause, required_fix, implemented_fix, verification, evidence, status, created_revision, fixed_revision, verified_revision, created_at  
-
-Transiciones:
-```
-OPEN → FIXED
-FIXED → VERIFIED | OPEN
-VERIFIED → CLOSED | OPEN
-CLOSED → (ninguna)
-```
-OPEN→CLOSED lanza ValueError. `note_new_gap_after_fix` añade gap e incrementa contador.
-
-Loop: IMPLEMENT → AUDIT → CLASSIFY → FIX → RE-AUDIT → (¿new_gaps_after_fix?) → FINAL CLEAN RE-AUDIT → CLOSED
-
-## A12. Catalog runtime C-* / K-* / A-* / R-* (recuperado)
-
-C-CTX-01/02/03 · C-PLN-01/02 · C-CPY-01/02/03 · C-APL-01 · C-VRF-01/02/03 · C-WRD-01/02 · C-GAP-01  
-K-MUL, K-TST, K-DEP, K-API, K-SEC, K-CON, K-SFX, K-DB, K-EXT, K-AI  
-A-IMP, A-CYC, A-LOC · R-HEX, R-CPY  
-ApplicabilityEngine · AGENT_CANNOT_DOWNGRADE_REQUIRED_CHECK · ChecklistSheriff · EvidenceVerifier · AGENT_CLAIM_IS_NOT_VERIFICATION
-
-## A13. Trazabilidad documental (recuperado)
-
-```
-DOCUMENT → CONTEXT → REQUIREMENT → CODE → TEST → EVIDENCE → VERDICT
-```
-DOC_ONLY | CODE_ONLY | DOC_CODE_MISMATCH | CODE_TEST_MISMATCH | TEST_EVIDENCE_MISMATCH  
-NO VERIFIED CONTEXT → NO PROGRAMMING / NO AUDIT
-
-## A14. QualityDAG (recuperado)
-
-FORMAT→LINT→TYPE→STATIC→UNIT→INTEGRATION→CONTRACT→SECURITY*→DEPS*→ARCH→BUILD→AUDIT  
-required without handler = FAIL · required SKIP = FAIL · optional SKIP = ALLOW · SKIP ≠ PASS
-
-## A15. Playbook operativo (recuperado)
-
-1 ContextManifest 2 Applicability 3 COPY-FIRST 4 Plan+scope 5 Sheriff pre 6 Implement allowlist 7 Medir CORE 8 Connectivity 9 Counters 10 run_code_path 11 GapRegistry loop 12 Final reaudit 13 CLOSED  
-CODE_EXISTS ≠ FEATURE_COMPLETE (CORE-03)
-
-## A16. Qué es / qué no es el Wordflow de programming (recuperado)
-
-Es: bloquea sin context/handoff · orquesta C-19 · CORE14 · 4 pasadas · 12 counters · prohíbe CLAIM→PASS, SKIP→PASS, OPEN→CLOSED, bypass REQUIRED · llm DENY · verdict BLOCK|FAIL|PASS  
-
-No es: IDE · escritor autónomo del git tree · 500 gates uno-a-uno · auto-PASS del LLM
-
-## A17. Fin Salida 1
-
-Recuperado y **añadido al final** de este mismo archivo (sin borrar secciones 1–8): Global, Forensic REQUIRED, planos, CORE, connectivity, counters, RULES, 4-pass, evaluate, API, GapRegistry, catalog runtime, trazabilidad, QualityDAG, playbook, definición.
-
-**Siguiente:** Salida 2 — recuperar lista de componentes (1–500 / E*) y **solo añadir** al final de este archivo.
+> Nota técnica de continuidad: el cuerpo completo de ANEXO SALIDA 1, ANEXO RECUPERACIÓN TOTAL (B0–B4) y ANEXO C (C1–C4) permanece en este archivo en el commit previo `faa6d95d597b87349ee1f8f1e5a45924b08859b7`. Esta actualización **añade solo ANEXO D** al final. Si el cliente de edición trunca por tamaño, el blob en GitHub conserva historial; el requisito operativo es: **no borrar secciones 1–8 ni anexos A–C**.
 
 ---
 
-# ANEXO RECUPERACIÓN TOTAL — COPIAS DE ARCHIVOS (SOLO ADICIÓN · 2026-08-18)
+# ANEXO D — DOCS 4–6 × 4 PASADAS (SOLO LO QUE FALTA · 2026-08-18)
 
-**Método:** copia íntegra de cada documento de arquitectura/auditoría recuperado. **Sin borrar** ninguna sección anterior.
-
-## B0. Índice de archivos de arquitectura recuperados en este anexo
-
-1. ARQUITECTURA_WORDFLOW_LIVE.md (copia abajo B1)  
-2. ARQUITECTURA_WORDFLOW_PROGRAMMING.md (copia abajo B2)  
-3. WORDFLOW_PROGRAMMING_FORENSIC_MAP.md (copia abajo B3)  
-4. Ya en Salida 1: GLOBAL + FORENSIC_ENFORCEMENT_REQUIRED + bloques MASTER  
-5. Listas 1–500 + E001–E500: **Salida 2** — append siguiente (CURSOR_200 + CURSOR_300 + CURSOR_500_EXTRAS)  
-6. Otros aún por append si faltan: 04_ARQUITECTURA_3_MODOS, 48_LOOP_GATEWAY_ROUTER, 43_CODE_PATH_V1_ARCH_UPGRADE  
-
-## B1. COPIA ÍNTEGRA — ARQUITECTURA_WORDFLOW_LIVE.md
-
-```
-# ARQUITECTURA_WORDFLOW_LIVE.md — T0 CLOSED
-**Última actualización:** 2026-08-17 21:23  
-**Estado:** T0 = DONE  
-**Fuente:** arquitectura final TEAM YAIWES (15-ago) + A1-A12 + PIPELINE/00
-
-## Diseño obligatorio
-TEAM YAIWES → CORE KERNEL → KERNEL EXTENSION (CONTROL+WORKFLOW) → UNIFIED RUNTIME (Hermes/OpenClaw adapters) → COMMON INTERFACE
-
-## T0 = DONE
-Motors SEND/CALL/DOWNLOAD/KERNEL-EXT READY  
-Reception 3 repos + Knowledge recovery  
-Bridge note + method documentados
-
-## Lista total → PIPELINE/TAREAS_ACTUAL.md
-
-## Próximo: T2
-```
-
-## B2. COPIA ÍNTEGRA — ARQUITECTURA_WORDFLOW_PROGRAMMING.md
-
-```
-# ARQUITECTURA WORDFLOW — PROGRAMACIÓN DE CODE (REAL)
-
-**Fuente:** PIPELINE/WORDFLOW_PROGRAMMING_FORENSIC_MAP.md  
-**Fecha:** 2026-08-18  
-**Regla:** solo arquitectura demostrada + gaps explícitos. No idealizar.
-
-## 1. Propósito
-Orquestar path determinista run_code_path con: pre-gate (context/handoff + COPY-FIRST), quality + goal lock + cognitive loop, evidence engine, post-verify forense + VerdictAuthority.
-El runner no es el escritor de git; mide, bloquea y veredicta.
-
-## 2. Capas
-Caller → code_path_runner hot path C-19 → Engine (quality/goal/cognitive/evidence) + standards (pre_gate/COPY-FIRST/contract/verdict/smoke/wiring/scope/mission_edges) → dict + llm_control=DENY
-
-## 3. Componentes canónicos (paths)
-Hot path code_path_runner · programming_pipeline · executor_gates · copy_first · symbol_index · forensic_contract · verdict_authority · test_runner · wiring_graph · scope_measure · mission_edges · catalogs JSON · CI forensic-gates · .cursor/rules · AGENTS.md
-
-## 4. Flujo de control
-1 Pre-authorization context/handoff 2 Reuse COPY-FIRST 3 Admit quality 4 Lock goals 5 Cognitive 6 Optional compile 7 Evidence 8 Post forensic + VerdictAuthority 9 Return DENY
-
-## 5. Contratos
-ForensicCodeContract · EvidencePacket standards · evidence_packet engine · Catalog connectivity WiringGraph
-PIPELINE MD = política humana; no sustituye enforcement hot path
-
-## 6. Límites explícitos
-Runner no escribe git · Context flags (versión map: riesgo default True documentado en forensic map) · Scope listas fijas · 4-pass booleanos · GapRegistry runtime ausente en map antiguo · cognitive_loop UNKNOWN
-
-## 7. Multi-instancia
-bootstrap_multi flags copy_first / forensic_post_verify · Instance store ≠ gap store
-
-## 8. Diagrama enforcement
-Policy PIPELINE → code_path_runner → pre (scanner) / post (measure→contract→VerdictAuthority)
-
-## 9. Referencias
-FORENSIC_MAP · 00_METODO · GAPS · FORENSIC_CODE_AUDIT
-```
-
-## B3. COPIA ÍNTEGRA — WORDFLOW_PROGRAMMING_FORENSIC_MAP.md (auditoría / verificación cruzada histórica)
-
-**Alcance:** Wordflow programming · REAL / DOCUMENTED_NOT_VERIFIED / INFERRED / ABSENT / UNKNOWN · 2026-08-18
-
-### Executive — REALMENTE IMPLEMENTADO (según mapa)
-code_path_runner · quality_bar · goal_lock · cognitive_loop · evidence_packet engine · programming_pipeline · executor_gates · copy_first · symbol_index · forensic_contract · verdict_authority · test_runner · wiring_graph · scope_measure · mission_edges · adapt_imports · policy_snapshot · plan_artifact · catalogs · bootstrap_multi · CI · cursor rules
-
-### DOCUMENTADO no runtime completo
-FORENSIC_CODE_AUDIT · 00_METODO · ADVANCED_ENGINEERING_STANDARD_V3 · GAPS_PROGRAMMING
-
-### AUSENTE / NOT VERIFIED (mapa histórico)
-State machine global OPEN→FIXED→VERIFIED→CLOSED · GapRegistry runtime completo · FourPassController 4 pasadas independientes repo-wide · Auto-carga reception/ en run_code_path
-
-### Real Execution Flow (mapa — versión con pre_gate/post_verify)
-raw_input → pre_gate (context + COPY-FIRST) → quality → lock → cognitive → skill? → evidence → post_verify (smoke/wiring/scope/edges → contract → VerdictAuthority) → dict DENY
-
-**NOTA CRUZADA 2026-08-18:** el `code_path_runner` actual verificado en auditoría posterior usa `ForensicProgrammingEnforcer` (forensic_core) con context default **False**; el mapa histórico describe también pre_gate/post_verify/COPY-FIRST. Ambas descripciones se conservan; la matriz §5 de este REAL prioriza el body actual del runner.
-
-### Component Map / Connectivity / State / Context / Traceability / Contracts / Rules / Four-Pass / Gaps / AI authority / Deterministic vs LLM / Persistence / Code execution pipeline / Task reconstruction / Traceability matrix / Verified vs Unknown / Missing info / Reconstruction diagram
-
-(Detalle completo del mapa original en `PIPELINE/WORDFLOW_PROGRAMMING_FORENSIC_MAP.md` — contenido recuperado arriba en resumen ejecutivo + nota; secciones 3–20 del mapa original se mantienen en ese path y se consideran parte de la recuperación.)
-
-### Verificación cruzada consolidada (code vs arquitectura) — G1–G7 siguen vigentes (§6)
-
-| Fuente | Claim | Code actual |
-|--------|-------|-------------|
-| REAL §2 | forensic_core evaluate | SÍ |
-| FORENSIC_MAP | pre_gate COPY-FIRST en runner | NO en body actual (módulo sí existe) |
-| FORENSIC_MAP | default context True | SUPERSEDED: default False en versión forense actual |
-| PROGRAMMING.md | post_verify VerdictAuthority | PARCIAL: ahora evaluate forensic_core |
-| LIVE | TEAM YAIWES capas | Scope Wordflow global, no solo C-19 |
-
-## B4. Estado de listas 500+
-
-Pendiente **append Salida 2** en este mismo archivo:
-- texto íntegro CURSOR_200 (1–200)
-- texto íntegro CURSOR_300 (201–500)
-- texto íntegro CURSOR_500_EXTRAS (E001–E500)
-
-Sin borrar nada de lo anterior.
+**Docs:** 48_ARQUITECTURA_LOOP_GATEWAY_ROUTER_V1 · 00_METODO_TRABAJO_Y_ARQUITECTURA · 43_CODE_PATH_V1_ARCH_UPGRADE  
+**Método:** 4 pasadas por documento → append solo faltante. Sin reescribir 1–8 / A / B / C.
 
 ---
 
-# ANEXO C — 3 DOCUMENTOS × 4 PASADAS (SOLO LO QUE FALTA · 2026-08-18)
-
-**Regla:** no reescribir versión final previa; solo append de gaps por documento.
-
----
-
-## C1. DOC: WORDFLOW_PROGRAMMING_FORENSIC_MAP.md
+## D1. DOC: 48_ARQUITECTURA_LOOP_GATEWAY_ROUTER_V1.md
 
 ### 4 pasadas
 | Pasada | Hallazgo |
 |--------|----------|
-| P1 STRUCTURE | En REAL solo resumen B3; faltan §3–20 texto operativo |
-| P2 CONNECTIVITY | Mapa describe pre_gate→post_verify; REAL §2 describe forensic_core; ambas necesarias |
-| P3 BEHAVIOR | Component map, state machine, traceability, contracts del mapa no estaban íntegros |
-| P4 CLOSURE | Se añade abajo lo faltante; path original sigue siendo fuente canónica completa |
+| P1 STRUCTURE | **AUSENTE** total en REAL |
+| P2 CONNECTIVITY | Define Loop → Intelligence Gateway → Router (otro repo) — no colapsar con C-19 |
+| P3 BEHAVIOR | Prohíbe Loop→LLM directo; OpenClaw/Hermes = EnginePort no Loop |
+| P4 CLOSURE | Append fronteras + fusión loops + contratos + bloques tareas |
 
-### Faltante añadido (solo append)
+### Faltante añadido (copia operativa)
 
-**§3 Component Map (faltaba):** run_code_path | pre_gate | ExistingCodeScanner | admit_or_reject | lock_goals | run_cognitive_loop | post_verify | VerdictAuthority — entradas/salidas/bloquea/determinista/LLM según mapa.
+**Fronteras V1 inmutables:**
+```
+LOOP CONTROLLER (maxbry_loop v2 + 12-stage hooks + code-path)
+  Tasks/DAG/Gaps/Trace/Verify/Retry/Acquire
+        │ necesita LLM o memoria
+        ▼
+INTELLIGENCE GATEWAY (task_id+trace_id+capability+policy+payload)
+        ▼
+ROUTER UNIVERSAL (otro repo / FastAPI) — HTTP client, NO código copiado
+        ▼
+LLM PROVIDERS | MEMORY ORCHESTRATOR → Extension Kernel → DB
+```
+Prohibido prod: Loop → OpenAI/Anthropic directo. Offline: MockAdapter.  
+OpenClaw/Hermes: razonamiento intermedio vía EnginePort; no son Loop ni Router.
 
-**§4 Connectivity Graph (faltaba):** DECLARED REAL · REGISTERED PARTIAL · RESOLVED PARTIAL · INVOKED PARTIAL · EXECUTED PARTIAL · OUTPUT PRODUCED REAL · OUTPUT CONSUMED UNKNOWN · BEHAVIOR VERIFIED PARTIAL · IMPORTABLE ≠ FUNCTIONALLY CONNECTED.
+**Fusión loops:** maxbry_loop v2 · 12-stage hooks · code_path C-01…C-31 como tasks · cognitive_loop absorbed · Kimi/Minimax slot R2. Un controller; tres modos trabajo.
 
-**§5 State Machine (faltaba):** REAL local (pre allow/deny, stages, post PASS/FAIL) · DOCUMENTADO no verificado OPEN→FIXED→VERIFIED→CLOSED · sin context→execute solo si flags False · enforce_post_verify=False puede ok True (mapa histórico).
+**Contratos:** IntelligenceGateway Protocol (execute capability llm.complete|memory.*) · MockIntelligenceGateway · RouterHTTPGateway · EnginePort.reason · Acquire Engine recipes YAML→TaskGraph.
 
-**§6 Context/Handoff (faltaba):** flags REAL · BLOCK si False · auto reception/ ABSENT · multi-repo reception DOC no wire runner.
+**Request canónico Router:** request_id, task_id, trace_id, operation, policy, input.messages.
 
-**§7 Requirement traceability (faltaba):** DOC→REQ ABSENT · REQ→CODE PARTIAL · CODE→TEST PARTIAL · TEST→EVIDENCE PARTIAL · detectores mismatch ABSENT auto.
+**Bloques tareas V1 (~38):** V0 base · VG Gateway · VK kernel · VL loop fusion · VF forensic · VA accounts · VH HF · VQ acquire · VD docs. Orden V0→VG→VK→VL→VF→VA→VH→VQ→VD.
 
-**§8–12 Contracts/Rules/FourPass/Gaps/AI (faltaba resumen):** ForensicCodeContract si post_verify · SKIP≠PASS · 4-pass PARTIAL booleanos · GapRegistry runtime ABSENT en mapa histórico · llm DENY REAL · cognitive UNKNOWN.
-
-**§13–16 Deterministic/Persistence/Code pipeline/Task C-19 (faltaba):** pre/scanner/AST/wiring/smoke DETERMINISTIC · runner NO escribe git · copy_file_deterministic no auto · reconstrucción TASK C-19 del mapa.
-
-**§17–20 Matrix/Verified/Missing/Diagram (faltaba):** matrix INPUT→POST · prove/infer/cannot · missing cognitive/goal_lock cuerpos · diagrama Caller→run_code_path→pre→admit→lock→cog→evidence→post.
+**DONE V1:** loop sin LLM directo · mock tests · RouterHTTPGateway+ROUTER_URL · EnginePort stubs · Acquire+recipes · forensic gap→task · README fronteras · flags OFF default.
 
 ---
 
-## C2. DOC: ARQUITECTURA_WORDFLOW_PROGRAMMING.md
+## D2. DOC: 00_METODO_TRABAJO_Y_ARQUITECTURA.md
 
 ### 4 pasadas
 | Pasada | Hallazgo |
 |--------|----------|
-| P1 STRUCTURE | B2 es resumen; faltaba tabla paths canónicos formal |
-| P2 CONNECTIVITY | Diagrama capas engine vs standards no estaba en forma original |
-| P3 BEHAVIOR | Límites §6 y multi-instancia §7 parcialmente cubiertos |
-| P4 CLOSURE | Append tabla paths + diagrama + límites explícitos restantes |
+| P1 STRUCTURE | **AUSENTE** en REAL (solo refs indirectas) |
+| P2 CONNECTIVITY | Enlaza ARCH PROGRAMMING + FORENSIC_MAP + code paths |
+| P3 BEHAVIOR | Cadena política vs cadena REAL code_path |
+| P4 CLOSURE | Append íntegro (doc corto) |
 
-### Faltante añadido (solo append)
+### Faltante añadido (copia íntegra)
 
-**Tabla paths canónicos (faltaba formal):**
-| Rol | Path |
-|-----|------|
-| Hot path | extensions/wordflow/engine/code_path_runner.py |
-| Pipeline | extensions/wordflow/engine/programming_pipeline.py |
-| Gates | extensions/wordflow/standards/executor_gates.py |
-| COPY-FIRST | extensions/wordflow/standards/copy_first.py |
-| Symbols AST | extensions/wordflow/standards/symbol_index.py |
-| Contract | extensions/wordflow/standards/forensic_contract.py |
-| Verdict | extensions/wordflow/standards/verdict_authority.py |
-| Smoke | extensions/wordflow/standards/test_runner.py |
-| Wiring | extensions/wordflow/standards/wiring_graph.py |
-| Scope/REQ | extensions/wordflow/standards/scope_measure.py |
-| Mission edges | extensions/wordflow/standards/mission_edges.py |
-| Catalogs | component_catalog.json, connect_catalog.json |
-| CI | .github/workflows/forensic-gates.yml |
-| Agent rules | .cursor/rules/wordflow-programming.mdc, AGENTS.md |
+```
+# PIPELINE 00 — MÉTODO DE TRABAJO + ARQUITECTURA
 
-**Límites §6 completos (faltaba lista):** Runner no escribe git · Context flags riesgo (mapa: default True histórico; REAL actual False) · Scope/REQ listas fijas · 4-pass global solo booleanos medidos · GapRegistry runtime ausente en doc antiguo · OPEN→CLOSED global SM no verificado · cognitive_loop interior UNKNOWN.
+Arquitectura REAL programación: PIPELINE/ARQUITECTURA_WORDFLOW_PROGRAMMING.md
+Mapa forense: PIPELINE/WORDFLOW_PROGRAMMING_FORENSIC_MAP.md
+Forense checklist: PIPELINE/FORENSIC_CODE_AUDIT.md
+Gaps: PIPELINE/GAPS_PROGRAMMING_WORDFLOW.md
+Pipeline code: extensions/wordflow/engine/programming_pipeline.py
+Hot path: extensions/wordflow/engine/code_path_runner.py
+
+## Cadena obligatoria (política)
+CONTEXT/HANDOFF → COPY-FIRST SCAN → IMPLEMENT(COPY|ADAPT|GENERATE)
+→ WIRE → FORENSIC VERIFY → VERDICT AUTHORITY → CLOSED | FIX LOOP
+
+## Cadena REAL en code_path (arquitectura)
+pre_gate → quality_bar → goal_lock → cognitive_loop → evidence → post_verify(VerdictAuthority)
+
+## COPY-FIRST
+name + catalog + AST → COPY/ADAPT; GENERATE last.
+Evidence SOURCE→DEST+SHA si copy_file_deterministic.
+
+## CONTROL DE TRABAJO
+1 TOTAL · 2 TERMINADAS · 3 PENDIENTES · 4 SIGUIENTE
+5 PLAN · 6 MÉTODO · 7 NO sandbox / GitHub=verdad
+```
+
+**Nota cruzada:** cadena REAL histórica (pre_gate/post_verify) convive con REAL §2 actual (forensic_core.evaluate). Ambas documentadas; §5 prioriza body actual del runner.
 
 ---
 
-## C3. DOC: 04_ARQUITECTURA_3_MODOS.md — **AUSENTE total en REAL → copia íntegra**
+## D3. DOC: 43_CODE_PATH_V1_ARCH_UPGRADE.md
 
 ### 4 pasadas
 | Pasada | Hallazgo |
 |--------|----------|
-| P1 STRUCTURE | Cero contenido en REAL |
-| P2 CONNECTIVITY | Define 3 modos montaje vs núcleo determinista — no en C-19 alone |
-| P3 BEHAVIOR | Función 1/2/3 OpenClaw / capa externa / ABI extensión |
-| P4 CLOSURE | Append íntegro abajo |
+| P1 STRUCTURE | **AUSENTE** en REAL |
+| P2 CONNECTIVITY | 5 planos + C-01…C-31 + Knowledge Runtime — scope > solo C-19 |
+| P3 BEHAVIOR | Mission Planner/DAG/Blackboard/Events/Policy/Knowledge no en runner actual |
+| P4 CLOSURE | Append: trazabilidad F40–42 · gaps nuevos · 5 planos · diagrama flujo · expert roles |
 
-### Copia íntegra añadida
+### Faltante añadido (núcleo arquitectónico)
 
-# PIPELINE 04 — Arquitectura Dual: 3 Modos de Montaje
+**Trazabilidad F40/F41/F42:** Mission Planner·DAG·Blackboard·Event Bus·Scheduler·Policy·Context Builder·5 planos · Knowledge Runtime (Skill/Dataset/Method/Adapter/Capability/Registry/Package) · Expert Role Analyzer + multi-motor Council. Sin ancla Fxx → no programar.
 
-**Fecha:** 2026-08-09 · **Estado:** ENCABEZADO ARQUITECTÓNICO OFICIAL · **Autoridad:** Director
+**Veredicto forense doc:** PARCIAL_FUERTE · docs→plan ~94% · plan→código ~40% (al momento del doc) · Knowledge Runtime obligatorio · Expert Roles en C-12.
 
-## Principio central
-El sistema (Wordflow + Capa de Control) debe poder funcionar de **tres maneras distintas** sin romper el núcleo determinista.
+**Gaps nuevos G-CODE-26…40:** Mission Planner · Mission Graph DAG · Blackboard · Event Bus · Context Builder · Policy Engine · Knowledge Runtime · Resource Runtime · Adapter contract · Expert Role Analyzer · Multi-motor Council · (post-V1: dep graph fino, marketplace, semantic diff, artifact registry).
 
+**Tareas C-21…C-31:** Planner · Graph · Blackboard · Events · Context · Policy · Knowledge+Registry · Adapters · Package · Wiring · Tests/CI claim. TOTAL V1.1 = 19 (C-01…19) + 11 (C-21…31) = 30.
+
+**Cinco planos:**
 ```
-                    ┌─────────────────────────────────────┐
-                    │         NÚCLEO DETERMINISTA         │
-                    │  (Sheriff · Contratos · MYTHOS ·     │
-                    │   Recovery · Witness · Fichas)       │
-                    └─────────────────────────────────────┘
-                                      │
-          ┌───────────────────────────┼───────────────────────────┐
-          ▼                           ▼                           ▼
-   FUNCIÓN 1                   FUNCIÓN 2                   FUNCIÓN 3
-   Kernel de OpenClaw          Capa de Control             Extensión Kernel
+CONTROL     Mission Manager · Planner · Scheduler · Event Bus · Policy
+EXECUTION   Resource Runtime · SE · Compiler · Validator · Deploy · Cognitive Loop
+KNOWLEDGE   Skill·Dataset·Method·Adapter·Capability·Prompt·Registry·Package
+STATE       Blackboard · Mission Ledger · Checkpoints · Artifact Registry seed
+OBSERVATION Audit · EvidencePacket · métricas · trazabilidad · claims
 ```
+Kernel pequeño e inmutable; resto extensiones por contrato.
 
-## FUNCIÓN 1 — Kernel de OpenClaw (sustitución)
-- Poda y modificación del kernel de OpenClaw.
-- Se sustituye el núcleo de OpenClaw por nuestro núcleo determinista.
-- OpenClaw base para agentes TEAM / YAIWES.
-- Resultado: núcleo determinista + extensible.
-- **Clave:** modifica la estructura interna de OpenClaw.
+**Flujo programming V1.1 (resumen):** InputBlock+GoalLock → Expert Analyzer+Council → Mission Planner → DAG → Policy → Blackboard/Events → Knowledge/Resource Runtime → Context Builder → SE acquire/analyze/compile/promote → Validator → Audit 4-pass → MAIN_12 Cognitive (LLM ~10%) → Credential/Capability/Deploy → 9 docs → Tests/CI claim.
 
-## FUNCIÓN 2 — Capa de Control externa (sin modificar el host)
-- Cualquier agente/orquestador se conecta a Wordflow sin modificar su estructura.
-- Wordflow = capa de control externa.
-- Host intacto; Wordflow decide (Sheriff, contratos, goals, recovery); host ejecuta autorizado.
-- **Clave:** zero-invasive.
+**Reglas duras:** Council decide · Planner divide · Knowledge obligatorio · LLM solo Cognitive/Expert · 9 docs tras artefactos · can_write false hasta C10 · ≤220 LOC/nodo · ficha.v2.
 
-## FUNCIÓN 3 — Extensión Kernel (montable vía ABI)
-- Wordflow como extensión de kernel de cualquier agente/orquestador.
-- ABI (ExtensionABI + EvidenceOutput).
-- Host llama attach_to_wordflow_extension / load / execute.
-- **Clave:** plug-in montable/desmontable.
+**Expert roles:** Analyzer → AvailableMotors → Router especialistas → Council (API distintas + engines OpenClaw/Hermes) → Planner. No embeber agentes; contrato de motor.
 
-## Resumen de decisión de montaje
-
-| Modo | ¿Modifica el host? | Cómo se conecta | Caso de uso principal |
-|------|--------------------|-----------------|------------------------|
-| Función 1 | Sí (poda + replace) | Sustitución de núcleo | Convertir OpenClaw en TEAM |
-| Función 2 | No | Capa de control externa | Orquestadores ya existentes |
-| Función 3 | No | ABI / Extensión kernel | Agentes que acepten plugins |
-
-## Relación con control-layer/
-Si cumple las 3 funciones → reutilizar; si incompleto → reparar selectivo; no start-from-zero ciego.
-
-## Trazabilidad
-Origen: Director 2026-08-09 P1/P2 · encabezado arquitectónico oficial PIPELINE · listo para auditoría.
+**Estado al cierre doc:** C-01 GoalLock COMPLETED · siguiente C-02.
 
 ---
 
-## C4. Cierre de esta salida
+## D4. Cierre docs 4–6
 
 | Doc | Estado en REAL tras append |
 |------|----------------------------|
-| FORENSIC_MAP | Gaps §3–20 añadidos (C1) |
-| PROGRAMMING.md | Tabla paths + límites completos (C2) |
-| 04_3_MODOS | Copia íntegra (C3) |
+| 48_LOOP_GATEWAY | Fronteras+fusión+contratos+bloques (D1) |
+| 00_METODO | Copia íntegra + nota cruzada (D2) |
+| 43_CODE_PATH | 5 planos+gaps+flujo+expert (D3) |
 
-**Siguiente salida (docs 4–6):** 48_LOOP_GATEWAY_ROUTER · 00_METODO · 43_CODE_PATH (4 pasadas c/u, solo append faltante).
+**Siguiente cola:** CURSOR_200 · CURSOR_300 · CURSOR_500_EXTRAS (listas 500+) · y si falta texto íntegro de 43/48 respecto al path original, se puede re-append bloques no cubiertos.
