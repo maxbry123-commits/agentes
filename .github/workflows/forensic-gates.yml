@@ -1,0 +1,23 @@
+name: forensic-gates
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+jobs:
+  forensic-import-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Smoke import standards + pipeline
+        run: |
+          python -c "from extensions.wordflow.standards.copy_first import ExistingCodeScanner; print('copy_first OK')"
+          python -c "from extensions.wordflow.standards.verdict_authority import VerdictAuthority; print('verdict OK')"
+          python -c "from extensions.wordflow.standards.test_runner import default_smoke_runner; r=default_smoke_runner().run(); assert r.passed, r.results; print('tests OK')"
+          python -c "from extensions.wordflow.standards.wiring_graph import WiringGraph; g=WiringGraph(); g.load_catalogs(); print(g.summary())"
+      - name: Fail if SKIP equals PASS policy broken
+        run: |
+          python -c "from extensions.wordflow.standards.forensic_contract import ForensicCodeContract; c=ForensicCodeContract(); assert c.skip_equals_pass is False"

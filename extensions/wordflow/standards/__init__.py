@@ -10,6 +10,9 @@ from .verdict_authority import VerdictAuthority
 from .forensic_report import render_forensic_report
 from .copy_first import ExistingCodeScanner, CopyPlan, CopyFirstResult, copy_file_deterministic
 from .executor_gates import ExecutorPreImplementGate, ExecutorPostVerifyGate
+from .test_runner import TestEffectivenessRunner, default_smoke_runner
+from .wiring_graph import WiringGraph
+from .plan_artifact import PlanArtifact
 
 __all__ = [
     "StandardContract", "RuleId", "StandardSheriff", "SheriffVerdict",
@@ -21,4 +24,6 @@ __all__ = [
     "CoreChecks", "AuditPasses", "VerdictAuthority", "render_forensic_report",
     "ExistingCodeScanner", "CopyPlan", "CopyFirstResult", "copy_file_deterministic",
     "ExecutorPreImplementGate", "ExecutorPostVerifyGate",
+    "TestEffectivenessRunner", "default_smoke_runner",
+    "WiringGraph", "PlanArtifact",
 ]

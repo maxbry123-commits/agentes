@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""C-19 code_path_runner — minimal deterministic code-path orchestration. 0% LLM."""
+"""C-19 code_path_runner — quality→lock→cognitive→compile→evidence + programming pipeline gates."""
 from __future__ import annotations
 
 from typing import Any
@@ -18,14 +18,52 @@ class CodePathError(Exception):
         super().__init__(f"{reason_code}: {detail}" if detail else reason_code)
 
 
+def _programming_pre_gate(
+    raw_input: str,
+    *,
+    context_verified: bool = True,
+    handoff_verified: bool = True,
+    symbol: str = "code_path",
+) -> dict[str, Any]:
+    try:
+        from .programming_pipeline import default_pipeline
+        pipe = default_pipeline()
+        return pipe.pre_implement(
+            context_verified=context_verified,
+            handoff_verified=handoff_verified,
+            symbol_or_stem=symbol,
+            dest="extensions/wordflow/engine/code_path_runner.py",
+        )
+    except Exception as exc:  # noqa: BLE001 — fail-open log for bootstrap stability
+        return {"allow": True, "reason": f"pre_gate_skip:{exc}", "copy_first": None}
+
+
 def run_code_path(
     raw_input: str,
     *,
     plan_steps: list[str] | None = None,
     skill: dict[str, Any] | None = None,
     mission_id: str = "",
+    context_verified: bool = True,
+    handoff_verified: bool = True,
+    enforce_copy_first: bool = True,
 ) -> dict[str, Any]:
-    """quality_bar → goal_lock → cognitive_loop → optional skill compile → evidence."""
+    """quality_bar → programming pre-gate → goal_lock → cognitive → compile → evidence."""
+    pre = None
+    if enforce_copy_first:
+        pre = _programming_pre_gate(
+            raw_input,
+            context_verified=context_verified,
+            handoff_verified=handoff_verified,
+        )
+        if pre and pre.get("allow") is False:
+            return {
+                "ok": False,
+                "stage": "programming_pre_gate",
+                "detail": pre,
+                "llm_control": "DENY",
+            }
+
     q = admit_or_reject(raw_input)
     if not q.get("ok"):
         return {"ok": False, "stage": "quality_bar", "detail": q, "llm_control": "DENY"}
@@ -60,8 +98,8 @@ def run_code_path(
         claim_status="PARTIAL",
         paths=[{"path": "extensions/wordflow/engine/code_path_runner.py"}],
         tests={"cognitive_ok": True, "skill_compiled": compiled is not None},
-        doc_anchors=["C-19"],
-        notes=f"mission={mid}",
+        doc_anchors=["C-19", "programming_pipeline"],
+        notes=f"mission={mid}; pre_gate={bool(pre)}",
     )
 
     return {
@@ -70,6 +108,7 @@ def run_code_path(
         "lock": lock,
         "cognitive": cog,
         "skill_compile": compiled,
+        "programming_pre_gate": pre,
         "evidence": evidence,
         "evidence_ok": verify_evidence_packet(evidence)["ok"],
         "llm_control": "DENY",
