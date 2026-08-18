@@ -18,3 +18,73 @@ name + catalog + AST → COPY/ADAPT; GENERATE last. Evidence SOURCE→DEST+SHA s
 
 ## CONTROL DE TRABAJO
 1 TOTAL · 2 TERMINADAS · 3 PENDIENTES · 4 SIGUIENTE · 5 PLAN · 6 MÉTODO · 7 NO sandbox / GitHub=verdad
+
+---
+
+# APPEND V3 — PROTOCOLO OPERATIVO SANDBOX → GITHUB → FORENSE
+**Origen:** METHOD_WORK_UPDATE_V3_SANDBOX_GITHUB_FORENSIC  
+**Tipo:** APPEND_ONLY · NO sustituye reglas anteriores · COPY-FIRST · deterministic-first · VERDICT AUTHORITY · CONTROL DE TRABAJO · GitHub=verdad · STAGNATION BREAKER · trazabilidad se CONSERVAN
+
+## Autoridad
+- Método de trabajo = reglas operativas
+- GitHub = fuente persistente de verdad
+- Sandbox = workspace temporal (build/test/verify) · NO memoria persistente · NO = DONE
+- Usuario = aprueba cierre
+- Auditoría forense = veredicto técnico con evidencia (no afirmación LLM)
+
+## Modelo operativo (no saltar a DONE)
+TASK_INTAKE → SALIDA_1_SANDBOX_BUILD → LOCAL_VERIFY → READY_FOR_PUBLISH → SALIDA_2_GITHUB_PUBLISH → REMOTE_VERIFY → PUBLISHED_AND_VERIFIED → SALIDA_3_FORENSIC_AUDIT → DONE
+
+## TASK_INTAKE (antes de ejecutar)
+Leer: README · Método · PIPELINE · tarea + trazabilidad · chat si hace falta.  
+Definir: TASK_ID · OBJECTIVE · SOURCES · INPUTS · OUTPUTS · DEPENDENCIES · ACCEPTANCE · TRACEABILITY · STATUS=READY
+
+## SALIDA 1 — SANDBOX_BUILD
+- Construir en Sandbox primero; no publicar aún.
+- Preferir cp/cat/sed/awk/git; no transportar bytes grandes por LLM; no regenerar fuente existente.
+- Registrar comandos reales.
+- Manifest obligatorio: `task_build/ARTIFACT_MANIFEST.json` (task_id, path, sources, size, lines, sha256, anchors, tests, diff_status, build_status).
+- Éxito: READY_FOR_PUBLISH · Nunca: DONE desde build.
+
+## LOCAL_VERIFY
+test -f · wc -c/-l · sha256sum · grep anchors · (code: git diff --check + tests).  
+Gate: LOCAL_VERIFY_PASS. Sin PASS → no publicar.
+
+## PUBLISH_GATE
+Solo si LOCAL_VERIFY_PASS. Publicar el artefacto del manifest; sin regenerar/resumir/reescribir desde LLM.
+
+## SALIDA 2 — GITHUB_PUBLISH
+Persistir exactamente el artefacto verificado. Registrar repo/path/branch/commit. HTTP 200 ≠ prueba suficiente → READ-BACK obligatorio.
+
+## REMOTE_VERIFY
+Releer GitHub: size, lines, anchors, content, commit; comparar con local (sha256 si aplica).  
+Fallo: PERSISTENCE_FAILURE → REPAIR · no DONE · no cleanup · no siguiente tarea.  
+Éxito: PUBLISHED_AND_VERIFIED.
+
+## SALIDA 3 — FORENSIC_AUDIT (tras cada tarea con code / cierre)
+Dominios: METHOD · REQUIREMENTS · TRACEABILITY · SANDBOX_BUILD · LOCAL_VERIFY · PUBLISH · REMOTE · INTEGRITY · NO_UNAUTHORIZED · TESTS · DOCS.  
+Veredictos: DONE | REPAIR_REQUIRED | BLOCKED.  
+**Tras cada tarea de code:** auditoría forense de programación según FORENSIC_CODE_AUDIT + esta sección (CLAIM ≠ EVIDENCE).  
+Afirmación LLM ≠ evidencia.
+
+## TASK_COMPLETION_GATE
+DONE solo si: INTAKE + LOCAL_VERIFY + GITHUB_PUBLISHED + REMOTE_VERIFY + FORENSIC_AUDIT_DONE.
+
+## Trazabilidad post-DONE
+Persistir en GitHub `TASK_COMPLETION_RECORD` (task_id, objective, sources, outputs, paths, commit, local/remote sha, verdict, next_task).
+
+## Arquitectura en avance
+Al avanzar y tocar archivos: actualizar arquitectura/trazabilidad según impacto; no regenerar fuentes; append/doc de lo tocado con evidencia.
+
+## Recuperación de contexto
+Orden: README → MÉTODO → PIPELINE → LISTA TAREAS → COMPLETION RECORDS → TRACE → DOCS REQUERIDOS → chat audit si hace falta.  
+No depender solo del Sandbox ni solo de memoria de chat.
+
+## Siguiente tarea
+Solo con CURRENT_TASK=DONE y autorización usuario. No auto-iniciar.
+
+## CLEANUP
+Solo tras FORENSIC_DONE + aprobación usuario. Proteger: método, GitHub, fuentes, trazabilidad, completion records.
+
+## STAGNATION (refuerzo)
+Mismo fallo ×2 → cambiar mecanismo. Fallo publish → no regenerar documento completo. Fallo verify → reparar, no declarar éxito.
