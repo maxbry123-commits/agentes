@@ -1,4 +1,4 @@
-"""S6 — construir AgentChecklistClaim desde dict (main_12 / smoke / prod)."""
+"""S6/T6 — AgentChecklistClaim desde dict. Sin evidence placeholder."""
 from __future__ import annotations
 from typing import Any, Dict, List, Optional
 from .checklist_sheriff import AgentChecklistClaim, PointClaim
@@ -23,10 +23,15 @@ def checklist_from_dict(data: Optional[Dict[str, Any]] = None, **kwargs: Any) ->
                     skipped_reason=str(c.get("skipped_reason", "")),
                 )
             )
-    # minimal core claims if agent only sends action/sources
+    # T6: auto_core_claims requires real evidence string from caller — no placeholder
     if not claims and d.get("auto_core_claims"):
-        for pid in core_ids():
-            claims.append(PointClaim(point_id=pid, addressed=True, evidence="auto_core_placeholder", evidence_kind="measure"))
+        ev = str(d.get("auto_core_evidence", "")).strip()
+        if not ev or "placeholder" in ev.lower():
+            # leave claims empty → Sheriff FAIL required missing (fail-closed)
+            claims = []
+        else:
+            for pid in core_ids():
+                claims.append(PointClaim(point_id=pid, addressed=True, evidence=ev, evidence_kind="measure"))
     return AgentChecklistClaim(
         mission_id=str(d.get("mission_id", "mission-local")),
         task_id=str(d.get("task_id", "task-local")),
