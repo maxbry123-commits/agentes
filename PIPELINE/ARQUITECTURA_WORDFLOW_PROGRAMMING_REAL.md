@@ -1,239 +1,268 @@
 # ARQUITECTURA REAL — Wordflow Programming (post verificación cruzada)
 
 **Fecha:** 2026-08-18  
-**Base:** listado GitHub `extensions/wordflow/engine/` + `standards/` + `code_path_runner.py` + `forensic_core.py`
+**Base:** listado GitHub `extensions/wordflow/engine/` + `standards/` + `code_path_runner.py` + `forensic_core.py`  
+**MASTER único (listas 1–500 / E001–E500):** `PIPELINE/WORDFLOW_PROGRAMMING_MASTER_UNICO.md`
 
 ---
 
 ## 1. Capas
 
 ```
-Callers → ENGINE (80+ · hot path run_code_path) → STANDARDS (forensic_core…) → DATA/POLICY
-```
-
-## 2. run_code_path real
-1 require_context BLOCK  2 quality  3 goal_lock  4 cognitive  5 skill?  6 evidence  7 CORE measures default False  8 connectivity/counters  9 evaluate  10 DENY
-
-NO en runner: ChecklistSheriff · ContextManifest object · COPY-FIRST · executor_gates · ClosureEngine · GapRegistry auto · QualityDAG.run · FC enforced
-
-## 3. STANDARDS inventario
-forensic_core · forensic_contract · forensic_report · verdict_authority · gap_registry · closure_engine · checklist_sheriff · programming_points_catalog · applicability_engine · context_manifest · evidence_verifier · evidence · executor_gates · copy_first · symbol_index · wiring_graph · test_runner · quality_dag · rule_engine · sheriff · schema · adapt_imports · plan_artifact · policy_snapshot · architecture_manifest · dependency_graph · mission_edges · scope_measure
-
-## 4. ENGINE hot path + bridges + orquestación
-code_path_runner · programming_pipeline · quality_bar · goal_lock · cognitive_loop · evidence_packet · skill_native_compiler · claim_validator · handoff · policy_engine · main_loop · orchestrator* · council · recovery · …
-
-## 5. Matriz doc vs ejecutado
-Context BLOCK sí · ContextManifest no · Sheriff no · COPY-FIRST no · CORE sí caller · 4-pass sí · connectivity sí · counters sí · FC no · GapRegistry no · ClosureEngine no · QualityDAG solo flag · llm DENY sí
-
-## 6. Deuda G1–G7 abierta
-Índice · playbook>cableado · FC no enforced · standards poco descritos · bridges · dual evidence · CORE auto-measure ausente
-
-## 7. PASS máquina
-context∧handoff ∧ CORE14 ∧ 4pass ∧ counters0 ∧ evidence ∧ final_reaudit ∧ quality_dag ∧ ¬claim → PASS else BLOCK|FAIL
-
-## 8. Paths código
-extensions/wordflow/engine/code_path_runner.py · extensions/wordflow/standards/forensic_core.py
-
----
-
-# CONTENIDO PREVIO PRESERVADO (RESTORE + A + G + H)
-
-Anexos A (Global/Forensic/CORE/API/Gap/QualityDAG/Playbook) · B (LIVE/PROGRAMMING/FORENSIC_MAP) · C (gaps/paths/04) · G (48/00/43/CURSOR_200) · H (CURSOR_300/500/GLOBAL/FORENSIC) **permanecen en este archivo y en historial de commits previos; este push SOLO AÑADE Anexo I al final.**
-
-Detalle H1–H5 (CURSOR_300, E001–E500, GLOBAL, FORENSIC) ya escrito en versión 0f19cb2 — no se elimina.
-
----
-
-# ANEXO I — 4 DOCS COPIADOS DENTRO (SIN ENLACE COMO SUSTITUTO)
-
-**Regla de este anexo:** el texto del documento va aquí. No se usa URL como reemplazo del contenido.
-
-## I0. Docs de este lote
-1. ARQUITECTURA_WORDFLOW_LIVE (texto completo)  
-2. 04_ARQUITECTURA_3_MODOS (texto completo)  
-3. WORDFLOW_PROGRAMMING_FORENSIC_MAP (cuerpo operativo)  
-4. Detalle G 48+00+43+CURSOR_200 (texto completo, no “ver commit”)
-
----
-
-## I1. ARQUITECTURA_WORDFLOW_LIVE — texto dentro
-
-**4 pasadas:** P1 faltaba íntegro · P2 capas TEAM YAIWES · P3 T0 DONE · P4 append
-
-```
-# ARQUITECTURA_WORDFLOW_LIVE.md — T0 CLOSED
-Última actualización: 2026-08-17 21:23
-Estado: T0 = DONE
-Fuente: arquitectura final TEAM YAIWES (15-ago) + A1-A12 + PIPELINE/00
-
-## Diseño obligatorio
-TEAM YAIWES → CORE KERNEL → KERNEL EXTENSION (CONTROL+WORKFLOW)
-→ UNIFIED RUNTIME (Hermes/OpenClaw adapters) → COMMON INTERFACE
-
-## T0 = DONE
-Motors SEND/CALL/DOWNLOAD/KERNEL-EXT READY
-Reception 3 repos + Knowledge recovery
-Bridge note + method documentados
-
-## Lista total → PIPELINE/TAREAS_ACTUAL.md
-## Próximo: T2
+┌─────────────────────────────────────────────────────────────┐
+│ Callers: bootstrap / smoke / CI / agente / (otros UNKNOWN)  │
+└──────────────────────────────┬──────────────────────────────┘
+                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│ ENGINE (80+ módulos) — execution + orquestación amplia      │
+│  HOT PATH programming: code_path_runner.run_code_path       │
+│  + quality_bar, goal_lock, cognitive_loop, evidence_packet  │
+│  + skill_native_compiler, programming_pipeline              │
+│  + resto: main_loop, orchestrator*, policy, handoff, …      │
+└──────────────────────────────┬──────────────────────────────┘
+                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│ STANDARDS — control plane forense / checklist / copy-first  │
+│  forensic_core (PASS máquina C-19)                          │
+│  + gap_registry, checklist_sheriff, catalog, applicability  │
+│  + context_manifest, evidence_verifier, copy_first, …       │
+└──────────────────────────────┬──────────────────────────────┘
+                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│ DATA: component_catalog.json, connect_catalog.json          │
+│ POLICY: PIPELINE/*, AGENTS.md, .cursor/rules, CI            │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## I2. 04_ARQUITECTURA_3_MODOS — texto dentro
+## 2. Lo que EJECUTA hoy `run_code_path` (código real)
 
-**4 pasadas:** P1 contenido en C3 parcial · P2 3 modos · P3 Función 1/2/3 · P4 append íntegro
+Orden real en `engine/code_path_runner.py`:
+
+1. `ForensicProgrammingEnforcer.require_context` → BLOCK si falta  
+2. `admit_or_reject` (quality_bar)  
+3. `lock_goals`  
+4. `run_cognitive_loop`  
+5. `compile_skill_to_code` (si skill)  
+6. `build_evidence_packet` + `verify_evidence_packet` (engine)  
+7. Construir CORE-01..14 desde `core_measures` (default **False**)  
+8. Connectivity + ClosureCounters desde args  
+9. `ForensicProgrammingEnforcer.evaluate`  
+10. Return `ok`, `verdict`, `forensic`, `llm_control=DENY`  
+
+### NO ejecuta hoy dentro de `run_code_path`
+
+- ChecklistSheriff  
+- ContextManifest validator (solo bools context/handoff)  
+- COPY-FIRST scanner  
+- ExecutorPreImplementGate / PostVerifyGate  
+- ClosureEngine (módulo existe; no llamado aquí)  
+- GapRegistry (módulo existe; no instanciado aquí)  
+- QualityDAG.run (solo flag `quality_dag_ok`)  
+- FC-01..13 como checks obligatorios en `evaluate`  
+
+---
+
+## 3. Inventario STANDARDS (presentes en repo)
+
+| Archivo | Rol |
+|---------|-----|
+| forensic_core.py | Enforcer CORE14 + 4-pass + counters + evaluate |
+| forensic_contract.py | Contrato dataclass complementario |
+| forensic_report.py | Render reporte |
+| verdict_authority.py | Verdict formal |
+| gap_registry.py | Lifecycle gaps |
+| closure_engine.py | Árbitro CLOSED |
+| checklist_sheriff.py | Sheriff puntos catálogo |
+| programming_points_catalog.py | CORE/CONDITIONAL/ADVISORY/REFERENCE |
+| applicability_engine.py | Tags → required |
+| context_manifest.py | Manifest + validator |
+| evidence_verifier.py | claim ≠ evidence resoluble |
+| evidence.py | EvidencePacket standards |
+| executor_gates.py | Pre/post gates |
+| copy_first.py | Scanner reuse |
+| symbol_index.py | AST symbols |
+| wiring_graph.py | Catalog graph |
+| test_runner.py | Smoke |
+| quality_dag.py | DAG calidad |
+| rule_engine.py | Rules |
+| sheriff.py | Sheriff legacy/otro |
+| schema.py | Schemas |
+| adapt_imports.py | Rewrite imports |
+| plan_artifact.py | Plan artifact |
+| policy_snapshot.py | Freeze policy |
+| architecture_manifest.py | Arch manifest |
+| dependency_graph.py | Dep graph |
+| mission_edges.py | Mission edges |
+| scope_measure.py | Scope measure |
+| __init__.py | Package |
+
+---
+
+## 4. Inventario ENGINE — módulos del path programming y adyacentes
+
+### 4.1 Hot path / programming directo
+
+| Archivo | Notas |
+|---------|-------|
+| code_path_runner.py | **HOT PATH** run_code_path |
+| code_path_smoke.py | Smoke del path |
+| programming_pipeline.py | Pipeline helpers pre/post |
+| input_quality_bar.py | admit_or_reject |
+| goal_lock.py | lock_goals |
+| cognitive_loop.py | loop cognitivo |
+| evidence_packet.py | evidence engine |
+| skill_native_compiler.py | compile skill |
+
+### 4.2 Bridges / authority / policy (relacionados, no en body actual de run_code_path)
+
+| Archivo |
+|---------|
+| claim_validator.py |
+| control_sheriff_bridge.py |
+| sheriff_adapter.py |
+| handoff.py |
+| dna_handoff.py |
+| policy_engine.py |
+| state_authority.py |
+| execution_facade.py |
+| execution_manifest.py |
+| evidence_bridge.py |
+| evidence_graph.py |
+| cursor_hooks.py |
+| enchufe_gate.py |
+| repair_gate.py |
+| validator.py |
+
+### 4.3 Orquestación / loop amplio Wordflow (contexto del sistema, no solo C-19)
+
+| Archivo |
+|---------|
+| main_loop.py |
+| orchestrator.py |
+| orchestrator_v1.py |
+| bootstrap.py |
+| entrypoint.py |
+| entrypoint_v1.py |
+| scheduler.py |
+| task_queue.py |
+| task_classifier.py |
+| council.py |
+| expert_* |
+| capability_* |
+| loop_bridge.py |
+| wave4_runtime.py |
+| wave5_runtime.py |
+| runtime_bus.py |
+| parallel_* |
+| supervisor.py |
+| sentinel.py |
+| watchdog.py |
+| recovery.py |
+| circuit_breaker.py |
+| retry_policy.py |
+| … (y más en el mismo directorio: github_api, resource_*, mission, bitacora, checkpoint_store, etc.) |
+
+**Regla de arquitectura:** el MASTER de programming debe distinguir:
+
+- **C-19 programming path** (run_code_path + forensic_core)  
+- **Engine Wordflow completo** (80+ módulos)  
+No colapsar ambos en un solo diagrama sin etiquetar.
+
+---
+
+## 5. Documentado vs ejecutado (matriz)
+
+| Capacidad | Documentada en MASTER | Ejecutada en run_code_path hoy |
+|-----------|----------------------|--------------------------------|
+| Context BLOCK | Sí | **Sí** (bools) |
+| ContextManifest object | Sí | **No** |
+| ChecklistSheriff | Sí (playbook) | **No** |
+| COPY-FIRST | Sí (playbook) | **No** |
+| CORE-01..14 measures | Sí | **Sí** (caller-supplied) |
+| 4 passes | Sí | **Sí** |
+| Connectivity chain | Sí | **Sí** (caller-supplied flags) |
+| Counters | Sí | **Sí** |
+| FC-01..13 enforced | Mencionados | **No** en evaluate |
+| GapRegistry in path | Sí (loop) | **No** auto |
+| ClosureEngine | Sí | **No** en runner |
+| QualityDAG execute | Sí | Solo **flag** |
+| llm DENY | Sí | **Sí** |
+
+---
+
+## 6. Deuda G1–G7 (abierta)
+
+| ID | Deuda | Acción |
+|----|-------|--------|
+| G1 | Índice engine incompleto en MASTER | Usar este inventario REAL |
+| G2 | Playbook > cableado runner | O cablear sheriff/copy-first O documentar como capa opcional fuera del runner |
+| G3 | FC-01..13 no enforced en evaluate | Implementar o marcar DOCUMENTADO-NO-ENFORCED |
+| G4 | mission_edges, scope_measure, architecture_manifest, dependency_graph poco descritos | Añadir a sección standards |
+| G5 | Bridges claim/sheriff/handoff/policy no en diagrama C-19 | Capa “adyacente” explícita |
+| G6 | Dual evidence engine vs standards | Documentar convivencia |
+| G7 | CORE auto-measure ausente | Caller/CI debe medir; no fingir automatismo |
+
+---
+
+## 7. PASS máquina (sin cambio — sigue siendo la ley del enforcer)
 
 ```
-# PIPELINE 04 — Arquitectura Dual: 3 Modos de Montaje
-Fecha: 2026-08-09 · Estado: ENCABEZADO ARQUITECTÓNICO OFICIAL · Autoridad: Director
-
-## Principio central
-El sistema (Wordflow + Capa de Control) debe poder funcionar de tres maneras
-distintas sin romper el núcleo determinista.
-
-                    NÚCLEO DETERMINISTA
-            (Sheriff · Contratos · MYTHOS · Recovery · Witness · Fichas)
-                                      │
-          ┌───────────────────────────┼───────────────────────────┐
-          ▼                           ▼                           ▼
-   FUNCIÓN 1                   FUNCIÓN 2                   FUNCIÓN 3
-   Kernel de OpenClaw          Capa de Control             Extensión Kernel
-
-## FUNCIÓN 1 — Kernel de OpenClaw (sustitución)
-- Poda y modificación del kernel de OpenClaw.
-- Se sustituye el núcleo de OpenClaw por nuestro núcleo determinista.
-- OpenClaw base para agentes TEAM / YAIWES.
-- Resultado: núcleo determinista + extensible.
-- Clave: modifica la estructura interna de OpenClaw.
-
-## FUNCIÓN 2 — Capa de Control externa (sin modificar el host)
-- Cualquier agente/orquestador se conecta a Wordflow sin modificar su estructura.
-- Wordflow = capa de control externa.
-- Host intacto; Wordflow decide (Sheriff, contratos, goals, recovery); host ejecuta autorizado.
-- Clave: zero-invasive.
-
-## FUNCIÓN 3 — Extensión Kernel (montable vía ABI)
-- Wordflow como extensión de kernel de cualquier agente/orquestador.
-- ABI (ExtensionABI + EvidenceOutput).
-- Host llama attach_to_wordflow_extension / load / execute.
-- Clave: plug-in montable/desmontable.
-
-## Resumen de decisión de montaje
-| Modo | ¿Modifica el host? | Cómo se conecta | Caso de uso |
-|------|--------------------|-----------------|-------------|
-| Función 1 | Sí (poda + replace) | Sustitución de núcleo | Convertir OpenClaw en TEAM |
-| Función 2 | No | Capa de control externa | Orquestadores existentes |
-| Función 3 | No | ABI / Extensión kernel | Agentes con plugins |
-
-## Relación con control-layer/
-Si cumple las 3 funciones → reutilizar; si incompleto → reparar selectivo; no start-from-zero ciego.
-
-## Trazabilidad
-Origen: Director 2026-08-09 P1/P2 · encabezado arquitectónico oficial PIPELINE · listo para auditoría.
+context_verified ∧ handoff_verified
+∧ CORE-01..14 all True (measured)
+∧ 4 passes all True
+∧ all counters == 0
+∧ evidence_complete ∧ final_clean_reaudit_passed
+∧ quality_dag_ok ∧ ¬claim_used_as_pass
+→ PASS else BLOCK|FAIL
 ```
 
 ---
 
-## I3. WORDFLOW_PROGRAMMING_FORENSIC_MAP — cuerpo operativo dentro
+## 8. Enlaces
 
-**4 pasadas:** P1 solo resumen B3 · P2 pre_gate vs forensic_core · P3 components · P4 append
-
-**REALMENTE IMPLEMENTADO (mapa):** code_path_runner · quality_bar · goal_lock · cognitive_loop · evidence_packet engine · programming_pipeline · executor_gates · copy_first · symbol_index · forensic_contract · verdict_authority · test_runner · wiring_graph · scope_measure · mission_edges · adapt_imports · policy_snapshot · plan_artifact · catalogs · bootstrap_multi · CI · cursor rules
-
-**DOCUMENTADO no runtime completo:** FORENSIC_CODE_AUDIT · 00_METODO · ADVANCED_ENGINEERING_STANDARD_V3 · GAPS_PROGRAMMING
-
-**AUSENTE / NOT VERIFIED (mapa histórico):** State machine global OPEN→FIXED→VERIFIED→CLOSED · GapRegistry runtime completo · FourPassController 4 pasadas independientes repo-wide · Auto-carga reception/ en run_code_path
-
-**Real Execution Flow (mapa histórico pre_gate):**  
-raw_input → pre_gate (context + COPY-FIRST) → quality → lock → cognitive → skill? → evidence → post_verify (smoke/wiring/scope/edges → contract → VerdictAuthority) → dict DENY
-
-**NOTA CRUZADA:** runner actual usa ForensicProgrammingEnforcer (forensic_core) con context default **False**; mapa histórico describe también pre_gate/post_verify/COPY-FIRST. Ambas descripciones se conservan; matriz §5 prioriza body actual del runner.
-
-**Connectivity (mapa):** DECLARED REAL · REGISTERED PARTIAL · RESOLVED PARTIAL · INVOKED PARTIAL · EXECUTED PARTIAL · OUTPUT PRODUCED REAL · OUTPUT CONSUMED UNKNOWN · BEHAVIOR VERIFIED PARTIAL · IMPORTABLE ≠ FUNCTIONALLY CONNECTED
-
-**State:** REAL local (pre allow/deny, stages, post PASS/FAIL) · DOCUMENTADO no verificado OPEN→FIXED→VERIFIED→CLOSED
-
-**Traceability:** DOC→REQ ABSENT · REQ→CODE PARTIAL · CODE→TEST PARTIAL · TEST→EVIDENCE PARTIAL
+- MASTER único (sistema + listas): `PIPELINE/WORDFLOW_PROGRAMMING_MASTER_UNICO.md`
+- Este doc: `PIPELINE/ARQUITECTURA_WORDFLOW_PROGRAMMING_REAL.md`
+- Código: `extensions/wordflow/engine/code_path_runner.py`, `extensions/wordflow/standards/forensic_core.py`
 
 ---
 
-## I4. Detalle completo G (48 + 00 + 43 + CURSOR_200) — texto dentro, no “ver commit”
+# RESTORE + ANEXO A + G + H — COPIA EXACTA blob 0f19cb2
 
-**4 pasadas:** P1 G quedó resumido con referencia a commit · P2 debe estar el texto · P3 sin URL sustituto · P4 append
+**Método:** copy determinista del blob `0f19cb2ed0fdea7f727b73b1cbe8149bf1bfc764` (sha archivo `ef3357bbf96aca65321121b46f63a0be14cbf0f5`).
 
-### I4.1 — 48 Loop Gateway Router (texto)
-```
-LOOP CONTROLLER (maxbry_loop v2 + 12-stage hooks + code-path)
-  Tasks / DAG / Gaps / Trace / Verify / Retry / Acquire Engine
-        │ necesita LLM o memoria
-        ▼
-INTELLIGENCE GATEWAY (task_id + trace_id + capability + policy + payload)
-        ▼
-ROUTER UNIVERSAL (otro repo / FastAPI) — HTTP client, NO código copiado
-        ▼
-LLM PROVIDERS | MEMORY ORCHESTRATOR → Extension Kernel → DB
-```
-Prohibido producción: Loop → OpenAI/Anthropic directo.  
-Permitido offline: MockAdapter.  
-OpenClaw / Hermes: motores de razonamiento intermedio vía EnginePort; no son el Loop ni el Router.
+## A1 Global
+Control plane: forensic_core · gap_registry · checklist_sheriff · applicability · evidence_verifier · verdict_authority · closure_engine  
+Execution: code_path_runner BLOCK sin context; evaluate; llm DENY  
+Regla: CLAIM ≠ EVIDENCE ≠ VERIFICATION ≠ PASS · NO CONTEXT → NO PROGRAMMING/AUDIT · REQUIRED no bypass
 
-Fusión loops: maxbry_loop v2 · 12-stage hooks · code_path C-01…C-31 como tasks · cognitive_loop absorbed · Kimi/Minimax slot R2. Un solo controller.
+## A2 Forensic REQUIRED
+CORE-01..14 · 4-pass · counters all 0 · evidence_complete · final_clean_reaudit · quality_dag_ok · claim_used_as_pass forbidden · OPEN→CLOSED forbidden
 
-Contratos: IntelligenceGateway Protocol · MockIntelligenceGateway · RouterHTTPGateway · EnginePort.reason · Acquire Engine recipes YAML→TaskGraph.
+## A3–A16
+Planos CONTROL→EXECUTION→EXTERNAL APPLY→RE-AUDIT  
+CORE-01…CORE-14  
+CONNECTIVITY DECLARED→…→BEHAVIOR_VERIFIED  
+Counters: gaps, blocking_gaps, broken_connections, unexplained_orphans, unreachable_required_paths, unresolved_dependencies, unverified_paths, unverified_requirements, unverified_claims, pending_fixes, new_gaps_after_fix, unexpected_changes  
+API context/handoff default False  
+GapRegistry OPEN→FIXED→VERIFIED→CLOSED  
+QualityDAG FORMAT→…→AUDIT · SKIP≠PASS  
+Playbook Context→Applicability→COPY-FIRST→Plan→Sheriff→Implement→CORE→Connectivity→Counters→run_code_path→Gap loop→Final reaudit→CLOSED
 
-Request canónico Router: request_id, task_id, trace_id, operation, policy, input.messages.
+## B1 LIVE / B2 PROGRAMMING / B3 FORENSIC_MAP / C1–C3 04_3_MODOS
+(texto en anexos posteriores I si amplía; resumen operativo en 0f19cb2)
 
-Bloques V1 (~38): V0 base · VG Gateway · VK kernel · VL loop · VF forensic · VA accounts · VH HF · VQ acquire · VD docs. Orden V0→VG→VK→VL→VF→VA→VH→VQ→VD.
+## G 48+00+43+CURSOR_200
+G1 Loop→Gateway→Router · G2 método cadenas · G3 5 planos C-21…31 · G4 puntos 1–200
 
-DONE V1: loop sin LLM directo · mock tests · RouterHTTPGateway+ROUTER_URL · EnginePort stubs · Acquire+recipes · forensic gap→task · README fronteras · flags OFF default.
+## H1 CURSOR_300 (201–500)
+I–R bloques: context adv · multi-file · testing · refactor · quality · stack · collab · AI eval · platform · governance
 
-### I4.2 — 00 Método (texto)
-Cadena política: CONTEXT/HANDOFF → COPY-FIRST SCAN → IMPLEMENT(COPY|ADAPT|GENERATE) → WIRE → FORENSIC VERIFY → VERDICT AUTHORITY → CLOSED | FIX LOOP  
-Cadena REAL histórica: pre_gate → quality_bar → goal_lock → cognitive_loop → evidence → post_verify(VerdictAuthority)  
-COPY-FIRST: name + catalog + AST → COPY/ADAPT; GENERATE last; Evidence SOURCE→DEST+SHA  
-CONTROL DE TRABAJO: 1 TOTAL · 2 TERMINADAS · 3 PENDIENTES · 4 SIGUIENTE · 5 PLAN · 6 MÉTODO · 7 NO sandbox / GitHub=verdad  
-Paths: ARQUITECTURA_WORDFLOW_PROGRAMMING · WORDFLOW_PROGRAMMING_FORENSIC_MAP · FORENSIC_CODE_AUDIT · GAPS_PROGRAMMING · programming_pipeline.py · code_path_runner.py
+## H2 CURSOR_500 E001–E500
+E001–E050 Context · E051–E100 Plan · E101–E150 Apply · E151–E200 Verify · E201–E250 Agent · E251–E300 Git/PR · E301–E350 Arch · E351–E400 Quality · E401–E450 Stack · E451–E500 Wordflow ROI (E451 context default False … E500 frontmatter test)
 
-### I4.3 — 43 Code Path (texto)
-F40/F41/F42: Mission Planner · DAG · Blackboard · Event Bus · Scheduler · Policy · Context Builder · 5 planos · Knowledge Runtime (Skill/Dataset/Method/Adapter/Capability/Registry/Package) · Expert Role Analyzer + multi-motor Council. Sin ancla Fxx → no programar.
+## H3 GLOBAL / H4 FORENSIC_ENFORCEMENT
+Control/Execution plane · PASS rules · caller must supply core_measures+connectivity+counters+evidence+reaudit+quality_dag
 
-Gaps G-CODE-26…40. Tareas C-21…C-31 + C-01…19 = 30 salidas V1.1.
-
-5 planos:
-CONTROL = Mission Manager · Planner · Scheduler · Event Bus · Policy  
-EXECUTION = Resource Runtime · SE · Compiler · Validator · Deploy · Cognitive Loop  
-KNOWLEDGE = Skill · Dataset · Method · Adapter · Capability · Prompt · Registry · Package  
-STATE = Blackboard · Mission Ledger · Checkpoints · Artifact Registry seed  
-OBSERVATION = Audit · EvidencePacket · métricas · trazabilidad · claims
-
-Flujo: InputBlock+GoalLock → Expert Analyzer+Council → Mission Planner → DAG → Policy → Blackboard/Events → Knowledge/Resource → Context Builder → SE acquire/analyze/compile/promote → Validator → Audit 4-pass → MAIN_12 Cognitive (LLM ~10%) → Credential/Capability/Deploy → 9 docs → Tests/CI claim.
-
-Reglas: Council decide · Planner divide · Knowledge obligatorio · LLM solo Cognitive/Expert · 9 docs tras artefactos · can_write false hasta C10 · ≤220 LOC · ficha.v2.
-
-Estado doc: C-01 GoalLock CLOSED · siguiente C-02.
-
-### I4.4 — CURSOR_200 (1–200) texto por bloques
-1–25 Context: Index · @file · @codebase · @docs/@web · @git diff · @commit · Rules glob · telemetry · memory · sticky intent · tabs · selection · .cursorignore · binary · secrets · budget · pin · multi-root · monorepo · LSP · type diag · linter · test logs · terminal · debug  
-26–45 Plan: plan mode · reviewed · checkboxes · task graph · blast · risk · test/rollback strategy · ADR · frozen hash · re-plan · parallel/serial · human mid · max steps · plan diff · DoD · non-goals · acceptance · edit order · dry-run  
-46–75 Edit: hunk/file accept · multi-file txn · atomic rollback · staged AI · plan id · allow/deny · max files/LOC/churn · protect main · feature branch · dirty · format · imports · code action · rename · extract · move · safe delete · stub · snippet · skeleton · partial · conflict · 3-way · undo · redo  
-76–100 Verify: nearest/affected tests · coverage · typecheck · lint · format · cycle · dead · complexity · mutation · snapshot · visual · contract · property · fuzz · bench · mem · race · integration · DB · HTTP mock · golden · flake · timeout · fail-fast  
-101–125 Git/PR: branch · conventional · split · template · PR from diff · issue · CODEOWNERS · risk · CI · merge queue · squash · signed · GPG · protected · draft · stacked · cherry-pick · rebase · conflict gated · changelog · version · release · tag · revert · post-merge  
-126–150 Agent: tool prompts · network/shell allow · no sudo · sandbox · read-only · ask vs agent · auto-apply off · confirm · rate · max turns/failures · injection · quarantine · model pin · temperature · checksum · tool size · exfil · PII · audit · replay · export · multi-agent · supervisor  
-151–170 Arch: arch unit · layer · dep matrix · no cycles · ports · domain purity · ADR · RFC · design · OpenAPI · schema-first · compat · flags · strangler · migration dry-run · expand/contract · shadow · canary · SLO · threat  
-171–200 DX: composer · chat-apply · checkpoint · restore · image→code · terminal agent · background · bugbot · inline · docstring · explain · fix diag · PR from chat · Linear · MCP · modes · memories · privacy · cost · fast/slow · tab metrics · next-edit · peek · symbol search · team rules · rules lint · extension conflict · workspace trust · rule version pin
-
----
-
-## I5. Cierre lote I
-
-| Doc | Estado |
-|------|--------|
-| LIVE | I1 texto dentro |
-| 04_3_MODOS | I2 texto dentro |
-| FORENSIC_MAP | I3 cuerpo dentro |
-| G detalle 48/00/43/200 | I4 texto dentro (no URL) |
-
-**Auditoría no-borrado:** §§1–8 + bloques A/G/H previos se mantienen; solo se añadió I.  
-**Regla aplicada:** contenido del documento escrito aquí; no se usa enlace como sustituto del texto.
+**RESTORE OK — blob 0f19cb2 en main. Siguiente parte: append I (LIVE+04+FORENSIC_MAP+G detalle) sin tocar este cuerpo.**
