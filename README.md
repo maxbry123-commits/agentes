@@ -48,3 +48,37 @@ Ver [`extensions/wordflow_kernel/README_V1.md`](extensions/wordflow_kernel/READM
 - https://github.com/maxbry123-commits/maxbry-router
 - https://github.com/maxbry123-commits/osquestador-auditor
 - https://github.com/maxbry123-commits/MEMORIA
+
+---
+
+## Arquitectura multi-instancia (T02)
+
+**No monolito:** un **kernel** estable y pequeño; **N** `WordflowInstance` aisladas. Crear instancia ≠ reescribir el kernel.  
+**Extensión ≠ instancia:** capability/plugin = paquete cargable; instancia = ejecución/proyecto con goals, state, loops y evidence propios.
+
+### Diagrama texto
+
+```
+KERNEL (estable, pequeño)
+  │
+  ├── WordflowInstance A  (goals, state, loops, evidence)
+  ├── WordflowInstance B
+  └── WordflowInstance N
+        │
+EXTENSIONS / CAPABILITIES (enchufe ficha.v2)
+  ├── engines / adapters / connectors
+  ├── skills / datasets index (HF bajo demanda)
+  └── plugins (UI, router slot, memory slot)
+```
+
+### Lectura rápida
+
+| Concepto | Significado |
+|----------|-------------|
+| Kernel | Núcleo compartido; no se duplica por proyecto |
+| WordflowInstance | Un Wordflow vivo (state aislado por `instance_id`) |
+| Extension / capability | Módulo enchufable vía `ficha.v2` |
+| Método | [`PIPELINE/00_METODO_TRABAJO_Y_ARQUITECTURA.md`](PIPELINE/00_METODO_TRABAJO_Y_ARQUITECTURA.md) |
+| Plan 49 tareas | [`PIPELINE/52_V1_PLAN_49_TAREAS_METODO_Y_XRAY.md`](PIPELINE/52_V1_PLAN_49_TAREAS_METODO_Y_XRAY.md) |
+
+Prioridad de código: **COPY/MOVE → LINK/CONNECT → PATCH → ADAPT → GENERATE**. GitHub = verdad; sandbox ≠ DONE.
