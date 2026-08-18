@@ -1,14 +1,14 @@
-"""G-W3 — índice de símbolos AST (defs) para reuse/COPY-FIRST."""
+"""G-W3/U5 — índice AST con cache en proceso."""
 from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 import ast
 
 @dataclass
 class SymbolHit:
     name: str
-    kind: str  # class | function | async_function
+    kind: str
     path: str
     lineno: int
 
@@ -29,6 +29,9 @@ class SymbolIndex:
             if partial_l in name.lower():
                 out.extend(hits)
         return out
+
+
+_CACHE: Dict[Tuple[str, ...], SymbolIndex] = {}
 
 
 def _kind(node: ast.AST) -> Optional[str]:
@@ -55,7 +58,10 @@ def index_file(path: Path) -> List[SymbolHit]:
     return hits
 
 
-def build_symbol_index(roots: List[Path], limit_files: int = 500) -> SymbolIndex:
+def build_symbol_index(roots: List[Path], limit_files: int = 500, *, use_cache: bool = True) -> SymbolIndex:
+    key = tuple(sorted(str(r.resolve()) if r.exists() else str(r) for r in roots)) + (str(limit_files),)
+    if use_cache and key in _CACHE:
+        return _CACHE[key]
     idx = SymbolIndex()
     n = 0
     for root in roots:
@@ -63,8 +69,16 @@ def build_symbol_index(roots: List[Path], limit_files: int = 500) -> SymbolIndex
             continue
         for p in root.rglob("*.py"):
             if n >= limit_files:
+                if use_cache:
+                    _CACHE[key] = idx
                 return idx
             for hit in index_file(p):
                 idx.add(hit)
             n += 1
+    if use_cache:
+        _CACHE[key] = idx
     return idx
+
+
+def clear_symbol_cache() -> None:
+    _CACHE.clear()
