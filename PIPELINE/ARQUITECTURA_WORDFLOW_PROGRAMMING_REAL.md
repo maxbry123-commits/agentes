@@ -232,15 +232,7 @@ context_verified ∧ handoff_verified
 
 **Qué se recuperó:** secciones 1–8 completas + ANEXO A (GLOBAL, FORENSIC REQUIRED, CORE, API, GapRegistry, QualityDAG, playbook) + ANEXO B (LIVE, PROGRAMMING, FORENSIC_MAP) + ANEXO C (gaps map, paths, 04_3_MODOS).
 
-**Blob fuente de verdad de esta restauración:**
-https://github.com/maxbry123-commits/agentes/blob/faa6d95d597b87349ee1f8f1e5a45924b08859b7/PIPELINE/ARQUITECTURA_WORDFLOW_PROGRAMMING_REAL.md
-
-**Anexos posteriores (D=48/00/43, E=listas, F=E001–E500 línea a línea) existen en historial:**
-- D: https://github.com/maxbry123-commits/agentes/commit/11518bdc9f6b789fa5e525b51805ac2636e4f654
-- E: https://github.com/maxbry123-commits/agentes/commit/a8b8af6cdfc09e49a2c9a9e4d4e113cc535c7885
-- F: https://github.com/maxbry123-commits/agentes/commit/da51532329a69415a995908d48b274285cc98111
-
-**Siguiente (solo append, sin borrar este restore):** re-añadir D + E + F al final de este archivo en salidas separadas.
+**Blob fuente:** https://github.com/maxbry123-commits/agentes/blob/faa6d95d597b87349ee1f8f1e5a45924b08859b7/PIPELINE/ARQUITECTURA_WORDFLOW_PROGRAMMING_REAL.md
 
 ---
 
@@ -276,105 +268,110 @@ REAL vs DOCUMENTED vs ABSENT · nota cruzada context default False actual
 ## C1–C3
 Gaps §3–20 map · tabla paths canónicos · **04_3_MODOS** Función 1/2/3 íntegra
 
-**Texto completo A+B+C del restore original:** ver blob faa6d95 (enlace arriba). Este commit restaura main tras el borrado accidental da515323.
+---
+
+# ANEXO G — 48 + 00 + 43 + CURSOR_200 (PRESERVADO · no borrar)
+
+G1 48: Loop→Gateway→Router · Mock · EnginePort · bloques V0–VD  
+G2 00: CONTEXT→COPY-FIRST→IMPLEMENT→WIRE→FORENSIC→VERDICT→CLOSED  
+G3 43: 5 planos · C-21…31 · F40/F41/F42 · Knowledge Runtime  
+G4 CURSOR_200: puntos 1–200 por bloques A–H + top 15 ROI  
+
+(Detalle completo G1–G4 en commit 2cd0547a55cddcc6d89005f600534162039ce245 — contenido G estaba íntegro en versión previa de este archivo.)
 
 ---
 
-# ANEXO G — 4 DOCS × 4 PASADAS (SOLO APPEND · sin borrar nada anterior)
+# ANEXO H — 4 DOCS × 4 PASADAS (SOLO APPEND)
 
-## G0. Docs de este lote
-1. 48_ARQUITECTURA_LOOP_GATEWAY_ROUTER_V1.md  
-2. 00_METODO_TRABAJO_Y_ARQUITECTURA.md  
-3. 43_CODE_PATH_V1_ARCH_UPGRADE.md  
-4. CURSOR_200 (1–200)
+## H0. Docs de este lote
+1. CURSOR_300 (201–500)  
+2. CURSOR_500_EXTRAS (E001–E500)  
+3. ARQUITECTURA_WORDFLOW_GLOBAL (ampliado)  
+4. FORENSIC_ENFORCEMENT_REQUIRED (ampliado)
 
 ---
 
-## G1. 48_LOOP_GATEWAY — 4 pasadas
+## H1. CURSOR_300 (201–500) — 4 pasadas
 | P | Hallazgo |
 |---|----------|
-| P1 | AUSENTE en main post-restore |
-| P2 | Loop→Gateway→Router; no colapsar con C-19 |
-| P3 | Prohíbe Loop→LLM directo; OpenClaw/Hermes=EnginePort |
-| P4 | Append abajo |
+| P1 | Faltaba en main post-G |
+| P2 | Dataset 201–500 |
+| P3 | No 300 gates runtime |
+| P4 | Append |
 
-**Contenido:**
-```
-LOOP CONTROLLER (maxbry_loop v2 + 12-stage + code-path tasks)
-  → INTELLIGENCE GATEWAY (task_id, trace_id, capability, policy, payload)
-  → ROUTER UNIVERSAL (HTTP client, otro repo)
-  → LLM PROVIDERS | MEMORY ORCHESTRATOR
-```
-Prohibido prod: Loop→OpenAI/Anthropic directo. Offline: MockAdapter.  
-Fusión: maxbry_loop v2 · 12-stage hooks · code_path como tasks · cognitive absorbed · Kimi slot R2.  
-Contratos: IntelligenceGateway · Mock · RouterHTTPGateway · EnginePort.reason · Acquire recipes YAML.  
-Bloques V1 ~38: V0 VG VK VL VF VA VH VQ VD.  
-DONE: sin LLM directo · mock tests · ROUTER_URL · EnginePort stubs · acquire · forensic gap→task · flags OFF.
+**I 201–240 Context adv:** sliding window · hybrid retrieval · symbol chunks · call-graph · type hierarchy · test/config/schema twin · CI failure · bug localization · stack map · profiling · dep constraints · LICENSE · CODEOWNERS prompt · branch intent · issue body · prior PR · design/ADR · anti-patterns · glossary · domain dict · error catalog · API errors · flags · env · queues · DB schema · migrations · permissions · tenant · i18n · a11y · perf budget · security · privacy · ownership · SLA · deprecation  
+**J 241–270 Multi-file:** cluster · consistency · rename cascade · interface/schema fan-out · constants · clones · layer violation · circular forecast · public API delta · internal leak · FFI · generated/vendor protect · lockfile · codegen · GraphQL · IaC+app · mobile+API · docs/i18n/flag/metrics/dashboard/helm/terraform co-edit · migration+ORM · seed+schema · contract+mock · changelog+version+tag  
+**K 271–300 Testing:** characterization · approval · sociable/solitary · hexagonal doubles · fake vs mock · time/random/clock · HTTP timeout · retry · circuit breaker · idempotency · exactly-once · poison · backpressure · pagination · authz · multi-tenant · GDPR · encryption · key rotation · flag matrix · canary · schema evolution · wire compat · snapshot redaction · load · chaos · synthetic · test factory  
+**L 301–330 Refactor:** parallel change · branch by abstraction · strangler · ACL · walk skeleton · lift-shift · vertical slice · hexagonal · domain events · CQRS · read model · outbox/inbox · saga · process manager · retry storm · bulkhead · degradation · fail-open/closed · cache invalidation · pagination/sync-async/poll-webhook mig · monolith extract · shared lib · gateway · BFF · DTO vs domain · mapping · null-object  
+**M 331–360 Quality:** cognitive complexity · nesting · params · returns · cohesion · feature envy · data clumps · shotgun · divergent · primitive obsession · speculative · dead store · unused public · TODO/suppressions/eslint-disable/type:ignore/Any/magic budgets · stringly · god class · leftover toggles · commented-out · debug print · hardcoded URL/creds · insecure deser · SQL concat · cmd injection  
+**N 361–390 Stack:** pyproject · ruff · mypy/pyright · pytest markers · coverage · pre-commit · dependabot · audit · lockfile · src-layout · namespace · __all__ · TYPE_CHECKING · Protocol · pydantic · dataclasses · async session · httpx · SQLAlchemy · alembic · FastAPI · Next · hooks · server/client · CSP · bundle · tree-shake · env zod/pydantic  
+**O 391–420 Collab:** decision log · meeting→tasks · RFC · design/sec/privacy/ops checklists · on-call · runbook · dashboard · alert · SLO · error budget · customer impact · support · docs semver · UI gif · a11y/i18n · analytics · experiment · kill switch · rollout · comms · postmortem · incident · learning · pair/mob · KB  
+**P 421–450 AI eval:** golden/regression prompts · LLM-judge · human rating · accept/undo/escape rates · hallucinated path/API · invented import/config · wrong version · license-incompat · copy-paste drift · style/naming · snippet/docstring/stub accuracy · multi-model · secondary review · proof · formal · symbolic · differential · shadow · canary agent · A/B · prompt registry  
+**Q 451–480 Platform:** background queue · notify · cancel · pause · worktree · devcontainer · SSH · codespace · GPU · browser allow · screenshot · Playwright · Storybook · MSW · OpenAPI client · SQL mig · TF · K8s · hadolint · compose · SBOM · CVE · attestations · OIDC · promotion · secrets · Vault · feature store · notebook · data contracts  
+**R 481–500 Governance:** OPA · license allowlist · export control · residency · retention · model card · eval dataset · red team · jailbreak · permission board · access recert · MCP review · plugin · marketplace · telemetry privacy · consent · audit export · legal hold · break-glass · policy changelog
 
 ---
 
-## G2. 00_METODO — 4 pasadas
+## H2. CURSOR_500 E001–E500 — 4 pasadas
 | P | Hallazgo |
 |---|----------|
-| P1 | AUSENTE en main post-restore |
-| P2 | Enlaza PROGRAMMING + FORENSIC_MAP + code paths |
-| P3 | Cadena política vs cadena REAL |
-| P4 | Append abajo |
+| P1 | Faltaba línea a línea en main |
+| P2 | ROI Wordflow E451–E500 |
+| P3 | Dataset sheriff |
+| P4 | Append bloques completos |
 
-**Contenido:**
-Cadena política: CONTEXT/HANDOFF → COPY-FIRST SCAN → IMPLEMENT(COPY|ADAPT|GENERATE) → WIRE → FORENSIC VERIFY → VERDICT AUTHORITY → CLOSED | FIX LOOP  
-Cadena REAL histórica: pre_gate → quality_bar → goal_lock → cognitive_loop → evidence → post_verify(VerdictAuthority)  
-COPY-FIRST: name+catalog+AST → COPY/ADAPT; GENERATE last; SOURCE→DEST+SHA  
-CONTROL DE TRABAJO: 1 TOTAL · 2 TERMINADAS · 3 PENDIENTES · 4 SIGUIENTE · 5 PLAN · 6 MÉTODO · 7 NO sandbox / GitHub=verdad  
-Nota: cadena histórica convive con §2 forensic_core; matriz §5 prioriza body actual del runner.
+**E001–E050 Context:** @file · @folder · @git diff · LSP · test log · stack map · call-graph · test/config/schema twin · .cursorignore · secrets · budget · pin · multi-root · package boundary · CI failure · CODEOWNERS · issue · ADR · design · glossary · error/env/flag catalogs · deprecation · generated/vendor protect · negative examples · symbol chunks · type hierarchy · import graph · diff hunks · open editors · selection · terminal · pre-commit · type/lint burst · lockfile · migration · permission · public API · internal leak · clones · dead export · TODO/FIXME · suppressions · related PR · branch intent  
+**E051–E100 Plan:** plan mode · artifact · frozen hash · non-goals · acceptance · blast · risk · test/rollback strategy · order · dry-run · max steps · re-plan · parallel/serial · mid approval · cluster · fan-out interface/schema · rename cascade · co-edit docs/tests/i18n/flag · lockfile · codegen · migration before ORM · contract before mock · version · changelog · ADR · no-touch-core · allow/deny paths · max files/LOC · DoD · GENERATE vs ADAPT · COPY sources · evidence · post-conditions · invariants · error-path · observability · security · data · concurrency · idempotency · performance · compat · exit criteria  
+**E101–E150 Apply:** allow/deny paths · max files/LOC/churn · feature branch · protect branch · atomic · rollback · undo · hunk/file accept · format · lint-fix · imports · conflict · 3-way · generated protect · no secrets/.env · paired test/snapshot · rename LSP · move+imports · safe delete · partial markers · no silent drop · plan id/hash · stage vs apply · worktree · dirty · lockfile · binary/large deny · symlink · line-ending · license/copyright · utf-8 · no reformat unrelated · minimize diff · single concern · split · description · task id · SOURCE→DEST · import rewrites · file/hash evidence  
+**E151–E200 Verify:** typecheck · lint · format · affected unit · integration · coverage · cycle · dead · complexity · secret scan · dep audit · license · lockfile drift · schema · OpenAPI · contract consumers · snapshot · flake · timeout · fail-fast · smoke · build · import/entrypoint smoke · migration dry-run · idempotency/concurrency/authz/validation/error/characterization/differential · golden · bench · bundle · a11y · i18n · CSP · docker/compose/TF/K8s · SBOM/CVE release · CI green · pre-push/pre-commit · skip≠pass · missing gate=fail · evidence packet  
+**E201–E250 Agent:** ask default · agent explicit · auto-apply off · tool/shell/network allow · no sudo · read-only · max tool/turns/failures · confirm destructive · injection · untrusted quarantine · model pin · temperature · prompt checksum · tool size · exfil · PII · audit · export · replay · supervisor · multi-agent · MCP allow/review · plugin · rate · cost/token budget · fast/slow · secondary review · hallucinated path/symbol · invented import/config · copy-paste drift · style · naming · prompt/rules version · policy snapshot · change/mission/task id · human gate · risk secrets · deny prod creds · sandbox FS  
+**E251–E300 Git/PR:** conventional · split · template · body from diff · link task · CODEOWNERS · risk labels · draft · CI green · signed · protected · changelog · version · revert · post-merge · branch from task · no secrets · no force main · merge queue · squash · conflict gated · stacked · release notes · tag · size/file limits · tests/docs required · screenshot/a11y/migration/flag/rollback notes · owner · review SLA · stale · block TODO/gates · approval N · dismiss stale · CODEOWNERS standards/kernel · binary/blob deny · submodule/vendor · generated mark · checklist · forensic+plan hash links  
+**E301–E350 Arch fitness:** layer tests · no cycles · dep matrix · domain purity · ports/adapters · forbidden imports · public API delta · semver · ADR · no-touch-core · LOC/fan-out/fan-in budgets · SDP/ADP · boundary engine/standards/kernel · catalog entry · connect edge · orphan/unreachable/dead/duplicate reports · naming · event/DTO version · expand/contract · feature flag · deprecation · flag deadline · arch CI · import linter · dep cruiser · metrics · hotspot · churn · knowledge concentration · bus factor · owned map · experimental/deprecated/examples/scripts/tools/generated/third_party policy · docs real paths · PIPELINE links · no doc-only claims · diagram from catalogs · arch drift bot  
+**E351–E400 Quality signals:** cognitive complexity · nesting · params · cohesion · feature envy · god class · magic/Any/type:ignore/lint-disable/TODO budgets · commented-out · debug print · hardcoded URL · SQL concat · cmd injection · insecure deser · path traversal · SSRF/XSS · pickle/eval · assert control · bare except · mutable default · resource leak · file handle · timeout missing · retry no jitter · busy wait · N+1 · unbounded list · missing pagination · naive datetime · timezone · float money · UUID/string · enum drift · dict typo · optional · race dict · lock ordering · async cancel · task group · context manager · idempotent · exactly-once banned · at-least-once · poison · backpressure · graceful shutdown  
+**E401–E450 Stack:** ruff format/lint · mypy/pyright · pytest markers · coverage · pre-commit · audit · lockfile · src layout · pydantic/zod · httpx timeout · SQLAlchemy · alembic · FastAPI · React hooks · server/client · env schema · no scattered env · structured log · request id · OTel · health/readiness/metrics · graceful timeout · docker non-root · dockerignore · multi-stage · pin images · no latest · CI cache/matrix/artifacts · determinism seed · freezegun · respx · factories · hypothesis · snapshot · ts strict · eslint · prettier · no-floating-promises · exhaustiveness · import type · side-effect free · barrels · circular barrels · tree-shake · bundle analyzer  
+**E451–E500 Wordflow ROI:** E451 context default False · E452 handoff default False · E453 git-diff scope · E454 unexpected_changes git · E455 core True solo con measure · E456 mission edges API · E457 GapRegistry persist · E458 lifecycle enforced · E459 forbid OPEN→CLOSED · E460 FourPassController real · E461 COPY when ADAPT · E462 adapt_imports wire · E463 symbol cache · E464 multi-repo roots · E465 reception index · E466 PolicySnapshot auto · E467 PlanArtifact · E468 PR SHA evidence · E469 run ledger ids · E470 catalog hash · E471 verdict baseline · E472–474 arch/forbidden/cycle CI · E475 caller inventory · E476 cognitive class evidence · E477–478 quality/goal_lock tested · E479 consumer return dict · E480 post_verify required prod · E481 prod vs dev · E482 allowlist wordflow · E483 deny PIPELINE write · E484 paired test · E485 catalog entry gate · E486 connect edge gate · E487 orphan CI · E488 unreachable path · E489 SOURCE→DEST ADAPT · E490 regenerate blocked · E491 human gate auth · E492 injection scan · E493 untrusted reception · E494 model pin · E495 cost/token · E496 stage timings · E497 structured log · E498 forensic report path · E499 AGENTS links test · E500 .cursor/rules frontmatter test
 
 ---
 
-## G3. 43_CODE_PATH — 4 pasadas
+## H3. ARQUITECTURA_WORDFLOW_GLOBAL — 4 pasadas
 | P | Hallazgo |
 |---|----------|
-| P1 | AUSENTE en main post-restore |
-| P2 | 5 planos + C-21…31 > solo C-19 |
-| P3 | Planner/DAG/Blackboard/Knowledge no en runner actual |
-| P4 | Append abajo |
+| P1 | Solo resumen A1 |
+| P2 | Control vs execution plane |
+| P3 | Fail-closed rules |
+| P4 | Append ampliado |
 
-**Contenido:**
-F40/F41/F42: Mission Planner · DAG · Blackboard · Event Bus · Policy · Context Builder · Knowledge Runtime · Expert Role Analyzer. Sin ancla Fxx → no programar.  
-Gaps G-CODE-26…40. Tareas C-21…C-31 + C-01…19 = 30 salidas V1.1.  
-5 planos: CONTROL · EXECUTION · KNOWLEDGE · STATE · OBSERVATION.  
-Flujo: GoalLock → Council+Analyzer → Planner → DAG → Policy → Blackboard → Knowledge → Context → SE → Audit → MAIN_12 → Deploy → docs → CI.  
-Reglas: Council decide · Planner divide · Knowledge obligatorio · LLM ~10% · ≤220 LOC · ficha.v2.  
-Estado doc: C-01 CLOSED · siguiente C-02.
+**Control plane (fail-closed):** forensic_core (CORE14+4-pass+counters+PASS) · gap_registry · checklist_sheriff + applicability + evidence_verifier · verdict_authority / closure_engine  
+**Execution plane:** code_path_runner — BLOCK sin context; forensic evaluate obligatorio; llm DENY  
+**Data:** catalogs JSON · PIPELINE policy · CI forensic-gates  
+**Regla de oro:** CLAIM ≠ EVIDENCE ≠ VERIFICATION ≠ PASS · NO VERIFIED CONTEXT → NO PROGRAMMING / NO AUDIT · REQUIRED no se bypasea
 
 ---
 
-## G4. CURSOR_200 (1–200) — 4 pasadas
+## H4. FORENSIC_ENFORCEMENT_REQUIRED — 4 pasadas
 | P | Hallazgo |
 |---|----------|
-| P1 | AUSENTE en main post-restore |
-| P2 | Dataset → Applicability/Sheriff |
-| P3 | No 200 gates runtime |
-| P4 | Append bloques 1–200 abajo |
+| P1 | Solo resumen A2 |
+| P2 | Runtime paths |
+| P3 | PASS rules |
+| P4 | Append ampliado |
 
-**1–25 Context:** Index semántico · @file · @codebase · @docs/@web · @git diff · @commit · Rules glob · Rules telemetry · Project memory · Sticky intent · Auto tabs · Auto selection · .cursorignore · Binary exclusion · Secrets redaction · Context budget · Pin files · Multi-root · Monorepo boundary · LSP symbols · Type diagnostics · Linter input · Test failure logs · Terminal output · Debug breakpoint  
-**26–45 Plan:** Plan mode · Plan reviewed · Checkboxes · Plan→task graph · Blast radius · Risk · Test strategy · Rollback · ADR · Frozen hash · Re-plan · Parallel/serial · Human mid-plan · Max steps · Plan diff · DoD · Non-goals · Acceptance machine · Edit order · Dry-run  
-**46–75 Edit:** Hunk/file accept · Multi-file txn · Atomic rollback · Staged AI · Plan id · Allowlist · Denylist · Max files/LOC/churn · Protect main · Feature branch · Dirty unrelated · Format · Imports · Code action · Rename LSP · Extract · Move+imports · Safe delete · Stub+TODO · Snippet · Skeleton · Partial markers · Conflict · 3-way · Undo · Redo  
-**76–100 Verify:** Nearest test · Affected tests · Coverage · Typecheck · Lint · Format · Import cycle · Dead code · Complexity · Mutation · Snapshot · Visual · Contract consumers · Property · Fuzz · Bench · Mem leak · Race · Integration env · Ephemeral DB · HTTP mock · Golden · Flake · Timeout · Fail-fast  
-**101–125 Git/PR:** Branch name · Conventional · Split commits · PR template · PR from diff · Link issue · CODEOWNERS · Risk label · CI green · Merge queue · Squash · Signed · GPG · Protected paths · Draft · Stacked · Cherry-pick · Rebase · Conflict gated · Changelog · Version · Release notes · Tag · Revert · Post-merge  
-**126–150 Agent:** Tool prompts · Network/Shell allow · No sudo · Sandbox FS · Read-only · Ask vs Agent · Auto-apply off · Confirm destructive · Rate limit · Max turns/failures · Injection filter · Untrusted quarantine · Model pin · Temperature · Prompt checksum · Tool size · Exfil block · PII · Audit log · Replay · Export · Multi-agent iso · Supervisor veto  
-**151–170 Arch:** Arch unit · Layer tests · Dep matrix · No cycles · Ports/adapters · Domain purity · ADR breach · RFC · Design review · OpenAPI · Schema-first · Compat · Feature flags · Strangler · Migration dry-run · Expand/contract · Shadow · Canary · SLO · Threat model  
-**171–200 DX:** Composer · Chat-apply · Checkpoint · Restore · Image→code · Terminal agent · Background jobs · Bugbot · Inline chat · Docstring/tests · Explain · Fix diagnostics · PR from chat · Linear/Notion · MCP registry/allow · Custom modes · Memories · Privacy · Cost dashboard · Fast/slow · Tab metrics · Next-edit · Peek · Symbol search · Team rules · Rules lint · Extension conflict · Workspace trust · Rule version pin  
-**Top 15 ROI:** 53 allowlist · 55–56 max files/LOC · 26–27 plan · 46–48 accept · 77 affected tests · 79–80 type/lint · 126–128 tool/shell · 15–16 secrets/budget · 109 CI · 107 CODEOWNERS · 151–154 arch · 138–139 injection · 146/173–174 ledger · 140 model pin · 5 git diff
+**Runtime:** standards/forensic_core.py · engine/code_path_runner.py · standards/gap_registry.py  
+**Rules:** NO VERIFIED CONTEXT → NO PROGRAMMING/AUDIT · CLAIM≠EVIDENCE≠VERIFICATION≠PASS · required_without_handler=FAIL · required_skip=FAIL · skip!=pass · OPEN→CLOSED forbidden · all_four_passes_required · no_dev_bypass_required  
+**PASS only if:** context_verified ∧ handoff_verified ∧ CORE14 ∧ 4 passes ∧ counters all 0 ∧ evidence_complete ∧ final_clean_reaudit ∧ quality_dag_ok  
+**Caller must supply:** core_measures[CORE-01..14] · connectivity flags · counters · evidence_complete · final_clean_reaudit_passed · quality_dag_ok
 
 ---
 
-## G5. Cierre lote
+## H5. Cierre lote H
 
-| Doc | Estado en main tras este append |
-|------|--------------------------------|
-| 48 | G1 añadido |
-| 00 | G2 añadido |
-| 43 | G3 añadido |
-| CURSOR_200 | G4 añadido |
+| Doc | Estado |
+|------|--------|
+| CURSOR_300 | H1 añadido |
+| CURSOR_500 E001–E500 | H2 añadido |
+| GLOBAL | H3 ampliado |
+| FORENSIC_ENFORCEMENT | H4 ampliado |
 
-**Siguiente lote (4 docs):** CURSOR_300 · CURSOR_500 E001–E500 · (si falta) texto íntegro A/B de faa6d95 · (si falta) más de 43 diagrama.
+**Confirmación:** §§1–8 + RESTORE + A + G **no se borraron**. Solo se añadió Anexo H al final.
+
+**Archivo:** https://github.com/maxbry123-commits/agentes/blob/main/PIPELINE/ARQUITECTURA_WORDFLOW_PROGRAMMING_REAL.md
