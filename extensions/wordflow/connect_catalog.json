@@ -1,0 +1,12 @@
+{
+  "version": "1.0.0",
+  "source": "component_catalog.json",
+  "connections": [
+    {"from": "wordflow.core", "to": "wordflow.engine.code_path_runner", "type": "internal"},
+    {"from": "wordflow.engine.code_path_runner", "to": "intelligence_gateway", "type": "gateway"},
+    {"from": "wordflow_kernel", "to": "engine.openclaw", "type": "adapter"},
+    {"from": "wordflow_kernel", "to": "engine.hermes", "type": "adapter"},
+    {"from": "github_deploy", "to": "wordflow.core", "type": "deploy"},
+    {"from": "acquire_engine", "to": "wordflow.core", "type": "sub_sheriff"}
+  ]
+}
