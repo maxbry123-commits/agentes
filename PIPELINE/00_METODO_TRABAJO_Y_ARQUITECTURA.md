@@ -1,22 +1,22 @@
 # PIPELINE 00 — MÉTODO DE TRABAJO
 
-**Forense:** PIPELINE/FORENSIC_CODE_AUDIT.md (v1.3)  
-**Guía code:** PIPELINE/ADVANCED_ENGINEERING_STANDARD_V3.md  
-**Standards code:** extensions/wordflow/standards/
+**Forense:** PIPELINE/FORENSIC_CODE_AUDIT.md  
+**Estándar:** PIPELINE/ADVANCED_ENGINEERING_STANDARD_V3.md  
+**Standards:** extensions/wordflow/standards/
 
-## Reglas de inicio (obligatorias)
-- Sin Context documental suficiente → NO programar
-- Sin método de trabajo / Handoff verificado → NO programar ni auditoría válida
-- Handoff ≠ trazabilidad completa
+## Obligatorio en toda tarea de code
+1. Context + Handoff verificados o BLOCK
+2. **COPY-FIRST:** buscar code existente → COPY/ADAPT; GENERATE solo si no hay match
+3. DONE literal
+4. Commit + Evidence (incluir SOURCE→DEST si hubo copia)
+5. Post-verify: auditoría forense 4 pasadas + VerdictAuthority
+6. Gap → FIX → RE-AUDIT hasta PASS
 
-## Cierre de tarea de code
-1. Context + Handoff verificados
-2. DONE literal
-3. Commit + evidencia GitHub
-4. FORENSIC 4 pasadas + enforcement gates
-5. Gap → FIX → RE-AUDIT hasta counters=0
-6. Solo VerdictAuthority emite PASS/CLOSED
-7. Anti-sobreingeniería: no omitir verificaciones requeridas
+## Cadena ejecutor
+```
+CONTEXT/HANDOFF → COPY-FIRST SCAN → IMPLEMENT(COPY|ADAPT|GENERATE) → WIRE
+→ FORENSIC 4-PASS → VERDICT AUTHORITY → CLOSED | FIX LOOP
+```
 
 ## CONTROL DE TRABAJO
 1 TOTAL · 2 TERMINADAS · 3 PENDIENTES · 4 SIGUIENTE · 5 PLAN · 6 MÉTODO · 7 NO sandbox / GitHub=verdad

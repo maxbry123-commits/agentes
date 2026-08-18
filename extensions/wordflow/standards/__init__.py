@@ -8,6 +8,8 @@ from .dependency_graph import DependencyGraph
 from .forensic_contract import ForensicCodeContract, ForensicContractValidator, ClosureCounters, CoreChecks, AuditPasses
 from .verdict_authority import VerdictAuthority
 from .forensic_report import render_forensic_report
+from .copy_first import ExistingCodeScanner, CopyPlan, CopyFirstResult, copy_file_deterministic
+from .executor_gates import ExecutorPreImplementGate, ExecutorPostVerifyGate
 
 __all__ = [
     "StandardContract", "RuleId", "StandardSheriff", "SheriffVerdict",
@@ -17,4 +19,6 @@ __all__ = [
     "ArchitectureManifest", "default_wordflow_manifest", "DependencyGraph",
     "ForensicCodeContract", "ForensicContractValidator", "ClosureCounters",
     "CoreChecks", "AuditPasses", "VerdictAuthority", "render_forensic_report",
+    "ExistingCodeScanner", "CopyPlan", "CopyFirstResult", "copy_file_deterministic",
+    "ExecutorPreImplementGate", "ExecutorPostVerifyGate",
 ]
