@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
-"""C-19 code_path_runner — post_verify required (no bypass en perfil normal)."""
+"""C-19 code_path_runner — FAIL-CLOSED forensic enforcement.
+NO VERIFIED CONTEXT → NO PROGRAMMING.
+REQUIRED gates no bypass (ni flag dev).
+"""
 from __future__ import annotations
 
 from typing import Any
@@ -18,25 +21,6 @@ class CodePathError(Exception):
         super().__init__(f"{reason_code}: {detail}" if detail else reason_code)
 
 
-def _programming_pre_gate(
-    raw_input: str,
-    *,
-    context_verified: bool = False,
-    handoff_verified: bool = False,
-    symbol: str = "code_path",
-) -> dict[str, Any]:
-    try:
-        from .programming_pipeline import default_pipeline
-        return default_pipeline().pre_implement(
-            context_verified=context_verified,
-            handoff_verified=handoff_verified,
-            symbol_or_stem=symbol,
-            dest="extensions/wordflow/engine/code_path_runner.py",
-        )
-    except Exception as exc:  # noqa: BLE001
-        return {"allow": True, "reason": f"pre_gate_skip:{exc}", "copy_first": None}
-
-
 def run_code_path(
     raw_input: str,
     *,
@@ -45,31 +29,35 @@ def run_code_path(
     mission_id: str = "",
     context_verified: bool = False,
     handoff_verified: bool = False,
-    enforce_copy_first: bool = True,
-    enforce_post_verify: bool = True,
-    allow_skip_post_verify: bool = False,
+    # forensic measures supplied by caller/CI — never LLM self-cert alone
+    core_measures: dict[str, bool] | None = None,
+    connectivity: dict[str, bool] | None = None,
+    counters: dict[str, int] | None = None,
+    evidence_complete: bool = False,
+    final_clean_reaudit_passed: bool = False,
+    quality_dag_ok: bool = False,
 ) -> dict[str, Any]:
-    """post_verify ON by default. allow_skip_post_verify solo dev/test explícito."""
-    if not allow_skip_post_verify:
-        enforce_post_verify = True
+    from extensions.wordflow.standards.forensic_core import (
+        ForensicProgrammingEnforcer,
+        ForensicEnforcementState,
+        CoreCheckResult,
+        ClosureCounters,
+        CORE_IDS,
+        CONNECTIVITY_CHAIN,
+    )
 
-    pre = None
-    if enforce_copy_first:
-        pre = _programming_pre_gate(
-            raw_input,
-            context_verified=context_verified,
-            handoff_verified=handoff_verified,
-        )
-        if pre and pre.get("allow") is False:
-            return {"ok": False, "stage": "programming_pre_gate", "detail": pre, "llm_control": "DENY"}
+    enforcer = ForensicProgrammingEnforcer()
+    block = enforcer.require_context(context_verified, handoff_verified)
+    if block:
+        return {"ok": False, "stage": "context", "detail": block, "llm_control": "DENY", "verdict": "BLOCK"}
 
     q = admit_or_reject(raw_input)
     if not q.get("ok"):
-        return {"ok": False, "stage": "quality_bar", "detail": q, "llm_control": "DENY"}
+        return {"ok": False, "stage": "quality_bar", "detail": q, "llm_control": "DENY", "verdict": "FAIL"}
 
     locked = lock_goals({"text": raw_input, "raw": raw_input})
     if not locked.get("ok"):
-        return {"ok": False, "stage": "goal_lock", "detail": locked, "llm_control": "DENY"}
+        return {"ok": False, "stage": "goal_lock", "detail": locked, "llm_control": "DENY", "verdict": "FAIL"}
 
     lock = locked.get("lock") or {}
     mid = mission_id or lock.get("lock_id") or ""
@@ -91,69 +79,60 @@ def run_code_path(
         claim_status="PARTIAL",
         paths=[{"path": "extensions/wordflow/engine/code_path_runner.py"}],
         tests={"cognitive_ok": True, "skill_compiled": compiled is not None},
-        doc_anchors=["C-19", "P0-enforcement"],
+        doc_anchors=["C-19", "FORENSIC_ENFORCEMENT"],
         notes=f"mission={mid}",
     )
     evidence_ok = verify_evidence_packet(evidence)["ok"]
 
-    post = None
-    if enforce_post_verify:
-        try:
-            from extensions.wordflow.standards.forensic_contract import ForensicCodeContract
-            from extensions.wordflow.standards.verdict_authority import VerdictAuthority
-            from extensions.wordflow.standards.evidence import EvidencePacket
-            from extensions.wordflow.standards.closure_engine import ClosureEngine, ClosureInput
-            from extensions.wordflow.standards.test_runner import default_smoke_runner
+    # Build enforcement state — missing CORE measure = FAIL (required_without_handler)
+    measures = core_measures or {}
+    core_results = []
+    for cid in CORE_IDS:
+        # default False: must be explicitly measured True
+        core_results.append(
+            CoreCheckResult(cid, bool(measures.get(cid, False)), evidence=str(measures.get(cid + "_evidence", "")))
+        )
 
-            smoke = default_smoke_runner().run()
-            contract = ForensicCodeContract(
-                context_verified=context_verified,
-                handoff_verified=handoff_verified,
-                evidence_complete=bool(evidence_ok),
-                final_clean_reaudit_passed=smoke.passed,
-            )
-            packet = EvidencePacket(
-                mission_id=mid or "code_path",
-                task_id="C-19",
-                change_id="code_path_run",
-                repository_revision="local",
-                files_changed=["extensions/wordflow/engine/code_path_runner.py"],
-                tests=[x["name"] for x in smoke.results if x.get("passed")],
-                checks=["pre_gate", "post_verify", "smoke"],
-                verdict="PASS" if smoke.passed and evidence_ok else "FAIL",
-            )
-            decision = VerdictAuthority(contract).decide(evidence=packet, require_evidence=True)
-            closure = ClosureEngine().decide(
-                ClosureInput(
-                    checklist_passed=True,  # full checklist when caller supplies claim
-                    forensic_passed=decision.get("verdict") == "PASS",
-                    evidence_ok=bool(evidence_ok),
-                )
-            )
-            post = {"verdict_authority": decision, "closure": closure, "smoke": smoke.passed}
-        except Exception as exc:  # noqa: BLE001
-            post = {"verdict": "FAIL", "reason": str(exc)}
+    conn = {k: bool((connectivity or {}).get(k, False)) for k in CONNECTIVITY_CHAIN}
+    ctr_in = counters or {}
+    ctr = ClosureCounters(
+        gaps=int(ctr_in.get("gaps", 0)),
+        blocking_gaps=int(ctr_in.get("blocking_gaps", 0)),
+        broken_connections=int(ctr_in.get("broken_connections", 0)),
+        unexplained_orphans=int(ctr_in.get("unexplained_orphans", 0)),
+        unreachable_required_paths=int(ctr_in.get("unreachable_required_paths", 0)),
+        unresolved_dependencies=int(ctr_in.get("unresolved_dependencies", 0)),
+        unverified_paths=int(ctr_in.get("unverified_paths", 0)),
+        unverified_requirements=int(ctr_in.get("unverified_requirements", 0)),
+        unverified_claims=int(ctr_in.get("unverified_claims", 0)),
+        pending_fixes=int(ctr_in.get("pending_fixes", 0)),
+        new_gaps_after_fix=int(ctr_in.get("new_gaps_after_fix", 0)),
+        unexpected_changes=int(ctr_in.get("unexpected_changes", 0)),
+    )
 
-    ok = True
-    if post and isinstance(post, dict):
-        va = post.get("verdict_authority") or post
-        if va.get("verdict") not in ("PASS", None) and post.get("verdict") == "FAIL":
-            ok = False
-        if (post.get("closure") or {}).get("closed") is False:
-            ok = False
-        if post.get("verdict") == "FAIL":
-            ok = False
+    state = ForensicEnforcementState(
+        context_verified=context_verified,
+        handoff_verified=handoff_verified,
+        core_results=core_results,
+        connectivity=conn,
+        counters=ctr,
+        evidence_complete=bool(evidence_complete and evidence_ok),
+        final_clean_reaudit_passed=bool(final_clean_reaudit_passed),
+        quality_dag_ok=bool(quality_dag_ok),
+        claim_used_as_pass=False,
+    )
+    forensic = enforcer.evaluate(state)
 
+    ok = forensic.get("verdict") == "PASS"
     return {
         "ok": ok,
         "mission_id": mid,
         "lock": lock,
         "cognitive": cog,
         "skill_compile": compiled,
-        "programming_pre_gate": pre,
-        "programming_post_verify": post,
         "evidence": evidence,
         "evidence_ok": evidence_ok,
+        "forensic": forensic,
         "llm_control": "DENY",
-        "enforce_post_verify": enforce_post_verify,
+        "verdict": forensic.get("verdict"),
     }
