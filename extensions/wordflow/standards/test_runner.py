@@ -1,7 +1,8 @@
-"""TestEffectivenessRunner mínimo — post-verify (G-W2)."""
+"""TestEffectivenessRunner + edge smoke (G-W2b)."""
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Callable, List, Dict, Any, Optional
+from typing import Callable, List, Dict, Any
+from pathlib import Path
 
 @dataclass
 class TestCase:
@@ -42,6 +43,34 @@ class TestEffectivenessRunner:
 def default_smoke_runner() -> TestEffectivenessRunner:
     r = TestEffectivenessRunner()
     r.add("truth", lambda: True)
-    r.add("copy_first_import", lambda: __import__("extensions.wordflow.standards.copy_first", fromlist=["ExistingCodeScanner"]) is not None)
-    r.add("verdict_import", lambda: __import__("extensions.wordflow.standards.verdict_authority", fromlist=["VerdictAuthority"]) is not None)
+    r.add(
+        "copy_first_import",
+        lambda: __import__("extensions.wordflow.standards.copy_first", fromlist=["ExistingCodeScanner"]) is not None,
+    )
+    r.add(
+        "verdict_import",
+        lambda: __import__("extensions.wordflow.standards.verdict_authority", fromlist=["VerdictAuthority"]) is not None,
+    )
+    r.add(
+        "wiring_import",
+        lambda: __import__("extensions.wordflow.standards.wiring_graph", fromlist=["WiringGraph"]) is not None,
+    )
+    r.add(
+        "forensic_contract_skip_not_pass",
+        lambda: __import__("extensions.wordflow.standards.forensic_contract", fromlist=["ForensicCodeContract"]).ForensicCodeContract().skip_equals_pass is False,
+    )
+    # G-W2b edges
+    r.add(
+        "edge_empty_scanner_roots",
+        lambda: len(__import__("extensions.wordflow.standards.copy_first", fromlist=["ExistingCodeScanner"]).ExistingCodeScanner([]).find_by_name("___none___")) == 0,
+    )
+    r.add(
+        "edge_catalog_exists",
+        lambda: (Path(__file__).resolve().parents[1] / "component_catalog.json").exists(),
+    )
+    r.add(
+        "edge_connect_catalog_exists",
+        lambda: (Path(__file__).resolve().parents[1] / "connect_catalog.json").exists(),
+        required=False,
+    )
     return r

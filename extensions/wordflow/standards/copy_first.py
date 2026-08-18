@@ -1,10 +1,11 @@
-"""COPY-FIRST + auto evidence map SOURCE→DEST (G-W5)."""
+"""COPY-FIRST + catalog + multi-repo roots (G-W10)."""
 from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 import hashlib
 import json
+import os
 
 @dataclass
 class SourceHit:
@@ -25,9 +26,33 @@ class CopyFirstResult:
     blocked_generate: bool
     message: str
 
+def default_multi_repo_roots() -> List[Path]:
+    """G-W10: roots locales opcionales vía WORDFLOW_SCAN_ROOTS (pathsep)."""
+    roots: List[Path] = []
+    env = os.environ.get("WORDFLOW_SCAN_ROOTS", "")
+    if env:
+        for part in env.split(os.pathsep):
+            p = Path(part.strip())
+            if p.exists():
+                roots.append(p)
+    # always include wordflow package root if present
+    wf = Path(__file__).resolve().parents[1]
+    roots.append(wf)
+    kernel = wf.parent / "wordflow_kernel"
+    if kernel.exists():
+        roots.append(kernel)
+    # dedupe
+    seen, out = set(), []
+    for r in roots:
+        s = str(r.resolve())
+        if s not in seen:
+            seen.add(s)
+            out.append(r)
+    return out
+
 class ExistingCodeScanner:
     def __init__(self, roots: Optional[List[Path]] = None):
-        self.roots = roots or []
+        self.roots = roots if roots is not None else default_multi_repo_roots()
 
     def _hash_prefix(self, text: str) -> str:
         return hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest()[:12]
@@ -48,11 +73,8 @@ class ExistingCodeScanner:
 
     def find_in_catalog(self, stem: str) -> List[SourceHit]:
         hits: List[SourceHit] = []
-        fixed = Path(__file__).resolve().parents[1] / "component_catalog.json"
-        paths = [fixed]
         for root in self.roots:
-            paths.append(root / "component_catalog.json")
-        for cat in paths:
+            cat = root / "component_catalog.json"
             if not cat.exists():
                 continue
             try:
@@ -85,14 +107,7 @@ def copy_file_deterministic(src: Path, dest: Path) -> Dict[str, Any]:
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(text, encoding="utf-8")
     h = hashlib.sha256(text.encode("utf-8")).hexdigest()
-    meta = {
-        "source": str(src),
-        "dest": str(dest),
-        "sha256": h,
-        "action": "COPY",
-        "bytes": len(text.encode("utf-8")),
-    }
-    # G-W5: side-car evidence map
+    meta = {"source": str(src), "dest": str(dest), "sha256": h, "action": "COPY", "bytes": len(text.encode("utf-8"))}
     side = dest.parent / f"{dest.stem}.copy_evidence.json"
     side.write_text(json.dumps(meta, indent=2), encoding="utf-8")
     meta["evidence_sidecar"] = str(side)
