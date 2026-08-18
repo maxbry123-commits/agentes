@@ -1,30 +1,32 @@
 # PIPELINE 00 — MÉTODO DE TRABAJO + ARQUITECTURA
 
-**Fecha:** 2026-08-17 (V3 standards)  
+**Fecha:** 2026-08-17  
+**Forense code:** PIPELINE/FORENSIC_CODE_AUDIT.md  
 **Estándar:** PIPELINE/ADVANCED_ENGINEERING_STANDARD_V3.md  
-**Code:** extensions/wordflow/standards/
+**Code standards:** extensions/wordflow/standards/
 
-## LEY
-1. LOC preferido 300–800 **por archivo**; proyecto sin límite de LOC.
-2. Code = profesional avanzado — **NUNCA MVP**.
-3. Gaps **blocking (P0/P1)** = 100% resueltos antes de avanzar; P2 puede quedar como deuda registrada.
-4. GitHub = única verdad; prohibido sandbox storage.
-5. AI output ≠ proof of correctness.
+## LEY de cierre de tarea de programación
 
-## Enforcement
-- RuleEngine (collectors reales: LOC, cycles, forbidden imports, evidence, MVP, gaps, AI-proof)
-- ArchitectureManifest + DependencyGraph
-- EvidencePacket obligatorio en claims críticos
-- QualityDAG: required gate sin handler = FAIL (no SKIP→PASS)
+1. Implementar el DONE literal (sin recortar alcance).
+2. Commit real en GitHub + enlaces que abren.
+3. **FORENSIC CODE AUDIT** (CORE 14 + FC-01..07).
+4. Si gaps bloqueantes > 0 → FIX → RE-AUDIT (bucle ilimitado).
+5. PASS solo si gaps=0, broken=0, orphans=0 y evidencia verificable.
+6. Gates condicionales solo si el cambio los activa.
+7. Nunca marcar DONE por afirmación propia de la IA.
 
-## Formato salida
-```
-# CONTROL DE TRABAJO
-1. TOTAL TAREAS V1
-2. TERMINADAS
-3. PENDIENTES
-4. SIGUIENTE
-5. PLAN
-6. MÉTODO
-7. CONFIRMACIÓN: NO sandbox storage · GitHub = verdad
-```
+## LOC y calidad
+- LOC límite **por archivo** (preferido 300–800); proyecto sin límite.
+- Code = profesional avanzado — **NUNCA MVP**.
+- Gaps blocking (P0/P1) = 100% antes de avanzar; P2 = deuda con owner/fecha.
+
+## Formato CONTROL DE TRABAJO
+1. TOTAL TAREAS V1  
+2. TERMINADAS  
+3. PENDIENTES  
+4. SIGUIENTE  
+5. PLAN  
+6. MÉTODO  
+7. CONFIRMACIÓN: NO sandbox storage · GitHub = verdad  
+
+No repetir enlaces de tareas ya cerradas si no hay cambio nuevo en esos paths.
