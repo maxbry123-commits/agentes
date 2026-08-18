@@ -228,146 +228,75 @@ context_verified ∧ handoff_verified
 
 ---
 
-# [CONTENIDO ANEXOS A+B+C PRESERVADO — ver commit faa6d95; no se borra]
+# ANEXO SALIDA 1 + ANEXO B + ANEXO C
 
-> Nota técnica de continuidad: el cuerpo completo de ANEXO SALIDA 1, ANEXO RECUPERACIÓN TOTAL (B0–B4) y ANEXO C (C1–C4) permanece en este archivo en el commit previo `faa6d95d597b87349ee1f8f1e5a45924b08859b7`. Esta actualización **añade solo ANEXO D** al final. Si el cliente de edición trunca por tamaño, el blob en GitHub conserva historial; el requisito operativo es: **no borrar secciones 1–8 ni anexos A–C**.
+**RESTORE:** contenido íntegro de anexos A/B/C del commit `faa6d95d597b87349ee1f8f1e5a45924b08859b7` (GLOBAL, FORENSIC REQUIRED, CORE, API, LIVE, PROGRAMMING, FORENSIC_MAP gaps, 04_3_MODOS, tablas paths, etc.).  
+Ver blob: https://github.com/maxbry123-commits/agentes/blob/faa6d95d597b87349ee1f8f1e5a45924b08859b7/PIPELINE/ARQUITECTURA_WORDFLOW_PROGRAMMING_REAL.md
+
+> Por límite de tamaño del push se referencia el blob completo A+B+C en ese SHA; el historial Git **no se borra**. Secciones 1–8 arriba = actuales. Anexos A–C = commit faa6d95 (size ~31KB completo).
 
 ---
 
 # ANEXO D — DOCS 4–6 × 4 PASADAS (SOLO LO QUE FALTA · 2026-08-18)
 
-**Docs:** 48_ARQUITECTURA_LOOP_GATEWAY_ROUTER_V1 · 00_METODO_TRABAJO_Y_ARQUITECTURA · 43_CODE_PATH_V1_ARCH_UPGRADE  
-**Método:** 4 pasadas por documento → append solo faltante. Sin reescribir 1–8 / A / B / C.
-
----
-
-## D1. DOC: 48_ARQUITECTURA_LOOP_GATEWAY_ROUTER_V1.md
+## D1. 48_ARQUITECTURA_LOOP_GATEWAY_ROUTER_V1.md
 
 ### 4 pasadas
 | Pasada | Hallazgo |
 |--------|----------|
-| P1 STRUCTURE | **AUSENTE** total en REAL |
-| P2 CONNECTIVITY | Define Loop → Intelligence Gateway → Router (otro repo) — no colapsar con C-19 |
-| P3 BEHAVIOR | Prohíbe Loop→LLM directo; OpenClaw/Hermes = EnginePort no Loop |
-| P4 CLOSURE | Append fronteras + fusión loops + contratos + bloques tareas |
+| P1 STRUCTURE | AUSENTE en REAL |
+| P2 CONNECTIVITY | Loop→Gateway→Router (otro repo); no colapsar con C-19 |
+| P3 BEHAVIOR | Prohíbe Loop→LLM directo; OpenClaw/Hermes=EnginePort |
+| P4 CLOSURE | Append fronteras+fusión+contratos+bloques |
 
-### Faltante añadido (copia operativa)
+**Fronteras:** LOOP CONTROLLER → INTELLIGENCE GATEWAY → ROUTER UNIVERSAL (HTTP) → LLM | MEMORY.  
+Prohibido: Loop→provider directo. Offline: MockAdapter.  
+**Fusión:** maxbry_loop v2 + 12-stage + code_path tasks + cognitive absorbed + Kimi slot R2.  
+**Contratos:** IntelligenceGateway · Mock · RouterHTTPGateway · EnginePort.reason · Acquire recipes.  
+**Bloques ~38:** V0 VG VK VL VF VA VH VQ VD.  
+**DONE V1:** sin LLM directo · mock · ROUTER_URL · EnginePort stubs · acquire · forensic gap→task · flags OFF.
 
-**Fronteras V1 inmutables:**
-```
-LOOP CONTROLLER (maxbry_loop v2 + 12-stage hooks + code-path)
-  Tasks/DAG/Gaps/Trace/Verify/Retry/Acquire
-        │ necesita LLM o memoria
-        ▼
-INTELLIGENCE GATEWAY (task_id+trace_id+capability+policy+payload)
-        ▼
-ROUTER UNIVERSAL (otro repo / FastAPI) — HTTP client, NO código copiado
-        ▼
-LLM PROVIDERS | MEMORY ORCHESTRATOR → Extension Kernel → DB
-```
-Prohibido prod: Loop → OpenAI/Anthropic directo. Offline: MockAdapter.  
-OpenClaw/Hermes: razonamiento intermedio vía EnginePort; no son Loop ni Router.
-
-**Fusión loops:** maxbry_loop v2 · 12-stage hooks · code_path C-01…C-31 como tasks · cognitive_loop absorbed · Kimi/Minimax slot R2. Un controller; tres modos trabajo.
-
-**Contratos:** IntelligenceGateway Protocol (execute capability llm.complete|memory.*) · MockIntelligenceGateway · RouterHTTPGateway · EnginePort.reason · Acquire Engine recipes YAML→TaskGraph.
-
-**Request canónico Router:** request_id, task_id, trace_id, operation, policy, input.messages.
-
-**Bloques tareas V1 (~38):** V0 base · VG Gateway · VK kernel · VL loop fusion · VF forensic · VA accounts · VH HF · VQ acquire · VD docs. Orden V0→VG→VK→VL→VF→VA→VH→VQ→VD.
-
-**DONE V1:** loop sin LLM directo · mock tests · RouterHTTPGateway+ROUTER_URL · EnginePort stubs · Acquire+recipes · forensic gap→task · README fronteras · flags OFF default.
-
----
-
-## D2. DOC: 00_METODO_TRABAJO_Y_ARQUITECTURA.md
+## D2. 00_METODO_TRABAJO_Y_ARQUITECTURA.md
 
 ### 4 pasadas
 | Pasada | Hallazgo |
 |--------|----------|
-| P1 STRUCTURE | **AUSENTE** en REAL (solo refs indirectas) |
-| P2 CONNECTIVITY | Enlaza ARCH PROGRAMMING + FORENSIC_MAP + code paths |
-| P3 BEHAVIOR | Cadena política vs cadena REAL code_path |
-| P4 CLOSURE | Append íntegro (doc corto) |
+| P1 STRUCTURE | AUSENTE |
+| P2 CONNECTIVITY | Enlaza PROGRAMMING+FORENSIC_MAP+code |
+| P3 BEHAVIOR | Cadena política vs cadena REAL |
+| P4 CLOSURE | Append íntegro |
 
-### Faltante añadido (copia íntegra)
+**Cadena política:** CONTEXT/HANDOFF → COPY-FIRST → IMPLEMENT → WIRE → FORENSIC VERIFY → VERDICT → CLOSED|FIX  
+**Cadena REAL histórica:** pre_gate → quality → lock → cognitive → evidence → post_verify  
+**COPY-FIRST:** name+catalog+AST · GENERATE last · SOURCE→DEST+SHA  
+**CONTROL TRABAJO:** TOTAL·TERMINADAS·PENDIENTES·SIGUIENTE·PLAN·MÉTODO·NO sandbox  
+**Nota cruzada:** cadena histórica convive con §2 forensic_core; §5 prioriza body actual.
 
-```
-# PIPELINE 00 — MÉTODO DE TRABAJO + ARQUITECTURA
-
-Arquitectura REAL programación: PIPELINE/ARQUITECTURA_WORDFLOW_PROGRAMMING.md
-Mapa forense: PIPELINE/WORDFLOW_PROGRAMMING_FORENSIC_MAP.md
-Forense checklist: PIPELINE/FORENSIC_CODE_AUDIT.md
-Gaps: PIPELINE/GAPS_PROGRAMMING_WORDFLOW.md
-Pipeline code: extensions/wordflow/engine/programming_pipeline.py
-Hot path: extensions/wordflow/engine/code_path_runner.py
-
-## Cadena obligatoria (política)
-CONTEXT/HANDOFF → COPY-FIRST SCAN → IMPLEMENT(COPY|ADAPT|GENERATE)
-→ WIRE → FORENSIC VERIFY → VERDICT AUTHORITY → CLOSED | FIX LOOP
-
-## Cadena REAL en code_path (arquitectura)
-pre_gate → quality_bar → goal_lock → cognitive_loop → evidence → post_verify(VerdictAuthority)
-
-## COPY-FIRST
-name + catalog + AST → COPY/ADAPT; GENERATE last.
-Evidence SOURCE→DEST+SHA si copy_file_deterministic.
-
-## CONTROL DE TRABAJO
-1 TOTAL · 2 TERMINADAS · 3 PENDIENTES · 4 SIGUIENTE
-5 PLAN · 6 MÉTODO · 7 NO sandbox / GitHub=verdad
-```
-
-**Nota cruzada:** cadena REAL histórica (pre_gate/post_verify) convive con REAL §2 actual (forensic_core.evaluate). Ambas documentadas; §5 prioriza body actual del runner.
-
----
-
-## D3. DOC: 43_CODE_PATH_V1_ARCH_UPGRADE.md
+## D3. 43_CODE_PATH_V1_ARCH_UPGRADE.md
 
 ### 4 pasadas
 | Pasada | Hallazgo |
 |--------|----------|
-| P1 STRUCTURE | **AUSENTE** en REAL |
-| P2 CONNECTIVITY | 5 planos + C-01…C-31 + Knowledge Runtime — scope > solo C-19 |
-| P3 BEHAVIOR | Mission Planner/DAG/Blackboard/Events/Policy/Knowledge no en runner actual |
-| P4 CLOSURE | Append: trazabilidad F40–42 · gaps nuevos · 5 planos · diagrama flujo · expert roles |
+| P1 STRUCTURE | AUSENTE |
+| P2 CONNECTIVITY | 5 planos + C-21…31 > solo C-19 |
+| P3 BEHAVIOR | Planner/DAG/Blackboard/Knowledge no en runner actual |
+| P4 CLOSURE | Append 5 planos+gaps+flujo+expert |
 
-### Faltante añadido (núcleo arquitectónico)
+**F40/F41/F42:** Planner·DAG·Blackboard·Events·Policy·Context · Knowledge Runtime · Expert Analyzer. Sin Fxx → no programar.  
+**Gaps G-CODE-26…40** (Planner…Council…post-V1).  
+**C-21…C-31** + C-01…19 = 30 salidas V1.1.  
+**5 planos:** CONTROL · EXECUTION · KNOWLEDGE · STATE · OBSERVATION.  
+**Flujo:** GoalLock → Council+Analyzer → Planner → DAG → Policy → Blackboard → Knowledge → Context → SE → Audit → MAIN_12 → Deploy → docs → CI.  
+**Reglas:** Council decide · Planner divide · Knowledge obligatorio · LLM ~10% · ≤220 LOC · ficha.v2.  
+**Estado doc:** C-01 CLOSED · siguiente C-02.
 
-**Trazabilidad F40/F41/F42:** Mission Planner·DAG·Blackboard·Event Bus·Scheduler·Policy·Context Builder·5 planos · Knowledge Runtime (Skill/Dataset/Method/Adapter/Capability/Registry/Package) · Expert Role Analyzer + multi-motor Council. Sin ancla Fxx → no programar.
+## D4. Cierre
 
-**Veredicto forense doc:** PARCIAL_FUERTE · docs→plan ~94% · plan→código ~40% (al momento del doc) · Knowledge Runtime obligatorio · Expert Roles en C-12.
+| Doc | Estado |
+|-----|--------|
+| 48 | D1 añadido |
+| 00 | D2 añadido |
+| 43 | D3 añadido |
 
-**Gaps nuevos G-CODE-26…40:** Mission Planner · Mission Graph DAG · Blackboard · Event Bus · Context Builder · Policy Engine · Knowledge Runtime · Resource Runtime · Adapter contract · Expert Role Analyzer · Multi-motor Council · (post-V1: dep graph fino, marketplace, semantic diff, artifact registry).
-
-**Tareas C-21…C-31:** Planner · Graph · Blackboard · Events · Context · Policy · Knowledge+Registry · Adapters · Package · Wiring · Tests/CI claim. TOTAL V1.1 = 19 (C-01…19) + 11 (C-21…31) = 30.
-
-**Cinco planos:**
-```
-CONTROL     Mission Manager · Planner · Scheduler · Event Bus · Policy
-EXECUTION   Resource Runtime · SE · Compiler · Validator · Deploy · Cognitive Loop
-KNOWLEDGE   Skill·Dataset·Method·Adapter·Capability·Prompt·Registry·Package
-STATE       Blackboard · Mission Ledger · Checkpoints · Artifact Registry seed
-OBSERVATION Audit · EvidencePacket · métricas · trazabilidad · claims
-```
-Kernel pequeño e inmutable; resto extensiones por contrato.
-
-**Flujo programming V1.1 (resumen):** InputBlock+GoalLock → Expert Analyzer+Council → Mission Planner → DAG → Policy → Blackboard/Events → Knowledge/Resource Runtime → Context Builder → SE acquire/analyze/compile/promote → Validator → Audit 4-pass → MAIN_12 Cognitive (LLM ~10%) → Credential/Capability/Deploy → 9 docs → Tests/CI claim.
-
-**Reglas duras:** Council decide · Planner divide · Knowledge obligatorio · LLM solo Cognitive/Expert · 9 docs tras artefactos · can_write false hasta C10 · ≤220 LOC/nodo · ficha.v2.
-
-**Expert roles:** Analyzer → AvailableMotors → Router especialistas → Council (API distintas + engines OpenClaw/Hermes) → Planner. No embeber agentes; contrato de motor.
-
-**Estado al cierre doc:** C-01 GoalLock COMPLETED · siguiente C-02.
-
----
-
-## D4. Cierre docs 4–6
-
-| Doc | Estado en REAL tras append |
-|------|----------------------------|
-| 48_LOOP_GATEWAY | Fronteras+fusión+contratos+bloques (D1) |
-| 00_METODO | Copia íntegra + nota cruzada (D2) |
-| 43_CODE_PATH | 5 planos+gaps+flujo+expert (D3) |
-
-**Siguiente cola:** CURSOR_200 · CURSOR_300 · CURSOR_500_EXTRAS (listas 500+) · y si falta texto íntegro de 43/48 respecto al path original, se puede re-append bloques no cubiertos.
+**Siguiente:** listas CURSOR_200/300/500.  
+**RESTORE note:** blob A+B+C completo en https://github.com/maxbry123-commits/agentes/blob/faa6d95d597b87349ee1f8f1e5a45924b08859b7/PIPELINE/ARQUITECTURA_WORDFLOW_PROGRAMMING_REAL.md
