@@ -1,162 +1,99 @@
-# FORENSIC CODE AUDIT v1.2
+# FORENSIC CODE AUDIT v1.2.1
 **Fecha:** 2026-08-18  
-**Regla maestra:** NO CONTEXT → NO PROGRAMMING · NO EVIDENCE → NO PASS · GAP → FIX → RE-AUDIT · 4 PASSES CLEAN → CLOSED
+**Cambio:** recuperar detalles perdidos/debilitados dentro de categorías existentes (sin nuevas capas de sobreingeniería).
 
-## CORE 14 (siempre)
-01 REQUIREMENT · 02 SCOPE/DIFF · 03 IMPLEMENTATION · 04 ARCHITECTURE · 05 DEPENDENCY · 06 CONTRACT · 07 REAL WIRING · 08 BEHAVIOR/EDGE · 09 TEST EFFECTIVENESS · 10 REGRESSION/IMPACT · 11 ERROR PATHS · 12 CODE QUALITY · 13 REPOSITORY TRUTH · 14 EVIDENCE+VERDICT
+## Regla maestra
+NO CONTEXT → NO PROGRAMMING · NO EVIDENCE → NO PASS · GAP → FIX → RE-AUDIT · 4 PASSES CLEAN → CLOSED
 
-## FC cierre
-| ID | Regla |
-|----|-------|
-| FC-01 | Architecture ↔ project documentation |
-| FC-02 | Full connectivity / wiring |
-| FC-03 | Gap → Fix → Re-Audit loop |
-| FC-04 | Requirement → Code → Test → Evidence |
-| FC-05 | Change impact analysis |
-| FC-06 | Real behavioral verification |
-| FC-07 | Final independent re-audit |
-| FC-08 | DOCUMENT CONTEXT VERIFICATION |
-| FC-09 | DOCUMENT ↔ CODE CROSS-VERIFICATION |
-| FC-10 | FUNCTIONAL WIRING (declared→…→output consumed→behavior) |
-| FC-11 | EVIDENCE-BACKED VERDICT (CLAIM ≠ PROOF) |
-| FC-12 | FOUR-PASS AUDIT (Structure/Connectivity/Behavior/Forensic) |
-| FC-13 | ANTI-OVERENGINEERING (minimal audit ≠ minimal quality) |
+---
 
-## REGLA 1 — Conectividad funcional
-DECLARED → REGISTERED → RESOLVED → INVOKED → EXECUTED → OUTPUT CONSUMED → BEHAVIOR VERIFIED  
-broken_connections=0 · unresolved_dependencies=0 · unexplained_orphans=0 · unverified_paths=0
+## CORE 14 (siempre) + detalle recuperado
 
-## REGLA 2 — Ningún PASS por afirmación
-CLAIM ≠ PROOF · PASS = VERIFICATION + EVIDENCE
+| # | Capa | Detalle obligatorio |
+|---|------|---------------------|
+| 01 | REQUIREMENT CLOSURE | REQ→code→test→evidence |
+| 02 | SCOPE / DIFF CLOSURE | unexpected_changes=0 o aprobados |
+| 03 | IMPLEMENTATION CLOSURE | DONE literal completo |
+| 04 | ARCHITECTURE / BOUNDARY | **domain boundaries · dependency direction · ports/adapters · forbidden boundary crossings** |
+| 05 | DEPENDENCY CLOSURE | **circular_dependencies=0 · forbidden_imports=0 · forbidden_dependencies=0** |
+| 06 | CONTRACT CLOSURE | **contratos versionados + compatibilidad** si API pública |
+| 07 | REAL WIRING CLOSURE | declared→registered→resolved→invoked→executed→output consumed→behavior |
+| 08 | BEHAVIOR / EDGE | normal/edge/error + **idempotency si hay side-effects** |
+| 09 | TEST EFFECTIVENESS | test falla si se rompe la lógica |
+| 10 | REGRESSION / IMPACT | **changed symbol → consumers → dependencies → tests → risk** |
+| 11 | ERROR PATH CLOSURE | failure paths aplicables |
+| 12 | CODE QUALITY | **FILE LOC: preferred≤800 · review>800 · refactor>1000 · critical>1500 · soft_min=300 (referencia, no mínimo obligatorio)** |
+| 13 | REPOSITORY TRUTH | paths/commits reales |
+| 14 | EVIDENCE + VERDICT | EvidencePacket; **AI output ≠ proof / ≠ verification / ≠ PASS** |
 
-## NORMA 4 PASADAS
-1 STRUCTURE — docs/arch/repo/files/deps/boundaries/contracts  
-2 CONNECTIVITY — req→component→registration→resolution→invocation→execution→consumer  
-3 BEHAVIOR — expected↔actual (normal/edge/error/regression/tests efectivos)  
-4 FORENSIC CLOSURE — findings→fixes→re-audit→evidence→verdict (gaps residuales, scope, claims)
+## FC-01..13
+FC-01 Arch↔docs · FC-02 Connectivity · FC-03 Gap loop · FC-04 Traceability · FC-05 Impact · FC-06 Behavior · FC-07 Final re-audit · FC-08 Document context · FC-09 Doc↔code cross-verify · FC-10 Functional wiring · FC-11 Evidence-backed verdict · FC-12 Four-pass · FC-13 Anti-overengineering
 
-## CONTEXTO DOCUMENTAL
-PROJECT DOCS → CONTEXT INDEX → REQUIREMENTS → ARCHITECTURE → CONTRACTS → IMPLEMENTATION → AUDIT  
-¿Suficiente contexto? NO → BLOCK / REQUEST CONTEXT (no inventar)
+## Detalles recuperados explícitos (F-01..17)
+1. FILE LOC thresholds (arriba en 12)  
+2. NO CIRCULAR → circular_dependencies=0  
+3. NO FORBIDDEN IMPORTS → forbidden_imports/dependencies=0  
+4. DOMAIN BOUNDARIES  
+5. PORTS / ADAPTERS  
+6. VERSIONED CONTRACTS  
+7. CRITICAL VERIFICATION (comportamiento/evidencia crítica)  
+8. AGENT RUNTIME AUTHORITY (si aplica: authority + tools allow/deny + enforcement runtime)  
+9. NO DEFAULT PROD (si config sensible: unsafe production default = FAIL)  
+10. DETERMINISTIC FIRST (si puede ser determinístico → no LLM por defecto)  
+11. STATE OWNERSHIP (owner + mutation path + shared state controlado)  
+12. CI FAIL-CLOSED: applicable required gate debe ejecutarse; required sin handler = FAIL; required SKIP = FAIL; optional SKIP OK; **SKIP ≠ PASS**  
+13. SYMBOL → CONSUMERS → TESTS → RISK  
+14. CLOSURE COUNTERS completos (abajo)  
+15. IDEMPOTENCY cuando side-effects  
+16. CONCURRENCY (si aplica): races · atomicity · locking · ordering · shared state  
+17. unexplained_orphans=0 **y** unreachable_required_paths=0 (distintos)
 
-## CROSS-VERIFY DOC ↔ CODE
-DOC_ONLY · CODE_ONLY · DOC_CODE_MISMATCH · CODE_TEST_MISMATCH · TEST_EVIDENCE_MISMATCH = gaps
+## QualityDAG / gates
+FORMAT · LINT · TYPE · STATIC · UNIT · INTEGRATION · CONTRACT · SECURITY · DEPS · ARCH · BUILD · AUDIT  
+Solo gates **aplicables requeridos** son obligatorios.  
+REQUIRED sin handler → FAIL · REQUIRED SKIP → FAIL · OPTIONAL SKIP → OK · SKIP ≠ PASS
+
+## Closure counters (completos)
+```
+closure:
+  gaps: 0
+  blocking_gaps: 0
+  broken_connections: 0
+  unexplained_orphans: 0
+  unreachable_required_paths: 0
+  unresolved_dependencies: 0
+  unverified_paths: 0
+  unverified_requirements: 0
+  unverified_claims: 0
+  pending_fixes: 0
+  new_gaps_after_fix: 0
+  unexpected_changes: 0
+```
+
+## 4 PASADAS
+1 STRUCTURE · 2 CONNECTIVITY · 3 BEHAVIOR · 4 FORENSIC CLOSURE
 
 ## CONDITIONAL (solo si aplica)
-Security · DB/Migration · Perf · Concurrency · External API · AI/Agent · Production · New dependency · Persistence · Distributed · Multi-repo
+Security · DB/Migration · Perf · Concurrency (detalle arriba) · External API · AI/Agent (authority runtime) · Production (no default prod) · New dependency · Persistence · Distributed · Multi-repo
 
 ## NO bloquear tarea normal
-SBOM/licencias universales · compliance genérico · DR/RTO · SLO universal · chaos · shadow traffic · break-glass · rotation drills · on-call · cost universal · model drift · attestation por edit · offline pack · API freeze · multi-tenant/PII si no aplica
+SBOM/licencias universales · compliance genérico · DR/RTO · SLO universal · chaos · shadow traffic · break-glass · rotation · on-call · cost universal · model drift · attestation por edit · offline pack · API freeze · multi-tenant/PII si no aplica
 
-## Anti-sobreingeniería
-MINIMAL AUDIT ≠ MINIMAL QUALITY  
-Quitar controles no aplicables ≠ quitar verificaciones requeridas  
-Nunca degradar arquitectura/seguridad/conectividad/funcionalidad
-
-## FORENSIC_CODE_CONTRACT v1.2
-```yaml
-FORENSIC_CODE_CONTRACT:
-  version: "1.2"
-  core: # all REQUIRED
-    requirements: REQUIRED
-    scope_diff: REQUIRED
-    implementation: REQUIRED
-    architecture: REQUIRED
-    dependencies: REQUIRED
-    contracts: REQUIRED
-    connectivity: REQUIRED
-    behavior: REQUIRED
-    tests: REQUIRED
-    regression_impact: REQUIRED
-    error_paths: REQUIRED
-    code_quality: REQUIRED
-    repository_truth: REQUIRED
-    evidence: REQUIRED
-  context:
-    required_before_implementation: true
-    required_before_audit: true
-    missing_context: BLOCK
-    cross_verify_documents: true
-  connectivity:
-    declared: REQUIRED
-    registered: REQUIRED
-    resolved: REQUIRED
-    invoked: REQUIRED
-    executed: REQUIRED
-    output_consumed: REQUIRED
-    behavior_verified: REQUIRED
-  audit:
-    passes_required: 4
-    pass_1: STRUCTURE
-    pass_2: CONNECTIVITY
-    pass_3: BEHAVIOR
-    pass_4: FORENSIC_CLOSURE
-    all_passes_required: true
-  loop:
-    sequence: [IMPLEMENT, AUDIT, CLASSIFY_GAPS, FIX, RE_AUDIT]
-    if_gap_found: FIX_AND_REAUDIT
-    require_clean_reaudit: true
-    unlimited_iterations: true
-    states: [OPEN, FIXED, VERIFIED, CLOSED]
-    forbidden_transition: [OPEN_TO_CLOSED]
-  engineering:
-    avoid_overengineering: true
-    preserve_architecture: true
-    preserve_quality_standard: true
-    remove_non_applicable_checks: true
-    never_remove_required_verification: true
-  closure:
-    blocking_gaps: 0
-    broken_connections: 0
-    unexplained_orphans: 0
-    unresolved_dependencies: 0
-    unverified_requirements: 0
-    unverified_claims: 0
-    pending_fixes: 0
-    new_gaps_after_fix: 0
-    unexpected_changes: 0
-  evidence:
-    required: true
-    claim_is_not_proof: true
-    every_critical_pass_requires_evidence: true
-    evidence_must_reference: [repository, path, test, commit_or_revision]
-  verdict:
-    PASS_ONLY_IF:
-      - context_verified
-      - all_required_checks_pass
-      - all_four_audit_passes_complete
-      - blocking_gaps == 0
-      - broken_connections == 0
-      - unexplained_orphans == 0
-      - unresolved_dependencies == 0
-      - unverified_requirements == 0
-      - unverified_claims == 0
-      - pending_fixes == 0
-      - new_gaps_after_fix == 0
-      - unexpected_changes == 0
-      - evidence_complete
-      - final_clean_reaudit_passed
+## Salida mínima
 ```
-
-## Salida mínima obligatoria
-```
-FORENSIC CODE AUDIT
+FORENSIC CODE AUDIT v1.2.1
 ━━━━━━━━━━━━━━━━━━
-PASS 1 — STRUCTURE          [✓/✗]
-PASS 2 — CONNECTIVITY       [✓/✗]
-PASS 3 — BEHAVIOR           [✓/✗]
-PASS 4 — FORENSIC CLOSURE   [✓/✗]
+PASS 1 STRUCTURE [✓/✗]  PASS 2 CONNECTIVITY [✓/✗]
+PASS 3 BEHAVIOR [✓/✗]   PASS 4 FORENSIC CLOSURE [✓/✗]
 
-ARCHITECTURE ↔ DOCS              [✓/✗]
-CONNECTIVITY                     [✓/✗]
-REQ → CODE → TEST → EVIDENCE     [✓/✗]
-DEPENDENCIES / CONTRACTS         [✓/✗]
-BEHAVIOR / ERROR PATHS           [✓/✗]
-IMPACT / REGRESSION              [✓/✗]
-EVIDENCE                         [✓/✗]
+ARCHITECTURE ↔ DOCS [✓/✗]  CONNECTIVITY [✓/✗]
+REQ→CODE→TEST→EVIDENCE [✓/✗]  DEPS/CONTRACTS [✓/✗]
+BEHAVIOR/ERROR PATHS [✓/✗]  IMPACT/REGRESSION [✓/✗]
+EVIDENCE [✓/✗]
 
-GAPS: 0 | BROKEN: 0 | ORPHANS: 0 | PENDING: 0 | UNVERIFIED: 0
+blocking_gaps:0 broken:0 orphans:0 unreachable:0
+unresolved_deps:0 unverified:0 pending:0 new_gaps_after_fix:0 unexpected:0
 RESULT: PASS / FAIL
 ```
 
-**Nota:** 0 gaps = 0 bloqueantes aplicables del contrato, no “cero mejoras posibles en el universo”.
+0 gaps = 0 bloqueantes aplicables del contrato ≠ cero mejoras posibles en el universo.
