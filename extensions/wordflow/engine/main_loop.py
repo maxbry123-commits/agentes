@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""main_12 loop runner — programming_path hook + S4 kwargs seguros."""
+"""main_12 — programming_path + T2 attestation on full_pass."""
 from __future__ import annotations
 
 import time
@@ -30,12 +30,7 @@ def load_main_12(path: Path | str | None = None) -> dict[str, Any]:
         raise RuntimeError("PyYAML required")
     p = Path(path) if path else _loop_path()
     data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
-    return {
-        "loop_id": data.get("loop_id", "main_12"),
-        "steps": list(data.get("steps") or []),
-        "on_fail": data.get("on_fail", "stop"),
-        "on_reject": data.get("on_reject", "stop"),
-    }
+    return {"loop_id": data.get("loop_id", "main_12"), "steps": list(data.get("steps") or []), "on_fail": data.get("on_fail", "stop"), "on_reject": data.get("on_reject", "stop")}
 
 
 def _build_task_list(block: dict[str, Any], goals_in: dict[str, Any]) -> list[dict[str, Any]]:
@@ -116,14 +111,7 @@ def run_main_12(
     state["goals_out"]["GOUT-06"] = {"name": "repair_actions", "value": applied, "status": "DONE"}
     _record("S04", "repair", True, applied)
 
-    raw2 = {
-        "schema_version": block2.get("schema_version", "1.0"), "block_id": block2.get("block_id"),
-        "source_type": block2.get("source_type"), "raw_text": block2.get("raw_text"),
-        "quality_bar": block2.get("quality_bar"), "goals_hint": block2.get("goals_hint"),
-        "priority": block2.get("priority"), "doc_refs": block2.get("doc_refs"),
-        "constraints": block2.get("constraints"), "meta": block2.get("meta"),
-        "parent_block_id": block2.get("parent_block_id"),
-    }
+    raw2 = {"schema_version": block2.get("schema_version", "1.0"), "block_id": block2.get("block_id"), "source_type": block2.get("source_type"), "raw_text": block2.get("raw_text"), "quality_bar": block2.get("quality_bar"), "goals_hint": block2.get("goals_hint"), "priority": block2.get("priority"), "doc_refs": block2.get("doc_refs"), "constraints": block2.get("constraints"), "meta": block2.get("meta"), "parent_block_id": block2.get("parent_block_id")}
     goals_in2 = extract_goals_in(block2)
     sentinel = run_sentinel(raw2, goals_in=goals_in2)
     state["sentinel"] = sentinel
@@ -165,11 +153,14 @@ def run_main_12(
         text = str(block2.get("raw_text") or "")
         mid = str(block2.get("block_id") or "main_12")
         if programming_full_pass:
-            base = full_pass_kwargs(mission_id=mid)
+            base = full_pass_kwargs(mission_id=mid, ci_attestation=True, attestation_source="main_12_programming_full_pass")
         else:
             base = minimal_block_kwargs()
             base["mission_id"] = mid
         base.update(programming_kwargs or {})
+        # strip non-runner keys
+        base.pop("_ci_attestation", None)
+        base.pop("_attestation_source", None)
         prog = default_pipeline().run_unified(text, **base)
         state["programming"] = prog
         state["goals_out"]["GOUT-09"] = {"name": "programming_path", "value": prog.get("verdict"), "status": "DONE" if prog.get("ok") else "FAIL"}
@@ -180,7 +171,6 @@ def run_main_12(
             return state
 
     _record("S09", "emit_goals_out", True, sum(1 for g in state["goals_out"].values() if g.get("status") == "DONE"))
-
     packet = goals_out_to_evidence_packet(block=block2, goals_out=state["goals_out"], tasks=tasks, loop_status="RUNNING", repo=repo)
     state["evidence_packet"] = packet
     state["goals_out"]["GOUT-10"] = {"name": "evidence_packet", "value": packet.get("task_id"), "status": "DONE"}
