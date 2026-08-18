@@ -1,6 +1,6 @@
 # ARQUITECTURA_WORDFLOW_LIVE.md — T0+
-**Última actualización:** 2026-08-17 20:55  
-**Estado:** PARCIAL → cerca de cierre skeleton  
+**Última actualización:** 2026-08-17 21:15  
+**Estado:** PARCIAL  
 **Fuente:** 🎯🔒 arquitectura final TEAM YAIWES (15-ago) + A1-A12 + PIPELINE/00
 
 ## Diseño obligatorio
@@ -10,14 +10,15 @@ Contratos AgentRuntime. 6 niveles: DEFINITION | CONTROL | EXECUTION | STATE | EV
 ## T0 Motors nativos
 1. SEND (READY)  2. CALL (READY)  3. DOWNLOAD (READY)  4. KERNEL-EXT
 
-## Reception real
+## Reception real + Knowledge
 - agentes ✅  osquestador-auditor ✅  comand-Center ✅
+- **Knowledge:** agent MUST recover/create reception link if lost → ver extensions/wordflow/reception/KNOWLEDGE_RECEPTION_LINKS.md
 
 ## Estado T0
-- [DONE] 4 motors skeleton + SEND/CALL/DOWNLOAD READY
-- [DONE] Reception 3 repos
-- [parcial] Bridge full + método universal + KERNEL-EXT complete + más receptions
+- [DONE] 4 motors skeleton READY
+- [DONE] Reception 3 repos + knowledge recovery
+- [parcial] Bridge full + método universal + KERNEL-EXT complete
 - [parcial] Este MD
 
 ## Próximo
-Cerrar KERNEL-EXT + T2 o más receptions.
+Cerrar KERNEL-EXT + T2.
