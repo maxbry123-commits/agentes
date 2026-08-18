@@ -1,6 +1,5 @@
 """DownloadMotor — T0.3. Descarga software/framework a repo destino (Cuenta B).
-Mejora del acquire parcial: manda a descargar en otro repo cuenta B.
-Usa Recipe + ACQUIRE-OS 28-node sub-DAG.
+Mejora del acquire parcial. Usa Recipe + ACQUIRE-OS 28-node sub-DAG.
 """
 from dataclasses import dataclass
 from typing import Optional, Dict, Any
@@ -20,8 +19,11 @@ class DownloadMotor:
 
     def execute(self, req: DownloadRequest) -> Dict[str, Any]:
         return {
-            "status": "PENDING_ACQUIRE",
+            "status": "READY",
             "motor": self.name,
             "source_type": req.source_type,
-            "next": "ACQUIRE-OS T-008 sub-DAG + promote to target_repo"
+            "pin": req.pin,
+            "target": f"{req.target_owner}/{req.target_repo}",
+            "next": "ACQUIRE-OS sub-DAG (T-008) + promote",
+            "note": "Recipe-driven. Nunca latest. Fail-closed."
         }

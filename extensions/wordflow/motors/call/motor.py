@@ -1,6 +1,7 @@
 """CallMotor — T0.2 native. Llama code/tools de otros repos multi-cuenta con trazabilidad."""
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional, Dict, Any, List
+from datetime import datetime, timezone
 
 @dataclass
 class CallRequest:
@@ -16,10 +17,17 @@ class CallMotor:
         self.trace: List[Dict] = []
 
     def execute(self, req: CallRequest) -> Dict[str, Any]:
-        self.trace.append({"ts": "now", "req": req.__dict__})
+        entry = {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "req": req.__dict__,
+            "action": "get_file_contents"
+        }
+        self.trace.append(entry)
         return {
-            "status": "PENDING",
+            "status": "READY",
             "motor": self.name,
             "trace_id": len(self.trace),
-            "next": "github___get_file_contents + trazabilidad"
+            "target": f"{req.owner}/{req.repo}:{req.path}@{req.ref}",
+            "next": "github___get_file_contents + append trace",
+            "note": "Trazabilidad completa en self.trace"
         }
