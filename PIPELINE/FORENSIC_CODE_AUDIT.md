@@ -1,30 +1,12 @@
-# FORENSIC CODE AUDIT — Lista consolidada (por tarea)
-**Fecha:** 2026-08-17  
-**Fuente:** A–L + Delta filtrado + Lista1 (eliminar/condicional) + Lista2 (faltantes accionables) + FC-01..07  
-**Regla:** CORE siempre · CONDITIONAL solo si aplica · loop hasta PASS
+# FORENSIC CODE AUDIT v1.2
+**Fecha:** 2026-08-18  
+**Regla maestra:** NO CONTEXT → NO PROGRAMMING · NO EVIDENCE → NO PASS · GAP → FIX → RE-AUDIT · 4 PASSES CLEAN → CLOSED
 
-## CORE — siempre (cada tarea de programación)
+## CORE 14 (siempre)
+01 REQUIREMENT · 02 SCOPE/DIFF · 03 IMPLEMENTATION · 04 ARCHITECTURE · 05 DEPENDENCY · 06 CONTRACT · 07 REAL WIRING · 08 BEHAVIOR/EDGE · 09 TEST EFFECTIVENESS · 10 REGRESSION/IMPACT · 11 ERROR PATHS · 12 CODE QUALITY · 13 REPOSITORY TRUTH · 14 EVIDENCE+VERDICT
 
-| # | Capa | Criterio de cierre |
-|---|------|--------------------|
-| 01 | REQUIREMENT CLOSURE | REQ → code → test → evidence trazable |
-| 02 | SCOPE / DIFF CLOSURE | diff ⊆ scope; unexpected files = 0 o aprobados |
-| 03 | IMPLEMENTATION CLOSURE | DONE literal materializado (no subconjunto) |
-| 04 | ARCHITECTURE / BOUNDARY | boundaries + doc↔repo match |
-| 05 | DEPENDENCY CLOSURE | deps resueltas; nuevas deps justificadas |
-| 06 | CONTRACT CLOSURE | inputs/outputs/errores explícitos si API pública |
-| 07 | REAL WIRING CLOSURE | registered → resolved → called → exercised |
-| 08 | BEHAVIOR / EDGE | escenarios aplicables NORMAL/EDGE/ERROR verificados |
-| 09 | TEST EFFECTIVENESS | test fallaría si se rompe la lógica |
-| 10 | REGRESSION / IMPACT | callers/deps impactados considerados |
-| 11 | ERROR PATH CLOSURE | failure paths aplicables handled + tested |
-| 12 | CODE QUALITY | complejidad/LOC archivo/cohesión aceptable |
-| 13 | REPOSITORY TRUTH | paths/commits reales; sin 404 lógico |
-| 14 | EVIDENCE + VERDICT | EvidencePacket completo; PASS solo con evidencia |
-
-## FC — cierre forense (obligatorio)
-
-| ID | Check |
+## FC cierre
+| ID | Regla |
 |----|-------|
 | FC-01 | Architecture ↔ project documentation |
 | FC-02 | Full connectivity / wiring |
@@ -32,69 +14,149 @@
 | FC-04 | Requirement → Code → Test → Evidence |
 | FC-05 | Change impact analysis |
 | FC-06 | Real behavioral verification |
-| FC-07 | Final independent re-audit (fixes no crean gaps nuevos) |
+| FC-07 | Final independent re-audit |
+| FC-08 | DOCUMENT CONTEXT VERIFICATION |
+| FC-09 | DOCUMENT ↔ CODE CROSS-VERIFICATION |
+| FC-10 | FUNCTIONAL WIRING (declared→…→output consumed→behavior) |
+| FC-11 | EVIDENCE-BACKED VERDICT (CLAIM ≠ PROOF) |
+| FC-12 | FOUR-PASS AUDIT (Structure/Connectivity/Behavior/Forensic) |
+| FC-13 | ANTI-OVERENGINEERING (minimal audit ≠ minimal quality) |
 
-## CONDITIONAL — solo si aplica el cambio
+## REGLA 1 — Conectividad funcional
+DECLARED → REGISTERED → RESOLVED → INVOKED → EXECUTED → OUTPUT CONSUMED → BEHAVIOR VERIFIED  
+broken_connections=0 · unresolved_dependencies=0 · unexplained_orphans=0 · unverified_paths=0
 
-| Gate | Activar cuando |
-|------|----------------|
-| SECURITY | auth, secrets, trust boundary, agent tools |
-| DATABASE / MIGRATION | schema, persistencia, migraciones |
-| PERFORMANCE | hot path, API latency, jobs pesados |
-| CONCURRENCY | threads, async, shared state |
-| EXTERNAL API | HTTP/SDK externos |
-| AI / AGENT | LLM, tools, prompts, authority |
-| PRODUCTION | runtime prod, deploy path |
-| NEW DEPENDENCY | nueva lib/paquete |
-| PERSISTENCE | state durable |
-| DISTRIBUTED | multi-node, queues |
-| MULTI-REPO | cambio cruza repos |
+## REGLA 2 — Ningún PASS por afirmación
+CLAIM ≠ PROOF · PASS = VERIFICATION + EVIDENCE
 
-## NO bloquear tarea normal (Lista 1)
+## NORMA 4 PASADAS
+1 STRUCTURE — docs/arch/repo/files/deps/boundaries/contracts  
+2 CONNECTIVITY — req→component→registration→resolution→invocation→execution→consumer  
+3 BEHAVIOR — expected↔actual (normal/edge/error/regression/tests efectivos)  
+4 FORENSIC CLOSURE — findings→fixes→re-audit→evidence→verdict (gaps residuales, scope, claims)
 
-SBOM completo · licencias transitivas universales · SOC2/ISO/GDPR/HIPAA/PCI genérico · RTO/RPO · multi-region failover · SLO/SLA universales · multi-tenancy si no hay tenants · chaos/fault injection · shadow traffic universal · break-glass · secrets rotation drill · on-call · cost budget universal · model drift universal · artifact attestation por cada edit · offline audit pack por tarea · API freeze windows · PII si no hay datos personales.
+## CONTEXTO DOCUMENTAL
+PROJECT DOCS → CONTEXT INDEX → REQUIREMENTS → ARCHITECTURE → CONTRACTS → IMPLEMENTATION → AUDIT  
+¿Suficiente contexto? NO → BLOCK / REQUEST CONTEXT (no inventar)
 
-## Formato de salida de auditoría (obligatorio)
+## CROSS-VERIFY DOC ↔ CODE
+DOC_ONLY · CODE_ONLY · DOC_CODE_MISMATCH · CODE_TEST_MISMATCH · TEST_EVIDENCE_MISMATCH = gaps
 
+## CONDITIONAL (solo si aplica)
+Security · DB/Migration · Perf · Concurrency · External API · AI/Agent · Production · New dependency · Persistence · Distributed · Multi-repo
+
+## NO bloquear tarea normal
+SBOM/licencias universales · compliance genérico · DR/RTO · SLO universal · chaos · shadow traffic · break-glass · rotation drills · on-call · cost universal · model drift · attestation por edit · offline pack · API freeze · multi-tenant/PII si no aplica
+
+## Anti-sobreingeniería
+MINIMAL AUDIT ≠ MINIMAL QUALITY  
+Quitar controles no aplicables ≠ quitar verificaciones requeridas  
+Nunca degradar arquitectura/seguridad/conectividad/funcionalidad
+
+## FORENSIC_CODE_CONTRACT v1.2
+```yaml
+FORENSIC_CODE_CONTRACT:
+  version: "1.2"
+  core: # all REQUIRED
+    requirements: REQUIRED
+    scope_diff: REQUIRED
+    implementation: REQUIRED
+    architecture: REQUIRED
+    dependencies: REQUIRED
+    contracts: REQUIRED
+    connectivity: REQUIRED
+    behavior: REQUIRED
+    tests: REQUIRED
+    regression_impact: REQUIRED
+    error_paths: REQUIRED
+    code_quality: REQUIRED
+    repository_truth: REQUIRED
+    evidence: REQUIRED
+  context:
+    required_before_implementation: true
+    required_before_audit: true
+    missing_context: BLOCK
+    cross_verify_documents: true
+  connectivity:
+    declared: REQUIRED
+    registered: REQUIRED
+    resolved: REQUIRED
+    invoked: REQUIRED
+    executed: REQUIRED
+    output_consumed: REQUIRED
+    behavior_verified: REQUIRED
+  audit:
+    passes_required: 4
+    pass_1: STRUCTURE
+    pass_2: CONNECTIVITY
+    pass_3: BEHAVIOR
+    pass_4: FORENSIC_CLOSURE
+    all_passes_required: true
+  loop:
+    sequence: [IMPLEMENT, AUDIT, CLASSIFY_GAPS, FIX, RE_AUDIT]
+    if_gap_found: FIX_AND_REAUDIT
+    require_clean_reaudit: true
+    unlimited_iterations: true
+    states: [OPEN, FIXED, VERIFIED, CLOSED]
+    forbidden_transition: [OPEN_TO_CLOSED]
+  engineering:
+    avoid_overengineering: true
+    preserve_architecture: true
+    preserve_quality_standard: true
+    remove_non_applicable_checks: true
+    never_remove_required_verification: true
+  closure:
+    blocking_gaps: 0
+    broken_connections: 0
+    unexplained_orphans: 0
+    unresolved_dependencies: 0
+    unverified_requirements: 0
+    unverified_claims: 0
+    pending_fixes: 0
+    new_gaps_after_fix: 0
+    unexpected_changes: 0
+  evidence:
+    required: true
+    claim_is_not_proof: true
+    every_critical_pass_requires_evidence: true
+    evidence_must_reference: [repository, path, test, commit_or_revision]
+  verdict:
+    PASS_ONLY_IF:
+      - context_verified
+      - all_required_checks_pass
+      - all_four_audit_passes_complete
+      - blocking_gaps == 0
+      - broken_connections == 0
+      - unexplained_orphans == 0
+      - unresolved_dependencies == 0
+      - unverified_requirements == 0
+      - unverified_claims == 0
+      - pending_fixes == 0
+      - new_gaps_after_fix == 0
+      - unexpected_changes == 0
+      - evidence_complete
+      - final_clean_reaudit_passed
+```
+
+## Salida mínima obligatoria
 ```
 FORENSIC CODE AUDIT
 ━━━━━━━━━━━━━━━━━━
-[✓/✗] 1. ARQUITECTURA ↔ DOCUMENTACIÓN
-[✓/✗] 2. CONECTIVIDAD / WIRING COMPLETO
-[✓/✗] 3. REQUISITOS → CODE → TEST
-[✓/✗] 4. DEPENDENCIAS / CONTRATOS
-[✓/✗] 5. FUNCIONALIDAD / VARIANTES / ERRORES
-[✓/✗] 6. IMPACTO / REGRESIONES
-[✓/✗] 7. EVIDENCIA VERIFICABLE
+PASS 1 — STRUCTURE          [✓/✗]
+PASS 2 — CONNECTIVITY       [✓/✗]
+PASS 3 — BEHAVIOR           [✓/✗]
+PASS 4 — FORENSIC CLOSURE   [✓/✗]
 
-GAPS:       N
-BROKEN:     N
-ORPHANS:    N
-PENDIENTES: N
+ARCHITECTURE ↔ DOCS              [✓/✗]
+CONNECTIVITY                     [✓/✗]
+REQ → CODE → TEST → EVIDENCE     [✓/✗]
+DEPENDENCIES / CONTRACTS         [✓/✗]
+BEHAVIOR / ERROR PATHS           [✓/✗]
+IMPACT / REGRESSION              [✓/✗]
+EVIDENCE                         [✓/✗]
 
-RESULTADO: PASS / FAIL
+GAPS: 0 | BROKEN: 0 | ORPHANS: 0 | PENDING: 0 | UNVERIFIED: 0
+RESULT: PASS / FAIL
 ```
 
-## Loop obligatorio
-
-```
-IMPLEMENT → AUDIT → GAPS?
-  YES → CLASSIFY → FIX → RE-AUDIT → …
-  NO  → FINAL RE-AUDIT → CLOSED
-```
-
-OPEN → FIXED → VERIFIED → CLOSED (nunca OPEN→CLOSED sin verify).
-
-## Criterio CLOSED
-
-```
-blocking_gaps: 0
-broken_connections: 0
-orphan_components: 0
-unresolved_dependencies: 0
-unverified_requirements: 0
-unverified_claims: 0
-final_reaudit_passed: true
-```
-
-PASS nunca por afirmación de la IA; solo con evidencia.
+**Nota:** 0 gaps = 0 bloqueantes aplicables del contrato, no “cero mejoras posibles en el universo”.

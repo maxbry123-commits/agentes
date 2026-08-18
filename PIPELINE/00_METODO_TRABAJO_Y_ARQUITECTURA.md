@@ -1,32 +1,17 @@
-# PIPELINE 00 — MÉTODO DE TRABAJO + ARQUITECTURA
+# PIPELINE 00 — MÉTODO DE TRABAJO
 
-**Fecha:** 2026-08-17  
-**Forense code:** PIPELINE/FORENSIC_CODE_AUDIT.md  
-**Estándar:** PIPELINE/ADVANCED_ENGINEERING_STANDARD_V3.md  
-**Code standards:** extensions/wordflow/standards/
+**Forense:** PIPELINE/FORENSIC_CODE_AUDIT.md (v1.2)  
+**Estándar:** PIPELINE/ADVANCED_ENGINEERING_STANDARD_V3.md
 
-## LEY de cierre de tarea de programación
+## Cierre de tarea de code
+1. Contexto documental suficiente (FC-08) o BLOCK.
+2. Implementar DONE literal.
+3. Commit GitHub + evidencias.
+4. FORENSIC CODE AUDIT — 4 pasadas (FC-12).
+5. Gap → FIX → RE-AUDIT hasta closure.* == 0.
+6. PASS solo con evidencia (FC-11); nunca por afirmación.
+7. Anti-sobreingeniería (FC-13): no omitir verificaciones requeridas.
 
-1. Implementar el DONE literal (sin recortar alcance).
-2. Commit real en GitHub + enlaces que abren.
-3. **FORENSIC CODE AUDIT** (CORE 14 + FC-01..07).
-4. Si gaps bloqueantes > 0 → FIX → RE-AUDIT (bucle ilimitado).
-5. PASS solo si gaps=0, broken=0, orphans=0 y evidencia verificable.
-6. Gates condicionales solo si el cambio los activa.
-7. Nunca marcar DONE por afirmación propia de la IA.
-
-## LOC y calidad
-- LOC límite **por archivo** (preferido 300–800); proyecto sin límite.
-- Code = profesional avanzado — **NUNCA MVP**.
-- Gaps blocking (P0/P1) = 100% antes de avanzar; P2 = deuda con owner/fecha.
-
-## Formato CONTROL DE TRABAJO
-1. TOTAL TAREAS V1  
-2. TERMINADAS  
-3. PENDIENTES  
-4. SIGUIENTE  
-5. PLAN  
-6. MÉTODO  
-7. CONFIRMACIÓN: NO sandbox storage · GitHub = verdad  
-
-No repetir enlaces de tareas ya cerradas si no hay cambio nuevo en esos paths.
+## CONTROL DE TRABAJO
+1 TOTAL · 2 TERMINADAS · 3 PENDIENTES · 4 SIGUIENTE · 5 PLAN · 6 MÉTODO · 7 NO sandbox / GitHub=verdad  
+No repetir links de tareas cerradas sin cambio nuevo.
