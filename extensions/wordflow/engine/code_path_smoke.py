@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""C-31 code_path_smoke — offline integration of code-path modules. 0% LLM."""
+"""C-31 code_path_smoke — offline integration. T8: full_pass_kwargs attested."""
 from __future__ import annotations
 
 from typing import Any
@@ -16,7 +16,7 @@ from extensions.wordflow.engine.reuse_12 import reuse_12
 from extensions.wordflow.engine.resource_catalog import ResourceCatalog, make_entry
 from extensions.wordflow.engine.skill_native_compiler import compile_skill_to_code
 from extensions.wordflow.engine.github_publisher import MapCredentialStore
-from extensions.wordflow.standards.forensic_core import CORE_IDS, CONNECTIVITY_CHAIN, FC_IDS
+from extensions.wordflow.engine.programming_kwargs import full_pass_kwargs
 
 
 def run_smoke() -> dict[str, Any]:
@@ -26,19 +26,13 @@ def run_smoke() -> dict[str, Any]:
         "Objetivo: validar path de code determinista C-31 "
         "con analyze compile promote y claim evidence."
     )
-    # GR-01: fail-closed — context + measures explícitas (no asumir PASS sin gates)
     steps["code_path"] = run_code_path(
         text,
-        mission_id="C31",
-        context_verified=True,
-        handoff_verified=True,
-        core_measures={cid: True for cid in CORE_IDS},
-        connectivity={k: True for k in CONNECTIVITY_CHAIN},
-        evidence_complete=True,
-        final_clean_reaudit_passed=True,
-        quality_dag_ok=True,
-        fc_results={fid: True for fid in FC_IDS},
-        auto_measure_core=True,
+        **full_pass_kwargs(
+            mission_id="C31",
+            ci_attestation=True,
+            attestation_source="code_path_smoke",
+        ),
     )
 
     analyzed = analyze_document("# C31\n\nUse engine/smoke.py\n", doc_id="c31")
@@ -107,4 +101,4 @@ def run_smoke() -> dict[str, Any]:
         steps["evidence_ok"],
         steps["claim"].get("ok"),
     ])
-    return {"ok": ok, "steps": steps, "llm_control": "DENY", "path": "UNIFIED_RUNNER_V1"}
+    return {"ok": ok, "steps": steps, "llm_control": "DENY", "path": "UNIFIED_RUNNER_V1", "t_status": "T8_SMOKE_ATTESTED"}
