@@ -1,15 +1,11 @@
 # PIPELINE 55 — LISTA COMPLETA V1
-**Actualizado:** 2026-08-17 22:11
+**Actualizado:** 2026-08-17 22:13
 
 ### BLOQUE A: S01–S06 DONE + AUDIT-5 DONE
-### BLOQUE B
+### BLOQUE B: S07–S12 DONE
 | Salida | ID | Tarea | Estado |
 |--------|-----|-------|--------|
-| S07 | T07 | WordflowInstance + registry | DONE |
-| S08 | T08 | state.json por instance_id | DONE |
-| S09 | T09 | spawn_wordflow(config/DNA) | DONE |
-| S10 | T10 | Loader ficha.v2 → capability | DONE |
-| S11 | T11 | Bootstrap multi-instance aware | DONE |
-| S12 | T12 | Fail_closed ficha / llm_control | PEND |
+| S07–S12 | T07–T12 | Instance + store + spawn + ficha loader + bootstrap multi + fail_closed | DONE |
 
-Siguiente: S12 (cierra Bloque B).
+Siguiente: S13 / T13 (Bloque C — C100-01).
+Nota: 5 tareas desde último AUDIT → toca AUDIT-5 de S06–S12 o S08–S12 antes de C100.
