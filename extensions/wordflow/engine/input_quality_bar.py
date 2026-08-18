@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""C-13 input_quality_bar — reject empty/MVP-only inputs before lock. 0% LLM."""
+"""C-13/U6 input_quality_bar — thresholds explícitos en result."""
 from __future__ import annotations
 
 import re
@@ -53,6 +53,9 @@ def evaluate_input_quality(
         "ok": ok,
         "reason_codes": reasons,
         "chars": len(stripped),
+        "min_chars": min_chars,
+        "require_objective": require_objective,
+        "thresholds": {"min_chars": min_chars, "mvp_markers": True, "objective_or_verb": require_objective},
         "llm_control": "DENY",
         "policy": "never_mvp",
     }
@@ -62,13 +65,14 @@ def evaluate_input_quality(
 
 
 def admit_or_reject(text: str, **kwargs: Any) -> dict[str, Any]:
-    """Soft wrapper: never raises; returns ok flag."""
     try:
         return evaluate_input_quality(text, fail_closed=True, **kwargs)
     except QualityBarError as e:
         return {
             "ok": False,
             "reason_codes": e.detail.split(",") if e.detail else [e.reason_code],
+            "min_chars": kwargs.get("min_chars", MIN_CHARS_DEFAULT),
+            "thresholds": {"min_chars": kwargs.get("min_chars", MIN_CHARS_DEFAULT)},
             "llm_control": "DENY",
             "policy": "never_mvp",
         }
