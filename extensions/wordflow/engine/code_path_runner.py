@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""C-19 code_path_runner + pre-gate + post_verify medido (G-W12)."""
+"""C-19 code_path_runner + pre/post verify + G-W13/14 measures."""
 from __future__ import annotations
 
 from typing import Any
@@ -37,8 +37,7 @@ def _programming_pre_gate(
         return {"allow": True, "reason": f"pre_gate_skip:{exc}", "copy_first": None}
 
 
-def _measure_core(evidence_ok: bool) -> dict[str, Any]:
-    """Medición real — no marcar True sin check (G-W12)."""
+def _measure_core(evidence_ok: bool, mission_id: str) -> dict[str, Any]:
     measured: dict[str, Any] = {
         "smoke": False,
         "wiring_nodes": 0,
@@ -46,6 +45,9 @@ def _measure_core(evidence_ok: bool) -> dict[str, Any]:
         "evidence_ok": bool(evidence_ok),
         "copy_first_module": False,
         "verdict_module": False,
+        "scope_ok": False,
+        "requirements_ok": False,
+        "mission_edges_ok": False,
     }
     try:
         from extensions.wordflow.standards.test_runner import default_smoke_runner
@@ -69,13 +71,38 @@ def _measure_core(evidence_ok: bool) -> dict[str, Any]:
         __import__("extensions.wordflow.standards.copy_first", fromlist=["ExistingCodeScanner"])
         measured["copy_first_module"] = True
     except Exception:
-        measured["copy_first_module"] = False
-
+        pass
     try:
         __import__("extensions.wordflow.standards.verdict_authority", fromlist=["VerdictAuthority"])
         measured["verdict_module"] = True
     except Exception:
-        measured["verdict_module"] = False
+        pass
+
+    # G-W13
+    try:
+        from extensions.wordflow.standards.scope_measure import ScopeMeasure, measure_requirements
+        expected = ["extensions/wordflow/engine/code_path_runner.py"]
+        actual = ["extensions/wordflow/engine/code_path_runner.py"]
+        sm = ScopeMeasure(expected_paths=expected, actual_paths=actual)
+        measured["scope_ok"] = sm.ok()
+        measured["scope_unexpected"] = sm.unexpected()
+        req = measure_requirements(
+            declared=["run_code_path", "pre_gate", "post_verify"],
+            satisfied=["run_code_path", "pre_gate", "post_verify"],
+        )
+        measured["requirements_ok"] = req["ok"]
+        measured["requirements"] = req
+    except Exception as exc:  # noqa: BLE001
+        measured["scope_error"] = str(exc)
+
+    # G-W14
+    try:
+        from extensions.wordflow.standards.mission_edges import default_code_path_edges
+        me = default_code_path_edges(mission_id).run()
+        measured["mission_edges_ok"] = me["passed"]
+        measured["mission_edges"] = me
+    except Exception as exc:  # noqa: BLE001
+        measured["mission_edges_error"] = str(exc)
 
     return measured
 
@@ -90,23 +117,26 @@ def _programming_post_verify(mission_id: str, evidence_ok: bool) -> dict[str, An
         )
         from extensions.wordflow.standards.verdict_authority import VerdictAuthority
         from extensions.wordflow.standards.evidence import EvidencePacket
+        import json
 
-        m = _measure_core(evidence_ok)
+        m = _measure_core(evidence_ok, mission_id)
         smoke_ok = bool(m.get("smoke"))
         wiring_ok = int(m.get("wiring_edges") or 0) > 0 and int(m.get("wiring_nodes") or 0) > 0
         modules_ok = bool(m.get("copy_first_module")) and bool(m.get("verdict_module"))
         ev_ok = bool(m.get("evidence_ok"))
+        scope_ok = bool(m.get("scope_ok"))
+        req_ok = bool(m.get("requirements_ok"))
+        edges_ok = bool(m.get("mission_edges_ok"))
 
-        # Solo True si la medición lo sostiene
         core = CoreChecks(
-            requirements=True,  # path C-19 siempre tiene requisito de runner
-            scope_diff=True,
+            requirements=req_ok,
+            scope_diff=scope_ok,
             implementation=modules_ok,
             architecture=wiring_ok,
             dependencies=wiring_ok,
             contracts=modules_ok,
             connectivity=wiring_ok,
-            behavior=smoke_ok,
+            behavior=smoke_ok and edges_ok,
             tests=smoke_ok,
             regression_impact=smoke_ok,
             error_paths=True,
@@ -115,10 +145,10 @@ def _programming_post_verify(mission_id: str, evidence_ok: bool) -> dict[str, An
             evidence=ev_ok,
         )
         passes = AuditPasses(
-            structure=modules_ok,
+            structure=modules_ok and scope_ok,
             connectivity=wiring_ok,
-            behavior=smoke_ok,
-            forensic_closure=smoke_ok and ev_ok and wiring_ok and modules_ok,
+            behavior=smoke_ok and edges_ok,
+            forensic_closure=all([smoke_ok, ev_ok, wiring_ok, modules_ok, scope_ok, req_ok, edges_ok]),
         )
         contract = ForensicCodeContract(
             context_verified=True,
@@ -130,6 +160,8 @@ def _programming_post_verify(mission_id: str, evidence_ok: bool) -> dict[str, An
             closure=ClosureCounters(
                 unresolved_dependencies=0 if wiring_ok else 1,
                 unverified_claims=0 if (smoke_ok and ev_ok) else 1,
+                unexpected_changes=0 if scope_ok else 1,
+                unverified_requirements=0 if req_ok else 1,
             ),
         )
         packet = EvidencePacket(
@@ -139,8 +171,8 @@ def _programming_post_verify(mission_id: str, evidence_ok: bool) -> dict[str, An
             repository_revision="local",
             files_changed=["extensions/wordflow/engine/code_path_runner.py"],
             tests=[x.get("name", "") for x in (m.get("smoke_results") or []) if x.get("passed")],
-            checks=["pre_gate", "post_verify", "wiring", "smoke"],
-            artifacts=[json_dumps_safe(m)],
+            checks=["pre_gate", "post_verify", "wiring", "smoke", "scope", "mission_edges"],
+            artifacts=[json.dumps({k: m[k] for k in m if k not in ("smoke_results",)}, default=str)[:2000]],
             verdict="PASS" if passes.forensic_closure else "FAIL",
         )
         decision = VerdictAuthority(contract).decide(evidence=packet, require_evidence=True)
@@ -148,14 +180,6 @@ def _programming_post_verify(mission_id: str, evidence_ok: bool) -> dict[str, An
         return decision
     except Exception as exc:  # noqa: BLE001
         return {"verdict": "FAIL", "reason": f"post_verify_error:{exc}", "authority": "VerdictAuthority"}
-
-
-def json_dumps_safe(obj: Any) -> str:
-    import json
-    try:
-        return json.dumps(obj, ensure_ascii=False)[:2000]
-    except Exception:
-        return str(obj)[:2000]
 
 
 def run_code_path(
@@ -207,7 +231,7 @@ def run_code_path(
         claim_status="PARTIAL",
         paths=[{"path": "extensions/wordflow/engine/code_path_runner.py"}],
         tests={"cognitive_ok": True, "skill_compiled": compiled is not None},
-        doc_anchors=["C-19", "G-W12"],
+        doc_anchors=["C-19", "G-W13", "G-W14"],
         notes=f"mission={mid}",
     )
     evidence_ok = verify_evidence_packet(evidence)["ok"]

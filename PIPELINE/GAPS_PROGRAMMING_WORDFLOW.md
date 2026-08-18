@@ -1,11 +1,11 @@
 # Gaps Wordflow programación
 
-## Cerrado
-G-W1..G-W12 (salvo notas) · G-W3 AST symbol index · G-W9 · G-W10 · Cursor/AGENTS
+## Cerrado (oleada mejoras Cursor/senior)
+G-W1..G-W14 base: pipeline, pre/post code_path, smoke+edges, wiring, CI, cursor rules, AST symbols, adapt imports, multi-repo roots, scope/requirements measure, mission edge registry.
 
-## Abierto
+## Abierto residual
 | ID | Gap | Sev |
 |----|-----|-----|
-| G-W13 | requirements/scope_diff heurísticos en post_verify | P2 |
-| G-W14 | Edge cases de negocio por misión | P1 |
-| G-W3b | symbol index no cachea en disco entre runs | P3 |
+| G-W14b | Edges de negocio inyectados por misión real (no solo defaults code_path) | P2 |
+| G-W13b | Scope real desde diff git, no lista fija | P2 |
+| G-W3b | Cache disco del symbol index | P3 |
