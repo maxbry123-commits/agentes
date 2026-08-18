@@ -1,4 +1,4 @@
-"""COPY-FIRST + catalog + multi-repo + AST symbols (G-W3)."""
+"""COPY-FIRST + catalog + multi-repo + AST symbols + U5 stem index cache."""
 from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -7,7 +7,7 @@ import hashlib
 import json
 import os
 
-from .symbol_index import build_symbol_index, SymbolHit
+from .symbol_index import build_symbol_index
 
 @dataclass
 class SourceHit:
@@ -53,6 +53,7 @@ class ExistingCodeScanner:
     def __init__(self, roots: Optional[List[Path]] = None):
         self.roots = roots if roots is not None else default_multi_repo_roots()
         self._symbol_index = None
+        self._stem_index: Optional[Dict[str, List[SourceHit]]] = None
 
     def _hash_prefix(self, text: str) -> str:
         return hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest()[:12]
@@ -62,19 +63,46 @@ class ExistingCodeScanner:
             self._symbol_index = build_symbol_index(self.roots)
         return self._symbol_index
 
-    def find_by_name(self, stem: str) -> List[SourceHit]:
-        hits: List[SourceHit] = []
+    def _build_stem_index(self) -> Dict[str, List[SourceHit]]:
+        """U5: una pasada rglob → índice stem → paths."""
+        idx: Dict[str, List[SourceHit]] = {}
         for root in self.roots:
             if not root.exists():
                 continue
             for p in root.rglob("*.py"):
-                if p.stem == stem or stem in p.stem:
-                    try:
-                        data = p.read_text(encoding="utf-8", errors="replace")
-                    except OSError:
-                        data = ""
-                    hits.append(SourceHit(str(p), f"name_match:{stem}", self._hash_prefix(data)))
-        return hits
+                try:
+                    data = p.read_text(encoding="utf-8", errors="replace")
+                except OSError:
+                    data = ""
+                hit = SourceHit(str(p), f"name_match:{p.stem}", self._hash_prefix(data))
+                idx.setdefault(p.stem.lower(), []).append(hit)
+                # also index partial stems for substring later
+                for part in p.stem.lower().replace("-", "_").split("_"):
+                    if len(part) >= 3:
+                        idx.setdefault(part, []).append(hit)
+        return idx
+
+    def stem_index(self) -> Dict[str, List[SourceHit]]:
+        if self._stem_index is None:
+            self._stem_index = self._build_stem_index()
+        return self._stem_index
+
+    def find_by_name(self, stem: str) -> List[SourceHit]:
+        key = stem.lower()
+        idx = self.stem_index()
+        hits = list(idx.get(key, []))
+        # substring on keys
+        if not hits:
+            for k, lst in idx.items():
+                if key in k or k in key:
+                    hits.extend(lst)
+        # dedupe
+        seen, out = set(), []
+        for h in hits:
+            if h.path not in seen:
+                seen.add(h.path)
+                out.append(SourceHit(h.path, f"name_match:{stem}", h.sha256_prefix))
+        return out
 
     def find_by_symbol(self, name: str) -> List[SourceHit]:
         hits: List[SourceHit] = []
@@ -111,7 +139,7 @@ class ExistingCodeScanner:
                 seen.add(h.path)
                 uniq.append(h)
         if uniq and not force_generate:
-            return CopyFirstResult(CopyPlan("ADAPT", uniq, dest, "existing found"), True, "GENERATE blocked")
+            return CopyFirstResult(CopyPlan("ADAPT", uniq, dest, "existing found; stem_index=U5"), True, "GENERATE blocked")
         if force_generate:
             return CopyFirstResult(CopyPlan("GENERATE", [], dest, "force"), False, "GENERATE allowed")
         return CopyFirstResult(CopyPlan("GENERATE", [], dest, "no match"), False, "GENERATE last")
