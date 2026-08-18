@@ -436,3 +436,119 @@ No es: IDE · escritor autónomo del git tree · 500 gates uno-a-uno · auto-PAS
 Recuperado y **añadido al final** de este mismo archivo (sin borrar secciones 1–8): Global, Forensic REQUIRED, planos, CORE, connectivity, counters, RULES, 4-pass, evaluate, API, GapRegistry, catalog runtime, trazabilidad, QualityDAG, playbook, definición.
 
 **Siguiente:** Salida 2 — recuperar lista de componentes (1–500 / E*) y **solo añadir** al final de este archivo.
+
+---
+
+# ANEXO RECUPERACIÓN TOTAL — COPIAS DE ARCHIVOS (SOLO ADICIÓN · 2026-08-18)
+
+**Método:** copia íntegra de cada documento de arquitectura/auditoría recuperado. **Sin borrar** ninguna sección anterior.
+
+## B0. Índice de archivos de arquitectura recuperados en este anexo
+
+1. ARQUITECTURA_WORDFLOW_LIVE.md (copia abajo B1)  
+2. ARQUITECTURA_WORDFLOW_PROGRAMMING.md (copia abajo B2)  
+3. WORDFLOW_PROGRAMMING_FORENSIC_MAP.md (copia abajo B3)  
+4. Ya en Salida 1: GLOBAL + FORENSIC_ENFORCEMENT_REQUIRED + bloques MASTER  
+5. Listas 1–500 + E001–E500: **Salida 2** — append siguiente (CURSOR_200 + CURSOR_300 + CURSOR_500_EXTRAS)  
+6. Otros aún por append si faltan: 04_ARQUITECTURA_3_MODOS, 48_LOOP_GATEWAY_ROUTER, 43_CODE_PATH_V1_ARCH_UPGRADE  
+
+## B1. COPIA ÍNTEGRA — ARQUITECTURA_WORDFLOW_LIVE.md
+
+```
+# ARQUITECTURA_WORDFLOW_LIVE.md — T0 CLOSED
+**Última actualización:** 2026-08-17 21:23  
+**Estado:** T0 = DONE  
+**Fuente:** arquitectura final TEAM YAIWES (15-ago) + A1-A12 + PIPELINE/00
+
+## Diseño obligatorio
+TEAM YAIWES → CORE KERNEL → KERNEL EXTENSION (CONTROL+WORKFLOW) → UNIFIED RUNTIME (Hermes/OpenClaw adapters) → COMMON INTERFACE
+
+## T0 = DONE
+Motors SEND/CALL/DOWNLOAD/KERNEL-EXT READY  
+Reception 3 repos + Knowledge recovery  
+Bridge note + method documentados
+
+## Lista total → PIPELINE/TAREAS_ACTUAL.md
+
+## Próximo: T2
+```
+
+## B2. COPIA ÍNTEGRA — ARQUITECTURA_WORDFLOW_PROGRAMMING.md
+
+```
+# ARQUITECTURA WORDFLOW — PROGRAMACIÓN DE CODE (REAL)
+
+**Fuente:** PIPELINE/WORDFLOW_PROGRAMMING_FORENSIC_MAP.md  
+**Fecha:** 2026-08-18  
+**Regla:** solo arquitectura demostrada + gaps explícitos. No idealizar.
+
+## 1. Propósito
+Orquestar path determinista run_code_path con: pre-gate (context/handoff + COPY-FIRST), quality + goal lock + cognitive loop, evidence engine, post-verify forense + VerdictAuthority.
+El runner no es el escritor de git; mide, bloquea y veredicta.
+
+## 2. Capas
+Caller → code_path_runner hot path C-19 → Engine (quality/goal/cognitive/evidence) + standards (pre_gate/COPY-FIRST/contract/verdict/smoke/wiring/scope/mission_edges) → dict + llm_control=DENY
+
+## 3. Componentes canónicos (paths)
+Hot path code_path_runner · programming_pipeline · executor_gates · copy_first · symbol_index · forensic_contract · verdict_authority · test_runner · wiring_graph · scope_measure · mission_edges · catalogs JSON · CI forensic-gates · .cursor/rules · AGENTS.md
+
+## 4. Flujo de control
+1 Pre-authorization context/handoff 2 Reuse COPY-FIRST 3 Admit quality 4 Lock goals 5 Cognitive 6 Optional compile 7 Evidence 8 Post forensic + VerdictAuthority 9 Return DENY
+
+## 5. Contratos
+ForensicCodeContract · EvidencePacket standards · evidence_packet engine · Catalog connectivity WiringGraph
+PIPELINE MD = política humana; no sustituye enforcement hot path
+
+## 6. Límites explícitos
+Runner no escribe git · Context flags (versión map: riesgo default True documentado en forensic map) · Scope listas fijas · 4-pass booleanos · GapRegistry runtime ausente en map antiguo · cognitive_loop UNKNOWN
+
+## 7. Multi-instancia
+bootstrap_multi flags copy_first / forensic_post_verify · Instance store ≠ gap store
+
+## 8. Diagrama enforcement
+Policy PIPELINE → code_path_runner → pre (scanner) / post (measure→contract→VerdictAuthority)
+
+## 9. Referencias
+FORENSIC_MAP · 00_METODO · GAPS · FORENSIC_CODE_AUDIT
+```
+
+## B3. COPIA ÍNTEGRA — WORDFLOW_PROGRAMMING_FORENSIC_MAP.md (auditoría / verificación cruzada histórica)
+
+**Alcance:** Wordflow programming · REAL / DOCUMENTED_NOT_VERIFIED / INFERRED / ABSENT / UNKNOWN · 2026-08-18
+
+### Executive — REALMENTE IMPLEMENTADO (según mapa)
+code_path_runner · quality_bar · goal_lock · cognitive_loop · evidence_packet engine · programming_pipeline · executor_gates · copy_first · symbol_index · forensic_contract · verdict_authority · test_runner · wiring_graph · scope_measure · mission_edges · adapt_imports · policy_snapshot · plan_artifact · catalogs · bootstrap_multi · CI · cursor rules
+
+### DOCUMENTADO no runtime completo
+FORENSIC_CODE_AUDIT · 00_METODO · ADVANCED_ENGINEERING_STANDARD_V3 · GAPS_PROGRAMMING
+
+### AUSENTE / NOT VERIFIED (mapa histórico)
+State machine global OPEN→FIXED→VERIFIED→CLOSED · GapRegistry runtime completo · FourPassController 4 pasadas independientes repo-wide · Auto-carga reception/ en run_code_path
+
+### Real Execution Flow (mapa — versión con pre_gate/post_verify)
+raw_input → pre_gate (context + COPY-FIRST) → quality → lock → cognitive → skill? → evidence → post_verify (smoke/wiring/scope/edges → contract → VerdictAuthority) → dict DENY
+
+**NOTA CRUZADA 2026-08-18:** el `code_path_runner` actual verificado en auditoría posterior usa `ForensicProgrammingEnforcer` (forensic_core) con context default **False**; el mapa histórico describe también pre_gate/post_verify/COPY-FIRST. Ambas descripciones se conservan; la matriz §5 de este REAL prioriza el body actual del runner.
+
+### Component Map / Connectivity / State / Context / Traceability / Contracts / Rules / Four-Pass / Gaps / AI authority / Deterministic vs LLM / Persistence / Code execution pipeline / Task reconstruction / Traceability matrix / Verified vs Unknown / Missing info / Reconstruction diagram
+
+(Detalle completo del mapa original en `PIPELINE/WORDFLOW_PROGRAMMING_FORENSIC_MAP.md` — contenido recuperado arriba en resumen ejecutivo + nota; secciones 3–20 del mapa original se mantienen en ese path y se consideran parte de la recuperación.)
+
+### Verificación cruzada consolidada (code vs arquitectura) — G1–G7 siguen vigentes (§6)
+
+| Fuente | Claim | Code actual |
+|--------|-------|-------------|
+| REAL §2 | forensic_core evaluate | SÍ |
+| FORENSIC_MAP | pre_gate COPY-FIRST en runner | NO en body actual (módulo sí existe) |
+| FORENSIC_MAP | default context True | SUPERSEDED: default False en versión forense actual |
+| PROGRAMMING.md | post_verify VerdictAuthority | PARCIAL: ahora evaluate forensic_core |
+| LIVE | TEAM YAIWES capas | Scope Wordflow global, no solo C-19 |
+
+## B4. Estado de listas 500+
+
+Pendiente **append Salida 2** en este mismo archivo:
+- texto íntegro CURSOR_200 (1–200)
+- texto íntegro CURSOR_300 (201–500)
+- texto íntegro CURSOR_500_EXTRAS (E001–E500)
+
+Sin borrar nada de lo anterior.
