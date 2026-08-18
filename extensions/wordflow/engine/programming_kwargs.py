@@ -1,5 +1,6 @@
-"""S3/S4 — kwargs canónicos fail-closed para run_unified / main_12 programming_path.
-No inventa PASS: CORE/FC/connectivity deben venir medidos o explicit True de CI.
+"""S3/S4/T1/T2 — kwargs canónicos fail-closed.
+full_pass_kwargs REQUIERE ci_attestation=True (CI/smoke explícito).
+Sin attestation → RuntimeError (no PASS silencioso en prod).
 """
 from __future__ import annotations
 from typing import Any, Dict, Optional
@@ -11,9 +12,19 @@ def full_pass_kwargs(
     mission_id: str = "",
     quality_dag_ok: bool = True,
     include_fc: bool = True,
+    ci_attestation: bool = False,
+    attestation_source: str = "",
     extra: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """Solo para CI/smoke cuando las measures ya fueron verificadas externamente."""
+    """CI/smoke only. ci_attestation must be True or raises."""
+    if not ci_attestation:
+        raise RuntimeError(
+            "T1/T2 BLOCK: full_pass_kwargs requires ci_attestation=True "
+            "(caller must have measured CORE/FC externally). "
+            "Use minimal_block_kwargs() for safe defaults."
+        )
+    if not attestation_source:
+        attestation_source = "unspecified_ci"
     kw: Dict[str, Any] = {
         "context_verified": True,
         "handoff_verified": True,
@@ -27,6 +38,8 @@ def full_pass_kwargs(
         "auto_measure_fc": True,
         "require_pre_gate": False,
         "profile": "dev",
+        "_ci_attestation": True,
+        "_attestation_source": attestation_source,
     }
     if include_fc:
         kw["fc_results"] = {fid: True for fid in FC_IDS}
@@ -37,11 +50,11 @@ def full_pass_kwargs(
 
 
 def minimal_block_kwargs() -> Dict[str, Any]:
-    """Defaults seguros: context true, sin measures → FAIL forensic (no PASS falso)."""
     return {
         "context_verified": True,
         "handoff_verified": True,
         "auto_measure_core": True,
         "quality_dag_ok": False,
         "require_pre_gate": False,
+        "_ci_attestation": False,
     }
