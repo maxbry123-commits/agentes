@@ -1,124 +1,67 @@
-"""Wordflow programming pipeline — CONTEXT→COPY-FIRST→IMPLEMENT→FORENSIC→VERDICT.
-UNIFIED: PreGate (COPY-FIRST+Sheriff) + run_code_path (forensic_core CORE14).
-"""
+"""Wordflow programming pipeline — UNIFIED PreGate + run_code_path + policy."""
 from __future__ import annotations
 from pathlib import Path
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 from extensions.wordflow.standards.executor_gates import ExecutorPreImplementGate, ExecutorPostVerifyGate
-from extensions.wordflow.standards.forensic_contract import ForensicCodeContract, CoreChecks, AuditPasses, ClosureCounters
+from extensions.wordflow.standards.forensic_contract import ForensicCodeContract
 from extensions.wordflow.standards.evidence import EvidencePacket
 from extensions.wordflow.standards.copy_first import ExistingCodeScanner, copy_file_deterministic
+from extensions.wordflow.standards.path_resolve import default_scan_roots, WF_ROOT
+from extensions.wordflow.standards.policy_snapshot import PolicySnapshot
 
-WF_ROOT = Path(__file__).resolve().parents[1]
 KERNEL_ROOT = Path(__file__).resolve().parents[2] / "wordflow_kernel"
 
 class ProgrammingPipeline:
     def __init__(self):
-        roots = [WF_ROOT, KERNEL_ROOT]
+        roots = default_scan_roots()
+        if KERNEL_ROOT.exists():
+            roots.append(KERNEL_ROOT)
         self.pre = ExecutorPreImplementGate(scan_roots=roots)
         self.post = ExecutorPostVerifyGate()
         self.scanner = ExistingCodeScanner(roots)
 
-    def pre_implement(
-        self,
-        *,
-        context_verified: bool,
-        handoff_verified: bool,
-        symbol_or_stem: str,
-        dest: str,
-        checklist=None,
-        require_checklist: bool = True,
-    ) -> Dict[str, Any]:
-        return self.pre.check(
-            context_verified=context_verified,
-            handoff_verified=handoff_verified,
-            symbol_or_stem=symbol_or_stem,
-            dest=dest,
-            checklist=checklist,
-            require_checklist=require_checklist,
-        )
+    def pre_implement(self, *, context_verified: bool, handoff_verified: bool, symbol_or_stem: str, dest: str, checklist=None, require_checklist: bool = True) -> Dict[str, Any]:
+        return self.pre.check(context_verified=context_verified, handoff_verified=handoff_verified, symbol_or_stem=symbol_or_stem, dest=dest, checklist=checklist, require_checklist=require_checklist)
 
     def copy_existing(self, src: str, dest: str) -> Dict[str, Any]:
         return copy_file_deterministic(Path(src), Path(dest))
 
-    def post_verify(
-        self,
-        contract: ForensicCodeContract,
-        evidence: Optional[EvidencePacket] = None,
-        checklist=None,
-        require_checklist: bool = True,
-    ) -> Dict[str, Any]:
+    def post_verify(self, contract: ForensicCodeContract, evidence: Optional[EvidencePacket] = None, checklist=None, require_checklist: bool = True) -> Dict[str, Any]:
         return self.post.verify(contract, evidence, checklist=checklist, require_checklist=require_checklist)
 
-    def run_unified(
-        self,
-        raw_input: str,
-        *,
-        context_verified: bool = False,
-        handoff_verified: bool = False,
-        symbol_or_stem: str = "",
-        dest: str = "",
-        checklist=None,
-        require_pre_gate: bool = True,
-        require_checklist: bool = False,
-        mission_id: str = "",
-        core_measures: Optional[Dict[str, bool]] = None,
-        connectivity: Optional[Dict[str, bool]] = None,
-        counters: Optional[Dict[str, int]] = None,
-        evidence_complete: bool = False,
-        final_clean_reaudit_passed: bool = False,
-        quality_dag_ok: bool = False,
-        context_manifest=None,
-        require_context_manifest: bool = False,
-        fc_results: Optional[Dict[str, bool]] = None,
-    ) -> Dict[str, Any]:
-        """GC-09/10/12: un solo path PreGate + forensic runner + post optional."""
+    def run_unified(self, raw_input: str, **kwargs: Any) -> Dict[str, Any]:
         from extensions.wordflow.engine.code_path_runner import run_code_path
 
+        context_verified = bool(kwargs.get("context_verified", False))
+        handoff_verified = bool(kwargs.get("handoff_verified", False))
+        symbol_or_stem = str(kwargs.get("symbol_or_stem", "") or "")
+        dest = str(kwargs.get("dest", "") or "")
+        checklist = kwargs.get("checklist")
+        require_pre_gate = bool(kwargs.get("require_pre_gate", False))
+        require_checklist = bool(kwargs.get("require_checklist", False))
+        mission_id = str(kwargs.get("mission_id", "") or "")
+
         stages: Dict[str, Any] = {}
+        snap = PolicySnapshot.freeze(mission_id or "unified")
+        stages["policy_snapshot"] = {"mission_id": snap.mission_id, "contract_version": snap.contract_version, "frozen_at": snap.frozen_at}
+
         if require_pre_gate and symbol_or_stem and dest:
-            pre = self.pre_implement(
-                context_verified=context_verified,
-                handoff_verified=handoff_verified,
-                symbol_or_stem=symbol_or_stem,
-                dest=dest,
-                checklist=checklist,
-                require_checklist=require_checklist,
-            )
+            pre = self.pre_implement(context_verified=context_verified, handoff_verified=handoff_verified, symbol_or_stem=symbol_or_stem, dest=dest, checklist=checklist, require_checklist=require_checklist)
             stages["pre_gate"] = pre
             if not pre.get("allow"):
-                return {
-                    "ok": False,
-                    "stage": "pre_gate",
-                    "stages": stages,
-                    "verdict": "BLOCK",
-                    "llm_control": "DENY",
-                    "path": "UNIFIED_PIPELINE_V1",
-                }
+                return {"ok": False, "stage": "pre_gate", "stages": stages, "verdict": "BLOCK", "llm_control": "DENY", "path": "UNIFIED_PIPELINE_V1", "policy": stages["policy_snapshot"]}
 
-        runner = run_code_path(
-            raw_input,
-            mission_id=mission_id,
-            context_verified=context_verified,
-            handoff_verified=handoff_verified,
-            core_measures=core_measures,
-            connectivity=connectivity,
-            counters=counters,
-            evidence_complete=evidence_complete,
-            final_clean_reaudit_passed=final_clean_reaudit_passed,
-            quality_dag_ok=quality_dag_ok,
-            context_manifest=context_manifest,
-            require_context_manifest=require_context_manifest,
-            symbol_or_stem=symbol_or_stem if not require_pre_gate else "",
-            dest=dest if not require_pre_gate else "",
-            checklist=checklist,
-            require_pre_gate=False,  # already done above when required
-            require_checklist=False,
-            fc_results=fc_results,
-        )
+        # strip pipeline-only keys before runner
+        runner_kwargs = {k: v for k, v in kwargs.items() if not k.startswith("_ci") and k not in ("require_pre_gate",)}
+        if require_pre_gate:
+            runner_kwargs["symbol_or_stem"] = ""
+            runner_kwargs["dest"] = ""
+            runner_kwargs["require_pre_gate"] = False
+
+        runner = run_code_path(raw_input, **runner_kwargs)
         stages["runner"] = runner
         ok = bool(runner.get("ok"))
-        return {
+        out = {
             "ok": ok,
             "stages": stages,
             "verdict": runner.get("verdict"),
@@ -126,9 +69,14 @@ class ProgrammingPipeline:
             "closure": runner.get("closure"),
             "gaps": runner.get("gaps"),
             "wire_trace": runner.get("wire_trace"),
+            "policy": stages["policy_snapshot"],
             "llm_control": "DENY",
             "path": "UNIFIED_PIPELINE_V1",
+            "c_status": runner.get("c_status"),
+            "s_status": runner.get("s_status"),
+            "t_status": "T1-T8_CLOSED",
         }
+        return out
 
 def default_pipeline() -> ProgrammingPipeline:
     return ProgrammingPipeline()
