@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
-"""C-19 code_path_runner — FAIL-CLOSED · UNIFIED_RUNNER_V1.
-GR fixes: prod pre_gate · QualityDAG FORMAT deterministic · apply_adapt COPY.
-"""
+"""C-19 code_path_runner — FAIL-CLOSED · UNIFIED_RUNNER_V1 · C1-C7 closed."""
 from __future__ import annotations
 
+import ast
 import os
 from pathlib import Path
 from typing import Any
@@ -51,9 +50,11 @@ def run_code_path(
     fc_results: dict[str, bool] | None = None,
     require_fc: bool = False,
     auto_measure_core: bool = True,
+    auto_measure_fc: bool = True,
     apply_adapt: bool = False,
     import_mapping: dict[str, str] | None = None,
     profile: str = "dev",
+    scan_paths: list[str] | None = None,
 ) -> dict[str, Any]:
     from extensions.wordflow.standards.forensic_core import (
         ForensicProgrammingEnforcer,
@@ -66,14 +67,16 @@ def run_code_path(
     )
     from extensions.wordflow.standards.gap_registry import GapRegistry, Gap
     from extensions.wordflow.standards.closure_engine import ClosureEngine, ClosureInput
-    from extensions.wordflow.standards.quality_dag import QualityDAG, GateResult, GateStatus
+    from extensions.wordflow.standards.quality_dag import QualityDAG
+    from extensions.wordflow.standards.quality_handlers import register_deterministic_handlers
     from extensions.wordflow.standards.context_manifest import ContextManifest, ContextValidator
     from extensions.wordflow.standards.executor_gates import ExecutorPreImplementGate
     from extensions.wordflow.standards.core_auto_measure import auto_measure_core as _auto_core
+    from extensions.wordflow.standards.fc_auto_measure import auto_measure_fc as _auto_fc
     from extensions.wordflow.standards.copy_first import copy_file_deterministic
     from extensions.wordflow.standards.adapt_imports import adapt_file
+    from extensions.wordflow.standards.evidence_merge import merge_evidence
 
-    # GR-02: prod profile forces pre_gate when symbol+dest later provided; env WORDFLOW_PROFILE
     env_prof = os.environ.get("WORDFLOW_PROFILE", profile).lower()
     if require_pre_gate is None:
         require_pre_gate = env_prof == "prod"
@@ -88,65 +91,37 @@ def run_code_path(
         "closure_engine": "PENDING",
         "fc_enforced": False,
         "auto_measure": "SKIP",
+        "fc_auto": "SKIP",
         "adapt": "SKIP",
+        "post_adapt": "SKIP",
+        "evidence_merge": "SKIP",
         "profile": env_prof,
     }
 
     if require_context_manifest:
         if context_manifest is None:
-            return {
-                "ok": False,
-                "stage": "context_manifest",
-                "detail": "BLOCK: require_context_manifest but manifest is None",
-                "llm_control": "DENY",
-                "verdict": "BLOCK",
-                "wire_trace": wire_trace,
-            }
+            return {"ok": False, "stage": "context_manifest", "detail": "BLOCK: manifest None", "llm_control": "DENY", "verdict": "BLOCK", "wire_trace": wire_trace}
         if isinstance(context_manifest, dict):
-            keys = (
-                "mission_id", "task_id", "project_docs", "architecture_docs",
-                "task_spec", "relevant_files", "contracts", "tests",
-                "repository_revision", "handoff_ref",
-            )
+            keys = ("mission_id", "task_id", "project_docs", "architecture_docs", "task_spec", "relevant_files", "contracts", "tests", "repository_revision", "handoff_ref")
             context_manifest = ContextManifest(**{k: context_manifest[k] for k in keys if k in context_manifest})
         cv = ContextValidator().validate(context_manifest)
         wire_trace["context_manifest"] = cv
         if not cv.get("ok"):
-            return {
-                "ok": False,
-                "stage": "context_manifest",
-                "detail": cv,
-                "llm_control": "DENY",
-                "verdict": "BLOCK",
-                "wire_trace": wire_trace,
-            }
+            return {"ok": False, "stage": "context_manifest", "detail": cv, "llm_control": "DENY", "verdict": "BLOCK", "wire_trace": wire_trace}
         context_verified = True
         handoff_verified = True
 
     block = enforcer.require_context(context_verified, handoff_verified)
     if block:
-        return {
-            "ok": False,
-            "stage": "context",
-            "detail": block,
-            "llm_control": "DENY",
-            "verdict": "BLOCK",
-            "wire_trace": wire_trace,
-        }
+        return {"ok": False, "stage": "context", "detail": block, "llm_control": "DENY", "verdict": "BLOCK", "wire_trace": wire_trace}
 
     pre_gate_result = None
     pre_ok = False
+    adapted_dest = ""
     if require_pre_gate or symbol_or_stem or dest:
         if not symbol_or_stem or not dest:
             if require_pre_gate:
-                return {
-                    "ok": False,
-                    "stage": "pre_gate",
-                    "detail": "BLOCK: require_pre_gate needs symbol_or_stem + dest",
-                    "llm_control": "DENY",
-                    "verdict": "BLOCK",
-                    "wire_trace": wire_trace,
-                }
+                return {"ok": False, "stage": "pre_gate", "detail": "BLOCK: need symbol_or_stem + dest", "llm_control": "DENY", "verdict": "BLOCK", "wire_trace": wire_trace}
         else:
             pre = ExecutorPreImplementGate()
             pre_gate_result = pre.check(
@@ -160,28 +135,9 @@ def run_code_path(
             wire_trace["pre_gate"] = pre_gate_result
             pre_ok = bool(pre_gate_result.get("allow"))
             if not pre_ok:
-                gap_reg.add(
-                    Gap(
-                        gap_id="GC-PRE-001",
-                        task_id="C-19",
-                        mission_id=mission_id or "",
-                        rule_id="COPY_FIRST_OR_SHERIFF",
-                        severity="blocking",
-                        description=str(pre_gate_result.get("reason", "pre_gate blocked")),
-                        location="code_path_runner.pre_gate",
-                    )
-                )
-                return {
-                    "ok": False,
-                    "stage": "pre_gate",
-                    "detail": pre_gate_result,
-                    "llm_control": "DENY",
-                    "verdict": "BLOCK",
-                    "gaps": gap_reg.to_list(),
-                    "wire_trace": wire_trace,
-                }
+                gap_reg.add(Gap(gap_id="GC-PRE-001", task_id="C-19", mission_id=mission_id or "", rule_id="COPY_FIRST_OR_SHERIFF", severity="blocking", description=str(pre_gate_result.get("reason")), location="pre_gate"))
+                return {"ok": False, "stage": "pre_gate", "detail": pre_gate_result, "llm_control": "DENY", "verdict": "BLOCK", "gaps": gap_reg.to_list(), "wire_trace": wire_trace}
 
-            # GR-05: apply COPY/ADAPT when requested and sources exist
             if apply_adapt and pre_ok:
                 cf = pre_gate_result.get("copy_first") or {}
                 sources = cf.get("sources") or []
@@ -194,45 +150,32 @@ def run_code_path(
                             rewrites = adapt_file(src, dst, import_mapping)
                             wire_trace["adapt"] = {"action": "ADAPT", "rewrites": rewrites, "src": str(src), "dest": str(dst)}
                         else:
-                            meta = copy_file_deterministic(src, dst)
-                            wire_trace["adapt"] = meta
+                            wire_trace["adapt"] = copy_file_deterministic(src, dst)
+                        adapted_dest = str(dst)
+                        # C5 post-adapt verify
+                        try:
+                            txt = dst.read_text(encoding="utf-8")
+                            ast.parse(txt)
+                            wire_trace["post_adapt"] = {"ok": True, "path": str(dst), "bytes": len(txt.encode("utf-8"))}
+                        except Exception as e:
+                            wire_trace["post_adapt"] = {"ok": False, "error": str(e)}
+                            gap_reg.add(Gap(gap_id="GC-ADAPT-001", task_id="C-19", mission_id=mission_id or "", rule_id="POST_ADAPT", severity="blocking", description=str(e), location=str(dst)))
+                            return {"ok": False, "stage": "post_adapt", "detail": wire_trace["post_adapt"], "llm_control": "DENY", "verdict": "FAIL", "gaps": gap_reg.to_list(), "wire_trace": wire_trace}
 
     q = admit_or_reject(raw_input)
     if not q.get("ok"):
-        return {
-            "ok": False,
-            "stage": "quality_bar",
-            "detail": q,
-            "llm_control": "DENY",
-            "verdict": "FAIL",
-            "wire_trace": wire_trace,
-        }
+        return {"ok": False, "stage": "quality_bar", "detail": q, "llm_control": "DENY", "verdict": "FAIL", "wire_trace": wire_trace}
 
     locked = lock_goals({"text": raw_input, "raw": raw_input})
     if not locked.get("ok"):
-        return {
-            "ok": False,
-            "stage": "goal_lock",
-            "detail": locked,
-            "llm_control": "DENY",
-            "verdict": "FAIL",
-            "wire_trace": wire_trace,
-        }
+        return {"ok": False, "stage": "goal_lock", "detail": locked, "llm_control": "DENY", "verdict": "FAIL", "wire_trace": wire_trace}
 
     lock = locked.get("lock") or {}
     mid = mission_id or lock.get("lock_id") or ""
     steps = plan_steps or ["analyze", "compile", "validate", "promote"]
-    cog = run_cognitive_loop(
-        topic=raw_input[:80],
-        plan_steps=steps,
-        mission_id=mid,
-        goal_lock=lock,
-        task_class="CODE",
-    )
+    cog = run_cognitive_loop(topic=raw_input[:80], plan_steps=steps, mission_id=mid, goal_lock=lock, task_class="CODE")
 
-    compiled = None
-    if skill:
-        compiled = compile_skill_to_code(skill)
+    compiled = compile_skill_to_code(skill) if skill else None
 
     evidence = build_evidence_packet(
         task_id="C-19",
@@ -244,25 +187,21 @@ def run_code_path(
     )
     evidence_ok = verify_evidence_packet(evidence)["ok"]
 
-    # GR-03: FORMAT always deterministic PASS; rest require quality_dag_ok
+    # C7 merge
+    merged = merge_evidence(engine_packet=evidence if isinstance(evidence, dict) else None, mission_id=mid, task_id="C-19")
+    wire_trace["evidence_merge"] = {"complete": merged.get("complete"), "verdict": (merged.get("merged") or {}).get("verdict")}
+
+    paths_for_q = list(scan_paths or [])
+    if adapted_dest:
+        paths_for_q.append(adapted_dest)
+    paths_for_q.append("extensions/wordflow/engine/code_path_runner.py")
+
+    # C1 QualityDAG deterministic handlers
     dag_passed = bool(quality_dag_ok)
     if run_quality_dag:
         dag = QualityDAG()
-
-        def _handler(name: str):
-            def _h() -> GateResult:
-                if name == "FORMAT":
-                    return GateResult(name, GateStatus.PASS, "deterministic noop format gate")
-                if quality_dag_ok:
-                    return GateResult(name, GateStatus.PASS, "caller quality_dag_ok")
-                return GateResult(name, GateStatus.FAIL, "quality_dag_ok False")
-
-            return _h
-
-        for n in dag.nodes:
-            dag.register(n.name, _handler(n.name))
+        register_deterministic_handlers(dag, paths=paths_for_q, quality_dag_ok=quality_dag_ok)
         dag_results = dag.run(fail_closed=True)
-        # FORMAT alone never enough — still need quality_dag_ok for required chain
         dag_passed = dag.passed(dag_results) and quality_dag_ok
         wire_trace["quality_dag"] = {
             "passed": dag_passed,
@@ -273,59 +212,38 @@ def run_code_path(
 
     measures: dict[str, bool] = {cid: False for cid in CORE_IDS}
     if auto_measure_core:
-        am = _auto_core(
-            caller=core_measures or {},
-            connectivity_hint=conn,
-            evidence_ok=bool(evidence_ok and evidence_complete),
-            pre_gate_ok=pre_ok,
-        )
+        am = _auto_core(caller=core_measures or {}, connectivity_hint=conn, evidence_ok=bool(evidence_ok and evidence_complete), pre_gate_ok=pre_ok)
         measures.update(am["measures"])
         wire_trace["auto_measure"] = am
     elif core_measures:
         measures.update({k: bool(v) for k, v in core_measures.items() if k in measures})
 
-    core_results = [
-        CoreCheckResult(
-            cid,
-            bool(measures.get(cid, False)),
-            evidence=str((wire_trace.get("auto_measure") or {}).get("evidence", {}).get(cid, "")),
-        )
-        for cid in CORE_IDS
-    ]
+    core_results = [CoreCheckResult(cid, bool(measures.get(cid, False)), evidence=str((wire_trace.get("auto_measure") or {}).get("evidence", {}).get(cid, ""))) for cid in CORE_IDS]
 
-    fc_in = fc_results or {}
-    if require_fc and not fc_in:
+    # C6 FC auto
+    fc_in = dict(fc_results or {})
+    if auto_measure_fc:
+        fam = _auto_fc(paths=paths_for_q, caller=fc_in, deterministic_path=True)
+        wire_trace["fc_auto"] = fam
+        for k, v in fam["measures"].items():
+            fc_in.setdefault(k, v)
+            if fc_results and k in fc_results:
+                fc_in[k] = bool(fc_results[k])
+
+    if require_fc and not (fc_results or auto_measure_fc):
         fc_map = {fid: False for fid in FC_IDS}
         fc_all = False
         wire_trace["fc_enforced"] = True
-        gap_reg.add(
-            Gap(
-                gap_id="GC-FC-000",
-                task_id="C-19",
-                mission_id=mid,
-                rule_id="FC_REQUIRED",
-                severity="blocking",
-                description="require_fc=True but fc_results missing",
-                location="code_path_runner.fc",
-            )
-        )
     else:
         fc_map = {fid: bool(fc_in.get(fid, False)) for fid in FC_IDS}
-        fc_all = all(fc_map.values()) if (fc_in or require_fc) else True
-        wire_trace["fc_enforced"] = bool(fc_in or require_fc)
-        if (fc_in or require_fc) and not fc_all:
-            gap_reg.add(
-                Gap(
-                    gap_id="GC-FC-001",
-                    task_id="C-19",
-                    mission_id=mid,
-                    rule_id="FC_REQUIRED",
-                    severity="blocking",
-                    description="FC-01..13 not all True",
-                    location="code_path_runner.fc_results",
-                )
-            )
+        fc_all = all(fc_map.values()) if (fc_results or require_fc) else True
+        # if only auto and require_fc: use auto all_true
+        if require_fc and not fc_results:
+            fc_all = all(fc_map.values())
+        wire_trace["fc_enforced"] = bool(fc_results or require_fc or auto_measure_fc)
     wire_trace["fc_all_pass"] = fc_all
+    if (require_fc or fc_results) and not fc_all:
+        gap_reg.add(Gap(gap_id="GC-FC-001", task_id="C-19", mission_id=mid, rule_id="FC_REQUIRED", severity="blocking", description="FC not all True", location="fc"))
 
     ctr_in = counters or {}
     ctr = ClosureCounters(
@@ -352,7 +270,7 @@ def run_code_path(
         handoff_verified=handoff_verified,
         core_results=core_results,
         fc_results=fc_map,
-        require_fc=bool(require_fc or fc_in),
+        require_fc=bool(require_fc or fc_results),
         connectivity=conn,
         counters=ctr,
         evidence_complete=bool(evidence_complete and evidence_ok),
@@ -367,7 +285,7 @@ def run_code_path(
     if pre_gate_result is not None:
         cl = pre_gate_result.get("checklist")
         if require_checklist or env_prof == "prod":
-            checklist_passed = bool(cl and cl.get("passed")) if cl is not None else not (require_checklist or env_prof == "prod")
+            checklist_passed = bool(cl and cl.get("passed")) if cl is not None else False
         elif cl is not None:
             checklist_passed = bool(cl.get("passed", True))
 
@@ -386,7 +304,7 @@ def run_code_path(
     wire_trace["gap_registry"] = gap_reg.to_list()
     wire_trace["core_all_true"] = _all_core_true(measures)
 
-    ok = forensic_pass and closure.get("closed") is True and fc_all
+    ok = forensic_pass and closure.get("closed") is True and (fc_all if (require_fc or fc_results) else True)
     return {
         "ok": ok,
         "mission_id": mid,
@@ -394,12 +312,14 @@ def run_code_path(
         "cognitive": cog,
         "skill_compile": compiled,
         "evidence": evidence,
+        "evidence_merged": merged.get("merged"),
         "evidence_ok": evidence_ok,
         "forensic": forensic,
         "pre_gate": pre_gate_result,
         "closure": closure,
         "gaps": gap_reg.to_list(),
         "core_measures": measures,
+        "fc_measures": fc_map,
         "quality_dag": wire_trace.get("quality_dag"),
         "wire_trace": wire_trace,
         "llm_control": "DENY",
@@ -407,4 +327,5 @@ def run_code_path(
         "path": "UNIFIED_RUNNER_V1",
         "gc_status": "GC-01..12_WIRED",
         "gr_status": "GR-01..05_CODE_FIXED",
+        "c_status": "C1-C7_CLOSED",
     }
