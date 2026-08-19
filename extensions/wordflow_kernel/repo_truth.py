@@ -23,6 +23,9 @@ class RepoTruthPort:
     def read_file(self, path, ref=None) -> bytes:
         raise NotImplementedError
 
+    def get_file(self, path, ref=None) -> bytes:
+        return self.read_file(path, ref)
+
     def head(self, ref=None) -> str:
         raise NotImplementedError
 
@@ -68,6 +71,29 @@ class LocalRepoTruth(RepoTruthPort):
     def head(self, ref=None):
         head = self.root / ".git" / "HEAD"
         return head.read_text(encoding="utf-8").strip() if head.exists() else "LOCAL"
+
+
+class FakeRepoTruth(RepoTruthPort):
+    """T31: in-memory fixtures. No network."""
+
+    def __init__(self, files: dict[str, bytes | str] | None = None):
+        self._files: dict[str, bytes] = {}
+        for k, v in (files or {"fixture.txt": b"FIXTURE"}).items():
+            self._files[k] = v if isinstance(v, bytes) else str(v).encode("utf-8")
+
+    def list_files(self, ref=None):
+        out = []
+        for path, data in self._files.items():
+            out.append(RepoFile(path, hashlib.sha1(data).hexdigest(), len(data)))
+        return sorted(out, key=lambda x: x.path)
+
+    def read_file(self, path, ref=None):
+        if path not in self._files:
+            raise FileNotFoundError(path)
+        return self._files[path]
+
+    def head(self, ref=None):
+        return "FAKE"
 
 
 class GitHubRepoTruth(RepoTruthPort):
@@ -137,7 +163,9 @@ class GitHubRepoTruth(RepoTruthPort):
 
 
 def build_repo_truth(target: str, **kwargs) -> RepoTruthPort:
-    """target: local:/path or github:owner/repo[@ref]"""
+    """target: local:/path or github:owner/repo[@ref] or fake"""
+    if target in ("fake", "fake:"):
+        return FakeRepoTruth(kwargs.get("files"))
     if target.startswith("local:"):
         return LocalRepoTruth(target[len("local:") :])
     if target.startswith("github:"):
@@ -148,3 +176,10 @@ def build_repo_truth(target: str, **kwargs) -> RepoTruthPort:
         owner, repo = body.split("/", 1)
         return GitHubRepoTruth(owner, repo, ref=ref, token=kwargs.get("token"))
     return LocalRepoTruth(target)
+
+
+if __name__ == "__main__":
+    fake = FakeRepoTruth({"a.txt": b"hello"})
+    assert fake.get_file("a.txt") == b"hello"
+    assert fake.head() == "FAKE"
+    print("ok", fake.get_file("a.txt"))
