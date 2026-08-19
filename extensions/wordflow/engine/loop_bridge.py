@@ -130,3 +130,38 @@ def bridge_full(
         "decision_gate": dgate,
         "ping": ping,
     }
+
+
+def bridge_run_fake(payload: dict) -> dict:
+    """T14: runner\u2194loop bridge with publish Fake. No network."""
+    if not isinstance(payload, dict):
+        return {
+            "status": "error",
+            "stages": [],
+            "evidence": {"error": "payload must be dict"},
+        }
+    stages: list[str] = []
+    text = str(
+        payload.get("text")
+        or payload.get("raw")
+        or payload.get("goal")
+        or "fake"
+    )
+    stages.append("intake")
+    stages.append("code_path_dry")
+    stages.append("loop_fake")
+    publish = {"ok": True, "mode": "fake", "published": False, "network": False}
+    try:
+        from .publish_path import publish_after_mission  # noqa: F401
+
+        publish["wired"] = True
+    except Exception:
+        publish["wired"] = False
+    stages.append("publish_fake")
+    evidence = {
+        "payload_keys": sorted(str(k) for k in payload.keys()),
+        "text": text[:80],
+        "publish": publish,
+        "instance_id": payload.get("instance_id", "v1"),
+    }
+    return {"status": "ok", "stages": stages, "evidence": evidence}
