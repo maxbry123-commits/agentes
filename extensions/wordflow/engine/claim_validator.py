@@ -14,14 +14,29 @@ class ClaimError(Exception):
         super().__init__(f"{reason_code}: {detail}" if detail else reason_code)
 
 
-def validate_claim(claim: dict[str, Any] | None) -> dict[str, Any]:
+def validate_claim(
+    claim: dict[str, Any] | None,
+    evidence: Any = None,
+) -> dict[str, Any]:
     if not isinstance(claim, dict):
-        return {"ok": False, "reason_codes": ["CLAIM_NOT_OBJECT"], "llm_control": "DENY"}
+        return {
+            "ok": False,
+            "verdict": "fail",
+            "reason_codes": ["CLAIM_NOT_OBJECT"],
+            "llm_control": "DENY",
+        }
 
     reasons: list[str] = []
     status = claim.get("claim_status") or claim.get("status")
+
+    ev = evidence if evidence is not None else claim.get("evidence")
+    if ev is None or ev == "" or ev == [] or ev == {}:
+        if evidence is not None or status == "COMPLETED":
+            reasons.append("EVIDENCE_REQUIRED")
+
     if status not in ("PARTIAL", "COMPLETED", "REFUTADO"):
-        reasons.append("BAD_STATUS")
+        if status is not None:
+            reasons.append("BAD_STATUS")
 
     if not claim.get("task_id"):
         reasons.append("TASK_ID_MISSING")
@@ -49,6 +64,7 @@ def validate_claim(claim: dict[str, Any] | None) -> dict[str, Any]:
     ok = len(reasons) == 0
     return {
         "ok": ok,
+        "verdict": "pass" if ok else "fail",
         "reason_codes": reasons,
         "claim_status": status,
         "llm_control": "DENY",
@@ -60,3 +76,11 @@ def require_claim(claim: dict[str, Any] | None) -> dict[str, Any]:
     if not r["ok"]:
         raise ClaimError("CLAIM_INVALID", ",".join(r["reason_codes"]))
     return r
+
+
+if __name__ == "__main__":
+    fail = validate_claim({"task_id": "T30", "status": "COMPLETED"}, evidence=None)
+    assert fail["ok"] is False and fail["verdict"] == "fail"
+    fail2 = validate_claim({"task_id": "T30"}, evidence={})
+    assert fail2["ok"] is False
+    print("ok", fail["reason_codes"], fail2["verdict"])
