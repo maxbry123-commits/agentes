@@ -25,6 +25,7 @@ class TestReceptionIngest(unittest.TestCase):
         self.assertIn("phase", out)
         self.assertFalse(out.get("wrote"))
         self.assertEqual(out.get("phase", {}).get("contract"), "LOCATE_ONLY")
+        self.assertTrue(out.get("git", {}).get("skipped"))
 
     def test_locate_phase_kernel(self):
         from wordflow_kernel.reception.convert import locate_phase
@@ -55,6 +56,42 @@ class TestReceptionIngest(unittest.TestCase):
             self.assertTrue(dest.is_file())
             self.assertTrue(out.get("wrote"))
             self.assertFalse(out.get("phase_plan", {}).get("git_apply"))
+            self.assertTrue(out.get("git", {}).get("skipped"))
+
+    def test_ingest_apply_push_when_dest_present(self):
+        from extensions.github_deploy.git_data_port import FakeGitDataAPIPort
+        from extensions.wordflow.accounts.registry import AccountRecord, AccountRegistry
+        from extensions.wordflow.engine.github_publisher import MapCredentialStore
+        from wordflow_kernel.reception.convert import ingest
+
+        registry = AccountRegistry()
+        registry.register(
+            AccountRecord(
+                account_id="github_b",
+                provider="github",
+                credential_ref="env:GITHUB_B_TOKEN",
+                policy={"can_read": True, "can_write": True, "can_deploy": True},
+            )
+        )
+        with tempfile.TemporaryDirectory() as td:
+            out = ingest(
+                {
+                    "raw_text": "objective: push\nsuccess: git apply",
+                    "dest": {"owner": "acct-b", "repo": "lib"},
+                    "account_id": "github_b",
+                    "files": [{"path": "x.py", "content": "x=1\n"}],
+                },
+                apply=True,
+                plan_path=str(Path(td) / "phase_plan.json"),
+                token_ref="env:GITHUB_B_TOKEN",
+                credentials=MapCredentialStore({"env:GITHUB_B_TOKEN": "secret"}),
+                registry=registry,
+                port=FakeGitDataAPIPort(),
+                evidence_path=str(Path(td) / "evidence.json"),
+            )
+        self.assertFalse(out.get("git", {}).get("skipped"))
+        self.assertTrue(out.get("git", {}).get("ok"))
+        self.assertTrue(out.get("git_apply"))
 
 
 if __name__ == "__main__":
