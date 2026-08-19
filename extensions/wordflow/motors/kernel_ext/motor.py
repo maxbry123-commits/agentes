@@ -1,10 +1,13 @@
-"""KernelExtMotor — T0.4 nativo. Une SEND/CALL/DOWNLOAD + recepción.
-Knowledge: si se pierde enlace reception → get_reception_link() o KNOWLEDGE_RECEPTION_LINKS.md
+"""KernelExtMotor — T0.4. SEND/CALL/DOWNLOAD + reception via kernel LINK.
+
+Inbox files stay in extensions/wordflow/reception/.
+Kernel surface: extensions/wordflow_kernel/reception/.
 """
 from typing import Dict, Any
 from ..send.motor import SendMotor, SendRequest
 from ..call.motor import CallMotor, CallRequest
 from ..download.motor import DownloadMotor, DownloadRequest
+
 
 class KernelExtMotor:
     def __init__(self):
@@ -18,6 +21,19 @@ class KernelExtMotor:
             "comand-Center": "https://github.com/maxbry123-commits/comand-Center/blob/main/RECEPTION_comand-Center.md",
         }
 
+    def _kernel_locate(self, kind: str = "inbox") -> dict:
+        try:
+            from wordflow_kernel.reception.convert import locate
+
+            return locate(kind)
+        except ImportError:
+            try:
+                from extensions.wordflow_kernel.reception.convert import locate
+
+                return locate(kind)
+            except ImportError:
+                return {"ok": False, "error": "KERNEL_RECEPTION_MISSING"}
+
     def get_reception_link(self, repo: str = "agentes") -> str:
         return self.reception_links.get(repo, f"Crear RECEPTION_{repo}.md y devolver enlace nuevo")
 
@@ -29,5 +45,23 @@ class KernelExtMotor:
         if motor == "download":
             return self.download.execute(DownloadRequest(**payload))
         if motor in ("reception_link", "get_link"):
-            return {"status": "OK", "link": self.get_reception_link(payload.get("repo", "agentes"))}
-        return {"status": "UNKNOWN_MOTOR", "motor": motor, "available": ["send", "call", "download", "reception_link"]}
+            loc = self._kernel_locate("inbox")
+            return {
+                "status": "OK",
+                "link": self.get_reception_link(payload.get("repo", "agentes")),
+                "locate": loc,
+            }
+        if motor in ("ingest", "convert", "reception"):
+            try:
+                from wordflow_kernel.reception.convert import ingest
+            except ImportError:
+                try:
+                    from extensions.wordflow_kernel.reception.convert import ingest
+                except ImportError:
+                    return {"status": "ERROR", "error": "KERNEL_RECEPTION_MISSING"}
+            return {"status": "OK", "result": ingest(payload or {})}
+        return {
+            "status": "UNKNOWN_MOTOR",
+            "motor": motor,
+            "available": ["send", "call", "download", "reception_link", "ingest", "convert"],
+        }
