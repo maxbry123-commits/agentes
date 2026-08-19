@@ -1,12 +1,14 @@
 {
-  "version": "1.5.0",
+  "version": "1.6.0",
   "source": "component_catalog.json",
-  "task": "GAPFIX-R4-2026-08-19",
+  "task": "OPS-SIM-R5-2026-08-19",
   "legend": "WIRED=import+call, STUB=signature/Fake, PARTIAL=one hop only, GAP=doc asks code missing, LOCATE_ONLY=path resolved no git apply, WIRED_NO_PASS=invoked without C-19 PASS, WIRED_DENY=invoked gateway with llm_control=DENY no vendor",
   "connections": [
     {"id": "CONN.reception_inbox", "from": "wordflow.reception", "to": "wordflow.reception.convert", "type": "internal", "status": "WIRED"},
     {"id": "CONN.kernel_reception_link", "from": "wordflow_kernel.reception", "to": "wordflow.reception.convert", "type": "link", "status": "WIRED"},
     {"id": "CONN.handle_ingest", "from": "wordflow_kernel.handle_message", "to": "wordflow_kernel.reception.ingest", "type": "internal", "status": "WIRED"},
+    {"id": "CONN.ui_kernel", "from": "wordflow_kernel.ui_gateway", "to": "wordflow_kernel.handle_message", "type": "ui", "status": "WIRED"},
+    {"id": "CONN.ui_agents", "from": "wordflow_kernel.ui_gateway", "to": "engine.openclaw+hermes", "type": "agents", "status": "WIRED_STUB"},
     {"id": "CONN.motor_kernel_reception", "from": "wordflow.motors.kernel_ext", "to": "wordflow_kernel.reception", "type": "dispatch", "status": "WIRED"},
     {"id": "CONN.ingest_to_compiler", "from": "wordflow_kernel.reception.ingest", "to": "wordflow.engine.input_compiler", "type": "invoke", "status": "WIRED"},
     {"id": "CONN.ingest_to_classifier", "from": "wordflow_kernel.reception.ingest", "to": "wordflow.engine.task_classifier", "type": "invoke", "status": "WIRED"},
