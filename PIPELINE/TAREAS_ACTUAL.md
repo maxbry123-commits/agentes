@@ -1,23 +1,20 @@
 # TAREAS_ACTUAL.md — Lista integrada
 **Fecha:** 2026-08-18
-**Fuente:** PIPELINE/52 (49 tareas) + extras chat + AUDIT-5 S01–S05 + HANDOFF T10–T49
+**Fuente:** PIPELINE/52 (49 tareas) + extras chat + AUDIT-5 + HANDOFF T10–T49
 
 ## Estado V1
 | Métrica | Valor |
 |---------|--------|
 | TOTAL | 49 |
-| DONE | **14** (T01–T14) + AUDIT-5 S01–S05 |
-| PEND | 35 (T15–T49; orden: T22 siguiente) |
+| DONE | **14** (T01–T14) + AUDIT-5 S01–S05 + **S06–S10** |
+| PEND | 35 |
 | SIGUIENTE | **T22** — scan_paths_for_llm_ban |
 
 ## Reciente
 | ID | Estado | Path | Commit |
 |----|--------|------|--------|
-| T10 | DONE | `ficha_loader.py` | `baa302f7…` |
-| T11 | DONE | `bootstrap_multi.py` + `spawn.py` | `55d07000…` / `f330f4d9…` |
-| T12 | DONE | `fail_closed.py` | `30da7837…` |
-| T13 | DONE | `bootstrap_fake.py` | `240bc9ca…` |
-| T14 | DONE | `loop_bridge.py` | `94a12db3…` |
+| T10–T14 | DONE | kernel + C100 Fake | ver AUDIT5_S06_S10.md |
+| AUDIT-5 S06–S10 | **PASS** | `PIPELINE/AUDIT5_S06_S10.md` | `7527d6df…` |
 
 ## Extras chat
 | ID | Tarea | Estado | Trazabilidad |
@@ -30,7 +27,7 @@
 | CG | Code-gen DSL/DAG/schema | PENDIENTE | chat |
 | ARCH | Arquitectura final (última) | PENDIENTE | chat |
 | DEL | Delete mavis-deploy-keys | PENDIENTE | chat |
-| AUDIT-5 | Forense cada 5 tareas | RECURRENTE · S01–S05 cerrado | PIPELINE/54 · AUDIT5_S01_S05.md |
+| AUDIT-5 | Forense cada 5 tareas | RECURRENTE · S01–S10 cerrado | PIPELINE/54 |
 
 ## Lista maestra V1 (49)
-Ver PIPELINE/52 + HANDOFF. **T01–T14 DONE.** Orden: T13→T14→**T22**. No claim C100.
+Ver PIPELINE/52 + HANDOFF. **T01–T14 DONE.** Siguiente código: **T22**. No claim C100.
