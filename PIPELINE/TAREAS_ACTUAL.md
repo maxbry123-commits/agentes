@@ -6,16 +6,15 @@
 | Métrica | Valor |
 |---------|--------|
 | TOTAL | 49 |
-| DONE | **23** (T01–T23) + AUDIT-5 S01–S15 |
-| PEND | 26 |
-| SIGUIENTE | **T24** |
+| DONE | **24** (T01–T24) + AUDIT-5 S01–S15 |
+| PEND | 25 |
+| SIGUIENTE | **AUDIT-5 S16–S20** (T20–T24) · luego T25 |
 
 ## Reciente
 | ID | Estado | Path | Commit |
 |----|--------|------|--------|
-| T21 | DONE | `handle_message.py` | `5e56b0bd…` |
-| T22 | DONE | `llm_control.py` | `3bd554e0…` |
-| T23 | DONE | `.github/workflows/wordflow_smoke.yml` | `19122304…` |
+| T23 | DONE | `wordflow_smoke.yml` | `19122304…` |
+| T24 | DONE | `CLAIM_C100_PROGRESS.md` | `891e1303…` |
 
 ## Lista maestra V1 (49)
-Siguiente: **T24**. No claim C100.
+C100 = **NO**. V1 100% = **NO**. Gate AUDIT-5 antes de T25.
