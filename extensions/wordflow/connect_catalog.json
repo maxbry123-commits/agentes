@@ -1,14 +1,18 @@
 {
-  "version": "1.2.0",
+  "version": "1.3.0",
   "source": "component_catalog.json",
-  "task": "FORENSIC-4PASS-2026-08-18",
+  "task": "GAPFIX-INGEST-C19-2026-08-18",
   "legend": "WIRED=import+call, STUB=signature/Fake, PARTIAL=one hop only, GAP=doc asks code missing",
   "connections": [
     {"id": "CONN.reception_inbox", "from": "wordflow.reception", "to": "wordflow.reception.convert", "type": "internal", "status": "WIRED"},
     {"id": "CONN.kernel_reception_link", "from": "wordflow_kernel.reception", "to": "wordflow.reception.convert", "type": "link", "status": "WIRED"},
     {"id": "CONN.handle_ingest", "from": "wordflow_kernel.handle_message", "to": "wordflow_kernel.reception.ingest", "type": "internal", "status": "WIRED"},
     {"id": "CONN.motor_kernel_reception", "from": "wordflow.motors.kernel_ext", "to": "wordflow_kernel.reception", "type": "dispatch", "status": "WIRED"},
-    {"id": "CONN.ingest_to_compiler", "from": "wordflow_kernel.reception.ingest", "to": "wordflow.engine.input_compiler", "type": "declared_next", "status": "GAP"},
+    {"id": "CONN.ingest_to_compiler", "from": "wordflow_kernel.reception.ingest", "to": "wordflow.engine.input_compiler", "type": "invoke", "status": "WIRED"},
+    {"id": "CONN.ingest_to_classifier", "from": "wordflow_kernel.reception.ingest", "to": "wordflow.engine.task_classifier", "type": "invoke", "status": "WIRED"},
+    {"id": "CONN.ingest_to_phase", "from": "wordflow_kernel.reception.ingest", "to": "locate_phase", "type": "locate", "status": "WIRED"},
+    {"id": "CONN.ingest_to_plugin", "from": "wordflow_kernel.reception.ingest", "to": "wordflow.engine.enchufe_gate", "type": "plugin", "status": "WIRED"},
+    {"id": "CONN.ingest_writes_phase", "from": "locate_phase", "to": "git_apply", "type": "apply", "status": "GAP"},
     {"id": "CONN.core_path", "from": "wordflow.core", "to": "wordflow.engine.code_path_runner", "type": "internal", "status": "WIRED"},
     {"id": "CONN.runner_standards", "from": "wordflow.engine.code_path_runner", "to": "wordflow.standards.forensic_core", "type": "enforcer", "status": "WIRED"},
     {"id": "CONN.path_gateway", "from": "wordflow.engine.code_path_runner", "to": "intelligence_gateway", "type": "gateway", "status": "GAP"},
@@ -19,7 +23,7 @@
     {"id": "CONN.deploy_protected", "from": "github_deploy.protected", "to": "HOLD", "type": "policy", "status": "WIRED"},
     {"id": "CONN.token_ref", "from": "wordflow.accounts.require", "to": "github_deploy.token_ref", "type": "secret", "status": "WIRED"},
     {"id": "CONN.loop_path", "from": "maxbry_loop", "to": "wordflow.engine.code_path_runner", "type": "loop", "status": "PARTIAL"},
-    {"id": "CONN.bootstrap_fake_path", "from": "wordflow_kernel.bootstrap_fake", "to": "run_code_path", "type": "e2e", "status": "STUB"},
+    {"id": "CONN.bootstrap_fake_path", "from": "wordflow_kernel.bootstrap_fake", "to": "run_code_path", "type": "e2e", "status": "WIRED_NO_PASS"},
     {"id": "CONN.kernel_instance", "from": "wordflow_kernel", "to": "WordflowInstance", "type": "registry", "status": "WIRED"},
     {"id": "CONN.audit_to_plan", "from": "wordflow_kernel.workflow.WordflowKernel", "to": "audit_engine+compiler", "type": "orchestrator", "status": "GAP"}
   ]
