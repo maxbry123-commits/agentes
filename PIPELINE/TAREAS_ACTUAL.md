@@ -6,20 +6,17 @@
 | Métrica | Valor |
 |---------|--------|
 | TOTAL | 49 |
-| DONE | **18** (T01–T17 + T22) + AUDIT-5 S01–S10 |
-| PEND | 31 |
-| SIGUIENTE | **T18** — ResourceRegistry |
+| DONE | **19** (T01–T18 + T22) + AUDIT-5 S01–S10 |
+| PEND | 30 |
+| SIGUIENTE | **T19** — MemoryGateway |
 
 ## Reciente
 | ID | Estado | Path | Commit |
 |----|--------|------|--------|
-| T15 | DONE | `preflight.py` | `d2d9499e…` |
 | T16 | DONE | `context_pack.py` | `26f4275c…` |
 | T17 | DONE | `knowledge_index.py` | `295088e7…` |
+| T18 | DONE | `resources/registry.py` | `5b360b7e…` |
 | T22 | DONE | `llm_control.py` | `3bd554e0…` |
 
-## Extras chat
-T0 DONE · T2/T2.1–T2.3/CG/ARCH/DEL PENDIENTE · AUDIT-5 S01–S10 cerrado
-
 ## Lista maestra V1 (49)
-Orden: T15→T16→T17→**T18**. No claim C100.
+Orden: T17→T18→**T19**. No claim C100.
