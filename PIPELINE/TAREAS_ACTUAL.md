@@ -6,9 +6,9 @@
 | Métrica | Valor |
 |---------|--------|
 | TOTAL | 49 |
-| DONE | **13** (T01–T13) + AUDIT-5 S01–S05 |
-| PEND | 36 (T14–T49) |
-| SIGUIENTE | **T14** — bridge_run_fake runner↔loop + publish Fake |
+| DONE | **14** (T01–T14) + AUDIT-5 S01–S05 |
+| PEND | 35 (T15–T49; orden: T22 siguiente) |
+| SIGUIENTE | **T22** — scan_paths_for_llm_ban |
 
 ## Reciente
 | ID | Estado | Path | Commit |
@@ -17,6 +17,7 @@
 | T11 | DONE | `bootstrap_multi.py` + `spawn.py` | `55d07000…` / `f330f4d9…` |
 | T12 | DONE | `fail_closed.py` | `30da7837…` |
 | T13 | DONE | `bootstrap_fake.py` | `240bc9ca…` |
+| T14 | DONE | `loop_bridge.py` | `94a12db3…` |
 
 ## Extras chat
 | ID | Tarea | Estado | Trazabilidad |
@@ -32,4 +33,4 @@
 | AUDIT-5 | Forense cada 5 tareas | RECURRENTE · S01–S05 cerrado | PIPELINE/54 · AUDIT5_S01_S05.md |
 
 ## Lista maestra V1 (49)
-Ver PIPELINE/52 + HANDOFF_V1_T10_T49. **T01–T13 DONE.** Siguiente: **T14**. No claim C100.
+Ver PIPELINE/52 + HANDOFF. **T01–T14 DONE.** Orden: T13→T14→**T22**. No claim C100.
