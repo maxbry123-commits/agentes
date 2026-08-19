@@ -1,4 +1,4 @@
-"""VK-01 tests — models + runtime + workflow skeleton."""
+"""VK-01 tests — models + runtime + workflow inject."""
 import unittest
 import sys
 from pathlib import Path
@@ -37,10 +37,17 @@ class TestVK01(unittest.TestCase):
         statuses = {r.status for r in results}
         self.assertEqual(statuses, {"COMPLETED"})
 
-    def test_workflow_requires_engines(self):
-        k = WordflowKernel()
+    def test_workflow_requires_engines_when_disabled(self):
+        k = WordflowKernel(auto_inject=False)
         with self.assertRaises(RuntimeError):
             k.audit_to_plan("M", "W", "repo", [])
+
+    def test_workflow_default_inject(self):
+        k = WordflowKernel()
+        report, tasks = k.audit_to_plan("M", "W", "fake", [])
+        self.assertIsNotNone(report)
+        self.assertEqual(report.status, "PASS")
+        self.assertEqual(tasks, [])
 
 
 if __name__ == "__main__":

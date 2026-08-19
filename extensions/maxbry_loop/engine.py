@@ -5,6 +5,13 @@ from .gaps import detect_gaps, append_gap_tasks
 from .trace import TraceEngine
 
 
+def _wants_code_path(task) -> bool:
+    prov = getattr(task, "provenance", None) or {}
+    kind = str(prov.get("kind") or "")
+    title = str(getattr(task, "title", "") or "").lower()
+    return kind == "code_path" or "code_path" in title
+
+
 class Engine:
     def __init__(self, state, store, model, config):
         self.state = state
@@ -12,6 +19,7 @@ class Engine:
         self.model = model
         self.config = config
         self.trace = TraceEngine()
+        self.last_code_path = None
 
     def bootstrap(self):
         validate(self.state)
@@ -29,6 +37,12 @@ class Engine:
         self.state.completion_score = round(score, 4)
         self.state.blockers = [t.id for t in tasks if t.status == "blocked"]
         return self.state.completion_score
+
+    def dispatch_code_path(self, text: str, mission_id: str = "") -> dict:
+        from .code_path_bridge import dispatch_run_code_path
+
+        self.last_code_path = dispatch_run_code_path(text, mission_id=mission_id)
+        return self.last_code_path
 
     def iteration(self):
         self.state.iteration += 1
@@ -78,6 +92,15 @@ class Engine:
             task.evidence = list(result.get("evidence", []))
             task.status = result.get("status", "blocked")
             task.updated_at = now()
+            if _wants_code_path(task) or self.config["loop"].get("dispatch_code_path"):
+                cp = self.dispatch_code_path(
+                    task.description or task.title,
+                    mission_id=task.id,
+                )
+                task.evidence = list(task.evidence) + [
+                    f"code_path:{cp.get('verdict')}",
+                    f"c19_ok:{cp.get('c19_ok')}",
+                ]
             self.store.event(
                 Event(
                     "task_completed" if task.status == "done" else "task_state_changed",
