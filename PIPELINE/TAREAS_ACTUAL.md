@@ -6,26 +6,24 @@
 | Métrica | Valor |
 |---------|--------|
 | TOTAL | 49 |
-| DONE | **16** (T01–T15 + T22) + AUDIT-5 S01–S10 |
-| PEND | 33 |
-| SIGUIENTE | **T16** — run_context_pack |
+| DONE | **17** (T01–T16 + T22) + AUDIT-5 S01–S10 |
+| PEND | 32 |
+| SIGUIENTE | **T17** — run_knowledge_index |
 
 ## Reciente
 | ID | Estado | Path | Commit |
 |----|--------|------|--------|
-| T22 | DONE | `llm_control.py` | `3bd554e0…` |
 | T15 | DONE | `preflight.py` | `d2d9499e…` |
+| T16 | DONE | `context_pack.py` | `26f4275c…` |
+| T22 | DONE | `llm_control.py` | `3bd554e0…` |
 
 ## Extras chat
-| ID | Tarea | Estado | Trazabilidad |
-|----|-------|--------|--------------|
-| T0 | 4 motors nativos + reception + knowledge | DONE | motors · reception |
-| T2 | Reception/conversion motor | PENDIENTE | T0 reception |
-| T2.1–T2.3 | SDPA/MCR/20M vía T2 | PENDIENTE | chat |
-| CG | Code-gen DSL/DAG/schema | PENDIENTE | chat |
-| ARCH | Arquitectura final (última) | PENDIENTE | chat |
-| DEL | Delete mavis-deploy-keys | PENDIENTE | chat |
-| AUDIT-5 | Forense cada 5 | RECURRENTE · S01–S10 cerrado | PIPELINE/54 |
+| ID | Tarea | Estado |
+|----|-------|--------|
+| T0 | 4 motors nativos | DONE |
+| T2 / T2.1–T2.3 | Reception + SDPA/MCR/20M | PENDIENTE |
+| CG / ARCH / DEL | extras | PENDIENTE |
+| AUDIT-5 | S01–S10 cerrado | RECURRENTE |
 
 ## Lista maestra V1 (49)
-Ver PIPELINE/52 + HANDOFF. Orden: T13→T14→T22→T15→**T16**. No claim C100.
+Orden: T13→T14→T22→T15→T16→**T17**. No claim C100.
