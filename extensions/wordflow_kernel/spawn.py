@@ -2,6 +2,7 @@
 
 Crea una instancia nueva (copia) sin tocar las que ya existen.
 Usa el registro (T07) y el guardado en disco (T08).
+T11: optional instance_id so bootstrap can pin the key.
 """
 from __future__ import annotations
 
@@ -24,13 +25,14 @@ def spawn_wordflow(
     *,
     registry: Optional[PersistentRegistry] = None,
     start_running: bool = True,
+    instance_id: Optional[str] = None,
 ) -> WordflowInstance:
     """Crea una instancia nueva sin modificar las existentes."""
     reg = registry or _default_registry
     cfg: Dict[str, Any] = dict(config or {})
     if dna is not None:
         cfg["dna"] = dna
-    inst = reg.create(name=name, config=cfg)
+    inst = reg.create(name=name, config=cfg, instance_id=instance_id)
     if start_running:
         inst.set_status("running")
         reg.store.save(inst)
