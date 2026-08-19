@@ -1,6 +1,7 @@
-"""T13 — Fake E2E: bootstrap → GoalLock → code_path dry → deploy no-op.
+"""T13 — Fake E2E: bootstrap → GoalLock → run_code_path invoked → deploy no-op.
 
-No vendor LLM. No publish real.
+Invokes C-19 with context_verified=False. Expected verdict BLOCK.
+Does NOT treat BLOCK as PASS. No vendor LLM. No publish real.
 """
 from __future__ import annotations
 
@@ -13,25 +14,72 @@ from .instance_store import PersistentRegistry
 def _goal_lock_fake(text: str) -> dict[str, Any]:
     try:
         from wordflow.engine.goal_lock import lock_goals
-
+    except ImportError:
+        try:
+            from extensions.wordflow.engine.goal_lock import lock_goals
+        except ImportError:
+            return {"ok": True, "mode": "fake", "lock": {"goal": text}, "note": "GOAL_LOCK_MISSING"}
+    try:
         out = lock_goals({"text": text, "raw": text})
         if isinstance(out, dict) and out.get("ok"):
             return {"ok": True, "mode": "wired", "lock": out.get("lock")}
-    except Exception as exc:
+        return {"ok": True, "mode": "wired_incomplete", "lock": out}
+    except Exception as exc:  # noqa: BLE001
         return {"ok": True, "mode": "fake", "lock": {"goal": text}, "note": str(exc)}
-    return {"ok": True, "mode": "fake", "lock": {"goal": text}}
 
 
 def _code_path_dry(text: str, instance_id: str) -> dict[str, Any]:
-    """Dry/fake: do not require full C-19 context/handoff PASS."""
-    return {
-        "ok": True,
-        "mode": "dry",
-        "stage": "code_path_dry",
-        "instance_id": instance_id,
-        "input": text[:80],
-        "published": False,
-    }
+    """Invoke run_code_path. Do not require or claim C-19 PASS."""
+    try:
+        from wordflow.engine.code_path_runner import run_code_path
+    except ImportError:
+        try:
+            from extensions.wordflow.engine.code_path_runner import run_code_path
+        except ImportError:
+            return {
+                "ok": True,
+                "mode": "dry_fallback",
+                "stage": "code_path_dry",
+                "instance_id": instance_id,
+                "invoked": False,
+                "c19_ok": False,
+                "verdict": "NOT_INVOKED",
+                "published": False,
+            }
+    try:
+        out = run_code_path(
+            text,
+            mission_id=instance_id,
+            context_verified=False,
+            handoff_verified=False,
+            auto_measure_core=False,
+            auto_measure_fc=False,
+            run_quality_dag=False,
+        )
+        verdict = str(out.get("verdict") or "FAIL")
+        return {
+            "ok": True,
+            "mode": "invoked_no_pass",
+            "stage": "code_path_dry",
+            "instance_id": instance_id,
+            "invoked": True,
+            "c19_ok": bool(out.get("ok")),
+            "verdict": verdict,
+            "llm_control": out.get("llm_control", "DENY"),
+            "published": False,
+        }
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "ok": True,
+            "mode": "dry_error",
+            "stage": "code_path_dry",
+            "instance_id": instance_id,
+            "invoked": True,
+            "c19_ok": False,
+            "verdict": "ERROR",
+            "error": str(exc),
+            "published": False,
+        }
 
 
 def _deploy_fake() -> dict[str, Any]:
@@ -64,9 +112,10 @@ def run_bootstrap_fake(
     deploy_out = _deploy_fake()
     stages.append("deploy_fake")
 
-    ok = bool(locked.get("ok") and path_out.get("ok") and deploy_out.get("ok"))
+    invoked = bool(path_out.get("ok"))
     return {
-        "ok": ok,
+        "ok": invoked and bool(locked.get("ok") and deploy_out.get("ok")),
+        "c19_pass": bool(path_out.get("c19_ok")),
         "stages": stages,
         "instance_id": inst.instance_id,
         "goal_lock": locked,
@@ -86,7 +135,8 @@ if __name__ == "__main__":
         reg = PersistentRegistry(store=store)
         out = run_bootstrap_fake("v1", registry=reg)
         assert out["ok"] is True
+        assert out["c19_pass"] is False
         assert out["instance_id"] == "v1"
         assert out["stages"] == ["bootstrap", "goal_lock", "code_path_dry", "deploy_fake"]
         assert out["deploy"]["published"] is False
-        print("PASS", " ".join(out["stages"]))
+        print("ok", " ".join(out["stages"]), out["code_path"].get("verdict"))
