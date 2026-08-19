@@ -53,11 +53,15 @@ class IntelligenceGateway(Protocol):
         """Execute capability via Router or Mock. Never call LLM vendors here in Protocol."""
         ...
 
+    def complete(self, prompt: str) -> str:
+        """T26: unique LLM text path. Stub or router — never vendor import."""
+        ...
+
 
 class MockIntelligenceGateway:
     """Deterministic offline gateway for tests and PLAN_ONLY runs."""
 
-    def __init__(self, fixed_text: str = "MOCK_RESPONSE") -> None:
+    def __init__(self, fixed_text: str = "GATEWAY_STUB") -> None:
         self.fixed_text = fixed_text
         self.calls: list[GatewayRequest] = []
 
@@ -98,6 +102,11 @@ class MockIntelligenceGateway:
             evidence_hash=ehash,
         )
 
+    def complete(self, prompt: str) -> str:
+        req = make_request("t26", "llm.complete", {"prompt": str(prompt)})
+        resp = self.execute(req)
+        return str(resp.output.get("text") or self.fixed_text)
+
 
 def make_request(
     task_id: str,
@@ -113,3 +122,10 @@ def make_request(
         payload=payload or {},
         policy=policy or {},
     )
+
+
+if __name__ == "__main__":
+    gw = MockIntelligenceGateway()
+    text = gw.complete("hello")
+    assert text == "GATEWAY_STUB", text
+    print("ok", text)
