@@ -30,6 +30,52 @@ def _stage_ms(t0: float) -> float:
     return round((time.monotonic() - t0) * 1000, 2)
 
 
+def consult_path_gateway(mission_id: str, raw_input: str) -> dict[str, Any]:
+    """CONN.path_gateway: runner → IntelligenceGateway. Vendor = DENY."""
+    try:
+        from extensions.wordflow_kernel.gateway.intelligence import (
+            MockIntelligenceGateway,
+            make_request,
+        )
+    except ImportError:
+        try:
+            from wordflow_kernel.gateway.intelligence import (  # type: ignore
+                MockIntelligenceGateway,
+                make_request,
+            )
+        except ImportError:
+            return {
+                "ok": False,
+                "invoked": False,
+                "error": "GATEWAY_MISSING",
+                "contract": "GAP",
+                "llm_control": "DENY",
+                "vendor_call": False,
+            }
+    gw = MockIntelligenceGateway(fixed_text="PATH_GATEWAY_DENY")
+    req = make_request(
+        task_id="C-19",
+        capability="llm.complete",
+        payload={
+            "prompt": (raw_input or "")[:200],
+            "mission_id": mission_id,
+            "llm_control": "DENY",
+        },
+        policy={"max_cost": 0.0, "vendor": "DENY"},
+    )
+    res = gw.execute(req)
+    return {
+        "ok": True,
+        "invoked": True,
+        "status": res.status,
+        "provider": res.provider,
+        "llm_control": "DENY",
+        "contract": "WIRED_DENY",
+        "vendor_call": False,
+        "evidence_hash": res.evidence_hash,
+    }
+
+
 def run_code_path(
     raw_input: str,
     *,
@@ -60,6 +106,7 @@ def run_code_path(
     import_mapping: dict[str, str] | None = None,
     profile: str = "dev",
     scan_paths: list[str] | None = None,
+    consult_gateway: bool = True,
 ) -> dict[str, Any]:
     from extensions.wordflow.standards.forensic_core import (
         ForensicEnforcementState, CoreCheckResult, ClosureCounters,
@@ -105,7 +152,7 @@ def run_code_path(
         "gap_registry": "INIT", "closure_engine": "PENDING", "fc_enforced": False,
         "auto_measure": "SKIP", "fc_auto": "SKIP", "adapt": "SKIP", "post_adapt": "SKIP",
         "evidence_merge": "SKIP", "quality_bar": "SKIP", "dest_resolved": dest_resolved or "SKIP",
-        "profile": env_prof, "stage_ms": stage_ms,
+        "profile": env_prof, "stage_ms": stage_ms, "path_gateway": "SKIP",
     }
 
     t0 = time.monotonic()
@@ -198,7 +245,6 @@ def run_code_path(
 
     lock = locked.get("lock") or {}
     mid = mission_id or lock.get("lock_id") or ""
-    # U1 policy on runner
     policy = PolicySnapshot.freeze(mid or "runner")
     policy_dict = {"mission_id": policy.mission_id, "contract_version": policy.contract_version, "frozen_at": policy.frozen_at}
 
@@ -208,10 +254,19 @@ def run_code_path(
     stage_ms["cognitive"] = _stage_ms(t0)
     compiled = compile_skill_to_code(skill) if skill else None
 
+    t0 = time.monotonic()
+    if consult_gateway:
+        gw_hop = consult_path_gateway(mid, raw_input)
+        wire_trace["path_gateway"] = gw_hop
+    else:
+        gw_hop = {"ok": False, "invoked": False, "contract": "SKIP"}
+        wire_trace["path_gateway"] = gw_hop
+    stage_ms["path_gateway"] = _stage_ms(t0)
+
     evidence = build_evidence_packet(
         task_id="C-19", claim_status="PARTIAL",
         paths=[{"path": "extensions/wordflow/engine/code_path_runner.py"}],
-        tests={"cognitive_ok": True, "skill_compiled": compiled is not None},
+        tests={"cognitive_ok": True, "skill_compiled": compiled is not None, "path_gateway": bool(gw_hop.get("invoked"))},
         doc_anchors=["C-19", "FORENSIC_ENFORCEMENT"], notes=f"mission={mid}",
     )
     evidence_ok = verify_evidence_packet(evidence)["ok"]
@@ -238,7 +293,6 @@ def run_code_path(
     if auto_measure_core:
         am = _auto_core(caller=core_measures or {}, connectivity_hint=conn, evidence_ok=bool(evidence_ok and evidence_complete), pre_gate_ok=pre_ok)
         measures.update(am["measures"])
-        # U3: soft signal from cognitive/goal_lock (no invent PASS total)
         if isinstance(cog, dict) and cog.get("ok", True):
             measures.setdefault("CORE-08", measures.get("CORE-08", False))
             if core_measures and core_measures.get("CORE-08"):
@@ -331,6 +385,7 @@ def run_code_path(
         "forensic": forensic, "pre_gate": pre_gate_result, "closure": closure, "gaps": gap_reg.to_list(),
         "core_measures": measures, "fc_measures": fc_map, "quality_dag": wire_trace.get("quality_dag"),
         "policy": policy_dict,
+        "path_gateway": gw_hop,
         "wire_trace": wire_trace, "llm_control": "DENY",
         "verdict": "PASS" if ok else (forensic.get("verdict") or "FAIL"),
         "path": "UNIFIED_RUNNER_V1",
