@@ -6,15 +6,15 @@
 | Métrica | Valor |
 |---------|--------|
 | TOTAL | 49 |
-| DONE | **24** (T01–T24) + AUDIT-5 S01–S15 |
+| DONE | **24** (T01–T24) + AUDIT-5 S01–S20 |
 | PEND | 25 |
-| SIGUIENTE | **AUDIT-5 S16–S20** (T20–T24) · luego T25 |
+| SIGUIENTE | **T25** — run_stage hooks por instance |
 
 ## Reciente
 | ID | Estado | Path | Commit |
 |----|--------|------|--------|
-| T23 | DONE | `wordflow_smoke.yml` | `19122304…` |
 | T24 | DONE | `CLAIM_C100_PROGRESS.md` | `891e1303…` |
+| AUDIT-5 S16–S20 | **PASS** | `AUDIT5_S16_S20.md` | `0cf6c35f…` |
 
 ## Lista maestra V1 (49)
-C100 = **NO**. V1 100% = **NO**. Gate AUDIT-5 antes de T25.
+Siguiente código: **T25**. C100 = NO. V1 100% = NO.
