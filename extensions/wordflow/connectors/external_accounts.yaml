@@ -5,10 +5,11 @@ accounts:
   - account_id: external_software_b
     provider: github
     credential_ref: env:EXTERNAL_GH_B_TOKEN
-    owner: REPLACE_OWNER
-    repo: REPLACE_REPO
+    owner: abc1tienda-web
+    repo: osquestador-auditor-y-memoria-1
     branch: main
-    allowed_repositories: []
+    allowed_repositories:
+      - abc1tienda-web/osquestador-auditor-y-memoria-1
     policy:
       can_read: true
       can_write: false
