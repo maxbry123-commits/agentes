@@ -1,15 +1,31 @@
 """WordflowKernel orchestrator — audit → gaps → tasks.
 
-Depends on forensic/gap_tasks/trace/ledger/checkpoint/memory (VK-02+).
-This module is the mount skeleton from kernel zip (VK-01).
+Default inject: ForensicEngine + GapTaskCompiler (no LLM).
+Pass auto_inject=False to keep the skeleton RuntimeError.
 """
 from __future__ import annotations
 
 from typing import Any
 
 
+def _default_engines(repo: Any = None):
+    from .forensic import ForensicEngine
+    from .gap_tasks import GapTaskCompiler
+    from .repo_truth import FakeRepoTruth, LocalRepoTruth, RepoTruthPort
+
+    if repo is None:
+        port: RepoTruthPort = FakeRepoTruth(
+            {"workflow_default.txt": b"WordflowKernel auto_inject"}
+        )
+    elif isinstance(repo, RepoTruthPort):
+        port = repo
+    else:
+        port = LocalRepoTruth(repo)
+    return ForensicEngine(port), GapTaskCompiler()
+
+
 class WordflowKernel:
-    """Thin orchestrator; concrete engines injected in later VK tasks."""
+    """Thin orchestrator; engines default-injected unless auto_inject=False."""
 
     def __init__(
         self,
@@ -19,13 +35,22 @@ class WordflowKernel:
         ledger: Any = None,
         checkpoints: Any = None,
         memory: Any = None,
+        repo: Any = None,
+        auto_inject: bool = True,
     ):
+        if auto_inject and (audit_engine is None or compiler is None):
+            default_audit, default_compiler = _default_engines(repo)
+            if audit_engine is None:
+                audit_engine = default_audit
+            if compiler is None:
+                compiler = default_compiler
         self.audit_engine = audit_engine
         self.compiler = compiler
         self.trace = trace
         self.ledger = ledger
         self.checkpoints = checkpoints
         self.memory = memory
+        self.auto_inject = auto_inject
 
     def audit_to_plan(self, mission_id: str, workspace_id: str, target: str, requirements: list):
         if self.audit_engine is None or self.compiler is None:
