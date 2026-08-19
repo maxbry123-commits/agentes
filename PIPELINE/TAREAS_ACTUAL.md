@@ -6,16 +6,16 @@
 | Métrica | Valor |
 |---------|--------|
 | TOTAL | 49 |
-| DONE | **22** (T01–T22) + AUDIT-5 S01–S15 |
-| PEND | 27 |
-| SIGUIENTE | **T23** — CI workflow smoke |
+| DONE | **23** (T01–T23) + AUDIT-5 S01–S15 |
+| PEND | 26 |
+| SIGUIENTE | **T24** |
 
 ## Reciente
 | ID | Estado | Path | Commit |
 |----|--------|------|--------|
-| T20 | DONE | `engine_registry.py` | `863263c5…` |
 | T21 | DONE | `handle_message.py` | `5e56b0bd…` |
 | T22 | DONE | `llm_control.py` | `3bd554e0…` |
+| T23 | DONE | `.github/workflows/wordflow_smoke.yml` | `19122304…` |
 
 ## Lista maestra V1 (49)
-T20→T21→T22(ya)→**T23**. No claim C100.
+Siguiente: **T24**. No claim C100.
