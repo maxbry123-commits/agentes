@@ -35,6 +35,17 @@ class GatewayModel:
         self.gateway = gateway
         self.capability = capability
 
+    def generate(self, prompt: str) -> str:
+        """T27: text path only via gateway.complete (T26)."""
+        complete = getattr(self.gateway, "complete", None)
+        if callable(complete):
+            return str(complete(str(prompt)))
+        from wordflow_kernel.gateway.intelligence import make_request
+
+        req = make_request("t27", self.capability, {"prompt": str(prompt)})
+        res = self.gateway.execute(req)
+        return str(res.output.get("text", ""))
+
     def execute(self, task, goal):
         # Late import to keep maxbry_loop usable without kernel on pure mock paths
         from wordflow_kernel.gateway.intelligence import make_request
@@ -88,3 +99,12 @@ def build_model(config: dict, gateway: Any | None = None):
         return GatewayModel(gateway)
     # Unknown provider → fail closed to mock for safety (no silent vendor call)
     return MockModel()
+
+
+if __name__ == "__main__":
+    from wordflow_kernel.gateway.intelligence import MockIntelligenceGateway
+
+    gw = MockIntelligenceGateway()
+    model = GatewayModel(gw)
+    assert model.generate("x") == "GATEWAY_STUB"
+    print("ok", model.generate("x"))
