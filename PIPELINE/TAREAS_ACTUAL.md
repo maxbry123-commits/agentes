@@ -6,15 +6,16 @@
 | Métrica | Valor |
 |---------|--------|
 | TOTAL | 49 |
-| DONE | **11** (T01–T11) + AUDIT-5 S01–S05 |
-| PEND | 38 (T12–T49) |
-| SIGUIENTE | **T12** — fail_closed ficha inválida |
+| DONE | **12** (T01–T12) + AUDIT-5 S01–S05 |
+| PEND | 37 (T13–T49) |
+| SIGUIENTE | **T13** — bootstrap_fake GoalLock→loop→code_path→deploy Fake |
 
 ## Reciente
 | ID | Estado | Path | Commit |
 |----|--------|------|--------|
-| T10 | DONE | `extensions/wordflow_kernel/ficha_loader.py` | `baa302f7…` |
+| T10 | DONE | `ficha_loader.py` | `baa302f7…` |
 | T11 | DONE | `bootstrap_multi.py` + `spawn.py` | `55d07000…` / `f330f4d9…` |
+| T12 | DONE | `fail_closed.py` | `30da7837…` |
 
 ## Extras chat
 | ID | Tarea | Estado | Trazabilidad |
@@ -30,4 +31,4 @@
 | AUDIT-5 | Forense cada 5 tareas | RECURRENTE · S01–S05 cerrado | PIPELINE/54 · AUDIT5_S01_S05.md |
 
 ## Lista maestra V1 (49)
-Ver PIPELINE/52 + HANDOFF_V1_T10_T49. **T01–T11 DONE.** Siguiente: **T12**. No claim C100.
+Ver PIPELINE/52 + HANDOFF_V1_T10_T49. **T01–T12 DONE.** Siguiente: **T13**. No claim C100.
