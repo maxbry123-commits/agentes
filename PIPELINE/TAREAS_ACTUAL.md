@@ -6,15 +6,15 @@
 | Métrica | Valor |
 |---------|--------|
 | TOTAL | 49 |
-| DONE | **20** (T01–T19 + T22) + AUDIT-5 S01–S15 |
-| PEND | 29 |
-| SIGUIENTE | **T20** — EngineRegistry |
+| DONE | **21** (T01–T20 + T22) + AUDIT-5 S01–S15 |
+| PEND | 28 |
+| SIGUIENTE | **T21** — handle_message |
 
 ## Reciente
 | ID | Estado | Path | Commit |
 |----|--------|------|--------|
-| T15–T19 | DONE | preflight…memory | AUDIT5_S11_S15.md |
-| AUDIT-5 S11–S15 | **PASS** | `PIPELINE/AUDIT5_S11_S15.md` | `de4c3403…` |
+| T20 | DONE | `engine_registry.py` | `863263c5…` |
+| AUDIT-5 S11–S15 | PASS | `AUDIT5_S11_S15.md` | `de4c3403…` |
 
 ## Lista maestra V1 (49)
-Siguiente código: **T20**. No claim C100.
+Siguiente: **T21**. No claim C100.
