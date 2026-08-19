@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 
-from extensions.wordflow.engine.code_path_runner import run_code_path
+from extensions.wordflow.engine.code_path_runner import consult_path_gateway, run_code_path
 from extensions.wordflow.standards.forensic_core import CORE_IDS, CONNECTIVITY_CHAIN, FC_IDS
 
 TEXT = (
@@ -48,6 +48,9 @@ class TestCodePathRunner(unittest.TestCase):
         self.assertFalse(r["ok"])
         self.assertEqual(r["llm_control"], "DENY")
         self.assertEqual(r["path"], "UNIFIED_RUNNER_V1")
+        self.assertTrue(r.get("path_gateway", {}).get("invoked"))
+        self.assertEqual(r.get("path_gateway", {}).get("contract"), "WIRED_DENY")
+        self.assertFalse(r.get("path_gateway", {}).get("vendor_call"))
 
     def test_pass_with_full_caller_measures(self):
         r = run_code_path(
@@ -79,6 +82,13 @@ class TestCodePathRunner(unittest.TestCase):
             auto_measure_core=False,
         )
         self.assertIsNotNone(r.get("skill_compile"))
+
+    def test_consult_path_gateway_deny(self):
+        hop = consult_path_gateway("m19", TEXT)
+        self.assertTrue(hop["invoked"])
+        self.assertEqual(hop["llm_control"], "DENY")
+        self.assertFalse(hop["vendor_call"])
+        self.assertEqual(hop["contract"], "WIRED_DENY")
 
 
 if __name__ == "__main__":
