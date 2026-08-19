@@ -5,12 +5,15 @@ This module does not duplicate convert logic.
 """
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any
 
 DEFAULT_MAX_CONTEXT = 20_000_000
 
 _RECEPTION_DIR = "extensions/wordflow/reception"
 _KERNEL_RECEPTION = "extensions/wordflow_kernel/reception"
+_KERNEL_ROOT = Path(__file__).resolve().parents[1]
 
 _PHASE_PATHS = {
     "inbox": f"{_RECEPTION_DIR}/",
@@ -150,7 +153,7 @@ def _classify(text: str) -> dict[str, Any]:
 
 
 def locate_phase(text: str = "") -> dict[str, Any]:
-    """Map text → exact repo path. Does not write files."""
+    """Map text → exact repo path. Does not write files. git apply = external."""
     low = (text or "").lower()
     phase = "engine"
     if any(k in low for k in ("wordflow_kernel", "extensión kernel", "extension kernel")):
@@ -171,7 +174,35 @@ def locate_phase(text: str = "") -> dict[str, Any]:
         "path": _PHASE_PATHS[phase],
         "wrote": False,
         "apply": "external",
+        "contract": "LOCATE_ONLY",
     }
+
+
+def apply_phase_plan(phase: dict[str, Any], dest: str | Path) -> dict[str, Any]:
+    """Write phase plan JSON. Not git apply. Contract: plan artifact only."""
+    path = Path(dest)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "contract": "LOCATE_ONLY",
+        "git_apply": False,
+        "phase": phase.get("phase"),
+        "path": phase.get("path"),
+    }
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    return {
+        "ok": True,
+        "wrote": True,
+        "path": str(path),
+        "git_apply": False,
+        "contract": "LOCATE_ONLY",
+    }
+
+
+def _resolve_ficha(module_root: str) -> Path:
+    packaged = _KERNEL_ROOT / "ficha.v2.json"
+    if packaged.is_file():
+        return packaged
+    return Path(module_root) / "ficha.v2.json"
 
 
 def attach_plugin(module_root: str = "extensions/wordflow_kernel") -> dict[str, Any]:
@@ -183,10 +214,7 @@ def attach_plugin(module_root: str = "extensions/wordflow_kernel") -> dict[str, 
             from wordflow.engine.enchufe_gate import validate_ficha
         except ImportError:
             return {"ok": False, "error": "ENCHUFE_MISSING", "invoked": False}
-    from pathlib import Path
-    import json
-
-    ficha_path = Path(module_root) / "ficha.v2.json"
+    ficha_path = _resolve_ficha(module_root)
     if not ficha_path.is_file():
         return {
             "ok": False,
@@ -206,9 +234,12 @@ def _pack(instance_id: str | None) -> dict[str, Any]:
     if not instance_id:
         return {"ok": False, "invoked": False, "error": "NO_INSTANCE"}
     try:
-        from .context_pack import run_context_pack
+        from extensions.wordflow_kernel.context_pack import run_context_pack
     except ImportError:
-        return {"ok": False, "invoked": False, "error": "CONTEXT_PACK_MISSING"}
+        try:
+            from .context_pack import run_context_pack
+        except ImportError:
+            return {"ok": False, "invoked": False, "error": "CONTEXT_PACK_MISSING"}
     try:
         return {**run_context_pack(instance_id), "invoked": True}
     except Exception as exc:  # noqa: BLE001
@@ -216,8 +247,15 @@ def _pack(instance_id: str | None) -> dict[str, Any]:
 
 
 def ingest(input_block: dict[str, Any] | None, **kwargs: Any) -> dict[str, Any]:
-    """convert → compile_input_contract → classify → locate_phase → plugin."""
-    converted = convert(input_block, **{k: v for k, v in kwargs.items() if k in ("use_sdpa", "branch", "max_context")})
+    """convert → compile_input_contract → classify → locate_phase → plugin.
+
+    FAIL-closed: plugin.ok must be True. git apply stays external.
+    Set apply=True to write a phase plan JSON (not a git apply).
+    """
+    converted = convert(
+        input_block,
+        **{k: v for k, v in kwargs.items() if k in ("use_sdpa", "branch", "max_context")},
+    )
     text = ""
     if isinstance(converted, dict):
         text = str((converted.get("normalized") or {}).get("text") or "")
@@ -227,10 +265,15 @@ def ingest(input_block: dict[str, Any] | None, **kwargs: Any) -> dict[str, Any]:
     plugin = attach_plugin()
     pack = _pack(kwargs.get("instance_id"))
     loc = locate("inbox")
+    plan = {"ok": False, "wrote": False, "reason": "locate_only", "git_apply": False}
+    if kwargs.get("apply"):
+        dest = kwargs.get("plan_path") or str(Path.cwd() / "phase_plan.json")
+        plan = apply_phase_plan(phase, dest)
     hops = [compiled, classified, phase, plugin]
-    ok = bool(converted.get("ok")) and all(h.get("ok") or h.get("invoked") for h in hops)
+    hops_ok = bool(converted.get("ok")) and all(h.get("ok") or h.get("invoked") for h in hops)
+    ok = bool(converted.get("ok") and compiled.get("invoked") and plugin.get("ok"))
     return {
-        "ok": bool(converted.get("ok") and compiled.get("invoked")),
+        "ok": ok,
         "converted": converted,
         "contract": compiled,
         "classification": classified,
@@ -238,6 +281,7 @@ def ingest(input_block: dict[str, Any] | None, **kwargs: Any) -> dict[str, Any]:
         "plugin": plugin,
         "context_pack": pack,
         "locate": loc,
+        "phase_plan": plan,
         "invoked": {
             "input_compiler": bool(compiled.get("invoked")),
             "task_classifier": bool(classified.get("invoked")),
@@ -245,8 +289,8 @@ def ingest(input_block: dict[str, Any] | None, **kwargs: Any) -> dict[str, Any]:
             "enchufe_plugin": bool(plugin.get("invoked")),
             "context_pack": bool(pack.get("invoked")),
         },
-        "wrote": False,
-        "hops_ok": ok,
+        "wrote": bool(plan.get("wrote")),
+        "hops_ok": hops_ok,
     }
 
 
@@ -257,4 +301,4 @@ if __name__ == "__main__":
     assert "ok" in missing_ok
     out = ingest({"raw_text": "objective: wire kernel\nsuccess: ingest invokes compiler"})
     assert out["invoked"]["input_compiler"] is True
-    print("ok", loc["path"], out["invoked"])
+    print("ok", loc["path"], out["invoked"], "plugin", out["plugin"].get("ok"))
