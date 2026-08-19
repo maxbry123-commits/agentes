@@ -42,17 +42,23 @@ Workflow → MemoryOrchestratorAdapter → memory.* via Router | local Persisten
 ```
 - `memory_slot/adapter.py`, `memory.py`
 
-### 3. Engines (OpenClaw / Hermes)
+### 3. Engines (OpenClaw / Hermes) — T44
 ```text
-EngineRegistry.reason → stubs → always via IntelligenceGateway
+EngineRegistry.load(ficha)
+EngineRegistry.attach(name, policy)
+EnginePort.reason(prompt) → ALWAYS via IntelligenceGateway
 ```
-- `engines/` — software binaries via Acquire + optional Cuenta B repos
+- Stubs: `engines/openclaw_stub.py`, `engines/hermes_stub.py`, `engines/port.py`
+- No vendor binaries in V1. Acquire ON is V1.1.
 
 ### 4. Continuous loop + 12-stage
 - `extensions/maxbry_loop/` + `stages/`
+- `maxbry_loop.code_path_bridge.dispatch_run_code_path` → C-19 (WIRED_NO_PASS)
 
 ### 5. Forensic audit
 - `forensic_api.py`, `repo_truth.py`, `crosscheck.py`
+- `WordflowKernel()` auto-injects ForensicEngine + GapTaskCompiler
+- `WordflowKernel(auto_inject=False)` keeps RuntimeError skeleton
 
 ### 6. GitHub multi-account + deploy + external software
 ```text
@@ -70,9 +76,18 @@ GitDataAPIPort Fake | Real under flags
 
 ### 9. Enchufe
 - `ficha.v2.json`; `llm_control: DENY` on deterministic kernel paths
+- ingest FAIL-closed if plugin `ok=False`
+
+### 10. Router + Memory — T45
+```text
+Production: RouterHTTPGateway(ROUTER_URL)
+Offline tests: MockIntelligenceGateway
+Memory: memory_slot adapter only — no DB externa V1
+```
 
 ## Residual post V1
 Kimi/Minimax fusion full · bulk fetch · full CI matrix · real engine binaries when Acquire ON
 
 ## Tests
+See `docs/TESTS_OFFLINE.md`.
 `python -m unittest` under package `tests/` offline.
