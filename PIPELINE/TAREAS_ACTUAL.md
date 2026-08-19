@@ -6,9 +6,9 @@
 | Métrica | Valor |
 |---------|--------|
 | TOTAL | 49 |
-| DONE | **12** (T01–T12) + AUDIT-5 S01–S05 |
-| PEND | 37 (T13–T49) |
-| SIGUIENTE | **T13** — bootstrap_fake GoalLock→loop→code_path→deploy Fake |
+| DONE | **13** (T01–T13) + AUDIT-5 S01–S05 |
+| PEND | 36 (T14–T49) |
+| SIGUIENTE | **T14** — bridge_run_fake runner↔loop + publish Fake |
 
 ## Reciente
 | ID | Estado | Path | Commit |
@@ -16,6 +16,7 @@
 | T10 | DONE | `ficha_loader.py` | `baa302f7…` |
 | T11 | DONE | `bootstrap_multi.py` + `spawn.py` | `55d07000…` / `f330f4d9…` |
 | T12 | DONE | `fail_closed.py` | `30da7837…` |
+| T13 | DONE | `bootstrap_fake.py` | `240bc9ca…` |
 
 ## Extras chat
 | ID | Tarea | Estado | Trazabilidad |
@@ -31,4 +32,4 @@
 | AUDIT-5 | Forense cada 5 tareas | RECURRENTE · S01–S05 cerrado | PIPELINE/54 · AUDIT5_S01_S05.md |
 
 ## Lista maestra V1 (49)
-Ver PIPELINE/52 + HANDOFF_V1_T10_T49. **T01–T12 DONE.** Siguiente: **T13**. No claim C100.
+Ver PIPELINE/52 + HANDOFF_V1_T10_T49. **T01–T13 DONE.** Siguiente: **T14**. No claim C100.
