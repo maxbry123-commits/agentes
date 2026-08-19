@@ -6,17 +6,15 @@
 | Métrica | Valor |
 |---------|--------|
 | TOTAL | 49 |
-| DONE | **20** (T01–T19 + T22) + AUDIT-5 S01–S10 |
+| DONE | **20** (T01–T19 + T22) + AUDIT-5 S01–S15 |
 | PEND | 29 |
-| SIGUIENTE | **AUDIT-5 S11–S15** (T15–T19) · luego T20 |
+| SIGUIENTE | **T20** — EngineRegistry |
 
 ## Reciente
 | ID | Estado | Path | Commit |
 |----|--------|------|--------|
-| T17 | DONE | `knowledge_index.py` | `295088e7…` |
-| T18 | DONE | `resources/registry.py` | `5b360b7e…` |
-| T19 | DONE | `memory.py` | `c3f35b69…` |
-| T22 | DONE | `llm_control.py` | `3bd554e0…` |
+| T15–T19 | DONE | preflight…memory | AUDIT5_S11_S15.md |
+| AUDIT-5 S11–S15 | **PASS** | `PIPELINE/AUDIT5_S11_S15.md` | `de4c3403…` |
 
 ## Lista maestra V1 (49)
-T15→T19 cerrados. Gate AUDIT-5 antes de T20. No claim C100.
+Siguiente código: **T20**. No claim C100.
