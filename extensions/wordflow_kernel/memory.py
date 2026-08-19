@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import time
 from pathlib import Path
+from typing import Any, Optional
 
 
 class MemoryPort:
@@ -55,3 +56,47 @@ class PersistentMemory(MemoryPort):
 
     def forget(self, query, scope=None):
         return self.store({"forget": query}, scope)
+
+
+class MemoryGateway:
+    """T19: kv get/set. Optional JSON persist. No Qdrant/LLM."""
+
+    def __init__(self, path: Optional[Path] = None):
+        self._data: dict[str, Any] = {}
+        self.path = Path(path) if path is not None else None
+        if self.path is not None and self.path.is_file():
+            raw = json.loads(self.path.read_text(encoding="utf-8"))
+            if isinstance(raw, dict):
+                self._data = raw
+
+    def _flush(self) -> None:
+        if self.path is None:
+            return
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path.write_text(
+            json.dumps(self._data, ensure_ascii=False, default=str),
+            encoding="utf-8",
+        )
+
+    def set(self, k: str, v: Any) -> Any:
+        self._data[str(k)] = v
+        self._flush()
+        return v
+
+    def get(self, k: str, default: Any = None) -> Any:
+        return self._data.get(str(k), default)
+
+
+if __name__ == "__main__":
+    import tempfile
+
+    gw = MemoryGateway()
+    gw.set("k", "v")
+    assert gw.get("k") == "v"
+    with tempfile.TemporaryDirectory() as tmp:
+        p = Path(tmp) / "kv.json"
+        a = MemoryGateway(p)
+        a.set("x", 1)
+        b = MemoryGateway(p)
+        assert b.get("x") == 1
+    print("ok", gw.get("k"))
