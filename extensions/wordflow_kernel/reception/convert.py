@@ -250,6 +250,7 @@ def ingest(input_block: dict[str, Any] | None, **kwargs: Any) -> dict[str, Any]:
     """convert → compile_input_contract → classify → locate_phase → plugin.
 
     FAIL-closed: plugin.ok must be True. git apply stays external.
+    hops_ok requires every hop ok (not just invoked).
     Set apply=True to write a phase plan JSON (not a git apply).
     """
     converted = convert(
@@ -270,7 +271,7 @@ def ingest(input_block: dict[str, Any] | None, **kwargs: Any) -> dict[str, Any]:
         dest = kwargs.get("plan_path") or str(Path.cwd() / "phase_plan.json")
         plan = apply_phase_plan(phase, dest)
     hops = [compiled, classified, phase, plugin]
-    hops_ok = bool(converted.get("ok")) and all(h.get("ok") or h.get("invoked") for h in hops)
+    hops_ok = bool(converted.get("ok")) and all(bool(h.get("ok")) for h in hops)
     ok = bool(converted.get("ok") and compiled.get("invoked") and plugin.get("ok"))
     return {
         "ok": ok,
