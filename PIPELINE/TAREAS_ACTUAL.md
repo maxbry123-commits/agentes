@@ -6,17 +6,15 @@
 | Métrica | Valor |
 |---------|--------|
 | TOTAL | 49 |
-| DONE | **10** (T01–T10) + AUDIT-5 S01–S05 |
-| PEND | 39 (T11–T49) |
-| SIGUIENTE | **T11** — bootstrap multi-instance aware |
+| DONE | **11** (T01–T11) + AUDIT-5 S01–S05 |
+| PEND | 38 (T12–T49) |
+| SIGUIENTE | **T12** — fail_closed ficha inválida |
 
-## T10
-| Campo | Valor |
-|-------|--------|
-| Estado | **DONE** |
-| Path | `extensions/wordflow_kernel/ficha_loader.py` |
-| Commit | `baa302f7640d5de38e413ad03bce113f26b32da3` |
-| Nota | PATCH3 B1: `artifact_id`/`abi_version`; forense gaps=0 |
+## Reciente
+| ID | Estado | Path | Commit |
+|----|--------|------|--------|
+| T10 | DONE | `extensions/wordflow_kernel/ficha_loader.py` | `baa302f7…` |
+| T11 | DONE | `bootstrap_multi.py` + `spawn.py` | `55d07000…` / `f330f4d9…` |
 
 ## Extras chat
 | ID | Tarea | Estado | Trazabilidad |
@@ -32,4 +30,4 @@
 | AUDIT-5 | Forense cada 5 tareas | RECURRENTE · S01–S05 cerrado | PIPELINE/54 · AUDIT5_S01_S05.md |
 
 ## Lista maestra V1 (49)
-Ver PIPELINE/52 + HANDOFF_V1_T10_T49. **T01–T10 DONE.** Siguiente: **T11**. No claim C100.
+Ver PIPELINE/52 + HANDOFF_V1_T10_T49. **T01–T11 DONE.** Siguiente: **T12**. No claim C100.
