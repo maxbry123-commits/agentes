@@ -153,7 +153,7 @@ def _classify(text: str) -> dict[str, Any]:
 
 
 def locate_phase(text: str = "") -> dict[str, Any]:
-    """Map text → exact repo path. Does not write files. git apply = external."""
+    """Map text → exact repo path. Does not write files unless dest is supplied."""
     low = (text or "").lower()
     phase = "engine"
     if any(k in low for k in ("wordflow_kernel", "extensión kernel", "extension kernel")):
@@ -164,7 +164,7 @@ def locate_phase(text: str = "") -> dict[str, Any]:
         phase = "standards"
     elif any(k in low for k in ("maxbry_loop", "stage_hooks")):
         phase = "loop"
-    elif any(k in low for k in ("github_deploy", "plan_push", "token_ref")):
+    elif any(k in low for k in ("github_deploy", "plan_push", "token_ref", "apply_push")):
         phase = "deploy"
     elif any(k in low for k in ("arquitectura", "pipeline/", "handoff")):
         phase = "pipeline"
@@ -247,12 +247,15 @@ def _pack(instance_id: str | None) -> dict[str, Any]:
 
 
 def ingest(input_block: dict[str, Any] | None, **kwargs: Any) -> dict[str, Any]:
-    """convert → compile_input_contract → classify → locate_phase → plugin.
+    """convert → compile → classify → locate_phase → plugin → optional apply_and_push.
 
-    FAIL-closed: plugin.ok must be True. git apply stays external.
+    FAIL-closed: plugin.ok must be True.
+    apply=True writes phase_plan.json.
+    dest+account_id+files → github_deploy.apply_and_push (0% LLM).
     hops_ok requires every hop ok (not just invoked).
-    Set apply=True to write a phase plan JSON (not a git apply).
     """
+    from .git_apply import push_if_dest
+
     converted = convert(
         input_block,
         **{k: v for k, v in kwargs.items() if k in ("use_sdpa", "branch", "max_context")},
@@ -270,6 +273,7 @@ def ingest(input_block: dict[str, Any] | None, **kwargs: Any) -> dict[str, Any]:
     if kwargs.get("apply"):
         dest = kwargs.get("plan_path") or str(Path.cwd() / "phase_plan.json")
         plan = apply_phase_plan(phase, dest)
+    git = push_if_dest(input_block, kwargs, phase)
     hops = [compiled, classified, phase, plugin]
     hops_ok = bool(converted.get("ok")) and all(bool(h.get("ok")) for h in hops)
     ok = bool(converted.get("ok") and compiled.get("invoked") and plugin.get("ok"))
@@ -283,14 +287,17 @@ def ingest(input_block: dict[str, Any] | None, **kwargs: Any) -> dict[str, Any]:
         "context_pack": pack,
         "locate": loc,
         "phase_plan": plan,
+        "git": git,
         "invoked": {
             "input_compiler": bool(compiled.get("invoked")),
             "task_classifier": bool(classified.get("invoked")),
             "locate_phase": True,
             "enchufe_plugin": bool(plugin.get("invoked")),
             "context_pack": bool(pack.get("invoked")),
+            "apply_push": not bool(git.get("skipped")),
         },
         "wrote": bool(plan.get("wrote")),
+        "git_apply": bool(git.get("git_apply")),
         "hops_ok": hops_ok,
     }
 
