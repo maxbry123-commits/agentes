@@ -15,3 +15,21 @@ accounts:
       can_write: false
       can_deploy: false
     role: software_store
+  - account_id: github_b
+    provider: github
+    credential_ref: env:GITHUB_B_TOKEN
+    allowed_repositories: []
+    policy:
+      can_read: true
+      can_write: true
+      can_deploy: true
+    role: deploy_any_repo
+  - account_id: hf_b
+    provider: huggingface
+    credential_ref: env:HF_TOKEN
+    allowed_repositories: []
+    policy:
+      can_read: true
+      can_write: true
+      can_deploy: true
+    role: hf_store
