@@ -16,7 +16,7 @@ def merge_evidence(
     eng = engine_packet or {}
     std = standards_packet.to_dict() if standards_packet else {}
 
-    files = list(dict.fromkeys((eng.get("paths") or []) if isinstance(eng.get("paths"), list) else []))
+    files = (eng.get("paths") or []) if isinstance(eng.get("paths"), list) else []
     file_paths = []
     for p in files:
         if isinstance(p, dict):

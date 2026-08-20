@@ -304,7 +304,8 @@ def run_code_path(
     elif core_measures:
         measures.update({k: bool(v) for k, v in core_measures.items() if k in measures})
 
-    core_results = [CoreCheckResult(cid, bool(measures.get(cid, False)), evidence=str((wire_trace.get("auto_measure") or {}).get("evidence", {}).get(cid, ""))) for cid in CORE_IDS]
+    auto_trace = wire_trace.get("auto_measure") if isinstance(wire_trace.get("auto_measure"), dict) else {}
+    core_results = [CoreCheckResult(cid, bool(measures.get(cid, False)), evidence=str((auto_trace.get("evidence", {}) or {}).get(cid, ""))) for cid in CORE_IDS]
 
     fc_in = dict(fc_results or {})
     if auto_measure_fc:

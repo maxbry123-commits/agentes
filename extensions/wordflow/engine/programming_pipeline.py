@@ -18,7 +18,7 @@ KNOWN_KW: Set[str] = {
     "counters", "evidence_complete", "final_clean_reaudit_passed", "quality_dag_ok",
     "context_manifest", "require_context_manifest", "fc_results", "require_fc",
     "auto_measure_core", "auto_measure_fc", "apply_adapt", "import_mapping", "profile",
-    "scan_paths", "plan_steps", "skill", "run_quality_dag", "pre_gate_done",
+    "scan_paths", "plan_steps", "skill", "run_quality_dag", "pre_gate_done", "consult_gateway",
 }
 
 

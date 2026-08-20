@@ -50,7 +50,7 @@ def compute_focus_score(
     # forbidden presence collapses score
     for term in lock.get("forbidden") or []:
         t = str(term).strip().lower()
-        if t and t in hay:
+        if t and t in hay and f"sin {t}" not in hay and f"without {t}" not in hay:
             return min(ratio * 0.3, 0.2)
     return round(min(1.0, 0.4 + ratio * 0.6), 3)
 
@@ -119,12 +119,12 @@ class PushPingSupervisor:
         self.interval_s = interval_s
         self.focus_threshold = focus_threshold
         self.on_event = on_event
-        self._last_ping_monotonic = 0.0
+        self._last_ping_monotonic: float | None = None
         self.history: list[dict[str, Any]] = []
 
-    def _record(self, event: dict[str, Any]) -> dict[str, Any]:
+    def _record(self, event: dict[str, Any], *, now_mono: float | None = None) -> dict[str, Any]:
         self.history.append(event)
-        self._last_ping_monotonic = time.monotonic()
+        self._last_ping_monotonic = now_mono if now_mono is not None else time.monotonic()
         if self.on_event:
             self.on_event(event)
         return event
@@ -139,7 +139,7 @@ class PushPingSupervisor:
         now_mono: float | None = None,
     ) -> dict[str, Any] | None:
         now = now_mono if now_mono is not None else time.monotonic()
-        if self._last_ping_monotonic and (now - self._last_ping_monotonic) < self.interval_s:
+        if self._last_ping_monotonic is not None and (now - self._last_ping_monotonic) < self.interval_s:
             return None
         ev = emit_ping(
             self.lock,
@@ -150,7 +150,7 @@ class PushPingSupervisor:
             checkpoint_ref=checkpoint_ref,
             focus_threshold=self.focus_threshold,
         )
-        return self._record(ev)
+        return self._record(ev, now_mono=now)
 
     def post_tool_ping(
         self,
