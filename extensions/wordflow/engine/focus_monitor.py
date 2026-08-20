@@ -43,7 +43,7 @@ def _signals(
     forbidden_hit = False
     for term in lock.get("forbidden") or []:
         t = str(term).strip().lower()
-        if t and t in hay:
+        if t and t in hay and f"sin {t}" not in hay and f"without {t}" not in hay:
             forbidden_hit = True
             break
     return {
