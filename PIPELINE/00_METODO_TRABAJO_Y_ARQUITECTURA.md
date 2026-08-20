@@ -91,3 +91,39 @@ Solo tras FORENSIC_DONE + aprobación usuario. Proteger: método, GitHub, fuente
 
 ## STAGNATION (refuerzo)
 Mismo fallo ×2 → cambiar mecanismo. Fallo publish → no regenerar documento completo. Fallo verify → reparar, no declarar éxito.
+
+---
+
+# APPEND V4 — SISTEMA DE TRABAJO Y CAPACIDADES INTEGRADAS
+
+Los contratos operativos ampliados están definidos en:
+
+- `PIPELINE/61_SISTEMA_TRABAJO_ROLES_ROUTER_COMMAND_CENTER_ORQUESTACION.md`
+- `PIPELINE/62_ACR_RECICLAJE_TRIGGER_CUENTA_B.md`
+
+Estos documentos formalizan, sin sustituir las reglas anteriores:
+
+```text
+ROUTER
+→ COMMAND CENTER
+→ AGENT REGISTRY / CAPABILITY RESOLUTION
+→ ORCHESTRATOR
+→ WORDflow KERNEL
+→ EVIDENCE
+→ SHERIFF
+→ VERDICT AUTHORITY
+```
+
+Y añaden al método:
+
+```text
+ACR / CAPABILITY RESOLUTION
+REUSE-FIRST / COPY-FIRST
+TRIGGER + IDEMPOTENCY
+CUENTA B REPOSITORY PROVISIONING
+REMOTE READ-BACK
+```
+
+### Regla de integración
+
+Toda nueva capacidad debe conectarse a las autoridades existentes. No se permite crear una segunda autoridad de credenciales, deployment, verificación o veredicto.
