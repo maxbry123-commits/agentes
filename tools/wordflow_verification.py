@@ -1,11 +1,18 @@
 from __future__ import annotations
 
 import json
+import os
 import py_compile
+import sys
 import traceback
 from pathlib import Path
 
-OUT = Path("verification-output")
+# Running a script from tools/ puts tools/ at sys.path[0]. The application imports
+# are rooted at the repository, so explicitly add that root before probing.
+REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT))
+
+OUT = REPO_ROOT / "verification-output"
 OUT.mkdir(parents=True, exist_ok=True)
 
 
@@ -22,7 +29,7 @@ def probe(name, fn, results):
 
 
 def t01():
-    roots = (Path("extensions/wordflow"), Path("extensions/wordflow_kernel"))
+    roots = (REPO_ROOT / "extensions/wordflow", REPO_ROOT / "extensions/wordflow_kernel")
     files = sorted(p for root in roots for p in root.rglob("*.py"))
     for path in files:
         py_compile.compile(str(path), doraise=True)
@@ -61,16 +68,8 @@ def t04():
 
 
 def t05():
-    from extensions.wordflow.standards.forensic_core import (
-        ForensicProgrammingEnforcer, ForensicEnforcementState, CoreCheckResult,
-        CORE_IDS, CONNECTIVITY_CHAIN,
-    )
-    state = ForensicEnforcementState(
-        context_verified=True, handoff_verified=True,
-        core_results=[CoreCheckResult(x, True, "probe") for x in CORE_IDS],
-        connectivity={x: True for x in CONNECTIVITY_CHAIN},
-        evidence_complete=True, final_clean_reaudit_passed=True, quality_dag_ok=True,
-    )
+    from extensions.wordflow.standards.forensic_core import ForensicProgrammingEnforcer, ForensicEnforcementState, CoreCheckResult, CORE_IDS, CONNECTIVITY_CHAIN
+    state = ForensicEnforcementState(context_verified=True, handoff_verified=True, core_results=[CoreCheckResult(x, True, "probe") for x in CORE_IDS], connectivity={x: True for x in CONNECTIVITY_CHAIN}, evidence_complete=True, final_clean_reaudit_passed=True, quality_dag_ok=True)
     passes = ForensicProgrammingEnforcer().run_four_passes(state)
     assert len(passes) == 4 and all(item.passed for item in passes), passes
     return passes
@@ -89,9 +88,7 @@ def t06():
 
 
 def t07():
-    from extensions.wordflow.engine.evidence_packet import (
-        build_evidence_packet, chain_packets, verify_packet_chain, EvidencePacketError,
-    )
+    from extensions.wordflow.engine.evidence_packet import build_evidence_packet, chain_packets, verify_packet_chain, EvidencePacketError
     first = build_evidence_packet(task_id="T07", claim_status="PARTIAL", timestamp=1.0)
     second = build_evidence_packet(task_id="T07", claim_status="COMPLETED", timestamp=2.0)
     chain = chain_packets([first, second])
@@ -117,10 +114,7 @@ def t08():
 
 def t09():
     from extensions.wordflow.standards.quality_dag import QualityDAG, GateStatus, GateResult
-    from extensions.wordflow.standards.forensic_core import (
-        ForensicProgrammingEnforcer, ForensicEnforcementState, CoreCheckResult,
-        CORE_IDS, CONNECTIVITY_CHAIN,
-    )
+    from extensions.wordflow.standards.forensic_core import ForensicProgrammingEnforcer, ForensicEnforcementState, CoreCheckResult, CORE_IDS, CONNECTIVITY_CHAIN
     dag = QualityDAG()
     for node in dag.nodes:
         dag.register(node.name, lambda n=node.name: GateResult(n, GateStatus.PASS, "probe"))
@@ -128,48 +122,34 @@ def t09():
     assert dag.passed(results) and len(results) == len(dag.nodes), results
     fail_closed = QualityDAG().run(fail_closed=True)
     assert fail_closed[0].status == GateStatus.FAIL, fail_closed
-    state = ForensicEnforcementState(
-        context_verified=True, handoff_verified=True,
-        core_results=[CoreCheckResult(x, True, "probe") for x in CORE_IDS],
-        connectivity={x: True for x in CONNECTIVITY_CHAIN},
-        evidence_complete=True, final_clean_reaudit_passed=True, quality_dag_ok=True,
-    )
+    state = ForensicEnforcementState(context_verified=True, handoff_verified=True, core_results=[CoreCheckResult(x, True, "probe") for x in CORE_IDS], connectivity={x: True for x in CONNECTIVITY_CHAIN}, evidence_complete=True, final_clean_reaudit_passed=True, quality_dag_ok=True)
     passes = ForensicProgrammingEnforcer().run_four_passes(state)
     assert all(item.passed for item in passes), passes
     return results
 
 
 def t10a():
-    text = Path("PIPELINE/CLAIM_C100_PROGRESS.md").read_text(encoding="utf-8")
+    text = (REPO_ROOT / "PIPELINE/CLAIM_C100_PROGRESS.md").read_text(encoding="utf-8")
     assert "Claim C100 | **NO**" in text
     return "C100 remains NO"
 
 
 def t10b():
     import pytest
-    args = [
-        "-q",
-        "extensions/wordflow/tests/test_router_http_gateway.py",
-        "extensions/wordflow/tests/test_gap_registry_persistence.py",
-        "extensions/wordflow/tests/test_gap_state_machine.py",
-        "extensions/wordflow/tests/test_evidence_packet_chain.py",
-        "extensions/wordflow/tests/test_audit_history.py",
-    ]
-    code = pytest.main(args)
+    code = pytest.main(["-q", "extensions/wordflow/tests/test_router_http_gateway.py", "extensions/wordflow/tests/test_gap_registry_persistence.py", "extensions/wordflow/tests/test_gap_state_machine.py", "extensions/wordflow/tests/test_evidence_packet_chain.py", "extensions/wordflow/tests/test_audit_history.py"])
     if code != 0:
         raise AssertionError(f"pytest regression exit code={code}")
     return "pytest regression PASS"
 
 
-PROBES = [("T01", t01), ("T02", t02), ("T03", t03), ("T04", t04), ("T05", t05),
-          ("T06", t06), ("T07", t07), ("T08", t08), ("T09", t09), ("T10A", t10a), ("T10B", t10b)]
+PROBES = [("T01", t01), ("T02", t02), ("T03", t03), ("T04", t04), ("T05", t05), ("T06", t06), ("T07", t07), ("T08", t08), ("T09", t09), ("T10A", t10a), ("T10B", t10b)]
 results = {}
 for name, fn in PROBES:
     print(f"=== {name} ===", flush=True)
     probe(name, fn, results)
     print(results[name]["status"], flush=True)
 
-manifest = {"commit": __import__("os").environ.get("GITHUB_SHA", "local"), "results": results}
+manifest = {"commit": os.environ.get("GITHUB_SHA", "local"), "results": results}
 (OUT / "manifest.json").write_text(json.dumps(manifest, indent=2, default=str) + "\n", encoding="utf-8")
 
 lines = ["# CI LAST RESULT", "", f"Commit: `{manifest['commit']}`", "", "| Probe | Status | Error |", "|---|---|---|"]
