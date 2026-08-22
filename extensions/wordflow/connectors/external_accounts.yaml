@@ -1,7 +1,17 @@
-# Token: GitHub Actions secret EXTERNAL_GH_B_TOKEN (never in this file)
-# credential_ref maps to env var injected by workflow / runtime
+# Token values NEVER in this file — only env: refs.
+# Secrets live in Cuenta A → repo agentes → Settings → Secrets and variables → Actions
+#   https://github.com/maxbry123-commits/agentes/settings/secrets/actions
+#
+# | Secret                   | Cuenta | Scope |
+# |--------------------------|--------|-------|
+# | EXTERNAL_GH_B_TOKEN      | B      | repo  |
+# | GITHUB_B_TOKEN           | B      | repo (alias opcional) |
+# | EXTERNAL_GH_C_TOKEN      | C      | repo  |
+# | GITHUB_C_TOKEN           | C      | repo (alias opcional) |
+# | HF_TOKEN                 | HF     | write |
 
 accounts:
+  # --- Cuenta B (activa) ---
   - account_id: external_software_b
     provider: github
     credential_ref: env:EXTERNAL_GH_B_TOKEN
@@ -15,15 +25,32 @@ accounts:
       can_write: false
       can_deploy: false
     role: software_store
+
   - account_id: github_b
     provider: github
-    credential_ref: env:GITHUB_B_TOKEN
+    credential_ref: env:EXTERNAL_GH_B_TOKEN
+    owner: abc1tienda-web
     allowed_repositories: []
     policy:
       can_read: true
       can_write: true
       can_deploy: true
     role: deploy_any_repo
+
+  # --- Cuenta C (cableada; requiere secret EXTERNAL_GH_C_TOKEN + owner real) ---
+  # Owner: sustituir REPLACE_CUENTA_C_OWNER por el username GitHub de Cuenta C
+  # Alias aceptados en código: cuenta_c, cuenta-c, github_c, c
+  - account_id: github_c
+    provider: github
+    credential_ref: env:EXTERNAL_GH_C_TOKEN
+    owner: REPLACE_CUENTA_C_OWNER
+    allowed_repositories: []
+    policy:
+      can_read: true
+      can_write: true
+      can_deploy: true
+    role: deploy_any_repo
+
   - account_id: hf_b
     provider: huggingface
     credential_ref: env:HF_TOKEN
