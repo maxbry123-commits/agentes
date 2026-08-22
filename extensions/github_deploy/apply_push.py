@@ -6,12 +6,13 @@ Wordflow decides nothing: rules in this module + deploy_config.yaml.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
 from extensions.github_deploy.accounts_load import load_accounts, register_ephemeral
 from extensions.github_deploy.credential_env import CredentialUnresolved, EnvCredentialStore, redact, resolve_token
-from extensions.github_deploy.git_data_port import FileChange, build_git_data_port
+from extensions.github_deploy.git_data_port import FakeGitDataAPIPort, FileChange, RealGitDataAPIPort, build_git_data_port
 from extensions.github_deploy.hf_port import build_hf_port
 from extensions.github_deploy.plan_push import ForcePushDenied, plan_push
 from extensions.github_deploy.protected import check_protected
@@ -40,6 +41,11 @@ def _parse_dest(dest: dict[str, Any] | str | None) -> dict[str, str]:
     repo = str(dest.get("repo") or "").strip()
     if not owner or not repo:
         raise ValueError("DEST_BAD")
+    try:
+        from extensions.github_deploy.remote_ops import normalize_owner
+        owner = normalize_owner(owner)
+    except Exception:
+        pass
     return {
         "provider": provider,
         "owner": owner,
@@ -184,7 +190,16 @@ def apply_and_push(
             token,
         )
     else:
-        git_port = port or build_git_data_port(dry_run)
+        if port is not None:
+            git_port = port
+        else:
+            use_dry = dry_run
+            if use_dry is None:
+                use_dry = os.environ.get("GITHUB_DEPLOY_REAL", "").lower() not in ("1", "true", "yes")
+            if use_dry:
+                git_port = FakeGitDataAPIPort()
+            else:
+                git_port = RealGitDataAPIPort(token=token)
         changes = []
         for i, rel in enumerate(rels):
             raw = file_rows[i].get("content")
