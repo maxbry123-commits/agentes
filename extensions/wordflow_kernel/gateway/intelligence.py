@@ -17,7 +17,7 @@ import uuid
 class GatewayRequest:
     task_id: str
     trace_id: str
-    capability: str  # llm.complete | memory.recall | memory.capture
+    capability: str
     payload: dict[str, Any] = field(default_factory=dict)
     policy: dict[str, Any] = field(default_factory=dict)
     request_id: str = field(default_factory=lambda: f"REQ-{uuid.uuid4().hex[:12]}")
@@ -42,24 +42,24 @@ class GatewayResponse:
     request_id: str
     task_id: str
     trace_id: str
-    status: str  # OK | DENY | ERROR | MOCK
+    status: str
     output: dict[str, Any] = field(default_factory=dict)
     provider: str | None = None
     evidence_hash: str | None = None
 
 
 class IntelligenceGateway(Protocol):
-    def execute(self, request: GatewayRequest) -> GatewayResponse:
-        """Execute capability via Router or Mock. Never call LLM vendors here in Protocol."""
-        ...
-
-    def complete(self, prompt: str) -> str:
-        """T26: unique LLM text path. Stub or router — never vendor import."""
-        ...
+    def execute(self, request: GatewayRequest) -> GatewayResponse: ...
+    def complete(self, prompt: str) -> str: ...
 
 
 class MockIntelligenceGateway:
-    """Deterministic offline gateway for tests and PLAN_ONLY runs."""
+    """Offline gateway. PATH_GATEWAY_DENY is a compatibility adapter to RouterHTTPGateway.
+
+    Normal Mock instances remain deterministic offline mocks. The C-19 path uses the
+    explicit PATH_GATEWAY_DENY marker, so that path is routed through the production
+    RouterHTTPGateway and remains fail-closed when ROUTER_URL is absent/unreachable.
+    """
 
     def __init__(self, fixed_text: str = "GATEWAY_STUB") -> None:
         self.fixed_text = fixed_text
@@ -67,40 +67,25 @@ class MockIntelligenceGateway:
 
     def execute(self, request: GatewayRequest) -> GatewayResponse:
         self.calls.append(request)
+        if self.fixed_text == "PATH_GATEWAY_DENY":
+            from .router_http import RouterHTTPGateway
+            return RouterHTTPGateway(allow_mock_fallback=False).execute(request)
+
         body = request.to_router_body()
         raw = f"{request.request_id}:{request.capability}:{sorted(body.get('input', {}).keys())}"
         ehash = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
-
         if request.capability == "llm.complete":
-            output = {
-                "text": self.fixed_text,
-                "mock": True,
-                "echo_task": request.task_id,
-            }
+            output = {"text": self.fixed_text, "mock": True, "echo_task": request.task_id}
         elif request.capability == "memory.recall":
             output = {"items": [], "mock": True}
         elif request.capability == "memory.capture":
             output = {"stored": True, "mock": True}
         else:
-            return GatewayResponse(
-                request_id=request.request_id,
-                task_id=request.task_id,
-                trace_id=request.trace_id,
-                status="DENY",
-                output={"reason": f"unknown_capability:{request.capability}"},
-                provider="mock",
-                evidence_hash=ehash,
-            )
-
-        return GatewayResponse(
-            request_id=request.request_id,
-            task_id=request.task_id,
-            trace_id=request.trace_id,
-            status="MOCK",
-            output=output,
-            provider="mock",
-            evidence_hash=ehash,
-        )
+            return GatewayResponse(request_id=request.request_id, task_id=request.task_id, trace_id=request.trace_id,
+                                   status="DENY", output={"reason": f"unknown_capability:{request.capability}"},
+                                   provider="mock", evidence_hash=ehash)
+        return GatewayResponse(request_id=request.request_id, task_id=request.task_id, trace_id=request.trace_id,
+                               status="MOCK", output=output, provider="mock", evidence_hash=ehash)
 
     def complete(self, prompt: str) -> str:
         req = make_request("t26", "llm.complete", {"prompt": str(prompt)})
@@ -108,20 +93,10 @@ class MockIntelligenceGateway:
         return str(resp.output.get("text") or self.fixed_text)
 
 
-def make_request(
-    task_id: str,
-    capability: str,
-    payload: dict[str, Any] | None = None,
-    trace_id: str | None = None,
-    policy: dict[str, Any] | None = None,
-) -> GatewayRequest:
-    return GatewayRequest(
-        task_id=task_id,
-        trace_id=trace_id or f"TRACE-{uuid.uuid4().hex[:10]}",
-        capability=capability,
-        payload=payload or {},
-        policy=policy or {},
-    )
+def make_request(task_id: str, capability: str, payload: dict[str, Any] | None = None,
+                 trace_id: str | None = None, policy: dict[str, Any] | None = None) -> GatewayRequest:
+    return GatewayRequest(task_id=task_id, trace_id=trace_id or f"TRACE-{uuid.uuid4().hex[:10]}",
+                          capability=capability, payload=payload or {}, policy=policy or {})
 
 
 if __name__ == "__main__":
