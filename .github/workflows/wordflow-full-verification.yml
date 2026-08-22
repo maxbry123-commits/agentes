@@ -8,6 +8,10 @@ on:
       - 'extensions/wordflow_kernel/**'
       - 'PIPELINE/**'
       - '.github/workflows/wordflow-full-verification.yml'
+      - 'tools/wordflow_verification.py'
+
+permissions:
+  contents: write
 
 jobs:
   full-verification:
@@ -22,165 +26,10 @@ jobs:
       - name: Install test dependencies
         run: python -m pip install --upgrade pip pytest
 
-      - name: TEST 01 — targeted syntax
-        id: t01
+      - name: Run ten-probe diagnostic harness
+        id: probes
         continue-on-error: true
-        run: |
-          python - <<'PY'
-          import py_compile
-          from pathlib import Path
-          roots=(Path('extensions/wordflow'),Path('extensions/wordflow_kernel'))
-          files=sorted(p for root in roots for p in root.rglob('*.py'))
-          for p in files: py_compile.compile(str(p), doraise=True)
-          print(f'PASS TEST 01 ({len(files)} python files)')
-          PY
-
-      - name: TEST 02 — router fail-closed
-        id: t02
-        continue-on-error: true
-        run: |
-          python - <<'PY'
-          from extensions.wordflow_kernel.gateway.intelligence import make_request
-          from extensions.wordflow_kernel.gateway.router_http import RouterHTTPGateway
-          r=RouterHTTPGateway(router_url='',allow_mock_fallback=False).execute(make_request('T02','llm.complete',{'prompt':'probe'},{}, {'vendor':'DENY'}))
-          assert r.status=='DENY' and r.provider is None and r.output.get('reason')=='ROUTER_URL_empty',r
-          print('PASS TEST 02')
-          PY
-
-      - name: TEST 03 — C-19 no vendor call
-        id: t03
-        continue-on-error: true
-        run: |
-          python - <<'PY'
-          from extensions.wordflow.engine.code_path_runner import consult_path_gateway
-          r=consult_path_gateway('probe-mission','offline gateway probe')
-          assert r['invoked'] is True and r['vendor_call'] is False and r['llm_control']=='DENY',r
-          print('PASS TEST 03')
-          PY
-
-      - name: TEST 04 — GapRegistry persistence
-        id: t04
-        continue-on-error: true
-        run: |
-          python - <<'PY'
-          import tempfile
-          from pathlib import Path
-          from extensions.wordflow.standards.gap_registry import Gap,GapRegistry
-          with tempfile.TemporaryDirectory() as td:
-              p=Path(td)/'gaps.json'; a=GapRegistry(str(p)); a.add(Gap('G-PROBE','T04','M','R','blocking','probe')); a.transition('G-PROBE','FIXED',evidence='probe',revision='r1'); b=GapRegistry(str(p)); g=b.to_list()[0]
-              assert g['status']=='FIXED' and g['fixed_revision']=='r1',g
-          print('PASS TEST 04')
-          PY
-
-      - name: TEST 05 — FourPass lifecycle
-        id: t05
-        continue-on-error: true
-        run: |
-          python - <<'PY'
-          from extensions.wordflow.standards.forensic_core import ForensicProgrammingEnforcer,ForensicEnforcementState,CoreCheckResult,CORE_IDS,CONNECTIVITY_CHAIN
-          state=ForensicEnforcementState(context_verified=True,handoff_verified=True,core_results=[CoreCheckResult(x,True,'probe') for x in CORE_IDS],connectivity={x:True for x in CONNECTIVITY_CHAIN},evidence_complete=True,final_clean_reaudit_passed=True,quality_dag_ok=True)
-          passes=ForensicProgrammingEnforcer().run_four_passes(state)
-          assert len(passes)==4 and all(x.passed for x in passes),passes
-          print('PASS TEST 05')
-          PY
-
-      - name: TEST 06 — full reception wiring offline
-        id: t06
-        continue-on-error: true
-        run: |
-          python - <<'PY'
-          from extensions.wordflow_kernel.reception.convert import ingest
-          r=ingest({'raw_text':'pytest reception wiring deterministic'}, instance_id=None)
-          assert r['ok'] is True and r['hops_ok'] is True,r
-          assert r['invoked']['input_compiler'] is True and r['invoked']['task_classifier'] is True and r['invoked']['enchufe_plugin'] is True,r
-          assert r['connectivity']['required_ok'] is True and r['connectivity']['optional_safe'] is True,r
-          assert r['classification']['gate']['call_llm'] is False,r
-          print('PASS TEST 06')
-          PY
-
-      - name: TEST 07 — evidence chain + tamper detection
-        id: t07
-        continue-on-error: true
-        run: |
-          python - <<'PY'
-          from extensions.wordflow.engine.evidence_packet import build_evidence_packet,chain_packets,verify_packet_chain,EvidencePacketError
-          a=build_evidence_packet(task_id='T07',claim_status='PARTIAL',timestamp=1.0)
-          b=build_evidence_packet(task_id='T07',claim_status='COMPLETED',timestamp=2.0)
-          c=chain_packets([a,b]); assert c['ok'] and verify_packet_chain(c['packets'])['ok'],c
-          tampered=dict(c['packets'][1]); tampered['notes']='tampered'
-          assert verify_packet_chain([c['packets'][0],tampered])['ok'] is False
-          try: chain_packets([tampered])
-          except EvidencePacketError: pass
-          else: raise AssertionError('tampered source accepted')
-          print('PASS TEST 07')
-          PY
-
-      - name: TEST 08 — fail-closed verdict authority
-        id: t08
-        continue-on-error: true
-        run: |
-          python - <<'PY'
-          from extensions.wordflow.standards.verdict_authority import VerdictAuthority
-          r=VerdictAuthority().decide(evidence=None,require_evidence=True); assert r['verdict']=='FAIL' and r['llm_may_declare_pass'] is False,r
-          print('PASS TEST 08')
-          PY
-
-      - name: TEST 09 — QualityDAG + FourPass enforcement
-        id: t09
-        continue-on-error: true
-        run: |
-          python - <<'PY'
-          from extensions.wordflow.standards.quality_dag import QualityDAG,GateStatus,GateResult
-          from extensions.wordflow.standards.forensic_core import ForensicProgrammingEnforcer,ForensicEnforcementState,CoreCheckResult,CORE_IDS,CONNECTIVITY_CHAIN
-          dag=QualityDAG()
-          for node in dag.nodes: dag.register(node.name, lambda n=node.name: GateResult(n,GateStatus.PASS,'probe'))
-          results=dag.run(fail_closed=True); assert dag.passed(results) and len(results)==len(dag.nodes),results
-          fail_closed=QualityDAG().run(fail_closed=True); assert fail_closed[0].status==GateStatus.FAIL,fail_closed
-          state=ForensicEnforcementState(context_verified=True,handoff_verified=True,core_results=[CoreCheckResult(x,True,'probe') for x in CORE_IDS],connectivity={x:True for x in CONNECTIVITY_CHAIN},evidence_complete=True,final_clean_reaudit_passed=True,quality_dag_ok=True)
-          passes=ForensicProgrammingEnforcer().run_four_passes(state); assert all(x.passed for x in passes),passes
-          print('PASS TEST 09')
-          PY
-
-      - name: TEST 10A — C100 honesty
-        id: t10a
-        continue-on-error: true
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          text=Path('PIPELINE/CLAIM_C100_PROGRESS.md').read_text(encoding='utf-8'); assert 'Claim C100 | **NO**' in text; print('PASS TEST 10A')
-          PY
-
-      - name: TEST 10B — regression suite
-        id: t10b
-        continue-on-error: true
-        run: |
-          python -m pytest -q extensions/wordflow/tests/test_router_http_gateway.py extensions/wordflow/tests/test_gap_registry_persistence.py extensions/wordflow/tests/test_gap_state_machine.py extensions/wordflow/tests/test_evidence_packet_chain.py extensions/wordflow/tests/test_audit_history.py
-
-      - name: Verification manifest
-        if: always()
-        run: |
-          mkdir -p verification-output
-          python - <<'PY'
-          import json
-          from pathlib import Path
-          required=['extensions/wordflow/engine/code_path_runner.py','extensions/wordflow/standards/gap_registry.py','extensions/wordflow/standards/audit_history.py','extensions/wordflow/standards/forensic_core.py','extensions/wordflow/engine/evidence_packet.py','extensions/wordflow_kernel/reception/convert.py','PIPELINE/LOOP_GAPS_BLOCK_05_2026-08-21.md','PIPELINE/CLAIM_C100_PROGRESS.md']
-          missing=[p for p in required if not Path(p).exists()]
-          manifest={'commit':'${{ github.sha }}','required_files':required,'missing':missing}
-          Path('verification-output/manifest.json').write_text(json.dumps(manifest,indent=2)+'\n',encoding='utf-8')
-          if missing: raise SystemExit('Missing: '+', '.join(missing))
-          print('VERIFICATION_MANIFEST=PASS')
-          PY
-          echo "T01=${{ steps.t01.outcome }}" | tee verification-output/outcomes.txt
-          echo "T02=${{ steps.t02.outcome }}" | tee -a verification-output/outcomes.txt
-          echo "T03=${{ steps.t03.outcome }}" | tee -a verification-output/outcomes.txt
-          echo "T04=${{ steps.t04.outcome }}" | tee -a verification-output/outcomes.txt
-          echo "T05=${{ steps.t05.outcome }}" | tee -a verification-output/outcomes.txt
-          echo "T06=${{ steps.t06.outcome }}" | tee -a verification-output/outcomes.txt
-          echo "T07=${{ steps.t07.outcome }}" | tee -a verification-output/outcomes.txt
-          echo "T08=${{ steps.t08.outcome }}" | tee -a verification-output/outcomes.txt
-          echo "T09=${{ steps.t09.outcome }}" | tee -a verification-output/outcomes.txt
-          echo "T10A=${{ steps.t10a.outcome }}" | tee -a verification-output/outcomes.txt
-          echo "T10B=${{ steps.t10b.outcome }}" | tee -a verification-output/outcomes.txt
+        run: python tools/wordflow_verification.py
 
       - name: Upload verification evidence
         if: always()
@@ -190,10 +39,25 @@ jobs:
           path: verification-output/
           if-no-files-found: error
 
+      - name: Publish exact CI diagnosis to PIPELINE
+        if: always()
+        run: |
+          cp verification-output/CI_LAST_RESULT.md PIPELINE/CI_LAST_RESULT.md
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add PIPELINE/CI_LAST_RESULT.md
+          if git diff --cached --quiet; then
+            echo 'CI diagnosis unchanged'
+          else
+            git commit -m 'ci: record exact Wordflow probe diagnosis [skip ci]'
+            git push
+          fi
+
       - name: Final verdict
         if: always()
         run: |
-          outcomes='${{ steps.t01.outcome }} ${{ steps.t02.outcome }} ${{ steps.t03.outcome }} ${{ steps.t04.outcome }} ${{ steps.t05.outcome }} ${{ steps.t06.outcome }} ${{ steps.t07.outcome }} ${{ steps.t08.outcome }} ${{ steps.t09.outcome }} ${{ steps.t10a.outcome }} ${{ steps.t10b.outcome }}'
-          echo "$outcomes"
-          if echo "$outcomes" | grep -qE 'failure|cancelled'; then exit 1; fi
-          echo 'ALL_VERIFICATION_TESTS_PASS'
+          if [ "${{ steps.probes.outcome }}" != "success" ]; then
+            echo 'WORDFLOW_VERIFICATION=FAIL'
+            exit 1
+          fi
+          echo 'WORDFLOW_VERIFICATION=PASS'
