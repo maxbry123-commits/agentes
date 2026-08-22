@@ -1,7 +1,8 @@
 """GapRegistry completo — campos de contrato + OPEN→FIXED→VERIFIED→CLOSED.
 
 The registry is persistent by default so a process restart cannot silently erase
-open/fixed/verified gaps.  Set WORDFLOW_GAP_REGISTRY_PATH to choose the store.
+open/fixed/verified gaps. Every mutation also appends a cryptographically
+verifiable audit event beside the registry file.
 """
 from __future__ import annotations
 from dataclasses import dataclass, field, asdict
@@ -11,6 +12,8 @@ import json
 import os
 from pathlib import Path
 import tempfile
+
+from .audit_history import AuditHistory
 
 ALLOWED = {
     "OPEN": {"FIXED"},
@@ -45,6 +48,7 @@ class GapRegistry:
     def __init__(self, path: str | None = None):
         configured = path or os.environ.get("WORDFLOW_GAP_REGISTRY_PATH")
         self.path = Path(configured) if configured else Path(".wordflow/gap_registry.json")
+        self.audit = AuditHistory(str(self.path) + ".audit.jsonl")
         self._gaps: Dict[str, Gap] = {}
         self.new_gaps_after_fix: int = 0
         self._load()
@@ -85,6 +89,8 @@ class GapRegistry:
             raise ValueError("new gaps must start OPEN")
         self._gaps[gap.gap_id] = gap
         self._save()
+        self.audit.append(event="GAP_CREATED", task_id=gap.task_id, status=gap.status,
+                          revision=gap.created_revision, evidence={"gap_id": gap.gap_id, "rule_id": gap.rule_id})
 
     def transition(self, gap_id: str, new_status: str, evidence: str = "", revision: str = "") -> Gap:
         g = self._gaps[gap_id]
@@ -92,6 +98,7 @@ class GapRegistry:
             raise ValueError(f"forbidden {g.status} → {new_status}")
         if new_status == "CLOSED" and g.status != "VERIFIED":
             raise ValueError("CLOSED only from VERIFIED")
+        old_status = g.status
         g.status = new_status
         if evidence:
             g.evidence = evidence
@@ -100,6 +107,8 @@ class GapRegistry:
         if new_status == "VERIFIED" and revision:
             g.verified_revision = revision
         self._save()
+        self.audit.append(event="GAP_TRANSITION", task_id=g.task_id, status=new_status,
+                          revision=revision, evidence={"gap_id": g.gap_id, "from": old_status, "to": new_status, "evidence": evidence})
         return g
 
     def note_new_gap_after_fix(self, gap: Gap) -> None:
