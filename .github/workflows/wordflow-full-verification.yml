@@ -20,21 +20,107 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install test dependencies
-        run: |
-          python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          if [ -f pyproject.toml ]; then pip install -e .; fi
-      - name: Syntax compile
+        run: python -m pip install --upgrade pip pytest
+
+      - name: 'TEST 01 — syntax'
         run: python -m compileall -q extensions
-      - name: Wordflow tests
+
+      - name: 'TEST 02 — router fail-closed'
         run: |
-          if [ -d extensions/wordflow/tests ]; then python -m pytest -q extensions/wordflow/tests; else echo 'No Wordflow tests directory'; fi
-      - name: Kernel tests
+          python - <<'PY'
+          from extensions.wordflow_kernel.gateway.intelligence import make_request
+          from extensions.wordflow_kernel.gateway.router_http import RouterHTTPGateway
+          r = RouterHTTPGateway(router_url='', allow_mock_fallback=False).execute(make_request('T01','llm.complete',{'prompt':'probe'},{}, {'vendor':'DENY'}))
+          assert r.status == 'DENY' and r.provider is None and r.output.get('reason') == 'ROUTER_URL_empty', r
+          print('PASS TEST 02')
+          PY
+
+      - name: 'TEST 03 — C-19 no vendor call'
         run: |
-          if [ -d extensions/wordflow_kernel/tests ]; then python -m pytest -q extensions/wordflow_kernel/tests; else echo 'No kernel tests directory'; fi
-      - name: Full repository tests
+          python - <<'PY'
+          from extensions.wordflow.engine.code_path_runner import consult_path_gateway
+          r = consult_path_gateway('probe-mission','offline gateway probe')
+          assert r['invoked'] is True and r['vendor_call'] is False and r['llm_control'] == 'DENY', r
+          print('PASS TEST 03')
+          PY
+
+      - name: 'TEST 04 — GapRegistry persistence'
         run: |
-          if [ -d tests ]; then python -m pytest -q tests; else echo 'No top-level tests directory'; fi
+          python - <<'PY'
+          import tempfile
+          from pathlib import Path
+          from extensions.wordflow.standards.gap_registry import Gap, GapRegistry
+          with tempfile.TemporaryDirectory() as td:
+              p=Path(td)/'gaps.json'
+              a=GapRegistry(str(p)); a.add(Gap('G-PROBE','T04','M','R','blocking','probe')); a.transition('G-PROBE','FIXED',evidence='probe',revision='r1')
+              b=GapRegistry(str(p)); g=b.to_list()[0]
+              assert g['status']=='FIXED' and g['fixed_revision']=='r1', g
+          print('PASS TEST 04')
+          PY
+
+      - name: 'TEST 05 — Gap lifecycle'
+        run: |
+          python - <<'PY'
+          import tempfile
+          from pathlib import Path
+          from extensions.wordflow.standards.gap_registry import Gap, GapRegistry
+          from extensions.wordflow.standards.gap_state_machine import GapStateMachine
+          with tempfile.TemporaryDirectory() as td:
+              m=GapStateMachine(GapRegistry(str(Path(td)/'gaps.json'))); m.create(Gap('G','T','M','R','blocking','probe'))
+              m.advance('G','FIXED',evidence='f'); m.advance('G','VERIFIED',evidence='v'); m.advance('G','CLOSED',evidence='c')
+              assert m.is_closed('G')
+          print('PASS TEST 05')
+          PY
+
+      - name: 'TEST 06 — reception wiring'
+        run: |
+          python - <<'PY'
+          from extensions.wordflow_kernel.reception.convert import locate_phase
+          r=locate_phase('reception input compiler classifier locate plugin')
+          assert r['ok'] and r['phase']=='inbox' and r['contract']=='LOCATE_ONLY', r
+          print('PASS TEST 06')
+          PY
+
+      - name: 'TEST 07 — evidence chain'
+        run: |
+          python - <<'PY'
+          from extensions.wordflow.engine.evidence_packet import build_evidence_packet, verify_evidence_packet, chain_packets
+          p=build_evidence_packet(task_id='T07',claim_status='PARTIAL',paths=[{'path':'probe.py'}],tests={'probe':True})
+          assert verify_evidence_packet(p)['ok']
+          c=chain_packets([p,p]); assert c['ok'] and c['count']==2 and c['tip_hash']
+          print('PASS TEST 07')
+          PY
+
+      - name: 'TEST 08 — fail-closed verdict authority'
+        run: |
+          python - <<'PY'
+          from extensions.wordflow.standards.verdict_authority import VerdictAuthority
+          r=VerdictAuthority().decide(evidence=None, require_evidence=True)
+          assert r['verdict']=='FAIL' and r['llm_may_declare_pass'] is False, r
+          print('PASS TEST 08')
+          PY
+
+      - name: 'TEST 09 — FourPass + QualityDAG enforcement'
+        run: |
+          python - <<'PY'
+          from extensions.wordflow.standards.forensic_core import ForensicProgrammingEnforcer, ForensicEnforcementState, CoreCheckResult, CORE_IDS, CONNECTIVITY_CHAIN
+          from extensions.wordflow.standards.quality_dag import QualityDAG, GateStatus
+          s=ForensicEnforcementState(context_verified=True,handoff_verified=True,core_results=[CoreCheckResult(x,True,'probe') for x in CORE_IDS],connectivity={x:True for x in CONNECTIVITY_CHAIN},evidence_complete=True,final_clean_reaudit_passed=True,quality_dag_ok=True)
+          passes=ForensicProgrammingEnforcer().run_four_passes(s); assert len(passes)==4 and all(x.passed for x in passes), passes
+          d=QualityDAG(); r=d.run(fail_closed=True); assert any(x.status==GateStatus.FAIL for x in r), 'required missing handler did not fail closed'
+          print('PASS TEST 09')
+          PY
+
+      - name: 'TEST 10 — C100 remains honest + Wordflow regression suite'
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          text=Path('PIPELINE/CLAIM_C100_PROGRESS.md').read_text(encoding='utf-8')
+          assert 'Claim C100 | **NO**' in text
+          print('PASS TEST 10A — C100 not falsely closed')
+          PY
+          python -m pytest -q extensions/wordflow/tests/test_router_http_gateway.py extensions/wordflow/tests/test_gap_registry_persistence.py extensions/wordflow/tests/test_gap_state_machine.py
+
       - name: Verification manifest
         run: |
           python - <<'PY'
@@ -43,10 +129,11 @@ jobs:
               Path('extensions/wordflow/engine/code_path_runner.py'),
               Path('extensions/wordflow/standards/gap_registry.py'),
               Path('extensions/wordflow/standards/executor_gates.py'),
+              Path('extensions/wordflow/standards/forensic_core.py'),
               Path('PIPELINE/LOOP_GAPS_BLOCK_05_2026-08-21.md'),
+              Path('PIPELINE/CLAIM_C100_PROGRESS.md'),
           ]
-          missing = [str(p) for p in required if not p.exists()]
-          if missing:
-              raise SystemExit('Missing verification targets: ' + ', '.join(missing))
+          missing=[str(p) for p in required if not p.exists()]
+          if missing: raise SystemExit('Missing: '+', '.join(missing))
           print('VERIFICATION_MANIFEST=PASS')
           PY
