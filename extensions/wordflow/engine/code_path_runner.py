@@ -31,18 +31,14 @@ def _stage_ms(t0: float) -> float:
 
 
 def consult_path_gateway(mission_id: str, raw_input: str) -> dict[str, Any]:
-    """CONN.path_gateway: runner → IntelligenceGateway. Vendor = DENY."""
+    """CONN.path_gateway: runner → RouterHTTPGateway. Fail closed by default."""
     try:
-        from extensions.wordflow_kernel.gateway.intelligence import (
-            MockIntelligenceGateway,
-            make_request,
-        )
+        from extensions.wordflow_kernel.gateway.intelligence import make_request
+        from extensions.wordflow_kernel.gateway.router_http import RouterHTTPGateway
     except ImportError:
         try:
-            from wordflow_kernel.gateway.intelligence import (  # type: ignore
-                MockIntelligenceGateway,
-                make_request,
-            )
+            from wordflow_kernel.gateway.intelligence import make_request  # type: ignore
+            from wordflow_kernel.gateway.router_http import RouterHTTPGateway  # type: ignore
         except ImportError:
             return {
                 "ok": False,
@@ -52,7 +48,8 @@ def consult_path_gateway(mission_id: str, raw_input: str) -> dict[str, Any]:
                 "llm_control": "DENY",
                 "vendor_call": False,
             }
-    gw = MockIntelligenceGateway(fixed_text="PATH_GATEWAY_DENY")
+
+    gw = RouterHTTPGateway(allow_mock_fallback=False)
     req = make_request(
         task_id="C-19",
         capability="llm.complete",
@@ -65,7 +62,7 @@ def consult_path_gateway(mission_id: str, raw_input: str) -> dict[str, Any]:
     )
     res = gw.execute(req)
     return {
-        "ok": True,
+        "ok": res.status == "DENY" or bool(res.output),
         "invoked": True,
         "status": res.status,
         "provider": res.provider,
@@ -73,6 +70,7 @@ def consult_path_gateway(mission_id: str, raw_input: str) -> dict[str, Any]:
         "contract": "WIRED_DENY",
         "vendor_call": False,
         "evidence_hash": res.evidence_hash,
+        "reason": res.output.get("reason") if isinstance(res.output, dict) else None,
     }
 
 
