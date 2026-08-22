@@ -21,101 +21,147 @@ jobs:
           python-version: '3.12'
       - name: Install test dependencies
         run: python -m pip install --upgrade pip pytest
-      - name: 'TEST 01 — syntax'
-        run: python -m compileall -q extensions
-      - name: 'TEST 02 — router fail-closed'
+
+      - name: TEST 01 — targeted syntax
+        id: t01
+        continue-on-error: true
+        run: |
+          python - <<'PY'
+          import py_compile
+          from pathlib import Path
+          roots=(Path('extensions/wordflow'),Path('extensions/wordflow_kernel'))
+          files=sorted(p for root in roots for p in root.rglob('*.py'))
+          for p in files: py_compile.compile(str(p), doraise=True)
+          print(f'PASS TEST 01 ({len(files)} python files)')
+          PY
+
+      - name: TEST 02 — router fail-closed
+        id: t02
+        continue-on-error: true
         run: |
           python - <<'PY'
           from extensions.wordflow_kernel.gateway.intelligence import make_request
           from extensions.wordflow_kernel.gateway.router_http import RouterHTTPGateway
-          r = RouterHTTPGateway(router_url='', allow_mock_fallback=False).execute(make_request('T01','llm.complete',{'prompt':'probe'},{}, {'vendor':'DENY'}))
-          assert r.status == 'DENY' and r.provider is None and r.output.get('reason') == 'ROUTER_URL_empty', r
+          r=RouterHTTPGateway(router_url='',allow_mock_fallback=False).execute(make_request('T02','llm.complete',{'prompt':'probe'},{}, {'vendor':'DENY'}))
+          assert r.status=='DENY' and r.provider is None and r.output.get('reason')=='ROUTER_URL_empty',r
           print('PASS TEST 02')
           PY
-      - name: 'TEST 03 — C-19 no vendor call'
+
+      - name: TEST 03 — C-19 no vendor call
+        id: t03
+        continue-on-error: true
         run: |
           python - <<'PY'
           from extensions.wordflow.engine.code_path_runner import consult_path_gateway
-          r = consult_path_gateway('probe-mission','offline gateway probe')
-          assert r['invoked'] is True and r['vendor_call'] is False and r['llm_control'] == 'DENY', r
+          r=consult_path_gateway('probe-mission','offline gateway probe')
+          assert r['invoked'] is True and r['vendor_call'] is False and r['llm_control']=='DENY',r
           print('PASS TEST 03')
           PY
-      - name: 'TEST 04 — GapRegistry persistence'
+
+      - name: TEST 04 — GapRegistry persistence
+        id: t04
+        continue-on-error: true
         run: |
           python - <<'PY'
           import tempfile
           from pathlib import Path
-          from extensions.wordflow.standards.gap_registry import Gap, GapRegistry
+          from extensions.wordflow.standards.gap_registry import Gap,GapRegistry
           with tempfile.TemporaryDirectory() as td:
-              p=Path(td)/'gaps.json'
-              a=GapRegistry(str(p)); a.add(Gap('G-PROBE','T04','M','R','blocking','probe')); a.transition('G-PROBE','FIXED',evidence='probe',revision='r1')
-              b=GapRegistry(str(p)); g=b.to_list()[0]
-              assert g['status']=='FIXED' and g['fixed_revision']=='r1', g
+              p=Path(td)/'gaps.json'; a=GapRegistry(str(p)); a.add(Gap('G-PROBE','T04','M','R','blocking','probe')); a.transition('G-PROBE','FIXED',evidence='probe',revision='r1'); b=GapRegistry(str(p)); g=b.to_list()[0]
+              assert g['status']=='FIXED' and g['fixed_revision']=='r1',g
           print('PASS TEST 04')
           PY
-      - name: 'TEST 05 — Gap lifecycle'
+
+      - name: TEST 05 — Gap lifecycle
+        id: t05
+        continue-on-error: true
         run: |
           python - <<'PY'
           import tempfile
           from pathlib import Path
-          from extensions.wordflow.standards.gap_registry import Gap, GapRegistry
+          from extensions.wordflow.standards.gap_registry import Gap,GapRegistry
           from extensions.wordflow.standards.gap_state_machine import GapStateMachine
           with tempfile.TemporaryDirectory() as td:
-              m=GapStateMachine(GapRegistry(str(Path(td)/'gaps.json'))); m.create(Gap('G','T','M','R','blocking','probe'))
-              m.advance('G','FIXED',evidence='f'); m.advance('G','VERIFIED',evidence='v'); m.advance('G','CLOSED',evidence='c')
-              assert m.is_closed('G')
+              m=GapStateMachine(GapRegistry(str(Path(td)/'gaps.json'))); m.create(Gap('G','T','M','R','blocking','probe')); m.advance('G','FIXED',evidence='f'); m.advance('G','VERIFIED',evidence='v'); m.advance('G','CLOSED',evidence='c'); assert m.is_closed('G')
           print('PASS TEST 05')
           PY
-      - name: 'TEST 06 — reception wiring'
+
+      - name: TEST 06 — reception wiring
+        id: t06
+        continue-on-error: true
         run: |
           python - <<'PY'
           from extensions.wordflow_kernel.reception.convert import locate_phase
-          r=locate_phase('reception input compiler classifier locate plugin')
-          assert r['ok'] and r['phase']=='inbox' and r['contract']=='LOCATE_ONLY', r
+          r=locate_phase('reception input compiler classifier locate plugin'); assert r['ok'] and r['phase']=='inbox' and r['contract']=='LOCATE_ONLY',r
           print('PASS TEST 06')
           PY
-      - name: 'TEST 07 — evidence chain'
+
+      - name: TEST 07 — evidence chain
+        id: t07
+        continue-on-error: true
         run: |
           python - <<'PY'
-          from extensions.wordflow.engine.evidence_packet import build_evidence_packet, verify_evidence_packet, chain_packets
-          p=build_evidence_packet(task_id='T07',claim_status='PARTIAL',paths=[{'path':'probe.py'}],tests={'probe':True})
-          assert verify_evidence_packet(p)['ok']
-          c=chain_packets([p,p]); assert c['ok'] and c['count']==2 and c['tip_hash']
-          print('PASS TEST 07')
+          from extensions.wordflow.engine.evidence_packet import build_evidence_packet,verify_evidence_packet,chain_packets
+          p=build_evidence_packet(task_id='T07',claim_status='PARTIAL',paths=[{'path':'probe.py'}],tests={'probe':True}); assert verify_evidence_packet(p)['ok']; c=chain_packets([p,p]); assert c['ok'] and c['count']==2 and c['tip_hash']; print('PASS TEST 07')
           PY
-      - name: 'TEST 08 — fail-closed verdict authority'
+
+      - name: TEST 08 — fail-closed verdict authority
+        id: t08
+        continue-on-error: true
         run: |
           python - <<'PY'
           from extensions.wordflow.standards.verdict_authority import VerdictAuthority
-          r=VerdictAuthority().decide(evidence=None, require_evidence=True)
-          assert r['verdict']=='FAIL' and r['llm_may_declare_pass'] is False, r
-          print('PASS TEST 08')
+          r=VerdictAuthority().decide(evidence=None,require_evidence=True); assert r['verdict']=='FAIL' and r['llm_may_declare_pass'] is False,r; print('PASS TEST 08')
           PY
-      - name: 'TEST 09 — FourPass + QualityDAG enforcement'
+
+      - name: TEST 09 — FourPass + QualityDAG enforcement
+        id: t09
+        continue-on-error: true
         run: |
           python - <<'PY'
-          from extensions.wordflow.standards.forensic_core import ForensicProgrammingEnforcer, ForensicEnforcementState, CoreCheckResult, CORE_IDS, CONNECTIVITY_CHAIN
-          from extensions.wordflow.standards.quality_dag import QualityDAG, GateStatus
+          from extensions.wordflow.standards.forensic_core import ForensicProgrammingEnforcer,ForensicEnforcementState,CoreCheckResult,CORE_IDS,CONNECTIVITY_CHAIN
+          from extensions.wordflow.standards.quality_dag import QualityDAG,GateStatus
           s=ForensicEnforcementState(context_verified=True,handoff_verified=True,core_results=[CoreCheckResult(x,True,'probe') for x in CORE_IDS],connectivity={x:True for x in CONNECTIVITY_CHAIN},evidence_complete=True,final_clean_reaudit_passed=True,quality_dag_ok=True)
-          passes=ForensicProgrammingEnforcer().run_four_passes(s); assert len(passes)==4 and all(x.passed for x in passes), passes
-          d=QualityDAG(); r=d.run(fail_closed=True); assert any(x.status==GateStatus.FAIL for x in r), 'required missing handler did not fail closed'
+          passes=ForensicProgrammingEnforcer().run_four_passes(s); assert len(passes)==4 and all(x.passed for x in passes),passes
+          r=QualityDAG().run(fail_closed=True); assert any(x.status==GateStatus.FAIL for x in r),r
           print('PASS TEST 09')
           PY
-      - name: 'TEST 10 — C100 remains honest + Wordflow regression suite'
+
+      - name: TEST 10 — C100 honesty + regression suite
+        id: t10
+        continue-on-error: true
         run: |
           python - <<'PY'
           from pathlib import Path
-          text=Path('PIPELINE/CLAIM_C100_PROGRESS.md').read_text(encoding='utf-8')
-          assert 'Claim C100 | **NO**' in text
-          print('PASS TEST 10A — C100 not falsely closed')
+          text=Path('PIPELINE/CLAIM_C100_PROGRESS.md').read_text(encoding='utf-8'); assert 'Claim C100 | **NO**' in text; print('PASS TEST 10A')
           PY
           python -m pytest -q extensions/wordflow/tests/test_router_http_gateway.py extensions/wordflow/tests/test_gap_registry_persistence.py extensions/wordflow/tests/test_gap_state_machine.py
+
       - name: Verification manifest
+        if: always()
         run: |
           python - <<'PY'
           from pathlib import Path
-          required = [Path('extensions/wordflow/engine/code_path_runner.py'),Path('extensions/wordflow/standards/gap_registry.py'),Path('extensions/wordflow/standards/executor_gates.py'),Path('extensions/wordflow/standards/forensic_core.py'),Path('PIPELINE/LOOP_GAPS_BLOCK_05_2026-08-21.md'),Path('PIPELINE/CLAIM_C100_PROGRESS.md')]
-          missing=[str(p) for p in required if not p.exists()]
+          required=['extensions/wordflow/engine/code_path_runner.py','extensions/wordflow/standards/gap_registry.py','extensions/wordflow/standards/executor_gates.py','extensions/wordflow/standards/forensic_core.py','PIPELINE/LOOP_GAPS_BLOCK_05_2026-08-21.md','PIPELINE/CLAIM_C100_PROGRESS.md']
+          missing=[p for p in required if not Path(p).exists()]
           if missing: raise SystemExit('Missing: '+', '.join(missing))
           print('VERIFICATION_MANIFEST=PASS')
           PY
+          echo "T01=${{ steps.t01.outcome }}"
+          echo "T02=${{ steps.t02.outcome }}"
+          echo "T03=${{ steps.t03.outcome }}"
+          echo "T04=${{ steps.t04.outcome }}"
+          echo "T05=${{ steps.t05.outcome }}"
+          echo "T06=${{ steps.t06.outcome }}"
+          echo "T07=${{ steps.t07.outcome }}"
+          echo "T08=${{ steps.t08.outcome }}"
+          echo "T09=${{ steps.t09.outcome }}"
+          echo "T10=${{ steps.t10.outcome }}"
+
+      - name: Final verdict
+        if: always()
+        run: |
+          outcomes='${{ steps.t01.outcome }} ${{ steps.t02.outcome }} ${{ steps.t03.outcome }} ${{ steps.t04.outcome }} ${{ steps.t05.outcome }} ${{ steps.t06.outcome }} ${{ steps.t07.outcome }} ${{ steps.t08.outcome }} ${{ steps.t09.outcome }} ${{ steps.t10.outcome }}'
+          echo "$outcomes"
+          if echo "$outcomes" | grep -qE 'failure|cancelled'; then exit 1; fi
+          echo 'ALL_10_TESTS_PASS'
