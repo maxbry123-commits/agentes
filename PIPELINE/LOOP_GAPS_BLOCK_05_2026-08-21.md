@@ -7,10 +7,10 @@ Close the remaining Wordflow programming gaps without claiming completion withou
 CONTEXT → COPY-FIRST/REUSE → IMPLEMENT → WIRE → TEST → FORENSIC 4-PASS → VERDICT → PIPELINE.
 
 ## Current implementation
-The deterministic verification harness now runs the ten probes in one GitHub Actions execution and requires no AI provider, ROUTER_URL, vendor credentials, or external processor. GitHub documents `continue-on-error` as a way to continue diagnostics while the final verdict remains responsible for the actual failure state; verification artifacts are retained with `upload-artifact`. citeturn0search0turn0search2
+The deterministic verification harness now runs the ten probes in one GitHub Actions execution and requires no AI provider, ROUTER_URL, vendor credentials, or external processor. The workflow deliberately continues individual diagnostics but keeps a final fail-closed verdict; verification artifacts are retained after the run.
 
 Workflow: `.github/workflows/wordflow-full-verification.yml`
-Latest implementation commit: `9c42d66172ab9b454f083b74b608176c27c33b74`
+Latest implementation commit before this pipeline record: `9c42d66172ab9b454f083b74b608176c27c33b74`
 
 ## Resolved implementation gaps
 
@@ -74,7 +74,7 @@ Latest implementation commit: `9c42d66172ab9b454f083b74b608176c27c33b74`
 9. QualityDAG + FourPass enforcement
 10. C100 honesty + regression suite
 
-The workflow writes `verification-output/manifest.json` and `verification-output/outcomes.txt`, then uploads them as a workflow artifact. GitHub documents workflow artifacts as the mechanism for retaining test/failure evidence after a run. citeturn0search2turn0search4
+The workflow writes `verification-output/manifest.json` and `verification-output/outcomes.txt`, then uploads them as a workflow artifact so test/failure evidence survives the run.
 
 ## Verification state
 - Source read-back: **PASS** — changed files were re-read after publication.
