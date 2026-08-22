@@ -1,5 +1,9 @@
 # GUÍA COMPLETA — Trabajar a distancia en Cuenta B (sin login en B)
 
+> **Nota:** Esta guía es **solo Cuenta B**.  
+> Para cableo A ↔ B ↔ C, secrets de las 3 cuentas y transferir repos A→B/C, ver:  
+> **[GUIA_CUENTAS_REMOTE.md](https://github.com/maxbry123-commits/agentes/blob/main/GUIA_CUENTAS_REMOTE.md)**
+
 **Repo de esta guía:** `maxbry123-commits/agentes`  
 **Rama:** `main`  
 **Enlace canónico:** https://github.com/maxbry123-commits/agentes/blob/main/GUIA_CUENTA_B_REMOTE.md  
