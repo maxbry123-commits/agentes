@@ -35,6 +35,7 @@ def build_evidence_packet(
     commit_sha: str | None = None,
     notes: str = "",
     parent_hash: str | None = None,
+    timestamp: float | None = None,
 ) -> dict[str, Any]:
     if not task_id:
         raise EvidencePacketError("TASK_ID_EMPTY")
@@ -51,7 +52,7 @@ def build_evidence_packet(
         "commit_sha": commit_sha,
         "notes": notes,
         "parent_hash": parent_hash,
-        "ts": time.time(),
+        "ts": time.time() if timestamp is None else timestamp,
         "llm_control": "DENY",
     }
     body["packet_hash"] = _sha({k: v for k, v in body.items() if k != "packet_hash"})
@@ -72,21 +73,25 @@ def verify_evidence_packet(packet: dict[str, Any]) -> dict[str, Any]:
 
 
 def chain_packets(packets: list[dict[str, Any]]) -> dict[str, Any]:
-    """Link packets by parent_hash; re-hash sequentially."""
+    """Validate source packets, then create a deterministic parent-hash chain."""
     if not packets:
         raise EvidencePacketError("NO_PACKETS")
     out: list[dict[str, Any]] = []
     prev = None
-    for p in packets:
+    for source in packets:
+        verified = verify_evidence_packet(source)
+        if not verified["ok"]:
+            raise EvidencePacketError("INVALID_SOURCE_PACKET", verified["reason"])
         rebuilt = build_evidence_packet(
-            task_id=str(p.get("task_id") or ""),
-            claim_status=str(p.get("claim_status") or "PARTIAL"),
-            paths=list(p.get("paths") or []),
-            tests=dict(p.get("tests") or {}),
-            doc_anchors=list(p.get("doc_anchors") or []),
-            commit_sha=p.get("commit_sha"),
-            notes=str(p.get("notes") or ""),
+            task_id=str(source["task_id"]),
+            claim_status=str(source["claim_status"]),
+            paths=list(source.get("paths") or []),
+            tests=dict(source.get("tests") or {}),
+            doc_anchors=list(source.get("doc_anchors") or []),
+            commit_sha=source.get("commit_sha"),
+            notes=str(source.get("notes") or ""),
             parent_hash=prev,
+            timestamp=float(source["ts"]),
         )
         out.append(rebuilt)
         prev = rebuilt["packet_hash"]
@@ -97,3 +102,18 @@ def chain_packets(packets: list[dict[str, Any]]) -> dict[str, Any]:
         "packets": out,
         "llm_control": "DENY",
     }
+
+
+def verify_packet_chain(packets: list[dict[str, Any]]) -> dict[str, Any]:
+    """Verify packet hashes and parent links without rebuilding or mutating them."""
+    if not packets:
+        return {"ok": False, "reason": "NO_PACKETS"}
+    previous = None
+    for index, packet in enumerate(packets, start=1):
+        verified = verify_evidence_packet(packet)
+        if not verified["ok"]:
+            return {"ok": False, "reason": verified["reason"], "index": index}
+        if packet.get("parent_hash") != previous:
+            return {"ok": False, "reason": "PARENT_HASH_MISMATCH", "index": index}
+        previous = packet["packet_hash"]
+    return {"ok": True, "count": len(packets), "tip_hash": previous, "llm_control": "DENY"}
