@@ -1,5 +1,9 @@
 # GUÍA COMPLETA — Cableo Cuenta A ↔ B ↔ C (remoto, 0% LLM)
 
+> **Nota:** Esta guía cubre **A, B y C**.  
+> Para detalle solo de Cuenta B (paso a paso B):  
+> **[GUIA_CUENTA_B_REMOTE.md](https://github.com/maxbry123-commits/agentes/blob/main/GUIA_CUENTA_B_REMOTE.md)**
+
 **Repo:** `maxbry123-commits/agentes`  
 **Rama:** `main`  
 **Enlace:** https://github.com/maxbry123-commits/agentes/blob/main/GUIA_CUENTAS_REMOTE.md  
