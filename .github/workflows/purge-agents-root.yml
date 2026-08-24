@@ -2,48 +2,47 @@ name: purge-agents-root
 
 on:
   workflow_dispatch:
-    inputs:
-      confirmation:
-        description: 'Escribe DELETE para confirmar el borrado completo de agents/'
-        required: true
-        type: string
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/purge-agents-root.yml'
 
 permissions:
   contents: write
 
+concurrency:
+  group: purge-agents-root
+  cancel-in-progress: false
+
 jobs:
   purge:
-    if: ${{ inputs.confirmation == 'DELETE' }}
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout main
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           ref: main
-          token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
+          token: ${{ github.token }}
 
-      - name: Delete entire agents root
+      - name: Remove only agents contents
         shell: bash
         run: |
           set -euo pipefail
 
-          if [ ! -d agents ]; then
-            echo 'agents/ no existe; nada que borrar.'
-            exit 0
-          fi
+          test -d agents
+          find agents -mindepth 1 -maxdepth 1 ! -name .gitkeep -exec rm -rf {} +
+          printf '%s\n' '# agents root — deterministic snapshots only' > agents/.gitkeep
 
-          echo 'Contenido que se eliminará:'
-          find agents -print
-
-          rm -rf agents
-
-          if [ -e agents ]; then
-            echo 'ERROR: agents/ todavía existe.'
+          test -d agents
+          test -f agents/.gitkeep
+          if find agents -mindepth 1 -maxdepth 1 ! -name .gitkeep -print -quit | grep -q .; then
+            echo 'ERROR: agents/ still contains entries other than .gitkeep'
             exit 1
           fi
 
-      - name: Commit and push deletion
+      - name: Commit and push only agents cleanup
         shell: bash
         run: |
           set -euo pipefail
@@ -53,9 +52,24 @@ jobs:
           git add -A -- agents
 
           if git diff --cached --quiet; then
-            echo 'No hay cambios para confirmar.'
+            echo 'agents/ already clean'
             exit 0
           fi
 
-          git commit -m 'purge: remove obsolete agents root'
+          git commit -m 'purge: clean agents contents only'
           git push origin HEAD:main
+
+      - name: Final forensic verification
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test -d agents
+          test -f agents/.gitkeep
+          remaining="$(find agents -mindepth 1 -maxdepth 1 ! -name .gitkeep -print -quit)"
+          if [ -n "$remaining" ]; then
+            echo "ERROR: unexpected entry remains: $remaining"
+            exit 1
+          fi
+
+          echo 'VERIFIED: agents/ preserved; only agents/.gitkeep remains.'
