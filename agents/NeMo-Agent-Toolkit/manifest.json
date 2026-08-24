@@ -1,1 +1,0 @@
-{"protocol":"TEAM-SEALS-ACQUIRE-v2.1","agent":"NeMo-Agent-Toolkit","identity":{"repository":"https://github.com/NVIDIA/NeMo-Agent-Toolkit","ref":"v1.8.0","commit":"3c44584ef5de2531e2ff548408f0e4658b755a69"},"source":{"archive_sha256":"c3488f236f0f5b635d72349a66915604a11f11cdee26285e75ef6adc97cda029"},"layers":{"source":"CAPTURED","distribution":"PYPI"}}

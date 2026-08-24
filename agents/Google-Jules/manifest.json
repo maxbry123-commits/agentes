@@ -1,1 +1,0 @@
-{"agent":"Google-Jules","identity":{"repository":"https://github.com/google-labs-code/jules-action","ref":"v1.0.0","commit":"bff7875eaa123cac6742b7cfc51005b95ba4d566"},"source":{"archive_sha256":"512b2514b44730460b023237fe19a289f4677c564b35f3a83c79372ab222b7af"},"layers":{"source":"CAPTURED"},"note":"Service agent jules.google; this pin is GH Action wrapper"}

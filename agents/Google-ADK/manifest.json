@@ -1,1 +1,0 @@
-{"agent":"Google-ADK","identity":{"repository":"https://github.com/google/adk-python","ref":"v2.6.3","commit":"0b55dcf9d32e22d4c8b303c3da1c275c135682bf"},"source":{"archive_sha256":"505017a0d692e3b0b77ae99250f4b66254e6f6b426608cb8ff86c0c23ea761c9"},"layers":{"source":"CAPTURED"}}

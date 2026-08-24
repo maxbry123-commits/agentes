@@ -1,2 +1,0 @@
-EMPTY_AFTER_SEARCH
-Fill only if official distribution requires it.

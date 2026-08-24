@@ -1,1 +1,0 @@
-{"agent":"NVIDIA-AI-Q","identity":{"repository":"https://github.com/NVIDIA-AI-Blueprints/aiq","ref":"v2.2.0-rc8","commit":"160d05e8abfae626dbf30611299e697f3dc05a5e"},"source":{"archive_sha256":"7bf07c099952fb5be24a7f63482c310fa12e29ff98f8a183db30d5d23a466ded"},"layers":{"source":"CAPTURED"},"note":"AI-Q Blueprint; uses NeMo Agent Toolkit"}

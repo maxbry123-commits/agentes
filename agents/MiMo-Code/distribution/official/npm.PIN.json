@@ -1,9 +1,0 @@
-{
-  "source": "npm_registry",
-  "package": "@mimo-ai/cli",
-  "version": "0.1.10",
-  "url": "https://registry.npmjs.org/@mimo-ai/cli/-/cli-0.1.10.tgz",
-  "shasum_npm": "ed9d97c84ee3c4dcaa97b425781acb9cbb27581f",
-  "platform": "any",
-  "architecture": "any"
-}

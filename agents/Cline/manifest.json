@@ -1,1 +1,0 @@
-{"protocol":"TEAM-SEALS-ACQUIRE-v2.1","agent":"Cline","identity":{"repository":"https://github.com/cline/cline","ref":"v4.1.6","commit":"81cce3d70e10244cdde40dbd0eb0bb711c93006d"},"source":{"archive_sha256":"b2969888f0436b19d7cda29a12ee5b376186afc41f1be6e9c469209befbce0af"},"layers":{"source":"CAPTURED","distribution":"VSCODE_MARKETPLACE"}}
