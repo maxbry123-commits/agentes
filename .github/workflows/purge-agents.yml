@@ -1,4 +1,5 @@
 name: purge-agents
+
 on:
   workflow_dispatch:
 
@@ -13,29 +14,34 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Remove agent trees (keep control-layer / Wordflow)
+      - name: Remove only agents root contents
+        shell: bash
         run: |
           set -euo pipefail
-          # Never touch control-layer
-          test -d control-layer
 
-          # Delete all agent checkouts under agents/
+          # Never touch anything outside agents/
           if [ -d agents ]; then
             find agents -mindepth 1 -maxdepth 1 -exec rm -rf {} +
           fi
+
+          # Keep the agents/ root itself present.
           mkdir -p agents
           printf '%s\n' '# agents root — deterministic snapshots only' > agents/.gitkeep
 
-          # Clean pipeline scaffolding from previous meta-only work (optional)
-          rm -f scripts/pull_source.py || true
-          rm -f manifests/AGENTS_SOURCE_MANIFEST.yaml || true
+          # Verify the only remaining item under agents/ is .gitkeep.
+          test -d agents
+          test -f agents/.gitkeep
+          if find agents -mindepth 1 -maxdepth 1 ! -name .gitkeep -print -quit | grep -q .; then
+            echo 'ERROR: agents/ still contains entries other than .gitkeep.'
+            exit 1
+          fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
+          git add -A -- agents
           if git diff --cached --quiet; then
             echo "Nothing to purge"
           else
-            git commit -m "purge: remove non-deterministic agent trees (protocol reset)\n\n- keeps control-layer and Wordflow intact\n- agents/ left empty with .gitkeep"
+            git commit -m "purge: remove obsolete agents root contents"
             git push
           fi
