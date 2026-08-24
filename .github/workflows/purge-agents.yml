@@ -1,0 +1,48 @@
+name: purge-agents
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/purge-agents.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  purge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Remove only agents root contents
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d agents
+          find agents -mindepth 1 -maxdepth 1 ! -name .gitkeep -exec rm -rf {} +
+          printf '%s\n' '# agents root — deterministic snapshots only' > agents/.gitkeep
+          test -d agents
+          test -f agents/.gitkeep
+          if find agents -mindepth 1 -maxdepth 1 ! -name .gitkeep -print -quit | grep -q .; then
+            echo 'ERROR: agents/ is not clean'
+            exit 1
+          fi
+
+      - name: Commit and push cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A -- agents
+          if git diff --cached --quiet; then
+            echo 'agents/ already clean'
+            exit 0
+          fi
+          git commit -m 'purge: clean agents root'
+          git push
