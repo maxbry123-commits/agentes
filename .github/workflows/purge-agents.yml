@@ -17,7 +17,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ github.token }}
+          fetch-depth: 0
 
       - name: Remove only agents root contents
         shell: bash
@@ -33,7 +34,7 @@ jobs:
             exit 1
           fi
 
-      - name: Commit and push cleanup
+      - name: Commit and push only agents cleanup
         shell: bash
         run: |
           set -euo pipefail
@@ -44,5 +45,17 @@ jobs:
             echo 'agents/ already clean'
             exit 0
           fi
-          git commit -m 'purge: clean agents root'
-          git push
+          git commit -m 'purge: clean agents contents only'
+          git push origin HEAD:main
+
+      - name: Final forensic verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d agents
+          test -f agents/.gitkeep
+          if find agents -mindepth 1 -maxdepth 1 ! -name .gitkeep -print -quit | grep -q .; then
+            echo 'ERROR: unexpected entry remains under agents/'
+            exit 1
+          fi
+          echo 'VERIFIED: agents/ preserved; only .gitkeep remains.'
