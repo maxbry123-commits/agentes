@@ -1,0 +1,61 @@
+name: purge-agents-root
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Escribe DELETE para confirmar el borrado completo de agents/'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  purge:
+    if: ${{ inputs.confirmation == 'DELETE' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Delete entire agents root
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ ! -d agents ]; then
+            echo 'agents/ no existe; nada que borrar.'
+            exit 0
+          fi
+
+          echo 'Contenido que se eliminará:'
+          find agents -print
+
+          rm -rf agents
+
+          if [ -e agents ]; then
+            echo 'ERROR: agents/ todavía existe.'
+            exit 1
+          fi
+
+      - name: Commit and push deletion
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A -- agents
+
+          if git diff --cached --quiet; then
+            echo 'No hay cambios para confirmar.'
+            exit 0
+          fi
+
+          git commit -m 'purge: remove obsolete agents root'
+          git push origin HEAD:main
