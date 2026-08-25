@@ -1,0 +1,32 @@
+# PIPELINE / programming — índice de docs del path C-19
+
+Los documentos canónicos viven en `PIPELINE/` (main). Esta carpeta en la rama `programming-modular-v1` es el **índice de salvamento** del sistema de programación de code.
+
+## Código modular
+
+`extensions/wordflow/engine/programming/`
+
+Ver `PROCESS_MAP.md` en ese directorio.
+
+## Docs canónicos (no mover aún — solo referenciar)
+
+- `PIPELINE/ARQUITECTURA_WORDFLOW_PROGRAMMING_REAL.md`
+- `PIPELINE/WORDFLOW_PROGRAMMING_AUDIT_SPEC.md`
+- `PIPELINE/WORDFLOW_PROGRAMMING_FORENSIC_MAP.md`
+- `PIPELINE/WORDFLOW_PROGRAMMING_MASTER.md`
+- `PIPELINE/WORDFLOW_PROGRAMMING_MASTER_FULL.md`
+- `PIPELINE/WORDFLOW_PROGRAMMING_MASTER_UNICO.md`
+- `PIPELINE/WORDFLOW_PROGRAMMING_ALL_IN_ONE.md`
+- `PIPELINE/WORDFLOW_PROGRAMMING_COMO_FUNCIONA.md`
+- `PIPELINE/ARQUITECTURA_WORDFLOW_PROGRAMACION_CONSOLIDADA.md`
+- `PIPELINE/ARQUITECTURA_WORDFLOW_PROGRAMMING.md`
+- `PIPELINE/GAPS_PROGRAMMING_WORDFLOW.md`
+- `PIPELINE/PROGRAMMING_CHECKLIST_SHERIFF.md`
+- `PIPELINE/43_CODE_PATH_V1_ARCH_UPGRADE.md`
+- `PIPELINE/44_RECOVERY_CODE_PATH_DETAILED.md`
+- `PIPELINE/45_LISTA2_CODE_PATH_CLOSE_AND_RESIDUAL.md`
+- `PIPELINE/FORENSIC_ENFORCEMENT_REQUIRED.md`
+
+## Estado
+
+Rama de refactor. Main intacto. Flujo 100% preservado vía bridge al runner legacy.
