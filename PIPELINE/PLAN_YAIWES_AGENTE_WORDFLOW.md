@@ -1,293 +1,267 @@
-# README PLAN YAIWES v1
+# README PLAN YAIWES v1 — PLAN EJECUTABLE COMPLETO
 
-**Nombre oficial:** README PLAN YAIWES v1  
-**Fuentes (únicas):**
-1. Estructura raíz: `agente-yaiwes/PLAN_100_ESTRUCTURA_DEFINITIVA.md` + README canónico
-2. Organización del código real: **Paso 3 — Mapa origen → destino** (documento del Director)
-
-**Repo:** maxbry123-commits/agentes · main  
+**Repo:** `maxbry123-commits/agentes` · **rama:** `main`  
 **Agente:** Yaiwes v1  
-**GitHub = truth.** 1 tarea = 1 salida. Binary PASS only with evidence. Fail-closed.
+**GitHub = única verdad.** 1 tarea = 1 salida. PASS solo con evidencia. FAIL-CLOSED.
+
+Este documento es **auto-contenido**. Cualquier agente (GPT / Grok / otro) debe ejecutarlo **solo con archivos de este repo**. No usar memoria de chat.
 
 ---
 
-## 0. BLOQUE DE PROTECCIÓN
+## 1. FUENTES CANÓNICAS (todas en el repo — leer antes de actuar)
+
+| # | Archivo | Para qué |
+|---|---------|----------|
+| 1 | `agente-yaiwes/PLAN_100_ESTRUCTURA_DEFINITIVA.md` | Árbol raíz objetivo |
+| 2 | `PIPELINE/PASO3_ORGANIZACION_CODIGO_REAL_YAIWES.md` | **Mapa completo origen→destino del Director** |
+| 3 | `agente-yaiwes/ORIGIN_MAP.md` | Contrato filas (generado S3) |
+| 4 | `agente-yaiwes/COPY_MANIFEST.json` | Manifest machine-readable (generado S3) |
+| 5 | `despliegue/INSTRUCCIONES_GROK_OPCION_A.md` | Despliegue 1 |
+| 6 | `PIPELINE/PLAN_YAIWES_AGENTE_WORDFLOW.md` | **Este plan** |
+
+**Si falta la fuente 2 → FAIL-CLOSED. No inventar filas del mapa.**
+
+---
+
+## 2. REGLAS GLOBALES (sheriff)
 
 ```text
 PROHIBIDO:
-- Inventar otro plan paralelo.
-- Reescribir hot path monolítico (code_path_runner en main) sin paridad de tests.
-- Duplicar módulos compartidos (regla lego).
-- PASS sin checkpoint nuevo + evidencia.
+- Inventar código, filas de mapa, o destinos no listados en PASO3.
+- Reescribir code_path_runner.py en main sin paridad de tests.
+- Duplicar goal_lock / cognitive_loop / evidence_packet (regla lego).
+- Marcar PASS sin checkpoint NUEVO + evidencia en GitHub.
+- Saltar salidas o reordenar sin orden Director.
 
 OBLIGATORIO:
-- Seguir el mapa Paso 3 (origen → destino).
-- Materializar primero la estructura raíz (PLAN_100).
-- Monolito en main sigue operativo hasta que code-path-execution pase los mismos tests.
+- Leer PASO3 + ORIGIN_MAP + COPY_MANIFEST antes de S4+.
+- Por cada salida: crear PIPELINE/checkpoints/SALIDA_SN_YYYY-MM-DD.md
+- Acción física = según fila: MOVER_INTACTO | REF | LLENAR | CABLEAR | SPLIT
+- Al MOVER: preferir COPY de blob + SOURCE en origen LEGACY; no borrar hot path operativo.
+- Monolito main sigue operativo hasta S11/S12 con evidencia de tests.
+```
+
+### Regla lego
+
+| Módulo | Vive UNA vez | code-programming-engine |
+|--------|--------------|-------------------------|
+| goal_lock.py | execution-orchestration/goal-lock | solo import/REF |
+| cognitive_loop.py | execution-orchestration/mission-planning | solo import/REF |
+| evidence_packet.py | observability/evidence-packet | solo import/REF |
+
+### Checkpoint template (obligatorio cada salida)
+
+```markdown
+# CHECKPOINT SALIDA SN — YYYY-MM-DD
+**Status:** PASS | FAIL
+## Evidence
+- paths tocados / commits
+## Cross-check
+- against: PASO3 / ORIGIN_MAP filas X–Y
+## Sheriff
+- NO_INVENTAR: PASS/FAIL
+- NO_FAKE_PASS: PASS/FAIL
+## Next
+S(N+1)
 ```
 
 ---
 
-## HALLAZGOS CRÍTICOS (Paso 3 — no negociables)
+## 3. TOTAL DE SALIDAS = 12
 
-1. **`wordflow_kernel/gateway/intelligence.py` + `router_http.py`** = punto de enchufe real.  
-   Destino: `execution-engine-pool.adapter-layer`.  
-   No crear enchufe nuevo: ya existe; faltan adapters reales (Claude Code, Codex, OpenHands, OpenCode, Aider, Cline).
+| Orden | ID | Nombre | Estado actual |
+|-------|-----|--------|---------------|
+| 1 | S1 | Estructura raíz PLAN_100 | **PASS** |
+| 2 | S2 | DESPLIEGUE 1 | **PASS parcial** (base; runtime apply opcional) |
+| 3 | S3 | ORIGIN_MAP + COPY_MANIFEST | **PASS** |
+| 4 | S4 | Organizar wordflow top-level | **PENDIENTE** |
+| 5 | S5 | Organizar engine C-19 | **PENDIENTE** |
+| 6 | S6 | Organizar engine resto | **PENDIENTE** |
+| 7 | S7 | Organizar standards/ | **PENDIENTE** |
+| 8 | S8 | Organizar schemas/ | **PENDIENTE** |
+| 9 | S9 | Organizar wordflow_kernel/ | **PENDIENTE** |
+| 10 | S10 | Gaps: adapters, stubs, p01–p12 | **PENDIENTE** |
+| 11 | S11 | Enganche LEGACY | **PENDIENTE** |
+| 12 | S12 | Cierre 100% | **PENDIENTE** |
 
-2. **`openclaw_stub.py` + `hermes_stub.py`** = Nivel 3 (agentes paralelo/supervisión).  
-   Destino: `execution-engine-pool.auxiliary-role-agents`.  
-   No crear desde cero: **llenar**.
+**Siguiente salida a ejecutar: S4**
 
-3. **Rama `programming-modular-v1` (p01…p12)** = prototipo de `code-path-execution`.  
-   Hoy `runner` bridgea al legacy. Hay que **terminar de cablear** p01→p12, no rehacer.
-
-4. **Regla lego (una sola vez):**
-
-| Módulo | Vive una sola vez en | code-programming-engine |
-|--------|----------------------|-------------------------|
-| `goal_lock.py` | `execution-orchestration.goal-lock` | referencia/import, **no copia** |
-| `cognitive_loop.py` | `execution-orchestration.mission-planning` | referencia |
-| `evidence_packet.py` | `observability.evidence-packet` | referencia |
-
-5. **Intocable hasta paridad:** monolito `code_path_runner.py` en main sigue siendo la fuente operativa. No apagar hasta que la versión dividida pase `test_code_path_runner.py`, `test_unified_programming.py`, etc.
-
----
-
-## TOTAL DE SALIDAS
-
-# **TOTAL DE SALIDAS = 12**
-
-Orden de ejecución obligatorio:
-
-| Orden | ID | Nombre |
-|-------|-----|--------|
-| 1º | **S1** | Estructura raíz completa (árbol PLAN_100) |
-| 2º | **S2** | DESPLIEGUE 1 |
-| 3º | **S3** | ORIGIN_MAP + COPY_MANIFEST (contrato del mapa Paso 3) |
-| 4º | **S4** | Organizar `extensions/wordflow/` top-level → destinos |
-| 5º | **S5** | Organizar `engine/` C-19 (hot path programación) |
-| 6º | **S6** | Organizar `engine/` resto (~70 módulos por función) |
-| 7º | **S7** | Organizar `standards/` → control-governance |
-| 8º | **S8** | Organizar `schemas/` → definition-registry (+ refs C-19) |
-| 9º | **S9** | Organizar `wordflow_kernel/` completo |
-| 10º | **S10** | Cablear p01→p12 + adapter-layer + llenar stubs (gaps) |
-| 11º | **S11** | Enganche LEGACY + no apagar monolito |
-| 12º | **S12** | Cierre 100% (árbol = README + mapa Paso 3 cumplido) |
-
-Cada salida **CREA** archivo nuevo:  
-`PIPELINE/checkpoints/SALIDA_SN_YYYY-MM-DD.md`  
-(**12 checkpoints** al final.)
+Checkpoints hechos:
+- `PIPELINE/checkpoints/SALIDA_S1_2026-08-26.md`
+- `PIPELINE/checkpoints/SALIDA_S2_2026-08-26.md`
+- `PIPELINE/checkpoints/SALIDA_S3_2026-08-26.md`
 
 ---
 
-## S1 — Estructura raíz (PLAN_100)
+## 4. INSTRUCCIONES POR SALIDA (ejecutables)
 
-Materializar **todo** el árbol de `PLAN_100_ESTRUCTURA_DEFINITIVA.md` bajo `agente-yaiwes/`:
+### S1 — Estructura raíz [HECHA]
+- Leer `PLAN_100_ESTRUCTURA_DEFINITIVA.md`
+- Crear bajo `agente-yaiwes/` todas las carpetas del árbol con PLACEHOLDER.md o SOURCE.md
+- No inventar .py de implementación
+- Evidence: tree `agente-yaiwes/` expandido (~278 paths)
 
-- code-programming-engine/ (subnodos)
-- kernel-principal/ (extension-kernel, reasoning-kernel, resource-governance, internal-bus, …)
-- input-layer/
-- definition-registry/
-- control-governance/
-- multi-workflow-engine/
-- execution-orchestration/
-- execution-engine-pool/
-- deploy-publish/
-- state-events-durability/, observability/, agent-fleet-parallelism/, etc. (nodos del árbol completo)
-- PLACEHOLDER.md solo en ESQ sin body; SOURCE.md en REF
+### S2 — DESPLIEGUE 1 [HECHA base]
+- Leer `despliegue/INSTRUCCIONES_GROK_OPCION_A.md`
+- Artefactos: instance_pool.py, capability_registration.py, classifier_hook.py, usage_metering.py, deployment_01.yaml
+- Actualizar `despliegue/auditoria/verification.yaml`
+- **NO** reemplazar code_path_runner
+- Pendiente opcional Director: ejecutar append idempotente de catalogs en runtime
 
-**Sin inventar implementación.**
+### S3 — Contrato mapa [HECHA]
+- Fuente: `PIPELINE/PASO3_ORGANIZACION_CODIGO_REAL_YAIWES.md`
+- Entregables: `agente-yaiwes/ORIGIN_MAP.md` + `agente-yaiwes/COPY_MANIFEST.json`
+- Si la fuente no está en repo → FAIL-CLOSED (no inventar)
 
----
+### S4 — Organizar top-level wordflow [PENDIENTE]
 
-## S2 — DESPLIEGUE 1
+**Precondición:** S3 PASS + leer ORIGIN_MAP sección top-level.
 
-Según `despliegue/INSTRUCCIONES_GROK_OPCION_A.md`:
-- capability registration (catalogs)
-- pool / instance / metering
-- classifier_hook
-- deployment_01.yaml + verification.yaml
+Para **cada** fila top-level de PASO3 / ORIGIN_MAP:
 
----
+1. Localizar origen bajo `extensions/wordflow/`
+2. Destino bajo `agente-yaiwes/<nodo>/`
+3. Acción **MOVER_INTACTO** = copiar contenido (mismo SHA si posible) al destino; dejar SOURCE.md o marker LEGACY en origen; **no borrar** origen operativo
+4. Documentar en checkpoint: lista origen→destino→commit
 
-## S3 — Contrato del mapa (ORIGIN_MAP + COPY_MANIFEST)
-
-Registrar **cada fila** del Paso 3: origen → destino → acción (MOVER INTACTO / REF / LLENAR / CABLEAR).  
-Evidencia: archivos `agente-yaiwes/ORIGIN_MAP.md` + `COPY_MANIFEST.json`.
-
----
-
-## S4 — Mapa top-level `extensions/wordflow/`
-
-| Origen | Destino | Acción |
-|--------|---------|--------|
-| component_catalog.json + connect_catalog.json | definition-registry.declared-dependency-catalog | Mover intacto |
-| ficha.v2.json / manifest.yaml | kernel-principal.extension-kernel.capability-registry | Mover intacto |
-| accounts/ | deploy-publish.multi-account-registry | Mover intacto |
-| codegen/dag.py | execution-orchestration.dag-executor | Mover intacto |
-| connectors/ | deploy-publish.push-injection | Mover intacto |
-| context/builder.py | execution-orchestration.dependency-injection-context | Mover intacto |
-| contracts/ | definition-registry.domain-specific-contracts | Mover intacto |
-| docs_templates/ | PIPELINE/ | Mover (documental) |
-| motors/ (call, download, send) | code-programming-engine.external-motor-bridge | Mover intacto |
-| motors/kernel_ext | puente code-programming-engine ↔ kernel-principal | Mover intacto |
-| planner/ | execution-orchestration.mission-planning | Mover intacto |
-| policies/engine_attach | kernel-principal.extension-kernel.abi-mount | Mover intacto |
-| policies/sentinel + sheriff | control-governance.sentinel / .sheriff-bridge | Mover intacto |
-| reception/ | input-layer.reception | Mover intacto |
-| state/ | state-events-durability.run-state-store | Mover intacto |
-| store/main_12.yaml | definition-registry.workflow-definition | Mover intacto |
-| store/goals, council | execution-orchestration / control-governance.council | Mover intacto |
-| tests/ | viaja con cada módulo | — |
-
----
-
-## S5 — Mapa engine/ C-19 (hot path)
-
-| Archivo | Destino | Nota |
-|---------|---------|------|
-| code_path_runner.py | code-programming-engine.code-path-execution | Target = p01→p12 wireado |
-| programming_pipeline.py | code-programming-engine.engine-modules | Mover intacto |
-| programming_kwargs.py | code-programming-engine.engine-modules | Mover intacto |
-| input_quality_bar.py | code-programming-engine.engine-modules | Mover intacto |
-| skill_native_compiler.py | code-programming-engine.engine-modules | Gap: hoy stub determinista |
-| code_path_smoke.py | code-programming-engine.module-tests | Mover intacto |
-| main_loop.py | Split: S01–S12 → multi-workflow-engine.shared-services.runner-host; S08b → programming-engine-binding | Bisagra |
-
-**goal_lock / cognitive_loop / evidence_packet:** NO copiar aquí — solo referencia (regla lego).
-
----
-
-## S6 — Mapa engine/ resto (agrupado)
-
-| Prefijo/real | Destino |
-|--------------|--------|
-| acquire_12, analyze_12, reuse_12 | extensions.source-evolution-module |
-| artifact_pin, bitacora, checkpoint_store, state_*, workflow_dna, reasoning_ledger, dna_* | state-events-durability.run-state-store |
-| bootstrap, microkernel_install, entrypoint*, engine_abi, engine_attach, extension_registry | kernel-principal.extension-kernel |
-| build_plan_only, mission, objective_echo, planning_proposal, fetch_planner, goals_* | execution-orchestration.mission-planning |
-| capability_* | extension-kernel.capability-registry / .capability-passport |
-| circuit_breaker, retry_policy, watchdog, lease_manager, resource_* | kernel-principal.resource-governance |
-| claim_validator, evidence_*, write_evidence | observability.evidence-packet |
-| contract_router, control_sheriff_bridge, sheriff_adapter, sentinel, council, refute_repair, repair_gate, validator, structured_questions | control-governance |
-| credential_store | security-auth.secret-isolation |
-| docker_transport, sandbox_manager, ssh_orchestrator, remote_workers | execution-orchestration.container-pod-isolation |
-| dual_compiler | code-programming-engine.engine-modules |
-| enchufe_gate | input-layer.reception |
-| expert_*, role_analyzer | reasoning-kernel.expert-panel-router |
-| github_*, hf_*, publish_path, push_ping*, project_mirror | deploy-publish |
-| handoff | agent-fleet-parallelism.agent-handoff |
-| kimi_policy | execution-engine-pool.capability-matching |
-| loop_bridge | multi-workflow-engine.instances.programming-engine-binding |
-| orchestrator* | execution-orchestration |
-| parallel_*, wave4/5_runtime | agent-fleet-parallelism |
-| ports/ | execution-engine-pool.adapter-layer |
-| runtime_bus | kernel-principal.internal-bus |
-| scheduler, task_* | execution-orchestration.task-classifier-scheduler |
-| supervisor | agent-fleet-parallelism.dispatch-lifecycle |
-| fake_engine.py | execution-engine-pool — **FAKE explícito** |
-
----
-
-## S7 — Mapa standards/ → control-governance
-
-| Archivo | Destino |
-|---------|--------|
-| executor_gates.py | control-governance.pre-post-gates |
-| verdict_authority.py | control-governance.verdict-authority |
-| forensic_core.py + forensic_contract.py | control-governance.forensic-core |
-| closure_engine.py | control-governance.closure-engine |
-| quality_dag.py + quality_handlers.py | control-governance.quality-dag |
-| gap_registry.py | control-governance (con gap_tasks) |
-| copy_first.py + adapt_imports.py | control-governance |
-| checklist_* | control-governance.sheriff-bridge |
-| symbol_index.py | control-governance.symbol-index-wiring-graph |
-| resto utilidades | control-governance |
-
----
-
-## S8 — Mapa schemas/
-
-- Los **32** → `definition-registry.schema-contracts`
-- `code_output.schema.json` + `goal_lock.schema.json` → además **referenciados** por `code-programming-engine.schema-contracts-io` (no duplicar)
-- Gaps de schemas por stage C-19 → crear solo en `code-programming-engine.schema-contracts-io` cuando se generen
-
----
-
-## S9 — Mapa wordflow_kernel/
+Filas (resumen — detalle completo en PASO3):
 
 | Origen | Destino |
 |--------|--------|
-| workflow.py | kernel-principal |
-| instance.py, instance_store.py | multi-workflow-engine.shared-services |
-| bootstrap_* | kernel-principal.extension-kernel |
-| checkpoint.py | state-events-durability.checkpoint-recovery |
-| fail_closed.py, llm_control.py | control-governance.llm-control-deny |
-| forensic*, gap_tasks | control-governance.forensic-core |
-| **gateway/intelligence.py, router_http.py** | **execution-engine-pool.adapter-layer** |
-| **engines/openclaw_stub, hermes_stub, port.py** | **execution-engine-pool.auxiliary-role-agents** |
-| memory_slot/, memory.py | tools-models-memory-knowledge |
-| reception/* | input-layer.reception / deploy-publish.push-injection |
-| resources/* | kernel-principal.resource-governance.resource-broker-gate |
-| slots/kimi_minimax + placeholder | execution-engine-pool — PLACEHOLDER fusion:false |
-| stages/* | kernel-principal |
-| ui_gateway/* | fuera (DOC-UI00) |
+| component_catalog.json + connect_catalog.json | definition-registry/declared-dependency-catalog |
+| ficha.v2.json / manifest.yaml | kernel-principal/extension-kernel/capability-registry |
+| accounts/ | deploy-publish/multi-account-registry |
+| codegen/dag.py | execution-orchestration/dag-executor |
+| connectors/ | deploy-publish/push-injection |
+| context/builder.py | execution-orchestration/dependency-injection-context |
+| contracts/ | definition-registry/domain-specific-contracts |
+| docs_templates/ | PIPELINE/ |
+| motors/ | code-programming-engine/external-motor-bridge |
+| motors/kernel_ext | puente CPE ↔ kernel |
+| planner/ | execution-orchestration/mission-planning |
+| policies/engine_attach | extension-kernel/abi-mount |
+| policies/sentinel+sheriff | control-governance/sentinel + sheriff-bridge |
+| reception/ | input-layer/reception |
+| state/ | state-events-durability/run-state-store |
+| store/main_12.yaml | definition-registry/workflow-definition |
+| store/goals, council | mission-planning / council |
 
----
+**PASS si:** cada fila tiene artefacto en destino + evidencia en checkpoint.  
+**FAIL si:** se inventa destino o se apaga origen sin SOURCE.
 
-## S10 — Gaps a rellenar (destino ya fijado)
+### S5 — engine C-19 [PENDIENTE]
+
+Leer PASO3 sección C-19.
+
+| Origen | Destino | Acción |
+|--------|---------|--------|
+| engine/code_path_runner.py | code-programming-engine/code-path-execution | CABLEAR (no apagar main) |
+| engine/programming_pipeline.py | engine-modules | MOVER_INTACTO |
+| engine/programming_kwargs.py | engine-modules | MOVER_INTACTO |
+| engine/input_quality_bar.py | engine-modules | MOVER_INTACTO |
+| engine/skill_native_compiler.py | engine-modules | MOVER_INTACTO (gap stub) |
+| engine/code_path_smoke.py | module-tests | MOVER_INTACTO |
+| engine/main_loop.py | runner-host + programming-engine-binding | SPLIT |
+
+**NO copiar** goal_lock / cognitive_loop / evidence_packet a CPE.
+
+### S6 — engine resto [PENDIENTE]
+
+Leer PASO3 sección “engine resto”. Agrupar por prefijo → destino. Misma regla MOVER_INTACTO + no apagar origen. Incluir: resource-governance, control-governance, agent-fleet, deploy-publish, adapter-layer (ports/), FAKE engine marcado.
+
+### S7 — standards/ [PENDIENTE]
+
+Todo `extensions/wordflow/standards/*` → nodos `agente-yaiwes/control-governance/*` según tabla PASO3 (pre-post-gates, verdict-authority, forensic-core, closure-engine, quality-dag, sheriff-bridge, symbol-index-wiring-graph, …).
+
+### S8 — schemas/ [PENDIENTE]
+
+- 32 schemas → `definition-registry/schema-contracts`
+- code_output + goal_lock → además REF en `code-programming-engine/schema-contracts-io` (no duplicar body)
+- No inventar schemas stage; solo documentar gap → S10
+
+### S9 — wordflow_kernel/ [PENDIENTE]
+
+Leer PASO3 sección wordflow_kernel (mapa completo).
+
+**Crítico:**
+- gateway/intelligence.py + router_http.py → execution-engine-pool/adapter-layer
+- openclaw_stub + hermes_stub + port → auxiliary-role-agents
+- ui_gateway → EXCLUIDO (DOC-UI00)
+
+Kernel size ref: ~109 paths / ~90–95 archivos / ~150–180 KB.
+
+### S10 — Gaps [PENDIENTE]
+
+Solo rellenar cuando haya diseño/evidencia real. Destinos ya fijados:
 
 | Gap | Destino |
 |-----|--------|
-| Adapters reales en intelligence_gateway | execution-engine-pool.adapter-layer |
-| Contenido real openclaw/hermes stubs | execution-engine-pool.auxiliary-role-agents |
-| p01→p12 wireado end-to-end | code-programming-engine.code-path-execution |
-| Schemas por stage C-19 | code-programming-engine.schema-contracts-io |
-| Export SYMBOL_INDEX_PROGRAMMING.md | control-governance.symbol-index-wiring-graph |
-| Índice test→asserts | code-programming-engine.module-tests |
-| Log CI real | observability.trace-history |
+| Adapters reales (Claude Code, Codex, OpenHands, OpenCode, Aider, Cline) | adapter-layer |
+| Body openclaw/hermes | auxiliary-role-agents |
+| p01→p12 E2E wire | code-path-execution |
+| Schemas stage C-19 | schema-contracts-io |
+| SYMBOL_INDEX_PROGRAMMING.md | symbol-index-wiring-graph |
+| test→asserts index | module-tests |
+| Log CI real | trace-history |
 
----
+Si no hay implementación real → documentar GAP en checkpoint, **no fake PASS**.
 
-## S11 — Enganche LEGACY
+### S11 — LEGACY [PENDIENTE]
 
-- Marker LEGACY en paths viejos si aplica
-- **No apagar** monolito `code_path_runner` hasta paridad de tests
-- Hot path en main sigue siendo fuente operativa
+- Marker LEGACY en extensions/wordflow y wordflow_kernel
+- Confirmar monolito code_path_runner sigue operativo
+- Cutover solo si tests de paridad PASS
 
----
+### S12 — Cierre [PENDIENTE]
 
-## S12 — Cierre 100%
-
-- [ ] Árbol `agente-yaiwes/` = PLAN_100 completo
-- [ ] Cada fila del mapa Paso 3 ejecutada (MOVER/REF/LLENAR/CABLEAR)
-- [ ] Regla lego respetada (sin duplicar goal_lock, cognitive_loop, evidence_packet)
-- [ ] Monolito intacto o cutover solo con evidencia de tests
+Checklist:
+- [ ] Árbol agente-yaiwes = PLAN_100
+- [ ] Todas filas PASO3 ejecutadas o GAP explícito
+- [ ] Lego respetada
+- [ ] Monolito OK o cutover con evidencia
 - [ ] Despliegue 1 auditado
-- [ ] 12 checkpoints creados
+- [ ] 12 checkpoints en PIPELINE/checkpoints/
 
 ---
 
-## DSL DAG (todas las salidas)
+## 5. DSL DAG (cada salida)
 
-Cada S1–S12:
-- sheriff (NO_SKIP, NO_ASSUME, NO_HALLUCINATION, NO_FAKE_PASS, NO_REWRITE_SIN_PARIDAD)
-- validador (evidence + binary PASS)
-- verificación + verificación cruzada (tree / mapa / tests / catalogs)
-- guardián fail-closed
-- **checkpoint file NUEVO obligatorio**
+```text
+INPUT:  precondiciones (salida anterior PASS) + fuentes canónicas
+SHERIFF: reglas sección 2
+VALIDADOR: evidencia en GitHub (paths, commits)
+VERIFICACIÓN: tree + ORIGIN_MAP filas
+VERIFICACIÓN CRUZADA: PASO3 vs lo escrito en destino
+GUARDIÁN: FAIL-CLOSED si falta fuente o se inventa
+OUTPUT: checkpoint NUEVO + cambios en main
+```
 
 ---
 
-## ESTADO
+## 6. CÓMO DEBE TRABAJAR EL SIGUIENTE AGENTE
 
-| Ítem | Estado |
-|------|--------|
-| README PLAN YAIWES v1 (este doc) | **HECHO** |
-| Fuentes: PLAN_100 + Paso 3 mapa | **Integradas** |
-| S1…S12 | PENDIENTE de ejecución |
+1. Clonar / usar API sobre `maxbry123-commits/agentes` main
+2. Leer este plan completo
+3. Leer `PIPELINE/PASO3_ORGANIZACION_CODIGO_REAL_YAIWES.md`
+4. Leer `agente-yaiwes/ORIGIN_MAP.md` + `COPY_MANIFEST.json`
+5. Ejecutar **solo la siguiente salida pendiente** (hoy **S4**)
+6. Crear checkpoint
+7. No tocar el plan para “inventar” salidas
+8. Si falta un archivo fuente listado en §1 → FAIL-CLOSED y reportar path faltante
 
-**Siguiente:** ejecutar **S1** (estructura raíz), luego **S2** (Despliegue 1), luego **S3** (contrato del mapa) y seguir el orden.
+---
 
-**TOTAL DE SALIDAS = 12**  
-**TOTAL DE CHECKPOINTS = 12**
+## 7. ESTADO RESUMEN
+
+| Pieza | Path | Estado |
+|-------|------|--------|
+| Plan ejecutable | PIPELINE/PLAN_YAIWES_AGENTE_WORDFLOW.md | **ACTUALIZADO** |
+| Paso 3 Director | PIPELINE/PASO3_ORGANIZACION_CODIGO_REAL_YAIWES.md | **EN REPO** |
+| ORIGIN_MAP | agente-yaiwes/ORIGIN_MAP.md | **PASS S3** |
+| COPY_MANIFEST | agente-yaiwes/COPY_MANIFEST.json | **PASS S3** |
+| Estructura raíz | agente-yaiwes/ | **PASS S1** |
+| Despliegue 1 base | despliegue/ | **PASS parcial S2** |
+| S4–S12 | — | **PENDIENTE** |
+
+**TOTAL SALIDAS = 12**  
+**SIGUIENTE = S4**
