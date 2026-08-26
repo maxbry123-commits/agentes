@@ -1,0 +1,1 @@
+S4 source preserved. Destination: PIPELINE/docs_templates (documental). See Paso 3.
