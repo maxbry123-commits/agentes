@@ -1,0 +1,57 @@
+# Token values NEVER in this file — only env: refs.
+# Secrets live in Cuenta A → repo agentes → Settings → Secrets and variables → Actions
+#
+# | Secret                   | Cuenta | Scope |
+# |--------------------------|--------|-------|
+# | EXTERNAL_GH_B_TOKEN      | B      | repo  |
+# | GITHUB_B_TOKEN           | B      | repo (alias opcional) |
+# | EXTERNAL_GH_C_TOKEN      | C      | repo  |
+# | GITHUB_C_TOKEN           | C      | repo (alias opcional) |
+# | HF_TOKEN                 | HF     | write |
+
+accounts:
+  - account_id: external_software_b
+    provider: github
+    credential_ref: env:EXTERNAL_GH_B_TOKEN
+    owner: abc1tienda-web
+    repo: osquestador-auditor-y-memoria-1
+    branch: main
+    allowed_repositories:
+      - abc1tienda-web/osquestador-auditor-y-memoria-1
+    policy:
+      can_read: true
+      can_write: false
+      can_deploy: false
+    role: software_store
+
+  - account_id: github_b
+    provider: github
+    credential_ref: env:EXTERNAL_GH_B_TOKEN
+    owner: abc1tienda-web
+    allowed_repositories: []
+    policy:
+      can_read: true
+      can_write: true
+      can_deploy: true
+    role: deploy_any_repo
+
+  - account_id: github_c
+    provider: github
+    credential_ref: env:EXTERNAL_GH_C_TOKEN
+    owner: REPLACE_CUENTA_C_OWNER
+    allowed_repositories: []
+    policy:
+      can_read: true
+      can_write: true
+      can_deploy: true
+    role: deploy_any_repo
+
+  - account_id: hf_b
+    provider: huggingface
+    credential_ref: env:HF_TOKEN
+    allowed_repositories: []
+    policy:
+      can_read: true
+      can_write: true
+      can_deploy: true
+    role: hf_store
