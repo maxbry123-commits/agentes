@@ -1,24 +1,22 @@
-# PLAN AGENTE YAIWES v1 — ALINEADO A ESTRUCTURA README + PLAN_100
+# README PLAN YAIWES v1
 
-**Fuente de verdad de estructura:**  
-`agente-yaiwes/PLAN_100_ESTRUCTURA_DEFINITIVA.md`  
-`agente-yaiwes/README.md` (estructura canónica)
-
-**Nombre:** Agente Yaiwes v1  
+**Nombre oficial:** README PLAN YAIWES v1  
+**Fuente de estructura:** README canónico + `agente-yaiwes/PLAN_100_ESTRUCTURA_DEFINITIVA.md`  
 **Repo:** maxbry123-commits/agentes · main  
-**Regla:** NO reescribir extensions/wordflow operativo. Solo COPY / REF / PLACEHOLDER.  
+**Agente:** Yaiwes v1  
+**Regla:** NO reescribir `extensions/wordflow` (LEGACY). Solo COPY / REF / PLACEHOLDER.  
 **GitHub = truth.** 1 tarea = 1 salida. Binary PASS only with evidence. Fail-closed.
 
 ---
 
-## 0. BLOQUE DE PROTECCIÓN — NO TOCAR ESTE PLAN NI EL PLAN_100
+## 0. BLOQUE DE PROTECCIÓN — NO TOCAR
 
 ```text
 PROHIBIDO:
-- Cambiar el número de salidas (9).
+- Cambiar el total de salidas (9).
 - Reescribir extensions/wordflow materializado.
-- Inventar código en nodos ESQ (solo PLACEHOLDER + descripción).
-- Declarar PASS sin archivo de checkpoint nuevo + evidencia.
+- Inventar código en nodos ESQ (solo PLACEHOLDER + descripción + PENDIENTE_CODE).
+- PASS sin archivo de checkpoint nuevo + evidencia.
 
 PERMITIDO:
 - Crear checkpoint nuevo por salida.
@@ -32,172 +30,158 @@ PERMITIDO:
 
 # **TOTAL DE SALIDAS = 9**
 
-| Orden | ID | Nombre | Prioridad |
-|-------|-----|--------|-----------|
-| 1º | **SALIDA 1** | Archivos de la nueva raíz (árbol completo) | P0 |
-| 2º | **SALIDA 5** | **DESPLIEGUE 1** (documentos Opción A) | P0 |
-| 3º | **SALIDA 2** | Espejo motor → code-programming-engine/ | P1 |
-| 4º | SALIDA 0 | Contrato (puede ir junto a 1) | P1 |
-| 5º | SALIDA 3 | REFs a piezas REALES | P1 |
-| 6º | SALIDA 4 | Docs mapa (ORIGIN_MAP, COPY_MANIFEST) | P2 |
-| 7º | SALIDA 6 | Modular / binding | P2 |
-| 8º | SALIDA 7 | Enganche LEGACY | P2 |
-| 9º | SALIDA 8 | Cierre 100% | P0 |
+| Orden | ID | Nombre |
+|-------|-----|--------|
+| 1º | **SALIDA 1** | Nueva raíz completa (árbol README/PLAN_100) |
+| 2º | **SALIDA 5** | **DESPLIEGUE 1** |
+| 3º | **SALIDA 2** | Espejo motor → code-programming-engine/ |
+| 4º | SALIDA 0 | Contrato |
+| 5º | SALIDA 3 | REFs a piezas REALES |
+| 6º | SALIDA 4 | Docs mapa (ORIGIN_MAP, COPY_MANIFEST) |
+| 7º | SALIDA 6 | Modular / binding |
+| 8º | SALIDA 7 | Enganche LEGACY |
+| 9º | SALIDA 8 | Cierre 100% |
 
-**Orden de ejecución obligatorio (Director):**  
-**1 → 5 → 2 → resto (0/3/4/6/7) → 8**
+**Orden obligatorio:** 1 → 5 → 2 → (0/3/4/6/7) → 8
+
+Cada salida **DEBE CREAR** archivo nuevo:  
+`PIPELINE/checkpoints/SALIDA_N_YYYY-MM-DD.md`  
+(Total esperado: **9** archivos de checkpoint.)
 
 ---
 
-## REGLA DE CHECKPOINT — ARCHIVO NUEVO OBLIGATORIO
+## AUDITORÍA FORENSE — ARCHIVOS vs ESTRUCTURA README / PLAN_100
 
-Cada salida **DEBE CREAR** un archivo nuevo:
+### A. Estado actual de `agente-yaiwes/` (tree real @ main)
 
 ```text
-PIPELINE/checkpoints/SALIDA_N_YYYY-MM-DD.md
+agente-yaiwes/
+├── README.md                          [REAL]
+├── STRUCTURE.md                       [REAL — scaffold corto]
+├── PLAN_100_ESTRUCTURA_DEFINITIVA.md  [REAL — plan maestro]
+├── code-programming-engine/SOURCE.md  [REF]
+├── kernel-principal/PLACEHOLDER.md
+├── input-layer/PLACEHOLDER.md
+├── definition-registry/PLACEHOLDER.md
+├── control-governance/PLACEHOLDER.md
+├── multi-workflow-engine/PLACEHOLDER.md
+├── execution-orchestration/PLACEHOLDER.md
+├── execution-engine-pool/PLACEHOLDER.md
+├── deploy-publish/PLACEHOLDER.md
+└── extensions-refs/PLACEHOLDER.md
 ```
 
-- Nunca sobrescribir.
-- Un archivo = una sola salida.
-- Sin este archivo → no puede ser PASS.
-- Al final: exactamente **9 archivos** de checkpoint.
+**Conteo actual:** ~24 paths (solo top-level + placeholders).  
+**Estado:** scaffold parcial. **NO** es el árbol 100% del README/PLAN_100.
 
----
+### B. Árbol objetivo (README / PLAN_100) — lo que debe quedar al final
 
-## DSL DAG SCHEMA (obligatorio en las 9)
+El cierre debe coincidir con el árbol completo de `PLAN_100_ESTRUCTURA_DEFINITIVA.md`:
 
-Cada salida instancia:
+- `code-programming-engine/` (subestructura engine-modules, standards-forensic, schemas, tests…)
+- `kernel-principal/` completo (control-layer, extension-kernel, reasoning-kernel, resource-governance, internal-bus, execution-manifest…)
+- `input-layer/` (cli-entry, route-entry, cross-tool-session-import, reception)
+- `definition-registry/` completo
+- `control-governance/` completo
+- `multi-workflow-engine/` (shared-services + instances/workflow-N)
+- `execution-orchestration/` completo
+- `execution-engine-pool/` completo
+- `deploy-publish/` completo
+- Nodos adicionales del plan: agent-fleet-parallelism, mesh-routing, pipeline-runtime, human-in-the-loop, observability, etc.
+- `extensions/` como REFs
+- `ORIGIN_MAP.md`, `COPY_MANIFEST.json`
 
-```yaml
-id: SALIDA_N
-nombre: "..."
-tipo: CREATE | COPY | REF | PLACEHOLDER | ENGANCHE | VALIDATE
+### C. Gaps forenses (lo que falta para igualar el README)
 
-input_schema: { ... }
-output_schema:
-  required: [status, evidence, checkpoint_sha, cross_check]
+| Gap | Severidad | Salida que lo cierra |
+|-----|-----------|----------------------|
+| Subárboles internos de kernel-principal, definition-registry, control-governance, multi-workflow-engine, execution-* | ALTO | **SALIDA 1** |
+| Nodos §4.1 obligatorios (capability-passport, goal-dual-driver, dead-letter, mcp-transport, etc.) | ALTO | **SALIDA 1** |
+| ORIGIN_MAP.md + COPY_MANIFEST.json | MEDIO | **SALIDA 4** |
+| Despliegue 1 verification completo | ALTO | **SALIDA 5** |
+| Espejo body motor (code-programming-engine) | MEDIO | **SALIDA 2** |
+| REFs detallados + enganche LEGACY | BAJO | **SALIDA 3 / 7** |
+| Checklist cierre 100% | ALTO | **SALIDA 8** |
 
-sheriff:
-  laws: [NO_SKIP, NO_ASSUME, NO_HALLUCINATION, NO_FAKE_PASS, NO_REWRITE_LEGACY, NO_TOUCH_PLAN]
-  fail_closed: true
-
-validador:
-  schema_check: true
-  evidence_required: true
-  binary_pass: true
-
-verificación:
-  - type: tree | test | catalog | xray
-
-verificación_cruzada:
-  - against: PLAN_100 | component_catalog | connect_catalog | tree
-
-guardián:
-  on_fail: DENY
-  on_pass: ALLOW_NEXT
-
-checkpoint_file: PIPELINE/checkpoints/SALIDA_N_YYYY-MM-DD.md   # CREATE nuevo
-```
-
----
-
-## DETALLE DE LAS 9 SALIDAS (basado en PLAN_100 + README)
-
-### SALIDA 1 — Nueva raíz completa (1º)
-- **Objetivo:** Materializar todas las carpetas del árbol definitivo de `PLAN_100_ESTRUCTURA_DEFINITIVA.md`.
-- **Acción:** CREATE carpetas + PLACEHOLDER.md (descripción + PENDIENTE_CODE) en hojas ESQ/MIX sin body. REF con SOURCE.md hacia paths canónicos.
-- **Prohibido:** Inventar implementación.
-- **Checkpoint:** CREATE `PIPELINE/checkpoints/SALIDA_1_YYYY-MM-DD.md`
-- **Evidencia:** tree de `agente-yaiwes/` completo vs árbol del PLAN_100.
-
-### SALIDA 5 — DESPLIEGUE 1 (2º, justo después de Salida 1)
-- **Fuente:** `despliegue/` + `INSTRUCCIONES_GROK_OPCION_A.md` (u equivalente).
-- **Entregas:**
-  - capability registration (catalogs idempotente)
-  - pool / instance / metering (copy, no inventar)
-  - classifier_hook según doc
-  - `despliegue/manifests/deployment_01.yaml`
-  - `despliegue/auditoria/verification.yaml`
-- **Checkpoint:** CREATE nuevo archivo.
-- **Evidencia:** verification.yaml + status catalogs.
-
-### SALIDA 2 — Espejo motor → code-programming-engine/ (3º)
-- **Método:** COPY (mismos blob SHA o cp + commit). Origen no se borra.
-- **Origen → Destino:**
-  - `extensions/wordflow/engine/**` → `code-programming-engine/engine-modules/`
-  - `extensions/wordflow/standards/**` → `code-programming-engine/standards-forensic/`
-  - `extensions/wordflow/schemas/**` → `code-programming-engine/schema-contracts-io/`
-  - tests relevantes → `module-tests/`
-- **Checkpoint:** CREATE nuevo archivo.
-- **Evidencia:** SHA origen = destino.
-
-### SALIDA 0 — Contrato
-- Lista nodos REAL / MIX / ESQ / REF.
-- `despliegue/auditoria/migration_plan.yaml` estado.
-- Checkpoint: CREATE nuevo.
-
-### SALIDA 3 — REFs a piezas REALES
-- SOURCE.md hacia: control-layer, reception, schemas, catalogs, gateway, openclaw/hermes stubs, maxbry_loop, github_deploy, etc.
-- No copiar body innecesario. Solo REF.
-- Checkpoint: CREATE nuevo.
-
-### SALIDA 4 — Docs mapa
-- ORIGIN_MAP.md, COPY_MANIFEST.json, READMEs por bloque principal.
-- Checkpoint: CREATE nuevo.
-
-### SALIDA 6 — Modular / binding
-- code-path-execution, programming-engine-binding, refs p01–p12 si existen.
-- Sin reimplementar monolito.
-- Checkpoint: CREATE nuevo.
-
-### SALIDA 7 — Enganche LEGACY
-- Pocos archivos: catálogos/connect; marker LEGACY en wordflow viejo.
-- **No apagar hot path** (`extensions/wordflow`).
-- Checkpoint: CREATE nuevo.
-
-### SALIDA 8 — Cierre 100%
-- Checklist §4.1–4.3 de PLAN_100.
-- `despliegue/auditoria/cierre_estructura_100.yaml`.
-- Verificar: cero nodos faltantes del árbol, Despliegue 1 auditado, wordflow LEGACY intacto.
-- Checkpoint: CREATE nuevo.
-- **PASS solo con evidencia total de las 9.**
-
----
-
-## QUÉ NO SE TOCA (auditoría forense)
+### D. Lo que NO se toca
 
 | Ámbito | Estado | Acción |
 |--------|--------|--------|
-| extensions/wordflow (materialized) | Ya existe y opera | **REF / no tocar** |
-| extensions/wordflow_kernel (materialized) | Ya existe | **REF / no tocar** |
-| Stubs (intelligence_gateway, openclaw, hermes) | Documentados en catalogs | Dejar o PLACEHOLDER documentado |
-| Partials (github_deploy, acquire) | Catalog status partial | Solo si Despliegue 1 lo exige |
-| 400+ archivos wordflow | No requieren rewrite | **NO cambiar** |
+| `extensions/wordflow` + kernel | materialized / LEGACY operativo | **REF — no reescribir** |
+| `despliegue/` base | ya tiene manifests, schemas, auditoria, Opción A | Usar en Salida 5 |
+| `code-programming-engine/` raíz | estructura iniciada | Completar espejo en Salida 2 |
+| Stubs catalogs (gateway, openclaw, hermes) | documentados | No inventar vendor path |
+
+### E. Veredicto auditoría
+
+| Criterio | Resultado |
+|----------|-----------|
+| ¿El plan sigue la estructura del README/PLAN_100? | **SÍ** (9 salidas, orden 1→5→2→…→8) |
+| ¿El árbol actual de agente-yaiwes = árbol final README? | **NO** — solo scaffold |
+| ¿Hay que tocar 400+ archivos wordflow? | **NO** |
+| ¿Al final debe quedar como el árbol del README/PLAN_100? | **SÍ** — eso es el criterio de cierre de Salida 8 |
+
+**Resultado:** plan alineado. Ejecución pendiente desde **SALIDA 1**.
 
 ---
 
-## CRITERIO DE CIERRE
+## DSL DAG (las 9 salidas)
 
-- [ ] Las 9 salidas con checkpoint nuevo cada una
-- [ ] Árbol agente-yaiwes completo según PLAN_100
-- [ ] Despliegue 1 hecho y verification.yaml
+Cada salida lleva: sheriff + validador + verificación + verificación cruzada + guardián + **checkpoint file nuevo**.
+
+### SALIDA 1 — Nueva raíz completa
+Materializar **todas** las carpetas del árbol PLAN_100. PLACEHOLDER.md en ESQ/MIX sin body. SOURCE.md en REF. Sin inventar código.
+
+### SALIDA 5 — DESPLIEGUE 1
+Según `despliegue/INSTRUCCIONES_GROK_OPCION_A.md`: catalogs, pool, classifier_hook, deployment_01.yaml, verification.yaml.
+
+### SALIDA 2 — Espejo motor
+COPY (mismos SHA) engine/standards/schemas/tests → code-programming-engine/. Origen no se borra.
+
+### SALIDA 0 — Contrato
+Lista REAL/MIX/ESQ/REF + migration_plan.yaml.
+
+### SALIDA 3 — REFs
+SOURCE hacia piezas REALES existentes (control-layer, reception, catalogs, stubs, etc.).
+
+### SALIDA 4 — Docs mapa
+ORIGIN_MAP.md, COPY_MANIFEST.json, READMEs de bloque.
+
+### SALIDA 6 — Modular / binding
+programming-engine-binding, code-path-execution refs.
+
+### SALIDA 7 — Enganche LEGACY
+Marker LEGACY; no apagar hot path wordflow.
+
+### SALIDA 8 — Cierre 100%
+Checklist §4.1–4.3. Árbol final = árbol README/PLAN_100. verification + cierre_estructura_100.yaml.
+
+---
+
+## CRITERIO DE CIERRE (igual al README)
+
+- [ ] Cero nodos del árbol definitivo faltantes
+- [ ] Cero ítems §4.1 faltantes
+- [ ] Salida 1 hecha
+- [ ] Despliegue 1 auditado
 - [ ] Espejo motor o GAP explícito
 - [ ] extensions/wordflow LEGACY intacto
-- [ ] ESQ = solo PLACEHOLDER + descripción (sin código inventado)
+- [ ] ESQ = solo PLACEHOLDER + descripción
+- [ ] 9 checkpoints creados
 
 ---
 
-## ESTADO ACTUAL
+## ESTADO
 
 | Ítem | Estado |
 |------|--------|
-| PLAN_100 en main | HECHO |
-| Este plan alineado | HECHO |
-| Salida 1 (raíz completa) | PENDIENTE |
-| Salida 5 (Despliegue 1) | PENDIENTE — siguiente tras Salida 1 |
-| Salida 2 (espejo) | PENDIENTE |
+| README PLAN YAIWES v1 | **HECHO** (este archivo) |
+| PLAN_100 | HECHO |
+| Salida 1 | PENDIENTE |
+| Salida 5 | PENDIENTE (tras 1) |
+| Salida 2 | PENDIENTE |
 
-**Siguiente orden del Director:** ejecutar **SALIDA 1**, luego **SALIDA 5**.
+**Siguiente:** ejecutar **SALIDA 1**, luego **SALIDA 5**.
 
 **TOTAL DE SALIDAS = 9**  
-**TOTAL DE ARCHIVOS DE CHECKPOINT A CREAR = 9**
+**TOTAL DE CHECKPOINTS A CREAR = 9**
