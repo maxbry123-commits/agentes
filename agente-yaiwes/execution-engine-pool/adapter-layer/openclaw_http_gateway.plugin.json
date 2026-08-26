@@ -1,0 +1,26 @@
+{
+  "plugin_id": "yaiwes.openclaw.http-gateway",
+  "version": "1.0.0",
+  "type": "adapter",
+  "entrypoint": "agente-yaiwes/execution-engine-pool/adapter-layer/openclaw_http_gateway.py",
+  "contract": "wordflow_kernel.gateway.intelligence.IntelligenceGateway",
+  "capability": "llm.complete",
+  "transport": "HTTP",
+  "target": "OpenClaw Gateway /v1/chat/completions",
+  "model": "openclaw/default",
+  "configuration": {
+    "url_env": "OPENCLAW_GATEWAY_URL",
+    "token_env": "OPENCLAW_GATEWAY_TOKEN"
+  },
+  "security": {
+    "fail_closed": true,
+    "no_secret_in_source": true,
+    "private_gateway_required": true
+  },
+  "wiring": {
+    "source": "wordflow_kernel.engines.openclaw_stub.OpenClawEngine",
+    "contract": "IntelligenceGateway.execute",
+    "destination": "OpenClaw Gateway"
+  },
+  "immutable_component": true
+}
