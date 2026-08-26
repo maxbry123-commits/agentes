@@ -1,0 +1,11 @@
+id: C_WF_LOOP
+name: main_12 Loop Contract
+version: "1.0"
+layer: wordflow
+steps: 12
+on_fail: stop
+on_reject: stop
+required_gates:
+  - sentinel
+  - council
+llm_control: DENY
