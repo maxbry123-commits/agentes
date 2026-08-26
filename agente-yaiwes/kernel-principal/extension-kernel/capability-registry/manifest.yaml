@@ -1,0 +1,21 @@
+# extensions/wordflow/manifest.yaml — ABI + ficha v2.0
+# Fuente: ENCHUFE UNIVERSAL v2.0 · V1-05
+
+abi_version: "2.0"
+extension_type: "wordflow_runtime"
+kernel_min: "1.0.0"
+mount_mode: "sidecar"
+load_priority: 20
+
+ficha: ficha.v2.json
+artifact_id: wordflow.yaiwes.v1
+version: "1.0.0"
+estado: testing
+categoria: transversal
+etapa: T
+
+entrypoint: extensions.wordflow.engine.entrypoint_v1:run_v1
+llm_control: DENY
+deterministic: true
+plane: wordflow
+fail_closed: true
