@@ -1,20 +1,8 @@
 schema_version: "1.0"
 last_run:
-  status: IN_PROGRESS
-  deployment_id: deployment_01_opcion_a_instance_pool
-  commit_sha: null
-  workflow_ref: ".github/workflows/test-wordflow-code-path.yml"
-  validated_at: "2026-08-26T03:15:00Z"
-  notes: |
-    Despliegue 1 iniciado desde despliegue/INSTRUCCIONES_GROK_OPCION_A.md.
-    code-programming-engine creado; catalogos actualizados; monolito C-19 intacto.
-steps_done:
-  - read_instrucciones_opcion_a
-  - materialize_code_programming_engine_modules
-  - append_catalog_entries
-  - write_deployment_01_manifest
-steps_pending:
-  - wire_classifier_hook_to_task_classifier
-  - integrate_usage_meter_with_ledger
-  - optional_copy_runner_bodies_without_rewrite
-  - modular_p01_p12_parity_tests
+  status: MIGRATION_STRUCTURE_CLOSED
+  deployment_id: null
+  note: |
+    Migración estructura code-programming-engine + agente-yaiwes CERRADA (ORIGIN_MAP).
+    Despliegue 1 (Opción A apply) pendiente de orden Director tras esta fase.
+  validated_at: "2026-08-26T03:25:00Z"

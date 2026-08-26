@@ -1,0 +1,15 @@
+{
+  "migration_id": "MIGRATE_CODE_ENGINE_STRUCTURE_V1",
+  "rule": "no_rewrite_extensions",
+  "status": "STRUCTURE_CLOSED_BODY_PARTIAL",
+  "methods": ["M3_SOURCE_POINTER", "M4_PLACEHOLDER"],
+  "materialized_body": [
+    "code-programming-engine/programming_instance.py",
+    "code-programming-engine/instance_pool.py",
+    "code-programming-engine/README.md",
+    "code-programming-engine/SOURCE.md",
+    "code-programming-engine/ORIGIN_MAP.md"
+  ],
+  "canonical_runtime": "extensions/wordflow/",
+  "note": "Full M1/M2 body mirror of all engine/standards/schemas requires batch; structure + ORIGIN_MAP closed first per Director."
+}
