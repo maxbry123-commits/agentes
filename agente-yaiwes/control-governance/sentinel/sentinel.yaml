@@ -1,0 +1,18 @@
+# Wordflow Sentinel policy — W5
+# Runtime reads only. 0% LLM.
+version: "1.0"
+policy_id: wordflow.sentinel
+fail_closed: true
+llm_control: DENY
+rules:
+  require_quality_bar: true
+  rejected_quality_bars:
+    - draft
+  require_goals_hint_min: 0
+  require_raw_text_min_len: 1
+  never_mvp_enforced: true
+verdicts:
+  - PASS
+  - FAIL
+on_fail: stop
+scan_secrets: true
