@@ -1,0 +1,159 @@
+# C0 — Mapa path legacy (agentes/extensions/wordflow) → canónico code-programming-engine
+# Opción A: motor único fuera del kernel. MOVE/REF sin reescribir lógica FACT.
+# version: 1.0.0 | workstream: C0
+
+version: "1.0.0"
+workstream: C0
+option_a: true
+repo_source: "maxbry123-commits/agentes"
+legacy_root: "extensions/wordflow"
+canonical_root: "code-programming-engine"
+
+rules:
+  - never_rewrite_fact_logic: true
+  - connection_via_ficha_only: true
+  - no_duplicate_motor_per_workflow: true
+  - kernel_does_not_embed_motor: true
+
+engine_modules:
+  - id: main_loop
+    legacy: extensions/wordflow/engine/main_loop.py
+    canonical: code-programming-engine/engine-modules/main_loop.py
+    note: "hook S08b programming_path=True"
+  - id: programming_pipeline
+    legacy: extensions/wordflow/engine/programming_pipeline.py
+    canonical: code-programming-engine/engine-modules/programming_pipeline.py
+    note: "entrada única run_unified"
+  - id: programming_kwargs
+    legacy: extensions/wordflow/engine/programming_kwargs.py
+    canonical: code-programming-engine/engine-modules/programming_kwargs.py
+  - id: code_path_runner
+    legacy: extensions/wordflow/engine/code_path_runner.py
+    canonical: code-programming-engine/engine-modules/code_path_runner.py
+    note: "hot path C-19; no reescribir"
+  - id: input_quality_bar
+    legacy: extensions/wordflow/engine/input_quality_bar.py
+    canonical: code-programming-engine/engine-modules/input_quality_bar.py
+  - id: goal_lock
+    legacy: extensions/wordflow/engine/goal_lock.py
+    canonical: code-programming-engine/engine-modules/goal_lock.py
+    note: "referenciado, no copiar lógica"
+  - id: cognitive_loop
+    legacy: extensions/wordflow/engine/cognitive_loop.py
+    canonical: code-programming-engine/engine-modules/cognitive_loop.py
+  - id: skill_native_compiler
+    legacy: extensions/wordflow/engine/skill_native_compiler.py
+    canonical: code-programming-engine/engine-modules/skill_native_compiler.py
+  - id: evidence_packet
+    legacy: extensions/wordflow/engine/evidence_packet.py
+    canonical: code-programming-engine/engine-modules/evidence_packet.py
+
+standards_forensic:
+  - id: executor_gates
+    legacy: extensions/wordflow/standards/executor_gates.py
+    canonical: code-programming-engine/standards-forensic/executor_gates.py
+  - id: verdict_authority
+    legacy: extensions/wordflow/standards/verdict_authority.py
+    canonical: code-programming-engine/standards-forensic/verdict_authority.py
+  - id: forensic_core
+    legacy: extensions/wordflow/standards/forensic_core.py
+    canonical: code-programming-engine/standards-forensic/forensic_core.py
+  - id: closure_engine
+    legacy: extensions/wordflow/standards/closure_engine.py
+    canonical: code-programming-engine/standards-forensic/closure_engine.py
+  - id: quality_dag
+    legacy: extensions/wordflow/standards/quality_dag.py
+    canonical: code-programming-engine/standards-forensic/quality_dag.py
+  - id: gap_registry
+    legacy: extensions/wordflow/standards/gap_registry.py
+    canonical: code-programming-engine/standards-forensic/gap_registry.py
+  - id: copy_first
+    legacy: extensions/wordflow/standards/copy_first.py
+    canonical: code-programming-engine/standards-forensic/copy_first.py
+  - id: adapt_imports
+    legacy: extensions/wordflow/standards/adapt_imports.py
+    canonical: code-programming-engine/standards-forensic/adapt_imports.py
+  - id: symbol_index
+    legacy: extensions/wordflow/standards/symbol_index.py
+    canonical: code-programming-engine/standards-forensic/symbol_index.py
+  - id: programming_points_catalog
+    legacy: extensions/wordflow/standards/programming_points_catalog.py
+    canonical: code-programming-engine/standards-forensic/programming_points_catalog.py
+
+schemas_existing:
+  - id: code_output
+    legacy: extensions/wordflow/schemas/code_output.schema.json
+    canonical: code-programming-engine/schemas/code_output.schema.json
+  - id: goal_lock_schema
+    legacy: extensions/wordflow/schemas/goal_lock.schema.json
+    canonical: code-programming-engine/schemas/goal_lock.schema.json
+
+schemas_pending_c3:
+  - id: pre_gate
+    canonical: code-programming-engine/schemas/pre_gate.schema.json
+    status: PENDING_C3
+  - id: forensic_state
+    canonical: code-programming-engine/schemas/forensic_state.schema.json
+    status: PENDING_C3
+  - id: run_code_path_return
+    canonical: code-programming-engine/schemas/run_code_path_return.schema.json
+    status: PENDING_C3
+  - id: path_gateway_hop
+    canonical: code-programming-engine/schemas/path_gateway_hop.schema.json
+    status: PENDING_C3
+
+new_modules_star:
+  - id: programming_instance
+    canonical: code-programming-engine/instance-pool/programming_instance.py
+    status: PENDING_C1
+  - id: instance_pool
+    canonical: code-programming-engine/instance-pool/instance_pool.py
+    status: PENDING_C1
+  - id: usage_metering
+    canonical: code-programming-engine/instance-pool/usage_metering.py
+    status: PENDING_C1
+  - id: classifier_hook
+    canonical: code-programming-engine/classifier-hook/classifier_hook.py
+    status: PENDING_C2
+  - id: capability_registration
+    canonical: code-programming-engine/capability-registration/capability_registration.py
+    status: PENDING_C2
+
+bridges_fact:
+  - id: motors
+    legacy: extensions/wordflow/motors/
+    canonical: code-programming-engine/external-motor-bridge/motors/
+  - id: accounts
+    legacy: extensions/wordflow/accounts/
+    canonical: code-programming-engine/multi-account-bridge/accounts/
+  - id: reception
+    legacy: extensions/wordflow/reception/
+    canonical: code-programming-engine/inbox-normalization/reception/
+  - id: tests
+    legacy: extensions/wordflow/tests/
+    canonical: code-programming-engine/module-tests/tests/
+
+skills_c5_c6:
+  - id: skills_loader
+    canonical: code-programming-engine/skills/loader/skills_loader.py
+    status: PENDING_C5
+  - id: cursor_packs
+    canonical: code-programming-engine/skills/cursor/
+    status: PENDING_C5
+  - id: programming_extra_packs
+    canonical: code-programming-engine/skills/programming_extra/
+    status: PENDING_C6
+
+uoos_outside_motor:
+  - id: uoos_runtime
+    canonical: uoos-runtime/
+    status: PENDING_C8
+    note: "workstream separado; no embeber en code-programming-engine"
+
+c0_artifacts:
+  - id: ficha_template
+    canonical: code-programming-engine/fichas/ficha_contract_template_c0.json
+  - id: ficha_validate
+    canonical: code-programming-engine/fichas/ficha_validate_c0.py
+  - id: path_map
+    canonical: code-programming-engine/engine_path_map_c0.yaml
