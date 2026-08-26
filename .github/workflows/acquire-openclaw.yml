@@ -1,6 +1,9 @@
 name: acquire-openclaw
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/TRIGGER_AGENT_ACQUISITION"
 
 permissions:
   contents: write
