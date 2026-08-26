@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Deterministic G1 exporter; reuses the canonical build_symbol_index()."""
+"""Deterministic G1 exporter; reuses the canonical build_symbol_index().
+
+Method: Método de trabajo/registro de plugins/GUIA_REGISTRO_PLUGINS_Y_CABLEADO.md
+This exporter is stable after registration; future wiring must use the registered
+plugin/contract connection rather than editing the exported artifact.
+"""
 from __future__ import annotations
 
 import json
