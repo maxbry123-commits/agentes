@@ -28,7 +28,7 @@ jobs:
       - name: Verify G1 artifact
         run: |
           test -s agente-yaiwes/control-governance/symbol-index-wiring-graph/SYMBOL_INDEX_PROGRAMMING.md
-          grep -E 'code_path_runner|programming_pipeline' agente-yaiwes/control-governance/symbol-index-wiring-graph/SYMBOL_INDEX_PROGRAMMING.md
+          grep -E 'code_path_runner|run_code_path|CodePathError' agente-yaiwes/control-governance/symbol-index-wiring-graph/SYMBOL_INDEX_PROGRAMMING.md
       - name: Export G3 test assert index
         run: python Refactoria/G3/new/build_test_assert_index.py
       - name: Verify G3 artifact
