@@ -1,8 +1,22 @@
 schema_version: "1.0"
 last_run:
-  status: MIGRATION_STRUCTURE_CLOSED
-  deployment_id: null
+  status: S1_STRUCTURE_PASS_S2_DESPLIEGUE1_BASE
+  deployment_id: deployment_01_opcion_a_instance_pool
   note: |
-    Migración estructura code-programming-engine + agente-yaiwes CERRADA (ORIGIN_MAP).
-    Despliegue 1 (Opción A apply) pendiente de orden Director tras esta fase.
-  validated_at: "2026-08-26T03:25:00Z"
+    S1: árbol agente-yaiwes materializado (PLACEHOLDER/SOURCE según PLAN_100 + nodos Paso 3).
+    S2 Despliegue 1: base Opción A presente (instance_pool, capability_registration,
+    classifier_hook, usage_metering, deployment_01.yaml). No se reemplazó code_path_runner.
+    Append catalogs idempotente + apply runtime: pendiente orden Director / S3+.
+    Checkpoints: PIPELINE/checkpoints/SALIDA_S1_2026-08-26.md, SALIDA_S2_2026-08-26.md
+  validated_at: "2026-08-26T05:45:00Z"
+s1:
+  status: PASS
+  evidence: agente-yaiwes tree expanded
+s2:
+  status: PASS_PARTIAL
+  evidence:
+    - despliegue/INSTRUCCIONES_GROK_OPCION_A.md
+    - despliegue/instance_pool.py
+    - despliegue/capability_registration.py
+    - despliegue/classifier_hook.py
+    - despliegue/manifests/deployment_01.yaml
