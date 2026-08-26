@@ -1,0 +1,9 @@
+# verification.yaml — resultado de validación de despliegue
+# Estado: PLACEHOLDER
+schema_version: "1.0"
+last_run:
+  status: PENDING
+  commit_sha: null
+  workflow_ref: null
+  validated_at: null
+  notes: "Sin corrida registrada aún en despliegue/auditoria"

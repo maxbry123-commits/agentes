@@ -1,0 +1,34 @@
+# deployment.schema.yaml — contrato de manifiesto de despliegue
+# Estado: PLACEHOLDER / PENDIENTE_CODE — no inventar validación runtime aún
+# Uso: validar manifests bajo despliegue/manifests/ antes de aplicar
+
+$schema_note: "JSON/YAML schema lógico para auditoría forense de despliegue"
+required:
+  - schema_version
+  - deployment_id
+  - target_commit_sha
+  - workflow_ref
+  - created_at
+properties:
+  schema_version:
+    type: string
+    const: "1.0"
+  deployment_id:
+    type: string
+    description: "Identificador único del despliegue"
+  target_commit_sha:
+    type: string
+    description: "SHA del commit desplegado"
+  workflow_ref:
+    type: string
+    description: "Path del workflow en .github/workflows/ que ejecutó o ejecutará"
+  manifest_path:
+    type: string
+  checksums_ref:
+    type: string
+    description: "Puntero a despliegue/auditoria/checksums.yaml"
+  validation_result:
+    type: string
+    enum: [PENDING, PASS, FAIL, SKIP]
+  notes:
+    type: string

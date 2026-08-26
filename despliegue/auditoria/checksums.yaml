@@ -1,0 +1,8 @@
+# checksums.yaml — hashes de artefactos de despliegue
+# Estado: PLACEHOLDER — rellenar por misión / CI
+schema_version: "1.0"
+entries: []
+# ejemplo:
+# - path: .github/workflows/test-wordflow-code-path.yml
+#   sha256: "..."
+#   note: "workflow operativo; no copiado a despliegue/"
