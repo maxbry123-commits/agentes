@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "wordflow.github_publish.v1",
+  "title": "GitHubPublishContract",
+  "type": "object",
+  "required": ["token_ref", "repository", "branch", "files", "commit_message"],
+  "properties": {
+    "token_ref": { "type": "string", "description": "Secret store key — never raw token" },
+    "repository": { "type": "string" },
+    "branch": { "type": "string" },
+    "path_prefix": { "type": "string" },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["source", "destination"],
+        "properties": {
+          "source": { "type": "string" },
+          "destination": { "type": "string" }
+        }
+      }
+    },
+    "commit_message": { "type": "string" }
+  }
+}

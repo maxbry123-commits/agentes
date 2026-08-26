@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "wordflow.engine_result.v1",
+  "title": "EngineResult",
+  "description": "Result returned by engine via RuntimeBus.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "result_id",
+    "job_id",
+    "engine_id",
+    "status",
+    "result_hash"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "result_id": { "type": "string" },
+    "job_id": { "type": "string" },
+    "engine_id": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["OK", "ERROR", "TIMEOUT", "DENIED", "DISCARDED"]
+    },
+    "output_text": { "type": ["string", "null"] },
+    "artifacts": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "error_code": { "type": ["string", "null"] },
+    "error_detail": { "type": ["string", "null"] },
+    "goal_check": {
+      "type": ["object", "null"],
+      "additionalProperties": true
+    },
+    "result_hash": { "type": "string" }
+  }
+}

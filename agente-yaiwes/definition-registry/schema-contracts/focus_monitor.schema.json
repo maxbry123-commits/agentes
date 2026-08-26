@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "wordflow.focus_monitor.v1",
+  "title": "FocusReport",
+  "description": "Deterministic focus score of current work vs GoalLock.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "report_id",
+    "lock_id",
+    "score",
+    "band",
+    "signals",
+    "report_hash"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "report_id": { "type": "string" },
+    "lock_id": { "type": "string" },
+    "score": { "type": "number", "minimum": 0, "maximum": 1 },
+    "band": {
+      "type": "string",
+      "enum": ["HIGH", "MED", "LOW", "ZERO"]
+    },
+    "threshold": { "type": "number" },
+    "below_threshold": { "type": "boolean" },
+    "signals": {
+      "type": "object",
+      "properties": {
+        "lock_ok": { "type": "boolean" },
+        "token_hits": { "type": "integer" },
+        "token_total": { "type": "integer" },
+        "forbidden_hit": { "type": "boolean" },
+        "empty_context": { "type": "boolean" }
+      }
+    },
+    "current_step": { "type": ["string", "null"] },
+    "report_hash": { "type": "string" }
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "wordflow.execution_manifest.v1",
+  "title": "ExecutionManifest",
+  "description": "Signed intent for a job. Bus DENY without valid manifest_hash.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "manifest_id",
+    "lock_id",
+    "engine_id",
+    "route",
+    "job_fingerprint",
+    "created_at",
+    "manifest_hash"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "manifest_id": { "type": "string" },
+    "lock_id": { "type": "string" },
+    "engine_id": { "type": "string" },
+    "route": { "type": "string" },
+    "job_fingerprint": {
+      "type": "object",
+      "properties": {
+        "prompt_sha256": { "type": "string" },
+        "echo_sha256": { "type": ["string", "null"] },
+        "registers_sha256": { "type": ["string", "null"] }
+      }
+    },
+    "constraints_snapshot": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "forbidden_snapshot": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "created_at": { "type": "string" },
+    "manifest_hash": { "type": "string" }
+  }
+}

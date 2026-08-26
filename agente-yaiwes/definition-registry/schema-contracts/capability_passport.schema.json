@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "wordflow.capability_passport.v1",
+  "title": "CapabilityPassport",
+  "description": "Declares what a subject (engine/agent/extension) may do.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "passport_id",
+    "subject_id",
+    "subject_kind",
+    "capabilities",
+    "status",
+    "passport_hash"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "passport_id": { "type": "string" },
+    "subject_id": { "type": "string" },
+    "subject_kind": {
+      "type": "string",
+      "enum": ["engine", "agent", "extension", "worker", "tool", "other"]
+    },
+    "capabilities": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "e.g. route:ANALYSIS, resource:read, resource:fetch_local, bus:dispatch"
+    },
+    "denied": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "lock_id": { "type": ["string", "null"] },
+    "status": {
+      "type": "string",
+      "enum": ["ACTIVE", "REVOKED", "EXPIRED"]
+    },
+    "passport_hash": { "type": "string" }
+  }
+}

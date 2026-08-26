@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "wordflow.resource_entry.v1",
+  "title": "ResourceEntry",
+  "description": "Catalog entry for skill/dataset/adapter. Local index; remote fetch deferred.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "resource_id",
+    "name",
+    "kind",
+    "source",
+    "entry_hash"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "resource_id": { "type": "string" },
+    "name": { "type": "string" },
+    "kind": {
+      "type": "string",
+      "enum": ["skill", "dataset", "adapter", "model", "tool", "other"]
+    },
+    "source": {
+      "type": "string",
+      "enum": ["local", "github", "hf", "url", "other"]
+    },
+    "ref": { "type": ["string", "null"] },
+    "pin_id": { "type": ["string", "null"] },
+    "content_sha256": { "type": ["string", "null"] },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "size_hint_bytes": { "type": ["integer", "null"] },
+    "fetchable": {
+      "type": "boolean",
+      "description": "False until post-Wordflow microkernel+HF"
+    },
+    "entry_hash": { "type": "string" }
+  }
+}

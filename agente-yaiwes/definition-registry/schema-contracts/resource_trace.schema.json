@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "wordflow.resource_trace.v1",
+  "title": "ResourceTrace",
+  "description": "Pre-plan inventory of resources. Deterministic. No LLM.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "trace_id",
+    "contract_id",
+    "scanned_at",
+    "items",
+    "summary",
+    "trace_hash"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "trace_id": { "type": "string" },
+    "contract_id": { "type": "string" },
+    "scanned_at": { "type": "string" },
+    "workspace_root": { "type": ["string", "null"] },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["resource_id", "kind", "locator", "status"],
+        "properties": {
+          "resource_id": { "type": "string" },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "path",
+              "repo",
+              "file",
+              "schema",
+              "extension",
+              "pin",
+              "api",
+              "engine",
+              "sandbox",
+              "secret_ref",
+              "other"
+            ]
+          },
+          "locator": { "type": "string" },
+          "status": {
+            "type": "string",
+            "enum": ["FOUND", "MISSING", "DECLARED", "UNKNOWN"]
+          },
+          "meta": { "type": "object", "additionalProperties": true }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["found", "missing", "declared", "total"],
+      "properties": {
+        "found": { "type": "integer" },
+        "missing": { "type": "integer" },
+        "declared": { "type": "integer" },
+        "total": { "type": "integer" }
+      }
+    },
+    "missing_ids": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "trace_hash": { "type": "string" }
+  }
+}

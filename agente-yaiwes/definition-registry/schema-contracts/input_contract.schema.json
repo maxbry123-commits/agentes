@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "wordflow.input_contract.v1",
+  "title": "InputContract",
+  "description": "Pre-execution structured contract. Compiled from raw input without LLM.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "contract_id",
+    "source",
+    "raw_literal",
+    "objective",
+    "status",
+    "missing_fields"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "contract_id": { "type": "string", "minLength": 1 },
+    "source": {
+      "type": "object",
+      "required": ["source_type", "block_id"],
+      "properties": {
+        "source_type": {
+          "type": "string",
+          "enum": ["chat", "document", "file", "system", "repair"]
+        },
+        "block_id": { "type": "string" },
+        "block_hash": { "type": ["string", "null"] },
+        "doc_refs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "doc_id": { "type": "string" },
+              "path": { "type": "string" },
+              "section": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "raw_literal": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Exact input text. Never summarized."
+    },
+    "objective": {
+      "type": "string",
+      "description": "Single primary action if detected; else empty and listed in missing_fields."
+    },
+    "expected_result": { "type": "string" },
+    "constraints": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "forbidden": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "success_criteria": { "type": "string" },
+    "rollback": { "type": "string" },
+    "resources_declared": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "engines_allowed": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "risk_level": {
+      "type": "string",
+      "enum": ["low", "medium", "high", "unknown"],
+      "default": "unknown"
+    },
+    "priority": {
+      "type": "string",
+      "enum": ["P0", "P1", "P2", "P3"],
+      "default": "P1"
+    },
+    "budget": {
+      "type": "object",
+      "properties": {
+        "tokens": { "type": ["integer", "null"] },
+        "time_s": { "type": ["integer", "null"] },
+        "cost": { "type": ["number", "null"] }
+      }
+    },
+    "timeout_s": { "type": ["integer", "null"] },
+    "approver": {
+      "type": "string",
+      "enum": ["auto", "council", "director", "unknown"],
+      "default": "unknown"
+    },
+    "literal_mode": {
+      "type": "boolean",
+      "default": true,
+      "description": "If true: no inference, no fill gaps, temperature min."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["COMPLETE", "INCOMPLETE", "REJECTED"],
+      "description": "COMPLETE only when required planning fields present."
+    },
+    "missing_fields": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Fields still required before Questions/Goals compile."
+    },
+    "flags": {
+      "type": "object",
+      "properties": {
+        "never_mvp": { "type": "boolean" },
+        "is_repair": { "type": "boolean" },
+        "has_secrets_scan_pass": { "type": "boolean" }
+      }
+    },
+    "contract_hash": { "type": "string" }
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "wordflow.handoff_package.v1",
+  "title": "HandoffPackage",
+  "description": "Portable context between sandboxes/engines. Reconstruct from this alone.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "handoff_id",
+    "lock_id",
+    "goal",
+    "status",
+    "handoff_hash"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "handoff_id": { "type": "string" },
+    "lock_id": { "type": "string" },
+    "lock_hash": { "type": ["string", "null"] },
+    "goal": { "type": "string" },
+    "success_criteria": { "type": ["string", "null"] },
+    "constraints": { "type": "array", "items": { "type": "string" } },
+    "forbidden": { "type": "array", "items": { "type": "string" } },
+    "artifacts": { "type": "array", "items": { "type": "string" } },
+    "evidence": { "type": "array", "items": { "type": "string" } },
+    "checkpoint_id": { "type": ["string", "null"] },
+    "next_step": { "type": ["string", "null"] },
+    "registers_snapshot": { "type": ["object", "null"] },
+    "manifest_id": { "type": ["string", "null"] },
+    "status": {
+      "type": "string",
+      "enum": ["READY", "IN_PROGRESS", "BLOCKED", "DONE"]
+    },
+    "handoff_hash": { "type": "string" }
+  }
+}

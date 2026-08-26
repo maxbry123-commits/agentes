@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "wordflow.structured_questions.v1",
+  "title": "StructuredQuestions",
+  "description": "Fixed Q01-Q12 form. No free chat. Resolve gate before PLAN.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "contract_id",
+    "questions",
+    "resolved",
+    "pending",
+    "answers"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "contract_id": { "type": "string" },
+    "questions": {
+      "type": "object",
+      "required": [
+        "Q01_objective",
+        "Q02_expected_result",
+        "Q03_constraints",
+        "Q04_forbidden",
+        "Q05_success_criteria",
+        "Q06_rollback",
+        "Q07_resources_existing",
+        "Q08_resources_missing",
+        "Q09_engines_allowed",
+        "Q10_risk_level",
+        "Q11_budget",
+        "Q12_approver"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "Q01_objective": { "$ref": "#/$defs/question" },
+        "Q02_expected_result": { "$ref": "#/$defs/question" },
+        "Q03_constraints": { "$ref": "#/$defs/question" },
+        "Q04_forbidden": { "$ref": "#/$defs/question" },
+        "Q05_success_criteria": { "$ref": "#/$defs/question" },
+        "Q06_rollback": { "$ref": "#/$defs/question" },
+        "Q07_resources_existing": { "$ref": "#/$defs/question" },
+        "Q08_resources_missing": { "$ref": "#/$defs/question" },
+        "Q09_engines_allowed": { "$ref": "#/$defs/question" },
+        "Q10_risk_level": { "$ref": "#/$defs/question" },
+        "Q11_budget": { "$ref": "#/$defs/question" },
+        "Q12_approver": { "$ref": "#/$defs/question" }
+      }
+    },
+    "answers": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "required_ids": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "pending": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "resolved": { "type": "boolean" },
+    "form_hash": { "type": "string" }
+  },
+  "$defs": {
+    "question": {
+      "type": "object",
+      "required": ["id", "prompt", "value_type", "required", "status"],
+      "properties": {
+        "id": { "type": "string" },
+        "prompt": { "type": "string" },
+        "value_type": {
+          "type": "string",
+          "enum": ["string", "list", "enum", "object"]
+        },
+        "required": { "type": "boolean" },
+        "enum_values": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "status": {
+          "type": "string",
+          "enum": ["OPEN", "ANSWERED", "SKIPPED"]
+        },
+        "value": {}
+      }
+    }
+  }
+}

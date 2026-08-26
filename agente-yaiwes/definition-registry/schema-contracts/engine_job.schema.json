@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "wordflow.engine_job.v1",
+  "title": "EngineJob",
+  "description": "Job submitted to RuntimeBus for an engine. Manifest required at dispatch.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "job_id",
+    "lock_id",
+    "engine_id",
+    "route",
+    "input",
+    "job_hash"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "job_id": { "type": "string" },
+    "lock_id": { "type": "string" },
+    "engine_id": { "type": "string" },
+    "route": {
+      "type": "string",
+      "enum": [
+        "DETERMINISTIC",
+        "SEARCH",
+        "ANALYSIS",
+        "REASONING",
+        "HYBRID",
+        "PLANNING",
+        "MEMORY_REFRESH"
+      ]
+    },
+    "input": {
+      "type": "object",
+      "required": ["prompt"],
+      "properties": {
+        "prompt": { "type": "string" },
+        "echo_block": { "type": ["string", "null"] },
+        "registers_block": { "type": ["string", "null"] },
+        "extra": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "manifest_id": { "type": ["string", "null"] },
+    "timeout_s": { "type": "number", "minimum": 1 },
+    "job_hash": { "type": "string" }
+  }
+}

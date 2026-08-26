@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "wordflow.push_ping.v1",
+  "title": "PushPingEvent",
+  "description": "Deterministic supervisor ping. No LLM.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "ping_id",
+    "lock_id",
+    "trigger",
+    "ts",
+    "focus_score",
+    "action",
+    "ping_hash"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "ping_id": { "type": "string" },
+    "lock_id": { "type": "string" },
+    "trigger": {
+      "type": "string",
+      "enum": ["interval", "post_tool", "manual"]
+    },
+    "ts": { "type": "string" },
+    "lock_integrity_ok": { "type": "boolean" },
+    "focus_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "lease_alive": { "type": "boolean" },
+    "checkpoint_ref": { "type": ["string", "null"] },
+    "action": {
+      "type": "string",
+      "enum": ["CONTINUE", "STOP_REPLAN", "ABORT_CORRUPT_LOCK"]
+    },
+    "reasons": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "ping_hash": { "type": "string" }
+  }
+}
