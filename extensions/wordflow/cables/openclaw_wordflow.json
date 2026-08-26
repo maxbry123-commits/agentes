@@ -1,0 +1,22 @@
+{
+  "cable_id": "wordflow.openclaw.reason",
+  "version": "1.0.0",
+  "source": "wordflow_kernel.engines.openclaw_stub.OpenClawEngine",
+  "source_contract": "EnginePort.reason",
+  "adapter": "wordflow_kernel.gateway.openclaw_http.OpenClawHTTPGateway",
+  "target": "OpenClaw Gateway",
+  "target_route": "/v1/chat/completions",
+  "request_model": "openclaw/default",
+  "input": "EngineRequest.messages",
+  "output": "EngineResult.content",
+  "security": {
+    "auth": "Authorization: Bearer",
+    "url_env": "OPENCLAW_GATEWAY_URL",
+    "token_env": "OPENCLAW_GATEWAY_TOKEN",
+    "fail_closed": true,
+    "private_ingress_required": true
+  },
+  "tests": ["extensions/wordflow_kernel/tests/test_openclaw_http.py"],
+  "status": "WIRED_TESTED",
+  "immutable_component": true
+}
