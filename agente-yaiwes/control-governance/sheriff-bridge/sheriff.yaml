@@ -4,6 +4,7 @@ version: "1.0"
 policy_id: wordflow.sheriff
 fail_closed: true
 llm_control: DENY
+
 rules:
   max_repairs: 3
   max_loop_seconds: 120
@@ -11,6 +12,7 @@ rules:
   require_sentinel_pass: true
   require_council_approve: true
   allow_force_continue: false
+
 states:
   allowed:
     - RUNNING
@@ -21,4 +23,5 @@ states:
     - COMPLETED
     - FAILED
     - REJECTED
+
 on_violation: stop

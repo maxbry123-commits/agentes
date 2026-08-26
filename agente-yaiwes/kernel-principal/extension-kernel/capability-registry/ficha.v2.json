@@ -1,7 +1,118 @@
 {
-  "artifact_id":"wordflow.yaiwes.v1","version":"1.0.0","estado":"testing","contract_hash":"sha256:0000000000000000000000000000000000000000000000000000000000000000","categoria":"transversal","etapa":"T","abi_version":"2.0","extension_type":"wordflow_runtime","kernel_min":"1.0.0","mount_mode":"sidecar","load_priority":20,
-  "contrato":{"rol":"service","consume":{"datatype":{"family":"wordflow","type":"raw_input","version":1},"schema_uri":"maxbry://schemas/raw_input/v1"},"expone":{"datatype":{"family":"wordflow","type":"v1_turn_result","version":1},"schema_uri":"maxbry://schemas/v1_turn_result/v1"},"input_map":{"raw":"raw_input","topic":"topic"},"output_map":{"ok":"bool","mission_id":"str","dna":"WorkflowDNA","evidence":"EvidenceGraphSnapshot"}},
-  "ejecucion":{"kind":"code","transport":"importlib","runtime_type":"compute","llm_ratio":0.0,"idempotente":true,"entry_point":"extensions.wordflow.engine.entrypoint_v1:run_v1"},
-  "perfiles":{"n0":{"habilitada":true,"iteraciones":1,"simulaciones":0,"criticas":0,"muestras_k":1},"n1":{"habilitada":true,"iteraciones":1,"simulaciones":0,"criticas":0,"muestras_k":1},"n2":{"habilitada":true,"iteraciones":1,"simulaciones":0,"criticas":0,"muestras_k":1},"n3":{"habilitada":false,"iteraciones":1},"n4":{"habilitada":false,"iteraciones":1},"n5":{"habilitada":false,"iteraciones":1}},
-  "repeticion":{"max":3,"condicion":"recovery.RETRY","backoff":"1000*2^n+rand(0,1000)"},"repite_en":["EXEC_STATE","BITACORA"],"activacion":{"eventos":["wordflow.turn","mission.request"],"wake_words":["run_v1","orchestrator_v1","goal_lock"],"condicion":"plane == wordflow"},"presupuesto":{"n0":{"max_tokens":0,"max_ms":2000,"max_costo_usd":0},"n1":{"max_tokens":0,"max_ms":5000,"max_costo_usd":0},"n2":{"max_tokens":0,"max_ms":10000,"max_costo_usd":0}},"telemetria":{"metricas":["tiempo","errores","stage","bitacora_len","risk_score"],"span_otel":true},"evidencia":{"produce":["L1_static","L3_runtime"],"destino":"runtime/evidence/wordflow/"},"failover":{"sustituible_por":[],"compensacion":"recovery.plan_fail_closed"},"seguridad":{"sandbox":"process","permisos":["read_contracts","write_bitacora","read_rules"],"limites":{"timeout_ms":10000,"deadline_ms":15000,"max_memoria_mb":256}},"salud":{"metodo":"ping","heartbeat_interval_s":30},"firma":{"gpg_key_id":"PENDIENTE","revocation_ref":"contracts/revocation_list.json"},"trazas":{"task_id_requerido":true,"trace_id_requerido":true},"llm_control":"DENY","deterministic":true,"plane":"wordflow","entry_point":"extensions.wordflow.engine.entrypoint_v1:run_v1","contracts_seed":["C00"],"status":"testing"
+  "artifact_id": "wordflow.yaiwes.v1",
+  "version": "1.0.0",
+  "estado": "testing",
+  "contract_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "categoria": "transversal",
+  "etapa": "T",
+
+  "abi_version": "2.0",
+  "extension_type": "wordflow_runtime",
+  "kernel_min": "1.0.0",
+  "mount_mode": "sidecar",
+  "load_priority": 20,
+
+  "contrato": {
+    "rol": "service",
+    "consume": {
+      "datatype": {"family": "wordflow", "type": "raw_input", "version": 1},
+      "schema_uri": "maxbry://schemas/raw_input/v1"
+    },
+    "expone": {
+      "datatype": {"family": "wordflow", "type": "v1_turn_result", "version": 1},
+      "schema_uri": "maxbry://schemas/v1_turn_result/v1"
+    },
+    "input_map": {"raw": "raw_input", "topic": "topic"},
+    "output_map": {
+      "ok": "bool",
+      "mission_id": "str",
+      "dna": "WorkflowDNA",
+      "evidence": "EvidenceGraphSnapshot"
+    }
+  },
+
+  "ejecucion": {
+    "kind": "code",
+    "transport": "importlib",
+    "runtime_type": "compute",
+    "llm_ratio": 0.0,
+    "idempotente": true,
+    "entry_point": "extensions.wordflow.engine.entrypoint_v1:run_v1"
+  },
+
+  "perfiles": {
+    "n0": {"habilitada": true, "iteraciones": 1, "simulaciones": 0, "criticas": 0, "muestras_k": 1},
+    "n1": {"habilitada": true, "iteraciones": 1, "simulaciones": 0, "criticas": 0, "muestras_k": 1},
+    "n2": {"habilitada": true, "iteraciones": 1, "simulaciones": 0, "criticas": 0, "muestras_k": 1},
+    "n3": {"habilitada": false, "iteraciones": 1},
+    "n4": {"habilitada": false, "iteraciones": 1},
+    "n5": {"habilitada": false, "iteraciones": 1}
+  },
+
+  "repeticion": {
+    "max": 3,
+    "condicion": "recovery.RETRY",
+    "backoff": "1000*2^n+rand(0,1000)"
+  },
+
+  "repite_en": ["EXEC_STATE", "BITACORA"],
+
+  "activacion": {
+    "eventos": ["wordflow.turn", "mission.request"],
+    "wake_words": ["run_v1", "orchestrator_v1", "goal_lock"],
+    "condicion": "plane == wordflow"
+  },
+
+  "presupuesto": {
+    "n0": {"max_tokens": 0, "max_ms": 2000, "max_costo_usd": 0},
+    "n1": {"max_tokens": 0, "max_ms": 5000, "max_costo_usd": 0},
+    "n2": {"max_tokens": 0, "max_ms": 10000, "max_costo_usd": 0}
+  },
+
+  "telemetria": {
+    "metricas": ["tiempo", "errores", "stage", "bitacora_len", "risk_score"],
+    "span_otel": true
+  },
+
+  "evidencia": {
+    "produce": ["L1_static", "L3_runtime"],
+    "destino": "runtime/evidence/wordflow/"
+  },
+
+  "failover": {
+    "sustituible_por": [],
+    "compensacion": "recovery.plan_fail_closed"
+  },
+
+  "seguridad": {
+    "sandbox": "process",
+    "permisos": ["read_contracts", "write_bitacora", "read_rules"],
+    "limites": {
+      "timeout_ms": 10000,
+      "deadline_ms": 15000,
+      "max_memoria_mb": 256
+    }
+  },
+
+  "salud": {
+    "metodo": "ping",
+    "heartbeat_interval_s": 30
+  },
+
+  "firma": {
+    "gpg_key_id": "PENDIENTE",
+    "revocation_ref": "contracts/revocation_list.json"
+  },
+
+  "trazas": {
+    "task_id_requerido": true,
+    "trace_id_requerido": true
+  },
+
+  "llm_control": "DENY",
+  "deterministic": true,
+  "plane": "wordflow",
+  "entry_point": "extensions.wordflow.engine.entrypoint_v1:run_v1",
+  "contracts_seed": ["C00"],
+  "status": "testing"
 }

@@ -10,24 +10,159 @@
     "acquire": "source_evolution recipes (not a missing acquire_os tree)"
   },
   "components": [
-    {"id":"wordflow.core","path":"extensions/wordflow","kind":"control_plane","capabilities":["goal_lock","code_path","docs_templates","claim_validate"],"ficha":"extensions/wordflow/ficha.v2.json","status":"materialized"},
-    {"id":"wordflow.reception","path":"extensions/wordflow/reception","kind":"inbox","capabilities":["convert","inbox_docs"],"status":"materialized"},
-    {"id":"wordflow.engine.code_path_runner","path":"extensions/wordflow/engine/code_path_runner.py","kind":"engine","capabilities":["quality_bar","goal_lock","cognitive_wire","dual_compile"],"status":"materialized"},
-    {"id":"wordflow.engine.cognitive_loop","path":"extensions/wordflow/engine/cognitive_loop.py","kind":"engine","capabilities":["council_wire","plan_wire"],"status":"materialized"},
-    {"id":"wordflow.state.ledger","path":"extensions/wordflow/state/ledger.py","kind":"state","capabilities":["append_only_events"],"status":"materialized"},
-    {"id":"wordflow.docs_templates","path":"extensions/wordflow/docs_templates","kind":"docs","capabilities":["project_docs_12"],"status":"materialized"},
-    {"id":"github_deploy","path":"extensions/github_deploy","kind":"deploy","capabilities":["dry_run","git_data_api_port","plan_push","token_ref"],"status":"partial","note":"FakePort default; real port behind flag"},
-    {"id":"wordflow_kernel","path":"extensions/wordflow_kernel","kind":"kernel_extension","capabilities":["forensic","repo_truth","gap_tasks","checkpoint","trace","reception_link"],"ficha":"extensions/wordflow_kernel/ficha.v2.json","status":"materialized"},
-    {"id":"wordflow_kernel.reception","path":"extensions/wordflow_kernel/reception","kind":"kernel_link","capabilities":["ingest","locate","convert_link"],"status":"materialized"},
-    {"id":"maxbry_loop","path":"extensions/maxbry_loop","kind":"continuous_loop","capabilities":["iteration","gaps","completion_score","convergence"],"status":"materialized","constraint":"No direct LLM; IntelligenceGateway only"},
-    {"id":"intelligence_gateway","path":"extensions/wordflow_kernel/gateway","kind":"gateway","capabilities":["llm.complete","memory.recall","memory.capture"],"status":"stub","adapters":["MockIntelligenceGateway","RouterHTTPGateway"]},
-    {"id":"engine.openclaw","path":"extensions/wordflow_kernel/engines/openclaw_stub.py","kind":"engine_adapter","capabilities":["reason_intermediate"],"status":"stub"},
-    {"id":"engine.hermes","path":"extensions/wordflow_kernel/engines/hermes_stub.py","kind":"engine_adapter","capabilities":["reason_intermediate"],"status":"stub"},
-    {"id":"acquire_engine","path":"extensions/source_evolution","kind":"acquire","capabilities":["recipe_plan","license_gate","version_pin"],"status":"partial","note":"Real tree is source_evolution. control-layer/subsheriffs/acquire_os is NOT in extensions/."},
-    {"id":"loop.fusion_minimax_kimi","path":"extensions/wordflow_kernel/slots/kimi_minimax.ficha.v2.json","kind":"loop_slot","capabilities":[],"status":"placeholder","note":"No loops/fusion yaml. Slot PLACEHOLDER fusion:false."},
-    {"id":"ci.wordflow_code_path","path":".github/workflows/test-wordflow-code-path.yml","kind":"ci","capabilities":["unittest_discover"],"status":"materialized"},
-    {"id":"code_programming_engine","path":"code-programming-engine/","kind":"engine","status":"materialized","capabilities":["quality_bar","goal_lock","cognitive_wire","forensic_enforcement","instance_pool_binding"],"note":"Despliegue 1 Opción A; hot path sigue en extensions/wordflow/engine/code_path_runner.py"},
-    {"id":"code_programming_instance_pool","path":"code-programming-engine/instance_pool.py","kind":"service","status":"materialized","capabilities":["tenant_isolation","concurrency_cap","handle_lifecycle","idempotency_dedup"]}
+    {
+      "id": "wordflow.core",
+      "path": "extensions/wordflow",
+      "kind": "control_plane",
+      "capabilities": ["goal_lock", "code_path", "docs_templates", "claim_validate"],
+      "ficha": "extensions/wordflow/ficha.v2.json",
+      "status": "materialized"
+    },
+    {
+      "id": "wordflow.reception",
+      "path": "extensions/wordflow/reception",
+      "kind": "inbox",
+      "capabilities": ["convert", "inbox_docs"],
+      "status": "materialized"
+    },
+    {
+      "id": "wordflow.engine.code_path_runner",
+      "path": "extensions/wordflow/engine/code_path_runner.py",
+      "kind": "engine",
+      "capabilities": ["quality_bar", "goal_lock", "cognitive_wire", "dual_compile"],
+      "status": "materialized"
+    },
+    {
+      "id": "wordflow.engine.cognitive_loop",
+      "path": "extensions/wordflow/engine/cognitive_loop.py",
+      "kind": "engine",
+      "capabilities": ["council_wire", "plan_wire"],
+      "status": "materialized"
+    },
+    {
+      "id": "wordflow.state.ledger",
+      "path": "extensions/wordflow/state/ledger.py",
+      "kind": "state",
+      "capabilities": ["append_only_events"],
+      "status": "materialized"
+    },
+    {
+      "id": "wordflow.docs_templates",
+      "path": "extensions/wordflow/docs_templates",
+      "kind": "docs",
+      "capabilities": ["project_docs_12"],
+      "status": "materialized"
+    },
+    {
+      "id": "github_deploy",
+      "path": "extensions/github_deploy",
+      "kind": "deploy",
+      "capabilities": ["dry_run", "git_data_api_port", "plan_push", "token_ref"],
+      "status": "partial",
+      "note": "FakePort default; real port behind flag"
+    },
+    {
+      "id": "wordflow_kernel",
+      "path": "extensions/wordflow_kernel",
+      "kind": "kernel_extension",
+      "capabilities": ["forensic", "repo_truth", "gap_tasks", "checkpoint", "trace", "reception_link"],
+      "ficha": "extensions/wordflow_kernel/ficha.v2.json",
+      "status": "materialized"
+    },
+    {
+      "id": "wordflow_kernel.reception",
+      "path": "extensions/wordflow_kernel/reception",
+      "kind": "kernel_link",
+      "capabilities": ["ingest", "locate", "convert_link"],
+      "status": "materialized"
+    },
+    {
+      "id": "maxbry_loop",
+      "path": "extensions/maxbry_loop",
+      "kind": "continuous_loop",
+      "capabilities": ["iteration", "gaps", "completion_score", "convergence"],
+      "status": "materialized",
+      "constraint": "No direct LLM; IntelligenceGateway only"
+    },
+    {
+      "id": "intelligence_gateway",
+      "path": "extensions/wordflow_kernel/gateway",
+      "kind": "gateway",
+      "capabilities": ["llm.complete", "memory.recall", "memory.capture"],
+      "status": "stub",
+      "adapters": ["MockIntelligenceGateway", "RouterHTTPGateway"]
+    },
+    {
+      "id": "engine.openclaw",
+      "path": "extensions/wordflow_kernel/engines/openclaw_stub.py",
+      "kind": "engine_adapter",
+      "capabilities": ["reason_intermediate"],
+      "status": "stub"
+    },
+    {
+      "id": "engine.hermes",
+      "path": "extensions/wordflow_kernel/engines/hermes_stub.py",
+      "kind": "engine_adapter",
+      "capabilities": ["reason_intermediate"],
+      "status": "stub"
+    },
+    {
+      "id": "acquire_engine",
+      "path": "extensions/source_evolution",
+      "kind": "acquire",
+      "capabilities": ["recipe_plan", "license_gate", "version_pin"],
+      "status": "partial",
+      "note": "Real tree is source_evolution. control-layer/subsheriffs/acquire_os is NOT in extensions/."
+    },
+    {
+      "id": "loop.fusion_minimax_kimi",
+      "path": "extensions/wordflow_kernel/slots/kimi_minimax.ficha.v2.json",
+      "kind": "loop_slot",
+      "capabilities": [],
+      "status": "placeholder",
+      "note": "No loops/fusion yaml. Slot PLACEHOLDER fusion:false."
+    },
+    {
+      "id": "ci.wordflow_code_path",
+      "path": ".github/workflows/test-wordflow-code-path.yml",
+      "kind": "ci",
+      "capabilities": ["unittest_discover"],
+      "status": "materialized"
+    },
+    {
+      "id": "code_programming_engine",
+      "path": "code-programming-engine/",
+      "kind": "engine",
+      "status": "materialized",
+      "capabilities": [
+        "quality_bar",
+        "goal_lock",
+        "cognitive_wire",
+        "forensic_enforcement",
+        "instance_pool_binding"
+      ],
+      "note": "Despliegue 1 Opción A; hot path sigue en extensions/wordflow/engine/code_path_runner.py"
+    },
+    {
+      "id": "code_programming_instance_pool",
+      "path": "code-programming-engine/instance_pool.py",
+      "kind": "service",
+      "status": "materialized",
+      "capabilities": [
+        "tenant_isolation",
+        "concurrency_cap",
+        "handle_lifecycle",
+        "idempotency_dedup"
+      ]
+    }
   ],
-  "connect_rules":["Loop never calls provider APIs directly","LLM and memory only via IntelligenceGateway","Production gateway = RouterHTTPGateway(ROUTER_URL)","Offline tests = MockIntelligenceGateway","OpenClaw/Hermes = EnginePort.reason only","Deploy default dry_run; token_ref never in workflow body","ingest must invoke input_compiler; Fake E2E must not claim C-19 PASS"]
+  "connect_rules": [
+    "Loop never calls provider APIs directly",
+    "LLM and memory only via IntelligenceGateway",
+    "Production gateway = RouterHTTPGateway(ROUTER_URL)",
+    "Offline tests = MockIntelligenceGateway",
+    "OpenClaw/Hermes = EnginePort.reason only",
+    "Deploy default dry_run; token_ref never in workflow body",
+    "ingest must invoke input_compiler; Fake E2E must not claim C-19 PASS"
+  ]
 }

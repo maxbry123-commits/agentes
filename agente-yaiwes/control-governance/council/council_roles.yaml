@@ -1,0 +1,55 @@
+# Council of 12 — A-WF-05
+version: "1.0"
+roles:
+  - id: R01
+    name: Architect
+    veto: true
+    weight: 2
+  - id: R02
+    name: Security
+    veto: true
+    weight: 2
+  - id: R03
+    name: Determinism
+    veto: true
+    weight: 2
+  - id: R04
+    name: QualityBar
+    veto: true
+    weight: 1
+  - id: R05
+    name: Schema
+    veto: false
+    weight: 1
+  - id: R06
+    name: Tests
+    veto: false
+    weight: 1
+  - id: R07
+    name: LOC_Budget
+    veto: false
+    weight: 1
+  - id: R08
+    name: Traceability
+    veto: false
+    weight: 1
+  - id: R09
+    name: Recovery
+    veto: false
+    weight: 1
+  - id: R10
+    name: Deploy
+    veto: false
+    weight: 1
+  - id: R11
+    name: Evidence
+    veto: false
+    weight: 1
+  - id: R12
+    name: DirectorProxy
+    veto: true
+    weight: 2
+quorum: 7
+rules:
+  any_veto_reject: true
+  fail_closed: true
