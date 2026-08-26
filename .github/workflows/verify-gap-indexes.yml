@@ -1,0 +1,61 @@
+name: verify-gap-indexes
+
+on:
+  push:
+    paths:
+      - 'Refactoria/G1/**'
+      - 'Refactoria/G3/**'
+      - 'extensions/wordflow/engine/**'
+      - 'extensions/wordflow/standards/**'
+      - 'extensions/wordflow/tests/**'
+      - 'extensions/wordflow_kernel/tests/**'
+      - '.github/workflows/verify-gap-indexes.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Export G1 symbol index
+        run: python Refactoria/G1/new/build_programming_symbol_index.py
+      - name: Verify G1 artifact
+        run: |
+          test -s agente-yaiwes/control-governance/symbol-index-wiring-graph/SYMBOL_INDEX_PROGRAMMING.md
+          grep -E 'code_path_runner|programming_pipeline' agente-yaiwes/control-governance/symbol-index-wiring-graph/SYMBOL_INDEX_PROGRAMMING.md
+      - name: Export G3 test assert index
+        run: python Refactoria/G3/new/build_test_assert_index.py
+      - name: Verify G3 artifact
+        run: |
+          test -s agente-yaiwes/code-programming-engine/module-tests/TEST_ASSERT_INDEX.md
+          test -s agente-yaiwes/code-programming-engine/module-tests/TEST_ASSERT_INDEX.json
+          python - <<'PY'
+          import json
+          p='agente-yaiwes/code-programming-engine/module-tests/TEST_ASSERT_INDEX.json'
+          d=json.load(open(p))
+          assert d['file_count'] >= 1
+          assert all(x['parse'] == 'PASS' for x in d['files'])
+          PY
+      - name: Record verified evidence
+        run: |
+          mkdir -p PIPELINE/checkpoints
+          cat > PIPELINE/checkpoints/G1_G3_CI_PASS.md <<EOF
+          # G1/G3 CI evidence
+
+          - workflow: verify-gap-indexes
+          - commit: $GITHUB_SHA
+          - result: PASS
+          - G1: deterministic symbol index generated and checked for runner/pipeline symbols
+          - G3: deterministic test→assert index generated and all indexed test files parsed
+          EOF
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add agente-yaiwes/control-governance/symbol-index-wiring-graph/SYMBOL_INDEX_PROGRAMMING.md agente-yaiwes/control-governance/symbol-index-wiring-graph/SYMBOL_INDEX_PROGRAMMING.json agente-yaiwes/code-programming-engine/module-tests/TEST_ASSERT_INDEX.md agente-yaiwes/code-programming-engine/module-tests/TEST_ASSERT_INDEX.json PIPELINE/checkpoints/G1_G3_CI_PASS.md
+          git diff --cached --quiet || git commit -m 'ci: record verified G1 G3 artifacts'
+          git push
