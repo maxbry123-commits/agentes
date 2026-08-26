@@ -1,0 +1,2 @@
+G7 acquisition trigger — created by the S10 remediation loop on 2026-08-26.
+OpenClaw and Hermes workflows consume this path as a one-shot push trigger.
