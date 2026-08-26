@@ -15,11 +15,12 @@
 | G7 | Real OpenClaw/Hermes bodies | `agente-yaiwes/execution-engine-pool/auxiliary-role-agents/` | OPEN | Current sources are explicitly `openclaw_stub.py` / `hermes_stub.py`; no real bodies verified. |
 
 ## Evidence cross-check
-- PASO3 is canonical and explicitly lists these seven S10 gaps. fileciteturn349file0L2-L2
-- ORIGIN_MAP repeats the seven S10 gaps and their destinations. fileciteturn350file0L2-L2
-- Prior S10 checkpoint correctly documented the seven as unresolved rather than inventing implementations. fileciteturn353file0L2-L6
-- X-Ray S2→S9 assigns these exact gaps to S10. fileciteturn354file0L2-L6
-- `verification.yaml` does not claim a remote deployment or real CI readback. fileciteturn355file0L2-L6
+- Canonical source: `PIPELINE/PASO3_ORGANIZACION_CODIGO_REAL_YAIWES.md`.
+- Row contract: `agente-yaiwes/ORIGIN_MAP.md`.
+- Machine manifest: `agente-yaiwes/COPY_MANIFEST.json`.
+- Prior S10 checkpoint: `PIPELINE/checkpoints/SALIDA_S10_2026-08-26.md`.
+- Prior forensic X-Ray: `PIPELINE/checkpoints/XRAY_S2_S9_2026-08-26.md`.
+- Deployment verification: `despliegue/auditoria/verification.yaml`.
 
 ## Resolution rule
 No technical gap is marked CLOSED without source code/artifact evidence in `main`. Documentation gaps are closed by this register; implementation gaps remain OPEN.
