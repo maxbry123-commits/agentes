@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Deterministic test→assert scanner; no production files modified."""
+"""Deterministic test→assert scanner; no production files modified.
+
+Method: Método de trabajo/registro de plugins/GUIA_REGISTRO_PLUGINS_Y_CABLEADO.md
+This exporter is stable after registration; future wiring must use the registered
+plugin/contract connection rather than editing the generated artifact.
+"""
 from __future__ import annotations
 import ast, json
 from pathlib import Path
