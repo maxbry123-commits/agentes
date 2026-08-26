@@ -1,22 +1,31 @@
 schema_version: "1.0"
 last_run:
-  status: S1_STRUCTURE_PASS_S2_DESPLIEGUE1_BASE
+  status: S2_DESPLIEGUE1_MATERIALIZATION_PASS
   deployment_id: deployment_01_opcion_a_instance_pool
   note: |
-    S1: árbol agente-yaiwes materializado (PLACEHOLDER/SOURCE según PLAN_100 + nodos Paso 3).
-    S2 Despliegue 1: base Opción A presente (instance_pool, capability_registration,
-    classifier_hook, usage_metering, deployment_01.yaml). No se reemplazó code_path_runner.
-    Append catalogs idempotente + apply runtime: pendiente orden Director / S3+.
-    Checkpoints: PIPELINE/checkpoints/SALIDA_S1_2026-08-26.md, SALIDA_S2_2026-08-26.md
-  validated_at: "2026-08-26T05:45:00Z"
+    S2: Despliegue 1 materializado y auditado. Los artefactos requeridos existen.
+    El append idempotente de catalogos fue verificado en component_catalog.json y
+    connect_catalog.json. code_path_runner.py permanece como hot path operativo.
+    No se afirma un push remoto: deployment_01.yaml conserva target_commit_sha
+    pending_after_push y validation_result PENDING hasta una ejecución externa real.
+    X-Ray documental: PIPELINE/checkpoints/XRAY_S2_DESPLIEGUE1_2026-08-26.md
+  validated_at: "2026-08-26T08:30:00Z"
 s1:
   status: PASS
   evidence: agente-yaiwes tree expanded
 s2:
-  status: PASS_PARTIAL
+  status: PASS
   evidence:
     - despliegue/INSTRUCCIONES_GROK_OPCION_A.md
+    - despliegue/programming_instance.py
     - despliegue/instance_pool.py
     - despliegue/capability_registration.py
     - despliegue/classifier_hook.py
+    - despliegue/usage_metering.py
     - despliegue/manifests/deployment_01.yaml
+    - extensions/wordflow/component_catalog.json
+    - extensions/wordflow/connect_catalog.json
+  scope: materialization_contract
+  remote_apply: NOT_CLAIMED
+  remote_readback: NOT_CLAIMED
+  checksums_evidence: GAP_FOR_EXTERNAL_APPLY
