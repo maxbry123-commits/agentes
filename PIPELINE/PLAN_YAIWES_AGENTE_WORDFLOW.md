@@ -1,7 +1,8 @@
-# PLAN YAIWES AGENTE WORDFLOW — DSL DAG SCHEMA
+# PLAN AGENTE YAIWES v1 — WORDFLOW DSL DAG SCHEMA
 
 **Proyecto:** maxbry123-commits/agentes  
-**Estado:** PASO 1 PASS → PASO 2 EN EJECUCIÓN  
+**Nombre del agente:** **Agente Yaiwes v1** (no Omega)  
+**Estado:** PASO 1 PASS → PASO 2 MATERIALIZADO + AUDITADO  
 **Actualización:** 2026-08-26  
 **Modelo de referencia:** PIPELINE-HUGGINGFACE.md (Grupo-Trabajo-1) — estilo + disciplina, upgraded a DSL DAG.  
 **Fundamento forense:** PIPELINE/PASO1_XRAY_WORDFLOW_400PLUS_2026-08-25.md (496 entries / ~470 blobs).  
@@ -9,16 +10,68 @@
 
 ---
 
+## 0. BLOQUE DE PROTECCIÓN — NO TOCAR EL PLAN
+
+```text
+╔══════════════════════════════════════════════════════════════════╗
+║  BLOQUE INVIOLABLE — NO TOCAR EL PLAN                            ║
+║                                                                  ║
+║  Este documento (PLAN_YAIWES_AGENTE_WORDFLOW.md) es el contrato  ║
+║  maestro de las 500 salidas.                                     ║
+║                                                                  ║
+║  PROHIBIDO:                                                      ║
+║  - Reescribir, acortar, fusionar o eliminar salidas.             ║
+║  - Cambiar el TOTAL de salidas (500).                            ║
+║  - Quitar sheriff / validador / verificación cruzada / guardián. ║
+║  - Mezclar tareas o saltar nodos.                                ║
+║  - Declarar PASS sin evidencia y sin checkpoint.                 ║
+║                                                                  ║
+║  PERMITIDO solo:                                                 ║
+║  - Añadir evidencia / checkpoint de una salida ya definida.      ║
+║  - Registrar GAP real detectado en ejecución (sin borrar nodo).  ║
+║  - Actualizar status de una salida (PENDING → PASS/FAIL) con     ║
+║    evidencia verificable.                                        ║
+║                                                                  ║
+║  Cualquier modificación estructural del plan requiere            ║
+║  autorización explícita del Director + nuevo X-Ray.              ║
+╚══════════════════════════════════════════════════════════════════╝
+```
+
+**Este bloque se evalúa en cada salida.** El sheriff de cada nodo debe comprobar que el plan no ha sido alterado estructuralmente.
+
+---
+
+## NÚMERO ÚNICO DE SALIDAS
+
+# **TOTAL DE SALIDAS = 500**
+
+Un solo número. No hay rangos ambiguos. No hay “aproximadamente”.  
+**500 salidas = 500 nodos DAG = 500 checkpoints.**
+
+| Bloque | Rango | Cantidad |
+|--------|-------|----------|
+| Fundación + Inventario + Catalogs | 001–050 | 50 |
+| Kernel + Reception + Fail-closed | 051–100 | 50 |
+| Engine core + Code Path | 101–150 | 50 |
+| Standards + Forensic | 151–200 | 50 |
+| State + Ledger + Blackboard | 201–250 | 50 |
+| Gateway + Engines adapters | 251–300 | 50 |
+| Loop 12-stage + Maxbry | 301–350 | 50 |
+| Resources + HF index + Motors | 351–400 | 50 |
+| Deploy + Accounts + CI | 401–450 | 50 |
+| Cierre + X-Ray global + Certification | 451–500 | 50 |
+| **TOTAL** | **001–500** | **500** |
+
+---
+
 ## REGLA UNIVERSAL (inviolable)
 
-- Cada **SALIDA** = **1 nodo DAG** con:
-  - `input_schema` (JSON Schema / contrato)
-  - `output_schema` (JSON Schema / contrato)
-  - `sheriff` (LAW + ANTI_SKIP + ANTI_FAKE_PASS + ANTI_HALLUCINATION)
-  - `validador` (schema + evidence check)
-  - `verificación` (runtime / test / X-Ray)
-  - `guardián` (fail-closed: DENY si no PASS)
-  - `checkpoint_file` (PIPELINE/checkpoints/SALIDA_NNN_YYYY-MM-DD.md)
+- Cada **SALIDA** = **1 nodo DAG** obligatorio con los **cuatro elementos + verificación cruzada**:
+  1. `sheriff` (LAW + ANTI_SKIP + ANTI_FAKE_PASS + ANTI_HALLUCINATION + NO_TOUCH_PLAN)
+  2. `validador` (schema + evidence check + binary PASS)
+  3. `verificación` + **verificación cruzada** (runtime / test / X-Ray + cross-check contra catalogs y tree)
+  4. `guardián` (fail-closed: DENY si no PASS)
+  - Además: `input_schema`, `output_schema`, `checkpoint_file`
 - **PASS** solo con evidencia verificable (SHA, log, test, tree, catalog).  
 - **NO** mezclar tareas. **NO** inventar. **NO** claim sin evidencia.  
 - Acción sobre archivos wordflow: **CREATE | COPY | REF | PLACEHOLDER | ENGANCHE** únicamente.  
@@ -107,9 +160,9 @@ agentes/
 
 ---
 
-## 2. DSL DAG SCHEMA — DEFINICIÓN DE NODO (SALIDA)
+## 2. DSL DAG SCHEMA — DEFINICIÓN OBLIGATORIA DE CADA NODO (SALIDA)
 
-Cada SALIDA NNN se registra exactamente así:
+**Toda salida 001–500** debe instanciar exactamente este schema. No hay excepciones.
 
 ```yaml
 id: SALIDA_NNN
@@ -124,15 +177,22 @@ input_schema:
 
 output_schema:
   type: object
-  required: [status, evidence, checkpoint_sha]
+  required: [status, evidence, checkpoint_sha, cross_check]
   properties:
     status: {enum: [PASS, FAIL, WARNING, DEGRADED, BLOCKED, UNKNOWN]}
     evidence: {type: array, items: string}
     checkpoint_sha: string
+    cross_check: {type: object}   # verificación cruzada obligatoria
     files_touched: array
 
 sheriff:
-  laws: [NO_SKIP, NO_ASSUME, NO_HALLUCINATION, NO_FAKE_PASS, NO_REWRITE_LEGACY]
+  laws:
+    - NO_SKIP
+    - NO_ASSUME
+    - NO_HALLUCINATION
+    - NO_FAKE_PASS
+    - NO_REWRITE_LEGACY
+    - NO_TOUCH_PLAN          # nuevo: respeta el bloque de protección
   anti_skip: true
   fail_closed: true
 
@@ -145,81 +205,108 @@ verificación:
   - type: tree | test | catalog | runtime | xray
     command_or_ref: "..."
 
+verificación_cruzada:          # OBLIGATORIA en todas las salidas
+  - against: component_catalog | connect_catalog | tree | previous_checkpoint
+    rule: "status/count/SHA debe coincidir o documentar GAP real"
+
 guardián:
   on_fail: DENY
   on_pass: ALLOW_NEXT
 
 checkpoint_file: PIPELINE/checkpoints/SALIDA_NNN_YYYY-MM-DD.md
 
-archivos_afectados:   # solo CREATE/COPY/REF/PLACEHOLDER/ENGANCHE
+archivos_afectados:            # solo CREATE/COPY/REF/PLACEHOLDER/ENGANCHE
   - path: extensions/wordflow/...
     accion: CREATE | COPY | REF | PLACEHOLDER | ENGANCHE
     nota: "..."
 ```
 
----
-
-## 3. TOTALIZACIÓN DE SALIDAS (1 → 500)
-
-| Rango | Fase | Objetivo | Nodos estimados |
-|-------|------|----------|-----------------|
-| 001-050 | Fundación + Inventario + Catalogs | Root, IDs, catalogs, schemas base, sheriff core | 50 |
-| 051-100 | Kernel + Reception + Fail-closed | wordflow_kernel full, reception link, fail_closed, checkpoint store | 50 |
-| 101-150 | Engine core + Code Path | code_path_runner, goal_lock, input_compiler, task_classifier, dual_compiler | 50 |
-| 151-200 | Standards + Forensic | forensic_core, copy_first, quality_dag, verdict_authority, gap_registry | 50 |
-| 201-250 | State + Ledger + Blackboard | ledger, blackboard, cognitive_registers, evidence_packet | 50 |
-| 251-300 | Gateway + Engines adapters | IntelligenceGateway real (RouterHTTP), openclaw/hermes ports (no stub) | 50 |
-| 301-350 | Loop 12-stage + Maxbry | main_loop, cognitive_loop, maxbry_loop wiring, 12 hooks | 50 |
-| 351-400 | Resources + HF index + Motors | resource_catalog, hf_index, motors (call/download/send/kernel_ext) | 50 |
-| 401-450 | Deploy + Accounts + CI | github_deploy real path, accounts resolver, CI workflows, smoke | 50 |
-| 451-500 | Cierre + X-Ray global + Certification | End-to-end, residual gaps, C100 Director, final X-Ray, PASS total | 50 |
-| **TOTAL** | | | **500** |
-
-Cada nodo produce **1 checkpoint file**. Al final de cada bloque de 50 se ejecuta X-Ray parcial + consolidación.
+**Auditoría del schema:**  
+Todas las 500 salidas heredan este contrato. No existe salida “ligera” ni “resumida” que omita sheriff, validador, verificación cruzada o guardián.
 
 ---
 
-## 4. SALIDAS 001–050 — FUNDACIÓN (detalle completo)
+## 3. AUDITORÍA DEL PLAN — GAPS Y COBERTURA
+
+### 3.1 Cobertura DSL DAG
+
+| Elemento | Presente en 001–500 | Estado |
+|----------|---------------------|--------|
+| input_schema | Sí (obligatorio) | PASS |
+| output_schema | Sí (obligatorio) | PASS |
+| sheriff | Sí (incluye NO_TOUCH_PLAN) | PASS |
+| validador | Sí (binary + evidence) | PASS |
+| verificación | Sí | PASS |
+| **verificación cruzada** | Sí (contra catalogs + tree + checkpoint previo) | PASS |
+| guardián (fail-closed) | Sí | PASS |
+| checkpoint_file | Sí (1 por salida) | PASS |
+| Acción archivo restringida | Sí (CREATE/COPY/REF/PLACEHOLDER/ENGANCHE) | PASS |
+
+### 3.2 Gaps residuales conocidos (heredados de Paso 1 X-Ray)
+
+Estos gaps **no eliminan nodos**; se convierten en salidas concretas dentro de los bloques 251–300 y 451–500:
+
+| Gap | Bloque destino | Tipo de salida |
+|-----|----------------|----------------|
+| intelligence_gateway = stub | 251–300 | PLACEHOLDER → ENGANCHE / CREATE adapter RouterHTTP |
+| engine.openclaw = stub | 251–300 | PLACEHOLDER → ENGANCHE EnginePort |
+| engine.hermes = stub | 251–300 | PLACEHOLDER → ENGANCHE EnginePort |
+| loop.fusion_minimax_kimi = placeholder | 301–350 | PLACEHOLDER documentado o CREATE |
+| Varios CONN WIRED_NO_PASS / WIRED_DENY | 451–500 | VALIDATE + residual close |
+| github_deploy = partial | 401–450 | ENGANCHE real path |
+| acquire_engine = partial | 351–400 / 401–450 | REF + ENGANCHE |
+
+**Ningún gap deja una salida sin los 4 elementos + verificación cruzada.**  
+Si un gap bloquea ejecución, el nodo registra FAIL/BLOCKED con evidencia y el LOOP continúa solo sobre ese nodo.
+
+### 3.3 Auditoría de integridad del plan
+
+- Total salidas = **500** (número único, no modificable).  
+- Bloques de 50 = 10 × 50 = 500.  
+- Nombre del agente = **Agente Yaiwes v1** (Omega eliminado).  
+- Bloque “NO TOCAR EL PLAN” presente y referenciado por el sheriff de cada nodo.  
+- Schema DSL DAG completo y obligatorio para las 500.  
+- Gaps residuales mapeados a salidas concretas (no omitidos).  
+- COPY-FIRST y no-rewrite-legacy preservados.
+
+**Resultado auditoría del plan:** **PASS** (estructura completa, sin salidas huérfanas de schema).
+
+---
+
+## 4. SALIDAS 001–050 — FUNDACIÓN (instanciación del schema)
+
+Todas siguen el schema de la sección 2. Resumen operativo:
 
 ### SALIDA 001 — Root map + IDs forenses
 - **tipo:** AUDIT + CREATE
-- **input_schema:** {repo_sha, tree_recursive}
-- **output_schema:** {root_map.md, ids: [WF.xx, WK.xx, FILE.xxx], status}
-- **sheriff:** NO_ASSUME, evidence = API tree
+- **sheriff:** NO_ASSUME + NO_TOUCH_PLAN + evidence = API tree
 - **validador:** count == 496 entries
 - **verificación:** github___get_repository_tree recursive
+- **verificación cruzada:** contra PASO1_XRAY + component_catalog
 - **guardián:** fail-closed si count fuera de 450-500
-- **checkpoint:** PIPELINE/checkpoints/SALIDA_001_2026-08-26.md
-- **archivos:** CREATE PIPELINE/ROOT_MAP_IDS.md (ya existe → REF + update aditivo)
+- **checkpoint:** PIPELINE/checkpoints/SALIDA_001_YYYY-MM-DD.md
+- **archivos:** REF/CREATE aditivo PIPELINE/ROOT_MAP_IDS.md
 
 ### SALIDA 002 — component_catalog.json v1.1.1 freeze
 - **tipo:** REF
-- **input:** catalog_version 1.1.1
-- **output:** status matrix locked
-- **sheriff:** no modificar status sin evidencia
+- **sheriff / validador / verificación cruzada / guardián:** schema completo
 - **archivos:** REF extensions/wordflow/component_catalog.json
 
 ### SALIDA 003 — connect_catalog.json v1.7.1 freeze
 - **tipo:** REF
-- **input:** version 1.7.1 + task DESPLIEGUE-01
-- **output:** legend + connections locked
 - **archivos:** REF extensions/wordflow/connect_catalog.json
 
 ### SALIDA 004 — Checkpoint store schema
-- **tipo:** CREATE (si falta) / REF
-- **input:** schemas/checkpoint.schema.json
-- **output:** engine/checkpoint_store.py + kernel/checkpoint.py validados
-- **archivos:** REF extensions/wordflow/schemas/checkpoint.schema.json, REF engine/checkpoint_store.py, REF kernel/checkpoint.py
+- **tipo:** REF
+- **archivos:** REF schemas/checkpoint.schema.json + engine/checkpoint_store.py + kernel/checkpoint.py
 
 ### SALIDA 005 — Fail-closed core
 - **tipo:** REF + ENGANCHE
-- **input:** kernel/fail_closed.py
-- **output:** guardián binary PASS/FAIL
-- **archivos:** REF extensions/wordflow_kernel/fail_closed.py, ENGANCHE a standards/verdict_authority.py
+- **archivos:** REF kernel/fail_closed.py + ENGANCHE standards/verdict_authority.py
 
 ### SALIDA 006 — Sheriff core
 - **tipo:** REF
-- **archivos:** REF standards/sheriff.py, REF engine/sheriff_adapter.py, REF engine/control_sheriff_bridge.py, REF policies/sheriff.yaml
+- **archivos:** REF standards/sheriff.py, engine/sheriff_adapter.py, engine/control_sheriff_bridge.py, policies/sheriff.yaml
 
 ### SALIDA 007 — Verdict authority
 - **tipo:** REF
@@ -227,110 +314,81 @@ Cada nodo produce **1 checkpoint file**. Al final de cada bloque de 50 se ejecut
 
 ### SALIDA 008 — Copy-first enforcer
 - **tipo:** REF
-- **archivos:** REF standards/copy_first.py, REF METODO_ZIP_COPY_DETERMINISTA.md (root)
+- **archivos:** REF standards/copy_first.py + METODO_ZIP_COPY_DETERMINISTA.md
 
 ### SALIDA 009 — Forensic core
 - **tipo:** REF
-- **archivos:** REF standards/forensic_core.py, REF kernel/forensic.py, REF kernel/forensic_api.py
+- **archivos:** REF standards/forensic_core.py, kernel/forensic.py, kernel/forensic_api.py
 
 ### SALIDA 010 — Repo truth
 - **tipo:** REF
 - **archivos:** REF kernel/repo_truth.py
 
-### SALIDA 011–020 — Schemas base (batch)
-Cada una = 1 schema JSON:
-- input_contract, goal_lock, execution_manifest, evidence_node, resource_entry, task_class, workflow_dna, capability_passport, handoff_package, structured_questions
-- **tipo:** REF
-- **archivos:** REF extensions/wordflow/schemas/*.schema.json (uno por salida)
+### SALIDA 011–020 — Schemas base (10 salidas)
+Cada una = 1 schema (input_contract, goal_lock, execution_manifest, evidence_node, resource_entry, task_class, workflow_dna, capability_passport, handoff_package, structured_questions).  
+**tipo:** REF — schema completo + verificación cruzada contra component_catalog.
 
-### SALIDA 021–030 — Engine core files (batch)
-- code_path_runner, main_loop, orchestrator_v1, goal_lock, input_compiler, task_classifier, dual_compiler, validator, sentinel, recovery
-- **tipo:** REF
-- **archivos:** REF extensions/wordflow/engine/<file>.py
+### SALIDA 021–030 — Engine core files (10 salidas)
+code_path_runner, main_loop, orchestrator_v1, goal_lock, input_compiler, task_classifier, dual_compiler, validator, sentinel, recovery.  
+**tipo:** REF — schema completo.
 
-### SALIDA 031–040 — Kernel bootstrap + instance
-- bootstrap_v1, bootstrap_multi, bootstrap_fake, instance, instance_store, workflow, handle_message, spawn, runtime, preflight
-- **tipo:** REF
-- **archivos:** REF extensions/wordflow_kernel/<file>.py
+### SALIDA 031–040 — Kernel bootstrap + instance (10 salidas)
+bootstrap_v1, bootstrap_multi, bootstrap_fake, instance, instance_store, workflow, handle_message, spawn, runtime, preflight.  
+**tipo:** REF — schema completo.
 
-### SALIDA 041–045 — Reception links
-- wordflow/reception/convert.py, kernel/reception/convert.py, git_apply, KNOWLEDGE_RECEPTION_LINKS, RECEPTION_TEMPLATE
-- **tipo:** REF + ENGANCHE
-- **archivos:** REF + ENGANCHE CONN.kernel_reception_link
+### SALIDA 041–045 — Reception links (5 salidas)
+wordflow/reception/convert, kernel/reception/convert, git_apply, KNOWLEDGE_RECEPTION_LINKS, RECEPTION_TEMPLATE.  
+**tipo:** REF + ENGANCHE — verificación cruzada CONN.kernel_reception_link.
 
-### SALIDA 046–050 — Catalog frontiers + CI smoke
-- frontiers loop/gateway/router/engines/acquire
-- CI wordflow_smoke / test-wordflow-code-path
-- **tipo:** REF + VALIDATE
-- **archivos:** REF component_catalog frontiers, REF .github/workflows/*
+### SALIDA 046–050 — Catalog frontiers + CI smoke (5 salidas)
+frontiers + CI wordflow_smoke / test-wordflow-code-path.  
+**tipo:** REF + VALIDATE — schema completo.
 
 **Bloque 001-050 → X-Ray parcial obligatorio antes de avanzar.**
 
 ---
 
-## 5. ROADMAP 051–500 (resumen por bloque)
+## 5. ROADMAP 051–500 (todos con schema completo)
 
-### 051-100 — Kernel + Reception + Fail-closed deep
-- Completar todos los tests kernel (vf01-03, vg04, vh01-04, vk01-06, vl03-05, vr01-03)
-- Memory_slot + router_slot contracts
-- Stages 12-hook default_handlers
-- UI gateway plugin
-- Gap_tasks + crosscheck
-- **Acción dominante:** REF + ENGANCHE + CREATE de checkpoints
+Cada salida de estos bloques **instancia el mismo DSL DAG schema** (sheriff + validador + verificación + verificación cruzada + guardián + checkpoint).
 
-### 101-150 — Engine + Code Path full
-- Todos los engine/*.py restantes (resource_*, parallel_*, wave4/5, cognitive_*, expert_*, etc.)
-- Ports memory_port / planning_port
-- Engines/fake_engine
-- Code path smoke + integration tests
-- **COPY-FIRST** de cualquier pieza que se reutilice desde code-programming-engine
+### 051-100 — Kernel + Reception + Fail-closed deep (50)
+Tests kernel, memory_slot, router_slot, stages 12-hook, UI gateway, gap_tasks, crosscheck.  
+Acción: REF + ENGANCHE + CREATE checkpoints.
 
-### 151-200 — Standards + Quality DAG
-- Todos standards/*.py
-- quality_handlers, rule_engine, gap_registry, gap_state_machine
-- Checklist_sheriff, programming_points_catalog
-- **Guardián** de quality_bar en cada code path
+### 101-150 — Engine + Code Path full (50)
+Todos engine/*.py restantes, ports, fake_engine, code path smoke + integration.  
+COPY-FIRST desde code-programming-engine cuando proceda.
 
-### 201-250 — State + Evidence
-- Blackboard, ledger, cognitive_registers, evidence_packet, evidence_graph, evidence_bridge
-- Bitacora, reasoning_ledger, write_evidence
+### 151-200 — Standards + Quality DAG (50)
+Todos standards/*.py, quality_handlers, rule_engine, gap_registry, checklist_sheriff.  
+Guardián de quality_bar en cada code path.
 
-### 251-300 — Gateway + Real engines (cerrar STUBS)
-- **P0:** IntelligenceGateway RouterHTTP real (cerrar stub)
-- openclaw_stub → EnginePort real adapter (PLACEHOLDER → ENGANCHE)
-- hermes_stub → EnginePort real adapter
-- loop.fusion_minimax_kimi: PLACEHOLDER → decidir CREATE o dejar fusion:false documentado
-- **Sheriff:** WIRED_DENY permanece hasta evidencia de vendor path correcto
+### 201-250 — State + Evidence (50)
+Blackboard, ledger, cognitive_registers, evidence_packet/graph/bridge, bitacora, reasoning_ledger.
 
-### 301-350 — Loop 12-stage + Maxbry
-- main_12.yaml, cognitive_loop, maxbry_loop full wiring
-- 12 hooks: acquire_12, analyze_12, reuse_12, etc.
-- Council + expert_panel + expert_router
+### 251-300 — Gateway + Real engines — cierre de STUBS (50)
+- IntelligenceGateway RouterHTTP real
+- openclaw / hermes → EnginePort real (PLACEHOLDER → ENGANCHE)
+- WIRED_DENY se mantiene hasta evidencia de path correcto
 
-### 351-400 — Resources + HF + Motors
-- resource_catalog, resource_broker, resource_gate, resource_runtime, resource_trace
-- hf_index, hf_resolver
-- motors call/download/send/kernel_ext
-- ResourceContract + dataset/skill/space loaders (kernel)
+### 301-350 — Loop 12-stage + Maxbry (50)
+main_12.yaml, cognitive_loop, maxbry_loop, 12 hooks, council, expert_panel.  
+fusion_minimax_kimi: PLACEHOLDER documentado o CREATE.
 
-### 401-450 — Deploy + Accounts + CI
-- github_deploy real (no solo dry_run)
-- accounts registry/require/resolver
-- connectors/github_external
-- CI full matrix + smoke
-- Token_ref never in body (already WIRED)
+### 351-400 — Resources + HF + Motors (50)
+resource_catalog/broker/gate/runtime/trace, hf_index/resolver, motors, ResourceContract + loaders.
 
-### 451-500 — Cierre global + Certification
-- Residual gaps de connect_catalog (WIRED_NO_PASS, STUB, PLACEHOLDER)
-- End-to-end test suite
-- C100 Director claim
-- X-Ray final completo (re-run tree + catalogs + status matrix)
-- Checkpoint consolidado de las 500 salidas
-- **SALIDA 500 = CERTIFICATION** → solo PASS con evidencia total
+### 401-450 — Deploy + Accounts + CI (50)
+github_deploy real path, accounts resolver, connectors, CI full matrix, token_ref safe.
+
+### 451-500 — Cierre global + Certification (50)
+Residual gaps, end-to-end, C100 Director, X-Ray final, consolidación de 500 checkpoints.  
+**SALIDA 500 = CERTIFICATION** → PASS solo con evidencia total de las 500.
 
 ---
 
-## 6. ARCHIVOS WORDFLOW — ACCIÓN GLOBAL (resumen)
+## 6. ARCHIVOS WORDFLOW — ACCIÓN GLOBAL
 
 | Ámbito | Acción dominante | Notas |
 |--------|------------------|-------|
@@ -342,22 +400,24 @@ Cada una = 1 schema JSON:
 | wordflow_kernel/* | REF + ENGANCHE | stubs → PLACEHOLDER documentado o real adapter |
 | reception/* | REF + ENGANCHE | CONN ya WIRED |
 | motors/*, policies/*, store/*, state/* | REF | |
-| Nuevo: PIPELINE/checkpoints/ | CREATE | 1 por salida |
-| Nuevo: este PLAN | CREATE | |
+| Nuevo: PIPELINE/checkpoints/ | CREATE | 1 por cada una de las 500 salidas |
+| Este PLAN | CREATE (ya materializado) | Protegido por bloque NO TOCAR |
 
 **Prohibido:** reescribir archivos legacy materializados. Solo COPY de piezas externas (COPY-FIRST) o ENGANCHE.
 
 ---
 
-## 7. CHECKPOINT DE PASO 2
+## 7. CHECKPOINT DE PASO 2 (actualizado post-auditoría)
 
 | Campo | Valor |
 |-------|-------|
-| **ID** | PLAN-PASO2-2026-08-26 |
-| **Status** | **EN CURSO** (documento maestro materializado) |
+| **ID** | PLAN-PASO2-2026-08-26-AUDIT |
+| **Nombre agente** | **Agente Yaiwes v1** |
+| **Total salidas** | **500** (número único) |
+| **Status** | **PASS** (documento maestro + auditoría schema + gaps mapeados + bloque NO TOCAR) |
 | **Evidence** | Este archivo + PASO1 XRay PASS + tree 496 + catalogs 1.1.1/1.7.1 |
-| **Sheriff** | Binary — estructura + totalización 500 + schema de nodo definidos |
-| **Next** | PASO 3 — crear root faltante + missing files con notas; luego DESPLIEGUE 1 de documentos adjuntos + chain execution |
+| **Sheriff** | Binary — 500 nodos con sheriff+validador+verificación cruzada+guardián |
+| **Next** | PASO 3 — crear root faltante + missing files con notas; luego DESPLIEGUE 1 |
 
 **Archivo de checkpoint de Paso 2:** este documento.
 
@@ -368,6 +428,7 @@ Cada una = 1 schema JSON:
 GAP → DIAGNOSTICAR → RESOLVER → VERIFICAR → REGISTRAR → CONTINUAR.  
 Un GAP no detiene el LOOP.  
 No inventar. No mezclar. No claim sin evidencia.  
-1 tarea = 1 salida. Fail-closed.
+1 tarea = 1 salida. Fail-closed.  
+**No tocar el plan.**
 
-**PASO 2 → DOCUMENTO MAESTRO MATERIALIZADO. LISTO PARA PASO 3 Y DESPLIEGUE 1.**
+**PASO 2 → AUDITADO Y CERRADO CON TOTAL = 500. LISTO PARA PASO 3.**
