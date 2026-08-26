@@ -1,5 +1,5 @@
 {
-  "catalog_version": "1.1.0",
+  "catalog_version": "1.1.1",
   "repo": "maxbry123-commits/agentes",
   "pipeline_ref": "PIPELINE/ARQUITECTURA_WORDFLOW_MODULAR.md",
   "frontiers": {
@@ -128,6 +128,32 @@
       "kind": "ci",
       "capabilities": ["unittest_discover"],
       "status": "materialized"
+    },
+    {
+      "id": "code_programming_engine",
+      "path": "code-programming-engine/",
+      "kind": "engine",
+      "status": "materialized",
+      "capabilities": [
+        "quality_bar",
+        "goal_lock",
+        "cognitive_wire",
+        "forensic_enforcement",
+        "instance_pool_binding"
+      ],
+      "note": "Despliegue 1 Opción A; hot path sigue en extensions/wordflow/engine/code_path_runner.py"
+    },
+    {
+      "id": "code_programming_instance_pool",
+      "path": "code-programming-engine/instance_pool.py",
+      "kind": "service",
+      "status": "materialized",
+      "capabilities": [
+        "tenant_isolation",
+        "concurrency_cap",
+        "handle_lifecycle",
+        "idempotency_dedup"
+      ]
     }
   ],
   "connect_rules": [
