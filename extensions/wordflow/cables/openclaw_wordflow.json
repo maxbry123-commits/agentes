@@ -1,6 +1,6 @@
 {
   "cable_id": "wordflow.openclaw.reason",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "source": "wordflow_kernel.engines.openclaw_stub.OpenClawEngine",
   "source_contract": "EnginePort.reason",
   "adapter": "wordflow_kernel.gateway.openclaw_http.OpenClawHTTPGateway",
@@ -17,6 +17,6 @@
     "private_ingress_required": true
   },
   "tests": ["extensions/wordflow_kernel/tests/test_openclaw_http.py"],
-  "status": "WIRED_TESTED",
+  "status": "WIRED_TEST_UNEXECUTED",
   "immutable_component": true
 }
