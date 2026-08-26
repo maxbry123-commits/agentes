@@ -1,0 +1,11 @@
+{
+  "contract_version": "1.0",
+  "based_on": ["extensions/wordflow_kernel/gateway/intelligence.py", "extensions/wordflow_kernel/gateway/router_http.py"],
+  "entrypoint": "IntelligenceGateway.execute",
+  "request": ["request_id", "task_id", "trace_id", "operation", "policy", "input"],
+  "response": ["request_id", "task_id", "trace_id", "status", "output", "provider", "evidence_hash"],
+  "fail_closed": true,
+  "vendor_direct_call": false,
+  "real_adapter_status": "OPEN — no provider SDK/client source verified in repo",
+  "wire_point": "wordflow_kernel.gateway.intelligence → RouterHTTPGateway"
+}
