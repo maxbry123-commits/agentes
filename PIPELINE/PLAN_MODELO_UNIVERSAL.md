@@ -1,65 +1,200 @@
-# GUÍA + MOLDE DE PLAN DE TRABAJO
+# README PLAN MODELO UNIVERSAL — PLAN EJECUTABLE (MOLDE)
 
-**Repo:** maxbry123-commits/agentes · **rama:** main  
-**Modelo:** PIPELINE/PLAN_YAIWES_AGENTE_WORDFLOW.md (no se reescribe)  
-**Instancia:** copiar a PIPELINE/PLAN_<PLAN_ID>.md y rellenar {{ }}.  
-GitHub = verdad. 1 tarea = 1 salida. FAIL-CLOSED. LLM no declara PASS. HTTP 200 ≠ PASS.
+**Repo:** `maxbry123-commits/agentes` · **rama:** `main`  
+**Agente:** `{{AGENTE}}`  
+**PLAN_ID:** `{{PLAN_ID}}`  
+**GitHub = única verdad.** 1 tarea = 1 salida. PASS solo con evidencia. FAIL-CLOSED. LLM no declara PASS. HTTP 200 ≠ PASS.
 
-**NÚMERO DE SALIDAS DEL MOLDE = 0.** El molde no ejecuta misión. El plan instanciado declara su K.
+**Copia de estructura de:** `PIPELINE/PLAN_YAIWES_AGENTE_WORDFLOW.md`  
+Ese archivo **no se reescribe**. Este molde es otro path. Instanciar: copiar a `PIPELINE/PLAN_{{PLAN_ID}}.md` y rellenar `{{ }}`. Vaciar tablas de misión; no copiar G1–G7 ni S1–S12 de YAIWES.
+
+**Documento de producción (si existe):** `{{DOC_PRODUCCION}}`
 
 ---
 
-# BLOQUE A — CABLEADO (no mezclar con B/C)
-
-## Para qué son los dos enlaces
-
-| Enlace | Carpeta | Para qué |
-|---|---|---|
-| ENLACE_DESPLEGAR `Desplegar/Desplegar {{N}}/` | inbox plan N | El Director sube docs/code de ese plan. Fuente del lote. |
-| ENLACE_REFACTORIA `Refactoria/refactoria-plan-{{PLAN_ID}}/` | mesa | Versión vieja del archivo que ya existe y se va a cambiar. |
-
-`despliegue/` ≠ `Desplegar/`.
-
-## Dónde va en el plan (cabecera, no anexo)
+## INPUT BLOCK
 
 ```text
+TAREA: {{TAREA}}
+OBJETIVO: {{OBJETIVO}}
+FUENTE: {{FUENTE}}
+DESTINOS: {{DESTINOS}}
+ALCANCE: {{ALCANCE}}
+FUERA DE ALCANCE: {{FUERA}}
+CRITERIO PASS: {{PASS}}
+CRITERIO 100%: {{CIERRE}}
 PLAN_ID: {{PLAN_ID}}
-ENLACE_DESPLEGAR:  Desplegar/Desplegar {{N}}/
-ENLACE_REFACTORIA: Refactoria/refactoria-plan-{{PLAN_ID}}/source/ y /new/
-ENLACE_DESTINO:    Yaiwes wordflow/… | Wordflow Code/…
-ENLACE_CHECKPOINT: PIPELINE/checkpoints/{{PLAN_ID}}/
+N_DESPLEGAR: {{N}}
 ```
 
-## Cómo se usa Desplegar
-1. N = número de este plan. 2. Director sube a Desplegar/Desplegar N/. 3. El plan apunta solo ahí. 4. Sin lote = WAIT; no crear vacío. 5. Archivo nuevo del lote → destino canónico. Archivo que pisa uno vivo → Bloque B / Refactoria.
-
-## Cómo se usa Refactoria
-1. Copiar vivo → source/. 2. No editar source ni vivo. 3. Escribir new/. 4. Diff + tests + checklist. 5. Sheriff → watchdog → guardian. 6. new/ → canónico. 7. Read-back. 8. source/ no se borra en el mismo task.
-
-Legado YAIWES: `despliegue/refactoria/<GAP>/source/` y `Refactoria/<GAP>/source/`. Planes nuevos: solo refactoria-plan-ID.
-
-## Triángulo
-Desplegar N (lote) → si muta vivo: Refactoria source/new → destino Wordflow → checkpoint.
+Sin lote subido: `N_DESPLEGAR=WAIT`. No crear carpeta vacía.
 
 ---
 
-# BLOQUE B — FORMA DEL PLAN (secciones YAIWES)
+## ENLACES DEL PLAN — PARA QUÉ, CÓMO, DÓNDE
 
-INPUT BLOCK literal. ESTADO AUDITADO. REFACTORIA. FUENTES. REGLAS + LEGO (goal_lock / cognitive_loop / evidence_packet). TOTAL SALIDAS = {{K}}. GAPS. DEPLOYMENT NOT_CLAIMED. HOT PATH `extensions/wordflow/engine/code_path_runner.py`. CRECIMIENTO ACQUIRE/REUSE.
+Van **aquí**, en cabecera, no al final.
 
-### Schema salida
+```text
+ENLACE_DESPLEGAR:  Desplegar/Desplegar {{N}}/
+ENLACE_REFACTORIA: Refactoria/refactoria-plan-{{PLAN_ID}}/
+ENLACE_DESTINO:    Yaiwes wordflow/  |  Wordflow Code/
+ENLACE_CHECKPOINT: PIPELINE/checkpoints/{{PLAN_ID}}/
+ENLACE_PLAN:       PIPELINE/PLAN_{{PLAN_ID}}.md
+```
+
+`despliegue/` (minúsculas, motor) **no** es `Desplegar/`.
+
+### Desplegar — para qué
+Inbox. El Director sube los documentos y el code de **este** plan. Es la fuente de verdad del lote. No es el Wordflow. No es Refactoria.
+
+### Desplegar — cómo
+1. N = número de este plan (el plan 2 usa `Desplegar 2`, no `Desplegar 1`).
+2. El Director crea/usa `Desplegar/Desplegar {{N}}/` al subir archivos.
+3. El ejecutor solo lee ese path. No mezcla lotes de otro N.
+4. Si el archivo del lote **no existe** en el Wordflow: copiar al destino canónico.
+5. Si el archivo del lote **cambia** un archivo que ya existe: usar Refactoria (abajo).
+6. ZIP en el lote: hash → extraer a staging (el ZIP no se vacía) → inventario → misma regla 4 o 5.
+
+### Desplegar — dónde
+Raíz main `Desplegar/`. Extensiones: `Desplegar 1/`, `Desplegar 2/`, `Desplegar N/`. No son raíces nuevas de main.
+
+### Refactoria — para qué
+Mesa de reescritura. Evita editar el archivo vivo y perder código. Se coloca la **versión vieja** y se escribe la **nueva** al lado para cruzarlas.
+
+### Refactoria — cómo (igual que el plan modelo YAIWES, path por plan)
+
+**Paso 1 — Aislar (copiar, no editar in-place)**
+```text
+Refactoria/refactoria-plan-{{PLAN_ID}}/source/     ← copia exacta del archivo vivo
+```
+Nunca modificar primero el original en `extensions/` ni en destinos canónicos.
+
+**Paso 2 — Implementar**
+```text
+Refactoria/refactoria-plan-{{PLAN_ID}}/new/        ← versión nueva
+```
+Usar `source/` como referencia. Se puede leer el lote `Desplegar/Desplegar {{N}}/` como spec. Bucle hasta acceptance.
+
+**Paso 3 — Verificación cruzada ×3**
+1. Diff `source/` vs `new/`
+2. Tests contra `new/`
+3. Checklist + evidencia + ficha de cierre + checkpoint
+
+Solo si las 3 PASS: integrar `new/` al destino canónico.  
+Borrar original solo con autorización Director + 3 verificaciones.  
+Nunca borrar `source/` en el mismo task.
+
+**Prohibido:** editar hot path sin paridad de tests; PASS sin las 3; inventar body/adapters/schemas para cerrar gaps.
+
+### Path legado del plan YAIWES (misión G1–G7 ya abierta)
+```text
+despliegue/refactoria/<GAP_o_TASK_ID>/source/
+Refactoria/<GAP_o_TASK_ID>/source/
+Refactoria/<GAP_o_TASK_ID>/new/
+```
+Planes **nuevos** no usan esos paths. Usan solo `refactoria-plan-{{PLAN_ID}}/`.
+
+### Cómo se usan juntos
+```text
+Desplegar/Desplegar N/          lote que el Director subió
+        |
+        |- archivo nuevo ----------------> destino canónico
+        |- cambia un vivo
+                > source/  (foto del vivo)
+                > new/     (reescritura)
+                > destino canónico
+                > PIPELINE/checkpoints/PLAN_ID/
+```
+
+---
+
+## ESTADO AUDITADO
+
+| Salida | Estado | Checkpoint | Nota |
+|---|---|---|---|
+| S1 | QUEUED | PIPELINE/checkpoints/{{PLAN_ID}}/S1.md | |
+| S{{K}} | QUEUED | PIPELINE/checkpoints/{{PLAN_ID}}/S{{K}}.md | |
+
+Gap técnico OPEN→CLOSED solo con evidencia real en `main`.
+
+---
+
+## 1. FUENTES CANÓNICAS
+
+1. Este molde `PIPELINE/PLAN_MODELO_UNIVERSAL.md`
+2. El plan instanciado `PIPELINE/PLAN_{{PLAN_ID}}.md`
+3. `PIPELINE/PLAN_YAIWES_AGENTE_WORDFLOW.md` si la misión toca YAIWES (no reescribir)
+4. `Yaiwes wordflow/Readme/README.md`
+5. `Wordflow Code/Readme/README.md`
+6. `Desplegar/README.md` + `Desplegar/Desplegar {{N}}/` si existe
+7. `Refactoria/README.md`
+8. `Método de trabajo/` + `README_METHOD.md`
+9. `notas-trabajo-grock/`
+10. `{{FUENTE_EXTRA}}`
+
+---
+
+## 2. REGLAS GLOBALES
+
+```text
+PROHIBIDO: inventar; reescribir code_path_runner sin paridad; duplicar lego;
+PASS sin checkpoint ni ficha; afirmar apply sin read-back; hardcodear Desplegar 1
+como único N; dump a extension-kernel; reescribir PLAN_YAIWES o este molde
+para anotar un cierre; poner URL donde se pidió copiar archivo;
+mezclar lotes N; crear Desplegar N vacío.
+OBLIGATORIO: INPUT BLOCK; enlaces en cabecera; schema; checkpoint;
+COPY-FIRST; Refactoria en cambios de code; sheriff+watchdog+guardian;
+anotar=aditivo; FAIL-CLOSED.
+```
+
+### Regla LEGO
+| Módulo | Autoridad única |
+|---|---|
+| goal_lock.py | execution-orchestration/goal-lock |
+| cognitive_loop.py | execution-orchestration/mission-planning |
+| evidence_packet.py | observability/evidence-packet |
+
+### Anotar = aditivo
+Leer archivo → SHA → append → commit → leer de nuevo → el texto viejo sigue y lo nuevo está. Nunca vacuum.
+
+### Tags
+`CHAT_APROBADO` · `EXISTENTE` · `NUEVO` · `GAP` · `DESCARTADO`
+
+### Plugin
+Microkernel / Plugin Architecture. Núcleo mínimo. `wordflow/abi.py` (`ExtensionABI`) = extension point. `extension-kernel` = abi-mount + registry + mount-guard. No es carpeta de dump.
+
+---
+
+## 3. TOTAL DE SALIDAS = {{K}}
+
+Molde: K vacío. Cada salida = 1 schema + 1 fila ESTADO + 1 checkpoint + 1 ficha.
+
+### Schema
 ```yaml
 id: S1
 objetivo: ""
 enlace_desplegar: Desplegar/Desplegar N/
-enlace_refactoria: Refactoria/refactoria-plan-ID/
-destino: ""
-tag: CHAT_APROBADO | EXISTENTE | NUEVO | GAP | DESCARTADO
-sheriff / watchdog / guardian: ""
-pass: commit + read-back + ficha
-checkpoint: PIPELINE/checkpoints/ID/S1.md
+enlace_refactoria: Refactoria/refactoria-plan-{{PLAN_ID}}/
+destino_canonico: ""
+tag: GAP
+sheriff: raiz viva / hot path
+watchdog: no stagnation x2
+guardian: no DENY
+verificacion_cruzada: [diff, tests, checklist]
+pass: commit + read-back + ficha + checkpoint
 estado: QUEUED
+checkpoint: PIPELINE/checkpoints/{{PLAN_ID}}/S1.md
 ```
+
+### Preflight 1.a.1 (antes de cada salida)
+1. repo/rama main
+2. leer este plan + INPUT checklist
+3. ENLACE_DESPLEGAR existe o WAIT
+4. hot path
+5. alcance
+6. evidencia previa
+7. no pintar PASS un GAP
 
 ### Ficha de cierre
 ```text
@@ -72,39 +207,73 @@ TAG:
 STATUS: PASS|FAIL|OPEN|BLOCKED
 ```
 
-### Anotar = aditivo
-Leer → SHA → append → commit → leer → el viejo sigue + lo nuevo está. Nunca vacuum.
+### Sheriff / watchdog / guardian
+- Sheriff: `extensions/wordflow/standards/sheriff.py`
+- Watchdog: `extensions/wordflow/engine/watchdog.py`
+- Guardian: mount-guard + sentinel + VerdictAuthority (`code_path_runner` post_verify)
 
-### Preflight 1.a.1
-1 repo/rama 2 plan+checklist 3 enlaces o WAIT 4 hot path 5 alcance 6 evidencia 7 GAP no se pinta PASS.
-
-### DSL / DAG
-BIND enlaces → SHERIFF → source → new → ×3 → GUARDIAN → destino → READ-BACK → FICHA.
-Sheriff `extensions/wordflow/standards/sheriff.py`. Watchdog `extensions/wordflow/engine/watchdog.py`. Guardian mount-guard + VerdictAuthority.
+DAG: BIND enlaces → SHERIFF → source → new → ×3 → GUARDIAN → destino → READ-BACK → FICHA → CHECKPOINT.
 
 ---
 
-# BLOQUE C — COPIA / ZIP / RAÍCES / PLUGIN
+## 4. GAPS
 
-Copy: GET→PUT→SHA | blob→tree→commit | Actions | fork | clone+push.  
-ZIP: hash→extract staging (ZIP no se vacía)→inventario→raíz.  
-Duplicado: borrar solo no-canónico.
+| ID | Gap | Destino canónico | Estado |
+|---|---|---|---|
+| G{{n}} | | | OPEN |
 
-Raíces: Desplegar · PIPELINE · Método de trabajo · Refactoria · Yaiwes wordflow · Wordflow Code · notas-trabajo-grock.
-
-Plugin: Microkernel. `wordflow/abi.py`. extension-kernel no dump. README Readme/Readme1.
-
-GT1: GITHUB-ESTRUCTURA ya en Método de trabajo. METODO-DE-TRABAJO.md 54KB = OPEN GET+PUT.
+Sin source → `Refactoria/refactoria-plan-{{PLAN_ID}}/BLOCKER.md` (problem / source / impact / action). No inventar implementación.
 
 ---
 
-# BLOQUE D — NO MEZCLAR
+## 5. DEPLOYMENT
 
-A cableado. B forma. C copia. D esta regla.  
-No meter contenido HF (modelos/Spaces) en planes de agentes.  
-Tags: CHAT_APROBADO · EXISTENTE · NUEVO · GAP · DESCARTADO.
+remote_apply / readback: `NOT_CLAIMED` hasta read-back real.
 
 ---
 
-# DoD
-Enlaces Desplegar/Refactoria con para qué / cómo / dónde. Secciones YAIWES. Ficha. Aditivo. Preflight. Tags. METODO GT1 OPEN explícito.
+## 6. HOT PATH
+
+`extensions/wordflow/engine/code_path_runner.py` — operativo.  
+Raíz de nombre: `Wordflow Code/`. Cuerpo actual: `extensions/wordflow/`.
+
+---
+
+## 7. CRECIMIENTO DE CAPACIDADES
+
+OSS → ACQUIRE → ANALYZE gap → REUSE/PATCH/ADAPT → ficha v2 + enchufe → catalog → registry.  
+No clonar agentes enteros. No escribir de cero lo reciclable.
+
+---
+
+## COPIAR / ZIP / DUPLICADO
+
+1. Contents API GET→PUT→SHA
+2. Git Data blob→tree→commit→ref
+3. Actions
+4. Transfer/fork (repo entero)
+5. Clone + push
+
+ZIP: HASH → EXTRACT staging → INVENTARIO → COPY raíz destino → 4 pasadas → COMMIT → READ-BACK. Extraer no vacía el ZIP.
+Duplicado: identificar canónico → borrar solo el otro → 404 duplicado → canónico sigue.
+
+---
+
+## RAÍCES MAIN
+
+1. `Desplegar/`
+2. `PIPELINE/`
+3. `Método de trabajo/` + `README_METHOD.md`
+4. `Refactoria/`
+5. `Yaiwes wordflow/`
+6. `Wordflow Code/`
+7. `notas-trabajo-grock/`
+
+`.github/workflows/` excepción Actions.
+
+---
+
+## DEFINITION OF DONE
+
+Documento: misma estructura que YAIWES + INPUT + enlaces Desplegar/Refactoria explicados + schema + ficha + checkpoint.
+Misión: cada S con ficha PASS o BLOCKER. 0 fake PASS.
