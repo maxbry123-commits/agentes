@@ -1,192 +1,84 @@
-# PLAN AGENTE YAIWES v1 — WORDFLOW DSL DAG SCHEMA
+# PLAN AGENTE YAIWES v1 — ALINEADO A ESTRUCTURA README + PLAN_100
 
-**Proyecto:** maxbry123-commits/agentes  
-**Nombre del agente:** **Agente Yaiwes v1** (no Omega)  
-**Estado:** PASO 1 PASS → PASO 2 MATERIALIZADO + AUDITADO  
-**Actualización:** 2026-08-26  
-**Modelo de referencia:** PIPELINE-HUGGINGFACE.md (Grupo-Trabajo-1) — estilo + disciplina, upgraded a DSL DAG.  
-**Fundamento forense:** PIPELINE/PASO1_XRAY_WORDFLOW_400PLUS_2026-08-25.md (496 entries / ~470 blobs).  
-**GitHub = truth.** COPY-FIRST. No re-write legacy. 1 tarea = 1 salida. Binary PASS only with evidence. Fail-closed.
+**Fuente de verdad de estructura:**  
+`agente-yaiwes/PLAN_100_ESTRUCTURA_DEFINITIVA.md`  
+`agente-yaiwes/README.md` (estructura canónica)
+
+**Nombre:** Agente Yaiwes v1  
+**Repo:** maxbry123-commits/agentes · main  
+**Regla:** NO reescribir extensions/wordflow operativo. Solo COPY / REF / PLACEHOLDER.  
+**GitHub = truth.** 1 tarea = 1 salida. Binary PASS only with evidence. Fail-closed.
 
 ---
 
-## 0. BLOQUE DE PROTECCIÓN — NO TOCAR EL PLAN
+## 0. BLOQUE DE PROTECCIÓN — NO TOCAR ESTE PLAN NI EL PLAN_100
 
 ```text
-╔══════════════════════════════════════════════════════════════════╗
-║  BLOQUE INVIOLABLE — NO TOCAR EL PLAN                            ║
-║                                                                  ║
-║  Este documento (PLAN_YAIWES_AGENTE_WORDFLOW.md) es el contrato  ║
-║  maestro de las 500 salidas.                                     ║
-║                                                                  ║
-║  PROHIBIDO:                                                      ║
-║  - Reescribir, acortar, fusionar o eliminar salidas.             ║
-║  - Cambiar el TOTAL de salidas (500).                            ║
-║  - Quitar sheriff / validador / verificación cruzada / guardián. ║
-║  - Mezclar tareas o saltar nodos.                                ║
-║  - Declarar PASS sin evidencia y sin checkpoint.                 ║
-║                                                                  ║
-║  PERMITIDO solo:                                                 ║
-║  - Añadir evidencia / checkpoint de una salida ya definida.      ║
-║  - Registrar GAP real detectado en ejecución (sin borrar nodo).  ║
-║  - Actualizar status de una salida (PENDING → PASS/FAIL) con     ║
-║    evidencia verificable.                                        ║
-║                                                                  ║
-║  Cualquier modificación estructural del plan requiere            ║
-║  autorización explícita del Director + nuevo X-Ray.              ║
-╚══════════════════════════════════════════════════════════════════╝
-```
+PROHIBIDO:
+- Cambiar el número de salidas (9).
+- Reescribir extensions/wordflow materializado.
+- Inventar código en nodos ESQ (solo PLACEHOLDER + descripción).
+- Declarar PASS sin archivo de checkpoint nuevo + evidencia.
 
-**Este bloque se evalúa en cada salida.** El sheriff de cada nodo debe comprobar que el plan no ha sido alterado estructuralmente.
+PERMITIDO:
+- Crear checkpoint nuevo por salida.
+- Actualizar status PENDING → PASS/FAIL con evidencia.
+- Registrar GAP real sin borrar nodo.
+```
 
 ---
 
 ## NÚMERO ÚNICO DE SALIDAS
 
-# **TOTAL DE SALIDAS = 500**
+# **TOTAL DE SALIDAS = 9**
 
-**Un solo número.**  
-500 salidas = 500 nodos DAG = **500 archivos de checkpoint nuevos**.
+| Orden | ID | Nombre | Prioridad |
+|-------|-----|--------|-----------|
+| 1º | **SALIDA 1** | Archivos de la nueva raíz (árbol completo) | P0 |
+| 2º | **SALIDA 5** | **DESPLIEGUE 1** (documentos Opción A) | P0 |
+| 3º | **SALIDA 2** | Espejo motor → code-programming-engine/ | P1 |
+| 4º | SALIDA 0 | Contrato (puede ir junto a 1) | P1 |
+| 5º | SALIDA 3 | REFs a piezas REALES | P1 |
+| 6º | SALIDA 4 | Docs mapa (ORIGIN_MAP, COPY_MANIFEST) | P2 |
+| 7º | SALIDA 6 | Modular / binding | P2 |
+| 8º | SALIDA 7 | Enganche LEGACY | P2 |
+| 9º | SALIDA 8 | Cierre 100% | P0 |
 
-| Bloque | Rango | Cantidad |
-|--------|-------|----------|
-| Fundación + Inventario + Catalogs | 001–050 | 50 |
-| Kernel + Reception + Fail-closed | 051–100 | 50 |
-| Engine core + Code Path | 101–150 | 50 |
-| Standards + Forensic | 151–200 | 50 |
-| State + Ledger + Blackboard | 201–250 | 50 |
-| Gateway + Engines adapters | 251–300 | 50 |
-| Loop 12-stage + Maxbry | 301–350 | 50 |
-| Resources + HF index + Motors | 351–400 | 50 |
-| Deploy + Accounts + CI | 401–450 | 50 |
-| Cierre + X-Ray global + Certification | 451–500 | 50 |
-| **TOTAL** | **001–500** | **500** |
+**Orden de ejecución obligatorio (Director):**  
+**1 → 5 → 2 → resto (0/3/4/6/7) → 8**
 
 ---
 
-## REGLA CRÍTICA DE CHECKPOINT — ARCHIVO NUEVO OBLIGATORIO
+## REGLA DE CHECKPOINT — ARCHIVO NUEVO OBLIGATORIO
+
+Cada salida **DEBE CREAR** un archivo nuevo:
 
 ```text
-╔══════════════════════════════════════════════════════════════════╗
-║  CADA SALIDA DEBE CREAR UN ARCHIVO NUEVO DE CHECKPOINT           ║
-║                                                                  ║
-║  Ruta obligatoria:                                               ║
-║  PIPELINE/checkpoints/SALIDA_NNN_YYYY-MM-DD.md                   ║
-║                                                                  ║
-║  Reglas:                                                         ║
-║  1. CREAR archivo nuevo (nunca sobrescribir uno existente).      ║
-║  2. Un archivo = una sola salida. Nunca mezclar varias.          ║
-║  3. El archivo debe contener: id, status, evidence,              ║
-║     cross_check, sheriff_result, files_touched, timestamp.       ║
-║  4. Sin este archivo nuevo → la salida NO puede ser PASS.        ║
-║  5. El guardián deniega si el checkpoint file no existe.         ║
-╚══════════════════════════════════════════════════════════════════╝
+PIPELINE/checkpoints/SALIDA_N_YYYY-MM-DD.md
 ```
 
-**Ejemplo de nombre:**  
-`PIPELINE/checkpoints/SALIDA_001_2026-08-26.md`  
-`PIPELINE/checkpoints/SALIDA_002_2026-08-26.md`  
-…  
-`PIPELINE/checkpoints/SALIDA_500_2026-XX-XX.md`
-
-**Total esperado al final:** exactamente **500 archivos** dentro de `PIPELINE/checkpoints/`.
+- Nunca sobrescribir.
+- Un archivo = una sola salida.
+- Sin este archivo → no puede ser PASS.
+- Al final: exactamente **9 archivos** de checkpoint.
 
 ---
 
-## REGLA UNIVERSAL (inviolable)
+## DSL DAG SCHEMA (obligatorio en las 9)
 
-- Cada **SALIDA** = **1 nodo DAG** obligatorio con:
-  1. `sheriff` (LAW + ANTI_SKIP + ANTI_FAKE_PASS + ANTI_HALLUCINATION + NO_TOUCH_PLAN)
-  2. `validador` (schema + evidence check + binary PASS)
-  3. `verificación` + **verificación cruzada**
-  4. `guardián` (fail-closed: DENY si no PASS)
-  - Además: `input_schema`, `output_schema`, **`checkpoint_file` (archivo NUEVO obligatorio)**
-- **PASS** solo con evidencia verificable + archivo de checkpoint creado.  
-- **NO** mezclar tareas. **NO** inventar. **NO** claim sin evidencia.  
-- Acción sobre archivos wordflow: **CREATE | COPY | REF | PLACEHOLDER | ENGANCHE** únicamente.  
-- Loop: GAP → DIAGNOSTICAR → RESOLVER → VERIFICAR → REGISTRAR → CONTINUAR.
-
-**Motor de 3 capas (por nodo):**  
-`SHERIFF → SENTINEL → JUDGE`
-
----
-
-## 1. ROOT STRUCTURE COMPLETO (repo truth @ main)
-
-```
-agentes/
-├── .cursor/
-├── .github/workflows/
-├── AGENTS.md
-├── GUIA-DESPLIEGUE-ZIP-UNIVERSAL.md
-├── GUIA_CUENTAS_REMOTE.md
-├── GUIA_CUENTA_B_REMOTE.md
-├── METODO_ZIP_COPY_DETERMINISTA.md
-├── PIPELINE/                    ← este PLAN + checkpoints/
-│   └── checkpoints/             ← AQUÍ se crean los 500 archivos nuevos
-├── README.md
-├── README_ARQUITECTURA.md
-├── README_FORENSIC_HANDOFF.md
-├── README_METHOD.md
-├── RENAME_NOTE.md
-├── SETUP_TOKEN_MOVIL.md
-├── agente-yaiwes/
-├── agents/
-├── code-programming-engine/
-├── control-layer/
-├── despliegue/
-├── docs/
-├── extensions/
-│   ├── wordflow/                ← ~380 blobs (core)
-│   ├── wordflow_kernel/         ← ~90 blobs
-│   ├── github_deploy/
-│   ├── maxbry_loop/
-│   └── source_evolution/
-├── groups/
-├── memory/
-├── scripts/
-├── tools/
-└── wordflow/
-```
-
-**Conteo forense (Paso 1):** 496 entries bajo prefix wordflow → ~450-490 blobs. Confirmado.
-
----
-
-## 2. DSL DAG SCHEMA — DEFINICIÓN OBLIGATORIA DE CADA NODO (SALIDA)
-
-**Toda salida 001–500** debe instanciar exactamente este schema. No hay excepciones.
+Cada salida instancia:
 
 ```yaml
-id: SALIDA_NNN
+id: SALIDA_N
 nombre: "..."
-tipo: CREATE | COPY | REF | PLACEHOLDER | ENGANCHE | AUDIT | WIRE | VALIDATE
-prioridad: P0 | P1 | P2
+tipo: CREATE | COPY | REF | PLACEHOLDER | ENGANCHE | VALIDATE
 
-input_schema:
-  type: object
-  required: [...]
-  properties: {...}
-
+input_schema: { ... }
 output_schema:
-  type: object
   required: [status, evidence, checkpoint_sha, cross_check]
-  properties:
-    status: {enum: [PASS, FAIL, WARNING, DEGRADED, BLOCKED, UNKNOWN]}
-    evidence: {type: array, items: string}
-    checkpoint_sha: string
-    cross_check: {type: object}
-    files_touched: array
 
 sheriff:
-  laws:
-    - NO_SKIP
-    - NO_ASSUME
-    - NO_HALLUCINATION
-    - NO_FAKE_PASS
-    - NO_REWRITE_LEGACY
-    - NO_TOUCH_PLAN
-  anti_skip: true
+  laws: [NO_SKIP, NO_ASSUME, NO_HALLUCINATION, NO_FAKE_PASS, NO_REWRITE_LEGACY, NO_TOUCH_PLAN]
   fail_closed: true
 
 validador:
@@ -195,192 +87,117 @@ validador:
   binary_pass: true
 
 verificación:
-  - type: tree | test | catalog | runtime | xray
-    command_or_ref: "..."
+  - type: tree | test | catalog | xray
 
 verificación_cruzada:
-  - against: component_catalog | connect_catalog | tree | previous_checkpoint
-    rule: "status/count/SHA debe coincidir o documentar GAP real"
+  - against: PLAN_100 | component_catalog | connect_catalog | tree
 
 guardián:
   on_fail: DENY
   on_pass: ALLOW_NEXT
 
-# OBLIGATORIO: crear archivo NUEVO
-checkpoint_file: PIPELINE/checkpoints/SALIDA_NNN_YYYY-MM-DD.md
-# Acción = CREATE (nunca update de un checkpoint anterior)
-
-archivos_afectados:
-  - path: extensions/wordflow/...
-    accion: CREATE | COPY | REF | PLACEHOLDER | ENGANCHE
-    nota: "..."
+checkpoint_file: PIPELINE/checkpoints/SALIDA_N_YYYY-MM-DD.md   # CREATE nuevo
 ```
 
 ---
 
-## 3. AUDITORÍA DEL PLAN — ¿ESTÁ DAÑADO?
+## DETALLE DE LAS 9 SALIDAS (basado en PLAN_100 + README)
 
-**Respuesta directa:** No está dañado.
+### SALIDA 1 — Nueva raíz completa (1º)
+- **Objetivo:** Materializar todas las carpetas del árbol definitivo de `PLAN_100_ESTRUCTURA_DEFINITIVA.md`.
+- **Acción:** CREATE carpetas + PLACEHOLDER.md (descripción + PENDIENTE_CODE) en hojas ESQ/MIX sin body. REF con SOURCE.md hacia paths canónicos.
+- **Prohibido:** Inventar implementación.
+- **Checkpoint:** CREATE `PIPELINE/checkpoints/SALIDA_1_YYYY-MM-DD.md`
+- **Evidencia:** tree de `agente-yaiwes/` completo vs árbol del PLAN_100.
 
-### 3.1 Por qué no ves 500 líneas de salidas listadas una por una
+### SALIDA 5 — DESPLIEGUE 1 (2º, justo después de Salida 1)
+- **Fuente:** `despliegue/` + `INSTRUCCIONES_GROK_OPCION_A.md` (u equivalente).
+- **Entregas:**
+  - capability registration (catalogs idempotente)
+  - pool / instance / metering (copy, no inventar)
+  - classifier_hook según doc
+  - `despliegue/manifests/deployment_01.yaml`
+  - `despliegue/auditoria/verification.yaml`
+- **Checkpoint:** CREATE nuevo archivo.
+- **Evidencia:** verification.yaml + status catalogs.
 
-El plan está escrito como **contrato + bloques**, no como lista de 500 títulos sueltos.  
-Esto es intencional y correcto para un documento maestro:
+### SALIDA 2 — Espejo motor → code-programming-engine/ (3º)
+- **Método:** COPY (mismos blob SHA o cp + commit). Origen no se borra.
+- **Origen → Destino:**
+  - `extensions/wordflow/engine/**` → `code-programming-engine/engine-modules/`
+  - `extensions/wordflow/standards/**` → `code-programming-engine/standards-forensic/`
+  - `extensions/wordflow/schemas/**` → `code-programming-engine/schema-contracts-io/`
+  - tests relevantes → `module-tests/`
+- **Checkpoint:** CREATE nuevo archivo.
+- **Evidencia:** SHA origen = destino.
 
-- Sección 4 → **001–050** detalladas (instanciación completa del schema).
-- Sección 5 → **051–500** definidas por bloques de 50, cada uno obligado a usar el mismo schema DSL DAG.
+### SALIDA 0 — Contrato
+- Lista nodos REAL / MIX / ESQ / REF.
+- `despliegue/auditoria/migration_plan.yaml` estado.
+- Checkpoint: CREATE nuevo.
 
-Si se listaran las 500 una por una con todo el schema, el archivo tendría decenas de miles de líneas y sería ilegible.  
-La definición contractual es suficiente y **no omite ninguna salida**.
+### SALIDA 3 — REFs a piezas REALES
+- SOURCE.md hacia: control-layer, reception, schemas, catalogs, gateway, openclaw/hermes stubs, maxbry_loop, github_deploy, etc.
+- No copiar body innecesario. Solo REF.
+- Checkpoint: CREATE nuevo.
 
-### 3.2 Cobertura real
+### SALIDA 4 — Docs mapa
+- ORIGIN_MAP.md, COPY_MANIFEST.json, READMEs por bloque principal.
+- Checkpoint: CREATE nuevo.
 
-| Elemento | ¿Presente en las 500? | Estado |
-|----------|-----------------------|--------|
-| Total = 500 (número único) | Sí | PASS |
-| Schema DSL completo (sheriff + validador + verificación cruzada + guardián) | Sí, obligatorio | PASS |
-| **Creación de archivo NUEVO de checkpoint por cada salida** | Sí, regla explícita | PASS |
-| Gaps residuales mapeados a salidas concretas | Sí | PASS |
-| Bloque NO TOCAR EL PLAN | Sí | PASS |
-| Nombre Agente Yaiwes v1 | Sí | PASS |
+### SALIDA 6 — Modular / binding
+- code-path-execution, programming-engine-binding, refs p01–p12 si existen.
+- Sin reimplementar monolito.
+- Checkpoint: CREATE nuevo.
 
-### 3.3 Gaps residuales (no eliminan salidas)
+### SALIDA 7 — Enganche LEGACY
+- Pocos archivos: catálogos/connect; marker LEGACY en wordflow viejo.
+- **No apagar hot path** (`extensions/wordflow`).
+- Checkpoint: CREATE nuevo.
 
-| Gap | Bloque destino |
-|-----|----------------|
-| intelligence_gateway = stub | 251–300 |
-| openclaw / hermes = stub | 251–300 |
-| fusion_minimax_kimi = placeholder | 301–350 |
-| CONN WIRED_NO_PASS / WIRED_DENY | 451–500 |
-| github_deploy = partial | 401–450 |
-| acquire_engine = partial | 351–400 / 401–450 |
-
-**Resultado auditoría:** el plan **no está dañado**. Tiene el número 500, el schema completo y la regla de archivo nuevo de checkpoint.
-
----
-
-## 4. SALIDAS 001–050 — FUNDACIÓN (detalle)
-
-Todas siguen el schema de la sección 2 y **crean archivo nuevo de checkpoint**.
-
-### SALIDA 001 — Root map + IDs forenses
-- tipo: AUDIT + CREATE
-- sheriff / validador / verificación cruzada / guardián: completos
-- **checkpoint:** CREATE `PIPELINE/checkpoints/SALIDA_001_YYYY-MM-DD.md`
-
-### SALIDA 002 — component_catalog.json v1.1.1 freeze
-- tipo: REF
-- **checkpoint:** CREATE nuevo archivo
-
-### SALIDA 003 — connect_catalog.json v1.7.1 freeze
-- tipo: REF
-- **checkpoint:** CREATE nuevo archivo
-
-### SALIDA 004 — Checkpoint store schema
-- tipo: REF
-- **checkpoint:** CREATE nuevo archivo
-
-### SALIDA 005 — Fail-closed core
-- tipo: REF + ENGANCHE
-- **checkpoint:** CREATE nuevo archivo
-
-### SALIDA 006 — Sheriff core
-- tipo: REF
-- **checkpoint:** CREATE nuevo archivo
-
-### SALIDA 007 — Verdict authority
-- tipo: REF
-- **checkpoint:** CREATE nuevo archivo
-
-### SALIDA 008 — Copy-first enforcer
-- tipo: REF
-- **checkpoint:** CREATE nuevo archivo
-
-### SALIDA 009 — Forensic core
-- tipo: REF
-- **checkpoint:** CREATE nuevo archivo
-
-### SALIDA 010 — Repo truth
-- tipo: REF
-- **checkpoint:** CREATE nuevo archivo
-
-### SALIDA 011–020 — Schemas base (10 salidas)
-Cada una = 1 schema. **Cada una crea su propio archivo de checkpoint nuevo.**
-
-### SALIDA 021–030 — Engine core files (10 salidas)
-code_path_runner, main_loop, orchestrator_v1, goal_lock, input_compiler, task_classifier, dual_compiler, validator, sentinel, recovery.  
-**Cada una crea su propio archivo de checkpoint nuevo.**
-
-### SALIDA 031–040 — Kernel bootstrap + instance (10 salidas)
-**Cada una crea su propio archivo de checkpoint nuevo.**
-
-### SALIDA 041–045 — Reception links (5 salidas)
-**Cada una crea su propio archivo de checkpoint nuevo.**
-
-### SALIDA 046–050 — Catalog frontiers + CI smoke (5 salidas)
-**Cada una crea su propio archivo de checkpoint nuevo.**
-
-**Bloque 001-050 → 50 archivos nuevos de checkpoint + X-Ray parcial obligatorio.**
+### SALIDA 8 — Cierre 100%
+- Checklist §4.1–4.3 de PLAN_100.
+- `despliegue/auditoria/cierre_estructura_100.yaml`.
+- Verificar: cero nodos faltantes del árbol, Despliegue 1 auditado, wordflow LEGACY intacto.
+- Checkpoint: CREATE nuevo.
+- **PASS solo con evidencia total de las 9.**
 
 ---
 
-## 5. ROADMAP 051–500
+## QUÉ NO SE TOCA (auditoría forense)
 
-Cada una de las 450 salidas restantes **instancia el mismo schema** y **DEBE crear un archivo NUEVO** en `PIPELINE/checkpoints/`.
-
-| Rango | Cantidad | Acción dominante |
-|-------|----------|------------------|
-| 051-100 | 50 | REF + ENGANCHE + CREATE checkpoint |
-| 101-150 | 50 | REF + COPY-FIRST + CREATE checkpoint |
-| 151-200 | 50 | REF + CREATE checkpoint |
-| 201-250 | 50 | REF + CREATE checkpoint |
-| 251-300 | 50 | PLACEHOLDER → ENGANCHE + CREATE checkpoint |
-| 301-350 | 50 | REF + ENGANCHE + CREATE checkpoint |
-| 351-400 | 50 | REF + ENGANCHE + CREATE checkpoint |
-| 401-450 | 50 | ENGANCHE real + CREATE checkpoint |
-| 451-500 | 50 | VALIDATE + CREATE checkpoint |
-| **TOTAL 051-500** | **450** | **450 archivos nuevos** |
-
-**SALIDA 500 = CERTIFICATION** → solo PASS cuando existan los 500 archivos de checkpoint + evidencia total.
+| Ámbito | Estado | Acción |
+|--------|--------|--------|
+| extensions/wordflow (materialized) | Ya existe y opera | **REF / no tocar** |
+| extensions/wordflow_kernel (materialized) | Ya existe | **REF / no tocar** |
+| Stubs (intelligence_gateway, openclaw, hermes) | Documentados en catalogs | Dejar o PLACEHOLDER documentado |
+| Partials (github_deploy, acquire) | Catalog status partial | Solo si Despliegue 1 lo exige |
+| 400+ archivos wordflow | No requieren rewrite | **NO cambiar** |
 
 ---
 
-## 6. ARCHIVOS WORDFLOW — ACCIÓN GLOBAL
+## CRITERIO DE CIERRE
 
-| Ámbito | Acción dominante |
-|--------|------------------|
-| component_catalog / connect_catalog | REF |
-| engine/*.py | REF |
-| standards/*.py | REF |
-| schemas/*.json | REF |
-| tests/* | REF + CREATE si gap real |
-| wordflow_kernel/* | REF + ENGANCHE |
-| **PIPELINE/checkpoints/** | **CREATE (500 archivos nuevos)** |
-| Este PLAN | Protegido por bloque NO TOCAR |
-
-**Prohibido:** reescribir archivos legacy. Solo COPY-FIRST o ENGANCHE.
+- [ ] Las 9 salidas con checkpoint nuevo cada una
+- [ ] Árbol agente-yaiwes completo según PLAN_100
+- [ ] Despliegue 1 hecho y verification.yaml
+- [ ] Espejo motor o GAP explícito
+- [ ] extensions/wordflow LEGACY intacto
+- [ ] ESQ = solo PLACEHOLDER + descripción (sin código inventado)
 
 ---
 
-## 7. CHECKPOINT DE PASO 2
+## ESTADO ACTUAL
 
-| Campo | Valor |
-|-------|-------|
-| **ID** | PLAN-PASO2-2026-08-26-AUDIT |
-| **Nombre agente** | **Agente Yaiwes v1** |
-| **Total salidas** | **500** |
-| **Archivos de checkpoint esperados** | **500 (uno nuevo por salida)** |
-| **Status** | **PASS** (contrato + regla de archivo nuevo + auditoría) |
-| **Next** | PASO 3 + DESPLIEGUE 1 |
+| Ítem | Estado |
+|------|--------|
+| PLAN_100 en main | HECHO |
+| Este plan alineado | HECHO |
+| Salida 1 (raíz completa) | PENDIENTE |
+| Salida 5 (Despliegue 1) | PENDIENTE — siguiente tras Salida 1 |
+| Salida 2 (espejo) | PENDIENTE |
 
----
+**Siguiente orden del Director:** ejecutar **SALIDA 1**, luego **SALIDA 5**.
 
-## 8. NO-STOP
-
-GAP → DIAGNOSTICAR → RESOLVER → VERIFICAR → REGISTRAR → CONTINUAR.  
-1 tarea = 1 salida.  
-**Cada salida = 1 archivo NUEVO de checkpoint.**  
-Fail-closed. No tocar el plan.
-
-**TOTAL DE SALIDAS = 500**  
-**TOTAL DE ARCHIVOS DE CHECKPOINT A CREAR = 500**
+**TOTAL DE SALIDAS = 9**  
+**TOTAL DE ARCHIVOS DE CHECKPOINT A CREAR = 9**
