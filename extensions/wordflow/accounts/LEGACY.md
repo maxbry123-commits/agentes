@@ -1,0 +1,1 @@
+S4 source preserved. Destination: agente-yaiwes/deploy-publish/multi-account-registry. See PIPELINE/PASO3_ORGANIZACION_CODIGO_REAL_YAIWES.md.
