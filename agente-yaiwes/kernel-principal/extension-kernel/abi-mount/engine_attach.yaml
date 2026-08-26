@@ -1,0 +1,22 @@
+# engine_attach.yaml — G7 / gap G-S2-02
+# Policy for optional MemoryPort / PlanningPort hooks. 0% LLM defaults.
+schema_version: "1.0"
+allow_real_engines: false
+planning:
+  enabled: true
+  port: FakeOpenClawPlanner
+  on_stages: ["input_plan"]
+  auto_accept_proposals: false
+memory:
+  enabled: true
+  port: FakeHermesMemory
+  refresh_on_ping: false
+  refresh_every_n_pings: 0
+  on_focus_degraded: false
+push_ping:
+  openclaw_on_ping: false
+  hermes_on_ping: false
+  interval_s: 15
+classifier:
+  engine_hints_allowed: true
+  network_calls: false
