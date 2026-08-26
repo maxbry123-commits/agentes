@@ -1,0 +1,61 @@
+{
+  "artifact_id": "CODE_PROGRAMMING.ficha_validate_c0.v1",
+  "version": "1.0.0",
+  "estado": "active",
+  "contract_hash": "sha256:PENDING",
+  "categoria": "programming",
+  "etapa": "C0",
+  "abi_version": "2.0",
+  "extension_type": "code_programming_module",
+  "kernel_min": "1.0.0",
+  "mount_mode": "sidecar",
+  "load_priority": 5,
+  "contrato": {
+    "rol": "gate",
+    "consume": {
+      "datatype": {"family": "programming", "type": "ficha_json", "version": 1},
+      "schema_uri": "maxbry://schemas/ficha_json/v1"
+    },
+    "expone": {
+      "datatype": {"family": "programming", "type": "ficha_validation_result", "version": 1},
+      "schema_uri": "maxbry://schemas/ficha_validation_result/v1"
+    },
+    "input_map": {"ficha": "dict|path"},
+    "output_map": {"ok": "bool", "errors": "list[str]"}
+  },
+  "ejecucion": {
+    "kind": "code",
+    "transport": "importlib",
+    "runtime_type": "compute",
+    "llm_ratio": 0.0,
+    "idempotente": true,
+    "entry_point": "code_programming_engine.fichas.ficha_validate_c0:validate_ficha"
+  },
+  "perfiles": {
+    "strict_forensic": {"habilitada": true, "iteraciones": 1},
+    "fast": {"habilitada": true, "iteraciones": 1}
+  },
+  "activacion": {
+    "eventos": ["ficha.register", "capability.register"],
+    "wake_words": ["validate_ficha", "ficha_validate"],
+    "condicion": "plane == programming"
+  },
+  "evidencia": {
+    "produce": ["L1_static"],
+    "destino": "runtime/evidence/code_programming/fichas/"
+  },
+  "failover": {
+    "sustituible_por": [],
+    "compensacion": "recovery.plan_fail_closed"
+  },
+  "seguridad": {
+    "sandbox": "process",
+    "permisos": ["read_contracts"],
+    "limites": {"timeout_ms": 5000, "deadline_ms": 8000, "max_memoria_mb": 64}
+  },
+  "llm_control": "DENY",
+  "deterministic": true,
+  "plane": "programming",
+  "workstream": "C0",
+  "option_a": true
+}

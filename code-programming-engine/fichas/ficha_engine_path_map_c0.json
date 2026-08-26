@@ -1,0 +1,48 @@
+{
+  "artifact_id": "CODE_PROGRAMMING.engine_path_map_c0.v1",
+  "version": "1.0.0",
+  "estado": "active",
+  "contract_hash": "sha256:PENDING",
+  "categoria": "programming",
+  "etapa": "C0",
+  "abi_version": "2.0",
+  "extension_type": "code_programming_module",
+  "kernel_min": "1.0.0",
+  "mount_mode": "reference",
+  "load_priority": 3,
+  "contrato": {
+    "rol": "source",
+    "consume": {
+      "datatype": {"family": "programming", "type": "none", "version": 1},
+      "schema_uri": "maxbry://schemas/none/v1"
+    },
+    "expone": {
+      "datatype": {"family": "programming", "type": "path_map", "version": 1},
+      "schema_uri": "maxbry://schemas/path_map/v1"
+    },
+    "input_map": {},
+    "output_map": {"legacy_to_canonical": "map"}
+  },
+  "ejecucion": {
+    "kind": "code",
+    "transport": "reference",
+    "runtime_type": "compute",
+    "llm_ratio": 0.0,
+    "idempotente": true,
+    "entry_point": "code_programming_engine/engine_path_map_c0.yaml"
+  },
+  "activacion": {
+    "eventos": ["deploy.plan", "module.resolve"],
+    "wake_words": ["path_map", "engine_path_map"],
+    "condicion": "plane == programming"
+  },
+  "evidencia": {
+    "produce": ["L1_static"],
+    "destino": "runtime/evidence/code_programming/"
+  },
+  "llm_control": "DENY",
+  "deterministic": true,
+  "plane": "programming",
+  "workstream": "C0",
+  "option_a": true
+}
