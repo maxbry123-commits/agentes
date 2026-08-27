@@ -15,6 +15,13 @@ class TestMission(unittest.TestCase):
         self.assertTrue(m["ok"])
         self.assertEqual(m["mission_id"], m["lock"]["lock_id"])
 
+    def test_raw_literal_resolves_required_mission_fields(self):
+        raw = "crear modulo de validacion determinista sin llm"
+        m = mission_from_raw(raw)
+        self.assertTrue(m["ok"], msg=str(m))
+        self.assertEqual(m["pack"]["contract"]["objective"], raw)
+        self.assertEqual(m["pack"]["contract"]["success_criteria"], raw)
+
     def test_enforce_allow(self):
         m = mission_from_raw(
             "objective: allow path\nsuccess: ok\nconstraint: green\n"
