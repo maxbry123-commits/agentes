@@ -6,20 +6,20 @@
 
 | ID | Gap | Destination | Status | Evidence |
 |---|---|---|---|---|
-| G1 | SYMBOL_INDEX_PROGRAMMING.md | `agente-yaiwes/control-governance/symbol-index-wiring-graph/` | CLOSED | Real GitHub Actions run `33032630757`, job `98388384120`: Export G1 + Verify G1 PASS. Artifact `9630814224`, digest `sha256:f2f1ae8163676eeefe6dbe333c31e078ef416e965e51a03b1fe565e4e60746a2`. |
+| G1 | SYMBOL_INDEX_PROGRAMMING.md | `agente-yaiwes/control-governance/symbol-index-wiring-graph/` | CLOSED | Final deterministic verification run `33032745705`, job `98388725584`: Export G1 + Verify G1 PASS. Artifact `9630853631`, digest `sha256:2d75ed90824e9dd8b91c4da234d279a5fcd7e023d8faf6b99d8df6285ef9465a`. Artifact inspection confirms 462 symbols and repository-relative paths. |
 | G2 | Stage C-19 schemas | `agente-yaiwes/code-programming-engine/schema-contracts-io/` | OPEN | Contract work exists for real C-19 input signature; residual stage-specific schemas remain undocumented where source does not expose enough evidence. |
-| G3 | test→asserts index | `agente-yaiwes/code-programming-engine/module-tests/` | CLOSED | Real GitHub Actions run `33032630757`, job `98388384120`: Export G3 + Verify G3 PASS. Artifact `9630814224`, digest `sha256:f2f1ae8163676eeefe6dbe333c31e078ef416e965e51a03b1fe565e4e60746a2`. |
-| G4 | Real CI log/trace | `agente-yaiwes/observability/trace-history/` | CLOSED | Real run trace recorded at `agente-yaiwes/observability/trace-history/G1_G3_VERIFY_RUN_33032630757.md`; run/job/step results and artifact digest preserved. |
+| G3 | test→asserts index | `agente-yaiwes/code-programming-engine/module-tests/` | CLOSED | Final verification run `33032745705`, job `98388725584`: Export G3 + Verify G3 PASS. Artifact `9630853631`, digest `sha256:2d75ed90824e9dd8b91c4da234d279a5fcd7e023d8faf6b99d8df6285ef9465a`. |
+| G4 | Real CI log/trace | `agente-yaiwes/observability/trace-history/` | CLOSED | Real final trace recorded at `agente-yaiwes/observability/trace-history/G1_G3_VERIFY_RUN_33032745705.md`; run/job/steps and artifact digest preserved. |
 | G5 | p01→p12 E2E wire | `agente-yaiwes/code-programming-engine/code-path-execution/` | OPEN | No verified complete p01_*…p12_* source modules found; do not invent 12 modules. |
 | G6 | Real intelligence adapter | `agente-yaiwes/execution-engine-pool/adapter-layer/` | CLOSED | `OpenClawHTTPGateway` implemented at the runtime boundary, registered as plugin, and verified by GitHub Actions evidence in `PIPELINE/checkpoints/OPENCLAW_CABLE_CI_PASS.md`. |
 | G7 | OpenClaw Wordflow route/body integration | `agente-yaiwes/execution-engine-pool/auxiliary-role-agents/` | CLOSED | Existing `OpenClawEngine` was left intact; external OpenClaw route/adapter/cable added; GitHub Actions PASS proves `EnginePort → IntelligenceGateway → OpenClaw Gateway` contract. Hermes intentionally excluded. |
 
 ## Latest recovery evidence
 - G1/G3/G4 checkpoint: `PIPELINE/checkpoints/G1_G3_G4_CI_RECOVERY_PASS_2026-08-26.md`.
-- CI trace: `agente-yaiwes/observability/trace-history/G1_G3_VERIFY_RUN_33032630757.md`.
+- Final CI trace: `agente-yaiwes/observability/trace-history/G1_G3_VERIFY_RUN_33032745705.md`.
 - Workflow: `.github/workflows/verify-gap-indexes.yml`.
-- Verified run: `33032630757` / job `98388384120` / SHA `4f7edfdcd21d0b482be8b814242b0205ca34a5c6`.
-- Artifact: `g1-g3-verified-evidence-33032630757` / ID `9630814224` / digest `sha256:f2f1ae8163676eeefe6dbe333c31e078ef416e965e51a03b1fe565e4e60746a2`.
+- Final verified run: `33032745705` / job `98388725584` / SHA `5ded92190dfa47ec427ea2566b309fcd1698d8f7`.
+- Final artifact: `g1-g3-verified-evidence-33032745705` / ID `9630853631` / digest `sha256:2d75ed90824e9dd8b91c4da234d279a5fcd7e023d8faf6b99d8df6285ef9465a`.
 
 ## Evidence cross-check
 - Canonical source: `PIPELINE/PASO3_ORGANIZACION_CODIGO_REAL_YAIWES.md`.
