@@ -3,49 +3,51 @@
 ## 0. Identidad
 - Repository: `maxbry123-commits/agentes`
 - Branch: `main`
-- Closing commit: `4f7edfdcd21d0b482be8b814242b0205ca34a5c6`
+- Verified head: `5ded92190dfa47ec427ea2566b309fcd1698d8f7`
 - CI workflow: `.github/workflows/verify-gap-indexes.yml`
-- Workflow run: `33032630757`
-- Verify job: `98388384120`
-- Evidence artifact: `g1-g3-verified-evidence-33032630757`
-- Artifact ID: `9630814224`
-- Artifact digest: `sha256:f2f1ae8163676eeefe6dbe333c31e078ef416e965e51a03b1fe565e4e60746a2`
-- Artifact expiration: `2026-11-25T02:13:56Z`
+- Workflow run: `33032745705`
+- Verify job: `98388725584`
+- Evidence artifact: `g1-g3-verified-evidence-33032745705`
+- Artifact ID: `9630853631`
+- Artifact digest: `sha256:2d75ed90824e9dd8b91c4da234d279a5fcd7e023d8faf6b99d8df6285ef9465a`
+- Artifact expiration: `2026-11-25T02:16:03Z`
 
-## 1. Incidente detectado
-Run manual anterior `verify-gap-indexes #6` terminó con exit code 1.
-La evidencia real del job mostró que el fallo ocurría en `Export G1 symbol index`:
-`ModuleNotFoundError: No module named 'extensions'`.
-La causa fue el `sys.path` de Python al ejecutar directamente un script ubicado en `Refactoria/G1/new/`.
-No fue un fallo del índice AST ni del hot path.
+## 1. Incidente detectado y causa raíz
+`verify-gap-indexes #6` terminó con exit code 1.
+El log real del job identificó exactamente:
+`ModuleNotFoundError: No module named 'extensions'`
 
-## 2. Parche de recuperación aplicado
-### G1
-Se preservó primero el source pre-parche en:
-`Refactoria/G1/source/build_programming_symbol_index.py`
+La causa era el `sys.path` de Python al ejecutar directamente un script ubicado en `Refactoria/G1/new/`. El script no registraba la raíz del repositorio antes de importar el índice canónico.
 
-Luego `Refactoria/G1/new/build_programming_symbol_index.py` fue corregido para registrar explícitamente la raíz del repositorio en `sys.path` antes de importar:
-`extensions.wordflow.standards.symbol_index`.
+## 2. Parches aplicados
+### G1 — bootstrap de importación
+- Source conservado en `Refactoria/G1/source/build_programming_symbol_index.py`.
+- `Refactoria/G1/new/build_programming_symbol_index.py` registra la raíz del repositorio antes del import.
 
-La implementación sigue reutilizando `build_symbol_index()` y conserva los roots reales:
-- `extensions/wordflow/engine`
-- `extensions/wordflow/standards`
+### G1 — determinismo cross-run
+La primera ejecución PASS generaba paths absolutos del runner (`/home/runner/...`). Eso no era suficientemente reproducible.
 
-### CI
-`.github/workflows/verify-gap-indexes.yml` fue convertido a verificación read-only:
+Se conservó otro source exacto en:
+`Refactoria/G1/source/build_programming_symbol_index_pre_normalize.py`.
+
+El `new/` ahora normaliza todos los paths de símbolos a paths POSIX relativos al repositorio, manteniendo el `build_symbol_index()` canónico.
+
+### CI — recuperación
+`.github/workflows/verify-gap-indexes.yml` ahora es read-only:
 - `permissions: contents: read`
-- elimina `git push` desde `GITHUB_TOKEN`
-- conserva la ejecución real de G1/G3
-- sube evidencia mediante `actions/upload-artifact@v4`
-
-Esto elimina tanto el fallo de importación como la posibilidad de que la evidencia dependa de un push automatizado.
+- no hace `git push` con `GITHUB_TOKEN`
+- genera G1/G3
+- verifica los artefactos
+- crea evidencia con `run_id`
+- sube un artifact real con `actions/upload-artifact@v4`
+- verifica que `extensions/wordflow/engine/code_path_runner.py` no cambió.
 
 ## 3. Verificación cruzada ×3
-### V1 — Source vs New
-PASS — el source pre-parche permanece conservado y el cambio de G1 se limita al bootstrap de importación.
+### V1 — Source → New
+PASS. Los sources pre-cambio están conservados en `Refactoria/G1/source/` y la modificación está limitada al bootstrap de importación y normalización de paths.
 
 ### V2 — CI real
-PASS — GitHub Actions run `33032630757`:
+PASS — run `33032745705`, job `98388725584`:
 - Export G1 symbol index: PASS
 - Verify G1 artifact: PASS
 - Export G3 test assert index: PASS
@@ -54,20 +56,23 @@ PASS — GitHub Actions run `33032630757`:
 - Upload G1/G3 evidence artifact: PASS
 - Verify protected hot path unchanged: PASS
 
-### V3 — Evidencia
-PASS — artifact real `9630814224` existe, no está expirado y tiene digest SHA-256 registrado arriba.
+### V3 — evidencia/integridad
+PASS — artifact real `9630853631` existe, no está expirado y tiene digest:
+`sha256:2d75ed90824e9dd8b91c4da234d279a5fcd7e023d8faf6b99d8df6285ef9465a`
+
+La inspección del artifact confirmó que el índice G1 contiene paths relativos como `extensions/wordflow/engine/code_path_runner.py`, no paths absolutos del runner.
 
 ## 4. Resultados
-- G1: **CLOSED / PASS** — índice AST generado y validado; runner/pipeline symbols verificados.
-- G3: **CLOSED / PASS** — índice test→assert generado y todos los archivos indexados pasan parse.
-- G4: **CLOSED / PASS** — ejecución CI real, logs verificables y artifact real registrados.
+- G1: **CLOSED / PASS** — AST index real, 462 símbolos, paths relativos deterministas y runner/pipeline symbols presentes.
+- G3: **CLOSED / PASS** — test→assert index real y todos los archivos indexados pasan parse.
+- G4: **CLOSED / PASS** — run/log/artifact reales registrados.
 
 ## 5. Hot path
 `extensions/wordflow/engine/code_path_runner.py`:
 **INTACTO**.
-La propia ejecución CI terminó `Verify protected hot path unchanged: success`.
+El workflow ejecutó `Verify protected hot path unchanged` con PASS.
 
-## 6. Reglas que permanecen activas
+## 6. Reglas activas
 - GitHub = truth.
 - FAIL-CLOSED.
 - NO_INVENTAR.
@@ -75,35 +80,33 @@ La propia ejecución CI terminó `Verify protected hot path unchanged: success`.
 - NO_APAGAR_MONOLITO.
 - REUSE > PATCH > ADAPT > GENERATE.
 - No duplicar `goal_lock`, `cognitive_loop`, `evidence_packet`.
-- Método de trabajo/plugin: los artefactos registrados no se editan para añadir cableados posteriores; se conectan mediante el contrato/plugin registrado.
+- Método de trabajo/plugin aplicado.
 - Hermes permanece excluido por instrucción del Director.
 
 ## 7. Plan y guía
-Plan canónico:
-`PIPELINE/PLAN_YAIWES_AGENTE_WORDFLOW.md`
+Plan: `PIPELINE/PLAN_YAIWES_AGENTE_WORDFLOW.md`
 
-Guía de método/plugin:
-`Método de trabajo/GUIA_REGISTRO_PLUGINS_Y_CABLEADO.md`
+Guía: `Método de trabajo/GUIA_REGISTRO_PLUGINS_Y_CABLEADO.md`
 
-## 8. Recuperación
+## 8. Parche de recuperación
 Si G1/G3 vuelven a fallar:
 1. conservar el último artifact real;
-2. restaurar únicamente desde `Refactoria/G1/source/` para G1;
-3. comparar `source/` → `new/`;
-4. ejecutar el workflow;
-5. no modificar `extensions/wordflow/engine/code_path_runner.py` para resolver el problema;
-6. no declarar PASS sin un run y artifact reales.
+2. comparar el último `Refactoria/G1/source/` con `Refactoria/G1/new/`;
+3. ejecutar `verify-gap-indexes`;
+4. validar digest del artifact;
+5. no tocar `extensions/wordflow/engine/code_path_runner.py`;
+6. no declarar PASS sin run y artifact reales.
 
-## 9. Prompt de gaps en resolución
-G1: export real AST reutilizando `build_symbol_index()`.
-G2: schemas C-19 únicamente para stages realmente nombrados por el código.
+## 9. Prompt G1–G7 en resolución
+G1: export AST real con `build_symbol_index()`.
+G2: schemas C-19 solo para stages nombrados por código.
 G3: índice test→assert reproducible.
-G4: evidencia CI real, sin logs inventados.
-G5: p01→p12 solo con source real; sin módulos inventados.
+G4: evidencia CI real.
+G5: p01→p12 solo con source real.
 G6: adapters solo con source/SDK real.
-G7: bodies OpenClaw/Hermes solo con source real; Hermes excluido en este loop.
+G7: bodies solo con source real; Hermes excluido en este loop.
 
-## 10. Estado al checkpoint
+## 10. Estado
 G1 = CLOSED
 G3 = CLOSED
 G4 = CLOSED
