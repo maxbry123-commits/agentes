@@ -4,7 +4,9 @@ on:
   push:
     paths:
       - 'Refactoria/G1/**'
+      - 'Refactoria/G2/**'
       - 'Refactoria/G3/**'
+      - 'agente-yaiwes/code-programming-engine/schema-contracts-io/**'
       - 'extensions/wordflow/engine/**'
       - 'extensions/wordflow/standards/**'
       - 'extensions/wordflow/tests/**'
@@ -25,6 +27,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Install schema validator
+        run: python -m pip install --disable-pip-version-check jsonschema
 
       - name: Export G1 symbol index
         run: python Refactoria/G1/new/build_programming_symbol_index.py
@@ -34,6 +38,9 @@ jobs:
           test -s agente-yaiwes/control-governance/symbol-index-wiring-graph/SYMBOL_INDEX_PROGRAMMING.md
           test -s agente-yaiwes/control-governance/symbol-index-wiring-graph/SYMBOL_INDEX_PROGRAMMING.json
           grep -E 'code_path_runner|run_code_path|CodePathError' agente-yaiwes/control-governance/symbol-index-wiring-graph/SYMBOL_INDEX_PROGRAMMING.md
+
+      - name: Validate G2 C19 schemas
+        run: python Refactoria/G2/new/validate_c19_schemas.py
 
       - name: Export G3 test assert index
         run: python Refactoria/G3/new/build_test_assert_index.py
@@ -53,8 +60,8 @@ jobs:
       - name: Build verified evidence
         run: |
           mkdir -p PIPELINE/checkpoints
-          cat > PIPELINE/checkpoints/G1_G3_CI_PASS.md <<EOF
-          # G1/G3 CI evidence
+          cat > PIPELINE/checkpoints/G1_G2_G3_CI_PASS.md <<EOF
+          # G1/G2/G3 CI evidence
 
           - workflow: verify-gap-indexes
           - commit: $GITHUB_SHA
@@ -62,22 +69,24 @@ jobs:
           - run_attempt: $GITHUB_RUN_ATTEMPT
           - result: PASS
           - G1: deterministic symbol index generated and checked for runner/pipeline symbols
+          - G2: all C19 schema files passed Draft 2020-12 schema validation and every example validated
           - G3: deterministic test→assert index generated and all indexed test files parsed
           - evidence_mode: GitHub Actions artifact
           - hot_path: extensions/wordflow/engine/code_path_runner.py was not modified by this workflow
           EOF
 
-      - name: Upload G1/G3 evidence artifact
+      - name: Upload G1/G2/G3 evidence artifact
         uses: actions/upload-artifact@v4
         with:
-          name: g1-g3-verified-evidence-${{ github.run_id }}
+          name: g1-g2-g3-verified-evidence-${{ github.run_id }}
           if-no-files-found: error
           path: |
             agente-yaiwes/control-governance/symbol-index-wiring-graph/SYMBOL_INDEX_PROGRAMMING.md
             agente-yaiwes/control-governance/symbol-index-wiring-graph/SYMBOL_INDEX_PROGRAMMING.json
+            agente-yaiwes/code-programming-engine/schema-contracts-io/C19_*.schema.json
             agente-yaiwes/code-programming-engine/module-tests/TEST_ASSERT_INDEX.md
             agente-yaiwes/code-programming-engine/module-tests/TEST_ASSERT_INDEX.json
-            PIPELINE/checkpoints/G1_G3_CI_PASS.md
+            PIPELINE/checkpoints/G1_G2_G3_CI_PASS.md
 
       - name: Verify protected hot path unchanged
         run: git diff --exit-code -- extensions/wordflow/engine/code_path_runner.py
