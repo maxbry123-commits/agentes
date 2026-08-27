@@ -23,9 +23,25 @@ OUT = ROOT / "agente-yaiwes/control-governance/symbol-index-wiring-graph"
 ROOTS = [ROOT / "extensions/wordflow/engine", ROOT / "extensions/wordflow/standards"]
 
 
+def _relative_payload(payload: dict) -> dict:
+    """Normalize scanner paths to repository-relative POSIX paths."""
+    normalized: dict = {}
+    for name, hits in payload.items():
+        rows = []
+        for hit in hits:
+            raw = Path(str(hit["path"]))
+            try:
+                rel = raw.resolve().relative_to(ROOT.resolve()).as_posix()
+            except ValueError:
+                rel = raw.as_posix()
+            rows.append({"name": hit["name"], "kind": hit["kind"], "path": rel, "lineno": hit["lineno"]})
+        normalized[name] = rows
+    return normalized
+
+
 def main() -> None:
     idx = build_symbol_index(ROOTS, limit_files=500, use_cache=False, use_disk=False)
-    payload = idx.to_payload()
+    payload = _relative_payload(idx.to_payload())
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / "SYMBOL_INDEX_PROGRAMMING.json").write_text(json.dumps({"roots":[str(p.relative_to(ROOT)) for p in ROOTS], "symbols":payload}, indent=2, sort_keys=True)+"\n", encoding="utf-8")
     lines = ["# SYMBOL INDEX — PROGRAMMING", "", "Generated deterministically by `Refactoria/G1/new/build_programming_symbol_index.py`.", "", "Roots:"]
