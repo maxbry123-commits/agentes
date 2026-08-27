@@ -13,9 +13,10 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
-# Recovery-loop trigger: this workflow is intentionally self-contained; evidence is written only after real execution.
+# Recovery-loop verification is read-only. Real evidence is uploaded as an artifact;
+# this workflow never pushes with GITHUB_TOKEN.
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -24,14 +25,19 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
       - name: Export G1 symbol index
         run: python Refactoria/G1/new/build_programming_symbol_index.py
+
       - name: Verify G1 artifact
         run: |
           test -s agente-yaiwes/control-governance/symbol-index-wiring-graph/SYMBOL_INDEX_PROGRAMMING.md
+          test -s agente-yaiwes/control-governance/symbol-index-wiring-graph/SYMBOL_INDEX_PROGRAMMING.json
           grep -E 'code_path_runner|run_code_path|CodePathError' agente-yaiwes/control-governance/symbol-index-wiring-graph/SYMBOL_INDEX_PROGRAMMING.md
+
       - name: Export G3 test assert index
         run: python Refactoria/G3/new/build_test_assert_index.py
+
       - name: Verify G3 artifact
         run: |
           test -s agente-yaiwes/code-programming-engine/module-tests/TEST_ASSERT_INDEX.md
@@ -39,11 +45,12 @@ jobs:
           python - <<'PY'
           import json
           p='agente-yaiwes/code-programming-engine/module-tests/TEST_ASSERT_INDEX.json'
-          d=json.load(open(p))
+          d=json.load(open(p, encoding='utf-8'))
           assert d['file_count'] >= 1
           assert all(x['parse'] == 'PASS' for x in d['files'])
           PY
-      - name: Record verified evidence
+
+      - name: Build verified evidence
         run: |
           mkdir -p PIPELINE/checkpoints
           cat > PIPELINE/checkpoints/G1_G3_CI_PASS.md <<EOF
@@ -51,12 +58,26 @@ jobs:
 
           - workflow: verify-gap-indexes
           - commit: $GITHUB_SHA
+          - run_id: $GITHUB_RUN_ID
+          - run_attempt: $GITHUB_RUN_ATTEMPT
           - result: PASS
           - G1: deterministic symbol index generated and checked for runner/pipeline symbols
           - G3: deterministic test→assert index generated and all indexed test files parsed
+          - evidence_mode: GitHub Actions artifact
+          - hot_path: extensions/wordflow/engine/code_path_runner.py was not modified by this workflow
           EOF
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+users.noreply.github.com'
-          git add agente-yaiwes/control-governance/symbol-index-wiring-graph/SYMBOL_INDEX_PROGRAMMING.md agente-yaiwes/control-governance/symbol-index-wiring-graph/SYMBOL_INDEX_PROGRAMMING.json agente-yaiwes/code-programming-engine/module-tests/TEST_ASSERT_INDEX.md agente-yaiwes/code-programming-engine/module-tests/TEST_ASSERT_INDEX.json PIPELINE/checkpoints/G1_G3_CI_PASS.md
-          git diff --cached --quiet || git commit -m 'ci: record verified G1 G3 artifacts'
-          git push
+
+      - name: Upload G1/G3 evidence artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: g1-g3-verified-evidence-${{ github.run_id }}
+          if-no-files-found: error
+          path: |
+            agente-yaiwes/control-governance/symbol-index-wiring-graph/SYMBOL_INDEX_PROGRAMMING.md
+            agente-yaiwes/control-governance/symbol-index-wiring-graph/SYMBOL_INDEX_PROGRAMMING.json
+            agente-yaiwes/code-programming-engine/module-tests/TEST_ASSERT_INDEX.md
+            agente-yaiwes/code-programming-engine/module-tests/TEST_ASSERT_INDEX.json
+            PIPELINE/checkpoints/G1_G3_CI_PASS.md
+
+      - name: Verify protected hot path unchanged
+        run: git diff --exit-code -- extensions/wordflow/engine/code_path_runner.py
