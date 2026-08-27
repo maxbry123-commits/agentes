@@ -8,10 +8,17 @@ plugin/contract connection rather than editing the exported artifact.
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
-from extensions.wordflow.standards.symbol_index import build_symbol_index
 
 ROOT = Path(__file__).resolve().parents[3]
+# Script entrypoints are launched from their own directory by Python. Register the
+# repository root before importing the canonical plugin implementation so the
+# exporter is reproducible both locally and in GitHub Actions.
+sys.path.insert(0, str(ROOT))
+
+from extensions.wordflow.standards.symbol_index import build_symbol_index
+
 OUT = ROOT / "agente-yaiwes/control-governance/symbol-index-wiring-graph"
 ROOTS = [ROOT / "extensions/wordflow/engine", ROOT / "extensions/wordflow/standards"]
 
