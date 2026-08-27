@@ -8,7 +8,7 @@ on:
       - "scripts/pack_yaiwes_25.py"
 
 permissions:
-  contents: read
+  contents: write
   actions: write
 
 jobs:
@@ -30,7 +30,7 @@ jobs:
           wc -l dist/YAIWES-WORDFLOW-25/INVENTARIO-MAESTRO.csv
           cat dist/YAIWES-WORDFLOW-25/SOURCE-LOCK.md
 
-      - name: Upload segment ZIPs
+      - name: Upload Actions artifact
         uses: actions/upload-artifact@v4
         with:
           name: yaiwes-25-${{ github.sha }}
@@ -40,3 +40,17 @@ jobs:
             dist/YAIWES-WORDFLOW-25/INVENTARIO-MAESTRO.csv
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish GitHub Release (phone download)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG=pack-yaiwes-25
+          gh release delete "$TAG" --yes --cleanup-tag || true
+          gh release create "$TAG" \
+            dist/YAIWES-WORDFLOW-25/*.zip \
+            dist/YAIWES-WORDFLOW-25/SOURCE-LOCK.md \
+            dist/YAIWES-WORDFLOW-25/INVENTARIO-MAESTRO.csv \
+            --title "YAIWES 25 packs ${GITHUB_SHA}" \
+            --notes "Copy-only. Cada zip es un segmento. SOURCE-LOCK.md = conteo py/json/yaml/md. INVENTARIO-MAESTRO.csv = path+sha+tipo. No se movio source. Hot path no se reescribio."
