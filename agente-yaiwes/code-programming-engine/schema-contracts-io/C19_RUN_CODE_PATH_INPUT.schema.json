@@ -35,5 +35,8 @@
     "scan_paths": {"type": ["array", "null"], "items": {"type": "string"}},
     "consult_gateway": {"type": "boolean"}
   },
-  "required": ["raw_input"]
+  "required": ["raw_input"],
+  "examples": [
+    {"raw_input": "smoke-test"}
+  ]
 }
