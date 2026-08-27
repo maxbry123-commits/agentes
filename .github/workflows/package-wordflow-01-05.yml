@@ -1,0 +1,93 @@
+name: Package Wordflow 01-05
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/package-wordflow-01-05.yml'
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build manifests and five source archives
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+
+          package() {
+            local name="$1"
+            shift
+            local root="dist/$name"
+            mkdir -p "$root"
+            for path in "$@"; do
+              if [ -e "$path" ]; then
+                mkdir -p "$root/$(dirname "$path")"
+                cp -a "$path" "$root/$path"
+              fi
+            done
+            find "$root" -type f -print0 | sort -z | xargs -0 sha256sum > "$root/MANIFEST-SHA256.txt" || true
+            (cd dist && zip -qr "$name.zip" "$name")
+          }
+
+          package 01_INTERFACE \
+            extensions/interface \
+            extensions/cli \
+            extensions/api \
+            extensions/websocket \
+            extensions/a2a \
+            extensions/a2ui
+
+          package 02_INPUT_CORE \
+            extensions/input \
+            extensions/reception \
+            extensions/normalizer \
+            extensions/compiler
+
+          package 03_MISSION_CONTRACT \
+            extensions/mission \
+            extensions/q01_q12 \
+            extensions/enchufe_gate \
+            extensions/cursor_hooks
+
+          package 04_GOVERNANCE_CONTRACTS \
+            extensions/governance/contracts \
+            extensions/contracts
+
+          package 05_GOVERNANCE_ENFORCEMENT \
+            extensions/governance \
+            extensions/sheriff \
+            extensions/sentinel \
+            extensions/council \
+            extensions/forensic_core \
+            extensions/verdict_authority \
+            extensions/llm_control
+
+          printf 'SOURCE_SHA=%s\n' "$(git rev-parse HEAD)" > dist/SOURCE-LOCK.txt
+          printf 'Generated from exact checked-out source; missing paths are not invented.\n' >> dist/SOURCE-LOCK.txt
+
+      - name: Upload five ZIP artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: wordflow-01-05-${{ github.sha }}
+          path: |
+            dist/01_INTERFACE.zip
+            dist/02_INPUT_CORE.zip
+            dist/03_MISSION_CONTRACT.zip
+            dist/04_GOVERNANCE_CONTRACTS.zip
+            dist/05_GOVERNANCE_ENFORCEMENT.zip
+            dist/SOURCE-LOCK.txt
+          if-no-files-found: error
+          retention-days: 30
