@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "C19_POLICY_SNAPSHOT_OUTPUT.schema.json",
+  "title": "ProgrammingPipeline policy_snapshot stage output",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["mission_id", "contract_version", "frozen_at"],
+  "properties": {
+    "mission_id": {"type": "string"},
+    "contract_version": {"type": "string"},
+    "frozen_at": {"type": "string"}
+  },
+  "examples": [{"mission_id":"unified","contract_version":"C19","frozen_at":"2026-08-26T00:00:00Z"}]
+}
