@@ -15,7 +15,7 @@ def mission_from_raw(raw_input: str, *,
     if full:
         pack = bridge_full(raw_input)
     else:
-        pack = bridge_to_lock(raw_input)
+        pack = bridge_to_lock(raw_input, allow_raw_literal_fallback=True)
     if not pack.get("ok") and not pack.get("lock"):
         return {"ok": False, "stage": "mission_build", "detail": pack}
     lock = pack["lock"]
