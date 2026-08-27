@@ -19,12 +19,35 @@ def bridge_to_lock(
     *,
     auto_answer_approver: str | None = "director",
     require_resolved: bool = True,
+    allow_raw_literal_fallback: bool = False,
 ) -> dict[str, Any]:
     contract = compile_input_contract(raw_input)
     form = build_from_contract(contract)
     if auto_answer_approver:
         form = answer(form, "Q12_approver", auto_answer_approver)
     gate = resolve_gate(form)
+
+    # Mission entry may explicitly accept the already-validated raw literal as
+    # both objective and observable success criterion. Generic bridge callers
+    # remain fail-closed unless this opt-in is requested by mission.py.
+    if (
+        allow_raw_literal_fallback
+        and not gate.get("ok")
+        and isinstance(contract.get("raw_literal"), str)
+        and contract["raw_literal"].strip()
+        and set(gate.get("pending") or []) <= {"Q01_objective", "Q05_success_criteria"}
+    ):
+        literal = contract["raw_literal"].strip()
+        contract = dict(contract)
+        contract["objective"] = literal
+        contract["success_criteria"] = literal
+        contract["missing_fields"] = []
+        contract["status"] = "COMPLETE"
+        form = build_from_contract(contract)
+        if auto_answer_approver:
+            form = answer(form, "Q12_approver", auto_answer_approver)
+        gate = resolve_gate(form)
+
     if require_resolved and not gate.get("ok"):
         return {
             "ok": False,
@@ -114,7 +137,6 @@ def bridge_full(
         try:
             ping = emit_ping(lock_id=lock.get("lock_id"), reason="bridge_full_start")
         except TypeError:
-            # compatible signature variants
             try:
                 ping = emit_ping(lock)
             except Exception as exc:  # noqa: BLE001
@@ -133,7 +155,7 @@ def bridge_full(
 
 
 def bridge_run_fake(payload: dict) -> dict:
-    """T14: runner\u2194loop bridge with publish Fake. No network."""
+    """T14: runner↔loop bridge with publish Fake. No network."""
     if not isinstance(payload, dict):
         return {
             "status": "error",
