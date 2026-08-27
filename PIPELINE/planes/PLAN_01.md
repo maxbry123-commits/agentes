@@ -1,0 +1,13 @@
+# PLAN_01
+
+PLAN_ID: 01
+N_DESPLEGAR: WAIT
+ENLACE_DESPLEGAR: Desplegar/Desplegar 1/
+ENLACE_REFACTORIA: Refactoria/refactoria-plan-01/
+ENLACE_CHECKPOINT: PIPELINE/checkpoints/01/
+MOLDE: PIPELINE/Guia-plan/MOLDE_MAESTRO_UNIVERSAL_v2.md
+PARCHES: PARCHE_1 + PARCHE_1-1
+PROMPT: PIPELINE/Guia-plan/PROMPT_MAESTRO_CHAT_A_CHAT_B_VERSION_MADURA.md
+ESTADO: PLANNED — no ejecutar hasta lote o WAIT explícito del Director
+
+INPUT BLOCK: vacío. Llenar al iniciar.

@@ -1,0 +1,5 @@
+id: plugin-UOOS2
+capability: uoos.parte2.dsl.runtime
+source: PIPELINE/Guia-plan/UOOS_PARTE2_v3_  con este documento es el promt DSL universal para que el agente ejecute los documentos del código de ouss parte 1 RUNTIME.md
+edit: false
+lee: plugin-UOOS1
