@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "C19_RUNNER_OUTPUT.schema.json",
+  "title": "ProgrammingPipeline runner stage output",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["ok", "verdict", "path"],
+  "properties": {
+    "ok": {"type": "boolean"},
+    "verdict": {"type": ["string", "null"]},
+    "forensic": {},
+    "closure": {},
+    "gaps": {},
+    "wire_trace": {},
+    "policy": {},
+    "llm_control": {"type": "string"},
+    "path": {"type": "string"},
+    "c_status": {},
+    "s_status": {},
+    "t_status": {"type": "string"},
+    "u_status": {"type": "string"}
+  },
+  "examples": [{"ok":true,"verdict":"PASS","path":"UNIFIED_PIPELINE_V1","llm_control":"DENY","t_status":"T1-T8_CLOSED","u_status":"U1-U10_CLOSED"}]
+}
