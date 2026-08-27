@@ -1,5 +1,0 @@
-id: plugin-PROMPT
-capability: chat.a.chat.b
-source: PIPELINE/Guia-plan/PROMPT_MAESTRO_CHAT_A_CHAT_B_VERSION_MADURA.md
-edit: false
-uso: Chat A diseña / Chat B ejecuta
