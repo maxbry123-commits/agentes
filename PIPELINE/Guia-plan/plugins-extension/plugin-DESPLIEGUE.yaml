@@ -1,6 +1,0 @@
-id: plugin-DESPLIEGUE
-capability: lote.inbox
-source: PIPELINE/Guia-plan/DESPLIEGUE-DETERMINISTA-UNIVERSAL-v2.md
-edit: false
-destino_inbox: Desplegar/Desplegar N/
-regla: N=WAIT no crear carpeta vacia
