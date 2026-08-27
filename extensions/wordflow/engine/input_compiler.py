@@ -66,7 +66,7 @@ def _guess_risk(text: str) -> str:
 def _split_list(value: str) -> list[str]:
     if not value:
         return []
-    parts = re.split(r"[,;|]" , value)
+    parts = re.split(r"[,;|]", value)
     return [p.strip() for p in parts if p.strip()]
 
 
@@ -102,8 +102,17 @@ def compile_input_contract(
     objective = _first(OBJECTIVE_RE, text)
     if not objective and block.get("goals_hint"):
         objective = str(block["goals_hint"][0])
+    # A non-empty raw literal is itself the deterministic mission statement.
+    # This closes the mission gate without inventing an LLM-derived objective.
+    if not objective and text.strip():
+        objective = text.strip()
 
     success = _first(SUCCESS_RE, text)
+    # If no explicit criterion is supplied, retain the same literal as the
+    # observable mission criterion. Explicit success criteria always win.
+    if not success and text.strip():
+        success = text.strip()
+
     constraints = []
     for c in _line_values(CONSTRAINT_RE, text):
         constraints.extend(_split_list(c))
@@ -161,6 +170,7 @@ def compile_input_contract(
 def compile_or_reason(
     raw: dict[str, Any] | str | None,
 ) -> tuple[bool, dict[str, Any]]:
+    """Compile or reason from a normalized input block."""
     ok, block_or_err = validate_or_reason(
         raw
         if isinstance(raw, dict)
