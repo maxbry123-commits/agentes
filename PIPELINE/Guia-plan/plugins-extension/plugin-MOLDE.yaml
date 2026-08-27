@@ -1,9 +1,0 @@
-id: plugin-MOLDE
-capability: plan.molde.v2
-source: PIPELINE/Guia-plan/MOLDE_MAESTRO_UNIVERSAL_v2.md
-edit: false
-fusion: true
-conecta:
-  - PIPELINE/Guia-plan/MOLDE_MAESTRO_UNIVERSAL_v2_PARCHE_1.md
-  - PIPELINE/Guia-plan/MOLDE_MAESTRO_UNIVERSAL_v2_PARCHE_1-1.md
-  - PIPELINE/planes/
