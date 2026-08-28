@@ -16,7 +16,6 @@ permissions:
 
 concurrency:
   group: research-download-chain-writer
-  queue: max
   cancel-in-progress: false
 
 jobs:
