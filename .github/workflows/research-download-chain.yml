@@ -1,0 +1,27 @@
+name: Research Download Chain
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/research-download-chain.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: research-download-chain
+  cancel-in-progress: false
+
+jobs:
+  register-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Verify destination
+        run: |
+          test -d 'Download code/archivos'
+          echo 'Research Download Chain registered successfully.'
+          echo 'Destination: Download code/archivos'
