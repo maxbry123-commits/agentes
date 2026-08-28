@@ -1,7 +1,7 @@
 import json, shutil, subprocess, sys, time
 from pathlib import Path
 DEST=Path(sys.argv[1]).resolve(); WORK=Path(sys.argv[2]).resolve(); SRC=WORK/'src'; PACK=WORK/'pack'
-MANIFEST=DEST/'RESEARCH_DOWNLOAD_MANIFEST.jsonl'; ZIP_LIMIT=12000000; BATCH_LIMIT=90*1024*1024; CHUNK=8*1024*1024
+MANIFEST=DEST/'RESEARCH_DOWNLOAD_MANIFEST.jsonl'; SPLIT_TARGET=12000000; MAX_ZIP=17*1000*1000; BATCH_LIMIT=90*1024*1024; CHUNK=8*1024*1024
 REPOS=[('01','SearchOS','https://github.com/antins-labs/SearchOS.git'),('02','SearXNG','https://github.com/searxng/searxng.git'),('03','OpenDeepResearch','https://github.com/langchain-ai/open_deep_research.git'),('04','GPT-Researcher','https://github.com/assafelovic/gpt-researcher.git'),('05','STORM','https://github.com/stanford-oval/storm.git'),('06','Shandu','https://github.com/jolovicdev/shandu.git'),('07','Vane','https://github.com/ItzCrazyKns/Vane.git'),('08','Haystack','https://github.com/deepset-ai/haystack.git'),('09','Crawl4AI','https://github.com/unclecode/crawl4ai.git'),('10','Perplexica','https://github.com/cognitive-builder/Perplexica.git'),('11','Dagu','https://github.com/dagucloud/dagu.git'),('12','Conductor','https://github.com/conductor-oss/conductor.git'),('13','Temporal','https://github.com/temporalio/temporal.git'),('14','Argo-Workflows','https://github.com/argoproj/argo-workflows.git'),('15','Kestra','https://github.com/kestra-io/kestra.git'),('16','LangGraph','https://github.com/langchain-ai/langgraph.git'),('17','Hatchet','https://github.com/hatchet-dev/hatchet.git'),('18','Windmill','https://github.com/windmill-labs/windmill.git'),('19','Dagster','https://github.com/dagster-io/dagster.git'),('20','Prefect','https://github.com/PrefectHQ/prefect.git')]
 def run(c,cwd=None): subprocess.run(c,cwd=cwd,check=True)
 def done(slug):
@@ -26,15 +26,15 @@ def stage_repo(slug,root):
 def package(slug,root):
     stage=stage_repo(slug,root); full=PACK/f'{slug}_full.zip'; full.unlink(missing_ok=True)
     run(['zip','-q','-r','-9','-y',str(full.resolve()),'.'],cwd=stage)
-    if full.stat().st_size<=ZIP_LIMIT:
+    if full.stat().st_size<=SPLIT_TARGET:
         out=PACK/f'{slug}_0001.zip'; full.replace(out); shutil.rmtree(stage,ignore_errors=True); return [(out,out.stat().st_size)]
-    before=set(PACK.glob('*.zip')); run(['zipsplit','-n',str(ZIP_LIMIT),'-b',str(PACK.resolve()),str(full.resolve())]); full.unlink(missing_ok=True)
+    before=set(PACK.glob('*.zip')); run(['zipsplit','-n',str(SPLIT_TARGET),'-b',str(PACK.resolve()),str(full.resolve())]); full.unlink(missing_ok=True)
     made=[p for p in PACK.glob('*.zip') if p not in before and p != full]
     if not made: raise RuntimeError(f'zipsplit produced no parts for {slug}')
     out=[]
     for i,p in enumerate(sorted(made,key=lambda p:(p.stat().st_mtime,p.name)),1):
         q=PACK/f'{slug}_{i:04d}.zip'; p.replace(q); size=q.stat().st_size
-        if size>ZIP_LIMIT: raise RuntimeError(f'ZIP part exceeds limit: {q} = {size}')
+        if size>MAX_ZIP: raise RuntimeError(f'ZIP part exceeds safety limit: {q} = {size}')
         subprocess.run(['unzip','-tq',str(q)],check=True); out.append((q,size))
     shutil.rmtree(stage,ignore_errors=True); return out
 def push(label):
