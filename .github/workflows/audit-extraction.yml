@@ -28,7 +28,7 @@ jobs:
       - name: Download extraction TAR artifact
         uses: actions/download-artifact@v8
         with:
-          name: wordflow-extraction-${{ github.event.workflow_run.id }}.tar
+          name: wordflow-extraction-${{ github.event.workflow_run.id }}
           path: ${{ env.ARTIFACT_ROOT }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           repository: ${{ github.repository }}
@@ -79,9 +79,10 @@ jobs:
           results = []
           for row in rows:
               slug = row['slug']
-              extracted = root / 'extracted' / slug
+              software_name = row.get('software_name', slug)
+              extracted = root / 'extracted' / software_name
               if not extracted.is_dir():
-                  raise SystemExit(f'{slug}: extracted directory missing')
+                  raise SystemExit(f'{software_name}: extracted directory missing')
 
               upstream = Path('.xray-upstream') / slug
               shutil.rmtree(upstream, ignore_errors=True)
@@ -102,6 +103,7 @@ jobs:
               status = 'PASS' if not missing and not extra and not mismatched else 'FAIL'
               report = {
                   'slug': slug,
+                  'software_name': software_name,
                   'status': status,
                   'source_commit': row['source_commit'],
                   'files_extracted': len(ext_tree),
@@ -110,10 +112,10 @@ jobs:
                   'extra': extra[:200],
                   'content_mismatch': mismatched[:200]
               }
-              (audit / f'{slug}.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
+              (audit / f'{software_name}.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
               results.append(report)
               if status != 'PASS':
-                  raise SystemExit(f'{slug}: forensic audit FAILED')
+                  raise SystemExit(f'{software_name}: forensic audit FAILED')
 
           (audit / 'GLOBAL.json').write_text(json.dumps({
               'audit_type': 'FORENSIC_XRAY',
