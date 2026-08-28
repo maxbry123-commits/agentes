@@ -4,3 +4,7 @@
 {"number": 4, "parts": 2, "slug": "GPT-Researcher", "source": "https://github.com/assafelovic/gpt-researcher.git", "source_commit": "6f998577d547b1e54ec662dac63583aa11e3b84b", "status": "COMPLETE"}
 {"number": 5, "parts": 1, "slug": "STORM", "source": "https://github.com/stanford-oval/storm.git", "source_commit": "fb951af7744dab086e34962e9bc6fe878e145f83", "status": "COMPLETE"}
 {"number": 6, "parts": 1, "slug": "Shandu", "source": "https://github.com/jolovicdev/shandu.git", "source_commit": "e9123bd7f087f41993dc35be1e506c111dae3e93", "status": "COMPLETE"}
+{"number": 7, "parts": 4, "slug": "Vane", "source": "https://github.com/ItzCrazyKns/Vane.git", "source_commit": "7dc5d088f7262fbc5e39037f84940a8a2193c5fb", "status": "COMPLETE"}
+{"number": 8, "parts": 3, "slug": "Haystack", "source": "https://github.com/deepset-ai/haystack.git", "source_commit": "82c1f14d42ca7b9c461c05e8438d43ab2be4e7d9", "status": "COMPLETE"}
+{"number": 9, "parts": 1, "slug": "Crawl4AI", "source": "https://github.com/unclecode/crawl4ai.git", "source_commit": "7e801521428ee12509994d39151006f64055ebe3", "status": "COMPLETE"}
+{"number": 10, "parts": 2, "slug": "Perplexica", "source": "https://github.com/cognitive-builder/Perplexica.git", "source_commit": "0737701de0b541b1761c38420033f87a6c7297cd", "status": "COMPLETE"}
