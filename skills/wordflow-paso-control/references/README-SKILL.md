@@ -1,53 +1,25 @@
-# README SKILL wordflow-paso-control 1.2.0 — revision Director
+# README SKILL wordflow-paso-control 1.3.0
 
-Skill YAML-first. Ancla `references/RULES.yaml`. Actions en `assets/`.
-
-## Arbol
-
-```
-wordflow-paso-control/
-  SKILL.md
-  assets/
-    research-download-chain-final.yml
-    batch-copy-root-files.yml
-  references/
-    RULES.yaml
-    INPUT-BLOCK.md
-    SOURCE-MAP.md
-    PASO-DETALLE.md
-    COUNCIL-12.md
-    COUNCIL-12-AUDIT-1.2.md
-    README-SKILL.md
-    AUDIT-SKILL-CREATOR.md
-  scripts/check-tarjeta.sh
-```
-
-## Que hace cada raiz
-
-- Download code = zips + bandeja N + extract
-- Desplegar = lote nuevo plan N + estado + deploy tail
-- Refactoria = source/ intocable + new/ + cruzado x3
+Ancla `references/RULES.yaml`. Extract al lado del zip. Reconstruct por slug. X-Ray vs source_commit.
 
 ## Extract
 
-`RULES.yaml extract_zip`. unzip -t / unzip -q / cp -a / sha256. Guia docs/ 404.
+```
+Download code/archivos/{slug}_0001.zip
+Download code/archivos/{slug}_0002.zip
+        -> Download code/archivos/{slug}/
+```
 
-## DAG
+No auditar fragmentos. Cadena S1-S12. Un job `download-extract-xray.yml`.
+Download sigue el packer lock. unzip extrae. Python hashea.
 
-No omitir. Edges en RULES.yaml.
+## Workflows
 
-## Cables
-
-skills/ + Metodo de trabajo/ + Download code/ + Desplegar/ + Refactoria/ + Wordflow Code/Readme/Readme1/CABLE-PASO-CONTROL.md
+- .github/workflows/extract-downloaded-zips.yml
+- .github/workflows/download-extract-xray.yml
+- skills/wordflow-paso-control/assets/* mismos YAML
 
 ## HOLD
 
-owner C. Valor secret Maxbry_123_tokens (UI). Guia zip 404 en repo.
-
-## Enlaces
-
-- https://github.com/maxbry123-commits/agentes/blob/main/skills/wordflow-paso-control/SKILL.md
-- https://github.com/maxbry123-commits/agentes/blob/main/skills/wordflow-paso-control/references/RULES.yaml
-- https://github.com/maxbry123-commits/agentes/blob/main/skills/wordflow-paso-control/references/README-SKILL.md
-- https://github.com/maxbry123-commits/agentes/blob/main/skills/wordflow-paso-control/assets/research-download-chain-final.yml
-- https://github.com/maxbry123-commits/agentes/settings/secrets/actions
+owner C. Secret Maxbry_123_tokens valor UI.
+Archivos >8MiB el packer los parte en .chunks; X-Ray vs blob original puede FAIL en esos paths (esperado del lock, no reescribir packer).
