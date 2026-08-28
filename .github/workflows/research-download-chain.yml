@@ -34,8 +34,6 @@ jobs:
           WORK='_work/research-download'
           mkdir -p "$DEST" "$WORK/src" "$WORK/pack"
 
-          # 20 repositories selected in the previous architecture audit:
-          # 10 research/search engines + 10 deterministic/orchestration engines.
           cat > "$WORK/repos.tsv" <<'EOF'
           01|SearchOS|https://github.com/antins-labs/SearchOS.git
           02|SearXNG|https://github.com/searxng/searxng.git
@@ -60,7 +58,7 @@ jobs:
           EOF
 
           python3 - "$DEST" "$WORK" <<'PY'
-          import json, os, shutil, subprocess, sys
+          import json, shutil, subprocess, sys
           from pathlib import Path
 
           dest = Path(sys.argv[1])
@@ -69,9 +67,9 @@ jobs:
           pack_root = work / 'pack'
           manifest = dest / 'RESEARCH_DOWNLOAD_MANIFEST.jsonl'
 
-          ZIP_LIMIT = 15 * 1024 * 1024       # 15 MiB safety target; user limit is 17 MB.
-          BATCH_LIMIT = 90 * 1024 * 1024     # Keep each push well below GitHub's 100 MB object ceiling.
-          CHUNK_LIMIT = 12 * 1024 * 1024     # For a single source file larger than the ZIP target.
+          ZIP_LIMIT = 15 * 1024 * 1024
+          BATCH_LIMIT = 90 * 1024 * 1024
+          CHUNK_LIMIT = 12 * 1024 * 1024
 
           def run(cmd, cwd=None):
               subprocess.run(cmd, cwd=cwd, check=True)
@@ -79,8 +77,13 @@ jobs:
           def repo_done(slug):
               if not manifest.exists():
                   return False
-              return any(json.loads(line).get('slug') == slug and json.loads(line).get('status') == 'COMPLETE'
-                         for line in manifest.read_text(encoding='utf-8').splitlines() if line.strip())
+              for line in manifest.read_text(encoding='utf-8').splitlines():
+                  if not line.strip():
+                      continue
+                  item = json.loads(line)
+                  if item.get('slug') == slug and item.get('status') == 'COMPLETE':
+                      return True
+              return False
 
           def zip_dir(stage, zip_path):
               zip_path.parent.mkdir(parents=True, exist_ok=True)
@@ -88,7 +91,7 @@ jobs:
               run(['zip', '-q', '-r', '-9', '-y', str(zip_path), '.'], cwd=stage)
               return zip_path.stat().st_size
 
-          def make_zip(repo_slug, repo_root, files, part_no):
+          def make_zip(repo_slug, repo_root, files, part_no, output_path):
               stage = pack_root / f'{repo_slug}__part_{part_no:04d}'
               shutil.rmtree(stage, ignore_errors=True)
               stage.mkdir(parents=True)
@@ -102,7 +105,6 @@ jobs:
                   if size <= CHUNK_LIMIT:
                       shutil.copy2(p, target)
                   else:
-                      # Preserve every byte of very large source files as reconstructible chunks.
                       chunk_dir = target.parent / (target.name + '.chunks')
                       chunk_dir.mkdir(parents=True, exist_ok=True)
                       with p.open('rb') as fh:
@@ -111,58 +113,65 @@ jobs:
                               data = fh.read(CHUNK_LIMIT)
                               if not data:
                                   break
-                              chunk = chunk_dir / f'{target.name}.part-{idx:04d}'
-                              chunk.write_bytes(data)
+                              (chunk_dir / f'{target.name}.part-{idx:04d}').write_bytes(data)
                               idx += 1
                       split_manifest.append({
                           'repo': repo_slug,
                           'path': str(rel),
-                          'chunks': str((chunk_dir / (target.name + '.part-0000')).relative_to(stage)).rsplit('.part-', 1)[0] + '.part-*',
+                          'chunks_dir': str(chunk_dir.relative_to(stage)),
                           'bytes': size,
                       })
 
               if split_manifest:
                   (stage / 'SPLIT_FILES.json').write_text(json.dumps(split_manifest, indent=2), encoding='utf-8')
 
-              zip_path = pack_root / f'{repo_slug}_{part_no:04d}.zip'
-              size = zip_dir(stage, zip_path)
+              size = zip_dir(stage, output_path)
               shutil.rmtree(stage, ignore_errors=True)
-              return zip_path, size
+              return size
 
           def partition_files(repo_slug, repo_root, files):
               files = sorted(files, key=lambda p: str(p))
-              groups = []
               pending = list(files)
+              groups = []
               part_no = 1
+              probe_no = 0
+
               while pending:
-                  # Start with a group and shrink it until the actual ZIP is below the safety target.
-                  hi = len(pending)
-                  lo = 1
+                  lo, hi = 1, len(pending)
                   best = None
                   while lo <= hi:
                       mid = (lo + hi) // 2
-                      candidate = pending[:mid]
-                      z, size = make_zip(repo_slug, repo_root, candidate, part_no)
+                      probe_no += 1
+                      probe = pack_root / f'.probe_{repo_slug}_{part_no:04d}_{probe_no:04d}.zip'
+                      size = make_zip(repo_slug, repo_root, pending[:mid], part_no, probe)
                       if size <= ZIP_LIMIT:
-                          best = (mid, z, size)
+                          if best is not None:
+                              best[1].unlink(missing_ok=True)
+                          best = (mid, probe, size)
                           lo = mid + 1
                       else:
-                          z.unlink(missing_ok=True)
+                          probe.unlink(missing_ok=True)
                           hi = mid - 1
+
                   if best is None:
-                      # One source file alone is too large; package it as byte chunks.
-                      z, size = make_zip(repo_slug, repo_root, pending[:1], part_no)
+                      probe_no += 1
+                      probe = pack_root / f'.probe_{repo_slug}_{part_no:04d}_{probe_no:04d}.zip'
+                      size = make_zip(repo_slug, repo_root, pending[:1], part_no, probe)
                       if size > ZIP_LIMIT:
                           raise RuntimeError(f'Cannot package {pending[0]} under 15 MiB')
-                      best = (1, z, size)
-                  count, z, size = best
-                  groups.append((z, size))
+                      best = (1, probe, size)
+
+                  count, probe, size = best
+                  final_zip = pack_root / f'{repo_slug}_{part_no:04d}.zip'
+                  probe.replace(final_zip)
+                  groups.append((final_zip, size))
                   pending = pending[count:]
                   part_no += 1
+
               return groups
 
-          def commit_batch(batch_files, batch_bytes, label):
-              if not batch_files:
+          def commit_batch(batch_bytes, label):
+              if batch_bytes <= 0:
                   return
               run(['git', 'add', str(dest)])
               status = subprocess.run(['git', 'diff', '--cached', '--quiet'])
@@ -173,7 +182,6 @@ jobs:
               run(['git', 'commit', '-m', f'build(download): research queue batch {label} ({batch_bytes} bytes)'])
               run(['git', 'push', 'origin', 'HEAD:main'])
 
-          batch_files = []
           batch_bytes = 0
           batch_no = 1
 
@@ -199,19 +207,15 @@ jobs:
               print(f'{slug}: {len(parts)} ZIP part(s)')
 
               for z, size in parts:
-                  # If adding this ZIP would exceed the 90 MiB push budget, commit the current queue first.
-                  if batch_files and batch_bytes + size > BATCH_LIMIT:
-                      commit_batch(batch_files, batch_bytes, f'{batch_no:03d}')
+                  if batch_bytes and batch_bytes + size > BATCH_LIMIT:
+                      commit_batch(batch_bytes, f'{batch_no:03d}')
                       batch_no += 1
-                      batch_files = []
                       batch_bytes = 0
                   target = dest / z.name
                   shutil.copy2(z, target)
-                  batch_files.append(target)
                   batch_bytes += size
                   print(f'  {target} = {size} bytes; current batch = {batch_bytes} bytes')
 
-              # Record exact source and commit so every download is auditable.
               with manifest.open('a', encoding='utf-8') as fh:
                   fh.write(json.dumps({
                       'number': int(number),
@@ -226,7 +230,7 @@ jobs:
               shutil.rmtree(pack_root, ignore_errors=True)
               pack_root.mkdir(parents=True, exist_ok=True)
 
-          commit_batch(batch_files, batch_bytes, f'{batch_no:03d}-final')
+          commit_batch(batch_bytes, f'{batch_no:03d}-final')
           print('===== QUEUE COMPLETE: 20/20 repositories processed =====')
           PY
 
