@@ -1,11 +1,11 @@
 name: Research Download Chain
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
       - '.github/workflows/research-download-chain.yml'
-  workflow_dispatch:
 
 permissions:
   contents: write
@@ -15,15 +15,231 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  register-and-test:
+  download-20-in-queue:
+    name: Download 20 repos sequentially
     runs-on: ubuntu-latest
+    timeout-minutes: 330
     steps:
-      - name: Checkout
+      - name: Checkout main
         uses: actions/checkout@v4
-      - name: Verify destination
+        with:
+          fetch-depth: 1
+
+      - name: Download, split, validate and commit in <=90 MiB batches
+        shell: bash
         run: |
-          test -d 'Download code/archivos'
-          echo 'Research Download Chain registered successfully.'
-          echo 'Destination: Download code/archivos'
-      - name: Confirm manual-dispatch registration
-        run: echo 'workflow_dispatch is enabled; this workflow is intended to be manually runnable from Actions.'
+          set -euo pipefail
+
+          DEST='Download code/archivos'
+          WORK='_work/research-download'
+          mkdir -p "$DEST" "$WORK/src" "$WORK/pack"
+
+          # 20 repositories selected in the previous architecture audit:
+          # 10 research/search engines + 10 deterministic/orchestration engines.
+          cat > "$WORK/repos.tsv" <<'EOF'
+          01|SearchOS|https://github.com/antins-labs/SearchOS.git
+          02|SearXNG|https://github.com/searxng/searxng.git
+          03|OpenDeepResearch|https://github.com/langchain-ai/open_deep_research.git
+          04|GPT-Researcher|https://github.com/assafelovic/gpt-researcher.git
+          05|STORM|https://github.com/stanford-oval/storm.git
+          06|Shandu|https://github.com/jolovicdev/shandu.git
+          07|Vane|https://github.com/ItzCrazyKns/Vane.git
+          08|Haystack|https://github.com/deepset-ai/haystack.git
+          09|Crawl4AI|https://github.com/unclecode/crawl4ai.git
+          10|Perplexica|https://github.com/cognitive-builder/Perplexica.git
+          11|Dagu|https://github.com/dagucloud/dagu.git
+          12|Conductor|https://github.com/conductor-oss/conductor.git
+          13|Temporal|https://github.com/temporalio/temporal.git
+          14|Argo-Workflows|https://github.com/argoproj/argo-workflows.git
+          15|Kestra|https://github.com/kestra-io/kestra.git
+          16|LangGraph|https://github.com/langchain-ai/langgraph.git
+          17|Hatchet|https://github.com/hatchet-dev/hatchet.git
+          18|Windmill|https://github.com/windmill-labs/windmill.git
+          19|Dagster|https://github.com/dagster-io/dagster.git
+          20|Prefect|https://github.com/PrefectHQ/prefect.git
+          EOF
+
+          python3 - "$DEST" "$WORK" <<'PY'
+          import json, os, shutil, subprocess, sys
+          from pathlib import Path
+
+          dest = Path(sys.argv[1])
+          work = Path(sys.argv[2])
+          src_root = work / 'src'
+          pack_root = work / 'pack'
+          manifest = dest / 'RESEARCH_DOWNLOAD_MANIFEST.jsonl'
+
+          ZIP_LIMIT = 15 * 1024 * 1024       # 15 MiB safety target; user limit is 17 MB.
+          BATCH_LIMIT = 90 * 1024 * 1024     # Keep each push well below GitHub's 100 MB object ceiling.
+          CHUNK_LIMIT = 12 * 1024 * 1024     # For a single source file larger than the ZIP target.
+
+          def run(cmd, cwd=None):
+              subprocess.run(cmd, cwd=cwd, check=True)
+
+          def repo_done(slug):
+              if not manifest.exists():
+                  return False
+              return any(json.loads(line).get('slug') == slug and json.loads(line).get('status') == 'COMPLETE'
+                         for line in manifest.read_text(encoding='utf-8').splitlines() if line.strip())
+
+          def zip_dir(stage, zip_path):
+              zip_path.parent.mkdir(parents=True, exist_ok=True)
+              zip_path.unlink(missing_ok=True)
+              run(['zip', '-q', '-r', '-9', '-y', str(zip_path), '.'], cwd=stage)
+              return zip_path.stat().st_size
+
+          def make_zip(repo_slug, repo_root, files, part_no):
+              stage = pack_root / f'{repo_slug}__part_{part_no:04d}'
+              shutil.rmtree(stage, ignore_errors=True)
+              stage.mkdir(parents=True)
+              split_manifest = []
+
+              for p in files:
+                  rel = p.relative_to(repo_root)
+                  target = stage / repo_slug / rel
+                  target.parent.mkdir(parents=True, exist_ok=True)
+                  size = p.stat().st_size
+                  if size <= CHUNK_LIMIT:
+                      shutil.copy2(p, target)
+                  else:
+                      # Preserve every byte of very large source files as reconstructible chunks.
+                      chunk_dir = target.parent / (target.name + '.chunks')
+                      chunk_dir.mkdir(parents=True, exist_ok=True)
+                      with p.open('rb') as fh:
+                          idx = 0
+                          while True:
+                              data = fh.read(CHUNK_LIMIT)
+                              if not data:
+                                  break
+                              chunk = chunk_dir / f'{target.name}.part-{idx:04d}'
+                              chunk.write_bytes(data)
+                              idx += 1
+                      split_manifest.append({
+                          'repo': repo_slug,
+                          'path': str(rel),
+                          'chunks': str((chunk_dir / (target.name + '.part-0000')).relative_to(stage)).rsplit('.part-', 1)[0] + '.part-*',
+                          'bytes': size,
+                      })
+
+              if split_manifest:
+                  (stage / 'SPLIT_FILES.json').write_text(json.dumps(split_manifest, indent=2), encoding='utf-8')
+
+              zip_path = pack_root / f'{repo_slug}_{part_no:04d}.zip'
+              size = zip_dir(stage, zip_path)
+              shutil.rmtree(stage, ignore_errors=True)
+              return zip_path, size
+
+          def partition_files(repo_slug, repo_root, files):
+              files = sorted(files, key=lambda p: str(p))
+              groups = []
+              pending = list(files)
+              part_no = 1
+              while pending:
+                  # Start with a group and shrink it until the actual ZIP is below the safety target.
+                  hi = len(pending)
+                  lo = 1
+                  best = None
+                  while lo <= hi:
+                      mid = (lo + hi) // 2
+                      candidate = pending[:mid]
+                      z, size = make_zip(repo_slug, repo_root, candidate, part_no)
+                      if size <= ZIP_LIMIT:
+                          best = (mid, z, size)
+                          lo = mid + 1
+                      else:
+                          z.unlink(missing_ok=True)
+                          hi = mid - 1
+                  if best is None:
+                      # One source file alone is too large; package it as byte chunks.
+                      z, size = make_zip(repo_slug, repo_root, pending[:1], part_no)
+                      if size > ZIP_LIMIT:
+                          raise RuntimeError(f'Cannot package {pending[0]} under 15 MiB')
+                      best = (1, z, size)
+                  count, z, size = best
+                  groups.append((z, size))
+                  pending = pending[count:]
+                  part_no += 1
+              return groups
+
+          def commit_batch(batch_files, batch_bytes, label):
+              if not batch_files:
+                  return
+              run(['git', 'add', str(dest)])
+              status = subprocess.run(['git', 'diff', '--cached', '--quiet'])
+              if status.returncode == 0:
+                  return
+              run(['git', 'config', 'user.name', 'github-actions[bot]'])
+              run(['git', 'config', 'user.email', '41898282+github-actions[bot]@users.noreply.github.com'])
+              run(['git', 'commit', '-m', f'build(download): research queue batch {label} ({batch_bytes} bytes)'])
+              run(['git', 'push', 'origin', 'HEAD:main'])
+
+          batch_files = []
+          batch_bytes = 0
+          batch_no = 1
+
+          for line in (work / 'repos.tsv').read_text(encoding='utf-8').splitlines():
+              if not line.strip():
+                  continue
+              number, slug, url = line.split('|', 2)
+              print(f'===== QUEUE {number}/20: {slug} =====')
+
+              if repo_done(slug):
+                  print(f'{slug}: already COMPLETE; skipping for idempotent reruns')
+                  continue
+
+              repo_root = src_root / slug
+              shutil.rmtree(repo_root, ignore_errors=True)
+              print(f'Cloning {url}')
+              run(['git', 'clone', '--depth', '1', '--no-tags', url, str(repo_root)])
+              commit_sha = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=repo_root, text=True).strip()
+              shutil.rmtree(repo_root / '.git', ignore_errors=True)
+
+              files = [p for p in repo_root.rglob('*') if p.is_file()]
+              parts = partition_files(slug, repo_root, files)
+              print(f'{slug}: {len(parts)} ZIP part(s)')
+
+              for z, size in parts:
+                  # If adding this ZIP would exceed the 90 MiB push budget, commit the current queue first.
+                  if batch_files and batch_bytes + size > BATCH_LIMIT:
+                      commit_batch(batch_files, batch_bytes, f'{batch_no:03d}')
+                      batch_no += 1
+                      batch_files = []
+                      batch_bytes = 0
+                  target = dest / z.name
+                  shutil.copy2(z, target)
+                  batch_files.append(target)
+                  batch_bytes += size
+                  print(f'  {target} = {size} bytes; current batch = {batch_bytes} bytes')
+
+              # Record exact source and commit so every download is auditable.
+              with manifest.open('a', encoding='utf-8') as fh:
+                  fh.write(json.dumps({
+                      'number': int(number),
+                      'slug': slug,
+                      'source': url,
+                      'source_commit': commit_sha,
+                      'parts': len(parts),
+                      'status': 'COMPLETE',
+                  }, sort_keys=True) + '\n')
+
+              shutil.rmtree(repo_root, ignore_errors=True)
+              shutil.rmtree(pack_root, ignore_errors=True)
+              pack_root.mkdir(parents=True, exist_ok=True)
+
+          commit_batch(batch_files, batch_bytes, f'{batch_no:03d}-final')
+          print('===== QUEUE COMPLETE: 20/20 repositories processed =====')
+          PY
+
+      - name: Final safety audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f 'Download code/archivos/RESEARCH_DOWNLOAD_MANIFEST.jsonl'
+          count=$(grep -c '"status": "COMPLETE"' 'Download code/archivos/RESEARCH_DOWNLOAD_MANIFEST.jsonl' || true)
+          test "$count" -eq 20
+          find 'Download code/archivos' -type f -name '*.zip' -print0 | while IFS= read -r -d '' f; do
+            size=$(stat -c '%s' "$f")
+            test "$size" -le $((17*1000*1000))
+            unzip -tq "$f"
+          done
+          echo "AUDIT PASS: 20 repositories registered; every ZIP <= 17,000,000 bytes and readable."
