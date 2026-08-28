@@ -1,0 +1,23 @@
+name: Actions Preflight
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/actions-preflight.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Runner sanity
+        run: |
+          set -euo pipefail
+          echo "ACTIONS_PREFLIGHT_OK"
+          echo "runner=$RUNNER_NAME"
+          pwd
+          test -d "$GITHUB_WORKSPACE"
