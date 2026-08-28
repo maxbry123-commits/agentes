@@ -92,21 +92,48 @@ jobs:
           Path('xray/evidence/manifest.pass').write_text('PASS: 20 repositories / 61 ZIP parts\n', encoding='utf-8')
           print('PASS: manifest and all 61 ZIP parts validated')
 
-      - name: Extract all ZIP parts safely
+      - name: Extract all ZIP parts safely with canonical software roots
         shell: python
         run: |
           import json, os, shutil
           from pathlib import Path
           from zipfile import ZipFile
 
+          SOFTWARE_NAMES = {
+              'SearchOS': 'SearchOS',
+              'SearXNG': 'SearXNG',
+              'OpenDeepResearch': 'Open Deep Research',
+              'GPT-Researcher': 'GPT Researcher',
+              'STORM': 'STORM',
+              'Shandu': 'Shandu',
+              'Vane': 'Vane',
+              'Haystack': 'Haystack',
+              'Crawl4AI': 'Crawl4AI',
+              'Perplexica': 'Perplexica',
+              'Dagu': 'Dagu',
+              'Conductor': 'Conductor',
+              'Temporal': 'Temporal',
+              'Argo-Workflows': 'Argo Workflows',
+              'Kestra': 'Kestra',
+              'LangGraph': 'LangGraph',
+              'Hatchet': 'Hatchet',
+              'Windmill': 'Windmill',
+              'Dagster': 'Dagster',
+              'Prefect': 'Prefect',
+          }
+
           root = Path(os.environ['ZIP_ROOT'])
           out = Path(os.environ['EXTRACT_ROOT'])
           rows = json.loads(Path('xray/evidence/manifest.json').read_text(encoding='utf-8'))
           summary = []
 
+          if set(r['slug'] for r in rows) != set(SOFTWARE_NAMES):
+              raise SystemExit('Software-name map does not exactly match manifest')
+
           for row in rows:
               slug = row['slug']
-              dest = out / slug
+              software_name = SOFTWARE_NAMES[slug]
+              dest = out / software_name
               shutil.rmtree(dest, ignore_errors=True)
               dest.mkdir(parents=True, exist_ok=True)
               seen = set()
@@ -130,8 +157,8 @@ jobs:
                           count += 1
               if count == 0:
                   raise SystemExit(f'{slug}: zero files extracted')
-              summary.append({'slug': slug, 'parts': len(parts), 'files_extracted': count})
-              print(f'PASS EXTRACT: {slug} parts={len(parts)} files={count}')
+              summary.append({'slug': slug, 'software_name': software_name, 'parts': len(parts), 'files_extracted': count})
+              print(f'PASS EXTRACT: {software_name} parts={len(parts)} files={count}')
 
           Path('xray/evidence/EXTRACTION.json').write_text(json.dumps({'repositories': summary, 'status': 'PASS'}, indent=2) + '\n', encoding='utf-8')
           assert len(summary) == 20
@@ -158,6 +185,7 @@ jobs:
       - name: Upload extraction TAR
         uses: actions/upload-artifact@v7
         with:
+          name: wordflow-extraction-${{ github.run_id }}
           path: ${{ github.workspace }}/wordflow-extraction-${{ github.run_id }}.tar
           archive: false
           if-no-files-found: error
