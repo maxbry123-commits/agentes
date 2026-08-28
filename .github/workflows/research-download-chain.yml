@@ -86,10 +86,18 @@ EOF
               return False
 
           def zip_dir(stage, zip_path):
+              stage = Path(stage).resolve()
               zip_path = Path(zip_path).resolve()
               zip_path.parent.mkdir(parents=True, exist_ok=True)
               zip_path.unlink(missing_ok=True)
-              run(['zip', '-q', '-r', '-9', '-y', str(zip_path), '.'], cwd=stage)
+              # Always create the archive inside the staging directory, then move it.
+              # This removes all ambiguity caused by cwd-relative output paths.
+              temp_zip = stage / '.archive-output.zip'
+              temp_zip.unlink(missing_ok=True)
+              run(['zip', '-q', '-r', '-9', '-y', str(temp_zip), '.'], cwd=stage)
+              if not temp_zip.is_file():
+                  raise RuntimeError(f'zip completed but did not create {temp_zip}')
+              temp_zip.replace(zip_path)
               return zip_path.stat().st_size
 
           def make_zip(repo_slug, repo_root, files, part_no, output_path):
