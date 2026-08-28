@@ -1,0 +1,122 @@
+name: Download Extract
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'Download code/archivos/**'
+      - '.github/workflows/download-extract.yml'
+
+permissions:
+  contents: read
+
+env:
+  ZIP_ROOT: Download code/archivos
+  EXTRACT_ROOT: xray/extracted
+  EVIDENCE_ROOT: xray/evidence
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Extract and validate all ZIP parts
+        shell: python
+        run: |
+          import json, os, shutil
+          from pathlib import Path
+          from zipfile import ZipFile, BadZipFile
+
+          root = Path(os.environ['ZIP_ROOT'])
+          out = Path(os.environ['EXTRACT_ROOT'])
+          evidence = Path(os.environ['EVIDENCE_ROOT'])
+          shutil.rmtree(out, ignore_errors=True)
+          evidence.mkdir(parents=True, exist_ok=True)
+          out.mkdir(parents=True, exist_ok=True)
+
+          manifest = root / 'RESEARCH_DOWNLOAD_MANIFEST.jsonl'
+          rows = [json.loads(x) for x in manifest.read_text().splitlines() if x.strip()]
+          if len(rows) != 20:
+              raise SystemExit(f'Expected 20 manifest records, found {len(rows)}')
+
+          zip_files = sorted(root.glob('*.zip'))
+          if len(zip_files) != 61:
+              raise SystemExit(f'Expected 61 ZIP parts, found {len(zip_files)}')
+
+          report = {'expected_repositories': 20, 'expected_zip_parts': 61, 'repositories': []}
+          global_seen = set()
+
+          for row in rows:
+              slug = row['slug']
+              expected = int(row['parts'])
+              parts = sorted(root.glob(f'{slug}_*.zip'))
+              if len(parts) != expected:
+                  raise SystemExit(f'{slug}: expected {expected} parts, found {len(parts)}')
+              dest = out / slug
+              dest.mkdir(parents=True, exist_ok=True)
+              files_count = 0
+
+              for zp in parts:
+                  try:
+                      z = ZipFile(zp)
+                  except BadZipFile as e:
+                      raise SystemExit(f'CORRUPT ZIP: {zp}: {e}')
+                  with z:
+                      if z.testzip() is not None:
+                          raise SystemExit(f'CRC FAILURE: {zp}')
+                      local = set()
+                      for info in z.infolist():
+                          name = info.filename
+                          p = Path(name)
+                          if p.is_absolute() or '..' in p.parts:
+                              raise SystemExit(f'UNSAFE ZIP PATH: {zp}: {name}')
+                          if name in local:
+                              raise SystemExit(f'DUPLICATE IN ZIP: {zp}: {name}')
+                          local.add(name)
+                          if info.is_dir():
+                              continue
+                          target = dest / name
+                          if target in global_seen:
+                              raise SystemExit(f'DUPLICATE ACROSS PARTS: {slug}: {name}')
+                          global_seen.add(target)
+                          target.parent.mkdir(parents=True, exist_ok=True)
+                          with z.open(info) as src, target.open('wb') as dst:
+                              shutil.copyfileobj(src, dst)
+                          files_count += 1
+
+              if files_count == 0:
+                  raise SystemExit(f'{slug}: no files extracted')
+              report['repositories'].append({'slug': slug, 'parts': expected, 'files_extracted': files_count, 'status': 'EXTRACTED'})
+
+          report['total_files_extracted'] = sum(x['files_extracted'] for x in report['repositories'])
+          report['status'] = 'PASS'
+          (evidence / 'EXTRACTION.json').write_text(json.dumps(report, indent=2) + '\n')
+          print(json.dumps(report, indent=2))
+
+      - name: Verify extraction evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s "$EVIDENCE_ROOT/EXTRACTION.json"
+          test -n "$(find "$EXTRACT_ROOT" -type f -print -quit)"
+          find "$EXTRACT_ROOT" -type f | wc -l
+          cat "$EVIDENCE_ROOT/EXTRACTION.json"
+
+      - name: Upload extraction artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: wordflow-extraction-${{ github.run_id }}
+          path: |
+            ${{ github.workspace }}/xray/extracted
+            ${{ github.workspace }}/xray/evidence/EXTRACTION.json
+          if-no-files-found: error
+          include-hidden-files: true
+
+      - name: Job summary
+        run: |
+          cat "$EVIDENCE_ROOT/EXTRACTION.json" >> "$GITHUB_STEP_SUMMARY"
