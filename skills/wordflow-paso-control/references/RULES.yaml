@@ -1,5 +1,5 @@
 # ANCLA REGLA — este YAML manda sobre texto libre del SKILL.md
-version: "1.2.0"
+version: "1.3.0"
 omit_steps: false
 llm_declares_pass: false
 runtime: [python, yaml]
@@ -50,22 +50,43 @@ roots:
       - borrar viejo sin Director
 
 extract_zip:
-  source_lock: assets/research-download-chain-final.yml
-  test: "unzip -t {zip}"
-  unpack: "unzip -q {zip} -d .staging/{slug}"
-  filter: ["__MACOSX", ".DS_Store", "Thumbs.db"]
-  reject_traversal: true
-  copy: "cp -a {src} {live_root}/{mapped}"
+  same_root_as_zip: "Download code/archivos"
+  dest_rule: "Download code/archivos/{slug}/"
+  forbid_audit_per_part: true
+  parts_pattern: "{slug}_{NNNN}.zip"
+  reconstruct: sort parts then unzip all into one dest
+  strip_internal_slug_prefix: true
+  test: "unzip -tq {zip}"
+  unpack_tool: unzip
+  audit_tool: python zipfile + sha256
+  script: scripts/extract_reconstruct.sh
+  xray_script: scripts/xray_crosscheck.py
+  manifest_download: RESEARCH_DOWNLOAD_MANIFEST.jsonl
+  manifest_extract: EXTRACTION_MANIFEST.sha256
+  compare_against: source_commit
+  not_against: main HEAD
+  filter: ["__MACOSX", ".DS_Store", "Thumbs.db", ".git"]
   rewrite_origin: false
-  hash: sha256
-  gate: "sha256(src)==sha256(dst)"
-  live_root:
+  live_root_after_reconstruct:
     OP1: "Download code/Download {N}"
     OP2: "{DEST_ROOT}"
   convert:
     json_or_prompt: ".py EXTRACT_LITERAL"
     rules_or_skill: ".yaml"
   plugin_io_required: true
+  chain:
+    - S1 QUEUE
+    - S2 DOWNLOAD
+    - S3 ZIP INTEGRITY
+    - S4 RECONSTRUCT
+    - S5 SOURCE COMMIT CHECKOUT
+    - S6 PATH INVENTORY
+    - S7 MISSING EXTRA
+    - S8 SIZE
+    - S9 SHA-256
+    - S10 FORENSIC X-RAY
+    - S11 EVIDENCE
+    - S12 GLOBAL GATE
 
 tokens:
   A: {owner: maxbry123-commits, env: Maxbry_123_tokens}
