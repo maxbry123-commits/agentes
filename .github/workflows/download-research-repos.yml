@@ -1,76 +1,13 @@
-name: Download research repos into Download code/archivos
-.
+name: Download research repos
+
 on:
   workflow_dispatch:
 
-permissions:
-  contents: write
-
 jobs:
-  download-and-split:
+  download:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Download repositories and split into independent ZIPs
-        shell: bash
-        run: |
-          set -euo pipefail
-          rm -rf _work
-          mkdir -p _work 'Download code/archivos'
-          cat > _work/repos.tsv <<'EOF'
-          SearchOS|https://github.com/antins-labs/SearchOS.git|main
-          OpenDeepResearch|https://github.com/langchain-ai/open_deep_research.git|main
-          GPT-Researcher|https://github.com/assafelovic/gpt-researcher.git|main
-          Vane|https://github.com/ItzCrazyKns/Vane.git|master
-          Shandu|https://github.com/jolovicdev/shandu.git|main
-          EOF
-
-          while IFS='|' read -r NAME URL BRANCH; do
-            [ -n "$NAME" ] || continue
-            git clone --depth 1 --branch "$BRANCH" "$URL" "_work/$NAME"
-            rm -rf "_work/$NAME/.git"
-            python3 - "$NAME" <<'PY'
-          import os,sys,shutil,subprocess
-          from pathlib import Path
-          name=sys.argv[1]; src=Path('_work')/name; out=Path('Download code/archivos')
-          limit=16*1024*1024
-          files=sorted((p for p in src.rglob('*') if p.is_file()),key=lambda p:(-p.stat().st_size,str(p)))
-          groups=[]
-          for p in files:
-            n=p.stat().st_size
-            if n>limit: raise SystemExit(f'{name}: file exceeds 16 MiB: {p}')
-            for g in groups:
-              if g[0]+n<=limit: g[0]+=n; g[1].append(p); break
-            else: groups.append([n,[p]])
-          for i,(_,items) in enumerate(groups,1):
-            stage=Path('_work')/f'{name}-part-{i}'; shutil.rmtree(stage,ignore_errors=True); stage.mkdir(parents=True)
-            for p in items:
-              d=stage/p.relative_to(src); d.parent.mkdir(parents=True,exist_ok=True); shutil.copy2(p,d)
-            z=out/f'{name}_{i:02d}.zip'; z.unlink(missing_ok=True)
-            subprocess.run(['zip','-q','-r','-9',str(z),'.'],cwd=stage,check=True)
-            if z.stat().st_size>17*1024*1024: raise SystemExit(f'{z} exceeds 17 MB')
-            shutil.rmtree(stage)
-          shutil.rmtree(src)
-          PY
-          done < _work/repos.tsv
-
-      - name: Validate all ZIPs
-        shell: bash
-        run: |
-          set -euo pipefail
-          find 'Download code/archivos' -type f -name '*.zip' -print0 | while IFS= read -r -d '' f; do
-            test "$(stat -c '%s' "$f")" -le $((17*1024*1024))
-            unzip -tq "$f"
-          done
-
-      - name: Commit packages
-        shell: bash
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add 'Download code/archivos'
-          git commit -m 'build(download): package research repositories' || exit 0
-          git push
+      - name: Test workflow registration
+        run: echo "Workflow activo. Los paquetes se generarán en Download code/archivos en la siguiente implementación."
