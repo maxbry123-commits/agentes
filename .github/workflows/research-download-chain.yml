@@ -14,7 +14,6 @@ on:
 permissions:
   contents: write
 
-# Shared with V2 so the two writers can never modify main concurrently.
 concurrency:
   group: research-download-chain-writer
   cancel-in-progress: false
