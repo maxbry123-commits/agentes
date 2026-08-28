@@ -2,7 +2,7 @@ name: Research Download Chain
 run-name: Research Download Chain • ${{ github.event_name }} • ${{ github.sha }}
 
 # One canonical writer. The generated ZIPs are binary files, so parallel writers
-# to main are unsafe; all recovery/continuation is driven by the manifest.
+a# to main are unsafe; both Research Download Chain workflows share this lock.
 on:
   workflow_dispatch:
   push:
@@ -14,11 +14,9 @@ on:
 permissions:
   contents: write
 
-# Shared with the legacy V2 workflow so the two workflows can never write main
-# concurrently. queue:max preserves sequential progress instead of dropping runs.
+# Shared with V2 so the two writers can never modify main concurrently.
 concurrency:
   group: research-download-chain-writer
-  queue: max
   cancel-in-progress: false
 
 jobs:
