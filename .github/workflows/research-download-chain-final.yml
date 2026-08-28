@@ -1,0 +1,46 @@
+name: Research Download Chain FINAL
+run-name: Research Download Chain FINAL • ${{ github.event_name }} • ${{ github.sha }}
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/research-download-chain-final.yml'
+      - 'scripts/research_download_chain.py'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: research-download-chain-final
+  cancel-in-progress: false
+
+jobs:
+  download-20-in-queue:
+    name: Download 20 repos sequentially
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Execute deterministic download chain
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/research_download_chain.py 'Download code/archivos' '_work/research-download'
+      - name: Final safety audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f 'Download code/archivos/RESEARCH_DOWNLOAD_MANIFEST.jsonl'
+          count=$(grep -c '"status": "COMPLETE"' 'Download code/archivos/RESEARCH_DOWNLOAD_MANIFEST.jsonl' || true)
+          test "$count" -eq 20
+          find 'Download code/archivos' -type f -name '*.zip' -print0 | while IFS= read -r -d '' f; do
+            size=$(stat -c '%s' "$f")
+            test "$size" -le $((17*1000*1000))
+            unzip -tq "$f"
+          done
+          echo 'AUDIT PASS: 20/20 repositories; all ZIP files valid and within safety limit.'
