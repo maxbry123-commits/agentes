@@ -1,0 +1,14 @@
+name: wordflow-code-deploy-router
+role: upload-slot
+runtime: [python, yaml]
+plugin:
+  id: wordflow-code-deploy-router
+  inputs: [skill_upload]
+  outputs: [route_A, route_B]
+cables:
+  A: Wordflow Code
+  B: apply_push
+tokens:
+  A: Maxbry_123_tokens
+  B: EXTERNAL_GH_B_TOKEN
+  C: HOLD
