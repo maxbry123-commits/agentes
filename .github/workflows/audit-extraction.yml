@@ -1,0 +1,85 @@
+name: Audit Extraction
+
+on:
+  workflow_run:
+    workflows: ["Download Extract"]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  audit:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download extraction artifact from completed extraction run
+        uses: actions/download-artifact@v5
+        with:
+          name: wordflow-extraction-${{ github.event.workflow_run.id }}
+          path: xray/input
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.event.workflow_run.id }}
+
+      - name: Validate extraction artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s xray/input/EXTRACTION.json
+          test -n "$(find xray/input -type f -print -quit)"
+          cat xray/input/EXTRACTION.json
+
+      - name: Forensic audit
+        shell: python
+        run: |
+          import json, hashlib
+          from pathlib import Path
+
+          root = Path('xray/input')
+          evidence = Path('xray/audit')
+          evidence.mkdir(parents=True, exist_ok=True)
+          extraction = json.loads((root / 'EXTRACTION.json').read_text())
+          if extraction.get('status') != 'PASS':
+              raise SystemExit('Extraction evidence is not PASS')
+          repos = extraction.get('repositories', [])
+          if len(repos) != 20:
+              raise SystemExit(f'Expected 20 repositories, found {len(repos)}')
+
+          rows = []
+          for repo in repos:
+              slug = repo['slug']
+              files = sorted((root / 'extracted' / slug).rglob('*'))
+              files = [p for p in files if p.is_file()]
+              if not files:
+                  raise SystemExit(f'{slug}: no extracted files in audit artifact')
+              digest = hashlib.sha256()
+              for p in files:
+                  rel = p.relative_to(root / 'extracted' / slug).as_posix()
+                  data = p.read_bytes()
+                  digest.update(rel.encode())
+                  digest.update(b'\0')
+                  digest.update(data)
+                  digest.update(b'\0')
+              rows.append({'slug': slug, 'files': len(files), 'tree_sha256': digest.hexdigest(), 'status': 'AUDITED'})
+
+          result = {
+              'source_extraction_run_id': github_run_id if False else None,
+              'repositories': rows,
+              'repository_count': len(rows),
+              'status': 'PASS'
+          }
+          (evidence / 'GLOBAL.json').write_text(json.dumps(result, indent=2) + '\n')
+          print(json.dumps(result, indent=2))
+
+      - name: Upload forensic audit
+        uses: actions/upload-artifact@v7
+        with:
+          name: wordflow-audit-${{ github.run_id }}
+          path: ${{ github.workspace }}/xray/audit/
+          if-no-files-found: error
+
+      - name: Summary
+        run: |
+          cat xray/audit/GLOBAL.json >> "$GITHUB_STEP_SUMMARY"
