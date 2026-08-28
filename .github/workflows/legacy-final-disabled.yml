@@ -1,0 +1,12 @@
+name: Legacy X-Ray FINAL (disabled)
+
+# This file intentionally contains no `on` trigger. The pipeline was split into:
+# - Download Extract
+# - Audit Extraction
+# Do not reactivate the old combined workflow; it caused the concurrency wait shown in FINAL #4.
+
+jobs:
+  legacy-disabled:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo 'Legacy combined X-Ray disabled; use Download Extract -> Audit Extraction.'
