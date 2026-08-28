@@ -16,3 +16,5 @@
 {"number": 16, "parts": 1, "slug": "LangGraph", "source": "https://github.com/langchain-ai/langgraph.git", "source_commit": "d5f4b2aa960940effc8430165ab3604038e817af", "status": "COMPLETE"}
 {"number": 17, "parts": 9, "slug": "Hatchet", "source": "https://github.com/hatchet-dev/hatchet.git", "source_commit": "3d586d3e33a9c40c8bdd293334bab4a97fdfb71e", "status": "COMPLETE"}
 {"number": 18, "parts": 4, "slug": "Windmill", "source": "https://github.com/windmill-labs/windmill.git", "source_commit": "fb82f36e6d6492dd0740984d8d78ea4eaa30361e", "status": "COMPLETE"}
+{"number": 19, "parts": 13, "slug": "Dagster", "source": "https://github.com/dagster-io/dagster.git", "source_commit": "d37c71f22966138946e71687bc7e85f57214c327", "status": "COMPLETE"}
+{"number": 20, "parts": 4, "slug": "Prefect", "source": "https://github.com/PrefectHQ/prefect.git", "source_commit": "239f9c68b7cbeb7fa9d6995b62a03ff124b5b16b", "status": "COMPLETE"}
