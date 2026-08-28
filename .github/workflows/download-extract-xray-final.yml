@@ -1,0 +1,162 @@
+name: Download Extract X-Ray FINAL
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/download-extract-xray-final.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: download-extract-xray-final-main
+  cancel-in-progress: false
+
+jobs:
+  extract-and-xray:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Checkout controller
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Initialize forensic workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf audit work
+          mkdir -p audit/extracted work/source
+          echo "WORKSPACE=$GITHUB_WORKSPACE"
+          df -h .
+
+      - name: Validate manifest and all ZIP parts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          import json,re
+          from pathlib import Path
+          from zipfile import ZipFile
+          root=Path('Download code/archivos')
+          manifest=root/'RESEARCH_DOWNLOAD_MANIFEST.jsonl'
+          rows=[]
+          for n,line in enumerate(manifest.read_text(encoding='utf-8').splitlines(),1):
+              if not line.strip(): continue
+              row=json.loads(line)
+              for k in ('slug','source','source_commit','parts'):
+                  if k not in row or not row[k]: raise SystemExit(f'Missing {k} line {n}')
+              if not re.fullmatch(r'[0-9a-fA-F]{40}',row['source_commit']): raise SystemExit(f'Invalid SHA: {row["slug"]}')
+              rows.append(row)
+          if len(rows)!=20: raise SystemExit(f'Expected 20 repositories, found {len(rows)}')
+          total=0
+          for row in rows:
+              slug=row['slug']; expected=row['parts']
+              files=sorted(root.glob(f'{slug}_[0-9][0-9][0-9][0-9].zip'),key=lambda p:int(p.stem.rsplit('_',1)[1]))
+              nums=[int(p.stem.rsplit('_',1)[1]) for p in files]
+              if nums != list(range(1,expected+1)): raise SystemExit(f'{slug}: expected 1..{expected}, found {nums}')
+              for p in files:
+                  if p.stat().st_size==0: raise SystemExit(f'{slug}: empty ZIP {p.name}')
+                  with ZipFile(p) as z:
+                      if z.testzip() is not None: raise SystemExit(f'{slug}: corrupt ZIP {p.name}')
+                      for info in z.infolist():
+                          q=Path(info.filename)
+                          if q.is_absolute() or '..' in q.parts: raise SystemExit(f'{slug}: unsafe ZIP path {info.filename}')
+              total += expected
+          Path('audit/queue.json').write_text(json.dumps(rows,indent=2)+'\n',encoding='utf-8')
+          Path('audit/MANIFEST_PASS.txt').write_text(f'PASS: {len(rows)} repositories / {total} ZIP parts\n',encoding='utf-8')
+          print(f'PASS MANIFEST: {len(rows)} repositories / {total} ZIP parts')
+          PY
+
+      - name: Extract every ZIP part
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          import json,shutil
+          from pathlib import Path
+          from zipfile import ZipFile
+          root=Path('Download code/archivos'); out=Path('audit/extracted'); rows=json.loads(Path('audit/queue.json').read_text())
+          summary=[]
+          for row in rows:
+              slug=row['slug']; dest=out/slug
+              if dest.exists(): shutil.rmtree(dest)
+              dest.mkdir(parents=True)
+              parts=sorted(root.glob(f'{slug}_[0-9][0-9][0-9][0-9].zip'),key=lambda p:int(p.stem.rsplit('_',1)[1]))
+              seen=set(); count=0
+              for zpath in parts:
+                  with ZipFile(zpath) as z:
+                      for info in z.infolist():
+                          name=info.filename
+                          if not name or name.endswith('/'): continue
+                          if name in seen: raise SystemExit(f'{slug}: duplicate path across ZIP parts: {name}')
+                          seen.add(name)
+                          target=(dest/name).resolve()
+                          if dest.resolve() not in target.parents: raise SystemExit(f'{slug}: extraction escape: {name}')
+                          target.parent.mkdir(parents=True,exist_ok=True)
+                          with z.open(info) as src, target.open('wb') as dst: shutil.copyfileobj(src,dst)
+                          count += 1
+              if count == 0: raise SystemExit(f'{slug}: extracted zero files')
+              summary.append({'slug':slug,'parts':len(parts),'files':count})
+              print(f'PASS EXTRACT: {slug} parts={len(parts)} files={count}')
+          Path('audit/EXTRACTION_SUMMARY.json').write_text(json.dumps(summary,indent=2)+'\n',encoding='utf-8')
+          print(f'PASS EXTRACTION: {len(summary)} repositories')
+          PY
+
+      - name: Verify extracted trees against exact upstream commits
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          import hashlib,json,shutil,subprocess
+          from pathlib import Path
+          rows=json.loads(Path('audit/queue.json').read_text()); base=Path('work/source'); ext=Path('audit/extracted')
+          def inv(base): return {p.relative_to(base).as_posix():p for p in base.rglob('*') if p.is_file() and '.git' not in p.parts and '__MACOSX' not in p.parts and p.name!='.DS_Store'}
+          def sha(p):
+              h=hashlib.sha256()
+              with p.open('rb') as f:
+                  for b in iter(lambda:f.read(1024*1024),b''): h.update(b)
+              return h.hexdigest()
+          results=[]; failed=False
+          for row in rows:
+              slug=row['slug']; dest=base/slug
+              subprocess.run(['git','-c','protocol.version=2','clone','--filter=blob:none','--no-checkout',row['source'],str(dest)],check=True)
+              subprocess.run(['git','fetch','--no-tags','--filter=blob:none','origin',row['source_commit']],cwd=dest,check=True)
+              subprocess.run(['git','checkout','--detach',row['source_commit']],cwd=dest,check=True)
+              actual=subprocess.check_output(['git','rev-parse','HEAD'],cwd=dest,text=True).strip()
+              a=inv(ext/slug); b=inv(dest)
+              missing=sorted(set(b)-set(a)); extra=sorted(set(a)-set(b)); changed=[]
+              for rel in sorted(set(a)&set(b)):
+                  if a[rel].stat().st_size!=b[rel].stat().st_size or sha(a[rel])!=sha(b[rel]): changed.append(rel)
+              status='PASS' if actual.lower()==row['source_commit'].lower() and not missing and not extra and not changed else 'FAIL'
+              failed |= status=='FAIL'
+              report={'slug':slug,'status':status,'expected_commit':row['source_commit'],'actual_commit':actual,'extracted_files':len(a),'source_files':len(b),'missing':missing,'extra':extra,'changed':changed}
+              Path(f'audit/{slug}.xray.json').write_text(json.dumps(report,indent=2)+'\n',encoding='utf-8')
+              results.append({'slug':slug,'status':status,'extracted_files':len(a),'missing':len(missing),'extra':len(extra),'changed':len(changed)})
+              print(f'{status} XRAY: {slug} extracted={len(a)} missing={len(missing)} extra={len(extra)} changed={len(changed)}')
+          global_status='FAIL' if failed else 'PASS'
+          Path('audit/GLOBAL.json').write_text(json.dumps({'audit_type':'FORENSIC_XRAY_FINAL','repositories':results,'status':global_status},indent=2)+'\n',encoding='utf-8')
+          Path('audit/FINAL_STATUS.txt').write_text(global_status+'\n',encoding='utf-8')
+          if failed: raise SystemExit(1)
+          PY
+
+      - name: Upload extraction and X-Ray evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: download-extract-xray-final-${{ github.run_id }}
+          path: ${{ github.workspace }}/audit/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Final gate
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s audit/FINAL_STATUS.txt
+          echo "FINAL X-RAY STATUS: $(cat audit/FINAL_STATUS.txt)"
+          test "$(cat audit/FINAL_STATUS.txt)" = PASS
