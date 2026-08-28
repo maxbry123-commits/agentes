@@ -2,6 +2,8 @@ name: Research Download Chain
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '*/5 * * * *'
   push:
     branches: [main]
     paths:
@@ -256,3 +258,24 @@ EOF
             unzip -tq "$f"
           done
           echo "AUDIT PASS: 20 repositories registered; every ZIP <= 17,000,000 bytes and readable."
+
+      - name: Disable temporary scheduler
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('.github/workflows/research-download-chain.yml')
+          text = p.read_text(encoding='utf-8')
+          text = text.replace("  schedule:\n    - cron: '*/5 * * * *'\n", "")
+          p.write_text(text, encoding='utf-8')
+          PY
+          git add .github/workflows/research-download-chain.yml
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'chore(actions): disable temporary scheduler'
+          git push origin HEAD:main
