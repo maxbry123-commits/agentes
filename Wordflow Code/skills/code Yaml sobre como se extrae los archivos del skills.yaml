@@ -1,0 +1,168 @@
+name: Download Extract
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'Download code/archivos/**'
+      - '.github/workflows/download-extract.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: download-extract-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ZIP_ROOT: Download code/archivos
+  EXTRACT_ROOT: xray/extracted
+  EVIDENCE_ROOT: xray/evidence
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Initialize workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "$GITHUB_WORKSPACE/xray"
+          mkdir -p "$GITHUB_WORKSPACE/xray/extracted" "$GITHUB_WORKSPACE/xray/evidence"
+          test -d "$GITHUB_WORKSPACE/$ZIP_ROOT"
+          df -h .
+
+      - name: Validate manifest and ZIP set
+        shell: python
+        run: |
+          import json, os, re
+          from pathlib import Path
+          from zipfile import ZipFile, BadZipFile
+
+          root = Path(os.environ['ZIP_ROOT'])
+          manifest = root / 'RESEARCH_DOWNLOAD_MANIFEST.jsonl'
+          if not manifest.is_file() or manifest.stat().st_size == 0:
+              raise SystemExit(f'Missing/empty manifest: {manifest}')
+
+          rows = [json.loads(line) for line in manifest.read_text(encoding='utf-8').splitlines() if line.strip()]
+          if len(rows) != 20:
+              raise SystemExit(f'Expected 20 repositories, found {len(rows)}')
+
+          all_zips = sorted(root.glob('*.zip'))
+          if len(all_zips) != 61:
+              raise SystemExit(f'Expected 61 ZIP parts, found {len(all_zips)}')
+
+          for row in rows:
+              slug = row['slug']
+              expected = int(row['parts'])
+              if not re.fullmatch(r'[0-9a-fA-F]{40}', row['source_commit']):
+                  raise SystemExit(f'{slug}: invalid source_commit')
+              parts = sorted(root.glob(f'{slug}_[0-9][0-9][0-9][0-9].zip'))
+              nums = [int(p.stem.rsplit('_', 1)[1]) for p in parts]
+              if nums != list(range(1, expected + 1)):
+                  raise SystemExit(f'{slug}: expected parts 1..{expected}, found {nums}')
+              for zp in parts:
+                  if zp.stat().st_size == 0:
+                      raise SystemExit(f'{slug}: empty ZIP {zp.name}')
+                  try:
+                      with ZipFile(zp) as z:
+                          if z.testzip() is not None:
+                              raise SystemExit(f'{slug}: CRC failure in {zp.name}')
+                          seen = set()
+                          for info in z.infolist():
+                              name = info.filename.replace('\\', '/')
+                              p = Path(name)
+                              if p.is_absolute() or '..' in p.parts:
+                                  raise SystemExit(f'{slug}: unsafe ZIP path: {name}')
+                              if name in seen:
+                                  raise SystemExit(f'{slug}: duplicate member: {name}')
+                              seen.add(name)
+                  except BadZipFile as exc:
+                      raise SystemExit(f'{slug}: invalid ZIP {zp}: {exc}')
+
+          Path('xray/evidence/manifest.json').write_text(json.dumps(rows, indent=2) + '\n', encoding='utf-8')
+          Path('xray/evidence/manifest.pass').write_text('PASS: 20 repositories / 61 ZIP parts\n', encoding='utf-8')
+          print('PASS: manifest and all 61 ZIP parts validated')
+
+      - name: Extract all ZIP parts safely
+        shell: python
+        run: |
+          import json, os, shutil
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          root = Path(os.environ['ZIP_ROOT'])
+          out = Path(os.environ['EXTRACT_ROOT'])
+          rows = json.loads(Path('xray/evidence/manifest.json').read_text(encoding='utf-8'))
+          summary = []
+
+          for row in rows:
+              slug = row['slug']
+              dest = out / slug
+              shutil.rmtree(dest, ignore_errors=True)
+              dest.mkdir(parents=True, exist_ok=True)
+              seen = set()
+              count = 0
+              parts = sorted(root.glob(f'{slug}_[0-9][0-9][0-9][0-9].zip'), key=lambda p: int(p.stem.rsplit('_', 1)[1]))
+              for zp in parts:
+                  with ZipFile(zp) as z:
+                      for info in z.infolist():
+                          name = info.filename.replace('\\', '/')
+                          if not name or name.endswith('/'):
+                              continue
+                          if name in seen:
+                              raise SystemExit(f'{slug}: duplicate path across parts: {name}')
+                          seen.add(name)
+                          target = (dest / name).resolve()
+                          if dest.resolve() not in target.parents:
+                              raise SystemExit(f'{slug}: extraction escape: {name}')
+                          target.parent.mkdir(parents=True, exist_ok=True)
+                          with z.open(info) as src, target.open('wb') as dst:
+                              shutil.copyfileobj(src, dst, length=1024 * 1024)
+                          count += 1
+              if count == 0:
+                  raise SystemExit(f'{slug}: zero files extracted')
+              summary.append({'slug': slug, 'parts': len(parts), 'files_extracted': count})
+              print(f'PASS EXTRACT: {slug} parts={len(parts)} files={count}')
+
+          Path('xray/evidence/EXTRACTION.json').write_text(json.dumps({'repositories': summary, 'status': 'PASS'}, indent=2) + '\n', encoding='utf-8')
+          assert len(summary) == 20
+
+      - name: Prove extraction before packaging
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s "$GITHUB_WORKSPACE/xray/evidence/EXTRACTION.json"
+          test -n "$(find "$GITHUB_WORKSPACE/xray/extracted" -type f -print -quit)"
+          find "$GITHUB_WORKSPACE/xray/extracted" -type f | sort > "$GITHUB_WORKSPACE/xray/evidence/FILES.txt"
+          test -s "$GITHUB_WORKSPACE/xray/evidence/FILES.txt"
+          echo "Extracted files: $(wc -l < "$GITHUB_WORKSPACE/xray/evidence/FILES.txt")"
+
+      - name: Package extraction as TAR
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar -C "$GITHUB_WORKSPACE/xray" -cf "$GITHUB_WORKSPACE/wordflow-extraction-${{ github.run_id }}.tar" extracted evidence
+          test -s "$GITHUB_WORKSPACE/wordflow-extraction-${{ github.run_id }}.tar"
+          tar -tf "$GITHUB_WORKSPACE/wordflow-extraction-${{ github.run_id }}.tar" > "$GITHUB_WORKSPACE/xray/evidence/TAR_CONTENTS.txt"
+          test -s "$GITHUB_WORKSPACE/xray/evidence/TAR_CONTENTS.txt"
+
+      - name: Upload extraction TAR
+        uses: actions/upload-artifact@v7
+        with:
+          path: ${{ github.workspace }}/wordflow-extraction-${{ github.run_id }}.tar
+          archive: false
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Summary
+        run: |
+          cat "$GITHUB_WORKSPACE/xray/evidence/EXTRACTION.json" >> "$GITHUB_STEP_SUMMARY"
