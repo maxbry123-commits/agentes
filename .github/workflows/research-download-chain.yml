@@ -4,7 +4,7 @@ run-name: Research Download Chain • ${{ github.event_name }} • ${{ github.sh
 on:
   workflow_dispatch:
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: '54-59/5 * * * *'
   push:
     branches: [main]
     paths:
