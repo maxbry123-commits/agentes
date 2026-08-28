@@ -1,0 +1,22 @@
+name: Download Extract X-Ray
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  download-extract-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - name: S1-S2 Download lock
+        run: python3 scripts/research_download_chain.py 'Download code/archivos' '_work/research-download'
+      - name: S3-S4 Reconstruct slug folder
+        run: bash skills/wordflow-paso-v3/scripts/extract_reconstruct.sh "Download code/archivos"
+      - name: S5-S12 X-Ray
+        run: python3 skills/wordflow-paso-v3/scripts/xray_crosscheck.py "Download code/archivos" audit work/source
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: forensic-xray-report
+          path: audit/

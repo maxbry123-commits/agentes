@@ -1,0 +1,25 @@
+name: Extract Downloaded ZIPs
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Group parts into one slug folder
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash skills/wordflow-paso-v3/scripts/extract_reconstruct.sh "Download code/archivos"
+      - name: Inventory + SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="Download code/archivos"
+          MANIFEST="$ROOT/EXTRACTION_MANIFEST.sha256"
+          : > "$MANIFEST"
+          find "$ROOT" -mindepth 2 -type f ! -name '*.zip' -print0 |
+            sort -z | xargs -0 sha256sum > "$MANIFEST"
+          wc -l "$MANIFEST"
