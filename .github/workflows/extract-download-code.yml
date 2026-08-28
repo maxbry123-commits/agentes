@@ -1,0 +1,69 @@
+name: Extract Download Code ZIPs
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: extract-download-code-main
+  cancel-in-progress: false
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Extract every ZIP beside itself
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ROOT="${GITHUB_WORKSPACE}/Download code/archivos"
+          test -d "$ROOT" || { echo "ERROR: $ROOT no existe"; exit 1; }
+
+          mapfile -d '' ZIPS < <(find "$ROOT" -maxdepth 1 -type f -iname '*.zip' -print0 | sort -z)
+          test "${#ZIPS[@]}" -gt 0 || { echo "ERROR: no hay ZIP en $ROOT"; exit 1; }
+
+          for zip in "${ZIPS[@]}"; do
+            base="$(basename "$zip" .zip)"
+            dest="$ROOT/$base"
+            echo "=== $base ==="
+            rm -rf -- "$dest"
+            mkdir -p -- "$dest"
+            unzip -tq "$zip"
+            unzip -q "$zip" -d "$dest"
+            count="$(find "$dest" -type f | wc -l | tr -d ' ')"
+            test "$count" -gt 0 || { echo "ERROR: extracción vacía: $zip"; exit 1; }
+            echo "PASS: $zip -> $dest ($count archivos)"
+          done
+
+      - name: Generate deterministic extraction manifest
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ROOT="${GITHUB_WORKSPACE}/Download code/archivos"
+          OUT="$ROOT/EXTRACTION_MANIFEST.sha256"
+          : > "$OUT"
+          find "$ROOT" -mindepth 2 -type f ! -name '*.zip' -print0 \
+            | sort -z | xargs -0 -r sha256sum > "$OUT"
+          test -s "$OUT"
+
+      - name: Commit extracted repositories
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- 'Download code/archivos'
+          if git diff --cached --quiet; then
+            echo 'No hay cambios que guardar.'
+            exit 0
+          fi
+          git commit -m 'extract downloaded repository archives'
+          git push origin HEAD:main
