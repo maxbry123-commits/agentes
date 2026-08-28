@@ -10,13 +10,14 @@ permissions:
   contents: read
 
 env:
-  INPUT_ROOT: xray/input
+  ARTIFACT_ROOT: xray/input
   AUDIT_ROOT: xray/audit
 
 jobs:
   audit:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 360
     steps:
       - name: Checkout repository for manifest
         uses: actions/checkout@v7
@@ -24,22 +25,27 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Download extraction artifact from completed extraction run
+      - name: Download extraction TAR artifact
         uses: actions/download-artifact@v8
         with:
-          name: wordflow-extraction-${{ github.event.workflow_run.id }}
-          path: ${{ env.INPUT_ROOT }}
+          name: wordflow-extraction-${{ github.event.workflow_run.id }}.tar
+          path: ${{ env.ARTIFACT_ROOT }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           repository: ${{ github.repository }}
           run-id: ${{ github.event.workflow_run.id }}
 
-      - name: Validate downloaded artifact layout
+      - name: Extract artifact TAR
         shell: bash
         run: |
           set -euo pipefail
-          test -s "$INPUT_ROOT/evidence/EXTRACTION.json"
-          test -n "$(find "$INPUT_ROOT/extracted" -type f -print -quit)"
-          cat "$INPUT_ROOT/evidence/EXTRACTION.json"
+          tar_file=$(find "$ARTIFACT_ROOT" -maxdepth 1 -type f -name '*.tar' -print -quit)
+          test -n "$tar_file"
+          rm -rf "$ARTIFACT_ROOT/decoded"
+          mkdir -p "$ARTIFACT_ROOT/decoded"
+          tar -tf "$tar_file" > "$ARTIFACT_ROOT/tar-contents.txt"
+          tar -xf "$tar_file" -C "$ARTIFACT_ROOT/decoded"
+          test -s "$ARTIFACT_ROOT/decoded/evidence/EXTRACTION.json"
+          test -n "$(find "$ARTIFACT_ROOT/decoded/extracted" -type f -print -quit)"
 
       - name: Forensic audit against exact source commits
         shell: python
@@ -47,30 +53,32 @@ jobs:
           import hashlib, json, os, shutil, subprocess
           from pathlib import Path
 
-          root = Path(os.environ['INPUT_ROOT'])
+          root = Path(os.environ['ARTIFACT_ROOT']) / 'decoded'
           audit = Path(os.environ['AUDIT_ROOT'])
           audit.mkdir(parents=True, exist_ok=True)
-          extraction = json.loads((root / 'evidence' / 'EXTRACTION.json').read_text())
+          extraction = json.loads((root / 'evidence' / 'EXTRACTION.json').read_text(encoding='utf-8'))
           if extraction.get('status') != 'PASS':
               raise SystemExit('Extraction evidence is not PASS')
-
-          manifest = Path('Download code/archivos/RESEARCH_DOWNLOAD_MANIFEST.jsonl')
-          rows = [json.loads(x) for x in manifest.read_text().splitlines() if x.strip()]
+          rows = json.loads((root / 'evidence' / 'manifest.json').read_text(encoding='utf-8'))
           if len(rows) != 20:
-              raise SystemExit(f'Expected 20 manifest records, found {len(rows)}')
+              raise SystemExit(f'Expected 20 repositories, found {len(rows)}')
 
-          def sha256_file(p):
+          def sha256_file(path):
               h = hashlib.sha256()
-              with p.open('rb') as f:
+              with path.open('rb') as f:
                   for chunk in iter(lambda: f.read(1024 * 1024), b''):
                       h.update(chunk)
               return h.hexdigest()
 
+          def tree(directory):
+              return {
+                  p.relative_to(directory).as_posix(): sha256_file(p)
+                  for p in directory.rglob('*') if p.is_file() and '.git' not in p.parts and '__MACOSX' not in p.parts and p.name != '.DS_Store'
+              }
+
           results = []
           for row in rows:
               slug = row['slug']
-              source = row['source']
-              commit = row['source_commit']
               extracted = root / 'extracted' / slug
               if not extracted.is_dir():
                   raise SystemExit(f'{slug}: extracted directory missing')
@@ -79,18 +87,12 @@ jobs:
               shutil.rmtree(upstream, ignore_errors=True)
               upstream.parent.mkdir(parents=True, exist_ok=True)
               subprocess.run(['git', 'init', '-q', str(upstream)], check=True)
-              subprocess.run(['git', '-C', str(upstream), 'remote', 'add', 'origin', source], check=True)
-              subprocess.run(['git', '-C', str(upstream), 'fetch', '--depth=1', 'origin', commit], check=True)
+              subprocess.run(['git', '-C', str(upstream), 'remote', 'add', 'origin', row['source']], check=True)
+              subprocess.run(['git', '-C', str(upstream), 'fetch', '--depth=1', 'origin', row['source_commit']], check=True)
               archive = upstream.parent / f'{slug}.source.tar'
-              subprocess.run(['git', '-C', str(upstream), 'archive', '--format=tar', commit, '-o', str(archive)], check=True)
+              subprocess.run(['git', '-C', str(upstream), 'archive', '--format=tar', row['source_commit'], '-o', str(archive)], check=True)
               subprocess.run(['tar', '-xf', str(archive), '-C', str(upstream)], check=True)
               archive.unlink()
-
-              def tree(rootdir):
-                  return {
-                      p.relative_to(rootdir).as_posix(): sha256_file(p)
-                      for p in rootdir.rglob('*') if p.is_file() and '.git' not in p.parts
-                  }
 
               ext_tree = tree(extracted)
               up_tree = tree(upstream)
@@ -98,27 +100,28 @@ jobs:
               extra = sorted(set(ext_tree) - set(up_tree))
               mismatched = sorted(k for k in set(up_tree) & set(ext_tree) if up_tree[k] != ext_tree[k])
               status = 'PASS' if not missing and not extra and not mismatched else 'FAIL'
-              results.append({
+              report = {
                   'slug': slug,
-                  'source_commit': commit,
+                  'status': status,
+                  'source_commit': row['source_commit'],
                   'files_extracted': len(ext_tree),
                   'files_upstream': len(up_tree),
-                  'missing': missing[:100],
-                  'extra': extra[:100],
-                  'content_mismatch': mismatched[:100],
-                  'status': status,
-              })
+                  'missing': missing[:200],
+                  'extra': extra[:200],
+                  'content_mismatch': mismatched[:200]
+              }
+              (audit / f'{slug}.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
+              results.append(report)
               if status != 'PASS':
-                  raise SystemExit(f'{slug}: forensic comparison FAILED')
+                  raise SystemExit(f'{slug}: forensic audit FAILED')
 
-          result = {
+          (audit / 'GLOBAL.json').write_text(json.dumps({
+              'audit_type': 'FORENSIC_XRAY',
               'source_extraction_run_id': os.environ.get('GITHUB_RUN_ID'),
               'repository_count': len(results),
-              'repositories': results,
-              'status': 'PASS'
-          }
-          (audit / 'GLOBAL.json').write_text(json.dumps(result, indent=2) + '\n')
-          print(json.dumps(result, indent=2))
+              'status': 'PASS',
+              'repositories': results
+          }, indent=2) + '\n', encoding='utf-8')
 
       - name: Upload forensic audit
         uses: actions/upload-artifact@v7
@@ -126,6 +129,7 @@ jobs:
           name: wordflow-audit-${{ github.run_id }}
           path: ${{ github.workspace }}/xray/audit/
           if-no-files-found: error
+          retention-days: 30
 
       - name: Summary
         run: cat "$AUDIT_ROOT/GLOBAL.json" >> "$GITHUB_STEP_SUMMARY"
