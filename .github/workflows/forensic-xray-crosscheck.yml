@@ -1,0 +1,86 @@
+name: Forensic X-Ray Cross-Verification
+run-name: Forensic X-Ray • ${{ github.event_name }} • ${{ github.sha }}
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/forensic-xray-crosscheck.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: forensic-xray-crosscheck
+  cancel-in-progress: false
+
+jobs:
+  crosscheck-20:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - name: Checkout downloaded ZIP repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Run exact source-to-ZIP reconstruction audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          import json, hashlib, shutil, subprocess
+          from pathlib import Path
+          manifest = Path('Download code/archivos/RESEARCH_DOWNLOAD_MANIFEST.jsonl')
+          base = Path('/tmp/xray')
+          shutil.rmtree(base, ignore_errors=True); base.mkdir(parents=True)
+          def run(cmd, cwd=None): subprocess.run(cmd, cwd=cwd, check=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+          def sha256(p):
+              h=hashlib.sha256()
+              with open(p,'rb') as f:
+                  for b in iter(lambda:f.read(1024*1024),b''): h.update(b)
+              return h.hexdigest()
+          rows=[json.loads(x) for x in manifest.read_text().splitlines() if x.strip()]
+          if len(rows)!=20: raise SystemExit(f'BLOCKED: manifest has {len(rows)} entries, expected 20')
+          failures=[]
+          for row in rows:
+              slug=row['slug']; url=row['source']; commit=row['source_commit']; expected=int(row['parts'])
+              print(f'===== XRAY {row["number"]}/20 {slug} @ {commit} =====')
+              root=base/slug; src=root/'src'; out=root/'out'; root.mkdir(parents=True)
+              run(['git','init',str(src)]); run(['git','remote','add','origin',url],cwd=src)
+              run(['git','fetch','--depth=1','origin',commit],cwd=src); run(['git','checkout','--detach',commit],cwd=src)
+              shutil.rmtree(src/'.git',ignore_errors=True); out.mkdir(parents=True)
+              parts=sorted(Path('Download code/archivos').glob(f'{slug}_*.zip'))
+              if len(parts)!=expected:
+                  failures.append((slug,f'PART_COUNT expected={expected} actual={len(parts)}')); continue
+              for z in parts:
+                  if z.stat().st_size>17*1000*1000: failures.append((slug,f'ZIP_OVER_LIMIT {z.name} {z.stat().st_size}'))
+                  run(['unzip','-q','-o',str(z.resolve()),'-d',str(out.resolve())])
+              extracted=out/slug
+              meta=extracted/'SPLIT_FILES.json'
+              if meta.exists():
+                  for rec in json.loads(meta.read_text()):
+                      target=extracted/rec['path']; chunks=extracted/rec['chunks_dir']; target.parent.mkdir(parents=True,exist_ok=True)
+                      with open(target,'wb') as w:
+                          for c in sorted(chunks.glob(target.name+'.part-*')):
+                              with open(c,'rb') as f: shutil.copyfileobj(f,w)
+                      shutil.rmtree(chunks,ignore_errors=True)
+                  meta.unlink()
+              def inventory(root):
+                  d={}
+                  for p in root.rglob('*'):
+                      if p.is_file(): d[p.relative_to(root).as_posix()]=(p.stat().st_size,sha256(p))
+                  return d
+              a=inventory(src); b=inventory(extracted)
+              missing=sorted(set(a)-set(b)); extra=sorted(set(b)-set(a)); changed=sorted(k for k in set(a)&set(b) if a[k]!=b[k])
+              if missing or extra or changed:
+                  failures.append((slug,f'MISMATCH missing={len(missing)} extra={len(extra)} changed={len(changed)}'))
+                  print('MISSING',missing[:20]); print('EXTRA',extra[:20]); print('CHANGED',changed[:20])
+              else: print(f'PASS {slug}: exact path/size/SHA256 equality')
+          print('===== FORENSIC X-RAY RESULT =====')
+          if failures:
+              for slug,msg in failures: print('FAIL',slug,msg)
+              raise SystemExit(f'BLOCKED: {len(failures)} repository audit failure(s)')
+          print('PASS: 20/20 repositories exact source-to-ZIP cross-verification')
+          PY
