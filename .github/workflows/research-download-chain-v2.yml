@@ -1,8 +1,8 @@
 name: Research Download Chain
 run-name: Research Download Chain V2 • ${{ github.event_name }} • ${{ github.sha }}
 
-# LOOP validation: implementation lives in scripts/research_download_chain.py
-# ZIP safety margin: 14,000,000 bytes before GitHub repository batch limits.
+# Canonical writer guard: this workflow shares the writer lock with the main
+# chain because both commit binary ZIPs into the same main branch.
 on:
   workflow_dispatch:
   push:
@@ -15,7 +15,8 @@ permissions:
   contents: write
 
 concurrency:
-  group: research-download-chain-v2
+  group: research-download-chain-writer
+  queue: max
   cancel-in-progress: false
 
 jobs:
@@ -25,7 +26,7 @@ jobs:
     timeout-minutes: 330
     steps:
       - name: Checkout main
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 1
 
