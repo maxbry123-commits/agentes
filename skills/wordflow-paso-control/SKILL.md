@@ -1,235 +1,344 @@
 ---
 name: wordflow-paso-control
-description: Control por PASO 1-8 del pipeline download-zip-copy-plugin-deploy. Trigger on Download N, Desplegar N, OP1, OP2, OUT1 OUT2 OUT3, Maxbry_123_tokens, Fables, UOOS, X-Ray, council12. Ejecutar una tarjeta de control por paso. No dump de checklist. No rewrite origen.
+description: Control ejecutable PASO 0 a 8 download-zip-copy-plugin-deploy. Trigger on Download code, Download N, Desplegar N, OP1 parte, OP2 fork completo, OUT1 OUT2 OUT3, Maxbry_123_tokens, Fables, UOOS, X-Ray, council12, skill-creator. Una tarjeta por paso con IN DO FORBID GATE OUT NEXT. No dump. No rewrite origen.
 metadata:
   type: workflow
-  version: "1.0.0"
+  version: "1.1.0"
   status: CONTROL
-  sibling: wordflow-code-deploy-router
+  skill_creator: "init+validate 1.1.0"
   repo: maxbry123-commits/agentes
 ---
 
 # Wordflow Paso Control
 
-Skill de CONTROL. Cada PASO es una tarjeta ejecutable. INPUT BLOCK vive en `references/INPUT-BLOCK.md`. Council vive en `references/COUNCIL-12.md`. Mapa de fuentes en `references/SOURCE-MAP.md`.
+## Overview
 
-Al activar este skill no listes requisitos. Ejecuta la tarjeta del PASO en curso.
+Protocolo de control para que otra AI ejecute el pipeline Wordflow. No es el INPUT BLOCK. El INPUT BLOCK esta en `references/INPUT-BLOCK.md`. Cada PASO tiene tarjeta completa. Si un campo de tarjeta falta, el skill esta incompleto y hay que parar.
 
-## Arranque
+Leer tambien `references/SOURCE-MAP.md` `references/COUNCIL-12.md` `references/PASO-DETALLE.md` `references/AUDIT-SKILL-CREATOR.md`. Correr `scripts/check-tarjeta.sh` antes de declarar el skill listo.
 
-1. Leer `references/INPUT-BLOCK.md` linea a linea. Marcar cada item UNCHECKED.
-2. Leer `references/COUNCIL-12.md`. Aplicar 12 goals in antes de escribir.
-3. Leer `references/SOURCE-MAP.md`. Si un path fuente no existe, STOP y reportar gap. No inventar.
-4. Identificar PASO en curso (1..8) y salida (OUT1|OUT2|OUT3).
-5. Ejecutar SOLO esa tarjeta. Emitir EVIDENCE. No avanzar con gate rojo.
-6. LLM nunca imprime PASS. PASS solo si el gate de evidencia sale 0.
+## Arranque (skill-creator)
 
-## Tarjeta comun
+1. Validar este directorio con validate-skill.sh. Si FAIL, no ejecutar pipeline.
+2. Cruzar `references/INPUT-BLOCK.md` items 1-32.
+3. Correr council 12 in desde `references/COUNCIL-12.md`.
+4. Identificar PASO_EN_CURSO in {0,1,2,3,4,5,6,7,8} y OUT in {OUT1,OUT2,OUT3}.
+5. Ejecutar UNA tarjeta. Emitir EVIDENCE. Gate rojo = STOP.
+6. LLM no imprime PASS.
 
-Toda tarjeta usa este contrato.
-
-```
-IN     paths y secrets que debes leer
-DO     acciones en orden
-FORBID acciones prohibidas
-GATE   predicado medible
-OUT    artefactos
-NEXT   unico sucesor legal
-```
-
-Token solo por nombre de env. Nunca pegar ghp. Alias legales Maxbry_123_tokens EXTERNAL_GH_B_TOKEN EXTERNAL_GH_C_TOKEN HF_TOKEN TARGET_REPO_TOKEN.
-
-Runtime generado = Python o YAML. JSON solo como ficha ya registrada.
-
-## PASO 1 — Download Action
+### EVIDENCE por tarjeta
 
 ```
-IN     skill research-download-chain
-       assets FORENSIC-PASS yml + py (blob lock)
-       lista REPOS fija
-DO     disparar workflow research-download-chain-final.yml
-       python3 scripts/research_download_chain.py 'Download code/archivos' '_work/research-download'
-FORBID reescribir packer, cambiar SPLIT_TARGET MAX_ZIP, add/remove slugs
-GATE   MANIFEST count COMPLETE == len(REPOS)
-       zip <= 17000000
+paso: N
+op: OP1|OP2|none
+out: OUT1|OUT2|OUT3|none
+in_leidos: [paths]
+cmds: [comandos]
+sha_src: ...
+sha_dst: ...
+gate: OK|FAIL
+next: ...
+gaps: []
+```
+
+Token solo env. Alias Maxbry_123_tokens EXTERNAL_GH_B_TOKEN EXTERNAL_GH_C_TOKEN HF_TOKEN TARGET_REPO_TOKEN. Runtime Python o YAML. JSON solo ficha registrada.
+
+## PASO 0 — Auditar fuentes (item 1-2,9)
+
+```
+IN     repo agentes
+       repo TAREA-1
+       repo Agentes-motores-Wordflow-YAIWES
+       references/SOURCE-MAP.md
+DO     abrir en los 3 repos
+         docs/METODO_ZIP_COPY_DETERMINISTA.md
+         docs/GUIA-DESPLIEGUE-ZIP-UNIVERSAL.md
+       confirmar mismo metodo extract+copy
+       auditar cada path del SOURCE-MAP
+FORBID inventar guia si el path 404
+GATE   los 3 repos muestran la guia zip
+       SOURCE-MAP paths existen o gaps listados
+OUT    lista path+sha de guias
+NEXT   PASO 1
+```
+
+## PASO 1 — Download Action + lista repos (item 4,10)
+
+```
+IN     skills/research-download-chain/SKILL.md
+       seccion 20 repos LOCK
+       assets FORENSIC-PASS yml blob 5950933bcf567a34e197e96c59e845451124eb35
+       assets FORENSIC-PASS py  blob bfc7634f500f6ded03b296ddfebc6dac35c56462
+DO     COPIAR la lista 01-20 al input del workflow
+         SearchOS SearXNG OpenDeepResearch GPT-Researcher STORM
+         Shandu Vane Haystack Crawl4AI Perplexica
+         Dagu Conductor Temporal Argo-Workflows Kestra
+         LangGraph Hatchet Windmill Dagster Prefect
+       disparar .github/workflows/research-download-chain-final.yml
+       python3 scripts/research_download_chain.py \
+         'Download code/archivos' '_work/research-download'
+FORBID reescribir packer
+       cambiar SPLIT_TARGET=12000000 MAX_ZIP=17000000
+       add/remove slugs o cambiar orden
+GATE   grep -c '"status": "COMPLETE"' MANIFEST == 20
+       cada zip <= 17000000
        unzip -tq == 0
 OUT    Download code/archivos/{slug}_{part}.zip
        RESEARCH_DOWNLOAD_MANIFEST.jsonl
 NEXT   PASO 2
 ```
 
-## PASO 2 — Bandeja Download N
+## PASO 2 — Bandeja Download code / Download N (item 11-14)
 
 ```
-IN     tarea_en_curso N in {1,2,3}
-       zips de PASO 1
-DO     mkdir -p "Download code/Download N"
+IN     N in {1,2,3} = tarea en curso
+       zips PASO 1
+       skill research-download-chain (enrutador)
+DO     mkdir -p "Download code"
+       mkdir -p "Download code/Download N"
        elegir OP1 o OP2
 FORBID mezclar OP1 y OP2 en el mismo N sin evidencia
-GATE   carpeta N existe
-OUT    Download code/Download N/
-NEXT   OP1 o OP2 luego cruzado
+GATE   "Download code/Download N" existe
+OUT    bandeja N
+NEXT   OP1 o OP2
 ```
 
-### OP1 parte del code
+### OP1 — solo parte del code
 
 ```
-DO     seleccionar paths
-       extraer SOLO esos paths
-       COPY a Download code/Download N/<mapped>
-FORBID reescribir bytes origen
-GATE   cada path pedido existe en dest
-NEXT   verificacion cruzada
+DO     usar skill descarga para enrutar TODOS los repo a Download N
+       seleccionar subset de paths que si se usan
+       extraer SOLO ese subset
+       COPY -> Download code/Download N/<mapped>
+FORBID reescribir bytes del zip ni del origen
+GATE   cada path pedido existe en N
+       paths no pedidos no se copian a live_root
+NEXT   cruzado
 ```
 
-### OP2 repo o agente completo
+### OP2 — repo o agente completo
 
 ```
-DO     crear raiz nueva en main del dest
-       o fork y cablear
-       COPY tree completo
-FORBID dest no declarado
+DO     si software_completo OR agente_completo
+         crear raiz nueva en main del dest
+         O fork y cablear esa raiz
+       COPY tree completo fuente -> DEST_ROOT
+FORBID dest owner/repo no declarado
 GATE   tree dest cubre tree fuente
-NEXT   verificacion cruzada
+NEXT   cruzado
 ```
 
-### Cruzado fuente
+### Cruzado fuente (obligatorio)
 
 ```
-DO     comparar repo fuente vs dest
+DO     comparar repo fuente vs dest archivo a archivo
 GATE   MISSING=0 EXTRA_inesperado=0 SHA_MISMATCH=0
-OUT    evidencia lista archivos + sha
-NEXT   PASO 3 si OP1; PASO 4 si OP2 ya en dest
+OUT    evidencia paths+sha
+NEXT   PASO 3 si OP1
+       PASO 4 si OP2 ya vive en dest
 ```
 
-## PASO 3 — Extract COPY + Fables
+## PASO 3 — Extract COPY + Fables + UOOS (item 15-18)
 
 ```
 IN     METODO_ZIP_COPY_DETERMINISTA
        GUIA-DESPLIEGUE-ZIP-UNIVERSAL
-       PIPELINE/07 Enchufe Universal = Fables
-       GUIA_REGISTRO_PLUGINS
+       Desplegar/Desplegar 1
        UOOS parte 1 y parte 2
-       ficha de conexion
-DO     unzip -t
-       unzip -q a .staging/<slug>
-       filtrar __MACOSX .DS_Store path-traversal
-       COPY a raiz de vida del archivo
-       sha256 src == sha256 dst
-       registrar plugin I/O en cada archivo reutilizable
-         plugin_id contrato inputs outputs extension_point estado
-       si payload JSON o prompt -> emitir .py EXTRACT_LITERAL
-       si reglas o skill -> .yaml
-       repetir mismo metodo en el resto de archivos
-FORBID editar origen, auto-fix, regenerar, tocar archivo ya registrado
-GATE   sha match AND plugin I/O presente AND UOOS leido
-OUT    copia en raiz destino + registro plugin
+       PIPELINE/07 Enchufe Universal = Fables
+       Wordflow Code/FICHAS/07_ENCHUFE_UNIVERSAL.ficha.v2.yaml
+       GUIA_REGISTRO_PLUGINS
+       PIPELINE/57 EXTRACT_LITERAL
+DO     unzip -t ZIP
+       unzip -q ZIP -d .staging/<slug>
+       filtrar __MACOSX .DS_Store Thumbs.db path-traversal
+       COPY (no rewrite) a la raiz donde va a VIVIR el archivo
+       sha256(src)==sha256(dst)
+       registrar plugin I/O obligatorio
+         plugin_id, contrato, inputs, outputs, extension_point, estado
+       JSON o prompt -> emitir .py EXTRACT_LITERAL
+       reglas o skill -> .yaml
+       leer UOOS + ficha ANTES de armar extension/plugin
+       repetir el MISMO metodo con los demas archivos
+FORBID editar origen
+       auto-fix
+       regenerar
+       tocar archivo ya registrado
+GATE   sha match
+       plugin I/O presente
+       UOOS 1 y 2 leidos
+       ficha leida
+OUT    copia en live_root + registro plugin
 NEXT   PASO 4
 ```
 
-## PASO 4 — GitHub Action copy queue
+## PASO 4 — GitHub Action copy queue (item 19-21)
+
+Detalle YAML en `references/PASO-DETALLE.md`.
 
 ```
 IN     owner/repo dest
-       secret dest (no GITHUB_TOKEN del source)
-DO     checkout source path=source
-       checkout dest path=target token=env dest
-       construir QUEUE exacta o queue/files.txt
-       para cada FILE test -f source/$FILE
-       cp source/$FILE target/$MAPPED
-       map organico
+       secret dest TARGET_REPO_TOKEN o alias de cuenta
+       QUEUE controlada o find maxdepth 1
+DO     on workflow_dispatch
+       checkout source path=source fetch-depth 1
+       checkout dest   path=target token=env dest fetch-depth 1
+       GITHUB_TOKEN del source NO cruza dest
+       for FILE in QUEUE
+         test -f source/$FILE || exit 1
+         cp source/$FILE target/$MAPPED
+       map
          README pyproject -> raiz
          app code -> src/
          config -> config/
          tools -> scripts/
          tests -> tests/
-       un git add, un commit, un push
-FORBID force-push, llenar la raiz, usar token source contra dest
+       git add + UN commit + UN push
+       NO force
+       despues del copy registrar plugin I/O entrada y salida
+FORBID llenar la raiz
+       editar archivo ya registrado
+       usar token source contra dest
 GATE   cada FILE de QUEUE existe en dest mapeado
+       plugin I/O en cada archivo nuevo
 OUT    commit dest
 NEXT   PASO 5
 ```
 
-## PASO 5 — Estado por nombre + write atomico
+## PASO 5 — Estado por nombre + write atomico (item 22-24)
 
 ```
-IN     Desplegar/Desplegar N lote
-DO     analizar arquitectura de cada archivo
-       marcar estado SOLO en el nombre
-         archivo.yaml         ORIGINAL PROTEGIDO pendiente
-         process_archivo.yaml copia en proceso
-         done_archivo.yaml    auditado
+IN     Desplegar/Desplegar 1 lote
+       tambien Desplegar 2 si el runtime vive ahi
+DO     analizar arquitectura de CADA archivo del lote
+       nombre = estado, contenido interno NO se toca para marcar
+         pipeline.yaml              pendiente ORIGINAL PROTEGIDO
+         process_pipeline.yaml      IA trabajando / conversion
+         done_pipeline.yaml         auditado y convertido
+         (alias Director) ♾️_pipeline.yaml y ✅_pipeline.yaml
+       seguridad NO es el emoji
+       seguridad = COPY + HASH + DIFF + VALIDATE + ATOMIC RENAME
        si hay que reescribir
-         READ original
+         ORIGINAL READ-ONLY
          SHA256
-         trabajar TEMP
+         AI trabaja TEMP
          DIFF + syntax
          fail -> conservar original
          ok -> rename atomico
+         probar que la version leida no cambio
 FORBID editar bytes del original para marcar estado
-       usar emoji como unica seguridad
-GATE   original intacto OR (sha leida == sha pre-write AND syntax ok)
+GATE   original intacto
+       OR sha_pre == sha_leida AND syntax ok
 OUT    lote nombrado + temp limpio
 NEXT   PASO 6
 ```
 
-## PASO 6 — Deploy determinista
+## PASO 6 — Deploy determinista + tokens (item 25,28)
 
 ```
-IN     Desplegar/Desplegar 1
+IN     Desplegar/Desplegar 1 documentos
        Desplegar 2 lote runtime
-       PIPELINE/08 apply_push + determinista
-       Wordflow Code/code_path_runner.py
-DO     leer runner no editarlo
-       cablear deploy al final del code path
+       PIPELINE/08_DESPLIEGUE_APPLY_PUSH.md
+       PIPELINE/08_DESPLIEGUE_DETERMINISTA.md
+       Wordflow Code/core/code_path_runner.py
+       env Maxbry_123_tokens y aliases dest
+DO     incorporar el metodo determinista de ESOS archivos
+       no reescribir runner
+       cablear deploy al FINAL del code path
          reception.convert -> goals -> planner -> code_path_runner
          -> loop_bridge -> evidence -> DEPLOY
+       verificar que el motor deploy esta activo al final
        DRY_RUN default
        REAL solo si GITHUB_DEPLOY_REAL=1
 FORBID JSON como runtime
-GATE   runner termina en DEPLOY
+       editar code_path_runner.py
+GATE   cola del runner termina en DEPLOY
+       docs Desplegar 1 leidos
 OUT    ruta deploy activa
 NEXT   PASO 7
 ```
 
-## PASO 7 — Estandares dentro del prompt code
+## PASO 7 — Prompt code + estandares (item 26)
 
 ```
-IN     prompt de code del lote Desplegar
+IN     prompt de code en lote Desplegar 1 / Desplegar 2
        PIPELINE ADVANCED_ENGINEERING_STANDARD
-DO     copiar estandares como REGLA del runtime
+DO     BUSCAR el archivo prompt de code
+       COPIAR dentro los estandares de programacion de alto nivel
+       quedan como REGLA
        EXTRACT_LITERAL gana sobre mejorar
-FORBID reescribir estandar desde cero
-GATE   prompt carga el estandar
-OUT    reglas inyectadas
+FORBID inventar un prompt nuevo si el lote ya tiene uno
+GATE   prompt carga el estandar (grep regla)
+OUT    prompt con estandares inyectados
 NEXT   PASO 8
 ```
 
-## PASO 8 — Router A/B/C + 3 salidas
+## PASO 8 — Router + 2 cables + 3 OUT + X-Ray (item 27-32)
+
+Registry y diagrama en `references/PASO-DETALLE.md`.
 
 ```
-IN     external_accounts.yaml
-       env Maxbry_123_tokens cuenta A y repos Wordflow
+IN     config/external_accounts.yaml
+       env Maxbry_123_tokens  cuenta A maxbry123-commits
        env EXTERNAL_GH_B_TOKEN cuenta B abc1tienda-web
        env EXTERNAL_GH_C_TOKEN cuenta C HOLD
-DO     registrar SOURCE read, WORK process, DEST write
-       cable A = arquitectura Wordflow Code
-       cable B = apply_push
-       elegir OUT
-         OUT1 chat UOOS parte1+parte2 .py o .yaml (json solo ficha)
-         OUT2 owner/repo desde docs o preguntar; crear repo si falta
-         OUT3 raiz organizada cuenta A + evidence
-       X-Ray inbound docs
-       MD -> code EXTRACT_LITERAL PIPELINE/57
-       council 12 goals in -> council -> 12 goals out
-FORBID write a C mientras owner=HOLD
-       deploy sin council
-GATE   registry completo AND OUT elegido AND X-Ray corrio
-OUT    push o chat o evidence
-NEXT   copiar este skill a destinos Tarea 3 solo despues de evidencia
+DO     registrar cada repo con ruta y modo
+         SOURCE_01 SOURCE_02 read
+         WORK_01 process
+         DESTINATION_01 write
+       incluir agentes TAREA-1 YAIWES Wordflow-Code frontend
+       token paraguas Maxbry_123_tokens para repos Wordflow Code
+       CABLE A = arquitectura programacion en Wordflow Code
+       CABLE B = sistema de despliegue apply_push
+       elegir UNA salida
+FORBID write C si owner=HOLD
+       deploy sin X-Ray y sin council
+GATE   registry tiene path de cada repo
+       OUT elegido
+       X-Ray corrio
+       council emitio 12 out
+OUT    ver tarjetas OUT
+NEXT   Tarea 3 copias solo con evidencia
 ```
 
-## Destinos Tarea 3 (despues de evidencia)
+### OUT1 chat UOOS
+
+```
+DO     emitir UOOS parte 1 y parte 2 en el chat
+       formato .py o .yaml
+       json solo si es ficha
+GATE   ambos documentos UOOS presentes
+```
+
+### OUT2 dest remoto
+
+```
+DO     owner+repo desde docs del proyecto
+       ELSE preguntar en chat cuenta y repo
+       si repo no existe CREATE luego apply_push
+GATE   dest resuelto AND push o create evidencia
+```
+
+### OUT3 cuenta A
+
+```
+DO     raiz organizada en maxbry123-commits/agentes
+       src/ config/ scripts/ tests/
+       + evidence
+GATE   estructura destino existe
+```
+
+### X-Ray + council12
+
+```
+DO     audit_forensic sobre docs inbound
+       MD -> code EXTRACT_LITERAL PIPELINE/57
+       12 goals in -> council -> 12 goals out
+       si modulo council no existe, crearlo en sandbox y registrar plugin
+GATE   12 goals out emitidos
+```
+
+## Tarea 3 destinos (item 32, post evidencia)
 
 ```
 canonical  skills/wordflow-paso-control/
@@ -237,9 +346,9 @@ copia      Metodo de trabajo/wordflow-paso-control/
 copia      Download code/wordflow-paso-control/
 copia      Desplegar/wordflow-paso-control/
 copia      Refactoria/wordflow-paso-control/
-parche     Wordflow Code/Readme/Readme1/  cable only
+parche     Wordflow Code/Readme/Readme1/ cable only
 ```
 
 ## STOP
 
-path fuente ausente, token en claro, packer reescrito, SHA mismatch, plugin I/O ausente, OUT2-C sin owner, council sin 12 goals out.
+path 404, token en claro, packer reescrito, SHA mismatch, plugin I/O ausente, lista 20 repos alterada, OUT2-C HOLD, council sin 12 out, validate-skill.sh FAIL.
