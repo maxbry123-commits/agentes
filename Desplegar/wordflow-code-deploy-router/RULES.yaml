@@ -1,0 +1,157 @@
+# RULES.yaml — ancla del skill wordflow-code-deploy-router
+# Si este archivo y el texto de SKILL.md discrepan en algún punto, GANA este YAML.
+# No reescribir a mano sin pasar por el Director. omit_steps siempre false.
+
+skill: wordflow-code-deploy-router
+version: "2.0.0-consolidated"
+status: CANONICAL
+repo: maxbry123-commits/agentes
+supersedes:
+  - wordflow-paso-control
+  - wordflow-paso-full
+  - wordflow-paso-v3
+sibling_skill: research-download-chain
+gana_si_discrepa: yaml
+omit_steps: false
+llm_no_imprime_pass: true
+
+purpose: >
+  Camino de entrada determinista del wordflow: da al agente acceso nativo
+  al repo maxbry123-commits/agentes vía Maxbry_123_tokens, y gobierna en
+  qué raíz entra el código antes de llegar al despliegue.
+
+secrets:
+  # Solo NOMBRES. GitHub nunca expone valores de secret una vez guardados
+  # (ni por UI ni por API) -- este skill jamás debe intentar leer o
+  # imprimir un valor, solo referenciar el nombre en el paso que corresponda.
+  policy: names_only_never_values
+  aliases:
+    - name: Maxbry_123_tokens
+      cuenta: A
+      owner: maxbry123-commits
+      uso: acceso nativo del agente a todo el wordflow code
+    - name: EXTERNAL_GH_B_TOKEN
+      cuenta: B
+      uso: router PASO 8
+    - name: EXTERNAL_GH_C_TOKEN
+      cuenta: C
+      uso: router PASO 8
+      estado: HOLD
+    - name: TARGET_REPO_TOKEN
+      uso: PASO 4 copy queue, autenticación al repo destino
+    - name: HF_TOKEN
+      uso: Hugging Face Spaces (compute backend)
+
+roots:
+  download_code:
+    path: "Download code/archivos"
+    hace: "inbox de código bajado; zips + árbol reconstruido {slug}/"
+    bandeja: "Download code/Download N"
+    prohibido: [refactorizar, desplegar]
+  desplegar:
+    path: "Desplegar"
+    hace: "inbox de lote NUEVO del plan N; runtime existente en Desplegar 2"
+    prohibido: ["editar origen in-place"]
+  refactoria:
+    path: "Refactoria"
+    hace: "versión VIEJA; source/ intocable, new/ se escribe, cruzado x3"
+    prohibido: ["borrar viejo sin Director"]
+  cable_plan: "Plan X-N -> Desplegar/Desplegar N -> Refactoria/refactoria-plan-x-N"
+
+extract:
+  mode: agrupado
+  regla: >
+    Todas las partes {slug}_NNNN.zip del MISMO repo se extraen de forma
+    acumulativa en UNA sola carpeta {slug}/, nunca una carpeta por ZIP.
+  metodos_superseded:
+    - patron: "unzip -d ${zip%.zip}"
+      motivo: "una carpeta por archivo ZIP -- rompe repos partidos en varias partes"
+    - patron: "z.extractall(out) sobre 'out' compartido entre los 61 zip"
+      motivo: "mezcla/pisa archivos de repos distintos con el mismo nombre (ej. README.md)"
+  script: scripts/extract_reconstruct.sh
+  script_forense: scripts/xray_extract_audit.py
+  gate: [zip_integrity_pass, dest_no_vacio, xray_report_generado]
+
+xray_pipeline:
+  arquitectura: "2 workflows encadenados via workflow_run, no 1 solo job"
+  workflow_1:
+    nombre: "Download Extract"
+    asset: assets/download-extract.yml
+    activacion: manual (workflow_dispatch)
+    sube_artifact: "wordflow-extraction-${{ github.run_id }}"
+  workflow_2:
+    nombre: "Audit"
+    asset: assets/audit-xray.yml
+    activacion: "automática -- on.workflow_run(Download Extract, types:[completed]), solo si conclusion == success"
+    baja_artifact: "download-artifact@v8 con run-id: github.event.workflow_run.id"
+  versiones_oficiales:
+    checkout: v7
+    upload_artifact: v7
+    download_artifact: v8   # supersede una mención anterior a v5
+  artifact_root:
+    regla: >
+      El "path:" de upload-artifact define el CONTENIDO que se vuelve la
+      raíz del artifact -- no es el nombre del artifact ni admite una
+      carpeta padre intermedia.
+    bug_real: "consumidor esperaba xray/input/EXTRACTION.json, llegaba a xray/input/evidence/EXTRACTION.json"
+    fix_commit: a5a3f05
+    regresion_guard: "step 'Verify expected path' en assets/audit-xray.yml"
+  deprecated_asset: assets/download-extract-xray.yml   # se conserva como historial, no se borra
+  detalle: references/EXTRACCION-FORENSE-AVANZADA.md
+  registry: references/PLUGIN-REGISTRY.yaml
+
+download_lock:
+  workflow_asset: assets/research-download-chain-final.yml
+  script_asset: scripts/research_download_chain.py
+  yml_blob_sha: 5950933bcf567a34e197e96c59e845451124eb35
+  py_blob_sha: bfc7634f500f6ded03b296ddfebc6dac35c56462
+  split_target_bytes: 12000000
+  max_zip_bytes: 17000000
+  repos_count: 20
+  forbid: [reescribir_packer, cambiar_split_target, cambiar_max_zip, alterar_lista_repos]
+
+council12:
+  ref: references/COUNCIL-12.md
+  gate_final: true
+  steps: [S1_QUEUE, S2_DOWNLOAD, S3_ZIP_INTEGRITY, S4_RECONSTRUCT,
+          S5_SOURCE_COMMIT_CHECKOUT, S6_PATH_INVENTORY, S7_MISSING_EXTRA,
+          S8_SIZE, S9_SHA256, S10_FORENSIC_XRAY, S11_EVIDENCE, S12_GLOBAL_GATE]
+  regla_dura: >
+    Si S12 falla, NO se llega a PASO 8 (router) ni a ningún OUT. Sin
+    excepciones, sin bypass manual.
+
+input_block:
+  ref: references/INPUT-BLOCK.md
+  total_items: 32
+  gaps_declarados: [5, 6, 7, 8]
+  gap_policy: no_bloquean_pipeline_no_son_gate
+
+item_28_resolucion:
+  # Auditoría Salida 3: item 28 estaba citado en dos tarjetas a la vez
+  # (PASO 6 "25,28" y PASO 8 "27-32"). Queda resuelto:
+  asignado_a: PASO_8
+  paso_6_queda_solo_con: [25]
+
+stop_conditions:
+  - path_404
+  - token_en_claro
+  - packer_reescrito
+  - sha_mismatch
+  - plugin_io_ausente
+  - lista_20_repos_alterada
+  - out2_cuenta_c_hold
+  - council_sin_12_out
+  - validate_skill_fail
+  - artifact_path_mismatch
+  - zip_slip_detected
+  - duplicate_filename_in_zip
+  - extractall_flat_sobre_carpeta_compartida
+  - audit_disparado_a_mano   # Audit solo dispara vía workflow_run
+
+changelog:
+  - version: "2.1.0"
+    cambio: >
+      Extracción forense endurecida (22 bloques oficiales). Pipeline
+      X-Ray dividido en 2 workflows encadenados. Se agrega
+      PLUGIN-REGISTRY.yaml como fuente única de cableado entre documentos.
+      download-artifact pasa a v8 (supersede mención previa a v5).
