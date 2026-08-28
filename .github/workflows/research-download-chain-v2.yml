@@ -1,6 +1,7 @@
 name: Research Download Chain
 run-name: Research Download Chain V2 • ${{ github.event_name }} • ${{ github.sha }}
 
+# LOOP validation: implementation lives in scripts/research_download_chain.py
 on:
   workflow_dispatch:
   push:
