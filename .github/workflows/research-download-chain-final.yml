@@ -44,3 +44,4 @@ jobs:
             unzip -tq "$f"
           done
           echo 'AUDIT PASS: 20/20 repositories; all ZIP files valid and within safety limit.'
+# retrigger validation after ZIP splitter fix
