@@ -1,7 +1,7 @@
 import json, shutil, subprocess, sys, time
 from pathlib import Path
 DEST=Path(sys.argv[1]).resolve(); WORK=Path(sys.argv[2]).resolve(); SRC=WORK/'src'; PACK=WORK/'pack'
-MANIFEST=DEST/'RESEARCH_DOWNLOAD_MANIFEST.jsonl'; ZIP_LIMIT=13500000; BATCH_LIMIT=90*1024*1024; CHUNK=8*1024*1024
+MANIFEST=DEST/'RESEARCH_DOWNLOAD_MANIFEST.jsonl'; ZIP_LIMIT=12900000; BATCH_LIMIT=90*1024*1024; CHUNK=8*1024*1024
 REPOS=[('01','SearchOS','https://github.com/antins-labs/SearchOS.git'),('02','SearXNG','https://github.com/searxng/searxng.git'),('03','OpenDeepResearch','https://github.com/langchain-ai/open_deep_research.git'),('04','GPT-Researcher','https://github.com/assafelovic/gpt-researcher.git'),('05','STORM','https://github.com/stanford-oval/storm.git'),('06','Shandu','https://github.com/jolovicdev/shandu.git'),('07','Vane','https://github.com/ItzCrazyKns/Vane.git'),('08','Haystack','https://github.com/deepset-ai/haystack.git'),('09','Crawl4AI','https://github.com/unclecode/crawl4ai.git'),('10','Perplexica','https://github.com/cognitive-builder/Perplexica.git'),('11','Dagu','https://github.com/dagucloud/dagu.git'),('12','Conductor','https://github.com/conductor-oss/conductor.git'),('13','Temporal','https://github.com/temporalio/temporal.git'),('14','Argo-Workflows','https://github.com/argoproj/argo-workflows.git'),('15','Kestra','https://github.com/kestra-io/kestra.git'),('16','LangGraph','https://github.com/langchain-ai/langgraph.git'),('17','Hatchet','https://github.com/hatchet-dev/hatchet.git'),('18','Windmill','https://github.com/windmill-labs/windmill.git'),('19','Dagster','https://github.com/dagster-io/dagster.git'),('20','Prefect','https://github.com/PrefectHQ/prefect.git')]
 def run(c,cwd=None): subprocess.run(c,cwd=cwd,check=True)
 def done(slug):
