@@ -1,0 +1,122 @@
+# ANCLA REGLA — este YAML manda sobre texto libre del SKILL.md
+version: "1.2.0"
+omit_steps: false
+llm_declares_pass: false
+runtime: [python, yaml]
+json_only: ficha_registrada
+
+roots:
+  download_code:
+    path: "Download code"
+    role: inbox de zips + bandeja de tarea
+    children:
+      archivos: "Download code/archivos"
+      download_n: "Download code/Download {N}"
+    hace:
+      - recibir zips del Action PASO 1
+      - elegir OP1 parte o OP2 tree completo
+      - extraer COPY a Download N
+    no_hace:
+      - editar origen
+      - mezclar N distintos
+  desplegar:
+    path: Desplegar
+    role: inbox lote NUEVO del plan N (docs/code que sube el Director)
+    children:
+      lote_n: "Desplegar/Desplegar {N}"
+      runtime_existente: "Desplegar/Desplegar 2"
+    hace:
+      - recibir docs del plan
+      - marcar estado por nombre
+      - inyectar estandares en prompt code
+      - cablear deploy tail
+    no_hace:
+      - editar original in-place
+      - hardcodear solo Desplegar 1
+    cable: "Plan X-N -> Desplegar/Desplegar N -> Refactoria/refactoria-plan-x-N"
+  refactoria:
+    path: Refactoria
+    role: sitio de la version VIEJA a modificar
+    children:
+      source: "Refactoria/{plan}/source"
+      new: "Refactoria/{plan}/new"
+      g_gaps: "Refactoria/G1..G7"
+    hace:
+      - copiar original a source/ (no editar)
+      - escribir new/
+      - cruzar x3 luego integrar canonico
+    no_hace:
+      - editar source/
+      - borrar viejo sin Director
+
+extract_zip:
+  source_lock: assets/research-download-chain-final.yml
+  test: "unzip -t {zip}"
+  unpack: "unzip -q {zip} -d .staging/{slug}"
+  filter: ["__MACOSX", ".DS_Store", "Thumbs.db"]
+  reject_traversal: true
+  copy: "cp -a {src} {live_root}/{mapped}"
+  rewrite_origin: false
+  hash: sha256
+  gate: "sha256(src)==sha256(dst)"
+  live_root:
+    OP1: "Download code/Download {N}"
+    OP2: "{DEST_ROOT}"
+  convert:
+    json_or_prompt: ".py EXTRACT_LITERAL"
+    rules_or_skill: ".yaml"
+  plugin_io_required: true
+
+tokens:
+  A: {owner: maxbry123-commits, env: Maxbry_123_tokens}
+  B: {owner: abc1tienda-web, env: EXTERNAL_GH_B_TOKEN}
+  C: {owner: HOLD, env: EXTERNAL_GH_C_TOKEN}
+
+dag:
+  nodes:
+    - {id: p0, name: audit_fuentes}
+    - {id: p1, name: download_action}
+    - {id: p2, name: bandeja_download_n}
+    - {id: op1, name: extract_parcial}
+    - {id: op2, name: tree_completo_o_fork}
+    - {id: cross, name: sha_cruzado}
+    - {id: p3, name: extract_copy_fables}
+    - {id: p4, name: actions_copy_queue}
+    - {id: p5, name: estado_atomic}
+    - {id: p6, name: deploy_tail}
+    - {id: p7, name: prompt_estandares}
+    - {id: p8, name: router_abc}
+    - {id: xray, name: forensic_extract_literal}
+    - {id: council, name: goals12}
+    - {id: out1, name: chat_uoos}
+    - {id: out2, name: dest_remoto}
+    - {id: out3, name: raiz_cuenta_a}
+  edges:
+    - [p0, p1]
+    - [p1, p2]
+    - [p2, op1]
+    - [p2, op2]
+    - [op1, cross]
+    - [op2, cross]
+    - [cross, p3]
+    - [p3, p4]
+    - [p4, p5]
+    - [p5, p6]
+    - [p6, p7]
+    - [p7, p8]
+    - [p8, xray]
+    - [xray, council]
+    - [council, out1]
+    - [council, out2]
+    - [council, out3]
+  skip_forbidden: true
+
+cables:
+  skill_canonical: skills/wordflow-paso-control/
+  metodo: "Metodo de trabajo/wordflow-paso-control/"
+  download: "Download code/wordflow-paso-control/"
+  desplegar: "Desplegar/wordflow-paso-control/"
+  refactoria: "Refactoria/wordflow-paso-control/"
+  wordflow_patch: "Wordflow Code/Readme/Readme1/CABLE-PASO-CONTROL.md"
+  cable_a: Wordflow Code arquitectura
+  cable_b: apply_push deploy

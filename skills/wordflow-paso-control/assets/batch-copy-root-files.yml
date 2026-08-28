@@ -1,0 +1,46 @@
+name: Batch Copy Root Files
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  copy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: source
+          fetch-depth: 1
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ secrets.TARGET_OWNER }}/${{ secrets.TARGET_REPO }}
+          token: ${{ secrets.TARGET_REPO_TOKEN }}
+          path: target
+          fetch-depth: 1
+      - name: Queue copy map commit push
+        shell: bash
+        run: |
+          set -euo pipefail
+          QUEUE_FILE=queue/files.txt
+          if [[ ! -f "$QUEUE_FILE" ]]; then
+            mkdir -p queue
+            find source -maxdepth 1 -type f -printf '%f\n' | sort > "$QUEUE_FILE"
+          fi
+          while IFS= read -r FILE; do
+            test -f "source/$FILE"
+            dest="target/$FILE"
+            case "$FILE" in
+              README*|pyproject*|LICENSE*) dest="target/$FILE" ;;
+              *test*) dest="target/tests/$FILE"; mkdir -p target/tests ;;
+              *config*) dest="target/config/$FILE"; mkdir -p target/config ;;
+              *.py) dest="target/src/$FILE"; mkdir -p target/src ;;
+              *script*) dest="target/scripts/$FILE"; mkdir -p target/scripts ;;
+            esac
+            cp "source/$FILE" "$dest"
+          done < "$QUEUE_FILE"
+          cd target
+          git config user.name "wordflow-bot"
+          git config user.email "wordflow@local"
+          git add .
+          git diff --cached --quiet || git commit -m "Batch copy files from source repository"
+          git push
