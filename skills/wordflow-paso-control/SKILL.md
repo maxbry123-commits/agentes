@@ -1,9 +1,9 @@
 ---
 name: wordflow-paso-control
-description: Control YAML-first PASO 0-8 download-zip-copy-plugin-deploy. Trigger on Download code, Desplegar N, Refactoria source/new, OP1 OP2, OUT1 OUT2 OUT3, Maxbry_123_tokens, Fables, UOOS, X-Ray, DAG RULES.yaml. Ancla assets workflow + extract. No omitir nodos. No rewrite origen.
+description: Control YAML-first PASO 0-8 download-zip-copy-plugin-deploy. Trigger on Download code, Desplegar N, Refactoria source/new, OP1 OP2, OUT1 OUT2 OUT3, Maxbry_123_tokens, Fables, UOOS, X-Ray, DAG RULES.yaml. Ancla extract al lado del zip, reconstruct multi-parte, X-Ray source_commit, workflow unico S1-S12. No auditar fragmentos. No rewrite packer.
 metadata:
   type: workflow
-  version: "1.2.0"
+  version: "1.3.0"
   status: CONTROL
   ancla: references/RULES.yaml
   repo: maxbry123-commits/agentes
@@ -43,61 +43,36 @@ Cable plan: `Plan X-N -> Desplegar/Desplegar N -> Refactoria/refactoria-plan-x-N
 
 - Download lock `assets/research-download-chain-final.yml` blob `5950933bcf567a34e197e96c59e845451124eb35`
 - Copy queue `assets/batch-copy-root-files.yml`
+- Extract `assets/extract-downloaded-zips.yml`
+- Un job S1-S12 `assets/download-extract-xray.yml`
 - Cmd download `python3 scripts/research_download_chain.py 'Download code/archivos' '_work/research-download'`
 
 No reescribir packer. Lista 01-20 lock en skill research-download-chain.
 
-## Extract zip (sistema)
+## Extract zip (misma raiz que el zip)
 
-Regla completa en `references/RULES.yaml` clave `extract_zip`.
+Destino = carpeta hermana del ZIP, reconstruida por slug.
 
 ```
-unzip -t ZIP
-unzip -q ZIP -d .staging/{slug}
-filtrar __MACOSX .DS_Store path-traversal
-cp -a src live_root   # COPY no rewrite
-sha256 src == sha256 dst
-plugin I/O
-JSON|prompt -> .py
-reglas|skill -> .yaml
+Download code/archivos/SearchOS_0001.zip
+Download code/archivos/SearchOS_0002.zip
+        -> Download code/archivos/SearchOS/
 ```
 
-Guia `docs/METODO_ZIP_COPY_DETERMINISTA.md` esta 404 en agentes. Hasta que exista, esta seccion + RULES.yaml son la guia. No inventar otro packer.
+No extraer ni auditar cada parte por separado. Ordenar `*_NNNN.zip`, unzip -tq, unzip -q todas las partes en UN dest. Script `scripts/extract_reconstruct.sh`.
+
+X-Ray compara el arbol reconstruido contra `source_commit` del MANIFEST.jsonl, no contra main. Script `scripts/xray_crosscheck.py`. unzip extrae. Python hashea.
+
+Cadena S1..S12 en `references/RULES.yaml` `extract_zip.chain`. Skip prohibido.
 
 ## DAG
 
-Nodos y edges solo en `references/RULES.yaml` `dag:`. Texto aqui es comentario. Ejecutar en orden de edges. Skip prohibido.
-
-## PASO compacto (detalle en YAML)
-
-```
-p0 audit 3 repos
-p1 Action download 20 repos
-p2 mkdir Download code + Download N
-op1 parte -> Download N
-op2 tree|fork -> DEST_ROOT
-cross SHA
-p3 extract+Fables+UOOS
-p4 batch-copy yml + plugin I/O
-p5 estado nombre + atomic write
-p6 deploy tail Wordflow Code
-p7 copiar estandares al prompt
-p8 registry A/B/C + 2 cables
-xray EXTRACT_LITERAL
-council 12 in/out
-out1 chat UOOS
-out2 dest create+push
-out3 raiz A organizada
-```
+Nodos y edges solo en `references/RULES.yaml` `dag:`. Skip prohibido.
 
 ## Token
 
 Solo env. `Maxbry_123_tokens` `EXTERNAL_GH_B_TOKEN` `EXTERNAL_GH_C_TOKEN`. C=HOLD.
 
-## Copias cableadas
-
-Ver `references/RULES.yaml` `cables:`.
-
 ## STOP
 
-YAML ancla ausente, nodo saltado, token en claro, SHA fail, plugin ausente, source/ editado, packer reescrito, C HOLD write, validate-skill FAIL.
+YAML ancla ausente, nodo saltado, token en claro, SHA fail, plugin ausente, source/ editado, packer reescrito, auditar fragmento `_NNNN`, C HOLD write, validate-skill FAIL.
