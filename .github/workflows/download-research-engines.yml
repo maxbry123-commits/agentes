@@ -14,8 +14,6 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  # Hard ceiling requested by the project. We target 16 MiB so the final ZIP
-  # remains safely below 17 MB after ZIP metadata/overhead.
   MAX_ZIP_BYTES: '16777216'
   OUTPUT_DIR: 'Download code/archivos'
 
@@ -23,7 +21,6 @@ jobs:
   download-and-package:
     runs-on: ubuntu-latest
     timeout-minutes: 45
-
     steps:
       - name: Checkout YAIWES repository
         uses: actions/checkout@v4
@@ -31,7 +28,7 @@ jobs:
           fetch-depth: 1
 
       - name: Install packaging tools
-        run: sudo apt-get update && sudo apt-get install -y zip unzip jq
+        run: sudo apt-get update && sudo apt-get install -y zip unzip
 
       - name: Download, package and verify repositories
         shell: bash
@@ -39,7 +36,6 @@ jobs:
           set -euo pipefail
           rm -rf _download_work
           mkdir -p _download_work "$OUTPUT_DIR"
-
           cat > _download_work/repos.tsv <<'EOF'
           SearchOS|antins-labs/SearchOS|main
           OpenDeepResearch|langchain-ai/open_deep_research|main
@@ -49,16 +45,16 @@ jobs:
           EOF
 
           python3 <<'PY'
-          import csv, hashlib, json, os, shutil, subprocess, sys
+          import csv, hashlib, json, os, shutil, subprocess
           from pathlib import Path
 
           MAX_ZIP = int(os.environ['MAX_ZIP_BYTES'])
           OUT = Path(os.environ['OUTPUT_DIR'])
           WORK = Path('_download_work')
-          TARGET = MAX_ZIP - 512 * 1024  # safety margin below 17 MB
+          TARGET = MAX_ZIP - 512 * 1024
 
-          def run(*args):
-              subprocess.run(args, check=True)
+          def run(args, cwd=None):
+              subprocess.run(args, check=True, cwd=cwd)
 
           def sha256(path):
               h = hashlib.sha256()
@@ -67,129 +63,92 @@ jobs:
                       h.update(b)
               return h.hexdigest()
 
-          # Keep generated ZIPs isolated by repository. Remove only files this
-          # workflow owns; never touch other content under Download code/archivos.
-          for old in OUT.glob('*_*.zip'):
-              old.unlink()
-          for old in OUT.glob('*_MANIFEST.txt'):
-              old.unlink()
-
           repos = []
           with open(WORK/'repos.tsv', newline='') as f:
-              for row in csv.reader(f, delimiter='|'):
-                  if row and row[0]: repos.append(row)
+              repos = [row for row in csv.reader(f, delimiter='|') if row and row[0]]
 
           overall = []
-
           for name, repo, branch in repos:
               print(f'=== {name}: {repo}@{branch} ===')
               repo_dir = WORK / name
               if repo_dir.exists(): shutil.rmtree(repo_dir)
-              run('git', 'clone', '--depth', '1', '--branch', branch,
-                  f'https://github.com/{repo}.git', str(repo_dir))
-
-              # Capture the exact source commit for reproducibility.
+              run(['git', 'clone', '--depth', '1', '--branch', branch,
+                   f'https://github.com/{repo}.git', str(repo_dir)])
               commit = subprocess.check_output(
                   ['git', '-C', str(repo_dir), 'rev-parse', 'HEAD'], text=True).strip()
 
               files = []
-              for p in sorted(repo_dir.rglob('*')):
+              for p in repo_dir.rglob('*'):
                   if p.is_file() and '.git' not in p.parts:
-                      rel = p.relative_to(repo_dir)
-                      files.append((rel, p))
-
-              # Deterministic first-fit-decreasing grouping by source size.
+                      files.append((p.relative_to(repo_dir), p))
               files.sort(key=lambda x: (-x[1].stat().st_size, str(x[0])))
+
               groups = []
               for rel, path in files:
                   size = path.stat().st_size
                   if size > TARGET:
                       raise RuntimeError(
-                          f'{name}: file exceeds safe per-ZIP target: {rel} ({size} bytes). '
-                          'Refusing to alter/split source files.'
+                          f'{name}: source file {rel} is {size} bytes; refusing to alter/split source files.'
                       )
-                  placed = False
-                  for group in groups:
-                      if group['bytes'] + size <= TARGET:
-                          group['files'].append((rel, path))
-                          group['bytes'] += size
-                          placed = True
-                          break
-                  if not placed:
+                  for g in groups:
+                      if g['bytes'] + size <= TARGET:
+                          g['files'].append((rel, path)); g['bytes'] += size; break
+                  else:
                       groups.append({'files': [(rel, path)], 'bytes': size})
 
-              manifest_lines = [
-                  f'# {name}',
-                  f'repository={repo}',
-                  f'branch={branch}',
-                  f'commit={commit}',
-                  f'parts={len(groups)}',
-                  'limit_bytes=16777216',
-                  '']
-
-              # Build each ZIP from its file group. If compression still exceeds
-              # the hard limit, move files forward until the ZIP is compliant.
-              pending = [list(g['files']) for g in groups]
-              part = 1
-              final_groups = []
-              while pending:
-                  candidate = pending.pop(0)
-                  while True:
-                      staging = WORK / f'{name}_stage'
-                      if staging.exists(): shutil.rmtree(staging)
-                      staging.mkdir(parents=True)
-                      for rel, src in candidate:
-                          dst = staging / rel
-                          dst.parent.mkdir(parents=True, exist_ok=True)
-                          shutil.copy2(src, dst)
-                      zip_path = OUT / f'{name}_{part:02d}.zip'
-                      if zip_path.exists(): zip_path.unlink()
-                      run('zip', '-q', '-r', '-9', str(zip_path), '.', cwd=str(staging))
-                      actual = zip_path.stat().st_size
-                      if actual <= MAX_ZIP:
-                          final_groups.append((part, candidate, zip_path, actual))
-                          part += 1
-                          break
-                      if len(candidate) == 1:
-                          raise RuntimeError(f'{name}: cannot fit {candidate[0][0]} into <=17 MB ZIP')
-                      # Move the last deterministic file to the next group.
-                      moved = candidate.pop()
-                      pending.insert(0, [moved] + (pending[0] if pending else []))
+              part_records = []
+              for idx, g in enumerate(groups, 1):
+                  staging = WORK / f'{name}_stage_{idx:03d}'
                   if staging.exists(): shutil.rmtree(staging)
+                  staging.mkdir(parents=True)
+                  for rel, src in g['files']:
+                      dst = staging / rel
+                      dst.parent.mkdir(parents=True, exist_ok=True)
+                      shutil.copy2(src, dst)
+                  zip_path = OUT / f'{name}_{idx:02d}.zip'
+                  if zip_path.exists(): zip_path.unlink()
+                  run(['zip', '-q', '-r', '-9', str(zip_path), '.'], cwd=staging)
+                  actual = zip_path.stat().st_size
+                  if actual > MAX_ZIP:
+                      raise RuntimeError(f'{zip_path} is {actual} bytes (>17 MB)')
+                  part_records.append((idx, g['files'], zip_path, actual))
+                  shutil.rmtree(staging)
 
-              # Rewrite manifest with actual parts and per-part contents/checksums.
-              manifest_lines[4] = f'parts={len(final_groups)}'
-              for part, items, zp, actual in final_groups:
-                  manifest_lines.append(f'part={zp.name}|bytes={actual}|sha256={sha256(zp)}')
+              manifest = [
+                  f'# {name}', f'repository={repo}', f'branch={branch}',
+                  f'commit={commit}', f'parts={len(part_records)}',
+                  f'limit_bytes={MAX_ZIP}', ''
+              ]
+              for idx, items, zp, actual in part_records:
+                  manifest.append(f'part={zp.name}|bytes={actual}|sha256={sha256(zp)}')
                   for rel, src in items:
-                      manifest_lines.append(f'file={part:02d}|{rel}|bytes={src.stat().st_size}|sha256={sha256(src)}')
-              manifest = OUT / f'{name}_MANIFEST.txt'
-              manifest.write_text('\n'.join(manifest_lines) + '\n', encoding='utf-8')
-
+                      manifest.append(
+                          f'file={idx:02d}|{rel}|bytes={src.stat().st_size}|sha256={sha256(src)}'
+                      )
+              (OUT / f'{name}_MANIFEST.txt').write_text('\n'.join(manifest) + '\n', encoding='utf-8')
               overall.append({
                   'name': name, 'repository': repo, 'branch': branch,
-                  'commit': commit, 'parts': len(final_groups),
-                  'zip_sizes': {zp.name: actual for _, _, zp, actual in final_groups},
+                  'commit': commit, 'parts': len(part_records),
+                  'zip_sizes': {zp.name: actual for _, _, zp, actual in part_records}
               })
 
           (OUT/'DOWNLOAD_MANIFEST.json').write_text(json.dumps(overall, indent=2), encoding='utf-8')
           print(json.dumps(overall, indent=2))
           PY
 
-      - name: Verify every generated ZIP is <= 17 MB
+      - name: Verify every generated ZIP
         shell: bash
         run: |
           set -euo pipefail
           max=16777216
           count=0
-          for f in "${OUTPUT_DIR}"/*.zip; do
-            [ -f "$f" ] || continue
+          while IFS= read -r -d '' f; do
             size=$(stat -c '%s' "$f")
             echo "$f: $size bytes"
             test "$size" -le "$max"
             unzip -tq "$f"
             count=$((count+1))
-          done
+          done < <(find "$OUTPUT_DIR" -type f -name '*.zip' -print0)
           test "$count" -gt 0
 
       - name: Commit generated packages into Download code/archivos
@@ -200,7 +159,7 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -- 'Download code/archivos'
           if git diff --cached --quiet; then
-            echo 'No package changes to commit.'
+            echo 'No package changes.'
             exit 0
           fi
           git commit -m 'chore(download): package research repositories into <=17MB ZIP parts'
