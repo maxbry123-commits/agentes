@@ -25,3 +25,5 @@ jobs:
           test -d 'Download code/archivos'
           echo 'Research Download Chain registered successfully.'
           echo 'Destination: Download code/archivos'
+      - name: Confirm manual-dispatch registration
+        run: echo 'workflow_dispatch is enabled; this workflow is intended to be manually runnable from Actions.'
