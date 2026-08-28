@@ -1,0 +1,24 @@
+name: Research Download Chain V2
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/research-download-chain-v2.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Workflow parser and runner test
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "RESEARCH_DOWNLOAD_CHAIN_V2_OK"
+          test -d "$GITHUB_WORKSPACE"
