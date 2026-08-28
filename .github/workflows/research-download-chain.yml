@@ -35,34 +35,34 @@ jobs:
           mkdir -p "$DEST" "$WORK/src" "$WORK/pack"
 
           cat > "$WORK/repos.tsv" <<'EOF'
-          01|SearchOS|https://github.com/antins-labs/SearchOS.git
-          02|SearXNG|https://github.com/searxng/searxng.git
-          03|OpenDeepResearch|https://github.com/langchain-ai/open_deep_research.git
-          04|GPT-Researcher|https://github.com/assafelovic/gpt-researcher.git
-          05|STORM|https://github.com/stanford-oval/storm.git
-          06|Shandu|https://github.com/jolovicdev/shandu.git
-          07|Vane|https://github.com/ItzCrazyKns/Vane.git
-          08|Haystack|https://github.com/deepset-ai/haystack.git
-          09|Crawl4AI|https://github.com/unclecode/crawl4ai.git
-          10|Perplexica|https://github.com/cognitive-builder/Perplexica.git
-          11|Dagu|https://github.com/dagucloud/dagu.git
-          12|Conductor|https://github.com/conductor-oss/conductor.git
-          13|Temporal|https://github.com/temporalio/temporal.git
-          14|Argo-Workflows|https://github.com/argoproj/argo-workflows.git
-          15|Kestra|https://github.com/kestra-io/kestra.git
-          16|LangGraph|https://github.com/langchain-ai/langgraph.git
-          17|Hatchet|https://github.com/hatchet-dev/hatchet.git
-          18|Windmill|https://github.com/windmill-labs/windmill.git
-          19|Dagster|https://github.com/dagster-io/dagster.git
-          20|Prefect|https://github.com/PrefectHQ/prefect.git
-          EOF
+01|SearchOS|https://github.com/antins-labs/SearchOS.git
+02|SearXNG|https://github.com/searxng/searxng.git
+03|OpenDeepResearch|https://github.com/langchain-ai/open_deep_research.git
+04|GPT-Researcher|https://github.com/assafelovic/gpt-researcher.git
+05|STORM|https://github.com/stanford-oval/storm.git
+06|Shandu|https://github.com/jolovicdev/shandu.git
+07|Vane|https://github.com/ItzCrazyKns/Vane.git
+08|Haystack|https://github.com/deepset-ai/haystack.git
+09|Crawl4AI|https://github.com/unclecode/crawl4ai.git
+10|Perplexica|https://github.com/cognitive-builder/Perplexica.git
+11|Dagu|https://github.com/dagucloud/dagu.git
+12|Conductor|https://github.com/conductor-oss/conductor.git
+13|Temporal|https://github.com/temporalio/temporal.git
+14|Argo-Workflows|https://github.com/argoproj/argo-workflows.git
+15|Kestra|https://github.com/kestra-io/kestra.git
+16|LangGraph|https://github.com/langchain-ai/langgraph.git
+17|Hatchet|https://github.com/hatchet-dev/hatchet.git
+18|Windmill|https://github.com/windmill-labs/windmill.git
+19|Dagster|https://github.com/dagster-io/dagster.git
+20|Prefect|https://github.com/PrefectHQ/prefect.git
+EOF
 
           python3 - "$DEST" "$WORK" <<'PY'
           import json, shutil, subprocess, sys
           from pathlib import Path
 
-          dest = Path(sys.argv[1])
-          work = Path(sys.argv[2])
+          dest = Path(sys.argv[1]).resolve()
+          work = Path(sys.argv[2]).resolve()
           src_root = work / 'src'
           pack_root = work / 'pack'
           manifest = dest / 'RESEARCH_DOWNLOAD_MANIFEST.jsonl'
@@ -86,6 +86,7 @@ jobs:
               return False
 
           def zip_dir(stage, zip_path):
+              zip_path = Path(zip_path).resolve()
               zip_path.parent.mkdir(parents=True, exist_ok=True)
               zip_path.unlink(missing_ok=True)
               run(['zip', '-q', '-r', '-9', '-y', str(zip_path), '.'], cwd=stage)
