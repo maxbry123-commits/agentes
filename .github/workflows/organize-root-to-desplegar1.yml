@@ -1,0 +1,71 @@
+name: Organize root lote to Desplegar 1
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  organize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Copy skill + move architecture lote
+        shell: bash
+        run: |
+          set -euo pipefail
+          SRC="Wordflow Code/skills"
+          mkdir -p "PIPELINE/wordflow-code-deploy-router"
+          mkdir -p "Método de trabajo/wordflow-code-deploy-router"
+          mkdir -p "Desplegar/wordflow-code-deploy-router"
+          mkdir -p "Refactoria/wordflow-code-deploy-router"
+          mkdir -p "Download code/wordflow-code-deploy-router"
+          mkdir -p "Desplegar/Desplegar 1/arquitectura"
+          for f in SKILL.md RULES.yaml METODO-DE-TRABAJO.md CABLE.md; do
+            if [ -f "$SRC/$f" ]; then
+              cp -a "$SRC/$f" "PIPELINE/wordflow-code-deploy-router/$f"
+              cp -a "$SRC/$f" "Método de trabajo/wordflow-code-deploy-router/$f"
+              cp -a "$SRC/$f" "Desplegar/wordflow-code-deploy-router/$f"
+              cp -a "$SRC/$f" "Refactoria/wordflow-code-deploy-router/$f"
+              cp -a "$SRC/$f" "Download code/wordflow-code-deploy-router/$f"
+            fi
+          done
+          MOVE=(
+            README_ARQUITECTURA.md
+            A7_PLAN_DESPLIEGUE.md
+            B7_PLAN_DESPLIEGUE.md
+            DESPLIEGUE-DETERMINISTA-UNIVERSAL-v2.md
+            GUIA-DESPLIEGUE-GROK-PARTE-01-FINAL.md
+            GUIA-DESPLIEGUE-ZIP-UNIVERSAL.md
+            ESPECIFICACION_PIPELINE_NCT.html
+            ESPECIFICACION_PIPELINE_NCT_v2.html
+            GUIA_MAESTRA_PIPELINE_NCT_v2.html
+            LOOP_ENGINE.md
+            A5_LOOPS.md
+            08-loop.md
+            10-input-output-loop.md
+            S11-DOC1-LOOPS-10-NIVELES-MHYTOS.html
+            INTEGRATION.md
+            ROUTER_MEMORY_WIRING.md
+            SALIDA_B_DOC_B2_LOOP_ENGINE.md
+            lyrie-doc01-loop-fallback.md
+            METODO_ZIP_COPY_DETERMINISTA.md
+            README_FORENSIC_HANDOFF.md
+            README_METHOD.md
+            RENAME_NOTE.md
+            zip-Yaiwes-wordflow-completo.md
+          )
+          for f in "${MOVE[@]}"; do
+            if [ -f "$f" ]; then
+              git mv -f "$f" "Desplegar/Desplegar 1/arquitectura/$f"
+            fi
+          done
+          shopt -s nullglob
+          for f in UOOS*.md UOOS*.html 📌MAVIS*.md 📌MAX-SYSTEM*.md 🎯*.md 🤯*.md 🎯💡*.html; do
+            [ -f "$f" ] || continue
+            git mv -f "$f" "Desplegar/Desplegar 1/arquitectura/$f"
+          done
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && echo nothing && exit 0
+          git commit -m "organize: copy skill + move architecture lote to Desplegar 1"
+          git push
