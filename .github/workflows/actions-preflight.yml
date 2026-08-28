@@ -19,5 +19,7 @@ jobs:
           set -euo pipefail
           echo "ACTIONS_PREFLIGHT_OK"
           echo "runner=$RUNNER_NAME"
+          echo "workspace=$GITHUB_WORKSPACE"
           pwd
           test -d "$GITHUB_WORKSPACE"
+          test -w "$GITHUB_WORKSPACE"
