@@ -81,14 +81,15 @@ jobs:
               subprocess.run(['git', 'init', '-q', str(upstream)], check=True)
               subprocess.run(['git', '-C', str(upstream), 'remote', 'add', 'origin', source], check=True)
               subprocess.run(['git', '-C', str(upstream), 'fetch', '--depth=1', 'origin', commit], check=True)
-              subprocess.run(['git', '-C', str(upstream), 'archive', '--format=tar', commit, '-o', str(upstream / 'source.tar')], check=True)
-              subprocess.run(['tar', '-xf', str(upstream / 'source.tar'), '-C', str(upstream)], check=True)
-              (upstream / 'source.tar').unlink()
+              archive = upstream.parent / f'{slug}.source.tar'
+              subprocess.run(['git', '-C', str(upstream), 'archive', '--format=tar', commit, '-o', str(archive)], check=True)
+              subprocess.run(['tar', '-xf', str(archive), '-C', str(upstream)], check=True)
+              archive.unlink()
 
               def tree(rootdir):
                   return {
                       p.relative_to(rootdir).as_posix(): sha256_file(p)
-                      for p in rootdir.rglob('*') if p.is_file() and p.name != '.git'
+                      for p in rootdir.rglob('*') if p.is_file() and '.git' not in p.parts
                   }
 
               ext_tree = tree(extracted)
@@ -111,7 +112,7 @@ jobs:
                   raise SystemExit(f'{slug}: forensic comparison FAILED')
 
           result = {
-              'source_extraction_run_id': github.event.workflow_run.id,
+              'source_extraction_run_id': os.environ.get('GITHUB_RUN_ID'),
               'repository_count': len(results),
               'repositories': results,
               'status': 'PASS'
