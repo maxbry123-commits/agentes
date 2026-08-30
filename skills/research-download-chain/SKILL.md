@@ -142,3 +142,21 @@ LLM nunca declara PASS. PASS = EvidenceGate de los tests de arriba.
 ## Método
 
 Aplicar `references/METODO-DE-TRABAJO.md` en cada salida. Sandbox-first. Input-checklist. Forensic closure. No from-scratch.
+
+## NOTA ADDENDUM (no reescribe packer ni constantes LOCK)
+
+Archivo >100MB en git push = GH001. El packer LOCK ya lo evita: si size>CHUNK (8MiB) parte a `nombre.chunks/nombre.part-NNNN`. En EXTRACT no recomponer el original. Dejar .chunks. Si un file extraído queda >CHUNK, aplicar la misma partición del packer antes de git add.
+
+LFS en EXTRACT: el clone puede traer puntero `version https://git-lfs.github.com/spec/v1` + `.gitattributes filter=lfs`. Eso no está en el packer. Solución permitida (no es tercer paso de descarga): GIT_LFS_SKIP_SMUDGE=1 GIT_LFS_SKIP_PUSH=1; git lfs uninstall; borrar líneas filter=lfs del .gitattributes; push --no-verify. El puntero queda texto. Prohibido git lfs track / migrate / smudge.
+
+## CHECKLIST PRE-RUN (comparar code vs skill antes de dispatch)
+
+- [ ] Packer no reescrito. CHUNK=8MiB SPLIT_TARGET=12e6 MAX_ZIP=17e6 BATCH=90MiB.
+- [ ] Paso 1 DEST = Download code/archivos. ZIP pattern slug_0001.zip.
+- [ ] Paso 2 EXTRACT = raíz exacta. No recomponer files >CHUNK.
+- [ ] YAML env GIT_LFS_SKIP_SMUDGE=1 y GIT_LFS_SKIP_PUSH=1.
+- [ ] checkout lfs: false. git lfs uninstall en job.
+- [ ] push --no-verify. No filter=lfs en .gitattributes que se commitea.
+- [ ] Ningún file staged size>=100MiB (find -size +99M).
+- [ ] Diff packer LOCK = vacío. Si no vacío STOP.
+- [ ] Solo entonces workflow_dispatch.
