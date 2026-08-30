@@ -3,7 +3,7 @@ name: research-download-chain
 description: Reproduce the exact GitHub Actions chain that downloaded 20 OS research and orchestration repos into Download code/archivos. Trigger on research-download-chain, FROMTED PASO 1 sources, 20 repos zip split, RESEARCH_DOWNLOAD_MANIFEST, or Wordflow download PASS run 33134420445. Lock to forensic blobs. Do not rewrite the packer.
 metadata:
   type: workflow
-  version: "1.1.0"
+  version: "1.2.0"
   pass_run_id: "33134420445"
   pass_job_id: "98731080894"
   pass_sha: "f53145e2f86f6f948c4697a06bf1f3b707a71d5b"
@@ -190,3 +190,40 @@ Before rerun, persist a small text/JSON failure report in the repository or anot
 - [ ] Ningún file staged size>=100MiB (find -size +99M).
 - [ ] Diff packer LOCK = vacío. Si no vacío STOP.
 - [ ] Solo entonces workflow_dispatch.
+
+
+## LOOP FAILURE PATTERNS v1.2
+### Retry helper recursion ban
+A retry helper MUST execute the underlying operation. It MUST NOT call itself inside its own try block unless an explicit recursive algorithm is intended and has a terminating state. Before commit, statically inspect every helper named retry/retry_* or clone_retry for direct self-calls.
+
+Required pattern:
+- cleanup stale destination;
+- execute underlying operation;
+- return on success;
+- catch only expected operation failure;
+- bounded backoff;
+- raise the last error.
+
+### Fresh workflow, not historical rerun, after YAML repair
+A rerun of an old GitHub Actions run uses the workflow definition from the original run rather than the repaired workflow commit. After changing workflow logic, create a fresh run from the new commit/workflow_dispatch and record its run id and attempt separately.
+
+### Failure ledger
+Before any retry, persist:
+- repository;
+- workflow;
+- run id;
+- commit SHA;
+- failing step;
+- normalized root cause;
+- timestamp.
+Do not rely solely on artifacts from a previous rerun because reruns can replace attempt artifacts.
+
+### Static preflight additions
+Before dispatch:
+1. parse Python scripts with AST;
+2. reject direct self-recursion in retry helpers;
+3. compile Python with py_compile;
+4. verify every workflow script path exists;
+5. verify workflow checkout uses lfs: false;
+6. verify generated extraction roots are removed before forensic rebuild;
+7. reject SKIP-existing-output as PASS evidence.
