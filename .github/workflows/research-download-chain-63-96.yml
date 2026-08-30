@@ -2,6 +2,11 @@ name: research-download-chain-63-96
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/research-download-chain-63-96.yml
 
 permissions:
   contents: write
@@ -17,10 +22,6 @@ env:
 
 jobs:
   download-extract-63-96:
-    # Pin the runner image instead of ubuntu-latest. The previous executions
-    # failed before any step was created (steps=[] / BlobNotFound), so the
-    # first remediation is to remove the moving runner alias from the job
-    # initialization path while leaving the download logic unchanged.
     runs-on: ubuntu-22.04
     timeout-minutes: 360
     steps:
@@ -37,111 +38,50 @@ jobs:
           set -Eeuo pipefail
           python3 - <<'PY'
           import json, os, pathlib, shutil, subprocess, tempfile, zipfile, hashlib
-
           components = [
-            (63, "logseq", "https://github.com/logseq/logseq"),
-            (64, "Trilium", "https://github.com/TriliumNext/Trilium"),
-            (65, "anytype-ts", "https://github.com/anyproto/anytype-ts"),
-            (66, "AppFlowy", "https://github.com/AppFlowy-IO/AppFlowy"),
-            (67, "AFFiNE", "https://github.com/toeverything/AFFiNE"),
-            (68, "excalidraw", "https://github.com/excalidraw/excalidraw"),
-            (69, "argos-translate", "https://github.com/argosopentech/argos-translate"),
-            (70, "LibreTranslate", "https://github.com/LibreTranslate/LibreTranslate"),
-            (71, "hermes-agent", "https://github.com/NousResearch/hermes-agent"),
-            (72, "plandex", "https://github.com/plandex-ai/plandex"),
-            (73, "repomix", "https://github.com/yamadashy/repomix"),
-            (74, "crawl4ai", "https://github.com/unclecode/crawl4ai"),
-            (75, "yt-dlp", "https://github.com/yt-dlp/yt-dlp"),
-            (76, "searxng", "https://github.com/searxng/searxng"),
-            (77, "Perplexica", "https://github.com/ItzCrazyKns/Perplexica"),
-            (78, "khoj", "https://github.com/khoj-ai/khoj"),
-            (79, "inngest", "https://github.com/inngest/inngest"),
-            (80, "trigger.dev", "https://github.com/triggerdotdev/trigger.dev"),
-            (81, "restate", "https://github.com/restatedev/restate"),
-            (82, "dbos-transact-ts", "https://github.com/dbos-inc/dbos-transact-ts"),
-            (83, "airflow", "https://github.com/apache/airflow"),
-            (84, "prefect", "https://github.com/PrefectHQ/prefect"),
-            (85, "dagster", "https://github.com/dagster-io/dagster"),
-            (86, "argo-workflows", "https://github.com/argoproj/argo-workflows"),
-            (87, "dolphinscheduler", "https://github.com/apache/dolphinscheduler"),
-            (88, "xxl-job", "https://github.com/xuxueli/xxl-job"),
-            (89, "elastic-job-lite", "https://github.com/apache/shardingsphere-elasticjob"),
-            (90, "PowerJob", "https://github.com/PowerJob/PowerJob"),
-            (91, "cadence", "https://github.com/cadence-workflow/cadence"),
-            (92, "ray", "https://github.com/ray-project/ray"),
-            (93, "hatchet", "https://github.com/hatchet-dev/hatchet"),
-            (94, "conductor", "https://github.com/Netflix/conductor"),
-            (95, "typescript-sdk", "https://github.com/litellm/typescript-sdk"),
-            (96, "litellm", "https://github.com/BerriAI/litellm"),
-          ]
-
-          root = pathlib.Path.cwd()
-          downloads = root / "_downloads"
-          evidence = root / "_evidence"
-          downloads.mkdir(exist_ok=True)
-          evidence.mkdir(exist_ok=True)
-          assert len(components) == 34 and [n for n,_,_ in components] == list(range(63,97))
-          chunk = int(os.environ["CHUNK_BYTES"]); max_zip = int(os.environ["MAX_ZIP_BYTES"])
-
-          def run(*args, cwd=None):
-              return subprocess.run(args, cwd=cwd, check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE).stdout.strip()
-
-          manifest = []
-          for number, name, url in components:
-              source_sha = run("git", "ls-remote", url, "HEAD").split()[0]
-              assert len(source_sha) == 40
-              with tempfile.TemporaryDirectory(prefix=f"rdc-{number}-") as td0:
-                  td = pathlib.Path(td0); clone = td / name
-                  run("git", "clone", "--depth", "1", "--no-tags", url, str(clone))
-                  actual_sha = run("git", "rev-parse", "HEAD", cwd=clone)
-                  if actual_sha != source_sha: raise SystemExit(f"Source SHA drift: {name}")
-                  shutil.rmtree(clone / ".git", ignore_errors=True)
-                  stage = td / "stage"; stage.mkdir()
-                  for src in sorted(clone.rglob("*")):
-                      rel = src.relative_to(clone); dst = stage / rel
-                      if src.is_dir(): dst.mkdir(parents=True, exist_ok=True)
-                      elif src.is_file():
-                          dst.parent.mkdir(parents=True, exist_ok=True)
-                          with src.open("rb") as fin, dst.open("wb") as fout: shutil.copyfileobj(fin, fout, length=chunk)
-                  archive_dir = downloads / name; extract_dir = root / name; evidence_dir = evidence / name
-                  for p in (archive_dir, extract_dir, evidence_dir):
-                      if p.exists(): shutil.rmtree(p)
-                      p.mkdir(parents=True)
-                  files = sorted(p for p in stage.rglob("*") if p.is_file())
-                  parts=[]; current=[]
-                  for f in files:
-                      trial=current+[f]; ztmp=td/"trial.zip"
-                      with zipfile.ZipFile(ztmp,"w",compression=zipfile.ZIP_DEFLATED) as z:
-                          for item in trial: z.write(item,item.relative_to(stage).as_posix())
-                      if current and ztmp.stat().st_size > max_zip: parts.append(current); current=[f]
-                      else: current=trial
-                  if current or not parts: parts.append(current)
-                  seen=set(); records=[]
-                  for idx,batch in enumerate(parts,1):
-                      part_id=f"{idx:04d}"; zpath=archive_dir/f"{name}.{part_id}.zip"
-                      with zipfile.ZipFile(zpath,"w",compression=zipfile.ZIP_DEFLATED) as z:
-                          for item in batch:
-                              rel=item.relative_to(stage).as_posix()
-                              if rel in seen: raise SystemExit(f"Cross-part duplicate: {name}/{rel}")
-                              seen.add(rel); z.write(item,rel)
-                      if zpath.stat().st_size > max_zip: raise SystemExit(f"ZIP too large: {zpath}")
-                      with zipfile.ZipFile(zpath) as z:
-                          if z.testzip() is not None: raise SystemExit(f"CRC failure: {zpath}")
-                          members=z.namelist()
-                          if len(members)!=len(set(members)): raise SystemExit(f"Duplicate ZIP members: {zpath}")
-                          for m in members:
-                              pp=pathlib.PurePosixPath(m)
-                              if m.startswith("/") or ".." in pp.parts: raise SystemExit(f"Unsafe ZIP path: {zpath}: {m}")
-                      run("unzip","-tq",str(zpath))
-                      with zipfile.ZipFile(zpath) as z: z.extractall(extract_dir)
-                      records.append({"part_id":part_id,"path":str(zpath.relative_to(root)),"size":zpath.stat().st_size,"crc":"PASS","unzip_test":"PASS"})
-                  extracted=sorted(p.relative_to(extract_dir).as_posix() for p in extract_dir.rglob("*") if p.is_file())
-                  (evidence_dir/"FILES.txt").write_text("".join(x+"\n" for x in extracted),encoding="utf-8")
-                  manifest.append({"id":number,"name":name,"source_url":url,"source_commit":source_sha,"destination_branch":"main","destination_root":name,"parts":len(records),"files_extracted":len(extracted),"extraction_status":"PASS","parts_evidence":records})
-          (evidence/"MANIFEST.json").write_text(json.dumps(manifest,indent=2)+"\n",encoding="utf-8")
-          h=hashlib.sha256((evidence/"MANIFEST.json").read_bytes()).hexdigest()
-          (evidence/"MANIFEST.sha256").write_text(h+"  MANIFEST.json\n",encoding="utf-8")
-          print("Build PASS: 34/34")
+            (63, "logseq", "https://github.com/logseq/logseq"), (64, "Trilium", "https://github.com/TriliumNext/Trilium"), (65, "anytype-ts", "https://github.com/anyproto/anytype-ts"), (66, "AppFlowy", "https://github.com/AppFlowy-IO/AppFlowy"), (67, "AFFiNE", "https://github.com/toeverything/AFFiNE"), (68, "excalidraw", "https://github.com/excalidraw/excalidraw"), (69, "argos-translate", "https://github.com/argosopentech/argos-translate"), (70, "LibreTranslate", "https://github.com/LibreTranslate/LibreTranslate"), (71, "hermes-agent", "https://github.com/NousResearch/hermes-agent"), (72, "plandex", "https://github.com/plandex-ai/plandex"), (73, "repomix", "https://github.com/yamadashy/repomix"), (74, "crawl4ai", "https://github.com/unclecode/crawl4ai"), (75, "yt-dlp", "https://github.com/yt-dlp/yt-dlp"), (76, "searxng", "https://github.com/searxng/searxng"), (77, "Perplexica", "https://github.com/ItzCrazyKns/Perplexica"), (78, "khoj", "https://github.com/khoj-ai/khoj"), (79, "inngest", "https://github.com/inngest/inngest"), (80, "trigger.dev", "https://github.com/triggerdotdev/trigger.dev"), (81, "restate", "https://github.com/restatedev/restate"), (82, "dbos-transact-ts", "https://github.com/dbos-inc/dbos-transact-ts"), (83, "airflow", "https://github.com/apache/airflow"), (84, "prefect", "https://github.com/PrefectHQ/prefect"), (85, "dagster", "https://github.com/dagster-io/dagster"), (86, "argo-workflows", "https://github.com/argoproj/argo-workflows"), (87, "dolphinscheduler", "https://github.com/apache/dolphinscheduler"), (88, "xxl-job", "https://github.com/xuxueli/xxl-job"), (89, "elastic-job-lite", "https://github.com/apache/shardingsphere-elasticjob"), (90, "PowerJob", "https://github.com/PowerJob/PowerJob"), (91, "cadence", "https://github.com/cadence-workflow/cadence"), (92, "ray", "https://github.com/ray-project/ray"), (93, "hatchet", "https://github.com/hatchet-dev/hatchet"), (94, "conductor", "https://github.com/Netflix/conductor"), (95, "typescript-sdk", "https://github.com/litellm/typescript-sdk"), (96, "litellm", "https://github.com/BerriAI/litellm")]
+          root=pathlib.Path.cwd(); downloads=root/"_downloads"; evidence=root/"_evidence"; downloads.mkdir(exist_ok=True); evidence.mkdir(exist_ok=True)
+          assert len(components)==34 and [n for n,_,_ in components]==list(range(63,97)); chunk=int(os.environ["CHUNK_BYTES"]); max_zip=int(os.environ["MAX_ZIP_BYTES"])
+          def run(*args,cwd=None): return subprocess.run(args,cwd=cwd,check=True,text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE).stdout.strip()
+          manifest=[]
+          for number,name,url in components:
+            source_sha=run("git","ls-remote",url,"HEAD").split()[0]; assert len(source_sha)==40
+            with tempfile.TemporaryDirectory(prefix=f"rdc-{number}-") as td0:
+              td=pathlib.Path(td0); clone=td/name; run("git","clone","--depth","1","--no-tags",url,str(clone)); actual_sha=run("git","rev-parse","HEAD",cwd=clone); assert actual_sha==source_sha
+              shutil.rmtree(clone/".git",ignore_errors=True); stage=td/"stage"; stage.mkdir()
+              for src in sorted(clone.rglob("*")):
+                rel=src.relative_to(clone); dst=stage/rel
+                if src.is_dir(): dst.mkdir(parents=True,exist_ok=True)
+                elif src.is_file(): dst.parent.mkdir(parents=True,exist_ok=True); src.replace(dst)
+              archive_dir=downloads/name; extract_dir=root/name; evidence_dir=evidence/name
+              for p in (archive_dir,extract_dir,evidence_dir):
+                if p.exists(): shutil.rmtree(p)
+                p.mkdir(parents=True)
+              files=sorted(p for p in stage.rglob("*") if p.is_file()); parts=[]; current=[]
+              for f in files:
+                trial=current+[f]; ztmp=td/"trial.zip"
+                with zipfile.ZipFile(ztmp,"w",compression=zipfile.ZIP_DEFLATED) as z:
+                  for item in trial: z.write(item,item.relative_to(stage).as_posix())
+                if current and ztmp.stat().st_size>max_zip: parts.append(current); current=[f]
+                else: current=trial
+              if current or not parts: parts.append(current)
+              seen=set(); records=[]
+              for idx,batch in enumerate(parts,1):
+                part_id=f"{idx:04d}"; zpath=archive_dir/f"{name}.{part_id}.zip"
+                with zipfile.ZipFile(zpath,"w",compression=zipfile.ZIP_DEFLATED) as z:
+                  for item in batch:
+                    rel=item.relative_to(stage).as_posix(); assert rel not in seen; seen.add(rel); z.write(item,rel)
+                assert zpath.stat().st_size<=max_zip
+                with zipfile.ZipFile(zpath) as z:
+                  assert z.testzip() is None; members=z.namelist(); assert len(members)==len(set(members))
+                  for m in members:
+                    pp=pathlib.PurePosixPath(m); assert not m.startswith("/") and ".." not in pp.parts
+                run("unzip","-tq",str(zpath));
+                with zipfile.ZipFile(zpath) as z: z.extractall(extract_dir)
+                records.append({"part_id":part_id,"path":str(zpath.relative_to(root)),"size":zpath.stat().st_size,"crc":"PASS","unzip_test":"PASS"})
+              extracted=sorted(p.relative_to(extract_dir).as_posix() for p in extract_dir.rglob("*") if p.is_file()); (evidence_dir/"FILES.txt").write_text("".join(x+"\n" for x in extracted),encoding="utf-8")
+              manifest.append({"id":number,"name":name,"source_url":url,"source_commit":source_sha,"destination_branch":"main","destination_root":name,"parts":len(records),"files_extracted":len(extracted),"extraction_status":"PASS","parts_evidence":records})
+          (evidence/"MANIFEST.json").write_text(json.dumps(manifest,indent=2)+"\n"); h=hashlib.sha256((evidence/"MANIFEST.json").read_bytes()).hexdigest(); (evidence/"MANIFEST.sha256").write_text(h+"  MANIFEST.json\n"); print("Build PASS: 34/34")
           PY
 
       - name: Cross-check destination roots and evidence
@@ -149,19 +89,10 @@ jobs:
         run: |
           set -Eeuo pipefail
           python3 - <<'PY'
-          import json, pathlib
-          root=pathlib.Path.cwd(); manifest=json.loads((root/"_evidence/MANIFEST.json").read_text())
-          assert [x["id"] for x in manifest]==list(range(63,97))
-          for item in manifest:
-              name=item["name"]; dest=root/name; ev=root/"_evidence"/name
-              assert item["destination_branch"]=="main" and item["destination_root"]==name
-              assert dest.is_dir() and item["extraction_status"]=="PASS"
-              actual=sorted(p.relative_to(dest).as_posix() for p in dest.rglob('*') if p.is_file())
-              inventory=(ev/"FILES.txt").read_text().splitlines()
-              assert item["files_extracted"]==len(actual)==len(inventory) and actual==inventory
-              assert len(item["parts_evidence"])==item["parts"]
-              assert [p["part_id"] for p in item["parts_evidence"]]==[f"{i:04d}" for i in range(1,item["parts"]+1)]
-              assert all(p["crc"]=="PASS" and p["unzip_test"]=="PASS" and p["size"]<=17825792 for p in item["parts_evidence"])
+          import json,pathlib
+          root=pathlib.Path.cwd(); manifest=json.loads((root/"_evidence/MANIFEST.json").read_text()); assert [x["id"] for x in manifest]==list(range(63,97))
+          for x in manifest:
+            dest=root/x["name"]; inv=(root/"_evidence"/x["name"])/"FILES.txt"; actual=sorted(p.relative_to(dest).as_posix() for p in dest.rglob('*') if p.is_file()); inventory=inv.read_text().splitlines(); assert x["destination_branch"]=="main" and x["destination_root"]==x["name"] and dest.is_dir() and actual==inventory and len(actual)==x["files_extracted"]; assert all(p["crc"]=="PASS" and p["unzip_test"]=="PASS" and p["size"]<=17825792 for p in x["parts_evidence"])
           print("X-RAY pre-commit PASS: 34/34")
           PY
 
@@ -169,31 +100,16 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A -- '_downloads' '_evidence' logseq Trilium anytype-ts AppFlowy AFFiNE excalidraw argos-translate LibreTranslate hermes-agent plandex repomix crawl4ai yt-dlp searxng Perplexica khoj inngest trigger.dev restate dbos-transact-ts airflow prefect dagster argo-workflows dolphinscheduler xxl-job elastic-job-lite PowerJob cadence ray hatchet conductor typescript-sdk litellm
-          git commit -m "download: components 63-96 with deterministic extraction" || echo "No changes to commit"
-          git push origin HEAD:main
+          git config user.name "github-actions[bot]"; git config user.email "41898282+github-actions[bot]@users.noreply.github.com"; git add -A -- '_downloads' '_evidence' logseq Trilium anytype-ts AppFlowy AFFiNE excalidraw argos-translate LibreTranslate hermes-agent plandex repomix crawl4ai yt-dlp searxng Perplexica khoj inngest trigger.dev restate dbos-transact-ts airflow prefect dagster argo-workflows dolphinscheduler xxl-job elastic-job-lite PowerJob cadence ray hatchet conductor typescript-sdk litellm; git commit -m "download: components 63-96 with deterministic extraction" || echo "No changes to commit"; git push origin HEAD:main
 
       - name: Final destination audit and EvidenceGate
         shell: bash
         run: |
           set -Eeuo pipefail
           python3 - <<'PY'
-          import json, pathlib
-          root=pathlib.Path.cwd(); manifest=json.loads((root/"_evidence/MANIFEST.json").read_text())
-          assert len(manifest)==34 and [x["id"] for x in manifest]==list(range(63,97))
-          for item in manifest:
-              name=item["name"]; dest=root/name; arc=root/"_downloads"/name; ev=root/"_evidence"/name
-              assert item["destination_branch"]=="main" and item["destination_root"]==name
-              assert dest.is_dir() and dest.name==name
-              zips=sorted(arc.glob(f"{name}.*.zip"))
-              assert len(zips)==item["parts"] and len(zips)>0
-              assert [p.name.split(".")[-2] for p in zips]==[f"{i:04d}" for i in range(1,len(zips)+1)]
-              assert (ev/"FILES.txt").is_file()
-              actual=sorted(p.relative_to(dest).as_posix() for p in dest.rglob('*') if p.is_file())
-              inventory=(ev/"FILES.txt").read_text().splitlines()
-              assert item["files_extracted"]==len(actual)==len(inventory) and actual==inventory
-          print("FINAL DESTINATION AUDIT: PASS 34/34")
-          print("EVIDENCEGATE: PASS")
+          import json,pathlib
+          root=pathlib.Path.cwd(); m=json.loads((root/"_evidence/MANIFEST.json").read_text()); assert len(m)==34 and [x["id"] for x in m]==list(range(63,97))
+          for x in m:
+            name=x["name"]; dest=root/name; arc=root/"_downloads"/name; ev=root/"_evidence"/name; zips=sorted(arc.glob(f"{name}.*.zip")); actual=sorted(p.relative_to(dest).as_posix() for p in dest.rglob('*') if p.is_file()); inv=(ev/"FILES.txt").read_text().splitlines(); assert dest.is_dir() and len(zips)==x["parts"] and actual==inv and len(actual)==x["files_extracted"]
+          print("FINAL DESTINATION AUDIT: PASS 34/34"); print("EVIDENCEGATE: PASS")
           PY
