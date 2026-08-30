@@ -1,0 +1,22 @@
+name: research-download-chain-skill-copy-04
+on:
+  workflow_dispatch:
+
+# Exact source: skills/research-download-chain/SKILL.md
+# Source blob SHA: c5c99864d3091f9527cbbf9aab2cf98d4f081834
+# This workflow is intentionally disabled and contains no component download list.
+# The source Skill is copied verbatim by reference; no source text is rewritten here.
+jobs:
+  disabled-copy:
+    if: ${{ false }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          lfs: false
+      - name: Verify exact Skill source
+        run: |
+          test -f skills/research-download-chain/SKILL.md
+          echo "SKILL_SOURCE_SHA=c5c99864d3091f9527cbbf9aab2cf98d4f081834"
+          echo "COPY_MODE=VERBATIM_SOURCE"
