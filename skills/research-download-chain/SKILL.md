@@ -1,117 +1,75 @@
 ---
 name: research-download-chain
-description: Repository-neutral deterministic download, archive, extraction, integrity, and forensic verification chain. Trigger on research-download-chain or audited download/extraction tasks. Lock to forensic assets. Do not rewrite the packer.
+description: Repository-neutral deterministic download, archive, extraction, integrity, and forensic verification chain. Trigger on audited download/extraction tasks. Lock to forensic assets. Do not rewrite the packer.
 metadata:
   type: workflow
-  version: "1.4.0"
+  version: "1.5.0"
 ---
 
 # Research Download Chain — generic forensic model
 
 ## Scope
-Reusable skill. It MUST NOT contain a concrete target repository, organization, project codename, workflow run, job ID, or copied repository catalog that could be mistaken for the destination of a future task. Target-specific values belong only in the task contract, manifest, or LOCK assets.
+Reusable and repository-neutral. Never embed a concrete target repository, organization, project codename, historical run/job ID, concrete repository catalog, or destination-specific URL. Target values belong only in the task contract, manifest, or LOCK assets.
 
-## Fuente de verdad LOCK
-Leer siempre antes de ejecutar:
-- `assets/FORENSIC-PASS-research-download-chain-final.yml`
-- `assets/FORENSIC-PASS-research_download_chain.py`
-- `references/RESEARCH-DOWNLOAD-CHAIN-AI-PLAYBOOK.json`
-- `references/METODO-DE-TRABAJO.md`
-
-Preflight obligatorio: calcular el git-blob SHA1 de los dos assets LOCK y detenerse si no coincide. Nunca reescribir el packer LOCK para resolver un fallo de ejecución.
-
-## Parámetros
-Los valores efectivos deben provenir del LOCK o del contrato de la tarea; no inventarlos ni copiarlos desde otro repositorio.
-- DEST = `<TARGET_ROOT>`
-- WORK = `<WORK_ROOT>`
-- SRC = `<SOURCE_ROOT>`
-- PACK = `<PACK_ROOT>`
-- MANIFEST = `<MANIFEST_PATH>`
-- ZIP pattern = `<SLUG>_<PART>.zip`
-
-## Contrato de ejecución
-1. Leer Contrato 2.
-2. Leer este skill.
-3. Leer los dos LOCK.
-4. Comparar código real contra el contrato y el skill.
-5. Ejecutar únicamente la cadena declarada por el LOCK.
-6. No introducir paralelismo si el LOCK exige orden secuencial.
-7. No usar Git LFS.
-8. No declarar PASS por inferencia del LLM.
+## LOCK / contract
+Read the active Contract 2, this skill, the packer LOCK and YAML LOCK before execution. Verify the LOCK blobs before changing execution code. Never rewrite a LOCK packer to repair a runtime failure.
 
 ## Absolute no-LFS policy
-- Nunca ejecutar, instalar, configurar, desinstalar o invocar LFS.
-- Nunca usar `git lfs`, `GIT_LFS_*`, smudge/clean hooks, track, migrate o filtros LFS.
-- Checkout: `lfs: false`.
-- Las firmas `git-lfs.github.com/spec/` y `filter=lfs` pueden existir únicamente como patrones de detección forense.
-- Si material generado contiene un puntero o configuración LFS: FAIL CLOSED. No sanitizarlo para convertirlo en PASS.
+- Never execute, install, configure, uninstall, track, migrate, or invoke LFS.
+- Checkout must use `lfs: false`.
+- Detection signatures such as `git-lfs.github.com/spec/` and `filter=lfs` are allowed only as forensic indicators.
+- Generated output containing LFS pointer/config material is FAIL CLOSED; never sanitize it into PASS.
 
-## Clean-room extraction
-Antes de una reconstrucción auditada:
-- eliminar ZIP generados anteriores;
-- eliminar todos los roots de extracción declarados por el manifest;
-- eliminar estado temporal de la tarea;
-- impedir que `SKIP EXISTING` sea evidencia de PASS.
+## Clean-room rule
+Delete prior generated archives, temporary sources, manifests that are explicitly rebuild-owned, and every extraction root covered by the active manifest before a forensic rebuild. Existing non-empty output is never evidence of a new extraction. `SKIP EXISTING` cannot be a PASS condition.
 
-Una extracción existente nunca demuestra que la nueva descarga fue extraída correctamente.
-
-## EvidenceGate
-PASS exige simultáneamente:
-1. manifest existente;
-2. cardinalidad esperada;
-3. IDs continuos según el manifest/contrato;
-4. todas las filas `COMPLETE`;
-5. cantidad real de partes ZIP = `manifest.parts`;
-6. límite de tamaño por ZIP respetado;
-7. `unzip -tq`/CRC PASS;
-8. extracción realizada desde cero;
-9. cada root esperado existe y contiene archivos;
-10. protección contra path traversal PASS;
-11. ausencia de material LFS en outputs;
-12. reporte final generado por el verificador;
-13. workflow final `success` en un run NUEVO posterior a la reparación;
-14. commit SHA ejecutado por el run = commit reparado.
-
-Green workflow alone != EvidenceGate PASS.
-
-## X-RAY cross-verification
-Cada objetivo debe auditarse en cinco capas independientes:
-A. Código: el script implementa el comportamiento esperado.
-B. Workflow: YAML llama al script y rutas correctas.
-C. Commit: el run ejecuta el SHA reparado.
-D. Runtime: el job ejecuta realmente los pasos previstos.
-E. Resultado: manifest, ZIP, CRC, extracción, ubicación y reporte concuerdan.
-
-PASS solo si A+B+C+D+E = PASS.
+## Static preflight
+Before dispatch:
+1. parse YAML;
+2. verify every workflow-referenced script exists;
+3. run `py_compile` with `PYTHONDONTWRITEBYTECODE=1`;
+4. AST-check retry helpers for direct self-recursion;
+5. verify `lfs: false` and absence of operational LFS commands/env;
+6. verify output roots are cleaned;
+7. validate manifest schema/cardinality expectations;
+8. verify scanners do not self-trigger on their own detection signatures;
+9. ignore/delete generated `__pycache__` and `.pyc` from forensic scans;
+10. validate archive and extraction paths.
 
 ## Retry model
-Un helper de retry debe ejecutar la operación real; nunca debe llamarse directamente a sí mismo.
-
-Patrón obligatorio:
-- limpiar destino temporal;
-- ejecutar operación subyacente;
-- `return` en éxito;
-- capturar únicamente errores esperados;
-- backoff acotado;
-- límite de intentos;
-- propagar el último error.
-
-Preflight AST:
-- localizar funciones `retry`, `retry_*`, `clone_retry` y equivalentes;
-- rechazar llamada directa a sí mismas;
-- ejecutar `py_compile`.
-
-Nunca reintentar una aserción de integridad hasta convertir FAIL en PASS.
+Retry helpers execute the underlying operation directly. They must never call themselves directly. Required flow: clean temporary root → operation → return on success → bounded backoff on expected external failure → raise last error. Never retry an integrity assertion into PASS.
 
 ## Fresh-run rule
-Después de reparar un workflow o script:
-- NO usar un re-run histórico como prueba principal;
-- crear un run nuevo desde el commit reparado;
-- registrar `run_id`, `run_attempt` y `commit_sha`;
-- comprobar que el job realmente ejecutó ese SHA.
+After changing YAML or execution code, create a NEW workflow run from the repaired commit. Do not use a historical re-run as proof that the repaired workflow was executed. Record run ID, attempt, commit SHA, and workflow SHA.
+
+## Pre-job failure rule
+If a workflow run becomes `failure` within seconds and its job has no executed steps, treat it as a **pre-job failure**, not as evidence that application code failed. Inspect check-run annotations / workflow validation metadata first. Do not patch download code until the runner has actually executed the relevant step. If annotations/logs are inaccessible, record the limitation explicitly and do not declare PASS.
+
+## Concurrency rule
+A concurrency group can leave a corrected run pending behind another run. Record active/pending runs before concluding that a new run has not started. Do not create uncontrolled duplicate runs.
+
+## EvidenceGate
+PASS requires all:
+- expected manifest cardinality and contiguous IDs;
+- every row COMPLETE;
+- exact archive-part count equals manifest `parts`;
+- archive size limits respected;
+- CRC and `unzip -tq` PASS;
+- clean extraction roots exist and contain files;
+- safe extraction/path traversal checks PASS;
+- no LFS material in generated outputs;
+- final verifier report PASS;
+- latest relevant run is a NEW run after repair;
+- run executed the repaired commit SHA;
+- final job and verifier completed successfully.
+
+A green setup step or green workflow without EvidenceGate is not PASS.
+
+## X-RAY cross-verification
+A — source code behavior; B — workflow/script wiring; C — repaired commit executed; D — runtime steps executed; E — manifest/archive/extraction/final report agree. PASS only if A+B+C+D+E all pass.
 
 ## Failure Ledger
-Antes de cada nuevo intento conservar:
+Before every retry preserve:
 ```yaml
 failure:
   target: "<OWNER>/<REPOSITORY>"
@@ -125,69 +83,18 @@ failure:
   next_run_id: "<RUN_ID>"
   status: "OPEN|RESOLVED"
 ```
-
-No depender únicamente de artefactos temporales de un re-run.
-
-## Static preflight
-Antes del dispatch:
-1. validar YAML;
-2. verificar que cada script llamado existe;
-3. `py_compile` de scripts;
-4. AST retry-recursion check;
-5. comprobar `lfs: false`;
-6. comprobar ausencia de comandos/env operativos LFS;
-7. comprobar limpieza de roots;
-8. comprobar que no existe `SKIP EXISTING` como condición de PASS;
-9. validar esquema del manifest;
-10. validar rutas de salida;
-11. comprobar que no hay archivos Python bytecode generados que contaminen el scanner;
-12. verificar que el scanner no se auto-bloquea por las firmas que necesita detectar.
-
-## False-positive scanner rule
-Un scanner debe distinguir entre:
-- comportamiento prohibido;
-- firma literal utilizada para detectar comportamiento prohibido.
-
-Nunca hacer un `grep` ciego de una firma contra el propio detector si eso provoca que el detector se marque a sí mismo como infracción. Preferir análisis de contexto, AST o exclusiones explícitas del archivo detector.
+If logs are unavailable, retain the run/check IDs and exact API limitation; never fill missing evidence with assumptions.
 
 ## Archive verification
-Para cada ZIP:
-- existe;
-- tamaño dentro del límite;
-- cantidad coincide con manifest;
-- CRC PASS;
-- `unzip -tq` PASS;
-- no contiene rutas que escapen del root;
-- se extrae en root limpio.
+For every archive: existence → expected part count → size bound → CRC → `unzip -tq` → safe paths → clean extraction. Any failure is FAIL CLOSED.
 
-Si cualquiera falla: FAIL CLOSED.
+## Repository-neutrality
+Do not add concrete repository names, project names, historical run IDs, historical job IDs, destination URLs, or copied catalogs to this skill. Use placeholders and active manifests.
 
-## Repository-neutrality rule
-Este documento debe permanecer genérico. No insertar aquí:
-- nombres de repositorios concretos;
-- URLs de repositorios destino;
-- IDs históricos de runs/jobs;
-- nombres de proyectos específicos;
-- rutas absolutas específicas de otro proyecto;
-- catálogos copiados de una tarea anterior.
-
-Los valores específicos deben vivir en `<MANIFEST_PATH>`, contrato o LOCK correspondiente.
-
-## LOOP operativo
+## LOOP
 ```text
-inspect
-→ evidence
-→ root cause
-→ patch
-→ static validation
-→ commit
-→ fresh run
-→ wait
-→ X-RAY
-→ EvidenceGate
-→ PASS?
-   NO → volver al primer fallo
-   SÍ → siguiente objetivo
+inspect → evidence → first failure → root cause → patch → static validation → commit → fresh run → wait → X-RAY → EvidenceGate → PASS?
+NO: return to first failure
+YES: next target
 ```
-
-El LOOP termina únicamente cuando todos los objetivos declarados por el contrato tienen EvidenceGate PASS. No escalar ni declarar finalización prematura.
+Terminate only when every target declared by Contract 2 has EvidenceGate PASS.
