@@ -3,7 +3,7 @@ name: research-download-chain
 description: Reproduce the exact GitHub Actions chain that downloaded 20 OS research and orchestration repos into Download code/archivos. Trigger on research-download-chain, FROMTED PASO 1 sources, 20 repos zip split, RESEARCH_DOWNLOAD_MANIFEST, or Wordflow download PASS run 33134420445. Lock to forensic blobs. Do not rewrite the packer.
 metadata:
   type: workflow
-  version: "1.2.0"
+  version: "1.3.0"
   pass_run_id: "33134420445"
   pass_job_id: "98731080894"
   pass_sha: "f53145e2f86f6f948c4697a06bf1f3b707a71d5b"
@@ -227,3 +227,33 @@ Before dispatch:
 5. verify workflow checkout uses lfs: false;
 6. verify generated extraction roots are removed before forensic rebuild;
 7. reject SKIP-existing-output as PASS evidence.
+
+
+## GENERIC APPLICATION MODEL v1.3
+This skill is repository-neutral. Never embed a concrete repository, organization, workflow name, project codename, or absolute project path in reusable logic. Use placeholders:
+- <OWNER>/<REPOSITORY>
+- <WORKFLOW_FILE>
+- <TARGET_ROOT>
+- <MANIFEST_PATH>
+- <EXTRACT_ROOT>
+
+### Mandatory X-RAY cross-verification
+For every target, verify independently:
+A. source code declares expected behavior;
+B. workflow calls the exact current script;
+C. latest run executes the repaired commit SHA;
+D. failing step is identified from job metadata/log evidence;
+E. output manifest, archives, extraction roots and final report agree.
+A repair is not PASS until A-E agree.
+
+### Workflow result rule
+Never infer SUCCESS from a commit. Never infer SUCCESS from a green setup step. PASS requires the latest relevant workflow run to be completed/success and its final verifier to pass. If the latest run is failure, stop claiming completion and continue from its first failed step.
+
+### Preflight false-positive rule
+Static policy scanners must distinguish:
+- forbidden operational behavior;
+- literal signatures used solely to detect forbidden material.
+Detection code may contain signatures it is designed to detect. The scanner must inspect context or explicit detector allowlists; otherwise it can deadlock its own workflow.
+
+### Required failure loop
+inspect run → identify first failed step → capture evidence → patch root cause → static validate → fresh run → X-RAY verify → repeat.
