@@ -19,11 +19,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh workflow run research-download-chain-63-96.yml \
-            --repo maxbry123-commits/agentes \
-            --ref main
-          gh run list \
-            --repo maxbry123-commits/agentes \
-            --workflow research-download-chain-63-96.yml \
-            --branch main \
-            --limit 1
+          gh workflow run research-download-chain-63-96.yml --repo maxbry123-commits/agentes --ref main
+          sleep 20
+          gh run list --repo maxbry123-commits/agentes --workflow research-download-chain-63-96.yml --branch main --limit 1
