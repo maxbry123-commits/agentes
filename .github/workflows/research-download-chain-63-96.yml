@@ -17,7 +17,12 @@ env:
 
 jobs:
   download-extract-63-96:
-    runs-on: ubuntu-latest
+    # Pin the runner image instead of ubuntu-latest. The previous executions
+    # failed before any step was created (steps=[] / BlobNotFound), so the
+    # first remediation is to remove the moving runner alias from the job
+    # initialization path while leaving the download logic unchanged.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
     steps:
       - name: Checkout destination main without LFS
         uses: actions/checkout@v4
