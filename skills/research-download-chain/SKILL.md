@@ -3,7 +3,7 @@ name: research-download-chain
 description: Reproduce the exact GitHub Actions chain that downloaded 20 OS research and orchestration repos into Download code/archivos. Trigger on research-download-chain, FROMTED PASO 1 sources, 20 repos zip split, RESEARCH_DOWNLOAD_MANIFEST, or Wordflow download PASS run 33134420445. Lock to forensic blobs. Do not rewrite the packer.
 metadata:
   type: workflow
-  version: "1.0.0"
+  version: "1.1.0"
   pass_run_id: "33134420445"
   pass_job_id: "98731080894"
   pass_sha: "f53145e2f86f6f948c4697a06bf1f3b707a71d5b"
@@ -143,20 +143,50 @@ LLM nunca declara PASS. PASS = EvidenceGate de los tests de arriba.
 
 Aplicar `references/METODO-DE-TRABAJO.md` en cada salida. Sandbox-first. Input-checklist. Forensic closure. No from-scratch.
 
-## NOTA ADDENDUM (no reescribe packer ni constantes LOCK)
+## HARDENING ADDENDUM v1.1 (evidence-driven, no LFS)
+This addendum changes the operational application of the skill without rewriting the LOCK packer or its constants.
 
-Archivo >100MB en git push = GH001. El packer LOCK ya lo evita: si size>CHUNK (8MiB) parte a `nombre.chunks/nombre.part-NNNN`. En EXTRACT no recomponer el original. Dejar .chunks. Si un file extraído queda >CHUNK, aplicar la misma partición del packer antes de git add.
+### Absolute no-LFS policy
+- Never execute, install, configure, uninstall, or invoke LFS.
+- Never use `git lfs`, `GIT_LFS_*`, LFS smudge/clean hooks, track, migrate, or filter configuration.
+- Checkout remains `lfs: false`.
+- A downloaded tree containing an LFS pointer or LFS filter configuration is forensic evidence of an invalid source material condition: FAIL CLOSED. Do not sanitize it into a PASS.
 
-LFS en EXTRACT: el clone puede traer puntero `version https://git-lfs.github.com/spec/v1` + `.gitattributes filter=lfs`. Eso no está en el packer. Solución permitida (no es tercer paso de descarga): GIT_LFS_SKIP_SMUDGE=1 GIT_LFS_SKIP_PUSH=1; git lfs uninstall; borrar líneas filter=lfs del .gitattributes; push --no-verify. El puntero queda texto. Prohibido git lfs track / migrate / smudge.
+### Clean-room extraction
+Before an audited reconstruction, delete the generated ZIP destination and every extraction root covered by the manifest. Never accept an existing non-empty extraction directory as evidence for a new run. Never use `SKIP EXTRACT` as a forensic success condition.
+
+### EvidenceGate
+PASS requires all of:
+1. expected manifest cardinality and contiguous IDs;
+2. every manifest row COMPLETE;
+3. exact ZIP part count equals manifest `parts`;
+4. every ZIP is within MAX_ZIP and passes `unzip -tq`;
+5. every expected extraction root exists and contains files;
+6. path traversal/escape checks pass;
+7. no LFS pointer/config material is present in generated outputs;
+8. the final report is produced by the verifier after the checks above.
+
+A green workflow alone is not EvidenceGate PASS.
+
+### Failure evidence preservation
+Before rerun, persist a small text/JSON failure report in the repository or another durable ledger when possible. GitHub community reports that reruns can replace prior attempt artifacts, so failure evidence should not depend solely on a transient artifact from the run being retried.
+
+### Determinism controls
+- Keep the locked queue order sequential.
+- Do not share mutable output directories across concurrent workflows.
+- Pin reusable workflow dependencies to immutable refs when reusable workflows are introduced.
+- Use bounded retry with backoff only around external/network operations; do not retry failed integrity assertions into PASS.
+- Each loop iteration must consume the exact previous failure evidence, patch one root cause, then re-run verification.
 
 ## CHECKLIST PRE-RUN (comparar code vs skill antes de dispatch)
 
 - [ ] Packer no reescrito. CHUNK=8MiB SPLIT_TARGET=12e6 MAX_ZIP=17e6 BATCH=90MiB.
 - [ ] Paso 1 DEST = Download code/archivos. ZIP pattern slug_0001.zip.
 - [ ] Paso 2 EXTRACT = raíz exacta. No recomponer files >CHUNK.
-- [ ] YAML env GIT_LFS_SKIP_SMUDGE=1 y GIT_LFS_SKIP_PUSH=1.
-- [ ] checkout lfs: false. git lfs uninstall en job.
-- [ ] push --no-verify. No filter=lfs en .gitattributes que se commitea.
+- [ ] checkout lfs: false y ninguna llamada/comando/env de LFS.
+- [ ] Si aparece puntero/configuración LFS en salida generada: STOP FAIL CLOSED; no sanitizar.
+- [ ] No reutilizar directorios de extracción: limpiar todos los roots esperados antes de EXTRAER.
+- [ ] Manifest cardinality/IDs/parts + CRC + ubicación final deben pasar EvidenceGate.
 - [ ] Ningún file staged size>=100MiB (find -size +99M).
 - [ ] Diff packer LOCK = vacío. Si no vacío STOP.
 - [ ] Solo entonces workflow_dispatch.
