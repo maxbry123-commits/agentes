@@ -48,7 +48,7 @@ jobs:
             (74, "crawl4ai", "https://github.com/unclecode/crawl4ai"),
             (75, "yt-dlp", "https://github.com/yt-dlp/yt-dlp"),
             (76, "searxng", "https://github.com/searxng/searxng"),
-            (77, "Vane", "https://github.com/ItzCrazyKns/Vane"),
+            (77, "Perplexica", "https://github.com/ItzCrazyKns/Perplexica"),
             (78, "khoj", "https://github.com/khoj-ai/khoj"),
             (79, "inngest", "https://github.com/inngest/inngest"),
             (80, "trigger.dev", "https://github.com/triggerdotdev/trigger.dev"),
@@ -66,7 +66,7 @@ jobs:
             (92, "ray", "https://github.com/ray-project/ray"),
             (93, "hatchet", "https://github.com/hatchet-dev/hatchet"),
             (94, "conductor", "https://github.com/Netflix/conductor"),
-            (95, "litellm-agent-sdk", "https://github.com/BerriAI/litellm-agent-sdk"),
+            (95, "typescript-sdk", "https://github.com/litellm/typescript-sdk"),
             (96, "litellm", "https://github.com/BerriAI/litellm"),
           ]
 
@@ -166,7 +166,7 @@ jobs:
           set -Eeuo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A -- '_downloads' '_evidence' logseq Trilium anytype-ts AppFlowy AFFiNE excalidraw argos-translate LibreTranslate hermes-agent plandex repomix crawl4ai yt-dlp searxng Vane khoj inngest trigger.dev restate dbos-transact-ts airflow prefect dagster argo-workflows dolphinscheduler xxl-job elastic-job-lite PowerJob cadence ray hatchet conductor litellm-agent-sdk litellm
+          git add -A -- '_downloads' '_evidence' logseq Trilium anytype-ts AppFlowy AFFiNE excalidraw argos-translate LibreTranslate hermes-agent plandex repomix crawl4ai yt-dlp searxng Perplexica khoj inngest trigger.dev restate dbos-transact-ts airflow prefect dagster argo-workflows dolphinscheduler xxl-job elastic-job-lite PowerJob cadence ray hatchet conductor typescript-sdk litellm
           git commit -m "download: components 63-96 with deterministic extraction" || echo "No changes to commit"
           git push origin HEAD:main
 
