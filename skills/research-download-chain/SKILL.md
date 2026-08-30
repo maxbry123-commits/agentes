@@ -3,7 +3,7 @@ name: research-download-chain
 description: Repository-neutral deterministic download, archive, extraction, integrity, and forensic verification chain. Trigger on audited download/extraction tasks. Lock to forensic assets. Do not rewrite the packer.
 metadata:
   type: workflow
-  version: "1.6.0"
+  version: "1.7.0"
 ---
 
 # Research Download Chain — generic forensic model
@@ -45,6 +45,23 @@ main/
 - Commits MAY be made by deterministic batches; when batching is used, preserve the manifest and source-to-destination identity for every component.
 - Never treat an existing archive or extraction as evidence of a new rebuild.
 
+## Archive and extraction evidence
+For every source repository, record a manifest entry containing at least:
+- source repository identity and exact source repository name;
+- destination branch (`main`);
+- destination root (exactly the source repository name);
+- expected ZIP part count;
+- `files_extracted` count after extraction;
+- extraction status.
+
+For every archive part record and verify: part ID, path, size, CRC result, and `unzip -tq` result.
+
+Before extraction, validate every archive member path. Reject absolute paths, traversal outside the component root, and duplicate archive members. During multi-part extraction, maintain one global set of canonical destination paths for the entire component; reject a path that appears in any previously processed part. Do not reset this set between parts.
+
+After extraction, generate a deterministic `FILES.txt` inventory for each component containing the relative paths of all extracted files, one path per line, in stable sorted order. The inventory is evidence only and must not be treated as source content.
+
+When the workflow transports extracted evidence between jobs, it MAY package the extraction/evidence as a TAR artifact. TAR packaging is an optional transport mechanism and does not replace the destination audit.
+
 ## Clean-room rule
 Delete prior generated archives, temporary sources, manifests that are explicitly rebuild-owned, and every extraction root covered by the active manifest before a forensic rebuild. Existing non-empty output is never evidence of a new extraction. `SKIP EXISTING` cannot be a PASS condition.
 
@@ -61,7 +78,11 @@ Before dispatch:
 9. ignore/delete generated `__pycache__` and `.pyc` from forensic scans;
 10. validate archive and extraction paths;
 11. validate every manifest repository has exactly one destination root named exactly as the source repository;
-12. validate the destination branch is `main`.
+12. validate the destination branch is `main`;
+13. validate every manifest entry declares `files_extracted` and extraction status;
+14. validate every expected part has evidence fields for path, size, CRC, and `unzip -tq`;
+15. validate cross-part duplicate detection uses one canonical-path set per component;
+16. validate `FILES.txt` is generated after extraction and contains the complete sorted extracted-file inventory.
 
 ## Retry model
 Retry helpers execute the underlying operation directly. They must never call themselves directly. Required flow: clean temporary root → operation → return on success → bounded backoff on expected external failure → raise last error. Never retry an integrity assertion into PASS.
@@ -97,6 +118,8 @@ PASS requires all:
 - every repository has exactly one destination root on `main`;
 - destination root name exactly equals source repository name;
 - no repository extraction is mixed with another repository;
+- `files_extracted` is present and consistent with `FILES.txt`;
+- cross-part duplicate detection has passed for every component;
 - no LFS material in generated outputs.
 
 A green setup step or green workflow without the destination audit is not PASS.
