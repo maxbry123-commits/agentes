@@ -1,0 +1,25 @@
+name: runner-initialization-probe
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/runner-initialization-probe.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Runner initialization probe
+        run: |
+          set -Eeuo pipefail
+          echo "RUNNER=$RUNNER_NAME"
+          echo "OS=$RUNNER_OS"
+          echo "RUN_ID=$GITHUB_RUN_ID"
+          echo "JOB=$GITHUB_JOB"
+          echo "RUNNER_INIT=PASS"
