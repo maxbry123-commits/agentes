@@ -1,0 +1,15 @@
+name: research-download-chain-63-96-copy-05
+on:
+  workflow_dispatch
+permissions:
+  contents: write
+jobs:
+  source-copy:
+    if: ${{ false }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          lfs: false
+      - run: echo 'Faithful source workflow: .github/workflows/research-download-chain-63-96.yml'
