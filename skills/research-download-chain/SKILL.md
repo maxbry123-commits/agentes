@@ -1,259 +1,193 @@
 ---
 name: research-download-chain
-description: Reproduce the exact GitHub Actions chain that downloaded 20 OS research and orchestration repos into Download code/archivos. Trigger on research-download-chain, FROMTED PASO 1 sources, 20 repos zip split, RESEARCH_DOWNLOAD_MANIFEST, or Wordflow download PASS run 33134420445. Lock to forensic blobs. Do not rewrite the packer.
+description: Repository-neutral deterministic download, archive, extraction, integrity, and forensic verification chain. Trigger on research-download-chain or audited download/extraction tasks. Lock to forensic assets. Do not rewrite the packer.
 metadata:
   type: workflow
-  version: "1.3.0"
-  pass_run_id: "33134420445"
-  pass_job_id: "98731080894"
-  pass_sha: "f53145e2f86f6f948c4697a06bf1f3b707a71d5b"
-  workflow_blob: "5950933bcf567a34e197e96c59e845451124eb35"
-  script_blob: "bfc7634f500f6ded03b296ddfebc6dac35c56462"
+  version: "1.4.0"
 ---
 
-# Research Download Chain
+# Research Download Chain — generic forensic model
 
-## Overview
-
-Skill de ejecución determinista del Wordflow PASS que materializó 20 repos OS en `Download code/archivos/`. Fuente de verdad = copias byte-identical en `assets/`. Este SKILL.md orquesta. Si hay divergencia, gana el source en `assets/`.
-
-## INPUT BLOCK (leer literal)
-
-1. Usar JSON playbook + enlaces GitHub Actions + code fuente + rutas.
-2. Crear skill primero en sandbox.
-3. Copiar al repo `maxbry123-commits/agentes`.
-4. Método de trabajo va adjunto dentro del skill.
-5. Confirmar archivo 100% y entregar enlace.
+## Scope
+Reusable skill. It MUST NOT contain a concrete target repository, organization, project codename, workflow run, job ID, or copied repository catalog that could be mistaken for the destination of a future task. Target-specific values belong only in the task contract, manifest, or LOCK assets.
 
 ## Fuente de verdad LOCK
-
-Leer siempre antes de ejecutar
-
-- `assets/FORENSIC-PASS-research-download-chain-final.yml` (git blob `5950933bcf567a34e197e96c59e845451124eb35`)
-- `assets/FORENSIC-PASS-research_download_chain.py` (git blob `bfc7634f500f6ded03b296ddfebc6dac35c56462`)
+Leer siempre antes de ejecutar:
+- `assets/FORENSIC-PASS-research-download-chain-final.yml`
+- `assets/FORENSIC-PASS-research_download_chain.py`
 - `references/RESEARCH-DOWNLOAD-CHAIN-AI-PLAYBOOK.json`
 - `references/METODO-DE-TRABAJO.md`
 
-Preflight obligatorio. Calcular git-blob SHA1 = sha1 of `blob {len}\\0{bytes}` de ambos assets. Si no igualan los blobs del lock, STOP.
+Preflight obligatorio: calcular el git-blob SHA1 de los dos assets LOCK y detenerse si no coincide. Nunca reescribir el packer LOCK para resolver un fallo de ejecución.
 
-## Prueba GitHub Actions PASS
+## Parámetros
+Los valores efectivos deben provenir del LOCK o del contrato de la tarea; no inventarlos ni copiarlos desde otro repositorio.
+- DEST = `<TARGET_ROOT>`
+- WORK = `<WORK_ROOT>`
+- SRC = `<SOURCE_ROOT>`
+- PACK = `<PACK_ROOT>`
+- MANIFEST = `<MANIFEST_PATH>`
+- ZIP pattern = `<SLUG>_<PART>.zip`
 
-- Repo https://github.com/maxbry123-commits/agentes
-- Workflow file `.github/workflows/research-download-chain-final.yml`
-- Script `scripts/research_download_chain.py`
-- SHA checkout PASS `f53145e2f86f6f948c4697a06bf1f3b707a71d5b`
-- Run `33134420445` conclusion success
-- Job `98731080894` conclusion success
-- Job URL https://github.com/maxbry123-commits/agentes/actions/runs/33134420445/job/98731080894
-- Run URL https://github.com/maxbry123-commits/agentes/actions/runs/33134420445
-- Ventana UTC 2026-08-28T01:57:19Z to 2026-08-28T02:00:43Z
-- Steps PASS. Checkout v4. Execute deterministic download chain. Final safety audit.
+## Contrato de ejecución
+1. Leer Contrato 2.
+2. Leer este skill.
+3. Leer los dos LOCK.
+4. Comparar código real contra el contrato y el skill.
+5. Ejecutar únicamente la cadena declarada por el LOCK.
+6. No introducir paralelismo si el LOCK exige orden secuencial.
+7. No usar Git LFS.
+8. No declarar PASS por inferencia del LLM.
 
-NO usar como source el YAML inline histórico ni HEAD `research-download-chain.yml` (checkout@v6 / group writer). Esos no son el job PASS.
+## Absolute no-LFS policy
+- Nunca ejecutar, instalar, configurar, desinstalar o invocar LFS.
+- Nunca usar `git lfs`, `GIT_LFS_*`, smudge/clean hooks, track, migrate o filtros LFS.
+- Checkout: `lfs: false`.
+- Las firmas `git-lfs.github.com/spec/` y `filter=lfs` pueden existir únicamente como patrones de detección forense.
+- Si material generado contiene un puntero o configuración LFS: FAIL CLOSED. No sanitizarlo para convertirlo en PASS.
 
-## Rutas LOCK
+## Clean-room extraction
+Antes de una reconstrucción auditada:
+- eliminar ZIP generados anteriores;
+- eliminar todos los roots de extracción declarados por el manifest;
+- eliminar estado temporal de la tarea;
+- impedir que `SKIP EXISTING` sea evidencia de PASS.
 
-- DEST = `Download code/archivos`
-- WORK = `_work/research-download`
-- SRC = `_work/research-download/src`
-- PACK = `_work/research-download/pack`
-- MANIFEST = `Download code/archivos/RESEARCH_DOWNLOAD_MANIFEST.jsonl`
-- ZIP pattern = `{slug}_{part:04d}.zip`
+Una extracción existente nunca demuestra que la nueva descarga fue extraída correctamente.
 
-## Constantes LOCK
+## EvidenceGate
+PASS exige simultáneamente:
+1. manifest existente;
+2. cardinalidad esperada;
+3. IDs continuos según el manifest/contrato;
+4. todas las filas `COMPLETE`;
+5. cantidad real de partes ZIP = `manifest.parts`;
+6. límite de tamaño por ZIP respetado;
+7. `unzip -tq`/CRC PASS;
+8. extracción realizada desde cero;
+9. cada root esperado existe y contiene archivos;
+10. protección contra path traversal PASS;
+11. ausencia de material LFS en outputs;
+12. reporte final generado por el verificador;
+13. workflow final `success` en un run NUEVO posterior a la reparación;
+14. commit SHA ejecutado por el run = commit reparado.
 
-- SPLIT_TARGET = 12000000
-- MAX_ZIP = 17000000
-- BATCH_LIMIT = 90 * 1024 * 1024
-- CHUNK = 8 * 1024 * 1024
-- batch_no inicial = 0
-- checkout = actions/checkout@v4 fetch-depth 1
-- concurrency group = `research-download-chain-final` cancel-in-progress false
+Green workflow alone != EvidenceGate PASS.
 
-## Ejecución (no reimplementar)
+## X-RAY cross-verification
+Cada objetivo debe auditarse en cinco capas independientes:
+A. Código: el script implementa el comportamiento esperado.
+B. Workflow: YAML llama al script y rutas correctas.
+C. Commit: el run ejecuta el SHA reparado.
+D. Runtime: el job ejecuta realmente los pasos previstos.
+E. Resultado: manifest, ZIP, CRC, extracción, ubicación y reporte concuerdan.
 
-1. Depositar assets en rutas canónicas del repo si faltan.
-2. Correr EXACTO
+PASS solo si A+B+C+D+E = PASS.
 
-```bash
-set -euo pipefail
-python3 scripts/research_download_chain.py 'Download code/archivos' '_work/research-download'
+## Retry model
+Un helper de retry debe ejecutar la operación real; nunca debe llamarse directamente a sí mismo.
+
+Patrón obligatorio:
+- limpiar destino temporal;
+- ejecutar operación subyacente;
+- `return` en éxito;
+- capturar únicamente errores esperados;
+- backoff acotado;
+- límite de intentos;
+- propagar el último error.
+
+Preflight AST:
+- localizar funciones `retry`, `retry_*`, `clone_retry` y equivalentes;
+- rechazar llamada directa a sí mismas;
+- ejecutar `py_compile`.
+
+Nunca reintentar una aserción de integridad hasta convertir FAIL en PASS.
+
+## Fresh-run rule
+Después de reparar un workflow o script:
+- NO usar un re-run histórico como prueba principal;
+- crear un run nuevo desde el commit reparado;
+- registrar `run_id`, `run_attempt` y `commit_sha`;
+- comprobar que el job realmente ejecutó ese SHA.
+
+## Failure Ledger
+Antes de cada nuevo intento conservar:
+```yaml
+failure:
+  target: "<OWNER>/<REPOSITORY>"
+  workflow: "<WORKFLOW_FILE>"
+  run_id: "<RUN_ID>"
+  run_attempt: "<ATTEMPT>"
+  commit_sha: "<SHA>"
+  failed_step: "<STEP>"
+  root_cause: "<ROOT_CAUSE>"
+  repair_commit: "<SHA>"
+  next_run_id: "<RUN_ID>"
+  status: "OPEN|RESOLVED"
 ```
 
-3. El py hace el loop 01..20 en orden fijo. Skip si manifest tiene slug + status COMPLETE. Clone `--depth 1 --no-tags`. Strip `.git`. Stage. Chunk files mayores que CHUNK. `zip -q -r -9 -y`. Si zip mayor que SPLIT_TARGET usar `zipsplit -n 12000000`. Reject part mayor que MAX_ZIP. `unzip -tq`. Batch 90MiB luego commit/push.
+No depender únicamente de artefactos temporales de un re-run.
 
-4. Commit message template
+## Static preflight
+Antes del dispatch:
+1. validar YAML;
+2. verificar que cada script llamado existe;
+3. `py_compile` de scripts;
+4. AST retry-recursion check;
+5. comprobar `lfs: false`;
+6. comprobar ausencia de comandos/env operativos LFS;
+7. comprobar limpieza de roots;
+8. comprobar que no existe `SKIP EXISTING` como condición de PASS;
+9. validar esquema del manifest;
+10. validar rutas de salida;
+11. comprobar que no hay archivos Python bytecode generados que contaminen el scanner;
+12. verificar que el scanner no se auto-bloquea por las firmas que necesita detectar.
 
-`build(download): research queue batch {label} ({n} bytes)`
+## False-positive scanner rule
+Un scanner debe distinguir entre:
+- comportamiento prohibido;
+- firma literal utilizada para detectar comportamiento prohibido.
 
-Labels `000`..`00N` y cierre `{batch_no:03d}-final`. Push = fetch origin main + rebase + push, retry 1..3, sleep attempt*2.
+Nunca hacer un `grep` ciego de una firma contra el propio detector si eso provoca que el detector se marque a sí mismo como infracción. Preferir análisis de contexto, AST o exclusiones explícitas del archivo detector.
 
-5. Audit YAML. PASS solo si todo true.
+## Archive verification
+Para cada ZIP:
+- existe;
+- tamaño dentro del límite;
+- cantidad coincide con manifest;
+- CRC PASS;
+- `unzip -tq` PASS;
+- no contiene rutas que escapen del root;
+- se extrae en root limpio.
 
-```bash
-set -euo pipefail
-test -f 'Download code/archivos/RESEARCH_DOWNLOAD_MANIFEST.jsonl'
-count=$(grep -c '"status": "COMPLETE"' 'Download code/archivos/RESEARCH_DOWNLOAD_MANIFEST.jsonl' || true)
-test "$count" -eq 20
-find 'Download code/archivos' -type f -name '*.zip' -print0 | while IFS= read -r -d '' f; do
-  size=$(stat -c '%s' "$f")
-  test "$size" -le $((17*1000*1000))
-  unzip -tq "$f"
-done
-echo 'AUDIT PASS: 20/20 repositories; all ZIP files valid and within safety limit.'
+Si cualquiera falla: FAIL CLOSED.
+
+## Repository-neutrality rule
+Este documento debe permanecer genérico. No insertar aquí:
+- nombres de repositorios concretos;
+- URLs de repositorios destino;
+- IDs históricos de runs/jobs;
+- nombres de proyectos específicos;
+- rutas absolutas específicas de otro proyecto;
+- catálogos copiados de una tarea anterior.
+
+Los valores específicos deben vivir en `<MANIFEST_PATH>`, contrato o LOCK correspondiente.
+
+## LOOP operativo
+```text
+inspect
+→ evidence
+→ root cause
+→ patch
+→ static validation
+→ commit
+→ fresh run
+→ wait
+→ X-RAY
+→ EvidenceGate
+→ PASS?
+   NO → volver al primer fallo
+   SÍ → siguiente objetivo
 ```
 
-LLM nunca declara PASS. PASS = EvidenceGate de los tests de arriba.
-
-## 20 repos LOCK (orden)
-
-01 SearchOS https://github.com/antins-labs/SearchOS.git
-02 SearXNG https://github.com/searxng/searxng.git
-03 OpenDeepResearch https://github.com/langchain-ai/open_deep_research.git
-04 GPT-Researcher https://github.com/assafelovic/gpt-researcher.git
-05 STORM https://github.com/stanford-oval/storm.git
-06 Shandu https://github.com/jolovicdev/shandu.git
-07 Vane https://github.com/ItzCrazyKns/Vane.git
-08 Haystack https://github.com/deepset-ai/haystack.git
-09 Crawl4AI https://github.com/unclecode/crawl4ai.git
-10 Perplexica https://github.com/cognitive-builder/Perplexica.git
-11 Dagu https://github.com/dagucloud/dagu.git
-12 Conductor https://github.com/conductor-oss/conductor.git
-13 Temporal https://github.com/temporalio/temporal.git
-14 Argo-Workflows https://github.com/argoproj/argo-workflows.git
-15 Kestra https://github.com/kestra-io/kestra.git
-16 LangGraph https://github.com/langchain-ai/langgraph.git
-17 Hatchet https://github.com/hatchet-dev/hatchet.git
-18 Windmill https://github.com/windmill-labs/windmill.git
-19 Dagster https://github.com/dagster-io/dagster.git
-20 Prefect https://github.com/PrefectHQ/prefect.git
-
-## Prohibido
-
-- Reescribir packer / partition binary-search
-- ZIP_LIMIT único
-- batch_no=1
-- Añadir o quitar repos
-- Cambiar DEST/WORK
-- Paralelizar el loop
-- Filtrar files del clone
-- Declarar PASS sin audit shell exit 0
-
-## Método
-
-Aplicar `references/METODO-DE-TRABAJO.md` en cada salida. Sandbox-first. Input-checklist. Forensic closure. No from-scratch.
-
-## HARDENING ADDENDUM v1.1 (evidence-driven, no LFS)
-This addendum changes the operational application of the skill without rewriting the LOCK packer or its constants.
-
-### Absolute no-LFS policy
-- Never execute, install, configure, uninstall, or invoke LFS.
-- Never use `git lfs`, `GIT_LFS_*`, LFS smudge/clean hooks, track, migrate, or filter configuration.
-- Checkout remains `lfs: false`.
-- A downloaded tree containing an LFS pointer or LFS filter configuration is forensic evidence of an invalid source material condition: FAIL CLOSED. Do not sanitize it into a PASS.
-
-### Clean-room extraction
-Before an audited reconstruction, delete the generated ZIP destination and every extraction root covered by the manifest. Never accept an existing non-empty extraction directory as evidence for a new run. Never use `SKIP EXTRACT` as a forensic success condition.
-
-### EvidenceGate
-PASS requires all of:
-1. expected manifest cardinality and contiguous IDs;
-2. every manifest row COMPLETE;
-3. exact ZIP part count equals manifest `parts`;
-4. every ZIP is within MAX_ZIP and passes `unzip -tq`;
-5. every expected extraction root exists and contains files;
-6. path traversal/escape checks pass;
-7. no LFS pointer/config material is present in generated outputs;
-8. the final report is produced by the verifier after the checks above.
-
-A green workflow alone is not EvidenceGate PASS.
-
-### Failure evidence preservation
-Before rerun, persist a small text/JSON failure report in the repository or another durable ledger when possible. GitHub community reports that reruns can replace prior attempt artifacts, so failure evidence should not depend solely on a transient artifact from the run being retried.
-
-### Determinism controls
-- Keep the locked queue order sequential.
-- Do not share mutable output directories across concurrent workflows.
-- Pin reusable workflow dependencies to immutable refs when reusable workflows are introduced.
-- Use bounded retry with backoff only around external/network operations; do not retry failed integrity assertions into PASS.
-- Each loop iteration must consume the exact previous failure evidence, patch one root cause, then re-run verification.
-
-## CHECKLIST PRE-RUN (comparar code vs skill antes de dispatch)
-
-- [ ] Packer no reescrito. CHUNK=8MiB SPLIT_TARGET=12e6 MAX_ZIP=17e6 BATCH=90MiB.
-- [ ] Paso 1 DEST = Download code/archivos. ZIP pattern slug_0001.zip.
-- [ ] Paso 2 EXTRACT = raíz exacta. No recomponer files >CHUNK.
-- [ ] checkout lfs: false y ninguna llamada/comando/env de LFS.
-- [ ] Si aparece puntero/configuración LFS en salida generada: STOP FAIL CLOSED; no sanitizar.
-- [ ] No reutilizar directorios de extracción: limpiar todos los roots esperados antes de EXTRAER.
-- [ ] Manifest cardinality/IDs/parts + CRC + ubicación final deben pasar EvidenceGate.
-- [ ] Ningún file staged size>=100MiB (find -size +99M).
-- [ ] Diff packer LOCK = vacío. Si no vacío STOP.
-- [ ] Solo entonces workflow_dispatch.
-
-
-## LOOP FAILURE PATTERNS v1.2
-### Retry helper recursion ban
-A retry helper MUST execute the underlying operation. It MUST NOT call itself inside its own try block unless an explicit recursive algorithm is intended and has a terminating state. Before commit, statically inspect every helper named retry/retry_* or clone_retry for direct self-calls.
-
-Required pattern:
-- cleanup stale destination;
-- execute underlying operation;
-- return on success;
-- catch only expected operation failure;
-- bounded backoff;
-- raise the last error.
-
-### Fresh workflow, not historical rerun, after YAML repair
-A rerun of an old GitHub Actions run uses the workflow definition from the original run rather than the repaired workflow commit. After changing workflow logic, create a fresh run from the new commit/workflow_dispatch and record its run id and attempt separately.
-
-### Failure ledger
-Before any retry, persist:
-- repository;
-- workflow;
-- run id;
-- commit SHA;
-- failing step;
-- normalized root cause;
-- timestamp.
-Do not rely solely on artifacts from a previous rerun because reruns can replace attempt artifacts.
-
-### Static preflight additions
-Before dispatch:
-1. parse Python scripts with AST;
-2. reject direct self-recursion in retry helpers;
-3. compile Python with py_compile;
-4. verify every workflow script path exists;
-5. verify workflow checkout uses lfs: false;
-6. verify generated extraction roots are removed before forensic rebuild;
-7. reject SKIP-existing-output as PASS evidence.
-
-
-## GENERIC APPLICATION MODEL v1.3
-This skill is repository-neutral. Never embed a concrete repository, organization, workflow name, project codename, or absolute project path in reusable logic. Use placeholders:
-- <OWNER>/<REPOSITORY>
-- <WORKFLOW_FILE>
-- <TARGET_ROOT>
-- <MANIFEST_PATH>
-- <EXTRACT_ROOT>
-
-### Mandatory X-RAY cross-verification
-For every target, verify independently:
-A. source code declares expected behavior;
-B. workflow calls the exact current script;
-C. latest run executes the repaired commit SHA;
-D. failing step is identified from job metadata/log evidence;
-E. output manifest, archives, extraction roots and final report agree.
-A repair is not PASS until A-E agree.
-
-### Workflow result rule
-Never infer SUCCESS from a commit. Never infer SUCCESS from a green setup step. PASS requires the latest relevant workflow run to be completed/success and its final verifier to pass. If the latest run is failure, stop claiming completion and continue from its first failed step.
-
-### Preflight false-positive rule
-Static policy scanners must distinguish:
-- forbidden operational behavior;
-- literal signatures used solely to detect forbidden material.
-Detection code may contain signatures it is designed to detect. The scanner must inspect context or explicit detector allowlists; otherwise it can deadlock its own workflow.
-
-### Required failure loop
-inspect run → identify first failed step → capture evidence → patch root cause → static validate → fresh run → X-RAY verify → repeat.
+El LOOP termina únicamente cuando todos los objetivos declarados por el contrato tienen EvidenceGate PASS. No escalar ni declarar finalización prematura.
