@@ -11,3 +11,4 @@
 {"number": 12, "parts": 1, "slug": "Sandbox0", "source": "https://github.com/sandbox0-ai/sandbox0.git", "source_commit": "20d047d6991fd6353367aa1a3ee86ca81c8ba549", "status": "COMPLETE"}
 {"number": 13, "parts": 4, "slug": "gVisor", "source": "https://github.com/google/gvisor.git", "source_commit": "b3674d543f0944609fa286321e4dbad82188fe31", "status": "COMPLETE"}
 {"number": 1, "parts": 4, "slug": "ruflo", "source": "https://github.com/ruvnet/ruflo.git", "source_commit": "29f048fc3b556f857cf2b126d2a84c19d2daa0d0", "status": "COMPLETE"}
+{"number": 2, "parts": 18, "slug": "crewAI", "source": "https://github.com/crewAIInc/crewAI.git", "source_commit": "381fef73be1803d0b4676f88cbae57d332cb9cac", "status": "COMPLETE"}
