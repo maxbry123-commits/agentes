@@ -1,0 +1,6 @@
+{"number": 1, "parts": 1, "slug": "mini-SWE-agent", "source": "https://github.com/SWE-agent/mini-swe-agent.git", "source_commit": "25941c89cfbc91eb40b3f8756348c91d9977d57e", "status": "COMPLETE"}
+{"number": 2, "parts": 1, "slug": "SmolAgents", "source": "https://github.com/huggingface/smolagents.git", "source_commit": "30bb1161095dbae2271e6bc3cc4c219cc3897a57", "status": "COMPLETE"}
+{"number": 3, "parts": 1, "slug": "MUSE-KnowledgeXLab", "source": "https://github.com/KnowledgeXLab/MUSE.git", "source_commit": "63f98aaa5cd12542431308753f016ec558b392c5", "status": "COMPLETE"}
+{"number": 4, "parts": 2, "slug": "Muse-Agent", "source": "https://github.com/wlsdks/muse-agent.git", "source_commit": "c55ed22dd436a1a1d708905293bc3c06128fb6f3", "status": "COMPLETE"}
+{"number": 6, "parts": 1, "slug": "Temporal", "source": "https://github.com/temporalio/temporal.git", "source_commit": "c044bf16b1cc47a4db80669a987484dba6145331", "status": "COMPLETE"}
+{"number": 7, "parts": 2, "slug": "Kestra", "source": "https://github.com/kestra-io/kestra.git", "source_commit": "ce6771f7c54e0a6f153d6104ef0841293af0a1fa", "status": "COMPLETE"}
