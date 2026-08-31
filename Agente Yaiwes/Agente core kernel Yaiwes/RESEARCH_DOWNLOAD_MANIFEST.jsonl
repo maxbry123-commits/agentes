@@ -12,3 +12,5 @@
 {"number": 13, "parts": 4, "slug": "gVisor", "source": "https://github.com/google/gvisor.git", "source_commit": "b3674d543f0944609fa286321e4dbad82188fe31", "status": "COMPLETE"}
 {"number": 1, "parts": 4, "slug": "ruflo", "source": "https://github.com/ruvnet/ruflo.git", "source_commit": "29f048fc3b556f857cf2b126d2a84c19d2daa0d0", "status": "COMPLETE"}
 {"number": 2, "parts": 18, "slug": "crewAI", "source": "https://github.com/crewAIInc/crewAI.git", "source_commit": "381fef73be1803d0b4676f88cbae57d332cb9cac", "status": "COMPLETE"}
+{"number": 3, "parts": 3, "slug": "autogen", "source": "https://github.com/microsoft/autogen.git", "source_commit": "027ecf0a379bcc1d09956d46d12d44a3ad9cee14", "status": "COMPLETE"}
+{"number": 4, "parts": 2, "slug": "dspy", "source": "https://github.com/stanfordnlp/dspy.git", "source_commit": "59ce7601ec40cd2160ac64f476f9053efdc1599e", "status": "COMPLETE"}
