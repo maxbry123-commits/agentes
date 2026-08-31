@@ -3,7 +3,7 @@ name: research-download-chain
 description: Repository-neutral deterministic download, archive, extraction, integrity, and forensic verification chain. Trigger on audited download/extraction tasks. Lock to forensic assets. Do not rewrite the packer.
 metadata:
   type: workflow
-  version: "1.7.1"
+  version: "1.7.2"
 ---
 
 # Research Download Chain — generic forensic model
@@ -30,8 +30,8 @@ Read the active Contract 2, this skill, the packer LOCK and YAML LOCK before exe
 Required generic layout:
 ```text
 main/
-╠── <SOURCE_REPOSITORY_NAME_1>/
-╠── <SOURCE_REPOSITORY_NAME_2>/
+├── <SOURCE_REPOSITORY_NAME_1>/
+├── <SOURCE_REPOSITORY_NAME_2>/
 └── <SOURCE_REPOSITORY_NAME_N>/
 ```
 
@@ -43,7 +43,8 @@ main/
 - Each part must remain within the active maximum archive-size bound.
 - Record the expected part count in the manifest.
 - Commits MAY be made by deterministic batches; when batching is used, preserve the manifest and source-to-destination identity for every component.
-- `SKIP COMPLETE` if manifest status is COMPLETE and dest root has files. That is valid progress, not a new rebuild.
+- Never treat an existing archive or extraction as evidence of a new rebuild.
+- SKIP COMPLETE: if manifest status is COMPLETE and dest root has files, skip that item and continue. Do not wipe it.
 
 ## Archive and extraction evidence
 For every source repository, record a manifest entry containing at least:
@@ -54,41 +55,89 @@ For every source repository, record a manifest entry containing at least:
 - `files_extracted` count after extraction;
 - extraction status.
 
+For every archive part record and verify: part ID, path, size, CRC result, and `unzip -tq` result.
+
+Before extraction, validate every archive member path. Reject absolute paths, traversal outside the component root, and duplicate archive members. During multi-part extraction, maintain one global set of canonical destination paths for the entire component; reject a path that appears in any previously processed part. Do not reset this set between parts.
+
+After extraction, generate a deterministic `FILES.txt` inventory for each component containing the relative paths of all extracted files, one path per line, in stable sorted order. The inventory is evidence only and must not be treated as source content.
+
+When the workflow transports extracted evidence between jobs, it MAY package the extraction/evidence as a TAR artifact. TAR packaging is an optional transport mechanism and does not replace the destination audit.
+
 ## Clean-room rule
-Do not delete COMPLETE zips, manifest lines, or extraction roots that already have files.
+Do not delete COMPLETE zips, COMPLETE manifest lines, or extraction roots that already have files.
 Do not wipe the queue to force a rebuild.
-Clone/zip fail = SKIP + report + continue the queue. Do not raise-stop the job.
+Existing COMPLETE output is progress. Clone/zip fail = SKIP + report + continue; do not raise-stop the job.
 
 ## Static preflight
-Before dispatch only:
-1. workflow YAML parses;
-2. referenced script exists;
-3. checkout `lfs: false`;
-4. no operational LFS commands.
-No curl to SKILL.md. No py_compile/AST/forensic scan as job steps.
+Before dispatch:
+1. parse YAML;
+2. verify every workflow-referenced script exists;
+3. checkout `lfs: false` and absence of operational LFS commands/env.
+Do not curl SKILL.md as a job step. Do not add py_compile/AST/forensic scans as workflow steps.
 
 ## Retry model
-Retry helpers execute the underlying operation directly. They must never call themselves directly. Bounded backoff then SKIP, not raise-stop the whole queue.
+Retry helpers execute the underlying operation directly. They must never call themselves directly. Required flow: clean temporary root → operation → return on success → bounded backoff on expected external failure → SKIP last error for that item, continue queue. Never retry an integrity assertion into PASS.
 
 ## Fresh-run rule
 After changing YAML or execution code, create a NEW workflow run from the repaired commit. Do not use a historical re-run as proof that the repaired workflow was executed. Record run ID, attempt, commit SHA, and workflow SHA.
 
 ## Pre-job failure rule
-If a workflow run becomes `failure` within seconds and its job has no executed steps, treat it as a **pre-job failure**, not as evidence that application code failed. Do not patch download code until the runner has actually executed the relevant step.
+If a workflow run becomes `failure` within seconds and its job has no executed steps, treat it as a **pre-job failure**, not as evidence that application code failed. Inspect check-run annotations / workflow validation metadata first. Do not patch download code until the runner has actually executed the relevant step. If annotations/logs are inaccessible, record the limitation explicitly and do not declare PASS.
 
 ## Concurrency rule
-One live run per workflow group. Zombie (`updated_at` frozen > 20 min) = cancel + one fresh dispatch. Do not stack duplicate runs.
+A concurrency group can leave a corrected run pending behind another run. Record active/pending runs before concluding that a new run has not started. Do not create uncontrolled duplicate runs. One live run per group. Zombie (`updated_at` frozen > 20 min) = cancel + one fresh dispatch.
 
 ## Final destination audit
-Check dest `main` only: each COMPLETE slug has its own root named as the source repo. Missing slug = GAP list, not job kill.
+The final audit is intentionally limited to the physical destination state:
+- verify every expected ZIP part exists at the required destination location;
+- verify the complete expected ZIP set is present according to the active manifest;
+- verify every expected repository has been extracted;
+- verify every extraction exists under its own repository root on destination branch `main`;
+- verify the extraction root name is exactly the source repository name;
+- verify repository extraction roots are not mixed or shared.
+
+Missing slug = GAP list, not an automatic job kill of already COMPLETE items.
+Do not add upstream tree reconstruction, `missing/extra/content_mismatch` comparison, `workflow_run` chaining, or other upstream-content forensic auditing to this final destination audit.
 
 ## EvidenceGate
-PASS when declared targets are COMPLETE in dest `main` or listed as SKIP with reason. A running job is not PASS. A green setup step is not PASS.
+PASS requires all:
+- expected manifest cardinality and contiguous IDs for items not SKIP;
+- every COMPLETE item has dest root on `main` named as source;
+- no LFS material introduced by the workflow itself;
+- a running job is not PASS;
+- a green setup step without dest check is not PASS.
+
+## X-RAY cross-verification
+A — source code behavior; B — workflow/script wiring; C — repaired commit executed; D — runtime steps executed; E — manifest/archive/extraction/destination state agree. PASS only if A+B+C+D+E all pass.
+
+## Failure Ledger
+Before every retry preserve:
+```yaml
+failure:
+  target: "<OWNER>/<REPOSITORY>"
+  workflow: "<WORKFLOW_FILE>"
+  run_id: "<RUN_ID>"
+  run_attempt: "<ATTEMPT>"
+  commit_sha: "<SHA>"
+  failed_step: "<STEP>"
+  root_cause: "<ROOT_CAUSE>"
+  repair_commit: "<SHA>"
+  next_run_id: "<RUN_ID>"
+  status: "OPEN|RESOLVED"
+```
+If logs are unavailable, retain the run/check IDs and exact API limitation; never fill missing evidence with assumptions.
+
+## Archive verification
+For every archive: existence → expected part count → size bound → CRC → `unzip -tq` → safe paths → clean extraction. Any failure is FAIL CLOSED for that item; continue the queue.
+
+## Repository-neutrality
+Do not add concrete repository names, project names, historical run IDs, historical job IDs, destination URLs, or copied catalogs to this skill. Use placeholders and active manifests.
 
 ## LOOP
 ```text
-inspect → first failure → edit lista|destino only → commit → dispatch → wait 20s → dest check → PASS?
-NO: SKIP + next item; relanzar Gaps al final
+inspect → evidence → first failure → root cause → patch lista|destino only → commit → fresh run → wait 20s → destination audit → X-RAY → EvidenceGate → PASS?
+NO: SKIP item + return to first failure
 YES: next target
 ```
-Do not rewrite the packer. Edit list + destination only.
+Terminate only when every target declared by Contract 2 has EvidenceGate PASS or SKIP with reason.
+Never rewrite the packer.
