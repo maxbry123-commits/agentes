@@ -1,32 +1,40 @@
 ---
 name: research-download-chain
-description: 3 instrucciones. GHA copia lock. AI edita lista+destino. GHA mueve raiz.
+description: 3 metodos GHA. Copiar. Descargar+extraer. Mover.
 metadata:
   type: workflow
-  version: "1.8.1"
+  version: "1.9.0"
 ---
 
-# 3 instrucciones
+# 3 instrucciones / 3 metodos / todo GHA
 
-## 1. Copiar archivo (cableo YAML copy)
+## 1. Copiar archivos
 
-Ejemplo lock:
-- `skills/research-download-chain/assets/FORENSIC-PASS-research-download-chain-final.yml`
-- `skills/research-download-chain/assets/FORENSIC-PASS-research_download_chain.py`
+Usar este YAML:
+`skills/research-download-chain/gha-copy-files.yml`
 
-Destino vivo:
-- `.github/workflows/research-download-chain-final.yml`
-- `scripts/research_download_chain.py`
+Hace `checkout@v4` + `cp -a` de los files que indiques. No Python. No LFS.
 
-YAML: `skills/research-download-chain/gha-copy-skill-example.yml`  
-GHA: `actions/checkout@v4` + `cp -a` + commit/push `main`. `lfs: false`.
+## 2. Descargar y extraer repos
 
-## 2. No escribir packer
+No escribir packer.
 
-GHA copia el code exacto del lock. AI/agente solo edita `REPOS` y el destino argv del PY. Descarga y extraccion = ese PY copiado. No packer nuevo.
+1. GHA copia fiel el YAML ejemplo:
+   `skills/research-download-chain/gha-download-extract.yml`
+   a `.github/workflows/research-download-chain-final.yml`
+2. GHA copia fiel el PY lock:
+   `skills/research-download-chain/assets/FORENSIC-PASS-research_download_chain.py`
+   a `scripts/research_download_chain.py`
+3. Editar solo: lista origen en el PY + destino zip/extract en el YAML (`DEST` / `WORK`).
+4. Dispatch el workflow vivo.
 
-## 3. Mover archivo o raiz (cableo YAML move)
+Sin nombres de repo origen en este skill. Origen = lista que se edita despues de copiar.
 
-YAML: `skills/research-download-chain/gha-move-root-or-files.yml`  
-Mismo repo: un checkout + `cp -a`/`git mv` + push `main`.  
-Otro repo: checkout origen + checkout destino `repository` + `token: ${{ secrets.GH_PAT }}` + `cp -a` + push dest `main`.
+## 3. Mover archivo, lote o raiz
+
+Usar este YAML:
+`skills/research-download-chain/gha-move-files.yml`
+
+GHA copia ese YAML a `.github/workflows/` y lo despacha.
+Mismo repo: `cp -a` / `git mv` + push `main`.
+Otro repo: segundo checkout `repository` + `secrets.GH_PAT` + `cp -a` + push dest `main`.
