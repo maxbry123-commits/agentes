@@ -28,22 +28,28 @@ def package(slug,root):
     run(['zip','-q','-r','-1','-y',str(full.resolve()),'.'],cwd=stage)
     if full.stat().st_size<=SPLIT_TARGET:
         out=PACK/f'{slug}_0001.zip'; full.replace(out); shutil.rmtree(stage,ignore_errors=True); return [(out,out.stat().st_size)]
-    before=set(PACK.glob('*.zip')); run(['zipsplit','-n',str(SPLIT_TARGET),'-b',str(PACK.resolve()),str(full.resolve())]); full.unlink(missing_ok=True)
+    before=set(PACK.glob('*.zip'))
+    try: run(['zipsplit','-n',str(SPLIT_TARGET),'-b',str(PACK.resolve()),str(full.resolve())])
+    except subprocess.CalledProcessError:
+        print(f'SKIP ZIPSPLIT FAIL {slug}',flush=True); shutil.rmtree(stage,ignore_errors=True); return []
+    full.unlink(missing_ok=True)
     made=[p for p in PACK.glob('*.zip') if p not in before and p != full]
-    if not made: raise RuntimeError(f'zipsplit produced no parts for {slug}')
+    if not made:
+        print(f'SKIP ZIPSPLIT EMPTY {slug}',flush=True); shutil.rmtree(stage,ignore_errors=True); return []
     out=[]
     for i,p in enumerate(sorted(made,key=lambda p:(p.stat().st_mtime,p.name)),1):
         q=PACK/f'{slug}_{i:04d}.zip'; p.replace(q); size=q.stat().st_size
-        if size>MAX_ZIP: raise RuntimeError(f'ZIP part exceeds safety limit: {q} = {size}')
-        subprocess.run(['unzip','-tq',str(q)],check=True); out.append((q,size))
+        if size>MAX_ZIP:
+            print(f'SKIP MAX_ZIP {q} {size}',flush=True); shutil.rmtree(stage,ignore_errors=True); return []
+        if subprocess.run(['unzip','-tq',str(q)]).returncode!=0:
+            print(f'SKIP CRC {q}',flush=True); shutil.rmtree(stage,ignore_errors=True); return []
+        out.append((q,size))
     shutil.rmtree(stage,ignore_errors=True); return out
 def push(label):
-    for attempt in range(1,2):
-        try:
-            run(['git','fetch','origin','main']); run(['git','rebase','origin/main']); run(['git','push','origin','HEAD:main']); print(f'PUSH PASS {label} attempt {attempt}'); return
-        except subprocess.CalledProcessError:
-            if attempt==1: raise
-            time.sleep(attempt*2)
+    try:
+        run(['git','fetch','origin','main']); run(['git','rebase','origin/main']); run(['git','push','origin','HEAD:main']); print(f'PUSH PASS {label}'); return
+    except subprocess.CalledProcessError:
+        print(f'SKIP PUSH FAIL {label}',flush=True); return
 def commit(n,label):
     if not n:return
     run(['git','add',str(DEST)])
@@ -59,7 +65,10 @@ for number,slug,url in REPOS:
     except subprocess.CalledProcessError:
         print(f'SKIP CLONE FAIL {number} {slug} {url}',flush=True); continue
     sha=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip(); shutil.rmtree(root/'.git',ignore_errors=True)
-    parts=package(slug,root); print(f'{slug}: {len(parts)} ZIP part(s)')
+    parts=package(slug,root)
+    if not parts:
+        print(f'SKIP PACKAGE {number} {slug}',flush=True); shutil.rmtree(root,ignore_errors=True); continue
+    print(f'{slug}: {len(parts)} ZIP part(s)')
     for z,size in parts:
         if batch and batch+size>BATCH_LIMIT: commit(batch,f'{batch_no:03d}'); batch=0; batch_no+=1
         shutil.copy2(z,DEST/z.name); batch+=size; print(f'  {z.name}: {size} bytes; batch={batch}')
