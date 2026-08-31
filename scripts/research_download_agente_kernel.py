@@ -5,7 +5,7 @@ os.environ['GIT_LFS_SKIP_PUSH']='1'
 os.environ['GIT_TERMINAL_PROMPT']='0'
 DEST=Path(sys.argv[1]).resolve(); WORK=Path(sys.argv[2]).resolve(); SRC=WORK/'src'; PACK=WORK/'pack'
 MANIFEST=DEST/'RESEARCH_DOWNLOAD_MANIFEST.jsonl'; SPLIT_TARGET=12000000; MAX_ZIP=17*1000*1000; BATCH_LIMIT=90*1024*1024; CHUNK=8*1024*1024
-REPOS=[('01','SearchOS','https://github.com/antins-labs/SearchOS.git'),('02','SearXNG','https://github.com/searxng/searxng.git'),('03','OpenDeepResearch','https://github.com/langchain-ai/open_deep_research.git'),('04','GPT-Researcher','https://github.com/assafelovic/gpt-researcher.git'),('05','STORM','https://github.com/stanford-oval/storm.git'),('06','Shandu','https://github.com/jolovicdev/shandu.git'),('07','Vane','https://github.com/ItzCrazyKns/Vane.git'),('08','Haystack','https://github.com/deepset-ai/haystack.git'),('09','Crawl4AI','https://github.com/unclecode/crawl4ai.git'),('10','Perplexica','https://github.com/ItzCrazyKns/Perplexica.git'),('11','Dagu','https://github.com/dagucloud/dagu.git'),('12','Conductor','https://github.com/conductor-oss/conductor.git'),('13','Temporal','https://github.com/temporalio/temporal.git'),('14','Argo-Workflows','https://github.com/argoproj/argo-workflows.git'),('15','Kestra','https://github.com/kestra-io/kestra.git'),('16','LangGraph','https://github.com/langchain-ai/langgraph.git'),('17','Hatchet','https://github.com/hatchet-dev/hatchet.git'),('18','Windmill','https://github.com/windmill-labs/windmill.git'),('19','Dagster','https://github.com/dagster-io/dagster.git'),('20','Prefect','https://github.com/PrefectHQ/prefect.git')]
+REPOS=[('01','mini-SWE-agent','https://github.com/SWE-agent/mini-swe-agent.git'),('02','SmolAgents','https://github.com/huggingface/smolagents.git'),('03','MUSE-KnowledgeXLab','https://github.com/KnowledgeXLab/MUSE.git'),('04','Muse-Agent','https://github.com/wlsdks/muse-agent.git'),('06','Temporal','https://github.com/temporalio/temporal.git'),('07','Kestra','https://github.com/kestra-io/kestra.git'),('08','Dagster','https://github.com/dagster-io/dagster.git'),('09','Kafka','https://github.com/apache/kafka.git'),('10','EventStore','https://github.com/EventStore/EventStore.git'),('11','Daytona','https://github.com/daytonaio/daytona.git'),('12','Sandbox0','https://github.com/sandbox0-ai/sandbox0.git'),('13','gVisor','https://github.com/google/gvisor.git')]
 def run(c,cwd=None): subprocess.run(c,cwd=cwd,check=True)
 def note(**kw):
     MANIFEST.parent.mkdir(parents=True,exist_ok=True)
@@ -65,7 +65,7 @@ DEST.mkdir(parents=True,exist_ok=True); SRC.mkdir(parents=True,exist_ok=True); P
 batch=batch_no=0; skipped=[]
 CLONE=['git','-c','filter.lfs.smudge=','-c','filter.lfs.clean=','-c','filter.lfs.process=','-c','filter.lfs.required=false','clone','--depth','1','--single-branch','--no-tags']
 for number,slug,url in REPOS:
-    print(f'===== QUEUE {number}/20: {slug} =====')
+    print(f'===== QUEUE {number}: {slug} =====')
     if done(slug): print(f'{slug}: COMPLETE; skipping'); continue
     root=SRC/slug; shutil.rmtree(root,ignore_errors=True)
     try: run(CLONE+[url,str(root)])
@@ -86,4 +86,4 @@ for number,slug,url in REPOS:
     shutil.rmtree(root,ignore_errors=True); shutil.rmtree(PACK,ignore_errors=True); PACK.mkdir(parents=True,exist_ok=True)
 commit(batch,f'{batch_no:03d}-final')
 print('SKIPPED',skipped)
-print('===== QUEUE COMPLETE: 20/20 repositories processed =====')
+print('===== QUEUE COMPLETE: bloque2 agentes processed =====')
