@@ -1,0 +1,26 @@
+name: activate-research-download-chain-63-96
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/activate-research-download-chain-63-96.yml
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Dispatch research-download-chain-63-96
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          gh workflow run research-download-chain-63-96.yml --repo maxbry123-commits/agentes --ref main
+          sleep 20
+          gh run list --repo maxbry123-commits/agentes --workflow research-download-chain-63-96.yml --branch main --limit 3
