@@ -41,4 +41,4 @@ jobs:
           git config --global filter.lfs.process ''
           git config --global filter.lfs.required false
           git config --global core.compression 0
-          python3 scripts/research_download_chain.py 'Download code/archivos' '_work/research-download'
+          python3 scripts/research_download_agente_kernel.py 'Agente Yaiwes/Agente core kernel Yaiwes' '_work/agente-kernel'
