@@ -1,0 +1,43 @@
+# Copiar archivos. Fuente: https://github.com/actions/checkout
+name: Copy files
+on:
+  workflow_dispatch:
+    inputs:
+      src_file:
+        description: 'Archivo origen'
+        required: true
+        default: 'skills/research-download-chain/assets/FORENSIC-PASS-research_download_chain.py'
+      dest_file:
+        description: 'Archivo destino'
+        required: true
+        default: 'scripts/research_download_chain.py'
+permissions:
+  contents: write
+env:
+  GIT_LFS_SKIP_SMUDGE: "1"
+  GIT_TERMINAL_PROMPT: "0"
+jobs:
+  copy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+          persist-credentials: true
+      - name: cp -a
+        run: |
+          set -euo pipefail
+          test -e "${{ inputs.src_file }}"
+          mkdir -p "$(dirname "${{ inputs.dest_file }}")"
+          cp -a "${{ inputs.src_file }}" "${{ inputs.dest_file }}"
+      - name: commit push main
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add "${{ inputs.dest_file }}"
+          git diff --cached --quiet && echo 'NO CHANGE' && exit 0
+          git commit -m "copy: ${{ inputs.src_file }} -> ${{ inputs.dest_file }}"
+          git push origin HEAD:main
