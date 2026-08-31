@@ -1,0 +1,80 @@
+name: Cleanup basura root y workflows muertos
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: cleanup-basura-agentes
+  cancel-in-progress: false
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          lfs: false
+      - name: RM lista basura
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f loop-engineer-main.zip maxbry_continuous_loop.zip maxbry_continuous_loop_v2.zip
+          rm -f .github/workflows/a5-codex-finalize.yml
+          rm -f .github/workflows/a5-codex-meta.yml
+          rm -f .github/workflows/a5-codex.yml
+          rm -f .github/workflows/acquire-codex-v21.yml
+          rm -f .github/workflows/acquire-codex.yml
+          rm -f .github/workflows/acquire-hermes.yml
+          rm -f .github/workflows/acquire-openclaw.yml
+          rm -f .github/workflows/actions-preflight.yml
+          rm -f .github/workflows/activate-research-download-chain-63-96.yml
+          rm -f .github/workflows/audit-extraction.yml
+          rm -f .github/workflows/check-external-token-secret.yml
+          rm -f .github/workflows/codex-meta.yml
+          rm -f .github/workflows/create-cuenta-b-repo.yml
+          rm -f .github/workflows/deterministic-build.yml
+          rm -f .github/workflows/download-extract-xray-final.yml
+          rm -f .github/workflows/download-extract-xray-v2.yml
+          rm -f .github/workflows/download-extract-xray.yml
+          rm -f .github/workflows/download-extract.yml
+          rm -f .github/workflows/download-research-repos.yml
+          rm -f .github/workflows/extract-download-code.yml
+          rm -f .github/workflows/extract-downloaded-zips.yml
+          rm -f .github/workflows/forensic-gates.yml
+          rm -f .github/workflows/forensic-xray-crosscheck.yml
+          rm -f .github/workflows/legacy-final-disabled.yml
+          rm -f .github/workflows/organize-root-to-desplegar1.yml
+          rm -f .github/workflows/pack-yaiwes-25.yml
+          rm -f .github/workflows/package-wordflow-01-05.yml
+          rm -f .github/workflows/phase1_restore_arquitectura_real.yml
+          rm -f .github/workflows/purge-agents-root.yml
+          rm -f .github/workflows/purge-agents.yml
+          rm -f .github/workflows/purge-openclaw-only.yml
+          rm -f .github/workflows/research-download-chain-63-96-copy-05.yml
+          rm -f .github/workflows/research-download-chain-skill-copy-01.yml
+          rm -f .github/workflows/research-download-chain-skill-copy-02.yml
+          rm -f .github/workflows/research-download-chain-skill-copy-03.yml
+          rm -f .github/workflows/research-download-chain-skill-copy-04.yml
+          rm -f .github/workflows/research-download-chain-skill-copy-05.yml
+          rm -f .github/workflows/research-download-chain-skill-copy.yml
+          rm -f .github/workflows/test-audit-forensic.yml
+          rm -f .github/workflows/test-control-layer.yml
+          rm -f .github/workflows/test-github-publisher.yml
+          rm -f .github/workflows/test-project-bootstrap.yml
+          rm -f .github/workflows/test-source-evolution.yml
+          rm -f .github/workflows/test-wordflow-code-path.yml
+          rm -f .github/workflows/test-wordflow.yml
+          rm -f .github/workflows/validate-external-github.yml
+          rm -f .github/workflows/verify-g5-wordflow.yml
+          rm -f .github/workflows/verify-gap-indexes.yml
+          rm -f .github/workflows/verify-openclaw-cable.yml
+          rm -f .github/workflows/wordflow-full-verification.yml
+          rm -f .github/workflows/wordflow_smoke.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --quiet && echo 'NOOP' && exit 0
+          git commit -m 'cleanup(basura): yml muertos + zip raiz'
+          git pull --rebase origin main
+          git push origin main
