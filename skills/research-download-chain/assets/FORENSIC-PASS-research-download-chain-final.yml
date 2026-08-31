@@ -14,7 +14,7 @@ env:
 
 concurrency:
   group: research-download-chain-final
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   download-20-in-queue:
