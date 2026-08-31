@@ -25,7 +25,7 @@ def stage_repo(slug,root):
     return stage
 def package(slug,root):
     stage=stage_repo(slug,root); full=PACK/f'{slug}_full.zip'; full.unlink(missing_ok=True)
-    run(['zip','-q','-r','-9','-y',str(full.resolve()),'.'],cwd=stage)
+    run(['zip','-q','-r','-1','-y',str(full.resolve()),'.'],cwd=stage)
     if full.stat().st_size<=SPLIT_TARGET:
         out=PACK/f'{slug}_0001.zip'; full.replace(out); shutil.rmtree(stage,ignore_errors=True); return [(out,out.stat().st_size)]
     before=set(PACK.glob('*.zip')); run(['zipsplit','-n',str(SPLIT_TARGET),'-b',str(PACK.resolve()),str(full.resolve())]); full.unlink(missing_ok=True)
@@ -38,11 +38,11 @@ def package(slug,root):
         subprocess.run(['unzip','-tq',str(q)],check=True); out.append((q,size))
     shutil.rmtree(stage,ignore_errors=True); return out
 def push(label):
-    for attempt in range(1,4):
+    for attempt in range(1,2):
         try:
             run(['git','fetch','origin','main']); run(['git','rebase','origin/main']); run(['git','push','origin','HEAD:main']); print(f'PUSH PASS {label} attempt {attempt}'); return
         except subprocess.CalledProcessError:
-            if attempt==3: raise
+            if attempt==1: raise
             time.sleep(attempt*2)
 def commit(n,label):
     if not n:return
@@ -54,7 +54,10 @@ batch=batch_no=0
 for number,slug,url in REPOS:
     print(f'===== QUEUE {number}/20: {slug} =====')
     if done(slug): print(f'{slug}: COMPLETE; skipping'); continue
-    root=SRC/slug; shutil.rmtree(root,ignore_errors=True); run(['git','clone','--depth','1','--no-tags',url,str(root)])
+    root=SRC/slug; shutil.rmtree(root,ignore_errors=True)
+    try: run(['git','clone','--depth','1','--no-tags',url,str(root)])
+    except subprocess.CalledProcessError:
+        print(f'SKIP CLONE FAIL {number} {slug} {url}',flush=True); continue
     sha=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip(); shutil.rmtree(root/'.git',ignore_errors=True)
     parts=package(slug,root); print(f'{slug}: {len(parts)} ZIP part(s)')
     for z,size in parts:
