@@ -4,3 +4,8 @@
 {"number": 4, "parts": 2, "slug": "Muse-Agent", "source": "https://github.com/wlsdks/muse-agent.git", "source_commit": "c55ed22dd436a1a1d708905293bc3c06128fb6f3", "status": "COMPLETE"}
 {"number": 6, "parts": 1, "slug": "Temporal", "source": "https://github.com/temporalio/temporal.git", "source_commit": "c044bf16b1cc47a4db80669a987484dba6145331", "status": "COMPLETE"}
 {"number": 7, "parts": 2, "slug": "Kestra", "source": "https://github.com/kestra-io/kestra.git", "source_commit": "ce6771f7c54e0a6f153d6104ef0841293af0a1fa", "status": "COMPLETE"}
+{"number": 8, "parts": 14, "slug": "Dagster", "source": "https://github.com/dagster-io/dagster.git", "source_commit": "fc0d15b2e601b5a14b16c5a6bd9ff5051e9c3ab0", "status": "COMPLETE"}
+{"number": 9, "parts": 3, "slug": "Kafka", "source": "https://github.com/apache/kafka.git", "source_commit": "f5e01c7b0a07878e79d310a021a7881c6ee52717", "status": "COMPLETE"}
+{"number": 10, "parts": 2, "slug": "EventStore", "source": "https://github.com/EventStore/EventStore.git", "source_commit": "caf1cb48f562e601139fa5e28031049f90302b8a", "status": "COMPLETE"}
+{"number": 11, "parts": 1, "slug": "Daytona", "source": "https://github.com/daytonaio/daytona.git", "source_commit": "ec4c21b2d597091ac09ecc278f3bcc172575a987", "status": "COMPLETE"}
+{"number": 12, "parts": 1, "slug": "Sandbox0", "source": "https://github.com/sandbox0-ai/sandbox0.git", "source_commit": "20d047d6991fd6353367aa1a3ee86ca81c8ba549", "status": "COMPLETE"}
