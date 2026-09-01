@@ -78,3 +78,5 @@
 {"number": 18, "parts": 1, "slug": "nsjail", "source": "https://github.com/google/nsjail.git", "source_commit": "f100fd917c6d3ed0fd15d868528b735cb5fb1a1a", "status": "COMPLETE"}
 {"number": 19, "parts": 2, "slug": "Burr", "source": "https://github.com/DAGWorks-Inc/burr.git", "source_commit": "69ba3bc58a2507e84535d27a008b949656a33302", "status": "COMPLETE"}
 {"number": 20, "parts": 2, "slug": "LangChain", "source": "https://github.com/langchain-ai/langchain.git", "source_commit": "b4d46a503e7de6fa3bb9c78d67510e2ee7bf238b", "status": "COMPLETE"}
+{"number": 1, "parts": 1, "slug": "Marshmallow", "source": "https://github.com/marshmallow-code/marshmallow.git", "source_commit": "74e0043254d2390afe7f8ac83162bb99fd0aafe1", "status": "COMPLETE"}
+{"number": 2, "parts": 1, "slug": "Python-jsonschema", "source": "https://github.com/python-jsonschema/jsonschema.git", "source_commit": "edf3dc38d29d275c277a85c00dd4d57f21db0de6", "status": "COMPLETE"}
