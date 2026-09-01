@@ -350,3 +350,5 @@ jobs:
             git pull --rebase origin main
             git push --no-verify origin HEAD:main
           fi
+
+# sparse queue trigger v3

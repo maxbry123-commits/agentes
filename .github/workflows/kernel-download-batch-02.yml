@@ -3,11 +3,6 @@ run-name: Research Download Chain FINAL • ${{ github.event_name }} • ${{ git
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/kernel-download-batch-02.yml'
-      - 'scripts/research_download_kernel_batch_02.py'
 
 permissions:
   contents: write
