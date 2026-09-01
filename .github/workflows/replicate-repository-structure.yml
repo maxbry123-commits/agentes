@@ -11,7 +11,7 @@ env:
   GIT_LFS_SKIP_SMUDGE: "1"
   GIT_TERMINAL_PROMPT: "0"
 concurrency:
-  group: research-download-chain-final
+  group: structure-replication
   cancel-in-progress: false
 jobs:
   replicate:
@@ -29,28 +29,26 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          folders = [
-            "skills agente osquestador auditor memoria"
-            "Download code osquestador auditor memoria"
-            "Documentos proyectos osquestador auditor memoria"
-            "Documentos proyectos osquestador auditor memoria/Osquestador auditor memoria"
-            "Desplegar osquestador auditor memoria"
-            "Refactoria osquestador auditor memoria"
-            "PIPELINE osquestador auditor memoria"
-            "Método de trabajo osquestador auditor memoria"
-            "Agente motores osquestador auditor memoria"
-            "skills agente nct"
-            "Download code NCT"
-            "Documentos proyectos nct"
-            "Documentos proyectos nct/NCT neuronas code turbo"
-            "NCT neuronas code turbo"
-            "Desplegar nct"
-            "Refactoria nct"
-            "PIPELINE nct"
-            "Método de trabajo nct"
-            "Agente motores nct"
-            "Agente core kernel Yaiwes principal"
-          ]
+          folders = """skills agente osquestador auditor memoria
+Download code osquestador auditor memoria
+Documentos proyectos osquestador auditor memoria
+Documentos proyectos osquestador auditor memoria/Osquestador auditor memoria
+Desplegar osquestador auditor memoria
+Refactoria osquestador auditor memoria
+PIPELINE osquestador auditor memoria
+Método de trabajo osquestador auditor memoria
+Agente motores osquestador auditor memoria
+skills agente nct
+Download code NCT
+Documentos proyectos nct
+Documentos proyectos nct/NCT neuronas code turbo
+NCT neuronas code turbo
+Desplegar nct
+Refactoria nct
+PIPELINE nct
+Método de trabajo nct
+Agente motores nct
+Agente core kernel Yaiwes principal""".splitlines()
           for raw in folders:
               p=Path(raw)
               p.mkdir(parents=True,exist_ok=True)
@@ -61,6 +59,32 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          folders = """skills agente osquestador auditor memoria
+Download code osquestador auditor memoria
+Documentos proyectos osquestador auditor memoria
+Documentos proyectos osquestador auditor memoria/Osquestador auditor memoria
+Desplegar osquestador auditor memoria
+Refactoria osquestador auditor memoria
+PIPELINE osquestador auditor memoria
+Método de trabajo osquestador auditor memoria
+Agente motores osquestador auditor memoria
+skills agente nct
+Download code NCT
+Documentos proyectos nct
+Documentos proyectos nct/NCT neuronas code turbo
+NCT neuronas code turbo
+Desplegar nct
+Refactoria nct
+PIPELINE nct
+Método de trabajo nct
+Agente motores nct
+Agente core kernel Yaiwes principal""".splitlines()
+          missing=[x for x in folders if not Path(x).is_dir()]
+          assert not missing, missing
+          print(f'PASS: {len(folders)}/{len(folders)} carpetas')
+          PY
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A -- ':!.github'
