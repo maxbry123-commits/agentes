@@ -33,3 +33,8 @@
 {"number": 13, "parts": 4, "slug": "TruLens", "source": "https://github.com/truera/trulens.git", "source_commit": "484452099ca0350a2fa648c25707aa66fe824167", "status": "COMPLETE"}
 {"number": 14, "parts": 4, "slug": "Ragas", "source": "https://github.com/vibrantlabsai/ragas.git", "source_commit": "298b68274234c060deacab3cf5fb52aa3a20e885", "status": "COMPLETE"}
 {"number": 15, "parts": 1, "slug": "Z3", "source": "https://github.com/Z3Prover/z3.git", "source_commit": "24b02fd7f516c3e78ff44c2f62fcbce2303251ba", "status": "COMPLETE"}
+{"number": 16, "parts": 11, "slug": "Lean4", "source": "https://github.com/leanprover/lean4.git", "source_commit": "c8e19cca2547a89c3aba401afaab9a8808f490a2", "status": "COMPLETE"}
+{"number": 17, "parts": 1, "slug": "Hypothesis", "source": "https://github.com/HypothesisWorks/hypothesis.git", "source_commit": "a8dcd7422a325926693b5464f73349e361562b7c", "status": "COMPLETE"}
+{"number": 18, "parts": 1, "slug": "LM-Evaluation-Harness", "source": "https://github.com/EleutherAI/lm-evaluation-harness.git", "source_commit": "69c005f265e7e1ac1636724c8515f63812626e20", "status": "COMPLETE"}
+{"number": 19, "parts": 2, "slug": "Inspect-AI", "source": "https://github.com/UKGovernmentBEIS/inspect_ai.git", "source_commit": "0161c68f519f036684df921e5fdd2b6652310e06", "status": "COMPLETE"}
+{"number": 20, "parts": 1, "slug": "OpenAI-Evals", "source": "https://github.com/openai/evals.git", "source_commit": "8eac7a7de5215c907fbddc30efdaf316913eccdd", "status": "COMPLETE"}
