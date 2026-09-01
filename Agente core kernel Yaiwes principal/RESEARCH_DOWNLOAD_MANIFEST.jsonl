@@ -89,3 +89,10 @@
 {"number": 9, "parts": 1, "slug": "Celery", "source": "https://github.com/celery/celery.git", "source_commit": "66d9602690081801e086541705d1ec4e1eb86ef6", "status": "COMPLETE"}
 {"number": 10, "parts": 1, "slug": "MCP-Python-SDK", "source": "https://github.com/modelcontextprotocol/python-sdk.git", "source_commit": "d2290ca3434731b68ea3e2270bc06a6e6575931b", "status": "COMPLETE"}
 {"number": 11, "parts": 1, "slug": "MCP-TypeScript-SDK", "source": "https://github.com/modelcontextprotocol/typescript-sdk.git", "source_commit": "dcc01028ff6a499a5728c2b6181c1727d52e2fab", "status": "COMPLETE"}
+{"number": 12, "parts": 4, "slug": "FastMCP", "source": "https://github.com/PrefectHQ/fastmcp.git", "source_commit": "62ef226b62c7ff7f5181e3b12078369111324eb5", "status": "COMPLETE"}
+{"number": 13, "parts": 1, "slug": "MCP-Go", "source": "https://github.com/mark3labs/mcp-go.git", "source_commit": "56af04b2a9aedefa7756d9eef77065e4275a7ae6", "status": "COMPLETE"}
+{"number": 14, "parts": 3, "slug": "ClawHub", "source": "https://github.com/openclaw/clawhub.git", "source_commit": "2d029cf8c5b83f4d539365f1015d8b0e5b481a81", "status": "COMPLETE"}
+{"number": 15, "parts": 1, "slug": "Anthropic-Skills", "source": "https://github.com/anthropics/skills.git", "source_commit": "3b3fad96af16a10759d930941b4520ba0c40edae", "status": "COMPLETE"}
+{"number": 16, "parts": 1, "slug": "OpenAI-Skills", "source": "https://github.com/openai/skills.git", "source_commit": "49f948faa9258a0c61caceaf225e179651397431", "status": "COMPLETE"}
+{"number": 17, "parts": 1, "slug": "Hugging-Face-Skills", "source": "https://github.com/huggingface/skills.git", "source_commit": "cead19e10754e773bad24fecef83cb64be24094e", "status": "COMPLETE"}
+{"number": 18, "parts": 1, "slug": "LMQL", "source": "https://github.com/eth-sri/lmql.git", "source_commit": "fc8edd4457dc5a5e4e595302166bec797582bf53", "status": "COMPLETE"}
