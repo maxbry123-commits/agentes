@@ -124,3 +124,7 @@
 {"number": 5, "parts": 2, "slug": "Microsoft-Agent-Framework", "source": "https://github.com/microsoft/agent-framework.git", "source_commit": "8ea6f8345dbdd1b44675a354c5ece1a523ef2624", "status": "COMPLETE"}
 {"number": 6, "parts": 3, "slug": "Agno", "source": "https://github.com/agno-agi/agno.git", "source_commit": "f7f078bec1544f887723d48e1115150a4a598a0d", "status": "COMPLETE"}
 {"number": 7, "parts": 14, "slug": "OpenClaw", "source": "https://github.com/openclaw/openclaw.git", "source_commit": "d4354ffc8e917d7ba89b33a8f471fe98cba0ecbe", "status": "COMPLETE"}
+{"number": 8, "parts": 2, "slug": "SQLite", "source": "https://github.com/sqlite/sqlite.git", "source_commit": "ff622746c4710a370d6cf1f575dbfa300ddabe05", "status": "COMPLETE"}
+{"number": 9, "parts": 1, "slug": "sqlite-vec", "source": "https://github.com/asg017/sqlite-vec.git", "source_commit": "04d28bd21773981e2d266bbf6aa4efbd011eb4f6", "status": "COMPLETE"}
+{"number": 10, "parts": 3, "slug": "Chroma", "source": "https://github.com/chroma-core/chroma.git", "source_commit": "3090b912eed5f396e30d30e5159ce59d60523b64", "status": "COMPLETE"}
+{"number": 11, "parts": 1, "slug": "Letta", "source": "https://github.com/letta-ai/letta.git", "source_commit": "4511fa0bc91f68fbab32b91f694617271ea9012b", "status": "COMPLETE"}
