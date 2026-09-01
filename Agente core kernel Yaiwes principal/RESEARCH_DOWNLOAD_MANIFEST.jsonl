@@ -7,3 +7,4 @@
 {"number": 7, "parts": 1, "slug": "Huey", "source": "https://github.com/coleifer/huey.git", "source_commit": "d8abaea2ff2aefc4d1923518ceffbaeff5c322da", "status": "COMPLETE"}
 {"number": 8, "parts": 3, "slug": "Flagsmith", "source": "https://github.com/Flagsmith/flagsmith.git", "source_commit": "894bfa425db7552789d58b5dd9e07016cb5a8356", "status": "COMPLETE"}
 {"number": 9, "parts": 2, "slug": "Unleash", "source": "https://github.com/Unleash/unleash.git", "source_commit": "eb2e914d075f0973c8db9475c9c326262030f542", "status": "COMPLETE"}
+{"number": 10, "parts": 10, "slug": "GrowthBook", "source": "https://github.com/growthbook/growthbook.git", "source_commit": "97e18d507ec6547d749ec8706ca4b7843723ea8e", "status": "COMPLETE"}
