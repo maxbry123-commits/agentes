@@ -132,3 +132,4 @@
 {"number": 13, "parts": 1, "slug": "SoulSpec-clawsouls", "source": "https://github.com/clawsouls/soulspec.git", "source_commit": "569cbd1c0bd796e8890cf5adb164e0ba3f65cf80", "status": "COMPLETE"}
 {"number": 14, "parts": 1, "slug": "Soul-Spec-Antonio", "source": "https://github.com/AntonioTF5/soul-spec.git", "source_commit": "8d862030baaf9b02c24ad3b0cd1b327832e00586", "status": "COMPLETE"}
 {"number": 15, "parts": 1, "slug": "SOUL-md", "source": "https://github.com/totalmarkdown/soul.md.git", "source_commit": "e230a257f0906ce9b847c351c89c79d2c6e78637", "status": "COMPLETE"}
+{"number": 1, "parts": 1, "slug": "Math-Shepherd", "source": "https://huggingface.co/datasets/peiyi9979/Math-Shepherd.git", "source_commit": "ae6b0c54fca9fa26096f7de175c747e4b262e01a", "status": "COMPLETE"}
