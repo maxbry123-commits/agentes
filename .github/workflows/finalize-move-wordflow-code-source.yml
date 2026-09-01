@@ -1,0 +1,53 @@
+# Fase final del movimiento entre repos: elimina origen solo tras diff exacto PASS.
+name: Move files
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/finalize-move-wordflow-code-source.yml']
+permissions:
+  contents: write
+env:
+  GIT_LFS_SKIP_SMUDGE: "1"
+  GIT_TERMINAL_PROMPT: "0"
+concurrency:
+  group: finalize-move-wordflow-code-source
+  cancel-in-progress: false
+jobs:
+  verify-then-move:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+          persist-credentials: true
+          path: src
+      - uses: actions/checkout@v4
+        with:
+          repository: maxbry123-commits/nct-core
+          ref: main
+          fetch-depth: 1
+          lfs: false
+          path: dest
+      - name: Verificacion cruzada antes de completar movimiento
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d 'src/Wordflow Code'
+          test -d 'dest/Wordflow Code'
+          diff -qr 'src/Wordflow Code' 'dest/Wordflow Code'
+          echo 'CROSS-REPO COPY PASS'
+      - name: Completar git mv sin perdida documental
+        working-directory: src
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm -r -- 'Wordflow Code'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'move: complete Wordflow Code transfer to nct-core main'
+          git pull --rebase origin main
+          git push --no-verify origin HEAD:main
