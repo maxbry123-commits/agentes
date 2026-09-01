@@ -248,3 +248,47 @@ Entrada
 ## 7. Regla de evolución
 
 No mover ni reescribir `extensions/wordflow/engine/code_path_runner.py` hasta alcanzar paridad de imports, contratos, tests y evidencia. La ruta segura es **REUSE → COPY con SHA → ADAPT → TEST → CUTOVER**, manteniendo trazabilidad origen→destino.
+
+
+---
+
+## 8. Auditoría forense TEAM/SDPA — fuentes, cableado y GAPS
+
+Esta ampliación cruza la arquitectura YAIWES con los documentos TEAM y SDPA aportados. Las pasadas están separadas para conservar trazabilidad:
+
+1. [Auditoría 01 — Estructura](https://github.com/maxbry123-commits/agentes/blob/main/AUDITORIA-TEAM-SDPA-01-ESTRUCTURA-XRAY-2026-09-01.md)
+2. [Auditoría 02 — Conectividad](https://github.com/maxbry123-commits/agentes/blob/main/AUDITORIA-TEAM-SDPA-02-CONECTIVIDAD-XRAY-2026-09-01.md)
+3. [Auditoría 03 — Comportamiento](https://github.com/maxbry123-commits/agentes/blob/main/AUDITORIA-TEAM-SDPA-03-COMPORTAMIENTO-XRAY-2026-09-01.md)
+4. [Auditoría 04 — Cierre y GAPS](https://github.com/maxbry123-commits/agentes/blob/main/AUDITORIA-TEAM-SDPA-04-CIERRE-GAPS-XRAY-2026-09-01.md)
+
+### Fuentes SDPA preservadas
+
+- [SDPA Architecture Document](https://github.com/maxbry123-commits/agentes/blob/main/Documentos%20proyectos%20Yaiwes/Documentos%20proyectos%20Yaiwes%201/Arquitectura%20SDPA/SDPA_Architecture_Document.md)
+- [Resumen de la propuesta SDPA](https://github.com/maxbry123-commits/agentes/blob/main/Documentos%20proyectos%20Yaiwes/Documentos%20proyectos%20Yaiwes%201/Arquitectura%20SDPA/RESUMEN-PROPUESTA-SDPA.md)
+
+### Localización del código TEAM
+
+No existe una raíz ejecutable única llamada `Agente TEAM`. La evidencia se distribuye así:
+
+```text
+PIPELINE/03_TEAM_KERNEL_PARTE1.md                  diseño TEAM v3
+PIPELINE/06_PERFIL_MAESTRO_TEAM_SEALS.md           perfil maestro
+PIPELINE/10_KERNEL_THOUGHT_PROTOCOL.md              protocolo de pensamiento
+extensions/wordflow_kernel/                         kernel de control real/parcial
+extensions/wordflow/                                runtime y hot path real
+agente-yaiwes/kernel-principal/                     espejo/scaffold parcial
+control-layer/                                      contratos, council y evolution
+Agente core kernel Yaiwes principal/                ZIP de componentes; no runtime
+```
+
+### Resultado fusionado
+
+- TEAM tiene diseño documental y piezas funcionales, pero no existe como paquete/runtime autónomo completo.
+- `extensions/wordflow_kernel/`: 94 Python, 27 tests, base reutilizable.
+- `agente-yaiwes/kernel-principal/`: 49 Python, 18 placeholders, 0 tests propios.
+- `Agente core kernel Yaiwes principal/`: 502 ZIP; inventario, no kernel instalado.
+- OpenClaw y Hermes continúan como stubs.
+- Los defaults Fake/Mock demuestran interfaces, no producción.
+- SDPA está incompleto: faltan DecisionEngine único, Ask-Consil 12 ejecutable, Merkle State global, AST universal, Inventory unificado, merge semántico y verificación integral.
+
+**Veredicto TEAM/SDPA:** `FAIL-CLOSED / PARCIAL`. No se declara 100% PASS.
