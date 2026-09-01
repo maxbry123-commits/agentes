@@ -37,3 +37,22 @@ La fuente pública oficial disponible para Math-Shepherd es el dataset de los au
 3. 13 componentes existentes presentes en el destino final.
 4. Partes ZIP presentes, trazables y dentro del límite configurado.
 5. Índice final de componentes de cuatro pasadas creado sin sobrescritura.
+
+
+---
+
+## Actualización 2026-09-01T13:35Z
+
+- Workflow secuencial principal: **PASS**.
+- Jobs verificados: reubicación, lotes 01–07 y organización final, todos `success`.
+- Manifiesto: 134 componentes únicos registrados; 133 `COMPLETE`; 1 `SKIPPED`.
+- Auditoría contra los 135 slugs esperados: dos GAPS efectivos:
+  - `Math-Shepherd`: la URL GitHub solicitada devuelve 404; se usa la fuente pública oficial de los autores en Hugging Face.
+  - `Inngest`: estaba en el lote 06 pero no quedó registrado ni empaquetado.
+- Partes ZIP actuales: 494.
+- Parte ZIP máxima: 12,042,876 bytes.
+- Partes mayores de 17,000,000 bytes: 0.
+- Nuevo workflow aislado: `.github/workflows/kernel-gaps-math-shepherd-inngest-new.yml`.
+- Nueva ejecución de reparación: https://github.com/maxbry123-commits/agentes/actions/runs/33514236216
+- Estado al actualizar: **en curso**.
+- No se reactivaron workflows antiguos; no se borraron ni sobrescribieron documentos.
