@@ -117,3 +117,8 @@
 {"number": 17, "parts": 2, "slug": "Cadence", "source": "https://github.com/uber/cadence.git", "source_commit": "40733e9d5969154ab0cb0bfc633a03853a9d892f", "status": "COMPLETE"}
 {"number": 18, "parts": 8, "slug": "Camunda", "source": "https://github.com/camunda/camunda.git", "source_commit": "279206ed86874a30b1a4193b836979d707e0bbc0", "status": "COMPLETE"}
 {"number": 19, "parts": 6, "slug": "Flowable", "source": "https://github.com/flowable/flowable-engine.git", "source_commit": "d6d39ce1c69ff244f2d9dc6af756a9b95e865586", "status": "COMPLETE"}
+{"number": 1, "parts": 4, "slug": "Trigger-dev", "source": "https://github.com/triggerdotdev/trigger.dev.git", "source_commit": "8142a1190b8036c72431e1ef7fe5f406ffbf611e", "status": "COMPLETE"}
+{"number": 2, "parts": 1, "slug": "Restate", "source": "https://github.com/restatedev/restate.git", "source_commit": "285953f227244b55de71b532a5ea8347e3bc3b13", "status": "COMPLETE"}
+{"number": 3, "parts": 2, "slug": "Cloudflare-Workers-SDK", "source": "https://github.com/cloudflare/workers-sdk.git", "source_commit": "b3f26289a735279e463fb4802d4a4481cfaaac71", "status": "COMPLETE"}
+{"number": 4, "parts": 1, "slug": "Luigi", "source": "https://github.com/spotify/luigi.git", "source_commit": "715f65c4a56a908ef0a1df4df6fc33b8420e2e6c", "status": "COMPLETE"}
+{"number": 5, "parts": 2, "slug": "Microsoft-Agent-Framework", "source": "https://github.com/microsoft/agent-framework.git", "source_commit": "8ea6f8345dbdd1b44675a354c5ece1a523ef2624", "status": "COMPLETE"}
