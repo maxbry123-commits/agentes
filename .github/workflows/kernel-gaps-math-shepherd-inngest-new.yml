@@ -1,0 +1,53 @@
+name: Kernel GAPS Math-Shepherd Inngest NEW
+run-name: Kernel GAPS Math-Shepherd Inngest NEW • ${{ github.sha }}
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/kernel-gaps-math-shepherd-inngest-new.yml'
+
+permissions:
+  contents: write
+
+env:
+  GIT_LFS_SKIP_SMUDGE: "1"
+  GIT_LFS_SKIP_PUSH: "1"
+  GIT_LFS_SKIP_DOWNLOAD: "1"
+  GIT_TERMINAL_PROMPT: "0"
+
+concurrency:
+  group: kernel-gaps-math-shepherd-inngest-new
+  cancel-in-progress: false
+
+jobs:
+  repair-only-two-gaps:
+    name: Repair Math-Shepherd and Inngest gaps
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - name: Checkout main sparse
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            .github/workflows/kernel-gaps-math-shepherd-inngest-new.yml
+            scripts/research_download_kernel_gaps_math_shepherd_inngest.py
+            Agente core kernel Yaiwes principal/RESEARCH_DOWNLOAD_MANIFEST.jsonl
+      - name: Execute isolated deterministic GAP chain
+        shell: bash
+        env:
+          GIT_LFS_SKIP_SMUDGE: "1"
+          GIT_LFS_SKIP_PUSH: "1"
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          set -euo pipefail
+          git config --global filter.lfs.smudge ''
+          git config --global filter.lfs.clean ''
+          git config --global filter.lfs.process ''
+          git config --global filter.lfs.required false
+          git config --global core.compression 0
+          python3 scripts/research_download_kernel_gaps_math_shepherd_inngest.py 'Agente core kernel Yaiwes principal' '_work/kernel-gaps-math-shepherd-inngest'
