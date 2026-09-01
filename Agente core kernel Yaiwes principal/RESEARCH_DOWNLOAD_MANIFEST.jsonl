@@ -71,3 +71,10 @@
 {"number": 11, "parts": 1, "slug": "Stamina", "source": "https://github.com/hynek/stamina.git", "source_commit": "caede7b57124e20e355431ddd14dfc2e5660156f", "status": "COMPLETE"}
 {"number": 12, "parts": 2, "slug": "Langfuse", "source": "https://github.com/langfuse/langfuse.git", "source_commit": "cd5ad52dfa7e01e752ca082c4a5689004f102b0c", "status": "COMPLETE"}
 {"number": 13, "parts": 2, "slug": "OpenLLMetry", "source": "https://github.com/traceloop/openllmetry.git", "source_commit": "62e24c2ffde6c1ee04dc290e52d8d5dbda054cff", "status": "COMPLETE"}
+{"number": 14, "parts": 20, "slug": "Helicone", "source": "https://github.com/Helicone/helicone.git", "source_commit": "ca34549ea56f7ed587843f82d9cc19baa1f36ba4", "status": "COMPLETE"}
+{"number": 15, "parts": 1, "slug": "E2B", "source": "https://github.com/e2b-dev/E2B.git", "source_commit": "5a56c87e9db0e221b138662805af7743e75f1082", "status": "COMPLETE"}
+{"number": 16, "parts": 2, "slug": "Firecracker", "source": "https://github.com/firecracker-microvm/firecracker.git", "source_commit": "3522ac59485655e8df750a1c3afce412b51b8a40", "status": "COMPLETE"}
+{"number": 17, "parts": 2, "slug": "Kata-Containers", "source": "https://github.com/kata-containers/kata-containers.git", "source_commit": "d7963f21ee215503f844b46a5ec522808acc1953", "status": "COMPLETE"}
+{"number": 18, "parts": 1, "slug": "nsjail", "source": "https://github.com/google/nsjail.git", "source_commit": "f100fd917c6d3ed0fd15d868528b735cb5fb1a1a", "status": "COMPLETE"}
+{"number": 19, "parts": 2, "slug": "Burr", "source": "https://github.com/DAGWorks-Inc/burr.git", "source_commit": "69ba3bc58a2507e84535d27a008b949656a33302", "status": "COMPLETE"}
+{"number": 20, "parts": 2, "slug": "LangChain", "source": "https://github.com/langchain-ai/langchain.git", "source_commit": "b4d46a503e7de6fa3bb9c78d67510e2ee7bf238b", "status": "COMPLETE"}
