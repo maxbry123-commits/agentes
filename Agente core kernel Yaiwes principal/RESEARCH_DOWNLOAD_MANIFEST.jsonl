@@ -43,3 +43,16 @@
 {"number": 3, "parts": 22, "slug": "vLLM-Semantic-Router", "source": "https://github.com/vllm-project/semantic-router.git", "source_commit": "9df80fba6720aa9db7fd70bffa77471243acf831", "status": "COMPLETE"}
 {"number": 4, "parts": 1, "slug": "Outlines", "source": "https://github.com/dottxt-ai/outlines.git", "source_commit": "c52af8472c6fe8a607a733ec11b709476af77a96", "status": "COMPLETE"}
 {"number": 5, "parts": 2, "slug": "Guidance", "source": "https://github.com/guidance-ai/guidance.git", "source_commit": "21b1d90dfbebff4b141df70c714c8af15aa5f4af", "status": "COMPLETE"}
+{"number": 6, "parts": 5, "slug": "BAML", "source": "https://github.com/BoundaryML/baml.git", "source_commit": "f5a40cc0304e15b7e3ac998cbbbe686f18d14461", "status": "COMPLETE"}
+{"number": 7, "parts": 1, "slug": "Huginn", "source": "https://github.com/seal-rg/recurrent-pretraining.git", "source_commit": "1ea7220ec7eb42d13e89db0663df254d0bcdc28e", "status": "COMPLETE"}
+{"number": 8, "parts": 1, "slug": "Ouroboros", "source": "https://github.com/RightNow-AI/ouroboros.git", "source_commit": "f2326cc2c19fd436a9ddd252e53699b65b94ff40", "status": "COMPLETE"}
+{"number": 9, "parts": 1, "slug": "Coconut", "source": "https://github.com/facebookresearch/coconut.git", "source_commit": "27273cb8cca4bb763c041a63b036d0c3b7cbbb48", "status": "COMPLETE"}
+{"number": 10, "parts": 1, "slug": "OpenCoconut", "source": "https://github.com/casper-hansen/OpenCoconut.git", "source_commit": "e50a1555f201f1ce79c18f9e2f0db364eb30ede9", "status": "COMPLETE"}
+{"number": 11, "parts": 1, "slug": "OpenMythos", "source": "https://github.com/kyegomez/OpenMythos.git", "source_commit": "155430a88d2a98322fc4c79b2a067792c3c9579a", "status": "COMPLETE"}
+{"number": 12, "parts": 2, "slug": "OpenR", "source": "https://github.com/openreasoner/openr.git", "source_commit": "54ae004c69623ebb9a97b22211d6b236033a710d", "status": "COMPLETE"}
+{"number": 13, "parts": 1, "slug": "Graph-of-Thoughts", "source": "https://github.com/spcl/graph-of-thoughts.git", "source_commit": "3d9d9dbd8937d47a4441f681b8b40e3c5b054f16", "status": "COMPLETE"}
+{"number": 14, "parts": 1, "slug": "Tree-of-Thoughts", "source": "https://github.com/princeton-nlp/tree-of-thought-llm.git", "source_commit": "8050e67d0e3a0fddc424d7fa5801538722a4c4cc", "status": "COMPLETE"}
+{"number": 15, "parts": 1, "slug": "PRM800K", "source": "https://github.com/openai/prm800k.git", "source_commit": "7ecc794703b2877f63226f2477a49b34f9b25163", "status": "COMPLETE"}
+{"number": 16, "reason": "clone", "slug": "Math-Shepherd", "source": "https://github.com/RUCAIBox/Math-Shepherd.git", "status": "SKIPPED"}
+{"number": 17, "parts": 1, "slug": "ProcessBench", "source": "https://github.com/QwenLM/ProcessBench.git", "source_commit": "e8024636bcabdf8bd514440551b531d3f90dd18b", "status": "COMPLETE"}
+{"number": 18, "parts": 2, "slug": "OpenThoughts", "source": "https://github.com/open-thoughts/open-thoughts.git", "source_commit": "e86cf2dbbe69ae178aec302be33a3454a7183457", "status": "COMPLETE"}
