@@ -292,3 +292,23 @@ Agente core kernel Yaiwes principal/                ZIP de componentes; no runti
 - SDPA está incompleto: faltan DecisionEngine único, Ask-Consil 12 ejecutable, Merkle State global, AST universal, Inventory unificado, merge semántico y verificación integral.
 
 **Veredicto TEAM/SDPA:** `FAIL-CLOSED / PARCIAL`. No se declara 100% PASS.
+
+
+---
+
+## 9. Auditoría corregida por cada raíz del Crazy Wall
+
+La auditoría operativa se separa por **raíces**, no por pasadas generales. El punto de entrada actualizado es:
+
+- [Índice maestro — seis raíces YAIWES](https://github.com/maxbry123-commits/agentes/blob/main/INDICE-AUDITORIA-XRAY-SEIS-RAICES-YAIWES-2026-09-01.md)
+
+Auditorías enlazadas:
+
+1. [R1 — Desplegar](https://github.com/maxbry123-commits/agentes/blob/main/AUDITORIA-RAIZ-R1-DESPLEGAR-XRAY-2026-09-01.md)
+2. [R2 — PIPELINE](https://github.com/maxbry123-commits/agentes/blob/main/AUDITORIA-RAIZ-R2-PIPELINE-XRAY-2026-09-01.md)
+3. [R3 — Método de trabajo](https://github.com/maxbry123-commits/agentes/blob/main/AUDITORIA-RAIZ-R3-METODO-TRABAJO-XRAY-2026-09-01.md)
+4. [R4 — Refactoria](https://github.com/maxbry123-commits/agentes/blob/main/AUDITORIA-RAIZ-R4-REFACTORIA-XRAY-2026-09-01.md)
+5. [R5 — YAIWES / Agente TEAM / Kernel](https://github.com/maxbry123-commits/agentes/blob/main/AUDITORIA-RAIZ-R5-YAIWES-TEAM-KERNEL-XRAY-2026-09-01.md)
+6. [R6 — Wordflow Code](https://github.com/maxbry123-commits/agentes/blob/main/AUDITORIA-RAIZ-R6-WORDFLOW-CODE-XRAY-2026-09-01.md)
+
+Los HTML originales utilizados como mapa también quedaron preservados y enlazados desde el índice.
