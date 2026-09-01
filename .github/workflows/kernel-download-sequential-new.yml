@@ -29,9 +29,7 @@ jobs:
           filter: blob:none
           sparse-checkout: |
             scripts
-            Agente core kernel Yaiwes principal
-            Download code
-            Download code Yaiwes
+            Agente core kernel Yaiwes principal/RESEARCH_DOWNLOAD_MANIFEST.jsonl
             Documentos proyectos Yaiwes
             Desplegar
           sparse-checkout-cone-mode: false
@@ -86,9 +84,7 @@ jobs:
           filter: blob:none
           sparse-checkout: |
             scripts
-            Agente core kernel Yaiwes principal
-            Download code
-            Download code Yaiwes
+            Agente core kernel Yaiwes principal/RESEARCH_DOWNLOAD_MANIFEST.jsonl
             Documentos proyectos Yaiwes
             Desplegar
           sparse-checkout-cone-mode: false
@@ -120,9 +116,7 @@ jobs:
           filter: blob:none
           sparse-checkout: |
             scripts
-            Agente core kernel Yaiwes principal
-            Download code
-            Download code Yaiwes
+            Agente core kernel Yaiwes principal/RESEARCH_DOWNLOAD_MANIFEST.jsonl
             Documentos proyectos Yaiwes
             Desplegar
           sparse-checkout-cone-mode: false
@@ -154,9 +148,7 @@ jobs:
           filter: blob:none
           sparse-checkout: |
             scripts
-            Agente core kernel Yaiwes principal
-            Download code
-            Download code Yaiwes
+            Agente core kernel Yaiwes principal/RESEARCH_DOWNLOAD_MANIFEST.jsonl
             Documentos proyectos Yaiwes
             Desplegar
           sparse-checkout-cone-mode: false
@@ -188,9 +180,7 @@ jobs:
           filter: blob:none
           sparse-checkout: |
             scripts
-            Agente core kernel Yaiwes principal
-            Download code
-            Download code Yaiwes
+            Agente core kernel Yaiwes principal/RESEARCH_DOWNLOAD_MANIFEST.jsonl
             Documentos proyectos Yaiwes
             Desplegar
           sparse-checkout-cone-mode: false
@@ -222,9 +212,7 @@ jobs:
           filter: blob:none
           sparse-checkout: |
             scripts
-            Agente core kernel Yaiwes principal
-            Download code
-            Download code Yaiwes
+            Agente core kernel Yaiwes principal/RESEARCH_DOWNLOAD_MANIFEST.jsonl
             Documentos proyectos Yaiwes
             Desplegar
           sparse-checkout-cone-mode: false
@@ -256,9 +244,7 @@ jobs:
           filter: blob:none
           sparse-checkout: |
             scripts
-            Agente core kernel Yaiwes principal
-            Download code
-            Download code Yaiwes
+            Agente core kernel Yaiwes principal/RESEARCH_DOWNLOAD_MANIFEST.jsonl
             Documentos proyectos Yaiwes
             Desplegar
           sparse-checkout-cone-mode: false
@@ -290,9 +276,7 @@ jobs:
           filter: blob:none
           sparse-checkout: |
             scripts
-            Agente core kernel Yaiwes principal
-            Download code
-            Download code Yaiwes
+            Agente core kernel Yaiwes principal/RESEARCH_DOWNLOAD_MANIFEST.jsonl
             Documentos proyectos Yaiwes
             Desplegar
           sparse-checkout-cone-mode: false
@@ -324,9 +308,7 @@ jobs:
           filter: blob:none
           sparse-checkout: |
             scripts
-            Agente core kernel Yaiwes principal
-            Download code
-            Download code Yaiwes
+            Agente core kernel Yaiwes principal/RESEARCH_DOWNLOAD_MANIFEST.jsonl
             Documentos proyectos Yaiwes
             Desplegar
           sparse-checkout-cone-mode: false

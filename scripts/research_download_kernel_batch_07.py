@@ -58,7 +58,7 @@ def push(label):
         print(f'SKIP PUSH FAIL {label}',flush=True); return
 def commit(n,label):
     if not n:return
-    run(['git','add',str(DEST)])
+    run(['git','add','--sparse',str(DEST)])
     if subprocess.run(['git','diff','--cached','--quiet']).returncode==0:return
     run(['git','config','user.name','github-actions[bot]']); run(['git','config','user.email','41898282+github-actions[bot]@users.noreply.github.com']); run(['git','commit','-m',f'build(download): research queue batch {label} ({n} bytes)']); push(label)
 DEST.mkdir(parents=True,exist_ok=True); SRC.mkdir(parents=True,exist_ok=True); PACK.mkdir(parents=True,exist_ok=True)

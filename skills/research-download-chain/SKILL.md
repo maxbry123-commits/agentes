@@ -20,6 +20,7 @@ No escribir packer. Lock:
 - `skills/research-download-chain/assets/FORENSIC-PASS-research_download_chain.py`
 
 GHA copia a `.github/workflows/` + `scripts/`. Editar solo lista + destino argv.
+En repos grandes usar `filter: blob:none`, sparse checkout del script + manifest y `git add --sparse`; no materializar ZIP ya guardados.
 
 `concurrency.group` SIEMPRE el mismo string:
 `research-download-chain-final`
