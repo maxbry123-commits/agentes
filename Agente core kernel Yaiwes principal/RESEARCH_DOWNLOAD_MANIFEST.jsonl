@@ -18,3 +18,4 @@
 {"number": 18, "parts": 1, "slug": "Zod", "source": "https://github.com/colinhacks/zod.git", "source_commit": "cafbee4772ef481611fef6f5fb9ed9a1b9597069", "status": "COMPLETE"}
 {"number": 19, "parts": 1, "slug": "Cerberus", "source": "https://github.com/pyeve/cerberus.git", "source_commit": "65e977de08ab76d4b40ca981972f9ff68926ed63", "status": "COMPLETE"}
 {"number": 20, "parts": 1, "slug": "Pydantic", "source": "https://github.com/pydantic/pydantic.git", "source_commit": "f512b087202f58ec90a9d38c9102858567d72440", "status": "COMPLETE"}
+{"number": 1, "parts": 14, "slug": "PydanticAI", "source": "https://github.com/pydantic/pydantic-ai.git", "source_commit": "90de62ab5594912fc0e73a51b7adb2d4c0ee7554", "status": "COMPLETE"}
