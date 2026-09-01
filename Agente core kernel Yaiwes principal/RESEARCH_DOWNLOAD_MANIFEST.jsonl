@@ -21,3 +21,5 @@
 {"number": 1, "parts": 14, "slug": "PydanticAI", "source": "https://github.com/pydantic/pydantic-ai.git", "source_commit": "90de62ab5594912fc0e73a51b7adb2d4c0ee7554", "status": "COMPLETE"}
 {"number": 2, "parts": 6, "slug": "Instructor", "source": "https://github.com/567-labs/instructor.git", "source_commit": "2b64e4978d66266e924248c784f16e7b8f8ef333", "status": "COMPLETE"}
 {"number": 3, "parts": 1, "slug": "Guardrails-AI", "source": "https://github.com/guardrails-ai/guardrails.git", "source_commit": "06d0ff2c5f9bcb493d976b76f885e37e41ce845d", "status": "COMPLETE"}
+{"number": 4, "parts": 26, "slug": "LlamaIndex", "source": "https://github.com/run-llama/llama_index.git", "source_commit": "9f42cf0bd45a756f86ca325e343b9be9031d7928", "status": "COMPLETE"}
+{"number": 5, "parts": 3, "slug": "txtai", "source": "https://github.com/neuml/txtai.git", "source_commit": "546e7777f1fc362a20a9440e89706ecc4c104c87", "status": "COMPLETE"}
