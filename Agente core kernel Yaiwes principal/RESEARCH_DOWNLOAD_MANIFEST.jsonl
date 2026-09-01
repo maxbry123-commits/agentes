@@ -98,3 +98,6 @@
 {"number": 18, "parts": 1, "slug": "LMQL", "source": "https://github.com/eth-sri/lmql.git", "source_commit": "fc8edd4457dc5a5e4e595302166bec797582bf53", "status": "COMPLETE"}
 {"number": 19, "parts": 6, "slug": "Self-Refine", "source": "https://github.com/madaan/self-refine.git", "source_commit": "9a206d41e5d2d0c241bb441f41eeadb945afaa55", "status": "COMPLETE"}
 {"number": 20, "parts": 2, "slug": "Reflexion", "source": "https://github.com/noahshinn/reflexion.git", "source_commit": "218cf0ef1df84b05ce379dd4a8e47f17766733a0", "status": "COMPLETE"}
+{"number": 1, "parts": 1, "slug": "transitions", "source": "https://github.com/pytransitions/transitions.git", "source_commit": "bd42b38f3627e6bca7274fb4d9af2e105f75da7c", "status": "COMPLETE"}
+{"number": 2, "parts": 1, "slug": "XState", "source": "https://github.com/statelyai/xstate.git", "source_commit": "21872cdc93a3baddbcf43f1d83553991d39f28ab", "status": "COMPLETE"}
+{"number": 3, "parts": 6, "slug": "LiteLLM", "source": "https://github.com/BerriAI/litellm.git", "source_commit": "ec3f8183c3a5b40b5ca55fb915b7b6f4873d9112", "status": "COMPLETE"}
