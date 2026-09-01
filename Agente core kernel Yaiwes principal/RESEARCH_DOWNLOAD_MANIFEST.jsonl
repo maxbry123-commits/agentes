@@ -40,3 +40,6 @@
 {"number": 20, "parts": 1, "slug": "OpenAI-Evals", "source": "https://github.com/openai/evals.git", "source_commit": "8eac7a7de5215c907fbddc30efdaf316913eccdd", "status": "COMPLETE"}
 {"number": 1, "parts": 1, "slug": "RouteLLM", "source": "https://github.com/lm-sys/RouteLLM.git", "source_commit": "0b64fdafe049e596a3f5657c219329f24af24198", "status": "COMPLETE"}
 {"number": 2, "parts": 3, "slug": "Semantic-Router", "source": "https://github.com/aurelio-labs/semantic-router.git", "source_commit": "d926cfcf8523cc28a468e59535899d16277fe55b", "status": "COMPLETE"}
+{"number": 3, "parts": 22, "slug": "vLLM-Semantic-Router", "source": "https://github.com/vllm-project/semantic-router.git", "source_commit": "9df80fba6720aa9db7fd70bffa77471243acf831", "status": "COMPLETE"}
+{"number": 4, "parts": 1, "slug": "Outlines", "source": "https://github.com/dottxt-ai/outlines.git", "source_commit": "c52af8472c6fe8a607a733ec11b709476af77a96", "status": "COMPLETE"}
+{"number": 5, "parts": 2, "slug": "Guidance", "source": "https://github.com/guidance-ai/guidance.git", "source_commit": "21b1d90dfbebff4b141df70c714c8af15aa5f4af", "status": "COMPLETE"}
