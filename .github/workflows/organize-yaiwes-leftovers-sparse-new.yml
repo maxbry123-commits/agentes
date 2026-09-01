@@ -1,0 +1,71 @@
+# Nuevo workflow quirurgico basado en gha-move-files.yml.
+name: Move files
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/organize-yaiwes-leftovers-sparse-new.yml']
+permissions:
+  contents: write
+env:
+  GIT_LFS_SKIP_SMUDGE: "1"
+  GIT_TERMINAL_PROMPT: "0"
+concurrency:
+  group: organize-yaiwes-leftovers-sparse-new
+  cancel-in-progress: false
+jobs:
+  move-same-repo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+          filter: blob:none
+          sparse-checkout: |
+            Desplegar
+            Documentos proyectos Yaiwes
+          sparse-checkout-cone-mode: false
+          persist-credentials: true
+      - name: Mover lote sin sobrescribir
+        shell: bash
+        run: |
+          set -euo pipefail
+          DOC_ROOT='Documentos proyectos Yaiwes'
+          OLD="$DOC_ROOT/documentos proyecto Yaiwes 1"
+          DOC="$DOC_ROOT/Documentos proyectos Yaiwes 1"
+          CODE='Download code Yaiwes'
+          mkdir -p "$DOC_ROOT"
+          if [ -d "$OLD" ] && [ ! -e "$DOC" ]; then
+            git mv "$OLD" "$DOC"
+          else
+            mkdir -p "$DOC"
+            if [ -d "$OLD" ]; then
+              shopt -s dotglob nullglob
+              for f in "$OLD"/*; do [ -e "$DOC/$(basename "$f")" ] || git mv "$f" "$DOC/"; done
+            fi
+          fi
+          if [ -d Desplegar ]; then
+            while IFS= read -r -d '' f; do
+              rel="${f#Desplegar/}"
+              case "$f" in
+                *.md|*.markdown|*.txt|*.html|*.json|*.yml|*.yaml)
+                  mkdir -p "$DOC/$(dirname "$rel")"; [ -e "$DOC/$rel" ] || git mv "$f" "$DOC/$rel" ;;
+                *)
+                  mkdir -p "$CODE/$(dirname "$rel")"; [ -e "$CODE/$rel" ] || git mv "$f" "$CODE/$rel" ;;
+              esac
+            done < <(find Desplegar -type f -print0)
+          fi
+      - name: Guardar movimiento
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add --sparse -A -- ':!.github'
+          git diff --cached --quiet && echo 'PASS NOOP: lote ya organizado' && exit 0
+          git commit -m 'move: organize Yaiwes documents and code without overwrite'
+          git pull --rebase origin main
+          git push --no-verify origin HEAD:main
