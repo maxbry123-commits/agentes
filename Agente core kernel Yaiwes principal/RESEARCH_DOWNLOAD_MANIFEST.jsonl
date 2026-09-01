@@ -65,3 +65,4 @@
 {"number": 5, "parts": 1, "slug": "OpenTelemetry-Collector", "source": "https://github.com/open-telemetry/opentelemetry-collector.git", "source_commit": "da3346dd5472353bd7fdf1d070f015da4637df24", "status": "COMPLETE"}
 {"number": 6, "parts": 6, "slug": "VictoriaMetrics", "source": "https://github.com/VictoriaMetrics/VictoriaMetrics.git", "source_commit": "9da84b94651986a03a4641881847c6862f389200", "status": "COMPLETE"}
 {"number": 7, "parts": 6, "slug": "Grafana", "source": "https://github.com/grafana/grafana.git", "source_commit": "a152335c7991588e66a1083f27d43746e39e9c8a", "status": "COMPLETE"}
+{"number": 8, "parts": 16, "slug": "Promptfoo", "source": "https://github.com/promptfoo/promptfoo.git", "source_commit": "57e6aa8163a548fb1ac16e8f06faac8963ad615f", "status": "COMPLETE"}
