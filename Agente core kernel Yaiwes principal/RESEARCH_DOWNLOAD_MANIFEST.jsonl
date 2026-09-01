@@ -96,3 +96,5 @@
 {"number": 16, "parts": 1, "slug": "OpenAI-Skills", "source": "https://github.com/openai/skills.git", "source_commit": "49f948faa9258a0c61caceaf225e179651397431", "status": "COMPLETE"}
 {"number": 17, "parts": 1, "slug": "Hugging-Face-Skills", "source": "https://github.com/huggingface/skills.git", "source_commit": "cead19e10754e773bad24fecef83cb64be24094e", "status": "COMPLETE"}
 {"number": 18, "parts": 1, "slug": "LMQL", "source": "https://github.com/eth-sri/lmql.git", "source_commit": "fc8edd4457dc5a5e4e595302166bec797582bf53", "status": "COMPLETE"}
+{"number": 19, "parts": 6, "slug": "Self-Refine", "source": "https://github.com/madaan/self-refine.git", "source_commit": "9a206d41e5d2d0c241bb441f41eeadb945afaa55", "status": "COMPLETE"}
+{"number": 20, "parts": 2, "slug": "Reflexion", "source": "https://github.com/noahshinn/reflexion.git", "source_commit": "218cf0ef1df84b05ce379dd4a8e47f17766733a0", "status": "COMPLETE"}
