@@ -80,3 +80,5 @@
 {"number": 20, "parts": 2, "slug": "LangChain", "source": "https://github.com/langchain-ai/langchain.git", "source_commit": "b4d46a503e7de6fa3bb9c78d67510e2ee7bf238b", "status": "COMPLETE"}
 {"number": 1, "parts": 1, "slug": "Marshmallow", "source": "https://github.com/marshmallow-code/marshmallow.git", "source_commit": "74e0043254d2390afe7f8ac83162bb99fd0aafe1", "status": "COMPLETE"}
 {"number": 2, "parts": 1, "slug": "Python-jsonschema", "source": "https://github.com/python-jsonschema/jsonschema.git", "source_commit": "edf3dc38d29d275c277a85c00dd4d57f21db0de6", "status": "COMPLETE"}
+{"number": 3, "parts": 17, "slug": "Agenta", "source": "https://github.com/Agenta-AI/agenta.git", "source_commit": "68e9166aae94425e7fcae46cf03e73388a5ecfc3", "status": "COMPLETE"}
+{"number": 4, "parts": 2, "slug": "Git", "source": "https://github.com/git/git.git", "source_commit": "1630431f326e15fcde608827b5ff38422528eb59", "status": "COMPLETE"}
