@@ -101,3 +101,12 @@
 {"number": 1, "parts": 1, "slug": "transitions", "source": "https://github.com/pytransitions/transitions.git", "source_commit": "bd42b38f3627e6bca7274fb4d9af2e105f75da7c", "status": "COMPLETE"}
 {"number": 2, "parts": 1, "slug": "XState", "source": "https://github.com/statelyai/xstate.git", "source_commit": "21872cdc93a3baddbcf43f1d83553991d39f28ab", "status": "COMPLETE"}
 {"number": 3, "parts": 6, "slug": "LiteLLM", "source": "https://github.com/BerriAI/litellm.git", "source_commit": "ec3f8183c3a5b40b5ca55fb915b7b6f4873d9112", "status": "COMPLETE"}
+{"number": 4, "parts": 3, "slug": "Portkey-AI-Gateway", "source": "https://github.com/Portkey-AI/gateway.git", "source_commit": "669825cbe89ee51569918b8f78a9db486fd69dd4", "status": "COMPLETE"}
+{"number": 5, "parts": 4, "slug": "Open-Policy-Agent", "source": "https://github.com/open-policy-agent/opa.git", "source_commit": "35f4600713b794ac8532a73414d24b7767872128", "status": "COMPLETE"}
+{"number": 6, "parts": 1, "slug": "Casbin", "source": "https://github.com/casbin/casbin.git", "source_commit": "34297a19bd65cd52d40d146452c20aea7b45c205", "status": "COMPLETE"}
+{"number": 7, "parts": 1, "slug": "Cedar", "source": "https://github.com/cedar-policy/cedar.git", "source_commit": "1d89304fe381ac4ab2d84a11b472ef8ff7335d66", "status": "COMPLETE"}
+{"number": 8, "parts": 1, "slug": "Cerbos", "source": "https://github.com/cerbos/cerbos.git", "source_commit": "e340c61d4db3de266053472475a2c2c0c74bc1f9", "status": "COMPLETE"}
+{"number": 9, "parts": 1, "slug": "Zen-Engine", "source": "https://github.com/gorules/zen.git", "source_commit": "adf7cdf44aa4381967a5bef1908b3b02789c3180", "status": "COMPLETE"}
+{"number": 10, "parts": 1, "slug": "NeMo-Guardrails", "source": "https://github.com/NVIDIA-NeMo/Guardrails.git", "source_commit": "4f9672ee3ea7ebba34e3984476216a5116306d1c", "status": "COMPLETE"}
+{"number": 11, "parts": 1, "slug": "OpenAI-Guardrails", "source": "https://github.com/openai/openai-guardrails-python.git", "source_commit": "7437f47a7eb7ae461e159865cfa9fd6a9b77d80e", "status": "COMPLETE"}
+{"number": 12, "parts": 1, "slug": "NVIDIA-Garak", "source": "https://github.com/NVIDIA/garak.git", "source_commit": "8ed1543b985a5722adb659584182faf6f7907d4e", "status": "COMPLETE"}
