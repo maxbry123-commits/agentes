@@ -111,3 +111,7 @@
 {"number": 11, "parts": 1, "slug": "OpenAI-Guardrails", "source": "https://github.com/openai/openai-guardrails-python.git", "source_commit": "7437f47a7eb7ae461e159865cfa9fd6a9b77d80e", "status": "COMPLETE"}
 {"number": 12, "parts": 1, "slug": "NVIDIA-Garak", "source": "https://github.com/NVIDIA/garak.git", "source_commit": "8ed1543b985a5722adb659584182faf6f7907d4e", "status": "COMPLETE"}
 {"number": 13, "parts": 9, "slug": "Apache-Airflow", "source": "https://github.com/apache/airflow.git", "source_commit": "24d8c66ee11e3003801b51511c4308e97a944a97", "status": "COMPLETE"}
+{"number": 14, "parts": 4, "slug": "AWS-Step-Functions-DS-SDK", "source": "https://github.com/aws/aws-step-functions-data-science-sdk-python.git", "source_commit": "0e970ccde4ef7cc532f80040598e8d4d55f6486d", "status": "COMPLETE"}
+{"number": 15, "parts": 1, "slug": "Azure-Durable-Functions", "source": "https://github.com/Azure/azure-functions-durable-extension.git", "source_commit": "2aa44a4836510d7ca481356603c02cd25ac51404", "status": "COMPLETE"}
+{"number": 16, "parts": 2, "slug": "Dapr", "source": "https://github.com/dapr/dapr.git", "source_commit": "6cf57abafdb73804256f005e534ba383c8aafed5", "status": "COMPLETE"}
+{"number": 17, "parts": 2, "slug": "Cadence", "source": "https://github.com/uber/cadence.git", "source_commit": "40733e9d5969154ab0cb0bfc633a03853a9d892f", "status": "COMPLETE"}
