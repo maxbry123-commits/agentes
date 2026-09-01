@@ -19,3 +19,5 @@
 {"number": 19, "parts": 1, "slug": "Cerberus", "source": "https://github.com/pyeve/cerberus.git", "source_commit": "65e977de08ab76d4b40ca981972f9ff68926ed63", "status": "COMPLETE"}
 {"number": 20, "parts": 1, "slug": "Pydantic", "source": "https://github.com/pydantic/pydantic.git", "source_commit": "f512b087202f58ec90a9d38c9102858567d72440", "status": "COMPLETE"}
 {"number": 1, "parts": 14, "slug": "PydanticAI", "source": "https://github.com/pydantic/pydantic-ai.git", "source_commit": "90de62ab5594912fc0e73a51b7adb2d4c0ee7554", "status": "COMPLETE"}
+{"number": 2, "parts": 6, "slug": "Instructor", "source": "https://github.com/567-labs/instructor.git", "source_commit": "2b64e4978d66266e924248c784f16e7b8f8ef333", "status": "COMPLETE"}
+{"number": 3, "parts": 1, "slug": "Guardrails-AI", "source": "https://github.com/guardrails-ai/guardrails.git", "source_commit": "06d0ff2c5f9bcb493d976b76f885e37e41ce845d", "status": "COMPLETE"}
