@@ -38,3 +38,5 @@
 {"number": 18, "parts": 1, "slug": "LM-Evaluation-Harness", "source": "https://github.com/EleutherAI/lm-evaluation-harness.git", "source_commit": "69c005f265e7e1ac1636724c8515f63812626e20", "status": "COMPLETE"}
 {"number": 19, "parts": 2, "slug": "Inspect-AI", "source": "https://github.com/UKGovernmentBEIS/inspect_ai.git", "source_commit": "0161c68f519f036684df921e5fdd2b6652310e06", "status": "COMPLETE"}
 {"number": 20, "parts": 1, "slug": "OpenAI-Evals", "source": "https://github.com/openai/evals.git", "source_commit": "8eac7a7de5215c907fbddc30efdaf316913eccdd", "status": "COMPLETE"}
+{"number": 1, "parts": 1, "slug": "RouteLLM", "source": "https://github.com/lm-sys/RouteLLM.git", "source_commit": "0b64fdafe049e596a3f5657c219329f24af24198", "status": "COMPLETE"}
+{"number": 2, "parts": 3, "slug": "Semantic-Router", "source": "https://github.com/aurelio-labs/semantic-router.git", "source_commit": "d926cfcf8523cc28a468e59535899d16277fe55b", "status": "COMPLETE"}
