@@ -15,7 +15,7 @@ env:
   GIT_TERMINAL_PROMPT: "0"
 concurrency:
   group: research-download-chain-final
-  cancel-in-progress: false
+  cancel-in-progress: true
 jobs:
   relocate-existing:
     runs-on: ubuntu-latest
@@ -26,6 +26,15 @@ jobs:
           ref: main
           fetch-depth: 1
           lfs: false
+          filter: blob:none
+          sparse-checkout: |
+            scripts
+            Agente core kernel Yaiwes principal
+            Download code
+            Download code Yaiwes
+            Documentos proyectos Yaiwes
+            Desplegar
+          sparse-checkout-cone-mode: false
           persist-credentials: true
       - name: Reubicar componentes ya descargados
         shell: bash
@@ -74,6 +83,15 @@ jobs:
           ref: main
           fetch-depth: 1
           lfs: false
+          filter: blob:none
+          sparse-checkout: |
+            scripts
+            Agente core kernel Yaiwes principal
+            Download code
+            Download code Yaiwes
+            Documentos proyectos Yaiwes
+            Desplegar
+          sparse-checkout-cone-mode: false
           persist-credentials: true
       - name: Ejecutar lote 01
         shell: bash
@@ -99,6 +117,15 @@ jobs:
           ref: main
           fetch-depth: 1
           lfs: false
+          filter: blob:none
+          sparse-checkout: |
+            scripts
+            Agente core kernel Yaiwes principal
+            Download code
+            Download code Yaiwes
+            Documentos proyectos Yaiwes
+            Desplegar
+          sparse-checkout-cone-mode: false
           persist-credentials: true
       - name: Ejecutar lote 02
         shell: bash
@@ -124,6 +151,15 @@ jobs:
           ref: main
           fetch-depth: 1
           lfs: false
+          filter: blob:none
+          sparse-checkout: |
+            scripts
+            Agente core kernel Yaiwes principal
+            Download code
+            Download code Yaiwes
+            Documentos proyectos Yaiwes
+            Desplegar
+          sparse-checkout-cone-mode: false
           persist-credentials: true
       - name: Ejecutar lote 03
         shell: bash
@@ -149,6 +185,15 @@ jobs:
           ref: main
           fetch-depth: 1
           lfs: false
+          filter: blob:none
+          sparse-checkout: |
+            scripts
+            Agente core kernel Yaiwes principal
+            Download code
+            Download code Yaiwes
+            Documentos proyectos Yaiwes
+            Desplegar
+          sparse-checkout-cone-mode: false
           persist-credentials: true
       - name: Ejecutar lote 04
         shell: bash
@@ -174,6 +219,15 @@ jobs:
           ref: main
           fetch-depth: 1
           lfs: false
+          filter: blob:none
+          sparse-checkout: |
+            scripts
+            Agente core kernel Yaiwes principal
+            Download code
+            Download code Yaiwes
+            Documentos proyectos Yaiwes
+            Desplegar
+          sparse-checkout-cone-mode: false
           persist-credentials: true
       - name: Ejecutar lote 05
         shell: bash
@@ -199,6 +253,15 @@ jobs:
           ref: main
           fetch-depth: 1
           lfs: false
+          filter: blob:none
+          sparse-checkout: |
+            scripts
+            Agente core kernel Yaiwes principal
+            Download code
+            Download code Yaiwes
+            Documentos proyectos Yaiwes
+            Desplegar
+          sparse-checkout-cone-mode: false
           persist-credentials: true
       - name: Ejecutar lote 06
         shell: bash
@@ -224,6 +287,15 @@ jobs:
           ref: main
           fetch-depth: 1
           lfs: false
+          filter: blob:none
+          sparse-checkout: |
+            scripts
+            Agente core kernel Yaiwes principal
+            Download code
+            Download code Yaiwes
+            Documentos proyectos Yaiwes
+            Desplegar
+          sparse-checkout-cone-mode: false
           persist-credentials: true
       - name: Ejecutar lote 07
         shell: bash
@@ -249,6 +321,15 @@ jobs:
           ref: main
           fetch-depth: 1
           lfs: false
+          filter: blob:none
+          sparse-checkout: |
+            scripts
+            Agente core kernel Yaiwes principal
+            Download code
+            Download code Yaiwes
+            Documentos proyectos Yaiwes
+            Desplegar
+          sparse-checkout-cone-mode: false
           persist-credentials: true
       - name: Organizar documentos y code restantes
         shell: bash
