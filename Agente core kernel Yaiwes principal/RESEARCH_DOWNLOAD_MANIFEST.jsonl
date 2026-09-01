@@ -82,3 +82,10 @@
 {"number": 2, "parts": 1, "slug": "Python-jsonschema", "source": "https://github.com/python-jsonschema/jsonschema.git", "source_commit": "edf3dc38d29d275c277a85c00dd4d57f21db0de6", "status": "COMPLETE"}
 {"number": 3, "parts": 17, "slug": "Agenta", "source": "https://github.com/Agenta-AI/agenta.git", "source_commit": "68e9166aae94425e7fcae46cf03e73388a5ecfc3", "status": "COMPLETE"}
 {"number": 4, "parts": 2, "slug": "Git", "source": "https://github.com/git/git.git", "source_commit": "1630431f326e15fcde608827b5ff38422528eb59", "status": "COMPLETE"}
+{"number": 5, "parts": 6, "slug": "Aider", "source": "https://github.com/Aider-AI/aider.git", "source_commit": "5dc9490bb35f9729ef2c95d00a19ccd30c26339c", "status": "COMPLETE"}
+{"number": 6, "parts": 1, "slug": "OpenHands", "source": "https://github.com/OpenHands/OpenHands.git", "source_commit": "1a34e0222ee9e3c1f8c13fc16d28e69361a022ff", "status": "COMPLETE"}
+{"number": 7, "parts": 3, "slug": "SWE-agent", "source": "https://github.com/SWE-agent/SWE-agent.git", "source_commit": "3ea751c087f32b16e039a2233dd6eefecef325d5", "status": "COMPLETE"}
+{"number": 8, "parts": 1, "slug": "APScheduler", "source": "https://github.com/agronholm/apscheduler.git", "source_commit": "b38973eba40b4845d0c8b3687c546ff0bfaa5d2f", "status": "COMPLETE"}
+{"number": 9, "parts": 1, "slug": "Celery", "source": "https://github.com/celery/celery.git", "source_commit": "66d9602690081801e086541705d1ec4e1eb86ef6", "status": "COMPLETE"}
+{"number": 10, "parts": 1, "slug": "MCP-Python-SDK", "source": "https://github.com/modelcontextprotocol/python-sdk.git", "source_commit": "d2290ca3434731b68ea3e2270bc06a6e6575931b", "status": "COMPLETE"}
+{"number": 11, "parts": 1, "slug": "MCP-TypeScript-SDK", "source": "https://github.com/modelcontextprotocol/typescript-sdk.git", "source_commit": "dcc01028ff6a499a5728c2b6181c1727d52e2fab", "status": "COMPLETE"}
