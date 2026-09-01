@@ -1,0 +1,289 @@
+# Nuevo workflow: copia quirurgica del skill research-download-chain.
+name: Research Download Chain FINAL
+run-name: Kernel principal sequential • ${{ github.sha }}
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/kernel-download-sequential-new.yml']
+permissions:
+  contents: write
+env:
+  GIT_LFS_SKIP_SMUDGE: "1"
+  GIT_LFS_SKIP_PUSH: "1"
+  GIT_LFS_SKIP_DOWNLOAD: "1"
+  GIT_TERMINAL_PROMPT: "0"
+concurrency:
+  group: research-download-chain-final
+  cancel-in-progress: false
+jobs:
+  relocate-existing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+          persist-credentials: true
+      - name: Reubicar componentes ya descargados
+        shell: bash
+        run: |
+          set -euo pipefail
+          DEST='Agente core kernel Yaiwes principal'
+          mkdir -p "$DEST"
+          move_parts() {
+            src="$1"; prefix="$2"
+            [ -d "$src" ] || return 0
+            shopt -s nullglob
+            parts=("$src"/"$prefix"_*.zip)
+            for f in "${parts[@]}"; do
+              name=$(basename "$f")
+              [ -e "$DEST/$name" ] || git mv "$f" "$DEST/$name"
+            done
+          }
+          move_parts 'Download code/archivos' Haystack
+          move_parts 'Download code Yaiwes' autogen
+          move_parts 'Download code Yaiwes' crewAI
+          move_parts 'Download code/archivos' LangGraph
+          move_parts 'Download code Yaiwes' Temporal
+          move_parts 'Download code/archivos' Prefect
+          move_parts 'Download code Yaiwes' dspy
+          move_parts 'Download code Yaiwes' gVisor
+          move_parts 'Download code Yaiwes' Dagster
+          move_parts 'Download code Yaiwes' Kestra
+          move_parts 'Download code/archivos' Argo-Workflows
+          move_parts 'Download code/archivos' Hatchet
+          move_parts 'Download code/archivos' Dagu
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A -- ':!.github'
+          if ! git diff --cached --quiet; then
+            git commit -m 'move: existing kernel components to principal destination'
+            git pull --rebase origin main
+            git push --no-verify origin HEAD:main
+          fi
+  batch-01:
+    needs: relocate-existing
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+          persist-credentials: true
+      - name: Ejecutar lote 01
+        shell: bash
+        env:
+          GIT_LFS_SKIP_SMUDGE: "1"
+          GIT_LFS_SKIP_PUSH: "1"
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          set -euo pipefail
+          git config --global filter.lfs.smudge ''
+          git config --global filter.lfs.clean ''
+          git config --global filter.lfs.process ''
+          git config --global filter.lfs.required false
+          git config --global core.compression 0
+          python3 scripts/research_download_kernel_batch_01.py 'Agente core kernel Yaiwes principal' '_work/kernel-batch-01'
+  batch-02:
+    needs: batch-01
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+          persist-credentials: true
+      - name: Ejecutar lote 02
+        shell: bash
+        env:
+          GIT_LFS_SKIP_SMUDGE: "1"
+          GIT_LFS_SKIP_PUSH: "1"
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          set -euo pipefail
+          git config --global filter.lfs.smudge ''
+          git config --global filter.lfs.clean ''
+          git config --global filter.lfs.process ''
+          git config --global filter.lfs.required false
+          git config --global core.compression 0
+          python3 scripts/research_download_kernel_batch_02.py 'Agente core kernel Yaiwes principal' '_work/kernel-batch-02'
+  batch-03:
+    needs: batch-02
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+          persist-credentials: true
+      - name: Ejecutar lote 03
+        shell: bash
+        env:
+          GIT_LFS_SKIP_SMUDGE: "1"
+          GIT_LFS_SKIP_PUSH: "1"
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          set -euo pipefail
+          git config --global filter.lfs.smudge ''
+          git config --global filter.lfs.clean ''
+          git config --global filter.lfs.process ''
+          git config --global filter.lfs.required false
+          git config --global core.compression 0
+          python3 scripts/research_download_kernel_batch_03.py 'Agente core kernel Yaiwes principal' '_work/kernel-batch-03'
+  batch-04:
+    needs: batch-03
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+          persist-credentials: true
+      - name: Ejecutar lote 04
+        shell: bash
+        env:
+          GIT_LFS_SKIP_SMUDGE: "1"
+          GIT_LFS_SKIP_PUSH: "1"
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          set -euo pipefail
+          git config --global filter.lfs.smudge ''
+          git config --global filter.lfs.clean ''
+          git config --global filter.lfs.process ''
+          git config --global filter.lfs.required false
+          git config --global core.compression 0
+          python3 scripts/research_download_kernel_batch_04.py 'Agente core kernel Yaiwes principal' '_work/kernel-batch-04'
+  batch-05:
+    needs: batch-04
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+          persist-credentials: true
+      - name: Ejecutar lote 05
+        shell: bash
+        env:
+          GIT_LFS_SKIP_SMUDGE: "1"
+          GIT_LFS_SKIP_PUSH: "1"
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          set -euo pipefail
+          git config --global filter.lfs.smudge ''
+          git config --global filter.lfs.clean ''
+          git config --global filter.lfs.process ''
+          git config --global filter.lfs.required false
+          git config --global core.compression 0
+          python3 scripts/research_download_kernel_batch_05.py 'Agente core kernel Yaiwes principal' '_work/kernel-batch-05'
+  batch-06:
+    needs: batch-05
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+          persist-credentials: true
+      - name: Ejecutar lote 06
+        shell: bash
+        env:
+          GIT_LFS_SKIP_SMUDGE: "1"
+          GIT_LFS_SKIP_PUSH: "1"
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          set -euo pipefail
+          git config --global filter.lfs.smudge ''
+          git config --global filter.lfs.clean ''
+          git config --global filter.lfs.process ''
+          git config --global filter.lfs.required false
+          git config --global core.compression 0
+          python3 scripts/research_download_kernel_batch_06.py 'Agente core kernel Yaiwes principal' '_work/kernel-batch-06'
+  batch-07:
+    needs: batch-06
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+          persist-credentials: true
+      - name: Ejecutar lote 07
+        shell: bash
+        env:
+          GIT_LFS_SKIP_SMUDGE: "1"
+          GIT_LFS_SKIP_PUSH: "1"
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          set -euo pipefail
+          git config --global filter.lfs.smudge ''
+          git config --global filter.lfs.clean ''
+          git config --global filter.lfs.process ''
+          git config --global filter.lfs.required false
+          git config --global core.compression 0
+          python3 scripts/research_download_kernel_batch_07.py 'Agente core kernel Yaiwes principal' '_work/kernel-batch-07'
+  organize-yaiwes:
+    needs: batch-07
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+          persist-credentials: true
+      - name: Organizar documentos y code restantes
+        shell: bash
+        run: |
+          set -euo pipefail
+          DOC_ROOT='Documentos proyectos Yaiwes'
+          OLD="$DOC_ROOT/documentos proyecto Yaiwes 1"
+          DOC="$DOC_ROOT/Documentos proyectos Yaiwes 1"
+          CODE='Download code Yaiwes'
+          mkdir -p "$DOC_ROOT" "$CODE"
+          if [ -d "$OLD" ] && [ ! -e "$DOC" ]; then
+            git mv "$OLD" "$DOC"
+          else
+            mkdir -p "$DOC"
+            if [ -d "$OLD" ]; then
+              shopt -s dotglob nullglob
+              for f in "$OLD"/*; do [ -e "$DOC/$(basename "$f")" ] || git mv "$f" "$DOC/"; done
+            fi
+          fi
+          if [ -d Desplegar ]; then
+            while IFS= read -r -d '' f; do
+              rel="${f#Desplegar/}"
+              case "$f" in
+                *.md|*.markdown|*.txt|*.html|*.json|*.yml|*.yaml)
+                  mkdir -p "$DOC/$(dirname "$rel")"; [ -e "$DOC/$rel" ] || git mv "$f" "$DOC/$rel" ;;
+                *)
+                  mkdir -p "$CODE/$(dirname "$rel")"; [ -e "$CODE/$rel" ] || git mv "$f" "$CODE/$rel" ;;
+              esac
+            done < <(find Desplegar -type f -print0)
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A -- ':!.github'
+          if ! git diff --cached --quiet; then
+            git commit -m 'move: organize Yaiwes documents and code'
+            git pull --rebase origin main
+            git push --no-verify origin HEAD:main
+          fi

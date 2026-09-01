@@ -24,7 +24,7 @@ GHA copia a `.github/workflows/` + `scripts/`. Editar solo lista + destino argv.
 `concurrency.group` SIEMPRE el mismo string:
 `research-download-chain-final`
 
-Ese nombre es el turno, no el destino. En un mismo repo, todos los YAML usan ese group: uno corre, el otro espera. Entre repos distintos el group no cruza.
+Ese nombre es el turno, no el destino. En un mismo repo, usar un unico workflow con jobs encadenados por `needs` cuando existan mas de 2 lotes. GitHub conserva solo una ejecucion pendiente por grupo y cancela pendientes anteriores. Entre repos distintos el group no cruza.
 
 ## 3. Mover archivo, lote o raiz
 
