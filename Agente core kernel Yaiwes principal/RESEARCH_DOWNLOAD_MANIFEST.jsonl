@@ -66,3 +66,8 @@
 {"number": 6, "parts": 6, "slug": "VictoriaMetrics", "source": "https://github.com/VictoriaMetrics/VictoriaMetrics.git", "source_commit": "9da84b94651986a03a4641881847c6862f389200", "status": "COMPLETE"}
 {"number": 7, "parts": 6, "slug": "Grafana", "source": "https://github.com/grafana/grafana.git", "source_commit": "a152335c7991588e66a1083f27d43746e39e9c8a", "status": "COMPLETE"}
 {"number": 8, "parts": 16, "slug": "Promptfoo", "source": "https://github.com/promptfoo/promptfoo.git", "source_commit": "57e6aa8163a548fb1ac16e8f06faac8963ad615f", "status": "COMPLETE"}
+{"number": 9, "parts": 2, "slug": "Phoenix", "source": "https://github.com/Arize-ai/phoenix.git", "source_commit": "74f8dad895e291cd2a1d3a0b04851e497b1016db", "status": "COMPLETE"}
+{"number": 10, "parts": 1, "slug": "Tenacity", "source": "https://github.com/jd/tenacity.git", "source_commit": "26f719dc73d3c5612b9c1b8d18a7883837790ad8", "status": "COMPLETE"}
+{"number": 11, "parts": 1, "slug": "Stamina", "source": "https://github.com/hynek/stamina.git", "source_commit": "caede7b57124e20e355431ddd14dfc2e5660156f", "status": "COMPLETE"}
+{"number": 12, "parts": 2, "slug": "Langfuse", "source": "https://github.com/langfuse/langfuse.git", "source_commit": "cd5ad52dfa7e01e752ca082c4a5689004f102b0c", "status": "COMPLETE"}
+{"number": 13, "parts": 2, "slug": "OpenLLMetry", "source": "https://github.com/traceloop/openllmetry.git", "source_commit": "62e24c2ffde6c1ee04dc290e52d8d5dbda054cff", "status": "COMPLETE"}
