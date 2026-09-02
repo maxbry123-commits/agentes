@@ -83,3 +83,4 @@
 {"number": 17, "parts": 2, "slug": "CRITIC", "source": "https://github.com/microsoft/ProphetNet.git", "source_commit": "5cf70eb41cdaa1d8faa3e1265d95ee5792d49a53", "status": "COMPLETE"}
 {"number": 18, "parts": 2, "slug": "Prometheus-Eval", "source": "https://github.com/prometheus-eval/prometheus-eval.git", "source_commit": "dcfb44272d5d0414832f5dbb8c2a05ebc2614234", "status": "COMPLETE"}
 {"number": 19, "parts": 2, "slug": "Langfuse", "source": "https://github.com/langfuse/langfuse.git", "source_commit": "d179469bedeed8ad91dcf932eda7dc7675c30786", "status": "COMPLETE"}
+{"number": 20, "parts": 14, "slug": "OpenClaw", "source": "https://github.com/openclaw/openclaw.git", "source_commit": "56b03308ab51b6d1b6d842e1261994b5711ce380", "status": "COMPLETE"}
