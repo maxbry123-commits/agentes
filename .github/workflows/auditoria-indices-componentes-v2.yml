@@ -1,5 +1,5 @@
 name: Auditoria indices componentes
-# revision: 2
+# revision: 3-api-tree
 
 on:
   workflow_dispatch:
@@ -10,7 +10,7 @@ on:
   push:
     branches: [main]
     paths:
-      - ".github/workflows/auditoria-indices-componentes.yml"
+      - ".github/workflows/auditoria-indices-componentes-v2.yml"
 
 permissions:
   contents: write
@@ -22,7 +22,7 @@ concurrency:
 jobs:
   inventario:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
         with:
@@ -32,89 +32,98 @@ jobs:
             .github
           sparse-checkout-cone-mode: false
 
-      - name: Inventariar repositorios y raices
+      - name: Inventariar repositorios y raices por API
         env:
-          OWNER: maxbry123-commits
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          mkdir -p _audit_repos auditoria-output
-          repos=(
-            "agentes"
-            "nct-core"
-            "frontend"
-            "router-universal-router-inteligente-"
-            "osquestador-auditor"
-            "Agentes-motores-Wordflow-YAIWES"
-            "Orquestador-Maxbry-"
-          )
-          for repo in "${repos[@]}"; do
-            git clone --depth 1 "https://github.com/${OWNER}/${repo}.git" "_audit_repos/${repo}"
-          done
+          mkdir -p auditoria-output
           python3 - <<'PY'
-          import hashlib, json, os
-          from pathlib import Path
+          import hashlib, json, os, urllib.request
+          from collections import Counter, defaultdict
+          from pathlib import PurePosixPath, Path
 
-          base = Path("_audit_repos")
-          excluded = {".git", "__pycache__", "node_modules", ".venv", "venv"}
+          owner = "maxbry123-commits"
+          repos = [
+              "agentes",
+              "nct-core",
+              "frontend",
+              "router-universal-router-inteligente-",
+              "osquestador-auditor",
+              "Agentes-motores-Wordflow-YAIWES",
+              "Orquestador-Maxbry-",
+          ]
+          token = os.environ.get("GH_TOKEN", "")
+          headers = {"Accept": "application/vnd.github+json", "User-Agent": "yaiwes-index-auditor"}
+          if token:
+              headers["Authorization"] = f"Bearer {token}"
+
+          def get(url):
+              req = urllib.request.Request(url, headers=headers)
+              with urllib.request.urlopen(req, timeout=90) as response:
+                  return json.load(response)
+
           records = []
-          repos = sorted(p for p in base.iterdir() if p.is_dir())
+          for repo in repos:
+              root_items = get(f"https://api.github.com/repos/{owner}/{repo}/contents/?ref=main")
+              tree_data = get(f"https://api.github.com/repos/{owner}/{repo}/git/trees/main?recursive=1")
+              tree = tree_data.get("tree", [])
+              by_root = defaultdict(list)
+              for item in tree:
+                  path = item.get("path", "")
+                  if not path or path.startswith(".git/"):
+                      continue
+                  root = path.split("/", 1)[0]
+                  by_root[root].append(item)
 
-          for repo_dir in repos:
-              repo = repo_dir.name
               roots = []
-              for root in sorted(repo_dir.iterdir(), key=lambda p: p.name.lower()):
-                  if root.name in excluded or root.name.startswith(".git"):
-                      continue
-                  if root.is_file():
-                      data = root.read_bytes()
-                      roots.append({
-                          "name": root.name,
-                          "path": root.name,
-                          "type": "file",
-                          "files": 1,
-                          "bytes": len(data),
-                          "sha256": hashlib.sha256(data).hexdigest(),
-                          "extensions": {root.suffix.lower() or "[none]": 1},
-                          "markers": []
-                      })
-                      continue
-                  files = []
+              for item in sorted(root_items, key=lambda x: x["name"].lower()):
+                  name = item["name"]
+                  entries = by_root.get(name, [])
+                  blobs = [e for e in entries if e.get("type") == "blob"]
+                  extensions = Counter()
                   markers = []
-                  extensions = {}
-                  total_bytes = 0
-                  for path in root.rglob("*"):
-                      if not path.is_file() or any(part in excluded for part in path.parts):
-                          continue
-                      rel = path.relative_to(repo_dir).as_posix()
-                      size = path.stat().st_size
-                      files.append({"path": rel, "bytes": size})
-                      total_bytes += size
-                      ext = path.suffix.lower() or "[none]"
-                      extensions[ext] = extensions.get(ext, 0) + 1
-                      upper = path.name.upper()
+                  samples = []
+                  for e in blobs:
+                      p = e["path"]
+                      suffix = PurePosixPath(p).suffix.lower() or "[none]"
+                      extensions[suffix] += 1
+                      upper = PurePosixPath(p).name.upper()
                       if upper in {"PLACEHOLDER.MD", ".KEEP", ".GITKEEP"} or "STUB" in upper:
-                          markers.append(rel)
+                          markers.append(p)
+                      if len(samples) < 25:
+                          samples.append(p)
+                  if item["type"] == "file" and not blobs:
+                      suffix = PurePosixPath(name).suffix.lower() or "[none]"
+                      extensions[suffix] += 1
                   roots.append({
-                      "name": root.name,
-                      "path": root.name,
-                      "type": "directory",
-                      "files": len(files),
-                      "bytes": total_bytes,
+                      "name": name,
+                      "path": item["path"],
+                      "type": "directory" if item["type"] == "dir" else "file",
+                      "files_observed": len(blobs) if item["type"] == "dir" else 1,
+                      "bytes_observed": sum(int(e.get("size", 0) or 0) for e in blobs) if item["type"] == "dir" else int(item.get("size", 0) or 0),
+                      "git_sha": item.get("sha"),
+                      "html_url": item.get("html_url"),
                       "extensions": dict(sorted(extensions.items())),
                       "markers": sorted(markers),
-                      "sample_files": [x["path"] for x in sorted(files, key=lambda x: x["path"])[:25]]
+                      "sample_files": samples,
                   })
               records.append({
                   "repository": repo,
+                  "repository_url": f"https://github.com/{owner}/{repo}",
                   "default_branch": "main",
+                  "tree_sha": tree_data.get("sha"),
+                  "tree_truncated": bool(tree_data.get("truncated")),
+                  "tree_entries_observed": len(tree),
                   "root_count": len(roots),
-                  "roots": roots
+                  "roots": roots,
               })
 
           payload = {
-              "schema": "yaiwes.repository-inventory.v1",
+              "schema": "yaiwes.repository-inventory.v2",
               "generated_by": "GitHub Actions",
-              "repositories": records
+              "method": "GitHub Contents API + recursive Git Trees API; no repository blobs downloaded",
+              "repositories": records,
           }
           Path("auditoria-output/inventario-repositorios.json").write_text(
               json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
@@ -128,11 +137,12 @@ jobs:
           from pathlib import Path
           p = Path("auditoria-output/inventario-repositorios.json")
           data = json.loads(p.read_text(encoding="utf-8"))
-          assert data["schema"] == "yaiwes.repository-inventory.v1"
+          assert data["schema"] == "yaiwes.repository-inventory.v2"
           assert len(data["repositories"]) == 7
           assert all(r["root_count"] > 0 for r in data["repositories"])
           print("PASS repositories=7")
           print("PASS roots=", sum(r["root_count"] for r in data["repositories"]))
+          print("TRUNCATED=", [r["repository"] for r in data["repositories"] if r["tree_truncated"]])
           PY
 
       - name: Publicar evidencia
