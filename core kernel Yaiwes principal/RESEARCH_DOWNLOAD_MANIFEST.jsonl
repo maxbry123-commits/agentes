@@ -64,3 +64,7 @@
 {"number": 31, "parts": 1, "slug": "Restate", "source": "https://github.com/restatedev/restate.git", "source_commit": "285953f227244b55de71b532a5ea8347e3bc3b13", "status": "COMPLETE"}
 {"number": 32, "parts": 1, "slug": "sqlite-vec", "source": "https://github.com/asg017/sqlite-vec.git", "source_commit": "04d28bd21773981e2d266bbf6aa4efbd011eb4f6", "status": "COMPLETE"}
 {"number": 33, "parts": 1, "slug": "SOUL-md", "source": "https://github.com/totalmarkdown/soul.md.git", "source_commit": "e230a257f0906ce9b847c351c89c79d2c6e78637", "status": "COMPLETE"}
+{"number": 1, "parts": 1, "slug": "etcd", "source": "https://github.com/etcd-io/etcd.git", "source_commit": "b655785b1e43d906e5972167e8f311c66d36e4f6", "status": "COMPLETE"}
+{"number": 2, "parts": 5, "slug": "CPython", "source": "https://github.com/python/cpython.git", "source_commit": "3daa7f8258fa21931e7655de66160b05afcfc8c9", "status": "COMPLETE"}
+{"number": 3, "parts": 2, "slug": "DSPy", "source": "https://github.com/stanfordnlp/dspy.git", "source_commit": "59ce7601ec40cd2160ac64f476f9053efdc1599e", "status": "COMPLETE"}
+{"number": 4, "parts": 1, "slug": "CycloneDX-Python", "source": "https://github.com/CycloneDX/cyclonedx-python.git", "source_commit": "20a8345e5acbf8b3a1635206446faa9b89aac27e", "status": "COMPLETE"}
