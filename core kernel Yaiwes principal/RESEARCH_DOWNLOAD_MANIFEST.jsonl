@@ -160,3 +160,4 @@
 {"number": 30, "parts": 4, "slug": "Trigger-dev", "source": "https://github.com/triggerdotdev/trigger.dev.git", "source_commit": "755feb2b50ad1639730d8d7435143b144ea15303", "status": "COMPLETE"}
 {"number": 31, "parts": 2, "slug": "Microsoft-Agent-Framework", "source": "https://github.com/microsoft/agent-framework.git", "source_commit": "cb8800aa0b472189959c9a437c4579f810251260", "status": "COMPLETE"}
 {"number": 32, "parts": 1, "slug": "SoulSpec", "source": "https://github.com/clawsouls/soulspec.git", "source_commit": "569cbd1c0bd796e8890cf5adb164e0ba3f65cf80", "status": "COMPLETE"}
+{"number":162,"parts":1,"slug":"Soul-Spec","source":"https://github.com/AntonioTF5/soul-spec.git","source_commit":"8d862030baaf9b02c24ad3b0cd1b327832e00586","status":"COMPLETE","repair":"copied_from_legacy_root_without_external_download","relocated_from":"Agente core kernel Yaiwes principal/Soul-Spec-Antonio_0001.zip","relocated_to":"core kernel Yaiwes principal/Soul-Spec_0001.zip"}
