@@ -147,3 +147,11 @@
 {"number": 17, "parts": 3, "slug": "DeepEval", "source": "https://github.com/confident-ai/deepeval.git", "source_commit": "5b45d36a0c13874528a73236d49442bea7e2a480", "status": "COMPLETE"}
 {"number": 18, "parts": 1, "slug": "backoff", "source": "https://github.com/litl/backoff.git", "source_commit": "d82b23c42d7a7e2402903e71e7a7f03014a00076", "status": "COMPLETE"}
 {"number": 19, "parts": 4, "slug": "gVisor", "source": "https://github.com/google/gvisor.git", "source_commit": "16f043af4442a56d475b0932b460972846669c77", "status": "COMPLETE"}
+{"number": 20, "parts": 10, "slug": "Zep", "source": "https://github.com/getzep/zep.git", "source_commit": "54f63eeb58dbc2f6ac5995cd4d51b56317cf5e42", "status": "COMPLETE"}
+{"number": 21, "parts": 1, "slug": "MCP-Python-SDK", "source": "https://github.com/modelcontextprotocol/python-sdk.git", "source_commit": "d2290ca3434731b68ea3e2270bc06a6e6575931b", "status": "COMPLETE"}
+{"number": 22, "parts": 1, "slug": "Cronie", "source": "https://github.com/cronie-crond/cronie.git", "source_commit": "29a83a896735bc375ac7d65ac6008f37d21ea8e3", "status": "COMPLETE"}
+{"number": 23, "parts": 2, "slug": "OpenLLMetry", "source": "https://github.com/traceloop/openllmetry.git", "source_commit": "62e24c2ffde6c1ee04dc290e52d8d5dbda054cff", "status": "COMPLETE"}
+{"number": 24, "parts": 1, "slug": "Huey", "source": "https://github.com/coleifer/huey.git", "source_commit": "149cd966052da728ccf3edfde46d3bb674dc8723", "status": "COMPLETE"}
+{"number": 25, "parts": 1, "slug": "Marshmallow", "source": "https://github.com/marshmallow-code/marshmallow.git", "source_commit": "74e0043254d2390afe7f8ac83162bb99fd0aafe1", "status": "COMPLETE"}
+{"number": 26, "parts": 1, "slug": "MCP-Go", "source": "https://github.com/mark3labs/mcp-go.git", "source_commit": "8841bf7bfe8ad14103adaa0794269e57988cd48c", "status": "COMPLETE"}
+{"number": 27, "parts": 1, "slug": "Cedar", "source": "https://github.com/cedar-policy/cedar.git", "source_commit": "ec30badc0fbc331741982553bbec29af6ba262ea", "status": "COMPLETE"}
