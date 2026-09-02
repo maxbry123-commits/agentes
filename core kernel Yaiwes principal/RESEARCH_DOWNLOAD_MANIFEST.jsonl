@@ -125,3 +125,6 @@
 {"number": 27, "parts": 3, "slug": "Portkey-AI-Gateway", "source": "https://github.com/Portkey-AI/gateway.git", "source_commit": "669825cbe89ee51569918b8f78a9db486fd69dd4", "status": "COMPLETE"}
 {"number": 28, "parts": 14, "slug": "Dagster", "source": "https://github.com/dagster-io/dagster.git", "source_commit": "052975e38f3e1d53b04a259ad2fdbc943c940352", "status": "COMPLETE"}
 {"number": 29, "parts": 1, "slug": "Azure-Durable-Functions", "source": "https://github.com/Azure/azure-functions-durable-extension.git", "source_commit": "2aa44a4836510d7ca481356603c02cd25ac51404", "status": "COMPLETE"}
+{"number": 30, "parts": 9, "slug": "Inngest", "source": "https://github.com/inngest/inngest.git", "source_commit": "c7a2cfe39b4ce09e705f90ae1d9159c414b476e3", "status": "COMPLETE"}
+{"number": 31, "parts": 1, "slug": "Luigi", "source": "https://github.com/spotify/luigi.git", "source_commit": "715f65c4a56a908ef0a1df4df6fc33b8420e2e6c", "status": "COMPLETE"}
+{"number": 32, "parts": 1, "slug": "Graphiti", "source": "https://github.com/getzep/graphiti.git", "source_commit": "11538f6d45561bcce9a4400b374fb2dc533dccb6", "status": "COMPLETE"}
