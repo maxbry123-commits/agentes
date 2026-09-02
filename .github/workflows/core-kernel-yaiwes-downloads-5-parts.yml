@@ -1,0 +1,190 @@
+name: Core Kernel Yaiwes Principal Downloads
+run-name: Core Kernel Yaiwes Principal • 5 chained batches
+
+on:
+  workflow_dispatch:
+  pull_request_target:
+    branches: [main]
+    paths:
+      - "core-kernel-download-trigger.txt"
+
+permissions:
+  contents: write
+
+env:
+  GIT_LFS_SKIP_SMUDGE: "1"
+  GIT_LFS_SKIP_PUSH: "1"
+  GIT_LFS_SKIP_DOWNLOAD: "1"
+  GIT_TERMINAL_PROMPT: "0"
+  DEST: "core kernel Yaiwes principal"
+
+concurrency:
+  group: research-download-chain-final
+  cancel-in-progress: false
+
+jobs:
+  part-01:
+    name: Core Kernel Yaiwes Principal • 1/5
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout: |
+            scripts/research_download_core_kernel_part_01.py
+          sparse-checkout-cone-mode: false
+          lfs: false
+      - name: Reubicar componentes existentes sin descargar blobs
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import ast, json, re, subprocess
+          from pathlib import Path
+          DEST="core kernel Yaiwes principal"
+          scripts=sorted(Path("scripts").glob("research_download_core_kernel_part_*.py"))
+          wanted={}
+          for p in scripts:
+              tree=ast.parse(p.read_text())
+              for node in tree.body:
+                  if isinstance(node,ast.Assign) and any(isinstance(t,ast.Name) and t.id=="REPOS" for t in node.targets):
+                      for _,slug,url in ast.literal_eval(node.value):
+                          key=re.sub(r"[^a-z0-9]","",url.lower().removesuffix(".git"))
+                          wanted[key]=(slug,url)
+          def norm(s):
+              s=re.sub(r"_\d{4}\.zip$","",Path(s).name,flags=re.I)
+              return re.sub(r"[^a-z0-9]","",s.lower())
+          slugmap={norm(slug):(slug,url) for slug,url in wanted.values()}
+          lines=subprocess.check_output(["git","ls-tree","-r","HEAD"],text=True).splitlines()
+          entries={}
+          for line in lines:
+              meta,path=line.split("\t",1); mode,typ,sha=meta.split()
+              entries[path]=(mode,sha)
+          manifests={}
+          for path,(mode,sha) in entries.items():
+              if path.endswith("RESEARCH_DOWNLOAD_MANIFEST.jsonl"):
+                  try: raw=subprocess.check_output(["git","show",f"HEAD:{path}"],text=True)
+                  except subprocess.CalledProcessError: continue
+                  for line in raw.splitlines():
+                      try: d=json.loads(line)
+                      except Exception: continue
+                      src=str(d.get("source") or d.get("source_url") or "").lower().removesuffix(".git")
+                      key=re.sub(r"[^a-z0-9]","",src)
+                      if key in wanted and d.get("status") in {"COMPLETE","PASS"}: manifests[key]=d
+          target_existing={p for p in entries if p.startswith(DEST+"/")}
+          moved=[]; collisions=[]
+          for path,(mode,sha) in list(entries.items()):
+              if not path.lower().endswith(".zip") or path.startswith(DEST+"/"): continue
+              hit=slugmap.get(norm(path))
+              if not hit: continue
+              slug,url=hit; target=f"{DEST}/{Path(path).name}"
+              if target in target_existing:
+                  collisions.append({"slug":slug,"source_path":path,"target_path":target})
+                  continue
+              subprocess.run(["git","update-index","--add","--cacheinfo",mode,sha,target],check=True)
+              subprocess.run(["git","update-index","--force-remove",path],check=True)
+              target_existing.add(target); moved.append({"slug":slug,"source_path":path,"target_path":target})
+          rows=[]
+          for key,(slug,url) in wanted.items():
+              d=dict(manifests.get(key,{}))
+              related=[x for x in moved if x["slug"]==slug]
+              if d or related:
+                  d.update({"slug":slug,"source":url,"status":"COMPLETE","relocated_to":DEST})
+                  if related:d["relocated_from"]=[x["source_path"] for x in related]
+                  rows.append(d)
+          Path(DEST).mkdir(parents=True,exist_ok=True)
+          manifest=Path(DEST)/"RESEARCH_DOWNLOAD_MANIFEST.jsonl"
+          manifest.write_text("".join(json.dumps(x,sort_keys=True)+"\n" for x in rows))
+          (Path(DEST)/"RELOCATION_REPORT.json").write_text(json.dumps({"moved":moved,"collisions_left_in_place":collisions},indent=2)+"\n")
+          subprocess.run(["git","add","--sparse",str(manifest),str(Path(DEST)/"RELOCATION_REPORT.json")],check=True)
+          print(f"RELOCATE moved={len(moved)} records={len(rows)} collisions={len(collisions)}")
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'move: existing components to core kernel Yaiwes principal' || true
+          git push origin HEAD:main
+          git fetch origin main
+          git reset --hard origin/main
+          mkdir -p "$DEST"
+          git show "origin/main:$DEST/RESEARCH_DOWNLOAD_MANIFEST.jsonl" > "$DEST/RESEARCH_DOWNLOAD_MANIFEST.jsonl" || true
+      - name: Download batch 1
+        run: python3 scripts/research_download_core_kernel_part_01.py "$DEST" "_work/core-kernel-01"
+
+  part-02:
+    name: Core Kernel Yaiwes Principal • 2/5
+    needs: part-01
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout: |
+            scripts/research_download_core_kernel_part_02.py
+            core kernel Yaiwes principal/RESEARCH_DOWNLOAD_MANIFEST.jsonl
+          sparse-checkout-cone-mode: false
+          lfs: false
+      - run: python3 scripts/research_download_core_kernel_part_02.py "$DEST" "_work/core-kernel-02"
+
+  part-03:
+    name: Core Kernel Yaiwes Principal • 3/5
+    needs: part-02
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout: |
+            scripts/research_download_core_kernel_part_03.py
+            core kernel Yaiwes principal/RESEARCH_DOWNLOAD_MANIFEST.jsonl
+          sparse-checkout-cone-mode: false
+          lfs: false
+      - run: python3 scripts/research_download_core_kernel_part_03.py "$DEST" "_work/core-kernel-03"
+
+  part-04:
+    name: Core Kernel Yaiwes Principal • 4/5
+    needs: part-03
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout: |
+            scripts/research_download_core_kernel_part_04.py
+            core kernel Yaiwes principal/RESEARCH_DOWNLOAD_MANIFEST.jsonl
+          sparse-checkout-cone-mode: false
+          lfs: false
+      - run: python3 scripts/research_download_core_kernel_part_04.py "$DEST" "_work/core-kernel-04"
+
+  part-05:
+    name: Core Kernel Yaiwes Principal • 5/5
+    needs: part-04
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout: |
+            scripts/research_download_core_kernel_part_05.py
+            core kernel Yaiwes principal/RESEARCH_DOWNLOAD_MANIFEST.jsonl
+          sparse-checkout-cone-mode: false
+          lfs: false
+      - run: python3 scripts/research_download_core_kernel_part_05.py "$DEST" "_work/core-kernel-05"
