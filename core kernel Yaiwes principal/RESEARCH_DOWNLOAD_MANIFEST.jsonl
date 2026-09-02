@@ -91,3 +91,4 @@
 {"number": 25, "parts": 2, "slug": "Apache-APISIX", "source": "https://github.com/apache/apisix.git", "source_commit": "f0bb251a97652bb655b03e39e81fda1a3e1e93b2", "status": "COMPLETE"}
 {"number": 26, "parts": 3, "slug": "SWE-agent", "source": "https://github.com/SWE-agent/SWE-agent.git", "source_commit": "3ea751c087f32b16e039a2233dd6eefecef325d5", "status": "COMPLETE"}
 {"number": 27, "parts": 1, "slug": "Hugging-Face-Skills", "source": "https://github.com/huggingface/skills.git", "source_commit": "cead19e10754e773bad24fecef83cb64be24094e", "status": "COMPLETE"}
+{"number": 28, "parts": 9, "slug": "Apache-Airflow", "source": "https://github.com/apache/airflow.git", "source_commit": "bf976c8805ad1a9e9664723aefcd0a62b659d627", "status": "COMPLETE"}
