@@ -80,3 +80,6 @@
 {"number": 14, "parts": 6, "slug": "Self-Refine", "source": "https://github.com/madaan/self-refine.git", "source_commit": "9a206d41e5d2d0c241bb441f41eeadb945afaa55", "status": "COMPLETE"}
 {"number": 15, "parts": 1, "slug": "RouteLLM", "source": "https://github.com/lm-sys/RouteLLM.git", "source_commit": "0b64fdafe049e596a3f5657c219329f24af24198", "status": "COMPLETE"}
 {"number": 16, "parts": 1, "slug": "NeMo-Guardrails", "source": "https://github.com/NVIDIA-NeMo/Guardrails.git", "source_commit": "4f9672ee3ea7ebba34e3984476216a5116306d1c", "status": "COMPLETE"}
+{"number": 17, "parts": 2, "slug": "CRITIC", "source": "https://github.com/microsoft/ProphetNet.git", "source_commit": "5cf70eb41cdaa1d8faa3e1265d95ee5792d49a53", "status": "COMPLETE"}
+{"number": 18, "parts": 2, "slug": "Prometheus-Eval", "source": "https://github.com/prometheus-eval/prometheus-eval.git", "source_commit": "dcfb44272d5d0414832f5dbb8c2a05ebc2614234", "status": "COMPLETE"}
+{"number": 19, "parts": 2, "slug": "Langfuse", "source": "https://github.com/langfuse/langfuse.git", "source_commit": "d179469bedeed8ad91dcf932eda7dc7675c30786", "status": "COMPLETE"}
