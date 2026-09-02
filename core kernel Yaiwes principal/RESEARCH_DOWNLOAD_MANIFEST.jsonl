@@ -139,3 +139,4 @@
 {"number": 9, "parts": 26, "slug": "LlamaIndex", "source": "https://github.com/run-llama/llama_index.git", "source_commit": "56beedf959cbf6356b0a8f5a4f468d066bb5b91f", "status": "COMPLETE"}
 {"number": 10, "parts": 1, "slug": "RQ", "source": "https://github.com/rq/rq.git", "source_commit": "78abc5c003b39d554786f1f6a31d86adfb8c4221", "status": "COMPLETE"}
 {"number": 11, "parts": 6, "slug": "Envoy", "source": "https://github.com/envoyproxy/envoy.git", "source_commit": "03a0e7704addfb27c0a97aedb3ea248f7bc45a37", "status": "COMPLETE"}
+{"number": 12, "parts": 16, "slug": "Promptfoo", "source": "https://github.com/promptfoo/promptfoo.git", "source_commit": "0eb23a06116c75cc8f147febb05ced334f0721fc", "status": "COMPLETE"}
