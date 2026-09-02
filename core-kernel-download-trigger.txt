@@ -1,0 +1,1 @@
+Activar cinco lotes encadenados de descarga para core kernel Yaiwes principal.
