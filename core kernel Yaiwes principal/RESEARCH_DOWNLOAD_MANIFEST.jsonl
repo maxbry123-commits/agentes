@@ -55,3 +55,4 @@
 {"number": 22, "parts": 1, "slug": "MCP-Servers", "source": "https://github.com/modelcontextprotocol/servers.git", "source_commit": "3aa19f557436298c0cc514fcab5e3b5eaacc1fc3", "status": "COMPLETE"}
 {"number": 23, "parts": 6, "slug": "VictoriaMetrics", "source": "https://github.com/VictoriaMetrics/VictoriaMetrics.git", "source_commit": "7962615fae42a8d2c72b0c9703bc30948f1868d2", "status": "COMPLETE"}
 {"number": 24, "parts": 2, "slug": "Kata-Containers", "source": "https://github.com/kata-containers/kata-containers.git", "source_commit": "4ffe5ccb5961276d5d4a142b08966587badc70dc", "status": "COMPLETE"}
+{"number": 25, "parts": 18, "slug": "PostHog", "source": "https://github.com/PostHog/posthog.git", "source_commit": "ca1bb095e6976e7fad740b93bf4da18bd21784ae", "status": "COMPLETE"}
