@@ -1,0 +1,220 @@
+name: inventory-forensic-v3-recovery-zipmap-agentes
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/inventory-forensic-v3-recovery-zipmap-agentes.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  recover_zip_mapping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout main partial clone
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout: |
+            .github
+
+      - name: Recover manifest to ZIP mapping
+        env:
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          SERVER_URL: ${{ github.server_url }}
+        run: |
+          set -euo pipefail
+          mkdir -p audit-v3-recovery
+          python3 - <<'PY'
+          import json, os, re, subprocess
+          from collections import Counter, defaultdict
+
+          repo=os.environ["REPOSITORY"]
+          run_id=os.environ["RUN_ID"]
+          server=os.environ["SERVER_URL"]
+
+          def out(*args):
+              return subprocess.check_output(args)
+
+          head=out("git","rev-parse","HEAD").decode().strip()
+          raw=out("git","ls-tree","-r","-l","-z","HEAD")
+          files=[]
+          for rec in raw.split(b"\x00"):
+              if not rec: continue
+              meta,path=rec.split(b"\t",1)
+              p=meta.decode().split()
+              if len(p)>=4 and p[1]=="blob":
+                  files.append({
+                      "path":path.decode("utf-8","replace"),
+                      "sha":p[2],
+                      "size":0 if p[3]=="-" else int(p[3])
+                  })
+
+          def show(path):
+              return out("git","show","HEAD:"+path).decode("utf-8","replace")
+
+          manifests=[f for f in files if f["path"].endswith("RESEARCH_DOWNLOAD_MANIFEST.jsonl")]
+
+          zip_re=re.compile(r"(?i)^(.*)_([0-9]{4})\.zip$")
+          groups=defaultdict(list)
+          for f in files:
+              bn=os.path.basename(f["path"])
+              m=zip_re.match(bn)
+              if not m: continue
+              stem=m.group(1)
+              key=(os.path.dirname(f["path"]), stem)
+              groups[key].append({"path":f["path"],"size":f["size"],"part":int(m.group(2))})
+
+          def norm(s):
+              return re.sub(r"[^a-z0-9]+","",str(s).lower())
+
+          def source_name(url):
+              if not isinstance(url,str) or not url.strip():
+                  return ""
+              x=url.rstrip("/")
+              if x.endswith(".git"): x=x[:-4]
+              return x.rsplit("/",1)[-1]
+
+          components=[]
+          errors=[]
+          record_no=0
+          for mf in manifests:
+              manifest_dir=os.path.dirname(mf["path"])
+              for line_no,line in enumerate(show(mf["path"]).splitlines(),1):
+                  if not line.strip(): continue
+                  try:
+                      d=json.loads(line)
+                  except Exception:
+                      errors.append({"manifest_path":mf["path"],"line":line_no,"error":"invalid_jsonl"})
+                      continue
+                  if not isinstance(d,dict): continue
+                  record_no+=1
+                  slug=str(d.get("slug") or d.get("name") or "").strip()
+                  source=d.get("source") or d.get("source_url")
+                  source_commit=d.get("source_commit") or d.get("commit") or d.get("sha")
+                  expected=d.get("parts")
+                  try: expected=int(expected)
+                  except Exception: expected=None
+                  manifest_status=str(d.get("status") or "").upper() or "UNKNOWN"
+
+                  wanted={norm(slug),norm(source_name(source))}
+                  wanted.discard("")
+                  candidates=[]
+                  for (directory,stem),parts in groups.items():
+                      if norm(stem) in wanted:
+                          ordered=sorted(parts,key=lambda x:x["part"])
+                          candidates.append({
+                              "directory":directory,
+                              "stem":stem,
+                              "count":len(ordered),
+                              "parts":ordered,
+                              "maximum_part_size":max([p["size"] for p in ordered] or [0]),
+                              "sequence":[p["part"] for p in ordered]
+                          })
+
+                  exact=[c for c in candidates if expected is not None and c["count"]==expected and c["sequence"]==list(range(1,expected+1))]
+                  sha_ok=bool(isinstance(source_commit,str) and re.fullmatch(r"[0-9a-fA-F]{40}",source_commit))
+                  source_ok=bool(isinstance(source,str) and source.startswith(("https://github.com/","http://github.com/")))
+                  zip_ok=bool(exact)
+                  same_dir=[c for c in exact if c["directory"]==manifest_dir]
+
+                  if manifest_status=="SKIPPED":
+                      status="SKIPPED"
+                  elif not source_ok or not sha_ok:
+                      status="INSUFFICIENT_EVIDENCE"
+                  elif not zip_ok:
+                      status="GAP"
+                  elif len(exact)>1:
+                      status="DUPLICATE_RELOCATED"
+                  elif same_dir:
+                      status="COMPLETE"
+                  else:
+                      status="RELOCATED"
+
+                  canonical=(source[:-4] if isinstance(source,str) and source.lower().endswith(".git") else source)
+                  canonical=canonical.lower().rstrip("/") if isinstance(canonical,str) else "manifest:"+mf["path"]+":"+str(line_no)
+
+                  components.append({
+                      "canonical_id":canonical,
+                      "number":d.get("number") if isinstance(d.get("number"),int) else record_no,
+                      "canonical_name":slug or source_name(source) or canonical.rsplit("/",1)[-1],
+                      "source_url":source or "INSUFFICIENT_EVIDENCE",
+                      "source_commit":source_commit if sha_ok else "INSUFFICIENT_EVIDENCE",
+                      "repository":repo,
+                      "branch":"main",
+                      "exact_path":exact[0]["directory"] if len(exact)==1 else ("; ".join(c["directory"] for c in exact) if exact else "INSUFFICIENT_EVIDENCE"),
+                      "manifest_path":mf["path"],
+                      "zip_parts":expected if expected is not None else "INSUFFICIENT_EVIDENCE",
+                      "maximum_part_size":max([c["maximum_part_size"] for c in exact] or [0]) if exact else "INSUFFICIENT_EVIDENCE",
+                      "workflow_run_url":server+"/"+repo+"/actions/runs/"+run_id,
+                      "status":status,
+                      "locations":[{"directory":c["directory"],"files":[p["path"] for p in c["parts"]]} for c in exact],
+                      "evidence":{
+                          "tree_verified":True,
+                          "manifest_verified":True,
+                          "sha_verified":sha_ok,
+                          "zip_verified":zip_ok,
+                          "destination_verified":zip_ok,
+                          "workflow_verified":True
+                      },
+                      "manifest_status":manifest_status
+                  })
+
+          key_counts=Counter((c["canonical_id"],c["source_commit"]) for c in components)
+          duplicates=[
+              {"canonical_id":k[0],"source_commit":k[1],"count":v}
+              for k,v in key_counts.items() if v>1
+          ]
+          counts=Counter(c["status"] for c in components)
+          result={
+              "schema":"YAIWES-INVENTORY-INDEXES-V3-RECOVERY-ZIPMAP",
+              "repository":repo,
+              "branch":"main",
+              "main_commit":head,
+              "workflow_run_url":server+"/"+repo+"/actions/runs/"+run_id,
+              "manifests":[m["path"] for m in manifests],
+              "components":components,
+              "duplicates":duplicates,
+              "errors":errors,
+              "counts":{
+                  "discovered":len(components),
+                  "unique":len(set((c["canonical_id"],c["source_commit"]) for c in components)),
+                  "complete":counts["COMPLETE"],
+                  "relocated":counts["RELOCATED"],
+                  "duplicate_relocated":counts["DUPLICATE_RELOCATED"],
+                  "skipped":counts["SKIPPED"],
+                  "gaps":counts["GAP"],
+                  "insufficient_evidence":counts["INSUFFICIENT_EVIDENCE"]
+              }
+          }
+          with open("audit-v3-recovery/inventory-recovery-v3.json","w",encoding="utf-8") as f:
+              json.dump(result,f,ensure_ascii=False,indent=2)
+          with open("audit-v3-recovery/inventory-recovery-v3.md","w",encoding="utf-8") as f:
+              f.write("# Recovery ZIP mapping V3 — "+repo+"\n\n")
+              for k,v in result["counts"].items():
+                  f.write("- "+k+": "+str(v)+"\n")
+              f.write("\n## Componentes\n\n")
+              for c in components:
+                  f.write(str(c["number"])+". "+c["canonical_name"]+" — "+c["status"]+" — "+c["exact_path"]+"\n")
+          PY
+
+      - name: Validate recovery evidence
+        run: |
+          test -s audit-v3-recovery/inventory-recovery-v3.json
+          python3 -m json.tool audit-v3-recovery/inventory-recovery-v3.json >/dev/null
+
+      - name: Upload recovery evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: inventory-forensic-v3-recovery-zipmap-agentes
+          path: audit-v3-recovery/
+          if-no-files-found: error
+          retention-days: 30
