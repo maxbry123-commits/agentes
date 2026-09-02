@@ -128,3 +128,4 @@
 {"number": 30, "parts": 9, "slug": "Inngest", "source": "https://github.com/inngest/inngest.git", "source_commit": "c7a2cfe39b4ce09e705f90ae1d9159c414b476e3", "status": "COMPLETE"}
 {"number": 31, "parts": 1, "slug": "Luigi", "source": "https://github.com/spotify/luigi.git", "source_commit": "715f65c4a56a908ef0a1df4df6fc33b8420e2e6c", "status": "COMPLETE"}
 {"number": 32, "parts": 1, "slug": "Graphiti", "source": "https://github.com/getzep/graphiti.git", "source_commit": "11538f6d45561bcce9a4400b374fb2dc533dccb6", "status": "COMPLETE"}
+{"number": 1, "parts": 7, "slug": "Erlang-OTP", "source": "https://github.com/erlang/otp.git", "source_commit": "1e245fa566e271d90cd225cceffe58a2695c8cbf", "status": "COMPLETE"}
