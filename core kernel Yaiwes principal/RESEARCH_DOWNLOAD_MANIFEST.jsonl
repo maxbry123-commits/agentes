@@ -112,3 +112,6 @@
 {"number": 14, "parts": 1, "slug": "Graph-of-Thoughts", "source": "https://github.com/spcl/graph-of-thoughts.git", "source_commit": "3d9d9dbd8937d47a4441f681b8b40e3c5b054f16", "status": "COMPLETE"}
 {"number": 15, "parts": 4, "slug": "Open-Policy-Agent", "source": "https://github.com/open-policy-agent/opa.git", "source_commit": "88c2ee0cdc9087ab1c3f09b95fa2b9ba5c8f69f5", "status": "COMPLETE"}
 {"number": 16, "parts": 4, "slug": "PurpleLlama", "source": "https://github.com/meta-llama/PurpleLlama.git", "source_commit": "4be64c3a24442b51c76175e6ec67722cc3f5fe38", "status": "COMPLETE"}
+{"number": 17, "parts": 4, "slug": "TruLens", "source": "https://github.com/truera/trulens.git", "source_commit": "fd2d2601b3721f1a5f515474fe8bab4cef387743", "status": "COMPLETE"}
+{"number": 18, "parts": 2, "slug": "Prometheus-Evaluator-LM", "source": "https://github.com/prometheus-eval/prometheus.git", "source_commit": "60e2c58956d670532d48ae94fefe278809b98aee", "status": "COMPLETE"}
+{"number": 19, "parts": 1, "slug": "E2B", "source": "https://github.com/e2b-dev/E2B.git", "source_commit": "5a56c87e9db0e221b138662805af7743e75f1082", "status": "COMPLETE"}
