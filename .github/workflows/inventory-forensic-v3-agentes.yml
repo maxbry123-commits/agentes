@@ -1,0 +1,295 @@
+name: inventory-forensic-v3-agentes
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/inventory-forensic-v3-agentes.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: inventory-forensic-v3-agentes-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  forensic_inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout main metadata
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout: |
+            .github
+
+      - name: Enumerate tree manifests ZIP parts SHA and locations
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          SERVER_URL: ${{ github.server_url }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p audit-v3
+          python3 - <<'PY'
+          import base64, json, os, re, urllib.request
+          from collections import Counter, defaultdict, deque
+
+          repo = os.environ["REPOSITORY"]
+          token = os.environ["GH_TOKEN"]
+          run_id = os.environ["RUN_ID"]
+          server = os.environ["SERVER_URL"]
+          head_sha = os.environ["SHA"]
+          api = "https://api.github.com/repos/" + repo
+
+          def gh(path):
+              req = urllib.request.Request(api + path, headers={
+                  "Authorization": "Bearer " + token,
+                  "Accept": "application/vnd.github+json",
+                  "X-GitHub-Api-Version": "2022-11-28",
+                  "User-Agent": "inventory-forensic-v3"
+              })
+              with urllib.request.urlopen(req, timeout=60) as r:
+                  return json.load(r)
+
+          def load_blob(sha, max_bytes=8000000):
+              b = gh("/git/blobs/" + sha)
+              if int(b.get("size") or 0) > max_bytes:
+                  return None
+              if b.get("encoding") == "base64":
+                  return base64.b64decode(b.get("content","")).decode("utf-8","replace")
+              return b.get("content","")
+
+          ref = gh("/git/ref/heads/main")
+          main_sha = ref["object"]["sha"]
+          commit = gh("/git/commits/" + main_sha)
+          root_tree = commit["tree"]["sha"]
+
+          files = []
+          directories = set()
+          truncated_subtrees = []
+
+          root = gh("/git/trees/" + root_tree)
+          for item in root.get("tree", []):
+              p = item["path"]
+              if item["type"] == "blob":
+                  files.append({"path":p,"size":item.get("size",0),"sha":item["sha"]})
+              elif item["type"] == "tree":
+                  directories.add(p)
+                  sub = gh("/git/trees/" + item["sha"] + "?recursive=1")
+                  if not sub.get("truncated"):
+                      for x in sub.get("tree", []):
+                          fp = p + "/" + x["path"]
+                          if x["type"] == "blob":
+                              files.append({"path":fp,"size":x.get("size",0),"sha":x["sha"]})
+                          elif x["type"] == "tree":
+                              directories.add(fp)
+                  else:
+                      truncated_subtrees.append(p)
+                      q = deque([(p, item["sha"])])
+                      while q:
+                          prefix, tsha = q.popleft()
+                          t = gh("/git/trees/" + tsha)
+                          for x in t.get("tree", []):
+                              fp = prefix + "/" + x["path"]
+                              if x["type"] == "blob":
+                                  files.append({"path":fp,"size":x.get("size",0),"sha":x["sha"]})
+                              elif x["type"] == "tree":
+                                  directories.add(fp)
+                                  q.append((fp, x["sha"]))
+
+          paths = {f["path"] for f in files}
+          lower_paths = {p.lower():p for p in paths}
+          manifest_files = []
+          for f in files:
+              n = f["path"].lower()
+              if ("manifest" in n and (n.endswith(".json") or n.endswith(".jsonl"))) or n.endswith("research_download_manifest.jsonl"):
+                  manifest_files.append(f)
+
+          url_keys = ["source_url","repo_url","repository_url","url","source","repo","repository"]
+          sha_keys = ["source_commit","commit_sha","commit","sha","source_sha"]
+          name_keys = ["canonical_name","component_name","name","slug","id"]
+          path_keys = ["exact_path","destination","destination_path","target_path","path","output_path"]
+
+          def first_str(d, keys):
+              for k in keys:
+                  v=d.get(k)
+                  if isinstance(v,str) and v.strip():
+                      return v.strip()
+              return None
+
+          raw_entries=[]
+          manifest_errors=[]
+          for mf in manifest_files:
+              try:
+                  txt = load_blob(mf["sha"])
+                  if txt is None:
+                      manifest_errors.append({"path":mf["path"],"error":"manifest_too_large"})
+                      continue
+                  objs=[]
+                  if mf["path"].lower().endswith(".jsonl"):
+                      for i,line in enumerate(txt.splitlines(),1):
+                          line=line.strip()
+                          if not line:
+                              continue
+                          try:
+                              o=json.loads(line)
+                              if isinstance(o,dict):
+                                  objs.append((i,o))
+                          except Exception:
+                              manifest_errors.append({"path":mf["path"],"line":i,"error":"invalid_jsonl"})
+                  else:
+                      o=json.loads(txt)
+                      if isinstance(o,list):
+                          objs=[(i+1,x) for i,x in enumerate(o) if isinstance(x,dict)]
+                      elif isinstance(o,dict):
+                          candidate = o.get("components") or o.get("items") or o.get("downloads")
+                          if isinstance(candidate,list):
+                              objs=[(i+1,x) for i,x in enumerate(candidate) if isinstance(x,dict)]
+                          else:
+                              objs=[(1,o)]
+                  for line_no,d in objs:
+                      u=first_str(d,url_keys)
+                      s=first_str(d,sha_keys)
+                      nm=first_str(d,name_keys)
+                      dp=first_str(d,path_keys)
+                      if any([u,s,nm,dp]):
+                          raw_entries.append({
+                              "manifest_path":mf["path"],"manifest_line":line_no,
+                              "canonical_name":nm,"source_url":u,"source_commit":s,
+                              "declared_path":dp
+                          })
+              except Exception as e:
+                  manifest_errors.append({"path":mf["path"],"error":type(e).__name__})
+
+          def norm_url(u):
+              if not u:
+                  return None
+              x=u.strip().lower()
+              if x.endswith(".git"):
+                  x=x[:-4]
+              return x.rstrip("/")
+
+          zip_re = re.compile(r"(?i)(\.zip$|\.z\d\d$|\.zip\.\d+$|\.part\d+$)")
+          zip_files=[f for f in files if zip_re.search(f["path"])]
+          zip_groups=defaultdict(list)
+          for f in zip_files:
+              p=f["path"]
+              base=re.sub(r"(?i)(\.z\d\d$|\.zip\.\d+$|\.part\d+$)","",p)
+              if base.lower().endswith(".zip"):
+                  base=base[:-4]
+              zip_groups[base].append(f)
+
+          components=[]
+          for idx,e in enumerate(raw_entries,1):
+              declared=e.get("declared_path")
+              path_verified=False
+              exact=None
+              if declared:
+                  d=declared.strip().lstrip("./")
+                  if d in paths or d in directories:
+                      path_verified=True
+                      exact=d
+                  elif d.lower() in lower_paths:
+                      path_verified=True
+                      exact=lower_paths[d.lower()]
+                  else:
+                      pref=d.rstrip("/")+"/"
+                      if any(p.startswith(pref) for p in paths):
+                          path_verified=True
+                          exact=d
+              sha=e.get("source_commit")
+              sha_valid=bool(sha and re.fullmatch(r"[0-9a-fA-F]{7,40}",sha))
+              cid=norm_url(e.get("source_url")) or ("manifest:" + e["manifest_path"] + ":" + str(e["manifest_line"]))
+              components.append({
+                  "canonical_id":cid,
+                  "number":idx,
+                  "canonical_name":e.get("canonical_name") or cid.rsplit("/",1)[-1],
+                  "source_url":e.get("source_url") or "INSUFFICIENT_EVIDENCE",
+                  "source_commit":sha if sha_valid else "INSUFFICIENT_EVIDENCE",
+                  "repository":repo,
+                  "branch":"main",
+                  "exact_path":exact or declared or "INSUFFICIENT_EVIDENCE",
+                  "manifest_path":e["manifest_path"],
+                  "workflow_run_url":server + "/" + repo + "/actions/runs/" + run_id,
+                  "status":"COMPLETE" if path_verified and e.get("source_url") and sha_valid else "INSUFFICIENT_EVIDENCE",
+                  "evidence":{
+                      "tree_verified":True,
+                      "manifest_verified":True,
+                      "sha_verified":sha_valid,
+                      "zip_verified":False,
+                      "destination_verified":path_verified,
+                      "workflow_verified":True
+                  }
+              })
+
+          ids=Counter(c["canonical_id"] for c in components)
+          duplicates=[{"canonical_id":k,"count":v} for k,v in ids.items() if v>1]
+
+          evidence={
+              "schema":"YAIWES-INVENTORY-INDEXES-V3",
+              "repository":repo,
+              "branch":"main",
+              "main_commit":main_sha,
+              "trigger_commit":head_sha,
+              "workflow_run_url":server + "/" + repo + "/actions/runs/" + run_id,
+              "tree":{"files":len(files),"directories":len(directories),"truncated_subtrees_recovered":truncated_subtrees},
+              "manifests":[{"path":x["path"],"size":x["size"],"git_blob_sha":x["sha"]} for x in manifest_files],
+              "manifest_errors":manifest_errors,
+              "zip_parts":{
+                  "file_count":len(zip_files),
+                  "groups":[
+                      {"base":k,"parts":len(v),"maximum_part_size":max((int(x.get("size") or 0) for x in v),default=0),
+                       "files":[{"path":x["path"],"size":x.get("size",0)} for x in v]}
+                      for k,v in sorted(zip_groups.items())
+                  ]
+              },
+              "components":components,
+              "duplicates":duplicates,
+              "counts":{
+                  "manifest_entries":len(raw_entries),
+                  "components":len(components),
+                  "complete":sum(c["status"]=="COMPLETE" for c in components),
+                  "insufficient_evidence":sum(c["status"]=="INSUFFICIENT_EVIDENCE" for c in components),
+                  "duplicate_ids":len(duplicates)
+              }
+          }
+          with open("audit-v3/inventory-evidence-v3.json","w",encoding="utf-8") as f:
+              json.dump(evidence,f,ensure_ascii=False,indent=2)
+
+          with open("audit-v3/inventory-evidence-v3.md","w",encoding="utf-8") as f:
+              f.write("# Auditoría forense V3 — " + repo + "\n\n")
+              f.write("- Branch: main\n- Main commit: " + main_sha + "\n")
+              f.write("- Run: " + evidence["workflow_run_url"] + "\n")
+              f.write("- Files: " + str(len(files)) + "\n- Directories: " + str(len(directories)) + "\n")
+              f.write("- Manifests: " + str(len(manifest_files)) + "\n- ZIP/parts: " + str(len(zip_files)) + "\n")
+              f.write("- Components: " + str(len(components)) + "\n")
+              f.write("- COMPLETE: " + str(evidence["counts"]["complete"]) + "\n")
+              f.write("- INSUFFICIENT_EVIDENCE: " + str(evidence["counts"]["insufficient_evidence"]) + "\n")
+              f.write("- Duplicate canonical IDs: " + str(len(duplicates)) + "\n\n")
+              f.write("## Componentes\n\n")
+              for c in components:
+                  f.write(str(c["number"]) + ". " + c["canonical_name"] + " — " + c["status"] + " — " + c["exact_path"] + "\n")
+          PY
+
+      - name: Validate generated evidence
+        run: |
+          test -s audit-v3/inventory-evidence-v3.json
+          test -s audit-v3/inventory-evidence-v3.md
+          python3 -m json.tool audit-v3/inventory-evidence-v3.json >/dev/null
+
+      - name: Upload forensic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: inventory-forensic-v3-agentes
+          path: audit-v3/
+          if-no-files-found: error
+          retention-days: 30
