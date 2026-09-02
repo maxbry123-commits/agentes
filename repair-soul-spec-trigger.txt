@@ -1,3 +1,5 @@
 source=Agente core kernel Yaiwes principal/Soul-Spec-Antonio_0001.zip
 destination=core kernel Yaiwes principal/Soul-Spec_0001.zip
 external_download=false
+
+retry=1
