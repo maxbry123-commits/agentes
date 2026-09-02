@@ -68,3 +68,11 @@
 {"number": 2, "parts": 5, "slug": "CPython", "source": "https://github.com/python/cpython.git", "source_commit": "3daa7f8258fa21931e7655de66160b05afcfc8c9", "status": "COMPLETE"}
 {"number": 3, "parts": 2, "slug": "DSPy", "source": "https://github.com/stanfordnlp/dspy.git", "source_commit": "59ce7601ec40cd2160ac64f476f9053efdc1599e", "status": "COMPLETE"}
 {"number": 4, "parts": 1, "slug": "CycloneDX-Python", "source": "https://github.com/CycloneDX/cyclonedx-python.git", "source_commit": "20a8345e5acbf8b3a1635206446faa9b89aac27e", "status": "COMPLETE"}
+{"number": 5, "parts": 1, "slug": "Pyright", "source": "https://github.com/microsoft/pyright.git", "source_commit": "e690634a94ab05cf7dd003b63b1ac67cd6d6878e", "status": "COMPLETE"}
+{"number": 6, "parts": 1, "slug": "Temporal-Python-SDK", "source": "https://github.com/temporalio/sdk-python.git", "source_commit": "d0e075c1e25b3371f0e0f5116d9c6626892e3eab", "status": "COMPLETE"}
+{"number": 7, "parts": 1, "slug": "Pact-Python", "source": "https://github.com/pact-foundation/pact-python.git", "source_commit": "ebd15554c9bc40b200b768d9061cc895fe163f1a", "status": "COMPLETE"}
+{"number": 8, "parts": 1, "slug": "Letta", "source": "https://github.com/letta-ai/letta.git", "source_commit": "4511fa0bc91f68fbab32b91f694617271ea9012b", "status": "COMPLETE"}
+{"number": 9, "parts": 3, "slug": "Semantic-Kernel", "source": "https://github.com/microsoft/semantic-kernel.git", "source_commit": "3438d882147b6e3e19a161a5f0dcb64e23e181db", "status": "COMPLETE"}
+{"number": 10, "parts": 1, "slug": "Zen-Engine", "source": "https://github.com/gorules/zen.git", "source_commit": "adf7cdf44aa4381967a5bef1908b3b02789c3180", "status": "COMPLETE"}
+{"number": 11, "parts": 2, "slug": "Unleash", "source": "https://github.com/Unleash/unleash.git", "source_commit": "ca1763351f4d1bdfdd365fba44cd48753ec62c4c", "status": "COMPLETE"}
+{"number": 12, "parts": 1, "slug": "Zod", "source": "https://github.com/colinhacks/zod.git", "source_commit": "764ac59f1afc1a46e7ecc2d5e8e86c57b7d66164", "status": "COMPLETE"}
