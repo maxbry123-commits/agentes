@@ -1,0 +1,147 @@
+name: Auditoria indices componentes
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/auditoria-indices-componentes.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: auditoria-indices-componentes
+  cancel-in-progress: false
+
+jobs:
+  inventario:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Inventariar repositorios y raices
+        env:
+          OWNER: maxbry123-commits
+        run: |
+          set -euo pipefail
+          mkdir -p _audit_repos auditoria-output
+          repos=(
+            "agentes"
+            "nct-core"
+            "frontend"
+            "router-universal-router-inteligente-"
+            "osquestador-auditor"
+            "Agentes-motores-Wordflow-YAIWES"
+            "Orquestador-Maxbry-"
+          )
+          for repo in "${repos[@]}"; do
+            git clone --depth 1 "https://github.com/${OWNER}/${repo}.git" "_audit_repos/${repo}"
+          done
+          python3 - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+
+          base = Path("_audit_repos")
+          excluded = {".git", "__pycache__", "node_modules", ".venv", "venv"}
+          records = []
+          repos = sorted(p for p in base.iterdir() if p.is_dir())
+
+          for repo_dir in repos:
+              repo = repo_dir.name
+              roots = []
+              for root in sorted(repo_dir.iterdir(), key=lambda p: p.name.lower()):
+                  if root.name in excluded or root.name.startswith(".git"):
+                      continue
+                  if root.is_file():
+                      data = root.read_bytes()
+                      roots.append({
+                          "name": root.name,
+                          "path": root.name,
+                          "type": "file",
+                          "files": 1,
+                          "bytes": len(data),
+                          "sha256": hashlib.sha256(data).hexdigest(),
+                          "extensions": {root.suffix.lower() or "[none]": 1},
+                          "markers": []
+                      })
+                      continue
+                  files = []
+                  markers = []
+                  extensions = {}
+                  total_bytes = 0
+                  for path in root.rglob("*"):
+                      if not path.is_file() or any(part in excluded for part in path.parts):
+                          continue
+                      rel = path.relative_to(repo_dir).as_posix()
+                      size = path.stat().st_size
+                      files.append({"path": rel, "bytes": size})
+                      total_bytes += size
+                      ext = path.suffix.lower() or "[none]"
+                      extensions[ext] = extensions.get(ext, 0) + 1
+                      upper = path.name.upper()
+                      if upper in {"PLACEHOLDER.MD", ".KEEP", ".GITKEEP"} or "STUB" in upper:
+                          markers.append(rel)
+                  roots.append({
+                      "name": root.name,
+                      "path": root.name,
+                      "type": "directory",
+                      "files": len(files),
+                      "bytes": total_bytes,
+                      "extensions": dict(sorted(extensions.items())),
+                      "markers": sorted(markers),
+                      "sample_files": [x["path"] for x in sorted(files, key=lambda x: x["path"])[:25]]
+                  })
+              records.append({
+                  "repository": repo,
+                  "default_branch": "main",
+                  "root_count": len(roots),
+                  "roots": roots
+              })
+
+          payload = {
+              "schema": "yaiwes.repository-inventory.v1",
+              "generated_by": "GitHub Actions",
+              "repositories": records
+          }
+          Path("auditoria-output/inventario-repositorios.json").write_text(
+              json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+          )
+          PY
+
+      - name: Validar inventario
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path("auditoria-output/inventario-repositorios.json")
+          data = json.loads(p.read_text(encoding="utf-8"))
+          assert data["schema"] == "yaiwes.repository-inventory.v1"
+          assert len(data["repositories"]) == 7
+          assert all(r["root_count"] > 0 for r in data["repositories"])
+          print("PASS repositories=7")
+          print("PASS roots=", sum(r["root_count"] for r in data["repositories"]))
+          PY
+
+      - name: Publicar evidencia
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add auditoria-output/inventario-repositorios.json
+          if git diff --cached --quiet; then
+            echo "Sin cambios de inventario"
+          else
+            git commit -m "audit: actualizar inventario de repositorios"
+            git push
+          fi
+
+      - name: Subir artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: auditoria-indices-componentes
+          path: auditoria-output/inventario-repositorios.json
+          retention-days: 14
