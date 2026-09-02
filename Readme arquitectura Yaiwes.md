@@ -262,7 +262,7 @@ Grok Build extraído
 
 | Evidencia | Resultado |
 |---|---|
-| agente-yaiwes | 586 entradas; 234 Python; 124 placeholders |
+| agente-yaiwes | 586 entradas; 234 Python; 123 placeholders |
 | kernel-principal | 49 Python; 18 placeholders; 0 tests propios |
 | wordflow_kernel operativo | 94 Python; 27 tests |
 | raíz Agente TEAM | No existe |
@@ -287,6 +287,107 @@ Grok Build extraído
 9. Conectar pool, fleet y worktree isolation.
 10. Probar reception→mission→decision→execution→evidence→closure.
 
-## 12. Veredicto
+## 12. Huella forense reproducible del árbol real
+
+**Commit de árbol auditado:** `20a030af86129b5d388eef4f10983b385123740e`.
+
+| Raíz comprobada | Archivos | Python | Tests localizados | PLACEHOLDER.md | Lectura forense |
+|---|---:|---:|---:|---:|---|
+| `agente-yaiwes/` | 430 | 234 | 1 | 123 | Estructura amplia, pero todavía dominada por scaffolding |
+| `kernel-principal/` | 71 | 49 | 0 | 18 | Kernel destino parcial; sin suite propia |
+| `kernel-principal/extension-kernel/` | 23 | 15 | 0 | 5 | ABI, passport y registry existen parcialmente |
+| `kernel-principal/reasoning-kernel/` | 9 | 4 | 0 | 5 | El ciclo cognitivo no está cerrado |
+| `input-layer/` | 12 | 3 | 0 | 5 | Reception existe; entrada de producto canónica no |
+| `control-governance/` | 80 | 55 | 1 | 22 | Es la zona más materializada del árbol nuevo |
+| `multi-workflow-engine/` | 16 | 4 | 0 | 12 | Forma declarada; instancias casi vacías |
+| `execution-orchestration/` | 36 | 23 | 0 | 11 | Piezas presentes, E2E no demostrado |
+| `execution-engine-pool/` | 26 | 16 | 0 | 7 | Puertos y stubs; adaptadores reales incompletos |
+| `observability/` | 10 | 6 | 0 | 2 | Evidencia parcial, no cierre global |
+| `extensions/wordflow_kernel/` | 101 | 94 | 27 | 0 | Kernel operativo heredado más verificable |
+| `extensions/wordflow/` | 379 | 310 | 134 | 0 | Runtime Wordflow vivo; documentado aparte |
+
+Los conteos son de archivos Git observados, no una afirmación de cobertura funcional. Un archivo Python no equivale a una función terminada y un test localizado no demuestra por sí solo integración E2E.
+
+### Árbol funcional completo de YAIWES
+
+```text
+agente-yaiwes/
+├── input-layer/                       entrada, recepción y sesiones
+├── definition-registry/               contratos de agente/tarea/tool/skill/workflow
+├── kernel-principal/                  propietario de política y decisión
+│   ├── control-layer/
+│   ├── extension-kernel/              registry → passport → ABI → guard
+│   ├── reasoning-kernel/              goals → panel → consenso → decisión
+│   ├── resource-governance/           broker → lease → retry → breaker
+│   ├── internal-bus/
+│   ├── kernel-router/
+│   ├── execution-manifest/
+│   └── stages/
+├── control-governance/                sheriff, sentinel, council y forense
+├── multi-workflow-engine/             recetas/DAG e instancias aisladas
+├── execution-orchestration/           clasificación, planificación y scheduler
+├── execution-engine-pool/             adapters, motores y normalización
+├── agent-fleet-parallelism/            despacho y supervisión paralela
+├── state-events-durability/            checkpoint, recovery y dead letter
+├── tools-models-memory-knowledge/      tools, RAG, MCP y memoria
+├── codebase-intelligence/              verdad del repositorio y grafo
+├── security-auth/                      secretos y permisos
+├── observability/                      evidencia, trazas e historial
+├── deploy-publish/                     publicación y destinos
+└── artifact-output-storage/            salida final
+```
+
+### TEAM Kernel: ubicación y diagnóstico
+
+El nombre **TEAM Kernel** describe el conjunto, no un único ejecutable. La cadena verificable está repartida entre:
+
+1. `agente-yaiwes/kernel-principal/`: destino arquitectónico.
+2. `agente-yaiwes/control-governance/`: gobierno y verificación.
+3. `extensions/wordflow_kernel/`: cuerpo operativo heredado con tests.
+4. `extensions/wordflow/`: runtime que ejecuta misiones y produce evidencia.
+
+Por eso la afirmación “TEAM Kernel está completo” no está demostrada. Existen piezas reales, pero falta un entrypoint único que conecte entrada → contrato → decisión → ejecución → evidencia → cierre sin usar stubs o rutas paralelas.
+
+## 13. Método común para reciclar código open source sin copiar otro cerebro
+
+Este método también se aplica a Wordflow Code, pero cada documento conserva su propietario:
+
+1. Fijar repositorio, licencia, versión y commit.
+2. Generar fingerprint/SHA y SBOM.
+3. Auditar secretos, dependencias y conexiones salientes.
+4. Localizar una responsabilidad única.
+5. Separar funciones que **deciden** de funciones que **hacen**.
+6. Rechazar el bucle decisor externo cuando duplica `reasoning-kernel`.
+7. Definir primero el puerto/ABI de YAIWES.
+8. Encapsular el código ejecutor con una Anti-Corruption Layer.
+9. Ejecutar en sandbox sin red por defecto.
+10. Comparar paridad con el origen.
+11. Registrar capability passport, permisos, fallos y fallback.
+12. Montar mediante `mount-guard`; nunca importar el repositorio externo directamente desde el kernel.
+13. Incorporar gradualmente con Strangler Fig y conservar rollback.
+14. Enviar estado, trazas y evidencia a observabilidad.
+
+```text
+fuente fijada
+→ auditoría
+→ poda decide/hace
+→ puerto YAIWES
+→ adaptador
+→ sandbox
+→ pruebas de paridad
+→ passport
+→ mount-guard
+→ registry
+→ workflow o pool
+```
+
+Criterio de destino:
+
+- **Capacidad:** resultado estable sin juicio → `extension-kernel/capability-registry/`.
+- **Workflow:** secuencia fija de capacidades → `multi-workflow-engine/instances/`.
+- **Agente:** conserva juicio o memoria propia → `execution-engine-pool/`, siempre aislado.
+
+
+## 14. Veredicto
 
 YAIWES/TEAM tiene arquitectura coherente y piezas ejecutables, pero no constituye todavía un agente autónomo completo. El núcleo operativo más confiable sigue siendo `extensions/wordflow_kernel`; `kernel-principal` continúa como destino parcial. Estado: **FAIL-CLOSED / PARCIAL**.
