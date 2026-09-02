@@ -7,6 +7,24 @@
 
 Este archivo contiene exclusivamente la arquitectura del agente YAIWES, TEAM Kernel, SDPA y sus capas de gobierno. La arquitectura del motor Wordflow Code vive separada en NCT Core.
 
+
+## Índice navegable
+
+- [1. Fuentes utilizadas](#1-fuentes-utilizadas)
+- [2. Ubicación del código fuente del kernel](#2-ubicacion-del-codigo-fuente-del-kernel)
+- [3. Arquitectura YAIWES separada](#3-arquitectura-yaiwes-separada)
+- [4. Regla de las tres preguntas](#4-regla-de-las-tres-preguntas)
+- [5. Responsabilidades de extension-kernel](#5-responsabilidades-de-extension-kernel)
+- [6. Selección determinista de workflows](#6-seleccion-determinista-de-workflows)
+- [7. Mythos/EURS/DRE](#7-mythoseursdre)
+- [8. Método de poda para componentes externos](#8-metodo-de-poda-para-componentes-externos)
+- [9. Grok Build: qué corresponde a YAIWES](#9-grok-build-que-corresponde-a-yaiwes)
+- [10. Auditoría X-Ray actual](#10-auditoria-x-ray-actual)
+- [11. GAPS prioritarios](#11-gaps-prioritarios)
+- [12. Huella forense reproducible del árbol real](#12-huella-forense-reproducible-del-arbol-real)
+- [13. Método común para reciclar código open source sin copiar otro cerebro](#13-metodo-comun-para-reciclar-codigo-open-source-sin-copiar-otro-cerebro)
+- [14. Veredicto](#14-veredicto)
+
 ## 1. Fuentes utilizadas
 
 ### Arquitectura del repositorio
