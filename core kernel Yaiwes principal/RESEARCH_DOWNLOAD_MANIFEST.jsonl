@@ -92,3 +92,4 @@
 {"number": 26, "parts": 3, "slug": "SWE-agent", "source": "https://github.com/SWE-agent/SWE-agent.git", "source_commit": "3ea751c087f32b16e039a2233dd6eefecef325d5", "status": "COMPLETE"}
 {"number": 27, "parts": 1, "slug": "Hugging-Face-Skills", "source": "https://github.com/huggingface/skills.git", "source_commit": "cead19e10754e773bad24fecef83cb64be24094e", "status": "COMPLETE"}
 {"number": 28, "parts": 9, "slug": "Apache-Airflow", "source": "https://github.com/apache/airflow.git", "source_commit": "bf976c8805ad1a9e9664723aefcd0a62b659d627", "status": "COMPLETE"}
+{"number": 29, "parts": 4, "slug": "AWS-Step-Functions-DS-SDK", "source": "https://github.com/aws/aws-step-functions-data-science-sdk-python.git", "source_commit": "0e970ccde4ef7cc532f80040598e8d4d55f6486d", "status": "COMPLETE"}
