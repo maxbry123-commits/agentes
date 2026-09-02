@@ -110,3 +110,5 @@
 {"number": 12, "parts": 1, "slug": "Cerberus", "source": "https://github.com/pyeve/cerberus.git", "source_commit": "65e977de08ab76d4b40ca981972f9ff68926ed63", "status": "COMPLETE"}
 {"number": 13, "parts": 2, "slug": "Guidance", "source": "https://github.com/microsoft/guidance.git", "source_commit": "21b1d90dfbebff4b141df70c714c8af15aa5f4af", "status": "COMPLETE"}
 {"number": 14, "parts": 1, "slug": "Graph-of-Thoughts", "source": "https://github.com/spcl/graph-of-thoughts.git", "source_commit": "3d9d9dbd8937d47a4441f681b8b40e3c5b054f16", "status": "COMPLETE"}
+{"number": 15, "parts": 4, "slug": "Open-Policy-Agent", "source": "https://github.com/open-policy-agent/opa.git", "source_commit": "88c2ee0cdc9087ab1c3f09b95fa2b9ba5c8f69f5", "status": "COMPLETE"}
+{"number": 16, "parts": 4, "slug": "PurpleLlama", "source": "https://github.com/meta-llama/PurpleLlama.git", "source_commit": "4be64c3a24442b51c76175e6ec67722cc3f5fe38", "status": "COMPLETE"}
