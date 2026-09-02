@@ -86,3 +86,8 @@
 {"number": 20, "parts": 14, "slug": "OpenClaw", "source": "https://github.com/openclaw/openclaw.git", "source_commit": "56b03308ab51b6d1b6d842e1261994b5711ce380", "status": "COMPLETE"}
 {"number": 21, "parts": 7, "slug": "n8n", "source": "https://github.com/n8n-io/n8n.git", "source_commit": "7dd722bfb60341c0cfbdf2e86ab7e001529a99b7", "status": "COMPLETE"}
 {"number": 22, "parts": 3, "slug": "ClawHub", "source": "https://github.com/openclaw/clawhub.git", "source_commit": "3c9d4f12109bfd9b3ef8a42033228770f1bbe1d1", "status": "COMPLETE"}
+{"number": 23, "parts": 6, "slug": "Grafana", "source": "https://github.com/grafana/grafana.git", "source_commit": "a152335c7991588e66a1083f27d43746e39e9c8a", "status": "COMPLETE"}
+{"number": 24, "parts": 1, "slug": "nsjail", "source": "https://github.com/google/nsjail.git", "source_commit": "f100fd917c6d3ed0fd15d868528b735cb5fb1a1a", "status": "COMPLETE"}
+{"number": 25, "parts": 2, "slug": "Apache-APISIX", "source": "https://github.com/apache/apisix.git", "source_commit": "f0bb251a97652bb655b03e39e81fda1a3e1e93b2", "status": "COMPLETE"}
+{"number": 26, "parts": 3, "slug": "SWE-agent", "source": "https://github.com/SWE-agent/SWE-agent.git", "source_commit": "3ea751c087f32b16e039a2233dd6eefecef325d5", "status": "COMPLETE"}
+{"number": 27, "parts": 1, "slug": "Hugging-Face-Skills", "source": "https://github.com/huggingface/skills.git", "source_commit": "cead19e10754e773bad24fecef83cb64be24094e", "status": "COMPLETE"}
