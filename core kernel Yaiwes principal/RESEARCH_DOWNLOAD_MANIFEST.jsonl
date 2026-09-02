@@ -45,3 +45,8 @@
 {"number": 12, "parts": 1, "slug": "Ajv", "source": "https://github.com/ajv-validator/ajv.git", "source_commit": "f177fe323420ccb23e1a79445fd470cbf80aee7c", "status": "COMPLETE"}
 {"number": 13, "parts": 2, "slug": "LangChain", "source": "https://github.com/langchain-ai/langchain.git", "source_commit": "8973dbc6f5c36b88a6fd28dfaee45f28c1b9b1dd", "status": "COMPLETE"}
 {"number": 14, "parts": 1, "slug": "Huginn", "source": "https://github.com/seal-rg/recurrent-pretraining.git", "source_commit": "1ea7220ec7eb42d13e89db0663df254d0bcdc28e", "status": "COMPLETE"}
+{"number": 15, "parts": 3, "slug": "Semantic-Router", "source": "https://github.com/aurelio-labs/semantic-router.git", "source_commit": "d926cfcf8523cc28a468e59535899d16277fe55b", "status": "COMPLETE"}
+{"number": 16, "parts": 1, "slug": "Guardrails-AI", "source": "https://github.com/guardrails-ai/guardrails.git", "source_commit": "06d0ff2c5f9bcb493d976b76f885e37e41ce845d", "status": "COMPLETE"}
+{"number": 17, "parts": 1, "slug": "python-jsonschema", "source": "https://github.com/python-jsonschema/jsonschema.git", "source_commit": "edf3dc38d29d275c277a85c00dd4d57f21db0de6", "status": "COMPLETE"}
+{"number": 18, "parts": 1, "slug": "Prometheus", "source": "https://github.com/prometheus/prometheus.git", "source_commit": "9c8c131e849264f1dd210c89e5232dc9d1723536", "status": "COMPLETE"}
+{"number": 19, "parts": 2, "slug": "Dagu", "source": "https://github.com/dagu-org/dagu.git", "source_commit": "86fe7e34ea86170d54deffa381fbebca0e2c8555", "status": "COMPLETE"}
