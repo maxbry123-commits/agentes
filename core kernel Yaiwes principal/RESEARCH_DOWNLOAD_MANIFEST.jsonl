@@ -104,3 +104,9 @@
 {"number": 6, "parts": 1, "slug": "LangGraph", "source": "https://github.com/langchain-ai/langgraph.git", "source_commit": "11ee185999b86bfea2d8c0e69cef9a5e37acf686", "status": "COMPLETE"}
 {"number": 7, "parts": 1, "slug": "Pact-Specification", "source": "https://github.com/pact-foundation/pact-specification.git", "source_commit": "2746817263962c3c470e2f16157153eb78c299bd", "status": "COMPLETE"}
 {"number": 8, "parts": 2, "slug": "Mem0", "source": "https://github.com/mem0ai/mem0.git", "source_commit": "c33ca27f5e8f920b27a9414927f4c7e2c1887fa8", "status": "COMPLETE"}
+{"number": 9, "parts": 4, "slug": "Haystack", "source": "https://github.com/deepset-ai/haystack.git", "source_commit": "5495215d3b55baba44fed4e8aa1cbd5cd0ef670f", "status": "COMPLETE"}
+{"number": 10, "parts": 1, "slug": "json-logic-py", "source": "https://github.com/nadirizr/json-logic-py.git", "source_commit": "5fda9125eab4178f8f81c7779291940e31e87bab", "status": "COMPLETE"}
+{"number": 11, "parts": 1, "slug": "Kong", "source": "https://github.com/Kong/kong.git", "source_commit": "fa9c3b695af72668f135cb17bbb84a8b4dc511d2", "status": "COMPLETE"}
+{"number": 12, "parts": 1, "slug": "Cerberus", "source": "https://github.com/pyeve/cerberus.git", "source_commit": "65e977de08ab76d4b40ca981972f9ff68926ed63", "status": "COMPLETE"}
+{"number": 13, "parts": 2, "slug": "Guidance", "source": "https://github.com/microsoft/guidance.git", "source_commit": "21b1d90dfbebff4b141df70c714c8af15aa5f4af", "status": "COMPLETE"}
+{"number": 14, "parts": 1, "slug": "Graph-of-Thoughts", "source": "https://github.com/spcl/graph-of-thoughts.git", "source_commit": "3d9d9dbd8937d47a4441f681b8b40e3c5b054f16", "status": "COMPLETE"}
