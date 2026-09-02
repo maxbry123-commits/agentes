@@ -1,34 +1,47 @@
 ---
 name: research-download-chain
-description: 3 metodos GHA. Copiar. Descargar+extraer. Mover. Group unico.
+description: Copia, descarga+extrae o mueve componentes mediante GitHub Actions con deduplicación, manifiesto, SHA, ZIP por partes, trazabilidad y recuperación de GAPS. Úsalo cuando YAIWES, Luna u otro agente deba incorporar repositorios sin reescribir código.
 metadata:
   type: workflow
-  version: "1.9.2"
+  version: "2.0.0"
 ---
 
-# 3 instrucciones / 3 metodos / todo GHA
+# Research Download Chain
 
-## 1. Copiar archivos
+Ejecuta una sola modalidad por solicitud. No inventes un empaquetador ni reactives workflows viejos.
 
-YAML: `skills/research-download-chain/gha-copy-files.yml`
-`checkout@v4` + `cp -a`. No Python. No LFS.
+## Contrato de entrada obligatorio
 
-## 2. Descargar y extraer repos
+Obtén literalmente: repositorio destino, rama, carpeta destino, modalidad (copy, download, move) y lista nombre + URL. Antes de crear el workflow, busca por URL normalizada, slug y manifiesto. Si ya existe, marca RELOCATE; no lo descargues otra vez.
 
-No escribir packer. Lock:
-- `skills/research-download-chain/assets/FORENSIC-PASS-research-download-chain-final.yml`
-- `skills/research-download-chain/assets/FORENSIC-PASS-research_download_chain.py`
+## Modalidades
 
-GHA copia a `.github/workflows/` + `scripts/`. Editar solo lista + destino argv.
-En repos grandes usar `filter: blob:none`, sparse checkout del script + manifest y `git add --sparse`; no materializar ZIP ya guardados.
+### copy
 
-`concurrency.group` SIEMPRE el mismo string:
-`research-download-chain-final`
+Copia el asset gha-copy-files.yml. Usa checkout@v4 y cp -a. No Python ni LFS.
 
-Ese nombre es el turno, no el destino. En un mismo repo, usar un unico workflow con jobs encadenados por `needs` cuando existan mas de 2 lotes. GitHub conserva solo una ejecucion pendiente por grupo y cancela pendientes anteriores. Entre repos distintos el group no cruza.
+### download
 
-## 3. Mover archivo, lote o raiz
+Copia sin reescribir:
 
-YAML: `skills/research-download-chain/gha-move-files.yml`
-Mismo repo: `cp -a` / `git mv`. Otro repo: `secrets.GH_PAT` + `cp -a`.
-Mismo `concurrency.group: research-download-chain-final`.
+- assets/FORENSIC-PASS-research-download-chain-final.yml
+- assets/FORENSIC-PASS-research_download_chain.py
+
+Edita únicamente la lista de repositorios, el destino y los contadores. En repos grandes usa filter: blob:none, sparse checkout del script/manifiesto y git add --sparse.
+Cada componente registra URL final, commit/SHA o revisión, destino, estado y partes ZIP. Verifica extracción, límites y SHA antes de PASS. Un 404 se registra como GAP; solo cambia a una fuente oficial alternativa con evidencia explícita.
+
+### move
+
+Copia gha-move-files.yml. Mismo repo: git mv o cp -a. Entre repos: token configurado + cp -a. Nunca borres documentos ni sobrescribas colisiones.
+
+## Cola y recuperación
+
+Usa siempre concurrency.group: research-download-chain-final. En un repo, más de dos lotes son jobs encadenados con needs e if: always(); cada lote conserva nombre y destino propios. Si falla un lote, deja continuar los demás. Al terminar, crea una reparación nueva solo con GAPS reales; no reejecutes el flujo antiguo.
+
+## Gate YAIWES
+
+La autoevolución solo prepara una propuesta y se detiene en AWAITING_DIRECTOR. Tras autorización explícita, este skill adquiere el componente; luego sandbox, sheriff, pasaporte, ABI y verificación deciden el montaje. El LLM no autoriza mutaciones.
+
+## Salida mínima
+
+Devuelve enlaces de workflow/run, manifiesto, destino y checkpoint; conteos PASS/GAP/SKIPPED; duplicados reubicados; evidencia de SHA/ZIP. No declares 100% PASS mientras exista un GAP o job activo.
