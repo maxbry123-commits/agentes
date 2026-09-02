@@ -31,3 +31,10 @@
 {"number": 7, "parts": 1, "slug": "OpenTelemetry-Python", "source": "https://github.com/open-telemetry/opentelemetry-python.git", "source_commit": "eeeaa8f925c2b4430db3c08ef9912249138d7c00", "status": "COMPLETE"}
 {"number": 8, "parts": 1, "slug": "pymerkle", "source": "https://github.com/fmerg/pymerkle.git", "source_commit": "53d938f0122b1788731dee5f1cfb8fac7ce25bd5", "status": "COMPLETE"}
 {"number": 9, "parts": 15, "slug": "MINIX3", "source": "https://github.com/Stichting-MINIX-Research-Foundation/minix.git", "source_commit": "4db99f4012570a577414fe2a43697b2f239b699e", "status": "COMPLETE"}
+{"number": 1, "parts": 1, "slug": "k3s", "source": "https://github.com/k3s-io/k3s.git", "source_commit": "b56f4ad377672db822b0f2fc3f4b013b8f8f4bfc", "status": "COMPLETE"}
+{"number": 2, "parts": 1, "slug": "seL4", "source": "https://github.com/seL4/seL4.git", "source_commit": "28b8f4c40d4a48a206bedc7875c6695f6106f34b", "status": "COMPLETE"}
+{"number": 3, "parts": 1, "slug": "AlphaCodium", "source": "https://github.com/Codium-ai/AlphaCodium.git", "source_commit": "eb7577dbe998ae7e55696264591ac3c5dde75638", "status": "COMPLETE"}
+{"number": 4, "parts": 1, "slug": "Voyager", "source": "https://github.com/MineDojo/Voyager.git", "source_commit": "55e45a880755d0c8c66ca7fb5fe7962ac8974f89", "status": "COMPLETE"}
+{"number": 5, "parts": 1, "slug": "mypy", "source": "https://github.com/python/mypy.git", "source_commit": "3ad6157f9b66e71738bf39cae939aef7c3fd7ea8", "status": "COMPLETE"}
+{"number": 6, "parts": 1, "slug": "Temporal", "source": "https://github.com/temporalio/temporal.git", "source_commit": "a3b9b99bb56db0e938afdf77491638b80120525c", "status": "COMPLETE"}
+{"number": 7, "parts": 7, "slug": "Schemathesis", "source": "https://github.com/schemathesis/schemathesis.git", "source_commit": "a297c90469b85093ae11138440439cf2068c059b", "status": "COMPLETE"}
