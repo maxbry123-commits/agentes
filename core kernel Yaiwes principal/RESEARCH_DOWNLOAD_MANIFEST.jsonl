@@ -24,3 +24,9 @@
 {"number": 8, "parts": 2, "relocated_from": ["Agente core kernel Yaiwes principal/SQLite_0001.zip", "Agente core kernel Yaiwes principal/SQLite_0002.zip"], "relocated_to": "core kernel Yaiwes principal", "slug": "SQLite", "source": "https://github.com/sqlite/sqlite.git", "source_commit": "ff622746c4710a370d6cf1f575dbfa300ddabe05", "status": "COMPLETE"}
 {"number": 14, "parts": 1, "relocated_to": "core kernel Yaiwes principal", "slug": "Soul-Spec", "source": "https://github.com/AntonioTF5/soul-spec.git", "source_commit": "8d862030baaf9b02c24ad3b0cd1b327832e00586", "status": "COMPLETE"}
 {"number": 1, "parts": 7, "slug": "Kubernetes", "source": "https://github.com/kubernetes/kubernetes.git", "source_commit": "55259683c65ae9e37c1dea05dbfa61d4479ad973", "status": "COMPLETE"}
+{"number": 2, "parts": 18, "slug": "Ray", "source": "https://github.com/ray-project/ray.git", "source_commit": "ea85a26edf6b69610e6a29064abbccca8ba93953", "status": "COMPLETE"}
+{"number": 3, "parts": 1, "slug": "AI-Scientist-v2", "source": "https://github.com/SakanaAI/AI-Scientist-v2.git", "source_commit": "96bd51617cfdbb494a9fc283af00fe090edfae48", "status": "COMPLETE"}
+{"number": 5, "parts": 1, "slug": "Click", "source": "https://github.com/pallets/click.git", "source_commit": "36baa15ff831b939a22bc527cd76ce653ef6f66d", "status": "COMPLETE"}
+{"number": 6, "parts": 1, "slug": "JSON-Schema", "source": "https://github.com/json-schema-org/json-schema-spec.git", "source_commit": "0932747f3f3128758f3166e0d3e23e0b8d1025ee", "status": "COMPLETE"}
+{"number": 7, "parts": 1, "slug": "OpenTelemetry-Python", "source": "https://github.com/open-telemetry/opentelemetry-python.git", "source_commit": "eeeaa8f925c2b4430db3c08ef9912249138d7c00", "status": "COMPLETE"}
+{"number": 8, "parts": 1, "slug": "pymerkle", "source": "https://github.com/fmerg/pymerkle.git", "source_commit": "53d938f0122b1788731dee5f1cfb8fac7ce25bd5", "status": "COMPLETE"}
