@@ -38,3 +38,10 @@
 {"number": 5, "parts": 1, "slug": "mypy", "source": "https://github.com/python/mypy.git", "source_commit": "3ad6157f9b66e71738bf39cae939aef7c3fd7ea8", "status": "COMPLETE"}
 {"number": 6, "parts": 1, "slug": "Temporal", "source": "https://github.com/temporalio/temporal.git", "source_commit": "a3b9b99bb56db0e938afdf77491638b80120525c", "status": "COMPLETE"}
 {"number": 7, "parts": 7, "slug": "Schemathesis", "source": "https://github.com/schemathesis/schemathesis.git", "source_commit": "a297c90469b85093ae11138440439cf2068c059b", "status": "COMPLETE"}
+{"number": 8, "parts": 2, "slug": "Git", "source": "https://github.com/git/git.git", "source_commit": "1630431f326e15fcde608827b5ff38422528eb59", "status": "COMPLETE"}
+{"number": 9, "parts": 2, "slug": "Burr", "source": "https://github.com/DAGWorks-Inc/burr.git", "source_commit": "69ba3bc58a2507e84535d27a008b949656a33302", "status": "COMPLETE"}
+{"number": 10, "parts": 1, "slug": "business-rules", "source": "https://github.com/venmo/business-rules.git", "source_commit": "b5c1a3cee725ae5cebcd64c19b6165dd2cb4e59e", "status": "COMPLETE"}
+{"number": 11, "parts": 3, "slug": "Flagsmith", "source": "https://github.com/Flagsmith/flagsmith.git", "source_commit": "76da16c557008a3bd9366c753f0e9ce5d3a1006f", "status": "COMPLETE"}
+{"number": 12, "parts": 1, "slug": "Ajv", "source": "https://github.com/ajv-validator/ajv.git", "source_commit": "f177fe323420ccb23e1a79445fd470cbf80aee7c", "status": "COMPLETE"}
+{"number": 13, "parts": 2, "slug": "LangChain", "source": "https://github.com/langchain-ai/langchain.git", "source_commit": "8973dbc6f5c36b88a6fd28dfaee45f28c1b9b1dd", "status": "COMPLETE"}
+{"number": 14, "parts": 1, "slug": "Huginn", "source": "https://github.com/seal-rg/recurrent-pretraining.git", "source_commit": "1ea7220ec7eb42d13e89db0663df254d0bcdc28e", "status": "COMPLETE"}
