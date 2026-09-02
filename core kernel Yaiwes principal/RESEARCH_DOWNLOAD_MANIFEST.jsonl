@@ -129,3 +129,10 @@
 {"number": 31, "parts": 1, "slug": "Luigi", "source": "https://github.com/spotify/luigi.git", "source_commit": "715f65c4a56a908ef0a1df4df6fc33b8420e2e6c", "status": "COMPLETE"}
 {"number": 32, "parts": 1, "slug": "Graphiti", "source": "https://github.com/getzep/graphiti.git", "source_commit": "11538f6d45561bcce9a4400b374fb2dc533dccb6", "status": "COMPLETE"}
 {"number": 1, "parts": 7, "slug": "Erlang-OTP", "source": "https://github.com/erlang/otp.git", "source_commit": "1e245fa566e271d90cd225cceffe58a2695c8cbf", "status": "COMPLETE"}
+{"number": 2, "parts": 12, "slug": "AI-Scientist", "source": "https://github.com/SakanaAI/AI-Scientist.git", "source_commit": "1de1dbc1f4ee2c5f61e9c94348d55eb51d7fa2eb", "status": "COMPLETE"}
+{"number": 3, "parts": 3, "slug": "Mixture-of-Agents", "source": "https://github.com/togethercomputer/MoA.git", "source_commit": "1b5cab0f0905d9da821e37322ac6df96ba65e1a7", "status": "COMPLETE"}
+{"number": 4, "parts": 1, "slug": "Typer", "source": "https://github.com/fastapi/typer.git", "source_commit": "99eb220df7c69a0f14a0b69214042677e0760b9d", "status": "COMPLETE"}
+{"number": 5, "parts": 1, "slug": "datamodel-code-generator", "source": "https://github.com/koxudaxi/datamodel-code-generator.git", "source_commit": "4e169a6755c05021d4f996b3c5d1f35f61ec2137", "status": "COMPLETE"}
+{"number": 6, "parts": 1, "slug": "OpenTelemetry-Collector", "source": "https://github.com/open-telemetry/opentelemetry-collector.git", "source_commit": "cd3455cf3a7f672208140b1ebb1581c542b2b0ed", "status": "COMPLETE"}
+{"number": 7, "parts": 1, "slug": "Tenacity", "source": "https://github.com/jd/tenacity.git", "source_commit": "3e58094d3bc414975aad9eadf343a32bdb3b89b3", "status": "COMPLETE"}
+{"number": 8, "parts": 1, "slug": "pytest", "source": "https://github.com/pytest-dev/pytest.git", "source_commit": "51e9a9f148cd2509a31e3fa0d2b1b3204c2b0dd7", "status": "COMPLETE"}
