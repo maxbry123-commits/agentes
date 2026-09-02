@@ -1,24 +1,24 @@
 # CHECKPOINT INVENTARIO E ÍNDICES V3
 
 contract_id: YAIWES-INVENTORY-INDEXES-V3
-run_timestamp: 2026-09-02T23:16:00Z
-iteration: 2
+run_timestamp: 2026-09-02T23:23:30Z
+iteration: 3
 phase: GAP_RECOVERY
 
 repositories:
   total: 7
-  audited: 4
-  pass: 0
-  gaps: 4
+  audited: 5
+  pass: 3
+  gaps: 2
 
 components:
-  discovered: 438
-  unique: 291
-  complete: 0
+  discovered: 474
+  unique: 351
+  complete: 98
   relocated: 0
   skipped: 0
   gaps: 0
-  insufficient_evidence: 438
+  insufficient_evidence: 374
 
 repository_resolution:
   - requested: maxbry123-commits/osquestador
@@ -30,6 +30,43 @@ repository_resolution:
     resolved_repository: maxbry123-commits/osquestador-auditor
     evidence: account repository search for osquestador auditor / auditor memoria; public repo on owner; root contains downloaded components and folders named osquestador auditor memoria
 
+verified_repositories:
+  - repository: maxbry123-commits/nct-core
+    audit_verdict: PASS
+    downloaded_components: 43
+    complete: 43
+    duplicate_relocated: 0
+    skipped_in_component_universe: 0
+    gaps: 0
+    insufficient_evidence: 0
+    recovery_run_url: https://github.com/maxbry123-commits/nct-core/actions/runs/33694193995
+    artifact_digest: sha256:3acadba3a8b42c888d6bdb8debfce659db8629563dc8006e1914688583d999e2
+  - repository: maxbry123-commits/router-universal-router-inteligente-
+    audit_verdict: PASS
+    downloaded_components: 56
+    complete: 55
+    duplicate_relocated: 1
+    skipped_in_component_universe: 0
+    gaps: 0
+    insufficient_evidence: 0
+    recovery_run_url: https://github.com/maxbry123-commits/router-universal-router-inteligente-/actions/runs/33694032348
+    independent_confirmation_run_url: https://github.com/maxbry123-commits/router-universal-router-inteligente-/actions/runs/33694156546
+    exclusion_run_url: https://github.com/maxbry123-commits/router-universal-router-inteligente-/actions/runs/33694631520
+    recovery_artifact_digest: sha256:b661f8f555bc9b6bd5e9ee17133b0c264db85165151cf76b272faa50af8f4d86
+    independent_artifact_digest: sha256:1046b89e87c1c487058af3635f1ee3fcbdcfa772f8ac14292a2779e3c8d59075
+    exclusion_artifact_digest: sha256:ef4d62bc227ab8c18e5324b1ae1986e788a90ee5125e85330b1df9737774e259
+    resolved_duplicate: MCP-Python-SDK has canonical source/commit and two verified locations; one global component entry will retain both locations
+    excluded_non_downloaded: websockets manifest row says SKIPPED reason=clone, has no source_commit, no parts and zero matching ZIPs; excluded from downloaded-component universe
+  - repository: maxbry123-commits/Orquestador-Maxbry-
+    audit_verdict: PASS
+    downloaded_components: 0
+    excluded_unassociated_archives: 5
+    gaps: 0
+    insufficient_evidence: 0
+    provenance_run_url: https://github.com/maxbry123-commits/Orquestador-Maxbry-/actions/runs/33694667205
+    artifact_digest: sha256:aa128d4dea82da08ff2e13006644b749ddbf7fa12a91f8f2f71a6da683102b48
+    note: NUL-safe V2 confirmed all 5 ZIP archives. Repository contains zero RESEARCH_DOWNLOAD_MANIFEST.jsonl and no archive has a unique external GitHub URL + 40-char source SHA pair. Archives are recorded as EXCLUDED_UNASSOCIATED_ARCHIVE, not invented components.
+
 active_workflows:
   - repository: maxbry123-commits/agentes
     run_url: https://github.com/maxbry123-commits/agentes/actions/runs/33694014240
@@ -37,30 +74,6 @@ active_workflows:
     status: in_progress
     conclusion: null
     purpose: GAP-AGENTES-ZIPMAP-001
-  - repository: maxbry123-commits/nct-core
-    run_url: https://github.com/maxbry123-commits/nct-core/actions/runs/33694193995
-    run_id: 33694193995
-    status: in_progress
-    conclusion: null
-    purpose: GAP-NCT-ZIPMAP-001
-  - repository: maxbry123-commits/router-universal-router-inteligente-
-    run_url: https://github.com/maxbry123-commits/router-universal-router-inteligente-/actions/runs/33694032348
-    run_id: 33694032348
-    status: in_progress
-    conclusion: null
-    purpose: GAP-ROUTER-ZIPMAP-001
-  - repository: maxbry123-commits/router-universal-router-inteligente-
-    run_url: https://github.com/maxbry123-commits/router-universal-router-inteligente-/actions/runs/33694156546
-    run_id: 33694156546
-    status: in_progress
-    conclusion: null
-    purpose: additional isolated router ZIP-map recovery observed; do not cancel or duplicate
-  - repository: maxbry123-commits/Orquestador-Maxbry-
-    run_url: https://github.com/maxbry123-commits/Orquestador-Maxbry-/actions/runs/33694248287
-    run_id: 33694248287
-    status: in_progress
-    conclusion: null
-    purpose: GAP-ORQUESTADOR-PROVENANCE-001
   - repository: maxbry123-commits/osquestador-auditor
     run_url: https://github.com/maxbry123-commits/osquestador-auditor/actions/runs/33693813584
     run_id: 33693813584
@@ -74,93 +87,68 @@ active_workflows:
     conclusion: null
     purpose: initial forensic inventory
   - repository: maxbry123-commits/frontend
-    run_url: https://github.com/maxbry123-commits/frontend/actions/runs/33693820656
-    run_id: 33693820656
+    run_url: https://github.com/maxbry123-commits/frontend/actions/runs/33694616279
+    run_id: 33694616279
     status: in_progress
     conclusion: null
-    purpose: initial forensic inventory
-
-completed_initial_runs:
-  - repository: maxbry123-commits/agentes
-    run_url: https://github.com/maxbry123-commits/agentes/actions/runs/33693716423
-    run_id: 33693716423
-    conclusion: success
-    audit_verdict: GAP
-    artifact_digest: sha256:19e3fb35975d17f2bb298f14a066f8cdbfb5ee79375808e9c30785f9885e682a
-  - repository: maxbry123-commits/router-universal-router-inteligente-
-    run_url: https://github.com/maxbry123-commits/router-universal-router-inteligente-/actions/runs/33693726004
-    run_id: 33693726004
-    conclusion: success
-    audit_verdict: GAP
-    artifact_digest: sha256:0920b6f61913a6e7616930f2b692479b16393c76b8c55718671013e0ca4e8000
-  - repository: maxbry123-commits/nct-core
-    run_url: https://github.com/maxbry123-commits/nct-core/actions/runs/33693794321
-    run_id: 33693794321
-    conclusion: success
-    audit_verdict: GAP
-    artifact_digest: sha256:ce1fa5f47eea24543f0558d750c853badd9a0f36fa6762919cdd82d0f026eb3d
-  - repository: maxbry123-commits/Orquestador-Maxbry-
-    run_url: https://github.com/maxbry123-commits/Orquestador-Maxbry-/actions/runs/33693802223
-    run_id: 33693802223
-    conclusion: success
-    audit_verdict: GAP
-    artifact_digest: sha256:47d4938f9bafa756c4bdaa7203043963995699a95b52782bf56aea7b37a61a94
+    purpose: GAP-FRONTEND-ZIPMAP-001
 
 pending_tasks:
   - id: GAP-AGENTES-ZIPMAP-001
     repository: maxbry123-commits/agentes
-    gap: 338 first-pass entries had source/SHA but no verified destination/ZIP mapping
-    recovery: verify RESEARCH_DOWNLOAD_MANIFEST slug + parts against real ZIP paths; classify COMPLETE/RELOCATED/DUPLICATE_RELOCATED/GAP/SKIPPED
-  - id: GAP-ROUTER-ZIPMAP-001
-    repository: maxbry123-commits/router-universal-router-inteligente-
-    gap: 57 first-pass entries had source/SHA but no verified destination/ZIP mapping
-    recovery: ZIP-map workflows active
-  - id: GAP-NCT-ZIPMAP-001
-    repository: maxbry123-commits/nct-core
-    gap: 43 first-pass entries had source/SHA but no verified destination/ZIP mapping
-    recovery: ZIP-map workflow active
-  - id: GAP-ORQUESTADOR-PROVENANCE-001
-    repository: maxbry123-commits/Orquestador-Maxbry-
-    gap: 0 download manifests; 5 ZIP archives present without source_url/source_commit proof
-    recovery: provenance workflow scans Git history and textual references; do not infer component status from filename
+    gap: 338 first-pass manifest rows await ZIP/destination mapping
+    recovery: active isolated ZIP-map workflow
+  - id: GAP-FRONTEND-ZIPMAP-001
+    repository: maxbry123-commits/frontend
+    gap: initial generic scanner mixed download manifests with project-internal manifest.json files; actual RESEARCH_DOWNLOAD_MANIFEST universe is being remapped
+    recovery: active isolated ZIP-map workflow limited to RESEARCH_DOWNLOAD_MANIFEST.jsonl
   - id: WAIT-AUDITOR-001
     repository: maxbry123-commits/osquestador-auditor
-    gap: initial workflow active
-    recovery: preserve run and verify artifact after completion
+    gap: initial workflow still active; not PASS
+    recovery: preserve run; verify artifact after completion
   - id: WAIT-MOTORES-001
     repository: maxbry123-commits/Agentes-motores-Wordflow-YAIWES
-    gap: initial workflow active
-    recovery: preserve run and verify artifact after completion
-  - id: WAIT-FRONTEND-001
-    repository: maxbry123-commits/frontend
-    gap: initial workflow active
-    recovery: preserve run and verify artifact after completion
+    gap: initial workflow still active; not PASS
+    recovery: preserve run; verify artifact after completion
 
 artifacts:
   global_index_url: null
   local_index_urls: []
   audit_report_url: null
 
+automation:
+  title: LOOP Inventario e índices YAIWES
+  schedule: hourly
+  timezone: America/Bogota
+  enabled: true
+
 verdict: RUNNING
 
 ## Current evidence snapshot
 
-- agentes: 11,516 files; 1,446 directories; 1,021 ZIP/part files; 338 first-pass component rows; ZIP-map recovery active.
-- router: 405 files; 48 directories; 324 ZIP/part files; 57 first-pass component rows; ZIP-map recovery active.
-- nct-core: 359 files; 44 directories; 265 ZIP/part files; 43 first-pass component rows; ZIP-map recovery active.
-- Orquestador-Maxbry-: 352 files; 55 directories; 5 ZIP archives; no download manifest; provenance recovery active.
+- PASS repositories: 3/7 — nct-core, router-universal-router-inteligente-, Orquestador-Maxbry-.
+- nct-core: 43 downloaded components, all COMPLETE.
+- router: 56 downloaded components; 55 COMPLETE + 1 DUPLICATE_RELOCATED with both locations verified; 1 non-downloaded SKIPPED manifest row excluded with dedicated evidence.
+- Orquestador-Maxbry-: 0 downloaded components; 5 unassociated archives excluded by provenance V2.
+- frontend: initial run complete but not PASS; ZIP-map recovery active.
+- agentes: recovery active.
+- osquestador-auditor and Agentes-motores-Wordflow-YAIWES: initial audit runs active.
 - Active jobs are not PASS.
-- Stage 2 indexes remain blocked.
+- Stage 2 index generation is blocked until 7/7 repositories have verified audit artifacts.
 
 ## Iteration history
 
+### Iteration 2 — 2026-09-02T23:16:00Z
+
+- repositories audited: 4/7
+- PASS: 0
+- active recoveries: agentes, nct-core, router, Orquestador provenance
+- active initial audits: osquestador-auditor, motores-YAIWES, frontend
+- checkpoint commit: 6e92ee0aa7c1187682ff00ba84fe2ca1f135705d
+
 ### Iteration 1 — 2026-09-02T23:12:00Z
 
-- phase: GAP_RECOVERY
 - repositories audited: 2/7
-- verified PASS: 0
-- first-pass rows: 395
-- unique canonical IDs observed: 252
+- PASS: 0
 - confirmed gaps: agentes ZIP-map; router ZIP-map
-- active initial runs: nct-core, Orquestador-Maxbry-, osquestador-auditor, Agentes-motores-Wordflow-YAIWES, frontend
-- checkpoint commit before this update: da5755fd2def32ac2a82a8e80caf36d3116d11cd
+- checkpoint commit: da5755fd2def32ac2a82a8e80caf36d3116d11cd
