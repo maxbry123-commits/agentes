@@ -155,3 +155,6 @@
 {"number": 25, "parts": 1, "slug": "Marshmallow", "source": "https://github.com/marshmallow-code/marshmallow.git", "source_commit": "74e0043254d2390afe7f8ac83162bb99fd0aafe1", "status": "COMPLETE"}
 {"number": 26, "parts": 1, "slug": "MCP-Go", "source": "https://github.com/mark3labs/mcp-go.git", "source_commit": "8841bf7bfe8ad14103adaa0794269e57988cd48c", "status": "COMPLETE"}
 {"number": 27, "parts": 1, "slug": "Cedar", "source": "https://github.com/cedar-policy/cedar.git", "source_commit": "ec30badc0fbc331741982553bbec29af6ba262ea", "status": "COMPLETE"}
+{"number": 28, "parts": 4, "slug": "Prefect", "source": "https://github.com/PrefectHQ/prefect.git", "source_commit": "a37d448a4a6703e3c185bd397f56a7df06fb774d", "status": "COMPLETE"}
+{"number": 29, "parts": 2, "slug": "Dapr", "source": "https://github.com/dapr/dapr.git", "source_commit": "ea364f3a339333e15b991c1af7c62335a9d9b86d", "status": "COMPLETE"}
+{"number": 30, "parts": 4, "slug": "Trigger-dev", "source": "https://github.com/triggerdotdev/trigger.dev.git", "source_commit": "755feb2b50ad1639730d8d7435143b144ea15303", "status": "COMPLETE"}
