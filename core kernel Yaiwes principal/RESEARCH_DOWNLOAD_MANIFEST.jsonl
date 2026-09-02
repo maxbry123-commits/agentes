@@ -56,3 +56,7 @@
 {"number": 23, "parts": 6, "slug": "VictoriaMetrics", "source": "https://github.com/VictoriaMetrics/VictoriaMetrics.git", "source_commit": "7962615fae42a8d2c72b0c9703bc30948f1868d2", "status": "COMPLETE"}
 {"number": 24, "parts": 2, "slug": "Kata-Containers", "source": "https://github.com/kata-containers/kata-containers.git", "source_commit": "4ffe5ccb5961276d5d4a142b08966587badc70dc", "status": "COMPLETE"}
 {"number": 25, "parts": 18, "slug": "PostHog", "source": "https://github.com/PostHog/posthog.git", "source_commit": "ca1bb095e6976e7fad740b93bf4da18bd21784ae", "status": "COMPLETE"}
+{"number": 26, "parts": 1, "slug": "OpenHands", "source": "https://github.com/OpenHands/OpenHands.git", "source_commit": "b4428e1f8529fe726039437c8e54a7e7319986eb", "status": "COMPLETE"}
+{"number": 27, "parts": 1, "slug": "OpenAI-Skills", "source": "https://github.com/openai/skills.git", "source_commit": "49f948faa9258a0c61caceaf225e179651397431", "status": "COMPLETE"}
+{"number": 28, "parts": 1, "slug": "NVIDIA-Garak", "source": "https://github.com/NVIDIA/garak.git", "source_commit": "8ed1543b985a5722adb659584182faf6f7907d4e", "status": "COMPLETE"}
+{"number": 29, "parts": 2, "slug": "Argo-Workflows", "source": "https://github.com/argoproj/argo-workflows.git", "source_commit": "35bff19146f5a6ada77468c431f2624bd577e373", "status": "COMPLETE"}
