@@ -123,3 +123,5 @@
 {"number": 25, "parts": 1, "slug": "Caddy", "source": "https://github.com/caddyserver/caddy.git", "source_commit": "62a72977e58c87fad7e7726c18b58f10c653f2d3", "status": "COMPLETE"}
 {"number": 26, "parts": 4, "slug": "FastMCP", "source": "https://github.com/PrefectHQ/fastmcp.git", "source_commit": "94078f107f9b5ec0d1a28317ae5ac696bc5d00e8", "status": "COMPLETE"}
 {"number": 27, "parts": 3, "slug": "Portkey-AI-Gateway", "source": "https://github.com/Portkey-AI/gateway.git", "source_commit": "669825cbe89ee51569918b8f78a9db486fd69dd4", "status": "COMPLETE"}
+{"number": 28, "parts": 14, "slug": "Dagster", "source": "https://github.com/dagster-io/dagster.git", "source_commit": "052975e38f3e1d53b04a259ad2fdbc943c940352", "status": "COMPLETE"}
+{"number": 29, "parts": 1, "slug": "Azure-Durable-Functions", "source": "https://github.com/Azure/azure-functions-durable-extension.git", "source_commit": "2aa44a4836510d7ca481356603c02cd25ac51404", "status": "COMPLETE"}
