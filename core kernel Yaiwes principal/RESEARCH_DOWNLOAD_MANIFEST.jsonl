@@ -96,3 +96,11 @@
 {"number": 30, "parts": 6, "slug": "Flowable", "source": "https://github.com/flowable/flowable-engine.git", "source_commit": "d6d39ce1c69ff244f2d9dc6af756a9b95e865586", "status": "COMPLETE"}
 {"number": 31, "parts": 2, "slug": "Cloudflare-Workers-SDK", "source": "https://github.com/cloudflare/workers-sdk.git", "source_commit": "fd17fc5c5fb86423e37ff5b142391e03cd7dbf59", "status": "COMPLETE"}
 {"number": 32, "parts": 3, "slug": "Chroma", "source": "https://github.com/chroma-core/chroma.git", "source_commit": "3090b912eed5f396e30d30e5159ce59d60523b64", "status": "COMPLETE"}
+{"number": 1, "parts": 3, "slug": "Nomad", "source": "https://github.com/hashicorp/nomad.git", "source_commit": "9f48ec7abeec2219da5c001b8d3d68803cba3e33", "status": "COMPLETE"}
+{"number": 2, "parts": 1, "slug": "Celery", "source": "https://github.com/celery/celery.git", "source_commit": "0af84937a8705cf0222b044f45e0dd995967e18d", "status": "COMPLETE"}
+{"number": 3, "parts": 1, "slug": "Tree-of-Thoughts", "source": "https://github.com/princeton-nlp/tree-of-thought-llm.git", "source_commit": "8050e67d0e3a0fddc424d7fa5801538722a4c4cc", "status": "COMPLETE"}
+{"number": 4, "parts": 1, "slug": "Syft", "source": "https://github.com/anchore/syft.git", "source_commit": "12d5544b2a5155969efac881c3a6f1ccace0fc2f", "status": "COMPLETE"}
+{"number": 5, "parts": 1, "slug": "Pydantic", "source": "https://github.com/pydantic/pydantic.git", "source_commit": "5283870ccfce82fe3cf7f374ee00df9289f0c9ab", "status": "COMPLETE"}
+{"number": 6, "parts": 1, "slug": "LangGraph", "source": "https://github.com/langchain-ai/langgraph.git", "source_commit": "11ee185999b86bfea2d8c0e69cef9a5e37acf686", "status": "COMPLETE"}
+{"number": 7, "parts": 1, "slug": "Pact-Specification", "source": "https://github.com/pact-foundation/pact-specification.git", "source_commit": "2746817263962c3c470e2f16157153eb78c299bd", "status": "COMPLETE"}
+{"number": 8, "parts": 2, "slug": "Mem0", "source": "https://github.com/mem0ai/mem0.git", "source_commit": "c33ca27f5e8f920b27a9414927f4c7e2c1887fa8", "status": "COMPLETE"}
