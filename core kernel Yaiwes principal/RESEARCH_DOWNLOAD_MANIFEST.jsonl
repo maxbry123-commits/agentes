@@ -93,3 +93,6 @@
 {"number": 27, "parts": 1, "slug": "Hugging-Face-Skills", "source": "https://github.com/huggingface/skills.git", "source_commit": "cead19e10754e773bad24fecef83cb64be24094e", "status": "COMPLETE"}
 {"number": 28, "parts": 9, "slug": "Apache-Airflow", "source": "https://github.com/apache/airflow.git", "source_commit": "bf976c8805ad1a9e9664723aefcd0a62b659d627", "status": "COMPLETE"}
 {"number": 29, "parts": 4, "slug": "AWS-Step-Functions-DS-SDK", "source": "https://github.com/aws/aws-step-functions-data-science-sdk-python.git", "source_commit": "0e970ccde4ef7cc532f80040598e8d4d55f6486d", "status": "COMPLETE"}
+{"number": 30, "parts": 6, "slug": "Flowable", "source": "https://github.com/flowable/flowable-engine.git", "source_commit": "d6d39ce1c69ff244f2d9dc6af756a9b95e865586", "status": "COMPLETE"}
+{"number": 31, "parts": 2, "slug": "Cloudflare-Workers-SDK", "source": "https://github.com/cloudflare/workers-sdk.git", "source_commit": "fd17fc5c5fb86423e37ff5b142391e03cd7dbf59", "status": "COMPLETE"}
+{"number": 32, "parts": 3, "slug": "Chroma", "source": "https://github.com/chroma-core/chroma.git", "source_commit": "3090b912eed5f396e30d30e5159ce59d60523b64", "status": "COMPLETE"}
