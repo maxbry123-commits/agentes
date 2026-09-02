@@ -30,3 +30,4 @@
 {"number": 6, "parts": 1, "slug": "JSON-Schema", "source": "https://github.com/json-schema-org/json-schema-spec.git", "source_commit": "0932747f3f3128758f3166e0d3e23e0b8d1025ee", "status": "COMPLETE"}
 {"number": 7, "parts": 1, "slug": "OpenTelemetry-Python", "source": "https://github.com/open-telemetry/opentelemetry-python.git", "source_commit": "eeeaa8f925c2b4430db3c08ef9912249138d7c00", "status": "COMPLETE"}
 {"number": 8, "parts": 1, "slug": "pymerkle", "source": "https://github.com/fmerg/pymerkle.git", "source_commit": "53d938f0122b1788731dee5f1cfb8fac7ce25bd5", "status": "COMPLETE"}
+{"number": 9, "parts": 15, "slug": "MINIX3", "source": "https://github.com/Stichting-MINIX-Research-Foundation/minix.git", "source_commit": "4db99f4012570a577414fe2a43697b2f239b699e", "status": "COMPLETE"}
