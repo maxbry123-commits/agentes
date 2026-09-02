@@ -76,3 +76,7 @@
 {"number": 10, "parts": 1, "slug": "Zen-Engine", "source": "https://github.com/gorules/zen.git", "source_commit": "adf7cdf44aa4381967a5bef1908b3b02789c3180", "status": "COMPLETE"}
 {"number": 11, "parts": 2, "slug": "Unleash", "source": "https://github.com/Unleash/unleash.git", "source_commit": "ca1763351f4d1bdfdd365fba44cd48753ec62c4c", "status": "COMPLETE"}
 {"number": 12, "parts": 1, "slug": "Zod", "source": "https://github.com/colinhacks/zod.git", "source_commit": "764ac59f1afc1a46e7ecc2d5e8e86c57b7d66164", "status": "COMPLETE"}
+{"number": 13, "parts": 18, "slug": "CrewAI", "source": "https://github.com/crewAIInc/crewAI.git", "source_commit": "968c3065d334243498af0f5ed605f88344f334c1", "status": "COMPLETE"}
+{"number": 14, "parts": 6, "slug": "Self-Refine", "source": "https://github.com/madaan/self-refine.git", "source_commit": "9a206d41e5d2d0c241bb441f41eeadb945afaa55", "status": "COMPLETE"}
+{"number": 15, "parts": 1, "slug": "RouteLLM", "source": "https://github.com/lm-sys/RouteLLM.git", "source_commit": "0b64fdafe049e596a3f5657c219329f24af24198", "status": "COMPLETE"}
+{"number": 16, "parts": 1, "slug": "NeMo-Guardrails", "source": "https://github.com/NVIDIA-NeMo/Guardrails.git", "source_commit": "4f9672ee3ea7ebba34e3984476216a5116306d1c", "status": "COMPLETE"}
