@@ -118,3 +118,8 @@
 {"number": 20, "parts": 7, "slug": "Hermes-Agent", "source": "https://github.com/NousResearch/hermes-agent.git", "source_commit": "00b2e03c8028cbe9e6b59b03306be300c6a6df8c", "status": "COMPLETE"}
 {"number": 21, "parts": 4, "slug": "MCP", "source": "https://github.com/modelcontextprotocol/modelcontextprotocol.git", "source_commit": "3ff697dcbea0804f3f397b864cfbbaaa10cba71a", "status": "COMPLETE"}
 {"number": 22, "parts": 1, "slug": "APScheduler", "source": "https://github.com/agronholm/apscheduler.git", "source_commit": "b38973eba40b4845d0c8b3687c546ff0bfaa5d2f", "status": "COMPLETE"}
+{"number": 23, "parts": 2, "slug": "Phoenix", "source": "https://github.com/Arize-ai/phoenix.git", "source_commit": "a1ad1c5dda9b65d841ed7778765109c8986f9add", "status": "COMPLETE"}
+{"number": 24, "parts": 1, "slug": "Dramatiq", "source": "https://github.com/Bogdanp/dramatiq.git", "source_commit": "848b35f2f960457ff54a72f9edb3af0de754f72f", "status": "COMPLETE"}
+{"number": 25, "parts": 1, "slug": "Caddy", "source": "https://github.com/caddyserver/caddy.git", "source_commit": "62a72977e58c87fad7e7726c18b58f10c653f2d3", "status": "COMPLETE"}
+{"number": 26, "parts": 4, "slug": "FastMCP", "source": "https://github.com/PrefectHQ/fastmcp.git", "source_commit": "94078f107f9b5ec0d1a28317ae5ac696bc5d00e8", "status": "COMPLETE"}
+{"number": 27, "parts": 3, "slug": "Portkey-AI-Gateway", "source": "https://github.com/Portkey-AI/gateway.git", "source_commit": "669825cbe89ee51569918b8f78a9db486fd69dd4", "status": "COMPLETE"}
