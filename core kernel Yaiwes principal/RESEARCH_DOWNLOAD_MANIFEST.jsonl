@@ -60,3 +60,7 @@
 {"number": 27, "parts": 1, "slug": "OpenAI-Skills", "source": "https://github.com/openai/skills.git", "source_commit": "49f948faa9258a0c61caceaf225e179651397431", "status": "COMPLETE"}
 {"number": 28, "parts": 1, "slug": "NVIDIA-Garak", "source": "https://github.com/NVIDIA/garak.git", "source_commit": "8ed1543b985a5722adb659584182faf6f7907d4e", "status": "COMPLETE"}
 {"number": 29, "parts": 2, "slug": "Argo-Workflows", "source": "https://github.com/argoproj/argo-workflows.git", "source_commit": "35bff19146f5a6ada77468c431f2624bd577e373", "status": "COMPLETE"}
+{"number": 30, "parts": 8, "slug": "Camunda", "source": "https://github.com/camunda/camunda.git", "source_commit": "4ecc251754672819f3694bc5596356ed53322c66", "status": "COMPLETE"}
+{"number": 31, "parts": 1, "slug": "Restate", "source": "https://github.com/restatedev/restate.git", "source_commit": "285953f227244b55de71b532a5ea8347e3bc3b13", "status": "COMPLETE"}
+{"number": 32, "parts": 1, "slug": "sqlite-vec", "source": "https://github.com/asg017/sqlite-vec.git", "source_commit": "04d28bd21773981e2d266bbf6aa4efbd011eb4f6", "status": "COMPLETE"}
+{"number": 33, "parts": 1, "slug": "SOUL-md", "source": "https://github.com/totalmarkdown/soul.md.git", "source_commit": "e230a257f0906ce9b847c351c89c79d2c6e78637", "status": "COMPLETE"}
