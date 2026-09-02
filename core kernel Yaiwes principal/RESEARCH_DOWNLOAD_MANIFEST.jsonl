@@ -146,3 +146,4 @@
 {"number": 16, "parts": 10, "slug": "Microsoft-Presidio", "source": "https://github.com/microsoft/presidio.git", "source_commit": "e9b5795ff9302fc8a306eee9a73b87ab00426166", "status": "COMPLETE"}
 {"number": 17, "parts": 3, "slug": "DeepEval", "source": "https://github.com/confident-ai/deepeval.git", "source_commit": "5b45d36a0c13874528a73236d49442bea7e2a480", "status": "COMPLETE"}
 {"number": 18, "parts": 1, "slug": "backoff", "source": "https://github.com/litl/backoff.git", "source_commit": "d82b23c42d7a7e2402903e71e7a7f03014a00076", "status": "COMPLETE"}
+{"number": 19, "parts": 4, "slug": "gVisor", "source": "https://github.com/google/gvisor.git", "source_commit": "16f043af4442a56d475b0932b460972846669c77", "status": "COMPLETE"}
