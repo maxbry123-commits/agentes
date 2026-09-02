@@ -115,3 +115,6 @@
 {"number": 17, "parts": 4, "slug": "TruLens", "source": "https://github.com/truera/trulens.git", "source_commit": "fd2d2601b3721f1a5f515474fe8bab4cef387743", "status": "COMPLETE"}
 {"number": 18, "parts": 2, "slug": "Prometheus-Evaluator-LM", "source": "https://github.com/prometheus-eval/prometheus.git", "source_commit": "60e2c58956d670532d48ae94fefe278809b98aee", "status": "COMPLETE"}
 {"number": 19, "parts": 1, "slug": "E2B", "source": "https://github.com/e2b-dev/E2B.git", "source_commit": "5a56c87e9db0e221b138662805af7743e75f1082", "status": "COMPLETE"}
+{"number": 20, "parts": 7, "slug": "Hermes-Agent", "source": "https://github.com/NousResearch/hermes-agent.git", "source_commit": "00b2e03c8028cbe9e6b59b03306be300c6a6df8c", "status": "COMPLETE"}
+{"number": 21, "parts": 4, "slug": "MCP", "source": "https://github.com/modelcontextprotocol/modelcontextprotocol.git", "source_commit": "3ff697dcbea0804f3f397b864cfbbaaa10cba71a", "status": "COMPLETE"}
+{"number": 22, "parts": 1, "slug": "APScheduler", "source": "https://github.com/agronholm/apscheduler.git", "source_commit": "b38973eba40b4845d0c8b3687c546ff0bfaa5d2f", "status": "COMPLETE"}
