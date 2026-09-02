@@ -3,6 +3,10 @@ name: Auditoria indices componentes
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - "auditoria-trigger-v2.txt"
   push:
     branches: [main]
     paths:
@@ -128,6 +132,7 @@ jobs:
           PY
 
       - name: Publicar evidencia
+        if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
@@ -141,6 +146,7 @@ jobs:
           fi
 
       - name: Subir artefacto
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: auditoria-indices-componentes
