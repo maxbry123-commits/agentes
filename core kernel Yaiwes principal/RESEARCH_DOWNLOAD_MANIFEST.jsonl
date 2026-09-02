@@ -143,3 +143,6 @@
 {"number": 13, "parts": 6, "slug": "Instructor", "source": "https://github.com/jxnl/instructor.git", "source_commit": "2b64e4978d66266e924248c784f16e7b8f8ef333", "status": "COMPLETE"}
 {"number": 14, "parts": 1, "slug": "transitions", "source": "https://github.com/pytransitions/transitions.git", "source_commit": "bd42b38f3627e6bca7274fb4d9af2e105f75da7c", "status": "COMPLETE"}
 {"number": 15, "parts": 1, "slug": "Cerbos", "source": "https://github.com/cerbos/cerbos.git", "source_commit": "e340c61d4db3de266053472475a2c2c0c74bc1f9", "status": "COMPLETE"}
+{"number": 16, "parts": 10, "slug": "Microsoft-Presidio", "source": "https://github.com/microsoft/presidio.git", "source_commit": "e9b5795ff9302fc8a306eee9a73b87ab00426166", "status": "COMPLETE"}
+{"number": 17, "parts": 3, "slug": "DeepEval", "source": "https://github.com/confident-ai/deepeval.git", "source_commit": "5b45d36a0c13874528a73236d49442bea7e2a480", "status": "COMPLETE"}
+{"number": 18, "parts": 1, "slug": "backoff", "source": "https://github.com/litl/backoff.git", "source_commit": "d82b23c42d7a7e2402903e71e7a7f03014a00076", "status": "COMPLETE"}
