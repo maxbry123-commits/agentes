@@ -1,0 +1,133 @@
+name: YAIWES evolution vendor copy
+on:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-evolution-vendor-copy.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: yaiwes-evolution-vendor-copy
+  cancel-in-progress: false
+
+jobs:
+  openclaw:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: maxbry123-commits/agentes
+          ref: main
+          path: dest
+          persist-credentials: true
+      - uses: actions/checkout@v4
+        with:
+          repository: maxbry123-commits/Agentes-motores-Wordflow-YAIWES
+          ref: main
+          path: source
+          filter: blob:none
+          sparse-checkout: |
+            ROOTS/openclaw/src/plugins
+            ROOTS/openclaw/src/skills
+            ROOTS/openclaw/src/hooks
+            ROOTS/openclaw/src/cron
+      - name: Copy selected OpenClaw sources without overwrite
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="dest/agente-yaiwes/multi-workflow-engine/instances/source-evolution-workflow/vendor/openclaw"
+          mkdir -p "$ROOT"
+          copy_one() {
+            src="$1"; rel="$2"; out="$ROOT/$rel"
+            test -f "$src"
+            mkdir -p "$(dirname "$out")"
+            if test -e "$out"; then cmp -s "$src" "$out" || { echo "COLLISION $out"; exit 31; }
+            else cp -a "$src" "$out"; fi
+          }
+          S="source/ROOTS/openclaw/src"
+          for f in             plugins/activation-planner.ts plugins/activation-planner.test.ts             plugins/active-runtime-registry.ts plugins/active-runtime-registry.test.ts             plugins/catalog-search.ts plugins/catalog-search.test.ts             plugins/discovery.ts plugins/discovery.test.ts             plugins/git-install.ts plugins/git-install.test.ts             plugins/hook-isolation.ts plugins/config-schema.ts plugins/config-schema.test.ts             hooks/loader.ts hooks/loader.test.ts hooks/install.ts hooks/install.test.ts             hooks/plugin-hooks.ts hooks/plugin-hooks.test.ts             cron/heartbeat-monitor.ts cron/heartbeat-monitor.test.ts             cron/heartbeat-task.ts; do
+            copy_one "$S/$f" "$f"
+          done
+          find "$ROOT" -type f -print0 | sort -z | xargs -0 sha256sum > "$ROOT/SOURCE_SHA256SUMS.txt"
+      - name: Commit OpenClaw source
+        working-directory: dest
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add --sparse agente-yaiwes/multi-workflow-engine/instances/source-evolution-workflow/vendor/openclaw
+          git diff --cached --quiet && exit 0
+          git commit -m 'vendor(yaiwes): copy OpenClaw evolution sources'
+          git push origin HEAD:main
+
+  hermes:
+    needs: openclaw
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: maxbry123-commits/agentes
+          ref: main
+          path: dest
+          persist-credentials: true
+      - uses: actions/checkout@v4
+        with:
+          repository: maxbry123-commits/Agentes-motores-Wordflow-YAIWES
+          ref: main
+          path: source
+          filter: blob:none
+          sparse-checkout: |
+            Core kernel razonamiento repo para Yaiwes/Atomic-Hermes/Atomic-Hermes/tools
+            Core kernel razonamiento repo para Yaiwes/Atomic-Hermes/Atomic-Hermes/agent
+            Core kernel razonamiento repo para Yaiwes/Atomic-Hermes/Atomic-Hermes/gateway
+      - name: Copy selected Hermes sources without overwrite
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="dest/agente-yaiwes/multi-workflow-engine/instances/source-evolution-workflow/vendor/hermes"
+          BASE="source/Core kernel razonamiento repo para Yaiwes/Atomic-Hermes/Atomic-Hermes"
+          mkdir -p "$ROOT"
+          copy_one() {
+            src="$1"; rel="$2"; out="$ROOT/$rel"
+            test -f "$src"
+            mkdir -p "$(dirname "$out")"
+            if test -e "$out"; then cmp -s "$src" "$out" || { echo "COLLISION $out"; exit 31; }
+            else cp -a "$src" "$out"; fi
+          }
+          for f in             tools/registry.py tools/skill_manager_tool.py tools/skills_guard.py             tools/skills_hub.py tools/skills_sync.py tools/skills_tool.py             tools/checkpoint_manager.py tools/process_registry.py             agent/skill_commands.py agent/skill_utils.py agent/shell_hooks.py             gateway/hooks.py gateway/builtin_hooks/boot_md.py; do
+            copy_one "$BASE/$f" "$f"
+          done
+          find "$ROOT" -type f -print0 | sort -z | xargs -0 sha256sum > "$ROOT/SOURCE_SHA256SUMS.txt"
+      - name: Commit Hermes source
+        working-directory: dest
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add --sparse agente-yaiwes/multi-workflow-engine/instances/source-evolution-workflow/vendor/hermes
+          git diff --cached --quiet && exit 0
+          git commit -m 'vendor(yaiwes): copy Hermes evolution sources'
+          git push origin HEAD:main
+
+  verify-copy:
+    needs: [openclaw, hermes]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Verify copied sources and manifests
+        run: |
+          set -euo pipefail
+          O="agente-yaiwes/multi-workflow-engine/instances/source-evolution-workflow/vendor/openclaw"
+          H="agente-yaiwes/multi-workflow-engine/instances/source-evolution-workflow/vendor/hermes"
+          test -f "$O/plugins/activation-planner.ts"
+          test -f "$O/cron/heartbeat-monitor.ts"
+          test -f "$H/tools/registry.py"
+          test -f "$H/tools/skills_hub.py"
+          test -f "$O/SOURCE_SHA256SUMS.txt"
+          test -f "$H/SOURCE_SHA256SUMS.txt"
+          (cd "$O" && sha256sum -c SOURCE_SHA256SUMS.txt)
+          (cd "$H" && sha256sum -c SOURCE_SHA256SUMS.txt)
