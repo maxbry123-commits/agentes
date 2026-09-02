@@ -1,0 +1,146 @@
+name: Indices finales core kernel Yaiwes
+
+on:
+  workflow_run:
+    workflows: ["Core Kernel Yaiwes Principal • 5 chained batches"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: indices-core-kernel-yaiwes-final
+  cancel-in-progress: false
+
+jobs:
+  generar-indices:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Verificar manifiesto y generar índices limpios
+        env:
+          DEST: core kernel Yaiwes principal
+        run: |
+          python3 - <<'PY'
+          import json, re
+          from pathlib import Path
+          from urllib.parse import quote
+
+          dest = Path("core kernel Yaiwes principal")
+          manifest = dest / "RESEARCH_DOWNLOAD_MANIFEST.jsonl"
+          if not manifest.is_file():
+              raise SystemExit("GAP: falta RESEARCH_DOWNLOAD_MANIFEST.jsonl")
+
+          records = []
+          for line_no, raw in enumerate(manifest.read_text(encoding="utf-8").splitlines(), 1):
+              if not raw.strip():
+                  continue
+              try:
+                  rec = json.loads(raw)
+              except Exception as exc:
+                  raise SystemExit(f"GAP: JSONL inválido línea {line_no}: {exc}")
+              if rec.get("status") == "COMPLETE" and rec.get("slug") and rec.get("source"):
+                  records.append(rec)
+
+          # Una entrada por fuente; la evidencia válida más reciente prevalece.
+          by_source = {}
+          for rec in records:
+              key = rec["source"].lower().removesuffix(".git").rstrip("/")
+              by_source[key] = rec
+
+          items, gaps = [], []
+          for key, rec in sorted(by_source.items(), key=lambda kv: kv[1]["slug"].lower()):
+              slug = rec["slug"]
+              parts = sorted(dest.glob(f"{slug}_*.zip"))
+              expected = int(rec.get("parts") or len(parts))
+              if not parts:
+                  gaps.append(f"{slug}: 0 ZIP")
+                  continue
+              if expected != len(parts):
+                  gaps.append(f"{slug}: manifiesto={expected}, ZIP={len(parts)}")
+                  continue
+              items.append((rec, parts))
+
+          if gaps:
+              Path("GAPS-INDICES-CORE-KERNEL-YAIWES.md").write_text(
+                  "# GAPS de verificación\n\n" + "\n".join(f"- {g}" for g in gaps) + "\n",
+                  encoding="utf-8")
+              raise SystemExit("GAPS: " + "; ".join(gaps[:20]))
+
+          repo = "https://github.com/maxbry123-commits/agentes"
+          root_url = repo + "/tree/main/" + quote(str(dest), safe="")
+          run_url = "https://github.com/maxbry123-commits/agentes/actions/runs/33584838525"
+
+          general = [
+              "# Índice general de componentes descargados",
+              "",
+              f"- Repositorio: [agentes]({repo})",
+              f"- Raíz verificada: [`{dest}`]({root_url})",
+              f"- Componentes deduplicados y completos: **{len(items)}**",
+              f"- Evidencia de descarga: [GitHub Actions]({run_url})",
+              "- Contenido del índice: solo repositorios descargados, fuente, commit/SHA, partes ZIP y ubicación.",
+              "",
+              "## Lista enumerada",
+              ""
+          ]
+          local = [
+              "# Índice de raíz y resumen — core kernel Yaiwes principal",
+              "",
+              f"- [Volver al índice general]({repo}/blob/main/INDICE-GENERAL-COMPONENTES.md)",
+              f"- [Abrir raíz verificada]({root_url})",
+              f"- Total deduplicado: **{len(items)}**",
+              "",
+              "## Componentes",
+              ""
+          ]
+
+          for i, (rec, parts) in enumerate(items, 1):
+              slug, source = rec["slug"], rec["source"].removesuffix(".git")
+              commit = rec.get("source_commit", "NO-REGISTRADO")
+              location = f"{dest}/{slug}_NNNN.zip"
+              general += [
+                  f"{i}. **{slug}**",
+                  f"   - Fuente: {source}",
+                  f"   - Commit/SHA: `{commit}`",
+                  f"   - Partes ZIP: {len(parts)}",
+                  f"   - Ubicación: `{location}`"
+              ]
+              part_links = ", ".join(
+                  f"[{p.name}]({repo}/blob/main/{quote(str(p), safe='/')})" for p in parts
+              )
+              local += [
+                  f"### {i}. {slug}",
+                  "",
+                  f"- Repositorio de origen: {source}",
+                  f"- Commit/SHA descargado: `{commit}`",
+                  f"- Estado: **COMPLETE**",
+                  f"- Partes verificadas: **{len(parts)}**",
+                  f"- Ubicación exacta: `{location}`",
+                  f"- Archivos: {part_links}",
+                  ""
+              ]
+
+          Path("INDICE-GENERAL-COMPONENTES.md").write_text("\n".join(general) + "\n", encoding="utf-8")
+          Path("INDICE-RAIZ-Y-RESUMEN.md").write_text("\n".join(local) + "\n", encoding="utf-8")
+          print(f"PASS: {len(items)} componentes deduplicados")
+          PY
+
+      - name: Commit sin sobrescribir descargas
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add INDICE-GENERAL-COMPONENTES.md INDICE-RAIZ-Y-RESUMEN.md
+          if git diff --cached --quiet; then
+            echo "Índices sin cambios"
+            exit 0
+          fi
+          git commit -m "docs: depurar índices desde manifiesto verificado"
+          git pull --rebase origin main
+          git push origin HEAD:main
