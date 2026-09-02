@@ -158,3 +158,5 @@
 {"number": 28, "parts": 4, "slug": "Prefect", "source": "https://github.com/PrefectHQ/prefect.git", "source_commit": "a37d448a4a6703e3c185bd397f56a7df06fb774d", "status": "COMPLETE"}
 {"number": 29, "parts": 2, "slug": "Dapr", "source": "https://github.com/dapr/dapr.git", "source_commit": "ea364f3a339333e15b991c1af7c62335a9d9b86d", "status": "COMPLETE"}
 {"number": 30, "parts": 4, "slug": "Trigger-dev", "source": "https://github.com/triggerdotdev/trigger.dev.git", "source_commit": "755feb2b50ad1639730d8d7435143b144ea15303", "status": "COMPLETE"}
+{"number": 31, "parts": 2, "slug": "Microsoft-Agent-Framework", "source": "https://github.com/microsoft/agent-framework.git", "source_commit": "cb8800aa0b472189959c9a437c4579f810251260", "status": "COMPLETE"}
+{"number": 32, "parts": 1, "slug": "SoulSpec", "source": "https://github.com/clawsouls/soulspec.git", "source_commit": "569cbd1c0bd796e8890cf5adb164e0ba3f65cf80", "status": "COMPLETE"}
