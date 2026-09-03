@@ -1,0 +1,123 @@
+name: YAIWES evolution vendor copy repair 01
+on:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-evolution-vendor-copy-repair-01.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: yaiwes-evolution-vendor-copy-repair-01
+  cancel-in-progress: false
+
+jobs:
+  repair-copy-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout destination
+        uses: actions/checkout@v4
+        with:
+          repository: maxbry123-commits/agentes
+          ref: main
+          path: dest
+          persist-credentials: true
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          repository: maxbry123-commits/Agentes-motores-Wordflow-YAIWES
+          ref: main
+          path: source
+          filter: blob:none
+          sparse-checkout: |
+            ROOTS/openclaw/src/plugins
+            ROOTS/openclaw/src/hooks
+            ROOTS/openclaw/src/cron
+            Core kernel razonamiento repo para Yaiwes/Atomic-Hermes/Atomic-Hermes/tools
+            Core kernel razonamiento repo para Yaiwes/Atomic-Hermes/Atomic-Hermes/agent
+            Core kernel razonamiento repo para Yaiwes/Atomic-Hermes/Atomic-Hermes/gateway
+      - name: Repair missing vendor files without overwrite
+        shell: bash
+        run: |
+          set -euo pipefail
+          DEST="dest/agente-yaiwes/multi-workflow-engine/instances/source-evolution-workflow/vendor"
+          O="$DEST/openclaw"
+          H="$DEST/hermes"
+          OS="source/ROOTS/openclaw/src"
+          HS="source/Core kernel razonamiento repo para Yaiwes/Atomic-Hermes/Atomic-Hermes"
+          mkdir -p "$O" "$H"
+          copy_one() {
+            src="$1"; out="$2"
+            test -f "$src"
+            mkdir -p "$(dirname "$out")"
+            if test -e "$out"; then
+              cmp -s "$src" "$out" || { echo "COLLISION: $out"; exit 31; }
+            else
+              cp -a "$src" "$out"
+            fi
+          }
+          for f in \
+            plugins/activation-planner.ts plugins/activation-planner.test.ts \
+            plugins/active-runtime-registry.ts plugins/active-runtime-registry.test.ts \
+            plugins/catalog-search.ts plugins/catalog-search.test.ts \
+            plugins/discovery.ts plugins/discovery.test.ts \
+            plugins/git-install.ts plugins/git-install.test.ts \
+            plugins/hook-isolation.ts plugins/config-schema.ts plugins/config-schema.test.ts \
+            hooks/loader.ts hooks/loader.test.ts hooks/install.ts hooks/install.test.ts \
+            hooks/plugin-hooks.ts hooks/plugin-hooks.test.ts \
+            cron/heartbeat-monitor.ts cron/heartbeat-monitor.test.ts cron/heartbeat-task.ts
+          do
+            copy_one "$OS/$f" "$O/$f"
+          done
+          for f in \
+            tools/registry.py tools/skill_manager_tool.py tools/skills_guard.py \
+            tools/skills_hub.py tools/skills_sync.py tools/skills_tool.py \
+            tools/checkpoint_manager.py tools/process_registry.py \
+            agent/skill_commands.py agent/skill_utils.py agent/shell_hooks.py \
+            gateway/hooks.py gateway/builtin_hooks/boot_md.py
+          do
+            copy_one "$HS/$f" "$H/$f"
+          done
+          SRC_SHA="$(git -C source rev-parse HEAD)"
+          printf '%s\n' "$SRC_SHA" > "$O/SOURCE_COMMIT.txt"
+          printf '%s\n' "$SRC_SHA" > "$H/SOURCE_COMMIT.txt"
+          printf '%s\n' 'https://github.com/maxbry123-commits/Agentes-motores-Wordflow-YAIWES' > "$O/SOURCE_URL.txt"
+          printf '%s\n' 'https://github.com/maxbry123-commits/Agentes-motores-Wordflow-YAIWES' > "$H/SOURCE_URL.txt"
+          make_manifest() {
+            root="$1"
+            (cd "$root" && find . -type f ! -name SOURCE_SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > SOURCE_SHA256SUMS.txt)
+          }
+          make_manifest "$O"
+          make_manifest "$H"
+      - name: Verify files and SHA manifests before commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          O="dest/agente-yaiwes/multi-workflow-engine/instances/source-evolution-workflow/vendor/openclaw"
+          H="dest/agente-yaiwes/multi-workflow-engine/instances/source-evolution-workflow/vendor/hermes"
+          test -f "$O/plugins/activation-planner.ts"
+          test -f "$O/cron/heartbeat-monitor.ts"
+          test -f "$H/tools/registry.py"
+          test -f "$H/tools/skills_hub.py"
+          test -s "$O/SOURCE_COMMIT.txt"
+          test -s "$H/SOURCE_COMMIT.txt"
+          (cd "$O" && sha256sum -c SOURCE_SHA256SUMS.txt)
+          (cd "$H" && sha256sum -c SOURCE_SHA256SUMS.txt)
+      - name: Commit once and push safely
+        working-directory: dest
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add --sparse agente-yaiwes/multi-workflow-engine/instances/source-evolution-workflow/vendor
+          if git diff --cached --quiet; then
+            echo 'No missing files; verified existing copy.'
+            exit 0
+          fi
+          git commit -m 'repair(yaiwes): copy and verify OpenClaw Hermes sources'
+          for attempt in 1 2 3; do
+            git pull --rebase origin main
+            if git push origin HEAD:main; then exit 0; fi
+            sleep $((attempt * 5))
+          done
+          exit 1
