@@ -1,0 +1,655 @@
+package vmstorage
+
+import (
+	"flag"
+	"fmt"
+	"io"
+	"math"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/VictoriaMetrics/VictoriaMetrics/lib/fasttime"
+	"github.com/VictoriaMetrics/VictoriaMetrics/lib/flagutil"
+	"github.com/VictoriaMetrics/VictoriaMetrics/lib/fs"
+	"github.com/VictoriaMetrics/VictoriaMetrics/lib/httpserver"
+	"github.com/VictoriaMetrics/VictoriaMetrics/lib/logger"
+	"github.com/VictoriaMetrics/VictoriaMetrics/lib/mergeset"
+	"github.com/VictoriaMetrics/VictoriaMetrics/lib/querytracer"
+	"github.com/VictoriaMetrics/VictoriaMetrics/lib/storage"
+	"github.com/VictoriaMetrics/VictoriaMetrics/lib/stringsutil"
+	"github.com/VictoriaMetrics/VictoriaMetrics/lib/vminsertapi"
+	"github.com/VictoriaMetrics/VictoriaMetrics/lib/vmselectapi"
+	"github.com/VictoriaMetrics/metrics"
+)
+
+var (
+	storageDataPath = flag.String("storageDataPath", "victoria-metrics-data", "Path to storage data")
+	retentionPeriod = flagutil.NewRetentionDuration("retentionPeriod", "1M", "Data with timestamps outside the retentionPeriod is automatically deleted. The minimum retentionPeriod is 24h or 1d. "+
+		"See https://docs.victoriametrics.com/victoriametrics/single-server-victoriametrics/#retention. See also -retentionFilter")
+	futureRetention = flagutil.NewRetentionDuration("futureRetention", "2d", "Data with timestamps bigger than now+futureRetention is automatically deleted. "+
+		"The minimum futureRetention is 2 days. See https://docs.victoriametrics.com/victoriametrics/single-server-victoriametrics/#retention")
+	maxBackfillAge = flagutil.NewRetentionDuration("maxBackfillAge", "0", "The maximum allowed age for the ingested samples with historical timestamps. "+
+		"Samples with timestamps older than now-maxBackfillAge are rejected during data ingestion. "+
+		"By default, or when set to 0, -maxBackfillAge equals to -retentionPeriod, e.g. it is unlimited within the configured retention. "+
+		"This can be useful for limiting ingestion of historical samples, for example, when older data has been moved to another storage tier. "+
+		"See https://docs.victoriametrics.com/victoriametrics/single-server-victoriametrics/#retention")
+	vmselectAddr = flag.String("vmselectAddr", "", "TCP address to listen for incoming connections from vmselect. "+
+		"When set, the node will be able to accept cluster-native vmselect RPC requests as if it were vmstorage. "+
+		"The tenant ID assigned to this node's data is controlled by -accountID and -projectID flags. "+
+		"See https://docs.victoriametrics.com/victoriametrics/single-server-victoriametrics/#multi-tenancy")
+	vmselectDisableRPCCompression = flag.Bool("rpc.disableCompression", false, "Whether to disable compression of the data sent from vmstorage to vmselect. "+
+		"This reduces CPU usage at the cost of higher network bandwidth usage")
+	snapshotAuthKey   = flagutil.NewPassword("snapshotAuthKey", "authKey, which must be passed in query string to /snapshot* pages. It overrides -httpAuth.*")
+	forceMergeAuthKey = flagutil.NewPassword("forceMergeAuthKey", "authKey, which must be passed in query string to /internal/force_merge pages. It overrides -httpAuth.*")
+	forceFlushAuthKey = flagutil.NewPassword("forceFlushAuthKey", "authKey, which must be passed in query string to /internal/force_flush pages. It overrides -httpAuth.*")
+	_                 = flag.Duration("snapshotCreateTimeout", 0, "Deprecated: this flag does nothing")
+
+	_ = flag.Duration("finalMergeDelay", 0, "Deprecated: this flag does nothing")
+	_ = flag.Int("bigMergeConcurrency", 0, "Deprecated: this flag does nothing")
+	_ = flag.Int("smallMergeConcurrency", 0, "Deprecated: this flag does nothing")
+
+	retentionTimezoneOffset = flag.Duration("retentionTimezoneOffset", 0, "The offset for performing indexdb rotation. "+
+		"If set to 0, then the indexdb rotation is performed at 4am UTC time per each -retentionPeriod. "+
+		"If set to 2h, then the indexdb rotation is performed at 4am EET time (the timezone with +2h offset)")
+	minScrapeInterval = flag.Duration("dedup.minScrapeInterval", 0, "Leave only the last sample in every time series per each discrete interval "+
+		"equal to -dedup.minScrapeInterval > 0. See also -streamAggr.dedupInterval and https://docs.victoriametrics.com/victoriametrics/single-server-victoriametrics/#deduplication")
+	inmemoryDataFlushInterval = flag.Duration("inmemoryDataFlushInterval", 5*time.Second, "The interval for guaranteed saving of in-memory data to disk. "+
+		"The saved data survives unclean shutdowns such as OOM crash, hardware reset, SIGKILL, etc. "+
+		"Bigger intervals may help increase the lifetime of flash storage with limited write cycles (e.g. Raspberry PI). "+
+		"Smaller intervals increase disk IO load. Minimum supported value is 1s")
+
+	logNewSeries = flag.Bool("logNewSeries", false, "Whether to log new series. This option is for debug purposes only. It can lead to performance issues "+
+		"when big number of new series are ingested into VictoriaMetrics")
+	denyQueriesOutsideRetention = flag.Bool("denyQueriesOutsideRetention", false, "Whether to deny queries outside the configured -retentionPeriod and -futureRetention. "+
+		"When set, then /api/v1/query_range will return an error for queries with 'from' value outside -retentionPeriod or 'to' value beyond -futureRetention. "+
+		"This may be useful when multiple data sources with distinct retentions are hidden behind query-tee")
+	maxHourlySeries = flag.Int64("storage.maxHourlySeries", 0, "The maximum number of unique series can be added to the storage during the last hour. "+
+		"Excess series are logged and dropped. This can be useful for limiting series cardinality. See https://docs.victoriametrics.com/victoriametrics/single-server-victoriametrics/#cardinality-limiter . "+
+		fmt.Sprintf("Setting this flag to '-1' sets limit to maximum possible value (%d) which is useful in order to enable series tracking without enforcing limits. ", math.MaxInt32)+
+		"See also -storage.maxDailySeries")
+	maxDailySeries = flag.Int64("storage.maxDailySeries", 0, "The maximum number of unique series can be added to the storage during the last 24 hours. "+
+		"Excess series are logged and dropped. This can be useful for limiting series churn rate. See https://docs.victoriametrics.com/victoriametrics/single-server-victoriametrics/#cardinality-limiter . "+
+		fmt.Sprintf("Setting this flag to '-1' sets limit to maximum possible value (%d) which is useful in order to enable series tracking without enforcing limits. ", math.MaxInt32)+
+		"See also -storage.maxHourlySeries")
+
+	minFreeDiskSpaceBytes = flagutil.NewBytes("storage.minFreeDiskSpaceBytes", 100e6, "The minimum free disk space at -storageDataPath after which the storage stops accepting new data")
+
+	finalDedupScheduleInterval = flag.Duration("storage.finalDedupScheduleCheckInterval", time.Hour, "The interval for checking when final deduplication process should be started."+
+		"Storage unconditionally adds 25% jitter to the interval value on each check evaluation."+
+		" Changing the interval to the bigger values may delay downsampling, deduplication for historical data."+
+		" See also https://docs.victoriametrics.com/victoriametrics/single-server-victoriametrics/#deduplication")
+
+	cacheSizeStorageTSID = flagutil.NewBytes("storage.cacheSizeStorageTSID", 0, "Overrides max size for storage/tsid cache. "+
+		"See https://docs.victoriametrics.com/victoriametrics/single-server-victoriametrics/#cache-tuning")
+	cacheSizeStorageMetricName = flagutil.NewBytes("storage.cacheSizeStorageMetricName", 0, "Overrides max size for storage/metricName cache. "+
+		"See https://docs.victoriametrics.com/victoriametrics/single-server-victoriametrics/#cache-tuning")
+	cacheSizeIndexDBIndexBlocks = flagutil.NewBytes("storage.cacheSizeIndexDBIndexBlocks", 0, "Overrides max size for indexdb/indexBlocks cache. "+
+		"See https://docs.victoriametrics.com/victoriametrics/single-server-victoriametrics/#cache-tuning")
+	cacheSizeIndexDBDataBlocks = flagutil.NewBytes("storage.cacheSizeIndexDBDataBlocks", 0, "Overrides max size for indexdb/dataBlocks cache. "+
+		"See https://docs.victoriametrics.com/victoriametrics/single-server-victoriametrics/#cache-tuning")
+	cacheSizeIndexDBDataBlocksSparse = flagutil.NewBytes("storage.cacheSizeIndexDBDataBlocksSparse", 0, "Overrides max size for indexdb/dataBlocksSparse cache. "+
+		"See https://docs.victoriametrics.com/victoriametrics/single-server-victoriametrics/#cache-tuning")
+	cacheSizeIndexDBTagFilters = flagutil.NewBytes("storage.cacheSizeIndexDBTagFilters", 0, "Overrides max size for indexdb/tagFiltersToMetricIDs cache. "+
+		"See https://docs.victoriametrics.com/victoriametrics/single-server-victoriametrics/#cache-tuning")
+
+	disablePerDayIndex = flag.Bool("disablePerDayIndex", false, "Disable per-day index and use global index for all searches. "+
+		"This may improve performance and decrease disk space usage for the use cases with fixed set of timeseries scattered across a "+
+		"big time range (for example, when loading years of historical data). "+
+		"See https://docs.victoriametrics.com/victoriametrics/single-server-victoriametrics/#index-tuning")
+	trackMetricNamesStats = flag.Bool("storage.trackMetricNamesStats", true, "Whether to track ingest and query requests for timeseries metric names. "+
+		"This feature allows to track metric names unused at query requests. "+
+		"See https://docs.victoriametrics.com/victoriametrics/single-server-victoriametrics/#track-ingested-metrics-usage")
+	cacheSizeMetricNamesStats = flagutil.NewBytes("storage.cacheSizeMetricNamesStats", 0, "Overrides max size for storage/metricNamesStatsTracker cache. "+
+		"See https://docs.victoriametrics.com/victoriametrics/single-server-victoriametrics/#cache-tuning")
+
+	idbPrefillStart = flag.Duration("storage.idbPrefillStart", time.Hour, "Specifies how early VictoriaMetrics starts pre-filling indexDB records before indexDB rotation. "+
+		"Starting the pre-fill process earlier can help reduce resource usage spikes during rotation. "+
+		"In most cases, this value should not be changed. The maximum allowed value is 23h.")
+
+	logNewSeriesAuthKey = flagutil.NewPassword("logNewSeriesAuthKey", "authKey, which must be passed in query string to /internal/log_new_series. It overrides -httpAuth.*")
+
+	metadataStorageSize = flagutil.NewBytes("storage.maxMetadataStorageSize", 0, "Overrides max size for metrics metadata entries in-memory storage. "+
+		"If set to 0 or a negative value, defaults to 1% of allowed memory.")
+)
+
+func DataPath() string {
+	return *storageDataPath
+}
+
+// Init initializes vmstorage.
+func Init(vmselectMaxConcurrentRequests int, vmselectMaxQueueDuration time.Duration, resetCacheIfNeeded func(mrs []storage.MetricRow)) {
+	storage.SetDedupInterval(*minScrapeInterval)
+	storage.SetDataFlushInterval(*inmemoryDataFlushInterval)
+	storage.LegacySetRetentionTimezoneOffset(*retentionTimezoneOffset)
+	storage.SetFreeDiskSpaceLimit(minFreeDiskSpaceBytes.N)
+	storage.SetTSIDCacheSize(cacheSizeStorageTSID.IntN())
+	storage.SetTagFiltersCacheSize(cacheSizeIndexDBTagFilters.IntN())
+	if *finalDedupScheduleInterval < time.Hour {
+		logger.Fatalf("-storage.finalDedupScheduleCheckInterval cannot be smaller than 1 hour; got %s", *finalDedupScheduleInterval)
+	}
+	storage.SetFinalDedupScheduleInterval(*finalDedupScheduleInterval)
+	storage.SetMetricNamesStatsCacheSize(cacheSizeMetricNamesStats.IntN())
+	storage.SetMetricNameCacheSize(cacheSizeStorageMetricName.IntN())
+	storage.SetMetadataStorageSize(metadataStorageSize.IntN())
+	mergeset.SetIndexBlocksCacheSize(cacheSizeIndexDBIndexBlocks.IntN())
+	mergeset.SetDataBlocksCacheSize(cacheSizeIndexDBDataBlocks.IntN())
+	mergeset.SetDataBlocksSparseCacheSize(cacheSizeIndexDBDataBlocksSparse.IntN())
+
+	if retentionPeriod.Duration() < 24*time.Hour {
+		logger.Fatalf("-retentionPeriod cannot be smaller than a day; got %s. "+
+			"See https://docs.victoriametrics.com/victoriametrics/single-server-victoriametrics/#retention", retentionPeriod)
+	}
+	if futureRetention.Duration() < 2*24*time.Hour {
+		logger.Fatalf("-futureRetention cannot be smaller than 2 days; got %s. "+
+			"See https://docs.victoriametrics.com/victoriametrics/single-server-victoriametrics/#retention", futureRetention)
+	}
+	if *idbPrefillStart > 23*time.Hour {
+		logger.Panicf("-storage.idbPrefillStart cannot exceed 23 hours; got %s", idbPrefillStart)
+	}
+	fs.RegisterPathFsMetrics(*storageDataPath)
+	logger.Infof("opening storage at %q with -retentionPeriod=%s", *storageDataPath, retentionPeriod)
+	startTime := time.Now()
+	opts := storage.OpenOptions{
+		Retention:                   retentionPeriod.Duration(),
+		FutureRetention:             futureRetention.Duration(),
+		MaxBackfillAge:              maxBackfillAge.Duration(),
+		DenyQueriesOutsideRetention: *denyQueriesOutsideRetention,
+		MaxHourlySeries:             getMaxHourlySeries(),
+		MaxDailySeries:              getMaxDailySeries(),
+		DisablePerDayIndex:          *disablePerDayIndex,
+		TrackMetricNamesStats:       *trackMetricNamesStats,
+		IDBPrefillStart:             *idbPrefillStart,
+		LogNewSeries:                *logNewSeries,
+	}
+	strg := storage.MustOpenStorage(*storageDataPath, opts)
+	vmStorage = newVMStorage(strg, vmselectMaxConcurrentRequests, resetCacheIfNeeded)
+
+	var m storage.Metrics
+	strg.UpdateMetrics(&m)
+	tm := &m.TableMetrics
+	partsCount := tm.SmallPartsCount + tm.BigPartsCount
+	blocksCount := tm.SmallBlocksCount + tm.BigBlocksCount
+	rowsCount := tm.SmallRowsCount + tm.BigRowsCount
+	sizeBytes := tm.SmallSizeBytes + tm.BigSizeBytes
+	logger.Infof("successfully opened storage %q in %.3f seconds; partsCount: %d; blocksCount: %d; rowsCount: %d; sizeBytes: %d",
+		*storageDataPath, time.Since(startTime).Seconds(), partsCount, blocksCount, rowsCount, sizeBytes)
+
+	// register storage metrics
+	storageMetrics = metrics.NewSet()
+	storageMetrics.RegisterMetricsWriter(vmStorage.writeStorageMetrics)
+	metrics.RegisterSet(storageMetrics)
+
+	if *vmselectAddr != "" {
+		var err error
+		limits := vmselectapi.Limits{
+			MaxConcurrentRequests:         vmselectMaxConcurrentRequests,
+			MaxConcurrentRequestsFlagName: "search.maxConcurrentRequests",
+			MaxQueueDuration:              vmselectMaxQueueDuration,
+			MaxQueueDurationFlagName:      "search.maxQueueDuration",
+		}
+		api := newVMStorageWithTenantID(vmStorage)
+		vmselectSrv, err = vmselectapi.NewServer(*vmselectAddr, api, limits, *vmselectDisableRPCCompression)
+		if err != nil {
+			logger.Fatalf("cannot create a server with -vmselectAddr=%s: %s", *vmselectAddr, err)
+		}
+	}
+
+	VMInsertAPI = vmStorage
+	VMSelectAPI = vmStorage
+	GetSearch = vmStorage.GetSearch
+	PutSearch = vmStorage.PutSearch
+	RequestHandler = vmStorage.requestHandler
+	DebugFlush = vmStorage.s.DebugFlush
+}
+
+var storageMetrics *metrics.Set
+
+var (
+	// vmStorage is an instance of vmstorage used by vminsert and
+	// vmselect for writing and reading data.
+	vmStorage      *VMStorage
+	VMInsertAPI    vminsertapi.API
+	VMSelectAPI    vmselectapi.API
+	GetSearch      func(qt *querytracer.Tracer, sq *storage.SearchQuery, deadline uint64) (*storage.Search, int, error)
+	PutSearch      func(sr *storage.Search)
+	RequestHandler func(w http.ResponseWriter, r *http.Request) bool
+
+	// TODO(@rtm0): Remove this dependency from vmalert-tool unit tests.
+	DebugFlush func()
+
+	vmselectSrv *vmselectapi.Server
+)
+
+// Stop stops the vmstorage
+func Stop() {
+	// deregister storage metrics
+	metrics.UnregisterSet(storageMetrics, true)
+	storageMetrics = nil
+
+	logger.Infof("gracefully closing the storage at %s", *storageDataPath)
+	startTime := time.Now()
+
+	if vmselectSrv != nil {
+		vmselectSrv.MustStop()
+	}
+	vmStorage.Stop()
+	logger.Infof("successfully closed the storage in %.3f seconds", time.Since(startTime).Seconds())
+
+	fs.MustStopDirRemover()
+	logger.Infof("the vmstorage has been stopped")
+}
+
+// requestHandler is a storage request handler.
+// TODO(@rtm0): Move to a separate file, request_handler.go
+func (vms *VMStorage) requestHandler(w http.ResponseWriter, r *http.Request) bool {
+	vms.wg.Add(1)
+	defer vms.wg.Done()
+
+	path := r.URL.Path
+	if path == "/internal/force_merge" {
+		if !httpserver.CheckAuthFlag(w, r, forceMergeAuthKey) {
+			return true
+		}
+		// Run force merge in background
+		partitionNamePrefix := r.FormValue("partition_prefix")
+		go func() {
+			activeForceMerges.Inc()
+			defer activeForceMerges.Dec()
+			logger.Infof("forced merge for partition_prefix=%q has been started", partitionNamePrefix)
+			startTime := time.Now()
+			if err := vms.s.ForceMergePartitions(partitionNamePrefix); err != nil {
+				logger.Errorf("error in forced merge for partition_prefix=%q: %s", partitionNamePrefix, err)
+				return
+			}
+			logger.Infof("forced merge for partition_prefix=%q has been successfully finished in %.3f seconds", partitionNamePrefix, time.Since(startTime).Seconds())
+		}()
+		return true
+	}
+	if path == "/internal/force_flush" {
+		if !httpserver.CheckAuthFlag(w, r, forceFlushAuthKey) {
+			return true
+		}
+		logger.Infof("flushing storage to make pending data available for reading")
+		vms.s.DebugFlush()
+		return true
+	}
+
+	if path == "/internal/log_new_series" {
+		if !httpserver.CheckAuthFlag(w, r, logNewSeriesAuthKey) {
+			return true
+		}
+		dealine := 60
+		if deadlineStr := r.FormValue("seconds"); len(deadlineStr) > 0 {
+			var err error
+			dealine, err = strconv.Atoi(deadlineStr)
+			if err != nil {
+				logger.Errorf("cannot parse `seconds` arg %q: %s", deadlineStr, err)
+				jsonResponseError(w, fmt.Errorf("cannot parse `seconds` arg %q: %w", deadlineStr, err))
+				return true
+			}
+		}
+		logger.Infof("enabling logging of new series for the next %s. This may increase resource usage during this period.", time.Duration(dealine)*time.Second)
+		endTime := fasttime.UnixTimestamp() + uint64(dealine)
+		vms.s.SetLogNewSeriesUntil(endTime)
+		fmt.Fprintf(w, `{"status":"success","data":{"logEndTime":%q}}`, time.Unix(int64(endTime), 0))
+		return true
+	}
+	prometheusCompatibleResponse := false
+	if path == "/api/v1/admin/tsdb/snapshot" {
+		// Handle Prometheus API - https://prometheus.io/docs/prometheus/latest/querying/api/#snapshot .
+		prometheusCompatibleResponse = true
+		path = "/snapshot/create"
+	}
+	if !strings.HasPrefix(path, "/snapshot/") {
+		return false
+	}
+	if !httpserver.CheckAuthFlag(w, r, snapshotAuthKey) {
+		return true
+	}
+	path = path[len("/snapshot"):]
+
+	switch path {
+	case "/create":
+		snapshotsCreateTotal.Inc()
+		w.Header().Set("Content-Type", "application/json")
+		snapshotName := vms.s.MustCreateSnapshot()
+
+		// Verify whether the client already closed the connection.
+		// In this case it is better to drop the created snapshot, since the client isn't interested in it.
+		if err := r.Context().Err(); err != nil {
+			logger.Infof("deleting already created snapshot at %s because the client canceled the request", snapshotName)
+			if err := vms.deleteSnapshot(snapshotName); err != nil {
+				logger.Infof("cannot delete just created snapshot: %s", err)
+				return true
+			}
+			return true
+		}
+
+		if prometheusCompatibleResponse {
+			fmt.Fprintf(w, `{"status":"success","data":{"name":%s}}`, stringsutil.JSONString(snapshotName))
+		} else {
+			fmt.Fprintf(w, `{"status":"ok","snapshot":%s}`, stringsutil.JSONString(snapshotName))
+		}
+		return true
+	case "/list":
+		snapshotsListTotal.Inc()
+		w.Header().Set("Content-Type", "application/json")
+		snapshots := vms.s.MustListSnapshots()
+		fmt.Fprintf(w, `{"status":"ok","snapshots":[`)
+		if len(snapshots) > 0 {
+			for _, snapshot := range snapshots[:len(snapshots)-1] {
+				fmt.Fprintf(w, "\n%q,", snapshot)
+			}
+			fmt.Fprintf(w, "\n%q\n", snapshots[len(snapshots)-1])
+		}
+		fmt.Fprintf(w, `]}`)
+		return true
+	case "/delete":
+		snapshotsDeleteTotal.Inc()
+		w.Header().Set("Content-Type", "application/json")
+		snapshotName := r.FormValue("snapshot")
+		if err := vms.deleteSnapshot(snapshotName); err != nil {
+			jsonResponseError(w, err)
+			snapshotsDeleteErrorsTotal.Inc()
+			return true
+		}
+		fmt.Fprintf(w, `{"status":"ok"}`)
+		return true
+	case "/delete_all":
+		snapshotsDeleteAllTotal.Inc()
+		w.Header().Set("Content-Type", "application/json")
+		snapshots := vms.s.MustListSnapshots()
+		for _, snapshotName := range snapshots {
+			if err := vms.s.DeleteSnapshot(snapshotName); err != nil {
+				err = fmt.Errorf("cannot delete snapshot %q: %w", snapshotName, err)
+				jsonResponseError(w, err)
+				snapshotsDeleteAllErrorsTotal.Inc()
+				return true
+			}
+		}
+		fmt.Fprintf(w, `{"status":"ok"}`)
+		return true
+	default:
+		return false
+	}
+}
+
+var (
+	activeForceMerges = metrics.NewCounter("vm_active_force_merges")
+
+	snapshotsCreateTotal = metrics.NewCounter(`vm_http_requests_total{path="/snapshot/create"}`)
+
+	snapshotsListTotal = metrics.NewCounter(`vm_http_requests_total{path="/snapshot/list"}`)
+
+	snapshotsDeleteTotal       = metrics.NewCounter(`vm_http_requests_total{path="/snapshot/delete"}`)
+	snapshotsDeleteErrorsTotal = metrics.NewCounter(`vm_http_request_errors_total{path="/snapshot/delete"}`)
+
+	snapshotsDeleteAllTotal       = metrics.NewCounter(`vm_http_requests_total{path="/snapshot/delete_all"}`)
+	snapshotsDeleteAllErrorsTotal = metrics.NewCounter(`vm_http_request_errors_total{path="/snapshot/delete_all"}`)
+)
+
+// TODO(@rtm0): Move to metrics.go.
+func (vms *VMStorage) writeStorageMetrics(w io.Writer) {
+	vms.wg.Add(1)
+	defer vms.wg.Done()
+
+	strg := vms.s
+	var m storage.Metrics
+	strg.UpdateMetrics(&m)
+	tm := &m.TableMetrics
+	idbm := &m.TableMetrics.IndexDBMetrics
+
+	metrics.WriteGaugeUint64(w, fmt.Sprintf(`vm_free_disk_space_bytes{path=%q}`, *storageDataPath), fs.MustGetFreeSpace(*storageDataPath))
+	metrics.WriteGaugeUint64(w, fmt.Sprintf(`vm_free_disk_space_limit_bytes{path=%q}`, *storageDataPath), uint64(minFreeDiskSpaceBytes.N))
+	metrics.WriteGaugeUint64(w, fmt.Sprintf(`vm_total_disk_space_bytes{path=%q}`, *storageDataPath), fs.MustGetTotalSpace(*storageDataPath))
+
+	isReadOnly := 0
+	if strg.IsReadOnly() {
+		isReadOnly = 1
+	}
+	metrics.WriteGaugeUint64(w, fmt.Sprintf(`vm_storage_is_read_only{path=%q}`, *storageDataPath), uint64(isReadOnly))
+
+	metrics.WriteGaugeUint64(w, `vm_active_merges{type="storage/inmemory"}`, tm.ActiveInmemoryMerges)
+	metrics.WriteGaugeUint64(w, `vm_active_merges{type="storage/small"}`, tm.ActiveSmallMerges)
+	metrics.WriteGaugeUint64(w, `vm_active_merges{type="storage/big"}`, tm.ActiveBigMerges)
+	metrics.WriteGaugeUint64(w, `vm_active_merges{type="indexdb/inmemory"}`, idbm.ActiveInmemoryMerges)
+	metrics.WriteGaugeUint64(w, `vm_active_merges{type="indexdb/file"}`, idbm.ActiveFileMerges)
+
+	metrics.WriteCounterUint64(w, `vm_merges_total{type="storage/inmemory"}`, tm.InmemoryMergesCount)
+	metrics.WriteCounterUint64(w, `vm_merges_total{type="storage/small"}`, tm.SmallMergesCount)
+	metrics.WriteCounterUint64(w, `vm_merges_total{type="storage/big"}`, tm.BigMergesCount)
+	metrics.WriteCounterUint64(w, `vm_merges_total{type="indexdb/inmemory"}`, idbm.InmemoryMergesCount)
+	metrics.WriteCounterUint64(w, `vm_merges_total{type="indexdb/file"}`, idbm.FileMergesCount)
+
+	metrics.WriteCounterUint64(w, `vm_rows_merged_total{type="storage/inmemory"}`, tm.InmemoryRowsMerged)
+	metrics.WriteCounterUint64(w, `vm_rows_merged_total{type="storage/small"}`, tm.SmallRowsMerged)
+	metrics.WriteCounterUint64(w, `vm_rows_merged_total{type="storage/big"}`, tm.BigRowsMerged)
+	metrics.WriteCounterUint64(w, `vm_rows_merged_total{type="indexdb/inmemory"}`, idbm.InmemoryItemsMerged)
+	metrics.WriteCounterUint64(w, `vm_rows_merged_total{type="indexdb/file"}`, idbm.FileItemsMerged)
+
+	metrics.WriteCounterUint64(w, `vm_rows_deleted_total{type="storage/inmemory"}`, tm.InmemoryRowsDeleted)
+	metrics.WriteCounterUint64(w, `vm_rows_deleted_total{type="storage/small"}`, tm.SmallRowsDeleted)
+	metrics.WriteCounterUint64(w, `vm_rows_deleted_total{type="storage/big"}`, tm.BigRowsDeleted)
+
+	metrics.WriteGaugeUint64(w, `vm_part_references{type="storage/inmemory"}`, tm.InmemoryPartsRefCount)
+	metrics.WriteGaugeUint64(w, `vm_part_references{type="storage/small"}`, tm.SmallPartsRefCount)
+	metrics.WriteGaugeUint64(w, `vm_part_references{type="storage/big"}`, tm.BigPartsRefCount)
+	metrics.WriteGaugeUint64(w, `vm_partition_references{type="storage"}`, tm.PartitionsRefCount)
+	metrics.WriteGaugeUint64(w, `vm_object_references{type="indexdb"}`, idbm.IndexDBRefCount)
+	metrics.WriteGaugeUint64(w, `vm_part_references{type="indexdb"}`, idbm.PartsRefCount)
+
+	metrics.WriteCounterUint64(w, `vm_missing_tsids_for_metric_id_total`, idbm.MissingTSIDsForMetricID)
+	metrics.WriteCounterUint64(w, `vm_index_blocks_with_metric_ids_processed_total`, idbm.IndexBlocksWithMetricIDsProcessed)
+	metrics.WriteCounterUint64(w, `vm_index_blocks_with_metric_ids_incorrect_order_total`, idbm.IndexBlocksWithMetricIDsIncorrectOrder)
+	metrics.WriteGaugeUint64(w, `vm_composite_index_min_timestamp`, idbm.MinTimestampForCompositeIndex/1e3)
+	metrics.WriteCounterUint64(w, `vm_composite_filter_success_conversions_total`, idbm.CompositeFilterSuccessConversions)
+	metrics.WriteCounterUint64(w, `vm_composite_filter_missing_conversions_total`, idbm.CompositeFilterMissingConversions)
+
+	// vm_assisted_merges_total name is used for backwards compatibility.
+	metrics.WriteCounterUint64(w, `vm_assisted_merges_total{type="indexdb/inmemory"}`, idbm.InmemoryPartsLimitReachedCount)
+
+	metrics.WriteCounterUint64(w, `vm_indexdb_items_added_total`, idbm.ItemsAdded)
+	metrics.WriteCounterUint64(w, `vm_indexdb_items_added_size_bytes_total`, idbm.ItemsAddedSizeBytes)
+	metrics.WriteCounterUint64(w, `vm_indexdb_items_dropped_total{reason="too_long_item"}`, idbm.TooLongItemsDroppedTotal)
+
+	metrics.WriteGaugeUint64(w, `vm_pending_rows{type="storage"}`, tm.PendingRows)
+	metrics.WriteGaugeUint64(w, `vm_pending_rows{type="indexdb"}`, idbm.PendingItems)
+
+	metrics.WriteGaugeUint64(w, `vm_parts{type="storage/inmemory"}`, tm.InmemoryPartsCount)
+	metrics.WriteGaugeUint64(w, `vm_parts{type="storage/small"}`, tm.SmallPartsCount)
+	metrics.WriteGaugeUint64(w, `vm_parts{type="storage/big"}`, tm.BigPartsCount)
+	metrics.WriteGaugeUint64(w, `vm_parts{type="indexdb/inmemory"}`, idbm.InmemoryPartsCount)
+	metrics.WriteGaugeUint64(w, `vm_parts{type="indexdb/file"}`, idbm.FilePartsCount)
+
+	metrics.WriteGaugeUint64(w, `vm_last_partition_parts{type="storage/inmemory"}`, tm.LastPartition.InmemoryPartsCount)
+	metrics.WriteGaugeUint64(w, `vm_last_partition_parts{type="storage/small"}`, tm.LastPartition.SmallPartsCount)
+	metrics.WriteGaugeUint64(w, `vm_last_partition_parts{type="storage/big"}`, tm.LastPartition.BigPartsCount)
+
+	metrics.WriteGaugeUint64(w, `vm_blocks{type="storage/inmemory"}`, tm.InmemoryBlocksCount)
+	metrics.WriteGaugeUint64(w, `vm_blocks{type="storage/small"}`, tm.SmallBlocksCount)
+	metrics.WriteGaugeUint64(w, `vm_blocks{type="storage/big"}`, tm.BigBlocksCount)
+	metrics.WriteGaugeUint64(w, `vm_blocks{type="indexdb/inmemory"}`, idbm.InmemoryBlocksCount)
+	metrics.WriteGaugeUint64(w, `vm_blocks{type="indexdb/file"}`, idbm.FileBlocksCount)
+
+	metrics.WriteGaugeUint64(w, `vm_data_size_bytes{type="storage/inmemory"}`, tm.InmemorySizeBytes)
+	metrics.WriteGaugeUint64(w, `vm_data_size_bytes{type="storage/small"}`, tm.SmallSizeBytes)
+	metrics.WriteGaugeUint64(w, `vm_data_size_bytes{type="storage/big"}`, tm.BigSizeBytes)
+	metrics.WriteGaugeUint64(w, `vm_data_size_bytes{type="storage/metaindex"}`, tm.MetaindexSizeBytes)
+	metrics.WriteGaugeUint64(w, `vm_data_size_bytes{type="indexdb/inmemory"}`, idbm.InmemorySizeBytes)
+	metrics.WriteGaugeUint64(w, `vm_data_size_bytes{type="indexdb/file"}`, idbm.FileSizeBytes)
+	metrics.WriteGaugeUint64(w, `vm_data_size_bytes{type="indexdb/metaindex"}`, idbm.MetaindexSizeBytes)
+
+	metrics.WriteCounterUint64(w, `vm_rows_received_by_storage_total`, m.RowsReceivedTotal)
+	metrics.WriteCounterUint64(w, `vm_rows_added_to_storage_total`, m.RowsAddedTotal)
+	metrics.WriteCounterUint64(w, `vm_deduplicated_samples_total{type="merge"}`, m.DedupsDuringMerge)
+	metrics.WriteGaugeUint64(w, `vm_snapshots`, m.SnapshotsCount)
+
+	metrics.WriteCounterUint64(w, `vm_rows_ignored_total{reason="big_timestamp"}`, m.TooBigTimestampRows)
+	metrics.WriteCounterUint64(w, `vm_rows_ignored_total{reason="small_timestamp"}`, m.TooSmallTimestampRows)
+	metrics.WriteCounterUint64(w, `vm_rows_ignored_total{reason="invalid_raw_metric_name"}`, m.InvalidRawMetricNames)
+	if getMaxHourlySeries() > 0 {
+		metrics.WriteCounterUint64(w, `vm_rows_ignored_total{reason="hourly_limit_exceeded"}`, m.HourlySeriesLimitRowsDropped)
+	}
+	if getMaxDailySeries() > 0 {
+		metrics.WriteCounterUint64(w, `vm_rows_ignored_total{reason="daily_limit_exceeded"}`, m.DailySeriesLimitRowsDropped)
+	}
+
+	metrics.WriteCounterUint64(w, `vm_timeseries_repopulated_total`, m.TimeseriesRepopulated)
+	metrics.WriteCounterUint64(w, `vm_timeseries_precreated_total`, m.TimeseriesPreCreated)
+	metrics.WriteCounterUint64(w, `vm_new_timeseries_created_total`, m.NewTimeseriesCreated)
+	metrics.WriteCounterUint64(w, `vm_slow_row_inserts_total`, m.SlowRowInserts)
+	metrics.WriteCounterUint64(w, `vm_slow_per_day_index_inserts_total`, m.SlowPerDayIndexInserts)
+
+	if getMaxHourlySeries() > 0 {
+		metrics.WriteGaugeUint64(w, `vm_hourly_series_limit_current_series`, m.HourlySeriesLimitCurrentSeries)
+		metrics.WriteGaugeUint64(w, `vm_hourly_series_limit_max_series`, m.HourlySeriesLimitMaxSeries)
+		metrics.WriteCounterUint64(w, `vm_hourly_series_limit_rows_dropped_total`, m.HourlySeriesLimitRowsDropped)
+	}
+
+	if getMaxDailySeries() > 0 {
+		metrics.WriteGaugeUint64(w, `vm_daily_series_limit_current_series`, m.DailySeriesLimitCurrentSeries)
+		metrics.WriteGaugeUint64(w, `vm_daily_series_limit_max_series`, m.DailySeriesLimitMaxSeries)
+		metrics.WriteCounterUint64(w, `vm_daily_series_limit_rows_dropped_total`, m.DailySeriesLimitRowsDropped)
+	}
+
+	metrics.WriteCounterUint64(w, `vm_timestamps_blocks_merged_total`, m.TimestampsBlocksMerged)
+	metrics.WriteCounterUint64(w, `vm_timestamps_bytes_saved_total`, m.TimestampsBytesSaved)
+
+	metrics.WriteGaugeUint64(w, `vm_rows{type="storage/inmemory"}`, tm.InmemoryRowsCount)
+	metrics.WriteGaugeUint64(w, `vm_rows{type="storage/small"}`, tm.SmallRowsCount)
+	metrics.WriteGaugeUint64(w, `vm_rows{type="storage/big"}`, tm.BigRowsCount)
+	metrics.WriteGaugeUint64(w, `vm_rows{type="indexdb/inmemory"}`, idbm.InmemoryItemsCount)
+	metrics.WriteGaugeUint64(w, `vm_rows{type="indexdb/file"}`, idbm.FileItemsCount)
+
+	metrics.WriteCounterUint64(w, `vm_date_range_search_calls_total`, idbm.DateRangeSearchCalls)
+	metrics.WriteCounterUint64(w, `vm_date_range_hits_total`, idbm.DateRangeSearchHits)
+	metrics.WriteCounterUint64(w, `vm_global_search_calls_total`, idbm.GlobalSearchCalls)
+
+	metrics.WriteCounterUint64(w, `vm_missing_metric_names_for_metric_id_total`, idbm.MissingMetricNamesForMetricID)
+
+	metrics.WriteGaugeUint64(w, `vm_cache_entries{type="storage/indexBlocks"}`, tm.IndexBlocksCacheSize)
+	metrics.WriteGaugeUint64(w, `vm_cache_entries{type="storage/tsid"}`, m.TSIDCacheSize)
+	metrics.WriteGaugeUint64(w, `vm_cache_entries{type="storage/metricIDs"}`, m.MetricIDCacheSize)
+	metrics.WriteGaugeUint64(w, `vm_cache_entries{type="storage/metricName"}`, m.MetricNameCacheSize)
+	metrics.WriteGaugeUint64(w, `vm_cache_entries{type="storage/hour_metric_ids"}`, m.HourMetricIDCacheSize)
+	metrics.WriteGaugeUint64(w, `vm_cache_entries{type="storage/next_day_metric_ids"}`, m.NextDayMetricIDCacheSize)
+	metrics.WriteGaugeUint64(w, `vm_cache_entries{type="storage/regexps"}`, uint64(storage.RegexpCacheSize()))
+	metrics.WriteGaugeUint64(w, `vm_cache_entries{type="storage/regexpPrefixes"}`, uint64(storage.RegexpPrefixesCacheSize()))
+	metrics.WriteGaugeUint64(w, `vm_cache_entries{type="indexdb/dataBlocks"}`, idbm.DataBlocksCacheSize)
+	metrics.WriteGaugeUint64(w, `vm_cache_entries{type="indexdb/dataBlocksSparse"}`, idbm.DataBlocksSparseCacheSize)
+	metrics.WriteGaugeUint64(w, `vm_cache_entries{type="indexdb/indexBlocks"}`, idbm.IndexBlocksCacheSize)
+	metrics.WriteGaugeUint64(w, `vm_cache_entries{type="indexdb/metricID"}`, idbm.MetricIDCacheSize)
+	metrics.WriteGaugeUint64(w, `vm_cache_entries{type="indexdb/date_metricID"}`, idbm.DateMetricIDCacheSize)
+	metrics.WriteGaugeUint64(w, `vm_cache_entries{type="indexdb/tagFiltersToMetricIDs"}`, idbm.TagFiltersToMetricIDsCacheSize)
+	metrics.WriteGaugeUint64(w, `vm_cache_entries{type="indexdb/tagFiltersLoops"}`, idbm.LoopsPerDateTagFilterCacheSize)
+
+	metrics.WriteGaugeUint64(w, `vm_cache_size_bytes{type="storage/indexBlocks"}`, tm.IndexBlocksCacheSizeBytes)
+	metrics.WriteGaugeUint64(w, `vm_cache_size_bytes{type="storage/tsid"}`, m.TSIDCacheSizeBytes)
+	metrics.WriteGaugeUint64(w, `vm_cache_size_bytes{type="storage/metricIDs"}`, m.MetricIDCacheSizeBytes)
+	metrics.WriteGaugeUint64(w, `vm_cache_size_bytes{type="storage/metricName"}`, m.MetricNameCacheSizeBytes)
+	metrics.WriteGaugeUint64(w, `vm_cache_size_bytes{type="storage/hour_metric_ids"}`, m.HourMetricIDCacheSizeBytes)
+	metrics.WriteGaugeUint64(w, `vm_cache_size_bytes{type="storage/next_day_metric_ids"}`, m.NextDayMetricIDCacheSizeBytes)
+	metrics.WriteGaugeUint64(w, `vm_cache_size_bytes{type="storage/regexps"}`, storage.RegexpCacheSizeBytes())
+	metrics.WriteGaugeUint64(w, `vm_cache_size_bytes{type="storage/regexpPrefixes"}`, storage.RegexpPrefixesCacheSizeBytes())
+	metrics.WriteGaugeUint64(w, `vm_cache_size_bytes{type="indexdb/metricID"}`, idbm.MetricIDCacheSizeBytes)
+	metrics.WriteGaugeUint64(w, `vm_cache_size_bytes{type="indexdb/date_metricID"}`, idbm.DateMetricIDCacheSizeBytes)
+	metrics.WriteGaugeUint64(w, `vm_cache_size_bytes{type="indexdb/dataBlocks"}`, idbm.DataBlocksCacheSizeBytes)
+	metrics.WriteGaugeUint64(w, `vm_cache_size_bytes{type="indexdb/dataBlocksSparse"}`, idbm.DataBlocksSparseCacheSizeBytes)
+	metrics.WriteGaugeUint64(w, `vm_cache_size_bytes{type="indexdb/indexBlocks"}`, idbm.IndexBlocksCacheSizeBytes)
+	metrics.WriteGaugeUint64(w, `vm_cache_size_bytes{type="indexdb/tagFiltersToMetricIDs"}`, idbm.TagFiltersToMetricIDsCacheSizeBytes)
+	metrics.WriteGaugeUint64(w, `vm_cache_size_bytes{type="indexdb/tagFiltersLoops"}`, idbm.LoopsPerDateTagFilterCacheSizeBytes)
+
+	metrics.WriteGaugeUint64(w, `vm_cache_size_max_bytes{type="storage/indexBlocks"}`, tm.IndexBlocksCacheSizeMaxBytes)
+	metrics.WriteGaugeUint64(w, `vm_cache_size_max_bytes{type="storage/tsid"}`, m.TSIDCacheSizeMaxBytes)
+	metrics.WriteGaugeUint64(w, `vm_cache_size_max_bytes{type="storage/metricIDs"}`, m.MetricIDCacheSizeMaxBytes)
+	metrics.WriteGaugeUint64(w, `vm_cache_size_max_bytes{type="storage/metricName"}`, m.MetricNameCacheSizeMaxBytes)
+	metrics.WriteGaugeUint64(w, `vm_cache_size_max_bytes{type="storage/regexps"}`, storage.RegexpCacheMaxSizeBytes())
+	metrics.WriteGaugeUint64(w, `vm_cache_size_max_bytes{type="storage/regexpPrefixes"}`, storage.RegexpPrefixesCacheMaxSizeBytes())
+	metrics.WriteGaugeUint64(w, `vm_cache_size_max_bytes{type="indexdb/dataBlocks"}`, idbm.DataBlocksCacheSizeMaxBytes)
+	metrics.WriteGaugeUint64(w, `vm_cache_size_max_bytes{type="indexdb/dataBlocksSparse"}`, idbm.DataBlocksSparseCacheSizeMaxBytes)
+	metrics.WriteGaugeUint64(w, `vm_cache_size_max_bytes{type="indexdb/indexBlocks"}`, idbm.IndexBlocksCacheSizeMaxBytes)
+	metrics.WriteGaugeUint64(w, `vm_cache_size_max_bytes{type="indexdb/tagFiltersToMetricIDs"}`, idbm.TagFiltersToMetricIDsCacheSizeMaxBytes)
+	metrics.WriteGaugeUint64(w, `vm_cache_size_max_bytes{type="indexdb/tagFiltersLoops"}`, idbm.LoopsPerDateTagFilterCacheSizeMaxBytes)
+
+	metrics.WriteCounterUint64(w, `vm_cache_requests_total{type="storage/indexBlocks"}`, tm.IndexBlocksCacheRequests)
+	metrics.WriteCounterUint64(w, `vm_cache_requests_total{type="storage/tsid"}`, m.TSIDCacheRequests)
+	metrics.WriteCounterUint64(w, `vm_cache_requests_total{type="storage/metricIDs"}`, m.MetricIDCacheRequests)
+	metrics.WriteCounterUint64(w, `vm_cache_requests_total{type="storage/metricName"}`, m.MetricNameCacheRequests)
+	metrics.WriteCounterUint64(w, `vm_cache_requests_total{type="storage/regexps"}`, storage.RegexpCacheRequests())
+	metrics.WriteCounterUint64(w, `vm_cache_requests_total{type="storage/regexpPrefixes"}`, storage.RegexpPrefixesCacheRequests())
+	metrics.WriteCounterUint64(w, `vm_cache_requests_total{type="indexdb/dataBlocks"}`, idbm.DataBlocksCacheRequests)
+	metrics.WriteCounterUint64(w, `vm_cache_requests_total{type="indexdb/dataBlocksSparse"}`, idbm.DataBlocksSparseCacheRequests)
+	metrics.WriteCounterUint64(w, `vm_cache_requests_total{type="indexdb/indexBlocks"}`, idbm.IndexBlocksCacheRequests)
+	metrics.WriteCounterUint64(w, `vm_cache_requests_total{type="indexdb/tagFiltersToMetricIDs"}`, idbm.TagFiltersToMetricIDsCacheRequests)
+	metrics.WriteCounterUint64(w, `vm_cache_requests_total{type="indexdb/tagFiltersLoops"}`, idbm.LoopsPerDateTagFilterCacheRequests)
+
+	metrics.WriteCounterUint64(w, `vm_cache_misses_total{type="storage/indexBlocks"}`, tm.IndexBlocksCacheMisses)
+	metrics.WriteCounterUint64(w, `vm_cache_misses_total{type="storage/tsid"}`, m.TSIDCacheMisses)
+	metrics.WriteCounterUint64(w, `vm_cache_misses_total{type="storage/metricIDs"}`, m.MetricIDCacheMisses)
+	metrics.WriteCounterUint64(w, `vm_cache_misses_total{type="storage/metricName"}`, m.MetricNameCacheMisses)
+	metrics.WriteCounterUint64(w, `vm_cache_misses_total{type="storage/regexps"}`, storage.RegexpCacheMisses())
+	metrics.WriteCounterUint64(w, `vm_cache_misses_total{type="storage/regexpPrefixes"}`, storage.RegexpPrefixesCacheMisses())
+	metrics.WriteCounterUint64(w, `vm_cache_misses_total{type="indexdb/dataBlocks"}`, idbm.DataBlocksCacheMisses)
+	metrics.WriteCounterUint64(w, `vm_cache_misses_total{type="indexdb/dataBlocksSparse"}`, idbm.DataBlocksSparseCacheMisses)
+	metrics.WriteCounterUint64(w, `vm_cache_misses_total{type="indexdb/indexBlocks"}`, idbm.IndexBlocksCacheMisses)
+	metrics.WriteCounterUint64(w, `vm_cache_misses_total{type="indexdb/tagFiltersToMetricIDs"}`, idbm.TagFiltersToMetricIDsCacheMisses)
+	metrics.WriteCounterUint64(w, `vm_cache_misses_total{type="indexdb/tagFiltersLoops"}`, idbm.LoopsPerDateTagFilterCacheMisses)
+
+	metrics.WriteCounterUint64(w, `vm_cache_resets_total{type="indexdb/tagFiltersToMetricIDs"}`, idbm.TagFiltersToMetricIDsCacheResets)
+
+	metrics.WriteCounterUint64(w, `vm_cache_collisions_total{type="storage/tsid"}`, m.TSIDCacheCollisions)
+	metrics.WriteCounterUint64(w, `vm_cache_collisions_total{type="storage/metricName"}`, m.MetricNameCacheCollisions)
+
+	metrics.WriteCounterUint64(w, `vm_cache_syncs_total{type="indexdb/metricID"}`, idbm.MetricIDCacheSyncsCount)
+	metrics.WriteCounterUint64(w, `vm_cache_syncs_total{type="indexdb/date_metricID"}`, idbm.DateMetricIDCacheSyncsCount)
+
+	metrics.WriteCounterUint64(w, `vm_cache_rotations_total{type="indexdb/metricID"}`, idbm.MetricIDCacheRotationsCount)
+	metrics.WriteCounterUint64(w, `vm_cache_rotations_total{type="indexdb/date_metricID"}`, idbm.DateMetricIDCacheRotationsCount)
+
+	metrics.WriteCounterUint64(w, `vm_deleted_metrics_total{type="indexdb"}`, m.DeletedMetricsCount)
+
+	metrics.WriteGaugeUint64(w, `vm_next_retention_seconds`, m.NextRetentionSeconds)
+
+	if *trackMetricNamesStats {
+		metrics.WriteCounterUint64(w, `vm_cache_size_bytes{type="storage/metricNamesStatsTracker"}`, m.MetricNamesUsageTrackerSizeBytes)
+		metrics.WriteCounterUint64(w, `vm_cache_size{type="storage/metricNamesStatsTracker"}`, m.MetricNamesUsageTrackerSize)
+		metrics.WriteCounterUint64(w, `vm_cache_size_max_bytes{type="storage/metricNamesStatsTracker"}`, m.MetricNamesUsageTrackerSizeMaxBytes)
+	}
+
+	metrics.WriteGaugeUint64(w, `vm_downsampling_partitions_scheduled`, tm.ScheduledDownsamplingPartitions)
+	metrics.WriteGaugeUint64(w, `vm_downsampling_partitions_scheduled_size_bytes`, tm.ScheduledDownsamplingPartitionsSize)
+
+	metrics.WriteGaugeUint64(w, `vm_search_max_unique_timeseries`, uint64(vms.maxUniqueTimeSeriesCalculated))
+
+	metrics.WriteGaugeUint64(w, `vm_metrics_metadata_storage_items`, m.MetadataStorageItemsCurrent)
+	metrics.WriteCounterUint64(w, `vm_metrics_metadata_storage_size_bytes`, m.MetadataStorageCurrentSizeBytes)
+	metrics.WriteCounterUint64(w, `vm_metrics_metadata_storage_max_size_bytes`, m.MetadataStorageMaxSizeBytes)
+
+}
+
+func jsonResponseError(w http.ResponseWriter, err error) {
+	logger.Errorf("%s", err)
+	w.WriteHeader(http.StatusInternalServerError)
+	errStr := err.Error()
+	fmt.Fprintf(w, `{"status":"error","msg":%s}`, stringsutil.JSONString(errStr))
+}
+
+func getMaxHourlySeries() int {
+	limit := *maxHourlySeries
+	if limit == -1 || limit > math.MaxInt32 {
+		return math.MaxInt32
+	}
+
+	return int(limit)
+}
+
+func getMaxDailySeries() int {
+	limit := *maxDailySeries
+	if limit == -1 || limit > math.MaxInt32 {
+		return math.MaxInt32
+	}
+
+	return int(limit)
+}

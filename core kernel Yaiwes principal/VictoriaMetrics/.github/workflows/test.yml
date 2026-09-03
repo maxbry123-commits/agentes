@@ -1,0 +1,125 @@
+name: test
+
+on:
+  push:
+    branches:
+      - cluster
+      - master
+    paths:
+      - '**.go'
+      - 'go.*'
+      - '.github/workflows/main.yml'
+  pull_request:
+    branches:
+      - cluster
+      - master
+    paths:
+      - '**.go'
+      - 'go.*'
+      - '.github/workflows/main.yml'
+
+permissions: {}
+
+concurrency:
+  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+
+
+jobs:
+  lint:
+    name: lint
+    permissions:
+      contents: read
+    # Runs on dedicated runner with extra resources since golangci-lint requires extra memory
+    runs-on: 'vm-runner'
+    steps:
+      - name: Code checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        id: go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          cache-dependency-path: |
+            go.sum
+            Makefile
+            app/**/Makefile
+          go-version-file: 'go.mod'
+
+      - run: go version
+
+      - name: Cache golangci-lint
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cache/golangci-lint
+            ~/go/bin
+          key: golangci-lint-${{ runner.os }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('.golangci.yml') }}
+
+      - name: Run check-all
+        run: |
+          make check-all
+          git diff --exit-code
+
+  unit:
+    name: unit
+    permissions:
+      contents: read
+    # Runs on dedicated runner with extra resources to increase tests speed.
+    runs-on: 'vm-runner'
+
+    strategy:
+      matrix:
+        scenario:
+          - 'test'
+          - 'test-386'
+          - 'test-pure'
+
+    steps:
+      - name: Code checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        id: go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          cache-dependency-path: |
+            go.sum
+            Makefile
+            app/**/Makefile
+          go-version-file: 'go.mod'
+      - run: go version
+
+      - name: Run tests
+        run: make ${{ matrix.scenario}}
+
+  apptest:
+    name: apptest
+    permissions:
+      contents: read
+    # Runs on dedicated runner to isolate app tests from other tests.
+    runs-on: apptest
+
+    steps:
+      - name: Code checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        id: go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          cache-dependency-path: |
+            go.sum
+            Makefile
+            app/**/Makefile
+          go-version-file: 'go.mod'
+      - run: go version
+
+      - name: Run app tests
+        run: make apptest

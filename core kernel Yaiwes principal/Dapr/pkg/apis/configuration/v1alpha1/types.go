@@ -1,0 +1,506 @@
+/*
+Copyright 2021 The Dapr Authors
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+    http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package v1alpha1
+
+import (
+	"strconv"
+
+	v1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/dapr/dapr/pkg/apis/common"
+	"github.com/dapr/dapr/pkg/apis/configuration"
+)
+
+// +genclient
+// +genclient:noStatus
+// +kubebuilder:object:root=true
+
+// Configuration describes an Dapr configuration setting.
+//
+//nolint:recvcheck
+type Configuration struct {
+	metav1.TypeMeta `json:",inline"`
+	// +optional
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+	// +optional
+	Spec ConfigurationSpec `json:"spec,omitempty"`
+}
+
+const (
+	kindConfiguration = "Configuration"
+	version           = "v1alpha1"
+)
+
+// Kind returns the configuration kind.
+func (Configuration) Kind() string {
+	return kindConfiguration
+}
+
+// APIVersion returns the configuration API version.
+func (Configuration) APIVersion() string {
+	return configuration.GroupName + "/" + version
+}
+
+// GetName returns the configuration name.
+func (c Configuration) GetName() string {
+	return c.Name
+}
+
+// GetNamespace returns the configuration namespace.
+func (c Configuration) GetNamespace() string {
+	return c.Namespace
+}
+
+// LogName returns the name of the configuration that can be used in logging.
+func (c Configuration) LogName() string {
+	return c.Name
+}
+
+// GetSecretStore returns the name of the secret store (empty for configuration).
+func (c Configuration) GetSecretStore() string {
+	return ""
+}
+
+// NameValuePairs returns empty slice as configurations don't have metadata pairs.
+func (c Configuration) NameValuePairs() []common.NameValuePair {
+	return nil
+}
+
+// ClientObject returns the configuration as a client.Object.
+func (c Configuration) ClientObject() client.Object {
+	return &c
+}
+
+// GetScopes returns empty slice as configurations don't have scopes.
+func (c Configuration) GetScopes() []string {
+	return nil
+}
+
+// EmptyMetaDeepCopy returns a new instance of the configuration type with the
+// TypeMeta's Kind and APIVersion fields set.
+func (c Configuration) EmptyMetaDeepCopy() metav1.Object {
+	n := c.DeepCopy()
+	n.TypeMeta = metav1.TypeMeta{
+		Kind:       kindConfiguration,
+		APIVersion: configuration.GroupName + "/" + version,
+	}
+	n.ObjectMeta = metav1.ObjectMeta{Name: c.Name, Namespace: c.Namespace}
+	return n
+}
+
+// ConfigurationSpec is the spec for a configuration.
+type ConfigurationSpec struct {
+	// +optional
+	AppHTTPPipelineSpec *PipelineSpec `json:"appHttpPipeline,omitempty"`
+	// +optional
+	HTTPPipelineSpec *PipelineSpec `json:"httpPipeline,omitempty"`
+	// +optional
+	TracingSpec *TracingSpec `json:"tracing,omitempty"`
+	// +kubebuilder:default={enabled:true}
+	MetricSpec *MetricSpec `json:"metric,omitempty"`
+	// +kubebuilder:default={enabled:true}
+	MetricsSpec *MetricSpec `json:"metrics,omitempty"`
+	// +optional
+	MTLSSpec *MTLSSpec `json:"mtls,omitempty"`
+	// +optional
+	Secrets *SecretsSpec `json:"secrets,omitempty"`
+	// +optional
+	AccessControlSpec *AccessControlSpec `json:"accessControl,omitempty"`
+	// +optional
+	NameResolutionSpec *NameResolutionSpec `json:"nameResolution,omitempty"`
+	// +optional
+	Features []FeatureSpec `json:"features,omitempty"`
+	// +optional
+	APISpec *APISpec `json:"api,omitempty"`
+	// +optional
+	ComponentsSpec *ComponentsSpec `json:"components,omitempty"`
+	// +optional
+	LoggingSpec *LoggingSpec `json:"logging,omitempty"`
+	// +optional
+	WasmSpec *WasmSpec `json:"wasm,omitempty"`
+	// +optional
+	WorkflowSpec *WorkflowSpec `json:"workflow,omitempty"`
+}
+
+// WorkflowSpec defines the configuration for Dapr workflows.
+type WorkflowSpec struct {
+	// maxConcurrentWorkflowInvocations is the maximum number of concurrent workflow invocations that can be scheduled by a single Dapr instance.
+	// Attempted invocations beyond this will be queued until the number of concurrent invocations drops below this value.
+	// If omitted, no maximum will be enforced.
+	// +optional
+	MaxConcurrentWorkflowInvocations int32 `json:"maxConcurrentWorkflowInvocations,omitempty"`
+	// maxConcurrentActivityInvocations is the maximum number of concurrent activities that can be processed by a single Dapr instance.
+	// Attempted invocations beyond this will be queued until the number of concurrent invocations drops below this value.
+	// If omitted, no maximum will be enforced.
+	// +optional
+	MaxConcurrentActivityInvocations int32 `json:"maxConcurrentActivityInvocations,omitempty"`
+
+	// globalMaxConcurrentWorkflowInvocations is the maximum number of concurrent
+	// workflow invocations across all replicas, enforced by the scheduler.
+	// If omitted, no global maximum will be enforced.
+	// +optional
+	GlobalMaxConcurrentWorkflowInvocations *int32 `json:"globalMaxConcurrentWorkflowInvocations,omitempty"`
+
+	// globalMaxConcurrentActivityInvocations is the maximum number of concurrent
+	// activity invocations across all replicas, enforced by the scheduler.
+	// If omitted, no global maximum will be enforced.
+	// +optional
+	GlobalMaxConcurrentActivityInvocations *int32 `json:"globalMaxConcurrentActivityInvocations,omitempty"`
+
+	// workflowConcurrencyLimits defines per-workflow-name concurrency limits
+	// enforced globally across all replicas by the scheduler.
+	// +optional
+	WorkflowConcurrencyLimits []NamedConcurrencyLimit `json:"workflowConcurrencyLimits,omitempty"`
+	// activityConcurrencyLimits defines per-activity-name concurrency limits
+	// enforced globally across all replicas by the scheduler.
+	// +optional
+	ActivityConcurrencyLimits []NamedConcurrencyLimit `json:"activityConcurrencyLimits,omitempty"`
+
+	// StateRetentionPolicy defines the retention configuration for workflow
+	// state once a workflow reaches a terminal state. If not set, workflow
+	// instances will not be automatically purged.
+	// +optional
+	StateRetentionPolicy *WorkflowStateRetentionPolicy `json:"stateRetentionPolicy,omitempty"`
+}
+
+// NamedConcurrencyLimit defines a per-name concurrency limit for a specific
+// workflow or activity name.
+type NamedConcurrencyLimit struct {
+	// Name is the workflow or activity name to limit.
+	// +optional
+	Name *string `json:"name,omitempty"`
+	// MaxConcurrent is the maximum number of concurrent invocations across all
+	// replicas.
+	// +optional
+	MaxConcurrent *int32 `json:"maxConcurrent,omitempty"`
+}
+
+// WorkflowStateRetentionPolicy defines the retention policy of workflow state
+// for workflow instances once they reaches a specific or any terminal state.
+// If not set, workflow instances will not be automatically purged. If a
+// specific and any terminal state are both set, the specific terminal state
+// takes precedence. Accepts duration strings, e.g. "72h" or "30m", including
+// immediate values "0s".
+type WorkflowStateRetentionPolicy struct {
+	// AnyTerminal is the TTL for purging workflow instances that reach any
+	// terminal state.
+	// +optional
+	AnyTerminal *metav1.Duration `json:"anyTerminal,omitempty"`
+
+	// Completed is the TTL for purging workflow instances that reach the
+	// Completed terminal state.
+	// +optional
+	Completed *metav1.Duration `json:"completed,omitempty"`
+
+	// Failed is the TTL for purging workflow instances that reach the Failed
+	// terminal state.
+	// +optional
+	Failed *metav1.Duration `json:"failed,omitempty"`
+
+	// Terminated is the TTL for purging workflow instances that reach the
+	// Terminated terminal state.
+	// +optional
+	Terminated *metav1.Duration `json:"terminated,omitempty"`
+}
+
+// APISpec describes the configuration for Dapr APIs.
+type APISpec struct {
+	// List of allowed APIs. Can be used in conjunction with denied.
+	// +optional
+	Allowed []APIAccessRule `json:"allowed,omitempty"`
+	// List of denied APIs. Can be used in conjunction with allowed.
+	// +optional
+	Denied []APIAccessRule `json:"denied,omitempty"`
+}
+
+// WasmSpec describes the security profile for all Dapr Wasm components.
+type WasmSpec struct {
+	// Force enabling strict sandbox mode for all WASM components.
+	// When this is enabled, WASM components always run in strict mode regardless of their configuration.
+	// Strict mode enhances security of the WASM sandbox by limiting access to certain capabilities such as real-time clocks and random number generators.
+	StrictSandbox bool `json:"strictSandbox,omitempty"`
+}
+
+// APIAccessRule describes an access rule for allowing or denying a Dapr API.
+type APIAccessRule struct {
+	Name    string `json:"name"`
+	Version string `json:"version"`
+	// +optional
+	Protocol string `json:"protocol,omitempty"`
+}
+
+// NameResolutionSpec is the spec for name resolution configuration.
+type NameResolutionSpec struct {
+	Component     string        `json:"component"`
+	Version       string        `json:"version"`
+	Configuration *DynamicValue `json:"configuration"`
+}
+
+// SecretsSpec is the spec for secrets configuration.
+type SecretsSpec struct {
+	Scopes []SecretsScope `json:"scopes"`
+}
+
+// SecretsScope defines the scope for secrets.
+type SecretsScope struct {
+	StoreName string `json:"storeName"`
+	// +optional
+	DefaultAccess string `json:"defaultAccess,omitempty"`
+	// +optional
+	AllowedSecrets []string `json:"allowedSecrets,omitempty"`
+	// +optional
+	DeniedSecrets []string `json:"deniedSecrets,omitempty"`
+}
+
+// PipelineSpec defines the middleware pipeline.
+type PipelineSpec struct {
+	Handlers []HandlerSpec `json:"handlers"`
+}
+
+// HandlerSpec defines a request handlers.
+type HandlerSpec struct {
+	Name string `json:"name"`
+	Type string `json:"type"`
+	// +optional
+	SelectorSpec *SelectorSpec `json:"selector,omitempty"`
+}
+
+// MTLSSpec defines mTLS configuration.
+type MTLSSpec struct {
+	Enabled *bool `json:"enabled"`
+	// +optional
+	WorkloadCertTTL *string `json:"workloadCertTTL,omitempty"`
+	// +optional
+	AllowedClockSkew        *string `json:"allowedClockSkew,omitempty"`
+	SentryAddress           string  `json:"sentryAddress"`
+	ControlPlaneTrustDomain string  `json:"controlPlaneTrustDomain"`
+	// Additional token validators to use.
+	// When Dapr is running in Kubernetes mode, this is in addition to the built-in "kubernetes" validator.
+	// In self-hosted mode, enabling a custom validator will disable the built-in "insecure" validator.
+	// +optional
+	TokenValidators []ValidatorSpec `json:"tokenValidators,omitempty"`
+}
+
+// GetEnabled returns true if mTLS is enabled.
+func (m *MTLSSpec) GetEnabled() bool {
+	// Defaults to true if unset
+	return m == nil || m.Enabled == nil || *m.Enabled
+}
+
+// ValidatorSpec contains additional token validators to use.
+type ValidatorSpec struct {
+	// Name of the validator
+	// +kubebuilder:validation:Enum={"jwks"}
+	Name string `json:"name"`
+	// Options for the validator, if any
+	Options *DynamicValue `json:"options,omitempty"`
+}
+
+// SelectorSpec selects target services to which the handler is to be applied.
+type SelectorSpec struct {
+	Fields []SelectorField `json:"fields"`
+}
+
+// SelectorField defines a selector fields.
+type SelectorField struct {
+	Field string `json:"field"`
+	Value string `json:"value"`
+}
+
+// TracingSpec defines distributed tracing configuration.
+type TracingSpec struct {
+	SamplingRate string `json:"samplingRate"`
+	// +optional
+	Stdout *bool `json:"stdout,omitempty"`
+	// +optional
+	Zipkin *ZipkinSpec `json:"zipkin,omitempty"`
+	// +optional
+	Otel *OtelSpec `json:"otel,omitempty"`
+}
+
+// OtelSpec defines Otel exporter configurations.
+type OtelSpec struct {
+	Protocol        string `json:"protocol" yaml:"protocol"`
+	EndpointAddress string `json:"endpointAddress" yaml:"endpointAddress"`
+	IsSecure        *bool  `json:"isSecure" yaml:"isSecure"`
+	// Headers to add to the OTLP trace exporter request.
+	// Each header can contain plaintext values, reference secrets, or reference environment variables.
+	// +optional
+	Headers []common.NameValuePair `json:"headers,omitempty" yaml:"headers,omitempty"`
+	// Timeout for the OTLP trace exporter request.
+	// +optional
+	Timeout *metav1.Duration `json:"timeout,omitempty" yaml:"timeout,omitempty"`
+}
+
+// ZipkinSpec defines Zipkin trace configurations.
+type ZipkinSpec struct {
+	EndpointAddresss string `json:"endpointAddress"`
+}
+
+// MetricSpec defines metrics configuration.
+type MetricSpec struct {
+	Enabled *bool `json:"enabled"`
+	// +optional
+	RecordErrorCodes *bool `json:"recordErrorCodes,omitempty"  yaml:"recordErrorCodes,omitempty"`
+	// +optional
+	HTTP *MetricHTTP `json:"http,omitempty"`
+	// +optional
+	Rules []MetricsRule `json:"rules,omitempty"`
+	// The LatencyDistributionBuckets variable specifies the latency distribution buckets (in milliseconds) used for
+	// histograms in the application. If this variable is not set or left empty, the application will default to using the standard histogram buckets.
+	// The default histogram latency buckets (in milliseconds) are as follows:
+	//    1, 2, 3, 4, 5, 6, 8, 10, 13, 16, 20, 25, 30, 40, 50, 65, 80, 100, 130, 160, 200, 250, 300, 400, 500, 650, 800, 1,000, 2,000, 5,000, 10,000, 20,000, 50,000, 100,000.
+	// +optional
+	LatencyDistributionBuckets *[]int `json:"latencyDistributionBuckets,omitempty"`
+	// Workflow holds metrics options specific to workflow and activity metrics.
+	// +optional
+	Workflow *WorkflowMetrics `json:"workflow,omitempty"`
+}
+
+// WorkflowMetrics configures metrics options specific to workflows and activities.
+type WorkflowMetrics struct {
+	// LatencyDistributionBuckets specifies the latency distribution buckets used for the
+	// workflow and activity execution latency histograms. Units are defined by
+	// LatencyDistributionUnits (defaults to milliseconds). If not set or left empty,
+	// those histograms fall back to the shared MetricSpec.LatencyDistributionBuckets.
+	// +optional
+	LatencyDistributionBuckets *[]int `json:"latencyDistributionBuckets,omitempty"`
+	// LatencyDistributionUnits is the unit the LatencyDistributionBuckets values are
+	// expressed in (for example "1ms" or "1s"). It scales the configured buckets into
+	// the milliseconds the histograms are recorded in.
+	// +optional
+	LatencyDistributionUnits *metav1.Duration `json:"latencyDistributionUnits,omitempty"`
+}
+
+// MetricHTTP defines configuration for metrics for the HTTP server
+type MetricHTTP struct {
+	// If false, metrics for the HTTP server are collected with increased cardinality.
+	// The default is true in Dapr 1.13, but will be changed to false in 1.15+
+	// TODO: [MetricsCardinality] Change default in 1.15+
+	// +optional
+	IncreasedCardinality *bool `json:"increasedCardinality,omitempty"`
+	// +optional
+	PathMatching []string `json:"pathMatching,omitempty"`
+	// If true (default is false) HTTP verbs (e.g., GET, POST) are excluded from the metrics.
+	// +optional
+	ExcludeVerbs *bool `json:"excludeVerbs,omitempty"`
+}
+
+// MetricsRule defines configuration options for a metric.
+type MetricsRule struct {
+	Name   string        `json:"name"`
+	Labels []MetricLabel `json:"labels"`
+}
+
+// MetricsLabel defines an object that allows to set regex expressions for a label.
+type MetricLabel struct {
+	Name  string            `json:"name"`
+	Regex map[string]string `json:"regex"`
+}
+
+// AppPolicySpec defines the policy data structure for each app.
+type AppPolicySpec struct {
+	AppName string `json:"appId" yaml:"appId"`
+	// +optional
+	DefaultAction string `json:"defaultAction,omitempty" yaml:"defaultAction,omitempty"`
+	// +optional
+	TrustDomain string `json:"trustDomain,omitempty" yaml:"trustDomain,omitempty"`
+	// +optional
+	Namespace string `json:"namespace,omitempty" yaml:"namespace,omitempty"`
+	// +optional
+	AppOperationActions []AppOperationAction `json:"operations,omitempty" yaml:"operations,omitempty"`
+}
+
+// AppOperationAction defines the data structure for each app operation.
+type AppOperationAction struct {
+	Operation string `json:"name" yaml:"name"`
+	Action    string `json:"action" yaml:"action"`
+	// +optional
+	HTTPVerb []string `json:"httpVerb,omitempty" yaml:"httpVerb,omitempty"`
+}
+
+// AccessControlSpec is the spec object in ConfigurationSpec.
+type AccessControlSpec struct {
+	// +optional
+	DefaultAction string `json:"defaultAction,omitempty" yaml:"defaultAction,omitempty"`
+	// +optional
+	TrustDomain string `json:"trustDomain,omitempty" yaml:"trustDomain,omitempty"`
+	// +optional
+	AppPolicies []AppPolicySpec `json:"policies,omitempty" yaml:"policies,omitempty"`
+}
+
+// FeatureSpec defines the features that are enabled/disabled.
+type FeatureSpec struct {
+	Name    string `json:"name" yaml:"name"`
+	Enabled *bool  `json:"enabled" yaml:"enabled"`
+}
+
+// ComponentsSpec describes the configuration for Dapr components
+type ComponentsSpec struct {
+	// Denylist of component types that cannot be instantiated
+	// +optional
+	Deny []string `json:"deny,omitempty" yaml:"deny,omitempty"`
+}
+
+// LoggingSpec defines the configuration for logging.
+type LoggingSpec struct {
+	// Configure API logging.
+	// +optional
+	APILogging *APILoggingSpec `json:"apiLogging,omitempty" yaml:"apiLogging,omitempty"`
+}
+
+// APILoggingSpec defines the configuration for API logging.
+type APILoggingSpec struct {
+	// Default value for enabling API logging. Sidecars can always override this by setting `--enable-api-logging` to true or false explicitly.
+	// The default value is false.
+	// +optional
+	Enabled *bool `json:"enabled,omitempty" yaml:"enabled,omitempty"`
+	// When enabled, obfuscates the values of URLs in HTTP API logs, logging the route name rather than the full path being invoked, which could contain PII.
+	// Default: false.
+	// This option has no effect if API logging is disabled.
+	// +optional
+	ObfuscateURLs *bool `json:"obfuscateURLs,omitempty" yaml:"obfuscateURLs,omitempty"`
+	// If true, health checks are not reported in API logs. Default: false.
+	// This option has no effect if API logging is disabled.
+	// +optional
+	OmitHealthChecks *bool `json:"omitHealthChecks,omitempty" yaml:"omitHealthChecks,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+
+// ConfigurationList is a list of Dapr event sources.
+type ConfigurationList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+
+	Items []Configuration `json:"items"`
+}
+
+// DynamicValue is a dynamic value struct for the component.metadata pair value.
+type DynamicValue struct {
+	v1.JSON `json:",inline"`
+}
+
+// String returns the string representation of the raw value.
+// If the value is a string, it will be unquoted as the string is guaranteed to be a JSON serialized string.
+func (d *DynamicValue) String() string {
+	s := string(d.Raw)
+	c, err := strconv.Unquote(s)
+	if err == nil {
+		s = c
+	}
+	return s
+}

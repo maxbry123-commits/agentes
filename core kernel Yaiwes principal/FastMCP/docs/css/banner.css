@@ -1,0 +1,58 @@
+/* Banner: an animated brand-rainbow wash behind Mintlify's white text.
+   Mintlify always renders banner text white, so every gradient stop is a
+   deep, saturated shade (all >=7:1 on white) — the colors evoke the FastMCP
+   watercolor logo while keeping the announcement legible in both themes.
+   A dark fallback color is configured in docs.json for the no-CSS case. */
+#banner {
+  font-size: 0.95rem !important;
+  font-weight: 600 !important;
+  padding-top: 12px !important;
+  padding-bottom: 12px !important;
+  overflow: hidden !important;
+}
+
+#banner::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: linear-gradient(
+    90deg,
+    #1e40af 0%,
+    #5b21b6 22%,
+    #115e59 44%,
+    #9a3412 66%,
+    #9d174d 88%,
+    #1e40af 100%
+  );
+  background-size: 250% 100%;
+  animation: colorWave 18s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+
+/* Keep the announcement text above the animated wash. */
+#banner > * {
+  position: relative;
+  z-index: 1;
+}
+
+@keyframes colorWave {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 100% 50%;
+  }
+}
+
+#banner * {
+  margin: 0 !important;
+}
+
+@media (max-width: 767px) {
+  #banner {
+    font-size: 0.8rem !important;
+    padding-top: 8px !important;
+    padding-bottom: 8px !important;
+  }
+}

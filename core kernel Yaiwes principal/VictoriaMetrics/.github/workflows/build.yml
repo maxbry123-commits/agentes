@@ -1,0 +1,95 @@
+name: build
+
+on:
+  push:
+    branches:
+      - cluster
+      - master
+    paths:
+      - '**.go'
+      - '**/Dockerfile'
+      - '**/Makefile'
+      - '!app/vmui/**'
+      - '.github/workflows/build.yml'
+  pull_request:
+    branches:
+      - cluster
+      - master
+    paths:
+      - '**.go'
+      - '**/Dockerfile'
+      - '**/Makefile'
+      - '!app/vmui/**'
+      - '.github/workflows/build.yml'
+
+permissions: {}
+
+concurrency:
+  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+
+jobs:
+  build:
+    name: ${{ matrix.os }}-${{ matrix.arch }}
+    permissions:
+      contents: read
+    # Runs on dedicated runner with extra resources to increase build speed.
+    runs-on: 'vm-runner'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            arch: 386
+          - os: linux
+            arch: amd64
+          - os: linux
+            arch: arm64
+          - os: linux
+            arch: arm
+          - os: linux
+            arch: ppc64le
+          - os: linux
+            arch: s390x
+          - os: darwin
+            arch: amd64
+          - os: darwin
+            arch: arm64
+          - os: freebsd
+            arch: amd64
+          - os: openbsd
+            arch: amd64
+          - os: netbsd
+            arch: amd64
+          - os: windows
+            arch: amd64
+    steps:
+      - name: Code checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        id: go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          cache: false
+          go-version-file: 'go.mod'
+
+      - name: Cache Go build artifacts
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-build-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles('go.sum', 'Makefile') }}
+          restore-keys: |
+            go-build-${{ matrix.os }}-${{ matrix.arch }}-
+
+      - run: go version
+
+      - name: Build victoria-metrics for ${{ matrix.os }}-${{ matrix.arch }}
+        run: make victoria-metrics-${{ matrix.os }}-${{ matrix.arch }}
+
+      - name: Build vmutils for ${{ matrix.os }}-${{ matrix.arch }}
+        run: make vmutils-${{ matrix.os }}-${{ matrix.arch }}

@@ -1,0 +1,311 @@
+"""Unit tests for JWT issuer and token encryption."""
+
+import base64
+
+import pytest
+from joserfc.errors import JoseError
+
+from fastmcp.server.auth.jwt_issuer import (
+    JWTIssuer,
+    derive_jwt_key,
+)
+
+
+class TestKeyDerivation:
+    """Tests for HKDF key derivation functions."""
+
+    def test_derive_jwt_key_produces_32_bytes(self):
+        """Test that JWT key derivation produces 32-byte key."""
+        key = derive_jwt_key(high_entropy_material="test-secret", salt="test-salt")
+        assert len(key) == 44
+        assert isinstance(key, bytes)
+
+        # base64 decode and make sure its 32 bytes
+        key_bytes = base64.urlsafe_b64decode(key)
+        assert len(key_bytes) == 32
+
+        key = derive_jwt_key(low_entropy_material="test-secret", salt="test-salt")
+        assert len(key) == 44
+        assert isinstance(key, bytes)
+
+        # base64 decode and make sure its 32 bytes
+        key_bytes = base64.urlsafe_b64decode(key)
+        assert len(key_bytes) == 32
+
+    def test_derive_jwt_key_with_different_secrets_produces_different_keys(self):
+        """Test that different secrets produce different keys."""
+        key1 = derive_jwt_key(high_entropy_material="secret1", salt="salt")
+        key2 = derive_jwt_key(high_entropy_material="secret2", salt="salt")
+        assert key1 != key2
+
+        key1 = derive_jwt_key(low_entropy_material="secret1", salt="salt")
+        key2 = derive_jwt_key(low_entropy_material="secret2", salt="salt")
+        assert key1 != key2
+
+    def test_derive_jwt_key_with_different_salts_produces_different_keys(self):
+        """Test that different salts produce different keys."""
+        key1 = derive_jwt_key(high_entropy_material="secret", salt="salt1")
+        key2 = derive_jwt_key(high_entropy_material="secret", salt="salt2")
+        assert key1 != key2
+
+        key1 = derive_jwt_key(low_entropy_material="secret", salt="salt1")
+        key2 = derive_jwt_key(low_entropy_material="secret", salt="salt2")
+        assert key1 != key2
+
+    def test_derive_jwt_key_is_deterministic(self):
+        """Test that same inputs always produce same key."""
+        key1 = derive_jwt_key(high_entropy_material="secret", salt="salt")
+        key2 = derive_jwt_key(high_entropy_material="secret", salt="salt")
+        assert key1 == key2
+
+        key1 = derive_jwt_key(low_entropy_material="secret", salt="salt")
+        key2 = derive_jwt_key(low_entropy_material="secret", salt="salt")
+        assert key1 == key2
+
+
+class TestJWTIssuer:
+    """Tests for JWT token issuance and verification."""
+
+    @pytest.fixture
+    def issuer(self):
+        """Create a JWT issuer for testing."""
+        signing_key = derive_jwt_key(
+            low_entropy_material="test-secret", salt="test-salt"
+        )
+        return JWTIssuer(
+            issuer="https://test-server.com",
+            audience="https://test-server.com/mcp",
+            signing_key=signing_key,
+        )
+
+    def test_issue_access_token_creates_valid_jwt(self, issuer):
+        """Test that access token is a minimal JWT with correct structure."""
+        token = issuer.issue_access_token(
+            client_id="client-abc",
+            scopes=["read", "write"],
+            jti="token-id-123",
+            expires_in=3600,
+        )
+
+        # Should be a JWT with 3 segments
+        assert len(token.split(".")) == 3
+
+        # Should be verifiable
+        payload = issuer.verify_token(token)
+        # Minimal token should only have required claims
+        assert payload["client_id"] == "client-abc"
+        assert payload["scope"] == "read write"
+        assert payload["jti"] == "token-id-123"
+        assert payload["iss"] == "https://test-server.com"
+        assert payload["aud"] == "https://test-server.com/mcp"
+        # Should NOT have user identity claims
+        assert "sub" not in payload
+        assert "azp" not in payload
+
+    def test_minimal_token_has_no_user_identity(self, issuer):
+        """Test that minimal tokens contain no user identity or custom claims."""
+        token = issuer.issue_access_token(
+            client_id="client-abc",
+            scopes=["read"],
+            jti="token-id",
+            expires_in=3600,
+        )
+
+        payload = issuer.verify_token(token)
+        # Should only have minimal required claims
+        assert "sub" not in payload
+        assert "azp" not in payload
+        assert "groups" not in payload
+        assert "roles" not in payload
+        assert "email" not in payload
+        # Should have exactly these claims
+        expected_keys = {"iss", "aud", "client_id", "scope", "exp", "iat", "jti"}
+        assert set(payload.keys()) == expected_keys
+
+    def test_issue_refresh_token_creates_valid_jwt(self, issuer):
+        """Test that refresh token is a minimal JWT with token_use claim."""
+        token = issuer.issue_refresh_token(
+            client_id="client-abc",
+            scopes=["read"],
+            jti="refresh-token-id",
+            expires_in=60 * 60 * 24 * 30,  # 30 days
+        )
+
+        payload = issuer.verify_token(token, expected_token_use="refresh")
+        assert payload["client_id"] == "client-abc"
+        assert payload["token_use"] == "refresh"
+        assert payload["jti"] == "refresh-token-id"
+        # Should NOT have user identity
+        assert "sub" not in payload
+
+    def test_verify_token_validates_signature(self, issuer):
+        """Test that token verification fails with wrong signing key."""
+        # Create token with one issuer
+        token = issuer.issue_access_token(
+            client_id="client-abc",
+            scopes=["read"],
+            jti="token-id",
+        )
+
+        # Try to verify with different issuer (different key)
+        other_key = derive_jwt_key(
+            low_entropy_material="different-secret", salt="different-salt"
+        )
+        other_issuer = JWTIssuer(
+            issuer="https://test-server.com",
+            audience="https://test-server.com/mcp",
+            signing_key=other_key,
+        )
+
+        with pytest.raises(JoseError):
+            other_issuer.verify_token(token)
+
+    def test_verify_token_validates_expiration(self, issuer):
+        """Test that expired tokens are rejected."""
+        # A token that is still valid should verify successfully.
+        valid_token = issuer.issue_access_token(
+            client_id="client-abc",
+            scopes=["read"],
+            jti="valid-token-id",
+        )
+        payload = issuer.verify_token(valid_token)
+        assert payload["client_id"] == "client-abc"
+
+        # A token issued already-expired should be rejected. verify_token()
+        # does a strict `exp < time.time()` comparison with no clock-skew
+        # leeway, so this is instant and deterministic (no sleep needed).
+        expired_token = issuer.issue_access_token(
+            client_id="client-abc",
+            scopes=["read"],
+            jti="expired-token-id",
+            expires_in=-10,
+        )
+        with pytest.raises(JoseError, match="expired"):
+            issuer.verify_token(expired_token)
+
+    def test_verify_token_validates_issuer(self, issuer):
+        """Test that tokens from different issuers are rejected."""
+        token = issuer.issue_access_token(
+            client_id="client-abc",
+            scopes=["read"],
+            jti="token-id",
+        )
+
+        # Create issuer with different issuer URL but same key
+        other_issuer = JWTIssuer(
+            issuer="https://other-server.com",  # Different issuer
+            audience="https://test-server.com/mcp",
+            signing_key=issuer._signing_key,  # Same key
+        )
+
+        with pytest.raises(JoseError, match="issuer"):
+            other_issuer.verify_token(token)
+
+    def test_verify_token_validates_audience(self, issuer):
+        """Test that tokens for different audiences are rejected."""
+        token = issuer.issue_access_token(
+            client_id="client-abc",
+            scopes=["read"],
+            jti="token-id",
+        )
+
+        # Create issuer with different audience but same key
+        other_issuer = JWTIssuer(
+            issuer="https://test-server.com",
+            audience="https://other-server.com/mcp",  # Different audience
+            signing_key=issuer._signing_key,  # Same key
+        )
+
+        with pytest.raises(JoseError, match="audience"):
+            other_issuer.verify_token(token)
+
+    def test_verify_token_rejects_malformed_tokens(self, issuer):
+        """Test that malformed tokens are rejected."""
+        with pytest.raises(JoseError):
+            issuer.verify_token("not-a-jwt")
+
+        with pytest.raises(JoseError):
+            issuer.verify_token("too.few.segments")
+
+        with pytest.raises(JoseError):
+            issuer.verify_token("header.payload")  # Missing signature
+
+    def test_issue_access_token_with_upstream_claims(self, issuer):
+        """Test that upstream claims are included when provided."""
+        upstream_claims = {
+            "sub": "user-123",
+            "oid": "object-id-456",
+            "name": "Test User",
+            "email": "test@example.com",
+            "roles": ["Admin", "Reader"],
+        }
+        token = issuer.issue_access_token(
+            client_id="client-abc",
+            scopes=["read", "write"],
+            jti="token-id-123",
+            expires_in=3600,
+            upstream_claims=upstream_claims,
+        )
+
+        payload = issuer.verify_token(token)
+        assert "upstream_claims" in payload
+        assert payload["upstream_claims"]["sub"] == "user-123"
+        assert payload["upstream_claims"]["oid"] == "object-id-456"
+        assert payload["upstream_claims"]["name"] == "Test User"
+        assert payload["upstream_claims"]["email"] == "test@example.com"
+        assert payload["upstream_claims"]["roles"] == ["Admin", "Reader"]
+
+    def test_issue_access_token_without_upstream_claims(self, issuer):
+        """Test that upstream_claims is not present when not provided."""
+        token = issuer.issue_access_token(
+            client_id="client-abc",
+            scopes=["read"],
+            jti="token-id-123",
+            expires_in=3600,
+        )
+
+        payload = issuer.verify_token(token)
+        assert "upstream_claims" not in payload
+
+    def test_issue_refresh_token_with_upstream_claims(self, issuer):
+        """Test that refresh tokens also include upstream claims when provided."""
+        upstream_claims = {
+            "sub": "user-123",
+            "name": "Test User",
+        }
+        token = issuer.issue_refresh_token(
+            client_id="client-abc",
+            scopes=["read"],
+            jti="refresh-token-id",
+            expires_in=60 * 60 * 24 * 30,
+            upstream_claims=upstream_claims,
+        )
+
+        payload = issuer.verify_token(token, expected_token_use="refresh")
+        assert "upstream_claims" in payload
+        assert payload["upstream_claims"]["sub"] == "user-123"
+        assert payload["upstream_claims"]["name"] == "Test User"
+        assert payload["token_use"] == "refresh"
+
+    def test_verify_token_rejects_refresh_token_as_access(self, issuer):
+        """Refresh tokens must not be accepted when expecting access tokens."""
+        token = issuer.issue_refresh_token(
+            client_id="client-abc",
+            scopes=["read"],
+            jti="refresh-token-id",
+            expires_in=60 * 60 * 24 * 30,
+        )
+
+        with pytest.raises(JoseError, match="Token type mismatch"):
+            issuer.verify_token(token)
+
+    def test_verify_token_rejects_access_token_as_refresh(self, issuer):
+        """Access tokens must not be accepted when expecting refresh tokens."""
+        token = issuer.issue_access_token(
+            client_id="client-abc",
+            scopes=["read"],
+            jti="token-id",
+        )
+
+        with pytest.raises(JoseError, match="Token type mismatch"):
+            issuer.verify_token(token, expected_token_use="refresh")

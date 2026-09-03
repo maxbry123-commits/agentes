@@ -1,0 +1,30 @@
+[
+  {
+    "repo": "AI-Scientist",
+    "path": "templates/sketch_rnn/datasets/owl.npz",
+    "chunks_dir": "AI-Scientist/templates/sketch_rnn/datasets/owl.npz.chunks",
+    "bytes": 17770073,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "AI-Scientist",
+    "path": "templates/sketch_rnn/datasets/butterfly.npz",
+    "chunks_dir": "AI-Scientist/templates/sketch_rnn/datasets/butterfly.npz.chunks",
+    "bytes": 13808540,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "AI-Scientist",
+    "path": "templates/sketch_rnn/datasets/cat.npz",
+    "chunks_dir": "AI-Scientist/templates/sketch_rnn/datasets/cat.npz.chunks",
+    "bytes": 14842947,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "AI-Scientist",
+    "path": "templates/sketch_rnn/datasets/yoga.npz",
+    "chunks_dir": "AI-Scientist/templates/sketch_rnn/datasets/yoga.npz.chunks",
+    "bytes": 10990536,
+    "chunk_bytes": 8388608
+  }
+]

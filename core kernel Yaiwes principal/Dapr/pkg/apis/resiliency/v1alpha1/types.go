@@ -1,0 +1,182 @@
+/*
+Copyright 2021 The Dapr Authors
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+    http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package v1alpha1
+
+import (
+	"encoding/json"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/dapr/dapr/pkg/apis/common"
+	"github.com/dapr/dapr/pkg/apis/resiliency"
+)
+
+// +genclient
+// +genclient:noStatus
+// +kubebuilder:object:root=true
+
+//nolint:recvcheck
+type Resiliency struct {
+	metav1.TypeMeta `json:",inline"`
+	// +optional
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+	// +optional
+	Spec ResiliencySpec `json:"spec,omitempty"`
+	// +optional
+	Scopes []string `json:"scopes,omitempty"`
+}
+
+const (
+	kindResiliency = "Resiliency"
+	version        = "v1alpha1"
+)
+
+// String implements fmt.Stringer and is used for debugging. It returns the policy object encoded as JSON.
+func (r *Resiliency) String() string {
+	b, _ := json.Marshal(r)
+	return string(b)
+}
+
+// Kind returns the resiliency kind.
+func (Resiliency) Kind() string {
+	return kindResiliency
+}
+
+// APIVersion returns the resiliency API version.
+func (Resiliency) APIVersion() string {
+	return resiliency.GroupName + "/" + version
+}
+
+// GetName returns the resiliency name.
+func (r Resiliency) GetName() string {
+	return r.Name
+}
+
+// GetNamespace returns the resiliency namespace.
+func (r Resiliency) GetNamespace() string {
+	return r.Namespace
+}
+
+// LogName returns the name of the resiliency that can be used in logging.
+func (r Resiliency) LogName() string {
+	return r.Name
+}
+
+// GetSecretStore returns the name of the secret store (empty for resiliency).
+func (r Resiliency) GetSecretStore() string {
+	return ""
+}
+
+// NameValuePairs returns empty slice as resiliencies don't have metadata pairs.
+func (r Resiliency) NameValuePairs() []common.NameValuePair {
+	return nil
+}
+
+// ClientObject returns the resiliency as a client.Object.
+func (r Resiliency) ClientObject() client.Object {
+	return &r
+}
+
+// GetScopes returns the scopes for this resiliency.
+func (r Resiliency) GetScopes() []string {
+	return r.Scopes
+}
+
+// EmptyMetaDeepCopy returns a new instance of the resiliency type with the
+// TypeMeta's Kind and APIVersion fields set.
+func (r Resiliency) EmptyMetaDeepCopy() metav1.Object {
+	n := r.DeepCopy()
+	n.TypeMeta = metav1.TypeMeta{
+		Kind:       kindResiliency,
+		APIVersion: resiliency.GroupName + "/" + version,
+	}
+	n.ObjectMeta = metav1.ObjectMeta{Name: r.Name, Namespace: r.Namespace}
+	return n
+}
+
+type ResiliencySpec struct {
+	Policies Policies `json:"policies"`
+	Targets  Targets  `json:"targets" yaml:"targets"`
+}
+
+type Policies struct {
+	Timeouts        map[string]string         `json:"timeouts,omitempty" yaml:"timeouts,omitempty"`
+	Retries         map[string]Retry          `json:"retries,omitempty" yaml:"retries,omitempty"`
+	CircuitBreakers map[string]CircuitBreaker `json:"circuitBreakers,omitempty" yaml:"circuitBreakers,omitempty"`
+}
+
+type Retry struct {
+	Policy      string         `json:"policy,omitempty" yaml:"policy,omitempty"`
+	Duration    string         `json:"duration,omitempty" yaml:"duration,omitempty"`
+	MaxInterval string         `json:"maxInterval,omitempty" yaml:"maxInterval,omitempty"`
+	MaxRetries  *int           `json:"maxRetries,omitempty" yaml:"maxRetries,omitempty"`
+	Matching    *RetryMatching `json:"matching,omitempty" yaml:"matching,omitempty"`
+}
+
+// RetryMatching represents the rules to trigger retry in specific scenarios.
+type RetryMatching struct {
+	// HTTPStatusCodes represents HTTP status codes to be retried.
+	HTTPStatusCodes string `json:"httpStatusCodes,omitempty" yaml:"httpStatusCodes,omitempty"`
+	// GRPCStatusCodes represents gRPC status codes to be retried.
+	GRPCStatusCodes string `json:"gRPCStatusCodes,omitempty" yaml:"gRPCStatusCodes,omitempty"`
+}
+
+type CircuitBreaker struct {
+	MaxRequests int    `json:"maxRequests,omitempty" yaml:"maxRequests,omitempty"`
+	Interval    string `json:"interval,omitempty" yaml:"interval,omitempty"`
+	Timeout     string `json:"timeout,omitempty" yaml:"timeout,omitempty"`
+	Trip        string `json:"trip,omitempty" yaml:"trip,omitempty"`
+}
+
+type Targets struct {
+	Apps       map[string]EndpointPolicyNames  `json:"apps,omitempty" yaml:"apps,omitempty"`
+	Actors     map[string]ActorPolicyNames     `json:"actors,omitempty" yaml:"actors,omitempty"`
+	Components map[string]ComponentPolicyNames `json:"components,omitempty" yaml:"components,omitempty"`
+}
+
+type ComponentPolicyNames struct {
+	Inbound  PolicyNames `json:"inbound,omitempty" yaml:"inbound,omitempty"`
+	Outbound PolicyNames `json:"outbound,omitempty" yaml:"outbound,omitempty"`
+}
+
+type PolicyNames struct {
+	Timeout        string `json:"timeout,omitempty" yaml:"timeout,omitempty"`
+	Retry          string `json:"retry,omitempty" yaml:"retry,omitempty"`
+	CircuitBreaker string `json:"circuitBreaker,omitempty" yaml:"circuitBreaker,omitempty"`
+}
+
+type EndpointPolicyNames struct {
+	Timeout                 string `json:"timeout,omitempty" yaml:"timeout,omitempty"`
+	Retry                   string `json:"retry,omitempty" yaml:"retry,omitempty"`
+	CircuitBreaker          string `json:"circuitBreaker,omitempty" yaml:"circuitBreaker,omitempty"`
+	CircuitBreakerCacheSize int    `json:"circuitBreakerCacheSize,omitempty" yaml:"circuitBreakerCacheSize,omitempty"`
+}
+
+type ActorPolicyNames struct {
+	Timeout                 string `json:"timeout,omitempty" yaml:"timeout,omitempty"`
+	Retry                   string `json:"retry,omitempty" yaml:"retry,omitempty"`
+	CircuitBreaker          string `json:"circuitBreaker,omitempty" yaml:"circuitBreaker,omitempty"`
+	CircuitBreakerScope     string `json:"circuitBreakerScope,omitempty" yaml:"circuitBreakerScope,omitempty"`
+	CircuitBreakerCacheSize int    `json:"circuitBreakerCacheSize,omitempty" yaml:"circuitBreakerCacheSize,omitempty"`
+}
+
+// ResiliencyList represents a list of `Resiliency` items.
+// +kubebuilder:object:root=true
+type ResiliencyList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+
+	Items []Resiliency `json:"items"`
+}

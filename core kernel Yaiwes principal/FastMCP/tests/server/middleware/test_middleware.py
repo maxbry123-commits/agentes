@@ -1,0 +1,625 @@
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any
+
+import mcp_types
+import pytest
+from mcp.server.context import ServerRequestContext
+
+from fastmcp import Client, FastMCP
+from fastmcp.server.context import Context
+from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
+from fastmcp.tools.base import ToolResult
+
+
+@dataclass
+class Recording:
+    # the hook is the name of the hook that was called, e.g. "on_list_tools"
+    hook: str
+    context: MiddlewareContext
+    result: mcp_types.ServerResult | None
+
+
+class RecordingMiddleware(Middleware):
+    """A middleware that automatically records all method calls."""
+
+    def __init__(self, name: str | None = None):
+        super().__init__()
+        self.calls: list[Recording] = []
+        self.name = name
+
+    def __getattribute__(self, name: str) -> Callable:
+        """Dynamically create recording methods for any on_* method."""
+        if name.startswith("on_"):
+
+            async def record_and_call(
+                context: MiddlewareContext, call_next: Callable
+            ) -> Any:
+                result = await call_next(context)
+
+                self.calls.append(Recording(hook=name, context=context, result=result))
+
+                return result
+
+            return record_and_call
+
+        return super().__getattribute__(name)
+
+    def get_calls(
+        self, method: str | None = None, hook: str | None = None
+    ) -> list[Recording]:
+        """
+        Get all recorded calls for a specific method or hook.
+        Args:
+            method: The method to filter by (e.g. "tools/list")
+            hook: The hook to filter by (e.g. "on_list_tools")
+        Returns:
+            A list of recorded calls.
+        """
+        calls = []
+        for recording in self.calls:
+            if method and hook:
+                if recording.context.method == method and recording.hook == hook:
+                    calls.append(recording)
+            elif method:
+                if recording.context.method == method:
+                    calls.append(recording)
+            elif hook:
+                if recording.hook == hook:
+                    calls.append(recording)
+            else:
+                calls.append(recording)
+        return calls
+
+    def assert_called(
+        self,
+        hook: str | None = None,
+        method: str | None = None,
+        times: int | None = None,
+        at_least: int | None = None,
+    ) -> bool:
+        """Assert that a hook was called a specific number of times."""
+
+        if times is not None and at_least is not None:
+            raise ValueError("Cannot specify both times and at_least")
+        elif times is None and at_least is None:
+            times = 1
+
+        calls = self.get_calls(hook=hook, method=method)
+        actual_times = len(calls)
+        identifier = dict(hook=hook, method=method)
+
+        if times is not None:
+            assert actual_times == times, (
+                f"Expected {times} calls for {identifier}, "
+                f"but was called {actual_times} times"
+            )
+        elif at_least is not None:
+            assert actual_times >= at_least, (
+                f"Expected at least {at_least} calls for {identifier}, "
+                f"but was called {actual_times} times"
+            )
+        return True
+
+    def assert_not_called(self, hook: str | None = None, method: str | None = None):
+        """Assert that a hook was not called."""
+        calls = self.get_calls(hook=hook, method=method)
+        assert len(calls) == 0, f"Expected {hook!r} to not be called"
+        return True
+
+    def reset(self):
+        """Clear all recorded calls."""
+        self.calls.clear()
+
+
+@pytest.fixture
+def recording_middleware():
+    """Fixture that provides a recording middleware instance."""
+    middleware = RecordingMiddleware(name="recording_middleware")
+    yield middleware
+
+
+@pytest.fixture
+def mcp_server(recording_middleware):
+    mcp = FastMCP()
+
+    @mcp.tool(tags={"add-tool"})
+    def add(a: int, b: int) -> int:
+        return a + b
+
+    @mcp.resource("resource://test")
+    def test_resource() -> str:
+        return "test resource"
+
+    @mcp.resource("resource://test-template/{x}")
+    def test_resource_with_path(x: int) -> str:
+        return f"test resource with {x}"
+
+    @mcp.prompt
+    def test_prompt(x: str) -> str:
+        return f"test prompt with {x}"
+
+    @mcp.tool
+    async def progress_tool(context: Context) -> None:
+        await context.report_progress(progress=1, total=10, message="test")
+
+    @mcp.tool
+    async def log_tool(context: Context) -> None:
+        await context.info(message="test log")
+
+    mcp.add_middleware(recording_middleware)
+
+    # Register a progress notification handler (v2 API: (ctx, params)).
+    async def handle_progress(
+        _ctx: ServerRequestContext,
+        _params: mcp_types.ProgressNotificationParams,
+    ) -> None:
+        pass
+
+    mcp._mcp_server.add_notification_handler(
+        "notifications/progress",
+        mcp_types.ProgressNotificationParams,
+        handle_progress,
+    )
+
+    return mcp
+
+
+class TestMiddlewareHooks:
+    async def test_call_tool(
+        self, mcp_server: FastMCP, recording_middleware: RecordingMiddleware
+    ):
+        async with Client(mcp_server) as client:
+            await client.call_tool("add", {"a": 1, "b": 2})
+
+        # The floor is lower than a legacy connection's 11: the modern
+        # `server/discover` negotiation fires 2 generic hooks, vs. 5 for the
+        # older `initialize` request plus its `notifications/initialized`.
+        assert recording_middleware.assert_called(at_least=8)
+        assert recording_middleware.assert_called(method="tools/call", at_least=3)
+        assert recording_middleware.assert_called(hook="on_message", at_least=1)
+        assert recording_middleware.assert_called(hook="on_request", at_least=1)
+        assert recording_middleware.assert_called(hook="on_call_tool", at_least=1)
+
+    async def test_read_resource(
+        self, mcp_server: FastMCP, recording_middleware: RecordingMiddleware
+    ):
+        async with Client(mcp_server) as client:
+            await client.read_resource("resource://test")
+
+        assert recording_middleware.assert_called(at_least=3)
+        assert recording_middleware.assert_called(method="resources/read", at_least=3)
+        assert recording_middleware.assert_called(hook="on_message", at_least=1)
+        assert recording_middleware.assert_called(hook="on_request", at_least=1)
+        assert recording_middleware.assert_called(hook="on_read_resource", at_least=1)
+
+    async def test_read_resource_template(
+        self, mcp_server: FastMCP, recording_middleware: RecordingMiddleware
+    ):
+        async with Client(mcp_server) as client:
+            await client.read_resource("resource://test-template/1")
+
+        assert recording_middleware.assert_called(at_least=3)
+        assert recording_middleware.assert_called(method="resources/read", at_least=3)
+        assert recording_middleware.assert_called(hook="on_message", at_least=1)
+        assert recording_middleware.assert_called(hook="on_request", at_least=1)
+        assert recording_middleware.assert_called(hook="on_read_resource", at_least=1)
+
+    async def test_get_prompt(
+        self, mcp_server: FastMCP, recording_middleware: RecordingMiddleware
+    ):
+        async with Client(mcp_server) as client:
+            await client.get_prompt("test_prompt", {"x": "test"})
+
+        assert recording_middleware.assert_called(at_least=3)
+        assert recording_middleware.assert_called(method="prompts/get", at_least=3)
+        assert recording_middleware.assert_called(hook="on_message", at_least=1)
+        assert recording_middleware.assert_called(hook="on_request", at_least=1)
+        assert recording_middleware.assert_called(hook="on_get_prompt", at_least=1)
+
+    async def test_list_tools(
+        self, mcp_server: FastMCP, recording_middleware: RecordingMiddleware
+    ):
+        async with Client(mcp_server) as client:
+            await client.list_tools()
+
+        assert recording_middleware.assert_called(at_least=3)
+        assert recording_middleware.assert_called(method="tools/list", at_least=3)
+        assert recording_middleware.assert_called(hook="on_message", at_least=1)
+        assert recording_middleware.assert_called(hook="on_request", at_least=1)
+        assert recording_middleware.assert_called(hook="on_list_tools", at_least=1)
+
+        # Verify the middleware receives a list of tools
+        list_tools_calls = recording_middleware.get_calls(hook="on_list_tools")
+        assert len(list_tools_calls) > 0
+        result = list_tools_calls[0].result
+        assert isinstance(result, list)
+
+    async def test_list_resources(
+        self, mcp_server: FastMCP, recording_middleware: RecordingMiddleware
+    ):
+        async with Client(mcp_server) as client:
+            await client.list_resources()
+
+        assert recording_middleware.assert_called(at_least=3)
+        assert recording_middleware.assert_called(method="resources/list", at_least=3)
+        assert recording_middleware.assert_called(hook="on_message", at_least=1)
+        assert recording_middleware.assert_called(hook="on_request", at_least=1)
+        assert recording_middleware.assert_called(hook="on_list_resources", at_least=1)
+
+        # Verify the middleware receives a list of resources
+        list_resources_calls = recording_middleware.get_calls(hook="on_list_resources")
+        assert len(list_resources_calls) > 0
+        result = list_resources_calls[0].result
+        assert isinstance(result, list)
+
+    async def test_list_resource_templates(
+        self, mcp_server: FastMCP, recording_middleware: RecordingMiddleware
+    ):
+        async with Client(mcp_server) as client:
+            await client.list_resource_templates()
+
+        assert recording_middleware.assert_called(at_least=3)
+        assert recording_middleware.assert_called(
+            method="resources/templates/list", at_least=3
+        )
+        assert recording_middleware.assert_called(hook="on_message", at_least=1)
+        assert recording_middleware.assert_called(hook="on_request", at_least=1)
+        assert recording_middleware.assert_called(
+            hook="on_list_resource_templates", at_least=1
+        )
+
+        # Verify the middleware receives a list of resource templates
+        list_templates_calls = recording_middleware.get_calls(
+            hook="on_list_resource_templates"
+        )
+        assert len(list_templates_calls) > 0
+        result = list_templates_calls[0].result
+        assert isinstance(result, list)
+
+    async def test_list_prompts(
+        self, mcp_server: FastMCP, recording_middleware: RecordingMiddleware
+    ):
+        async with Client(mcp_server) as client:
+            await client.list_prompts()
+
+        assert recording_middleware.assert_called(at_least=3)
+        assert recording_middleware.assert_called(method="prompts/list", at_least=3)
+        assert recording_middleware.assert_called(hook="on_message", at_least=1)
+        assert recording_middleware.assert_called(hook="on_request", at_least=1)
+        assert recording_middleware.assert_called(hook="on_list_prompts", at_least=1)
+
+        # Verify the middleware receives a list of prompts
+        list_prompts_calls = recording_middleware.get_calls(hook="on_list_prompts")
+        assert len(list_prompts_calls) > 0
+        result = list_prompts_calls[0].result
+        assert isinstance(result, list)
+
+    async def test_initialize(
+        self, mcp_server: FastMCP, recording_middleware: RecordingMiddleware
+    ):
+        # `ping` only exists on the older protocol, so this pins that era.
+        async with Client(mcp_server, mode="legacy") as client:
+            await client.ping()
+
+        assert recording_middleware.assert_called(at_least=1)
+        assert recording_middleware.assert_called(hook="on_message", at_least=1)
+        assert recording_middleware.assert_called(hook="on_request", at_least=1)
+        assert recording_middleware.assert_called(hook="on_initialize", at_least=1)
+
+    async def test_list_tools_filtering_middleware(self):
+        """Test that middleware can filter tools."""
+
+        class FilteringMiddleware(Middleware):
+            async def on_list_tools(self, context: MiddlewareContext, call_next):
+                result = await call_next(context)
+                # Filter out tools with "private" tag - simple list filtering
+                filtered_tools = [tool for tool in result if "private" not in tool.tags]
+                return filtered_tools
+
+        server = FastMCP("TestServer")
+
+        @server.tool
+        def public_tool(name: str) -> str:
+            return f"Hello {name}"
+
+        @server.tool(tags={"private"})
+        def private_tool(secret: str) -> str:
+            return f"Secret: {secret}"
+
+        server.add_middleware(FilteringMiddleware())
+
+        async with Client(server) as client:
+            tools = await client.list_tools()
+
+        assert len(tools) == 1
+        assert tools[0].name == "public_tool"
+
+    async def test_list_resources_filtering_middleware(self):
+        """Test that middleware can filter resources."""
+
+        class FilteringMiddleware(Middleware):
+            async def on_list_resources(self, context: MiddlewareContext, call_next):
+                result = await call_next(context)
+                # Filter out resources with "private" tag
+                filtered_resources = [
+                    resource for resource in result if "private" not in resource.tags
+                ]
+                return filtered_resources
+
+        server = FastMCP("TestServer")
+
+        @server.resource("resource://public")
+        def public_resource() -> str:
+            return "public data"
+
+        @server.resource("resource://private", tags={"private"})
+        def private_resource() -> str:
+            return "private data"
+
+        server.add_middleware(FilteringMiddleware())
+
+        async with Client(server) as client:
+            resources = await client.list_resources()
+
+        assert len(resources) == 1
+        assert str(resources[0].uri) == "resource://public"
+
+    async def test_list_resource_templates_filtering_middleware(self):
+        """Test that middleware can filter resource templates."""
+
+        class FilteringMiddleware(Middleware):
+            async def on_list_resource_templates(
+                self, context: MiddlewareContext, call_next
+            ):
+                result = await call_next(context)
+                # Filter out templates with "private" tag
+                filtered_templates = [
+                    template for template in result if "private" not in template.tags
+                ]
+                return filtered_templates
+
+        server = FastMCP("TestServer")
+
+        @server.resource("resource://public/{x}")
+        def public_template(x: str) -> str:
+            return f"public {x}"
+
+        @server.resource("resource://private/{x}", tags={"private"})
+        def private_template(x: str) -> str:
+            return f"private {x}"
+
+        server.add_middleware(FilteringMiddleware())
+
+        async with Client(server) as client:
+            templates = await client.list_resource_templates()
+
+        assert len(templates) == 1
+        assert str(templates[0].uri_template) == "resource://public/{x}"
+
+    async def test_list_prompts_filtering_middleware(self):
+        """Test that middleware can filter prompts."""
+
+        class FilteringMiddleware(Middleware):
+            async def on_list_prompts(self, context: MiddlewareContext, call_next):
+                result = await call_next(context)
+                # Filter out prompts with "private" tag
+                filtered_prompts = [
+                    prompt for prompt in result if "private" not in prompt.tags
+                ]
+                return filtered_prompts
+
+        server = FastMCP("TestServer")
+
+        @server.prompt
+        def public_prompt(name: str) -> str:
+            return f"Hello {name}"
+
+        @server.prompt(tags={"private"})
+        def private_prompt(secret: str) -> str:
+            return f"Secret: {secret}"
+
+        server.add_middleware(FilteringMiddleware())
+
+        async with Client(server) as client:
+            prompts = await client.list_prompts()
+
+        assert len(prompts) == 1
+        assert prompts[0].name == "public_prompt"
+
+    async def test_call_tool_middleware(self):
+        server = FastMCP()
+
+        @server.tool
+        def add(a: int, b: int) -> int:
+            return a + b
+
+        class CallToolMiddleware(Middleware):
+            async def on_call_tool(
+                self,
+                context: MiddlewareContext[mcp_types.CallToolRequestParams],
+                call_next: CallNext[mcp_types.CallToolRequestParams, ToolResult],
+            ):
+                # modify argument
+                if context.message.name == "add":
+                    assert context.message.arguments is not None
+                    args = context.message.arguments
+                    assert isinstance(args["a"], int)
+                    args["a"] += 100
+
+                result = await call_next(context)
+
+                # modify result
+                if context.message.name == "add":
+                    assert result.structured_content is not None
+                    content = result.structured_content
+                    assert isinstance(content["result"], int)
+                    content["result"] += 5
+
+                return result
+
+        server.add_middleware(CallToolMiddleware())
+
+        async with Client(server) as client:
+            result = await client.call_tool("add", {"a": 1, "b": 2})
+
+        assert isinstance(result.structured_content["result"], int)
+        assert result.structured_content["result"] == 108
+
+
+class TestApplyMiddlewareParameter:
+    """Tests for run_middleware parameter on execution methods."""
+
+    async def test_call_tool_with_run_middleware_true(self):
+        """Middleware is applied when run_middleware=True (default)."""
+        recording = RecordingMiddleware()
+        server = FastMCP()
+
+        @server.tool
+        def add(a: int, b: int) -> int:
+            return a + b
+
+        server.add_middleware(recording)
+
+        result = await server.call_tool("add", {"a": 1, "b": 2})
+
+        assert result.structured_content["result"] == 3  # type: ignore[union-attr,index]  # ty:ignore[not-subscriptable]
+        assert recording.assert_called(hook="on_call_tool", times=1)
+
+    async def test_call_tool_with_run_middleware_false(self):
+        """Middleware is NOT applied when run_middleware=False."""
+        recording = RecordingMiddleware()
+        server = FastMCP()
+
+        @server.tool
+        def add(a: int, b: int) -> int:
+            return a + b
+
+        server.add_middleware(recording)
+
+        result = await server.call_tool("add", {"a": 1, "b": 2}, run_middleware=False)
+
+        assert result.structured_content["result"] == 3  # type: ignore[union-attr,index]  # ty:ignore[not-subscriptable]
+        # Middleware should not have been called
+        assert len(recording.calls) == 0
+
+    async def test_read_resource_with_run_middleware_true(self):
+        """Middleware is applied when run_middleware=True (default)."""
+        recording = RecordingMiddleware()
+        server = FastMCP()
+
+        @server.resource("resource://test")
+        def test_resource() -> str:
+            return "test content"
+
+        server.add_middleware(recording)
+
+        result = await server.read_resource("resource://test")
+
+        assert len(result.contents) == 1
+        assert result.contents[0].content == "test content"
+        assert recording.assert_called(hook="on_read_resource", times=1)
+
+    async def test_read_resource_with_run_middleware_false(self):
+        """Middleware is NOT applied when run_middleware=False."""
+        recording = RecordingMiddleware()
+        server = FastMCP()
+
+        @server.resource("resource://test")
+        def test_resource() -> str:
+            return "test content"
+
+        server.add_middleware(recording)
+
+        result = await server.read_resource("resource://test", run_middleware=False)
+
+        assert len(result.contents) == 1
+        assert result.contents[0].content == "test content"
+        # Middleware should not have been called
+        assert len(recording.calls) == 0
+
+    async def test_read_resource_template_with_run_middleware_false(self):
+        """Templates also skip middleware when run_middleware=False."""
+        recording = RecordingMiddleware()
+        server = FastMCP()
+
+        @server.resource("resource://items/{item_id}")
+        def get_item(item_id: int) -> str:
+            return f"item {item_id}"
+
+        server.add_middleware(recording)
+
+        result = await server.read_resource("resource://items/42", run_middleware=False)
+
+        assert len(result.contents) == 1
+        assert result.contents[0].content == "item 42"
+        assert len(recording.calls) == 0
+
+    async def test_render_prompt_with_run_middleware_true(self):
+        """Middleware is applied when run_middleware=True (default)."""
+        recording = RecordingMiddleware()
+        server = FastMCP()
+
+        @server.prompt
+        def greet(name: str) -> str:
+            return f"Hello, {name}!"
+
+        server.add_middleware(recording)
+
+        result = await server.render_prompt("greet", {"name": "World"})
+
+        assert len(result.messages) == 1
+        # content is TextContent | EmbeddedResource, but we know it's TextContent from the test
+        assert isinstance(result.messages[0].content, mcp_types.TextContent)
+        assert result.messages[0].content.text == "Hello, World!"
+        assert recording.assert_called(hook="on_get_prompt", times=1)
+
+    async def test_render_prompt_with_run_middleware_false(self):
+        """Middleware is NOT applied when run_middleware=False."""
+        recording = RecordingMiddleware()
+        server = FastMCP()
+
+        @server.prompt
+        def greet(name: str) -> str:
+            return f"Hello, {name}!"
+
+        server.add_middleware(recording)
+
+        result = await server.render_prompt(
+            "greet", {"name": "World"}, run_middleware=False
+        )
+
+        assert len(result.messages) == 1
+        # content is TextContent | EmbeddedResource, but we know it's TextContent from the test
+        assert isinstance(result.messages[0].content, mcp_types.TextContent)
+        assert result.messages[0].content.text == "Hello, World!"
+        # Middleware should not have been called
+        assert len(recording.calls) == 0
+
+    async def test_middleware_modification_skipped_when_run_middleware_false(self):
+        """Middleware that modifies args/results is skipped."""
+
+        class ModifyingMiddleware(Middleware):
+            async def on_call_tool(self, context: MiddlewareContext, call_next):
+                # Double the 'a' argument
+                assert context.message.arguments is not None
+                context.message.arguments["a"] *= 2
+                return await call_next(context)
+
+        server = FastMCP()
+
+        @server.tool
+        def add(a: int, b: int) -> int:
+            return a + b
+
+        server.add_middleware(ModifyingMiddleware())
+
+        # With middleware: a=5 becomes a=10, result = 10 + 3 = 13
+        result_with = await server.call_tool("add", {"a": 5, "b": 3})
+        assert result_with.structured_content["result"] == 13  # type: ignore[union-attr,index]  # ty:ignore[not-subscriptable]
+
+        # Without middleware: a=5 stays a=5, result = 5 + 3 = 8
+        result_without = await server.call_tool(
+            "add", {"a": 5, "b": 3}, run_middleware=False
+        )
+        assert result_without.structured_content["result"] == 8  # type: ignore[union-attr,index]  # ty:ignore[not-subscriptable]

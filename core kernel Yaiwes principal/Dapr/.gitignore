@@ -1,0 +1,31 @@
+/dist
+.idea
+**/.DS_Store
+config/crd/bases
+
+github.com/
+
+.vscode
+
+# Auto-generated CRDs
+config/crd/bases/*.yaml
+
+# Visual Studio 2015/2017/2019 cache/options directory
+.vs/
+/vendor
+**/*.log
+**/.project
+**/.factorypath
+google
+dapr.sln
+
+test_report*
+# Compressed perf reports committed per version are the source data for perf charts
+!tests/perf/report/data/*/test_report_perf.json.gz
+coverage.txt
+
+# Go Workspaces (introduced in Go 1.18+)
+go.work
+
+# Directory reserved for local dev files: config files, scripts, anything for individual local dev.
+.local/
