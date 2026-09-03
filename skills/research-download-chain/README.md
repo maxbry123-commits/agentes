@@ -44,3 +44,5 @@ Tres pasadas adicionales de investigación sobre descargas/extracción y GitHub 
 - GitHub puede regenerar zip/tar de un mismo commit con compresión distinta; la identidad canónica pasa a ser `source_commit + deterministic_tree_sha256`, no el SHA permanente del contenedor generado.
 - Requests seriales, redirects, `Retry-After`, `x-ratelimit-reset` y backoff solo para fallos transitorios.
 - `repository_dispatch`/`workflow_dispatch` son excepciones explícitas que sí pueden iniciar workflows desde `GITHUB_TOKEN`; el workflow debe existir en la rama por defecto.
+
+- Integridad adicional: después de materializar cualquier puntero fuente se recalculan `files`, `bytes` y `deterministic_tree_sha256`; un hash calculado sobre el puntero previo no puede certificar el árbol final. (`post-materialization tree rehash`)
