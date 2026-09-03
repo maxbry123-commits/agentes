@@ -65,7 +65,7 @@ jobs:
             git restore --worktree --staged -- extraction-result.json audit-result.json 2>/dev/null || true
             rm -f extraction-result.json audit-result.json
             for attempt in 1 2 3; do
-              if git fetch origin main && git rebase origin/main && git push --no-verify origin HEAD:main; then
+              if git fetch origin main && git rebase --autostash origin/main && git push --no-verify origin HEAD:main; then
                 exit 0
               fi
               test "$attempt" -lt 3 || exit 41
