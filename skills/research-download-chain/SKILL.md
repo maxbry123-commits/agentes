@@ -3,7 +3,7 @@ name: research-download-chain
 description: Copia, descarga+extrae, reubica y verifica componentes mediante GitHub Actions con deduplicación, fuente fijada, SHA, ZIP por partes, manifiesto y recuperación aislada de GAPS. Úsalo cuando YAIWES, Luna u otro agente deba incorporar código sin reescribirlo.
 metadata:
   type: workflow
-  version: "3.2.0"
+  version: "3.3.0"
 ---
 
 # Research Download Chain
@@ -251,3 +251,25 @@ Antes de escribir en destino valida todos los miembros del archivo: CRC, rutas a
 - `SOURCE_LFS_POINTER_GAP|GIT_BLOB_LIMIT_GAP|COLLISION_BLOCKED|UNSAFE_ZIP` → no repetir el mismo push; registrar GAP y esperar reparación de causa.
 - El finalizador/auditor debe ejecutarse con `if: always()` o job separado equivalente para que un fallo de push no mate el bucle ni omita el checkpoint.
 - Nunca declarar `VERIFIED_CLOSED` sin read-back independiente y `remaining_gaps=0`.
+
+
+## 15. Materialización HTTP verificada y dispatch resiliente
+
+Cuando una fuente GitHub fijada a commit contiene un puntero LFS, Git LFS continúa prohibido en esta cadena. No instales ni ejecutes `git lfs`. El reparador puede resolver el objeto real únicamente por HTTPS desde GitHub y convertirlo en blob Git normal, con estas condiciones fail-closed:
+
+1. Parsear del puntero `oid sha256:<64hex>` y `size N`.
+2. Resolver `owner/repo + commit + ruta relativa` desde el manifiesto fijado; nunca adivinar fuente/ref.
+3. Descargar primero mediante `https://github.com/<owner>/<repo>/raw/<commit>/<path>`; si devuelve todavía el puntero, usar como fallback `https://media.githubusercontent.com/media/<owner>/<repo>/<commit>/<path>`.
+4. Exigir `sha256(bytes_reales) == oid` y `len(bytes_reales) == size`.
+5. Rechazar el objeto si queda puntero, si SHA/tamaño no coinciden, si la fuente cambia o si el blob final es `>=100 MiB`.
+6. Sustituir el puntero únicamente en staging/árbol reparado; conservar el `.gitattributes` original para trazabilidad.
+7. Publicar con filtros LFS locales neutralizados y `git push --no-verify` solo después de `ZERO_POINTERS + SIZE_PASS + SHA_PASS`.
+
+Para el LOOP de GitHub Actions:
+
+- el reparador nuevo usa un evento `repository_dispatch` exclusivo por versión;
+- el workflow que despacha debe declarar al menos `contents: write` y `actions: write` cuando el repositorio requiera ambos scopes; un 403 se registra como `DISPATCH_PERMISSION_GAP`;
+- el finalizador se ejecuta con `if: always()`;
+- si falla materialización/publicación, no redispatch ciego;
+- si push+read-back pasan y quedan GAPS, despacha el siguiente lote;
+- cierre únicamente con `remaining_gaps=0`, `remaining_source_pointers=0`, `oversized_blobs=0`, read-back PASS y auditor independiente.
