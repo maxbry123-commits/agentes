@@ -286,6 +286,7 @@ Antes de extraer cualquier ZIP:
 - calcula `declared_uncompressed_bytes = sum(file_size)` y `declared_compressed_bytes = sum(compress_size)`;
 - compara el tamaño declarado con un presupuesto explícito y con el espacio libre del runner; si la expansión prevista puede agotar disco/memoria, emite `ARCHIVE_RESOURCE_LIMIT_GAP`;
 - limita también ratio de expansión por miembro y acumulado; una entrada sospechosa nunca se extrae parcialmente al destino;
+- el tamaño del lote debe presupuestarse por volumen acumulado (partes ZIP/bytes previstos), no solo por número de componentes; si un componente individual domina el presupuesto, procésalo solo y no permitas que quede oculto detrás de componentes pequeños;
 - extrae en staging y vuelve a contar bytes reales después de la extracción.
 
 Para archivos fuente generados por GitHub:
