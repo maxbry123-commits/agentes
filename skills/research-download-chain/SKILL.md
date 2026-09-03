@@ -3,7 +3,7 @@ name: research-download-chain
 description: Copia, descarga+extrae, reubica y verifica componentes mediante GitHub Actions con deduplicación, fuente fijada, SHA, ZIP por partes, manifiesto y recuperación aislada de GAPS. Úsalo cuando YAIWES, Luna u otro agente deba incorporar código sin reescribirlo.
 metadata:
   type: workflow
-  version: "3.1.0"
+  version: "3.2.0"
 ---
 
 # Research Download Chain
@@ -216,3 +216,38 @@ Reglas obligatorias:
 - El reparador limita cada corrida; si quedan GAPS se vuelve a despachar sin reactivar workflows antiguos.
 - Un `GITHUB_TOKEN` que hace push no activa normalmente otros workflows. Para encadenar usa explícitamente `workflow_dispatch` o `repository_dispatch`, con `actions: write`, y conserva un límite de cierre para evitar recursión infinita.
 - No declares `VERIFIED_CLOSED` hasta que el auditor independiente reporte `remaining_gaps=0`, `failures=0`, `active_jobs=0` y confirme la ruta final solicitada.
+
+## 14. Guardia NO-LFS y resiliencia de descarga/extracción
+
+Regla inmutable: **Git LFS está prohibido** para esta cadena. No instalar, ejecutar, hacer fetch/pull/push con `git lfs`, no usar `lfs.allowincompletepush` y no aceptar punteros LFS como archivos extraídos válidos. `actions/checkout` con `lfs: false` es obligatorio, pero no demuestra por sí solo ausencia de filtros heredados.
+
+Antes de `git add` o `git push`:
+
+1. Detecta archivos cuyo contenido empiece por `version https://git-lfs.github.com/spec/v1`. Si aparecen en el payload adquirido o extraído, clasifica `SOURCE_LFS_POINTER_GAP`; no los publiques como si fueran el archivo real.
+2. Si el archivo real existe pero un `.gitattributes` heredado aplica `filter=lfs`, neutraliza únicamente en el runner: `filter.lfs.clean=cat`, `filter.lfs.smudge=cat`, `filter.lfs.process=` y `filter.lfs.required=false`. Nunca modifiques el `.gitattributes` del componente para ocultar el origen.
+3. Ejecuta `git check-attr filter` sobre los candidatos y exige que ningún archivo nuevo termine con filtro LFS efectivo.
+4. Aplica gate de tamaño antes de publicar árbol extraído: un blob individual `>=100 MiB` no puede entrar en Git normal; emite `GIT_BLOB_LIMIT_GAP`. No uses LFS como bypass.
+5. Solo después de `ZERO_LFS_POINTERS + ZERO_LFS_FILTERS + SIZE_PASS` se permite staging. Si se necesita bypass de filtros, usa `git hash-object -w --no-filters` + `git update-index --cacheinfo` conservando exactamente los mismos bytes.
+6. `git push --no-verify` solo puede usarse después de los gates anteriores para impedir que un hook `pre-push` heredado invoque LFS; nunca para ocultar un puntero o un archivo faltante.
+
+### Descarga resiliente
+
+- Fuente/ref siempre fijada a commit SHA cuando el contrato lo exija.
+- Máximo tres intentos por fallo transitorio con espera incremental; elimina staging parcial antes del reintento.
+- Para HTTP sigue redirects, usa timeouts y retry de errores transitorios. No declares COMPLETE por HTTP 200 solamente: valida tamaño, SHA/commit y contenido.
+- Para archivos automáticos de GitHub no uses el hash del ZIP/tar como identidad primaria del código; usa commit fijado + hash determinista del árbol. Un release asset con checksum publicado puede conservar además su checksum de archivo.
+- Si el origen entrega un puntero LFS en lugar del objeto real, no reintentes ciegamente: queda GAP no reintentable hasta localizar una fuente oficial no-LFS compatible con el mismo alcance.
+
+### Extracción endurecida
+
+Antes de escribir en destino valida todos los miembros del archivo: CRC, rutas absolutas, `../`, variantes con `\\`, symlinks, hardlinks, dispositivos/archivos especiales y nombres duplicados que puedan sobrescribirse. Extrae siempre en staging temporal aislado; después compara conteo de archivos, bytes y hash de árbol. Conserva ZIP/partes salvo autorización literal.
+
+### LOOP persistente
+
+`ACQUIRE → VERIFY_ARCHIVE → EXTRACT_STAGING → POINTER/SIZE/ZIP_GUARD → SINGLE_WRITER → PUSH → READ_BACK → CLASSIFY`.
+
+- `retryable(network|timeout|non-fast-forward)` → repair nuevo con máximo tres intentos por causa.
+- lote parcial correcto con GAPS restantes → `repository_dispatch` del siguiente repair acotado.
+- `SOURCE_LFS_POINTER_GAP|GIT_BLOB_LIMIT_GAP|COLLISION_BLOCKED|UNSAFE_ZIP` → no repetir el mismo push; registrar GAP y esperar reparación de causa.
+- El finalizador/auditor debe ejecutarse con `if: always()` o job separado equivalente para que un fallo de push no mate el bucle ni omita el checkpoint.
+- Nunca declarar `VERIFIED_CLOSED` sin read-back independiente y `remaining_gaps=0`.
