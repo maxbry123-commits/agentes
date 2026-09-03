@@ -1,0 +1,134 @@
+[project]
+name = "semantic-router"
+version = "0.2.0.dev1"
+description = "Super fast semantic router for AI decision making"
+authors = [{ name = "Aurelio AI", email = "hello@aurelio.ai" }]
+requires-python = ">=3.9,<3.14"
+readme = "README.md"
+license = "MIT"
+dependencies = [
+    "pydantic>=2.10.2,<3",
+    "numpy>=1.25.2",
+    "colorlog>=6.8.0,<7",
+    "pyyaml>=6.0.1,<7",
+    "aurelio-sdk>=0.0.19",
+    "colorama>=0.4.6,<0.5",
+    "regex>=2023.12.25",
+    "tiktoken>=0.6.0,<1.0.0",
+    "aiohttp>=3.10.11,<4",
+    "tornado>=6.4.2,<7",
+    "urllib3>=1.26,<3",
+    "openai>=1.10.0,<3.0.0",
+    "cohere>=5.9.4,<6.00",
+    "mistralai>=1.0.0,<2.0.0",
+    "voyageai>=0.4.1",
+]
+
+[project.optional-dependencies]
+# only required by LiteLLMEncoder; the provider-specific encoders use their own SDKs
+litellm = [
+    # https://www.cve.org/CVERecord?id=CVE-2026-42208 explains >=1.83.7
+    "litellm>=1.83.7",
+]
+ollama = ["ollama>=0.1.7"]
+local = [
+    "transformers>=4.36.2 ; python_version < '3.13'",
+    "tokenizers>=0.19 ; python_version < '3.13'",
+    "llama-cpp-python>=0.2.28,<0.2.86 ; python_version < '3.13'",
+    "sentence-transformers>=5.0.0 ; python_version < '3.13'",
+    "torch>=2.6.0 ; python_version < '3.13'"
+]
+pinecone = ["pinecone[asyncio]>=7.0.0,<8.0.0"]
+vision = [
+    "torchvision>=0.17.0 ; python_version < '3.13'",
+    "transformers>=4.36.2 ; python_version < '3.13'",
+    "pillow>=10.2.0,<11.0.0 ; python_version < '3.13'",
+    "torch>=2.6.0 ; python_version < '3.13'"
+]
+qdrant = ["qdrant-client>=1.11.1,<2"]
+google = ["google-cloud-aiplatform>=1.45.0,<2"]
+bedrock = [
+    "boto3>=1.34.98,<2",
+    "botocore>=1.34.110,<2",
+]
+postgres = [
+    "psycopg[binary]>=3.1.0,<4",
+]
+fastembed = ["fastembed>=0.3.0,<0.4 ; python_version < '3.13'"]
+docs = ["pydoc-markdown>=4.8.2 ; python_version < '3.12'"]
+dev = [
+    "ipykernel>=6.25.0,<7",
+    "ruff>=0.11.2,<0.12",
+    "pytest~=8.2",
+    "pytest-mock>=3.12.0,<4",
+    "pytest-cov>=4.1.0,<5",
+    "pytest-xdist>=3.5.0,<4",
+    "pytest-asyncio>=0.24.0,<0.25",
+    "pytest-timeout",
+    "mypy>=1.7.1,<2",
+    "types-pyyaml>=6.0.12.12,<7",
+    "requests-mock>=1.12.1,<2",
+    "types-requests>=2.31.0,<3",
+    "dagger-io>=0.1.1 ; python_version >= '3.11'",
+    "python-dotenv>=1.0.0,<2",
+    # needed so `mypy semantic_router/` can resolve the LiteLLMEncoder import
+    "semantic-router[litellm]",
+]
+all = [
+    "semantic-router[local]",
+    "semantic-router[pinecone]",
+    "semantic-router[vision]",
+    "semantic-router[qdrant]",
+    "semantic-router[google]",
+    "semantic-router[bedrock]",
+    "semantic-router[postgres]",
+    "semantic-router[fastembed]",
+    "semantic-router[litellm]",
+    "semantic-router[dev]",
+    "semantic-router[ollama]",
+    "pytest-timeout",
+]
+
+[tool.hatch.build.targets.sdist]
+include = ["semantic_router"]
+
+[tool.hatch.build.targets.wheel]
+include = ["semantic_router"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff.lint.per-file-ignores]
+"*.ipynb" = ["I", "E501", "T201", "F404"]
+
+[tool.ruff]
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "T201", "NPY201"]
+ignore = ["E501"]
+
+[tool.mypy]
+ignore_missing_imports = true
+
+# PyTorch indexes
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-nightly"
+url = "https://download.pytorch.org/whl/nightly/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-nightly", marker = "python_version >= '3.13' and sys_platform == 'darwin'"  },
+    { index = "pytorch-cpu", marker = "python_version < '3.13' or sys_platform != 'darwin'" },
+]
+torchvision = [
+    { index = "pytorch-nightly", marker = "python_version >= '3.13' and sys_platform == 'darwin'"  },
+    { index = "pytorch-cpu", marker = "python_version < '3.13' or sys_platform != 'darwin'" },
+]
