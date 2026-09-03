@@ -265,6 +265,7 @@ Cuando una fuente GitHub fijada a commit contiene un puntero LFS, Git LFS contin
 5. Rechazar el objeto si queda puntero, si SHA/tamaño no coinciden, si la fuente cambia o si el blob final es `>=100 MiB`.
 6. Sustituir el puntero únicamente en staging/árbol reparado; conservar el `.gitattributes` original para trazabilidad.
 7. Publicar con filtros LFS locales neutralizados y `git push --no-verify` solo después de `ZERO_POINTERS + SIZE_PASS + SHA_PASS`.
+8. Si un puntero fue materializado después de la extracción, recalcula `files + bytes + deterministic_tree_sha256` sobre los bytes finales antes del commit; un hash previo a la materialización queda inválido y no sirve para cierre.
 
 Para el LOOP de GitHub Actions:
 
