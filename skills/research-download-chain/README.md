@@ -31,3 +31,5 @@ Hallazgos incorporados tras auditoría real de extracción en `router-universal-
 - Se confirmó un segundo GAP: `repository_dispatch` puede devolver HTTP 403 si el token efectivo no tiene autoridad suficiente; se clasifica `DISPATCH_PERMISSION_GAP`.
 - El finalizador del LOOP debe usar `if: always()` para impedir que un fallo de push suprima read-back/checkpoint.
 - El retry se limita a causas transitorias; puntero/fuente/hash/colisión/tamaño nunca se reintentan ciegamente.
+
+- Hallazgo adicional: no ejecutar `git diff --check` sobre payload adquirido; puede fallar por whitespace legítimo del repositorio fuente. La cadena conserva bytes y valida integridad, no estilo.
