@@ -80,8 +80,23 @@ jobs:
             git config user.name 'github-actions[bot]'
             git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
             git commit -m "fix(extraction): publish verified NO-LFS batch [run ${GITHUB_RUN_ID}]"
+            python3 - <<'PY'
+            import subprocess,sys
+            raw=subprocess.check_output(["git","status","--porcelain","-z"]).split(b"\0")
+            allowed={"extraction-result.json","audit-result.json"}
+            bad=[]
+            for rec in raw:
+                if not rec: continue
+                p=rec[3:].decode("utf-8","surrogateescape")
+                if p not in allowed: bad.append(p)
+            if bad:
+                print("UNEXPECTED_DIRTY_WORKTREE_GAP",*bad,sep="\n")
+                sys.exit(74)
+            PY
+            git restore --worktree --staged -- extraction-result.json audit-result.json 2>/dev/null || true
+            rm -f extraction-result.json audit-result.json
             for attempt in 1 2 3; do
-              if git pull --rebase origin main && git push --no-verify origin HEAD:main; then
+              if git fetch origin main && git rebase origin/main && git push --no-verify origin HEAD:main; then
                 exit 0
               fi
               test "$attempt" -lt 3 || exit 41
