@@ -1,0 +1,20 @@
+name: computed-indices
+on: push
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  computed-indices:
+    name: computed-indices
+    runs-on: ubuntu-latest
+
+    steps:
+      # not detected because it's in a comment
+      # ${{ inputs[inputs.foo] }}
+      - if: ${{ inputs[inputs.foo] }}
+        run: |
+          echo "hello"

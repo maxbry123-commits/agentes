@@ -1,0 +1,667 @@
+name: Daily Windows CLI Integration
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Windows CLI
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd   # v6.0.2
+
+      - name: Set up Go
+        id: setup-go
+        uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c   # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Download Go modules
+        if: steps.setup-go.outputs.cache-hit != 'true'
+        run: go mod download
+
+      - name: Build Windows binary (cross-compile)
+        env:
+          GOOS: windows
+          GOARCH: amd64
+        run: |
+          go build -ldflags "-s -w" -o gh-aw.exe ./cmd/gh-aw
+          echo "✅ Built gh-aw.exe ($(du -h gh-aw.exe | cut -f1))" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload Windows binary
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02   # v4
+        with:
+          name: gh-aw-windows-amd64
+          path: gh-aw.exe
+          retention-days: 1
+
+  integration:
+    name: Windows Integration Tests
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      BINARY: ${{ github.workspace }}\gh-aw.exe
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd   # v6.0.2
+
+      - name: Download Windows binary
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16   # v4
+        with:
+          name: gh-aw-windows-amd64
+
+      - name: Verify binary
+        shell: pwsh
+        run: |
+          if (-Not (Test-Path $env:BINARY)) { throw "gh-aw.exe not found at $env:BINARY" }
+          $size = (Get-Item $env:BINARY).Length
+          Add-Content $env:GITHUB_STEP_SUMMARY "✅ Binary found ($size bytes)"
+
+      - name: Windows CLI scenario matrix (shell × launch-mode × env-shape × path-style)
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = "Stop"
+
+          function Invoke-CliProcess {
+            param(
+              [Parameter(Mandatory)] [string] $FilePath,
+              [string[]] $ArgumentList = @(),
+              [string] $RawArguments = "",
+              [int] $TimeoutMs = 30000,
+              [string] $WorkingDirectory = (Get-Location).Path,
+              [hashtable] $EnvironmentOverrides = @{},
+              [string[]] $UnsetEnvironment = @(),
+              [switch] $MinimalEnvironment,
+              [switch] $ExpectFailure,
+              [string] $ExpectedErrorPattern = "",
+              [switch] $AssertNoAnsi
+            )
+
+            $psi = [System.Diagnostics.ProcessStartInfo]::new()
+            $psi.FileName = $FilePath
+            $psi.WorkingDirectory = $WorkingDirectory
+            $psi.UseShellExecute = $false
+            $psi.RedirectStandardOutput = $true
+            $psi.RedirectStandardError = $true
+
+            if ($RawArguments) {
+              $psi.Arguments = $RawArguments
+            } else {
+              foreach ($arg in $ArgumentList) {
+                [void]$psi.ArgumentList.Add($arg)
+              }
+            }
+
+            if ($MinimalEnvironment) {
+              $psi.Environment.Clear()
+              foreach ($key in @("PATH", "TEMP", "TMP", "SystemRoot")) {
+                $value = [System.Environment]::GetEnvironmentVariable($key)
+                if ($null -ne $value -and $value -ne "") {
+                  $psi.Environment[$key] = $value
+                }
+              }
+            }
+
+            foreach ($key in $UnsetEnvironment) {
+              [void]$psi.Environment.Remove($key)
+            }
+            foreach ($key in $EnvironmentOverrides.Keys) {
+              $value = $EnvironmentOverrides[$key]
+              if ($null -eq $value) {
+                [void]$psi.Environment.Remove($key)
+              } else {
+                $psi.Environment[$key] = [string]$value
+              }
+            }
+
+            $displayArgs = if ($RawArguments) { $RawArguments } else { $ArgumentList -join ' ' }
+
+            $proc = [System.Diagnostics.Process]::Start($psi)
+            $stdoutTask = $proc.StandardOutput.ReadToEndAsync()
+            $stderrTask = $proc.StandardError.ReadToEndAsync()
+            if (-not $proc.WaitForExit($TimeoutMs)) {
+              try { $proc.Kill($true) } catch {}
+              throw "TIMEOUT: '$FilePath $displayArgs' exceeded ${TimeoutMs}ms"
+            }
+
+            $proc.WaitForExit()
+            $stdout = $stdoutTask.GetAwaiter().GetResult()
+            $stderr = $stderrTask.GetAwaiter().GetResult()
+            $output = "$stdout`n$stderr"
+
+            if ($AssertNoAnsi -and $output -match "\x1B\[[0-9;]*[A-Za-z]") {
+              throw "Unexpected ANSI escape sequences in output"
+            }
+
+            if ($ExpectFailure) {
+              if ($proc.ExitCode -eq 0) {
+                throw "Expected failure but command exited 0"
+              }
+              if ($ExpectedErrorPattern -and $output -notmatch $ExpectedErrorPattern) {
+                throw "Expected error pattern '$ExpectedErrorPattern' not found"
+              }
+            } elseif ($proc.ExitCode -ne 0) {
+              throw "Exit code $($proc.ExitCode) for '$FilePath $displayArgs'`n$output"
+            }
+
+            return @{
+              ExitCode = $proc.ExitCode
+              Output   = $output
+            }
+          }
+
+          $workspace = $env:GITHUB_WORKSPACE
+          $binary = $env:BINARY
+          $originalPath = $env:PATH
+          $toolcacheDir = Join-Path $env:RUNNER_TEMP "toolcache-like"
+          $spaceDir = Join-Path $env:RUNNER_TEMP "path with spaces"
+          $parenDir = Join-Path $env:RUNNER_TEMP "Program Files (x86)"
+          $unicodeDir = Join-Path $env:TEMP "tëst-dïr-αβγ"
+          foreach ($dir in @($toolcacheDir, $spaceDir, $parenDir, $unicodeDir)) {
+            New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          }
+          Copy-Item -Path $binary -Destination (Join-Path $spaceDir "gh-aw.exe") -Force
+          Copy-Item -Path $binary -Destination (Join-Path $parenDir "gh-aw.exe") -Force
+
+          $scenarioMatrix = @(
+            @{ name = "pwsh-default/direct/default/default"; shell = "pwsh-default"; launch = "direct"; env = "default"; path = "default" },
+            @{ name = "pwsh-noprofile/direct/default/default"; shell = "pwsh-noprofile"; launch = "direct"; env = "default"; path = "default" },
+            @{ name = "powershell-default/direct/default/default"; shell = "powershell-default"; launch = "direct"; env = "default"; path = "default" },
+            @{ name = "powershell-noprofile/direct/default/default"; shell = "powershell-noprofile"; launch = "direct"; env = "default"; path = "default" },
+            @{ name = "cmd/direct/default/default"; shell = "cmd"; launch = "direct"; env = "default"; path = "default" },
+            @{ name = "pwsh-default/path/default/workspace-first"; shell = "pwsh-default"; launch = "path"; env = "default"; path = "workspace-first" },
+            @{ name = "pwsh-noprofile/path/default/workspace-first"; shell = "pwsh-noprofile"; launch = "path"; env = "default"; path = "workspace-first" },
+            @{ name = "powershell-default/path/default/workspace-first"; shell = "powershell-default"; launch = "path"; env = "default"; path = "workspace-first" },
+            @{ name = "powershell-noprofile/path/default/workspace-first"; shell = "powershell-noprofile"; launch = "path"; env = "default"; path = "workspace-first" },
+            @{ name = "cmd/path/default/toolcache-first"; shell = "cmd"; launch = "path"; env = "default"; path = "toolcache-first" },
+            @{ name = "pwsh-default/path/default/duplicate-workspace"; shell = "pwsh-default"; launch = "path"; env = "default"; path = "duplicate-workspace" },
+            @{ name = "pwsh-default/path/no-color/workspace-first"; shell = "pwsh-default"; launch = "path"; env = "no-color"; path = "workspace-first" },
+            @{ name = "pwsh-default/path/term-dumb/workspace-first"; shell = "pwsh-default"; launch = "path"; env = "term-dumb"; path = "workspace-first" },
+            @{ name = "pwsh-default/path/term-unset/workspace-first"; shell = "pwsh-default"; launch = "path"; env = "term-unset"; path = "workspace-first" },
+            @{ name = "pwsh-default/path/ci-true/workspace-first"; shell = "pwsh-default"; launch = "path"; env = "ci-true"; path = "workspace-first" },
+            @{ name = "pwsh-default/path/ci-unset/workspace-first"; shell = "pwsh-default"; launch = "path"; env = "ci-unset"; path = "workspace-first" }
+          )
+
+          foreach ($scenario in $scenarioMatrix) {
+            $env:PATH = $originalPath
+            switch ($scenario.path) {
+              "workspace-first" { $env:PATH = "$workspace;$originalPath" }
+              "toolcache-first" { $env:PATH = "$toolcacheDir;$workspace;$originalPath" }
+              "duplicate-workspace" { $env:PATH = "$workspace;$workspace;$originalPath" }
+              default {}
+            }
+
+            $envOverrides = @{}
+            $unsetVars = @()
+            $assertNoAnsi = $false
+            switch ($scenario.env) {
+              "no-color" { $envOverrides["NO_COLOR"] = "1" }
+              "term-dumb" { $envOverrides["TERM"] = "dumb"; $assertNoAnsi = $true }
+              "term-unset" { $unsetVars += "TERM" }
+              "ci-true" { $envOverrides["CI"] = "true" }
+              "ci-unset" { $unsetVars += "CI" }
+              default {}
+            }
+
+            if ($scenario.launch -eq "path") {
+              $whereResult = Invoke-CliProcess -FilePath "cmd" -ArgumentList @("/d", "/s", "/c", "where gh-aw") -EnvironmentOverrides $envOverrides -UnsetEnvironment $unsetVars
+              $firstResolved = ($whereResult.Output -split "`r?`n" | Where-Object { $_ -match "gh-aw\.exe$" } | Select-Object -First 1)
+              if (-not $firstResolved -or -not $firstResolved.StartsWith($workspace, [System.StringComparison]::OrdinalIgnoreCase)) {
+                throw "PATH resolution mismatch for '$($scenario.name)': $firstResolved"
+              }
+            }
+
+            switch ($scenario.shell) {
+              "pwsh-default" {
+                $cmd = if ($scenario.launch -eq "path") { "& gh-aw --help" } else { "& '$binary' --help" }
+                Invoke-CliProcess -FilePath "pwsh" -ArgumentList @("-Command", $cmd) -EnvironmentOverrides $envOverrides -UnsetEnvironment $unsetVars -AssertNoAnsi:$assertNoAnsi | Out-Null
+              }
+              "pwsh-noprofile" {
+                $cmd = if ($scenario.launch -eq "path") { "& gh-aw --help" } else { "& '$binary' --help" }
+                Invoke-CliProcess -FilePath "pwsh" -ArgumentList @("-NoProfile", "-Command", $cmd) -EnvironmentOverrides $envOverrides -UnsetEnvironment $unsetVars -AssertNoAnsi:$assertNoAnsi | Out-Null
+              }
+              "powershell-default" {
+                $cmd = if ($scenario.launch -eq "path") { "& gh-aw --help" } else { "& '$binary' --help" }
+                Invoke-CliProcess -FilePath "powershell" -ArgumentList @("-Command", $cmd) -EnvironmentOverrides $envOverrides -UnsetEnvironment $unsetVars -AssertNoAnsi:$assertNoAnsi | Out-Null
+              }
+              "powershell-noprofile" {
+                $cmd = if ($scenario.launch -eq "path") { "& gh-aw --help" } else { "& '$binary' --help" }
+                Invoke-CliProcess -FilePath "powershell" -ArgumentList @("-NoProfile", "-Command", $cmd) -EnvironmentOverrides $envOverrides -UnsetEnvironment $unsetVars -AssertNoAnsi:$assertNoAnsi | Out-Null
+              }
+              "cmd" {
+                if ($scenario.launch -eq "path") {
+                  Invoke-CliProcess -FilePath "cmd" -ArgumentList @("/d", "/s", "/c", "gh-aw --help") -EnvironmentOverrides $envOverrides -UnsetEnvironment $unsetVars -AssertNoAnsi:$assertNoAnsi | Out-Null
+                } else {
+                  # Use RawArguments to bypass .NET's \"..\" quoting which conflicts with cmd.exe's ""..""
+                  # syntax. The outer "" pair is stripped by cmd /s, leaving "path\exe.exe" --help.
+                  Invoke-CliProcess -FilePath "cmd" -RawArguments "/d /s /c `"`"$binary`" --help`"" -EnvironmentOverrides $envOverrides -UnsetEnvironment $unsetVars -AssertNoAnsi:$assertNoAnsi | Out-Null
+                }
+              }
+              default {
+                throw "Unknown shell scenario: $($scenario.shell)"
+              }
+            }
+
+            Add-Content $env:GITHUB_STEP_SUMMARY "✅ Matrix scenario passed: $($scenario.name)"
+          }
+
+          if ($env:PATHEXT -notmatch "(?i)\.EXE") {
+            throw "PATHEXT missing .EXE"
+          }
+          Invoke-CliProcess -FilePath "pwsh" -ArgumentList @("-NoProfile", "-Command", "& gh-aw --help") | Out-Null
+          Invoke-CliProcess -FilePath "cmd" -ArgumentList @("/d", "/s", "/c", "gh-aw --help") | Out-Null
+          Add-Content $env:GITHUB_STEP_SUMMARY "✅ PATHEXT/extension resolution checks passed from pwsh and cmd"
+
+          $spaceBinary = Join-Path $spaceDir "gh-aw.exe"
+          $spaceBinaryForwardSlashes = $spaceBinary -replace "\\", "/"
+          $parenBinary = Join-Path $parenDir "gh-aw.exe"
+          Invoke-CliProcess -FilePath $spaceBinary -ArgumentList @("--help") | Out-Null
+          Invoke-CliProcess -FilePath $spaceBinaryForwardSlashes -ArgumentList @("--help") | Out-Null
+          Invoke-CliProcess -FilePath $parenBinary -ArgumentList @("--help") | Out-Null
+          Add-Content $env:GITHUB_STEP_SUMMARY "✅ Paths with spaces, mixed slashes, and parentheses passed"
+
+          Invoke-CliProcess -FilePath $binary -ArgumentList @("--help") -WorkingDirectory $unicodeDir | Out-Null
+          Add-Content $env:GITHUB_STEP_SUMMARY "✅ Unicode working directory check passed ($unicodeDir)"
+
+          Invoke-CliProcess -FilePath $binary -ArgumentList @("--help") -MinimalEnvironment | Out-Null
+          Add-Content $env:GITHUB_STEP_SUMMARY "✅ Minimal environment execution passed"
+
+          foreach ($command in @(
+            @{ name = "--help"; args = @("--help") },
+            @{ name = "version"; args = @("version") },
+            @{ name = "compile --help"; args = @("compile", "--help") },
+            @{ name = "help"; args = @("help") },
+            @{ name = "run --help"; args = @("run", "--help") }
+          )) {
+            Invoke-CliProcess -FilePath $binary -ArgumentList $command.args | Out-Null
+            Add-Content $env:GITHUB_STEP_SUMMARY "✅ Command variant passed: $($command.name)"
+          }
+
+          Invoke-CliProcess -FilePath $binary -ArgumentList @("totally-unknown-subcommand-xyz") -TimeoutMs 10000 -ExpectFailure -ExpectedErrorPattern "unknown|not found|invalid|unrecognized" | Out-Null
+          Add-Content $env:GITHUB_STEP_SUMMARY "✅ Unknown subcommand fails fast with explicit error output"
+
+      - name: Configure ConPTY
+        shell: pwsh
+        run: |
+          New-Item -Path HKCU:\Console -Force | Out-Null
+          Set-ItemProperty -Path HKCU:\Console -Name ForceV2 -Type DWord -Value 1
+          Set-ItemProperty -Path HKCU:\Console -Name VirtualTerminalLevel -Type DWord -Value 1
+          Add-Content -Path $env:GITHUB_ENV -Value "TERM=xterm"
+          Add-Content -Path $env:GITHUB_ENV -Value "CONEMUANSI=ON"
+          Add-Content $env:GITHUB_STEP_SUMMARY "✅ Configured HKCU\Console for ConPTY (ForceV2=1, VirtualTerminalLevel=1)"
+
+      - name: "[ConPTY] startup probe hang detection"
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = "Stop"
+
+          Add-Type -TypeDefinition @"
+          using System;
+          using System.ComponentModel;
+          using System.Diagnostics;
+          using System.IO;
+          using System.Runtime.InteropServices;
+          using System.Text;
+          using System.Threading.Tasks;
+          using Microsoft.Win32.SafeHandles;
+
+          public static class ConPtySmoke
+          {
+              private const int EXTENDED_STARTUPINFO_PRESENT = 0x00080000;
+              private const int PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE = 0x00020016;
+              private const uint WAIT_TIMEOUT = 0x00000102;
+
+              [StructLayout(LayoutKind.Sequential)]
+              private struct COORD
+              {
+                  public short X;
+                  public short Y;
+
+                  public COORD(short x, short y)
+                  {
+                      X = x;
+                      Y = y;
+                  }
+              }
+
+              [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+              private struct STARTUPINFO
+              {
+                  public int cb;
+                  public string lpReserved;
+                  public string lpDesktop;
+                  public string lpTitle;
+                  public int dwX;
+                  public int dwY;
+                  public int dwXSize;
+                  public int dwYSize;
+                  public int dwXCountChars;
+                  public int dwYCountChars;
+                  public int dwFillAttribute;
+                  public int dwFlags;
+                  public short wShowWindow;
+                  public short cbReserved2;
+                  public IntPtr lpReserved2;
+                  public IntPtr hStdInput;
+                  public IntPtr hStdOutput;
+                  public IntPtr hStdError;
+              }
+
+              [StructLayout(LayoutKind.Sequential)]
+              private struct STARTUPINFOEX
+              {
+                  public STARTUPINFO StartupInfo;
+                  public IntPtr lpAttributeList;
+              }
+
+              [StructLayout(LayoutKind.Sequential)]
+              private struct PROCESS_INFORMATION
+              {
+                  public IntPtr hProcess;
+                  public IntPtr hThread;
+                  public int dwProcessId;
+                  public int dwThreadId;
+              }
+
+              [DllImport("kernel32.dll", SetLastError = true)]
+              private static extern bool CreatePipe(out IntPtr hReadPipe, out IntPtr hWritePipe, IntPtr lpPipeAttributes, int nSize);
+
+              [DllImport("kernel32.dll", SetLastError = true)]
+              private static extern int CreatePseudoConsole(COORD size, IntPtr hInput, IntPtr hOutput, uint dwFlags, out IntPtr hPC);
+
+              [DllImport("kernel32.dll", SetLastError = true)]
+              private static extern void ClosePseudoConsole(IntPtr hPC);
+
+              [DllImport("kernel32.dll", SetLastError = true)]
+              private static extern bool InitializeProcThreadAttributeList(IntPtr lpAttributeList, int dwAttributeCount, int dwFlags, ref IntPtr lpSize);
+
+              [DllImport("kernel32.dll", SetLastError = true)]
+              private static extern bool UpdateProcThreadAttribute(IntPtr lpAttributeList, uint dwFlags, IntPtr attribute, IntPtr lpValue, IntPtr cbSize, IntPtr lpPreviousValue, IntPtr lpReturnSize);
+
+              [DllImport("kernel32.dll", SetLastError = true)]
+              private static extern void DeleteProcThreadAttributeList(IntPtr lpAttributeList);
+
+              [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+              private static extern bool CreateProcessW(
+                  string lpApplicationName,
+                  StringBuilder lpCommandLine,
+                  IntPtr lpProcessAttributes,
+                  IntPtr lpThreadAttributes,
+                  bool bInheritHandles,
+                  int dwCreationFlags,
+                  IntPtr lpEnvironment,
+                  string lpCurrentDirectory,
+                  ref STARTUPINFOEX lpStartupInfo,
+                  out PROCESS_INFORMATION lpProcessInformation);
+
+              [DllImport("kernel32.dll", SetLastError = true)]
+              private static extern uint WaitForSingleObject(IntPtr hHandle, uint dwMilliseconds);
+
+              [DllImport("kernel32.dll", SetLastError = true)]
+              private static extern bool GetExitCodeProcess(IntPtr hProcess, out int lpExitCode);
+
+              [DllImport("kernel32.dll", SetLastError = true)]
+              private static extern bool TerminateProcess(IntPtr hProcess, uint uExitCode);
+
+              [DllImport("kernel32.dll", SetLastError = true)]
+              private static extern bool CloseHandle(IntPtr hObject);
+
+              private static void ThrowLastWin32(string operation)
+              {
+                  int err = Marshal.GetLastWin32Error();
+                  string sysMsg = new Win32Exception(err).Message;
+                  throw new Win32Exception(err, $"{operation}: {sysMsg}");
+              }
+
+              public static string Run(string fileName, string arguments, int timeoutMs)
+              {
+                  IntPtr stdinRead = IntPtr.Zero;
+                  IntPtr stdinWrite = IntPtr.Zero;
+                  IntPtr stdoutRead = IntPtr.Zero;
+                  IntPtr stdoutWrite = IntPtr.Zero;
+                  IntPtr pseudoConsole = IntPtr.Zero;
+                  IntPtr attributeList = IntPtr.Zero;
+                  bool attributeListInitialized = false;
+                  IntPtr pseudoConsoleValuePtr = IntPtr.Zero;
+                  PROCESS_INFORMATION processInfo = default;
+
+                  try
+                  {
+                      if (!CreatePipe(out stdinRead, out stdinWrite, IntPtr.Zero, 0))
+                      {
+                          ThrowLastWin32("CreatePipe(stdin)");
+                      }
+                      if (!CreatePipe(out stdoutRead, out stdoutWrite, IntPtr.Zero, 0))
+                      {
+                          ThrowLastWin32("CreatePipe(stdout)");
+                      }
+
+                      int hresult = CreatePseudoConsole(new COORD(120, 40), stdinRead, stdoutWrite, 0, out pseudoConsole);
+                      if (hresult != 0)
+                      {
+                          Marshal.ThrowExceptionForHR(hresult);
+                      }
+
+                      CloseHandle(stdinRead);
+                      stdinRead = IntPtr.Zero;
+                      CloseHandle(stdoutWrite);
+                      stdoutWrite = IntPtr.Zero;
+
+                      IntPtr attributeListSize = IntPtr.Zero;
+                      InitializeProcThreadAttributeList(IntPtr.Zero, 1, 0, ref attributeListSize);
+                      attributeList = Marshal.AllocHGlobal(attributeListSize);
+                      if (!InitializeProcThreadAttributeList(attributeList, 1, 0, ref attributeListSize))
+                      {
+                          ThrowLastWin32("InitializeProcThreadAttributeList");
+                      }
+                      attributeListInitialized = true;
+
+                      IntPtr pseudoConsoleValue = pseudoConsole;
+                      pseudoConsoleValuePtr = Marshal.AllocHGlobal(IntPtr.Size);
+                      Marshal.WriteIntPtr(pseudoConsoleValuePtr, pseudoConsoleValue);
+                      if (!UpdateProcThreadAttribute(
+                          attributeList,
+                          0,
+                          (IntPtr)PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE,
+                          pseudoConsoleValuePtr,
+                          (IntPtr)IntPtr.Size,
+                          IntPtr.Zero,
+                          IntPtr.Zero))
+                      {
+                          ThrowLastWin32("UpdateProcThreadAttribute");
+                      }
+
+                      STARTUPINFOEX startupInfo = new STARTUPINFOEX();
+                      startupInfo.StartupInfo.cb = Marshal.SizeOf<STARTUPINFOEX>();
+                      startupInfo.lpAttributeList = attributeList;
+
+                      string escapedArguments = string.IsNullOrWhiteSpace(arguments) ? string.Empty : " " + arguments;
+                      StringBuilder commandLine = new StringBuilder("\"" + fileName + "\"" + escapedArguments);
+                      if (!CreateProcessW(
+                          null,
+                          commandLine,
+                          IntPtr.Zero,
+                          IntPtr.Zero,
+                          false,
+                          EXTENDED_STARTUPINFO_PRESENT,
+                          IntPtr.Zero,
+                          Path.GetDirectoryName(fileName),
+                          ref startupInfo,
+                          out processInfo))
+                      {
+                          ThrowLastWin32("CreateProcessW");
+                      }
+
+                      CloseHandle(stdinWrite);
+                      stdinWrite = IntPtr.Zero;
+
+                      using FileStream outputStream = new FileStream(new SafeFileHandle(stdoutRead, ownsHandle: true), FileAccess.Read);
+                      stdoutRead = IntPtr.Zero;
+                      using StreamReader reader = new StreamReader(outputStream, Encoding.UTF8);
+                      Task<string> readTask = reader.ReadToEndAsync();
+
+                      uint waitResult = WaitForSingleObject(processInfo.hProcess, unchecked((uint)timeoutMs));
+                      if (waitResult == WAIT_TIMEOUT)
+                      {
+                          if (!TerminateProcess(processInfo.hProcess, 1))
+                          {
+                              int err = Marshal.GetLastWin32Error();
+                              if (err != 5) ThrowLastWin32("TerminateProcess");
+                          }
+                          ClosePseudoConsole(pseudoConsole);
+                          pseudoConsole = IntPtr.Zero;
+                          try { readTask.GetAwaiter().GetResult(); } catch { }
+                          throw new TimeoutException($"ConPTY child timed out after {timeoutMs}ms for: {commandLine}");
+                      }
+                      if (waitResult != 0)
+                      {
+                          ThrowLastWin32("WaitForSingleObject");
+                      }
+
+                      ClosePseudoConsole(pseudoConsole);
+                      pseudoConsole = IntPtr.Zero;
+
+                      if (!readTask.Wait(timeoutMs))
+                          throw new TimeoutException($"ConPTY output drain timed out after {timeoutMs}ms");
+                      string output = readTask.GetAwaiter().GetResult();
+                      if (!GetExitCodeProcess(processInfo.hProcess, out int exitCode))
+                      {
+                          ThrowLastWin32("GetExitCodeProcess");
+                      }
+                      if (exitCode != 0)
+                      {
+                          throw new InvalidOperationException($"ConPTY child exited with code {exitCode}: {commandLine}\n{output}");
+                      }
+
+                      return output;
+                  }
+                  finally
+                  {
+                      if (processInfo.hThread != IntPtr.Zero) CloseHandle(processInfo.hThread);
+                      if (processInfo.hProcess != IntPtr.Zero) CloseHandle(processInfo.hProcess);
+                      if (pseudoConsole != IntPtr.Zero) ClosePseudoConsole(pseudoConsole);
+                      if (attributeList != IntPtr.Zero)
+                      {
+                          if (attributeListInitialized) DeleteProcThreadAttributeList(attributeList);
+                          Marshal.FreeHGlobal(attributeList);
+                      }
+                      if (pseudoConsoleValuePtr != IntPtr.Zero) Marshal.FreeHGlobal(pseudoConsoleValuePtr);
+                      if (stdinRead != IntPtr.Zero) CloseHandle(stdinRead);
+                      if (stdinWrite != IntPtr.Zero) CloseHandle(stdinWrite);
+                      if (stdoutRead != IntPtr.Zero) CloseHandle(stdoutRead);
+                      if (stdoutWrite != IntPtr.Zero) CloseHandle(stdoutWrite);
+                  }
+              }
+          }
+          "@
+
+          # Allow slightly more time than the redirected-stdio checks because the
+          # ConPTY host and child process are both created within this smoke test.
+          $conPtyTimeoutMs = 15000
+          foreach ($command in @(
+            @{ name = "--help"; args = "--help"; expected = "GitHub Agentic Workflows" },
+            @{ name = "version"; args = "version"; expected = "gh aw version " }
+          )) {
+            try {
+              $output = [ConPtySmoke]::Run($env:BINARY, $command.args, $conPtyTimeoutMs)
+            } catch {
+              $message = $_.Exception.ToString()
+              if ($message -match '(?i)(-1073741502|0xC0000142|STATUS_DLL_INIT_FAILED)') {
+                Add-Content $env:GITHUB_STEP_SUMMARY "⚠️ ConPTY probe skipped for $($command.name): runner returned STATUS_DLL_INIT_FAILED (0xC0000142)"
+                continue
+              }
+              throw
+            }
+            $cleanOutput = $output -replace "`e\[[\d;]*[A-Za-z]", ""
+            if ($cleanOutput -notmatch [regex]::Escape($command.expected)) {
+              throw "Expected ConPTY output for '$($command.name)' to contain '$($command.expected)', got:`n$cleanOutput"
+            }
+            Add-Content $env:GITHUB_STEP_SUMMARY "✅ ConPTY scenario passed: $($command.name)"
+          }
+
+      # Explicit check for stdin-blocking hang (common bubbletea/TUI regression)
+      - name: "[pwsh] stdin hang detection"
+        shell: pwsh
+        run: |
+          $psi = [System.Diagnostics.ProcessStartInfo]::new($env:BINARY, "--help")
+          $psi.RedirectStandardInput = $true
+          $psi.UseShellExecute = $false
+          $proc = [System.Diagnostics.Process]::Start($psi)
+          $proc.StandardInput.Close()
+          if (-Not $proc.WaitForExit(15000)) {
+            $proc.Kill()
+            throw "HANG DETECTED: binary blocked on stdin - TUI may be reading terminal input inappropriately"
+          }
+          Add-Content $env:GITHUB_STEP_SUMMARY "✅ [pwsh] No stdin hang detected"
+
+      - name: Integration summary
+        if: always()
+        shell: pwsh
+        run: |
+          Add-Content $env:GITHUB_STEP_SUMMARY "## Windows Integration Results"
+          Add-Content $env:GITHUB_STEP_SUMMARY "Completed: $(Get-Date -AsUTC -Format 'yyyy-MM-dd HH:mm:ss') UTC"
+
+  conclusion:
+    name: Conclusion
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [build, integration]
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Evaluate outcomes
+        id: evaluate
+        run: |
+          BUILD="${{ needs.build.result }}"
+          INTEGRATION="${{ needs.integration.result }}"
+          FAILED=""
+          [ "$BUILD" != "success" ] && FAILED="build($BUILD)"
+          [ "$INTEGRATION" != "success" ] && FAILED="${FAILED:+$FAILED, }integration($INTEGRATION)"
+          if [ -n "$FAILED" ]; then
+            echo "failed=true" >> $GITHUB_OUTPUT
+            echo "failed_jobs=$FAILED" >> $GITHUB_OUTPUT
+            echo "❌ Failed jobs: $FAILED" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "failed=false" >> $GITHUB_OUTPUT
+            echo "✅ All Windows integration jobs passed" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Create failure issue
+        if: steps.evaluate.outputs.failed == 'true'
+        env:
+          FAILED_JOBS: ${{ steps.evaluate.outputs.failed_jobs }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          gh issue create \
+            --repo "${{ github.repository }}" \
+            --title "❌ Windows integration failure: ${FAILED_JOBS}" \
+            --body "## Windows CLI Integration Failure
+
+          **Failed jobs:** ${FAILED_JOBS}
+
+          **Run:** ${RUN_URL}
+
+          **Date:** $(date -u '+%Y-%m-%d %H:%M UTC')
+
+          This issue was created automatically by the daily Windows CLI integration workflow."
+
+      - name: Fail if any job failed
+        if: steps.evaluate.outputs.failed == 'true'
+        run: exit 1

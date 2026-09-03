@@ -1,0 +1,43 @@
+//! Per-audit integrationt tests, including snapshots.
+
+mod adhoc_packages;
+mod anonymous_definition;
+mod archived_uses;
+mod artipacked;
+mod bot_conditions;
+mod cache_poisoning;
+mod concurrency_limits;
+mod dangerous_triggers;
+mod dependabot_cooldown;
+mod dependabot_execution;
+mod excessive_permissions;
+mod forbidden_uses;
+mod github_app;
+mod github_env;
+// mod hardcoded_container_credentials; // TODO
+mod impostor_commit;
+mod insecure_commands;
+mod insecure_url_scheme;
+mod known_vulnerable_actions;
+mod misfeature;
+mod obfuscation;
+mod overprovisioned_secrets;
+mod ref_confusion;
+mod ref_version_mismatch;
+mod secrets_inherit;
+mod secrets_outside_env;
+mod self_hosted_runner;
+mod self_repository;
+mod stale_action_refs;
+mod superfluous_actions;
+mod template_injection;
+mod typosquat_uses;
+mod undocumented_permissions;
+mod unpinned_images;
+mod unpinned_tools;
+mod unpinned_uses;
+mod unredacted_secrets;
+mod unsound_condition;
+mod unsound_contains;
+mod unsound_ternary;
+mod use_trusted_publishing;

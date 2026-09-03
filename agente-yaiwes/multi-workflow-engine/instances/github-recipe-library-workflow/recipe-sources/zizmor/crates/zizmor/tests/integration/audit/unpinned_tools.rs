@@ -1,0 +1,114 @@
+use crate::common::{input_under_test, zizmor};
+
+#[test]
+fn test_regular_persona() -> anyhow::Result<()> {
+    insta::assert_snapshot!(zizmor().input(input_under_test("unpinned-tools.yml")).run()?, @"
+    warning[unpinned-tools]: action installs an unpinned external tool
+      --> @@INPUT@@:16:15
+       |
+    16 |       - uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514 # v0.2.6
+       |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ omitting `version` implicitly selects an unpinned tool version
+       |
+       = note: audit confidence → High
+
+    warning[unpinned-tools]: action installs an unpinned external tool
+      --> @@INPUT@@:19:11
+       |
+    17 |       - uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514 # v0.2.6
+       |               ----------------------------------------------------------------- this action
+    18 |         with:
+    19 |           version: latest
+       |           ^^^^^^^^^^^^^^^ selects an unpinned tool version
+       |
+       = note: audit confidence → High
+
+    warning[unpinned-tools]: action installs an unpinned external tool
+      --> @@INPUT@@:20:15
+       |
+    20 |       - uses: 1password/load-secrets-action@92467eb28f72e8255933372f1e0707c567ce2259 # v4.0.0
+       |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ omitting `version` implicitly selects an unpinned tool version
+       |
+       = note: audit confidence → High
+
+    warning[unpinned-tools]: action installs an unpinned external tool
+      --> @@INPUT@@:23:11
+       |
+    21 |       - uses: 1password/load-secrets-action@92467eb28f72e8255933372f1e0707c567ce2259 # v4.0.0
+       |               ---------------------------------------------------------------------- this action
+    22 |         with:
+    23 |           version: latest
+       |           ^^^^^^^^^^^^^^^ selects an unpinned tool version
+       |
+       = note: audit confidence → High
+
+    warning[unpinned-tools]: action installs an unpinned external tool
+      --> @@INPUT@@:26:11
+       |
+    24 |       - uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514 # v0.2.6
+       |               ----------------------------------------------------------------- this action
+    25 |         with:
+    26 |           version: ${{ inputs.trivy-version }}
+       |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ tool version may be unpinned
+       |
+       = note: audit confidence → Low
+
+    5 findings: 0 informational, 0 low, 5 medium, 0 high
+    ");
+
+    Ok(())
+}
+
+#[test]
+fn test_setup_just() -> anyhow::Result<()> {
+    insta::assert_snapshot!(zizmor()
+        .input(input_under_test("unpinned-tools/setup-just.yml"))
+        .run()?, @r#"
+    warning[unpinned-tools]: action installs an unpinned external tool
+      --> @@INPUT@@:16:15
+       |
+    16 |       - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+       |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ omitting `just-version` implicitly selects an unpinned tool version
+       |
+       = note: audit confidence → High
+
+    warning[unpinned-tools]: action installs an unpinned external tool
+      --> @@INPUT@@:19:11
+       |
+    17 |       - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+       |               --------------------------------------------------------------- this action
+    18 |         with:
+    19 |           just-version: "*"
+       |           ^^^^^^^^^^^^^^^^^ selects an unpinned tool version
+       |
+       = note: audit confidence → High
+
+    warning[unpinned-tools]: action installs an unpinned external tool
+      --> @@INPUT@@:22:11
+       |
+    20 |       - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+       |               --------------------------------------------------------------- this action
+    21 |         with:
+    22 |           just-version: ${{ inputs.just-version }}
+       |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ tool version may be unpinned
+       |
+       = note: audit confidence → Low
+
+    3 findings: 0 informational, 0 low, 3 medium, 0 high
+    "#);
+
+    Ok(())
+}
+
+/// Regression test for #2059: steps gated with a statically-false `if:`
+/// condition should not be audited, since they cannot execute.
+#[test]
+fn test_if_false_skipped() -> anyhow::Result<()> {
+    insta::assert_snapshot!(
+        zizmor()
+            .input(input_under_test("unpinned-tools/if-false.yml"))
+            .run()?,
+        @"No findings to report. Good job! (1 ignored, 1 suppressed)"
+    );
+
+    Ok(())
+}

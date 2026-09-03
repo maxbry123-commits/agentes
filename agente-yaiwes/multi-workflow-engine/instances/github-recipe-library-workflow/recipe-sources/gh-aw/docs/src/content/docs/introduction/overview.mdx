@@ -1,0 +1,63 @@
+---
+title: What are Agentic Workflows?
+description: Learn what GitHub Agentic Workflows (gh-aw) is, how agentic workflows use Markdown and YAML frontmatter, and how AI agents run through GitHub Actions.
+sidebar:
+  label: What are Agentic Workflows?
+  order: 1
+---
+
+GitHub Agentic Workflows lets developers define AI-powered repository automation in Markdown with YAML frontmatter and run AI agents through GitHub Actions. The `gh-aw` CLI compiles the source into a standard GitHub Actions workflow while adding controls for permissions, tools, sandboxing, and writes.
+
+## What is an agentic workflow?
+
+**[Agentic workflows](/gh-aw/reference/glossary/#agentic-workflow)** are AI-powered automation that can understand context, make decisions, and take meaningful actions—all from natural-language instructions written in Markdown.
+
+Unlike traditional automation with fixed if-then rules, agentic workflows use AI engines such as GitHub Copilot, Claude Code, OpenAI Codex, Google Gemini, or Pi to:
+- **Understand context**: Read your repository, issues, and pull requests to grasp the current situation
+- **Make decisions**: Choose appropriate actions based on the context, not just predefined conditions
+- **Adapt behavior**: Respond flexibly to different scenarios without requiring explicit programming for each case
+
+## Coding agents, running with tools, in GitHub Actions
+
+With AI agents, you describe your automation needs in plain language. GitHub Agentic Workflows makes this possible by running Markdown instructions through an AI engine in [GitHub Actions](https://github.com/features/actions).
+
+Instead of writing intricate scripts to handle issue triage, code reviews, or release management, you describe what you want to happen. The AI agent uses the repository context, tools, and permissions that the workflow allows to interpret the situation and request appropriate actions.
+
+Here's a simple example:
+
+```markdown wrap
+---
+on:                        # Trigger: when to run
+  issues:
+    types: [opened]
+
+permissions: read-all      # Security: read-only by default
+
+safe-outputs:              # Allowed write operations
+  add-comment:
+---
+# Issue Clarifier
+
+Analyze the current issue and ask for additional details if the issue is unclear.
+```
+
+The YAML section at the top is called [**frontmatter**](/gh-aw/reference/frontmatter/); it configures when the workflow runs and what it can do. The Markdown body contains natural-language instructions. See [Workflow Structure](/gh-aw/reference/workflow-structure/) for details.
+
+The `gh aw compile` command turns this Markdown file into a hardened [GitHub Actions workflow](https://docs.github.com/en/actions/concepts/workflows-and-actions/workflows#about-workflows) [`.lock.yml` file](/gh-aw/reference/glossary/#workflow-lock-file-lockyml). The lock file embeds the compiled frontmatter configuration and loads the Markdown body at runtime. GitHub Actions then runs the selected AI engine whenever a new issue is opened.
+
+[Compilation](/gh-aw/reference/glossary/#compilation) validates the configuration, applies security hardening, and generates the workflow file that GitHub Actions can execute. Think of it like compiling code: you write human-readable Markdown, and the compiler produces machine-ready YAML.
+
+The AI agent reads your repository context, understands the issue content, and takes appropriate actions - all defined in natural language rather than complex code.
+
+The generated agent job uses read-only permissions by default. The recommended write path is sanitized [`safe-outputs`](/gh-aw/reference/safe-outputs/), which can create issues, comments, and pull requests without granting the AI agent direct write access. Direct write permissions and custom jobs are also configurable and form separate trust boundaries. Review the [GitHub Agentic Workflows security architecture](/gh-aw/introduction/architecture/) for these boundaries and exceptions.
+
+## Learn More
+
+- [How Agentic Workflows Work](/gh-aw/introduction/how-they-work/)
+- [Security Architecture](/gh-aw/introduction/architecture/)
+- [Quick Start](/gh-aw/setup/quick-start/)
+- [GitHub Agentic Workflows Gallery](/gh-aw/gallery/)
+- [Agentics collection](https://github.com/githubnext/agentics)
+
+> [!TIP]
+> **Want a guided introduction?** The [**gh-aw-workshop**](https://github.com/githubnext/gh-aw-workshop) is a step-by-step workshop that walks you through building your first agentic workflow from scratch.

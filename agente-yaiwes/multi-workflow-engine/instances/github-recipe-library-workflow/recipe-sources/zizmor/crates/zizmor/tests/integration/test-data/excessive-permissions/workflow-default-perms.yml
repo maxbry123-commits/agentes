@@ -1,0 +1,20 @@
+# two findings in pedantic mode: one for the entire workflow for having
+# implicit permissions (pedantic), and one for the 'single' job for having
+# implicit permissions
+
+on: push
+
+name: workflow-default-perms
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  single:
+    name: single
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false

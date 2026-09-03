@@ -1,0 +1,21 @@
+name: basic
+
+on: [pull_request]
+
+permissions: {}
+
+jobs:
+  basic:
+    name: basic
+    runs-on: ubuntu-latest
+    steps:
+      - run: &run |
+          "doing a thing: ${{ github.event.issue.title }}"
+
+      - run: *run
+
+      - name: Print build info
+        run: &print-info echo "Building ref ${{ github.ref }}"
+
+      - name: Print build info again
+        run: *print-info

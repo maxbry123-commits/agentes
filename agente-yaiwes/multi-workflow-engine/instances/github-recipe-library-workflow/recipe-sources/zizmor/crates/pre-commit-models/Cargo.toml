@@ -1,0 +1,23 @@
+[package]
+name = "pre-commit-models"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Unofficial, high-quality data models for pre-commit configurations and hook definitions"
+readme = "README.md"
+homepage.workspace = true
+repository = "https://github.com/zizmorcore/zizmor/tree/main/crates/pre-commit-models"
+license.workspace = true
+keywords = ["ci", "pre-commit"]
+categories = ["api-bindings"]
+
+[dependencies]
+indexmap.workspace = true
+serde.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+yaml_serde.workspace = true
+
+[lints]
+workspace = true

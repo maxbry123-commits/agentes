@@ -1,0 +1,117 @@
+---
+title: Package Manifest (aw.yml)
+description: Reference for the aw.yml package manifest used by gh aw add and gh aw compile.
+sidebar:
+  order: 320
+---
+
+Use `aw.yml` to describe an installable agentic workflow package.
+`gh aw add` uses this manifest when installing packages, and
+`gh aw compile` validates repository-root manifests before compilation.
+
+For the normative file-format definition, see the
+[Package Management (Spec)](/gh-aw/specs/repository-package-manifest-specification/).
+
+## Package reference formats
+
+Repository references support two forms:
+
+- `OWNER/REPO`
+- `OWNER/REPO/PATH/TO/PACKAGE`
+
+The package root is the folder that contains `aw.yml`.
+
+## Fields
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `manifest-version` | string | No | Current supported value: `"1"`. Defaults to `"1"` when omitted. |
+| `min-version` | string | No | Minimum compatible `gh aw` version in `vMAJOR.minor.patch` form, such as `v0.38.0`. |
+| `name` | string | Yes | Human-readable package name. Must be non-empty after trimming whitespace. |
+| `emoji` | string | No | Optional package emoji for display in package metadata. |
+| `icon` | string | No | Optional package icon: an emoji, a GitHub primer octicon name in `:name:` format (e.g. `:check-circle:`), or a package resource path to an SVG file. |
+| `description` | string | No | Optional package description. `gh aw add` warns when it exceeds 255 characters. |
+| `private` | boolean | No | Marks the package as unavailable for installation. Defaults to `false`; `gh aw add` refuses packages set to `true`. |
+| `experimental` | boolean | No | Marks the package as experimental. Defaults to `false`; `gh aw add` displays a warning when set to `true`. |
+| `files` | array of strings | No | Deprecated; use `includes`. Package-root-relative paths. Agentic markdown workflows under `workflows/` or `.github/workflows/`; raw GitHub Actions YAML (`.yml`) is also accepted as direct children of `.github/workflows/`. |
+| `includes` | array | No | Installable entries. Each entry is either a path string (same rules as `files`, plus skill and agent paths) or a source-to-destination mapping. |
+| `resources` | array | No | Repository assets copied from package-relative `source` paths to allowlisted repository-relative `destination` paths. |
+
+## Installable workflows
+
+If `files` is present, valid entries become the install bundle. Two entry kinds are supported:
+
+- **Agentic workflow markdown** — paths ending in `.md` under `workflows/` or `.github/workflows/`. `gh aw add` compiles these to lock files and fetches their dependencies.
+- **Raw GitHub Actions YAML** — paths ending in `.yml` (but not `.lock.yml`) that are direct children of `.github/workflows/`. `gh aw add` copies these verbatim to `.github/workflows/<name>.yml` with no frontmatter processing, no dependency fetch, and no compilation. Nested subdirectories under `.github/workflows/` and `.yml` files under `workflows/` are not accepted.
+
+### Path resolution rules
+
+- A **string entry** that starts with `.github/` is resolved relative to the **consuming repository root**, even inside a nested package. For example, `.github/workflows/nightly.md` in `factory/aw.yml` refers to the repository-root file, not to `factory/.github/workflows/nightly.md`.
+- Every other string entry (such as `workflows/review.md`) is resolved relative to the package root.
+- A **mapping entry** always resolves `source` relative to the package root and `destination` relative to the consuming repository root.
+
+### Source-to-destination mappings
+
+Use mapping entries to keep workflow assets inert in the distribution repository while still installing them into the consuming repository's `.github/workflows/`:
+
+```yaml
+name: Factory
+includes:
+  - source: payload/workflows/reviewer.md
+    destination: .github/workflows/reviewer.md
+    kind: agentic-workflow
+  - source: payload/workflows/controller.yml
+    destination: .github/workflows/controller.yml
+    kind: action-workflow
+```
+
+With a nested package reference such as `owner/repo/factory`, the files above are fetched from `factory/payload/workflows/` and installed to `.github/workflows/`. Because the sources live outside `.github/workflows/` in the distribution repository, they never run there.
+
+The optional `kind` field is either `agentic-workflow` (`.md`) or `action-workflow` (`.yml`) and must match the source extension.
+
+Mappings are rejected when `source` or `destination` is absolute, contains `..`, points at a symbolic link, uses an unsupported extension (or `.lock.yml`), changes the file extension between source and destination, or targets anything other than a direct child of `.github/workflows/`. Two entries installing to the same destination are rejected before any file is written.
+
+`gh aw add`, `gh aw add-wizard`, and `gh aw update` all use these same mapping rules.
+
+String entries can also install skill directories under `skills/` or `.github/skills/` when they contain `SKILL.md`, and agent Markdown files under `agents/` or `.github/agents/`.
+
+If `files` is omitted, or no valid entries remain after filtering,
+`gh aw add` discovers installable markdown files under:
+
+- `workflows/`
+- `.github/workflows/`
+
+If no installable workflow files are resolved, validation fails.
+
+## Resources
+
+The `resources` field installs inert repository assets. Each entry maps a package-relative `source` to a repository-relative `destination`. Supported destinations are:
+
+- Direct children of `.github/ISSUE_TEMPLATE/` with a `.yml` or `.yaml` extension
+- `.github/CODEOWNERS`
+- Files under `.github/aw/`
+
+Resource destinations must be unique, including case-insensitive comparisons. Path traversal, symbolic links, non-regular local files, and destinations outside the allowlist are rejected. Installed resources are tracked with package-scoped ownership metadata in `.github/aw/packages/*.json`.
+
+## Package documentation
+
+Package documentation must be `README.md` at the package root.
+The manifest does not support a `docs` field.
+
+Missing `README.md` causes package validation to fail.
+
+The embedded JSON schema source of truth is `pkg/parser/schemas/aw_manifest_schema.json`.
+
+## Example
+
+```yaml
+name: Repo Assist
+emoji: 🤖
+description: Friendly repository automation for review and issue triage
+includes:
+  - workflows/review.md                # agentic workflow — compiled on install
+  - .github/workflows/nightly-review.md # repository-root-relative string entry
+  - .github/workflows/ci.yml           # raw Actions YAML — copied verbatim
+  - source: payload/workflows/reviewer.md   # package-relative source
+    destination: .github/workflows/reviewer.md
+```

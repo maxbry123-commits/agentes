@@ -1,0 +1,166 @@
+name: Code generation 🤖
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 12 * * 1"
+
+permissions: {}
+
+env:
+  PR_ASSIGNEES: woodruffw
+
+jobs:
+  refresh-schemas:
+    name: Refresh JSON schemas 📈
+    runs-on: ubuntu-latest
+    # this job does not make sense on forks
+    if: ${{ github.repository_owner == 'zizmorcore' }}
+
+    permissions:
+      contents: write # for creating branches
+      pull-requests: write # for opening PRs
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: try to refresh schemas
+        run: |
+          make refresh-schemas
+
+      - name: create PR
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          draft: true
+          commit-message: "[BOT] update JSON schemas from SchemaStore"
+          branch: refresh-schemas
+          branch-suffix: timestamp
+          title: "[BOT] update JSON schemas from SchemaStore"
+          body: |
+            :robot: :warning: :robot:
+
+            This is an automated pull request, updating the embedded JSON
+            schemas after a SchemaStore change was detected.
+
+            Please review manually before merging.
+          assignees: ${{ env.PR_ASSIGNEES }}
+          reviewers: ${{ env.PR_ASSIGNEES }}
+
+  refresh-context-capabilities:
+    name: Refresh context capabilities *️⃣
+    runs-on: ubuntu-latest
+    # this job does not make sense on forks
+    if: ${{ github.repository_owner == 'zizmorcore' }}
+
+    permissions:
+      contents: write # for creating branches
+      pull-requests: write # for opening PRs
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+
+      - name: try to refresh context capabilities
+        run: |
+          make webhooks-to-contexts
+
+      - name: create PR
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          draft: true
+          commit-message: "[BOT] update context capabilities"
+          branch: refresh-context-capabilities
+          branch-suffix: timestamp
+          title: "[BOT] update context-capabilities from GitHub webhooks"
+          body: |
+            :robot: :warning: :robot:
+
+            This is an automated pull request, updating the
+            context capabilities CSV after a change to GitHub's
+            webhooks was detected.
+
+            Please review manually before merging.
+          assignees: ${{ env.PR_ASSIGNEES }}
+          reviewers: ${{ env.PR_ASSIGNEES }}
+
+  refresh-codeql-injection-sinks:
+    name: Refresh CodeQL injection sinks 🚰
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write # for creating branches
+      pull-requests: write # for opening PRs
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+
+      - name: try to refresh CodeQL injection sinks
+        run: |
+          make codeql-injection-sinks
+
+      - name: create PR
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          draft: true
+          commit-message: "[BOT] update CodeQL injection sinks"
+          branch: refresh-codeql-injection-sinks
+          branch-suffix: timestamp
+          title: "[BOT] update CodeQL injection sinks from GitHub"
+          body: |
+            :robot: :warning: :robot:
+
+            This is an automated pull request, updating the CodeQL
+            injection sinks after a change to GitHub's CodeQL
+            models was detected.
+
+            Please review manually before merging.
+          assignees: ${{ env.PR_ASSIGNEES }}
+          reviewers: ${{ env.PR_ASSIGNEES }}
+
+  refresh-expression-tests:
+    name: Refresh expression test data 🧪
+    runs-on: ubuntu-latest
+    if: ${{ github.repository_owner == 'zizmorcore' }}
+
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+
+      - name: try to refresh expression tests
+        run: |
+          make sync-expression-tests
+
+      - name: create PR
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          draft: true
+          commit-message: "[BOT] update expression test data from GitHub"
+          branch: refresh-expression-tests
+          branch-suffix: timestamp
+          title: "[BOT] update expression test data from GitHub"
+          body: |
+            :robot: :warning: :robot:
+
+            This is an automated pull request, updating the expression
+            test data after a change to GitHub's languageservices
+            testdata was detected.
+
+            Please review manually before merging.
+          assignees: ${{ env.PR_ASSIGNEES }}
+          reviewers: ${{ env.PR_ASSIGNEES }}

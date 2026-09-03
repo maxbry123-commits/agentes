@@ -1,0 +1,19 @@
+on:
+  push:
+
+name: self-hosted-runner-group
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.base_ref == main }}
+
+jobs:
+  whops:
+    name: whops
+    runs-on:
+      group: ubuntu-runners
+
+    steps:
+      - run: echo \"hello from a self-hosted runner\"

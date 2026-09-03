@@ -1,0 +1,18 @@
+name: example
+on: [push]
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unpinned-0:
+    name: unpinned-0
+    runs-on: ubuntu-latest
+    steps:
+      # PEDANTIC: pinned but unhashed
+      - uses: actions/checkout@v3
+        with:
+          persist-credentials: false

@@ -1,0 +1,10 @@
+on: push
+name: Dummy
+permissions: {}
+
+jobs:
+  dummy:
+    name: dummy
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo 'dummy'

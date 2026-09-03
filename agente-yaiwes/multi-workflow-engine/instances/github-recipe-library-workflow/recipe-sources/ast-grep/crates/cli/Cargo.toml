@@ -1,0 +1,67 @@
+[package]
+name = "ast-grep"
+description = "Search and Rewrite code at large scale using precise AST pattern"
+keywords = ["ast", "pattern", "codemod", "search", "rewrite"]
+categories = ["command-line-utilities", "development-tools", "parsing"]
+default-run = "ast-grep"
+# use relative path because maturin does not recognize
+readme = "../../README.md"
+
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+documentation.workspace = true
+homepage.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "ast-grep"
+path = "src/main.rs"
+
+[[bin]]
+name = "sg"
+path = "src/bin/alias.rs"
+
+[dependencies]
+ast-grep-core.workspace = true
+ast-grep-config.workspace = true
+ast-grep-dynamic.workspace = true
+ast-grep-language.workspace = true
+ast-grep-lsp.workspace = true
+ast-grep-outline.workspace = true
+tree-sitter.workspace = true
+
+ansi_term = "0.12.1"
+anyhow.workspace = true
+clap = { version = "4.5.4", features = ["derive"] }
+codespan-reporting = "0.13.0"
+crossterm = "0.29.0"
+ignore.workspace = true
+regex.workspace = true
+dashmap.workspace = true
+termimad = "0.35.1"
+terminal-light = "1.8.0"
+inquire = "0.9.0"
+serde.workspace = true
+serde_json = "1.0.116"
+serde_yaml.workspace = true
+serde-sarif = "0.8.0"
+similar = { version = "3.0.0", features = ["inline"] }
+smallvec = "1.13.2"
+tokio = { version = "1.37.0", features = ["rt-multi-thread", "io-std"] }
+clap_complete = "4.5.2"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+assert_cmd = "2.0.14"
+predicates = "3.1.0"
+tempfile = "3.10.1"
+
+# Support cargo bininstall, https://github.com/ast-grep/ast-grep/issues/1742
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/{ version }/app-{ target }{ archive-suffix }"
+pkg-fmt = "zip"
+bin-dir = "{ bin }{ binary-ext }"
+disabled-strategies = ["quick-install"]
