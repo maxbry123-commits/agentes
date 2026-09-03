@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<title>NCT AI Architecture v0 — Design in Progress</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    background: #0d1117;
+    color: #c9d1d9;
+    margin: 0;
+    padding: 24px;
+    line-height: 1.5;
+  }
+  .header {
+    max-width: 1400px;
+    margin: 0 auto 24px;
+    padding: 20px 28px;
+    background: linear-gradient(135deg, #161b22 0%, #1c2128 100%);
+    border: 1px solid #30363d;
+    border-radius: 12px;
+    border-left: 4px solid #58a6ff;
+  }
+  h1 { margin: 0 0 6px; color: #f0f6fc; font-size: 22px; }
+  .subtitle { color: #8b949e; font-size: 13px; }
+  .grid {
+    max-width: 1400px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+  .panel {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 12px;
+    padding: 20px;
+  }
+  .panel h2 {
+    margin: 0 0 4px;
+    color: #f0f6fc;
+    font-size: 17px;
+  }
+  .panel .desc {
+    color: #8b949e;
+    font-size: 12px;
+    margin-bottom: 14px;
+  }
+  .mermaid {
+    background: #0d1117;
+    border-radius: 8px;
+    padding: 16px;
+    overflow-x: auto;
+  }
+  .legend {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin: 12px 0 0;
+    font-size: 12px;
+    color: #8b949e;
+  }
+  .legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    display: inline-block;
+  }
+  .dot.appr { background: #3fb950; }
+  .dot.disc { background: #d29922; }
+  .dot.todo { background: #6e7681; }
+
+  .decisions {
+    max-width: 1400px;
+    margin: 24px auto 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+  .dec-card {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 12px;
+    padding: 20px;
+  }
+  .dec-card h3 { margin: 0 0 12px; font-size: 15px; color: #f0f6fc; }
+  ul { padding-left: 20px; margin: 0; }
+  li { margin: 6px 0; font-size: 13px; }
+  li.approved { color: #7ee787; }
+  li.pending { color: #e3b341; }
+  li.open-q { color: #8b949e; font-style: italic; }
+
+  .footer {
+    max-width: 1400px;
+    margin: 24px auto 0;
+    text-align: center;
+    color: #6e7681;
+    font-size: 11px;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>NCT AI Architecture — v0 (Diseño en progreso)</h1>
+  <div class="subtitle">Sistema de razonamiento MHYTOS + DSL + Memory Controller + Adaptador de modelos · NCT Neuronas Code Turbo</div>
+</div>
+
+<div class="grid">
+  <!-- VERSION 1 -->
+  <div class="panel">
+    <h2>Versión 1 — Chat AI NCT (producto embebido)</h2>
+    <div class="desc">Sistema completo con MHYTOS como módulo interno. Vive en la app desktop/mobile del usuario.</div>
+    <div class="mermaid">
+flowchart TD
+    U([👤 User]):::user
+    M[MHYTOS Core<br/>capa de razonamiento]:::approved
+    SH[SHERIFF<br/>validación input]:::approved
+    MC[Memory Controller]:::approved
+    MS[Memory Scheduler]:::approved
+    R[ROUTER<br/>decide pipeline DSL]:::approved
+    DP[DSL Planner<br/>descomposición]:::approved
+    DAG[DAG Executor]:::approved
+    CR[CRITIC LOOP<br/>draft→critique→refine]:::approved
+    SE[SENTINEL<br/>rollback final]:::approved
+    T[Tools / Actions<br/>MCP-style]:::approved
+    O([Output]):::user
+
+    WM[(Working Memory<br/>8-32k)]:::approved
+    EM[(Episodic Memory<br/>logs+timestamp)]:::approved
+    SM[(Semantic Memory<br/>embeddings)]:::approved
+    PM[(Procedural Memory<br/>recetas DSL)]:::approved
+    GM[(Graph Memory<br/>NCT→DSL→Router→Mem]:::approved
+    WS[(Working Summary<br/>compresión viva)]:::approved
+
+    LM{{Embedded LLM<br/>Gemma 4 E2B Q4_K_M}}:::approved
+
+    U --> M
+    M --> SH
+    SH --> MC
+    SH --> R
+    MC <--> WM
+    MC <--> EM
+    MC <--> SM
+    MC <--> PM
+    MC <--> GM
+    MC <--> WS
+    MS -.controla.-> MC
+    R --> DP
+    DP --> DAG
+    DAG --> LM
+    LM --> CR
+    CR --> SE
+    SE --> T
+    T --> O
+    DAG -.memory_call.-> MC
+    SE -.rollback.-> DAG
+    CR -.iterate.-> LM
+
+    classDef user fill:#1f6feb,stroke:#58a6ff,color:#fff
+    classDef approved fill:#0e4429,stroke:#3fb950,color:#7ee787
+    classDef pending fill:#5a3a0e,stroke:#d29922,color:#e3b341
+    </div>
+  </div>
+
+  <!-- VERSION 2 -->
+  <div class="panel">
+    <h2>Versión 2 — Adaptador de modelos (MHYTOS externo)</h2>
+    <div class="desc">MHYTOS como capa desacoplada que gobierna varios backends. Misma MHYTOS, distintos modelos detrás.</div>
+    <div class="mermaid">
+flowchart TD
+    APP[NCT App / Cliente]:::approved
+    MA[Adaptador MHYTOS]:::approved
+    MH[MHYTOS<br/>external reasoning layer]:::approved
+    IF[Interface Contract<br/>tool-use + DSL]:::pending
+    B1{{Backend 1<br/>Mistral 7B Q4}}:::pending
+    B2{{Backend 2<br/>Kimi K2 API}}:::pending
+    B3{{Backend 3<br/>Claude/GPT API}}:::pending
+    B4{{Backend 4<br/>Local GGUF}}:::pending
+    MEM[(Memoria<br/>Local + Drive + DB)]:::pending
+    SEL[Selector de funciones<br/>por módulo]:::pending
+    O([Output]):::user
+
+    APP --> MA
+    MA --> MH
+    MH --> IF
+    IF --> B1
+    IF --> B2
+    IF --> B3
+    IF --> B4
+    MA <--> MEM
+    MA --> SEL
+    SEL -.limita funciones.-> B1
+    SEL -.limita funciones.-> B2
+    SEL -.limita funciones.-> B3
+    SEL -.limita funciones.-> B4
+    B1 --> O
+    B2 --> O
+    B3 --> O
+    B4 --> O
+
+    classDef user fill:#1f6feb,stroke:#58a6ff,color:#fff
+    classDef approved fill:#0e4429,stroke:#3fb950,color:#7ee787
+    classDef pending fill:#5a3a0e,stroke:#d29922,color:#e3b341
+    </div>
+  </div>
+</div>
+
+<div class="legend">
+  <span><span class="dot appr"></span> Aprobado / en diseño</span>
+  <span><span class="dot disc"></span> En discusión / pendiente</span>
+  <span><span class="dot todo"></span> Por diseñar</span>
+</div>
+
+<div class="decisions">
+  <div class="dec-card">
+    <h3>✅ Decisiones aprobadas</h3>
+    <ul>
+      <li class="approved">Arquitectura en capas: SHERIFF → ROUTER → DSL → DAG → CRITIC → SENTINEL</li>
+      <li class="approved">Memory Controller activo con 6 capas (working/episodic/semantic/procedural/graph/summary)</li>
+      <li class="approved">DSL con estructura determinista (no prompt-based)</li>
+      <li class="approved">SENTINEL con rollback si detecta alucinación / inconsistencia</li>
+      <li class="approved">CRITIC LOOP con condición de parada (a definir número de iteraciones)</li>
+      <li class="approved">Embedded LLM: Gemma 4 E2B Q4_K_M (2.3B params, agentic-first, mobile-runnable)</li>
+      <li class="approved">Memoria persistente multi-backend: local + Drive + DB configurable por usuario</li>
+      <li class="approved">Sin límites en app mobile/desktop (todo local)</li>
+      <li class="approved">Selector de funciones por módulo (apaga lo que no aplica)</li>
+      <li class="approved">Pequeño LLM embebido como filtro obligatorio para cualquier LLM externo (≥10B)</li>
+    </ul>
+  </div>
+
+  <div class="dec-card">
+    <h3>⏳ Pendientes de aprobación</h3>
+    <ul>
+      <li class="pending">Tecnología de Graph Memory (Neo4j / Memgraph / SQLite custom)</li>
+      <li class="pending">Formato del DSL (YAML / JSON / Python DSL / custom)</li>
+      <li class="pending">Contrato exacto de interfaz del adaptador (MCP, OpenAI-compatible, custom)</li>
+      <li class="pending">Backends por defecto en V2 (¿Mistral local, Kimi API, o ambos?)</li>
+      <li class="pending">Memory Scheduler: trigger event-driven vs heurístico (3-5 turns)</li>
+      <li class="pending">Capa de Tools/Actions: protocolo (MCP-style propio, OpenAI function calling, JSON-RPC)</li>
+      <li class="pending">Observabilidad / tracing entre nodos del DAG</li>
+      <li class="pending">Manejo de fallos (timeout, retriever vacío, rollback agotado)</li>
+      <li class="pending">Concurrencia / race conditions en Memory Writer</li>
+      <li class="pending">Presupuesto de latencia y costo por request</li>
+    </ul>
+
+    <h3 style="margin-top:18px">❓ Preguntas abiertas</h3>
+    <ul>
+      <li class="open-q">¿MHYTOS es prompt estructurado, módulo Python, o servicio independiente?</li>
+      <li class="open-q">¿Cuál es el contrato input→output concreto de MHYTOS?</li>
+      <li class="open-q">¿Multi-tenant o un solo usuario por app?</li>
+      <li class="open-q">¿La memoria vive en el dispositivo o se sincroniza con backend opcional?</li>
+      <li class="open-q">¿Cuántas iteraciones máximo del CRITIC LOOP? (2, 3, 5?)</li>
+    </ul>
+  </div>
+</div>
+
+<div class="footer">
+  v0 — generado el 2026-06-21 · Próxima actualización tras aprobar los puntos pendientes
+</div>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'dark',
+    themeVariables: {
+      background: '#0d1117',
+      primaryColor: '#161b22',
+      primaryTextColor: '#c9d1d9',
+      primaryBorderColor: '#30363d',
+      lineColor: '#8b949e',
+      fontSize: '13px'
+    },
+    flowchart: { curve: 'basis', padding: 12 }
+  });
+</script>
+</body>
+</html>
