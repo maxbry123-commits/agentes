@@ -1,0 +1,16 @@
+[
+  {
+    "repo": "Flowable",
+    "path": "docs/public-api/tools/flowable-swagger-ui/src/main/webapp/js/swagger-ui-bundle.js.map",
+    "chunks_dir": "Flowable/docs/public-api/tools/flowable-swagger-ui/src/main/webapp/js/swagger-ui-bundle.js.map.chunks",
+    "bytes": 9785794,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Flowable",
+    "path": "docs/docusaurus/docs/assets/static/designer/archived/flowable-designer-5.22.0.zip",
+    "chunks_dir": "Flowable/docs/docusaurus/docs/assets/static/designer/archived/flowable-designer-5.22.0.zip.chunks",
+    "bytes": 8848622,
+    "chunk_bytes": 8388608
+  }
+]

@@ -1,0 +1,1244 @@
+// Copyright (c) 2019 Kata Containers community
+// Copyright (c) 2025 NVIDIA Corporation
+//
+// SPDX-License-Identifier: Apache-2.0
+
+use crate::config;
+use crate::config::{Config, ContainerdPaths, CustomRuntime, NYDUS_FOR_KATA_TEE};
+use crate::utils;
+use crate::utils::toml as toml_utils;
+use anyhow::{Context, Result};
+use log::info;
+use std::fs;
+use std::path::{Path, PathBuf};
+
+struct ContainerdRuntimeParams {
+    /// Runtime name (e.g., "kata-qemu")
+    runtime_name: String,
+    /// Path to the shim binary
+    runtime_path: String,
+    /// Path to the kata configuration file
+    config_path: String,
+    /// Pod annotations to allow
+    pod_annotations: &'static str,
+    /// Container annotations to allow
+    container_annotations: &'static str,
+    /// Optional snapshotter to configure
+    snapshotter: Option<String>,
+}
+
+/// Plugin ID for CRI runtime in containerd config v3 (version = 3).
+const CONTAINERD_V3_RUNTIME_PLUGIN_ID: &str = "\"io.containerd.cri.v1.runtime\"";
+/// Plugin ID for CRI in containerd config v2 (version = 2).
+const CONTAINERD_V2_CRI_PLUGIN_ID: &str = "\"io.containerd.grpc.v1.cri\"";
+/// Legacy plugin key when config has no version (pre-v2).
+const CONTAINERD_LEGACY_CRI_PLUGIN_ID: &str = "cri";
+/// Plugin ID for CRI images in containerd config v3 (version = 3).
+const CONTAINERD_CRI_IMAGES_PLUGIN_ID: &str = "\"io.containerd.cri.v1.images\"";
+/// Plugin table for CRI containerd in v2 (disable_snapshot_annotations lives here).
+const CONTAINERD_CRI_CONTAINERD_TABLE_V2: &str = "\"io.containerd.grpc.v1.cri\".containerd";
+
+fn is_k3s_or_rke2(runtime: &str) -> bool {
+    matches!(runtime, "k3s" | "k3s-agent" | "rke2-agent" | "rke2-server")
+}
+
+fn schema_version_from_k3s_rke2_rendered_config() -> Option<u32> {
+    fs::read_to_string(crate::config::k3s_rke2_rendered_config_path())
+        .ok()
+        .and_then(|c| utils::major_version_from_config_toml(&c))
+}
+
+/// If `primary_schema` is unset, try the rendered K3s/RKE2 `config.toml`.
+/// In strict `get_containerd_pluginid` parsing, this only applies when the primary config is
+/// readable but has no root `version`; missing-file fallback only happens in lenient readers.
+fn schema_version_with_k3s_rke2_fallback(
+    primary_schema: Option<u32>,
+    runtime: &str,
+) -> Option<u32> {
+    primary_schema.or_else(|| {
+        if is_k3s_or_rke2(runtime) {
+            schema_version_from_k3s_rke2_rendered_config()
+        } else {
+            None
+        }
+    })
+}
+
+/// Root config schema `version = N` using lenient reads.
+///
+/// Reads `primary` via `fs::read_to_string`; on failure (missing path, permissions, etc.)
+/// the parsed schema is treated as unset. If that result has no root `version`, or the read
+/// failed, falls back to the rendered K3s/RKE2 `/etc/containerd/config.toml` when `runtime`
+/// is k3s/rke2 (covers templates without `version`, transient mounts, and similar).
+fn schema_version_relaxed(primary: &str, runtime: &str) -> Option<u32> {
+    let primary_v = fs::read_to_string(primary)
+        .ok()
+        .and_then(|c| utils::major_version_from_config_toml(&c));
+    schema_version_with_k3s_rke2_fallback(primary_v, runtime)
+}
+
+fn containerd_config_schema_version(paths: &ContainerdPaths, runtime: &str) -> Option<u32> {
+    schema_version_relaxed(&paths.config_file, runtime)
+}
+
+/// TOML path for containerd log level when DEBUG=true.
+/// All released containerd config schema versions (including v4) use the
+/// top-level `[debug]` table with `level`, `format`, and `log_trace_id` keys.
+fn containerd_debug_level_toml_path(_config_schema_version: Option<u32>) -> &'static str {
+    ".debug.level"
+}
+
+/// Reads config and returns the CRI plugin ID used for *runtime* config (runtimes, snapshotter-per-runtime).
+/// `runtime` selects K3s/RKE2 fallbacks when `config_file` is a template without `version`.
+pub(crate) fn get_containerd_pluginid(config_file: &str, runtime: &str) -> Result<&'static str> {
+    let content = fs::read_to_string(config_file)
+        .with_context(|| format!("Failed to read containerd config file: {}", config_file))?;
+
+    let v = schema_version_with_k3s_rke2_fallback(
+        utils::major_version_from_config_toml(&content),
+        runtime,
+    );
+
+    match v {
+        Some(ver) if ver >= 3 => Ok(CONTAINERD_V3_RUNTIME_PLUGIN_ID),
+        Some(2) => Ok(CONTAINERD_V2_CRI_PLUGIN_ID),
+        _ => Ok(CONTAINERD_LEGACY_CRI_PLUGIN_ID),
+    }
+}
+
+/// True when the containerd config uses split CRI plugins (`io.containerd.cri.v1.*`),
+/// i.e. config schema version >= 3 (including containerd's newer defaults such as version 4).
+fn is_containerd_v3_config(pluginid: &str) -> bool {
+    pluginid == CONTAINERD_V3_RUNTIME_PLUGIN_ID
+}
+
+/// Maps the runtime plugin ID (from `get_containerd_pluginid` / K3s `paths.plugin_id`) to the table where
+/// disable_snapshot_annotations lives. In v3 that's the *images* plugin; in v2 the CRI .containerd subtable.
+pub(crate) fn pluginid_for_snapshotter_annotations(
+    runtime_plugin_id: &str,
+    config_file: &str,
+) -> Result<&'static str> {
+    if runtime_plugin_id == CONTAINERD_V3_RUNTIME_PLUGIN_ID {
+        Ok(CONTAINERD_CRI_IMAGES_PLUGIN_ID)
+    } else if runtime_plugin_id == CONTAINERD_V2_CRI_PLUGIN_ID {
+        Ok(CONTAINERD_CRI_CONTAINERD_TABLE_V2)
+    } else {
+        anyhow::bail!(
+            "Containerd config {} has no supported config schema (need version = 2 or version >= 3); cannot determine CRI plugin for snapshotter config",
+            config_file
+        )
+    }
+}
+
+fn get_containerd_output_path(paths: &ContainerdPaths) -> PathBuf {
+    if paths.use_drop_in {
+        Path::new(&paths.drop_in_file).to_path_buf()
+    } else {
+        Path::new(&paths.config_file).to_path_buf()
+    }
+}
+
+/// Every containerd configuration file [`configure_containerd`] can write, the
+/// effective kata output file first.
+///
+/// All of them, because an unchanged kata drop-in says nothing about the user
+/// drop-in next to it, or about the `imports` entry in the main config that
+/// makes containerd read either of them in the first place.
+pub(crate) async fn kata_cri_config_files(config: &Config, runtime: &str) -> Option<Vec<PathBuf>> {
+    let paths = config.get_containerd_paths(runtime).await.ok()?;
+
+    let mut files = vec![get_containerd_output_path(&paths)];
+    if let Ok((user_drop_in, _)) = get_user_containerd_drop_in_output_path(&paths) {
+        files.push(user_drop_in);
+    }
+    if let Some(imports_file) = &paths.imports_file {
+        files.push(PathBuf::from(imports_file));
+    }
+
+    // Without drop-in support the output file is the main config, which is also
+    // where imports would go.
+    files.dedup();
+
+    Some(files)
+}
+
+fn get_user_containerd_drop_in_output_path(paths: &ContainerdPaths) -> Result<(PathBuf, String)> {
+    if !paths.use_drop_in {
+        anyhow::bail!(
+            "Containerd user drop-in requires drop-in support, but runtime config is in non-drop-in mode"
+        );
+    }
+
+    let base_drop_in = Path::new(&paths.drop_in_file).to_path_buf();
+    let base_import_path = paths.drop_in_file.clone();
+
+    let parent = base_drop_in.parent().ok_or_else(|| {
+        anyhow::anyhow!("Failed to resolve parent directory for {:?}", base_drop_in)
+    })?;
+    let user_file_name = "zz-kata-deploy-user.toml";
+    let host_path = parent.join(user_file_name);
+
+    let import_parent = Path::new(&base_import_path)
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("Failed to resolve import parent for {base_import_path}"))?;
+    let import_path = import_parent
+        .join(user_file_name)
+        .to_string_lossy()
+        .to_string();
+
+    Ok((host_path, import_path))
+}
+
+fn configure_user_containerd_drop_in(config: &Config, paths: &ContainerdPaths) -> Result<()> {
+    let Some(source_file) = config.containerd_user_drop_in_source_file.as_ref() else {
+        return Ok(());
+    };
+
+    let source_path = Path::new(source_file);
+    if !source_path.exists() {
+        anyhow::bail!(
+            "Configured CONTAINERD_USER_DROP_IN_SOURCE_FILE does not exist: {}",
+            source_file
+        );
+    }
+
+    let (user_drop_in_path, user_drop_in_import_path) =
+        get_user_containerd_drop_in_output_path(paths)?;
+    if let Some(parent) = user_drop_in_path.parent() {
+        fs::create_dir_all(parent).with_context(|| {
+            format!("Failed to create user containerd drop-in directory: {parent:?}")
+        })?;
+    }
+
+    fs::copy(source_path, &user_drop_in_path).with_context(|| {
+        format!(
+            "Failed to copy user containerd drop-in from {:?} to {:?}",
+            source_path, user_drop_in_path
+        )
+    })?;
+
+    if let Some(imports_file) = &paths.imports_file {
+        toml_utils::append_to_toml_array(
+            Path::new(imports_file),
+            ".imports",
+            &format!("\"{}\"", user_drop_in_import_path),
+        )?;
+    }
+
+    utils::debug_log_file_contents("Containerd user drop-in", &user_drop_in_path);
+
+    Ok(())
+}
+
+fn write_containerd_runtime_config(
+    config_file: &Path,
+    pluginid: &str,
+    params: &ContainerdRuntimeParams,
+) -> Result<()> {
+    let runtime_table = format!(
+        ".plugins.{}.containerd.runtimes.{}",
+        pluginid, params.runtime_name
+    );
+    let runtime_options_table = format!("{runtime_table}.options");
+    let runtime_type = format!("\"io.containerd.{}.v2\"", params.runtime_name);
+
+    toml_utils::set_toml_value(
+        config_file,
+        &format!("{runtime_table}.runtime_type"),
+        &runtime_type,
+    )?;
+    toml_utils::set_toml_value(
+        config_file,
+        &format!("{runtime_table}.runtime_path"),
+        &params.runtime_path,
+    )?;
+    toml_utils::set_toml_value(
+        config_file,
+        &format!("{runtime_table}.privileged_without_host_devices"),
+        "true",
+    )?;
+    toml_utils::set_toml_value(
+        config_file,
+        &format!("{runtime_table}.pod_annotations"),
+        params.pod_annotations,
+    )?;
+    toml_utils::set_toml_value(
+        config_file,
+        &format!("{runtime_table}.container_annotations"),
+        params.container_annotations,
+    )?;
+    toml_utils::set_toml_value(
+        config_file,
+        &format!("{runtime_options_table}.ConfigPath"),
+        &params.config_path,
+    )?;
+
+    if let Some(ref snapshotter) = params.snapshotter {
+        toml_utils::set_toml_value(
+            config_file,
+            &format!("{runtime_table}.snapshotter"),
+            snapshotter,
+        )?;
+        // In containerd config v3 the CRI plugin is split into runtime and images,
+        // and setting the snapshotter only on the runtime plugin is not enough for image
+        // pull/prepare.
+        //
+        // The images plugin must have runtime_platforms.<runtime>.snapshotter so it
+        // uses the correct snapshotter per runtime (e.g. nydus, erofs).
+        //
+        // A PR on the containerd side is open so we can rely on the runtime plugin
+        // snapshotter alone: https://github.com/containerd/containerd/pull/12836
+        if is_containerd_v3_config(pluginid) {
+            toml_utils::set_toml_value(
+                config_file,
+                &format!(
+                    ".plugins.{}.runtime_platforms.\"{}\".snapshotter",
+                    CONTAINERD_CRI_IMAGES_PLUGIN_ID, params.runtime_name
+                ),
+                snapshotter,
+            )?;
+        }
+    }
+
+    Ok(())
+}
+
+pub async fn configure_containerd_runtime(
+    config: &Config,
+    runtime: &str,
+    shim: &str,
+) -> Result<()> {
+    log::info!("configure_containerd_runtime: Starting for shim={}", shim);
+
+    let runtime_name = config::shim_handler(shim, config.multi_install_suffix.as_deref());
+    let configuration = format!("configuration-{shim}");
+
+    let paths = config.get_containerd_paths(runtime).await?;
+    let configuration_file = get_containerd_output_path(&paths);
+    let pluginid = match paths.plugin_id.as_deref() {
+        Some(plugin_id) => plugin_id,
+        None => get_containerd_pluginid(&paths.config_file, runtime)?,
+    };
+
+    log::info!(
+        "configure_containerd_runtime: Writing to {:?}, pluginid={}",
+        configuration_file,
+        pluginid
+    );
+
+    let pod_annotations = "[\"io.katacontainers.*\"]";
+    let container_annotations = "[\"io.kubernetes.container.terminationMessage*\"]";
+
+    // Determine snapshotter if configured
+    let snapshotter = config
+        .snapshotter_handler_mapping_for_arch
+        .as_ref()
+        .and_then(|mapping| {
+            mapping.split(',').find_map(|m| {
+                let parts: Vec<&str> = m.split(':').collect();
+                if parts.len() == 2 && parts[0] == shim {
+                    let value = parts[1];
+                    let snapshotter_value = if value == "nydus" {
+                        match config.multi_install_suffix.as_ref() {
+                            Some(suffix) if !suffix.is_empty() => {
+                                format!("\"{NYDUS_FOR_KATA_TEE}-{suffix}\"")
+                            }
+                            _ => format!("\"{NYDUS_FOR_KATA_TEE}\""),
+                        }
+                    } else {
+                        format!("\"{value}\"")
+                    };
+                    Some(snapshotter_value)
+                } else {
+                    None
+                }
+            })
+        });
+
+    let params = ContainerdRuntimeParams {
+        runtime_name,
+        runtime_path: format!(
+            "\"{}\"",
+            utils::get_kata_containers_runtime_path(shim, &config.dest_dir)
+        ),
+        config_path: format!(
+            "\"{}/{}.toml\"",
+            utils::get_kata_containers_config_path(shim, &config.dest_dir),
+            configuration
+        ),
+        pod_annotations,
+        container_annotations,
+        snapshotter,
+    };
+
+    write_containerd_runtime_config(&configuration_file, pluginid, &params)?;
+
+    if config.debug {
+        let schema = containerd_config_schema_version(&paths, runtime);
+        let debug_path = containerd_debug_level_toml_path(schema);
+        toml_utils::set_toml_value(&configuration_file, debug_path, "\"debug\"")?;
+    }
+
+    Ok(())
+}
+
+/// Custom runtimes use an isolated config directory under custom-runtimes/{handler}/
+pub async fn configure_custom_containerd_runtime(
+    config: &Config,
+    runtime: &str,
+    custom_runtime: &CustomRuntime,
+) -> Result<()> {
+    log::info!(
+        "configure_custom_containerd_runtime: Starting for handler={}",
+        custom_runtime.handler
+    );
+
+    let paths = config.get_containerd_paths(runtime).await?;
+    let configuration_file = get_containerd_output_path(&paths);
+    let pluginid = match paths.plugin_id.as_deref() {
+        Some(plugin_id) => plugin_id,
+        None => get_containerd_pluginid(&paths.config_file, runtime)?,
+    };
+
+    log::info!(
+        "configure_custom_containerd_runtime: Writing to {:?}, pluginid={}",
+        configuration_file,
+        pluginid
+    );
+
+    let pod_annotations = "[\"io.katacontainers.*\"]";
+    let container_annotations = "[\"io.kubernetes.container.terminationMessage*\"]";
+
+    // Determine snapshotter if specified
+    let snapshotter = custom_runtime.containerd_snapshotter.as_ref().map(|s| {
+        if s == "nydus" {
+            match config.multi_install_suffix.as_ref() {
+                Some(suffix) if !suffix.is_empty() => format!("\"{NYDUS_FOR_KATA_TEE}-{suffix}\""),
+                _ => format!("\"{NYDUS_FOR_KATA_TEE}\""),
+            }
+        } else {
+            format!("\"{s}\"")
+        }
+    });
+
+    let params = ContainerdRuntimeParams {
+        runtime_name: custom_runtime.handler.clone(),
+        runtime_path: format!(
+            "\"{}\"",
+            utils::get_kata_containers_runtime_path(&custom_runtime.base_config, &config.dest_dir)
+        ),
+        config_path: format!(
+            "\"{}/share/defaults/kata-containers/custom-runtimes/{}/configuration-{}.toml\"",
+            config.dest_dir, custom_runtime.handler, custom_runtime.base_config
+        ),
+        pod_annotations,
+        container_annotations,
+        snapshotter,
+    };
+
+    write_containerd_runtime_config(&configuration_file, pluginid, &params)?;
+
+    if config.debug {
+        let schema = containerd_config_schema_version(&paths, runtime);
+        let debug_path = containerd_debug_level_toml_path(schema);
+        toml_utils::set_toml_value(&configuration_file, debug_path, "\"debug\"")?;
+    }
+
+    Ok(())
+}
+
+pub async fn configure_containerd(config: &Config, runtime: &str) -> Result<()> {
+    info!("Add Kata Containers as a supported runtime for containerd");
+
+    fs::create_dir_all("/etc/containerd/")?;
+
+    // Get all paths and drop-in capability in one call
+    let paths = config.get_containerd_paths(runtime).await?;
+
+    if !paths.use_drop_in {
+        // For non-drop-in, backup the correct config file for each runtime
+        if Path::new(&paths.config_file).exists() {
+            // Only what was found here before kata-deploy is worth preserving. A
+            // configuration an earlier run of this install created is not, and
+            // backing it up would make uninstall restore Kata's own handlers.
+            if matches!(
+                whole_file_disposition(&paths.config_file, &paths.backup_file),
+                WholeFileConfig::Keep
+            ) {
+                fs::copy(&paths.config_file, &paths.backup_file)?;
+            }
+        } else {
+            // Nothing to back up, so uninstall has no way to tell this file apart
+            // from one an administrator wrote unless we say we made it.
+            fs::write(created_marker_file(&paths.config_file), "")?;
+        }
+    } else {
+        // Create the drop-in file directory and file
+        let drop_in_file = paths.drop_in_file.clone();
+        log::info!("Creating drop-in file at: {}", drop_in_file);
+
+        if let Some(parent) = Path::new(&drop_in_file).parent() {
+            log::info!("Creating parent directory: {:?}", parent);
+            fs::create_dir_all(parent)
+                .with_context(|| format!("Failed to create directory: {parent:?}"))?;
+            log::info!("Successfully created parent directory");
+        }
+
+        // Create the file if it doesn't exist (with empty content)
+        if !Path::new(&drop_in_file).exists() {
+            log::info!("Drop-in file doesn't exist, creating it");
+            fs::write(&drop_in_file, "")
+                .with_context(|| format!("Failed to create drop-in file: {drop_in_file}"))?;
+            log::info!("Successfully created drop-in file");
+        } else {
+            log::info!("Drop-in file already exists");
+        }
+
+        // Add the drop-in file to the imports array in the main config
+        if let Some(imports_file) = &paths.imports_file {
+            log::info!("Adding drop-in to imports in: {}", imports_file);
+            let imports_path = ".imports";
+            let drop_in_path = format!("\"{}\"", paths.drop_in_file);
+
+            toml_utils::append_to_toml_array(Path::new(imports_file), imports_path, &drop_in_path)?;
+            log::info!("Successfully added drop-in to imports array");
+        } else {
+            log::info!("Runtime auto-loads drop-in files, skipping imports");
+            // Migrating to conf.d: drop any stale import a pre-conf.d
+            // kata-deploy left in the main config so it can't dangle later.
+            remove_legacy_drop_in_import(config)?;
+        }
+    }
+
+    log::info!("Configuring {} shim(s)", config.shims_for_arch.len());
+    for shim in &config.shims_for_arch {
+        log::info!("Configuring runtime for shim: {}", shim);
+        configure_containerd_runtime(config, runtime, shim).await?;
+        log::info!("Successfully configured runtime for shim: {}", shim);
+    }
+
+    if config.custom_runtimes_enabled {
+        if config.custom_runtimes.is_empty() {
+            anyhow::bail!(
+                "Custom runtimes enabled but no custom runtimes found in configuration. \
+                 Check that custom-runtimes.list exists and is readable."
+            );
+        }
+        log::info!(
+            "Configuring {} custom runtime(s)",
+            config.custom_runtimes.len()
+        );
+        for custom_runtime in &config.custom_runtimes {
+            log::info!("Configuring custom runtime: {}", custom_runtime.handler);
+            configure_custom_containerd_runtime(config, runtime, custom_runtime).await?;
+            log::info!(
+                "Successfully configured custom runtime: {}",
+                custom_runtime.handler
+            );
+        }
+    }
+
+    configure_user_containerd_drop_in(config, &paths)?;
+
+    utils::debug_log_file_contents(
+        "Containerd main config/template",
+        Path::new(&paths.config_file),
+    );
+    if is_k3s_or_rke2(runtime) {
+        utils::debug_log_file_contents(
+            "Containerd rendered config",
+            Path::new(crate::config::k3s_rke2_rendered_config_path()),
+        );
+    }
+    if paths.use_drop_in {
+        let drop_in_file = get_containerd_output_path(&paths);
+        utils::debug_log_file_contents("Containerd kata-deploy drop-in", &drop_in_file);
+    }
+
+    log::info!("Successfully configured all containerd runtimes");
+    Ok(())
+}
+
+/// Defensively remove a legacy kata-deploy entry from the main containerd
+/// config's `imports` array.
+///
+/// kata-deploy versions predating the conf.d migration registered their drop-in
+/// by appending `{dest_dir}/containerd/config.d/kata-deploy.toml` to the
+/// `imports` array of the main containerd config. Since the conf.d migration
+/// (containerd >= 2.2.0) we write to the auto-imported `/etc/containerd/conf.d/`
+/// directory instead and no longer touch the `imports` array. When a node is
+/// upgraded from a pre-conf.d kata-deploy to a conf.d-aware one, that stale
+/// import survives: the new code never adds it (so never removes it either).
+///
+/// On uninstall we delete the artifacts directory (`dest_dir`) — including the
+/// file the stale import still points at — and then restart containerd. The
+/// restart fails because containerd imports a path that no longer exists,
+/// wedging the node (pods stuck Terminating, new pods unable to start).
+///
+/// Scrubbing the stale import keeps the main config self-consistent across the
+/// version boundary. It is a no-op on fresh conf.d installs (nothing to remove)
+/// and on runtimes that still manage `imports` themselves (handled separately).
+fn remove_legacy_drop_in_import(config: &Config) -> Result<()> {
+    remove_legacy_drop_in_import_from(
+        Path::new(&config.containerd_conf_file),
+        &config.containerd_drop_in_conf_file,
+    )
+}
+
+/// Pure core of [`remove_legacy_drop_in_import`], separated out so it can be
+/// unit tested without constructing a full [`Config`].
+fn remove_legacy_drop_in_import_from(main_config: &Path, legacy_import: &str) -> Result<()> {
+    if !main_config.exists() {
+        return Ok(());
+    }
+
+    // get_toml_array returns an empty Vec when the file has no `imports` array,
+    // so this never errors (or accidentally removes anything) on a config we
+    // never touched.
+    let imports = toml_utils::get_toml_array(main_config, ".imports").unwrap_or_default();
+    if !imports.iter().any(|entry| entry == legacy_import) {
+        return Ok(());
+    }
+
+    log::info!(
+        "Removing stale legacy kata-deploy import '{}' from {}",
+        legacy_import,
+        main_config.display()
+    );
+    toml_utils::remove_from_toml_array(main_config, ".imports", &format!("\"{legacy_import}\""))?;
+
+    Ok(())
+}
+
+pub async fn cleanup_containerd(config: &Config, runtime: &str) -> Result<()> {
+    // Get all paths and drop-in capability in one call
+    let paths = config.get_containerd_paths(runtime).await?;
+
+    if paths.use_drop_in {
+        if config.containerd_user_drop_in_source_file.is_some() {
+            let (user_drop_in_path, user_drop_in_import_path) =
+                get_user_containerd_drop_in_output_path(&paths)?;
+            if let Some(imports_file) = &paths.imports_file {
+                toml_utils::remove_from_toml_array(
+                    Path::new(imports_file),
+                    ".imports",
+                    &format!("\"{}\"", user_drop_in_import_path),
+                )?;
+            }
+            if user_drop_in_path.exists() {
+                fs::remove_file(&user_drop_in_path)?;
+            }
+        }
+
+        // Remove drop-in from imports array (if we added it; K3s/RKE2 have imports_file = None)
+        if let Some(imports_file) = &paths.imports_file {
+            toml_utils::remove_from_toml_array(
+                Path::new(imports_file),
+                ".imports",
+                &format!("\"{}\"", paths.drop_in_file),
+            )?;
+        }
+        // Remove the drop-in file
+        let drop_in_path = Path::new(&paths.drop_in_file).to_path_buf();
+        if drop_in_path.exists() {
+            fs::remove_file(&drop_in_path)?;
+        }
+
+        // When `imports_file` is None (e.g. conf.d auto-import on containerd
+        // >= 2.2.0) we don't manage the imports array, so a stale entry left by
+        // a pre-conf.d kata-deploy would otherwise dangle once the artifacts
+        // are removed and containerd is restarted. Scrub it defensively.
+        if paths.imports_file.is_none() {
+            remove_legacy_drop_in_import(config)?;
+        }
+
+        return Ok(());
+    }
+
+    match whole_file_disposition(&paths.config_file, &paths.backup_file) {
+        WholeFileConfig::Restore => {
+            fs::remove_file(&paths.config_file)?;
+            fs::rename(&paths.backup_file, &paths.config_file)?;
+        }
+        WholeFileConfig::Delete => {
+            fs::remove_file(&paths.config_file).ok();
+            fs::remove_file(created_marker_file(&paths.config_file)).ok();
+        }
+        WholeFileConfig::Keep => log::warn!(
+            "Leaving {} in place: it has no kata-deploy backup and no record of having been \
+             created by kata-deploy, so its contents are not ours to remove",
+            paths.config_file
+        ),
+    }
+
+    Ok(())
+}
+
+/// What uninstall is entitled to do with a whole-file containerd configuration.
+pub enum WholeFileConfig {
+    /// An install replaced a configuration that was already there.
+    Restore,
+    /// An install created the configuration, so removing it restores the host.
+    Delete,
+    /// No evidence that any install wrote this file: leave it to its owner.
+    Keep,
+}
+
+/// A missing backup only means "we created this" if creating it was recorded. On
+/// anything weaker - a path this install also uses appearing in the file, say -
+/// deleting takes an administrator's whole containerd configuration with it.
+pub fn whole_file_disposition(config_file: &str, backup_file: &str) -> WholeFileConfig {
+    if Path::new(backup_file).exists() {
+        WholeFileConfig::Restore
+    } else if Path::new(&created_marker_file(config_file)).exists() {
+        WholeFileConfig::Delete
+    } else {
+        WholeFileConfig::Keep
+    }
+}
+
+/// Path of the record that an install created `config_file` from nothing, kept
+/// next to the configuration so it outlives the pod that wrote it.
+fn created_marker_file(config_file: &str) -> String {
+    format!("{config_file}.kata-deploy-created")
+}
+
+/// Setup containerd config files based on runtime type.
+/// For K3s/RKE2, we only run when the rendered config already has the drop-in import
+/// (get_containerd_paths bails otherwise). We create the drop-in dir and empty file.
+pub async fn setup_containerd_config_files(runtime: &str, config: &Config) -> Result<()> {
+    match runtime {
+        "k3s" | "k3s-agent" | "rke2-agent" | "rke2-server" => {
+            // K3s/RKE2: rendered config must already import the drop-in dir (checked in get_containerd_paths).
+            // Create the drop-in dir and empty file only.
+            let paths = config.get_containerd_paths(runtime).await?;
+            let drop_in_path = Path::new(&paths.drop_in_file).to_path_buf();
+            if let Some(parent) = drop_in_path.parent() {
+                fs::create_dir_all(parent).with_context(|| {
+                    format!("Failed to create K3s/RKE2 drop-in dir: {parent:?}")
+                })?;
+            }
+            if !drop_in_path.exists() {
+                fs::write(&drop_in_path, "").with_context(|| {
+                    format!("Failed to create K3s/RKE2 drop-in file: {drop_in_path:?}")
+                })?;
+            }
+        }
+        "k0s-worker" | "k0s-controller" => {
+            // k0s uses /etc/containerd/containerd.d/ for drop-ins.
+            // Path is fixed for k0s, so we can hardcode it here
+            let drop_in_file_path = "/etc/containerd/containerd.d/kata-deploy.toml";
+            if let Some(parent) = Path::new(drop_in_file_path).parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::File::create(drop_in_file_path)?;
+        }
+        "containerd" if !Path::new(&config.containerd_conf_file).exists() => {
+            if let Some(parent) = Path::new(&config.containerd_conf_file).parent() {
+                if parent.exists() {
+                    let runtime_version = config.resolve_container_runtime_version().await?;
+                    let schema = schema_version_for_containerd_release(&runtime_version)?;
+                    fs::write(
+                        &config.containerd_conf_file,
+                        format!("version = {schema}\n"),
+                    )?;
+                }
+            }
+        }
+        _ => {}
+    }
+
+    Ok(())
+}
+
+/// The configuration schema a containerd release reads: 3 since containerd 2.0,
+/// 2 before it.
+///
+/// A node can run containerd without a configuration file at all, but
+/// kata-deploy needs one to hang its runtime handlers and imports off. It
+/// writes just the schema version, which leaves containerd on its own built-in
+/// defaults rather than freezing the defaults of whichever containerd happens
+/// to be installed the day kata is deployed.
+fn schema_version_for_containerd_release(container_runtime_version: &str) -> Result<u32> {
+    let version = container_runtime_version
+        .strip_prefix("containerd://")
+        .unwrap_or(container_runtime_version);
+
+    let major: u32 = version
+        .split('.')
+        .next()
+        .unwrap_or_default()
+        .parse()
+        .with_context(|| {
+            format!("Failed to parse containerd version: {container_runtime_version}")
+        })?;
+
+    Ok(if major >= 2 { 3 } else { 2 })
+}
+
+/// Check if containerd version supports snapshotter configuration
+/// Returns Ok(()) if version is supported, Err if version is too old
+fn check_containerd_snapshotter_version_support(
+    container_runtime_version: &str,
+    has_snapshotter_mapping: bool,
+) -> Result<()> {
+    let containerd_prefix = "containerd://";
+    let containerd_version_to_avoid = "1.6";
+    let containerd_version = container_runtime_version
+        .strip_prefix(containerd_prefix)
+        .unwrap_or(container_runtime_version);
+
+    if containerd_version.starts_with(containerd_version_to_avoid) && has_snapshotter_mapping {
+        return Err(anyhow::anyhow!(
+            "kata-deploy only supports snapshotter configuration with containerd 1.7 or newer"
+        ));
+    }
+
+    Ok(())
+}
+
+pub async fn containerd_snapshotter_version_check(config: &Config) -> Result<()> {
+    let container_runtime_version = config.resolve_container_runtime_version().await?;
+
+    let has_snapshotter_mapping = config
+        .snapshotter_handler_mapping_for_arch
+        .as_ref()
+        .map(|s| !s.is_empty())
+        .unwrap_or(false);
+
+    check_containerd_snapshotter_version_support(
+        &container_runtime_version,
+        has_snapshotter_mapping,
+    )
+}
+
+fn check_containerd_erofs_version_support(container_runtime_version: &str) -> Result<()> {
+    let containerd_prefix = "containerd://";
+    let containerd_version = container_runtime_version
+        .strip_prefix(containerd_prefix)
+        .unwrap_or(container_runtime_version);
+
+    let min_version_major = 2;
+    let min_version_minor = 2;
+
+    let parts: Vec<&str> = containerd_version.split('.').collect();
+    if parts.len() < 2 {
+        return Err(anyhow::anyhow!("Invalid containerd version format"));
+    }
+
+    let major: u32 = parts[0].parse().context("Failed to parse major version")?;
+    let minor_str: String = parts[1]
+        .chars()
+        .take_while(|c| c.is_ascii_digit())
+        .collect();
+    let minor: u32 = minor_str.parse().context("Failed to parse minor version")?;
+
+    if min_version_major > major || (min_version_major == major && min_version_minor > minor) {
+        return Err(anyhow::anyhow!(
+            "In order to use erofs-snapshotter containerd must be 2.2.0 or newer"
+        ));
+    }
+
+    Ok(())
+}
+
+pub async fn containerd_erofs_snapshotter_version_check(config: &Config) -> Result<()> {
+    let container_runtime_version = config.resolve_container_runtime_version().await?;
+
+    check_containerd_erofs_version_support(&container_runtime_version)
+}
+
+pub fn snapshotter_handler_mapping_validation_check(config: &Config) -> Result<()> {
+    info!(
+        "Validating the snapshotter-handler mapping: \"{:?}\"",
+        config.snapshotter_handler_mapping_for_arch
+    );
+
+    let mapping = match config.snapshotter_handler_mapping_for_arch.as_ref() {
+        Some(m) => m,
+        None => {
+            info!("No snapshotter has been requested, using the default value from containerd");
+            return Ok(());
+        }
+    };
+
+    let snapshotters: Vec<&str> = mapping.split(',').collect();
+    for m in &snapshotters {
+        let parts: Vec<&str> = m.split(':').collect();
+        if parts.len() != 2 {
+            return Err(anyhow::anyhow!(
+                "The snapshotter must follow the \"shim:snapshotter,shim:snapshotter,...\" format"
+            ));
+        }
+
+        let shim = parts[0];
+        let snapshotter = parts[1];
+
+        if shim.is_empty() {
+            return Err(anyhow::anyhow!(
+                "The snapshotter must follow the \"shim:snapshotter,shim:snapshotter,...\" format, but at least one shim is empty"
+            ));
+        }
+
+        if snapshotter.is_empty() {
+            return Err(anyhow::anyhow!(
+                "The snapshotter must follow the \"shim:snapshotter,shim:snapshotter,...\" format, but at least one snapshotter is empty"
+            ));
+        }
+
+        if !config.shims_for_arch.contains(&shim.to_string()) {
+            return Err(anyhow::anyhow!(
+                "\"{}\" is not part of \"{}\"",
+                shim,
+                config.shims_for_arch.join(" ")
+            ));
+        }
+
+        let matches: Vec<&&str> = snapshotters
+            .iter()
+            .filter(|s| s.starts_with(&format!("{shim}:")))
+            .collect();
+        if matches.len() != 1 {
+            return Err(anyhow::anyhow!(
+                "One, and only one, entry per shim is required"
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::utils::toml as toml_utils;
+    use rstest::rstest;
+    use std::path::Path;
+    use tempfile::NamedTempFile;
+
+    fn make_params(runtime_name: &str, snapshotter: Option<&str>) -> ContainerdRuntimeParams {
+        ContainerdRuntimeParams {
+            runtime_name: runtime_name.to_string(),
+            runtime_path: "\"/opt/kata/bin/kata-runtime\"".to_string(),
+            config_path: "\"/opt/kata/share/defaults/kata-containers/configuration-qemu.toml\""
+                .to_string(),
+            pod_annotations: "[\"io.katacontainers.*\"]",
+            container_annotations: "[\"io.kubernetes.container.terminationMessage*\"]",
+            snapshotter: snapshotter.map(|s| s.to_string()),
+        }
+    }
+
+    /// Uninstall may only delete a whole-file configuration it can prove an install
+    /// wrote. A file with neither a backup nor a creation record belongs to whoever
+    /// put it there.
+    #[test]
+    fn whole_file_configuration_is_only_removed_on_evidence() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = dir.path().join("containerd.toml");
+        let backup = dir.path().join("containerd.toml.bak");
+        let config_path = config.to_str().unwrap();
+        let backup_path = backup.to_str().unwrap();
+        std::fs::write(&config, "version = 2\n").unwrap();
+
+        assert!(matches!(
+            whole_file_disposition(config_path, backup_path),
+            WholeFileConfig::Keep
+        ));
+
+        std::fs::write(created_marker_file(config_path), "").unwrap();
+        assert!(matches!(
+            whole_file_disposition(config_path, backup_path),
+            WholeFileConfig::Delete
+        ));
+
+        std::fs::write(&backup, "version = 2\n").unwrap();
+        assert!(matches!(
+            whole_file_disposition(config_path, backup_path),
+            WholeFileConfig::Restore
+        ));
+    }
+
+    #[test]
+    fn test_containerd_debug_level_toml_path_by_schema_version() {
+        assert_eq!(containerd_debug_level_toml_path(Some(4)), ".debug.level");
+        assert_eq!(containerd_debug_level_toml_path(Some(3)), ".debug.level");
+        assert_eq!(containerd_debug_level_toml_path(None), ".debug.level");
+    }
+
+    #[test]
+    fn test_get_containerd_pluginid_version_4_uses_split_cri() {
+        let f = NamedTempFile::new().unwrap();
+        std::fs::write(f.path(), "version = 4\n").unwrap();
+        assert_eq!(
+            get_containerd_pluginid(f.path().to_str().unwrap(), "containerd").unwrap(),
+            CONTAINERD_V3_RUNTIME_PLUGIN_ID
+        );
+    }
+
+    #[rstest]
+    #[case("containerd://2.2.0", 3)]
+    #[case("containerd://2.0.0-rc.1", 3)]
+    #[case("containerd://1.7.29", 2)]
+    #[case("1.6.28", 2)]
+    fn test_schema_version_for_containerd_release(#[case] version: &str, #[case] expected: u32) {
+        assert_eq!(
+            schema_version_for_containerd_release(version).unwrap(),
+            expected
+        );
+    }
+
+    #[test]
+    fn test_schema_version_for_containerd_release_rejects_garbage() {
+        assert!(schema_version_for_containerd_release("containerd://unknown").is_err());
+    }
+
+    #[test]
+    fn test_get_containerd_pluginid_version_2() {
+        let f = NamedTempFile::new().unwrap();
+        std::fs::write(f.path(), "version = 2\n").unwrap();
+        assert_eq!(
+            get_containerd_pluginid(f.path().to_str().unwrap(), "containerd").unwrap(),
+            CONTAINERD_V2_CRI_PLUGIN_ID
+        );
+    }
+
+    /// CRI images runtime_platforms snapshotter is set only for v3 config when a snapshotter is configured.
+    #[rstest]
+    #[case(CONTAINERD_V3_RUNTIME_PLUGIN_ID, Some("\"nydus\""), "kata-qemu", true)]
+    #[case(CONTAINERD_V2_CRI_PLUGIN_ID, Some("\"nydus\""), "kata-qemu", false)]
+    #[case(CONTAINERD_V3_RUNTIME_PLUGIN_ID, None, "kata-qemu", false)]
+    #[case(CONTAINERD_V3_RUNTIME_PLUGIN_ID, Some("\"erofs\""), "kata-clh", true)]
+    fn test_write_containerd_runtime_config_cri_images_runtime_platforms_snapshotter(
+        #[case] pluginid: &str,
+        #[case] snapshotter: Option<&str>,
+        #[case] runtime_name: &str,
+        #[case] expect_runtime_platforms_set: bool,
+    ) {
+        let file = NamedTempFile::new().unwrap();
+        let path = file.path();
+        std::fs::write(path, "").unwrap();
+
+        let params = make_params(runtime_name, snapshotter);
+        write_containerd_runtime_config(path, pluginid, &params).unwrap();
+
+        let images_snapshotter_path = format!(
+            ".plugins.\"io.containerd.cri.v1.images\".runtime_platforms.\"{}\".snapshotter",
+            runtime_name
+        );
+        let result = toml_utils::get_toml_value(Path::new(path), &images_snapshotter_path);
+
+        if expect_runtime_platforms_set {
+            let value = result.unwrap_or_else(|e| {
+                panic!(
+                    "expected CRI images runtime_platforms.{} snapshotter to be set: {}",
+                    runtime_name, e
+                )
+            });
+            assert_eq!(
+                value,
+                snapshotter.unwrap().trim_matches('"'),
+                "runtime_platforms snapshotter value"
+            );
+        } else {
+            assert!(
+                result.is_err(),
+                "expected CRI images runtime_platforms.{} snapshotter not to be set for pluginid={:?} snapshotter={:?}",
+                runtime_name,
+                pluginid,
+                snapshotter
+            );
+        }
+    }
+
+    /// pluginid_for_snapshotter_annotations maps runtime plugin id to the table where disable_snapshot_annotations lives.
+    #[rstest]
+    #[case(
+        CONTAINERD_V3_RUNTIME_PLUGIN_ID,
+        CONTAINERD_CRI_IMAGES_PLUGIN_ID,
+        false
+    )]
+    #[case(CONTAINERD_V2_CRI_PLUGIN_ID, CONTAINERD_CRI_CONTAINERD_TABLE_V2, false)]
+    #[case(CONTAINERD_LEGACY_CRI_PLUGIN_ID, "", true)]
+    fn test_pluginid_for_snapshotter_annotations(
+        #[case] runtime_plugin_id: &str,
+        #[case] expected_plugin_id: &str,
+        #[case] expect_err: bool,
+    ) {
+        let config_file = "/etc/containerd/config.toml";
+        let result = pluginid_for_snapshotter_annotations(runtime_plugin_id, config_file);
+        if expect_err {
+            let err = result.unwrap_err();
+            assert!(
+                err.to_string().contains(config_file),
+                "error should mention config file: {}",
+                err
+            );
+            assert!(
+                err.to_string().contains("version = 2") || err.to_string().contains("version >= 3"),
+                "error should mention version: {}",
+                err
+            );
+        } else {
+            assert_eq!(
+                result.unwrap(),
+                expected_plugin_id,
+                "runtime_plugin_id={}",
+                runtime_plugin_id
+            );
+        }
+    }
+
+    /// Written containerd config (e.g. drop-in) must not start with blank lines when written to an initially empty file.
+    #[rstest]
+    #[case(CONTAINERD_V3_RUNTIME_PLUGIN_ID)]
+    #[case(CONTAINERD_V2_CRI_PLUGIN_ID)]
+    fn test_write_containerd_runtime_config_empty_file_no_leading_newlines(#[case] pluginid: &str) {
+        let file = NamedTempFile::new().unwrap();
+        let path = file.path();
+        std::fs::write(path, "").unwrap();
+
+        let params = make_params("kata-qemu", Some("\"nydus\""));
+        write_containerd_runtime_config(path, pluginid, &params).unwrap();
+
+        let content = std::fs::read_to_string(path).unwrap();
+        assert!(
+            !content.starts_with('\n'),
+            "containerd config must not start with newline(s), got {} leading newlines (pluginid={})",
+            content.chars().take_while(|&c| c == '\n').count(),
+            pluginid
+        );
+        assert!(
+            content.trim_start().starts_with('['),
+            "config should start with a TOML table"
+        );
+    }
+
+    #[rstest]
+    #[case(
+        "containerd://1.6.28",
+        true,
+        false,
+        Some("kata-deploy only supports snapshotter configuration with containerd 1.7 or newer")
+    )]
+    #[case("containerd://1.6.28", false, true, None)]
+    #[case("containerd://1.6.0", true, false, None)]
+    #[case("containerd://1.6.999", true, false, None)]
+    #[case("containerd://1.7.0", true, true, None)]
+    #[case("containerd://1.7.15", true, true, None)]
+    #[case("containerd://1.8.0", true, true, None)]
+    #[case("containerd://2.0.0", true, true, None)]
+    #[case("1.6.28", true, false, None)]
+    fn test_check_containerd_snapshotter_version_support(
+        #[case] version: &str,
+        #[case] has_mapping: bool,
+        #[case] expect_ok: bool,
+        #[case] expected_error_substring: Option<&str>,
+    ) {
+        let result = check_containerd_snapshotter_version_support(version, has_mapping);
+        if expect_ok {
+            assert!(
+                result.is_ok(),
+                "expected ok for version={} has_mapping={}",
+                version,
+                has_mapping
+            );
+        } else {
+            assert!(
+                result.is_err(),
+                "expected err for version={} has_mapping={}",
+                version,
+                has_mapping
+            );
+            if let Some(sub) = expected_error_substring {
+                assert!(
+                    result.unwrap_err().to_string().contains(sub),
+                    "error should contain {:?}",
+                    sub
+                );
+            }
+        }
+    }
+
+    #[rstest]
+    #[case("containerd://2.2.0")]
+    #[case("containerd://2.2.0-rc.1")]
+    #[case("containerd://2.2.1")]
+    #[case("containerd://2.3.0")]
+    #[case("containerd://3.0.0")]
+    #[case("containerd://2.3.0-beta.0")]
+    #[case("2.2.0")]
+    fn test_check_containerd_erofs_version_support_passing(#[case] version: &str) {
+        assert!(
+            check_containerd_erofs_version_support(version).is_ok(),
+            "Expected {} to pass",
+            version
+        );
+    }
+
+    #[rstest]
+    #[case("containerd://2.1.0", "containerd must be 2.2.0 or newer")]
+    #[case("containerd://2.1.5-rc.1", "containerd must be 2.2.0 or newer")]
+    #[case("containerd://2.0.0", "containerd must be 2.2.0 or newer")]
+    #[case("containerd://1.7.0", "containerd must be 2.2.0 or newer")]
+    #[case("containerd://1.6.28", "containerd must be 2.2.0 or newer")]
+    #[case("2.1.0", "containerd must be 2.2.0 or newer")]
+    #[case("invalid", "Invalid containerd version format")]
+    #[case("containerd://abc.2.0", "Failed to parse major version")]
+    fn test_check_containerd_erofs_version_support_failing(
+        #[case] version: &str,
+        #[case] expected_error: &str,
+    ) {
+        let result = check_containerd_erofs_version_support(version);
+        assert!(result.is_err(), "Expected {} to fail", version);
+        assert!(
+            result.unwrap_err().to_string().contains(expected_error),
+            "Expected error for {} to contain '{}'",
+            version,
+            expected_error
+        );
+    }
+
+    const LEGACY_IMPORT: &str = "/opt/kata/containerd/config.d/kata-deploy.toml";
+
+    #[rstest]
+    // Node upgraded from a pre-conf.d kata-deploy: the stale legacy import is
+    // scrubbed while unrelated imports are preserved.
+    #[case(
+        Some(concat!(
+            "version = 2\n\nimports = [\"/etc/containerd/conf.d/*.toml\", ",
+            "\"/opt/kata/containerd/config.d/kata-deploy.toml\"]\n"
+        )),
+        vec!["/etc/containerd/conf.d/*.toml"]
+    )]
+    // Config we never touched (no imports array): no-op, must not error.
+    #[case(Some("version = 2\n\n[plugins]\n"), vec![])]
+    // imports present but without our legacy entry: left untouched.
+    #[case(
+        Some("imports = [\"/etc/containerd/conf.d/*.toml\"]\n"),
+        vec!["/etc/containerd/conf.d/*.toml"]
+    )]
+    // No main config on disk (e.g. crio-only nodes): no-op, must not be created.
+    #[case(None, vec![])]
+    fn test_remove_legacy_drop_in_import(
+        #[case] initial_content: Option<&str>,
+        #[case] expected_imports: Vec<&str>,
+    ) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        if let Some(content) = initial_content {
+            std::fs::write(&path, content).unwrap();
+        }
+
+        remove_legacy_drop_in_import_from(&path, LEGACY_IMPORT).unwrap();
+
+        match initial_content {
+            Some(_) => {
+                let imports = toml_utils::get_toml_array(&path, ".imports").unwrap();
+                let expected: Vec<String> =
+                    expected_imports.iter().map(|s| s.to_string()).collect();
+                assert_eq!(imports, expected);
+            }
+            None => assert!(!path.exists(), "missing config must not be created"),
+        }
+    }
+}

@@ -1,0 +1,404 @@
+<template>
+    <KsRow class="setup-container" :gutter="30" justify="center" align="middle">
+        <KsCol :xs="24" :md="8" class="setup-sidebar">
+            <div class="logo-container">
+                <Logo class="setup-logo" />
+            </div>
+            <KsSteps :space="60" direction="vertical" :active="activeStep" finishStatus="success">
+                <KsStep :icon="activeStep > 0 ? CheckBold : AccountOutline" :title="$t('setup.steps.user')" />
+                <KsStep
+                    :icon="activeStep > 1 ? CheckBold : MessageOutline"
+                    :title="$t('setup.steps.survey')"
+                />
+                <KsStep :icon="LightningBolt" :title="$t('setup.steps.complete')" />
+            </KsSteps>
+        </KsCol>
+        <KsCol :xs="24" :md="16" class="setup-main">
+            <KsCard class="setup-card">
+                <template #header v-if="activeStep !== 2">
+                    <div class="card-header">
+                        <KsText size="large" class="header-title" v-if="activeStep === 0">
+                            {{ $t('setup.titles.user') }}
+                        </KsText>
+                        <KsText size="large" class="header-title" v-else-if="activeStep === 1">
+                            {{ $t('setup.titles.survey') }}
+                        </KsText>
+                        <KsText v-if="activeStep === 0" class="header-subtitle">
+                            {{ $t('setup.subtitles.user') }}
+                        </KsText>
+                        <KsButton v-if="activeStep === 1" class="skip-button" @click="handleSurveySkip()">
+                            {{ $t('setup.survey.skip') }}
+                        </KsButton>
+                    </div>
+                </template>
+
+                <div class="setup-card-body">
+                    <div v-if="activeStep === 0">
+                        <KsForm ref="userForm" class="user-form" labelPosition="top" :rules="userRules" :model="formData" :showMessage="false" @submit.prevent="handleUserFormSubmit()">
+                            <div class="user-field">
+                                <KsFormItem :label="$t('setup.form.username')" prop="username">
+                                    <KsInput v-model="userFormData.username" placeholder="admin@company.com" type="email">
+                                        <template #suffix v-if="getFieldError('username')">
+                                            <KsTooltip placement="top" :content="getFieldError('username')">
+                                                <KsIcon name="information-outline" class="validation-icon error" />
+                                            </KsTooltip>
+                                        </template>
+                                    </KsInput>
+                                </KsFormItem>
+                                <div class="username-requirements">
+                                    <KsText>
+                                        {{ $t('setup.form.username_hint') }}
+                                    </KsText>
+                                </div>
+                            </div>
+                            <div class="user-field">
+                                <KsFormItem :label="$t('setup.form.password')" prop="password">
+                                    <KsInput
+                                        type="password"
+                                        showPassword
+                                        v-model="userFormData.password"
+                                        placeholder="StrongPass1"
+                                    />
+                                </KsFormItem>
+                                <KsPasswordRequirements
+                                    :password="userFormData.password"
+                                    v-model:valid="isPasswordValid"
+                                />
+                            </div>
+                            <div class="user-field">
+                                <KsFormItem :label="$t('confirm password')">
+                                    <KsInput
+                                        type="password"
+                                        showPassword
+                                        v-model="confirmPassword"
+                                        placeholder="Re-enter your password"
+                                    />
+                                </KsFormItem>
+                                <KsCheckItem :met="passwordsMatch">
+                                    {{ $t('password_requirements.match') }}
+                                </KsCheckItem>
+                            </div>
+                        </KsForm>
+                        <div class="d-flex justify-content-end gap-1">
+                            <KsButton type="primary" @click="handleUserFormSubmit()" :disabled="!isUserStepValid">
+                                {{ $t("setup.confirm.confirm") }}
+                            </KsButton>
+                        </div>
+                    </div>
+
+                    <div v-else-if="activeStep === 1">
+                        <KsForm ref="surveyForm" class="survey-form" labelPosition="top" :model="surveyData" :showMessage="false">
+                            <KsFormItem :label="$t('setup.survey.company_size')">
+                                <KsSelect
+                                    v-model="surveyData.mainGoal"
+                                    placeholder="Select"
+                                    class="survey-select"
+                                >
+                                    <KsOption
+                                        v-for="option in intentOptions"
+                                        :key="option.value"
+                                        :label="option.label"
+                                        :value="option.value"
+                                    />
+                                </KsSelect>
+                            </KsFormItem>
+
+                            <KsFormItem :label="$t('setup.survey.use_case')">
+                                <div class="use-case-checkboxes">
+                                    <KsCheckboxGroup v-model="surveyData.useCases">
+                                        <KsCheckbox
+                                            v-for="option in useCaseOptions"
+                                            :key="option.value"
+                                            :value="option.value"
+                                            class="survey-checkbox"
+                                        >
+                                            {{ option.label }}
+                                        </KsCheckbox>
+                                    </KsCheckboxGroup>
+                                </div>
+                            </KsFormItem>
+
+                            <KsFormItem :label="$t('setup.survey.newsletter_heading')" class="newsletter-form-item">
+                                <KsCheckbox v-model="surveyData.newsletter" class="newsletter-checkbox">
+                                    {{ $t('setup.survey.newsletter') }}
+                                </KsCheckbox>
+                            </KsFormItem>
+                        </KsForm>
+
+                        <div class="d-flex justify-content-end">
+                            <KsButton type="primary" @click="handleSurveyContinue()">
+                                {{ $t("setup.survey.continue") }}
+                            </KsButton>
+                        </div>
+                    </div>
+
+                    <div v-else-if="activeStep === 2" class="success-step">
+                        <KsLogoBadge />
+                        <div class="success-content">
+                            <h1 class="success-title">
+                                {{ $t('setup.success.title') }}
+                            </h1>
+                            <p class="success-subtitle">
+                                {{ $t('setup.success.subtitle') }}
+                            </p>
+                        </div>
+                        <KsButton @click="completeSetup()" type="primary" class="success-button">
+                            {{ $t('setup.steps.complete') }}
+                        </KsButton>
+                    </div>
+                </div>
+            </KsCard>
+        </KsCol>
+    </KsRow>
+</template>
+
+<script setup lang="ts">
+    import MailChecker from "mailchecker"
+    import {ref, computed, onUnmounted, type Ref} from "vue"
+    import {useRouter} from "vue-router"
+    import {useI18n} from "vue-i18n"
+    import {useMiscStore} from "override/stores/misc"
+    import {useSurveySkip} from "../../composables/useSurveyData"
+    import {trackSetupEvent} from "../../composables/usePosthog"
+    import {identifyPosthogUser} from "../../utils/posthog"
+
+    import AccountOutline from "vue-material-design-icons/AccountOutline.vue"
+    import LightningBolt from "vue-material-design-icons/LightningBolt.vue"
+    import MessageOutline from "vue-material-design-icons/MessageOutline.vue"
+    import Logo from "../home/Logo.vue"
+    import CheckBold from "vue-material-design-icons/CheckBold.vue"
+
+    interface UserFormData {
+        username: string
+        password: string
+    }
+
+    interface SurveyData {
+        mainGoal: string
+        useCases: string[]
+        newsletter: boolean
+    }
+
+    interface CompanySizeOption {
+        value: string
+        label: string
+    }
+
+    const {t} = useI18n()
+    const router = useRouter()
+    const miscStore = useMiscStore()
+
+    const {storeSurveySkipData} = useSurveySkip()
+
+    const activeStep = ref(0)
+    const userForm: Ref<any> = ref(null)
+
+    const userFormData = ref<UserFormData>({
+        username: "",
+        password: "",
+    })
+
+    const confirmPassword = ref("")
+
+    const surveyData = ref<SurveyData>({
+        mainGoal: "",
+        useCases: [],
+        newsletter: false,
+    })
+
+    const formData = computed(() => userFormData.value)
+
+    const initializeSetup = async () => {
+        try {
+            // Public, unauthenticated endpoint: only isBasicAuthInitialized is available at this stage.
+            const loginConfig = await miscStore.loadLoginConfig()
+
+            if (loginConfig?.isBasicAuthInitialized) {
+                localStorage.removeItem("basicAuthSetupInProgress")
+                localStorage.removeItem("setupStartTime")
+                router.push({name: "login"})
+                return
+            }
+
+            // The full configuration (needed for posthog init and setup-flow tracking) requires
+            // authentication and is not available until the account below has been created;
+            // trackSetupEvent/initPosthogIfEnabled no-op gracefully without it.
+
+            localStorage.setItem("basicAuthSetupInProgress", "true")
+            localStorage.setItem("setupStartTime", Date.now().toString())
+        } catch {
+            /* Silently handle config loading errors */
+        }
+    }
+
+    initializeSetup()
+
+    onUnmounted(() => {
+        if (localStorage.getItem("basicAuthSetupCompleted") !== "true") {
+            localStorage.removeItem("basicAuthSetupInProgress")
+        }
+    })
+
+    const intentOptions = computed<CompanySizeOption[]>(() => [
+        {value: "learning_exploring", label: t("setup.survey.company_1_10")},
+        {value: "personal_project", label: t("setup.survey.company_11_50")},
+        {value: "evaluating_team_company", label: t("setup.survey.company_50_250")},
+        {value: "production_use", label: t("setup.survey.company_250_plus")},
+    ])
+
+    const useCaseOptions = computed<CompanySizeOption[]>(() => [
+        {value: "infrastructure", label: t("setup.survey.use_case_infrastructure")},
+        {value: "data", label: t("setup.survey.use_case_data")},
+        {value: "ml", label: t("setup.survey.use_case_ml")},
+        {value: "business", label: t("setup.survey.use_case_business")},
+        {value: "scheduling", label: t("setup.survey.use_case_scheduling")},
+        {value: "other", label: t("setup.survey.use_case_other")},
+    ])
+
+    const EMAIL_REGEX = /^[a-zA-Z0-9_!#$%&'*+/=?`{|}~^.-]+@[a-zA-Z0-9.-]+$/
+
+    const validateEmail = (_rule: any, value: string, callback: (error?: Error) => void) => {
+        if (!value) {
+            callback(new Error(t("setup.validation.email_required")))
+            return
+        }
+
+        if (!EMAIL_REGEX.test(value)) {
+            callback(new Error(t("setup.validation.email_invalid")))
+            return
+        }
+
+        if (!MailChecker.isValid(value)) {
+            callback(new Error(t("setup.validation.email_temporary_not_allowed")))
+            return
+        }
+
+        callback()
+    }
+
+    const isPasswordValid = ref(false)
+
+    const passwordsMatch = computed(() =>
+        userFormData.value.password.length > 0 &&
+        userFormData.value.password === confirmPassword.value,
+    )
+
+    const userRules = computed(() => ({
+        username: [{required: true, validator: validateEmail, trigger: "blur"}],
+    }))
+
+    const isUserStepValid = computed(() => {
+        const data = userFormData.value
+        return Boolean(data.username) &&
+            EMAIL_REGEX.test(data.username) &&
+            MailChecker.isValid(data.username) &&
+            isPasswordValid.value &&
+            passwordsMatch.value
+    })
+
+    const getFieldError = (fieldName: string) => {
+        if (!userForm.value) return null
+        const field = userForm.value.fields?.find((f: any) => f.prop === fieldName)
+        return field?.validateState === "error" ? field.validateMessage : null
+    }
+
+    const handleUserFormSubmit = async () => {
+        try {
+            const normalizedEmail = userFormData.value.username.trim()
+
+            await miscStore.addBasicAuth({
+                username: normalizedEmail,
+                password: userFormData.value.password,
+            })
+
+            await identifyPosthogUser(miscStore.configs, {email: normalizedEmail})
+
+            trackSetupEvent("setup_flow:account_created", {
+                user_email: normalizedEmail,
+            }, userFormData.value)
+
+
+            localStorage.setItem("basicAuthUserCreated", "true")
+
+            activeStep.value = 1
+        } catch (error: any) {
+            trackSetupEvent("setup_flow:account_creation_failed", {
+                error_message: error.message || "Unknown error",
+            }, userFormData.value)
+            console.error("Failed to create basic auth account:", error)
+        }
+    }
+
+    const handleSurveyContinue = () => {
+        localStorage.setItem("basicAuthSurveyData", JSON.stringify(surveyData.value))
+
+        const surveySelections: Record<string, any> = {
+            main_goal: surveyData.value.mainGoal,
+            use_cases: surveyData.value.useCases,
+            use_cases_count: surveyData.value.useCases.length,
+            newsletter_opted_in: surveyData.value.newsletter,
+            survey_action: "submitted",
+        }
+
+        if (surveyData.value.useCases.length > 0) {
+            surveyData.value.useCases.forEach(useCase => {
+                surveySelections[`use_case_${useCase}`] = true
+            })
+        }
+
+        trackSetupEvent("setup_flow:marketing_survey_submitted", {
+            ...surveySelections,
+        }, userFormData.value)
+
+        activeStep.value = 2
+    }
+
+    const handleSurveySkip = () => {
+        const surveySelections: Record<string, any> = {
+            main_goal: surveyData.value.mainGoal,
+            newsletter_opted_in: surveyData.value.newsletter,
+            survey_action: "skipped",
+        }
+
+        if (surveyData.value.useCases.length > 0) {
+            surveyData.value.useCases.forEach(useCase => {
+                surveySelections[`use_case_${useCase}`] = true
+            })
+        }
+
+        storeSurveySkipData({
+            ...surveySelections,
+        })
+
+        trackSetupEvent("setup_flow:marketing_survey_skipped", {
+            ...surveySelections,
+        }, userFormData.value)
+
+        activeStep.value = 2
+    }
+
+    const completeSetup = () => {
+        const savedSurveyData = localStorage.getItem("basicAuthSurveyData")
+        const surveySelections = savedSurveyData ? JSON.parse(savedSurveyData) : {}
+        const normalizedEmail = userFormData.value.username.trim()
+
+        const completeEventPayload: Record<string, any> = {
+            user_email: normalizedEmail,
+            newsletter_opted_in: surveyData.value.newsletter,
+            ...surveySelections,
+        }
+
+        trackSetupEvent("setup_flow:completed", completeEventPayload, userFormData.value)
+
+        localStorage.setItem("basicAuthSetupCompleted", "true")
+        localStorage.removeItem("basicAuthSetupInProgress")
+        localStorage.removeItem("setupStartTime")
+        localStorage.removeItem("basicAuthSurveyData")
+        localStorage.removeItem("basicAuthUserCreated")
+        localStorage.setItem("basicAuthSetupCompletedAt", new Date().toISOString())
+
+        router.push({name: "ai"})
+    }
+</script>
+
+<style src="./setup.scss" scoped lang="scss" />

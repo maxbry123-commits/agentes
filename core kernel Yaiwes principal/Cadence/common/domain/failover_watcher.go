@@ -1,0 +1,283 @@
+// Copyright (c) 2017-2020 Uber Technologies, Inc.
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+// THE SOFTWARE.
+
+//go:generate mockgen -package $GOPACKAGE -source $GOFILE -destination failover_watcher_mock.go
+
+package domain
+
+import (
+	"context"
+	"fmt"
+	"sync/atomic"
+	"time"
+
+	"github.com/uber/cadence/client/history"
+	"github.com/uber/cadence/common"
+	"github.com/uber/cadence/common/backoff"
+	"github.com/uber/cadence/common/cache"
+	"github.com/uber/cadence/common/clock"
+	"github.com/uber/cadence/common/cluster"
+	"github.com/uber/cadence/common/dynamicconfig/dynamicproperties"
+	"github.com/uber/cadence/common/log"
+	"github.com/uber/cadence/common/log/tag"
+	"github.com/uber/cadence/common/metrics"
+	"github.com/uber/cadence/common/persistence"
+	"github.com/uber/cadence/common/types"
+)
+
+const (
+	updateDomainRetryInitialInterval = 50 * time.Millisecond
+	updateDomainRetryCoefficient     = 2.0
+	updateDomainMaxRetry             = 3
+)
+
+type (
+	// FailoverWatcher handles failover operation on domain entities
+	FailoverWatcher interface {
+		common.Daemon
+	}
+
+	failoverWatcherImpl struct {
+		status          int32
+		shutdownChan    chan struct{}
+		refreshInterval dynamicproperties.DurationPropertyFn
+		refreshJitter   dynamicproperties.FloatPropertyFn
+		retryPolicy     backoff.RetryPolicy
+
+		clusterMetadata cluster.Metadata
+		domainManager   persistence.DomainManager
+		domainCache     cache.DomainCache
+		historyClient   history.Client
+		timeSource      clock.TimeSource
+		scope           metrics.Scope
+		logger          log.Logger
+	}
+)
+
+var _ FailoverWatcher = (*failoverWatcherImpl)(nil)
+
+// NewFailoverWatcher initializes domain failover processor
+func NewFailoverWatcher(
+	domainCache cache.DomainCache,
+	domainManager persistence.DomainManager,
+	clusterMetadata cluster.Metadata,
+	historyClient history.Client,
+	timeSource clock.TimeSource,
+	refreshInterval dynamicproperties.DurationPropertyFn,
+	refreshJitter dynamicproperties.FloatPropertyFn,
+	metricsClient metrics.Client,
+	logger log.Logger,
+) FailoverWatcher {
+
+	retryPolicy := &backoff.ExponentialRetryPolicy{}
+	retryPolicy.SetInitialInterval(updateDomainRetryInitialInterval)
+	retryPolicy.SetBackoffCoefficient(updateDomainRetryCoefficient)
+	retryPolicy.SetMaximumAttempts(updateDomainMaxRetry)
+
+	return &failoverWatcherImpl{
+		status:          common.DaemonStatusInitialized,
+		shutdownChan:    make(chan struct{}),
+		refreshInterval: refreshInterval,
+		refreshJitter:   refreshJitter,
+		retryPolicy:     retryPolicy,
+		clusterMetadata: clusterMetadata,
+		domainCache:     domainCache,
+		domainManager:   domainManager,
+		historyClient:   historyClient,
+		timeSource:      timeSource,
+		scope:           metricsClient.Scope(metrics.DomainFailoverScope),
+		logger:          logger,
+	}
+}
+
+func (p *failoverWatcherImpl) Start() {
+	if !atomic.CompareAndSwapInt32(&p.status, common.DaemonStatusInitialized, common.DaemonStatusStarted) {
+		return
+	}
+
+	go p.refreshDomainLoop()
+
+	p.logger.Info("Domain failover processor started")
+}
+
+func (p *failoverWatcherImpl) Stop() {
+	if !atomic.CompareAndSwapInt32(&p.status, common.DaemonStatusStarted, common.DaemonStatusStopped) {
+		return
+	}
+
+	close(p.shutdownChan)
+	p.logger.Info("Domain failover processor stopped")
+}
+
+func (p *failoverWatcherImpl) refreshDomainLoop() {
+
+	timer := p.timeSource.NewTimer(backoff.JitDuration(
+		p.refreshInterval(),
+		p.refreshJitter(),
+	))
+	defer timer.Stop()
+
+	for {
+		select {
+		case <-p.shutdownChan:
+			return
+		case <-timer.Chan():
+			domains := p.domainCache.GetAllDomain()
+			for _, domain := range domains {
+				p.handleFailoverTimeout(domain)
+				select {
+				case <-p.shutdownChan:
+					p.logger.Debug("Stop refresh domain as the processing is stopping.")
+					return
+				default:
+				}
+			}
+
+			timer.Reset(backoff.JitDuration(
+				p.refreshInterval(),
+				p.refreshJitter(),
+			))
+		}
+	}
+}
+
+func (p *failoverWatcherImpl) handleFailoverTimeout(
+	domain *cache.DomainCacheEntry,
+) {
+
+	failoverEndTime := domain.GetFailoverEndTime()
+	if domain.IsDomainPendingActive() && p.timeSource.Now().After(time.Unix(0, *failoverEndTime)) {
+		domainID := domain.GetInfo().ID
+
+		var pendingShards []int32
+		var completedShardCount int32
+		if p.historyClient != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+			failoverInfo, infoErr := p.historyClient.GetFailoverInfo(ctx, &types.GetFailoverInfoRequest{
+				DomainID: domainID,
+			})
+			cancel()
+			if infoErr != nil {
+				p.logger.Error("Failed to get failover info before force-completing",
+					tag.WorkflowDomainID(domainID),
+					tag.WorkflowDomainName(domain.GetInfo().Name),
+					tag.Error(infoErr),
+				)
+			} else {
+				pendingShards = failoverInfo.GetPendingShards()
+				completedShardCount = failoverInfo.GetCompletedShardCount()
+			}
+		}
+
+		// force failover the domain without setting the failover timeout
+		updated, err := CleanPendingActiveState(
+			p.domainManager,
+			domainID,
+			domain.GetFailoverVersion(),
+			p.retryPolicy,
+		)
+		if err != nil {
+			p.logger.Error("Failed to update pending-active domain to active", tag.WorkflowDomainID(domainID), tag.WorkflowDomainName(domain.GetInfo().Name), tag.Error(err))
+			return
+		}
+		if !updated {
+			// another path already cleared the pending-active state — nothing to announce
+			return
+		}
+		sourceCluster, err := p.clusterMetadata.ClusterNameForFailoverVersion(domain.GetPreviousFailoverVersion())
+		if err != nil {
+			p.logger.Error("Failed to resolve source cluster for graceful failover", tag.WorkflowDomainID(domainID), tag.WorkflowDomainName(domain.GetInfo().Name), tag.Error(err))
+			sourceCluster = "unknown"
+		}
+		p.logger.Warn("Graceful failover force-completed by watcher: failover timeout exceeded before all shards reported",
+			tag.WorkflowDomainID(domainID),
+			tag.WorkflowDomainName(domain.GetInfo().Name),
+			tag.PrevActiveCluster(sourceCluster),
+			tag.ActiveClusterName(domain.GetReplicationConfig().ActiveClusterName),
+			tag.Dynamic("failover-end-time", time.Unix(0, *failoverEndTime)),
+			tag.Dynamic("completed-shard-count", completedShardCount),
+			tag.Dynamic("pending-shard-count", len(pendingShards)),
+			tag.Dynamic("pending-shards", pendingShards),
+		)
+		p.scope.Tagged(metrics.DomainTag(domain.GetInfo().Name)).IncCounter(metrics.GracefulFailoverFailure)
+	}
+}
+
+// CleanPendingActiveState removes the pending active state from the domain.
+// Returns (updated, err) where updated is true only when the domain row was
+// actually modified. When the domain is no longer pending-active or the
+// failover version no longer matches, the call is a no-op and returns
+// (false, nil) so callers can avoid emitting misleading "completed" signals.
+func CleanPendingActiveState(
+	domainManager persistence.DomainManager,
+	domainID string,
+	failoverVersion int64,
+	policy backoff.RetryPolicy,
+) (bool, error) {
+
+	// must get the metadata (notificationVersion) first
+	// this version can be regarded as the lock on the v2 domain table
+	// and since we do not know which table will return the domain afterwards
+	// this call has to be made
+	metadata, err := domainManager.GetMetadata(context.Background())
+	if err != nil {
+		return false, fmt.Errorf("getting metadata: %w", err)
+	}
+
+	domainResponse, err := domainManager.GetDomain(context.Background(), &persistence.GetDomainRequest{ID: domainID})
+	if err != nil {
+		return false, fmt.Errorf("getting domain: %w", err)
+	}
+	localFailoverVersion := domainResponse.FailoverVersion
+	isGlobalDomain := domainResponse.IsGlobalDomain
+	gracefulFailoverEndTime := domainResponse.FailoverEndTime
+
+	// if the domain is still pending active and the failover versions are the same, clean the state
+	if isGlobalDomain && gracefulFailoverEndTime != nil && failoverVersion == localFailoverVersion {
+		updateReq := &persistence.UpdateDomainRequest{
+			Info:                        domainResponse.Info,
+			Config:                      domainResponse.Config,
+			ReplicationConfig:           domainResponse.ReplicationConfig,
+			ConfigVersion:               domainResponse.ConfigVersion,
+			FailoverVersion:             localFailoverVersion,
+			FailoverNotificationVersion: domainResponse.FailoverNotificationVersion,
+			FailoverEndTime:             nil,
+			NotificationVersion:         metadata.NotificationVersion,
+		}
+		op := func(ctx context.Context) error {
+			return domainManager.UpdateDomain(ctx, updateReq)
+		}
+		throttleRetry := backoff.NewThrottleRetry(
+			backoff.WithRetryPolicy(policy),
+			backoff.WithRetryableError(isUpdateDomainRetryable),
+		)
+		if err := throttleRetry.Do(context.Background(), op); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+	return false, nil
+}
+
+func isUpdateDomainRetryable(
+	_ error,
+) bool {
+	return true
+}

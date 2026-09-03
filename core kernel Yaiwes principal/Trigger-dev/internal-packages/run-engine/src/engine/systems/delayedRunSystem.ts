@@ -1,0 +1,225 @@
+import { startSpan } from "@internal/tracing";
+import type { SystemResources } from "./systems.js";
+import type { PrismaClientOrTransaction, TaskRun } from "@trigger.dev/database";
+import { getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
+import { parseNaturalLanguageDuration } from "@trigger.dev/core/v3/isomorphic";
+import type { EnqueueSystem } from "./enqueueSystem.js";
+import { ServiceValidationError } from "../errors.js";
+
+export type DelayedRunSystemOptions = {
+  resources: SystemResources;
+  enqueueSystem: EnqueueSystem;
+};
+
+export class DelayedRunSystem {
+  private readonly $: SystemResources;
+  private readonly enqueueSystem: EnqueueSystem;
+
+  constructor(private readonly options: DelayedRunSystemOptions) {
+    this.$ = options.resources;
+    this.enqueueSystem = options.enqueueSystem;
+  }
+
+  /**
+   * Reschedules a delayed run where the run hasn't been queued yet
+   */
+  async rescheduleDelayedRun({
+    runId,
+    delayUntil,
+    tx,
+  }: {
+    runId: string;
+    delayUntil: Date;
+    tx?: PrismaClientOrTransaction;
+  }): Promise<TaskRun> {
+    const prisma = tx ?? this.$.prisma;
+    return startSpan(
+      this.$.tracer,
+      "rescheduleDelayedRun",
+      async () => {
+        return await this.$.runLock.lock("rescheduleDelayedRun", [runId], async () => {
+          const snapshot = await getLatestExecutionSnapshot(prisma, runId, this.$.runStore);
+
+          // Check if the run is still in DELAYED status (or legacy RUN_CREATED for older runs)
+          if (
+            snapshot.executionStatus !== "DELAYED" &&
+            snapshot.executionStatus !== "RUN_CREATED"
+          ) {
+            throw new ServiceValidationError("Cannot reschedule a run that is not delayed");
+          }
+
+          const isParked = snapshot.runStatus === "PENDING_VERSION";
+
+          const updatedRun = await this.$.runStore.rescheduleRun(
+            runId,
+            {
+              delayUntil: delayUntil,
+              snapshot: {
+                environmentId: snapshot.environmentId,
+                environmentType: snapshot.environmentType,
+                projectId: snapshot.projectId,
+                organizationId: snapshot.organizationId,
+                ...(isParked
+                  ? {
+                      executionStatus: "RUN_CREATED" as const,
+                      runStatus: "PENDING_VERSION" as const,
+                      description: "Parked run was rescheduled to a future date",
+                    }
+                  : {}),
+              },
+            },
+            prisma
+          );
+
+          await this.$.worker.reschedule(`enqueueDelayedRun:${updatedRun.id}`, delayUntil);
+
+          this.$.eventBus.emit("runDelayRescheduled", {
+            time: new Date(),
+            run: {
+              id: updatedRun.id,
+              status: updatedRun.status,
+              delayUntil: delayUntil,
+              updatedAt: updatedRun.updatedAt,
+              createdAt: updatedRun.createdAt,
+              runTags: updatedRun.runTags,
+              batchId: updatedRun.batchId,
+            },
+            organization: {
+              id: snapshot.organizationId,
+            },
+            project: {
+              id: updatedRun.projectId,
+            },
+            environment: {
+              id: updatedRun.runtimeEnvironmentId,
+            },
+          });
+
+          return updatedRun;
+        });
+      },
+      {
+        attributes: { runId },
+      }
+    );
+  }
+
+  async enqueueDelayedRun({ runId }: { runId: string }) {
+    // Use lock to prevent race with debounce rescheduling
+    return await this.$.runLock.lock("enqueueDelayedRun", [runId], async () => {
+      // Check if run is still in DELAYED status before enqueuing
+      // This prevents a race where debounce reschedules the run while we're about to enqueue it
+      const snapshot = await getLatestExecutionSnapshot(this.$.prisma, runId, this.$.runStore);
+
+      if (snapshot.executionStatus !== "DELAYED" && snapshot.executionStatus !== "RUN_CREATED") {
+        this.$.logger.debug("enqueueDelayedRun: run is no longer delayed, skipping enqueue", {
+          runId,
+          executionStatus: snapshot.executionStatus,
+        });
+        return;
+      }
+
+      // Read run-ops scalars only; resolve the control-plane env separately so the run-ops DB can
+      // split without a cross-provider join.
+      const run = await this.$.runStore.findRun({ id: runId }, this.$.prisma);
+
+      if (!run) {
+        throw new Error(`#enqueueDelayedRun: run not found: ${runId}`);
+      }
+
+      const env = await this.$.controlPlaneResolver.resolveEnv(run.runtimeEnvironmentId);
+
+      if (!env) {
+        throw new Error(`#enqueueDelayedRun: environment not found for run: ${runId}`);
+      }
+
+      // Check if delayUntil has been rescheduled to the future (e.g., by debounce)
+      // If so, don't enqueue - the rescheduled worker job will handle it
+      if (run.delayUntil && run.delayUntil > new Date()) {
+        this.$.logger.debug(
+          "enqueueDelayedRun: delay was rescheduled to the future, skipping enqueue",
+          {
+            runId,
+            delayUntil: run.delayUntil,
+          }
+        );
+        return;
+      }
+
+      // The batch TTL path only expires runs still in the queue sorted set.
+      // For DEV environments where the dev CLI may not be running, fast-pathed
+      // runs can sit on the worker queue indefinitely. Keep the legacy per-run
+      // expireRun job armed for DEV so those runs still expire.
+      if (run.ttl && env.type === "DEVELOPMENT") {
+        const expireAt = parseNaturalLanguageDuration(run.ttl);
+        if (expireAt) {
+          await this.$.worker.enqueue({
+            id: `expireRun:${runId}`,
+            job: "expireRun",
+            payload: { runId },
+            availableAt: expireAt,
+          });
+        }
+      }
+
+      // Skip the lock in enqueueRun since we already hold it.
+      // includeTtl: true so the run's TTL is armed from the moment it enters
+      // the queue (not from taskRun.createdAt). The TTL system tracks runs
+      // that are queued and have never started — delayed runs are first
+      // enqueued here, so this is the correct point to arm TTL.
+      await this.enqueueSystem.enqueueRun({
+        run,
+        env,
+        batchId: run.batchId ?? undefined,
+        skipRunLock: true,
+        includeTtl: true,
+        anchorEligibilityAtQueuePosition: true,
+      });
+
+      const queuedAt = new Date();
+
+      const updatedRun = await this.$.runStore.enqueueDelayedRun(
+        runId,
+        {
+          queuedAt,
+        },
+        this.$.prisma
+      );
+
+      this.$.eventBus.emit("runEnqueuedAfterDelay", {
+        time: new Date(),
+        run: {
+          id: runId,
+          status: "PENDING",
+          queuedAt,
+          updatedAt: updatedRun.updatedAt,
+          createdAt: updatedRun.createdAt,
+          runTags: updatedRun.runTags,
+          batchId: updatedRun.batchId,
+        },
+        organization: {
+          id: env.organizationId,
+        },
+        project: {
+          id: env.projectId,
+        },
+        environment: {
+          id: run.runtimeEnvironmentId,
+        },
+      });
+    });
+  }
+
+  async scheduleDelayedRunEnqueuing({ runId, delayUntil }: { runId: string; delayUntil: Date }) {
+    await this.$.worker.enqueue({
+      id: `enqueueDelayedRun:${runId}`,
+      job: "enqueueDelayedRun",
+      payload: { runId },
+      availableAt: delayUntil,
+    });
+  }
+
+  async preventDelayedRunFromBeingEnqueued({ runId }: { runId: string }) {
+    await this.$.worker.ack(`enqueueDelayedRun:${runId}`);
+  }
+}

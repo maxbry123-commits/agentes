@@ -1,0 +1,48 @@
+<template>
+    <Dashboard
+        v-if="loaded && total && flow"
+        :header="false"
+        isFlow
+    />
+    <NoExecutions v-else-if="loaded && flow && !total" />
+</template>
+
+<script setup lang="ts">
+    import {computed, onMounted, ref, watch} from "vue"
+    import {useExecutionsStore} from "../../stores/executions"
+
+    defineOptions({inheritAttrs: false})
+
+    import Dashboard from "../dashboard/Dashboard.vue"
+    import NoExecutions from "../flows/NoExecutions.vue"
+    import {useFlowStore} from "../../stores/flow"
+
+    const flowStore = useFlowStore()
+    const flow = computed(() => flowStore.flow)
+    const executionsStore = useExecutionsStore()
+
+    const total = ref(0)
+    const loaded = ref(false)
+
+    defineEmits(["expand-subflow"])
+
+    function fetchExecutions() {
+        if (flow.value?.id) {
+            loaded.value = false
+            executionsStore
+                .findExecutions({"filters[namespace][EQUALS]": flow.value.namespace, "filters[flowId][EQUALS]": flow.value.id})
+                .then((r) => {
+                    total.value = r.total ?? 0
+                    loaded.value = true
+                })
+        }
+    }
+
+    onMounted(fetchExecutions)
+
+    watch(() => flow.value?.id, (newId, oldId) => {
+        if (newId && newId !== oldId && !loaded.value) {
+            fetchExecutions()
+        }
+    })
+</script>

@@ -1,0 +1,1349 @@
+import {
+  type ClickHouseClient,
+  ClickHouseError,
+  ClickHouseLogLevel,
+  type ClickHouseSettings,
+  createClient,
+  type BaseQueryParams,
+  type InsertResult,
+} from "@clickhouse/client";
+import type { Counter, Histogram, Meter, Span, Tracer, UpDownCounter } from "@internal/tracing";
+import { getMeter, recordSpanError, startSpan, trace } from "@internal/tracing";
+import { flattenAttributes, tryCatch, type Result } from "@trigger.dev/core/v3";
+import { z } from "zod";
+import { InsertError, QueryError } from "./errors.js";
+import type {
+  ClickhouseCommandFunction,
+  ClickhouseInsertFunction,
+  ClickhouseQueryBuilderFastFunction,
+  ClickhouseQueryBuilderFunction,
+  ClickhouseQueryFunction,
+  ClickhouseQueryStreamFunction,
+  ClickhouseQueryWithStatsFunction,
+  ClickhouseReader,
+  ClickhouseWriter,
+  ColumnExpression,
+  QueryStats,
+} from "./types.js";
+import { generateErrorMessage } from "zod-error";
+import { Logger, type LogLevel } from "@trigger.dev/core/logger";
+import type { Agent as HttpAgent } from "http";
+import type { Agent as HttpsAgent } from "https";
+import { ClickhouseQueryBuilder, ClickhouseQueryFastBuilder } from "./queryBuilder.js";
+import { randomUUID } from "node:crypto";
+
+export type ClickhouseConfig = {
+  name: string;
+  url: string;
+  tracer?: Tracer;
+  keepAlive?: {
+    enabled?: boolean;
+    idleSocketTtl?: number;
+  };
+  httpAgent?: HttpAgent | HttpsAgent;
+  clickhouseSettings?: ClickHouseSettings;
+  logger?: Logger;
+  meter?: Meter;
+  maxOpenConnections?: number;
+  requestTimeoutMs?: number;
+  logLevel?: LogLevel;
+  compression?: {
+    request?: boolean;
+    response?: boolean;
+  };
+};
+
+export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
+  public readonly client: ClickHouseClient;
+  private readonly tracer: Tracer;
+  private readonly name: string;
+  private readonly logger: Logger;
+  private readonly meter: Meter;
+  private readonly queryInFlight: UpDownCounter;
+  private readonly queryDuration: Histogram;
+  private readonly queryServerDuration: Histogram;
+  private readonly queryReadRows: Histogram;
+  private readonly queryReadBytes: Histogram;
+  private readonly queryMemoryUsage: Histogram;
+  private readonly queryErrors: Counter;
+
+  constructor(config: ClickhouseConfig) {
+    this.name = config.name;
+    this.logger = config.logger ?? new Logger("ClickhouseClient", config.logLevel ?? "info");
+
+    this.meter = config.meter ?? getMeter("clickhouse");
+    this.queryInFlight = this.meter.createUpDownCounter("clickhouse.query.in_flight", {
+      description: "Concurrent in-flight ClickHouse queries per client, a pool-saturation signal",
+    });
+    this.queryDuration = this.meter.createHistogram("clickhouse.query.duration", {
+      description:
+        "Wall-clock ClickHouse query duration, includes client-side connection-pool wait",
+      unit: "ms",
+    });
+    this.queryServerDuration = this.meter.createHistogram("clickhouse.query.server_duration", {
+      description: "Server-side ClickHouse query duration from the x-clickhouse-summary elapsed_ns",
+      unit: "ms",
+    });
+    this.queryReadRows = this.meter.createHistogram("clickhouse.query.read_rows", {
+      description: "Rows read by a ClickHouse query, from the x-clickhouse-summary header",
+      unit: "{row}",
+    });
+    this.queryReadBytes = this.meter.createHistogram("clickhouse.query.read_bytes", {
+      description: "Bytes read by a ClickHouse query, from the x-clickhouse-summary header",
+      unit: "By",
+    });
+    this.queryMemoryUsage = this.meter.createHistogram("clickhouse.query.memory_usage", {
+      description: "Peak memory used by a ClickHouse query, from the x-clickhouse-summary header",
+      unit: "By",
+    });
+    this.queryErrors = this.meter.createCounter("clickhouse.query.errors", {
+      description:
+        "ClickHouse query errors by type, e.g. MEMORY_LIMIT_EXCEEDED or TIMEOUT_EXCEEDED",
+    });
+
+    this.client = createClient({
+      url: config.url,
+      keep_alive: config.keepAlive,
+      http_agent: config.httpAgent,
+      compression: config.compression,
+      max_open_connections: config.maxOpenConnections,
+      request_timeout: config.requestTimeoutMs,
+      clickhouse_settings: {
+        ...config.clickhouseSettings,
+        output_format_json_quote_64bit_integers: 0,
+        output_format_json_quote_64bit_floats: 0,
+        cancel_http_readonly_queries_on_client_close: 1,
+      },
+      log: {
+        level: convertLogLevelToClickhouseLogLevel(config.logLevel),
+      },
+    });
+
+    this.tracer = config.tracer ?? trace.getTracer("@internal/clickhouse");
+  }
+
+  public async close() {
+    await this.client.close();
+  }
+
+  private recordQueryMetrics(
+    operation: string,
+    startedAt: number,
+    result: { errorType?: string; summary?: Record<string, unknown> }
+  ) {
+    const attributes = { client: this.name, operation };
+    this.queryDuration.record(performance.now() - startedAt, {
+      ...attributes,
+      status: result.errorType ? "error" : "ok",
+    });
+    if (result.errorType) {
+      this.queryErrors.add(1, { ...attributes, error_type: result.errorType });
+    }
+    const summary = result.summary;
+    if (summary) {
+      const elapsedNs = Number(summary.elapsed_ns);
+      if (Number.isFinite(elapsedNs) && elapsedNs > 0) {
+        this.queryServerDuration.record(elapsedNs / 1_000_000, attributes);
+      }
+      const readRows = Number(summary.read_rows);
+      if (Number.isFinite(readRows)) {
+        this.queryReadRows.record(readRows, attributes);
+      }
+      const readBytes = Number(summary.read_bytes);
+      if (Number.isFinite(readBytes)) {
+        this.queryReadBytes.record(readBytes, attributes);
+      }
+      const memoryUsage = Number(summary.memory_usage);
+      if (Number.isFinite(memoryUsage) && memoryUsage > 0) {
+        this.queryMemoryUsage.record(memoryUsage, attributes);
+      }
+    }
+  }
+
+  public query<TIn extends z.ZodSchema<any>, TOut extends z.ZodSchema<any>>(req: {
+    /**
+     * The name of the operation.
+     * This will be used to identify the operation in the span.
+     */
+    name: string;
+    /**
+     * The SQL query to run.
+     * Use {paramName: Type} to define parameters
+     * Example: `SELECT * FROM table WHERE id = {id: String}`
+     */
+    query: string;
+    /**
+     * The schema of the parameters
+     * Example: z.object({ id: z.string() })
+     */
+    params?: TIn;
+    /**
+     * The schema of the output of each row
+     * Example: z.object({ id: z.string() })
+     */
+    schema: TOut;
+    /**
+     * The settings to use for the query.
+     * These will be merged with the default settings.
+     */
+    settings?: ClickHouseSettings;
+  }): ClickhouseQueryFunction<z.input<TIn>, z.output<TOut>> {
+    return async (params, options) => {
+      const queryId = randomUUID();
+      const startedAt = performance.now();
+      this.queryInFlight.add(1, { client: this.name });
+      let summary: Record<string, unknown> | undefined;
+
+      const result = await startSpan(
+        this.tracer,
+        "query",
+        async (span): Promise<Result<z.output<TOut>[], QueryError>> => {
+          this.logger.debug("Querying clickhouse", {
+            name: req.name,
+            query: req.query.replace(/\s+/g, " "),
+            params,
+            settings: req.settings,
+            attributes: options?.attributes,
+            queryId,
+          });
+
+          span.setAttributes({
+            "clickhouse.clientName": this.name,
+            "clickhouse.operationName": req.name,
+            "clickhouse.queryId": queryId,
+            ...flattenAttributes(req.settings, "clickhouse.settings"),
+            ...flattenAttributes(options?.attributes),
+          });
+
+          const validParams = req.params?.safeParse(params);
+
+          if (validParams?.error) {
+            recordSpanError(span, validParams.error);
+
+            this.logger.error("Error parsing query params", {
+              name: req.name,
+              error: validParams.error,
+              query: req.query,
+              params,
+              queryId,
+            });
+
+            return [
+              new QueryError(`Bad params: ${generateErrorMessage(validParams.error.issues)}`, {
+                query: req.query,
+              }),
+              null,
+            ];
+          }
+
+          let unparsedRows: Array<TOut> = [];
+
+          const [clickhouseError, res] = await tryCatch(
+            this.client.query({
+              query: req.query,
+              query_params: validParams?.data,
+              format: "JSONEachRow",
+              query_id: queryId,
+              ...options?.params,
+              clickhouse_settings: {
+                ...req.settings,
+                ...options?.params?.clickhouse_settings,
+              },
+            })
+          );
+
+          if (clickhouseError) {
+            const errorLogFields = {
+              name: req.name,
+              error: clickhouseError,
+              query: req.query,
+              params,
+              queryId,
+            };
+
+            this.logger.error("Error querying clickhouse", errorLogFields);
+
+            recordClickhouseError(span, clickhouseError);
+
+            return [
+              new QueryError(
+                `Unable to query clickhouse: ${clickhouseError.message}`,
+                { query: req.query },
+                clickhouseError instanceof ClickHouseError ? clickhouseError.type : undefined
+              ),
+              null,
+            ];
+          }
+
+          unparsedRows = await res.json();
+
+          span.setAttributes({
+            "clickhouse.query_id": res.query_id,
+            ...flattenAttributes(res.response_headers, "clickhouse.response_headers"),
+          });
+
+          const summaryHeader = res.response_headers["x-clickhouse-summary"];
+
+          if (typeof summaryHeader === "string") {
+            summary = JSON.parse(summaryHeader);
+            span.setAttributes({
+              ...flattenAttributes(summary, "clickhouse.summary"),
+            });
+          }
+
+          const parsed = z.array(req.schema).safeParse(unparsedRows);
+
+          if (parsed.error) {
+            this.logger.error("Error parsing clickhouse query result", {
+              name: req.name,
+              error: parsed.error,
+              query: req.query,
+              params,
+              queryId,
+            });
+
+            const queryError = new QueryError(generateErrorMessage(parsed.error.issues), {
+              query: req.query,
+            });
+
+            recordSpanError(span, queryError);
+
+            return [queryError, null];
+          }
+
+          span.setAttributes({
+            "clickhouse.rows": unparsedRows.length,
+          });
+
+          return [null, parsed.data];
+        }
+      )
+        .catch((error) => {
+          this.recordQueryMetrics(req.name, startedAt, { errorType: "exception" });
+          throw error;
+        })
+        .finally(() => this.queryInFlight.add(-1, { client: this.name }));
+
+      this.recordQueryMetrics(req.name, startedAt, {
+        errorType:
+          result[0] instanceof QueryError ? (result[0].clickhouseErrorType ?? "other") : undefined,
+        summary,
+      });
+
+      return result;
+    };
+  }
+
+  public queryWithStats<TIn extends z.ZodSchema<any>, TOut extends z.ZodSchema<any>>(req: {
+    /**
+     * The name of the operation.
+     * This will be used to identify the operation in the span.
+     */
+    name: string;
+    /**
+     * The SQL query to run.
+     * Use {paramName: Type} to define parameters
+     * Example: `SELECT * FROM table WHERE id = {id: String}`
+     */
+    query: string;
+    /**
+     * The schema of the parameters
+     * Example: z.object({ id: z.string() })
+     */
+    params?: TIn;
+    /**
+     * The schema of the output of each row
+     * Example: z.object({ id: z.string() })
+     */
+    schema: TOut;
+    /**
+     * The settings to use for the query.
+     * These will be merged with the default settings.
+     */
+    settings?: ClickHouseSettings;
+    /**
+     * Extra fields to attach to the error log if the query fails. Use this to
+     * record what produced the SQL, e.g. the TSQL a caller actually wrote.
+     */
+    logFields?: Record<string, unknown>;
+    /**
+     * Set when the SQL originates from whoever made the request rather than
+     * from us. Invalid-SQL rejections are then their mistake, not a bug.
+     */
+    userAuthoredQuery?: boolean;
+  }): ClickhouseQueryWithStatsFunction<z.input<TIn>, z.output<TOut>> {
+    return async (params, options) => {
+      const queryId = randomUUID();
+      const startedAt = performance.now();
+      this.queryInFlight.add(1, { client: this.name });
+      let summary: Record<string, unknown> | undefined;
+
+      const result = await startSpan(
+        this.tracer,
+        "queryWithStats",
+        async (
+          span
+        ): Promise<Result<{ rows: z.output<TOut>[]; stats: QueryStats }, QueryError>> => {
+          this.logger.debug("Querying clickhouse with stats", {
+            name: req.name,
+            query: req.query.replace(/\s+/g, " "),
+            params,
+            settings: req.settings,
+            attributes: options?.attributes,
+            queryId,
+          });
+
+          span.setAttributes({
+            "clickhouse.clientName": this.name,
+            "clickhouse.operationName": req.name,
+            "clickhouse.queryId": queryId,
+            ...flattenAttributes(req.settings, "clickhouse.settings"),
+            ...flattenAttributes(options?.attributes),
+          });
+
+          const validParams = req.params?.safeParse(params);
+
+          if (validParams?.error) {
+            recordSpanError(span, validParams.error);
+
+            this.logger.error("Error parsing query params", {
+              name: req.name,
+              error: validParams.error,
+              query: req.query,
+              params,
+              queryId,
+            });
+
+            return [
+              new QueryError(`Bad params: ${generateErrorMessage(validParams.error.issues)}`, {
+                query: req.query,
+              }),
+              null,
+            ];
+          }
+
+          let unparsedRows: Array<TOut> = [];
+
+          const [clickhouseError, res] = await tryCatch(
+            this.client.query({
+              query: req.query,
+              query_params: validParams?.data,
+              format: "JSONEachRow",
+              query_id: queryId,
+              ...options?.params,
+              clickhouse_settings: {
+                ...req.settings,
+                ...options?.params?.clickhouse_settings,
+              },
+            })
+          );
+
+          if (clickhouseError) {
+            const errorLogFields = {
+              ...req.logFields,
+              name: req.name,
+              error: clickhouseError,
+              query: req.query,
+              params,
+              queryId,
+            };
+
+            switch (classifyClickhouseError(clickhouseError, req.userAuthoredQuery)) {
+              case "quota":
+                this.logger.warn("Query exceeded a ClickHouse limit", errorLogFields);
+                break;
+              case "invalid-sql":
+                this.logger.warn("ClickHouse rejected an invalid query", errorLogFields);
+                break;
+              default:
+                this.logger.error("Error querying clickhouse", errorLogFields);
+            }
+
+            recordClickhouseError(span, clickhouseError);
+
+            return [
+              new QueryError(
+                `Unable to query clickhouse: ${clickhouseError.message}`,
+                { query: req.query },
+                clickhouseError instanceof ClickHouseError ? clickhouseError.type : undefined
+              ),
+              null,
+            ];
+          }
+
+          unparsedRows = await res.json();
+
+          span.setAttributes({
+            "clickhouse.query_id": res.query_id,
+            ...flattenAttributes(res.response_headers, "clickhouse.response_headers"),
+          });
+
+          // Parse the summary header to get stats
+          const summaryHeader = res.response_headers["x-clickhouse-summary"];
+          let stats: QueryStats = {
+            read_rows: "0",
+            read_bytes: "0",
+            written_rows: "0",
+            written_bytes: "0",
+            total_rows_to_read: "0",
+            result_rows: "0",
+            result_bytes: "0",
+            elapsed_ns: "0",
+            byte_seconds: "0",
+          };
+
+          if (typeof summaryHeader === "string") {
+            const parsedSummary = JSON.parse(summaryHeader);
+            summary = parsedSummary;
+            this.logger.debug("parsedSummary", parsedSummary);
+            const readBytes = parsedSummary.read_bytes ? parseInt(parsedSummary.read_bytes, 10) : 0;
+            const elapsedNs = parsedSummary.elapsed_ns ? parseInt(parsedSummary.elapsed_ns, 10) : 0;
+            const elapsedSeconds = elapsedNs / 1_000_000_000;
+            const byteSeconds = elapsedSeconds > 0 ? readBytes / elapsedSeconds : 0;
+            stats = {
+              read_rows: parsedSummary.read_rows ?? "0",
+              read_bytes: parsedSummary.read_bytes ?? "0",
+              written_rows: parsedSummary.written_rows ?? "0",
+              written_bytes: parsedSummary.written_bytes ?? "0",
+              total_rows_to_read: parsedSummary.total_rows_to_read ?? "0",
+              result_rows: parsedSummary.result_rows ?? "0",
+              result_bytes: parsedSummary.result_bytes ?? "0",
+              elapsed_ns: parsedSummary.elapsed_ns ?? "0",
+              byte_seconds: byteSeconds.toString(),
+            };
+            span.setAttributes({
+              ...flattenAttributes(parsedSummary, "clickhouse.summary"),
+            });
+          }
+
+          const parsed = z.array(req.schema).safeParse(unparsedRows);
+
+          if (parsed.error) {
+            this.logger.error("Error parsing clickhouse query result", {
+              name: req.name,
+              error: parsed.error,
+              query: req.query,
+              params,
+              queryId,
+            });
+
+            const queryError = new QueryError(generateErrorMessage(parsed.error.issues), {
+              query: req.query,
+            });
+
+            recordSpanError(span, queryError);
+
+            return [queryError, null];
+          }
+
+          span.setAttributes({
+            "clickhouse.rows": unparsedRows.length,
+          });
+
+          return [null, { rows: parsed.data, stats }];
+        }
+      )
+        .catch((error) => {
+          this.recordQueryMetrics(req.name, startedAt, { errorType: "exception" });
+          throw error;
+        })
+        .finally(() => this.queryInFlight.add(-1, { client: this.name }));
+
+      this.recordQueryMetrics(req.name, startedAt, {
+        errorType:
+          result[0] instanceof QueryError ? (result[0].clickhouseErrorType ?? "other") : undefined,
+        summary,
+      });
+
+      return result;
+    };
+  }
+
+  public queryFast<TOut extends Record<string, any>, TParams extends Record<string, any>>(req: {
+    name: string;
+    query: string;
+    columns: Array<string | ColumnExpression>;
+    settings?: ClickHouseSettings;
+  }): ClickhouseQueryFunction<TParams, TOut> {
+    return async (params, options) => {
+      const queryId = randomUUID();
+      const startedAt = performance.now();
+      this.queryInFlight.add(1, { client: this.name });
+      let summary: Record<string, unknown> | undefined;
+
+      const result = await startSpan(
+        this.tracer,
+        "queryFast",
+        async (span): Promise<Result<TOut[], QueryError>> => {
+          this.logger.debug("Querying clickhouse fast", {
+            name: req.name,
+            query: req.query.replace(/\s+/g, " "),
+            params,
+            settings: req.settings,
+            attributes: options?.attributes,
+            queryId,
+          });
+
+          span.setAttributes({
+            "clickhouse.clientName": this.name,
+            "clickhouse.operationName": req.name,
+            "clickhouse.queryId": queryId,
+            ...flattenAttributes(req.settings, "clickhouse.settings"),
+            ...flattenAttributes(options?.attributes),
+          });
+
+          const [clickhouseError, resultSet] = await tryCatch(
+            this.client.query({
+              query: req.query,
+              query_params: params,
+              format: "JSONCompactEachRow",
+              query_id: queryId,
+              ...options?.params,
+              clickhouse_settings: {
+                ...req.settings,
+                ...options?.params?.clickhouse_settings,
+              },
+            })
+          );
+
+          if (clickhouseError) {
+            const errorLogFields = {
+              name: req.name,
+              error: clickhouseError,
+              query: req.query,
+              params,
+              queryId,
+            };
+
+            this.logger.error("Error querying clickhouse", errorLogFields);
+
+            recordClickhouseError(span, clickhouseError);
+
+            return [
+              new QueryError(
+                `Unable to query clickhouse: ${clickhouseError.message}`,
+                { query: req.query },
+                clickhouseError instanceof ClickHouseError ? clickhouseError.type : undefined
+              ),
+              null,
+            ];
+          }
+
+          span.setAttributes({
+            "clickhouse.query_id": resultSet.query_id,
+            ...flattenAttributes(resultSet.response_headers, "clickhouse.response_headers"),
+          });
+
+          const summaryHeader = resultSet.response_headers["x-clickhouse-summary"];
+
+          if (typeof summaryHeader === "string") {
+            summary = JSON.parse(summaryHeader);
+            span.setAttributes({
+              ...flattenAttributes(summary, "clickhouse.summary"),
+            });
+          }
+
+          const resultRows: Array<TOut> = [];
+
+          for await (const rows of resultSet.stream()) {
+            if (rows.length === 0) {
+              continue;
+            }
+
+            for (const row of rows) {
+              const rowData = row.json() as any[];
+
+              const hydratedRow: Record<string, any> = {};
+              for (let i = 0; i < req.columns.length; i++) {
+                const column = req.columns[i];
+
+                if (typeof column === "string") {
+                  hydratedRow[column] = rowData[i];
+                } else {
+                  hydratedRow[column.name] = rowData[i];
+                }
+              }
+              resultRows.push(hydratedRow as TOut);
+            }
+          }
+
+          span.setAttributes({
+            "clickhouse.rows": resultRows.length,
+          });
+
+          return [null, resultRows];
+        }
+      )
+        .catch((error) => {
+          this.recordQueryMetrics(req.name, startedAt, { errorType: "exception" });
+          throw error;
+        })
+        .finally(() => this.queryInFlight.add(-1, { client: this.name }));
+
+      this.recordQueryMetrics(req.name, startedAt, {
+        errorType:
+          result[0] instanceof QueryError ? (result[0].clickhouseErrorType ?? "other") : undefined,
+        summary,
+      });
+
+      return result;
+    };
+  }
+
+  public queryFastStream<
+    TOut extends Record<string, any>,
+    TParams extends Record<string, any>,
+  >(req: {
+    name: string;
+    query: string;
+    columns: Array<string | ColumnExpression>;
+    settings?: ClickHouseSettings;
+  }): ClickhouseQueryStreamFunction<TParams, TOut> {
+    // eslint-disable-next-line no-this-alias
+    const self = this;
+
+    return async function* (params, options) {
+      const queryId = randomUUID();
+
+      // A generator yields across the await boundary, so we can't use the
+      // callback-style `startSpan` helper here. We start the span manually and
+      // end it in `finally` so the span covers the whole stream lifetime and is
+      // closed even if the consumer abandons the generator early. Errors are
+      // re-thrown (no Result tuple) since they can surface mid-stream after the
+      // response headers have already been sent, but they're still recorded on
+      // the span and logged for parity with `queryFast`.
+      const span = self.tracer.startSpan("queryFastStream");
+      span.setAttributes({
+        "clickhouse.clientName": self.name,
+        "clickhouse.operationName": req.name,
+        "clickhouse.queryId": queryId,
+        ...flattenAttributes(req.settings, "clickhouse.settings"),
+        ...flattenAttributes(options?.attributes),
+      });
+
+      self.logger.debug("Streaming clickhouse fast", {
+        name: req.name,
+        query: req.query.replace(/\s+/g, " "),
+        params,
+        settings: req.settings,
+        queryId,
+      });
+
+      try {
+        const resultSet = await self.client.query({
+          query: req.query,
+          query_params: params,
+          format: "JSONCompactEachRow",
+          query_id: queryId,
+          ...options?.params,
+          clickhouse_settings: {
+            ...req.settings,
+            ...options?.params?.clickhouse_settings,
+          },
+        });
+
+        span.setAttributes({
+          "clickhouse.query_id": resultSet.query_id,
+          ...flattenAttributes(resultSet.response_headers, "clickhouse.response_headers"),
+        });
+
+        // Stream rows off the socket and hydrate each one on the fly. The full
+        // result set is never materialised into an array — bounded memory for
+        // arbitrarily large queries.
+        let rowCount = 0;
+        for await (const rows of resultSet.stream()) {
+          for (const row of rows) {
+            const rowData = row.json() as any[];
+
+            const hydratedRow: Record<string, any> = {};
+            for (let i = 0; i < req.columns.length; i++) {
+              const column = req.columns[i];
+              if (typeof column === "string") {
+                hydratedRow[column] = rowData[i];
+              } else {
+                hydratedRow[column.name] = rowData[i];
+              }
+            }
+
+            rowCount++;
+            yield hydratedRow as TOut;
+          }
+        }
+
+        span.setAttributes({ "clickhouse.rows": rowCount });
+      } catch (error) {
+        const errorLogFields = {
+          name: req.name,
+          error,
+          query: req.query,
+          params,
+          queryId,
+        };
+
+        self.logger.error("Error streaming clickhouse", errorLogFields);
+
+        if (error instanceof Error) {
+          recordClickhouseError(span, error);
+        }
+
+        throw error;
+      } finally {
+        span.end();
+      }
+    };
+  }
+
+  public queryBuilder<TOut extends z.ZodSchema<any>>(req: {
+    name: string;
+    baseQuery: string;
+    schema: TOut;
+    settings?: ClickHouseSettings;
+  }): ClickhouseQueryBuilderFunction<z.input<TOut>> {
+    return (chSettings) =>
+      new ClickhouseQueryBuilder(req.name, req.baseQuery, this, req.schema, {
+        ...req.settings,
+        ...chSettings?.settings,
+      });
+  }
+
+  public queryBuilderFast<TOut extends Record<string, any>>(req: {
+    name: string;
+    table: string;
+    columns: string[];
+    settings?: ClickHouseSettings;
+  }): ClickhouseQueryBuilderFastFunction<TOut> {
+    return (chSettings) =>
+      new ClickhouseQueryFastBuilder(req.name, req.table, req.columns, this, {
+        ...req.settings,
+        ...chSettings?.settings,
+      });
+  }
+
+  public command<TSchema extends z.ZodSchema<any>>(req: {
+    name: string;
+    query: string;
+    params?: TSchema;
+    settings?: ClickHouseSettings;
+  }): ClickhouseCommandFunction<z.input<TSchema>> {
+    return async (params, options) => {
+      const queryId = randomUUID();
+
+      return await startSpan(this.tracer, "command", async (span) => {
+        span.setAttributes({
+          "clickhouse.clientName": this.name,
+          "clickhouse.operationName": req.name,
+          "clickhouse.queryId": queryId,
+          ...flattenAttributes(req.settings, "clickhouse.settings"),
+          ...flattenAttributes(options?.attributes),
+        });
+
+        const validParams = req.params?.safeParse(params);
+        if (validParams?.error) {
+          recordSpanError(span, validParams.error);
+          return [
+            new QueryError(`Bad params: ${generateErrorMessage(validParams.error.issues)}`, {
+              query: req.query,
+            }),
+            null,
+          ];
+        }
+
+        this.logger.debug("Running clickhouse command", {
+          clientName: this.name,
+          name: req.name,
+          query: req.query.replace(/\s+/g, " "),
+          settings: req.settings,
+          attributes: options?.attributes,
+          queryId,
+        });
+
+        const [clickhouseError, result] = await tryCatch(
+          this.client.command({
+            query: req.query,
+            query_params: validParams?.data,
+            query_id: queryId,
+            ...options?.params,
+            clickhouse_settings: {
+              ...req.settings,
+              ...options?.params?.clickhouse_settings,
+            },
+          })
+        );
+
+        if (clickhouseError) {
+          this.logger.error("Error running clickhouse command", {
+            name: req.name,
+            error: clickhouseError,
+            query: req.query,
+            queryId,
+          });
+          recordClickhouseError(span, clickhouseError);
+          return [
+            new QueryError(`Unable to run clickhouse command: ${clickhouseError.message}`, {
+              query: req.query,
+            }),
+            null,
+          ];
+        }
+
+        span.setAttributes({
+          "clickhouse.query_id": result.query_id,
+          "clickhouse.summary.read_rows": result.summary?.read_rows,
+          "clickhouse.summary.read_bytes": result.summary?.read_bytes,
+          "clickhouse.summary.written_rows": result.summary?.written_rows,
+          "clickhouse.summary.written_bytes": result.summary?.written_bytes,
+          "clickhouse.summary.elapsed_ns": result.summary?.elapsed_ns,
+          ...flattenAttributes(result.response_headers, "clickhouse.response_headers"),
+        });
+
+        return [null, result];
+      });
+    };
+  }
+
+  public insert<TSchema extends z.ZodSchema<any>>(req: {
+    name: string;
+    table: string;
+    schema: TSchema;
+    settings?: ClickHouseSettings;
+  }): ClickhouseInsertFunction<z.input<TSchema>> {
+    return async (events, options) => {
+      const queryId = randomUUID();
+
+      return await startSpan(this.tracer, "insert", async (span) => {
+        this.logger.debug("Inserting into clickhouse", {
+          clientName: this.name,
+          name: req.name,
+          table: req.table,
+          events: Array.isArray(events) ? events.length : 1,
+          settings: req.settings,
+          attributes: options?.attributes,
+          options,
+          queryId,
+        });
+
+        span.setAttributes({
+          "clickhouse.clientName": this.name,
+          "clickhouse.tableName": req.table,
+          "clickhouse.operationName": req.name,
+          "clickhouse.queryId": queryId,
+          ...flattenAttributes(req.settings, "clickhouse.settings"),
+          ...flattenAttributes(options?.attributes),
+        });
+
+        let validatedEvents: z.output<TSchema> | z.output<TSchema>[] | undefined = undefined;
+
+        const v = Array.isArray(events)
+          ? req.schema.array().safeParse(events)
+          : req.schema.safeParse(events);
+
+        if (!v.success) {
+          this.logger.error("Error validating insert events", {
+            name: req.name,
+            table: req.table,
+            error: v.error,
+          });
+
+          const error = new InsertError(generateErrorMessage(v.error.issues));
+
+          recordSpanError(span, error);
+
+          return [error, null];
+        }
+
+        validatedEvents = v.data;
+
+        const [clickhouseError, result] = await tryCatch(
+          this.client.insert({
+            table: req.table,
+            format: "JSONEachRow",
+            values: Array.isArray(validatedEvents) ? validatedEvents : [validatedEvents],
+            query_id: queryId,
+            ...options?.params,
+            clickhouse_settings: {
+              ...req.settings,
+              ...options?.params?.clickhouse_settings,
+            },
+          })
+        );
+
+        if (clickhouseError) {
+          this.logger.error("Error inserting into clickhouse", {
+            name: req.name,
+            error: clickhouseError,
+            table: req.table,
+          });
+
+          recordClickhouseError(span, clickhouseError);
+
+          return [toInsertError(clickhouseError), null];
+        }
+
+        this.logger.debug("Inserted into clickhouse", {
+          clientName: this.name,
+          name: req.name,
+          table: req.table,
+          result,
+          queryId,
+        });
+
+        span.setAttributes({
+          "clickhouse.query_id": result.query_id,
+          "clickhouse.executed": result.executed,
+          "clickhouse.summary.read_rows": result.summary?.read_rows,
+          "clickhouse.summary.read_bytes": result.summary?.read_bytes,
+          "clickhouse.summary.written_rows": result.summary?.written_rows,
+          "clickhouse.summary.written_bytes": result.summary?.written_bytes,
+          "clickhouse.summary.total_rows_to_read": result.summary?.total_rows_to_read,
+          "clickhouse.summary.result_rows": result.summary?.result_rows,
+          "clickhouse.summary.result_bytes": result.summary?.result_bytes,
+          "clickhouse.summary.elapsed_ns": result.summary?.elapsed_ns,
+        });
+
+        return [null, result];
+      });
+    };
+  }
+
+  public insertCompact<TRecord extends Record<string, any>>(req: {
+    name: string;
+    table: string;
+    columns: readonly string[];
+    toArray: (record: TRecord) => any[];
+    settings?: ClickHouseSettings;
+  }): ClickhouseInsertFunction<TRecord> {
+    return async (events, options) => {
+      const queryId = randomUUID();
+
+      return await startSpan(this.tracer, "insert", async (span) => {
+        const eventsArray = Array.isArray(events) ? events : [events];
+
+        this.logger.debug("Inserting into clickhouse (compact)", {
+          clientName: this.name,
+          name: req.name,
+          table: req.table,
+          events: eventsArray.length,
+          settings: req.settings,
+          attributes: options?.attributes,
+          options,
+          queryId,
+        });
+
+        span.setAttributes({
+          "clickhouse.clientName": this.name,
+          "clickhouse.tableName": req.table,
+          "clickhouse.operationName": req.name,
+          "clickhouse.queryId": queryId,
+          "clickhouse.format": "JSONCompactEachRowWithNames",
+          ...flattenAttributes(req.settings, "clickhouse.settings"),
+          ...flattenAttributes(options?.attributes),
+        });
+
+        // Build compact format: [columns, ...rows]
+        const compactData: any[] = [Array.from(req.columns)];
+        for (const event of eventsArray) {
+          compactData.push(req.toArray(event));
+        }
+
+        const [clickhouseError, result] = await tryCatch(
+          this.client.insert({
+            table: req.table,
+            format: "JSONCompactEachRowWithNames",
+            values: compactData,
+            query_id: queryId,
+            ...options?.params,
+            clickhouse_settings: {
+              ...req.settings,
+              ...options?.params?.clickhouse_settings,
+            },
+          })
+        );
+
+        if (clickhouseError) {
+          this.logger.error("Error inserting into clickhouse", {
+            name: req.name,
+            error: clickhouseError,
+            table: req.table,
+          });
+
+          recordClickhouseError(span, clickhouseError);
+          return [toInsertError(clickhouseError), null];
+        }
+
+        return [null, result];
+      });
+    };
+  }
+
+  public insertUnsafe<TRecord extends Record<string, any>>(req: {
+    name: string;
+    table: string;
+    settings?: ClickHouseSettings;
+  }): ClickhouseInsertFunction<TRecord> {
+    return async (events, options) => {
+      const queryId = randomUUID();
+
+      return await startSpan(this.tracer, "insert", async (span) => {
+        const eventsArray = Array.isArray(events) ? events : [events];
+
+        this.logger.debug("Inserting into clickhouse", {
+          clientName: this.name,
+          name: req.name,
+          table: req.table,
+          events: eventsArray.length,
+          settings: req.settings,
+          attributes: options?.attributes,
+          options,
+          queryId,
+        });
+
+        span.setAttributes({
+          "clickhouse.clientName": this.name,
+          "clickhouse.tableName": req.table,
+          "clickhouse.operationName": req.name,
+          "clickhouse.queryId": queryId,
+          ...flattenAttributes(req.settings, "clickhouse.settings"),
+          ...flattenAttributes(options?.attributes),
+        });
+
+        const [clickhouseError, result] = await tryCatch(
+          this.client.insert({
+            table: req.table,
+            format: "JSONEachRow",
+            values: eventsArray,
+            query_id: queryId,
+            ...options?.params,
+            clickhouse_settings: {
+              ...req.settings,
+              ...options?.params?.clickhouse_settings,
+            },
+          })
+        );
+
+        if (clickhouseError) {
+          this.logger.error("Error inserting into clickhouse", {
+            name: req.name,
+            error: clickhouseError,
+            table: req.table,
+          });
+
+          recordClickhouseError(span, clickhouseError);
+
+          return [toInsertError(clickhouseError), null];
+        }
+
+        this.logger.debug("Inserted into clickhouse", {
+          clientName: this.name,
+          name: req.name,
+          table: req.table,
+          result,
+          queryId,
+        });
+
+        span.setAttributes({
+          "clickhouse.query_id": result.query_id,
+          "clickhouse.executed": result.executed,
+          "clickhouse.summary.read_rows": result.summary?.read_rows,
+          "clickhouse.summary.read_bytes": result.summary?.read_bytes,
+          "clickhouse.summary.written_rows": result.summary?.written_rows,
+          "clickhouse.summary.written_bytes": result.summary?.written_bytes,
+          "clickhouse.summary.total_rows_to_read": result.summary?.total_rows_to_read,
+          "clickhouse.summary.result_rows": result.summary?.result_rows,
+          "clickhouse.summary.result_bytes": result.summary?.result_bytes,
+          "clickhouse.summary.elapsed_ns": result.summary?.elapsed_ns,
+        });
+
+        return [null, result];
+      });
+    };
+  }
+
+  public insertCompactRaw(req: {
+    name: string;
+    table: string;
+    columns: readonly string[];
+    settings?: ClickHouseSettings;
+  }): (
+    events: readonly any[][] | any[],
+    options?: {
+      attributes?: Record<string, string | number | boolean>;
+      params?: BaseQueryParams;
+    }
+  ) => Promise<Result<InsertResult, InsertError>> {
+    return async (events, options) => {
+      const queryId = randomUUID();
+
+      return await startSpan(this.tracer, "insert", async (span) => {
+        // Check if events is a single row (array) or multiple rows (array of arrays)
+        // If first element is not an array, treat as single row
+        const isSingleRow = events.length > 0 && !Array.isArray(events[0]);
+        const eventsArray: readonly any[][] = isSingleRow
+          ? [events as any[]]
+          : (events as readonly any[][]);
+
+        this.logger.debug("Inserting into clickhouse (compact raw)", {
+          clientName: this.name,
+          name: req.name,
+          table: req.table,
+          events: eventsArray.length,
+          settings: req.settings,
+          attributes: options?.attributes,
+          options,
+          queryId,
+        });
+
+        span.setAttributes({
+          "clickhouse.clientName": this.name,
+          "clickhouse.tableName": req.table,
+          "clickhouse.operationName": req.name,
+          "clickhouse.queryId": queryId,
+          "clickhouse.format": "JSONCompactEachRowWithNames",
+          ...flattenAttributes(req.settings, "clickhouse.settings"),
+          ...flattenAttributes(options?.attributes),
+        });
+
+        // Build compact format: [columns, ...rows]
+        // Data is already in array format, no conversion needed
+        const compactData: any[] = [Array.from(req.columns), ...eventsArray];
+
+        const [clickhouseError, result] = await tryCatch(
+          this.client.insert({
+            table: req.table,
+            format: "JSONCompactEachRowWithNames",
+            values: compactData,
+            query_id: queryId,
+            ...options?.params,
+            clickhouse_settings: {
+              ...req.settings,
+              ...options?.params?.clickhouse_settings,
+            },
+          })
+        );
+
+        if (clickhouseError) {
+          this.logger.error("Error inserting into clickhouse", {
+            name: req.name,
+            error: clickhouseError,
+            table: req.table,
+          });
+
+          recordClickhouseError(span, clickhouseError);
+          return [toInsertError(clickhouseError), null];
+        }
+
+        this.logger.debug("Inserted into clickhouse", {
+          clientName: this.name,
+          name: req.name,
+          table: req.table,
+          result,
+          queryId,
+        });
+
+        span.setAttributes({
+          "clickhouse.query_id": result.query_id,
+          "clickhouse.executed": result.executed,
+          "clickhouse.summary.read_rows": result.summary?.read_rows,
+          "clickhouse.summary.read_bytes": result.summary?.read_bytes,
+          "clickhouse.summary.written_rows": result.summary?.written_rows,
+          "clickhouse.summary.written_bytes": result.summary?.written_bytes,
+          "clickhouse.summary.total_rows_to_read": result.summary?.total_rows_to_read,
+          "clickhouse.summary.result_rows": result.summary?.result_rows,
+          "clickhouse.summary.result_bytes": result.summary?.result_bytes,
+          "clickhouse.summary.elapsed_ns": result.summary?.elapsed_ns,
+        });
+
+        return [null, result];
+      });
+    };
+  }
+}
+
+/**
+ * ClickHouse error types raised by a query that is valid but asks for more than
+ * it is allowed to spend. Only downgraded for SQL the caller wrote: a runaway
+ * query we generated is our bug and still has to alert.
+ */
+const CLICKHOUSE_QUOTA_ERROR_TYPES = new Set([
+  "MEMORY_LIMIT_EXCEEDED",
+  "TIMEOUT_EXCEEDED",
+  "TOO_SLOW",
+  "TOO_MANY_ROWS",
+  "TOO_MANY_BYTES",
+  "TOO_MANY_ROWS_OR_BYTES",
+]);
+
+/**
+ * ClickHouse error types that mean the SQL itself is wrong. Only treated as the
+ * caller's fault when the query was written by the caller — the same error on a
+ * query we generated is our bug and has to keep alerting.
+ */
+const CLICKHOUSE_INVALID_SQL_ERROR_TYPES = new Set([
+  "NOT_AN_AGGREGATE",
+  "ILLEGAL_AGGREGATION",
+  "UNKNOWN_IDENTIFIER",
+  "UNKNOWN_FUNCTION",
+  "UNKNOWN_TABLE",
+  "AMBIGUOUS_COLUMN_NAME",
+  "MULTIPLE_EXPRESSIONS_FOR_ALIAS",
+  "SYNTAX_ERROR",
+  "BAD_ARGUMENTS",
+  "TYPE_MISMATCH",
+  "NO_COMMON_TYPE",
+  "ILLEGAL_TYPE_OF_ARGUMENT",
+  "ILLEGAL_COLUMN",
+  "CANNOT_CONVERT_TYPE",
+  "CANNOT_PARSE_TEXT",
+  "CANNOT_PARSE_NUMBER",
+  "CANNOT_PARSE_DATE",
+  "CANNOT_PARSE_DATETIME",
+  "CANNOT_PARSE_INPUT_ASSERTION_FAILED",
+]);
+
+type ClickhouseErrorCategory = "quota" | "invalid-sql" | "fault";
+
+function classifyClickhouseError(
+  error: Error,
+  userAuthoredQuery: boolean | undefined
+): ClickhouseErrorCategory {
+  if (!userAuthoredQuery || !(error instanceof ClickHouseError) || error.type === undefined) {
+    return "fault";
+  }
+  if (CLICKHOUSE_QUOTA_ERROR_TYPES.has(error.type)) {
+    return "quota";
+  }
+  if (CLICKHOUSE_INVALID_SQL_ERROR_TYPES.has(error.type)) {
+    return "invalid-sql";
+  }
+  return "fault";
+}
+
+function toInsertError(error: Error): InsertError {
+  const rawMessage = error instanceof ClickHouseError ? error.rawMessage : undefined;
+  return new InsertError(error.message, { rawMessage });
+}
+
+function recordClickhouseError(span: Span, error: Error): void {
+  if (error instanceof ClickHouseError) {
+    span.setAttributes({
+      "clickhouse.error.code": error.code,
+      "clickhouse.error.message": error.message,
+      "clickhouse.error.type": error.type,
+    });
+  }
+  recordSpanError(span, error);
+}
+
+function convertLogLevelToClickhouseLogLevel(logLevel?: LogLevel): ClickHouseLogLevel {
+  switch (logLevel) {
+    case "debug":
+      return ClickHouseLogLevel.DEBUG;
+    case "info":
+      return ClickHouseLogLevel.INFO;
+    case "warn":
+      return ClickHouseLogLevel.WARN;
+    case "error":
+      return ClickHouseLogLevel.ERROR;
+    default:
+      return ClickHouseLogLevel.INFO;
+  }
+}

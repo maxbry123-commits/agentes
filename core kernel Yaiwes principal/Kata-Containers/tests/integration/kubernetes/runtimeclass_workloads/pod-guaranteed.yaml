@@ -1,0 +1,21 @@
+#
+# Copyright (c) 2018 Intel Corporation
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+apiVersion: v1
+kind: Pod
+metadata:
+  name: qos-test
+spec:
+  runtimeClassName: kata
+  securityContext:
+    supplementalGroups: [10]
+  containers:
+  - name: qos-guaranteed
+    image: quay.io/prometheus/busybox:latest
+    command: ["/bin/sh", "-c", "tail -f /dev/null"]
+    resources:
+      limits:
+        memory: "600Mi"
+        cpu: "700m"

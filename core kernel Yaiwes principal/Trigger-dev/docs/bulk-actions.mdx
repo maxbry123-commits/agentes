@@ -1,0 +1,77 @@
+---
+title: "Bulk actions in the dashboard"
+sidebarTitle: "Bulk actions"
+description: "Replay or cancel multiple runs from the dashboard using filters or selected run IDs."
+---
+
+**Bulk actions let you replay or cancel multiple runs asynchronously from the dashboard.**
+
+Use bulk actions when you need to retry failed runs after deploying a fix, or stop a group of queued or executing runs.
+
+<Note>
+  For backend code, see [Bulk actions with the SDK](/runs/bulk-actions).
+</Note>
+
+<video
+  src="https://content.trigger.dev/bulk-actions.mp4"
+  preload="auto"
+  controls={true}
+  loop
+  muted
+  autoPlay={true}
+  width="100%"
+  height="100%"
+/>
+
+## Create a bulk action in the dashboard
+
+<Steps>
+  <Step title="Open the bulk action panel">
+    Open the runs page and click **Bulk action** in the top right.
+
+    ![Open the bulk action panel from the runs page](/images/bulk-action-open-panel.png)
+  </Step>
+
+  <Step title="Choose the runs">
+    Filter the runs table to target a group of runs, or select individual runs from the table.
+  </Step>
+
+  <Step title="Configure the action">
+    Choose **Replay** or **Cancel**, add an optional name, then confirm the action.
+
+    ![Configure and create a bulk action](/images/bulk-action-create.png)
+  </Step>
+
+  <Step title="Track progress">
+    Open the bulk action page to see progress, view affected runs, or replay the action.
+
+    ![View bulk action progress](/images/bulk-action-page.png)
+  </Step>
+</Steps>
+
+<Note>
+  You can only cancel runs that are still cancelable, such as queued or executing runs. Runs that have already reached a final state cannot be canceled.
+</Note>
+
+
+## Create a bulk action from the SDK
+
+Use `runs.bulk.replay()` or `runs.bulk.cancel()` when you want to create a bulk action from your backend code.
+
+```ts Your backend code
+import { runs } from "@trigger.dev/sdk";
+
+const action = await runs.bulk.replay({
+  filter: {
+    status: "FAILED",
+    taskIdentifier: "sync-customer",
+    period: "24h",
+  },
+  name: "Replay failed customer syncs",
+});
+
+const completed = await runs.bulk.poll(action.id);
+console.log(completed.status, completed.counts);
+```
+
+See [Bulk actions with the SDK](/runs/bulk-actions) for canceling, listing, polling, and aborting bulk actions from your backend code.

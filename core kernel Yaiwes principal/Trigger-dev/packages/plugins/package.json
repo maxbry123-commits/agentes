@@ -1,0 +1,51 @@
+{
+  "name": "@trigger.dev/plugins",
+  "version": "4.5.2",
+  "description": "Plugin contracts and interfaces for Trigger.dev",
+  "license": "MIT",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/triggerdotdev/trigger.dev",
+    "directory": "packages/plugins"
+  },
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@trigger.dev/core": "workspace:*",
+    "neverthrow": "^8.2.0"
+  },
+  "scripts": {
+    "clean": "rimraf dist .turbo",
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "rimraf": "6.0.1",
+    "tsdown": "0.22.10",
+    "typescript": "catalog:"
+  },
+  "engines": {
+    "node": ">=18.20.0"
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "@triggerdotdev/source": "./src/index.ts",
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  }
+}

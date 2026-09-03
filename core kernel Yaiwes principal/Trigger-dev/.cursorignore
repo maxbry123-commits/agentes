@@ -1,0 +1,6 @@
+apps/proxy/
+packages/rsc/
+.changeset
+.zed
+.env
+!.env.example

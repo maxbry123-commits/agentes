@@ -1,0 +1,142 @@
+<template>
+    <div>
+        <canvas ref="canvasRef" />
+
+        <nav v-if="rendered">
+            <KsTooltip :content="$t('page.previous')" :showAfter="1500">
+                <KsButton @click="onPrevPage">
+                    <ChevronLeft />
+                </KsButton>
+            </KsTooltip>
+            <span>
+                {{ pageNum }}
+                {{ $t("of") }}
+                {{ pdfDoc?.numPages }}
+            </span>
+            <KsTooltip :content="$t('page.next')" :showAfter="1500">
+                <KsButton @click="onNextPage">
+                    <ChevronRight />
+                </KsButton>
+            </KsTooltip>
+        </nav>
+    </div>
+</template>
+
+<script setup lang="ts">
+    import {ref, shallowRef, computed, onMounted} from "vue"
+    import * as pdfjs from "pdfjs-dist"
+    import ChevronLeft from "vue-material-design-icons/ChevronLeft.vue"
+    import ChevronRight from "vue-material-design-icons/ChevronRight.vue"
+
+    const props = defineProps({
+        source: {
+            type: String,
+            required: true,
+        },
+    })
+
+    const pdfDoc = shallowRef<pdfjs.PDFDocumentProxy | undefined>(undefined)
+    const canvasRef = ref<HTMLCanvasElement | null>(null)
+
+    const pageNum = ref(1)
+    const rendered = ref(false)
+    const pageRendering = ref(false)
+    const pageNumPending = ref<number | undefined>(undefined)
+    const scale = ref(1.5)
+
+    const context = computed(() => {
+        return canvasRef.value?.getContext("2d") as CanvasRenderingContext2D
+    })
+
+    const getWorkerUrl = (): string => {
+        return new URL(
+            "pdfjs-dist/build/pdf.worker.min.mjs",
+            import.meta.url,
+        ).toString()
+    }
+
+    const renderPage = (num: number): void => {
+        pageRendering.value = true
+
+        pdfDoc.value?.getPage(num).then((page) => {
+            const viewport = page.getViewport({scale: scale.value})
+            
+            if (canvasRef.value) {
+                canvasRef.value.height = viewport.height
+                canvasRef.value.width = viewport.width
+
+                const renderContext = {
+                    canvasContext: context.value,
+                    viewport: viewport,
+                    canvas: canvasRef.value,
+                }
+                const renderTask = page.render(renderContext)
+
+                renderTask.promise.then(() => {
+                    rendered.value = true
+                    pageRendering.value = false
+
+                    if (pageNumPending.value !== undefined) {
+                        renderPage(pageNumPending.value)
+                        pageNumPending.value = undefined
+                    }
+                })
+            }
+        })
+    }
+
+    const initRender = (): void => {
+        const binaryString = atob(props.source)
+        const len = binaryString.length
+        const bytes = new Uint8Array(len)
+        for (let i = 0; i < len; i++) {
+            bytes[i] = binaryString.charCodeAt(i)
+        }
+
+        pdfjs.getDocument({data: bytes}).promise.then((pdf) => {
+            pdfDoc.value = pdf
+            renderPage(pageNum.value)
+        }, (error) => {
+            console.error("Failed to render PDF", error)
+        })
+    }
+
+    const queueRenderPage = (num: number): void => {
+        if (pageRendering.value) {
+            pageNumPending.value = num
+        } else {
+            renderPage(num)
+        }
+    }
+
+    const onPrevPage = (): void => {
+        if (pageNum.value <= 1) {
+            return
+        }
+        pageNum.value--
+        queueRenderPage(pageNum.value)
+    }
+
+    const onNextPage = (): void => {
+        if (pdfDoc.value && pageNum.value >= pdfDoc.value.numPages) {
+            return
+        }
+        pageNum.value++
+        queueRenderPage(pageNum.value)
+    }
+
+    onMounted(() => {
+        pdfjs.GlobalWorkerOptions.workerSrc = getWorkerUrl()
+        initRender()
+    })
+</script>
+
+<style scoped lang="scss">
+    nav {
+        display: flex;
+        gap: 1rem;
+        align-items: center;
+        justify-content: center;
+        margin-top: 0.5em;
+    }
+</style>

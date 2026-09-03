@@ -1,0 +1,433 @@
+// The MIT License (MIT)
+
+// Copyright (c) 2017-2020 Uber Technologies Inc.
+
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
+package metered
+
+import (
+	"context"
+	"errors"
+	"time"
+
+	"github.com/uber/cadence/common/backoff"
+	"github.com/uber/cadence/common/dynamicconfig/dynamicproperties"
+	"github.com/uber/cadence/common/log"
+	"github.com/uber/cadence/common/log/tag"
+	"github.com/uber/cadence/common/metrics"
+	"github.com/uber/cadence/common/persistence"
+	"github.com/uber/cadence/common/types"
+)
+
+// domainTagKey is the metric-tag key produced by metrics.DomainTag.
+// It is captured once at init so call() can decide between the overall
+// (persistence_requests) and per-domain (persistence_requests_per_domain)
+// metrics by inspecting tag content rather than tag count.
+var domainTagKey = metrics.DomainTag("").Key()
+
+// taskCategoryTagKey is the metric-tag key produced by metrics.TaskCategoryTag.
+// Base persistence metrics use task_category="none" for operations where the
+// concept does not apply, keeping label keys consistent with history-task calls.
+var taskCategoryTagKey = metrics.TaskCategoryTag("").Key()
+
+func hasDomainTag(tags []metrics.Tag) bool {
+	for _, t := range tags {
+		if t.Key() == domainTagKey {
+			return true
+		}
+	}
+	return false
+}
+
+func ensureTaskCategoryTag(tags []metrics.Tag) []metrics.Tag {
+	for _, t := range tags {
+		if t.Key() == taskCategoryTagKey {
+			return tags
+		}
+	}
+	return append(tags, metrics.TaskCategoryTag("none"))
+}
+
+// dropDomainTag removes any domain tag from tags. It exists for the row-count and
+// payload-size metrics (see emitRowCountMetrics/emitPayloadSizeMetrics), which -
+// unlike the request/latency family - use a single metric name across every
+// persistence operation rather than splitting into overall/per-domain variants.
+// getCustomMetricTags(req) is shared with that request/latency family and returns
+// a domain tag for some request types (e.g. ReadHistoryBranchRequest) and not
+// others; letting it through here would multiply these metrics' cardinality by
+// every domain in the cluster while duplicating the discrimination the built-in
+// operation tag already provides, and would collide with the metric registered by
+// the domain-less request types sharing the same metric name.
+func dropDomainTag(tags []metrics.Tag) []metrics.Tag {
+	filtered := make([]metrics.Tag, 0, len(tags))
+	for _, t := range tags {
+		if t.Key() != domainTagKey {
+			filtered = append(filtered, t)
+		}
+	}
+	return filtered
+}
+
+type base struct {
+	metricClient                  metrics.Client
+	logger                        log.Logger
+	enableLatencyHistogramMetrics bool
+	enableShardIDMetrics          dynamicproperties.BoolPropertyFn
+	hostName                      string
+}
+
+func (p *base) updateErrorMetricPerDomain(scope metrics.ScopeIdx, err error, scopeWithDomainTag metrics.Scope, logger log.Logger) {
+	logger = logger.Helper()
+
+	switch {
+	case errors.As(err, new(*types.DomainAlreadyExistsError)):
+		scopeWithDomainTag.IncCounter(metrics.PersistenceErrDomainAlreadyExistsCounterPerDomain)
+	case errors.As(err, new(*types.BadRequestError)):
+		scopeWithDomainTag.IncCounter(metrics.PersistenceErrBadRequestCounterPerDomain)
+	case errors.As(err, new(*persistence.WorkflowExecutionAlreadyStartedError)):
+		scopeWithDomainTag.IncCounter(metrics.PersistenceErrExecutionAlreadyStartedCounterPerDomain)
+	case errors.As(err, new(*persistence.ConditionFailedError)):
+		scopeWithDomainTag.IncCounter(metrics.PersistenceErrConditionFailedCounterPerDomain)
+	case errors.As(err, new(*persistence.CurrentWorkflowConditionFailedError)):
+		scopeWithDomainTag.IncCounter(metrics.PersistenceErrCurrentWorkflowConditionFailedCounterPerDomain)
+	case errors.As(err, new(*persistence.ShardAlreadyExistError)):
+		scopeWithDomainTag.IncCounter(metrics.PersistenceErrShardExistsCounterPerDomain)
+	case errors.As(err, new(*persistence.ShardOwnershipLostError)):
+		scopeWithDomainTag.IncCounter(metrics.PersistenceErrShardOwnershipLostCounterPerDomain)
+	case errors.As(err, new(*types.EntityNotExistsError)):
+		scopeWithDomainTag.IncCounter(metrics.PersistenceErrEntityNotExistsCounterPerDomain)
+	case errors.As(err, new(*persistence.DuplicateRequestError)):
+		scopeWithDomainTag.IncCounter(metrics.PersistenceErrDuplicateRequestCounterPerDomain)
+	case errors.As(err, new(*persistence.TimeoutError)):
+		scopeWithDomainTag.IncCounter(metrics.PersistenceErrTimeoutCounterPerDomain)
+		scopeWithDomainTag.IncCounter(metrics.PersistenceFailuresPerDomain)
+	case errors.As(err, new(*types.ServiceBusyError)):
+		scopeWithDomainTag.IncCounter(metrics.PersistenceErrBusyCounterPerDomain)
+		scopeWithDomainTag.IncCounter(metrics.PersistenceFailuresPerDomain)
+	case errors.As(err, new(*persistence.DBUnavailableError)):
+		scopeWithDomainTag.IncCounter(metrics.PersistenceErrDBUnavailableCounterPerDomain)
+		scopeWithDomainTag.IncCounter(metrics.PersistenceFailuresPerDomain)
+		logger.Error("DBUnavailable Error:", tag.Error(err), tag.MetricScope(int(scope)))
+	default:
+		logger.Error("Operation failed with internal error.", tag.Error(err), tag.MetricScope(int(scope)))
+		scopeWithDomainTag.IncCounter(metrics.PersistenceFailuresPerDomain)
+	}
+}
+
+func (p *base) updateErrorMetric(scope metrics.ScopeIdx, err error, metricsScope metrics.Scope, logger log.Logger) {
+	logger = logger.Helper()
+
+	switch {
+	case errors.As(err, new(*types.DomainAlreadyExistsError)):
+		metricsScope.IncCounter(metrics.PersistenceErrDomainAlreadyExistsCounter)
+	case errors.As(err, new(*types.BadRequestError)):
+		metricsScope.IncCounter(metrics.PersistenceErrBadRequestCounter)
+	case errors.As(err, new(*persistence.WorkflowExecutionAlreadyStartedError)):
+		metricsScope.IncCounter(metrics.PersistenceErrExecutionAlreadyStartedCounter)
+	case errors.As(err, new(*persistence.ConditionFailedError)):
+		metricsScope.IncCounter(metrics.PersistenceErrConditionFailedCounter)
+	case errors.As(err, new(*persistence.CurrentWorkflowConditionFailedError)):
+		metricsScope.IncCounter(metrics.PersistenceErrCurrentWorkflowConditionFailedCounter)
+	case errors.As(err, new(*persistence.ShardAlreadyExistError)):
+		metricsScope.IncCounter(metrics.PersistenceErrShardExistsCounter)
+	case errors.As(err, new(*persistence.ShardOwnershipLostError)):
+		metricsScope.IncCounter(metrics.PersistenceErrShardOwnershipLostCounter)
+	case errors.As(err, new(*types.EntityNotExistsError)):
+		metricsScope.IncCounter(metrics.PersistenceErrEntityNotExistsCounter)
+	case errors.As(err, new(*persistence.DuplicateRequestError)):
+		metricsScope.IncCounter(metrics.PersistenceErrDuplicateRequestCounter)
+	case errors.As(err, new(*persistence.TimeoutError)):
+		metricsScope.IncCounter(metrics.PersistenceErrTimeoutCounter)
+		metricsScope.IncCounter(metrics.PersistenceFailures)
+	case errors.As(err, new(*types.ServiceBusyError)):
+		metricsScope.IncCounter(metrics.PersistenceErrBusyCounter)
+		metricsScope.IncCounter(metrics.PersistenceFailures)
+	case errors.As(err, new(*persistence.DBUnavailableError)):
+		metricsScope.IncCounter(metrics.PersistenceErrDBUnavailableCounter)
+		metricsScope.IncCounter(metrics.PersistenceFailures)
+		logger.Error("DBUnavailable Error:", tag.Error(err), tag.MetricScope(int(scope)))
+	default:
+		logger.Error("Operation failed with internal error.", tag.Error(err), tag.MetricScope(int(scope)))
+		metricsScope.IncCounter(metrics.PersistenceFailures)
+	}
+}
+
+func (p *base) recordLatencyHistogram(scope metrics.ScopeIdx, duration time.Duration) {
+	// this is a new metrics that we want to emit alongside with the current ongoing histogram migration
+	if p.hostName != "" {
+		p.metricClient.Scope(metrics.PersistencePerHostScope, metrics.HostTag(p.hostName)).RecordHistogramDuration(metrics.PersistenceLatencyHistogramPerHost, duration)
+	}
+	if !p.enableLatencyHistogramMetrics {
+		return
+	}
+	p.metricClient.Scope(scope).RecordHistogramDuration(metrics.PersistenceLatencyManualHistogram, duration)
+
+}
+
+func (p *base) call(scope metrics.ScopeIdx, op func() error, tags ...metrics.Tag) error {
+	perDomain := hasDomainTag(tags)
+	if !perDomain {
+		tags = ensureTaskCategoryTag(tags)
+	}
+	metricsScope := p.metricClient.Scope(scope, tags...)
+	if perDomain {
+		metricsScope.IncCounter(metrics.PersistenceRequestsPerDomain)
+	} else {
+		metricsScope.IncCounter(metrics.PersistenceRequests)
+	}
+	before := time.Now()
+	err := op()
+	duration := time.Since(before)
+	if perDomain {
+		metricsScope.RecordTimer(metrics.PersistenceLatencyPerDomain, duration)
+		metricsScope.ExponentialHistogram(metrics.PersistenceLatencyPerDomainHistogram, duration)
+	} else {
+		metricsScope.RecordTimer(metrics.PersistenceLatency, duration)
+		metricsScope.ExponentialHistogram(metrics.PersistenceLatencyHistogram, duration)
+	}
+	p.recordLatencyHistogram(scope, duration)
+
+	logger := p.logger.Helper()
+	if err != nil {
+		if perDomain {
+			p.updateErrorMetricPerDomain(scope, err, metricsScope, logger)
+		} else {
+			p.updateErrorMetric(scope, err, metricsScope, logger)
+		}
+	}
+	return err
+}
+
+func (p *base) callWithoutDomainTag(scope metrics.ScopeIdx, op func() error, tags ...metrics.Tag) error {
+	tags = ensureTaskCategoryTag(tags)
+	metricsScope := p.metricClient.Scope(scope, tags...)
+	metricsScope.IncCounter(metrics.PersistenceRequests)
+	before := time.Now()
+	err := op()
+	duration := time.Since(before)
+	metricsScope.RecordTimer(metrics.PersistenceLatency, duration)
+	metricsScope.ExponentialHistogram(metrics.PersistenceLatencyHistogram, duration)
+	p.recordLatencyHistogram(scope, duration)
+
+	if err != nil {
+		p.updateErrorMetric(scope, err, metricsScope, p.logger.Helper())
+	}
+	return err
+}
+
+func (p *base) callWithDomainAndShardScope(scope metrics.ScopeIdx, op func() error, domainTag metrics.Tag, shardIDTag metrics.Tag, additionalTags ...metrics.Tag) error {
+	overallScope := p.metricClient.Scope(scope, ensureTaskCategoryTag(additionalTags)...)
+	domainMetricsScope := p.metricClient.Scope(scope, append([]metrics.Tag{domainTag}, additionalTags...)...)
+	shardOperationsMetricsScope := p.metricClient.Scope(scope, append([]metrics.Tag{shardIDTag}, additionalTags...)...)
+	shardOverallMetricsScope := p.metricClient.Scope(metrics.PersistenceShardRequestCountScope, append([]metrics.Tag{shardIDTag}, additionalTags...)...)
+
+	domainMetricsScope.IncCounter(metrics.PersistenceRequestsPerDomain)
+	shardOperationsMetricsScope.IncCounter(metrics.PersistenceRequestsPerShard)
+	shardOverallMetricsScope.IncCounter(metrics.PersistenceRequestsPerShard)
+
+	before := time.Now()
+	err := op()
+	duration := time.Since(before)
+
+	domainMetricsScope.RecordTimer(metrics.PersistenceLatencyPerDomain, duration)
+	domainMetricsScope.ExponentialHistogram(metrics.PersistenceLatencyPerDomainHistogram, duration)
+	overallScope.ExponentialHistogram(metrics.PersistenceLatencyHistogram, duration)
+	shardOperationsMetricsScope.RecordTimer(metrics.PersistenceLatencyPerShard, duration)
+	shardOperationsMetricsScope.ExponentialHistogram(metrics.PersistenceLatencyPerShardHistogram, duration)
+
+	shardOverallMetricsScope.RecordTimer(metrics.PersistenceLatencyPerShard, duration)
+	shardOverallMetricsScope.ExponentialHistogram(metrics.PersistenceLatencyPerShardHistogram, duration)
+	p.recordLatencyHistogram(scope, duration)
+
+	if err != nil {
+		p.updateErrorMetricPerDomain(scope, err, domainMetricsScope, p.logger.Helper())
+	}
+	return err
+}
+
+type lengther interface {
+	Len() int
+}
+
+type sizer interface {
+	ByteSize() uint64
+}
+
+type taggedRequest interface {
+	MetricTags() []metrics.Tag
+}
+
+type extraLogRequest interface {
+	GetExtraLogTags() []tag.Tag
+}
+
+// rowMetricTags builds the tag set shared by the row-count and payload-size
+// metrics: task_category is always present (defaulted like the request/latency
+// family), while domain is deliberately excluded — see dropDomainTag.
+func rowMetricTags(req any) []metrics.Tag {
+	return ensureTaskCategoryTag(dropDomainTag(getCustomMetricTags(req)))
+}
+
+func (p *base) emitRowCountMetrics(methodName string, req any, res any) {
+	scope, ok := emptyCountedMethods[methodName]
+	if !ok {
+		// Method is not counted as empty.
+		return
+	}
+
+	resLen, ok := res.(lengther)
+	if !ok {
+		return
+	}
+
+	metricScope := p.metricClient.Scope(scope.scope, rowMetricTags(req)...)
+
+	if resLen.Len() == 0 {
+		metricScope.IncCounter(metrics.PersistenceEmptyResponseCounter)
+	} else {
+		metricScope.RecordHistogramValue(metrics.PersistenceResponseRowSize, float64(resLen.Len()))
+	}
+}
+
+func (p *base) emitPayloadSizeMetrics(methodName string, req any, res any) {
+	scope, ok := payloadSizeEmittingMethods[methodName]
+	if !ok {
+		return
+	}
+
+	resSize, ok := res.(sizer)
+	if !ok {
+		return
+	}
+
+	metricScope := p.metricClient.Scope(scope.scope, rowMetricTags(req)...)
+	metricScope.RecordHistogramValue(metrics.PersistenceResponsePayloadSize, float64(resSize.ByteSize()))
+}
+
+func (p *base) emptyMetric(methodName string, req any, res any, err error) {
+	if err != nil {
+		return
+	}
+
+	p.emitRowCountMetrics(methodName, req, res)
+	p.emitPayloadSizeMetrics(methodName, req, res)
+}
+
+var emptyCountedMethods = map[string]struct {
+	scope metrics.ScopeIdx
+}{
+	"ExecutionManager.ListCurrentExecutions": {
+		scope: metrics.PersistenceListCurrentExecutionsScope,
+	},
+	"ExecutionManager.GetReplicationTasksFromDLQ": {
+		scope: metrics.PersistenceGetReplicationTasksFromDLQScope,
+	},
+	"ExecutionManager.GetHistoryTasks": {
+		scope: metrics.PersistenceGetHistoryTasksScope,
+	},
+	"TaskManager.GetTasks": {
+		scope: metrics.PersistenceGetTasksScope,
+	},
+	"DomainManager.ListDomains": {
+		scope: metrics.PersistenceListDomainsScope,
+	},
+	"HistoryManager.ReadHistoryBranch": {
+		scope: metrics.PersistenceReadHistoryBranchScope,
+	},
+	"HistoryManager.GetAllHistoryTreeBranches": {
+		scope: metrics.PersistenceGetAllHistoryTreeBranchesScope,
+	},
+	"QueueManager.ReadMessages": {
+		scope: metrics.PersistenceReadMessagesScope,
+	},
+}
+
+var payloadSizeEmittingMethods = map[string]struct {
+	scope metrics.ScopeIdx
+}{
+	"ExecutionManager.ListCurrentExecutions": {
+		scope: metrics.PersistenceListCurrentExecutionsScope,
+	},
+	"ExecutionManager.GetReplicationTasksFromDLQ": {
+		scope: metrics.PersistenceGetReplicationTasksFromDLQScope,
+	},
+	"ExecutionManager.GetHistoryTasks": {
+		scope: metrics.PersistenceGetHistoryTasksScope,
+	},
+	"TaskManager.GetTasks": {
+		scope: metrics.PersistenceGetTasksScope,
+	},
+	"DomainManager.ListDomains": {
+		scope: metrics.PersistenceListDomainsScope,
+	},
+	"HistoryManager.ReadRawHistoryBranch": {
+		scope: metrics.PersistenceReadRawHistoryBranchScope,
+	},
+	"HistoryManager.GetAllHistoryTreeBranches": {
+		scope: metrics.PersistenceGetAllHistoryTreeBranchesScope,
+	},
+	"QueueManager.ReadMessages": {
+		scope: metrics.PersistenceReadMessagesScope,
+	},
+}
+
+type domainTaggedRequest interface {
+	GetDomainName() string
+}
+
+type shardIDTaggedRequest interface {
+	GetShardID() *int
+}
+
+func getDomainNameFromRequest(req any) (res string, check bool) {
+	d, check := req.(domainTaggedRequest)
+	if check {
+		res = d.GetDomainName()
+	}
+	return res, check
+}
+
+func getShardIDFromRequest(req any) (res *int, check bool) {
+	s, check := req.(shardIDTaggedRequest)
+	if check {
+		res = s.GetShardID()
+	}
+	return res, check
+}
+
+func getCustomLogTags(req any) (res []tag.Tag) {
+	d, check := req.(extraLogRequest)
+	if check {
+		res = d.GetExtraLogTags()
+	}
+	return res
+}
+
+func getCustomMetricTags(req any) (res []metrics.Tag) {
+	d, check := req.(taggedRequest)
+	if check {
+		res = d.MetricTags()
+	}
+	return res
+}
+
+func getRetryCountFromContext(ctx context.Context) int {
+	return backoff.GetRetryCountFromContext(ctx)
+}

@@ -1,0 +1,1275 @@
+package io.kestra.core.docs;
+
+import java.lang.reflect.*;
+import java.time.Duration;
+import java.time.LocalTime;
+import java.time.ZoneId;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Predicate;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
+
+import com.fasterxml.classmate.ResolvedType;
+import com.fasterxml.classmate.members.HierarchicType;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.node.TextNode;
+import com.github.victools.jsonschema.generator.*;
+import com.github.victools.jsonschema.generator.impl.DefinitionKey;
+import com.github.victools.jsonschema.generator.naming.DefaultSchemaDefinitionNamingStrategy;
+import com.github.victools.jsonschema.module.jackson.JacksonModule;
+import com.github.victools.jsonschema.module.jackson.JacksonOption;
+import com.github.victools.jsonschema.module.jackson.JsonUnwrappedDefinitionProvider;
+import com.github.victools.jsonschema.module.jakarta.validation.JakartaValidationModule;
+import com.github.victools.jsonschema.module.jakarta.validation.JakartaValidationOption;
+import com.github.victools.jsonschema.module.swagger2.Swagger2Module;
+import com.google.common.collect.ImmutableMap;
+
+import io.kestra.core.models.annotations.Plugin;
+import io.kestra.core.models.annotations.PluginProperty;
+import io.kestra.core.models.assets.Asset;
+import io.kestra.core.models.assets.AssetExporter;
+import io.kestra.core.models.dashboards.DataFilter;
+import io.kestra.core.models.dashboards.DataFilterKPI;
+import io.kestra.core.models.dashboards.charts.Chart;
+import io.kestra.core.models.dashboards.charts.DataChart;
+import io.kestra.core.models.dashboards.charts.DataChartKPI;
+import io.kestra.core.models.enums.MonacoLanguages;
+import io.kestra.core.models.property.Data;
+import io.kestra.core.models.property.Property;
+import io.kestra.core.models.tasks.Output;
+import io.kestra.core.models.tasks.Task;
+import io.kestra.core.models.tasks.common.EncryptedString;
+import io.kestra.core.models.tasks.logs.LogExporter;
+import io.kestra.core.models.tasks.runners.TaskRunner;
+import io.kestra.core.models.triggers.AbstractTrigger;
+import io.kestra.core.plugins.AdditionalPlugin;
+import io.kestra.core.plugins.PluginRegistry;
+import io.kestra.core.plugins.RegisteredPlugin;
+import io.kestra.core.preview.FileRenderer;
+import io.kestra.core.serializers.JacksonMapper;
+import io.kestra.core.validations.TimezoneId;
+
+import io.micronaut.core.annotation.Nullable;
+import io.swagger.v3.oas.annotations.Hidden;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
+import lombok.extern.slf4j.Slf4j;
+
+import static io.kestra.core.docs.AbstractClassDocumentation.flattenWithoutType;
+import static io.kestra.core.docs.AbstractClassDocumentation.required;
+import static io.kestra.core.serializers.JacksonMapper.MAP_TYPE_REFERENCE;
+
+@Singleton
+@Slf4j
+public class JsonSchemaGenerator {
+
+    private static final List<Class<?>> SUBTYPE_RESOLUTION_EXCLUSION_FOR_PLUGIN_SCHEMA = List.of(Task.class, AbstractTrigger.class);
+
+    private static final ObjectMapper MAPPER = JacksonMapper.ofJson().copy()
+        .configure(SerializationFeature.WRITE_DURATIONS_AS_TIMESTAMPS, false);
+
+    private static final ObjectMapper YAML_MAPPER = JacksonMapper.ofYaml().copy()
+        .configure(SerializationFeature.WRITE_DURATIONS_AS_TIMESTAMPS, false);
+
+    private static final List<String> AVAILABLE_ZONE_IDS = Stream
+        .concat(ZoneId.getAvailableZoneIds().stream(), ZoneId.SHORT_IDS.keySet().stream())
+        .distinct()
+        .sorted()
+        .toList();
+
+    // Matches the offset-style timezone strings ZoneId.of() accepts but that are not in getAvailableZoneIds():
+    // `Z`, `+HH[:MM[:SS]]`, and `(UTC|GMT|UT)[+-]HH[:MM[:SS]]`.
+    private static final String TIMEZONE_OFFSET_PATTERN = "^(Z|[+-]\\d{2}(:?\\d{2})?(:?\\d{2})?|(UTC|GMT|UT)[+-]\\d{2}(:?\\d{2})?(:?\\d{2})?)$";
+
+    private final PluginRegistry pluginRegistry;
+
+    @Inject
+    public JsonSchemaGenerator(final PluginRegistry pluginRegistry) {
+        this.pluginRegistry = pluginRegistry;
+    }
+
+    Map<Class<?>, Object> defaultInstances = new ConcurrentHashMap<>();
+
+    public <T> Map<String, Object> schemas(Class<? extends T> cls) {
+        return this.schemas(cls, false);
+    }
+
+    private void replaceOneOfWithAnyOf(ObjectNode objectNode) {
+        objectNode.findParents("oneOf").forEach(jsonNode ->
+        {
+            if (jsonNode instanceof ObjectNode oNode) {
+                oNode.set("anyOf", oNode.remove("oneOf"));
+            }
+        });
+    }
+
+    public <T> Map<String, Object> schemas(Class<? extends T> cls, boolean arrayOf) {
+        return this.schemas(cls, arrayOf, Collections.emptyList());
+    }
+
+    public <T> Map<String, Object> schemas(Class<? extends T> cls, boolean arrayOf, List<String> allowedPluginTypes) {
+        return this.schemas(cls, arrayOf, allowedPluginTypes, false);
+    }
+
+    public <T> Map<String, Object> schemas(Class<? extends T> cls, boolean arrayOf, List<String> allowedPluginTypes, boolean withOutputs) {
+        SchemaGeneratorConfigBuilder builder = new SchemaGeneratorConfigBuilder(
+            SchemaVersion.DRAFT_7,
+            OptionPreset.PLAIN_JSON
+        );
+
+        this.build(builder, true, allowedPluginTypes, withOutputs);
+
+        SchemaGeneratorConfig schemaGeneratorConfig = builder.build();
+
+        SchemaGenerator generator = new SchemaGenerator(schemaGeneratorConfig);
+        try {
+            ObjectNode objectNode = generator.generateSchema(cls);
+            if (arrayOf) {
+                objectNode.put("type", "array");
+            }
+            replaceOneOfWithAnyOf(objectNode);
+            pullDocumentationAndDefaultFromAnyOf(objectNode);
+            removeRequiredOnPropsWithDefaults(objectNode);
+
+            // Strip edition-restricted input types before collapsing discriminator wrappers: the
+            // strip logic removes a whole allOf branch (the one carrying the `type` const), which
+            // only works while that branch is still a separate array entry. Collapsing first would
+            // inline it into a flat object, leaving no branch for the strip step to remove.
+            Map<String, Object> schema = MAPPER.convertValue(objectNode, MAP_TYPE_REFERENCE);
+            stripEditionRestrictedInputTypes(schema, cls);
+
+            objectNode = MAPPER.convertValue(schema, ObjectNode.class);
+            collapseSingleUseDiscriminatorWrappers(objectNode);
+
+            return MAPPER.convertValue(objectNode, MAP_TYPE_REFERENCE);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Unable to generate jsonschema for '" + cls.getName() + "'", e);
+        }
+    }
+
+    /**
+     * Strip edition-restricted input types (those excluded by {@link #includeInputSubtype}, i.e. {@code @EeOnly} ones
+     * such as {@code REUSABLE_INPUTS}) from the generated flow schema. The {@code Type} enum is carried in two places:
+     * the {@code enum} arrays (the {@code type} discriminator and {@code ArrayInput.itemType}) AND the polymorphic
+     * {@code anyOf}/{@code oneOf}/{@code allOf} discriminator branches ({@code {properties:{type:{const:...}}}}); both
+     * must be pruned. Open-source removes the {@code @EeOnly} types; the Enterprise override of
+     * {@code includeInputSubtype} keeps them all, so the excluded set is empty here (no-op).
+     */
+    private void stripEditionRestrictedInputTypes(Object node, Class<?> cls) {
+        Set<String> excluded = this.excludedInputTypes(cls);
+
+        if (!excluded.isEmpty()) {
+            stripEditionRestrictedInputTypes(node, excluded);
+        }
+    }
+
+    /**
+     * The input type names to strip from the schema generated for {@code cls}, by default the ones
+     * {@link #includeInputSubtype} rejects for this edition. Override to exclude a type for one schema only; it is
+     * applied before discriminator wrappers are collapsed, which a caller stripping the returned map cannot do.
+     */
+    protected Set<String> excludedInputTypes(Class<?> cls) {
+        return Arrays.stream(io.kestra.core.models.flows.Type.values())
+            .filter(type -> !this.includeInputSubtype(type.cls()))
+            .map(Enum::name)
+            .collect(Collectors.toSet());
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void stripEditionRestrictedInputTypes(Object node, Set<String> excluded) {
+        if (node instanceof Map<?, ?> rawMap) {
+            Map<String, Object> map = (Map<String, Object>) rawMap;
+
+            if (map.get("enum") instanceof List<?> enumValues) {
+                enumValues.removeIf(value -> excluded.contains(String.valueOf(value)));
+            }
+            for (String key : List.of("anyOf", "oneOf", "allOf")) {
+                if (map.get(key) instanceof List<?> branches) {
+                    branches.removeIf(branch -> isExcludedDiscriminatorBranch(branch, excluded));
+                }
+            }
+            map.values().forEach(value -> stripEditionRestrictedInputTypes(value, excluded));
+        } else if (node instanceof List<?> list) {
+            list.forEach(value -> stripEditionRestrictedInputTypes(value, excluded));
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static boolean isExcludedDiscriminatorBranch(Object branch, Set<String> excluded) {
+        if (
+            branch instanceof Map<?, ?> map
+                && ((Map<String, Object>) map).get("properties") instanceof Map<?, ?> properties
+                && ((Map<String, Object>) properties).get("type") instanceof Map<?, ?> type
+        ) {
+            return excluded.contains(String.valueOf(((Map<String, Object>) type).get("const")));
+        }
+        return false;
+    }
+
+    /**
+     * For a polymorphic property, the generator emits two definitions per subtype: a plain
+     * {@code <Class>} object, and a {@code <Class>-2} wrapper ({@code allOf: [{$ref: <Class>-1}, {
+     * required: ["type"], ...}]}) carrying the discriminator {@code required} needed to use it as
+     * an {@code anyOf} branch. When the plain definition is referenced from nowhere else, keeping
+     * it separate only adds an indirection with no reuse benefit — inline it into its wrapper and
+     * drop it, cutting the schema's definition count without changing what it validates.
+     */
+    private void collapseSingleUseDiscriminatorWrappers(ObjectNode objectNode) {
+        if (!(objectNode.get("definitions") instanceof ObjectNode definitions)) {
+            return;
+        }
+
+        Map<String, Integer> refCounts = new HashMap<>();
+        countRefs(objectNode, refCounts);
+
+        List<String> baseKeysToRemove = new ArrayList<>();
+        definitions.properties().forEach(entry ->
+        {
+            String wrapperKey = entry.getKey();
+            if (
+                !(entry.getValue() instanceof ObjectNode wrapper)
+                    || !(wrapper.get("allOf") instanceof ArrayNode allOf) || allOf.size() != 2
+                    || !(allOf.get(0) instanceof ObjectNode firstBranch) || firstBranch.size() != 1
+                    || !(firstBranch.get("$ref") instanceof TextNode refNode)
+                    || !(allOf.get(1) instanceof ObjectNode extra)
+            ) {
+                return;
+            }
+
+            String ref = refNode.asText();
+            String baseKey = ref.substring(ref.lastIndexOf('/') + 1);
+            if (
+                baseKey.equals(wrapperKey)
+                    || !(definitions.get(baseKey) instanceof ObjectNode base)
+                    || refCounts.getOrDefault(ref, 0) != 1
+            ) {
+                return;
+            }
+
+            definitions.set(wrapperKey, mergeAllOfBranches(base, extra));
+            baseKeysToRemove.add(baseKey);
+        });
+
+        baseKeysToRemove.forEach(definitions::remove);
+    }
+
+    /** Merges {@code extra} onto a copy of {@code base}, unioning {@code properties}/{@code required} instead of overwriting them. */
+    private static ObjectNode mergeAllOfBranches(ObjectNode base, ObjectNode extra) {
+        ObjectNode merged = base.deepCopy();
+        extra.properties().forEach(entry ->
+        {
+            String key = entry.getKey();
+            JsonNode extraValue = entry.getValue();
+
+            if (key.equals("properties") && merged.get("properties") instanceof ObjectNode baseProps && extraValue instanceof ObjectNode extraProps) {
+                ObjectNode mergedProps = baseProps.deepCopy();
+                extraProps.properties().forEach(p -> mergedProps.set(p.getKey(), p.getValue()));
+                merged.set("properties", mergedProps);
+            } else if (key.equals("required") && merged.get("required") instanceof ArrayNode baseRequired && extraValue instanceof ArrayNode extraRequired) {
+                ArrayNode mergedRequired = baseRequired.deepCopy();
+                Set<String> existing = new HashSet<>();
+                mergedRequired.forEach(n -> existing.add(n.asText()));
+                extraRequired.forEach(n ->
+                {
+                    if (existing.add(n.asText())) {
+                        mergedRequired.add(n);
+                    }
+                });
+                merged.set("required", mergedRequired);
+            } else {
+                merged.set(key, extraValue);
+            }
+        });
+        return merged;
+    }
+
+    private static void countRefs(JsonNode node, Map<String, Integer> counts) {
+        if (node instanceof ObjectNode obj) {
+            obj.properties().forEach(entry ->
+            {
+                if (entry.getKey().equals("$ref") && entry.getValue() instanceof TextNode ref) {
+                    counts.merge(ref.asText(), 1, Integer::sum);
+                } else {
+                    countRefs(entry.getValue(), counts);
+                }
+            });
+        } else if (node instanceof ArrayNode arr) {
+            arr.forEach(child -> countRefs(child, counts));
+        }
+    }
+
+    private void removeRequiredOnPropsWithDefaults(ObjectNode objectNode) {
+        objectNode.findParents("required").forEach(jsonNode ->
+        {
+            if (
+                jsonNode instanceof ObjectNode clazzSchema && clazzSchema.get("required") instanceof ArrayNode requiredPropsNode
+                    && clazzSchema.get("properties") instanceof ObjectNode properties
+            ) {
+                List<String> requiredFieldValues = StreamSupport.stream(requiredPropsNode.spliterator(), false)
+                    .map(JsonNode::asText)
+                    .collect(Collectors.toList());
+
+                properties.properties().forEach(e ->
+                {
+                    int indexInRequiredArray = requiredFieldValues.indexOf(e.getKey());
+                    if (indexInRequiredArray != -1 && e.getValue() instanceof ObjectNode valueNode && valueNode.has("default")) {
+                        requiredPropsNode.remove(indexInRequiredArray);
+                        requiredFieldValues.remove(indexInRequiredArray);
+                    }
+                });
+
+                if (requiredPropsNode.isEmpty()) {
+                    clazzSchema.remove("required");
+                }
+            }
+        });
+
+        // do the same for all definitions
+        if (objectNode.get("definitions") instanceof ObjectNode definitions) {
+            definitions.forEach(jsonNode ->
+            {
+                if (jsonNode instanceof ObjectNode definition) {
+                    removeRequiredOnPropsWithDefaults(definition);
+                }
+            });
+        }
+    }
+
+    // This hack exists because for Property we generate a anyOf for properties that are not strings.
+    // By default, the 'default' is in each anyOf which Monaco editor didn't take into account.
+    // So, we pull off the 'default' from any of the anyOf to the parent.
+    // same thing for documentation fields: 'title', 'description', '$deprecated'
+    private void pullDocumentationAndDefaultFromAnyOf(ObjectNode objectNode) {
+        objectNode.findParents("anyOf").forEach(jsonNode ->
+        {
+            if (jsonNode instanceof ObjectNode oNode) {
+                JsonNode anyOf = oNode.get("anyOf");
+                if (anyOf instanceof ArrayNode arrayNode) {
+                    Iterator<JsonNode> it = arrayNode.elements();
+                    var nodesToPullUp = new HashMap<String, Optional<JsonNode>>(
+                        Map.ofEntries(
+                            Map.entry("default", Optional.empty()),
+                            Map.entry("title", Optional.empty()),
+                            Map.entry("description", Optional.empty()),
+                            Map.entry("$deprecated", Optional.empty()),
+                            Map.entry("$group", Optional.empty()),
+                            Map.entry("$index", Optional.empty())
+                        )
+                    );
+                    // find nodes to pull up
+                    while (it.hasNext() && nodesToPullUp.containsValue(Optional.<JsonNode> empty())) {
+                        JsonNode next = it.next();
+                        if (next instanceof ObjectNode nextAsObj) {
+                            nodesToPullUp.entrySet().stream()
+                                .filter(node -> node.getValue().isEmpty())
+                                .forEach(
+                                    node -> node
+                                        .setValue(
+                                            Optional.ofNullable(
+                                                nextAsObj.get(node.getKey())
+                                            )
+                                        )
+                                );
+                        }
+                    }
+                    // create nodes on parent
+                    nodesToPullUp.entrySet().stream()
+                        .filter(node -> node.getValue().isPresent())
+                        .forEach(node -> oNode.set(node.getKey(), node.getValue().get()));
+                }
+            }
+        });
+    }
+
+    private void mutateDescription(ObjectNode collectedTypeAttributes) {
+        if (collectedTypeAttributes.has("description")) {
+            collectedTypeAttributes.set("markdownDescription", collectedTypeAttributes.get("description"));
+            collectedTypeAttributes.remove("description");
+        }
+
+        if (collectedTypeAttributes.has("description")) {
+            collectedTypeAttributes.set("markdownDescription", collectedTypeAttributes.get("description"));
+            collectedTypeAttributes.remove("description");
+        }
+
+        if (collectedTypeAttributes.has("default")) {
+            StringBuilder sb = new StringBuilder();
+            if (collectedTypeAttributes.has("markdownDescription")) {
+                sb.append(collectedTypeAttributes.get("markdownDescription").asText());
+                sb.append("\n\n");
+            }
+
+            try {
+                sb.append("Default value is : `")
+                    .append(YAML_MAPPER.writeValueAsString(collectedTypeAttributes.get("default")).trim())
+                    .append("`");
+            } catch (JsonProcessingException ignored) {
+
+            }
+
+            collectedTypeAttributes.set("markdownDescription", new TextNode(sb.toString()));
+        }
+    }
+
+    public <T> Map<String, Object> properties(Class<T> base, Class<? extends T> cls) {
+        return this.generate(cls, base);
+    }
+
+    public <T> Map<String, Object> outputs(Class<T> base, Class<? extends T> cls) {
+        List<Class<?>> superClass = new ArrayList<>();
+
+        for (Class<?> c = cls; c != null; c = c.getSuperclass()) {
+            if (c == base) {
+                break;
+            }
+
+            superClass.add(c);
+        }
+
+        return superClass
+            .stream()
+            .flatMap(r -> Arrays.stream(r.getGenericInterfaces()))
+            .filter(type -> type instanceof ParameterizedType)
+            .map(type -> (ParameterizedType) type)
+            .flatMap(parameterizedType -> Arrays.stream(parameterizedType.getActualTypeArguments()))
+            .filter(type -> type instanceof Class)
+            .map(type -> (Class<?>) type)
+            .filter(Output.class::isAssignableFrom)
+            .findFirst()
+            .map(c -> this.generate(c, null))
+            .orElse(ImmutableMap.of());
+    }
+
+    protected void build(SchemaGeneratorConfigBuilder builder, boolean draft7) {
+        this.build(builder, draft7, Collections.emptyList());
+    }
+
+    protected void build(SchemaGeneratorConfigBuilder builder, boolean draft7, List<String> allowedPluginTypes) {
+        this.build(builder, draft7, allowedPluginTypes, false);
+    }
+
+    protected void build(SchemaGeneratorConfigBuilder builder, boolean draft7, List<String> allowedPluginTypes, boolean withOutputs) {
+        //        builder.withObjectMapper(builder.getObjectMapper().configure(SerializationFeature.WRITE_DURATIONS_AS_TIMESTAMPS, false));
+        builder
+            .with(
+                new JakartaValidationModule(
+                    JakartaValidationOption.NOT_NULLABLE_METHOD_IS_REQUIRED,
+                    JakartaValidationOption.NOT_NULLABLE_FIELD_IS_REQUIRED,
+                    JakartaValidationOption.INCLUDE_PATTERN_EXPRESSIONS
+                )
+            )
+            .with(new Swagger2Module() {
+                @Override
+                protected List<ResolvedType> resolveTargetTypeOverrides(MemberScope<?, ?> member) {
+                    Schema schema = member.getAnnotationConsideringFieldAndGetter(Schema.class);
+                    if (
+                        schema != null && schema.implementation() == Object.class
+                            && member.getDeclaredType().getErasedType() == io.kestra.core.models.tasks.retrys.AbstractRetry.class
+                    ) {
+                        return null;
+                    }
+                    return super.resolveTargetTypeOverrides(member);
+                }
+            })
+            .with(Option.DEFINITIONS_FOR_ALL_OBJECTS)
+            .with(Option.DEFINITION_FOR_MAIN_SCHEMA)
+            .with(Option.PLAIN_DEFINITION_KEYS)
+            .with(Option.ALLOF_CLEANUP_AT_THE_END)
+            .without(Option.FLATTENED_OPTIONALS);
+
+        // HACK: Registered a custom JsonUnwrappedDefinitionProvider prior to the JacksonModule
+        // to be able to return an CustomDefinition with an empty node when the ResolvedType can't be found.
+        builder.forTypesInGeneral().withCustomDefinitionProvider(new JsonUnwrappedDefinitionProvider() {
+            @Override
+            public CustomDefinition provideCustomSchemaDefinition(ResolvedType javaType, SchemaGenerationContext context) {
+                try {
+                    return super.provideCustomSchemaDefinition(javaType, context);
+                } catch (NoClassDefFoundError e) {
+                    // This error happens when a non-supported plugin type exists in the classpath.
+                    log.debug("Cannot create schema definition for type '{}'. Cause: NoClassDefFoundError", javaType.getTypeName());
+                    return new CustomDefinition(context.getGeneratorConfig().createObjectNode(), true);
+                }
+            }
+        });
+        if (!draft7) {
+            builder.with(new JacksonModule(JacksonOption.IGNORE_TYPE_INFO_TRANSFORM));
+        } else {
+            builder.with(new JacksonModule());
+        }
+
+        // default value
+        builder.forFields()
+            .withIgnoreCheck(fieldScope -> fieldScope.getAnnotation(Hidden.class) != null)
+            .withDefaultResolver(this::defaults);
+
+        // def name
+        builder.forTypesInGeneral()
+            .withDefinitionNamingStrategy(new DefaultSchemaDefinitionNamingStrategy() {
+                @Override
+                public String getDefinitionNameForKey(DefinitionKey key, SchemaGenerationContext context) {
+                    TypeContext typeContext = context.getTypeContext();
+                    ResolvedType type = key.getType();
+                    return typeContext.getFullTypeDescription(type);
+                }
+
+                @Override
+                public String adjustNullableName(DefinitionKey key, String definitionName, SchemaGenerationContext context) {
+                    return definitionName;
+                }
+            });
+
+        // inline some type
+        builder.forTypesInGeneral()
+            .withCustomDefinitionProvider(new CustomDefinitionProviderV2() {
+
+                @Override
+                public CustomDefinition provideCustomSchemaDefinition(ResolvedType javaType, SchemaGenerationContext context) {
+                    if (javaType.isInstanceOf(Map.class) || javaType.isInstanceOf(Enum.class)) {
+                        ObjectNode definition = context.createStandardDefinition(javaType, this);
+                        return new CustomDefinition(definition, true);
+                    } else if (javaType.isInstanceOf(Duration.class)) {
+                        ObjectNode definitionReference = context
+                            .createDefinitionReference(context.getTypeContext().resolve(String.class))
+                            .put("format", "duration");
+                        return new CustomDefinition(definitionReference, true);
+                    } else if (javaType.isInstanceOf(LocalTime.class)) {
+                        ObjectNode definitionReference = context
+                            .createDefinitionReference(context.getTypeContext().resolve(String.class))
+                            .put("format", "partial-time"); // we change the default 'time' format for 'partial-time' as Monaco Editor mandates an offset or a timezone for 'time' format
+                        return new CustomDefinition(definitionReference, true);
+                    } else {
+                        return null;
+                    }
+                }
+            });
+
+        // resolve dynamic types from Property and make EncryptedString looks like a string
+        builder.forFields().withTargetTypeOverridesResolver(target ->
+        {
+            ResolvedType javaType = target.getType();
+            if (javaType.isInstanceOf(Property.class)) {
+                TypeContext context = target.getContext();
+                Class<?> erasedType = javaType.getTypeParameters().getFirst().getErasedType();
+
+                if (String.class.isAssignableFrom(erasedType)) {
+                    return List.of(
+                        context.resolve(String.class)
+                    );
+                } else if (Object.class.equals(erasedType)) {
+                    return List.of(
+                        context.resolve(Object.class)
+                    );
+                } else if (erasedType.isEnum()) {
+                    return List.of(
+                        javaType.getTypeParameters().getFirst()
+                    );
+                } else if (List.class.isAssignableFrom(erasedType) || Map.class.isAssignableFrom(erasedType)) {
+                    return List.of(
+                        javaType.getTypeParameters().getFirst()
+                    );
+                } else {
+                    return List.of(
+                        javaType.getTypeParameters().getFirst(),
+                        context.resolve(String.class)
+                    );
+                }
+            } else if (javaType.isInstanceOf(EncryptedString.class)) {
+                TypeContext context = target.getContext();
+                return List.of(
+                    context.resolve(String.class)
+                );
+            } else if (javaType.isInstanceOf(Optional.class) && !javaType.getTypeParameters().isEmpty()) {
+                // Unwrap Optional<T> to T to avoid null type in schema
+                return List.of(
+                    javaType.getTypeParameters().getFirst()
+                );
+            }
+
+            return null;
+        });
+
+        // PluginProperty $dynamic && deprecated swagger properties
+        builder.forFields().withInstanceAttributeOverride((memberAttributes, member, context) ->
+        {
+            PluginProperty pluginPropertyAnnotation = member.getAnnotationConsideringFieldAndGetter(PluginProperty.class);
+            if (pluginPropertyAnnotation != null) {
+                memberAttributes.put("$dynamic", pluginPropertyAnnotation.dynamic());
+                if (pluginPropertyAnnotation.beta()) {
+                    memberAttributes.put("$beta", true);
+                }
+                if (pluginPropertyAnnotation.language() != MonacoLanguages.NONE) {
+                    memberAttributes.put("$language", pluginPropertyAnnotation.language().toString());
+                }
+                if (pluginPropertyAnnotation.internalStorageURI()) {
+                    memberAttributes.put("$internalStorageURI", true);
+                }
+                if (!pluginPropertyAnnotation.group().isEmpty()) {
+                    memberAttributes.put("$group", pluginPropertyAnnotation.group());
+                }
+                if (pluginPropertyAnnotation.secret()) {
+                    memberAttributes.put("$secret", true);
+                }
+                if (pluginPropertyAnnotation.index() != -1) {
+                    memberAttributes.put("$index", pluginPropertyAnnotation.index());
+                }
+            }
+
+            Schema schema = member.getAnnotationConsideringFieldAndGetter(Schema.class);
+            if (schema != null && schema.deprecated()) {
+                memberAttributes.put("$deprecated", true);
+            }
+
+            Deprecated deprecated = member.getAnnotationConsideringFieldAndGetter(Deprecated.class);
+            if (deprecated != null) {
+                memberAttributes.put("$deprecated", true);
+            }
+
+            if (member.getDeclaredType().isInstanceOf(Property.class)) {
+                memberAttributes.put("$dynamic", true);
+                // if we are in the String definition of a Property but the target type is not String: we configure the pattern
+                // TODO this was a good idea but their is too much cases where it didn't work like in List or Map so if we want it we need to make it more clever
+                //  I keep it for now commented but at some point we may want to re-do and improve it or remove these commented lines
+                //                Class<?> targetType = member.getDeclaredType().getTypeParameters().getFirst().getErasedType();
+                //                if (!String.class.isAssignableFrom(targetType) && String.class.isAssignableFrom(member.getType().getErasedType())) {
+                //                    memberAttributes.put("pattern", ".*{{.*}}.*");
+                //                }
+            } else if (member.getDeclaredType().isInstanceOf(Data.class)) {
+                memberAttributes.put("$dynamic", false);
+            }
+        });
+
+        // On @TimezoneId-annotated fields, expose ZoneId IDs for autocomplete while still accepting offset forms
+        // (e.g. `+02:00`, `GMT-05:00`) that ZoneId.of() parses but that are not in getAvailableZoneIds().
+        builder.forFields().withInstanceAttributeOverride((memberAttributes, member, context) ->
+        {
+            if (member.getAnnotationConsideringFieldAndGetter(TimezoneId.class) == null) {
+                return;
+            }
+            ArrayNode enumNode = context.getGeneratorConfig().createArrayNode();
+            AVAILABLE_ZONE_IDS.forEach(enumNode::add);
+            ObjectNode enumBranch = context.getGeneratorConfig().createObjectNode();
+            enumBranch.set("enum", enumNode);
+            ObjectNode patternBranch = context.getGeneratorConfig().createObjectNode();
+            patternBranch.put("pattern", TIMEZONE_OFFSET_PATTERN);
+            ArrayNode anyOf = context.getGeneratorConfig().createArrayNode();
+            anyOf.add(enumBranch);
+            anyOf.add(patternBranch);
+            memberAttributes.set("anyOf", anyOf);
+        });
+
+        // Add Plugin annotation special docs
+        builder.forTypesInGeneral()
+            .withTypeAttributeOverride((collectedTypeAttributes, scope, context) ->
+            {
+                Plugin pluginAnnotation = scope.getType().getErasedType().getAnnotation(Plugin.class);
+                if (pluginAnnotation != null) {
+                    List<ObjectNode> examples = Arrays
+                        .stream(pluginAnnotation.examples())
+                        .map(
+                            example -> context.getGeneratorConfig().createObjectNode()
+                                .put("full", example.full())
+                                .put("code", String.join("\n", example.code()))
+                                .put("lang", example.lang())
+                                .put("title", example.title())
+                        )
+                        .toList();
+
+                    if (!examples.isEmpty()) {
+                        collectedTypeAttributes.set("$examples", context.getGeneratorConfig().createArrayNode().addAll(examples));
+                    }
+
+                    List<ObjectNode> metrics = Arrays
+                        .stream(pluginAnnotation.metrics())
+                        .map(
+                            metric -> context.getGeneratorConfig().createObjectNode()
+                                .put("name", metric.name())
+                                .put("type", metric.type())
+                                .put("unit", metric.unit())
+                                .put("description", metric.description())
+                        )
+                        .toList();
+
+                    if (!metrics.isEmpty()) {
+                        collectedTypeAttributes.set("$metrics", context.getGeneratorConfig().createArrayNode().addAll(metrics));
+                    }
+
+                    if (pluginAnnotation.beta()) {
+                        collectedTypeAttributes.put("$beta", true);
+                    }
+
+                    if (withOutputs) {
+                        Map<String, Object> outputsSchema = this.outputs(null, scope.getType().getErasedType());
+                        collectedTypeAttributes.set(
+                            "outputs", context.getGeneratorConfig().createObjectNode().pojoNode(
+                                flattenWithoutType(AbstractClassDocumentation.properties(outputsSchema), required(outputsSchema))
+                            )
+                        );
+                    }
+                }
+
+                // handle deprecated tasks
+                Schema schema = scope.getType().getErasedType().getAnnotation(Schema.class);
+                Deprecated deprecated = scope.getType().getErasedType().getAnnotation(Deprecated.class);
+                if ((schema != null && schema.deprecated()) || deprecated != null) {
+                    collectedTypeAttributes.put("$deprecated", "true");
+                }
+            });
+
+        builder.forFields().withAdditionalPropertiesResolver(target ->
+        {
+            PluginProperty pluginPropertyAnnotation = target.getAnnotationConsideringFieldAndGetter(PluginProperty.class);
+            Schema schemaAnnotation = target.getAnnotationConsideringFieldAndGetter(Schema.class);
+            Content contentAnnotation = target.getAnnotationConsideringFieldAndGetter(Content.class);
+            Schema contentSchemaAnnotation = contentAnnotation == null ? null : contentAnnotation.additionalPropertiesSchema();
+
+            if (pluginPropertyAnnotation != null) {
+                return pluginPropertyAnnotation.additionalProperties();
+            } else if (target.getType().isInstanceOf(Map.class)) {
+                return target.getTypeParameterFor(Map.class, 1);
+            } else if (schemaAnnotation != null && schemaAnnotation.additionalPropertiesSchema() != Void.class) {
+                return schemaAnnotation.additionalPropertiesSchema();
+            } else if (contentSchemaAnnotation != null && contentSchemaAnnotation.additionalPropertiesSchema() != Void.class) {
+                return contentSchemaAnnotation.additionalPropertiesSchema();
+            }
+
+            return Object.class;
+        });
+
+        if (builder.build().getSchemaVersion() != SchemaVersion.DRAFT_2019_09) {
+            // Subtype resolver for all plugins
+            builder.forTypesInGeneral()
+                .withSubtypeResolver((declaredType, context) ->
+                {
+                    TypeContext typeContext = context.getTypeContext();
+
+                    return this.subtypeResolver(declaredType, typeContext, allowedPluginTypes);
+                });
+
+            // description as Markdown
+            builder.forTypesInGeneral().withTypeAttributeOverride((collectedTypeAttributes, scope, context) ->
+            {
+                this.mutateDescription(collectedTypeAttributes);
+            });
+
+            builder.forFields().withInstanceAttributeOverride((collectedTypeAttributes, scope, context) ->
+            {
+                this.mutateDescription(collectedTypeAttributes);
+            });
+
+            // default is no more required
+            builder.forTypesInGeneral().withTypeAttributeOverride((collectedTypeAttributes, scope, context) ->
+            {
+                if (collectedTypeAttributes.has("required") && collectedTypeAttributes.get("required") instanceof ArrayNode) {
+                    ArrayNode required = context.getGeneratorConfig().createArrayNode();
+
+                    collectedTypeAttributes.get("required").forEach(jsonNode ->
+                    {
+                        if (
+                            !collectedTypeAttributes.get("properties").get(jsonNode.asText()).has("default")
+                                && !defaultInAllOf(collectedTypeAttributes.get("properties").get(jsonNode.asText()))
+                        ) {
+                            required.add(jsonNode.asText());
+                        }
+                    });
+
+                    collectedTypeAttributes.set("required", required);
+                }
+            });
+
+            // invalid regexp for jsonschema
+            builder.forFields().withInstanceAttributeOverride((collectedTypeAttributes, scope, context) ->
+            {
+                if (collectedTypeAttributes.has("pattern") && collectedTypeAttributes.get("pattern").asText().contains("javaJavaIdentifier")) {
+                    collectedTypeAttributes.remove("pattern");
+                }
+            });
+
+            // examples in description
+            builder.forTypesInGeneral().withTypeAttributeOverride((collectedTypeAttributes, scope, context) ->
+            {
+                if (collectedTypeAttributes.has("$examples")) {
+                    ArrayNode examples = (ArrayNode) collectedTypeAttributes.get("$examples");
+
+                    String doc = StreamSupport.stream(examples.spliterator(), true)
+                        .map(jsonNode ->
+                        {
+                            String description = "";
+                            if (jsonNode.has("title")) {
+                                description += "> " + jsonNode.get("title").asText() + "\n";
+                            }
+
+                            description += "```" +
+                                (jsonNode.has("lang") ? jsonNode.get("lang").asText() : "yaml")
+                                + "\n" +
+                                jsonNode.get("code").asText() +
+                                "\n```";
+
+                            return description;
+                        })
+                        .collect(Collectors.joining("\n\n"));
+
+                    String description = collectedTypeAttributes.has("markdownDescription") ? collectedTypeAttributes.get("markdownDescription").asText() : "";
+
+                    description += "##### Examples\n" + doc;
+
+                    collectedTypeAttributes.set("markdownDescription", new TextNode(description));
+
+                    collectedTypeAttributes.remove("$examples");
+                }
+            });
+        } else {
+            builder.forTypesInGeneral()
+                .withSubtypeResolver((declaredType, context) ->
+                {
+                    TypeContext typeContext = context.getTypeContext();
+
+                    if (SUBTYPE_RESOLUTION_EXCLUSION_FOR_PLUGIN_SCHEMA.contains(declaredType.getErasedType())) {
+                        return null;
+                    }
+
+                    return this.subtypeResolver(declaredType, typeContext, allowedPluginTypes);
+                });
+        }
+
+        // Ensure that `type` is defined as a constant in JSON Schema.
+        // The `const` property is used by editors for auto-completion based on that schema.
+        builder.forTypesInGeneral().withTypeAttributeOverride((collectedTypeAttributes, scope, context) ->
+        {
+            final Class<?> pluginType = scope.getType().getErasedType();
+            Plugin pluginAnnotation = pluginType.getAnnotation(Plugin.class);
+            if (pluginAnnotation != null) {
+                ObjectNode properties = (ObjectNode) collectedTypeAttributes.get("properties");
+                if (properties != null) {
+                    LinkedHashSet<String> allowedTypeValues = new LinkedHashSet<>();
+                    allowedTypeValues.add(pluginType.getName());
+
+                    try {
+                        Set<String> annotationAliases = io.kestra.core.models.Plugin.getAliases(pluginType);
+                        if (annotationAliases != null) {
+                            allowedTypeValues.addAll(annotationAliases.stream().filter(Objects::nonNull).toList());
+                        }
+                    } catch (Exception ignored) {
+                    }
+
+                    if (this.pluginRegistry != null) {
+                        for (RegisteredPlugin rp : this.getRegisteredPlugins()) {
+                            if (rp.getAliases() == null || rp.getAliases().isEmpty()) {
+                                continue;
+                            }
+
+                            for (Map.Entry<String, Class<?>> aliasEntry : rp.getAliases().values()) {
+                                if (aliasEntry == null || aliasEntry.getValue() == null || aliasEntry.getKey() == null) {
+                                    continue;
+                                }
+                                if (aliasEntry.getValue().equals(pluginType)) {
+                                    allowedTypeValues.add(aliasEntry.getKey());
+                                }
+                            }
+                        }
+                    }
+
+                    if (allowedTypeValues.size() == 1) {
+                        properties.set(
+                            "type", context.getGeneratorConfig().createObjectNode()
+                                .put("const", allowedTypeValues.iterator().next())
+                        );
+                    } else {
+                        ArrayNode enumNode = context.getGeneratorConfig().createArrayNode();
+                        allowedTypeValues.forEach(enumNode::add);
+
+                        ObjectNode typeNode = context.getGeneratorConfig().createObjectNode();
+                        typeNode.set("enum", enumNode);
+                        properties.set("type", typeNode);
+                    }
+                }
+            }
+        });
+
+        typeDefiningPropertiesToConst(builder);
+    }
+
+    /**
+     * Properties which are defining an implementation to choose among multiple ones (JsonTypeInfo.property) are simple String with default. We move them to be a "const": "defaultValue"
+     * instead
+     */
+    private void typeDefiningPropertiesToConst(SchemaGeneratorConfigBuilder builder) {
+        builder.forTypesInGeneral().withTypeAttributeOverride((collectedTypeAttributes, scope, context) ->
+        {
+            final Class<?> targetType = scope.getType().getErasedType();
+            JsonTypeInfo jsonTypeInfo = Optional.ofNullable(targetType.getSuperclass()).map(c -> c.getAnnotation(JsonTypeInfo.class)).orElse(null);
+            if (jsonTypeInfo == null) {
+                return;
+            }
+
+            String property = jsonTypeInfo.property();
+            if (property == null) {
+                return;
+            }
+
+            ObjectNode properties = (ObjectNode) collectedTypeAttributes.get("properties");
+            if (properties == null) {
+                return;
+            }
+
+            String defaultValue = Optional.ofNullable(properties.get(property))
+                .flatMap(p ->
+                {
+                    Optional<String> defaultOpt = p.optional("default").map(JsonNode::asText);
+                    if (defaultOpt.isPresent()) {
+                        return defaultOpt;
+                    }
+
+                    return p.optional("allOf").flatMap(node ->
+                    {
+                        if (node.isArray()) {
+                            Iterable<JsonNode> iterable = node::values;
+                            return StreamSupport.stream(
+                                iterable.spliterator(),
+                                false
+                            ).filter(subNode -> subNode.has("default"))
+                                .findFirst()
+                                .map(subNode -> subNode.get("default").asText());
+                        }
+
+                        return Optional.empty();
+                    });
+                })
+                .orElse(null);
+            if (defaultValue == null) {
+                return;
+            }
+
+            properties.set(
+                property, context.getGeneratorConfig().createObjectNode()
+                    .put("const", defaultValue)
+            );
+        });
+    }
+
+    protected List<ResolvedType> subtypeResolver(ResolvedType declaredType, TypeContext typeContext, List<String> allowedPluginTypes) {
+        if (declaredType.getErasedType() == Task.class) {
+            return getRegisteredPlugins()
+                .stream()
+                .flatMap(registeredPlugin -> registeredPlugin.getTasks().stream())
+                .filter(p -> allowedPluginTypes.isEmpty() || allowedPluginTypes.contains(p.getName()))
+                .filter(Predicate.not(io.kestra.core.models.Plugin::isInternal))
+                .flatMap(clz -> safelyResolveSubtype(declaredType, clz, typeContext).stream())
+                .toList();
+        } else if (declaredType.getErasedType() == AbstractTrigger.class) {
+            return getRegisteredPlugins()
+                .stream()
+                .flatMap(registeredPlugin -> registeredPlugin.getTriggers().stream())
+                .filter(p -> allowedPluginTypes.isEmpty() || allowedPluginTypes.contains(p.getName()))
+                .filter(Predicate.not(io.kestra.core.models.Plugin::isInternal))
+                .flatMap(clz -> safelyResolveSubtype(declaredType, clz, typeContext).stream())
+                .toList();
+        } else if (declaredType.getErasedType() == TaskRunner.class) {
+            return getRegisteredPlugins()
+                .stream()
+                .flatMap(registeredPlugin -> registeredPlugin.getTaskRunners().stream())
+                .filter(p -> allowedPluginTypes.isEmpty() || allowedPluginTypes.contains(p.getName()))
+                .filter(Predicate.not(io.kestra.core.models.Plugin::isInternal))
+                .map(typeContext::resolve)
+                .toList();
+        } else if (declaredType.getErasedType() == LogExporter.class) {
+            return getRegisteredPlugins()
+                .stream()
+                .flatMap(registeredPlugin -> registeredPlugin.getLogExporters().stream())
+                .filter(p -> allowedPluginTypes.isEmpty() || allowedPluginTypes.contains(p.getName()))
+                .filter(Predicate.not(io.kestra.core.models.Plugin::isInternal))
+                .map(typeContext::resolve)
+                .toList();
+        } else if (AdditionalPlugin.class.isAssignableFrom(declaredType.getErasedType())) { // base type for additional plugin is not AdditionalPlugin but a subtype of AdditionalPlugin.
+            return getRegisteredPlugins()
+                .stream()
+                .flatMap(registeredPlugin -> registeredPlugin.getAdditionalPlugins().stream())
+                // for additional plugins, we have one subtype by type of additional plugins (for ex: embedding store for Langchain4J), so we need to filter on the correct subtype
+                .filter(cls -> declaredType.getErasedType().isAssignableFrom(cls))
+                .filter(p -> allowedPluginTypes.isEmpty() || allowedPluginTypes.contains(p.getName()))
+                .filter(cls -> cls != declaredType.getErasedType())
+                .filter(Predicate.not(io.kestra.core.models.Plugin::isInternal))
+                .map(typeContext::resolve)
+                .toList();
+        } else if (declaredType.getErasedType() == FileRenderer.class) {
+            return getRegisteredPlugins()
+                .stream()
+                .flatMap(registeredPlugin -> registeredPlugin.getFileRenderers().stream())
+                .filter(p -> allowedPluginTypes.isEmpty() || allowedPluginTypes.contains(p.getName()))
+                .filter(Predicate.not(io.kestra.core.models.Plugin::isInternal))
+                .map(typeContext::resolve)
+                .toList();
+        } else if (declaredType.getErasedType() == Chart.class) {
+            return getRegisteredPlugins()
+                .stream()
+                .flatMap(registeredPlugin -> registeredPlugin.getCharts().stream())
+                .filter(p -> allowedPluginTypes.isEmpty() || allowedPluginTypes.contains(p.getName()))
+                .filter(Predicate.not(io.kestra.core.models.Plugin::isInternal))
+                .<ResolvedType> mapMulti((clz, consumer) ->
+                {
+                    if (DataChart.class.isAssignableFrom(clz)) {
+                        List<Class<? extends DataFilter<?, ?>>> dataFilters = getRegisteredPlugins()
+                            .stream()
+                            .flatMap(registeredPlugin -> registeredPlugin.getDataFilters().stream())
+                            .filter(Predicate.not(io.kestra.core.models.Plugin::isInternal))
+                            .toList();
+
+                        TypeVariable<? extends Class<? extends Chart<?>>> dataFilterType = clz.getTypeParameters()[1];
+                        ParameterizedType chartAwareColumnDescriptor = ((ParameterizedType) ((WildcardType) ((ParameterizedType) dataFilterType.getBounds()[0]).getActualTypeArguments()[1])
+                            .getUpperBounds()[0]);
+
+                        dataFilters.forEach(dataFilter ->
+                        {
+                            Type fieldsEnum = ((ParameterizedType) dataFilter.getGenericSuperclass()).getActualTypeArguments()[0];
+                            consumer.accept(typeContext.resolve(clz, fieldsEnum, typeContext.resolve(dataFilter, typeContext.resolve(chartAwareColumnDescriptor, fieldsEnum))));
+                        });
+                    } else if (DataChartKPI.class.isAssignableFrom(clz)) {
+                        List<Class<? extends DataFilterKPI<?, ?>>> dataFilterKPIs = getRegisteredPlugins()
+                            .stream()
+                            .flatMap(registeredPlugin -> registeredPlugin.getDataFiltersKPI().stream())
+                            .filter(Predicate.not(io.kestra.core.models.Plugin::isInternal))
+                            .toList();
+
+                        TypeVariable<? extends Class<? extends Chart<?>>> dataFilterType = clz.getTypeParameters()[1];
+                        ParameterizedType chartAwareColumnDescriptor = ((ParameterizedType) ((WildcardType) ((ParameterizedType) dataFilterType.getBounds()[0]).getActualTypeArguments()[1])
+                            .getUpperBounds()[0]);
+
+                        dataFilterKPIs.forEach(dataFilterKPI ->
+                        {
+                            Type fieldsEnum = ((ParameterizedType) dataFilterKPI.getGenericSuperclass()).getActualTypeArguments()[0];
+                            consumer.accept(typeContext.resolve(clz, fieldsEnum, typeContext.resolve(dataFilterKPI, typeContext.resolve(chartAwareColumnDescriptor, fieldsEnum))));
+                        });
+                    } else {
+                        consumer.accept(typeContext.resolve(clz));
+                    }
+                }).toList();
+        } else if (declaredType.getErasedType() == Asset.class) {
+            return getRegisteredPlugins()
+                .stream()
+                .flatMap(registeredPlugin -> registeredPlugin.getAssets().stream())
+                .filter(p -> allowedPluginTypes.isEmpty() || allowedPluginTypes.contains(p.getName()))
+                .filter(Predicate.not(io.kestra.core.models.Plugin::isInternal))
+                .map(typeContext::resolve)
+                .toList();
+        } else if (declaredType.getErasedType() == AssetExporter.class) {
+            return getRegisteredPlugins()
+                .stream()
+                .flatMap(registeredPlugin -> registeredPlugin.getAssetExporters().stream())
+                .filter(p -> allowedPluginTypes.isEmpty() || allowedPluginTypes.contains(p.getName()))
+                .filter(Predicate.not(io.kestra.core.models.Plugin::isInternal))
+                .map(typeContext::resolve)
+                .toList();
+        } else if (declaredType.getErasedType() == io.kestra.core.models.flows.Input.class) {
+            // Resolve the input subtypes from the @JsonSubTypes registry, filtering out edition-restricted ones
+            // (e.g. REUSABLE_INPUTS) so they don't appear in the open-source flow schema. EE includes them all.
+            com.fasterxml.jackson.annotation.JsonSubTypes subTypes = io.kestra.core.models.flows.Input.class.getAnnotation(com.fasterxml.jackson.annotation.JsonSubTypes.class);
+            if (subTypes == null) {
+                return null;
+            }
+            return java.util.Arrays.stream(subTypes.value())
+                .map(com.fasterxml.jackson.annotation.JsonSubTypes.Type::value)
+                .filter(this::includeInputSubtype)
+                .flatMap(clz -> safelyResolveSubtype(declaredType, clz, typeContext).stream())
+                .collect(Collectors.toList());
+        }
+
+        return null;
+    }
+
+    /**
+     * Whether the given {@link io.kestra.core.models.flows.Input} subtype should appear in the generated flow
+     * schema. The open-source generator hides {@link io.kestra.core.models.flows.input.EeOnly}-annotated inputs;
+     * the EE generator overrides this to include them.
+     */
+    protected boolean includeInputSubtype(Class<?> subtype) {
+        return !subtype.isAnnotationPresent(io.kestra.core.models.flows.input.EeOnly.class);
+    }
+
+    protected static Optional<ResolvedType> safelyResolveSubtype(ResolvedType declaredType, Class<?> clz, TypeContext typeContext) {
+        try {
+            return Optional.ofNullable(typeContext.resolveSubtype(declaredType, clz));
+        } catch (Exception e) {
+            // exception can be thrown when resolving a plugin-type depending on
+            // a non-backward compatible kestra (e.g., java.lang.TypeNotPresentException).
+            return Optional.empty();
+        }
+    }
+
+    protected List<RegisteredPlugin> getRegisteredPlugins() {
+        return pluginRegistry.plugins();
+    }
+
+    private boolean defaultInAllOf(JsonNode property) {
+        if (property.has("allOf")) {
+            for (Iterator<JsonNode> it = property.get("allOf").elements(); it.hasNext();) {
+                JsonNode child = it.next();
+                if (child.has("default")) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    protected <T> Map<String, Object> generate(Class<? extends T> cls, @Nullable Class<T> base) {
+        return this.generate(cls, base, Collections.emptyList());
+    }
+
+    protected <T> Map<String, Object> generate(Class<? extends T> cls, @Nullable Class<T> base, List<String> allowedPluginTypes) {
+        SchemaGeneratorConfigBuilder builder = new SchemaGeneratorConfigBuilder(
+            SchemaVersion.DRAFT_2019_09,
+            OptionPreset.PLAIN_JSON
+        );
+
+        this.build(builder, false, allowedPluginTypes);
+
+        // we don't return base properties unless specified with @PluginProperty and hidden is false
+        builder
+            .forFields()
+            .withIgnoreCheck(
+                fieldScope -> (base != null &&
+                    (fieldScope.getAnnotation(PluginProperty.class) == null || fieldScope.getAnnotation(PluginProperty.class).hidden()) &&
+                    fieldScope.getDeclaringType().getTypeName().equals(base.getName())) || fieldScope.getAnnotation(Hidden.class) != null
+            );
+
+        SchemaGeneratorConfig schemaGeneratorConfig = builder.build();
+
+        SchemaGenerator generator = new SchemaGenerator(schemaGeneratorConfig);
+        try {
+            ObjectNode objectNode = generator.generateSchema(cls);
+            replaceOneOfWithAnyOf(objectNode);
+            pullDocumentationAndDefaultFromAnyOf(objectNode);
+            removeRequiredOnPropsWithDefaults(objectNode);
+
+            return MAPPER.convertValue(extractMainRef(objectNode), MAP_TYPE_REFERENCE);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Unable to generate jsonschema for '" + cls.getName() + "'", e);
+        }
+    }
+
+    protected Object defaults(FieldScope target) {
+        if (!target.getDeclaredType().isInstanceOf(Property.class) && target.getOverriddenType() != null) {
+            return null;
+        }
+
+        // class is abstract we try with cls passed to method, we try to find a derived one, optimistic approach
+        Class<?> baseCls = target.getMember().getDeclaringType().getErasedType();
+        if (Modifier.isAbstract(baseCls.getModifiers())) {
+            // we must retrieve the instance class that leads to this field in this abstract class.
+            // there is no direct way, so we use the hierarchy of classes and get the first one that is not a mixin (not overridden)
+            Optional<HierarchicType> concreteCls = target.getDeclaringTypeMembers().mainTypeAndOverrides()
+                .stream()
+                .filter(type -> !type.isMixin())
+                .findFirst();
+
+            if (concreteCls.isPresent()) {
+                baseCls = concreteCls.get().getErasedType();
+            }
+        }
+
+        Object instance = defaultInstances.computeIfAbsent(baseCls, clazz -> buildDefaultInstance(clazz));
+
+        return instance == null ? null : defaultValue(instance, baseCls, target.getName());
+    }
+
+    private ObjectNode extractMainRef(ObjectNode objectNode) {
+        TextNode ref = (TextNode) objectNode.get("$ref");
+        ObjectNode defs = (ObjectNode) objectNode.get("$defs");
+
+        if (ref == null) {
+            throw new IllegalArgumentException("Missing $ref");
+        }
+        String mainClassName = ref.asText().substring(ref.asText().lastIndexOf("/") + 1);
+
+        if (mainClassName.endsWith("-2")) {
+            mainClassName = mainClassName.substring(0, mainClassName.length() - 2);
+            JsonNode mainClassDef = defs.get(mainClassName + "-1");
+
+            this.addMainRefProperties(mainClassDef, objectNode);
+
+            defs.remove(mainClassName + "-1");
+            defs.remove(mainClassName + "-2");
+        } else {
+            JsonNode mainClassDef = defs.get(mainClassName);
+            this.addMainRefProperties(mainClassDef, objectNode);
+
+            defs.remove(mainClassName);
+        }
+
+        objectNode.remove("$ref");
+
+        return objectNode;
+    }
+
+    private void addMainRefProperties(JsonNode mainClassDef, ObjectNode objectNode) {
+        objectNode.set("properties", mainClassDef.get("properties"));
+        if (mainClassDef.has("required")) {
+            objectNode.set("required", mainClassDef.get("required"));
+        }
+        if (mainClassDef.has("title")) {
+            objectNode.set("title", mainClassDef.get("title"));
+        }
+        if (mainClassDef.has("description")) {
+            objectNode.set("description", mainClassDef.get("description"));
+        }
+        if (mainClassDef.has("$examples")) {
+            objectNode.set("$examples", mainClassDef.get("$examples"));
+        }
+        if (mainClassDef.has("$metrics")) {
+            objectNode.set("$metrics", mainClassDef.get("$metrics"));
+        }
+        if (mainClassDef.has("$deprecated")) {
+            objectNode.set("$deprecated", mainClassDef.get("$deprecated"));
+        }
+        if (mainClassDef.has("$beta")) {
+            objectNode.set("$beta", mainClassDef.get("$beta"));
+        }
+        if (mainClassDef.has("$language")) {
+            objectNode.set("$language", mainClassDef.get("$language"));
+        }
+    }
+
+    private Object buildDefaultInstance(Class<?> cls) {
+        try {
+            Method builderMethod = cls.getMethod("builder");
+            Object builder = builderMethod.invoke(null);
+
+            Method build = builder.getClass().getMethod("build");
+            build.setAccessible(true);
+            return build.invoke(builder);
+        } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
+            return null;
+        }
+    }
+
+    private Object defaultValue(Object instance, Class<?> cls, String fieldName) {
+        try {
+            Method field = cls.getMethod("get" + fieldName.substring(0, 1).toUpperCase(Locale.ROOT) + fieldName.substring(1));
+
+            field.setAccessible(true);
+            return field.invoke(instance);
+        } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException | IllegalArgumentException ignored) {
+
+        }
+
+        try {
+            Method field = cls.getMethod("is" + fieldName.substring(0, 1).toUpperCase(Locale.ROOT) + fieldName.substring(1));
+
+            field.setAccessible(true);
+            return field.invoke(instance);
+        } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException | IllegalArgumentException ignored) {
+
+        }
+
+        return null;
+    }
+}

@@ -1,0 +1,149 @@
+package io.kestra.repository.h2;
+
+import java.util.*;
+
+import org.jooq.*;
+import org.jooq.Record;
+import org.jooq.impl.DSL;
+
+import io.kestra.core.repositories.ArrayListTotal;
+import io.kestra.jdbc.JdbcTableConfig;
+import io.kestra.jdbc.JooqDSLContextWrapper;
+import io.kestra.jdbc.repository.AbstractJdbcRepository;
+
+import io.micronaut.context.annotation.EachBean;
+import io.micronaut.context.annotation.Parameter;
+import io.micronaut.context.annotation.Requires;
+import io.micronaut.context.condition.ConditionContext;
+import io.micronaut.data.model.Pageable;
+import jakarta.annotation.Nullable;
+import jakarta.inject.Inject;
+import lombok.SneakyThrows;
+
+import static io.kestra.jdbc.repository.AbstractJdbcRepository.KEY_FIELD;
+
+@Requires(condition = H2Repository.H2Condition.class)
+@Requires(property = "kestra.server-type", notEquals = "WORKER")
+@EachBean(JdbcTableConfig.class)
+public class H2Repository<T> extends io.kestra.jdbc.AbstractJdbcRepository<T> {
+
+    @Inject
+    public H2Repository(@Parameter JdbcTableConfig jdbcTableConfig,
+        JooqDSLContextWrapper dslContextWrapper) {
+        super(jdbcTableConfig, dslContextWrapper);
+    }
+
+    @Override
+    @SneakyThrows
+    public void persist(T entity, DSLContext context, @Nullable Map<Field<Object>, Object> fields) {
+        Map<Field<Object>, Object> finalFields = fields == null ? this.persistFields(entity) : fields;
+
+        this.persistInternal(entity, context, finalFields);
+    }
+
+    private int persistInternal(T entity, DSLContext context, Map<Field<Object>, Object> fields) {
+        int affectedRows = context
+            .update(table)
+            .set(fields)
+            .where(KEY_FIELD.eq(key(entity)))
+            .execute();
+
+        if (affectedRows == 0) {
+            return context
+                .insertInto(table)
+                .set(KEY_FIELD, key(entity))
+                .set(fields)
+                .execute();
+        } else {
+            return affectedRows;
+        }
+    }
+
+    @Override
+    public int persistBatch(List<T> items) {
+        return dslContextWrapper.transactionResult(configuration ->
+        {
+            DSLContext dslContext = DSL.using(configuration);
+            return items.stream()
+                .map(item -> this.persistInternal(item, dslContext, this.persistFields(item)))
+                .mapToInt(i -> i)
+                .sum();
+        });
+    }
+
+    @Override
+    public int persistBatch(Map<T, Map<Field<Object>, Object>> itemWithFields) {
+        return dslContextWrapper.transactionResult(configuration ->
+        {
+            DSLContext dslContext = DSL.using(configuration);
+            return itemWithFields.entrySet().stream()
+                .map(entry -> this.persistInternal(entry.getKey(), dslContext, entry.getValue()))
+                .mapToInt(i -> i)
+                .sum();
+        });
+    }
+
+    public Condition fullTextCondition(List<String> fields, String query) {
+        if (query == null || query.equals("*")) {
+            return DSL.noCondition();
+        }
+
+        if (fields.size() > 1) {
+            throw new IllegalStateException("Too many fields for h2 '" + fields + "'");
+        }
+
+        Field<Object> field = AbstractJdbcRepository.field(fields.getFirst());
+
+        List<Condition> match = Arrays
+            .stream(query.split("\\p{P}|\\p{S}|\\p{Z}"))
+            .filter(s -> !s.isEmpty())
+            .map(s -> field.likeIgnoreCase("%" + escapeForLike(s.toUpperCase(Locale.ROOT)) + "%").escape('\\'))
+            .toList();
+
+        if (match.isEmpty()) {
+            return DSL.falseCondition();
+        }
+
+        return DSL.and(match);
+    }
+
+    private static String escapeForLike(String s) {
+        return s
+            .replace("\\", "\\\\")
+            .replace("%", "\\%")
+            .replace("_", "\\_");
+    }
+
+    @SuppressWarnings("unchecked")
+    public <R extends Record, E> ArrayListTotal<E> fetchPage(DSLContext context, SelectConditionStep<R> select, Pageable pageable, RecordMapper<R, E> mapper) {
+        Result<Record> results = this.limit(
+            context.select(DSL.asterisk(), DSL.count().over().as("total_count"))
+                .from(
+                    this
+                        .sort(select, pageable)
+                        .asTable("page")
+                )
+                .where(DSL.noCondition()),
+            pageable
+        )
+            .fetch();
+
+        Integer totalCount = !results.isEmpty() ? results.getFirst().get("total_count", Integer.class) : 0;
+
+        List<E> map = results
+            .map((Record record) -> mapper.map((R) record));
+
+        return new ArrayListTotal<>(map, totalCount);
+    }
+
+    // We need to create H2 repositories for the queue as it uses an H2Repository named 'queue',
+    // we may find a way to only create this one at some point as here we create unnecessary beans.
+    static class H2Condition implements io.micronaut.context.condition.Condition {
+        @Override
+        public boolean matches(ConditionContext context) {
+            boolean isRepository = ((Optional<String>) context.get("kestra.repository.type", String.class)).map(it -> "h2".equals(it) || "memory".equals(it)).orElse(false);
+            boolean isQueue = ((Optional<String>) context.get("kestra.queue.type", String.class)).map(it -> "h2".equals(it) || "memory".equals(it)).orElse(false);
+            return isRepository || isQueue;
+        }
+    }
+}

@@ -1,0 +1,15 @@
+frontend.warmupDuration:
+- value: "1s"
+  constraints: {}
+frontend.enableActiveClusterSelectionPolicyInStartWorkflow:
+- value: true
+  constraints: {}
+worker.schedulerRefreshInterval:
+- value: "2s"
+  constraints: {}
+worker.enableScheduler:
+- value: true
+  constraints: {}
+system.minRetentionDays:
+- value: 0
+  constraints: {}

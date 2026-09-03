@@ -1,0 +1,80 @@
+package io.kestra.plugin.core.storage;
+
+import java.net.URI;
+import java.nio.file.Path;
+import java.util.Optional;
+
+import io.kestra.core.models.annotations.Example;
+import io.kestra.core.models.annotations.Plugin;
+import io.kestra.core.models.property.Property;
+import io.kestra.core.models.tasks.RunnableTask;
+import io.kestra.core.models.tasks.Task;
+import io.kestra.core.runners.RunContext;
+
+import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.NotNull;
+import lombok.*;
+import lombok.experimental.SuperBuilder;
+
+import static io.kestra.core.utils.Rethrow.throwFunction;
+import static io.kestra.core.utils.Rethrow.throwSupplier;
+
+@SuperBuilder
+@ToString
+@EqualsAndHashCode
+@Getter
+@NoArgsConstructor
+@Schema(
+    title = "Write data to a file in Kestra internal storage.",
+    description = """
+        Renders `content`, writes it to a temp file (optionally with `extension`), and uploads it to internal storage, returning the `kestra://` URI.
+
+        Handy for generating small artifacts that downstream tasks can consume via URI."""
+)
+@Plugin(
+    examples = {
+        @Example(
+            title = "Write data to a file in the internal storage.",
+            full = true,
+            code = """
+                id: write_file
+                namespace: company.team
+
+                tasks:
+                  - id: write
+                    type: io.kestra.plugin.core.storage.Write
+                    content: Hello World
+                    extension: .txt
+                """
+        )
+    }
+)
+public class Write extends Task implements RunnableTask<Write.Output> {
+    @Schema(title = "The file content")
+    @NotNull
+    private Property<String> content;
+
+    @Schema(title = "The file extension")
+    private Property<String> extension;
+
+    @Override
+    public Write.Output run(RunContext runContext) throws Exception {
+        byte[] bytes = runContext.render(content).as(String.class).map(s -> s.getBytes()).orElseThrow();
+        Optional<String> maybeExtension = runContext.render(extension).as(String.class);
+        Path path = maybeExtension.map(throwFunction(ext -> runContext.workingDir().createTempFile(bytes, ext)))
+            .orElseGet(throwSupplier(() -> runContext.workingDir().createTempFile(bytes)));
+
+        return Write.Output.builder()
+            .uri(runContext.storage().putFile(path.toFile()))
+            .build();
+    }
+
+    @Builder
+    @Getter
+    public static class Output implements io.kestra.core.models.tasks.Output {
+        @Schema(
+            title = "The created file URI"
+        )
+        private final URI uri;
+    }
+}

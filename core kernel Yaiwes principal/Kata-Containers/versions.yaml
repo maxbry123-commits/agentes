@@ -1,0 +1,456 @@
+#
+# Copyright (c) 2018-2023 Intel Corporation
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
+---
+description: |
+  This file contains version details that are used by various
+  repositories for setting up the correct environment to run
+  tests and package components.
+
+format: |
+  Each entry in this file MUST conform to the following format:
+
+  <group>:
+   description: "<brief-description>"
+   notes: "<notes>"
+
+   <project>:
+     description: "<brief-description>"
+     notes: "<notes>"
+     url: "<project-url>"
+     issue: "<bug-url>"
+     commit: "<commit>"
+     version: "<version>"
+     uscan-opts: "<optional uscan options>"
+     uscan-url: "<url regex for uscan to list versions>"
+     release: "<version>"
+     branch: "<git-branch>"
+     meta:
+       <key-1>: "<value-1>"
+       <key-n>: "<value-n>"
+
+  Notes:
+
+  - All sections (except "meta") MUST include a description where
+    applicable. This is expected to be a brief summary.
+
+  - A section MAY specify a "notes" section which may be multi-line.
+    It is expected to be expand on the information specified in
+    "description".
+
+  - All sections (except "meta") MUST include a URL where applicable.
+
+  - A section MAY specify a bug URL using the "issue" field.
+
+  - A section MAY define a "meta" section to store additional
+    information about a project or group.
+
+  - Each entry MUST specify ATLEAST one of "commit", "version", "release"
+    and "branch".
+
+  - WARNING: Gotcha alert! Remember to double-quote all strings
+    (except multi-line strings)! This avoids the possibility of a
+    version containing a period being treated as a floating point
+    number (and truncated!)
+
+  - NOTE: For the uscan related entries, refer to the following uscan pages:
+    https://manpages.debian.org/stretch/devscripts/uscan.1.en.html
+    https://wiki.debian.org/debian/watch
+    Particularly note the 'Common mistakes' section.
+    Also note, if you place the uscan strings on single lines in this file then
+    '\'s need to be '\'d, so are replaced with '\\', but this does not apply
+    for '>-' multi line entries, which can then use the normal uscan syntax.
+
+assets:
+  description: "Additional required system elements"
+
+  hypervisor:
+    description: "Component used to create virtual machines"
+
+    cloud_hypervisor:
+      description: "Cloud Hypervisor is an open source Virtual Machine Monitor"
+      url: "https://github.com/cloud-hypervisor/cloud-hypervisor"
+      version: "v51.1"
+
+    openvmm:
+      description: >-
+        OpenVMM is a modular, cross-platform Virtual Machine Monitor written
+        in Rust
+      url: "https://github.com/microsoft/openvmm"
+      version: "d8c1f25a35d85d7cd2ea762a2a7b2e7328a6fc9d"
+
+    firecracker:
+      description: "Firecracker micro-VMM"
+      url: "https://github.com/firecracker-microvm/firecracker"
+      version: "v1.12.1"
+
+    qemu:
+      description: "VMM that uses KVM"
+      url: "https://github.com/qemu/qemu"
+      version: "v11.0.1"
+
+    qemu-snp-experimental:
+      description: "QEMU with GPU+SNP support"
+      url: "https://github.com/confidential-containers/qemu.git"
+      tag: "gpu-snp-20260430"
+
+    qemu-tdx-experimental:
+      description: "QEMU with GPU+TDX support"
+      url: "https://github.com/confidential-containers/qemu.git"
+      tag: "gpu-tdx-20260430"
+
+    stratovirt:
+      description: "StratoVirt is an lightweight opensource VMM"
+      url: "https://github.com/openeuler-mirror/stratovirt"
+      version: "v2.3.0"
+
+  image:
+    description: |
+      Root filesystem disk image used to boot the guest virtual
+      machine.
+    architecture:
+      aarch64:
+        name: "ubuntu"
+        version: "resolute"  # 26.04 LTS
+        confidential:
+          name: "ubuntu"
+          version: "resolute"  # 26.04 LTS
+        nvidia-gpu:
+          name: "ubuntu"
+          version: "resolute"  # 26.04 LTS
+        nvidia-gpu-confidential:
+          name: "ubuntu"
+          version: "resolute"  # 26.04 LTS
+        nvidia:
+          name: "ubuntu"
+          version: "resolute"  # 26.04 LTS
+        nvidia-gpu-extension:
+          name: "ubuntu"
+          version: "resolute"  # 26.04 LTS
+      ppc64le:
+        name: "ubuntu"
+        version: "resolute"  # 26.04 LTS
+      s390x:
+        name: "ubuntu"
+        version: "resolute"  # 26.04 LTS
+        confidential:
+          name: "ubuntu"
+          version: "resolute"  # 26.04 LTS
+      x86_64:
+        name: "ubuntu"
+        version: "resolute"  # 26.04 LTS
+        confidential:
+          name: "ubuntu"
+          version: "resolute"  # 26.04 LTS
+        mariner:
+          name: "cbl-mariner"
+          version: "3.0"
+        nvidia-gpu:
+          name: "ubuntu"
+          version: "resolute"  # 26.04 LTS
+        nvidia-gpu-confidential:
+          name: "ubuntu"
+          version: "resolute"  # 26.04 LTS
+        nvidia:
+          name: "ubuntu"
+          version: "resolute"  # 26.04 LTS
+        nvidia-gpu-extension:
+          name: "ubuntu"
+          version: "resolute"  # 26.04 LTS
+
+  initrd:
+    description: |
+      Root filesystem initrd used to boot the guest virtual
+      machine.
+    architecture:
+      aarch64:
+        name: "ubuntu"
+        version: "resolute"  # 26.04 LTS
+        confidential:
+          name: "ubuntu"
+          version: "resolute"  # 26.04 LTS
+        nvidia-gpu:
+          name: "ubuntu"
+          version: "resolute"  # 26.04 LTS
+        nvidia-gpu-confidential:
+          name: "ubuntu"
+          version: "resolute"  # 26.04 LTS
+      # Do not use Alpine on ppc64le & s390x, the agent cannot use musl because
+      # there is no such Rust target
+      ppc64le:
+        name: "ubuntu"
+        version: "resolute"  # 26.04 LTS
+      s390x:
+        name: "ubuntu"
+        version: "resolute"  # 26.04 LTS
+        confidential:
+          name: "ubuntu"
+          version: "resolute"  # 26.04 LTS
+      x86_64:
+        name: "ubuntu"
+        version: "resolute"  # 26.04 LTS
+        confidential:
+          name: "ubuntu"
+          version: "resolute"  # 26.04 LTS
+        nvidia-gpu:
+          name: "ubuntu"
+          version: "resolute"  # 26.04 LTS
+        nvidia-gpu-confidential:
+          name: "ubuntu"
+          version: "resolute"  # 26.04 LTS
+
+  kernel:
+    description: "Linux kernel optimised for virtual machines"
+    url: "https://cdn.kernel.org/pub/linux/kernel/v6.x/"
+    version: "v6.18.35"
+    nvidia:
+      url: "https://cdn.kernel.org/pub/linux/kernel/v6.x/"
+      version: "v6.18.35"
+
+  kernel-dragonball-experimental:
+    description: "Linux kernel with Dragonball VMM optimizations like upcall"
+    url: "https://cdn.kernel.org/pub/linux/kernel/v6.x/"
+    version: "v6.18.35"
+
+externals:
+  description: "Third-party projects used by the system"
+
+  nvrc:
+    # yamllint disable-line rule:line-length
+    desc: "The NVRC project provides a Rust binary that implements a simple init system for microVMs"
+    version: "v0.1.6"
+    url: "https://github.com/NVIDIA/nvrc/releases/download/"
+
+  nvidia:
+    desc: "NVIDIA compute stack"
+    driver:
+      desc: "NVIDIA kernel driver"
+      version: "595.58.03"
+      # yamllint disable-line rule:line-length
+      url: "https://github.com/NVIDIA/open-gpu-kernel-modules/archive/refs/tags/"
+    cuda:
+      desc: "NVIDIA CUDA repository"
+      repo:
+        x86_64:
+          # yamllint disable-line rule:line-length
+          url: "https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2604/x86_64/"
+          pkg: "cuda-keyring_1.1-1_all.deb"
+        aarch64:
+          # yamllint disable-line rule:line-length
+          url: "https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2604/sbsa/"
+          pkg: "cuda-keyring_1.1-1_all.deb"
+    tools:
+      desc: "NVIDIA container toolkit and tools repository"
+      repo:
+        x86_64:
+          # yamllint disable-line rule:line-length
+          url: "https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2604/x86_64/"
+          pkg: "cuda-keyring_1.1-1_all.deb"
+        aarch64:
+          # yamllint disable-line rule:line-length
+          url: "https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2604/sbsa/"
+          pkg: "cuda-keyring_1.1-1_all.deb"
+    ctk:
+      version: "1.19.1-1"
+      url: "https://github.com/NVIDIA/nvidia-container-toolkit"
+    nvat:
+      desc: "NVIDIA Attestation SDK"
+      version: "2026.03.02"
+      url: "https://github.com/NVIDIA/attestation-sdk"
+
+  busybox:
+    desc: "The Swiss Army Knife of Embedded Linux"
+    version: "1.36.1"
+    url: "https://busybox.net/downloads"
+
+  helm:
+    description: "Kubernetes package manager"
+    url: "https://get.helm.sh/"
+    version: "v4.0.4"
+
+  cni-plugins:
+    description: "CNI network plugins"
+    url: "https://github.com/containernetworking/plugins"
+    version: "v1.2.0"
+
+  coco-guest-components:
+    description: "Provides attested key unwrapping for image decryption"
+    url: "https://github.com/confidential-containers/guest-components/"
+    version: "304c21f29e26dbbb968783e41109f3b6d630e872"
+    # Guest Ubuntu release qualifier published by coco-extension-image.yml
+    # (tags are "<version>-<variant>", e.g. "<sha>-ubuntu26.04"). The
+    # extension ships no libc, so this must match the guest rootfs ABI.
+    variant: "ubuntu26.04"
+    # Scratch OCI container image (guest-components "Publish OCI container
+    # image" step). Consumed by monolithic confidential rootfs builds.
+    # yamllint disable-line rule:line-length
+    container_image: "ghcr.io/confidential-containers/guest-components/coco-extension"
+    # EROFS + dm-verity disk image (guest-components "Publish disk image with
+    # ORAS" step). Consumed by the runtime-rs composable extension path.
+    # yamllint disable-line rule:line-length
+    extension_image: "ghcr.io/confidential-containers/guest-components/coco-extension-disk"
+
+  coco-trustee:
+    description: "Provides attestation and secret delivery components"
+    url: "https://github.com/confidential-containers/trustee"
+    version: "bc80356aaa774db455f9c82173b329ab692cfbc1"
+    toolchain: "1.90.0"
+    # Helm chart deploys three separate images; tags match version.
+    images:
+      kbs: "ghcr.io/confidential-containers/staged-images/kbs-grpc-as"
+      as: "ghcr.io/confidential-containers/staged-images/coco-as-grpc"
+      rvps: "ghcr.io/confidential-containers/staged-images/rvps"
+
+  containerd:
+    description: |
+      Containerd for Kubernetes Container Runtime Interface.
+    url: "github.com/containerd/containerd"
+    # containerd from v1.5.0 used the path unix socket
+    # instead of abstract socket, thus kata wouldn's support the containerd's
+    # version older than them.
+    minimum: "v1.7"
+    latest: "v2.3"
+
+  runc:
+    description: "CLI tool for spawning and running containers"
+    url: "https://github.com/opencontainers/runc"
+    latest: "v1.2"
+
+  gperf:
+    description: "GNU gperf is a perfect hash function generator"
+    url: "https://ftp.gnu.org.uk/gnu/gperf/"
+    version: "3.3"
+
+  hadolint:
+    description: "the dockerfile linter used by static-checks"
+    url: "https://github.com/hadolint/hadolint"
+    version: "2.12.0"
+
+  libseccomp:
+    description: "High level interface to Linux seccomp filter"
+    url: "https://github.com/seccomp/libseccomp"
+    version: "2.6.0"
+
+  pause:
+    description: "Kubernetes pause container image"
+    repo: "docker://registry.k8s.io/pause"
+    version: "3.10"
+
+  nydus:
+    description: "Nydus image acceleration service"
+    url: "https://github.com/dragonflyoss/image-service"
+    version: "v2.2.3"
+
+  nydus-snapshotter:
+    description: "Snapshotter for Nydus image acceleration service"
+    url: "https://github.com/containerd/nydus-snapshotter"
+    version: "v0.15.15"
+
+  opa:
+    description: "Open Policy Agent"
+    url: "https://github.com/open-policy-agent/opa"
+    version: "v1.9.0"
+
+  ovmf:
+    description: "Firmware, implementation of UEFI for virtual machines."
+    url: "https://github.com/tianocore/edk2"
+    x86_64:
+      description: "Vanilla firmware build"
+      version: "edk2-stable202508"
+      package: "OvmfPkg/OvmfPkgX64.dsc"
+      package_output_dir: "OvmfX64"
+    sev:
+      # Used by AMD SEV-SNP for measured direct boot
+      description: "AmdSev build needed for SEV measured direct boot."
+      version: "edk2-stable202508"
+      package: "OvmfPkg/AmdSev/AmdSevX64.dsc"
+      package_output_dir: "AmdSev"
+    tdx:
+      description: "UEFI for Intel TDX virtual machines."
+      version: "edk2-stable202511"
+      package: "OvmfPkg/IntelTdx/IntelTdxX64.dsc"
+      package_output_dir: "IntelTdx"
+    arm64:
+      description: "UEFI for arm64 virtual machines."
+      version: "edk2-stable202508"
+      package: "ArmVirtPkg/ArmVirtQemu.dsc"
+      package_output_dir: "ArmVirtQemu-AARCH64"
+
+  protoc:
+    description: "Protobuf compiler"
+    url: "https://github.com/protocolbuffers/protobuf/releases"
+    version: "v21.12"
+
+  protoc-gen-go:
+    description: "Protobuf Go compiler"
+    url: "https://github.com/protocolbuffers/protobuf-go/releases"
+    version: "v1.28.1"
+
+  ttrpc:
+    description: "ttRPC libary and code generation utilities"
+    url: "https://github.com/containerd/ttrpc/releases"
+    version: "v1.2.7"
+
+  virtiofsd:
+    description: "vhost-user virtio-fs device backend written in Rust"
+    url: "https://gitlab.com/virtio-fs/virtiofsd"
+    version: "v1.14.0"
+    toolchain: "1.85.1"
+    meta:
+      # From https://gitlab.com/virtio-fs/virtiofsd/-/releases/v1.14.0,
+      # this is the link labelled virtiofsd-v1.14.0.zip
+      #
+      # yamllint disable-line rule:line-length
+      binary: "https://gitlab.com/-/project/21523468/uploads/f505704014ae7a816e515f2a05a93d8b/virtiofsd-v1.14.0.zip"
+      # yamllint disable-line rule:line-length
+      binary_sha256: "2e4fe9571f492b00baa34bc4e708e950039c5da05b830b31a8d179cb6ac8978e"
+
+languages:
+  description: |
+    Details of programming languages required to build system
+    components.
+
+  golang:
+    description: "Google's 'go' language"
+    notes: "'version' is the default minimum version used by this project."
+    # When updating this, also update in go.mod files.
+    version: "1.26.7"
+    meta:
+      description: |
+        'newest-version' is the latest version known to work when
+        building Kata
+      newest-version: "1.26.7"
+
+  rust:
+    description: "Rust language"
+    notes: "'version' is the default minimum version used by this project."
+    # Keep in sync with rust-toolchain.toml
+    version: "1.96"
+    meta:
+      description: |
+        'newest-version' is the latest version known to work when
+        building Kata
+      newest-version: "1.96"
+
+  golangci-lint:
+    description: "golangci-lint"
+    notes: "'version' is the default minimum version used by this project."
+    url: "github.com/golangci/golangci-lint"
+    version: "2.9.0"
+    meta:
+      description: |
+        'newest-version' is the latest version known to work when
+        building Kata
+      newest-version: "2.9.0"
+
+docker_images:
+  description: "Docker images used for testing"
+
+  nginx:
+    description: "Proxy server for HTTP, HTTPS, SMTP, POP3 and IMAP protocols"
+    registry: "quay.io/kata-containers/nginx"
+    # yamllint disable-line rule:line-length
+    digest: "sha256:a905609e0f9adc2607f06da2f76893c6da07caa396c41f2806fee162064cfb4b"  # 1.15-alpine

@@ -1,0 +1,206 @@
+package io.kestra.core.runners.pebble;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import io.kestra.core.runners.pebble.expression.*;
+import io.kestra.core.runners.pebble.filters.*;
+import io.kestra.core.runners.pebble.functions.*;
+import io.kestra.core.runners.pebble.tests.JsonTest;
+
+import io.micronaut.core.annotation.Nullable;
+import io.pebbletemplates.pebble.extension.*;
+import io.pebbletemplates.pebble.operator.Associativity;
+import io.pebbletemplates.pebble.operator.BinaryOperator;
+import io.pebbletemplates.pebble.operator.BinaryOperatorImpl;
+import io.pebbletemplates.pebble.operator.UnaryOperator;
+import io.pebbletemplates.pebble.tokenParser.TokenParser;
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
+
+import static io.pebbletemplates.pebble.operator.BinaryOperatorType.NORMAL;
+
+@Singleton
+public class Extension extends AbstractExtension {
+    @Inject
+    private SecretFunction secretFunction;
+
+    @Inject
+    private KvFunction kvFunction;
+
+    @Inject
+    private ReadFileFunction readFileFunction;
+
+    @Inject
+    private FileURIFunction fileURIFunction;
+
+    @Inject
+    @Nullable
+    private RenderFunction renderFunction;
+
+    @Inject
+    @Nullable
+    private RenderOnceFunction renderOnceFunction;
+
+    @Inject
+    private FileSizeFunction fileSizeFunction;
+
+    @Inject
+    private IsFileEmptyFunction isFileEmptyFunction;
+
+    @Inject
+    private FileExistsFunction fileExistsFunction;
+
+    @Inject
+    @Nullable
+    private ErrorLogsFunction errorLogsFunction;
+
+    @Inject
+    private HttpFunction httpFunction;
+
+    @Inject
+    @Nullable
+    private SubflowFunction subflowFunction;
+
+    @Override
+    public List<TokenParser> getTokenParsers() {
+        return null;
+    }
+
+    @Override
+    public List<UnaryOperator> getUnaryOperators() {
+        return null;
+    }
+
+    @Override
+    public List<BinaryOperator> getBinaryOperators() {
+        List<BinaryOperator> operators = new ArrayList<>();
+
+        operators.add(new BinaryOperatorImpl("??", 30, NullCoalescingExpression::new, NORMAL, Associativity.LEFT));
+        operators.add(new BinaryOperatorImpl("???", 30, UndefinedCoalescingExpression::new, NORMAL, Associativity.LEFT));
+        operators.add(new BinaryOperatorImpl("isIn", 30, InExpression::new, NORMAL, Associativity.LEFT));
+        operators.add(new BinaryOperatorImpl(">", 30, GreaterThanExpression::new, NORMAL, Associativity.LEFT));
+        operators.add(new BinaryOperatorImpl(">=", 30, GreaterThanEqualsExpression::new, NORMAL, Associativity.LEFT));
+        operators.add(new BinaryOperatorImpl("<", 30, LessThanExpression::new, NORMAL, Associativity.LEFT));
+        operators.add(new BinaryOperatorImpl("<=", 30, LessThanEqualsExpression::new, NORMAL, Associativity.LEFT));
+
+        return operators;
+    }
+
+    @Override
+    public Map<String, Filter> getFilters() {
+        Map<String, Filter> filters = new HashMap<>();
+
+        filters.put("chunk", new ChunkFilter());
+        filters.put("className", new ClassNameFilter());
+        filters.put("date", new DateFilter());
+        filters.put("dateAdd", new DateAddFilter());
+        filters.put("timestamp", new TimestampFilter());
+        filters.put("timestampMicro", new TimestampMicroFilter());
+        filters.put("timestampMilli", new TimestampMilliFilter());
+        filters.put("timestampNano", new TimestampNanoFilter());
+        filters.put("jq", new JqFilter());
+        filters.put("escapeChar", new EscapeCharFilter());
+        filters.put("toJson", new ToJsonFilter());
+        filters.put("distinct", new DistinctFilter());
+        filters.put("keys", new KeysFilter());
+        filters.put("number", new NumberFilter());
+        filters.put("urldecode", new UrlDecoderFilter());
+        filters.put("slugify", new SlugifyFilter());
+        filters.put("substringBefore", new SubstringBeforeFilter());
+        filters.put("substringBeforeLast", new SubstringBeforeLastFilter());
+        filters.put("substringAfter", new SubstringAfterFilter());
+        filters.put("substringAfterLast", new SubstringAfterLastFilter());
+        filters.put("flatten", new FlattenFilter());
+        filters.put("indent", new IndentFilter());
+        filters.put("nindent", new NindentFilter());
+        filters.put("yaml", new YamlFilter());
+        filters.put("startsWith", new StartsWithFilter());
+        filters.put("endsWith", new EndsWithFilter());
+        filters.put("values", new ValuesFilter());
+        filters.put("toIon", new ToIonFilter());
+        filters.put("sha1", new Sha1Filter());
+        filters.put("sha512", new Sha512Filter());
+        filters.put("md5", new Md5Filter());
+        filters.put("string", new StringFilter());
+        filters.put(RegexMatchFilter.NAME, new RegexMatchFilter());
+        filters.put(RegexReplaceFilter.NAME, new RegexReplaceFilter());
+        filters.put(RegexExtractFilter.NAME, new RegexExtractFilter());
+        return filters;
+    }
+
+    @Override
+    public Map<String, Test> getTests() {
+        Map<String, Test> tests = new HashMap<>();
+
+        tests.put("json", new JsonTest());
+
+        return tests;
+    }
+
+    @SuppressWarnings("deprecation")
+    @Override
+    public Map<String, Function> getFunctions() {
+        Map<String, Function> functions = new HashMap<>();
+
+        functions.put(NowFunction.NAME, new NowFunction());
+        functions.put(BoundedRangeFunction.NAME, new BoundedRangeFunction());
+        functions.put(FromJsonFunction.NAME, new FromJsonFunction());
+        functions.put(EnvFunction.NAME, new EnvFunction());
+        functions.put(SecretFunction.NAME, secretFunction);
+        functions.put(KvFunction.NAME, kvFunction);
+        functions.put(ReadFileFunction.NAME, readFileFunction);
+        functions.put(FileURIFunction.NAME, fileURIFunction);
+        if (renderFunction != null) {
+            functions.put(RenderFunction.NAME, renderFunction);
+        }
+        if (renderOnceFunction != null) {
+            functions.put(RenderOnceFunction.NAME, renderOnceFunction);
+        }
+        functions.put(EncryptFunction.NAME, new EncryptFunction());
+        functions.put(DecryptFunction.NAME, new DecryptFunction());
+        functions.put(YamlFunction.NAME, new YamlFunction());
+        functions.put(FetchContextFunction.ALIAS, new FetchContextFunction());
+        functions.put(FetchContextFunction.NAME, new FetchContextFunction());
+        functions.put(UUIDFunction.NAME, new UUIDFunction());
+        functions.put(IDFunction.NAME, new IDFunction());
+        functions.put(KSUIDFunction.NAME, new KSUIDFunction());
+        functions.put(FromIonFunction.NAME, new FromIonFunction());
+        functions.put(FileSizeFunction.NAME, fileSizeFunction);
+        if (this.errorLogsFunction != null) {
+            functions.put(ErrorLogsFunction.NAME, errorLogsFunction);
+        }
+        functions.put(RandomIntFunction.NAME, new RandomIntFunction());
+        functions.put(RandomPortFunction.NAME, new RandomPortFunction());
+        functions.put(FileExistsFunction.NAME, fileExistsFunction);
+        functions.put(IsFileEmptyFunction.NAME, isFileEmptyFunction);
+        functions.put(NanoIDFunction.NAME, new NanoIDFunction());
+        functions.put(TasksWithStateFunction.NAME, new TasksWithStateFunction());
+        functions.put(HttpFunction.NAME, httpFunction);
+        if (subflowFunction != null) {
+            functions.put(SubflowFunction.NAME, subflowFunction);
+        }
+        functions.put(IsPublicHolidayFunction.NAME, new IsPublicHolidayFunction());
+        functions.put(IsDayWeekInMonthFunction.NAME, new IsDayWeekInMonthFunction());
+        functions.put(IsWeekendFunction.NAME, new IsWeekendFunction());
+        functions.put(IsLastWorkingDayFunction.NAME, new IsLastWorkingDayFunction());
+        functions.put(DayOfWeekFunction.NAME, new DayOfWeekFunction());
+        functions.put(HourOfDayFunction.NAME, new HourOfDayFunction());
+        functions.put(DayOfMonthFunction.NAME, new DayOfMonthFunction());
+        functions.put(MonthOfYearFunction.NAME, new MonthOfYearFunction());
+        functions.put(LoopOutputsFunction.NAME, new LoopOutputsFunction());
+        return functions;
+    }
+
+    @Override
+    public Map<String, Object> getGlobalVariables() {
+        return null;
+    }
+
+    @Override
+    public List<NodeVisitorFactory> getNodeVisitors() {
+        return null;
+    }
+}

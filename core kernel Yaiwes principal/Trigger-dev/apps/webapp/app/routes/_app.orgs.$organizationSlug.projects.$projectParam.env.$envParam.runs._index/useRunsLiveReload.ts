@@ -1,0 +1,301 @@
+import { useLocation } from "@remix-run/react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTypedFetcher } from "remix-typedjson";
+import { useInterval } from "~/hooks/useInterval";
+import type { NextRunListItem } from "~/presenters/v3/NextRunListPresenter.server";
+import type { loader as liveRunsLoader } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.live";
+import { stripBulkInspectorUiParams } from "./shouldRevalidateRunsList";
+
+const RUNS_PAGINATION_SEARCH_PARAMS = ["cursor", "direction"] as const;
+const RUNS_POLL_INTERVAL_MS = 3000;
+/** Check for new runs every N poll ticks (~6s at 3s interval). */
+const NEW_RUNS_EVERY_N_POLL_TICKS = 2;
+
+type ListedRun = NextRunListItem;
+type LiveRunFields = Awaited<ReturnType<typeof liveRunsLoader>>["runs"][number];
+type LivePollFetcherData = Awaited<ReturnType<typeof liveRunsLoader>> | undefined;
+
+function hasNewRunsCountFields(
+  data: LivePollFetcherData
+): data is NonNullable<LivePollFetcherData> & { count: number; since: number } {
+  return data !== undefined && "count" in data && "since" in data;
+}
+
+function maxCreatedAtMs(runs: ListedRun[]): number | undefined {
+  if (runs.length === 0) return undefined;
+
+  return runs.reduce<number>((maxTimestamp, run) => {
+    const runTimestamp = new Date(run.createdAt).getTime();
+    return Math.max(maxTimestamp, runTimestamp);
+  }, 0);
+}
+
+function filterParamsWithoutPagination(search: string) {
+  const params = stripBulkInspectorUiParams(new URLSearchParams(search));
+  for (const key of RUNS_PAGINATION_SEARCH_PARAMS) {
+    params.delete(key);
+  }
+  return params;
+}
+
+function getRunsSearchKeyWithoutPagination(search: string) {
+  return filterParamsWithoutPagination(search).toString();
+}
+
+function isNewRunsCheckTick(tick: number) {
+  return tick === 1 || tick % NEW_RUNS_EVERY_N_POLL_TICKS === 0;
+}
+
+function appendNewRunsSearchParams(
+  searchParams: URLSearchParams,
+  { locationSearch, since, taskSlug }: { locationSearch: string; since: number; taskSlug?: string }
+) {
+  const filterParams = filterParamsWithoutPagination(locationSearch);
+  for (const [key, value] of filterParams) {
+    searchParams.append(key, value);
+  }
+  // On the task landing pages the task lives in the route path, not the query
+  // string, so scope the new-runs count to this task explicitly. The task pages
+  // list every run of the task (their loaders apply no rootOnly filter), so
+  // force rootOnly off for the count too: a rootOnly preference persisted from
+  // the main Runs page would otherwise make the count skip child runs the list
+  // is showing, so the "N new runs" button could under-count or never appear.
+  if (taskSlug) {
+    searchParams.append("tasks", taskSlug);
+    searchParams.set("rootOnly", "false");
+  }
+  searchParams.set("includeNewRuns", "true");
+  searchParams.set("since", String(since));
+}
+
+function patchVisibleRunsWithLiveUpdates(currentRuns: ListedRun[], liveRuns: LiveRunFields[]) {
+  const updatesById = new Map(liveRuns.map((run) => [run.friendlyId, run]));
+
+  return currentRuns.map((run) => {
+    const update = updatesById.get(run.friendlyId);
+    if (!update) return run;
+
+    return {
+      ...run,
+      status: update.status,
+      updatedAt: update.updatedAt,
+      startedAt: update.startedAt,
+      finishedAt: update.finishedAt,
+      hasFinished: update.hasFinished,
+      isCancellable: update.isCancellable,
+      isPending: update.isPending,
+      usageDurationMs: update.usageDurationMs,
+      costInCents: update.costInCents,
+      baseCostInCents: update.baseCostInCents,
+      metadata: update.metadata !== undefined ? update.metadata : run.metadata,
+      metadataType: update.metadataType !== undefined ? update.metadataType : run.metadataType,
+      payload: update.payload !== undefined ? update.payload : run.payload,
+      payloadType: update.payloadType !== undefined ? update.payloadType : run.payloadType,
+      output: update.output !== undefined ? update.output : run.output,
+      outputType: update.outputType !== undefined ? update.outputType : run.outputType,
+    };
+  });
+}
+
+function useNewRunsDetection({
+  runs,
+  hasAnyRuns,
+  isLoading,
+}: {
+  runs: ListedRun[];
+  hasAnyRuns: boolean;
+  isLoading: boolean;
+}) {
+  const pollTickRef = useRef(0);
+  const [knownNewestRunMs, setKnownNewestRunMs] = useState(
+    () => maxCreatedAtMs(runs) ?? Date.now()
+  );
+  const [newRunsCount, setNewRunsCount] = useState(0);
+
+  const shouldPollForNewRuns = hasAnyRuns && !isLoading && newRunsCount < 100;
+
+  // Re-baseline the cutoff and clear banner/throttle state. The parent calls
+  // this from its single "list context changed" reset path.
+  const resetNewRunsTracking = useCallback(() => {
+    setKnownNewestRunMs(maxCreatedAtMs(runs) ?? Date.now());
+    setNewRunsCount(0);
+    pollTickRef.current = 0;
+  }, [runs]);
+
+  const dismissNewRuns = useCallback(() => {
+    setNewRunsCount(0);
+    setKnownNewestRunMs(Date.now());
+    pollTickRef.current = 0;
+  }, []);
+
+  const checkNewRunsOnTick = useCallback(() => {
+    pollTickRef.current += 1;
+    return shouldPollForNewRuns && isNewRunsCheckTick(pollTickRef.current);
+  }, [shouldPollForNewRuns]);
+
+  const showNewRunsBanner = newRunsCount > 0;
+
+  return {
+    knownNewestRunMs,
+    newRunsCount,
+    setNewRunsCount,
+    shouldPollForNewRuns,
+    showNewRunsBanner,
+    dismissNewRuns,
+    checkNewRunsOnTick,
+    resetNewRunsTracking,
+  };
+}
+
+export function useRunsLiveReload({
+  runs,
+  hasAnyRuns,
+  isLoading,
+  organizationSlug,
+  projectSlug,
+  environmentSlug,
+  taskSlug,
+}: {
+  runs: ListedRun[];
+  hasAnyRuns: boolean;
+  isLoading: boolean;
+  organizationSlug: string;
+  projectSlug: string;
+  environmentSlug: string;
+  /**
+   * When set, scopes new-run detection to this task. Used by the task landing
+   * pages, where the task is a route path param rather than a `tasks` filter.
+   */
+  taskSlug?: string;
+}) {
+  const location = useLocation();
+  const runsPollFetcher = useTypedFetcher<typeof liveRunsLoader>();
+  const runsPollFetcherStateRef = useRef(runsPollFetcher.state);
+  // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative route integration outside React state.
+  runsPollFetcherStateRef.current = runsPollFetcher.state;
+
+  const [visibleRuns, setVisibleRuns] = useState(runs);
+
+  const searchKeyWithoutPagination = useMemo(
+    () => getRunsSearchKeyWithoutPagination(location.search),
+    [location.search]
+  );
+
+  const {
+    knownNewestRunMs,
+    newRunsCount,
+    setNewRunsCount,
+    shouldPollForNewRuns,
+    showNewRunsBanner,
+    dismissNewRuns,
+    checkNewRunsOnTick,
+    resetNewRunsTracking,
+  } = useNewRunsDetection({
+    runs,
+    hasAnyRuns,
+    isLoading,
+  });
+
+  // Single reset path: new loader data or changed filters re-baseline both the
+  // visible rows and new-run tracking.
+  useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
+    setVisibleRuns(runs);
+    resetNewRunsTracking();
+  }, [runs, searchKeyWithoutPagination, resetNewRunsTracking]);
+
+  // Patch visible rows from the live response. Keyed to the response alone so a
+  // loader refresh never re-applies a stale poll payload over fresh rows.
+  useEffect(() => {
+    const data = runsPollFetcher.data;
+    if (!data?.runs.length) return;
+
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
+    setVisibleRuns((currentRuns) => patchVisibleRunsWithLiveUpdates(currentRuns, data.runs));
+  }, [runsPollFetcher.data]);
+
+  // Update new-runs count from the poll response. Re-evaluates when the cutoff
+  // changes, even if the response object itself is unchanged.
+  useEffect(() => {
+    const data = runsPollFetcher.data;
+    if (!hasNewRunsCountFields(data)) return;
+
+    if (data.since === knownNewestRunMs) {
+      setNewRunsCount(data.count);
+    }
+  }, [runsPollFetcher.data, knownNewestRunMs, setNewRunsCount]);
+
+  const activeRunIdsParam = useMemo(
+    () =>
+      visibleRuns
+        .filter((run) => !run.hasFinished)
+        .map((run) => run.friendlyId)
+        .join(","),
+    [visibleRuns]
+  );
+  const hasActiveRuns = activeRunIdsParam.length > 0;
+
+  const runsResourcesBasePath = useMemo(
+    () => `/resources/orgs/${organizationSlug}/projects/${projectSlug}/env/${environmentSlug}/runs`,
+    [organizationSlug, projectSlug, environmentSlug]
+  );
+
+  const loadRunsPoll = useCallback(
+    (checkForNewRuns: boolean) => {
+      if (runsPollFetcherStateRef.current !== "idle") return;
+
+      if (!hasActiveRuns && !checkForNewRuns) return;
+
+      const searchParams = new URLSearchParams();
+      if (hasActiveRuns) {
+        searchParams.set("runIds", activeRunIdsParam);
+      }
+
+      const locationParams = new URLSearchParams(location.search);
+      const colsValue = locationParams.get("cols");
+      if (colsValue) searchParams.set("cols", colsValue);
+      const hideValue = locationParams.get("hide");
+      if (hideValue) searchParams.set("hide", hideValue);
+      for (const smart of locationParams.getAll("sc")) searchParams.append("sc", smart);
+
+      if (checkForNewRuns) {
+        appendNewRunsSearchParams(searchParams, {
+          locationSearch: location.search,
+          since: knownNewestRunMs,
+          taskSlug,
+        });
+      }
+
+      runsPollFetcher.load(`${runsResourcesBasePath}/live?${searchParams.toString()}`);
+    },
+    [
+      activeRunIdsParam,
+      hasActiveRuns,
+      location.search,
+      knownNewestRunMs,
+      runsPollFetcher,
+      runsResourcesBasePath,
+      taskSlug,
+    ]
+  );
+
+  const shouldPoll = !isLoading && (hasActiveRuns || shouldPollForNewRuns);
+
+  useInterval({
+    interval: RUNS_POLL_INTERVAL_MS,
+    onLoad: true,
+    pauseWhenHidden: true,
+    disabled: !shouldPoll,
+    callback: () => {
+      loadRunsPoll(checkNewRunsOnTick());
+    },
+  });
+
+  return {
+    visibleRuns,
+    showNewRunsBanner,
+    newRunsCount,
+    dismissNewRuns,
+    childrenStatusesBasePath: runsResourcesBasePath,
+  };
+}

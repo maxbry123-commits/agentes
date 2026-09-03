@@ -1,0 +1,56 @@
+# Copyright (c) 2020 Intel Corporation
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
+[package]
+name = "kata-agent-ctl"
+version = "0.0.1"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+protocols = { workspace = true, features = ["with-serde"] }
+oci-spec.workspace = true
+
+clap = { workspace = true, features = ["derive", "cargo"] }
+lazy_static.workspace = true
+anyhow.workspace = true
+hex = "0.4.2"
+byteorder = "1.3.4"
+
+# Note: this crate sets the slog 'max_*' features which allows the log level
+# to be modified at runtime.
+logging.workspace = true
+slog.workspace = true
+slog-scope.workspace = true
+rand.workspace = true
+protobuf.workspace = true
+
+nix.workspace = true
+libc.workspace = true
+# XXX: Must be the same as the version used by the agent
+ttrpc.workspace = true
+
+# For parsing timeouts
+humantime = "2.1.0"
+
+# For Options (state passing)
+serde.workspace = true
+serde_json.workspace = true
+
+kata-types.workspace = true
+
+# hypervisor crate from runtime-rs
+hypervisor.workspace = true
+kata-sys-util.workspace = true
+safe-path.workspace = true
+
+tokio.workspace = true
+
+[features]
+default = ["cloud-hypervisor"]
+
+# Enable the Cloud Hypervisor driver
+cloud-hypervisor = []

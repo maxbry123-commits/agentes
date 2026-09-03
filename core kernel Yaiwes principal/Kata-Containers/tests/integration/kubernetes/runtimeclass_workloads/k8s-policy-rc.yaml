@@ -1,0 +1,46 @@
+#
+# Copyright (c) 2024 Microsoft
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: policy-rc-test
+spec:
+  replicas: 1
+  selector:
+    app: policy-nginx-rc
+  template:
+    metadata:
+      name: nginx
+      labels:
+        app: policy-nginx-rc
+    spec:
+      runtimeClassName: kata
+      containers:
+      - name: nginxtest
+        image: ${NGINX_IMAGE}
+        ports:
+        - containerPort: 80
+        volumeMounts:
+          - name: host-empty-vol
+            mountPath: "/host/cache"
+          - name: host-empty-vol
+            mountPath: "/host/cache-read-only"
+            readOnly: true
+          - mountPath: /tmp/results
+            name: hostpath-vol
+          - mountPath: /tmp/results-read-only
+            name: hostpath-vol-read-only
+            readOnly: true
+      volumes:
+      - name: host-empty-vol
+        emptyDir: {}
+      - name: hostpath-vol
+        hostPath:
+          path: /tmp/results
+      - name: hostpath-vol-read-only
+        hostPath:
+          path: /tmp/results-read-only
+      preemptionPolicy: PreemptLowerPriority

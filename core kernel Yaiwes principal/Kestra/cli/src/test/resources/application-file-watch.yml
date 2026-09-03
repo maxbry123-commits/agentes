@@ -1,0 +1,17 @@
+micronaut:
+  io:
+    watch:
+      enabled: true
+      tenantId: main
+      paths:
+        - build/file-watch
+
+kestra:
+  repository:
+    type: memory
+  queue:
+    type: memory
+
+logger:
+  levels:
+    "io.kestra.core.migration": WARN

@@ -1,0 +1,954 @@
+/*
+ * config.test.ts
+ * Copyright (c) Microsoft Corporation.
+ * Licensed under the MIT license.
+ * Author: Eric Traut
+ *
+ * Unit tests for parsing of pyrightconfig.json files.
+ */
+
+import assert from 'assert';
+
+import { ImportResolver } from '../analyzer/importResolver';
+import { AnalyzerService } from '../analyzer/service';
+import { deserialize, serialize } from '../backgroundThreadBase';
+import { CommandLineOptions, DiagnosticSeverityOverrides } from '../common/commandLineOptions';
+import {
+    ConfigOptions,
+    ExecutionEnvironment,
+    getBasicDiagnosticRuleSet,
+    getStandardDiagnosticRuleSet,
+} from '../common/configOptions';
+import { ConsoleInterface, NullConsole } from '../common/console';
+import { TaskListPriority } from '../common/diagnostic';
+import { combinePaths, normalizePath, normalizeSlashes } from '../common/pathUtils';
+import { pythonVersion3_13, pythonVersion3_9 } from '../common/pythonVersion';
+import { RealTempFile, createFromRealFileSystem } from '../common/realFileSystem';
+import { createServiceProvider } from '../common/serviceProviderExtensions';
+import { Uri } from '../common/uri/uri';
+import { UriEx } from '../common/uri/uriUtils';
+import { TestAccessHost } from './harness/testAccessHost';
+import { TestFileSystem } from './harness/vfs/filesystem';
+
+describe(`config test'}`, () => {
+    const tempFile = new RealTempFile();
+
+    afterAll(() => tempFile.dispose());
+
+    test('FindFilesWithConfigFile', () => {
+        const cwd = normalizePath(process.cwd());
+        const service = createAnalyzer();
+        const commandLineOptions = new CommandLineOptions(cwd, /* fromLanguageServer */ true);
+        commandLineOptions.configFilePath = 'src/tests/samples/project1';
+
+        const configOptions = service.test_getConfigOptions(commandLineOptions);
+        service.setOptions(commandLineOptions);
+
+        // The config file specifies a single file spec (a directory).
+        assert.strictEqual(configOptions.include.length, 1, `failed creating options from ${cwd}`);
+        assert.strictEqual(
+            configOptions.projectRoot.key,
+            service.fs.realCasePath(
+                Uri.file(combinePaths(cwd, commandLineOptions.configFilePath), service.serviceProvider)
+            ).key
+        );
+
+        const fileList = service.test_getFileNamesFromFileSpecs();
+
+        // The config file specifies a subdirectory, so we should find
+        // only two of the three "*.py" files present in the project
+        // directory.
+        assert.strictEqual(fileList.length, 2);
+    });
+
+    test('FindFilesVirtualEnvAutoDetectExclude', () => {
+        const cwd = normalizePath(process.cwd());
+        const service = createAnalyzer();
+        const commandLineOptions = new CommandLineOptions(cwd, /* fromLanguageServer */ true);
+        commandLineOptions.configFilePath = 'src/tests/samples/project_with_venv_auto_detect_exclude';
+
+        service.setOptions(commandLineOptions);
+
+        // The config file is empty, so no 'exclude' are specified
+        // The myVenv directory is detected as a venv and will be automatically excluded
+        const fileList = service.test_getFileNamesFromFileSpecs();
+
+        // There are 3 python files in the workspace, outside of myVenv
+        // There is 1 python file in myVenv, which should be excluded
+        const fileNames = fileList.map((p) => p.fileName).sort();
+        assert.deepStrictEqual(fileNames, ['sample1.py', 'sample2.py', 'sample3.py']);
+    });
+
+    test('FindFilesExcludesEditableInstallShadow', () => {
+        // Build the project entirely in an in-memory vfs (no explicit 'exclude'), so the service
+        // default excludes apply. This runs the real AnalyzerService.setOptions path (which runs
+        // `_ensureDefaultOptions`) rather than the fourslash harness, which constructs ConfigOptions
+        // directly and never applies the service default excludes.
+        const projectRoot = normalizeSlashes('/src');
+        const fs = new TestFileSystem(/* ignoreCase */ true, {
+            cwd: normalizeSlashes('/'),
+            files: {
+                [normalizeSlashes('/src/sample.py')]: 'x = 1\n',
+                // Name merely contains the substring `__editable__`; must NOT match `**/__editable__.*`.
+                [normalizeSlashes('/src/not__editable__helper.py')]: 'y = 2\n',
+                // `build/` itself is not excluded, only the `__editable__.*` directory under it.
+                [normalizeSlashes('/src/build/keep.py')]: 'z = 3\n',
+                // Auto-generated PEP 660 "strict" editable-install shadow copy; must be excluded.
+                [normalizeSlashes('/src/build/__editable__.mypkg-1.0/mypkg/__init__.py')]: '',
+                [normalizeSlashes('/src/build/__editable__.mypkg-1.0/mypkg/mod.py')]:
+                    'def target() -> int:\n    return 1\n',
+            },
+        });
+
+        const cons = new NullConsole();
+        const serviceProvider = createServiceProvider(fs, cons, tempFile);
+        const host = new TestAccessHost();
+        const service = new AnalyzerService('<default>', serviceProvider, {
+            console: cons,
+            hostFactory: () => host,
+            shouldRunAnalysis: () => false,
+        });
+
+        try {
+            const commandLineOptions = new CommandLineOptions(projectRoot, /* fromLanguageServer */ true);
+            service.setOptions(commandLineOptions);
+
+            const fileNames = service
+                .test_getFileNamesFromFileSpecs()
+                .map((p) => p.fileName)
+                .sort();
+            assert.deepStrictEqual(fileNames, ['keep.py', 'not__editable__helper.py', 'sample.py']);
+        } finally {
+            service.dispose();
+        }
+    });
+
+    test('EditableInstallShadowExcludedButImportable', () => {
+        // Locks the invariant asserted by the `**/__editable__.*` default-exclude comment in
+        // `_ensureDefaultOptions`: excluding the PEP 660 "strict" editable-install shadow tree from
+        // project enumeration must NOT make its modules un-importable. The strict `.pth` keeps the
+        // shadow dir on the import search path, so `import mypkg.mod` still resolves through search
+        // paths even though the shadow files are no longer tracked as project source files.
+        const projectRoot = normalizeSlashes('/src');
+        const shadowRoot = normalizeSlashes('/src/build/__editable__.mypkg-1.0');
+        const shadowModPath = normalizeSlashes('/src/build/__editable__.mypkg-1.0/mypkg/mod.py');
+        const fs = new TestFileSystem(/* ignoreCase */ true, {
+            cwd: normalizeSlashes('/'),
+            files: {
+                [normalizeSlashes('/src/sample.py')]: 'import mypkg.mod\n',
+                [normalizeSlashes('/src/build/__editable__.mypkg-1.0/mypkg/__init__.py')]: '',
+                [shadowModPath]: 'def target() -> int:\n    return 1\n',
+            },
+        });
+
+        const cons = new NullConsole();
+        const serviceProvider = createServiceProvider(fs, cons, tempFile);
+        const host = new TestAccessHost();
+        const service = new AnalyzerService('<default>', serviceProvider, {
+            console: cons,
+            hostFactory: () => host,
+            shouldRunAnalysis: () => false,
+        });
+
+        try {
+            const commandLineOptions = new CommandLineOptions(projectRoot, /* fromLanguageServer */ true);
+            service.setOptions(commandLineOptions);
+
+            // Enumeration: the shadow tree is excluded, so only the real project file is tracked.
+            const enumerated = service.test_getFileNamesFromFileSpecs();
+            assert.deepStrictEqual(enumerated.map((p) => p.fileName).sort(), ['sample.py']);
+            assert.ok(
+                !enumerated.some((p) => p.getFilePath().includes('__editable__.mypkg-1.0')),
+                'the editable-install shadow tree must not be enumerated'
+            );
+
+            // Importability: with the shadow dir on the import search path (as the strict `.pth`
+            // provides), `import mypkg.mod` still resolves into the shadow tree even though it was
+            // excluded from enumeration above.
+            const configOptions = new ConfigOptions(UriEx.file(projectRoot));
+            configOptions.defaultExtraPaths = [UriEx.file(shadowRoot)];
+            const importResolver = new ImportResolver(serviceProvider, configOptions, host);
+            const sampleUri = UriEx.file(normalizeSlashes('/src/sample.py'));
+            const importResult = importResolver.resolveImport(sampleUri, configOptions.findExecEnvironment(sampleUri), {
+                leadingDots: 0,
+                nameParts: ['mypkg', 'mod'],
+                importedSymbols: new Set<string>(),
+            });
+
+            assert.ok(importResult.isImportFound, 'the excluded shadow module must remain importable via search paths');
+            assert.strictEqual(
+                importResult.resolvedUris.filter((f) => !f.isEmpty() && f.getFilePath() === shadowModPath).length,
+                1
+            );
+        } finally {
+            service.dispose();
+        }
+    });
+
+    test('FindFilesVirtualEnvAutoDetectWithUserExclude', () => {
+        const cwd = normalizePath(process.cwd());
+        const service = createAnalyzer();
+        const commandLineOptions = new CommandLineOptions(cwd, /* fromLanguageServer */ true);
+        commandLineOptions.configFilePath = 'src/tests/samples/project_with_venv_auto_detect_include';
+
+        service.setOptions(commandLineOptions);
+
+        // The config file defines an 'exclude' folder. Virtual env auto-detection remains
+        // enabled even when the user specifies custom excludes (the excludes are additive),
+        // so myVenv is still auto-excluded.
+        const fileList = service.test_getFileNamesFromFileSpecs();
+
+        // There are 3 python files in the workspace, outside of myVenv
+        // There is 1 more python file in the user-excluded folder (excluded)
+        // There is 1 python file in myVenv, which is auto-excluded
+        const fileNames = fileList.map((p) => p.fileName).sort();
+        assert.deepStrictEqual(fileNames, ['sample1.py', 'sample2.py', 'sample3.py']);
+    });
+
+    test('FindFilesVirtualEnvNotAutoDetectedWhenDefaultExcludesDisabled', () => {
+        const cwd = normalizePath(process.cwd());
+        const service = createAnalyzer();
+        const commandLineOptions = new CommandLineOptions(cwd, /* fromLanguageServer */ true);
+        commandLineOptions.configFilePath = 'src/tests/samples/project_with_venv_auto_detect_include';
+        // Turn off the built-in default excludes; virtual-environment auto-detection is disabled
+        // along with them, so myVenv is scanned again.
+        commandLineOptions.configSettings.useDefaultExcludes = false;
+
+        service.setOptions(commandLineOptions);
+
+        const fileList = service.test_getFileNamesFromFileSpecs();
+
+        // myVenv is no longer auto-excluded, so library1.py is scanned. The user-specified
+        // 'exclude' folder is still excluded (explicit user excludes are unaffected by the setting).
+        const fileNames = fileList.map((p) => p.fileName).sort();
+        assert.deepStrictEqual(fileNames, ['library1.py', 'sample1.py', 'sample2.py', 'sample3.py']);
+    });
+
+    test('FileSpecNotAnArray', () => {
+        const cwd = normalizePath(process.cwd());
+        const nullConsole = new NullConsole();
+        const service = createAnalyzer(nullConsole);
+        const commandLineOptions = new CommandLineOptions(cwd, /* fromLanguageServer */ false);
+        commandLineOptions.configFilePath = 'src/tests/samples/project2';
+        service.setOptions(commandLineOptions);
+
+        service.test_getConfigOptions(commandLineOptions);
+
+        // The method should return a default config and log an error.
+        assert(nullConsole.infoCount > 0);
+    });
+
+    test('FileSpecNotAString', () => {
+        const cwd = normalizePath(process.cwd());
+        const nullConsole = new NullConsole();
+        const service = createAnalyzer(nullConsole);
+        const commandLineOptions = new CommandLineOptions(cwd, /* fromLanguageServer */ false);
+        commandLineOptions.configFilePath = 'src/tests/samples/project3';
+        service.setOptions(commandLineOptions);
+
+        service.test_getConfigOptions(commandLineOptions);
+
+        // The method should return a default config and log an error.
+        assert(nullConsole.infoCount > 0);
+    });
+
+    test('SomeFileSpecsAreInvalid', () => {
+        const cwd = normalizePath(process.cwd());
+        const nullConsole = new NullConsole();
+        const service = createAnalyzer(nullConsole);
+        const commandLineOptions = new CommandLineOptions(cwd, /* fromLanguageServer */ false);
+        commandLineOptions.configFilePath = 'src/tests/samples/project4';
+        service.setOptions(commandLineOptions);
+
+        const configOptions = service.test_getConfigOptions(commandLineOptions);
+
+        // The config file specifies four file specs in the include array
+        // and one in the exclude array. The 4 default excludes are always applied
+        // additively, so the exclude array contains 1 user + 4 defaults = 5.
+        assert.strictEqual(configOptions.include.length, 4, `failed creating options from ${cwd}`);
+        assert.strictEqual(configOptions.exclude.length, 5);
+        assert.strictEqual(
+            configOptions.projectRoot.getFilePath(),
+            service.fs
+                .realCasePath(Uri.file(combinePaths(cwd, commandLineOptions.configFilePath), service.serviceProvider))
+                .getFilePath()
+        );
+
+        const fileList = service.test_getFileNamesFromFileSpecs();
+
+        // We should receive two final files that match the include/exclude rules.
+        assert.strictEqual(fileList.length, 2);
+    });
+
+    test('DefaultExcludesDisabledByUseDefaultExcludes', () => {
+        const cwd = normalizePath(process.cwd());
+        const nullConsole = new NullConsole();
+        const service = createAnalyzer(nullConsole);
+        const commandLineOptions = new CommandLineOptions(cwd, /* fromLanguageServer */ false);
+        commandLineOptions.configFilePath = 'src/tests/samples/project4';
+        // Turn off the built-in default excludes.
+        commandLineOptions.configSettings.useDefaultExcludes = false;
+        service.setOptions(commandLineOptions);
+
+        const configOptions = service.test_getConfigOptions(commandLineOptions);
+
+        // Only the user's single exclude remains; none of the 4 default excludes are added.
+        assert.strictEqual(configOptions.exclude.length, 1);
+        // Virtual-environment auto-detection is disabled along with the default excludes.
+        assert.strictEqual(configOptions.autoExcludeVenv, false);
+    });
+
+    test('ConfigBadJson', () => {
+        const cwd = normalizePath(process.cwd());
+        const nullConsole = new NullConsole();
+        const service = createAnalyzer(nullConsole);
+        const commandLineOptions = new CommandLineOptions(cwd, /* fromLanguageServer */ false);
+        commandLineOptions.configFilePath = 'src/tests/samples/project5';
+        service.setOptions(commandLineOptions);
+
+        service.test_getConfigOptions(commandLineOptions);
+
+        // The method should return a default config and log an error.
+        assert(nullConsole.infoCount > 0);
+    });
+
+    test('FindExecEnv1', () => {
+        const cwd = UriEx.file(normalizePath(process.cwd()));
+        const configOptions = new ConfigOptions(cwd);
+
+        // Build a config option with three execution environments.
+        const execEnv1 = new ExecutionEnvironment(
+            'python',
+            cwd.resolvePaths('src/foo'),
+            getStandardDiagnosticRuleSet(),
+            /* defaultPythonVersion */ undefined,
+            /* defaultPythonPlatform */ undefined,
+            /* defaultExtraPaths */ undefined
+        );
+        configOptions.executionEnvironments.push(execEnv1);
+        const execEnv2 = new ExecutionEnvironment(
+            'python',
+            cwd.resolvePaths('src'),
+            getStandardDiagnosticRuleSet(),
+            /* defaultPythonVersion */ undefined,
+            /* defaultPythonPlatform */ undefined,
+            /* defaultExtraPaths */ undefined
+        );
+        configOptions.executionEnvironments.push(execEnv2);
+
+        const file1 = cwd.resolvePaths('src/foo/bar.py');
+        assert.strictEqual(configOptions.findExecEnvironment(file1), execEnv1);
+        const file2 = cwd.resolvePaths('src/foo2/bar.py');
+        assert.strictEqual(configOptions.findExecEnvironment(file2), execEnv2);
+
+        // If none of the execution environments matched, we should get
+        // a default environment with the root equal to that of the config.
+        const file4 = UriEx.file('/nothing/bar.py');
+        const defaultExecEnv = configOptions.findExecEnvironment(file4);
+        assert(defaultExecEnv.root);
+        const rootFilePath = Uri.is(defaultExecEnv.root) ? defaultExecEnv.root.getFilePath() : defaultExecEnv.root;
+        assert.strictEqual(normalizeSlashes(rootFilePath), normalizeSlashes(configOptions.projectRoot.getFilePath()));
+    });
+
+    test('PythonPlatform', () => {
+        const nullConsole = new NullConsole();
+        const service = createAnalyzer(nullConsole);
+        const cwd = Uri.file(
+            normalizePath(combinePaths(process.cwd(), 'src/tests/samples/project_with_pyproject_toml_platform')),
+            service.serviceProvider
+        );
+        const commandLineOptions = new CommandLineOptions(cwd.getFilePath(), /* fromLanguageServer */ false);
+        service.setOptions(commandLineOptions);
+
+        const configOptions = service.test_getConfigOptions(commandLineOptions);
+        assert.ok(configOptions.executionEnvironments[0]);
+        assert.equal(configOptions.executionEnvironments[0].pythonPlatform, 'platform');
+    });
+
+    test('AutoSearchPathsOn', () => {
+        const nullConsole = new NullConsole();
+        const service = createAnalyzer(nullConsole);
+        const cwd = Uri.file(
+            normalizePath(combinePaths(process.cwd(), 'src/tests/samples/project_src')),
+            service.serviceProvider
+        );
+        const commandLineOptions = new CommandLineOptions(cwd.getFilePath(), /* fromLanguageServer */ false);
+        commandLineOptions.configSettings.autoSearchPaths = true;
+        service.setOptions(commandLineOptions);
+
+        const configOptions = service.test_getConfigOptions(commandLineOptions);
+
+        const expectedExtraPaths = [service.fs.realCasePath(cwd.combinePaths('src'))];
+        assert.deepStrictEqual(configOptions.defaultExtraPaths, expectedExtraPaths);
+    });
+
+    test('AutoSearchPathsOff', () => {
+        const cwd = normalizePath(combinePaths(process.cwd(), 'src/tests/samples/project_src'));
+        const nullConsole = new NullConsole();
+        const service = createAnalyzer(nullConsole);
+        const commandLineOptions = new CommandLineOptions(cwd, /* fromLanguageServer */ false);
+        commandLineOptions.configSettings.autoSearchPaths = false;
+        service.setOptions(commandLineOptions);
+
+        const configOptions = service.test_getConfigOptions(commandLineOptions);
+
+        assert.deepStrictEqual(configOptions.executionEnvironments, []);
+    });
+
+    test('AutoSearchPathsOnSrcIsPkg', () => {
+        const cwd = normalizePath(combinePaths(process.cwd(), 'src/tests/samples/project_src_is_pkg'));
+        const nullConsole = new NullConsole();
+        const service = createAnalyzer(nullConsole);
+        const commandLineOptions = new CommandLineOptions(cwd, /* fromLanguageServer */ false);
+        commandLineOptions.configSettings.autoSearchPaths = true;
+        service.setOptions(commandLineOptions);
+
+        const configOptions = service.test_getConfigOptions(commandLineOptions);
+
+        // The src folder is a package (has __init__.py) and so should not be automatically added as extra path
+        assert.deepStrictEqual(configOptions.executionEnvironments, []);
+    });
+
+    test('AutoSearchPathsOnWithConfigExecEnv', () => {
+        const cwd = normalizePath(combinePaths(process.cwd(), 'src/tests/samples/project_src_with_config_extra_paths'));
+        const nullConsole = new NullConsole();
+        const service = createAnalyzer(nullConsole);
+        const commandLineOptions = new CommandLineOptions(cwd, /* fromLanguageServer */ false);
+        commandLineOptions.configFilePath = combinePaths(cwd, 'pyrightconfig.json');
+        commandLineOptions.configSettings.autoSearchPaths = true;
+        service.setOptions(commandLineOptions);
+
+        const configOptions = service.test_getConfigOptions(commandLineOptions);
+
+        // The extraPaths in the config file should override the setting.
+        const expectedExtraPaths: string[] = [];
+
+        assert.deepStrictEqual(configOptions.defaultExtraPaths, expectedExtraPaths);
+    });
+
+    test('AutoSearchPathsOnAndExtraPaths', () => {
+        const nullConsole = new NullConsole();
+        const service = createAnalyzer(nullConsole);
+        const cwd = Uri.file(
+            normalizePath(combinePaths(process.cwd(), 'src/tests/samples/project_src_with_config_no_extra_paths')),
+            service.serviceProvider
+        );
+        const commandLineOptions = new CommandLineOptions(cwd.getFilePath(), /* fromLanguageServer */ false);
+        commandLineOptions.configSettings.autoSearchPaths = true;
+        commandLineOptions.configSettings.extraPaths = ['src/_vendored'];
+        service.setOptions(commandLineOptions);
+
+        const configOptions = service.test_getConfigOptions(commandLineOptions);
+
+        const expectedExtraPaths: Uri[] = [
+            service.fs.realCasePath(cwd.combinePaths('src')),
+            service.fs.realCasePath(cwd.combinePaths('src', '_vendored')),
+        ];
+
+        assert.deepStrictEqual(configOptions.defaultExtraPaths, expectedExtraPaths);
+    });
+
+    test('BasicPyprojectTomlParsing', () => {
+        const cwd = normalizePath(combinePaths(process.cwd(), 'src/tests/samples/project_with_pyproject_toml'));
+        const service = createAnalyzer();
+        const commandLineOptions = new CommandLineOptions(cwd, /* fromLanguageServer */ true);
+
+        service.setOptions(commandLineOptions);
+
+        const configOptions = service.test_getConfigOptions(commandLineOptions);
+        assert.strictEqual(configOptions.defaultPythonVersion!.toString(), pythonVersion3_9.toString());
+        assert.strictEqual(configOptions.diagnosticRuleSet.reportMissingImports, 'error');
+        assert.strictEqual(configOptions.diagnosticRuleSet.reportUnusedClass, 'warning');
+    });
+
+    test('FindFilesInMemoryOnly', () => {
+        const cwd = normalizePath(process.cwd());
+        const service = createAnalyzer();
+        const commandLineOptions = new CommandLineOptions(undefined, /* fromLanguageServer */ true);
+        // Force a lookup of the typeshed path. This causes us to try and generate a module path for the untitled file.
+        commandLineOptions.configSettings.typeshedPath = combinePaths(cwd, 'src', 'tests', 'samples');
+        service.setOptions(commandLineOptions);
+
+        // Open a file that is not backed by the file system.
+        const untitled = Uri.parse('untitled:Untitled-1.py', service.serviceProvider);
+        service.setFileOpened(untitled, 1, '# empty');
+
+        const fileList = service.test_getFileNamesFromFileSpecs();
+        assert(fileList.filter((f) => f.equals(untitled)));
+    });
+
+    test('verify config fileSpecs after cloning', () => {
+        const fs = new TestFileSystem(/* ignoreCase */ true);
+        const configFile = {
+            ignore: ['**/node_modules/**'],
+        };
+
+        const rootUri = Uri.file(process.cwd(), fs);
+        const config = new ConfigOptions(rootUri);
+        const sp = createServiceProvider(fs, new NullConsole());
+        config.initializeFromJson(configFile, rootUri, sp, new TestAccessHost());
+        const cloned = deserialize(serialize(config));
+
+        assert.deepEqual(config.ignore, cloned.ignore);
+    });
+
+    test('verify can serialize config options', () => {
+        const config = new ConfigOptions(UriEx.file(process.cwd()));
+        const serialized = serialize(config);
+        const deserialized = deserialize<ConfigOptions>(serialized);
+        assert.deepEqual(config, deserialized);
+        assert.ok(deserialized.findExecEnvironment(UriEx.file('foo/bar.py')));
+    });
+
+    test('Config watcher reloads when pyproject.toml is created', () => {
+        const fs = new TestFileSystem(/* ignoreCase */ true);
+        const cons = new NullConsole();
+        const serviceProvider = createServiceProvider(fs, cons, tempFile);
+        const host = new TestAccessHost();
+        host.getPythonVersion = () => pythonVersion3_13;
+
+        const projectRootUri = Uri.file(combinePaths(process.cwd(), 'src'), serviceProvider);
+        fs.mkdirpSync(projectRootUri.getFilePath());
+        fs.writeFileSync(projectRootUri.combinePaths('test.py'), 'x = 1\n');
+
+        const service = new AnalyzerService('<default>', serviceProvider, {
+            console: cons,
+            hostFactory: () => host,
+            shouldRunAnalysis: () => false,
+        });
+
+        try {
+            const commandLineOptions = new CommandLineOptions(
+                projectRootUri.getFilePath(),
+                /* fromLanguageServer */ true
+            );
+            commandLineOptions.configSettings.typeCheckingMode = 'off';
+            commandLineOptions.languageServerSettings.watchForConfigChanges = true;
+
+            service.setOptions(commandLineOptions);
+            assert.equal(service.getConfigOptions().effectiveTypeCheckingMode, 'off');
+
+            const pyprojectFileUri = projectRootUri.combinePaths('pyproject.toml');
+            fs.writeFileSync(pyprojectFileUri, '[tool.pyright]\ntypeCheckingMode = "strict"\n');
+            fs.fireFileWatcherEvent(pyprojectFileUri.getFilePath(), 'add');
+
+            assert.equal(service.getConfigOptions().effectiveTypeCheckingMode, 'strict');
+        } finally {
+            service.dispose();
+        }
+    });
+
+    test('extra paths on undefined execution root/default workspace', () => {
+        const nullConsole = new NullConsole();
+        const service = createAnalyzer(nullConsole);
+        const commandLineOptions = new CommandLineOptions(undefined, /* fromLanguageServer */ false);
+        commandLineOptions.configSettings.extraPaths = ['/extraPaths'];
+
+        service.setOptions(commandLineOptions);
+        const configOptions = service.test_getConfigOptions(commandLineOptions);
+
+        const expectedExtraPaths = [Uri.file('/extraPaths', service.serviceProvider)];
+        assert.deepStrictEqual(
+            configOptions.defaultExtraPaths?.map((u) => u.getFilePath()),
+            expectedExtraPaths.map((u) => u.getFilePath())
+        );
+    });
+
+    test('Extended config files', () => {
+        const cwd = normalizePath(combinePaths(process.cwd(), 'src/tests/samples/project_with_extended_config'));
+        const service = createAnalyzer();
+        const commandLineOptions = new CommandLineOptions(cwd, /* fromLanguageServer */ true);
+
+        service.setOptions(commandLineOptions);
+
+        const fileList = service.test_getFileNamesFromFileSpecs();
+        const fileNames = fileList.map((p) => p.fileName).sort();
+        assert.deepStrictEqual(fileNames, ['sample.pyi', 'test.py']);
+
+        const configOptions = service.test_getConfigOptions(commandLineOptions);
+        assert.equal(configOptions.diagnosticRuleSet.strictListInference, true);
+    });
+
+    test('Typechecking mode is standard when just config file is present', () => {
+        const cwd = normalizePath(combinePaths(process.cwd(), 'src/tests/samples/project_with_pyproject_toml'));
+        const service = createAnalyzer();
+        const commandLineOptions = new CommandLineOptions(cwd, /* fromLanguageServer */ true);
+        commandLineOptions.configSettings.typeCheckingMode = 'off';
+
+        service.setOptions(commandLineOptions);
+
+        const configOptions = service.test_getConfigOptions(commandLineOptions);
+        assert.equal(configOptions.diagnosticRuleSet.reportPossiblyUnboundVariable, 'error');
+    });
+
+    test('Typechecking mode depends upon if vscode extension or not', () => {
+        const cwd = normalizePath(combinePaths(process.cwd(), 'src/tests/samples/package1'));
+        let service = createAnalyzer();
+        let commandLineOptions = new CommandLineOptions(cwd, /* fromLanguageServer */ true);
+
+        service.setOptions(commandLineOptions);
+
+        let configOptions = service.test_getConfigOptions(commandLineOptions);
+        assert.equal(configOptions.diagnosticRuleSet.reportPossiblyUnboundVariable, 'none');
+
+        service = createAnalyzer();
+        commandLineOptions = new CommandLineOptions(cwd, /* fromLanguageServer */ false);
+
+        service.setOptions(commandLineOptions);
+
+        configOptions = service.test_getConfigOptions(commandLineOptions);
+        assert.equal(configOptions.diagnosticRuleSet.reportPossiblyUnboundVariable, 'error');
+
+        commandLineOptions = new CommandLineOptions(cwd, /* fromLanguageServer */ true);
+        commandLineOptions.configSettings.typeCheckingMode = 'strict';
+        service = createAnalyzer();
+        service.setOptions(commandLineOptions);
+
+        configOptions = service.test_getConfigOptions(commandLineOptions);
+        assert.equal(configOptions.diagnosticRuleSet.reportPossiblyUnboundVariable, 'error');
+    });
+
+    test('Include file paths are only set in the config file when using extension', () => {
+        const cwd = normalizePath(combinePaths(process.cwd(), 'src/tests/samples/project1'));
+        const service = createAnalyzer();
+        const commandLineOptions = new CommandLineOptions(cwd, /* fromLanguageServer */ true);
+        commandLineOptions.configSettings.includeFileSpecs = ['test'];
+        service.setOptions(commandLineOptions);
+
+        const configOptions = service.test_getConfigOptions(commandLineOptions);
+        assert.equal(configOptions.include.length, 1);
+        assert.ok(configOptions.include[0].regExp.source.includes('/subfolder1)'));
+    });
+
+    test('Include file paths can be added to on the command line with a config', () => {
+        const cwd = normalizePath(combinePaths(process.cwd(), 'src/tests/samples/project1'));
+        const service = createAnalyzer();
+        const commandLineOptions = new CommandLineOptions(cwd, /* fromLanguageServer */ false);
+        commandLineOptions.configSettings.includeFileSpecs = ['test'];
+        service.setOptions(commandLineOptions);
+
+        const configOptions = service.test_getConfigOptions(commandLineOptions);
+        assert.equal(configOptions.include.length, 2);
+        assert.ok(configOptions.include[1].regExp.source.includes('/test)'));
+    });
+
+    test('Include file paths can be added to by an extension without a config', () => {
+        const cwd = normalizePath(combinePaths(process.cwd(), 'src/tests/samples/package1'));
+        const service = createAnalyzer();
+        const commandLineOptions = new CommandLineOptions(cwd, /* fromLanguageServer */ true);
+        commandLineOptions.configSettings.includeFileSpecs = ['test'];
+        service.setOptions(commandLineOptions);
+
+        const configOptions = service.test_getConfigOptions(commandLineOptions);
+        assert.equal(configOptions.include.length, 1);
+        assert.ok(configOptions.include[0].regExp.source.includes('/test)'));
+    });
+
+    test('URI scheme file specs are filtered out of include, exclude, and ignore', () => {
+        // Regression test for https://github.com/microsoft/pylance-release/issues/6612.
+        // In multi-root workspaces a folder can use a custom URI scheme (e.g. memfs:, zowe-uss:).
+        // Those scheme strings must not be treated as file paths, otherwise they get combined with
+        // the project root and corrupt the include/exclude/ignore specs.
+        const cwd = normalizePath(combinePaths(process.cwd(), 'src/tests/samples/project1'));
+        const service = createAnalyzer();
+        const commandLineOptions = new CommandLineOptions(cwd, /* fromLanguageServer */ false);
+        commandLineOptions.configSettings.includeFileSpecs = ['memfs:/host/workspace', 'realInclude'];
+        commandLineOptions.configSettings.excludeFileSpecs = ['zowe-uss://host/exclude', 'realExclude'];
+        commandLineOptions.configSettings.ignoreFileSpecs = ['vscode-vfs://host/ignore', 'realIgnore'];
+        service.setOptions(commandLineOptions);
+
+        const configOptions = service.test_getConfigOptions(commandLineOptions);
+
+        const includeSources = configOptions.include.map((s) => s.regExp.source);
+        const excludeSources = configOptions.exclude.map((s) => s.regExp.source);
+        const ignoreSources = configOptions.ignore.map((s) => s.regExp.source);
+
+        // The URI scheme specs are dropped entirely (their scheme strings never appear).
+        assert.ok(!includeSources.some((s) => s.includes('memfs')));
+        assert.ok(!excludeSources.some((s) => s.includes('zowe-uss')));
+        assert.ok(!ignoreSources.some((s) => s.includes('vscode-vfs')));
+
+        // The real file specs alongside them are still applied.
+        assert.ok(includeSources.some((s) => s.includes('/realInclude)')));
+        assert.ok(excludeSources.some((s) => s.includes('/realExclude)')));
+        assert.ok(ignoreSources.some((s) => s.includes('/realIgnore)')));
+    });
+
+    test('Windows drive-letter file specs are not mistaken for URI schemes', () => {
+        // The URI scheme filter must require 2+ leading letters so single-letter Windows drive
+        // prefixes like "C:" are preserved rather than filtered as if they were URI schemes.
+        const cwd = normalizePath(combinePaths(process.cwd(), 'src/tests/samples/project1'));
+        const service = createAnalyzer();
+        const commandLineOptions = new CommandLineOptions(cwd, /* fromLanguageServer */ false);
+        commandLineOptions.configSettings.includeFileSpecs = ['C:/driveLetterInclude'];
+        service.setOptions(commandLineOptions);
+
+        const configOptions = service.test_getConfigOptions(commandLineOptions);
+        const includeSources = configOptions.include.map((s) => s.regExp.source);
+        assert.ok(includeSources.some((s) => s.includes('driveLetterInclude')));
+    });
+
+    test('Relative paths containing a colon are not mistaken for URI schemes', () => {
+        // The URI scheme filter requires a "/" after the scheme delimiter so legitimate relative
+        // paths that merely contain a colon (e.g. POSIX "foo:bar") are preserved, not dropped.
+        const cwd = normalizePath(combinePaths(process.cwd(), 'src/tests/samples/project1'));
+        const service = createAnalyzer();
+        const commandLineOptions = new CommandLineOptions(cwd, /* fromLanguageServer */ false);
+        commandLineOptions.configSettings.includeFileSpecs = ['foo:bar'];
+        service.setOptions(commandLineOptions);
+
+        const configOptions = service.test_getConfigOptions(commandLineOptions);
+        const includeSources = configOptions.include.map((s) => s.regExp.source);
+        // The spec is not dropped by the URI scheme filter (if it were, include would be empty).
+        // The colon is regex-escaped in the resulting pattern, so match on the surrounding path
+        // components rather than the literal "foo:bar".
+        assert.ok(includeSources.some((s) => s.includes('foo') && s.includes('bar')));
+    });
+
+    test('URI scheme file specs are filtered out of includeFileSpecsOverride', () => {
+        // includeFileSpecsOverride strings flow into Uri.file(), so URI scheme strings must be
+        // filtered there too, otherwise they corrupt the override include specs.
+        const cwd = normalizePath(combinePaths(process.cwd(), 'src/tests/samples/project1'));
+        const service = createAnalyzer();
+        const commandLineOptions = new CommandLineOptions(cwd, /* fromLanguageServer */ false);
+        commandLineOptions.configSettings.includeFileSpecsOverride = [
+            'memfs:/host/workspace',
+            combinePaths(cwd, 'realOverride'),
+        ];
+        service.setOptions(commandLineOptions);
+
+        const configOptions = service.test_getConfigOptions(commandLineOptions);
+        const includeSources = configOptions.include.map((s) => s.regExp.source);
+
+        // The URI scheme override is dropped, but the real override path is still applied.
+        assert.ok(!includeSources.some((s) => s.includes('memfs')));
+        assert.ok(includeSources.some((s) => s.includes('realOverride')));
+    });
+
+    test('Command line options can override config but only when not using extension', () => {
+        const cwd = normalizePath(combinePaths(process.cwd(), 'src/tests/samples/project_with_all_config'));
+        const service = createAnalyzer();
+        const commandLineOptions = new CommandLineOptions(cwd, /* fromLanguageServer */ false);
+        service.setOptions(commandLineOptions);
+
+        // First get the default.
+        const defaultOptions = service.test_getConfigOptions(commandLineOptions);
+
+        // Now set all of the different options and make sure the command line options override.
+        commandLineOptions.configSettings.typeCheckingMode = 'strict';
+        commandLineOptions.configSettings.venvPath = 'test2';
+        commandLineOptions.configSettings.typeshedPath = 'test2';
+        commandLineOptions.configSettings.stubPath = 'test2';
+        commandLineOptions.configSettings.useLibraryCodeForTypes = true;
+        commandLineOptions.configSettings.includeFileSpecs = ['test2'];
+        commandLineOptions.configSettings.excludeFileSpecs = ['test2'];
+        commandLineOptions.configSettings.diagnosticSeverityOverrides = {
+            reportMissingImports: DiagnosticSeverityOverrides.Error,
+        };
+        commandLineOptions.configSettings.ignoreFileSpecs = ['test2'];
+
+        service.setOptions(commandLineOptions);
+        const overriddenOptions = service.test_getConfigOptions(commandLineOptions);
+        assert.notDeepStrictEqual(defaultOptions.include, overriddenOptions.include);
+        assert.notDeepStrictEqual(defaultOptions.exclude, overriddenOptions.exclude);
+        assert.notDeepStrictEqual(defaultOptions.ignore, overriddenOptions.ignore);
+        assert.notDeepStrictEqual(defaultOptions.diagnosticRuleSet, overriddenOptions.diagnosticRuleSet);
+        assert.notDeepStrictEqual(defaultOptions.venvPath, overriddenOptions.venvPath);
+        // Typeshed and stub path are an exception, it should just be reported as a dupe.
+        assert.deepStrictEqual(defaultOptions.typeshedPath, overriddenOptions.typeshedPath);
+        assert.deepStrictEqual(defaultOptions.stubPath, overriddenOptions.stubPath);
+
+        // Do the same with an extension based config, but make sure we get the default back.
+        const commandLineOptions2 = new CommandLineOptions(cwd, /* fromLanguageServer */ true);
+        service.setOptions(commandLineOptions2);
+        const overriddenOptions2 = service.test_getConfigOptions(commandLineOptions2);
+        assert.deepStrictEqual(defaultOptions, overriddenOptions2);
+    });
+
+    test('Config venvPath take precedences over language server settings', () => {
+        const cwd = normalizePath(combinePaths(process.cwd(), 'src/tests/samples/project_with_all_config'));
+        const service = createAnalyzer();
+        const commandLineOptions = new CommandLineOptions(cwd, /* fromLanguageServer */ true);
+        commandLineOptions.languageServerSettings.venvPath = 'test_from_language_server';
+        service.setOptions(commandLineOptions);
+
+        // Verify language server options don't override
+        const options = service.test_getConfigOptions(commandLineOptions);
+        assert.equal(options.venvPath?.pathIncludes('from_language_server'), false);
+    });
+
+    test('Command line venvPath take precedences over everything else', () => {
+        const cwd = normalizePath(combinePaths(process.cwd(), 'src/tests/samples/project_with_all_config'));
+        const service = createAnalyzer();
+        const commandLineOptions = new CommandLineOptions(cwd, /* fromLanguageServer */ false);
+        commandLineOptions.configSettings.venvPath = 'test_from_command_line';
+        commandLineOptions.languageServerSettings.venvPath = 'test_from_language_server';
+        service.setOptions(commandLineOptions);
+
+        // Verify command line overrides everything
+        const options = service.test_getConfigOptions(commandLineOptions);
+        assert.ok(options.venvPath?.pathIncludes('test_from_command_line'));
+    });
+
+    test('Config empty venvPath does not take precedences over language server settings', () => {
+        const cwd = normalizePath(combinePaths(process.cwd(), 'src/tests/samples/project_src_with_config_extra_paths'));
+        const service = createAnalyzer();
+        const commandLineOptions = new CommandLineOptions(cwd, /* fromLanguageServer */ true);
+        commandLineOptions.languageServerSettings.venvPath = 'test_from_language_server';
+        service.setOptions(commandLineOptions);
+
+        // Verify language server options don't override
+        const options = service.test_getConfigOptions(commandLineOptions);
+        assert.ok(options.venvPath?.pathIncludes('from_language_server'));
+    });
+
+    test('Language server specific settings are set whether or not there is a pyproject.toml', () => {
+        const cwd = normalizePath(combinePaths(process.cwd(), 'src/tests/samples/project_with_all_config'));
+        const service = createAnalyzer();
+        const commandLineOptions = new CommandLineOptions(cwd, /* fromLanguageServer */ false);
+        commandLineOptions.languageServerSettings.autoImportCompletions = true;
+        commandLineOptions.languageServerSettings.indexing = true;
+        commandLineOptions.languageServerSettings.taskListTokens = [{ priority: TaskListPriority.High, text: 'test' }];
+        commandLineOptions.languageServerSettings.logTypeEvaluationTime = true;
+        commandLineOptions.languageServerSettings.typeEvaluationTimeThreshold = 1;
+        commandLineOptions.languageServerSettings.enableAmbientAnalysis = false;
+        commandLineOptions.languageServerSettings.disableTaggedHints = true;
+        commandLineOptions.languageServerSettings.watchForSourceChanges = true;
+        commandLineOptions.languageServerSettings.watchForLibraryChanges = true;
+        commandLineOptions.languageServerSettings.watchForConfigChanges = true;
+        commandLineOptions.languageServerSettings.checkOnlyOpenFiles = true;
+        commandLineOptions.languageServerSettings.disableTaggedHints = true;
+        commandLineOptions.languageServerSettings.pythonPath = 'test_python_path';
+
+        service.setOptions(commandLineOptions);
+        let options = service.test_getConfigOptions(commandLineOptions);
+        assert.strictEqual(options.autoImportCompletions, true);
+        assert.strictEqual(options.indexing, true);
+        assert.strictEqual(options.taskListTokens?.length, 1);
+        assert.strictEqual(options.logTypeEvaluationTime, true);
+        assert.strictEqual(options.typeEvaluationTimeThreshold, 1);
+        assert.strictEqual(options.disableTaggedHints, true);
+        assert.ok(options.pythonPath?.pathIncludes('test_python_path'));
+
+        // Test with language server set to true to make sure they are still set.
+        commandLineOptions.fromLanguageServer = true;
+        commandLineOptions.languageServerSettings.venvPath = 'test_venv_path';
+        service.setOptions(commandLineOptions);
+        options = service.test_getConfigOptions(commandLineOptions);
+        assert.strictEqual(options.autoImportCompletions, true);
+        assert.strictEqual(options.indexing, true);
+        assert.strictEqual(options.taskListTokens?.length, 1);
+        assert.strictEqual(options.logTypeEvaluationTime, true);
+        assert.strictEqual(options.typeEvaluationTimeThreshold, 1);
+        assert.strictEqual(options.disableTaggedHints, true);
+        assert.ok(options.pythonPath?.pathIncludes('test_python_path'));
+
+        // Verify language server options don't override the config setting. Only command line should
+        assert.equal(options.venvPath?.pathIncludes('test_venv_path'), false);
+    });
+
+    test('DefaultPythonVersion no config', () => {
+        const cwd = normalizePath(process.cwd());
+        const nullConsole = new NullConsole();
+        const service = createAnalyzer(nullConsole);
+        const commandLineOptions = new CommandLineOptions(cwd, /* fromLanguageServer */ false);
+        commandLineOptions.configFilePath = 'src/tests/samples/package1';
+        service.setOptions(commandLineOptions);
+
+        const config = service.test_getConfigOptions(commandLineOptions);
+        assert.deepStrictEqual(config.defaultPythonVersion, pythonVersion3_13);
+    });
+
+    test('DefaultPythonVersion with config', () => {
+        const cwd = normalizePath(process.cwd());
+        const nullConsole = new NullConsole();
+        const service = createAnalyzer(nullConsole);
+        const commandLineOptions = new CommandLineOptions(cwd, /* fromLanguageServer */ false);
+        commandLineOptions.configFilePath = 'src/tests/samples/project1';
+        service.setOptions(commandLineOptions);
+
+        const config = service.test_getConfigOptions(commandLineOptions);
+        assert.deepStrictEqual(config.defaultPythonVersion, pythonVersion3_13);
+    });
+
+    test('PyprojectTomlWithoutPyrightSectionFallsBackToAncestorConfig', () => {
+        const cwd = normalizePath(process.cwd());
+        const service = createAnalyzer();
+        const commandLineOptions = new CommandLineOptions(cwd, /* fromLanguageServer */ false);
+        commandLineOptions.configFilePath = 'src/tests/samples/project_with_empty_pyproject_toml/subproject';
+
+        const configOptions = service.test_getConfigOptions(commandLineOptions);
+
+        // Should fall back to the ancestor pyproject.toml which sets pythonVersion to 3.9.
+        assert.strictEqual(configOptions.defaultPythonVersion!.toString(), pythonVersion3_9.toString());
+
+        // configFileSource should point to the ancestor pyproject.toml, not the subproject one.
+        assert.ok(
+            configOptions.configFileSource?.toString().endsWith('project_with_empty_pyproject_toml/pyproject.toml')
+        );
+    });
+
+    test('PyprojectTomlWithoutPyrightSectionFallsBackThroughMultipleAncestors', () => {
+        const cwd = normalizePath(process.cwd());
+        const service = createAnalyzer();
+        const commandLineOptions = new CommandLineOptions(cwd, /* fromLanguageServer */ false);
+        commandLineOptions.configFilePath =
+            'src/tests/samples/project_with_nested_empty_pyproject_toml/middle/subproject';
+
+        const configOptions = service.test_getConfigOptions(commandLineOptions);
+
+        // Should skip the empty pyproject.tomls and fall back to the root's [tool.pyright].
+        assert.strictEqual(configOptions.defaultPythonVersion!.toString(), pythonVersion3_9.toString());
+        assert.ok(
+            configOptions.configFileSource
+                ?.toString()
+                .endsWith('project_with_nested_empty_pyproject_toml/pyproject.toml')
+        );
+    });
+
+    test('Diagnostic rule overrides are preserved when positional args override include', () => {
+        const cwd = normalizePath(combinePaths(process.cwd(), 'src/tests/samples/project_with_diag_overrides'));
+        const service = createAnalyzer();
+        const commandLineOptions = new CommandLineOptions(cwd, /* fromLanguageServer */ false);
+        service.setOptions(commandLineOptions);
+
+        // Get config without include override - should have reportPrivateImportUsage: 'none'
+        // because the config sets it to false.
+        const configWithoutOverride = service.test_getConfigOptions(commandLineOptions);
+        assert.equal(configWithoutOverride.diagnosticRuleSet.reportPrivateImportUsage, 'none');
+
+        // The basic default would be 'error', verify our config overrides it.
+        const basicDefaults = getBasicDiagnosticRuleSet();
+        assert.equal(basicDefaults.reportPrivateImportUsage, 'error');
+
+        // Now simulate positional args overriding include (like `pyright --project config.json subdir`).
+        const commandLineOptionsWithOverride = new CommandLineOptions(cwd, /* fromLanguageServer */ false);
+        commandLineOptionsWithOverride.configSettings.includeFileSpecsOverride = [combinePaths(cwd, 'subdir')];
+        service.setOptions(commandLineOptionsWithOverride);
+
+        const configWithOverride = service.test_getConfigOptions(commandLineOptionsWithOverride);
+
+        // The diagnostic rule overrides from the config file should still be applied
+        // even when positional args replace the include paths.
+        assert.equal(configWithOverride.diagnosticRuleSet.reportPrivateImportUsage, 'none');
+
+        // The execution environment for a file in the override path should also
+        // have the config's diagnostic rule overrides.
+        const fileUri = Uri.file(combinePaths(cwd, 'subdir', 'sample.py'), service.serviceProvider);
+        const execEnv = configWithOverride.findExecEnvironment(fileUri);
+        assert.equal(execEnv.diagnosticRuleSet.reportPrivateImportUsage, 'none');
+    });
+
+    function createAnalyzer(console?: ConsoleInterface) {
+        const cons = console ?? new NullConsole();
+        const fs = createFromRealFileSystem(tempFile, cons);
+        const serviceProvider = createServiceProvider(fs, cons, tempFile);
+        const host = new TestAccessHost();
+        host.getPythonVersion = () => pythonVersion3_13;
+        return new AnalyzerService('<default>', serviceProvider, {
+            console: cons,
+            hostFactory: () => host,
+            shouldRunAnalysis: () => true,
+        });
+    }
+});

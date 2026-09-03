@@ -1,0 +1,597 @@
+import type { AuthenticatedEnvironment } from "@internal/run-engine";
+import type { Prisma, PrismaClientOrTransaction, RuntimeEnvironment } from "@trigger.dev/database";
+import { $replica, prisma } from "~/db.server";
+import { runStore } from "~/v3/runStore.server";
+import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
+import { logger } from "~/services/logger.server";
+import { getUsername } from "~/utils/username";
+import { hashApiKey } from "~/utils/apiKeys";
+import { BuildRuntime } from "@trigger.dev/core/v3";
+import { isAdditionalApiKey } from "@trigger.dev/core/v3/apiKeys";
+import { isDefaultDevBranch, sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
+import { scopesGrantFullAccess } from "@trigger.dev/rbac";
+import { authFeatureControls } from "~/services/authFeatureControls.server";
+
+export type { RuntimeEnvironment };
+
+// Prisma include shape that maps cleanly to the slim AuthenticatedEnvironment.
+// Use this everywhere we fetch an env that flows to handlers — keeps the
+// returned shape consistent (and the Decimal coercion in toAuthenticated()
+// strips Prisma's Decimal class from the public surface).
+export const authIncludeBase = {
+  project: true,
+  organization: true,
+  orgMember: {
+    select: {
+      userId: true,
+      user: { select: { id: true, displayName: true, name: true } },
+    },
+  },
+} satisfies Prisma.RuntimeEnvironmentInclude;
+
+export const authIncludeWithParent = {
+  ...authIncludeBase,
+  parentEnvironment: { select: { id: true, apiKey: true } },
+} satisfies Prisma.RuntimeEnvironmentInclude;
+
+type PrismaEnvWithAuth = Prisma.RuntimeEnvironmentGetPayload<{ include: typeof authIncludeBase }>;
+type PrismaEnvWithAuthAndParent = Prisma.RuntimeEnvironmentGetPayload<{
+  include: typeof authIncludeWithParent;
+}>;
+
+// Coerce a Prisma RuntimeEnvironment payload to the slim
+// AuthenticatedEnvironment shape. Drops the columns handlers don't read
+// and converts `concurrencyLimitBurstFactor` from Prisma's Decimal to a
+// plain number (lossless at this scale). The optional union accepts both
+// query shapes — with parentEnvironment loaded, or without it.
+export function toAuthenticated(
+  env: PrismaEnvWithAuth | PrismaEnvWithAuthAndParent
+): AuthenticatedEnvironment {
+  return {
+    id: env.id,
+    slug: env.slug,
+    type: env.type,
+    apiKey: env.apiKey,
+    organizationId: env.organizationId,
+    projectId: env.projectId,
+    orgMemberId: env.orgMemberId,
+    parentEnvironmentId: env.parentEnvironmentId,
+    branchName: env.branchName,
+    archivedAt: env.archivedAt,
+    paused: env.paused,
+    shortcode: env.shortcode,
+    maximumConcurrencyLimit: env.maximumConcurrencyLimit,
+    // Coerce Prisma's Decimal to a plain number — the slim type accepts
+    // both, but downstream consumers shouldn't have to narrow before
+    // doing arithmetic. Lossless at this scale (Decimal(4,2)).
+    concurrencyLimitBurstFactor: env.concurrencyLimitBurstFactor.toNumber(),
+    builtInEnvironmentVariableOverrides: env.builtInEnvironmentVariableOverrides,
+    createdAt: env.createdAt,
+    updatedAt: env.updatedAt,
+    project: {
+      id: env.project.id,
+      slug: env.project.slug,
+      name: env.project.name,
+      externalRef: env.project.externalRef,
+      engine: env.project.engine,
+      deletedAt: env.project.deletedAt,
+      defaultWorkerGroupId: env.project.defaultWorkerGroupId,
+      organizationId: env.project.organizationId,
+      builderProjectId: env.project.builderProjectId,
+      defaultRuntime: BuildRuntime.nullable().safeParse(env.project.defaultRuntime).data ?? null,
+    },
+    organization: {
+      id: env.organization.id,
+      slug: env.organization.slug,
+      title: env.organization.title,
+      streamBasinName: env.organization.streamBasinName,
+      maximumConcurrencyLimit: env.organization.maximumConcurrencyLimit,
+      runsEnabled: env.organization.runsEnabled,
+      maximumDevQueueSize: env.organization.maximumDevQueueSize,
+      maximumDeployedQueueSize: env.organization.maximumDeployedQueueSize,
+      featureFlags: env.organization.featureFlags,
+      apiRateLimiterConfig: env.organization.apiRateLimiterConfig,
+      batchRateLimitConfig: env.organization.batchRateLimitConfig,
+      batchQueueConcurrencyConfig: env.organization.batchQueueConcurrencyConfig,
+    },
+    orgMember: env.orgMember,
+    parentEnvironment: "parentEnvironment" in env ? env.parentEnvironment : null,
+  };
+}
+
+export type ApiKeyEnvironmentResolution =
+  | { ok: true; environment: AuthenticatedEnvironment }
+  | { ok: false; reason: "not-found" | "restricted" | "disabled" };
+
+/**
+ * Resolve an environment from a raw API key for legacy routes that do not
+ * declare authorization. Additional keys are accepted only when their stored
+ * scopes explicitly grant full access; restricted keys fail closed here
+ * (`reason: "restricted"`, so callers can explain the rejection).
+ */
+async function resolveEnvironmentByApiKey(
+  apiKey: string,
+  branchName: string | undefined,
+  tx: PrismaClientOrTransaction,
+  additionalApiKeyLookupEnabled: () => boolean
+): Promise<ApiKeyEnvironmentResolution> {
+  const branch = sanitizeBranchName(branchName) ?? undefined;
+
+  const include = {
+    ...authIncludeBase,
+    childEnvironments: branch
+      ? {
+          where: {
+            branchName: branch,
+            archivedAt: null,
+          },
+        }
+      : undefined,
+  } satisfies Prisma.RuntimeEnvironmentInclude;
+
+  const now = new Date();
+  const routesToAdditionalKey = isAdditionalApiKey(apiKey);
+  if (routesToAdditionalKey && !additionalApiKeyLookupEnabled()) {
+    return { ok: false, reason: "disabled" };
+  }
+
+  let rootEnvironment = routesToAdditionalKey
+    ? null
+    : await tx.runtimeEnvironment.findFirst({
+        where: {
+          apiKey,
+        },
+        include,
+      });
+
+  // Fall back to root keys that were rotated within the grace window.
+  if (!routesToAdditionalKey && !rootEnvironment) {
+    const revokedApiKey = await tx.revokedApiKey.findFirst({
+      where: {
+        apiKey,
+        expiresAt: { gt: now },
+      },
+      include: {
+        runtimeEnvironment: { include },
+      },
+    });
+
+    rootEnvironment = revokedApiKey?.runtimeEnvironment ?? null;
+  }
+
+  // Additional keys are host-owned credentials. Legacy routes cannot apply a
+  // scoped ability, so only an explicit full-access scope is accepted.
+  const match = routesToAdditionalKey
+    ? await tx.apiKey.findFirst({
+        where: {
+          keyHash: hashApiKey(apiKey),
+          revokedAt: null,
+          OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+        },
+        select: {
+          id: true,
+          lastUsedAt: true,
+          scopes: true,
+          runtimeEnvironment: { include },
+        },
+      })
+    : null;
+
+  if (match && !scopesGrantFullAccess(match.scopes)) {
+    return { ok: false, reason: "restricted" };
+  }
+
+  const additionalApiKey = match ? { id: match.id, lastUsedAt: match.lastUsedAt } : null;
+  let environment = rootEnvironment ?? match?.runtimeEnvironment ?? null;
+
+  if (!environment) {
+    return { ok: false, reason: "not-found" };
+  }
+
+  if (
+    additionalApiKey &&
+    (!additionalApiKey.lastUsedAt ||
+      additionalApiKey.lastUsedAt < new Date(now.getTime() - 300_000))
+  ) {
+    try {
+      // Deliberately the primary `prisma`, not `tx`: `tx` defaults to the
+      // read replica (and may be a caller's transaction), and this last-used
+      // telemetry write must hit the writer. It's throttled to once every 5
+      // minutes per key and best-effort — auth never fails if it can't record.
+      await prisma.apiKey.updateMany({
+        where: {
+          id: additionalApiKey.id,
+          revokedAt: null,
+          OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+        },
+        data: { lastUsedAt: now },
+      });
+    } catch (error) {
+      logger.warn("Failed to update API key last-used timestamp", {
+        apiKeyId: additionalApiKey.id,
+        error,
+      });
+    }
+  }
+
+  //don't return deleted projects
+  if (environment.project.deletedAt !== null) {
+    return { ok: false, reason: "not-found" };
+  }
+
+  if (environment.type === "PREVIEW") {
+    if (!branch) {
+      logger.warn("findEnvironmentByApiKey(): Preview env with no branch name provided", {
+        environmentId: environment.id,
+      });
+      return { ok: false, reason: "not-found" };
+    }
+
+    const childEnvironment = environment.childEnvironments.at(0);
+
+    if (childEnvironment) {
+      return {
+        ok: true,
+        environment: toAuthenticated({
+          ...childEnvironment,
+          apiKey: environment.apiKey,
+          orgMember: environment.orgMember,
+          organization: environment.organization,
+          project: environment.project,
+        }),
+      };
+    }
+
+    //A branch was specified but no child environment was found
+    return { ok: false, reason: "not-found" };
+  }
+
+  // If there is a named DEV branch (other than default), return it
+  if (environment.type === "DEVELOPMENT" && branch !== undefined && !isDefaultDevBranch(branch)) {
+    const childEnvironment = environment.childEnvironments.at(0);
+
+    if (childEnvironment) {
+      return {
+        ok: true,
+        environment: toAuthenticated({
+          ...childEnvironment,
+          apiKey: environment.apiKey,
+          orgMember: environment.orgMember,
+          organization: environment.organization,
+          project: environment.project,
+        }),
+      };
+    }
+
+    //A branch was specified but no child environment was found
+    return { ok: false, reason: "not-found" };
+  }
+
+  return { ok: true, environment: toAuthenticated(environment) };
+}
+
+/**
+ * Resolve an environment from a raw API key. Root and grace-window keys keep
+ * their legacy behavior; additional keys with restricted scopes fail closed.
+ */
+export async function findEnvironmentByApiKey(
+  apiKey: string,
+  branchName: string | undefined,
+  tx: PrismaClientOrTransaction = $replica,
+  additionalApiKeyLookupEnabled = authFeatureControls.additionalApiKeyLookupEnabled
+): Promise<AuthenticatedEnvironment | null> {
+  const resolution = await resolveEnvironmentByApiKey(
+    apiKey,
+    branchName,
+    tx,
+    additionalApiKeyLookupEnabled
+  );
+  return resolution.ok ? resolution.environment : null;
+}
+
+/**
+ * Like `findEnvironmentByApiKey`, but distinguishes a restricted additional
+ * key (fails closed on legacy routes) from an unknown key so callers can
+ * return an accurate error message.
+ */
+export async function findEnvironmentByApiKeyWithResolution(
+  apiKey: string,
+  branchName: string | undefined,
+  tx: PrismaClientOrTransaction = $replica,
+  additionalApiKeyLookupEnabled = authFeatureControls.additionalApiKeyLookupEnabled
+): Promise<ApiKeyEnvironmentResolution> {
+  return resolveEnvironmentByApiKey(apiKey, branchName, tx, additionalApiKeyLookupEnabled);
+}
+
+export type PrivateApiKeyRateLimitScope = {
+  environmentId: string;
+  apiRateLimiterConfig: unknown;
+};
+
+export async function resolvePrivateApiKeyRateLimitScope(
+  apiKey: string,
+  tx: PrismaClientOrTransaction = $replica
+): Promise<PrivateApiKeyRateLimitScope | null> {
+  const now = new Date();
+
+  if (isAdditionalApiKey(apiKey)) {
+    const match = await tx.apiKey.findFirst({
+      where: {
+        keyHash: hashApiKey(apiKey),
+        revokedAt: null,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      },
+      select: {
+        runtimeEnvironment: {
+          select: {
+            id: true,
+            project: { select: { deletedAt: true } },
+            organization: { select: { apiRateLimiterConfig: true } },
+          },
+        },
+      },
+    });
+
+    if (!match?.runtimeEnvironment || match.runtimeEnvironment.project.deletedAt) {
+      return null;
+    }
+
+    return {
+      environmentId: match.runtimeEnvironment.id,
+      apiRateLimiterConfig: match.runtimeEnvironment.organization.apiRateLimiterConfig,
+    };
+  }
+
+  const environment = await tx.runtimeEnvironment.findFirst({
+    where: { apiKey },
+    select: {
+      id: true,
+      project: { select: { deletedAt: true } },
+      organization: { select: { apiRateLimiterConfig: true } },
+    },
+  });
+
+  if (environment) {
+    if (environment.project.deletedAt) {
+      return null;
+    }
+
+    return {
+      environmentId: environment.id,
+      apiRateLimiterConfig: environment.organization.apiRateLimiterConfig,
+    };
+  }
+
+  const revokedApiKey = await tx.revokedApiKey.findFirst({
+    where: { apiKey, expiresAt: { gt: now } },
+    select: {
+      runtimeEnvironment: {
+        select: {
+          id: true,
+          project: { select: { deletedAt: true } },
+          organization: { select: { apiRateLimiterConfig: true } },
+        },
+      },
+    },
+  });
+
+  const revokedEnvironment = revokedApiKey?.runtimeEnvironment;
+  if (!revokedEnvironment || revokedEnvironment.project.deletedAt) {
+    return null;
+  }
+
+  return {
+    environmentId: revokedEnvironment.id,
+    apiRateLimiterConfig: revokedEnvironment.organization.apiRateLimiterConfig,
+  };
+}
+
+/**
+ * @deprecated We don't use public API keys (`pk_*` tokens) anymore — public
+ * access goes through public JWTs (see `isPublicJWT` / `validatePublicJwtKey`).
+ *
+ * Still exported because a handful of pre-RBAC routes that haven't been
+ * migrated to the apiBuilder still wire this lookup into their
+ * `authenticateApiKey` / `authenticateApiKeyWithFailure` flow. The new RBAC
+ * fallback (`internal-packages/rbac/src/fallback.ts`) intentionally does NOT
+ * call this — any pk_*-authenticated request that hits an apiBuilder route
+ * returns 401. That's a deliberate cutover, not an oversight.
+ */
+export async function findEnvironmentByPublicApiKey(
+  apiKey: string,
+  branchName: string | undefined
+): Promise<AuthenticatedEnvironment | null> {
+  const environment = await $replica.runtimeEnvironment.findFirst({
+    where: {
+      pkApiKey: apiKey,
+    },
+    include: authIncludeBase,
+  });
+
+  if (!environment || environment.project.deletedAt !== null) {
+    return null;
+  }
+
+  return toAuthenticated(environment);
+}
+
+export async function findEnvironmentById(id: string): Promise<AuthenticatedEnvironment | null> {
+  const environment = await $replica.runtimeEnvironment.findFirst({
+    where: {
+      id,
+    },
+    include: authIncludeWithParent,
+  });
+
+  if (!environment || environment.project.deletedAt !== null) {
+    return null;
+  }
+
+  return toAuthenticated(environment);
+}
+
+export async function findEnvironmentBySlug(
+  projectId: string,
+  envSlug: string,
+  userId: string
+): Promise<AuthenticatedEnvironment | null> {
+  const environment = await $replica.runtimeEnvironment.findFirst({
+    where: {
+      projectId: projectId,
+      slug: envSlug,
+      OR: [
+        {
+          type: {
+            in: ["PREVIEW", "STAGING", "PRODUCTION"],
+          },
+        },
+        {
+          type: "DEVELOPMENT",
+          orgMember: {
+            userId,
+          },
+        },
+      ],
+    },
+    include: authIncludeBase,
+  });
+  return environment ? toAuthenticated(environment) : null;
+}
+
+// The authenticated environment plus the run scalars the realtime publish needs.
+// Both come from one taskRun read — see findEnvironmentFromRun.
+export type EnvironmentFromRun = {
+  environment: AuthenticatedEnvironment;
+  runTags: string[];
+  batchId: string | null;
+};
+
+export async function findEnvironmentFromRun(
+  runId: string,
+  tx?: PrismaClientOrTransaction
+): Promise<EnvironmentFromRun | null> {
+  // Run-ops scalars (runTags/batchId/runtimeEnvironmentId) from the run store; the env half is
+  // resolved via the control-plane resolver so the run-ops DB can split without a cross-DB join.
+  const select = {
+    runTags: true,
+    batchId: true,
+    runtimeEnvironmentId: true,
+  } as const;
+  let taskRun = await runStore.findRun({ id: runId }, { select }, tx ?? $replica);
+  if (!taskRun) {
+    // Read-your-writes: a just-created run may not have replicated. Re-read the owning primary before
+    // treating it as absent, so runMetadataUpdated doesn't drop a live run's final metadata + publish.
+    taskRun = await runStore.findRun({ id: runId }, { select }, prisma);
+  }
+  if (!taskRun) {
+    return null;
+  }
+  const environment = await controlPlaneResolver.resolveAuthenticatedEnv(
+    taskRun.runtimeEnvironmentId
+  );
+  if (!environment) {
+    return null;
+  }
+  return {
+    environment,
+    runTags: taskRun.runTags,
+    batchId: taskRun.batchId,
+  };
+}
+
+export type DisplayableInputEnvironment = Prisma.RuntimeEnvironmentGetPayload<{
+  select: {
+    id: true;
+    type: true;
+    slug: true;
+    orgMember: {
+      select: {
+        user: {
+          select: {
+            id: true;
+            name: true;
+            displayName: true;
+          };
+        };
+      };
+    };
+  };
+}>;
+
+export function displayableEnvironment(
+  environment: DisplayableInputEnvironment,
+  userId: string | undefined
+) {
+  let userName: string | undefined = undefined;
+
+  if (environment.type === "DEVELOPMENT") {
+    if (!environment.orgMember) {
+      userName = "Deleted";
+    } else if (environment.orgMember.user.id !== userId) {
+      userName = getUsername(environment.orgMember.user);
+    }
+  }
+
+  return {
+    id: environment.id,
+    type: environment.type,
+    slug: environment.slug,
+    userName,
+  };
+}
+
+export async function findDisplayableEnvironment(
+  environmentId: string,
+  userId: string | undefined
+) {
+  const environment = await $replica.runtimeEnvironment.findFirst({
+    where: {
+      id: environmentId,
+    },
+    select: {
+      id: true,
+      type: true,
+      slug: true,
+      orgMember: {
+        select: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              displayName: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!environment) {
+    return;
+  }
+
+  return displayableEnvironment(environment, userId);
+}
+
+export async function hasAccessToEnvironment({
+  environmentId,
+  projectId,
+  organizationId,
+  userId,
+}: {
+  environmentId: string;
+  projectId: string;
+  organizationId: string;
+  userId: string;
+}): Promise<boolean> {
+  const environment = await $replica.runtimeEnvironment.findFirst({
+    where: {
+      id: environmentId,
+      projectId: projectId,
+      organizationId: organizationId,
+      organization: { members: { some: { userId } } },
+    },
+  });
+
+  return environment !== null;
+}

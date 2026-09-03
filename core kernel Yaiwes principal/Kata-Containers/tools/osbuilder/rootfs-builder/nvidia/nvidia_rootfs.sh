@@ -1,0 +1,966 @@
+#!/usr/bin/env bash
+#
+# Copyright (c) 2024 NVIDIA Corporation
+#
+# SPDX-License-Identifier: Apache-2.0
+
+set -euo pipefail
+[[ -n "${DEBUG}" ]] && set -x
+
+# Error helpers
+trap 'echo "rootfs: ERROR at line ${LINENO}: ${BASH_COMMAND}" >&2' ERR
+die() {
+  local msg="${*:-fatal error}"
+  echo "rootfs: ${msg}" >&2
+  exit 1
+}
+
+readonly BUILD_DIR="/kata-containers/tools/packaging/kata-deploy/local-build/build/"
+# catch errors and then assign
+script_dir="$(dirname "$(readlink -f "$0")")"
+readonly SCRIPT_DIR="${script_dir}/nvidia"
+
+KBUILD_SIGN_PIN=${KBUILD_SIGN_PIN:-}
+AGENT_POLICY="${AGENT_POLICY:-no}"
+
+NVIDIA_GPU_STACK=${NVIDIA_GPU_STACK:?NVIDIA_GPU_STACK must be set}
+BUILD_VARIANT=${BUILD_VARIANT:?BUILD_VARIANT must be set}
+ARCH=${ARCH:?ARCH must be set}
+
+machine_arch="${ARCH}"
+
+if [[ "${machine_arch}" == "aarch64" ]]; then
+    distro_arch="arm64"
+elif [[ "${machine_arch}" == "x86_64" ]]; then
+    distro_arch="amd64"
+else
+    die "Unsupported architecture: ${machine_arch}"
+fi
+
+# The nvidia base is carved out of the same chiseled tree as the monolith, so it
+# shares the expensive driver stage-one with the monolithic "nvidia-gpu" build.
+# The gpu extension is assembled directly from the package-installed rootfs.
+nvidia_stage_one_variant() {
+	case "${BUILD_VARIANT}" in
+		nvidia) echo "nvidia-gpu" ;;
+		*) echo "${BUILD_VARIANT}" ;;
+	esac
+}
+
+stage_one="${BUILD_DIR:?}/rootfs-$(nvidia_stage_one_variant)-stage-one"
+readonly stage_one
+
+# sandboxutils-filelist.json schema (one object per file):
+#   { "name": "libcuda.so.570.00",
+#     "type": "LIB",                          # LIB | BINARY | FIRMWARE | ICD | SYMLINK | ...
+#     "category": ["cuda", "vulkan", ...],    # capability tags; a file can belong to many
+#     "is_32bit_compat": "true"               # present only on 32-bit compat entries
+#   }
+#
+# If this schema changes (key renamed, type values altered) jq will return
+# empty output and nvidia_driver_capabilities_validate() will catch it early.
+nvidia_driver_capabilities_validate() {
+	local driver_required_files="${1:?driver required files path required}"
+
+	command -v jq > /dev/null || die "nvidia: jq is required but not installed"
+	[[ -f "${driver_required_files}" ]] || die "sandboxutils filelist not found: ${driver_required_files}"
+	# Require at least one entry with the mandatory keys (name, type, category).
+	local count
+	count=$(jq '[.[] | select(.name and .type and .category)] | length' "${driver_required_files}") \
+		|| die "nvidia: sandboxutils-filelist.json is not valid JSON"
+	[[ "${count}" -gt 0 ]] \
+		|| die "nvidia: sandboxutils-filelist.json missing expected keys (name/type/category) — schema may have changed"
+}
+
+# nvidia_driver_capabilities DRIVER_REQUIRED_FILES TYPE CATEGORY [CATEGORY ...]
+#
+# The driver knows better than we do which files belong to which capability.
+# 32-bit compat entries are skipped: kata is 64-bit only.
+nvidia_driver_capabilities() {
+	local driver_required_files="${1:?driver required files path required}"
+	local filetype="${2:?type required}"
+	shift 2
+
+	command -v jq > /dev/null || die "jq is required for nvidia_driver_capabilities"
+	[[ -f "${driver_required_files}" ]] || die "sandboxutils filelist not found: ${driver_required_files}"
+
+	jq -r --arg ftype "${filetype}" \
+		'[.[] | select((.is_32bit_compat // false | tostring) != "true")
+		       | select(.type == $ftype)
+		       | select([.category[] | IN($ARGS.positional[])] | any)
+		       | .name] | unique[]' \
+		"${driver_required_files}" --args "$@"
+}
+
+nvidia_stack_has() {
+	local feature="${1:?feature required}"
+	[[ ",${NVIDIA_GPU_STACK}," == *",${feature},"* ]]
+}
+
+# Populate the capability arrays introduced by f4b0e1a88c from the driver
+# filelist under the supplied source root. Both the monolith chisel and direct
+# extension assembly use this exact selection contract.
+nvidia_populate_capability_arrays() {
+	local source="${1:?source root required}"
+	local driver_required_files="${source}/usr/share/nvidia/files.d/sandboxutils-filelist.json"
+
+	nvidia_driver_capabilities_validate "${driver_required_files}"
+	mapfile -t _nvidia_libs < <(nvidia_driver_capabilities "${driver_required_files}" LIB cuda opencl nvml nvpd video nvsandboxutils)
+	mapfile -t _nvidia_bins < <(nvidia_driver_capabilities "${driver_required_files}" BINARY cuda nvml nvpd)
+	mapfile -t _nvidia_icds < <(nvidia_driver_capabilities "${driver_required_files}" ICD opencl)
+
+	# Failures inside process substitutions do not propagate under set -e.
+	(( ${#_nvidia_libs[@]} > 0 )) || die "nvidia: no LIB entries selected from ${driver_required_files}"
+	(( ${#_nvidia_bins[@]} > 0 )) || die "nvidia: no BINARY entries selected from ${driver_required_files}"
+	(( ${#_nvidia_icds[@]} > 0 )) || die "nvidia: no ICD entries selected from ${driver_required_files}"
+}
+
+setup_nvidia_upx() {
+	local upx_dir="${BUILD_DIR}/upx-4.2.4-${distro_arch}_linux"
+	[[ -x "${upx_dir}/upx" ]] && return
+
+	pushd "${BUILD_DIR}" >> /dev/null
+	curl -LO "https://github.com/upx/upx/releases/download/v4.2.4/upx-4.2.4-${distro_arch}_linux.tar.xz"
+	tar xvf "upx-4.2.4-${distro_arch}_linux.tar.xz"
+	popd >> /dev/null
+}
+
+install_nvidia_kernel_modules() {
+	local rootfs_dir="${1:?rootfs dir required}"
+	local appendix=""
+
+	nvidia_stack_has dragonball && appendix="-dragonball-experimental"
+
+	mkdir -p "${rootfs_dir}/lib/modules/"
+	tar --zstd -xvf \
+		"${BUILD_DIR}/kata-static-kernel-nvidia-gpu${appendix}-modules.tar.zst" \
+		-C "${rootfs_dir}/lib/modules/"
+}
+
+# NVIDIA image layout:
+#   monolith    - the full GPU image (default; unchanged behaviour)
+#   base        - driver-agnostic nvidia base (NVRC init + agent + base libs)
+#   gpu-extension - GPU userspace only, laid out for /run/kata-extensions/gpu
+nvidia_image_layout() {
+	case "${BUILD_VARIANT}" in
+		nvidia) echo "base" ;;
+		nvidia-gpu-extension) echo "gpu-extension" ;;
+		*) echo "monolith" ;;
+	esac
+}
+
+setup_nvidia-nvrc() {
+	local url ver
+	local nvrc=NVRC-${machine_arch}-unknown-linux-musl
+	url=$(get_package_version_from_kata_yaml "externals.nvrc.url")
+	ver=$(get_package_version_from_kata_yaml "externals.nvrc.version")
+
+	local dl="${url}/${ver}"
+	curl -fsSL -o "${BUILD_DIR}/${nvrc}.tar.xz" "${dl}/${nvrc}.tar.xz"
+	curl -fsSL -o "${BUILD_DIR}/${nvrc}.tar.xz.sig" "${dl}/${nvrc}.tar.xz.sig"
+	curl -fsSL -o "${BUILD_DIR}/${nvrc}.tar.xz.cert" "${dl}/${nvrc}.tar.xz.cert"
+
+	local id="^https://github.com/NVIDIA/nvrc/.github/workflows/.+@refs/heads/main$"
+	local oidc="https://token.actions.githubusercontent.com"
+
+	# Only allow releases from the NVIDIA/nvrc main branch and build by github actions
+	cosign verify-blob                                 \
+	  --rekor-url https://rekor.sigstore.dev           \
+	  --certificate "${BUILD_DIR}/${nvrc}.tar.xz.cert" \
+	  --signature   "${BUILD_DIR}/${nvrc}.tar.xz.sig"  \
+	  --certificate-identity-regexp "${id}"            \
+	  --certificate-oidc-issuer "${oidc}"              \
+	  "${BUILD_DIR}/${nvrc}.tar.xz"
+}
+
+# Install the NVIDIA package set into a supplied Ubuntu rootfs using the same
+# CUDA/tools repositories and pins for all NVIDIA image layouts.
+install_nvidia_driver_packages() {
+	local rootfs_dir="${1:?rootfs dir required}"
+	local install_nvrc="${2:-yes}"
+	local cuda_repo_url cuda_repo_pkg gpu_base_os_version ctk_version
+	local tools_repo_url tools_repo_pkg
+
+	cp "${SCRIPT_DIR}/nvidia_chroot.sh" "${rootfs_dir}/nvidia_chroot.sh"
+	chmod +x "${rootfs_dir}/nvidia_chroot.sh"
+
+	if [[ "${install_nvrc}" == "yes" ]]; then
+		local nvrc="NVRC-${machine_arch}-unknown-linux-musl"
+		if [[ ! -e "${BUILD_DIR}/${nvrc}.tar.xz" ]]; then
+			setup_nvidia-nvrc
+		fi
+		tar -xvf "${BUILD_DIR}/${nvrc}.tar.xz" -C "${rootfs_dir}/bin/"
+	fi
+
+	install_nvidia_kernel_modules "${rootfs_dir}"
+
+	cuda_repo_url=$(get_package_version_from_kata_yaml "externals.nvidia.cuda.repo.${machine_arch}.url")
+	cuda_repo_pkg=$(get_package_version_from_kata_yaml "externals.nvidia.cuda.repo.${machine_arch}.pkg")
+	gpu_base_os_version=$(get_package_version_from_kata_yaml "assets.image.architecture.${machine_arch}.nvidia-gpu.version")
+	tools_repo_url=$(get_package_version_from_kata_yaml "externals.nvidia.tools.repo.${machine_arch}.url")
+	tools_repo_pkg=$(get_package_version_from_kata_yaml "externals.nvidia.tools.repo.${machine_arch}.pkg")
+	ctk_version=$(get_package_version_from_kata_yaml "externals.nvidia.ctk.version")
+
+	pushd "${rootfs_dir}" >> /dev/null
+
+	mount --rbind /dev ./dev
+	mount --make-rslave ./dev
+	mount -t proc /proc ./proc
+
+	chroot . /bin/bash -c "/nvidia_chroot.sh ${machine_arch} ${NVIDIA_GPU_STACK} \
+		 ${gpu_base_os_version} ${cuda_repo_url} ${cuda_repo_pkg} ${tools_repo_url} ${tools_repo_pkg} ${ctk_version}"
+
+	umount -R ./dev
+	umount ./proc
+	rm ./nvidia_chroot.sh
+
+	popd >> /dev/null
+}
+
+setup_nvidia_gpu_rootfs_stage_one() {
+	setup_nvidia_upx
+	if [[ -e "${stage_one}.tar.zst" ]]; then
+		info "nvidia: GPU rootfs stage one already exists"
+		return
+	fi
+
+	info "nvidia: Setup GPU rootfs stage one"
+	install_nvidia_driver_packages "${ROOTFS_DIR:?}" yes
+
+	pushd "${ROOTFS_DIR}" >> /dev/null
+	tar cfa "${stage_one}.tar.zst" --remove-files -- *
+	popd >> /dev/null
+}
+
+chisseled_iptables() {
+	echo "nvidia: chisseling iptables"
+	cp -a "${stage_one}"/usr/sbin/xtables-nft-multi sbin/.
+
+	ln -s ../sbin/xtables-nft-multi sbin/iptables-restore
+	ln -s ../sbin/xtables-nft-multi sbin/iptables-save
+
+	libdir=lib/"${machine_arch}"-linux-gnu
+	cp -a "${stage_one}/${libdir}"/libmnl.so.0*      lib/.
+
+	libdir=usr/lib/"${machine_arch}"-linux-gnu
+	cp -a "${stage_one}/${libdir}"/libnftnl.so.11*   lib/.
+	cp -a "${stage_one}/${libdir}"/libxtables.so.12* lib/.
+}
+
+# <= NVLINK4 nv-fabrimanager
+# >= NVLINK5 nv-fabricmanager + nvlsm (TODO)
+chisseled_nvswitch() {
+	echo "nvidia: chisseling NVSwitch"
+
+	mkdir -p usr/share/nvidia/nvswitch
+
+	cp -a "${stage_one}"/usr/bin/nv-fabricmanager	bin/.
+	cp -a "${stage_one}"/usr/share/nvidia/nvswitch	usr/share/nvidia/.
+
+	libdir=usr/lib/"${machine_arch}"-linux-gnu
+	cp -a "${stage_one}/${libdir}"/libnvidia-nscq.so.* lib/"${machine_arch}"-linux-gnu/.
+
+	# NVLINK SubnetManager dependencies
+	local nvlsm=usr/share/nvidia/nvlsm
+	mkdir -p "${nvlsm}"
+
+	cp -a "${stage_one}"/opt/nvidia/nvlsm/lib/libgrpc_mgr.so	lib/.
+	cp -a "${stage_one}"/opt/nvidia/nvlsm/sbin/nvlsm			sbin/.
+	cp -a "${stage_one}/${nvlsm}"/*.conf						"${nvlsm}"/.
+	# Redirect all the logs to syslog instead of logging to file
+	sed -i 's|^LOG_USE_SYSLOG=.*|LOG_USE_SYSLOG=1|' usr/share/nvidia/nvswitch/fabricmanager.cfg
+}
+
+chisseled_dcgm() {
+	echo "nvidia: chisseling DCGM"
+
+	mkdir -p etc/dcgm-exporter
+	libdir=lib/"${machine_arch}"-linux-gnu
+
+	cp -a "${stage_one}"/usr/"${libdir}"/libdcgm.*     "${libdir}"/.
+	cp -a "${stage_one}"/"${libdir}"/libgcc_s.so.1*    "${libdir}"/.
+	cp -a "${stage_one}"/usr/bin/nv-hostengine   bin/.
+	# dcgm-exporter dlopen()s libdcgm.so.4, so it needs no extra NEEDED entry
+	# beyond the libc/libdl/libpthread/libresolv set chisseled_compute copies.
+	cp -a "${stage_one}"/usr/bin/dcgm-exporter   bin/.
+
+	# NVRC passes the counter set as -f gpu_extension::path(<csv>), which is the
+	# identity mapping in the monolith, so the CSVs belong at the canonical path
+	# here. partition_base() drops them and the extension ships its own copy.
+	cp -a "${stage_one}"/etc/dcgm-exporter/*.csv etc/dcgm-exporter/.
+}
+
+# copute always includes utility per default
+chisseled_compute() {
+	echo "nvidia: chisseling GPU"
+
+	cp -a "${stage_one}"/lib/modules/* lib/modules/.
+
+	libdir="lib/${machine_arch}-linux-gnu"
+	cp -a "${stage_one}/${libdir}"/libdl.so.2*        	"${libdir}"/.
+	cp -a "${stage_one}/${libdir}"/libz.so.1*         	"${libdir}"/.
+	cp -a "${stage_one}/${libdir}"/libpthread.so.0*   	"${libdir}"/.
+	cp -a "${stage_one}/${libdir}"/libresolv.so.2*    	"${libdir}"/.
+	cp -a "${stage_one}/${libdir}"/libc.so.6*         	"${libdir}"/.
+	cp -a "${stage_one}/${libdir}"/libm.so.6*         	"${libdir}"/.
+	cp -a "${stage_one}/${libdir}"/librt.so.1*        	"${libdir}"/.
+ 	# nvidia-persistenced dependencies for CUDA repo and >= 590
+	cp -a "${stage_one}/${libdir}"/libtirpc.so.3*    	"${libdir}"/.
+	cp -a "${stage_one}/${libdir}"/libgssapi_krb5.so.2*	"${libdir}"/.
+	cp -a "${stage_one}/${libdir}"/libkrb5.so.3*		"${libdir}"/.
+	cp -a "${stage_one}/${libdir}"/libkrb5support.so.0*	"${libdir}"/.
+	cp -a "${stage_one}/${libdir}"/libk5crypto.so.3*	"${libdir}"/.
+	cp -a "${stage_one}/${libdir}"/libcom_err.so.2*		"${libdir}"/.
+	cp -a "${stage_one}/${libdir}"/libkeyutils.so.1*	"${libdir}"/.
+	cp -a "${stage_one}/etc/netconfig"	etc/.
+
+	[[ ${machine_arch} == "aarch64" ]] && libdir="lib"
+	[[ ${machine_arch} == "x86_64" ]]  && libdir="lib64"
+
+	cp -aL "${stage_one}/${libdir}"/ld-linux-* "${libdir}"/.
+
+	# Kata runs headless compute workloads; the graphics stack (EGL, OpenGL,
+	# Vulkan, NGX, OptiX) has no consumers in the guest and only inflates the
+	# image. video is included for headless ffmpeg (nvenc/nvdec go through
+	# /dev/nvidia0, not DRI, so no display stack is needed).
+	# nvapi is excluded: libnvidia-api.so is a Linux shim for the Windows
+	# NVAPI SDK and has no CUDA compute dependency.
+	libdir=usr/lib/"${machine_arch}"-linux-gnu
+	destdir=lib/"${machine_arch}"-linux-gnu
+
+	for lib in "${_nvidia_libs[@]}"; do
+		# vdpau needs a display server (X11/Wayland); cannot function headless.
+		# cudadebugger is cuda-gdb support; no production use in a VM.
+		# opticalflow is a specialised CV primitive, not general compute.
+		case "${lib}" in
+			libvdpau_nvidia.*|libcudadebugger.*|libnvidia-opticalflow.*) continue ;;
+		esac
+		# The filelist is a superset; skip files absent on this OS/SSL configuration.
+		[[ -e "${stage_one}/${libdir}/${lib}" ]] && cp -a "${stage_one}/${libdir}/${lib}" "${destdir}/."
+	done
+
+	for binary in "${_nvidia_bins[@]}"; do
+		# MPS assumes a persistent host daemon model that conflicts with
+		# NVRC's per-container lifecycle. debugdump is a host-side tool.
+		case "${binary}" in
+			nvidia-cuda-mps-control|nvidia-cuda-mps-server|nvidia-debugdump) continue ;;
+		esac
+		[[ -e "${stage_one}/usr/bin/${binary}" ]] && cp -a "${stage_one}/usr/bin/${binary}" bin/.
+	done
+
+	# OpenCL ICD registration so the OpenCL loader finds the NVIDIA driver.
+	mkdir -p etc/OpenCL/vendors
+	for icd in "${_nvidia_icds[@]}"; do
+		[[ -e "${stage_one}/etc/OpenCL/vendors/${icd}" ]] && cp -a "${stage_one}/etc/OpenCL/vendors/${icd}" etc/OpenCL/vendors/.
+	done
+
+	ln -s ../bin usr/bin
+}
+
+chisseled_ctk() {
+	echo "nvidia: chisseling container-toolkit"
+	# nvidia-ctk and nvidia-cdi-hook come from the container-toolkit package,
+	# not the driver, so they are not in the sandboxutils filelist.
+	cp -a "${stage_one}"/usr/bin/nvidia-ctk      bin/.
+	cp -a "${stage_one}"/usr/bin/nvidia-cdi-hook bin/.
+}
+
+chisseled_gpudirect() {
+	echo "nvidia: chisseling GPUDirect"
+	echo "nvidia: not implemented yet"
+	exit 1
+}
+
+chisseled_nvat() {
+	if ! is_nvidia_confidential_variant; then
+		return
+	fi
+
+	echo "nvidia: chisseling NVAT"
+
+	local libdir="lib/${machine_arch}-linux-gnu"
+
+	# libnvat and its non-glibc dependency closure both come from the
+	# coco-guest-components tarball, which resolves them against the userspace
+	# the extension was linked on. Take that set verbatim rather than picking
+	# libraries out of the guest distro.
+	cp -a "${stage_one}"/usr/local/lib/*.so* "${libdir}"/.
+}
+
+setup_nvrc_init_symlinks() {
+	local nvrc="NVRC-${machine_arch}-unknown-linux-musl"
+	# make sure NVRC is the init process for the initrd and image case
+	ln -sf /bin/"${nvrc}" init
+	ln -sf /bin/"${nvrc}" sbin/init
+}
+
+chisseled_init() {
+	echo "nvidia: chisseling init"
+	tar --zstd -xvf "${BUILD_DIR}"/kata-static-busybox.tar.zst -C .
+
+	mkdir -p dev etc proc run/cdi sys tmp usr var lib/modules lib/firmware \
+		 usr/share/nvidia lib/"${machine_arch}"-linux-gnu lib64        \
+		 bin sbin usr/bin etc/modprobe.d etc/ssl/certs
+
+	ln -sf ../run var/run
+	ln -sf ../run var/log
+	ln -sf ../run var/cache
+
+	# Needed for various RUST static builds with LIBC=gnu
+	libdir=lib/"${machine_arch}"-linux-gnu
+	cp -a "${stage_one}"/"${libdir}"/libgcc_s.so.1*    "${libdir}"/.
+
+	local nvrc="NVRC-${machine_arch}-unknown-linux-musl"
+
+	cp -a "${stage_one}/bin/${nvrc}"      bin/.
+	cp -a "${stage_one}/bin/${nvrc}".cert bin/.
+	cp -a "${stage_one}/bin/${nvrc}".sig  bin/.
+
+	setup_nvrc_init_symlinks
+
+	cp -a "${stage_one}"/usr/bin/kata-agent   usr/bin/.
+	if [[ "${AGENT_POLICY}" == "yes" ]]; then
+		cp -a "${stage_one}"/etc/kata-opa etc/.
+	fi
+	cp -a "${stage_one}"/etc/resolv.conf      etc/.
+
+	cp -a "${stage_one}"/lib/firmware/nvidia  lib/firmware/.
+	# /sbin/ldconfig is the real ELF binary rather than a dpkg-trigger wrapper, so
+	# it runs in a chiselled tree without dpkg. Stage two ends with
+	# `chroot . ldconfig` to build the loader cache.
+	cp -a "${stage_one}"/sbin/ldconfig sbin/ldconfig
+
+	cp -a "${stage_one}"/etc/ssl/certs/ca-certificates.crt etc/ssl/certs/.
+
+	local conf_file="etc/modprobe.d/0000-nvidia.conf"
+	echo 'options nvidia NVreg_DeviceFileMode=0660' > "${conf_file}"
+}
+
+compress_rootfs() {
+	echo "nvidia: compressing rootfs"
+	local upx="${BUILD_DIR}/upx-4.2.4-${distro_arch}_linux/upx"
+
+	# The dedicated gpu-extension builder bakes UPX into PATH. The generic
+	# monolith/base builder keeps using setup_nvidia_upx() and its build path.
+	if command -v upx > /dev/null; then
+		upx="$(command -v upx)"
+	fi
+	[[ -x "${upx}" ]] || die "nvidia: UPX not found"
+
+	# For some unobvious reason libc has executable bit set
+	# clean this up otherwise the find -executable will not work correctly
+	find . -type f -name "*.so.*" | while IFS= read -r file; do
+		if ! file "${file}" | grep -q ELF; then
+			echo "nvidia: skip stripping file: ${file} ($(file -b "${file}"))"
+			continue
+		fi
+		chmod -x "${file}"
+		strip "${file}"
+	done
+
+	find . -type f -executable | while IFS= read -r file; do
+		# Skip files with setuid/setgid bits (UPX refuses to pack them)
+		if [[ -u "${file}" ]] || [[ -g "${file}" ]]; then
+			echo "nvidia: skip compressing executable (special permissions): ${file} ($(file -b "${file}"))"
+			continue
+		fi
+		if ! file "${file}" | grep -q ELF; then
+			echo "nvidia: skip compressing executable (not ELF): ${file} ($(file -b "${file}"))"
+			continue
+		fi
+		strip "${file}"
+		"${upx}" --best --lzma "${file}"
+	done
+
+ 	# While I was playing with compression the executable flag on
+	# /lib64/ld-linux-x86-64.so.2 was lost...
+	# Since this is the program interpreter, it needs to be executable
+	# as well.. sigh
+	[[ ${machine_arch} == "aarch64" ]] && libdir="lib"
+	[[ ${machine_arch} == "x86_64" ]]  && libdir="lib64"
+
+	# The gpu-extension layout ships no program interpreter (it lives in the
+	# nvidia base image), so only fix up the loader for the other layouts.
+	if [[ "$(nvidia_image_layout)" != "gpu-extension" ]]; then
+		chmod +x "${libdir}"/ld-linux-*
+	fi
+}
+
+copy_cdh_runtime_deps() {
+	local libdir="lib/${machine_arch}-linux-gnu"
+
+	# Shared libraries required by /usr/local/bin/confidential-data-hub.
+	cp -a "${stage_one}/${libdir}"/libgcc_s.so.1*          "${libdir}/."
+	cp -a "${stage_one}/${libdir}"/libm.so.6*              "${libdir}/."
+	cp -a "${stage_one}/${libdir}"/libc.so.6*              "${libdir}/."
+
+	# Shared libraries required by the cryptsetup, mkfs.ext4, and dd binaries
+	# used by CDH secure_mount.
+	#
+	# cryptsetup direct dependencies
+	cp -a "${stage_one}/${libdir}"/libcryptsetup.so.12*    "${libdir}/."
+	cp -a "${stage_one}/${libdir}"/libpopt.so.0*           "${libdir}/."
+	cp -a "${stage_one}/${libdir}"/libuuid.so.1*           "${libdir}/."
+	cp -a "${stage_one}/${libdir}"/libblkid.so.1*          "${libdir}/."
+
+	# libcryptsetup transitive dependencies. A lib missing from here surfaces only
+	# at runtime, as a CDH "Secure Mount failed", since the copies still succeed.
+	cp -a "${stage_one}/${libdir}"/libdevmapper.so.1.02.1* "${libdir}/."
+	cp -a "${stage_one}/${libdir}"/libcrypto.so.3*         "${libdir}/."
+	cp -a "${stage_one}/${libdir}"/libjson-c.so.5*         "${libdir}/."
+	cp -a "${stage_one}/${libdir}"/libselinux.so.1*        "${libdir}/."
+	cp -a "${stage_one}/${libdir}"/libudev.so.1*           "${libdir}/."
+	cp -a "${stage_one}/${libdir}"/libpcre2-8.so.0*        "${libdir}/."
+	cp -a "${stage_one}/${libdir}"/libcap.so.2*            "${libdir}/."
+	cp -a "${stage_one}/${libdir}"/libz.so.1*              "${libdir}/."
+	cp -a "${stage_one}/${libdir}"/libzstd.so.1*           "${libdir}/."
+
+	copy_mkfs_ext4_runtime_deps
+
+	# cryptsetup and dd are used by CDH secure_mount. uutils ships /usr/bin/dd as a
+	# symlink into /usr/lib/cargo/bin/coreutils, which this tree does not carry, so
+	# copy the binary it points at.
+	mkdir -p sbin bin
+	cp -a "${stage_one}/sbin/cryptsetup" sbin/.
+	cp -aL "${stage_one}/usr/bin/dd" bin/.
+}
+
+copy_mkfs_ext4_runtime_deps() {
+	local libdir="lib/${machine_arch}-linux-gnu"
+
+	# e2fsprogs (mke2fs/mkfs.ext4) runtime libs
+	cp -a "${stage_one}/${libdir}"/libuuid.so.1*           "${libdir}/."
+	cp -a "${stage_one}/${libdir}"/libblkid.so.1*          "${libdir}/."
+	cp -a "${stage_one}/${libdir}"/libext2fs.so.2*         "${libdir}/."
+	cp -a "${stage_one}/${libdir}"/libcom_err.so.2*        "${libdir}/."
+	cp -a "${stage_one}/${libdir}"/libe2p.so.2*            "${libdir}/."
+
+	# The agent uses mkfs.ext4 for block-plain emptyDir volumes.
+	mkdir -p sbin etc
+	cp -a "${stage_one}/sbin/mke2fs" sbin/.
+	cp -a "${stage_one}/sbin/mkfs.ext4" sbin/.
+	cp -a "${stage_one}/etc/mke2fs.conf" etc/.
+}
+
+coco_guest_components() {
+	if ! is_nvidia_confidential_variant; then
+		return
+	fi
+
+	info "nvidia: installing the confidential containers guest components tarball"
+
+	local -r coco_bin_dir="usr/local/bin"
+	local -r etc_dir="etc"
+	local -r pause_dir="pause_bundle"
+
+	mkdir -p "${coco_bin_dir}"
+	cp -a "${stage_one}/${coco_bin_dir}"/attestation-agent-nv  "${coco_bin_dir}/attestation-agent"
+	cp -a "${stage_one}/${coco_bin_dir}"/api-server-rest       "${coco_bin_dir}/."
+	cp -a "${stage_one}/${coco_bin_dir}"/confidential-data-hub "${coco_bin_dir}/."
+
+	cp -a "${stage_one}/${etc_dir}"/ocicrypt_config.json "${etc_dir}/."
+
+	mkdir -p "${pause_dir}/rootfs"
+	cp -a "${stage_one}/${pause_dir}"/config.json  "${pause_dir}/."
+	cp -a "${stage_one}/${pause_dir}"/rootfs/pause "${pause_dir}/rootfs/."
+
+	copy_cdh_runtime_deps
+}
+
+# GPU userspace removed by the subtractive base partition. The direct extension
+# path uses the driver filelist instead. Paths are relative to the chiseled rootfs.
+readonly nvidia_gpu_extension_bins=(
+	bin/nvidia-smi
+	bin/nvidia-ctk
+	bin/nvidia-cdi-hook
+	bin/nvidia-persistenced
+	bin/nv-hostengine
+	bin/dcgm-exporter
+	bin/nv-fabricmanager
+	sbin/nvlsm
+)
+
+# GPU shared-library globs (inside the multiarch lib dir, plus libgrpc_mgr in
+# /lib) owned by the gpu extension.
+#
+# The chiseled rootfs is built from the filelist so only compute/video libs
+# are present; the globs below cannot accidentally match graphics libs.
+readonly nvidia_gpu_extension_lib_globs=(
+	'libnv*'
+	'libcuda.so*'
+	'libdcgm.*'
+	'libnvidia-nscq.so*'
+)
+
+# Assemble the GPU extension directly from the package-installed Ubuntu rootfs.
+# This deliberately reuses the capability selection from f4b0e1a88c instead of
+# first building a chiseled monolith and then selecting its files with globs.
+#
+# The GPU shared libraries go under <root>/usr/lib/<triplet> (the multiarch dir,
+# mirroring the monolith), not a flat <root>/lib or <root>/usr/lib, so that NVRC
+# can run `nvidia-ctk cdi generate --driver-root=<root>`: nvidia-ctk records the
+# in-container mount path as the host path with the driver root stripped, so
+# libraries at <root>/usr/lib/<triplet> land at the canonical /usr/lib/<triplet>
+# inside the container - the exact layout the monolith produces, so its CDI hooks
+# (create-symlinks/update-ldcache) reconcile. A flat <root>/usr/lib strips to
+# /usr/lib, which those hooks can't reconcile and CUDA fails with "driver version
+# is insufficient for CUDA runtime version".
+assemble_nvidia_gpu_extension() {
+	local source="${1:?source root required}"
+	local destination="${2:?destination root required}"
+	local extlib="usr/lib/${machine_arch}-linux-gnu"
+	local source_lib="usr/lib/${machine_arch}-linux-gnu"
+
+	echo "nvidia: assembling gpu extension directly from installed packages"
+	nvidia_populate_capability_arrays "${source}"
+
+	local extension
+	extension="$(mktemp -d "${BUILD_DIR}/.nvidia-gpu-extension.XXXX")"
+	mkdir -p "${extension}/bin" "${extension}/sbin" "${extension}/${extlib}" \
+		 "${extension}/usr/share/nvidia" "${extension}/lib/firmware" "${extension}/lib/modules"
+
+	if nvidia_stack_has compute; then
+		local lib
+		for lib in "${_nvidia_libs[@]}"; do
+			# Preserve the exclusions made by chisseled_compute().
+			case "${lib}" in
+				libvdpau_nvidia.*|libcudadebugger.*|libnvidia-opticalflow.*) continue ;;
+			esac
+			[[ -e "${source}/${source_lib}/${lib}" ]] \
+				&& cp -a "${source}/${source_lib}/${lib}" "${extension}/${extlib}/"
+		done
+
+		local binary
+		for binary in "${_nvidia_bins[@]}"; do
+			# The current extension partition carries only these two filelist
+			# binaries; preserve that contract and the MPS/debug exclusions.
+			case "${binary}" in
+				nvidia-smi|nvidia-persistenced)
+					[[ -e "${source}/usr/bin/${binary}" ]] \
+						&& install -D -m0755 "${source}/usr/bin/${binary}" "${extension}/bin/${binary}"
+					;;
+			esac
+		done
+
+		cp -a "${source}/lib/modules/." "${extension}/lib/modules/"
+	fi
+
+	# nvidia-ctk and nvidia-cdi-hook come from the container-toolkit package,
+	# not the driver filelist.
+	install -D -m0755 "${source}/usr/bin/nvidia-ctk" "${extension}/bin/nvidia-ctk"
+	install -D -m0755 "${source}/usr/bin/nvidia-cdi-hook" "${extension}/bin/nvidia-cdi-hook"
+
+	if nvidia_stack_has dcgm; then
+		install -D -m0755 "${source}/usr/bin/nv-hostengine" "${extension}/bin/nv-hostengine"
+		install -D -m0755 "${source}/usr/bin/dcgm-exporter" "${extension}/bin/dcgm-exporter"
+		cp -a "${source}/${source_lib}"/libdcgm.* "${extension}/${extlib}/"
+		# The counter CSVs travel with the exporter: NVRC resolves them through
+		# gpu_extension::path(), so they resolve under the extension mount.
+		mkdir -p "${extension}/etc/dcgm-exporter"
+		cp -a "${source}/etc/dcgm-exporter/"*.csv "${extension}/etc/dcgm-exporter/"
+	fi
+
+	if nvidia_stack_has nvswitch; then
+		install -D -m0755 "${source}/usr/bin/nv-fabricmanager" "${extension}/bin/nv-fabricmanager"
+		install -D -m0755 "${source}/opt/nvidia/nvlsm/sbin/nvlsm" "${extension}/sbin/nvlsm"
+		cp -a "${source}/${source_lib}"/libnvidia-nscq.so.* "${extension}/${extlib}/"
+		cp -a "${source}/opt/nvidia/nvlsm/lib/libgrpc_mgr.so" "${extension}/${extlib}/"
+		cp -a "${source}/usr/share/nvidia/nvswitch" "${extension}/usr/share/nvidia/"
+		mkdir -p "${extension}/usr/share/nvidia/nvlsm"
+		cp -a "${source}/usr/share/nvidia/nvlsm/"*.conf "${extension}/usr/share/nvidia/nvlsm/"
+
+		# Match the monolith's Fabric Manager logging configuration.
+		sed -i 's|^LOG_USE_SYSLOG=.*|LOG_USE_SYSLOG=1|' \
+			"${extension}/usr/share/nvidia/nvswitch/fabricmanager.cfg"
+	fi
+
+	# Materialize the SONAME symlinks (e.g. libcuda.so.1 -> libcuda.so.595.58.03)
+	# inside the lib dir. The extension ships only the versioned files, so without
+	# this `nvidia-ctk cdi generate` has no symlink to replicate into the
+	# container (it reproduces existing links, it does not synthesize SONAMEs) and
+	# the container can't resolve libcuda.so.1 -> it then falls back to the image's
+	# older cuda-compat libcuda and CUDA fails with "driver version is insufficient
+	# for CUDA runtime version". `ldconfig -n` only creates the versioned symlinks
+	# in the given dir (no cache, no chroot), which is all the loader-less extension
+	# needs. The monolith gets the same links via the `chroot . ldconfig` below.
+	ldconfig -n "${extension}/${extlib}"
+
+	# Generate a full ldcache so nvidia-ctk can locate libraries efficiently
+	# when running with --driver-root=<extension>. Without it nvidia-ctk falls
+	# back to directory scanning, which serialises CDI generation and slows
+	# container start significantly.
+	mkdir -p "${extension}/etc"
+	ldconfig -r "${extension}" 2>/dev/null || true
+
+	# The topology files are only available under the GPU extension mount.
+	# Point Fabric Manager there so it can find them.
+	local fm_cfg="${extension}/usr/share/nvidia/nvswitch/fabricmanager.cfg"
+	if [[ -f "${fm_cfg}" ]]; then
+		sed -i 's|^TOPOLOGY_FILE_PATH=.*|TOPOLOGY_FILE_PATH=/run/kata-extensions/gpu/usr/share/nvidia/nvswitch|' \
+			"${fm_cfg}"
+	fi
+
+	# GPU firmware (GSP, ...); NVRC binds this onto /lib/firmware/nvidia.
+	[[ -d "${source}/lib/firmware/nvidia" ]] \
+		&& cp -a "${source}/lib/firmware/nvidia" "${extension}/lib/firmware/"
+
+	# Ship a self-contained module tree so `modprobe --dirname <root>` resolves
+	# the NVIDIA modules and their dependencies.
+	if command -v depmod >/dev/null 2>&1; then
+		local kdir kver
+		for kdir in "${extension}"/lib/modules/*/; do
+			[[ -d "${kdir}" ]] || continue
+			kver="$(basename "${kdir}")"
+			depmod -b "${extension}" "${kver}" || true
+		done
+	fi
+
+	# Replace the package source rootfs with extension-only content.
+	find "${destination}" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+	cp -a "${extension}/." "${destination}/"
+	rm -rf "${extension}"
+}
+
+setup_nvidia_gpu_extension_rootfs() {
+	nvidia_stack_has gpudirect && die "nvidia: GPUDirect is not implemented"
+
+	# The dedicated builder image has the pinned NVIDIA packages and UPX baked
+	# into its own root. Add the Kata kernel modules to that ephemeral container
+	# root, then select extension content directly into the mounted destination.
+	install_nvidia_kernel_modules /
+	assemble_nvidia_gpu_extension / "${ROOTFS_DIR:?}"
+
+	pushd "${ROOTFS_DIR}" >> /dev/null
+	compress_rootfs
+	popd >> /dev/null
+}
+
+# Strip the GPU userspace from the chiseled tree, leaving a driver-agnostic
+# nvidia base: NVRC init + kata-agent + busybox + loader/libc. No kernel
+# modules are shipped (see below). The empty /lib/firmware/nvidia directory is
+# kept as the bind mountpoint NVRC uses for the extension firmware. Runs inside
+# ${ROOTFS_DIR}.
+#
+# This is subtractive on purpose while the monolith still exists: the base is
+# the monolith minus the GPU allow-list. The planned next step inverts this into
+# a purely additive base/extension assembly (monolith = base + extension); see
+# "Additive image assembly" in docs/design/composable-vm-images.md.
+partition_base() {
+	echo "nvidia: building driver-agnostic base layout"
+
+	local f
+	for f in "${nvidia_gpu_extension_bins[@]}"; do
+		rm -f "${f}"
+	done
+
+	local md="lib/${machine_arch}-linux-gnu"
+	local g
+	for g in "${nvidia_gpu_extension_lib_globs[@]}"; do
+		find "${md}" -maxdepth 1 -name "${g}" -delete
+	done
+	rm -f lib/libgrpc_mgr.so
+
+	# GPU configs live in the extension; keep usr/share/nvidia as an empty stub.
+	rm -rf usr/share/nvidia
+	mkdir -p usr/share/nvidia
+
+	# The exporter and its counter CSVs both live in the extension, and NVRC
+	# resolves the -f path there, so the base needs no stub for them.
+	rm -rf etc/dcgm-exporter
+
+	# Keep /lib/firmware/nvidia as an empty mountpoint for NVRC's firmware bind.
+	rm -rf lib/firmware/nvidia
+	mkdir -p lib/firmware/nvidia
+
+	# Ship no kernel modules in the base: the NVIDIA driver modules are
+	# GPU-specific and live in the gpu extension (NVRC loads them via
+	# `modprobe --dirname <extension>`), and the remaining in-tree dependencies
+	# (mlx5, infiniband, ...) are built into the NVIDIA kernel. Keeping
+	# /lib/modules empty is what makes the base driver-agnostic and reusable
+	# across driver versions.
+	rm -rf lib/modules
+	mkdir -p lib/modules
+}
+
+# NVRC opens every cold-plugged extension (the gpu extension always, and the coco extension
+# on confidential guests) as a dm-verity device by exec'ing /usr/sbin/veritysetup
+# before mounting it. The nvidia base image is the one that boots and runs NVRC,
+# so it must carry veritysetup and its shared-library closure unconditionally -
+# regardless of whether the guest is confidential. This closure is also exactly
+# what cryptsetup links, so the cryptsetup binary shipped in the coco extension
+# (encrypted storage, bundled in the published coco-extension image) resolves its
+# libraries against the base without bundling any of its own. Runs inside
+# ${ROOTFS_DIR}.
+chisseled_veritysetup() {
+	echo "nvidia: chisseling veritysetup"
+
+	local libdir="lib/${machine_arch}-linux-gnu"
+
+	# NVRC execs the absolute path /usr/sbin/veritysetup; cryptsetup-bin is
+	# installed in the (usr-merged) stage-one, so /sbin/veritysetup resolves to
+	# the real binary there.
+	mkdir -p usr/sbin
+	cp -a "${stage_one}/sbin/veritysetup" usr/sbin/.
+
+	# veritysetup -> libcryptsetup runtime closure (same set cryptsetup links).
+	# Some entries overlap chisseled_compute and chisseled_kmod; the closure is
+	# complete here rather than split across them, and cp -a is idempotent.
+	cp -a "${stage_one}/${libdir}"/libcryptsetup.so.12*    "${libdir}/."
+	cp -a "${stage_one}/${libdir}"/libz.so.1*              "${libdir}/."
+	cp -a "${stage_one}/${libdir}"/libzstd.so.1*           "${libdir}/."
+	cp -a "${stage_one}/${libdir}"/libpopt.so.0*           "${libdir}/."
+	cp -a "${stage_one}/${libdir}"/libuuid.so.1*           "${libdir}/."
+	cp -a "${stage_one}/${libdir}"/libblkid.so.1*          "${libdir}/."
+	cp -a "${stage_one}/${libdir}"/libdevmapper.so.1.02.1* "${libdir}/."
+	cp -a "${stage_one}/${libdir}"/libcrypto.so.3*         "${libdir}/."
+	cp -a "${stage_one}/${libdir}"/libjson-c.so.5*         "${libdir}/."
+	cp -a "${stage_one}/${libdir}"/libselinux.so.1*        "${libdir}/."
+	cp -a "${stage_one}/${libdir}"/libudev.so.1*           "${libdir}/."
+	cp -a "${stage_one}/${libdir}"/libpcre2-8.so.0*        "${libdir}/."
+	cp -a "${stage_one}/${libdir}"/libcap.so.2*            "${libdir}/."
+}
+
+# NVRC loads each extension's NVIDIA kernel modules from that extension's self-contained
+# module tree via `modprobe --dirname <extension>` (a kmod feature). The base ships
+# busybox, whose modprobe is built without long options and has no --dirname, so
+# the base must carry the real kmod. This keeps modules composable: every
+# module-bearing extension stays independent (its own modules.dep from depmod -b) and
+# nothing has to shadow the read-only /lib/modules. kmod is a single multi-call
+# binary that embeds libkmod (no libkmod2 to ship); modprobe/insmod/... are
+# argv[0] symlinks to it. Runs inside ${ROOTFS_DIR}.
+chisseled_kmod() {
+	echo "nvidia: chisseling kmod"
+
+	local libdir="lib/${machine_arch}-linux-gnu"
+
+	cp -a "${stage_one}/usr/bin/kmod" usr/bin/.
+
+	# kmod picks its applet from argv[0]. Expose the module tools as symlinks;
+	# /sbin/modprobe (NVRC's absolute path) shadows the busybox modprobe applet.
+	# Absolute targets so they resolve regardless of whether /sbin is a real dir
+	# or a usr-merge symlink.
+	local tool
+	for tool in modprobe insmod rmmod depmod lsmod; do
+		ln -sf /usr/bin/kmod "sbin/${tool}"
+	done
+
+	# kmod links libzstd/liblzma (compressed-module support) and libcrypto
+	# (signed-module support) unconditionally; our modules are uncompressed and
+	# unsigned but the NEEDED entries must still resolve. libc is already present
+	# (from chisseled_compute). libcrypto is also pulled by chisseled_veritysetup
+	# on the base, but the monolith runs kmod without veritysetup, so copy it
+	# here to keep this function self-contained (cp -a is idempotent for base).
+	cp -a "${stage_one}/${libdir}"/libzstd.so.1*    "${libdir}/."
+	cp -a "${stage_one}/${libdir}"/liblzma.so.5*    "${libdir}/."
+	cp -a "${stage_one}/${libdir}"/libcrypto.so.3*  "${libdir}/."
+}
+
+# CDH's secure_mount and the agent's plain ephemeral-storage handlers format
+# scratch volumes with mke2fs/mkfs.ext4 (and zero/size their backing with dd)
+# before mounting them. This tooling backs *unencrypted* storage too, so unlike
+# cryptsetup (encrypted storage, which is CoCo-only and therefore lives in the
+# coco extension) the nvidia base image must carry it unconditionally - just like
+# veritysetup. libblkid/libuuid/libc are already provided by
+# chisseled_veritysetup/chisseled_compute; only the e2fsprogs libs are new here.
+# Runs inside ${ROOTFS_DIR}.
+chisseled_storage() {
+	echo "nvidia: chisseling storage tooling (mke2fs/mkfs.ext4/dd)"
+
+	local libdir="lib/${machine_arch}-linux-gnu"
+
+	# e2fsprogs (mke2fs/mkfs.ext4) runtime libs not already shipped by
+	# chisseled_veritysetup.
+	cp -a "${stage_one}/${libdir}"/libext2fs.so.2*  "${libdir}/."
+	cp -a "${stage_one}/${libdir}"/libcom_err.so.2* "${libdir}/."
+	cp -a "${stage_one}/${libdir}"/libe2p.so.2*     "${libdir}/."
+
+	# mkfs.ext4 is a symlink to mke2fs and both land in sbin/, so preserving it
+	# works; dd's symlink points outside this tree, hence -L.
+	mkdir -p sbin etc bin
+	cp -a  "${stage_one}/sbin/mke2fs"     sbin/.
+	cp -a  "${stage_one}/sbin/mkfs.ext4"  sbin/.
+	cp -a  "${stage_one}/etc/mke2fs.conf" etc/.
+	cp -aL "${stage_one}/usr/bin/dd"      bin/.
+}
+
+setup_nvidia_gpu_rootfs_stage_two() {
+	readonly stage_two="${ROOTFS_DIR:?}"
+	readonly stack="${NVIDIA_GPU_STACK:?}"
+	local layout
+	layout="$(nvidia_image_layout)"
+
+	# If devkit flag is set, skip chisseling, use stage_one
+	if echo "${stack}" | grep -q '\<devkit\>'; then
+		echo "nvidia: devkit mode enabled - skip chisseling"
+
+		tar -C "${stage_two}" -xf "${stage_one}".tar.zst
+
+		pushd "${stage_two}" >> /dev/null
+
+		# Only step needed from stage_two (see chisseled_init)
+		setup_nvrc_init_symlinks
+	else
+		echo "nvidia: chisseling the following stack components: ${stack}"
+
+		[[ -e "${stage_one}" ]] && rm -rf "${stage_one}"
+		[[ ! -e "${stage_one}" ]] && mkdir -p "${stage_one}"
+
+		tar -C "${stage_one}" -xf "${stage_one}".tar.zst
+
+		nvidia_populate_capability_arrays "${stage_one}"
+
+		pushd "${stage_two}" >> /dev/null
+
+		# stage-one archives the full base+driver tree with `tar
+		# --remove-files`, emptying ${stage_two} on its first run. When
+		# stage-one is served from cache that emptying never happens, so the
+		# freshly-built distro rootfs is still here. The chisel assembles a
+		# minimal tree purely from ${stage_one}, so wipe any leftover distro
+		# content first to keep the result deterministic regardless of whether
+		# stage-one was cached (otherwise base/monolith layouts bloat with the
+		# full Ubuntu rootfs).
+		find . -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+
+		chisseled_init
+		chisseled_iptables
+
+		IFS=',' read -r -a stack_components <<< "${NVIDIA_GPU_STACK}"
+
+		for component in "${stack_components[@]}"; do
+			if [[ "${component}" = "compute" ]]; then
+				echo "nvidia: processing \"compute\" component"
+				chisseled_compute
+			elif [[ "${component}" = "dcgm" ]]; then
+				echo "nvidia: processing DCGM component"
+				chisseled_dcgm
+			elif [[ "${component}" = "nvswitch" ]]; then
+				echo "nvidia: processing NVSwitch component"
+				chisseled_nvswitch
+			elif [[ "${component}" = "gpudirect" ]]; then
+				echo "nvidia: processing GPUDirect component"
+				chisseled_gpudirect
+			fi
+		done
+
+		chisseled_ctk
+		coco_guest_components
+		chisseled_nvat
+
+		# Carve the freshly chiseled tree into the base layout. The monolith
+		# path is left untouched; the gpu extension bypasses stage-two.
+		case "${layout}" in
+			base) partition_base; chisseled_veritysetup; chisseled_storage; chisseled_kmod ;;
+			# The monolith boots and runs the whole GPU stack itself, so NVRC's
+			# `/sbin/modprobe nvidia` must resolve here too. busybox no longer
+			# ships a modprobe applet (see chisseled_init), so carry real kmod.
+			monolith) chisseled_kmod ;;
+		esac
+	fi
+
+	# Only monolith/base reach stage-two, and both boot and run the agent.
+	copy_mkfs_ext4_runtime_deps
+	compress_rootfs
+	chroot . ldconfig
+
+	popd >> /dev/null
+}

@@ -1,0 +1,292 @@
+micronaut:
+  application:
+    name: kestra
+  # Disable Micronaut Open Telemetry
+  otel:
+    enabled: false
+  router:
+    static-resources:
+      swagger:
+        paths: classpath:META-INF/swagger
+        mapping: /swagger/**
+      static:
+        paths: classpath:static
+        mapping: /static/**
+      root:
+        paths: classpath:root
+        mapping: /**
+  codec:
+    json:
+      additional-types:
+        - application/scim+json
+  server:
+    max-request-size: 10GB
+    multipart:
+      max-file-size: 10GB
+      mixed: true
+    read-idle-timeout: 60m
+    write-idle-timeout: 60m
+    idle-timeout: 60m
+    responses:
+      file:
+        cache-seconds: 86400
+        cache-control:
+          public: true
+    netty:
+      max-zstd-encode-size: 67108864 # increased to 64MB from the default of 32MB
+      max-chunk-size: 10MB
+      max-header-size: 32768 # increased from the default of 8k
+
+      # Access log configuration, see https://docs.micronaut.io/latest/guide/index.html#accessLogger
+      access-logger:
+        enabled: true
+        logger-name: io.kestra.webserver.access
+        log-format: "%{yyyy-MM-dd'T'HH:mm:ss.SSS'Z'}t | %r | status: %s | ip: %a | length: %b | duration: %D"
+        exclusions:
+          - /ui/.+
+          - /health
+          - /health/.+
+          - /metrics
+          - /metrics/.+
+          - /prometheus(\?.*)?
+    http-version: HTTP_1_1
+  security:
+    filter:
+      enabled: false
+    csrf:
+      enabled: true
+      signature-key: ${kestra.encryption.secret-key:}
+      cookie-name: csrfToken
+      filter:
+        enabled: false
+  caches:
+    default:
+      maximum-weight: 10485760
+    # One cache per icon index: the methods behind them take no argument, so they all resolve to the same cache
+    # key and sharing a cache would make them serve each other's entries. Each therefore holds a single entry.
+    plugin-icons:
+      maximum-size: 1
+    plugin-icons-metadata:
+      maximum-size: 1
+    plugin-group-icons:
+      maximum-size: 1
+    plugin-group-icons-metadata:
+      maximum-size: 1
+  http:
+    client:
+      read-idle-timeout: 60s
+      connect-timeout: 30s
+      read-timeout: 60s
+      http-version: HTTP_1_1
+    services:
+      api:
+        url: https://api.kestra.io
+
+      remote-api:
+        read-idle-timeout: 180s
+        connect-timeout: 180s
+        read-timeout: 180s
+
+      proxy:
+        read-idle-timeout: 180s
+        connect-timeout: 180s
+        read-timeout: 180s
+
+  # By default, Micronaut uses a scheduled executor with 2*nbProc for @Scheduled which is a lot as we didn't use much scheduling tasks.
+  # Using core-pool-size to set the minimum nb threads to keep when idle instead.
+  executors:
+    scheduled:
+      type: scheduled
+      core-pool-size: 1
+
+  metrics:
+    binders:
+      retry:
+        enabled: true
+      netty:
+        queues:
+          enabled: true
+        bytebuf-allocators:
+          enabled: true
+        channels:
+          enabled: true
+
+    # Disable OpenTelemetry metrics by default, users that need it must enable it and configure the collector URL.
+    export:
+      otlp:
+        enabled: false
+#        url: http://localhost:4318/v1/metrics
+
+jackson:
+  serialization:
+    writeDatesAsTimestamps: false
+    writeDurationsAsTimestamps: false
+  serialization-inclusion: non_null
+  deserialization:
+    FAIL_ON_UNKNOWN_PROPERTIES: false
+  mapper:
+    ACCEPT_CASE_INSENSITIVE_ENUMS: true
+
+# Disable Micronaut embedded gRPC server and health check
+grpc:
+  server:
+    enabled: false
+    health:
+      enabled: false
+endpoints:
+  all:
+    port: 8081
+  health:
+    disk-space:
+      enabled: false
+    discovery-client:
+      enabled: false
+
+kestra:
+  tutorial-flows:
+    # Automatically loads all tutorial flows at startup.
+    enabled: true
+
+  webserver:
+    # Browser security response headers, added to every HTTP response (UI and API).
+    # Set a value to "" to disable that single header, or security-headers.enabled to false to disable the whole filter.
+    security-headers:
+      enabled: true
+      frame-options: SAMEORIGIN
+      content-type-options: nosniff
+      referrer-policy: strict-origin-when-cross-origin
+      # content-security-policy: "default-src 'self'; ..." # tune for the UI before enforcing
+      # content-security-policy-report-only: true # report-only intermediate step
+      # strict-transport-security: "max-age=31536000; includeSubDomains" # only sent when this server sees the request as HTTPS
+
+  retries:
+    attempts: 5
+    multiplier: 2.0
+    delay: 1s
+    maxDelay: ""
+
+  server:
+    basic-auth:
+      # These URLs will not be authenticated, by default we open some of the Micronaut default endpoints but not all for security reasons
+      open-urls:
+        - "/ping"
+        - "/api/v1/executions/webhook/"
+        - "/api/v1/main/executions/webhook/"
+        - "/api/v1/*/executions/webhook/"
+
+    preview:
+      initial-rows: 100
+      max-rows: 5000
+
+    # The expected time for this server to complete all its tasks before initiating a graceful shutdown.
+    terminationGracePeriod: 5m
+    workerTaskRestartStrategy: AFTER_TERMINATION_GRACE_PERIOD
+    # Configuration for Liveness and Heartbeat mechanism between servers.
+    liveness:
+      enabled: true
+      # The expected time between liveness probe.
+      interval: 10s
+      # The timeout used to detect service failures.
+      timeout: 1m
+      # The time to wait before executing a liveness probe.
+      initialDelay: 1m
+      # The expected time between service heartbeats.
+      heartbeatInterval: 3s
+    service:
+      purge:
+        initial-delay: 1h
+        fixed-delay: 1d
+        retention: 30d
+  controller:
+    port: 50051
+  worker:
+    controllers:
+      type: STATIC
+      static:
+        endpoints:
+          - host: localhost
+            port: ${kestra.controller.port}
+  queue:
+    message-protection:
+      enabled: true
+      limit: 1048576
+
+  jdbc:
+    queues:
+      min-poll-interval: 25ms
+      max-poll-interval: 500ms
+      poll-switch-interval: 60s
+
+  plugins:
+    # No default: the schema bundle ships inside the Kestra JAR as the /plugins-schema.json
+    # classpath resource, so no instance needs to fetch it. Set this only to point at a bundle
+    # hosted somewhere yourself ({version} is replaced by the running stable version).
+    schema-bundle-url-template: ""
+    repositories:
+      central:
+        url: https://repo.maven.apache.org/maven2/
+    configurations:
+      - type: io.kestra.plugin.core.flow.Subflow
+        values:
+          outputs:
+            enabled: true # backward-compatibility with version prior to v0.15.0
+      - type: io.kestra.plugin.core.flow.Flow
+        values:
+          outputs:
+            enabled: true # backward-compatibility with version prior to v0.15.0
+      - type: io.kestra.plugin.core.trigger.Schedule
+        values:
+          recoverMissedSchedules: ALL
+  variables:
+    env-vars-prefix: ENV_
+    cache-enabled: true
+    cache-size: 1000
+
+  metrics:
+    sharedServiceInstanceMetrics:
+      WORKER:
+        - kestra.worker.job.pending
+        - kestra.worker.job.thread
+        - kestra.worker.job.running
+      WEBSERVER:
+        - kestra.queue.message.lag.count
+    prefix: kestra
+
+  traces:
+    root: DISABLED
+
+  ui-anonymous-usage-report:
+    enabled: true
+
+  ui:
+    charts:
+      default-duration: PT24H
+
+  anonymous-usage-report:
+    enabled: true
+    uri: https://api.kestra.io/v1/reports/server-events
+    initial-delay: 5m
+    fixed-delay: 1h
+
+  hidden-labels:
+    prefixes:
+      - system.
+      - internal.
+
+  async-operations:
+    wait-timeout: PT30S
+
+  tasks:
+    sdk:
+      authentication:
+        username: ${kestra.server.basic-auth.username:}
+        password: ${kestra.server.basic-auth.password:}
+
+otel:
+  exclusions:
+    - /ping
+    - /metrics
+    - /health
+    - /env
+    - /prometheus
+  propagators: tracecontext, baggage

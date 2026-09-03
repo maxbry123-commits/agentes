@@ -1,0 +1,116 @@
+// Copyright (c) 2022 Intel Corporation
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+
+#[macro_use]
+extern crate lazy_static;
+
+#[macro_use]
+extern crate slog;
+
+mod arch;
+mod args;
+mod check;
+mod debug_console;
+mod log_parser;
+mod monitor;
+mod ops;
+mod progress;
+mod types;
+mod utils;
+
+use crate::log_parser::log_parser;
+use anyhow::Result;
+use args::{Commands, KataCtlCli};
+use clap::{crate_name, CommandFactory, Parser};
+use kata_types::config::TomlConfig;
+use std::io;
+use std::process::exit;
+
+use ops::check_ops::{
+    handle_check, handle_iptables, handle_metrics, handle_monitor, handle_version,
+};
+use ops::cp_ops::handle_cp;
+use ops::env_ops::handle_env;
+use ops::exec_ops::handle_exec;
+use ops::factory_ops::handle_factory;
+use ops::volume_ops::handle_direct_volume;
+use slog::{error, o};
+
+macro_rules! sl {
+    () => {
+        slog_scope::logger().new(o!("subsystem" => "kata-ctl_main"))
+    };
+}
+
+// Returns the exit status to leave with: zero for every command but `exec`,
+// which reports the status of what ran in the guest.
+fn real_main() -> Result<i32> {
+    let args = KataCtlCli::parse();
+
+    if args.show_default_config_paths {
+        TomlConfig::get_default_config_file_list()
+            .iter()
+            .for_each(|p| println!("{}", p.display()));
+
+        return Ok(0);
+    }
+
+    let log_level = args.log_level.unwrap_or(slog::Level::Info);
+
+    let (logger, _guard) = if args.json_logging {
+        logging::create_logger(crate_name!(), crate_name!(), log_level, io::stdout())
+    } else {
+        logging::create_term_logger(log_level)
+    };
+
+    let _guard = slog_scope::set_global_logger(logger);
+
+    let res = if let Some(command) = args.command {
+        match command {
+            Commands::Check(args) => handle_check(args).map(|_| 0),
+            Commands::Cp(args) => handle_cp(args).map(|_| 0),
+            Commands::DirectVolume(args) => handle_direct_volume(args).map(|_| 0),
+            Commands::Exec(args) => handle_exec(args),
+            Commands::Env(args) => handle_env(args).map(|_| 0),
+            Commands::Factory(args) => handle_factory(args).map(|_| 0),
+            Commands::Iptables(args) => handle_iptables(args).map(|_| 0),
+            Commands::Metrics(args) => handle_metrics(args).map(|_| 0),
+            Commands::Monitor(args) => handle_monitor(args).map(|_| 0),
+            Commands::Version => handle_version().map(|_| 0),
+            Commands::LogParser(args) => log_parser(args).map(|_| 0),
+        }
+    } else {
+        // The user specified an option, but not a subcommand. We've already
+        // handled show_default_config_paths, so this is an invalid CLI hence
+        // display usage and exit.
+
+        let help = KataCtlCli::command().render_help().to_string();
+
+        eprintln!("ERROR: need command");
+
+        eprintln!("{help}");
+
+        // We need to exit here rather than returning an error to match clap's
+        // standard behaviour.
+        //
+        // Note: the return value matches the clap-internal USAGE_CODE.
+        exit(2);
+    };
+
+    // Log errors here, then let the logger go out of scope in main() to ensure
+    // the asynchronous drain flushes all messages before exit()
+    if let Err(e) = &res {
+        error!(sl!(), "{:#?}", e);
+    }
+
+    res
+}
+
+fn main() {
+    match real_main() {
+        Ok(status) => exit(status),
+        Err(_e) => exit(1),
+    }
+}

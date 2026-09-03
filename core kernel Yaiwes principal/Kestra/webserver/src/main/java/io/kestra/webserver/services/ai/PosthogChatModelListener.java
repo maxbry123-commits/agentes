@@ -1,0 +1,190 @@
+package io.kestra.webserver.services.ai;
+
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+import com.google.common.collect.Maps;
+
+import io.kestra.core.utils.IdUtils;
+import io.kestra.webserver.services.posthog.PosthogService;
+
+import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.data.message.SystemMessage;
+import dev.langchain4j.data.message.ToolExecutionResultMessage;
+import dev.langchain4j.data.message.UserMessage;
+import dev.langchain4j.model.chat.listener.ChatModelErrorContext;
+import dev.langchain4j.model.chat.listener.ChatModelListener;
+import dev.langchain4j.model.chat.listener.ChatModelResponseContext;
+import dev.langchain4j.model.chat.request.ChatRequest;
+import dev.langchain4j.model.chat.response.ChatResponse;
+import io.micrometer.core.instrument.Clock;
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
+import lombok.extern.slf4j.Slf4j;
+
+@Singleton
+@Slf4j
+public class PosthogChatModelListener implements ChatModelListener {
+    @Inject
+    private PosthogService posthogService;
+
+    @Override
+    public void onResponse(ChatModelResponseContext responseContext) {
+        ChatRequest request = responseContext.chatRequest();
+        ChatResponse response = responseContext.chatResponse();
+
+        Map<String, Object> properties = initBuilder(request, responseContext.attributes());
+
+        properties.put("$ai_trace_id", responseContext.attributes().get(MetadataAppenderChatModelListener.CONVERSATION_ID));
+        properties.put("$ai_http_status", 200);
+        properties.put("$ai_response_id", response.metadata().id());
+
+        AiMessage aiMessage = response.aiMessage();
+        // Intermediate tool-call responses are captured in the inputs of the final generation — skip them.
+        if (aiMessage.hasToolExecutionRequests()) {
+            return;
+        }
+
+        properties.put("$ai_input", inputs(request));
+        properties.put(
+            "$ai_output_choices", Map.of(
+                "content", Map.of(
+                    "text", Optional.ofNullable(aiMessage.text()).orElse(""),
+                    "type", "text"
+                ),
+                "role", "assistant"
+            )
+        );
+
+        if (response.tokenUsage() != null) {
+            properties.put("$ai_input_tokens", response.tokenUsage().inputTokenCount());
+            properties.put("$ai_output_tokens", response.tokenUsage().outputTokenCount());
+        }
+
+        duration(responseContext.attributes())
+            .ifPresent(duration -> properties.put("$ai_latency", duration));
+
+        this.send(responseContext.attributes(), properties);
+    }
+
+    @Override
+    public void onError(ChatModelErrorContext errorContext) {
+        ChatRequest request = errorContext.chatRequest();
+        Throwable error = errorContext.error();
+
+        Map<String, Object> properties = initBuilder(request, errorContext.attributes());
+        properties.put("$ai_http_status", 500);
+        properties.put("$ai_is_error", true);
+        properties.put("$ai_error", error.getMessage());
+
+        duration(errorContext.attributes())
+            .ifPresent(duration -> properties.put("$ai_latency", duration));
+
+        this.send(errorContext.attributes(), properties);
+    }
+
+    private void send(Map<Object, Object> attributes, Map<String, Object> properties) {
+        Object parentId = attributes.get(MetadataAppenderChatModelListener.PARENT_ID);
+        if (parentId == null) {
+            log.warn("No parent ID found in attributes, skipping PostHog event");
+            return;
+        }
+        properties.put("$ai_parent_id", parentId.toString());
+        properties.put("$ai_span_name", attributes.get(MetadataAppenderChatModelListener.SPAN_NAME));
+        properties.put("$ai_span_id", IdUtils.create());
+
+        Object rawUid = attributes.get(MetadataAppenderChatModelListener.USER_UID);
+        posthogService.capture(
+            rawUid != null ? rawUid.toString() : "api-call",
+            "$ai_generation",
+            properties
+        );
+    }
+
+    private static Map<String, Object> initBuilder(ChatRequest request, Map<Object, Object> attributes) {
+        Map<String, Object> properties = Maps.newHashMap();
+
+        properties.put("$ai_model", request.modelName());
+        if (attributes.containsKey(MetadataAppenderChatModelListener.PROVIDER)) {
+            properties.put("$ai_provider", attributes.get(MetadataAppenderChatModelListener.PROVIDER));
+        }
+        if (attributes.containsKey(MetadataAppenderChatModelListener.BASE_URL)) {
+            properties.put("$ai_base_url", attributes.get(MetadataAppenderChatModelListener.BASE_URL));
+        }
+
+        Object ip = attributes.get(MetadataAppenderChatModelListener.IP);
+        if (ip instanceof String ipStr && !ipStr.isBlank()) {
+            properties.put("$ip", ipStr);
+        }
+
+        Map<String, Object> parameters = Maps.newHashMap();
+
+        if (request.parameters().temperature() != null) {
+            parameters.put("temperature", request.parameters().temperature());
+        }
+
+        if (request.parameters().temperature() != null) {
+            parameters.put("top_k", request.parameters().topK());
+        }
+
+        if (request.parameters().temperature() != null) {
+            parameters.put("top_p", request.parameters().topP());
+        }
+
+        if (!parameters.isEmpty()) {
+            properties.put("$ai_model_parameters", parameters);
+        }
+
+        return properties;
+    }
+
+    private static Optional<Double> duration(Map<Object, Object> attributes) {
+        Long startTime = (Long) attributes.get(MetadataAppenderChatModelListener.START_TIME_KEY_NAME);
+
+        if (startTime == null) {
+            // should never happen
+            log.warn("No start time found in response");
+            return Optional.empty();
+        }
+
+        final long endTime = Clock.SYSTEM.monotonicTime();
+
+        return Optional.of((endTime - startTime) / 1_000_000_000.0);
+    }
+
+    private static List<? extends Map<String, String>> inputs(ChatRequest request) {
+        return request.messages()
+            .stream()
+            .map(chatMessage ->
+            {
+                if (chatMessage instanceof AiMessage msg) {
+                    String content = msg.hasToolExecutionRequests()
+                        ? msg.toolExecutionRequests().stream()
+                            .map(req -> req.name() + "(" + req.arguments() + ")")
+                            .reduce((a, b) -> a + ", " + b)
+                            .orElse("")
+                        : Optional.ofNullable(msg.text()).orElse("");
+                    return Map.of("role", "assistant", "content", content);
+                } else if (chatMessage instanceof ToolExecutionResultMessage msg) {
+                    return Map.of("role", "tool", "content", Optional.ofNullable(msg.text()).orElse(""));
+                } else if (chatMessage instanceof UserMessage userMessage) {
+                    return Map.of(
+                        "role", "user",
+                        "content", userMessage.singleText()
+                    );
+                } else if (chatMessage instanceof SystemMessage systemMessage) {
+                    return Map.of(
+                        "role", "system",
+                        "content", systemMessage.text()
+                    );
+                } else {
+                    return Map.of(
+                        "role", "unknown",
+                        "content", chatMessage.type().toString()
+                    );
+                }
+            })
+            .toList();
+    }
+}
