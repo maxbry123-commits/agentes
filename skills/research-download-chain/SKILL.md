@@ -3,7 +3,7 @@ name: research-download-chain
 description: Copia, descarga+extrae, reubica y verifica componentes mediante GitHub Actions con deduplicación, fuente fijada, SHA, ZIP por partes, manifiesto y recuperación aislada de GAPS. Úsalo cuando YAIWES, Luna u otro agente deba incorporar código sin reescribirlo.
 metadata:
   type: workflow
-  version: "3.4.0"
+  version: "3.4.1"
 ---
 
 # Research Download Chain
@@ -254,28 +254,27 @@ Antes de escribir en destino valida todos los miembros del archivo: CRC, rutas a
 - No ejecutes `git diff --check`, autoformat, trim de whitespace ni normalización de contenido sobre árboles copiados/descargados; el payload debe conservar bytes fuente. Los validadores estructurales solo pueden inspeccionar, no reescribir ni bloquear por estilo.
 
 
-## 15. Materialización HTTP verificada y dispatch resiliente
+## 15. Punteros LFS fail-closed y dispatch resiliente
 
-Cuando una fuente GitHub fijada a commit contiene un puntero LFS, Git LFS continúa prohibido en esta cadena. No instales ni ejecutes `git lfs`. El reparador puede resolver el objeto real únicamente por HTTPS desde GitHub y convertirlo en blob Git normal, con estas condiciones fail-closed:
+Git LFS está absolutamente prohibido en esta cadena. Si una fuente fijada contiene un puntero LFS:
 
-1. Parsear del puntero `oid sha256:<64hex>` y `size N`.
-2. Resolver `owner/repo + commit + ruta relativa` desde el manifiesto fijado; nunca adivinar fuente/ref.
-3. Descargar primero mediante `https://github.com/<owner>/<repo>/raw/<commit>/<path>`; si devuelve todavía el puntero, usar como fallback `https://media.githubusercontent.com/media/<owner>/<repo>/<commit>/<path>`.
-4. Exigir `sha256(bytes_reales) == oid` y `len(bytes_reales) == size`.
-5. Rechazar el objeto si queda puntero, si SHA/tamaño no coinciden, si la fuente cambia o si el blob final es `>=100 MiB`.
-6. Sustituir el puntero únicamente en staging/árbol reparado; conservar el `.gitattributes` original para trazabilidad.
-7. Publicar con filtros LFS locales neutralizados y `git push --no-verify` solo después de `ZERO_POINTERS + SIZE_PASS + SHA_PASS`.
-8. Si un puntero fue materializado después de la extracción, recalcula `files + bytes + deterministic_tree_sha256` sobre los bytes finales antes del commit; un hash previo a la materialización queda inválido y no sirve para cierre.
+1. Detecta el prefijo `version https://git-lfs.github.com/spec/v1`.
+2. Clasifica el componente como `SOURCE_LFS_POINTER_GAP`.
+3. No ejecutes `git lfs`, no uses fetch/pull/push LFS, no uses `lfs.allowincompletepush` y no derives ni descargues el objeto real a partir del OID del puntero.
+4. No sustituyas el puntero por bytes obtenidos mediante endpoints de media/LFS ni por ningún mecanismo equivalente.
+5. Conserva ZIP, manifiesto, commit fuente, ruta y evidencia del puntero.
+6. Aísla el componente bloqueado y continúa únicamente con componentes independientes que no dependan de ese GAP.
+7. Solo puede cerrarse el GAP si existe una fuente ordinaria independiente, trazable y autorizada que entregue el archivo real sin usar el puntero/OID LFS como mecanismo de recuperación; SHA, tamaño, ruta y equivalencia deben verificarse antes de publicar.
+8. Nunca marques `EXTRACTED_VERIFIED` ni `VERIFIED_CLOSED` mientras el árbol final contenga un puntero LFS.
 
 Para el LOOP de GitHub Actions:
 
-- el reparador nuevo usa un evento `repository_dispatch` exclusivo por versión;
-- el workflow que despacha debe declarar al menos `contents: write` y `actions: write` cuando el repositorio requiera ambos scopes; un 403 se registra como `DISPATCH_PERMISSION_GAP`;
+- usa un evento `repository_dispatch` exclusivo por versión de repair;
+- el workflow que despacha debe declarar `contents: write` y `actions: write` cuando sean necesarios; un 403 se registra como `DISPATCH_PERMISSION_GAP`;
 - el finalizador se ejecuta con `if: always()`;
-- si falla materialización/publicación, no redispatch ciego;
-- si push+read-back pasan y quedan GAPS, despacha el siguiente lote;
+- un GAP no reintentable se persiste y no genera redispatch ciego;
+- si push + read-back pasan y quedan GAPs reintentables, despacha el siguiente lote;
 - cierre únicamente con `remaining_gaps=0`, `remaining_source_pointers=0`, `oversized_blobs=0`, read-back PASS y auditor independiente.
-
 
 ## 16. Hardening de archivos, límites y reproducibilidad
 
