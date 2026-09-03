@@ -3,7 +3,7 @@ name: research-download-chain
 description: Copia, descarga+extrae, reubica y verifica componentes mediante GitHub Actions con deduplicación, fuente fijada, SHA, ZIP por partes, manifiesto y recuperación aislada de GAPS. Úsalo cuando YAIWES, Luna u otro agente deba incorporar código sin reescribirlo.
 metadata:
   type: workflow
-  version: "3.3.0"
+  version: "3.4.0"
 ---
 
 # Research Download Chain
@@ -274,3 +274,29 @@ Para el LOOP de GitHub Actions:
 - si falla materialización/publicación, no redispatch ciego;
 - si push+read-back pasan y quedan GAPS, despacha el siguiente lote;
 - cierre únicamente con `remaining_gaps=0`, `remaining_source_pointers=0`, `oversized_blobs=0`, read-back PASS y auditor independiente.
+
+
+## 16. Hardening de archivos, límites y reproducibilidad
+
+Antes de extraer cualquier ZIP:
+
+- construye el inventario completo de miembros antes de escribir un solo byte;
+- rechaza nombres duplicados que resolverían a la misma ruta, colisiones por normalización/case-fold cuando el destino pueda colisionar, rutas UNC, letras de unidad Windows, NUL, rutas absolutas y traversal;
+- calcula `declared_uncompressed_bytes = sum(file_size)` y `declared_compressed_bytes = sum(compress_size)`;
+- compara el tamaño declarado con un presupuesto explícito y con el espacio libre del runner; si la expansión prevista puede agotar disco/memoria, emite `ARCHIVE_RESOURCE_LIMIT_GAP`;
+- limita también ratio de expansión por miembro y acumulado; una entrada sospechosa nunca se extrae parcialmente al destino;
+- extrae en staging y vuelve a contar bytes reales después de la extracción.
+
+Para archivos fuente generados por GitHub:
+
+- un archivo ZIP/tar de un commit puede regenerarse con distinta compresión aunque el contenido extraído sea el mismo; no uses el SHA del contenedor generado como identidad canónica permanente;
+- la identidad reproducible es `source_commit + deterministic_tree_sha256`; conserva SHA del archivo descargado como evidencia de transporte de esa corrida;
+- ramas/tags deben resolverse a commit antes de adquirir.
+
+Para HTTP/API:
+
+- sigue redirects;
+- usa peticiones seriales para no provocar secondary rate limits;
+- respeta `Retry-After` y `x-ratelimit-reset`;
+- aplica backoff acotado solo a errores transitorios;
+- no repitas mutaciones a ciegas y no conviertas 403/404/422 en retry infinito.
