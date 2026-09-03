@@ -341,13 +341,6 @@ Clasificación:
 
 El finalizador debe conservar evidencia aunque falle el control posterior al push. Usa `if: always()` y separa `content_result` de `control_result`.
 
-### Presupuesto temporal
-
-- Ningún Repair Guardian o repair descendiente puede declarar `timeout-minutes` superior a **480 minutos (8 horas)**.
-- Un Watchdog/Sentinel de auditoría debería ser corto; **60 minutos** es el valor recomendado salvo evidencia de que la auditoría necesita más.
-- Si una operación puede exceder 8 horas, divide por lotes/checkpoints reproducibles; no amplíes indefinidamente el timeout.
-- La persistencia se logra por múltiples runs encadenados y checkpoint, no por un runner infinito.
-
 ### Política de lote adaptativa
 
 El límite por número de componentes es secundario al volumen real:
