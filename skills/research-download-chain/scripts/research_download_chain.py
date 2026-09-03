@@ -1,4 +1,4 @@
-import hashlib, json, os, re, shutil, subprocess, sys, time, urllib.parse, urllib.request
+import hashlib, json, os, re, shutil, subprocess, sys, time
 from pathlib import Path
 DEST=Path(sys.argv[1]).resolve(); WORK=Path(sys.argv[2]).resolve(); SRC=WORK/'src'; PACK=WORK/'pack'
 LFS_POINTER_PREFIX=b'version https://git-lfs.github.com/spec/v1\n'
@@ -11,42 +11,13 @@ def is_lfs_pointer(path):
         if not path.is_file() or path.stat().st_size > POINTER_SCAN_BYTES: return False
         with path.open('rb') as f: return f.read(POINTER_SCAN_BYTES).startswith(LFS_POINTER_PREFIX)
     except OSError: return False
-def materialize_source_pointers_http(root,url,sha):
-    m=re.match(r'https://github\\.com/([^/]+)/([^/]+?)(?:\\.git)?$',url)
-    if not m: raise RuntimeError('SOURCE_URL_GAP: '+url)
-    owner,repo=m.group(1),m.group(2); failures=[]
+def guard_source_tree(root):
+    bad=[]
     for p in sorted(x for x in root.rglob('*') if is_lfs_pointer(x)):
-        txt=p.read_text()
-        mo=re.search(r'^oid sha256:([0-9a-f]{64})$',txt,re.M)
-        ms=re.search(r'^size ([0-9]+)$',txt,re.M)
-        if not mo or not ms:
-            failures.append(str(p.relative_to(root))+':INVALID_SOURCE_POINTER'); continue
-        oid,expected=mo.group(1),int(ms.group(1))
-        if expected>=100*1024*1024:
-            failures.append(str(p.relative_to(root))+':GIT_BLOB_LIMIT_GAP'); continue
-        rel=urllib.parse.quote(p.relative_to(root).as_posix(),safe='/')
-        data=None
-        for u in (
-            f'https://github.com/{owner}/{repo}/raw/{sha}/{rel}',
-            f'https://media.githubusercontent.com/media/{owner}/{repo}/{sha}/{rel}'
-        ):
-            try:
-                req=urllib.request.Request(u,headers={'User-Agent':'yaiwes-research-download/3.3'})
-                with urllib.request.urlopen(req,timeout=90) as r:
-                    b=r.read(100*1024*1024+1)
-                if b.startswith(LFS_POINTER_PREFIX): continue
-                data=b; break
-            except Exception:
-                pass
-        if data is None:
-            failures.append(str(p.relative_to(root))+':SOURCE_OBJECT_FETCH_GAP'); continue
-        if len(data)!=expected:
-            failures.append(str(p.relative_to(root))+':SOURCE_OBJECT_SIZE_MISMATCH'); continue
-        if hashlib.sha256(data).hexdigest()!=oid:
-            failures.append(str(p.relative_to(root))+':SOURCE_OBJECT_SHA_MISMATCH'); continue
-        p.write_bytes(data)
-    if failures:
-        raise RuntimeError('SOURCE_LFS_POINTER_GAP: '+'; '.join(failures[:20]))
+        bad.append(str(p.relative_to(root)))
+    if bad:
+        raise RuntimeError('SOURCE_LFS_POINTER_GAP: '+'; '.join(bad[:20]))
+
 def clone_retry(cmd,url,root,attempts=3):
     last=None
     for attempt in range(1,attempts+1):
@@ -113,7 +84,7 @@ for number,slug,url in REPOS:
     print(f'===== QUEUE {number}/20: {slug} =====')
     if done(slug): print(f'{slug}: COMPLETE; skipping'); continue
     root=SRC/slug; shutil.rmtree(root,ignore_errors=True); clone_retry(['git','clone','--depth','1','--no-tags'],url,root)
-    sha=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip(); materialize_source_pointers_http(root,url,sha); shutil.rmtree(root/'.git',ignore_errors=True)
+    sha=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip(); guard_source_tree(root); shutil.rmtree(root/'.git',ignore_errors=True)
     parts=package(slug,root); print(f'{slug}: {len(parts)} ZIP part(s)')
     for z,size in parts:
         if batch and batch+size>BATCH_LIMIT: commit(batch,f'{batch_no:03d}'); batch=0; batch_no+=1
