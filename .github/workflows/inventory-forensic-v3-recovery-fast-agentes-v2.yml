@@ -1,0 +1,184 @@
+name: inventory-forensic-v3-recovery-fast-agentes-v2
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/inventory-forensic-v3-recovery-fast-agentes-v2.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  forensic_fast_v2:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: always()
+    steps:
+      - name: Checkout main metadata
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          filter: blob:none
+          sparse-checkout: |
+            .github
+
+      - name: Audit downloaded components only
+        env:
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          SERVER_URL: ${{ github.server_url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p audit-v3-fast-v2
+          python3 - <<'PY'
+          import json,os,re,subprocess,urllib.request,urllib.parse
+          from collections import Counter,defaultdict
+
+          repo=os.environ["REPOSITORY"]; run_id=os.environ["RUN_ID"]; server=os.environ["SERVER_URL"]
+          head=subprocess.check_output(["git","rev-parse","HEAD"],text=True).strip()
+          tree=subprocess.check_output(["git","ls-tree","-r","--name-only","-z","HEAD"])
+          paths=[x.decode("utf-8","replace") for x in tree.split(b"\0") if x]
+          manifests=[p for p in paths if p.endswith("RESEARCH_DOWNLOAD_MANIFEST.jsonl")]
+
+          def show(p): return subprocess.check_output(["git","show","HEAD:"+p]).decode("utf-8","replace")
+          def norm(x): return re.sub(r"[^a-z0-9]+","",str(x or "").lower())
+          def canon(u):
+              if not isinstance(u,str) or not u.strip(): return None
+              x=u.strip().lower()
+              if x.endswith(".git"): x=x[:-4]
+              return x.rstrip("/")
+          def source_name(u):
+              x=str(u or "").rstrip("/")
+              if x.lower().endswith(".git"): x=x[:-4]
+              return x.rsplit("/",1)[-1]
+          def list_dir(d):
+              q=urllib.parse.quote(d,safe="/")
+              with urllib.request.urlopen(f"https://api.github.com/repos/{repo}/contents/{q}?ref=main",timeout=30) as r:
+                  z=json.load(r)
+              if not isinstance(z,list): return []
+              return z
+
+          rows=[]
+          for mf in manifests:
+              for n,line in enumerate(show(mf).splitlines(),1):
+                  if not line.strip(): continue
+                  d=json.loads(line)
+                  rows.append({
+                    "manifest_path":mf,"line":n,"number":d.get("number"),
+                    "slug":d.get("slug") or d.get("name"),
+                    "source":d.get("source") or d.get("source_url"),
+                    "sha":d.get("source_commit") or d.get("commit") or d.get("sha"),
+                    "parts":d.get("parts"),"status":str(d.get("status") or "").upper(),
+                    "reason":d.get("reason"),"relocated_to":d.get("relocated_to")
+                  })
+
+          dirs={os.path.dirname(r["manifest_path"]) for r in rows}
+          dirs|={str(r["relocated_to"]).strip("/") for r in rows if isinstance(r.get("relocated_to"),str) and r["relocated_to"].strip()}
+          listings={}; listing_errors=[]
+          for d in sorted(x for x in dirs if x):
+              try:
+                  a=list_dir(d); listings[d]=a
+                  if len(a)>=1000: listing_errors.append({"directory":d,"error":"possible_truncation","items":len(a)})
+              except Exception as e:
+                  listings[d]=[]; listing_errors.append({"directory":d,"error":type(e).__name__})
+
+          zr=re.compile(r"(?i)^(.*)_([0-9]{4})\.zip$")
+          zipgroups=defaultdict(list)
+          for d,a in listings.items():
+              for it in a:
+                  if it.get("type")!="file": continue
+                  m=zr.match(it.get("name",""))
+                  if m:
+                      zipgroups[(d,norm(m.group(1)))].append({"path":it["path"],"part":int(m.group(2)),"size":int(it.get("size") or 0)})
+
+          excluded=[]; evidence_rows=[]
+          for r in rows:
+              try: expected=int(r["parts"])
+              except Exception: expected=None
+              sha_ok=bool(isinstance(r["sha"],str) and re.fullmatch(r"[0-9a-fA-F]{40}",r["sha"]))
+              src_ok=bool(isinstance(r["source"],str) and "github.com/" in r["source"])
+              wanted={norm(r["slug"]),norm(source_name(r["source"]))}-set([""])
+              candidate_dirs={os.path.dirname(r["manifest_path"])}
+              if isinstance(r.get("relocated_to"),str) and r["relocated_to"].strip():
+                  candidate_dirs.add(r["relocated_to"].strip("/"))
+              exact={}
+              for d in candidate_dirs:
+                  for w in wanted:
+                      ps=sorted(zipgroups.get((d,w),[]),key=lambda x:x["part"])
+                      if expected is not None and len(ps)==expected and [p["part"] for p in ps]==list(range(1,expected+1)):
+                          exact[d]=ps
+              if r["status"]=="SKIPPED" and not sha_ok and expected is None and not exact:
+                  excluded.append({**r,"classification":"EXCLUDED_NON_DOWNLOADED"})
+                  continue
+              evidence_rows.append({**r,"canonical_id":canon(r["source"]),"sha_ok":sha_ok,"src_ok":src_ok,"exact":exact})
+
+          grouped=defaultdict(list)
+          for r in evidence_rows: grouped[(r["canonical_id"],r["sha"])].append(r)
+          versions=[]
+          for (cid,sha),occ in grouped.items():
+              locs={}
+              for r in occ:
+                  for d,ps in r["exact"].items(): locs[d]=ps
+              if any(r["status"]=="SKIPPED" for r in occ): st="SKIPPED"
+              elif not cid or not all(r["src_ok"] for r in occ) or not all(r["sha_ok"] for r in occ): st="INSUFFICIENT_EVIDENCE"
+              elif not locs: st="GAP"
+              elif len(locs)>1: st="DUPLICATE_RELOCATED"
+              else: st="COMPLETE"
+              parts=[p for ps in locs.values() for p in ps]
+              versions.append({
+                "canonical_id":cid or "INSUFFICIENT_EVIDENCE",
+                "canonical_name":next((r["slug"] for r in occ if r["slug"]),source_name(occ[0]["source"])),
+                "source_url":occ[0]["source"] or "INSUFFICIENT_EVIDENCE",
+                "source_commit":sha if all(r["sha_ok"] for r in occ) else "INSUFFICIENT_EVIDENCE",
+                "repository":repo,"branch":"main",
+                "exact_path":"; ".join(sorted(locs)) if locs else "INSUFFICIENT_EVIDENCE",
+                "manifest_paths":sorted(set(r["manifest_path"] for r in occ)),
+                "zip_parts":max((len(ps) for ps in locs.values()),default=0) if locs else "INSUFFICIENT_EVIDENCE",
+                "maximum_part_size":max((p["size"] for p in parts),default=0) if locs else "INSUFFICIENT_EVIDENCE",
+                "workflow_run_url":f"{server}/{repo}/actions/runs/{run_id}",
+                "status":st,
+                "locations":[{"directory":d,"files":[p["path"] for p in ps]} for d,ps in sorted(locs.items())],
+                "evidence":{"tree_verified":True,"manifest_verified":True,"sha_verified":all(r["sha_ok"] for r in occ),
+                  "zip_verified":bool(locs),"destination_verified":bool(locs),"workflow_verified":True}
+              })
+
+          canonical=defaultdict(list)
+          for v in versions: canonical[v["canonical_id"]].append(v)
+          vc=Counter(v["status"] for v in versions)
+          result={
+            "schema":"YAIWES-INVENTORY-INDEXES-V3-FAST-V2","repository":repo,"branch":"main","main_commit":head,
+            "workflow_run_url":f"{server}/{repo}/actions/runs/{run_id}",
+            "research_manifests":manifests,"excluded_non_downloaded":excluded,"listing_errors":listing_errors,
+            "versions":versions,
+            "canonical_components":[{"canonical_id":cid,"versions":[{"source_commit":v["source_commit"],"status":v["status"],"locations":v["locations"]} for v in vals]} for cid,vals in sorted(canonical.items())],
+            "counts":{"manifest_rows":len(rows),"excluded_non_downloaded":len(excluded),
+              "unique_versions":len(versions),"unique_canonical":len(canonical),
+              "complete":vc["COMPLETE"],"duplicate_relocated":vc["DUPLICATE_RELOCATED"],
+              "skipped":vc["SKIPPED"],"gaps":vc["GAP"],"insufficient_evidence":vc["INSUFFICIENT_EVIDENCE"],
+              "listing_errors":len(listing_errors)}
+          }
+          json.dump(result,open("audit-v3-fast-v2/inventory-fast-v3.json","w",encoding="utf-8"),ensure_ascii=False,indent=2)
+          with open("audit-v3-fast-v2/inventory-fast-v3.md","w",encoding="utf-8") as f:
+              f.write(f"# Auditoría forense optimizada V3 V2 — {repo}\n\n")
+              for k,v in result["counts"].items(): f.write(f"- {k}: {v}\n")
+              f.write("\n## Versiones\n\n")
+              for i,v in enumerate(versions,1): f.write(f"{i}. {v['canonical_name']} — {v['status']} — {v['exact_path']}\n")
+          PY
+
+      - name: Validate evidence
+        run: |
+          test -s audit-v3-fast-v2/inventory-fast-v3.json
+          python3 -m json.tool audit-v3-fast-v2/inventory-fast-v3.json >/dev/null
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: inventory-forensic-v3-recovery-fast-agentes-v2
+          path: audit-v3-fast-v2/
+          if-no-files-found: error
+          retention-days: 30
