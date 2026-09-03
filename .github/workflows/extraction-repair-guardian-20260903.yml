@@ -21,7 +21,7 @@ concurrency:
 jobs:
   repair:
     runs-on: ubuntu-latest
-    timeout-minutes: 330
+    timeout-minutes: 480
     steps:
       - uses: actions/checkout@v4
         with:
