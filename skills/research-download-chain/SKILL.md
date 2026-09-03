@@ -3,7 +3,7 @@ name: research-download-chain
 description: Copia, descarga+extrae, reubica y verifica componentes mediante GitHub Actions con deduplicación, fuente fijada, SHA, ZIP por partes, manifiesto y recuperación aislada de GAPS. Úsalo cuando YAIWES, Luna u otro agente deba incorporar código sin reescribirlo.
 metadata:
   type: workflow
-  version: "3.0.0"
+  version: "3.1.0"
 ---
 
 # Research Download Chain
@@ -59,9 +59,9 @@ No redactes de memoria workflows extensos. Copia y edita quirúrgicamente:
 
 - `assets/FORENSIC-PASS-research-download-chain-final.yml`;
 - `assets/FORENSIC-PASS-research_download_chain.py`;
-- `gha-copy-files.yml`;
-- `gha-move-files.yml`;
-- `gha-move-root-or-files.yml`.
+- `scripts/research_download_chain.py`.
+
+No invoques plantillas que no existan. Para COPY o RELOCATE crea un workflow nuevo copiando la estructura del asset YAML existente y sustituye únicamente operación, fuentes, rutas, destino, manifiesto y pruebas. Antes de ejecutar, confirma por API que cada archivo de plantilla realmente existe.
 
 Cambios permitidos: nombre nuevo, trigger del archivo nuevo, fuentes, ref fijada, rutas seleccionadas, destino, contadores y nombres de manifiesto/checkpoint.
 
@@ -83,13 +83,44 @@ Código mayor de 100 líneas se copia desde el origen; no se reescribe.
 
 ### DOWNLOAD
 
-Usa la plantilla y script existentes. Registra URL, ref/SHA, licencia, destino, estado, partes y hash. Divide ZIP solo si el límite real del repositorio lo exige. Verifica cada parte y la reconstrucción antes de PASS.
+Usa la plantilla y script existentes. Registra URL, ref/SHA, licencia, destino, estado, partes y hash. Distingue obligatoriamente:
+
+- `ARCHIVE_ONLY`: conservar ZIP/partes como artefacto; no afirmar que el código está instalado.
+- `EXTRACTED_TREE`: reconstruir las partes, validar `unzip -tq`, extraer primero en staging temporal, comprobar que contiene archivos reales y copiar el árbol extraído al destino con control de colisiones.
+
+Si el destino solicitado es código utilizable, el modo predeterminado es `EXTRACTED_TREE`. Divide ZIP solo si el límite real del repositorio lo exige. Verifica cada parte, SHA256 del archivo reconstruido y SHA256 del árbol extraído antes de PASS. No dejes ZIP como sustituto del árbol solicitado.
 
 ### RELOCATE
 
-Mismo repositorio: `git mv` solo si la orden permite mover; si no, `cp -a` conservando origen. Entre repositorios: checkout separado y token ya configurado. No elimines el original sin autorización literal.
+Mismo repositorio: `git mv` solo si la orden autoriza explícitamente quitar el origen; de lo contrario usa `cp -a` y conserva el original. Para raíces o lotes, genera primero un mapa `origen → destino → hash`, crea todos los padres con `mkdir -p`, y procesa cada entrada con detección de colisión. Entre repositorios, ejecuta el workflow desde el repositorio destino y usa su propio `GITHUB_TOKEN` para escribir; obtiene el origen en modo solo lectura. No elimines el original sin autorización literal.
 
-## 5. Concurrencia y escritura
+## 5. Selección inequívoca de operación
+
+- URL/repositorio externo → destino: `DOWNLOAD + EXTRACTED_TREE`.
+- Archivo o raíz ya presente → nueva ubicación conservando origen: `COPY`.
+- Archivo o raíz ya presente → nueva ubicación retirando origen: `RELOCATE`, solo con autorización literal.
+- ZIP/partes existentes → código utilizable: `EXTRACT_ONLY`; no redescargues.
+- Mismo URL+commit+hash ya en destino: `VERIFIED_EXISTING`; no copies ni descargues.
+
+Cada tarea paralela debe tener `TASK_ID`, workflow, `concurrency.group`, destino, manifiesto y checkpoint exclusivos. Nunca reutilices el estado de otro chat o tarea.
+
+## 6. Extracción segura y verificación
+
+Reconstruye partes en orden natural dentro de staging. Rechaza rutas absolutas, `../`, enlaces que escapen del destino y archivos especiales. Ejecuta:
+
+1. SHA256 de cada parte;
+2. reconstrucción;
+3. `unzip -tq`;
+4. inspección de rutas contra Zip Slip;
+5. extracción temporal;
+6. conteo de archivos y bytes;
+7. hash determinista del árbol;
+8. copia con `cmp` y bloqueo de colisión;
+9. read-back desde GitHub tras el push.
+
+No borres ZIP ni staging del repositorio salvo autorización; el staging del runner sí puede limpiarse.
+
+## 7. Concurrencia y escritura
 
 - Un destino tiene un solo escritor.
 - No permitas jobs paralelos que hagan push a la misma rama.
@@ -100,7 +131,7 @@ Mismo repositorio: `git mv` solo si la orden permite mover; si no, `cp -a` conse
 - Antes del push: `git pull --rebase origin <branch>`.
 - Reintenta push como máximo tres veces con espera creciente. Una colisión de contenido nunca se reintenta.
 
-## 6. Trazabilidad mínima por componente
+## 8. Trazabilidad mínima por componente
 
 En la raíz del componente crea sin sobrescribir:
 
@@ -118,7 +149,7 @@ Genera hashes con rutas relativas y excluye el propio manifiesto:
 (cd "$root" && sha256sum -c SOURCE_SHA256SUMS.txt)
 ```
 
-## 7. GitHub Actions
+## 9. GitHub Actions
 
 Crea un workflow nuevo; nunca reactives uno fallido. Debe continuar entre componentes independientes, pero el push será único. Incluye:
 
@@ -133,7 +164,7 @@ Crea un workflow nuevo; nunca reactives uno fallido. Debe continuar entre compon
 
 Un job activo no es PASS. `skipped` solo es aceptable cuando el manifiesto prueba `VERIFIED_EXISTING`.
 
-## 8. Recuperación de GAPS
+## 10. Recuperación de GAPS
 
 Inspecciona primero job, paso y logs. Crea `repair-NN` nuevo exclusivamente para el GAP comprobado. No reejecutes ni edites el workflow viejo para ocultar historial.
 
@@ -147,11 +178,11 @@ Mapa de fallos:
 - timeout/red: retry acotado; después GAP;
 - dependencia ausente: registrar, no declarar PASS.
 
-## 9. Gate de autoevolución YAIWES
+## 11. Gate de autoevolución YAIWES
 
 La investigación produce propuesta y estado `AWAITING_DIRECTOR`. Solo tras autorización explícita se adquiere código. Después deben pasar: licencia, sandbox, Sheriff, pasaporte, ABI/adapter, pruebas, hot-swap y rollback. El LLM propone; nunca autoriza mutaciones ni declara PASS.
 
-## 10. Cierre obligatorio
+## 12. Cierre obligatorio
 
 Entrega URLs de workflow/run, destino, manifiesto y checkpoint; además:
 
