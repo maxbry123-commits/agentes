@@ -1,0 +1,16 @@
+[
+  {
+    "repo": "Microsoft-Presidio",
+    "path": "docs/samples/python/sample_data/3_ORIGINAL.dcm",
+    "chunks_dir": "Microsoft-Presidio/docs/samples/python/sample_data/3_ORIGINAL.dcm.chunks",
+    "bytes": 13265590,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Microsoft-Presidio",
+    "path": "presidio-image-redactor/tests/test_data/dicom_dir_1/dicom_dir_3/3_ORIGINAL.DICOM",
+    "chunks_dir": "Microsoft-Presidio/presidio-image-redactor/tests/test_data/dicom_dir_1/dicom_dir_3/3_ORIGINAL.DICOM.chunks",
+    "bytes": 13265590,
+    "chunk_bytes": 8388608
+  }
+]
