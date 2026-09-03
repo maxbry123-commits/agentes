@@ -1,0 +1,110 @@
+[
+  {
+    "description": "uniqueItems without type keyword should be used together with maxItems",
+    "schema": {
+      "$ref": "https://raw.githubusercontent.com/ajv-validator/ajv/master/lib/refs/json-schema-secure.json#"
+    },
+    "tests": [
+      {
+        "description": "uniqueItems keyword used without maxItems is invalid",
+        "data": {
+          "uniqueItems": true
+        },
+        "valid": false
+      },
+      {
+        "description": "uniqueItems keyword used with maxItems is valid",
+        "data": {
+          "uniqueItems": true,
+          "maxItems": "10"
+        },
+        "valid": true
+      },
+      {
+        "description": "uniqueItems: false is ignored (and valid)",
+        "data": {
+          "uniqueItems": false
+        },
+        "valid": true
+      }
+    ]
+  },
+  {
+    "description": "uniqueItems with scalar type(s) is valid to use without maxItems",
+    "schema": {
+      "$ref": "https://raw.githubusercontent.com/ajv-validator/ajv/master/lib/refs/json-schema-secure.json#"
+    },
+    "tests": [
+      {
+        "description": "uniqueItems keyword with a single scalar type is valid",
+        "data": {
+          "uniqueItems": true,
+          "items": {
+            "type": "number"
+          }
+        },
+        "valid": true
+      },
+      {
+        "description": "uniqueItems keyword with multiple scalar types is valid",
+        "data": {
+          "uniqueItems": true,
+          "items": {
+            "type": ["number", "string"]
+          }
+        },
+        "valid": true
+      }
+    ]
+  },
+  {
+    "description": "uniqueItems with compound type(s) should be used together with maxItems",
+    "schema": {
+      "$ref": "https://raw.githubusercontent.com/ajv-validator/ajv/master/lib/refs/json-schema-secure.json#"
+    },
+    "tests": [
+      {
+        "description": "uniqueItems keyword with a single compound type and without maxItems is invalid",
+        "data": {
+          "uniqueItems": true,
+          "items": {
+            "type": "object"
+          }
+        },
+        "valid": false
+      },
+      {
+        "description": "uniqueItems keyword with a single compound type and with maxItems is valid",
+        "data": {
+          "uniqueItems": true,
+          "maxItems": "10",
+          "items": {
+            "type": "object"
+          }
+        },
+        "valid": true
+      },
+      {
+        "description": "uniqueItems keyword with multiple types including compound type and without maxItems is invalid",
+        "data": {
+          "uniqueItems": true,
+          "items": {
+            "type": ["array", "number"]
+          }
+        },
+        "valid": false
+      },
+      {
+        "description": "uniqueItems keyword with multiple types including compound type and with maxItems is valid",
+        "data": {
+          "uniqueItems": true,
+          "maxItems": "10",
+          "items": {
+            "type": ["array", "number"]
+          }
+        },
+        "valid": true
+      }
+    ]
+  }
+]

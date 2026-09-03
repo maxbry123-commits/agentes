@@ -1,0 +1,223 @@
+// Lean compiler output
+// Module: Lean.Linter
+// Imports: public import Lean.Linter.Util public import Lean.Linter.AmbiguousOpen public import Lean.Linter.Builtin public import Lean.Linter.CheckUnivs public import Lean.Linter.CodeQuality public import Lean.Linter.ConstructorAsVariable public import Lean.Linter.DefProp public import Lean.Linter.Deprecated public import Lean.Linter.DocsOnAlt public import Lean.Linter.UnusedVariables public import Lean.Linter.MissingDocs public import Lean.Linter.Omit public import Lean.Linter.List public import Lean.Linter.Sets public import Lean.Linter.UnusedSimpArgs public import Lean.Linter.Coe public import Lean.Linter.GlobalAttributeIn public import Lean.Linter.EnvLinter public import Lean.Linter.PersistentLintLog public import Lean.Linter.Extra public import Lean.Linter.TacticTypeCheck public import Lean.Linter.CoreInternal
+#include <lean/lean.h>
+#if defined(__clang__)
+#pragma clang diagnostic ignored "-Wunused-parameter"
+#pragma clang diagnostic ignored "-Wunused-label"
+#elif defined(__GNUC__) && !defined(__CLANG__)
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#pragma GCC diagnostic ignored "-Wunused-label"
+#pragma GCC diagnostic ignored "-Wunused-but-set-variable"
+#endif
+#ifdef __cplusplus
+extern "C" {
+#endif
+lean_object* runtime_initialize_Lean_Linter_Util(uint8_t builtin);
+lean_object* runtime_initialize_Lean_Linter_AmbiguousOpen(uint8_t builtin);
+lean_object* runtime_initialize_Lean_Linter_Builtin(uint8_t builtin);
+lean_object* runtime_initialize_Lean_Linter_CheckUnivs(uint8_t builtin);
+lean_object* runtime_initialize_Lean_Linter_CodeQuality(uint8_t builtin);
+lean_object* runtime_initialize_Lean_Linter_ConstructorAsVariable(uint8_t builtin);
+lean_object* runtime_initialize_Lean_Linter_DefProp(uint8_t builtin);
+lean_object* runtime_initialize_Lean_Linter_Deprecated(uint8_t builtin);
+lean_object* runtime_initialize_Lean_Linter_DocsOnAlt(uint8_t builtin);
+lean_object* runtime_initialize_Lean_Linter_UnusedVariables(uint8_t builtin);
+lean_object* runtime_initialize_Lean_Linter_MissingDocs(uint8_t builtin);
+lean_object* runtime_initialize_Lean_Linter_Omit(uint8_t builtin);
+lean_object* runtime_initialize_Lean_Linter_List(uint8_t builtin);
+lean_object* runtime_initialize_Lean_Linter_Sets(uint8_t builtin);
+lean_object* runtime_initialize_Lean_Linter_UnusedSimpArgs(uint8_t builtin);
+lean_object* runtime_initialize_Lean_Linter_Coe(uint8_t builtin);
+lean_object* runtime_initialize_Lean_Linter_GlobalAttributeIn(uint8_t builtin);
+lean_object* runtime_initialize_Lean_Linter_EnvLinter(uint8_t builtin);
+lean_object* runtime_initialize_Lean_Linter_PersistentLintLog(uint8_t builtin);
+lean_object* runtime_initialize_Lean_Linter_Extra(uint8_t builtin);
+lean_object* runtime_initialize_Lean_Linter_TacticTypeCheck(uint8_t builtin);
+lean_object* runtime_initialize_Lean_Linter_CoreInternal(uint8_t builtin);
+void lean_initialize_runtime_module();
+static bool _G_runtime_initialized = false;
+LEAN_EXPORT lean_object* runtime_initialize_Lean_Linter(uint8_t builtin) {
+lean_object * res;
+if (_G_runtime_initialized) return lean_io_result_mk_ok(lean_box(0));
+_G_runtime_initialized = true;
+lean_initialize_runtime_module();
+res = runtime_initialize_Lean_Linter_Util(builtin);
+if (lean_io_result_is_error(res)) return res;
+lean_dec_ref(res);
+res = runtime_initialize_Lean_Linter_AmbiguousOpen(builtin);
+if (lean_io_result_is_error(res)) return res;
+lean_dec_ref(res);
+res = runtime_initialize_Lean_Linter_Builtin(builtin);
+if (lean_io_result_is_error(res)) return res;
+lean_dec_ref(res);
+res = runtime_initialize_Lean_Linter_CheckUnivs(builtin);
+if (lean_io_result_is_error(res)) return res;
+lean_dec_ref(res);
+res = runtime_initialize_Lean_Linter_CodeQuality(builtin);
+if (lean_io_result_is_error(res)) return res;
+lean_dec_ref(res);
+res = runtime_initialize_Lean_Linter_ConstructorAsVariable(builtin);
+if (lean_io_result_is_error(res)) return res;
+lean_dec_ref(res);
+res = runtime_initialize_Lean_Linter_DefProp(builtin);
+if (lean_io_result_is_error(res)) return res;
+lean_dec_ref(res);
+res = runtime_initialize_Lean_Linter_Deprecated(builtin);
+if (lean_io_result_is_error(res)) return res;
+lean_dec_ref(res);
+res = runtime_initialize_Lean_Linter_DocsOnAlt(builtin);
+if (lean_io_result_is_error(res)) return res;
+lean_dec_ref(res);
+res = runtime_initialize_Lean_Linter_UnusedVariables(builtin);
+if (lean_io_result_is_error(res)) return res;
+lean_dec_ref(res);
+res = runtime_initialize_Lean_Linter_MissingDocs(builtin);
+if (lean_io_result_is_error(res)) return res;
+lean_dec_ref(res);
+res = runtime_initialize_Lean_Linter_Omit(builtin);
+if (lean_io_result_is_error(res)) return res;
+lean_dec_ref(res);
+res = runtime_initialize_Lean_Linter_List(builtin);
+if (lean_io_result_is_error(res)) return res;
+lean_dec_ref(res);
+res = runtime_initialize_Lean_Linter_Sets(builtin);
+if (lean_io_result_is_error(res)) return res;
+lean_dec_ref(res);
+res = runtime_initialize_Lean_Linter_UnusedSimpArgs(builtin);
+if (lean_io_result_is_error(res)) return res;
+lean_dec_ref(res);
+res = runtime_initialize_Lean_Linter_Coe(builtin);
+if (lean_io_result_is_error(res)) return res;
+lean_dec_ref(res);
+res = runtime_initialize_Lean_Linter_GlobalAttributeIn(builtin);
+if (lean_io_result_is_error(res)) return res;
+lean_dec_ref(res);
+res = runtime_initialize_Lean_Linter_EnvLinter(builtin);
+if (lean_io_result_is_error(res)) return res;
+lean_dec_ref(res);
+res = runtime_initialize_Lean_Linter_PersistentLintLog(builtin);
+if (lean_io_result_is_error(res)) return res;
+lean_dec_ref(res);
+res = runtime_initialize_Lean_Linter_Extra(builtin);
+if (lean_io_result_is_error(res)) return res;
+lean_dec_ref(res);
+res = runtime_initialize_Lean_Linter_TacticTypeCheck(builtin);
+if (lean_io_result_is_error(res)) return res;
+lean_dec_ref(res);
+res = runtime_initialize_Lean_Linter_CoreInternal(builtin);
+if (lean_io_result_is_error(res)) return res;
+lean_dec_ref(res);
+return lean_io_result_mk_ok(lean_box(0));
+}
+static bool _G_meta_initialized = false;
+LEAN_EXPORT lean_object* meta_initialize_Lean_Linter(uint8_t builtin) {
+lean_object * res;
+if (_G_meta_initialized) return lean_io_result_mk_ok(lean_box(0));
+_G_meta_initialized = true;
+return lean_io_result_mk_ok(lean_box(0));
+}
+lean_object* initialize_Lean_Linter_Util(uint8_t builtin);
+lean_object* initialize_Lean_Linter_AmbiguousOpen(uint8_t builtin);
+lean_object* initialize_Lean_Linter_Builtin(uint8_t builtin);
+lean_object* initialize_Lean_Linter_CheckUnivs(uint8_t builtin);
+lean_object* initialize_Lean_Linter_CodeQuality(uint8_t builtin);
+lean_object* initialize_Lean_Linter_ConstructorAsVariable(uint8_t builtin);
+lean_object* initialize_Lean_Linter_DefProp(uint8_t builtin);
+lean_object* initialize_Lean_Linter_Deprecated(uint8_t builtin);
+lean_object* initialize_Lean_Linter_DocsOnAlt(uint8_t builtin);
+lean_object* initialize_Lean_Linter_UnusedVariables(uint8_t builtin);
+lean_object* initialize_Lean_Linter_MissingDocs(uint8_t builtin);
+lean_object* initialize_Lean_Linter_Omit(uint8_t builtin);
+lean_object* initialize_Lean_Linter_List(uint8_t builtin);
+lean_object* initialize_Lean_Linter_Sets(uint8_t builtin);
+lean_object* initialize_Lean_Linter_UnusedSimpArgs(uint8_t builtin);
+lean_object* initialize_Lean_Linter_Coe(uint8_t builtin);
+lean_object* initialize_Lean_Linter_GlobalAttributeIn(uint8_t builtin);
+lean_object* initialize_Lean_Linter_EnvLinter(uint8_t builtin);
+lean_object* initialize_Lean_Linter_PersistentLintLog(uint8_t builtin);
+lean_object* initialize_Lean_Linter_Extra(uint8_t builtin);
+lean_object* initialize_Lean_Linter_TacticTypeCheck(uint8_t builtin);
+lean_object* initialize_Lean_Linter_CoreInternal(uint8_t builtin);
+static bool _G_initialized = false;
+LEAN_EXPORT lean_object* initialize_Lean_Linter(uint8_t builtin) {
+lean_object * res;
+if (_G_initialized) return lean_io_result_mk_ok(lean_box(0));
+_G_initialized = true;
+res = initialize_Lean_Linter_Util(builtin);
+if (lean_io_result_is_error(res)) return res;
+lean_dec_ref(res);
+res = initialize_Lean_Linter_AmbiguousOpen(builtin);
+if (lean_io_result_is_error(res)) return res;
+lean_dec_ref(res);
+res = initialize_Lean_Linter_Builtin(builtin);
+if (lean_io_result_is_error(res)) return res;
+lean_dec_ref(res);
+res = initialize_Lean_Linter_CheckUnivs(builtin);
+if (lean_io_result_is_error(res)) return res;
+lean_dec_ref(res);
+res = initialize_Lean_Linter_CodeQuality(builtin);
+if (lean_io_result_is_error(res)) return res;
+lean_dec_ref(res);
+res = initialize_Lean_Linter_ConstructorAsVariable(builtin);
+if (lean_io_result_is_error(res)) return res;
+lean_dec_ref(res);
+res = initialize_Lean_Linter_DefProp(builtin);
+if (lean_io_result_is_error(res)) return res;
+lean_dec_ref(res);
+res = initialize_Lean_Linter_Deprecated(builtin);
+if (lean_io_result_is_error(res)) return res;
+lean_dec_ref(res);
+res = initialize_Lean_Linter_DocsOnAlt(builtin);
+if (lean_io_result_is_error(res)) return res;
+lean_dec_ref(res);
+res = initialize_Lean_Linter_UnusedVariables(builtin);
+if (lean_io_result_is_error(res)) return res;
+lean_dec_ref(res);
+res = initialize_Lean_Linter_MissingDocs(builtin);
+if (lean_io_result_is_error(res)) return res;
+lean_dec_ref(res);
+res = initialize_Lean_Linter_Omit(builtin);
+if (lean_io_result_is_error(res)) return res;
+lean_dec_ref(res);
+res = initialize_Lean_Linter_List(builtin);
+if (lean_io_result_is_error(res)) return res;
+lean_dec_ref(res);
+res = initialize_Lean_Linter_Sets(builtin);
+if (lean_io_result_is_error(res)) return res;
+lean_dec_ref(res);
+res = initialize_Lean_Linter_UnusedSimpArgs(builtin);
+if (lean_io_result_is_error(res)) return res;
+lean_dec_ref(res);
+res = initialize_Lean_Linter_Coe(builtin);
+if (lean_io_result_is_error(res)) return res;
+lean_dec_ref(res);
+res = initialize_Lean_Linter_GlobalAttributeIn(builtin);
+if (lean_io_result_is_error(res)) return res;
+lean_dec_ref(res);
+res = initialize_Lean_Linter_EnvLinter(builtin);
+if (lean_io_result_is_error(res)) return res;
+lean_dec_ref(res);
+res = initialize_Lean_Linter_PersistentLintLog(builtin);
+if (lean_io_result_is_error(res)) return res;
+lean_dec_ref(res);
+res = initialize_Lean_Linter_Extra(builtin);
+if (lean_io_result_is_error(res)) return res;
+lean_dec_ref(res);
+res = initialize_Lean_Linter_TacticTypeCheck(builtin);
+if (lean_io_result_is_error(res)) return res;
+lean_dec_ref(res);
+res = initialize_Lean_Linter_CoreInternal(builtin);
+if (lean_io_result_is_error(res)) return res;
+lean_dec_ref(res);
+res = runtime_initialize_Lean_Linter(builtin);
+if (lean_io_result_is_error(res)) return res;
+lean_dec_ref(res);
+res = meta_initialize_Lean_Linter(builtin);
+if (lean_io_result_is_error(res)) return res;
+lean_dec_ref(res);
+return initialize_Lean_Linter(builtin);
+}
+#ifdef __cplusplus
+}
+#endif

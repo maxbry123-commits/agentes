@@ -1,0 +1,13 @@
+// Copyright 2022 The OPA Authors.  All rights reserved.
+// Use of this source code is governed by an Apache2
+// license that can be found in the LICENSE file.
+
+//go:build !bench_disk
+
+package authz
+
+import "github.com/open-policy-agent/opa/v1/storage/disk"
+
+func diskStorage() (*disk.Options, func() error) {
+	return nil, nil
+}

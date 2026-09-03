@@ -1,0 +1,3 @@
+n : Nat
+f : Fin n.succ
+⊢ foo f = 0

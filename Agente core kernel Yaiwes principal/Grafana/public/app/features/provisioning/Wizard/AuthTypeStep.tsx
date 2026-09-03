@@ -1,0 +1,214 @@
+import { css } from '@emotion/css';
+import { useEffect, useMemo, useState } from 'react';
+import { Controller, useFormContext } from 'react-hook-form';
+
+import { type GrafanaTheme2 } from '@grafana/data';
+import { Trans, t } from '@grafana/i18n';
+import { Alert, Field, RadioButtonGroup, Stack, TextLink, useStyles2 } from '@grafana/ui';
+import { type ConnectionSpec, useGetFrontendSettingsQuery } from 'app/api/clients/provisioning/v0alpha1';
+
+import { useConnectionStatus } from '../hooks/useConnectionStatus';
+import { toConnectionType } from '../utils/connectionData';
+import { isGitHubBased, supportsConnections } from '../utils/repositoryTypes';
+
+import { AppConnectionFields } from './AppConnectionFields';
+import { RepositoryField } from './components/RepositoryField';
+import { RepositoryTokenInput } from './components/RepositoryTokenInput';
+import { type ConnectionCreationResult, type GitHubAuthType, type RepoType, type WizardFormData } from './types';
+
+interface AuthTypeOption {
+  id: GitHubAuthType;
+  label: string;
+  description: string;
+  icon: 'key-skeleton-alt' | 'github';
+}
+
+interface AuthTypeStepProps {
+  onGitHubAppSubmit: (result: ConnectionCreationResult) => void;
+}
+
+const getAuthTypeOptions = (
+  repoType: RepoType | undefined,
+  availableTypes: Array<ConnectionSpec['type']>
+): AuthTypeOption[] => {
+  const oauthAppOption: AuthTypeOption = {
+    id: 'oauth-app',
+    label: t('provisioning.wizard.auth-type-oauth-app-label', 'Connect with OAuth App'),
+    description: t(
+      'provisioning.wizard.auth-type-oauth-app-description',
+      'Use an OAuth application shared through a connection. Recommended for production environments.'
+    ),
+    icon: 'key-skeleton-alt',
+  };
+
+  const options: AuthTypeOption[] = isGitHubBased(repoType)
+    ? [
+        {
+          id: 'github-app',
+          label: t('provisioning.wizard.auth-type-github-app-label', 'Connect with GitHub App'),
+          description: t(
+            'provisioning.wizard.auth-type-github-app-description',
+            'Use a GitHub App for enhanced security and team collaboration. Recommended for production environments.'
+          ),
+          icon: 'github',
+        },
+        oauthAppOption,
+        {
+          id: 'pat',
+          label: t('provisioning.wizard.auth-type-pat-label', 'Connect with Personal Access Token'),
+          description: t(
+            'provisioning.wizard.auth-type-pat-description',
+            'Use a personal access token to authenticate with GitHub. Suitable for individual use and testing.'
+          ),
+          icon: 'key-skeleton-alt',
+        },
+      ]
+    : [
+        oauthAppOption,
+        {
+          id: 'pat',
+          label: t('provisioning.wizard.auth-type-pat-label', 'Connect with Personal Access Token'),
+          description: t(
+            'provisioning.wizard.auth-type-pat-description-generic',
+            'Use a personal access token to authenticate. Suitable for individual use and testing.'
+          ),
+          icon: 'key-skeleton-alt',
+        },
+      ];
+
+  const provider = supportsConnections(repoType) ? repoType : 'github';
+  const appType = toConnectionType(provider, 'app');
+  const oauthType = toConnectionType(provider, 'oauth');
+
+  return options.filter(
+    ({ id }) =>
+      id === 'pat' ||
+      (id === 'github-app' && availableTypes.includes(appType)) ||
+      (id === 'oauth-app' && availableTypes.includes(oauthType))
+  );
+};
+
+export function AuthTypeStep({ onGitHubAppSubmit }: AuthTypeStepProps) {
+  const styles = useStyles2(getStyles);
+  const { control, watch, setValue } = useFormContext<WizardFormData>();
+  const [isConnectionAuthorizing, setIsConnectionAuthorizing] = useState(false);
+  const { data: frontendSettings, isLoading: settingsLoading } = useGetFrontendSettingsQuery();
+  const [githubAuthType, githubAppMode, githubAppConnectionName, repoType] = watch([
+    'githubAuthType',
+    'githubAppMode',
+    'githubApp.connectionName',
+    'repository.type',
+  ]);
+  const authTypeOptions = useMemo(
+    () => getAuthTypeOptions(repoType, frontendSettings?.availableConnectionTypes ?? []),
+    [repoType, frontendSettings?.availableConnectionTypes]
+  );
+  const selectedAuthTypeAvailable = authTypeOptions.some(({ id }) => id === githubAuthType);
+  const shouldShowRepositories = githubAuthType === 'pat' || githubAppMode !== 'new';
+  const isConnectionSupportedRepo = supportsConnections(repoType);
+
+  useEffect(() => {
+    if (!settingsLoading && !selectedAuthTypeAvailable && authTypeOptions[0]) {
+      setValue('githubAuthType', authTypeOptions[0].id);
+      setValue('githubApp.connectionName', undefined);
+    }
+  }, [authTypeOptions, selectedAuthTypeAvailable, setValue, settingsLoading]);
+
+  const { isConnected: isSelectedConnectionReady } = useConnectionStatus(
+    githubAuthType !== 'pat' ? githubAppConnectionName : undefined
+  );
+
+  const isGit = repoType === 'git';
+
+  return (
+    <Stack direction="column" gap={2}>
+      {isGit && (
+        <Alert
+          severity="info"
+          title={t('provisioning.wizard.git-protocol-alert-title', 'Only Git v2 Smart HTTP protocol is supported')}
+        >
+          <Trans i18nKey="provisioning.wizard.git-protocol-alert-body">
+            The Pure Git repository type communicates with your Git server using the{' '}
+            <TextLink external href="https://git-scm.com/docs/protocol-v2">
+              Git v2 Smart HTTP protocol
+            </TextLink>
+            . SSH and the legacy v1 protocol are not supported. Make sure your Git server supports Smart HTTP before
+            proceeding. For more details, see the{' '}
+            <TextLink
+              external
+              href="https://grafana.com/docs/grafana-cloud/as-code/observability-as-code/git-sync/usage-limits/#the-pure-git-repository-type"
+            >
+              usage limits documentation
+            </TextLink>
+            .
+          </Trans>
+        </Alert>
+      )}
+
+      {/* PAT & app-based auth switch - only for providers that support connections */}
+      {isConnectionSupportedRepo && (
+        <Field
+          noMargin
+          label={t('provisioning.wizard.auth-type-label', 'Authentication method')}
+          description={
+            isGitHubBased(repoType)
+              ? t(
+                  'provisioning.wizard.auth-type-description',
+                  'All methods provide secure access to your GitHub repositories. Choose the one that best fits your workflow and security requirements.'
+                )
+              : t(
+                  'provisioning.wizard.auth-type-description-generic',
+                  'Both methods provide secure access to your repositories. Choose the one that best fits your workflow and security requirements.'
+                )
+          }
+        >
+          <Controller
+            name="githubAuthType"
+            control={control}
+            render={({ field: { onChange, value } }) => (
+              <RadioButtonGroup<GitHubAuthType>
+                className={styles.authTypeRadios}
+                disabled={isConnectionAuthorizing}
+                value={value}
+                onChange={(nextValue) => {
+                  onChange(nextValue);
+                  setValue('githubApp.connectionName', undefined);
+                }}
+                options={authTypeOptions.map((option) => ({
+                  label: option.label,
+                  value: option.id,
+                  description: option.description,
+                }))}
+              />
+            )}
+          />
+        </Field>
+      )}
+
+      {selectedAuthTypeAvailable &&
+        (supportsConnections(repoType) && githubAuthType !== 'pat' ? (
+          <>
+            <AppConnectionFields
+              provider={repoType}
+              kind={githubAuthType === 'github-app' ? 'app' : 'oauth'}
+              onGitHubAppSubmit={onGitHubAppSubmit}
+              onAuthorizingChange={setIsConnectionAuthorizing}
+            />
+            {shouldShowRepositories && <RepositoryField isSelectedConnectionReady={isSelectedConnectionReady} />}
+          </>
+        ) : (
+          <>
+            <RepositoryField isSelectedConnectionReady={isSelectedConnectionReady} />
+            <RepositoryTokenInput />
+          </>
+        ))}
+    </Stack>
+  );
+}
+
+const getStyles = (_theme: GrafanaTheme2) => ({
+  authTypeRadios: css({
+    maxWidth: '100%',
+    overflowX: 'auto',
+  }),
+});

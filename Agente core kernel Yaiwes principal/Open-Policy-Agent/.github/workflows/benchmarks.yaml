@@ -1,0 +1,99 @@
+name: Benchmarks
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+
+# NOTE(sr): No concurrency group here on purpose: this workflow only reads, and
+# comments on, a single push. It must not be serialized with the benchmark
+# results published by benchmarks-publish.yaml -- GitHub only ever queues one
+# waiting run per group, so sharing a group made these regression comments get
+# dropped whenever two pushes landed close together.
+
+permissions:
+  contents: read
+
+jobs:
+  # Check what types of changes this push contains
+  check-changes:
+    name: Check what files changed
+    runs-on: ubuntu-24.04
+    outputs:
+      bench: ${{ steps.changes.outputs.bench }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Download OPA
+        uses: open-policy-agent/setup-opa@b2b258e089860efaadaaf71bf6e3aecb4a3eeff1 # v2.4.0
+        with:
+          version: edge
+
+      - name: Check for file changes
+        id: changes
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          CURRENT_SHA: ${{ github.event.after }}
+        run: |
+          set -e
+
+          echo "Comparing $BEFORE_SHA with $CURRENT_SHA"
+          git diff --name-only "$BEFORE_SHA" "$CURRENT_SHA" \
+            | jq -R '{filename: .}' | jq -s '.' > changed_files.json
+
+          if [ ! -s changed_files.json ] || [ "$(cat changed_files.json)" = "[]" ]; then
+            echo "Warning: No changed files found"
+            exit 0
+          fi
+
+          echo "Changed files:"
+          jq -r '.[].filename' changed_files.json
+
+          opa eval \
+          --data build/policy/pr-check/pr_check.rego \
+          --input changed_files.json \
+          --format pretty \
+          'data.policy["pr-check"]' > opa_result.json
+
+          bench_result=$(jq -c '.changes.bench // []' opa_result.json)
+
+          echo "bench=${bench_result}" >> $GITHUB_OUTPUT
+
+          echo "Final outputs:"
+          echo "  bench=${bench_result}"
+
+  regression-check:
+    permissions:
+      contents: read
+      pull-requests: write
+    name: Check for regressions
+    runs-on: ubuntu-24.04
+    needs: [check-changes]
+    if: ${{ needs.check-changes.outputs.bench != '' && needs.check-changes.outputs.bench != '[]' }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Fetch base commit
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+        run: git fetch --depth=1 origin "$BEFORE_SHA"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: .go-version
+      - name: Install tools
+        run: cd build/tools && go install tool
+      - name: Run benchmarks and comment on PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMIT_SHA: ${{ github.sha }}
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.event.after }}
+          BENCH_PKGS: ${{ needs.check-changes.outputs.bench }}
+        run: go run ./build/bench-comment

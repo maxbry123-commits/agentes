@@ -1,0 +1,4 @@
+{ x := 0, y := 1, z := 2 } : B
+{ x := 0, y := 1, z := 2 } : D
+@[reducible] def D.toC_1 : D → Boo.C :=
+fun self => { x := self.x, z := self.z }
