@@ -1,0 +1,204 @@
+---
+id: multimodal-metrics-image-editing
+title: Image Editing
+sidebar_label: Image Editing
+languages: [python, typescript]
+---
+<MetricTagsDisplayer singleTurn={true} custom={true} />
+
+The Image Editing metric assesses the performance of **image editing tasks** by evaluating the quality of synthesized images based on semantic consistency and perceptual quality (similar to the `TextToImageMetric`). `deepeval`'s Image Editing metric is a self-explaining MLLM-Eval, meaning it outputs a reason for its metric score.
+
+## Required Arguments
+
+To use the `ImageEditingMetric`, you'll have to provide the following arguments when creating a [`LLMTestCase`](/docs/evaluation-test-cases#llm-test-case):
+
+- `input`
+- <Term py="actual_output" ts="actualOutput"/>
+
+:::note
+Both the input and output should each contain exactly **1 image**.
+:::
+
+The `input` and <Term py="actual_output" ts="actualOutput"/> are required to create an `LLMTestCase` (and hence required by all metrics) even though they might not be used for metric calculation. Read the [How Is It Calculated](#how-is-it-calculated) section below to learn more.
+
+## Usage
+
+<Switch>
+
+<Case id="python">
+
+```python
+from deepeval.test_case import LLMTestCase, MLLMImage
+from deepeval.metrics import ImageEditingMetric
+from deepeval import evaluate
+
+metric = ImageEditingMetric(
+    threshold=0.7,
+    include_reason=True,
+)
+m_test_case = LLMTestCase(
+    input=f"Change the color of the shoes to blue. {MLLMImage(url='./shoes.png', local=True)}",
+    # Replace this with your actual MLLM application output
+    actual_output=f"{MLLMImage(url='https://shoe-images.com/edited-shoes', local=False)}"
+)
+
+
+evaluate(test_cases=[m_test_case], metrics=[metric])
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript
+import { LLMTestCase, MLLMImage } from "deepeval/test-case";
+import { ImageEditingMetric } from "deepeval/metrics";
+import { evaluate } from "deepeval";
+
+const metric = new ImageEditingMetric({
+  threshold: 0.7,
+});
+const mTestCase = new LLMTestCase({
+  input: `Change the color of the shoes to blue. ${new MLLMImage({ url: "./shoes.png", local: true })}`,
+  // Replace this with your actual MLLM application output
+  actualOutput: `${new MLLMImage({ url: "https://shoe-images.com/edited-shoes", local: false })}`,
+});
+
+
+await evaluate([mTestCase], [metric]);
+```
+
+</Case>
+
+</Switch>
+
+<Switch>
+
+<Case id="python">
+
+There are **SIX** optional parameters when creating a `ImageEditingMetric`:
+
+</Case>
+
+<Case id="typescript">
+
+There are **FIVE** optional parameters when creating a `ImageEditingMetric`:
+
+</Case>
+
+</Switch>
+
+- [Optional] `threshold`: a number representing the minimum passing threshold. Can also be set to <Term py="None" ts="null"/> to run the metric in [score-only mode](/docs/metrics-introduction#metric-thresholds). Defaulted to `0.5`.
+- [Optional] <Term py="include_reason" ts="includeReason"/>: a boolean which when set to <Term py="True" ts="true"/>, will include a reason for its evaluation score. Defaulted to <Term py="True" ts="true"/>.
+- [Optional] <Term py="strict_mode" ts="strictMode"/>: a boolean which when set to <Term py="True" ts="true"/>, enforces a binary metric score: 1 for perfection, 0 otherwise. It also overrides the current threshold and sets it to 1. Defaulted to <Term py="False" ts="false"/>.
+- <Only id="python">
+    [Optional] `async_mode`: a boolean which when set to `True`, enables [concurrent execution within the `measure()` method.](/docs/metrics-introduction#measuring-metrics-in-async) Defaulted to `True`.
+  </Only>
+- [Optional] <Term py="verbose_mode" ts="verboseMode"/>: a boolean which when set to <Term py="True" ts="true"/>, prints the intermediate steps used to calculate said metric to the console, as outlined in the [How Is It Calculated](#how-is-it-calculated) section. Defaulted to <Term py="False" ts="false"/>.
+- [Optional] `flaky`: a boolean which when set to <Term py="True" ts="true"/>, [marks the metric as flaky](/docs/metrics-introduction#flaky-metrics). Defaulted to <Term py="False" ts="false"/>.
+
+### As a standalone
+
+You can also run the `ImageEditingMetric` on a single test case as a standalone, one-off execution.
+
+<Switch>
+
+<Case id="python">
+
+```python
+...
+
+metric.measure(m_test_case)
+print(metric.score, metric.reason)
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript
+// ...
+
+await metric.measure(mTestCase);
+console.log(metric.score, metric.reason);
+```
+
+</Case>
+
+</Switch>
+
+## How Is It Calculated?
+
+The `ImageEditingMetric` score is calculated according to the following equation:
+
+<Equation formula="O = \sqrt{\text{min}(\alpha_1, \ldots, \alpha_i) \cdot \text{min}(\beta_1, \ldots, \beta_i)}" />
+
+The `ImageEditingMetric` score combines Semantic Consistency (SC) and Perceptual Quality (PQ) sub-scores to provide a comprehensive evaluation of the synthesized image. The final overall score is derived by taking the square root of the product of the minimum SC and PQ scores.
+
+### SC Scores
+
+These scores assess aspects such as alignment with the prompt and resemblance to concepts. The minimum value among these sub-scores represents the SC score. During the SC evaluation, both the input conditions and the synthesized image are used.
+
+### PQ Scores
+
+These scores evaluate the naturalness and absence of artifacts in the image. The minimum value among these sub-scores represents the PQ score. For the PQ evaluation, only the synthesized image is used to prevent confusion from the input conditions.
+
+## FAQs
+
+<FAQs
+  qas={[
+    {
+      question:
+        "What's the difference between Image Editing and Text to Image?",
+      answer: (
+        <>
+          <code>ImageEditingMetric</code> grades a transformation of an{" "}
+          <em>existing</em> image against an edit instruction, while{" "}
+          <a href="/docs/multimodal-metrics-text-to-image">
+            <code>TextToImageMetric</code>
+          </a>{" "}
+          grades an image generated from a prompt with no source. Pick Image
+          Editing whenever your model starts from a given image.
+        </>
+      ),
+    },
+    {
+      question: "How many images do the input and output each need?",
+      answer: (
+        <>
+          <strong>1 image in the input</strong> (the original, plus instruction
+          text) and <strong>1 in the output</strong> (the edited result), both
+          passed as <code>MLLMImage</code> objects in the{" "}
+          <a href="/docs/evaluation-test-cases#llm-test-case">
+            <code>LLMTestCase</code>
+          </a>
+          .
+        </>
+      ),
+    },
+    {
+      question: "Does the metric check that the edit followed the instruction?",
+      answer: (
+        <>
+          Yes — that's the SC half, scored against your edit
+          instruction and the edited image, so "change the shoes to
+          blue" producing red shoes drives SC down. PQ separately penalizes
+          artifacts from the edit.
+        </>
+      ),
+    },
+    {
+      question:
+        "My edit looks clean but scores low — what's the metric penalizing?",
+      answer: (
+        <>
+          Since <code>O = sqrt(min(SC) · min(PQ))</code>, a clean image (high PQ)
+          still scores low if it didn't apply the edit faithfully or altered
+          parts it shouldn't have (low SC). Read <code>metric.reason</code>{" "}
+          to see which pulled it down.
+        </>
+      ),
+    },
+  ]}
+/>
+

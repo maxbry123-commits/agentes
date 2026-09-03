@@ -1,0 +1,674 @@
+---
+id: evaluation-mcp
+title: Model Context Protocol (MCP)
+sidebar_label: MCP
+languages: [python, typescript]
+---
+
+import { ASSETS } from "@site/src/assets";
+
+**Model Context Protocol (MCP)** is an open-source framework developed by **Anthropic** to standardize how AI systems, particularly large language models (LLMs), interact with external tools and data sources.
+
+## Architecture
+
+The MCP architecture is composed of three main components:
+
+- **Host** – The AI application that coordinates and manages one or more MCP clients.
+- **Client** – Maintains a one-to-one connection with a server and retrieves context from it for the host to use.
+- **Server** – Paired with a single client, providing the context the client passes to the host.
+
+<ImageDisplayer src={ASSETS.mcpArchitecture} alt="MCP Architecture Image" />
+
+For example, Claude acts as the MCP host. When Claude connects to an MCP server such as Google Sheets, the Claude runtime instantiates an MCP client that maintains a dedicated connection to that server. When Claude subsequently connects to another MCP server, such as Google Docs, it instantiates an additional MCP client to maintain that second connection. This preserves a one-to-one relationship between MCP clients and MCP servers, with the host (Claude) orchestrating multiple clients.
+
+## Primitives
+
+`deepeval` adheres to MCP primitives. You'll need to use these primitives to create an `MCPServer` class in `deepeval` before evaluation.
+
+There are three core primitives that MCP servers can expose:
+
+- **Tools**: Executable functions that LLM apps can invoke to perform actions
+- **Resources**: Data sources that provide contextual information to LLM apps
+- **Prompts**: Reusable templates that help structure interactions with language models
+
+You can get all three primitives from `mcp`'s `ClientSession`:
+
+<Switch>
+
+<Case id="python">
+
+```python title="main.py"
+from mcp import ClientSession
+
+session = ClientSession(...)
+
+# List available tools
+tool_list = await session.list_tools()
+resource_list = await session.list_resources()
+prompt_list = await session.list_prompts()
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript title="main.ts"
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+
+const session = new Client({ name: "my-mcp-client", version: "1.0.0" });
+
+// List available tools
+const toolList = await session.listTools();
+const resourceList = await session.listResources();
+const promptList = await session.listPrompts();
+```
+
+</Case>
+
+</Switch>
+
+:::info
+It is the MCP **server developer's** job to expose these primitives for you to leverage for evaluation. This means that you might not always have control over the MCP server you're interacting with.
+:::
+
+## MCP Server
+
+The `MCPServer` class is an abstraction **provided by `deepeval`** to contain information about different MCP servers and the primitives they provide which can be used during evaluations.
+
+Here's how how to create a `MCPServer` instance:
+
+<Switch>
+
+<Case id="python">
+
+```python title="main.py"
+from deepeval.test_case import MCPServer
+
+mcp_server = MCPServer(
+    server_name="GitHub",
+    transport="stdio",
+    available_tools=tool_list.tools, # get from ClientSession
+    available_resources=resource_list.resources, # get from ClientSession
+    available_prompts=prompt_list.prompts # get from ClientSession
+)
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript title="main.ts"
+import { MCPServer } from "deepeval/test-case";
+
+const mcpServer = new MCPServer({
+  serverName: "GitHub",
+  transport: "stdio",
+  availableTools: toolList.tools, // get from Client
+  availableResources: resourceList.resources, // get from Client
+  availablePrompts: promptList.prompts, // get from Client
+});
+```
+
+</Case>
+
+</Switch>
+
+The `MCPServer` accepts **FIVE** parameters:
+
+- `server_name`: an optional string you can provide to store details about your MCP server.
+- [Optional] `transport`: an optional literal that stores on the type of transport your MCP server uses. This information does not affect the evaluation of your MCP test case.
+- [Optional] `available_tools`: an optional list of tools that your MCP server enables you to use.
+- [Optional] `available_prompts`: an optional list of prompts that your MCP server enables you to use.
+- [Optional] `available_resources`: an optional list of resources that your MCP server enables you to use.
+
+:::tip
+You need to make sure to provide the `.tools`, `.resources` and `.prompts` from the `list` method's response. They are each of type `Tool`, `Resource` and `Prompt` respectively from `mcp.types` and they are standardized from the official [MCP python sdk](https://github.com/modelcontextprotocol/python-sdk).
+:::
+
+## MCP At Runtime
+
+During runtime, you'll inevitably be calling your MCP server which will then invoke tools, prompts, and resources. To run evaluation on MCP powered LLM apps, you'll need to format each of these primitives that were called for a given input.
+
+### Tools
+
+Provide a list of `MCPToolCall` objects for every tool your agent invokes during the interaction. The example below shows invoking a tool and constructing the corresponding `MCPToolCall`:
+
+<Switch>
+
+<Case id="python">
+
+```python title="main.py"
+from mcp import ClientSession
+from deepeval.test_case import MCPToolCall
+
+session = ClientSession(...)
+
+# Replace with your values
+tool_name = "..."
+tool_args = "..."
+
+# Call tool
+result = await session.call_tool(tool_name, tool_args)
+
+# Format into deepeval
+mcp_tool_called = MCPToolCall(
+    name=tool_name,
+    args=tool_args,
+    result=result,
+)
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript title="main.ts"
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { MCPToolCall } from "deepeval/test-case";
+
+const session = new Client({ name: "my-mcp-client", version: "1.0.0" });
+
+// Replace with your values
+const toolName = "...";
+const toolArgs = { /* ... */ };
+
+// Call tool
+const result = await session.callTool({ name: toolName, arguments: toolArgs });
+
+// Format into deepeval
+const mcpToolCalled = new MCPToolCall({
+  name: toolName,
+  args: toolArgs,
+  result,
+});
+```
+
+</Case>
+
+</Switch>
+
+The `result` returned by `session.call_tool()` is a `CallToolResult` from `mcp.types`.
+
+### Resources
+
+Provide a list of `MCPResourceCall` objects for every resource your agent reads. The example below shows reading a resource and constructing the corresponding `MCPResourceCall`:
+
+<Switch>
+
+<Case id="python">
+
+```python title="main.py"
+from mcp import ClientSession
+from deepeval.test_case import MCPResourceCall
+
+session = ClientSession(...)
+
+# Replace with your values
+uri = "..."
+
+# Read resource
+result = await session.read_resource(uri)
+
+# Format into deepeval
+mcp_resource_called = MCPResourceCall(
+    uri=uri,
+    result=result,
+)
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript title="main.ts"
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { MCPResourceCall } from "deepeval/test-case";
+
+const session = new Client({ name: "my-mcp-client", version: "1.0.0" });
+
+// Replace with your values
+const uri = "...";
+
+// Read resource
+const result = await session.readResource({ uri });
+
+// Format into deepeval
+const mcpResourceCalled = new MCPResourceCall({
+  uri,
+  result,
+});
+```
+
+</Case>
+
+</Switch>
+
+The `result` returned by `session.read_resource()` is a `ReadResourceResult` from `mcp.types`.
+
+### Prompts
+
+Provide a list of `MCPPromptCall` objects for every prompt your agent retrieves. The example below shows fetching a prompt and constructing the corresponding `MCPPromptCall`:
+
+<Switch>
+
+<Case id="python">
+
+```python title="main.py"
+from mcp import ClientSession
+from deepeval.test_case import MCPPromptCall
+
+session = ClientSession(...)
+
+# Replace with your values
+prompt_name = "..."
+
+# Get prompt
+result = await session.get_prompt(prompt_name)
+
+# Format into deepeval
+mcp_prompt_called = MCPPromptCall(
+    name=prompt_name,
+    result=result,
+)
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript title="main.ts"
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { MCPPromptCall } from "deepeval/test-case";
+
+const session = new Client({ name: "my-mcp-client", version: "1.0.0" });
+
+// Replace with your values
+const promptName = "...";
+
+// Get prompt
+const result = await session.getPrompt({ name: promptName });
+
+// Format into deepeval
+const mcpPromptCalled = new MCPPromptCall({
+  name: promptName,
+  result,
+});
+```
+
+</Case>
+
+</Switch>
+
+The `result` returned by `session.get_prompt()` is a `GetPromptResult` from `mcp.types`.
+
+## Evaluating MCP
+
+You can evaluate MCPs for both **single and multi-turn** use cases. Evaluating MCP involves 4 steps:
+
+- Defining an `MCPServer`, and
+- Piping runtime primitives data into `deepeval`
+- Creating a single-turn or multi-turn test case using these data
+- Running MCP metrics on the test cases you've defined
+
+### Single-Turn
+
+The [`LLMTestCase`](/docs/evaluation-test-cases#llm-test-case) is a single-turn test case and accepts the following optional parameters to support MCP evaluations:
+
+<Switch>
+
+<Case id="python">
+
+```python title="main.py"
+from deepeval.test_case.mcp import (
+    MCPServer,
+    MCPToolCall,
+    MCPResourceCall,
+    MCPPromptCall
+)
+from deepeval.test_case import LLMTestCase
+from deepeval.metrics import MCPUseMetric
+from deepeval import evaluate
+
+# Create test case
+test_case = LLMTestCase(
+    input="...", # Your input
+    actual_output="..." # Your LLM app's output
+    mcp_servers=[MCPServer(...)],
+    mcp_tools_called=[MCPToolCall(...)],
+    mcp_prompts_called=[MCPPromptCall(...)],
+    mcp_resources_called=[MCPResourceCall(...)]
+)
+
+# Run evaluations
+evaluate(test_cases=[test_case], metrics=[MCPUseMetric])
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript title="main.ts"
+import {
+  MCPServer,
+  MCPToolCall,
+  MCPResourceCall,
+  MCPPromptCall,
+  LLMTestCase,
+} from "deepeval/test-case";
+import { MCPUseMetric } from "deepeval/metrics";
+import { evaluate } from "deepeval";
+
+// Create test case
+const testCase = new LLMTestCase({
+  input: "...", // Your input
+  actualOutput: "...", // Your LLM app's output
+  mcpServers: [new MCPServer({ serverName: "..." })],
+  // Each `result` is the one your MCP client returned, unchanged
+  mcpToolsCalled: [new MCPToolCall({ name: "...", args: {}, result: toolResult })],
+  mcpPromptsCalled: [new MCPPromptCall({ name: "...", result: promptResult })],
+  mcpResourcesCalled: [
+    new MCPResourceCall({ uri: "...", result: resourceResult }),
+  ],
+});
+
+// Run evaluations
+await evaluate([testCase], [new MCPUseMetric()]);
+```
+
+</Case>
+
+</Switch>
+
+Typically all MCP parameters in a test case is optional. However if you wish to use MCP metrics such as the `MCPUseMetric`, you'll have to provide some of the following:
+
+- `mcp_servers` — a list of `MCPServer`s
+- `mcp_tools_called` — a list of `MCPToolCall` objects that your LLM app has used
+- `mcp_resources_called` — a list of `MCPResourceCall` objects that your LLM app has used
+- `mcp_prompts_called` — a list of `MCPPromptCall` objects that your LLM app has used
+
+You can learn more about the `MCPUseMetric` [here.](/docs/metrics-mcp-use)
+
+### Multi-Turn
+
+The [`ConversationalTestCase`](/docs/evaluation-multiturn-test-cases#conversational-test-case) accepts an optional parameter called `mcp_server` to add your `MCPServer` instances, which tells `deepeval` how your MCP interactions should be evaluated:
+
+<Switch>
+
+<Case id="python">
+
+```python title="main.py"
+from deepeval.test_case import ConversationalTestCase
+from deepeval.metrics import MultiTurnMCPMetric
+from deepeval.test_case.mcp import MCPServer
+from deepeval import evaluate
+
+test_case = ConversationalTestCase(
+    turns=turns,
+    mcp_servers=[MCPServer(...), MCPServer(...)]
+)
+
+evaluate(test_cases=[test_case], metrics=[MultiTurnMCPMetric()])
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript title="main.ts"
+import { ConversationalTestCase, MCPServer } from "deepeval/test-case";
+import { MultiTurnMCPUseMetric } from "deepeval/metrics";
+import { evaluate } from "deepeval";
+
+const testCase = new ConversationalTestCase({
+  turns,
+  mcpServers: [new MCPServer({ serverName: "..." }), new MCPServer({ serverName: "..." })],
+});
+
+await evaluate([testCase], [new MultiTurnMCPUseMetric()]);
+```
+
+</Case>
+
+</Switch>
+
+<details>
+
+<summary>
+  Click here to see how to set MCP primitives for turns at runtime
+</summary>
+
+To set primitives at runtime, the `Turn` object accepts optional parameters like `mcp_tools_called`, `mcp_resources_called` and `mcp_prompts_called`, just like in an `LLMTestCase`:
+
+<Switch>
+
+<Case id="python">
+
+```python
+from deepeval.test_case.mcp import (
+    MCPServer,
+    MCPToolCall,
+    MCPResourceCall,
+    MCPPromptCall
+)
+from deepeval.test_case.mcp import MCPServer
+
+turns = [
+    Turn(role="user", content="Some example input"),
+    Turn(
+        role="assistant",
+        content="Do this too", # Your content here for a tool / resource / prompt call
+        mcp_tools_called=[MCPToolCall(...)],
+        mcp_resources_called=[MCPResourceCall(...)],
+        mcp_prompts_called=[MCPPromptCall(...)],
+    )
+]
+
+test_case = ConversationalTestCase(
+    turns=turns,
+    mcp_servers=[MCPServer(...)],
+)
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript
+import {
+  ConversationalTestCase,
+  Turn,
+  MCPServer,
+  MCPToolCall,
+  MCPResourceCall,
+  MCPPromptCall,
+} from "deepeval/test-case";
+
+const turns = [
+  new Turn({ role: "user", content: "Some example input" }),
+  new Turn({
+    role: "assistant",
+    content: "Do this too", // Your content here for a tool / resource / prompt call
+    // Each `result` is the one your MCP client returned, unchanged
+    mcpToolsCalled: [
+      new MCPToolCall({ name: "...", args: {}, result: toolResult }),
+    ],
+    mcpResourcesCalled: [
+      new MCPResourceCall({ uri: "...", result: resourceResult }),
+    ],
+    mcpPromptsCalled: [
+      new MCPPromptCall({ name: "...", result: promptResult }),
+    ],
+  }),
+];
+
+const testCase = new ConversationalTestCase({
+  turns,
+  mcpServers: [new MCPServer({ serverName: "..." })],
+});
+```
+
+</Case>
+
+</Switch>
+
+</details>
+
+### Shared MCP Servers
+
+:::info
+`mcp_servers` on `evaluate()` is currently available in Python only.
+:::
+
+If every test case in a run talks to the same MCP servers, you can provide them once to `evaluate()` instead of repeating them on each test case:
+
+```python title="main.py"
+from deepeval.test_case import LLMTestCase, MCPServer
+from deepeval.metrics import MCPUseMetric
+from deepeval import evaluate
+
+evaluate(
+    test_cases=[LLMTestCase(...), LLMTestCase(...)],
+    metrics=[MCPUseMetric()],
+    mcp_servers=[MCPServer(...)],
+)
+```
+
+:::info
+`mcp_servers` on a test case takes precedence, so a test case that defines its own servers is left untouched.
+:::
+
+### Using The Official MCP SDK
+
+If you built your server with the official MCP Python SDK, pass that object straight in — `deepeval` reads its tools, resources, and prompts for you, so there's no need to construct a `deepeval` `MCPServer` by hand.
+
+Note that the SDK's server class is *also* called `MCPServer`, so alias one of them when you import both:
+
+```python title="main.py"
+from mcp.server import MCPServer
+from deepeval.test_case import LLMTestCase
+from deepeval import evaluate
+
+server = MCPServer(name="GitHub")
+
+@server.tool()
+def search_issues(query: str) -> str:
+    ...
+
+evaluate(
+    test_cases=[LLMTestCase(...)],
+    metrics=[...],
+    mcp_servers=[server],
+)
+```
+
+Both forms are accepted anywhere `mcp_servers` is, including on a test case directly, and you can mix them in one list. An official server is converted to a `deepeval` `MCPServer` by calling its `list_tools()`, `list_resources()`, and `list_prompts()`, so `test_case.mcp_servers` always holds `deepeval` `MCPServer`s once evaluation starts.
+
+:::caution
+Only the SDK's **server** object is supported. A `ClientSession` — what you hold when your app *consumes* someone else's MCP server rather than defining its own — is not accepted yet. For that case, keep building a `deepeval` `MCPServer` and pass the primitives from `session.list_tools()` as shown [above](#mcp-server).
+:::
+
+Providing `mcp_servers` also tells `deepeval` how to **classify each tool call**. Any `ToolCall` whose `name` matches an `available_tools` entry on one of your MCP servers is tagged as `ToolCallType.MCP`, and everything else stays `ToolCallType.FUNCTION`:
+
+```python title="main.py"
+from mcp.types import Tool
+from deepeval.test_case import LLMTestCase, ToolCall, MCPServer
+from deepeval import evaluate
+
+test_case = LLMTestCase(
+    input="...",
+    actual_output="...",
+    tools_called=[ToolCall(name="search_issues"), ToolCall(name="my_local_tool")],
+)
+
+evaluate(
+    test_cases=[test_case],
+    metrics=[...],
+    mcp_servers=[
+        MCPServer(server_name="GitHub", available_tools=[Tool(name="search_issues")])
+    ],
+)
+
+print(test_case.tools_called[0].type) # ToolCallType.MCP
+print(test_case.tools_called[1].type) # ToolCallType.FUNCTION
+```
+
+This applies to `tools_called` and `expected_tools` on an `LLMTestCase`, and to `tools_called` on each `Turn` of a `ConversationalTestCase`. The type is included when your test run is sent to Confident AI, where MCP tool calls are labelled separately from regular function calls.
+
+:::caution
+Tool calls are matched **by name**. A regular function that shares its name with an MCP tool on one of your servers will be tagged as `ToolCallType.MCP`.
+:::
+
+:::tip
+The [`ToolCorrectnessMetric`](/docs/metrics-tool-correctness) matches on the type alongside the name, so an `MCP` tool call is not deemed correct against an expected `FUNCTION` tool call of the same name.
+:::
+
+✅ Done. You can now use the [MCP metrics](/docs/metrics-multi-turn-mcp-use) to run evaluations on your MCP based application.
+
+## FAQs
+
+<FAQs
+  qas={[
+    {
+      question: "What does `deepeval` evaluate in an MCP-based application?",
+      answer: (
+        <>
+          It evaluates how your app uses MCP primitives — tools, resources, and
+          prompts — by capturing the calls made to an MCP server and scoring
+          them with MCP-specific metrics, for both single-turn and multi-turn
+          interactions.
+        </>
+      ),
+    },
+    {
+      question: "What are the three MCP primitives I can evaluate?",
+      answer: (
+        <>
+          <strong>Tools</strong> (functions the model can call),{" "}
+          <strong>resources</strong> (data the server exposes), and{" "}
+          <strong>prompts</strong> (server-provided prompt templates). Each is
+          captured at runtime and formatted into <code>deepeval</code>'s test
+          case objects.
+        </>
+      ),
+    },
+    {
+      question: "How do I attach MCP data to a test case?",
+      answer: (
+        <>
+          For single-turn, populate the MCP call parameters on your{" "}
+          <code>LLMTestCase</code>. For multi-turn, pass your{" "}
+          <code>MCPServer</code> instances to a{" "}
+          <code>ConversationalTestCase</code> via <code>mcp_servers</code>, and
+          optionally set per-turn calls like <code>mcp_tools_called</code> on
+          each <code>Turn</code>.
+        </>
+      ),
+    },
+    {
+      question: "Which metrics work with MCP test cases?",
+      answer: (
+        <>
+          Use the{" "}
+          <a href="/docs/metrics-multi-turn-mcp-use">MCP metrics</a> (such as{" "}
+          <code>MultiTurnMCPMetric</code>) to score whether your app called the
+          right tools, resources, and prompts correctly.
+        </>
+      ),
+    },
+    {
+      question:
+        "Can my team visualize MCP tool/resource calls on the cloud in a UI?",
+      answer: (
+        <>
+          MCP evals run locally. For teams that want to inspect which tools,
+          resources, and prompts were invoked across runs,{" "}
+          <a href="https://www.confident-ai.com">Confident AI</a> (the platform
+          from the <code>deepeval</code> team) can visualize MCP interactions
+          and their
+          scores in a shared cloud UI — optional, with no change to your
+          evaluation code.
+        </>
+      ),
+    },
+  ]}
+/>

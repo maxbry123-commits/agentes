@@ -1,0 +1,88 @@
+name: Check config types
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  config-types:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check config type inputs
+        id: changes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            FILES=$(gh api --paginate \
+              "/repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" \
+              --jq '.[].filename')
+          elif [ "${{ github.event.before }}" = "0000000000000000000000000000000000000000" ]; then
+            echo "needs_check=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          else
+            COMPARE_JSON=$(gh api \
+              "/repos/${{ github.repository }}/compare/${{ github.event.before }}...${{ github.sha }}") || {
+              echo "compare API failed; running config-types check defensively."
+              echo "needs_check=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            }
+
+            FILE_COUNT=$(jq '.files | length' <<< "$COMPARE_JSON")
+            if [ "$FILE_COUNT" -ge 300 ]; then
+              echo "compare API may be truncated ($FILE_COUNT files); running config-types check defensively."
+              echo "needs_check=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            FILES=$(jq -r '.files[].filename' <<< "$COMPARE_JSON")
+          fi
+
+          NEEDS_CHECK=false
+          while IFS= read -r file; do
+            case "$file" in
+              src/datamodel_code_generator/config.py)
+                NEEDS_CHECK=true
+                ;;
+              src/datamodel_code_generator/_types/*)
+                NEEDS_CHECK=true
+                ;;
+              pyproject.toml)
+                NEEDS_CHECK=true
+                ;;
+              .github/workflows/config-types.yaml)
+                NEEDS_CHECK=true
+                ;;
+            esac
+          done <<< "$FILES"
+
+          echo "needs_check=$NEEDS_CHECK" >> "$GITHUB_OUTPUT"
+
+      - name: Skip config type check
+        if: steps.changes.outputs.needs_check != 'true'
+        run: echo "No config type inputs changed."
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.changes.outputs.needs_check == 'true'
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        if: steps.changes.outputs.needs_check == 'true'
+        with:
+          enable-cache: true
+
+      - if: steps.changes.outputs.needs_check == 'true'
+        run: uv python install 3.14
+
+      - if: steps.changes.outputs.needs_check == 'true'
+        run: uv tool install --python 3.14 tox --with tox-uv
+
+      - if: steps.changes.outputs.needs_check == 'true'
+        run: tox -e config-types -- --check

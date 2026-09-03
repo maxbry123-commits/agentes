@@ -1,0 +1,382 @@
+[build-system]
+build-backend = "hatchling.build"
+requires = [
+  "hatch-vcs>=0.4",
+  "hatchling>=1.25",
+]
+
+[project]
+name = "datamodel-code-generator"
+description = "Datamodel Code Generator"
+readme.content-type = "text/markdown"
+readme.file = "README.md"
+license = "MIT"
+authors = [ { name = "Koudai Aono", email = "koxudaxi@gmail.com" } ]
+requires-python = ">=3.10"
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "License :: OSI Approved :: MIT License",
+  "Natural Language :: English",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Programming Language :: Python :: Implementation :: CPython",
+]
+dynamic = [
+  "version",
+]
+dependencies = [
+  "argcomplete>=2.10.1,<4",
+  "black>=19.10b0; sys_platform!='emscripten'",
+  "genson>=1.2.1,<2",
+  "inflect>=4.1,<8",
+  "isort>=4.3.21,<9; sys_platform!='emscripten'",
+  "jinja2>=2.10.1,<4",
+  "pydantic>=2,<3; python_version<'3.14'",
+  "pydantic>=2.12,<3; python_version>='3.14'",
+  "pyyaml>=6.0.1",
+  "tomli>=2.2.1,<3; python_version<'3.11'",
+]
+optional-dependencies.all = [
+  "datamodel-code-generator[debug]",
+  "datamodel-code-generator[graphql]",
+  "datamodel-code-generator[http]",
+  "datamodel-code-generator[protobuf]",
+  "datamodel-code-generator[ruff]",
+  "datamodel-code-generator[validation]",
+  "datamodel-code-generator[watch]",
+]
+optional-dependencies.debug = [
+  "pysnooper>=0.4.1,<2",
+]
+optional-dependencies.graphql = [
+  "graphql-core>=3.2.3",
+]
+optional-dependencies.http = [
+  "httpx>=0.24.1",
+]
+optional-dependencies.httpx2 = [
+  "httpx2>=2,<3",
+]
+optional-dependencies.protobuf = [
+  "grpcio-tools>=1.62,<2",
+]
+optional-dependencies.ruff = [
+  "ruff>=0.9.10",
+]
+optional-dependencies.ryaml = [
+  "ryaml>=0.5.1",
+]
+optional-dependencies.validation = [
+  "openapi-spec-validator>=0.2.8,<0.8",
+  "prance>=0.18.2",
+]
+optional-dependencies.watch = [
+  "watchfiles>=1.1",
+]
+urls.Homepage = "https://github.com/koxudaxi/datamodel-code-generator"
+urls.Source = "https://github.com/koxudaxi/datamodel-code-generator"
+scripts.datamodel-codegen = "datamodel_code_generator.__main__:main"
+
+[dependency-groups]
+dev = [
+  { include-group = "coverage" },
+  { include-group = "docs" },
+  { include-group = "fix" },
+  { include-group = "pkg-meta" },
+  { include-group = "playground" },
+  { include-group = "test" },
+  { include-group = "type" },
+]
+test = [
+  "email-validator>=2.2",
+  "hypothesis>=6.136.6",
+  "hypothesis-jsonschema>=0.23.1",
+  "inline-snapshot>=0.34.2",
+  "jsonschema>=4.24",
+  "msgspec>=0.18",
+  "pytest>=8.3.4",
+  "pytest-cov>=5",
+  "pytest-mock>=3.14",
+  "pytest-timeout>=2.4",
+  "pytest-xdist>=3.3.1",
+  "time-machine>=3.1",
+  "trustme>=1.2.1",
+  "watchfiles>=1.1",
+  { include-group = "coverage" },
+]
+type = [
+  "ty>=0.0.8",
+  "types-jinja2",
+  "types-pyyaml",
+  "types-setuptools>=67.6.0.5,<84",
+  "types-toml",
+  { include-group = "test" },
+]
+docs = [
+  "zensical>=0.0.43; python_version>='3.10'",
+]
+benchmark = [
+  "pytest-benchmark",
+  "pytest-codspeed>=2.2",
+]
+black22 = [ "black==22.1" ]
+black23 = [ "black==23.12" ]
+black24 = [ "black==24.1" ]
+blacklatest = [ "black" ]
+coverage = [
+  "covdefaults>=2.3",
+  "coverage[toml]>=7.6.1",
+  "diff-cover>=9.7.2",
+]
+fix = [ "prek>=0.2.22" ]
+isort5 = [ "isort>=5,<6" ]
+isort6 = [ "isort>=6,<7" ]
+isort7 = [ "isort>=7,<8; python_version>='3.10'" ]
+isort8 = [ "isort>=8,<9; python_version>='3.10'" ]
+pkg-meta = [ "check-wheel-contents>=0.6.1", "twine>=7", "uv>=0.5.22" ]
+playground = [
+  "t-linter>=0.8",
+  "tdom>=0.1.16; python_version>='3.14'",
+]
+
+[tool.hatch]
+version.source = "vcs"
+build.dev-mode-dirs = [ "src" ]
+build.hooks.vcs.template = "__version__ = {version!r}\n"
+build.hooks.vcs.version-file = "src/datamodel_code_generator/_version.py"
+build.targets.wheel.force-include."skills/datamodel-code-generator" = "datamodel_code_generator/resources/datamodel-code-generator"
+build.targets.sdist.include = [
+  "/scripts",
+  "/skills/datamodel-code-generator",
+  "/src",
+  "/tests",
+]
+
+[tool.uv]
+conflicts = [
+  [
+    { group = "blacklatest" },
+    { group = "black24" },
+    { group = "black22" },
+    { group = "black23" },
+    { group = "dev" },
+  ],
+  [
+    { group = "isort5" },
+    { group = "isort6" },
+    { group = "isort7" },
+    { group = "isort8" },
+    { group = "dev" },
+  ],
+]
+
+[tool.ruff]
+line-length = 120
+extend-exclude = [ "tests/data" ]
+format.preview = true
+format.docstring-code-format = true
+lint.select = [
+  "ALL",
+]
+lint.ignore = [
+  "ANN401", # Any as type annotation is allowed
+  "C901",   # complex structure
+  "COM812", # Conflict with formatter
+  "CPY",    # No copyright statements
+  "D203",   # one-blank-line-before-class (conflicts with D211)
+  "D212",   # multi-line-summary-first-line (conflicts with D213)
+  "DOC",    # limited documentation
+  "FIX002", # line contains to do
+  "ISC001", # Conflict with formatter
+  "S101",   # can use assert
+  "TD002",  # missing to do author
+  "TD003",  # missing to do link
+  "TD004",  # missing colon in to do
+]
+lint.per-file-ignores."scripts/*.py" = [
+  "INP001",  # no implicit namespace
+  "PLR0912", # too many branches
+  "PLR0914", # too many local variables
+  "PLR0915", # too many statements
+  "S",       # subprocess security is fine for build scripts
+  "T201",    # print is fine for CLI scripts
+]
+lint.per-file-ignores."src/datamodel_code_generator/model/_compiled_templates/*.py" = [
+  "ALL", # Generated sources are checked by compile_builtin_templates.py.
+]
+lint.per-file-ignores."tests/**/*.py" = [
+  "FBT",     # don't care about booleans as positional arguments in tests
+  "INP001",  # no implicit namespace
+  "N806",    # variable names for model classes can be uppercase
+  "PLC0415", # local imports in tests are fine
+  "PLC2701", # private import is fine
+  "PLR0904", # too many public methods in test classes is fine
+  "PLR0913", # as many arguments as want
+  "PLR0915", # can have longer test methods
+  "PLR0917", # as many arguments as want
+  "PLR2004", # Magic value used in comparison, consider replacing with a constant variable
+  "PLR6301", # test methods don't need to use self
+  "S",       # no safety concerns
+  "SLF001",  # can test private methods
+]
+lint.isort = { known-first-party = [
+  "datamodel_code_generator",
+  "tests",
+], required-imports = [
+  "from __future__ import annotations",
+] }
+lint.pydocstyle.convention = "pep257"
+lint.preview = true
+
+[tool.codespell]
+skip = ".git,*.lock,tests,docs/cli-reference,CHANGELOG.md,docs/changelog.md,docs/llms.txt,docs/llms-full.txt"
+
+[tool.ty]
+src.include = [ "src" ]
+environment.python-version = "3.10"
+rules.deprecated = "warn"
+
+[tool.pytest]
+ini_options.norecursedirs = [ ".hypothesis", ".tox", "tests/data/*" ]
+ini_options.markers = [
+  "allow_direct_assert: marks guarded tests where direct assert statements are intentionally allowed",
+  "benchmark: marks tests as benchmark tests",
+  "isolate_builtin_formatter_config: marks tests that must not inherit repository formatter config",
+  "perf: marks tests as performance tests (excluded from CI benchmarks)",
+]
+ini_options.filterwarnings = [
+  "error",
+  "ignore:^.*--allow-extra-fields is deprecated.*:DeprecationWarning",
+  "ignore:^.*--parent-scoped-naming is deprecated.*",
+  "ignore:^.*`--validation` option is deprecated.*",
+  "ignore:^.*`experimental string processing` has been included in `preview` and deprecated. Use `preview` instead..*",
+  "ignore:^.*black doesn't support `experimental-string-processing` option for wrapping string literal in .*",
+  "ignore:^.*Dataclass .* has a field ordering conflict due to inheritance.*:UserWarning",
+  "ignore:^.*Field name `name` is duplicated on Pet.*",
+  "ignore:^.*format of 'unknown-type' not understood for 'string' - using default.*",
+  "ignore:^.*is empty or not a dict. Skipping this file.*:UserWarning",
+  """\
+  ignore:^.*jsonschema.exceptions.RefResolutionError is deprecated as of version 4.18.0. If you wish to catch \
+  potential reference resolution errors, directly catch referencing.exceptions.Unresolvable..*\
+  """,
+  "ignore:^.*No schemas found in components/schemas.*",
+  "ignore:^.*Pydantic v2 with --use-annotated is recommended.*:DeprecationWarning",
+  "ignore:^.*The default external formatters.*:FutureWarning",
+  "ignore:^.*unclosed file.*",
+]
+ini_options.verbosity_assertions = 2
+ini_options.assert_helper_direct_assert_exempt_files = [
+  "cli_doc/test_cli_options_sync.py",
+  "main/test_dynamic_models.py",
+  "main/test_performance.py",
+  "main/test_public_api_signature_baseline.py",
+  "main/test_types.py",
+  "model/dataclass/test_param.py",
+  "model/pydantic_v2/test_dataclass.py",
+  "model/pydantic_v2/test_root_model.py",
+  "model/pydantic_v2/test_root_model_type_alias.py",
+  "model/test_base.py",
+  "model/test_dataclass.py",
+  "parser/test_base.py",
+  "parser/test_generation.py",
+  "parser/test_generation_store_usage.py",
+  "parser/test_graphql.py",
+  "parser/test_jsonschema.py",
+  "parser/test_openapi.py",
+  "parser/test_scc.py",
+  "parser/test_schema_version.py",
+  "test_assert_helper_usage.py",
+  "test_build_conformance_docs_script.py",
+  "test_build_deprecation_docs_script.py",
+  "test_build_experimental_docs_script.py",
+  "test_conftest_helpers.py",
+  "test_deprecations.py",
+  "test_experimental.py",
+  "test_format.py",
+  "test_generate_changelog_script.py",
+  "test_http.py",
+  "test_imports.py",
+  "test_infer_input_type.py",
+  "test_input_model.py",
+  "test_python_type_annotation.py",
+  "test_reference.py",
+  "test_resolver.py",
+  "test_types.py",
+  "test_yaml_backend.py",
+]
+
+[tool.coverage]
+run.omit = [
+  "*/_types/*",
+  "tests/cli_doc/*",
+  "tests/data/*",
+  "tests/main/payload_validation/*",
+  "tests/main/test_jsonschema_suite_conformance.py",
+  "tests/main/test_memory.py",
+  "tests/main/test_performance.py",
+]
+run.dynamic_context = "none"
+run.parallel = true
+run.plugins = [
+  "covdefaults",
+]
+paths.other = [
+  ".",
+  "*/datamodel-code-generator",
+  "*\\datamodel-code-generator",
+]
+paths.skill_tests = [
+  "tests/skills/datamodel-code-generator",
+  "*/datamodel-code-generator/tests/skills/datamodel-code-generator",
+  "*\\datamodel-code-generator\\tests\\skills\\datamodel-code-generator",
+]
+paths.source = [
+  "src",
+  ".tox*/*/lib/python*/site-packages",
+  ".tox*\\*\\Lib\\site-packages",
+  "*/src",
+  "*\\src",
+]
+report.fail_under = 0
+html.show_contexts = false
+html.skip_covered = false
+covdefaults.subtract_omit = "*/__main__.py"
+
+[tool.pydantic-pycharm-plugin]
+ignore-init-method-arguments = true
+parsable-types.str = [ "int", "float" ]
+
+[tool.datamodel-codegen]
+profiles.config-types-base.enum-field-as-literal = "none"
+profiles.config-types-base.use-standard-primitive-types = true
+profiles.config-types-base.disable-warnings = true
+profiles.config-types-base.disable-timestamp = true
+profiles.config-types-base.output-model-type = "typing.TypedDict"
+profiles.config-types-base.formatters = [ "ruff-format", "ruff-check" ]
+profiles.config-types-base.input-model-ref-strategy = "reuse-foreign"
+profiles.generate-config-dict.extends = "config-types-base"
+profiles.generate-config-dict.input-model = "src/datamodel_code_generator/config.py:GenerateConfig"
+profiles.generate-config-dict.output = "src/datamodel_code_generator/_types/generate_config_dict.py"
+profiles.generate-config-dict.class-name = "GenerateConfigDict"
+profiles.generate-config-dict.type-overrides = { "BaseGenerateConfig.preset" = "datamodel_code_generator.preset_names.PresetName" }
+profiles.parse-config-dict.extends = "config-types-base"
+profiles.parse-config-dict.input-model = "src/datamodel_code_generator/config.py:ParseConfig"
+profiles.parse-config-dict.output = "src/datamodel_code_generator/_types/parse_config_dict.py"
+profiles.parse-config-dict.class-name = "ParseConfigDict"
+profiles.parser-config-dicts.extends = "config-types-base"
+profiles.parser-config-dicts.input-model = [
+  "src/datamodel_code_generator/config.py:ParserConfig",
+  "src/datamodel_code_generator/config.py:GraphQLParserConfig",
+  "src/datamodel_code_generator/config.py:JSONSchemaParserConfig",
+  "src/datamodel_code_generator/config.py:AvroParserConfig",
+  "src/datamodel_code_generator/config.py:OpenAPIParserConfig",
+  "src/datamodel_code_generator/config.py:AsyncAPIParserConfig",
+  "src/datamodel_code_generator/config.py:ProtobufParserConfig",
+  "src/datamodel_code_generator/config.py:XMLSchemaParserConfig",
+]
+profiles.parser-config-dicts.output = "src/datamodel_code_generator/_types/parser_config_dicts.py"
+profiles.parser-config-dicts.class-name-suffix = "Dict"

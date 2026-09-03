@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+
+{% block site_meta %}
+  {{ super() }}
+  <style>
+    html.dcg-theme-loading {
+      background: #0f172a;
+    }
+
+    .md-toggle {
+      position: absolute;
+      width: 0;
+      height: 0;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .md-banner svg,
+    .md-header svg,
+    .md-nav svg,
+    .md-source svg,
+    .md-logo svg,
+    .md-icon svg,
+    svg.lucide {
+      width: 1.2rem;
+      height: 1.2rem;
+      max-width: 1.2rem;
+      max-height: 1.2rem;
+      overflow: visible;
+    }
+
+    .md-header__button.md-logo svg,
+    .md-nav__button.md-logo svg {
+      width: 1.5rem;
+      height: 1.5rem;
+      max-width: 1.5rem;
+      max-height: 1.5rem;
+    }
+
+    .md-typeset .mermaid {
+      background: transparent;
+      overflow-x: auto;
+      padding: 1rem 0;
+      text-align: center;
+    }
+
+    .md-typeset .mermaid svg {
+      display: inline-block;
+      height: auto;
+      max-width: 100%;
+    }
+
+    .md-typeset .mermaid svg foreignObject {
+      opacity: 1;
+    }
+
+    .md-typeset .mermaid svg foreignObject span,
+    .md-typeset .mermaid svg foreignObject p,
+    .md-typeset .mermaid svg foreignObject div {
+      white-space: nowrap !important;
+      margin: 0 !important;
+      opacity: 1 !important;
+    }
+
+    /* HUB node: keep white text in both light and dark Material themes */
+    .md-typeset .mermaid svg g.node.hub foreignObject *,
+    .md-typeset .mermaid svg g.node.hub .nodeLabel,
+    .md-typeset .mermaid svg g.node.hub text {
+      color: #ffffff !important;
+      fill: #ffffff !important;
+    }
+
+    /* Section separators inside flowchart node labels */
+    .md-typeset .mermaid svg foreignObject hr {
+      border: none !important;
+      border-top: 1px dashed #90caf9 !important;
+      margin: 6px 0 !important;
+      width: 100%;
+    }
+
+    /* Bold subgraph cluster labels */
+    .md-typeset .mermaid svg g.cluster .cluster-label foreignObject p,
+    .md-typeset .mermaid svg g.cluster .cluster-label foreignObject span,
+    .md-typeset .mermaid svg g.cluster text {
+      font-weight: bold !important;
+    }
+  </style>
+  <script>
+    (() => {
+      const html = document.documentElement;
+      const revealPage = () => html.classList.remove("dcg-theme-loading");
+      const getPlaygroundUrl = link => {
+        try {
+          const url = new URL(link.getAttribute("href") || "", window.location.href);
+          const isPlayground = url.origin === window.location.origin && (
+            url.pathname.endsWith("/playground/") ||
+            url.pathname.endsWith("/assets/playground/index.html")
+          );
+          return isPlayground ? url : null;
+        } catch {
+          return null;
+        }
+      };
+      const initPage = () => {
+        for (const link of document.querySelectorAll("a[href]")) {
+          if (getPlaygroundUrl(link)) {
+            link.setAttribute("target", "_self");
+          }
+        }
+        window.requestAnimationFrame(revealPage);
+      };
+
+      html.classList.add("dcg-theme-loading");
+      window.setTimeout(revealPage, 3000);
+      if (document.readyState === "loading") {
+        window.addEventListener("DOMContentLoaded", initPage, { once: true });
+      } else {
+        initPage();
+      }
+      document.addEventListener("click", event => {
+        if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+          return;
+        }
+        const target = event.target instanceof Element ? event.target : event.target.parentElement;
+        const link = target ? target.closest("a[href]") : null;
+        const url = link ? getPlaygroundUrl(link) : null;
+        if (!url) {
+          return;
+        }
+        event.preventDefault();
+        window.location.assign(url.href);
+      }, true);
+    })();
+  </script>
+{% endblock %}
+
+{% block announce %}
+  📣 💼 Lead maintainer update: I'm open to opportunities.
+  <a href="https://koxudaxi.dev/?utm_source=dm_docs&utm_medium=announce_bar&utm_campaign=open_to_work"
+     target="_blank" rel="noopener">
+    🔗 koxudaxi.dev
+  </a>
+{% endblock %}
+
+{% block scripts %}
+  {{ super() }}
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.min.js"></script>
+  <script>
+    const renderMermaid = async () => {
+      if (!window.mermaid) {
+        return;
+      }
+      const nodes = document.querySelectorAll("pre.mermaid:not([data-processed]), div.mermaid:not([data-processed])");
+      if (!nodes.length) {
+        return;
+      }
+      window.mermaid.initialize({
+        startOnLoad: false,
+        theme: document.body.getAttribute("data-md-color-scheme") === "slate" ? "dark" : "default",
+        themeVariables: {
+          fontSize: "15px",
+        },
+      });
+      await window.mermaid.run({ nodes });
+    };
+
+    window.addEventListener("load", renderMermaid);
+    if (typeof document$ !== "undefined") {
+      document$.subscribe(() => {
+        window.requestAnimationFrame(renderMermaid);
+      });
+    }
+  </script>
+{% endblock %}

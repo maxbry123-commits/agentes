@@ -1,0 +1,286 @@
+groups:
+  # We define three basic groups: generated (all generated files),
+  # external (all files outside the repository), and internal (all
+  # files within the local repository). We can't enforce many style
+  # checks on generated and external code, so enable those cases
+  # selectively for analyzers below.
+  - name: generated
+    regex: "^(bazel-genfiles|bazel-out|bazel-bin)/"
+    default: true
+  - name: external
+    regex: "^external/"
+    default: false
+  - name: internal
+    regex: ".*"
+    default: true
+global:
+  generated:
+    suppress:
+      # Suppress the basic style checks for
+      # generated code, but keep the analysis
+      # that are required for quality & security.
+      - "should not use ALL_CAPS in Go names"
+      - "should not use underscores"
+      - "comment on exported"
+      - "methods on the same type should have the same receiver name"
+      - "at least one file in a package"
+      - "package comment should be of the form"
+      # Generated code may have dead code paths.
+      - "identical build constraints"
+      - "no value of type"
+      - "is never used"
+      # go_embed_data rules generate unicode literals.
+      - "string literal contains the Unicode format character"
+      - "string literal contains the Unicode control character"
+      - "string literal contains Unicode control characters"
+      - "string literal contains Unicode format and control characters"
+      # Some external code will generate protov1
+      # implementations. These should be ignored.
+      - "proto.* is deprecated"
+      - "xxx_messageInfo_.*"
+      - "receiver name should be a reflection of its identity"
+      # Generated gRPC code is not compliant either.
+      - "error strings should not be capitalized"
+      - "grpc.Errorf is deprecated"
+      # Generated proto code does not always follow capitalization conventions.
+      - "(field|method|struct|type) .* should be .*"
+      # Generated proto code sometimes duplicates imports with aliases.
+      - "duplicate import"
+      # These will never be annotated.
+      - "unexpected call to atomic function"
+      - "may require checklocks annotation for"
+      # Generated proto code creates declarations like 'var start int = iNdEx'
+      - "should omit type .* from declaration; it will be inferred from the right-hand side"
+  external:
+    suppress:
+      # buildssa can't handle certain packages (cmd/...).
+      - "panic recovered: interface conversion: types.Type is nil"
+      - "panic recovered: runtime error: invalid memory address or nil"
+      - "panic recovered: no type for \\*ast.CallExpr"
+      - "panic recovered: interface conversion: types.Type is \\*types.Basic"
+      - "panic recovered: no type for \\*ast.BinaryExpr"
+      - "panic recovered: no type for \\*ast.SelectorExpr"
+      - "panic recovered: no types.Object for ast.Ident SetTypeErrors"
+      - "panic recovered: unexpected CompositeLit type: invalid type"
+      - "panic recovered: interface conversion: ssa.Member is \\*ssa.NamedConst"
+    exclude:
+      - ".*/vet/testdata/.*"
+      - ".*/runtime/testdata/.*"
+  internal:
+    suppress:
+      # We use ALL_CAPS for system definitions,
+      # which are common enough in the code base
+      # that we shouldn't annotate exceptions.
+      #
+      # Same story for underscores.
+      - "should not use ALL_CAPS in Go names"
+      - "should not use underscores in Go names"
+      # These need to be annotated.
+      - "unexpected call to atomic function.*"
+      - "return with unexpected locks held.*"
+      - "incompatible return states.*"
+      - "may require checklocks annotation for.*"
+      # For some reason, the types package falls down.
+      - "panic recovered: .*types/sizes.go:82: assertion failed"
+    exclude:
+      # Generated: exempt all.
+      - pkg/shim/v1/runtimeoptions/runtimeoptions_cri.go
+analyzers:
+  asmdecl:
+    generated: # Enabled.
+    external:
+      exclude: [".*"] # Disabled.
+    internal:
+      suppress:
+        # Valid reasons to break the rules.
+        - "xgetbv: invalid MOVL of ret"
+        - "xgetbv: invalid offset ret"
+        - "wrmsr: invalid MOVL of value"
+        - "wrmsr: invalid offset value"
+        - "rdmsr: invalid MOVL of ret"
+        - "rdmsr: invalid offset ret"
+        # Non-conventional functions.
+        - "\\[amd64\\].*sysret: RET without writing to 8-byte"
+        - "\\[amd64\\].*iret: RET without writing to 8-byte"
+        - "\\[amd64\\].*exception: use of .* points beyond argument frame"
+        - "\\[amd64\\].*retjmp: use of .* points beyond argument frame"
+        - "\\[arm64\\].*HaltEl1ExceptionAndResume: unknown variable"
+        - "\\[arm64\\].*HaltEl1ExceptionAndResume: use of .* points beyond argument frame"
+  assign:
+    external:
+      exclude:
+        - gazelle/walk/walk.go
+  atomic:
+    external: # Enabled.
+  bools:
+    external: # Enabled.
+  buildtag:
+    external: # Enabled.
+  cgocall:
+    external: # Enabled.
+  checklocks:
+    internal:
+      exclude:
+        - "^-$" # b/181776900: analyzer fails on buildkite.
+  shadow: # Disable for now.
+    generated:
+      exclude: [".*"]
+    internal:
+      exclude: [".*"]
+  composites: # Disable for now.
+    generated:
+      exclude: [".*"]
+    internal:
+      exclude: [".*"]
+  errorsas:
+    external: # Enabled.
+      exclude:
+        # Specific broken case.
+        - ".*/cmd/go/internal/modload/list.go"
+  httpresponse:
+    external: # Enabled.
+  loopclosure:
+    external: # Enabled.
+  nilfunc:
+    external: # Enabled.
+  nilness:
+    internal:
+      exclude:
+        - pkg/sentry/platform/kvm/kvm_test.go # Intentional.
+        - tools/bigquery/bigquery.go          # False positive.
+        - "-"                                 # No filename.
+  printf:
+    external: # Enabled.
+      suppress:
+        - "fmt.Fprintln arg list ends with redundant newline"
+        - "non-constant format string in call to .*"
+      exclude:
+        # Starting in 1.26, printf reports misuse of %q with more types. Many
+        # of these are unfixed in upstream projects.
+        - codes/codes.go # go.opentelemetry.io/otel
+        - yaml.go # github.com/go-openapi/swag/yamlutils
+        - staticcheck/sa1030/sa1030.go # staticcheck
+  shift:
+    generated: # Disabled for generated code; these shifts are well-defined.
+      exclude: [".*"]
+    external:
+      exclude:
+        - ".*unix/syscall_linux.go" # False positive on line 2002.
+  stringintconv:
+    external:
+      exclude:
+        - ".*protobuf/.*.go"              # Bad conversions.
+        - ".*flate/huffman_bit_writer.go" # Bad conversion.
+        # Runtime internal violations.
+        - ".*reflect/value.go"
+        - ".*encoding/xml/xml.go"
+        - ".*runtime/pprof/internal/profile/proto.go"
+        - ".*fmt/scan.go"
+        - ".*go/types/conversions.go"
+        - ".*golang.org/x/net/dns/dnsmessage/message.go"
+  tests:
+    external: # Enabled.
+  unmarshal:
+    external: # Enabled.
+  unreachable:
+    external: # Enabled.
+      exclude:
+        - ".*jsonschema/reader.go"
+        - ".*protobuf/.*.go"
+  unsafeptr:
+    internal:
+      exclude:
+        - ".*_test.go"                                             # Exclude tests.
+        - pkg/aio/aio_linux_unsafe.go                              # Special case.
+        - pkg/eventfd/eventfd_unsafe.go                            # Special case.
+        - "pkg/flipcall/.*_unsafe.go"                              # Special case.
+        - pkg/memutil/memutil_unsafe.go                            # Special case.
+        - pkg/tcpip/link/sharedmem/sharedmem_unsafe.go             # Special case.
+        - pkg/gohacks/noescape_unsafe.go                           # Special case.
+        - pkg/ring0/pagetables/allocator_unsafe.go                 # Special case.
+        - pkg/sentry/devices/nvproxy/frontend_mmap_unsafe.go       # Special case.
+        - pkg/sentry/fsutil/mmap_unsafe.go                         # Special case.
+        - pkg/sentry/pgalloc/pgalloc_unsafe.go                     # Special case.
+        - pkg/sentry/platform/kvm/bluepill_unsafe.go               # Special case.
+        - pkg/sentry/platform/kvm/machine_unsafe.go                # Special case.
+        - pkg/sentry/platform/kvm/bluepill_amd64_unsafe.go         # Special case.
+        - pkg/sentry/platform/pgalloc/pgalloc_unsafe.go            # Special case.
+        - pkg/sentry/platform/ptrace/stub_unsafe.go                # Special case.
+        - pkg/sentry/platform/systrap/stub_unsafe.go               # Special case.
+        - pkg/sentry/platform/systrap/syscall_thread_unsafe.go     # Special case.
+        - pkg/sentry/platform/systrap/sysmsg_thread_unsafe.go      # Special case.
+        - pkg/sentry/platform/systrap/subprocess_unsafe.go         # Special case.
+        - pkg/sentry/platform/safecopy/safecopy_unsafe.go          # Special case.
+        - pkg/sentry/platform/slimvm/bluepill_unsafe.go            # Special case.
+        - pkg/sentry/platform/slimvm/machine_unsafe.go             # Special case.
+        - pkg/sentry/platform/slimvm/bluepill_amd64_unsafe.go      # Special case.
+        - pkg/sentry/state/stateipc/common_unsafe.go               # Special case.
+        - pkg/sentry/usage/memory_unsafe.go                        # Special case.
+        - pkg/sentry/vfs/mount_unsafe.go                           # Special case.
+        - pkg/sigframe/sigframe_amd64_unsafe.go                    # Special case.
+        - pkg/state/decode_unsafe.go                               # Special case.
+  unusedresult:
+    external: # Enabled.
+  checkescape:
+    external: # Enabled.
+      suppress:
+        # External libraries may not have binaries (e.g. stdlib testdata, etc.),
+        # so these cases can be safely ignored.
+        - "no such file or directory"
+  checklinkname:
+    external: # Enabled.
+      suppress:
+        # Suppress bad linkname directives in the internals. These will be fixed
+        # in the bug: https://github.com/golang/go/issues/58440
+        - "symbol \"runtime_pollWaitCanceled\".*"
+        - "symbol \"runtime_procPin\".*"
+        - "symbol \"registerMetric\".*"
+      exclude:
+        - ".*/containerd/sys/subprocess_unsafe_linux.go"
+    internal:
+      suppress:
+        # See above.
+        - "symbol \"runtime_pollWaitCanceled\".*"
+        - "symbol \"runtime_procPin\".*"
+    generated:
+      suppress:
+        # See above.
+        - "symbol \"runtime_pollWaitCanceled\".*"
+        - "symbol \"runtime_procPin\".*"
+  SA1019: # Use of deprecated identifier.
+    # disable for now due to misattribution from golang.org/issue/44195.
+    generated:
+      exclude: [".*"]
+    internal:
+      exclude: [".*"]
+  SA2001: # Empty critical section.
+    internal:
+      exclude:
+        - pkg/sentry/fs/fs.go          # Intentional.
+        - pkg/sentry/fs/gofer/inode.go # Intentional.
+        - pkg/refs/refcounter_test.go  # Intentional.
+  SA4016: # Useless bitwise operations.
+    internal:
+      exclude:
+        - pkg/gohacks/noescape_unsafe.go # x ^ 0 always equals x.
+  ST1019: # Multiple imports of the same package.
+    generated:
+      exclude:
+        # package ".../kubeapi/core/v1/v1" is being imported more than once
+        - generated.gen.pb.go
+  ST1021: # Doc should start with type name.
+    internal:
+      exclude:
+        - "pkg/abi/nvgpu/.*.go"
+      suppress:
+        - "comment on exported type Translation" # Intentional.
+        - "comment on exported type PinnedRange" # Intentional.
+
+  QF1001: # Apply De Morgan’s law
+    # Controversial.
+    internal:
+      exclude: [".*"]
+  QF1008: # Omit embedded fields from selector expression
+    # Controversial.
+    internal:
+      exclude: [".*"]

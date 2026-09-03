@@ -1,0 +1,157 @@
+---
+id: conversation-simulator-custom-templates
+title: Custom Templates
+sidebar_label: Custom Templates
+languages: [python]
+---
+
+Customize the prompts used to simulate user turns by passing a `template=` to [`default_simulation_node`](/docs/conversation-simulator-simulation-graph#default_simulation_node) and feeding the returned node into `simulation_graph`.
+
+## API
+
+```python
+from deepeval.simulator import default_simulation_node
+
+default_simulation_node(template=MyTemplate)
+```
+
+| Argument | Description |
+|---|---|
+| `template` | A subclass of `SimulationTemplate` overriding `simulate_first_user_turn()` and/or `simulate_user_turn()`. Validated eagerly — invalid templates raise `TypeError` at construction time. When omitted, the built-in `SimulationTemplate` is used. |
+| `terminal`, `max_visits`, `name` | Same as `SimulationNode` — see [Simulation Graph](/docs/conversation-simulator-simulation-graph#default_simulation_node) for full reference. |
+
+A custom template must:
+
+- Inherit from `SimulationTemplate`.
+- Override `simulate_first_user_turn(golden, language)` to change how the **first** user message is generated.
+- Override `simulate_user_turn(golden, turns, language)` to change how **follow-up** user messages are generated.
+
+Both methods must return a prompt string that elicits a JSON response with one key: `simulated_input`.
+
+:::note
+`ConversationSimulator` used to accept a top-level `simulation_template=` kwarg. That kwarg has been removed in favor of `default_simulation_node(template=...)`, which keeps the template attached to the node that actually consumes it.
+:::
+
+## Example
+
+```python
+from deepeval.simulator import (
+    ConversationSimulator,
+    SimulationTemplate,
+    default_simulation_node,
+)
+
+class FormalUserTemplate(SimulationTemplate):
+    @staticmethod
+    def simulate_first_user_turn(golden, language):
+        return f"""
+        Pretend you are a formal enterprise buyer.
+        Start a conversation in {language} for this scenario:
+        {golden.scenario}
+
+        Return JSON with one key: simulated_input.
+        """
+
+    @staticmethod
+    def simulate_user_turn(golden, turns, language):
+        return f"""
+        Continue the conversation as a formal enterprise buyer.
+        Keep the tone concise, professional, and procurement-oriented.
+
+        Scenario: {golden.scenario}
+        Conversation so far: {turns}
+
+        Return JSON with one key: simulated_input.
+        """
+
+simulator = ConversationSimulator(
+    model_callback=model_callback,
+    simulation_graph=default_simulation_node(template=FormalUserTemplate),
+)
+```
+
+## Common Use Cases
+
+### User Style
+
+Use a custom template when simulated users should speak in a specific voice, such as formal buyers, frustrated customers, clinicians, students, or non-technical users.
+
+### Domain Framing
+
+Use a custom template when the generated user turns should reflect domain-specific behavior, vocabulary, or constraints that the default simulator prompt does not emphasize.
+
+### Conversation Pressure
+
+Use a custom template when you want simulated users to be more adversarial, more confused, more concise, or more persistent than the default role-play behavior.
+
+### Mixing with a Simulation Graph
+
+You can also embed `default_simulation_node(template=...)` as one node inside a larger [simulation graph](/docs/conversation-simulator-simulation-graph) — useful when you want a custom template for free-form exploration on some branches and deterministic, scripted nodes on others.
+
+```python
+from deepeval.simulator import SimulationNode, default_simulation_node
+
+scripted_opener = SimulationNode(
+    action=lambda: "Hi, I need help with a refund.",
+    name="opener",
+)
+scripted_opener.add_node(
+    default_simulation_node(template=FormalUserTemplate),
+    when="The assistant asked a clarifying question",
+)
+```
+
+## FAQs
+
+<FAQs
+  qas={[
+    {
+      question: "When do I need a custom template versus the default simulator?",
+      answer: (
+        <>
+          Reach for one when the simulated user should speak in a specific voice,
+          domain framing, or pressure level — formal buyers, frustrated customers,
+          clinicians, more adversarial or more concise users. If the default
+          role-play already sounds right, you don't need a template.
+        </>
+      ),
+    },
+    {
+      question: "How do I actually plug a custom template in?",
+      answer: (
+        <>
+          Pass it to <code>default_simulation_node(template=MyTemplate)</code> and
+          feed the returned node into <code>simulation_graph</code>. The old
+          top-level <code>simulation_template=</code> kwarg has been removed in favor
+          of this, which keeps the template attached to the node that consumes it.
+        </>
+      ),
+    },
+    {
+      question: "Which methods does my template have to override?",
+      answer: (
+        <>
+          Subclass <code>SimulationTemplate</code> and override{" "}
+          <code>simulate_first_user_turn(golden, language)</code> and/or{" "}
+          <code>simulate_user_turn(golden, turns, language)</code>. Each must return
+          a prompt string that elicits JSON with one key,{" "}
+          <code>simulated_input</code>. Templates are validated eagerly, so bad
+          subclasses raise <code>TypeError</code> at construction time.
+        </>
+      ),
+    },
+    {
+      question: "Can I keep a custom voice on some branches but script others?",
+      answer: (
+        <>
+          Yes — embed <code>default_simulation_node(template=...)</code> as one node
+          inside a larger{" "}
+          <a href="/docs/conversation-simulator-simulation-graph">simulation graph</a>,
+          using the template for free-form exploration on some branches and
+          deterministic, scripted nodes on others.
+        </>
+      ),
+    },
+  ]}
+/>
+

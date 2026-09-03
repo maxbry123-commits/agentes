@@ -1,0 +1,293 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+package org.apache.airflow.sdk.execution
+
+import org.apache.airflow.sdk.Bundle
+import org.apache.airflow.sdk.Client
+import org.apache.airflow.sdk.Context
+import org.apache.airflow.sdk.DagDef
+import org.apache.airflow.sdk.Task
+import org.apache.airflow.sdk.TaskDef
+import org.apache.airflow.sdk.execution.comm.BundleInfo
+import org.apache.airflow.sdk.execution.comm.DagRun
+import org.apache.airflow.sdk.execution.comm.RetryTask
+import org.apache.airflow.sdk.execution.comm.StartupDetails
+import org.apache.airflow.sdk.execution.comm.SucceedTask
+import org.apache.airflow.sdk.execution.comm.TIRunContext
+import org.apache.airflow.sdk.execution.comm.TaskInstance
+import org.apache.airflow.sdk.execution.comm.TaskState
+import org.junit.jupiter.api.Assertions
+import org.junit.jupiter.api.DisplayName
+import org.junit.jupiter.api.Test
+import java.io.ByteArrayOutputStream
+import java.io.PrintStream
+import java.time.OffsetDateTime
+import java.util.UUID
+
+class TaskTest {
+  @Test
+  @DisplayName("Should execute task and return success")
+  fun shouldExecuteTaskAndReturnSuccess() {
+    val result = runTask(bundleWith("success", SuccessTask::class.java), startupDetails(taskId = "success"), noOpClient())
+
+    Assertions.assertInstanceOf(SucceedTask::class.java, result)
+  }
+
+  @Test
+  @DisplayName("Should return removed when task is missing")
+  fun shouldReturnRemovedWhenTaskIsMissing() {
+    val result = runTask(bundleWith("other", SuccessTask::class.java), startupDetails(taskId = "missing"), noOpClient())
+
+    Assertions.assertInstanceOf(TaskState::class.java, result)
+    Assertions.assertEquals(TaskState.State.REMOVED, (result as TaskState).state)
+  }
+
+  @Test
+  @DisplayName("Should return failed when task throws")
+  fun shouldReturnFailedWhenTaskThrows() {
+    val result = runTask(bundleWith("failing", FailingTask::class.java), startupDetails(taskId = "failing"), noOpClient())
+
+    Assertions.assertInstanceOf(TaskState::class.java, result)
+    Assertions.assertEquals(TaskState.State.FAILED, (result as TaskState).state)
+  }
+
+  @Test
+  @DisplayName("Should return retry when task throws and should_retry is true")
+  fun shouldReturnRetryWhenTaskThrowsAndShouldRetryIsTrue() {
+    val details = startupDetails(taskId = "failing")
+    details.tiContext?.shouldRetry = true
+    val result = runTask(bundleWith("failing", FailingTask::class.java), details, noOpClient())
+
+    Assertions.assertInstanceOf(RetryTask::class.java, result)
+  }
+
+  @Test
+  @DisplayName("Should return failed when task throws an Error")
+  fun shouldReturnFailedWhenTaskThrowsError() {
+    val result = runTask(bundleWith("erroring", ErrorThrowingTask::class.java), startupDetails(taskId = "erroring"), noOpClient())
+
+    Assertions.assertInstanceOf(TaskState::class.java, result)
+    Assertions.assertEquals(TaskState.State.FAILED, (result as TaskState).state)
+  }
+
+  @Test
+  @DisplayName("Should not duplicate the stack trace to stderr when task fails")
+  fun shouldNotDuplicateStackTraceToStderrWhenTaskFails() {
+    val captured = ByteArrayOutputStream()
+    val original = System.err
+    System.setErr(PrintStream(captured))
+    try {
+      runTask(bundleWith("failing", FailingTask::class.java), startupDetails(taskId = "failing"), noOpClient())
+    } finally {
+      System.setErr(original)
+    }
+
+    Assertions.assertEquals("", captured.toString())
+  }
+
+  @Test
+  @DisplayName("Should return failed and log an actionable message when task class has no public no-argument constructor")
+  fun shouldReturnFailedWhenTaskClassHasNoNoArgConstructor() {
+    LogSender.messages.clear()
+    val result =
+      runTask(bundleWith("uninstantiable", NoDefaultConstructorTask::class.java), startupDetails(taskId = "uninstantiable"), noOpClient())
+
+    Assertions.assertInstanceOf(TaskState::class.java, result)
+    Assertions.assertEquals(TaskState.State.FAILED, (result as TaskState).state)
+    val message = LogSender.messages.single { it.level == Level.ERROR }
+    Assertions.assertTrue(message.event.contains("public no-argument constructor")) { "unexpected event: ${message.event}" }
+    Assertions.assertEquals(NoDefaultConstructorTask::class.java.name, message.arguments["taskClass"])
+  }
+
+  @Test
+  @DisplayName("Should return failed and log the constructor failure when task class constructor throws")
+  fun shouldReturnFailedWhenTaskClassConstructorThrows() {
+    LogSender.messages.clear()
+    val result =
+      runTask(bundleWith("throwing", ThrowingConstructorTask::class.java), startupDetails(taskId = "throwing"), noOpClient())
+
+    Assertions.assertInstanceOf(TaskState::class.java, result)
+    Assertions.assertEquals(TaskState.State.FAILED, (result as TaskState).state)
+    val message = LogSender.messages.single { it.level == Level.ERROR }
+    Assertions.assertEquals("Task class constructor threw an exception", message.event)
+    Assertions.assertEquals(ThrowingConstructorTask::class.java.name, message.arguments["taskClass"])
+    Assertions.assertInstanceOf(IllegalStateException::class.java, message.arguments["error"])
+    Assertions.assertEquals("constructor boom", (message.arguments["error"] as Throwable).message)
+  }
+
+  @Test
+  @DisplayName("Should return failed and log an initialization failure when the task class static initializer throws")
+  fun shouldReturnFailedWhenTaskClassStaticInitializerThrows() {
+    LogSender.messages.clear()
+    val result =
+      runTask(bundleWith("static_init", StaticInitFailureTask::class.java), startupDetails(taskId = "static_init"), noOpClient())
+
+    Assertions.assertInstanceOf(TaskState::class.java, result)
+    Assertions.assertEquals(TaskState.State.FAILED, (result as TaskState).state)
+    val message = LogSender.messages.single { it.level == Level.ERROR }
+    Assertions.assertEquals("Error initializing task class", message.event)
+    Assertions.assertEquals(StaticInitFailureTask::class.java.name, message.arguments["taskClass"])
+  }
+
+  @Test
+  @DisplayName("Should return retry when the task class fails to initialize and should_retry is true")
+  fun shouldReturnRetryWhenTaskClassFailsToInitializeAndShouldRetryIsTrue() {
+    val details = startupDetails(taskId = "static_init")
+    details.tiContext?.shouldRetry = true
+    val result = runTask(bundleWith("static_init", StaticInitFailureTask::class.java), details, noOpClient())
+
+    Assertions.assertInstanceOf(RetryTask::class.java, result)
+  }
+
+  @Test
+  @DisplayName("Should return failed and never retry when task class cannot be instantiated, even if should_retry is true")
+  fun shouldReturnFailedEvenIfShouldRetryIsTrueWhenTaskClassCannotBeInstantiated() {
+    for (taskClass in listOf(NoDefaultConstructorTask::class.java, ThrowingConstructorTask::class.java)) {
+      val details = startupDetails(taskId = "uninstantiable")
+      details.tiContext?.shouldRetry = true
+      val result = runTask(bundleWith("uninstantiable", taskClass), details, noOpClient())
+
+      Assertions.assertInstanceOf(TaskState::class.java, result) { "unexpected result for ${taskClass.simpleName}: $result" }
+      Assertions.assertEquals(TaskState.State.FAILED, (result as TaskState).state)
+    }
+  }
+
+  private fun bundleWith(
+    taskId: String,
+    taskClass: Class<out Task>,
+  ): Bundle {
+    val dag = DagDef("test_dag").addTask(TaskDef(taskId, taskClass))
+    return Bundle(listOf(dag))
+  }
+
+  private fun startupDetails(taskId: String): StartupDetails =
+    StartupDetails().also {
+      it.ti =
+        TaskInstance().also { o ->
+          o.id = UUID.randomUUID()
+          o.taskId = taskId
+          o.dagId = "test_dag"
+          o.runId = "manual__2026-03-31T00:00:00+00:00"
+          o.tryNumber = 1
+          o.dagVersionId = UUID.randomUUID()
+        }
+      it.dagRelPath = "/dev/null"
+      it.bundleInfo =
+        BundleInfo().also { info ->
+          info.name = "bundle"
+          info.version = "1"
+        }
+      it.startDate = OffsetDateTime.parse("2026-03-31T00:00:00Z")
+      it.tiContext =
+        TIRunContext().apply {
+          dagRun =
+            DagRun().apply {
+              dagId = "test_dag"
+              runId = "manual__2026-03-31T00:00:00+00:00"
+            }
+        }
+      it.sentryIntegration = ""
+    }
+
+  private fun noOpClient() =
+    Client(
+      startupDetails(taskId = "unused"),
+      object : org.apache.airflow.sdk.execution.Client {
+        override fun getConnection(id: String) = throw UnsupportedOperationException("not used in test")
+
+        override fun getVariable(key: String) = throw UnsupportedOperationException("not used in test")
+
+        override fun getXCom(
+          key: String,
+          dagId: String,
+          taskId: String,
+          runId: String,
+          mapIndex: Int?,
+          includePriorDates: Boolean,
+        ) = throw UnsupportedOperationException("not used in test")
+
+        override fun setXCom(
+          key: String,
+          value: Any,
+          dagId: String,
+          taskId: String,
+          runId: String,
+          mapIndex: Int,
+        ): Unit = throw UnsupportedOperationException("not used in test")
+      },
+    )
+
+  class SuccessTask : Task {
+    override fun execute(
+      context: Context,
+      client: Client,
+    ) {
+    }
+  }
+
+  class FailingTask : Task {
+    override fun execute(
+      context: Context,
+      client: Client,
+    ): Unit = throw IllegalStateException("boom")
+  }
+
+  class ErrorThrowingTask : Task {
+    override fun execute(
+      context: Context,
+      client: Client,
+    ): Unit = throw NoClassDefFoundError("simulated")
+  }
+
+  class ThrowingConstructorTask : Task {
+    init {
+      throw IllegalStateException("constructor boom")
+    }
+
+    override fun execute(
+      context: Context,
+      client: Client,
+    ) {
+    }
+  }
+
+  class StaticInitFailureTask : Task {
+    companion object {
+      init {
+        throw IllegalStateException("static init boom")
+      }
+    }
+
+    override fun execute(
+      context: Context,
+      client: Client,
+    ) {
+    }
+  }
+
+  class NoDefaultConstructorTask(
+    unused: String,
+  ) : Task {
+    override fun execute(
+      context: Context,
+      client: Client,
+    ): Unit = throw IllegalStateException("should not be reachable")
+  }
+}

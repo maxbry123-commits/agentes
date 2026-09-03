@@ -1,0 +1,582 @@
+---
+id: evaluation-end-to-end-single-turn
+title: Single-Turn End-to-End Evaluation
+sidebar_label: Single-Turn
+languages: [python, typescript]
+---
+
+import { ASSETS } from "@site/src/assets";
+
+A single-turn end-to-end test scores **one input → one output** per LLM interaction, captured as an [`LLMTestCase`](/docs/evaluation-test-cases#llm-test-cases). This is the right flavor for any LLM application with a "flat" shape — agents treated as a black box, RAG / QA, summarization, classifiers, writing assistants, and so on.
+
+If you haven't already, read the [end-to-end overview](/docs/evaluation-end-to-end-llm-evals) for the concepts and how single-turn compares to multi-turn.
+
+There are two ways to run a single-turn E2E test:
+
+| Approach                                                                                                                    | When to choose it                                                                                                                                                                             |
+| ----------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **<Term py="dataset.evals_iterator()" ts="dataset.evalsIterator()"/> with tracing** **— recommended**                        | Your app is (or can be) instrumented with [tracing](/docs/evaluation-llm-tracing). Test cases are built from traces automatically, and you get per-test-case traces on Confident AI for free. |
+| **`evaluate()`**                                                                                                            | You can't (or don't want to) instrument your app — e.g. a QA engineer evaluating a deployed system. You build `LLMTestCase`s up front and hand them to `evaluate()`.                          |
+
+For projects you own, prefer the iterator — same code, plus traces, plus a clean upgrade path to [component-level evaluation](/docs/evaluation-component-level-llm-evals).
+
+## Approach 1: `evals_iterator()` with tracing (recommended)
+
+<Term py="evals_iterator()" ts="evalsIterator()"/> opens a test run, yields each golden, builds an `LLMTestCase` from the captured trace, scores your metrics against it, and uploads the trace + scores together — all in one loop.
+
+:::caution[Don't have access to your app's code?]
+This approach requires instrumenting your app with <Term py="@observe" ts="observe()"/> or a framework integration. If you can't modify the app — e.g. you're testing someone else's API — skip ahead to **[Approach 2: `evaluate()`](#approach-2-evaluate)**.
+:::
+
+```mermaid
+sequenceDiagram
+    participant You as Your loop
+    participant Eval as Evals iterator
+    participant App as Traced LLM app
+    participant Metrics as Metrics
+
+    You->>Eval: Open a test run with trace-level metrics
+    loop For each golden
+        Eval-->>You: yield golden
+        You->>App: call with golden.input
+        App-->>Eval: trace captured
+        Eval->>Eval: build LLMTestCase from trace
+        Eval->>Metrics: score test case
+        Metrics-->>Eval: scores
+    end
+    Eval-->>You: upload test run with traces + scores
+```
+
+<Steps>
+<Step>
+
+### Build dataset
+
+[Datasets](/docs/evaluation-datasets) in `deepeval` store [`Golden`s](/docs/evaluation-datasets#what-are-goldens) — precursors to test cases. You loop over goldens at evaluation time, run your traced LLM app on each, and `deepeval` builds an `LLMTestCase` from the resulting trace.
+
+<include cwd>snippets/datasets/load-dataset.mdx#single-turn</include>
+
+:::tip
+This page covers **sourcing** goldens for an eval run only. To **persist** a dataset (push to Confident AI, save as CSV/JSON, version it across runs), see [the datasets page](/docs/evaluation-datasets).
+:::
+
+</Step>
+
+<Step>
+
+### Instrument/trace and evaluate
+
+Instrument your AI agent based on your tech stack, then loop with the iterator, passing <Term py="metrics=[...]" ts="metrics: [...]"/>, to score each captured trace as one end-to-end test case.
+
+<Only id="python">
+
+Each integration ships **Async** (default — fastest) and **Sync** variants:
+
+- **Async** keeps `evals_iterator()` on its default async dispatch and wraps each invocation in `asyncio.create_task(...)` + `dataset.evaluate(task)` so goldens run concurrently.
+- **Sync** passes `AsyncConfig(run_async=False)` and runs the loop body one golden at a time. Useful for debugging, rate-limited providers, or anywhere asyncio gets in the way (e.g. some Jupyter setups).
+
+</Only>
+
+<include cwd>snippets/evaluation/end-to-end-agent-framework-tabs.mdx</include>
+
+<Switch>
+
+<Case id="python">
+
+There are **SIX** optional parameters on `evals_iterator()`:
+
+- [Optional] `metrics`: a list of `BaseMetric`s applied at the **trace** level — these are the end-to-end metrics that score the whole trace.
+- [Optional] `identifier`: a string label for this test run on Confident AI.
+- [Optional] `async_config`: an `AsyncConfig` controlling concurrency. See [async configs](/docs/evaluation-flags-and-configs#async-configs).
+- [Optional] `display_config`: a `DisplayConfig` controlling console output. See [display configs](/docs/evaluation-flags-and-configs#display-configs).
+- [Optional] `error_config`: an `ErrorConfig` controlling error handling. See [error configs](/docs/evaluation-flags-and-configs#error-configs).
+- [Optional] `cache_config`: a `CacheConfig` controlling caching. See [cache configs](/docs/evaluation-flags-and-configs#cache-configs).
+
+</Case>
+
+<Case id="typescript">
+
+There are **FIVE** optional parameters on `evalsIterator()`, all passed in a single options object:
+
+- [Optional] `metrics`: an array of `BaseMetric`s applied at the **trace** level — these are the end-to-end metrics that score the whole trace.
+- [Optional] `identifier`: a string label for this test run on Confident AI.
+- [Optional] `hyperparameters`: the model, prompt, and settings that produced these outputs. See [hyperparameters](#hyperparameters).
+- [Optional] `displayConfig`: a `DisplayConfig` controlling console output. See [display configs](/docs/evaluation-flags-and-configs#display-configs).
+- [Optional] `errorConfig`: an `ErrorConfig` controlling error handling. See [error configs](/docs/evaluation-flags-and-configs#error-configs).
+
+`evalsIterator()` is an async generator, so it always runs concurrently — there's no sync variant or `asyncConfig` to configure.
+
+</Case>
+
+</Switch>
+
+Every run of the iterator is snapshotted to disk, so you can open it in a trace-tree TUI with bare <Term py="deepeval inspect" ts="npx deepeval inspect"/>. See the [inspect reference](/docs/command-line-interface#inspect) for full details.
+
+To grade **individual components** (the retriever, a tool call, an inner LLM call) instead of (or in addition to) the trace, see [component-level evaluation](/docs/evaluation-component-level-llm-evals).
+
+</Step>
+</Steps>
+
+If you're logged in to Confident AI via <Term py="deepeval login" ts="npx deepeval login"/>, you'll also get to storage, share, view, and annotate full traces in testing reports on the platform:
+
+<VideoDisplayer
+  src={ASSETS.evaluationSingleTurnE2eReportTracing}
+  confidentUrl="https://www.confident-ai.com/docs/llm-evaluation/dashboards/testing-reports"
+  label="Test reports for evals and traces on Confident AI"
+  description="Drill into each test case's scores, reasons, and the trace behind it."
+/>
+
+## Approach 2: `evaluate()`
+
+Use this when you can't (or don't want to) instrument your app — for example a QA engineer testing a deployed system, or a quick one-off eval where adding tracing is overkill. You build a list of `LLMTestCase`s up front from inputs and outputs you've already collected, pick metrics, and call `evaluate()`.
+
+**How it works:**
+
+1. You build a list of `LLMTestCase`s yourself by looping over goldens and calling your LLM app.
+2. You hand the test cases and metrics to `evaluate()` in a single call.
+3. `deepeval` runs every metric on every test case (concurrently by default) and rolls the results into a test run.
+
+```mermaid
+sequenceDiagram
+    participant User as Your code
+    participant App as Your LLM app
+    participant Eval as evaluate()
+    participant M as Metrics
+
+    loop For each golden
+        User->>App: call with golden.input
+        App-->>User: actual output, retrieval context, ...
+        User->>User: build LLMTestCase
+    end
+    User->>Eval: evaluate(test cases, metrics)
+    par Concurrent metric execution
+        Eval->>M: score(test_case)
+        M-->>Eval: pass / fail + reason
+    end
+    Eval-->>User: EvaluationResult (test run)
+```
+
+Your LLM app and `deepeval` stay completely decoupled — `evaluate()` only sees the data you pass to it. That's why this approach has no tracing dependency.
+
+:::caution[Don't preload the actual output on your goldens]
+Because `evaluate()` only reads what you pass in, nothing stops you from skipping the app call entirely and preloading a dataset where <Term py="actual_output" ts="actualOutput"/> is already filled in (e.g. outputs you collected last week). **We don't recommend this** — a test run should reflect the _current_ version of your LLM app, so you should re-run the app on every golden inside your loop. Treat goldens as inputs only; let the actual output be produced fresh each run.
+:::
+
+<Steps>
+<Step>
+### Build dataset
+
+Same as [Approach 1](#approach-1-evals_iterator-with-tracing-recommended) — wrap your goldens in an `EvaluationDataset`. Pick whichever source fits where your goldens live today:
+
+<include cwd>snippets/datasets/load-dataset.mdx#single-turn</include>
+
+To persist a dataset (push to Confident AI, save as CSV/JSON, version across runs), see [the datasets page](/docs/evaluation-datasets).
+
+</Step>
+
+<Step>
+### Construct test cases
+
+Loop over your goldens, call your LLM app, and wrap each result in an `LLMTestCase`:
+
+<Switch>
+
+<Case id="python">
+
+```python title="main.py"
+from your_app import your_llm_app  # replace with your LLM app
+from deepeval.test_case import LLMTestCase
+...
+
+for golden in dataset.goldens:
+    answer, retrieved_chunks = your_llm_app(golden.input)
+    dataset.add_test_case(
+        LLMTestCase(
+            input=golden.input,
+            actual_output=answer,
+            retrieval_context=retrieved_chunks,
+        )
+    )
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript title="main.ts"
+import { LLMTestCase } from "deepeval/test-case";
+import { Golden } from "deepeval/dataset";
+import { yourLlmApp } from "./your-app";
+
+for (const golden of dataset.goldens as Golden[]) {
+  const { answer, retrievedChunks } = await yourLlmApp(golden.input);
+  dataset.addTestCase(
+    new LLMTestCase({
+      input: golden.input,
+      actualOutput: answer,
+      retrievalContext: retrievedChunks,
+    }),
+  );
+}
+```
+
+</Case>
+
+</Switch>
+
+:::info
+The fields you populate on `LLMTestCase` must match what your metrics need. For example, `FaithfulnessMetric` requires <Term py="retrieval_context" ts="retrievalContext"/>. See [test cases](/docs/evaluation-test-cases#llm-test-cases) for the full parameter list.
+:::
+
+</Step>
+
+<Step>
+### Run `evaluate()`
+
+Now pick the metrics you want to grade your application on, and pass both your test cases and metrics to `evaluate()`.
+
+:::tip[Recommended metrics mix]
+Keep your metrics tight — **no more than 5 per run**, made up of:
+
+- **2–3 generic metrics** for your application type (agentic, RAG, chatbot, etc.)
+- **1–2 custom metrics** for the specific things you care about ([`GEval`](/docs/metrics-llm-evals) or a [custom metric](/docs/metrics-custom))
+
+See [the metrics section](/docs/metrics-introduction) for the 50+ built-in metrics, or ask for tailored recommendations on [Discord](https://discord.com/invite/a3K9c8GRGt).
+:::
+
+<Switch>
+
+<Case id="python">
+
+```python title="main.py"
+from deepeval import evaluate
+from deepeval.metrics import AnswerRelevancyMetric, FaithfulnessMetric
+...
+
+evaluate(
+    test_cases=test_cases,
+    metrics=[AnswerRelevancyMetric(), FaithfulnessMetric()],
+)
+```
+
+There are **TWO** mandatory and **FIVE** optional parameters when calling `evaluate()` for end-to-end evaluation:
+
+- `test_cases`: a list of `LLMTestCase`s **OR** `ConversationalTestCase`s, or an `EvaluationDataset`. You cannot mix `LLMTestCase`s and `ConversationalTestCase`s in the same test run.
+- `metrics`: a list of metrics of type `BaseMetric`.
+- [Optional] `identifier`: a string label for this test run on Confident AI.
+- [Optional] `async_config`: an `AsyncConfig` controlling concurrency. See [async configs](/docs/evaluation-flags-and-configs#async-configs).
+- [Optional] `display_config`: a `DisplayConfig` controlling console output. See [display configs](/docs/evaluation-flags-and-configs#display-configs).
+- [Optional] `error_config`: an `ErrorConfig` controlling how errors are handled. See [error configs](/docs/evaluation-flags-and-configs#error-configs).
+- [Optional] `cache_config`: a `CacheConfig` controlling caching behavior. See [cache configs](/docs/evaluation-flags-and-configs#cache-configs).
+
+</Case>
+
+<Case id="typescript">
+
+```typescript title="main.ts"
+import { evaluate } from "deepeval";
+import { AnswerRelevancyMetric, FaithfulnessMetric } from "deepeval/metrics";
+
+await evaluate(dataset.testCases, [
+  new AnswerRelevancyMetric(),
+  new FaithfulnessMetric(),
+]);
+```
+
+There are **TWO** mandatory and **FIVE** optional parameters when calling `evaluate()` for end-to-end evaluation. The two mandatory ones are positional; the optional ones go in a third options object:
+
+- `testCases`: an array of `LLMTestCase`s **OR** `ConversationalTestCase`s. You cannot mix `LLMTestCase`s and `ConversationalTestCase`s in the same test run.
+- `metrics`: an array of metrics of type `BaseMetric`.
+- [Optional] `identifier`: a string label for this test run on Confident AI.
+- [Optional] `hyperparameters`: the model, prompt, and settings that produced these outputs. See [hyperparameters](#hyperparameters).
+- [Optional] `displayConfig`: a `DisplayConfig` controlling console output. See [display configs](/docs/evaluation-flags-and-configs#display-configs).
+- [Optional] `errorConfig`: an `ErrorConfig` controlling how errors are handled. See [error configs](/docs/evaluation-flags-and-configs#error-configs).
+- [Optional] `cacheConfig`: a `CacheConfig` controlling caching behavior. See [cache configs](/docs/evaluation-flags-and-configs#cache-configs).
+
+</Case>
+
+</Switch>
+
+This is the same as the assertion used by <Term py="deepeval test run" ts="npx deepeval test run"/>, exposed as a function call instead.
+
+<Switch>
+
+<Case id="python">
+
+:::info[Sync vs async metric execution]
+By default, `evaluate()` runs metrics **concurrently** using `asyncio` under the hood — every metric for every test case is dispatched in parallel, with concurrency capped by `AsyncConfig.max_concurrent`. Set `run_async=False` to execute metrics sequentially instead:
+
+```python
+from deepeval.evaluate import AsyncConfig
+
+evaluate(
+    test_cases=test_cases,
+    metrics=[AnswerRelevancyMetric()],
+    async_config=AsyncConfig(
+        run_async=False,     # run metrics one at a time
+        max_concurrent=20,   # only used when run_async=True
+        throttle_value=0,    # delay (in seconds) between dispatches
+    ),
+)
+```
+
+[TODO: when should you choose sync vs async? trade-offs, common pitfalls (e.g. Jupyter event loops, rate-limiting providers), recommended defaults]
+:::
+
+</Case>
+
+<Case id="typescript">
+
+:::info[Metric execution is always concurrent]
+`evaluate()` dispatches every metric for every test case concurrently and resolves once they've all settled, so it must be awaited. There's no sync mode to opt into.
+:::
+
+</Case>
+
+</Switch>
+
+</Step>
+</Steps>
+
+## Hyperparameters
+
+Log the model, prompt, and other configuration values with each test run so you can compare runs side-by-side on Confident AI and identify the best combination. Values must be `str | int | float` or a [`Prompt`](/docs/evaluation-prompts):
+
+<Switch>
+
+<Case id="python">
+
+```python
+import deepeval
+from deepeval.metrics import TaskCompletionMetric
+
+@deepeval.log_hyperparameters
+def hyperparameters():
+    return {"model": "gpt-4.1", "system_prompt": "Be concise."}
+
+for golden in dataset.evals_iterator(metrics=[TaskCompletionMetric()]):
+    my_ai_agent(golden.input)
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript
+import { TaskCompletionMetric } from "deepeval/metrics";
+
+const iterator = dataset.evalsIterator({
+  metrics: [new TaskCompletionMetric()],
+  hyperparameters: { model: "gpt-4.1", systemPrompt: "Be concise." },
+});
+
+for await (const golden of iterator) {
+  await myAiAgent(golden.input);
+}
+```
+
+</Case>
+
+</Switch>
+
+On Confident AI, the logged values become filterable axes for comparing test runs and surfacing the model/prompt configuration that performs best:
+
+<VideoDisplayer
+  src={ASSETS.evaluationParameterInsights}
+  confidentUrl="https://www.confident-ai.com/docs/llm-evaluation/dashboards/model-and-prompt-insights"
+  label="Parameter insights to find the best model"
+  description="Compare metric scores across models and prompts to pick a winner."
+/>
+
+## In CI/CD
+
+To run single-turn end-to-end evaluations on every PR, swap `evaluate()` / the iterator for an assertion inside a <Term py="pytest" ts="vitest"/> test, then run it with <Term py="deepeval test run" ts="npx deepeval test run"/>.
+
+<Switch>
+
+<Case id="python">
+
+<Tabs items={["With tracing", "Without tracing"]}>
+<Tab value="With tracing">
+
+```python title="test_llm_app.py"
+import pytest
+from deepeval import assert_test
+from deepeval.dataset import Golden
+from deepeval.metrics import TaskCompletionMetric
+from your_app import my_ai_agent  # @observe-instrumented
+
+@pytest.mark.parametrize("golden", dataset.goldens)
+def test_llm_app(golden: Golden):
+    my_ai_agent(golden.input)
+    assert_test(golden=golden, metrics=[TaskCompletionMetric()])
+```
+
+</Tab>
+<Tab value="Without tracing">
+
+```python title="test_llm_app.py"
+import pytest
+from deepeval import assert_test
+from deepeval.dataset import Golden
+from deepeval.test_case import LLMTestCase
+from deepeval.metrics import AnswerRelevancyMetric
+from your_app import my_ai_agent
+
+@pytest.mark.parametrize("golden", dataset.goldens)
+def test_llm_app(golden: Golden):
+    output = my_ai_agent(golden.input)
+    test_case = LLMTestCase(input=golden.input, actual_output=output)
+    assert_test(test_case=test_case, metrics=[AnswerRelevancyMetric()])
+```
+
+</Tab>
+</Tabs>
+
+```bash
+deepeval test run test_llm_app.py
+```
+
+</Case>
+
+<Case id="typescript">
+
+<Tabs items={["With tracing", "Without tracing"]}>
+<Tab value="With tracing">
+
+```typescript title="llm_app.test.ts"
+import { it, expect } from "vitest";
+import { Golden } from "deepeval/dataset";
+import { TaskCompletionMetric } from "deepeval/metrics";
+import { myAiAgent } from "./your-app"; // observe()-instrumented
+import "deepeval/vitest";
+
+it.each(dataset.goldens as Golden[])(
+  "completes the task #%$",
+  async (golden) => {
+    await myAiAgent(golden.input);
+    await expect(golden).toPass([new TaskCompletionMetric()]);
+  },
+);
+```
+
+</Tab>
+<Tab value="Without tracing">
+
+```typescript title="llm_app.test.ts"
+import { it, expect } from "vitest";
+import { Golden } from "deepeval/dataset";
+import { AnswerRelevancyMetric } from "deepeval/metrics";
+import { LLMTestCase } from "deepeval/test-case";
+import { myAiAgent } from "./your-app";
+import "deepeval/vitest";
+
+it.each(dataset.goldens as Golden[])(
+  "answers the user's question #%$",
+  async (golden) => {
+    const output = await myAiAgent(golden.input);
+    const testCase = new LLMTestCase({
+      input: golden.input,
+      actualOutput: output,
+    });
+    await expect(testCase).toPass([new AnswerRelevancyMetric()]);
+  },
+);
+```
+
+</Tab>
+</Tabs>
+
+```bash
+npx deepeval test run llm_app.test.ts
+```
+
+</Case>
+
+</Switch>
+
+See [unit testing in CI/CD](/docs/evaluation-unit-testing-in-ci-cd) for assertion parameters, YAML pipeline examples, and <Term py="deepeval test run" ts="npx deepeval test run"/> flags.
+
+## FAQs
+
+<FAQs
+  qas={[
+    {
+      question: "What is single-turn end-to-end evaluation?",
+      answer: (
+        <>
+          It treats your LLM app as a black box and scores its overall input and
+          output for one atomic interaction, rather than scoring individual
+          internal components. It's the simplest way to get started with evals.
+        </>
+      ),
+    },
+    {
+      question:
+        "Should I use the evals iterator with tracing or plain `evaluate()`?",
+      answer: (
+        <>
+          The recommended approach is the evals iterator with tracing, since it
+          captures rich execution data and scales to nested components later.
+          Use plain <code>evaluate()</code> if you just want to score a list of
+          test cases without instrumenting your app.
+        </>
+      ),
+    },
+    {
+      question: "Do I need to instrument my app with tracing to run end-to-end evals?",
+      answer: (
+        <>
+          No. You can construct <code>LLMTestCase</code>s directly and pass them
+          to <code>evaluate()</code>. Tracing is optional and mainly helps when
+          you want to graduate to component-level evals.
+        </>
+      ),
+    },
+    {
+      question: "Does `deepeval` integrate with my agent framework?",
+      answer: (
+        <>
+          Yes. The traced approach works with native{" "}
+          <a href="/integrations">integrations</a> for LangChain, LangGraph,
+          LlamaIndex, Pydantic AI, CrewAI, and more, so you can run evals
+          against the framework you already use instead of instrumenting
+          everything by hand.
+        </>
+      ),
+    },
+    {
+      question: "How do I run these same evals in CI/CD?",
+      answer: (
+        <>
+          Swap <code>evaluate()</code> or the evals iterator for an assertion
+          inside a test in your language's test runner, then run it with{" "}
+          <code>deepeval test run</code> so failing metrics fail the build.
+        </>
+      ),
+    },
+    {
+      question: "What are hyperparameters used for?",
+      answer:
+        "They let you log arbitrary settings like model name, prompt template, and temperature alongside a test run, so you can compare which configuration produced the best scores.",
+    },
+    {
+      question:
+        "Can my team keep these test runs on the cloud and review results in a UI?",
+      answer: (
+        <>
+          End-to-end runs are local-first. When you're logged into{" "}
+          <a href="https://www.confident-ai.com">Confident AI</a> (the platform
+          built by the <code>deepeval</code> team), the same run produces a
+          sharable cloud{" "}
+          <a href="https://www.confident-ai.com/docs/llm-evaluation/dashboards/testing-reports">
+            testing report
+          </a>{" "}
+          your team can review together, with hyperparameter comparisons and
+          regression tracking over time — no code changes required, and fully
+          optional.
+        </>
+      ),
+    },
+  ]}
+/>

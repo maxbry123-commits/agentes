@@ -1,0 +1,158 @@
+---
+id: litellm
+title: LiteLLM
+sidebar_label: LiteLLM
+languages: [python]
+---
+
+DeepEval allows you to use any model supported by LiteLLM to run evals, either through the CLI or directly in Python.
+
+:::note
+Before getting started, make sure you have LiteLLM installed. It will not be installed automatically with DeepEval, you need to install it separately:
+
+```bash
+pip install litellm
+```
+
+:::
+
+### Command Line
+
+To configure your LiteLLM model through the CLI, run the following command. You must specify the provider in the model name:
+
+```bash
+# OpenAI
+deepeval set-litellm --model=openai/gpt-3.5-turbo
+
+# Anthropic
+deepeval set-litellm --model=anthropic/claude-3-opus
+
+# Google
+deepeval set-litellm --model=google/gemini-pro
+```
+
+You can also specify a custom API base:
+
+```bash
+deepeval set-litellm \
+    --model=openai/gpt-3.5-turbo \
+    --base-url="https://your-custom-endpoint.com"
+```
+
+:::info
+The CLI command above sets LiteLLM as the default provider for all metrics, unless overridden in Python code. To use a different default model provider, you must first unset LiteLLM:
+
+```bash
+deepeval unset-litellm
+```
+
+:::
+
+:::tip[Persisting settings]
+You can persist CLI settings with the optional `--save` flag.
+See [Flags and Configs -> Persisting CLI settings](/docs/evaluation-flags-and-configs#persisting-cli-settings-with---save).
+:::
+
+### Python
+
+When using LiteLLM in Python, you must always specify the provider in the model name. Here's how to use `LiteLLMModel` from DeepEval's model collection:
+
+<Tabs items={["Python", "ENV"]}>
+<Tab value="Python">
+
+```python
+from deepeval.models import LiteLLMModel
+from deepeval.metrics import AnswerRelevancyMetric
+
+model = LiteLLMModel(
+    model="openai/gpt-3.5-turbo",  # Provider must be specified
+    api_key="your-api-key",  # optional, can be set via environment variable
+    base_url="your-api-base",  # optional, for custom endpoints
+    temperature=0
+)
+
+answer_relevancy = AnswerRelevancyMetric(model=model)
+```
+
+</Tab>
+<Tab value="ENV">
+
+To use any LiteLLM model directly in `deepeval`, set the `USE_LITELLM=1` in your `env` and simply pass the name of your desired model in your metric initialization:
+
+```python
+from deepeval.metrics import AnswerRelevancyMetric
+
+answer_relevancy = AnswerRelevancyMetric(
+    model="openai/gpt-3.5-turbo",
+)
+```
+
+You should also set the other necessary vars like `LITELLM_API_KEY` to be able to use the LiteLLM models as shown above.
+
+</Tab>
+</Tabs>
+
+There are **ZERO** mandatory and **SEVEN** optional parameters when creating a `LiteLLMModel`:
+
+- [Optional] `model`: A string specifying the provider and model name (e.g. `openai/gpt-3.5-turbo`, `anthropic/claude-3-opus`). Defaults to `LITELLM_MODEL_NAME` if not passed; raises an error at runtime if unset.
+- [Optional] `api_key`: A string specifying the API key for the model. If not passed, `deepeval` attempts (in order) `LITELLM_API_KEY`, `LITELLM_PROXY_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, then `GOOGLE_API_KEY`. If none are set, the key is left unset and the underlying LiteLLM/provider behavior applies.
+- [Optional] `base_url`: A string specifying the base URL for the model API. Defaults to `LITELLM_API_BASE`, then `LITELLM_PROXY_API_BASE` if not passed.
+- [Optional] `temperature`: A float specifying the model temperature. Defaults to `TEMPERATURE` if not passed; falls back to `0.0` if unset.
+- [Optional] `cost_per_input_token`: A float specifying the cost for each input token for the provided model. Defaults to `None` if not passed; when unset, the cost is taken from LiteLLM's response if it reports one, otherwise reported as unknown.
+- [Optional] `cost_per_output_token`: A float specifying the cost for each output token for the provided model. Defaults to `None` if not passed; when unset, the cost is taken from LiteLLM's response if it reports one, otherwise reported as unknown.
+- [Optional] `generation_kwargs`: A dictionary of additional generation parameters forwarded to LiteLLM's `completion(...)` / `acompletion(...)` call.
+
+:::tip
+Any `**kwargs` you would like to use for your model can be passed through the `generation_kwargs` parameter. However, we request you to double check the params supported by the model and your model provider in their [official docs](https://docs.litellm.ai/docs/providers/custom_llm_server).
+:::
+
+### Available Models
+
+:::note
+This list only displays some of the available models. For a complete list of supported models and their capabilities, refer to the [LiteLLM documentation](https://docs.litellm.ai/docs/providers).
+:::
+
+Below is a list of commonly used models (always prefix the model with its provider):
+
+#### OpenAI Models
+
+- `openai/gpt-3.5-turbo`
+- `openai/gpt-4`
+- `openai/gpt-4-turbo-preview`
+
+#### Anthropic Models
+
+- `anthropic/claude-3-opus`
+- `anthropic/claude-3-sonnet`
+- `anthropic/claude-3-haiku`
+
+#### Google Models
+
+- `google/gemini-pro`
+- `google/gemini-ultra`
+
+#### Mistral Models
+
+- `mistral/mistral-small`
+- `mistral/mistral-medium`
+- `mistral/mistral-large`
+
+#### LM Studio Models
+
+- `lm-studio/Meta-Llama-3.1-8B-Instruct-GGUF`
+- `lm-studio/Mistral-7B-Instruct-v0.2-GGUF`
+- `lm-studio/Phi-2-GGUF`
+
+#### Ollama Models
+
+- `ollama/llama2`
+- `ollama/mistral`
+- `ollama/codellama`
+- `ollama/neural-chat`
+- `ollama/starling-lm`
+
+:::note
+When using LM Studio, you need to specify the API base URL. By default, LM Studio runs on `http://localhost:1234/v1`.
+
+When using Ollama, you need to specify the API base URL. By default, Ollama runs on `http://localhost:11434/v1`.
+:::

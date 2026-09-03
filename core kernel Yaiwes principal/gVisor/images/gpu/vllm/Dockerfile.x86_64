@@ -1,0 +1,26 @@
+# v2.45.1
+FROM alpine/git@sha256:4d7fe8d770483993c0cec264d49a573bac49e5239db47a9846572352e72da49c as downloader
+# post checkout hook. checks that command git lfs is available.
+RUN apk add git-lfs && \
+    git lfs install && \
+    GIT_CLONE_PROTECTION_ACTIVE=false git clone https://huggingface.co/facebook/opt-125m /opt-125m && \
+    rm /opt-125m/flax_model.msgpack && \
+    rm /opt-125m/tf_model.h5
+# post checkout hook. checks that command git lfs is available.
+RUN GIT_CLONE_PROTECTION_ACTIVE=false git clone https://huggingface.co/datasets/anon8231489123/ShareGPT_Vicuna_unfiltered /dataset
+RUN git clone https://github.com/vllm-project/vllm.git /vllm && cd /vllm && git checkout v0.27.1
+
+# v0.27.1. Do not downgrade below this without checking torch's compiled
+# arch list: releases before this shipped torch 2.3.0+cu121, whose kernels
+# stop at sm_90, so every CUDA op fails on Blackwell (sm_100/sm_120) with
+# "no kernel image is available for execution on the device" under any
+# runtime. v0.27.1 ships torch 2.13.0+cu130 built for
+# ['sm_75','sm_80','sm_86','sm_90','sm_100','sm_120'].
+FROM vllm/vllm-openai@sha256:0a51ea5b4ae2dc5d81890e5173f54203d2a3ae0cfffe51b8fd2afd4391bfd967
+COPY --from=downloader /vllm/examples/template_chatml.jinja /vllm/examples/template_chatml.jinja
+COPY --from=downloader /vllm/benchmarks /vllm/benchmarks
+COPY --from=downloader /opt-125m /model
+COPY --from=downloader /dataset/ShareGPT_V3_unfiltered_cleaned_split.json /ShareGPT_V3_unfiltered_cleaned_split.json
+
+ENTRYPOINT ["python3"]
+CMD ["-m", "vllm.entrypoints.openai.api_server", "--model", "/model", "--chat-template", "/vllm/examples/template_chatml.jinja"]

@@ -1,0 +1,268 @@
+"""Utility functions for YAML/TOML loading and lazy BaseModel access."""
+
+from __future__ import annotations
+
+import re
+import sys
+import warnings
+from functools import lru_cache
+from typing import TYPE_CHECKING, Any, Literal
+
+from datamodel_code_generator.deprecations import warn_deprecated
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterator
+    from pathlib import Path
+
+
+@lru_cache(maxsize=1)
+def _get_toml_loader() -> Callable[[Any], dict[str, Any]]:
+    """Get the TOML parser lazily."""
+    try:
+        from tomllib import load as load_toml_data  # noqa: PLC0415  # ty: ignore[unresolved-import]
+    except ImportError:  # pragma: no cover
+        from tomli import load as load_toml_data  # noqa: PLC0415  # ty: ignore[unresolved-import]
+
+    return load_toml_data
+
+
+def load_toml(path: Path) -> dict[str, Any]:
+    """Load and parse a TOML file."""
+    record_watch_dependency(path)
+    with path.open("rb") as f:
+        return _get_toml_loader()(f)
+
+
+def record_watch_dependency(path: Path) -> None:
+    """Record an active watch dependency without importing watch support on normal paths."""
+    if (watch_dependencies := sys.modules.get("datamodel_code_generator.watch_dependencies")) is not None and (
+        watch_dependencies.collector_is_active()
+    ):
+        watch_dependencies.record_local_dependency(path)
+
+
+_YAML_1_2_BOOL_PATTERN = re.compile(r"^(?:true|false|True|False|TRUE|FALSE)$")
+_YAML_DEPRECATED_BOOL_VALUES = ("True", "False", "TRUE", "FALSE")
+_YAML_DEPRECATED_BOOL_LINE_PATTERN = re.compile(r"(?m)(?::|-\s*)\s*(True|False|TRUE|FALSE)(?:\s*(?:#.*)?)$")
+_YAML_DEPRECATED_BOOL_WARNING_MESSAGE = "YAML bool "
+_YAML_DEPRECATED_BOOL_WARNING_MODULE = "datamodel_code_generator"
+_YAML_UNSUPPORTED_TAGS = {"tag:yaml.org,2002:set"}
+_YAML_UNSUPPORTED_TAG_MARKERS = ("!!set", "tag:yaml.org,2002:set")
+_YAML_TAG_DIRECTIVE_PATTERN = re.compile(r"(?m)^%TAG(?:\s|$)")
+# Pattern for scientific notation without decimal point (e.g., 1e-5, 1E+10)
+# Standard YAML only matches floats with decimal points, missing patterns like "1e-5"
+_YAML_SCIENTIFIC_NOTATION_PATTERN = re.compile(r"^[-+]?[0-9][0-9_]*[eE][-+]?[0-9]+$")
+
+
+def _warning_filter_matches(pattern: Any, text: str) -> bool:
+    if pattern is None:
+        return True
+    if hasattr(pattern, "match"):
+        return bool(pattern.match(text))
+    return re.match(str(pattern), text) is not None
+
+
+def _is_yaml_deprecated_bool_warning_enabled() -> bool:
+    for action, message, category, module, _ in warnings.filters:
+        if not issubclass(DeprecationWarning, category):
+            continue
+        if not _warning_filter_matches(message, _YAML_DEPRECATED_BOOL_WARNING_MESSAGE):
+            continue
+        if not _warning_filter_matches(module, _YAML_DEPRECATED_BOOL_WARNING_MODULE):
+            continue
+        return action != "ignore"
+    return True
+
+
+def warn_yaml_deprecated_bool_values(text: str) -> None:
+    """Warn for YAML 1.1-style boolean scalars when ryaml is used."""
+    if not _is_yaml_deprecated_bool_warning_enabled() or not any(
+        value in text for value in _YAML_DEPRECATED_BOOL_VALUES
+    ):
+        return
+
+    for match in _YAML_DEPRECATED_BOOL_LINE_PATTERN.finditer(text):
+        warnings.warn(
+            f"YAML bool '{match.group(1)}' is deprecated. Use lowercase 'true' or 'false' instead. "
+            f"In a future version, only lowercase booleans will be recognized.",
+            DeprecationWarning,
+            stacklevel=3,
+        )
+
+
+def _iter_yaml_nodes(node: Any) -> Iterator[Any]:
+    import yaml  # noqa: PLC0415
+
+    yield node
+    if isinstance(node, yaml.MappingNode):
+        for key_node, value_node in node.value:
+            yield from _iter_yaml_nodes(key_node)
+            yield from _iter_yaml_nodes(value_node)
+    elif isinstance(node, yaml.SequenceNode):
+        for item_node in node.value:
+            yield from _iter_yaml_nodes(item_node)
+
+
+def reject_unsupported_yaml_tags(text: str) -> None:
+    """Reject YAML tags that cannot be represented by JSON-compatible sample data."""
+    if not any(marker in text for marker in _YAML_UNSUPPORTED_TAG_MARKERS) and not _YAML_TAG_DIRECTIVE_PATTERN.search(
+        text
+    ):
+        return
+
+    import yaml  # noqa: PLC0415
+
+    node = yaml.compose(text, Loader=get_safe_loader())
+    if node is None:
+        return
+    for yaml_node in _iter_yaml_nodes(node):
+        if yaml_node.tag in _YAML_UNSUPPORTED_TAGS:
+            msg = f"Unsupported YAML tag: {yaml_node.tag}"
+            raise yaml.YAMLError(msg)
+
+
+def _construct_yaml_bool_with_warning(loader: Any, node: Any) -> bool:
+    value = loader.construct_scalar(node)
+    if value in _YAML_DEPRECATED_BOOL_VALUES:
+        warn_deprecated(
+            "config.yaml-non-lowercase-bool",
+            details=(
+                f"YAML bool {value!r} is deprecated. In a future version, only lowercase booleans will be recognized."
+            ),
+            stacklevel=6,
+        )
+    return value in {"true", "True", "TRUE"}
+
+
+@lru_cache(maxsize=1)
+def get_safe_loader() -> type:
+    """Get customized SafeLoader lazily."""
+    try:
+        from yaml import CSafeLoader as _SafeLoader  # noqa: PLC0415
+    except ImportError:  # pragma: no cover
+        from yaml import SafeLoader as _SafeLoader  # noqa: PLC0415
+
+    class CustomSafeLoader(_SafeLoader):  # ty: ignore[unsupported-base]
+        """SafeLoader with YAML 1.2 bool handling and timestamp-as-string."""
+
+        yaml_constructors = _SafeLoader.yaml_constructors.copy()
+        yaml_implicit_resolvers = {  # noqa: RUF012
+            k: v
+            for k, v in (
+                (k, [(tag, pat) for tag, pat in v if tag != "tag:yaml.org,2002:bool"])
+                for k, v in _SafeLoader.yaml_implicit_resolvers.items()
+            )
+            if v
+        }
+
+    CustomSafeLoader.yaml_constructors["tag:yaml.org,2002:timestamp"] = CustomSafeLoader.yaml_constructors[
+        "tag:yaml.org,2002:str"
+    ]
+    for key in ["t", "f", "T", "F"]:
+        CustomSafeLoader.yaml_implicit_resolvers.setdefault(key, []).append((
+            "tag:yaml.org,2002:bool",
+            _YAML_1_2_BOOL_PATTERN,
+        ))
+    CustomSafeLoader.yaml_constructors["tag:yaml.org,2002:bool"] = _construct_yaml_bool_with_warning
+
+    # Add scientific notation without decimal point (e.g., 1e-5) as float
+    for key in ["-", "+", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]:
+        CustomSafeLoader.yaml_implicit_resolvers.setdefault(key, []).append((
+            "tag:yaml.org,2002:float",
+            _YAML_SCIENTIFIC_NOTATION_PATTERN,
+        ))
+
+    return CustomSafeLoader
+
+
+YamlBackend = Literal["ryaml", "pyyaml"]
+
+
+@lru_cache(maxsize=1)
+def get_yaml_backend() -> YamlBackend:
+    """Detect the available YAML backend ('ryaml' or 'pyyaml')."""
+    try:
+        import ryaml  # noqa: PLC0415, F401  # ty: ignore[unresolved-import]
+    except ImportError:
+        return "pyyaml"
+    else:
+        return "ryaml"
+
+
+@lru_cache(maxsize=1)
+def get_yaml_parse_errors() -> tuple[type[Exception], ...]:
+    """Return YAML parse error types for both backends."""
+    import yaml  # noqa: PLC0415
+
+    errors: list[type[Exception]] = [yaml.YAMLError]
+    try:
+        import ryaml  # noqa: PLC0415  # ty: ignore[unresolved-import]
+
+        errors.append(ryaml.InvalidYamlError)
+    except ImportError:
+        pass
+    return tuple(errors)
+
+
+@lru_cache(maxsize=1)
+def _get_base_model_class() -> type:
+    """Get BaseModel class with strict=False config lazily."""
+    from pydantic import BaseModel as _PydanticBaseModel  # noqa: PLC0415
+    from pydantic import ConfigDict as _ConfigDict  # noqa: PLC0415
+
+    class _BaseModelV2(_PydanticBaseModel):
+        model_config = _ConfigDict(strict=False, defer_build=True)
+
+    return _BaseModelV2
+
+
+def create_module_getattr(
+    module_name: str,
+    lazy_imports: dict[str, tuple[str, str]],
+) -> Callable[[str], Any]:
+    """Create a __getattr__ function for lazy module imports.
+
+    Args:
+        module_name: The name of the module (typically __name__).
+        lazy_imports: Mapping of attribute name to (module_path, attribute_name).
+
+    Returns:
+        A __getattr__ function that lazily imports the specified attributes.
+
+    Example:
+        __getattr__ = create_module_getattr(__name__, {
+            "MyClass": ("mypackage.mymodule", "MyClass"),
+        })
+    """
+    from importlib import import_module  # noqa: PLC0415
+
+    def _getattr(name: str) -> Any:
+        if name in lazy_imports:
+            module_path, attr_name = lazy_imports[name]
+            module = import_module(module_path)
+            return getattr(module, attr_name)
+        msg = f"module {module_name!r} has no attribute {name!r}"
+        raise AttributeError(msg)
+
+    return _getattr
+
+
+def __getattr__(name: str) -> Any:
+    """Provide lazy access to BaseModel and SafeLoader."""
+    if name == "BaseModel":
+        return _get_base_model_class()
+    if name == "SafeLoader":
+        return get_safe_loader()
+    msg = f"module {__name__!r} has no attribute {name!r}"
+    raise AttributeError(msg)
+
+
+_UNDER_SCORE_1: re.Pattern[str] = re.compile(r"([^_])([A-Z][a-z]+)")
+_UNDER_SCORE_2: re.Pattern[str] = re.compile(r"([a-z0-9])([A-Z])")
+
+
+@lru_cache
+def camel_to_snake(string: str) -> str:
+    """Convert camelCase or PascalCase to snake_case."""
+    subbed = _UNDER_SCORE_1.sub(r"\1_\2", string)
+    return _UNDER_SCORE_2.sub(r"\1_\2", subbed).lower()

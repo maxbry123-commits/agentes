@@ -1,0 +1,22 @@
+FROM tensorflow/tensorflow:1.13.2
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+RUN git clone --depth 1 https://github.com/aymericdamien/TensorFlow-Examples.git
+RUN python -m pip install --no-cache-dir -U pip setuptools matplotlib
+
+# Run the Tensorflow examples; they use the CPU only, but what we want here
+# is the side-effect of pre-downloading the models they will use.
+RUN export PYTHONPATH=$PYTHONPATH:/TensorFlow-Examples/examples;            \
+    cd /TensorFlow-Examples/examples;                                       \
+    examples='                                                              \
+        2_BasicModels/kmeans.py                                             \
+        2_BasicModels/logistic_regression.py                                \
+        2_BasicModels/nearest_neighbor.py                                   \
+        2_BasicModels/random_forest.py                                      \
+        3_NeuralNetworks/convolutional_network.py                           \
+        3_NeuralNetworks/multilayer_perceptron.py                           \
+        3_NeuralNetworks/neural_network.py                                  \
+    ';                                                                      \
+    for f in $examples; do python "$f"; done

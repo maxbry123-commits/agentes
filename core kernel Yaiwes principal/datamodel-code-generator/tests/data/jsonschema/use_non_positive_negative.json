@@ -1,0 +1,77 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "NumberConstraints",
+  "type": "object",
+  "properties": {
+    "non_negative_int": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "NonNegativeInt: minimum=0 only"
+    },
+    "non_positive_int": {
+      "type": "integer",
+      "maximum": 0,
+      "description": "NonPositiveInt: maximum=0 only"
+    },
+    "non_negative_float": {
+      "type": "number",
+      "minimum": 0,
+      "description": "NonNegativeFloat: minimum=0 only"
+    },
+    "non_positive_float": {
+      "type": "number",
+      "maximum": 0,
+      "description": "NonPositiveFloat: maximum=0 only"
+    },
+    "positive_int": {
+      "type": "integer",
+      "exclusiveMinimum": 0,
+      "description": "PositiveInt: exclusiveMinimum=0"
+    },
+    "negative_int": {
+      "type": "integer",
+      "exclusiveMaximum": 0,
+      "description": "NegativeInt: exclusiveMaximum=0"
+    },
+    "positive_float": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "PositiveFloat: exclusiveMinimum=0"
+    },
+    "negative_float": {
+      "type": "number",
+      "exclusiveMaximum": 0,
+      "description": "NegativeFloat: exclusiveMaximum=0"
+    },
+    "bounded_non_negative_int": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "NonNegativeInt with additional upper bound"
+    },
+    "bounded_non_positive_int": {
+      "type": "integer",
+      "maximum": 0,
+      "minimum": -100,
+      "description": "NonPositiveInt with additional lower bound"
+    },
+    "bounded_non_negative_float": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1.0,
+      "description": "NonNegativeFloat with additional upper bound"
+    },
+    "bounded_non_positive_float": {
+      "type": "number",
+      "maximum": 0,
+      "minimum": -1.0,
+      "description": "NonPositiveFloat with additional lower bound"
+    },
+    "plain_constrained_int": {
+      "type": "integer",
+      "minimum": 5,
+      "maximum": 100,
+      "description": "No zero bound: should remain conint/Field"
+    }
+  }
+}

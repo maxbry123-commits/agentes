@@ -1,0 +1,241 @@
+{
+  "uuid": "2abcef47fd29a4002d994d8f6f30af32",
+  "baseSpans": [],
+  "agentSpans": [
+    {
+      "uuid": "6ddcc82eec34d8ba",
+      "name": "enrichment_agent",
+      "status": "SUCCESS",
+      "type": "agent",
+      "startTime": "2026-06-01T16:36:42.528Z",
+      "endTime": "2026-06-01T16:36:46.185Z",
+      "input": [
+        {
+          "role": "user",
+          "content": "Use the lookup tool with key 'foobar' and report the result."
+        }
+      ],
+      "output": "The result for the key 'foobar' is: resolved-value-for-foobar.",
+      "integration": "PydanticAI",
+      "availableTools": [],
+      "agentHandoffs": []
+    }
+  ],
+  "llmSpans": [
+    {
+      "uuid": "21e229a1fb2b494f",
+      "name": "chat gpt-4o-mini",
+      "status": "SUCCESS",
+      "type": "llm",
+      "parentUuid": "6ddcc82eec34d8ba",
+      "startTime": "2026-06-01T16:36:44.384Z",
+      "endTime": "2026-06-01T16:36:46.184Z",
+      "input": [
+        {
+          "role": "system",
+          "content": "You are an assistant. Use the lookup tool whenever the user mentions a key. Be concise."
+        },
+        {
+          "role": "user",
+          "content": "Use the lookup tool with key 'foobar' and report the result."
+        },
+        {
+          "role": "assistant",
+          "content": {
+            "type": "tool_call",
+            "id": "call_BNGuB0lfAODEPPEPzGpaEOY9",
+            "name": "lookup",
+            "arguments": "{\"key\":\"foobar\"}"
+          }
+        },
+        {
+          "role": "user",
+          "content": {
+            "type": "tool_call_response",
+            "id": "call_BNGuB0lfAODEPPEPzGpaEOY9",
+            "name": "lookup",
+            "result": "resolved-value-for-foobar"
+          }
+        },
+        {
+          "role": "Model Request Parameters",
+          "content": {
+            "function_tools": [
+              {
+                "name": "lookup",
+                "parameters_json_schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "key": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "key"
+                  ],
+                  "type": "object"
+                },
+                "description": "Look up a value for a key. Enriches the active trace AND the\ntool span with derived metadata.",
+                "outer_typed_dict_key": null,
+                "strict": true,
+                "sequential": false,
+                "kind": "function",
+                "metadata": null,
+                "timeout": null,
+                "defer_loading": false,
+                "unless_native": null,
+                "with_native": null,
+                "tool_kind": null,
+                "return_schema": null,
+                "include_return_schema": null
+              }
+            ],
+            "native_tools": [],
+            "output_mode": "text",
+            "output_object": null,
+            "output_tools": [],
+            "prompted_output_template": null,
+            "allow_text_output": true,
+            "allow_image_output": false,
+            "instruction_parts": null,
+            "thinking": null
+          }
+        }
+      ],
+      "output": [
+        {
+          "role": "assistant",
+          "content": "The result for the key 'foobar' is: resolved-value-for-foobar."
+        }
+      ],
+      "integration": "PydanticAI",
+      "model": "gpt-4o-mini",
+      "provider": "OpenAI",
+      "inputTokenCount": 118.0,
+      "outputTokenCount": 17.0
+    },
+    {
+      "uuid": "5c98db4c273b8f23",
+      "name": "chat gpt-4o-mini",
+      "status": "SUCCESS",
+      "type": "llm",
+      "parentUuid": "6ddcc82eec34d8ba",
+      "startTime": "2026-06-01T16:36:42.529Z",
+      "endTime": "2026-06-01T16:36:44.382Z",
+      "input": [
+        {
+          "role": "system",
+          "content": "You are an assistant. Use the lookup tool whenever the user mentions a key. Be concise."
+        },
+        {
+          "role": "user",
+          "content": "Use the lookup tool with key 'foobar' and report the result."
+        },
+        {
+          "role": "Model Request Parameters",
+          "content": {
+            "function_tools": [
+              {
+                "name": "lookup",
+                "parameters_json_schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "key": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "key"
+                  ],
+                  "type": "object"
+                },
+                "description": "Look up a value for a key. Enriches the active trace AND the\ntool span with derived metadata.",
+                "outer_typed_dict_key": null,
+                "strict": true,
+                "sequential": false,
+                "kind": "function",
+                "metadata": null,
+                "timeout": null,
+                "defer_loading": false,
+                "unless_native": null,
+                "with_native": null,
+                "tool_kind": null,
+                "return_schema": null,
+                "include_return_schema": null
+              }
+            ],
+            "native_tools": [],
+            "output_mode": "text",
+            "output_object": null,
+            "output_tools": [],
+            "prompted_output_template": null,
+            "allow_text_output": true,
+            "allow_image_output": false,
+            "instruction_parts": null,
+            "thinking": null
+          }
+        }
+      ],
+      "output": [
+        {
+          "role": "assistant",
+          "content": {
+            "type": "tool_call",
+            "id": "call_BNGuB0lfAODEPPEPzGpaEOY9",
+            "name": "lookup",
+            "arguments": "{\"key\":\"foobar\"}"
+          }
+        }
+      ],
+      "integration": "PydanticAI",
+      "model": "gpt-4o-mini",
+      "provider": "OpenAI",
+      "inputTokenCount": 93.0,
+      "outputTokenCount": 13.0
+    }
+  ],
+  "retrieverSpans": [],
+  "toolSpans": [
+    {
+      "uuid": "88fa490bb878d4c9",
+      "name": "lookup",
+      "status": "SUCCESS",
+      "type": "tool",
+      "parentUuid": "6ddcc82eec34d8ba",
+      "startTime": "2026-06-01T16:36:44.383Z",
+      "endTime": "2026-06-01T16:36:44.383Z",
+      "metadata": {
+        "tool_called": true,
+        "lookup_key": "foobar"
+      },
+      "input": {
+        "key": "foobar"
+      },
+      "output": "resolved-value-for-foobar",
+      "integration": "PydanticAI"
+    }
+  ],
+  "startTime": "2026-06-01T16:36:42.528Z",
+  "endTime": "2026-06-01T16:36:46.185Z",
+  "name": "pydanticai-bare-enrichment-test",
+  "metadata": {
+    "test_type": "bare_tool_enrichment",
+    "enriched_from_tool": true,
+    "resolved_key": "foobar"
+  },
+  "tags": [
+    "pydanticai",
+    "enrichment"
+  ],
+  "environment": "development",
+  "threadId": "bare-enrichment-123",
+  "userId": "test-user",
+  "input": [
+    {
+      "role": "user",
+      "content": "Use the lookup tool with key 'foobar' and report the result."
+    }
+  ],
+  "output": "The result for the key 'foobar' is: resolved-value-for-foobar.",
+  "status": "SUCCESS"
+}

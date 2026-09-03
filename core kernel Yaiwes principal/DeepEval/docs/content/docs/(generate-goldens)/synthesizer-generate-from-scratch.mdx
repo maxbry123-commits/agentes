@@ -1,0 +1,150 @@
+---
+id: synthesizer-generate-from-scratch
+title: Generate Goldens From Scratch
+sidebar_label: Generate From Scratch
+languages: [python]
+---
+
+
+import { ASSETS } from "@site/src/assets";
+
+You can also generate **synthetic Goldens from scratch**, without needing any documents or contexts.
+
+<div
+  style={{
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  }}
+>
+  <ImageDisplayer src={ASSETS.synthesizeFromScratch} />
+</div>
+
+:::info
+This approach is particularly useful if your LLM application **doesn't rely on RAG** or if you want to **test your LLM on queries beyond the existing knowledge base**.
+:::
+
+## Generate Your Goldens
+
+Since there is no grounded context involved, you'll need to provide a `StylingConfig` when instantiating a `Synthesizer` for `deepeval`'s `Synthesizer` to know what types of goldens it should generate:
+
+<Tabs items={["Single-Turn", "Multi-Turn"]}>
+<Tab value="Single-Turn">
+
+```python
+from deepeval.synthesizer import Synthesizer
+from deepeval.synthesizer.config import StylingConfig
+
+styling_config = StylingConfig(
+  input_format="Questions in English that asks for data in database.",
+  expected_output_format="SQL query based on the given input",
+  task="Answering text-to-SQL-related queries by querying a database and returning the results to users",
+  scenario="Non-technical users trying to query a database using plain English.",
+)
+
+synthesizer = Synthesizer(styling_config=styling_config)
+```
+
+</Tab>
+<Tab value="Multi-Turn">
+
+```python
+from deepeval.synthesizer import Synthesizer
+from deepeval.synthesizer.config import ConversationalStylingConfig
+
+conversational_styling_config = ConversationalStylingConfig(
+  conversational_task="Answering text-to-SQL-related queries by querying a database and returning the results to users",
+  scenario_context="Non-technical users trying to query a database using plain English.",
+  participant_roles="Non-technical users trying to query a database using plain English."
+)
+
+synthesizer = Synthesizer(conversational_styling_config=conversational_styling_config,)
+```
+
+</Tab>
+</Tabs>
+
+Finally, to generate synthetic goldens without provided context, simply supply the number of goldens you want generated:
+
+<Tabs items={["Single-Turn", "Multi-Turn"]}>
+<Tab value="Single-Turn">
+
+```python
+from deepeval.synthesizer import Synthesizer
+...
+
+goldens = synthesizer.generate_goldens_from_scratch(num_goldens=25)
+print(goldens)
+```
+
+</Tab>
+<Tab value="Multi-Turn">
+
+```python
+from deepeval.synthesizer import Synthesizer
+...
+
+conversational_goldens = synthesizer.generate_conversational_goldens_from_scratch(num_goldens=25)
+print(conversational_goldens)
+```
+
+</Tab>
+</Tabs>
+
+There is **ONE** mandatory parameter when using the `generate_goldens_from_scratch` method:
+
+- `num_goldens`: the number of goldens to generate.
+
+## FAQs
+
+<FAQs
+  qas={[
+    {
+      question: "When should I generate goldens from scratch?",
+      answer: (
+        <>
+          Use it when your application doesn't rely on RAG, or when you want to
+          test queries beyond your existing knowledge base. Supply{" "}
+          <code>num_goldens</code> to set how many to generate.
+        </>
+      ),
+    },
+    {
+      question: "Why is `generate_goldens_from_scratch` the least grounded method?",
+      answer: (
+        <>
+          Because no documents or contexts are provided, goldens aren't grounded
+          in a knowledge base — making this the least grounded of the four
+          generation methods. Use{" "}
+          <a href="/docs/synthesizer-generate-from-docs">
+            generate_goldens_from_docs
+          </a>{" "}
+          if you need grounded goldens.
+        </>
+      ),
+    },
+    {
+      question: "How does the `Synthesizer` know what to generate without context?",
+      answer: (
+        <>
+          You must provide a <code>StylingConfig</code> (or a{" "}
+          <code>ConversationalStylingConfig</code> for multi-turn) defining the{" "}
+          <code>task</code>, <code>scenario</code>, and output formats, which
+          steer generation in place of grounded context.
+        </>
+      ),
+    },
+    {
+      question: "Can my team generate goldens from scratch without code?",
+      answer: (
+        <>
+          Yes. On <a href="https://www.confident-ai.com">Confident AI</a> you
+          can connect your knowledge bases and run the generation pipeline
+          no-code — tweak filtration, evolutions, and styling, experiment with
+          variations, and collaborate on the resulting dataset as a team.
+        </>
+      ),
+    },
+  ]}
+/>
+

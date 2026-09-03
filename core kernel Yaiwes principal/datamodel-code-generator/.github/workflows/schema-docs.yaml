@@ -1,0 +1,34 @@
+name: Update Schema Docs
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/datamodel_code_generator/parser/schema_version.py'
+      - 'scripts/build_schema_docs.py'
+      - 'docs/supported_formats.md'
+      - 'docs/supported-data-types.md'
+
+permissions:
+  contents: read
+
+jobs:
+  update-schema-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          persist-credentials: false
+      - name: Install the latest version of uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - name: Install tox
+        run: uv tool install --python-preference only-managed --python 3.13 tox --with tox-uv
+      - name: Setup environment
+        run: tox run -vv --notest --skip-missing-interpreters false -e schema-docs
+        env:
+          UV_PYTHON_PREFERENCE: "only-managed"
+      - name: Build schema docs
+        run: .tox/schema-docs/bin/python scripts/build_schema_docs.py

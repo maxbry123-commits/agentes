@@ -1,0 +1,162 @@
+{
+  "uuid": "87a8a030-0d06-4397-94ed-bf20c431d1c8",
+  "baseSpans": [
+    {
+      "uuid": "b90fcad2-1e2e-4027-adb5-d7349aafd979",
+      "name": "kickoff_async",
+      "status": "SUCCESS",
+      "type": "base",
+      "startTime": "2026-06-01T17:24:32.899Z",
+      "endTime": "2026-06-01T17:24:35.264Z",
+      "input": {},
+      "output": "Weather in Tokyo: Clear, 70\u00b0F",
+      "integration": "CrewAI"
+    },
+    {
+      "uuid": "f52c94e6-b2ea-4fbc-ba9e-571bd494f8d8",
+      "name": "kickoff",
+      "status": "SUCCESS",
+      "type": "base",
+      "parentUuid": "b90fcad2-1e2e-4027-adb5-d7349aafd979",
+      "startTime": "2026-06-01T17:24:32.899Z",
+      "endTime": "2026-06-01T17:24:35.264Z",
+      "input": {
+        "city": "Tokyo"
+      },
+      "output": "Weather in Tokyo: Clear, 70\u00b0F",
+      "integration": "CrewAI"
+    }
+  ],
+  "agentSpans": [
+    {
+      "uuid": "5ce68601-af62-4002-aeef-fd5d8d0fc163",
+      "name": "execute_task",
+      "status": "SUCCESS",
+      "type": "agent",
+      "parentUuid": "f52c94e6-b2ea-4fbc-ba9e-571bd494f8d8",
+      "startTime": "2026-06-01T17:24:32.908Z",
+      "endTime": "2026-06-01T17:24:35.257Z",
+      "input": "Check the weather in Tokyo. You MUST use the 'get_weather' tool to find the answer. Do not answer from your own knowledge.\n\nThis is the expected criteria for your final answer: The weather report directly from the tool.\nyou MUST return the actual complete content as the final answer, not a summary.",
+      "output": "Weather in Tokyo: Clear, 70\u00b0F",
+      "integration": "CrewAI",
+      "toolsCalled": [
+        {
+          "name": "get_weather",
+          "type": "FUNCTION",
+          "output": "Weather in Tokyo: Clear, 70\u00b0F",
+          "inputParameters": {
+            "city": "Tokyo"
+          }
+        }
+      ],
+      "availableTools": [],
+      "agentHandoffs": []
+    }
+  ],
+  "llmSpans": [
+    {
+      "uuid": "4a7c947c-5cfa-4e03-abfc-5d9a9311d9ce",
+      "name": "call",
+      "status": "SUCCESS",
+      "type": "llm",
+      "parentUuid": "5ce68601-af62-4002-aeef-fd5d8d0fc163",
+      "startTime": "2026-06-01T17:24:34.303Z",
+      "endTime": "2026-06-01T17:24:35.251Z",
+      "input": [
+        {
+          "role": "system",
+          "content": "You are Meteorologist. You are a meticulous meteorologist. You NEVER guess the weather. You ALWAYS call the tool without exception.\nYour personal goal is: Check weather",
+          "cache_breakpoint": true
+        },
+        {
+          "role": "user",
+          "content": "\nCurrent Task: Check the weather in Tokyo. You MUST use the 'get_weather' tool to find the answer. Do not answer from your own knowledge.\n\nThis is the expected criteria for your final answer: The weather report directly from the tool.\nyou MUST return the actual complete content as the final answer, not a summary.",
+          "cache_breakpoint": true
+        },
+        {
+          "role": "assistant",
+          "content": null,
+          "tool_calls": [
+            {
+              "id": "call_NSzehTBPtzwSDe8rzCEKb96u",
+              "type": "function",
+              "function": {
+                "name": "'get_weather'",
+                "arguments": "'{\"city\":\"Tokyo\"}'"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "tool_call_id": "call_NSzehTBPtzwSDe8rzCEKb96u",
+          "name": "get_weather",
+          "content": "Weather in Tokyo: Clear, 70\u00b0F"
+        }
+      ],
+      "output": "Weather in Tokyo: Clear, 70\u00b0F",
+      "integration": "CrewAI",
+      "model": "gpt-4o-mini",
+      "provider": "OpenAI"
+    },
+    {
+      "uuid": "8b00b95d-3032-4a09-95cd-8319b41bf484",
+      "name": "call",
+      "status": "SUCCESS",
+      "type": "llm",
+      "parentUuid": "5ce68601-af62-4002-aeef-fd5d8d0fc163",
+      "startTime": "2026-06-01T17:24:32.914Z",
+      "endTime": "2026-06-01T17:24:34.294Z",
+      "input": [
+        {
+          "role": "system",
+          "content": "You are Meteorologist. You are a meticulous meteorologist. You NEVER guess the weather. You ALWAYS call the tool without exception.\nYour personal goal is: Check weather",
+          "cache_breakpoint": true
+        },
+        {
+          "role": "user",
+          "content": "\nCurrent Task: Check the weather in Tokyo. You MUST use the 'get_weather' tool to find the answer. Do not answer from your own knowledge.\n\nThis is the expected criteria for your final answer: The weather report directly from the tool.\nyou MUST return the actual complete content as the final answer, not a summary.",
+          "cache_breakpoint": true
+        }
+      ],
+      "output": [
+        {
+          "id": "call_NSzehTBPtzwSDe8rzCEKb96u",
+          "function": {
+            "arguments": "{\"city\":\"Tokyo\"}",
+            "name": "get_weather"
+          },
+          "type": "function"
+        }
+      ],
+      "integration": "CrewAI",
+      "model": "gpt-4o-mini",
+      "provider": "OpenAI"
+    }
+  ],
+  "retrieverSpans": [],
+  "toolSpans": [
+    {
+      "uuid": "1de7216f-7aca-42f2-a783-faa1da2c649f",
+      "name": "get_weather",
+      "status": "SUCCESS",
+      "type": "tool",
+      "parentUuid": "5ce68601-af62-4002-aeef-fd5d8d0fc163",
+      "startTime": "2026-06-01T17:24:34.295Z",
+      "endTime": "2026-06-01T17:24:34.295Z",
+      "input": {
+        "city": "Tokyo"
+      },
+      "output": "Weather in Tokyo: Clear, 70\u00b0F",
+      "integration": "CrewAI"
+    }
+  ],
+  "startTime": "2026-06-01T17:24:32.899Z",
+  "endTime": "2026-06-01T17:24:35.264Z",
+  "environment": "development",
+  "input": {
+    "city": "Tokyo"
+  },
+  "output": "Weather in Tokyo: Clear, 70\u00b0F",
+  "status": "SUCCESS"
+}
