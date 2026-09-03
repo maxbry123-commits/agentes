@@ -1,0 +1,26 @@
+{
+  "schema_version": "1.0",
+  "updated_at": "2026-09-03T18:39:00-05:00",
+  "root": "Readme arquitectura Yaiwes",
+  "write_boundary": "ONLY_THIS_ROOT",
+  "phase": "XRAY_AND_ROADMAP",
+  "sources": {
+    "architecture_lot_1": "Documentos arquitectura Yaiwes lote 1",
+    "claude_instructions": "Documentos proyectos Yaiwes instrucciones de Claude"
+  },
+  "agents": {
+    "sol_orquestador": "ACTIVE",
+    "sol_programacion": "WAITING_PLAN",
+    "codex_1": "WAITING_ASSIGNMENT",
+    "luna": "WAITING_ASSIGNMENT",
+    "grok": "WAITING_ASSIGNMENT"
+  },
+  "steps": {
+    "1_update_architecture": "IN_PROGRESS",
+    "2_claude_gap_roadmap": "IN_PROGRESS",
+    "3_work_skills": "IN_PROGRESS",
+    "4_external_components_xray": "PENDING_APPROVAL_PLAN"
+  },
+  "rule": "No orchestration artifacts may be written outside Readme arquitectura Yaiwes. No component integration is executed before user approval.",
+  "closure": "VERIFIED_CLOSED only after code/doc cross-check, tests, evidence and destination audit"
+}
