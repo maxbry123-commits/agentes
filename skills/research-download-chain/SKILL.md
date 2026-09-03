@@ -287,6 +287,7 @@ Antes de extraer cualquier ZIP:
 - compara el tamaño declarado con un presupuesto explícito y con el espacio libre del runner; si la expansión prevista puede agotar disco/memoria, emite `ARCHIVE_RESOURCE_LIMIT_GAP`;
 - limita también ratio de expansión por miembro y acumulado; una entrada sospechosa nunca se extrae parcialmente al destino;
 - el tamaño del lote debe presupuestarse por volumen acumulado (partes ZIP/bytes previstos), no solo por número de componentes; si un componente individual domina el presupuesto, procésalo solo y no permitas que quede oculto detrás de componentes pequeños;
+- cuando la fuente sea GitHub y el commit esté fijado, usa el tree del commit para estimar `blob_count`, `source_tree_bytes` y `max_blob_bytes` sin descargar el payload; si el árbol individual es grande, aísla ese componente antes de la extracción y verifica el límite de blob;
 - extrae en staging y vuelve a contar bytes reales después de la extracción.
 
 Para archivos fuente generados por GitHub:
