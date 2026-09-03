@@ -1,0 +1,82 @@
+name: Pull Request
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      commit_id:
+        description: 'Branch or Commit ID (optional)'
+        required: false
+        type: string
+  schedule:
+    # Run at 09:00 UTC every day
+    - cron: "00 09 * * *"
+
+jobs:
+  unit_tests:
+    strategy:
+      fail-fast: false # Don't cancel all on first failure
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout repo at ${{ github.event_name == 'workflow_dispatch' && inputs.commit_id || github.sha }}
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.commit_id || github.sha }}
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v8.1.0
+      - name: Minimal install
+        run: |
+          uv pip install --system -e .
+      - name: Attempt import
+        run: |
+          python -c "import guidance"
+      - name: Bigger install
+        run: |
+          uv pip install --system -e .[test-unit]
+      - name: Unit Tests
+        shell: bash
+        run: |
+          pytest -vv --cov=guidance --cov-report=xml --cov-report=term-missing \
+            ./tests/unit
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v6
+        if: ${{ (vars.CODECOV_PYTHON == matrix.python-version) }}
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  cpu_tests:
+    strategy:
+      fail-fast: false # Don't cancel all on first failure
+      matrix:
+        os: ["Large_Linux"]  # , "Large_Windows"]
+        python-version: ["3.10", "3.14"]
+        model:
+          - "transformers_gpt2_cpu"
+    uses: ./.github/workflows/call_cpu_tests.yml
+    with:
+      os: ${{ matrix.os }}
+      python-version: ${{ matrix.python-version }}
+      model: ${{ matrix.model }}
+      codeCovPython: ${{ vars.CODECOV_PYTHON }}
+
+  # gpu_tests:
+  #   strategy:
+  #     fail-fast: false # Don't cancel all on first failure
+  #     matrix:
+  #       os: ["gpu-runner"]
+  #       python-version: ["3.10", "3.13"]
+  #       model:
+  #         - "transformers_gpt2_gpu"
+  #         - "llamacpp_llama2_7b_gpu"
+  #   uses: ./.github/workflows/call_gpu_tests.yml
+  #   with:
+  #     os: ${{ matrix.os }}
+  #     python-version: ${{ matrix.python-version }}
+  #     model: ${{ matrix.model }}

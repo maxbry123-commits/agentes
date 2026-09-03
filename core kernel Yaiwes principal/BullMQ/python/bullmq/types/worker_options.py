@@ -1,0 +1,85 @@
+
+from typing import TypedDict, Any, Union
+import redis.asyncio as redis
+
+
+class WorkerOptions(TypedDict, total=False):
+    name: str
+    """
+    Optional worker name used to set the Redis client name.
+    """
+    autorun: bool
+    """
+    Condition to start processor at instance creation
+
+    @default true
+    """
+
+    concurrency: int
+    """
+    Amount of jobs that a single worker is allowed to work on
+    in parallel.
+
+    @default 1
+    @see https://docs.bullmq.io/guide/workers/concurrency
+    """
+
+    maxStalledCount: int
+    """
+    Amount of times a job can be recovered from a stalled state
+    to the `wait` state. If this is exceeded, the job is moved
+    to `failed`.
+
+    @default 1
+    """
+
+    stalledInterval: int
+    """
+    Number of milliseconds between stallness checks.
+
+    @default 30000
+    """
+
+    lockDuration: int
+    """
+    Duration of the lock for the job in milliseconds. The lock represents that
+    a worker is processing the job. If the lock is lost, the job will be eventually
+    be picked up by the stalled checker and move back to wait so that another worker
+    can process it again.
+
+    @default 30000
+    """
+
+    lockRenewTime: int
+    """
+    Renewal window for the lock manager, in milliseconds. The renewal
+    loop wakes every `lockRenewTime / 2` ms and renews any job whose
+    lock is older than half this window.
+
+    @default lockDuration / 2
+    """
+
+    prefix: str
+    """
+    Prefix for all queue keys.
+    """
+
+    connection: Union[dict[str, Any], redis.Redis, str]
+    """
+    Options for connecting to a Redis instance.
+    """
+
+    skipVersionCheck: bool
+    """
+    Avoid version validation to be greater or equal than v5.0.0.
+
+    @default False
+    """
+
+    skipWaitingForReady: bool
+    """
+    Skip waiting for connection ready.
+
+    @deprecated This option has no effect and will be removed in a future release.
+    @default False
+    """

@@ -1,0 +1,530 @@
+import asyncio
+from typing import Union
+
+from bullmq.event_emitter import EventEmitter
+from bullmq.types import QueueBaseOptions, RetryJobsOptions, JobOptions, PromoteJobsOptions
+from bullmq.utils import extract_result
+from bullmq.backends import RedisBackend, create_backend
+from bullmq.job import Job
+
+
+class Queue(EventEmitter):
+    """
+    Instantiate a Queue object
+    """
+
+    def __init__(self, name: str, opts: QueueBaseOptions = {}):
+        """
+        Initialize a connection
+        """
+        self.name = name
+        self.opts = opts
+        self.jobsOpts = opts.get("defaultJobOptions", {})
+        self.prefix = opts.get("prefix", "bull")
+        self.backend = create_backend(name, opts)
+        # Compatibility handles for tests / callers that read the raw client
+        # or connection directly (Redis backend only). All queue operations go
+        # through `backend`.
+        self.redisConnection = (
+            self.backend.connection if isinstance(self.backend, RedisBackend) else None
+        )
+        self.client = getattr(self.backend, "conn", None)
+        self.scripts = getattr(self.backend, "scripts", None)
+        self.keys = self.backend.keys
+        self.qualifiedName = self.backend.qualifiedName
+        self._job_scheduler = None
+
+    def toKey(self, type: str):
+        return self.backend.toKey(type)
+
+    async def add(self, name: str, data, opts: JobOptions = {}):
+        """
+        Adds a new job to the queue.
+
+        @param name: Name of the job to be added to the queue,.
+        @param data: Arbitrary data to append to the job.
+        @param opts: Job options that affects how the job is going to be processed.
+        """
+        merged_opts = {**self.jobsOpts, **(opts or {})}
+
+        job = Job(self, name, data, merged_opts)
+        job_id = await self.backend.addJob(job)
+        job.id = job_id
+        return job
+
+    async def addBulk(self, jobs: list[dict[str, Union[dict, str]]]):
+        """
+        Adds an array of jobs to the queue. This method may be faster than adding
+        one job at a time in a sequence
+        """
+        job_instances = []
+        for job in jobs:
+            current_job_opts = {**self.jobsOpts, **(job.get("opts") or {})}
+            job_instances.append(Job(
+                queue=self,
+                name=job.get("name"),
+                data=job.get("data"),
+                opts=current_job_opts,
+                job_id=current_job_opts.get("jobId")
+            ))
+
+        await self.backend.addJobs(job_instances)
+        return job_instances
+
+    def pause(self):
+        """
+        Pauses the processing of this queue globally.
+
+        We use an atomic RENAME operation on the wait queue. Since
+        we have blocking calls with BRPOPLPUSH on the wait queue, as long as the queue
+        is renamed to 'paused', no new jobs will be processed (the current ones
+        will run until finalized).
+
+        Adding jobs requires a LUA script to check first if the paused list exist
+        and in that case it will add it there instead of the wait list.
+        """
+        return self.backend.pause(True)
+
+    def resume(self):
+        """
+        Resumes the processing of this queue globally.
+
+        The method reverses the pause operation by resuming the processing of the
+        queue.
+        """
+        return self.backend.pause(False)
+
+    async def isPaused(self):
+        """
+        Returns true if the queue is currently paused.
+        """
+        return await self.backend.isPaused()
+
+    def getRateLimitTtl(self):
+        """
+        Returns the time to live for a rate limited key in milliseconds.
+        """
+        return self.backend.getRateLimitTtl()
+
+    async def rateLimit(self, expire_time_ms: int) -> None:
+        """
+        Overrides the rate limit to be active for the next jobs by writing
+        the limiter key with a large value that expires after
+        `expire_time_ms` milliseconds. Mirrors `Queue.rateLimit` in Node.
+        """
+        # 2^53 - 1, equivalent to Number.MAX_SAFE_INTEGER on the Node side.
+        await self.client.set(
+            self.keys["limiter"], 9007199254740991, px=expire_time_ms
+        )
+
+    async def removeRateLimitKey(self) -> int:
+        """
+        Removes the rate limit key. Returns the number of keys removed (0 or 1).
+        """
+        return await self.client.delete(self.keys["limiter"])
+
+    async def setGlobalConcurrency(self, concurrency: int) -> int:
+        """
+        Set the maximum number of jobs that all workers attached to this
+        queue can process in parallel. A value of 1 effectively serializes
+        the queue. Mirrors `Queue.setGlobalConcurrency` in Node.
+        """
+        return await self.client.hset(
+            self.keys["meta"], "concurrency", concurrency
+        )
+
+    async def getGlobalConcurrency(self):
+        """
+        Returns the configured global concurrency value, or None if not set.
+        """
+        value = await self.client.hget(self.keys["meta"], "concurrency")
+        if value is None:
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    async def removeGlobalConcurrency(self) -> int:
+        """
+        Clear the global concurrency cap. Returns the number of fields removed.
+        """
+        return await self.client.hdel(self.keys["meta"], "concurrency")
+
+    async def setGlobalRateLimit(self, max_jobs: int, duration_ms: int) -> int:
+        """
+        Configure a global rate limit: at most `max_jobs` jobs across all
+        workers within a rolling `duration_ms` window. Mirrors
+        `Queue.setGlobalRateLimit` in Node.
+        """
+        return await self.client.hset(
+            self.keys["meta"], mapping={"max": max_jobs, "duration": duration_ms}
+        )
+
+    async def getGlobalRateLimit(self):
+        """
+        Returns `{"max": int, "duration": int}` if a global rate limit is
+        configured, otherwise None.
+        """
+        max_jobs, duration_ms = await self.client.hmget(
+            self.keys["meta"], "max", "duration"
+        )
+        if max_jobs is None or duration_ms is None:
+            return None
+        try:
+            return {"max": int(max_jobs), "duration": int(duration_ms)}
+        except (TypeError, ValueError):
+            return None
+
+    async def removeGlobalRateLimit(self) -> int:
+        """
+        Clear the global rate limit by removing both `max` and `duration`
+        from the queue's meta hash. Mirrors `Queue.removeGlobalRateLimit`
+        in Node and is the counterpart to `setGlobalRateLimit`.
+
+        Returns the number of fields actually removed (0, 1, or 2).
+        """
+        return await self.client.hdel(self.keys["meta"], "max", "duration")
+
+    async def get_workers(self):
+        """
+        Get the worker list related to the queue. i.e. all the known
+        workers that are available to process jobs for this queue.
+        Note: Some Redis providers do not support CLIENT LIST.
+        """
+        client_name_prefix = self.backend.clientName()
+
+        def matcher(name: str):
+            return name == client_name_prefix or name.startswith(f"{client_name_prefix}:w:")
+
+        try:
+            client_lists = await self.backend.getClientList()
+        except Exception as err:
+            message = str(err)
+            if "unknown command" in message and "CLIENT" in message:
+                return [{"name": "CLIENT LIST not supported"}]
+            raise
+
+        clients_per_source = [
+            self._parse_client_list(client_list, matcher) for client_list in client_lists
+        ]
+
+        if not clients_per_source:
+            return []
+
+        # For clustered datastores each node returns its own client list; the
+        # node with the most matches has the most complete picture.
+        return max(clients_per_source, key=len)
+
+    async def get_workers_count(self):
+        workers = await self.get_workers()
+        return len(workers)
+
+    def _parse_client_list(self, client_list, matcher):
+        if isinstance(client_list, bytes):
+            client_list = client_list.decode()
+
+        clients = []
+        if isinstance(client_list, list):
+            clients = client_list
+        elif isinstance(client_list, str):
+            lines = client_list.splitlines()
+            for line in lines:
+                if not line:
+                    continue
+                client = {}
+                for key_value in line.split(" "):
+                    if "=" not in key_value:
+                        continue
+                    key, value = key_value.split("=", 1)
+                    client[key] = value
+                clients.append(client)
+
+        result = []
+        for client in clients:
+            name = ""
+            if isinstance(client, dict):
+                name = client.get("name") or ""
+                if isinstance(name, bytes):
+                    name = name.decode()
+            if matcher(name):
+                client_copy = dict(client)
+                client_copy["rawname"] = name
+                client_copy["name"] = self.name
+                result.append(client_copy)
+
+        return result
+
+    async def getJobLogs(self, job_id:str, start = 0, end = -1, asc = True):
+        """
+        Returns the logs for a given Job.
+
+        @param job_id: The id of the job to get the logs for.
+        @param start: Zero based index from where to start returning jobs.
+        @param end: Zero based index where to stop returning jobs.
+        @param asc: If true, the jobs will be returned in ascending order.
+        """
+        return await self.backend.getJobLogs(job_id, start, end, asc)
+
+    async def getDeduplicationJobId(self, id: str):
+        """
+        Get jobId from deduplicated state.
+
+        @param id: deduplication identifier
+        """
+        return await self.backend.getDeduplicationJobId(id)
+
+    async def obliterate(self, force: bool = False):
+        """
+        Completely destroys the queue and all of its contents irreversibly.
+        This method will the *pause* the queue and requires that there are no
+        active jobs. It is possible to bypass this requirement, i.e. not
+        having active jobs using the "force" option.
+
+        Note: This operation requires to iterate on all the jobs stored in the queue
+        and can be slow for very large queues.
+
+        @param opts: Obliterate options.
+        """
+        await self.pause()
+        while True:
+            cursor = await self.backend.obliterate(1000, force)
+            if cursor is None or cursor == 0 or cursor == "0":
+                break
+
+    async def drain(self, delayed: bool = False):
+        """
+        Drains the queue, removes all jobs that are waiting
+        or delayed, but not active, completed or failed.
+        
+        @param delayed: Pass True if it should also clean the delayed jobs.
+        """
+        await self.backend.drain(delayed)
+
+    async def retryJobs(self, opts: RetryJobsOptions = {}):
+        """
+        Retry all the failed or completed jobs.
+        """
+        while True:
+            cursor = await self.backend.retryJobs(
+                opts.get("state"),
+                opts.get("count"),
+                opts.get("timestamp")
+            )
+            if cursor is None or cursor == 0 or cursor == "0":
+                break
+
+    async def promoteJobs(self, opts: PromoteJobsOptions = {}):
+        """
+        Retry all the delayed jobs.
+        """
+        while True:
+            cursor = await self.backend.promoteJobs(
+                opts.get("count")
+            )
+            if cursor is None or cursor == 0 or cursor == "0":
+                break
+
+    def trimEvents(self, maxLength: int):
+        """
+        Trim the event stream to an approximately maxLength.
+
+        @param maxLength:
+        """
+        return self.backend.trimEvents(maxLength)
+
+    def removeDeprecatedPriorityKey(self):
+        """
+        Delete old priority helper key.
+        """
+        return self.backend.removeDeprecatedPriorityKey()
+
+    async def getJobCountByTypes(self, *types):
+        result = await self.getJobCounts(*types)
+        sum = 0
+        for attribute in result:
+            sum += result[attribute]
+        return sum
+
+    async def getJobCounts(self, *types):
+        """
+        Returns the job counts for each type specified or every list/set in the queue by default.
+
+        @returns: An object, key (type) and value (count)
+        """
+        current_types = self.sanitizeJobTypes(types)
+
+        responses = await self.backend.getCounts(current_types)
+        counts = {}
+
+        for index, val in enumerate(responses):
+            counts[current_types[index]] = val or 0
+        return counts
+
+    async def getCountsPerPriority(self, priorities):
+        """
+        Returns the number of jobs per priority.
+
+        @returns: An object, key (priority) and value (count)
+        """
+        set_priorities = set(priorities)
+        unique_priorities = (list(set_priorities))
+
+        responses = await self.backend.getCountsPerPriority(unique_priorities)
+
+        counts = {}
+
+        for index, val in enumerate(responses):
+            counts[f"{unique_priorities[index]}"] = val or 0
+        return counts
+
+    async def clean(self, grace: int, limit: int, type: str):
+        """
+        Cleans jobs from a queue. Similar to drain but keeps jobs within a certain
+        grace period
+        
+        * @returns: Id jobs from the deleted records
+        """
+        jobs = await self.backend.cleanJobsInSet(type, grace, limit)
+
+        return jobs
+
+    def getJobState(self, job_id: str):
+        return self.backend.getState(job_id)
+
+    def getCompletedCount(self):
+        return self.getJobCountByTypes('completed')
+
+    def getDelayedCount(self):
+        return self.getJobCountByTypes('delayed')
+
+    def getFailedCount(self):
+        return self.getJobCountByTypes('failed')
+
+    def getWaitingCount(self):
+        return self.getJobCountByTypes('waiting')
+
+    def getActive(self, start=0, end=-1):
+        return self.getJobs(['active'], start, end, True)
+
+    def getCompleted(self, start = 0, end=-1):
+        return self.getJobs(['completed'], start, end, False)
+
+    def getDelayed(self, start = 0, end=-1):
+        return self.getJobs(['delayed'], start, end, True)
+
+    def getFailed(self, start = 0, end=-1):
+        return self.getJobs(['failed'], start, end, False)
+
+    def getPrioritized(self, start = 0, end=-1):
+        return self.getJobs(['prioritized'], start, end, True)
+
+    def getWaiting(self, start = 0, end=-1):
+        return self.getJobs(['waiting'], start, end, True)
+
+    def getWaitingChildren(self, start = 0, end=-1):
+        return self.getJobs(['waiting-children'], start, end, True)
+
+    async def getJobs(self, types, start=0, end=-1, asc:bool=False):
+        current_types = self.sanitizeJobTypes(types)
+        if isinstance(self.backend, RedisBackend):
+            raw_jobs = await self.backend.scripts.getJobs(current_types, start, end, asc)
+            jobs = []
+            seen = set()
+
+            for jobs_by_type in raw_jobs:
+                for job_id, job_data in jobs_by_type:
+                    if job_id in seen:
+                        continue
+                    seen.add(job_id)
+
+                    raw_data = dict(zip(job_data[::2], job_data[1::2]))
+                    jobs.append(Job.fromJSON(self, raw_data, job_id))
+
+            return jobs
+
+        job_ids = await self.backend.getRanges(current_types, start, end, asc)
+        tasks = [asyncio.create_task(Job.fromId(self, i)) for i in job_ids]
+        job_set, _ = await asyncio.wait(tasks, return_when=asyncio.ALL_COMPLETED)
+        return [extract_result(job_task, self.emit) for job_task in job_set]
+
+    def sanitizeJobTypes(self, types):
+        current_types = list(types)
+
+        if len(types) > 0:
+            set_res = set(current_types)
+            list_res = (list(set_res))
+
+            return list_res
+        return [
+            'active',
+            'completed',
+            'delayed',
+            'failed',
+            'prioritized',
+            'waiting',
+            'waiting-children'
+        ]
+
+    async def close(self):
+        """
+        Close the queue instance.
+        """
+        return await self.backend.close()
+
+    def remove(self, job_id: str, opts: dict = {}):
+        return self.backend.remove(job_id, opts.get("removeChildren", True))
+
+    @property
+    def jobScheduler(self):
+        """
+        Lazily-instantiated JobScheduler bound to this queue. Created
+        on first use so that queues which never schedule pay no cost.
+        """
+        if self._job_scheduler is None:
+            from bullmq.job_scheduler import JobScheduler
+            self._job_scheduler = JobScheduler(self)
+        return self._job_scheduler
+
+    async def upsertJobScheduler(
+        self,
+        job_scheduler_id: str,
+        repeat_opts: dict,
+        job_name: str = None,
+        job_data=None,
+        opts: dict = None,
+        override: bool = True,
+        producer_id: str = None,
+    ):
+        """
+        Create or update a job scheduler. See JobScheduler.upsertJobScheduler.
+        """
+        return await self.jobScheduler.upsertJobScheduler(
+            job_scheduler_id,
+            repeat_opts,
+            job_name or job_scheduler_id,
+            job_data,
+            opts,
+            override=override,
+            producer_id=producer_id,
+        )
+
+    async def removeJobScheduler(self, job_scheduler_id: str) -> int:
+        """Remove a job scheduler. Returns 0 on success, 1 if absent."""
+        return await self.jobScheduler.removeJobScheduler(job_scheduler_id)
+
+    async def isJobScheduler(self, job_scheduler_id: str) -> bool:
+        """Return True if `job_scheduler_id` is a registered scheduler."""
+        return await self.jobScheduler.isJobScheduler(job_scheduler_id)
+
+    async def getJobScheduler(self, job_scheduler_id: str):
+        """Return the JSON-shaped scheduler record, or None."""
+        return await self.jobScheduler.getScheduler(job_scheduler_id)
+
+    async def getJobSchedulers(self, start: int = 0, end: int = -1, asc: bool = False):
+        """Page through registered schedulers."""
+        return await self.jobScheduler.getJobSchedulers(start, end, asc)
+
+    async def getJobSchedulersCount(self) -> int:
+        """Number of registered schedulers."""
+        return await self.jobScheduler.getSchedulersCount()
