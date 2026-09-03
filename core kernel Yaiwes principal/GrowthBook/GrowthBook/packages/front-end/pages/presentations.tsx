@@ -1,0 +1,321 @@
+import React, { useState } from "react";
+import Link from "next/link";
+import { PresentationInterface } from "shared/types/presentation";
+import { date } from "shared/dates";
+import { Box, Card, Flex } from "@radix-ui/themes";
+import Heading from "@/ui/Heading";
+import useApi from "@/hooks/useApi";
+import LoadingOverlay from "@/components/LoadingOverlay";
+import ShareModal from "@/components/Share/ShareModal";
+import ConfirmModal from "@/components/ConfirmModal";
+import { useAuth } from "@/services/auth";
+import Modal from "@/components/Modal";
+import CopyToClipboard from "@/components/CopyToClipboard";
+import { useUser } from "@/services/UserContext";
+import usePermissionsUtil from "@/hooks/usePermissionsUtils";
+import Button from "@/ui/Button";
+import LinkButton from "@/ui/LinkButton";
+import EmptyState from "@/components/EmptyState";
+import Callout from "@/ui/Callout";
+
+const PresentationPage = (): React.ReactElement => {
+  const [openNewPresentationModal, setOpenNewPresentationModal] =
+    useState(false);
+  const [specificPresentation, setSpecificPresentation] =
+    useState<PresentationInterface | null>(null);
+  const [openEditPresentationModal, setOpenEditPresentationModal] =
+    useState(false);
+  const [sharableLinkModal, setSharableLinkModal] = useState(false);
+  const [sharableLink, setSharableLink] = useState("");
+  const [deleteConfirmModal, setDeleteConfirmModal] = useState<boolean>(false);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState<boolean>(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const { getUserDisplay } = useUser();
+  const permissionsUtil = usePermissionsUtil();
+  const { apiCall } = useAuth();
+
+  const canCreatePresentation = permissionsUtil.canCreatePresentation();
+  const canDeletePresentation = permissionsUtil.canDeletePresentation();
+  const canEditPresentation = permissionsUtil.canUpdatePresentation();
+
+  const {
+    data: p,
+    error: error,
+    mutate,
+  } = useApi<{
+    presentations: PresentationInterface[];
+    numExperiments: number;
+  }>("/presentations");
+
+  if (error) {
+    return (
+      <Callout status="error">
+        An error occurred fetching the lists of shares.
+      </Callout>
+    );
+  }
+  if (!p) {
+    return <LoadingOverlay />;
+  }
+  if (!p.presentations.length) {
+    return (
+      <>
+        <EmptyState
+          title="Present Experiment Results"
+          description="Generate presentation to share with the team. Experiment review meetings are a great way to challenge assumptions and generate new ideas. Review meetings get everyone excited about experimentation."
+          leftButton={
+            <LinkButton
+              href="https://docs.growthbook.io/using/programs#sharing"
+              variant="outline"
+              external
+            >
+              View docs
+            </LinkButton>
+          }
+          rightButton={
+            canCreatePresentation && (
+              <Button onClick={() => setOpenNewPresentationModal(true)}>
+                Create a presentation
+              </Button>
+            )
+          }
+        />
+        <ShareModal
+          title="New Presentation"
+          modalState={openNewPresentationModal}
+          setModalState={setOpenNewPresentationModal}
+          refreshList={mutate}
+        />
+      </>
+    );
+  }
+
+  const deleteConfirm = (id: string) => {
+    setDeleteId(id);
+    setDeleteConfirmModal(true);
+  };
+
+  const confirmDelete = async () => {
+    if (deleteLoading) return;
+    setDeleteLoading(true);
+    setDeleteError(null);
+
+    try {
+      const res = await apiCall<{ status: number; message?: string }>(
+        `/presentation/${deleteId}`,
+        {
+          method: "DELETE",
+          body: JSON.stringify({ id: deleteId }),
+        },
+      );
+      if (res.status === 200) {
+        setDeleteLoading(false);
+        setDeleteConfirmModal(false);
+        mutate();
+      } else {
+        console.error(res);
+        setDeleteError(
+          res.message ||
+            "There was an error submitting the form. Please try again.",
+        );
+        setDeleteLoading(false);
+        setDeleteConfirmModal(false);
+      }
+    } catch (e) {
+      console.error(e);
+      setDeleteError(e.message);
+      setDeleteLoading(false);
+      setDeleteConfirmModal(false);
+    }
+  };
+
+  let presList = [
+    <div key={0} className="p-5 text-justify text-center">
+      No presentations saved
+    </div>,
+  ];
+  if (p.presentations && p.presentations.length) {
+    presList = [];
+    p.presentations.map((pres, i) => {
+      presList.push(
+        <Card key={`pres-exp-${i}`} mb="3">
+          <Flex p="2" gap="2">
+            <div className="col flex-grow-1">
+              <h4 className="mb-0">{pres.title}</h4>
+              <p className="mt-1 mb-0">{pres.description}</p>
+            </div>
+            <div className="px-4">
+              Experiments: {pres?.slides.length || "?"}
+              <div className="subtitle text-muted text-sm">
+                <small>
+                  <p className="mb-0">
+                    Created by: {getUserDisplay(pres?.userId)} on:{" "}
+                    {date(pres.dateCreated)}
+                  </p>
+                </small>
+              </div>
+            </div>
+            <div className="">
+              {canDeletePresentation ? (
+                <div
+                  className="delete delete-right"
+                  style={{ lineHeight: "36px" }}
+                  onClick={() => {
+                    deleteConfirm(pres.id);
+                  }}
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    height="24"
+                    viewBox="0 0 24 24"
+                    width="24"
+                  >
+                    <path d="M0 0h24v24H0V0z" fill="none" />
+                    <path d="M16 9v10H8V9h8m-1.5-6h-5l-1 1H5v2h14V4h-3.5l-1-1zM18 7H6v12c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7z" />
+                  </svg>
+                </div>
+              ) : null}
+              {canEditPresentation ? (
+                <div
+                  className="edit edit-right"
+                  style={{ lineHeight: "36px" }}
+                  onClick={() => {
+                    setSpecificPresentation(pres);
+                    setOpenEditPresentationModal(true);
+                  }}
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    height="24"
+                    viewBox="0 0 24 24"
+                    width="24"
+                  >
+                    <path d="M0 0h24v24H0V0z" fill="none" />
+                    <path d="M14.06 9.02l.92.92L5.92 19H5v-.92l9.06-9.06M17.66 3c-.25 0-.51.1-.7.29l-1.83 1.83 3.75 3.75 1.83-1.83c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.2-.2-.45-.29-.71-.29zm-3.6 3.19L3 17.25V21h3.75L17.81 9.94l-3.75-3.75z" />
+                  </svg>
+                </div>
+              ) : null}
+              <Link
+                href={`/present/${pres.id}`}
+                className="btn btn-primary mr-3"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Present
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="#fff"
+                  height="22"
+                  viewBox="0 0 24 24"
+                  width="22"
+                >
+                  <path d="M8 6.82v10.36c0 .79.87 1.27 1.54.84l8.14-5.18c.62-.39.62-1.29 0-1.69L9.54 5.98C8.87 5.55 8 6.03 8 6.82z" />
+                </svg>
+              </Link>
+              <Link
+                href={`/present/${pres.id}?printMode=true`}
+                className="btn btn-outline-primary mr-3"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Print view
+              </Link>
+              <a
+                className="btn btn-outline-primary mr-3"
+                onClick={(e) => {
+                  e.preventDefault();
+                  setSharableLink(`/present/${pres.id}`);
+                  setSharableLinkModal(true);
+                }}
+              >
+                Get link
+              </a>
+            </div>
+          </Flex>
+        </Card>,
+      );
+    });
+  }
+
+  return (
+    <>
+      <Box className="container-fluid pagecontents pt-4 shares learnings">
+        <Box mb="4" mt="3">
+          <Flex justify="between" mb="3">
+            <Heading as="h1" size="lg">
+              Presentations
+            </Heading>
+            {canCreatePresentation && (
+              <Button
+                onClick={() => {
+                  setOpenNewPresentationModal(true);
+                }}
+              >
+                New Presentation
+              </Button>
+            )}
+          </Flex>
+          <Box className="share-list mb-3">{presList}</Box>
+        </Box>
+      </Box>
+      <ShareModal
+        title="New Presentation"
+        modalState={openNewPresentationModal}
+        setModalState={setOpenNewPresentationModal}
+        refreshList={mutate}
+      />
+      <ShareModal
+        title="Edit Presentation"
+        modalState={openEditPresentationModal}
+        setModalState={setOpenEditPresentationModal}
+        // @ts-expect-error TS(2322) If you come across this, please fix it!: Type 'PresentationInterface | null' is not assigna... Remove this comment to see the full error message
+        existing={specificPresentation}
+        refreshList={mutate}
+      />
+      <ConfirmModal
+        title="Are you sure you want to delete this presentation?"
+        subtitle="This action cannot be undone"
+        yesText="Yes, delete it"
+        noText="Nevermind"
+        modalState={deleteConfirmModal}
+        setModalState={setDeleteConfirmModal}
+        onConfirm={() => {
+          confirmDelete();
+        }}
+      />
+      {sharableLinkModal && (
+        <Modal
+          useRadixButton={false}
+          trackingEventModalType=""
+          open={true}
+          header={"Sharable link"}
+          close={() => setSharableLinkModal(false)}
+          size="md"
+        >
+          <div className="text-center">
+            <div className="text-center mb-2">
+              <CopyToClipboard
+                text={`${window.location.origin}${sharableLink}?printMode=true`}
+                label="Print view"
+                className="justify-content-center"
+              />
+            </div>
+            <div className="text-center mb-2">
+              <CopyToClipboard
+                text={`${window.location.origin}${sharableLink}`}
+                label="Full presentation"
+                className="justify-content-center"
+              />
+            </div>
+            <small className="text-muted text-center">
+              (Users will need an account on your organization to view)
+            </small>
+          </div>
+        </Modal>
+      )}
+      {deleteError}
+    </>
+  );
+};
+export default PresentationPage;

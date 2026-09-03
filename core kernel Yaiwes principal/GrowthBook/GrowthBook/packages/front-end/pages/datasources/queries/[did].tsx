@@ -1,0 +1,295 @@
+import React, { useState } from "react";
+import {
+  FaCheck,
+  FaCircle,
+  FaExclamationTriangle,
+  FaSquare,
+} from "react-icons/fa";
+import { PiXBold } from "react-icons/pi";
+import { useRouter } from "next/router";
+import { ago, datetime } from "shared/dates";
+import { QueryInterface } from "shared/types/query";
+import { capitalize } from "lodash";
+import { IconButton } from "@radix-ui/themes";
+import { isManagedWarehouseUnavailable } from "shared/util";
+import { useSearch } from "@/services/search";
+import Tooltip from "@/components/Tooltip/Tooltip";
+import useApi from "@/hooks/useApi";
+import PageHead from "@/components/Layout/PageHead";
+import LoadingOverlay from "@/components/LoadingOverlay";
+import { useDefinitions } from "@/services/DefinitionsContext";
+import ModalStandard from "@/ui/Modal/Patterns/ModalStandard";
+import ManagedWarehouseNoEventsCallout from "@/components/ManagedWarehouse/ManagedWarehouseNoEventsCallout";
+import ExpandableQuery from "@/components/Queries/ExpandableQuery";
+import usePermissions from "@/hooks/usePermissions";
+import { useAuth } from "@/services/auth";
+import Callout from "@/ui/Callout";
+
+const DataSourceQueries = (): React.ReactElement => {
+  const permissions = usePermissions();
+  const { apiCall } = useAuth();
+  const [modalData, setModalData] = useState<QueryInterface | null>(null);
+  const [cancelError, setCancelError] = useState<string | null>(null);
+  const router = useRouter();
+  const { did } = router.query as { did: string };
+  const { getDatasourceById, ready, error: datasourceError } = useDefinitions();
+  const d = getDatasourceById(did);
+  const managedWarehousePending = d ? isManagedWarehouseUnavailable(d) : false;
+
+  const canView = d && permissions.check("readData", d.projects || []);
+  const canCancel = d && permissions.check("runQueries", d.projects || []);
+
+  const {
+    data,
+    error: queriesError,
+    mutate,
+  } = useApi<{
+    queries: QueryInterface[];
+  }>(`/datasource/${did}/queries`);
+
+  const queries = data?.queries;
+
+  const { items, SortableTH } = useSearch({
+    items: queries || [],
+    defaultSortField: "createdAt",
+    localStorageKey: "datasourceQueries",
+    searchFields: ["status", "queryType", "externalId"],
+  });
+
+  if (!canView) {
+    return (
+      <div className="container pagecontents">
+        <Callout status="error">
+          You do not have access to view this page.
+        </Callout>
+      </div>
+    );
+  }
+
+  if (datasourceError || queriesError) {
+    return (
+      <div className="container pagecontents">
+        <Callout status="error">
+          {datasourceError ?? queriesError?.message}
+        </Callout>
+      </div>
+    );
+  }
+
+  if (!ready || !data) {
+    return <LoadingOverlay />;
+  }
+  if (!d) {
+    return (
+      <div className="container pagecontents">
+        <Callout status="error">
+          Datasource <code>{did}</code> does not exist.
+        </Callout>
+      </div>
+    );
+  }
+
+  if (!queries?.length) {
+    return (
+      <div className="container pagecontents p-4">
+        <div className="d-flex">
+          <h1>Data Source Queries</h1>
+        </div>
+        {managedWarehousePending ? (
+          <div className="mt-3">
+            <ManagedWarehouseNoEventsCallout />
+          </div>
+        ) : (
+          <p>No queries have been run on this Data Source.</p>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="container pagecontents">
+      {managedWarehousePending ? (
+        <div className="mt-3 mb-3">
+          <ManagedWarehouseNoEventsCallout />
+        </div>
+      ) : null}
+      {modalData && (
+        <ModalStandard
+          trackingEventModalType=""
+          open
+          close={() => setModalData(null)}
+          size="lg"
+          header={"Inspect query"}
+        >
+          <ExpandableQuery query={modalData} i={0} total={1} />{" "}
+        </ModalStandard>
+      )}
+
+      <PageHead
+        breadcrumb={[
+          { display: "Data Sources" },
+          { display: d.name, href: `/datasources/${did}` },
+          { display: "Recent Queries" },
+        ]}
+      />
+      <div className="filters md-form row mb-3 align-items-center">
+        <div className="col-auto d-flex">
+          <h1>
+            Recent Queries{" "}
+            <Tooltip
+              className="small"
+              body="The 50 most recent queries run on this Data Source"
+            />
+          </h1>
+        </div>
+        <div style={{ flex: 1 }} />
+      </div>
+      {cancelError && (
+        <Callout status="error" mb="3">
+          {cancelError}
+        </Callout>
+      )}
+      <table className="table appbox gbtable table-hover">
+        <thead>
+          <tr>
+            <SortableTH field="query" className="col-4">
+              Title
+            </SortableTH>
+            <SortableTH field="queryType" className="col-2">
+              Type
+            </SortableTH>
+            <SortableTH field="createdAt" className="col-2">
+              Created
+            </SortableTH>
+            <SortableTH field="startedAt" className="col-2">
+              Started
+            </SortableTH>
+            <SortableTH field="finishedAt" className="col-2">
+              Finished
+            </SortableTH>
+            <SortableTH field="status" className="col-1">
+              Status
+            </SortableTH>
+            <SortableTH field="externalId" className="col-2">
+              External ID
+            </SortableTH>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((query) => {
+            let title = "";
+            if (query.language === "sql") {
+              const comments = query.query.match(/(\n|^)\s*-- ([^\n]+)/);
+              if (comments && comments[2]) {
+                title = comments[2];
+              }
+            }
+
+            return (
+              <tr
+                key={query.id}
+                onClick={(e) => {
+                  e.preventDefault();
+                  setModalData(query);
+                }}
+                style={{ cursor: "pointer" }}
+              >
+                <td>
+                  <button className="btn btn-link p-0 text-left">
+                    {title}
+                  </button>
+                </td>
+                <td>{query.queryType || "—"}</td>
+                <td>{datetime(query.createdAt)}</td>
+                <td
+                  title={datetime(query.startedAt || "")}
+                  className="d-none d-md-table-cell"
+                >
+                  {ago(query.startedAt || "")}
+                </td>
+                <td>{ago(query.finishedAt || "")}</td>
+                <td>
+                  <span className="d-flex align-items-center">
+                    <Tooltip
+                      body={
+                        <div>
+                          <strong>{capitalize(query.status)}</strong>
+                          {query.status === "failed" && (
+                            <p className="mb-0">{query.error}</p>
+                          )}
+                        </div>
+                      }
+                      tipMinWidth="50px"
+                      tipPosition="top"
+                    >
+                      {query.status === "running" && (
+                        <FaCircle className="text-info mr-2" title="Running" />
+                      )}
+                      {query.status === "queued" && (
+                        <FaSquare
+                          className="text-secondary mr-2"
+                          title="Queued"
+                        />
+                      )}
+                      {query.status === "failed" && (
+                        <FaExclamationTriangle
+                          className="text-danger mr-2"
+                          title="Failed"
+                        />
+                      )}
+                      {query.status === "succeeded" && (
+                        <FaCheck
+                          className="text-success mr-2"
+                          title="Succeeded"
+                        />
+                      )}
+                    </Tooltip>
+                    {query.status === "running" && canCancel && (
+                      <Tooltip
+                        body="Cancel query"
+                        tipPosition="top"
+                        tipMinWidth="50"
+                        flipTheme={false}
+                      >
+                        <IconButton
+                          variant="solid"
+                          color="tomato"
+                          size="2"
+                          style={{ width: 20, height: 20, padding: 2 }}
+                          radius="full"
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            setCancelError(null);
+                            try {
+                              await apiCall(
+                                `/datasource/${did}/query/${query.id}/cancel`,
+                                { method: "POST" },
+                              );
+                            } catch (err: unknown) {
+                              const message =
+                                err instanceof Error
+                                  ? err.message
+                                  : "Failed to cancel query";
+                              setCancelError(message);
+                            } finally {
+                              await mutate();
+                            }
+                          }}
+                        >
+                          <PiXBold size={14} />
+                        </IconButton>
+                      </Tooltip>
+                    )}
+                  </span>
+                </td>
+                <td>{query.externalId || "N/A"}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+export default DataSourceQueries;

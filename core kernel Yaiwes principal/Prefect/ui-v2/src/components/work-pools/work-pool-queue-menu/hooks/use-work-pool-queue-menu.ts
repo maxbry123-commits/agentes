@@ -1,0 +1,81 @@
+import { useNavigate } from "@tanstack/react-router";
+import { Copy, Edit, MoreVertical, Trash2, Zap } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
+import type { WorkPoolQueue } from "@/api/work-pool-queues";
+
+export const useWorkPoolQueueMenu = (queue: WorkPoolQueue) => {
+	const navigate = useNavigate();
+	const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+
+	const handleCopyId = () => {
+		void navigator.clipboard.writeText(queue.id);
+		toast.success("ID copied to clipboard");
+	};
+
+	const handleEdit = () => {
+		void navigate({
+			to: "/work-pools/work-pool/$workPoolName/queue/$workQueueName/edit",
+			params: {
+				workPoolName: queue.work_pool_name ?? "",
+				workQueueName: queue.name,
+			},
+		});
+	};
+
+	const handleAutomate = () => {
+		void navigate({
+			to: "/automations/create",
+			search: {
+				trigger: {
+					type: "event",
+					posture: "Reactive",
+					match: {
+						"prefect.resource.id": `prefect.work-queue.${queue.id}`,
+					},
+					for_each: ["prefect.resource.id"],
+					expect: ["prefect.work-queue.not-ready"],
+					threshold: 1,
+					within: 0,
+				},
+			},
+		});
+	};
+
+	const isDefaultQueue = queue.name === "default";
+
+	const menuItems = [
+		{
+			label: "Copy ID",
+			icon: Copy,
+			action: handleCopyId,
+			show: true,
+		},
+		{
+			label: "Edit",
+			icon: Edit,
+			action: handleEdit,
+			show: true,
+		},
+		{
+			label: "Delete",
+			icon: Trash2,
+			action: () => setShowDeleteDialog(true),
+			show: !isDefaultQueue, // Default queue cannot be deleted
+			variant: "destructive" as const,
+		},
+		{
+			label: "Automate",
+			icon: Zap,
+			action: handleAutomate,
+			show: true,
+		},
+	].filter((item) => item.show);
+
+	return {
+		menuItems,
+		showDeleteDialog,
+		setShowDeleteDialog,
+		triggerIcon: MoreVertical,
+	};
+};

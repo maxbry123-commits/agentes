@@ -1,0 +1,1133 @@
+import isEqual from "lodash/isEqual";
+import cloneDeep from "lodash/cloneDeep";
+import {
+  DEFAULT_PROPER_PRIOR_STDDEV,
+  DEFAULT_SEQUENTIAL_TESTING_TUNING_PARAMETER,
+  DEFAULT_STATS_ENGINE,
+} from "shared/constants";
+import { RESERVED_ROLE_IDS, getDefaultRole } from "shared/permissions";
+import { v4 as uuidv4 } from "uuid";
+import { accountFeatures } from "shared/enterprise";
+import {
+  LegacyExperimentReportArgs,
+  ExperimentReportInterface,
+  LegacyReportInterface,
+} from "shared/types/report";
+import { LegacyMetricInterface, MetricInterface } from "shared/types/metric";
+import {
+  DataSourceInterface,
+  DataSourceSettings,
+} from "shared/types/datasource";
+import {
+  FeatureDraftChanges,
+  FeatureRule,
+  JSONSchemaDef,
+  LegacyFeatureInterface,
+  V1FeatureEnvironment,
+  V1FeatureInterface,
+  V1FeatureRule,
+} from "shared/types/feature";
+import { Namespaces, OrganizationInterface } from "shared/types/organization";
+import {
+  ExperimentInterface,
+  LegacyExperimentInterface,
+} from "shared/types/experiment";
+import {
+  LegacyExperimentSnapshotInterface,
+  ExperimentSnapshotInterface,
+  MetricForSnapshot,
+} from "shared/types/experiment-snapshot";
+import {
+  AnalysisKeyType,
+  AnalysisMetaEntry,
+  buildAnalysisKey,
+} from "shared/snapshot-analysis-chunks";
+import { getEnvironments } from "back-end/src/services/organizations";
+import { getConfigOrganizationSettings } from "back-end/src/init/config";
+import { decryptDataSourceParams } from "back-end/src/services/datasource";
+import { SdkWebHookLogDocument } from "back-end/src/models/SdkWebhookLogModel";
+import { getAccountPlan } from "back-end/src/enterprise";
+import { logger } from "back-end/src/util/logger";
+import {
+  healPriorSettings,
+  healMetricOverrides,
+} from "back-end/src/util/priors";
+import { DEFAULT_CONVERSION_WINDOW_HOURS } from "./secrets";
+
+function roundVariationWeight(num: number): number {
+  return Math.round(num * 1000) / 1000;
+}
+function getTotalVariationWeight(weights: number[]): number {
+  return roundVariationWeight(weights.reduce((sum, w) => sum + w, 0));
+}
+
+// Adjusts an array of weights so it always sums to exactly 1
+function adjustWeights(weights: number[]): number[] {
+  const diff = getTotalVariationWeight(weights) - 1;
+  const nDiffs = Math.round(Math.abs(diff) * 1000);
+  return weights.map((v, i) => {
+    const j = weights.length - i - 1;
+    let d = 0;
+    if (diff < 0 && i < nDiffs) d = 0.001;
+    else if (diff > 0 && j < nDiffs) d = -0.001;
+    return +(v + d).toFixed(3);
+  });
+}
+
+export function upgradeMetricDoc(doc: LegacyMetricInterface): MetricInterface {
+  const newDoc = { ...doc };
+
+  // Raw-driver reads skip Mongoose date casting; legacy docs may store strings
+  if (typeof newDoc.runStarted === "string") {
+    newDoc.runStarted = new Date(newDoc.runStarted);
+  }
+
+  if (doc.windowSettings === undefined) {
+    if (doc.conversionDelayHours == null && doc.earlyStart) {
+      newDoc.windowSettings = {
+        type: "conversion",
+        windowValue:
+          (doc.conversionWindowHours || DEFAULT_CONVERSION_WINDOW_HOURS) + 0.5,
+        windowUnit: "hours",
+        delayUnit: "hours",
+        delayValue: -0.5,
+      };
+    } else {
+      newDoc.windowSettings = {
+        type: "conversion",
+        windowValue:
+          doc.conversionWindowHours || DEFAULT_CONVERSION_WINDOW_HOURS,
+        windowUnit: "hours",
+        delayUnit: "hours",
+        delayValue: doc.conversionDelayHours || 0,
+      };
+    }
+  } else {
+    if (doc.windowSettings.delayValue === undefined) {
+      newDoc.windowSettings = {
+        ...doc.windowSettings,
+        delayValue: doc.windowSettings.delayHours ?? 0,
+        delayUnit: doc.windowSettings.delayUnit ?? "hours",
+      };
+    }
+
+    delete newDoc?.windowSettings?.delayHours;
+  }
+
+  if (doc.priorSettings === undefined) {
+    newDoc.priorSettings = {
+      override: false,
+      proper: false,
+      mean: 0,
+      stddev: DEFAULT_PROPER_PRIOR_STDDEV,
+    };
+  }
+  healPriorSettings(newDoc.priorSettings);
+
+  if (!doc.userIdTypes?.length) {
+    if (doc.userIdType === "user") {
+      newDoc.userIdTypes = ["user_id"];
+    } else if (doc.userIdType === "anonymous") {
+      newDoc.userIdTypes = ["anonymous_id"];
+    } else {
+      newDoc.userIdTypes = ["anonymous_id", "user_id"];
+    }
+  }
+
+  if (!doc.userIdColumns) {
+    newDoc.userIdTypes?.forEach((type) => {
+      let val = type;
+      if (type === "user_id" && doc.userIdColumn) {
+        val = doc.userIdColumn;
+      } else if (type === "anonymous_id" && doc.anonymousIdColumn) {
+        val = doc.anonymousIdColumn;
+      }
+      newDoc.userIdColumns = newDoc.userIdColumns || {};
+      newDoc.userIdColumns[type] = val;
+    });
+  }
+
+  if (doc.cappingSettings === undefined) {
+    if (doc.capping === undefined && doc.cap) {
+      newDoc.cappingSettings = {
+        type: "absolute",
+        value: doc.cap,
+      };
+    } else {
+      newDoc.cappingSettings = {
+        type: doc.capping || "",
+        value: doc.capValue || 0,
+      };
+    }
+  }
+
+  // delete old fields
+  delete newDoc.cap;
+  delete newDoc.capping;
+  delete newDoc.capValue;
+  delete newDoc.conversionDelayHours;
+  delete newDoc.conversionWindowHours;
+
+  return newDoc as MetricInterface;
+}
+
+export function getDefaultExperimentQuery(
+  settings: DataSourceSettings,
+  userIdType = "user_id",
+  schema?: string,
+): string {
+  let column = userIdType;
+
+  if (userIdType === "user_id") {
+    column =
+      settings?.experiments?.userIdColumn ||
+      settings?.default?.userIdColumn ||
+      "user_id";
+  } else if (userIdType === "anonymous_id") {
+    column =
+      settings?.experiments?.anonymousIdColumn ||
+      settings?.default?.anonymousIdColumn ||
+      "anonymous_id";
+  }
+
+  return `SELECT
+  ${column} as ${userIdType},
+  ${
+    settings?.experiments?.timestampColumn ||
+    settings?.default?.timestampColumn ||
+    "received_at"
+  } as timestamp,
+  ${
+    settings?.experiments?.experimentIdColumn || "experiment_id"
+  } as experiment_id,
+  ${settings?.experiments?.variationColumn || "variation_id"} as variation_id
+FROM 
+  ${schema && !settings?.experiments?.table?.match(/\./) ? schema + "." : ""}${
+    settings?.experiments?.table || "experiment_viewed"
+  }`;
+}
+
+export function upgradeDatasourceObject(
+  datasource: DataSourceInterface,
+): DataSourceInterface {
+  datasource.settings = datasource.settings || {};
+
+  const settings = datasource.settings;
+
+  // Add default randomization units
+  if (settings && !settings?.userIdTypes) {
+    settings.userIdTypes = [
+      { userIdType: "user_id", description: "Logged-in user id" },
+      { userIdType: "anonymous_id", description: "Anonymous visitor id" },
+    ];
+  }
+
+  // Sanity check as somehow this ended up with null value in the array
+  if (settings.userIdTypes) {
+    settings.userIdTypes = settings.userIdTypes?.filter((it) => !!it);
+  }
+
+  // Upgrade old docs to the new exposure queries format
+  if (settings && !settings?.queries?.exposure) {
+    const isSQL = !["google_analytics", "mixpanel"].includes(datasource.type);
+    if (isSQL) {
+      let schema = "";
+      try {
+        const params = decryptDataSourceParams(datasource.params);
+        if (
+          "defaultSchema" in params &&
+          typeof params.defaultSchema === "string"
+        ) {
+          schema = params.defaultSchema;
+        }
+      } catch (e) {
+        // Ignore decryption errors, they are handled elsewhere
+      }
+
+      settings.queries = settings.queries || {};
+      settings.queries.exposure = [
+        {
+          id: "user_id",
+          name: "Logged-in User Experiments",
+          description: "",
+          userIdType: "user_id",
+          dimensions: settings.experimentDimensions || [],
+          query:
+            settings.queries.experimentsQuery ||
+            getDefaultExperimentQuery(settings, "user_id", schema),
+        },
+        {
+          id: "anonymous_id",
+          name: "Anonymous Visitor Experiments",
+          description: "",
+          userIdType: "anonymous_id",
+          dimensions: settings.experimentDimensions || [],
+          query:
+            settings.queries.experimentsQuery ||
+            getDefaultExperimentQuery(settings, "anonymous_id", schema),
+        },
+      ];
+    }
+  }
+
+  // mode field was added later -- default to ephemeral if missing
+  if (
+    settings &&
+    settings.pipelineSettings &&
+    !settings.pipelineSettings.mode
+  ) {
+    settings.pipelineSettings.mode = "ephemeral";
+  }
+
+  return datasource;
+}
+
+// v0-only: redistribute top-level legacy rules into
+// `environmentSettings[env].rules`.
+function updateEnvironmentSettings(
+  rules: V1FeatureRule[],
+  environments: string[],
+  environment: string,
+  feature: V1FeatureInterface,
+) {
+  const existing = feature.environmentSettings?.[environment];
+  const settings: Partial<V1FeatureEnvironment> = (existing ||
+    {}) as Partial<V1FeatureEnvironment>;
+
+  if (!("rules" in settings)) {
+    settings.rules = rules;
+  }
+  if (!("enabled" in settings)) {
+    settings.enabled = environments?.includes(environment) || false;
+  }
+
+  if (settings.rules && !Array.isArray(settings.rules)) {
+    settings.rules = Object.values(settings.rules);
+  }
+
+  feature.environmentSettings = feature.environmentSettings || {};
+  feature.environmentSettings[environment] = settings as V1FeatureEnvironment;
+}
+
+// v0-only: does the legacy `draft` diverge from the v1 envSettings rules?
+function draftHasChanges(
+  feature: V1FeatureInterface,
+  draft: FeatureDraftChanges,
+) {
+  if (!draft?.active) return false;
+
+  if ("defaultValue" in draft && draft.defaultValue !== feature.defaultValue) {
+    return true;
+  }
+
+  if (draft.rules) {
+    const comp: Record<string, V1FeatureRule[]> = {};
+    Object.keys(draft.rules).forEach((key) => {
+      comp[key] = feature.environmentSettings?.[key]?.rules || [];
+    });
+
+    if (!isEqual(comp, draft.rules)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+// Heal a single ancient rule on read. Returns a new rule object (pure), so
+// callers can share references (e.g. the same rule on a feature + revision).
+// Add new rule-level backfills here.
+//
+// Note: origin/main's typed Mongoose `rules: [...]` schema seeded `[]` defaults
+// for `savedGroups`, `values`, `variations`, `scheduleRules` at hydration. We
+// switched to Mixed for v2 compatibility (which silently dropped that side
+// effect) and intentionally do NOT backfill those here — empty-array seeding
+// pollutes the v1 API surface with noise that wasn't an explicit contract.
+// Diffs against origin/main may show those keys as `-` deletes; mask via the
+// `--stripOutputFields` flag in `diff-features.ts` if you need clean diffs.
+export function upgradeFeatureRule(rule: FeatureRule): FeatureRule {
+  // Defensive: `rules` is stored as Mongoose Mixed and pre-v2 docs occasionally
+  // landed with sparse/null array elements (incomplete imports, hand-edited
+  // backups, half-applied legacy migrations). Accessing `.type` on those
+  // throws "Cannot read properties of undefined (reading 'type')" and aborts
+  // the entire JIT migration on read — blocking publish/serve for the whole
+  // feature. Pass nullish through; downstream callers filter via
+  // `isPlausibleFeatureRule` before relying on the rule shape.
+  if (rule == null || typeof rule !== "object") return rule;
+  // Old style experiment rule without coverage
+  if (rule.type === "experiment" && !("coverage" in rule)) {
+    const weights = rule.values
+      .map((v) => v.weight)
+      .map((w) => (w < 0 ? 0 : w > 1 ? 1 : w))
+      .map((w) => roundVariationWeight(w));
+    const totalWeight = getTotalVariationWeight(weights);
+    let coverage = 1;
+    if (totalWeight <= 0) {
+      coverage = 0;
+    } else if (totalWeight < 0.999) {
+      coverage = totalWeight;
+    }
+
+    const multiplier = totalWeight > 0 ? 1 / totalWeight : 0;
+    const adjustedWeights = adjustWeights(
+      weights.map((w) => roundVariationWeight(w * multiplier)),
+    );
+
+    return {
+      ...rule,
+      coverage,
+      values: rule.values.map((v, j) => ({ ...v, weight: adjustedWeights[j] })),
+    };
+  }
+
+  return rule;
+}
+
+// Materialize the SDK's own no-seed fallback (`rule.seed || featureId`) for
+// seedless rollout rules, so the write-time default (rule.id) can't re-bucket a
+// legacy rollout on its next save. New rules are seeded at write, so anything
+// seedless on read is legacy. Safe rollouts keep their own seed.
+export function pinLegacyRolloutSeeds<T extends FeatureRule>(
+  rules: T[] = [],
+  featureId: string,
+): T[] {
+  return rules.map((r) =>
+    r != null && r.type === "rollout" && !r.seed
+      ? { ...r, seed: featureId }
+      : r,
+  );
+}
+
+// Backfills the `jsonSchema` keys that postdate the oldest documents, returning
+// a new object. Docs written before `schemaType`/`simple` existed hold a
+// three-key shape that means exactly what the five-key one means, so leaving
+// them unequal makes an untouched schema read as an edit.
+//
+// Applied to the feature on read and to every revision's metadata snapshot, so
+// the two always compare in the same spelling.
+export function normalizeJsonSchemaDef<T extends Partial<JSONSchemaDef>>(
+  jsonSchema: T,
+): T {
+  return {
+    ...jsonSchema,
+    schemaType: jsonSchema.schemaType || "schema",
+    simple: jsonSchema.simple || { type: "object", fields: [] },
+  };
+}
+
+// Non-rule backfills shared by v1 and v2 docs (`version`, `jsonSchema.*`).
+// Mutates and returns. Rules go through `upgradeFeatureRule` separately.
+export function applyNonRuleFeatureUpgrades<
+  T extends {
+    version?: number;
+    jsonSchema?: Partial<JSONSchemaDef>;
+  },
+>(feature: T): T {
+  feature.version = feature.version || 1;
+
+  if (feature.jsonSchema) {
+    feature.jsonSchema = normalizeJsonSchemaDef(feature.jsonSchema);
+  }
+
+  return feature;
+}
+
+// v0 → v1 upgrade. Redistributes top-level rules into
+// `environmentSettings.{dev,production}.rules`, seeds `enabled` from the
+// legacy env list, promotes `draft` → `legacyDraft`, and applies rule and
+// non-rule backfills.
+//
+// CRITICAL: callers MUST discriminate v0 first (no `environmentSettings`).
+// Running this on a v1/v2 doc would redistribute legitimate v2 top-level
+// rules into v1-only storage.
+export function upgradeV0Feature(
+  feature: LegacyFeatureInterface,
+): V1FeatureInterface {
+  const { environments, rules, revision, draft, ...rest } = feature;
+  const newFeature = rest as V1FeatureInterface;
+
+  updateEnvironmentSettings(rules || [], environments || [], "dev", newFeature);
+  updateEnvironmentSettings(
+    rules || [],
+    environments || [],
+    "production",
+    newFeature,
+  );
+
+  newFeature.version = feature.version || revision?.version || 1;
+
+  for (const env in newFeature.environmentSettings) {
+    const settings = newFeature.environmentSettings[env];
+    if (settings?.rules) {
+      // V1FeatureRule is a passthrough schema (not a structural subset of
+      // the v2 union); upgradeFeatureRule preserves unknown fields.
+      settings.rules = settings.rules.map(
+        (r) => upgradeFeatureRule(r as FeatureRule) as V1FeatureRule,
+      );
+    }
+  }
+
+  if (draft) {
+    if (draft?.rules) {
+      for (const env in draft.rules) {
+        const dRules = draft.rules;
+        dRules[env] = dRules[env].map(
+          (r) => upgradeFeatureRule(r as FeatureRule) as V1FeatureRule,
+        );
+      }
+    }
+    if (draft?.active && !draftHasChanges(newFeature, draft)) {
+      draft.active = false;
+    }
+
+    if (draft.active) {
+      const revisionRules: Record<string, V1FeatureRule[]> = {};
+      Object.entries(newFeature.environmentSettings || {}).forEach(
+        ([env, settings]) => {
+          revisionRules[env] = settings?.rules || [];
+
+          if (draft.rules && draft.rules[env]) {
+            revisionRules[env] = draft.rules[env];
+          }
+        },
+      );
+
+      // legacyDraft is v1-shaped here (`rules: Record<env, V1FeatureRule[]>`);
+      // `FeatureRevisionModel.toInterface` flattens it to v2 on read.
+      newFeature.legacyDraft = {
+        baseVersion: newFeature.version,
+        comment: draft.comment || "",
+        createdBy: null,
+        dateCreated: draft.dateCreated || feature.dateCreated,
+        datePublished: null,
+        dateUpdated: draft.dateUpdated || feature.dateUpdated,
+        defaultValue: draft.defaultValue ?? newFeature.defaultValue,
+        featureId: newFeature.id,
+        organization: newFeature.organization,
+        publishedBy: null,
+        status: "draft",
+        version: newFeature.version + 1,
+        rules: revisionRules as unknown as FeatureRule[],
+      };
+    }
+  }
+
+  applyNonRuleFeatureUpgrades(newFeature);
+
+  return newFeature;
+}
+
+export function upgradeOrganizationDoc(
+  doc: OrganizationInterface,
+): OrganizationInterface {
+  const org = cloneDeep(doc);
+  const commercialFeatures = [...accountFeatures[getAccountPlan(org)]];
+
+  // Add settings from config.json
+  const configSettings = getConfigOrganizationSettings();
+  org.settings = Object.assign({}, org.settings || {}, configSettings);
+
+  // Add default environments if there are none yet
+  org.settings.environments = getEnvironments(org);
+
+  // Change old `implementationTypes` field to new `visualEditorEnabled` field
+  if (org.settings.implementationTypes) {
+    if (!("visualEditorEnabled" in org.settings)) {
+      org.settings.visualEditorEnabled =
+        org.settings.implementationTypes.includes("visual");
+    }
+    delete org.settings.implementationTypes;
+  }
+
+  // Add a default role if one doesn't exist
+  if (!org.settings.defaultRole) {
+    org.settings.defaultRole = getDefaultRole(org);
+  } else {
+    // if the defaultRole is a custom role and the org no longer has that feature, default to collaborator
+    if (
+      !RESERVED_ROLE_IDS.includes(org.settings.defaultRole.role) &&
+      !commercialFeatures.includes("custom-roles")
+    ) {
+      org.settings.defaultRole = {
+        role: "collaborator",
+        environments: [],
+        limitAccessByEnvironment: false,
+      };
+    }
+  }
+
+  // Default attribute schema for backwards compatibility
+  if (!org.settings.attributeSchema) {
+    org.settings.attributeSchema = [
+      { property: "id", datatype: "string", hashAttribute: true },
+      { property: "deviceId", datatype: "string", hashAttribute: true },
+      { property: "company", datatype: "string", hashAttribute: true },
+      { property: "loggedIn", datatype: "boolean" },
+      { property: "employee", datatype: "boolean" },
+      { property: "country", datatype: "string" },
+      { property: "browser", datatype: "string" },
+      { property: "url", datatype: "string" },
+    ];
+  }
+
+  // Add statsEngine setting if not defined
+  if (!org.settings.statsEngine) {
+    org.settings.statsEngine = DEFAULT_STATS_ENGINE;
+  }
+
+  // Backfill restApiBypassesReviews=true for orgs created before this field existed.
+  // New orgs have it set explicitly to false at creation time; only old orgs without
+  // the field should inherit the original "always bypass" behaviour.
+  if (org.settings.restApiBypassesReviews === undefined) {
+    org.settings.restApiBypassesReviews = true;
+  }
+
+  // Migrate Arroval Flow Settings
+  if (
+    org.settings?.requireReviews === true ||
+    org.settings?.requireReviews === false
+  ) {
+    org.settings.requireReviews = [
+      {
+        requireReviewOn: org.settings.requireReviews,
+        resetReviewOnChange: false,
+        environments: [],
+        projects: [],
+      },
+    ];
+  }
+  // Rename legacy roles
+  const legacyRoleMap: Record<string, string> = {
+    designer: "collaborator",
+    developer: "experimenter",
+  };
+  org.members.forEach((m) => {
+    if (m.role in legacyRoleMap) {
+      m.role = legacyRoleMap[m.role];
+    }
+  });
+
+  // Make sure namespaces have labels, seeds, and format flags - if missing, use deterministic defaults.
+  // Note: do NOT use uuidv4() here. This function runs on every DB read and is never
+  // persisted, so a random seed would change on every request. Use ns.name as a stable fallback.
+  if (org?.settings?.namespaces?.length) {
+    org.settings.namespaces = org.settings.namespaces.map((ns) => {
+      const hashAttribute =
+        "hashAttribute" in ns ? ns.hashAttribute : undefined;
+      const seed = "seed" in ns ? ns.seed : undefined;
+      return {
+        ...ns,
+        label: ns.label || ns.name,
+        seed: seed || ns.name,
+        format: ns.format || (hashAttribute ? "multiRange" : "legacy"), // Set format based on hashAttribute presence
+      } as Namespaces;
+    });
+  }
+
+  // Migrate postStratificationDisabled to postStratificationEnabled
+  // If postStratificationEnabled is undefined OR true, it means ON
+  // Only if postStratificationEnabled is explicitly false should it be OFF
+  if (org.settings?.postStratificationDisabled !== undefined) {
+    // Convert from inverted logic: disabled=true -> enabled=false
+    if (org.settings.postStratificationEnabled === undefined) {
+      org.settings.postStratificationEnabled =
+        !org.settings.postStratificationDisabled;
+    }
+    delete org.settings.postStratificationDisabled;
+  }
+
+  healPriorSettings(org.settings?.metricDefaults?.priorSettings);
+
+  return org;
+}
+
+export function upgradeExperimentDoc(
+  orig: LegacyExperimentInterface,
+): ExperimentInterface {
+  const experiment = cloneDeep(orig);
+
+  // Add missing variation keys and ids
+  experiment.variations.forEach((v, i) => {
+    if (v.key === "" || v.key === undefined || v.key === null) {
+      v.key = i + "";
+    }
+    if (!v.id) {
+      v.id = i + "";
+    }
+    if (!v.name) {
+      v.name = i ? `Variation ${i}` : `Control`;
+    }
+  });
+
+  // Convert metric fields to new names
+  if (!experiment.goalMetrics) {
+    experiment.goalMetrics = experiment.metrics || [];
+  }
+  if (!experiment.guardrailMetrics) {
+    experiment.guardrailMetrics = experiment.guardrails || [];
+  }
+  if (!experiment.secondaryMetrics) {
+    experiment.secondaryMetrics = [];
+  }
+
+  // Populate phase names and targeting properties
+  if (experiment.phases) {
+    experiment.phases.forEach((phase) => {
+      if (!phase.name) {
+        const p = phase.phase || "main";
+        phase.name = p.substring(0, 1).toUpperCase() + p.substring(1);
+      }
+
+      phase.coverage = phase.coverage ?? 1;
+      phase.condition = phase.condition || "";
+      phase.seed = phase.seed || experiment.trackingKey; //support for old experiments where tracking key was used as seed instead of UUID
+      phase.namespace = phase.namespace || {
+        enabled: false,
+        name: "",
+        range: [0, 1],
+      };
+      // Some experiments have a namespace with only `enabled` set, no idea why
+      // This breaks namespaces, so add default values if missing
+      if (!("range" in phase.namespace) && !("ranges" in phase.namespace)) {
+        phase.namespace = {
+          enabled: false,
+          name: "",
+          range: [0, 1],
+        };
+      }
+
+      // move bandit SRM to health.srm
+      if (phase.banditEvents) {
+        phase.banditEvents = phase.banditEvents.map((event) => ({
+          ...event,
+          ...(event.banditResult?.srm !== undefined &&
+            event?.health?.srm === undefined && {
+              health: {
+                srm: event.banditResult.srm,
+              },
+            }),
+        }));
+      }
+    });
+  }
+
+  // Populate phase-level variation status from top-level variations
+  if (experiment.phases) {
+    experiment.phases.forEach((phase) => {
+      if (!phase.variations) {
+        phase.variations = experiment.variations.map((v) => ({
+          id: v.id,
+          status: "active" as const,
+        }));
+      }
+      if (phase.variations && phase.variations.length === 0) {
+        // catch case where variations is an empty array
+        phase.variations = experiment.variations.map((v) => ({
+          id: v.id,
+          status: "active" as const,
+        }));
+      }
+    });
+  }
+
+  // Upgrade the attribution model
+  if (experiment.attributionModel === "allExposures") {
+    experiment.attributionModel = "experimentDuration";
+  }
+
+  // Add hashAttribute field
+  experiment.hashAttribute = experiment.hashAttribute || "";
+
+  // Add hashVersion field
+  experiment.hashVersion = experiment.hashVersion || 2;
+
+  // Old `observations` field
+  if (!experiment.description && experiment.observations) {
+    experiment.description = experiment.observations;
+  }
+
+  // metric overrides
+  if (experiment.metricOverrides) {
+    experiment.metricOverrides.forEach((mo) => {
+      mo.delayHours = mo.delayHours || mo.conversionDelayHours;
+      mo.windowHours = mo.windowHours || mo.conversionWindowHours;
+      if (
+        mo.windowType === undefined &&
+        mo.conversionWindowHours !== undefined
+      ) {
+        mo.windowType = "conversion";
+      }
+    });
+  }
+  healMetricOverrides(experiment.metricOverrides);
+
+  if (experiment.decisionFrameworkSettings === undefined) {
+    experiment.decisionFrameworkSettings = {};
+  }
+
+  // releasedVariationId
+  if (!("releasedVariationId" in experiment)) {
+    if (experiment.status === "stopped") {
+      if (experiment.results === "lost") {
+        experiment.releasedVariationId = experiment.variations[0]?.id || "";
+      } else if (experiment.results === "won") {
+        experiment.releasedVariationId =
+          experiment.variations[experiment.winner ?? 1]?.id || "";
+      } else {
+        experiment.releasedVariationId = "";
+      }
+    } else {
+      experiment.releasedVariationId = "";
+    }
+  }
+
+  if (!("sequentialTestingEnabled" in experiment)) {
+    experiment.sequentialTestingEnabled = false;
+  }
+  if (!("sequentialTestingTuningParameter" in experiment)) {
+    experiment.sequentialTestingTuningParameter =
+      DEFAULT_SEQUENTIAL_TESTING_TUNING_PARAMETER;
+  }
+
+  if (!("shareLevel" in experiment)) {
+    experiment.shareLevel = "organization";
+  }
+  if (!("uid" in experiment)) {
+    experiment.uid = uuidv4().replace(/-/g, "");
+  }
+
+  return experiment as ExperimentInterface;
+}
+
+export function migrateExperimentReport(
+  orig: LegacyReportInterface,
+): ExperimentReportInterface {
+  const { args, ...report } = orig;
+
+  const {
+    attributionModel,
+    metricRegressionAdjustmentStatuses,
+    metrics,
+    guardrails,
+    ...otherArgs
+  } = args || {};
+
+  const newArgs: LegacyExperimentReportArgs = {
+    secondaryMetrics: [],
+    ...otherArgs,
+    attributionModel:
+      (attributionModel as string) === "allExposures"
+        ? "experimentDuration"
+        : attributionModel,
+    goalMetrics: otherArgs.goalMetrics || metrics || [],
+    guardrailMetrics: otherArgs.guardrailMetrics || guardrails || [],
+    decisionFrameworkSettings: otherArgs.decisionFrameworkSettings || {},
+  };
+
+  if (
+    metricRegressionAdjustmentStatuses &&
+    newArgs.settingsForSnapshotMetrics === undefined
+  ) {
+    newArgs.settingsForSnapshotMetrics = metricRegressionAdjustmentStatuses.map(
+      (m) => ({
+        metric: m.metric,
+        properPrior: false,
+        properPriorMean: 0,
+        properPriorStdDev: DEFAULT_PROPER_PRIOR_STDDEV,
+        regressionAdjustmentReason: m.reason,
+        regressionAdjustmentDays: m.regressionAdjustmentDays,
+        regressionAdjustmentEnabled: m.regressionAdjustmentEnabled,
+        regressionAdjustmentAvailable: m.regressionAdjustmentAvailable,
+      }),
+    );
+  }
+
+  healMetricOverrides(newArgs.metricOverrides);
+
+  return {
+    ...report,
+    args: newArgs,
+  };
+}
+
+export function migrateSnapshot(
+  orig: LegacyExperimentSnapshotInterface,
+): ExperimentSnapshotInterface {
+  const {
+    activationMetric,
+    statsEngine,
+    // eslint-disable-next-line
+    hasRawQueries,
+    // eslint-disable-next-line
+    hasCorrectedStats,
+    // eslint-disable-next-line
+    query,
+    // eslint-disable-next-line
+    queryLanguage,
+    results,
+    regressionAdjustmentEnabled,
+    metricRegressionAdjustmentStatuses,
+    sequentialTestingEnabled,
+    sequentialTestingTuningParameter,
+    queryFilter,
+    segment,
+    skipPartialData,
+    manual,
+    ...snapshot
+  } = orig;
+  // Try to figure out metric ids from results
+  const metricIds = Object.keys(results?.[0]?.variations?.[0]?.metrics || {});
+  if (activationMetric && !metricIds.includes(activationMetric)) {
+    metricIds.push(activationMetric);
+  }
+
+  // We know the metric ids included, but don't know if they were goals or guardrails
+  // Just add them all as goals (doesn't really change much)
+  const goalMetrics = metricIds.filter((m) => m !== activationMetric);
+
+  // Convert old results to new array of analyses
+  if (!snapshot.analyses) {
+    if (results) {
+      const regressionAdjusted =
+        regressionAdjustmentEnabled &&
+        metricRegressionAdjustmentStatuses?.some(
+          (s) => s.regressionAdjustmentEnabled,
+        )
+          ? true
+          : false;
+
+      snapshot.analyses = [
+        {
+          analysisKey: buildAnalysisKey(),
+          dateCreated: snapshot.dateCreated,
+          status: snapshot.error ? "error" : "success",
+          settings: {
+            statsEngine: statsEngine || DEFAULT_STATS_ENGINE,
+            dimensions: snapshot.dimension ? [snapshot.dimension] : [],
+            pValueCorrection: null,
+            regressionAdjusted,
+            sequentialTesting: !!sequentialTestingEnabled,
+            differenceType: "relative",
+            sequentialTestingTuningParameter:
+              sequentialTestingTuningParameter ||
+              DEFAULT_SEQUENTIAL_TESTING_TUNING_PARAMETER,
+            numGoalMetrics: goalMetrics.length,
+            numGuardrailMetrics: 0,
+          },
+          results,
+        },
+      ];
+      if (snapshot.error) {
+        snapshot.analyses[0].error = snapshot.error;
+      }
+    } else {
+      snapshot.analyses = [];
+    }
+  }
+
+  // Figure out status from old fields
+  if (!snapshot.status) {
+    snapshot.status = snapshot.error
+      ? "error"
+      : snapshot.analyses.length > 0
+        ? "success"
+        : "running";
+  }
+
+  const defaultMetricPriorSettings = {
+    override: false,
+    proper: false,
+    mean: 0,
+    stddev: DEFAULT_PROPER_PRIOR_STDDEV,
+  };
+  // Migrate settings
+  // We weren't tracking all of these before, so just pick good defaults
+  if (!snapshot.settings) {
+    const variations = (results?.[0]?.variations || []).map((v, i) => ({
+      id: i + "",
+      weight: 0,
+    }));
+
+    const metricSettings: MetricForSnapshot[] = metricIds.map((id) => {
+      const regressionSettings = metricRegressionAdjustmentStatuses?.find(
+        (s) => s.metric === id,
+      );
+
+      return {
+        id,
+        computedSettings: {
+          windowSettings: {
+            type: "conversion",
+            delayUnit: "hours",
+            delayValue: 0,
+            windowUnit: "hours",
+            windowValue: DEFAULT_CONVERSION_WINDOW_HOURS,
+          },
+          properPrior: defaultMetricPriorSettings.proper,
+          properPriorMean: defaultMetricPriorSettings.mean,
+          properPriorStdDev: defaultMetricPriorSettings.stddev,
+          regressionAdjustmentDays:
+            regressionSettings?.regressionAdjustmentDays || 0,
+          regressionAdjustmentEnabled: !!(
+            regressionAdjustmentEnabled &&
+            regressionSettings?.regressionAdjustmentEnabled
+          ),
+          regressionAdjustmentAvailable:
+            !!regressionSettings?.regressionAdjustmentAvailable,
+          regressionAdjustmentReason: regressionSettings?.reason || "",
+          targetMDE: undefined,
+        },
+      };
+    });
+
+    snapshot.settings = {
+      dimensions: snapshot.dimension
+        ? [
+            {
+              id: snapshot.dimension,
+            },
+          ]
+        : [],
+      metricSettings,
+      goalMetrics,
+      secondaryMetrics: [],
+      guardrailMetrics: [],
+      activationMetric: activationMetric || null,
+      defaultMetricPriorSettings: defaultMetricPriorSettings,
+      regressionAdjustmentEnabled: !!regressionAdjustmentEnabled,
+      startDate: snapshot.dateCreated,
+      endDate: snapshot.dateCreated,
+      experimentId: "",
+      datasourceId: "",
+      exposureQueryId: "",
+      queryFilter: queryFilter || "",
+      segment: segment || "",
+      skipPartialData: !!skipPartialData,
+      attributionModel: "firstExposure",
+      variations,
+      // Deprecated manual setting
+      ...(manual !== undefined ? { manual: !!manual } : {}),
+    };
+  } else {
+    // Add new settings field in case it is missing
+    if (snapshot.settings.defaultMetricPriorSettings === undefined) {
+      snapshot.settings.defaultMetricPriorSettings = defaultMetricPriorSettings;
+    }
+
+    // This field could be undefined before, make it always an array
+    if (!snapshot.settings.secondaryMetrics) {
+      snapshot.settings.secondaryMetrics = [];
+    }
+
+    // migrate metric for snapshot to have new fields as old snapshots
+    // may not have prior settings
+    snapshot.settings.metricSettings = snapshot.settings.metricSettings.map(
+      (m) => {
+        if (m.computedSettings) {
+          m.computedSettings = {
+            ...defaultMetricPriorSettings,
+            ...m.computedSettings,
+          };
+          if (m.computedSettings.windowSettings?.delayValue === undefined) {
+            m.computedSettings.windowSettings = {
+              ...m.computedSettings.windowSettings,
+              // @ts-expect-error To prevent building a full legacy snapshot settings type
+              delayValue: m.computedSettings.windowSettings?.delayHours ?? 0,
+              delayUnit:
+                m.computedSettings.windowSettings?.delayUnit ?? "hours",
+            };
+          }
+        }
+        return m;
+      },
+    );
+  }
+
+  // Some fields used to be optional, but are now required
+  if (!snapshot.queries) {
+    snapshot.queries = [];
+  }
+  if (!snapshot.multipleExposures) {
+    snapshot.multipleExposures = 0;
+  }
+  if (!snapshot.unknownVariations) {
+    snapshot.unknownVariations = [];
+  }
+  if (!snapshot.dimension) {
+    snapshot.dimension = "";
+  }
+  if (!snapshot.runStarted) {
+    snapshot.runStarted = null;
+  }
+
+  // Ensure all analyses have a unique analysisKey
+  snapshot.analyses.forEach((analysis) => {
+    if (!analysis.analysisKey) {
+      analysis.analysisKey = buildAnalysisKey();
+    }
+  });
+
+  // Legacy meta was stored as `AnalysisMetaEntry[]`, where positions
+  // matched the same index of `snapshot.analyses`.
+  // The updated shape makes Mongoose produce a Map keyed by number
+  // instead of an array. So we need to check they key values as well
+  // to determine if we need to migrate the data.
+  const chunkedAnalysesMeta = snapshot.chunkedAnalysesMeta as unknown;
+  const NUMBER_REGEX = /^\d+$/;
+  const isChunkedAnalysesInLegacyFormat =
+    Array.isArray(chunkedAnalysesMeta) ||
+    (chunkedAnalysesMeta != undefined &&
+      typeof chunkedAnalysesMeta === "object" &&
+      Object.keys(chunkedAnalysesMeta).length > 0 &&
+      Object.keys(chunkedAnalysesMeta).every((k) => NUMBER_REGEX.test(k)));
+
+  if (isChunkedAnalysesInLegacyFormat) {
+    const newChunkedAnalysesMeta: Record<AnalysisKeyType, AnalysisMetaEntry> =
+      {};
+
+    const legacyEntries = Array.isArray(chunkedAnalysesMeta)
+      ? chunkedAnalysesMeta
+      : Object.values(chunkedAnalysesMeta);
+
+    legacyEntries.forEach((entry, position) => {
+      const key = snapshot.analyses[position]?.analysisKey;
+      if (!key) {
+        // legacy meta had more entries than the current analyses
+        // array. It is unexpected, so we drop it rather than crash
+        logger.error(
+          { snapshotId: snapshot.id, position },
+          "migrateSnapshot: dropping orphan legacy chunkedAnalysesMeta entry",
+        );
+        return;
+      }
+      newChunkedAnalysesMeta[key] = entry;
+    });
+
+    snapshot.chunkedAnalysesMeta = newChunkedAnalysesMeta;
+  }
+
+  // Derive `hasChunkedAnalyses` from meta at read time for snapshots that
+  // ever touched chunked storage: single-analysis writes can race and leave
+  // the on-disk flag stale-false while meta still has entries (see
+  // `buildMetaOpsForAnalysisWrite` in ExperimentSnapshotModel). Downstream
+  // readers gate chunk loading on this flag, so re-deriving keeps populated
+  // snapshots from being silently skipped. Leave pre-chunked-storage
+  // snapshots (no flag, no meta) untouched.
+  const meta = snapshot.chunkedAnalysesMeta ?? {};
+  const metaHasEntries = Object.keys(meta).length > 0;
+  if (metaHasEntries || snapshot.hasChunkedAnalyses) {
+    snapshot.hasChunkedAnalyses = metaHasEntries;
+  }
+
+  return snapshot;
+}
+
+export function migrateSdkWebhookLogModel(
+  doc: SdkWebHookLogDocument,
+): SdkWebHookLogDocument {
+  if (doc?.webhookReduestId) {
+    doc.webhookRequestId = doc.webhookReduestId;
+    delete doc.webhookReduestId;
+  }
+  return doc;
+}

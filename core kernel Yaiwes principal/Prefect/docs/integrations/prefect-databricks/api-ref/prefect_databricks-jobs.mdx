@@ -1,0 +1,532 @@
+---
+title: jobs
+sidebarTitle: jobs
+---
+
+# `prefect_databricks.jobs`
+
+
+
+This is a module containing tasks for interacting with:
+Databricks jobs
+
+
+## Functions
+
+### `jobs_runs_export` <sup><a href="https://github.com/PrefectHQ/prefect/blob/main/src/integrations/prefect-databricks/prefect_databricks/jobs.py#L22" target="_blank"><Icon icon="github" style="width: 14px; height: 14px;" /></a></sup>
+
+```python
+jobs_runs_export(run_id: int, databricks_credentials: 'DatabricksCredentials', views_to_export: Optional['models.ViewsToExport'] = None) -> Dict[str, Any]
+```
+
+
+Export and retrieve the job run task.
+
+**Args:**
+- `run_id`: 
+The canonical identifier for the run. This field is required.
+- `databricks_credentials`: 
+Credentials to use for authentication with Databricks.
+- `views_to_export`: 
+Which views to export (CODE, DASHBOARDS, or ALL). Defaults to CODE.
+
+**Returns:**
+- Upon success, a dict of the response containing the key `views`
+- (`List["models.ViewItem"]`).
+
+
+### `jobs_create` <sup><a href="https://github.com/PrefectHQ/prefect/blob/main/src/integrations/prefect-databricks/prefect_databricks/jobs.py#L75" target="_blank"><Icon icon="github" style="width: 14px; height: 14px;" /></a></sup>
+
+```python
+jobs_create(databricks_credentials: 'DatabricksCredentials', name: str = 'Untitled', tags: Dict = None, tasks: Optional[List['models.JobTaskSettings']] = None, job_clusters: Optional[List['models.JobCluster']] = None, email_notifications: 'models.JobEmailNotifications' = None, webhook_notifications: 'models.WebhookNotifications' = None, timeout_seconds: Optional[int] = None, schedule: 'models.CronSchedule' = None, max_concurrent_runs: Optional[int] = None, git_source: 'models.GitSource' = None, format: Optional[str] = None, access_control_list: Optional[List['models.AccessControlRequest']] = None, parameters: Optional[List['models.JobParameter']] = None) -> Dict[str, Any]
+```
+
+
+Create a new job.
+
+**Args:**
+- `databricks_credentials`: 
+Credentials to use for authentication with Databricks.
+- `name`: An optional name for the job.
+- `tags`: 
+A map of string key-value tags associated with the job, up to a
+maximum of 25. These are forwarded to jobs clusters as cluster tags.
+- `tasks`: 
+A list of task specifications (`JobTaskSettings`) to execute. Each
+task defines its key, the cluster it runs on, and the work to do
+(a notebook, JAR, Python, SQL, or dbt task).
+- `job_clusters`: 
+A list of shared job-cluster specifications (`JobCluster`) that tasks
+can reuse. Libraries must be declared per task, not on a shared
+cluster.
+- `email_notifications`: 
+Email addresses (`JobEmailNotifications`) to notify when runs of the
+job start, succeed, or fail.
+- `webhook_notifications`: 
+System notification IDs (`WebhookNotifications`) to call when runs of
+the job start, succeed, or fail, up to three destinations per event.
+- `timeout_seconds`: 
+An optional timeout, in seconds, applied to each run of the job. The
+default is no timeout.
+- `schedule`: 
+An optional periodic schedule (`CronSchedule`) expressed with Quartz
+cron syntax. By default the job runs only when triggered manually or
+through the API.
+- `max_concurrent_runs`: 
+The maximum number of concurrent runs allowed. Defaults to 1 and
+cannot exceed 1000; set to 0 to skip all new runs.
+- `git_source`: 
+An optional remote Git repository (`GitSource`) containing the
+notebooks used by the job's notebook tasks. This functionality is in
+Public Preview.
+- `format`: 
+The format of the job. Ignored in create, update, and reset calls;
+always `MULTI_TASK` on the Jobs API 2.1.
+- `access_control_list`: 
+A list of permissions (`AccessControlRequest`) to set on the job.
+- `parameters`: 
+Job-level parameter definitions (`JobParameter`).
+
+**Returns:**
+- Upon success, a dict of the response containing the key `job_id`
+- (`int`).
+
+
+### `jobs_delete` <sup><a href="https://github.com/PrefectHQ/prefect/blob/main/src/integrations/prefect-databricks/prefect_databricks/jobs.py#L185" target="_blank"><Icon icon="github" style="width: 14px; height: 14px;" /></a></sup>
+
+```python
+jobs_delete(databricks_credentials: 'DatabricksCredentials', job_id: Optional[int] = None) -> Dict[str, Any]
+```
+
+
+Deletes a job.
+
+**Args:**
+- `databricks_credentials`: 
+Credentials to use for authentication with Databricks.
+- `job_id`: 
+The canonical identifier of the job to delete. This field is required,
+e.g. `11223344`.
+
+**Returns:**
+- Upon success, an empty dict.
+
+
+### `jobs_get` <sup><a href="https://github.com/PrefectHQ/prefect/blob/main/src/integrations/prefect-databricks/prefect_databricks/jobs.py#L234" target="_blank"><Icon icon="github" style="width: 14px; height: 14px;" /></a></sup>
+
+```python
+jobs_get(job_id: int, databricks_credentials: 'DatabricksCredentials') -> Dict[str, Any]
+```
+
+
+Retrieves the details for a single job.
+
+**Args:**
+- `job_id`: 
+The canonical identifier of the job to retrieve information about. This
+field is required.
+- `databricks_credentials`: 
+Credentials to use for authentication with Databricks.
+
+**Returns:**
+- Upon success, a dict of the response containing the keys `job_id`
+- (`int`), `creator_user_name` (`str`), `run_as_user_name` (`str`),
+- `settings` (`"models.JobSettings"`), and `created_time` (`int`).
+
+
+### `jobs_list` <sup><a href="https://github.com/PrefectHQ/prefect/blob/main/src/integrations/prefect-databricks/prefect_databricks/jobs.py#L285" target="_blank"><Icon icon="github" style="width: 14px; height: 14px;" /></a></sup>
+
+```python
+jobs_list(databricks_credentials: 'DatabricksCredentials', limit: int = 20, offset: int = 0, name: Optional[str] = None, expand_tasks: bool = False) -> Dict[str, Any]
+```
+
+
+Retrieves a list of jobs.
+
+**Args:**
+- `databricks_credentials`: 
+Credentials to use for authentication with Databricks.
+- `limit`: 
+The number of jobs to return. This value must be greater than 0 and less
+or equal to 25. The default value is 20.
+- `offset`: 
+The offset of the first job to return, relative to the most recently
+created job.
+- `name`: 
+A filter on the list based on the exact (case insensitive) job name.
+- `expand_tasks`: 
+Whether to include task and cluster details in the response.
+
+**Returns:**
+- Upon success, a dict of the response containing the keys `jobs`
+- (`List["models.Job"]`) and `has_more` (`bool`).
+
+
+### `jobs_reset` <sup><a href="https://github.com/PrefectHQ/prefect/blob/main/src/integrations/prefect-databricks/prefect_databricks/jobs.py#L348" target="_blank"><Icon icon="github" style="width: 14px; height: 14px;" /></a></sup>
+
+```python
+jobs_reset(databricks_credentials: 'DatabricksCredentials', job_id: Optional[int] = None, new_settings: 'models.JobSettings' = None) -> Dict[str, Any]
+```
+
+
+Overwrites all the settings for a specific job. Use the Update endpoint to
+update job settings partially.
+
+**Args:**
+- `databricks_credentials`: 
+Credentials to use for authentication with Databricks.
+- `job_id`: The canonical identifier of the job to reset. Required.
+- `new_settings`: 
+The complete new settings (`JobSettings`) for the job. These
+entirely replace the job's existing settings\: changes to
+`timeout_seconds` apply to active runs, while changes to other
+fields apply only to future runs.
+
+**Returns:**
+- Upon success, an empty dict.
+
+
+### `jobs_run_now` <sup><a href="https://github.com/PrefectHQ/prefect/blob/main/src/integrations/prefect-databricks/prefect_databricks/jobs.py#L403" target="_blank"><Icon icon="github" style="width: 14px; height: 14px;" /></a></sup>
+
+```python
+jobs_run_now(databricks_credentials: 'DatabricksCredentials', job_id: Optional[int] = None, idempotency_token: Optional[str] = None, jar_params: Optional[List[str]] = None, notebook_params: Optional[Dict] = None, python_params: Optional[List[str]] = None, spark_submit_params: Optional[List[str]] = None, python_named_params: Optional[Dict] = None, pipeline_params: Optional[str] = None, sql_params: Optional[Dict] = None, dbt_commands: Optional[List] = None, job_parameters: Optional[Dict] = None) -> Dict[str, Any]
+```
+
+
+Run a job and return the `run_id` of the triggered run.
+
+**Args:**
+- `databricks_credentials`: 
+Credentials to use for authentication with Databricks.
+- `job_id`: The ID of the job to run.
+- `idempotency_token`: 
+An optional token (at most 64 characters) guaranteeing the
+idempotency of the request. If a run with the token already exists,
+the existing run's ID is returned instead of creating a new run. See
+the Databricks docs on job idempotency for details.
+- `jar_params`: 
+A list of command-line parameters for Spark JAR tasks, used to invoke
+the main class. Cannot be combined with `notebook_params`, and its
+JSON representation cannot exceed 10,000 bytes.
+- `notebook_params`: 
+A map of key-value parameters for notebook tasks, accessible through
+`dbutils.widgets.get`. Cannot be combined with `jar_params`, and its
+JSON representation cannot exceed 10,000 bytes.
+- `python_params`: 
+A list of command-line parameters for Python tasks. ASCII characters
+only; its JSON representation cannot exceed 10,000 bytes.
+- `spark_submit_params`: 
+A list of parameters passed to the `spark-submit` script. ASCII
+characters only; its JSON representation cannot exceed 10,000 bytes.
+- `python_named_params`: 
+A map of named parameters for Python wheel tasks.
+- `pipeline_params`: 
+Parameters for Delta Live Tables pipeline tasks, such as whether to
+trigger a full refresh.
+- `sql_params`: 
+A map of key-value parameters for SQL tasks. SQL alert tasks do not
+support custom parameters.
+- `dbt_commands`: 
+A list of dbt commands to run for dbt tasks, for example
+`["dbt deps", "dbt seed", "dbt run"]`.
+- `job_parameters`: 
+A map of job-level parameter overrides for the run.
+
+**Returns:**
+- Upon success, a dict of the response containing the keys `run_id`
+- (`int`) and `number_in_job` (`int`).
+
+
+### `jobs_runs_cancel` <sup><a href="https://github.com/PrefectHQ/prefect/blob/main/src/integrations/prefect-databricks/prefect_databricks/jobs.py#L503" target="_blank"><Icon icon="github" style="width: 14px; height: 14px;" /></a></sup>
+
+```python
+jobs_runs_cancel(databricks_credentials: 'DatabricksCredentials', run_id: Optional[int] = None) -> Dict[str, Any]
+```
+
+
+Cancels a job run. The run is canceled asynchronously, so it may still be
+running when this request completes.
+
+**Args:**
+- `databricks_credentials`: 
+Credentials to use for authentication with Databricks.
+- `run_id`: 
+This field is required, e.g. `455644833`.
+
+**Returns:**
+- Upon success, an empty dict.
+
+
+### `jobs_runs_cancel_all` <sup><a href="https://github.com/PrefectHQ/prefect/blob/main/src/integrations/prefect-databricks/prefect_databricks/jobs.py#L552" target="_blank"><Icon icon="github" style="width: 14px; height: 14px;" /></a></sup>
+
+```python
+jobs_runs_cancel_all(databricks_credentials: 'DatabricksCredentials', job_id: Optional[int] = None) -> Dict[str, Any]
+```
+
+
+Cancels all active runs of a job. The runs are canceled asynchronously, so it
+doesn't prevent new runs from being started.
+
+**Args:**
+- `databricks_credentials`: 
+Credentials to use for authentication with Databricks.
+- `job_id`: 
+The canonical identifier of the job to cancel all runs of. This field is
+required, e.g. `11223344`.
+
+**Returns:**
+- Upon success, an empty dict.
+
+
+### `jobs_runs_delete` <sup><a href="https://github.com/PrefectHQ/prefect/blob/main/src/integrations/prefect-databricks/prefect_databricks/jobs.py#L602" target="_blank"><Icon icon="github" style="width: 14px; height: 14px;" /></a></sup>
+
+```python
+jobs_runs_delete(databricks_credentials: 'DatabricksCredentials', run_id: Optional[int] = None) -> Dict[str, Any]
+```
+
+
+Deletes a non-active run. Returns an error if the run is active.
+
+**Args:**
+- `databricks_credentials`: 
+Credentials to use for authentication with Databricks.
+- `run_id`: 
+The canonical identifier of the run for which to retrieve the metadata,
+e.g. `455644833`.
+
+**Returns:**
+- Upon success, an empty dict.
+
+
+### `jobs_runs_get` <sup><a href="https://github.com/PrefectHQ/prefect/blob/main/src/integrations/prefect-databricks/prefect_databricks/jobs.py#L651" target="_blank"><Icon icon="github" style="width: 14px; height: 14px;" /></a></sup>
+
+```python
+jobs_runs_get(run_id: int, databricks_credentials: 'DatabricksCredentials', include_history: Optional[bool] = None) -> Dict[str, Any]
+```
+
+
+Retrieve the metadata of a run.
+
+**Args:**
+- `run_id`: 
+The canonical identifier of the run for which to retrieve the metadata.
+This field is required.
+- `databricks_credentials`: 
+Credentials to use for authentication with Databricks.
+- `include_history`: 
+Whether to include the repair history in the response.
+
+**Returns:**
+- Upon success, a dict describing the run, including its identifiers
+- (`job_id`, `run_id`), `state`, `tasks`, cluster spec and instance,
+- scheduling and timing fields, and — when requested — its
+- `repair_history`.
+
+
+### `jobs_runs_get_output` <sup><a href="https://github.com/PrefectHQ/prefect/blob/main/src/integrations/prefect-databricks/prefect_databricks/jobs.py#L707" target="_blank"><Icon icon="github" style="width: 14px; height: 14px;" /></a></sup>
+
+```python
+jobs_runs_get_output(run_id: int, databricks_credentials: 'DatabricksCredentials') -> Dict[str, Any]
+```
+
+
+Retrieve the output and metadata of a single task run. When a notebook task
+returns a value through the dbutils.notebook.exit() call, you can use this
+endpoint to retrieve that value. Databricks restricts this API to return the
+first 5 MB of the output. To return a larger result, you can store job
+results in a cloud storage service. This endpoint validates that the run_id
+parameter is valid and returns an HTTP status code 400 if the run_id
+parameter is invalid. Runs are automatically removed after 60 days. If you
+to want to reference them beyond 60 days, you must save old run results
+before they expire. To export using the UI, see Export job run results. To
+export using the Jobs API, see Runs export.
+
+**Args:**
+- `run_id`: 
+The canonical identifier for the run. This field is required.
+- `databricks_credentials`: 
+Credentials to use for authentication with Databricks.
+
+**Returns:**
+- Upon success, a dict of the response containing the keys
+- `notebook_output` (`"models.NotebookOutput"`),
+- `sql_output` (`"models.SqlOutput"`),
+- `dbt_output` (`"models.DbtOutput"`), `logs` (`str`),
+- `logs_truncated` (`bool`), `error` (`str`), `error_trace` (`str`), and
+- `metadata` (`"models.Run"`).
+
+
+### `jobs_runs_list` <sup><a href="https://github.com/PrefectHQ/prefect/blob/main/src/integrations/prefect-databricks/prefect_databricks/jobs.py#L768" target="_blank"><Icon icon="github" style="width: 14px; height: 14px;" /></a></sup>
+
+```python
+jobs_runs_list(databricks_credentials: 'DatabricksCredentials', active_only: bool = False, completed_only: bool = False, job_id: Optional[int] = None, offset: int = 0, limit: int = 25, run_type: Optional[str] = None, expand_tasks: bool = False, start_time_from: Optional[int] = None, start_time_to: Optional[int] = None) -> Dict[str, Any]
+```
+
+
+List runs in descending order by start time.
+
+**Args:**
+- `databricks_credentials`: 
+Credentials to use for authentication with Databricks.
+- `active_only`: 
+If active_only is `true`, only active runs are included in the results;
+otherwise, lists both active and completed runs. An active
+run is a run in the `PENDING`, `RUNNING`, or `TERMINATING`.
+This field cannot be `true` when completed_only is `true`.
+- `completed_only`: 
+If completed_only is `true`, only completed runs are included in the
+results; otherwise, lists both active and completed runs.
+This field cannot be `true` when active_only is `true`.
+- `job_id`: 
+The job for which to list runs. If omitted, the Jobs service lists runs
+from all jobs.
+- `offset`: 
+The offset of the first run to return, relative to the most recent run.
+- `limit`: 
+The number of runs to return. This value must be greater than 0 and less
+than 25\. The default value is 25\. If a request specifies a
+limit of 0, the service instead uses the maximum limit.
+- `run_type`: 
+The type of runs to return. For a description of run types, see
+[Run](https\://docs.databricks.com/dev-tools/api/latest/jobs.html#operation/JobsRunsGet).
+- `expand_tasks`: 
+Whether to include task and cluster details in the response.
+- `start_time_from`: 
+Show runs that started _at or after_ this value. The value must be a UTC
+timestamp in milliseconds. Can be combined with
+_start_time_to_ to filter by a time range.
+- `start_time_to`: 
+Show runs that started _at or before_ this value. The value must be a
+UTC timestamp in milliseconds. Can be combined with
+_start_time_from_ to filter by a time range.
+
+**Returns:**
+- Upon success, a dict of the response containing the keys `runs`
+- (`List["models.Run"]`) and `has_more` (`bool`).
+
+
+### `jobs_runs_repair` <sup><a href="https://github.com/PrefectHQ/prefect/blob/main/src/integrations/prefect-databricks/prefect_databricks/jobs.py#L862" target="_blank"><Icon icon="github" style="width: 14px; height: 14px;" /></a></sup>
+
+```python
+jobs_runs_repair(databricks_credentials: 'DatabricksCredentials', run_id: Optional[int] = None, rerun_tasks: Optional[List[str]] = None, latest_repair_id: Optional[int] = None, rerun_all_failed_tasks: bool = False, jar_params: Optional[List[str]] = None, notebook_params: Optional[Dict] = None, python_params: Optional[List[str]] = None, spark_submit_params: Optional[List[str]] = None, python_named_params: Optional[Dict] = None, pipeline_params: Optional[str] = None, sql_params: Optional[Dict] = None, dbt_commands: Optional[List] = None, job_parameters: Optional[Dict] = None) -> Dict[str, Any]
+```
+
+
+Re-run one or more tasks. Tasks are re-run as part of the original job run, use
+the current job and task settings, and can be viewed in the history for the
+original job run.
+
+**Args:**
+- `databricks_credentials`: 
+Credentials to use for authentication with Databricks.
+- `run_id`: 
+The job run ID of the run to repair. The run must not be in progress.
+- `rerun_tasks`: The task keys of the task runs to repair.
+- `latest_repair_id`: 
+The ID of the latest repair. Not required when repairing a run for
+the first time, but must be provided on subsequent repair requests
+for the same run.
+- `rerun_all_failed_tasks`: 
+If true, repair all failed tasks. Only one of `rerun_tasks` or
+`rerun_all_failed_tasks` may be set.
+- `jar_params`: 
+A list of command-line parameters for Spark JAR tasks, used to invoke
+the main class. Cannot be combined with `notebook_params`, and its
+JSON representation cannot exceed 10,000 bytes.
+- `notebook_params`: 
+A map of key-value parameters for notebook tasks, accessible through
+`dbutils.widgets.get`. Cannot be combined with `jar_params`, and its
+JSON representation cannot exceed 10,000 bytes.
+- `python_params`: 
+A list of command-line parameters for Python tasks. ASCII characters
+only; its JSON representation cannot exceed 10,000 bytes.
+- `spark_submit_params`: 
+A list of parameters passed to the `spark-submit` script. ASCII
+characters only; its JSON representation cannot exceed 10,000 bytes.
+- `python_named_params`: 
+A map of named parameters for Python wheel tasks.
+- `pipeline_params`: 
+Parameters for Delta Live Tables pipeline tasks, such as whether to
+trigger a full refresh.
+- `sql_params`: 
+A map of key-value parameters for SQL tasks. SQL alert tasks do not
+support custom parameters.
+- `dbt_commands`: 
+A list of dbt commands to run for dbt tasks, for example
+`["dbt deps", "dbt seed", "dbt run"]`.
+- `job_parameters`: 
+A map of job-level parameter overrides for the run.
+
+**Returns:**
+- Upon success, a dict of the response containing the key `repair_id`
+- (`int`).
+
+
+### `jobs_runs_submit` <sup><a href="https://github.com/PrefectHQ/prefect/blob/main/src/integrations/prefect-databricks/prefect_databricks/jobs.py#L972" target="_blank"><Icon icon="github" style="width: 14px; height: 14px;" /></a></sup>
+
+```python
+jobs_runs_submit(databricks_credentials: 'DatabricksCredentials', tasks: Optional[List['models.RunSubmitTaskSettings']] = None, run_name: Optional[str] = None, webhook_notifications: 'models.WebhookNotifications' = None, git_source: 'models.GitSource' = None, timeout_seconds: Optional[int] = None, idempotency_token: Optional[str] = None, access_control_list: Optional[List['models.AccessControlRequest']] = None) -> Dict[str, Any]
+```
+
+
+Submit a one-time run. This endpoint allows you to submit a workload directly
+without creating a job. Use the `jobs/runs/get` API to check the run state
+after the job is submitted.
+
+**Args:**
+- `databricks_credentials`: 
+Credentials to use for authentication with Databricks.
+- `tasks`: 
+A list of task specifications (`RunSubmitTaskSettings`) to run. Each
+task defines its key, the cluster it runs on, and the work to do
+(a notebook, JAR, Python, SQL, or dbt task).
+- `run_name`: An optional name for the run. Defaults to `Untitled`.
+- `webhook_notifications`: 
+System notification IDs (`WebhookNotifications`) to call when the run
+starts, succeeds, or fails, up to three destinations per event.
+- `git_source`: 
+An optional remote Git repository (`GitSource`) containing the
+notebooks used by the run's notebook tasks. This functionality is in
+Public Preview.
+- `timeout_seconds`: 
+An optional timeout, in seconds, applied to the run. The default is
+no timeout.
+- `idempotency_token`: 
+An optional token (at most 64 characters) guaranteeing the
+idempotency of the request. If a run with the token already exists,
+the existing run's ID is returned instead of creating a new run. See
+the Databricks docs on job idempotency for details.
+- `access_control_list`: 
+A list of permissions (`AccessControlRequest`) to set on the run.
+
+**Returns:**
+- Upon success, a dict of the response containing the key `run_id`
+- (`int`).
+
+
+### `jobs_update` <sup><a href="https://github.com/PrefectHQ/prefect/blob/main/src/integrations/prefect-databricks/prefect_databricks/jobs.py#L1055" target="_blank"><Icon icon="github" style="width: 14px; height: 14px;" /></a></sup>
+
+```python
+jobs_update(databricks_credentials: 'DatabricksCredentials', job_id: Optional[int] = None, new_settings: 'models.JobSettings' = None, fields_to_remove: Optional[List[str]] = None) -> Dict[str, Any]
+```
+
+
+Add, update, or remove specific settings of an existing job. Use the Reset
+endpoint to overwrite all job settings.
+
+**Args:**
+- `databricks_credentials`: 
+Credentials to use for authentication with Databricks.
+- `job_id`: The canonical identifier of the job to update. Required.
+- `new_settings`: 
+The settings (`JobSettings`) to apply. Any top-level field provided
+is replaced entirely; partial updates of nested fields are not
+supported. Changes to `timeout_seconds` apply to active runs, while
+changes to other fields apply only to future runs.
+- `fields_to_remove`: 
+An optional list of top-level fields to remove from the job's
+settings. Removing nested fields is not supported.
+
+**Returns:**
+- Upon success, an empty dict.
+

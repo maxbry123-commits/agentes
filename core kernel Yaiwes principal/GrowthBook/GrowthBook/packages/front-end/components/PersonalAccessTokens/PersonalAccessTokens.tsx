@@ -1,0 +1,154 @@
+import React, { FC, useCallback, useMemo, useState } from "react";
+import { FaKey } from "react-icons/fa";
+import { ApiKeyInterface, SecretApiKey } from "shared/types/apikey";
+import Link from "@/ui/Link";
+import { ApiKeysTable } from "@/components/ApiKeysTable/ApiKeysTable";
+import ApiKeysModal from "@/components/Settings/ApiKeysModal";
+import { useAuth } from "@/services/auth";
+import { groupApiKeysByType } from "@/services/secret-api-keys.utils";
+import useApi from "@/hooks/useApi";
+import Callout from "@/ui/Callout";
+import { useUser } from "@/services/UserContext";
+
+type PersonalAccessTokensProps = {
+  accessTokens: ApiKeyInterface[];
+  onDelete: (keyId: string | undefined) => () => Promise<void>;
+  onReveal: (keyId: string | undefined) => () => Promise<string>;
+  onToggleDisabled: (
+    keyId: string | undefined,
+    disabled: boolean,
+  ) => () => Promise<void>;
+  onCreate: () => void;
+};
+
+export const PersonalAccessTokens: FC<PersonalAccessTokensProps> = ({
+  accessTokens,
+  onDelete,
+  onReveal,
+  onToggleDisabled,
+  onCreate,
+}) => {
+  const [open, setOpen] = useState(false);
+  const { settings } = useUser();
+  const tokensDisabled = !!settings?.disablePersonalAccessTokens;
+
+  return (
+    <div>
+      {open && (
+        <ApiKeysModal
+          close={() => setOpen(false)}
+          onCreate={onCreate}
+          personalAccessToken
+        />
+      )}
+
+      <div className="mb-4">
+        <h1>Personal Access Tokens</h1>
+        <p className="text-gray">
+          Personal Access Tokens have full read and write access to your
+          account. Because of this, they must be kept secure and{" "}
+          <strong>must not be exposed to others</strong>.
+        </p>
+        {accessTokens.length > 0 && (
+          <ApiKeysTable
+            onDelete={onDelete}
+            keys={accessTokens}
+            canCreateKeys
+            canDeleteKeys
+            onReveal={onReveal}
+            onToggleDisabled={onToggleDisabled}
+          />
+        )}
+        {tokensDisabled ? (
+          <Callout status="warning">
+            Personal access tokens are disabled for your organization. Existing
+            tokens no longer work and new ones can&apos;t be created. Contact an
+            admin if you need API access.
+          </Callout>
+        ) : (
+          <button
+            className="btn btn-primary"
+            onClick={(e) => {
+              e.preventDefault();
+              setOpen(true);
+            }}
+          >
+            <FaKey /> Create New Personal Access Token
+          </button>
+        )}
+      </div>
+
+      <div className="mb-5">
+        <Callout status="info">
+          Administrators can also create userless keys for an organization on
+          the <Link href="/settings/keys">API Keys</Link> page.
+        </Callout>
+      </div>
+    </div>
+  );
+};
+
+export const PersonalAccessTokensContainer = () => {
+  const { apiCall } = useAuth();
+  const { data, mutate } = useApi<{ keys: ApiKeyInterface[] }>("/keys");
+
+  const userKeys = useMemo(() => {
+    if (!data?.keys) return [];
+    return groupApiKeysByType(data.keys).user;
+  }, [data?.keys]);
+
+  const onReveal = useCallback(
+    (keyId: string | undefined) => async (): Promise<string> => {
+      if (!keyId) return "";
+
+      const res = await apiCall<{ key: SecretApiKey }>(`/keys/reveal`, {
+        method: "POST",
+        body: JSON.stringify({
+          id: keyId,
+        }),
+      });
+      if (!res.key.key) {
+        throw new Error("Could not load the secret key");
+      }
+      return res.key.key;
+    },
+    [apiCall],
+  );
+
+  const onDelete = useCallback(
+    (keyId: string) => async () => {
+      if (!keyId) return;
+
+      await apiCall(`/keys`, {
+        method: "DELETE",
+        body: JSON.stringify({
+          id: keyId,
+        }),
+      });
+      mutate();
+    },
+    [mutate, apiCall],
+  );
+
+  const onToggleDisabled = useCallback(
+    (keyId: string | undefined, disabled: boolean) => async () => {
+      if (!keyId) return;
+      await apiCall(`/keys/${keyId}/disabled`, {
+        method: "PUT",
+        body: JSON.stringify({ disabled }),
+      });
+      mutate();
+    },
+    [apiCall, mutate],
+  );
+
+  return (
+    <PersonalAccessTokens
+      onDelete={onDelete}
+      accessTokens={userKeys}
+      onCreate={mutate}
+      onReveal={onReveal}
+      onToggleDisabled={onToggleDisabled}
+    />
+  );
+};

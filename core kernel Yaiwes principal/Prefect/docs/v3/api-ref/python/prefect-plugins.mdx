@@ -1,0 +1,25 @@
+---
+title: plugins
+sidebarTitle: plugins
+---
+
+# `prefect.plugins`
+
+
+
+Prefect plugin system.
+
+Provides startup hooks that allow third-party packages to run initialization
+code (e.g., set environment variables, configure DB connections) before
+Prefect CLI commands, workers, or scripts begin work, plus loaders for the
+`prefect.collections` entry point group used by Prefect collection packages.
+
+This module is the stable public surface for the plugin system. Implementation
+modules live under `prefect._internal.plugins.*` and may change without notice.
+
+The collection-loader symbols are imported eagerly because they have no extra
+dependencies; the pluggy-backed hook system symbols are loaded lazily via
+`__getattr__` so that minimal builds (e.g. `prefect-client`) which do not
+ship `pluggy` can still `from prefect.plugins import load_prefect_collections`
+without a hard ImportError at module load time.
+

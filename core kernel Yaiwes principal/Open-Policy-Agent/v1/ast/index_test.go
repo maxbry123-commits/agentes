@@ -1,0 +1,2428 @@
+// Copyright 2017 The OPA Authors.  All rights reserved.
+// Use of this source code is governed by an Apache2
+// license that can be found in the LICENSE file.
+
+package ast
+
+import (
+	"errors"
+	"slices"
+	"strconv"
+	"testing"
+)
+
+type testResolver struct {
+	input       *Term
+	data        *Term
+	failRef     Ref
+	unknownRefs Set
+	args        []Value
+}
+
+func (r testResolver) Resolve(ref Ref) (Value, error) {
+	if ref[0].Equal(FunctionArgRootDocument) {
+		if v, ok := ref[1].Value.(Number); ok {
+			if i, ok := v.Int(); ok && 0 <= i && i < len(r.args) {
+				return r.args[i], nil
+			}
+		}
+	}
+	if r.unknownRefs != nil && r.unknownRefs.Contains(NewTerm(ref)) {
+		return nil, UnknownValueErr{}
+	}
+	if ref.Equal(r.failRef) {
+		return nil, errors.New("some error")
+	}
+	if ref.HasPrefix(InputRootRef) {
+		v, err := r.input.Value.Find(ref[1:])
+		if err != nil {
+			return nil, nil
+		}
+		return v, nil
+	}
+	if r.data != nil && ref.HasPrefix(DefaultRootRef) {
+		v, err := r.data.Value.Find(ref[1:])
+		if err != nil {
+			return nil, nil
+		}
+		return v, nil
+	}
+	panic("illegal value")
+}
+
+func TestBaseDocEqIndexing(t *testing.T) {
+	opts := ParserOptions{AllFutureKeywords: true}
+
+	expectOnlyGroundRefs := func(exp bool) func(*testing.T, *IndexResult) {
+		return func(t *testing.T, res *IndexResult) {
+			t.Helper()
+			if act := res.OnlyGroundRefs; exp != act {
+				t.Errorf("OnlyGroundRefs: expected %v, got %v", exp, act)
+			}
+		}
+	}
+
+	everyMod := MustParseModuleWithOpts(`package test
+	p if { every _ in [] { input.a = 1 } }`, opts)
+
+	// NOTE(sr): This looks a bit silly; but it's what
+	//
+	//   every x in input.a { input.x == x }
+	//
+	// will get rewritten to -- so to assert that the domain of 'every' expressions
+	// get respected in the rule indexing, we'll need to provide this "pseudo-compiled"
+	// mod source here.
+	everyModWithDomain := MustParseModuleWithOpts(`package test
+	p if {
+		__local0__ = input.a
+		every x in __local0__ { input.x = x }
+	} {
+		input.b = 1
+	}`, opts)
+
+	// NOTE(sr): pseudo-compiled, as with everyModWithDomain above. These are what
+	//
+	//   p if { x := input; x.foo == "a" }
+	//
+	// and friends get rewritten to -- the ref ends up rooted at a local rather
+	// than at input, and the indexer has to resolve that head to index at all.
+	//
+	// Note that `in` and glob.match never receive a ref operand directly: their
+	// operands are always hoisted to a variable first, so those two benefit only
+	// via the assignment that does the hoisting. The cases below are written the
+	// way the compiler actually emits them.
+	localHeadMod := MustParseModuleWithOpts(`package test
+
+	whole if { __local0__ = input; __local0__.foo = "a" }
+	whole if { __local1__ = input; __local1__.foo = "b" }
+
+	intermediate if { __local2__ = input.a.b; __local2__.c = "a" }
+	intermediate if { __local3__ = input.a.b; __local3__.c = "b" }
+
+	member if { __local4__ = input; __local5__ = __local4__.foo; "a" in __local5__ }
+	member if { __local6__ = input; __local7__ = __local6__.foo; "b" in __local7__ }
+
+	globmatch if { __local8__ = input; __local9__ = __local8__.foo; glob.match("a/*", ["/"], __local9__) }
+	globmatch if { __local10__ = input; __local11__ = __local10__.foo; glob.match("b/*", ["/"], __local11__) }
+
+	# The head resolves to a composite rather than a ref, so there is nothing to
+	# index and both rules have to be evaluated.
+	unresolvable if { __local12__ = [1, 2, 3]; __local12__[0] = 1 }
+	unresolvable if { __local13__ = [1, 2, 3]; __local13__[0] = 2 }
+
+	# Bare refs run through the equality path, too, so their heads resolve as well.
+	naked_local if { __local14__ = input; __local14__.foo }
+	naked_local if { __local15__ = input; __local15__.bar }
+
+	# The assignment __local17__ = __local16__ records "input.a = __local17__" next
+	# to "input.a = __local16__", so a head reached through a chain of assignments
+	# resolves just as well as one assigned the ref directly.
+	chained if { __local16__ = input.a; __local17__ = __local16__; __local17__.b = "a" }
+	chained if { __local18__ = input.a; __local19__ = __local18__; __local19__.b = "b" }
+
+	# Nothing sets input apart from data here.
+	from_data if { __local20__ = data.roles; __local20__.a = 1 }
+	from_data if { __local21__ = data.roles; __local21__.a = 2 }
+
+	# The ref spliced onto the resolved head is subject to the same conditions as one
+	# written out: a single trailing variable is fine, wildcard or not -- only the
+	# ground prefix gets indexed, exactly as for "input.foo[_] = value" --
+	trailingvar if { __local22__ = input; __local22__.foo[__local23__] = "a" }
+	trailingvar if { __local24__ = input; __local24__.foo[_] = "b" }
+
+	# but a variable anywhere else leaves nothing indexable.
+	nonground if { __local25__ = input; __local25__.foo[__local26__].bar = "a" }
+	nonground if { __local27__ = input; __local27__.foo[__local28__].bar = "b" }
+
+	# The head resolves to a ref, but a virtual one, which the indexer cannot look up.
+	virtual if { __local29__ = data.test.vd; __local29__.foo = "a" }
+	virtual if { __local30__ = data.test.vd; __local30__.foo = "b" }`, opts)
+
+	// The operand body of an `and`/`or` is its own scope, so the local assigned in
+	// the enclosing body has to be resolved through refindices.resolvable (see
+	// operandAlternatives) rather than the rule's own indices alone.
+	logicalOpts := ParserOptions{
+		Capabilities:   CapabilitiesForThisVersion(CapabilitiesExperimentalKeywords(true)),
+		FutureKeywords: []string{"and", "or", "not"},
+	}
+
+	logicalHeadMod := MustParseModuleWithOpts(`package test
+
+	conj if { __local0__ = input; __local0__.foo = "a" and __local0__.bar = "a" }
+	conj if { __local1__ = input; __local1__.foo = "b" and __local1__.bar = "b" }
+
+	disj if { __local2__ = input; __local2__.foo = "a" or __local2__.foo = "aa" }
+	disj if { __local3__ = input; __local3__.foo = "b" or __local3__.foo = "bb" }`, logicalOpts)
+
+	// NOTE(sr): pseudo-compiled once more -- this is
+	//
+	//   p if { x := input.role; y := x; y == "a" }
+	//
+	// The chain of assignments records "input.role can be anything" once per local,
+	// and the concrete value from the comparison replaces only the first of them.
+	chainedValueMod := MustParseModuleWithOpts(`package test
+
+	p if { __local0__ = input.role; __local1__ = __local0__; __local1__ = "a" }
+	p if { __local2__ = input.role; __local3__ = __local2__; __local3__ = "b" }`, opts)
+
+	refMod := MustParseModuleWithOpts(`package test
+
+	ref.single.value.ground = x if x := input.x
+
+	ref.single.value.key[k] = v if { k := input.k; v := input.v }
+
+	ref.multi.value.ground contains x if x := input.x
+
+	ref.multiple.single.value.ground = x if x := input.x
+	ref.multiple.single.value[y] = x if { x := input.x; y := index.y }
+
+	# ref.multi.value.key[k] contains v if { k := input.k; v := input.v } # not supported yet
+	`, opts)
+
+	mod := module(`
+	package test
+
+	exact if {
+		input.x = 1
+		input.y = 2
+	} {
+		input.x = 3
+		input.y = 4
+	}
+		
+
+	scalars if {
+		input.x = 0
+		input.y = 1
+	} {
+		1 = input.y  # exercise ordering
+		input.x = 0
+	} {
+		input.y = 2
+		input.z = 2
+	} {
+		input.x = 2
+	}
+
+	vars if {
+		input.x = 1
+		input.y = 2
+	} {
+		input.x = x
+		input.y = 3
+	} {
+		input.x = 4
+		input.z = 5
+	}
+
+	composite_arr if {
+		input.x = 1
+		input.y = [1,2,3]
+		input.z = 1
+	} {
+		input.x = 1
+		input.y = [1,2,4,x]
+	} {
+		input.y = [1,2,y,5]
+		input.z = 3
+	} {
+		input.y = []
+	} {
+		# Must be included in all results as nested composites are not indexed.
+		input.y = [1,[2,3],4]
+	}
+
+	composite_obj if {
+		input.y = {"foo": "bar", "bar": x}
+	}
+
+	equal if {
+		input.x == 1
+	} {
+		input.x == 2
+	} {
+		input.y == 3
+	}
+
+	naked if {
+		input.x
+	} {
+		input.y
+	}
+
+	# filtering ruleset contains rules that cannot be indexed (for different reasons).
+	filtering if {
+		count([], x)
+	} {
+		not input.x = 0
+	} {
+		x = [1,2,3]
+		x[0] = 1
+	} {
+		input.x[_] = 1 # can be indexed since 1.14.0
+	} {
+		input.x[input.y] = 1
+	} {
+		# include one rule that can be indexed to exercise merging of root non-indexable
+		# rules with other rules.
+		input.x = 1
+	} {
+		input.foo = "bar" with data.baz as "qux"
+	}
+
+	# exercise default keyword
+	default allow = false
+	allow if {
+		input.x = 1
+	} {
+		input.x = 0
+	}
+
+	glob_match if {
+		x = input.x
+		glob.match("foo:*:bar", [":"], x)
+	} {
+		x = input.x
+		glob.match("foo:*:baz", [":"], x)
+	} {
+		x = input.x
+		glob.match("foo:*:*", [":"], x)
+	} {
+		x = input.x
+		glob.match("dead:*:beef", [":"], x)
+	}
+
+	glob_match_mappers if {
+		input.x = x
+		glob.match("foo:*", [":"], x)
+	}
+
+	glob_match_mappers if {
+		input.x = x
+	}
+
+	glob_match_mappers_non_mapped_match if {
+		input.x = "/bar"
+	}
+
+	glob_match_mappers_non_mapped_match if {
+		input.x = x
+		glob.match("bar", ["/"], x)
+	}
+
+	glob_match_overlapped_mappers if {
+		input.x = x
+		glob.match("foo:*", [":"], x)
+	}
+
+	glob_match_overlapped_mappers if {
+		input.x = x
+		glob.match("foo/*", ["/"], x)
+	}
+
+	glob_match_disjoint_mappers if {
+		input.x = x
+		glob.match("foo:*", [":"], x)
+	}
+
+	glob_match_disjoint_mappers if {
+		input.x = x
+		glob.match("bar/*", ["/"], x)
+	}
+	`)
+
+	tests := []struct {
+		note        string
+		module      *Module
+		ruleset     string
+		ruleRef     Ref
+		input       string
+		data        string
+		isVirtual   func(Ref) bool
+		unknowns    []string
+		args        []Value
+		expectedRS  any
+		expectedDR  *Rule
+		checkResult func(*testing.T, *IndexResult)
+	}{
+		{
+			note:    "exact match",
+			ruleset: "exact",
+			input:   `{"x": 3, "y": 4}`,
+			expectedRS: []string{
+				`exact if { input.x = 3; input.y = 4 }`,
+			},
+			checkResult: expectOnlyGroundRefs(true), // covering base case
+		},
+		{
+			note:    "undefined match",
+			ruleset: "scalars",
+			input:   `{"x": 2, "y": 2}`,
+			expectedRS: []string{
+				`scalars if { input.x = 2 }`},
+		},
+		{
+			note:    "disjoint match",
+			ruleset: "scalars",
+			input:   `{"x": 2, "y": 2, "z": 2}`,
+			expectedRS: []string{
+				`scalars if { input.x = 2 }`,
+				`scalars if { input.y = 2; input.z = 2}`},
+		},
+		{
+			note:    "ordering match",
+			ruleset: "scalars",
+			input:   `{"x": 0, "y": 1}`,
+			expectedRS: []string{
+				`scalars if { input.x = 0; input.y = 1 }`,
+				`scalars if { 1 = input.y; input.x = 0 }`},
+		},
+		{
+			note:    "type no match",
+			ruleset: "vars",
+			input:   `{"y": 3, "x": {1,2,3}}`,
+			expectedRS: []string{
+				`vars if { input.x = x; input.y = 3 }`,
+			},
+		},
+		{
+			note:    "var match",
+			ruleset: "vars",
+			input:   `{"x": 1, "y": 3}`,
+			expectedRS: []string{
+				`vars if { input.x = x; input.y = 3 }`,
+			},
+		},
+		{
+			note:    "var match disjoint",
+			ruleset: "vars",
+			input:   `{"x": 4, "z": 5, "y": 3}`,
+			expectedRS: []string{
+				`vars if { input.x = x; input.y = 3 }`,
+				`vars if { input.x = 4; input.z = 5 }`,
+			},
+		},
+		{
+			note:    "array match",
+			ruleset: "composite_arr",
+			input: `{
+				"x": 1,
+				"y": [1,2,3],
+				"z": 1,
+			}`,
+			expectedRS: []string{
+				`composite_arr if { input.x = 1; input.y = [1,2,3]; input.z = 1 }`,
+				`composite_arr if { input.y = [1,[2,3],4] }`,
+			},
+		},
+		{
+			note:    "array var match",
+			ruleset: "composite_arr",
+			input: `{
+				"x": 1,
+				"y": [1,2,4,5],
+			}`,
+			expectedRS: []string{
+				`composite_arr if { input.x = 1; input.y = [1,2,4,x] }`,
+				`composite_arr if { input.y = [1,[2,3],4] }`,
+			},
+		},
+		{
+			note:    "array var multiple match",
+			ruleset: "composite_arr",
+			input: `{
+				"x": 1,
+				"y": [1,2,4,5],
+				"z": 3,
+			}`,
+			expectedRS: []string{
+				`composite_arr if { input.x = 1; input.y = [1,2,4,x] }`,
+				`composite_arr if { input.y = [1,2,y,5]; input.z = 3 }`,
+				`composite_arr if { input.y = [1,[2,3],4] }`,
+			},
+		},
+		{
+			note:    "array nested match non-indexable rules",
+			ruleset: "composite_arr",
+			input: `{
+				"x": 1,
+				"y": [1,[2,3],4],
+			}`,
+			expectedRS: []string{
+				`composite_arr if { input.y = [1,[2,3],4] }`,
+			},
+		},
+		{
+			note:    "array empty match",
+			ruleset: "composite_arr",
+			input:   `{"y": []}`,
+			expectedRS: []string{
+				`composite_arr if { input.y = [] }`,
+				`composite_arr if { input.y = [1,[2,3],4] }`,
+			},
+		},
+		{
+			note:    "object match non-indexable rule",
+			ruleset: "composite_obj",
+			input:   `{"y": {"foo": "bar", "bar": "baz"}}`,
+			expectedRS: []string{
+				`composite_obj if { input.y = {"foo": "bar", "bar": x} }`,
+			},
+		},
+		{
+			note:    "match ==",
+			ruleset: "equal",
+			input:   `{"x": 2, "y": 3}`,
+			expectedRS: []string{
+				"equal if { input.y == 3 }",
+				"equal if { input.x == 2 }",
+			},
+		},
+		{
+			note:       "miss ==",
+			ruleset:    "equal",
+			input:      `{"x": 1000, "y": 1000}`,
+			expectedRS: []string{},
+		},
+		{
+			note:    "hit both",
+			ruleset: "naked",
+			input:   `{"x": 1000, "y": 1000}`,
+			expectedRS: []string{
+				"naked if { input.y }",
+				"naked if { input.x }",
+			},
+		},
+		{
+			note:    "hit one",
+			ruleset: "naked",
+			input:   `{"x": false}`,
+			expectedRS: []string{
+				"naked if { input.x }",
+			},
+		},
+		{
+			note:       "miss",
+			ruleset:    "naked",
+			input:      `{"z": "onk"}`,
+			expectedRS: []string{},
+		},
+		{
+			note:       "default rule only",
+			ruleset:    "allow",
+			input:      `{"x": 2}`,
+			expectedRS: []string{},
+			expectedDR: MustParseRule(`default allow = false`),
+		},
+		{
+			note:       "match and default rule",
+			ruleset:    "allow",
+			input:      `{"x": 1}`,
+			expectedRS: []string{"allow { input.x = 1 }"},
+			expectedDR: MustParseRule(`default allow = false`),
+		},
+		{
+			note:       "match and non-indexable rules",
+			ruleset:    "filtering",
+			input:      `{"x": 1}`,
+			expectedRS: mod.RuleSet(Var("filtering")),
+		},
+		{
+			note:    "non-indexable rules",
+			ruleset: "filtering",
+			input:   `{}`,
+			expectedRS: mod.RuleSet(Var("filtering")).Diff(NewRuleSet(
+				MustParseRuleWithOpts(`filtering if { input.x = 1 }`, opts),
+				MustParseRuleWithOpts(`filtering if { input.x[_] = 1 }`, opts),
+			)),
+		},
+		{
+			note:       "unknown: all",
+			ruleset:    "composite_arr",
+			unknowns:   []string{`input.x`, `input.y`, `input.z`},
+			expectedRS: mod.RuleSet(Var("composite_arr")),
+		},
+		{
+			note:     "unknown: partial",
+			ruleset:  "composite_arr",
+			unknowns: []string{`input.x`, `input.y`},
+			input:    `{"z": 3}`,
+			expectedRS: mod.RuleSet(Var("composite_arr")).Diff(NewRuleSet(MustParseRuleWithOpts(`composite_arr if {
+				input.x = 1
+				input.y = [1,2,3]
+				input.z = 1
+			}`, opts))),
+		},
+		{
+			note:    "glob.match",
+			ruleset: "glob_match",
+			input:   `{"x": "foo:1234:bar"}`,
+			expectedRS: []string{`
+			glob_match if {
+				x = input.x
+				glob.match("foo:*:bar", [":"], x)
+			}`, `
+			glob_match if {
+				x = input.x
+				glob.match("foo:*:*", [":"], x)
+			}`},
+		},
+		{
+			note:    "glob.match - mapper and no mapper",
+			ruleset: "glob_match_mappers",
+			input:   `{"x": "foo:bar"}`,
+			expectedRS: []string{
+				`
+				glob_match_mappers if {
+					input.x = x
+					glob.match("foo:*", [":"], x)
+				}
+			`,
+				`
+				glob_match_mappers if {
+					input.x = x
+				}
+			`},
+		},
+		{
+			note:    "glob.match - mapper and no mapper, non-mapped value matches",
+			ruleset: "glob_match_mappers_non_mapped_match",
+			input:   `{"x": "/bar"}`,
+			expectedRS: []string{
+				`glob_match_mappers_non_mapped_match if {
+					input.x = "/bar"
+				}`},
+		},
+		{
+			// NOTE(tsandall): The rule index returns both rules because the trie nodes
+			// store multiple mappers and will traverse each one. Since both mappers
+			// generate a trie structure of:
+			//
+			//		array
+			//		  scalar("foo")
+			//		    any
+			//
+			// The rules are added to the same leaf node. In the future, we could improve
+			// the indexer to distinguish the trie nodes using the delimiter but until
+			// then the indexer can just return extra rules.
+			note:    "glob.match - multiple overlapped mappers",
+			ruleset: "glob_match_overlapped_mappers",
+			input:   `{"x": "foo:bar"}`,
+			expectedRS: []string{
+				`
+				glob_match_overlapped_mappers if {
+					input.x = x
+					glob.match("foo:*", [":"], x)
+				}
+				`, `
+				glob_match_overlapped_mappers if {
+					input.x = x
+					glob.match("foo/*", ["/"], x)
+				}
+				`,
+			},
+		},
+		{
+			note:    "glob.match - multiple disjoint mappers",
+			ruleset: "glob_match_disjoint_mappers",
+			input:   `{"x": "foo:bar"}`,
+			expectedRS: []string{
+				`glob_match_disjoint_mappers if { input.x = x; glob.match("foo:*", [":"], x) }`,
+			},
+		},
+		{
+			note:       "glob.match unexpected value type",
+			ruleset:    "glob_match",
+			input:      `{"x": [0]}`,
+			expectedRS: []string{},
+		},
+		{
+			note: "glob.match: do not index captured output",
+			module: module(`package test
+				p if { x = input.x; glob.match("/a/*/c", ["/"], x, false) }
+			`),
+			ruleset: "p",
+			input:   `{"x": "wrong"}`,
+			expectedRS: []string{
+				`p if { x = input.x; glob.match("/a/*/c", ["/"], x, false) }`,
+			},
+		},
+		{
+			note: "functions: args match",
+			module: module(`package test
+			f(x) = y if {
+				input.a = "foo"
+				x = 10
+				y := 10
+			}
+			f(x) = 12 if { x = 11 }
+			f(x) = x+1 if {
+				input.a = x
+				x != 10
+				x != 11
+			}`),
+			ruleset: "f",
+			input:   `{"a": "foo"}`,
+			args:    []Value{Number("11")},
+			expectedRS: []string{
+				`f(x) = 12 if { x = 11 } `,
+				`f(x) = plus(x, 1) if { input.a = x; neq(x, 10); neq(x, 11) }`, // neq not respected in index
+			},
+		},
+		{
+			note: "functions: input + args match",
+			module: module(`package test
+			f(x) = y if {
+				input.a = "foo"
+				x = 10
+				y := 10
+			}
+			f(x) = 12 if { x = 11 }
+			f(x) = x+1 if {
+				input.a = x
+				x != 10
+				x != 11
+			}`),
+			ruleset: "f",
+			input:   `{"a": "foo"}`,
+			args:    []Value{Number("10")},
+			expectedRS: []string{
+				`f(x) = y if { input.a = "foo"; x = 10; assign(y, 10) }`,
+				`f(x) = plus(x, 1) if { input.a = x; neq(x, 10); neq(x, 11) }`, // neq not respected in index
+			},
+		},
+		{
+			note: "functions: multiple args, each matches",
+			module: module(`package test
+			g(x, y) = z if {
+				x = 12
+				y = "monkeys"
+				z = 1
+			}
+			g(a, b) = c if {
+				a = "a"
+				b = "b"
+				c = "c"
+			}`),
+			ruleset: "g",
+			args:    []Value{Number("12"), StringTerm("monkeys").Value},
+			expectedRS: []string{
+				`g(x, y) = z if { x = 12; y = "monkeys"; z = 1 }`,
+			},
+		},
+		{
+			note: "functions: glob.match in function, arg matching first glob",
+			module: module(`package test
+			glob_f(a) = true if {
+				glob.match("foo:*", [":"], a)
+			}
+			glob_f(a) = true if {
+				glob.match("baz:*", [":"], a)
+			}
+			glob_f(a) = true if {
+				a = 12
+			}`),
+			ruleset: "glob_f",
+			args:    []Value{StringTerm("foo:bar").Value},
+			expectedRS: []string{
+				`glob_f(a) = true if { glob.match("foo:*", [":"], a) }`,
+			},
+		},
+		{
+			note: "functions: glob.match in function, arg matching second glob",
+			module: module(`package test
+			glob_f(a) = true if {
+				glob.match("foo:*", [":"], a)
+			}
+			glob_f(a) = true if {
+				glob.match("baz:*", [":"], a)
+			}
+			glob_f(a) = true if {
+				a = 12
+			}`),
+			ruleset: "glob_f",
+			args:    []Value{StringTerm("baz:bar").Value},
+			expectedRS: []string{
+				`glob_f(a) = true if { glob.match("baz:*", [":"], a) }`,
+			},
+		},
+		{
+			note: "functions: glob.match in function, arg matching non-glob rule",
+			module: module(`package test
+			glob_f(a) = true if {
+				glob.match("baz:*", [":"], a)
+			}
+			glob_f(a) = true if {
+				a = 12
+			}`),
+			ruleset: "glob_f",
+			args:    []Value{Number("12")},
+			expectedRS: []string{
+				`glob_f(a) = true if { a = 12 }`,
+			},
+		},
+		{
+			note: "functions: multiple outputs for same inputs",
+			module: module(`package test
+			f(x) = y if { a = x; equal(a, 1, r); y = r }
+			f(x) = y if { a = x; equal(a, 2, r); y = r }`),
+			ruleset: "f",
+			input:   `{}`,
+			args:    []Value{Number("1")},
+			expectedRS: []string{
+				`f(x) = y if { a = x; equal(a, 1, r); y = r }`,
+				`f(x) = y if { a = x; equal(a, 2, r); y = r }`,
+			},
+		},
+		{
+			note: "functions: do not index equal(x,y,z)",
+			module: module(`package test
+				f(x) = y if { equal(x, 1, z); y = z }
+			`),
+			ruleset: "f",
+			input:   `{}`,
+			args:    []Value{Number("2")},
+			expectedRS: []string{
+				`f(x) = y if { equal(x, 1, z); y = z }`,
+			},
+		},
+		{
+			note:       "every: do not index body",
+			module:     everyMod,
+			ruleset:    "p",
+			input:      `{"a": 2}`,
+			expectedRS: RuleSet(everyMod.Rules),
+		},
+		{
+			note:       "every: index domain",
+			module:     everyModWithDomain,
+			ruleset:    "p",
+			input:      `{"a": [1]}`,
+			expectedRS: RuleSet([]*Rule{everyModWithDomain.Rules[0]}),
+		},
+		{
+			note:       "local ref head: whole input document",
+			module:     localHeadMod,
+			ruleset:    "whole",
+			input:      `{"foo": "a"}`,
+			expectedRS: RuleSet([]*Rule{localHeadMod.Rules[0]}),
+		},
+		{
+			note:       "local ref head: inside an `and` operand",
+			module:     logicalHeadMod,
+			ruleset:    "conj",
+			input:      `{"foo": "a", "bar": "a"}`,
+			expectedRS: RuleSet([]*Rule{logicalHeadMod.Rules[0]}),
+		},
+		{
+			note:       "local ref head: inside an `or` operand",
+			module:     logicalHeadMod,
+			ruleset:    "disj",
+			input:      `{"foo": "aa"}`,
+			expectedRS: RuleSet([]*Rule{logicalHeadMod.Rules[2]}),
+		},
+		{
+			note:       "local ref head: intermediate ref",
+			module:     localHeadMod,
+			ruleset:    "intermediate",
+			input:      `{"a": {"b": {"c": "a"}}}`,
+			expectedRS: RuleSet([]*Rule{localHeadMod.Rules[2]}),
+		},
+		{
+			note:       "local ref head: membership, via the hoisting assignment",
+			module:     localHeadMod,
+			ruleset:    "member",
+			input:      `{"foo": ["a"]}`,
+			expectedRS: RuleSet([]*Rule{localHeadMod.Rules[4]}),
+		},
+		{
+			note:       "local ref head: glob.match, via the hoisting assignment",
+			module:     localHeadMod,
+			ruleset:    "globmatch",
+			input:      `{"foo": "a/b"}`,
+			expectedRS: RuleSet([]*Rule{localHeadMod.Rules[6]}),
+		},
+		{
+			note:       "local ref head: unresolvable head is not indexed",
+			module:     localHeadMod,
+			ruleset:    "unresolvable",
+			input:      `{}`,
+			expectedRS: RuleSet([]*Rule{localHeadMod.Rules[8], localHeadMod.Rules[9]}),
+		},
+		{
+			note:       "local ref head: bare ref",
+			module:     localHeadMod,
+			ruleset:    "naked_local",
+			input:      `{"foo": true}`,
+			expectedRS: RuleSet([]*Rule{localHeadMod.Rules[10]}),
+		},
+		{
+			note:       "local ref head: chain of assignments",
+			module:     localHeadMod,
+			ruleset:    "chained",
+			input:      `{"a": {"b": "a"}}`,
+			expectedRS: RuleSet([]*Rule{localHeadMod.Rules[12]}),
+		},
+		{
+			note:       "local ref head: rooted at data",
+			module:     localHeadMod,
+			ruleset:    "from_data",
+			data:       `{"roles": {"a": 1}}`,
+			expectedRS: RuleSet([]*Rule{localHeadMod.Rules[14]}),
+		},
+		{
+			note:       "local ref head: trailing variable, ground prefix is indexed",
+			module:     localHeadMod,
+			ruleset:    "trailingvar",
+			input:      `{"foo": ["a"]}`,
+			expectedRS: RuleSet([]*Rule{localHeadMod.Rules[16]}),
+		},
+		{
+			note:       "local ref head: non-ground remainder is not indexed",
+			module:     localHeadMod,
+			ruleset:    "nonground",
+			input:      `{"foo": [{"bar": "a"}]}`,
+			expectedRS: RuleSet([]*Rule{localHeadMod.Rules[18], localHeadMod.Rules[19]}),
+		},
+		{
+			note:       "local ref head: virtual document is not indexed",
+			module:     localHeadMod,
+			ruleset:    "virtual",
+			isVirtual:  func(ref Ref) bool { return ref.HasPrefix(MustParseRef("data.test.vd")) },
+			expectedRS: RuleSet([]*Rule{localHeadMod.Rules[20], localHeadMod.Rules[21]}),
+		},
+		{
+			note:       "chained assignment: concrete value supersedes the leftover any-entry",
+			module:     chainedValueMod,
+			ruleset:    "p",
+			input:      `{"role": "a"}`,
+			expectedRS: RuleSet([]*Rule{chainedValueMod.Rules[0]}),
+		},
+		{
+			// Deliberate: resolveVarToRef maps a formal to an `args[i]` ref, which
+			// isValidIndexRef rejects -- indexing bare formals works by bypassing that
+			// validation, and sub-paths of args would need the resolver to know about them.
+			note: "local ref head: function argument is not indexed",
+			module: module(`package test
+			f(x) = 1 if { x.foo = "a" }
+			f(x) = 2 if { x.foo = "b" }`),
+			ruleset: "f",
+			args:    []Value{MustParseTerm(`{"foo": "a"}`).Value},
+			expectedRS: []string{
+				`f(x) = 1 if { x.foo = "a" }`,
+				`f(x) = 2 if { x.foo = "b" }`,
+			},
+		},
+		{
+			note:        "ref: single value, ground ref",
+			module:      refMod,
+			ruleRef:     MustParseRef("ref.single.value.ground"),
+			input:       `{"x": 1}`,
+			expectedRS:  RuleSet([]*Rule{refMod.Rules[0]}),
+			checkResult: expectOnlyGroundRefs(true),
+		},
+		{
+			note:        "ref: single value, ground ref and non-ground ref",
+			module:      refMod,
+			ruleRef:     MustParseRef("ref.multiple.single.value"),
+			input:       `{"x": 1, "y": "Y"}`,
+			expectedRS:  RuleSet([]*Rule{refMod.Rules[3], refMod.Rules[4]}),
+			checkResult: expectOnlyGroundRefs(false),
+		},
+		{
+			note:        "ref: single value, var in ref",
+			module:      refMod,
+			ruleRef:     MustParseRef("ref.single.value.key[k]"),
+			input:       `{"k": 1, "v": 2}`,
+			expectedRS:  RuleSet([]*Rule{refMod.Rules[1]}),
+			checkResult: expectOnlyGroundRefs(false),
+		},
+		{
+			note:        "ref: multi value, ground ref",
+			module:      refMod,
+			ruleRef:     MustParseRef("ref.multi.value.ground"),
+			input:       `{"x": 1}`,
+			expectedRS:  RuleSet([]*Rule{refMod.Rules[2]}),
+			checkResult: expectOnlyGroundRefs(true),
+		},
+		// {
+		// 	note:       "ref: multi value, var in ref",
+		// 	mod:        refMod,
+		// 	ruleRef:    MustParseRef("ref.multi.value.key[k]"),
+		// 	input:      `{"k": 1, "v": 2}`,
+		// 	expectedRS: RuleSet([]*Rule{refMod.Rules[3]}),
+		// },
+		{
+			note: "var assignments: var = ref; var = value",
+			module: module(`package test
+			p if {
+				x = input.foo
+				x = "bar"
+			}`),
+			ruleset: "p",
+			input:   `{"foo": "bar"}`,
+			expectedRS: []string{
+				`p if { x = input.foo; x = "bar" }`,
+			},
+		},
+		{
+			note: "var assignments: var = ref; var = value (no match)",
+			module: module(`package test
+			p if {
+				z = input.foo
+				z = "bar"
+			}`),
+			ruleset:    "p",
+			input:      `{"foo": "baz"}`,
+			expectedRS: []string{},
+		},
+		{
+			note: "var assignments: var = value; var = ref (reverse order)",
+			module: module(`package test
+			p if {
+				y = "bar"
+				y = input.foo
+			}`),
+			ruleset: "p",
+			input:   `{"foo": "bar"}`,
+			expectedRS: []string{
+				`p if { y = "bar"; y = input.foo }`,
+			},
+		},
+		{
+			note: "var assignments: var = value; var = ref (reverse order, no match)",
+			module: module(`package test
+			p if {
+				y = "bar"
+				y = input.foo
+			}`),
+			ruleset:    "p",
+			input:      `{"foo": "baz"}`,
+			expectedRS: []string{},
+		},
+		{
+			note: "var assignments: value = var; ref = var",
+			module: module(`package test
+			p if {
+				"bar" = x
+				input.foo = x
+			}`),
+			ruleset: "p",
+			input:   `{"foo": "bar"}`,
+			expectedRS: []string{
+				`p if { "bar" = x; input.foo = x }`,
+			},
+		},
+		{
+			note: "var assignments: value = var; ref = var (no match)",
+			module: module(`package test
+			p if {
+				"bar" = x
+				input.foo = x
+			}`),
+			ruleset:    "p",
+			input:      `{"foo": "baz"}`,
+			expectedRS: []string{},
+		},
+		{
+			note: "internal.member_2: rhs = value (no match)",
+			module: module(`package test
+			p if {
+				__local0__ = input.role
+				internal.member_2(__local0__, {"admin", "foo"})
+			}`), // this is `p if input.role in {"admin", "foo"}` sent through the compiler
+			ruleset:    "p",
+			input:      `{"role": "bar"}`,
+			expectedRS: []string{},
+		},
+		{
+			note: "internal.member_2: rhs = value",
+			module: module(`package test
+			p if {
+				__local0__ = input.role
+				internal.member_2(__local0__, {"admin", "foo"})
+			}`),
+			ruleset: "p",
+			input:   `{"role": "foo"}`,
+			expectedRS: []string{
+				`p if { __local0__ = input.role; internal.member_2(__local0__, {"admin", "foo"}) }`},
+		},
+		{
+			note: "internal.member_2: rhs = value (other match)",
+			module: module(`package test
+			p if {
+				__local0__ = input.role
+				internal.member_2(__local0__, {"admin", "foo"})
+			}`),
+			ruleset: "p",
+			input:   `{"role": "admin"}`,
+			expectedRS: []string{
+				`p if { __local0__ = input.role; internal.member_2(__local0__, {"admin", "foo"}) }`},
+		},
+		{
+			note: "internal.member_2: lhs = value (2 out of 3)",
+			module: module(`package test
+			p if {
+				x = "a"
+				x in input.foo
+			}
+			p if {
+				x = "b"
+				x in input.foo
+			}
+			p if {
+				x = "c"
+				x in input.foo
+			}
+			`),
+			ruleset: "p",
+			input:   `{"foo": {"a", "b"}}`,
+			expectedRS: []string{
+				`p if { x = "a"; x in input.foo }`,
+				`p if { x = "b"; x in input.foo }`,
+			},
+		},
+		{
+			note: "internal.member_2: rhs = value (2 out of 3)",
+			module: module(`package test
+			p if {
+				__local0__ = input.role
+				internal.member_2(__local0__, {"a", "b", "c"})
+			}
+			p if {
+				__local0__ = input.role
+				internal.member_2(__local0__, {"x", "b", "z"})
+			}
+			p if {
+				__local0__ = input.role
+				internal.member_2(__local0__, {"x", "y", "z"})
+			}`),
+			ruleset: "p",
+			input:   `{"role": "b"}`,
+			expectedRS: []string{
+				`p if {	__local0__ = input.role; internal.member_2(__local0__, {"a", "b", "c"}) }`,
+				`p if {	__local0__ = input.role; internal.member_2(__local0__, {"x", "b", "z"}) }`,
+			},
+		},
+		{
+			note: "internal.member_2: unknown value triggers traverseUnknown (duplicate prevention)",
+			module: module(`package test
+			p if {
+				__local0__ = input.role
+				internal.member_2(__local0__, {"admin", "foo"})
+			}`),
+			ruleset:  "p",
+			unknowns: []string{`input.role`},
+			expectedRS: []string{
+				`p if { __local0__ = input.role; internal.member_2(__local0__, {"admin", "foo"}) }`},
+		},
+		{
+			note: "internal.member_2: object values in rhs (match)",
+			module: module(`package test
+			p if {
+				__local0__ = input.role
+				internal.member_2(__local0__, {"k1": "admin", "k2": "user"})
+			}`),
+			ruleset: "p",
+			input:   `{"role": "admin"}`,
+			expectedRS: []string{
+				`p if { __local0__ = input.role; internal.member_2(__local0__, {"k1": "admin", "k2": "user"}) }`},
+		},
+		{
+			note: "internal.member_2: object values in rhs (no match)",
+			module: module(`package test
+			p if {
+				__local0__ = input.role
+				internal.member_2(__local0__, {"k1": "admin", "k2": "user"})
+			}`),
+			ruleset:    "p",
+			input:      `{"role": "guest"}`,
+			expectedRS: []string{},
+		},
+		{
+			// Regression test: elements of a collection literal in `x in [...]`
+			// used to be inserted into the trie as-is (see updateMemberRefInValue),
+			// without restricting them to scalars/arrays like the equality-based
+			// indexing does (see indexValue). A non-scalar element (object or set)
+			// made the trie panic with "illegal value", since it only knew how to
+			// store scalars and arrays of scalars. Since the ref can't be indexed
+			// precisely here, it falls back to the trie's "any" node (like Var):
+			// the rule remains a candidate for every input, and it's up to body
+			// evaluation (not the index) to determine the actual result.
+			note: "internal.member_2: composite (object) element in rhs array (no match, but still a candidate)",
+			module: module(`package test
+			p if {
+				__local0__ = input.role
+				internal.member_2(__local0__, [{"nested": 1}])
+			}`),
+			ruleset: "p",
+			input:   `{"role": "other"}`,
+			expectedRS: []string{
+				`p if { __local0__ = input.role; internal.member_2(__local0__, [{"nested": 1}]) }`},
+		},
+		{
+			// Same fallback as above, for the other composite type in the case (Set).
+			note: "internal.member_2: composite (set) element in rhs array (candidate regardless of match)",
+			module: module(`package test
+			p if {
+				__local0__ = input.role
+				internal.member_2(__local0__, [{1, 2}])
+			}`),
+			ruleset: "p",
+			input:   `{"role": "other"}`,
+			expectedRS: []string{
+				`p if { __local0__ = input.role; internal.member_2(__local0__, [{1, 2}]) }`},
+		},
+		{
+			// insertArray's handling of array elements had the same gap for
+			// nested arrays specifically (no "any" fallback for a non-scalar
+			// head element), independent of the object/set case above. Unlike
+			// that case, this fallback lives under the ref's "array" child (not
+			// its top-level "any" node), so it only makes the rule a candidate
+			// for inputs that are themselves arrays of matching length - it
+			// doesn't degrade indexing for unrelated input types.
+			note: "internal.member_2: nested array-in-array element in rhs (array input still a candidate)",
+			module: module(`package test
+			p if {
+				__local0__ = input.role
+				internal.member_2(__local0__, [[[1, 2]], [[3, 4]]])
+			}`),
+			ruleset: "p",
+			input:   `{"role": [[9, 9]]}`,
+			expectedRS: []string{
+				`p if { __local0__ = input.role; internal.member_2(__local0__, [[[1, 2]], [[3, 4]]]) }`},
+		},
+		{
+			// A non-array input can never equal either collection element (both
+			// are arrays), so the index stays precise here: no panic, and no
+			// over-broad "any" fallback leaking into unrelated input types.
+			note: "internal.member_2: nested array-in-array element in rhs (scalar input not a candidate)",
+			module: module(`package test
+			p if {
+				__local0__ = input.role
+				internal.member_2(__local0__, [[[1, 2]], [[3, 4]]])
+			}`),
+			ruleset:    "p",
+			input:      `{"role": "other"}`,
+			expectedRS: []string{},
+		},
+		{
+			// insertArray's fallback for a non-scalar, non-array head element
+			// (object/set nested inside an array, as opposed to the object/set
+			// case above which is a direct element of the outer collection)
+			// exercises the same "any" branch as the *Array case just above, but
+			// for Object/Set.
+			note: "internal.member_2: composite (object) element nested inside array element in rhs (candidate regardless of match)",
+			module: module(`package test
+			p if {
+				__local0__ = input.role
+				internal.member_2(__local0__, [[1, {"nested": 1}]])
+			}`),
+			ruleset: "p",
+			input:   `{"role": [1, "x"]}`,
+			expectedRS: []string{
+				`p if { __local0__ = input.role; internal.member_2(__local0__, [[1, {"nested": 1}]]) }`},
+		},
+		{
+			note: "internal.member_2: var with array value in rhs (match)",
+			module: module(`package test
+			p if {
+				__local0__ = input.role
+				__local1__ = ["admin", "user"]
+				internal.member_2(__local0__, __local1__)
+			}`),
+			ruleset: "p",
+			input:   `{"role": "admin"}`,
+			expectedRS: []string{
+				`p if { __local0__ = input.role; __local1__ = ["admin", "user"]; internal.member_2(__local0__, __local1__) }`},
+		},
+		{
+			note: "internal.member_2: var with array value in rhs (no match)",
+			module: module(`package test
+			p if {
+				__local0__ = input.role
+				__local1__ = ["admin", "user"]
+				internal.member_2(__local0__, __local1__)
+			}`),
+			ruleset:    "p",
+			input:      `{"role": "guest"}`,
+			expectedRS: []string{},
+		},
+		{
+			note: "internal.member_2: var with empty array in rhs (one other match)",
+			module: module(`package test
+			p if {
+				__local0__ = input.role
+				__local1__ = []
+				internal.member_2(__local0__, __local1__)
+			}
+			p if {
+				__local0__ = input.role
+				__local1__ = ["admin", "guest"]
+				internal.member_2(__local0__, __local1__)
+			}`),
+			ruleset: "p",
+			input:   `{"role": "guest"}`,
+			expectedRS: []string{
+				`p if { __local0__ = input.role; __local1__ = []; internal.member_2(__local0__, __local1__) }`,
+				`p if { __local0__ = input.role; __local1__ = ["admin", "guest"]; internal.member_2(__local0__, __local1__) }`,
+			},
+		},
+		{
+			note: "internal.member_2: var with empty array in rhs (no index)",
+			module: module(`package test
+			p if {
+				__local0__ = input.role
+				__local1__ = []
+				internal.member_2(__local0__, __local1__)
+			}`),
+			ruleset: "p",
+			input:   `{"role": "guest"}`,
+			expectedRS: []string{
+				`p if { __local0__ = input.role; __local1__ = []; internal.member_2(__local0__, __local1__) }`,
+			},
+		},
+		{
+			note: "internal.member_2: var with empty array in rhs (one other is mismatch)",
+			module: module(`package test
+			p if {
+				__local0__ = input.role
+				__local1__ = []
+				internal.member_2(__local0__, __local1__)
+			}
+			p if {
+				__local0__ = input.role
+				__local1__ = ["admin", "guest"]
+				internal.member_2(__local0__, __local1__)
+			}`),
+			ruleset: "p",
+			input:   `{"role": "user"}`,
+			expectedRS: []string{
+				`p if { __local0__ = input.role; __local1__ = []; internal.member_2(__local0__, __local1__) }`,
+			},
+		},
+		{
+			note: "internal.member_2: var with set value in rhs (match)",
+			module: module(`package test
+			p if {
+				__local0__ = input.role
+				__local1__ = {"admin", "user"}
+				internal.member_2(__local0__, __local1__)
+			}`),
+			ruleset: "p",
+			input:   `{"role": "admin"}`,
+			expectedRS: []string{
+				`p if { __local0__ = input.role; __local1__ = {"admin", "user"}; internal.member_2(__local0__, __local1__) }`},
+		},
+		{
+			note: "internal.member_2: var with set value in rhs (no match)",
+			module: module(`package test
+			p if {
+				__local0__ = input.role
+				__local1__ = {"admin", "user"}
+				internal.member_2(__local0__, __local1__)
+			}`),
+			ruleset:    "p",
+			input:      `{"role": "guest"}`,
+			expectedRS: []string{},
+		},
+		{
+			note: "functions: member_2 in function, arg not matching",
+			module: module(`package test
+			member2_f(a) if a in {"a", "b"}`),
+			ruleset:    "member2_f",
+			args:       []Value{String("c")},
+			expectedRS: []string{},
+		},
+		{
+			note: "functions: member_2 in function, arg matching",
+			module: module(`package test
+			member2_f(a) if a in {"a", "b"}`),
+			ruleset: "member2_f",
+			args:    []Value{String("a")},
+			expectedRS: []string{
+				`member2_f(a) = true if { a in {"a", "b"} }`,
+			},
+		},
+		{
+			note: "internal.member_2: reverse - scalar in collection (match)",
+			module: module(`package test
+			p if {
+				__local0__ = input.roles
+				internal.member_2("admin", __local0__)
+			}`),
+			ruleset: "p",
+			input:   `{"roles": ["admin", "user"]}`,
+			expectedRS: []string{
+				`p if { __local0__ = input.roles; internal.member_2("admin", __local0__) }`},
+		},
+		{
+			note: "internal.member_2: reverse - scalar in collection (no match)",
+			module: module(`package test
+			p if {
+				__local0__ = input.roles
+				internal.member_2("guest", __local0__)
+			}`),
+			ruleset:    "p",
+			input:      `{"roles": ["admin", "user"]}`,
+			expectedRS: []string{},
+		},
+		{
+			note: "internal.member_2: reverse - var in collection (match)",
+			module: module(`package test
+			p if {
+				__local0__ = input.roles
+				__local1__ = "admin"
+				internal.member_2(__local1__, __local0__)
+			}`),
+			ruleset: "p",
+			input:   `{"roles": ["admin", "user"]}`,
+			expectedRS: []string{
+				`p if { __local0__ = input.roles; __local1__ = "admin"; internal.member_2(__local1__, __local0__) }`},
+		},
+		{
+			note: "internal.member_2: reverse - var in collection (no match)",
+			module: module(`package test
+			p if {
+				__local0__ = input.roles
+				__local1__ = "guest"
+				internal.member_2(__local1__, __local0__)
+			}`),
+			ruleset:    "p",
+			input:      `{"roles": ["admin", "user"]}`,
+			expectedRS: []string{},
+		},
+		{
+			note: "internal.member_2: reverse - scalar in set (match)",
+			module: module(`package test
+			p if {
+				__local0__ = input.items
+				internal.member_2("b", __local0__)
+			}`),
+			ruleset: "p",
+			input:   `{"items": {"a", "b", "c"}}`,
+			expectedRS: []string{
+				`p if { __local0__ = input.items; internal.member_2("b", __local0__) }`},
+		},
+		{
+			note: "internal.member_2: reverse - scalar in set (no match)",
+			module: module(`package test
+			p if {
+				__local0__ = input.items
+				internal.member_2("z", __local0__)
+			}`),
+			ruleset:    "p",
+			input:      `{"items": {"a", "b", "c"}}`,
+			expectedRS: []string{},
+		},
+		{
+			note: "internal.member_2: reverse - number in array (match)",
+			module: module(`package test
+			p if {
+				__local0__ = input.nums
+				internal.member_2(2, __local0__)
+			}`),
+			ruleset: "p",
+			input:   `{"nums": [1, 2, 3]}`,
+			expectedRS: []string{
+				`p if { __local0__ = input.nums; internal.member_2(2, __local0__) }`},
+		},
+		{
+			note: "internal.member_2: reverse - number in array (no match)",
+			module: module(`package test
+			p if {
+				__local0__ = input.nums
+				internal.member_2(99, __local0__)
+			}`),
+			ruleset:    "p",
+			input:      `{"nums": [1, 2, 3]}`,
+			expectedRS: []string{},
+		},
+		{
+			note: "internal.member_2: reverse - scalar in object values (match)",
+			module: module(`package test
+			p if {
+				__local0__ = input.obj
+				internal.member_2("bar", __local0__)
+			}`),
+			ruleset: "p",
+			input:   `{"obj": {"a": "foo", "b": "bar"}}`,
+			expectedRS: []string{
+				`p if { __local0__ = input.obj; internal.member_2("bar", __local0__) }`},
+		},
+		{
+			note: "internal.member_2: reverse - scalar in object values (no match)",
+			module: module(`package test
+			p if {
+				__local0__ = input.obj
+				internal.member_2("baz", __local0__)
+			}`),
+			ruleset:    "p",
+			input:      `{"obj": {"a": "foo", "b": "bar"}}`,
+			expectedRS: []string{},
+		},
+		{
+			note: "internal.member_2: reverse - non-scalar not indexed",
+			module: module(`package test
+			p if {
+				__local0__ = input.items
+				internal.member_2({"foo": "bar"}, __local0__)
+			}`),
+			ruleset: "p",
+			input:   `{"items": [{"foo": "buz"}]}`, // not a match!
+			expectedRS: []string{
+				`p if { __local0__ = input.items; internal.member_2({"foo": "bar"}, __local0__) }`},
+		},
+		{
+			note: "wildcard ref equality: input.roles[_] == \"admin\" indexed like \"admin\" in input.roles (match)",
+			module: module(`package test
+			p if {
+				input.roles[_] == "admin"
+			}
+			p if {
+				"admin" in input.roles
+			}`),
+			ruleset: "p",
+			input:   `{"roles": ["admin", "user"]}`,
+			expectedRS: []string{
+				`p if { equal(input.roles[_], "admin") }`,
+				`p if { internal.member_2("admin", input.roles) }`,
+			},
+		},
+		{
+			note: "wildcard ref equality: input.roles[_] == \"admin\" indexed like \"admin\" in input.roles (no match)",
+			module: module(`package test
+			p if {
+				input.roles[_] == "admin"
+			}
+			p if {
+				"admin" in input.roles
+			}`),
+			ruleset:    "p",
+			input:      `{"roles": ["user", "guest"]}`,
+			expectedRS: []string{},
+		},
+		{
+			note: "wildcard ref equality: reverse order value == ref[_] (match)",
+			module: module(`package test
+			p if {
+				"admin" == input.roles[_]
+			}`),
+			ruleset: "p",
+			input:   `{"roles": ["admin", "user"]}`,
+			expectedRS: []string{
+				`p if { equal("admin", input.roles[_]) }`,
+			},
+		},
+		{
+			note: "array pattern and scalar membership on same ref (regression test for revert in v1.14.1)",
+			module: module(`package test
+			allow if {
+				__local2__ = input.parsed_path
+				count(__local2__, __local0__)
+				minus(__local0__, 1, __local1__)
+				input.parsed_path[__local1__] = "access-approvers"
+			}
+
+			allow if {
+				# previously, the presence of this rule would mess up the RI lookup results -- even
+				# though it had nothing to do with the matching rule
+				input.parsed_path = ["some", "other", "endpoint", "unrelated-policy", _]
+			}`),
+			ruleset: "allow",
+			input:   `{"parsed_path": ["some", "other", "endpoint", "xyz", "access-approvers"]}`,
+			expectedRS: []string{
+				`allow if { __local2__ = input.parsed_path; count(__local2__, __local0__); minus(__local0__, 1, __local1__); input.parsed_path[__local1__] = "access-approvers" }`,
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.note, func(t *testing.T) {
+			mod := mod
+			if tc.module != nil {
+				mod = tc.module
+			}
+			rules := []*Rule{}
+			for _, rule := range mod.Rules {
+				if tc.ruleRef == nil {
+					if rule.Head.Name == Var(tc.ruleset) {
+						rules = append(rules, rule)
+					}
+				} else {
+					if rule.Head.Ref().HasPrefix(tc.ruleRef) {
+						rules = append(rules, rule)
+					}
+				}
+			}
+			if len(rules) == 0 {
+				t.Fatal("selected empty ruleset")
+			}
+
+			var input *Term
+			if tc.input != "" {
+				input = MustParseTerm(tc.input)
+			}
+
+			var data *Term
+			if tc.data != "" {
+				data = MustParseTerm(tc.data)
+			}
+
+			var expectedRS RuleSet
+
+			switch e := tc.expectedRS.(type) {
+			case []string:
+				for _, r := range e {
+					expectedRS.Add(MustParseRuleWithOpts(r, opts))
+				}
+			case RuleSet:
+				expectedRS = e
+			default:
+				panic("Unexpected test case: expected value")
+			}
+
+			isVirtual := tc.isVirtual
+			if isVirtual == nil {
+				isVirtual = func(Ref) bool { return false }
+			}
+
+			index := newBaseDocEqIndex(isVirtual)
+
+			if !index.Build(rules) {
+				t.Fatalf("Expected index build to succeed")
+			}
+
+			t.Log(index.root.mermaid())
+			var unknownRefs Set
+
+			if len(tc.unknowns) > 0 {
+				unknownRefs = NewSet()
+				for _, s := range tc.unknowns {
+					unknownRefs.Add(MustParseTerm(s))
+				}
+			}
+
+			result, err := index.Lookup(testResolver{input: input, data: data, unknownRefs: unknownRefs, args: tc.args})
+			if err != nil {
+				t.Fatalf("Unexpected error during index lookup: %v", err)
+			}
+
+			if tc.checkResult != nil {
+				tc.checkResult(t, result)
+			}
+
+			if !NewRuleSet(result.Rules...).Equal(expectedRS) {
+				t.Fatalf("Expected ruleset %v but got: %v", expectedRS, result.Rules)
+			}
+
+			if result.Default == nil && tc.expectedDR != nil {
+				t.Fatalf("Expected default rule but got nil")
+			} else if result.Default != nil && tc.expectedDR == nil {
+				t.Fatalf("Unexpected default rule %v", result.Default)
+			} else if result.Default != nil && tc.expectedDR != nil && !result.Default.Equal(tc.expectedDR) {
+				t.Fatalf("Expected default rule %v but got: %v", tc.expectedDR, result.Default)
+			}
+
+			if result.Else != nil {
+				t.Fatalf("unexpected else rule(s): %v", result.Else)
+			}
+		})
+	}
+
+}
+
+func TestBaseDocEqIndexingPriorities(t *testing.T) {
+
+	module := module(`
+	package test
+
+	p if {						# r1
+		false
+	} else if {					# r2
+		input.x = "x1"
+		input.y = "y1"
+	} else if {					# r3
+		input.z = "z1"
+	}
+
+	p if {						# r4
+		input.x = "x1"
+	}
+
+	p if {						# r5
+		input.z = "z2"
+	} else if {					# r6
+		input.z = "z1"
+	}
+	`)
+
+	index := newBaseDocEqIndex(func(Ref) bool { return false })
+
+	ok := index.Build(module.Rules)
+	if !ok {
+		t.Fatalf("Expected index build to succeed")
+	}
+
+	input := MustParseTerm(`{"x": "x1", "y": "y1", "z": "z1"}`)
+
+	result, err := index.Lookup(testResolver{input: input})
+	if err != nil {
+		t.Fatalf("Unexpected error during index lookup: %v", err)
+	}
+
+	expectedRules := NewRuleSet(
+		module.Rules[0],
+		module.Rules[1],
+		module.Rules[2].Else)
+
+	expectedElse := map[*Rule]RuleSet{
+		module.Rules[0]: []*Rule{
+			module.Rules[0].Else,
+			module.Rules[0].Else.Else,
+		},
+	}
+
+	if result.Default != nil {
+		t.Fatalf("Expected default rule to be nil")
+	}
+
+	if !NewRuleSet(result.Rules...).Equal(expectedRules) {
+		t.Fatalf("Expected rules to be %v but got: %v", expectedRules, result.Rules)
+	}
+
+	r1 := module.Rules[0]
+
+	if !NewRuleSet(result.Else[r1]...).Equal(expectedElse[r1]) {
+		t.Fatalf("Expected else to be %v but got: %v", result.Else[r1], expectedElse[r1])
+	}
+}
+
+func TestBaseDocEqIndexingErrors(t *testing.T) {
+	index := newBaseDocEqIndex(func(Ref) bool {
+		return false
+	})
+
+	module := module(`
+	package ex
+
+	p if { input.raise_error = 1 }`)
+
+	if !index.Build(module.Rules) {
+		t.Fatalf("Expected index to build")
+	}
+
+	_, err := index.Lookup(testResolver{
+		input:   MustParseTerm(`{}`),
+		failRef: MustParseRef("input.raise_error")})
+
+	if err == nil || err.Error() != "some error" {
+		t.Fatalf("Expected error but got: %v", err)
+	}
+
+	index = newBaseDocEqIndex(func(Ref) bool { return true })
+	if index.Build(nil) {
+		t.Fatalf("Expected index build to fail")
+	}
+}
+
+func TestRefIndicesInsert(t *testing.T) {
+	ref := MustParseRef("input.x")
+
+	// values as they reach insert(): a var stands for "any value" (see anyValue
+	// and the "naked ref" case in Update), anything else for that value.
+	anyIndex := func() *refindex { return &refindex{Ref: ref, Value: Var("x")} }
+	valIndex := func(v int) *refindex { return &refindex{Ref: ref, Value: Number(strconv.Itoa(v))} }
+
+	tests := []struct {
+		note   string
+		insert []*refindex
+		exp    []Value
+	}{
+		{
+			note:   "value narrows an any-value index",
+			insert: []*refindex{anyIndex(), valIndex(1)},
+			exp:    []Value{Number("1")},
+		},
+		{
+			note:   "an any-value index does not widen a value",
+			insert: []*refindex{valIndex(1), anyIndex()},
+			exp:    []Value{Number("1"), Var("x")},
+		},
+		{
+			note:   "the same value twice is one index",
+			insert: []*refindex{valIndex(1), valIndex(1)},
+			exp:    []Value{Number("1")},
+		},
+		{
+			note:   "distinct values are both kept",
+			insert: []*refindex{valIndex(1), valIndex(2)},
+			exp:    []Value{Number("1"), Number("2")},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.note, func(t *testing.T) {
+			ri := newrefindices(func(Ref) bool { return false })
+			rule := MustParseRule(`p if input.x = 1`)
+
+			for _, index := range tc.insert {
+				ri.insert(rule, index)
+			}
+
+			act := make([]Value, 0, len(ri.rules[rule]))
+			for _, index := range ri.rules[rule] {
+				act = append(act, index.Value)
+			}
+
+			if len(act) != len(tc.exp) || !slices.EqualFunc(act, tc.exp, ValueEqual) {
+				t.Errorf("expected values %v, got %v", tc.exp, act)
+			}
+		})
+	}
+}
+
+func TestRefIndicesSorted(t *testing.T) {
+	ri := newrefindices(func(Ref) bool { return false })
+
+	// Insert refs with distinct frequencies in an order that doesn't match
+	// the expected (frequency-descending) output, so that a sort which
+	// fails to keep each ref paired with its own count would be caught.
+	freqs := map[string]int{
+		"input.a": 1,
+		"input.b": 7,
+		"input.c": 2,
+		"input.d": 6,
+		"input.e": 3,
+		"input.f": 5,
+		"input.g": 4,
+	}
+
+	for ref, n := range freqs {
+		r := MustParseRef(ref)
+		for range n {
+			count, _ := ri.frequency.Get(r)
+			ri.frequency.Put(r, count+1)
+		}
+	}
+
+	sorted := ri.Sorted()
+
+	if len(sorted) != len(freqs) {
+		t.Fatalf("expected %d refs, got %d", len(freqs), len(sorted))
+	}
+
+	prevCount := -1
+	for _, ref := range sorted {
+		count := freqs[ref.String()]
+		if prevCount != -1 && count > prevCount {
+			t.Fatalf("expected refs sorted by descending frequency, but got %v with count %d after count %d", sorted, count, prevCount)
+		}
+		prevCount = count
+	}
+}
+
+func TestSplitStringEscaped(t *testing.T) {
+	tests := []struct {
+		input  string
+		delims string
+		exp    []string
+	}{
+		{
+			input:  "foo:bar:baz",
+			delims: ":",
+			exp:    []string{"foo", "bar", "baz"},
+		},
+		{
+			input:  ":foo:",
+			delims: ":",
+			exp:    []string{"", "foo", ""},
+		},
+		{
+			input:  `foo\:bar`,
+			delims: ":",
+			exp:    []string{`foo\:bar`},
+		},
+		{
+			input:  "foo::bar",
+			delims: ":",
+			exp:    []string{"foo", "", "bar"},
+		},
+		{
+			input:  "foo:bar.baz",
+			delims: ":.",
+			exp:    []string{"foo", "bar", "baz"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.input, func(t *testing.T) {
+			result := splitStringEscaped(tc.input, tc.delims)
+			if len(result) != len(tc.exp) {
+				t.Fatalf("Expected %v but got %v", tc.exp, result)
+			}
+			for i := range result {
+				if result[i] != tc.exp[i] {
+					t.Fatalf("Expected %v in pos %v but got %v", tc.exp[i], i, result[i])
+				}
+			}
+		})
+	}
+}
+
+func TestGetAllRules(t *testing.T) {
+	module := module(`
+	package test
+
+	default p = 42
+
+	p if {
+		input.x = "x1"
+		input.y = "y1"
+	} else if {
+		true
+	} else if {
+		input.z = "z1"
+	}
+
+	p if {
+		input.z = "z1"
+	}
+	`)
+
+	index := newBaseDocEqIndex(func(Ref) bool { return false })
+
+	ok := index.Build(module.Rules)
+	if !ok {
+		t.Fatalf("Expected index build to succeed")
+	}
+
+	result, err := index.AllRules(testResolver{input: MustParseTerm(`{}`)})
+	if err != nil {
+		t.Fatalf("Unexpected error during index lookup: %v", err)
+	}
+
+	expectedRules := NewRuleSet(
+		module.Rules[1],
+		module.Rules[2])
+
+	expectedElse := map[*Rule]RuleSet{
+		module.Rules[1]: []*Rule{
+			module.Rules[1].Else,
+			module.Rules[1].Else.Else,
+		},
+	}
+
+	if !NewRuleSet(result.Rules...).Equal(expectedRules) {
+		t.Fatalf("Expected rules to be %v but got: %v", expectedRules, result.Rules)
+	}
+
+	r1 := module.Rules[1]
+
+	if !NewRuleSet(result.Else[r1]...).Equal(expectedElse[r1]) {
+		t.Fatalf("Expected else to be %v but got: %v", result.Else[r1], expectedElse[r1])
+	}
+}
+
+func TestGetAllRulesInternalMember2(t *testing.T) {
+	module := module(`
+	package test
+
+	p if {
+		x = input.fruit
+		x in {"apple", "pear"}
+	}
+	`)
+
+	index := newBaseDocEqIndex(func(Ref) bool { return false })
+
+	ok := index.Build(module.Rules)
+	if !ok {
+		t.Fatalf("Expected index build to succeed")
+	}
+
+	result, err := index.AllRules(testResolver{input: MustParseTerm(`{}`)})
+	if err != nil {
+		t.Fatalf("Unexpected error during index lookup: %v", err)
+	}
+
+	expectedRules := NewRuleSet(module.Rules[0])
+
+	if !NewRuleSet(result.Rules...).Equal(expectedRules) {
+		t.Fatalf("Expected rules to be %v but got: %v", expectedRules, result.Rules)
+	}
+
+	if len(result.Else) > 0 {
+		t.Fatalf("Expected no else rules but got: %v", result.Else)
+	}
+}
+
+func TestSkipIndexing(t *testing.T) {
+
+	module := module(`package test
+
+	p if {
+		internal.print("here")
+		input.foo = 7
+	} else = false if {
+		input.bar = 8
+	} else = true if {
+		internal.print("here 2")
+		input.bar = 9
+	}
+
+	p if {
+		input.foo = 9
+	}`)
+
+	index := newBaseDocEqIndex(func(Ref) bool { return false })
+
+	ok := index.Build(module.Rules)
+	if !ok {
+		t.Fatal("expected index build to succeed")
+	}
+
+	result, err := index.Lookup(testResolver{input: MustParseTerm(`{}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expectedRules := NewRuleSet(module.Rules[0])
+	expectedElse := map[*Rule][]*Rule{
+		module.Rules[0]: {module.Rules[0].Else.Else},
+	}
+
+	if !NewRuleSet(result.Rules...).Equal(expectedRules) {
+		t.Fatalf("Expected rules to be %v but got: %v", expectedRules, result.Rules)
+	}
+
+	r0 := module.Rules[0]
+
+	if !NewRuleSet(result.Else[r0]...).Equal(expectedElse[r0]) {
+		t.Fatalf("Expected else to be %v but got: %v", expectedElse[r0], result.Else[r0])
+	}
+}
+
+func TestSkipIndexingNestedBody(t *testing.T) {
+	logicalOpts := func(popts ParserOptions) ParserOptions {
+		popts.Capabilities = CapabilitiesForThisVersion(CapabilitiesExperimentalKeywords(true))
+		popts.FutureKeywords = []string{"and", "or", "not"}
+		return popts
+	}
+
+	// One case per expression shape that holds a body of its own. In each, the
+	// print sits where it cannot be lifted to the rule body: inside an `every`
+	// or `not` body, in an `or` branch that only runs when the other branch is
+	// undefined, or -- for `and` -- printing a value bound inside the operand's
+	// own scope.
+	tests := []struct {
+		note   string
+		nested string
+	}{
+		{"every", `every v in [1] { internal.print("here"); v == 2 }`},
+		{"and", `{some v in [1]; internal.print(v)} and input.bar == 2`},
+		{"or", `input.bar == 2 or {internal.print("here"); input.bar == 3}`},
+		{"not", `not { internal.print("here"); input.bar == 2 }`},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.note, func(t *testing.T) {
+			module := module(`package test
+
+			p if {
+				`+tc.nested+`
+				input.foo == 7
+			}
+
+			p if {
+				input.foo == 9
+			}`, logicalOpts)
+
+			index := newBaseDocEqIndex(func(Ref) bool { return false })
+
+			if !index.Build(module.Rules) {
+				t.Fatal("expected index build to succeed")
+			}
+
+			// input.foo is 9, so only the second rule can be defined -- but the
+			// first rule has to be evaluated anyway, up to the point where it
+			// fails, for the nested print to run.
+			result, err := index.Lookup(testResolver{input: MustParseTerm(`{"foo": 9}`)})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			expected := NewRuleSet(module.Rules...)
+
+			if !NewRuleSet(result.Rules...).Equal(expected) {
+				t.Fatalf("Expected rules to be %v but got: %v", expected, result.Rules)
+			}
+		})
+	}
+}
+
+func TestBaseDocIndexResultEarlyExit(t *testing.T) {
+
+	tests := []struct {
+		note            string
+		module          *Module
+		input           string
+		disableIndexing bool
+		expectedRS      any
+		expectedDR      *Rule
+		expectedEE      bool
+	}{
+		{
+			note:       "single rule",
+			expectedEE: true,
+			module: module(`package test
+r if {
+	input.x = 1
+}
+r = 3 if {
+	input.y = 2
+}`),
+			input: `{"x": 1}`,
+			expectedRS: []string{
+				`r { input.x = 1 }`,
+			},
+		},
+		{
+			note:            "no early exit: two rules, indexing disabled",
+			disableIndexing: true,
+			expectedEE:      false,
+			module: module(`package test
+r if {
+	input.x = 1
+}
+r = 3 if {
+	input.y = 2
+}`),
+			input: `{"x": 1}`,
+			expectedRS: []string{
+				`r = 3 { input.y = 2 }`,
+				`r { input.x = 1 }`,
+			},
+		},
+		{
+			note:            "two rules, indexing disabled",
+			disableIndexing: true,
+			expectedEE:      true,
+			module: module(`package test
+r if {
+	input.x = 1
+}
+r if {
+	input.y = 2
+}`),
+			input: `{"x": 1}`,
+			expectedRS: []string{
+				`r { input.y = 2 }`,
+				`r { input.x = 1 }`,
+			},
+		},
+		{
+			note:       "no early exit: different constant value",
+			expectedEE: false,
+			module: module(`package test
+r if {
+	input.x = 1
+}
+r = 2 if {
+	input.x = 1
+	input.y = 2
+}`),
+			input: `{"x": 1, "y": 2}`,
+			expectedRS: []string{
+				`r { input.x = 1 }`,
+				`r = 2 { input.x = 1; input.y = 2 }`,
+			},
+		},
+		{
+			note:       "same constant value",
+			expectedEE: true,
+			module: module(`package test
+r if {
+	input.x = 1
+}
+r if {
+	input.y = 1
+}`),
+			input: `{"x": 1, "y": 1}`,
+		},
+		{
+			note:       "no early exit: one rule with with non-constant value",
+			expectedEE: false,
+			module: module(`package test
+r if {
+	input.x = 1
+}
+r = x if {
+	input.y = 1
+	x = "foo"
+}`),
+			input: `{"x": 1, "y": 1}`,
+			expectedRS: []string{
+				`r { input.x = 1 }`,
+				`r = x { input.y = 1; x = "foo" }`,
+			},
+		},
+		{
+			note:       "same ref value (input)",
+			expectedEE: true,
+			module: module(`package test
+r = input.a if {
+	input.x = 1
+}
+r = input.a if {
+	input.y = 1
+}`),
+			input: `{"x": 1, "y": 1}`,
+		},
+		{
+			note:       "same ref value (data)",
+			expectedEE: true,
+			module: module(`package test
+r = data.a if {
+	input.x = 1
+}
+r = data.a if {
+	input.y = 1
+}`),
+			input: `{"x": 1, "y": 1}`,
+		},
+		{
+			note:       "else: same constant value",
+			expectedEE: true,
+			module: module(`package test
+r if {
+	input.x = 1
+}
+else if {
+	true
+}
+r if {
+	input.y = 1
+}`),
+			input: `{"x": 1, "y": 1}`,
+		},
+		{
+			note:       "else: no early exit: different constant value",
+			expectedEE: false,
+			module: module(`package test
+r if {
+	input.x = 1
+}
+else = false if {
+	true
+}
+r if {
+	input.y = 1
+}`),
+			input: `{"x": 1, "y": 1}`,
+			expectedRS: []string{
+				`r = true { input.x = 1 } else = false { true }`,
+				`r = true { input.y = 1 }`,
+			},
+		},
+		{
+			note:       "function: single rule",
+			expectedEE: true,
+			module: module(`package test
+r(x) if {
+	input.x = x
+}
+r = 3 if {
+	input.y = 2
+}`),
+			input: `{"x": 1}`,
+			expectedRS: []string{
+				`r(x) { input.x = x }`,
+			},
+		},
+		{
+			note:       "function: no early exit: different constant value",
+			expectedEE: false,
+			module: module(`package test
+r(x) if {
+	input.x = x
+}
+r(y) = 2 if {
+	input.x = 1
+	input.y = y
+}`),
+			input: `{"x": 1, "y": 2}`,
+			expectedRS: []string{
+				`r(x) { input.x = x }`,
+				`r(y) = 2 { input.x = 1; input.y = y }`,
+			},
+		},
+		{
+			note:       "function: same constant value",
+			expectedEE: true,
+			module: module(`package test
+r(x) if {
+	input.x = x
+}
+r(y) if {
+	input.y = y
+}`),
+			input: `{"x": 1, "y": 1}`,
+		},
+		{
+			note:       "function: no early exit: one with with non-constant value",
+			expectedEE: false,
+			module: module(`package test
+r(x) if {
+	input.x = x
+}
+r(y) = x if {
+	input.y = y
+	x = "foo"
+}`),
+			input: `{"x": 1, "y": 1}`,
+		},
+		{ // NOTE(sr): impossible, the compiler rewrites this
+			note:       "function: same ref value (input)",
+			expectedEE: true,
+			module: module(`package test
+r(x) = input.a if {
+	input.x = x
+}
+r(y) = input.a if {
+	input.y = y
+}`),
+			input: `{"x": 1, "y": 1}`,
+		},
+		{ // NOTE(sr): impossible, the compiler rewrites this
+			note:       "function: same ref value (data)",
+			expectedEE: true,
+			module: module(`package test
+r(x) = data.a if {
+	input.x = x
+}
+r(y) = data.a if {
+	input.y = y
+}`),
+			input: `{"x": 1, "y": 1}`,
+		},
+
+		// NOTE(sr): The remaining cases record the limitations of the current implementation:
+		// Any matching rules whose values contain non-constant values are not compared, and
+		// cancel early exit.
+		{
+
+			note:       "no early exit: same ref but bound to vars",
+			expectedEE: false,
+			module: module(`package test
+r = v if {
+	input.x = 1
+	v = input.a
+}
+r = v if {
+	input.y = 1
+	v = input.a
+}`),
+			input: `{"x": 1, "y": 1, "a": "a"}`,
+			expectedRS: []string{
+				`r = v { input.x = 1; v = input.a }`,
+				`r = v { input.y = 1; v = input.a }`,
+			},
+		},
+		{
+			note:       "no early exit: same value but with non-ground",
+			expectedEE: false,
+			module: module(`package test
+r = [1, {"a": v}] if {
+	input.x = 1
+	v = "a"
+}
+r = [1, {"a": v}] if {
+	input.y = 1
+	v = "a"
+}`),
+			input: `{"x": 1, "y": 1}`,
+			expectedRS: []string{
+				`r = [1, {"a": v}] { input.y = 1; v = "a" }`,
+				`r = [1, {"a": v}] { input.x = 1; v = "a" }`,
+			},
+		},
+		{
+			note:       "no early exit: one rule, set comprehension value",
+			expectedEE: false,
+			// NOTE(sr): this is what the indexer gets after rewriting
+			//     r = { i | i := data.arr[i] } { true }
+			module: module(`package test
+r = local0 if {
+	local0 = {i | i := data.arr[i]}
+}`),
+			input: `{}`,
+			expectedRS: []string{
+				`r = local0 { local0 = {i | i := data.arr[i]} }`,
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.note, func(t *testing.T) {
+			rules := []*Rule{}
+			for _, rule := range tc.module.Rules {
+				if rule.Head.Name == Var("r") {
+					rules = append(rules, rule)
+				}
+			}
+
+			var input *Term
+			if tc.input != "" {
+				input = MustParseTerm(tc.input)
+			}
+
+			var expectedRS RuleSet
+
+			switch e := tc.expectedRS.(type) {
+			case []string:
+				for _, r := range e {
+					expectedRS.Add(MustParseRule(r))
+				}
+			case RuleSet:
+				expectedRS = e
+			}
+
+			index := newBaseDocEqIndex(func(Ref) bool {
+				return false
+			})
+
+			if !index.Build(rules) {
+				t.Fatalf("Expected index build to succeed")
+			}
+
+			var unknownRefs Set
+			var result *IndexResult
+			var err error
+			if tc.disableIndexing {
+				result, err = index.AllRules(testResolver{input: input, unknownRefs: unknownRefs})
+			} else {
+				result, err = index.Lookup(testResolver{input: input, unknownRefs: unknownRefs})
+			}
+			if err != nil {
+				t.Fatalf("Unexpected error during index lookup: %v", err)
+			}
+
+			if tc.expectedRS != nil && !NewRuleSet(result.Rules...).Equal(expectedRS) {
+				t.Errorf("Expected ruleset %v but got: %v", expectedRS, result.Rules)
+			}
+
+			if result.Default == nil && tc.expectedDR != nil {
+				t.Errorf("Expected default rule but got nil")
+			} else if result.Default != nil && tc.expectedDR == nil {
+				t.Errorf("Unexpected default rule %v", result.Default)
+			} else if result.Default != nil && tc.expectedDR != nil && !result.Default.Equal(tc.expectedDR) {
+				t.Errorf("Expected default rule %v but got: %v", tc.expectedDR, result.Default)
+			}
+
+			if exp, act := tc.expectedEE, result.EarlyExit; exp != act {
+				t.Errorf("expected 'early-exit' %v, got %v", exp, act)
+			}
+		})
+	}
+}

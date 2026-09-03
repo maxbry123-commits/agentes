@@ -1,0 +1,81 @@
+import { FC } from "react";
+import { AuditInterface } from "shared/types/audit";
+import Link from "next/link";
+import { date, datetime } from "shared/dates";
+import useApi from "@/hooks/useApi";
+import Callout from "@/ui/Callout";
+import LoadingOverlay from "./LoadingOverlay";
+import EventUser from "./Avatar/EventUser";
+import { auditInterfaceUserToEventUser } from "./Avatar/auditUserToEventUser";
+//import { phaseSummary } from "@/services/utils";
+
+const eventActionMapping = {
+  "experiment.start": "started experiment",
+  "experiment.stop": "stopped experiment",
+  "experiment.results": "added results for experiment",
+  "experiment.phase": "started a new phase for experiment",
+};
+
+const ActivityList: FC<{
+  num?: number;
+}> = ({ num = 0 }) => {
+  const { data, error } = useApi<{
+    events: AuditInterface[];
+    experiments: { id: string; name: string }[];
+  }>("/activity");
+  if (error) {
+    return <Callout status="error">{error.message}</Callout>;
+  }
+  if (!data) {
+    return <LoadingOverlay />;
+  }
+
+  const nameMap = new Map<string, string>();
+  data.experiments.forEach((e) => {
+    nameMap.set(e.id, e.name);
+  });
+  const events = num !== 0 ? data.events.slice(0, num) : data.events;
+
+  return (
+    <div className="">
+      <ul className="list-unstyled simple-divider pl-0 mb-0">
+        {events.map((event) => {
+          const eventUser = auditInterfaceUserToEventUser(event.user);
+          return (
+            <li key={event.id} className="media d-flex w-100 hover-highlight">
+              <Link
+                href={`/experiment/${event.entity.id}`}
+                className="no-link-color w-100"
+              >
+                <>
+                  <div className="mr-2 float-left">
+                    <EventUser user={eventUser} display="avatar" size="sm" />
+                  </div>
+                  <div className="d-flex flex-column flex-fill ">
+                    <div className="mb-1">
+                      <strong>
+                        <EventUser user={eventUser} display="name" />
+                      </strong>{" "}
+                      {eventActionMapping[event.event] || "modified"}{" "}
+                      <strong>
+                        {nameMap.get(event.entity.id) || event.entity.id}
+                      </strong>
+                    </div>
+                    <div
+                      className="text-muted"
+                      title={datetime(event.dateCreated)}
+                    >
+                      {date(event.dateCreated)}
+                    </div>
+                  </div>
+                </>
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+};
+
+export default ActivityList;

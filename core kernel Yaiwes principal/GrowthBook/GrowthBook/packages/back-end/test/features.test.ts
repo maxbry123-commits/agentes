@@ -1,0 +1,3842 @@
+import cloneDeep from "lodash/cloneDeep";
+import { GroupMap, SavedGroupInterface } from "shared/types/saved-group";
+import { FeatureDefinition } from "shared/types/sdk";
+import { FeatureInterface, ScheduleRule } from "shared/types/feature";
+import {
+  OrganizationInterface,
+  SDKAttribute,
+  SDKAttributeSchema,
+} from "shared/types/organization";
+import { ExperimentInterface } from "shared/types/experiment";
+import { SafeRolloutInterface } from "shared/types/safe-rollout";
+import { ConstantInterface } from "shared/types/constant";
+import {
+  buildFeatureRulesFromApiEnvSettings,
+  generateRuleId,
+  addIdsToFlatRules,
+  addIdsToRules,
+  inheritStoredRolloutSeeds,
+  getFeatureDefinitionsResponse,
+  hashStrings,
+  sha256,
+  generateFeaturesPayload,
+  validateFeatureRuleValues,
+} from "back-end/src/services/features";
+import { getCurrentEnabledState } from "back-end/src/util/scheduleRules";
+import {
+  getAffectedSDKPayloadKeys,
+  getEnabledEnvironments,
+  getFeatureDefinition,
+  getJSONValue,
+  getParsedCondition,
+  getSDKPayloadKeysByDiff,
+  roundVariationWeight,
+} from "back-end/src/util/features";
+
+// Minimal constant fixture for payload-resolution tests.
+function makeConstant(
+  partial: Pick<ConstantInterface, "key" | "type"> & Partial<ConstantInterface>,
+): ConstantInterface {
+  return {
+    id: `const_${partial.key}`,
+    organization: "123",
+    name: partial.key,
+    owner: "",
+    dateCreated: new Date(),
+    dateUpdated: new Date(),
+    ...partial,
+  };
+}
+
+const groupMap: GroupMap = new Map();
+const experimentMap = new Map();
+const safeRolloutMap = new Map();
+const baseFeature: FeatureInterface = {
+  id: "feature",
+  dateCreated: new Date(),
+  dateUpdated: new Date(),
+  defaultValue: "true",
+  organization: "123",
+  owner: "",
+  valueType: "boolean" as const,
+  archived: false,
+  description: "",
+  version: 1,
+  environmentSettings: {
+    dev: {
+      enabled: true,
+      rules: [],
+    },
+    production: {
+      enabled: true,
+      rules: [],
+    },
+  },
+};
+
+const baseOrganization: OrganizationInterface = {
+  id: "123",
+  url: "foo",
+  dateCreated: new Date(),
+  name: "",
+  ownerEmail: "",
+  members: [],
+  invites: [],
+};
+
+describe("getParsedCondition", () => {
+  it("compiles correctly", () => {
+    groupMap.clear();
+    groupMap.set("a", {
+      type: "list",
+      values: ["0", "1"],
+      attributeKey: "id_a",
+    });
+    groupMap.set("b", {
+      type: "list",
+      values: ["2"],
+      attributeKey: "id_b",
+    });
+    groupMap.set("c", {
+      type: "list",
+      values: ["3"],
+      attributeKey: "id_c",
+    });
+    groupMap.set("d", {
+      type: "list",
+      values: ["4"],
+      attributeKey: "id_d",
+    });
+    groupMap.set("e", {
+      type: "list",
+      values: ["5"],
+      attributeKey: "id_e",
+    });
+    groupMap.set("f", {
+      type: "list",
+      values: ["6"],
+      attributeKey: "id_f",
+    });
+    groupMap.set("empty", {
+      type: "list",
+      values: [],
+      attributeKey: "empty",
+    });
+    groupMap.set("legacy", {
+      type: "list",
+      values: ["0", "1"],
+      attributeKey: "id_a",
+    });
+
+    // No condition or saved group
+    expect(getParsedCondition(groupMap, "", [])).toBeUndefined();
+
+    // Single empty saved group
+    expect(
+      getParsedCondition(groupMap, "", [{ match: "any", ids: ["empty"] }]),
+    ).toBeUndefined();
+
+    // No saved groups
+    expect(
+      getParsedCondition(groupMap, JSON.stringify({ country: "US" }), []),
+    ).toEqual({ country: "US" });
+
+    // Saved group in condition
+    expect(
+      getParsedCondition(
+        groupMap,
+        JSON.stringify({ id: { $inGroup: "a" } }),
+        [],
+      ),
+    ).toEqual({
+      id: { $inGroup: "a" },
+    });
+
+    // Single saved group
+    expect(
+      getParsedCondition(groupMap, "", [{ match: "any", ids: ["a"] }]),
+    ).toEqual({
+      id_a: {
+        $inGroup: "a",
+      },
+    });
+
+    // Legacy saved group still uses inGroup operator (to be scrubbed later)
+    expect(
+      getParsedCondition(groupMap, "", [{ match: "any", ids: ["legacy"] }]),
+    ).toEqual({
+      id_a: {
+        $inGroup: "legacy",
+      },
+    });
+
+    // Only 1 valid saved group
+    expect(
+      getParsedCondition(groupMap, "", [
+        { match: "any", ids: ["b", "empty", "g"] },
+        { match: "all", ids: ["g", "empty"] },
+      ]),
+    ).toEqual({
+      id_b: { $inGroup: "b" },
+    });
+
+    // Condition + a bunch of saved groups
+    expect(
+      getParsedCondition(groupMap, JSON.stringify({ country: "US" }), [
+        {
+          match: "all",
+          ids: ["a", "b", "x"],
+        },
+        {
+          match: "any",
+          ids: ["c", "d"],
+        },
+        {
+          match: "none",
+          ids: ["e", "f"],
+        },
+      ]),
+    ).toEqual({
+      $and: [
+        // Attribute targeting
+        { country: "US" },
+        // ALL
+        {
+          id_a: {
+            $inGroup: "a",
+          },
+        },
+        {
+          id_b: {
+            $inGroup: "b",
+          },
+        },
+        // ANY
+        {
+          $or: [
+            {
+              id_c: {
+                $inGroup: "c",
+              },
+            },
+            {
+              id_d: {
+                $inGroup: "d",
+              },
+            },
+          ],
+        },
+        // NONE
+        {
+          id_e: {
+            $notInGroup: "e",
+          },
+        },
+        {
+          id_f: {
+            $notInGroup: "f",
+          },
+        },
+      ],
+    });
+
+    groupMap.clear();
+  });
+
+  it("ignores empty condition groups", () => {
+    groupMap.clear();
+    groupMap.set("a", {
+      condition: "{}",
+      type: "condition",
+    });
+    groupMap.set("b", {
+      condition: "",
+      type: "condition",
+    });
+    groupMap.set("c", {
+      type: "condition",
+    });
+    groupMap.set("d", {
+      condition: "{broken",
+      type: "condition",
+    });
+    groupMap.set("e", {
+      type: "list",
+    });
+    groupMap.set("f", {
+      type: "list",
+      attributeKey: "a",
+    });
+    groupMap.set("g", {
+      type: "list",
+      attributeKey: "",
+      values: ["a"],
+    });
+    groupMap.set("h", {
+      condition: JSON.stringify({ id: 1 }),
+      type: "condition",
+    });
+
+    expect(
+      getParsedCondition(groupMap, "", [
+        {
+          match: "all",
+          ids: ["a", "b", "c", "d", "e", "f", "g", "h"],
+        },
+        {
+          match: "any",
+          ids: ["a", "b", "c", "d", "e", "f", "g"],
+        },
+        {
+          match: "none",
+          ids: ["a", "b", "c", "d", "e", "f", "g"],
+        },
+      ]),
+    ).toEqual({
+      id: 1,
+    });
+
+    expect(
+      getParsedCondition(groupMap, "", [
+        {
+          match: "all",
+          ids: ["a", "b", "c", "d", "e", "f", "g"],
+        },
+        {
+          match: "any",
+          ids: ["a", "b", "c", "d", "e", "f", "g"],
+        },
+        {
+          match: "none",
+          ids: ["a", "b", "c", "d", "e", "f", "g"],
+        },
+      ]),
+    ).toEqual(undefined);
+
+    groupMap.clear();
+  });
+
+  it("includes empty list groups only when the flag is set", () => {
+    groupMap.clear();
+    groupMap.set("a", {
+      values: [],
+      type: "list",
+      attributeKey: "attr",
+      useEmptyListGroup: true,
+    });
+    groupMap.set("b", {
+      values: [],
+      type: "list",
+      attributeKey: "attr",
+    });
+
+    expect(
+      getParsedCondition(groupMap, "", [{ match: "all", ids: ["a", "b"] }]),
+    ).toEqual({
+      attr: {
+        $inGroup: "a",
+      },
+    });
+
+    expect(
+      getParsedCondition(groupMap, "", [{ match: "none", ids: ["a", "b"] }]),
+    ).toEqual({
+      attr: {
+        $notInGroup: "a",
+      },
+    });
+    groupMap.clear();
+  });
+
+  it("works with condition groups", () => {
+    groupMap.clear();
+    groupMap.set("a", {
+      condition: JSON.stringify({
+        $groups: {
+          $elemMatch: { $eq: "group_a" },
+        },
+      }),
+      type: "condition",
+    });
+    groupMap.set("b", {
+      condition: JSON.stringify({
+        $groups: {
+          $elemMatch: { $eq: "group_b" },
+        },
+      }),
+      type: "condition",
+    });
+
+    expect(
+      getParsedCondition(groupMap, "", [
+        {
+          match: "all",
+          ids: ["a", "b"],
+        },
+        {
+          match: "any",
+          ids: ["a", "b"],
+        },
+        {
+          match: "none",
+          ids: ["a", "b"],
+        },
+      ]),
+    ).toEqual({
+      $and: [
+        {
+          $groups: {
+            $elemMatch: { $eq: "group_a" },
+          },
+        },
+        {
+          $groups: {
+            $elemMatch: { $eq: "group_b" },
+          },
+        },
+        {
+          $or: [
+            {
+              $groups: {
+                $elemMatch: { $eq: "group_a" },
+              },
+            },
+            {
+              $groups: {
+                $elemMatch: { $eq: "group_b" },
+              },
+            },
+          ],
+        },
+        {
+          $not: {
+            $groups: {
+              $elemMatch: { $eq: "group_a" },
+            },
+          },
+        },
+        {
+          $not: {
+            $groups: {
+              $elemMatch: { $eq: "group_b" },
+            },
+          },
+        },
+      ],
+    });
+
+    groupMap.clear();
+  });
+
+  it("works with nested condition groups", () => {
+    groupMap.clear();
+    groupMap.set("a", {
+      type: "condition",
+      condition: JSON.stringify({
+        foo: "bar",
+        $savedGroups: ["b"],
+      }),
+    });
+    groupMap.set("b", {
+      type: "condition",
+      condition: JSON.stringify({
+        bar: "baz",
+        $savedGroups: ["c"],
+      }),
+    });
+    groupMap.set("c", {
+      type: "condition",
+      condition: JSON.stringify({
+        baz: "foo",
+      }),
+    });
+
+    expect(
+      getParsedCondition(
+        groupMap,
+        JSON.stringify({
+          country: "US",
+        }),
+        [
+          {
+            match: "all",
+            ids: ["a"],
+          },
+        ],
+      ),
+    ).toEqual({
+      $and: [
+        {
+          country: "US",
+        },
+        {
+          $and: [
+            {
+              foo: "bar",
+            },
+            {
+              bar: "baz",
+            },
+            {
+              baz: "foo",
+            },
+          ],
+        },
+      ],
+    });
+  });
+});
+
+describe("Hashing secureString types", () => {
+  const attributes: SDKAttributeSchema = [
+    { property: "id", datatype: "secureString" },
+    { property: "company", datatype: "string" },
+    { property: "ids", datatype: "secureString[]" },
+    { property: "email", datatype: "string" },
+    { property: "whatever", datatype: "number" },
+  ];
+
+  const secureAttributeSalt = "fa37ffz";
+
+  it("should selectively hash secureString types for simple conditions", () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let condition: any = {
+      ids: {
+        $elemMatch: {
+          $eq: "5",
+        },
+      },
+      id: {
+        $in: ["3", "5", "10"],
+        $ne: "5",
+      },
+      company: "AcmeCo",
+    };
+
+    condition = hashStrings({
+      obj: condition,
+      salt: secureAttributeSalt,
+      attributes,
+    });
+
+    expect(condition).toEqual({
+      ids: {
+        $elemMatch: {
+          $eq: "855279ed7f7f86a26b1c9f6a5c827b35728638219b0dae61db6b0578d8e21360",
+        },
+      },
+      id: {
+        $in: [
+          "5ec1a7686c15f1fef131baea7d59acf29f2623d50dbad079a2685e19158ad494",
+          "855279ed7f7f86a26b1c9f6a5c827b35728638219b0dae61db6b0578d8e21360",
+          "cfec6b2485875c0172509320a1076d9d91cc9fd7fb70ed4d2d4c62d29b1a9ce3",
+        ],
+        $ne: "855279ed7f7f86a26b1c9f6a5c827b35728638219b0dae61db6b0578d8e21360",
+      },
+      company: "AcmeCo",
+    });
+  });
+
+  it("should selectively match secureString types for advanced nested conditions", () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let condition: any = {
+      $or: [
+        {
+          $and: [
+            {
+              $not: {
+                email: "test@example.com",
+              },
+            },
+            {
+              $not: {
+                id: "4",
+              },
+            },
+          ],
+        },
+        {
+          id: {
+            $in: ["3"],
+          },
+        },
+        {
+          company: "AcmeCo",
+        },
+        {
+          whatever: "1",
+        },
+        {
+          id: ["3", "5", "10"],
+        },
+      ],
+      id: {
+        $not: {
+          $elemMatch: {
+            $in: ["b", "c", "d"],
+          },
+        },
+      },
+    };
+
+    condition = hashStrings({
+      obj: condition,
+      salt: secureAttributeSalt,
+      attributes,
+    });
+
+    expect(condition).toEqual({
+      $or: [
+        {
+          $and: [
+            {
+              $not: {
+                email: "test@example.com",
+              },
+            },
+            {
+              $not: {
+                id: "29532748527922fa2c4b8b02388d1fe3dedc42c86ba021265cfc693c622c0ad3",
+              },
+            },
+          ],
+        },
+        {
+          id: {
+            $in: [
+              "5ec1a7686c15f1fef131baea7d59acf29f2623d50dbad079a2685e19158ad494",
+            ],
+          },
+        },
+        {
+          company: "AcmeCo",
+        },
+        {
+          whatever: "1",
+        },
+        {
+          id: [
+            "5ec1a7686c15f1fef131baea7d59acf29f2623d50dbad079a2685e19158ad494",
+            "855279ed7f7f86a26b1c9f6a5c827b35728638219b0dae61db6b0578d8e21360",
+            "cfec6b2485875c0172509320a1076d9d91cc9fd7fb70ed4d2d4c62d29b1a9ce3",
+          ],
+        },
+      ],
+      id: {
+        $not: {
+          $elemMatch: {
+            $in: [
+              "4d07b4e570f0e719baa23054c01a49eabfe55952c2161c28b73d1f98cfdc4991",
+              "b1f66640509e58acb4b99afd32ecf51d1b8e61d577b909d2e7a3d2a48a53ed51",
+              "374877627d479396ae4c4bae9bf06fe1f0db9d6571ddb23479a2ff76ff925c0f",
+            ],
+          },
+        },
+      },
+    });
+  });
+});
+
+describe("Scheduled Rules", () => {
+  it("should not filter out features that have no scheduled rules calling getFeatureDefinition", () => {
+    const scheduleRules = undefined;
+
+    expect(getCurrentEnabledState(scheduleRules || [], new Date())).toEqual(
+      true,
+    );
+  });
+
+  it("should filter out a feature that has an upcoming schedule rule with enabled = true", () => {
+    const scheduleRules: ScheduleRule[] = [
+      { enabled: true, timestamp: "2022-12-01T13:00:00.000Z" },
+      { enabled: false, timestamp: "2022-12-30T12:00:00.000Z" },
+    ];
+
+    const date = new Date("2022-11-15T12:00:00.000Z");
+
+    expect(getCurrentEnabledState(scheduleRules, date)).toEqual(false);
+  });
+
+  it("should NOT filter out a feature that has an upcoming schedule rule with enabled = false", () => {
+    const scheduleRules: ScheduleRule[] = [
+      { enabled: true, timestamp: "2022-12-01T13:00:00.000Z" },
+      { enabled: false, timestamp: "2022-12-30T12:00:00.000Z" },
+    ];
+
+    const date = new Date("2022-12-15T12:00:00.000Z");
+
+    expect(getCurrentEnabledState(scheduleRules, date)).toEqual(true);
+  });
+
+  it("should filter out a feature that has no upcoming rules and the last schedule rule to run had enabled = false", () => {
+    const scheduleRules: ScheduleRule[] = [
+      { enabled: true, timestamp: "2022-12-01T13:00:00.000Z" },
+      { enabled: false, timestamp: "2022-12-30T12:00:00.000Z" },
+    ];
+
+    const date = new Date("2023-01-15T12:00:00.000Z");
+
+    expect(getCurrentEnabledState(scheduleRules, date)).toEqual(false);
+  });
+
+  it("should NOT filter out a feature that has no upcoming schedule rules and the last schedule rule to run had enabled = true", () => {
+    const scheduleRules: ScheduleRule[] = [
+      { enabled: true, timestamp: "2022-12-01T13:00:00.000Z" },
+      { enabled: false, timestamp: null },
+    ];
+
+    const date = new Date("2023-01-15T12:00:00.000Z");
+
+    expect(getCurrentEnabledState(scheduleRules, date)).toEqual(true);
+  });
+
+  it("should filter out feature if upcoming schedule rule is in the future and enabled is true", () => {
+    const scheduleRules: ScheduleRule[] = [
+      { enabled: true, timestamp: "2022-12-01T13:00:00.000Z" },
+      { enabled: false, timestamp: null },
+    ];
+
+    const date = new Date("2022-11-15T12:00:00.000Z");
+
+    expect(getCurrentEnabledState(scheduleRules, date)).toEqual(false);
+  });
+
+  it("should NOT filter out a feature if upcoming schedule rule is in the future and enabled is false", () => {
+    const scheduleRules: ScheduleRule[] = [
+      { enabled: true, timestamp: null },
+      { enabled: false, timestamp: "2022-12-30T13:00:00.000Z" },
+    ];
+
+    const date = new Date("2022-12-15T12:00:00.000Z");
+
+    expect(getCurrentEnabledState(scheduleRules, date)).toEqual(true);
+  });
+
+  it("should filter out feature if no upcoming schedule rule and last schedule rule had enabled = false", () => {
+    const scheduleRules: ScheduleRule[] = [
+      { enabled: true, timestamp: null },
+      { enabled: false, timestamp: "2022-12-30T13:00:00.000Z" },
+    ];
+
+    const date = new Date("2023-01-15T12:00:00.000Z");
+
+    expect(getCurrentEnabledState(scheduleRules, date)).toEqual(false);
+  });
+
+  it("should handle dates that are out of chronological order", () => {
+    let scheduleRules: ScheduleRule[] = [
+      { enabled: false, timestamp: "2022-12-30T12:00:00.000Z" },
+      { enabled: true, timestamp: "2022-12-01T13:00:00.000Z" },
+    ];
+
+    let date = new Date("2022-12-15T12:00:00.000Z");
+
+    expect(getCurrentEnabledState(scheduleRules, date)).toEqual(true);
+
+    scheduleRules = [
+      { enabled: false, timestamp: "2022-12-30T12:00:00.000Z" },
+      { enabled: true, timestamp: "2022-12-01T13:00:00.000Z" },
+    ];
+
+    date = new Date("2023-01-15T12:00:00.000Z");
+
+    expect(getCurrentEnabledState(scheduleRules, date)).toEqual(false);
+
+    scheduleRules = [
+      { enabled: false, timestamp: "2022-12-30T12:00:00.000Z" },
+      { enabled: true, timestamp: "2022-12-01T13:00:00.000Z" },
+    ];
+
+    date = new Date("2022-11-15T12:00:00.000Z");
+
+    expect(getCurrentEnabledState(scheduleRules, date)).toEqual(false);
+  });
+
+  it("should handle more than 2 scheduleRules correctly, even when they are out of chronological order", () => {
+    // NOTE: Currently, a user can only have 2 schedule rules, a startDate and an endDate, but this was built in a way where
+    // in the future, we can support multiple start/stop dates.
+    const scheduleRules: ScheduleRule[] = [
+      { enabled: false, timestamp: "2022-12-30T12:00:00.000Z" },
+      { enabled: false, timestamp: null },
+      { enabled: true, timestamp: "2023-01-05T12:00:00.000Z" },
+      { enabled: true, timestamp: null },
+    ];
+
+    const date = new Date("2022-11-15T12:00:00.000Z");
+
+    expect(getCurrentEnabledState(scheduleRules, date)).toEqual(true);
+  });
+
+  it("should handle more than 2 scheduleRules correctly", () => {
+    const scheduleRules: ScheduleRule[] = [
+      { enabled: true, timestamp: "2022-12-01T13:00:00.000Z" },
+      { enabled: false, timestamp: "2022-12-30T12:00:00.000Z" },
+      { enabled: true, timestamp: "2023-01-05T12:00:00.000Z" },
+      { enabled: false, timestamp: "2023-01-30T12:00:00.000Z" },
+    ];
+
+    let date = new Date("2022-11-15T12:00:00.000Z");
+
+    expect(getCurrentEnabledState(scheduleRules, date)).toEqual(false);
+
+    date = new Date("2022-12-05T12:00:00.000Z");
+
+    expect(getCurrentEnabledState(scheduleRules, date)).toEqual(true);
+
+    date = new Date("2023-01-02T12:00:00.000Z");
+
+    expect(getCurrentEnabledState(scheduleRules, date)).toEqual(false);
+
+    date = new Date("2023-01-10T12:00:00.000Z");
+
+    expect(getCurrentEnabledState(scheduleRules, date)).toEqual(true);
+
+    date = new Date("2023-02-01T12:00:00.000Z");
+
+    expect(getCurrentEnabledState(scheduleRules, date)).toEqual(false);
+  });
+});
+
+describe("Detecting Feature Changes", () => {
+  it("Gets enabled environments", () => {
+    const feature = cloneDeep(baseFeature);
+    feature.environmentSettings.dev.rules = [
+      {
+        enabled: true,
+        type: "force",
+        description: "",
+        id: "",
+        value: "true",
+      },
+    ];
+    feature.environmentSettings.production.rules = [
+      {
+        enabled: true,
+        type: "force",
+        description: "",
+        id: "",
+        value: "false",
+      },
+    ];
+
+    expect(
+      getEnabledEnvironments(feature, ["dev", "production", "test"]),
+    ).toEqual(new Set(["dev", "production"]));
+
+    expect(getEnabledEnvironments(feature, ["dev", "test"])).toEqual(
+      new Set(["dev"]),
+    );
+
+    expect(
+      getEnabledEnvironments(
+        feature,
+        ["dev", "production", "test"],
+        (rule) => rule.type === "force" && rule.value === "true",
+      ),
+    ).toEqual(new Set(["dev"]));
+
+    expect(
+      getEnabledEnvironments(
+        feature,
+        ["dev", "production", "test"],
+        (rule) => rule.type === "force" && rule.value === "false",
+      ),
+    ).toEqual(new Set(["production"]));
+
+    feature.environmentSettings.dev.enabled = false;
+    expect(
+      getEnabledEnvironments(feature, ["dev", "production", "test"]),
+    ).toEqual(new Set(["production"]));
+
+    expect(
+      getEnabledEnvironments(
+        feature,
+        ["dev", "production", "test"],
+        (rule) => rule.type === "force" && rule.value === "true",
+      ),
+    ).toEqual(new Set([]));
+  });
+
+  it("Gets Affected SDK Payload Keys", () => {
+    const feature1 = cloneDeep(baseFeature);
+    const feature2 = cloneDeep(baseFeature);
+    const changedFeatures = [feature1, feature2];
+
+    expect(
+      getAffectedSDKPayloadKeys(changedFeatures, ["dev", "production", "test"]),
+    ).toEqual([
+      {
+        project: "",
+        environment: "dev",
+      },
+      {
+        project: "",
+        environment: "production",
+      },
+    ]);
+
+    // Give the features different projects and env enabled states
+    feature1.project = "p1";
+    feature1.environmentSettings.dev.enabled = false;
+
+    feature2.project = "p2";
+    feature2.environmentSettings.production.enabled = false;
+
+    expect(
+      getAffectedSDKPayloadKeys(changedFeatures, ["dev", "production", "test"]),
+    ).toEqual([
+      {
+        project: "",
+        environment: "production",
+      },
+      {
+        project: "p1",
+        environment: "production",
+      },
+      {
+        project: "",
+        environment: "dev",
+      },
+      {
+        project: "p2",
+        environment: "dev",
+      },
+    ]);
+  });
+
+  it("Detects which projects/environments are affected by a feature change", () => {
+    const feature = cloneDeep(baseFeature);
+    const updatedFeature = cloneDeep(baseFeature);
+
+    expect(
+      getSDKPayloadKeysByDiff(feature, updatedFeature, [
+        "dev",
+        "production",
+        "test",
+      ]),
+    ).toEqual([]);
+
+    updatedFeature.description = "New description";
+    updatedFeature.owner = "new owner";
+    updatedFeature.tags = ["a"];
+    updatedFeature.dateUpdated = new Date();
+
+    expect(
+      getSDKPayloadKeysByDiff(feature, updatedFeature, [
+        "dev",
+        "production",
+        "test",
+      ]),
+    ).toEqual([]);
+
+    expect(
+      getSDKPayloadKeysByDiff(
+        feature,
+        {
+          ...updatedFeature,
+          defaultValue: "false",
+        },
+        ["dev", "production", "test"],
+      ),
+    ).toEqual([
+      {
+        project: "",
+        environment: "dev",
+      },
+      {
+        project: "",
+        environment: "production",
+      },
+    ]);
+    expect(
+      getSDKPayloadKeysByDiff(
+        feature,
+        {
+          ...updatedFeature,
+          archived: true,
+        },
+        ["dev", "production", "test"],
+      ),
+    ).toEqual([
+      {
+        project: "",
+        environment: "dev",
+      },
+      {
+        project: "",
+        environment: "production",
+      },
+    ]);
+    expect(
+      getSDKPayloadKeysByDiff(
+        feature,
+        {
+          ...updatedFeature,
+          nextScheduledUpdate: new Date(),
+        },
+        ["dev", "production", "test"],
+      ),
+    ).toEqual([
+      {
+        project: "",
+        environment: "dev",
+      },
+      {
+        project: "",
+        environment: "production",
+      },
+    ]);
+    expect(
+      getSDKPayloadKeysByDiff(
+        feature,
+        {
+          ...updatedFeature,
+          project: "p2",
+        },
+        ["dev", "production", "test"],
+      ),
+    ).toEqual([
+      {
+        project: "",
+        environment: "dev",
+      },
+      {
+        project: "p2",
+        environment: "dev",
+      },
+      {
+        project: "",
+        environment: "production",
+      },
+      {
+        project: "p2",
+        environment: "production",
+      },
+    ]);
+
+    updatedFeature.environmentSettings.dev.enabled = false;
+    expect(
+      getSDKPayloadKeysByDiff(feature, updatedFeature, [
+        "dev",
+        "production",
+        "test",
+      ]),
+    ).toEqual([
+      {
+        project: "",
+        environment: "dev",
+      },
+    ]);
+  });
+
+  it("invalidates targeting projects and fans out all-projects via allProjectIds", () => {
+    const feature = cloneDeep(baseFeature);
+    const base = cloneDeep(baseFeature);
+    const envs = ["dev", "production", "test"];
+    const norm = (keys: { environment: string; project: string }[]) =>
+      keys.map((k) => `${k.environment}:${k.project}`).sort();
+
+    // Adding a targeting project invalidates that project's caches too
+    expect(
+      norm(
+        getSDKPayloadKeysByDiff(
+          feature,
+          { ...base, targetingProjects: ["p2"] },
+          envs,
+        ),
+      ),
+    ).toEqual(
+      norm([
+        { environment: "dev", project: "" },
+        { environment: "dev", project: "p2" },
+        { environment: "production", project: "" },
+        { environment: "production", project: "p2" },
+      ]),
+    );
+
+    // targetingAllProjects enumerates every org project — but only when
+    // allProjectIds is supplied (the invalidation-fan-out fix)
+    const allProjectIds = ["p1", "p2"];
+    expect(
+      norm(
+        getSDKPayloadKeysByDiff(
+          feature,
+          { ...base, targetingAllProjects: true },
+          envs,
+          allProjectIds,
+        ),
+      ),
+    ).toEqual(
+      norm([
+        { environment: "dev", project: "" },
+        { environment: "dev", project: "p1" },
+        { environment: "dev", project: "p2" },
+        { environment: "production", project: "" },
+        { environment: "production", project: "p1" },
+        { environment: "production", project: "p2" },
+      ]),
+    );
+
+    // Without allProjectIds the all-projects fan-out can't happen (regression guard)
+    expect(
+      norm(
+        getSDKPayloadKeysByDiff(
+          feature,
+          { ...base, targetingAllProjects: true },
+          envs,
+        ),
+      ),
+    ).toEqual(
+      norm([
+        { environment: "dev", project: "" },
+        { environment: "production", project: "" },
+      ]),
+    );
+
+    // getAffectedSDKPayloadKeys enumerates for an all-projects feature too
+    expect(
+      norm(
+        getAffectedSDKPayloadKeys(
+          [{ ...base, targetingAllProjects: true }],
+          envs,
+          undefined,
+          allProjectIds,
+        ),
+      ),
+    ).toEqual(
+      norm([
+        { environment: "dev", project: "" },
+        { environment: "dev", project: "p1" },
+        { environment: "dev", project: "p2" },
+        { environment: "production", project: "" },
+        { environment: "production", project: "p1" },
+        { environment: "production", project: "p2" },
+      ]),
+    );
+  });
+});
+
+describe("Changes are ignored when archived or disabled", () => {
+  const feature = cloneDeep(baseFeature);
+  const updatedFeature = cloneDeep(baseFeature);
+
+  // Ignore changes when archived before and after
+  expect(
+    getSDKPayloadKeysByDiff(
+      {
+        ...feature,
+        archived: true,
+      },
+      {
+        ...updatedFeature,
+        archived: true,
+        project: "43280943fjdskalfja",
+      },
+      ["dev", "production", "test"],
+    ),
+  ).toEqual([]);
+
+  // Ignore environment changes if it's disabled before and after
+  feature.environmentSettings.dev.enabled = false;
+  updatedFeature.environmentSettings.dev.enabled = false;
+  updatedFeature.environmentSettings.dev.rules = [
+    {
+      type: "force",
+      description: "",
+      id: "",
+      value: "true",
+    },
+  ];
+  expect(
+    getSDKPayloadKeysByDiff(feature, updatedFeature, [
+      "dev",
+      "production",
+      "test",
+    ]),
+  ).toEqual([]);
+});
+
+describe("SDK Payloads", () => {
+  it("Rounds variation weights", () => {
+    expect(roundVariationWeight(0.48675849)).toEqual(0.4868);
+  });
+
+  it("Gets JSON values", () => {
+    expect(getJSONValue("boolean", "false")).toEqual(false);
+    expect(getJSONValue("boolean", "true")).toEqual(true);
+    expect(getJSONValue("boolean", "other")).toEqual(true);
+
+    expect(getJSONValue("number", "123.53")).toEqual(123.53);
+    expect(getJSONValue("number", "unknown")).toEqual(0);
+
+    expect(getJSONValue("string", "foo")).toEqual("foo");
+    expect(getJSONValue("string", "123")).toEqual("123");
+
+    expect(getJSONValue("json", "invalid")).toEqual(null);
+    expect(getJSONValue("json", '{"foo": 1}')).toEqual({ foo: 1 });
+  });
+
+  it("merges sparse JSON force/rollout rule values onto the default", () => {
+    const feature = cloneDeep(baseFeature);
+    feature.valueType = "json";
+    feature.defaultValue = JSON.stringify({ a: 1, b: 2, c: 3 });
+    feature.environmentSettings["production"].rules = [
+      {
+        type: "force",
+        id: "sparse-force",
+        description: "",
+        enabled: true,
+        // Only overrides `b`; `a` and `c` fall back to the default.
+        value: JSON.stringify({ b: 99 }),
+        sparse: true,
+      },
+      {
+        type: "force",
+        id: "full-force",
+        description: "",
+        enabled: true,
+        // Not sparse: replaces the whole object.
+        value: JSON.stringify({ b: 99 }),
+      },
+    ];
+
+    const def = getFeatureDefinition({
+      feature,
+      environment: "production",
+      groupMap,
+      experimentMap,
+      safeRolloutMap,
+      capabilities: ["looseUnmarshalling"],
+    });
+
+    expect(def).toEqual({
+      defaultValue: { a: 1, b: 2, c: 3 },
+      rules: [{ force: { a: 1, b: 99, c: 3 } }, { force: { b: 99 } }],
+    });
+  });
+
+  it("ignores sparse when the JSON default value is not a plain object", () => {
+    const feature = cloneDeep(baseFeature);
+    feature.valueType = "json";
+    // Array default — sparse merge is undefined, so the rule emits as-is.
+    feature.defaultValue = JSON.stringify([1, 2, 3]);
+    feature.environmentSettings["production"].rules = [
+      {
+        type: "force",
+        id: "sparse-force",
+        description: "",
+        enabled: true,
+        value: JSON.stringify({ b: 99 }),
+        sparse: true,
+      },
+    ];
+
+    const def = getFeatureDefinition({
+      feature,
+      environment: "production",
+      groupMap,
+      experimentMap,
+      safeRolloutMap,
+      capabilities: ["looseUnmarshalling"],
+    });
+
+    expect(def).toEqual({
+      defaultValue: [1, 2, 3],
+      rules: [{ force: { b: 99 } }],
+    });
+  });
+
+  it("resolves a JSON constant used as a sparse rule value and merges it onto the default", () => {
+    const feature = cloneDeep(baseFeature);
+    feature.valueType = "json";
+    feature.defaultValue = JSON.stringify({ a: 0, c: 3 });
+    feature.environmentSettings["production"].rules = [
+      {
+        type: "force",
+        id: "sparse-const",
+        description: "",
+        enabled: true,
+        // A whole-value JSON constant used as the (sparse) rule value.
+        value: JSON.stringify({ $extends: ["@const:cfg"] }),
+        sparse: true,
+      },
+    ];
+
+    const constantMap = new Map([
+      [
+        "constant:cfg",
+        { type: "json" as const, value: JSON.stringify({ a: 1, b: 2 }) },
+      ],
+    ]);
+
+    const def = getFeatureDefinition({
+      feature,
+      environment: "production",
+      groupMap,
+      experimentMap,
+      safeRolloutMap,
+      capabilities: ["looseUnmarshalling"],
+      constantMap,
+    });
+
+    // The constant resolves first, then merges onto the default; the constant's
+    // fields (the rule value) win over the default.
+    expect(def?.rules).toEqual([{ force: { a: 1, c: 3, b: 2 } }]);
+  });
+
+  it("applies sparse rule fields last so they win over a constant-provided default", () => {
+    const feature = cloneDeep(baseFeature);
+    feature.valueType = "json";
+    // Default value is itself a whole-value JSON constant.
+    feature.defaultValue = JSON.stringify({ $extends: ["@const:base"] });
+    feature.environmentSettings["production"].rules = [
+      {
+        type: "force",
+        id: "sparse-over-const",
+        description: "",
+        enabled: true,
+        value: JSON.stringify({ b: 99 }),
+        sparse: true,
+      },
+    ];
+
+    const constantMap = new Map([
+      [
+        "constant:base",
+        { type: "json" as const, value: JSON.stringify({ a: 1, b: 2 }) },
+      ],
+    ]);
+
+    const def = getFeatureDefinition({
+      feature,
+      environment: "production",
+      groupMap,
+      experimentMap,
+      safeRolloutMap,
+      capabilities: ["looseUnmarshalling"],
+      constantMap,
+    });
+
+    // The default's constant resolves to { a: 1, b: 2 } and forms the merge
+    // base; the sparse field `b` is applied last and wins (b: 99, not 2).
+    expect(def?.rules).toEqual([{ force: { a: 1, b: 99 } }]);
+  });
+
+  it("applies an environment-scoped config flavor (scopedOverrides) per environment", () => {
+    const feature = cloneDeep(baseFeature);
+    feature.valueType = "json";
+    feature.baseConfig = "base";
+    feature.defaultValue = JSON.stringify({ $extends: ["@config:base"] });
+
+    // Base config { beanType: jelly } with a `dev`-scoped flavor that patches
+    // beanType → fava. The flavor is a child config (its own value carries the
+    // parent `@config:base` ref, which the resolver excludes to avoid a loop).
+    const constantMap = new Map([
+      [
+        "config:base",
+        {
+          type: "json" as const,
+          value: JSON.stringify({ beanType: "jelly" }),
+          scopedOverrides: [{ config: "base_dev", environments: ["dev"] }],
+        },
+      ],
+      [
+        "config:base_dev",
+        {
+          type: "json" as const,
+          value: JSON.stringify({
+            $extends: ["@config:base"],
+            beanType: "fava",
+          }),
+        },
+      ],
+    ]);
+
+    // dev: the flavor patch is deep-merged onto the base → beanType: fava.
+    const devDef = getFeatureDefinition({
+      feature,
+      environment: "dev",
+      groupMap,
+      experimentMap,
+      safeRolloutMap,
+      capabilities: ["looseUnmarshalling"],
+      constantMap,
+    });
+    expect(devDef?.defaultValue).toEqual({ beanType: "fava" });
+
+    // production: no matching flavor → the base value.
+    const prodDef = getFeatureDefinition({
+      feature,
+      environment: "production",
+      groupMap,
+      experimentMap,
+      safeRolloutMap,
+      capabilities: ["looseUnmarshalling"],
+      constantMap,
+    });
+    expect(prodDef?.defaultValue).toEqual({ beanType: "jelly" });
+  });
+
+  it("applies the env flavor ON TOP of a composition mixin (flavor wins)", () => {
+    const feature = cloneDeep(baseFeature);
+    feature.valueType = "json";
+    feature.baseConfig = "base";
+    feature.defaultValue = JSON.stringify({ $extends: ["@config:base"] });
+
+    // `base` composes a `mixin` (which supplies beanType: jelly) and has no own
+    // beanType. A `dev` flavor patches beanType → fava. The mixin is a base layer
+    // (applied before `base`), and the flavor applies after `base` — so at every
+    // env the mixin resolves first and the flavor lands on top for dev.
+    const constantMap = new Map([
+      [
+        "config:mixin",
+        { type: "json" as const, value: JSON.stringify({ beanType: "jelly" }) },
+      ],
+      [
+        "config:base",
+        {
+          type: "json" as const,
+          value: JSON.stringify({ $extends: ["@config:mixin"] }),
+          scopedOverrides: [{ config: "base_dev", environments: ["dev"] }],
+        },
+      ],
+      [
+        "config:base_dev",
+        {
+          type: "json" as const,
+          value: JSON.stringify({
+            $extends: ["@config:base"],
+            beanType: "fava",
+          }),
+        },
+      ],
+    ]);
+
+    const devDef = getFeatureDefinition({
+      feature,
+      environment: "dev",
+      groupMap,
+      experimentMap,
+      safeRolloutMap,
+      capabilities: ["looseUnmarshalling"],
+      constantMap,
+    });
+    // dev: the flavor's beanType wins over the mixin's.
+    expect(devDef?.defaultValue).toEqual({ beanType: "fava" });
+
+    const prodDef = getFeatureDefinition({
+      feature,
+      environment: "production",
+      groupMap,
+      experimentMap,
+      safeRolloutMap,
+      capabilities: ["looseUnmarshalling"],
+      constantMap,
+    });
+    // production: no flavor → the mixin's value.
+    expect(prodDef?.defaultValue).toEqual({ beanType: "jelly" });
+  });
+
+  it("spreads constants in both the default and a sparse patch, patch winning", () => {
+    const feature = cloneDeep(baseFeature);
+    feature.valueType = "json";
+    // Default mixes explicit keys with a spread constant.
+    feature.defaultValue = JSON.stringify({
+      versions: [1, 2],
+      ref: 0.1,
+      $extends: ["@const:config-snippet"],
+    });
+    feature.environmentSettings["production"].rules = [
+      {
+        type: "force",
+        id: "sparse-spread",
+        description: "",
+        enabled: true,
+        // Sparse patch also mixes an explicit key with a spread constant.
+        value: JSON.stringify({ ref: 3, $extends: ["@const:my-json"] }),
+        sparse: true,
+      },
+    ];
+
+    const constantMap = new Map([
+      ["constant:config-snippet", { type: "json" as const, value: '{"x":1}' }],
+      ["constant:my-json", { type: "json" as const, value: '{"y":2}' }],
+    ]);
+
+    const def = getFeatureDefinition({
+      feature,
+      environment: "production",
+      groupMap,
+      experimentMap,
+      safeRolloutMap,
+      capabilities: ["looseUnmarshalling"],
+      constantMap,
+    });
+
+    // Base = { versions, ref: 0.1, x: 1 }; patch = { ref: 3, y: 2 } applied last.
+    expect(def?.rules).toEqual([
+      { force: { versions: [1, 2], ref: 3, x: 1, y: 2 } },
+    ]);
+  });
+
+  it("deep-merges a sparse rule onto a config-backed feature default", () => {
+    const feature = cloneDeep(baseFeature);
+    feature.valueType = "json";
+    feature.baseConfig = "base";
+    // Config-backed default that also layers `extra` on top of the config.
+    feature.defaultValue = JSON.stringify({
+      $extends: ["@config:base"],
+      extra: { x: 1 },
+    });
+    feature.environmentSettings["production"].rules = [
+      {
+        type: "force",
+        id: "sparse-force",
+        description: "",
+        enabled: true,
+        // Patches one leaf of `extra`; a shallow merge would drop `extra.x`.
+        value: JSON.stringify({ extra: { y: 2 } }),
+        sparse: true,
+      },
+    ];
+
+    const constantMap = new Map([
+      [
+        "config:base",
+        {
+          type: "json" as const,
+          source: "config" as const,
+          value: '{"cfg":1}',
+        },
+      ],
+    ]);
+
+    const def = getFeatureDefinition({
+      feature,
+      environment: "production",
+      groupMap,
+      experimentMap,
+      safeRolloutMap,
+      capabilities: ["looseUnmarshalling"],
+      constantMap,
+    });
+
+    // Deep: config field `cfg` and the default's `extra.x` both survive.
+    expect(def?.rules).toEqual([{ force: { cfg: 1, extra: { x: 1, y: 2 } } }]);
+  });
+
+  it("resolves a config-backed sparse rule against the config it re-points to", () => {
+    const feature = cloneDeep(baseFeature);
+    feature.valueType = "json";
+    feature.baseConfig = "base";
+    feature.defaultValue = JSON.stringify({
+      $extends: ["@config:base"],
+      cfg: 999,
+    });
+    feature.environmentSettings["production"].rules = [
+      {
+        type: "force",
+        id: "sparse-repoint",
+        description: "",
+        enabled: true,
+        // Re-points to a DESCENDANT config; its fields must be delivered
+        // (matches the config-backing editor preview), not dropped.
+        value: JSON.stringify({ $extends: ["@config:child"], p: 1 }),
+        sparse: true,
+      },
+    ];
+
+    const constantMap = new Map([
+      [
+        "config:base",
+        {
+          type: "json" as const,
+          source: "config" as const,
+          value: '{"cfg":1}',
+        },
+      ],
+      [
+        "config:child",
+        {
+          type: "json" as const,
+          source: "config" as const,
+          value: '{"cfg":2,"childOnly":"c"}',
+        },
+      ],
+    ]);
+
+    const def = getFeatureDefinition({
+      feature,
+      environment: "production",
+      groupMap,
+      experimentMap,
+      safeRolloutMap,
+      capabilities: ["looseUnmarshalling"],
+      constantMap,
+    });
+
+    // Serves the re-pointed child config's values + the rule's own field.
+    expect(def?.rules).toEqual([{ force: { cfg: 2, childOnly: "c", p: 1 } }]);
+  });
+
+  it("injects baseConfig under a pure-patch default and rules (no $extends stored)", () => {
+    const feature = cloneDeep(baseFeature);
+    feature.valueType = "json";
+    // First-class config-backing: `baseConfig` is authoritative and the stored
+    // default/rule values are pure override patches with no `@config:` directive.
+    feature.baseConfig = "base";
+    feature.defaultValue = JSON.stringify({ extra: { x: 1 } });
+    feature.environmentSettings["production"].rules = [
+      {
+        type: "force",
+        id: "sparse-force",
+        description: "",
+        enabled: true,
+        value: JSON.stringify({ extra: { y: 2 } }),
+        sparse: true,
+      },
+    ];
+
+    const constantMap = new Map([
+      [
+        "config:base",
+        {
+          type: "json" as const,
+          source: "config" as const,
+          value: '{"cfg":1}',
+        },
+      ],
+    ]);
+
+    const def = getFeatureDefinition({
+      feature,
+      environment: "production",
+      groupMap,
+      experimentMap,
+      safeRolloutMap,
+      capabilities: ["looseUnmarshalling"],
+      constantMap,
+    });
+
+    // The default gets the base config flattened beneath its patch...
+    expect(def?.defaultValue).toEqual({ cfg: 1, extra: { x: 1 } });
+    // ...and the sparse rule deep-merges onto that same resolved base.
+    expect(def?.rules).toEqual([{ force: { cfg: 1, extra: { x: 1, y: 2 } } }]);
+  });
+
+  it("strips a stray @config: on a NON-config flag (no baseConfig)", () => {
+    const feature = cloneDeep(baseFeature);
+    feature.valueType = "json";
+    // No baseConfig => not config-designed. A stray inline @config: (e.g. from a
+    // permissive v1 write) must NOT resolve the config.
+    feature.defaultValue = JSON.stringify({
+      $extends: ["@config:base"],
+      foo: 1,
+    });
+    feature.environmentSettings["production"].rules = [
+      {
+        type: "force",
+        id: "f",
+        description: "",
+        enabled: true,
+        value: JSON.stringify({ $extends: ["@config:base"], bar: 2 }),
+      },
+    ];
+
+    const constantMap = new Map([
+      [
+        "config:base",
+        {
+          type: "json" as const,
+          source: "config" as const,
+          value: '{"cfg":1}',
+        },
+      ],
+    ]);
+
+    const def = getFeatureDefinition({
+      feature,
+      environment: "production",
+      groupMap,
+      experimentMap,
+      safeRolloutMap,
+      capabilities: ["looseUnmarshalling"],
+      constantMap,
+    });
+
+    // `cfg` never appears — the config ref is stripped, only own keys remain.
+    expect(def?.defaultValue).toEqual({ foo: 1 });
+    expect(def?.rules).toEqual([{ force: { bar: 2 } }]);
+  });
+
+  it("ships non-object rule values on a config-backed feature as-is", () => {
+    const feature = cloneDeep(baseFeature);
+    feature.valueType = "json";
+    feature.baseConfig = "base";
+    feature.defaultValue = JSON.stringify({ $extends: ["@config:base"] });
+    feature.environmentSettings["production"].rules = [
+      {
+        type: "force",
+        id: "array-force",
+        description: "",
+        enabled: true,
+        value: JSON.stringify([1, 2, 3]),
+      },
+      {
+        type: "force",
+        id: "string-force",
+        description: "",
+        enabled: true,
+        value: JSON.stringify("plain"),
+      },
+      {
+        type: "force",
+        id: "object-force",
+        description: "",
+        enabled: true,
+        value: JSON.stringify({ x: 2 }),
+      },
+    ];
+
+    const constantMap = new Map([
+      [
+        "config:base",
+        {
+          type: "json" as const,
+          source: "config" as const,
+          value: '{"cfg":1}',
+        },
+      ],
+    ]);
+
+    const def = getFeatureDefinition({
+      feature,
+      environment: "production",
+      groupMap,
+      experimentMap,
+      safeRolloutMap,
+      capabilities: ["looseUnmarshalling"],
+      constantMap,
+    });
+
+    // Arrays/scalars replace outright — no config base underneath; plain
+    // objects still get the default config flattened beneath them.
+    expect(def?.rules).toEqual([
+      { force: [1, 2, 3] },
+      { force: "plain" },
+      { force: { cfg: 1, x: 2 } },
+    ]);
+  });
+
+  it("routes safe-rollout values through config flattening", () => {
+    const feature = cloneDeep(baseFeature);
+    feature.valueType = "json";
+    feature.baseConfig = "base";
+    feature.defaultValue = JSON.stringify({ $extends: ["@config:base"] });
+    feature.environmentSettings["production"].rules = [
+      {
+        type: "safe-rollout",
+        id: "sr-released",
+        description: "",
+        enabled: true,
+        controlValue: JSON.stringify({ x: 1 }),
+        variationValue: JSON.stringify({ x: 2 }),
+        safeRolloutId: "sr_1",
+        status: "released",
+        hashAttribute: "id",
+        seed: "seed",
+        trackingKey: "sr-key",
+      },
+      {
+        type: "safe-rollout",
+        id: "sr-rolled-back",
+        description: "",
+        enabled: true,
+        controlValue: JSON.stringify({ x: 1 }),
+        variationValue: JSON.stringify({ x: 2 }),
+        safeRolloutId: "sr_2",
+        status: "rolled-back",
+        hashAttribute: "id",
+        seed: "seed",
+        trackingKey: "sr-key-2",
+      },
+    ];
+
+    const constantMap = new Map([
+      [
+        "config:base",
+        {
+          type: "json" as const,
+          source: "config" as const,
+          value: '{"cfg":1}',
+        },
+      ],
+    ]);
+
+    const def = getFeatureDefinition({
+      feature,
+      environment: "production",
+      groupMap,
+      experimentMap,
+      safeRolloutMap,
+      capabilities: ["looseUnmarshalling"],
+      constantMap,
+    });
+
+    // Released forces the variation, rolled-back forces the control — both
+    // flattened onto the backing config like every other rule value.
+    expect(def?.rules).toEqual([
+      { force: { cfg: 1, x: 2 } },
+      { force: { cfg: 1, x: 1 } },
+    ]);
+  });
+
+  it("resolves a backtick-escaped ref in a sparse rule exactly once (full payload)", () => {
+    const feature = cloneDeep(baseFeature);
+    feature.valueType = "json";
+    feature.defaultValue = JSON.stringify({ msg: "" });
+    feature.environmentSettings["production"].rules = [
+      {
+        type: "force",
+        id: "sparse-escaped",
+        description: "",
+        enabled: true,
+        sparse: true,
+        value: JSON.stringify({ msg: "`{{ @const:x }}`" }),
+      },
+    ];
+
+    const payload = generateFeaturesPayload({
+      features: [feature],
+      environment: "production",
+      groupMap: new Map(),
+      experimentMap: new Map(),
+      capabilities: ["looseUnmarshalling"],
+      constants: [makeConstant({ key: "x", type: "string", value: "real" })],
+    });
+
+    // The escape renders as a literal placeholder; a second resolution pass
+    // would wrongly substitute the constant's value.
+    expect(payload.feature.rules?.[0]).toEqual({
+      force: { msg: "{{ @const:x }}" },
+    });
+  });
+
+  // A JSON feature with a single non-sparse force rule whose value is `ruleValue`.
+  const jsonForceFeature = (ruleValue: string): FeatureInterface => {
+    const feature = cloneDeep(baseFeature);
+    feature.valueType = "json";
+    feature.defaultValue = "{}";
+    feature.environmentSettings["production"].rules = [
+      {
+        type: "force",
+        id: "f1",
+        description: "",
+        enabled: true,
+        value: ruleValue,
+      },
+    ];
+    return feature;
+  };
+
+  it("resolves a JSON constant in a non-sparse force value (full payload)", () => {
+    const payload = generateFeaturesPayload({
+      features: [
+        jsonForceFeature(JSON.stringify({ $extends: ["@const:cfg"] })),
+      ],
+      environment: "production",
+      groupMap: new Map(),
+      experimentMap: new Map(),
+      capabilities: ["looseUnmarshalling"],
+      constants: [
+        makeConstant({
+          key: "cfg",
+          type: "json",
+          value: JSON.stringify({ a: 1, b: 2 }),
+        }),
+      ],
+    });
+    expect(payload.feature.rules?.[0]).toEqual({ force: { a: 1, b: 2 } });
+  });
+
+  it("spreads a constant among other keys in a non-sparse force value", () => {
+    const payload = generateFeaturesPayload({
+      features: [
+        jsonForceFeature(
+          JSON.stringify({ $extends: ["@const:cfg"], extra: 1 }),
+        ),
+      ],
+      environment: "production",
+      groupMap: new Map(),
+      experimentMap: new Map(),
+      capabilities: ["looseUnmarshalling"],
+      constants: [
+        makeConstant({
+          key: "cfg",
+          type: "json",
+          value: JSON.stringify({ a: 1 }),
+        }),
+      ],
+    });
+    expect(payload.feature.rules?.[0]).toEqual({ force: { a: 1, extra: 1 } });
+  });
+
+  it("resolves a constant in the feature default value", () => {
+    const feature = cloneDeep(baseFeature);
+    feature.valueType = "json";
+    feature.defaultValue = JSON.stringify({ $extends: ["@const:cfg"] });
+    const payload = generateFeaturesPayload({
+      features: [feature],
+      environment: "production",
+      groupMap: new Map(),
+      experimentMap: new Map(),
+      capabilities: ["looseUnmarshalling"],
+      constants: [
+        makeConstant({
+          key: "cfg",
+          type: "json",
+          value: JSON.stringify({ a: 1 }),
+        }),
+      ],
+    });
+    expect(payload.feature.defaultValue).toEqual({ a: 1 });
+  });
+
+  it("interpolates a string constant into a string feature value (payload)", () => {
+    const feature = cloneDeep(baseFeature);
+    feature.valueType = "string";
+    feature.defaultValue = "hi {{ @const:name }}";
+    const payload = generateFeaturesPayload({
+      features: [feature],
+      environment: "production",
+      groupMap: new Map(),
+      experimentMap: new Map(),
+      capabilities: ["looseUnmarshalling"],
+      constants: [
+        makeConstant({ key: "name", type: "string", value: "world" }),
+      ],
+    });
+    expect(payload.feature.defaultValue).toEqual("hi world");
+  });
+
+  it("scrubs an archived constant from the payload rather than resolving it", () => {
+    const feature = cloneDeep(baseFeature);
+    feature.valueType = "json";
+    // A spread reference among other keys + a string interpolation elsewhere.
+    feature.defaultValue = JSON.stringify({
+      $extends: ["@const:cfg"],
+      keep: 1,
+    });
+    const payload = generateFeaturesPayload({
+      features: [feature],
+      environment: "production",
+      groupMap: new Map(),
+      experimentMap: new Map(),
+      capabilities: ["looseUnmarshalling"],
+      constants: [
+        makeConstant({
+          key: "cfg",
+          type: "json",
+          value: JSON.stringify({ a: 1 }),
+          archived: true,
+        }),
+      ],
+    });
+    // The archived spread ref is dropped; sibling keys remain — no stale value
+    // and no leaked `@const:` placeholder.
+    expect(payload.feature.defaultValue).toEqual({ keep: 1 });
+  });
+
+  it("resolves constants per environment", () => {
+    const feature = cloneDeep(baseFeature);
+    feature.valueType = "json";
+    feature.defaultValue = JSON.stringify({ $extends: ["@const:host"] });
+    const constants = [
+      makeConstant({
+        key: "host",
+        type: "json",
+        value: JSON.stringify({ url: "default" }),
+        environmentValues: { production: JSON.stringify({ url: "prod" }) },
+      }),
+    ];
+    const common = {
+      groupMap: new Map(),
+      experimentMap: new Map(),
+      capabilities: ["looseUnmarshalling"] as const,
+      constants,
+    };
+    const prod = generateFeaturesPayload({
+      features: [cloneDeep(feature)],
+      environment: "production",
+      ...common,
+    });
+    const dev = generateFeaturesPayload({
+      features: [cloneDeep(feature)],
+      environment: "dev",
+      ...common,
+    });
+    expect(prod.feature.defaultValue).toEqual({ url: "prod" });
+    expect(dev.feature.defaultValue).toEqual({ url: "default" });
+  });
+
+  it("drops a cyclic $extends reference in the payload", () => {
+    const payload = generateFeaturesPayload({
+      features: [
+        jsonForceFeature(JSON.stringify({ $extends: ["@const:loop"] })),
+      ],
+      environment: "production",
+      groupMap: new Map(),
+      experimentMap: new Map(),
+      capabilities: ["looseUnmarshalling"],
+      constants: [
+        makeConstant({
+          key: "loop",
+          type: "json",
+          value: JSON.stringify({ $extends: ["@const:loop"] }),
+        }),
+      ],
+    });
+    // Self-referential $extends is dropped (no infinite recursion, no leftover).
+    expect(payload.feature.rules?.[0]).toEqual({ force: {} });
+  });
+
+  it("resolves constants in experiment-ref variation values", () => {
+    const feature = cloneDeep(baseFeature);
+    feature.valueType = "json";
+    feature.defaultValue = "{}";
+    feature.environmentSettings["production"].rules = [
+      {
+        type: "experiment-ref",
+        experimentId: "exp_c",
+        id: "er1",
+        description: "",
+        enabled: true,
+        variations: [
+          {
+            variationId: "v0",
+            value: JSON.stringify({ $extends: ["@const:cfg"] }),
+          },
+          {
+            variationId: "v1",
+            value: JSON.stringify({ $extends: ["@const:more"] }),
+          },
+        ],
+      },
+    ];
+    const exp: ExperimentInterface = {
+      archived: false,
+      autoAssign: false,
+      implementation: "code",
+      autoSnapshots: false,
+      datasource: "",
+      dateCreated: new Date(),
+      dateUpdated: new Date(),
+      exposureQueryId: "",
+      hashAttribute: "user_id",
+      hashVersion: 2,
+      id: "exp_c",
+      metrics: [],
+      name: "Exp",
+      organization: "123",
+      owner: "",
+      phases: [
+        {
+          condition: "{}",
+          coverage: 1,
+          dateStarted: new Date(),
+          name: "Phase",
+          namespace: { enabled: false, name: "", range: [0, 1] },
+          reason: "",
+          variationWeights: [0.5, 0.5],
+          seed: "seed",
+        },
+      ],
+      previewURL: "",
+      releasedVariationId: "",
+      status: "running",
+      tags: [],
+      targetURLRegex: "",
+      trackingKey: "exp-c-key",
+      variations: [
+        { id: "v0", key: "0", name: "Control", screenshots: [] },
+        { id: "v1", key: "1", name: "Variation", screenshots: [] },
+      ],
+      linkedFeatures: ["feature"],
+      excludeFromPayload: false,
+    };
+    const payload = generateFeaturesPayload({
+      features: [feature],
+      environment: "production",
+      groupMap: new Map(),
+      experimentMap: new Map([["exp_c", exp]]),
+      capabilities: ["looseUnmarshalling"],
+      constants: [
+        makeConstant({
+          key: "cfg",
+          type: "json",
+          value: JSON.stringify({ a: 1 }),
+        }),
+        makeConstant({
+          key: "more",
+          type: "json",
+          value: JSON.stringify({ b: 2 }),
+        }),
+      ],
+    });
+    expect(payload.feature.rules?.[0].variations).toEqual([{ a: 1 }, { b: 2 }]);
+  });
+
+  it("resolves a string constant interpolated in a sparse patch leaf", () => {
+    const feature = cloneDeep(baseFeature);
+    feature.valueType = "json";
+    feature.defaultValue = JSON.stringify({ greeting: "" });
+    feature.environmentSettings["production"].rules = [
+      {
+        type: "force",
+        id: "f1",
+        description: "",
+        enabled: true,
+        sparse: true,
+        value: JSON.stringify({ greeting: "hi {{ @const:name }}" }),
+      },
+    ];
+    const def = getFeatureDefinition({
+      feature,
+      environment: "production",
+      groupMap,
+      experimentMap,
+      safeRolloutMap,
+      capabilities: ["looseUnmarshalling"],
+      constantMap: new Map([
+        ["constant:name", { type: "string", value: "world" }],
+      ]),
+    });
+    expect(def?.rules).toEqual([{ force: { greeting: "hi world" } }]);
+  });
+
+  it("spreads a constant with a nested value in a sparse patch", () => {
+    const feature = cloneDeep(baseFeature);
+    feature.valueType = "json";
+    feature.defaultValue = JSON.stringify({ a: 0 });
+    feature.environmentSettings["production"].rules = [
+      {
+        type: "force",
+        id: "f1",
+        description: "",
+        enabled: true,
+        sparse: true,
+        value: JSON.stringify({ $extends: ["@const:cfg"], x: 1 }),
+      },
+    ];
+    const def = getFeatureDefinition({
+      feature,
+      environment: "production",
+      groupMap,
+      experimentMap,
+      safeRolloutMap,
+      capabilities: ["looseUnmarshalling"],
+      constantMap: new Map([
+        [
+          "constant:cfg",
+          { type: "json", value: JSON.stringify({ nested: [1, 2] }) },
+        ],
+      ]),
+    });
+    expect(def?.rules).toEqual([{ force: { a: 0, nested: [1, 2], x: 1 } }]);
+  });
+
+  it("Uses linked experiments to build feature definitions", () => {
+    const feature = cloneDeep(baseFeature);
+    feature.environmentSettings["production"].rules = [
+      {
+        type: "experiment-ref",
+        experimentId: "exp_123",
+        description: "",
+        id: "abc",
+        enabled: true,
+        variations: [
+          {
+            variationId: "v0",
+            value: "false",
+          },
+          {
+            variationId: "v1",
+            value: "true",
+          },
+        ],
+      },
+    ];
+
+    const exp: ExperimentInterface = {
+      archived: false,
+      autoAssign: false,
+      implementation: "code",
+      autoSnapshots: false,
+      datasource: "",
+      dateCreated: new Date(),
+      dateUpdated: new Date(),
+      exposureQueryId: "",
+      hashAttribute: "user_id",
+      hashVersion: 2,
+      id: "exp_123",
+      metrics: [],
+      name: "My Experiment",
+      organization: "",
+      owner: "",
+      phases: [
+        {
+          condition: `{"country":"us"}`,
+          coverage: 0.8,
+          dateStarted: new Date(),
+          name: "My Phase",
+          namespace: {
+            enabled: true,
+            name: "namespace",
+            range: [0, 0.6],
+          },
+          reason: "",
+          variationWeights: [0.4, 0.6],
+          seed: "testing",
+        },
+      ],
+      previewURL: "",
+      releasedVariationId: "",
+      status: "running",
+      tags: [],
+      targetURLRegex: "",
+      trackingKey: "exp-key",
+      variations: [
+        {
+          id: "v0",
+          key: "k0",
+          name: "Control",
+          screenshots: [],
+        },
+        {
+          id: "v1",
+          key: "k1",
+          name: "Variation 1",
+          screenshots: [],
+        },
+      ],
+      linkedFeatures: ["feature"],
+      excludeFromPayload: false,
+    };
+    const safeRollout: SafeRolloutInterface = {
+      id: "sr_123",
+      organization: "123",
+      dateCreated: new Date(),
+      dateUpdated: new Date(),
+      featureId: "feature",
+      environment: "production",
+      datasourceId: "ds_123",
+      exposureQueryId: "eq_123",
+      guardrailMetricIds: [],
+      maxDuration: {
+        amount: 7,
+        unit: "days",
+      },
+      autoRollback: true,
+      status: "running",
+      autoSnapshots: true,
+      startedAt: new Date(),
+      lastSnapshotAttempt: new Date(),
+      nextSnapshotAttempt: new Date(),
+      analysisSummary: undefined,
+      pastNotifications: [],
+      rampUpSchedule: {
+        enabled: true,
+        step: 1,
+        steps: [0.1, 0.25, 0.5],
+        rampUpCompleted: false,
+      },
+    };
+    const experimentMap = new Map([["exp_123", exp]]);
+    const safeRolloutMap = new Map([["sr_123", safeRollout]]);
+    // Includes the experiment
+    expect(
+      getFeatureDefinition({
+        feature,
+        environment: "production",
+        groupMap: groupMap,
+        experimentMap: experimentMap,
+        safeRolloutMap: safeRolloutMap,
+        capabilities: ["looseUnmarshalling"],
+        includeExperimentNames: true,
+        includeRuleIds: true,
+      }),
+    ).toEqual({
+      defaultValue: true,
+      rules: [
+        {
+          id: "abc",
+          key: "exp-key",
+          coverage: 0.8,
+          hashAttribute: "user_id",
+          hashVersion: 2,
+          condition: {
+            country: "us",
+          },
+          meta: [
+            {
+              key: "k0",
+              name: "Control",
+            },
+            {
+              key: "k1",
+              name: "Variation 1",
+            },
+          ],
+          name: "My Experiment",
+          namespace: ["namespace", 0, 0.6],
+          phase: "0",
+          seed: "testing",
+          variations: [false, true],
+          weights: [0.4, 0.6],
+        },
+      ],
+    });
+
+    // Excludes because it's archived
+    exp.archived = true;
+    expect(
+      getFeatureDefinition({
+        feature,
+        environment: "production",
+        groupMap: groupMap,
+        experimentMap: experimentMap,
+        safeRolloutMap: safeRolloutMap,
+        capabilities: ["looseUnmarshalling"],
+      }),
+    ).toEqual({
+      defaultValue: true,
+    });
+
+    // Excludes because it's stopped without a released variation
+    exp.archived = false;
+    exp.status = "stopped";
+    expect(
+      getFeatureDefinition({
+        feature,
+        environment: "production",
+        groupMap: groupMap,
+        experimentMap: experimentMap,
+        safeRolloutMap: safeRolloutMap,
+        capabilities: ["looseUnmarshalling"],
+      }),
+    ).toEqual({
+      defaultValue: true,
+    });
+
+    // Included with released variation id
+    exp.releasedVariationId = "v1";
+    expect(
+      getFeatureDefinition({
+        feature,
+        environment: "production",
+        groupMap: groupMap,
+        experimentMap: experimentMap,
+        safeRolloutMap: safeRolloutMap,
+        capabilities: ["looseUnmarshalling"],
+      }),
+    ).toEqual({
+      defaultValue: true,
+      rules: [
+        {
+          coverage: 0.8,
+          hashAttribute: "user_id",
+          hashVersion: 2,
+          condition: {
+            country: "us",
+          },
+          namespace: ["namespace", 0, 0.6],
+          seed: "testing",
+          force: true,
+        },
+      ],
+    });
+
+    // Excluded because the experiment doesn't exist
+    experimentMap.clear();
+    expect(
+      getFeatureDefinition({
+        feature,
+        environment: "production",
+        groupMap: groupMap,
+        experimentMap: experimentMap,
+        safeRolloutMap: safeRolloutMap,
+        capabilities: ["looseUnmarshalling"],
+      }),
+    ).toEqual({
+      defaultValue: true,
+    });
+  });
+
+  it("handles multi-range namespaces in experiment definitions", () => {
+    const feature = cloneDeep(baseFeature);
+    feature.environmentSettings["production"].rules = [
+      {
+        id: "abc",
+        type: "experiment-ref",
+        enabled: true,
+        experimentId: "exp_multi",
+        description: "",
+        variations: [
+          { variationId: "v0", value: "false" },
+          { variationId: "v1", value: "true" },
+        ],
+      },
+    ];
+    const exp: Partial<ExperimentInterface> = {
+      id: "exp_multi",
+      name: "Multi Experiment",
+      trackingKey: "exp-multi-key",
+      organization: "123",
+      owner: "",
+      implementation: "code",
+      hashAttribute: "user_id",
+      hashVersion: 2,
+      dateCreated: new Date(),
+      dateUpdated: new Date(),
+      tags: [],
+      variations: [
+        { id: "v0", key: "ctrl", name: "Control", screenshots: [] },
+        { id: "v1", key: "var", name: "Var", screenshots: [] },
+      ],
+      status: "running",
+      releasedVariationId: "",
+      autoSnapshots: false,
+      previewURL: "",
+      targetURLRegex: "",
+      archived: false,
+      phases: [
+        {
+          condition: "{}",
+          coverage: 1,
+          dateStarted: new Date(),
+          name: "Phase 1",
+          namespace: {
+            enabled: true,
+            name: "multi-ns",
+            ranges: [
+              [0, 0.2],
+              [0.5, 0.7],
+            ],
+            hashAttribute: "login_id",
+          },
+          reason: "",
+          variationWeights: [0.5, 0.5],
+          seed: "multi-seed",
+        },
+      ],
+      linkedFeatures: ["feature"],
+    };
+    const experimentMap = new Map([["exp_multi", exp]]);
+    const namespaces = new Map<
+      string,
+      {
+        hashAttribute?: string;
+        seed?: string;
+        format?: "legacy" | "multiRange";
+      }
+    >([
+      [
+        "multi-ns",
+        {
+          hashAttribute: "login_id",
+          seed: "custom-seed",
+          format: "multiRange",
+        },
+      ],
+    ]);
+
+    expect(
+      getFeatureDefinition({
+        feature,
+        environment: "production",
+        groupMap: new Map(),
+        experimentMap,
+        namespaces,
+        includeRuleIds: true,
+        includeExperimentNames: true,
+      }),
+    ).toEqual({
+      defaultValue: true,
+      rules: [
+        {
+          id: "abc",
+          key: "exp-multi-key",
+          coverage: 1,
+          hashAttribute: "user_id",
+          hashVersion: 2,
+          meta: [
+            { key: "ctrl", name: "Control" },
+            { key: "var", name: "Var" },
+          ],
+          name: "Multi Experiment",
+          filters: [
+            {
+              attribute: "login_id",
+              seed: "custom-seed",
+              hashVersion: 2,
+              ranges: [
+                [0, 0.2],
+                [0.5, 0.7],
+              ],
+            },
+          ],
+          phase: "0",
+          seed: "multi-seed",
+          variations: [false, true],
+          weights: [0.5, 0.5],
+        },
+      ],
+    });
+  });
+
+  it("maintains legacy namespace tuple for backward compatibility", () => {
+    const feature = cloneDeep(baseFeature);
+    feature.environmentSettings["production"].rules = [
+      {
+        id: "abc",
+        type: "experiment-ref",
+        enabled: true,
+        experimentId: "exp_legacy",
+        description: "",
+        variations: [
+          { variationId: "v0", value: "false" },
+          { variationId: "v1", value: "true" },
+        ],
+      },
+    ];
+    const exp: ExperimentInterface = {
+      id: "exp_legacy",
+      name: "Legacy Experiment",
+      trackingKey: "exp-legacy-key",
+      organization: "123",
+      owner: "",
+      implementation: "code",
+      hashAttribute: "user_id",
+      hashVersion: 2,
+      dateCreated: new Date(),
+      dateUpdated: new Date(),
+      tags: [],
+      variations: [
+        { id: "v0", key: "ctrl", name: "Control", screenshots: [] },
+        { id: "v1", key: "var", name: "Var", screenshots: [] },
+      ],
+      status: "running",
+      releasedVariationId: "",
+      autoSnapshots: false,
+      previewURL: "",
+      targetURLRegex: "",
+      archived: false,
+      phases: [
+        {
+          condition: "{}",
+          coverage: 1,
+          dateStarted: new Date(),
+          name: "Phase 1",
+          namespace: {
+            enabled: true,
+            name: "legacy-ns",
+            range: [0, 0.5],
+          },
+          reason: "",
+          variationWeights: [0.5, 0.5],
+        },
+      ],
+      linkedFeatures: ["feature"],
+    };
+    const experimentMap = new Map([["exp_legacy", exp]]);
+    const namespaces = new Map<
+      string,
+      {
+        hashAttribute?: string;
+        seed?: string;
+        format?: "legacy" | "multiRange";
+      }
+    >([
+      [
+        "legacy-ns",
+        {
+          format: "legacy",
+        },
+      ],
+    ]);
+
+    expect(
+      getFeatureDefinition({
+        feature,
+        environment: "production",
+        groupMap: new Map(),
+        experimentMap,
+        namespaces,
+        includeRuleIds: true,
+        includeExperimentNames: true,
+      }),
+    ).toEqual({
+      defaultValue: true,
+      rules: [
+        {
+          id: "abc",
+          key: "exp-legacy-key",
+          coverage: 1,
+          hashAttribute: "user_id",
+          hashVersion: 2,
+          meta: [
+            { key: "ctrl", name: "Control" },
+            { key: "var", name: "Var" },
+          ],
+          name: "Legacy Experiment",
+          namespace: ["legacy-ns", 0, 0.5],
+          phase: "0",
+          variations: [false, true],
+          weights: [0.5, 0.5],
+        },
+      ],
+    });
+  });
+
+  it("prioritizes rule-level hashAttribute over namespace definition", () => {
+    const feature = cloneDeep(baseFeature);
+    feature.environmentSettings["production"].rules = [
+      {
+        id: "abc",
+        type: "experiment-ref",
+        enabled: true,
+        experimentId: "exp_priority",
+        description: "",
+        variations: [
+          { variationId: "v0", value: "false" },
+          { variationId: "v1", value: "true" },
+        ],
+      },
+    ];
+    const exp: Partial<ExperimentInterface> = {
+      id: "exp_priority",
+      name: "Priority Experiment",
+      trackingKey: "exp-priority-key",
+      hashAttribute: "id",
+      hashVersion: 2,
+      variations: [
+        { id: "v0", key: "ctrl", name: "Control", screenshots: [] },
+        { id: "v1", key: "var", name: "Var", screenshots: [] },
+      ],
+      status: "running",
+      phases: [
+        {
+          coverage: 1,
+          name: "Phase 1",
+          namespace: {
+            enabled: true,
+            name: "multi-ns",
+            ranges: [[0, 0.5]],
+            hashAttribute: "rule_attr", // rule-level override
+            hashVersion: 2,
+          },
+          variationWeights: [0.5, 0.5],
+        },
+      ],
+      linkedFeatures: ["feature"],
+    };
+    const experimentMap = new Map([["exp_priority", exp]]);
+    const namespaces = new Map<
+      string,
+      {
+        hashAttribute?: string;
+        seed?: string;
+        format?: "legacy" | "multiRange";
+      }
+    >([
+      [
+        "multi-ns",
+        {
+          hashAttribute: "ns_attr", // namespace-level default
+          seed: "ns-seed",
+          format: "multiRange",
+        },
+      ],
+    ]);
+
+    const result = getFeatureDefinition({
+      feature,
+      environment: "production",
+      groupMap: new Map(),
+      experimentMap,
+      namespaces,
+    });
+
+    // The experiment's own hashAttribute ("id") must not be overridden by the
+    // namespace's hashAttribute — they are independent in the SDK.
+    expect(result.rules[0].hashAttribute).toEqual("id");
+    // The filter carries the namespace's hashAttribute; in this test the phase's
+    // namespace has its own hashAttribute override ("rule_attr") that wins over
+    // the org-level namespace default ("ns_attr").
+    expect(result.rules[0].filters?.[0].attribute).toEqual("rule_attr");
+  });
+
+  it("Uses safe rollouts to build feature definitions", () => {
+    const feature = cloneDeep(baseFeature);
+    feature.environmentSettings["production"].rules = [
+      {
+        type: "safe-rollout",
+        controlValue: "false",
+        variationValue: "true",
+        safeRolloutId: "sr_123",
+        status: "running",
+        hashAttribute: "user_id",
+        seed: "testing",
+        trackingKey: "exp-key",
+        description: "",
+        id: "abc",
+        enabled: true,
+      },
+    ];
+
+    // Includes the running safe rollout as an experiment with the right preset coverage
+    // and weights
+
+    expect(
+      getFeatureDefinition({
+        feature,
+        environment: "production",
+        groupMap: groupMap,
+        experimentMap: experimentMap,
+        safeRolloutMap: safeRolloutMap,
+        capabilities: ["looseUnmarshalling"],
+        includeExperimentNames: true,
+        includeRuleIds: true,
+      }),
+    ).toEqual({
+      defaultValue: true,
+      rules: [
+        {
+          id: "abc",
+          key: "exp-key",
+          coverage: 1,
+          hashAttribute: "user_id",
+          hashVersion: 2,
+          meta: [
+            {
+              key: "0",
+              name: "Control",
+            },
+            {
+              key: "1",
+              name: "Variation",
+            },
+          ],
+          name: "feature - Safe Rollout",
+          phase: "0",
+          seed: "testing",
+          variations: [false, true],
+          weights: [0.5, 0.5],
+        },
+      ],
+    });
+
+    const feature2 = cloneDeep(baseFeature);
+    feature2.environmentSettings["production"].rules = [
+      {
+        type: "safe-rollout",
+        controlValue: "false",
+        variationValue: "true",
+        safeRolloutId: "sr_123",
+        status: "rolled-back",
+        hashAttribute: "user_id",
+        seed: "testing",
+        trackingKey: "exp-key",
+        description: "",
+        id: "abc",
+        enabled: true,
+      },
+    ];
+
+    // Includes the rolled-back safe rollout as a force rule with the control value
+    expect(
+      getFeatureDefinition({
+        feature: feature2,
+        environment: "production",
+        groupMap: groupMap,
+        experimentMap: experimentMap,
+        safeRolloutMap: safeRolloutMap,
+        capabilities: ["looseUnmarshalling"],
+      }),
+    ).toEqual({
+      defaultValue: true,
+      rules: [
+        {
+          force: false,
+        },
+      ],
+    });
+
+    const feature3 = cloneDeep(baseFeature);
+    feature3.environmentSettings["production"].rules = [
+      {
+        type: "safe-rollout",
+        controlValue: "false",
+        variationValue: "true",
+        safeRolloutId: "sr_123",
+        status: "released",
+        hashAttribute: "user_id",
+        seed: "testing",
+        trackingKey: "exp-key",
+        description: "",
+        id: "abc",
+        enabled: true,
+      },
+    ];
+
+    // Includes the released safe rollout as a force rule with the variation value
+    expect(
+      getFeatureDefinition({
+        feature: feature3,
+        environment: "production",
+        groupMap: groupMap,
+        experimentMap: experimentMap,
+        safeRolloutMap: safeRolloutMap,
+        capabilities: ["looseUnmarshalling"],
+      }),
+    ).toEqual({
+      defaultValue: true,
+      rules: [
+        {
+          force: true,
+        },
+      ],
+    });
+  });
+
+  it("Injects ExperimentMetadata into experiment-ref rules when metadataOptions are set", () => {
+    const feature = cloneDeep(baseFeature);
+    feature.project = "proj_feature";
+    feature.tags = ["feature-tag"];
+    feature.customFields = { owner: "alice" };
+    feature.environmentSettings["production"].rules = [
+      {
+        type: "experiment-ref",
+        experimentId: "exp_meta",
+        description: "",
+        id: "rule_1",
+        enabled: true,
+        variations: [
+          { variationId: "v0", value: "false" },
+          { variationId: "v1", value: "true" },
+        ],
+      },
+    ];
+
+    const exp: ExperimentInterface = {
+      archived: false,
+      autoAssign: false,
+      implementation: "code",
+      autoSnapshots: false,
+      datasource: "",
+      dateCreated: new Date(),
+      dateUpdated: new Date(),
+      exposureQueryId: "",
+      hashAttribute: "user_id",
+      hashVersion: 2,
+      id: "exp_meta",
+      metrics: [],
+      name: "Metadata Experiment",
+      organization: "",
+      owner: "",
+      project: "proj_exp",
+      tags: ["exp-tag"],
+      customFields: { owner: "bob", region: "us" },
+      phases: [
+        {
+          condition: "",
+          coverage: 1,
+          dateStarted: new Date(),
+          name: "Phase 1",
+          reason: "",
+          variationWeights: [0.5, 0.5],
+          namespace: { enabled: false, name: "", range: [0, 1] },
+        },
+      ],
+      previewURL: "",
+      releasedVariationId: "",
+      status: "running",
+      targetURLRegex: "",
+      trackingKey: "meta-exp-key",
+      variations: [
+        { id: "v0", key: "k0", name: "Control", screenshots: [] },
+        { id: "v1", key: "k1", name: "Variation", screenshots: [] },
+      ],
+      linkedFeatures: ["feature"],
+      excludeFromPayload: false,
+    };
+
+    const expMap = new Map([["exp_meta", exp]]);
+
+    const projFeature = {
+      id: "proj_feature",
+      publicId: "feature-project",
+      name: "Feature Project",
+    };
+    const projExp = {
+      id: "proj_exp",
+      publicId: "exp-project",
+      name: "Exp Project",
+    };
+    const projectsMap = new Map([
+      ["proj_feature", projFeature],
+      ["proj_exp", projExp],
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ] as any);
+
+    // Without metadataOptions: no metadata on rules or feature def
+    expect(
+      getFeatureDefinition({
+        feature,
+        environment: "production",
+        groupMap,
+        experimentMap: expMap,
+        safeRolloutMap,
+        capabilities: ["looseUnmarshalling"],
+        includeRuleIds: true,
+      }),
+    ).toEqual({
+      defaultValue: true,
+      rules: [expect.objectContaining({ id: "rule_1", key: "meta-exp-key" })],
+    });
+
+    // With metadataOptions: experiment-ref rule gets tags/customFields from the
+    // experiment (exp-tag / bob). Projects come from the set the rule is served
+    // to — here the feature's delivery set (proj_feature), since the rule is
+    // unscoped — NOT the experiment's own project.
+    const defWithMeta = getFeatureDefinition({
+      feature,
+      environment: "production",
+      groupMap,
+      experimentMap: expMap,
+      safeRolloutMap,
+      capabilities: ["looseUnmarshalling"],
+      includeRuleIds: true,
+      metadataOptions: {
+        includeProjectIdInMetadata: true,
+        includeCustomFieldsInMetadata: true,
+        allowedCustomFieldsInMetadata: ["owner"],
+        includeTagsInMetadata: true,
+      },
+      projectsMap,
+    });
+
+    expect(defWithMeta?.rules?.[0]).toEqual(
+      expect.objectContaining({
+        id: "rule_1",
+        metadata: {
+          tags: ["exp-tag"],
+          customFields: { owner: "bob" },
+        },
+      }),
+    );
+    // An unscoped rule omits projects entirely (absent = all), and never carries
+    // the experiment's own project
+    expect(defWithMeta?.rules?.[0]?.metadata).not.toHaveProperty("projects");
+
+    // A scoped experiment-ref rule emits its own scope (∩ delivery)
+    const featureScopedExpRule = cloneDeep(feature);
+    featureScopedExpRule.targetingProjects = ["proj_exp"]; // delivers to both
+    (
+      featureScopedExpRule.environmentSettings["production"]
+        .rules[0] as unknown as { projects: string[] }
+    ).projects = ["proj_exp"];
+    const defScopedExpRule = getFeatureDefinition({
+      feature: featureScopedExpRule,
+      environment: "production",
+      groupMap,
+      experimentMap: expMap,
+      safeRolloutMap,
+      capabilities: ["looseUnmarshalling"],
+      includeRuleIds: true,
+      metadataOptions: { includeProjectIdInMetadata: true },
+      projectsMap,
+    });
+    expect(defScopedExpRule?.rules?.[0]?.metadata?.projects).toEqual([
+      "exp-project",
+    ]);
+
+    // allowedCustomFieldsInMetadata filters keys — region is excluded
+    expect(defWithMeta?.rules?.[0]?.metadata?.customFields).not.toHaveProperty(
+      "region",
+    );
+
+    // Feature-level metadata advertises the governance project by default
+    expect(defWithMeta?.metadata).toEqual({
+      projects: ["feature-project"],
+      tags: ["feature-tag"],
+      customFields: { owner: "alice" },
+    });
+
+    // Targeting projects fold into metadata.projects (as public ids), so the
+    // payload lists every project the feature is delivered to
+    const featureWithTargeting = cloneDeep(feature);
+    featureWithTargeting.targetingProjects = ["proj_exp"];
+    const defWithTargeting = getFeatureDefinition({
+      feature: featureWithTargeting,
+      environment: "production",
+      groupMap,
+      experimentMap: expMap,
+      safeRolloutMap,
+      capabilities: ["looseUnmarshalling"],
+      includeRuleIds: true,
+      metadataOptions: { includeProjectIdInMetadata: true },
+      projectsMap,
+    });
+    expect(defWithTargeting?.metadata?.projects).toEqual([
+      "feature-project",
+      "exp-project",
+    ]);
+
+    // targetingAllProjects omits the projects list (absent = all), rather than
+    // enumerating every org project
+    const featureAllProjects = cloneDeep(feature);
+    featureAllProjects.targetingAllProjects = true;
+    const defAllProjects = getFeatureDefinition({
+      feature: featureAllProjects,
+      environment: "production",
+      groupMap,
+      experimentMap: expMap,
+      safeRolloutMap,
+      capabilities: ["looseUnmarshalling"],
+      includeRuleIds: true,
+      metadataOptions: { includeProjectIdInMetadata: true },
+      projectsMap,
+    });
+    expect(defAllProjects?.metadata?.projects).toBeUndefined();
+  });
+
+  it("Emits a rule's explicit project scope, omitting when the rule targets all", () => {
+    const feature = cloneDeep(baseFeature);
+    feature.project = "proj_feature";
+    feature.targetingProjects = ["proj_exp"]; // delivers to both projects
+    feature.environmentSettings["production"].rules = [
+      {
+        type: "force",
+        value: "true",
+        id: "scoped",
+        enabled: true,
+        description: "",
+        projects: ["proj_exp"],
+      },
+      {
+        type: "force",
+        value: "true",
+        id: "unscoped",
+        enabled: true,
+        description: "",
+      },
+      {
+        type: "force",
+        value: "true",
+        id: "allprojects",
+        enabled: true,
+        description: "",
+        allProjects: true,
+      },
+      // Scoped partly outside the feature's delivery set — scrubbed to delivery.
+      {
+        type: "force",
+        value: "true",
+        id: "partly-dead",
+        enabled: true,
+        description: "",
+        projects: ["proj_exp", "proj_other"],
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ] as any;
+
+    const projectsMap = new Map([
+      [
+        "proj_feature",
+        { id: "proj_feature", publicId: "feature-project", name: "F" },
+      ],
+      ["proj_exp", { id: "proj_exp", publicId: "exp-project", name: "E" }],
+      // A third org project the feature does not deliver to
+      [
+        "proj_other",
+        { id: "proj_other", publicId: "other-project", name: "O" },
+      ],
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ] as any);
+
+    const def = getFeatureDefinition({
+      feature,
+      environment: "production",
+      groupMap,
+      experimentMap: new Map(),
+      safeRolloutMap,
+      capabilities: ["looseUnmarshalling"],
+      includeRuleIds: true,
+      metadataOptions: { includeProjectIdInMetadata: true },
+      projectsMap,
+    });
+    const byId = (id: string) => def?.rules?.find((r) => r.id === id);
+
+    // Specific scope → its own projects, scrubbed to the delivery set
+    expect(byId("scoped")?.metadata?.projects).toEqual(["exp-project"]);
+    expect(byId("partly-dead")?.metadata?.projects).toEqual(["exp-project"]);
+    // All-projects / unscoped rules omit projects entirely (absent = all)
+    expect(byId("unscoped")?.metadata).toBeUndefined();
+    expect(byId("allprojects")?.metadata).toBeUndefined();
+  });
+
+  it("Gets Feature Definitions", () => {
+    const feature = cloneDeep(baseFeature);
+
+    expect(
+      getFeatureDefinition({
+        feature,
+        environment: "production",
+        groupMap: groupMap,
+        experimentMap: experimentMap,
+        safeRolloutMap: safeRolloutMap,
+        capabilities: ["looseUnmarshalling"],
+      }),
+    ).toEqual({
+      defaultValue: true,
+    });
+
+    feature.environmentSettings.production.enabled = false;
+
+    expect(
+      getFeatureDefinition({
+        feature,
+        environment: "production",
+        groupMap: groupMap,
+        experimentMap: experimentMap,
+        safeRolloutMap: safeRolloutMap,
+        capabilities: ["looseUnmarshalling"],
+      }),
+    ).toEqual(null);
+
+    expect(
+      getFeatureDefinition({
+        feature,
+        environment: "unknown",
+        groupMap: groupMap,
+        experimentMap: experimentMap,
+        safeRolloutMap: safeRolloutMap,
+        capabilities: ["looseUnmarshalling"],
+      }),
+    ).toEqual(null);
+
+    feature.environmentSettings.dev.rules = [
+      {
+        type: "force",
+        description: "",
+        id: "1",
+        value: "false",
+        condition: '{"country": "US"}',
+        scheduleRules: [
+          {
+            enabled: true,
+            timestamp: "2000-01-01T00:00:00Z",
+          },
+        ],
+        enabled: true,
+      },
+      {
+        type: "force",
+        description: "",
+        id: "skipped1",
+        value: "false",
+        enabled: false,
+      },
+      {
+        type: "force",
+        description: "",
+        id: "skipped2",
+        value: "false",
+        scheduleRules: [
+          {
+            enabled: true,
+            timestamp: "2199-01-01T00:00:00Z",
+          },
+        ],
+        enabled: true,
+      },
+      {
+        type: "rollout",
+        description: "",
+        id: "2",
+        coverage: 0.8,
+        hashAttribute: "id",
+        value: "false",
+        enabled: true,
+      },
+      {
+        type: "experiment",
+        description: "",
+        id: "3",
+        coverage: 1,
+        hashAttribute: "anonymous_id",
+        trackingKey: "testing",
+        values: [
+          {
+            value: "true",
+            weight: 0.7,
+          },
+          {
+            value: "false",
+            weight: 0.3,
+          },
+        ],
+        enabled: true,
+      },
+    ];
+
+    expect(
+      getFeatureDefinition({
+        feature,
+        environment: "dev",
+        groupMap: groupMap,
+        experimentMap: experimentMap,
+        safeRolloutMap: safeRolloutMap,
+        capabilities: ["looseUnmarshalling"],
+      }),
+    ).toEqual({
+      defaultValue: true,
+      rules: [
+        {
+          condition: {
+            country: "US",
+          },
+          force: false,
+        },
+        {
+          coverage: 0.8,
+          force: false,
+          hashAttribute: "id",
+        },
+        {
+          coverage: 1,
+          hashAttribute: "anonymous_id",
+          variations: [true, false],
+          meta: [{ key: "0" }, { key: "1" }],
+          weights: [0.7, 0.3],
+          key: "testing",
+        },
+      ],
+    });
+  });
+
+  describe("Saved Groups", () => {
+    const secureStringAttr: SDKAttribute = {
+      property: "id",
+      datatype: "secureString",
+      hashAttribute: true,
+    };
+    const organization = cloneDeep(baseOrganization);
+    organization.settings = {
+      attributeSchema: [secureStringAttr],
+    };
+    const groupDef: SavedGroupInterface = {
+      id: "groupId",
+      type: "list",
+      attributeKey: "id",
+      values: ["1", "2", "3"],
+      organization: "123",
+      groupName: "",
+      owner: "",
+      dateCreated: new Date(),
+      dateUpdated: new Date(),
+    };
+    const featureDef: FeatureDefinition = {
+      defaultValue: true,
+      rules: [
+        {
+          condition: {
+            id: {
+              $inGroup: "groupId",
+            },
+          },
+          force: false,
+        },
+      ],
+    };
+
+    it("Hashes secure attributes in inline saved groups", async () => {
+      const { features, savedGroups } = await getFeatureDefinitionsResponse({
+        features: { featureName: cloneDeep(featureDef) },
+        experiments: [],
+        dateUpdated: new Date(),
+        projects: [],
+        capabilities: ["looseUnmarshalling"],
+        usedSavedGroups: [cloneDeep(groupDef)],
+        organization: organization,
+        attributes: [secureStringAttr],
+        secureAttributeSalt: "salt",
+      });
+      expect(features).toEqual({
+        featureName: {
+          defaultValue: true,
+          rules: [
+            {
+              condition: {
+                id: {
+                  $in: ["1", "2", "3"].map((val) => sha256(val, "salt")),
+                },
+              },
+              force: false,
+            },
+          ],
+        },
+      });
+      expect(savedGroups).toEqual(undefined);
+    });
+
+    it("Hashes secure attributes in referenced saved groups", async () => {
+      const { features, savedGroups } = await getFeatureDefinitionsResponse({
+        features: { featureName: cloneDeep(featureDef) },
+        experiments: [],
+        dateUpdated: new Date(),
+        projects: [],
+        capabilities: ["savedGroupReferences"],
+        savedGroupReferencesEnabled: true,
+        usedSavedGroups: [cloneDeep(groupDef)],
+        organization: organization,
+        attributes: [secureStringAttr],
+        secureAttributeSalt: "salt",
+      });
+      expect(features).toEqual({
+        featureName: {
+          defaultValue: true,
+          rules: [
+            {
+              condition: {
+                id: {
+                  $inGroup: "groupId",
+                },
+              },
+              force: false,
+            },
+          ],
+        },
+      });
+      expect(savedGroups).toEqual({
+        groupId: ["1", "2", "3"].map((val) => sha256(val, "salt")),
+      });
+    });
+  });
+});
+
+describe("buildFeatureRulesFromApiEnvSettings", () => {
+  const baseFeature = {
+    id: "test-feature",
+    valueType: "boolean",
+    defaultValue: "false",
+    environmentSettings: {},
+    rules: [],
+  } as unknown as FeatureInterface;
+  // requireRegisteredAttributes is opt-in; an empty settings object skips the
+  // registered-attribute check so these tests focus on rule-shape concerns.
+  const mockContext = {
+    org: { settings: {} },
+    // Privileged skips are resolved per entity family now, so the validators ask
+    // the method rather than reading a boolean getter.
+    canSkipSchemaValidationFor: () => false,
+    canSkipHooksFor: () => false,
+  } as unknown as Parameters<typeof buildFeatureRulesFromApiEnvSettings>[0];
+
+  it("preserves rule-level prerequisites across rule types", () => {
+    const prerequisites = [
+      { id: "parent-feature", condition: '{"value": true}' },
+    ];
+    const rules = buildFeatureRulesFromApiEnvSettings(
+      mockContext,
+      baseFeature,
+      [{ id: "production" }, { id: "dev" }],
+      {
+        production: {
+          enabled: true,
+          rules: [
+            {
+              type: "force",
+              value: "true",
+              prerequisites,
+            },
+            {
+              type: "rollout",
+              value: "true",
+              coverage: 0.5,
+              hashAttribute: "id",
+              prerequisites,
+            },
+            {
+              type: "experiment-ref",
+              experimentId: "exp_1",
+              variations: [{ variationId: "v0", value: "false" }],
+              prerequisites,
+            },
+            {
+              type: "experiment",
+              condition: "{}",
+              values: [{ value: "true", weight: 1 }],
+              prerequisites,
+            },
+          ],
+        },
+      },
+    );
+
+    expect(rules).toHaveLength(4);
+    rules.forEach((rule) => {
+      expect(rule.prerequisites).toEqual(prerequisites);
+      expect(rule.allEnvironments).toBe(false);
+      expect(rule.environments).toEqual(["production"]);
+    });
+  });
+
+  it("omits prerequisites when not provided", () => {
+    const rules = buildFeatureRulesFromApiEnvSettings(
+      mockContext,
+      baseFeature,
+      [{ id: "production" }, { id: "dev" }],
+      {
+        production: {
+          enabled: true,
+          rules: [{ type: "force", value: "true" }],
+        },
+      },
+    );
+    expect(rules[0]).not.toHaveProperty("prerequisites");
+  });
+
+  // GET→edit→PUT must persist rollout id/seed/hashVersion verbatim (else re-bucketing).
+  it("preserves rollout id/seed/hashVersion through the v1 converter", () => {
+    const rules = buildFeatureRulesFromApiEnvSettings(
+      mockContext,
+      baseFeature,
+      [{ id: "production" }],
+      {
+        production: {
+          enabled: true,
+          rules: [
+            {
+              id: "fr_explicit",
+              type: "rollout",
+              value: "true",
+              coverage: 0.5,
+              hashAttribute: "userId",
+              seed: "my-seed",
+              hashVersion: 2,
+            },
+          ],
+        },
+      },
+    );
+    const rule = rules[0] as {
+      id?: string;
+      seed?: string;
+      hashAttribute?: string;
+      hashVersion?: number;
+    };
+    expect(rule.id).toBe("fr_explicit");
+    expect(rule.seed).toBe("my-seed");
+    expect(rule.hashAttribute).toBe("userId");
+    expect(rule.hashVersion).toBe(2);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Content-identical rules across envs must merge into ONE v2 rule with a
+  // multi-env footprint — not two split rules with the second id suffixed by
+  // `ensureUniqueRuleIds`. The naive per-env stamping path used to produce
+  // duplicate ids; this is the regression guard for that fix.
+  // ---------------------------------------------------------------------------
+
+  it("merges content-identical rules across envs (matched by id) into one v2 rule with a multi-env footprint", () => {
+    const sharedRule = {
+      id: "fr_shared",
+      type: "force" as const,
+      value: "true",
+      description: "shared across envs",
+    };
+    const rules = buildFeatureRulesFromApiEnvSettings(
+      mockContext,
+      baseFeature,
+      [{ id: "production" }, { id: "dev" }, { id: "staging" }],
+      {
+        production: { enabled: true, rules: [sharedRule] },
+        dev: { enabled: true, rules: [sharedRule] },
+      },
+    );
+    expect(rules).toHaveLength(1);
+    expect(rules[0].id).toBe("fr_shared");
+    expect(rules[0].allEnvironments).toBe(false);
+    expect(rules[0].environments).toEqual(["production", "dev"]);
+  });
+
+  it("collapses to allEnvironments:true when an id-matched rule covers every applicable env", () => {
+    const sharedRule = {
+      id: "fr_universal",
+      type: "force" as const,
+      value: "true",
+    };
+    const rules = buildFeatureRulesFromApiEnvSettings(
+      mockContext,
+      baseFeature,
+      [{ id: "production" }, { id: "dev" }],
+      {
+        production: { enabled: true, rules: [sharedRule] },
+        dev: { enabled: true, rules: [sharedRule] },
+      },
+    );
+    expect(rules).toHaveLength(1);
+    expect(rules[0].id).toBe("fr_universal");
+    expect(rules[0].allEnvironments).toBe(true);
+    expect(rules[0].environments).toBeUndefined();
+  });
+
+  it("does not merge when only content (not id) matches — matching is by id, distinct ids stay split", () => {
+    const rules = buildFeatureRulesFromApiEnvSettings(
+      mockContext,
+      baseFeature,
+      [{ id: "production" }, { id: "dev" }],
+      {
+        production: {
+          enabled: true,
+          rules: [{ id: "fr_a", type: "force", value: "true" }],
+        },
+        dev: {
+          enabled: true,
+          rules: [{ id: "fr_b", type: "force", value: "true" }],
+        },
+      },
+    );
+    expect(rules).toHaveLength(2);
+    expect(rules.map((r) => r.id).sort()).toEqual(["fr_a", "fr_b"]);
+    rules.forEach((r) => {
+      expect(r.allEnvironments).toBe(false);
+      expect(r.environments?.length).toBe(1);
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// generateRuleId invariant lock
+// ---------------------------------------------------------------------------
+// The v1→v2 flatten layer appends `__<env>` to rule ids on collision. The
+// stem-strip convention (`id.split("__")[0]`) only works if server-generated
+// rule ids never contain `__`. uniqid() produces alphanumeric output, so the
+// invariant holds by construction — this test locks it in so a future change
+// to the id format can't silently break every stem-matching call site (ramp
+// resolution, SDK payload stripping, telemetry lookup, audit renderers).
+// ---------------------------------------------------------------------------
+
+describe("generateRuleId invariant", () => {
+  it("never produces an id containing the `__` migration-suffix delimiter", () => {
+    for (let i = 0; i < 200; i++) {
+      const id = generateRuleId();
+      expect(id.startsWith("fr_")).toBe(true);
+      expect(id.includes("__")).toBe(false);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// addIdsToFlatRules / addIdsToRules — rollout seed backfill
+// ---------------------------------------------------------------------------
+// Rollout rules must always carry an explicit seed so that the monitored-ramp
+// payload and the plain-rollout payload hash users through the same seed,
+// preventing variation hopping when a rule transitions between states.
+// ---------------------------------------------------------------------------
+
+describe("addIdsToFlatRules — rollout seed backfill", () => {
+  it("backfills seed = id for a rollout rule with no explicit seed", () => {
+    const rules: FeatureInterface["rules"] = [
+      {
+        type: "rollout",
+        id: "fr_abc",
+        description: "",
+        enabled: true,
+        value: "true",
+        coverage: 0.5,
+        hashAttribute: "id",
+        allEnvironments: true,
+      },
+    ];
+    addIdsToFlatRules(
+      rules as Parameters<typeof addIdsToFlatRules>[0],
+      "feat_1",
+    );
+    expect((rules[0] as { seed?: string }).seed).toBe("fr_abc");
+  });
+
+  it("assigns a new id AND backfills seed when rule has neither", () => {
+    const rules = [
+      {
+        type: "rollout" as const,
+        description: "",
+        enabled: true,
+        value: "true",
+        coverage: 0.5,
+        hashAttribute: "id",
+        allEnvironments: true,
+      },
+    ] as Parameters<typeof addIdsToFlatRules>[0];
+    addIdsToFlatRules(rules, "feat_1");
+    const r = rules[0] as { id?: string; seed?: string };
+    expect(r.id).toBeDefined();
+    expect(r.id!.startsWith("fr_")).toBe(true);
+    expect(r.seed).toBe(r.id);
+  });
+
+  it("preserves an explicitly-set seed and does not overwrite it", () => {
+    const rules = [
+      {
+        type: "rollout" as const,
+        id: "fr_xyz",
+        description: "",
+        enabled: true,
+        value: "true",
+        coverage: 0.5,
+        hashAttribute: "id",
+        seed: "custom-seed",
+        allEnvironments: true,
+      },
+    ] as Parameters<typeof addIdsToFlatRules>[0];
+    addIdsToFlatRules(rules, "feat_1");
+    expect((rules[0] as { seed?: string }).seed).toBe("custom-seed");
+  });
+
+  it("does not add seed to non-rollout rules (force, experiment)", () => {
+    const rules = [
+      {
+        type: "force" as const,
+        id: "fr_force",
+        description: "",
+        enabled: true,
+        value: "true",
+        allEnvironments: true,
+      },
+      {
+        type: "experiment" as const,
+        id: "fr_exp",
+        description: "",
+        enabled: true,
+        trackingKey: "exp-1",
+        hashAttribute: "id",
+        values: [
+          { value: "a", weight: 0.5 },
+          { value: "b", weight: 0.5 },
+        ],
+        coverage: 1,
+        allEnvironments: true,
+      },
+    ] as Parameters<typeof addIdsToFlatRules>[0];
+    addIdsToFlatRules(rules, "feat_1");
+    expect((rules[0] as { seed?: string }).seed).toBeUndefined();
+    expect((rules[1] as { seed?: string }).seed).toBeUndefined();
+  });
+
+  it("backfills all rollout rules in a multi-rule array", () => {
+    const rules = [
+      {
+        type: "rollout" as const,
+        id: "fr_1",
+        description: "",
+        enabled: true,
+        value: "a",
+        coverage: 0.3,
+        hashAttribute: "id",
+        allEnvironments: true,
+      },
+      {
+        type: "rollout" as const,
+        id: "fr_2",
+        description: "",
+        enabled: true,
+        value: "b",
+        coverage: 0.6,
+        hashAttribute: "id",
+        seed: "explicit",
+        allEnvironments: true,
+      },
+    ] as Parameters<typeof addIdsToFlatRules>[0];
+    addIdsToFlatRules(rules, "feat_1");
+    expect((rules[0] as { seed?: string }).seed).toBe("fr_1");
+    expect((rules[1] as { seed?: string }).seed).toBe("explicit"); // untouched
+  });
+});
+
+describe("addIdsToRules — rollout seed backfill (legacy env format)", () => {
+  it("backfills seed = id for rollout rules in legacy environmentSettings", () => {
+    const envSettings = {
+      production: {
+        enabled: true,
+        rules: [
+          {
+            type: "rollout" as const,
+            id: "fr_legacy",
+            description: "",
+            enabled: true,
+            value: "true",
+            coverage: 0.4,
+            hashAttribute: "id",
+          },
+        ] as FeatureInterface["rules"],
+      },
+    };
+    addIdsToRules(
+      envSettings as Parameters<typeof addIdsToRules>[0],
+      "feat_legacy",
+    );
+    const rule = (envSettings.production as { rules?: { seed?: string }[] })
+      .rules?.[0];
+    expect(rule?.seed).toBe("fr_legacy");
+  });
+
+  it("preserves an explicit seed in the legacy path", () => {
+    const envSettings = {
+      production: {
+        enabled: true,
+        rules: [
+          {
+            type: "rollout" as const,
+            id: "fr_kept",
+            description: "",
+            enabled: true,
+            value: "true",
+            coverage: 0.4,
+            hashAttribute: "id",
+            seed: "keep-me",
+          },
+        ] as FeatureInterface["rules"],
+      },
+    };
+    addIdsToRules(
+      envSettings as Parameters<typeof addIdsToRules>[0],
+      "feat_legacy",
+    );
+    const rule = (envSettings.production as { rules?: { seed?: string }[] })
+      .rules?.[0];
+    expect(rule?.seed).toBe("keep-me");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// inheritStoredRolloutSeeds — a bulk update that echoes a rollout rule by id
+// but omits seed/hashVersion must inherit them from the stored (already
+// read-time-pinned) rule, so the write-time backfill can't re-bucket it.
+// ---------------------------------------------------------------------------
+describe("inheritStoredRolloutSeeds", () => {
+  const inboundRollout = (over: Record<string, unknown> = {}) =>
+    ({
+      id: "fr_legacy",
+      type: "rollout",
+      value: "true",
+      coverage: 0.5,
+      hashAttribute: "id",
+      ...over,
+    }) as unknown as FeatureInterface["rules"][number];
+
+  const storedRollout = (over: Record<string, unknown> = {}) =>
+    ({
+      id: "fr_legacy",
+      type: "rollout",
+      value: "true",
+      coverage: 0.5,
+      hashAttribute: "id",
+      seed: "feat_1", // pinned to the feature id at read time
+      ...over,
+    }) as unknown as FeatureInterface["rules"][number];
+
+  it("inherits a stored seed when the inbound rule omits it", () => {
+    const inbound = [inboundRollout()];
+    inheritStoredRolloutSeeds(inbound, [storedRollout()]);
+    expect((inbound[0] as { seed?: string }).seed).toBe("feat_1");
+  });
+
+  it("inherits stored hashVersion when omitted", () => {
+    const inbound = [inboundRollout()];
+    inheritStoredRolloutSeeds(inbound, [
+      storedRollout({ hashVersion: 1, seed: "feat_1" }),
+    ]);
+    expect((inbound[0] as { hashVersion?: number }).hashVersion).toBe(1);
+  });
+
+  it("does not override a seed the caller explicitly sent", () => {
+    const inbound = [inboundRollout({ seed: "client-seed" })];
+    inheritStoredRolloutSeeds(inbound, [storedRollout()]);
+    expect((inbound[0] as { seed?: string }).seed).toBe("client-seed");
+  });
+
+  it("only matches by id — a new rule (no stored match) is left seedless", () => {
+    const inbound = [inboundRollout({ id: "fr_new" })];
+    inheritStoredRolloutSeeds(inbound, [storedRollout()]);
+    expect((inbound[0] as { seed?: string }).seed).toBeUndefined();
+  });
+
+  it("ignores non-rollout stored/inbound rules", () => {
+    const inbound = [inboundRollout({ type: "force" })];
+    inheritStoredRolloutSeeds(inbound, [storedRollout()]);
+    expect(inbound[0]).not.toHaveProperty("seed");
+  });
+
+  // force → rollout promotion: the stored rule shares the id but is a force
+  // rule, so there's no cohort to preserve. Inheritance must skip it, leaving
+  // the backfill to seed it off its own id for independent stacking.
+  it("skips inheritance when the stored rule is a force rule (promotion)", () => {
+    const inbound = [inboundRollout()];
+    const storedForce = {
+      id: "fr_legacy",
+      type: "force",
+      value: "true",
+    } as unknown as FeatureInterface["rules"][number];
+
+    inheritStoredRolloutSeeds(inbound, [storedForce]);
+    expect((inbound[0] as { seed?: string }).seed).toBeUndefined();
+
+    addIdsToFlatRules(inbound as FeatureInterface["rules"], "feat_1");
+    expect((inbound[0] as { seed?: string }).seed).toBe("fr_legacy");
+  });
+
+  it("treats an empty-string seed as absent and inherits the stored seed", () => {
+    const inbound = [inboundRollout({ seed: "" })];
+    inheritStoredRolloutSeeds(inbound, [storedRollout()]);
+    expect((inbound[0] as { seed?: string }).seed).toBe("feat_1");
+  });
+
+  // The regression Anna reported: a client echoes a legacy rule by id but omits
+  // the seed. With inheritance it settles on the stored (feature-id) seed; the
+  // backfill must NOT then stamp the rule id.
+  it("keeps a legacy rollout on the feature-id seed through inherit → backfill", () => {
+    const inbound = [inboundRollout()]; // no seed
+    inheritStoredRolloutSeeds(inbound, [storedRollout({ seed: "feat_1" })]);
+    addIdsToFlatRules(inbound as FeatureInterface["rules"], "feat_1");
+    expect((inbound[0] as { seed?: string }).seed).toBe("feat_1");
+    expect((inbound[0] as { seed?: string }).seed).not.toBe(inbound[0].id);
+  });
+});
+
+describe("validateFeatureRuleValues", () => {
+  const numberFeature: Pick<FeatureInterface, "valueType" | "jsonSchema"> = {
+    valueType: "number",
+    jsonSchema: {
+      schemaType: "schema",
+      schema: JSON.stringify({ type: "number", minimum: 1, maximum: 10 }),
+      simple: { type: "primitive", fields: [] },
+      date: new Date(),
+      enabled: true,
+    },
+  };
+
+  it("throws on an out-of-range value in a contextual-bandit-ref rule", () => {
+    expect(() =>
+      validateFeatureRuleValues(numberFeature, {
+        id: "a",
+        type: "contextual-bandit-ref",
+        variations: [
+          { variationId: "0", value: "5" },
+          { variationId: "1", value: "999" },
+        ],
+      } as never),
+    ).toThrow();
+  });
+});

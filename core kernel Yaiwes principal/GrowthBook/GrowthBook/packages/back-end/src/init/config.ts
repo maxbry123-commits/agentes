@@ -1,0 +1,260 @@
+import { readFileSync, existsSync, statSync } from "fs";
+import path from "path";
+import { env } from "string-env-interpolation";
+import yaml from "js-yaml";
+import md5 from "md5";
+import { SegmentInterface } from "shared/types/segment";
+import {
+  DataSourceInterface,
+  DataSourceInterfaceWithParams,
+} from "shared/types/datasource";
+import { MetricInterface } from "shared/types/metric";
+import { DimensionInterface } from "shared/types/dimension";
+import { OrganizationSettings } from "shared/types/organization";
+import { encryptParams } from "back-end/src/services/datasource";
+import {
+  EMAIL_ENABLED,
+  ENVIRONMENT,
+  IS_CLOUD,
+  EMAIL_FROM,
+  EMAIL_HOST,
+  EMAIL_HOST_PASSWORD,
+  EMAIL_HOST_USER,
+  EMAIL_PORT,
+} from "back-end/src/util/secrets";
+import { ReqContext } from "back-end/types/request";
+import {
+  upgradeMetricDoc,
+  upgradeDatasourceObject,
+} from "back-end/src/util/migrations";
+import { logger } from "back-end/src/util/logger";
+import { ApiReqContext } from "back-end/types/api";
+
+export type ConfigFile = {
+  organization?: {
+    settings: OrganizationSettings;
+  };
+  datasources?: {
+    [key: string]: Omit<
+      DataSourceInterfaceWithParams,
+      "id" | "organization" | "dateCreated" | "dateUpdated"
+    >;
+  };
+  metrics?: {
+    [key: string]: Omit<
+      MetricInterface,
+      | "id"
+      | "organization"
+      | "queries"
+      | "runStarted"
+      | "analysis"
+      | "dateCreated"
+      | "dateUpdated"
+    >;
+  };
+  dimensions?: {
+    [key: string]: Omit<
+      DimensionInterface,
+      "id" | "organization" | "dateCreated" | "dateUpdated"
+    >;
+  };
+  segments?: {
+    [key: string]: Omit<
+      SegmentInterface,
+      "id" | "organization" | "dateCreated" | "dateUpdated"
+    >;
+  };
+};
+
+const CONFIG_FILE = path.join(
+  __dirname,
+  "..",
+  "..",
+  "..",
+  "..",
+  "config",
+  "config.yml",
+);
+
+let configFileTime: number;
+let config: ConfigFile | null = null;
+let configHash: string | null = null;
+
+function loadConfig(initial = false) {
+  if (IS_CLOUD) return;
+
+  if (existsSync(CONFIG_FILE)) {
+    // Only reload if the modified time has changed
+    const newFileTime = statSync(CONFIG_FILE).mtimeMs;
+    if (newFileTime === configFileTime) return;
+    configFileTime = newFileTime;
+
+    const contents = env(readFileSync(CONFIG_FILE, "utf-8"));
+    const parsed = yaml.load(contents, {
+      filename: CONFIG_FILE,
+    });
+
+    // Validate that the yml file is in the correct format
+    if (typeof parsed === "number" || typeof parsed === "string") {
+      throw new Error("Invalid config.yml file");
+    }
+    // TODO: more validation
+
+    // Store the parsed config. Hash the parsed (env-interpolated) form rather
+    // than the raw file so env-var changes are reflected too.
+    config = parsed as ConfigFile;
+    configHash = md5(JSON.stringify(config));
+  } else if (ENVIRONMENT !== "production") {
+    config = null;
+    configHash = null;
+    if (initial) {
+      logger.info(
+        "No config.yml file. Using MongoDB instead to store data sources, metrics, and dimensions.",
+      );
+    }
+  }
+
+  if (EMAIL_ENABLED) {
+    if (!EMAIL_HOST)
+      logger.error(
+        "Email is enabled, but missing required EMAIL_HOST env variable",
+      );
+    if (!EMAIL_PORT)
+      logger.error(
+        "Email is enabled, but missing required EMAIL_PORT env variable",
+      );
+    if (!EMAIL_HOST_USER)
+      logger.error(
+        "Email is enabled, but missing required EMAIL_HOST_USER env variable",
+      );
+    if (!EMAIL_HOST_PASSWORD)
+      logger.error(
+        "Email is enabled, but missing required EMAIL_HOST_PASSWORD env variable",
+      );
+    if (!EMAIL_FROM)
+      logger.error(
+        "Email is enabled, but missing required EMAIL_FROM env variable",
+      );
+  }
+}
+loadConfig(true);
+
+function reloadConfigIfNeeded() {
+  // Don't reload config.yml on production at all
+  // Require a server restart to pick up changes instead
+  if (ENVIRONMENT === "production" || IS_CLOUD) return;
+
+  loadConfig();
+}
+
+export function usingFileConfig(): boolean {
+  reloadConfigIfNeeded();
+  return !!config;
+}
+
+/**
+ * Hash of the parsed config.yml, or null when not using file config. Folded
+ * into the definitions ETag so file-managed resources (metrics, dimensions,
+ * datasources, segments) invalidate the cache when the file changes, since
+ * they bypass the Mongo writes that bump the definitions version.
+ */
+export function getConfigFileHash(): string | null {
+  reloadConfigIfNeeded();
+  return configHash;
+}
+
+export function getConfigDatasources(
+  organization: string,
+): DataSourceInterface[] {
+  reloadConfigIfNeeded();
+  if (!config || !config.datasources) return [];
+  const datasources = config.datasources;
+
+  return Object.keys(datasources).map((id) => {
+    const d = datasources[id];
+
+    return upgradeDatasourceObject({
+      id,
+      name: d.name,
+      description: d.description,
+      organization,
+      params: encryptParams(d.params),
+      settings: d.settings,
+      type: d.type,
+      dateCreated: null,
+      dateUpdated: null,
+    });
+  });
+}
+
+export function getConfigMetrics(
+  context: ReqContext | ApiReqContext,
+): MetricInterface[] {
+  reloadConfigIfNeeded();
+  if (!config || !config.metrics) return [];
+  const metrics = config.metrics;
+
+  return Object.keys(metrics)
+    .map((id) => {
+      const m = metrics[id];
+
+      return upgradeMetricDoc({
+        tags: [],
+        id,
+        ...m,
+        description: m?.description || "",
+        organization: context.org.id,
+        dateCreated: null,
+        dateUpdated: null,
+        queries: [],
+        runStarted: null,
+        managedBy: "config",
+      });
+    })
+    .filter((m) => context.permissions.canReadMultiProjectResource(m.projects));
+}
+
+export function getConfigDimensions(
+  organization: string,
+): DimensionInterface[] {
+  reloadConfigIfNeeded();
+  if (!config || !config.dimensions) return [];
+  const dimensions = config.dimensions;
+
+  return Object.keys(dimensions).map((id) => {
+    const d = dimensions[id];
+
+    return {
+      id,
+      ...d,
+      organization,
+      dateCreated: null,
+      dateUpdated: null,
+      managedBy: "config",
+    };
+  });
+}
+
+export function getConfigOrganizationSettings(): OrganizationSettings {
+  reloadConfigIfNeeded();
+  return config?.organization?.settings || {};
+}
+
+export function getConfigSegments(organization: string): SegmentInterface[] {
+  reloadConfigIfNeeded();
+  if (!config || !config.segments) return [];
+  const segments = config.segments;
+
+  return Object.keys(segments).map((id) => {
+    const d = segments[id];
+
+    return {
+      id,
+      ...d,
+      organization,
+      dateCreated: new Date(),
+      dateUpdated: new Date(),
+      managedBy: "config",
+    };
+  });
+}

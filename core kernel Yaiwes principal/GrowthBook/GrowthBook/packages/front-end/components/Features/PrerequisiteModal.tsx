@@ -1,0 +1,417 @@
+import { useForm } from "react-hook-form";
+import { FeatureInterface, FeaturePrerequisite } from "shared/types/feature";
+import { useMemo, useState } from "react";
+import {
+  filterEnvironmentsByFeature,
+  getDefaultPrerequisiteCondition,
+  getReviewSetting,
+} from "shared/util";
+import { getConnectionsSDKCapabilities } from "shared/sdk-versioning";
+import { Box } from "@radix-ui/themes";
+import { MinimalFeatureRevisionInterface } from "shared/types/feature-revision";
+import PrerequisiteStatesTable, {
+  MinimalFeatureInfo,
+} from "@/components/Features/PrerequisiteStatesTable";
+import { getPrerequisites, useEnvironments } from "@/services/features";
+import { useFeatureMetaInfo } from "@/hooks/useFeatureMetaInfo";
+import track from "@/services/track";
+import ValueDisplay from "@/components/Features/ValueDisplay";
+import { useAuth } from "@/services/auth";
+import useOrgSettings from "@/hooks/useOrgSettings";
+import Tooltip from "@/components/Tooltip/Tooltip";
+import useSDKConnections from "@/hooks/useSDKConnections";
+import PrerequisiteFeatureSelector from "@/components/Features/PrerequisiteFeatureSelector";
+import PrerequisiteAlerts from "@/components/Features/PrerequisiteAlerts";
+import Modal from "@/components/Modal";
+import { useDefinitions } from "@/services/DefinitionsContext";
+import Text from "@/ui/Text";
+import Callout from "@/ui/Callout";
+import { ConflictShell } from "@/components/DraftConflicts/ConflictContext";
+import HelperText from "@/ui/HelperText";
+import Button from "@/ui/Button";
+import {
+  PrerequisiteStateResult,
+  useBatchPrerequisiteStates,
+  usePrerequisiteStates,
+} from "@/hooks/usePrerequisiteStates";
+import DraftSelectorForChanges, {
+  DraftMode,
+} from "@/components/Features/DraftSelectorForChanges";
+import { useDefaultDraft } from "@/hooks/useDefaultDraft";
+
+export interface Props {
+  close: () => void;
+  feature: FeatureInterface;
+  revisionList: MinimalFeatureRevisionInterface[];
+  mutate: () => Promise<unknown>;
+  setVersion: (version: number) => void;
+  i: number;
+}
+
+export default function PrerequisiteModal({
+  close,
+  feature,
+  revisionList,
+  i,
+  mutate,
+  setVersion,
+}: Props) {
+  const { features: featureNames } = useFeatureMetaInfo({
+    includeDefaultValue: true,
+  });
+  const { projects } = useDefinitions();
+  const prerequisites = getPrerequisites(feature);
+  const prerequisite = prerequisites[i] ?? null;
+  const allEnvironments = useEnvironments();
+  const environments = filterEnvironmentsByFeature(allEnvironments, feature);
+  const envs = environments.map((e) => e.id);
+  const { apiCall } = useAuth();
+
+  const settings = useOrgSettings();
+
+  const gatedEnvSet: Set<string> | "all" | "none" = useMemo(() => {
+    const raw = settings?.requireReviews;
+    if (raw === true) return "all";
+    if (!Array.isArray(raw)) return "none";
+    const reviewSetting = getReviewSetting(raw, feature);
+    if (!reviewSetting?.requireReviewOn) return "none";
+    const envList = reviewSetting.environments ?? [];
+    return envList.length === 0 ? "all" : new Set(envList);
+  }, [settings?.requireReviews, feature]);
+
+  const defaultDraft = useDefaultDraft(revisionList);
+
+  // Pinned at open: an index-based edit is only meaningful against this list.
+  const [baselineList] = useState(() => prerequisites);
+  const [staleList, setStaleList] = useState(false);
+
+  const [mode, setMode] = useState<DraftMode>(
+    defaultDraft !== null ? "existing" : "new",
+  );
+  const [selectedDraft, setSelectedDraft] = useState<number | null>(
+    defaultDraft,
+  );
+
+  const { data: sdkConnectionsData } = useSDKConnections();
+  const hasSDKWithPrerequisites = getConnectionsSDKCapabilities({
+    connections: sdkConnectionsData?.connections ?? [],
+    project: feature?.project ?? "",
+  }).includes("prerequisites");
+
+  const defaultValues = {
+    id: "",
+    condition: getDefaultPrerequisiteCondition(),
+  };
+
+  const form = useForm<FeaturePrerequisite>({
+    defaultValues: {
+      id: prerequisite?.id ?? defaultValues.id,
+      condition: prerequisite?.condition ?? defaultValues.condition,
+    },
+  });
+
+  const selectedFeatureId = form.watch("id");
+  const parentFeatureMeta = featureNames.find(
+    (f) => f.id === selectedFeatureId,
+  );
+  const parentFeature: MinimalFeatureInfo | undefined =
+    parentFeatureMeta && parentFeatureMeta.defaultValue !== undefined
+      ? {
+          id: parentFeatureMeta.id,
+          project: parentFeatureMeta.project,
+          valueType: parentFeatureMeta.valueType,
+          defaultValue: parentFeatureMeta.defaultValue,
+        }
+      : undefined;
+
+  const featureIds = useMemo(
+    () => featureNames.filter((f) => f.id !== feature?.id).map((f) => f.id),
+    [featureNames, feature?.id],
+  );
+
+  const { results: batchStates } = useBatchPrerequisiteStates({
+    baseFeatureId: feature.id,
+    featureIds,
+    environments: envs,
+    enabled: featureIds.length > 0 && envs.length > 0,
+  });
+
+  const featuresStates: Record<
+    string,
+    Record<string, PrerequisiteStateResult>
+  > = useMemo(() => {
+    if (!batchStates) return {};
+    const states: Record<string, Record<string, PrerequisiteStateResult>> = {};
+    for (const [featureId, result] of Object.entries(batchStates)) {
+      states[featureId] = result.states;
+    }
+    return states;
+  }, [batchStates]);
+
+  const wouldBeCyclicStates: Record<string, boolean> = useMemo(() => {
+    if (!batchStates) return {};
+    const states: Record<string, boolean> = {};
+    for (const [featureId, result] of Object.entries(batchStates)) {
+      states[featureId] = result.wouldBeCyclic;
+    }
+    return states;
+  }, [batchStates]);
+
+  const isCyclic = selectedFeatureId
+    ? (wouldBeCyclicStates[selectedFeatureId] ?? false)
+    : false;
+  const cyclicFeatureId = isCyclic ? selectedFeatureId : null;
+
+  const { states: prereqStates, loading: prereqStatesLoading } =
+    usePrerequisiteStates({
+      featureId: selectedFeatureId,
+      environments: envs,
+      enabled: !!selectedFeatureId,
+    });
+
+  const hasConditionalState =
+    prereqStates &&
+    Object.values(prereqStates).some((s) => s.state === "conditional");
+
+  const canSubmit =
+    !isCyclic &&
+    !!parentFeature &&
+    !!form.watch("id") &&
+    (!hasConditionalState || hasSDKWithPrerequisites);
+
+  const projectMap = useMemo(() => {
+    const map = new Map<string, string>();
+    projects.forEach((p) => {
+      map.set(p.id, p.name);
+    });
+    return map;
+  }, [projects]);
+
+  const allFeatureOptions = featureNames
+    .filter((f) => f.id !== feature?.id)
+    .filter((f) => !f.archived)
+    .filter(
+      (f) =>
+        !prerequisites.map((p) => p.id).includes(f.id) ||
+        f.id === prerequisite?.id,
+    )
+    .filter((f) => f.valueType === "boolean")
+    .map((f) => {
+      const isSingleEnvironment = envs.length === 1;
+      const featureStates = featuresStates[f.id] || {};
+      const prodEnv = envs.find(
+        (env) => env === "production" || env === "prod",
+      );
+      const targetEnv = isSingleEnvironment ? envs[0] : prodEnv;
+
+      const conditional = targetEnv
+        ? featureStates[targetEnv]?.state === "conditional"
+        : Object.values(featureStates).some((s) => s.state === "conditional");
+      const cyclic = targetEnv
+        ? featureStates[targetEnv]?.state === "cyclic"
+        : false;
+      const wouldBeCyclic = wouldBeCyclicStates[f.id] || false;
+
+      const states = targetEnv
+        ? [featureStates[targetEnv]].filter(Boolean)
+        : [];
+      const allDeterministic =
+        states.length > 0 && states.every((s) => s.state === "deterministic");
+
+      const deterministicLive =
+        allDeterministic &&
+        states.every((s) => s.value !== null && s.value !== "false");
+      const deterministicNotLive =
+        allDeterministic && states.every((s) => s.value === null);
+      const deterministicFalse =
+        allDeterministic && states.every((s) => s.value === "false");
+
+      const disabled =
+        (!hasSDKWithPrerequisites && conditional) || cyclic || wouldBeCyclic;
+      const projectId = f.project || "";
+      const projectName = projectId ? projectMap.get(projectId) : null;
+      return {
+        label: f.id,
+        value: f.id,
+        meta: {
+          conditional,
+          cyclic,
+          wouldBeCyclic,
+          disabled,
+          deterministicLive,
+          deterministicNotLive,
+          deterministicFalse,
+        },
+        project: projectId,
+        projectName,
+      };
+    });
+
+  allFeatureOptions.sort((a, b) => {
+    if (a.meta?.disabled && !b.meta?.disabled) return 1;
+    if (!a.meta?.disabled && b.meta?.disabled) return -1;
+    return 0;
+  });
+
+  const featureProject = feature?.project || "";
+
+  return (
+    <Modal
+      useRadixButton={false}
+      trackingEventModalType=""
+      open={true}
+      close={close}
+      size="lg"
+      cta="Save"
+      ctaEnabled={canSubmit && !staleList}
+      disabledMessage={
+        staleList ? "Reload to edit against the current list." : undefined
+      }
+      header={prerequisite ? "Edit Prerequisite" : "New Prerequisite"}
+      submit={form.handleSubmit(async (values) => {
+        if (staleList) return;
+        if (!values.condition) {
+          values.condition = getDefaultPrerequisiteCondition(parentFeature);
+        }
+        const action = i === prerequisites.length ? "add" : "edit";
+
+        track("Save Prerequisite", {
+          source: action,
+          prerequisiteIndex: i,
+        });
+
+        const draftBody =
+          mode === "existing"
+            ? { targetDraftVersion: selectedDraft }
+            : { forceNewDraft: true };
+        const res = await apiCall<{ draftVersion: number }>(
+          `/feature/${feature.id}/prerequisite`,
+          {
+            method: action === "add" ? "POST" : "PUT",
+            body: JSON.stringify({
+              prerequisite: values,
+              i,
+              // An add appends to the current list, so only an edit needs the
+              // guard — its index would otherwise retarget.
+              ...(action === "edit" ? { baseline: baselineList } : {}),
+              ...draftBody,
+            }),
+          },
+          (responseData) => {
+            if (responseData?.status === 409) setStaleList(true);
+          },
+        );
+        await mutate();
+        const resolvedVersion =
+          res?.draftVersion ?? (mode === "existing" ? selectedDraft : null);
+        if (resolvedVersion !== null) setVersion(resolvedVersion);
+      })}
+    >
+      <DraftSelectorForChanges
+        feature={feature}
+        revisionList={revisionList}
+        mode={mode}
+        setMode={setMode}
+        selectedDraft={selectedDraft}
+        setSelectedDraft={setSelectedDraft}
+        canAutoPublish={false}
+        gatedEnvSet={gatedEnvSet}
+        alert={
+          staleList ? (
+            <HelperText status="warning" icon={null}>
+              The prerequisites changed while you were editing, so this edit no
+              longer points at the same one.
+            </HelperText>
+          ) : undefined
+        }
+      />
+      {staleList && (
+        <ConflictShell
+          resolved={false}
+          message={<Text>Reload to edit against the current list.</Text>}
+          choices={
+            <Button
+              size="sm"
+              onClick={async () => {
+                await mutate();
+                close();
+              }}
+            >
+              Reload
+            </Button>
+          }
+        />
+      )}
+      <Text as="div" mt="2" mb="3">
+        Prerequisite features must evaluate to{" "}
+        <span className="rounded px-1 bg-light">
+          <ValueDisplay value={"true"} type="boolean" />
+        </span>{" "}
+        for this feature to be enabled.{" "}
+        <Tooltip
+          body={
+            <>
+              Only <strong>boolean</strong> features may be used as top-level
+              prerequisites. To implement prerequisites using non-boolean
+              features or non-standard targeting rules, you may add prerequisite
+              targeting to a feature rule.
+            </>
+          }
+        />
+      </Text>
+
+      <label className="mt-4 d-block">
+        Select prerequisite from boolean features
+      </label>
+
+      <PrerequisiteFeatureSelector
+        value={form.watch("id")}
+        onChange={(v) => {
+          form.setValue("id", v);
+          form.setValue("condition", "");
+        }}
+        featureOptions={allFeatureOptions}
+        featureProject={featureProject}
+        environments={envs}
+        hasSDKWithPrerequisites={hasSDKWithPrerequisites}
+      />
+
+      {parentFeature ? (
+        <Box mt="6">
+          {(parentFeature?.project || "") !== featureProject ? (
+            <Callout
+              status="warning"
+              mb="5"
+              dismissible={true}
+              id="prerequisite-project-mismatch--modal"
+            >
+              Project mismatch. Prerequisite evaluation may fail for SDK
+              Connections with non-overlapping project scope.
+            </Callout>
+          ) : null}
+
+          <PrerequisiteStatesTable
+            parentFeature={parentFeature}
+            prereqStates={prereqStates ?? null}
+            environments={envs}
+            loading={prereqStatesLoading}
+          />
+        </Box>
+      ) : null}
+
+      {isCyclic && (
+        <Callout status="error" mt="2">
+          <code>{cyclicFeatureId}</code> creates a circular dependency. Select a
+          different feature.
+        </Callout>
+      )}
+
+      {hasConditionalState && (
+        <PrerequisiteAlerts
+          project={feature.project || ""}
+          environments={envs}
+        />
+      )}
+    </Modal>
+  );
+}

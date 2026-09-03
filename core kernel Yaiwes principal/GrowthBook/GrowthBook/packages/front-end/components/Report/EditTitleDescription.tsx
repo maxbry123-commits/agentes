@@ -1,0 +1,51 @@
+import { useForm } from "react-hook-form";
+import { ReportInterface } from "shared/types/report";
+import { useAuth } from "@/services/auth";
+import Field from "@/components/Forms/Field";
+import MarkdownInput from "@/components/Markdown/MarkdownInput";
+import ModalStandard from "@/ui/Modal/Patterns/ModalStandard";
+
+export default function EditTitleDescription({
+  cancel,
+  report,
+  mutate,
+}: {
+  cancel: () => void;
+  report: ReportInterface;
+  mutate: () => void;
+}) {
+  const { apiCall } = useAuth();
+  const form = useForm({
+    defaultValues: {
+      title: report.title,
+      description: report.description,
+    },
+  });
+
+  return (
+    <ModalStandard
+      trackingEventModalType=""
+      open={true}
+      submit={form.handleSubmit(async (value) => {
+        await apiCall(`/report/${report.id}`, {
+          method: "PUT",
+          body: JSON.stringify(value),
+        });
+        mutate();
+      })}
+      close={cancel}
+      header="Edit Report"
+    >
+      <Field size="legacy" label="Title" {...form.register("title")} />
+      <div className="form-group">
+        <label>Description</label>
+        <MarkdownInput
+          setValue={(value) => {
+            form.setValue("description", value);
+          }}
+          value={form.watch("description")}
+        />
+      </div>
+    </ModalStandard>
+  );
+}

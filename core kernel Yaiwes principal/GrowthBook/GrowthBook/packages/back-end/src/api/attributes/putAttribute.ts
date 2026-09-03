@@ -1,0 +1,73 @@
+import { putAttributeValidator } from "shared/validators";
+import { OrganizationInterface } from "shared/types/organization";
+import { createApiRequestHandler } from "back-end/src/util/handler";
+import { updateOrganization } from "back-end/src/models/OrganizationModel";
+import { auditDetailsUpdate } from "back-end/src/services/audit";
+import { addTagsDiff } from "back-end/src/models/TagModel";
+import { syncManagedWarehouseIdentifiersOnAttributeChange } from "back-end/src/services/clickhouse";
+import { syncEventForwarderAfterAttributeSchemaChange } from "back-end/src/services/eventForwarder/attributeSync";
+import { validatePayload } from "./validations";
+
+export const putAttribute = createApiRequestHandler(putAttributeValidator)(
+  async (req) => {
+    const property = req.params.property;
+    const org = req.context.org;
+    const attributes = org.settings?.attributeSchema || [];
+
+    const attribute = attributes.find((attr) => attr.property === property);
+    if (!attribute) {
+      throw Error(`An attribute with property ${property} does not exists!`);
+    }
+
+    const rawUpdatedAttribute = { ...attribute, ...req.body };
+
+    const updatedAttribute = {
+      ...rawUpdatedAttribute,
+      ...(await validatePayload(req.context, rawUpdatedAttribute)),
+    };
+
+    if (
+      !req.context.permissions.canUpdateAttribute(attribute, updatedAttribute)
+    )
+      req.context.permissions.throwPermissionError();
+
+    const bodyTags = req.body.tags;
+    if (bodyTags !== undefined) {
+      await addTagsDiff(org.id, attribute.tags || [], bodyTags);
+    }
+
+    const updates: Partial<OrganizationInterface> = {
+      settings: {
+        ...org.settings,
+        attributeSchema: attributes.map((attr) =>
+          attr.property === property ? updatedAttribute : attr,
+        ),
+      },
+    };
+
+    await updateOrganization(org.id, updates);
+
+    const updatedAttributeSchema = updates.settings?.attributeSchema ?? [];
+    await syncManagedWarehouseIdentifiersOnAttributeChange(
+      req.context,
+      updatedAttributeSchema,
+    );
+
+    await syncEventForwarderAfterAttributeSchemaChange(req.context, {
+      attributeSchema: updatedAttributeSchema,
+    });
+
+    await req.audit({
+      event: "attribute.update",
+      entity: {
+        object: "attribute",
+        id: attribute.property,
+      },
+      details: auditDetailsUpdate(attribute, updatedAttribute),
+    });
+
+    return {
+      attribute: updatedAttribute,
+    };
+  },
+);

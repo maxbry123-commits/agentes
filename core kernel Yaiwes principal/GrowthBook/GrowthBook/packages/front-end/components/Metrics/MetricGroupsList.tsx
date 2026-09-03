@@ -1,0 +1,265 @@
+import React, { FC, useState } from "react";
+import { FaArchive, FaExclamationTriangle } from "react-icons/fa";
+import router from "next/router";
+import { Box, Flex } from "@radix-ui/themes";
+import { date } from "shared/dates";
+import { MetricGroupInterface } from "shared/types/metric-groups";
+import MoreMenu from "@/components/Dropdown/MoreMenu";
+import DeleteButton from "@/components/DeleteButton/DeleteButton";
+import { useDefinitions } from "@/services/DefinitionsContext";
+import usePermissionsUtil from "@/hooks/usePermissionsUtils";
+import { useAuth } from "@/services/auth";
+import MetricGroupModal from "@/components/Metrics/MetricGroupModal";
+import Tooltip from "@/components/Tooltip/Tooltip";
+import ConfirmModal from "@/components/ConfirmModal";
+import { useUser } from "@/services/UserContext";
+import Button from "@/ui/Button";
+import PremiumEmptyState from "@/components/PremiumEmptyState";
+import Callout from "@/ui/Callout";
+import Table, {
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableColumnHeader,
+  TableCell,
+} from "@/ui/Table";
+
+const MetricGroupsList: FC = () => {
+  const [openModal, setOpenModal] = useState(false);
+  const [editModal, setEditModal] = useState<MetricGroupInterface | null>(null);
+  const [archiveModal, setArchiveModal] = useState<MetricGroupInterface | null>(
+    null,
+  );
+  const { metricGroups, mutateDefinitions, getDatasourceById } =
+    useDefinitions();
+  const { hasCommercialFeature } = useUser();
+  const hasGroupsFeature = hasCommercialFeature("metric-groups");
+
+  const permissionsUtil = usePermissionsUtil();
+  const canEdit = permissionsUtil.canUpdateMetricGroup();
+  const canCreate = permissionsUtil.canCreateMetricGroup();
+  const canDelete = permissionsUtil.canDeleteMetricGroup();
+  const { apiCall } = useAuth();
+
+  const updateArchiveState = async (
+    metricGroup: MetricGroupInterface,
+    archived: boolean,
+  ) => {
+    await apiCall<{ metricGroup: MetricGroupInterface }>(
+      `/metric-group/${metricGroup.id}`,
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          archived: archived,
+        }),
+      },
+    );
+  };
+
+  if (!hasGroupsFeature) {
+    return (
+      <div>
+        <PremiumEmptyState
+          title="Streamline Metric Usage in Experiments"
+          description="Create reusable groups of metrics that can be ordered and added to experiments"
+          commercialFeature="metric-groups"
+          learnMoreLink="https://docs.growthbook.io/app/metrics#metric-groups"
+          image="/images/empty-states/metric_groups.png"
+        />
+      </div>
+    );
+  }
+
+  if (!metricGroups.length) {
+    return (
+      <Box className="appbox" p="5" style={{ textAlign: "center" }}>
+        {openModal && (
+          <MetricGroupModal
+            close={() => setOpenModal(false)}
+            mutate={mutateDefinitions}
+          />
+        )}
+        <h2>Streamline Metric Usage in Experiments</h2>
+        <p>
+          Create groups of metrics that can be ordered and added to experiments
+        </p>
+        <Box mt="3">
+          <Button disabled={!canCreate} onClick={() => setOpenModal(true)}>
+            Add Metric Group
+          </Button>
+        </Box>
+
+        <Box mt="4">
+          <img
+            src="/images/empty-states/metric_groups.png"
+            alt="Metric Groups"
+            style={{ width: "100%", maxWidth: "740px", height: "auto" }}
+          />
+        </Box>
+      </Box>
+    );
+  }
+
+  return (
+    <Box>
+      <Flex className="filters md-form" mb="3" align="center" justify="between">
+        <div>
+          Create groups of metrics that can be ordered and added to experiments
+        </div>
+        {canCreate && (
+          <Button onClick={() => setOpenModal(true)}>Add Metric Group</Button>
+        )}
+      </Flex>
+      <Table variant="list" stickyHeader roundedCorners className="appbox">
+        <TableHeader>
+          <TableRow>
+            <TableColumnHeader>Metric Group Name</TableColumnHeader>
+            <TableColumnHeader>Description</TableColumnHeader>
+            <TableColumnHeader>Datasource</TableColumnHeader>
+            <TableColumnHeader>metrics</TableColumnHeader>
+            <TableColumnHeader>Date Created</TableColumnHeader>
+            <TableColumnHeader />
+            <TableColumnHeader style={{ width: "50px" }} />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {metricGroups.map((mg) => {
+            const dsName = getDatasourceById(mg.datasource)?.name || "-";
+            return (
+              <TableRow
+                key={mg.id}
+                onClick={() => {
+                  router.push(`/metric-groups/${mg.id}`);
+                }}
+                style={{
+                  cursor: "pointer",
+                  opacity: mg.archived ? 0.65 : 1,
+                }}
+              >
+                <TableCell>{mg.name}</TableCell>
+                <TableCell
+                  style={{
+                    color: "var(--gray-11)",
+                    fontSize: 12,
+                    paddingRight: "var(--space-5)",
+                  }}
+                >
+                  {mg.description}
+                </TableCell>
+                <TableCell>{dsName}</TableCell>
+                <TableCell>{mg.metrics.length}</TableCell>
+                <TableCell>{date(mg.dateCreated)}</TableCell>
+                <TableCell style={{ color: "var(--gray-11)" }}>
+                  {mg.archived && (
+                    <Tooltip
+                      body={"Archived"}
+                      innerClassName="p-2"
+                      tipMinWidth="auto"
+                    >
+                      <FaArchive />
+                    </Tooltip>
+                  )}
+                </TableCell>
+                <TableCell
+                  style={{
+                    cursor: "initial",
+                    width: "50px",
+                    textAlign: "right",
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                  }}
+                >
+                  <MoreMenu useRadix={false}>
+                    {canEdit ? (
+                      <>
+                        {mg.archived ? (
+                          <button
+                            className="dropdown-item"
+                            onClick={async (e) => {
+                              e.preventDefault();
+                              await updateArchiveState(mg, false);
+                              mutateDefinitions();
+                            }}
+                          >
+                            Unarchive
+                          </button>
+                        ) : (
+                          <button
+                            className="dropdown-item"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              setArchiveModal(mg);
+                            }}
+                          >
+                            Archive
+                          </button>
+                        )}
+                      </>
+                    ) : null}
+                    {canDelete ? (
+                      <DeleteButton
+                        useRadix={false}
+                        className="dropdown-item text-danger"
+                        displayName="project"
+                        text="Delete"
+                        useIcon={false}
+                        onClick={async () => {
+                          await apiCall(`/metric-group/${mg.id}`, {
+                            method: "DELETE",
+                          });
+                          mutateDefinitions();
+                        }}
+                        additionalMessage={
+                          <Callout status="warning" mb="0">
+                            <Flex align="center" gap="2">
+                              <FaExclamationTriangle />
+                              Metric groups are used by reference, which means
+                              if you delete this group, all experiments using it
+                              will be affected.
+                            </Flex>
+                          </Callout>
+                        }
+                      />
+                    ) : null}
+                  </MoreMenu>
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+      {editModal && (
+        <MetricGroupModal
+          close={() => setEditModal(null)}
+          mutate={mutateDefinitions}
+          existingMetricGroup={editModal}
+        />
+      )}
+      {archiveModal && (
+        <ConfirmModal
+          title={"Archive this metric group"}
+          subtitle="This will archive this metric group. It will not be selectable in new experiments or reports."
+          yesText="Archive"
+          noText="Cancel"
+          modalState={!!archiveModal}
+          setModalState={(state) => {
+            if (!state) setArchiveModal(null);
+          }}
+          onConfirm={async () => {
+            await updateArchiveState(archiveModal, true);
+            mutateDefinitions();
+            setArchiveModal(null);
+          }}
+        />
+      )}
+      {openModal && (
+        <MetricGroupModal
+          close={() => setOpenModal(false)}
+          mutate={mutateDefinitions}
+        />
+      )}
+    </Box>
+  );
+};
+export default MetricGroupsList;

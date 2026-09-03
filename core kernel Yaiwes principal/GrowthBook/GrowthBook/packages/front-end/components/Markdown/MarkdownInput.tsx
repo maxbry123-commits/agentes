@@ -1,0 +1,481 @@
+import {
+  DetailedHTMLProps,
+  FC,
+  HTMLAttributes,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import { BsStars } from "react-icons/bs";
+import { FaMarkdown } from "react-icons/fa";
+import ReactTextareaAutocomplete from "@webscopeio/react-textarea-autocomplete";
+import emoji from "@jukben/emoji-search";
+import { useDropzone } from "react-dropzone";
+import { Box, Flex, Heading } from "@radix-ui/themes";
+import { PiArrowClockwise } from "react-icons/pi";
+import { AISuggestionType } from "shared/ai";
+import Callout from "@/ui/Callout";
+import { useAuth } from "@/services/auth";
+import { uploadFile } from "@/services/files";
+import LoadingOverlay from "@/components/LoadingOverlay";
+import Button from "@/ui/Button";
+import useOrgSettings, { useAISettings } from "@/hooks/useOrgSettings";
+import OptInModal from "@/components/License/OptInModal";
+import Tooltip from "@/components/Tooltip/Tooltip";
+import { useUser } from "@/services/UserContext";
+import PremiumTooltip from "@/components/Marketing/PremiumTooltip";
+import track from "@/services/track";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/Tabs";
+import Markdown from "./Markdown";
+
+const Item = ({ entity: { name, char } }) => <div>{`${name}: ${char}`}</div>;
+const Loading = () => <div>Loading</div>;
+
+//Extracts a human-readable link label from a URL for Markdown link shorthand.
+function getLinkLabelFromUrl(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "") || "Link";
+  } catch {
+    return "Link";
+  }
+}
+const MarkdownInput: FC<{
+  value: string;
+  setValue: (value: string) => void;
+  autofocus?: boolean;
+  // When autofocus is set, place the caret at the end of the existing value
+  // instead of the default position 0. Useful when the textarea is
+  // pre-seeded with boilerplate the user should type *after* (e.g. a
+  // diff-ref snapshot block in a new diff comment).
+  autofocusAtEnd?: boolean;
+  error?: string;
+  cta?: string;
+  // Disable the submit CTA (e.g. while the input is empty).
+  ctaDisabled?: boolean;
+  id?: string;
+  placeholder?: string;
+  aiSuggestFunction?: () => Promise<string>;
+  aiButtonText?: string;
+  aiSuggestionHeader?: string;
+  onOptInModalOpen?: () => void;
+  onOptInModalClose?: () => void;
+  onCancel?: () => void;
+  hidePreview?: boolean;
+  showButtons?: boolean;
+  maxRows?: number;
+  onAISuggestionReceived?: (result: string) => void;
+  trackingSource?: string;
+}> = ({
+  value,
+  setValue,
+  autofocus = false,
+  autofocusAtEnd = false,
+  error: externalError,
+  cta,
+  ctaDisabled = false,
+  id,
+  onCancel,
+  placeholder,
+  hidePreview,
+  aiSuggestFunction,
+  aiButtonText = "Get AI Suggestion",
+  aiSuggestionHeader = "Suggestion",
+  onOptInModalOpen, // If this component is in Modal itself this can be used to close that modal when the OptInModal opens
+  onOptInModalClose, // ... And this can be used to open that modal when the OptInModal closes
+  showButtons = true,
+  maxRows = 6,
+  onAISuggestionReceived,
+  trackingSource,
+}) => {
+  const { aiEnabled, aiAgreedTo } = useAISettings();
+  const [activeControlledTab, setActiveControlledTab] = useState<
+    "write" | "preview"
+  >("write");
+  const { apiCall } = useAuth();
+  const textareaRef = useRef<null | HTMLTextAreaElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [aiSuggestionText, setAiSuggestionText] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(externalError || "");
+  const [revertValue, setRevertValue] = useState<string | null>(null);
+  const { hasCommercialFeature } = useUser();
+  const hasAISuggestions = hasCommercialFeature("ai-suggestions");
+  const { blockFileUploads } = useOrgSettings();
+
+  const [aiAgreementModal, setAiAgreementModal] = useState(false);
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!autofocus || !textarea) return;
+    textarea.focus();
+    if (autofocusAtEnd) {
+      const end = textarea.value.length;
+      textarea.setSelectionRange(end, end);
+      // If the seeded content overflows the visible area, focus + caret
+      // alone leaves the bottom out of view — scroll it into view too.
+      textarea.scrollTop = textarea.scrollHeight;
+    }
+  }, [autofocus, autofocusAtEnd, textareaRef.current]);
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const pasted = e.clipboardData.getData("text/plain").trim();
+    if (!pasted || !/^https?:\/\/\S+$/i.test(pasted)) return;
+
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    e.preventDefault();
+
+    const start = textarea.selectionStart ?? 0;
+    const end = textarea.selectionEnd ?? start;
+    const selectedText = value.slice(start, end).trim();
+    const linkLabel =
+      start !== end && selectedText
+        ? selectedText
+        : getLinkLabelFromUrl(pasted);
+    const markdownLink = `[${linkLabel}](<${pasted}>)`;
+    const newValue = value.slice(0, start) + markdownLink + value.slice(end);
+    setValue(newValue);
+
+    const cursorAfterInsert = start + markdownLink.length;
+    // Defer so React can commit the new value to the DOM first; otherwise
+    // setSelectionRange runs against the old value and may be overwritten.
+    setTimeout(() => {
+      textarea.setSelectionRange(cursorAfterInsert, cursorAfterInsert);
+      textarea.focus();
+    }, 0);
+  };
+
+  const onDrop = (files: File[]) => {
+    if (blockFileUploads) return;
+
+    setUploading(true);
+    const toAdd: string[] = [];
+    const promises = Promise.all(
+      files.map(async (file, i) => {
+        const name = file.name.replace(/[^a-zA-Z0-9_\-.\s]*/g, "");
+
+        const { fileURL } = await uploadFile(apiCall, file);
+
+        toAdd[i] = `![${name}](${fileURL})`;
+      }),
+    );
+
+    promises
+      .then(() => {
+        setValue(value + toAdd.join("\n") + "\n");
+        setUploading(false);
+      })
+      .catch((e) => {
+        alert("Failed to upload image: " + e);
+        setUploading(false);
+      });
+  };
+  const { getRootProps, getInputProps, open } = useDropzone({
+    onDrop,
+    noClick: true,
+    noKeyboard: true,
+    accept: "image/png, image/jpeg, image/gif",
+  });
+
+  // getRootProps assumes generic HTMLElement, but we're using HTMLDivElement
+  const rootProps: unknown = getRootProps();
+  const typedRootProps = rootProps as DetailedHTMLProps<
+    HTMLAttributes<HTMLDivElement>,
+    HTMLDivElement
+  >;
+
+  const doAISuggestion = async (type?: AISuggestionType) => {
+    if (aiSuggestFunction && aiEnabled) {
+      track("ai-suggestion", { source: trackingSource, type });
+      setError("");
+      try {
+        setLoading(true);
+        // make sure it's on the right tab:
+        setActiveControlledTab("write");
+        const suggestedText = await aiSuggestFunction();
+        if (suggestedText) {
+          if (onAISuggestionReceived) {
+            onAISuggestionReceived(suggestedText);
+          }
+          if (!value || !value.trim()) {
+            setValue(suggestedText);
+          } else {
+            setAiSuggestionText(suggestedText);
+          }
+          setLoading(false);
+        } else {
+          setLoading(false);
+          setError("Failed to get AI suggestion");
+        }
+      } catch (e) {
+        setLoading(false);
+        if (e.message) {
+          setError(e.message);
+        } else {
+          setError("Failed to get AI suggestion. API request error");
+        }
+      }
+    } else {
+      setError("AI is disabled for your organization. Adjust in settings.");
+    }
+  };
+
+  return (
+    <Box className="">
+      {loading && <LoadingOverlay text="Generating..." />}
+      <Tabs
+        value={activeControlledTab}
+        onValueChange={(tab) =>
+          setActiveControlledTab(tab === "write" ? "write" : "preview")
+        }
+      >
+        {!hidePreview && (
+          <Flex align="center" justify="between">
+            <TabsList>
+              <TabsTrigger value="write">Write</TabsTrigger>
+              <TabsTrigger value="preview" disabled={!value}>
+                Preview
+              </TabsTrigger>
+            </TabsList>
+          </Flex>
+        )}
+        <Box pt="2">
+          <TabsContent value="write">
+            <div style={{ position: "relative" }} {...typedRootProps}>
+              <ReactTextareaAutocomplete
+                className="form-control mb-1"
+                rows={maxRows}
+                loadingComponent={Loading}
+                minChar={0}
+                dropdownStyle={{
+                  position: "absolute",
+                  maxHeight: 100,
+                  overflowY: "auto",
+                }}
+                id={id}
+                innerRef={(textarea) => {
+                  textareaRef.current = textarea;
+                }}
+                style={{
+                  borderBottomLeftRadius: 0,
+                  borderBottomRightRadius: 0,
+                }}
+                value={value}
+                onChange={(e) => {
+                  setValue(e.target.value);
+                }}
+                onPaste={handlePaste}
+                placeholder={placeholder}
+                trigger={{
+                  ":": {
+                    dataProvider: (token) => {
+                      return emoji(token)
+                        .slice(0, 10)
+                        .map(({ name, char }) => ({ name, char }));
+                    },
+                    component: Item,
+                    output: (item) => item.char,
+                  },
+                }}
+              />
+
+              {uploading && <LoadingOverlay />}
+              {!blockFileUploads && (
+                <>
+                  <input {...getInputProps()} />
+                  <Flex
+                    align="center"
+                    justify="between"
+                    px="2"
+                    py="1"
+                    mb="2"
+                    onClick={open}
+                    style={{
+                      cursor: "pointer",
+                      border: "1px solid var(--gray-a6)",
+                      borderTop: "none",
+                      marginTop: -4,
+                      borderBottomLeftRadius: "var(--radius-2)",
+                      borderBottomRightRadius: "var(--radius-2)",
+                      background: "var(--gray-a2)",
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: "var(--font-size-1)",
+                        color: "var(--gray-11)",
+                      }}
+                    >
+                      Upload images by dragging &amp; dropping or clicking here
+                    </span>
+                    <a
+                      href="https://guides.github.com/features/mastering-markdown/"
+                      target="_blank"
+                      rel="noreferrer"
+                      title="Github-flavored Markdown is supported"
+                      onClick={(e) => e.stopPropagation()}
+                      style={{
+                        color: "var(--gray-12)",
+                        fontSize: "1.2em",
+                        lineHeight: "1em",
+                      }}
+                    >
+                      <FaMarkdown />
+                    </a>
+                  </Flex>
+                </>
+              )}
+            </div>
+            {showButtons && (
+              <Flex align="center" mt="3" gap="2">
+                {error && (
+                  <span
+                    style={{
+                      fontSize: "var(--font-size-1)",
+                      color: "var(--red-11)",
+                    }}
+                  >
+                    {error}
+                  </span>
+                )}
+                <Box flexGrow="1" />
+                {onCancel && (
+                  <Button variant="ghost" color="gray" onClick={onCancel}>
+                    Cancel
+                  </Button>
+                )}
+                {cta && (
+                  <Button type="submit" disabled={ctaDisabled}>
+                    {cta}
+                  </Button>
+                )}
+              </Flex>
+            )}
+            {aiSuggestFunction && !aiSuggestionText && (
+              <Flex pt={"5"}>
+                {!hasAISuggestions ? (
+                  <PremiumTooltip commercialFeature="ai-suggestions">
+                    <Button variant="soft" disabled={true}>
+                      {" "}
+                      <BsStars /> {aiButtonText}
+                    </Button>
+                  </PremiumTooltip>
+                ) : aiAgreedTo && aiEnabled ? (
+                  <Button
+                    variant="soft"
+                    disabled={loading}
+                    onClick={() => doAISuggestion("suggest")}
+                  >
+                    <BsStars /> {loading ? "Generating..." : aiButtonText}
+                  </Button>
+                ) : (
+                  <Tooltip
+                    body={
+                      !aiEnabled
+                        ? "AI is disabled for your organization. Adjust in settings."
+                        : ""
+                    }
+                  >
+                    <Button
+                      variant="soft"
+                      onClick={() => {
+                        if (!aiAgreedTo) {
+                          setAiAgreementModal(true);
+                          if (onOptInModalOpen) {
+                            // Needs a timeout to avoid a flicker when the parent modal disappears and the OptInModal appears
+                            // This makes sure the OptInModal shows slightly before the parent modal and its backdrop disappears.
+                            setTimeout(() => {
+                              onOptInModalOpen();
+                            }, 0);
+                          }
+                        } else {
+                          setError(
+                            "AI is disabled for your organization. Adjust in settings.",
+                          );
+                        }
+                      }}
+                    >
+                      <BsStars /> {aiButtonText}
+                    </Button>
+                  </Tooltip>
+                )}
+              </Flex>
+            )}
+            {aiSuggestionText && (
+              <Box mt="2">
+                <Flex align="center" justify="between" my="4">
+                  <Heading size="2" weight="medium">
+                    {aiSuggestionHeader}:
+                  </Heading>
+                  <Flex gap="2">
+                    <Button
+                      variant="ghost"
+                      onClick={() => doAISuggestion("try-again")}
+                    >
+                      <PiArrowClockwise /> Try Again
+                    </Button>
+                    {aiSuggestionText && value != aiSuggestionText && (
+                      <Tooltip body="Overwrite content above with suggested content.">
+                        <Button
+                          variant="soft"
+                          onClick={() => {
+                            setRevertValue(value);
+                            setValue(aiSuggestionText);
+                            track("use-ai-suggestion", {
+                              source: trackingSource,
+                            });
+                          }}
+                        >
+                          Use Suggested
+                        </Button>
+                      </Tooltip>
+                    )}
+                    {revertValue && value == aiSuggestionText && (
+                      <Tooltip body="Revert to previous content.">
+                        <Button
+                          variant="soft"
+                          onClick={() => {
+                            setValue(revertValue);
+                            setRevertValue(null);
+                            track("revert-ai-suggestion", {
+                              source: trackingSource,
+                            });
+                          }}
+                        >
+                          Revert
+                        </Button>
+                      </Tooltip>
+                    )}
+                  </Flex>
+                </Flex>
+                <Box className="appbox" p="3">
+                  <Markdown>{aiSuggestionText}</Markdown>
+                </Box>
+              </Box>
+            )}
+            {!showButtons && error && (
+              <Callout status="error" mt="2">
+                {error}
+              </Callout>
+            )}
+          </TabsContent>
+          <TabsContent value="preview">
+            <Markdown>{value}</Markdown>
+          </TabsContent>
+        </Box>
+      </Tabs>
+      {aiAgreementModal && (
+        <OptInModal
+          agreement="ai"
+          onClose={() => {
+            if (onOptInModalClose) {
+              onOptInModalClose();
+            }
+            setAiAgreementModal(false);
+          }}
+        />
+      )}
+    </Box>
+  );
+};
+export default MarkdownInput;

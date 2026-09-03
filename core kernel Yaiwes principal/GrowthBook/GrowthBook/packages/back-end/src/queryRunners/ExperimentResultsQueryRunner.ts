@@ -1,0 +1,826 @@
+import { analyzeExperimentPower } from "shared/enterprise";
+import { tabulateCovariateImbalance } from "shared/health";
+import { addDays } from "date-fns";
+import {
+  ExperimentMetricInterface,
+  getAllMetricIdsFromExperiment,
+  quantileMetricType,
+} from "shared/experiments";
+import { FALLBACK_EXPERIMENT_MAX_LENGTH_DAYS } from "shared/constants";
+import { daysBetween } from "shared/dates";
+import { buildUnitsQuerySettingsFromSnapshot } from "shared/util";
+import { SegmentInterface } from "shared/types/segment";
+import {
+  Dimension,
+  ExperimentAggregateUnitsQueryResponseRows,
+  ExperimentDimensionWithSpecifiedSlices,
+  ExperimentFactMetricsQueryParams,
+  ExperimentMetricQueryParams,
+  ExperimentMetricStats,
+  ExperimentQueryResponses,
+  ExperimentResults,
+  ExperimentUnitsQueryParams,
+} from "shared/types/integrations";
+import { ExperimentReportResults } from "shared/types/report";
+import {
+  ExperimentSnapshotAnalysis,
+  ExperimentSnapshotHealth,
+  ExperimentSnapshotInterface,
+  ExperimentSnapshotSettings,
+  SnapshotType,
+} from "shared/types/experiment-snapshot";
+import { MetricInterface } from "shared/types/metric";
+import {
+  ExperimentQueryMetadata,
+  Queries,
+  QueryPointer,
+  QueryStatus,
+} from "shared/types/query";
+import { BanditResult } from "shared/types/experiment";
+import { UnrecoverableSnapshotError } from "back-end/src/util/errors";
+import { orgHasPremiumFeature } from "back-end/src/enterprise";
+import { ApiReqContext } from "back-end/types/api";
+import {
+  errorSnapshotIfStillRunning,
+  findSnapshotById,
+  updateSnapshot,
+} from "back-end/src/models/ExperimentSnapshotModel";
+import { getExposureQueryEligibleDimensions } from "back-end/src/services/dimensions";
+import { getExposureQuery } from "back-end/src/integrations/sql/queries/exposure-query";
+import {
+  getFactMetricGroups,
+  getQueryableMetricsFromSnapshotSettings,
+} from "back-end/src/services/experimentQueries/experimentQueries";
+import { parseDimension } from "back-end/src/services/experiments";
+import {
+  analyzeExperimentResults,
+  analyzeExperimentTraffic,
+} from "back-end/src/services/stats";
+import { SourceIntegrationInterface } from "back-end/src/types/Integration";
+import { expandDenominatorMetrics } from "back-end/src/util/sql";
+import { FactTableMap } from "back-end/src/models/FactTableModel";
+import SqlIntegration from "back-end/src/integrations/SqlIntegration";
+import { updateReport } from "back-end/src/models/ReportModel";
+import {
+  QueryRunner,
+  QueryMap,
+  ProcessedRowsType,
+  RowsType,
+  StartQueryParams,
+} from "./QueryRunner";
+import { shouldRunHealthTrafficQuery } from "./snapshotQueryHelpers";
+import { getUnitDimQueryName } from "./unitDimensionQueryNaming";
+export type SnapshotResult = {
+  unknownVariations: string[];
+  multipleExposures: number;
+  analyses: ExperimentSnapshotAnalysis[];
+  banditResult?: BanditResult;
+  health?: ExperimentSnapshotHealth;
+};
+
+export type ExperimentResultsQueryParams = {
+  snapshotType: SnapshotType;
+  snapshotSettings: ExperimentSnapshotSettings;
+  variationNames: string[];
+  metricMap: Map<string, ExperimentMetricInterface>;
+  factTableMap: FactTableMap;
+  queryParentId: string;
+  experimentQueryMetadata: ExperimentQueryMetadata | null;
+};
+
+export const TRAFFIC_QUERY_NAME = "traffic";
+
+export const UNITS_TABLE_PREFIX = "growthbook_tmp_units";
+
+export const startExperimentResultQueries = async (
+  context: ApiReqContext,
+  params: ExperimentResultsQueryParams,
+  integration: SourceIntegrationInterface,
+  startQuery: (
+    params: StartQueryParams<RowsType, ProcessedRowsType>,
+  ) => Promise<QueryPointer>,
+): Promise<Queries> => {
+  const snapshotType = params.snapshotType;
+  const snapshotSettings = params.snapshotSettings;
+  const queryParentId = params.queryParentId;
+  const metricMap = params.metricMap;
+
+  const { org } = context;
+  const hasPipelineModeFeature = orgHasPremiumFeature(org, "pipeline-mode");
+
+  const activationMetric = snapshotSettings.activationMetric
+    ? (metricMap.get(snapshotSettings.activationMetric) ?? null)
+    : null;
+
+  // Only include metrics tied to this experiment (both goal and guardrail metrics)
+  const selectedMetrics = getQueryableMetricsFromSnapshotSettings(
+    snapshotSettings,
+    metricMap,
+  );
+  if (!selectedMetrics.length) {
+    throw new UnrecoverableSnapshotError(
+      "Experiment must have at least 1 metric selected.",
+    );
+  }
+
+  let segmentObj: SegmentInterface | null = null;
+  if (snapshotSettings.segment) {
+    segmentObj = await context.models.segments.getById(
+      snapshotSettings.segment,
+    );
+  }
+
+  const settings = integration.datasource.settings;
+
+  const exposureQuery = (settings?.queries?.exposure || []).find(
+    (q) => q.id === snapshotSettings.exposureQueryId,
+  );
+
+  // Resolve the exposure query the same way the SQL builders used to internally:
+  // an empty exposureQueryId falls back to the auto-generated anonymous_id/user_id
+  // exposure query, and an unknown id throws a clear error rather than generating
+  // an invalid query with an empty user id type.
+  const resolvedExposureQuery = getExposureQuery(
+    integration.datasource,
+    snapshotSettings.exposureQueryId || "",
+  );
+
+  const snapshotDimensions: Dimension[] = (
+    await Promise.all(
+      snapshotSettings.dimensions.map(
+        async (d) => await parseDimension(d.id, d.slices, org.id),
+      ),
+    )
+  ).filter((d): d is Dimension => d !== null);
+
+  const queries: Queries = [];
+
+  // Settings for units table
+  const useUnitsTable =
+    (integration.getSourceProperties().supportsWritingTables &&
+      settings.pipelineSettings?.allowWriting &&
+      settings.pipelineSettings?.mode === "ephemeral" &&
+      !!settings.pipelineSettings?.writeDataset &&
+      hasPipelineModeFeature) ??
+    false;
+
+  // Configured "always-computed" unit dimensions. These are materialized as
+  // extra dim_unit_<id> columns on the shared units table and get isolated
+  // per-dimension metric queries; they are NOT added to the parent metric
+  // queries' GROUP BY (which stays experiment-dims-only).
+  const precomputedUnitDimensionIds = useUnitsTable
+    ? (snapshotSettings.precomputedUnitDimensionIds ?? [])
+    : [];
+  const unitDimensionsToPrecompute: Dimension[] = (
+    await Promise.all(
+      precomputedUnitDimensionIds.map((id) =>
+        parseDimension(id, undefined, org.id),
+      ),
+    )
+  ).filter((d): d is Dimension => d !== null);
+  let unitQuery: QueryPointer | null = null;
+  const unitsTableFullName =
+    useUnitsTable && !!integration.generateTablePath
+      ? integration.generateTablePath(
+          `${UNITS_TABLE_PREFIX}_${queryParentId}`,
+          settings.pipelineSettings?.writeDataset,
+          settings.pipelineSettings?.writeDatabase,
+          true,
+        )
+      : "";
+
+  // Settings for health query
+  const runTrafficQuery = shouldRunHealthTrafficQuery({
+    snapshotType,
+    snapshotDimensions: snapshotSettings.dimensions,
+    runHealthTrafficQuery: org.settings?.runHealthTrafficQuery,
+  });
+
+  const { eligibleDimensionsWithSlices: dimensionsForTraffic } = exposureQuery
+    ? getExposureQueryEligibleDimensions({
+        exposureQuery,
+        incrementalRefreshModel: null,
+        nVariations: snapshotSettings.variations.length,
+      })
+    : {
+        eligibleDimensionsWithSlices: [],
+      };
+
+  const unitsSettings = buildUnitsQuerySettingsFromSnapshot(
+    snapshotSettings,
+    resolvedExposureQuery,
+  );
+
+  const unitQueryParams: ExperimentUnitsQueryParams = {
+    activationMetric: activationMetric,
+    dimensions: snapshotDimensions.length
+      ? snapshotDimensions
+      : dimensionsForTraffic,
+    segment: segmentObj,
+    unitsSettings,
+    unitsTableFullName: unitsTableFullName,
+    includeIdJoins: true,
+    factTableMap: params.factTableMap,
+  };
+
+  if (useUnitsTable) {
+    // The Mixpanel integration does not support writing tables
+    if (!integration.generateTablePath) {
+      throw new Error(
+        "Unable to generate table; table path generator not specified.",
+      );
+    }
+    unitQuery = await startQuery({
+      name: queryParentId,
+      // The shared units table carries both the parent's experiment-dim
+      // columns and one dim_unit_<id> column per configured unit dimension so
+      // the isolated per-dim metric queries can read it.
+      query: integration.getExperimentUnitsTableQuery({
+        ...unitQueryParams,
+        dimensions: [
+          ...unitQueryParams.dimensions,
+          ...unitDimensionsToPrecompute,
+        ],
+      }),
+      dependencies: [],
+      run: (query, setExternalId, queryMetadata) =>
+        integration.runExperimentUnitsQuery(
+          query,
+          setExternalId,
+          queryMetadata,
+        ),
+      queryType: "experimentUnits",
+    });
+    queries.push(unitQuery);
+  }
+
+  const { factMetricGroups, legacyMetricSingles } = getFactMetricGroups(
+    selectedMetrics,
+    params.snapshotSettings,
+    integration,
+    org,
+  );
+
+  for (const m of legacyMetricSingles) {
+    const denominatorMetrics: MetricInterface[] = [];
+    if (m.denominator) {
+      denominatorMetrics.push(
+        ...expandDenominatorMetrics(
+          m.denominator,
+          metricMap as Map<string, MetricInterface>,
+        )
+          .map((m) => metricMap.get(m) as MetricInterface)
+          .filter(Boolean),
+      );
+    }
+    // Only run overall quantile analysis for standard snapshots
+    // regardless of how many dimensions are requested
+    const runOverallQuantileAnalysis =
+      snapshotType === "standard" && quantileMetricType(m);
+
+    const queryParams: ExperimentMetricQueryParams = {
+      activationMetric,
+      denominatorMetrics,
+      dimensions: runOverallQuantileAnalysis ? [] : snapshotDimensions,
+      metric: m,
+      segment: segmentObj,
+      settings: snapshotSettings,
+      unitsSource: unitQuery ? "exposureTable" : "exposureQuery",
+      unitsSettings,
+      unitsTableFullName: unitsTableFullName,
+      factTableMap: params.factTableMap,
+    };
+    queries.push(
+      await startQuery({
+        name: m.id,
+        query: integration.getSnapshotMetricQuery(queryParams),
+        dependencies: unitQuery ? [unitQuery.query] : [],
+        run: (query, setExternalId, queryMetadata) =>
+          integration.runSnapshotMetricQuery(
+            query,
+            setExternalId,
+            queryMetadata,
+          ),
+        queryType: "experimentMetric",
+      }),
+    );
+  }
+
+  for (const [i, m] of factMetricGroups.entries()) {
+    // Only run overall quantile analysis for standard snapshots
+    // regardless of how many dimensions are requested
+    const runOverallQuantileAnalysis =
+      snapshotType === "standard" && m.some(quantileMetricType);
+
+    const queryParams: ExperimentFactMetricsQueryParams = {
+      activationMetric,
+      dimensions: runOverallQuantileAnalysis ? [] : snapshotDimensions,
+      metrics: m,
+      segment: segmentObj,
+      settings: snapshotSettings,
+      unitsSource: unitQuery ? "exposureTable" : "exposureQuery",
+      unitsSettings,
+      unitsTableFullName: unitsTableFullName,
+      factTableMap: params.factTableMap,
+    };
+
+    if (
+      !integration.getExperimentFactMetricsQuery ||
+      !integration.runExperimentFactMetricsQuery
+    ) {
+      throw new Error("Integration does not support multi-metric queries");
+    }
+
+    queries.push(
+      await startQuery({
+        name: `group_${i}`,
+        query: integration.getExperimentFactMetricsQuery(queryParams),
+        dependencies: unitQuery ? [unitQuery.query] : [],
+        run: (query, setExternalId, queryMetadata) =>
+          (integration as SqlIntegration).runExperimentFactMetricsQuery(
+            query,
+            setExternalId,
+            queryMetadata,
+          ),
+        queryType: "experimentMultiMetric",
+      }),
+    );
+  }
+
+  // Per-unit-dimension metric queries (unitdim:<id>:…). Parent gbstats skips
+  // them; a post-success hook runs per-dimension analyses from these results.
+  if (unitQuery && unitDimensionsToPrecompute.length > 0) {
+    for (const unitDim of unitDimensionsToPrecompute) {
+      if (unitDim.type !== "user") continue;
+      const dimensionId = unitDim.dimension.id;
+
+      for (const [i, m] of factMetricGroups.entries()) {
+        if (
+          !integration.getExperimentFactMetricsQuery ||
+          !integration.runExperimentFactMetricsQuery
+        ) {
+          throw new Error("Integration does not support multi-metric queries");
+        }
+        const queryParams: ExperimentFactMetricsQueryParams = {
+          activationMetric,
+          dimensions: [unitDim],
+          metrics: m,
+          segment: segmentObj,
+          settings: snapshotSettings,
+          unitsSource: "exposureTable",
+          unitsSettings,
+          unitsTableFullName: unitsTableFullName,
+          factTableMap: params.factTableMap,
+        };
+        queries.push(
+          await startQuery({
+            name: getUnitDimQueryName(dimensionId, `group_${i}`),
+            query: integration.getExperimentFactMetricsQuery(queryParams),
+            dependencies: [unitQuery.query],
+            run: (query, setExternalId, queryMetadata) =>
+              (integration as SqlIntegration).runExperimentFactMetricsQuery(
+                query,
+                setExternalId,
+                queryMetadata,
+              ),
+            queryType: "experimentMultiMetric",
+          }),
+        );
+      }
+
+      for (const m of legacyMetricSingles) {
+        // Only run overall quantile analysis for standard snapshots
+        // regardless of how many dimensions are requested
+        const runOverallQuantileAnalysis =
+          snapshotType === "standard" && quantileMetricType(m);
+
+        const denominatorMetrics: MetricInterface[] = [];
+        if (m.denominator) {
+          denominatorMetrics.push(
+            ...expandDenominatorMetrics(
+              m.denominator,
+              metricMap as Map<string, MetricInterface>,
+            )
+              .map((dm) => metricMap.get(dm) as MetricInterface)
+              .filter(Boolean),
+          );
+        }
+
+        const queryParams: ExperimentMetricQueryParams = {
+          activationMetric,
+          denominatorMetrics,
+          dimensions: runOverallQuantileAnalysis ? [] : [unitDim],
+          metric: m,
+          segment: segmentObj,
+          settings: snapshotSettings,
+          unitsSource: "exposureTable",
+          unitsSettings,
+          unitsTableFullName: unitsTableFullName,
+          factTableMap: params.factTableMap,
+        };
+        queries.push(
+          await startQuery({
+            name: getUnitDimQueryName(dimensionId, m.id),
+            query: integration.getSnapshotMetricQuery(queryParams),
+            dependencies: [unitQuery.query],
+            run: (query, setExternalId, queryMetadata) =>
+              integration.runSnapshotMetricQuery(
+                query,
+                setExternalId,
+                queryMetadata,
+              ),
+            queryType: "experimentMetric",
+          }),
+        );
+      }
+    }
+  }
+
+  let trafficQuery: QueryPointer | null = null;
+  if (runTrafficQuery) {
+    // the basic traffic query should only use experiment dimensions with specified slices
+    // and if there are snapshot dimensions, it should be a subset of those that
+    // have specified slices
+    const snapshotDimensionsForTraffic: ExperimentDimensionWithSpecifiedSlices[] =
+      [];
+    snapshotDimensions.forEach((d) => {
+      if (d.type === "experiment" && d.specifiedSlices?.length) {
+        snapshotDimensionsForTraffic.push({
+          ...d,
+          specifiedSlices: d.specifiedSlices,
+        });
+      }
+    });
+
+    trafficQuery = await startQuery({
+      name: TRAFFIC_QUERY_NAME,
+      query: integration.getExperimentAggregateUnitsQuery({
+        ...unitQueryParams,
+        settings: snapshotSettings,
+        dimensions: snapshotDimensionsForTraffic.length
+          ? snapshotDimensionsForTraffic
+          : dimensionsForTraffic,
+        useUnitsTable: !!unitQuery,
+      }),
+      dependencies: unitQuery ? [unitQuery.query] : [],
+      run: (query, setExternalId, queryMetadata) =>
+        integration.runExperimentAggregateUnitsQuery(
+          query,
+          setExternalId,
+          queryMetadata,
+        ),
+      queryType: "experimentTraffic",
+    });
+    queries.push(trafficQuery);
+  }
+
+  const dropUnitsTable =
+    integration.getSourceProperties().dropUnitsTable &&
+    settings.pipelineSettings?.unitsTableDeletion;
+  if (useUnitsTable && dropUnitsTable) {
+    const dropUnitsTableQuery = await startQuery({
+      name: `drop_${queryParentId}`,
+      query: integration.getDropUnitsTableQuery({
+        fullTablePath: unitsTableFullName,
+      }),
+      dependencies: [],
+      // all other queries in model must succeed or fail first
+      runAtEnd: true,
+      run: (query, setExternalId, queryMetadata) =>
+        integration.runDropTableQuery(query, setExternalId, queryMetadata),
+      queryType: "experimentDropUnitsTable",
+    });
+    queries.push(dropUnitsTableQuery);
+  }
+
+  return queries;
+};
+
+export class ExperimentResultsQueryRunner extends QueryRunner<
+  ExperimentSnapshotInterface,
+  ExperimentResultsQueryParams,
+  SnapshotResult
+> {
+  private variationNames: string[] = [];
+  private metricMap: Map<string, ExperimentMetricInterface> = new Map();
+
+  checkPermissions(): boolean {
+    return this.context.permissions.canRunExperimentQueries(
+      this.integration.datasource,
+    );
+  }
+
+  async startQueries(params: ExperimentResultsQueryParams): Promise<Queries> {
+    this.metricMap = params.metricMap;
+    this.variationNames = params.variationNames;
+    if (params.experimentQueryMetadata) {
+      this.integration.setAdditionalQueryMetadata?.(
+        params.experimentQueryMetadata,
+      );
+    }
+    if (
+      this.integration.getSourceProperties().separateExperimentResultQueries
+    ) {
+      return startExperimentResultQueries(
+        this.context,
+        params,
+        this.integration,
+        this.startQuery.bind(this),
+      );
+    } else {
+      return this.startLegacyQueries(params);
+    }
+  }
+
+  async runAnalysis(queryMap: QueryMap): Promise<SnapshotResult> {
+    const { results: analysesResults, banditResult } =
+      await analyzeExperimentResults({
+        queryData: queryMap,
+        snapshotSettings: this.model.settings,
+        analysisSettings: this.model.analyses.map((a) => a.settings),
+        variationNames: this.variationNames,
+        metricMap: this.metricMap,
+      });
+
+    const result: SnapshotResult = {
+      analyses: this.model.analyses,
+      multipleExposures: 0,
+      unknownVariations: [],
+      banditResult,
+    };
+
+    analysesResults.forEach((results: ExperimentReportResults, i: number) => {
+      const analysis = this.model.analyses[i];
+      if (!analysis) return;
+
+      analysis.results = results.dimensions || [];
+      analysis.status = "success";
+      analysis.error = "";
+
+      // TODO: do this once, not per analysis
+      result.unknownVariations = results.unknownVariations || [];
+      result.multipleExposures = results.multipleExposures ?? 0;
+    });
+
+    // Run health checks
+    const healthQuery = queryMap.get(TRAFFIC_QUERY_NAME);
+    if (healthQuery) {
+      const rows =
+        healthQuery.result as ExperimentAggregateUnitsQueryResponseRows;
+      const trafficHealth = analyzeExperimentTraffic({
+        rows: rows,
+        error: healthQuery.error,
+        variations: this.model.settings.variations,
+      });
+
+      result.health = {
+        traffic: trafficHealth,
+      };
+
+      const relativeAnalysis = this.model.analyses.find(
+        (a) => a.settings.differenceType === "relative",
+      );
+
+      const isEligibleForMidExperimentPowerAnalysis =
+        relativeAnalysis &&
+        this.model.settings.banditSettings === undefined &&
+        rows &&
+        rows.length;
+
+      if (isEligibleForMidExperimentPowerAnalysis) {
+        const today = new Date();
+        const phaseStartDate = this.model.settings.startDate;
+        const experimentMaxLengthDays =
+          this.context.org.settings?.experimentMaxLengthDays;
+
+        const experimentTargetEndDate = addDays(
+          phaseStartDate,
+          experimentMaxLengthDays && experimentMaxLengthDays > 0
+            ? experimentMaxLengthDays
+            : FALLBACK_EXPERIMENT_MAX_LENGTH_DAYS,
+        );
+        const targetDaysRemaining = daysBetween(today, experimentTargetEndDate);
+        // NB: This does not run a SQL query, but it is a health check that depends on the trafficHealth
+        result.health.power = analyzeExperimentPower({
+          trafficHealth,
+          targetDaysRemaining,
+          analysis: relativeAnalysis,
+          goalMetrics: this.model.settings.goalMetrics,
+          variationsSettings: this.model.settings.variations,
+        });
+      }
+      const analysisForCovariateImbalance = this.model.analyses.find(
+        (a) => a.settings.useCovariateAsResponse === true,
+      );
+      const isEligibleForCovariateImbalanceAnalysis =
+        !!analysisForCovariateImbalance;
+      if (isEligibleForCovariateImbalanceAnalysis) {
+        result.health.covariateImbalance = tabulateCovariateImbalance(
+          analysisForCovariateImbalance,
+          this.model.settings.goalMetrics,
+          this.model.settings.guardrailMetrics,
+          this.model.settings.secondaryMetrics,
+          this.model.settings.metricSettings,
+        );
+      }
+    }
+    return result;
+  }
+
+  async getLatestModel(): Promise<ExperimentSnapshotInterface> {
+    const obj = await findSnapshotById(this.context, this.model.id);
+    if (!obj)
+      throw new Error("Could not load snapshot model: " + this.model.id);
+    return obj;
+  }
+
+  /** True once another finalizer (reaper, cancel) has concluded this snapshot. */
+  protected override isModelTerminal(
+    model: ExperimentSnapshotInterface,
+  ): boolean {
+    return model.status !== "running";
+  }
+
+  /** Persist error only while the snapshot is still running. */
+  protected override async writeErrorIfStillActive(
+    error: string,
+  ): Promise<void> {
+    await errorSnapshotIfStillRunning(this.context, this.model.id, {
+      queries: this.model.queries,
+      error,
+    });
+  }
+
+  async updateModel({
+    status,
+    queries,
+    runStarted,
+    result,
+    error,
+  }: {
+    status: QueryStatus;
+    queries: Queries;
+    runStarted?: Date;
+    result?: SnapshotResult;
+    error?: string;
+  }): Promise<ExperimentSnapshotInterface> {
+    const updates: Partial<ExperimentSnapshotInterface> = {
+      queries,
+      runStarted,
+      error,
+      ...result,
+      status:
+        status === "running"
+          ? "running"
+          : status === "failed"
+            ? "error"
+            : "success",
+    };
+    await updateSnapshot({
+      context: this.context,
+      id: this.model.id,
+      updates,
+      experimentUpdateExecutionLogger: this.experimentUpdateExecutionLogger,
+    });
+    if (
+      this.model.report &&
+      ["failed", "partially-succeeded", "succeeded"].includes(status)
+    ) {
+      await updateReport(this.model.organization, this.model.report, {
+        snapshot: this.model.id,
+      });
+    }
+    return {
+      ...this.model,
+      ...updates,
+    };
+  }
+
+  private async startLegacyQueries(
+    params: ExperimentResultsQueryParams,
+  ): Promise<Queries> {
+    const snapshotSettings = params.snapshotSettings;
+    const metricMap = params.metricMap;
+
+    const activationMetric = snapshotSettings.activationMetric
+      ? (metricMap.get(snapshotSettings.activationMetric) ?? null)
+      : null;
+
+    // Only include metrics tied to this experiment (both goal and guardrail metrics)
+    const metricGroups = await this.context.models.metricGroups.getAll();
+    const selectedMetrics = getAllMetricIdsFromExperiment(
+      snapshotSettings,
+      false,
+      metricGroups,
+    )
+      .map((m) => metricMap.get(m))
+      .filter((m) => m) as ExperimentMetricInterface[];
+    if (!selectedMetrics.length) {
+      throw new UnrecoverableSnapshotError(
+        "Experiment must have at least 1 metric selected.",
+      );
+    }
+
+    const dimensionObj = await parseDimension(
+      snapshotSettings.dimensions[0]?.id,
+      snapshotSettings.dimensions[0]?.slices,
+      this.model.organization,
+    );
+
+    const dimension =
+      dimensionObj?.type === "user" ? dimensionObj.dimension : null;
+    const query = this.integration.getExperimentResultsQuery(
+      snapshotSettings,
+      selectedMetrics,
+      activationMetric,
+      dimension,
+    );
+
+    return [
+      await this.startQuery({
+        queryType: "experimentResults",
+        name: "results",
+        query: query,
+        dependencies: [],
+        run: async () => {
+          const rows = (await this.integration.getExperimentResults(
+            snapshotSettings,
+            selectedMetrics,
+            activationMetric,
+            dimension,
+            // eslint-disable-next-line
+          )) as any[];
+          return { rows: rows };
+        },
+        process: (rows: ExperimentQueryResponses) =>
+          this.processLegacyExperimentResultsResponse(snapshotSettings, rows),
+      }),
+    ];
+  }
+
+  private processLegacyExperimentResultsResponse(
+    snapshotSettings: ExperimentSnapshotSettings,
+    rows: ExperimentQueryResponses,
+  ): ExperimentResults {
+    const ret: ExperimentResults = {
+      dimensions: [],
+      unknownVariations: [],
+    };
+
+    const variationMap = new Map<string, number>();
+    snapshotSettings.variations.forEach((v, i) => variationMap.set(v.id, i));
+
+    const unknownVariations: Map<string, number> = new Map();
+    let totalUsers = 0;
+
+    const dimensionMap = new Map<string, number>();
+
+    rows.forEach(({ dimension, metrics, users, variation }) => {
+      let i = 0;
+      if (dimensionMap.has(dimension)) {
+        i = dimensionMap.get(dimension) || 0;
+      } else {
+        i = ret.dimensions.length;
+        ret.dimensions.push({
+          dimension,
+          variations: [],
+        });
+        dimensionMap.set(dimension, i);
+      }
+
+      const numUsers = users || 0;
+      totalUsers += numUsers;
+
+      const varIndex = variationMap.get(variation + "");
+      if (
+        typeof varIndex === "undefined" ||
+        varIndex < 0 ||
+        varIndex >= snapshotSettings.variations.length
+      ) {
+        unknownVariations.set(variation, numUsers);
+        return;
+      }
+
+      const metricData: { [key: string]: ExperimentMetricStats } = {};
+      metrics.forEach(({ metric, ...stats }) => {
+        metricData[metric] = stats;
+      });
+
+      ret.dimensions[i].variations.push({
+        variation: varIndex,
+        users: numUsers,
+        metrics: metricData,
+      });
+    });
+
+    unknownVariations.forEach((users, variation) => {
+      // Ignore unknown variations with an insignificant number of users
+      // This protects against random typos causing false positives
+      if (totalUsers > 0 && users / totalUsers >= 0.02) {
+        ret.unknownVariations.push(variation);
+      }
+    });
+
+    return ret;
+  }
+}

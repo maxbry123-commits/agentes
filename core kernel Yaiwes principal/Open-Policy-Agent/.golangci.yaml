@@ -1,0 +1,144 @@
+version: "2"
+run:
+  timeout: 5m
+linters:
+  default: none
+  enable:
+    - copyloopvar
+    - errcheck
+    - forbidigo
+    - gocritic
+    - govet
+    - ineffassign
+    - mirror
+    - misspell
+    - modernize
+    - nolintlint
+    - perfsprint
+    - prealloc
+    - revive # replacement for golint
+    - staticcheck
+    - unconvert
+    - unused
+    - usetesting
+    # - gosec # too many false positives
+  settings:
+    errcheck:
+      exclude-functions:
+        - github.com/open-policy-agent/opa/v1/util.WriteAppender
+        - github.com/open-policy-agent/opa/v1/util.WriteInt
+        - (io.Writer).Write
+        # Intermediate token writes are safe to ignore: a jsontext.Encoder
+        # sticks to its first error, so checking the last call in a sequence
+        # (as these files already do) is sufficient. See the "ignoring errors
+        # for brevity" example in the encoding/json/jsontext.Encoder docs.
+        - (*encoding/json/jsontext.Encoder).WriteToken
+        - (*encoding/json/jsontext.Encoder).WriteValue
+    forbidigo:
+      forbid:
+        - pattern: '^errors\.As$'
+          message: "Prefer to use errors.AsType instead"
+        - pattern: '^sort\.[A-Z][a-zA-Z]+$'
+          message: "Prefer the more performant sort/search functions in the slices package"
+    gocritic:
+      enabled-checks:
+        # NOTE that these are rules enabled in addition to the default set
+        - filepathJoin
+        - dupImport
+        - redundantSprint
+        - stringConcatSimplify
+      disabled-checks:
+        - appendAssign
+        # NOTE(ae): this one should be enabled, but there were too
+        # many violations to fix in one go... revisit later
+        - singleCaseSwitch
+        # Reasonable rule, but not sure what to replace with in
+        # many locations, so disabling for now
+        - exitAfterDefer
+        # This is disabled from the perfomance tag  enabled further down.
+        - hugeParam
+      enabled-tags:
+        - performance
+      settings:
+        ifElseChain:
+          # ridiculous value set for now, but this should be
+          # lowered to something more reasonable, as the rule
+          # is reasonable (replace long if-else chains with
+          # switch)... just too many violations right now
+          minThreshold: 10
+    govet:
+      disable:
+        # enable later and fix
+        - buildtag
+      enable:
+        - deepequalerrors
+        - nilness
+    lll:
+      line-length: 200
+    modernize:
+      disable:
+        # this should be enabled only outside of hot paths, as it's likely
+        # less performant (and there have been reports of that)
+        - slicesbackward
+    perfsprint:
+      # only rule disabled by default, but it's a good one
+      err-error: true
+    revive:
+      # this mainly complains about us using min/max for variable names,
+      # which seems like an unlikely source of actual issues
+      rules:
+        - name: redefines-builtin-id
+          disabled: true
+        - name: unused-receiver
+          disabled: false
+    staticcheck:
+      checks:
+        # https://staticcheck.dev/docs/checks/#<check-id> for more details on these rules
+        [
+          "all",
+          "-ST1000",
+          "-ST1003",
+          "-ST1020",
+          "-ST1021",
+          "-ST1022",
+          "-QF1001",
+          "-QF1002",
+          "-QF1003",
+          "-QF1008",
+        ]
+    usetesting:
+      os-temp-dir: true
+      context-background: true
+      context-todo: true
+  exclusions:
+    warn-unused: true
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - staticcheck
+        text: SA1019 # Using a deprecated function, variable, constant or field
+        path: _test\.go
+      - linters:
+          - prealloc
+          - errcheck
+        path: _test\.go # Using a deprecated function, variable, constant or field
+    paths:
+      # v0 - ^ needed to avoid matching name in any path
+      - ^ast|^bundle|^cover|^compile|^debug|^dependencies|^download|^format|^loader|^server
+      - ^topdown|^plugins|^rego|^repl|^resolver|^runtime|^sdk|^storage|^test|^util
+      # various exclusions
+      - ^internal/gojsonschema|^internal/methodlesstemplate|node_modules|example_test
+issues:
+  # don't hide issues in CI runs because they are the same type
+  max-same-issues: 0
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax

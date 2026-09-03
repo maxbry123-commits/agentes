@@ -1,0 +1,229 @@
+import { z } from "zod";
+import { getScopedSettings } from "shared/settings";
+import {
+  DEFAULT_FACT_METRIC_WINDOW,
+  DEFAULT_LOSE_RISK_THRESHOLD,
+  DEFAULT_METRIC_WINDOW_DELAY_HOURS,
+  DEFAULT_METRIC_WINDOW_HOURS,
+  DEFAULT_PROPER_PRIOR_STDDEV,
+  DEFAULT_WIN_RISK_THRESHOLD,
+} from "shared/constants";
+import {
+  postFactMetricBodyFields,
+  postFactMetricValidator,
+} from "shared/validators";
+import {
+  CreateFactMetricProps,
+  FactTableInterface,
+} from "shared/types/fact-table";
+import { OrganizationInterface } from "shared/types/organization";
+import { getFactTable } from "back-end/src/models/FactTableModel";
+import { resolveOwnerEmail } from "back-end/src/services/owner";
+import { createApiRequestHandler } from "back-end/src/util/handler";
+import { FactMetricModel } from "back-end/src/models/FactMetricModel";
+
+export async function getCreateMetricPropsFromBody(
+  body: z.infer<typeof postFactMetricBodyFields> & {
+    archived?: boolean;
+  },
+  organization: OrganizationInterface,
+  getFactTable: (id: string) => Promise<FactTableInterface | null>,
+): Promise<CreateFactMetricProps> {
+  const { settings: scopedSettings } = getScopedSettings({
+    organization,
+  });
+
+  const primaryFactTableId =
+    body.metricType === "funnel"
+      ? body.funnelSettings?.steps[0]?.factTableId
+      : body.numerator?.factTableId;
+  if (!primaryFactTableId) {
+    throw new Error("Could not determine the Fact Table for this metric");
+  }
+
+  const factTable = await getFactTable(primaryFactTableId);
+  if (!factTable) {
+    throw new Error("Could not find fact table");
+  }
+
+  const {
+    quantileSettings,
+    funnelSettings,
+    cappingSettings,
+    windowSettings,
+    regressionAdjustmentSettings,
+    priorSettings,
+    numerator,
+    denominator,
+    riskThresholdSuccess,
+    riskThresholdDanger,
+    minPercentChange,
+    maxPercentChange,
+    minSampleSize,
+    targetMDE,
+    ...otherFields
+  } = body;
+
+  // Set the correct column based on metric type
+  let column: string;
+  if (
+    body.metricType === "proportion" ||
+    body.metricType === "retention" ||
+    body.metricType === "funnel"
+  ) {
+    column = "$$distinctUsers";
+  } else if (body.metricType === "dailyParticipation") {
+    column = "$$distinctDates";
+  } else {
+    column = body.numerator?.column || "$$distinctUsers";
+  }
+
+  const cleanedNumerator =
+    body.metricType === "funnel"
+      ? null
+      : numerator
+        ? FactMetricModel.migrateColumnRef({
+            ...numerator,
+            column,
+            // Clear aggregation for metric types that use special columns
+            aggregation:
+              body.metricType === "proportion" ||
+              body.metricType === "retention" ||
+              body.metricType === "dailyParticipation"
+                ? undefined
+                : numerator.aggregation,
+          })
+        : null;
+  if (body.metricType !== "funnel" && !cleanedNumerator) {
+    throw new Error("Numerator required for non-funnel metrics");
+  }
+
+  const data: CreateFactMetricProps = {
+    datasource: factTable.datasource,
+    loseRisk:
+      riskThresholdDanger ||
+      scopedSettings.loseRisk.value ||
+      DEFAULT_LOSE_RISK_THRESHOLD,
+    winRisk:
+      riskThresholdSuccess ||
+      scopedSettings.winRisk.value ||
+      DEFAULT_WIN_RISK_THRESHOLD,
+    maxPercentChange:
+      maxPercentChange ??
+      scopedSettings.metricDefaults.value.maxPercentageChange ??
+      0,
+    minPercentChange:
+      minPercentChange ??
+      scopedSettings.metricDefaults.value.minPercentageChange ??
+      0,
+    targetMDE:
+      targetMDE || scopedSettings.metricDefaults.value.targetMDE || 0.1,
+    minSampleSize:
+      minSampleSize ??
+      scopedSettings.metricDefaults.value.minimumSampleSize ??
+      150,
+    description: "",
+    owner: "",
+    projects: [],
+    tags: [],
+    inverse: false,
+    quantileSettings: quantileSettings ?? null,
+    funnelSettings: funnelSettings ?? null,
+    windowSettings: {
+      type: DEFAULT_FACT_METRIC_WINDOW,
+      delayValue:
+        windowSettings?.delayValue ??
+        windowSettings?.delayHours ??
+        DEFAULT_METRIC_WINDOW_DELAY_HOURS,
+      delayUnit: windowSettings?.delayUnit ?? "hours",
+      windowValue: DEFAULT_METRIC_WINDOW_HOURS,
+      windowUnit: "hours",
+    },
+    cappingSettings: {
+      type: "",
+      value: 0,
+    },
+    priorSettings: priorSettings ?? {
+      override: false,
+      proper: false,
+      mean: 0,
+      stddev: DEFAULT_PROPER_PRIOR_STDDEV,
+    },
+    regressionAdjustmentOverride: false,
+    regressionAdjustmentDays:
+      scopedSettings.regressionAdjustmentDays.value || 0,
+    regressionAdjustmentEnabled: !!scopedSettings.regressionAdjustmentEnabled,
+    numerator: cleanedNumerator,
+    denominator: null,
+    metricAutoSlices: [],
+    ...otherFields,
+  };
+
+  if (denominator && body.metricType !== "funnel") {
+    data.denominator = FactMetricModel.migrateColumnRef({
+      ...denominator,
+      column: denominator.column || "$$distinctUsers",
+    });
+    const denominatorFactTable =
+      denominator.factTableId === cleanedNumerator?.factTableId
+        ? factTable
+        : await getFactTable(denominator.factTableId);
+    if (!denominatorFactTable) {
+      throw new Error("Could not find denominator fact table");
+    }
+  }
+
+  if (cappingSettings?.type && cappingSettings?.type !== "none") {
+    data.cappingSettings.type = cappingSettings.type;
+    data.cappingSettings.value = cappingSettings.value || 0;
+    data.cappingSettings.ignoreZeros = cappingSettings.ignoreZeros || false;
+  }
+
+  if (windowSettings?.type && windowSettings?.type !== "none") {
+    data.windowSettings.type = windowSettings.type;
+    if (windowSettings.windowValue) {
+      data.windowSettings.windowValue = windowSettings.windowValue;
+    }
+    if (windowSettings.windowUnit) {
+      data.windowSettings.windowUnit = windowSettings.windowUnit;
+    }
+  }
+
+  if (regressionAdjustmentSettings?.override) {
+    data.regressionAdjustmentOverride = true;
+    data.regressionAdjustmentEnabled = !!regressionAdjustmentSettings.enabled;
+    if (regressionAdjustmentSettings.days != null) {
+      data.regressionAdjustmentDays = regressionAdjustmentSettings.days;
+    }
+  }
+
+  return data;
+}
+
+export const postFactMetric = createApiRequestHandler(postFactMetricValidator)(
+  async (req) => {
+    if (
+      req.body.metricAutoSlices &&
+      req.body.metricAutoSlices.length > 0 &&
+      !req.context.hasPremiumFeature("metric-slices")
+    ) {
+      throw new Error("Metric slices require an enterprise license");
+    }
+
+    const lookupFactTable = async (id: string) => getFactTable(req.context, id);
+
+    const data = await getCreateMetricPropsFromBody(
+      req.body,
+      req.organization,
+      lookupFactTable,
+    );
+    const factMetric = await req.context.models.factMetrics.create(data);
+
+    return {
+      factMetric: await resolveOwnerEmail(
+        req.context.models.factMetrics.toApiInterface(factMetric),
+        req.context,
+      ),
+    };
+  },
+);

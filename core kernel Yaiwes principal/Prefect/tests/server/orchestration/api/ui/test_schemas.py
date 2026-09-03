@@ -1,0 +1,169 @@
+from unittest import mock
+
+import pytest
+from httpx import AsyncClient
+
+pytestmark = pytest.mark.clear_db
+
+
+class TestUISchemasValidate:
+    async def test_empty_schema_and_values(
+        self,
+        client: AsyncClient,
+    ):
+        res = await client.post(
+            "/ui/schemas/validate",
+            json={"schema": {}, "values": {}},
+        )
+        assert res.status_code == 200
+
+    async def test_invalid_schema(
+        self,
+        client: AsyncClient,
+    ):
+        res = await client.post(
+            "/ui/schemas/validate",
+            json={
+                "schema": {
+                    "title": "Parameters",
+                    "type": "NOT A REAL OBJECT RAWR",
+                    "properties": {
+                        "param": {"title": "param", "position": 0, "type": "integer"}
+                    },
+                    "required": ["param"],
+                },
+                "values": {"param": 1},
+            },
+        )
+        assert res.status_code == 422, res.text
+        res = res.json()
+        assert (
+            res["detail"]
+            == "Invalid schema: 'NOT A REAL OBJECT RAWR' is not valid under any of the given schemas"
+        )
+
+    async def test_validation_passed(
+        self,
+        client: AsyncClient,
+    ):
+        res = await client.post(
+            "/ui/schemas/validate",
+            json={
+                "schema": {
+                    "title": "Parameters",
+                    "type": "object",
+                    "properties": {
+                        "param": {"title": "param", "position": 0, "type": "integer"}
+                    },
+                    "required": ["param"],
+                },
+                "values": {"param": 1},
+            },
+        )
+        assert res.status_code == 200, res.text
+        res = res.json()
+        assert "errors" in res and len(res["errors"]) == 0
+        assert "valid" in res and res["valid"] is True
+
+    async def test_validation_failed(
+        self,
+        client: AsyncClient,
+    ):
+        res = await client.post(
+            "/ui/schemas/validate",
+            json={
+                "schema": {
+                    "title": "Parameters",
+                    "type": "object",
+                    "properties": {
+                        "param": {"title": "param", "position": 0, "type": "integer"}
+                    },
+                    "required": ["param"],
+                },
+                "values": {"param": "not an int"},
+            },
+        )
+        assert res.status_code == 200, res.text
+        res = res.json()
+        assert res["errors"] == [
+            {
+                "property": "param",
+                "errors": ["'not an int' is not of type 'integer'"],
+            }
+        ]
+        assert "valid" in res and res["valid"] is False
+
+    async def test_circular_schema_reference(
+        self,
+        client: AsyncClient,
+    ):
+        res = await client.post(
+            "/ui/schemas/validate",
+            json={
+                "schema": {
+                    "title": "Parameters",
+                    "type": "object",
+                    "properties": {
+                        "param": {
+                            "title": "param",
+                            "position": 0,
+                            "allOf": [{"$ref": "#/definitions/City"}],
+                        }
+                    },
+                    "required": ["param"],
+                    "definitions": {
+                        "City": {
+                            "title": "City",
+                            "properties": {
+                                "population": {
+                                    "title": "Population",
+                                    "type": "integer",
+                                },
+                                "name": {"title": "Name", "type": "string"},
+                            },
+                            "required": ["population", "name"],
+                            # City definition references itself here
+                            "allOf": [{"$ref": "#/definitions/City"}],
+                        }
+                    },
+                },
+                "values": {"param": "maybe a city, but we'll never know"},
+            },
+        )
+        assert res.status_code == 422, res.text
+        res = res.json()
+        assert (
+            res["detail"]
+            == "Invalid schema: Unable to validate schema with circular references."
+        )
+
+    @pytest.mark.parametrize(
+        "ref",
+        [
+            "https://a.example.com/schema.json",
+            "http://b.example.com.namespace.svc/schema.json",
+            "http://169.254.169.254/latest/meta-data/",
+        ],
+    )
+    async def test_external_ref_does_not_fetch_remote_schema(
+        self,
+        ref: str,
+        client: AsyncClient,
+    ):
+        with mock.patch("urllib.request.urlopen") as urlopen:
+            urlopen.side_effect = AssertionError(
+                "validation attempted an outbound network request"
+            )
+            res = await client.post(
+                "/ui/schemas/validate",
+                json={
+                    "schema": {
+                        "title": "Parameters",
+                        "type": "object",
+                        "properties": {"param": {"$ref": ref}},
+                    },
+                    "values": {"param": 1},
+                },
+            )
+            urlopen.assert_not_called()
+        assert res.status_code == 422, res.text
