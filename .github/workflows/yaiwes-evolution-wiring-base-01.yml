@@ -1,0 +1,126 @@
+name: YAIWES evolution wiring base 01
+on:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-evolution-wiring-base-01.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: agentes-yaiwes-evolution-wiring-base
+  cancel-in-progress: false
+
+jobs:
+  wire-plugin-bus:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout destination
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: true
+
+      - name: Copy supplied plugin bus into extension kernel
+        shell: bash
+        run: |
+          set -euo pipefail
+          SRC="skills/research-download-chain/assets/plugin-bus"
+          DST="agente-yaiwes/kernel-principal/extension-kernel/plugin-bus"
+          WF="agente-yaiwes/multi-workflow-engine/instances/source-evolution-workflow"
+          test -f "$SRC/ficha_contract_v2.py"
+          test -f "$SRC/universal_plugin_bus_v2_integrated.py"
+          test -f "agente-yaiwes/extensions/source-evolution-module/evolution_engine.py"
+          test -f "agente-yaiwes/extensions/source-evolution-module/evolution_dag.yaml"
+          mkdir -p "$DST"
+          copy_new() {
+            src="$1"; out="$2"
+            if test -e "$out"; then
+              cmp -s "$src" "$out" || { echo "COLLISION $out"; exit 31; }
+            else
+              cp -a "$src" "$out"
+            fi
+          }
+          copy_new "$SRC/ficha_contract_v2.py" "$DST/ficha_contract_v2.py"
+          copy_new "$SRC/universal_plugin_bus_v2_integrated.py" "$DST/universal_plugin_bus_v2_integrated.py"
+
+          # Correcciones quirúrgicas conocidas: UTC con zona y evento faltante
+          # en la ficha de prueba. No se altera la lógica trigger_plugin().
+          python - <<'PY'
+          from pathlib import Path
+          p = Path("agente-yaiwes/kernel-principal/extension-kernel/plugin-bus/universal_plugin_bus_v2_integrated.py")
+          s = p.read_text(encoding="utf-8")
+          s = s.replace("from datetime import datetime", "from datetime import UTC, datetime")
+          s = s.replace("datetime.utcnow()", "datetime.now(UTC)")
+          marker = '        "presupuesto": {"n0": {"max_tokens": 10000, "max_ms": 5000, "max_costo_usd": 0.1}},'
+          activation = '        "activacion": {"eventos": ["kernel.v2.plugin.enchufed"], "wake_words": ["evolucionar"]},\n'
+          if activation.strip() not in s:
+              if marker not in s:
+                  raise SystemExit("PATCH_GAP: test fixture marker absent")
+              s = s.replace(marker, activation + marker, 1)
+          p.write_text(s, encoding="utf-8")
+          PY
+
+          cat > "$DST/WIRING.json" <<'JSON'
+          {
+            "workflow": "../../../multi-workflow-engine/instances/source-evolution-workflow",
+            "planner": "../../../extensions/source-evolution-module/evolution_engine.py",
+            "dag": "../../../extensions/source-evolution-module/evolution_dag.yaml",
+            "download_skill": "../../../../skills/research-download-chain/SKILL.md",
+            "contract": "ficha_contract_v2.py",
+            "bus": "universal_plugin_bus_v2_integrated.py",
+            "director_gate": "required",
+            "deterministic_percent": 95,
+            "llm_maximum_percent": 5
+          }
+          JSON
+          cp "$DST/WIRING.json" "$WF/EXTENSION_KERNEL_WIRING.json"
+
+      - name: Test contracts plugin bus and workflow base
+        shell: bash
+        run: |
+          set -euo pipefail
+          DST="agente-yaiwes/kernel-principal/extension-kernel/plugin-bus"
+          MOD="agente-yaiwes/extensions/source-evolution-module"
+          python -m py_compile "$DST/ficha_contract_v2.py" "$DST/universal_plugin_bus_v2_integrated.py"
+          (cd "$DST" && python ficha_contract_v2.py)
+          (cd "$DST" && python universal_plugin_bus_v2_integrated.py)
+          python "$MOD/evolution_engine.py"             "evolucionar capacidad de prueba"             <(printf '%s' '{"identity":"test","requested-capability":"test","current-capability":"absent","source-provenance":"https://example.invalid/source","license":"MIT","security-history":"none","network-behavior":"deny","public-contract":"tool()","dependencies":[],"reproducibility":true,"observability":true,"rollback-plan":"unmount"}')             --out /tmp/proposal.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=json.loads(Path("/tmp/proposal.json").read_text())
+          assert p["state"] == "AWAITING_DIRECTOR"
+          assert p["director_authorization_required"] is True
+          assert p["deterministic_score"] == 95
+          assert p["llm_budget"] == 5
+          w=json.loads(Path("agente-yaiwes/kernel-principal/extension-kernel/plugin-bus/WIRING.json").read_text())
+          assert w["director_gate"] == "required"
+          PY
+
+      - name: Record hashes
+        shell: bash
+        run: |
+          set -euo pipefail
+          DST="agente-yaiwes/kernel-principal/extension-kernel/plugin-bus"
+          (cd "$DST" && sha256sum ficha_contract_v2.py universal_plugin_bus_v2_integrated.py WIRING.json > SOURCE_SHA256SUMS.txt)
+          (cd "$DST" && sha256sum -c SOURCE_SHA256SUMS.txt)
+
+      - name: Commit once and push safely
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add agente-yaiwes/kernel-principal/extension-kernel/plugin-bus                   agente-yaiwes/multi-workflow-engine/instances/source-evolution-workflow/EXTENSION_KERNEL_WIRING.json
+          if git diff --cached --quiet; then
+            echo "Wiring already exists and tests passed."
+            exit 0
+          fi
+          git commit -m 'feat(yaiwes): wire verified plugin bus into extension kernel'
+          for attempt in 1 2 3; do
+            git pull --rebase origin main
+            if git push origin HEAD:main; then exit 0; fi
+            sleep $((attempt * 5))
+          done
+          exit 1
