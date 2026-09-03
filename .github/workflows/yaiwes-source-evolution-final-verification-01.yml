@@ -1,0 +1,82 @@
+name: YAIWES source evolution final verification 01
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/yaiwes-source-evolution-final-verification-01.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agentes-source-evolution-final-verification-01
+  cancel-in-progress: false
+
+jobs:
+  verify-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      WF: agente-yaiwes/multi-workflow-engine/instances/source-evolution-workflow
+      EXT: agente-yaiwes/extensions/source-evolution-module
+      BUS: agente-yaiwes/kernel-principal/extension-kernel/plugin-bus
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify structure and deterministic contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f "$WF/evaluation-sandbox/ADOPTION_WIRING.json"
+          test -f "$WF/EXTENSION_KERNEL_WIRING.json"
+          test -f "$EXT/evolution_contract.schema.json"
+          test -f "$EXT/evolution_dag.yaml"
+          test -f "$EXT/SYSTEM_PROMPT_EVOLUTION.md"
+          test -f "$BUS/ficha_contract_v2.py"
+          test -f "$BUS/universal_plugin_bus_v2_integrated.py"
+          python -m json.tool "$WF/evaluation-sandbox/ADOPTION_WIRING.json" >/dev/null
+          python -m json.tool "$WF/EXTENSION_KERNEL_WIRING.json" >/dev/null
+          python -m json.tool "$EXT/evolution_contract.schema.json" >/dev/null
+          grep -q 'microkernel -> evaluation-sandbox -> sheriff -> authorization-gate' "$WF/evaluation-sandbox/ADOPTION_WIRING.json"
+          grep -q '"director_gate": "required"' "$WF/EXTENSION_KERNEL_WIRING.json"
+          grep -q '"deterministic_percent": 95' "$WF/EXTENSION_KERNEL_WIRING.json"
+          grep -q '"llm_maximum_percent": 5' "$WF/EXTENSION_KERNEL_WIRING.json"
+
+      - name: Verify provenance licenses and immutable commits
+        shell: bash
+        run: |
+          set -euo pipefail
+          IA="$WF/evaluation-sandbox/vendor/inspect-ai"
+          IS="$WF/evaluation-sandbox/vendor/inspect-sandboxing"
+          test "$(cat "$IA/SOURCE_COMMIT.txt")" = "ed48193d05eb264060d18ed037ddd4c1ad42e3b0"
+          test "$(cat "$IS/SOURCE_COMMIT.txt")" = "c9f2ea1b2a190b92fc2b69a97c237f3a33ee6bee"
+          grep -qx MIT "$IA/SOURCE_LICENSE.txt"
+          grep -q DOCUMENTATION_REFERENCE_ONLY "$IS/SOURCE_LICENSE.txt"
+          grep -q BLOCK_EXECUTION_LICENSE_NOT_DECLARED "$WF/evaluation-sandbox/ADOPTION_WIRING.json"
+          (cd "$IA" && sha256sum -c SOURCE_SHA256SUMS.txt)
+          (cd "$IS" && sha256sum -c SOURCE_SHA256SUMS.txt)
+
+      - name: Test Registry Adapter BUS Schema hot-swap rollback and watchdog
+        shell: bash
+        run: |
+          set -euo pipefail
+          (
+            cd "$BUS"
+            python universal_plugin_bus_v2_integrated.py
+          )
+
+      - name: Test authorization isolation parallel workflow and failure containment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest discover "$WF/microkernel" -p 'test_*.py' -v
+
+      - name: Verify no repository mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
+          echo "VERIFIED_CLOSED_CANDIDATE"
