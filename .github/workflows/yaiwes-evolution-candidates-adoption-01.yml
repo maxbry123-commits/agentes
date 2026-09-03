@@ -1,0 +1,183 @@
+name: YAIWES evolution candidates adoption 01
+on:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-evolution-candidates-adoption-01.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: agentes-yaiwes-source-evolution-adoption
+  cancel-in-progress: false
+
+jobs:
+  copy-three-approved-candidates:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout YAIWES destination
+        uses: actions/checkout@v4
+        with:
+          repository: maxbry123-commits/agentes
+          ref: main
+          path: dest
+          persist-credentials: true
+
+      - name: Checkout EvoAgentX pinned source
+        uses: actions/checkout@v4
+        with:
+          repository: ANative-Lab/EvoAgentX
+          ref: d77fd6b9a3e76c8dd83bebe3374c53a3f5d16f54
+          path: src-evo
+          filter: blob:none
+          sparse-checkout: |
+            LICENSE
+            README.md
+            evoagentx/evaluators
+            evoagentx/optimizers
+            evoagentx/prompts/optimizers
+            evoagentx/utils/aflow_utils
+            tests/src/evaluator
+            tests/src/optimizers
+
+      - name: Checkout ADAS pinned source
+        uses: actions/checkout@v4
+        with:
+          repository: ShengranHu/ADAS
+          ref: 2702bee8fefda42255efc5be9f60e3bd3db96ae4
+          path: src-adas
+          filter: blob:none
+          sparse-checkout: |
+            LICENSE
+            README.md
+            requirements.txt
+            _arc
+
+      - name: Checkout DGM pinned source
+        uses: actions/checkout@v4
+        with:
+          repository: jennyzzt/dgm
+          ref: a565fd2d1dca504ef5104a7cc0f3bdc4ab9b4fd2
+          path: src-dgm
+          filter: blob:none
+          sparse-checkout: |
+            LICENSE
+            README.md
+            DGM_outer.py
+            self_improve_step.py
+            prompts
+            utils
+            tests
+            pytest.ini
+
+      - name: Copy approved source files directly to final modules
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="dest/agente-yaiwes/multi-workflow-engine/instances/source-evolution-workflow"
+          EVO="$BASE/evaluation-optimizer/vendor/evoagentx"
+          ADAS="$BASE/architecture-search/vendor/adas"
+          DGM="$BASE/evolution-archive/vendor/dgm"
+
+          copy_file() {
+            src="$1"; out="$2"
+            test -f "$src"
+            mkdir -p "$(dirname "$out")"
+            if test -e "$out"; then
+              cmp -s "$src" "$out" || { echo "COLLISION $out"; exit 31; }
+            else
+              cp -a "$src" "$out"
+            fi
+          }
+          copy_tree() {
+            src_root="$1"; out_root="$2"
+            test -d "$src_root"
+            while IFS= read -r -d '' src; do
+              rel="${src#"$src_root/"}"
+              copy_file "$src" "$out_root/$rel"
+            done < <(find "$src_root" -type f -print0)
+          }
+          write_provenance() {
+            root="$1"; url="$2"; sha="$3"; license="$4"
+            mkdir -p "$root"
+            for spec in "SOURCE_URL.txt:$url" "SOURCE_COMMIT.txt:$sha" "SOURCE_LICENSE.txt:$license"; do
+              name="${spec%%:*}"; value="${spec#*:}"
+              if test -e "$root/$name"; then
+                grep -Fxq "$value" "$root/$name" || { echo "COLLISION $root/$name"; exit 31; }
+              else
+                printf '%s\n' "$value" > "$root/$name"
+              fi
+            done
+          }
+          make_manifest() {
+            root="$1"
+            rm -f "$root/SOURCE_SHA256SUMS.txt"
+            (cd "$root" && find . -type f ! -name SOURCE_SHA256SUMS.txt -print0 |
+              sort -z | xargs -0 sha256sum > SOURCE_SHA256SUMS.txt)
+            (cd "$root" && sha256sum -c SOURCE_SHA256SUMS.txt)
+          }
+
+          copy_file src-evo/LICENSE "$EVO/LICENSE"
+          copy_file src-evo/README.md "$EVO/README.upstream.md"
+          copy_tree src-evo/evoagentx/evaluators "$EVO/evoagentx/evaluators"
+          copy_tree src-evo/evoagentx/optimizers "$EVO/evoagentx/optimizers"
+          copy_tree src-evo/evoagentx/prompts/optimizers "$EVO/evoagentx/prompts/optimizers"
+          copy_tree src-evo/evoagentx/utils/aflow_utils "$EVO/evoagentx/utils/aflow_utils"
+          copy_tree src-evo/tests/src/evaluator "$EVO/tests/evaluator"
+          copy_tree src-evo/tests/src/optimizers "$EVO/tests/optimizers"
+          write_provenance "$EVO" "https://github.com/ANative-Lab/EvoAgentX" "d77fd6b9a3e76c8dd83bebe3374c53a3f5d16f54" "MIT"
+          make_manifest "$EVO"
+
+          copy_file src-adas/LICENSE "$ADAS/LICENSE"
+          copy_file src-adas/README.md "$ADAS/README.upstream.md"
+          copy_file src-adas/requirements.txt "$ADAS/requirements.txt"
+          copy_tree src-adas/_arc "$ADAS/_arc"
+          write_provenance "$ADAS" "https://github.com/ShengranHu/ADAS" "2702bee8fefda42255efc5be9f60e3bd3db96ae4" "Apache-2.0"
+          make_manifest "$ADAS"
+
+          copy_file src-dgm/LICENSE "$DGM/LICENSE"
+          copy_file src-dgm/README.md "$DGM/README.upstream.md"
+          copy_file src-dgm/DGM_outer.py "$DGM/DGM_outer.py"
+          copy_file src-dgm/self_improve_step.py "$DGM/self_improve_step.py"
+          copy_file src-dgm/pytest.ini "$DGM/pytest.ini"
+          copy_tree src-dgm/prompts "$DGM/prompts"
+          copy_tree src-dgm/utils "$DGM/utils"
+          copy_tree src-dgm/tests "$DGM/tests"
+          write_provenance "$DGM" "https://github.com/jennyzzt/dgm" "a565fd2d1dca504ef5104a7cc0f3bdc4ab9b4fd2" "Apache-2.0"
+          make_manifest "$DGM"
+
+      - name: Verify destinations, source locks and manifests
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="dest/agente-yaiwes/multi-workflow-engine/instances/source-evolution-workflow"
+          for root in             "$BASE/evaluation-optimizer/vendor/evoagentx"             "$BASE/architecture-search/vendor/adas"             "$BASE/evolution-archive/vendor/dgm"
+          do
+            test -s "$root/SOURCE_URL.txt"
+            test -s "$root/SOURCE_COMMIT.txt"
+            test -s "$root/SOURCE_LICENSE.txt"
+            test -s "$root/SOURCE_SHA256SUMS.txt"
+            (cd "$root" && sha256sum -c SOURCE_SHA256SUMS.txt)
+          done
+          test -f "$BASE/evaluation-optimizer/vendor/evoagentx/evoagentx/evaluators/evaluator.py"
+          test -f "$BASE/architecture-search/vendor/adas/_arc/search.py"
+          test -f "$BASE/evolution-archive/vendor/dgm/self_improve_step.py"
+
+      - name: Commit once and push safely
+        working-directory: dest
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add --sparse agente-yaiwes/multi-workflow-engine/instances/source-evolution-workflow
+          if git diff --cached --quiet; then
+            echo "All approved source files already exist and verify."
+            exit 0
+          fi
+          git commit -m 'vendor(yaiwes): adopt EvoAgentX ADAS and DGM sources'
+          for attempt in 1 2 3; do
+            git pull --rebase origin main
+            if git push origin HEAD:main; then exit 0; fi
+            sleep $((attempt * 5))
+          done
+          exit 1
