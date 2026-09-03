@@ -1,0 +1,10 @@
+__pycache__
+.idea
+*.pyc
+docs/_build
+venv/
+huey.egg-info/
+huey.db
+build/
+dist/
+.mypy_cache/
