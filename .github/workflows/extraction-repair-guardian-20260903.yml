@@ -1,0 +1,70 @@
+name: Extraction Repair Guardian 2026-09-03
+run-name: Extraction repair • ${{ github.run_id }}
+
+on:
+  workflow_dispatch:
+  repository_dispatch:
+    types: [extraction-repair-needed]
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/extraction-repair-guardian-20260903.yml"
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: extraction-repair-guardian-main
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+      - name: Extract next bounded batch safely
+        id: extract
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          python3 scripts/extract_guardian_repair_20260903.py --limit 3 | tee extraction-result.json
+      - name: Commit extracted trees and immutable evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git add -A -- . ':(exclude).github/workflows'
+          if ! git diff --cached --quiet; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git commit -m "fix(extraction): publish verified archive batch [run ${GITHUB_RUN_ID}]"
+            for attempt in 1 2 3; do
+              git pull --rebase origin main && git push origin HEAD:main && break
+              test "$attempt" -lt 3 || exit 41
+              sleep $((attempt*10))
+            done
+          fi
+      - name: Read-back and continue only while gaps remain
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git reset --hard origin/main
+          python3 scripts/extract_guardian_repair_20260903.py --audit-only | tee audit-result.json
+          GAPS="$(python3 - <<'PY'
+          import json
+          print(len(json.load(open("audit-result.json"))["remaining_gaps"]))
+          PY
+          )"
+          echo "REMAINING_GAPS=$GAPS"
+          if [ "$GAPS" -gt 0 ] && [ "${{ steps.extract.outcome }}" = "success" ]; then
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/dispatches" -f event_type=extraction-repair-needed
+          fi
+          test "${{ steps.extract.outcome }}" = "success"
