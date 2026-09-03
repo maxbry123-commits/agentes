@@ -1,0 +1,92 @@
+services:
+  whoami-a:
+    image: traefik/whoamitcp
+    command:
+      - -name
+      - whoami-a
+      - -certFile
+      - /certs/whoami-a.crt
+      - -keyFile
+      - /certs/whoami-a.key
+    volumes:
+      - ./fixtures/tcp:/certs
+
+  whoami-b:
+    image: traefik/whoamitcp
+    command:
+      - -name
+      - whoami-b
+      - -certFile
+      - /certs/whoami-b.crt
+      - -keyFile
+      - /certs/whoami-b.key
+    volumes:
+      - ./fixtures/tcp:/certs
+
+  whoami-ab:
+    image: traefik/whoamitcp
+    command:
+      - -name
+      - whoami-ab
+      - -certFile
+      - /certs/whoami-b.crt
+      - -keyFile
+      - /certs/whoami-b.key
+    volumes:
+      - ./fixtures/tcp:/certs
+
+  whoami-no-cert:
+    image: traefik/whoamitcp
+    command:
+      - -name
+      - whoami-no-cert
+
+  whoami-no-tls:
+    image: traefik/whoamitcp
+    command:
+      - -name
+      - whoami-no-tls
+
+  whoami:
+    image: traefik/whoami:v1.12.0
+
+  whoami-banner:
+    image: traefik/whoamitcp
+    command:
+      - -name
+      - whoami-banner
+      - --banner
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_PASSWORD: test
+      POSTGRES_USER: test
+      POSTGRES_DB: test
+      POSTGRES_HOST_AUTH_METHOD: trust
+    command:
+      - postgres
+      - -c
+      - ssl=off
+
+  postgres-ssl:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_PASSWORD: test
+      POSTGRES_USER: test
+      POSTGRES_DB: test
+      POSTGRES_HOST_AUTH_METHOD: trust
+    entrypoint:
+      - sh
+      - -c
+      - |
+        apk add --no-cache openssl && \
+        openssl req -new -x509 -days 3650 -nodes \
+          -out /tmp/server.crt -keyout /tmp/server.key \
+          -subj '/CN=postgres-ssl' && \
+        chown 70:70 /tmp/server.crt /tmp/server.key && \
+        chmod 0600 /tmp/server.key && \
+        exec docker-entrypoint.sh postgres \
+          -c ssl=on \
+          -c ssl_cert_file=/tmp/server.crt \
+          -c ssl_key_file=/tmp/server.key

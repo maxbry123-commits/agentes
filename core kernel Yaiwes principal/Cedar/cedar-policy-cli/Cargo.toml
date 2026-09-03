@@ -1,0 +1,61 @@
+[package]
+name = "cedar-policy-cli"
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
+license.workspace = true
+categories.workspace = true
+description = "CLI interface for the Cedar Policy language."
+keywords.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+cedar-policy = { version = "=4.12.0", path = "../cedar-policy" }
+cedar-policy-formatter = { version = "=4.12.0", path = "../cedar-policy-formatter" }
+cedar-policy-symcc = { version = "0.6.0", path = "../cedar-policy-symcc", optional = true }
+clap = { version = "4", features = ["derive", "env"] }
+itertools = { version = "0.15", optional = true }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+miette = { version = "7.6.0", features = ["fancy"] }
+thiserror = "2.0"
+semver = "1.0.28"
+owo-colors = { version = "4.3.0", features = ["supports-colors"] }
+tokio = { version = "1.52", features = ["rt-multi-thread"], optional = true }
+
+[features]
+default = []
+experimental = ["permissive-validate", "partial-validate", "partial-eval", "tpe"]
+permissive-validate = ["cedar-policy/permissive-validate"]
+partial-validate = ["cedar-policy/partial-validate"]
+partial-eval = ["cedar-policy/partial-eval"]
+tpe = ["cedar-policy/tpe", "cedar-policy/partial-eval"]
+analyze = ["dep:cedar-policy-symcc", "dep:tokio", "dep:itertools"]
+
+[dev-dependencies]
+assert_cmd = "2.2"
+tempfile = "3"
+glob = "0.3.2"
+predicates = "3.1.3"
+rstest = "0.26.1"
+graphviz-rust = {version = "0.9.8",  default-features = false }
+insta = { version = "1.47.2", features = ["filters"] }
+
+# We override the name of the binary for src/main.rs, which otherwise would be
+# cedar-policy-cli (matching the crate name).
+[[bin]]
+name = "cedar"
+path = "src/main.rs"
+
+[package.metadata.dist]
+dist = true
+
+[lints]
+workspace = true
+
+
+[package.metadata.release]
+pre-release-replacements = [
+    { file = "CHANGELOG.md", search = "## Unreleased", replace = "## Unreleased\n\n## {{version}}", exactly = 1 },
+]

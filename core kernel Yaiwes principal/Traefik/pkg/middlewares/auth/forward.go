@@ -1,0 +1,537 @@
+package auth
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"maps"
+	"net"
+	"net/http"
+	"net/url"
+	"regexp"
+	"slices"
+	"strings"
+	"time"
+
+	"github.com/traefik/traefik/v3/pkg/config/dynamic"
+	"github.com/traefik/traefik/v3/pkg/middlewares"
+	"github.com/traefik/traefik/v3/pkg/middlewares/accesslog"
+	"github.com/traefik/traefik/v3/pkg/middlewares/forwardedheaders"
+	"github.com/traefik/traefik/v3/pkg/middlewares/observability"
+	"github.com/traefik/traefik/v3/pkg/observability/tracing"
+	"github.com/traefik/traefik/v3/pkg/proxy/httputil"
+	"github.com/traefik/traefik/v3/pkg/types"
+	"github.com/vulcand/oxy/v2/forward"
+	"github.com/vulcand/oxy/v2/utils"
+	"go.opentelemetry.io/otel/trace"
+)
+
+const typeNameForward = "ForwardAuth"
+
+var errResponseBodyTooLarge = errors.New("response body too large")
+
+// hopHeaders Hop-by-hop headers to be removed in the authentication request.
+// http://www.w3.org/Protocols/rfc2616/rfc2616-sec13.html
+// Proxy-Authorization header is forwarded to the authentication server (see https://tools.ietf.org/html/rfc7235#section-4.4).
+var hopHeaders = []string{
+	forward.Connection,
+	forward.KeepAlive,
+	forward.Te, // canonicalized version of "TE"
+	forward.Trailers,
+	forward.TransferEncoding,
+	forward.Upgrade,
+}
+
+var userAgentHeader = http.CanonicalHeaderKey("User-Agent")
+
+type forwardAuth struct {
+	address                  string
+	authResponseHeaders      []string
+	authResponseHeadersRegex *regexp.Regexp
+	next                     http.Handler
+	name                     string
+	client                   http.Client
+	trustForwardHeader       *bool
+	authRequestHeaders       []string
+	maxResponseBodySize      int64
+	addAuthCookiesToResponse map[string]struct{}
+	headerField              string
+	forwardBody              bool
+	maxBodySize              int64
+	preserveLocationHeader   bool
+	preserveRequestMethod    bool
+	authSigninURL            string
+}
+
+// NewForward creates a forward auth middleware.
+func NewForward(ctx context.Context, next http.Handler, config dynamic.ForwardAuth, name string) (http.Handler, error) {
+	logger := middlewares.GetLogger(ctx, name, typeNameForward)
+	logger.Debug().Msg("Creating middleware")
+
+	addAuthCookiesToResponse := make(map[string]struct{})
+	for _, cookieName := range config.AddAuthCookiesToResponse {
+		addAuthCookiesToResponse[cookieName] = struct{}{}
+	}
+
+	fa := &forwardAuth{
+		address:                  config.Address,
+		authResponseHeaders:      config.AuthResponseHeaders,
+		next:                     next,
+		name:                     name,
+		trustForwardHeader:       config.TrustForwardHeader,
+		authRequestHeaders:       config.AuthRequestHeaders,
+		addAuthCookiesToResponse: addAuthCookiesToResponse,
+		headerField:              config.HeaderField,
+		forwardBody:              config.ForwardBody,
+		maxBodySize:              dynamic.ForwardAuthDefaultMaxBodySize,
+		preserveLocationHeader:   config.PreserveLocationHeader,
+		preserveRequestMethod:    config.PreserveRequestMethod,
+		authSigninURL:            config.AuthSigninURL,
+	}
+
+	if config.MaxBodySize != nil {
+		fa.maxBodySize = *config.MaxBodySize
+	} else if fa.forwardBody {
+		logger.Warn().Msgf("maxBodySize is not configured with 'forwardBody: true', allowing unlimited request body size which can lead to DoS attacks and memory exhaustion. Please set an appropriate limit.")
+	}
+
+	if config.MaxResponseBodySize != nil {
+		fa.maxResponseBodySize = *config.MaxResponseBodySize
+	} else {
+		fa.maxResponseBodySize = -1
+		logger.Warn().Msg("maxResponseBodySize is not configured, allowing unlimited response body size which can lead to DoS attacks and memory exhaustion. Please set an appropriate limit.")
+	}
+
+	// Ensure our request client does not follow redirects
+	fa.client = http.Client{
+		CheckRedirect: func(r *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+		Timeout: 30 * time.Second,
+	}
+
+	if config.TLS != nil {
+		if config.TLS.CAOptional != nil {
+			logger.Warn().Msg("tls.CAOptional option is deprecated, TLS client authentication is a server side option, please remove any usage of this option.")
+		}
+
+		clientTLS := &types.ClientTLS{
+			CA:                 config.TLS.CA,
+			Cert:               config.TLS.Cert,
+			Key:                config.TLS.Key,
+			InsecureSkipVerify: config.TLS.InsecureSkipVerify,
+		}
+
+		tlsConfig, err := clientTLS.CreateTLSConfig(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("unable to create client TLS configuration: %w", err)
+		}
+
+		tr := http.DefaultTransport.(*http.Transport).Clone()
+		tr.TLSClientConfig = tlsConfig
+		fa.client.Transport = tr
+	}
+
+	if config.AuthResponseHeadersRegex != "" {
+		re, err := regexp.Compile(config.AuthResponseHeadersRegex)
+		if err != nil {
+			return nil, fmt.Errorf("error compiling regular expression %s: %w", config.AuthResponseHeadersRegex, err)
+		}
+		fa.authResponseHeadersRegex = re
+	}
+
+	if config.TrustForwardHeader == nil {
+		logger.Warn().Msg("trustForwardHeader is not configured: this creates an inconsistent security behavior where some X-Forwarded headers (e.g. X-Forwarded-For, X-Forwarded-Proto) are removed but others (e.g. X-Forwarded-Prefix) are forwarded untouched. Please set it to false to remove all X-Forwarded headers, or true to trust them all.")
+	} else if *config.TrustForwardHeader && len(fa.authRequestHeaders) > 0 {
+		fa.authRequestHeaders = append(fa.authRequestHeaders, slices.Collect(maps.Keys(forwardedheaders.XHeadersSet))...)
+	}
+
+	return fa, nil
+}
+
+func (fa *forwardAuth) GetTracingInformation() (string, string) {
+	return fa.name, typeNameForward
+}
+
+func (fa *forwardAuth) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+	logger := middlewares.GetLogger(req.Context(), fa.name, typeNameForward)
+
+	forwardReqMethod := http.MethodGet
+	if fa.preserveRequestMethod {
+		forwardReqMethod = req.Method
+	}
+
+	forwardReq, err := http.NewRequestWithContext(req.Context(), forwardReqMethod, fa.address, nil)
+	if err != nil {
+		logger.Debug().Err(err).Msgf("Error calling %s", fa.address)
+		observability.SetStatusErrorf(req.Context(), "Error calling %s. Cause %s", fa.address, err)
+
+		rw.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	forwardBody := fa.forwardBody
+	// When a CONNECT method has a body with an unknown length we consider the bytes as tunnel data.
+	// Therefore, we do not want to forward them to the auth server.
+	if req.Method == http.MethodConnect && req.ContentLength < 0 {
+		forwardBody = false
+	}
+
+	if forwardBody {
+		forwardReq.ContentLength = req.ContentLength
+		forwardReq.TransferEncoding = req.TransferEncoding
+
+		bodyBytes, err := fa.readBodyBytes(req)
+		if errors.Is(err, errBodyTooLarge) {
+			logger.Debug().Msgf("Request body is too large, maxBodySize: %d", fa.maxBodySize)
+
+			observability.SetStatusErrorf(req.Context(), "Request body is too large, maxBodySize: %d", fa.maxBodySize)
+			rw.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		if err != nil {
+			logger.Debug().Err(err).Msg("Error while reading body")
+
+			observability.SetStatusErrorf(req.Context(), "Error while reading Body: %s", err)
+			rw.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		// bodyBytes is nil when the request has no body.
+		if bodyBytes != nil {
+			req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+			forwardReq.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+		}
+	}
+
+	if fa.trustForwardHeader != nil {
+		writeHeader(req, forwardReq, *fa.trustForwardHeader, fa.authRequestHeaders)
+	} else {
+		oldWriteHeader(req, forwardReq, fa.authRequestHeaders)
+	}
+
+	var forwardSpan trace.Span
+	var tracer *tracing.Tracer
+	if tracer = tracing.TracerFromContext(req.Context()); tracer != nil && observability.TracingEnabled(req.Context()) {
+		var tracingCtx context.Context
+		tracingCtx, forwardSpan = tracer.Start(req.Context(), "AuthRequest", trace.WithSpanKind(trace.SpanKindClient))
+		defer forwardSpan.End()
+
+		forwardReq = forwardReq.WithContext(tracingCtx)
+
+		tracing.InjectContextIntoCarrier(forwardReq)
+		tracer.CaptureClientRequest(forwardSpan, forwardReq)
+	}
+
+	forwardResponse, forwardErr := fa.client.Do(forwardReq)
+	if forwardErr != nil {
+		logger.Error().Err(forwardErr).Msgf("Error calling %s", fa.address)
+		observability.SetStatusErrorf(req.Context(), "Error calling %s. Cause: %s", fa.address, forwardErr)
+
+		statusCode := http.StatusInternalServerError
+		if errors.Is(forwardErr, context.Canceled) {
+			statusCode = httputil.StatusClientClosedRequest
+		}
+
+		rw.WriteHeader(statusCode)
+		return
+	}
+	defer forwardResponse.Body.Close()
+
+	body, readError := fa.readResponseBodyBytes(forwardResponse)
+	if readError != nil {
+		if errors.Is(readError, errResponseBodyTooLarge) {
+			logger.Debug().Msgf("Response body is too large, maxResponseBodySize: %d", fa.maxResponseBodySize)
+
+			observability.SetStatusErrorf(req.Context(), "Response body is too large, maxResponseBodySize: %d", fa.maxResponseBodySize)
+			rw.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		logger.Debug().Err(readError).Msgf("Error reading body %s", fa.address)
+		observability.SetStatusErrorf(req.Context(), "Error reading body %s. Cause: %s", fa.address, readError)
+
+		rw.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	// Ending the forward request span as soon as the response is handled.
+	// If any errors happen earlier, this span will be close by the defer instruction.
+	if forwardSpan != nil {
+		forwardSpan.End()
+	}
+
+	if fa.headerField != "" {
+		if elems := forwardResponse.Header[http.CanonicalHeaderKey(fa.headerField)]; len(elems) > 0 {
+			logData := accesslog.GetLogData(req)
+			if logData != nil {
+				logData.Core[accesslog.ClientUsername] = elems[0]
+			}
+		}
+	}
+
+	// If auth server returns 401 and AuthSigninURL is configured, redirect to signin URL.
+	if fa.authSigninURL != "" && forwardResponse.StatusCode == http.StatusUnauthorized {
+		logger.Debug().Msgf("Redirecting to signin URL: %s", fa.authSigninURL)
+
+		tracer.CaptureResponse(forwardSpan, forwardResponse.Header, http.StatusFound, trace.SpanKindClient)
+		http.Redirect(rw, req, fa.authSigninURL, http.StatusFound)
+		return
+	}
+
+	// Pass the forward response's body and selected headers if it
+	// didn't return a response within the range of [200, 300).
+	if forwardResponse.StatusCode < http.StatusOK || forwardResponse.StatusCode >= http.StatusMultipleChoices {
+		logger.Debug().Msgf("Remote error %s. StatusCode: %d", fa.address, forwardResponse.StatusCode)
+
+		utils.CopyHeaders(rw.Header(), forwardResponse.Header)
+		utils.RemoveHeaders(rw.Header(), hopHeaders...)
+
+		redirectURL, err := fa.redirectURL(forwardResponse)
+		if err != nil {
+			if !errors.Is(err, http.ErrNoLocation) {
+				logger.Debug().Err(err).Msgf("Error reading response location header %s", fa.address)
+				observability.SetStatusErrorf(req.Context(), "Error reading response location header %s. Cause: %s", fa.address, err)
+
+				rw.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+		} else if redirectURL.String() != "" {
+			// Set the location in our response if one was sent back.
+			rw.Header().Set("Location", redirectURL.String())
+		}
+
+		tracer.CaptureResponse(forwardSpan, forwardResponse.Header, forwardResponse.StatusCode, trace.SpanKindClient)
+		rw.WriteHeader(forwardResponse.StatusCode)
+
+		if _, err = rw.Write(body); err != nil {
+			logger.Error().Err(err).Send()
+		}
+		return
+	}
+
+	// Only the operator-listed authResponseHeaders are stripped and replaced with
+	// the auth server's verified values. Any other header the client sends is
+	// forwarded to the backend unchanged, mirroring ingress-nginx's
+	// auth-response-headers semantics. By design, Traefik asserts no identity the
+	// operator did not opt into: trusting unlisted client headers downstream is a
+	// backend misconfiguration, not a spoofing flaw here.
+	// Note: the header names aliasing the authResponseHeaders (e.g. X_Auth_User or X.Auth.User) are not handled here,
+	// as the aliasHeadersStrategy entry point option is expected to be enabled to prevent header spoofing.
+	for _, headerName := range fa.authResponseHeaders {
+		headerKey := http.CanonicalHeaderKey(headerName)
+		req.Header.Del(headerKey)
+		if len(forwardResponse.Header[headerKey]) > 0 {
+			req.Header[headerKey] = append([]string(nil), forwardResponse.Header[headerKey]...)
+		}
+	}
+
+	if fa.authResponseHeadersRegex != nil {
+		for headerKey := range req.Header {
+			if fa.authResponseHeadersRegex.MatchString(headerKey) {
+				req.Header.Del(headerKey)
+			}
+		}
+
+		for headerKey, headerValues := range forwardResponse.Header {
+			if fa.authResponseHeadersRegex.MatchString(headerKey) {
+				req.Header[headerKey] = append([]string(nil), headerValues...)
+			}
+		}
+	}
+
+	tracer.CaptureResponse(forwardSpan, forwardResponse.Header, forwardResponse.StatusCode, trace.SpanKindClient)
+
+	req.RequestURI = req.URL.RequestURI()
+
+	authCookies := forwardResponse.Cookies()
+	if len(authCookies) == 0 {
+		fa.next.ServeHTTP(rw, req)
+		return
+	}
+
+	fa.next.ServeHTTP(middlewares.NewResponseModifier(rw, req, fa.buildModifier(authCookies)), req)
+}
+
+func (fa *forwardAuth) redirectURL(forwardResponse *http.Response) (*url.URL, error) {
+	if !fa.preserveLocationHeader {
+		return forwardResponse.Location()
+	}
+
+	// Preserve the Location header if it exists.
+	if lv := forwardResponse.Header.Get("Location"); lv != "" {
+		return url.Parse(lv)
+	}
+	return nil, http.ErrNoLocation
+}
+
+func (fa *forwardAuth) buildModifier(authCookies []*http.Cookie) func(res *http.Response) error {
+	return func(res *http.Response) error {
+		cookies := res.Cookies()
+		res.Header.Del("Set-Cookie")
+
+		for _, cookie := range cookies {
+			if _, found := fa.addAuthCookiesToResponse[cookie.Name]; !found {
+				res.Header.Add("Set-Cookie", cookie.String())
+			}
+		}
+
+		for _, cookie := range authCookies {
+			if _, found := fa.addAuthCookiesToResponse[cookie.Name]; found {
+				res.Header.Add("Set-Cookie", cookie.String())
+			}
+		}
+
+		return nil
+	}
+}
+
+var errBodyTooLarge = errors.New("request body too large")
+
+func (fa *forwardAuth) readBodyBytes(req *http.Request) ([]byte, error) {
+	if fa.maxBodySize < 0 {
+		return io.ReadAll(req.Body)
+	}
+
+	body := make([]byte, fa.maxBodySize+1)
+	n, err := io.ReadFull(req.Body, body)
+	if errors.Is(err, io.EOF) {
+		return nil, nil
+	}
+	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) {
+		return nil, fmt.Errorf("reading body bytes: %w", err)
+	}
+	if errors.Is(err, io.ErrUnexpectedEOF) {
+		return body[:n], nil
+	}
+	return nil, errBodyTooLarge
+}
+
+func (fa *forwardAuth) readResponseBodyBytes(res *http.Response) ([]byte, error) {
+	if fa.maxResponseBodySize < 0 {
+		return io.ReadAll(res.Body)
+	}
+
+	body := make([]byte, fa.maxResponseBodySize+1)
+	n, err := io.ReadFull(res.Body, body)
+	if errors.Is(err, io.EOF) {
+		return nil, nil
+	}
+	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) {
+		return nil, fmt.Errorf("reading response body bytes: %w", err)
+	}
+	if errors.Is(err, io.ErrUnexpectedEOF) {
+		return body[:n], nil
+	}
+	return nil, errResponseBodyTooLarge
+}
+
+func writeHeader(req, forwardReq *http.Request, trustForwardHeader bool, allowedHeaders []string) {
+	utils.CopyHeaders(forwardReq.Header, req.Header)
+
+	RemoveConnectionHeaders(forwardReq)
+	utils.RemoveHeaders(forwardReq.Header, hopHeaders...)
+
+	if !trustForwardHeader {
+		forwardedheaders.DeleteXForwardedHeaders(forwardReq.Header)
+	}
+
+	if _, ok := req.Header[userAgentHeader]; !ok {
+		// If the incoming request doesn't have a User-Agent header set,
+		// don't send the default Go HTTP client User-Agent for the forwarded request.
+		forwardReq.Header.Set(userAgentHeader, "")
+	}
+
+	forwardReq.Header = filterForwardRequestHeaders(forwardReq.Header, allowedHeaders)
+
+	if clientIP, _, err := net.SplitHostPort(req.RemoteAddr); err == nil {
+		if prior, ok := forwardReq.Header[forwardedheaders.XForwardedFor]; ok {
+			clientIP = strings.Join(prior, ", ") + ", " + clientIP
+		}
+		forwardReq.Header.Set(forwardedheaders.XForwardedFor, clientIP)
+	}
+
+	if _, ok := forwardReq.Header[forwardedheaders.XForwardedMethod]; !ok {
+		forwardReq.Header.Set(forwardedheaders.XForwardedMethod, req.Method)
+	}
+
+	if _, ok := forwardReq.Header[forwardedheaders.XForwardedProto]; !ok {
+		forwardReq.Header.Set(forwardedheaders.XForwardedProto, "http")
+		if req.TLS != nil {
+			forwardReq.Header.Set(forwardedheaders.XForwardedProto, "https")
+		}
+	}
+
+	if _, ok := forwardReq.Header[forwardedheaders.XForwardedPort]; !ok {
+		forwardReq.Header.Set(forwardedheaders.XForwardedPort, forwardedPort(req, forwardReq))
+	}
+
+	if _, ok := forwardReq.Header[forwardedheaders.XForwardedHost]; !ok {
+		forwardReq.Header.Set(forwardedheaders.XForwardedHost, req.Host)
+	}
+
+	if _, ok := forwardReq.Header[forwardedheaders.XForwardedURI]; !ok {
+		forwardReq.Header.Set(forwardedheaders.XForwardedURI, req.URL.RequestURI())
+	}
+}
+
+// oldWriteHeader is the legacy implementation of writeHeader, which is used when TrustForwardHeader is not set (old false behavior).
+// It is kept to avoid breaking existing configurations that rely on the previous behavior.
+func oldWriteHeader(req, forwardReq *http.Request, allowedHeaders []string) {
+	utils.CopyHeaders(forwardReq.Header, req.Header)
+
+	RemoveConnectionHeaders(forwardReq)
+	utils.RemoveHeaders(forwardReq.Header, hopHeaders...)
+
+	forwardReq.Header = filterForwardRequestHeaders(forwardReq.Header, allowedHeaders)
+
+	if clientIP, _, err := net.SplitHostPort(req.RemoteAddr); err == nil {
+		forwardReq.Header.Set(forwardedheaders.XForwardedFor, clientIP)
+	}
+
+	proto := "http"
+	if req.TLS != nil {
+		proto = "https"
+	}
+	forwardReq.Header.Set(forwardedheaders.XForwardedProto, proto)
+
+	forwardReq.Header.Set(forwardedheaders.XForwardedMethod, req.Method)
+	forwardReq.Header.Set(forwardedheaders.XForwardedHost, req.Host)
+	forwardReq.Header.Set(forwardedheaders.XForwardedURI, req.URL.RequestURI())
+}
+
+func filterForwardRequestHeaders(forwardRequestHeaders http.Header, allowedHeaders []string) http.Header {
+	if len(allowedHeaders) == 0 {
+		return forwardRequestHeaders
+	}
+
+	filteredHeaders := http.Header{}
+	for _, headerName := range allowedHeaders {
+		if values := forwardRequestHeaders.Values(headerName); len(values) > 0 {
+			filteredHeaders[http.CanonicalHeaderKey(headerName)] = values
+		}
+	}
+
+	return filteredHeaders
+}
+
+func forwardedPort(req, forwardReq *http.Request) string {
+	if req == nil {
+		return ""
+	}
+
+	if _, port, err := net.SplitHostPort(req.Host); err == nil && port != "" {
+		return port
+	}
+
+	if forwardReq.Header.Get(forwardedheaders.XForwardedProto) == "https" || forwardReq.Header.Get(forwardedheaders.XForwardedProto) == "wss" {
+		return "443"
+	}
+
+	if req.TLS != nil {
+		return "443"
+	}
+
+	return "80"
+}

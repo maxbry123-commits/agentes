@@ -1,0 +1,455 @@
+package service
+
+import (
+	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"errors"
+	"fmt"
+	"net"
+	"net/http"
+	"reflect"
+	"slices"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/rs/zerolog/log"
+	"github.com/spiffe/go-spiffe/v2/bundle/x509bundle"
+	"github.com/spiffe/go-spiffe/v2/spiffeid"
+	"github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
+	"github.com/spiffe/go-spiffe/v2/svid/x509svid"
+	"github.com/traefik/traefik/v3/pkg/config/dynamic"
+	traefiktls "github.com/traefik/traefik/v3/pkg/tls"
+	"github.com/traefik/traefik/v3/pkg/types"
+)
+
+// SpiffeX509Source allows to retrieve a x509 SVID and bundle.
+type SpiffeX509Source interface {
+	x509svid.Source
+	x509bundle.Source
+}
+
+// TransportManager handles transports for backend communication.
+type TransportManager struct {
+	rtLock        sync.RWMutex
+	roundTrippers map[string]http.RoundTripper
+	configs       map[string]*dynamic.ServersTransport
+	tlsConfigs    map[string]*tls.Config
+
+	spiffeX509Source SpiffeX509Source
+}
+
+// NewTransportManager creates a new TransportManager.
+func NewTransportManager(spiffeX509Source SpiffeX509Source) *TransportManager {
+	return &TransportManager{
+		roundTrippers:    make(map[string]http.RoundTripper),
+		configs:          make(map[string]*dynamic.ServersTransport),
+		tlsConfigs:       make(map[string]*tls.Config),
+		spiffeX509Source: spiffeX509Source,
+	}
+}
+
+// Update updates the transport configurations.
+func (t *TransportManager) Update(newConfigs map[string]*dynamic.ServersTransport) {
+	t.rtLock.Lock()
+	defer t.rtLock.Unlock()
+
+	for configName, config := range t.configs {
+		newConfig, ok := newConfigs[configName]
+		if !ok {
+			delete(t.configs, configName)
+			delete(t.roundTrippers, configName)
+			delete(t.tlsConfigs, configName)
+			continue
+		}
+
+		if reflect.DeepEqual(newConfig, config) {
+			continue
+		}
+
+		var (
+			err       error
+			tlsConfig *tls.Config
+		)
+		if tlsConfig, err = t.createTLSConfig(newConfig); err != nil {
+			log.Error().Err(err).Msgf("Could not configure HTTP Transport %s TLS configuration, fallback on default TLS config", configName)
+		}
+		t.tlsConfigs[configName] = tlsConfig
+
+		t.roundTrippers[configName], err = t.createRoundTripper(newConfig, tlsConfig)
+		if err != nil {
+			log.Error().Err(err).Msgf("Could not configure HTTP Transport %s, fallback on default transport", configName)
+			t.roundTrippers[configName] = http.DefaultTransport
+		}
+	}
+
+	for newConfigName, newConfig := range newConfigs {
+		if _, ok := t.configs[newConfigName]; ok {
+			continue
+		}
+
+		var (
+			err       error
+			tlsConfig *tls.Config
+		)
+		if tlsConfig, err = t.createTLSConfig(newConfig); err != nil {
+			log.Error().Err(err).Msgf("Could not configure HTTP Transport %s TLS configuration, fallback on default TLS config", newConfigName)
+		}
+		t.tlsConfigs[newConfigName] = tlsConfig
+
+		t.roundTrippers[newConfigName], err = t.createRoundTripper(newConfig, tlsConfig)
+		if err != nil {
+			log.Error().Err(err).Msgf("Could not configure HTTP Transport %s, fallback on default transport", newConfigName)
+			t.roundTrippers[newConfigName] = http.DefaultTransport
+		}
+	}
+
+	t.configs = newConfigs
+}
+
+// GetRoundTripper gets a roundtripper corresponding to the given transport name.
+func (t *TransportManager) GetRoundTripper(name string) (http.RoundTripper, error) {
+	if len(name) == 0 {
+		name = "default@internal"
+	}
+
+	t.rtLock.RLock()
+	defer t.rtLock.RUnlock()
+
+	if rt, ok := t.roundTrippers[name]; ok {
+		return rt, nil
+	}
+
+	return nil, fmt.Errorf("servers transport not found %s", name)
+}
+
+// Get gets transport by name.
+func (t *TransportManager) Get(name string) (*dynamic.ServersTransport, error) {
+	if len(name) == 0 {
+		name = "default@internal"
+	}
+
+	t.rtLock.RLock()
+	defer t.rtLock.RUnlock()
+
+	if rt, ok := t.configs[name]; ok {
+		return rt, nil
+	}
+
+	return nil, fmt.Errorf("servers transport not found %s", name)
+}
+
+// GetTLSConfig gets a TLS config  corresponding to the given transport name.
+func (t *TransportManager) GetTLSConfig(name string) (*tls.Config, error) {
+	if len(name) == 0 {
+		name = "default@internal"
+	}
+
+	t.rtLock.RLock()
+	defer t.rtLock.RUnlock()
+
+	if rt, ok := t.tlsConfigs[name]; ok {
+		return rt, nil
+	}
+
+	return nil, fmt.Errorf("tls config not found %s", name)
+}
+
+func (t *TransportManager) createTLSConfig(cfg *dynamic.ServersTransport) (*tls.Config, error) {
+	var config *tls.Config
+	if cfg.Spiffe != nil {
+		if t.spiffeX509Source == nil {
+			return nil, errors.New("SPIFFE is enabled for this transport, but not configured")
+		}
+
+		spiffeAuthorizer, err := buildSpiffeAuthorizer(cfg.Spiffe)
+		if err != nil {
+			return nil, fmt.Errorf("unable to build SPIFFE authorizer: %w", err)
+		}
+
+		config = tlsconfig.MTLSClientConfig(t.spiffeX509Source, t.spiffeX509Source, spiffeAuthorizer)
+	}
+
+	if cfg.InsecureSkipVerify || len(cfg.RootCAs) > 0 || len(cfg.ServerName) > 0 || len(cfg.Certificates) > 0 || cfg.PeerCertURI != "" || len(cfg.PeerCertSANs) > 0 || len(cfg.CipherSuites) > 0 || cfg.MaxVersion != "" || cfg.MinVersion != "" {
+		if config != nil {
+			return nil, errors.New("TLS and SPIFFE configuration cannot be defined at the same time")
+		}
+
+		// crypto/tls treats a nil CipherSuites as "use the defaults" but an
+		// empty non-nil slice as "offer no TLS 1.0–1.2 cipher", so this must
+		// stay nil until at least one valid cipher is appended. An invalid
+		// cipher is rejected outright (consistent with TLSOption handling in
+		// pkg/tls/tlsmanager.go) to avoid silently weakening the configured
+		// TLS policy.
+		var cipherSuites []uint16
+		for _, cipher := range cfg.CipherSuites {
+			cipherID, exists := traefiktls.CipherSuites[cipher]
+			if !exists {
+				return nil, fmt.Errorf("invalid CipherSuite: %s", cipher)
+			}
+			cipherSuites = append(cipherSuites, cipherID)
+		}
+
+		var minVersion uint16
+		if cfg.MinVersion != "" {
+			value, exists := traefiktls.MinVersion[cfg.MinVersion]
+			if !exists {
+				return nil, fmt.Errorf("invalid TLS minimum version: %s", cfg.MinVersion)
+			}
+			minVersion = value
+		}
+
+		var maxVersion uint16
+		if cfg.MaxVersion != "" {
+			value, exists := traefiktls.MaxVersion[cfg.MaxVersion]
+			if !exists {
+				return nil, fmt.Errorf("invalid TLS maximum version: %s", cfg.MaxVersion)
+			}
+			maxVersion = value
+		}
+
+		if minVersion > maxVersion {
+			return nil, fmt.Errorf("TLS minimum version %s is above the maximum version %s", cfg.MinVersion, cfg.MaxVersion)
+		}
+
+		config = &tls.Config{
+			ServerName:         cfg.ServerName,
+			InsecureSkipVerify: cfg.InsecureSkipVerify,
+			RootCAs:            createRootCACertPool(cfg.RootCAs),
+			Certificates:       cfg.Certificates.GetCertificates(),
+			CipherSuites:       cipherSuites,
+			MinVersion:         minVersion,
+			MaxVersion:         maxVersion,
+		}
+
+		peerCertSANs := make([]traefiktls.SAN, len(cfg.PeerCertSANs))
+		copy(peerCertSANs, cfg.PeerCertSANs)
+
+		if cfg.PeerCertURI != "" {
+			log.Warn().Msg("PeerCertURI option is deprecated, please use PeerCertSANs instead")
+			peerCertSANs = append(peerCertSANs, traefiktls.SAN{
+				Type:  traefiktls.SANURIType,
+				Value: cfg.PeerCertURI,
+			})
+		}
+
+		if len(peerCertSANs) > 0 {
+			config.VerifyPeerCertificate = func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
+				return traefiktls.VerifyPeerCertificate(peerCertSANs, config.RootCAs, rawCerts)
+			}
+		}
+	}
+
+	return config, nil
+}
+
+type connWithTimeouts struct {
+	net.Conn
+
+	readTimeout  time.Duration
+	writeTimeout time.Duration
+}
+
+func (c connWithTimeouts) Read(b []byte) (n int, err error) {
+	if c.readTimeout > 0 {
+		// Reset deadline before after each successive read.
+		_ = c.Conn.SetReadDeadline(time.Now().Add(c.readTimeout))
+		defer c.Conn.SetReadDeadline(time.Time{}) //nolint:errcheck
+	}
+
+	n, err = c.Conn.Read(b)
+	if err != nil {
+		return n, err
+	}
+
+	return n, nil
+}
+
+func (c connWithTimeouts) Write(b []byte) (n int, err error) {
+	if c.writeTimeout > 0 {
+		// Reset deadline before after each successive write.
+		_ = c.Conn.SetWriteDeadline(time.Now().Add(c.writeTimeout))
+		defer c.Conn.SetWriteDeadline(time.Time{}) //nolint:errcheck
+	}
+
+	n, err = c.Conn.Write(b)
+	if err != nil {
+		return n, err
+	}
+
+	return n, nil
+}
+
+func customDialContext(d *net.Dialer, cfg *dynamic.ForwardingTimeouts) func(ctx context.Context, network string, address string) (net.Conn, error) {
+	return func(ctx context.Context, network, address string) (net.Conn, error) {
+		conn, err := d.DialContext(ctx, network, address)
+
+		if cfg.ReadTimeout <= 0 && cfg.WriteTimeout <= 0 {
+			return conn, err
+		}
+
+		custom := &connWithTimeouts{
+			Conn:         conn,
+			readTimeout:  time.Duration(cfg.ReadTimeout),
+			writeTimeout: time.Duration(cfg.WriteTimeout),
+		}
+		return custom, err
+	}
+}
+
+// createRoundTripper creates an http.RoundTripper configured with the Transport configuration settings.
+// For the settings that can't be configured in Traefik it uses the default http.Transport settings.
+// An exception to this is the MaxIdleConns setting as we only provide the option MaxIdleConnsPerHost in Traefik at this point in time.
+// Setting this value to the default of 100 could lead to confusing behavior and backwards compatibility issues.
+func (t *TransportManager) createRoundTripper(cfg *dynamic.ServersTransport, tlsConfig *tls.Config) (http.RoundTripper, error) {
+	if cfg == nil {
+		return nil, errors.New("no transport configuration given")
+	}
+
+	dialer := &net.Dialer{
+		Timeout:   30 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}
+
+	if cfg.ForwardingTimeouts != nil {
+		dialer.Timeout = time.Duration(cfg.ForwardingTimeouts.DialTimeout)
+	}
+
+	transport := &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		DialContext:           dialer.DialContext,
+		MaxIdleConnsPerHost:   cfg.MaxIdleConnsPerHost,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+		ReadBufferSize:        64 * 1024,
+		WriteBufferSize:       64 * 1024,
+		TLSClientConfig:       tlsConfig,
+	}
+
+	if cfg.ForwardingTimeouts != nil {
+		transport.ResponseHeaderTimeout = time.Duration(cfg.ForwardingTimeouts.ResponseHeaderTimeout)
+		transport.IdleConnTimeout = time.Duration(cfg.ForwardingTimeouts.IdleConnTimeout)
+		transport.DialContext = customDialContext(dialer, cfg.ForwardingTimeouts)
+		// The forwarding timeout names come from the x/net/http2.Transport fields (ReadIdleTimeout/PingTimeout),
+		// which were used to configure the HTTP/2 health checks before the net/http native support (Go 1.24).
+		// HTTP2Config.SendPingTimeout carries the same semantics as ReadIdleTimeout:
+		// the delay without any frame received on a connection after which a ping health check is sent.
+		// The field was renamed when the HTTP/2 configuration moved to net/http, see https://go.dev/issue/67813.
+		// The HTTP2 config does not enable HTTP2 protocol.
+		transport.HTTP2 = &http.HTTP2Config{
+			SendPingTimeout: time.Duration(cfg.ForwardingTimeouts.ReadIdleTimeout),
+			PingTimeout:     time.Duration(cfg.ForwardingTimeouts.PingTimeout),
+		}
+	}
+
+	// Return directly HTTP/1.1 transport when HTTP/2 is disabled
+	if cfg.DisableHTTP2 {
+		return &kerberosRoundTripper{
+			OriginalRoundTripper: transport,
+			new: func() http.RoundTripper {
+				return transport.Clone()
+			},
+		}, nil
+	}
+
+	rt := newSmartRoundTripper(transport)
+	return &kerberosRoundTripper{
+		OriginalRoundTripper: rt,
+		new: func() http.RoundTripper {
+			return rt.Clone()
+		},
+	}, nil
+}
+
+type stickyRoundTripper struct {
+	RoundTripper http.RoundTripper
+}
+
+type transportKeyType string
+
+var transportKey transportKeyType = "transport"
+
+func AddTransportOnContext(ctx context.Context) context.Context {
+	return context.WithValue(ctx, transportKey, &stickyRoundTripper{})
+}
+
+type kerberosRoundTripper struct {
+	new                  func() http.RoundTripper
+	OriginalRoundTripper http.RoundTripper
+}
+
+func (k *kerberosRoundTripper) RoundTrip(request *http.Request) (*http.Response, error) {
+	value, ok := request.Context().Value(transportKey).(*stickyRoundTripper)
+	if !ok {
+		return k.OriginalRoundTripper.RoundTrip(request)
+	}
+
+	if value.RoundTripper != nil {
+		return value.RoundTripper.RoundTrip(request)
+	}
+
+	resp, err := k.OriginalRoundTripper.RoundTrip(request)
+
+	// If we found that we are authenticating with Kerberos (Negotiate) or NTLM.
+	// We put a dedicated roundTripper in the ConnContext.
+	// This will stick the next calls to the same connection with the backend.
+	if err == nil && containsNTLMorNegotiate(resp.Header.Values("WWW-Authenticate")) {
+		value.RoundTripper = k.new()
+	}
+	return resp, err
+}
+
+func containsNTLMorNegotiate(h []string) bool {
+	return slices.ContainsFunc(h, func(s string) bool {
+		return strings.HasPrefix(s, "NTLM") || strings.HasPrefix(s, "Negotiate")
+	})
+}
+
+func createRootCACertPool(rootCAs []types.FileOrContent) *x509.CertPool {
+	if len(rootCAs) == 0 {
+		return nil
+	}
+
+	roots := x509.NewCertPool()
+
+	for _, cert := range rootCAs {
+		certContent, err := cert.Read()
+		if err != nil {
+			log.Error().Err(err).Msg("Error while read RootCAs")
+			continue
+		}
+		roots.AppendCertsFromPEM(certContent)
+	}
+
+	return roots
+}
+
+func buildSpiffeAuthorizer(cfg *dynamic.Spiffe) (tlsconfig.Authorizer, error) {
+	switch {
+	case len(cfg.IDs) > 0:
+		spiffeIDs := make([]spiffeid.ID, 0, len(cfg.IDs))
+		for _, rawID := range cfg.IDs {
+			id, err := spiffeid.FromString(rawID)
+			if err != nil {
+				return nil, fmt.Errorf("invalid SPIFFE ID: %w", err)
+			}
+
+			spiffeIDs = append(spiffeIDs, id)
+		}
+
+		return tlsconfig.AuthorizeOneOf(spiffeIDs...), nil
+
+	case cfg.TrustDomain != "":
+		trustDomain, err := spiffeid.TrustDomainFromString(cfg.TrustDomain)
+		if err != nil {
+			return nil, fmt.Errorf("invalid SPIFFE trust domain: %w", err)
+		}
+
+		return tlsconfig.AuthorizeMemberOf(trustDomain), nil
+
+	default:
+		return tlsconfig.AuthorizeAny(), nil
+	}
+}

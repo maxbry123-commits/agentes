@@ -1,0 +1,139 @@
+[package]
+name = "cedar-policy"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+license.workspace = true
+categories.workspace = true
+description = "Cedar is a language for defining permissions as policies, which describe who should have access to what."
+keywords.workspace = true
+homepage.workspace = true
+repository = "https://github.com/cedar-policy/cedar"
+
+[dependencies]
+cedar-policy-core = { version = "=4.12.0", path = "../cedar-policy-core" }
+cedar-policy-formatter = { version = "=4.12.0", path = "../cedar-policy-formatter" }
+ref-cast = "1.0"
+serde = { version = "1.0", features = ["derive", "rc"] }
+serde_json = "1.0"
+itertools = "0.15"
+miette = "7.6.0"
+thiserror = "2.0"
+smol_str = { version = "0.3", features = ["serde"] }
+dhat = { version = "0.3.2", optional = true }
+serde_with = "3.21.0"
+nonempty = { version = "0.12", optional = true }
+prost = { version = "0.14", optional = true }
+linked-hash-map = { version = "0.5.6", features = ["serde_impl"] }
+linked_hash_set = "0.1.6"
+
+# wasm dependencies
+# Intentionally not updated to 0.5.5, see issue #1744
+tsify = { version = "0.4.5", optional = true }
+wasm-bindgen = { version = "0.2.97", optional = true }
+semver = "1.0.28"
+
+[build-dependencies]
+prost-build = { version = "0.14", optional = true }
+
+[features]
+# by default, enable all Cedar extensions, but not other crate features
+default = ["ipaddr", "decimal", "datetime"]
+
+# Cedar extensions
+ipaddr = ["cedar-policy-core/ipaddr"]
+decimal = ["cedar-policy-core/decimal"]
+datetime = ["cedar-policy-core/datetime"]
+
+# Features for memory or runtime profiling
+heap-profiling = ["dep:dhat"]
+corpus-timing = []
+
+# Experimental features.
+# Enable all experimental features with `cargo build --features "experimental"`
+experimental = [
+    "partial-eval",
+    "permissive-validate",
+    "partial-validate",
+    "entity-manifest",
+    "protobufs",
+    "tolerant-ast",
+    "extended-schema",
+    "deprecated-schema-compat",
+    "tpe",
+    "variadic-is-in-range",
+]
+entity-manifest = ["cedar-policy-core/entity-manifest"]
+partial-eval = ["cedar-policy-core/partial-eval"]
+permissive-validate = []
+partial-validate = ["cedar-policy-core/partial-validate"]
+protobufs = ["dep:nonempty", "dep:prost", "dep:prost-build"]
+wasm = ["tsify", "wasm-bindgen"]
+tolerant-ast = [
+    "cedar-policy-core/tolerant-ast",
+    "cedar-policy-formatter/tolerant-ast",
+]
+extended-schema = ["cedar-policy-core/extended-schema"]
+# Not exactly experimental but rather a feature for supporting deprecated
+# parsing behavior. API is stable, but hopefully will be removed in a future
+# release.
+deprecated-schema-compat = []
+tpe = ["cedar-policy-core/tpe"]
+variadic-is-in-range = ["cedar-policy-core/variadic-is-in-range"]
+
+[dev-dependencies]
+miette = { version = "7.6.0", features = ["fancy"] }
+cool_asserts = "2.0"
+similar-asserts = "2.0.0"
+criterion = "0.8"
+globset = "0.4"
+insta = { version = "1.47.2", features = ["glob", "json"] }
+cedar-policy-core = { version = "=4.12.0", features = [
+    "test-util",
+], path = "../cedar-policy-core" }
+# NON-CRYPTOGRAPHIC random number generators
+oorandom = "11.1"
+assert-json-diff = "2.0"
+
+proptest = "1.11.0"
+
+[[bench]]
+name = "cedar_benchmarks"
+harness = false
+
+[[bench]]
+name = "attr_errors"
+harness = false
+
+[[bench]]
+name = "entity_attr_errors"
+harness = false
+
+[[bench]]
+name = "entity_parsing"
+harness = false
+
+
+[[bench]]
+name = "extension_fn_validation"
+harness = false
+
+[[bench]]
+name = "deeply_nested_est"
+harness = false
+
+[[bench]]
+name = "from_ast"
+harness = false
+
+[package.metadata.docs.rs]
+features = ["experimental"]
+rustdoc-args = ["--cfg", "docsrs"]
+
+[lints]
+workspace = true
+
+[package.metadata.release]
+pre-release-replacements = [
+    { file = "CHANGELOG.md", search = "## \\[Unreleased\\]\n\nCedar Language Version: TBD", replace = "## [Unreleased]\n\nCedar Language Version: TBD\n\n## [{{version}}] - Coming soon\n\nCedar Language Version: $$CEDAR_LANGUAGE_VERSION$$", exactly = 1 },
+]
