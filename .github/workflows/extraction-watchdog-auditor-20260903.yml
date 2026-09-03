@@ -11,7 +11,7 @@ on:
       - ".github/workflows/extraction-watchdog-auditor-20260903.yml"
 
 permissions:
-  contents: read
+  contents: write
   actions: write
 
 concurrency:
