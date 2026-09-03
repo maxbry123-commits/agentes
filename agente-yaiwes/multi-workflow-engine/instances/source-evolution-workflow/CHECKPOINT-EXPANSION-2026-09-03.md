@@ -42,3 +42,17 @@ Fecha de corte: 2026-09-03 UTC
 - Ejecutar tres simulaciones, tres refutaciones y E2E.
 - Probar hot-swap y rollback.
 - Emitir checkpoint final únicamente con cero GAPS y cero jobs activos.
+
+## Iteración — microkernel paralelo
+
+- Run de reparación del plugin bus y provenance: **PASS**.
+  https://github.com/maxbry123-commits/agentes/actions/runs/33704929697
+- El run inicial de adopción falló únicamente en un predicado de deduplicación demasiado amplio; las tres copias y sus SHA habían pasado antes del gate.
+- Reparación nueva y aislada, con identidad `URL + commit + destino`:
+  https://github.com/maxbry123-commits/agentes/actions/runs/33706085153
+- Estado de la reparación al corte: `IN_PROGRESS`.
+- Añadido `README.md` operativo inspirado en los patrones de contexto de Claude Code y workspace de OpenClaw.
+- Añadido microkernel paralelo con autorización por huella, concurrencia limitada, timeout, proceso sin shell, entorno mínimo, ledger nuevo y aislamiento de fallos.
+- Pruebas locales: `4/4 PASS`; la prueba CI permanece pendiente dentro del run activo.
+- Cableado actualizado en ambos sentidos entre `source-evolution-workflow` y `extension-kernel/plugin-bus`.
+- Candidatos evaluados: Inspect AI/Sandboxing recomendado previa deduplicación/autorización; Agent Lightning y ART diferidos; LangMem solapado con MemOS; AnyIO innecesario en esta versión.
