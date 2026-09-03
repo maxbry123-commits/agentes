@@ -4,7 +4,7 @@ Fecha de corte: 2026-09-03 UTC
 
 ## Estado
 
-`IN_PROGRESS` — no declarar 100% PASS mientras existan jobs activos o pruebas pendientes.
+`VERIFIED_CLOSED` — 100% PASS con evidencia E2E.
 
 ## Completado
 
@@ -56,3 +56,22 @@ Fecha de corte: 2026-09-03 UTC
 - Pruebas locales: `4/4 PASS`; la prueba CI permanece pendiente dentro del run activo.
 - Cableado actualizado en ambos sentidos entre `source-evolution-workflow` y `extension-kernel/plugin-bus`.
 - Candidatos evaluados: Inspect AI/Sandboxing recomendado previa deduplicación/autorización; Agent Lightning y ART diferidos; LangMem solapado con MemOS; AnyIO innecesario en esta versión.
+
+
+## Cierre verificado — 2026-09-03
+
+Estado final: `VERIFIED_CLOSED`
+
+- Reparación aislada Inspect 03: PASS — https://github.com/maxbry123-commits/agentes/actions/runs/33719148707
+- Verificación final E2E: PASS — https://github.com/maxbry123-commits/agentes/actions/runs/33720323255
+- Plugin BUS: 9/9 pruebas PASS.
+- Microkernel paralelo: 4/4 pruebas PASS.
+- Contratos, Registry, Adapter, BUS y Schema: PASS.
+- Watchdog/health, autorización y sandbox: PASS.
+- Hot-swap y rollback/desenchufe: PASS.
+- Inspect AI: commit, licencia MIT y SHA256 verificados.
+- Inspect Sandboxing: commit y SHA256 verificados; sin licencia declarada, permanece DOCUMENTATION_ONLY y ejecución bloqueada.
+- Read-back desde `main`: PASS.
+- Jobs activos al cierre: 0.
+- GAPS: 0.
+- Colisiones: 0.
