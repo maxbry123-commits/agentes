@@ -1,0 +1,12 @@
+{
+  "deleteDeployment": {
+    "__typename": "DagsterCloudDeployment",
+    "agentType": "HYBRID",
+    "deploymentId": 300001,
+    "deploymentName": "feature-add-auth",
+    "deploymentStatus": "ACTIVE",
+    "deploymentType": "BRANCH",
+    "isBranchDeployment": true,
+    "organizationName": "hooli"
+  }
+}

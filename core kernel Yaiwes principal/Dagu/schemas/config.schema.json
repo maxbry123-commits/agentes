@@ -1,0 +1,1601 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "description": "Schema for Dagu configuration file (config.yaml). Configures server settings, authentication, paths, UI, services, and features.",
+  "additionalProperties": false,
+  "properties": {
+    "host": {
+      "type": "string",
+      "description": "Server bind address."
+    },
+    "port": {
+      "type": "integer",
+      "description": "Server port number.",
+      "minimum": 0,
+      "maximum": 65535
+    },
+    "base_path": {
+      "type": "string",
+      "description": "Base path for the web UI (e.g., '/dagu')."
+    },
+    "public_url": {
+      "type": "string",
+      "description": "Public base URL used when generating links back to the Dagu web UI (e.g., 'https://dagu.example.com')."
+    },
+    "api_base_path": {
+      "type": "string",
+      "description": "Base path for the API endpoints."
+    },
+    "api_base_url": {
+      "type": "string",
+      "description": "Deprecated: use api_base_path instead."
+    },
+    "headless": {
+      "type": "boolean",
+      "description": "Run in headless mode without the web UI."
+    },
+    "check_updates": {
+      "type": "boolean",
+      "description": "Enable automatic update checks for web UI notifications. Manual 'dagu upgrade' checks are unaffected.",
+      "default": true
+    },
+    "tls": {
+      "$ref": "#/definitions/TLSDef"
+    },
+    "cors_allowed_origins": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Origins allowed to make cross-origin requests. When unset or empty, cross-origin browser access is disabled. Exact origins enable credentials. An explicit '*' allows every origin without credentials and emits a security warning."
+    },
+    "ip_access": {
+      "$ref": "#/definitions/IPAccessDef"
+    },
+    "debug": {
+      "type": "boolean",
+      "description": "Enable debug mode with verbose logging."
+    },
+    "access_log_mode": {
+      "type": "string",
+      "enum": ["all", "non-public", "none"],
+      "description": "HTTP access log mode. 'all' logs every request, 'non-public' skips public endpoints (/health, /auth/login, /auth/setup), 'none' disables access logging entirely. Default: 'none'.",
+      "default": "none"
+    },
+    "default_shell": {
+      "type": "string",
+      "description": "Default shell for executing commands (e.g., '/bin/bash')."
+    },
+    "log_format": {
+      "type": "string",
+      "description": "Log output format.",
+      "enum": ["json", "text"]
+    },
+    "tz": {
+      "type": "string",
+      "description": "Timezone for scheduling and display (e.g., 'America/New_York')."
+    },
+    "env_passthrough": {
+      "type": "array",
+      "description": "Additional exact environment variable names to forward from the Dagu process environment to step execution.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "env_passthrough_prefixes": {
+      "type": "array",
+      "description": "Additional environment variable prefixes to forward from the Dagu process environment to step execution.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "auth": {
+      "$ref": "#/definitions/AuthDef"
+    },
+    "permission_write_dags": {
+      "type": "boolean",
+      "description": "Deprecated: use permissions.write_dags instead. Allow writing DAG definitions."
+    },
+    "permission_run_dags": {
+      "type": "boolean",
+      "description": "Deprecated: use permissions.run_dags instead. Allow running DAGs."
+    },
+    "permissions": {
+      "$ref": "#/definitions/PermissionsDef"
+    },
+    "dags": {
+      "type": "string",
+      "description": "Deprecated: use dags_dir or paths.dags_dir instead."
+    },
+    "dags_dir": {
+      "type": "string",
+      "description": "Directory containing DAG YAML files."
+    },
+    "executable": {
+      "type": "string",
+      "description": "Path to the dagu executable."
+    },
+    "log_dir": {
+      "type": "string",
+      "description": "Directory for log files."
+    },
+    "artifact_dir": {
+      "type": "string",
+      "description": "Directory for DAG run artifact files."
+    },
+    "data_dir": {
+      "type": "string",
+      "description": "Directory for application data."
+    },
+    "suspend_flags_dir": {
+      "type": "string",
+      "description": "Directory for DAG suspend flag files."
+    },
+    "admin_logs_dir": {
+      "type": "string",
+      "description": "Directory for admin log files."
+    },
+    "event_store_dir": {
+      "type": "string",
+      "description": "Directory for centralized event log files and inbox files."
+    },
+    "base_config": {
+      "type": "string",
+      "description": "Path to the base configuration file."
+    },
+    "paths": {
+      "$ref": "#/definitions/PathsDef"
+    },
+    "dag_discovery": {
+      "$ref": "#/definitions/DAGDiscoveryDef"
+    },
+    "secrets": {
+      "$ref": "#/definitions/SecretsDef"
+    },
+    "log_encoding_charset": {
+      "type": "string",
+      "description": "Deprecated: use ui.log_encoding_charset instead. Character encoding for log display."
+    },
+    "navbar_color": {
+      "type": "string",
+      "description": "Deprecated: use ui.navbar_color instead. Navigation bar color."
+    },
+    "navbar_title": {
+      "type": "string",
+      "description": "Deprecated: use ui.navbar_title instead. Navigation bar title."
+    },
+    "max_dashboard_page_limit": {
+      "type": "integer",
+      "description": "Deprecated: use ui.max_dashboard_page_limit instead. Maximum items per dashboard page.",
+      "minimum": 1,
+      "maximum": 1000
+    },
+    "latest_status_today": {
+      "type": "boolean",
+      "description": "Deprecated. Show only today's latest status on the dashboard."
+    },
+    "ui": {
+      "$ref": "#/definitions/UIDef"
+    },
+    "peer": {
+      "$ref": "#/definitions/PeerDef"
+    },
+    "remote_nodes": {
+      "type": "array",
+      "description": "List of remote node connections for distributed monitoring.",
+      "items": {
+        "$ref": "#/definitions/RemoteNodeDef"
+      }
+    },
+    "coordinator": {
+      "$ref": "#/definitions/CoordinatorDef"
+    },
+    "worker": {
+      "$ref": "#/definitions/WorkerDef"
+    },
+    "opencode": {
+      "$ref": "#/definitions/OpenCodeDef"
+    },
+    "proc": {
+      "$ref": "#/definitions/ProcDef"
+    },
+    "scheduler": {
+      "$ref": "#/definitions/SchedulerDef"
+    },
+    "queues": {
+      "$ref": "#/definitions/QueueConfigDef"
+    },
+    "monitoring": {
+      "$ref": "#/definitions/MonitoringDef"
+    },
+    "metrics": {
+      "type": "string",
+      "description": "Metrics endpoint visibility.",
+      "enum": ["public", "private"]
+    },
+    "cache": {
+      "type": "string",
+      "description": "Cache level for performance tuning.",
+      "enum": ["low", "normal", "high"]
+    },
+    "terminal": {
+      "$ref": "#/definitions/TerminalDef"
+    },
+    "audit": {
+      "$ref": "#/definitions/AuditDef"
+    },
+    "event_store": {
+      "$ref": "#/definitions/EventStoreDef"
+    },
+    "webhooks": {
+      "$ref": "#/definitions/WebhooksDef"
+    },
+    "sse": {
+      "$ref": "#/definitions/SSEDef"
+    },
+    "git_sync": {
+      "$ref": "#/definitions/GitSyncDef"
+    },
+    "default_execution_mode": {
+      "type": "string",
+      "description": "Default execution mode for DAGs. 'local' runs DAGs on the server process, 'distributed' dispatches to workers.",
+      "enum": ["local", "distributed"],
+      "default": "local"
+    },
+    "tunnel": {
+      "$ref": "#/definitions/TunnelDef"
+    },
+    "license": {
+      "$ref": "#/definitions/LicenseDef"
+    }
+  },
+  "definitions": {
+    "IPAccessDef": {
+      "type": "object",
+      "description": "Server-wide HTTP client IP filtering.",
+      "additionalProperties": false,
+      "properties": {
+        "allowed_ips": {
+          "type": "array",
+          "description": "IPv4 or IPv6 addresses and CIDR ranges allowed to access the HTTP server. Empty disables filtering.",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "trusted_proxies": {
+          "type": "array",
+          "description": "Proxy addresses and CIDR ranges permitted to supply forwarded client IP headers.",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "TLSDef": {
+      "type": "object",
+      "description": "TLS/SSL encryption configuration.",
+      "additionalProperties": false,
+      "properties": {
+        "cert_file": {
+          "type": "string",
+          "description": "Path to the TLS certificate file."
+        },
+        "key_file": {
+          "type": "string",
+          "description": "Path to the TLS private key file."
+        },
+        "ca_file": {
+          "type": "string",
+          "description": "Path to the CA certificate file for client verification."
+        }
+      }
+    },
+    "AuthDef": {
+      "type": "object",
+      "description": "Authentication configuration.",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "type": "string",
+          "description": "Authentication mode. Defaults to 'builtin'. OIDC is now configured under builtin mode (auth.oidc).",
+          "enum": ["none", "basic", "builtin"]
+        },
+        "basic": {
+          "$ref": "#/definitions/AuthBasicDef"
+        },
+        "oidc": {
+          "$ref": "#/definitions/AuthOIDCDef"
+        },
+        "proxy": {
+          "$ref": "#/definitions/AuthProxyDef"
+        },
+        "builtin": {
+          "$ref": "#/definitions/AuthBuiltinDef"
+        }
+      }
+    },
+    "AuthBasicDef": {
+      "type": "object",
+      "description": "Basic authentication credentials.",
+      "additionalProperties": false,
+      "properties": {
+        "username": {
+          "type": "string",
+          "description": "Basic auth username."
+        },
+        "password": {
+          "type": "string",
+          "description": "Basic auth password."
+        }
+      }
+    },
+    "AuthOIDCDef": {
+      "type": "object",
+      "description": "OIDC authentication configuration for use with builtin auth mode.",
+      "additionalProperties": false,
+      "properties": {
+        "client_id": {
+          "type": "string",
+          "description": "OAuth client identifier."
+        },
+        "client_secret": {
+          "type": "string",
+          "description": "OAuth client secret."
+        },
+        "client_url": {
+          "type": "string",
+          "description": "Application callback URL."
+        },
+        "issuer": {
+          "type": "string",
+          "description": "OIDC issuer URL."
+        },
+        "scopes": {
+          "type": "array",
+          "description": "OAuth scopes to request.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "whitelist": {
+          "type": "array",
+          "description": "Allowed email addresses.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "auto_signup": {
+          "type": "boolean",
+          "description": "Automatically create user accounts on first OIDC login. Default: true (builtin mode only)."
+        },
+        "allowed_domains": {
+          "type": "array",
+          "description": "Allowed email domains for OIDC login.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "button_label": {
+          "type": "string",
+          "description": "Label for the OIDC login button."
+        },
+        "role_mapping": {
+          "$ref": "#/definitions/OIDCRoleMappingDef"
+        }
+      }
+    },
+    "OIDCRoleMappingDef": {
+      "type": "object",
+      "description": "Maps OIDC claims to Dagu roles.",
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "required": ["workspace_mappings"],
+            "properties": {
+              "workspace_mappings": {
+                "minProperties": 1
+              }
+            }
+          },
+          "then": {
+            "required": ["default_workspace_access"]
+          }
+        }
+      ],
+      "properties": {
+        "default_role": {
+          "type": "string",
+          "description": "Default role assigned to users. Default: 'viewer'."
+        },
+        "groups_claim": {
+          "type": "string",
+          "description": "OIDC claim containing group information. Default: 'groups'."
+        },
+        "group_mappings": {
+          "type": "object",
+          "description": "Mapping of IdP group names to Dagu role names.",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "workspace_mappings": {
+          "type": "object",
+          "description": "Mapping of IdP group names to workspace role grants.",
+          "propertyNames": {
+            "pattern": ".*\\S.*"
+          },
+          "additionalProperties": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/definitions/OIDCWorkspaceGrantDef"
+            }
+          }
+        },
+        "default_workspace_access": {
+          "type": "string",
+          "description": "Workspace access assigned when no global or workspace mapping matches. Required with non-empty workspace_mappings; otherwise defaults to 'all'.",
+          "enum": ["all", "none"],
+          "default": "all"
+        },
+        "role_attribute_path": {
+          "type": "string",
+          "description": "jq expression for extracting role from OIDC claims."
+        },
+        "role_attribute_strict": {
+          "type": "boolean",
+          "description": "Deny login when neither a global nor workspace mapping matches."
+        },
+        "skip_org_role_sync": {
+          "type": "boolean",
+          "description": "Keep first-login role and workspace access assignments instead of synchronizing subsequent logins."
+        }
+      }
+    },
+    "OIDCWorkspaceGrantDef": {
+      "type": "object",
+      "description": "Assigns an OIDC group member a role in one workspace.",
+      "additionalProperties": false,
+      "required": ["workspace", "role"],
+      "properties": {
+        "workspace": {
+          "type": "string",
+          "description": "Workspace name.",
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "not": {
+            "pattern": "^([Aa][Ll][Ll]|[Dd][Ee][Ff][Aa][Uu][Ll][Tt]|[Gg][Ll][Oo][Bb][Aa][Ll])$"
+          }
+        },
+        "role": {
+          "type": "string",
+          "description": "Role assigned in the workspace.",
+          "enum": ["manager", "developer", "operator", "viewer"]
+        }
+      }
+    },
+    "AuthProxyDef": {
+      "type": "object",
+      "description": "Authentication delegated to an authenticating reverse proxy.",
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "required": ["enabled"],
+            "properties": {
+              "enabled": {"const": true}
+            }
+          },
+          "then": {
+            "required": ["headers"],
+            "properties": {
+              "headers": {"required": ["user"]}
+            }
+          }
+        },
+        {
+          "if": {
+            "required": ["enabled", "role_mapping"],
+            "properties": {
+              "enabled": {"const": true},
+              "role_mapping": {
+                "required": ["require_mapping"],
+                "properties": {
+                  "require_mapping": {"const": true}
+                }
+              }
+            }
+          },
+          "then": {
+            "anyOf": [
+              {
+                "required": ["role_mapping"],
+                "properties": {
+                  "role_mapping": {
+                    "required": ["group_mappings"],
+                    "properties": {
+                      "group_mappings": {"minProperties": 1}
+                    }
+                  }
+                }
+              },
+              {
+                "required": ["role_mapping"],
+                "properties": {
+                  "role_mapping": {
+                    "required": ["workspace_mappings"],
+                    "properties": {
+                      "workspace_mappings": {"minProperties": 1}
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": ["role_mapping"],
+            "properties": {
+              "role_mapping": {
+                "required": ["group_mappings"],
+                "properties": {
+                  "group_mappings": {"minProperties": 1}
+                }
+              }
+            }
+          },
+          "then": {
+            "required": ["headers"],
+            "properties": {
+              "headers": {"required": ["groups"]}
+            }
+          }
+        },
+        {
+          "if": {
+            "required": ["role_mapping"],
+            "properties": {
+              "role_mapping": {
+                "required": ["workspace_mappings"],
+                "properties": {
+                  "workspace_mappings": {"minProperties": 1}
+                }
+              }
+            }
+          },
+          "then": {
+            "required": ["headers"],
+            "properties": {
+              "headers": {"required": ["groups"]}
+            }
+          }
+        }
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "source": {
+          "type": "string",
+          "maxLength": 128,
+          "default": ""
+        },
+        "button_label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "default": "Continue with SSO"
+        },
+        "headers": {
+          "$ref": "#/definitions/ProxyHeadersDef"
+        },
+        "auto_signup": {
+          "type": "boolean",
+          "default": true
+        },
+        "role_mapping": {
+          "$ref": "#/definitions/ProxyRoleMappingDef"
+        }
+      }
+    },
+    "ProxyHeadersDef": {
+      "type": "object",
+      "description": "Identity headers populated by the authenticating proxy.",
+      "additionalProperties": false,
+      "properties": {
+        "user": {
+          "type": "string",
+          "minLength": 1
+        },
+        "groups": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "ProxyRoleMappingDef": {
+      "type": "object",
+      "description": "Maps proxy groups to Dagu authorization.",
+      "additionalProperties": false,
+      "properties": {
+        "default_role": {
+          "type": "string",
+          "enum": ["admin", "manager", "developer", "operator", "viewer"],
+          "default": "viewer"
+        },
+        "group_mappings": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": ".*\\S.*"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "enum": ["admin", "manager", "developer", "operator", "viewer"]
+          }
+        },
+        "workspace_mappings": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": ".*\\S.*"
+          },
+          "additionalProperties": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/definitions/ProxyWorkspaceGrantDef"
+            }
+          }
+        },
+        "default_workspace_access": {
+          "type": "string",
+          "enum": ["all", "none"],
+          "default": "none"
+        },
+        "require_mapping": {
+          "type": "boolean",
+          "description": "Deny login unless at least one group or workspace mapping matches.",
+          "default": false
+        },
+        "skip_org_role_sync": {
+          "type": "boolean",
+          "description": "Preserve existing role and workspace access instead of synchronizing subsequent logins.",
+          "default": false
+        }
+      }
+    },
+    "ProxyWorkspaceGrantDef": {
+      "type": "object",
+      "description": "Assigns a proxy group member a role in one workspace.",
+      "additionalProperties": false,
+      "required": ["workspace", "role"],
+      "properties": {
+        "workspace": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "not": {
+            "pattern": "^([Aa][Ll][Ll]|[Dd][Ee][Ff][Aa][Uu][Ll][Tt]|[Gg][Ll][Oo][Bb][Aa][Ll])$"
+          }
+        },
+        "role": {
+          "type": "string",
+          "enum": ["manager", "developer", "operator", "viewer"]
+        }
+      }
+    },
+    "AuthBuiltinDef": {
+      "type": "object",
+      "description": "Builtin authentication with RBAC configuration.",
+      "additionalProperties": false,
+      "properties": {
+        "token": {
+          "$ref": "#/definitions/TokenConfigDef"
+        }
+      }
+    },
+    "TokenConfigDef": {
+      "type": "object",
+      "description": "JWT token settings.",
+      "additionalProperties": false,
+      "properties": {
+        "secret": {
+          "type": "string",
+          "description": "JWT signing secret."
+        },
+        "ttl": {
+          "type": "string",
+          "description": "Token time-to-live duration up to 8760h (365 days), e.g. '24h'."
+        }
+      }
+    },
+    "PermissionsDef": {
+      "type": "object",
+      "description": "UI and API permissions.",
+      "additionalProperties": false,
+      "properties": {
+        "write_dags": {
+          "type": "boolean",
+          "description": "Allow creating and editing DAG definitions."
+        },
+        "run_dags": {
+          "type": "boolean",
+          "description": "Allow executing DAG runs."
+        }
+      }
+    },
+    "PathsDef": {
+      "type": "object",
+      "description": "File system path configuration.",
+      "additionalProperties": false,
+      "properties": {
+        "dags_dir": {
+          "type": "string",
+          "description": "Directory containing DAG YAML files."
+        },
+        "executable": {
+          "type": "string",
+          "description": "Path to the dagu executable."
+        },
+        "log_dir": {
+          "type": "string",
+          "description": "Directory for log files."
+        },
+        "artifact_dir": {
+          "type": "string",
+          "description": "Directory for DAG run artifact files."
+        },
+        "dag_state_dir": {
+          "type": "string",
+          "description": "Directory for persistent DAG state files."
+        },
+        "data_dir": {
+          "type": "string",
+          "description": "Directory for application data."
+        },
+        "tools_dir": {
+          "type": "string",
+          "description": "Directory for managed DAG tool cache, locks, manifests, and shims."
+        },
+        "suspend_flags_dir": {
+          "type": "string",
+          "description": "Directory for DAG suspend flag files."
+        },
+        "admin_logs_dir": {
+          "type": "string",
+          "description": "Directory for admin log files."
+        },
+        "event_store_dir": {
+          "type": "string",
+          "description": "Directory for centralized event log files and inbox files."
+        },
+        "base_config": {
+          "type": "string",
+          "description": "Path to the base configuration file."
+        },
+        "dag_runs_dir": {
+          "type": "string",
+          "description": "Directory for DAG run history storage."
+        },
+        "dag_run_work_dir": {
+          "type": "string",
+          "description": "Directory for DAG run working directories. Defaults to {paths.data_dir}/dag-run-work."
+        },
+        "queue_dir": {
+          "type": "string",
+          "description": "Directory for queue persistence."
+        },
+        "proc_dir": {
+          "type": "string",
+          "description": "Directory for process tracking files."
+        },
+        "service_registry_dir": {
+          "type": "string",
+          "description": "Directory for service discovery data."
+        },
+        "users_dir": {
+          "type": "string",
+          "description": "Directory for user data storage."
+        },
+        "api_keys_dir": {
+          "type": "string",
+          "description": "Directory for API key storage."
+        },
+        "webhooks_dir": {
+          "type": "string",
+          "description": "Directory for webhook configuration."
+        },
+        "remote_nodes_dir": {
+          "type": "string",
+          "description": "Directory for remote node data storage."
+        }
+      }
+    },
+    "DAGDiscoveryDef": {
+      "type": "object",
+      "description": "DAG definition discovery settings.",
+      "additionalProperties": false,
+      "properties": {
+        "recursive": {
+          "type": "boolean",
+          "description": "Discover DAG definitions in subdirectories.",
+          "default": false
+        },
+        "symlinks": {
+          "type": "boolean",
+          "description": "Include file symlinks in recursive DAG discovery and allow file symlinks whose targets are outside the configured DAG directory.",
+          "default": false
+        }
+      }
+    },
+    "SecretsDef": {
+      "type": "object",
+      "description": "Shared defaults for external secret providers.",
+      "additionalProperties": false,
+      "properties": {
+        "vault": {
+          "$ref": "#/definitions/VaultSecretsDef"
+        },
+        "kubernetes": {
+          "$ref": "#/definitions/KubernetesSecretsDef"
+        },
+        "aws": {
+          "$ref": "#/definitions/AWSSecretsDef"
+        },
+        "gcp": {
+          "$ref": "#/definitions/GCPSecretsDef"
+        },
+        "azure": {
+          "$ref": "#/definitions/AzureSecretsDef"
+        },
+        "alibaba": {
+          "$ref": "#/definitions/AlibabaSecretsDef"
+        }
+      }
+    },
+    "AWSSecretsDef": {
+      "type": "object",
+      "description": "Global AWS Secrets Manager client defaults.",
+      "additionalProperties": false,
+      "properties": {
+        "region": {
+          "type": "string",
+          "description": "Default AWS region for Secrets Manager lookups."
+        }
+      }
+    },
+    "GCPSecretsDef": {
+      "type": "object",
+      "description": "Global GCP Secret Manager client defaults.",
+      "additionalProperties": false,
+      "properties": {
+        "project_id": {
+          "type": "string",
+          "description": "Default GCP project ID for Secret Manager lookups."
+        },
+        "location": {
+          "type": "string",
+          "description": "Default location for regional Secret Manager lookups."
+        }
+      }
+    },
+    "AzureSecretsDef": {
+      "type": "object",
+      "description": "Global Azure Key Vault client defaults.",
+      "additionalProperties": false,
+      "properties": {
+        "vault_url": {
+          "type": "string",
+          "description": "Default Azure Key Vault URL."
+        }
+      }
+    },
+    "AlibabaSecretsDef": {
+      "type": "object",
+      "description": "Global Alibaba Cloud KMS client defaults.",
+      "additionalProperties": false,
+      "properties": {
+        "region": {
+          "type": "string",
+          "description": "Default Alibaba Cloud region for KMS secret lookups."
+        },
+        "endpoint": {
+          "type": "string",
+          "description": "Optional Alibaba Cloud KMS shared or dedicated gateway endpoint."
+        },
+        "ca_file": {
+          "type": "string",
+          "description": "CA certificate file for an Alibaba Cloud KMS dedicated gateway."
+        }
+      }
+    },
+    "VaultSecretsDef": {
+      "type": "object",
+      "description": "Global HashiCorp Vault client defaults.",
+      "additionalProperties": false,
+      "properties": {
+        "address": {
+          "type": "string",
+          "description": "Default Vault server address."
+        },
+        "token": {
+          "type": "string",
+          "description": "Default Vault token."
+        },
+        "ca_cert": {
+          "type": "string",
+          "description": "CA certificate file for verifying a custom Vault TLS endpoint."
+        },
+        "client_cert": {
+          "type": "string",
+          "description": "Client certificate file for Vault mutual TLS authentication."
+        },
+        "client_key": {
+          "type": "string",
+          "description": "Client private key file for Vault mutual TLS authentication."
+        }
+      }
+    },
+    "KubernetesSecretsDef": {
+      "type": "object",
+      "description": "Global Kubernetes Secret client defaults.",
+      "additionalProperties": false,
+      "properties": {
+        "namespace": {
+          "type": "string",
+          "description": "Default Kubernetes namespace for secret lookups."
+        },
+        "kubeconfig": {
+          "type": "string",
+          "description": "Default kubeconfig path for secret lookups."
+        },
+        "context": {
+          "type": "string",
+          "description": "Default kubeconfig context for secret lookups."
+        }
+      }
+    },
+    "UIDef": {
+      "type": "object",
+      "description": "User interface configuration.",
+      "additionalProperties": false,
+      "properties": {
+        "log_encoding_charset": {
+          "type": "string",
+          "description": "Character encoding for log display."
+        },
+        "navbar_color": {
+          "type": "string",
+          "description": "Navigation bar background color (CSS color value)."
+        },
+        "navbar_title": {
+          "type": "string",
+          "description": "Navigation bar title text."
+        },
+        "max_dashboard_page_limit": {
+          "type": "integer",
+          "description": "Maximum number of items per dashboard page.",
+          "minimum": 1,
+          "maximum": 1000
+        },
+        "dags": {
+          "$ref": "#/definitions/DAGListDef"
+        }
+      }
+    },
+    "DAGListDef": {
+      "type": "object",
+      "description": "DAG list page configuration.",
+      "additionalProperties": false,
+      "properties": {
+        "sort_field": {
+          "type": "string",
+          "description": "Field to sort DAGs by."
+        },
+        "sort_order": {
+          "type": "string",
+          "description": "Sort order for DAG list.",
+          "enum": ["asc", "desc"]
+        }
+      }
+    },
+    "PeerDef": {
+      "type": "object",
+      "description": "TLS configuration for peer gRPC connections.",
+      "additionalProperties": false,
+      "properties": {
+        "cert_file": {
+          "type": "string",
+          "description": "Path to the peer TLS certificate file."
+        },
+        "key_file": {
+          "type": "string",
+          "description": "Path to the peer TLS private key file."
+        },
+        "client_ca_file": {
+          "type": "string",
+          "description": "Path to the client CA certificate file."
+        },
+        "skip_tls_verify": {
+          "type": "boolean",
+          "description": "Skip TLS certificate verification."
+        },
+        "insecure": {
+          "type": "boolean",
+          "description": "Use h2c (HTTP/2 cleartext) instead of TLS."
+        },
+        "max_retries": {
+          "type": "integer",
+          "description": "Maximum number of connection retries. Default: 10."
+        },
+        "retry_interval": {
+          "type": "string",
+          "description": "Interval between connection retries. Default: '1s'."
+        }
+      }
+    },
+    "RemoteNodeDef": {
+      "type": "object",
+      "description": "Remote node connection configuration.",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Display name for the remote node."
+        },
+        "description": {
+          "type": "string",
+          "description": "Optional description for the remote node."
+        },
+        "api_base_url": {
+          "type": "string",
+          "description": "Base URL of the remote node's API."
+        },
+        "auth_type": {
+          "type": "string",
+          "enum": ["none", "basic", "token"],
+          "description": "Authentication type for this remote node."
+        },
+        "basic_auth_username": {
+          "type": "string",
+          "description": "Basic auth username for this remote node."
+        },
+        "basic_auth_password": {
+          "type": "string",
+          "description": "Basic auth password for this remote node."
+        },
+        "auth_token": {
+          "type": "string",
+          "description": "Auth token for this remote node."
+        },
+        "skip_tls_verify": {
+          "type": "boolean",
+          "description": "Skip TLS certificate verification for this remote node."
+        }
+      }
+    },
+    "CoordinatorDef": {
+      "type": "object",
+      "description": "Coordinator service configuration for distributed execution.",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable the coordinator service for distributed execution. Default: true."
+        },
+        "host": {
+          "type": "string",
+          "description": "Coordinator bind address."
+        },
+        "advertise": {
+          "type": "string",
+          "description": "Advertised address for workers to connect to. Auto-detected if empty."
+        },
+        "port": {
+          "type": "integer",
+          "description": "Coordinator port number.",
+          "minimum": 0,
+          "maximum": 65535
+        },
+        "health_port": {
+          "type": "integer",
+          "description": "Coordinator HTTP health check port. Default: 8091. Set to 0 to disable.",
+          "minimum": 0,
+          "maximum": 65535
+        }
+      }
+    },
+    "OpenCodeDef": {
+      "type": "object",
+      "description": "Process-local managed OpenCode service configuration.",
+      "additionalProperties": false,
+      "properties": {
+        "executable": {
+          "type": "string",
+          "description": "OpenCode executable path or command name."
+        },
+        "env_passthrough": {
+          "type": "array",
+          "description": "Exact environment variable names forwarded to the managed OpenCode service.",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "WorkerDef": {
+      "type": "object",
+      "description": "Worker process configuration for distributed execution.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique worker identifier."
+        },
+        "max_active_runs": {
+          "type": "integer",
+          "description": "Maximum concurrent DAG runs for this worker."
+        },
+        "health_port": {
+          "type": "integer",
+          "description": "Worker HTTP health check port. Default: 8092. Set to 0 to disable.",
+          "minimum": 0,
+          "maximum": 65535
+        },
+        "labels": {
+          "oneOf": [
+            {
+              "type": "string",
+              "description": "Comma-separated key=value pairs (e.g., 'env=prod,region=us')."
+            },
+            {
+              "type": "object",
+              "description": "Key-value map of worker labels.",
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          ],
+          "description": "Worker labels for selective execution. Accepts a comma-separated string or an object."
+        },
+        "coordinators": {
+          "oneOf": [
+            {
+              "type": "string",
+              "description": "Single coordinator URL."
+            },
+            {
+              "type": "array",
+              "description": "List of coordinator URLs.",
+              "items": {
+                "type": "string"
+              }
+            }
+          ],
+          "description": "Coordinator address(es) for the worker command. Required when running `dagu worker`. Accepts a single string or an array."
+        },
+        "postgres_pool": {
+          "$ref": "#/definitions/PostgresPoolDef"
+        }
+      }
+    },
+    "PostgresPoolDef": {
+      "type": "object",
+      "description": "PostgreSQL connection pool configuration.",
+      "additionalProperties": false,
+      "properties": {
+        "max_open_conns": {
+          "type": "integer",
+          "description": "Maximum number of open connections. Default: 25."
+        },
+        "max_idle_conns": {
+          "type": "integer",
+          "description": "Maximum number of idle connections. Default: 5."
+        },
+        "conn_max_lifetime": {
+          "type": "integer",
+          "description": "Maximum connection lifetime in seconds. Default: 300."
+        },
+        "conn_max_idle_time": {
+          "type": "integer",
+          "description": "Maximum idle time in seconds. Default: 60."
+        }
+      }
+    },
+    "SchedulerDef": {
+      "type": "object",
+      "description": "Scheduler service configuration.",
+      "additionalProperties": false,
+      "properties": {
+        "port": {
+          "type": "integer",
+          "description": "Scheduler port number.",
+          "minimum": 0,
+          "maximum": 65535
+        },
+        "lock_stale_threshold": {
+          "type": "string",
+          "description": "Duration after which a lock is considered stale. Default: '30s'."
+        },
+        "lock_retry_interval": {
+          "type": "string",
+          "description": "Interval between lock retry attempts. Default: '5s'."
+        },
+        "zombie_detection_interval": {
+          "type": "string",
+          "description": "Interval for detecting zombie processes. Default: '45s'. Set to '0' to disable."
+        },
+        "failure_threshold": {
+          "type": "integer",
+          "description": "Consecutive stale checks before declaring a zombie. Default: 3.",
+          "minimum": 1
+        },
+        "heartbeat_interval": {
+          "type": "string",
+          "description": "Deprecated: use proc.heartbeat_interval. Heartbeat write interval for process liveness. Default: '5s'."
+        },
+        "heartbeat_sync_interval": {
+          "type": "string",
+          "description": "Deprecated and ignored. Accepted so existing configuration files remain valid."
+        },
+        "stale_threshold": {
+          "type": "string",
+          "description": "Deprecated: use proc.stale_threshold. Duration after which a process heartbeat is considered stale. Default: '90s'."
+        }
+      }
+    },
+    "ProcDef": {
+      "type": "object",
+      "description": "Local proc-file heartbeat configuration shared by all local execution commands.",
+      "additionalProperties": false,
+      "properties": {
+        "heartbeat_interval": {
+          "type": "string",
+          "description": "Heartbeat write interval for process liveness. Default: '5s'."
+        },
+        "heartbeat_sync_interval": {
+          "type": "string",
+          "description": "Deprecated and ignored. Accepted so existing configuration files remain valid."
+        },
+        "stale_threshold": {
+          "type": "string",
+          "description": "Duration after which a process heartbeat is considered stale. Default: '90s'."
+        }
+      }
+    },
+    "QueueConfigDef": {
+      "type": "object",
+      "description": "Global queue configuration.",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable the queue system."
+        },
+        "config": {
+          "type": "array",
+          "description": "List of queue definitions.",
+          "items": {
+            "$ref": "#/definitions/QueueDef"
+          }
+        }
+      }
+    },
+    "QueueDef": {
+      "type": "object",
+      "description": "Individual queue configuration.",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Queue name."
+        },
+        "max_active_runs": {
+          "type": "integer",
+          "description": "Deprecated: use max_concurrency instead."
+        },
+        "max_concurrency": {
+          "type": "integer",
+          "description": "Maximum concurrent runs for this queue."
+        }
+      }
+    },
+    "MonitoringDef": {
+      "type": "object",
+      "description": "System monitoring configuration.",
+      "additionalProperties": false,
+      "properties": {
+        "retention": {
+          "type": "string",
+          "description": "Monitoring data retention duration. Default: '24h'."
+        },
+        "interval": {
+          "type": "string",
+          "description": "Monitoring data collection interval. Default: '5s'."
+        }
+      }
+    },
+    "TerminalDef": {
+      "type": "object",
+      "description": "Web-based terminal feature configuration.",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable the web-based terminal. Default: false."
+        },
+        "max_sessions": {
+          "type": "integer",
+          "description": "Maximum concurrent terminal sessions. Default: 5.",
+          "minimum": 1,
+          "default": 5
+        }
+      }
+    },
+    "AuditDef": {
+      "type": "object",
+      "description": "Audit logging feature configuration.",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable audit logging. Default: true."
+        },
+        "retention_days": {
+          "type": "integer",
+          "description": "Number of days to retain audit logs. Default: 7."
+        }
+      }
+    },
+    "EventStoreDef": {
+      "type": "object",
+      "description": "Centralized event store configuration.",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable the centralized event store. Default: true."
+        },
+        "retention_days": {
+          "type": "integer",
+          "description": "Number of days to retain event logs. Default: 1.",
+          "minimum": 0
+        }
+      }
+    },
+    "WebhooksDef": {
+      "type": "object",
+      "description": "Webhook trigger endpoint configuration.",
+      "additionalProperties": false,
+      "properties": {
+        "max_payload_size": {
+          "type": "integer",
+          "description": "Maximum accepted webhook request payload size in bytes. Default: 1048576.",
+          "minimum": 1,
+          "default": 1048576
+        }
+      }
+    },
+    "SSEDef": {
+      "type": "object",
+      "description": "Multiplexed server-sent events (SSE) stream configuration.",
+      "additionalProperties": false,
+      "properties": {
+        "max_topics_per_connection": {
+          "type": "integer",
+          "description": "Maximum topics a single client connection may subscribe to. Default: 20.",
+          "default": 20
+        },
+        "max_clients": {
+          "type": "integer",
+          "description": "Maximum concurrent SSE clients. Default: 1000.",
+          "default": 1000
+        },
+        "heartbeat_interval": {
+          "type": "string",
+          "description": "Heartbeat interval duration string. Default: '10s'.",
+          "default": "10s"
+        },
+        "write_buffer_size": {
+          "type": "integer",
+          "description": "Per-client write buffer size in bytes. Default: 65536.",
+          "default": 65536
+        },
+        "slow_client_timeout": {
+          "type": "string",
+          "description": "Timeout before disconnecting a slow client. Default: '30s'.",
+          "default": "30s"
+        }
+      }
+    },
+    "GitSyncDef": {
+      "type": "object",
+      "description": "Git synchronization configuration for DAG definitions.",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable Git sync. Default: false."
+        },
+        "repository": {
+          "type": "string",
+          "description": "Git repository URL."
+        },
+        "branch": {
+          "type": "string",
+          "description": "Git branch to sync. Default: 'main'."
+        },
+        "path": {
+          "type": "string",
+          "description": "Subdirectory within the repository. Empty for root."
+        },
+        "auth": {
+          "$ref": "#/definitions/GitSyncAuthDef"
+        },
+        "auto_sync": {
+          "$ref": "#/definitions/GitSyncAutoSyncDef"
+        },
+        "push_enabled": {
+          "type": "boolean",
+          "description": "Enable pushing changes back to the repository. Default: true."
+        },
+        "commit": {
+          "$ref": "#/definitions/GitSyncCommitDef"
+        }
+      }
+    },
+    "GitSyncAuthDef": {
+      "type": "object",
+      "description": "Git authentication configuration.",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "Authentication type.",
+          "enum": ["token", "ssh"]
+        },
+        "token": {
+          "type": "string",
+          "description": "Git access token."
+        },
+        "ssh_key_path": {
+          "type": "string",
+          "description": "Path to SSH private key file."
+        },
+        "ssh_passphrase": {
+          "type": "string",
+          "description": "Passphrase for the SSH key."
+        }
+      }
+    },
+    "GitSyncAutoSyncDef": {
+      "type": "object",
+      "description": "Automatic Git synchronization configuration.",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable automatic sync. Default: false."
+        },
+        "on_startup": {
+          "type": "boolean",
+          "description": "Sync on application startup. Default: true."
+        },
+        "interval": {
+          "type": "integer",
+          "description": "Sync interval in seconds. Default: 300."
+        }
+      }
+    },
+    "GitSyncCommitDef": {
+      "type": "object",
+      "description": "Git commit metadata configuration.",
+      "additionalProperties": false,
+      "properties": {
+        "author_name": {
+          "type": "string",
+          "description": "Commit author name. Default: 'Dagu'."
+        },
+        "author_email": {
+          "type": "string",
+          "description": "Commit author email. Default: 'dagu@localhost'."
+        }
+      }
+    },
+    "TunnelDef": {
+      "type": "object",
+      "description": "Tunnel service configuration for remote access.",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable tunnel service. Default: false."
+        },
+        "tailscale": {
+          "$ref": "#/definitions/TailscaleTunnelDef"
+        },
+        "allow_terminal": {
+          "type": "boolean",
+          "description": "Allow terminal access through tunnel. Default: false."
+        },
+        "allowed_ips": {
+          "type": "array",
+          "description": "IP addresses allowed through the tunnel. Empty allows all.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "rate_limiting": {
+          "$ref": "#/definitions/TunnelRateLimitDef"
+        }
+      }
+    },
+    "TailscaleTunnelDef": {
+      "type": "object",
+      "description": "Tailscale tunnel configuration.",
+      "additionalProperties": false,
+      "properties": {
+        "auth_key": {
+          "type": "string",
+          "description": "Tailscale authentication key."
+        },
+        "hostname": {
+          "type": "string",
+          "description": "Tailscale hostname. Default: 'dagu'."
+        },
+        "funnel": {
+          "type": "boolean",
+          "description": "Enable Tailscale Funnel for public internet access."
+        },
+        "https": {
+          "type": "boolean",
+          "description": "Enable HTTPS for tailnet-only access."
+        },
+        "state_dir": {
+          "type": "string",
+          "description": "Tailscale state directory. Default: '$DAGU_HOME/tailscale'."
+        }
+      }
+    },
+    "TunnelRateLimitDef": {
+      "type": "object",
+      "description": "Rate limiting for tunnel authentication endpoints.",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable rate limiting."
+        },
+        "login_attempts": {
+          "type": "integer",
+          "description": "Maximum login attempts within the window. Default: 5."
+        },
+        "window_seconds": {
+          "type": "integer",
+          "description": "Rate limit window duration in seconds. Default: 300."
+        },
+        "block_duration_seconds": {
+          "type": "integer",
+          "description": "Duration to block after exceeding limit in seconds. Default: 900."
+        }
+      }
+    },
+    "LicenseDef": {
+      "type": "object",
+      "description": "License activation configuration.",
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "type": "string",
+          "description": "License key."
+        },
+        "cloud_url": {
+          "type": "string",
+          "description": "License service URL."
+        }
+      }
+    }
+  }
+}

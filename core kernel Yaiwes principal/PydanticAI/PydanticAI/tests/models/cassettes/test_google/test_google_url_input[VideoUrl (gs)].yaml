@@ -1,0 +1,69 @@
+interactions:
+  - request:
+      headers:
+        accept:
+          - "*/*"
+        accept-encoding:
+          - gzip, deflate
+        connection:
+          - keep-alive
+        content-length:
+          - "218"
+        content-type:
+          - application/json
+        host:
+          - aiplatform.googleapis.com
+      method: POST
+      parsed_body:
+        contents:
+          - parts:
+              - text: What is the main content of this URL?
+              - fileData:
+                  file_uri: gs://pydantic-ai-dev/grepit-tiny-video.mp4
+                  mime_type: video/mp4
+            role: user
+        generationConfig: {}
+      uri: https://aiplatform.googleapis.com/v1beta1/projects/pydantic-ai/locations/global/publishers/google/models/gemini-2.0-flash:generateContent
+    response:
+      headers:
+        alt-svc:
+          - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+        content-length:
+          - "1089"
+        content-type:
+          - application/json; charset=UTF-8
+        transfer-encoding:
+          - chunked
+        vary:
+          - Origin
+          - X-Origin
+          - Referer
+      parsed_body:
+        candidates:
+          - avgLogprobs: -0.7131219751694623
+            content:
+              parts:
+                - text:
+                    The image shows a charming outdoor cafe in a Greek coastal town. The cafe is nestled between traditional
+                    whitewashed buildings, with tables and chairs set along a narrow cobblestone pathway. The sea is visible in
+                    the distance, adding to the picturesque and relaxing atmosphere.
+              role: model
+            finishReason: STOP
+        createTime: "2025-05-31T21:37:05.265336Z"
+        modelVersion: gemini-2.0-flash
+        responseId: gXY7aPiYEL_z2PgP1KyaoAY
+        usageMetadata:
+          candidatesTokenCount: 51
+          candidatesTokensDetails:
+            - modality: TEXT
+              tokenCount: 51
+          promptTokenCount: 9
+          promptTokensDetails:
+            - modality: TEXT
+              tokenCount: 9
+          totalTokenCount: 60
+          trafficType: ON_DEMAND
+      status:
+        code: 200
+        message: OK
+version: 1

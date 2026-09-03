@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en" translate="no" class="dark" style="background-color: #020617">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="/assets/favicon.ico" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:ital,wght@0,300..800;1,300..800&display=swap"
+      rel="stylesheet"
+    />
+    <title>Dagu</title>
+    <script>
+      function getConfig() {
+        return {
+          apiURL: '/api/v1',
+          basePath: '',
+          title: 'Test Environment',
+          navbarColor: '',
+          version: 'dev',
+          tz: '',
+          tzOffsetInSec: undefined,
+          maxDashboardPageLimit: 100,
+          remoteNodes: 'local,dev,dev1',
+          initialWorkspaces: [],
+          permissions: {
+            writeDags: true,
+            runDags: true,
+          },
+          paths: {
+            configFileUsed: '~/.config/dagu/config.yaml',
+            baseConfig: '~/.config/dagu/base.yaml',
+            dagsDir: '~/.config/dagu/dags',
+            logDir: '~/.local/share/dagu/logs',
+            suspendFlagsDir: '~/.local/share/dagu/suspend',
+            adminLogsDir: '~/.local/share/dagu/logs/admin',
+            dagRunsDir: '~/.local/share/dagu/data/dag-runs',
+            queueDir: '~/.local/share/dagu/data/queue',
+            procDir: '~/.local/share/dagu/data/proc',
+            serviceRegistryDir: '~/.local/share/dagu/data/services',
+            usersDir: '~/.local/share/dagu/data/users',
+            gitSyncDir: '~/.local/share/dagu/data/gitsync',
+            auditLogsDir: '~/.local/share/dagu/logs/admin/audit',
+          },
+          authMode: 'builtin',
+          setupRequired: false,
+          gitSyncEnabled: true,
+          agentEnabled: true,
+          oidcEnabled: false,
+          oidcButtonLabel: '',
+          proxyEnabled: false,
+          proxyButtonLabel: '',
+          terminalEnabled: true,
+          updateAvailable: true,
+          latestVersion: 'v2.0.0',
+          license: {
+            valid: false,
+            plan: '',
+            expiry: '',
+            features: [],
+            gracePeriod: false,
+            graceEndsAt: '',
+            community: true,
+            source: '',
+            warningCode: '',
+          },
+        };
+      }
+    </script>
+  </head>
+
+  <body>
+    <div id="root"></div>
+  </body>
+</html>

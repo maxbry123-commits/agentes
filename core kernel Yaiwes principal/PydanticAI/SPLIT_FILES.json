@@ -1,0 +1,23 @@
+[
+  {
+    "repo": "PydanticAI",
+    "path": "tests/models/cassettes/test_openai_responses/test_openai_responses_image_and_text_output.yaml",
+    "chunks_dir": "PydanticAI/tests/models/cassettes/test_openai_responses/test_openai_responses_image_and_text_output.yaml.chunks",
+    "bytes": 8631555,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "PydanticAI",
+    "path": "tests/models/cassettes/test_openai_responses/test_openai_responses_image_generation_stream.yaml",
+    "chunks_dir": "PydanticAI/tests/models/cassettes/test_openai_responses/test_openai_responses_image_generation_stream.yaml.chunks",
+    "bytes": 14961817,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "PydanticAI",
+    "path": "tests/models/cassettes/test_google/test_google_image_generation.yaml",
+    "chunks_dir": "PydanticAI/tests/models/cassettes/test_google/test_google_image_generation.yaml.chunks",
+    "bytes": 11657486,
+    "chunk_bytes": 8388608
+  }
+]

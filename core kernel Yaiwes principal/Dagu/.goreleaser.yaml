@@ -1,0 +1,88 @@
+# goreleaser.yaml
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: dagu
+    dir: ./cmd
+    binary: dagu
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - "amd64"
+      - "386"
+      - "arm"
+      - "arm64"
+      - "ppc64le"
+      - "s390x"
+    goarm:
+      - "6"
+      - "7"
+    ignore:
+      # Go does not support windows/arm.
+      - goos: windows
+        goarch: arm
+        goarm: "6"
+      - goos: windows
+        goarch: arm
+        goarm: "7"
+
+release:
+  mode: keep-existing
+  prerelease: auto
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+
+brews:
+  - skip_upload: auto
+    repository:
+      owner: dagucloud
+      name: homebrew-brew
+    directory: Formula
+    homepage: "https://github.com/dagucloud/dagu"
+    description: "A compact, portable, and language-agnostic workflow engine"
+    license: "GNU General Public License v3.0"
+    custom_block: |
+      service do
+        run [opt_bin/"dagu", "start-all"]
+        keep_alive true
+        error_log_path var/"log/dagu.log"
+        log_path var/"log/dagu.log"
+        working_dir var
+      end
+
+  # Deprecated brew tap:
+  - skip_upload: auto
+    repository:
+      owner: yohamta
+      name: homebrew-tap
+    directory: Formula
+    homepage: "https://github.com/dagucloud/dagu"
+    description: "A compact, portable, and language-agnostic workflow engine"
+    license: "GNU General Public License v3.0"
+    custom_block: |
+      service do
+        run [opt_bin/"dagu", "start-all"]
+        keep_alive true
+        error_log_path var/"log/dagu.log"
+        log_path var/"log/dagu.log"
+        working_dir var
+      end

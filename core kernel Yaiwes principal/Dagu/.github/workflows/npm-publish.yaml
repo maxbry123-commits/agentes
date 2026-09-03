@@ -1,0 +1,322 @@
+name: Publish to NPM
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish (e.g., 1.16.4 or v1.16.4)"
+        required: true
+        type: string
+
+env:
+  VERSION: ${{ github.event.release.tag_name || inputs.version }}
+  NODE_VERSION: "22"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  # Validate user-supplied inputs before any job that uses secrets or publish steps.
+  # This prevents shell injection: a crafted version string could otherwise execute
+  # arbitrary code when interpolated into shell via ${{ inputs.version }}.
+  validate-inputs:
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Validate version format
+        env:
+          # Pass through env so the shell sees a plain string, not an interpolated expression.
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          # Allow semver with or without v prefix (1.2.3, v1.2.3, 1.2.3-rc.1).
+          # Reject anything else — especially characters that are shell metacharacters.
+          if [ -n "$INPUT_VERSION" ] && ! echo "$INPUT_VERSION" | grep -qE '^v?[0-9]+\.[0-9]+\.[0-9]+([.\-][a-zA-Z0-9._-]+)?$'; then
+            echo "::error::inputs.version must be semver (e.g. 1.16.4 or v1.16.4), got: ${INPUT_VERSION}"
+            exit 1
+          fi
+
+  # First, publish all platform-specific packages
+  publish-platform-packages:
+    needs: validate-inputs
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Tier 1 - Essential platforms
+          - platform: linux
+            arch: x64
+            package: dagu-linux-x64
+            asset_suffix: linux_amd64.tar.gz
+          - platform: linux
+            arch: arm64
+            package: dagu-linux-arm64
+            asset_suffix: linux_arm64.tar.gz
+          - platform: darwin
+            arch: x64
+            package: dagu-darwin-x64
+            asset_suffix: darwin_amd64.tar.gz
+          - platform: darwin
+            arch: arm64
+            package: dagu-darwin-arm64
+            asset_suffix: darwin_arm64.tar.gz
+          - platform: win32
+            arch: x64
+            package: dagu-win32-x64
+            asset_suffix: windows_amd64.tar.gz
+
+          # Tier 2 - Important platforms
+          - platform: linux
+            arch: ia32
+            package: dagu-linux-ia32
+            asset_suffix: linux_386.tar.gz
+          - platform: linux
+            arch: armv7
+            package: dagu-linux-armv7
+            asset_suffix: linux_armv7.tar.gz
+          - platform: win32
+            arch: ia32
+            package: dagu-win32-ia32
+            asset_suffix: windows_386.tar.gz
+
+          # Tier 3 - Less common platforms
+          - platform: linux
+            arch: armv6
+            package: dagu-linux-armv6
+            asset_suffix: linux_armv6.tar.gz
+          - platform: linux
+            arch: ppc64
+            package: dagu-linux-ppc64
+            asset_suffix: linux_ppc64le.tar.gz
+          - platform: linux
+            arch: s390x
+            package: dagu-linux-s390x
+            asset_suffix: linux_s390x.tar.gz
+          - platform: win32
+            arch: arm64
+            package: dagu-win32-arm64
+            asset_suffix: windows_arm64.tar.gz
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Download release asset
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Context values are passed via env so they're treated as data, not code.
+          # Writing ${{ expr }} directly inside `run:` would let a crafted value
+          # execute arbitrary shell commands before the runner sees the script.
+          RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          ASSET_SUFFIX: ${{ matrix.asset_suffix }}
+        run: |
+          # For workflow_dispatch, we need to find the release.
+          if [ -z "$RELEASE_TAG_NAME" ]; then
+            PKG_VERSION="${INPUT_VERSION#v}"
+            echo "Finding release for version v${PKG_VERSION}"
+            RELEASE_TAG="v${PKG_VERSION}"
+          else
+            RELEASE_TAG="$RELEASE_TAG_NAME"
+            PKG_VERSION="${RELEASE_TAG_NAME#v}"
+          fi
+
+          ASSET_NAME="dagu_${PKG_VERSION}_${ASSET_SUFFIX}"
+          echo "Downloading asset: ${ASSET_NAME}"
+          for i in {1..30}; do
+            if gh release download "${RELEASE_TAG}" \
+              --repo "$GITHUB_REPOSITORY" \
+              --pattern "${ASSET_NAME}" \
+              --dir /tmp; then
+              exit 0
+            fi
+            echo "Attempt ${i}/30: release asset not available yet, waiting 10 seconds..."
+            sleep 10
+          done
+
+          echo "::error::Release asset ${ASSET_NAME} was not available for ${RELEASE_TAG}"
+          exit 1
+
+      - name: Extract binary
+        env:
+          # Matrix values passed via env for the same injection-prevention reason.
+          PACKAGE_NAME: ${{ matrix.package }}
+          ASSET_SUFFIX: ${{ matrix.asset_suffix }}
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          mkdir -p "npm/${PACKAGE_NAME}/bin"
+          cd "npm/${PACKAGE_NAME}/bin"
+          PKG_VERSION="${VERSION#v}"
+          ASSET_NAME="dagu_${PKG_VERSION}_${ASSET_SUFFIX}"
+
+          # All assets are now .tar.gz
+          tar -xzf "/tmp/${ASSET_NAME}" dagu || tar -xzf "/tmp/${ASSET_NAME}" dagu.exe
+
+          # Verify binary exists
+          if [[ "$PLATFORM" == "win32" ]]; then
+            test -f dagu.exe
+          else
+            test -f dagu
+            chmod +x dagu
+          fi
+
+      - name: Update package version
+        env:
+          PACKAGE_NAME: ${{ matrix.package }}
+        run: |
+          cd "npm/${PACKAGE_NAME}"
+          # Strip 'v' prefix if present. $VERSION comes from the top-level env block —
+          # reference the shell variable directly instead of re-interpolating ${{ env.VERSION }},
+          # which would re-open the injection window.
+          PKG_VERSION="${VERSION#v}"
+          npm version "${PKG_VERSION}" --no-git-tag-version --allow-same-version
+
+      - name: Publish to NPM
+        env:
+          PACKAGE_NAME: ${{ matrix.package }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          cd "npm/${PACKAGE_NAME}"
+          set -o pipefail
+
+          # Try to publish, but don't fail if version already exists.
+          if ! npm publish --access public --provenance 2>&1 | tee publish.log; then
+            if grep -q "cannot publish over the previously published versions" publish.log; then
+              echo "Version already published, skipping..."
+              exit 0
+            fi
+            exit 1
+          fi
+        continue-on-error: ${{ matrix.arch == 'ppc64' || matrix.arch == 's390x' || matrix.arch == 'armv6' }}
+
+  # Then publish the main package that depends on platform packages
+  publish-main-package:
+    needs: [validate-inputs, publish-platform-packages]
+    if: ${{ always() && needs.validate-inputs.result == 'success' && needs.publish-platform-packages.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Update main package version and dependencies
+        run: |
+          cd npm/dagu
+
+          # Strip 'v' prefix if present. Reference $VERSION (top-level env) directly
+          # in shell rather than via ${{ env.VERSION }} to avoid re-opening the
+          # template injection path.
+          PKG_VERSION="${VERSION#v}"
+
+          # Update package version
+          npm version "$PKG_VERSION" --no-git-tag-version --allow-same-version
+
+          # Update all optionalDependencies to match the version
+          cat > update-deps.js << 'EOF'
+          const fs = require('fs');
+          const pkg = require('./package.json');
+          const version = process.argv[2];
+
+          // Update all optional dependencies to the new version
+          Object.keys(pkg.optionalDependencies || {}).forEach(dep => {
+            pkg.optionalDependencies[dep] = version;
+          });
+
+          fs.writeFileSync('./package.json', JSON.stringify(pkg, null, 2) + '\n');
+
+          console.log('Updated package.json:');
+          console.log(JSON.stringify(pkg, null, 2));
+          EOF
+
+          node update-deps.js "${PKG_VERSION}"
+
+      - name: Wait for npm registry propagation
+        run: |
+          echo "Waiting 60 seconds for npm registry to propagate platform packages..."
+          sleep 60
+
+      - name: Publish main package
+        run: |
+          cd npm/dagu
+          set -o pipefail
+
+          # Try to publish, but don't fail if version already exists.
+          if ! npm publish --access public --provenance 2>&1 | tee publish.log; then
+            if grep -q "cannot publish over the previously published versions" publish.log; then
+              echo "Version already published, skipping..."
+              exit 0
+            fi
+            exit 1
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  # Verify the published packages
+  verify-packages:
+    needs: [validate-inputs, publish-platform-packages, publish-main-package]
+    if: ${{ always() && needs.validate-inputs.result == 'success' && needs.publish-main-package.result == 'success' }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            test-install: 'npm install -g @dagucloud/dagu'
+          - os: macos-latest
+            test-install: 'npm install -g @dagucloud/dagu'
+          - os: windows-latest
+            test-install: 'npm install -g @dagucloud/dagu'
+
+    steps:
+      - name: Setup Node.js
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Wait for npm propagation
+        shell: bash
+        run: |
+          # Wait for package to be available with retries
+          echo "Checking npm package availability..."
+          PKG_VERSION="${VERSION#v}"
+          available=false
+          for i in {1..30}; do
+            if npm view "@dagucloud/dagu@${PKG_VERSION}" version 2>/dev/null; then
+              echo "Package is available!"
+              available=true
+              break
+            fi
+            echo "Attempt $i/30: Package not yet available, waiting 10 seconds..."
+            sleep 10
+          done
+
+          if [ "$available" != "true" ]; then
+            echo "::error::Package @dagucloud/dagu@${PKG_VERSION} was not available after 30 attempts"
+            exit 1
+          fi
+
+      - name: Test installation
+        run: |
+          ${{ matrix.test-install }}
+
+      - name: Verify installation
+        run: |
+          dagu version
+
+      - name: Test basic functionality
+        run: |
+          dagu help

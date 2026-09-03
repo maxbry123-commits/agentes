@@ -1,0 +1,74 @@
+# https://golangci-lint.run/usage/configuration/#config-file
+# Linters: https://golangci-lint.run/usage/linters/
+version: "2"
+linters:
+  default: "none"
+  enable:
+    # enabled by default
+    - errcheck
+    # - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    # - typecheck
+    - unused
+    # additional
+    - bodyclose
+    - goheader
+    # - goimports
+    - gosec
+    - misspell
+    - exhaustive
+    - revive
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - gosec
+      - path: \.pb\.go
+        linters:
+          - gosec
+    paths:
+      - .github
+      - .vscode
+      - node_modules
+      - local
+      - config
+      - scripts
+      - ui
+      - docs
+      - gen
+      - filenotify
+  settings:
+    revive:
+      severity: error
+      confidence: 0.8
+      enable-all-rules: false
+      rules:
+        - name: "unused-parameter"
+          disabled: false
+        - name: "import-alias-naming"
+          disabled: false
+        - name: "if-return"
+          disabled: false
+        - name: "error-return"
+          disabled: false
+        - name: "dot-imports"
+          disabled: false
+        - name: "struct-tag"
+          disabled: false
+        - name: "function-result-limit"
+          disabled: false
+        - name: "atomic"
+          disabled: false
+        - name: "use-any"
+          disabled: false
+        - name: "redundant-import-alias"
+          disabled: false
+        - name: "enforce-map-style"
+          disabled: false
+        - name: "enforce-slice-style"
+          disabled: false
+
+run:
+  allow-parallel-runners: true

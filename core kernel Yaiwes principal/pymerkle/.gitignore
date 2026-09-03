@@ -1,0 +1,26 @@
+# Dev
+env/
+*pycache*
+*lint*
+*.pyc
+*.pye
+*.sw*
+TODOS.txt
+NOTES.txt
+
+# Packaging
+*.egg-info/
+build/
+dist/
+
+# Tests
+.coverage
+
+# Benchmarks
+*.benchmarks/
+benchmarks/merkle.db
+
+# Profiling
+profiler/.results/
+*.lprof
+mprofile_*

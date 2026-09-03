@@ -1,0 +1,133 @@
+#:schema https://www.schemastore.org/pyproject.json
+
+[project]
+name = "pact-python-ffi"
+version = "0.5.4.1"
+description = "Python bindings for the Pact FFI library"
+readme = "README.md"
+license = "MIT"
+keywords = ["contract-testing", "ffi", "pact", "pact-python"]
+
+authors = [{ name = "Joshua Ellis", email = "josh@jpellis.me" }]
+maintainers = [{ name = "Joshua Ellis", email = "josh@jpellis.me" }]
+
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: MacOS :: MacOS X",
+  "Operating System :: Microsoft :: Windows",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Software Development :: Testing",
+]
+
+requires-python = ">=3.10"
+
+dependencies = ["cffi~=2.0"]
+
+  [project.urls]
+  "Bug Tracker" = "https://github.com/pact-foundation/pact-python/issues"
+  "Changelog" = "https://github.com/pact-foundation/pact-python/blob/main/pact-python-ffi/CHANGELOG.md"
+  "Documentation" = "https://docs.pact.io"
+  "Homepage" = "https://pact.io"
+  "Repository" = "https://github.com/pact-foundation/pact-python"
+
+[dependency-groups]
+dev = ["ruff==0.16.2", { include-group = "test" }, { include-group = "types" }]
+test = ["pytest~=9.0", "pytest-cov~=7.0"]
+types = ["mypy==2.3.0", "typing-extensions~=4.0"]
+
+[build-system]
+requires = ["cffi", "hatchling", "packaging", "setuptools"]
+build-backend = "hatchling.build"
+
+[tool]
+  [tool.cibuildwheel]
+  environment.HATCH_VERBOSE = "1"
+
+    [tool.cibuildwheel.windows]
+    archs = ["auto64"]
+    environment.PACT_LIB_DIR = "C:/tmp/pact_ffi"
+    environment.PATH = "C:/tmp/pact_ffi;$PATH"
+
+    [[tool.cibuildwheel.overrides]]
+    environment.MACOSX_DEPLOYMENT_TARGET = "12.0"
+    inherit.environment = "append"
+    select = "*-macosx_*"
+
+  [tool.coverage]
+    [tool.coverage.paths]
+    pact-ffi = ["/src/pact_ffi"]
+    tests = ["/tests"]
+
+    [tool.coverage.report]
+    exclude_lines = [
+      "@(abc\\.)?abstractmethod",  # Ignore abstract methods
+      "if TYPE_CHECKING:",  # Ignore typing
+      "if __name__ == .__main__.:",  # Ignore non-runnable code
+      "raise NotImplementedError",  # Ignore defensive assertions
+    ]
+
+  [tool.hatch]
+    [tool.hatch.build]
+    packages = ["src/pact_ffi"]
+
+      [tool.hatch.build.targets.wheel.hooks.custom]
+      patch = "hatch_build.py"
+
+    [tool.hatch.envs]
+      [tool.hatch.envs.default]
+      installer = "uv"
+      path = ".venv"
+      extra-dependencies = ["hatchling", "packaging", "cffi"]
+      dependency-groups = ["dev"]
+
+        [tool.hatch.envs.default.scripts]
+        all = ["format", "lint", "test", "typecheck"]
+        format = "ruff format {args}"
+        lint = "ruff check --show-fixes {args}"
+        test = "pytest tests/ {args}"
+        typecheck = ["typecheck-src", "typecheck-tests"]
+        typecheck-src = "mypy src/ {args}"
+        typecheck-tests = "mypy tests/ {args}"
+
+      # Test environment for running unit tests.
+      [tool.hatch.envs.test]
+      installer = "uv"
+      path = ".venv/test"
+      dependency-groups = ["test"]
+
+        [[tool.hatch.envs.test.matrix]]
+        python = ["3.10", "3.11", "3.12", "3.13", "3.14"]
+
+  [tool.mypy]
+  # Overwrite the exclusions from the root pyproject.toml.
+  exclude = ""
+
+  ## PyTest Configuration
+  [tool.pytest]
+  addopts = [
+    # Coverage options
+    "--cov-config=pyproject.toml",
+    "--cov-report=xml",
+    "--cov=pact_ffi",
+    "--import-mode=importlib",
+  ]
+
+  log_date_format = "%H:%M:%S"
+  log_format = "%(asctime)s.%(msecs)03d [%(levelname)-8s] %(name)s: %(message)s"
+  log_level = "NOTSET"
+
+  ## Ruff Configuration
+  [tool.ruff]
+  extend = "../pyproject.toml"
+
+  exclude = []

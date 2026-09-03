@@ -1,0 +1,43 @@
+import {Inner, Row, Text} from '@dagster-io/ui-components';
+import {useVirtualizer} from '@tanstack/react-virtual';
+import {CSSProperties, useRef} from 'react';
+
+import {displayNameForAssetKey} from '../asset-graph/Utils';
+import {AssetKeyInput} from '../graphql/types';
+
+export const VirtualizedSimpleAssetKeyList = ({
+  assetKeys,
+  style,
+}: {
+  assetKeys: AssetKeyInput[];
+  style?: CSSProperties;
+}) => {
+  const parentRef = useRef<HTMLDivElement>(null);
+  const rowVirtualizer = useVirtualizer({
+    count: assetKeys.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 18,
+    overscan: 10,
+  });
+
+  const totalHeight = rowVirtualizer.getTotalSize();
+  const items = rowVirtualizer.getVirtualItems();
+
+  return (
+    <div style={{...style, overflowY: 'auto'}} ref={parentRef}>
+      <Inner totalHeight={totalHeight}>
+        {items.map(({index, key, size, start}) => {
+          // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+          const assetKey = assetKeys[index]!;
+          return (
+            <Row key={key} height={size} start={start}>
+              <Text size={12} family="mono">
+                {displayNameForAssetKey(assetKey)}
+              </Text>
+            </Row>
+          );
+        })}
+      </Inner>
+    </div>
+  );
+};

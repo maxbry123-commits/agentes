@@ -1,0 +1,20 @@
+---
+- name: area:cli
+  description: Relating to the CLI
+  color: C2E0C6
+
+- name: area:core
+  description: Relating to the core Pact Python library
+  color: C2E0C6
+
+- name: area:examples
+  description: Relating to the examples
+  color: C2E0C6
+
+- name: area:ffi
+  description: Relating to the FFI
+  color: C2E0C6
+
+- name: area:v2
+  description: Relating to v2 code
+  color: C2E0C6

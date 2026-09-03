@@ -1,0 +1,71 @@
+interactions:
+  - request:
+      headers:
+        accept:
+          - "*/*"
+        accept-encoding:
+          - gzip, deflate
+        connection:
+          - keep-alive
+        content-length:
+          - "258"
+        content-type:
+          - application/json
+        host:
+          - aiplatform.googleapis.com
+      method: POST
+      parsed_body:
+        contents:
+          - parts:
+              - text: What is the main content of this URL?
+              - fileData:
+                  file_uri: https://upload.wikimedia.org/wikipedia/commons/8/8f/Panda_at_Smithsonian_zoo.webm
+                  mime_type: video/webm
+            role: user
+        generationConfig: {}
+      uri: https://aiplatform.googleapis.com/v1beta1/projects/pydantic-ai/locations/global/publishers/google/models/gemini-2.0-flash:generateContent
+    response:
+      headers:
+        alt-svc:
+          - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+        content-length:
+          - "1075"
+        content-type:
+          - application/json; charset=UTF-8
+        transfer-encoding:
+          - chunked
+        vary:
+          - Origin
+          - X-Origin
+          - Referer
+      parsed_body:
+        candidates:
+          - avgLogprobs: -0.4537404378255208
+            content:
+              parts:
+                - text:
+                    The main content of the image is a panda eating bamboo in a zoo enclosure. The enclosure is designed to
+                    mimic the panda's natural habitat, with rocks, bamboo, and a painted backdrop of mountains. There is also a
+                    large, smooth, tan-colored ball-shaped object in the enclosure.
+              role: model
+            finishReason: STOP
+        createTime: "2025-05-31T21:19:11.379049Z"
+        modelVersion: gemini-2.0-flash
+        responseId: T3I7aKmRF7jFnvgPocrJaA
+        usageMetadata:
+          candidatesTokenCount: 60
+          candidatesTokensDetails:
+            - modality: TEXT
+              tokenCount: 60
+          promptTokenCount: 1569
+          promptTokensDetails:
+            - modality: TEXT
+              tokenCount: 9
+            - modality: VIDEO
+              tokenCount: 1560
+          totalTokenCount: 1629
+          trafficType: ON_DEMAND
+      status:
+        code: 200
+        message: OK
+version: 1

@@ -1,0 +1,458 @@
+"""
+Matching functionality for Pact.
+
+Matchers are used in Pact to allow for more flexible matching of data. While the
+consumer defines the expected request and response, there are circumstances
+where the provider may return dynamically generated data. In these cases, the
+consumer should use a matcher to define the expected data.
+"""
+
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
+from collections.abc import Mapping, Sequence
+from itertools import chain
+from json import JSONEncoder
+from typing import Any, Generic, TypeVar
+
+from pact.generate.generator import AbstractGenerator
+from pact.types import UNSET, Matchable, MatcherType, Unset
+
+_T_co = TypeVar("_T_co", covariant=True)
+_T = TypeVar("_T")
+
+
+class AbstractMatcher(ABC, Generic[_T_co]):
+    """
+    Abstract matcher.
+
+    In Pact, a matcher is used to define how a value should be compared. This
+    allows for more flexible matching of data, especially when the provider
+    returns dynamically generated data.
+
+    This class is abstract and should not be used directly. Instead, use one of
+    the concrete matcher classes. Alternatively, you can create your own matcher
+    by subclassing this class.
+
+    The matcher provides methods to convert into an integration JSON object and
+    a matching rule. These methods are used internally by the Pact library when
+    communicating with the FFI and generating the Pact file.
+    """
+
+    @abstractmethod
+    def to_integration_json(self) -> dict[str, Any]:
+        """
+        Convert the matcher to an integration JSON object.
+
+        This method is used internally to convert the matcher to a JSON object
+        which can be embedded directly in a number of places in the Pact FFI.
+
+        For more information about this format, see the [integration JSON
+        docs](https://docs.pact.io/implementation_guides/rust/pact_ffi/integrationjson).
+
+        Returns:
+            The matcher as an integration JSON object.
+        """
+
+    @abstractmethod
+    def to_matching_rule(self) -> dict[str, Any]:
+        """
+        Convert the matcher to a matching rule.
+
+        This method is used internally to convert the matcher to a matching rule
+        which can be embedded directly in a Pact file.
+
+        For more information about this format, refer to the [Pact
+        specification](https://github.com/pact-foundation/pact-specification/tree/version-4)
+        and the [matchers
+        section](https://github.com/pact-foundation/pact-specification/tree/version-2?tab=readme-ov-file#matchers)
+
+        Returns:
+            The matcher as a matching rule.
+        """
+
+    def has_value(self) -> bool:
+        """
+        Check if the matcher has a value.
+
+        If a value is present, it _must_ be accessible via the `value`
+        attribute.
+
+        Returns:
+            True if the matcher has a value, otherwise False.
+        """
+        return not isinstance(getattr(self, "value", UNSET), Unset)
+
+    def __and__(self, other: object) -> AndMatcher[Any]:
+        """
+        Combine two matchers using a logical AND.
+
+        This allows for combining multiple matchers into a single matcher that
+        requires all conditions to be met.
+
+        Only a single example value is supported when combining matchers. The
+        first value found will be used.
+
+        Args:
+            other:
+                The other matcher to combine with.
+
+        Returns:
+            An `AndMatcher` that combines both matchers.
+        """
+        if isinstance(self, AndMatcher) and isinstance(other, AbstractMatcher):
+            return AndMatcher(*self._matchers, other)  # type: ignore[attr-defined]
+        if isinstance(other, AndMatcher):
+            return AndMatcher(self, *other._matchers)  # type: ignore[attr-defined]
+        if isinstance(other, AbstractMatcher):
+            return AndMatcher(self, other)
+        return NotImplemented
+
+
+class GenericMatcher(AbstractMatcher[_T_co]):
+    """
+    Generic matcher.
+
+    A generic matcher, with the ability to define arbitrary additional fields
+    for inclusion in the integration JSON object and matching rule.
+    """
+
+    def __init__(
+        self,
+        type: MatcherType,  # noqa: A002
+        /,
+        value: _T_co | Unset = UNSET,
+        generator: AbstractGenerator | None = None,
+        extra_fields: Mapping[str, Any] | None = None,
+        **kwargs: Matchable,
+    ) -> None:
+        """
+        Initialize the matcher.
+
+        Args:
+            type:
+                The type of the matcher.
+
+            value:
+                The value to match. If not provided, the Pact library will
+                generate a value based on the matcher type (or use the generator
+                if provided). To ensure reproducibility, it is _highly_
+                recommended to provide a value when creating a matcher.
+
+            generator:
+                The generator to use when generating the value. The generator
+                will generally only be used if value is not provided.
+
+            extra_fields:
+                Additional configuration elements to pass to the matcher. These
+                fields will be used when converting the matcher to both an
+                integration JSON object and a matching rule.
+
+            **kwargs:
+                Alternative way to define extra fields. See the `extra_fields`
+                argument for more information.
+        """
+        self.type = type
+        """
+        The type of the matcher.
+        """
+
+        self.value: _T_co | Unset = value
+        """
+        Default value used by Pact when executing tests.
+        """
+
+        self.generator = generator
+        """
+        Generator used to generate a value when the value is not provided.
+        """
+
+        self._extra_fields: Mapping[str, Any] = dict(
+            chain((extra_fields or {}).items(), kwargs.items())
+        )
+
+    def to_integration_json(self) -> dict[str, Any]:
+        """
+        Convert the matcher to an integration JSON object.
+
+        See
+        [`AbstractMatcher.to_integration_json`][AbstractMatcher.to_integration_json]
+        for more information.
+        """
+        return {
+            "pact:matcher:type": self.type,
+            **({"value": self.value} if not isinstance(self.value, Unset) else {}),
+            **(
+                self.generator.to_integration_json()
+                if self.generator is not None
+                else {}
+            ),
+            **self._extra_fields,
+        }
+
+    def to_matching_rule(self) -> dict[str, Any]:
+        """
+        Convert the matcher to a matching rule.
+
+        See
+        [`AbstractMatcher.to_matching_rule`][AbstractMatcher.to_matching_rule]
+        for more information.
+        """
+        return {
+            "match": self.type,
+            **({"value": self.value} if not isinstance(self.value, Unset) else {}),
+            **self._extra_fields,
+        }
+
+
+class ArrayContainsMatcher(AbstractMatcher[Sequence[_T_co]]):
+    """
+    Array contains matcher.
+
+    A matcher that checks if an array contains a value.
+    """
+
+    def __init__(self, variants: Sequence[_T_co | AbstractMatcher[_T_co]]) -> None:
+        """
+        Initialize the matcher.
+
+        Args:
+            variants:
+                List of possible values to match against.
+        """
+        self._matcher: AbstractMatcher[Sequence[_T_co]] = GenericMatcher(
+            "arrayContains",
+            extra_fields={"variants": variants},
+        )
+
+    def to_integration_json(self) -> dict[str, Any]:
+        """
+        Convert the matcher to an integration JSON object.
+
+        See
+        [`AbstractMatcher.to_integration_json`][AbstractMatcher.to_integration_json]
+        for more information.
+        """
+        return self._matcher.to_integration_json()
+
+    def to_matching_rule(self) -> dict[str, Any]:
+        """
+        Convert the matcher to a matching rule.
+
+        See
+        [`AbstractMatcher.to_matching_rule`][AbstractMatcher.to_matching_rule]
+        for more information.
+        """
+        return self._matcher.to_matching_rule()
+
+
+class EachKeyMatcher(AbstractMatcher[Mapping[_T, Matchable]]):
+    """
+    Each key matcher.
+
+    A matcher that applies a matcher to each key in a mapping.
+    """
+
+    def __init__(
+        self,
+        value: Mapping[_T, Matchable],
+        rules: list[AbstractMatcher[_T]] | None = None,
+    ) -> None:
+        """
+        Initialize the matcher.
+
+        Args:
+            value:
+                Example value to match against.
+
+            rules:
+                List of matchers to apply to each key in the mapping.
+        """
+        self._matcher: AbstractMatcher[Mapping[_T, Matchable]] = GenericMatcher(
+            "eachKey",
+            value=value,
+            extra_fields={"rules": rules},
+        )
+
+    def to_integration_json(self) -> dict[str, Any]:
+        """
+        Convert the matcher to an integration JSON object.
+
+        See
+        [`AbstractMatcher.to_integration_json`][AbstractMatcher.to_integration_json]
+        for more information.
+        """
+        return self._matcher.to_integration_json()
+
+    def to_matching_rule(self) -> dict[str, Any]:
+        """
+        Convert the matcher to a matching rule.
+
+        See
+        [`AbstractMatcher.to_matching_rule`][AbstractMatcher.to_matching_rule]
+        for more information.
+        """
+        return self._matcher.to_matching_rule()
+
+
+class EachValueMatcher(AbstractMatcher[Mapping[Matchable, _T_co]]):
+    """
+    Each value matcher.
+
+    A matcher that applies a matcher to each value in a mapping.
+    """
+
+    def __init__(
+        self,
+        value: Mapping[Matchable, _T_co],
+        rules: list[AbstractMatcher[_T_co]] | None = None,
+    ) -> None:
+        """
+        Initialize the matcher.
+
+        Args:
+            value:
+                Example value to match against.
+
+            rules:
+                List of matchers to apply to each value in the mapping.
+        """
+        self._matcher: AbstractMatcher[Mapping[Matchable, _T_co]] = GenericMatcher(
+            "eachValue",
+            value=value,
+            extra_fields={"rules": rules},
+        )
+
+    def to_integration_json(self) -> dict[str, Any]:
+        """
+        Convert the matcher to an integration JSON object.
+
+        See
+        [`AbstractMatcher.to_integration_json`][AbstractMatcher.to_integration_json]
+        for more information.
+        """
+        return self._matcher.to_integration_json()
+
+    def to_matching_rule(self) -> dict[str, Any]:
+        """
+        Convert the matcher to a matching rule.
+
+        See
+        [`AbstractMatcher.to_matching_rule`][AbstractMatcher.to_matching_rule]
+        for more information.
+        """
+        return self._matcher.to_matching_rule()
+
+
+class AndMatcher(AbstractMatcher[_T_co]):
+    """
+    And matcher.
+
+    A matcher that combines multiple matchers using a logical AND.
+    """
+
+    def __init__(
+        self,
+        *matchers: AbstractMatcher[Any],
+        value: _T_co | Unset = UNSET,
+    ) -> None:
+        """
+        Initialize the matcher.
+
+        It is best practice to provide a value. This may be set when creating
+        the `AndMatcher`, or it may be inferred from one of the constituent
+        matchers. In the latter case, the value from the first matcher that has
+        a value will be used.
+
+        Args:
+            matchers:
+                List of matchers to combine.
+
+            value:
+                Example value to match against. If not provided, the value
+                from the first matcher that has a value will be used.
+        """
+        self._matchers = matchers
+        self._value: _T_co | Unset = value
+
+        if isinstance(self._value, Unset):
+            for matcher in matchers:
+                if matcher.has_value():
+                    # If `has_value` is true, `value` must be present
+                    self._value = matcher.value  # type: ignore[attr-defined]
+                    break
+
+    def to_integration_json(self) -> dict[str, Any]:
+        """
+        Convert the matcher to an integration JSON object.
+
+        See
+        [`AbstractMatcher.to_integration_json`][AbstractMatcher.to_integration_json]
+        for more information.
+        """
+        return {"pact:matcher:type": [m.to_integration_json() for m in self._matchers]}
+
+    def to_matching_rule(self) -> dict[str, Any]:
+        """
+        Convert the matcher to a matching rule.
+
+        See
+        [`AbstractMatcher.to_matching_rule`][AbstractMatcher.to_matching_rule]
+        for more information.
+        """
+        return {
+            "combine": "AND",
+            "matchers": [m.to_matching_rule() for m in self._matchers],
+        }
+
+
+class MatchingRuleJSONEncoder(JSONEncoder):
+    """
+    JSON encoder class for matching rules.
+
+    This class is used to encode matching rules to JSON.
+    """
+
+    def default(self, o: Any) -> Any:  # noqa: ANN401
+        """
+        Encode the object to JSON.
+
+        Args:
+            o:
+                The object to encode.
+
+        Returns:
+            The encoded object.
+        """
+        if isinstance(o, AndMatcher):
+            return o.to_matching_rule()
+        if isinstance(o, AbstractMatcher):
+            # We need to convert all matchers in AndMatchers (even if there is
+            # only one).
+            return AndMatcher(o).to_matching_rule()
+        return super().default(o)
+
+
+class IntegrationJSONEncoder(JSONEncoder):
+    """
+    JSON encoder class for integration JSON objects.
+
+    This class is used to encode integration JSON objects to JSON.
+    """
+
+    def default(self, o: Any) -> Any:  # noqa: ANN401
+        """
+        Encode the object to JSON.
+
+        Args:
+            o:
+                The object to encode.
+
+        Returns:
+            The encoded object.
+        """
+        if isinstance(o, AbstractMatcher):
+            return o.to_integration_json()
+        if isinstance(o, AbstractGenerator):
+            return o.to_integration_json()
+        return super().default(o)

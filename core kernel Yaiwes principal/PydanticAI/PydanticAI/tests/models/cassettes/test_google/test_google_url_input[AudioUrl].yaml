@@ -1,0 +1,68 @@
+interactions:
+  - request:
+      headers:
+        accept:
+          - "*/*"
+        accept-encoding:
+          - gzip, deflate
+        connection:
+          - keep-alive
+        content-length:
+          - "223"
+        content-type:
+          - application/json
+        host:
+          - aiplatform.googleapis.com
+      method: POST
+      parsed_body:
+        contents:
+          - parts:
+              - text: What is the main content of this URL?
+              - fileData:
+                  file_uri: https://cdn.openai.com/API/docs/audio/alloy.wav
+                  mime_type: audio/wav
+            role: user
+        generationConfig: {}
+      uri: https://aiplatform.googleapis.com/v1beta1/projects/pydantic-ai/locations/global/publishers/google/models/gemini-2.0-flash:generateContent
+    response:
+      headers:
+        alt-svc:
+          - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+        content-length:
+          - "907"
+        content-type:
+          - application/json; charset=UTF-8
+        transfer-encoding:
+          - chunked
+        vary:
+          - Origin
+          - X-Origin
+          - Referer
+      parsed_body:
+        candidates:
+          - avgLogprobs: -0.4016600522128018
+            content:
+              parts:
+                - text: The URL discusses the sunrise in the east and sunset in the west, a phenomenon known to humans for millennia.
+              role: model
+            finishReason: STOP
+        createTime: "2025-05-31T21:23:04.717155Z"
+        modelVersion: gemini-2.0-flash
+        responseId: OHM7aOPiK7zcnvgPqOGiiQc
+        usageMetadata:
+          candidatesTokenCount: 22
+          candidatesTokensDetails:
+            - modality: TEXT
+              tokenCount: 22
+          promptTokenCount: 159
+          promptTokensDetails:
+            - modality: TEXT
+              tokenCount: 9
+            - modality: AUDIO
+              tokenCount: 150
+          totalTokenCount: 181
+          trafficType: ON_DEMAND
+      status:
+        code: 200
+        message: OK
+version: 1

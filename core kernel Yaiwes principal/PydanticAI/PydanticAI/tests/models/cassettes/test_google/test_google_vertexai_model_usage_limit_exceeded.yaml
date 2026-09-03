@@ -1,0 +1,49 @@
+interactions:
+- request:
+    headers:
+      content-type:
+      - application/json
+    method: post
+    parsed_body:
+      contents:
+      - parts:
+        - text: What is the largest city in the user country? Use the get_user_country tool and then your own world knowledge.
+        role: user
+      generationConfig:
+        max_output_tokens: 100
+      systemInstruction:
+        parts:
+        - text: You are a chatbot.
+        role: user
+      tools:
+      - functionDeclarations:
+        - description: ''
+          name: get_user_country
+          parameters:
+            properties: {}
+            type: OBJECT
+    uri: https://aiplatform.googleapis.com/v1beta1/projects/pydantic-ai/locations/global/publishers/google/models/gemini-2.0-flash:countTokens
+  response:
+    headers:
+      alt-svc:
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      content-length:
+      - '151'
+      content-type:
+      - application/json; charset=UTF-8
+      transfer-encoding:
+      - chunked
+      vary:
+      - Origin
+      - X-Origin
+      - Referer
+    parsed_body:
+      promptTokensDetails:
+      - modality: TEXT
+        tokenCount: 36
+      totalBillableCharacters: 123
+      totalTokens: 36
+    status:
+      code: 200
+      message: OK
+version: 1

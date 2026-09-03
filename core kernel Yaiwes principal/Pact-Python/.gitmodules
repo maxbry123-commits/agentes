@@ -1,0 +1,3 @@
+[submodule "compatibility-suite"]
+	path = tests/compatibility_suite/definition
+	url = ../pact-compatibility-suite.git

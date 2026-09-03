@@ -1,0 +1,50 @@
+import subprocess
+
+import packaging.version
+
+
+def wait_for_mysql_container(container_name: str, port: int = 3306) -> str:
+    """Shell command that polls `mysqladmin ping` inside `container_name` until it
+    succeeds, or fails after ~120s. `docker compose up -d` returns before mysqld
+    finishes initializing, so tests that run early were hitting ECONNREFUSED (111).
+    """
+    return (
+        rf"i=0; until docker exec {container_name} mysqladmin ping -h 127.0.0.1 "
+        rf"-P {port} --silent >/dev/null 2>&1; do i=\$((i+1)); "
+        rf'if [ \$i -ge 60 ]; then echo "{container_name} not ready" >&2; exit 1; fi; '
+        r"sleep 2; done"
+    )
+
+
+# Preceding a line of BK output with "---" turns it into a section header.
+# The characters surrounding the `message` are ANSI escope sequences used to colorize the output.
+# Note that "\" is doubled below to insert a single literal backslash in the string.
+#
+# \033[0;32m : initiate green coloring
+# \033[0m : end coloring
+#
+# Green is hardcoded, but can easily be parameterized if needed.
+def make_buildkite_section_header(message: str) -> str:
+    return f"--- \\033[0;32m{message}\\033[0m"
+
+
+# Use this to get the "library version" (pre-1.0 version) from the "core version" (post 1.0
+# version). 16 is from the 0.16.0 that library versions stayed on when core went to 1.0.0.
+def library_version_from_core_version(core_version: str) -> str:
+    release = parse_package_version(core_version).release
+    if release[0] >= 1:
+        return ".".join(["0", str(16 + release[1]), str(release[2])])
+    else:
+        return core_version
+
+
+def parse_package_version(version_str: str) -> packaging.version.Version:
+    parsed_version = packaging.version.parse(version_str)
+    assert isinstance(parsed_version, packaging.version.Version), (
+        f"Found LegacyVersion: {version_str}"
+    )
+    return parsed_version
+
+
+def get_commit(rev: str) -> str:
+    return subprocess.check_output(["git", "rev-parse", "--short", rev]).decode("utf-8").strip()

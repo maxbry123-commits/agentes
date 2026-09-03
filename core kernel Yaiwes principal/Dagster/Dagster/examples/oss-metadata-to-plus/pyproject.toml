@@ -1,0 +1,18 @@
+[build-system]
+requires = ["hatchling>=1.19.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "oss-metadata-to-plus"
+version = "1!0+dev"
+requires-python = ">=3.10,<3.15"
+dependencies = [
+    "dagster",
+    "dagster-cloud",
+]
+
+[project.optional-dependencies]
+dev = ["dagster-webserver", "pytest"]
+
+[tool.dagster]
+module_name = "oss_metadata_to_plus"

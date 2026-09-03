@@ -1,0 +1,5 @@
+#!/bin/sh
+
+minix-service down grantor
+minix-service down requestor
+

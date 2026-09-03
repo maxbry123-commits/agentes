@@ -1,0 +1,989 @@
+from __future__ import annotations as _annotations
+
+import json
+import re
+from collections.abc import Sequence
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from decimal import Decimal
+from typing import Any, cast
+
+import pytest
+
+from pydantic_ai import (
+    Agent,
+    CachePoint,
+    ImageUrl,
+    ModelAPIError,
+    ModelHTTPError,
+    ModelRequest,
+    ModelResponse,
+    ModelRetry,
+    RetryPromptPart,
+    SystemPromptPart,
+    TextContent,
+    TextPart,
+    ThinkingPart,
+    ToolCallPart,
+    ToolReturnPart,
+    UserPromptPart,
+)
+from pydantic_ai.capabilities import NativeTool
+from pydantic_ai.exceptions import UserError
+from pydantic_ai.models import ModelRequestParameters, ToolDefinition
+from pydantic_ai.native_tools import WebSearchTool
+from pydantic_ai.tools import RunContext
+from pydantic_ai.usage import RequestUsage, RunUsage
+
+from .._inline_snapshot import snapshot
+from ..conftest import IsDatetime, IsInstance, IsNow, IsStr, raise_if_exception, try_import
+
+with try_import() as imports_successful:
+    import cohere
+    from cohere import (
+        AssistantMessageResponse,
+        AsyncClientV2,
+        ChatResponse,
+        TextAssistantMessageResponseContentItem,
+        TextContent as CohereTextContent,
+        ToolCallV2,
+        ToolCallV2Function,
+        UserChatMessageV2,
+    )
+    from cohere.core.api_error import ApiError
+
+    from pydantic_ai.models.cohere import CohereModel
+    from pydantic_ai.providers.cohere import CohereProvider
+
+    MockChatResponse = ChatResponse | Exception
+
+pytestmark = [
+    pytest.mark.skipif(not imports_successful(), reason='cohere not installed'),
+    pytest.mark.anyio,
+]
+
+
+def test_init():
+    provider = CohereProvider(api_key='foobar')
+    m = CohereModel('command-r7b-12-2024', provider=provider)
+    assert m.client is provider.client
+    assert m.model_name == 'command-r7b-12-2024'
+    assert m.system == 'cohere'
+    assert m.base_url == 'https://api.cohere.com'
+
+
+def test_cohere_hidden_tools_stay_off_the_wire():
+    """Guard Cohere's single-line switch from `tool_defs` to `declared_tool_defs`."""
+    model = CohereModel('command-r7b-12-2024', provider=CohereProvider(api_key='foobar'))
+    hidden = ToolDefinition(
+        name='process_refund',
+        description='Process a refund.',
+        parameters_json_schema={'type': 'object', 'properties': {}},
+        defer_loading=True,
+        capability_id='refunds',
+    )
+    visible = ToolDefinition(name='visible')
+
+    _, prepared = model.prepare_request(None, ModelRequestParameters(function_tools=[hidden, visible]))
+    assert prepared.tool_visibility == {'process_refund': 'withheld', 'visible': 'visible'}
+
+    tools, _ = model._get_tool_choice(prepared, {})  # pyright: ignore[reportPrivateUsage]
+    assert len(tools) == 1
+    assert tools[0].function is not None
+    assert tools[0].function.name == 'visible'
+
+
+@dataclass
+class MockClientWrapper:
+    def get_base_url(self) -> str:
+        return 'https://api.cohere.com'
+
+
+@dataclass
+class MockAsyncClientV2:
+    completions: MockChatResponse | Sequence[MockChatResponse] | None = None
+    index = 0
+    chat_kwargs: list[dict[str, Any]] = field(default_factory=list[dict[str, Any]])
+    _client_wrapper: MockClientWrapper = None  # pyright: ignore[reportAssignmentType]
+
+    def __post_init__(self):
+        self._client_wrapper = MockClientWrapper()
+
+    @classmethod
+    def create_mock(cls, completions: MockChatResponse | Sequence[MockChatResponse]) -> AsyncClientV2:
+        return cast(AsyncClientV2, cls(completions=completions))
+
+    async def chat(self, *_args: Any, **kwargs: Any) -> ChatResponse:
+        self.chat_kwargs.append(kwargs)
+        assert self.completions is not None
+        if isinstance(self.completions, Sequence):
+            raise_if_exception(self.completions[self.index])
+            response = cast(ChatResponse, self.completions[self.index])
+        else:
+            raise_if_exception(self.completions)
+            response = cast(ChatResponse, self.completions)
+        self.index += 1
+        return response
+
+
+def completion_message(message: AssistantMessageResponse, *, usage: cohere.Usage | None = None) -> ChatResponse:
+    return ChatResponse(
+        id='123',
+        finish_reason='COMPLETE',
+        message=message,
+        usage=usage,
+    )
+
+
+async def test_request_simple_success(allow_model_requests: None):
+    c = completion_message(
+        AssistantMessageResponse(
+            content=[
+                TextAssistantMessageResponseContentItem(text='world'),
+            ],
+        )
+    )
+    mock_client = MockAsyncClientV2.create_mock(c)
+    m = CohereModel('command-r7b-12-2024', provider=CohereProvider(cohere_client=mock_client))
+    agent = Agent(m)
+
+    result = await agent.run('hello')
+    assert result.output == 'world'
+    assert result.usage == snapshot(RunUsage(requests=1, cost=Decimal('0.0000')))
+
+    # reset the index so we get the same response again
+    mock_client.index = 0  # pyright: ignore[reportAttributeAccessIssue]
+
+    result = await agent.run('hello', message_history=result.new_messages())
+    assert result.output == 'world'
+    assert result.usage == snapshot(RunUsage(requests=1, cost=Decimal('0.0000')))
+    assert result.all_messages() == snapshot(
+        [
+            ModelRequest(
+                parts=[UserPromptPart(content='hello', timestamp=IsNow(tz=timezone.utc))],
+                timestamp=IsNow(tz=timezone.utc),
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelResponse(
+                parts=[TextPart(content='world')],
+                usage=RequestUsage(cost=Decimal('0.0000')),
+                model_name='command-r7b-12-2024',
+                timestamp=IsNow(tz=timezone.utc),
+                provider_name='cohere',
+                provider_url='https://api.cohere.com',
+                provider_details={'finish_reason': 'COMPLETE'},
+                finish_reason='stop',
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelRequest(
+                parts=[UserPromptPart(content='hello', timestamp=IsNow(tz=timezone.utc))],
+                timestamp=IsNow(tz=timezone.utc),
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelResponse(
+                parts=[TextPart(content='world')],
+                usage=RequestUsage(cost=Decimal('0.0000')),
+                model_name='command-r7b-12-2024',
+                timestamp=IsNow(tz=timezone.utc),
+                provider_name='cohere',
+                provider_url='https://api.cohere.com',
+                provider_details={'finish_reason': 'COMPLETE'},
+                finish_reason='stop',
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+        ]
+    )
+
+
+async def test_request_simple_usage(allow_model_requests: None):
+    c = completion_message(
+        AssistantMessageResponse(
+            content=[TextAssistantMessageResponseContentItem(text='world')],
+            role='assistant',
+        ),
+        usage=cohere.Usage(
+            tokens=cohere.UsageTokens(input_tokens=1, output_tokens=1),
+            billed_units=cohere.UsageBilledUnits(input_tokens=1, output_tokens=1),
+        ),
+    )
+    mock_client = MockAsyncClientV2.create_mock(c)
+    m = CohereModel('command-r7b-12-2024', provider=CohereProvider(cohere_client=mock_client))
+    agent = Agent(m)
+
+    result = await agent.run('Hello')
+    assert result.output == 'world'
+    assert result.usage == snapshot(
+        RunUsage(
+            requests=1,
+            input_tokens=1,
+            output_tokens=1,
+            details={
+                'input_tokens': 1,
+                'output_tokens': 1,
+            },
+            cost=Decimal('1.875E-7'),
+        )
+    )
+
+
+async def test_request_usage_without_tokens(allow_model_requests: None):
+    """The mock pins billed-unit mapping when Cohere omits `tokens`, a response shape VCR cannot reliably trigger."""
+    c = completion_message(
+        AssistantMessageResponse(
+            content=[TextAssistantMessageResponseContentItem(text='world')],
+            role='assistant',
+        ),
+        usage=cohere.Usage(
+            billed_units=cohere.UsageBilledUnits(input_tokens=4, output_tokens=2),
+        ),
+    )
+    mock_client = MockAsyncClientV2.create_mock(c)
+    m = CohereModel('command-r7b-12-2024', provider=CohereProvider(cohere_client=mock_client))
+    agent = Agent(m)
+
+    result = await agent.run('Hello')
+    assert result.output == 'world'
+    assert result.usage == snapshot(
+        RunUsage(
+            requests=1,
+            details={
+                'input_tokens': 4,
+                'output_tokens': 2,
+            },
+            cost=Decimal('0.0000'),
+        )
+    )
+
+
+async def test_request_usage_with_partial_tokens(allow_model_requests: None):
+    """The mock pins optional token fields, which a VCR response cannot reliably trigger."""
+    c = completion_message(
+        AssistantMessageResponse(
+            content=[TextAssistantMessageResponseContentItem(text='world')],
+            role='assistant',
+        ),
+        usage=cohere.Usage(
+            tokens=cohere.UsageTokens(input_tokens=4),
+            billed_units=cohere.UsageBilledUnits(input_tokens=3),
+        ),
+    )
+    mock_client = MockAsyncClientV2.create_mock(c)
+    m = CohereModel('command-r7b-12-2024', provider=CohereProvider(cohere_client=mock_client))
+    agent = Agent(m)
+
+    result = await agent.run('Hello')
+    assert result.output == 'world'
+    assert result.usage == snapshot(
+        RunUsage(requests=1, input_tokens=4, details={'input_tokens': 3}, cost=Decimal('1.5E-7'))
+    )
+
+
+async def test_request_usage_with_cached_tokens_mock(allow_model_requests: None):
+    """Top-level `usage.cached_tokens` surfaces as first-class `cache_read_tokens` via the genai-prices tokens flavor.
+
+    Unit-style mock rather than VCR: the SDK types these counts as floats, and this pins the
+    float-to-int normalization plus nonzero token extraction, so a silently-broken extraction
+    path (which yields all-zero tokens with details preserved) cannot pass. The VCR variant
+    `test_request_usage_with_cached_tokens` covers the recorded-API path.
+    """
+    c = completion_message(
+        AssistantMessageResponse(
+            content=[TextAssistantMessageResponseContentItem(text='world')],
+            role='assistant',
+        ),
+        usage=cohere.Usage(
+            billed_units=cohere.UsageBilledUnits(input_tokens=13, output_tokens=8),
+            tokens=cohere.UsageTokens(input_tokens=542, output_tokens=8),
+            cached_tokens=37,
+        ),
+    )
+    mock_client = MockAsyncClientV2.create_mock(c)
+    m = CohereModel('command-r7b-12-2024', provider=CohereProvider(cohere_client=mock_client))
+    agent = Agent(m)
+
+    result = await agent.run('Hello')
+    assert result.output == 'world'
+    assert result.usage == snapshot(
+        RunUsage(
+            requests=1,
+            input_tokens=542,
+            cache_read_tokens=37,
+            output_tokens=8,
+            details={
+                'input_tokens': 13,
+                'output_tokens': 8,
+            },
+            cost=Decimal('0.000021525'),
+        )
+    )
+
+
+async def test_request_structured_response(allow_model_requests: None):
+    c = completion_message(
+        AssistantMessageResponse(
+            content=None,
+            role='assistant',
+            tool_calls=[
+                ToolCallV2(
+                    id='123',
+                    function=ToolCallV2Function(arguments='{"response": [1, 2, 123]}', name='final_result'),
+                    type='function',
+                )
+            ],
+        )
+    )
+    mock_client = MockAsyncClientV2.create_mock(c)
+    m = CohereModel('command-r7b-12-2024', provider=CohereProvider(cohere_client=mock_client))
+    agent = Agent(m, output_type=list[int])
+
+    result = await agent.run('Hello')
+    assert result.output == [1, 2, 123]
+    assert result.all_messages() == snapshot(
+        [
+            ModelRequest(
+                parts=[UserPromptPart(content='Hello', timestamp=IsNow(tz=timezone.utc))],
+                timestamp=IsNow(tz=timezone.utc),
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelResponse(
+                parts=[
+                    ToolCallPart(
+                        tool_name='final_result',
+                        args='{"response": [1, 2, 123]}',
+                        tool_call_id='123',
+                    )
+                ],
+                usage=RequestUsage(cost=Decimal('0.0000')),
+                model_name='command-r7b-12-2024',
+                timestamp=IsNow(tz=timezone.utc),
+                provider_name='cohere',
+                provider_url='https://api.cohere.com',
+                provider_details={'finish_reason': 'COMPLETE'},
+                finish_reason='stop',
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelRequest(
+                parts=[
+                    ToolReturnPart(
+                        tool_name='final_result',
+                        content='Final result processed.',
+                        tool_call_id='123',
+                        timestamp=IsNow(tz=timezone.utc),
+                    )
+                ],
+                timestamp=IsNow(tz=timezone.utc),
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+        ]
+    )
+
+
+async def test_request_tool_call(allow_model_requests: None):
+    responses = [
+        completion_message(
+            AssistantMessageResponse(
+                content=None,
+                role='assistant',
+                tool_calls=[
+                    ToolCallV2(
+                        id='1',
+                        function=ToolCallV2Function(arguments='{"loc_name": "San Fransisco"}', name='get_location'),
+                        type='function',
+                    )
+                ],
+            ),
+            usage=cohere.Usage(),
+        ),
+        completion_message(
+            AssistantMessageResponse(
+                content=None,
+                role='assistant',
+                tool_calls=[
+                    ToolCallV2(
+                        id='2',
+                        function=ToolCallV2Function(arguments='{"loc_name": "London"}', name='get_location'),
+                        type='function',
+                    )
+                ],
+            ),
+            usage=cohere.Usage(
+                tokens=cohere.UsageTokens(input_tokens=5, output_tokens=3),
+                billed_units=cohere.UsageBilledUnits(input_tokens=4, output_tokens=2),
+            ),
+        ),
+        completion_message(
+            AssistantMessageResponse(
+                content=[TextAssistantMessageResponseContentItem(text='final response')],
+                role='assistant',
+            )
+        ),
+    ]
+    mock_client = MockAsyncClientV2.create_mock(responses)
+    m = CohereModel('command-r7b-12-2024', provider=CohereProvider(cohere_client=mock_client))
+    agent = Agent(m, system_prompt='this is the system prompt')
+
+    @agent.tool_plain
+    async def get_location(loc_name: str) -> str:
+        if loc_name == 'London':
+            return json.dumps({'lat': 51, 'lng': 0})
+        else:
+            raise ModelRetry('Wrong location, please try again')
+
+    result = await agent.run('Hello')
+    assert result.output == 'final response'
+    assert result.all_messages() == snapshot(
+        [
+            ModelRequest(
+                parts=[
+                    SystemPromptPart(content='this is the system prompt', timestamp=IsNow(tz=timezone.utc)),
+                    UserPromptPart(content='Hello', timestamp=IsNow(tz=timezone.utc)),
+                ],
+                timestamp=IsNow(tz=timezone.utc),
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelResponse(
+                parts=[
+                    ToolCallPart(
+                        tool_name='get_location',
+                        args='{"loc_name": "San Fransisco"}',
+                        tool_call_id='1',
+                    )
+                ],
+                usage=RequestUsage(cost=Decimal('0.0000')),
+                model_name='command-r7b-12-2024',
+                timestamp=IsNow(tz=timezone.utc),
+                provider_name='cohere',
+                provider_url='https://api.cohere.com',
+                provider_details={'finish_reason': 'COMPLETE'},
+                finish_reason='stop',
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelRequest(
+                parts=[
+                    RetryPromptPart(
+                        content='Wrong location, please try again',
+                        tool_name='get_location',
+                        tool_call_id='1',
+                        timestamp=IsNow(tz=timezone.utc),
+                    )
+                ],
+                timestamp=IsNow(tz=timezone.utc),
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelResponse(
+                parts=[
+                    ToolCallPart(
+                        tool_name='get_location',
+                        args='{"loc_name": "London"}',
+                        tool_call_id='2',
+                    )
+                ],
+                usage=RequestUsage(
+                    input_tokens=5,
+                    output_tokens=3,
+                    details={'input_tokens': 4, 'output_tokens': 2},
+                    cost=Decimal('6.375E-7'),
+                ),
+                model_name='command-r7b-12-2024',
+                timestamp=IsNow(tz=timezone.utc),
+                provider_name='cohere',
+                provider_url='https://api.cohere.com',
+                provider_details={'finish_reason': 'COMPLETE'},
+                finish_reason='stop',
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelRequest(
+                parts=[
+                    ToolReturnPart(
+                        tool_name='get_location',
+                        content='{"lat": 51, "lng": 0}',
+                        tool_call_id='2',
+                        timestamp=IsNow(tz=timezone.utc),
+                    )
+                ],
+                timestamp=IsNow(tz=timezone.utc),
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelResponse(
+                parts=[TextPart(content='final response')],
+                usage=RequestUsage(cost=Decimal('0.0000')),
+                model_name='command-r7b-12-2024',
+                timestamp=IsNow(tz=timezone.utc),
+                provider_name='cohere',
+                provider_url='https://api.cohere.com',
+                provider_details={'finish_reason': 'COMPLETE'},
+                finish_reason='stop',
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+        ]
+    )
+    assert result.usage == snapshot(
+        RunUsage(
+            requests=3,
+            input_tokens=5,
+            output_tokens=3,
+            details={'input_tokens': 4, 'output_tokens': 2},
+            tool_calls=1,
+            cost=Decimal('6.375E-7'),
+        )
+    )
+
+    # Cohere stores billed units under `details['input_tokens']`/`details['output_tokens']`. Those names
+    # collide with the first-class `gen_ai.usage.{input,output}_tokens` attributes, so emitting them under
+    # `gen_ai.usage.details.*` too would let consumers like Langfuse sum billed + actual and double-count.
+    # They must be dropped from the OTel attributes (only the first-class counts remain) while staying
+    # accessible on `usage.details`.
+    tool_call_usage = next(m.usage for m in result.all_messages() if isinstance(m, ModelResponse) and m.usage.details)
+    assert tool_call_usage.details == {'input_tokens': 4, 'output_tokens': 2}
+    assert tool_call_usage.opentelemetry_attributes() == snapshot(
+        {
+            'gen_ai.usage.input_tokens': 5,
+            'gen_ai.usage.output_tokens': 3,
+        }
+    )
+
+
+def test_text_content_in_request(allow_model_requests: None):
+    req = ModelRequest(
+        parts=[
+            UserPromptPart(
+                content=[
+                    'Hello there!',
+                    TextContent(
+                        content='This is some additional text content that should be included in the request.',
+                        metadata={'format': 'markdown'},
+                    ),
+                ]
+            )
+        ]
+    )
+    assert list(CohereModel._map_user_message(req)) == snapshot(  # pyright: ignore[reportPrivateUsage]
+        [
+            UserChatMessageV2(
+                content=[
+                    CohereTextContent(text='Hello there!'),
+                    CohereTextContent(
+                        text='This is some additional text content that should be included in the request.'
+                    ),
+                ]
+            )
+        ]
+    )
+
+
+def test_cache_point_silently_skipped_user_prompt_part(allow_model_requests: None):
+    req = ModelRequest(parts=[UserPromptPart(content=['Hello there!', CachePoint()])])
+    assert list(CohereModel._map_user_message(req)) == snapshot(  # pyright: ignore[reportPrivateUsage]
+        [
+            UserChatMessageV2(
+                content=[
+                    CohereTextContent(text='Hello there!'),
+                ]
+            )
+        ]
+    )
+
+
+async def test_multimodal(allow_model_requests: None):
+    c = completion_message(AssistantMessageResponse(content=[TextAssistantMessageResponseContentItem(text='world')]))
+    mock_client = MockAsyncClientV2.create_mock(c)
+    m = CohereModel('command-r7b-12-2024', provider=CohereProvider(cohere_client=mock_client))
+    agent = Agent(m)
+
+    with pytest.raises(RuntimeError, match=re.escape('Cohere does not yet support multi-modal inputs.')):
+        await agent.run(
+            [
+                'hello',
+                ImageUrl(
+                    url='https://t3.ftcdn.net/jpg/00/85/79/92/360_F_85799278_0BBGV9OAdQDTLnKwAPBCcg1J7QtiieJY.jpg'
+                ),
+            ]
+        )
+
+
+def test_model_status_error(allow_model_requests: None) -> None:
+    mock_client = MockAsyncClientV2.create_mock(
+        ApiError(
+            status_code=500,
+            body={'error': 'test error'},
+            headers={'retry-after': '60', 'x-request-id': 'rid-1'},
+        )
+    )
+    m = CohereModel('command-r', provider=CohereProvider(cohere_client=mock_client))
+    agent = Agent(m)
+    with pytest.raises(ModelHTTPError) as exc_info:
+        agent.run_sync('hello')
+    exc = exc_info.value
+    assert str(exc) == snapshot("status_code: 500, model_name: command-r, body: {'error': 'test error'}")
+    # ApiError.headers is a plain dict — verify it reaches ModelHTTPError.headers unchanged.
+    assert exc.headers is not None
+    assert exc.headers.get('retry-after') == '60'
+    assert exc.headers.get('x-request-id') == 'rid-1'
+
+
+def test_model_non_http_error(allow_model_requests: None) -> None:
+    mock_client = MockAsyncClientV2.create_mock(
+        ApiError(
+            status_code=None,
+            body={'error': 'connection error'},
+        )
+    )
+    m = CohereModel('command-r', provider=CohereProvider(cohere_client=mock_client))
+    agent = Agent(m)
+    with pytest.raises(ModelAPIError) as exc_info:
+        agent.run_sync('hello')
+    assert exc_info.value.model_name == 'command-r'
+
+
+@pytest.mark.vcr()
+async def test_request_simple_success_with_vcr(allow_model_requests: None, co_api_key: str):
+    m = CohereModel('command-r7b-12-2024', provider=CohereProvider(api_key=co_api_key))
+    agent = Agent(m)
+    result = await agent.run('hello')
+    assert result.output == snapshot('Hello! How can I assist you today?')
+
+
+@pytest.mark.vcr()
+async def test_request_usage_with_cached_tokens(allow_model_requests: None, co_api_key: str):
+    m = CohereModel('command-r7b-12-2024', provider=CohereProvider(api_key=co_api_key))
+    # Long instructions so the prompt crosses Cohere's prompt-cache threshold and the API reports a hit.
+    long_instructions = 'You are a helpful assistant. ' * 400
+    agent = Agent(m, instructions=long_instructions)
+    result = await agent.run('Say hi in one word.')
+    assert result.usage.cache_read_tokens == snapshot(2928)
+
+
+@pytest.mark.vcr()
+async def test_cohere_model_instructions(allow_model_requests: None, co_api_key: str):
+    m = CohereModel('command-r7b-12-2024', provider=CohereProvider(api_key=co_api_key))
+
+    def simple_instructions(ctx: RunContext):
+        return 'You are a helpful assistant.'
+
+    agent = Agent(m, instructions=simple_instructions)
+
+    result = await agent.run('What is the capital of France?')
+    assert result.all_messages() == snapshot(
+        [
+            ModelRequest(
+                parts=[UserPromptPart(content='What is the capital of France?', timestamp=IsDatetime())],
+                timestamp=IsNow(tz=timezone.utc),
+                instructions='You are a helpful assistant.',
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelResponse(
+                parts=[
+                    TextPart(
+                        content="The capital of France is Paris. It is the country's largest city and serves as the economic, cultural, and political center of France. Paris is known for its rich history, iconic landmarks such as the Eiffel Tower and the Louvre Museum, and its significant influence on fashion, cuisine, and the arts."
+                    )
+                ],
+                usage=RequestUsage(
+                    input_tokens=542,
+                    output_tokens=63,
+                    details={'input_tokens': 13, 'output_tokens': 61},
+                    cost=Decimal('0.000029775'),
+                ),
+                model_name='command-r7b-12-2024',
+                timestamp=IsDatetime(),
+                provider_name='cohere',
+                provider_url='https://api.cohere.com',
+                provider_details={'finish_reason': 'COMPLETE'},
+                finish_reason='stop',
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+        ]
+    )
+
+
+@pytest.mark.vcr()
+async def test_cohere_model_thinking_part(allow_model_requests: None, co_api_key: str, openai_api_key: str):
+    with try_import() as imports_successful:
+        from pydantic_ai.models.openai import OpenAIResponsesModel, OpenAIResponsesModelSettings
+        from pydantic_ai.providers.openai import OpenAIProvider
+
+    if not imports_successful():  # pragma: no cover
+        pytest.skip('OpenAI is not installed')
+
+    openai_model = OpenAIResponsesModel('o3-mini', provider=OpenAIProvider(api_key=openai_api_key))
+    co_model = CohereModel('command-a-reasoning-08-2025', provider=CohereProvider(api_key=co_api_key))
+    agent = Agent(openai_model)
+
+    # We call OpenAI to get the thinking parts, because Google disabled the thoughts in the API.
+    # See https://github.com/pydantic/pydantic-ai/issues/793 for more details.
+    result = await agent.run(
+        'How do I cross the street?',
+        model_settings=OpenAIResponsesModelSettings(
+            openai_reasoning_effort='high', openai_reasoning_summary='detailed'
+        ),
+    )
+    assert result.all_messages() == snapshot(
+        [
+            ModelRequest(
+                parts=[UserPromptPart(content='How do I cross the street?', timestamp=IsDatetime())],
+                timestamp=IsNow(tz=timezone.utc),
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelResponse(
+                parts=[
+                    IsInstance(ThinkingPart),
+                    IsInstance(ThinkingPart),
+                    IsInstance(ThinkingPart),
+                    IsInstance(TextPart),
+                ],
+                usage=RequestUsage(
+                    input_tokens=13,
+                    output_tokens=2241,
+                    output_reasoning_tokens=1856,
+                    details={'reasoning_tokens': 1856},
+                    cost=Decimal('0.0098747'),
+                ),
+                model_name='o3-mini-2025-01-31',
+                timestamp=IsDatetime(),
+                provider_name='openai',
+                provider_url='https://api.openai.com/v1/',
+                provider_details={
+                    'finish_reason': 'completed',
+                    'timestamp': datetime(2025, 9, 5, 22, 7, 17, tzinfo=timezone.utc),
+                },
+                provider_response_id='resp_68bb5f153efc81a2b3958ddb1f257ff30886f4f20524f3b9',
+                finish_reason='stop',
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+        ]
+    )
+
+    result = await agent.run(
+        'Considering the way to cross the street, analogously, how do I cross the river?',
+        model=co_model,
+        message_history=result.all_messages(),
+    )
+    # Cohere does not charge per-token API rates for Command A Reasoning, so no cost is calculated.
+    assert result.new_messages() == snapshot(
+        [
+            ModelRequest(
+                parts=[
+                    UserPromptPart(
+                        content='Considering the way to cross the street, analogously, how do I cross the river?',
+                        timestamp=IsDatetime(),
+                    )
+                ],
+                timestamp=IsNow(tz=timezone.utc),
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelResponse(
+                parts=[
+                    IsInstance(ThinkingPart),
+                    IsInstance(TextPart),
+                ],
+                usage=RequestUsage(
+                    input_tokens=2190,
+                    output_tokens=1257,
+                    details={'input_tokens': 431, 'output_tokens': 661},
+                ),
+                model_name='command-a-reasoning-08-2025',
+                timestamp=IsDatetime(),
+                provider_name='cohere',
+                provider_url='https://api.cohere.com',
+                provider_details={'finish_reason': 'COMPLETE'},
+                finish_reason='stop',
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+        ]
+    )
+
+
+async def test_cohere_model_top_k(allow_model_requests: None):
+    """Verify that top_k from ModelSettings is forwarded as k= to the Cohere API."""
+    c = completion_message(
+        AssistantMessageResponse(
+            content=[TextAssistantMessageResponseContentItem(text='world')],
+        )
+    )
+    mock_client = MockAsyncClientV2.create_mock(c)
+    m = CohereModel('command-r7b-12-2024', provider=CohereProvider(cohere_client=mock_client))
+    agent = Agent(m)
+
+    await agent.run('hello', model_settings={'top_k': 50})
+
+    chat_kwargs = cast(MockAsyncClientV2, mock_client).chat_kwargs[0]
+    assert chat_kwargs['k'] == 50
+
+
+async def test_cohere_model_builtin_tools(allow_model_requests: None, co_api_key: str):
+    m = CohereModel('command-r7b-12-2024', provider=CohereProvider(api_key=co_api_key))
+    agent = Agent(m, capabilities=[NativeTool(WebSearchTool())])
+    with pytest.raises(UserError, match=r"Native tool\(s\) \['WebSearchTool'\] not supported by this model"):
+        await agent.run('Hello')
+
+
+async def test_cohere_empty_response_skipped_in_history(allow_model_requests: None):
+    """An empty `ModelResponse(parts=[])` must not be sent back as an assistant message with
+    neither content nor tool calls, which Cohere rejects with a 400. The agent graph retries
+    empty responses by emitting a `RetryPromptPart`, relying on the model adapter to omit the
+    empty response from the API payload.
+    """
+    completions = [
+        completion_message(AssistantMessageResponse(content=None)),
+        completion_message(
+            AssistantMessageResponse(content=[TextAssistantMessageResponseContentItem(text='hello back')])
+        ),
+    ]
+    mock_client = MockAsyncClientV2.create_mock(completions)
+    m = CohereModel('command-r7b-12-2024', provider=CohereProvider(cohere_client=mock_client))
+    agent = Agent(m)
+
+    result = await agent.run('hello')
+    assert result.output == 'hello back'
+
+    # The empty response is omitted from the payload (no assistant message with neither content nor
+    # tool calls, which would trigger a 400); a retry prompt is appended instead so the model can
+    # self-correct.
+    second_call_messages = cast(MockAsyncClientV2, mock_client).chat_kwargs[1]['messages']
+    assert not any(message.role == 'assistant' for message in second_call_messages)
+    assert [message.role for message in second_call_messages] == snapshot(['user', 'user'])
+
+
+@pytest.mark.parametrize(
+    'arguments, expected_args',
+    [(None, None), ('', '')],
+    ids=['none', 'empty-string'],
+)
+async def test_zero_argument_tool_call(arguments: str | None, expected_args: str | None, allow_model_requests: None):
+    """A zero-argument tool call arrives with falsy `arguments` (`None` or `''`).
+
+    The call must be kept, with the falsy value preserved verbatim on the `ToolCallPart`
+    rather than the call being dropped, so the tool runs without a 'Please return text or
+    call a tool.' retry.
+    """
+    completions = [
+        completion_message(
+            AssistantMessageResponse(
+                content=None,
+                role='assistant',
+                tool_calls=[
+                    ToolCallV2(
+                        id='tc-1',
+                        function=ToolCallV2Function(arguments=arguments, name='get_current_time'),
+                        type='function',
+                    )
+                ],
+            )
+        ),
+        completion_message(
+            AssistantMessageResponse(
+                content=[TextAssistantMessageResponseContentItem(text='it is noon')],
+                role='assistant',
+            )
+        ),
+    ]
+    mock_client = MockAsyncClientV2.create_mock(completions)
+    m = CohereModel('command-r7b-12-2024', provider=CohereProvider(cohere_client=mock_client))
+    agent = Agent(m)
+
+    @agent.tool_plain
+    def get_current_time() -> str:
+        return '12:00'
+
+    result = await agent.run('what time is it?')
+
+    parts = [part for message in result.all_messages() for part in message.parts]
+    assert ToolCallPart(tool_name='get_current_time', args=expected_args, tool_call_id='tc-1') in parts
+    assert any(isinstance(part, ToolReturnPart) and part.tool_name == 'get_current_time' for part in parts)
+    assert not any(isinstance(part, RetryPromptPart) for part in parts)
+    assert result.output == 'it is noon'
+
+
+async def test_zero_argument_tool_call_round_trip(allow_model_requests: None):
+    """A falsy-args `ToolCallPart` must survive the request round trip.
+
+    The follow-up request keeps the assistant tool call, with `args_as_json_str()` degrading
+    `None`/`''` to `'{}'` instead of dropping the assistant message (Cohere rejects an assistant
+    message with neither content nor tool calls).
+    """
+    completions = [
+        completion_message(
+            AssistantMessageResponse(
+                content=None,
+                role='assistant',
+                tool_calls=[
+                    ToolCallV2(
+                        id='tc-1',
+                        function=ToolCallV2Function(arguments=None, name='get_current_time'),
+                        type='function',
+                    )
+                ],
+            )
+        ),
+        completion_message(
+            AssistantMessageResponse(
+                content=[TextAssistantMessageResponseContentItem(text='it is noon')],
+                role='assistant',
+            )
+        ),
+    ]
+    mock_client = MockAsyncClientV2.create_mock(completions)
+    m = CohereModel('command-r7b-12-2024', provider=CohereProvider(cohere_client=mock_client))
+    agent = Agent(m)
+
+    @agent.tool_plain
+    def get_current_time() -> str:
+        return '12:00'
+
+    result = await agent.run('what time is it?')
+    assert result.output == 'it is noon'
+
+    second_call_messages = cast(MockAsyncClientV2, mock_client).chat_kwargs[1]['messages']
+    assert [message.role for message in second_call_messages] == ['user', 'assistant', 'tool']
+    assistant_message = next(message for message in second_call_messages if message.role == 'assistant')
+    tool_calls = cast(list[ToolCallV2], assistant_message.tool_calls)
+    assert len(tool_calls) == 1
+    assert tool_calls[0].function is not None
+    assert tool_calls[0].function.name == 'get_current_time'
+    assert tool_calls[0].function.arguments == '{}'
+
+
+async def test_tool_call_without_function_skipped(allow_model_requests: None):
+    """A malformed tool call with no `function` at all is still skipped without raising."""
+    completions = [
+        completion_message(
+            AssistantMessageResponse(
+                content=None,
+                role='assistant',
+                tool_calls=[ToolCallV2(id='tc-1', function=None, type='function')],
+            )
+        ),
+        completion_message(
+            AssistantMessageResponse(
+                content=[TextAssistantMessageResponseContentItem(text='hello back')],
+                role='assistant',
+            )
+        ),
+    ]
+    mock_client = MockAsyncClientV2.create_mock(completions)
+    m = CohereModel('command-r7b-12-2024', provider=CohereProvider(cohere_client=mock_client))
+    agent = Agent(m)
+
+    result = await agent.run('hello')
+
+    assert result.output == 'hello back'
+    parts = [part for message in result.all_messages() for part in message.parts]
+    assert not any(isinstance(part, ToolCallPart) for part in parts)

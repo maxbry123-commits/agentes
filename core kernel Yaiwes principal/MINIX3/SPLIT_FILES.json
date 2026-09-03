@@ -1,0 +1,16 @@
+[
+  {
+    "repo": "MINIX3",
+    "path": "sys/external/bsd/compiler_rt/dist/test/Unit/udivmodti4_test.c",
+    "chunks_dir": "MINIX3/sys/external/bsd/compiler_rt/dist/test/Unit/udivmodti4_test.c.chunks",
+    "bytes": 16126159,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "MINIX3",
+    "path": "sys/external/bsd/compiler_rt/dist/test/builtins/Unit/udivmodti4_test.c",
+    "chunks_dir": "MINIX3/sys/external/bsd/compiler_rt/dist/test/builtins/Unit/udivmodti4_test.c.chunks",
+    "bytes": 16126177,
+    "chunk_bytes": 8388608
+  }
+]

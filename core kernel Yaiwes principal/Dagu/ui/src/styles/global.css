@@ -1,0 +1,713 @@
+@layer theme, base, components, utilities;
+
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  /* Core Obsidian Semantic Colors */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-surface: var(--surface);
+
+  /* Sidebar */
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-hover: var(--sidebar-hover);
+  --color-sidebar-active: var(--sidebar-active);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* Border Radius */
+  --radius-lg: 12px;
+  --radius-md: 8px;
+  --radius-sm: 4px;
+  --radius-xs: 2px;
+
+  /* Status Colors */
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
+
+  /* Font Family */
+  --font-sans:
+    'Hanken Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    sans-serif;
+  --font-heading:
+    'Hanken Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    sans-serif;
+
+  /* Font Sizes */
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-base: 14px;
+  --text-lg: 16px;
+  --text-xl: 18px;
+  --text-2xl: 20px;
+  --text-3xl: 24px;
+
+  /* Component Heights - Consistent */
+  --height-sm: 32px;
+  --height-md: 36px;
+  --height-lg: 40px;
+}
+
+@layer base {
+  :root {
+    /* "Kiln" daylight — warm cream paper, ink sidebar, one violet accent,
+       signal-green success. */
+    --background: #f4f2ed;
+    --foreground: #14161b;
+
+    --card: #fbfaf6;
+    --card-foreground: #14161b;
+    --popover: #fbfaf6;
+    --popover-foreground: #14161b;
+    --surface: #fbfaf6;
+    --surface-variant: #ece9e0;
+
+    --primary: #5d4fe0;
+    --primary-foreground: #ffffff;
+    --primary-hover: #4b3dd1;
+
+    --secondary: #ece9e0;
+    --secondary-foreground: #1c1e25;
+    --muted: #ece9e0;
+    --muted-foreground: #6d7078;
+    --accent: #eae6dc;
+    --accent-foreground: #14161b;
+
+    --destructive: #c8382f;
+    --destructive-foreground: #ffffff;
+    --success: #178a44;
+    --success-foreground: #ffffff;
+    --warning: #b47110;
+    --warning-foreground: #111827;
+    --info: #5d4fe0;
+    --info-foreground: #ffffff;
+
+    --status-success: #178a44;
+    --status-error: #c8382f;
+    --status-running: #5d4fe0;
+    --status-neutral: #83868f;
+    --status-warning: #b47110;
+    --status-aborted: #9333ea;
+
+    --border: #e0dcd0;
+    --border-strong: #cdc8b9;
+    --input: #cdc8b9;
+    --ring: #5d4fe0;
+
+    --text-primary: #14161b;
+    --text-secondary: #4c4f58;
+    --text-tertiary: #75787f;
+    --text-disabled: #a3a6ad;
+
+    --sidebar: #0b0d12;
+    --sidebar-foreground: #a2a5ad;
+    --sidebar-border: #1e212b;
+    --sidebar-hover: #12141b;
+    --sidebar-active: #1a1c23;
+    --sidebar-primary: #a89ff8;
+    --sidebar-primary-foreground: #0b0d12;
+    --sidebar-accent: #12141b;
+    --sidebar-accent-foreground: #f2f1ec;
+    --sidebar-ring: #7c6ef4;
+
+    --shadow-sm: 0 1px 2px 0 rgba(30, 26, 12, 0.05);
+    --shadow-md:
+      0 1px 3px 0 rgba(30, 26, 12, 0.08), 0 1px 2px 0 rgba(30, 26, 12, 0.05);
+    --shadow-lg:
+      0 10px 15px -3px rgba(30, 26, 12, 0.1), 0 4px 6px -4px rgba(30, 26, 12, 0.08);
+
+    --bg: 244 242 237;
+    --text: 20 22 27;
+    --sidebar-bg: 11 13 18;
+    --sidebar-text: 162 165 173;
+    --primary-rgb: 93 79 224;
+  }
+
+  .dark {
+    /* "Kiln" — the ink room. Matte #0B0D12 surfaces, one violet accent,
+       signal-green success. */
+    --background: #0b0d12;
+    --foreground: #f2f1ec;
+
+    --card: #12141b;
+    --card-foreground: #f2f1ec;
+    --popover: #1a1c23;
+    --popover-foreground: #f2f1ec;
+    --surface: #12141b;
+    --surface-variant: #1a1c23;
+
+    --primary: #7c6ef4;
+    --primary-foreground: #ffffff;
+    --primary-hover: #948af7;
+
+    --secondary: #1a1c23;
+    --secondary-foreground: #f2f1ec;
+    --muted: #1a1c23;
+    --muted-foreground: #a2a5ad;
+    --accent: #1a1c23;
+    --accent-foreground: #f2f1ec;
+
+    --destructive: #ef5350;
+    --destructive-foreground: #1f0909;
+    --success: #22c55e;
+    --success-foreground: #052e16;
+    --warning: #d9a03c;
+    --warning-foreground: #261a00;
+    --info: #a89ff8;
+    --info-foreground: #17123f;
+
+    --status-success: #22c55e;
+    --status-error: #ef5350;
+    --status-running: #a89ff8;
+    --status-neutral: #8a8d99;
+    --status-warning: #d9a03c;
+    --status-aborted: #c084fc;
+
+    --border: #1e212b;
+    --border-strong: #2c3040;
+    --input: #2c3040;
+    --ring: #7c6ef4;
+
+    --text-primary: #f2f1ec;
+    --text-secondary: #a2a5ad;
+    --text-tertiary: #6d707b;
+    --text-disabled: #6d707b;
+
+    --sidebar: #0b0d12;
+    --sidebar-foreground: #a2a5ad;
+    --sidebar-border: #1e212b;
+    --sidebar-hover: #12141b;
+    --sidebar-active: #1a1c23;
+    --sidebar-primary: #a89ff8;
+    --sidebar-primary-foreground: #0b0d12;
+    --sidebar-accent: #1a1c23;
+    --sidebar-accent-foreground: #f2f1ec;
+    --sidebar-ring: #7c6ef4;
+
+    /* Elevation (More Subtle in Dark Mode) */
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 1px 3px 0 rgba(0, 0, 0, 0.4), 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+    --shadow-lg:
+      0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
+
+    /* RGB fallbacks */
+    --bg: 11 13 18;
+    --text: 242 241 236;
+    --sidebar-bg: 11 13 18;
+    --sidebar-text: 162 165 173;
+    --primary-rgb: 124 110 244;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.4;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    letter-spacing: normal;
+  }
+
+  /* Clean dark mode - no gradients */
+  .dark body {
+    background-color: var(--background);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--font-heading);
+    font-weight: 600;
+    letter-spacing: 0;
+    line-height: 1.2;
+  }
+
+  h1 {
+    font-size: var(--text-3xl);
+  }
+  h2 {
+    font-size: var(--text-2xl);
+  }
+  h3 {
+    font-size: var(--text-xl);
+  }
+  h4 {
+    font-size: var(--text-lg);
+  }
+  h5 {
+    font-size: var(--text-base);
+    font-weight: 600;
+  }
+  h6 {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0;
+  }
+}
+
+.glass-panel {
+  background: rgba(var(--bg), 0.95);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+/* Status Indicators - Minimal Text-Only Style */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  border: 1px solid;
+  white-space: nowrap;
+}
+
+.status-success {
+  color: var(--status-success);
+  background-color: color-mix(in srgb, var(--status-success) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--status-success) 20%, transparent);
+  border-radius: 4px;
+}
+.dark .status-success {
+  color: var(--status-success);
+  background-color: color-mix(in srgb, var(--status-success) 14%, transparent);
+  border-color: color-mix(in srgb, var(--status-success) 24%, transparent);
+}
+
+.status-failed,
+.status-error {
+  color: var(--status-error);
+  background-color: color-mix(in srgb, var(--status-error) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--status-error) 20%, transparent);
+  border-radius: 4px;
+}
+.dark .status-failed,
+.dark .status-error {
+  color: var(--status-error);
+  background-color: color-mix(in srgb, var(--status-error) 14%, transparent);
+  border-color: color-mix(in srgb, var(--status-error) 24%, transparent);
+}
+
+.status-running {
+  color: var(--status-running);
+  background-color: color-mix(in srgb, var(--status-running) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--status-running) 20%, transparent);
+  border-radius: 4px;
+}
+.dark .status-running {
+  color: var(--status-running);
+  background-color: color-mix(in srgb, var(--status-running) 14%, transparent);
+  border-color: color-mix(in srgb, var(--status-running) 24%, transparent);
+}
+
+.status-warning {
+  color: var(--status-warning);
+  background-color: color-mix(in srgb, var(--status-warning) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--status-warning) 20%, transparent);
+  border-radius: 4px;
+}
+.dark .status-warning {
+  color: var(--status-warning);
+  background-color: color-mix(in srgb, var(--status-warning) 14%, transparent);
+  border-color: color-mix(in srgb, var(--status-warning) 24%, transparent);
+}
+
+.status-aborted {
+  color: var(--status-aborted);
+  background-color: color-mix(in srgb, var(--status-aborted) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--status-aborted) 20%, transparent);
+  border-radius: 4px;
+}
+.dark .status-aborted {
+  color: var(--status-aborted);
+  background-color: color-mix(in srgb, var(--status-aborted) 14%, transparent);
+  border-color: color-mix(in srgb, var(--status-aborted) 24%, transparent);
+}
+
+.status-neutral {
+  color: var(--status-neutral);
+  background-color: color-mix(in srgb, var(--status-neutral) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--status-neutral) 20%, transparent);
+  border-radius: 4px;
+}
+.dark .status-neutral {
+  color: var(--status-neutral);
+  background-color: color-mix(in srgb, var(--status-neutral) 14%, transparent);
+  border-color: color-mix(in srgb, var(--status-neutral) 24%, transparent);
+}
+
+.status-info {
+  color: var(--info);
+  background-color: color-mix(in srgb, var(--info) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--info) 20%, transparent);
+  border-radius: 4px;
+}
+.dark .status-info {
+  color: var(--info);
+  background-color: color-mix(in srgb, var(--info) 14%, transparent);
+  border-color: color-mix(in srgb, var(--info) 24%, transparent);
+}
+
+.status-muted,
+.status-cancelled {
+  color: var(--status-neutral);
+  background-color: color-mix(in srgb, var(--status-neutral) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--status-neutral) 20%, transparent);
+  border-radius: 4px;
+}
+.dark .status-muted,
+.dark .status-cancelled {
+  color: var(--status-neutral);
+  background-color: color-mix(in srgb, var(--status-neutral) 14%, transparent);
+  border-color: color-mix(in srgb, var(--status-neutral) 24%, transparent);
+}
+
+/* Status Dot Indicator (for running states) */
+.status-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: currentColor;
+}
+
+.status-dot-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* Pulse running graph nodes. The graph styler force-sets stroke properties
+   inline with !important, so only opacity is safe to animate here. */
+@media (prefers-reduced-motion: no-preference) {
+  .mermaid g.node.running rect,
+  .mermaid g.node.running polygon,
+  .mermaid g.node.running path,
+  .mermaid g.node.running circle,
+  .mermaid g.node.running ellipse {
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+}
+
+/* Toast Shadow Utility */
+.shadow-toast {
+  box-shadow: var(--shadow-lg);
+}
+.dark .shadow-toast {
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+}
+
+/* Card Container - Developer-tool Unified Containers */
+.card-obsidian,
+.card-container {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+
+.dark .card-obsidian,
+.dark .card-container {
+  background: var(--card);
+  border-color: var(--border);
+  box-shadow: none;
+}
+
+.card-obsidian tr:last-child td,
+.card-container tr:last-child td {
+  border-bottom: none;
+}
+
+/* Dropdown & Popover Backgrounds */
+[data-radix-popper-content-wrapper] [role='menu'],
+[data-radix-popper-content-wrapper] [role='listbox'],
+[data-radix-popper-content-wrapper] [data-slot='select-content'] {
+  background-color: var(--popover) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius-md) !important;
+  box-shadow: var(--shadow-lg) !important;
+}
+
+.dark [data-radix-popper-content-wrapper] [role='menu'],
+.dark [data-radix-popper-content-wrapper] [role='listbox'],
+.dark [data-radix-popper-content-wrapper] [data-slot='select-content'] {
+  background-color: var(--popover) !important;
+  border-color: var(--border) !important;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.4) !important;
+}
+
+/* Custom sidebar color - inherit text color from parent */
+.custom-sidebar-color,
+.custom-sidebar-color * {
+  --sidebar-foreground: currentColor;
+}
+/* Tailwind v4 resolves the @theme bridge (--color-sidebar-*: var(--sidebar-*))
+   once at :root, so the per-element --sidebar-* overrides set inline by the
+   Layout never reach the utility classes. Re-declare the bridge here so it
+   re-resolves against the customized sidebar element. */
+.custom-sidebar-color {
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-hover: var(--sidebar-hover);
+  --color-sidebar-active: var(--sidebar-active);
+  /* Fills use the translucent active overlay so forced-inherit text stays
+     readable; the 3px indicator bar reads --sidebar-primary directly and
+     keeps the solid contrast color. */
+  --color-sidebar-primary: var(--sidebar-active);
+  --color-sidebar-primary-foreground: var(--sidebar-foreground);
+  --color-sidebar-accent: var(--sidebar-hover);
+  --color-sidebar-accent-foreground: var(--sidebar-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+.custom-sidebar-color .text-sidebar-foreground,
+.custom-sidebar-color .text-muted-foreground,
+.custom-sidebar-color .text-foreground,
+.custom-sidebar-color .text-primary {
+  color: inherit !important;
+}
+.custom-sidebar-color .text-muted-foreground\/50,
+.custom-sidebar-color .text-muted-foreground\/70,
+.custom-sidebar-color .text-sidebar-foreground\/50 {
+  color: inherit !important;
+  opacity: 0.6;
+}
+.custom-sidebar-color .opacity-70 {
+  opacity: 0.7;
+}
+/* SVG icons should inherit color */
+.custom-sidebar-color svg,
+.custom-sidebar-color svg.lucide,
+.custom-sidebar-color .lucide {
+  color: inherit !important;
+  stroke: currentColor !important;
+}
+.custom-sidebar-color svg.text-primary,
+.custom-sidebar-color .text-primary.lucide,
+.custom-sidebar-color svg.text-sidebar-foreground,
+.custom-sidebar-color svg.text-muted-foreground {
+  color: inherit !important;
+}
+
+/* Hide scrollbar utility */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Remove default focus outline, but preserve focus-visible for accessibility */
+*:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Input Focus States - subtle border change only */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  border-color: var(--ring);
+  outline: none;
+}
+
+/* Scrollbar Styling - Subtle */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-strong);
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: var(--border);
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: var(--border-strong);
+}
+
+/* Loading States */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--muted) 25%,
+    var(--secondary) 50%,
+    var(--muted) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s ease-in-out infinite;
+  border-radius: var(--radius-sm);
+}
+
+@keyframes skeleton-loading {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Transitions */
+.transition-default {
+  transition: all 150ms ease-in-out;
+}
+
+/* Utility Classes */
+.text-balance {
+  text-wrap: balance;
+}
+
+.tracking-tight {
+  letter-spacing: 0;
+}
+
+.tracking-wide {
+  letter-spacing: 0;
+}
+
+@layer components {
+  .api-docs-shell {
+    min-height: 100%;
+  }
+
+  .api-docs-viewer {
+    height: 100%;
+    min-height: 0;
+    background:
+      radial-gradient(
+        circle at top left,
+        color-mix(in srgb, var(--primary) 12%, transparent),
+        transparent 32%
+      ),
+      linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--card) 94%, transparent),
+        var(--background)
+      );
+    --scalar-background-1: var(--background);
+    --scalar-background-2: var(--card);
+    --scalar-background-3: var(--muted);
+    --scalar-background-accent: var(--accent);
+    --scalar-color-1: var(--foreground);
+    --scalar-color-2: var(--muted-foreground);
+    --scalar-color-3: var(--text-secondary);
+    --scalar-border-color: var(--border);
+    --scalar-sidebar-background-1: color-mix(
+      in srgb,
+      var(--card) 92%,
+      var(--background)
+    );
+    --scalar-sidebar-item-hover-background: var(--sidebar-hover);
+    --scalar-button-1: var(--primary);
+    --scalar-button-1-color: var(--primary-foreground);
+  }
+
+  .api-docs-viewer > * {
+    height: 100%;
+    min-height: 0;
+  }
+
+  @media (min-width: 1001px) {
+    .api-docs-viewer .references-layout {
+      height: 100%;
+      min-height: 0;
+      overflow: hidden;
+      grid-template-rows: var(--scalar-header-height, 0px) minmax(0, 1fr) auto;
+      --full-height: 100%;
+    }
+
+    .api-docs-viewer .references-navigation,
+    .api-docs-viewer .references-rendered {
+      min-height: 0;
+      max-height: 100%;
+    }
+
+    .api-docs-viewer .references-navigation {
+      overflow: hidden;
+    }
+
+    .api-docs-viewer .references-navigation-list {
+      position: static;
+      top: auto;
+      height: 100%;
+      min-height: 0;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+    }
+
+    .api-docs-viewer .references-rendered {
+      height: 100%;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+    }
+  }
+}

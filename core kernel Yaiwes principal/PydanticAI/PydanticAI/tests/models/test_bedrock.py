@@ -1,0 +1,6856 @@
+from __future__ import annotations as _annotations
+
+import json
+import os
+from collections.abc import Generator, Iterator
+from contextlib import contextmanager
+from datetime import date, datetime, timezone
+from decimal import Decimal
+from itertools import count
+from threading import Barrier, Lock
+from time import sleep
+from types import SimpleNamespace
+from typing import Any, Literal, cast
+
+import anyio
+import anyio.from_thread
+import anyio.to_thread
+import pytest
+from pytest_mock import MockerFixture
+from typing_extensions import TypedDict
+
+from pydantic_ai import (
+    BinaryContent,
+    CachePoint,
+    DocumentUrl,
+    FinalResultEvent,
+    FunctionToolCallEvent,
+    FunctionToolResultEvent,
+    ImageUrl,
+    ModelMessage,
+    ModelRequest,
+    ModelResponse,
+    NativeToolCallPart,
+    NativeToolReturnPart,
+    OutputToolCallEvent,
+    OutputToolResultEvent,
+    PartDeltaEvent,
+    PartEndEvent,
+    PartStartEvent,
+    RequestUsage,
+    RetryPromptPart,
+    SystemPromptPart,
+    TextContent,
+    TextPart,
+    TextPartDelta,
+    ThinkingPart,
+    ThinkingPartDelta,
+    ToolCallPart,
+    ToolCallPartDelta,
+    ToolReturnPart,
+    UserPromptPart,
+    VideoUrl,
+)
+from pydantic_ai.agent import Agent
+from pydantic_ai.capabilities import NativeTool
+from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError, ModelRetry, UsageLimitExceeded, UserError
+from pydantic_ai.messages import (
+    AgentStreamEvent,
+    ToolAvailabilityDeltaPart,
+    UploadedFile,
+)
+from pydantic_ai.models import ModelRequestParameters
+from pydantic_ai.native_tools import CodeExecutionTool
+from pydantic_ai.output import NativeOutput, ToolOutput
+from pydantic_ai.profiles import DEFAULT_PROFILE
+from pydantic_ai.providers import Provider
+from pydantic_ai.run import AgentRunResult, AgentRunResultEvent
+from pydantic_ai.settings import ModelSettings
+from pydantic_ai.tools import ToolDefinition
+from pydantic_ai.usage import RunUsage, UsageLimits
+
+from .._inline_snapshot import snapshot
+from ..cassette_utils import single_request_body
+from ..conftest import IsDatetime, IsInstance, IsNow, IsStr, TestEnv, try_import
+
+with try_import() as imports_successful:
+    from botocore.client import BaseClient
+    from botocore.exceptions import ClientError
+    from botocore.hooks import HierarchicalEmitter
+    from mypy_boto3_bedrock_runtime import BedrockRuntimeClient
+    from mypy_boto3_bedrock_runtime.type_defs import MessageUnionTypeDef, SystemContentBlockTypeDef, ToolTypeDef
+    from vcr.cassette import Cassette
+
+    from pydantic_ai.models.bedrock import BedrockConverseModel, BedrockModelName, BedrockModelSettings
+    from pydantic_ai.models.openai import OpenAIResponsesModel, OpenAIResponsesModelSettings
+    from pydantic_ai.providers.bedrock import BedrockProvider
+    from pydantic_ai.providers.openai import OpenAIProvider
+
+pytestmark = [
+    pytest.mark.skipif(not imports_successful(), reason='bedrock not installed'),
+    pytest.mark.anyio,
+    pytest.mark.vcr,
+]
+
+
+class _StubBedrockClient:
+    """Minimal Bedrock client that always raises the provided error."""
+
+    def __init__(self, error: ClientError):
+        self._error = error
+        self.meta = SimpleNamespace(endpoint_url='https://bedrock.stub', events=HierarchicalEmitter())
+
+    def converse(self, **_: Any) -> None:
+        raise self._error
+
+    def converse_stream(self, **_: Any) -> None:
+        raise self._error
+
+    def count_tokens(self, **_: Any) -> None:
+        raise self._error
+
+
+class _StubBedrockProvider(Provider[Any]):
+    """Provider implementation backed by the stub client."""
+
+    def __init__(self, client: _StubBedrockClient):
+        self._client = client
+
+    @property
+    def name(self) -> str:
+        return 'bedrock-stub'
+
+    @property
+    def base_url(self) -> str:
+        return 'https://bedrock.stub'
+
+    @property
+    def client(self) -> _StubBedrockClient:
+        return self._client
+
+    @staticmethod
+    def model_profile(model_name: str):
+        return DEFAULT_PROFILE
+
+
+async def test_bedrock_client_property_delegates_to_provider(bedrock_provider: BedrockProvider):
+    model = BedrockConverseModel('us.amazon.nova-micro-v1:0', provider=bedrock_provider)
+    assert model.client is bedrock_provider.client
+
+
+async def test_bedrock_client_property_can_be_reassigned(bedrock_provider: BedrockProvider):
+    model = BedrockConverseModel('us.amazon.nova-micro-v1:0', provider=bedrock_provider)
+    assert model.client is bedrock_provider.client
+
+    new_client = cast(Any, SimpleNamespace(meta=SimpleNamespace(endpoint_url='https://bedrock-runtime.example.com')))
+    model.client = new_client
+    assert model.client is new_client
+    assert model.base_url == 'https://bedrock-runtime.example.com'
+
+
+async def test_bedrock_model_blocks_requests_when_disabled():
+    model = _bedrock_model_with_client_error(ClientError({'Error': {'Code': 'TestError'}}, 'Converse'))
+    messages: list[ModelMessage] = [ModelRequest.user_text_prompt('hello')]
+    model_request_parameters = ModelRequestParameters()
+
+    with pytest.raises(RuntimeError, match='Model requests are not allowed'):
+        await model.request(messages, None, model_request_parameters)
+
+    with pytest.raises(RuntimeError, match='Model requests are not allowed'):
+        async with model.request_stream(messages, None, model_request_parameters):
+            pass
+
+    with pytest.raises(RuntimeError, match='Model requests are not allowed'):
+        await model.count_tokens(messages, None, model_request_parameters)
+
+
+def _bedrock_model_with_client_error(error: ClientError) -> BedrockConverseModel:
+    """Instantiate a BedrockConverseModel wired to always raise the given error."""
+    return BedrockConverseModel(
+        'us.amazon.nova-micro-v1:0',
+        provider=_StubBedrockProvider(_StubBedrockClient(error)),
+    )
+
+
+async def test_bedrock_model(allow_model_requests: None, bedrock_provider: BedrockProvider):
+    model = BedrockConverseModel('us.amazon.nova-micro-v1:0', provider=bedrock_provider)
+    assert model.base_url == 'https://bedrock-runtime.us-east-1.amazonaws.com'
+    agent = Agent(model=model, system_prompt='You are a chatbot.')
+
+    result = await agent.run('Hello!')
+    assert result.output == snapshot(
+        "Hello! How can I assist you today? Whether you have questions, need information, or just want to chat, I'm here to help."
+    )
+    assert result.usage == snapshot(RunUsage(requests=1, input_tokens=7, output_tokens=30, cost=Decimal('0.000004445')))
+    assert result.all_messages() == snapshot(
+        [
+            ModelRequest(
+                parts=[
+                    SystemPromptPart(
+                        content='You are a chatbot.',
+                        timestamp=IsDatetime(),
+                    ),
+                    UserPromptPart(
+                        content='Hello!',
+                        timestamp=IsDatetime(),
+                    ),
+                ],
+                timestamp=IsDatetime(),
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelResponse(
+                parts=[
+                    TextPart(
+                        content="Hello! How can I assist you today? Whether you have questions, need information, or just want to chat, I'm here to help."
+                    )
+                ],
+                usage=RequestUsage(input_tokens=7, output_tokens=30, cost=Decimal('0.000004445')),
+                model_name='us.amazon.nova-micro-v1:0',
+                timestamp=IsDatetime(),
+                provider_name='bedrock',
+                provider_url='https://bedrock-runtime.us-east-1.amazonaws.com',
+                provider_details={'finish_reason': 'end_turn'},
+                finish_reason='stop',
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+        ]
+    )
+
+
+@pytest.mark.vcr()
+async def test_bedrock_model_usage_limit_exceeded(
+    allow_model_requests: None,
+    bedrock_provider: BedrockProvider,
+):
+    model = BedrockConverseModel('us.anthropic.claude-sonnet-4-20250514-v1:0', provider=bedrock_provider)
+    agent = Agent(model=model)
+
+    with pytest.raises(
+        UsageLimitExceeded,
+        match='The next request would exceed the input_tokens_limit of 18 \\(input_tokens=23\\)',
+    ):
+        await agent.run(
+            ['The quick brown fox jumps over the lazydog.', CachePoint(), 'What was next?'],
+            usage_limits=UsageLimits(input_tokens_limit=18, count_tokens_before_request=True),
+        )
+
+
+@pytest.mark.vcr()
+async def test_bedrock_model_usage_limit_not_exceeded(
+    allow_model_requests: None,
+    bedrock_provider: BedrockProvider,
+):
+    model = BedrockConverseModel('us.anthropic.claude-sonnet-4-20250514-v1:0', provider=bedrock_provider)
+    agent = Agent(model=model)
+
+    result = await agent.run(
+        'The quick brown fox jumps over the lazydog.',
+        usage_limits=UsageLimits(input_tokens_limit=25, count_tokens_before_request=True),
+    )
+
+    assert result.output == snapshot(
+        'I notice there\'s a small typo in your message - it should be "lazy dog" (two words) rather than '
+        '"lazydog."\n\nThe corrected version is: "The quick brown fox jumps over the lazy dog."\n\n'
+        'This is a famous pangram - a sentence that contains every letter of the English alphabet at least once. '
+        "It's commonly used for testing typewriters, keyboards, fonts, and other applications where you want to "
+        "display all the letters.\n\nIs there something specific you'd like to know about this phrase, or were you "
+        'perhaps testing something?'
+    )
+
+
+@contextmanager
+def _capture_bedrock_request_headers(
+    model: BedrockConverseModel,
+    operation: Literal['Converse', 'ConverseStream'],
+) -> Generator[dict[str, str | bytes]]:
+    """Record the final signed request's headers, unregistering after so the session-scoped client stays clean."""
+    captured: dict[str, str | bytes] = {}
+
+    def capture(request: Any, **_: Any) -> None:
+        captured.update(request.headers.items())
+
+    event = f'before-send.bedrock-runtime.{operation}'
+    model.client.meta.events.register_last(event, capture)
+    try:
+        yield captured
+    finally:
+        model.client.meta.events.unregister(event, capture)
+
+
+def _decode_header(value: str | bytes) -> str:
+    return value.decode() if isinstance(value, bytes) else value
+
+
+@pytest.mark.vcr()
+async def test_bedrock_model_with_extra_headers(allow_model_requests: None, bedrock_provider: BedrockProvider):
+    """`extra_headers` reach the signed Bedrock request.
+
+    VCR's matchers ignore request headers, so playback alone can't prove the header was sent. We capture the final
+    request at `before-send`, after the injector and SigV4 signer have run.
+    """
+    model = BedrockConverseModel('us.amazon.nova-micro-v1:0', provider=bedrock_provider)
+    agent = Agent(model=model)
+
+    with _capture_bedrock_request_headers(model, 'Converse') as captured:
+        result = await agent.run(
+            'Hello!', model_settings=BedrockModelSettings(extra_headers={'Custom-Header': 'value'})
+        )
+
+    assert _decode_header(captured['Custom-Header']) == 'value'
+    assert result.output == snapshot(
+        "Hello! How can I assist you today? Whether you have a question, need information, or just want to chat, I'm here to help."
+    )
+
+
+@pytest.mark.vcr()
+async def test_bedrock_model_stream_with_extra_headers(allow_model_requests: None, bedrock_provider: BedrockProvider):
+    """`extra_headers` reach the streaming `ConverseStream` request too. See the non-streaming test for why we tap the event."""
+    model = BedrockConverseModel('us.amazon.nova-micro-v1:0', provider=bedrock_provider)
+    agent = Agent(model=model)
+
+    with _capture_bedrock_request_headers(model, 'ConverseStream') as captured:
+        async with agent.run_stream(
+            'Hello!', model_settings=BedrockModelSettings(extra_headers={'Custom-Header': 'value'})
+        ) as result:
+            output = await result.get_output()
+
+    assert _decode_header(captured['Custom-Header']) == 'value'
+    assert output == snapshot(
+        "Hello! How can I assist you today? Whether you have a question, need information, or just want to chat, I'm here to help."
+    )
+
+
+async def test_bedrock_extra_headers_are_signed_for_all_operations(
+    allow_model_requests: None, env: TestEnv, mocker: MockerFixture
+):
+    """The real botocore pipeline signs extra headers for every Bedrock operation we use.
+
+    Not a VCR test: requests are aborted at `before-send` to inspect real SigV4 signing across three operations
+    without recording three cassettes, and header-blind cassette matchers could not pin the signature anyway.
+    """
+    env.remove('AWS_BEARER_TOKEN_BEDROCK')
+    provider = BedrockProvider(
+        region_name='us-east-1',
+        aws_access_key_id='AKIA6666666666666666',
+        aws_secret_access_key='6666666666666666666666666666666666666666',
+    )
+    client = cast(BedrockRuntimeClient, provider.client)
+    model = BedrockConverseModel('us.anthropic.claude-sonnet-4-20250514-v1:0', provider=provider)
+    captured: dict[str, dict[str, str | bytes]] = {}
+    recorded_api_params: list[dict[str, Any]] = []
+
+    def record_history(event_type: str, payload: dict[str, Any], source: str = 'BOTOCORE') -> None:
+        if event_type == 'API_CALL':
+            recorded_api_params.append(payload['params'].copy())
+
+    mocker.patch('botocore.client.history_recorder.record', side_effect=record_history)
+
+    class RequestCaptured(Exception):
+        pass
+
+    def capture(request: Any, event_name: str, **_: Any) -> None:
+        captured[event_name.rsplit('.', 1)[-1]] = dict(request.headers.items())
+        raise RequestCaptured
+
+    for operation in ('Converse', 'ConverseStream', 'CountTokens'):
+        client.meta.events.register_last(f'before-send.bedrock-runtime.{operation}', capture)
+
+    messages: list[ModelMessage] = [ModelRequest.user_text_prompt('Hello!')]
+    settings = BedrockModelSettings(extra_headers={'Custom-Header': 'secret-header-value'})
+    request_parameters = ModelRequestParameters()
+    try:
+        with pytest.raises(RequestCaptured):
+            await model.request(messages, settings, request_parameters)
+        with pytest.raises(RequestCaptured):
+            async with model.request_stream(messages, settings, request_parameters):
+                pass
+        with pytest.raises(RequestCaptured):
+            await model.count_tokens(messages, settings, request_parameters)
+    finally:
+        client.close()
+
+    assert set(captured) == {'Converse', 'ConverseStream', 'CountTokens'}
+    for headers in captured.values():
+        assert _decode_header(headers['Custom-Header']) == 'secret-header-value'
+        assert 'custom-header' in _decode_header(headers['Authorization'])
+    assert len(recorded_api_params) == 3
+    # Header values are carried in a context variable and never enter botocore's `api_params`.
+    assert all('secret-header-value' not in repr(params) for params in recorded_api_params)
+
+
+def _emit_bedrock_events(
+    events: HierarchicalEmitter, params: dict[str, Any], headers: dict[str, str] | None = None
+) -> tuple[dict[str, str], list[tuple[Any, Any]]]:
+    context: dict[str, Any] = {}
+    events.emit('provide-client-params.bedrock-runtime.CountTokens', params=params, model=None, context=context)
+    headers = headers or {}
+    responses = cast(
+        list[tuple[Any, Any]],
+        events.emit(
+            'before-call.bedrock-runtime.CountTokens',
+            model=None,
+            params={'headers': headers},
+            request_signer=None,
+            context=context,
+        ),
+    )
+    return headers, responses
+
+
+class _RecordingBedrockClient:
+    def __init__(
+        self,
+        *,
+        events: HierarchicalEmitter | None = None,
+        initial_headers: dict[str, str] | None = None,
+    ) -> None:
+        self.meta = SimpleNamespace(endpoint_url='https://bedrock.stub', events=events or HierarchicalEmitter())
+        self.initial_headers = initial_headers or {}
+        self.calls: list[tuple[str, dict[str, str]]] = []
+
+    def count_tokens(self, **params: Any) -> dict[str, int]:
+        prompt = cast(str, params['input']['converse']['messages'][0]['content'][0]['text'])
+        headers = _emit_bedrock_events(self.meta.events, params, self.initial_headers.copy())[0]
+        self.calls.append((prompt, headers))
+        return {'inputTokens': 1}
+
+
+def _model_with_recording_client(client: _RecordingBedrockClient) -> BedrockConverseModel:
+    provider = BedrockProvider(bedrock_client=cast(BaseClient, client))
+    return BedrockConverseModel('us.anthropic.claude-sonnet-4-20250514-v1:0', provider=provider)
+
+
+async def _count_tokens_with_headers(
+    model: BedrockConverseModel,
+    prompt: str = 'Hello!',
+    extra_headers: dict[str, str] | None = None,
+) -> None:
+    settings = BedrockModelSettings(extra_headers=extra_headers) if extra_headers else BedrockModelSettings()
+    await model.count_tokens([ModelRequest.user_text_prompt(prompt)], settings, ModelRequestParameters())
+
+
+async def test_bedrock_extra_headers_isolated_across_concurrent_requests(allow_model_requests: None):
+    """`extra_headers` never leak between requests sharing one client, even when run concurrently.
+
+    This is a unit test because VCR can't reliably drive concurrent playbacks. Public `count_tokens()` calls exercise
+    the production event handler inside separate `anyio.to_thread` workers.
+    """
+    barrier = Barrier(3, timeout=5)
+    client = _RecordingBedrockClient(initial_headers={'Content-Type': 'application/json'})
+    model = _model_with_recording_client(client)
+
+    def wait_for_other_requests(**_: Any) -> None:
+        barrier.wait()
+
+    client.meta.events.register_last('provide-client-params.bedrock-runtime.CountTokens', wait_for_other_requests)
+
+    async with anyio.create_task_group() as tg:
+        tg.start_soon(_count_tokens_with_headers, model, 'a', {'Tenant': 'a'})
+        tg.start_soon(_count_tokens_with_headers, model, 'b', {'Tenant': 'b', 'content-type': 'application/custom'})
+        tg.start_soon(_count_tokens_with_headers, model, 'c', None)
+
+    assert dict(client.calls) == {
+        'a': {'Content-Type': 'application/json', 'Tenant': 'a'},
+        'b': {'Tenant': 'b', 'content-type': 'application/custom'},
+        'c': {'Content-Type': 'application/json'},
+    }
+
+
+async def test_bedrock_extra_headers_are_bound_to_request_client(allow_model_requests: None):
+    """A direct nested call on another registered client must not inherit the outer request's headers.
+
+    This uses stub clients because a cassette cannot deterministically trigger a nested call across two client event
+    pipelines.
+    """
+    client_a = _RecordingBedrockClient()
+    client_b = _RecordingBedrockClient()
+    model_a = _model_with_recording_client(client_a)
+    model_b = _model_with_recording_client(client_b)
+
+    # Register the injector on client B before it is called directly from client A's event pipeline.
+    await _count_tokens_with_headers(model_b)
+    client_b.calls.clear()
+
+    def call_client_b(params: dict[str, Any], **_: Any) -> None:
+        client_b.count_tokens(**params)
+
+    client_a.meta.events.register_first('provide-client-params.bedrock-runtime.CountTokens', call_client_b)
+    await _count_tokens_with_headers(model_a, extra_headers={'Tenant': 'a'})
+
+    assert client_a.calls == [('Hello!', {'Tenant': 'a'})]
+    assert client_b.calls == [('Hello!', {})]
+
+
+async def test_bedrock_extra_headers_are_bound_to_one_request(allow_model_requests: None):
+    """A direct nested call on the same client must not inherit the outer request's headers.
+
+    This uses a stub client because a cassette cannot make a botocore callback issue a nested request.
+    """
+    nested = False
+    client = _RecordingBedrockClient()
+    model = _model_with_recording_client(client)
+
+    def make_nested_call(params: dict[str, Any], **_: Any) -> None:
+        nonlocal nested
+        if not nested:
+            nested = True
+            client.count_tokens(**params)
+
+    client.meta.events.register_last('provide-client-params.bedrock-runtime.CountTokens', make_nested_call)
+    await _count_tokens_with_headers(model, extra_headers={'Tenant': 'outer'})
+
+    assert client.calls == [('Hello!', {}), ('Hello!', {'Tenant': 'outer'})]
+
+
+async def test_bedrock_extra_headers_registration_is_serialized_across_threads(allow_model_requests: None):
+    """Concurrent synchronous callers must not overlap botocore event registration.
+
+    Not a VCR test: it exercises the thread safety of local botocore handler registration, which no recorded request
+    can observe.
+    """
+    start_barrier = Barrier(2, timeout=5)
+
+    class ObservedEmitter(HierarchicalEmitter):
+        def __init__(self) -> None:
+            super().__init__()
+            self._state_lock = Lock()
+            self._active_registrations = 0
+            self.overlapped = False
+
+        def register_first(self, *args: Any, **kwargs: Any) -> None:
+            with self._state_lock:
+                self._active_registrations += 1
+                self.overlapped |= self._active_registrations > 1
+            try:
+                sleep(0.1)
+                super().register_first(*args, **kwargs)
+            finally:
+                with self._state_lock:
+                    self._active_registrations -= 1
+
+    client = _RecordingBedrockClient(events=ObservedEmitter())
+    model = _model_with_recording_client(client)
+
+    async def make_request(name: str) -> None:
+        await _count_tokens_with_headers(model, name, {'Tenant': name})
+
+    def run_request(name: str) -> None:
+        start_barrier.wait()
+        anyio.run(make_request, name)
+
+    async with anyio.create_task_group() as tg:
+        tg.start_soon(anyio.to_thread.run_sync, run_request, 'a')
+        tg.start_soon(anyio.to_thread.run_sync, run_request, 'b')
+
+    assert client.meta.events.overlapped is False
+    assert dict(client.calls) == {'a': {'Tenant': 'a'}, 'b': {'Tenant': 'b'}}
+
+
+async def test_bedrock_nested_request_without_extra_headers_masks_outer_headers(allow_model_requests: None):
+    """A nested request on the same client must not inherit the outer request's headers.
+
+    Not a VCR test: a stub client deterministically re-enters the public `count_tokens()` path from its worker thread,
+    which a recorded response cannot reproduce.
+    """
+    nested = False
+
+    async def make_nested_request() -> None:
+        await _count_tokens_with_headers(model)
+
+    def run_nested_request(**_: Any) -> None:
+        nonlocal nested
+        if not nested:
+            nested = True
+            anyio.from_thread.run(make_nested_request)
+
+    client = _RecordingBedrockClient()
+    model = _model_with_recording_client(client)
+    client.meta.events.register_last('before-call.bedrock-runtime.CountTokens', run_nested_request)
+
+    await _count_tokens_with_headers(model, extra_headers={'Tenant': 'outer'})
+
+    assert client.calls == [('Hello!', {}), ('Hello!', {'Tenant': 'outer'})]
+
+
+async def test_bedrock_extra_headers_do_not_leak_into_later_requests(allow_model_requests: None):
+    """Sequential requests on one client neither inherit earlier headers nor re-register the injector.
+
+    Not a VCR test: per-request context isolation and single-registration bookkeeping between sequential requests
+    have no observable effect on a single recorded exchange, so a cassette could not pin either behavior.
+    """
+    client = _RecordingBedrockClient()
+    model = _model_with_recording_client(client)
+
+    await _count_tokens_with_headers(model, extra_headers={'Tenant': 'a'})
+    await _count_tokens_with_headers(model)
+
+    assert client.calls == [('Hello!', {'Tenant': 'a'}), ('Hello!', {})]
+    _, responses = _emit_bedrock_events(client.meta.events, {})
+    assert len(responses) == 1
+
+
+@pytest.mark.vcr()
+async def test_bedrock_count_tokens_error(allow_model_requests: None, bedrock_provider: BedrockProvider):
+    """Test that errors convert to ModelHTTPError."""
+    model_id = 'us.does-not-exist-model-v1:0'
+    model = BedrockConverseModel(model_id, provider=bedrock_provider)
+    agent = Agent(model)
+
+    with pytest.raises(ModelHTTPError) as exc_info:
+        await agent.run('hello', usage_limits=UsageLimits(input_tokens_limit=20, count_tokens_before_request=True))
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.model_name == model_id
+    assert exc_info.value.body.get('Error', {}).get('Message') == 'The provided model identifier is invalid.'  # type: ignore[union-attr]
+
+
+async def test_bedrock_request_non_http_error(allow_model_requests: None):
+    error = ClientError({'Error': {'Code': 'TestException', 'Message': 'broken connection'}}, 'converse')
+    model = _bedrock_model_with_client_error(error)
+    params = ModelRequestParameters()
+
+    with pytest.raises(ModelAPIError) as exc_info:
+        await model.request([ModelRequest.user_text_prompt('hi')], None, params)
+
+    assert exc_info.value.message == snapshot(
+        'An error occurred (TestException) when calling the converse operation: broken connection'
+    )
+
+
+async def test_bedrock_count_tokens_non_http_error(allow_model_requests: None):
+    error = ClientError({'Error': {'Code': 'TestException', 'Message': 'broken connection'}}, 'count_tokens')
+    model = _bedrock_model_with_client_error(error)
+    params = ModelRequestParameters()
+
+    with pytest.raises(ModelAPIError) as exc_info:
+        await model.count_tokens([ModelRequest.user_text_prompt('hi')], None, params)
+
+    assert exc_info.value.message == snapshot(
+        'An error occurred (TestException) when calling the count_tokens operation: broken connection'
+    )
+
+
+def _bedrock_arn(resource: str) -> str:
+    """Build a Bedrock ARN, using AWS_ACCOUNT_ID env var or a placeholder.
+
+    The placeholder works for VCR replay (the path matcher scrubs account IDs).
+    When re-recording, set AWS_ACCOUNT_ID to your real account ID:
+
+        AWS_ACCOUNT_ID=... uv run pytest ... --record-mode=new_episodes
+    """
+    account_id = os.getenv('AWS_ACCOUNT_ID', '123456789012')
+    region = os.getenv('AWS_REGION', 'us-east-1')
+    return f'arn:aws:bedrock:{region}:{account_id}:{resource}'
+
+
+async def test_bedrock_inference_profile_converse(
+    allow_model_requests: None,
+    bedrock_provider: BedrockProvider,
+):
+    inference_profile_arn = _bedrock_arn('application-inference-profile/mi1dadi0g15f')
+    settings: BedrockModelSettings = {'bedrock_inference_profile': inference_profile_arn}
+    model = BedrockConverseModel('amazon.nova-micro-v1:0', provider=bedrock_provider, settings=settings)
+    agent = Agent(model)
+
+    result = await agent.run('Say "hello" and nothing else.')
+    assert result.output == snapshot('Hello')
+    assert result.all_messages() == snapshot(
+        [
+            ModelRequest(
+                parts=[UserPromptPart(content='Say "hello" and nothing else.', timestamp=IsDatetime())],
+                timestamp=IsDatetime(),
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelResponse(
+                parts=[TextPart(content='Hello')],
+                usage=RequestUsage(input_tokens=8, output_tokens=2, cost=Decimal('5.6E-7')),
+                model_name='amazon.nova-micro-v1:0',
+                timestamp=IsDatetime(),
+                provider_name='bedrock',
+                provider_url='https://bedrock-runtime.us-east-1.amazonaws.com',
+                provider_details={'finish_reason': 'end_turn'},
+                finish_reason='stop',
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+        ]
+    )
+
+
+async def test_bedrock_inference_profile_count_tokens(
+    allow_model_requests: None,
+    bedrock_provider: BedrockProvider,
+):
+    # count_tokens only uses model_name (not the inference profile), so the ARN doesn't
+    # matter here. Claude Sonnet is used because it's one of the few Bedrock models that
+    # supports the count_tokens API.
+    inference_profile_arn = _bedrock_arn('application-inference-profile/mi1dadi0g15f')
+    settings: BedrockModelSettings = {'bedrock_inference_profile': inference_profile_arn}
+    model = BedrockConverseModel(
+        'us.anthropic.claude-sonnet-4-20250514-v1:0', provider=bedrock_provider, settings=settings
+    )
+    params = ModelRequestParameters()
+
+    result = await model.count_tokens([ModelRequest.user_text_prompt('Hello, world!')], settings, params)
+    assert result.input_tokens > 0
+    assert model.model_name == 'us.anthropic.claude-sonnet-4-20250514-v1:0'
+
+
+async def test_bedrock_count_tokens_additional_model_requests_fields(
+    allow_model_requests: None, bedrock_provider: BedrockProvider, vcr: Cassette
+):
+    """`count_tokens` forwards `bedrock_additional_model_requests_fields` to `input.converse` and Bedrock accepts it.
+
+    Here it carries `anthropic_beta: ['context-1m-2025-08-07']`, the header used to opt into Claude's 1M context window.
+    """
+    settings: BedrockModelSettings = {
+        'bedrock_additional_model_requests_fields': {'anthropic_beta': ['context-1m-2025-08-07']}
+    }
+    model = BedrockConverseModel(
+        'us.anthropic.claude-sonnet-4-20250514-v1:0', provider=bedrock_provider, settings=settings
+    )
+    params = ModelRequestParameters()
+
+    result = await model.count_tokens([ModelRequest.user_text_prompt('Hello, world!')], settings, params)
+    assert result.input_tokens > 0
+
+    sent = single_request_body(vcr)
+    assert sent['input']['converse']['additionalModelRequestFields'] == {'anthropic_beta': ['context-1m-2025-08-07']}
+
+
+async def test_bedrock_count_tokens_tool_config(
+    allow_model_requests: None, bedrock_provider: BedrockProvider, vcr: Cassette
+):
+    """`count_tokens` forwards `toolConfig` to `input.converse`, mirroring the real request so tool schemas are counted."""
+    model = BedrockConverseModel('us.anthropic.claude-sonnet-4-20250514-v1:0', provider=bedrock_provider)
+    tool_def = ToolDefinition(
+        name='get_weather',
+        description='Get the weather for a location',
+        parameters_json_schema={'type': 'object', 'properties': {'location': {'type': 'string'}}},
+    )
+    params = ModelRequestParameters(function_tools=[tool_def], allow_text_output=True)
+
+    result = await model.count_tokens([ModelRequest.user_text_prompt('What is the weather in Paris?')], None, params)
+    assert result.input_tokens > 0
+
+    sent = single_request_body(vcr)
+    assert sent['input']['converse']['toolConfig'] == snapshot(
+        {
+            'tools': [
+                {
+                    'toolSpec': {
+                        'name': 'get_weather',
+                        'inputSchema': {'json': {'type': 'object', 'properties': {'location': {'type': 'string'}}}},
+                        'description': 'Get the weather for a location',
+                    }
+                }
+            ],
+            'toolChoice': {'auto': {}},
+        }
+    )
+
+
+async def test_bedrock_stream_non_http_error(allow_model_requests: None):
+    error = ClientError({'Error': {'Code': 'TestException', 'Message': 'broken connection'}}, 'converse_stream')
+    model = _bedrock_model_with_client_error(error)
+    params = ModelRequestParameters()
+
+    with pytest.raises(ModelAPIError) as exc_info:
+        async with model.request_stream([ModelRequest.user_text_prompt('hi')], None, params) as stream:
+            async for _ in stream:
+                pass
+
+    assert 'broken connection' in exc_info.value.message
+
+
+async def test_stub_provider_properties():
+    # tests the test utility itself...
+    error = ClientError({'Error': {'Code': 'TestException', 'Message': 'test'}}, 'converse')
+    model = _bedrock_model_with_client_error(error)
+    provider = model._provider  # pyright: ignore[reportPrivateUsage]
+
+    assert provider.name == 'bedrock-stub'
+    assert provider.base_url == 'https://bedrock.stub'
+
+
+async def test_bedrock_model_structured_output(allow_model_requests: None, bedrock_provider: BedrockProvider):
+    model = BedrockConverseModel('us.amazon.nova-micro-v1:0', provider=bedrock_provider)
+    agent = Agent(model=model, instructions='You are a helpful chatbot.', retries={'tools': 5, 'output': 5})
+
+    class Response(TypedDict):
+        temperature: str
+        date: date
+        city: str
+
+    @agent.tool_plain
+    async def temperature(city: str, date: date) -> str:
+        """Get the temperature in a city on a specific date.
+
+        Args:
+            city: The city name.
+            date: The date.
+
+        Returns:
+            The temperature in degrees Celsius.
+        """
+        return '30°C'
+
+    result = await agent.run('What was the temperature in London 1st January 2022?', output_type=Response)
+    assert result.output == snapshot({'temperature': '30°C', 'date': date(2022, 1, 1), 'city': 'London'})
+    assert result.usage == snapshot(
+        RunUsage(requests=3, input_tokens=2019, output_tokens=120, tool_calls=1, cost=Decimal('0.000087465'))
+    )
+    assert result.all_messages() == snapshot(
+        [
+            ModelRequest(
+                parts=[
+                    UserPromptPart(
+                        content='What was the temperature in London 1st January 2022?',
+                        timestamp=IsNow(tz=timezone.utc),
+                    )
+                ],
+                timestamp=IsNow(tz=timezone.utc),
+                instructions='You are a helpful chatbot.',
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelResponse(
+                parts=[
+                    ToolCallPart(
+                        tool_name='temperature',
+                        args={'date': '2022-01-01', 'city': 'London'},
+                        tool_call_id=IsStr(),
+                    )
+                ],
+                usage=RequestUsage(input_tokens=571, output_tokens=22, cost=Decimal('0.000023065')),
+                model_name='us.amazon.nova-micro-v1:0',
+                timestamp=IsNow(tz=timezone.utc),
+                provider_name='bedrock',
+                provider_url='https://bedrock-runtime.us-east-1.amazonaws.com',
+                provider_details={'finish_reason': 'tool_use'},
+                finish_reason='tool_call',
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelRequest(
+                parts=[
+                    ToolReturnPart(
+                        tool_name='temperature',
+                        content='30°C',
+                        tool_call_id=IsStr(),
+                        timestamp=IsNow(tz=timezone.utc),
+                    )
+                ],
+                timestamp=IsNow(tz=timezone.utc),
+                instructions='You are a helpful chatbot.',
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelResponse(
+                parts=[
+                    TextPart(
+                        content="""\
+
+<thinking> The tool has provided the temperature for London on 1st January 2022, which was 30°C. I will now provide this information to the user.</thinking>
+The temperature in London on 1st January 2022 was 30°C.\
+"""
+                    )
+                ],
+                usage=RequestUsage(input_tokens=627, output_tokens=67, cost=Decimal('0.000031325')),
+                model_name='us.amazon.nova-micro-v1:0',
+                timestamp=IsDatetime(),
+                provider_name='bedrock',
+                provider_url='https://bedrock-runtime.us-east-1.amazonaws.com',
+                provider_details={'finish_reason': 'end_turn'},
+                finish_reason='stop',
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelRequest(
+                parts=[
+                    RetryPromptPart(
+                        content=[
+                            {
+                                'type': 'json_invalid',
+                                'loc': (),
+                                'msg': 'Invalid JSON: expected value at line 2 column 1',
+                                'input': """\
+
+<thinking> The tool has provided the temperature for London on 1st January 2022, which was 30°C. I will now provide this information to the user.</thinking>
+The temperature in London on 1st January 2022 was 30°C.\
+""",
+                            }
+                        ],
+                        tool_call_id=IsStr(),
+                        timestamp=IsDatetime(),
+                    )
+                ],
+                timestamp=IsDatetime(),
+                instructions='You are a helpful chatbot.',
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelResponse(
+                parts=[
+                    ToolCallPart(
+                        tool_name='final_result',
+                        args={'date': '2022-01-01', 'city': 'London', 'temperature': '30°C'},
+                        tool_call_id='tooluse_qVHAm8Q9QMGoJRkk06_TVA',
+                    )
+                ],
+                usage=RequestUsage(input_tokens=821, output_tokens=31, cost=Decimal('0.000033075')),
+                model_name='us.amazon.nova-micro-v1:0',
+                timestamp=IsDatetime(),
+                provider_name='bedrock',
+                provider_url='https://bedrock-runtime.us-east-1.amazonaws.com',
+                provider_details={'finish_reason': 'tool_use'},
+                finish_reason='tool_call',
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelRequest(
+                parts=[
+                    ToolReturnPart(
+                        tool_name='final_result',
+                        content='Final result processed.',
+                        tool_call_id=IsStr(),
+                        timestamp=IsNow(tz=timezone.utc),
+                    )
+                ],
+                timestamp=IsNow(tz=timezone.utc),
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+        ]
+    )
+
+
+async def test_stream_cancel(allow_model_requests: None, bedrock_provider: BedrockProvider):
+    model = BedrockConverseModel('us.amazon.nova-micro-v1:0', provider=bedrock_provider)
+    agent = Agent(model=model, instructions='You are a helpful chatbot.', model_settings={'temperature': 0.0})
+    async with agent.run_stream('What is the capital of France?') as result:
+        async for _ in result.stream_text(delta=True, debounce_by=None):  # pragma: no branch
+            break
+        await result.cancel()
+        await result.cancel()  # double cancel is a no-op
+        assert result.cancelled
+
+    assert result.all_messages() == snapshot(
+        [
+            ModelRequest(
+                parts=[UserPromptPart(content='What is the capital of France?', timestamp=IsDatetime())],
+                timestamp=IsDatetime(),
+                instructions='You are a helpful chatbot.',
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelResponse(
+                parts=[TextPart(content='The')],
+                usage=RequestUsage(cost=Decimal('0.00000')),
+                model_name='us.amazon.nova-micro-v1:0',
+                timestamp=IsDatetime(),
+                provider_name='bedrock',
+                provider_url='https://bedrock-runtime.us-east-1.amazonaws.com',
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+                state='interrupted',
+            ),
+        ]
+    )
+
+
+async def test_bedrock_model_stream(allow_model_requests: None, bedrock_provider: BedrockProvider):
+    model = BedrockConverseModel('us.amazon.nova-micro-v1:0', provider=bedrock_provider)
+    agent = Agent(model=model, instructions='You are a helpful chatbot.', model_settings={'temperature': 0.0})
+    async with agent.run_stream('What is the capital of France?') as result:
+        data = await result.get_output()
+    assert data == snapshot(
+        'The capital of France is Paris. Paris is not only the capital city but also the most populous city in France, and it is a major center for culture, commerce, fashion, and international diplomacy. Known for its historical landmarks, such as the Eiffel Tower, the Louvre Museum, and Notre-Dame Cathedral, Paris is often referred to as "The City of Light" or "The City of Love."'
+    )
+    assert result.usage == snapshot(
+        RunUsage(requests=1, input_tokens=13, output_tokens=82, cost=Decimal('0.000011935'))
+    )
+
+
+async def test_bedrock_model_anthropic_model_with_tools(allow_model_requests: None, bedrock_provider: BedrockProvider):
+    model = BedrockConverseModel('anthropic.claude-v2', provider=bedrock_provider)
+    agent = Agent(model=model, instructions='You are a helpful chatbot.', model_settings={'temperature': 0.0})
+
+    @agent.tool_plain
+    async def get_current_temperature(city: str) -> str:
+        """Get the current temperature in a city.
+
+        Args:
+            city: The city name.
+
+        Returns:
+            The current temperature in degrees Celsius.
+        """
+        return '30°C'  # pragma: no cover
+
+    # dated March 2025, update when no longer the case
+    # TODO(Marcelo): Anthropic models don't support tools on the Bedrock Converse Interface.
+    # I'm unsure what to do, so for the time being I'm just documenting the test. Let's see if someone complains.
+    with pytest.raises(Exception):
+        await agent.run('What is the current temperature in London?')
+
+
+async def test_bedrock_model_anthropic_model_without_tools(
+    allow_model_requests: None, bedrock_provider: BedrockProvider
+):
+    model = BedrockConverseModel('us.anthropic.claude-sonnet-4-5-20250929-v1:0', provider=bedrock_provider)
+    agent = Agent(model=model, instructions='You are a helpful chatbot.', model_settings={'temperature': 0.0})
+    result = await agent.run('What is the capital of France?')
+    assert result.output == snapshot(
+        "The capital of France is **Paris**. It's the largest city in France and has been the country's capital since the 12th century. Paris is known for its iconic landmarks like the Eiffel Tower, the Louvre Museum, Notre-Dame Cathedral, and its rich history, culture, and cuisine."
+    )
+
+
+async def test_bedrock_model_retry(allow_model_requests: None, bedrock_provider: BedrockProvider):
+    model = BedrockConverseModel('us.amazon.nova-micro-v1:0', provider=bedrock_provider)
+    agent = Agent(
+        model=model,
+        instructions='You are a helpful chatbot.',
+        model_settings={'temperature': 0.0},
+        retries={'tools': 2, 'output': 2},
+    )
+
+    @agent.tool_plain
+    async def get_capital(country: str) -> str:
+        """Get the capital of a country.
+
+        Args:
+            country: The country name.
+        """
+        raise ModelRetry('The country is not supported.')
+
+    result = await agent.run('What is the capital of France?')
+    assert result.all_messages() == snapshot(
+        [
+            ModelRequest(
+                parts=[
+                    UserPromptPart(
+                        content='What is the capital of France?',
+                        timestamp=IsDatetime(),
+                    ),
+                ],
+                instructions='You are a helpful chatbot.',
+                timestamp=IsDatetime(),
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelResponse(
+                parts=[
+                    TextPart(
+                        content='<thinking> To determine the capital of France, I can use the provided tool that returns the capital of a given country. Since the country in question is France, I will use the tool with the country parameter set to "France". </thinking>\n'
+                    ),
+                    ToolCallPart(
+                        tool_name='get_capital',
+                        args={'country': 'France'},
+                        tool_call_id=IsStr(),
+                    ),
+                ],
+                usage=RequestUsage(input_tokens=426, output_tokens=66, cost=Decimal('0.00002415')),
+                model_name='us.amazon.nova-micro-v1:0',
+                timestamp=IsDatetime(),
+                provider_name='bedrock',
+                provider_url='https://bedrock-runtime.us-east-1.amazonaws.com',
+                provider_details={'finish_reason': 'tool_use'},
+                finish_reason='tool_call',
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelRequest(
+                parts=[
+                    RetryPromptPart(
+                        content='The country is not supported.',
+                        tool_name='get_capital',
+                        tool_call_id=IsStr(),
+                        timestamp=IsDatetime(),
+                    )
+                ],
+                instructions='You are a helpful chatbot.',
+                timestamp=IsDatetime(),
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelResponse(
+                parts=[
+                    TextPart(
+                        content="""\
+<thinking> It appears that there was an error in retrieving the capital of France as the tool indicated that the country is not supported. Since the tool is not able to provide the requested information, I will respond to the User with the information I have access to. </thinking> \n\
+
+The capital of France is Paris. If you need any further information, feel free to ask!\
+"""
+                    )
+                ],
+                usage=RequestUsage(input_tokens=531, output_tokens=76, cost=Decimal('0.000029225')),
+                model_name='us.amazon.nova-micro-v1:0',
+                timestamp=IsDatetime(),
+                provider_name='bedrock',
+                provider_url='https://bedrock-runtime.us-east-1.amazonaws.com',
+                provider_details={'finish_reason': 'end_turn'},
+                finish_reason='stop',
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+        ]
+    )
+
+
+async def test_bedrock_model_max_tokens(allow_model_requests: None, bedrock_provider: BedrockProvider):
+    model = BedrockConverseModel('us.amazon.nova-micro-v1:0', provider=bedrock_provider)
+    agent = Agent(model=model, instructions='You are a helpful chatbot.', model_settings={'max_tokens': 5})
+    result = await agent.run('What is the capital of France?')
+    assert result.output == snapshot('The capital of France is')
+
+
+async def test_bedrock_model_top_p(allow_model_requests: None, bedrock_provider: BedrockProvider):
+    model = BedrockConverseModel('us.amazon.nova-micro-v1:0', provider=bedrock_provider)
+    agent = Agent(model=model, instructions='You are a helpful chatbot.', model_settings={'top_p': 0.5})
+    result = await agent.run('What is the capital of France?')
+    assert result.output == snapshot(
+        'The capital of France is Paris. Paris is not only the capital city but also the most populous city in France, and it is a major center for culture, fashion, gastronomy, and international diplomacy.'
+    )
+
+
+async def test_bedrock_model_performance_config(allow_model_requests: None, bedrock_provider: BedrockProvider):
+    model = BedrockConverseModel('us.amazon.nova-pro-v1:0', provider=bedrock_provider)
+    model_settings = BedrockModelSettings(bedrock_performance_configuration={'latency': 'optimized'})
+    agent = Agent(model=model, instructions='You are a helpful chatbot.', model_settings=model_settings)
+    result = await agent.run('What is the capital of France?')
+    assert result.output == snapshot(
+        'The capital of France is Paris. It is one of the most visited cities in the world and is known for its rich history, culture, and iconic landmarks such as the Eiffel Tower, the Louvre Museum, and Notre-Dame Cathedral. Paris is also a major center for finance, diplomacy, commerce, fashion, science, and arts.'
+    )
+
+
+async def test_bedrock_model_guardrail_config(allow_model_requests: None, bedrock_provider: BedrockProvider):
+    model = BedrockConverseModel('us.amazon.nova-micro-v1:0', provider=bedrock_provider)
+    model_settings = BedrockModelSettings(
+        bedrock_guardrail_config={
+            'guardrailIdentifier': 'xbgw7g293v7o',
+            'guardrailVersion': 'DRAFT',
+            'trace': 'enabled',
+        }
+    )
+    agent = Agent(model=model, instructions='You are a helpful chatbot.', model_settings=model_settings)
+    result = await agent.run('What is the capital of France?')
+    assert result.output == snapshot(
+        "The capital of France is Paris. Paris is not only the capital city but also the most populous city in France, serving as the center of French government, culture, and commerce. It's known for its historical and cultural landmarks such as the Eiffel Tower, the Louvre Museum, Notre-Dame Cathedral, and many charming neighborhoods like Montmartre."
+    )
+
+
+async def test_bedrock_model_other_parameters(allow_model_requests: None, bedrock_provider: BedrockProvider):
+    model = BedrockConverseModel('us.amazon.nova-micro-v1:0', provider=bedrock_provider)
+    model_settings = BedrockModelSettings(
+        bedrock_prompt_variables={'leo': {'text': 'aaaa'}},
+        bedrock_additional_model_requests_fields={'test': 'test'},
+        bedrock_request_metadata={'test': 'test'},
+        bedrock_additional_model_response_fields_paths=['test'],
+    )
+    agent = Agent(model=model, instructions='You are a helpful chatbot.', model_settings=model_settings)
+    result = await agent.run('What is the capital of France?')
+    assert result.output == snapshot(
+        'The capital of France is Paris. Paris is not only the capital city but also the most populous city in France, known for its significant cultural, political, and economic influence both within the country and globally. It is famous for landmarks such as the Eiffel Tower, the Louvre Museum, and the Notre-Dame Cathedral, among many other historical and architectural treasures.'
+    )
+
+
+async def test_bedrock_unified_service_tier(
+    allow_model_requests: None, bedrock_provider: BedrockProvider, mocker: MockerFixture
+):
+    model = BedrockConverseModel('us.amazon.nova-micro-v1:0', provider=bedrock_provider)
+    model_settings = ModelSettings(service_tier='priority')
+    agent = Agent(model=model, system_prompt='You are a helpful chatbot.', model_settings=model_settings)
+
+    mock_converse = mocker.patch.object(model.client, 'converse')
+    mock_converse.return_value = {
+        'output': {'message': {'role': 'assistant', 'content': [{'text': 'hello'}]}},
+        'stopReason': 'end_turn',
+        'usage': {'inputTokens': 1, 'outputTokens': 1},
+        'ResponseMetadata': {'HTTPStatusCode': 200},
+    }
+
+    await agent.run('What is the capital of France?')
+
+    _, kwargs = mock_converse.call_args
+    assert kwargs['serviceTier'] == {'type': 'priority'}
+
+
+async def test_bedrock_unified_service_tier_auto_omits(
+    allow_model_requests: None, bedrock_provider: BedrockProvider, mocker: MockerFixture
+):
+    """Top-level `service_tier='auto'` is omitted from the Bedrock request so the server default applies."""
+    model = BedrockConverseModel('us.amazon.nova-micro-v1:0', provider=bedrock_provider)
+    model_settings = ModelSettings(service_tier='auto')
+    agent = Agent(model=model, system_prompt='You are a helpful chatbot.', model_settings=model_settings)
+
+    mock_converse = mocker.patch.object(model.client, 'converse')
+    mock_converse.return_value = {
+        'output': {'message': {'role': 'assistant', 'content': [{'text': 'hello'}]}},
+        'stopReason': 'end_turn',
+        'usage': {'inputTokens': 1, 'outputTokens': 1},
+        'ResponseMetadata': {'HTTPStatusCode': 200},
+    }
+
+    await agent.run('What is the capital of France?')
+
+    _, kwargs = mock_converse.call_args
+    assert 'serviceTier' not in kwargs
+
+
+async def test_bedrock_usage_with_cached_tokens(
+    allow_model_requests: None, bedrock_provider: BedrockProvider, mocker: MockerFixture
+):
+    """Mocked because synthetic fields are needed to isolate the internal usage mapping."""
+    model = BedrockConverseModel('us.anthropic.claude-sonnet-4-5-20250929-v1:0', provider=bedrock_provider)
+    agent = Agent(model=model)
+
+    mock_converse = mocker.patch.object(model.client, 'converse')
+    mock_converse.return_value = {
+        'output': {'message': {'role': 'assistant', 'content': [{'text': 'hello'}]}},
+        'stopReason': 'end_turn',
+        'usage': {
+            'inputTokens': 13,
+            'outputTokens': 5,
+            'totalTokens': 1529,
+            'cacheReadInputTokens': 1504,
+            'cacheWriteInputTokens': 7,
+            'cacheDetails': [],
+            'futureBillableTokens': 11,
+        },
+        'ResponseMetadata': {'HTTPStatusCode': 200},
+    }
+
+    result = await agent.run('hello')
+
+    assert result.output == 'hello'
+    assert result.usage == snapshot(
+        RunUsage(
+            input_tokens=1524,
+            cache_write_tokens=7,
+            cache_read_tokens=1504,
+            output_tokens=5,
+            requests=1,
+            details={'futureBillableTokens': 11},
+            cost=Decimal('0.000650595'),
+        )
+    )
+
+
+async def test_bedrock_stream_usage_with_cached_tokens(
+    allow_model_requests: None, bedrock_provider: BedrockProvider, mocker: MockerFixture
+):
+    """Mocked because synthetic stream metadata is needed to isolate the internal usage mapping."""
+    model = BedrockConverseModel('us.anthropic.claude-sonnet-4-5-20250929-v1:0', provider=bedrock_provider)
+    agent = Agent(model=model)
+
+    def _stream() -> Iterator[dict[str, Any]]:
+        yield {'messageStart': {'role': 'assistant'}}
+        yield {'contentBlockDelta': {'contentBlockIndex': 0, 'delta': {'text': 'hello'}}}
+        yield {'contentBlockStop': {'contentBlockIndex': 0}}
+        yield {'messageStop': {'stopReason': 'end_turn'}}
+        yield {
+            'metadata': {
+                'usage': {
+                    'inputTokens': 13,
+                    'outputTokens': 5,
+                    'totalTokens': 1529,
+                    'cacheReadInputTokens': 1504,
+                    'cacheWriteInputTokens': 7,
+                    'cacheDetails': [],
+                    'futureBillableTokens': 11,
+                }
+            }
+        }
+
+    mock_converse_stream = mocker.patch.object(model.client, 'converse_stream')
+    mock_converse_stream.return_value = {
+        'stream': _stream(),
+        'ResponseMetadata': {'RequestId': 'stub'},
+    }
+
+    async with agent.run_stream('hello') as result:
+        assert await result.get_output() == 'hello'
+
+    assert result.usage == snapshot(
+        RunUsage(
+            input_tokens=1524,
+            cache_write_tokens=7,
+            cache_read_tokens=1504,
+            output_tokens=5,
+            requests=1,
+            details={'futureBillableTokens': 11},
+            cost=Decimal('0.000650595'),
+        )
+    )
+
+
+_BEDROCK_GUARDRAIL_TRACE: dict[str, Any] = {'guardrail': {'modelOutput': ['blocked']}}
+_BEDROCK_EMPTY_TRACE: dict[str, Any] = {}
+
+
+@pytest.mark.parametrize('trace', [_BEDROCK_GUARDRAIL_TRACE, _BEDROCK_EMPTY_TRACE])
+async def test_bedrock_trace(
+    allow_model_requests: None,
+    bedrock_provider: BedrockProvider,
+    mocker: MockerFixture,
+    trace: dict[str, Any],
+):
+    """Mocked because a guardrail trace requires a guardrail-configured Bedrock account."""
+    model = BedrockConverseModel('us.amazon.nova-micro-v1:0', provider=bedrock_provider)
+    agent = Agent(model=model)
+
+    mock_converse = mocker.patch.object(model.client, 'converse')
+    mock_converse.return_value = {
+        'output': {'message': {'role': 'assistant', 'content': [{'text': 'hello'}]}},
+        'stopReason': 'guardrail_intervened',
+        'usage': {'inputTokens': 1, 'outputTokens': 1},
+        'trace': trace,
+        'ResponseMetadata': {'HTTPStatusCode': 200},
+    }
+
+    result = await agent.run('hello')
+
+    message = cast(ModelResponse, result.all_messages()[-1])
+    assert message.provider_details == {
+        'finish_reason': 'guardrail_intervened',
+        'trace': trace,
+    }
+    assert message.finish_reason == 'content_filter'
+
+
+@pytest.mark.parametrize('trace', [_BEDROCK_GUARDRAIL_TRACE, _BEDROCK_EMPTY_TRACE])
+async def test_bedrock_trace_streamed(
+    allow_model_requests: None,
+    bedrock_provider: BedrockProvider,
+    mocker: MockerFixture,
+    trace: dict[str, Any],
+):
+    """Mocked because a guardrail trace requires a guardrail-configured Bedrock account."""
+    model = BedrockConverseModel('us.amazon.nova-micro-v1:0', provider=bedrock_provider)
+    agent = Agent(model=model)
+
+    def _stream() -> Iterator[dict[str, Any]]:
+        yield {'messageStart': {'role': 'assistant'}}
+        yield {'contentBlockDelta': {'contentBlockIndex': 0, 'delta': {'text': 'hello'}}}
+        yield {'contentBlockStop': {'contentBlockIndex': 0}}
+        yield {'messageStop': {'stopReason': 'guardrail_intervened'}}
+        yield {
+            'metadata': {
+                'usage': {'inputTokens': 1, 'outputTokens': 1},
+                'trace': trace,
+            }
+        }
+
+    mock_converse_stream = mocker.patch.object(model.client, 'converse_stream')
+    mock_converse_stream.return_value = {
+        'stream': _stream(),
+        'ResponseMetadata': {'RequestId': 'stub'},
+    }
+
+    async with agent.run_stream('hello') as result:
+        assert await result.get_output() == 'hello'
+
+    message = cast(ModelResponse, result.all_messages()[-1])
+    assert message.provider_details == {
+        'finish_reason': 'guardrail_intervened',
+        'trace': trace,
+    }
+    assert message.finish_reason == 'content_filter'
+
+
+async def test_bedrock_trace_streamed_metadata_before_stop(
+    allow_model_requests: None, bedrock_provider: BedrockProvider, mocker: MockerFixture
+):
+    """Mocked because a guardrail trace requires a guardrail-configured Bedrock account."""
+    model = BedrockConverseModel('us.amazon.nova-micro-v1:0', provider=bedrock_provider)
+    agent = Agent(model=model)
+
+    def _stream() -> Iterator[dict[str, Any]]:
+        yield {'messageStart': {'role': 'assistant'}}
+        yield {'contentBlockDelta': {'contentBlockIndex': 0, 'delta': {'text': 'hello'}}}
+        yield {'contentBlockStop': {'contentBlockIndex': 0}}
+        yield {
+            'metadata': {
+                'usage': {'inputTokens': 1, 'outputTokens': 1},
+                'trace': _BEDROCK_GUARDRAIL_TRACE,
+            }
+        }
+        yield {'messageStop': {'stopReason': 'guardrail_intervened'}}
+
+    mock_converse_stream = mocker.patch.object(model.client, 'converse_stream')
+    mock_converse_stream.return_value = {
+        'stream': _stream(),
+        'ResponseMetadata': {'RequestId': 'stub'},
+    }
+
+    async with agent.run_stream('hello') as result:
+        assert await result.get_output() == 'hello'
+
+    message = cast(ModelResponse, result.all_messages()[-1])
+    assert message.provider_details == {
+        'finish_reason': 'guardrail_intervened',
+        'trace': _BEDROCK_GUARDRAIL_TRACE,
+    }
+    assert message.finish_reason == 'content_filter'
+
+
+async def test_bedrock_model_service_tier(allow_model_requests: None, bedrock_provider: BedrockProvider):
+    model = BedrockConverseModel('us.amazon.nova-micro-v1:0', provider=bedrock_provider)
+    model_settings = BedrockModelSettings(bedrock_service_tier={'type': 'flex'})
+    agent = Agent(model=model, system_prompt='You are a helpful chatbot.', model_settings=model_settings)
+    result = await agent.run('What is the capital of France?')
+    assert result.output == snapshot(
+        'The capital of France is Paris. Paris is not only the capital city but also the most populous city in France, known for its significant cultural, political, and economic influence both within the country and globally. It is famous for landmarks such as the Eiffel Tower, the Louvre Museum, and the Notre-Dame Cathedral, among many other historical and architectural treasures.'
+    )
+
+
+async def test_bedrock_model_iter_stream(allow_model_requests: None, bedrock_provider: BedrockProvider):
+    model = BedrockConverseModel('us.amazon.nova-micro-v1:0', provider=bedrock_provider)
+    agent = Agent(model=model, instructions='You are a helpful chatbot.', model_settings={'top_p': 0.5})
+
+    @agent.tool_plain
+    async def get_capital(country: str) -> str:
+        """Get the capital of a country.
+
+        Args:
+            country: The country name.
+        """
+        return 'Paris'  # pragma: no cover
+
+    @agent.tool_plain
+    async def get_temperature(city: str) -> str:
+        """Get the temperature in a city.
+
+        Args:
+            city: The city name.
+        """
+        return '30°C'
+
+    event_parts: list[Any] = []
+    async with agent.iter(user_prompt='What is the temperature of the capital of France?') as agent_run:
+        async for node in agent_run:
+            if Agent.is_model_request_node(node) or Agent.is_call_tools_node(node):
+                async with node.stream(agent_run.ctx) as request_stream:
+                    async for event in request_stream:
+                        event_parts.append(event)
+
+    assert event_parts == snapshot(
+        [
+            PartStartEvent(index=0, part=TextPart(content='<thinking')),
+            FinalResultEvent(tool_name=None, tool_call_id=None),
+            PartDeltaEvent(index=0, delta=TextPartDelta(content_delta='> To find')),
+            PartDeltaEvent(index=0, delta=TextPartDelta(content_delta=' the temperature')),
+            PartDeltaEvent(index=0, delta=TextPartDelta(content_delta=' of the capital of France,')),
+            PartDeltaEvent(index=0, delta=TextPartDelta(content_delta=' I need to first')),
+            PartDeltaEvent(index=0, delta=TextPartDelta(content_delta=' determine the capital')),
+            PartDeltaEvent(index=0, delta=TextPartDelta(content_delta=' of France and')),
+            PartDeltaEvent(index=0, delta=TextPartDelta(content_delta=' then get')),
+            PartDeltaEvent(index=0, delta=TextPartDelta(content_delta=' the current')),
+            PartDeltaEvent(index=0, delta=TextPartDelta(content_delta=' temperature in')),
+            PartDeltaEvent(index=0, delta=TextPartDelta(content_delta=' that city. The')),
+            PartDeltaEvent(index=0, delta=TextPartDelta(content_delta=' capital of France is Paris')),
+            PartDeltaEvent(index=0, delta=TextPartDelta(content_delta='. I')),
+            PartDeltaEvent(index=0, delta=TextPartDelta(content_delta=' will use')),
+            PartDeltaEvent(index=0, delta=TextPartDelta(content_delta=' the "get_temperature"')),
+            PartDeltaEvent(index=0, delta=TextPartDelta(content_delta=' tool to find the current temperature')),
+            PartDeltaEvent(index=0, delta=TextPartDelta(content_delta=' in Paris.</')),
+            PartDeltaEvent(index=0, delta=TextPartDelta(content_delta='thinking')),
+            PartDeltaEvent(index=0, delta=TextPartDelta(content_delta='>\n')),
+            PartEndEvent(
+                index=0,
+                part=TextPart(
+                    content='<thinking> To find the temperature of the capital of France, I need to first determine the capital of France and then get the current temperature in that city. The capital of France is Paris. I will use the "get_temperature" tool to find the current temperature in Paris.</thinking>\n'
+                ),
+                next_part_kind='tool-call',
+            ),
+            PartStartEvent(
+                index=1,
+                part=ToolCallPart(tool_name='get_temperature', tool_call_id=IsStr()),
+                previous_part_kind='text',
+            ),
+            PartDeltaEvent(
+                index=1,
+                delta=ToolCallPartDelta(args_delta='{"city":"Paris"}', tool_call_id=IsStr()),
+            ),
+            PartEndEvent(
+                index=1,
+                part=ToolCallPart(tool_name='get_temperature', args='{"city":"Paris"}', tool_call_id=IsStr()),
+            ),
+            IsInstance(FunctionToolCallEvent),
+            FunctionToolResultEvent(
+                part=ToolReturnPart(
+                    tool_name='get_temperature',
+                    content='30°C',
+                    tool_call_id=IsStr(),
+                    timestamp=IsDatetime(),
+                )
+            ),
+            PartStartEvent(index=0, part=TextPart(content='The')),
+            FinalResultEvent(tool_name=None, tool_call_id=None),
+            PartDeltaEvent(index=0, delta=TextPartDelta(content_delta=' current temperature in Paris, the')),
+            PartDeltaEvent(index=0, delta=TextPartDelta(content_delta=' capital of France,')),
+            PartDeltaEvent(index=0, delta=TextPartDelta(content_delta=' is 30°C')),
+            PartDeltaEvent(index=0, delta=TextPartDelta(content_delta='.')),
+            PartEndEvent(
+                index=0, part=TextPart(content='The current temperature in Paris, the capital of France, is 30°C.')
+            ),
+        ]
+    )
+
+
+@pytest.mark.vcr()
+async def test_image_as_binary_content_input(
+    allow_model_requests: None, image_content: BinaryContent, bedrock_provider: BedrockProvider
+):
+    m = BedrockConverseModel('us.amazon.nova-pro-v1:0', provider=bedrock_provider)
+    agent = Agent(m, instructions='You are a helpful chatbot.')
+
+    result = await agent.run(['What fruit is in the image?', image_content])
+    assert result.output == snapshot(
+        'The image features a fruit that is round and has a green skin with brown dots. The fruit is cut in half, revealing its interior, which is also green. Based on the appearance and characteristics, the fruit in the image is a kiwi.'
+    )
+
+
+@pytest.mark.vcr()
+async def test_video_as_binary_content_input(
+    allow_model_requests: None, video_content: BinaryContent, bedrock_provider: BedrockProvider
+):
+    m = BedrockConverseModel('us.amazon.nova-pro-v1:0', provider=bedrock_provider)
+    agent = Agent(m, instructions='You are a helpful chatbot.')
+
+    result = await agent.run(['Explain me this video', video_content])
+    assert result.output == snapshot(
+        'The video shows a camera set up on a tripod, pointed at a scenic view of a rocky landscape under a clear sky. The camera remains stationary throughout the video, capturing the same view without any changes.'
+    )
+
+
+@pytest.mark.vcr()
+async def test_image_url_input(
+    allow_model_requests: None, bedrock_provider: BedrockProvider, disable_ssrf_protection_for_vcr: None
+):
+    m = BedrockConverseModel('us.amazon.nova-pro-v1:0', provider=bedrock_provider)
+    agent = Agent(m, instructions='You are a helpful chatbot.')
+
+    result = await agent.run(
+        [
+            'What is this vegetable?',
+            ImageUrl(url='https://t3.ftcdn.net/jpg/00/85/79/92/360_F_85799278_0BBGV9OAdQDTLnKwAPBCcg1J7QtiieJY.jpg'),
+        ]
+    )
+    assert result.output == snapshot(
+        'The image shows a potato. It is oval in shape and has a yellow skin with numerous dark brown patches. These patches are known as lenticels, which are pores that allow the potato to breathe. The potato is a root vegetable that is widely cultivated and consumed around the world. It is a versatile ingredient that can be used in a variety of dishes, including mashed potatoes, fries, and potato salad.'
+    )
+
+
+@pytest.mark.vcr()
+async def test_video_url_input(
+    allow_model_requests: None, bedrock_provider: BedrockProvider, disable_ssrf_protection_for_vcr: None
+):
+    m = BedrockConverseModel('us.amazon.nova-pro-v1:0', provider=bedrock_provider)
+    agent = Agent(m, instructions='You are a helpful chatbot.')
+
+    result = await agent.run(
+        [
+            'Explain me this video',
+            VideoUrl(url='https://t3.ftcdn.net/jpg/00/85/79/92/small_video.mp4'),
+        ]
+    )
+    assert result.output == snapshot(
+        'The video shows a camera set up on a tripod, pointed at a scenic view of a rocky landscape under a clear sky. The camera remains stationary throughout the video, capturing the same view without any changes.'
+    )
+
+
+@pytest.mark.vcr()
+async def test_document_url_input(
+    allow_model_requests: None, bedrock_provider: BedrockProvider, disable_ssrf_protection_for_vcr: None
+):
+    m = BedrockConverseModel('anthropic.claude-v2', provider=bedrock_provider)
+    agent = Agent(m, instructions='You are a helpful chatbot.')
+
+    document_url = DocumentUrl(url='https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf')
+
+    result = await agent.run(['What is the main content on this document?', document_url])
+    assert result.output == snapshot(
+        'Based on the provided XML data, the main content of the document is "Dummy PDF file". This is contained in the <document_content> tag for the document with index="1".'
+    )
+
+
+@pytest.mark.vcr()
+async def test_text_document_url_input(
+    allow_model_requests: None, bedrock_provider: BedrockProvider, disable_ssrf_protection_for_vcr: None
+):
+    m = BedrockConverseModel('anthropic.claude-v2', provider=bedrock_provider)
+    agent = Agent(m, instructions='You are a helpful chatbot.')
+
+    text_document_url = DocumentUrl(url='https://example-files.online-convert.com/document/txt/example.txt')
+
+    result = await agent.run(['What is the main content on this document?', text_document_url])
+    assert result.output == snapshot(
+        """\
+Based on the text in the <document_content> tag, the main content of this document appears to be:
+
+An example text describing the use of "John Doe" as a placeholder name in legal cases, hospitals, and other contexts where a party's real identity is unknown or needs to be withheld. It provides background on how "John Doe" and "Jane Doe" are commonly used in the United States and Canada for this purpose, in contrast to other English speaking countries that use names like "Joe Bloggs". The text gives examples of using John/Jane Doe for legal cases, unidentified corpses, and as generic names on forms. It also mentions how "Baby Doe" and "Precious Doe" are used for unidentified children.\
+"""
+    )
+
+
+async def test_s3_image_url_input(bedrock_provider: BedrockProvider):
+    """Test that s3:// image URLs are passed directly to Bedrock API without downloading."""
+    model = BedrockConverseModel('us.amazon.nova-pro-v1:0', provider=bedrock_provider)
+    image_url = ImageUrl(url='s3://my-bucket/images/test-image.jpg', media_type='image/jpeg')
+
+    req = [
+        ModelRequest(parts=[UserPromptPart(content=['What is in this image?', image_url])]),
+    ]
+
+    _, bedrock_messages = await model._map_messages(req, ModelRequestParameters(), None)  # type: ignore[reportPrivateUsage]
+
+    assert bedrock_messages == snapshot(
+        [
+            {
+                'role': 'user',
+                'content': [
+                    {'text': 'What is in this image?'},
+                    {
+                        'image': {
+                            'format': 'jpeg',
+                            'source': {'s3Location': {'uri': 's3://my-bucket/images/test-image.jpg'}},
+                        }
+                    },
+                ],
+            }
+        ]
+    )
+
+
+async def test_s3_video_url_input(bedrock_provider: BedrockProvider):
+    """Test that s3:// video URLs are passed directly to Bedrock API."""
+    model = BedrockConverseModel('us.amazon.nova-pro-v1:0', provider=bedrock_provider)
+    video_url = VideoUrl(url='s3://my-bucket/videos/test-video.mp4', media_type='video/mp4')
+
+    req = [
+        ModelRequest(parts=[UserPromptPart(content=['Describe this video', video_url])]),
+    ]
+
+    _, bedrock_messages = await model._map_messages(req, ModelRequestParameters(), None)  # type: ignore[reportPrivateUsage]
+
+    assert bedrock_messages == snapshot(
+        [
+            {
+                'role': 'user',
+                'content': [
+                    {'text': 'Describe this video'},
+                    {
+                        'video': {
+                            'format': 'mp4',
+                            'source': {'s3Location': {'uri': 's3://my-bucket/videos/test-video.mp4'}},
+                        }
+                    },
+                ],
+            }
+        ]
+    )
+
+
+async def test_s3_document_url_input(bedrock_provider: BedrockProvider):
+    """Test that s3:// document URLs are passed directly to Bedrock API."""
+    model = BedrockConverseModel('anthropic.claude-v2', provider=bedrock_provider)
+    document_url = DocumentUrl(url='s3://my-bucket/documents/test-doc.pdf', media_type='application/pdf')
+
+    req = [
+        ModelRequest(parts=[UserPromptPart(content=['What is the main content on this document?', document_url])]),
+    ]
+
+    _, bedrock_messages = await model._map_messages(req, ModelRequestParameters(), None)  # type: ignore[reportPrivateUsage]
+
+    assert bedrock_messages == snapshot(
+        [
+            {
+                'role': 'user',
+                'content': [
+                    {'text': 'What is the main content on this document?'},
+                    {
+                        'document': {
+                            'format': 'pdf',
+                            'name': 'Document 1',
+                            'source': {'s3Location': {'uri': 's3://my-bucket/documents/test-doc.pdf'}},
+                        }
+                    },
+                ],
+            }
+        ]
+    )
+
+
+async def test_s3_url_with_bucket_owner(bedrock_provider: BedrockProvider):
+    """Test that s3:// URLs with bucketOwner parameter are parsed correctly."""
+    model = BedrockConverseModel('us.amazon.nova-pro-v1:0', provider=bedrock_provider)
+    image_url = ImageUrl(url='s3://my-bucket/images/test-image.jpg?bucketOwner=123456789012', media_type='image/jpeg')
+
+    req = [
+        ModelRequest(parts=[UserPromptPart(content=['What is in this image?', image_url])]),
+    ]
+
+    _, bedrock_messages = await model._map_messages(req, ModelRequestParameters(), None)  # type: ignore[reportPrivateUsage]
+
+    assert bedrock_messages == snapshot(
+        [
+            {
+                'role': 'user',
+                'content': [
+                    {'text': 'What is in this image?'},
+                    {
+                        'image': {
+                            'format': 'jpeg',
+                            'source': {
+                                's3Location': {
+                                    'uri': 's3://my-bucket/images/test-image.jpg',
+                                    'bucketOwner': '123456789012',
+                                }
+                            },
+                        }
+                    },
+                ],
+            }
+        ]
+    )
+
+
+@pytest.mark.vcr()
+async def test_text_as_binary_content_input(allow_model_requests: None, bedrock_provider: BedrockProvider):
+    m = BedrockConverseModel('us.amazon.nova-pro-v1:0', provider=bedrock_provider)
+    agent = Agent(m, instructions='You are a helpful chatbot.')
+
+    text_content = BinaryContent(data=b'This is a test document.', media_type='text/plain')
+
+    result = await agent.run(['What is the main content on this document?', text_content])
+    assert result.output == snapshot(
+        """\
+The document you're referring to appears to be a test document, which means its primary purpose is likely to serve as an example or a placeholder rather than containing substantive content. Test documents are commonly used for various purposes such as:
+
+1. **Software Testing**: To verify that a system can correctly handle, display, or process documents.
+2. **Design Mockups**: To illustrate how a document might look in a particular format or style.
+3. **Training Materials**: To provide examples for instructional purposes.
+4. **Placeholders**: To fill space in a system or application where real content will eventually be placed.
+
+Since this is a test document, it probably doesn't contain any meaningful or specific information beyond what is necessary to serve its testing purpose. If you have specific questions about the format, structure, or any particular element within the document, feel free to ask!\
+"""
+    )
+
+
+async def test_map_user_prompt_with_text_content_input(allow_model_requests: None, bedrock_provider: BedrockProvider):
+    model = BedrockConverseModel('us.amazon.nova-pro-v1:0', provider=bedrock_provider)
+    m = await model._map_user_prompt(  # pyright: ignore[reportPrivateUsage]
+        part=UserPromptPart(
+            content=[
+                'What is the main content on this document?',
+                TextContent(content='This is a test document.', metadata={'format': 'plain_text'}),
+            ]
+        ),
+        document_count=count(1),
+        supports_prompt_caching=False,
+        prior_messages=[],
+    )
+    assert m == snapshot(
+        [
+            {
+                'role': 'user',
+                'content': [
+                    {'text': 'What is the main content on this document?'},
+                    {'text': 'This is a test document.'},
+                ],
+            }
+        ]
+    )
+
+
+@pytest.mark.vcr()
+async def test_bedrock_model_instructions(allow_model_requests: None, bedrock_provider: BedrockProvider):
+    m = BedrockConverseModel('us.amazon.nova-pro-v1:0', provider=bedrock_provider)
+
+    def instructions() -> str:
+        return 'You are a helpful assistant.'
+
+    agent = Agent(m, instructions=instructions)
+
+    result = await agent.run('What is the capital of France?')
+    assert result.all_messages() == snapshot(
+        [
+            ModelRequest(
+                parts=[UserPromptPart(content='What is the capital of France?', timestamp=IsDatetime())],
+                timestamp=IsDatetime(),
+                instructions='You are a helpful assistant.',
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelResponse(
+                parts=[
+                    TextPart(
+                        content='The capital of France is Paris. Paris is not only the political and economic hub of the country but also a major center for culture, fashion, art, and tourism. It is renowned for its rich history, iconic landmarks such as the Eiffel Tower, Notre-Dame Cathedral, and the Louvre Museum, as well as its influence on global culture and cuisine.'
+                    )
+                ],
+                usage=RequestUsage(input_tokens=13, output_tokens=71, cost=Decimal('0.0002376')),
+                model_name='us.amazon.nova-pro-v1:0',
+                timestamp=IsDatetime(),
+                provider_name='bedrock',
+                provider_url='https://bedrock-runtime.us-east-1.amazonaws.com',
+                provider_details={'finish_reason': 'end_turn'},
+                finish_reason='stop',
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+        ]
+    )
+
+
+@pytest.mark.vcr()
+async def test_bedrock_empty_system_prompt(allow_model_requests: None, bedrock_provider: BedrockProvider):
+    m = BedrockConverseModel('us.amazon.nova-micro-v1:0', provider=bedrock_provider)
+    agent = Agent(m)
+    result = await agent.run('What is the capital of France?')
+    assert result.output == snapshot(
+        'The capital of France is Paris. Paris, officially known as "Ville de Paris," is not only the capital city but also the most populous city in France. It is located in the northern central part of the country along the Seine River. Paris is a major global city, renowned for its cultural, political, economic, and social influence. It is famous for its landmarks such as the Eiffel Tower, the Louvre Museum, Notre-Dame Cathedral, and the Champs-Élysées, among many other historic and modern attractions. The city has played a significant role in the history of art, fashion, gastronomy, and science.'
+    )
+
+
+@pytest.mark.vcr()
+async def test_bedrock_multiple_documents_in_history(
+    allow_model_requests: None, bedrock_provider: BedrockProvider, document_content: BinaryContent
+):
+    m = BedrockConverseModel(model_name='us.anthropic.claude-3-7-sonnet-20250219-v1:0', provider=bedrock_provider)
+    agent = Agent(model=m)
+
+    result = await agent.run(
+        'What is in the documents?',
+        message_history=[
+            ModelRequest(
+                parts=[UserPromptPart(content=['Here is a PDF document: ', document_content])], timestamp=IsDatetime()
+            ),
+            ModelResponse(parts=[TextPart(content='foo bar')]),
+            ModelRequest(
+                parts=[UserPromptPart(content=['Here is another PDF document: ', document_content])],
+                timestamp=IsDatetime(),
+            ),
+            ModelResponse(parts=[TextPart(content='foo bar 2')]),
+        ],
+    )
+
+    assert result.output == snapshot(
+        'Based on the documents you\'ve shared, both Document 1.pdf and Document 2.pdf contain the text "Dummy PDF file". These appear to be placeholder or sample PDF documents rather than files with substantial content.'
+    )
+
+
+def _bedrock_tool_result_media_kinds(cassette: Cassette) -> set[str]:
+    """Collect the media-block kinds (`image`, `document`, `video`) that rode *inside* a `toolResult`'s
+    content across every recorded request in `cassette`.
+
+    A kind present here means the adapter delivered the file inside the `toolResult` rather than
+    sibling-splitting it (a placeholder `text` in the `toolResult` plus a separate file block).
+    """
+    kinds: set[str] = set()
+    for request in cassette.requests:  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
+        data: dict[str, Any] = json.loads(request.body)  # pyright: ignore[reportUnknownArgumentType,reportUnknownMemberType]
+        messages: list[dict[str, Any]] = data.get('messages', [])
+        for message in messages:
+            content: list[dict[str, Any]] = message.get('content', [])
+            for block in content:
+                tool_result: dict[str, Any] | None = block.get('toolResult')
+                if not tool_result:
+                    continue
+                inner_blocks: list[dict[str, Any]] = tool_result.get('content', [])
+                for inner in inner_blocks:
+                    kinds.update(k for k in ('image', 'document', 'video') if k in inner)
+    return kinds
+
+
+@pytest.mark.vcr()
+@pytest.mark.parametrize(
+    ('model_name', 'file_kind'),
+    [
+        pytest.param('us.meta.llama4-maverick-17b-instruct-v1:0', 'document', id='meta_document'),
+        pytest.param('us.meta.llama4-maverick-17b-instruct-v1:0', 'image', id='meta_image'),
+        pytest.param('us.mistral.pixtral-large-2502-v1:0', 'document', id='mistral_document'),
+    ],
+)
+async def test_bedrock_media_kind_delivered_in_tool_result(
+    allow_model_requests: None,
+    bedrock_provider: BedrockProvider,
+    document_content: BinaryContent,
+    image_content: BinaryContent,
+    model_name: str,
+    file_kind: str,
+    vcr: Cassette,
+):
+    """A supported media kind returned from a tool is delivered *inside* the `toolResult`, not sibling-split.
+
+    Pins the corrected `bedrock_supported_media_kinds_in_tool_returns` values verified live against Bedrock:
+    Meta Llama accepts both images and documents inside a `toolResult`, and Mistral (pixtral) accepts
+    documents there. When a kind is in the family's supported set the adapter must place the file block
+    inside `toolResult.content` rather than emitting a `See file` placeholder plus a sibling block.
+    """
+    m = BedrockConverseModel(model_name, provider=bedrock_provider)
+    agent = Agent(m)
+
+    file = image_content if file_kind == 'image' else document_content
+
+    @agent.tool_plain
+    def get_file() -> BinaryContent:
+        return file
+
+    result = await agent.run('Call the `get_file` tool, then briefly describe what you received.')
+    assert result.output
+
+    # The file rode inside the `toolResult`, and no sibling-split placeholder was emitted.
+    assert file_kind in _bedrock_tool_result_media_kinds(vcr)
+    for request in vcr.requests:  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
+        assert 'See file' not in json.dumps(json.loads(request.body))  # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
+
+
+async def test_bedrock_model_thinking_part_deepseek(allow_model_requests: None, bedrock_provider: BedrockProvider):
+    m = BedrockConverseModel('us.deepseek.r1-v1:0', provider=bedrock_provider)
+    agent = Agent(m)
+
+    result = await agent.run('How do I cross the street?')
+    assert result.all_messages() == snapshot(
+        [
+            ModelRequest(
+                parts=[UserPromptPart(content='How do I cross the street?', timestamp=IsDatetime())],
+                timestamp=IsDatetime(),
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelResponse(
+                parts=[TextPart(content=IsStr()), ThinkingPart(content=IsStr())],
+                usage=RequestUsage(input_tokens=12, output_tokens=693, cost=Decimal('0.0037584')),
+                model_name='us.deepseek.r1-v1:0',
+                timestamp=IsDatetime(),
+                provider_name='bedrock',
+                provider_url='https://bedrock-runtime.us-east-1.amazonaws.com',
+                provider_details={'finish_reason': 'end_turn'},
+                finish_reason='stop',
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+        ]
+    )
+
+    result = await agent.run(
+        'Considering the way to cross the street, analogously, how do I cross the river?',
+        message_history=result.all_messages(),
+    )
+    assert result.new_messages() == snapshot(
+        [
+            ModelRequest(
+                parts=[
+                    UserPromptPart(
+                        content='Considering the way to cross the street, analogously, how do I cross the river?',
+                        timestamp=IsDatetime(),
+                    )
+                ],
+                timestamp=IsDatetime(),
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelResponse(
+                parts=[TextPart(content=IsStr()), ThinkingPart(content=IsStr())],
+                usage=RequestUsage(input_tokens=33, output_tokens=907, cost=Decimal('0.00494235')),
+                model_name='us.deepseek.r1-v1:0',
+                timestamp=IsDatetime(),
+                provider_name='bedrock',
+                provider_url='https://bedrock-runtime.us-east-1.amazonaws.com',
+                provider_details={'finish_reason': 'end_turn'},
+                finish_reason='stop',
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+        ]
+    )
+
+
+async def test_bedrock_model_thinking_part_anthropic(allow_model_requests: None, bedrock_provider: BedrockProvider):
+    m = BedrockConverseModel(
+        'us.anthropic.claude-sonnet-4-20250514-v1:0',
+        provider=bedrock_provider,
+        settings=BedrockModelSettings(
+            bedrock_additional_model_requests_fields={
+                'thinking': {'type': 'enabled', 'budget_tokens': 1024},
+            }
+        ),
+    )
+    agent = Agent(m)
+
+    result = await agent.run('How do I cross the street?')
+    assert result.all_messages() == snapshot(
+        [
+            ModelRequest(
+                parts=[UserPromptPart(content='How do I cross the street?', timestamp=IsDatetime())],
+                timestamp=IsDatetime(),
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelResponse(
+                parts=[
+                    ThinkingPart(
+                        content=IsStr(),
+                        signature=IsStr(),
+                        provider_name='bedrock',
+                    ),
+                    TextPart(content=IsStr()),
+                ],
+                usage=RequestUsage(input_tokens=42, output_tokens=313, cost=Decimal('0.004821')),
+                model_name='us.anthropic.claude-sonnet-4-20250514-v1:0',
+                timestamp=IsDatetime(),
+                provider_name='bedrock',
+                provider_url='https://bedrock-runtime.us-east-1.amazonaws.com',
+                provider_details={'finish_reason': 'end_turn'},
+                finish_reason='stop',
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+        ]
+    )
+
+    result = await agent.run(
+        'Considering the way to cross the street, analogously, how do I cross the river?',
+        message_history=result.all_messages(),
+    )
+    assert result.new_messages() == snapshot(
+        [
+            ModelRequest(
+                parts=[
+                    UserPromptPart(
+                        content='Considering the way to cross the street, analogously, how do I cross the river?',
+                        timestamp=IsDatetime(),
+                    )
+                ],
+                timestamp=IsDatetime(),
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelResponse(
+                parts=[
+                    ThinkingPart(
+                        content=IsStr(),
+                        signature=IsStr(),
+                        provider_name='bedrock',
+                    ),
+                    IsInstance(TextPart),
+                ],
+                usage=RequestUsage(input_tokens=334, output_tokens=432, cost=Decimal('0.007482')),
+                model_name='us.anthropic.claude-sonnet-4-20250514-v1:0',
+                timestamp=IsDatetime(),
+                provider_name='bedrock',
+                provider_url='https://bedrock-runtime.us-east-1.amazonaws.com',
+                provider_details={'finish_reason': 'end_turn'},
+                finish_reason='stop',
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+        ]
+    )
+
+
+async def test_bedrock_model_thinking_part_anthropic_legacy(
+    allow_model_requests: None, bedrock_provider: BedrockProvider
+):
+    """Multi-turn thinking on pre-4.6 Claude via the unified `thinking` setting.
+
+    Sibling to `test_bedrock_model_thinking_part_anthropic_adaptive`. Proves the
+    legacy `{'type': 'enabled', 'budget_tokens': N}` translation path works
+    end-to-end on a non-adaptive model (Sonnet 4.5) when the user passes the
+    unified `thinking=True` setting (rather than the manual
+    `bedrock_additional_model_requests_fields` workaround the existing
+    `test_bedrock_model_thinking_part_anthropic` covers).
+    """
+    m = BedrockConverseModel(
+        'us.anthropic.claude-sonnet-4-5-20250929-v1:0',
+        provider=bedrock_provider,
+        settings=BedrockModelSettings(thinking=True),
+    )
+    agent = Agent(m)
+
+    result = await agent.run('How do I cross the street?')
+    assert result.all_messages() == snapshot(
+        [
+            ModelRequest(
+                parts=[UserPromptPart(content='How do I cross the street?', timestamp=IsDatetime())],
+                timestamp=IsDatetime(),
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelResponse(
+                parts=[
+                    ThinkingPart(
+                        content='This is a straightforward question about crossing the street safely. I should provide practical safety advice for pedestrians.',
+                        signature=IsStr(),
+                        provider_name='bedrock',
+                    ),
+                    TextPart(
+                        content="""\
+Here's how to cross the street safely:
+
+## Basic Steps
+
+1. **Find a safe crossing spot**
+   - Use crosswalks, intersections, or pedestrian signals when available
+   - Avoid crossing between parked cars or on curves where drivers can't see you
+
+2. **Stop at the curb/edge**
+   - Don't step into the street yet
+
+3. **Look left, right, then left again**
+   - Keep looking while you cross
+
+4. **Listen for traffic**
+   - Remove headphones or turn down volume
+   - Listen for engines, horns, or warning sounds
+
+5. **Make eye contact with drivers**
+   - Ensure they see you before crossing
+
+6. **Wait for a safe gap in traffic**
+   - If there's a signal, wait for the "walk" signal
+   - Don't assume cars will stop
+
+7. **Walk, don't run**
+   - Stay alert and keep watching for cars
+   - Be visible--wear bright colors at night
+
+## Extra Tips
+- Put your phone away while crossing
+- Watch for turning vehicles
+- Be extra careful in bad weather or low light
+- Teach children to hold an adult's hand
+
+Is there a specific crossing situation you're dealing with?\
+"""
+                    ),
+                ],
+                usage=RequestUsage(input_tokens=43, output_tokens=306, cost=Decimal('0.0051909')),
+                model_name='us.anthropic.claude-sonnet-4-5-20250929-v1:0',
+                timestamp=IsDatetime(),
+                provider_name='bedrock',
+                provider_url='https://bedrock-runtime.us-east-1.amazonaws.com',
+                provider_details={'finish_reason': 'end_turn'},
+                finish_reason='stop',
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+        ]
+    )
+
+    result = await agent.run(
+        'Considering the way to cross the street, analogously, how do I cross the river?',
+        message_history=result.all_messages(),
+    )
+    assert result.new_messages() == snapshot(
+        [
+            ModelRequest(
+                parts=[
+                    UserPromptPart(
+                        content='Considering the way to cross the street, analogously, how do I cross the river?',
+                        timestamp=IsDatetime(),
+                    )
+                ],
+                timestamp=IsDatetime(),
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelResponse(
+                parts=[
+                    ThinkingPart(
+                        content="""\
+The user is asking for an analogy between crossing a street and crossing a river. This is an interesting question that asks me to think about the parallel challenges and solutions. Let me think about the key elements:
+
+Crossing a street:
+- Find safe crossing spots (crosswalks, intersections)
+- Look for hazards (traffic)
+- Use infrastructure when available
+- Timing and safety assessment
+- Stay alert during crossing
+
+Crossing a river:
+- Find safe crossing points (bridges, fords, ferries)
+- Look for hazards (current, depth, obstacles)
+- Use infrastructure when available
+- Assess conditions and safety
+- Stay alert during crossing
+
+This is a nice analogy! I should provide helpful, practical information about river crossing.\
+""",
+                        signature=IsStr(),
+                        provider_name='bedrock',
+                    ),
+                    TextPart(
+                        content="""\
+Great analogy! Here's how the principles translate:
+
+## Find Safe Crossing Points
+
+**Like using crosswalks:**
+- **Bridges** - the "crosswalk" of rivers (safest option)
+- **Ferries or boats** - the "pedestrian signal" \n\
+- **Fords** - shallow areas (like a quiet intersection)
+- **Stepping stones** - natural crossing infrastructure
+
+## Assess Before Crossing
+
+**Like looking for traffic:**
+- Check water **depth** and **current speed**
+- Look for hazards: debris, slippery rocks, drop-offs
+- Consider **weather** - recent rain means faster current
+- Scout up and downstream for easier spots
+
+## Cross Safely
+
+**Like walking alertly:**
+- Use a **walking stick** for balance (test depth)
+- Cross at an **angle downstream** - don't fight the current
+- **Unbuckle backpack straps** - so you can ditch weight if needed
+- **Never cross alone** if it's risky
+- Turn sideways to reduce resistance in strong current
+
+## Know When NOT to Cross
+
+**Like waiting for traffic to clear:**
+- Water above your knees = dangerous current
+- Fast-moving or murky water
+- Cold water (hypothermia risk)
+- If unsure, find another way
+
+**The key similarity**: Use infrastructure when available, assess the hazards, and don't take unnecessary risks!
+
+What kind of river crossing did you have in mind?\
+"""
+                    ),
+                ],
+                usage=RequestUsage(input_tokens=341, output_tokens=501, cost=Decimal('0.0093918')),
+                model_name='us.anthropic.claude-sonnet-4-5-20250929-v1:0',
+                timestamp=IsDatetime(),
+                provider_name='bedrock',
+                provider_url='https://bedrock-runtime.us-east-1.amazonaws.com',
+                provider_details={'finish_reason': 'end_turn'},
+                finish_reason='stop',
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+        ]
+    )
+
+
+async def test_bedrock_model_thinking_part_anthropic_adaptive(
+    allow_model_requests: None, bedrock_provider: BedrockProvider
+):
+    """Multi-turn thinking on Sonnet 4.6 via the unified `thinking` setting.
+
+    Reproduces the regression from https://github.com/pydantic/pydantic-ai/issues/5304:
+    pre-fix the legacy `{'type': 'enabled', 'budget_tokens': N}` shape silently disabled
+    thinking on turn 2. With adaptive support wired in, both turns must emit a
+    `ThinkingPart`.
+    """
+    m = BedrockConverseModel(
+        'us.anthropic.claude-sonnet-4-6',
+        provider=bedrock_provider,
+        settings=BedrockModelSettings(thinking=True),
+    )
+    agent = Agent(m)
+
+    result = await agent.run('How do I cross the street?')
+    assert result.all_messages() == snapshot(
+        [
+            ModelRequest(
+                parts=[UserPromptPart(content='How do I cross the street?', timestamp=IsDatetime())],
+                timestamp=IsDatetime(),
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelResponse(
+                parts=[
+                    ThinkingPart(
+                        content='The user is asking a simple, practical question about how to cross the street safely.',
+                        signature=IsStr(),
+                        provider_name='bedrock',
+                    ),
+                    TextPart(
+                        content="""\
+Here are the basic steps for safely crossing the street:
+
+1. **Find a safe place to cross**
+   - Use a crosswalk or intersection when possible
+   - Avoid crossing between parked cars or on curves
+
+2. **Stop at the curb or edge**
+   - Don't stand in the road while waiting
+
+3. **Look both ways**
+   - Look left, then right, then left again
+   - In some countries, the order may differ based on traffic direction
+
+4. **Wait for a safe gap in traffic**
+   - At a traffic light, wait for the walk signal (green light or "WALK" sign)
+   - Make sure cars have actually stopped before stepping out
+
+5. **Make eye contact with drivers** (when possible)
+   - Ensure they see you before crossing
+
+6. **Walk, don't run**
+   - Walk briskly and directly across
+   - Keep watching for traffic as you cross
+
+7. **Stay alert**
+   - Avoid looking at your phone while crossing
+   - Watch for turning vehicles, cyclists, and other hazards
+
+**Additional tips:**
+- Be extra cautious at night or in bad weather
+- Make yourself visible (wear bright clothing if possible)
+- Never assume a driver sees you
+
+Would you like more specific advice for a particular situation?\
+"""
+                    ),
+                ],
+                usage=RequestUsage(input_tokens=14, output_tokens=322, cost=Decimal('0.0053592')),
+                model_name='us.anthropic.claude-sonnet-4-6',
+                timestamp=IsDatetime(),
+                provider_name='bedrock',
+                provider_url='https://bedrock-runtime.us-east-1.amazonaws.com',
+                provider_details={'finish_reason': 'end_turn'},
+                finish_reason='stop',
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+        ]
+    )
+
+    result = await agent.run(
+        'Considering the way to cross the street, analogously, how do I cross the river?',
+        message_history=result.all_messages(),
+    )
+    assert result.new_messages() == snapshot(
+        [
+            ModelRequest(
+                parts=[
+                    UserPromptPart(
+                        content='Considering the way to cross the street, analogously, how do I cross the river?',
+                        timestamp=IsDatetime(),
+                    )
+                ],
+                timestamp=IsDatetime(),
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelResponse(
+                parts=[
+                    ThinkingPart(
+                        content="""\
+The user is asking me to analogously apply the principles of crossing a street to crossing a river. This is a fun and interesting question. Let me think about how the steps for crossing a street map to crossing a river.
+
+Let me map the concepts:
+- Finding a safe place to cross → finding a safe crossing point (shallow ford, bridge, etc.)
+- Looking both ways → assessing the river conditions (current, depth, width)
+- Waiting for a safe gap → waiting for safe conditions (water level, weather)
+- Making eye contact with drivers → being aware of hazards
+- Walking, not running → moving carefully and steadily
+- Staying alert → watching for hazards like slippery rocks, currents, etc.
+
+
+- Now I'm considering how these principles apply differently depending on the crossing method--whether I'm using a bridge, wading through a ford, taking a boat, or swimming across.\
+""",
+                        signature=IsStr(),
+                        provider_name='bedrock',
+                    ),
+                    TextPart(
+                        content="""\
+Great analogy! Here's how crossing a street maps to crossing a river:
+
+## 1. Find a Safe Place to Cross
+- Look for a **bridge** (like using a crosswalk)
+- Or find a **shallow ford** -- avoid deep, wide, or fast-moving sections
+- Avoid crossing near rapids, waterfalls, or steep banks
+
+## 2. Stop and Assess Before Entering
+- Check the **water depth and width**
+- Look for **hazards** (rocks, debris, strong current)
+- Check **upstream and downstream** (like looking left and right)
+
+## 3. Wait for Safe Conditions
+- Like waiting for a walk signal, wait if water levels are **high or rising**
+- Avoid crossing after heavy rain or during flooding
+
+## 4. "Make Eye Contact" -- Know Your Hazards
+- Identify slippery rocks, hidden drop-offs, and current strength
+
+## 5. Cross Carefully and Directly
+- Use a **walking stick** for stability (like walking briskly and steadily)
+- Face slightly **upstream**
+- Unbuckle your pack (if carrying one) for safety
+
+## 6. Stay Alert Throughout
+- Keep watching conditions as you cross
+- Don't look at your phone 😄
+
+## Bonus Options (like different types of crosswalks):
+- **Bridge** = safest
+- **Stepping stones** = moderate
+- **Wading/fording** = requires more caution
+- **Swimming** = last resort
+
+Would you like detail on any specific method?\
+"""
+                    ),
+                ],
+                usage=RequestUsage(input_tokens=358, output_tokens=574, cost=Decimal('0.0106524')),
+                model_name='us.anthropic.claude-sonnet-4-6',
+                timestamp=IsDatetime(),
+                provider_name='bedrock',
+                provider_url='https://bedrock-runtime.us-east-1.amazonaws.com',
+                provider_details={'finish_reason': 'end_turn'},
+                finish_reason='stop',
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+        ]
+    )
+
+
+async def test_bedrock_model_thinking_part_anthropic_adaptive_effort(
+    allow_model_requests: None, bedrock_provider: BedrockProvider
+):
+    """Sonnet 4.6 with `thinking='high'` — verifies output_config.effort lands on the wire.
+
+    Sibling to `test_bedrock_model_thinking_part_anthropic_adaptive` (which covers bare
+    `thinking=True` and omits effort). Per AWS docs, `effort` must live in the sibling
+    `output_config` field inside `additionalModelRequestFields`, not inside `thinking`.
+    """
+    m = BedrockConverseModel(
+        'us.anthropic.claude-sonnet-4-6',
+        provider=bedrock_provider,
+        settings=BedrockModelSettings(thinking='high'),
+    )
+    agent = Agent(m)
+
+    result = await agent.run('How do I cross the street?')
+    assert result.all_messages() == snapshot(
+        [
+            ModelRequest(
+                parts=[UserPromptPart(content='How do I cross the street?', timestamp=IsDatetime())],
+                timestamp=IsDatetime(),
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelResponse(
+                parts=[
+                    ThinkingPart(
+                        content='The user is asking a simple, everyday question about how to cross the street safely.',
+                        signature=IsStr(),
+                        provider_name='bedrock',
+                    ),
+                    TextPart(
+                        content="""\
+Here are the basic steps for safely crossing the street:
+
+1. **Find a safe place to cross**, such as:
+   - A marked crosswalk
+   - An intersection with traffic signals
+   - A pedestrian crossing
+
+2. **Stop at the curb** before stepping into the street
+
+3. **Look both ways:**
+   - Look left
+   - Look right
+   - Look left again
+
+4. **Wait for traffic to clear** or for the walk signal if at a traffic light
+
+5. **Make eye contact** with any drivers to be sure they see you
+
+6. **Walk, don't run** across the street
+
+7. **Stay alert** - avoid looking at your phone while crossing
+
+8. **Cross in a straight line** and keep watching for traffic as you go
+
+**Additional tips:**
+- Use crosswalks and signals whenever possible
+- Be extra cautious at night or in bad weather
+- Watch for turning vehicles, even when you have the right of way
+- Be aware of cyclists as well as cars
+
+Would you like more detail on any specific situation, like crossing with children or crossing without a crosswalk?\
+"""
+                    ),
+                ],
+                usage=RequestUsage(input_tokens=14, output_tokens=280, cost=Decimal('0.0046662')),
+                model_name='us.anthropic.claude-sonnet-4-6',
+                timestamp=IsDatetime(),
+                provider_name='bedrock',
+                provider_url='https://bedrock-runtime.us-east-1.amazonaws.com',
+                provider_details={'finish_reason': 'end_turn'},
+                finish_reason='stop',
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+        ]
+    )
+
+    result = await agent.run(
+        'Considering the way to cross the street, analogously, how do I cross the river?',
+        message_history=result.all_messages(),
+    )
+    assert result.new_messages() == snapshot(
+        [
+            ModelRequest(
+                parts=[
+                    UserPromptPart(
+                        content='Considering the way to cross the street, analogously, how do I cross the river?',
+                        timestamp=IsDatetime(),
+                    )
+                ],
+                timestamp=IsDatetime(),
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelResponse(
+                parts=[
+                    ThinkingPart(
+                        content="""\
+The user is asking how to cross a river, using the analogy of crossing the street. They want me to apply similar principles/steps but adapted for crossing a river. Let me think about this carefully.
+
+Crossing a street involves:
+1. Finding a safe place to cross
+2. Stopping and assessing
+3. Looking both ways for hazards
+4. Waiting for the right moment
+5. Moving carefully and alertly
+6. Staying aware throughout
+
+Analogously, crossing a river would involve similar principles but adapted for the river context:
+
+1. Find a safe place to cross (shallow ford, bridge, stepping stones, etc.)
+2. Assess the conditions before entering
+
+
+3. Check upstream and downstream for potential dangers like debris or strong currents
+4. Wait for optimal conditions if the water is too turbulent
+5. Move across deliberately and with full attention
+6. Maintain awareness of changing water conditions the entire time\
+""",
+                        signature=IsStr(),
+                        provider_name='bedrock',
+                    ),
+                    TextPart(
+                        content="""\
+Here's how to cross a river, using the same principles as crossing a street:
+
+## 1. Find a Safe Place to Cross
+- Look for a **bridge** (like using a crosswalk)
+- Find a **shallow ford** where the water is calm and slow
+- Look for **stepping stones**
+- Avoid deep, fast-moving, or narrow sections
+
+## 2. Stop and Assess Before Entering
+- Check the **water depth and speed** (like checking for traffic)
+- Look **upstream and downstream** for hazards (like looking left and right)
+- Watch for debris, rocks, or sudden drop-offs
+
+## 3. Wait for Safe Conditions
+- Avoid crossing during **floods or heavy rain**
+- Let fast currents settle, similar to waiting for traffic to clear
+
+## 4. Cross Carefully
+- **Unbuckle your pack** if carrying one, in case you fall
+- Use a **walking stick** for stability
+- Face **upstream** as you cross
+- Move **slowly and deliberately** (don't run)
+- Cross at an **angle** with the current rather than straight across
+
+## 5. Stay Alert Throughout
+- Keep watching for changing conditions
+- Don't look at distractions
+- Have an **exit plan** if you lose footing
+
+## Key Analogy Points:
+| Street | River |
+|--------|-------|
+| Crosswalk | Bridge/ford |
+| Traffic | Current/debris |
+| Walk signal | Calm water conditions |
+| Looking both ways | Checking upstream/downstream |
+
+Would you like more detail on any specific crossing method?\
+"""
+                    ),
+                ],
+                usage=RequestUsage(input_tokens=316, output_tokens=573, cost=Decimal('0.0104973')),
+                model_name='us.anthropic.claude-sonnet-4-6',
+                timestamp=IsDatetime(),
+                provider_name='bedrock',
+                provider_url='https://bedrock-runtime.us-east-1.amazonaws.com',
+                provider_details={'finish_reason': 'end_turn'},
+                finish_reason='stop',
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+        ]
+    )
+
+
+async def test_bedrock_model_thinking_part_redacted(allow_model_requests: None, bedrock_provider: BedrockProvider):
+    m = BedrockConverseModel(
+        'us.anthropic.claude-3-7-sonnet-20250219-v1:0',
+        provider=bedrock_provider,
+        settings=BedrockModelSettings(
+            bedrock_additional_model_requests_fields={
+                'thinking': {'type': 'enabled', 'budget_tokens': 1024},
+            }
+        ),
+    )
+    agent = Agent(m)
+
+    result = await agent.run(
+        'ANTHROPIC_MAGIC_STRING_TRIGGER_REDACTED_THINKING_46C9A13E193C177646C7398A98432ECCCE4C1253D5E2D82641AC0E52CC2876CB'
+    )
+    assert result.all_messages() == snapshot(
+        [
+            ModelRequest(
+                parts=[
+                    UserPromptPart(
+                        content='ANTHROPIC_MAGIC_STRING_TRIGGER_REDACTED_THINKING_46C9A13E193C177646C7398A98432ECCCE4C1253D5E2D82641AC0E52CC2876CB',
+                        timestamp=IsDatetime(),
+                    )
+                ],
+                timestamp=IsDatetime(),
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelResponse(
+                parts=[
+                    ThinkingPart(
+                        content='',
+                        id='redacted_content',
+                        signature=IsStr(),
+                        provider_name='bedrock',
+                    ),
+                    TextPart(content=IsStr()),
+                ],
+                usage=RequestUsage(input_tokens=92, output_tokens=176, cost=Decimal('0.002916')),
+                model_name='us.anthropic.claude-3-7-sonnet-20250219-v1:0',
+                timestamp=IsDatetime(),
+                provider_name='bedrock',
+                provider_url='https://bedrock-runtime.us-east-1.amazonaws.com',
+                provider_details={'finish_reason': 'end_turn'},
+                finish_reason='stop',
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+        ]
+    )
+
+    result = await agent.run(
+        'What was that?',
+        message_history=result.all_messages(),
+    )
+    assert result.new_messages() == snapshot(
+        [
+            ModelRequest(
+                parts=[
+                    UserPromptPart(
+                        content='What was that?',
+                        timestamp=IsDatetime(),
+                    )
+                ],
+                timestamp=IsDatetime(),
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelResponse(
+                parts=[
+                    ThinkingPart(
+                        content='',
+                        id='redacted_content',
+                        signature=IsStr(),
+                        provider_name='bedrock',
+                    ),
+                    TextPart(content=IsStr()),
+                ],
+                usage=RequestUsage(input_tokens=182, output_tokens=258, cost=Decimal('0.004416')),
+                model_name='us.anthropic.claude-3-7-sonnet-20250219-v1:0',
+                timestamp=IsDatetime(),
+                provider_name='bedrock',
+                provider_url='https://bedrock-runtime.us-east-1.amazonaws.com',
+                provider_details={'finish_reason': 'end_turn'},
+                finish_reason='stop',
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+        ]
+    )
+
+
+async def test_bedrock_model_thinking_part_redacted_stream(
+    allow_model_requests: None, bedrock_provider: BedrockProvider
+):
+    m = BedrockConverseModel(
+        'us.anthropic.claude-3-7-sonnet-20250219-v1:0',
+        provider=bedrock_provider,
+        settings=BedrockModelSettings(
+            bedrock_additional_model_requests_fields={
+                'thinking': {'type': 'enabled', 'budget_tokens': 1024},
+            }
+        ),
+    )
+    agent = Agent(m)
+
+    event_parts: list[Any] = []
+    async with agent.iter(
+        user_prompt='ANTHROPIC_MAGIC_STRING_TRIGGER_REDACTED_THINKING_46C9A13E193C177646C7398A98432ECCCE4C1253D5E2D82641AC0E52CC2876CB'
+    ) as agent_run:
+        async for node in agent_run:
+            if Agent.is_model_request_node(node) or Agent.is_call_tools_node(node):
+                async with node.stream(agent_run.ctx) as request_stream:
+                    async for event in request_stream:
+                        event_parts.append(event)
+
+    assert agent_run.result is not None
+    assert agent_run.result.all_messages() == snapshot(
+        [
+            ModelRequest(
+                parts=[
+                    UserPromptPart(
+                        content='ANTHROPIC_MAGIC_STRING_TRIGGER_REDACTED_THINKING_46C9A13E193C177646C7398A98432ECCCE4C1253D5E2D82641AC0E52CC2876CB',
+                        timestamp=IsDatetime(),
+                    )
+                ],
+                timestamp=IsDatetime(),
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelResponse(
+                parts=[
+                    ThinkingPart(
+                        content='',
+                        id='redacted_content',
+                        signature=IsStr(),
+                        provider_name='bedrock',
+                    ),
+                    ThinkingPart(
+                        content='',
+                        id='redacted_content',
+                        signature=IsStr(),
+                        provider_name='bedrock',
+                    ),
+                    TextPart(content=IsStr()),
+                ],
+                usage=RequestUsage(input_tokens=92, output_tokens=253, cost=Decimal('0.004071')),
+                model_name='us.anthropic.claude-3-7-sonnet-20250219-v1:0',
+                timestamp=IsDatetime(),
+                provider_name='bedrock',
+                provider_url='https://bedrock-runtime.us-east-1.amazonaws.com',
+                provider_details={'finish_reason': 'end_turn'},
+                finish_reason='stop',
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+        ]
+    )
+
+    assert event_parts == snapshot(
+        [
+            PartStartEvent(
+                index=0,
+                part=ThinkingPart(
+                    content='',
+                    id='redacted_content',
+                    signature=IsStr(),
+                    provider_name='bedrock',
+                ),
+            ),
+            PartEndEvent(
+                index=0,
+                part=ThinkingPart(
+                    content='',
+                    id='redacted_content',
+                    signature='EtkECkgIBxABGAIqQJTfqS/PYuAFZeOls6R8uGN014YNT7YDIFuhNyywoX1Cjf9oIYThX1ucUFJ1cfckdN55jozmXi1PEgMfufPmD44SDHBw8Yp6gJ8Ys/Gt3BoMYdLaNUOqr7k/MAeYIjBhPIc9z85HrJAbeS8Hz/69R+vKHpRanI0n/B69dnv2nebRe7LKZgHs2AlVPEtNyyoqvgP463qJ7/KvDrAPSnhHQqZ8TH8JBC4eYb4Qow5eX7dI3UXY/DrQ2IOWLADJqshcXBg7zbN78H4l6fTP97Ztzz0qw4fadTzTb36dRR7p8rs2zA/pHWhK+75xvUGh8IdLPvMikKccHssHKdceru4JLG1cMVtq1Ci7ZPAbHRU8/XsjFtLWPHeYLfKGJN33C1MpWX5nQU2BjYICs5Hn+8Z9Smxhp06rZXTjZARiExrd1dgLn5/5PbEzMLJv/Q3c6XJH7kx7iUO4NAonTT1Q3WY1cGa38UNGYuTUae3CNFEZWjS21tWRmjX4t5w8L0BtQ5DSaW/ZzGf0yzUKUaS/fkVjr2xztQBvysFFbb7UrX+/lNw26CHXKUIXFcZzV9l0HrA6z3oQrqSpnwem/pt/Cxdh5YQlXq6DSdzstqwJA53n9Hj3osjT/viH4Y6N5dWLLBTQBvhUEy24FhlytD3scYrvAqCdxW9aDSW+e+Foj5vsjVA9VFrXqZeNSO77Qp5dLw5XcA8CH6YFTE6EWeFTki5vfTfSIw+m4inZGVzIRi8Qk90IzW2EnrxGtx3wsEn5XImQr1vg1Npq2jN6uiOPOp8nsBgB',
+                    provider_name='bedrock',
+                ),
+                next_part_kind='thinking',
+            ),
+            PartStartEvent(
+                index=1,
+                part=ThinkingPart(
+                    content='',
+                    id='redacted_content',
+                    signature='EqADCkgIBxABGAIqQB3h5GyHJD4hocRchUq2I40ChRLdpxjVl0xZkyVZrrk6JIJWeInuRQfJG5nJymmQBjH9VDeV53H/D3W9xjIJvPUSDLv7jRCF9b6Tx1Z5EBoMSv3CBw4zUjjSDaqlIjDBpH7V3YQB5twUmulAycDyZRvP3loupy6o2eqrfKAZZjq3rwkApWD9qOqJD3OEfd4qhQJZfOcHs9bt5zCqzYjoaIkxE3raXnhUHOlwq1Jq60bTQt2SQiHqoZTEht/DeDEEgpFy9Z32Zz3/Az0ORgTi3QE56K15OXo6GWMPYq/CTJ/xzPXfH0/yoQ4EP103VfVqvymEpXUru6RQGkou41LKRI92fRsqCK+jPOpxeED4kz7CFhQYMHttk7cOAF85SE3nCcpliARrLDvsApjgMFAYnineZQMLwawmnIm6EB61C20dB1Ft7vLG1TS6fn27EB8JZjr/jeC8O4ZysKv5iUxpMlDZib8jFszfzxCXdFX7NVKO9+dH8cW3RsJ80kzBp6xyoQhXSFx72jFllwDy8e+QlI3OIhweJ8IYAQ==',
+                    provider_name='bedrock',
+                ),
+                previous_part_kind='thinking',
+            ),
+            PartEndEvent(
+                index=1,
+                part=ThinkingPart(
+                    content='',
+                    id='redacted_content',
+                    signature='EqADCkgIBxABGAIqQB3h5GyHJD4hocRchUq2I40ChRLdpxjVl0xZkyVZrrk6JIJWeInuRQfJG5nJymmQBjH9VDeV53H/D3W9xjIJvPUSDLv7jRCF9b6Tx1Z5EBoMSv3CBw4zUjjSDaqlIjDBpH7V3YQB5twUmulAycDyZRvP3loupy6o2eqrfKAZZjq3rwkApWD9qOqJD3OEfd4qhQJZfOcHs9bt5zCqzYjoaIkxE3raXnhUHOlwq1Jq60bTQt2SQiHqoZTEht/DeDEEgpFy9Z32Zz3/Az0ORgTi3QE56K15OXo6GWMPYq/CTJ/xzPXfH0/yoQ4EP103VfVqvymEpXUru6RQGkou41LKRI92fRsqCK+jPOpxeED4kz7CFhQYMHttk7cOAF85SE3nCcpliARrLDvsApjgMFAYnineZQMLwawmnIm6EB61C20dB1Ft7vLG1TS6fn27EB8JZjr/jeC8O4ZysKv5iUxpMlDZib8jFszfzxCXdFX7NVKO9+dH8cW3RsJ80kzBp6xyoQhXSFx72jFllwDy8e+QlI3OIhweJ8IYAQ==',
+                    provider_name='bedrock',
+                ),
+                next_part_kind='text',
+            ),
+            PartStartEvent(
+                index=2,
+                part=TextPart(content="I notice you've sent what appears to be some"),
+                previous_part_kind='thinking',
+            ),
+            FinalResultEvent(tool_name=None, tool_call_id=None),
+            PartDeltaEvent(index=2, delta=TextPartDelta(content_delta=' kind of command or trigger string, but I don')),
+            PartDeltaEvent(index=2, delta=TextPartDelta(content_delta="'t respond to special codes or")),
+            PartDeltaEvent(index=2, delta=TextPartDelta(content_delta=" triggers. That string doesn't have")),
+            PartDeltaEvent(index=2, delta=TextPartDelta(content_delta=' any special meaning to me.')),
+            PartDeltaEvent(
+                index=2,
+                delta=TextPartDelta(
+                    content_delta="""\
+
+
+If you have a question you\
+"""
+                ),
+            ),
+            PartDeltaEvent(
+                index=2, delta=TextPartDelta(content_delta="'d like to discuss or need assistance with something")
+            ),
+            PartDeltaEvent(index=2, delta=TextPartDelta(content_delta=", I'd be happy to help in")),
+            PartDeltaEvent(
+                index=2, delta=TextPartDelta(content_delta=' a straightforward conversation. What would you like to')
+            ),
+            PartDeltaEvent(index=2, delta=TextPartDelta(content_delta=' talk about today?')),
+            PartEndEvent(
+                index=2,
+                part=TextPart(
+                    content="""\
+I notice you've sent what appears to be some kind of command or trigger string, but I don't respond to special codes or triggers. That string doesn't have any special meaning to me.
+
+If you have a question you'd like to discuss or need assistance with something, I'd be happy to help in a straightforward conversation. What would you like to talk about today?\
+"""
+                ),
+            ),
+        ]
+    )
+
+
+async def test_bedrock_model_thinking_part_from_other_model(
+    allow_model_requests: None, bedrock_provider: BedrockProvider, openai_api_key: str
+):
+    provider = OpenAIProvider(api_key=openai_api_key)
+    m = OpenAIResponsesModel('gpt-5', provider=provider)
+    settings = OpenAIResponsesModelSettings(openai_reasoning_effort='high', openai_reasoning_summary='detailed')
+    agent = Agent(m, instructions='You are a helpful assistant.', model_settings=settings)
+
+    result = await agent.run('How do I cross the street?')
+    assert result.all_messages() == snapshot(
+        [
+            ModelRequest(
+                parts=[
+                    UserPromptPart(
+                        content='How do I cross the street?',
+                        timestamp=IsDatetime(),
+                    ),
+                ],
+                instructions='You are a helpful assistant.',
+                timestamp=IsDatetime(),
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelResponse(
+                parts=[
+                    ThinkingPart(
+                        content=IsStr(),
+                        id='rs_68c1ffe148588191812b659c6dc35ce60003919771fccd27',
+                        signature=IsStr(),
+                        provider_name='openai',
+                    ),
+                    ThinkingPart(
+                        content=IsStr(),
+                        id='rs_68c1ffe148588191812b659c6dc35ce60003919771fccd27',
+                        provider_name='openai',
+                    ),
+                    ThinkingPart(
+                        content=IsStr(),
+                        id='rs_68c1ffe148588191812b659c6dc35ce60003919771fccd27',
+                        provider_name='openai',
+                    ),
+                    ThinkingPart(
+                        content=IsStr(),
+                        id='rs_68c1ffe148588191812b659c6dc35ce60003919771fccd27',
+                        provider_name='openai',
+                    ),
+                    ThinkingPart(
+                        content=IsStr(),
+                        id='rs_68c1ffe148588191812b659c6dc35ce60003919771fccd27',
+                        provider_name='openai',
+                    ),
+                    TextPart(
+                        content=IsStr(),
+                        id='msg_68c200091ccc8191b38e07ea231e862d0003919771fccd27',
+                        provider_name='openai',
+                    ),
+                ],
+                usage=RequestUsage(
+                    input_tokens=23,
+                    output_tokens=2030,
+                    output_reasoning_tokens=1728,
+                    details={'reasoning_tokens': 1728},
+                    cost=Decimal('0.02032875'),
+                ),
+                model_name='gpt-5-2025-08-07',
+                timestamp=IsDatetime(),
+                provider_name='openai',
+                provider_url='https://api.openai.com/v1/',
+                provider_details={
+                    'finish_reason': 'completed',
+                    'timestamp': datetime(2025, 9, 10, 22, 46, 57, tzinfo=timezone.utc),
+                },
+                provider_response_id=IsStr(),
+                finish_reason='stop',
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+        ]
+    )
+
+    result = await agent.run(
+        'Considering the way to cross the street, analogously, how do I cross the river?',
+        model=BedrockConverseModel(
+            'us.anthropic.claude-sonnet-4-20250514-v1:0',
+            provider=bedrock_provider,
+            settings=BedrockModelSettings(
+                bedrock_additional_model_requests_fields={'thinking': {'type': 'enabled', 'budget_tokens': 1024}}
+            ),
+        ),
+        message_history=result.all_messages(),
+    )
+    assert result.new_messages() == snapshot(
+        [
+            ModelRequest(
+                parts=[
+                    UserPromptPart(
+                        content='Considering the way to cross the street, analogously, how do I cross the river?',
+                        timestamp=IsDatetime(),
+                    )
+                ],
+                instructions='You are a helpful assistant.',
+                timestamp=IsDatetime(),
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelResponse(
+                parts=[
+                    ThinkingPart(
+                        content=IsStr(),
+                        signature=IsStr(),
+                        provider_name='bedrock',
+                    ),
+                    TextPart(content=IsStr()),
+                ],
+                usage=RequestUsage(input_tokens=1241, output_tokens=495, cost=Decimal('0.011148')),
+                model_name='us.anthropic.claude-sonnet-4-20250514-v1:0',
+                timestamp=IsDatetime(),
+                provider_name='bedrock',
+                provider_url='https://bedrock-runtime.us-east-1.amazonaws.com',
+                provider_details={'finish_reason': 'end_turn'},
+                finish_reason='stop',
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+        ]
+    )
+
+
+async def test_bedrock_anthropic_tool_with_thinking(allow_model_requests: None, bedrock_provider: BedrockProvider):
+    """When using thinking with tool calls in Anthropic, we need to send the thinking part back to the provider.
+
+    This tests the issue raised in https://github.com/pydantic/pydantic-ai/issues/2453.
+    """
+    m = BedrockConverseModel('us.anthropic.claude-3-7-sonnet-20250219-v1:0', provider=bedrock_provider)
+    settings = BedrockModelSettings(
+        bedrock_additional_model_requests_fields={'thinking': {'type': 'enabled', 'budget_tokens': 1024}},
+    )
+    agent = Agent(m, model_settings=settings)
+
+    @agent.tool_plain
+    async def get_user_country() -> str:
+        return 'Mexico'
+
+    result = await agent.run('What is the largest city in the user country?')
+    assert result.output == snapshot(
+        """\
+Based on your location in Mexico, the largest city is Mexico City (Ciudad de México). It's not only the capital but also the most populous city in Mexico with a metropolitan area population of over 21 million people, making it one of the largest urban agglomerations in the world.
+
+Mexico City is an important cultural, financial, and political center for the country and has a rich history dating back to the Aztec empire when it was known as Tenochtitlán.\
+"""
+    )
+
+
+@pytest.mark.parametrize(
+    'thinking_field',
+    [
+        pytest.param({'type': 'enabled', 'budget_tokens': 1024}, id='enabled'),
+        pytest.param({'type': 'adaptive'}, id='adaptive'),
+    ],
+)
+async def test_bedrock_output_tool_with_thinking_raises(
+    allow_model_requests: None, bedrock_provider: BedrockProvider, thinking_field: dict[str, Any]
+):
+    """Bedrock does not support output tools (tool_choice=required) with thinking enabled.
+
+    Uses the legacy `bedrock_additional_model_requests_fields` form. See
+    `test_bedrock_output_tool_with_unified_thinking_raises` for the unified `thinking` field.
+    Fixes https://github.com/pydantic/pydantic-ai/issues/3092 (`enabled`) and
+    https://github.com/pydantic/pydantic-ai/issues/5650 (`adaptive`).
+    """
+    m = BedrockConverseModel(
+        'us.anthropic.claude-sonnet-4-20250514-v1:0',
+        provider=bedrock_provider,
+        settings=BedrockModelSettings(bedrock_additional_model_requests_fields={'thinking': thinking_field}),
+    )
+
+    agent = Agent(m, output_type=ToolOutput(int))
+
+    with pytest.raises(
+        UserError,
+        match='Bedrock does not support thinking and output tools at the same time',
+    ):
+        await agent.run('What is 3 + 3?')
+
+
+async def test_bedrock_output_tool_with_unified_thinking_raises(
+    allow_model_requests: None, bedrock_provider: BedrockProvider
+):
+    """Sibling of `test_bedrock_output_tool_with_thinking_raises` for the unified `thinking` field.
+
+    `Model.prepare_request` strips unified `thinking` into `ModelRequestParameters.thinking`, so
+    `_is_thinking_enabled` must inspect both pre-strip (settings) and post-strip (params) state to
+    catch the conflict regardless of which form the user picked.
+    """
+    m = BedrockConverseModel(
+        'us.anthropic.claude-sonnet-4-20250514-v1:0',
+        provider=bedrock_provider,
+        settings=BedrockModelSettings(thinking=True),
+    )
+
+    agent = Agent(m, output_type=ToolOutput(int))
+
+    with pytest.raises(
+        UserError,
+        match='Bedrock does not support thinking and output tools at the same time',
+    ):
+        await agent.run('What is 3 + 3?')
+
+
+async def test_bedrock_tool_choice_required_with_thinking(
+    allow_model_requests: None, bedrock_provider: BedrockProvider
+):
+    """Agent.run() blocks tool_choice='required' since it prevents final response.
+
+    When explicitly setting tool_choice='required', agent.run() raises UserError
+    before it reaches Bedrock's thinking mode validation.
+    """
+    m = BedrockConverseModel(
+        'us.anthropic.claude-sonnet-4-20250514-v1:0',
+        provider=bedrock_provider,
+        settings=BedrockModelSettings(
+            bedrock_additional_model_requests_fields={'thinking': {'type': 'enabled', 'budget_tokens': 1024}},
+            tool_choice='required',
+        ),
+    )
+
+    agent = Agent(m)
+
+    @agent.tool_plain
+    async def get_weather(city: str) -> str:
+        return f'Weather in {city}: sunny'  # pragma: no cover
+
+    with pytest.raises(
+        UserError,
+        match='prevents the agent from producing a final response',
+    ):
+        await agent.run('What is the weather in Paris?')
+
+
+async def test_bedrock_unified_thinking_with_tool_forcing_raises(
+    allow_model_requests: None, bedrock_provider: BedrockProvider
+):
+    """Unified `thinking=True` (not the legacy `bedrock_additional_model_requests_fields` form) must
+    still trigger Bedrock's `tool_choice` + thinking incompatibility guard.
+
+    Goes via `model.request` so the agent baseline validator is bypassed and `_support_tool_forcing`
+    is the only thing that can catch the conflict. Before the A3 fix this silently passed because
+    `_is_thinking_enabled` only inspected the legacy field, but `Model.prepare_request` strips unified
+    `thinking` from `model_settings` into `model_request_parameters.thinking` before this check runs.
+    """
+    model = BedrockConverseModel('us.anthropic.claude-sonnet-4-20250514-v1:0', provider=bedrock_provider)
+    tool_def = ToolDefinition(name='get_weather', parameters_json_schema={'type': 'object', 'properties': {}})
+    mrp = ModelRequestParameters(function_tools=[tool_def], allow_text_output=True)
+
+    settings: BedrockModelSettings = {'thinking': True, 'tool_choice': 'required'}
+
+    with pytest.raises(UserError, match='Bedrock does not support forcing specific tools with thinking mode'):
+        await model.request([ModelRequest.user_text_prompt('hi')], settings, mrp)
+
+
+async def test_bedrock_group_consecutive_tool_return_parts(bedrock_provider: BedrockProvider):
+    """
+    Test that consecutive ToolReturnPart objects are grouped into a single user message for Bedrock.
+    """
+    model = BedrockConverseModel('us.amazon.nova-micro-v1:0', provider=bedrock_provider)
+    now = datetime.now()
+    # Create a ModelRequest with 3 consecutive ToolReturnParts
+    req = [
+        ModelRequest(parts=[UserPromptPart(content=['Hello'])], timestamp=IsDatetime()),
+        ModelResponse(parts=[TextPart(content='Hi')]),
+        ModelRequest(parts=[UserPromptPart(content=['How are you?'])], timestamp=IsDatetime()),
+        ModelResponse(parts=[TextPart(content='Cloudy')]),
+        ModelRequest(
+            parts=[
+                ToolReturnPart(tool_name='tool1', content='result1', tool_call_id='id1', timestamp=now),
+                ToolReturnPart(tool_name='tool2', content='result2', tool_call_id='id2', timestamp=now),
+                ToolReturnPart(tool_name='tool3', content='result3', tool_call_id='id3', timestamp=now),
+            ],
+            timestamp=IsDatetime(),
+        ),
+    ]
+
+    # Call the mapping function directly
+    _, bedrock_messages = await model._map_messages(req, ModelRequestParameters(), BedrockModelSettings())  # type: ignore[reportPrivateUsage]
+
+    assert bedrock_messages == snapshot(
+        [
+            {'role': 'user', 'content': [{'text': 'Hello'}]},
+            {'role': 'assistant', 'content': [{'text': 'Hi'}]},
+            {'role': 'user', 'content': [{'text': 'How are you?'}]},
+            {'role': 'assistant', 'content': [{'text': 'Cloudy'}]},
+            {
+                'role': 'user',
+                'content': [
+                    {'toolResult': {'toolUseId': 'id1', 'content': [{'text': 'result1'}], 'status': 'success'}},
+                    {'toolResult': {'toolUseId': 'id2', 'content': [{'text': 'result2'}], 'status': 'success'}},
+                    {'toolResult': {'toolUseId': 'id3', 'content': [{'text': 'result3'}], 'status': 'success'}},
+                ],
+            },
+        ]
+    )
+
+
+async def test_bedrock_failed_tool_return_uses_error_status(bedrock_provider: BedrockProvider):
+    """A `ToolReturnPart` with `outcome='failed'` maps to Bedrock's `toolResult.status='error'`."""
+    model = BedrockConverseModel('us.amazon.nova-micro-v1:0', provider=bedrock_provider)
+    req = [
+        ModelRequest(
+            parts=[
+                ToolReturnPart(
+                    tool_name='get_weather',
+                    content='Weather service is unavailable.',
+                    tool_call_id='id1',
+                    outcome='failed',
+                    timestamp=datetime.now(),
+                ),
+            ],
+            timestamp=IsDatetime(),
+        ),
+    ]
+
+    _, bedrock_messages = await model._map_messages(req, ModelRequestParameters(), BedrockModelSettings())  # pyright: ignore[reportPrivateUsage]
+
+    assert bedrock_messages == snapshot(
+        [
+            {
+                'role': 'user',
+                'content': [
+                    {
+                        'toolResult': {
+                            'toolUseId': 'id1',
+                            'content': [{'text': 'Weather service is unavailable.'}],
+                            'status': 'error',
+                        }
+                    },
+                ],
+            },
+        ]
+    )
+
+
+async def test_bedrock_model_thinking_part_stream(allow_model_requests: None, bedrock_provider: BedrockProvider):
+    m = BedrockConverseModel(
+        'us.anthropic.claude-sonnet-4-20250514-v1:0',
+        provider=bedrock_provider,
+        settings=BedrockModelSettings(
+            bedrock_additional_model_requests_fields={
+                'thinking': {'type': 'enabled', 'budget_tokens': 1024},
+            }
+        ),
+    )
+    agent = Agent(m)
+
+    event_parts: list[Any] = []
+    async with agent.iter(user_prompt='Hello') as agent_run:
+        async for node in agent_run:
+            if Agent.is_model_request_node(node) or Agent.is_call_tools_node(node):
+                async with node.stream(agent_run.ctx) as request_stream:
+                    async for event in request_stream:
+                        event_parts.append(event)
+
+    assert event_parts == snapshot(
+        [
+            PartStartEvent(index=0, part=ThinkingPart(content='The')),
+            PartDeltaEvent(index=0, delta=ThinkingPartDelta(content_delta=' user has')),
+            PartDeltaEvent(index=0, delta=ThinkingPartDelta(content_delta=' greeted me with')),
+            PartDeltaEvent(index=0, delta=ThinkingPartDelta(content_delta=' a simple "Hello".')),
+            PartDeltaEvent(index=0, delta=ThinkingPartDelta(content_delta=' I should respond in')),
+            PartDeltaEvent(index=0, delta=ThinkingPartDelta(content_delta=' a friendly and wel')),
+            PartDeltaEvent(index=0, delta=ThinkingPartDelta(content_delta='coming manner.')),
+            PartDeltaEvent(index=0, delta=ThinkingPartDelta(content_delta=' This is a')),
+            PartDeltaEvent(index=0, delta=ThinkingPartDelta(content_delta=' straightforward greeting')),
+            PartDeltaEvent(index=0, delta=ThinkingPartDelta(content_delta=',')),
+            PartDeltaEvent(index=0, delta=ThinkingPartDelta(content_delta=" so I'll respond warm")),
+            PartDeltaEvent(index=0, delta=ThinkingPartDelta(content_delta='ly and ask')),
+            PartDeltaEvent(index=0, delta=ThinkingPartDelta(content_delta=' how I can help')),
+            PartDeltaEvent(index=0, delta=ThinkingPartDelta(content_delta=' them today.')),
+            PartDeltaEvent(index=0, delta=ThinkingPartDelta(signature_delta=IsStr(), provider_name='bedrock')),
+            PartEndEvent(
+                index=0,
+                part=ThinkingPart(
+                    content='The user has greeted me with a simple "Hello". I should respond in a friendly and welcoming manner. This is a straightforward greeting, so I\'ll respond warmly and ask how I can help them today.',
+                    signature='Eu0CCkgIBxABGAIqQJDccbDQkr81n7QjZ0Fi43umSvw0YvnGkMPEpaGAa2btYHyWw06KhwckvsnKzpKcxiRJT35meoG4/pdrTUiy2UISDPDaEWfOl3+HlRVsCxoMzfiqBp252RMvpmEyIjCbQ97Ac9Epkr5mgxeu1vGtJg+fDWIg0UnpMM8NYknhhvJmsXpYrfquwGL1ZnlBslUq0gHtbAAPwlWPmiQXU7gDQCDW9IdMVyw42b4f5MrAlpWkPWOJc9H+yYv0TpP/jY72SD1opqwkWnBgkzbi7A2jPmEFzIMQSO1KDXha5ADqQ3cLYMmVdNTSH9wlM7G7/JJ2/cqowqkwD6/q1AnYzcPte9iC67fY1LYN0NMCOSABFojP1rmkv9YBEulx5Y6eQpeVXBQiIqcGoCmWSumpGBskS1KxGerUmzUB0JmJnTENv4x3fSGSUSEPqMiz6Ebao8sVkb1wCWuZEXWJGtiQLMIm1o471iEYAQ==',
+                    provider_name='bedrock',
+                ),
+                next_part_kind='text',
+            ),
+            PartStartEvent(index=1, part=TextPart(content='Hello! It'), previous_part_kind='thinking'),
+            FinalResultEvent(tool_name=None, tool_call_id=None),
+            PartDeltaEvent(index=1, delta=TextPartDelta(content_delta="'s nice")),
+            PartDeltaEvent(index=1, delta=TextPartDelta(content_delta=' to meet you.')),
+            PartDeltaEvent(index=1, delta=TextPartDelta(content_delta=' How can I help')),
+            PartDeltaEvent(index=1, delta=TextPartDelta(content_delta=' you today?')),
+            PartEndEvent(index=1, part=TextPart(content="Hello! It's nice to meet you. How can I help you today?")),
+        ]
+    )
+    assert agent_run.result is not None
+    assert agent_run.result.all_messages() == snapshot(
+        [
+            ModelRequest(
+                parts=[
+                    UserPromptPart(
+                        content='Hello',
+                        timestamp=IsDatetime(),
+                    )
+                ],
+                timestamp=IsDatetime(),
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelResponse(
+                parts=[
+                    ThinkingPart(
+                        content='The user has greeted me with a simple "Hello". I should respond in a friendly and welcoming manner. This is a straightforward greeting, so I\'ll respond warmly and ask how I can help them today.',
+                        signature=IsStr(),
+                        provider_name='bedrock',
+                    ),
+                    TextPart(content="Hello! It's nice to meet you. How can I help you today?"),
+                ],
+                usage=RequestUsage(input_tokens=36, output_tokens=73, cost=Decimal('0.001203')),
+                model_name='us.anthropic.claude-sonnet-4-20250514-v1:0',
+                timestamp=IsDatetime(),
+                provider_name='bedrock',
+                provider_url='https://bedrock-runtime.us-east-1.amazonaws.com',
+                provider_details={'finish_reason': 'end_turn'},
+                finish_reason='stop',
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+        ]
+    )
+
+
+async def test_bedrock_mistral_tool_result_format(bedrock_provider: BedrockProvider):
+    now = datetime.now()
+    req = [
+        ModelRequest(
+            parts=[
+                ToolReturnPart(tool_name='tool1', content={'foo': 'bar'}, tool_call_id='id1', timestamp=now),
+            ],
+            timestamp=IsDatetime(),
+        ),
+    ]
+
+    # Models other than Mistral support toolResult.content with text, not json
+    model = BedrockConverseModel('us.amazon.nova-micro-v1:0', provider=bedrock_provider)
+    # Call the mapping function directly
+    _, bedrock_messages = await model._map_messages(req, ModelRequestParameters(), BedrockModelSettings())  # type: ignore[reportPrivateUsage]
+
+    assert bedrock_messages == snapshot(
+        [
+            {
+                'role': 'user',
+                'content': [
+                    {'toolResult': {'toolUseId': 'id1', 'content': [{'text': '{"foo":"bar"}'}], 'status': 'success'}},
+                ],
+            },
+        ]
+    )
+
+    # Mistral requires toolResult.content to hold json, not text
+    model = BedrockConverseModel('mistral.mistral-7b-instruct-v0:2', provider=bedrock_provider)
+    # Call the mapping function directly
+    _, bedrock_messages = await model._map_messages(req, ModelRequestParameters(), BedrockModelSettings())  # type: ignore[reportPrivateUsage]
+
+    assert bedrock_messages == snapshot(
+        [
+            {
+                'role': 'user',
+                'content': [
+                    {'toolResult': {'toolUseId': 'id1', 'content': [{'json': {'foo': 'bar'}}], 'status': 'success'}},
+                ],
+            },
+        ]
+    )
+
+
+async def test_bedrock_empty_list_tool_result_uses_non_empty_content_block(bedrock_provider: BedrockProvider):
+    now = datetime.now()
+    req = [
+        ModelRequest(
+            parts=[
+                ToolReturnPart(tool_name='lookup', content=[], tool_call_id='id1', timestamp=now),
+            ],
+            timestamp=IsDatetime(),
+        ),
+    ]
+
+    model = BedrockConverseModel('us.amazon.nova-micro-v1:0', provider=bedrock_provider)
+    _, bedrock_messages = await model._map_messages(req, ModelRequestParameters(), BedrockModelSettings())  # type: ignore[reportPrivateUsage]
+
+    assert bedrock_messages == snapshot(
+        [
+            {
+                'role': 'user',
+                'content': [
+                    {'toolResult': {'toolUseId': 'id1', 'content': [{'text': '[]'}], 'status': 'success'}},
+                ],
+            },
+        ]
+    )
+
+    model = BedrockConverseModel('mistral.mistral-7b-instruct-v0:2', provider=bedrock_provider)
+    _, bedrock_messages = await model._map_messages(req, ModelRequestParameters(), BedrockModelSettings())  # type: ignore[reportPrivateUsage]
+
+    assert bedrock_messages == snapshot(
+        [
+            {
+                'role': 'user',
+                'content': [
+                    {'toolResult': {'toolUseId': 'id1', 'content': [{'json': []}], 'status': 'success'}},
+                ],
+            },
+        ]
+    )
+
+
+async def test_bedrock_no_tool_choice(bedrock_provider: BedrockProvider):
+    my_tool = ToolDefinition(
+        name='my_tool',
+        description='This is my tool',
+        parameters_json_schema={'type': 'object', 'title': 'Result', 'properties': {'spam': {'type': 'number'}}},
+    )
+    mrp = ModelRequestParameters(output_mode='tool', function_tools=[my_tool], allow_text_output=False, output_tools=[])
+
+    # Amazon Nova supports tool_choice
+    model = BedrockConverseModel('us.amazon.nova-micro-v1:0', provider=bedrock_provider)
+    tool_config = model._map_tool_config(mrp, BedrockModelSettings())  # type: ignore[reportPrivateUsage]
+
+    assert tool_config == snapshot(
+        {
+            'tools': [
+                {
+                    'toolSpec': {
+                        'name': 'my_tool',
+                        'description': 'This is my tool',
+                        'inputSchema': {
+                            'json': {'type': 'object', 'title': 'Result', 'properties': {'spam': {'type': 'number'}}}
+                        },
+                    }
+                }
+            ],
+            'toolChoice': {'any': {}},
+        }
+    )
+
+    # Anthropic supports tool_choice
+    model = BedrockConverseModel('us.anthropic.claude-3-7-sonnet-20250219-v1:0', provider=bedrock_provider)
+    tool_config = model._map_tool_config(mrp, BedrockModelSettings())  # type: ignore[reportPrivateUsage]
+
+    assert tool_config == snapshot(
+        {
+            'tools': [
+                {
+                    'toolSpec': {
+                        'name': 'my_tool',
+                        'description': 'This is my tool',
+                        'inputSchema': {
+                            'json': {'type': 'object', 'title': 'Result', 'properties': {'spam': {'type': 'number'}}}
+                        },
+                    }
+                }
+            ],
+            'toolChoice': {'any': {}},
+        }
+    )
+
+    # Other models don't support tool_choice
+    model = BedrockConverseModel('us.meta.llama4-maverick-17b-instruct-v1:0', provider=bedrock_provider)
+    tool_config = model._map_tool_config(mrp, BedrockModelSettings())  # type: ignore[reportPrivateUsage]
+
+    assert tool_config == snapshot(
+        {
+            'tools': [
+                {
+                    'toolSpec': {
+                        'name': 'my_tool',
+                        'description': 'This is my tool',
+                        'inputSchema': {
+                            'json': {'type': 'object', 'title': 'Result', 'properties': {'spam': {'type': 'number'}}}
+                        },
+                    }
+                }
+            ]
+        }
+    )
+
+
+async def test_bedrock_capability_tools_stay_off_the_wire(bedrock_provider: BedrockProvider):
+    """Anthropic-on-Bedrock inherits `tool_deferral_mode` from the shared vendor profile, but the Converse
+    API has no wire representation for deferred schemas — an inherited claim would render hidden
+    capability-owned tools as ordinary callable `toolSpec`s before their capability loads.
+    """
+    model = BedrockConverseModel('us.anthropic.claude-sonnet-4-5-20250929-v1:0', provider=bedrock_provider)
+
+    provider_profile = bedrock_provider.model_profile(model.model_name)
+    assert provider_profile is not None and provider_profile.get('tool_deferral_mode') == 'standalone'
+    assert model.profile.get('tool_deferral_mode') == 'standalone'
+    assert model.tool_deferral_mode is None
+    assert model.tool_addition_mode is None
+
+    hidden = ToolDefinition(
+        name='process_refund',
+        description='Process a refund for an order.',
+        parameters_json_schema={'type': 'object', 'properties': {'order_id': {'type': 'string'}}},
+        defer_loading=True,
+        capability_id='refunds',
+    )
+    visible = ToolDefinition(
+        name='get_weather',
+        description='Get the weather.',
+        parameters_json_schema={'type': 'object', 'properties': {}},
+    )
+    _, prepared = model.prepare_request(None, ModelRequestParameters(function_tools=[hidden, visible]))
+
+    tool_config = model._map_tool_config(prepared, BedrockModelSettings())  # type: ignore[reportPrivateUsage]
+    assert tool_config == snapshot(
+        {
+            'tools': [
+                {
+                    'toolSpec': {
+                        'name': 'get_weather',
+                        'inputSchema': {'json': {'type': 'object', 'properties': {}}},
+                        'description': 'Get the weather.',
+                    }
+                }
+            ],
+            'toolChoice': {'auto': {}},
+        }
+    )
+
+
+async def test_bedrock_delta_renders_announcement_and_plain_tool_spec(
+    allow_model_requests: None, bedrock_provider: BedrockProvider, mocker: MockerFixture
+) -> None:
+    """Converse receives the fallback announcement and a callable schema without reveal metadata."""
+    model = BedrockConverseModel('us.anthropic.claude-sonnet-4-5-20250929-v1:0', provider=bedrock_provider)
+    tool = ToolDefinition(
+        name='revealed_tool',
+        description='A newly available tool.',
+        parameters_json_schema={'type': 'object', 'properties': {'value': {'type': 'string'}}},
+        defer_loading=True,
+    )
+    parameters = ModelRequestParameters(function_tools=[tool], revealed_tool_names={tool.name})
+    settings, parameters = model.prepare_request(None, parameters)
+    history: list[ModelMessage] = [
+        ModelRequest(parts=[UserPromptPart(content='start')]),
+        ModelRequest(parts=[ToolAvailabilityDeltaPart(tools_added=[tool.name])]),
+    ]
+    mock_converse = mocker.patch.object(model.client, 'converse')
+    mock_converse.return_value = {
+        'output': {'message': {'role': 'assistant', 'content': [{'text': 'ok'}]}},
+        'stopReason': 'end_turn',
+        'usage': {'inputTokens': 1, 'outputTokens': 1},
+        'ResponseMetadata': {'HTTPStatusCode': 200},
+    }
+
+    await model.request(model.prepare_messages(history, parameters), settings, parameters)
+
+    request = mock_converse.call_args.kwargs
+    announcement = 'The following tool(s) are now available: `revealed_tool`'
+    assert json.dumps(request['messages'], sort_keys=True).count(announcement) == 1
+    assert request['toolConfig'] == {
+        'tools': [
+            {
+                'toolSpec': {
+                    'name': 'revealed_tool',
+                    'description': 'A newly available tool.',
+                    'inputSchema': {
+                        'json': {
+                            'type': 'object',
+                            'properties': {'value': {'type': 'string'}},
+                        }
+                    },
+                }
+            }
+        ],
+        'toolChoice': {'auto': {}},
+    }
+    assert 'defer_loading' not in json.dumps(request['toolConfig'])
+
+
+async def test_bedrock_tool_results_lead_multi_reveal_turn(
+    allow_model_requests: None, bedrock_provider: BedrockProvider, mocker: MockerFixture
+) -> None:
+    """Two tools revealed in one turn keep every `toolResult` block ahead of the announcement text."""
+    model = BedrockConverseModel('us.anthropic.claude-sonnet-4-5-20250929-v1:0', provider=bedrock_provider)
+    tools = [
+        ToolDefinition(name='first_tool', defer_loading=True),
+        ToolDefinition(name='second_tool', defer_loading=True),
+    ]
+    parameters = ModelRequestParameters(function_tools=tools, revealed_tool_names={tool.name for tool in tools})
+    settings, parameters = model.prepare_request(None, parameters)
+    history: list[ModelMessage] = [
+        ModelRequest(parts=[UserPromptPart(content='start')]),
+        ModelResponse(
+            parts=[
+                ToolCallPart(tool_name='load_capability', args={'id': 'first'}, tool_call_id='tooluse_1'),
+                ToolCallPart(tool_name='load_capability', args={'id': 'second'}, tool_call_id='tooluse_2'),
+            ]
+        ),
+        ModelRequest(
+            parts=[
+                ToolReturnPart(tool_name='load_capability', content='loaded', tool_call_id='tooluse_1'),
+                ToolAvailabilityDeltaPart(tools_added=['first_tool']),
+                ToolReturnPart(tool_name='load_capability', content='loaded', tool_call_id='tooluse_2'),
+                ToolAvailabilityDeltaPart(tools_added=['second_tool']),
+            ]
+        ),
+    ]
+    mock_converse = mocker.patch.object(model.client, 'converse')
+    mock_converse.return_value = {
+        'output': {'message': {'role': 'assistant', 'content': [{'text': 'ok'}]}},
+        'stopReason': 'end_turn',
+        'usage': {'inputTokens': 1, 'outputTokens': 1},
+        'ResponseMetadata': {'HTTPStatusCode': 200},
+    }
+
+    await model.request(model.prepare_messages(history, parameters), settings, parameters)
+
+    *_, last_message = mock_converse.call_args.kwargs['messages']
+    assert [next(iter(block)) for block in last_message['content']] == ['toolResult', 'toolResult', 'text', 'text']
+    assert [block['toolResult']['toolUseId'] for block in last_message['content'][:2]] == ['tooluse_1', 'tooluse_2']
+
+
+async def test_bedrock_sanitize_tool_name_in_history(bedrock_provider: BedrockProvider):
+    """Hallucinated tool names with invalid chars (e.g. dots) are sanitized when replayed to Bedrock."""
+    model = BedrockConverseModel('us.amazon.nova-micro-v1:0', provider=bedrock_provider)
+    messages: list[ModelMessage] = [
+        ModelRequest(parts=[UserPromptPart(content='Hello')], timestamp=IsDatetime()),
+        ModelResponse(
+            parts=[ToolCallPart(tool_name='search.evidence invalid', args={'q': 'x'}, tool_call_id='tooluse_123')]
+        ),
+        ModelRequest(
+            parts=[
+                ToolReturnPart(
+                    tool_name='search.evidence invalid',
+                    content='not found',
+                    tool_call_id='tooluse_123',
+                    timestamp=datetime.now(),
+                ),
+            ],
+            timestamp=IsDatetime(),
+        ),
+    ]
+
+    _, bedrock_messages = await model._map_messages(messages, ModelRequestParameters(), BedrockModelSettings())  # type: ignore[reportPrivateUsage]
+
+    assert bedrock_messages == snapshot(
+        [
+            {'role': 'user', 'content': [{'text': 'Hello'}]},
+            {
+                'role': 'assistant',
+                'content': [
+                    {
+                        'toolUse': {
+                            'toolUseId': 'tooluse_123',
+                            'name': 'search_evidence_invalid',
+                            'input': {'q': 'x'},
+                        }
+                    }
+                ],
+            },
+            {
+                'role': 'user',
+                'content': [
+                    {
+                        'toolResult': {
+                            'toolUseId': 'tooluse_123',
+                            'content': [{'text': 'not found'}],
+                            'status': 'success',
+                        }
+                    }
+                ],
+            },
+        ]
+    )
+
+
+async def test_bedrock_thinking_high_openai_variant(
+    allow_model_requests: None, bedrock_provider: BedrockProvider, vcr: Cassette
+) -> None:
+    """`thinking='high'` flows through to `additionalModelRequestFields.reasoning_effort`."""
+    model = BedrockConverseModel('openai.gpt-oss-120b-1:0', provider=bedrock_provider)
+    agent = Agent(model, model_settings=ModelSettings(thinking='high'))
+    result = await agent.run('Reply with the single word: ok')
+
+    sent = single_request_body(vcr)
+    assert sent['additionalModelRequestFields'] == {'reasoning_effort': 'high'}
+    assert result.all_messages() == snapshot(
+        [
+            ModelRequest(
+                parts=[UserPromptPart(content='Reply with the single word: ok', timestamp=IsDatetime())],
+                timestamp=IsDatetime(),
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelResponse(
+                parts=[ThinkingPart(content=IsStr()), TextPart(content=IsStr())],
+                usage=RequestUsage(
+                    input_tokens=IsInstance(int), output_tokens=IsInstance(int), cost=Decimal('0.0000771')
+                ),
+                model_name='openai.gpt-oss-120b-1:0',
+                timestamp=IsDatetime(),
+                provider_name='bedrock',
+                provider_url='https://bedrock-runtime.us-east-1.amazonaws.com',
+                provider_details={'finish_reason': 'end_turn'},
+                provider_response_id=IsStr(),
+                finish_reason='stop',
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+        ]
+    )
+
+
+async def test_bedrock_thinking_true_openai_variant(
+    allow_model_requests: None, bedrock_provider: BedrockProvider, vcr: Cassette
+) -> None:
+    """`thinking=True` maps to the default effort `'medium'` on the wire, exercising
+    the `OPENAI_REASONING_EFFORT_MAP[True]` branch in isolation from `'high'`."""
+    model = BedrockConverseModel('openai.gpt-oss-120b-1:0', provider=bedrock_provider)
+    agent = Agent(model, model_settings=ModelSettings(thinking=True))
+    await agent.run('Reply with the single word: ok')
+
+    sent = single_request_body(vcr)
+    assert sent['additionalModelRequestFields'] == {'reasoning_effort': 'medium'}
+
+
+async def test_bedrock_thinking_false_openai_variant_silent_drop(
+    allow_model_requests: None, bedrock_provider: BedrockProvider, vcr: Cassette
+) -> None:
+    """`thinking=False` on gpt-oss is silently dropped — Converse rejects
+    `reasoning_effort='none'`, so the profile is always-on."""
+    model = BedrockConverseModel('openai.gpt-oss-120b-1:0', provider=bedrock_provider)
+    agent = Agent(model, model_settings=ModelSettings(thinking=False))
+    await agent.run('Reply with the single word: ok')
+
+    sent = single_request_body(vcr)
+    assert 'reasoning_effort' not in sent.get('additionalModelRequestFields', {})
+
+
+async def test_bedrock_thinking_high_qwen_variant(
+    allow_model_requests: None, bedrock_provider: BedrockProvider, vcr: Cassette
+) -> None:
+    """`thinking='high'` flows through to `additionalModelRequestFields.reasoning_config`."""
+    model = BedrockConverseModel('qwen.qwen3-32b-v1:0', provider=bedrock_provider)
+    agent = Agent(model, model_settings=ModelSettings(thinking='high'))
+    result = await agent.run('Reply with the single word: ok')
+
+    # `single_request_body` not used here because qwen3-32b wraps its initial reply in
+    # `<think>` tags, leaving empty visible text and triggering pydantic-ai's
+    # output-validation retry — the cassette captures two recorded interactions. We
+    # only need to assert on the wire shape of the first one.
+    sent = json.loads(vcr.requests[0].body)  # pyright: ignore[reportUnknownMemberType,reportUnknownArgumentType]
+    assert sent['additionalModelRequestFields'] == {'reasoning_config': 'high'}
+    # Loose response-shape pin: at least one ThinkingPart survives the
+    # validation-retry roundtrip and reaches the final response.
+    assert any(isinstance(p, ThinkingPart) for p in result.response.parts)
+
+
+async def test_bedrock_thinking_false_qwen_variant_silent_drop(
+    allow_model_requests: None, bedrock_provider: BedrockProvider, vcr: Cassette
+) -> None:
+    """`thinking=False` on qwen3 is silently dropped — Converse exposes only
+    `reasoning_config ∈ {low, high}` with no disable, so the profile is always-on."""
+    model = BedrockConverseModel('qwen.qwen3-32b-v1:0', provider=bedrock_provider)
+    agent = Agent(model, model_settings=ModelSettings(thinking=False))
+    await agent.run('Reply with the single word: ok')
+
+    sent = single_request_body(vcr)
+    assert 'reasoning_config' not in sent.get('additionalModelRequestFields', {})
+
+
+async def test_bedrock_thinking_true_qwen_variant(
+    allow_model_requests: None, bedrock_provider: BedrockProvider, vcr: Cassette
+) -> None:
+    """`thinking=True` → `reasoning_config='high'` on the wire (Qwen accepts only `{low, high}`)."""
+    model = BedrockConverseModel('qwen.qwen3-32b-v1:0', provider=bedrock_provider)
+    agent = Agent(model, model_settings=ModelSettings(thinking=True))
+    await agent.run('Reply with the single word: ok')
+
+    sent = single_request_body(vcr)
+    assert sent['additionalModelRequestFields'] == {'reasoning_config': 'high'}
+
+
+async def test_bedrock_top_k_anthropic_variant(
+    allow_model_requests: None, bedrock_provider: BedrockProvider, vcr: Cassette
+) -> None:
+    """Unified `top_k` rides in `additionalModelRequestFields` as a flat `top_k` for Anthropic models.
+
+    Bedrock's `inferenceConfig` has no `topK` field, so the setting can only reach Claude here.
+    """
+    model = BedrockConverseModel('us.anthropic.claude-sonnet-4-5-20250929-v1:0', provider=bedrock_provider)
+    agent = Agent(model, model_settings=ModelSettings(top_k=20))
+    result = await agent.run('Reply with the single word: ok')
+
+    sent = single_request_body(vcr)
+    assert sent['additionalModelRequestFields'] == {'top_k': 20}
+    assert 'topK' not in sent['inferenceConfig']
+    assert result.output == IsStr()
+
+
+async def test_bedrock_top_k_nova_variant(
+    allow_model_requests: None, bedrock_provider: BedrockProvider, vcr: Cassette
+) -> None:
+    """Unified `top_k` rides in `additionalModelRequestFields` nested under `inferenceConfig.topK` for Nova models."""
+    model = BedrockConverseModel('us.amazon.nova-micro-v1:0', provider=bedrock_provider)
+    agent = Agent(model, model_settings=ModelSettings(top_k=20))
+    result = await agent.run('Reply with the single word: ok')
+
+    sent = single_request_body(vcr)
+    assert sent['additionalModelRequestFields'] == {'inferenceConfig': {'topK': 20}}
+    assert result.output == IsStr()
+
+
+async def test_bedrock_top_k_user_field_takes_precedence(
+    allow_model_requests: None, bedrock_provider: BedrockProvider, mocker: MockerFixture
+) -> None:
+    """A user-supplied `bedrock_additional_model_requests_fields['top_k']` is never clobbered by unified `top_k`.
+
+    No-network: the assertion is on the outgoing request shape, which a cassette matcher wouldn't pin.
+    """
+    model = BedrockConverseModel('us.anthropic.claude-sonnet-4-5-20250929-v1:0', provider=bedrock_provider)
+    model_settings = BedrockModelSettings(top_k=20, bedrock_additional_model_requests_fields={'top_k': 5})
+    agent = Agent(model, model_settings=model_settings)
+
+    mock_converse = mocker.patch.object(model.client, 'converse')
+    mock_converse.return_value = {
+        'output': {'message': {'role': 'assistant', 'content': [{'text': 'hello'}]}},
+        'stopReason': 'end_turn',
+        'usage': {'inputTokens': 1, 'outputTokens': 1},
+        'ResponseMetadata': {'HTTPStatusCode': 200},
+    }
+
+    await agent.run('What is the capital of France?')
+
+    _, kwargs = mock_converse.call_args
+    assert kwargs['additionalModelRequestFields'] == {'top_k': 5}
+
+
+async def test_bedrock_top_k_nova_merges_with_user_inference_config(
+    allow_model_requests: None, bedrock_provider: BedrockProvider, mocker: MockerFixture
+) -> None:
+    """For Nova, unified `top_k` merges into a user-supplied `inferenceConfig` without dropping its other fields.
+
+    No-network: the assertion is on the outgoing request shape, which a cassette matcher wouldn't pin. The Nova
+    branch checks the nested `topK` key (not the parent `inferenceConfig`), so an unrelated field doesn't suppress it.
+    A user-supplied `topK` still wins.
+    """
+    model = BedrockConverseModel('us.amazon.nova-micro-v1:0', provider=bedrock_provider)
+    user_inference_config = {'maxTokens': 100}
+    model_settings = BedrockModelSettings(
+        top_k=20, bedrock_additional_model_requests_fields={'inferenceConfig': user_inference_config}
+    )
+    agent = Agent(model, model_settings=model_settings)
+
+    mock_converse = mocker.patch.object(model.client, 'converse')
+    mock_converse.return_value = {
+        'output': {'message': {'role': 'assistant', 'content': [{'text': 'hello'}]}},
+        'stopReason': 'end_turn',
+        'usage': {'inputTokens': 1, 'outputTokens': 1},
+        'ResponseMetadata': {'HTTPStatusCode': 200},
+    }
+
+    await agent.run('What is the capital of France?')
+
+    _, kwargs = mock_converse.call_args
+    assert kwargs['additionalModelRequestFields'] == {'inferenceConfig': {'maxTokens': 100, 'topK': 20}}
+    # The user's settings dict is not mutated in place.
+    assert user_inference_config == {'maxTokens': 100}
+
+
+async def test_bedrock_top_k_nova_user_top_k_takes_precedence(
+    allow_model_requests: None, bedrock_provider: BedrockProvider, mocker: MockerFixture
+) -> None:
+    """A user-supplied `inferenceConfig['topK']` is never clobbered by unified `top_k` for Nova.
+
+    No-network: the assertion is on the outgoing request shape, which a cassette matcher wouldn't pin.
+    """
+    model = BedrockConverseModel('us.amazon.nova-micro-v1:0', provider=bedrock_provider)
+    model_settings = BedrockModelSettings(
+        top_k=20, bedrock_additional_model_requests_fields={'inferenceConfig': {'topK': 5}}
+    )
+    agent = Agent(model, model_settings=model_settings)
+
+    mock_converse = mocker.patch.object(model.client, 'converse')
+    mock_converse.return_value = {
+        'output': {'message': {'role': 'assistant', 'content': [{'text': 'hello'}]}},
+        'stopReason': 'end_turn',
+        'usage': {'inputTokens': 1, 'outputTokens': 1},
+        'ResponseMetadata': {'HTTPStatusCode': 200},
+    }
+
+    await agent.run('What is the capital of France?')
+
+    _, kwargs = mock_converse.call_args
+    assert kwargs['additionalModelRequestFields'] == {'inferenceConfig': {'topK': 5}}
+
+
+async def test_bedrock_top_k_unsupported_family_dropped(
+    allow_model_requests: None, bedrock_provider: BedrockProvider, mocker: MockerFixture
+) -> None:
+    """Models without a `bedrock_top_k_variant` (e.g. Mistral) silently drop `top_k`.
+
+    No-network: Bedrock 400s on an unrecognized `additionalModelRequestFields` key, so forwarding `top_k`
+    to a family that doesn't accept it would be a regression — the field must be absent here.
+    """
+    model = BedrockConverseModel('mistral.mistral-large-2402-v1:0', provider=bedrock_provider)
+    agent = Agent(model, model_settings=ModelSettings(top_k=20))
+
+    mock_converse = mocker.patch.object(model.client, 'converse')
+    mock_converse.return_value = {
+        'output': {'message': {'role': 'assistant', 'content': [{'text': 'hello'}]}},
+        'stopReason': 'end_turn',
+        'usage': {'inputTokens': 1, 'outputTokens': 1},
+        'ResponseMetadata': {'HTTPStatusCode': 200},
+    }
+
+    await agent.run('What is the capital of France?')
+
+    _, kwargs = mock_converse.call_args
+    assert 'additionalModelRequestFields' not in kwargs
+
+
+async def test_bedrock_top_p_zero_reaches_inference_config(
+    allow_model_requests: None, bedrock_provider: BedrockProvider, mocker: MockerFixture
+) -> None:
+    model = BedrockConverseModel('us.amazon.nova-micro-v1:0', provider=bedrock_provider)
+    agent = Agent(model, model_settings=ModelSettings(top_p=0.0))
+
+    mock_converse = mocker.patch.object(model.client, 'converse')
+    mock_converse.return_value = {
+        'output': {'message': {'role': 'assistant', 'content': [{'text': 'hello'}]}},
+        'stopReason': 'end_turn',
+        'usage': {'inputTokens': 1, 'outputTokens': 1},
+        'ResponseMetadata': {'HTTPStatusCode': 200},
+    }
+
+    await agent.run('What is the capital of France?')
+
+    _, kwargs = mock_converse.call_args
+    assert kwargs['inferenceConfig']['topP'] == 0.0
+
+
+async def test_bedrock_model_stream_empty_text_delta(allow_model_requests: None, bedrock_provider: BedrockProvider):
+    model = BedrockConverseModel(model_name='openai.gpt-oss-120b-1:0', provider=bedrock_provider)
+    agent = Agent(model)
+
+    result: AgentRunResult | None = None
+    events: list[AgentStreamEvent] = []
+    async with agent.run_stream_events('Hi') as event_stream:
+        async for event in event_stream:
+            if isinstance(event, AgentRunResultEvent):
+                result = event.result
+            else:
+                events.append(event)
+
+    assert result is not None
+    # The response stream contains `{'contentBlockDelta': {'delta': {'text': ''}, 'contentBlockIndex': 0}}`, but our response should not have any empty text parts.
+    assert not any(part.content == '' for part in result.response.parts if isinstance(part, TextPart))
+    assert events == snapshot(
+        [
+            PartStartEvent(
+                index=0,
+                part=ThinkingPart(
+                    content='The user just says "Hi". We need to respond appropriately, friendly greeting. No special instructions. Should be short.'
+                ),
+            ),
+            PartEndEvent(
+                index=0,
+                part=ThinkingPart(
+                    content='The user just says "Hi". We need to respond appropriately, friendly greeting. No special instructions. Should be short.'
+                ),
+                next_part_kind='text',
+            ),
+            PartStartEvent(index=1, part=TextPart(content='Hello! How can I help'), previous_part_kind='thinking'),
+            FinalResultEvent(tool_name=None, tool_call_id=None),
+            PartDeltaEvent(index=1, delta=TextPartDelta(content_delta=' you today?')),
+            PartEndEvent(index=1, part=TextPart(content='Hello! How can I help you today?')),
+        ]
+    )
+
+
+@pytest.mark.parametrize(
+    ('model_id', 'expected_output'),
+    [
+        ('qwen.qwen3-coder-next', 'Paris'),
+        ('moonshot.kimi-k2-thinking', 'Paris'),
+        ('us.amazon.nova-micro-v1:0', '\n\nParis'),
+    ],
+)
+async def test_bedrock_stream_whitespace_only_leading_delta(
+    allow_model_requests: None,
+    bedrock_provider: BedrockProvider,
+    mocker: MockerFixture,
+    model_id: str,
+    expected_output: str,
+):
+    model = BedrockConverseModel(model_id, provider=bedrock_provider)
+    agent = Agent(model=model)
+
+    def _stream() -> Iterator[dict[str, Any]]:
+        yield {'messageStart': {'role': 'assistant'}}
+        yield {'contentBlockDelta': {'contentBlockIndex': 0, 'delta': {'text': '\n\n'}}}
+        yield {'contentBlockDelta': {'contentBlockIndex': 0, 'delta': {'text': 'Paris'}}}
+        yield {'contentBlockStop': {'contentBlockIndex': 0}}
+        yield {'messageStop': {'stopReason': 'end_turn'}}
+
+    mock_converse_stream = mocker.patch.object(model.client, 'converse_stream')
+    mock_converse_stream.return_value = {'stream': _stream(), 'ResponseMetadata': {'RequestId': 'stub'}}
+
+    async with agent.run_stream('What is the capital of France?') as result:
+        output = await result.get_output()
+
+    assert output == expected_output
+
+
+@pytest.mark.vcr()
+async def test_bedrock_error(allow_model_requests: None, bedrock_provider: BedrockProvider):
+    """Test that errors convert to ModelHTTPError."""
+    model_id = 'us.does-not-exist-model-v1:0'
+    model = BedrockConverseModel(model_id, provider=bedrock_provider)
+    agent = Agent(model)
+
+    with pytest.raises(ModelHTTPError) as exc_info:
+        await agent.run('hello')
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.model_name == model_id
+    assert exc_info.value.body.get('Error', {}).get('Message') == 'The provided model identifier is invalid.'  # type: ignore[union-attr]
+
+
+@pytest.mark.vcr()
+async def test_bedrock_streaming_error(allow_model_requests: None, bedrock_provider: BedrockProvider):
+    """Test that errors during streaming convert to ModelHTTPError."""
+    model_id = 'us.does-not-exist-model-v1:0'
+    model = BedrockConverseModel(model_id, provider=bedrock_provider)
+    agent = Agent(model)
+
+    with pytest.raises(ModelHTTPError) as exc_info:
+        async with agent.run_stream('hello'):
+            pass
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.model_name == model_id
+    assert exc_info.value.body.get('Error', {}).get('Message') == 'The provided model identifier is invalid.'  # type: ignore[union-attr]
+
+
+@pytest.mark.vcr()
+@pytest.mark.parametrize(
+    'model_name',
+    [
+        pytest.param('us.anthropic.claude-sonnet-4-5-20250929-v1:0', id='claude-sonnet-4-5'),
+        pytest.param('us.amazon.nova-lite-v1:0', id='nova-lite'),
+    ],
+)
+async def test_bedrock_cache_point_adds_cache_control(
+    allow_model_requests: None, bedrock_provider: BedrockProvider, model_name: BedrockModelName
+):
+    """Record a real Bedrock call to confirm cache points reach AWS (requires ~1k tokens)."""
+    model = BedrockConverseModel(model_name, provider=bedrock_provider)
+    agent = Agent(
+        model,
+        system_prompt='YOU MUST RESPONSE ONLY WITH SINGLE NUMBER\n' * 50,  # More tokens to activate a cache
+        model_settings=BedrockModelSettings(bedrock_cache_instructions=True),
+    )
+    long_context = 'ONLY SINGLE NUMBER IN RESPONSE\n' * 100  # More tokens to activate a cache
+
+    result = await agent.run([long_context, CachePoint(), 'Response only number What is 2 + 3'])
+    assert result.output == snapshot('5')
+    # Different tokens usage depending on a model - could be written or read depending on the cassette read/write
+    usage = result.usage
+    assert usage.cache_write_tokens >= 1000 or usage.cache_read_tokens >= 1000
+    assert usage.input_tokens >= usage.cache_write_tokens + usage.cache_read_tokens
+
+
+async def test_bedrock_cache_usage_includes_cache_tokens(allow_model_requests: None, bedrock_provider: BedrockProvider):
+    model = BedrockConverseModel('us.anthropic.claude-sonnet-4-5-20250929-v1:0', provider=bedrock_provider)
+    agent = Agent(
+        model,
+        system_prompt='YOU MUST RESPONSE ONLY WITH SINGLE NUMBER\n' * 50,  # More tokens to activate a cache
+        model_settings=BedrockModelSettings(bedrock_cache_instructions=True),
+    )
+    long_context = 'ONLY SINGLE NUMBER IN RESPONSE\n' * 100  # More tokens to activate a cache
+
+    result = await agent.run([long_context, CachePoint(), 'Response only number What is 2 + 3'])
+    assert result.output == snapshot('5')
+    assert result.usage == snapshot(
+        RunUsage(input_tokens=1517, cache_read_tokens=1504, output_tokens=5, requests=1, cost=Decimal('0.00062172'))
+    )
+
+
+@pytest.mark.vcr()
+async def test_bedrock_cache_write_and_read(allow_model_requests: None, bedrock_provider: BedrockProvider):
+    """Integration test covering all cache settings using a recorded cassette.
+
+    This test enables all 3 cache settings plus 2 manual CachePoints (5 total),
+    which triggers the _limit_cache_points logic to strip the oldest one (limit is 4).
+    """
+    model = BedrockConverseModel('us.anthropic.claude-sonnet-4-5-20250929-v1:0', provider=bedrock_provider)
+    agent = Agent(
+        model,
+        system_prompt='YOU MUST RESPONSE ONLY WITH SINGLE NUMBER\n' * 50,  # More tokens to activate a cache
+        model_settings=BedrockModelSettings(
+            bedrock_cache_instructions=True,  # 1 cache point
+            bedrock_cache_tool_definitions=True,  # 1 cache point
+            bedrock_cache_messages=True,  # 1 cache point (on last user message)
+        ),
+    )
+
+    # Both tool bodies below are exercised via the agent call, not directly.
+    @agent.tool_plain
+    def catalog_lookup() -> str:  # pragma: no cover
+        return 'catalog-ok'
+
+    @agent.tool_plain
+    def diagnostics() -> str:  # pragma: no cover
+        return 'diagnostics-ok'
+
+    long_context = 'Newer response with something except single number\n' * 10
+    document = BinaryContent(data=b'You are a great mathematician', media_type='text/plain')
+    # 2 CachePoints, more that maximum allowed, so will be stripped.
+    run_args = [long_context, CachePoint(), document, CachePoint(), 'What is 10 + 11?']
+
+    first = await agent.run(run_args)
+    assert first.output == snapshot('21')
+    first_usage = first.usage
+    assert first_usage == snapshot(
+        RunUsage(input_tokens=1324, cache_write_tokens=1322, output_tokens=5, requests=1, cost=Decimal('0.00554235'))
+    )
+
+    second = await agent.run(run_args)
+    assert second.output == snapshot('21')
+    second_usage = second.usage
+    assert second_usage == snapshot(
+        RunUsage(input_tokens=1324, output_tokens=5, cache_read_tokens=1322, requests=1, cost=Decimal('0.00052536'))
+    )
+
+
+@pytest.mark.vcr()
+async def test_bedrock_cache_messages_with_document_as_last_content(
+    allow_model_requests: None, bedrock_provider: BedrockProvider
+):
+    """Test the workaround for the AWS bug where cache points cannot be added after documents, so we insert them before the documents."""
+    model = BedrockConverseModel('us.anthropic.claude-sonnet-4-5-20250929-v1:0', provider=bedrock_provider)
+    agent = Agent(
+        model,
+        system_prompt='YOU ARE A HELPFUL ASSISTANT THAT ANALYZES DOCUMENTS.\n' * 50,  # More tokens to activate a cache
+        model_settings=BedrockModelSettings(
+            bedrock_cache_messages=True,  # This should add a cache point to the last user message
+        ),
+    )
+
+    # Create a document as the last piece of content in the user message
+    document = BinaryContent(data=b'This is a test document with important analysis data.', media_type='text/plain')
+    document2 = BinaryContent(data=b'This is a test document with unimportant data.', media_type='text/plain')
+    run_args = [
+        'YOU ARE A HELPFUL ASSISTANT THAT ANALYZES DOCUMENTS.\n' * 50,  # More tokens to activate a cache
+        'Please analyze this document:',
+        document,
+        'And this document:',
+        document2,
+    ]
+
+    result = await agent.run(run_args)
+    assert result.output == snapshot("""\
+I'll analyze the documents you've provided:
+
+## Document 1 (Document 1.txt)
+- **Content**: Contains important analysis data
+- **Key characteristic**: Explicitly marked as containing "important" information
+- **Purpose**: Appears to be a test document designed to hold significant analytical data
+
+## Document 2 (Document 2.txt)
+- **Content**: Contains unimportant data
+- **Key characteristic**: Explicitly marked as containing "unimportant" information
+- **Purpose**: Also a test document, but with data of lesser significance
+
+## Summary
+Both documents appear to be test files with minimal content. The main distinction between them is the stated importance level of their data - Document 1 contains information designated as important for analysis, while Document 2's data is marked as unimportant. Without more specific content or a particular analysis goal, these seem to be placeholder documents for testing document analysis capabilities.
+
+Is there a specific aspect of these documents you'd like me to focus on or a particular type of analysis you need?\
+""")
+
+    usage = result.usage
+    assert usage.input_tokens > 0
+    assert usage.output_tokens > 0
+    assert usage.cache_write_tokens > 0
+    assert usage.cache_read_tokens == 0
+
+    messages = result.all_messages()
+
+    result = await agent.run('How long is the doc?', message_history=messages)
+    assert result.output == snapshot("""\
+Based on the documents provided:
+
+**Document 1 (Document 1.txt)**: 10 words
+- "This is a test document with important analysis data."
+
+**Document 2 (Document 2.txt)**: 8 words
+- "This is a test document with unimportant data."
+
+Both documents are very short - just single sentences. If you're asking about character count instead:
+
+- Document 1: 55 characters (including spaces)
+- Document 2: 49 characters (including spaces)\
+""")
+
+    usage = result.usage
+    assert usage.input_tokens > 0
+    assert usage.output_tokens > 0
+    assert usage.cache_write_tokens > 0
+    assert usage.cache_read_tokens > 0
+
+
+@pytest.mark.vcr()
+async def test_bedrock_cache_messages_with_image_as_last_content(
+    allow_model_requests: None, bedrock_provider: BedrockProvider, image_content: BinaryContent
+):
+    """Test that cache points can be added after images without the workaround necessary for documents."""
+    model = BedrockConverseModel('us.anthropic.claude-sonnet-4-5-20250929-v1:0', provider=bedrock_provider)
+    agent = Agent(
+        model,
+        system_prompt='YOU ARE A HELPFUL ASSISTANT THAT ANALYZES IMAGES.\n' * 50,  # More tokens to activate a cache
+        model_settings=BedrockModelSettings(
+            bedrock_cache_messages=True,  # This should add a cache point to the last user message
+        ),
+    )
+
+    # Create a document as the last piece of content in the user message
+    run_args = [
+        'YOU ARE A HELPFUL ASSISTANT THAT ANALYZES IMAGES.\n' * 50,  # More tokens to activate a cache
+        'Please analyze the following image:',
+        image_content,
+    ]
+
+    result = await agent.run(run_args)
+    assert result.output == snapshot("""\
+I'd be happy to analyze this image for you!
+
+This is a close-up photograph of a **kiwi fruit cross-section**. Here are the key details:
+
+## Visual Characteristics:
+- **Color Palette**: Vibrant green flesh with a pale cream/white center
+- **Seeds**: Multiple small, black, teardrop-shaped seeds arranged in a radial pattern around the center
+- **Texture**: The flesh appears juicy and translucent with a gradient from bright green at the edges to lighter green near the center
+- **Skin**: Brown fuzzy skin visible around the perimeter of the slice
+- **Pattern**: Natural starburst or sunburst pattern created by the seed arrangement
+
+## Composition:
+- The slice is photographed from directly above against a white background
+- The fruit is cut perpendicular to its length, showing a perfect circular cross-section
+- The lighting is bright and even, highlighting the fruit's natural moisture and color variations
+
+## Notable Features:
+- The radial symmetry creates an aesthetically pleasing natural pattern
+- Tiny fine hairs (trichomes) are visible on the brown skin edge
+- The flesh shows subtle striations radiating outward from the center
+
+This type of image is commonly used in food photography, nutritional content, or botanical documentation.\
+""")
+
+    usage = result.usage
+    assert usage.input_tokens > 0
+    assert usage.output_tokens > 0
+    assert usage.cache_write_tokens > 0
+    assert usage.cache_read_tokens == 0
+
+    messages = result.all_messages()
+
+    result = await agent.run('How large is the image?', message_history=messages)
+    assert result.output == snapshot("""\
+The image dimensions are **597 × 597 pixels** (a perfect square).
+
+This is a relatively small to medium-sized image by modern standards, suitable for web use, thumbnails, or social media posts, but not high-resolution enough for large-format printing.\
+""")
+
+    usage = result.usage
+    assert usage.input_tokens > 0
+    assert usage.output_tokens > 0
+    assert usage.cache_write_tokens > 0
+    assert usage.cache_read_tokens > 0
+
+
+@pytest.mark.vcr()
+async def test_bedrock_cache_messages_with_video_as_last_content(
+    allow_model_requests: None, bedrock_provider: BedrockProvider, video_content: BinaryContent
+):
+    """Test that cache points can be added after videos without the workaround necessary for documents."""
+    model = BedrockConverseModel('us.amazon.nova-pro-v1:0', provider=bedrock_provider)
+    agent = Agent(
+        model,
+        system_prompt='YOU ARE A HELPFUL ASSISTANT THAT ANALYZES VIDEOS.\n' * 50,  # More tokens to activate a cache
+        model_settings=BedrockModelSettings(
+            bedrock_cache_messages=True,  # This should add a cache point to the last user message
+        ),
+    )
+
+    # Create a document as the last piece of content in the user message
+    run_args = [
+        'YOU ARE A HELPFUL ASSISTANT THAT ANALYZES VIDEOS.\n' * 50,  # More tokens to activate a cache
+        'Please analyze this video:',
+        video_content,
+    ]
+
+    result = await agent.run(run_args)
+    assert result.output == snapshot(
+        'The video depicts a camera mounted on a tripod, capturing a scenic view of a landscape featuring mountains and a road. The camera remains stationary throughout the video, focusing on the picturesque scenery.'
+    )
+
+    usage = result.usage
+    assert usage.input_tokens > 0
+    assert usage.output_tokens > 0
+    assert usage.cache_write_tokens > 0
+    assert usage.cache_read_tokens == 0
+
+
+async def test_bedrock_cache_point_with_no_prior_user_content_raises_error(
+    allow_model_requests: None, bedrock_provider: BedrockProvider
+):
+    """A CachePoint with no prior user content anywhere in the conversation raises a UserError."""
+    model = BedrockConverseModel('anthropic.claude-3-7-sonnet-20250219-v1:0', provider=bedrock_provider)
+    messages: list[ModelMessage] = [ModelRequest(parts=[UserPromptPart(content=[CachePoint(), 'This should fail'])])]
+    with pytest.raises(UserError, match='CachePoint cannot be the first content in a user message'):
+        await model._map_messages(messages, ModelRequestParameters(), BedrockModelSettings())  # pyright: ignore[reportPrivateUsage]
+
+
+async def test_bedrock_leading_cache_point_attaches_to_previous_user_message(
+    allow_model_requests: None, bedrock_provider: BedrockProvider
+):
+    """A CachePoint that is first in its part puts its cache marker at the end of the previous user message."""
+    model = BedrockConverseModel('anthropic.claude-3-7-sonnet-20250219-v1:0', provider=bedrock_provider)
+    messages: list[ModelMessage] = [
+        ModelRequest(parts=[UserPromptPart(content='First question')]),
+        ModelResponse(parts=[TextPart(content='First answer')]),
+        ModelRequest(parts=[UserPromptPart(content=[CachePoint(), 'Ephemeral reminder'])]),
+    ]
+    _, bedrock_messages = await model._map_messages(  # pyright: ignore[reportPrivateUsage]
+        messages, ModelRequestParameters(), BedrockModelSettings()
+    )
+    assert bedrock_messages == snapshot(
+        [
+            {'role': 'user', 'content': [{'text': 'First question'}, {'cachePoint': {'type': 'default', 'ttl': '5m'}}]},
+            {'role': 'assistant', 'content': [{'text': 'First answer'}]},
+            {'role': 'user', 'content': [{'text': 'Ephemeral reminder'}]},
+        ]
+    )
+
+
+async def test_bedrock_leading_cache_point_after_tool_return_shares_the_turn(
+    allow_model_requests: None, bedrock_provider: BedrockProvider
+):
+    """A tool return followed by a `[CachePoint, text]` part maps to one user message with the cache marker between them.
+
+    This is the shape reported in https://github.com/pydantic/pydantic-ai/issues/7004
+    (a reminder part injected behind a cache boundary after a tool call).
+    """
+    model = BedrockConverseModel('anthropic.claude-3-7-sonnet-20250219-v1:0', provider=bedrock_provider)
+    messages: list[ModelMessage] = [
+        ModelRequest(parts=[UserPromptPart(content='Make a plan')]),
+        ModelResponse(parts=[ToolCallPart(tool_name='write_plan', args={'plan': 'the plan'}, tool_call_id='tc1')]),
+        ModelRequest(
+            parts=[
+                ToolReturnPart(tool_name='write_plan', content='Plan saved', tool_call_id='tc1'),
+                UserPromptPart(content=[CachePoint(), 'Current plan: the plan']),
+            ]
+        ),
+    ]
+    _, bedrock_messages = await model._map_messages(  # pyright: ignore[reportPrivateUsage]
+        messages, ModelRequestParameters(), BedrockModelSettings()
+    )
+    assert bedrock_messages == snapshot(
+        [
+            {'role': 'user', 'content': [{'text': 'Make a plan'}]},
+            {
+                'role': 'assistant',
+                'content': [{'toolUse': {'toolUseId': 'tc1', 'name': 'write_plan', 'input': {'plan': 'the plan'}}}],
+            },
+            {
+                'role': 'user',
+                'content': [
+                    {'toolResult': {'toolUseId': 'tc1', 'content': [{'text': 'Plan saved'}], 'status': 'success'}},
+                    {'cachePoint': {'type': 'default', 'ttl': '5m'}},
+                    {'text': 'Current plan: the plan'},
+                ],
+            },
+        ]
+    )
+
+
+async def test_bedrock_leading_cache_point_replaces_existing_boundary_marker(
+    allow_model_requests: None, bedrock_provider: BedrockProvider
+):
+    """When the previous user message already ends with a cache point, a leading CachePoint replaces it: the latest one wins."""
+    model = BedrockConverseModel('anthropic.claude-3-7-sonnet-20250219-v1:0', provider=bedrock_provider)
+    messages: list[ModelMessage] = [
+        ModelRequest(
+            parts=[
+                UserPromptPart(content=['Some context', CachePoint()]),
+                UserPromptPart(content=[CachePoint(ttl='1h'), 'A reminder']),
+            ]
+        ),
+    ]
+    _, bedrock_messages = await model._map_messages(  # pyright: ignore[reportPrivateUsage]
+        messages, ModelRequestParameters(), BedrockModelSettings()
+    )
+    assert bedrock_messages == snapshot(
+        [
+            {
+                'role': 'user',
+                'content': [
+                    {'text': 'Some context'},
+                    {'cachePoint': {'type': 'default', 'ttl': '1h'}},
+                    {'text': 'A reminder'},
+                ],
+            }
+        ]
+    )
+
+
+async def test_bedrock_leading_cache_point_replaces_existing_marker_before_trailing_documents(
+    allow_model_requests: None, bedrock_provider: BedrockProvider
+):
+    """A cache point sitting before trailing documents in the previous user message is also replaced: the latest one wins."""
+    model = BedrockConverseModel('anthropic.claude-3-7-sonnet-20250219-v1:0', provider=bedrock_provider)
+    messages: list[ModelMessage] = [
+        ModelRequest(
+            parts=[
+                UserPromptPart(
+                    content=[
+                        'Read this',
+                        CachePoint(),
+                        BinaryContent(data=b'Document content', media_type='text/plain'),
+                    ]
+                ),
+                UserPromptPart(content=[CachePoint(ttl='1h'), 'A reminder']),
+            ]
+        ),
+    ]
+    _, bedrock_messages = await model._map_messages(  # pyright: ignore[reportPrivateUsage]
+        messages, ModelRequestParameters(), BedrockModelSettings()
+    )
+    assert bedrock_messages == snapshot(
+        [
+            {
+                'role': 'user',
+                'content': [
+                    {'text': 'Read this'},
+                    {'cachePoint': {'type': 'default', 'ttl': '1h'}},
+                    {'document': {'name': 'Document 1', 'format': 'txt', 'source': {'bytes': b'Document content'}}},
+                    {'text': 'A reminder'},
+                ],
+            }
+        ]
+    )
+
+
+async def test_bedrock_leading_cache_point_with_video_only_preceding_content_is_skipped(
+    allow_model_requests: None, bedrock_provider: BedrockProvider
+):
+    """When the previous user message is only a video, the cache point is dropped (AWS rejects a cache point directly after a video)."""
+    model = BedrockConverseModel('anthropic.claude-3-7-sonnet-20250219-v1:0', provider=bedrock_provider)
+    messages: list[ModelMessage] = [
+        ModelRequest(
+            parts=[
+                UserPromptPart(content=[BinaryContent(data=b'video data', media_type='video/mp4')]),
+                UserPromptPart(content=[CachePoint(), 'A reminder']),
+            ]
+        ),
+    ]
+    _, bedrock_messages = await model._map_messages(  # pyright: ignore[reportPrivateUsage]
+        messages, ModelRequestParameters(), BedrockModelSettings()
+    )
+    assert bedrock_messages == snapshot(
+        [
+            {
+                'role': 'user',
+                'content': [{'video': {'format': 'mp4', 'source': {'bytes': b'video data'}}}, {'text': 'A reminder'}],
+            }
+        ]
+    )
+
+
+async def test_bedrock_cache_point_only_part_attaches_and_emits_no_message(
+    allow_model_requests: None, bedrock_provider: BedrockProvider
+):
+    """A part containing only a CachePoint adds its marker to the previous user message and emits no message of its own."""
+    model = BedrockConverseModel('anthropic.claude-3-7-sonnet-20250219-v1:0', provider=bedrock_provider)
+    messages: list[ModelMessage] = [
+        ModelRequest(
+            parts=[
+                UserPromptPart(content='Some context'),
+                UserPromptPart(content=[CachePoint()]),
+            ]
+        ),
+    ]
+    _, bedrock_messages = await model._map_messages(  # pyright: ignore[reportPrivateUsage]
+        messages, ModelRequestParameters(), BedrockModelSettings()
+    )
+    assert bedrock_messages == snapshot(
+        [{'role': 'user', 'content': [{'text': 'Some context'}, {'cachePoint': {'type': 'default', 'ttl': '5m'}}]}]
+    )
+
+
+async def test_bedrock_consecutive_cache_points_raise_error(
+    allow_model_requests: None, bedrock_provider: BedrockProvider
+):
+    """Two cache points with no content between them raise a UserError."""
+    model = BedrockConverseModel('anthropic.claude-3-7-sonnet-20250219-v1:0', provider=bedrock_provider)
+    messages: list[ModelMessage] = [
+        ModelRequest(parts=[UserPromptPart(content=['some text', CachePoint(), CachePoint()])])
+    ]
+    with pytest.raises(UserError, match='CachePoint cannot be preceded by another CachePoint'):
+        await model._map_messages(messages, ModelRequestParameters(), BedrockModelSettings())  # pyright: ignore[reportPrivateUsage]
+
+
+async def test_bedrock_cache_point_with_only_document_raises_error(
+    allow_model_requests: None, bedrock_provider: BedrockProvider
+):
+    """CachePoint should raise a UserError if the message contains only a document/video with no text."""
+    model = BedrockConverseModel('anthropic.claude-3-7-sonnet-20250219-v1:0', provider=bedrock_provider)
+    messages: list[ModelMessage] = [
+        ModelRequest(
+            parts=[
+                UserPromptPart(
+                    content=[
+                        BinaryContent(data=b'Document content', media_type='text/plain'),
+                        CachePoint(),
+                    ]
+                )
+            ]
+        )
+    ]
+    with pytest.raises(
+        UserError, match='CachePoint cannot be placed when the user message contains only a document or video'
+    ):
+        await model._map_messages(messages, ModelRequestParameters(), BedrockModelSettings())  # pyright: ignore[reportPrivateUsage]
+
+
+async def test_bedrock_cache_messages_no_duplicate_with_explicit_cache_point(
+    allow_model_requests: None, bedrock_provider: BedrockProvider
+):
+    """bedrock_cache_messages should not add a duplicate cache point when one already exists before multi-modal content."""
+    model = BedrockConverseModel('us.anthropic.claude-haiku-4-5-20251001-v1:0', provider=bedrock_provider)
+    messages: list[ModelMessage] = [
+        ModelRequest(
+            parts=[
+                UserPromptPart(
+                    content=[
+                        'Process this document:',
+                        CachePoint(),
+                        BinaryContent(data=b'Document content', media_type='text/plain'),
+                    ]
+                )
+            ]
+        )
+    ]
+    # With bedrock_cache_messages=True, the explicit CachePoint is moved before the document.
+    # The auto-caching logic should not add another cache point (which would be back-to-back).
+    _, bedrock_messages = await model._map_messages(  # pyright: ignore[reportPrivateUsage]
+        messages, ModelRequestParameters(), BedrockModelSettings(bedrock_cache_messages=True)
+    )
+    assert bedrock_messages[0]['content'] == snapshot(
+        [
+            {'text': 'Process this document:'},
+            {'cachePoint': {'type': 'default', 'ttl': '5m'}},
+            {
+                'document': {
+                    'name': 'Document 1',
+                    'format': 'txt',
+                    'source': {'bytes': b'Document content'},
+                }
+            },
+        ]
+    )
+
+
+async def test_bedrock_cache_messages_no_duplicate_when_text_ends_with_cache_point(
+    allow_model_requests: None, bedrock_provider: BedrockProvider
+):
+    """bedrock_cache_messages should not add a duplicate cache point when text content already ends with one."""
+    model = BedrockConverseModel('us.anthropic.claude-haiku-4-5-20251001-v1:0', provider=bedrock_provider)
+    messages: list[ModelMessage] = [
+        ModelRequest(
+            parts=[
+                UserPromptPart(
+                    content=[
+                        'Some text content',
+                        CachePoint(),
+                    ]
+                )
+            ]
+        )
+    ]
+    # With bedrock_cache_messages=True, the explicit CachePoint is already at the end.
+    # The auto-caching logic should not add another cache point.
+    _, bedrock_messages = await model._map_messages(  # pyright: ignore[reportPrivateUsage]
+        messages, ModelRequestParameters(), BedrockModelSettings(bedrock_cache_messages=True)
+    )
+    assert bedrock_messages[0]['content'] == snapshot(
+        [
+            {'text': 'Some text content'},
+            {'cachePoint': {'type': 'default', 'ttl': '5m'}},
+        ]
+    )
+
+
+# Bedrock currently errors if a cache point immediately follows documents/videos, so we insert it before them.
+async def test_bedrock_cache_point_before_binary_content(allow_model_requests: None, bedrock_provider: BedrockProvider):
+    model = BedrockConverseModel('us.anthropic.claude-haiku-4-5-20251001-v1:0', provider=bedrock_provider)
+    messages: list[ModelMessage] = [
+        ModelRequest(
+            parts=[
+                UserPromptPart(
+                    content=[
+                        'Process the attached text file. Return the answer only.',
+                        BinaryContent(data=b'What is 2+2? Provide the answer only.', media_type='text/plain'),
+                        CachePoint(),
+                    ]
+                )
+            ]
+        )
+    ]
+    _, bedrock_messages = await model._map_messages(messages, ModelRequestParameters(), BedrockModelSettings())  # pyright: ignore[reportPrivateUsage]
+    assert bedrock_messages[0]['content'] == snapshot(
+        [
+            {'text': 'Process the attached text file. Return the answer only.'},
+            {'cachePoint': {'type': 'default', 'ttl': '5m'}},
+            {
+                'document': {
+                    'name': 'Document 1',
+                    'format': 'txt',
+                    'source': {'bytes': b'What is 2+2? Provide the answer only.'},
+                }
+            },
+        ]
+    )
+
+
+async def test_bedrock_cache_point_with_multiple_trailing_documents(
+    allow_model_requests: None, bedrock_provider: BedrockProvider
+):
+    """CachePoint should be placed before the entire trailing group of documents/videos, not just the last one."""
+    model = BedrockConverseModel('us.anthropic.claude-haiku-4-5-20251001-v1:0', provider=bedrock_provider)
+    messages: list[ModelMessage] = [
+        ModelRequest(
+            parts=[
+                UserPromptPart(
+                    content=[
+                        'Process these documents.',
+                        BinaryContent(data=b'Document 1 content', media_type='text/plain'),
+                        BinaryContent(data=b'Document 2 content', media_type='text/plain'),
+                        CachePoint(),
+                    ]
+                )
+            ]
+        )
+    ]
+    _, bedrock_messages = await model._map_messages(messages, ModelRequestParameters(), BedrockModelSettings())  # pyright: ignore[reportPrivateUsage]
+    # CachePoint should be inserted BEFORE both documents, not between them
+    assert bedrock_messages[0]['content'] == snapshot(
+        [
+            {'text': 'Process these documents.'},
+            {'cachePoint': {'type': 'default', 'ttl': '5m'}},
+            {
+                'document': {
+                    'name': 'Document 1',
+                    'format': 'txt',
+                    'source': {'bytes': b'Document 1 content'},
+                }
+            },
+            {
+                'document': {
+                    'name': 'Document 2',
+                    'format': 'txt',
+                    'source': {'bytes': b'Document 2 content'},
+                }
+            },
+        ]
+    )
+
+
+async def test_bedrock_cache_point_with_mixed_content_and_trailing_documents(
+    allow_model_requests: None, bedrock_provider: BedrockProvider
+):
+    """CachePoint should only move before the trailing contiguous group, not all documents."""
+    model = BedrockConverseModel('us.anthropic.claude-haiku-4-5-20251001-v1:0', provider=bedrock_provider)
+    messages: list[ModelMessage] = [
+        ModelRequest(
+            parts=[
+                UserPromptPart(
+                    content=[
+                        'First instruction.',
+                        BinaryContent(data=b'Doc 1', media_type='text/plain'),
+                        # Image breaks the trailing document group (images don't have the cache restriction)
+                        BinaryContent(data=b'\x89PNG\r\n\x1a\n', media_type='image/png'),
+                        BinaryContent(data=b'Doc 2', media_type='text/plain'),
+                        BinaryContent(data=b'Doc 3', media_type='text/plain'),
+                        CachePoint(),
+                    ]
+                )
+            ]
+        )
+    ]
+    _, bedrock_messages = await model._map_messages(messages, ModelRequestParameters(), BedrockModelSettings())  # pyright: ignore[reportPrivateUsage]
+    # CachePoint should be inserted after the image (non-document/video) and before Doc 2 and Doc 3
+    assert bedrock_messages[0]['content'] == snapshot(
+        [
+            {'text': 'First instruction.'},
+            {
+                'document': {
+                    'name': 'Document 1',
+                    'format': 'txt',
+                    'source': {'bytes': b'Doc 1'},
+                }
+            },
+            {
+                'image': {
+                    'format': 'png',
+                    'source': {'bytes': b'\x89PNG\r\n\x1a\n'},
+                }
+            },
+            {'cachePoint': {'type': 'default', 'ttl': '5m'}},
+            {
+                'document': {
+                    'name': 'Document 2',
+                    'format': 'txt',
+                    'source': {'bytes': b'Doc 2'},
+                }
+            },
+            {
+                'document': {
+                    'name': 'Document 3',
+                    'format': 'txt',
+                    'source': {'bytes': b'Doc 3'},
+                }
+            },
+        ]
+    )
+
+
+async def test_bedrock_cache_messages_with_multiple_trailing_documents(
+    allow_model_requests: None, bedrock_provider: BedrockProvider
+):
+    """bedrock_cache_messages should place cache point before the entire trailing document group."""
+    model = BedrockConverseModel('us.anthropic.claude-haiku-4-5-20251001-v1:0', provider=bedrock_provider)
+    messages: list[ModelMessage] = [
+        ModelRequest(
+            parts=[
+                UserPromptPart(
+                    content=[
+                        'Analyze these files.',
+                        BinaryContent(data=b'File 1', media_type='text/plain'),
+                        BinaryContent(data=b'File 2', media_type='text/plain'),
+                    ]
+                )
+            ]
+        )
+    ]
+    _, bedrock_messages = await model._map_messages(  # pyright: ignore[reportPrivateUsage]
+        messages, ModelRequestParameters(), BedrockModelSettings(bedrock_cache_messages=True)
+    )
+    # Cache point should be before both documents
+    assert bedrock_messages[0]['content'] == snapshot(
+        [
+            {'text': 'Analyze these files.'},
+            {'cachePoint': {'type': 'default'}},
+            {
+                'document': {
+                    'name': 'Document 1',
+                    'format': 'txt',
+                    'source': {'bytes': b'File 1'},
+                }
+            },
+            {
+                'document': {
+                    'name': 'Document 2',
+                    'format': 'txt',
+                    'source': {'bytes': b'File 2'},
+                }
+            },
+        ]
+    )
+
+
+async def test_bedrock_cache_point_multiple_markers_with_documents_no_back_to_back(
+    allow_model_requests: None, bedrock_provider: BedrockProvider
+):
+    """Multiple CachePoints with trailing documents should not create back-to-back cache points.
+
+    When processing ['text', doc1, CachePoint(), doc2, CachePoint()], both documents form
+    a single trailing group. The first CachePoint is placed before the group, and the second
+    CachePoint is skipped to avoid back-to-back cachePoints.
+    """
+    model = BedrockConverseModel('us.anthropic.claude-haiku-4-5-20251001-v1:0', provider=bedrock_provider)
+    messages: list[ModelMessage] = [
+        ModelRequest(
+            parts=[
+                UserPromptPart(
+                    content=[
+                        'Analyze these:',
+                        BinaryContent(data=b'Doc 1', media_type='text/plain'),
+                        CachePoint(),
+                        BinaryContent(data=b'Doc 2', media_type='text/plain'),
+                        CachePoint(),
+                    ]
+                )
+            ]
+        )
+    ]
+    _, bedrock_messages = await model._map_messages(messages, ModelRequestParameters(), BedrockModelSettings())  # pyright: ignore[reportPrivateUsage]
+    # Both docs are trailing, so first CachePoint goes before both.
+    # Second CachePoint is skipped to avoid back-to-back cachePoints.
+    assert bedrock_messages[0]['content'] == snapshot(
+        [
+            {'text': 'Analyze these:'},
+            {'cachePoint': {'type': 'default', 'ttl': '5m'}},
+            {'document': {'name': 'Document 1', 'format': 'txt', 'source': {'bytes': b'Doc 1'}}},
+            {'document': {'name': 'Document 2', 'format': 'txt', 'source': {'bytes': b'Doc 2'}}},
+        ]
+    )
+
+
+async def test_bedrock_cache_point_multiple_markers(allow_model_requests: None, bedrock_provider: BedrockProvider):
+    model = BedrockConverseModel('us.anthropic.claude-3-5-haiku-20241022-v1:0', provider=bedrock_provider)
+    messages: list[ModelMessage] = [
+        ModelRequest(
+            parts=[UserPromptPart(content=['First chunk', CachePoint(), 'Second chunk', CachePoint(), 'Question'])]
+        )
+    ]
+    _, bedrock_messages = await model._map_messages(messages, ModelRequestParameters(), BedrockModelSettings())  # pyright: ignore[reportPrivateUsage]
+    assert bedrock_messages[0]['content'] == snapshot(
+        [
+            {'text': 'First chunk'},
+            {'cachePoint': {'type': 'default', 'ttl': '5m'}},
+            {'text': 'Second chunk'},
+            {'cachePoint': {'type': 'default', 'ttl': '5m'}},
+            {'text': 'Question'},
+        ]
+    )
+
+
+async def test_bedrock_cache_skipped_for_unsupported_models(
+    allow_model_requests: None, bedrock_provider: BedrockProvider
+):
+    """All cache settings should be silently skipped for models that don't support prompt caching."""
+    # Meta models don't support prompt caching
+    model = BedrockConverseModel('meta.llama3-70b-instruct-v1:0', provider=bedrock_provider)
+
+    # Test CachePoint markers are skipped
+    messages_with_cache_points: list[ModelMessage] = [
+        ModelRequest(
+            parts=[UserPromptPart(content=['First chunk', CachePoint(), 'Second chunk', CachePoint(), 'Question'])]
+        )
+    ]
+    _, bedrock_messages = await model._map_messages(  # pyright: ignore[reportPrivateUsage]
+        messages_with_cache_points, ModelRequestParameters(), BedrockModelSettings()
+    )
+    assert bedrock_messages[0]['content'] == snapshot(
+        [{'text': 'First chunk'}, {'text': 'Second chunk'}, {'text': 'Question'}]
+    )
+
+    # Test bedrock_cache_instructions is skipped
+    messages_with_system: list[ModelMessage] = [
+        ModelRequest(parts=[SystemPromptPart(content='System instructions.'), UserPromptPart(content='Hi!')])
+    ]
+    system_prompt, _ = await model._map_messages(  # pyright: ignore[reportPrivateUsage]
+        messages_with_system, ModelRequestParameters(), BedrockModelSettings(bedrock_cache_instructions=True)
+    )
+    assert system_prompt == snapshot([{'text': 'System instructions.'}])
+
+    # Test bedrock_cache_messages is skipped
+    messages_user: list[ModelMessage] = [ModelRequest(parts=[UserPromptPart(content='User message.')])]
+    _, bedrock_messages = await model._map_messages(  # pyright: ignore[reportPrivateUsage]
+        messages_user, ModelRequestParameters(), BedrockModelSettings(bedrock_cache_messages=True)
+    )
+    assert bedrock_messages[0]['content'] == snapshot([{'text': 'User message.'}])
+
+
+async def test_bedrock_cache_tool_definitions_skipped_for_nova(
+    allow_model_requests: None, bedrock_provider: BedrockProvider
+):
+    """Tool caching should be skipped for Nova models (they only support system/messages caching, not tools)."""
+    model = BedrockConverseModel('us.amazon.nova-pro-v1:0', provider=bedrock_provider)
+    params = ModelRequestParameters(
+        function_tools=[
+            ToolDefinition(name='tool_one'),
+            ToolDefinition(name='tool_two'),
+        ]
+    )
+    params = model.customize_request_parameters(params)
+    tool_config = model._map_tool_config(  # pyright: ignore[reportPrivateUsage]
+        params,
+        BedrockModelSettings(bedrock_cache_tool_definitions=True),
+    )
+    # Nova doesn't support tool caching, so no cachePoint should be added
+    assert tool_config and len(tool_config['tools']) == 2
+    assert all('cachePoint' not in tool for tool in tool_config['tools'])
+
+
+async def test_bedrock_cache_tool_definitions(allow_model_requests: None, bedrock_provider: BedrockProvider):
+    model = BedrockConverseModel('anthropic.claude-sonnet-4-20250514-v1:0', provider=bedrock_provider)
+    params = ModelRequestParameters(
+        function_tools=[
+            ToolDefinition(name='tool_one'),
+            ToolDefinition(name='tool_two'),
+        ]
+    )
+    params = model.customize_request_parameters(params)
+    tool_config = model._map_tool_config(  # pyright: ignore[reportPrivateUsage]
+        params,
+        BedrockModelSettings(bedrock_cache_tool_definitions=True),
+    )
+    assert tool_config and len(tool_config['tools']) == 3
+    assert tool_config['tools'][-1] == {'cachePoint': {'type': 'default'}}
+
+
+async def test_bedrock_cache_instructions(allow_model_requests: None, bedrock_provider: BedrockProvider):
+    model = BedrockConverseModel('us.anthropic.claude-3-5-sonnet-20240620-v1:0', provider=bedrock_provider)
+    messages: list[ModelMessage] = [
+        ModelRequest(parts=[SystemPromptPart(content='System instructions to cache.'), UserPromptPart(content='Hi!')])
+    ]
+    system_prompt, _ = await model._map_messages(  # pyright: ignore[reportPrivateUsage]
+        messages,
+        ModelRequestParameters(),
+        BedrockModelSettings(bedrock_cache_instructions=True),
+    )
+    assert system_prompt == snapshot(
+        [
+            {'text': 'System instructions to cache.'},
+            {'cachePoint': {'type': 'default'}},
+        ]
+    )
+
+
+async def test_bedrock_cache_instructions_mixed_static_dynamic(
+    allow_model_requests: None, bedrock_provider: BedrockProvider
+):
+    """Test that cache point is placed after last static instruction when mixed with dynamic."""
+    from pydantic_ai.messages import InstructionPart
+
+    model = BedrockConverseModel('us.anthropic.claude-3-5-sonnet-20240620-v1:0', provider=bedrock_provider)
+    messages: list[ModelMessage] = [
+        ModelRequest(
+            parts=[UserPromptPart(content='Hi!')],
+        )
+    ]
+    model_request_parameters = ModelRequestParameters(
+        instruction_parts=[
+            InstructionPart(content='Static instructions.', dynamic=False),
+            InstructionPart(content='Dynamic context.', dynamic=True),
+        ],
+    )
+    system_prompt, _ = await model._map_messages(  # pyright: ignore[reportPrivateUsage]
+        messages,
+        model_request_parameters,
+        BedrockModelSettings(bedrock_cache_instructions=True),
+    )
+    # Cache point should be after the static instruction, before the dynamic one
+    assert system_prompt == snapshot(
+        [
+            {'text': 'Static instructions.'},
+            {'cachePoint': {'type': 'default'}},
+            {'text': 'Dynamic context.'},
+        ]
+    )
+
+
+async def test_bedrock_cache_instructions_all_dynamic_no_system_prompt(
+    allow_model_requests: None, bedrock_provider: BedrockProvider
+):
+    """Test that no cache point is inserted when all instructions are dynamic and there's no system prompt."""
+    from pydantic_ai.messages import InstructionPart
+
+    model = BedrockConverseModel('us.anthropic.claude-3-5-sonnet-20240620-v1:0', provider=bedrock_provider)
+    messages: list[ModelMessage] = [
+        ModelRequest(
+            parts=[UserPromptPart(content='Hi!')],
+        )
+    ]
+    model_request_parameters = ModelRequestParameters(
+        instruction_parts=[
+            InstructionPart(content='Dynamic only.', dynamic=True),
+        ],
+    )
+    system_prompt, _ = await model._map_messages(  # pyright: ignore[reportPrivateUsage]
+        messages,
+        model_request_parameters,
+        BedrockModelSettings(bedrock_cache_instructions=True),
+    )
+    # No cache point should be inserted — nothing static to cache
+    assert system_prompt == snapshot(
+        [
+            {'text': 'Dynamic only.'},
+        ]
+    )
+
+
+async def test_bedrock_cache_messages(allow_model_requests: None, bedrock_provider: BedrockProvider):
+    """Test that bedrock_cache_messages adds cache point to the last user message."""
+    model = BedrockConverseModel('us.anthropic.claude-3-5-sonnet-20240620-v1:0', provider=bedrock_provider)
+    messages: list[ModelMessage] = [ModelRequest(parts=[UserPromptPart(content='User message to cache.')])]
+    _, bedrock_messages = await model._map_messages(  # pyright: ignore[reportPrivateUsage]
+        messages,
+        ModelRequestParameters(),
+        BedrockModelSettings(bedrock_cache_messages=True),
+    )
+    assert bedrock_messages == snapshot(
+        [
+            {
+                'role': 'user',
+                'content': [
+                    {'text': 'User message to cache.'},
+                    {'cachePoint': {'type': 'default'}},
+                ],
+            }
+        ]
+    )
+
+
+async def test_bedrock_cache_instructions_and_messages_with_explicit_ttl(
+    allow_model_requests: None, bedrock_provider: BedrockProvider
+):
+    model = BedrockConverseModel('us.anthropic.claude-sonnet-4-5-20250929-v1:0', provider=bedrock_provider)
+    messages: list[ModelMessage] = [
+        ModelRequest(parts=[SystemPromptPart(content='System instructions to cache.'), UserPromptPart(content='Hi!')])
+    ]
+    system_prompt, bedrock_messages = await model._map_messages(  # pyright: ignore[reportPrivateUsage]
+        messages,
+        ModelRequestParameters(),
+        BedrockModelSettings(bedrock_cache_instructions='1h', bedrock_cache_messages='1h'),
+    )
+    assert system_prompt == snapshot(
+        [
+            {'text': 'System instructions to cache.'},
+            {'cachePoint': {'type': 'default', 'ttl': '1h'}},
+        ]
+    )
+    assert bedrock_messages == snapshot(
+        [
+            {
+                'role': 'user',
+                'content': [
+                    {'text': 'Hi!'},
+                    {'cachePoint': {'type': 'default', 'ttl': '1h'}},
+                ],
+            }
+        ]
+    )
+
+
+async def test_bedrock_cache_tool_definitions_with_explicit_ttl(
+    allow_model_requests: None, bedrock_provider: BedrockProvider
+):
+    model = BedrockConverseModel('anthropic.claude-sonnet-4-5-20250929-v1:0', provider=bedrock_provider)
+    params = ModelRequestParameters(
+        function_tools=[
+            ToolDefinition(name='tool_one'),
+            ToolDefinition(name='tool_two'),
+        ]
+    )
+    params = model.customize_request_parameters(params)
+    tool_config = model._map_tool_config(  # pyright: ignore[reportPrivateUsage]
+        params,
+        BedrockModelSettings(bedrock_cache_tool_definitions='1h'),
+    )
+    assert tool_config and len(tool_config['tools']) == 3
+    assert tool_config['tools'][-1] == {'cachePoint': {'type': 'default', 'ttl': '1h'}}
+
+
+async def test_bedrock_manual_cache_point_with_explicit_ttl(
+    allow_model_requests: None, bedrock_provider: BedrockProvider
+):
+    model = BedrockConverseModel('us.anthropic.claude-sonnet-4-5-20250929-v1:0', provider=bedrock_provider)
+    messages: list[ModelMessage] = [
+        ModelRequest(parts=[UserPromptPart(content=['Context to cache', CachePoint(ttl='1h'), 'Question'])])
+    ]
+    _, bedrock_messages = await model._map_messages(  # pyright: ignore[reportPrivateUsage]
+        messages,
+        ModelRequestParameters(),
+        BedrockModelSettings(),
+    )
+    assert bedrock_messages == snapshot(
+        [
+            {
+                'role': 'user',
+                'content': [
+                    {'text': 'Context to cache'},
+                    {'cachePoint': {'type': 'default', 'ttl': '1h'}},
+                    {'text': 'Question'},
+                ],
+            }
+        ]
+    )
+
+
+async def test_bedrock_cache_messages_with_binary_content(
+    allow_model_requests: None, bedrock_provider: BedrockProvider
+):
+    """Test that bedrock_cache_messages does add cache point for document content."""
+    model = BedrockConverseModel('us.anthropic.claude-haiku-4-5-20251001-v1:0', provider=bedrock_provider)
+    messages: list[ModelMessage] = [
+        ModelRequest(
+            parts=[
+                UserPromptPart(
+                    content=[
+                        BinaryContent(data=b'Test document content', media_type='text/plain'),
+                    ]
+                )
+            ]
+        )
+    ]
+    _, bedrock_messages = await model._map_messages(  # pyright: ignore[reportPrivateUsage]
+        messages,
+        ModelRequestParameters(),
+        BedrockModelSettings(bedrock_cache_messages=True),
+    )
+    # Should not add cache point for document content
+    assert bedrock_messages[0]['content'] == snapshot(
+        [
+            {'text': 'See attached document(s).'},
+            {'cachePoint': {'type': 'default'}},
+            {
+                'document': {
+                    'name': 'Document 1',
+                    'format': 'txt',
+                    'source': {'bytes': b'Test document content'},
+                }
+            },
+        ]
+    )
+
+
+async def test_bedrock_cache_messages_with_tool_result(allow_model_requests: None, bedrock_provider: BedrockProvider):
+    """Test that bedrock_cache_messages does add cache point for tool call content."""
+    model = BedrockConverseModel('us.anthropic.claude-haiku-4-5-20251001-v1:0', provider=bedrock_provider)
+    messages: list[ModelMessage] = [
+        ModelRequest(
+            parts=[
+                ToolReturnPart(
+                    tool_name='final_result',
+                    content='Final result processed.',
+                    tool_call_id='tooluse_DaRsVjwcShCI_3pOsIsWqg',
+                    timestamp=IsDatetime(),
+                )
+            ],
+        )
+    ]
+    _, bedrock_messages = await model._map_messages(  # pyright: ignore[reportPrivateUsage]
+        messages,
+        ModelRequestParameters(),
+        BedrockModelSettings(bedrock_cache_messages=True),
+    )
+    # Should add cache point for tool call content
+    assert bedrock_messages[0]['content'] == snapshot(
+        [
+            {
+                'toolResult': {
+                    'toolUseId': 'tooluse_DaRsVjwcShCI_3pOsIsWqg',
+                    'content': [{'text': 'Final result processed.'}],
+                    'status': 'success',
+                }
+            },
+            {'cachePoint': {'type': 'default'}},
+        ]
+    )
+
+
+async def test_bedrock_cache_messages_does_not_duplicate(allow_model_requests: None, bedrock_provider: BedrockProvider):
+    """Test that bedrock_cache_messages does not add duplicate cache point if already present."""
+    model = BedrockConverseModel('us.anthropic.claude-3-5-sonnet-20240620-v1:0', provider=bedrock_provider)
+    messages: list[ModelMessage] = [ModelRequest(parts=[UserPromptPart(content=['User message', CachePoint()])])]
+    _, bedrock_messages = await model._map_messages(  # pyright: ignore[reportPrivateUsage]
+        messages,
+        ModelRequestParameters(),
+        BedrockModelSettings(bedrock_cache_messages=True),
+    )
+    # Should not add another cache point since one already exists
+    cache_point_count = sum(1 for block in bedrock_messages[0]['content'] if 'cachePoint' in block)
+    assert cache_point_count == 1
+
+
+async def test_bedrock_cache_messages_no_user_messages(allow_model_requests: None, bedrock_provider: BedrockProvider):
+    """Test that bedrock_cache_messages handles case with no user messages."""
+    model = BedrockConverseModel('us.anthropic.claude-3-5-sonnet-20240620-v1:0', provider=bedrock_provider)
+    # Only assistant message, no user message
+    messages: list[ModelMessage] = [ModelResponse(parts=[TextPart(content='Assistant response')])]
+    _, bedrock_messages = await model._map_messages(  # pyright: ignore[reportPrivateUsage]
+        messages,
+        ModelRequestParameters(),
+        BedrockModelSettings(bedrock_cache_messages=True),
+    )
+    # Should not crash, no cache point added since no real user message.
+    # No synthetic user message is prepended: Anthropic models accept a leading assistant turn.
+    assert bedrock_messages == snapshot(
+        [
+            {'role': 'assistant', 'content': [{'text': 'Assistant response'}]},
+        ]
+    )
+
+
+async def test_get_last_user_message_content_non_dict_block(
+    allow_model_requests: None, bedrock_provider: BedrockProvider
+):
+    """Test _get_last_user_message_content returns None when last block is not a dict."""
+    model = BedrockConverseModel('us.anthropic.claude-3-5-sonnet-20240620-v1:0', provider=bedrock_provider)
+    # Directly test the helper with a message that has non-dict content
+    messages: list[MessageUnionTypeDef] = [{'role': 'user', 'content': ['string content']}]  # type: ignore[list-item]
+    result = model._get_last_user_message_content(messages)  # pyright: ignore[reportPrivateUsage]
+    assert result is None
+
+
+async def test_get_last_user_message_content_empty_content(
+    allow_model_requests: None, bedrock_provider: BedrockProvider
+):
+    """Test _get_last_user_message_content returns None when content is empty or not a list."""
+    model = BedrockConverseModel('us.anthropic.claude-3-5-sonnet-20240620-v1:0', provider=bedrock_provider)
+    # Test with empty content list
+    messages: list[MessageUnionTypeDef] = [{'role': 'user', 'content': []}]
+    result = model._get_last_user_message_content(messages)  # pyright: ignore[reportPrivateUsage]
+    assert result is None
+
+
+def test_limit_cache_points_filters_excess_cache_points(bedrock_provider: BedrockProvider):
+    """Test that _limit_cache_points filters out excess cache points beyond the limit of 4."""
+    model = BedrockConverseModel('us.anthropic.claude-3-5-sonnet-20240620-v1:0', provider=bedrock_provider)
+
+    # Create system prompt (no cache points)
+    system_prompt: list[SystemContentBlockTypeDef] = [{'text': 'System prompt'}]
+
+    # Create messages with 5 standalone cachePoint blocks (limit is 4)
+    bedrock_messages: list[MessageUnionTypeDef] = [
+        {
+            'role': 'user',
+            'content': [
+                {'text': 'Context 1'},
+                {'cachePoint': {'type': 'default'}},  # Will be filtered (oldest, over limit)
+                {'text': 'Context 2'},
+                {'cachePoint': {'type': 'default'}},  # Will be kept (4th newest)
+                {'text': 'Context 3'},
+                {'cachePoint': {'type': 'default'}},  # Will be kept (3rd newest)
+                {'text': 'Context 4'},
+                {'cachePoint': {'type': 'default'}},  # Will be kept (2nd newest)
+                {'text': 'Question'},
+                {'cachePoint': {'type': 'default'}},  # Will be kept (newest)
+            ],
+        },
+    ]
+
+    # Apply limit with no tools (max 4 cache points, we have 5)
+    model._limit_cache_points(system_prompt, bedrock_messages, [])  # pyright: ignore[reportPrivateUsage]
+
+    # Verify only 4 cache points remain (the newest ones)
+    content = bedrock_messages[0]['content']
+    assert isinstance(content, list)
+
+    # Count remaining cache points
+    cache_points = [b for b in content if isinstance(b, dict) and 'cachePoint' in b]
+    assert len(cache_points) == 4  # Only 4 kept (the limit)
+
+    # Verify no empty blocks exist
+    empty_blocks = [b for b in content if isinstance(b, dict) and not b]
+    assert len(empty_blocks) == 0
+
+
+async def test_limit_cache_points_with_cache_messages(allow_model_requests: None, bedrock_provider: BedrockProvider):
+    """Test that cache points are limited when using bedrock_cache_messages + CachePoint markers."""
+    model = BedrockConverseModel('us.anthropic.claude-3-5-sonnet-20240620-v1:0', provider=bedrock_provider)
+    # Create messages with 4 CachePoint markers + 1 from bedrock_cache_messages = 5 total
+    # Only 4 should be kept (limit)
+    messages: list[ModelMessage] = [
+        ModelRequest(
+            parts=[
+                UserPromptPart(
+                    content=[
+                        'Context 1',
+                        CachePoint(),  # Oldest, should be removed
+                        'Context 2',
+                        CachePoint(),  # Should be kept
+                        'Context 3',
+                        CachePoint(),  # Should be kept
+                        'Context 4',
+                        CachePoint(),  # Should be kept
+                        'Question',
+                    ]
+                )
+            ]
+        )
+    ]
+    system_prompt, bedrock_messages = await model._map_messages(  # pyright: ignore[reportPrivateUsage]
+        messages,
+        ModelRequestParameters(),
+        BedrockModelSettings(bedrock_cache_messages=True),
+    )
+    # Apply limit (this is normally called in _messages_create)
+    model._limit_cache_points(system_prompt, bedrock_messages, [])  # pyright: ignore[reportPrivateUsage]
+
+    # Count cache points in messages
+    cache_count = 0
+    for msg in bedrock_messages:
+        for block in msg['content']:
+            if 'cachePoint' in block:
+                cache_count += 1
+
+    # Should have exactly 4 cache points (the limit)
+    assert cache_count == 4
+
+
+async def test_limit_cache_points_all_settings(allow_model_requests: None, bedrock_provider: BedrockProvider):
+    """Test cache point limiting with all cache settings enabled."""
+    model = BedrockConverseModel('us.anthropic.claude-sonnet-4-20250514-v1:0', provider=bedrock_provider)
+
+    # Create messages with 3 CachePoint markers
+    messages: list[ModelMessage] = [
+        ModelRequest(
+            parts=[
+                SystemPromptPart(content='System instructions.'),
+                UserPromptPart(
+                    content=[
+                        'Context 1',
+                        CachePoint(),  # Oldest, should be removed
+                        'Context 2',
+                        CachePoint(),  # Should be kept
+                        'Context 3',
+                        CachePoint(),  # Should be kept
+                        'Question',
+                    ]
+                ),
+            ]
+        )
+    ]
+
+    # Map messages with cache_instructions enabled (uses 1 cache point)
+    system_prompt, bedrock_messages = await model._map_messages(  # pyright: ignore[reportPrivateUsage]
+        messages,
+        ModelRequestParameters(),
+        BedrockModelSettings(bedrock_cache_instructions=True),
+    )
+
+    # Create tools with cache point (uses 1 cache point)
+    tools: list[ToolTypeDef] = [
+        {'toolSpec': {'name': 'tool_one', 'inputSchema': {'json': {}}}},
+        {'cachePoint': {'type': 'default'}},
+    ]
+
+    # Apply limit: 1 (system) + 1 (tools) = 2 used, 2 remaining for messages
+    model._limit_cache_points(system_prompt, bedrock_messages, tools)  # pyright: ignore[reportPrivateUsage]
+
+    # Count cache points in messages only
+    cache_count = 0
+    for msg in bedrock_messages:
+        for block in msg['content']:
+            if 'cachePoint' in block:
+                cache_count += 1
+
+    # Should have exactly 2 cache points in messages (4 total - 1 system - 1 tool = 2)
+    assert cache_count == 2
+
+
+async def test_bedrock_empty_model_response_skipped(bedrock_provider: BedrockProvider):
+    """Test that ModelResponse with empty parts (e.g. content_filtered) is skipped in message mapping."""
+    model = BedrockConverseModel('us.amazon.nova-micro-v1:0', provider=bedrock_provider)
+
+    # Create a message history that includes a ModelResponse with empty parts
+    req = [
+        ModelRequest(parts=[UserPromptPart(content='Hello')]),
+        ModelResponse(
+            parts=[],
+            usage=RequestUsage(input_tokens=100, output_tokens=1),
+            model_name='us.amazon.nova-micro-v1:0',
+            provider_name='bedrock',
+            provider_details={'finish_reason': 'content_filtered'},
+            finish_reason='content_filter',
+        ),
+        ModelRequest(parts=[UserPromptPart(content='Follow up question')]),
+    ]
+
+    # Call the mapping function directly
+    _, bedrock_messages = await model._map_messages(req, ModelRequestParameters(), BedrockModelSettings())  # type: ignore[reportPrivateUsage]
+
+    # The empty ModelResponse should be skipped, so we should only have 2 user messages
+    # that get merged into one since they're consecutive after the empty response is skipped
+    assert bedrock_messages == snapshot(
+        [
+            {'role': 'user', 'content': [{'text': 'Hello'}, {'text': 'Follow up question'}]},
+        ]
+    )
+
+
+async def test_uploaded_file_wrong_provider(allow_model_requests: None, bedrock_provider: BedrockProvider):
+    """Test that UploadedFile with wrong provider raises an error."""
+    model = BedrockConverseModel('us.amazon.nova-pro-v1:0', provider=bedrock_provider)
+    agent = Agent(model)
+
+    with pytest.raises(UserError, match=r"provider_name='openai'.*cannot be used with BedrockConverseModel"):
+        await agent.run(['Analyze this file', UploadedFile(file_id='s3://bucket/file.pdf', provider_name='openai')])
+
+
+async def test_uploaded_file_non_s3_url(allow_model_requests: None, bedrock_provider: BedrockProvider):
+    """Test that UploadedFile with non-S3 URL raises an error."""
+    model = BedrockConverseModel('us.amazon.nova-pro-v1:0', provider=bedrock_provider)
+    agent = Agent(model)
+
+    with pytest.raises(UserError, match='UploadedFile for Bedrock must use an S3 URL'):
+        await agent.run(
+            [
+                'Analyze this file',
+                UploadedFile(
+                    file_id='https://example.com/file.pdf', provider_name='bedrock', media_type='application/pdf'
+                ),
+            ]
+        )
+
+
+async def test_uploaded_file_no_extension_defaults_to_octet_stream(
+    allow_model_requests: None, bedrock_provider: BedrockProvider
+):
+    """Test that UploadedFile without extension defaults to application/octet-stream which is unsupported."""
+    model = BedrockConverseModel('us.amazon.nova-pro-v1:0', provider=bedrock_provider)
+    agent = Agent(model)
+
+    with pytest.raises(UserError, match='Unsupported media type for Bedrock UploadedFile: application/octet-stream'):
+        await agent.run(
+            [
+                'Analyze this file',
+                UploadedFile(
+                    file_id='s3://bucket/file', provider_name='bedrock'
+                ),  # No extension, defaults to octet-stream
+            ]
+        )
+
+
+async def test_uploaded_file_unsupported_media_type(allow_model_requests: None, bedrock_provider: BedrockProvider):
+    """Test that UploadedFile with unsupported media type raises an error."""
+    model = BedrockConverseModel('us.amazon.nova-pro-v1:0', provider=bedrock_provider)
+    agent = Agent(model)
+
+    with pytest.raises(UserError, match='Unsupported media type for Bedrock UploadedFile'):
+        await agent.run(
+            [
+                'Analyze this file',
+                UploadedFile(
+                    file_id='s3://bucket/file.bin', provider_name='bedrock', media_type='application/octet-stream'
+                ),
+            ]
+        )
+
+
+async def test_uploaded_file_image(bedrock_provider: BedrockProvider):
+    """Test that UploadedFile with image media type is correctly mapped."""
+    model = BedrockConverseModel('us.amazon.nova-pro-v1:0', provider=bedrock_provider)
+    uploaded_file = UploadedFile(file_id='s3://my-bucket/image.png', provider_name='bedrock', media_type='image/png')
+
+    req = [
+        ModelRequest(parts=[UserPromptPart(content=['What is in this image?', uploaded_file])]),
+    ]
+
+    _, bedrock_messages = await model._map_messages(req, ModelRequestParameters(), None)  # type: ignore[reportPrivateUsage]
+
+    assert bedrock_messages == snapshot(
+        [
+            {
+                'role': 'user',
+                'content': [
+                    {'text': 'What is in this image?'},
+                    {
+                        'image': {
+                            'format': 'png',
+                            'source': {'s3Location': {'uri': 's3://my-bucket/image.png'}},
+                        }
+                    },
+                ],
+            }
+        ]
+    )
+
+
+async def test_uploaded_file_video(bedrock_provider: BedrockProvider):
+    """Test that UploadedFile with video media type is correctly mapped."""
+    model = BedrockConverseModel('us.amazon.nova-pro-v1:0', provider=bedrock_provider)
+    uploaded_file = UploadedFile(file_id='s3://my-bucket/video.mp4', provider_name='bedrock', media_type='video/mp4')
+
+    req = [
+        ModelRequest(parts=[UserPromptPart(content=['Describe this video', uploaded_file])]),
+    ]
+
+    _, bedrock_messages = await model._map_messages(req, ModelRequestParameters(), None)  # type: ignore[reportPrivateUsage]
+
+    assert bedrock_messages == snapshot(
+        [
+            {
+                'role': 'user',
+                'content': [
+                    {'text': 'Describe this video'},
+                    {
+                        'video': {
+                            'format': 'mp4',
+                            'source': {'s3Location': {'uri': 's3://my-bucket/video.mp4'}},
+                        }
+                    },
+                ],
+            }
+        ]
+    )
+
+
+async def test_uploaded_file_document(bedrock_provider: BedrockProvider):
+    """Test that UploadedFile with document media type is correctly mapped."""
+    model = BedrockConverseModel('us.amazon.nova-pro-v1:0', provider=bedrock_provider)
+    uploaded_file = UploadedFile(
+        file_id='s3://my-bucket/report.pdf', provider_name='bedrock', media_type='application/pdf'
+    )
+
+    req = [
+        ModelRequest(parts=[UserPromptPart(content=['What is in this document?', uploaded_file])]),
+    ]
+
+    _, bedrock_messages = await model._map_messages(req, ModelRequestParameters(), None)  # type: ignore[reportPrivateUsage]
+
+    assert bedrock_messages == snapshot(
+        [
+            {
+                'role': 'user',
+                'content': [
+                    {'text': 'What is in this document?'},
+                    {
+                        'document': {
+                            'format': 'pdf',
+                            'name': IsStr(),
+                            'source': {'s3Location': {'uri': 's3://my-bucket/report.pdf'}},
+                        }
+                    },
+                ],
+            }
+        ]
+    )
+
+
+async def test_uploaded_file_s3_with_bucket_owner(bedrock_provider: BedrockProvider):
+    """Test that UploadedFile S3 URLs with bucketOwner parameter are parsed correctly."""
+    model = BedrockConverseModel('us.amazon.nova-pro-v1:0', provider=bedrock_provider)
+    uploaded_file = UploadedFile(
+        file_id='s3://my-bucket/image.png?bucketOwner=123456789012', provider_name='bedrock', media_type='image/png'
+    )
+
+    req = [
+        ModelRequest(parts=[UserPromptPart(content=['What is in this image?', uploaded_file])]),
+    ]
+
+    _, bedrock_messages = await model._map_messages(req, ModelRequestParameters(), None)  # type: ignore[reportPrivateUsage]
+
+    assert bedrock_messages == snapshot(
+        [
+            {
+                'role': 'user',
+                'content': [
+                    {'text': 'What is in this image?'},
+                    {
+                        'image': {
+                            'format': 'png',
+                            'source': {
+                                's3Location': {
+                                    'uri': 's3://my-bucket/image.png',
+                                    'bucketOwner': '123456789012',
+                                }
+                            },
+                        }
+                    },
+                ],
+            }
+        ]
+    )
+
+
+async def test_uploaded_file_media_type_inference(bedrock_provider: BedrockProvider):
+    """Test that UploadedFile infers media type from file extension."""
+    model = BedrockConverseModel('us.amazon.nova-pro-v1:0', provider=bedrock_provider)
+    # No media_type provided, should infer from .pdf extension
+    uploaded_file = UploadedFile(file_id='s3://my-bucket/report.pdf', provider_name='bedrock')
+
+    req = [
+        ModelRequest(parts=[UserPromptPart(content=['What is in this document?', uploaded_file])]),
+    ]
+
+    _, bedrock_messages = await model._map_messages(req, ModelRequestParameters(), None)  # type: ignore[reportPrivateUsage]
+
+    assert bedrock_messages == snapshot(
+        [
+            {
+                'role': 'user',
+                'content': [
+                    {'text': 'What is in this document?'},
+                    {
+                        'document': {
+                            'format': 'pdf',
+                            'name': IsStr(),
+                            'source': {'s3Location': {'uri': 's3://my-bucket/report.pdf'}},
+                        }
+                    },
+                ],
+            }
+        ]
+    )
+
+
+async def test_bedrock_map_messages_builtin_tool_provider_filtering(
+    allow_model_requests: None, bedrock_provider: BedrockProvider
+):
+    model = BedrockConverseModel('us.amazon.nova-2-lite-v1:0', provider=bedrock_provider)
+
+    messages: list[ModelMessage] = [
+        ModelResponse(
+            parts=[
+                # NativeToolCallPart (w/dict) for bedrock (should be included)
+                NativeToolCallPart(
+                    provider_name='bedrock',
+                    tool_name=CodeExecutionTool.kind,
+                    args={'snippet': 'print("hello")'},
+                    tool_call_id='call_1',
+                ),
+                # NativeToolReturnPart for bedrock with empty provider_details (should be included)
+                NativeToolReturnPart(
+                    provider_name='bedrock',
+                    tool_name=CodeExecutionTool.kind,
+                    content={'stdOut': 'hello', 'stdErr': '', 'exitCode': 0, 'isError': False},
+                    tool_call_id='call_1',
+                    provider_details={},
+                ),
+                # NativeToolCallPart for the other provider (should NOT be included)
+                NativeToolCallPart(
+                    provider_name='anthropic',
+                    tool_name=CodeExecutionTool.kind,
+                    args={'code': 'print("other")'},
+                    tool_call_id='call_2',
+                ),
+                # NativeToolReturnPart for the other provider (should NOT be included)
+                NativeToolReturnPart(
+                    provider_name='anthropic',
+                    tool_name=CodeExecutionTool.kind,
+                    content={'stdOut': 'other', 'stdErr': '', 'exitCode': 0, 'isError': False},
+                    tool_call_id='call_2',
+                ),
+                # NativeToolCallPart (w/str) for bedrock (should be included)
+                NativeToolCallPart(
+                    provider_name='bedrock',
+                    tool_name=CodeExecutionTool.kind,
+                    args='{"snippet": "10*5"}',
+                    tool_call_id='call_3',
+                ),
+                # NativeToolReturnPart for the bedrock provider with status (should be included)
+                NativeToolReturnPart(
+                    provider_name='bedrock',
+                    tool_name=CodeExecutionTool.kind,
+                    content={'stdOut': '50', 'stdErr': '', 'exitCode': 0, 'isError': False},
+                    tool_call_id='call_3',
+                    provider_details={'status': 'success'},
+                ),
+                # NativeToolCallPart for the bedrock provider but unmapped tool (should NOT be included)
+                NativeToolCallPart(
+                    provider_name='bedrock',
+                    tool_name='foo',
+                    args={'snippet': 'print("unknown")'},
+                    tool_call_id='call_4',
+                ),
+                # NativeToolReturnPart for the bedrock provider but unmapped tool (should NOT be included)
+                NativeToolReturnPart(
+                    provider_name='bedrock',
+                    tool_name='foo',
+                    content={'other': 'content'},
+                    tool_call_id='call_4',
+                    provider_details={'status': 'success'},
+                ),
+            ]
+        )
+    ]
+
+    _, bedrock_messages = await model._map_messages(  # type: ignore[reportPrivateUsage]
+        messages,
+        ModelRequestParameters(
+            function_tools=[],
+            allow_text_output=True,
+            native_tools=[CodeExecutionTool()],
+        ),
+        None,
+    )
+    assert bedrock_messages == snapshot(
+        [
+            {'role': 'user', 'content': [{'text': '.'}]},
+            {
+                'role': 'assistant',
+                'content': [
+                    {
+                        'toolUse': {
+                            'toolUseId': 'call_1',
+                            'name': 'nova_code_interpreter',
+                            'input': {'snippet': 'print("hello")'},
+                            'type': 'server_tool_use',
+                        }
+                    },
+                    {
+                        'toolResult': {
+                            'toolUseId': 'call_1',
+                            'content': [{'json': {'stdOut': 'hello', 'stdErr': '', 'exitCode': 0, 'isError': False}}],
+                            'type': 'nova_code_interpreter_result',
+                        }
+                    },
+                    {
+                        'toolUse': {
+                            'toolUseId': 'call_3',
+                            'name': 'nova_code_interpreter',
+                            'input': {'snippet': '10*5'},
+                            'type': 'server_tool_use',
+                        }
+                    },
+                    {
+                        'toolResult': {
+                            'toolUseId': 'call_3',
+                            'content': [{'json': {'stdOut': '50', 'stdErr': '', 'exitCode': 0, 'isError': False}}],
+                            'type': 'nova_code_interpreter_result',
+                            'status': 'success',
+                        }
+                    },
+                ],
+            },
+        ]
+    )
+
+
+async def test_bedrock_model_with_code_execution_tool(allow_model_requests: None, bedrock_provider: BedrockProvider):
+    model = BedrockConverseModel('us.amazon.nova-2-lite-v1:0', provider=bedrock_provider)
+    agent = Agent(
+        model=model, system_prompt='You are a helpful chatbot.', capabilities=[NativeTool(CodeExecutionTool())]
+    )
+
+    class Response(TypedDict):
+        result: float
+
+    # First turn
+    result1 = await agent.run('What is 1234 * 5678?', output_type=Response)
+    assert result1.output == snapshot({'result': 7006652.0})
+    assert result1.all_messages() == snapshot(
+        [
+            ModelRequest(
+                parts=[
+                    SystemPromptPart(content='You are a helpful chatbot.', timestamp=IsDatetime()),
+                    UserPromptPart(content='What is 1234 * 5678?', timestamp=IsDatetime()),
+                ],
+                timestamp=IsDatetime(),
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelResponse(
+                parts=[
+                    NativeToolCallPart(
+                        tool_name='code_execution',
+                        args={'snippet': '1234 * 5678'},
+                        tool_call_id='tooluse_dV5ehBNfl1hUE-UTM9cIww',
+                        provider_name='bedrock',
+                    ),
+                    NativeToolReturnPart(
+                        tool_name='code_execution',
+                        content={'stdOut': '7006652', 'stdErr': '', 'exitCode': 0, 'isError': False},
+                        tool_call_id='tooluse_dV5ehBNfl1hUE-UTM9cIww',
+                        timestamp=IsDatetime(),
+                        provider_name='bedrock',
+                        provider_details={'status': 'success'},
+                    ),
+                    ToolCallPart(
+                        tool_name='final_result',
+                        args={'result': 7006652.0},
+                        tool_call_id='tooluse_DaRsVjwcShCI_3pOsIsWqg',
+                    ),
+                ],
+                usage=RequestUsage(input_tokens=1002, output_tokens=59, cost=Decimal('0.00049291')),
+                model_name='us.amazon.nova-2-lite-v1:0',
+                timestamp=IsDatetime(),
+                provider_name='bedrock',
+                provider_url='https://bedrock-runtime.us-east-1.amazonaws.com',
+                provider_details={'finish_reason': 'tool_use'},
+                finish_reason='tool_call',
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelRequest(
+                parts=[
+                    ToolReturnPart(
+                        tool_name='final_result',
+                        content='Final result processed.',
+                        tool_call_id='tooluse_DaRsVjwcShCI_3pOsIsWqg',
+                        timestamp=IsDatetime(),
+                    )
+                ],
+                timestamp=IsDatetime(),
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+        ]
+    )
+
+    # Second turn
+    result2 = await agent.run('Now multiply that by 2', message_history=result1.new_messages(), output_type=Response)
+    assert result2.output == snapshot({'result': 14013304.0})
+    assert result2.new_messages() == snapshot(
+        [
+            ModelRequest(
+                parts=[UserPromptPart(content='Now multiply that by 2', timestamp=IsDatetime())],
+                timestamp=IsDatetime(),
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelResponse(
+                parts=[
+                    NativeToolCallPart(
+                        tool_name='code_execution',
+                        args={'snippet': '7006652 * 2'},
+                        tool_call_id='tooluse_VYEuMWAFChlHdy6-56IQ4g',
+                        provider_name='bedrock',
+                    ),
+                    NativeToolReturnPart(
+                        tool_name='code_execution',
+                        content={'stdOut': '14013304', 'stdErr': '', 'exitCode': 0, 'isError': False},
+                        tool_call_id='tooluse_VYEuMWAFChlHdy6-56IQ4g',
+                        timestamp=IsDatetime(),
+                        provider_name='bedrock',
+                        provider_details={'status': 'success'},
+                    ),
+                    ToolCallPart(
+                        tool_name='final_result',
+                        args={'result': 14013304.0},
+                        tool_call_id='tooluse_RyG7SphVTsuS_8GFmX9hIA',
+                    ),
+                ],
+                usage=RequestUsage(input_tokens=1148, output_tokens=59, cost=Decimal('0.00054109')),
+                model_name='us.amazon.nova-2-lite-v1:0',
+                timestamp=IsDatetime(),
+                provider_name='bedrock',
+                provider_url='https://bedrock-runtime.us-east-1.amazonaws.com',
+                provider_details={'finish_reason': 'tool_use'},
+                finish_reason='tool_call',
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelRequest(
+                parts=[
+                    ToolReturnPart(
+                        tool_name='final_result',
+                        content='Final result processed.',
+                        tool_call_id='tooluse_RyG7SphVTsuS_8GFmX9hIA',
+                        timestamp=IsDatetime(),
+                    )
+                ],
+                timestamp=IsDatetime(),
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+        ]
+    )
+
+
+async def test_bedrock_model_code_execution_tool_stream(allow_model_requests: None, bedrock_provider: BedrockProvider):
+    model = BedrockConverseModel('us.amazon.nova-2-lite-v1:0', provider=bedrock_provider)
+    agent = Agent(
+        model=model, system_prompt='You are a helpful chatbot.', capabilities=[NativeTool(CodeExecutionTool())]
+    )
+
+    class Response(TypedDict):
+        result: float
+
+    event_parts: list[Any] = []
+    async with agent.iter('What is 1234 * 5678?', output_type=Response) as agent_run:
+        async for node in agent_run:
+            if Agent.is_model_request_node(node) or Agent.is_call_tools_node(node):
+                async with node.stream(agent_run.ctx) as request_stream:
+                    async for event in request_stream:
+                        event_parts.append(event)
+
+    assert agent_run.result is not None
+    assert agent_run.result.output == snapshot({'result': 7006652.0})
+    assert agent_run.result.all_messages() == snapshot(
+        [
+            ModelRequest(
+                parts=[
+                    SystemPromptPart(content='You are a helpful chatbot.', timestamp=IsDatetime()),
+                    UserPromptPart(content='What is 1234 * 5678?', timestamp=IsDatetime()),
+                ],
+                timestamp=IsDatetime(),
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelResponse(
+                parts=[
+                    NativeToolCallPart(
+                        tool_name='code_execution',
+                        args='{"snippet":"1234 * 5678"}',
+                        tool_call_id='tooluse_VQNZJRUFMoqZzszVsRd4og',
+                        provider_name='bedrock',
+                    ),
+                    NativeToolReturnPart(
+                        tool_name='code_execution',
+                        content={'stdOut': '7006652', 'stdErr': '', 'exitCode': 0, 'isError': False},
+                        tool_call_id='tooluse_VQNZJRUFMoqZzszVsRd4og',
+                        timestamp=IsDatetime(),
+                        provider_name='bedrock',
+                        provider_details={'status': 'success'},
+                    ),
+                    ToolCallPart(
+                        tool_name='final_result',
+                        args='{"result":7006652.0}',
+                        tool_call_id='tooluse_ptgCcZ0uQu-UUMz0abqoWw',
+                    ),
+                ],
+                usage=RequestUsage(input_tokens=1002, output_tokens=59, cost=Decimal('0.00049291')),
+                model_name='us.amazon.nova-2-lite-v1:0',
+                timestamp=IsDatetime(),
+                provider_name='bedrock',
+                provider_url='https://bedrock-runtime.us-east-1.amazonaws.com',
+                provider_details={'finish_reason': 'tool_use'},
+                finish_reason='tool_call',
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelRequest(
+                parts=[
+                    ToolReturnPart(
+                        tool_name='final_result',
+                        content='Final result processed.',
+                        tool_call_id='tooluse_ptgCcZ0uQu-UUMz0abqoWw',
+                        timestamp=IsDatetime(),
+                    )
+                ],
+                timestamp=IsDatetime(),
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+        ]
+    )
+    assert event_parts == snapshot(
+        [
+            PartStartEvent(
+                index=0,
+                part=NativeToolCallPart(
+                    tool_name='code_execution',
+                    tool_call_id='tooluse_VQNZJRUFMoqZzszVsRd4og',
+                    provider_name='bedrock',
+                ),
+            ),
+            PartDeltaEvent(
+                index=0,
+                delta=ToolCallPartDelta(
+                    args_delta='{"snippet":"1234 * 5678"}', tool_call_id='tooluse_VQNZJRUFMoqZzszVsRd4og'
+                ),
+            ),
+            PartEndEvent(
+                index=0,
+                part=NativeToolCallPart(
+                    tool_name='code_execution',
+                    args='{"snippet":"1234 * 5678"}',
+                    tool_call_id='tooluse_VQNZJRUFMoqZzszVsRd4og',
+                    provider_name='bedrock',
+                ),
+                next_part_kind='builtin-tool-return',
+            ),
+            PartStartEvent(
+                index=1,
+                part=NativeToolReturnPart(
+                    tool_name='code_execution',
+                    content={'stdOut': '7006652', 'stdErr': '', 'exitCode': 0, 'isError': False},
+                    tool_call_id='tooluse_VQNZJRUFMoqZzszVsRd4og',
+                    timestamp=IsDatetime(),
+                    provider_name='bedrock',
+                    provider_details={'status': 'success'},
+                ),
+                previous_part_kind='builtin-tool-call',
+            ),
+            PartStartEvent(
+                index=2,
+                part=ToolCallPart(tool_name='final_result', tool_call_id='tooluse_ptgCcZ0uQu-UUMz0abqoWw'),
+                previous_part_kind='builtin-tool-return',
+            ),
+            FinalResultEvent(tool_name='final_result', tool_call_id='tooluse_ptgCcZ0uQu-UUMz0abqoWw'),
+            PartDeltaEvent(
+                index=2,
+                delta=ToolCallPartDelta(
+                    args_delta='{"result":7006652.0}', tool_call_id='tooluse_ptgCcZ0uQu-UUMz0abqoWw'
+                ),
+            ),
+            PartEndEvent(
+                index=2,
+                part=ToolCallPart(
+                    tool_name='final_result', args='{"result":7006652.0}', tool_call_id='tooluse_ptgCcZ0uQu-UUMz0abqoWw'
+                ),
+            ),
+            OutputToolCallEvent(
+                part=ToolCallPart(
+                    tool_name='final_result', args='{"result":7006652.0}', tool_call_id='tooluse_ptgCcZ0uQu-UUMz0abqoWw'
+                ),
+                args_valid=True,
+            ),
+            OutputToolResultEvent(
+                part=ToolReturnPart(
+                    tool_name='final_result',
+                    content='Final result processed.',
+                    tool_call_id='tooluse_ptgCcZ0uQu-UUMz0abqoWw',
+                    timestamp=IsDatetime(),
+                )
+            ),
+        ]
+    )
+
+
+async def test_image_url_unsupported_format(bedrock_provider: BedrockProvider):
+    """Test that ImageUrl with unsupported image format raises an error."""
+    model = BedrockConverseModel('us.amazon.nova-pro-v1:0', provider=bedrock_provider)
+
+    image_url = ImageUrl(url='s3://bucket/image.bmp', media_type='image/bmp')
+
+    req = [
+        ModelRequest(parts=[UserPromptPart(content=['What is in this image?', image_url])]),
+    ]
+
+    with pytest.raises(UserError, match='Unsupported image format: bmp'):
+        await model._map_messages(req, ModelRequestParameters(), None)  # type: ignore[reportPrivateUsage]
+
+
+async def test_video_url_unsupported_format(bedrock_provider: BedrockProvider):
+    """Test that VideoUrl with unsupported video format raises an error."""
+    model = BedrockConverseModel('us.amazon.nova-pro-v1:0', provider=bedrock_provider)
+
+    video_url = VideoUrl(url='s3://bucket/video.avi', media_type='video/avi')
+
+    req = [
+        ModelRequest(parts=[UserPromptPart(content=['Describe this video', video_url])]),
+    ]
+
+    with pytest.raises(UserError, match='Unsupported video format: avi'):
+        await model._map_messages(req, ModelRequestParameters(), None)  # type: ignore[reportPrivateUsage]
+
+
+async def test_document_url_unsupported_format(bedrock_provider: BedrockProvider):
+    """Test that DocumentUrl with unsupported document format raises an error."""
+    model = BedrockConverseModel('us.amazon.nova-pro-v1:0', provider=bedrock_provider)
+
+    doc_url = DocumentUrl(url='s3://bucket/file.rtf', media_type='application/rtf')
+
+    req = [
+        ModelRequest(parts=[UserPromptPart(content=['Summarize this document', doc_url])]),
+    ]
+
+    with pytest.raises(UserError, match='Unsupported document format: rtf'):
+        await model._map_messages(req, ModelRequestParameters(), None)  # type: ignore[reportPrivateUsage]
+
+
+async def test_uploaded_file_unsupported_video_media_type(
+    allow_model_requests: None, bedrock_provider: BedrockProvider
+):
+    """Test that UploadedFile with unsupported video media type raises an error."""
+    model = BedrockConverseModel('us.amazon.nova-pro-v1:0', provider=bedrock_provider)
+    agent = Agent(model)
+
+    with pytest.raises(UserError, match='Unsupported media type for Bedrock UploadedFile: video/avi'):
+        await agent.run(
+            [
+                'Describe this video',
+                UploadedFile(file_id='s3://bucket/video.avi', provider_name='bedrock', media_type='video/avi'),
+            ]
+        )
+
+
+async def test_uploaded_file_audio_not_supported(allow_model_requests: None, bedrock_provider: BedrockProvider):
+    """Test that UploadedFile with audio media type raises an error."""
+    model = BedrockConverseModel('us.amazon.nova-pro-v1:0', provider=bedrock_provider)
+    agent = Agent(model)
+
+    with pytest.raises(UserError, match='Audio files are not supported for Bedrock UploadedFile'):
+        await agent.run(
+            [
+                'Transcribe this audio',
+                UploadedFile(file_id='s3://bucket/audio.wav', provider_name='bedrock', media_type='audio/wav'),
+            ]
+        )
+
+
+@pytest.mark.vcr()
+@pytest.mark.parametrize(
+    'model_name',
+    [
+        pytest.param('us.anthropic.claude-sonnet-4-5-20250929-v1:0', id='claude-sonnet-4-5'),
+        pytest.param('us.amazon.nova-micro-v1:0', id='nova-micro'),
+    ],
+)
+async def test_bedrock_model_with_instructions_only(
+    allow_model_requests: None, bedrock_provider: BedrockProvider, model_name: BedrockModelName
+):
+    """Test that agent.run() works without a user prompt, using only a system prompt.
+
+    Bedrock requires conversations to start with a user message. When called with only a
+    system prompt, the model layer synthesizes a placeholder user message automatically.
+    See: https://github.com/pydantic/pydantic-ai/issues/4495
+    """
+    model = BedrockConverseModel(model_name, provider=bedrock_provider)
+    agent = Agent(model=model, system_prompt='Generate a short greeting.')
+
+    result = await agent.run()
+    assert result.output
+    assert result.all_messages() == snapshot(
+        [
+            ModelRequest(
+                parts=[SystemPromptPart(content='Generate a short greeting.', timestamp=IsDatetime())],
+                timestamp=IsDatetime(),
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelResponse(
+                parts=[TextPart(content=IsStr())],
+                usage=IsInstance(RequestUsage),
+                model_name=model_name,
+                timestamp=IsDatetime(),
+                provider_name='bedrock',
+                provider_url='https://bedrock-runtime.us-east-1.amazonaws.com',
+                provider_details={'finish_reason': 'end_turn'},
+                finish_reason='stop',
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+        ]
+    )
+
+
+@pytest.mark.vcr()
+@pytest.mark.parametrize(
+    'model_name',
+    [
+        pytest.param('us.anthropic.claude-sonnet-4-5-20250929-v1:0', id='claude-sonnet-4-5'),
+        pytest.param('us.amazon.nova-micro-v1:0', id='nova-micro'),
+    ],
+)
+async def test_bedrock_model_instructions_only_then_message_history(
+    allow_model_requests: None, bedrock_provider: BedrockProvider, model_name: BedrockModelName
+):
+    """Test that message_history from a system-prompt-only run works in a follow-up run.
+
+    Verifies the scenario where a first run with only instructions produces a history
+    starting with an assistant message (after system parts are extracted), and a second
+    run using that history doesn't fail.
+    See: https://github.com/pydantic/pydantic-ai/issues/4495
+    """
+    model = BedrockConverseModel(model_name, provider=bedrock_provider)
+    agent = Agent(model=model, system_prompt='Generate a short greeting.')
+
+    first_result = await agent.run()
+    second_result = await agent.run('Now say goodbye.', message_history=first_result.all_messages())
+    assert second_result.output
+    assert second_result.all_messages() == snapshot(
+        [
+            ModelRequest(
+                parts=[SystemPromptPart(content='Generate a short greeting.', timestamp=IsDatetime())],
+                timestamp=IsDatetime(),
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelResponse(
+                parts=[TextPart(content=IsStr())],
+                usage=IsInstance(RequestUsage),
+                model_name=model_name,
+                timestamp=IsDatetime(),
+                provider_name='bedrock',
+                provider_url='https://bedrock-runtime.us-east-1.amazonaws.com',
+                provider_details={'finish_reason': 'end_turn'},
+                finish_reason='stop',
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelRequest(
+                parts=[UserPromptPart(content='Now say goodbye.', timestamp=IsDatetime())],
+                timestamp=IsDatetime(),
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelResponse(
+                parts=[TextPart(content=IsStr())],
+                usage=IsInstance(RequestUsage),
+                model_name=model_name,
+                timestamp=IsDatetime(),
+                provider_name='bedrock',
+                provider_url='https://bedrock-runtime.us-east-1.amazonaws.com',
+                provider_details={'finish_reason': 'end_turn'},
+                finish_reason='stop',
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+        ]
+    )
+
+
+async def test_bedrock_non_leading_system_prompt_wraps_as_user_message(bedrock_provider: BedrockProvider):
+    model = BedrockConverseModel('us.amazon.nova-pro-v1:0', provider=bedrock_provider)
+
+    messages: list[ModelMessage] = [
+        ModelRequest(parts=[SystemPromptPart(content='You are helpful.'), UserPromptPart(content='hi')]),
+        ModelResponse(parts=[TextPart(content='hello')]),
+        ModelRequest(parts=[SystemPromptPart(content='Now be terse.'), UserPromptPart(content='what next?')]),
+    ]
+    prepared = model.prepare_messages(messages)
+    system_prompt, bedrock_messages = await model._map_messages(  # pyright: ignore[reportPrivateUsage]
+        prepared, ModelRequestParameters(), BedrockModelSettings()
+    )
+
+    assert system_prompt == [{'text': 'You are helpful.'}]
+    text_blocks = [
+        block['text']
+        for msg in cast(list[Any], bedrock_messages)
+        if msg['role'] == 'user'
+        for block in msg['content']
+        if 'text' in block
+    ]
+    assert '<system>Now be terse.</system>' in text_blocks
+    assert 'You are helpful.' not in text_blocks
+
+
+async def test_bedrock_system_prompt_after_user_part_stays_in_messages(bedrock_provider: BedrockProvider):
+    """An instruction merged into the first request after user content must not rewrite the cache prefix."""
+    model = BedrockConverseModel('us.anthropic.claude-opus-4-8', provider=bedrock_provider)
+    messages: list[ModelMessage] = [ModelRequest(parts=[UserPromptPart(content='x'), SystemPromptPart(content='mid')])]
+
+    prepared = model.prepare_messages(messages)
+    system_prompt, bedrock_messages = await model._map_messages(  # pyright: ignore[reportPrivateUsage]
+        prepared, ModelRequestParameters(), BedrockModelSettings()
+    )
+
+    assert system_prompt == []
+    assert bedrock_messages == [
+        {'role': 'user', 'content': [{'text': 'x'}, {'text': '<system>mid</system>'}]},
+    ]
+
+
+def _tool_result_then_document_history() -> list[ModelMessage]:
+    """A completed tool call whose result is the last message, then a user turn with a document.
+
+    Merged naively this yields one user message co-locating a `toolResult` with a `document` block,
+    which several models reject. See #6081.
+    """
+    return [
+        ModelRequest(parts=[UserPromptPart(content='show me my expenses')]),
+        ModelResponse(parts=[ToolCallPart(tool_name='get', args={}, tool_call_id='t1')]),
+        ModelRequest(parts=[ToolReturnPart(tool_name='get', content='ok', tool_call_id='t1')]),
+        ModelRequest(
+            parts=[
+                UserPromptPart(
+                    content=[
+                        'what accounts are in this?',
+                        DocumentUrl(url='s3://bucket/file.csv', media_type='text/csv'),
+                    ]
+                )
+            ]
+        ),
+    ]
+
+
+async def test_bedrock_anthropic_tool_result_and_document_alternate(bedrock_provider: BedrockProvider):
+    """Anthropic rejects a document co-located with a `toolResult`, so the turns are split (#6081).
+
+    Unit test (not VCR): our cassette matcher isn't sensitive to the request body, so a regression in
+    this message shaping could still match a recording and pass green. Asserting the mapped sequence
+    directly is what catches that.
+    """
+    model = BedrockConverseModel('us.anthropic.claude-sonnet-4-5-20250929-v1:0', provider=bedrock_provider)
+    prepared = model.prepare_messages(_tool_result_then_document_history())
+    _, bedrock_messages = await model._map_messages(  # pyright: ignore[reportPrivateUsage]
+        prepared, ModelRequestParameters(), BedrockModelSettings()
+    )
+
+    # The `toolResult` and `document` turns are separated by a synthetic assistant turn rather than merged.
+    assert bedrock_messages == snapshot(
+        [
+            {'role': 'user', 'content': [{'text': 'show me my expenses'}]},
+            {'role': 'assistant', 'content': [{'toolUse': {'toolUseId': 't1', 'name': 'get', 'input': {}}}]},
+            {
+                'role': 'user',
+                'content': [{'toolResult': {'toolUseId': 't1', 'content': [{'text': 'ok'}], 'status': 'success'}}],
+            },
+            {'role': 'assistant', 'content': [{'text': '.'}]},
+            {
+                'role': 'user',
+                'content': [
+                    {'text': 'what accounts are in this?'},
+                    {
+                        'document': {
+                            'name': 'Document 1',
+                            'format': 'csv',
+                            'source': {'s3Location': {'uri': 's3://bucket/file.csv'}},
+                        }
+                    },
+                ],
+            },
+        ]
+    )
+
+
+async def test_bedrock_nova_tool_result_and_document_merge(bedrock_provider: BedrockProvider):
+    """Nova has no co-location constraint, so the turns are merged (no synthetic assistant turn).
+
+    Guards against over-applying the #6081 split to models that accept a `toolResult` alongside a document.
+    Unit test (not VCR): it pins the mapped request-payload shape, which our cassette matcher isn't
+    sensitive to, so a regression could still match a recording and pass green.
+    """
+    model = BedrockConverseModel('us.amazon.nova-pro-v1:0', provider=bedrock_provider)
+    prepared = model.prepare_messages(_tool_result_then_document_history())
+    _, bedrock_messages = await model._map_messages(  # pyright: ignore[reportPrivateUsage]
+        prepared, ModelRequestParameters(), BedrockModelSettings()
+    )
+
+    assert bedrock_messages == snapshot(
+        [
+            {'role': 'user', 'content': [{'text': 'show me my expenses'}]},
+            {'role': 'assistant', 'content': [{'toolUse': {'toolUseId': 't1', 'name': 'get', 'input': {}}}]},
+            {
+                'role': 'user',
+                'content': [
+                    {'toolResult': {'toolUseId': 't1', 'content': [{'text': 'ok'}], 'status': 'success'}},
+                    {'text': 'what accounts are in this?'},
+                    {
+                        'document': {
+                            'name': 'Document 1',
+                            'format': 'csv',
+                            'source': {'s3Location': {'uri': 's3://bucket/file.csv'}},
+                        }
+                    },
+                ],
+            },
+        ]
+    )
+
+
+async def test_bedrock_llama_tool_result_isolated_from_text(bedrock_provider: BedrockProvider):
+    """Llama requires a `toolResult` to be alone in its turn, so even a following text turn is split off.
+
+    Unit test (not VCR): it pins the mapped request-payload shape, which our cassette matcher isn't
+    sensitive to, so a regression could still match a recording and pass green.
+    """
+    model = BedrockConverseModel('us.meta.llama4-maverick-17b-instruct-v1:0', provider=bedrock_provider)
+    messages: list[ModelMessage] = [
+        ModelRequest(parts=[UserPromptPart(content='show me my expenses')]),
+        ModelResponse(parts=[ToolCallPart(tool_name='get', args={}, tool_call_id='t1')]),
+        ModelRequest(parts=[ToolReturnPart(tool_name='get', content='ok', tool_call_id='t1')]),
+        ModelRequest(parts=[UserPromptPart(content='what accounts are in this?')]),
+    ]
+    prepared = model.prepare_messages(messages)
+    _, bedrock_messages = await model._map_messages(  # pyright: ignore[reportPrivateUsage]
+        prepared, ModelRequestParameters(), BedrockModelSettings()
+    )
+
+    assert bedrock_messages == snapshot(
+        [
+            {'role': 'user', 'content': [{'text': 'show me my expenses'}]},
+            {'role': 'assistant', 'content': [{'toolUse': {'toolUseId': 't1', 'name': 'get', 'input': {}}}]},
+            {
+                'role': 'user',
+                'content': [{'toolResult': {'toolUseId': 't1', 'content': [{'text': 'ok'}], 'status': 'success'}}],
+            },
+            {'role': 'assistant', 'content': [{'text': '.'}]},
+            {'role': 'user', 'content': [{'text': 'what accounts are in this?'}]},
+        ]
+    )
+
+
+@pytest.mark.vcr()
+async def test_bedrock_anthropic_tool_result_followed_by_document_accepted(
+    allow_model_requests: None, bedrock_provider: BedrockProvider, text_document_content: BinaryContent
+):
+    """Anthropic must accept a tool-result turn followed by a document turn once reshaped (#6081).
+
+    VCR (not unit) because only a real Converse request proves the reshaped history is accepted. Uses a
+    `text/plain` document, not a PDF: Anthropic accepts a PDF co-located with a `toolResult` even without
+    the fix, so a PDF here would pass green whether or not the split happened. A text document reproduces
+    the original `ValidationException`, so this recording genuinely exercises the fix.
+    """
+    model = BedrockConverseModel('us.anthropic.claude-sonnet-4-5-20250929-v1:0', provider=bedrock_provider)
+    agent = Agent(model)
+
+    @agent.tool_plain
+    def get_expenses() -> str:
+        return 'ok'  # pragma: no cover
+
+    result = await agent.run(
+        ['What is in this document?', text_document_content],
+        message_history=[
+            ModelRequest(parts=[UserPromptPart(content='show me my expenses')]),
+            ModelResponse(parts=[ToolCallPart(tool_name='get_expenses', args={}, tool_call_id='t1')]),
+            ModelRequest(parts=[ToolReturnPart(tool_name='get_expenses', content='ok', tool_call_id='t1')]),
+        ],
+    )
+
+    assert result.output == snapshot("""\
+The document is titled "Document 1.txt" and contains only the text:
+
+**"Dummy TXT file"**
+
+It appears to be a placeholder or test file with no substantial content.\
+""")
+
+
+@pytest.mark.vcr()
+async def test_bedrock_nova_tool_result_followed_by_document_accepted(
+    allow_model_requests: None, bedrock_provider: BedrockProvider, text_document_content: BinaryContent
+):
+    """Nova accepts the merged `toolResult` + document turn without any split (permissive co-location)."""
+    model = BedrockConverseModel('us.amazon.nova-pro-v1:0', provider=bedrock_provider)
+    agent = Agent(model)
+
+    @agent.tool_plain
+    def get_expenses() -> str:
+        return 'ok'  # pragma: no cover
+
+    result = await agent.run(
+        ['What is in this document?', text_document_content],
+        message_history=[
+            ModelRequest(parts=[UserPromptPart(content='show me my expenses')]),
+            ModelResponse(parts=[ToolCallPart(tool_name='get_expenses', args={}, tool_call_id='t1')]),
+            ModelRequest(parts=[ToolReturnPart(tool_name='get_expenses', content='ok', tool_call_id='t1')]),
+        ],
+    )
+
+    assert result.output == snapshot("""\
+<thinking> The tool 'get_expenses' has returned a success status, but the actual expenses data is not provided. The response mentions a "Dummy TXT file", which suggests that the expenses data might be in a text file. However, I do not have direct access to file contents or the ability to read files. I need to inform the user that I cannot retrieve the expenses data without further information or tools. </thinking>
+
+I'm sorry, but I can't directly access or read the contents of files. The tool 'get_expenses' has indicated a success status, but it did not provide the actual expenses data. If the expenses are stored in a "Dummy TXT file", I would need a tool that can read file contents to retrieve the data. Unfortunately, I do not have such a tool available. Please provide the expenses data directly or let me know if there's another way I can assist you.\
+""")
+
+
+@pytest.mark.vcr()
+async def test_bedrock_llama_tool_result_followed_by_text_accepted(
+    allow_model_requests: None, bedrock_provider: BedrockProvider
+):
+    """Llama rejects any content sharing a `toolResult` turn; the reshaped history must be accepted (#6081)."""
+    model = BedrockConverseModel('us.meta.llama4-maverick-17b-instruct-v1:0', provider=bedrock_provider)
+    agent = Agent(model)
+
+    @agent.tool_plain
+    def get_expenses() -> str:
+        return 'ok'  # pragma: no cover
+
+    result = await agent.run(
+        'Thanks. Now just say the word DONE.',
+        message_history=[
+            ModelRequest(parts=[UserPromptPart(content='show me my expenses')]),
+            ModelResponse(parts=[ToolCallPart(tool_name='get_expenses', args={}, tool_call_id='t1')]),
+            ModelRequest(parts=[ToolReturnPart(tool_name='get_expenses', content='ok', tool_call_id='t1')]),
+        ],
+    )
+
+    assert result.output == snapshot('DONE')
+
+
+@pytest.mark.vcr()
+async def test_bedrock_writer_tool_result_followed_by_text_accepted(
+    allow_model_requests: None, bedrock_provider: BedrockProvider
+):
+    """Writer Palmyra rejects any content sharing a `toolResult` turn; the reshaped history must be accepted (#6081).
+
+    VCR (not unit) because only a real Converse request proves the reshaped history is accepted: Writer
+    returns a `ValidationException` ("Conversation blocks and tool result blocks cannot be provided in the
+    same turn") if the `toolResult` isn't isolated into its own turn.
+    """
+    model = BedrockConverseModel('us.writer.palmyra-x4-v1:0', provider=bedrock_provider)
+    agent = Agent(model)
+
+    @agent.tool_plain
+    def get_expenses() -> str:
+        return 'ok'  # pragma: no cover
+
+    result = await agent.run(
+        'Thanks. Now just say the word DONE.',
+        message_history=[
+            ModelRequest(parts=[UserPromptPart(content='show me my expenses')]),
+            ModelResponse(parts=[ToolCallPart(tool_name='get_expenses', args={}, tool_call_id='t1')]),
+            ModelRequest(parts=[ToolReturnPart(tool_name='get_expenses', content='ok', tool_call_id='t1')]),
+        ],
+    )
+
+    assert result.output == snapshot('DONE')
+
+
+async def test_bedrock_writer_omits_tool_result_status(bedrock_provider: BedrockProvider):
+    """Writer Palmyra rejects the `status` field on a `toolResult`, so it's omitted from both success and error results.
+
+    Unit test (not VCR): our Bedrock cassette matcher isn't sensitive to the request body, so a `status` field
+    slipping back in could still match a recording and pass green. Asserting the mapped shape pins it.
+    """
+    model = BedrockConverseModel('us.writer.palmyra-x4-v1:0', provider=bedrock_provider)
+    history: list[ModelMessage] = [
+        ModelRequest(parts=[UserPromptPart(content='call the tools')]),
+        ModelResponse(
+            parts=[
+                ToolCallPart(tool_name='ok_tool', args={}, tool_call_id='okcall1'),
+                ToolCallPart(tool_name='bad_tool', args={}, tool_call_id='badcall1'),
+            ]
+        ),
+        ModelRequest(
+            parts=[
+                ToolReturnPart(tool_name='ok_tool', content='done', tool_call_id='okcall1'),
+                RetryPromptPart(content='boom', tool_name='bad_tool', tool_call_id='badcall1'),
+            ]
+        ),
+    ]
+    _, bedrock_messages = await model._map_messages(  # pyright: ignore[reportPrivateUsage]
+        model.prepare_messages(history), ModelRequestParameters(), BedrockModelSettings()
+    )
+
+    tool_results = [
+        block['toolResult'] for message in bedrock_messages for block in message['content'] if 'toolResult' in block
+    ]
+    assert tool_results == snapshot(
+        [
+            {'toolUseId': 'okcall1', 'content': [{'text': 'done'}]},
+            {
+                'toolUseId': 'badcall1',
+                'content': [{'text': 'boom\n\nFix the errors and try again.'}],
+            },
+        ]
+    )
+    assert all('status' not in result for result in tool_results)
+
+
+@pytest.mark.vcr()
+async def test_bedrock_zai_native_output(allow_model_requests: None, bedrock_provider: BedrockProvider):
+    """Z.AI GLM via Bedrock supports native structured output (`supports_json_schema_output=True`).
+
+    `NativeOutput` exercises Bedrock's `outputConfig` path rather than the default tool-output mode, so
+    the response arrives as structured output with no `final_result` output-tool call in the history.
+    """
+    model = BedrockConverseModel('zai.glm-4.7-flash', provider=bedrock_provider)
+    agent = Agent(model=model, instructions='You are a helpful chatbot.', retries={'output': 5})
+
+    class City(TypedDict):
+        city: str
+        country: str
+
+    result = await agent.run('Where is the Eiffel Tower?', output_type=NativeOutput(City))
+    assert result.output == snapshot({'city': 'Paris', 'country': 'France'})
+    # Native output travels via `outputConfig`, so there is no output-tool call in the message history.
+    assert not any(isinstance(part, ToolCallPart) for message in result.all_messages() for part in message.parts)
+
+
+@pytest.mark.vcr()
+async def test_bedrock_moonshotai_tool_call(allow_model_requests: None, bedrock_provider: BedrockProvider):
+    """Moonshot AI Kimi via Bedrock supports tool calls (registered under the `moonshot.` prefix here)."""
+    model = BedrockConverseModel('moonshot.kimi-k2-thinking', provider=bedrock_provider)
+    agent = Agent(model=model, instructions='You are a helpful chatbot. Use tools when helpful.')
+
+    @agent.tool_plain
+    async def get_temperature(city: str) -> str:
+        """Get the current temperature in a city."""
+        return '30°C'
+
+    result = await agent.run('What is the temperature in London? Use the tool.')
+    assert '30' in result.output
+    assert any(isinstance(part, ToolCallPart) for message in result.all_messages() for part in message.parts)
+
+
+def _tool_return_image_history(count: int = 1) -> list[ModelMessage]:
+    """A completed tool-use turn whose result(s) carry an image the model can't place in a `toolResult`.
+
+    Mistral (pixtral) rejects an image inside a `toolResult` and also rejects anything sharing the
+    `toolResult`'s turn, so the image ends up as sibling media that must be deferred to a later turn.
+    """
+    image = ImageUrl(url='s3://bucket/photo.jpg', media_type='image/jpeg')
+    calls = [ToolCallPart(tool_name='get_photo', args={}, tool_call_id=f'getphoto{i}') for i in range(1, count + 1)]
+    returns = [
+        ToolReturnPart(tool_name='get_photo', content=['Here it is:', image], tool_call_id=f'getphoto{i}')
+        for i in range(1, count + 1)
+    ]
+    return [
+        ModelRequest(parts=[UserPromptPart(content='show me the photo')]),
+        ModelResponse(parts=calls),
+        ModelRequest(parts=returns),
+    ]
+
+
+async def test_bedrock_mistral_tool_return_image_deferred_to_separate_turn(bedrock_provider: BedrockProvider):
+    """Mistral can't place tool-return image media in or beside its `toolResult`, so it's deferred to its own turn.
+
+    Unit test (not VCR): our Bedrock cassette matcher isn't sensitive to the request body, so a regression
+    in this reshaping could still match a recording and pass green. Asserting the mapped sequence pins it.
+    """
+    model = BedrockConverseModel('us.mistral.pixtral-large-2502-v1:0', provider=bedrock_provider)
+    _, bedrock_messages = await model._map_messages(  # pyright: ignore[reportPrivateUsage]
+        model.prepare_messages(_tool_return_image_history()), ModelRequestParameters(), BedrockModelSettings()
+    )
+
+    # The `toolResult` stays alone in its turn; the image is deferred behind a synthetic assistant turn.
+    assert bedrock_messages == snapshot(
+        [
+            {'role': 'user', 'content': [{'text': 'show me the photo'}]},
+            {
+                'role': 'assistant',
+                'content': [{'toolUse': {'toolUseId': 'getphoto1', 'name': 'get_photo', 'input': {}}}],
+            },
+            {
+                'role': 'user',
+                'content': [
+                    {
+                        'toolResult': {
+                            'toolUseId': 'getphoto1',
+                            'content': [{'text': 'Here it is:'}, {'text': 'See file d003ad.'}],
+                            'status': 'success',
+                        }
+                    }
+                ],
+            },
+            {'role': 'assistant', 'content': [{'text': '.'}]},
+            {
+                'role': 'user',
+                'content': [
+                    {'text': 'This is file d003ad:'},
+                    {'image': {'format': 'jpeg', 'source': {'s3Location': {'uri': 's3://bucket/photo.jpg'}}}},
+                ],
+            },
+        ]
+    )
+
+
+async def test_bedrock_mistral_two_tool_returns_images_grouped_then_deferred(bedrock_provider: BedrockProvider):
+    """With two image-carrying tool returns, Mistral needs both `toolResult`s grouped and the media deferred after.
+
+    Mistral requires every `toolResult` for a tool-use turn to sit together in the message immediately
+    following it; splitting them (e.g. interleaving each result with its media) is rejected. So the two
+    results stay grouped and both images are deferred to a single following user turn.
+
+    Unit test (not VCR): our Bedrock cassette matcher isn't sensitive to the request body, so a regression
+    in this reshaping could still match a recording and pass green. Asserting the mapped sequence pins it.
+    """
+    model = BedrockConverseModel('us.mistral.pixtral-large-2502-v1:0', provider=bedrock_provider)
+    _, bedrock_messages = await model._map_messages(  # pyright: ignore[reportPrivateUsage]
+        model.prepare_messages(_tool_return_image_history(count=2)), ModelRequestParameters(), BedrockModelSettings()
+    )
+
+    assert bedrock_messages == snapshot(
+        [
+            {'role': 'user', 'content': [{'text': 'show me the photo'}]},
+            {
+                'role': 'assistant',
+                'content': [
+                    {'toolUse': {'toolUseId': 'getphoto1', 'name': 'get_photo', 'input': {}}},
+                    {'toolUse': {'toolUseId': 'getphoto2', 'name': 'get_photo', 'input': {}}},
+                ],
+            },
+            {
+                'role': 'user',
+                'content': [
+                    {
+                        'toolResult': {
+                            'toolUseId': 'getphoto1',
+                            'content': [{'text': 'Here it is:'}, {'text': 'See file d003ad.'}],
+                            'status': 'success',
+                        }
+                    },
+                    {
+                        'toolResult': {
+                            'toolUseId': 'getphoto2',
+                            'content': [{'text': 'Here it is:'}, {'text': 'See file d003ad.'}],
+                            'status': 'success',
+                        }
+                    },
+                ],
+            },
+            {'role': 'assistant', 'content': [{'text': '.'}]},
+            {
+                'role': 'user',
+                'content': [
+                    {'text': 'This is file d003ad:'},
+                    {'image': {'format': 'jpeg', 'source': {'s3Location': {'uri': 's3://bucket/photo.jpg'}}}},
+                    {'text': 'This is file d003ad:'},
+                    {'image': {'format': 'jpeg', 'source': {'s3Location': {'uri': 's3://bucket/photo.jpg'}}}},
+                ],
+            },
+        ]
+    )
+
+
+async def test_bedrock_nova_tool_return_media_stays_colocated(bedrock_provider: BedrockProvider):
+    """Nova allows media beside a `toolResult`, so tool-return media stays co-located in the same turn (unchanged).
+
+    Guards against over-applying the deferral to permissive models: Nova doesn't accept a document inside
+    a `toolResult`, so it becomes sibling media, but since Nova has no co-location constraint the media
+    must remain in the `toolResult`'s own turn exactly as before.
+
+    Unit test (not VCR): our Bedrock cassette matcher isn't sensitive to the request body, so a regression
+    could still match a recording and pass green. Asserting the mapped sequence pins it.
+    """
+    model = BedrockConverseModel('us.amazon.nova-pro-v1:0', provider=bedrock_provider)
+    document = DocumentUrl(url='s3://bucket/report.csv', media_type='text/csv')
+    history: list[ModelMessage] = [
+        ModelRequest(parts=[UserPromptPart(content='show me the report')]),
+        ModelResponse(parts=[ToolCallPart(tool_name='get_report', args={}, tool_call_id='t1')]),
+        ModelRequest(
+            parts=[ToolReturnPart(tool_name='get_report', content=['Here it is:', document], tool_call_id='t1')]
+        ),
+    ]
+    _, bedrock_messages = await model._map_messages(  # pyright: ignore[reportPrivateUsage]
+        model.prepare_messages(history), ModelRequestParameters(), BedrockModelSettings()
+    )
+
+    # The document sibling stays in the same user turn as the `toolResult`; no deferral, no synthetic turn.
+    assert bedrock_messages == snapshot(
+        [
+            {'role': 'user', 'content': [{'text': 'show me the report'}]},
+            {'role': 'assistant', 'content': [{'toolUse': {'toolUseId': 't1', 'name': 'get_report', 'input': {}}}]},
+            {
+                'role': 'user',
+                'content': [
+                    {
+                        'toolResult': {
+                            'toolUseId': 't1',
+                            'content': [{'text': 'Here it is:'}, {'text': 'See file 49d492.'}],
+                            'status': 'success',
+                        }
+                    },
+                    {'text': 'This is file 49d492:'},
+                    {
+                        'document': {
+                            'name': 'Document 1',
+                            'format': 'csv',
+                            'source': {'s3Location': {'uri': 's3://bucket/report.csv'}},
+                        }
+                    },
+                ],
+            },
+        ]
+    )
+
+
+@pytest.mark.vcr()
+async def test_bedrock_mistral_tool_return_image_accepted(
+    allow_model_requests: None, bedrock_provider: BedrockProvider, image_content: BinaryContent
+):
+    """Mistral must accept a tool-return image once it's deferred to its own turn behind a synthetic assistant turn.
+
+    VCR (not unit) because only a real Converse request proves the reshaped history is accepted end-to-end.
+    """
+    model = BedrockConverseModel('us.mistral.pixtral-large-2502-v1:0', provider=bedrock_provider)
+    agent = Agent(model)
+
+    @agent.tool_plain
+    def get_photo() -> BinaryContent:
+        return image_content  # pragma: no cover
+
+    result = await agent.run(
+        'What fruit is in the photo? Answer with one word.',
+        message_history=[
+            ModelRequest(parts=[UserPromptPart(content='show me the photo')]),
+            ModelResponse(parts=[ToolCallPart(tool_name='get_photo', args={}, tool_call_id='getphoto1')]),
+            ModelRequest(
+                parts=[
+                    ToolReturnPart(
+                        tool_name='get_photo', content=['Here it is:', image_content], tool_call_id='getphoto1'
+                    )
+                ]
+            ),
+        ],
+    )
+
+    assert result.output == snapshot('Kiwi')
+
+
+@pytest.mark.vcr()
+async def test_bedrock_mistral_two_tool_returns_images_accepted(
+    allow_model_requests: None, bedrock_provider: BedrockProvider, image_content: BinaryContent
+):
+    """Mistral must accept two grouped image-carrying tool returns with both images deferred to one following turn.
+
+    VCR (not unit) because only a real Converse request proves the reshaped multi-result history is accepted.
+    """
+    model = BedrockConverseModel('us.mistral.pixtral-large-2502-v1:0', provider=bedrock_provider)
+    agent = Agent(model)
+
+    @agent.tool_plain
+    def get_photo() -> BinaryContent:
+        return image_content  # pragma: no cover
+
+    result = await agent.run(
+        'What fruit is in the photos? Answer with one word.',
+        message_history=[
+            ModelRequest(parts=[UserPromptPart(content='show me the photos')]),
+            ModelResponse(
+                parts=[
+                    ToolCallPart(tool_name='get_photo', args={}, tool_call_id='getphoto1'),
+                    ToolCallPart(tool_name='get_photo', args={}, tool_call_id='getphoto2'),
+                ]
+            ),
+            ModelRequest(
+                parts=[
+                    ToolReturnPart(
+                        tool_name='get_photo', content=['Here it is:', image_content], tool_call_id='getphoto1'
+                    ),
+                    ToolReturnPart(
+                        tool_name='get_photo', content=['Here it is:', image_content], tool_call_id='getphoto2'
+                    ),
+                ]
+            ),
+        ],
+    )
+
+    assert result.output == snapshot('Kiwi')
+
+
+async def test_bedrock_leading_assistant_message_not_prepended_for_anthropic(bedrock_provider: BedrockProvider):
+    """Anthropic on Bedrock accepts a leading assistant turn, so history starting with a `ModelResponse` is left untouched.
+
+    This is a unit test because it asserts the shape of the mapped Converse payload: our Bedrock
+    cassette matcher isn't sensitive to the request body, so a VCR test would stay green whether or
+    not the synthetic user turn is prepended. Asserting the mapped messages directly is what pins it.
+    """
+    model = BedrockConverseModel('us.anthropic.claude-sonnet-4-5-20250929-v1:0', provider=bedrock_provider)
+
+    messages: list[ModelMessage] = [
+        ModelResponse(parts=[TextPart(content='hello')]),
+        ModelRequest(parts=[UserPromptPart(content='say goodbye')]),
+    ]
+    _, bedrock_messages = await model._map_messages(  # pyright: ignore[reportPrivateUsage]
+        model.prepare_messages(messages), ModelRequestParameters(), BedrockModelSettings()
+    )
+    assert bedrock_messages == snapshot(
+        [
+            {'role': 'assistant', 'content': [{'text': 'hello'}]},
+            {'role': 'user', 'content': [{'text': 'say goodbye'}]},
+        ]
+    )
+
+
+async def test_bedrock_leading_assistant_message_prepended_for_nova(bedrock_provider: BedrockProvider):
+    """Nova on Bedrock rejects a leading assistant turn, so a synthetic user turn is prepended.
+
+    This is a unit test for the same reason as `test_bedrock_leading_assistant_message_not_prepended_for_anthropic`:
+    the mapped payload shape is what distinguishes the two families, and the cassette matcher wouldn't catch it.
+    """
+    model = BedrockConverseModel('us.amazon.nova-micro-v1:0', provider=bedrock_provider)
+
+    messages: list[ModelMessage] = [
+        ModelResponse(parts=[TextPart(content='hello')]),
+        ModelRequest(parts=[UserPromptPart(content='say goodbye')]),
+    ]
+    _, bedrock_messages = await model._map_messages(  # pyright: ignore[reportPrivateUsage]
+        model.prepare_messages(messages), ModelRequestParameters(), BedrockModelSettings()
+    )
+    assert bedrock_messages == snapshot(
+        [
+            {'role': 'user', 'content': [{'text': '.'}]},
+            {'role': 'assistant', 'content': [{'text': 'hello'}]},
+            {'role': 'user', 'content': [{'text': 'say goodbye'}]},
+        ]
+    )
+
+
+async def test_bedrock_empty_history_prepended_for_anthropic(bedrock_provider: BedrockProvider):
+    """Even Anthropic needs a synthetic user turn when there are no messages, since Converse requires at least one.
+
+    This is a unit test because the empty-conversation case (system prompt/instructions only) can't be
+    distinguished from a normal run through the cassette matcher; asserting the mapped payload pins that
+    the synthetic turn is still inserted regardless of `bedrock_supports_leading_assistant_message`.
+    """
+    model = BedrockConverseModel('us.anthropic.claude-sonnet-4-5-20250929-v1:0', provider=bedrock_provider)
+
+    messages: list[ModelMessage] = [ModelRequest(parts=[SystemPromptPart(content='Generate a short greeting.')])]
+    system_prompt, bedrock_messages = await model._map_messages(  # pyright: ignore[reportPrivateUsage]
+        model.prepare_messages(messages), ModelRequestParameters(), BedrockModelSettings()
+    )
+    assert system_prompt == [{'text': 'Generate a short greeting.'}]
+    assert bedrock_messages == snapshot([{'role': 'user', 'content': [{'text': '.'}]}])
+
+
+async def test_bedrock_anthropic_message_history_starting_with_response(
+    allow_model_requests: None, bedrock_provider: BedrockProvider
+):
+    """An Anthropic run whose `message_history` starts with a `ModelResponse` is accepted end-to-end.
+
+    Bedrock accepts a leading assistant turn for Anthropic, so no synthetic user message is
+    synthesized and the real API takes the history as-is.
+    """
+    model = BedrockConverseModel('us.anthropic.claude-sonnet-4-5-20250929-v1:0', provider=bedrock_provider)
+    agent = Agent(model=model)
+
+    message_history: list[ModelMessage] = [ModelResponse(parts=[TextPart(content='Hello there!')])]
+    result = await agent.run('Now say goodbye.', message_history=message_history)
+    assert result.output == snapshot('Goodbye!')
+    assert result.all_messages() == snapshot(
+        [
+            ModelResponse(
+                parts=[TextPart(content='Hello there!')],
+                timestamp=IsDatetime(),
+            ),
+            ModelRequest(
+                parts=[UserPromptPart(content='Now say goodbye.', timestamp=IsDatetime())],
+                timestamp=IsDatetime(),
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+            ModelResponse(
+                parts=[TextPart(content=IsStr())],
+                usage=IsInstance(RequestUsage),
+                model_name='us.anthropic.claude-sonnet-4-5-20250929-v1:0',
+                timestamp=IsDatetime(),
+                provider_name='bedrock',
+                provider_url='https://bedrock-runtime.us-east-1.amazonaws.com',
+                provider_details={'finish_reason': 'end_turn'},
+                finish_reason='stop',
+                run_id=IsStr(),
+                conversation_id=IsStr(),
+            ),
+        ]
+    )
