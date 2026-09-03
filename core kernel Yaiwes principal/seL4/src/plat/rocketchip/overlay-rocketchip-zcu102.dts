@@ -1,0 +1,60 @@
+/*
+ * Copyright 2023, DornerWorks
+ *
+ * SPDX-License-Identifier: GPL-2.0-only
+ */
+
+/ {
+    chosen {
+        seL4,kernel-devices =
+            &{/soc/clint@2000000},
+            &{/soc/interrupt-controller@c000000};
+    };
+
+    /* The size and address of the CLINT is derived from the Rocketchip source code. */
+    soc {
+        clint@2000000 {
+            compatible = "riscv,cpu-intc";
+            reg = <0x2000000 0x10000>;
+        };
+    };
+
+    /* Reserve 2 MiB for SBI at the start of RAM (0x80000000 - 0x80200000). This
+     * is exactly one "megapage" in the MMU table. It leaves plenty of space for
+     * further SBI experimenting, given the known usage (as of June 2021) is:
+     * - BBL: 76 KiB (= 0x13000)
+     * - OpenSBI: 128 KiB (= 0x20000) with PMP protection
+     */
+    reserved-memory {
+        #address-cells = <0x01>;
+        #size-cells = <0x01>;
+        ranges;
+        sbi@40000000 {
+            reg = <0x40000000 0x200000>;
+            no-map;
+        };
+    };
+
+	/delete-node/ memory@80000000;
+
+	L6: memory@40000000 {
+		device_type = "memory";
+		reg = <0x40000000 0x40000000>;
+	};
+
+	uartclk: uartclk {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <100000000>;
+	};
+
+	serial@ff010000{
+		compatible = "cdns,uart-r1p12";
+		status = "okay";
+		interrupts = <2>;
+		interrupt-parent = <&L0>;
+		reg = <0x0 0xff010000 0x0 0x1000>;
+		clock-names = "uart_clk", "pclk";
+		clocks = <&uartclk>, <&uartclk>;
+	};
+};

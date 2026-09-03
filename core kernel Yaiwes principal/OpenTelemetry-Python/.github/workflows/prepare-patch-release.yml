@@ -1,0 +1,131 @@
+name: Prepare patch release
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prepare-patch-release:
+    permissions:
+      contents: write  # required for pushing changes
+      pull-requests: write # required for adding labels to PRs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install dependencies
+        run: pip install toml towncrier
+
+      - run: |
+          if [[ ! $GITHUB_REF_NAME =~ ^release/v[0-9]+\.[0-9]+\.x-0\.[0-9]+bx$ ]]; then
+            echo this workflow should only be run against long-term release branches
+            exit 1
+          fi
+
+      - name: Set environment variables
+        run: |
+          stable_version=$(./scripts/eachdist.py version --mode stable)
+          unstable_version=$(./scripts/eachdist.py version --mode prerelease)
+
+          if [[ $stable_version =~ ^([0-9]+\.[0-9]+)\.([0-9]+)$ ]]; then
+            stable_major_minor="${BASH_REMATCH[1]}"
+            stable_patch="${BASH_REMATCH[2]}"
+          else
+            echo "unexpected stable_version: $stable_version"
+            exit 1
+          fi
+
+          if [[ $unstable_version =~ ^0\.([0-9]+)b([0-9]+)$ ]]; then
+            unstable_minor="${BASH_REMATCH[1]}"
+            unstable_patch="${BASH_REMATCH[2]}"
+          else
+            echo "unexpected unstable_version: $unstable_version"
+            exit 1
+          fi
+
+          stable_version_prev="$stable_major_minor.$((stable_patch))"
+          unstable_version_prev="0.${unstable_minor}b$((unstable_patch))"
+          stable_version="$stable_major_minor.$((stable_patch + 1))"
+          unstable_version="0.${unstable_minor}b$((unstable_patch + 1))"
+
+          echo "STABLE_VERSION=$stable_version" >> $GITHUB_ENV
+          echo "UNSTABLE_VERSION=$unstable_version" >> $GITHUB_ENV
+          echo "STABLE_VERSION_PREV=$stable_version_prev" >> $GITHUB_ENV
+          echo "UNSTABLE_VERSION_PREV=$unstable_version_prev" >> $GITHUB_ENV
+
+      - name: Update version
+        run: .github/scripts/update-version-patch.sh $STABLE_VERSION $UNSTABLE_VERSION $STABLE_VERSION_PREV $UNSTABLE_VERSION_PREV
+
+      - name: Generate changelog
+        run: towncrier build --yes --version "$STABLE_VERSION/$UNSTABLE_VERSION"
+
+      - name: Use CLA approved github bot
+        run: .github/scripts/use-cla-approved-github-bot.sh
+
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: otelbot-token
+        with:
+          client-id: ${{ vars.OTELBOT_CLIENT_ID }}
+          private-key: ${{ secrets.OTELBOT_PRIVATE_KEY }}
+
+      - name: Create pull request
+        id: create_pr
+        env:
+          # not using secrets.GITHUB_TOKEN since pull requests from that token do not run workflows
+          GITHUB_TOKEN: ${{ steps.otelbot-token.outputs.token }}
+        run: |
+          message="Prepare release ${STABLE_VERSION}/${UNSTABLE_VERSION}"
+          branch="otelbot/prepare-release-${STABLE_VERSION}-${UNSTABLE_VERSION}"
+
+          git commit -a -m "$message"
+          git push origin HEAD:$branch
+          pr_url=$(gh pr create --title "[$GITHUB_REF_NAME] $message" \
+                       --body "$message." \
+                       --head $branch \
+                       --base $GITHUB_REF_NAME)
+
+          echo "pr_url=$pr_url" >> $GITHUB_OUTPUT
+      - name: Add prepare-release label to PR
+        if: steps.create_pr.outputs.pr_url != ''
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr edit ${{ steps.create_pr.outputs.pr_url }}  --add-label "prepare-release"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+
+      - name: Use CLA approved github bot
+        run: .github/scripts/use-cla-approved-github-bot.sh
+
+      - name: Backport patch release changelog to main
+        id: backport_pr
+        env:
+          GITHUB_TOKEN: ${{ steps.otelbot-token.outputs.token }}
+        run: |
+          release_branch="otelbot/prepare-release-${STABLE_VERSION}-${UNSTABLE_VERSION}"
+          message="Backport ${STABLE_VERSION}/${UNSTABLE_VERSION} changelog"
+          body="Backport \`${STABLE_VERSION}/${UNSTABLE_VERSION}\` changelog"
+          branch="otelbot/backport-changelog-from-${STABLE_VERSION}-${UNSTABLE_VERSION}"
+
+          git fetch origin $release_branch
+
+          # Copy the updated CHANGELOG.md from the release branch
+          git checkout FETCH_HEAD -- CHANGELOG.md
+          git commit -m "$message"
+
+          git push origin HEAD:$branch
+          pr_url=$(gh pr create --title "$message" \
+                                --body "$body" \
+                                --head $branch \
+                                --base main)
+          echo "pr_url=$pr_url" >> $GITHUB_OUTPUT
+
+      - name: Add Skip Changelog label to backport PR
+        if: steps.backport_pr.outputs.pr_url != ''
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr edit ${{ steps.backport_pr.outputs.pr_url }} --add-label "Skip Changelog"

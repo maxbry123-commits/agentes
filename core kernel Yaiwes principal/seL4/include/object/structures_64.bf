@@ -1,0 +1,346 @@
+--
+-- Copyright 2020, Data61, CSIRO (ABN 41 687 119 230)
+--
+-- SPDX-License-Identifier: GPL-2.0-only
+--
+
+block null_cap {
+    padding        64
+
+    field capType  5
+    padding        word_size - 5
+}
+
+block untyped_cap {
+    field capFreeIndex  canonical_size
+    padding             word_size - canonical_size - 1 - 6
+    field capIsDevice   1
+    field capBlockSize  6
+
+    field capType       5
+    field_ptr capPtr    word_size - 5
+}
+
+block endpoint_cap(capEPBadge, capCanGrantReply, capCanGrant, capCanSend,
+                   capCanReceive, capEPPtr, capType) {
+    field capEPBadge       64
+
+    field capType          5
+    field capCanGrantReply 1
+    field capCanGrant      1
+    field capCanReceive    1
+    field capCanSend       1
+    field_ptr capEPPtr     word_size - 5 - 4
+}
+
+block notification_cap {
+    field capNtfnBadge       64
+
+    field capType            5
+    field capNtfnCanReceive  1
+    field capNtfnCanSend     1
+    field_ptr capNtfnPtr     word_size - 5 - 2
+}
+
+#ifdef CONFIG_KERNEL_MCS
+block reply_cap {
+    field capReplyPtr       64
+
+    field capType           5
+    field capReplyCanGrant  1
+    padding                 word_size - 5 - 1
+}
+
+block call_stack(callStackPtr, isHead) {
+    padding                 word_size - 1 - 48
+    field isHead            1
+    field_ptr callStackPtr  48
+}
+#else
+block reply_cap(capReplyCanGrant, capReplyMaster, capTCBPtr, capType) {
+    field capTCBPtr         64
+
+    field capType           5
+    padding                 word_size - 5 - 2
+    field capReplyCanGrant  1
+    field capReplyMaster    1
+}
+#endif
+
+-- The user-visible format of the data word is defined by cnode_capdata, below.
+block cnode_cap(capCNodeRadix, capCNodeGuardSize, capCNodeGuard,
+                capCNodePtr, capType) {
+    field capCNodeGuard       64
+
+    field capType             5
+    field capCNodeGuardSize   6
+    field capCNodeRadix       6
+    field_ptr(1) capCNodePtr  47
+}
+
+block thread_cap {
+    padding              64
+
+    field capType        5
+    field_ptr capTCBPtr  word_size - 5
+}
+
+block irq_control_cap {
+    padding        64
+
+    field capType  5
+    padding        word_size - 5
+}
+
+block irq_handler_cap {
+#ifdef ENABLE_SMP_SUPPORT
+    field capIRQ   64
+#else
+    padding        word_size - 12
+    field          capIRQ 12
+#endif
+
+    field capType  5
+    padding        word_size - 5
+}
+
+block zombie_cap {
+    field capZombieID    64
+
+    field capType        5
+    padding              word_size - 5 - 7
+    field capZombieType  7
+}
+
+block domain_cap {
+    padding        64
+
+    field capType  5
+    padding        word_size - 5
+}
+
+#ifdef CONFIG_KERNEL_MCS
+block sched_context_cap {
+    field_ptr capSCPtr   48
+    field capSCSizeBits  6
+    padding              10
+
+    field capType        5
+    padding              59
+}
+
+block sched_control_cap {
+    field core     64
+
+    field capType  5
+    padding        59
+}
+#endif
+
+---- Arch-independent object types
+
+-- Endpoint: size = 16 bytes
+block endpoint {
+    field epQueue_head         64
+    field_ptr(2) epQueue_tail  word_size - 2
+    field state                2
+}
+
+-- Async endpoint: size = 32 bytes (64 bytes on mcs)
+block notification {
+#ifdef CONFIG_KERNEL_MCS
+    padding                     3 * word_size
+    field_ptr ntfnSchedContext  word_size
+#endif
+
+    field_ptr ntfnBoundTCB      word_size
+
+    field ntfnMsgIdentifier     word_size
+
+    field_ptr ntfnQueue_head    word_size
+
+    field_high ntfnQueue_tail   canonical_size
+    padding                     word_size - canonical_size - 2
+    field state                 2
+}
+
+-- Mapping database (MDB) node: size = 16 bytes
+block mdb_node {
+    field_ptr(2) mdbNext  word_size - 2
+    field mdbRevocable    1
+    field mdbFirstBadged  1
+
+    field mdbPrev         word_size
+}
+
+-- Thread state data
+--
+-- tsType
+-- * Running
+-- * Restart
+-- * Inactive
+-- * BlockedOnReceive
+--   - Endpoint
+--   - CanGrant
+-- * BlockedOnSend
+--   - Endpoint
+--   - CanGrant
+--   - CanGrantReply
+--   - IsCall
+--   - IPCBadge
+--   - Fault
+--     - seL4_FaultType
+--     * CapFault
+--       - Address
+--       - InReceivePhase
+--       - LookupFailure
+--         - lufType
+--         * InvalidRoot
+--         * MissingCapability
+--           - BitsLeft
+--         * DepthMismatch
+--           - BitsFound
+--           - BitsLeft
+--         * GuardMismatch
+--           - GuardFound
+--           - BitsLeft
+--           - GuardSize
+--     * VMFault
+--       - Address
+--       - FSR
+--       - FaultType
+--     * UnknownSyscall
+--       - Number
+--     * UserException
+--       - Number
+--       - Code
+-- * BlockedOnReply
+-- * BlockedOnFault
+--   - Fault
+-- * BlockedOnNotification
+--   - Notification
+-- * Idle
+
+-- Lookup fault: size = 16 bytes
+block invalid_root {
+    padding        64
+
+    padding        62
+    field lufType  2
+}
+
+block missing_capability {
+    padding         64
+
+    padding         55
+    field bitsLeft  7
+    field lufType   2
+}
+
+block depth_mismatch {
+    padding          64
+
+    padding          48
+    field bitsFound  7
+    field bitsLeft   7
+    field lufType    2
+}
+
+block guard_mismatch {
+    field guardFound  64
+
+    padding           48
+    field bitsLeft    7
+    field bitsFound   7
+    field lufType     2
+}
+
+tagged_union lookup_fault lufType {
+    tag invalid_root        0
+    tag missing_capability  1
+    tag depth_mismatch      2
+    tag guard_mismatch      3
+}
+
+-- Fault: size = 16 bytes
+block NullFault {
+    padding               64
+
+    padding               60
+    field seL4_FaultType  4
+}
+
+block CapFault {
+    field address         64
+
+    field inReceivePhase  1
+    padding               59
+    field seL4_FaultType  4
+}
+
+block UnknownSyscall {
+    field syscallNumber   64
+
+    padding               60
+    field seL4_FaultType  4
+}
+
+block UserException {
+    padding               64
+
+    field number          32
+    field code            28
+    field seL4_FaultType  4
+}
+
+#ifdef CONFIG_HARDWARE_DEBUG_API
+block DebugException {
+    field breakpointAddress  64
+
+    padding                  52
+    -- X86 has 4 breakpoints (DR0-3).
+    -- ARM has between 2 and 16 breakpoints
+    --   ( ARM Ref manual, C3.3).
+    -- So we just use 4 bits to cater for both.
+    field breakpointNumber   4
+    field exceptionReason    4
+    field seL4_FaultType     4
+}
+#endif
+
+#ifdef CONFIG_KERNEL_MCS
+block Timeout {
+    field badge           64
+    padding               60
+    field seL4_FaultType  4
+}
+#endif
+
+-- Thread state: size = 24 bytes
+block thread_state(blockingIPCBadge, blockingIPCCanGrant,
+                   blockingIPCCanGrantReply, blockingIPCIsCall,
+#ifdef CONFIG_KERNEL_MCS
+                   tcbQueued, tsType,
+                   tcbInReleaseQueue, blockingObject, replyObject) {
+#else
+                   tcbQueued, blockingObject,
+                   tsType) {
+#endif
+    field blockingIPCBadge          64
+
+#ifdef CONFIG_KERNEL_MCS
+    field_ptr(4) replyObject        59
+#else
+    padding                         60
+#endif
+    field blockingIPCCanGrant       1
+    field blockingIPCCanGrantReply  1
+    field blockingIPCIsCall         1
+    field tcbQueued                 1
+#ifdef CONFIG_KERNEL_MCS
+    field tcbInReleaseQueue         1
+#endif
+
+    field_ptr(4) blockingObject     word_size - 4
+    field tsType                    4
+}

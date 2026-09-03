@@ -1,0 +1,100 @@
+# Copyright The OpenTelemetry Authors
+# SPDX-License-Identifier: Apache-2.0
+
+import unittest
+
+from opentelemetry import trace as trace_api
+from opentelemetry._logs import _internal as logging_api
+from opentelemetry.metrics import _internal as metrics_api
+from opentelemetry.metrics._internal import _ProxyMeterProvider
+from opentelemetry.util._once import Once
+
+
+# pylint: disable=protected-access
+def reset_trace_globals() -> None:
+    """WARNING: only use this for tests."""
+    trace_api._TRACER_PROVIDER_SET_ONCE = Once()
+    trace_api._TRACER_PROVIDER = None
+    trace_api._PROXY_TRACER_PROVIDER = trace_api.ProxyTracerProvider()
+
+
+# pylint: disable=protected-access
+def reset_metrics_globals() -> None:
+    """WARNING: only use this for tests."""
+    metrics_api._METER_PROVIDER_SET_ONCE = Once()  # type: ignore[attr-defined]
+    metrics_api._METER_PROVIDER = None  # type: ignore[attr-defined]
+    metrics_api._PROXY_METER_PROVIDER = _ProxyMeterProvider()  # type: ignore[attr-defined]
+
+
+# pylint: disable=protected-access
+def reset_logging_globals() -> None:
+    """WARNING: only use this for tests."""
+    logging_api._LOGGER_PROVIDER_SET_ONCE = Once()  # type: ignore[attr-defined]
+    logging_api._LOGGER_PROVIDER = None  # type: ignore[attr-defined]
+    logging_api._PROXY_LOGGER_PROVIDER = logging_api.ProxyLoggerProvider()  # type: ignore[attr-defined]
+
+
+# pylint: disable=protected-access
+def reset_event_globals() -> None:
+    """Deprecated no-op kept for backward compatibility.
+
+    The Events API has been removed; this function does nothing.
+    """
+
+
+class TraceGlobalsTest(unittest.TestCase):
+    """Resets trace API globals in setUp/tearDown
+
+    Use as a base class or mixin for your test that modifies trace API globals.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        reset_trace_globals()
+
+    def tearDown(self) -> None:
+        super().tearDown()
+        reset_trace_globals()
+
+
+class MetricsGlobalsTest(unittest.TestCase):
+    """Resets metrics API globals in setUp/tearDown
+
+    Use as a base class or mixin for your test that modifies metrics API globals.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        reset_metrics_globals()
+
+    def tearDown(self) -> None:
+        super().tearDown()
+        reset_metrics_globals()
+
+
+class LoggingGlobalsTest(unittest.TestCase):
+    """Resets logging API globals in setUp/tearDown
+
+    Use as a base class or mixin for your test that modifies logging API globals.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        reset_logging_globals()
+
+    def tearDown(self) -> None:
+        super().tearDown()
+        reset_logging_globals()
+
+
+class EventsGlobalsTest(unittest.TestCase):
+    """Deprecated no-op kept for backward compatibility.
+
+    The Events API has been removed; this class does nothing.
+    """
+
+    def setUp(self) -> None:  # pylint: disable=useless-parent-delegation
+        super().setUp()
+
+    def tearDown(self) -> None:  # pylint: disable=useless-parent-delegation
+        super().tearDown()

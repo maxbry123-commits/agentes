@@ -1,0 +1,84 @@
+# Contributing
+
+Pull requests are welcome.
+But please read the
+[CycloneDX contributing guidelines](https://github.com/CycloneDX/.github/blob/master/CONTRIBUTING.md)
+first.
+
+## Issues
+
+When creating a new issue, please select the appropriate issue type from the available templates and fill out the provided form.  
+These templates ensure that all necessary information is captured consistently.
+
+## Pullrequests
+
+When opening a pull request, use the repository’s pull request template and complete all required fields.  
+Keep each pull request focused on a single topic or problem.
+
+Every pull request must reference an existing issue that it aims to address.  
+If no issue exists for your topic, please create one first using the appropriate issue template, then link your pull request to it.
+
+## Setup
+
+This project uses [poetry]. Have it installed and setup first.
+
+To install dev-dependencies and tools:
+
+```shell
+poetry install
+```
+
+## Code style
+
+This project loves latest python features.  
+This project loves sorted imports.  
+This project uses [PEP8] Style Guide for Python Code.  
+
+Get it all applied via:
+
+```shell
+poetry run -- tox r -e pyupgrade -- --exit-zero-even-if-changed
+poetry run -- tox r -e isort
+poetry run -- tox r -e autopep8
+```
+
+This project prefers `f'strings'` over `'string'.format()`.  
+This project prefers `'single quotes'` over `"double quotes"`.  
+This project prefers `lower_snake_case` variable names.
+
+## Documentation
+
+This project uses [Sphinx] to generate documentation which is automatically published to [RTFD][link_rtfd].
+
+Source for documentation is stored in the `docs` folder in [RST] format.
+
+You can generate the documentation locally by running:
+
+```shell
+cd docs
+pip install -r requirements.txt
+make html
+```
+
+## Testing
+
+```shell
+poetry run tox run
+```
+
+See also: [python test snapshots docs](tests/_data/snapshots/README.md)
+
+## Sign off your commits
+
+Please sign off your commits, to show that you agree to publish your changes under the current terms and licenses of the project
+, and to indicate agreement with [Developer Certificate of Origin (DCO)](https://developercertificate.org/).
+
+```shell
+git commit -s ...
+```
+
+[poetry]: https://python-poetry.org
+[PEP8]: https://www.python.org/dev/peps/pep-0008/
+[Sphinx]: https://www.sphinx-doc.org/
+[link_rtfd]: https://cyclonedx-bom-tool.readthedocs.io/
+[RST]: https://en.wikipedia.org/wiki/ReStructuredText

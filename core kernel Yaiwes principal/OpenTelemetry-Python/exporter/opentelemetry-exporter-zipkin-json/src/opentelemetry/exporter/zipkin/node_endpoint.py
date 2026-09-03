@@ -1,0 +1,69 @@
+# Copyright The OpenTelemetry Authors
+# SPDX-License-Identifier: Apache-2.0
+
+"""Zipkin Exporter Endpoints"""
+
+import ipaddress
+
+from opentelemetry import trace
+from opentelemetry.sdk.resources import SERVICE_NAME, Resource
+
+IpInput = str | int | None
+
+
+class NodeEndpoint:
+    """The network context of a node in the service graph.
+
+    Args:
+        ipv4: Primary IPv4 address associated with this connection.
+        ipv6: Primary IPv6 address associated with this connection.
+        port: Depending on context, this could be a listen port or the
+          client-side of a socket. None if unknown.
+    """
+
+    def __init__(
+        self,
+        ipv4: IpInput = None,
+        ipv6: IpInput = None,
+        port: int | None = None,
+    ):
+        self.ipv4 = ipv4
+        self.ipv6 = ipv6
+        self.port = port
+
+        tracer_provider = trace.get_tracer_provider()
+
+        if hasattr(tracer_provider, "resource"):
+            resource = tracer_provider.resource
+        else:
+            resource = Resource.create()
+
+        self.service_name = resource.attributes[SERVICE_NAME]
+
+    @property
+    def ipv4(self) -> ipaddress.IPv4Address | None:
+        return self._ipv4
+
+    @ipv4.setter
+    def ipv4(self, address: IpInput) -> None:
+        if address is None:
+            self._ipv4 = None
+        else:
+            ipv4_address = ipaddress.ip_address(address)
+            if not isinstance(ipv4_address, ipaddress.IPv4Address):
+                raise ValueError(f"{address!r} does not appear to be an IPv4 address")
+            self._ipv4 = ipv4_address
+
+    @property
+    def ipv6(self) -> ipaddress.IPv6Address | None:
+        return self._ipv6
+
+    @ipv6.setter
+    def ipv6(self, address: IpInput) -> None:
+        if address is None:
+            self._ipv6 = None
+        else:
+            ipv6_address = ipaddress.ip_address(address)
+            if not isinstance(ipv6_address, ipaddress.IPv6Address):
+                raise ValueError(f"{address!r} does not appear to be an IPv6 address")
+            self._ipv6 = ipv6_address

@@ -1,0 +1,383 @@
+%
+% Copyright 2014, General Dynamics C4 Systems
+%
+% SPDX-License-Identifier: GPL-2.0-only
+%
+
+\chapter{\label{ch:vspace}Address Spaces and Virtual Memory}
+
+A virtual address space in seL4 is called a VSpace. Similarly to a CSpace (see \autoref{ch:cspace}),
+a VSpace is composed of objects provided by the kernel. Unlike CSpaces, objects for managing virtual
+memory correspond to those of the hardware and each architecture defines its own object types for
+paging structures. Also unlike CSpaces, we call only the top-level paging structure a VSpace object.
+It provides the top-level authority to the VSpace.
+
+Common to all architectures is the \obj{Frame}, representing a frame of physical memory. Frame
+objects are manipulated via \obj{Page} capabilities, which represents both authority to the frame,
+as well as to the virtual memory mapping, i.e.\ the page, when mapped. The kernel also provides
+\obj{ASID Pool} objects and \obj{ASID Control} invocations for tracking the status of address space
+identifiers for VSpaces.
+
+These VSpace-related objects are sufficient to implement the hardware data structures required to
+create, manipulate, and destroy virtual memory address spaces. As usual, the manipulator of a
+virtual memory space needs the appropriate capabilities to the required objects.
+
+\section{Objects}
+
+\subsection{Hardware Virtual Memory Objects}
+
+Each architecture has a top-level paging structure (level 0) and a number of intermediate levels.
+When referring to it generically, we call this top-level paging structure the VSpace object. The
+seL4 object type that implements the VSpace object is architecture dependent. For instance on
+AArch32, a VSpace is represented by the PageDirectory object and on x64 by a PML4 object.
+
+In general, each paging structure at each level contains slots where either the next level paging
+structure or a frame of memory can be mapped. The level of the paging structure determines the size
+of the frame. The size and type of structure at each level, and the number of bits in the virtual
+address resolved for that level are hardware defined.
+
+The seL4 kernel provides methods for operating on these hardware paging structures including mapping
+and cache operations. Mapping operations are invoked on the capability to the object being mapped.
+For example, to map a level 2 paging structure at a specific virtual address, we can invoke the map
+operation on the capability to the level 2 object and provide the virtual address as well as the
+capability to the level 1 object as arguments.
+
+If the previous level (level 1 in the example) is not itself already mapped, the mapping operation
+will fail. Developers need to create and map all paging structures, the kernel does not
+automatically create intermediate levels.
+
+In general, the VSpace object (the top-level paging structure) has no invocations for mapping, but
+is used as an argument to several other virtual-memory related object invocations. For some
+architectures, the VSpace object provides cache operation invocations. This allows simpler
+policy options: a process that has delegated a VSpace capability (e.g.\ to a page directory on
+AArch32) can conduct cache operations on all frames mapped from that capability without needing
+access to those capabilities directly.
+
+The rest of this section details the paging structures for each architecture.
+
+\subsubsection{IA-32}
+
+On IA-32, the VSpace object is implemented by the \obj{PageDirectory} object, which covers the
+entire 4\,GiB range in the 32-bit address space, and forms the top-level paging structure. Second
+level page-tables (\obj{PageTable} objects) each cover a 4\,MiB range. Structures at both levels
+are indexed by 10 bits in the virtual address.
+
+\begin{tabularx}{\textwidth}{Xlll} \toprule
+\emph{Object}          & \emph{Address Bits} & \emph{Level} & \emph{Methods} \\ \midrule
+\texttt{PageDirectory} & 22---31             & 0            & \autoref{group__x86__seL4__X86__PageDirectory} \\
+\texttt{PageTable}     & 12---21             & 1            & \autoref{group__x86__seL4__X86__PageTable} \\
+\bottomrule
+\end{tabularx}
+
+\subsubsection{x64}
+
+On x86-64, the VSpace object is implemented by the \obj{PML4} object. Three further levels of
+paging structure are defined, as shown in the table below. All structures are indexed by 9 bits of
+the virtual address.
+
+\begin{tabularx}{\textwidth}{Xlll} \toprule
+\emph{Object}          & \emph{Address Bits} & \emph{Level} & \emph{Methods} \\ \midrule
+\texttt{PML4}          & 39---47             & 0            & None \\
+\texttt{PDPT}          & 30---38             & 1            & \autoref{group__x86__64__seL4__X86__PDPT} \\
+\texttt{PageDirectory} & 21---29             & 2            & \autoref{group__x86__seL4__X86__PageDirectory} \\
+\texttt{PageTable}     & 12---20             & 3            & \autoref{group__x86__seL4__X86__PageTable} \\
+\bottomrule
+\end{tabularx}
+
+\subsubsection{AArch32}
+
+Like IA-32, Arm AArch32 implements the VSpace object with a \obj{PageDirectory} object which
+covers the entire 4\,GiB address range.  The second-level structures on AArch32 are
+\obj{PageTable} objects. The address range they cover is configuration-dependent: 1\,MiB
+(20 address bits) for standard configurations, and 2\,MiB (21 address bits) for hypervisor
+configurations.
+
+\begin{tabularx}{\textwidth}{Xlll} \toprule
+\emph{Object}          & \emph{Address Bits} & \emph{Level} & \emph{Methods} \\ \midrule
+\texttt{PageDirectory} & 20---31             & 0            & \autoref{group__aarch32__seL4__ARM__PageDirectory} \\
+\texttt{PageTable}     & 12---19             & 1            & \autoref{group__arm__seL4__ARM__PageTable} \\
+\bottomrule
+\end{tabularx}
+
+\begin{tabularx}{\textwidth}{Xlll} \toprule
+  \emph{Object}          & \emph{Address Bits} & \emph{Level} & \emph{Methods} \\ \midrule
+  \texttt{PageDirectory (hyp)} & 21---31     & 0            & \autoref{group__aarch32__seL4__ARM__PageDirectory} \\
+  \texttt{PageTable (hyp)}     & 12---20     & 1            & \autoref{group__arm__seL4__ARM__PageTable} \\
+  \bottomrule
+\end{tabularx}
+
+\subsubsection{AArch64}
+
+Depending on configuration, Arm AArch64 processors have page-table structures with 3 or 4 levels.
+The VSpace object is \texttt{seL4\_ARM\_VSpaceObject}, which is a distinct object type used for the
+top level page table. All intermediate paging structures are indexed by 9 bits of the virtual
+address and are \obj{PageTable} objects. Depending on configuration, the top-level object is
+indexed by either 9 or 10 bits. The macro \texttt{seL4\_VSpaceIndexBits} makes this value available
+under a generic name. The table below shows the four-level configuration.
+
+\begin{tabularx}{\textwidth}{Xlll} \toprule
+\emph{Object}                    & \emph{Address Bits} & \emph{Level} & \emph{Methods} \\ \midrule
+    \texttt{seL4\_ARM\_VSpaceObject}
+                                 & 39---47             & 0            & \autoref{group__aarch64__seL4__ARM__VSpace} \\
+    \texttt{PageTable}           & 30---38             & 1            & \autoref{group__arm__seL4__ARM__PageTable} \\
+    \texttt{PageTable}           & 21---29             & 2            & \autoref{group__arm__seL4__ARM__PageTable} \\
+    \texttt{PageTable}           & 12---20             & 3            & \autoref{group__arm__seL4__ARM__PageTable} \\
+\bottomrule
+\end{tabularx}
+
+\subsubsection{RISC-V 32-bit}
+
+On RISC-V, all levels use the same structure. This means VSpace is a \obj{PageTable} object.
+
+32-bit RISC-V \obj{PageTables} are indexed by 10 bits of virtual address.
+
+\begin{tabularx}{\textwidth}{Xlll} \toprule
+\emph{Object}          & \emph{Address Bits} & \emph{Level} & \emph{Methods} \\ \midrule
+\texttt{PageTable}     & 22---31             & 0            & \autoref{group__riscv__seL4__RISCV__PageTable} \\
+\texttt{PageTable}     & 12---21             & 1            & \autoref{group__riscv__seL4__RISCV__PageTable} \\
+\bottomrule
+\end{tabularx}
+
+\subsubsection{RISC-V 64-bit}
+
+On RISC-V, all levels use the same structure. This means VSpace is a \obj{PageTable} object.
+
+64-bit RISC-V follows the SV39 model, where \obj{PageTables} are indexed by 9 bits of virtual address.
+Although RISC-V allows
+for multiple different numbers of paging levels, currently seL4 only supports exactly three levels
+of paging structures.
+
+\begin{tabularx}{\textwidth}{Xlll} \toprule
+\emph{Object}          & \emph{Address Bits} & \emph{Level} & \emph{Methods} \\ \midrule
+\texttt{PageTable}     & 30---38             & 0            & \autoref{group__riscv__seL4__RISCV__PageTable} \\
+\texttt{PageTable}     & 21---29             & 1            & \autoref{group__riscv__seL4__RISCV__PageTable} \\
+\texttt{PageTable}     & 12---20             & 2            & \autoref{group__riscv__seL4__RISCV__PageTable} \\
+\bottomrule
+\end{tabularx}
+
+\subsection{Page}
+
+\obj{Frame} objects, used via \obj{Page} capabilities, correspond to frames of physical memory that
+are used to implement virtual memory pages in a virtual address space.
+
+The virtual address for a \obj{Page} mapping must be aligned to the size of the \obj{Page} and must
+be mapped into a suitable paging structure object, which itself must already be mapped in.
+
+To map a page readable, the corresponding \obj{Page} capability must have read permissions. To map
+the page writeable, the capability must have write permissions. The requested mapping permissions
+are specified with an argument of type \texttt{seL4\_CapRights} given to the mapping invocation. If
+the capability does not have sufficient permissions to authorise the given mapping, the mapping
+permissions are silently downgraded. Specific mapping permissions are dependent on the architecture
+and are documented in the \autoref{sec:api_reference} for each function. On all architectures,
+mapping a page write-only will result in an inaccessible page.
+
+At minimum, each architecture defines \texttt{Map}, \texttt{Unmap} and
+\texttt{GetAddress} methods for pages.
+Invocations for page capabilities for each architecture can be found in the \autoref{sec:api_reference}, and
+are indexed per architecture in the table below.
+
+\begin{tabularx}{\textwidth}{Xl} \toprule
+\emph{Architectures} & \emph{Methods} \\ \midrule
+IA32, X64            & \autoref{group__x86__seL4__X86__Page} \\
+AArch32, AArch64     & \autoref{group__arm__seL4__ARM__Page} \\
+    RISC-V           & \autoref{group__riscv__seL4__RISCV__Page} \\
+\bottomrule
+\end{tabularx}
+
+Each architecture also defines a range of page sizes. In the next section we show the available page
+sizes, as well as the \emph{mapping level}, which refers to
+the level of the paging structure at which this page must be mapped.
+
+\subsubsection{AArch32 page sizes}
+
+\begin{tabularx}{\textwidth}{Xll} \toprule
+    \emph{Constant}             & \emph{Size} & \emph{Mapping level} \\ \midrule
+    \texttt{seL4\_PageBits}      & 4\,KiB      & 1                   \\
+    \texttt{seL4\_LargePageBits} & 64\,KiB     & 1                   \\
+    \texttt{seL4\_SectionBits}   & 1\,MiB      & 0                   \\
+    \texttt{seL4\_SuperSectionBits} & 16\,MiB  & 0                   \\
+    \bottomrule
+\end{tabularx}
+
+Mappings for sections and super sections consume 16 slots in the page table and page directory
+respectively.
+
+\subsubsection{AArch64 page sizes}
+
+\begin{tabularx}{\textwidth}{Xll} \toprule
+    \emph{Constant}             & \emph{Size} & \emph{Mapping level} \\ \midrule
+    \texttt{seL4\_PageBits}      & 4\,KiB      & 3                   \\
+    \texttt{seL4\_LargePageBits} & 2\,MiB     & 2                    \\
+    \texttt{seL4\_HugePageBits}  & 1\,GiB     & 1                    \\
+    \bottomrule
+\end{tabularx}
+
+\subsubsection{IA-32 page sizes}
+
+\begin{tabularx}{\textwidth}{Xll} \toprule
+    \emph{Constant}             & \emph{Size} & \emph{Mapping level} \\ \midrule
+    \texttt{seL4\_PageBits}      & 4\,KiB      & 1                   \\
+    \texttt{seL4\_LargePageBits} & 4\,MiB      & 0                   \\
+    \bottomrule
+\end{tabularx}
+
+\subsubsection{X64 page sizes}
+
+\begin{tabularx}{\textwidth}{Xll} \toprule
+    \emph{Constant}             & \emph{Size} & \emph{Mapping level} \\ \midrule
+    \texttt{seL4\_PageBits}      & 4\,KiB      & 3                   \\
+    \texttt{seL4\_LargePageBits} & 2\,MiB      & 2                   \\
+    \texttt{seL4\_HugePageBits}  & 1\,GiB      & 1                   \\
+    \bottomrule
+\end{tabularx}
+
+\subsubsection{RISC-V 32-bit page sizes}
+
+\begin{tabularx}{\textwidth}{Xll} \toprule
+    \emph{Constant}             & \emph{Size} & \emph{Mapping level} \\ \midrule
+    \texttt{seL4\_PageBits}      & 4\,KiB      & 1                   \\
+    \texttt{seL4\_LargePageBits} & 4\,MiB      & 0                   \\
+    \bottomrule
+\end{tabularx}
+
+\subsubsection{RISC-V 64-bit page sizes}
+
+\begin{tabularx}{\textwidth}{Xll} \toprule
+    \emph{Constant}             & \emph{Size} & \emph{Mapping level} \\ \midrule
+    \texttt{seL4\_PageBits}      & 4\,KiB      & 2                   \\
+    \texttt{seL4\_LargePageBits} & 2\,MiB      & 1                   \\
+    \texttt{seL4\_HugePageBits}  & 1\,GiB      & 0                   \\
+    \bottomrule
+\end{tabularx}
+
+\subsection{ASID Control}
+
+The kernel supports a fixed maximum number of address space identifiers (ASIDs), which is
+architecture dependent. In order to manage this limited resource, seL4 provides an \obj{ASID
+Control} capability. The \obj{ASID Control} capability can be used together with an \obj{Untyped}
+capability to create \obj{ASID pool} objects and capabilities, which authorise the use of a subset
+of available address space identifiers. \obj{ASID Control} has a single \texttt{MakePool} method for
+each architecture, listed in the table below.
+
+\begin{tabularx}{\textwidth}{Xl} \toprule
+\emph{Architectures} & \emph{Methods} \\ \midrule
+IA32, X64            & \autoref{group__x86__seL4__X86__ASIDControl} \\
+AArch32, AArch64     & \autoref{group__arm__seL4__ARM__ASIDControl} \\
+RISC-V               & \autoref{group__riscv__seL4__RISCV__ASIDControl} \\
+\bottomrule
+\end{tabularx}
+
+\subsection{ASID Pool}
+
+An \obj{ASID Pool} confers the right to use a subset of the globally available address space
+identifiers. The size of this subset is architecture dependent. For a VSpace object to be usable by
+a thread, it must be assigned to an ASID via an \obj{ASID Pool} capability. Each ASID can be
+assigned to at most one VSpace. The \obj{ASID Pool} capability has a single invocation,
+\texttt{Assign}, for each architecture.
+
+\begin{tabularx}{\textwidth}{Xl} \toprule
+\emph{Architectures} & \emph{Methods} \\ \midrule
+IA32, X64            & \autoref{group__x86__seL4__X86__ASIDPool} \\
+AArch32, AArch64     & \autoref{group__arm__seL4__ARM__ASIDPool} \\
+RISC-V               & \autoref{group__riscv__seL4__RISCV__ASIDPool} \\
+\bottomrule
+\end{tabularx}
+
+\section{Mapping Attributes}
+A parameter of type \texttt{seL4\_ARM\_VMAttributes}, \texttt{seL4\_X86\_VMAttributes},
+\texttt{seL4\_X86\_EPT\_VMAttributes}, or \texttt{seL4\_RISCV\_VMAttributes} is used to specify the
+cache behaviour of the page being mapped. Possible values for Arm that can be bitwise OR'd together
+are shown in \autoref{tbl:vmattr_arm} \ifxeightsix. An enumeration of valid values for IA-32 and x64
+are shown in \autoref{tbl:vmattr_x86}. An enumeration of valid values for IA-32 and x64 Extended
+Page Table (EPT) used in second-level translation are shown in \autoref{tbl:vmattr_x86_ept}.
+Possible values for RISC-V that can be bitwise OR'd together are shown in
+\autoref{tbl:vmattr_riscv}. Mapping attributes can be updated on existing mappings using the Map
+invocation with the same virtual address.
+
+\begin{table}[htb]
+  \begin{center}
+    \begin{tabularx}{\textwidth}{p{0.33\textwidth}X}
+      \toprule
+      Attribute & Meaning \\
+      \midrule
+      \texttt{seL4\_ARM\_PageCacheable} & Enable data in this mapping
+      to be cached \\
+      \texttt{seL4\_ARM\_ParityEnabled} & Enable parity checking for
+      this mapping (ignored on AArch64) \\
+      \texttt{seL4\_ARM\_ExecuteNever} & Map this memory as non-executable \\
+      \bottomrule
+    \end{tabularx}
+    \caption{\label{tbl:vmattr_arm} Virtual memory attributes for Arm page
+      table entries.}
+  \end{center}
+\end{table}
+
+\begin{table}[htb]
+  \begin{center}
+    \begin{tabularx}{\textwidth}{p{0.33\textwidth}X}
+      \toprule
+      Attribute & Meaning \\
+      \midrule
+      \texttt{seL4\_X86\_WriteBack} & Read and writes are cached \\
+      \texttt{seL4\_X86\_CacheDisabled} & Prevent data in this mapping
+      from being cached \\
+      \texttt{seL4\_X86\_WriteThrough} & Enable write through caching for this mapping \\
+      \texttt{seL4\_X86\_WriteCombining} & Enable write combining for this mapping \\
+      \bottomrule
+    \end{tabularx}
+    \caption{\label{tbl:vmattr_x86} Virtual memory attributes for x86 page
+      table entries.}
+  \end{center}
+\end{table}
+
+\begin{table}[htb]
+  \begin{center}
+    \begin{tabularx}{\textwidth}{p{0.33\textwidth}X}
+      \toprule
+      Attribute & Meaning \\
+      \midrule
+      \texttt{seL4\_X86\_EPT\_Uncacheable} & Prevent data in this mapping
+      from being cached \\
+      \texttt{seL4\_X86\_EPT\_WriteCombining} & Enable write combining for this mapping \\
+      \texttt{seL4\_X86\_EPT\_WriteThrough} & Enable write through caching for this mapping \\
+      \texttt{seL4\_X86\_EPT\_WriteProtected} & Enable write protected caching for this mapping \\
+      \texttt{seL4\_X86\_EPT\_WriteBack} & Read and writes are cached \\
+      \bottomrule
+    \end{tabularx}
+    \caption{\label{tbl:vmattr_x86_ept} Virtual memory attributes for x86 EPT entries.}
+  \end{center}
+\end{table}
+
+\begin{table}[htb]
+  \begin{center}
+    \begin{tabularx}{\textwidth}{p{0.33\textwidth}X}
+      \toprule
+      Attribute & Meaning \\
+      \midrule
+      \texttt{seL4\_RISCV\_ExecuteNever} & Map this memory as non-executable \\
+      \bottomrule
+    \end{tabularx}
+    \caption{\label{tbl:vmattr_riscv} Virtual memory attributes for RISC-V page
+      table entries.}
+  \end{center}
+\end{table}
+
+\FloatBarrier
+
+\section{Sharing Memory}
+
+The seL4 kernel does not allow intermediate paging structures (e.g.\ \obj{PageTable} objects) to be
+shared, but it does allow pages to be shared between VSpaces, and VSpaces to be shared by threads.
+
+To share a page, the capability to the \obj{Page} must first be duplicated using the
+\apifunc{seL4\_CNode\_Copy}{cnode_copy} method and the copy must be used in the Map invocation
+(e.g.\ \apifunc{seL4\_ARM\_Page\_Map}{arm_page_map} \ifxeightsix or
+\apifunc{seL4\_x86\_Page\_Map}{x86_page_map}\fi) that maps the page into the second address space.
+Attempting to map the same capability twice in different page tables or address spaces will result
+in an error.
+
+
+\section{Page Faults}
+
+Page faults are reported to the exception handler of the executed thread.
+See \autoref{sec:vm-fault}.

@@ -1,0 +1,9 @@
+[
+  {
+    "repo": "Graphiti",
+    "path": "tests/evals/data/longmemeval_data/longmemeval_oracle.json",
+    "chunks_dir": "Graphiti/tests/evals/data/longmemeval_data/longmemeval_oracle.json.chunks",
+    "bytes": 15388478,
+    "chunk_bytes": 8388608
+  }
+]
