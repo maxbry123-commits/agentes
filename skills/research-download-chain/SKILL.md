@@ -199,3 +199,20 @@ verdict: VERIFIED_CLOSED
 ```
 
 No declares `100% PASS` si hay job activo, GAP, colisión, SHA no verificado, enlace roto o evidencia incompleta.
+
+## 13. Auditor externo y autorreparación
+
+El workflow que descarga o extrae nunca puede certificarse a sí mismo como cierre final. Para destinos de código utilizable crea dos workflows nuevos y separados:
+
+1. **Repair Guardian:** procesa únicamente grupos ZIP cuyo árbol extraído no exista, conserva los archivos comprimidos, rechaza Zip Slip, symlinks y colisiones, publica por lotes pequeños y hace read-back.
+2. **Watchdog Auditor:** se ejecuta manualmente y por calendario; usa permisos de contenido en solo lectura, realiza cuatro pasadas (`Action/logs`, `SHA/CRC`, `árbol+destino`, `read-back+manifiesto`) y activa el Repair Guardian mediante `repository_dispatch` solo si hay GAPS.
+
+Reglas obligatorias:
+
+- `COMPLETE` en un manifiesto de descarga solo significa archivo adquirido; no significa `EXTRACTED_TREE`.
+- Un ZIP válido no demuestra que el código esté instalado.
+- `EXTRACTED_VERIFIED` requiere al menos un archivo real no ZIP en la ruta exacta, hash determinista del árbol y, cuando exista mirror, verificación independiente del mirror.
+- El productor y el auditor usan `concurrency.group` diferentes y `cancel-in-progress: false`.
+- El reparador limita cada corrida; si quedan GAPS se vuelve a despachar sin reactivar workflows antiguos.
+- Un `GITHUB_TOKEN` que hace push no activa normalmente otros workflows. Para encadenar usa explícitamente `workflow_dispatch` o `repository_dispatch`, con `actions: write`, y conserva un límite de cierre para evitar recursión infinita.
+- No declares `VERIFIED_CLOSED` hasta que el auditor independiente reporte `remaining_gaps=0`, `failures=0`, `active_jobs=0` y confirme la ruta final solicitada.
