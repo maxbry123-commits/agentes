@@ -1,0 +1,61 @@
+name: Extraction Watchdog Auditor 2026-09-03
+run-name: Independent extraction audit • ${{ github.run_id }}
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 * * * *"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/extraction-watchdog-auditor-20260903.yml"
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: extraction-watchdog-auditor-main
+  cancel-in-progress: false
+
+jobs:
+  four-pass-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+      - name: Pass 1-4 archive integrity, extraction tree, destination and read-back
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 scripts/extract_guardian_repair_20260903.py --audit-only | tee audit-result.json
+          python3 - <<'PY'
+          import json,sys
+          d=json.load(open("audit-result.json"))
+          print("PASS1_ARCHIVE_GROUPS",d["archive_groups"])
+          print("PASS2_EXTRACTION_GAPS",len(d["remaining_gaps"]))
+          print("PASS3_DESTINATIONS",*[x["target"] for x in d["remaining_gaps"][:20]],sep="\n")
+          print("PASS4_VERDICT",d["verdict"])
+          sys.exit(0)
+          PY
+      - name: Dispatch isolated repair when GAP exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          GAPS="$(python3 - <<'PY'
+          import json
+          print(len(json.load(open("audit-result.json"))["remaining_gaps"]))
+          PY
+          )"
+          if [ "$GAPS" -gt 0 ]; then
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/dispatches" -f event_type=extraction-repair-needed
+            echo "REPAIR_DISPATCHED gaps=$GAPS"
+          else
+            echo "VERIFIED_CLOSED"
+          fi
