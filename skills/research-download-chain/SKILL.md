@@ -251,6 +251,7 @@ Antes de escribir en destino valida todos los miembros del archivo: CRC, rutas a
 - `SOURCE_LFS_POINTER_GAP|GIT_BLOB_LIMIT_GAP|COLLISION_BLOCKED|UNSAFE_ZIP` → no repetir el mismo push; registrar GAP y esperar reparación de causa.
 - El finalizador/auditor debe ejecutarse con `if: always()` o job separado equivalente para que un fallo de push no mate el bucle ni omita el checkpoint.
 - Nunca declarar `VERIFIED_CLOSED` sin read-back independiente y `remaining_gaps=0`.
+- No ejecutes `git diff --check`, autoformat, trim de whitespace ni normalización de contenido sobre árboles copiados/descargados; el payload debe conservar bytes fuente. Los validadores estructurales solo pueden inspeccionar, no reescribir ni bloquear por estilo.
 
 
 ## 15. Materialización HTTP verificada y dispatch resiliente
