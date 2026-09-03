@@ -1,0 +1,76 @@
+name: Run Integration Tests
+
+on:
+  workflow_call:
+    inputs:
+      cedar_integration_tests_ref:
+        required: false
+        default: "main"
+        type: string
+      cedar_policy_ref:
+        required: false
+        default: "main"
+        type: string
+
+# Declare default permissions as read only.
+permissions: read-all
+
+jobs:
+  run_integration_tests:
+    name: Run integration tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        toolchain:
+          - stable
+
+    # Set `RUSTFLAGS` once for all cargo commands so that changing these flags
+    # doesn't trigger a fresh build.
+    env:
+      RUSTFLAGS: "-D warnings -F unsafe-code -A unfulfilled_lint_expectations" # deny rustc warnings, except allow on unfulfilled_lint_expectations. note that none of this line affects _clippy_ warnings, only _rustc_ warnings
+
+    steps:
+      - name: Checkout cedar
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: cedar-policy/cedar
+          ref: ${{ inputs.cedar_policy_ref }}
+          path: ./cedar
+      - name: Delete old integration tests
+        working-directory: ./cedar
+        run: rm -rf cedar-integration-tests # blast the current content
+      - name: Checkout cedar-integration-tests
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: cedar-policy/cedar-integration-tests
+          ref: ${{ inputs.cedar_integration_tests_ref }}
+          path: ./cedar/cedar-integration-tests
+      - name: Decompress corpus tests
+        working-directory: ./cedar/cedar-integration-tests
+        run: tar xzf corpus-tests.tar.gz
+      - name: Prepare Rust build
+        run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
+      - run: sudo apt-get update && sudo apt-get install protobuf-compiler
+      # Required to run cedar-symcc tests
+      - name: Install cvc5
+        shell: bash
+        run: |
+          ARCH=$(uname -m)
+          if [ "$ARCH" = "x86_64" ]; then
+            ARCH_NAME="x86_64"
+          elif [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
+            ARCH_NAME="arm64"
+          else
+            echo "Unsupported architecture: $ARCH"
+            exit 1
+          fi
+          wget https://github.com/cvc5/cvc5/releases/download/cvc5-1.3.1/cvc5-Linux-${ARCH_NAME}-static.zip
+          unzip cvc5-Linux-${ARCH_NAME}-static.zip
+          chmod +x cvc5-Linux-${ARCH_NAME}-static/bin/cvc5
+          echo "CVC5=$GITHUB_WORKSPACE/cvc5-Linux-${ARCH_NAME}-static/bin/cvc5" >> $GITHUB_ENV
+      - name: Run handwritten integration tests
+        working-directory: ./cedar
+        run: cargo test --verbose --features "integration-testing"
+      - name: Run corpus tests
+        working-directory: ./cedar
+        run: cargo test --verbose --features "integration-testing" -- --ignored

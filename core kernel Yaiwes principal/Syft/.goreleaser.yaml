@@ -1,0 +1,182 @@
+version: 2
+project_name: syft
+
+release:
+  prerelease: auto
+  draft: false
+
+env:
+  - DOCKER_CLI_EXPERIMENTAL=enabled
+  - CGO_ENABLED=0
+
+builds:
+  - id: linux-build
+    dir: ./cmd/syft
+    binary: syft
+    goos: [linux]
+    goarch: [amd64, arm64, ppc64le, riscv64, s390x]
+    mod_timestamp: &build-timestamp '{{ .CommitTimestamp }}'
+    ldflags: &build-ldflags |
+      -w
+      -s
+      -extldflags '-static'
+      -X main.version={{.Version}}
+      -X main.gitCommit={{.Commit}}
+      -X main.buildDate={{.Date}}
+      -X main.gitDescription={{.Summary}}
+
+  - id: darwin-build
+    dir: ./cmd/syft
+    binary: syft
+    goos: [darwin]
+    goarch: [amd64, arm64]
+    mod_timestamp: *build-timestamp
+    ldflags: *build-ldflags
+    hooks:
+      post:
+        - cmd: .tool/quill sign-and-notarize "{{ .Path }}" --dry-run={{ .IsSnapshot }} --ad-hoc={{ .IsSnapshot }} -vv
+          env:
+            - QUILL_LOG_FILE=/tmp/quill-{{ .Target }}.log
+
+  - id: windows-build
+    dir: ./cmd/syft
+    binary: syft
+    goos: [windows]
+    goarch: [amd64, arm64]
+    mod_timestamp: *build-timestamp
+    ldflags: *build-ldflags
+
+archives:
+  - id: linux-archives
+    ids: [linux-build]
+  - id: darwin-archives
+    ids: [darwin-build]
+  - id: windows-archives
+    formats:
+      - zip
+    ids: [windows-build]
+
+nfpms:
+  - license: "Apache 2.0"
+    maintainer: "Anchore, Inc"
+    homepage: &website "https://github.com/anchore/syft"
+    description: &description "A tool that generates a Software Bill Of Materials (SBOM) from container images and filesystems"
+    formats: [rpm, deb]
+
+brews:
+  - repository:
+      owner: anchore
+      name: homebrew-syft
+      token: "{{.Env.GITHUB_BREW_TOKEN}}"
+    ids: [darwin-archives, linux-archives]
+    homepage: *website
+    description: *description
+    license: "Apache License 2.0"
+
+dockers_v2:
+  # production images (scratch base, root)
+  - id: production
+    dockerfile: Dockerfile
+    ids: &docker-ids
+      - linux-build
+    images: &docker-images
+      - anchore/syft
+      - ghcr.io/anchore/syft
+    platforms: &docker-platforms
+      - linux/amd64
+      - linux/arm64
+      - linux/ppc64le
+      - linux/riscv64
+      - linux/s390x
+    labels: &docker-labels
+      "org.opencontainers.image.created": "{{.Date}}"
+      "org.opencontainers.image.title": "syft"
+      "org.opencontainers.image.description": "CLI tool and library for generating a Software Bill of Materials from container images and filesystems"
+      "org.opencontainers.image.source": "{{.GitURL}}"
+      "org.opencontainers.image.revision": "{{.FullCommit}}"
+      "org.opencontainers.image.vendor": "Anchore, Inc."
+      "org.opencontainers.image.version": "{{.Version}}"
+      "org.opencontainers.image.licenses": "Apache-2.0"
+      "io.artifacthub.package.readme-url": "https://raw.githubusercontent.com/anchore/syft/main/README.md"
+      "io.artifacthub.package.logo-url": "https://user-images.githubusercontent.com/5199289/136844524-1527b09f-c5cb-4aa9-be54-5aa92a6086c1.png"
+      "io.artifacthub.package.license": "Apache-2.0"
+    tags:
+      - latest
+      - "{{.Tag}}"
+    # DEBIAN_VERSION 13 (trixie) is the first distroless release with a riscv64 base image
+    # and is a superset of debian 12 for the other targeted arches; docker_v2 builds all
+    # platforms in a single buildx invocation, so build_args cannot vary per platform.
+    build_args: &docker-build-args
+      DEBIAN_VERSION: "13"
+    # disable provenance attestations to keep the manifest free of unknown/unknown entries
+    flags: &docker-flags
+      - "--provenance=false"
+    # SBOMs are produced separately for the archives (see the sboms section)
+    sbom: &docker-sbom "false"
+
+  # nonroot images
+  - id: nonroot
+    dockerfile: Dockerfile.nonroot
+    ids: *docker-ids
+    images: *docker-images
+    platforms: *docker-platforms
+    labels: *docker-labels
+    tags:
+      - nonroot
+      - "{{.Tag}}-nonroot"
+    build_args: *docker-build-args
+    flags: *docker-flags
+    sbom: *docker-sbom
+
+  # debug images (root)
+  - id: debug
+    dockerfile: Dockerfile.debug
+    ids: *docker-ids
+    images: *docker-images
+    platforms: *docker-platforms
+    labels: *docker-labels
+    tags:
+      - debug
+      - "{{.Tag}}-debug"
+    build_args: *docker-build-args
+    flags: *docker-flags
+    sbom: *docker-sbom
+
+  # debug-nonroot images
+  - id: debug-nonroot
+    dockerfile: Dockerfile.debug-nonroot
+    ids: *docker-ids
+    images: *docker-images
+    platforms: *docker-platforms
+    labels: *docker-labels
+    tags:
+      - debug-nonroot
+      - "{{.Tag}}-debug-nonroot"
+    build_args: *docker-build-args
+    flags: *docker-flags
+    sbom: *docker-sbom
+
+sboms:
+  - artifacts: archive
+    cmd: ../.tool/syft
+    documents:
+      - "{{ .Binary }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}.sbom"
+    args:
+      - "scan"
+      - "$artifact"
+      - "--output"
+      - "json=$document"
+
+signs:
+  - cmd: .tool/cosign
+    signature: "${artifact}.sig"
+    certificate: "${artifact}.pem"
+    args:
+      - "sign-blob"
+      - "--use-signing-config=false"
+      - "--oidc-issuer=https://token.actions.githubusercontent.com"
+      - "--output-certificate=${certificate}"
+      - "--output-signature=${signature}"
+      - "${artifact}"
+      - "--yes"
+    artifacts: checksum

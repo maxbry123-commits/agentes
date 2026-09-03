@@ -1,0 +1,489 @@
+version: "3"
+
+# NOTE: most generic tasks (static-analysis, format, lint, unit, snapshot, release,
+# changelog, ci-release, etc.) are now provided natively by anchore/go-make and
+# defined in .make/main.go. This file holds the syft-specific tasks, which go-make
+# auto-discovers via gotask.Tasks() and surfaces as `make <name>` — keep
+# descriptions (`desc:`) populated so they show up in `make help`.
+
+includes:
+  generate:cpe-index: ./task.d/generate/cpe-index.yaml
+
+vars:
+  OWNER: anchore
+  PROJECT: syft
+
+  # v1: when fixtures were located at test-fixtures dirs
+  # v2: migration to testdata dirs
+  CACHE_REPO: oss-cache
+  CACHE_IMAGE: ghcr.io/{{ .OWNER }}/{{ .CACHE_REPO }}/syft-test-fixture-cache:v2
+
+  # static file dirs
+  TOOL_DIR: .tool
+  TMP_DIR: .tmp
+  ORAS_CACHE: "{{ .TMP_DIR }}/oras-cache"
+  CACHE_PATHS_FILE: "{{ .TMP_DIR }}/cache_paths.json"
+  LAST_CACHE_PULL_FILE: "{{ .TMP_DIR }}/last_cache_paths.json"
+
+  # TOOLS
+  ORAS: "{{ .TOOL_DIR }}/oras"
+  YQ: "{{ .TOOL_DIR }}/yq"
+  TASK: "{{ .TOOL_DIR }}/task"
+
+  # used for snapshot bin discovery in compare/install tasks
+  OS:
+    sh: uname -s | tr '[:upper:]' '[:lower:]'
+  ARCH:
+    sh: |
+      [ "$(uname -m)" = "x86_64" ] && echo "amd64_v1" || { [ "$(uname -m)" = "aarch64" ] && echo "arm64_v8.0" || [ "$(uname -m)" = "arm64" ] && echo "arm64_v8.0" || echo $(uname -m); }
+  PROJECT_ROOT:
+    sh: echo $PWD
+
+  # docker platform suffix goreleaser appends to snapshot image tags (e.g. latest-amd64).
+  # snapshot builds load per-arch images rather than a multi-arch manifest, so the smoke
+  # test must run the host-native tag to avoid emulation (and red-local/green-CI splits).
+  DOCKER_ARCH:
+    sh: go env GOARCH
+
+  # note: the snapshot dir must be a relative path starting with ./
+  # e.g. when installing snapshot debs from a local path, ./ forces the deb to be installed in the current working directory instead of referencing a package name
+  SNAPSHOT_DIR: ./snapshot
+  SNAPSHOT_BIN: "{{ .PROJECT_ROOT }}/{{ .SNAPSHOT_DIR }}/{{ .OS }}-build_{{ .OS }}_{{ .ARCH }}/{{ .PROJECT }}"
+
+  # used for install and acceptance testing
+  COMPARE_DIR: ./test/compare
+  COMPARE_TEST_IMAGE: centos:8.2.2004
+
+env:
+  GNUMAKEFLAGS: '--no-print-directory'
+
+tasks:
+
+  ## Bootstrap (internal helpers used by other Taskfile tasks) ###############
+
+  binny:
+    internal: true
+    generates:
+      - "{{ .TOOL_DIR }}/binny"
+    status:
+      - "test -f {{ .TOOL_DIR }}/binny"
+    cmd: "curl -sSfL https://get.anchore.io/binny | sh -s -- -b .tool"
+    silent: true
+
+  tools:
+    internal: true
+    deps: [binny]
+    generates:
+      - ".binny.yaml"
+      - "{{ .TOOL_DIR }}/*"
+    status:
+      - "{{ .TOOL_DIR }}/binny check -v"
+    cmd: "{{ .TOOL_DIR }}/binny install -v"
+    silent: true
+
+  tmpdir:
+    internal: true
+    silent: true
+    generates:
+      - "{{ .TMP_DIR }}"
+    cmd: "mkdir -p {{ .TMP_DIR }}"
+
+  ## Static analysis extras #################################################
+
+  check-json-schema-drift:
+    desc: Ensure there is no drift between the JSON schema and the code
+    cmds:
+      - .github/scripts/json-schema-drift-check.sh
+
+  check-capability-drift:
+    desc: Ensure there is no drift between the capabilities data and the code
+    cmds:
+      - .github/scripts/capability-drift-check.sh
+
+  check-binary-fixture-size:
+    desc: Ensure that the binary test fixtures are not too large
+    cmds:
+      - .github/scripts/check_binary_fixture_size.sh syft/pkg/cataloger/binary/testdata/classifiers/snippets
+
+  ## Test extras ############################################################
+
+  update-format-golden-files:
+    desc: "Update golden (i.e. snapshot) files used by unit tests"
+    cmds:
+      - go test ./syft/format/spdxjson -update-spdx-json
+      - go test ./syft/format/spdxtagvalue -update-spdx-tv
+      - go test ./syft/format/cyclonedxxml -update-cyclonedx-xml
+      - go test ./syft/format/cyclonedxjson -update-cyclonedx-json
+      - go test ./syft/format/syftjson -update-json
+
+  validate-cyclonedx-schema:
+    desc: Validate that Syft produces valid CycloneDX documents
+    cmds:
+      - "cd schema/cyclonedx && make"
+
+  test-utils:
+    desc: Run tests for pipeline utils
+    cmds:
+      - cmd: .github/scripts/labeler_test.py
+      - cmd: go test -C .make ./...
+
+  snapshot-smoke-test:
+    desc: Run a smoke test on the snapshot builds + docker images
+    cmds:
+      - cmd: "echo 'testing snapshot binary: {{ .SNAPSHOT_BIN }}'"
+        silent: true
+      - cmd: "test -f {{ .SNAPSHOT_BIN }} || (find {{ .SNAPSHOT_DIR }} && echo '\nno snapshot found for {{ .SNAPSHOT_BIN }}' && false)"
+        silent: true
+      - "{{ .SNAPSHOT_BIN }} version"
+      - "{{ .SNAPSHOT_BIN }} scan alpine:latest"
+      - docker run --pull=never --rm anchore/syft:latest-{{ .DOCKER_ARCH }} version
+      - docker run --pull=never --rm anchore/syft:latest-{{ .DOCKER_ARCH }} scan alpine:latest
+
+  ## Test-fixture-related targets ###########################################
+
+  fingerprints:
+    desc: Generate fingerprints for all non-docker test fixtures
+    silent: true
+    deps: [tmpdir]
+    # this will look for `testdata/Makefile` and invoke the `fingerprint` target to calculate all cache input fingerprint files
+    generates:
+      - '**/testdata/**/*.fingerprint'
+      - test/install/cache.fingerprint
+    cmds:
+      - |
+        BOLD='\033[1m'
+        YELLOW='\033[0;33m'
+        RESET='\033[0m'
+
+        echo -e "${YELLOW}creating fingerprint files for non-docker fixtures...${RESET}"
+        for dir in $(find . -type d -name 'testdata'); do
+          if [ -f "$dir/Makefile" ]; then
+            (make -C "$dir" fingerprint)
+          fi
+        done
+
+      - .github/scripts/fingerprint_docker_fixtures.py
+      - |
+        # if DOWNLOAD_TEST_FIXTURE_CACHE is set to 'false', then we don't need to calculate the fingerprint for the cache
+        if [ "$DOWNLOAD_TEST_FIXTURE_CACHE" = "false" ]; then
+          exit 0
+        fi
+        .github/scripts/find_cache_paths.py {{ .CACHE_PATHS_FILE }} > /dev/null
+
+
+  refresh-fixtures:
+    desc: Clear and fetch all test fixture cache
+    aliases:
+      - fixtures
+    silent: true
+    deps:
+      - tools
+    cmds:
+      - |
+        BOLD='\033[1m'
+        PURPLE='\033[0;35m'
+        RESET='\033[0m'
+
+        # if DOWNLOAD_TEST_FIXTURE_CACHE is set to 'false', then skip the cache download and always build
+        if [ "$DOWNLOAD_TEST_FIXTURE_CACHE" = "false" ]; then
+            echo -e "${BOLD}${PURPLE}skipping cache download, rebuilding cache...${RESET}"
+            {{ .TASK }} build-fixtures
+            exit 0
+        fi
+
+        LATEST_FINGERPRINT=$(docker manifest inspect {{ .CACHE_IMAGE }} | {{ .YQ }} -r '.annotations.fingerprint')
+
+        echo "latest cache:      $LATEST_FINGERPRINT"
+
+        if [ -f {{ .LAST_CACHE_PULL_FILE }} ]; then
+          LAST_PULL_FINGERPRINT=$(cat {{ .LAST_CACHE_PULL_FILE }} | {{ .YQ }} -r '.digest')
+        else
+          echo -e "${BOLD}${PURPLE}empty cache, downloading cache...${RESET}"
+          {{ .TASK }} download-test-fixture-cache
+          exit 0
+        fi
+
+        {{ .TASK }} fingerprints
+
+        WANT_FINGERPRINT=$(cat {{ .CACHE_PATHS_FILE }} | {{ .YQ }} -r '.digest')
+
+        echo "desired cache:     $WANT_FINGERPRINT"
+        echo "last pulled cache: $LAST_PULL_FINGERPRINT"
+
+        # if we already have the latest cache, skip the refresh
+        if [ "$LAST_PULL_FINGERPRINT" = "$WANT_FINGERPRINT" ]; then
+            echo -e "${BOLD}${PURPLE}already have the latest cache (skipping cache download)${RESET}"
+            exit 0
+        fi
+
+        # at this point we only refresh the cache if we want the same cache that is currently available.
+        # we don't by default refresh the cache if the cache if it is simply different from what we have,
+        # because we may be working on a code change that doesn't require a cache refresh (but could trigger one,
+        # which would be annoying to deal with in a development workflow).
+
+        if [ "$LATEST_FINGERPRINT" = "$WANT_FINGERPRINT" ]; then
+          echo -e "${BOLD}${PURPLE}found newer cache! downloading cache...${RESET}"
+          {{ .TASK }} download-test-fixture-cache
+        else
+          echo -e "${BOLD}${PURPLE}found different cache, but isn't clear if it's newer (skipping cache download and manually building)${RESET}"
+
+          {{ .YQ }} eval '.paths[] | "\(.digest) \(.path)"' {{ .LAST_CACHE_PULL_FILE }} > .tmp/last_cache_lines
+          {{ .YQ }} eval '.paths[] | "\(.digest) \(.path)"' {{ .CACHE_PATHS_FILE }} > .tmp/cache_lines
+          diff .tmp/last_cache_lines .tmp/cache_lines || true
+
+          echo -e "${BOLD}${PURPLE}diff with more context...${RESET}"
+
+          diff -U10000 {{ .LAST_CACHE_PULL_FILE }} {{ .CACHE_PATHS_FILE }} || true
+
+          echo -e "${BOLD}${PURPLE}detected changes to input material, manually building fixtures...${RESET}"
+
+          {{ .TASK }} build-fixtures
+        fi
+
+  build-fixtures:
+    desc: Generate all non-docker test fixtures
+    silent: true
+    # this will look for `testdata/Makefile` and invoke the `fixtures` target to generate any and all test fixtures
+    cmds:
+      - |
+        # we want to stop on the first build error
+        set -e
+
+        BOLD='\033[1m'
+        YELLOW='\033[0;33m'
+        RESET='\033[0m'
+
+        # Use a for loop with command substitution to avoid subshell issues
+        for dir in $(find . -type d -name 'testdata'); do
+          if [ -f "$dir/Makefile" ]; then
+            echo -e "${YELLOW}${BOLD}generating fixtures in $dir${RESET}"
+            make -C "$dir" fixtures
+          fi
+        done
+        echo -e "${BOLD}generated all fixtures${RESET}"
+
+  download-test-fixture-cache:
+    desc: Download test fixture cache from ghcr.io
+    deps: [tools, clean-cache]
+    vars:
+      CACHE_DIGEST:
+        sh: docker manifest inspect {{ .CACHE_IMAGE }} | {{ .YQ }} -r '.annotations.fingerprint'
+    cmds:
+      - silent: true
+        cmd: |
+          # if oras cache is > 4 GB, delete it
+          if [ -d {{ .ORAS_CACHE }} ]; then
+            total_size=$(du -c {{ .ORAS_CACHE }} | grep total | awk '{print $1}')
+            if [ "$total_size" -gt 4194304 ]; then
+              echo 'deleting oras cache'
+              rm -rf {{ .ORAS_CACHE }}
+            fi
+          fi
+      - "ORAS_CACHE={{ .ORAS_CACHE }} {{ .ORAS }} pull {{ .CACHE_IMAGE }}"
+      - "cp {{ .CACHE_PATHS_FILE }} {{ .LAST_CACHE_PULL_FILE }}"
+
+  upload-test-fixture-cache:
+    desc: Upload the test fixture cache to ghcr.io
+    deps: [tools, fingerprints]
+    silent: true
+    cmd: |
+      set -eu
+      oras_command="{{ .ORAS }} push {{ .CACHE_IMAGE }}"
+
+      paths=$(cat {{ .CACHE_PATHS_FILE }} | {{ .YQ }} -r '.paths[].path')
+      for path in $paths; do
+        oras_command+=" $path"
+      done
+      oras_command+=" {{ .CACHE_PATHS_FILE }}"
+
+      oras_command+=" --annotation org.opencontainers.image.source=https://github.com/{{ .OWNER }}/{{ .CACHE_REPO }}"
+      oras_command+=" --annotation fingerprint=$(cat {{ .CACHE_PATHS_FILE }} | {{ .YQ }} -r '.digest')"
+
+      echo "Executing: $oras_command"
+      eval $oras_command
+
+  show-test-image-cache:
+    desc: Print the on-disk + docker daemon state of the stereoscope fixture image cache
+    silent: true
+    cmds:
+      - "echo 'Docker daemon cache:'"
+      - "docker images --format '{{`{{.ID}}`}} {{`{{.Repository}}`}}:{{`{{.Tag}}`}}' | grep stereoscope-fixture- | sort"
+      - "echo '\nTar cache:'"
+      - 'find . -type f -wholename "**/testdata/cache/stereoscope-fixture-*.tar" | sort'
+
+  check-docker-cache:
+    desc: Ensure docker caches aren't using too much disk space
+    silent: true
+    cmd: |
+      total_size=$(find . | grep cache | grep tar | xargs du -c | grep total | awk '{print $1}')
+      find . | grep cache | grep tar | xargs du
+      echo "total $total_size KB"
+
+      if [ "$total_size" -gt 5242880  ]; then
+        echo 'docker cache is larger than 5GB'
+        exit 1
+      fi
+
+  ## install.sh testing targets #############################################
+
+  install-test:
+    desc: Run install.sh test suite (delegates to test/install/Makefile)
+    cmds:
+      - "cd test/install && make"
+
+  install-test-cache-save:
+    desc: Save the install.sh test image cache (delegates to test/install/Makefile)
+    cmds:
+      - "cd test/install && make save"
+
+  install-test-cache-load:
+    desc: Load the install.sh test image cache (delegates to test/install/Makefile)
+    cmds:
+      - "cd test/install && make load"
+
+  install-test-ci-mac:
+    desc: Run install.sh CI test suite on macOS (delegates to test/install/Makefile)
+    cmds:
+      - "cd test/install && make ci-test-mac"
+
+  ## Compare-test targets ###################################################
+
+  generate-compare-file:
+    desc: Generate the acceptance comparison reference JSON for the current compare image
+    cmd: "go run ./cmd/syft {{ .COMPARE_TEST_IMAGE }} -o json > {{ .COMPARE_DIR }}/testdata/acceptance-{{ .COMPARE_TEST_IMAGE }}.json"
+
+  compare-mac:
+    desc: Run macOS install + acceptance comparison against the snapshot build
+    deps: [tmpdir]
+    cmd: |
+      {{ .COMPARE_DIR }}/mac.sh \
+        {{ .SNAPSHOT_DIR }} \
+        {{ .COMPARE_DIR }} \
+        {{ .COMPARE_TEST_IMAGE }} \
+        {{ .TMP_DIR }}
+
+  compare-linux:
+    desc: Run Linux install + acceptance comparison (deb + rpm) against the snapshot build
+    cmds:
+      - task: compare-test-deb-package-install
+      - task: compare-test-rpm-package-install
+
+  compare-test-deb-package-install:
+    desc: Run Linux .deb install + acceptance comparison against the snapshot build
+    deps: [tmpdir]
+    cmd: |
+      {{ .COMPARE_DIR }}/deb.sh \
+        {{ .SNAPSHOT_DIR }} \
+        {{ .COMPARE_DIR }} \
+        {{ .COMPARE_TEST_IMAGE }} \
+        {{ .TMP_DIR }}
+
+  compare-test-rpm-package-install:
+    desc: Run Linux .rpm install + acceptance comparison against the snapshot build
+    deps: [tmpdir]
+    cmd: |
+      {{ .COMPARE_DIR }}/rpm.sh \
+        {{ .SNAPSHOT_DIR }} \
+        {{ .COMPARE_DIR }} \
+        {{ .COMPARE_TEST_IMAGE }} \
+        {{ .TMP_DIR }}
+
+
+  ## Code and data generation targets ######################################
+
+  generate:
+    desc: Add data generation tasks
+    cmds:
+      - task: generate-json-schema
+      - task: generate-capabilities
+      - task: generate-license-list
+      - task: generate-cpe-dictionary-index
+
+  generate-json-schema:
+    desc: Generate a new JSON schema
+    cmds:
+      - "cd ./internal && go generate . && cd ./jsonschema && go run . && go fmt ../..."
+
+  generate-license-list:
+    desc: Generate an updated license processing code off of the latest available SPDX license list
+    cmds:
+      - "go generate ./internal/spdxlicense/..."
+      - "gofmt -s -w ./internal/spdxlicense"
+
+  generate-cpe-dictionary-index:
+    desc: Generate the CPE index from local cache
+    cmds:
+      - task: generate:cpe-index:cache:pull
+      - task: generate:cpe-index:cache:update
+      - task: generate:cpe-index:build
+
+  generate-capabilities:
+    desc: Generate the capabilities data file
+    deps:
+      - tmpdir
+      - fixtures
+    vars:
+      # set REFRESH=true to run package tests first and refresh test observations (default: true)
+      REFRESH: '{{ .REFRESH | default "true" }}'
+    cmds:
+      # remove all test observations prior to regenerating
+      - task: clean-test-observations
+        if: '{{ eq .REFRESH "true" }}'
+      # this is required to update test observations; such evidence is used to update the packages/*.yaml
+      - cmd: "go test ./syft/pkg/... -count=1"
+        if: '{{ eq .REFRESH "true" }}'
+      - "go generate ./internal/capabilities/..."
+      - "gofmt -s -w ./internal/capabilities"
+      # now that we have the latest capabilities, run completeness tests to ensure this is self-consistent
+      # note: -p 1 forces sequential package execution to avoid race between generate (writes) and internal (reads)
+      - "SYFT_ENABLE_COMPLETENESS_TESTS=true go test -p 1 ./internal/capabilities/... -count=1"
+
+
+  ## Cleanup targets ########################################################
+
+  clean-snapshot:
+    desc: Remove any snapshot builds
+    cmds:
+      - "rm -rf {{ .SNAPSHOT_DIR }}"
+      - "rm -rf {{ .TMP_DIR }}/goreleaser.yaml"
+
+  clean-docker-cache:
+    desc: Remove all docker cache tars and images from the daemon
+    cmds:
+      - find . -type d -wholename "**/testdata/cache" | xargs rm -rf
+      - docker images --format '{{`{{.ID}}`}} {{`{{.Repository}}`}}' | grep stereoscope-fixture- | awk '{print $1}' | uniq | xargs -r docker rmi --force
+
+  clean-oras-cache:
+    desc: Remove all cache for oras commands
+    cmd: rm -rf {{ .ORAS_CACHE }}
+
+  clean-cache:
+    desc: Remove all image docker tar cache, images from the docker daemon, and ephemeral test fixtures
+    cmds:
+      - task: clean-docker-cache
+      - task: prune-orphan-fingerprints
+      - |
+        BOLD='\033[1m'
+        YELLOW='\033[0;33m'
+        RESET='\033[0m'
+
+        # Use a for loop with command substitution to avoid subshell issues
+        for dir in $(find . -type d -name 'testdata'); do
+        if [ -f "$dir/Makefile" ]; then
+          echo -e "${YELLOW}${BOLD}deleting ephemeral test fixtures in $dir${RESET}"
+          (make -C "$dir" clean)
+        fi
+        done
+        echo -e "${BOLD}Deleted all ephemeral test fixtures${RESET}"
+      - rm -f {{ .LAST_CACHE_PULL_FILE }} {{ .CACHE_PATHS_FILE }}
+
+  prune-orphan-fingerprints:
+    desc: Remove *.fingerprint files left behind by moved/deleted catalogers
+    silent: true
+    cmds:
+      - .github/scripts/prune_orphan_fingerprints.py
+
+  clean-test-observations:
+    desc: Remove all test observations (i.e. testdata/test-observations.json)
+    cmds:
+      - find . -type f -wholename "**/testdata/test-observations.json" | xargs rm -f

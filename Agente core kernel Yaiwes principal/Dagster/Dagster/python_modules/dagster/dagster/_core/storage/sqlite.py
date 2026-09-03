@@ -1,0 +1,36 @@
+import os
+import sqlite3
+
+import dagster._check as check
+
+LAST_KNOWN_STAMPED_SQLITE_ALEMBIC_REVISION = "5771160a95ad"
+
+# busy_timeout applied to SQLite connections opened by Dagster's SQLite-backed
+# storages. Passed as `connect_args={"timeout": ...}` to `create_engine`, which
+# forwards it to `sqlite3.connect(timeout=...)`. The pysqlite default is 5s,
+# which is too tight under heavy contended writes on slower filesystems
+# (overlayfs / EBS gp3) — concurrent writers can spend longer than that queued
+# behind the WAL writer lock and surface `sqlite3.OperationalError: database is
+# locked`.
+SQLITE_BUSY_TIMEOUT_SECONDS = 30
+
+
+def create_db_conn_string(base_dir: str, db_name: str) -> str:
+    check.str_param(base_dir, "base_dir")
+    check.str_param(db_name, "db_name")
+
+    path_components = os.path.abspath(base_dir).split(os.sep)
+    db_file = f"{db_name}.db"
+    return "sqlite:///{}".format("/".join(path_components + [db_file]))
+
+
+def create_in_memory_conn_string(db_name: str) -> str:
+    # Uses a named file-based URL for the in-memory connection (as opposed to the :memory: url) so
+    # that multiple instances can share the same logical DB across connections, while maintaining
+    # separate DBs for different db names.  The latter is required to have both the run / event_log
+    # in-memory implementations within the same process
+    return f"sqlite:///file:{db_name}?mode=memory&uri=true&cache=shared"
+
+
+def get_sqlite_version() -> str:
+    return str(sqlite3.sqlite_version)

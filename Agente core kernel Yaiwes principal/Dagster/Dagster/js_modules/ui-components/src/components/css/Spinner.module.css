@@ -1,0 +1,62 @@
+@keyframes spinner-animation {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spinner {
+  --spinner-fill-color: var(--color-accent-gray);
+  --spinner-padding: 0px;
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  overflow: visible;
+  padding: var(--spinner-padding);
+  vertical-align: middle;
+}
+
+.spinner.captionText {
+  --spinner-padding: 1px;
+}
+
+.spinner.bodyText {
+  --spinner-padding: 2px;
+}
+
+.spinner svg {
+  animation: spinner-animation 0.8s linear infinite;
+  display: block;
+}
+
+.spinner.stopped svg {
+  animation: none;
+}
+
+.track,
+.head {
+  fill-opacity: 0;
+}
+
+.track {
+  stroke: var(--spinner-fill-color);
+  stroke-opacity: 0.25;
+}
+
+.head {
+  stroke: var(--spinner-fill-color);
+  stroke-linecap: round;
+  stroke-opacity: 1;
+  transform-origin: center;
+  transition: stroke-dashoffset 0.4s ease;
+}
+
+.stopped .head {
+  fill: var(--spinner-fill-color);
+  fill-opacity: 1;
+  stroke-opacity: 0;
+  transform: scale(44%);
+}

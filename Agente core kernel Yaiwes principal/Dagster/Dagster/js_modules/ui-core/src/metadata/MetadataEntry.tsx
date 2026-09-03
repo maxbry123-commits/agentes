@@ -1,0 +1,462 @@
+import {
+  Box,
+  Button,
+  Colors,
+  Dialog,
+  DialogBody,
+  DialogFooter,
+  FontFamily,
+  Icon,
+  Table,
+  Text,
+  Tooltip,
+  tryPrettyPrintJSON,
+} from '@dagster-io/ui-components';
+import * as React from 'react';
+import {Link} from 'react-router-dom';
+
+import {TableSchema} from './TableSchema';
+import styles from './css/MetadataEntry.module.css';
+import {
+  MetadataEntryFragment_IntMetadataEntry as IntMetadataEntry,
+  MetadataEntryFragment,
+  TableMetadataEntryFragment,
+} from './types/MetadataEntryFragment.types';
+import {PoolTag} from '../../src/instance/PoolTag';
+import {copyValue} from '../app/DomUtils';
+import {assertUnreachable} from '../app/Util';
+import {displayNameForAssetKey} from '../asset-graph/Utils';
+import {assetDetailsPathForKey} from '../assets/assetDetailsPathForKey';
+import {CodeLink, getCodeReferenceKey} from '../code-links/CodeLink';
+import {TimestampDisplay} from '../schedules/TimestampDisplay';
+import {Markdown} from '../ui/Markdown';
+import {NotebookButton} from '../ui/NotebookButton';
+import {DUNDER_REPO_NAME, buildRepoAddress} from '../workspace/buildRepoAddress';
+import {workspacePathFromAddress} from '../workspace/workspacePath';
+
+const TIME_FORMAT = {showSeconds: true, showTimezone: true};
+
+export const HIDDEN_METADATA_ENTRY_LABELS = new Set([
+  'dagster_dbt/select',
+  'dagster_dbt/exclude',
+  'dagster-dbt/select',
+  'dagster-dbt/exclude',
+  'dagster_dbt/manifest',
+  'dagster_dbt/dagster_dbt_translator',
+  'dagster_embedded_elt/dagster_sling_translator',
+  'dagster_embedded_elt/sling_replication_config',
+  'dagster_sling/dagster_sling_translator',
+  'dagster_sling/sling_replication_config',
+]);
+
+export type MetadataEntryLabelOnly = Pick<MetadataEntryFragment, '__typename' | 'label'>;
+
+export const isCanonicalRowCountMetadataEntry = (
+  m: MetadataEntryLabelOnly,
+): m is IntMetadataEntry =>
+  m && m.__typename === 'IntMetadataEntry' && m.label === 'dagster/row_count';
+
+export const isCanonicalSizeBytesMetadataEntry = (
+  m: MetadataEntryLabelOnly,
+): m is IntMetadataEntry =>
+  m && m.__typename === 'IntMetadataEntry' && m.label === 'dagster/size_bytes';
+
+export const isCanonicalQueryCountMetadataEntry = (
+  m: MetadataEntryLabelOnly,
+): m is IntMetadataEntry =>
+  m && m.__typename === 'IntMetadataEntry' && m.label === 'dagster/query_count';
+
+export type LogRowStructuredRow = {label: string; item: JSX.Element};
+
+export const LogRowStructuredContentTable = ({
+  rows,
+  styles: tableStyles,
+}: {
+  rows: LogRowStructuredRow[];
+  styles?: React.CSSProperties;
+}) => (
+  <div style={{overflow: 'auto', paddingBottom: 10, ...(tableStyles || {})}}>
+    <StructuredContentTable cellPadding="0" cellSpacing="0">
+      <tbody>
+        {rows.map(({label, item}, idx) => (
+          <tr key={idx} style={{display: 'flex'}}>
+            <td
+              style={{
+                flex: 1,
+                maxWidth: 'max-content',
+              }}
+            >
+              {label}
+            </td>
+            <td style={{flex: 1}}>{item}</td>
+          </tr>
+        ))}
+      </tbody>
+    </StructuredContentTable>
+  </div>
+);
+
+export const MetadataEntries = ({
+  entries,
+  expandSmallValues,
+}: {
+  entries?: MetadataEntryFragment[];
+  expandSmallValues?: boolean;
+}) => {
+  if (!entries || !entries.length) {
+    return null;
+  }
+  return (
+    <LogRowStructuredContentTable
+      rows={entries
+        .filter((entry) => !HIDDEN_METADATA_ENTRY_LABELS.has(entry.label))
+        .map((entry) => ({
+          label: entry.label,
+          item: <MetadataEntry entry={entry} expandSmallValues={expandSmallValues} />,
+        }))}
+    />
+  );
+};
+
+export const MetadataEntry = ({
+  entry,
+  expandSmallValues,
+  repoLocation,
+}: {
+  entry: MetadataEntryFragment;
+  expandSmallValues?: boolean;
+  repoLocation?: string;
+}) => {
+  switch (entry.__typename) {
+    case 'PathMetadataEntry':
+      return (
+        <Box flex={{direction: 'row', gap: 8, alignItems: 'center'}}>
+          <MetadataEntryAction title="Copy to clipboard" onClick={(e) => copyValue(e, entry.path)}>
+            {entry.path}
+          </MetadataEntryAction>
+          <button className={styles.iconButton} onClick={(e) => copyValue(e, entry.path)}>
+            <Icon name="copy_to_clipboard" color={Colors.accentGray()} />
+          </button>
+        </Box>
+      );
+
+    case 'JsonMetadataEntry':
+    case 'TableColumnLineageMetadataEntry':
+      const jsonString =
+        entry.__typename === 'JsonMetadataEntry' ? entry.jsonString : JSON.stringify(entry.lineage);
+      return expandSmallValues && jsonString.length < 1000 ? (
+        <div style={{whiteSpace: 'pre-wrap'}}>{tryPrettyPrintJSON(jsonString)}</div>
+      ) : (
+        <MetadataEntryDialogAction
+          label={entry.label}
+          copyContent={() => jsonString}
+          content={() => (
+            <Box
+              background={Colors.backgroundLight()}
+              margin={{bottom: 12}}
+              padding={24}
+              border="bottom"
+              style={{whiteSpace: 'pre-wrap', fontFamily: FontFamily.monospace, overflow: 'auto'}}
+            >
+              {tryPrettyPrintJSON(jsonString)}
+            </Box>
+          )}
+        >
+          [Show JSON]
+        </MetadataEntryDialogAction>
+      );
+
+    case 'UrlMetadataEntry':
+      return (
+        <Box flex={{direction: 'row', gap: 8, alignItems: 'center'}}>
+          <MetadataEntryAction href={entry.url} title="Open in a new tab" target="_blank">
+            {entry.url}
+          </MetadataEntryAction>
+          <a href={entry.url} target="_blank" rel="noreferrer">
+            <Icon name="link" color={Colors.accentGray()} />
+          </a>
+        </Box>
+      );
+    case 'TextMetadataEntry':
+      return <>{entry.text}</>;
+    case 'MarkdownMetadataEntry':
+      return expandSmallValues && entry.mdStr.length < 1000 ? (
+        <Markdown>{entry.mdStr}</Markdown>
+      ) : (
+        <MetadataEntryDialogAction
+          label={entry.label}
+          copyContent={() => entry.mdStr}
+          content={() => (
+            <Box
+              padding={{vertical: 16, horizontal: 20}}
+              background={Colors.backgroundDefault()}
+              style={{overflow: 'auto'}}
+              margin={{bottom: 12}}
+            >
+              <Markdown>{entry.mdStr}</Markdown>
+            </Box>
+          )}
+        >
+          [Show Markdown]
+        </MetadataEntryDialogAction>
+      );
+    case 'PythonArtifactMetadataEntry':
+      return (
+        <PythonArtifactLink
+          name={entry.name}
+          module={entry.module}
+          description={entry.description || ''}
+        />
+      );
+    case 'FloatMetadataEntry':
+      return <>{entry.floatValue}</>;
+    case 'TimestampMetadataEntry':
+      return <TimestampDisplay timestamp={entry.timestamp} timeFormat={TIME_FORMAT} />;
+    case 'IntMetadataEntry':
+      return <>{entry.intValue !== null ? entry.intValue : entry.intRepr}</>;
+    case 'BoolMetadataEntry':
+      return <>{entry.boolValue !== null ? entry.boolValue.toString() : 'null'}</>;
+    case 'NullMetadataEntry':
+      return <>null</>;
+    case 'PipelineRunMetadataEntry':
+      return <MetadataEntryLink to={`/runs/${entry.runId}`}>{entry.runId}</MetadataEntryLink>;
+    case 'AssetMetadataEntry':
+      return (
+        <MetadataEntryLink to={assetDetailsPathForKey(entry.assetKey)}>
+          {displayNameForAssetKey(entry.assetKey)}
+        </MetadataEntryLink>
+      );
+    case 'JobMetadataEntry':
+      const repositoryName = entry.repositoryName || DUNDER_REPO_NAME;
+      const workspacePath = workspacePathFromAddress(
+        buildRepoAddress(repositoryName, entry.locationName),
+        `/jobs/${entry.jobName}`,
+      );
+      return (
+        <Box
+          flex={{
+            direction: 'row',
+            gap: 8,
+          }}
+          style={{maxWidth: '100%'}}
+        >
+          <Icon name="job" color={Colors.accentGray()} />
+          <MetadataEntryLink to={workspacePath}>{entry.jobName}</MetadataEntryLink>
+        </Box>
+      );
+    case 'TableMetadataEntry':
+      return <TableMetadataEntryComponent entry={entry} />;
+
+    case 'TableSchemaMetadataEntry':
+      return expandSmallValues && entry.schema.columns.length < 5 ? (
+        <TableSchema schema={entry.schema} />
+      ) : (
+        <MetadataEntryDialogAction
+          label={entry.label}
+          modalWidth={900}
+          copyContent={() => JSON.stringify(entry.schema, null, 2)}
+          content={() => (
+            <Box
+              padding={{vertical: 16, horizontal: 20}}
+              background={Colors.backgroundDefault()}
+              style={{overflow: 'auto'}}
+              margin={{bottom: 12}}
+            >
+              <TableSchema schema={entry.schema} />
+            </Box>
+          )}
+        >
+          [Show Table Schema]
+        </MetadataEntryDialogAction>
+      );
+    case 'NotebookMetadataEntry':
+      if (repoLocation) {
+        return <NotebookButton path={entry.path} repoLocation={repoLocation} />;
+      }
+      return (
+        <Box flex={{direction: 'row', gap: 8, alignItems: 'center'}}>
+          <MetadataEntryAction title="Copy to clipboard" onClick={(e) => copyValue(e, entry.path)}>
+            {entry.path}
+          </MetadataEntryAction>
+          <button className={styles.iconButton} onClick={(e) => copyValue(e, entry.path)}>
+            <Icon name="copy_to_clipboard" color={Colors.accentGray()} />
+          </button>
+        </Box>
+      );
+    case 'CodeReferencesMetadataEntry':
+      return (
+        <MetadataEntryDialogAction
+          label={entry.label}
+          modalWidth={900}
+          content={() => (
+            <Box
+              padding={{vertical: 16, horizontal: 20}}
+              background={Colors.backgroundDefault()}
+              margin={{bottom: 12}}
+              flex={{direction: 'column', gap: 8, alignItems: 'stretch'}}
+            >
+              {entry.codeReferences &&
+                entry.codeReferences.map((ref) => (
+                  <CodeLink key={getCodeReferenceKey(ref)} sourceLocation={ref} />
+                ))}
+            </Box>
+          )}
+        >
+          [Show Code References]
+        </MetadataEntryDialogAction>
+      );
+    case 'PoolMetadataEntry':
+      return <PoolTag pool={entry.pool} />;
+    default:
+      return assertUnreachable(entry);
+  }
+};
+
+const PythonArtifactLink = ({
+  name,
+  module,
+  description,
+}: {
+  name: string;
+  module: string;
+  description: string;
+}) => (
+  <>
+    <Tooltip position="top" content={`${module}.${name}`}>
+      <span style={{cursor: 'pointer', textDecoration: 'underline'}}>{name}</span>
+    </Tooltip>{' '}
+    - {description}
+  </>
+);
+
+const MetadataEntryDialogAction = (props: {
+  children: React.ReactNode;
+  label: string;
+  modalWidth?: number;
+  content: () => React.ReactNode;
+  copyContent?: () => string;
+}) => {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <>
+      <MetadataEntryAction onClick={() => setOpen(true)}>{props.children}</MetadataEntryAction>
+      <Dialog
+        icon="info"
+        style={{width: props.modalWidth || 'auto', minWidth: 400, maxWidth: '80vw'}}
+        title={props.label}
+        onClose={() => setOpen(false)}
+        isOpen={open}
+      >
+        {props.content()}
+        <DialogFooter>
+          {props.copyContent && (
+            <Button
+              onClick={(e: React.MouseEvent) =>
+                props.copyContent && copyValue(e, props.copyContent())
+              }
+            >
+              Copy
+            </Button>
+          )}
+          <Button intent="primary" autoFocus={true} onClick={() => setOpen(false)}>
+            Close
+          </Button>
+        </DialogFooter>
+      </Dialog>
+    </>
+  );
+};
+
+export const TableMetadataEntryComponent = ({entry}: {entry: TableMetadataEntryFragment}) => {
+  const [showSchema, setShowSchema] = React.useState(false);
+
+  const schema = entry.table.schema;
+  const invalidRecords: string[] = [];
+
+  const records = entry.table.records
+    .map((record) => {
+      try {
+        return JSON.parse(record);
+      } catch {
+        invalidRecords.push(record);
+        return null;
+      }
+    })
+    .filter((record): record is Record<string, any> => record !== null);
+
+  return (
+    <Box flex={{direction: 'column', gap: 8}}>
+      <MetadataEntryAction onClick={() => setShowSchema(true)}>Show schema</MetadataEntryAction>
+      <Table style={{borderRight: `1px solid ${Colors.keylineDefault()}`}} compact>
+        <thead>
+          <tr>
+            {schema.columns.map((column) => (
+              <th key={column.name}>{column.name}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {records.map((record, idx) => (
+            <tr key={idx}>
+              {schema.columns.map((column) => (
+                <td key={column.name}>{record[column.name]?.toString()}</td>
+              ))}
+            </tr>
+          ))}
+          {invalidRecords.map((record, ii) => (
+            <tr key={`invalid-${ii}`}>
+              <td colSpan={schema.columns.length}>
+                <Box flex={{direction: 'row', gap: 4, alignItems: 'center'}}>
+                  <Icon name="warning" />
+                  <div>Could not parse record:</div>
+                </Box>
+                <div>
+                  <Tooltip
+                    content={<div style={{maxWidth: '400px'}}>{record}</div>}
+                    placement="top"
+                  >
+                    <Text size={12} family="mono">
+                      {record.length > 20 ? `${record.slice(0, 20)}…` : record}
+                    </Text>
+                  </Tooltip>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </Table>
+      <Dialog isOpen={showSchema} title={`Schema for ${entry.label}`}>
+        <DialogBody>
+          <TableSchema schema={schema} />
+        </DialogBody>
+        <DialogFooter topBorder>
+          <Button
+            intent="primary"
+            autoFocus={true}
+            onClick={() => {
+              setShowSchema(false);
+            }}
+          >
+            Close
+          </Button>
+        </DialogFooter>
+      </Dialog>
+    </Box>
+  );
+};
+
+const MetadataEntryAction = (
+  props: React.AnchorHTMLAttributes<HTMLAnchorElement> & {children: React.ReactNode},
+) => (
+  <a {...props} className={styles.metadataEntryAction}>
+    {props.children}
+  </a>
+);
+
+export const MetadataEntryLink = (props: React.ComponentProps<typeof Link>) => (
+  <Link {...props} className={styles.metadataEntryLink} />
+);
+
+export const StructuredContentTable = (props: React.TableHTMLAttributes<HTMLTableElement>) => (
+  <table {...props} className={styles.structuredContentTable} />
+);

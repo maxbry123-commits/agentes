@@ -1,0 +1,67 @@
+import {useCallback} from 'react';
+import {useHistory} from 'react-router-dom';
+
+import {useMutation} from '../../apollo-client';
+import {TelemetryAction, useTelemetryAction} from '../../app/Telemetry';
+import {useOpenInNewTab} from '../../hooks/useOpenInNewTab';
+import {showLaunchError} from '../../launchpad/showLaunchError';
+import {paramsWithUIExecutionTags} from '../../launchpad/uiExecutionTags';
+import {
+  LAUNCH_PIPELINE_EXECUTION_MUTATION,
+  LaunchBehavior,
+  handleLaunchResult,
+} from '../../runs/RunUtils';
+import {
+  LaunchPipelineExecutionMutation,
+  LaunchPipelineExecutionMutationVariables,
+} from '../../runs/types/RunUtils.types';
+
+interface LaunchWithTelemetryConfig {
+  behavior: LaunchBehavior;
+  openInNewTab?: boolean;
+}
+
+export function useLaunchWithTelemetry() {
+  const [launchPipelineExecution] = useMutation<
+    LaunchPipelineExecutionMutation,
+    LaunchPipelineExecutionMutationVariables
+  >(LAUNCH_PIPELINE_EXECUTION_MUTATION, {
+    refetchQueries: ['AssetChecksQuery', 'AssetCheckDetailsQuery'],
+  });
+  const logTelemetry = useTelemetryAction();
+  const history = useHistory();
+  const openInNewTab = useOpenInNewTab();
+
+  return useCallback(
+    async (
+      {executionParams, ...rest}: LaunchPipelineExecutionMutationVariables,
+      config: LaunchWithTelemetryConfig,
+    ) => {
+      const jobName = executionParams.selector.jobName || executionParams.selector.pipelineName;
+
+      if (!jobName) {
+        return;
+      }
+
+      const metadata: {[key: string]: string | null | undefined} = {
+        jobName,
+        opSelection: executionParams.selector.solidSelection ? 'provided' : undefined,
+      };
+
+      const finalized = {executionParams: paramsWithUIExecutionTags(executionParams), ...rest};
+      const result = await launchPipelineExecution({variables: finalized});
+      logTelemetry(TelemetryAction.LAUNCH_RUN, metadata);
+      try {
+        handleLaunchResult(jobName, result.data?.launchPipelineExecution, history, {
+          behavior: config.behavior,
+          openInNewTab: config.openInNewTab ? openInNewTab : undefined,
+        });
+      } catch (error) {
+        showLaunchError(error as Error);
+      }
+
+      return result.data?.launchPipelineExecution;
+    },
+    [history, launchPipelineExecution, logTelemetry, openInNewTab],
+  );
+}

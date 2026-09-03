@@ -1,0 +1,1167 @@
+import os
+from collections.abc import Iterable, Mapping, Sequence
+from glob import glob
+from pathlib import Path
+
+from buildkite_shared.context import BuildkiteContext
+from buildkite_shared.packages import PackageSpec, build_steps_from_package_specs
+from buildkite_shared.python_version import AvailablePythonVersion
+from buildkite_shared.step_builders.command_step_builder import BuildkiteQueue, ResourceRequests
+from buildkite_shared.step_builders.step_builder import StepConfiguration
+from buildkite_shared.tox import ToxFactor
+from buildkite_shared.utils import (
+    connect_sibling_docker_container,
+    network_buildkite_container,
+    oss_path,
+)
+from dagster_buildkite.defines import GCP_CREDS_FILENAME, GCP_CREDS_LOCAL_FILE, OSS_ROOT
+from dagster_buildkite.steps.test_project import test_project_depends_fn
+from dagster_buildkite.utils import wait_for_mysql_container
+
+_DAGSTER_DBT_DEPS_FACTORS = ["dbt17", "dbt18", "dbt19", "dbt110", "dbt111"]
+_DAGSTER_DBT_CORE_MAIN_RESOURCE_TEST = "dagster_dbt_tests/core/test_resource.py"
+_DAGSTER_DBT_CORE_MAIN_ASSET_CHECKS_TEST = "dagster_dbt_tests/core/test_asset_checks.py"
+_DAGSTER_DBT_CORE_MAIN_CLI_TESTS = "dagster_dbt_tests/cli"
+
+_GRAPHQL_GRPC_RESOURCES = ResourceRequests(cpu="2000m", memory="4Gi")
+
+# clickhouse-server in dind via testcontainers. Default 2Gi dind limit OOMs the
+# server under load. cpu bumped 1000m->2000m: at 1000m the clickhouse-server boot
+# starves the dind daemon, so testcontainers' container bring-up intermittently
+# blows docker-py's 60s read timeout (UnixHTTPConnectionPool ... read timeout=60)
+# and the session fixture errors. Pairs with the /var/lib/docker emptyDir mount.
+_CLICKHOUSE_TESTCONTAINERS_RESOURCES = ResourceRequests(
+    cpu="2000m",
+    memory="1Gi",
+    docker_memory="2Gi",
+    docker_memory_limit="4Gi",
+)
+
+
+def build_example_packages_steps(ctx: BuildkiteContext) -> list[StepConfiguration]:
+    custom_packages = _example_packages_with_custom_config(ctx)
+    custom_example_pkg_roots = [pkg.directory for pkg in custom_packages]
+    example_packages_with_standard_config = [
+        PackageSpec(pkg)
+        for pkg in (
+            _get_uncustomized_pkg_roots("examples", custom_example_pkg_roots)
+            + _get_uncustomized_pkg_roots("examples/experimental", custom_example_pkg_roots)
+        )
+        if pkg not in (oss_path("examples/deploy_ecs"), oss_path("examples/starlift-demo"))
+    ]
+
+    example_packages = custom_packages + example_packages_with_standard_config
+
+    return build_steps_from_package_specs(example_packages, ctx)
+
+
+def build_library_packages_steps(ctx: BuildkiteContext) -> list[StepConfiguration]:
+    custom_packages = _library_packages_with_custom_config(ctx)
+    custom_library_pkg_roots = [pkg.directory for pkg in custom_packages]
+    library_packages_with_standard_config = [
+        *[
+            PackageSpec(pkg)
+            for pkg in _get_uncustomized_pkg_roots("python_modules", custom_library_pkg_roots)
+        ],
+        *[
+            PackageSpec(pkg)
+            for pkg in _get_uncustomized_pkg_roots(
+                "python_modules/libraries", custom_library_pkg_roots
+            )
+        ],
+    ]
+
+    return build_steps_from_package_specs(
+        custom_packages + library_packages_with_standard_config, ctx
+    )
+
+
+# Find packages under a root subdirectory that are not configured above.
+def _get_uncustomized_pkg_roots(root: str, custom_pkg_roots: Sequence[str | Path]) -> list[Path]:
+    all_files_in_root = [
+        os.path.relpath(p, OSS_ROOT) for p in glob(os.path.join(OSS_ROOT, root, "*"))
+    ]
+    return [
+        oss_path(p)
+        for p in all_files_in_root
+        if oss_path(p) not in custom_pkg_roots
+        and os.path.exists(os.path.join(OSS_ROOT, p, "tox.ini"))
+    ]
+
+
+# ########################
+# ##### PACKAGES WITH CUSTOM STEPS
+# ########################
+
+
+def airflow_extra_cmds(version: AvailablePythonVersion, _) -> list[str]:
+    return [
+        'export AIRFLOW_HOME="/airflow"',
+        "mkdir -p $${AIRFLOW_HOME}",
+    ]
+
+
+airline_demo_extra_cmds = [
+    f"pushd {oss_path('examples/airline_demo')}",
+    # Run the postgres db. We are in docker running docker
+    # so this will be a sibling container.
+    "docker compose up -d --remove-orphans",  # clean up in hooks/pre-exit
+    # Can't use host networking on buildkite and communicate via localhost
+    # between these sibling containers, so pass along the ip.
+    *network_buildkite_container("postgres"),
+    *connect_sibling_docker_container(
+        "postgres", "test-postgres-db-airline", "POSTGRES_TEST_DB_HOST"
+    ),
+    "popd",
+]
+
+
+def dagster_graphql_extra_cmds(_, tox_factor: ToxFactor | None) -> list[str]:
+    if tox_factor and tox_factor.factor.startswith("postgres"):
+        return [
+            f"pushd {oss_path('python_modules/dagster-graphql/dagster_graphql_tests/graphql/')}",
+            "docker compose up -d --remove-orphans",  # clean up in hooks/pre-exit,
+            # Can't use host networking on buildkite and communicate via localhost
+            # between these sibling containers, so pass along the ip.
+            *network_buildkite_container("postgres"),
+            *connect_sibling_docker_container(
+                "postgres", "test-postgres-db-graphql", "POSTGRES_TEST_DB_HOST"
+            ),
+            "popd",
+        ]
+    else:
+        return []
+
+
+deploy_docker_example_extra_cmds = [
+    f"pushd {oss_path('examples/deploy_docker/from_source')}",
+    "./build.sh",
+    "docker compose up -d --remove-orphans",  # clean up in hooks/pre-exit
+    *network_buildkite_container("docker_example_network"),
+    *connect_sibling_docker_container(
+        "docker_example_network",
+        "docker_example_webserver",
+        "DEPLOY_DOCKER_WEBSERVER_HOST",
+    ),
+    "popd",
+]
+
+
+def celery_extra_cmds(version: AvailablePythonVersion, _) -> list[str]:
+    return [
+        "export DAGSTER_DOCKER_IMAGE_TAG=$${BUILDKITE_BUILD_ID}-" + version.value,
+        'export DAGSTER_DOCKER_REPOSITORY="$${AWS_ACCOUNT_ID}.dkr.ecr.us-west-2.amazonaws.com"',
+        f"pushd {oss_path('python_modules/libraries/dagster-celery')}",
+        # Run the rabbitmq db. We are in docker running docker
+        # so this will be a sibling container.
+        "docker compose up -d --remove-orphans",  # clean up in hooks/pre-exit,
+        # Can't use host networking on buildkite and communicate via localhost
+        # between these sibling containers, so pass along the ip.
+        *network_buildkite_container("rabbitmq"),
+        *connect_sibling_docker_container(
+            "rabbitmq", "test-rabbitmq", "DAGSTER_CELERY_BROKER_HOST"
+        ),
+        "popd",
+    ]
+
+
+def docker_extra_cmds(version: AvailablePythonVersion, _) -> list[str]:
+    return [
+        "export DAGSTER_DOCKER_IMAGE_TAG=$${BUILDKITE_BUILD_ID}-" + version.value,
+        'export DAGSTER_DOCKER_REPOSITORY="$${AWS_ACCOUNT_ID}.dkr.ecr.us-west-2.amazonaws.com"',
+    ]
+
+
+def clickhouse_testcontainers_extra_cmds(_version: AvailablePythonVersion, _) -> list[str]:
+    """Env for testcontainers + clickhouse-driver against Docker on Buildkite agents.
+
+    Matches other library tests that talk to the host Docker daemon from inside the job container.
+    """
+    return [
+        "export DOCKER_API_VERSION=1.41",
+    ]
+
+
+ui_extra_cmds = [f"just -f {oss_path('justfile')} rebuild_ui"]
+
+
+mysql_extra_cmds = [
+    f"pushd {oss_path('python_modules/libraries/dagster-mysql/dagster_mysql_tests/')}",
+    "docker compose up -d --remove-orphans",  # clean up in hooks/pre-exit,
+    *network_buildkite_container("mysql"),
+    *network_buildkite_container("mysql_pinned"),
+    *network_buildkite_container("mysql_pinned_backcompat"),
+    *connect_sibling_docker_container("mysql", "test-mysql-db", "MYSQL_TEST_DB_HOST"),
+    *connect_sibling_docker_container(
+        "mysql_pinned", "test-mysql-db-pinned", "MYSQL_TEST_PINNED_DB_HOST"
+    ),
+    *connect_sibling_docker_container(
+        "mysql_pinned_backcompat",
+        "test-mysql-db-pinned-backcompat",
+        "MYSQL_TEST_PINNED_BACKCOMPAT_DB_HOST",
+    ),
+    # Wait for mysqld to accept connections; `docker compose up -d` returns before
+    # init is finished, which caused flaky ECONNREFUSED (111) failures on early-
+    # running tests. Placed after network setup so the two overlap with mysqld init.
+    wait_for_mysql_container("test-mysql-db"),
+    wait_for_mysql_container("test-mysql-db-pinned", port=3307),
+    wait_for_mysql_container("test-mysql-db-pinned-backcompat", port=3308),
+    "popd",
+]
+
+
+def k8s_extra_cmds(version: AvailablePythonVersion, _) -> list[str]:
+    return [
+        "export DAGSTER_DOCKER_IMAGE_TAG=$${BUILDKITE_BUILD_ID}-" + version.value,
+        'export DAGSTER_DOCKER_REPOSITORY="$${AWS_ACCOUNT_ID}.dkr.ecr.us-west-2.amazonaws.com"',
+    ]
+
+
+gcp_creds_extra_cmds = (
+    [
+        rf"aws s3 cp s3://\${{BUILDKITE_SECRETS_BUCKET}}/{GCP_CREDS_FILENAME} "
+        + GCP_CREDS_LOCAL_FILE,
+        "export GOOGLE_APPLICATION_CREDENTIALS=" + GCP_CREDS_LOCAL_FILE,
+    ]
+    if not os.getenv("CI_DISABLE_INTEGRATION_TESTS")
+    else []
+)
+
+
+# Heavyweight docs-snapshot tests, each pinned to its own Buildkite shard.
+# Order/contents only affect sharding; adding/removing entries is safe.
+_DOCS_SNAPSHOT_HEAVY_TESTS: list[tuple[str, str]] = [
+    (
+        "dbt-component",
+        "docs_snippets_tests/snippet_checks/guides/components/integrations/test_dbt_component.py",
+    ),
+    (
+        "dbt-component-remote",
+        "docs_snippets_tests/snippet_checks/guides/components/integrations/test_dbt_component_remote.py",
+    ),
+    (
+        "sling-component",
+        "docs_snippets_tests/snippet_checks/guides/components/integrations/test_sling_component.py",
+    ),
+    (
+        "customizing-existing-component",
+        "docs_snippets_tests/snippet_checks/guides/components/test_customizing_existing_component.py",
+    ),
+    (
+        "using-env",
+        "docs_snippets_tests/snippet_checks/guides/dg/test_using_env.py",
+    ),
+    (
+        "dg-docs-workspace",
+        "docs_snippets_tests/snippet_checks/guides/dg/test_dg_docs_workspace.py",
+    ),
+    (
+        "scaffolding-project",
+        "docs_snippets_tests/snippet_checks/guides/dg/test_scaffolding_project.py",
+    ),
+]
+
+
+# Some Dagster packages have more involved test configs or support only certain Python version;
+# special-case those here
+def _example_packages_with_custom_config(ctx: BuildkiteContext) -> list[PackageSpec]:
+    return [
+        PackageSpec(
+            oss_path("examples/assets_smoke_test"),
+            unsupported_python_versions=[
+                AvailablePythonVersion.V3_14,  # dbt-core incompatible
+            ],
+        ),
+        PackageSpec(
+            oss_path("examples/deploy_docker"),
+            pytest_extra_cmds=deploy_docker_example_extra_cmds,
+            unsupported_python_versions=[
+                AvailablePythonVersion.V3_14,  # Docker client version mismatch in 3.14 container
+            ],
+        ),
+        PackageSpec(
+            oss_path("examples/docs_snippets"),
+            # The docs_snippets test suite also installs a ton of packages in the same environment,
+            # which is liable to cause dependency collisions. It's not necessary to test all these
+            # snippets in all python versions since we are testing the core code exercised by the
+            # snippets against all supported python versions.
+            unsupported_python_versions=AvailablePythonVersion.get_all_except_default(),
+            queue=BuildkiteQueue.KUBERNETES_EKS,
+            pytest_tox_factors=[
+                ToxFactor("all"),
+                ToxFactor("integrations"),
+                # Heavyweight docs-snapshot tests get their own shard so the
+                # slowest single test bounds wall time, not the slowest cluster.
+                # Each shard pays full tox setup; this is intentional and traded
+                # off for parallelism. Residual shard runs everything else.
+                *[
+                    ToxFactor(
+                        "docs_snapshot_test",
+                        label_suffix=label_suffix,
+                        pytest_args=[test_path],
+                    )
+                    for label_suffix, test_path in _DOCS_SNAPSHOT_HEAVY_TESTS
+                ],
+                ToxFactor(
+                    "docs_snapshot_test",
+                    label_suffix="rest",
+                    splits=3,
+                    pytest_args=[
+                        "docs_snippets_tests/snippet_checks",
+                        *[f"--ignore={test_path}" for _, test_path in _DOCS_SNAPSHOT_HEAVY_TESTS],
+                    ],
+                ),
+            ],
+            force_run_fn=BuildkiteContext.has_dg_changes,
+        ),
+        PackageSpec(
+            oss_path("examples/project_fully_featured"),
+            unsupported_python_versions=[
+                AvailablePythonVersion.V3_12,  # duckdb
+                AvailablePythonVersion.V3_13,  # duckdb
+                AvailablePythonVersion.V3_14,  # duckdb
+            ],
+        ),
+        PackageSpec(
+            oss_path("examples/project_multi_tenant"),
+            unsupported_python_versions=[
+                AvailablePythonVersion.V3_10,  # requires-python >= 3.11
+            ],
+        ),
+        PackageSpec(
+            oss_path("examples/with_great_expectations"),
+            unsupported_python_versions=[
+                AvailablePythonVersion.V3_14,  # great_expectations incompatible
+            ],
+        ),
+        PackageSpec(
+            oss_path("examples/with_pyspark"),
+        ),
+        PackageSpec(
+            oss_path("examples/with_pyspark_emr"),
+        ),
+        PackageSpec(
+            oss_path("examples/with_wandb"),
+            unsupported_python_versions=[
+                # onnxruntime no longer ships cp310 wheels
+                AvailablePythonVersion.V3_10,
+            ],
+        ),
+        PackageSpec(
+            oss_path("examples/assets_modern_data_stack"),
+            pytest_tox_factors=[ToxFactor("source"), ToxFactor("pypi")],
+            unsupported_python_versions=[
+                AvailablePythonVersion.V3_14,  # dbt-core incompatible
+            ],
+        ),
+        PackageSpec(
+            oss_path("examples/assets_dbt_python"),
+            pytest_tox_factors=[ToxFactor("source"), ToxFactor("pypi")],
+            unsupported_python_versions=[
+                AvailablePythonVersion.V3_12,  # duckdb
+                AvailablePythonVersion.V3_13,  # duckdb
+                AvailablePythonVersion.V3_14,  # duckdb
+            ],
+        ),
+        PackageSpec(
+            oss_path("examples/assets_dynamic_partitions"),
+            unsupported_python_versions=[
+                AvailablePythonVersion.V3_12,  # duckdb
+                AvailablePythonVersion.V3_13,  # duckdb
+                AvailablePythonVersion.V3_14,  # duckdb
+            ],
+        ),
+        PackageSpec(
+            oss_path("examples/quickstart_etl"),
+            pytest_tox_factors=[ToxFactor("source"), ToxFactor("pypi")],
+            unsupported_python_versions=[
+                AvailablePythonVersion.V3_14,  # PyO3 max supported version is 3.13
+            ],
+        ),
+        PackageSpec(
+            oss_path("examples/use_case_repository"),
+            pytest_tox_factors=[ToxFactor("source")],
+        ),
+        # Federation tutorial spins up two host-process airflow instances + dagster;
+        # 2 vCPU / 4 Gi starves the airflow standalones (SQLite lock contention).
+        PackageSpec(
+            oss_path("examples/airlift-federation-tutorial"),
+            force_run_fn=BuildkiteContext.has_dagster_airlift_changes,
+            timeout_in_minutes=30,
+            queue=BuildkiteQueue.KUBERNETES_EKS,
+            # Two airflow standalone stacks + dagster share one pod. 2 vCPU starved
+            # the SQLite writers under load (scheduler died with "database is
+            # locked", failing test_load_metrics); 4 vCPU matches the old c5.xlarge
+            # DOCKER-queue sizing this package ran on before #24950.
+            resources=ResourceRequests(cpu="4000m", memory="6Gi"),
+            unsupported_python_versions=[
+                # airflow
+                AvailablePythonVersion.V3_12,
+                AvailablePythonVersion.V3_13,
+                AvailablePythonVersion.V3_14,
+            ],
+        ),
+        PackageSpec(
+            oss_path("examples/airlift-migration-tutorial"),
+            force_run_fn=BuildkiteContext.has_dagster_airlift_changes,
+            unsupported_python_versions=[
+                # airflow
+                AvailablePythonVersion.V3_12,
+                AvailablePythonVersion.V3_13,
+                AvailablePythonVersion.V3_14,
+            ],
+        ),
+    ]
+
+
+def _unsupported_dagster_python_versions(
+    tox_factor: ToxFactor | None,
+) -> list[AvailablePythonVersion]:
+    if tox_factor and tox_factor.factor == "general_tests_old_protobuf":
+        return [
+            AvailablePythonVersion.V3_11,
+            AvailablePythonVersion.V3_12,
+            AvailablePythonVersion.V3_13,
+            AvailablePythonVersion.V3_14,
+        ]
+
+    if tox_factor and tox_factor.factor in {
+        "type_signature_tests",
+    }:
+        return [AvailablePythonVersion.V3_12]
+
+    return []
+
+
+def test_subfolders(tests_folder_name: str) -> Iterable[str]:
+    tests_path = (
+        Path(__file__).parent
+        / Path("../../../../python_modules/dagster/dagster_tests/")
+        / Path(tests_folder_name)
+    )
+    for subfolder in tests_path.iterdir():
+        if subfolder.suffix == ".py" and subfolder.stem != "__init__":
+            raise Exception(
+                f"If you are splitting a test folder into parallel subfolders "
+                f"there should be no python files in the root of the folder. Found {subfolder}."
+            )
+        if subfolder.is_dir():
+            yield subfolder.name
+
+
+def tox_factors_for_folder(
+    tests_folder_name: str,
+    queue_overrides: Mapping[str, BuildkiteQueue] | None = None,
+    resources_overrides: Mapping[str, ResourceRequests] | None = None,
+) -> list[ToxFactor]:
+    queues = queue_overrides or {}
+    resources = resources_overrides or {}
+    return [
+        ToxFactor(
+            f"{tests_folder_name}__{subfolder_name}",
+            queue=queues.get(subfolder_name),
+            resources=resources.get(subfolder_name),
+        )
+        for subfolder_name in test_subfolders(tests_folder_name)
+    ]
+
+
+def _library_packages_with_custom_config(ctx: BuildkiteContext) -> list[PackageSpec]:
+    return [
+        PackageSpec(
+            oss_path("python_modules/automation"),
+            # automation is internal code that doesn't need to be tested in every python version. The
+            # test suite also installs a ton of packages in the same environment, which is liable to
+            # cause dependency collisions.
+            unsupported_python_versions=AvailablePythonVersion.get_all_except_default(),
+            # automation validates public API consistency across all published packages,
+            # so it must run whenever any published package changes.
+            force_run_fn=BuildkiteContext.has_published_python_package_changes,
+        ),
+        PackageSpec(oss_path("python_modules/dagster-webserver"), pytest_extra_cmds=ui_extra_cmds),
+        PackageSpec(oss_path("python_modules/dagit")),
+        PackageSpec(
+            oss_path("python_modules/dagster"),
+            env_vars=["AWS_ACCOUNT_ID"],
+            pytest_tox_factors=[
+                ToxFactor("api_tests"),
+                ToxFactor("asset_defs_tests"),
+                # CLI tests fan out fresh `dagster ...` subprocess invocations
+                # and spin up gRPC workspace/dev servers (test_grpc_server_workspace,
+                # test_dagster_dev_command). Same CPU-starvation profile as
+                # daemon/scheduler tests; bump to match.
+                ToxFactor(
+                    "cli_tests",
+                    splits=2,
+                    resources=ResourceRequests(cpu="2000m", memory="2Gi"),
+                ),
+                ToxFactor("components_tests"),
+                ToxFactor("core_tests"),
+                # Daemon tests run a gRPC code-server subprocess plus the
+                # sensor/scheduler daemons + threadpool executors; on the EKS
+                # default 1000m CPU budget the code server's heartbeat thread
+                # gets starved and the server shuts itself down mid-test with
+                # "No heartbeat received in 20 seconds", cascading into every
+                # subsequent test in the split. Match storage_tests' bump below.
+                ToxFactor(
+                    "daemon_sensor_tests",
+                    splits=2,
+                    resources=ResourceRequests(cpu="2000m", memory="4Gi"),
+                ),
+                ToxFactor(
+                    "daemon_tests",
+                    splits=2,
+                    resources=ResourceRequests(cpu="2000m", memory="4Gi"),
+                ),
+                # CPU-bound: `test_asset_daemon_without_sensor` parametrizes over
+                # AssetDaemonScenarios; the slowest scenario submits 73 partitioned run
+                # requests through the synchronous run coordinator in one tick and brushes
+                # the 240s pytest-timeout fallback on the EKS default 1000m budget.
+                ToxFactor(
+                    "declarative_automation_tests",
+                    splits=2,
+                    resources=ResourceRequests(cpu="2000m", memory="2Gi"),
+                ),
+                ToxFactor("definitions_tests"),
+                # general_tests includes the grpc_tests/ subtree (test_heartbeat,
+                # test_persistent, test_watch_server, test_grpc_server_registry,
+                # test_health_check) — the exact subprocess-heartbeat pattern
+                # that drove the daemon-test bumps to 2000m/4Gi.
+                ToxFactor(
+                    "general_tests",
+                    resources=ResourceRequests(cpu="2000m", memory="4Gi"),
+                ),
+                ToxFactor(
+                    "general_tests_old_protobuf",
+                    resources=ResourceRequests(cpu="2000m", memory="4Gi"),
+                ),
+                ToxFactor("launcher_tests"),
+                ToxFactor("logging_tests"),
+                ToxFactor("model_tests"),
+                # Same gRPC-code-server/CPU-starvation pattern as the daemon
+                # tests above: test_stale_request_context hits it most reliably.
+                ToxFactor("scheduler_tests", resources=ResourceRequests(cpu="2000m", memory="4Gi")),
+                # `test_threaded_concurrency` (100-thread sqlite contention)
+                # times out at 30s wall-clock on the EKS default 1000m CPU
+                # budget. Bumping per-step CPU to match what pyright/ty use
+                # for CPU-bound EKS work.
+                ToxFactor(
+                    "storage_tests",
+                    splits=2,
+                    resources=ResourceRequests(cpu="2000m", memory="4Gi"),
+                ),
+                ToxFactor(
+                    "storage_tests_sqlalchemy_1_3",
+                    splits=2,
+                    resources=ResourceRequests(cpu="2000m", memory="4Gi"),
+                ),
+                ToxFactor(
+                    "storage_tests_sqlalchemy_1_4",
+                    splits=2,
+                    resources=ResourceRequests(cpu="2000m", memory="4Gi"),
+                ),
+                ToxFactor("utils_tests"),
+                ToxFactor("type_signature_tests"),
+            ]
+            + tox_factors_for_folder(
+                "execution_tests",
+                # misc_execution_tests contains test_interrupt,
+                # test_run_cancellation_thread, and test_run_metrics_thread —
+                # timing-sensitive threading tests with the same CPU-scheduling
+                # sensitivity as the daemon tests above.
+                resources_overrides={
+                    "misc_execution_tests": ResourceRequests(cpu="2000m", memory="4Gi"),
+                },
+            ),
+            unsupported_python_versions=_unsupported_dagster_python_versions,
+        ),
+        PackageSpec(
+            oss_path("python_modules/dagster-graphql"),
+            pytest_extra_cmds=dagster_graphql_extra_cmds,
+            # *_instance_*_grpc_env and *_instance_multi_location factors all
+            # spin up GrpcServerProcess subprocesses via
+            # graphql_context_test_suite (STRICT_GRPC_SERVER_PROCESS_WAIT=1).
+            # Same subprocess-heartbeat CPU-starvation profile as
+            # daemon_tests; bump matches.
+            pytest_tox_factors=[
+                ToxFactor("not_graphql_context_test_suite", splits=2),
+                ToxFactor(
+                    "sqlite_instance_multi_location",
+                    resources=_GRAPHQL_GRPC_RESOURCES,
+                ),
+                ToxFactor(
+                    "sqlite_instance_managed_grpc_env",
+                    splits=2,
+                    resources=_GRAPHQL_GRPC_RESOURCES,
+                ),
+                ToxFactor(
+                    "sqlite_instance_deployed_grpc_env",
+                    splits=2,
+                    resources=_GRAPHQL_GRPC_RESOURCES,
+                ),
+                ToxFactor(
+                    "sqlite_instance_code_server_cli_grpc_env",
+                    splits=2,
+                    resources=_GRAPHQL_GRPC_RESOURCES,
+                ),
+                ToxFactor("graphql_python_client"),
+                ToxFactor("postgres-graphql_context_variants"),
+                ToxFactor(
+                    "postgres-instance_multi_location",
+                    resources=_GRAPHQL_GRPC_RESOURCES,
+                ),
+                ToxFactor(
+                    "postgres-instance_managed_grpc_env",
+                    splits=2,
+                    resources=_GRAPHQL_GRPC_RESOURCES,
+                ),
+                ToxFactor(
+                    "postgres-instance_deployed_grpc_env",
+                    splits=2,
+                    resources=_GRAPHQL_GRPC_RESOURCES,
+                ),
+                ToxFactor("gql_v3"),
+                ToxFactor("gql_v3_5"),
+            ],
+            unsupported_python_versions=lambda tox_factor: (
+                # test suites particularly likely to crash and/or hang
+                # due to https://github.com/grpc/grpc/issues/31885
+                (
+                    [AvailablePythonVersion.V3_11]
+                    if tox_factor
+                    and tox_factor.factor
+                    in {
+                        "sqlite_instance_managed_grpc_env",
+                        "sqlite_instance_deployed_grpc_env",
+                        "sqlite_instance_code_server_cli_grpc_env",
+                        "sqlite_instance_multi_location",
+                        "postgres-instance_multi_location",
+                        "postgres-instance_managed_grpc_env",
+                    }
+                    else []
+                )
+                # postgres grpc tests hit "too many clients" on 3.14,
+                # likely due to gRPC subprocess connection cleanup issues
+                + (
+                    [AvailablePythonVersion.V3_14]
+                    if tox_factor
+                    and tox_factor.factor
+                    in {
+                        "postgres-instance_deployed_grpc_env",
+                        "postgres-instance_managed_grpc_env",
+                        "postgres-instance_multi_location",
+                    }
+                    else []
+                )
+            ),
+            timeout_in_minutes=30,
+        ),
+        PackageSpec(
+            # fixtures_tests cycles multi-service docker-compose stacks; under the
+            # default 2Gi dind limit `compose down` hits the 90s stop timeout and
+            # leaves stale containers that fail name-conflict on the next test.
+            # Same shape as the dagster-mysql bump in #24661.
+            oss_path("python_modules/dagster-test"),
+            unsupported_python_versions=[
+                # dagster-airflow
+                AvailablePythonVersion.V3_12,
+                AvailablePythonVersion.V3_13,
+                AvailablePythonVersion.V3_14,
+            ],
+            resources=ResourceRequests(
+                cpu="1000m",
+                memory="1Gi",
+                docker_memory="2Gi",
+                docker_memory_limit="4Gi",
+            ),
+        ),
+        PackageSpec(
+            oss_path("python_modules/libraries/dagster-dbt"),
+            pytest_tox_factors=[
+                *[
+                    ToxFactor(f"{deps_factor}-cloud", splits=3)
+                    for deps_factor in _DAGSTER_DBT_DEPS_FACTORS
+                ],
+                *[
+                    ToxFactor(
+                        f"{deps_factor}-core-main",
+                        label_suffix="rest",
+                        splits=5,
+                        pytest_args=[
+                            f"--ignore={_DAGSTER_DBT_CORE_MAIN_RESOURCE_TEST}",
+                            f"--ignore={_DAGSTER_DBT_CORE_MAIN_ASSET_CHECKS_TEST}",
+                            f"--ignore={_DAGSTER_DBT_CORE_MAIN_CLI_TESTS}",
+                        ],
+                    )
+                    for deps_factor in _DAGSTER_DBT_DEPS_FACTORS
+                ],
+                *[
+                    ToxFactor(
+                        f"{deps_factor}-core-main",
+                        label_suffix="test_resource",
+                        splits=2,
+                        pytest_args=[_DAGSTER_DBT_CORE_MAIN_RESOURCE_TEST],
+                    )
+                    for deps_factor in _DAGSTER_DBT_DEPS_FACTORS
+                ],
+                *[
+                    ToxFactor(
+                        f"{deps_factor}-core-main",
+                        label_suffix="test_asset_checks",
+                        splits=2,
+                        pytest_args=[_DAGSTER_DBT_CORE_MAIN_ASSET_CHECKS_TEST],
+                    )
+                    for deps_factor in _DAGSTER_DBT_DEPS_FACTORS
+                ],
+                *[
+                    ToxFactor(
+                        f"{deps_factor}-core-main",
+                        label_suffix="cli",
+                        splits=2,
+                        pytest_args=[_DAGSTER_DBT_CORE_MAIN_CLI_TESTS],
+                    )
+                    for deps_factor in _DAGSTER_DBT_DEPS_FACTORS
+                ],
+                *[
+                    ToxFactor(f"{deps_factor}-core-derived-metadata", splits=3)
+                    for deps_factor in _DAGSTER_DBT_DEPS_FACTORS
+                ],
+            ],
+            # dbt-core 1.7's protobuf<5 constraint conflicts with the grpc requirement for Python 3.13+
+            # dbt-core is incompatible with Python 3.14
+            unsupported_python_versions=(
+                lambda tox_factor: (
+                    [AvailablePythonVersion.V3_13, AvailablePythonVersion.V3_14]
+                    if tox_factor and tox_factor.factor.startswith("dbt17")
+                    else [AvailablePythonVersion.V3_14]
+                )
+            ),
+        ),
+        PackageSpec(
+            oss_path("python_modules/libraries/dagster-dbt/"),
+            skip_run_fn=_get_dbt_only_skip_reason,
+            name="dagster-dbt-fusion",
+            pytest_tox_factors=[
+                ToxFactor(
+                    "dbtfusion-snowflake",
+                    concurrency=1,
+                    concurrency_group="dagster-dbt-fusion-snowflake",
+                )
+            ],
+            env_vars=[
+                "SNOWFLAKE_ACCOUNT",
+                "SNOWFLAKE_USER",
+                "SNOWFLAKE_BUILDKITE_PRIVATE_KEY",
+            ],
+            unsupported_python_versions=[
+                AvailablePythonVersion.V3_14,  # dbt-core incompatible
+            ],
+        ),
+        PackageSpec(
+            oss_path("python_modules/libraries/dagster-snowflake"),
+            env_vars=[
+                "SNOWFLAKE_ACCOUNT",
+                "SNOWFLAKE_USER",
+                "SNOWFLAKE_DEMO_PRIVATE_KEY",
+            ],
+        ),
+        PackageSpec(
+            oss_path("python_modules/libraries/dagster-airlift"),
+            env_vars=[
+                "AIRLIFT_MWAA_TEST_ENV_NAME",
+                "AIRLIFT_MWAA_TEST_PROFILE",
+                "AIRLIFT_MWAA_TEST_REGION",
+            ],
+        ),
+        PackageSpec(
+            oss_path("python_modules/libraries/dagster-airbyte"),
+            pytest_tox_factors=[
+                ToxFactor("unit"),
+                # 8-service Airbyte compose stack (5 JVMs + Postgres + nginx + init)
+                # OOM-kills under the dind default 2Gi / 2 vCPU.
+                ToxFactor(
+                    "integration",
+                    resources=ResourceRequests(
+                        cpu="1000m",
+                        memory="1Gi",
+                        docker_cpu="4000m",
+                        docker_memory="4Gi",
+                        docker_memory_limit="6Gi",
+                    ),
+                ),
+            ],
+        ),
+        # PackageSpec(
+        #     "python_modules/libraries/dagster-airflow",
+        #     # omit python 3.10 until we add support
+        #     unsupported_python_versions=[
+        #         AvailablePythonVersion.V3_10,
+        #         AvailablePythonVersion.V3_11,
+        #         AvailablePythonVersion.V3_12,
+        #         AvailablePythonVersion.V3_13,
+        #     ],
+        #     env_vars=[
+        #         "AIRFLOW_HOME",
+        #         "AWS_ACCOUNT_ID",
+        #         "AWS_ACCESS_KEY_ID",
+        #         "AWS_SECRET_ACCESS_KEY",
+        #         "BUILDKITE_SECRETS_BUCKET",
+        #         "GOOGLE_APPLICATION_CREDENTIALS",
+        #     ],
+        #     pytest_extra_cmds=airflow_extra_cmds,
+        #     pytest_tox_factors=[
+        #         ToxFactor("default-airflow2"),
+        #         ToxFactor("localdb-airflow2"),
+        #         ToxFactor("persistentdb-airflow2"),
+        #     ],
+        # ),
+        PackageSpec(
+            oss_path("python_modules/libraries/dagster-dg-cli"),
+            pytest_tox_factors=[
+                ToxFactor("general"),
+                ToxFactor("slow", splits=4),
+                ToxFactor("serial"),
+                ToxFactor("plus"),
+            ],
+            env_vars=["SHELL"],
+            force_run_fn=BuildkiteContext.has_dg_or_component_integration_or_rest_resource_changes,
+            # general/slow/serial tests depend on dagster-dbt which does not support Python 3.14
+            unsupported_python_versions=(
+                lambda tox_factor: (
+                    [AvailablePythonVersion.V3_14]
+                    if (tox_factor and tox_factor.factor in ("general", "slow", "serial"))
+                    else []
+                )
+            ),
+        ),
+        PackageSpec(
+            oss_path("python_modules/libraries/dagster-aws"),
+        ),
+        PackageSpec(
+            oss_path("python_modules/libraries/dagster-azure"),
+            env_vars=["AZURE_STORAGE_ACCOUNT_KEY"],
+        ),
+        PackageSpec(
+            # Single rabbitmq sibling container; default dind sizing is enough.
+            oss_path("python_modules/libraries/dagster-celery"),
+            env_vars=["AWS_ACCOUNT_ID", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"],
+            pytest_extra_cmds=celery_extra_cmds,
+        ),
+        PackageSpec(
+            # Runs `test-project` images via celery + docker. The cpu=4000m bump
+            # from #24902 did not eliminate the 60s UnixHTTPConnectionPool
+            # ReadTimeouts (recurred on builds 152968, 152985, 153001, 153056
+            # within ~2h of merge). Per #24902's pre-committed escalation,
+            # bump docker_memory_limit 4Gi → 8Gi to give dind headroom for
+            # concurrent decompression and image-pull buffers.
+            oss_path("python_modules/libraries/dagster-celery-docker"),
+            env_vars=["AWS_ACCOUNT_ID", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"],
+            pytest_extra_cmds=celery_extra_cmds,
+            pytest_step_dependencies=test_project_depends_fn,
+            resources=ResourceRequests(
+                cpu="1000m",
+                memory="1Gi",
+                docker_cpu="4000m",
+                docker_memory="2Gi",
+                docker_memory_limit="8Gi",
+            ),
+        ),
+        PackageSpec(
+            oss_path("python_modules/libraries/dagster-dask"),
+        ),
+        PackageSpec(
+            oss_path("python_modules/libraries/dagster-databricks"),
+        ),
+        PackageSpec(
+            # Pulls and runs `test-project` images per test. Same dind
+            # saturation shape as dagster-celery-docker above — bump
+            # docker_memory_limit 4Gi → 8Gi alongside that package.
+            oss_path("python_modules/libraries/dagster-docker"),
+            env_vars=["AWS_ACCOUNT_ID", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"],
+            pytest_extra_cmds=docker_extra_cmds,
+            pytest_step_dependencies=test_project_depends_fn,
+            resources=ResourceRequests(
+                cpu="1000m",
+                memory="1Gi",
+                docker_cpu="4000m",
+                docker_memory="2Gi",
+                docker_memory_limit="8Gi",
+            ),
+        ),
+        PackageSpec(
+            oss_path("python_modules/libraries/dagster-duckdb"),
+            unsupported_python_versions=[
+                # duckdb
+                AvailablePythonVersion.V3_12,
+            ],
+        ),
+        PackageSpec(
+            oss_path("python_modules/libraries/dagster-duckdb-pandas"),
+            unsupported_python_versions=[
+                # duckdb
+                AvailablePythonVersion.V3_12,
+            ],
+        ),
+        PackageSpec(
+            oss_path("python_modules/libraries/dagster-duckdb-polars"),
+            unsupported_python_versions=[
+                # duckdb
+                AvailablePythonVersion.V3_12,
+            ],
+        ),
+        PackageSpec(
+            oss_path("python_modules/libraries/dagster-duckdb-pyspark"),
+            unsupported_python_versions=[
+                # duckdb
+                AvailablePythonVersion.V3_12,
+            ],
+        ),
+        PackageSpec(
+            oss_path("python_modules/libraries/dagster-clickhouse"),
+            queue=BuildkiteQueue.KUBERNETES_EKS,
+            resources=_CLICKHOUSE_TESTCONTAINERS_RESOURCES,
+            unsupported_python_versions=[
+                AvailablePythonVersion.V3_12,
+            ],
+            pytest_extra_cmds=clickhouse_testcontainers_extra_cmds,
+        ),
+        PackageSpec(
+            oss_path("python_modules/libraries/dagster-clickhouse-pandas"),
+            queue=BuildkiteQueue.KUBERNETES_EKS,
+            resources=_CLICKHOUSE_TESTCONTAINERS_RESOURCES,
+            unsupported_python_versions=[
+                AvailablePythonVersion.V3_12,
+            ],
+            pytest_extra_cmds=clickhouse_testcontainers_extra_cmds,
+        ),
+        PackageSpec(
+            oss_path("python_modules/libraries/dagster-clickhouse-polars"),
+            queue=BuildkiteQueue.KUBERNETES_EKS,
+            resources=_CLICKHOUSE_TESTCONTAINERS_RESOURCES,
+            unsupported_python_versions=[
+                AvailablePythonVersion.V3_12,
+            ],
+            pytest_extra_cmds=clickhouse_testcontainers_extra_cmds,
+        ),
+        PackageSpec(
+            oss_path("python_modules/libraries/dagster-pandas"),
+            unsupported_python_versions=[
+                AvailablePythonVersion.V3_12,
+            ],
+        ),
+        PackageSpec(
+            oss_path("python_modules/libraries/dagster-gcp"),
+            env_vars=[
+                "AWS_ACCESS_KEY_ID",
+                "AWS_SECRET_ACCESS_KEY",
+                "BUILDKITE_SECRETS_BUCKET",
+                "GCP_PROJECT_ID",
+            ],
+            pytest_extra_cmds=gcp_creds_extra_cmds,
+        ),
+        PackageSpec(
+            oss_path("python_modules/libraries/dagster-gcp-pandas"),
+            env_vars=[
+                "AWS_ACCESS_KEY_ID",
+                "AWS_SECRET_ACCESS_KEY",
+                "BUILDKITE_SECRETS_BUCKET",
+                "GCP_PROJECT_ID",
+            ],
+            pytest_extra_cmds=gcp_creds_extra_cmds,
+        ),
+        PackageSpec(
+            oss_path("python_modules/libraries/dagster-gcp-pyspark"),
+            env_vars=[
+                "AWS_ACCESS_KEY_ID",
+                "AWS_SECRET_ACCESS_KEY",
+                "BUILDKITE_SECRETS_BUCKET",
+                "GCP_PROJECT_ID",
+            ],
+            pytest_extra_cmds=gcp_creds_extra_cmds,
+            # spark-bigquery connector not yet compatible with Spark 4.x (required for PySpark on 3.14)
+            unsupported_python_versions=[AvailablePythonVersion.V3_14],
+        ),
+        PackageSpec(
+            oss_path("python_modules/libraries/dagster-ge"),
+            unsupported_python_versions=[
+                AvailablePythonVersion.V3_14,  # great_expectations incompatible
+            ],
+        ),
+        PackageSpec(
+            oss_path("python_modules/libraries/dagster-k8s"),
+            env_vars=[
+                "AWS_ACCOUNT_ID",
+                "AWS_ACCESS_KEY_ID",
+                "AWS_SECRET_ACCESS_KEY",
+                "BUILDKITE_SECRETS_BUCKET",
+            ],
+            pytest_tox_factors=[
+                ToxFactor("kubernetes_12"),
+                ToxFactor("kubernetes_35"),
+                ToxFactor("kubernetes_36"),
+            ],
+            pytest_extra_cmds=k8s_extra_cmds,
+        ),
+        PackageSpec(
+            oss_path("python_modules/libraries/dagster-mlflow"),
+        ),
+        PackageSpec(
+            # Three sibling MySQL containers (test-mysql-db, test-mysql-db-pinned,
+            # test-mysql-db-pinned-backcompat) up at once; each mysqld is ~300-500MB
+            # at steady state, so the 2Gi dind limit is the tight bound.
+            oss_path("python_modules/libraries/dagster-mysql"),
+            pytest_extra_cmds=mysql_extra_cmds,
+            pytest_tox_factors=[
+                ToxFactor("storage_tests", splits=2),
+                ToxFactor("storage_tests_sqlalchemy_1_3", splits=2),
+            ],
+            unsupported_python_versions=[
+                AvailablePythonVersion.V3_14,  # mysql-connector-python incompatible
+            ],
+            force_run_fn=BuildkiteContext.has_storage_test_fixture_changes,
+            # Three sibling mysqld containers (~300-500MB each); the default
+            # 2Gi dind memory limit is the tight bound. Outer-pod memory=1Gi
+            # promotes the test container to Burstable QoS. Same shape as the
+            # airbyte integration bump in #23997.
+            resources=ResourceRequests(
+                cpu="1000m",
+                memory="1Gi",
+                docker_memory="2Gi",
+                docker_memory_limit="4Gi",
+            ),
+        ),
+        PackageSpec(
+            oss_path("python_modules/libraries/dagster-snowflake-pandas"),
+            env_vars=["SNOWFLAKE_ACCOUNT", "SNOWFLAKE_BUILDKITE_PRIVATE_KEY"],
+        ),
+        PackageSpec(
+            oss_path("python_modules/libraries/dagster-snowflake-pyspark"),
+            env_vars=["SNOWFLAKE_ACCOUNT", "SNOWFLAKE_BUILDKITE_PRIVATE_KEY"],
+            unsupported_python_versions=[
+                AvailablePythonVersion.V3_14,  # pyspark<4 not available
+            ],
+        ),
+        PackageSpec(
+            oss_path("python_modules/libraries/dagster-snowflake-polars"),
+            env_vars=["SNOWFLAKE_ACCOUNT", "SNOWFLAKE_BUILDKITE_PRIVATE_KEY"],
+        ),
+        PackageSpec(
+            # Single sibling postgres container via dagster_test.fixtures; default
+            # dind sizing is enough.
+            oss_path("python_modules/libraries/dagster-postgres"),
+            pytest_tox_factors=[
+                ToxFactor("storage_tests"),
+                ToxFactor("storage_tests_sqlalchemy_1_3"),
+            ],
+            force_run_fn=BuildkiteContext.has_storage_test_fixture_changes,
+        ),
+        PackageSpec(
+            oss_path("python_modules/libraries/dagster-rest-resources"),
+            pytest_tox_factors=[
+                ToxFactor("default"),
+            ],
+            force_run_fn=BuildkiteContext.has_rest_resources_changes,
+        ),
+        PackageSpec(
+            oss_path("python_modules/libraries/dagster-twilio"),
+            env_vars=["TWILIO_TEST_ACCOUNT_SID", "TWILIO_TEST_AUTH_TOKEN"],
+        ),
+        PackageSpec(
+            oss_path("python_modules/libraries/dagster-wandb"),
+            unsupported_python_versions=[
+                AvailablePythonVersion.V3_12,
+                AvailablePythonVersion.V3_13,
+                AvailablePythonVersion.V3_14,
+            ],
+        ),
+        PackageSpec(
+            oss_path("python_modules/libraries/dagstermill"),
+            pytest_tox_factors=[
+                ToxFactor("papermill2", splits=2),
+            ],
+        ),
+        PackageSpec(
+            oss_path("python_modules/libraries/dagster-airlift/perf-harness"),
+            force_run_fn=BuildkiteContext.has_dagster_airlift_changes,
+            unsupported_python_versions=[
+                # airflow
+                AvailablePythonVersion.V3_12,
+                AvailablePythonVersion.V3_13,
+                AvailablePythonVersion.V3_14,
+            ],
+        ),
+        PackageSpec(
+            # Each split runs a host-process airflow + dagster pair; mirror the
+            # federation tutorial's sizing (minus one airflow instance).
+            oss_path("python_modules/libraries/dagster-airlift/kitchen-sink"),
+            force_run_fn=BuildkiteContext.has_dagster_airlift_changes,
+            unsupported_python_versions=[
+                # airflow
+                AvailablePythonVersion.V3_12,
+                AvailablePythonVersion.V3_13,
+                AvailablePythonVersion.V3_14,
+            ],
+            queue=BuildkiteQueue.KUBERNETES_EKS,
+            # One airflow standalone stack + dagster per split carries the same
+            # SQLite-lock risk as the federation tutorial, so match its 4 vCPU
+            # sizing (#24950).
+            resources=ResourceRequests(cpu="4000m", memory="4Gi"),
+            splits=2,
+        ),
+        # Runs against live dbt cloud instance, we only want to run on commits and on the
+        # nightly build
+        PackageSpec(
+            oss_path("python_modules/libraries/dagster-dbt/kitchen-sink"),
+            skip_run_fn=_get_dbt_cloud_only_skip_reason,
+            name="dagster-dbt-cloud-live",
+            env_vars=[
+                "KS_DBT_CLOUD_ACCOUNT_ID",
+                "KS_DBT_CLOUD_ACCESS_URL",
+                "KS_DBT_CLOUD_TOKEN",
+                "KS_DBT_CLOUD_PROJECT_ID",
+                "KS_DBT_CLOUD_ENVIRONMENT_ID",
+            ],
+            unsupported_python_versions=[
+                AvailablePythonVersion.V3_14,  # dbt-core incompatible
+            ],
+        ),
+        PackageSpec(
+            oss_path(".buildkite/dagster-buildkite"),
+            unsupported_python_versions=[
+                AvailablePythonVersion.V3_10,  # requires tomllib (3.11+)
+            ],
+        ),
+        PackageSpec(
+            oss_path("python_modules/dagster-cloud"),
+            pytest_tox_factors=[
+                ToxFactor("default", splits=3),
+                ToxFactor("pex_tests", splits=3),
+            ],
+            unsupported_python_versions=AvailablePythonVersion.get_all_except_default(),
+            timeout_in_minutes=25,
+            ecr_passthru=True,
+        ),
+    ]
+
+
+def _get_dbt_only_skip_reason(ctx: BuildkiteContext) -> str | None:
+    """If no dagster-dbt files are touched, then do NOT run. Even if on master."""
+    return (
+        None
+        if (any("dagster_dbt" in str(path) for path in ctx.changed_files))
+        else "Not a dagster-dbt commit"
+    )
+
+
+def _get_dbt_cloud_only_skip_reason(ctx: BuildkiteContext) -> str | None:
+    """If no dagster-dbt cloud v2 files are touched, then do NOT run. Even if on master."""
+    return (
+        None
+        if (
+            any("dagster_dbt/cloud_v2" in str(path) for path in ctx.changed_files)
+            # The kitchen sink in dagster-dbt in only testing the dbt Cloud integration v2.
+            # Do not skip tests if changes are made to this test suite.
+            or any("dagster-dbt/kitchen-sink" in str(path) for path in ctx.changed_files)
+        )
+        else "Not a dagster-dbt Cloud commit"
+    )
