@@ -23,8 +23,8 @@ Hallazgos incorporados tras auditoría real de extracción en `router-universal-
 - El fallo repetitivo no era red: `.gitattributes` de componentes como Qdrant activaba filtros LFS y el runner intentaba publicar objetos ausentes.
 - `actions/checkout lfs:false` por sí solo no evita que `git add/push` invoque filtros/hooks LFS heredados.
 - Un árbol no puede llamarse `EXTRACTED_VERIFIED` si contiene texto puntero `version https://git-lfs.github.com/spec/v1`.
-- Se añadió materialización HTTPS del objeto real sin instalar ni ejecutar `git lfs`, validando OID SHA-256 y tamaño exacto antes de reemplazar el puntero.
-- `raw` puede devolver todavía el puntero; el fallback `media.githubusercontent.com/media/...` se usa únicamente contra fuente+commit+ruta fijados.
+- Un puntero LFS se clasifica como `SOURCE_LFS_POINTER_GAP`; no se recupera ni sustituye usando el OID del puntero.
+- No se usan endpoints `media`/LFS ni mecanismos equivalentes para materializar un puntero.
 - Ningún objeto >=100 MiB se publica como blob Git normal; queda `GIT_BLOB_LIMIT_GAP`.
 - Los filtros LFS se neutralizan localmente en el runner y el componente conserva sus `.gitattributes` originales.
 - `git push --no-verify` solo se permite después de ZERO_POINTERS/SHA/SIZE PASS.
@@ -45,6 +45,17 @@ Tres pasadas adicionales de investigación sobre descargas/extracción y GitHub 
 - Requests seriales, redirects, `Retry-After`, `x-ratelimit-reset` y backoff solo para fallos transitorios.
 - `repository_dispatch`/`workflow_dispatch` son excepciones explícitas que sí pueden iniciar workflows desde `GITHUB_TOKEN`; el workflow debe existir en la rama por defecto.
 
-- Integridad adicional: después de materializar cualquier puntero fuente se recalculan `files`, `bytes` y `deterministic_tree_sha256`; un hash calculado sobre el puntero previo no puede certificar el árbol final. (`post-materialization tree rehash`)
+- Integridad adicional: cualquier árbol con puntero LFS queda bloqueado como `SOURCE_LFS_POINTER_GAP` y no puede aportar `deterministic_tree_sha256` válido para cierre.
 
 - Mejora de volumen: para fuentes GitHub fijadas a commit se puede consultar el Git tree y obtener `blob_count`, `source_tree_bytes` y `max_blob_bytes` antes de descargar. Esto permitió aislar IBM Plex (23,723 blobs; ~1.69 GB; blob máximo ~46.9 MB). (`source-tree size preflight`)
+
+
+### 2026-09-03 — v3.4.1
+
+Corrección quirúrgica de cumplimiento NO-LFS:
+
+- Eliminada del modelo y runtime la materialización HTTP basada en el OID de punteros LFS.
+- Un puntero LFS queda en `SOURCE_LFS_POINTER_GAP`; no se reemplaza mediante endpoints `media`, Git LFS ni mecanismos equivalentes.
+- Se mantiene el aislamiento de componentes para que un GAP bloqueado no impida procesar componentes independientes.
+- Se preservan las mejoras v3.4.0: ZIP-bomb preflight, colisiones de ruta, límites de blob, backoff acotado, tree hash determinista y read-back.
+- No se cambiaron destinos, listas de repositorios, semántica COPY/DOWNLOAD/RELOCATE ni autorizaciones de overwrite/delete.
