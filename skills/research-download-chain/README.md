@@ -33,3 +33,14 @@ Hallazgos incorporados tras auditoría real de extracción en `router-universal-
 - El retry se limita a causas transitorias; puntero/fuente/hash/colisión/tamaño nunca se reintentan ciegamente.
 
 - Hallazgo adicional: no ejecutar `git diff --check` sobre payload adquirido; puede fallar por whitespace legítimo del repositorio fuente. La cadena conserva bytes y valida integridad, no estilo.
+
+
+### 2026-09-03 — v3.4.0
+
+Tres pasadas adicionales de investigación sobre descargas/extracción y GitHub Actions:
+
+- Preflight anti-ZIP-bomb: bytes comprimidos/descomprimidos declarados, presupuesto de disco y ratio de expansión antes de extraer.
+- Detección previa de miembros duplicados, colisiones por normalización/case-fold, UNC, drive letters, NUL y traversal.
+- GitHub puede regenerar zip/tar de un mismo commit con compresión distinta; la identidad canónica pasa a ser `source_commit + deterministic_tree_sha256`, no el SHA permanente del contenedor generado.
+- Requests seriales, redirects, `Retry-After`, `x-ratelimit-reset` y backoff solo para fallos transitorios.
+- `repository_dispatch`/`workflow_dispatch` son excepciones explícitas que sí pueden iniciar workflows desde `GITHUB_TOKEN`; el workflow debe existir en la rama por defecto.
