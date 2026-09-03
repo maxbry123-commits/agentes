@@ -42,7 +42,7 @@ def plan(order: str, facts: dict) -> Proposal:
     if not awakened(order): raise ValueError("watchdog trigger absent")
     missing=[g for g in INPUT_GOALS if g not in facts]
     target, mode=classify(facts)
-    penalties=min(45, 5*len(missing)) + (20 if not facts.get("source_provenance") else 0)
+    penalties=min(45, 5*len(missing)) + (20 if not facts.get("source-provenance") else 0)
     score=max(0,95-penalties)
     evidence={"facts":facts,"missing":missing,"rule":"deterministic-95-llm-max-5"}
     fp=hashlib.sha256(json.dumps(evidence,sort_keys=True).encode()).hexdigest()
