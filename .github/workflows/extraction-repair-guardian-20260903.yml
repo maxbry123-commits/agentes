@@ -79,7 +79,6 @@ jobs:
           if ! git diff --cached --quiet; then
             git config user.name 'github-actions[bot]'
             git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            git diff --cached --check
             git commit -m "fix(extraction): publish verified NO-LFS batch [run ${GITHUB_RUN_ID}]"
             for attempt in 1 2 3; do
               if git pull --rebase origin main && git push --no-verify origin HEAD:main; then
