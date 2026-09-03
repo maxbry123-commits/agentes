@@ -1,0 +1,84 @@
+{
+  "name": "grafana",
+  "$schema": "node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "targets": {
+    "start": {
+      "dependsOn": [
+        "check-frontend-dev",
+        "themes-generate",
+        {
+          "projects": ["tag:scope:plugin"],
+          "target": "build"
+        }
+      ]
+    },
+    "start:rspack": {
+      "dependsOn": [
+        "check-frontend-dev",
+        "themes-generate",
+        {
+          "projects": ["tag:scope:plugin"],
+          "target": "build"
+        }
+      ],
+      "cache": false
+    },
+    "build": {
+      "dependsOn": [
+        "themes-generate",
+        {
+          "projects": ["tag:scope:plugin"],
+          "target": "build"
+        }
+      ],
+      "outputs": ["{workspaceRoot}/public/build", "{workspaceRoot}/public/build-swagger"],
+      "cache": true
+    },
+    "dev": {
+      "dependsOn": [
+        "themes-generate",
+        {
+          "projects": ["tag:scope:plugin"],
+          "target": "build"
+        }
+      ],
+      "outputs": ["{workspaceRoot}/public/build"],
+      "cache": true
+    },
+    "dev:rspack": {
+      "dependsOn": [
+        "themes-generate",
+        "build:swagger",
+        {
+          "projects": ["tag:scope:plugin"],
+          "target": "build"
+        }
+      ],
+      "cache": false
+    },
+    "build:swagger": {
+      "dependsOn": ["themes-generate"],
+      "outputs": ["{workspaceRoot}/public/build-swagger"],
+      "cache": true
+    },
+    "start:swagger": {
+      "dependsOn": ["themes-generate"]
+    },
+    "themes-generate": {
+      "inputs": [
+        "{workspaceRoot}/scripts/cli/generateSassVariableFiles.ts",
+        "{workspaceRoot}/packages/grafana-data/src/themes/**",
+        "{workspaceRoot}/packages/grafana-ui/src/themes/**",
+        "{workspaceRoot}/package.json"
+      ],
+      "outputs": [
+        "{workspaceRoot}/public/sass/_variables.generated.scss",
+        "{workspaceRoot}/public/sass/_variables.dark.generated.scss",
+        "{workspaceRoot}/public/sass/_variables.light.generated.scss",
+        "{workspaceRoot}/public/app/features/theme-playground/schema.json"
+      ],
+      "cache": true
+    }
+  }
+}
