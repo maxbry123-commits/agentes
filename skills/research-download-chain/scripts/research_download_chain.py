@@ -1,4 +1,4 @@
-import json, os, re, shutil, subprocess, sys, time, urllib.parse, urllib.request
+import hashlib, json, os, re, shutil, subprocess, sys, time, urllib.parse, urllib.request
 from pathlib import Path
 DEST=Path(sys.argv[1]).resolve(); WORK=Path(sys.argv[2]).resolve(); SRC=WORK/'src'; PACK=WORK/'pack'
 LFS_POINTER_PREFIX=b'version https://git-lfs.github.com/spec/v1\n'
@@ -12,253 +12,41 @@ def is_lfs_pointer(path):
         with path.open('rb') as f: return f.read(POINTER_SCAN_BYTES).startswith(LFS_POINTER_PREFIX)
     except OSError: return False
 def materialize_source_pointers_http(root,url,sha):
-    m=re.match(r'https://github\\.com/([^/]+)/([^/]+?)(?:\\.git)?def clone_retry(cmd,url,root,attempts=3):
-    last=None
-    for attempt in range(1,attempts+1):
-        shutil.rmtree(root,ignore_errors=True)
-        try:
-            run(cmd+[url,str(root)]); return
-        except subprocess.CalledProcessError as e:
-            last=e
-            if attempt==attempts: break
-            time.sleep(attempt*5)
-    raise last
-def done(slug):
-    if not MANIFEST.exists(): return False
-    return any((lambda d:d.get('slug')==slug and d.get('status')=='COMPLETE')(json.loads(x)) for x in MANIFEST.read_text().splitlines() if x.strip())
-def stage_repo(slug,root):
-    stage=PACK/f'{slug}_stage'; shutil.rmtree(stage,ignore_errors=True); stage.mkdir(parents=True); records=[]
-    for p in root.rglob('*'):
-        if not p.is_file(): continue
-        rel=p.relative_to(root); target=stage/slug/rel; target.parent.mkdir(parents=True,exist_ok=True); size=p.stat().st_size
-        if size<=CHUNK: shutil.copy2(p,target); continue
-        d=target.parent/(target.name+'.chunks'); d.mkdir(parents=True,exist_ok=True)
-        with p.open('rb') as f:
-            i=0
-            while True:
-                data=f.read(CHUNK)
-                if not data: break
-                (d/f'{target.name}.part-{i:04d}').write_bytes(data); i+=1
-        records.append({'repo':slug,'path':str(rel),'chunks_dir':str(d.relative_to(stage)),'bytes':size,'chunk_bytes':CHUNK})
-    if records: (stage/'SPLIT_FILES.json').write_text(json.dumps(records,indent=2))
-    return stage
-def package(slug,root):
-    stage=stage_repo(slug,root); full=PACK/f'{slug}_full.zip'; full.unlink(missing_ok=True)
-    run(['zip','-q','-r','-9','-y',str(full.resolve()),'.'],cwd=stage)
-    if full.stat().st_size<=SPLIT_TARGET:
-        out=PACK/f'{slug}_0001.zip'; full.replace(out); shutil.rmtree(stage,ignore_errors=True); return [(out,out.stat().st_size)]
-    before=set(PACK.glob('*.zip')); run(['zipsplit','-n',str(SPLIT_TARGET),'-b',str(PACK.resolve()),str(full.resolve())]); full.unlink(missing_ok=True)
-    made=[p for p in PACK.glob('*.zip') if p not in before and p != full]
-    if not made: raise RuntimeError(f'zipsplit produced no parts for {slug}')
-    out=[]
-    for i,p in enumerate(sorted(made,key=lambda p:(p.stat().st_mtime,p.name)),1):
-        q=PACK/f'{slug}_{i:04d}.zip'; p.replace(q); size=q.stat().st_size
-        if size>MAX_ZIP: raise RuntimeError(f'ZIP part exceeds safety limit: {q} = {size}')
-        subprocess.run(['unzip','-tq',str(q)],check=True); out.append((q,size))
-    shutil.rmtree(stage,ignore_errors=True); return out
-def push(label):
-    for attempt in range(1,4):
-        try:
-            run(['git','fetch','origin','main']); run(['git','rebase','origin/main']); run(['git','push','--no-verify','origin','HEAD:main']); print(f'PUSH PASS {label} attempt {attempt}'); return
-        except subprocess.CalledProcessError:
-            if attempt==3: raise
-            time.sleep(attempt*2)
-def commit(n,label):
-    if not n:return
-    run(['git','add',str(DEST)])
-    if subprocess.run(['git','diff','--cached','--quiet']).returncode==0:return
-    run(['git','config','user.name','github-actions[bot]']); run(['git','config','user.email','41898282+github-actions[bot]@users.noreply.github.com']); run(['git','commit','-m',f'build(download): research queue batch {label} ({n} bytes)']); push(label)
-run(['git','config','--local','filter.lfs.clean','cat'])
-run(['git','config','--local','filter.lfs.smudge','cat'])
-run(['git','config','--local','filter.lfs.process',''])
-run(['git','config','--local','filter.lfs.required','false'])
-DEST.mkdir(parents=True,exist_ok=True); SRC.mkdir(parents=True,exist_ok=True); PACK.mkdir(parents=True,exist_ok=True)
-batch=batch_no=0
-for number,slug,url in REPOS:
-    print(f'===== QUEUE {number}/20: {slug} =====')
-    if done(slug): print(f'{slug}: COMPLETE; skipping'); continue
-    root=SRC/slug; shutil.rmtree(root,ignore_errors=True); clone_retry(['git','clone','--depth','1','--no-tags'],url,root)
-    sha=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip(); shutil.rmtree(root/'.git',ignore_errors=True); materialize_source_pointers_http(root,url,sha)
-    parts=package(slug,root); print(f'{slug}: {len(parts)} ZIP part(s)')
-    for z,size in parts:
-        if batch and batch+size>BATCH_LIMIT: commit(batch,f'{batch_no:03d}'); batch=0; batch_no+=1
-        shutil.copy2(z,DEST/z.name); batch+=size; print(f'  {z.name}: {size} bytes; batch={batch}')
-    with MANIFEST.open('a') as f: f.write(json.dumps({'number':int(number),'slug':slug,'source':url,'source_commit':sha,'parts':len(parts),'status':'COMPLETE'},sort_keys=True)+'\n')
-    shutil.rmtree(root,ignore_errors=True); shutil.rmtree(PACK,ignore_errors=True); PACK.mkdir(parents=True,exist_ok=True)
-commit(batch,f'{batch_no:03d}-final'); print('===== QUEUE COMPLETE: 20/20 repositories processed =====')
-,url)
+    m=re.match(r'https://github\\.com/([^/]+)/([^/]+?)(?:\\.git)?$',url)
     if not m: raise RuntimeError('SOURCE_URL_GAP: '+url)
     owner,repo=m.group(1),m.group(2); failures=[]
     for p in sorted(x for x in root.rglob('*') if is_lfs_pointer(x)):
         txt=p.read_text()
-        mo=re.search(r'^oid sha256:([0-9a-f]{64})def clone_retry(cmd,url,root,attempts=3):
-    last=None
-    for attempt in range(1,attempts+1):
-        shutil.rmtree(root,ignore_errors=True)
-        try:
-            run(cmd+[url,str(root)]); return
-        except subprocess.CalledProcessError as e:
-            last=e
-            if attempt==attempts: break
-            time.sleep(attempt*5)
-    raise last
-def done(slug):
-    if not MANIFEST.exists(): return False
-    return any((lambda d:d.get('slug')==slug and d.get('status')=='COMPLETE')(json.loads(x)) for x in MANIFEST.read_text().splitlines() if x.strip())
-def stage_repo(slug,root):
-    stage=PACK/f'{slug}_stage'; shutil.rmtree(stage,ignore_errors=True); stage.mkdir(parents=True); records=[]
-    for p in root.rglob('*'):
-        if not p.is_file(): continue
-        rel=p.relative_to(root); target=stage/slug/rel; target.parent.mkdir(parents=True,exist_ok=True); size=p.stat().st_size
-        if size<=CHUNK: shutil.copy2(p,target); continue
-        d=target.parent/(target.name+'.chunks'); d.mkdir(parents=True,exist_ok=True)
-        with p.open('rb') as f:
-            i=0
-            while True:
-                data=f.read(CHUNK)
-                if not data: break
-                (d/f'{target.name}.part-{i:04d}').write_bytes(data); i+=1
-        records.append({'repo':slug,'path':str(rel),'chunks_dir':str(d.relative_to(stage)),'bytes':size,'chunk_bytes':CHUNK})
-    if records: (stage/'SPLIT_FILES.json').write_text(json.dumps(records,indent=2))
-    return stage
-def package(slug,root):
-    stage=stage_repo(slug,root); full=PACK/f'{slug}_full.zip'; full.unlink(missing_ok=True)
-    run(['zip','-q','-r','-9','-y',str(full.resolve()),'.'],cwd=stage)
-    if full.stat().st_size<=SPLIT_TARGET:
-        out=PACK/f'{slug}_0001.zip'; full.replace(out); shutil.rmtree(stage,ignore_errors=True); return [(out,out.stat().st_size)]
-    before=set(PACK.glob('*.zip')); run(['zipsplit','-n',str(SPLIT_TARGET),'-b',str(PACK.resolve()),str(full.resolve())]); full.unlink(missing_ok=True)
-    made=[p for p in PACK.glob('*.zip') if p not in before and p != full]
-    if not made: raise RuntimeError(f'zipsplit produced no parts for {slug}')
-    out=[]
-    for i,p in enumerate(sorted(made,key=lambda p:(p.stat().st_mtime,p.name)),1):
-        q=PACK/f'{slug}_{i:04d}.zip'; p.replace(q); size=q.stat().st_size
-        if size>MAX_ZIP: raise RuntimeError(f'ZIP part exceeds safety limit: {q} = {size}')
-        subprocess.run(['unzip','-tq',str(q)],check=True); out.append((q,size))
-    shutil.rmtree(stage,ignore_errors=True); return out
-def push(label):
-    for attempt in range(1,4):
-        try:
-            run(['git','fetch','origin','main']); run(['git','rebase','origin/main']); run(['git','push','--no-verify','origin','HEAD:main']); print(f'PUSH PASS {label} attempt {attempt}'); return
-        except subprocess.CalledProcessError:
-            if attempt==3: raise
-            time.sleep(attempt*2)
-def commit(n,label):
-    if not n:return
-    run(['git','add',str(DEST)])
-    if subprocess.run(['git','diff','--cached','--quiet']).returncode==0:return
-    run(['git','config','user.name','github-actions[bot]']); run(['git','config','user.email','41898282+github-actions[bot]@users.noreply.github.com']); run(['git','commit','-m',f'build(download): research queue batch {label} ({n} bytes)']); push(label)
-run(['git','config','--local','filter.lfs.clean','cat'])
-run(['git','config','--local','filter.lfs.smudge','cat'])
-run(['git','config','--local','filter.lfs.process',''])
-run(['git','config','--local','filter.lfs.required','false'])
-DEST.mkdir(parents=True,exist_ok=True); SRC.mkdir(parents=True,exist_ok=True); PACK.mkdir(parents=True,exist_ok=True)
-batch=batch_no=0
-for number,slug,url in REPOS:
-    print(f'===== QUEUE {number}/20: {slug} =====')
-    if done(slug): print(f'{slug}: COMPLETE; skipping'); continue
-    root=SRC/slug; shutil.rmtree(root,ignore_errors=True); clone_retry(['git','clone','--depth','1','--no-tags'],url,root)
-    sha=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip(); shutil.rmtree(root/'.git',ignore_errors=True); guard_source_tree(root)
-    parts=package(slug,root); print(f'{slug}: {len(parts)} ZIP part(s)')
-    for z,size in parts:
-        if batch and batch+size>BATCH_LIMIT: commit(batch,f'{batch_no:03d}'); batch=0; batch_no+=1
-        shutil.copy2(z,DEST/z.name); batch+=size; print(f'  {z.name}: {size} bytes; batch={batch}')
-    with MANIFEST.open('a') as f: f.write(json.dumps({'number':int(number),'slug':slug,'source':url,'source_commit':sha,'parts':len(parts),'status':'COMPLETE'},sort_keys=True)+'\n')
-    shutil.rmtree(root,ignore_errors=True); shutil.rmtree(PACK,ignore_errors=True); PACK.mkdir(parents=True,exist_ok=True)
-commit(batch,f'{batch_no:03d}-final'); print('===== QUEUE COMPLETE: 20/20 repositories processed =====')
-,txt,re.M); ms=re.search(r'^size ([0-9]+)def clone_retry(cmd,url,root,attempts=3):
-    last=None
-    for attempt in range(1,attempts+1):
-        shutil.rmtree(root,ignore_errors=True)
-        try:
-            run(cmd+[url,str(root)]); return
-        except subprocess.CalledProcessError as e:
-            last=e
-            if attempt==attempts: break
-            time.sleep(attempt*5)
-    raise last
-def done(slug):
-    if not MANIFEST.exists(): return False
-    return any((lambda d:d.get('slug')==slug and d.get('status')=='COMPLETE')(json.loads(x)) for x in MANIFEST.read_text().splitlines() if x.strip())
-def stage_repo(slug,root):
-    stage=PACK/f'{slug}_stage'; shutil.rmtree(stage,ignore_errors=True); stage.mkdir(parents=True); records=[]
-    for p in root.rglob('*'):
-        if not p.is_file(): continue
-        rel=p.relative_to(root); target=stage/slug/rel; target.parent.mkdir(parents=True,exist_ok=True); size=p.stat().st_size
-        if size<=CHUNK: shutil.copy2(p,target); continue
-        d=target.parent/(target.name+'.chunks'); d.mkdir(parents=True,exist_ok=True)
-        with p.open('rb') as f:
-            i=0
-            while True:
-                data=f.read(CHUNK)
-                if not data: break
-                (d/f'{target.name}.part-{i:04d}').write_bytes(data); i+=1
-        records.append({'repo':slug,'path':str(rel),'chunks_dir':str(d.relative_to(stage)),'bytes':size,'chunk_bytes':CHUNK})
-    if records: (stage/'SPLIT_FILES.json').write_text(json.dumps(records,indent=2))
-    return stage
-def package(slug,root):
-    stage=stage_repo(slug,root); full=PACK/f'{slug}_full.zip'; full.unlink(missing_ok=True)
-    run(['zip','-q','-r','-9','-y',str(full.resolve()),'.'],cwd=stage)
-    if full.stat().st_size<=SPLIT_TARGET:
-        out=PACK/f'{slug}_0001.zip'; full.replace(out); shutil.rmtree(stage,ignore_errors=True); return [(out,out.stat().st_size)]
-    before=set(PACK.glob('*.zip')); run(['zipsplit','-n',str(SPLIT_TARGET),'-b',str(PACK.resolve()),str(full.resolve())]); full.unlink(missing_ok=True)
-    made=[p for p in PACK.glob('*.zip') if p not in before and p != full]
-    if not made: raise RuntimeError(f'zipsplit produced no parts for {slug}')
-    out=[]
-    for i,p in enumerate(sorted(made,key=lambda p:(p.stat().st_mtime,p.name)),1):
-        q=PACK/f'{slug}_{i:04d}.zip'; p.replace(q); size=q.stat().st_size
-        if size>MAX_ZIP: raise RuntimeError(f'ZIP part exceeds safety limit: {q} = {size}')
-        subprocess.run(['unzip','-tq',str(q)],check=True); out.append((q,size))
-    shutil.rmtree(stage,ignore_errors=True); return out
-def push(label):
-    for attempt in range(1,4):
-        try:
-            run(['git','fetch','origin','main']); run(['git','rebase','origin/main']); run(['git','push','--no-verify','origin','HEAD:main']); print(f'PUSH PASS {label} attempt {attempt}'); return
-        except subprocess.CalledProcessError:
-            if attempt==3: raise
-            time.sleep(attempt*2)
-def commit(n,label):
-    if not n:return
-    run(['git','add',str(DEST)])
-    if subprocess.run(['git','diff','--cached','--quiet']).returncode==0:return
-    run(['git','config','user.name','github-actions[bot]']); run(['git','config','user.email','41898282+github-actions[bot]@users.noreply.github.com']); run(['git','commit','-m',f'build(download): research queue batch {label} ({n} bytes)']); push(label)
-run(['git','config','--local','filter.lfs.clean','cat'])
-run(['git','config','--local','filter.lfs.smudge','cat'])
-run(['git','config','--local','filter.lfs.process',''])
-run(['git','config','--local','filter.lfs.required','false'])
-DEST.mkdir(parents=True,exist_ok=True); SRC.mkdir(parents=True,exist_ok=True); PACK.mkdir(parents=True,exist_ok=True)
-batch=batch_no=0
-for number,slug,url in REPOS:
-    print(f'===== QUEUE {number}/20: {slug} =====')
-    if done(slug): print(f'{slug}: COMPLETE; skipping'); continue
-    root=SRC/slug; shutil.rmtree(root,ignore_errors=True); clone_retry(['git','clone','--depth','1','--no-tags'],url,root)
-    sha=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip(); shutil.rmtree(root/'.git',ignore_errors=True); guard_source_tree(root)
-    parts=package(slug,root); print(f'{slug}: {len(parts)} ZIP part(s)')
-    for z,size in parts:
-        if batch and batch+size>BATCH_LIMIT: commit(batch,f'{batch_no:03d}'); batch=0; batch_no+=1
-        shutil.copy2(z,DEST/z.name); batch+=size; print(f'  {z.name}: {size} bytes; batch={batch}')
-    with MANIFEST.open('a') as f: f.write(json.dumps({'number':int(number),'slug':slug,'source':url,'source_commit':sha,'parts':len(parts),'status':'COMPLETE'},sort_keys=True)+'\n')
-    shutil.rmtree(root,ignore_errors=True); shutil.rmtree(PACK,ignore_errors=True); PACK.mkdir(parents=True,exist_ok=True)
-commit(batch,f'{batch_no:03d}-final'); print('===== QUEUE COMPLETE: 20/20 repositories processed =====')
-,txt,re.M)
-        if not mo or not ms: failures.append(str(p.relative_to(root))+':INVALID_SOURCE_POINTER'); continue
+        mo=re.search(r'^oid sha256:([0-9a-f]{64})$',txt,re.M)
+        ms=re.search(r'^size ([0-9]+)$',txt,re.M)
+        if not mo or not ms:
+            failures.append(str(p.relative_to(root))+':INVALID_SOURCE_POINTER'); continue
         oid,expected=mo.group(1),int(ms.group(1))
-        if expected>=100*1024*1024: failures.append(str(p.relative_to(root))+':GIT_BLOB_LIMIT_GAP'); continue
+        if expected>=100*1024*1024:
+            failures.append(str(p.relative_to(root))+':GIT_BLOB_LIMIT_GAP'); continue
         rel=urllib.parse.quote(p.relative_to(root).as_posix(),safe='/')
         data=None
-        for u in (f'https://github.com/{owner}/{repo}/raw/{sha}/{rel}',f'https://media.githubusercontent.com/media/{owner}/{repo}/{sha}/{rel}'):
+        for u in (
+            f'https://github.com/{owner}/{repo}/raw/{sha}/{rel}',
+            f'https://media.githubusercontent.com/media/{owner}/{repo}/{sha}/{rel}'
+        ):
             try:
                 req=urllib.request.Request(u,headers={'User-Agent':'yaiwes-research-download/3.3'})
-                with urllib.request.urlopen(req,timeout=90) as r: b=r.read(100*1024*1024+1)
+                with urllib.request.urlopen(req,timeout=90) as r:
+                    b=r.read(100*1024*1024+1)
                 if b.startswith(LFS_POINTER_PREFIX): continue
                 data=b; break
             except Exception:
                 pass
-        if data is None: failures.append(str(p.relative_to(root))+':SOURCE_OBJECT_FETCH_GAP'); continue
-        if len(data)!=expected: failures.append(str(p.relative_to(root))+':SOURCE_OBJECT_SIZE_MISMATCH'); continue
-        import hashlib
-        if hashlib.sha256(data).hexdigest()!=oid: failures.append(str(p.relative_to(root))+':SOURCE_OBJECT_SHA_MISMATCH'); continue
+        if data is None:
+            failures.append(str(p.relative_to(root))+':SOURCE_OBJECT_FETCH_GAP'); continue
+        if len(data)!=expected:
+            failures.append(str(p.relative_to(root))+':SOURCE_OBJECT_SIZE_MISMATCH'); continue
+        if hashlib.sha256(data).hexdigest()!=oid:
+            failures.append(str(p.relative_to(root))+':SOURCE_OBJECT_SHA_MISMATCH'); continue
         p.write_bytes(data)
-    if failures: raise RuntimeError('SOURCE_LFS_POINTER_GAP: '+'; '.join(failures[:20]))
+    if failures:
+        raise RuntimeError('SOURCE_LFS_POINTER_GAP: '+'; '.join(failures[:20]))
 def clone_retry(cmd,url,root,attempts=3):
     last=None
     for attempt in range(1,attempts+1):
@@ -325,7 +113,7 @@ for number,slug,url in REPOS:
     print(f'===== QUEUE {number}/20: {slug} =====')
     if done(slug): print(f'{slug}: COMPLETE; skipping'); continue
     root=SRC/slug; shutil.rmtree(root,ignore_errors=True); clone_retry(['git','clone','--depth','1','--no-tags'],url,root)
-    sha=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip(); shutil.rmtree(root/'.git',ignore_errors=True); guard_source_tree(root)
+    sha=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip(); materialize_source_pointers_http(root,url,sha); shutil.rmtree(root/'.git',ignore_errors=True)
     parts=package(slug,root); print(f'{slug}: {len(parts)} ZIP part(s)')
     for z,size in parts:
         if batch and batch+size>BATCH_LIMIT: commit(batch,f'{batch_no:03d}'); batch=0; batch_no+=1
