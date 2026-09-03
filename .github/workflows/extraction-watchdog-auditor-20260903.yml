@@ -11,8 +11,7 @@ on:
       - ".github/workflows/extraction-watchdog-auditor-20260903.yml"
 
 permissions:
-  contents: write
-  actions: write
+  contents: read
 
 concurrency:
   group: extraction-watchdog-auditor-main
@@ -56,31 +55,16 @@ jobs:
               print("BLOCKED",x.get("slug"),x.get("code"),x.get("detail"))
           PY
 
-      - name: Dispatch isolated repair only for retryable gaps
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Report retryable gaps without dispatch
         shell: bash
         run: |
           set -euo pipefail
-          read -r GAPS RETRYABLE BLOCKED <<EOF
-          $(python3 - <<'PY'
+          python3 - <<'PY'
           import json
-          d=json.load(open("audit-result.json")); c=d.get("counts",{})
-          print(c.get("remaining",0),c.get("retryable",0),c.get("blocked",0))
+          d=json.load(open("audit-result.json"))
+          c=d.get("counts",{})
+          print("WATCHDOG_PASSIVE")
+          print("REMAINING_GAPS",c.get("remaining",0))
+          print("RETRYABLE_GAPS",c.get("retryable",0))
+          print("BLOCKED_GAPS",c.get("blocked",0))
           PY
-          )
-          EOF
-
-          if [ "$GAPS" -eq 0 ]; then
-            echo "VERIFIED_CLOSED"
-            exit 0
-          fi
-
-          if [ "$RETRYABLE" -gt 0 ]; then
-            gh api --method POST "repos/${GITHUB_REPOSITORY}/dispatches"               -f event_type=extraction-repair-needed
-            echo "REPAIR_DISPATCHED retryable=$RETRYABLE blocked=$BLOCKED"
-            exit 0
-          fi
-
-          echo "GAPS_PENDING_NONRETRYABLE blocked=$BLOCKED"
-          exit 73
