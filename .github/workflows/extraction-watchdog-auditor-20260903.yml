@@ -28,34 +28,59 @@ jobs:
           ref: main
           fetch-depth: 1
           lfs: false
-      - name: Pass 1-4 archive integrity, extraction tree, destination and read-back
-        env:
-          GH_TOKEN: ${{ github.token }}
+
+      - name: Enforce NO-LFS auditor policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config --local filter.lfs.clean cat
+          git config --local filter.lfs.smudge cat
+          git config --local --unset-all filter.lfs.process || true
+          git config --local filter.lfs.required false
+
+      - name: Pass 1-4 archive integrity extraction destination and read-back
+        shell: bash
         run: |
           set -euo pipefail
           python3 scripts/extract_guardian_repair_20260903.py --audit-only | tee audit-result.json
           python3 - <<'PY'
-          import json,sys
+          import json
           d=json.load(open("audit-result.json"))
+          c=d.get("counts",{})
           print("PASS1_ARCHIVE_GROUPS",d["archive_groups"])
-          print("PASS2_EXTRACTION_GAPS",len(d["remaining_gaps"]))
-          print("PASS3_DESTINATIONS",*[x["target"] for x in d["remaining_gaps"][:20]],sep="\n")
+          print("PASS2_REMAINING_GAPS",c.get("remaining",len(d.get("remaining_gaps",[]))))
+          print("PASS3_RETRYABLE_GAPS",c.get("retryable",len(d.get("retryable_gaps",[]))))
+          print("PASS3_BLOCKED_GAPS",c.get("blocked",len(d.get("blocked_gaps",[]))))
           print("PASS4_VERDICT",d["verdict"])
-          sys.exit(0)
+          for x in d.get("blocked_gaps",[])[:20]:
+              print("BLOCKED",x.get("slug"),x.get("code"),x.get("detail"))
           PY
-      - name: Dispatch isolated repair when GAP exists
+
+      - name: Dispatch isolated repair only for retryable gaps
         env:
           GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
           set -euo pipefail
-          GAPS="$(python3 - <<'PY'
+          read -r GAPS RETRYABLE BLOCKED <<EOF
+          $(python3 - <<'PY'
           import json
-          print(len(json.load(open("audit-result.json"))["remaining_gaps"]))
+          d=json.load(open("audit-result.json")); c=d.get("counts",{})
+          print(c.get("remaining",0),c.get("retryable",0),c.get("blocked",0))
           PY
-          )"
-          if [ "$GAPS" -gt 0 ]; then
-            gh api --method POST "repos/${GITHUB_REPOSITORY}/dispatches" -f event_type=extraction-repair-needed
-            echo "REPAIR_DISPATCHED gaps=$GAPS"
-          else
+          )
+          EOF
+
+          if [ "$GAPS" -eq 0 ]; then
             echo "VERIFIED_CLOSED"
+            exit 0
           fi
+
+          if [ "$RETRYABLE" -gt 0 ]; then
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/dispatches"               -f event_type=extraction-repair-needed
+            echo "REPAIR_DISPATCHED retryable=$RETRYABLE blocked=$BLOCKED"
+            exit 0
+          fi
+
+          echo "GAPS_PENDING_NONRETRYABLE blocked=$BLOCKED"
+          exit 73
