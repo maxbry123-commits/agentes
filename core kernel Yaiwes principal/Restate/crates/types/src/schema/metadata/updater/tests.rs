@@ -1,0 +1,3212 @@
+// Copyright (c) 2023 - 2026 Restate Software, Inc., Restate GmbH.
+// All rights reserved.
+//
+// Use of this software is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date specified in that file, in accordance with
+// the Business Source License, use of this software will be governed
+// by the Apache License, Version 2.0.
+
+use super::*;
+use std::convert::Infallible;
+
+use crate::Versioned;
+use crate::schema::deployment::DeploymentResolver;
+use crate::schema::deployment::ProtocolType;
+use crate::schema::info::SchemaInfo;
+use crate::schema::invocation_target::{
+    DEFAULT_IDEMPOTENCY_RETENTION, DEFAULT_WORKFLOW_COMPLETION_RETENTION, InvocationTargetResolver,
+};
+use crate::schema::service::ServiceMetadataResolver;
+use crate::service_protocol::{
+    MAX_INFLIGHT_SERVICE_PROTOCOL_VERSION, MIN_INFLIGHT_SERVICE_PROTOCOL_VERSION,
+};
+use http::HeaderName;
+use restate_test_util::{assert, assert_eq};
+use test_log::test;
+
+const GREETER_SERVICE_NAME: &str = "greeter.Greeter";
+const GREET_HANDLER_NAME: &str = "greet";
+const ANOTHER_GREETER_SERVICE_NAME: &str = "greeter.AnotherGreeter";
+
+fn greeter_service_greet_handler() -> endpoint_manifest::Handler {
+    endpoint_manifest::Handler {
+        abort_timeout: None,
+        documentation: None,
+        idempotency_retention: None,
+        name: GREET_HANDLER_NAME.parse().unwrap(),
+        ty: None,
+        input: None,
+        output: None,
+        retry_policy_exponentiation_factor: None,
+        retry_policy_initial_interval: None,
+        retry_policy_max_attempts: None,
+        retry_policy_max_interval: None,
+        metadata: Default::default(),
+        inactivity_timeout: None,
+        journal_retention: None,
+        workflow_completion_retention: None,
+        enable_lazy_state: None,
+        ingress_private: None,
+        retry_policy_on_max_attempts: None,
+    }
+}
+
+fn greeter_workflow_greet_handler() -> endpoint_manifest::Handler {
+    endpoint_manifest::Handler {
+        abort_timeout: None,
+        documentation: None,
+        idempotency_retention: None,
+        name: "greet".parse().unwrap(),
+        ty: Some(endpoint_manifest::HandlerType::Workflow),
+        input: None,
+        output: None,
+        retry_policy_exponentiation_factor: None,
+        retry_policy_initial_interval: None,
+        retry_policy_max_attempts: None,
+        retry_policy_max_interval: None,
+        metadata: Default::default(),
+        inactivity_timeout: None,
+        journal_retention: None,
+        workflow_completion_retention: None,
+        enable_lazy_state: None,
+        ingress_private: None,
+        retry_policy_on_max_attempts: None,
+    }
+}
+
+fn greeter_service() -> endpoint_manifest::Service {
+    endpoint_manifest::Service {
+        abort_timeout: None,
+        documentation: None,
+        ingress_private: None,
+        ty: endpoint_manifest::ServiceType::Service,
+        name: GREETER_SERVICE_NAME.parse().unwrap(),
+        retry_policy_exponentiation_factor: None,
+        retry_policy_initial_interval: None,
+        retry_policy_max_attempts: None,
+        retry_policy_max_interval: None,
+        handlers: vec![greeter_service_greet_handler()],
+        idempotency_retention: None,
+        inactivity_timeout: None,
+        journal_retention: None,
+        metadata: Default::default(),
+        enable_lazy_state: None,
+        retry_policy_on_max_attempts: None,
+    }
+}
+
+fn greeter_virtual_object() -> endpoint_manifest::Service {
+    endpoint_manifest::Service {
+        abort_timeout: None,
+        documentation: None,
+        ingress_private: None,
+        ty: endpoint_manifest::ServiceType::VirtualObject,
+        name: GREETER_SERVICE_NAME.parse().unwrap(),
+        retry_policy_exponentiation_factor: None,
+        retry_policy_initial_interval: None,
+        retry_policy_max_attempts: None,
+        retry_policy_max_interval: None,
+        handlers: vec![endpoint_manifest::Handler {
+            abort_timeout: None,
+            documentation: None,
+            idempotency_retention: None,
+            name: "greet".parse().unwrap(),
+            ty: None,
+            input: None,
+            output: None,
+            retry_policy_exponentiation_factor: None,
+            retry_policy_initial_interval: None,
+            retry_policy_max_attempts: None,
+            retry_policy_max_interval: None,
+            metadata: Default::default(),
+            inactivity_timeout: None,
+            journal_retention: None,
+            workflow_completion_retention: None,
+            enable_lazy_state: None,
+            ingress_private: None,
+            retry_policy_on_max_attempts: None,
+        }],
+        idempotency_retention: None,
+        inactivity_timeout: None,
+        journal_retention: None,
+        metadata: Default::default(),
+        enable_lazy_state: None,
+        retry_policy_on_max_attempts: None,
+    }
+}
+
+fn greeter_workflow() -> endpoint_manifest::Service {
+    endpoint_manifest::Service {
+        abort_timeout: None,
+        documentation: None,
+        ingress_private: None,
+        ty: endpoint_manifest::ServiceType::Workflow,
+        name: GREETER_SERVICE_NAME.parse().unwrap(),
+        retry_policy_exponentiation_factor: None,
+        retry_policy_initial_interval: None,
+        retry_policy_max_attempts: None,
+        retry_policy_max_interval: None,
+        handlers: vec![greeter_workflow_greet_handler()],
+        idempotency_retention: None,
+        inactivity_timeout: None,
+        journal_retention: None,
+        metadata: Default::default(),
+        enable_lazy_state: None,
+        retry_policy_on_max_attempts: None,
+    }
+}
+
+fn another_greeter_service() -> endpoint_manifest::Service {
+    endpoint_manifest::Service {
+        abort_timeout: None,
+        documentation: None,
+        ingress_private: None,
+        ty: endpoint_manifest::ServiceType::Service,
+        name: ANOTHER_GREETER_SERVICE_NAME.parse().unwrap(),
+        retry_policy_exponentiation_factor: None,
+        retry_policy_initial_interval: None,
+        retry_policy_max_attempts: None,
+        retry_policy_max_interval: None,
+        handlers: vec![endpoint_manifest::Handler {
+            abort_timeout: None,
+            documentation: None,
+            idempotency_retention: None,
+            name: "another_greeter".parse().unwrap(),
+            ty: None,
+            input: None,
+            output: None,
+            retry_policy_exponentiation_factor: None,
+            retry_policy_initial_interval: None,
+            retry_policy_max_attempts: None,
+            retry_policy_max_interval: None,
+            metadata: Default::default(),
+            inactivity_timeout: None,
+            journal_retention: None,
+            workflow_completion_retention: None,
+            enable_lazy_state: None,
+            ingress_private: None,
+            retry_policy_on_max_attempts: None,
+        }],
+        idempotency_retention: None,
+        inactivity_timeout: None,
+        journal_retention: None,
+        metadata: Default::default(),
+        enable_lazy_state: None,
+        retry_policy_on_max_attempts: None,
+    }
+}
+
+fn add_deployment_request(services: Vec<endpoint_manifest::Service>) -> AddDeploymentRequest {
+    AddDeploymentRequest {
+        deployment_address: DeploymentAddress::mock(),
+        additional_headers: Default::default(),
+        metadata: Default::default(),
+        discovery_response: DiscoveryResponse {
+            deployment_type_parameters: DeploymentConnectionParameters::Http {
+                protocol_type: ProtocolType::BidiStream,
+                http_version: http::Version::HTTP_2,
+            },
+            supported_protocol_versions: (MIN_INFLIGHT_SERVICE_PROTOCOL_VERSION as i32)
+                ..=(MAX_INFLIGHT_SERVICE_PROTOCOL_VERSION as i32),
+            sdk_version: None,
+            services,
+        },
+        allow_breaking_changes: AllowBreakingChanges::No,
+        overwrite: Overwrite::No,
+    }
+}
+
+fn update_deployment_request(
+    deployment_id: DeploymentId,
+    services: Vec<endpoint_manifest::Service>,
+) -> UpdateDeploymentRequest {
+    UpdateDeploymentRequest {
+        deployment_id,
+        deployment_address: DeploymentAddress::mock(),
+        additional_headers: Default::default(),
+        discovery_response: DiscoveryResponse {
+            deployment_type_parameters: DeploymentConnectionParameters::Http {
+                protocol_type: ProtocolType::BidiStream,
+                http_version: http::Version::HTTP_2,
+            },
+            supported_protocol_versions: (MIN_INFLIGHT_SERVICE_PROTOCOL_VERSION as i32)
+                ..=(MAX_INFLIGHT_SERVICE_PROTOCOL_VERSION as i32),
+            sdk_version: None,
+            services,
+        },
+        overwrite: Overwrite::No,
+    }
+}
+
+#[test]
+fn register_new_deployment() {
+    let schema = Schema::default();
+    let initial_version = schema.version();
+
+    let ((result, new_deployment_id), schema) =
+        SchemaUpdater::update_and_return(schema, |updater| {
+            updater.add_deployment(add_deployment_request(vec![greeter_service()]))
+        })
+        .unwrap();
+
+    assert_eq!(result, AddDeploymentResult::Created);
+    assert!(initial_version < schema.version());
+    schema.assert_service_revision(GREETER_SERVICE_NAME, 1);
+    schema.assert_service_deployment(GREETER_SERVICE_NAME, new_deployment_id);
+    schema.assert_invocation_target(GREETER_SERVICE_NAME, "greet");
+}
+
+#[test]
+fn register_new_deployment_add_unregistered_service() {
+    let mut updater = SchemaUpdater::default();
+
+    // Register first deployment
+    let deployment_1 = updater
+        .add_deployment(AddDeploymentRequest {
+            deployment_address: DeploymentAddress::mock_uri("http://localhost:9080"),
+            ..add_deployment_request(vec![greeter_service()])
+        })
+        .unwrap()
+        .1;
+
+    let schemas = updater.into_inner();
+
+    schemas.assert_service_deployment(GREETER_SERVICE_NAME, deployment_1);
+    assert!(
+        schemas
+            .resolve_latest_service(ANOTHER_GREETER_SERVICE_NAME)
+            .is_none()
+    );
+
+    updater = SchemaUpdater::new(schemas);
+    let deployment_2 = updater
+        .add_deployment(AddDeploymentRequest {
+            deployment_address: DeploymentAddress::mock_uri("http://localhost:9081"),
+            ..add_deployment_request(vec![greeter_service(), another_greeter_service()])
+        })
+        .unwrap()
+        .1;
+    let schemas = updater.into_inner();
+
+    schemas.assert_service_deployment(GREETER_SERVICE_NAME, deployment_2);
+    schemas.assert_service_revision(GREETER_SERVICE_NAME, 2);
+    schemas.assert_service_deployment(ANOTHER_GREETER_SERVICE_NAME, deployment_2);
+    schemas.assert_service_revision(ANOTHER_GREETER_SERVICE_NAME, 1);
+}
+
+mod routing_header {
+    use super::*;
+
+    use restate_test_util::assert_eq;
+    use test_log::test;
+
+    #[test]
+    fn register_new_deployment_with_routing_header_first() {
+        let mut config = Configuration::default();
+        config.admin.deployment_routing_headers = vec![HeaderName::from_static("x-routing")];
+        crate::config::set_current_config(config);
+
+        // Register first deployment
+        let ((result, deployment_id_1), schema) =
+            SchemaUpdater::update_and_return(Schema::default(), |updater| {
+                updater.add_deployment(AddDeploymentRequest {
+                    additional_headers: [(
+                        HeaderName::from_static("x-routing"),
+                        HeaderValue::from_static("1"),
+                    )]
+                    .into(),
+                    ..add_deployment_request(vec![greeter_service()])
+                })
+            })
+            .unwrap();
+        assert_eq!(AddDeploymentResult::Created, result);
+        schema.assert_service_deployment(GREETER_SERVICE_NAME, deployment_id_1);
+
+        // Update providing another routing header
+        let ((result, deployment_id_2), schema) =
+            SchemaUpdater::update_and_return(schema, |updater| {
+                updater.add_deployment(AddDeploymentRequest {
+                    additional_headers: [(
+                        HeaderName::from_static("x-routing"),
+                        HeaderValue::from_static("2"),
+                    )]
+                    .into(),
+                    ..add_deployment_request(vec![greeter_service()])
+                })
+            })
+            .unwrap();
+        assert_eq!(AddDeploymentResult::Created, result);
+        schema.assert_service_deployment(GREETER_SERVICE_NAME, deployment_id_2);
+
+        // Update not providing routing_header -> new deployment here
+        let ((result, deployment_id_3), schema) =
+            SchemaUpdater::update_and_return(schema, |updater| {
+                updater.add_deployment(AddDeploymentRequest {
+                    additional_headers: Default::default(),
+                    ..add_deployment_request(vec![greeter_service()])
+                })
+            })
+            .unwrap();
+        assert_eq!(AddDeploymentResult::Created, result);
+        schema.assert_service_deployment(GREETER_SERVICE_NAME, deployment_id_3);
+
+        // Update providing the same routing header-> conflict
+        let ((result, expected_dp_id_2), schema) =
+            SchemaUpdater::update_and_return(schema, |updater| {
+                updater.add_deployment(AddDeploymentRequest {
+                    additional_headers: [(
+                        HeaderName::from_static("x-routing"),
+                        HeaderValue::from_static("2"),
+                    )]
+                    .into(),
+                    ..add_deployment_request(vec![greeter_service()])
+                })
+            })
+            .unwrap();
+        assert_eq!(AddDeploymentResult::Unchanged, result);
+        assert_eq!(expected_dp_id_2, deployment_id_2);
+
+        // Force with same routing header -> all good
+        let ((result, expected_dp_id_2), schema) =
+            SchemaUpdater::update_and_return(schema, |updater| {
+                updater.add_deployment(AddDeploymentRequest {
+                    additional_headers: [(
+                        HeaderName::from_static("x-routing"),
+                        HeaderValue::from_static("2"),
+                    )]
+                    .into(),
+                    allow_breaking_changes: AllowBreakingChanges::Yes,
+                    overwrite: Overwrite::Yes,
+                    ..add_deployment_request(vec![greeter_virtual_object()])
+                })
+            })
+            .unwrap();
+        assert_eq!(expected_dp_id_2, deployment_id_2);
+        assert_eq!(AddDeploymentResult::Overwritten, result);
+        schema.assert_service_deployment(GREETER_SERVICE_NAME, deployment_id_2);
+        assert_eq!(
+            schema.assert_service(GREETER_SERVICE_NAME).ty,
+            ServiceType::VirtualObject
+        );
+    }
+
+    #[test]
+    fn register_new_deployment_without_routing_header_first() {
+        let mut config = Configuration::default();
+        config.admin.deployment_routing_headers = vec![HeaderName::from_static("x-routing")];
+        crate::config::set_current_config(config);
+
+        // Register first deployment with routing header
+        let ((result, deployment_id_1), schema) =
+            SchemaUpdater::update_and_return(Schema::default(), |updater| {
+                updater.add_deployment(AddDeploymentRequest {
+                    additional_headers: [(
+                        HeaderName::from_static("x-routing"),
+                        HeaderValue::from_static("1"),
+                    )]
+                    .into(),
+                    ..add_deployment_request(vec![greeter_service()])
+                })
+            })
+            .unwrap();
+        assert_eq!(AddDeploymentResult::Created, result);
+        schema.assert_service_deployment(GREETER_SERVICE_NAME, deployment_id_1);
+
+        // Update without routing header -> new deployment
+        let ((result, deployment_id_2), schema) =
+            SchemaUpdater::update_and_return(schema, |updater| {
+                updater.add_deployment(AddDeploymentRequest {
+                    additional_headers: Default::default(),
+                    ..add_deployment_request(vec![greeter_service()])
+                })
+            })
+            .unwrap();
+        assert_eq!(AddDeploymentResult::Created, result);
+        schema.assert_service_deployment(GREETER_SERVICE_NAME, deployment_id_2);
+    }
+
+    #[test]
+    fn with_multiple_configured_routing_headers() {
+        let mut config = Configuration::default();
+        config.admin.deployment_routing_headers = vec![
+            HeaderName::from_static("x-restate-routing"),
+            HeaderName::from_static("x-my-routing"),
+        ];
+        crate::config::set_current_config(config);
+
+        // Register first deployment with routing header
+        let ((result, deployment_id_1), schema) =
+            SchemaUpdater::update_and_return(Schema::default(), |updater| {
+                updater.add_deployment(AddDeploymentRequest {
+                    additional_headers: [(
+                        HeaderName::from_static("x-restate-routing"),
+                        HeaderValue::from_static("1"),
+                    )]
+                    .into(),
+                    ..add_deployment_request(vec![greeter_service()])
+                })
+            })
+            .unwrap();
+        assert_eq!(AddDeploymentResult::Created, result);
+        schema.assert_service_deployment(GREETER_SERVICE_NAME, deployment_id_1);
+
+        // Update with different routing header -> new deployment
+        let ((result, deployment_id_2), schema) =
+            SchemaUpdater::update_and_return(schema, |updater| {
+                updater.add_deployment(AddDeploymentRequest {
+                    additional_headers: [(
+                        HeaderName::from_static("x-my-routing"),
+                        HeaderValue::from_static("1"),
+                    )]
+                    .into(),
+                    ..add_deployment_request(vec![greeter_service()])
+                })
+            })
+            .unwrap();
+        assert_eq!(AddDeploymentResult::Created, result);
+        schema.assert_service_deployment(GREETER_SERVICE_NAME, deployment_id_2);
+
+        // No routing header -> new deployment
+        let ((result, deployment_id_3), schema) =
+            SchemaUpdater::update_and_return(schema, |updater| {
+                updater.add_deployment(AddDeploymentRequest {
+                    additional_headers: Default::default(),
+                    ..add_deployment_request(vec![greeter_service()])
+                })
+            })
+            .unwrap();
+        assert_eq!(AddDeploymentResult::Created, result);
+        schema.assert_service_deployment(GREETER_SERVICE_NAME, deployment_id_3);
+
+        // Update with both routing header -> new deployment
+        let ((result, deployment_id_4), schema) =
+            SchemaUpdater::update_and_return(schema, |updater| {
+                updater.add_deployment(AddDeploymentRequest {
+                    additional_headers: [
+                        (
+                            HeaderName::from_static("x-restate-routing"),
+                            HeaderValue::from_static("1"),
+                        ),
+                        (
+                            HeaderName::from_static("x-my-routing"),
+                            HeaderValue::from_static("2"),
+                        ),
+                    ]
+                    .into(),
+                    ..add_deployment_request(vec![greeter_service()])
+                })
+            })
+            .unwrap();
+        assert_eq!(AddDeploymentResult::Created, result);
+        schema.assert_service_deployment(GREETER_SERVICE_NAME, deployment_id_4);
+
+        // Update with same header -> fails
+        let ((result, expected_dp_id_2), schema) =
+            SchemaUpdater::update_and_return(schema, |updater| {
+                updater.add_deployment(AddDeploymentRequest {
+                    additional_headers: [(
+                        HeaderName::from_static("x-my-routing"),
+                        HeaderValue::from_static("1"),
+                    )]
+                    .into(),
+                    ..add_deployment_request(vec![greeter_service()])
+                })
+            })
+            .unwrap();
+        assert_eq!(AddDeploymentResult::Unchanged, result);
+        assert_eq!(expected_dp_id_2, deployment_id_2);
+
+        // Update without header -> fails
+        let ((result, expected_dp_id_3), _) = SchemaUpdater::update_and_return(schema, |updater| {
+            updater.add_deployment(add_deployment_request(vec![greeter_service()]))
+        })
+        .unwrap();
+        assert_eq!(AddDeploymentResult::Unchanged, result);
+        assert_eq!(expected_dp_id_3, deployment_id_3);
+    }
+}
+
+/// This test case ensures that https://github.com/restatedev/restate/issues/1205 works
+#[test]
+fn force_deploy_private_service() -> Result<(), SchemaError> {
+    let mut updater = SchemaUpdater::default();
+
+    let deployment_id = updater
+        .add_deployment(add_deployment_request(vec![greeter_service()]))?
+        .1;
+
+    let schemas = updater.into_inner();
+
+    assert!(schemas.assert_service(GREETER_SERVICE_NAME).public);
+    assert!(
+        schemas
+            .assert_invocation_target(GREETER_SERVICE_NAME, "greet")
+            .public
+    );
+
+    let version_before_modification = schemas.version();
+    updater = SchemaUpdater::new(schemas);
+    updater.modify_service(
+        GREETER_SERVICE_NAME,
+        ModifyServiceRequest {
+            public: Some(false),
+            ..ModifyServiceRequest::default()
+        },
+    )?;
+    let schemas = updater.into_inner();
+
+    assert!(version_before_modification < schemas.version());
+    assert!(!schemas.assert_service(GREETER_SERVICE_NAME).public);
+    assert!(
+        !schemas
+            .assert_invocation_target(GREETER_SERVICE_NAME, "greet")
+            .public
+    );
+
+    updater = SchemaUpdater::new(schemas);
+    let new_deployment_id = updater
+        .add_deployment(AddDeploymentRequest {
+            allow_breaking_changes: AllowBreakingChanges::Yes,
+            overwrite: Overwrite::Yes,
+            ..add_deployment_request(vec![greeter_service()])
+        })?
+        .1;
+
+    let schemas = updater.into_inner();
+    assert_eq!(deployment_id, new_deployment_id);
+    assert!(schemas.assert_service(GREETER_SERVICE_NAME).public);
+    assert!(
+        schemas
+            .assert_invocation_target(GREETER_SERVICE_NAME, "greet")
+            .public
+    );
+
+    Ok(())
+}
+
+#[test]
+fn register_new_deployment_allow_breaking_changes() {
+    let mut updater = SchemaUpdater::default();
+
+    // Register first deployment
+    let deployment_1_id = updater
+        .add_deployment(AddDeploymentRequest {
+            deployment_address: DeploymentAddress::mock_uri("http://localhost:9080"),
+            ..add_deployment_request(vec![greeter_service()])
+        })
+        .unwrap()
+        .1;
+
+    let schemas = updater.into_inner();
+
+    schemas.assert_service_deployment(GREETER_SERVICE_NAME, deployment_1_id);
+    schemas.assert_service_revision(GREETER_SERVICE_NAME, 1);
+    assert_eq!(
+        schemas.assert_service(GREETER_SERVICE_NAME).ty,
+        ServiceType::Service
+    );
+
+    updater = SchemaUpdater::new(schemas);
+    let deployment_2_id = updater
+        .add_deployment(AddDeploymentRequest {
+            deployment_address: DeploymentAddress::mock_uri("http://localhost:9081"),
+            allow_breaking_changes: AllowBreakingChanges::Yes,
+            ..add_deployment_request(vec![greeter_virtual_object()])
+        })
+        .unwrap()
+        .1;
+    let schemas = updater.into_inner();
+
+    schemas.assert_service_deployment(GREETER_SERVICE_NAME, deployment_2_id);
+    schemas.assert_service_revision(GREETER_SERVICE_NAME, 2);
+    assert_eq!(
+        schemas.assert_service(GREETER_SERVICE_NAME).ty,
+        ServiceType::VirtualObject
+    );
+}
+
+mod change_service_type {
+    use super::*;
+
+    use restate_test_util::{assert, assert_eq};
+    use test_log::test;
+
+    #[test]
+    fn fails_without_allow_breaking_changes() {
+        let mut updater = SchemaUpdater::default();
+
+        let deployment_1_id = updater
+            .add_deployment(AddDeploymentRequest {
+                deployment_address: DeploymentAddress::mock_uri("http://localhost:9080"),
+                ..add_deployment_request(vec![greeter_service()])
+            })
+            .unwrap()
+            .1;
+        let schemas = updater.into_inner();
+
+        schemas.assert_service_deployment(GREETER_SERVICE_NAME, deployment_1_id);
+
+        let compute_result = SchemaUpdater::new(schemas).add_deployment(AddDeploymentRequest {
+            deployment_address: DeploymentAddress::mock_uri("http://localhost:9081"),
+            ..add_deployment_request(vec![greeter_virtual_object()])
+        });
+
+        assert!(let &SchemaError::Service(
+                ServiceError::DifferentType(_)
+            ) = compute_result.unwrap_err());
+    }
+
+    #[test]
+    fn works_with_allow_breaking_changes() {
+        let mut updater = SchemaUpdater::default();
+
+        let deployment_1_id = updater
+            .add_deployment(AddDeploymentRequest {
+                deployment_address: DeploymentAddress::mock_uri("http://localhost:9080"),
+                ..add_deployment_request(vec![greeter_service()])
+            })
+            .unwrap()
+            .1;
+        let schemas = updater.into_inner();
+        schemas.assert_service_deployment(GREETER_SERVICE_NAME, deployment_1_id);
+
+        let ((result, deployment_id_2), schemas) =
+            SchemaUpdater::update_and_return(schemas, |updater| {
+                updater.add_deployment(AddDeploymentRequest {
+                    deployment_address: DeploymentAddress::mock_uri("http://localhost:9081"),
+                    allow_breaking_changes: AllowBreakingChanges::Yes,
+                    ..add_deployment_request(vec![greeter_virtual_object()])
+                })
+            })
+            .unwrap();
+        assert_eq!(result, AddDeploymentResult::Created);
+        schemas.assert_service_deployment(GREETER_SERVICE_NAME, deployment_id_2);
+
+        assert_eq!(
+            schemas.assert_service(GREETER_SERVICE_NAME).ty,
+            ServiceType::VirtualObject
+        );
+    }
+
+    #[test]
+    fn works_with_allow_breaking_changed_and_correctly_set_workflow_retention() {
+        let mut updater = SchemaUpdater::default();
+
+        let deployment_1_id = updater
+            .add_deployment(AddDeploymentRequest {
+                deployment_address: DeploymentAddress::mock_uri("http://localhost:9080"),
+                ..add_deployment_request(vec![greeter_service()])
+            })
+            .unwrap()
+            .1;
+        let schemas = updater.into_inner();
+        schemas.assert_service_deployment(GREETER_SERVICE_NAME, deployment_1_id);
+
+        updater = SchemaUpdater::new(schemas);
+        let deployment_2_id = updater
+            .add_deployment(AddDeploymentRequest {
+                deployment_address: DeploymentAddress::mock_uri("http://localhost:9081"),
+                allow_breaking_changes: AllowBreakingChanges::Yes,
+                ..add_deployment_request(vec![greeter_workflow()])
+            })
+            .unwrap()
+            .1;
+        let schemas = updater.into_inner();
+        schemas.assert_service_deployment(GREETER_SERVICE_NAME, deployment_2_id);
+
+        let new_svc = schemas.assert_service(GREETER_SERVICE_NAME);
+        assert_eq!(new_svc.ty, ServiceType::Workflow);
+        assert_eq!(
+            new_svc.workflow_completion_retention,
+            Some(DEFAULT_WORKFLOW_COMPLETION_RETENTION)
+        );
+    }
+}
+
+#[test]
+fn override_existing_deployment_removing_a_service() {
+    let ((_, deployment_id), schemas) =
+        SchemaUpdater::update_and_return(Schema::default(), |updater| {
+            updater.add_deployment(add_deployment_request(vec![
+                greeter_service(),
+                another_greeter_service(),
+            ]))
+        })
+        .unwrap();
+
+    schemas.assert_service_deployment(GREETER_SERVICE_NAME, deployment_id);
+    schemas.assert_service_deployment(ANOTHER_GREETER_SERVICE_NAME, deployment_id);
+
+    let ((result, new_deployment_id), schemas) =
+        SchemaUpdater::update_and_return(schemas, |updater| {
+            updater.add_deployment(AddDeploymentRequest {
+                allow_breaking_changes: AllowBreakingChanges::Yes,
+                overwrite: Overwrite::Yes,
+                ..add_deployment_request(vec![greeter_service()])
+            })
+        })
+        .unwrap();
+    assert_eq!(result, AddDeploymentResult::Overwritten);
+    assert_eq!(new_deployment_id, deployment_id);
+
+    schemas.assert_service_deployment(GREETER_SERVICE_NAME, deployment_id);
+    assert!(
+        schemas
+            .resolve_latest_service(ANOTHER_GREETER_SERVICE_NAME)
+            .is_none()
+    );
+}
+
+#[test]
+fn idempotent_add() {
+    let mut updater = SchemaUpdater::default();
+
+    let deployment_id = updater
+        .add_deployment(add_deployment_request(vec![greeter_service()]))
+        .unwrap()
+        .1;
+
+    // Id didn't change
+    assert_eq!(
+        updater
+            .add_deployment(add_deployment_request(vec![greeter_service()]))
+            .unwrap()
+            .1,
+        deployment_id
+    );
+}
+
+#[test]
+fn register_two_deployments_then_remove_first() {
+    let ((_, deployment_id_1), schemas) =
+        SchemaUpdater::update_and_return(Schema::default(), |updater| {
+            updater.add_deployment(AddDeploymentRequest {
+                deployment_address: DeploymentAddress::mock_uri("http://localhost:9080"),
+                ..add_deployment_request(vec![greeter_service(), another_greeter_service()])
+            })
+        })
+        .unwrap();
+
+    let ((_, deployment_id_2), schemas) = SchemaUpdater::update_and_return(schemas, |updater| {
+        updater.add_deployment(AddDeploymentRequest {
+            deployment_address: DeploymentAddress::mock_uri("http://localhost:9081"),
+            ..add_deployment_request(vec![greeter_service()])
+        })
+    })
+    .unwrap();
+
+    schemas.assert_service_deployment(GREETER_SERVICE_NAME, deployment_id_2);
+    schemas.assert_service_revision(GREETER_SERVICE_NAME, 2);
+    schemas.assert_service_deployment(ANOTHER_GREETER_SERVICE_NAME, deployment_id_1);
+    schemas.assert_service_revision(ANOTHER_GREETER_SERVICE_NAME, 1);
+
+    let version_before_removal = schemas.version();
+    let schemas = SchemaUpdater::update(schemas, |updater| {
+        assert!(updater.remove_deployment(deployment_id_1));
+        Ok::<(), Infallible>(())
+    })
+    .unwrap();
+
+    schemas.assert_service_deployment(GREETER_SERVICE_NAME, deployment_id_2);
+    schemas.assert_service_revision(GREETER_SERVICE_NAME, 2);
+    assert!(version_before_removal < schemas.version());
+    assert!(
+        schemas
+            .resolve_latest_service(ANOTHER_GREETER_SERVICE_NAME)
+            .is_none()
+    );
+    assert!(schemas.get_deployment(&deployment_id_1).is_none());
+}
+
+#[test]
+fn register_two_deployments_then_remove_second() {
+    let ((_, deployment_id_1), schemas) =
+        SchemaUpdater::update_and_return(Schema::default(), |updater| {
+            updater.add_deployment(AddDeploymentRequest {
+                deployment_address: DeploymentAddress::mock_uri("http://localhost:9080"),
+                ..add_deployment_request(vec![greeter_service(), another_greeter_service()])
+            })
+        })
+        .unwrap();
+
+    let ((_, deployment_id_2), schemas) = SchemaUpdater::update_and_return(schemas, |updater| {
+        updater.add_deployment(AddDeploymentRequest {
+            deployment_address: DeploymentAddress::mock_uri("http://localhost:9081"),
+            ..add_deployment_request(vec![greeter_service()])
+        })
+    })
+    .unwrap();
+
+    schemas.assert_service_deployment(GREETER_SERVICE_NAME, deployment_id_2);
+    schemas.assert_service_revision(GREETER_SERVICE_NAME, 2);
+    schemas.assert_service_deployment(ANOTHER_GREETER_SERVICE_NAME, deployment_id_1);
+    schemas.assert_service_revision(ANOTHER_GREETER_SERVICE_NAME, 1);
+
+    let version_before_removal = schemas.version();
+    let schemas = SchemaUpdater::update(schemas, |updater| {
+        assert!(updater.remove_deployment(deployment_id_2));
+        Ok::<(), Infallible>(())
+    })
+    .unwrap();
+
+    schemas.assert_service_deployment(GREETER_SERVICE_NAME, deployment_id_1);
+    schemas.assert_service_revision(GREETER_SERVICE_NAME, 1);
+    assert!(version_before_removal < schemas.version());
+    schemas.assert_service_deployment(ANOTHER_GREETER_SERVICE_NAME, deployment_id_1);
+    schemas.assert_service_revision(ANOTHER_GREETER_SERVICE_NAME, 1);
+    assert!(schemas.get_deployment(&deployment_id_2).is_none());
+}
+
+#[test]
+fn update_latest_deployment() {
+    let mut updater = SchemaUpdater::default();
+
+    let deployment_1_id = updater
+        .add_deployment(AddDeploymentRequest {
+            deployment_address: DeploymentAddress::mock_uri("http://localhost:9080"),
+            ..add_deployment_request(vec![greeter_virtual_object()])
+        })
+        .unwrap()
+        .1;
+
+    assert!(let &SchemaError::NotFound(_) = updater.update_deployment(
+            UpdateDeploymentRequest {
+                overwrite: Overwrite::Yes,
+                ..update_deployment_request(DeploymentId::new(), vec![])
+            }
+        ).unwrap_err());
+
+    updater
+        .update_deployment(UpdateDeploymentRequest {
+            deployment_address: DeploymentAddress::mock_uri("http://localhost:9080"),
+            additional_headers: [(
+                HeaderName::from_static("foo"),
+                HeaderValue::from_static("bar"),
+            )]
+            .into(),
+            ..update_deployment_request(deployment_1_id, vec![greeter_virtual_object()])
+        })
+        .unwrap();
+
+    let schemas = updater.into_inner();
+
+    schemas.assert_service_deployment(GREETER_SERVICE_NAME, deployment_1_id);
+    schemas.assert_service_revision(GREETER_SERVICE_NAME, 1);
+
+    let updated_deployment = schemas.get_deployment(&deployment_1_id).unwrap();
+
+    assert!(
+        updated_deployment
+            .additional_headers
+            .contains_key(&HeaderName::from_static("foo"))
+    );
+}
+
+#[test]
+fn update_draining_deployment() {
+    let mut updater = SchemaUpdater::default();
+
+    let deployment_1_id = updater
+        .add_deployment(AddDeploymentRequest {
+            deployment_address: DeploymentAddress::mock_uri("http://localhost:9080"),
+            ..add_deployment_request(vec![greeter_service()])
+        })
+        .unwrap()
+        .1;
+
+    let deployment_2_id = updater
+        .add_deployment(AddDeploymentRequest {
+            deployment_address: DeploymentAddress::mock_uri("http://localhost:9081"),
+            ..add_deployment_request(vec![greeter_service(), another_greeter_service()])
+        })
+        .unwrap()
+        .1;
+
+    updater
+        .update_deployment(UpdateDeploymentRequest {
+            deployment_address: DeploymentAddress::mock_uri("http://localhost:9080"),
+            additional_headers: [(
+                HeaderName::from_static("foo"),
+                HeaderValue::from_static("bar"),
+            )]
+            .into(),
+            overwrite: Overwrite::Yes,
+            ..update_deployment_request(deployment_1_id, vec![greeter_service()])
+        })
+        .unwrap();
+
+    let schemas = updater.into_inner();
+
+    schemas.assert_service_deployment(GREETER_SERVICE_NAME, deployment_2_id);
+    schemas.assert_service_revision(GREETER_SERVICE_NAME, 2);
+
+    let updated_deployment = schemas.get_deployment(&deployment_1_id).unwrap();
+
+    assert!(
+        updated_deployment
+            .additional_headers
+            .contains_key(&HeaderName::from_static("foo"))
+    );
+}
+
+#[test]
+fn update_deployment_same_uri() {
+    let ((_, deployment_id_1), schemas) =
+        SchemaUpdater::update_and_return(Schema::default(), |updater| {
+            updater.add_deployment(AddDeploymentRequest {
+                deployment_address: DeploymentAddress::mock_uri("http://localhost:9080"),
+                ..add_deployment_request(vec![greeter_service()])
+            })
+        })
+        .unwrap();
+
+    // patching new invocations
+    let ((_, deployment_id_2), schemas) = SchemaUpdater::update_and_return(schemas, |updater| {
+        updater.add_deployment(AddDeploymentRequest {
+            deployment_address: DeploymentAddress::mock_uri("http://localhost:9081"),
+            ..add_deployment_request(vec![greeter_service()])
+        })
+    })
+    .unwrap();
+
+    // oh, I have some old failing invocations, wish those were on the patched version too
+
+    let schemas = SchemaUpdater::update(schemas, |updater| {
+        updater.update_deployment(UpdateDeploymentRequest {
+            deployment_address: DeploymentAddress::mock_uri("http://localhost:9081"),
+            ..update_deployment_request(deployment_id_1, vec![greeter_service()])
+        })
+    })
+    .unwrap();
+
+    // Latest should remain deployment_2
+    schemas.assert_service_deployment(GREETER_SERVICE_NAME, deployment_id_2);
+    schemas.assert_service_revision(GREETER_SERVICE_NAME, 2);
+
+    let updated_deployment_1 = schemas.get_deployment(&deployment_id_1).unwrap();
+    let updated_deployment_2 = schemas.get_deployment(&deployment_id_2).unwrap();
+
+    assert_eq!(updated_deployment_1.ty, updated_deployment_2.ty);
+
+    // the failing invocations have drained so I can safely delete the original deployment
+    let schemas = SchemaUpdater::update(schemas, |updater| {
+        assert!(updater.remove_deployment(deployment_id_1));
+        Ok::<(), Infallible>(())
+    })
+    .unwrap();
+
+    assert_eq!(
+        deployment_id_2,
+        SchemaUpdater::update_and_return(schemas, |updater| updater.add_deployment(
+            AddDeploymentRequest {
+                deployment_address: DeploymentAddress::mock_uri("http://localhost:9081"),
+                allow_breaking_changes: AllowBreakingChanges::Yes,
+                overwrite: Overwrite::Yes,
+                ..add_deployment_request(vec![greeter_service(), greeter_virtual_object()])
+            }
+        ))
+        .unwrap()
+        .0
+        .1
+    );
+}
+
+#[test]
+fn update_latest_deployment_add_handler() {
+    let mut updater = SchemaUpdater::default();
+
+    let deployment_1_id = updater
+        .add_deployment(AddDeploymentRequest {
+            deployment_address: DeploymentAddress::mock_uri("http://localhost:9081"),
+            ..add_deployment_request(vec![greeter_service()])
+        })
+        .unwrap()
+        .1;
+
+    let mut updated_greeter_service = greeter_service();
+    updated_greeter_service
+        .handlers
+        .push(endpoint_manifest::Handler {
+            abort_timeout: None,
+            documentation: None,
+            idempotency_retention: None,
+            name: "greetAgain".parse().unwrap(),
+            ty: None,
+            input: None,
+            output: None,
+            retry_policy_exponentiation_factor: None,
+            retry_policy_initial_interval: None,
+            retry_policy_max_attempts: None,
+            retry_policy_max_interval: None,
+            metadata: Default::default(),
+            inactivity_timeout: None,
+            journal_retention: None,
+            workflow_completion_retention: None,
+            enable_lazy_state: None,
+            ingress_private: None,
+            retry_policy_on_max_attempts: None,
+        });
+
+    updater
+        .update_deployment(UpdateDeploymentRequest {
+            overwrite: Overwrite::Yes,
+            ..update_deployment_request(deployment_1_id, vec![updated_greeter_service])
+        })
+        .unwrap();
+
+    updater
+        .schema
+        .assert_service_deployment(GREETER_SERVICE_NAME, deployment_1_id);
+    updater
+        .schema
+        .assert_service_revision(GREETER_SERVICE_NAME, 1);
+
+    let (_, services) = updater
+        .schema
+        .get_deployment_and_services(&deployment_1_id)
+        .unwrap();
+
+    assert_eq!(
+        services
+            .iter()
+            .find(|s| s.name == GREETER_SERVICE_NAME)
+            .unwrap()
+            .handlers
+            .len(),
+        2
+    );
+}
+
+#[test]
+fn update_draining_deployment_add_handler() {
+    let mut updater = SchemaUpdater::default();
+
+    let deployment_1_id = updater
+        .add_deployment(AddDeploymentRequest {
+            deployment_address: DeploymentAddress::mock_uri("http://localhost:9080"),
+            ..add_deployment_request(vec![greeter_service()])
+        })
+        .unwrap()
+        .1;
+
+    let deployment_2_id = updater
+        .add_deployment(AddDeploymentRequest {
+            deployment_address: DeploymentAddress::mock_uri("http://localhost:9081"),
+            ..add_deployment_request(vec![greeter_service()])
+        })
+        .unwrap()
+        .1;
+
+    let mut updated_greeter_service = greeter_service();
+    updated_greeter_service
+        .handlers
+        .push(endpoint_manifest::Handler {
+            abort_timeout: None,
+            documentation: None,
+            idempotency_retention: None,
+            name: "greetAgain".parse().unwrap(),
+            ty: None,
+            input: None,
+            output: None,
+            retry_policy_exponentiation_factor: None,
+            retry_policy_initial_interval: None,
+            retry_policy_max_attempts: None,
+            retry_policy_max_interval: None,
+            metadata: Default::default(),
+            inactivity_timeout: None,
+            journal_retention: None,
+            workflow_completion_retention: None,
+            enable_lazy_state: None,
+            ingress_private: None,
+            retry_policy_on_max_attempts: None,
+        });
+
+    updater
+        .update_deployment(UpdateDeploymentRequest {
+            overwrite: Overwrite::Yes,
+            ..update_deployment_request(deployment_1_id, vec![updated_greeter_service])
+        })
+        .unwrap();
+
+    updater
+        .schema
+        .assert_service_deployment(GREETER_SERVICE_NAME, deployment_2_id);
+    updater
+        .schema
+        .assert_service_revision(GREETER_SERVICE_NAME, 2);
+
+    let (_, updated_deployment_1_services) = updater
+        .schema
+        .get_deployment_and_services(&deployment_1_id)
+        .unwrap();
+
+    assert_eq!(
+        updated_deployment_1_services
+            .iter()
+            .find(|s| s.name == GREETER_SERVICE_NAME)
+            .unwrap()
+            .handlers
+            .len(),
+        2
+    );
+
+    let (_, updated_deployment_2_services) = updater
+        .schema
+        .get_deployment_and_services(&deployment_2_id)
+        .unwrap();
+
+    assert_eq!(
+        updated_deployment_2_services
+            .iter()
+            .find(|s| s.name == GREETER_SERVICE_NAME)
+            .unwrap()
+            .handlers
+            .len(),
+        1
+    )
+}
+
+#[test]
+fn update_latest_deployment_add_service() {
+    let mut updater = SchemaUpdater::default();
+
+    let deployment_1_id = updater
+        .add_deployment(AddDeploymentRequest {
+            deployment_address: DeploymentAddress::mock_uri("http://localhost:9080"),
+            ..add_deployment_request(vec![greeter_service()])
+        })
+        .unwrap()
+        .1;
+
+    updater
+        .update_deployment(UpdateDeploymentRequest {
+            overwrite: Overwrite::Yes,
+            ..update_deployment_request(
+                deployment_1_id,
+                vec![greeter_service(), another_greeter_service()],
+            )
+        })
+        .unwrap();
+
+    updater
+        .schema
+        .assert_service_deployment(GREETER_SERVICE_NAME, deployment_1_id);
+    updater
+        .schema
+        .assert_service_deployment(ANOTHER_GREETER_SERVICE_NAME, deployment_1_id);
+    updater
+        .schema
+        .assert_service_revision(GREETER_SERVICE_NAME, 1);
+    updater
+        .schema
+        .assert_service_revision(ANOTHER_GREETER_SERVICE_NAME, 1);
+}
+
+#[test]
+fn update_draining_deployment_add_service() {
+    let mut updater = SchemaUpdater::default();
+
+    let deployment_1_id = updater
+        .add_deployment(AddDeploymentRequest {
+            deployment_address: DeploymentAddress::mock_uri("http://localhost:9080"),
+            ..add_deployment_request(vec![greeter_service()])
+        })
+        .unwrap()
+        .1;
+
+    let deployment_2_id = updater
+        .add_deployment(AddDeploymentRequest {
+            deployment_address: DeploymentAddress::mock_uri("http://localhost:9081"),
+            ..add_deployment_request(vec![greeter_service()])
+        })
+        .unwrap()
+        .1;
+
+    updater
+        .update_deployment(UpdateDeploymentRequest {
+            overwrite: Overwrite::Yes,
+            ..update_deployment_request(
+                deployment_1_id,
+                vec![greeter_service(), another_greeter_service()],
+            )
+        })
+        .unwrap();
+
+    updater
+        .schema
+        .assert_service_deployment(GREETER_SERVICE_NAME, deployment_2_id);
+    updater
+        .schema
+        .assert_service_deployment(ANOTHER_GREETER_SERVICE_NAME, deployment_1_id);
+    updater
+        .schema
+        .assert_service_revision(GREETER_SERVICE_NAME, 2);
+    updater
+        .schema
+        .assert_service_revision(ANOTHER_GREETER_SERVICE_NAME, 1);
+}
+
+#[test]
+fn update_deployment_with_private_service() -> Result<(), SchemaError> {
+    let mut updater = SchemaUpdater::default();
+
+    let deployment_id = updater
+        .add_deployment(add_deployment_request(vec![greeter_service()]))?
+        .1;
+
+    let schemas = updater.into_inner();
+
+    assert!(schemas.assert_service(GREETER_SERVICE_NAME).public);
+    assert!(
+        schemas
+            .assert_invocation_target(GREETER_SERVICE_NAME, "greet")
+            .public
+    );
+
+    let version_before_modification = schemas.version();
+    updater = SchemaUpdater::new(schemas);
+    updater.modify_service(
+        GREETER_SERVICE_NAME,
+        ModifyServiceRequest {
+            public: Some(false),
+            ..ModifyServiceRequest::default()
+        },
+    )?;
+    let schemas = updater.into_inner();
+    let version_after_modification = schemas.version();
+
+    assert!(version_before_modification < version_after_modification);
+    assert!(!schemas.assert_service(GREETER_SERVICE_NAME).public);
+    assert!(
+        !schemas
+            .assert_invocation_target(GREETER_SERVICE_NAME, "greet")
+            .public
+    );
+
+    updater = SchemaUpdater::new(schemas);
+    updater.update_deployment(update_deployment_request(
+        deployment_id,
+        vec![greeter_service()],
+    ))?;
+
+    let schemas = updater.into_inner();
+    assert!(version_before_modification < schemas.version());
+    assert!(!schemas.assert_service(GREETER_SERVICE_NAME).public);
+    assert!(
+        !schemas
+            .assert_invocation_target(GREETER_SERVICE_NAME, "greet")
+            .public
+    );
+
+    Ok(())
+}
+
+mod endpoint_manifest_options_propagation {
+    use super::*;
+
+    use crate::config::Configuration;
+    use crate::invocation::InvocationRetention;
+    use crate::schema::invocation_target::{InvocationAttemptOptions, InvocationTargetMetadata};
+    use crate::schema::service::{HandlerMetadata, ServiceMetadata};
+    use googletest::prelude::*;
+    use restate_util_time::FriendlyDuration;
+    use std::time::Duration;
+    use test_log::test;
+
+    fn init_discover_and_resolve_target(
+        svc: endpoint_manifest::Service,
+        service_name: &str,
+        handler_name: &str,
+    ) -> InvocationTargetMetadata {
+        let ((_, deployment_id), schema) =
+            SchemaUpdater::update_and_return(Schema::default(), move |updater| {
+                updater.add_deployment(add_deployment_request(vec![svc]))
+            })
+            .unwrap();
+
+        schema.assert_service_revision(service_name, 1);
+        schema.assert_service_deployment(service_name, deployment_id);
+
+        schema.assert_invocation_target(service_name, handler_name)
+    }
+
+    #[test]
+    fn private_service() {
+        let target = init_discover_and_resolve_target(
+            endpoint_manifest::Service {
+                ingress_private: Some(true),
+                ..greeter_service()
+            },
+            GREETER_SERVICE_NAME,
+            GREET_HANDLER_NAME,
+        );
+        assert_that!(target.public, eq(false));
+    }
+
+    #[test]
+    fn public_service_with_private_handler() {
+        let schema = SchemaUpdater::update(Schema::default(), |updater| {
+            updater
+                .add_deployment(add_deployment_request(vec![endpoint_manifest::Service {
+                    // Mock two handlers, one explicitly private, the other just default settings
+                    handlers: vec![
+                        endpoint_manifest::Handler {
+                            ingress_private: Some(true),
+                            name: "my_private_handler".parse().unwrap(),
+                            ..greeter_service_greet_handler()
+                        },
+                        greeter_service_greet_handler(),
+                    ],
+                    ..greeter_service()
+                }]))
+                .map(|_| ())
+        })
+        .unwrap();
+
+        // The explicitly private handler is private
+        let private_handler_target =
+            schema.assert_invocation_target(GREETER_SERVICE_NAME, "my_private_handler");
+        assert_that!(private_handler_target.public, eq(false));
+
+        // The other handler is by default public
+        let public_handler_target =
+            schema.assert_invocation_target(GREETER_SERVICE_NAME, GREET_HANDLER_NAME);
+        assert_that!(public_handler_target.public, eq(true));
+    }
+
+    #[test]
+    fn public_handler_in_private_service() {
+        let schema_information = Schema::default();
+        let mut updater = SchemaUpdater::new(schema_information);
+
+        assert_that!(
+            updater.add_deployment(add_deployment_request(vec![endpoint_manifest::Service {
+                ingress_private: Some(true),
+                handlers: vec![endpoint_manifest::Handler {
+                    ingress_private: Some(false),
+                    name: "my_private_handler".parse().unwrap(),
+                    ..greeter_service_greet_handler()
+                }],
+                ..greeter_service()
+            }])),
+            err(pat!(SchemaError::Service(pat!(
+                ServiceError::BadHandlerVisibility { .. }
+            ))))
+        );
+    }
+
+    #[test]
+    fn workflow_retention() {
+        let ((_, deployment_id), schema) =
+            SchemaUpdater::update_and_return(Schema::default(), move |updater| {
+                updater.add_deployment(add_deployment_request(vec![endpoint_manifest::Service {
+                    handlers: vec![endpoint_manifest::Handler {
+                        workflow_completion_retention: Some(30 * 1000),
+                        ..greeter_workflow_greet_handler()
+                    }],
+                    ..greeter_workflow()
+                }]))
+            })
+            .unwrap();
+
+        assert_that!(
+            schema.assert_service(GREETER_SERVICE_NAME),
+            pat!(ServiceMetadata {
+                revision: eq(1),
+                deployment_id: eq(deployment_id),
+                workflow_completion_retention: eq(Some(Duration::from_secs(30)))
+            })
+        );
+        assert_that!(
+            schema
+                .assert_invocation_target(GREETER_SERVICE_NAME, GREET_HANDLER_NAME)
+                .compute_retention(false),
+            eq(InvocationRetention {
+                completion_retention: Duration::from_secs(30),
+                journal_retention: Duration::from_secs(30),
+            })
+        );
+    }
+
+    #[test]
+    fn service_level_journal_retention() {
+        let target = init_discover_and_resolve_target(
+            endpoint_manifest::Service {
+                journal_retention: Some(60 * 1000),
+                ..greeter_service()
+            },
+            GREETER_SERVICE_NAME,
+            GREET_HANDLER_NAME,
+        );
+        assert_that!(
+            target.compute_retention(false),
+            eq(InvocationRetention {
+                completion_retention: Duration::from_secs(60),
+                journal_retention: Duration::from_secs(60),
+            })
+        )
+    }
+
+    #[test]
+    fn handler_level_journal_retention() {
+        let target = init_discover_and_resolve_target(
+            endpoint_manifest::Service {
+                handlers: vec![endpoint_manifest::Handler {
+                    journal_retention: Some(30 * 1000),
+                    ..greeter_service_greet_handler()
+                }],
+                ..greeter_service()
+            },
+            GREETER_SERVICE_NAME,
+            GREET_HANDLER_NAME,
+        );
+        assert_that!(
+            target.compute_retention(false),
+            eq(InvocationRetention {
+                completion_retention: Duration::from_secs(30),
+                journal_retention: Duration::from_secs(30),
+            })
+        )
+    }
+
+    #[test]
+    fn handler_level_journal_retention_overrides_the_service_level_journal_retention() {
+        let target = init_discover_and_resolve_target(
+            endpoint_manifest::Service {
+                journal_retention: Some(60 * 1000),
+                handlers: vec![endpoint_manifest::Handler {
+                    journal_retention: Some(30 * 1000),
+                    ..greeter_service_greet_handler()
+                }],
+                ..greeter_service()
+            },
+            GREETER_SERVICE_NAME,
+            GREET_HANDLER_NAME,
+        );
+        assert_that!(
+            target.compute_retention(false),
+            eq(InvocationRetention {
+                completion_retention: Duration::from_secs(30),
+                journal_retention: Duration::from_secs(30),
+            })
+        )
+    }
+
+    #[test]
+    fn service_level_journal_retention_with_idempotency_key() {
+        let target = init_discover_and_resolve_target(
+            endpoint_manifest::Service {
+                idempotency_retention: Some(120 * 1000),
+                journal_retention: Some(60 * 1000),
+                ..greeter_service()
+            },
+            GREETER_SERVICE_NAME,
+            GREET_HANDLER_NAME,
+        );
+        assert_that!(
+            target.compute_retention(true),
+            eq(InvocationRetention {
+                completion_retention: Duration::from_secs(120),
+                journal_retention: Duration::from_secs(60),
+            })
+        )
+    }
+
+    #[test]
+    fn handler_level_journal_retention_with_idempotency_key() {
+        let target = init_discover_and_resolve_target(
+            endpoint_manifest::Service {
+                idempotency_retention: Some(120 * 1000),
+                journal_retention: Some(60 * 1000),
+                handlers: vec![endpoint_manifest::Handler {
+                    journal_retention: Some(30 * 1000),
+                    ..greeter_service_greet_handler()
+                }],
+                ..greeter_service()
+            },
+            GREETER_SERVICE_NAME,
+            GREET_HANDLER_NAME,
+        );
+        assert_that!(
+            target.compute_retention(true),
+            eq(InvocationRetention {
+                completion_retention: Duration::from_secs(120),
+                journal_retention: Duration::from_secs(30),
+            })
+        )
+    }
+
+    #[test]
+    fn handler_level_journal_retention_overrides_the_service_level_journal_retention_with_idempotency_key()
+     {
+        let target = init_discover_and_resolve_target(
+            endpoint_manifest::Service {
+                journal_retention: Some(60 * 1000),
+                handlers: vec![endpoint_manifest::Handler {
+                    idempotency_retention: Some(120 * 1000),
+                    journal_retention: Some(30 * 1000),
+                    ..greeter_service_greet_handler()
+                }],
+                ..greeter_service()
+            },
+            GREETER_SERVICE_NAME,
+            GREET_HANDLER_NAME,
+        );
+        assert_that!(
+            target.compute_retention(true),
+            eq(InvocationRetention {
+                completion_retention: Duration::from_secs(120),
+                journal_retention: Duration::from_secs(30),
+            })
+        )
+    }
+
+    #[test]
+    fn journal_retention_greater_than_completion_retention() {
+        let target = init_discover_and_resolve_target(
+            endpoint_manifest::Service {
+                journal_retention: Some(120 * 1000),
+                handlers: vec![endpoint_manifest::Handler {
+                    idempotency_retention: Some(60 * 1000),
+                    ..greeter_service_greet_handler()
+                }],
+                ..greeter_service()
+            },
+            GREETER_SERVICE_NAME,
+            GREET_HANDLER_NAME,
+        );
+        assert_that!(
+            target.compute_retention(true),
+            eq(InvocationRetention {
+                completion_retention: Duration::from_secs(60),
+                journal_retention: Duration::from_secs(60),
+            })
+        )
+    }
+
+    #[test]
+    fn journal_retention_default_is_respected() {
+        let mut config = Configuration::default();
+        config.invocation.default_journal_retention = FriendlyDuration::from_secs(300);
+        crate::config::set_current_config(config);
+
+        let target = init_discover_and_resolve_target(
+            greeter_service(),
+            GREETER_SERVICE_NAME,
+            GREET_HANDLER_NAME,
+        );
+        assert_that!(
+            target.compute_retention(false),
+            eq(InvocationRetention {
+                completion_retention: Duration::from_secs(300),
+                journal_retention: Duration::from_secs(300),
+            })
+        )
+    }
+
+    #[test]
+    fn journal_retention_default_is_overridden_by_discovery() {
+        let mut config = Configuration::default();
+        config.invocation.default_journal_retention = FriendlyDuration::from_secs(300);
+        crate::config::set_current_config(config);
+
+        let target = init_discover_and_resolve_target(
+            endpoint_manifest::Service {
+                journal_retention: Some(60 * 1000),
+                ..greeter_service()
+            },
+            GREETER_SERVICE_NAME,
+            GREET_HANDLER_NAME,
+        );
+        assert_that!(
+            target.compute_retention(false),
+            eq(InvocationRetention {
+                completion_retention: Duration::from_secs(60),
+                journal_retention: Duration::from_secs(60),
+            })
+        )
+    }
+
+    #[test]
+    fn journal_retention_last_one_wins_scenario() {
+        // 1. User configures journal retention A in SDK configuration, registers the service, now journal retention is A
+        crate::config::set_current_config(Configuration::default());
+
+        let ((_, deployment_id), schema) =
+            SchemaUpdater::update_and_return(Schema::default(), move |updater| {
+                updater.add_deployment(add_deployment_request(vec![endpoint_manifest::Service {
+                    journal_retention: Some(60 * 1000), // A = 60 seconds
+                    ..greeter_service()
+                }]))
+            })
+            .unwrap();
+
+        schema.assert_service_revision(GREETER_SERVICE_NAME, 1);
+        schema.assert_service_deployment(GREETER_SERVICE_NAME, deployment_id);
+
+        assert_that!(
+            schema
+                .assert_invocation_target(GREETER_SERVICE_NAME, GREET_HANDLER_NAME)
+                .compute_retention(false),
+            eq(InvocationRetention {
+                completion_retention: Duration::from_secs(60),
+                journal_retention: Duration::from_secs(60),
+            })
+        );
+        assert_that!(
+            schema.assert_service(GREETER_SERVICE_NAME),
+            pat!(ServiceMetadata {
+                journal_retention: some(eq(Duration::from_secs(60))),
+            })
+        );
+
+        // 2. User updates journal retention to B in the UI, now journal retention is B
+        let schema = SchemaUpdater::update(schema, |updater| {
+            updater.modify_service(
+                GREETER_SERVICE_NAME,
+                ModifyServiceRequest {
+                    journal_retention: Some(Duration::from_secs(120)),
+                    ..ModifyServiceRequest::default()
+                }, // B = 120 seconds
+            )
+        })
+        .unwrap();
+
+        assert_that!(
+            schema
+                .assert_invocation_target(GREETER_SERVICE_NAME, GREET_HANDLER_NAME)
+                .compute_retention(false),
+            eq(InvocationRetention {
+                completion_retention: Duration::from_secs(120),
+                journal_retention: Duration::from_secs(120),
+            })
+        );
+        assert_that!(
+            schema.assert_service(GREETER_SERVICE_NAME),
+            pat!(ServiceMetadata {
+                journal_retention: some(eq(Duration::from_secs(120))),
+            })
+        );
+
+        // 3. User registers a new revision of the service defining in the SDK journal retention A, now journal retention is again A
+        let ((_, deployment_id), schema) =
+            SchemaUpdater::update_and_return(schema, move |updater| {
+                updater.add_deployment(AddDeploymentRequest {
+                    deployment_address: DeploymentAddress::mock_uri("http://localhost:9081"),
+                    ..add_deployment_request(vec![endpoint_manifest::Service {
+                        journal_retention: Some(60 * 1000), // A = 60 seconds again
+                        ..greeter_service()
+                    }])
+                })
+            })
+            .unwrap();
+
+        schema.assert_service_revision(GREETER_SERVICE_NAME, 2); // Revision should be incremented
+        schema.assert_service_deployment(GREETER_SERVICE_NAME, deployment_id);
+
+        assert_that!(
+            schema
+                .assert_invocation_target(GREETER_SERVICE_NAME, GREET_HANDLER_NAME)
+                .compute_retention(false),
+            eq(InvocationRetention {
+                completion_retention: Duration::from_secs(60),
+                journal_retention: Duration::from_secs(60),
+            })
+        );
+        assert_that!(
+            schema.assert_service(GREETER_SERVICE_NAME),
+            pat!(ServiceMetadata {
+                journal_retention: some(eq(Duration::from_secs(60))),
+            })
+        );
+
+        // 4. Operator updates RESTATE_DEFAULT_JOURNAL_RETENTION with value C, journal retention is still A
+        let mut config = Configuration::default();
+        config.invocation.default_journal_retention = FriendlyDuration::from_secs(180); // C = 180 seconds
+        crate::config::set_current_config(config);
+
+        assert_that!(
+            schema
+                .assert_invocation_target(GREETER_SERVICE_NAME, GREET_HANDLER_NAME)
+                .compute_retention(false),
+            eq(InvocationRetention {
+                completion_retention: Duration::from_secs(60),
+                journal_retention: Duration::from_secs(60),
+            })
+        );
+        assert_that!(
+            schema.assert_service(GREETER_SERVICE_NAME),
+            pat!(ServiceMetadata {
+                journal_retention: some(eq(Duration::from_secs(60))),
+            })
+        );
+
+        // 5. Operator updates RESTATE_MAX_JOURNAL_RETENTION with value D, journal retention will be min(A, D)
+        let mut config = Configuration::default();
+        config.invocation.default_journal_retention = FriendlyDuration::from_secs(20); // E = 20 seconds -> this should be ignored
+        config.invocation.max_journal_retention = Some(FriendlyDuration::from_secs(30)); // D = 30 seconds
+        crate::config::set_current_config(config);
+
+        assert_that!(
+            schema
+                .assert_invocation_target(GREETER_SERVICE_NAME, GREET_HANDLER_NAME)
+                .compute_retention(false),
+            eq(InvocationRetention {
+                completion_retention: Duration::from_secs(30),
+                journal_retention: Duration::from_secs(30),
+            })
+        );
+        assert_that!(
+            schema.assert_service(GREETER_SERVICE_NAME),
+            pat!(ServiceMetadata {
+                journal_retention: some(eq(Duration::from_secs(30))),
+            })
+        );
+
+        // 6. Operator registers a new version that doesn't declare journal retention, value should revert to the default E = 20 seconds
+        let ((_, deployment_id), schema) =
+            SchemaUpdater::update_and_return(schema, move |updater| {
+                updater.add_deployment(AddDeploymentRequest {
+                    deployment_address: DeploymentAddress::mock_uri("http://localhost:9082"),
+                    ..add_deployment_request(vec![endpoint_manifest::Service {
+                        journal_retention: None,
+                        ..greeter_service()
+                    }])
+                })
+            })
+            .unwrap();
+
+        schema.assert_service_revision(GREETER_SERVICE_NAME, 3); // Revision should be incremented
+        schema.assert_service_deployment(GREETER_SERVICE_NAME, deployment_id);
+        assert_that!(
+            schema
+                .assert_invocation_target(GREETER_SERVICE_NAME, GREET_HANDLER_NAME)
+                .compute_retention(false),
+            eq(InvocationRetention {
+                completion_retention: Duration::from_secs(20),
+                journal_retention: Duration::from_secs(20),
+            })
+        );
+        assert_that!(
+            schema.assert_service(GREETER_SERVICE_NAME),
+            pat!(ServiceMetadata {
+                journal_retention: some(eq(Duration::from_secs(20))),
+            })
+        );
+    }
+
+    #[test]
+    fn max_journal_retention_clamps_value_for_service() {
+        // Set max_journal_retention to 60 seconds
+        let mut config = Configuration::default();
+        config.invocation.max_journal_retention = Some(FriendlyDuration::from_secs(60));
+        crate::config::set_current_config(config);
+
+        // Create a service with journal_retention of 120 seconds (higher than max)
+        let ((_, deployment_id), schema) =
+            SchemaUpdater::update_and_return(Schema::default(), move |updater| {
+                updater.add_deployment(add_deployment_request(vec![endpoint_manifest::Service {
+                    journal_retention: Some(120 * 1000), // 120 seconds
+                    ..greeter_service()
+                }]))
+            })
+            .unwrap();
+
+        schema.assert_service_revision(GREETER_SERVICE_NAME, 1);
+        schema.assert_service_deployment(GREETER_SERVICE_NAME, deployment_id);
+
+        let target = schema.assert_invocation_target(GREETER_SERVICE_NAME, GREET_HANDLER_NAME);
+
+        // Verify that the journal_retention is clamped to 60 seconds (the max)
+        assert_that!(
+            target.compute_retention(false),
+            eq(InvocationRetention {
+                completion_retention: Duration::from_secs(60), // Clamped to max
+                journal_retention: Duration::from_secs(60),    // Clamped to max
+            })
+        );
+
+        // Verify that the Info field is set in ServiceMetadata
+        let service_metadata = schema.assert_service(GREETER_SERVICE_NAME);
+        assert_that!(
+            service_metadata.info,
+            contains(predicate(|info: &SchemaInfo| info
+                .message()
+                .contains("journal_retention is clamped")))
+        );
+    }
+
+    #[test]
+    fn max_journal_retention_higher_than_set_value() {
+        // Set max_journal_retention to 60 seconds
+        let mut config = Configuration::default();
+        config.invocation.max_journal_retention = Some(FriendlyDuration::from_secs(60));
+        crate::config::set_current_config(config);
+
+        // Create a service with journal_retention of 30 seconds (lower than max)
+        let target = init_discover_and_resolve_target(
+            endpoint_manifest::Service {
+                journal_retention: Some(30 * 1000), // 30 seconds
+                ..greeter_service()
+            },
+            GREETER_SERVICE_NAME,
+            GREET_HANDLER_NAME,
+        );
+
+        // Verify that the journal_retention is not affected (still 30 seconds)
+        assert_that!(
+            target.compute_retention(false),
+            eq(InvocationRetention {
+                completion_retention: Duration::from_secs(30), // Not clamped
+                journal_retention: Duration::from_secs(30),    // Not clamped
+            })
+        );
+    }
+
+    #[test]
+    fn max_journal_retention_clamps_value_for_handler() {
+        // Set max_journal_retention to 60 seconds
+        let mut config = Configuration::default();
+        config.invocation.max_journal_retention = Some(FriendlyDuration::from_secs(60));
+        crate::config::set_current_config(config);
+
+        // Create a handler with journal_retention of 300 seconds (higher than max)
+        let ((_, _), schema) =
+            SchemaUpdater::update_and_return(Schema::default(), move |updater| {
+                updater.add_deployment(add_deployment_request(vec![endpoint_manifest::Service {
+                    journal_retention: Some(120 * 1000), // Service sets 120 seconds
+                    handlers: vec![endpoint_manifest::Handler {
+                        journal_retention: Some(300 * 1000), // 300 seconds
+                        ..greeter_service_greet_handler()
+                    }],
+                    ..greeter_service()
+                }]))
+            })
+            .unwrap();
+
+        // Verify that the journal_retention is clamped to 60 seconds (the max)
+        assert_that!(
+            schema
+                .assert_invocation_target(GREETER_SERVICE_NAME, GREET_HANDLER_NAME)
+                .compute_retention(false),
+            eq(InvocationRetention {
+                completion_retention: Duration::from_secs(60), // Clamped to max
+                journal_retention: Duration::from_secs(60),    // Clamped to max
+            })
+        );
+        assert_that!(
+            schema.assert_service(GREETER_SERVICE_NAME),
+            pat!(ServiceMetadata {
+                journal_retention: some(eq(Duration::from_secs(60))), // This was never set
+            })
+        );
+        assert_that!(
+            schema.assert_handler(GREETER_SERVICE_NAME, GREET_HANDLER_NAME),
+            pat!(HandlerMetadata {
+                journal_retention: some(eq(Duration::from_secs(60))), // Clamped to max
+            })
+        );
+
+        // Verify that the Info field is set in ServiceMetadata for service-level clamping
+        let service_metadata = schema.assert_service(GREETER_SERVICE_NAME);
+        assert_that!(
+            service_metadata.info,
+            contains(predicate(|info: &SchemaInfo| info
+                .message()
+                .contains("journal_retention is clamped")))
+        );
+
+        // Verify that the Info field is set in HandlerMetadata for handler-level clamping
+        let handler_metadata = schema.assert_handler(GREETER_SERVICE_NAME, GREET_HANDLER_NAME);
+        assert_that!(
+            handler_metadata.info,
+            contains(predicate(|info: &SchemaInfo| info
+                .message()
+                .contains("journal_retention is clamped")))
+        );
+
+        // Disable max
+        let mut config = Configuration::default();
+        config.invocation.max_journal_retention = None;
+        crate::config::set_current_config(config);
+
+        assert_that!(
+            schema
+                .assert_invocation_target(GREETER_SERVICE_NAME, GREET_HANDLER_NAME)
+                .compute_retention(false),
+            eq(InvocationRetention {
+                completion_retention: Duration::from_secs(300),
+                journal_retention: Duration::from_secs(300),
+            })
+        );
+        assert_that!(
+            schema.assert_service(GREETER_SERVICE_NAME),
+            pat!(ServiceMetadata {
+                journal_retention: some(eq(Duration::from_secs(120))), // The initial value set
+            })
+        );
+        assert_that!(
+            schema.assert_handler(GREETER_SERVICE_NAME, GREET_HANDLER_NAME),
+            pat!(HandlerMetadata {
+                journal_retention: some(eq(Duration::from_secs(300))), // The initial value set
+            })
+        );
+    }
+
+    #[test]
+    fn max_journal_retention_unset_means_no_limit() {
+        // Set default_journal_retention but leave max_journal_retention unset
+        let mut config = Configuration::default();
+        config.invocation.default_journal_retention = FriendlyDuration::from_secs(60);
+        config.invocation.max_journal_retention = None; // Explicitly unset
+        crate::config::set_current_config(config);
+
+        // Create a service with a very high journal_retention
+        let target = init_discover_and_resolve_target(
+            endpoint_manifest::Service {
+                journal_retention: Some(3600 * 1000), // 1 hour
+                ..greeter_service()
+            },
+            GREETER_SERVICE_NAME,
+            GREET_HANDLER_NAME,
+        );
+
+        // Verify that the journal_retention is not clamped (no limit)
+        assert_that!(
+            target.compute_retention(false),
+            eq(InvocationRetention {
+                completion_retention: Duration::from_secs(3600), // Not clamped
+                journal_retention: Duration::from_secs(3600),    // Not clamped
+            })
+        );
+    }
+
+    #[test]
+    fn max_journal_retention_zero_disables_journal_retention() {
+        // Set max_journal_retention to 0 (always disabled)
+        let mut config = Configuration::default();
+        config.invocation.max_journal_retention = Some(FriendlyDuration::from_secs(0));
+        crate::config::set_current_config(config);
+
+        // Create a service with journal_retention set
+        let target = init_discover_and_resolve_target(
+            endpoint_manifest::Service {
+                journal_retention: Some(60 * 1000), // 60 seconds
+                ..greeter_service()
+            },
+            GREETER_SERVICE_NAME,
+            GREET_HANDLER_NAME,
+        );
+
+        // Verify that the journal_retention is clamped to 0 (disabled)
+        assert_that!(
+            target.compute_retention(false),
+            eq(InvocationRetention {
+                completion_retention: Duration::from_secs(0), // Clamped to 0
+                journal_retention: Duration::from_secs(0),    // Clamped to 0
+            })
+        );
+    }
+
+    #[test]
+    fn idempotency_retention_default_and_max() {
+        // Custom default kicks in when neither service nor handler sets it; max clamps an SDK-set value.
+        let mut config = Configuration::default();
+        config.invocation.default_idempotency_retention = FriendlyDuration::from_secs(120);
+        config.invocation.max_idempotency_retention = Some(FriendlyDuration::from_secs(60));
+        crate::config::set_current_config(config);
+
+        // No idempotency_retention in the manifest -> config default applies, then clamps to max (60s).
+        let target = init_discover_and_resolve_target(
+            greeter_service(),
+            GREETER_SERVICE_NAME,
+            GREET_HANDLER_NAME,
+        );
+        assert_that!(
+            target.compute_retention(true), // has_idempotency_key = true to exercise completion_retention
+            eq(InvocationRetention {
+                completion_retention: Duration::from_secs(60),
+                journal_retention: Duration::from_secs(60),
+            })
+        );
+
+        // SDK requests 5 minutes -> still clamped to max (60s).
+        let target = init_discover_and_resolve_target(
+            endpoint_manifest::Service {
+                idempotency_retention: Some(5 * 60 * 1000),
+                ..greeter_service()
+            },
+            GREETER_SERVICE_NAME,
+            GREET_HANDLER_NAME,
+        );
+        assert_that!(
+            target.compute_retention(true),
+            eq(InvocationRetention {
+                completion_retention: Duration::from_secs(60),
+                journal_retention: Duration::from_secs(60),
+            })
+        );
+    }
+
+    #[test]
+    fn workflow_completion_retention_default_and_max() {
+        let mut config = Configuration::default();
+        config.invocation.default_workflow_completion_retention = FriendlyDuration::from_secs(120);
+        config.invocation.max_workflow_completion_retention = Some(FriendlyDuration::from_secs(60));
+        crate::config::set_current_config(config);
+
+        // No workflow_completion_retention in the manifest -> config default applies, then clamps to max (60s).
+        let target = init_discover_and_resolve_target(
+            greeter_workflow(),
+            GREETER_SERVICE_NAME,
+            GREET_HANDLER_NAME,
+        );
+        assert_that!(
+            target.compute_retention(false),
+            eq(InvocationRetention {
+                completion_retention: Duration::from_secs(60),
+                journal_retention: Duration::from_secs(60),
+            })
+        );
+
+        // SDK requests 5 minutes -> still clamped to max (60s).
+        let target = init_discover_and_resolve_target(
+            endpoint_manifest::Service {
+                handlers: vec![endpoint_manifest::Handler {
+                    workflow_completion_retention: Some(5 * 60 * 1000),
+                    ..greeter_workflow_greet_handler()
+                }],
+                ..greeter_workflow()
+            },
+            GREETER_SERVICE_NAME,
+            GREET_HANDLER_NAME,
+        );
+        assert_that!(
+            target.compute_retention(false),
+            eq(InvocationRetention {
+                completion_retention: Duration::from_secs(60),
+                journal_retention: Duration::from_secs(60),
+            })
+        );
+    }
+
+    #[test]
+    fn max_journal_retention_zero_wins_over_default_and_set_values() {
+        // Create a service with default journal_retention
+        let mut config = Configuration::default();
+        config.invocation.default_journal_retention = FriendlyDuration::from_secs(300);
+        config.invocation.max_journal_retention = Some(FriendlyDuration::from_secs(0));
+        crate::config::set_current_config(config);
+
+        let target = init_discover_and_resolve_target(
+            greeter_service(), // No explicit journal_retention
+            GREETER_SERVICE_NAME,
+            GREET_HANDLER_NAME,
+        );
+
+        // Verify that the journal_retention is still 0 (disabled)
+        assert_that!(
+            target.compute_retention(false),
+            eq(InvocationRetention {
+                completion_retention: Duration::from_secs(0), // Clamped to 0
+                journal_retention: Duration::from_secs(0),    // Clamped to 0
+            })
+        );
+    }
+
+    fn init_discover_and_resolve_timeouts(
+        svc: endpoint_manifest::Service,
+        service_name: &str,
+        handler_name: &str,
+    ) -> InvocationAttemptOptions {
+        let schema_information = Schema::default();
+        let mut updater = SchemaUpdater::new(schema_information);
+
+        let deployment_id = updater
+            .add_deployment(add_deployment_request(vec![svc]))
+            .unwrap()
+            .1;
+
+        let schema = updater.into_inner();
+
+        schema.assert_service_revision(service_name, 1);
+        schema.assert_service_deployment(service_name, deployment_id);
+
+        schema
+            .resolve_invocation_attempt_options(&deployment_id, service_name, handler_name)
+            .unwrap_or_else(|| {
+                panic!(
+                    "Invocation target for deployment {} and target {}/{} must exists",
+                    deployment_id, service_name, handler_name
+                )
+            })
+    }
+
+    #[test]
+    fn service_level_timeouts() {
+        let timeouts = init_discover_and_resolve_timeouts(
+            endpoint_manifest::Service {
+                abort_timeout: Some(120 * 1000),
+                inactivity_timeout: Some(60 * 1000),
+                ..greeter_service()
+            },
+            GREETER_SERVICE_NAME,
+            GREET_HANDLER_NAME,
+        );
+        assert_that!(
+            timeouts,
+            eq(InvocationAttemptOptions {
+                abort_timeout: Some(Duration::from_secs(120)),
+                inactivity_timeout: Some(Duration::from_secs(60)),
+                eager_state_size_limit: None,
+            })
+        )
+    }
+
+    #[test]
+    fn service_level_timeouts_with_handler_overrides() {
+        let timeouts = init_discover_and_resolve_timeouts(
+            endpoint_manifest::Service {
+                abort_timeout: Some(120 * 1000),
+                inactivity_timeout: Some(60 * 1000),
+                handlers: vec![endpoint_manifest::Handler {
+                    inactivity_timeout: Some(30 * 1000),
+                    ..greeter_service_greet_handler()
+                }],
+                ..greeter_service()
+            },
+            GREETER_SERVICE_NAME,
+            GREET_HANDLER_NAME,
+        );
+        assert_that!(
+            timeouts,
+            eq(InvocationAttemptOptions {
+                abort_timeout: Some(Duration::from_secs(120)),
+                inactivity_timeout: Some(Duration::from_secs(30)),
+                eager_state_size_limit: None,
+            })
+        )
+    }
+
+    #[test]
+    fn inactivity_timeout_with_request_response_protocol() {
+        // Create a service with inactivity_timeout and deploy it with RequestResponse protocol
+        let ((_, deployment_id), schema) =
+            SchemaUpdater::update_and_return(Schema::default(), move |updater| {
+                updater.add_deployment(AddDeploymentRequest {
+                    deployment_address: DeploymentAddress::mock(),
+                    additional_headers: Default::default(),
+                    metadata: Default::default(),
+                    discovery_response: DiscoveryResponse {
+                        deployment_type_parameters: DeploymentConnectionParameters::Http {
+                            protocol_type: ProtocolType::RequestResponse,
+                            http_version: http::Version::HTTP_2,
+                        },
+                        supported_protocol_versions: (MIN_INFLIGHT_SERVICE_PROTOCOL_VERSION as i32)
+                            ..=(MAX_INFLIGHT_SERVICE_PROTOCOL_VERSION as i32),
+                        sdk_version: None,
+                        services: vec![endpoint_manifest::Service {
+                            inactivity_timeout: Some(60 * 1000), // 60 seconds
+                            ..greeter_service()
+                        }],
+                    },
+                    allow_breaking_changes: AllowBreakingChanges::No,
+                    overwrite: Overwrite::No,
+                })
+            })
+            .unwrap();
+
+        schema.assert_service_revision(GREETER_SERVICE_NAME, 1);
+        schema.assert_service_deployment(GREETER_SERVICE_NAME, deployment_id);
+
+        // Verify that the Info field is set in ServiceMetadata
+        let service_metadata = schema.assert_service(GREETER_SERVICE_NAME);
+        assert_that!(service_metadata.info, not(empty()));
+        assert_that!(
+            service_metadata
+                .info
+                .iter()
+                .any(|info| info.message().contains("inactivity_timeout")
+                    && info.message().contains("Request/Response")),
+            eq(true)
+        );
+    }
+}
+
+mod modify_service {
+    use super::*;
+
+    use crate::config::{Configuration, DEFAULT_ABORT_TIMEOUT, DEFAULT_INACTIVITY_TIMEOUT};
+    use crate::invocation::InvocationRetention;
+    use crate::schema::invocation_target::{InvocationAttemptOptions, InvocationTargetMetadata};
+    use crate::schema::service::ServiceMetadata;
+    use googletest::prelude::*;
+    use restate_util_time::FriendlyDuration;
+    use test_log::test;
+
+    #[test]
+    fn workflow_retention() {
+        // Register a plain workflow first
+        let ((_, deployment_id), mut schema) =
+            SchemaUpdater::update_and_return(Schema::default(), move |updater| {
+                updater.add_deployment(add_deployment_request(vec![greeter_workflow()]))
+            })
+            .unwrap();
+
+        assert_that!(
+            schema.assert_service(GREETER_SERVICE_NAME),
+            pat!(ServiceMetadata {
+                revision: eq(1),
+                deployment_id: eq(deployment_id),
+                workflow_completion_retention: eq(Some(DEFAULT_WORKFLOW_COMPLETION_RETENTION))
+            })
+        );
+        assert_that!(
+            schema
+                .assert_invocation_target(GREETER_SERVICE_NAME, GREET_HANDLER_NAME)
+                .compute_retention(false),
+            eq(InvocationRetention {
+                completion_retention: DEFAULT_WORKFLOW_COMPLETION_RETENTION,
+                journal_retention: DEFAULT_WORKFLOW_COMPLETION_RETENTION,
+            })
+        );
+
+        // Now update it
+        let new_retention = Duration::from_secs(30);
+        schema = SchemaUpdater::update(schema, |updater| {
+            updater.modify_service(
+                GREETER_SERVICE_NAME,
+                ModifyServiceRequest {
+                    workflow_completion_retention: Some(new_retention),
+                    ..ModifyServiceRequest::default()
+                },
+            )
+        })
+        .unwrap();
+
+        assert_that!(
+            schema.assert_service(GREETER_SERVICE_NAME),
+            pat!(ServiceMetadata {
+                workflow_completion_retention: eq(Some(new_retention))
+            })
+        );
+        assert_that!(
+            schema
+                .assert_invocation_target(GREETER_SERVICE_NAME, GREET_HANDLER_NAME)
+                .compute_retention(false),
+            eq(InvocationRetention {
+                completion_retention: new_retention,
+                journal_retention: new_retention,
+            })
+        );
+    }
+
+    #[test]
+    fn modify_all_service_config_options_then_register_second_version() {
+        const DEFAULT_JOURNAL_RETENTION: Duration = Duration::from_secs(60 * 60 * 24);
+
+        let mut config = Configuration::default();
+        config.invocation.default_journal_retention =
+            FriendlyDuration::new(DEFAULT_JOURNAL_RETENTION);
+        crate::config::set_current_config(config);
+
+        // Register a plain service first
+        let ((_, deployment_id), mut schema) =
+            SchemaUpdater::update_and_return(Schema::default(), move |updater| {
+                updater.add_deployment(add_deployment_request(vec![greeter_service()]))
+            })
+            .unwrap();
+
+        // Verify initial state
+        assert_that!(
+            schema.assert_service(GREETER_SERVICE_NAME),
+            pat!(ServiceMetadata {
+                revision: eq(1),
+                deployment_id: eq(deployment_id),
+                public: eq(true), // default is public
+                idempotency_retention: eq(DEFAULT_IDEMPOTENCY_RETENTION),
+                journal_retention: eq(Some(DEFAULT_JOURNAL_RETENTION)),
+                inactivity_timeout: eq(DEFAULT_INACTIVITY_TIMEOUT),
+                abort_timeout: eq(DEFAULT_ABORT_TIMEOUT),
+            })
+        );
+
+        // Update using modify_service (e.g. through UI/CLI) the service options
+        let new_public = false;
+        let new_idempotency_retention = Duration::from_secs(120);
+        let new_journal_retention = Duration::from_secs(300);
+        let new_inactivity_timeout = Duration::from_secs(30);
+        let new_abort_timeout = Duration::from_secs(60);
+        schema = SchemaUpdater::update(schema, |updater| {
+            updater.modify_service(
+                GREETER_SERVICE_NAME,
+                ModifyServiceRequest {
+                    public: Some(new_public),
+                    idempotency_retention: Some(new_idempotency_retention),
+                    journal_retention: Some(new_journal_retention),
+                    workflow_completion_retention: None,
+                    inactivity_timeout: Some(new_inactivity_timeout),
+                    abort_timeout: Some(new_abort_timeout),
+                },
+            )
+        })
+        .unwrap();
+
+        // Verify all changes have been applied
+        assert_that!(
+            schema.assert_service(GREETER_SERVICE_NAME),
+            pat!(ServiceMetadata {
+                public: eq(new_public),
+                idempotency_retention: eq(new_idempotency_retention),
+                journal_retention: eq(Some(new_journal_retention)),
+                inactivity_timeout: eq(new_inactivity_timeout),
+                abort_timeout: eq(new_abort_timeout),
+            })
+        );
+
+        // Now register a second version of greeter, identical to the first
+        let ((_, deployment_id_2), schema_after_second_deployment) =
+            SchemaUpdater::update_and_return(schema, move |updater| {
+                updater.add_deployment(AddDeploymentRequest {
+                    deployment_address: DeploymentAddress::mock_uri("http://localhost:9082"),
+                    ..add_deployment_request(vec![greeter_service()]) // identical service definition
+                })
+            })
+            .unwrap();
+
+        // Verify that the config option changes have been blanked/reset to defaults
+        assert_that!(
+            schema_after_second_deployment.assert_service(GREETER_SERVICE_NAME),
+            pat!(ServiceMetadata {
+                revision: eq(2),                    // revision should be incremented
+                deployment_id: eq(deployment_id_2), // new deployment
+
+                // -- Back to default
+                public: eq(true),
+                idempotency_retention: eq(DEFAULT_IDEMPOTENCY_RETENTION),
+                journal_retention: eq(Some(DEFAULT_JOURNAL_RETENTION)),
+                inactivity_timeout: eq(DEFAULT_INACTIVITY_TIMEOUT),
+                abort_timeout: eq(DEFAULT_ABORT_TIMEOUT),
+            })
+        );
+    }
+
+    #[test]
+    fn modify_all_workflow_config_options_then_register_second_version() {
+        const DEFAULT_JOURNAL_RETENTION: Duration = Duration::from_secs(60 * 60 * 24);
+
+        let mut config = Configuration::default();
+        config.invocation.default_journal_retention =
+            FriendlyDuration::new(DEFAULT_JOURNAL_RETENTION);
+        crate::config::set_current_config(config);
+
+        // Register a plain service first
+        let ((_, deployment_id), mut schema) =
+            SchemaUpdater::update_and_return(Schema::default(), move |updater| {
+                updater.add_deployment(add_deployment_request(vec![greeter_workflow()]))
+            })
+            .unwrap();
+
+        // Verify initial state
+        assert_that!(
+            schema.assert_service(GREETER_SERVICE_NAME),
+            pat!(ServiceMetadata {
+                revision: eq(1),
+                deployment_id: eq(deployment_id),
+                public: eq(true), // default is public
+                idempotency_retention: eq(DEFAULT_IDEMPOTENCY_RETENTION),
+                journal_retention: eq(Some(DEFAULT_JOURNAL_RETENTION)),
+                workflow_completion_retention: eq(Some(DEFAULT_WORKFLOW_COMPLETION_RETENTION)),
+                inactivity_timeout: eq(DEFAULT_INACTIVITY_TIMEOUT),
+                abort_timeout: eq(DEFAULT_ABORT_TIMEOUT),
+            })
+        );
+
+        // Update using modify_service (e.g. through UI/CLI) the service options
+        let new_public = false;
+        let new_idempotency_retention = Duration::from_secs(120);
+        let new_workflow_completion_retention = Duration::from_secs(110);
+        let new_journal_retention = Duration::from_secs(300);
+        let new_inactivity_timeout = Duration::from_secs(30);
+        let new_abort_timeout = Duration::from_secs(60);
+        schema = SchemaUpdater::update(schema, |updater| {
+            updater.modify_service(
+                GREETER_SERVICE_NAME,
+                ModifyServiceRequest {
+                    public: Some(new_public),
+                    idempotency_retention: Some(new_idempotency_retention),
+                    journal_retention: Some(new_journal_retention),
+                    workflow_completion_retention: Some(new_workflow_completion_retention),
+                    inactivity_timeout: Some(new_inactivity_timeout),
+                    abort_timeout: Some(new_abort_timeout),
+                },
+            )
+        })
+        .unwrap();
+
+        // Verify all changes have been applied
+        assert_that!(
+            schema.assert_service(GREETER_SERVICE_NAME),
+            pat!(ServiceMetadata {
+                public: eq(new_public),
+                idempotency_retention: eq(new_idempotency_retention),
+                journal_retention: eq(Some(new_journal_retention)),
+                workflow_completion_retention: eq(Some(new_workflow_completion_retention)),
+                inactivity_timeout: eq(new_inactivity_timeout),
+                abort_timeout: eq(new_abort_timeout),
+            })
+        );
+        assert_that!(
+            schema.assert_invocation_target(GREETER_SERVICE_NAME, GREET_HANDLER_NAME),
+            pat!(InvocationTargetMetadata {
+                completion_retention: eq(new_workflow_completion_retention),
+                journal_retention: eq(new_journal_retention),
+            })
+        );
+        assert_that!(
+            schema.resolve_invocation_attempt_options(
+                &deployment_id,
+                GREETER_SERVICE_NAME,
+                GREET_HANDLER_NAME
+            ),
+            some(pat!(InvocationAttemptOptions {
+                inactivity_timeout: some(eq(new_inactivity_timeout)),
+                abort_timeout: some(eq(new_abort_timeout)),
+            }))
+        );
+
+        // Now register a second version of greeter, identical to the first
+        let ((_, deployment_id_2), schema_after_second_deployment) =
+            SchemaUpdater::update_and_return(schema, move |updater| {
+                updater.add_deployment(AddDeploymentRequest {
+                    deployment_address: DeploymentAddress::mock_uri("http://localhost:9082"),
+                    ..add_deployment_request(vec![greeter_workflow()]) // identical service definition
+                })
+            })
+            .unwrap();
+
+        // Verify that the config option changes have been blanked/reset to defaults
+        assert_that!(
+            schema_after_second_deployment.assert_service(GREETER_SERVICE_NAME),
+            pat!(ServiceMetadata {
+                revision: eq(2),                    // revision should be incremented
+                deployment_id: eq(deployment_id_2), // new deployment
+
+                // -- Back to default
+                public: eq(true),
+                idempotency_retention: eq(DEFAULT_IDEMPOTENCY_RETENTION),
+                journal_retention: eq(Some(DEFAULT_JOURNAL_RETENTION)),
+                workflow_completion_retention: eq(Some(DEFAULT_WORKFLOW_COMPLETION_RETENTION)),
+                inactivity_timeout: eq(DEFAULT_INACTIVITY_TIMEOUT),
+                abort_timeout: eq(DEFAULT_ABORT_TIMEOUT),
+            })
+        );
+    }
+}
+
+mod kafka_cluster {
+    use super::*;
+
+    use crate::config::{
+        ConfigurationBuilder, IngressOptionsBuilder, KafkaClusterOptions, set_current_config,
+    };
+    use crate::schema::Redaction;
+    use crate::schema::kafka::KafkaClusterResolver;
+    use crate::schema::subscriptions::SubscriptionResolver;
+    use googletest::prelude::*;
+    use restate_test_util::{assert, assert_eq};
+    use std::collections::HashMap;
+    use test_log::test;
+
+    fn kafka_cluster_properties() -> HashMap<String, String> {
+        let mut properties = HashMap::new();
+        properties.insert(
+            "bootstrap.servers".to_string(),
+            "localhost:9092".to_string(),
+        );
+        properties.insert("security.protocol".to_string(), "SASL_SSL".to_string());
+        properties.insert("sasl.mechanism".to_string(), "PLAIN".to_string());
+        properties.insert("sasl.username".to_string(), "my-user".to_string());
+        properties.insert(
+            "sasl.password".to_string(),
+            "super-secret-password".to_string(),
+        );
+        properties
+    }
+
+    #[test]
+    fn add_kafka_cluster() {
+        let schema = Schema::default();
+        let initial_version = schema.version();
+
+        let (_, schema) = SchemaUpdater::update_and_return(schema, |updater| {
+            updater.add_kafka_cluster("my-cluster".parse().unwrap(), kafka_cluster_properties())
+        })
+        .unwrap();
+
+        // Version should be bumped
+        assert!(initial_version < schema.version());
+
+        // Cluster should be retrievable
+        let cluster = schema
+            .get_kafka_cluster("my-cluster", Redaction::No)
+            .expect("cluster should exist");
+
+        assert_eq!(cluster.name(), "my-cluster");
+        assert_eq!(cluster.properties(), &kafka_cluster_properties());
+    }
+
+    #[test]
+    fn add_kafka_cluster_missing_broker_config() {
+        let mut updater = SchemaUpdater::default();
+        let mut properties = HashMap::new();
+        properties.insert("security.protocol".to_string(), "SASL_SSL".to_string());
+
+        let result = updater.add_kafka_cluster("my-cluster".parse().unwrap(), properties);
+
+        assert_that!(
+            result,
+            err(pat!(SchemaError::KafkaCluster(pat!(
+                KafkaClusterError::MissingBrokerConfiguration(_)
+            ))))
+        );
+    }
+
+    #[test]
+    fn add_kafka_cluster_with_metadata_broker_list() {
+        let mut updater = SchemaUpdater::default();
+        let mut properties = HashMap::new();
+        properties.insert(
+            "metadata.broker.list".to_string(),
+            "localhost:9092,localhost:9093".to_string(),
+        );
+
+        updater
+            .add_kafka_cluster("my-cluster".parse().unwrap(), properties)
+            .expect("should accept metadata.broker.list");
+    }
+
+    #[test]
+    fn add_duplicate_kafka_cluster() {
+        let mut updater = SchemaUpdater::default();
+
+        updater
+            .add_kafka_cluster("my-cluster".parse().unwrap(), kafka_cluster_properties())
+            .expect("first add should succeed");
+
+        let result =
+            updater.add_kafka_cluster("my-cluster".parse().unwrap(), kafka_cluster_properties());
+
+        assert_that!(
+            result,
+            err(pat!(SchemaError::KafkaCluster(pat!(
+                KafkaClusterError::AlreadyExists(_)
+            ))))
+        );
+    }
+
+    #[test]
+    fn remove_kafka_cluster() {
+        let schema = Schema::default();
+
+        let (_, schema) = SchemaUpdater::update_and_return(schema, |updater| {
+            updater
+                .add_kafka_cluster("my-cluster".parse().unwrap(), kafka_cluster_properties())
+                .unwrap();
+            updater.remove_kafka_cluster("my-cluster", AllowOrphanSubscriptions::No)
+        })
+        .unwrap();
+
+        // Cluster should not exist
+        assert!(
+            schema
+                .get_kafka_cluster("my-cluster", Redaction::No)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn remove_nonexistent_kafka_cluster() {
+        let schema = Schema::default();
+
+        let (removed, _) = SchemaUpdater::update_and_return(schema, |updater| {
+            updater.remove_kafka_cluster("nonexistent", AllowOrphanSubscriptions::No)
+        })
+        .unwrap();
+
+        assert!(!removed);
+    }
+
+    #[test]
+    fn remove_kafka_cluster_with_orphan_subscriptions() {
+        let schema = Schema::default();
+
+        let result = SchemaUpdater::update_and_return(schema, |updater| {
+            // Add deployment and service
+            updater
+                .add_deployment(add_deployment_request(vec![greeter_service()]))
+                .unwrap();
+
+            // Add kafka cluster
+            updater
+                .add_kafka_cluster("my-cluster".parse().unwrap(), kafka_cluster_properties())
+                .unwrap();
+
+            // Add subscription referencing the cluster
+            updater
+                .add_subscription(
+                    "kafka://my-cluster/my-topic".parse().unwrap(),
+                    format!("service://{}/greet", GREETER_SERVICE_NAME)
+                        .parse()
+                        .unwrap(),
+                    None,
+                )
+                .unwrap();
+
+            // Try to remove the cluster without allowing orphan subscriptions
+            updater.remove_kafka_cluster("my-cluster", AllowOrphanSubscriptions::No)
+        });
+
+        assert_that!(
+            result,
+            err(pat!(SchemaError::KafkaCluster(pat!(
+                KafkaClusterError::RemovalLeadsToOrphanSubscription(_, _)
+            ))))
+        );
+    }
+
+    #[test]
+    fn remove_kafka_cluster_with_force() {
+        let schema = Schema::default();
+
+        let (removed, schema) = SchemaUpdater::update_and_return(schema, |updater| {
+            // Add deployment and service
+            updater
+                .add_deployment(add_deployment_request(vec![greeter_service()]))
+                .unwrap();
+
+            // Add kafka cluster
+            updater
+                .add_kafka_cluster("my-cluster".parse().unwrap(), kafka_cluster_properties())
+                .unwrap();
+
+            // Add subscription referencing the cluster
+            updater
+                .add_subscription(
+                    "kafka://my-cluster/my-topic".parse().unwrap(),
+                    format!("service://{}/greet", GREETER_SERVICE_NAME)
+                        .parse()
+                        .unwrap(),
+                    None,
+                )
+                .unwrap();
+
+            // Remove the cluster with force (allowing orphan subscriptions)
+            updater.remove_kafka_cluster("my-cluster", AllowOrphanSubscriptions::Yes)
+        })
+        .unwrap();
+
+        assert!(removed);
+        // Cluster should not exist
+        assert!(
+            schema
+                .get_kafka_cluster("my-cluster", Redaction::No)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn update_kafka_cluster() {
+        let schema = Schema::default();
+
+        let (_, schema) = SchemaUpdater::update_and_return(schema, |updater| {
+            updater
+                .add_kafka_cluster("my-cluster".parse().unwrap(), kafka_cluster_properties())
+                .unwrap();
+
+            let mut new_properties = HashMap::new();
+            new_properties.insert("bootstrap.servers".to_string(), "new-host:9092".to_string());
+            new_properties.insert("sasl.password".to_string(), "new-password".to_string());
+
+            updater.update_kafka_cluster("my-cluster", new_properties)
+        })
+        .unwrap();
+
+        // Cluster should have updated properties
+        let cluster = schema
+            .get_kafka_cluster("my-cluster", Redaction::No)
+            .expect("cluster should exist");
+        assert_eq!(
+            cluster.properties().get("bootstrap.servers").unwrap(),
+            "new-host:9092"
+        );
+        assert_eq!(
+            cluster.properties().get("sasl.password").unwrap(),
+            "new-password"
+        );
+        // Old properties should be gone
+        assert!(cluster.properties().get("security.protocol").is_none());
+    }
+
+    #[test]
+    fn update_kafka_cluster_missing_broker_config() {
+        let mut updater = SchemaUpdater::default();
+        updater
+            .add_kafka_cluster("my-cluster".parse().unwrap(), kafka_cluster_properties())
+            .unwrap();
+
+        let mut new_properties = HashMap::new();
+        new_properties.insert("security.protocol".to_string(), "SASL_SSL".to_string());
+
+        let result = updater.update_kafka_cluster("my-cluster", new_properties);
+
+        assert_that!(
+            result,
+            err(pat!(SchemaError::KafkaCluster(pat!(
+                KafkaClusterError::MissingBrokerConfiguration(_)
+            ))))
+        );
+    }
+
+    #[test]
+    fn update_nonexistent_kafka_cluster() {
+        let mut updater = SchemaUpdater::default();
+
+        let result = updater.update_kafka_cluster("nonexistent", kafka_cluster_properties());
+
+        assert_that!(result, err(pat!(SchemaError::NotFound(_))));
+    }
+
+    #[test]
+    fn redact_sensitive_properties() {
+        let schema = Schema::default();
+
+        let (_, schema) = SchemaUpdater::update_and_return(schema, |updater| {
+            let mut properties = HashMap::new();
+            properties.insert("bootstrap.servers".to_string(), "localhost:9092".to_string());
+            properties.insert("sasl.username".to_string(), "my-user".to_string());
+            properties.insert(
+                "sasl.password".to_string(),
+                "super-secret-password".to_string(),
+            );
+            properties.insert(
+                "sasl.jaas.config".to_string(),
+                "org.apache.kafka.common.security.plain.PlainLoginModule required username=\"user\" password=\"pass\";".to_string(),
+            );
+            properties.insert(
+                "ssl.key.password".to_string(),
+                "keystore-password".to_string(),
+            );
+            properties.insert(
+                "sasl.oauthbearer.client.secret".to_string(),
+                "oauth-secret".to_string(),
+            );
+
+            updater.add_kafka_cluster("my-cluster".parse().unwrap(), properties)
+        })
+        .unwrap();
+
+        // Without redaction
+        let cluster_no_redact = schema
+            .get_kafka_cluster("my-cluster", Redaction::No)
+            .expect("cluster should exist");
+        assert_eq!(
+            cluster_no_redact.properties().get("sasl.password").unwrap(),
+            "super-secret-password"
+        );
+        assert_eq!(
+            cluster_no_redact.properties().get("sasl.username").unwrap(),
+            "my-user"
+        );
+        assert!(
+            cluster_no_redact
+                .properties()
+                .get("sasl.jaas.config")
+                .unwrap()
+                .contains("password")
+        );
+
+        // With redaction
+        let cluster_redacted = schema
+            .get_kafka_cluster("my-cluster", Redaction::Yes)
+            .expect("cluster should exist");
+
+        // Non-sensitive properties should remain
+        assert_eq!(
+            cluster_redacted
+                .properties()
+                .get("bootstrap.servers")
+                .unwrap(),
+            "localhost:9092"
+        );
+
+        // Sensitive properties should be redacted
+        assert_eq!(
+            cluster_redacted.properties().get("sasl.password").unwrap(),
+            "***"
+        );
+        assert_eq!(
+            cluster_redacted.properties().get("sasl.username").unwrap(),
+            "***"
+        );
+        assert_eq!(
+            cluster_redacted
+                .properties()
+                .get("sasl.jaas.config")
+                .unwrap(),
+            "***"
+        );
+        assert_eq!(
+            cluster_redacted
+                .properties()
+                .get("ssl.key.password")
+                .unwrap(),
+            "***"
+        );
+        assert_eq!(
+            cluster_redacted
+                .properties()
+                .get("sasl.oauthbearer.client.secret")
+                .unwrap(),
+            "***"
+        );
+    }
+
+    #[test]
+    fn list_kafka_clusters() {
+        let schema = Schema::default();
+
+        let (_, schema) = SchemaUpdater::update_and_return(schema, |updater| {
+            updater
+                .add_kafka_cluster("cluster-1".parse().unwrap(), kafka_cluster_properties())
+                .unwrap();
+            updater
+                .add_kafka_cluster("cluster-2".parse().unwrap(), kafka_cluster_properties())
+                .unwrap();
+            Ok::<(), SchemaError>(())
+        })
+        .unwrap();
+
+        let clusters = schema.list_kafka_clusters(Redaction::No);
+        assert_eq!(clusters.len(), 2);
+
+        let cluster_names: Vec<&str> = clusters.iter().map(|c| c.name()).collect();
+        assert!(cluster_names.contains(&"cluster-1"));
+        assert!(cluster_names.contains(&"cluster-2"));
+    }
+
+    #[test]
+    fn kafka_cluster_with_subscription() {
+        let schema = Schema::default();
+
+        let (_, schema) = SchemaUpdater::update_and_return(schema, |updater| {
+            // Add deployment and service first
+            let _ = updater
+                .add_deployment(add_deployment_request(vec![greeter_service()]))
+                .unwrap()
+                .1;
+
+            // Add kafka cluster
+            updater
+                .add_kafka_cluster("my-cluster".parse().unwrap(), kafka_cluster_properties())
+                .unwrap();
+
+            // Add subscription referencing the cluster
+            updater.add_subscription(
+                "kafka://my-cluster/my-topic".parse().unwrap(),
+                format!("service://{}/greet", GREETER_SERVICE_NAME)
+                    .parse()
+                    .unwrap(),
+                None,
+            )
+        })
+        .unwrap();
+
+        // Subscription should exist
+        let subscriptions = schema.list_subscriptions(&[], Redaction::No);
+        assert_eq!(subscriptions.len(), 1);
+
+        let subscription = &subscriptions[0];
+        match subscription.source() {
+            Source::Kafka { cluster, topic } => {
+                assert_eq!(cluster, "my-cluster");
+                assert_eq!(topic, "my-topic");
+            }
+        }
+    }
+
+    #[test]
+    fn subscription_with_nonexistent_kafka_cluster() {
+        let mut updater = SchemaUpdater::default();
+
+        // Add deployment and service first
+        updater
+            .add_deployment(add_deployment_request(vec![greeter_service()]))
+            .unwrap();
+
+        // Try to add subscription with nonexistent cluster
+        let result = updater.add_subscription(
+            "kafka://nonexistent-cluster/my-topic".parse().unwrap(),
+            format!("service://{}/greet", GREETER_SERVICE_NAME)
+                .parse()
+                .unwrap(),
+            None,
+        );
+
+        assert_that!(
+            result,
+            err(pat!(SchemaError::Subscription(pat!(
+                SubscriptionError::Validation(_)
+            ))))
+        );
+    }
+
+    #[test]
+    fn get_kafka_cluster_and_subscriptions() {
+        let schema = Schema::default();
+
+        let (subscription_id, schema) = SchemaUpdater::update_and_return(schema, |updater| {
+            // Add deployment and service
+            updater
+                .add_deployment(add_deployment_request(vec![greeter_service()]))
+                .unwrap();
+
+            // Add kafka cluster
+            updater
+                .add_kafka_cluster("my-cluster".parse().unwrap(), kafka_cluster_properties())
+                .unwrap();
+
+            // Add subscription
+            updater.add_subscription(
+                "kafka://my-cluster/my-topic".parse().unwrap(),
+                format!("service://{}/greet", GREETER_SERVICE_NAME)
+                    .parse()
+                    .unwrap(),
+                None,
+            )
+        })
+        .unwrap();
+
+        // Get cluster with its subscriptions
+        let (cluster, subscriptions) = schema
+            .get_kafka_cluster_and_subscriptions("my-cluster", Redaction::No)
+            .expect("should return cluster and subscriptions");
+
+        assert_eq!(cluster.name(), "my-cluster");
+        assert_eq!(subscriptions.len(), 1);
+        assert_eq!(subscriptions[0].id(), subscription_id);
+    }
+
+    #[test]
+    fn subscription_metadata_redaction() {
+        let schema = Schema::default();
+
+        let (_, schema) = SchemaUpdater::update_and_return(schema, |updater| {
+            // Add deployment and service
+            updater
+                .add_deployment(add_deployment_request(vec![greeter_service()]))
+                .unwrap();
+
+            // Add kafka cluster
+            updater
+                .add_kafka_cluster("my-cluster".parse().unwrap(), kafka_cluster_properties())
+                .unwrap();
+
+            // Add subscription with sensitive metadata
+            let mut metadata = HashMap::new();
+            metadata.insert("custom.username".to_string(), "user".to_string());
+            metadata.insert(
+                "custom.password".to_string(),
+                "sensitive-password".to_string(),
+            );
+            metadata.insert("custom.property".to_string(), "non-sensitive".to_string());
+
+            updater.add_subscription(
+                "kafka://my-cluster/my-topic".parse().unwrap(),
+                format!("service://{}/greet", GREETER_SERVICE_NAME)
+                    .parse()
+                    .unwrap(),
+                Some(metadata),
+            )
+        })
+        .unwrap();
+
+        let subscriptions = schema.list_subscriptions(&[], Redaction::No);
+        let subscription_no_redact = &subscriptions[0];
+        assert_eq!(
+            subscription_no_redact
+                .metadata()
+                .get("custom.password")
+                .unwrap(),
+            "sensitive-password"
+        );
+
+        let subscriptions_redacted = schema.list_subscriptions(&[], Redaction::Yes);
+        let subscription_redacted = &subscriptions_redacted[0];
+        assert_eq!(
+            subscription_redacted
+                .metadata()
+                .get("custom.password")
+                .unwrap(),
+            "***"
+        );
+        assert_eq!(
+            subscription_redacted
+                .metadata()
+                .get("custom.property")
+                .unwrap(),
+            "non-sensitive"
+        );
+    }
+
+    fn set_current_kafka_config(config_cluster: KafkaClusterOptions) {
+        let config = ConfigurationBuilder::default()
+            .ingress(
+                IngressOptionsBuilder::default()
+                    .kafka_clusters(vec![config_cluster])
+                    .build()
+                    .unwrap(),
+            )
+            .build()
+            .unwrap();
+        set_current_config(config);
+    }
+
+    #[test]
+    fn list_kafka_clusters_includes_configuration_clusters() {
+        // Set up configuration with a kafka cluster
+        set_current_kafka_config(KafkaClusterOptions {
+            name: "config-cluster".to_string(),
+            brokers: vec!["config-broker:9092".to_string()],
+            additional_options: Default::default(),
+        });
+
+        // Create schema with a schema-based kafka cluster
+        let (_, schema) = SchemaUpdater::update_and_return(Schema::default(), |updater| {
+            updater.add_kafka_cluster(
+                "schema-cluster".parse().unwrap(),
+                kafka_cluster_properties(),
+            )
+        })
+        .unwrap();
+
+        // list_kafka_clusters should include both
+        let clusters = schema.list_kafka_clusters(Redaction::No);
+        let cluster_names: Vec<&str> = clusters.iter().map(|c| c.name()).collect();
+
+        assert!(cluster_names.contains(&"schema-cluster"));
+        assert!(cluster_names.contains(&"config-cluster"));
+        assert_eq!(clusters.len(), 2);
+    }
+
+    #[test]
+    fn get_kafka_cluster_from_configuration() {
+        // Set up configuration with a kafka cluster
+        set_current_kafka_config(KafkaClusterOptions {
+            name: "config-cluster".to_string(),
+            brokers: vec!["config-broker:9092".to_string()],
+            additional_options: HashMap::from([(
+                "security.protocol".to_string(),
+                "PLAINTEXT".to_string(),
+            )]),
+        });
+
+        let schema = Schema::default();
+
+        // get_kafka_cluster should find the cluster from configuration
+        let cluster = schema
+            .get_kafka_cluster("config-cluster", Redaction::No)
+            .expect("cluster should exist");
+
+        assert_eq!(cluster.name(), "config-cluster");
+        assert_eq!(
+            cluster.properties().get("metadata.broker.list").unwrap(),
+            "config-broker:9092"
+        );
+        assert_eq!(
+            cluster.properties().get("security.protocol").unwrap(),
+            "PLAINTEXT"
+        );
+    }
+
+    #[test]
+    fn subscription_with_configuration_kafka_cluster() {
+        // Set up configuration with a kafka cluster
+        set_current_kafka_config(KafkaClusterOptions {
+            name: "config-cluster".to_string(),
+            brokers: vec!["config-broker:9092".to_string()],
+            additional_options: Default::default(),
+        });
+
+        let schema = Schema::default();
+
+        // Create subscription using the config-based cluster
+        let (subscription_id, schema) = SchemaUpdater::update_and_return(schema, |updater| {
+            // Add deployment and service first
+            updater
+                .add_deployment(add_deployment_request(vec![greeter_service()]))
+                .unwrap();
+
+            // Add subscription referencing the config cluster
+            updater.add_subscription(
+                "kafka://config-cluster/my-topic".parse().unwrap(),
+                format!("service://{}/greet", GREETER_SERVICE_NAME)
+                    .parse()
+                    .unwrap(),
+                None,
+            )
+        })
+        .unwrap();
+
+        // Subscription should exist and reference the config cluster
+        let subscriptions = schema.list_subscriptions(&[], Redaction::No);
+        assert_eq!(subscriptions.len(), 1);
+        assert_eq!(subscriptions[0].id(), subscription_id);
+
+        match subscriptions[0].source() {
+            Source::Kafka { cluster, topic } => {
+                assert_eq!(cluster, "config-cluster");
+                assert_eq!(topic, "my-topic");
+            }
+        }
+
+        // get_kafka_cluster_and_subscriptions should work with config cluster
+        let (cluster, subs) = schema
+            .get_kafka_cluster_and_subscriptions("config-cluster", Redaction::No)
+            .expect("should return cluster and subscriptions");
+
+        assert_eq!(cluster.name(), "config-cluster");
+        assert_eq!(subs.len(), 1);
+        assert_eq!(subs[0].id(), subscription_id);
+    }
+
+    #[test]
+    fn schema_cluster_takes_precedence_over_configuration_cluster() {
+        // Create schema with same-named cluster (different broker)
+        let (_, schema) = SchemaUpdater::update_and_return(Schema::default(), |updater| {
+            updater.add_kafka_cluster("my-cluster".parse().unwrap(), kafka_cluster_properties())
+        })
+        .unwrap();
+
+        // Now set up configuration with a kafka cluster, with same name
+        set_current_kafka_config(KafkaClusterOptions {
+            name: "my-cluster".to_string(),
+            brokers: vec!["config-broker:9092".to_string()],
+            additional_options: Default::default(),
+        });
+
+        // get_kafka_cluster should return the schema cluster, not config cluster
+        let cluster = schema
+            .get_kafka_cluster("my-cluster", Redaction::No)
+            .expect("cluster should exist");
+
+        assert_eq!(cluster.name(), "my-cluster");
+        // Schema cluster has localhost:9092, config cluster has config-broker:9092
+        assert_eq!(
+            cluster.properties().get("bootstrap.servers").unwrap(),
+            "localhost:9092"
+        );
+    }
+}

@@ -1,0 +1,11 @@
+//go:build windows
+
+package cgroups
+
+func Validate() error {
+	return nil
+}
+
+func CheckCgroups() (kubeletRoot, runtimeRoot string, controllers map[string]bool) {
+	return kubeletRoot, runtimeRoot, controllers
+}

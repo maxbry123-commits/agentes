@@ -1,0 +1,35 @@
+{
+	"name": "@cloudflare/mock-npm-registry",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"module": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": "./dist/index.js",
+		"./config-env": {
+			"types": "./dist/config-env.d.ts",
+			"import": "./dist/config-env.js"
+		}
+	},
+	"scripts": {
+		"build": "tsc",
+		"check:types": "tsc",
+		"test": "vitest",
+		"test:ci": "vitest run"
+	},
+	"devDependencies": {
+		"@cloudflare/workers-utils": "workspace:*",
+		"@types/node": "catalog:default",
+		"@verdaccio/types": "^10.8.0",
+		"get-port": "^7.0.0",
+		"tree-kill": "catalog:default",
+		"ts-dedent": "^2.2.0",
+		"typescript": "catalog:default",
+		"verdaccio": "^6.0.5",
+		"vitest": "catalog:default"
+	},
+	"volta": {
+		"extends": "../../package.json"
+	}
+}

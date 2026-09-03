@@ -1,0 +1,23 @@
+[package]
+name = "restate-encoding"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+restate-workspace-hack = { workspace = true }
+
+restate-encoding-derive = { version = "0.1.0", path = "derive" }
+restate-platform = { workspace = true }
+
+bilrost = { workspace = true }
+bytes = { workspace = true }
+
+[dev-dependencies]
+rand = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,161 @@
+name: Build release Docker images
+
+on:
+  workflow_call:
+    inputs:
+      # comes from cargo-dist workflow call
+      plan:
+        required: true
+        type: string
+
+env:
+  PLAN: ${{ inputs.plan }}
+
+jobs:
+  push-server-docker-image:
+    name: Build server Docker image
+    runs-on: warp-ubuntu-latest-x64-4x
+    env:
+      REPOSITORY_OWNER: ${{ github.repository_owner }}
+      GHCR_REGISTRY: "ghcr.io"
+      GHCR_REGISTRY_USERNAME: ${{ github.actor }}
+      GHCR_REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      IMAGE_NAME: "restate-cli"
+    steps:
+      # support importing oci-format restate.tar
+      - name: Set up Docker containerd snapshotter
+        uses: docker/setup-docker-action@v4
+        with:
+          set-host: true
+          daemon-config: |
+            {
+              "features": {
+                "containerd-snapshotter": true
+              }
+            }
+
+      - name: Log into GitHub container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.GHCR_REGISTRY }}
+          username: ${{ env.GHCR_REGISTRY_USERNAME }}
+          password: ${{ env.GHCR_REGISTRY_TOKEN }}
+
+      - name: Log into DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Download restate snapshot from in-progress workflow
+        uses: actions/download-artifact@v4
+        with:
+          # the name is docker-build-release, but the extracted file will be 'restate.tar'
+          name: docker-build-release
+
+      - name: Push restate image
+        run: |
+          for image in $(docker load --input restate.tar | awk '{print $3}')
+            do docker push $image
+          done
+
+  build-push-cli-docker-image:
+    name: Push CLI Docker image
+    runs-on: warp-ubuntu-latest-x64-4x
+    env:
+      REPOSITORY_OWNER: ${{ github.repository_owner }}
+      GHCR_REGISTRY: "ghcr.io"
+      GHCR_REGISTRY_USERNAME: ${{ github.actor }}
+      GHCR_REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      IMAGE_NAME: "restate-cli"
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log into GitHub container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.GHCR_REGISTRY }}
+          username: ${{ env.GHCR_REGISTRY_USERNAME }}
+          password: ${{ env.GHCR_REGISTRY_TOKEN }}
+
+      - name: Log into DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Download linux binaries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: artifacts-*-unknown-linux-musl
+          merge-multiple: true
+
+      - name: Write release version
+        id: version
+        run: |
+          VERSION="$(echo "$PLAN" | jq -r '[.releases[] | select(.app_name == "restate-cli")][0].app_version')"
+          echo Version: ${VERSION}
+          echo "VERSION=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Check if this is the latest version
+        id: is-latest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          CURRENT_VERSION="${{ steps.version.outputs.VERSION }}"
+
+          # Get all release tags and find the highest version (excluding prereleases)
+          LATEST_VERSION=$(gh api "repos/${{ github.repository }}/git/refs/tags" --jq \
+            '[.[] | .ref | select(startswith("refs/tags/v")) | ltrimstr("refs/tags/v") | select(test("^[0-9]+\\.[0-9]+\\.[0-9]+$"))] | sort_by(split(".") | map(tonumber)) | last // empty')
+
+          echo "Current version: ${CURRENT_VERSION}"
+          echo "Latest version overall: ${LATEST_VERSION}"
+
+          # Compare versions - current should be >= latest to update the latest tag
+          if [[ "$CURRENT_VERSION" == "$LATEST_VERSION" ]] || [[ "$(printf '%s\n' "$CURRENT_VERSION" "$LATEST_VERSION" | sort -V | tail -1)" == "$CURRENT_VERSION" ]]; then
+            echo "is_latest=true" >> $GITHUB_OUTPUT
+            echo "This is the latest version - will update latest tag"
+          else
+            echo "is_latest=false" >> $GITHUB_OUTPUT
+            echo "This is not the latest version - will not update latest tag"
+          fi
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ env.GHCR_REGISTRY }}/${{ env.REPOSITORY_OWNER }}/${{ env.IMAGE_NAME }}
+            ${{ format('docker.io/{0}/{1}', env.REPOSITORY_OWNER, env.IMAGE_NAME) }}
+
+          flavor: |
+            latest=${{ steps.is-latest.outputs.is_latest == 'true' && 'true' || 'false' }}
+          tags: |
+            type=semver,pattern={{version}},value=${{ steps.version.outputs.VERSION }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ steps.version.outputs.VERSION }}
+
+      - name: Create Dockerfile
+        run: |
+          cat > Dockerfile << 'EOF'
+          FROM --platform=${BUILDPLATFORM} alpine as builder
+          ADD restate-cli-aarch64-unknown-linux-musl.tar.xz /restate-cli-arm64
+          ADD restatectl-aarch64-unknown-linux-musl.tar.xz /restatectl-arm64
+          ADD restate-cli-x86_64-unknown-linux-musl.tar.xz /restate-cli-amd64
+          ADD restatectl-x86_64-unknown-linux-musl.tar.xz /restatectl-amd64
+
+          FROM alpine
+          ARG TARGETARCH
+          COPY --from=builder /restate-cli-${TARGETARCH}/*/restate /usr/local/bin/restate
+          COPY --from=builder /restatectl-${TARGETARCH}/*/restatectl /usr/local/bin/restatectl
+          ENTRYPOINT [ "restate" ]
+          EOF
+
+      - name: Build and push multiplatform image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/arm64,linux/amd64

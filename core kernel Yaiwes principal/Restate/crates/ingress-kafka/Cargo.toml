@@ -1,0 +1,61 @@
+[package]
+name = "restate-ingress-kafka"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[features]
+default = []
+options_schema = []
+# support for OIDC based authentication via the Kafka consumer, building with rdkafka/curl-static does not work as it
+# fails with "SSL certificate OpenSSL verify result: unable to get local issuer certificate (20) (-1)" when trying to
+# obtain the OIDC token.
+oidc = ["rdkafka/curl-static", "rdkafka/gssapi-vendored"]
+
+[dependencies]
+restate-workspace-hack = { workspace = true }
+
+restate-core = { workspace = true }
+restate-ingestion-client = { workspace = true }
+restate-storage-api = { workspace = true }
+restate-timer-queue = { workspace = true }
+restate-types = { workspace = true }
+restate-tracing-instrumentation = { workspace = true }
+restate-util-string = { workspace = true }
+restate-wal-protocol = { workspace = true }
+
+anyhow = { workspace = true }
+base64 = { workspace = true }
+bytes = { workspace = true }
+derive_more = { workspace = true, features = ["deref"] }
+futures = { workspace = true }
+metrics = { workspace = true }
+opentelemetry = { workspace = true }
+opentelemetry_sdk = { workspace = true }
+parking_lot = { workspace = true }
+# Use https://github.com/restatedev/rust-rdkafka/tree/fix-build-script which is based on
+# https://github.com/fede1024/rust-rdkafka/pull/803. The PR bumps librdkafka to 2.12.1 and enables WITH_CURL for
+# librdkafka if the feature curl-static is enabled. Additionally, it cherry-picks https://github.com/confluentinc/librdkafka/pull/5182
+# which prevents pulling in curl if it is not activated. The additional fixes in fix-build-script fix the musl build.
+rdkafka = { version = "0.38", git = "https://github.com/restatedev/rust-rdkafka.git", rev = "e92cad90eff797a0dc29fa524cabb89b602ae234", features = ["libz-static", "cmake-build", "ssl-vendored", "zstd"] }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["sync", "rt", "net", "time"] }
+tracing = { workspace = true }
+tracing-opentelemetry = { workspace = true }
+xxhash-rust = { workspace = true, features = ["xxh3", "std"] }
+
+# AWS MSK IAM Auth (for OAUTHBEARER with provider=msk-iam). Always compiled in so MSK IAM works on the default build;
+# the AWS SDK is only touched at runtime when a subscription actually configures provider=msk-iam.
+aws-config = { workspace = true }
+aws-msk-iam-sasl-signer = { workspace = true }
+
+[dev-dependencies]
+restate-types = { workspace = true, features = ["test-util"] }
+
+base64 = { workspace = true }
+
+[lints]
+workspace = true

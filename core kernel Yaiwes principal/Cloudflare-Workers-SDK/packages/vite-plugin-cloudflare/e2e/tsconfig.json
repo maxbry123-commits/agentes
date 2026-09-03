@@ -1,0 +1,14 @@
+{
+	"exclude": ["fixtures/**/*"],
+	"compilerOptions": {
+		"skipDefaultLibCheck": true,
+		"skipLibCheck": true,
+		"types": ["node", "vitest"],
+		"target": "ESNext",
+		"moduleResolution": "bundler",
+		"module": "ESNext",
+		"noEmit": true,
+		"esModuleInterop": true,
+		"resolveJsonModule": true
+	}
+}

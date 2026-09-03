@@ -1,0 +1,207 @@
+package vpn
+
+import (
+	"encoding/json"
+	"fmt"
+	"net"
+	"net/netip"
+	"net/url"
+	"strings"
+
+	"github.com/k3s-io/k3s/pkg/daemons/executor"
+	"github.com/k3s-io/k3s/pkg/util"
+	"github.com/k3s-io/k3s/pkg/util/errors"
+
+	"github.com/sirupsen/logrus"
+)
+
+const (
+	tailscaleIf = "tailscale0"
+)
+
+type InfoProvider interface {
+	GetVPNInfo() (*Info, error)
+}
+
+type TailscaleOutput struct {
+	TailscaleIPs []string `json:"TailscaleIPs"`
+	BackendState string   `json:"BackendState"`
+}
+
+type TailscalePrefsOutput struct {
+	AdvertiseRoutes []netip.Prefix `json:"AdvertiseRoutes"`
+}
+
+// Info includes node information of the VPN. It is a general struct in case we want to add more vpn integrations
+type Info struct {
+	BackendState string
+	IPv4Address  net.IP
+	IPv6Address  net.IP
+	NodeID       string
+	ProviderName string
+	Interface    string
+}
+
+// vpnCliAuthInfo includes auth information of the VPN. It is a general struct in case we want to add more vpn integrations
+type vpnCliAuthInfo struct {
+	Name             string
+	JoinKey          string
+	ControlServerURL string
+	ExtraCLIFlags    []string
+}
+
+// StartVPN starts the VPN interface. General function in case we want to add more vpn integrations
+func StartVPN(vpnAuthConfigFile string) error {
+	authInfo, err := getVPNAuthInfo(vpnAuthConfigFile)
+	if err != nil {
+		return err
+	}
+
+	logrus.Infof("Starting VPN: %s", authInfo.Name)
+	switch authInfo.Name {
+	case "tailscale":
+		vpnInfo, err := getTailscaleInfo()
+		if err == nil && vpnInfo.BackendState == "Running" {
+			logrus.Debugf("Tailscale is already running, skipping tailscale up")
+			return nil
+		}
+		args := []string{
+			"up", "--authkey", authInfo.JoinKey, "--timeout=30s", "--reset",
+		}
+		if authInfo.ControlServerURL != "" {
+			args = append(args, "--login-server", authInfo.ControlServerURL)
+		}
+		if len(authInfo.ExtraCLIFlags) > 0 {
+			args = append(args, authInfo.ExtraCLIFlags...)
+		}
+		logrus.Debugf("Flags passed to tailscale up: %v", args)
+		output, err := util.ExecCommand("tailscale", args)
+		if err != nil {
+			if output != "" {
+				return errors.WithMessagef(err, "tailscale up failed (%q)", output)
+			}
+			return errors.WithMessage(err, "tailscale up failed")
+		}
+		logrus.Debugf("Output from tailscale up: %v", output)
+		return nil
+	default:
+		return fmt.Errorf("Requested VPN: %s is not supported. We currently only support tailscale", authInfo.Name)
+	}
+}
+
+// GetInfo returns an Info object with details about the VPN. General function in case we want to add more vpn integrations
+func GetInfo(vpnAuth string) (*Info, error) {
+	authInfo, err := getVPNAuthInfo(vpnAuth)
+	if err != nil {
+		return nil, err
+	}
+
+	if authInfo.Name == "tailscale" {
+		return getTailscaleInfo()
+	}
+	return nil, nil
+}
+
+func GetInfoFromExecutor() (*Info, error) {
+	ex := executor.Get()
+	if provider, ok := ex.(InfoProvider); ok {
+		return provider.GetVPNInfo()
+	}
+	return nil, errors.New("executor does not provide VPN info")
+}
+
+// getVPNAuthInfo returns the required authInfo object
+func getVPNAuthInfo(vpnAuth string) (vpnCliAuthInfo, error) {
+	var authInfo vpnCliAuthInfo
+
+	// Separate extraArgs which will be passed directly to the vpn binary command
+	vpnCommand, extraArgs := processCLIArgs(vpnAuth)
+	authInfo.ExtraCLIFlags = extraArgs
+
+	vpnParameters := strings.Split(vpnCommand, ",")
+	for _, vpnKeyValues := range vpnParameters {
+		vpnKeyValue := strings.Split(vpnKeyValues, "=")
+		switch vpnKeyValue[0] {
+		case "name":
+			authInfo.Name = vpnKeyValue[1]
+		case "joinKey":
+			authInfo.JoinKey = vpnKeyValue[1]
+		case "controlServerURL":
+			authInfo.ControlServerURL = vpnKeyValue[1]
+		default:
+			return vpnCliAuthInfo{}, fmt.Errorf("VPN Error. The passed VPN auth info includes an unknown parameter: %v", vpnKeyValue[0])
+		}
+	}
+
+	if err := isVPNConfigOK(authInfo); err != nil {
+		return authInfo, err
+	}
+	return authInfo, nil
+}
+
+// isVPNConfigOK checks that the config is complete
+func isVPNConfigOK(authInfo vpnCliAuthInfo) error {
+	if authInfo.Name == "tailscale" {
+		if authInfo.JoinKey == "" {
+			return errors.New("VPN Error. Tailscale requires a JoinKey")
+		}
+		if authInfo.ControlServerURL != "" {
+			if _, err := url.Parse(authInfo.ControlServerURL); err != nil {
+				return fmt.Errorf("VPN Error. Invalid control server URL for Tailscale: %w", err)
+			}
+		}
+		return nil
+	}
+
+	return errors.New("Requested VPN: " + authInfo.Name + " is not supported. We currently only support tailscale")
+}
+
+// getTailscaleInfo returns the IPs of the interface
+func getTailscaleInfo() (*Info, error) {
+	output, err := util.ExecCommand("tailscale", []string{"status", "--json"})
+	if err != nil {
+		return nil, fmt.Errorf("failed to run tailscale status --json: %v", err)
+	}
+
+	logrus.Debugf("Output from tailscale status --json: %v", output)
+
+	var tailscaleOutput TailscaleOutput
+	err = json.Unmarshal([]byte(output), &tailscaleOutput)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal tailscale output: %v", err)
+	}
+
+	// Errors are ignored because the interface might not have ipv4 or ipv6 addresses (that's the only possible error)
+	ipv4Address, _ := util.GetFirst4String(tailscaleOutput.TailscaleIPs)
+	ipv6Address, _ := util.GetFirst6String(tailscaleOutput.TailscaleIPs)
+
+	return &Info{BackendState: tailscaleOutput.BackendState, IPv4Address: net.ParseIP(ipv4Address), IPv6Address: net.ParseIP(ipv6Address), NodeID: "", ProviderName: "tailscale", Interface: tailscaleIf}, nil
+}
+
+// get Tailscale advertised route list
+func GetAdvertisedRoutes() ([]netip.Prefix, error) {
+	output, err := util.ExecCommand("tailscale", []string{"debug", "prefs"})
+	if err != nil {
+		return nil, fmt.Errorf("failed to run tailscale debug prefs: %v", err)
+	}
+
+	logrus.Debugf("Output from tailscale debug prefs: %v", output)
+
+	var tailscaleOutput TailscalePrefsOutput
+	err = json.Unmarshal([]byte(output), &tailscaleOutput)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal tailscale output: %v", err)
+	}
+
+	return tailscaleOutput.AdvertiseRoutes, nil
+}
+
+// processCLIArgs separates the extraArgs part from the command.
+// Note that tailscale flags of type list are comma separated and don't accept spaces, thus we can use strings.Fields to separate flags
+func processCLIArgs(command string) (string, []string) {
+	subCommands := strings.Split(command, ",extraArgs=")
+	if len(subCommands) > 1 {
+		return subCommands[0], strings.Fields(subCommands[1])
+	}
+	return subCommands[0], []string{}
+}

@@ -1,0 +1,647 @@
+// Copyright (c) 2023 - 2026 Restate Software, Inc., Restate GmbH.
+// All rights reserved.
+//
+// Use of this software is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date specified in that file, in accordance with
+// the Business Source License, use of this software will be governed
+// by the Apache License, Version 2.0.
+
+use std::num::NonZeroU32;
+use std::sync::Arc;
+
+use rocksdb::{BlockBasedOptions, Cache, SliceTransform};
+use tracing::{info, warn};
+
+use restate_core::ShutdownError;
+use restate_platform::prelude::ToReString;
+use restate_rocksdb::configuration::create_empty_db_options;
+use restate_rocksdb::{
+    CfExactPattern, CfName, DbName, DbSpecBuilder, OpenMode, RocksDb, RocksDbManager,
+};
+use restate_types::config::{Configuration, LogServerOptions};
+use restate_types::health::HealthStatus;
+use restate_types::logs::LogId;
+use restate_types::protobuf::common::{DatabaseKind, LogServerStatus};
+use restate_util_bytecount::ByteCount;
+
+use super::keys::KeyPrefixKind;
+use super::writer::LogStoreWriterBuilder;
+use super::{DATA_CF, METADATA_CF};
+use super::{RocksDbLogStore, RocksDbLogStoreError};
+use crate::logstore::LogStoreState;
+use crate::rocksdb_logstore::keys::KeyPrefix;
+use crate::rocksdb_logstore::metadata_merge::{metadata_full_merge, metadata_partial_merge};
+
+const BLOB_GC_AGE_CUTOFF: f64 = 0.25;
+const BLOB_GC_FORCE_THRESHOLD: f64 = 0.5;
+
+#[derive(Clone)]
+pub struct RocksDbLogStoreBuilder {
+    rocksdb: Arc<RocksDb>,
+}
+
+impl RocksDbLogStoreBuilder {
+    pub async fn create() -> Result<Self, RocksDbLogStoreError> {
+        let kind = DatabaseKind::LogServer;
+        let db_name = DbName::new(kind.db_name());
+        let db_manager = RocksDbManager::get();
+        let cfs = vec![CfName::new(DATA_CF), CfName::new(METADATA_CF)];
+
+        let opts = &Configuration::pinned().log_server;
+        let db_spec = DbSpecBuilder::new(
+            db_name,
+            kind,
+            opts.data_dir(),
+            RocksDbConfigurator::new(opts)?,
+        )
+        .add_cf_pattern(CfExactPattern::new(DATA_CF), RocksCfConfigurator)
+        .add_cf_pattern(CfExactPattern::new(METADATA_CF), RocksCfConfigurator)
+        // not very important but it's to reduce the number of merges by flushing.
+        // it's also a small cf so it should be quick.
+        .add_to_flush_on_shutdown(CfExactPattern::new(METADATA_CF))
+        .add_to_flush_on_shutdown(CfExactPattern::new(DATA_CF))
+        .ensure_column_families(cfs)
+        .build()
+        .expect("valid spec");
+        let rocksdb = db_manager.open_db(db_spec).await?;
+
+        Ok(Self { rocksdb })
+    }
+
+    pub async fn start(
+        self,
+        health_status: HealthStatus<LogServerStatus>,
+    ) -> Result<RocksDbLogStore, ShutdownError> {
+        let RocksDbLogStoreBuilder { rocksdb } = self;
+        let store_state = LogStoreState::new(health_status);
+        let writer_handle =
+            LogStoreWriterBuilder::new(rocksdb.clone(), store_state.clone()).start()?;
+
+        Ok(RocksDbLogStore {
+            rocksdb,
+            store_state,
+            writer_handle,
+        })
+    }
+}
+
+struct RocksCfConfigurator;
+
+struct RocksDbConfigurator {
+    env: rocksdb::Env,
+}
+
+impl RocksDbConfigurator {
+    fn new(opts: &LogServerOptions) -> Result<Self, RocksDbLogStoreError> {
+        // dedicated env for log-server
+        let env = if opts.in_memory {
+            rocksdb::Env::mem_env()?
+        } else {
+            let mut env = rocksdb::Env::new()?;
+            env.set_high_priority_background_threads(1);
+            env.set_low_priority_background_threads(1);
+            env
+        };
+        Ok(Self { env })
+    }
+}
+
+impl restate_rocksdb::configuration::DbConfigurator for RocksDbConfigurator {
+    fn get_db_open_mode(&self) -> OpenMode {
+        if Configuration::pinned().log_server.read_only {
+            OpenMode::ReadOnly
+        } else {
+            OpenMode::ReadWrite
+        }
+    }
+
+    fn get_db_options(
+        &self,
+        db_name: &DbName,
+        _env: &rocksdb::Env,
+        write_buffer_manager: &rocksdb::WriteBufferManager,
+        limiter: &rocksdb::RateLimiter,
+    ) -> rocksdb::Options {
+        // load config from the input configuration
+        let log_server_config = &Configuration::pinned().log_server;
+
+        let mut db_options = create_empty_db_options(db_name.clone());
+        // amend default options from rocksdb_manager
+        self.apply_db_opts_from_config(&mut db_options, &log_server_config.rocksdb);
+
+        db_options.set_wal_dir(log_server_config.wal_dir());
+        // dedicated environment for log-server to avoid queueing behind flush/compactions
+        // of partition store.
+        db_options.set_env(&self.env);
+        db_options.set_shared_ratelimiter(limiter);
+        db_options.create_if_missing(true);
+        db_options.create_missing_column_families(true);
+        // Avoid pushing back on compaction delays, sacrifice storage and do not hinder
+        // writes and flushes.
+        db_options.set_soft_pending_compaction_bytes_limit(512 * 1024 * 1024 * 1024);
+        // Do not push back on compaction delays, sacrifice storage and do not hinder
+        // writes and flushes.
+        db_options.set_hard_pending_compaction_bytes_limit(2 * 1024 * 1024 * 1024 * 1024);
+        // todo(asoli): Consider detaching from the write buffer manager since we have
+        // good grip over memory budgets for log-server but we are keeping it because it
+        // makes it easy to observe total rocksdb memory usage in metrics.
+        //
+        // write buffer is controlled by write buffer manager
+        db_options.set_write_buffer_manager(write_buffer_manager);
+        db_options.set_avoid_unnecessary_blocking_io(true);
+        // Let rocksdb decide for level sizes.
+        db_options.set_level_compaction_dynamic_level_bytes(true);
+        //
+        // [Not important setting, consider removing], allows to shard compressed
+        // block cache to up to 64 shards in memory.
+        db_options.set_table_cache_num_shard_bits(6);
+
+        // Speed up database open, useful for large databases and slow disk.
+        db_options.set_skip_stats_update_on_db_open(true);
+        // Log Server database is critical for correctness.
+        db_options.set_paranoid_checks(!log_server_config.rocksdb_disable_paranoid_checks);
+
+        // Disable WAL archiving.
+        // the following two options has to be both 0 to disable WAL log archive.
+        db_options.set_wal_size_limit_mb(0);
+        db_options.set_wal_ttl_seconds(0);
+
+        if let Some(max_open_files) = log_server_config.rocksdb_max_open_files {
+            db_options.set_max_open_files(max_open_files.get().min(i32::MAX as u32) as i32);
+        } else {
+            db_options.set_max_open_files(-1);
+        }
+
+        // Sets the available buffer for writing to SST files.
+        db_options.set_writable_file_max_buffer_size(
+            log_server_config
+                .rocksdb_writable_file_max_buffer_size
+                .as_u64(),
+        );
+
+        restate_rocksdb::configuration::set_background_work_budget(
+            &mut db_options,
+            // dedicated flush thread for log-server
+            NonZeroU32::new(2).unwrap(),
+            log_server_config.rocksdb_max_background_compactions(),
+        );
+
+        if !log_server_config.rocksdb_disable_wal() {
+            // RocksDB does not support recycling wal log files if wal is disabled when writing
+            db_options.set_recycle_log_file_num(log_server_config.num_write_buffers() as usize);
+        }
+
+        // log-server specific customizations
+        //
+        // This is Rocksdb's default, it's added here for clarity.
+        //
+        // Rationale: If WAL tail is corrupted, it's likely that it has failed during write, that said,
+        // we can use absolute consistency but on a single-node setup, we don't have a way to recover
+        // from it, so it's not useful for us. Even for a replicated loglet setup, the recovery is
+        // likely to depend on the last durably committed record for a quorum of nodes in the write
+        // set.
+        db_options.set_wal_recovery_mode(rocksdb::DBRecoveryMode::TolerateCorruptedTailRecords);
+        if !log_server_config.rocksdb.rocksdb_disable_wal_compression() {
+            db_options.set_wal_compression_type(rocksdb::DBCompressionType::Zstd);
+        }
+        // most reads are sequential
+        db_options.set_advise_random_on_open(false);
+
+        db_options.set_max_total_wal_size(log_server_config.max_wal_total_size() as u64);
+
+        // Flush both CFs atomically. This ensures the metadata CF (trim points, seals)
+        // and the data CF are always consistent on disk without requiring WAL replay to
+        // reconstruct the relationship. The metadata CF is sized so that it never triggers
+        // a flush on its own — it piggybacks on data CF flushes.
+        //
+        // Note: atomic_flush is incompatible with enable_pipelined_write, and it forces
+        // min_write_buffer_number_to_merge=1 on all CFs (which is what we want anyway).
+        db_options.set_atomic_flush(true);
+        db_options.set_max_subcompactions(log_server_config.rocksdb_max_sub_compactions());
+
+        db_options
+    }
+
+    fn note_config_update(&self, db: &restate_rocksdb::RocksAccess) {
+        let config = &Configuration::pinned().log_server;
+        if let Err(err) = update_data_cf_options(db, config) {
+            warn!(
+                "Failed to update data CF options for {}/{DATA_CF}: {err}",
+                db.name(),
+            );
+        }
+        // Keep metadata CF write_buffer_size in sync so it never triggers a flush on
+        // its own (atomic_flush means any CF triggering a flush drags all CFs along).
+        update_metadata_cf_write_buffer_size(db, config.write_buffer_size());
+
+        // If current memtable usage exceeds the new budget, trigger a flush so that
+        // memory is reclaimed promptly. With atomic_flush, flushing the data CF will
+        // also flush the metadata CF.
+        let total_data_usage = db
+            .get_property_int_cf(DATA_CF, "rocksdb.cur-size-all-mem-tables")
+            .unwrap()
+            .unwrap_or_default() as usize;
+
+        let will_flush = total_data_usage > config.rocksdb_memory_budget().as_usize();
+        info!(
+            "Updating log-server data CF memory budget. usage:{}/{}, will_flush: {}",
+            ByteCount::from(total_data_usage),
+            config.rocksdb_memory_budget(),
+            will_flush
+        );
+        if will_flush {
+            db.flush_memtables(
+                &[CfName::from(DATA_CF)],
+                // do not wait for flush to complete to avoid blocking the runtime.
+                false,
+            )
+            .unwrap_or_else(|e| warn!("Failed to flush memtables: {}", e));
+        }
+    }
+}
+
+/// Dynamically updates the mutable data CF options from configuration.
+fn update_data_cf_options(
+    db: &restate_rocksdb::RocksAccess,
+    opts: &LogServerOptions,
+) -> Result<(), restate_rocksdb::RocksError> {
+    let max_bytes_for_level_base_str = opts.max_bytes_for_level_base().to_restring();
+    let write_buffer_size_str = opts.write_buffer_size().to_restring();
+    let max_write_buffer_number_str = opts.num_write_buffers().to_restring();
+    let target_file_size_base_str = opts.target_file_size_base().to_restring();
+    let max_compaction_bytes = opts.max_compaction_bytes().to_restring();
+    let level_zero_file_num_compaction_trigger =
+        opts.level_zero_file_num_compaction_trigger().to_restring();
+    let blob_separation_enabled = opts.rocksdb_enable_blob_separation.to_restring();
+    let min_blob_size = opts.rocksdb_blob_min_size().as_u64().to_restring();
+    let blob_compression_type = if opts.rocksdb_disable_blob_compression {
+        "kNoCompression"
+    } else {
+        "kZSTD"
+    };
+    let blob_gc_age_cutoff = BLOB_GC_AGE_CUTOFF.to_restring();
+    let blob_gc_force_threshold = BLOB_GC_FORCE_THRESHOLD.to_restring();
+    let blob_compaction_readahead_size = opts
+        .rocksdb
+        .rocksdb_compaction_readahead_size()
+        .get()
+        .to_restring();
+
+    db.set_options_cf(
+        DATA_CF,
+        &[
+            ("write_buffer_size", &write_buffer_size_str),
+            ("target_file_size_base", &target_file_size_base_str),
+            ("max_write_buffer_number", &max_write_buffer_number_str),
+            ("max_bytes_for_level_base", &max_bytes_for_level_base_str),
+            ("max_compaction_bytes", &max_compaction_bytes),
+            (
+                "level0_file_num_compaction_trigger",
+                &level_zero_file_num_compaction_trigger,
+            ),
+            ("enable_blob_files", &blob_separation_enabled),
+            ("min_blob_size", &min_blob_size),
+            ("blob_compression_type", blob_compression_type),
+            ("enable_blob_garbage_collection", &blob_separation_enabled),
+            ("blob_garbage_collection_age_cutoff", &blob_gc_age_cutoff),
+            (
+                "blob_garbage_collection_force_threshold",
+                &blob_gc_force_threshold,
+            ),
+            (
+                "blob_compaction_readahead_size",
+                &blob_compaction_readahead_size,
+            ),
+        ],
+    )
+}
+
+/// Keeps the metadata CF write_buffer_size in sync with the data CF so that
+/// the metadata CF never independently triggers a flush under atomic_flush.
+fn update_metadata_cf_write_buffer_size(
+    db: &restate_rocksdb::RocksAccess,
+    write_buffer_size: usize,
+) {
+    let write_buffer_size = write_buffer_size.to_string();
+    if let Err(err) = db.set_options_cf(METADATA_CF, &[("write_buffer_size", &write_buffer_size)]) {
+        warn!(
+            "Failed to update metadata CF write_buffer_size for {}/{METADATA_CF}: {err}",
+            db.name(),
+        );
+    }
+}
+
+impl restate_rocksdb::configuration::CfConfigurator for RocksCfConfigurator {
+    fn get_cf_options(
+        &self,
+        _db_name: &DbName,
+        cf_name: &str,
+        global_cache: &Cache,
+        write_buffer_manager: &rocksdb::WriteBufferManager,
+    ) -> rocksdb::Options {
+        let config = &Configuration::pinned().log_server;
+        let mut cf_options =
+            restate_rocksdb::configuration::create_default_cf_options(Some(write_buffer_manager));
+
+        cf_options.set_disable_auto_compactions(config.rocksdb.rocksdb_disable_auto_compactions());
+        if let Some(compaction_period) = config.rocksdb.rocksdb_periodic_compaction_seconds() {
+            cf_options.set_periodic_compaction_seconds(compaction_period);
+        }
+
+        if cf_name == DATA_CF {
+            let block_options = restate_rocksdb::configuration::create_default_block_options(
+                &config.rocksdb,
+                Some(global_cache),
+            );
+            cf_data_options(&mut cf_options, &block_options, config);
+        } else if cf_name == METADATA_CF {
+            let block_options = metadata_block_options(&config.rocksdb, global_cache);
+            cf_metadata_options(&mut cf_options, &block_options, config);
+        }
+
+        // Avoid pushing back on compaction delays, sacrifice storage and do not hinder
+        // writes and flushes.
+        cf_options.set_soft_pending_compaction_bytes_limit(512 * 1024 * 1024 * 1024);
+        // Do not push back on compaction delays, sacrifice storage and do not hinder
+        // writes and flushes.
+        cf_options.set_hard_pending_compaction_bytes_limit(2 * 1024 * 1024 * 1024 * 1024);
+
+        cf_options
+    }
+}
+
+/// Block options for the metadata CF. Uses a smaller block size than the default (4KiB vs
+/// 64KiB) since this CF is small and accessed via point lookups where large blocks waste
+/// read bandwidth.
+fn metadata_block_options(
+    opts: &restate_types::config::RocksDbOptions,
+    global_cache: &Cache,
+) -> BlockBasedOptions {
+    let mut block_options =
+        restate_rocksdb::configuration::create_default_block_options(opts, Some(global_cache));
+    block_options.set_block_size(4 * 1024);
+    block_options
+}
+
+fn cf_data_options(
+    opts: &mut rocksdb::Options,
+    block_options: &BlockBasedOptions,
+    log_server_config: &LogServerOptions,
+) {
+    opts.set_block_based_table_factory(block_options);
+
+    // Do not slow down on l0 number of files writes even if it hurts read
+    // amplification.
+    opts.set_level_zero_slowdown_writes_trigger(1 << 30);
+    opts.set_level_zero_stop_writes_trigger(1 << 30);
+
+    // With atomic_flush enabled, min_write_buffer_number_to_merge is forced to 1 by
+    // RocksDB. Each flush produces one L0 file of ~(write_buffer_size). However, we
+    // set it here explicitly to unify where we define this value.
+    opts.set_min_write_buffer_number_to_merge(
+        log_server_config.min_write_buffer_number_to_merge() as i32
+    );
+
+    opts.set_write_buffer_size(log_server_config.write_buffer_size());
+    opts.set_max_write_buffer_number(log_server_config.num_write_buffers() as i32);
+    opts.set_target_file_size_base(log_server_config.target_file_size_base() as u64);
+    opts.set_max_compaction_bytes(log_server_config.max_compaction_bytes() as u64);
+    opts.set_max_bytes_for_level_base(log_server_config.max_bytes_for_level_base() as u64);
+
+    opts.set_level_zero_file_num_compaction_trigger(
+        log_server_config.level_zero_file_num_compaction_trigger() as i32,
+    );
+
+    opts.set_compaction_style(rocksdb::DBCompactionStyle::Level);
+    opts.set_num_levels(7);
+
+    let l0_l1 = if log_server_config
+        .rocksdb
+        .rocksdb_disable_l0_l1_compression()
+    {
+        rocksdb::DBCompressionType::None
+    } else {
+        rocksdb::DBCompressionType::Lz4
+    };
+    let levels = restate_rocksdb::configuration::build_compression_per_level(
+        7,
+        l0_l1,
+        rocksdb::DBCompressionType::Zstd,
+    );
+    opts.set_compression_per_level(&levels);
+
+    // Override the global default. We want bloom filters on the last level because
+    // trimmed ranges (via DeleteRange) can cause scans to hit levels where data no longer
+    // exists, and last-level bloom filters help skip those blocks.
+    opts.set_optimize_filters_for_hits(false);
+
+    opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(KeyPrefix::size()));
+    opts.set_memtable_prefix_bloom_ratio(0.2);
+
+    if log_server_config.rocksdb_enable_blob_separation {
+        opts.set_enable_blob_files(true);
+        opts.set_min_blob_size(log_server_config.rocksdb_blob_min_size().as_u64());
+        let blob_compression = if log_server_config.rocksdb_disable_blob_compression {
+            rocksdb::DBCompressionType::None
+        } else {
+            rocksdb::DBCompressionType::Zstd
+        };
+        opts.set_blob_compression_type(blob_compression);
+
+        // Blob GC: relocate live blobs during compaction to reclaim space after trimming.
+        opts.set_enable_blob_gc(true);
+        opts.set_blob_gc_age_cutoff(BLOB_GC_AGE_CUTOFF);
+        // Trigger forced compactions when >=50% of data in eligible blob files is garbage.
+        // Without this (default 1.0 = disabled), SSTs referencing trimmed blob data may
+        // not be picked for compaction naturally, delaying disk space reclamation.
+        opts.set_blob_gc_force_threshold(BLOB_GC_FORCE_THRESHOLD);
+        // Use the same readahead size for blob files as for SST files during compaction.
+        // Blob GC reads blobs from old files during compaction; readahead improves
+        // throughput, especially with direct I/O enabled.
+        opts.set_blob_compaction_readahead_size(
+            log_server_config
+                .rocksdb
+                .rocksdb_compaction_readahead_size()
+                .get() as u64,
+        );
+    }
+
+    match (
+        log_server_config.rocksdb_partition_sst_by_loglet,
+        log_server_config.rocksdb_partition_sst_by_log,
+    ) {
+        (true, _) => {
+            // loglet always wins
+            opts.set_sst_partitioner_fixed_prefix(KeyPrefix::size());
+        }
+        (_, true) => {
+            // Keep all loglets for the same log together.
+            opts.set_sst_partitioner_fixed_prefix(size_of::<KeyPrefixKind>() + size_of::<LogId>())
+        }
+        _ => {
+            // Do not partition SST files
+        }
+    }
+}
+
+fn cf_metadata_options(
+    opts: &mut rocksdb::Options,
+    block_options: &BlockBasedOptions,
+    log_server_config: &LogServerOptions,
+) {
+    opts.set_block_based_table_factory(block_options);
+
+    // The metadata CF uses the data CF's write_buffer_size so it never independently
+    // triggers a flush (with atomic_flush, any CF triggering drags all CFs along).
+    // Metadata writes are tiny (~20 bytes per op), so actual memory use is negligible.
+    opts.set_write_buffer_size(log_server_config.write_buffer_size());
+    opts.set_max_write_buffer_number(log_server_config.num_write_buffers() as i32);
+
+    // Do not slow down on l0 number of files writes even if it hurts read
+    // amplification.
+    opts.set_level_zero_slowdown_writes_trigger(1 << 30);
+    opts.set_level_zero_stop_writes_trigger(1 << 30);
+
+    // The metadata CF holds a handful of small keys per loglet (trim point, sequencer,
+    // seal). Total data is typically a few hundred KB even with thousands of loglets —
+    // SST files will never approach the default target_file_size_base or level limits,
+    // so we leave those at RocksDB defaults. Compact eagerly to keep L0 clean for point
+    // lookups (e.g. load_loglet_state).
+    opts.set_level_zero_file_num_compaction_trigger(4);
+    opts.set_num_levels(3);
+    // The metadata CF is tiny — disable compression entirely to avoid unnecessary CPU
+    // overhead on flushes and point lookups. The disk savings are negligible.
+    opts.set_compression_type(rocksdb::DBCompressionType::None);
+    opts.set_memtable_whole_key_filtering(true);
+    // Merge operator for trim-point updates (monotonic max). The merge is trivially cheap
+    // (max on 8-byte offsets) and trim points are rarely read, so we leave
+    // max_successive_merges at the default (0 = disabled) to avoid unnecessary memtable
+    // lookups on the write path. Merge chains are naturally bounded by flush frequency.
+    opts.set_merge_operator("MetadataMerge", metadata_full_merge, metadata_partial_merge);
+}
+
+#[cfg(test)]
+mod tests {
+    use test_log::test;
+
+    use restate_core::TaskCenter;
+    use restate_rocksdb::RocksDbManager;
+    use restate_types::config::{Configuration, node_dir, set_current_config};
+    use restate_types::logs::metadata::SegmentIndex;
+    use restate_types::logs::{LogletId, LogletOffset};
+
+    use super::*;
+    use crate::rocksdb_logstore::keys::DataRecordKey;
+
+    #[test]
+    fn partition_compacted_ssts_by_log_and_loglet() -> anyhow::Result<()> {
+        let loglets = [
+            LogletId::new(LogId::new(1), SegmentIndex::OLDEST),
+            LogletId::new(LogId::new(1), SegmentIndex::OLDEST.next()),
+            LogletId::new(LogId::new(2), SegmentIndex::OLDEST),
+            LogletId::new(LogId::new(2), SegmentIndex::OLDEST.next()),
+        ];
+
+        for (name, partition_by_loglet, expected_partitions) in
+            [("by-log", false, 2), ("by-loglet", true, loglets.len())]
+        {
+            let mut config = LogServerOptions::default();
+            config.rocksdb_partition_sst_by_loglet = partition_by_loglet;
+            if !partition_by_loglet {
+                assert!(
+                    config.rocksdb_partition_sst_by_log,
+                    "log partitioning is enabled by default"
+                );
+            }
+
+            let block_options =
+                restate_rocksdb::configuration::create_default_block_options(&config.rocksdb, None);
+            let mut options = restate_rocksdb::configuration::create_default_cf_options(None);
+            cf_data_options(&mut options, &block_options, &config);
+            options.create_if_missing(true);
+            // Only the manual compaction below should determine the resulting file layout.
+            options.set_disable_auto_compactions(true);
+
+            let db =
+                rocksdb::DB::open(&options, node_dir().join(format!("sst-partitioner-{name}")))?;
+
+            // Overlapping flushes force compaction to rewrite the input files, which runs the
+            // SST partitioner instead of trivially moving a file to another level.
+            for round in 0..2u8 {
+                for loglet_id in loglets {
+                    for offset in 1..=4 {
+                        let key = DataRecordKey::new(loglet_id, LogletOffset::new(offset))
+                            .to_binary_array();
+                        db.put(key, [round])?;
+                    }
+                }
+                db.flush()?;
+            }
+            db.compact_range(None::<&[u8]>, None::<&[u8]>);
+
+            let files = db.live_files()?;
+            assert!(
+                files.len() >= expected_partitions,
+                "expected at least {expected_partitions} partitioned SSTs, got {}",
+                files.len()
+            );
+
+            let mut sst_spans_loglets = false;
+            for file in files {
+                let start = DataRecordKey::from_slice(
+                    file.start_key.as_deref().expect("SST has a smallest key"),
+                );
+                let end = DataRecordKey::from_slice(
+                    file.end_key.as_deref().expect("SST has a largest key"),
+                );
+
+                if partition_by_loglet {
+                    assert_eq!(
+                        start.loglet_id(),
+                        end.loglet_id(),
+                        "SST spans multiple loglets: {file:?}"
+                    );
+                } else {
+                    assert_eq!(
+                        start.loglet_id().log_id(),
+                        end.loglet_id().log_id(),
+                        "SST spans multiple logs: {file:?}"
+                    );
+                    sst_spans_loglets |= start.loglet_id() != end.loglet_id();
+                }
+            }
+
+            if !partition_by_loglet {
+                assert!(
+                    sst_spans_loglets,
+                    "log partitioning unexpectedly split every SST by loglet"
+                );
+            }
+        }
+
+        Ok(())
+    }
+
+    #[test(restate_core::test(start_paused = true))]
+    async fn dynamically_update_blob_and_l0_options() -> anyhow::Result<()> {
+        let config = Configuration::default();
+        set_current_config(config.clone());
+
+        RocksDbManager::init();
+        let builder = RocksDbLogStoreBuilder::create().await?;
+        let mut log_server_options = config.log_server;
+        log_server_options.rocksdb_enable_blob_separation = true;
+        log_server_options.rocksdb_l0_num_compaction_trigger = NonZeroU32::new(3).unwrap();
+        update_data_cf_options(builder.rocksdb.inner(), &log_server_options)?;
+
+        log_server_options.rocksdb_enable_blob_separation = false;
+        update_data_cf_options(builder.rocksdb.inner(), &log_server_options)?;
+
+        drop(builder);
+        TaskCenter::shutdown_node("test completed", 0).await;
+        RocksDbManager::get().shutdown().await;
+        Ok(())
+    }
+}

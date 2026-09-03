@@ -1,0 +1,12 @@
+{
+	"name": "@fixture/secrets-store",
+	"private": true,
+	"scripts": {
+		"deploy": "wrangler deploy",
+		"start": "wrangler dev"
+	},
+	"devDependencies": {
+		"@cloudflare/workers-types": "catalog:default",
+		"wrangler": "workspace:*"
+	}
+}

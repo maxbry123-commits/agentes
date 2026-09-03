@@ -1,0 +1,135 @@
+from collections.abc import Iterator
+from typing import Any, Optional, Union
+
+from graphql.error import GraphQLError
+from graphql.execution.execute import ExecutionResult as GraphQLExecutionResult
+from strawberry.extensions.base_extension import SchemaExtension
+from strawberry.types.execution import ExecutionResult as StrawberryExecutionResult
+
+from phoenix.config import get_env_mask_internal_server_errors
+from phoenix.server.api.helpers.experiment_run_filters import (
+    ExperimentRunFilterConditionSyntaxError,
+)
+from phoenix.trace.dsl import SpanFilterError
+
+
+class CustomGraphQLError(Exception):
+    """
+    An error that represents an expected error scenario in a GraphQL resolver.
+    """
+
+
+class BadRequest(CustomGraphQLError):
+    """
+    An error raised due to a malformed or invalid request.
+    """
+
+
+class NotFound(CustomGraphQLError):
+    """
+    An error raised when the requested resource is not found.
+    """
+
+
+class Unauthorized(CustomGraphQLError):
+    """
+    An error raised when login fails or a user or other entity is not authorized
+    to access a resource.
+    """
+
+
+class InsufficientStorage(CustomGraphQLError):
+    """
+    An error raised when the database has insufficient storage to complete a request.
+    """
+
+
+class Conflict(CustomGraphQLError):
+    """
+    An error raised when a mutation cannot be completed due to a conflict with
+    the current state of one or more resources.
+    """
+
+
+_GENERIC_MASK_MESSAGE = "an unexpected error occurred"
+
+
+def _find_custom_error(
+    error: BaseException,
+) -> Optional[Union[CustomGraphQLError, SpanFilterError, ExperimentRunFilterConditionSyntaxError]]:
+    """Walk the original_error / __cause__ chain looking for a safe public error.
+
+    graphql-core wraps scalar `parse_value` errors in an outer GraphQLError and
+    prefixes the message with the variable path + type name, which leaks
+    implementation detail to the UI. The inner expected error is what we want
+    to surface.
+    """
+    current: Optional[BaseException] = error
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        if isinstance(
+            current,
+            (CustomGraphQLError, SpanFilterError, ExperimentRunFilterConditionSyntaxError),
+        ):
+            return current
+        seen.add(id(current))
+        current = getattr(current, "original_error", None) or current.__cause__
+    return None
+
+
+class PhoenixErrorMasker(SchemaExtension):
+    """Replace error messages with the inner safe public error's message
+    (a CustomGraphQLError or one of the filter-condition errors) if present;
+    otherwise mask with a generic message (when enabled).
+
+    Both filter DSLs guarantee at their compile boundary that every raised
+    error carries a user-safe message about the condition, never internals,
+    which is what makes surfacing them verbatim correct. A filter error that
+    reaches a resolver without a local catch (e.g. `compareExperiments`)
+    would otherwise be masked to a generic message under the default config.
+    """
+
+    def _rewrite(self, error: GraphQLError) -> GraphQLError:
+        inner = _find_custom_error(error)
+        if inner is not None:
+            return GraphQLError(
+                message=str(inner),
+                nodes=error.nodes,
+                source=error.source,
+                positions=error.positions,
+                path=error.path,
+                original_error=None,
+            )
+        # Only mask errors that bubbled up from an uncaught exception inside a
+        # resolver. Validation/syntax errors (missing fields, malformed queries)
+        # are produced during the parse/validate phase, have no original_error,
+        # and should pass through to the client unmasked.
+        if error.original_error is None:
+            return error
+        if not get_env_mask_internal_server_errors():
+            return error
+        return GraphQLError(
+            message=_GENERIC_MASK_MESSAGE,
+            nodes=error.nodes,
+            source=error.source,
+            positions=error.positions,
+            path=error.path,
+            original_error=None,
+        )
+
+    def _process_result(self, result: Any) -> None:
+        if not result.errors:
+            return
+        result.errors = [self._rewrite(e) for e in result.errors]
+
+    def on_operation(self) -> Iterator[None]:
+        yield
+        result = self.execution_context.result
+        if isinstance(result, (GraphQLExecutionResult, StrawberryExecutionResult)):
+            self._process_result(result)
+        elif result:
+            self._process_result(result.initial_result)
+
+
+def get_mask_errors_extension() -> type[SchemaExtension]:
+    return PhoenixErrorMasker

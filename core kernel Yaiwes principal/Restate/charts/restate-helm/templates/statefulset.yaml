@@ -1,0 +1,159 @@
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "restate.fullname" . }}
+  labels:
+    {{- include "restate.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "restate.fullname" . }}-cluster
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "restate.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "restate.selectorLabels" . | nindent 8 }}
+        {{- if .Values.podLabels }}
+        {{- toYaml .Values.podLabels | nindent 8 }}
+        {{- end }}
+      annotations:
+        kubectl.kubernetes.io/default-container: {{ include "restate.fullname" . }}
+        {{- if .Values.podAnnotations }}
+        {{- toYaml .Values.podAnnotations | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "restate.fullname" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      topologySpreadConstraints:
+      - labelSelector:
+          matchLabels:
+            {{- include "restate.selectorLabels" . | nindent 12 }}
+      {{- with .Values.topologySpreadConstraints }}
+        maxSkew: {{ .maxSkew }}
+        topologyKey: {{ .topologyKey }}
+        whenUnsatisfiable: {{ .whenUnsatisfiable }}
+      {{- end }}
+      {{- if .Values.extraInitContainers }}
+      initContainers:
+        {{ toYaml .Values.extraInitContainers | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ include "restate.fullname" . }}
+          {{- with .Values.command }}
+          command:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.args }}
+          args:
+            {{- toYaml . | nindent 12 }}
+          {{- end}}
+          image: {{ include "restate.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          ports:
+            - containerPort: 9070
+              name: admin
+            - containerPort: 8080
+              name: ingress
+            - containerPort: 5122
+              name: node
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: "metadata.name"
+            - name: SERVICE_NAME
+              value: {{ include "restate.fullname" . }}-cluster
+            {{- if .Values.nodeName }}
+            - name: RESTATE_NODE_NAME
+              value: {{ .Values.nodeName }}
+            {{- end}}
+            {{- if .Values.identityPrivateKey.enabled }}
+            - name: RESTATE_REQUEST_IDENTITY_PRIVATE_KEY_PEM_FILE
+              value: /opt/private.pem
+            {{- end }}
+            - name: RESTATE_LOG_FILTER
+              value: {{ .Values.logging.env_filter }}
+            {{- if .Values.advertisedAddress }}
+            - name: RESTATE_ADVERTISED_ADDRESS
+              value: {{ .Values.advertisedAddress }}
+            {{- end}}
+            {{- with .Values.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /restate/health
+              port: ingress
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          volumeMounts:
+            - mountPath: /restate-data
+              name: storage
+            - mountPath: /tmp
+              name: tmp
+        {{- if .Values.identityPrivateKey.enabled }}
+            - name: identity
+              mountPath: /opt/private.pem
+              subPath: {{ .Values.identityPrivateKey.keyName }}
+        {{- end }}
+        {{- if .Values.extraVolumeMounts }}
+        {{- toYaml .Values.extraVolumeMounts | nindent 12 }}
+        {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        {{- if .Values.storage.existingClaim }}
+        - name: storage
+          persistentVolumeClaim:
+            claimName: {{ .Values.storage.existingClaim }}
+        {{- end }}
+        {{- if .Values.identityPrivateKey.enabled }}
+        - name: identity
+          secret:
+            secretName: {{ .Values.identityPrivateKey.secretName }}
+            defaultMode: 420
+        {{- end }}
+        {{- if .Values.extraVolumes }}
+        {{- toYaml .Values.extraVolumes | nindent 8 }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  # It's important to start multiple pods at the same time in case multiple pods died. Otherwise, we risk
+  # unavailability of an already configured metadata cluster
+  podManagementPolicy: Parallel
+  updateStrategy:
+    type: RollingUpdate
+  {{- if not .Values.storage.existingClaim }}
+  volumeClaimTemplates:
+    - metadata:
+        name: storage
+        labels:
+          app: {{ include "restate.name" . }}
+          app.kubernetes.io/name: {{ include "restate.name" . }}
+      spec:
+        {{- with .Values.storage.storageClassName }}
+        storageClassName: {{ if (eq "-" .) }}""{{ else }}{{ . }}{{ end }}
+        {{- end }}
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: {{ .Values.storage.size | quote }}
+  {{- end }}

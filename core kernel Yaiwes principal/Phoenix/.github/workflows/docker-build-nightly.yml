@@ -1,0 +1,121 @@
+name: Publish nightly Docker image
+permissions:
+  contents: read
+on:
+  push:
+    branches:
+      - main
+      - version-*
+
+# One push supersedes the previous one on the same branch: the older run is
+# only racing to publish a `nightly` tag that the newer run will overwrite.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build ${{ matrix.platform }}
+    # linux/arm64 builds on a native ARM runner rather than under QEMU
+    # emulation on x86, which is both far slower and a source of flakes.
+    runs-on: ${{ matrix.platform == 'linux/arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    strategy:
+      # One job per platform, not per variant/platform pair: the variants share
+      # every stage but the final FROM, so building them together reuses the
+      # frontend, backend and WASM stages from the local builder instead of
+      # repeating them on a cold one. Each pushes by digest and nothing is
+      # tagged until the merge job, so a failed build cannot publish a partial
+      # image; letting the other platform finish means a rerun has less to redo.
+      fail-fast: false
+      matrix:
+        platform: [linux/amd64, linux/arm64]
+    env:
+      REGISTRY: arizephoenix
+      IMAGE_NAME: phoenix
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Build and push every variant by digest
+        uses: ./.github/actions/docker-build-image
+        with:
+          variants: root nonroot debug
+          platform: ${{ matrix.platform }}
+          registry: ${{ env.REGISTRY }}
+          image-name: ${{ env.IMAGE_NAME }}
+          dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
+          dockerhub-password: ${{ secrets.DOCKERHUB_PASSWORD }}
+
+  merge:
+    name: Publish ${{ matrix.variant }} manifest
+    needs: build
+    # A matrix job reports failure if any cell fails, so plain `needs` would let
+    # one variant's failed leg withhold every other variant — including ones
+    # whose digests are already on Docker Hub. Publish per variant instead and
+    # let the digest count refuse the variant that is actually incomplete.
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [root, nonroot, debug]
+    env:
+      REGISTRY: arizephoenix
+      IMAGE_NAME: phoenix
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Compute tag suffix and commit hash
+        env:
+          VARIANT: ${{ matrix.variant }}
+        run: |
+          set -euo pipefail
+          if [ "$VARIANT" = "root" ]; then
+            echo "TAG_SUFFIX=" >> "$GITHUB_ENV"
+          else
+            echo "TAG_SUFFIX=-${VARIANT}" >> "$GITHUB_ENV"
+          fi
+          echo "COMMIT_HASH=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+
+      - name: Compute tags
+        id: meta
+        uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          flavor: latest=false
+          tags: |
+            type=raw,value=nightly${{ env.TAG_SUFFIX }}
+            type=raw,value=commit-${{ env.COMMIT_HASH }},enable=${{ matrix.variant == 'root' }}
+
+      - name: Merge platform digests and push tags
+        uses: ./.github/actions/docker-merge-manifest
+        with:
+          variant: ${{ matrix.variant }}
+          registry: ${{ env.REGISTRY }}
+          image-name: ${{ env.IMAGE_NAME }}
+          tags: ${{ steps.meta.outputs.tags }}
+          expected-digests: 2
+          dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
+          dockerhub-password: ${{ secrets.DOCKERHUB_PASSWORD }}
+
+  slack:
+    name: Slack notification
+    needs: [build, merge]
+    if: always() && contains(needs.*.result, 'failure')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send message to Slack
+        uses: slackapi/slack-github-action@af78098f536edbc4de71162a307590698245be95 # v3.0.1
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "type": "mrkdwn",
+              "text": ":x: Docker Nightly Publication Failed\n${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }

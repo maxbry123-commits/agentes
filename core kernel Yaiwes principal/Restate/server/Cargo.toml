@@ -1,0 +1,105 @@
+[package]
+name = "restate-server"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Restate Server"
+build = "build.rs"
+
+[package.metadata.dist]
+dist = true
+
+[features]
+# kafka-oidc should work on all targets, so let's enable it by default
+default = ["no-trace-logging", "kafka-oidc"]
+console = [
+    "tokio/full",
+    "tokio/tracing",
+    "restate-tracing-instrumentation/console-subscriber",
+    "restate-types/console",
+]
+options_schema = [
+    "restate-node/options_schema",
+    "restate-tracing-instrumentation/options_schema",
+    "restate-types/schemars",
+]
+memory-loglet = ["restate-node/memory-loglet"]
+no-trace-logging = ["tracing/max_level_trace", "tracing/release_max_level_debug"]
+metadata-api = ["restate-admin/metadata-api"]
+kafka-oidc = ["restate-node/kafka-oidc"]
+
+[dependencies]
+restate-workspace-hack = { workspace = true }
+
+restate-admin = { workspace = true, features = ["all-metadata-providers"] }
+restate-bifrost = { workspace = true }
+restate-clock = { workspace = true }
+restate-core = { workspace = true }
+restate-errors = { workspace = true }
+restate-metadata-server = { workspace = true }
+restate-node = { workspace = true, features = ["all-metadata-providers"] }
+restate-rocksdb = { workspace = true }
+restate-service-client = { workspace = true }
+restate-tracing-instrumentation = { workspace = true, features = ["rt-tokio", "prometheus"] }
+restate-types = { workspace = true, features = ["clap"] }
+
+clap = { workspace = true, features = ["derive", "env", "color", "help", "wrap_help", "usage", "suggestions", "error-context", "std"] }
+codederror = { workspace = true }
+enumset = { workspace = true }
+futures-util = { workspace = true }
+http = { workspace = true }
+http-body-util = { workspace = true }
+octocrab = { workspace = true, features = ["stream"] }
+regex = { workspace = true }
+rlimit = { workspace = true }
+rustls = { workspace = true, features = ["aws-lc-rs"] }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+tracing = { workspace = true }
+tracing-panic = { version = "0.1.2" }
+ulid = { workspace = true }
+url = { workspace = true }
+
+[dev-dependencies]
+restate-bifrost = { workspace = true, features = ["test-util"] }
+restate-core = { workspace = true, features = ["test-util"] }
+restate-local-cluster-runner = { workspace = true }
+restate-metadata-server = { workspace = true, features = ["test-util"] }
+restate-metadata-store = { workspace = true, features = ["test-util"] }
+restate-metadata-providers = { workspace = true, features = ["replicated"] }
+restate-node = { workspace = true, features = ["memory-loglet", "test-util"] }
+restate-types = { workspace = true, features = ["test-util"] }
+mock-service-endpoint = { workspace = true }
+
+anyhow = { workspace = true }
+bytestring = { workspace = true}
+googletest = { workspace = true }
+rcgen = { workspace = true }
+restate-util-time = { workspace = true }
+tempfile = { workspace = true }
+test-log = { workspace = true }
+tonic = { workspace = true, features = ["transport"] }
+tracing-subscriber = { workspace = true }
+rand = { workspace = true }
+reqwest = { workspace = true }
+serde_json = { workspace = true }
+url = { workspace = true }
+
+[target.'cfg(not(target_env = "msvc"))'.dependencies]
+tikv-jemallocator = { workspace = true }
+
+[build-dependencies]
+vergen = { workspace = true, default-features = false, features = [
+    "build",
+    "git",
+    "gitcl",
+    "cargo",
+] }
+
+[lints]
+workspace = true

@@ -1,0 +1,149 @@
+ENV['VAGRANT_NO_PARALLEL'] = 'no'
+NODE_ROLES = (ENV['E2E_NODE_ROLES'] ||
+  ["server-0", "agent-0"])
+NODE_BOXES = (ENV['E2E_NODE_BOXES'] ||
+  ['bento/ubuntu-24.04', 'bento/ubuntu-24.04'])
+GITHUB_BRANCH = (ENV['E2E_GITHUB_BRANCH'] || "main")
+RELEASE_VERSION = (ENV['E2E_RELEASE_VERSION'] || "")
+GOCOVER = (ENV['E2E_GOCOVER'] || "")
+NODE_CPUS = (ENV['E2E_NODE_CPUS'] || 2).to_i
+NODE_MEMORY = (ENV['E2E_NODE_MEMORY'] || 2048).to_i
+# Virtualbox >= 6.1.28 require `/etc/vbox/network.conf` for expanded private networks 
+NETWORK4_PREFIX = "10.10.10"
+NETWORK6_PREFIX = "fd11:decf:c0ff:ee"
+install_type = ""
+
+def provision(vm, role, role_num, node_num)
+  vm.box = NODE_BOXES[node_num]
+  vm.hostname = role
+  node_ip4 = "#{NETWORK4_PREFIX}.#{100+node_num}"
+  node_ip6 = "#{NETWORK6_PREFIX}::#{10+node_num}"
+  node_ip6_gw = "#{NETWORK6_PREFIX}::1"
+  # An expanded netmask is required to allow VM<-->VM communication, virtualbox defaults to /32
+  # Only works with libvirt, which allows IPv4 + IPv6 on a single network/interface
+  vm.network "private_network", 
+    :ip => node_ip4,
+    :netmask => "255.255.255.0",
+    :libvirt__guest_ipv6 => "yes",
+    :libvirt__ipv6_address => "#{NETWORK6_PREFIX}::1",
+    :libvirt__ipv6_prefix => "64"
+
+  scripts_location = Dir.exist?("./scripts") ? "./scripts" : "../scripts"
+  vagrant_defaults = File.exist?("./vagrantdefaults.rb") ? "./vagrantdefaults.rb" : "../vagrantdefaults.rb"
+  load vagrant_defaults
+
+  defaultOSConfigure(vm)
+  addCoverageDir(vm, role, GOCOVER)
+  vm.provision "IPv6 Setup", type: "shell", path: scripts_location +"/ipv6.sh", args: [node_ip4, node_ip6, node_ip6_gw, vm.box.to_s]
+  install_type = getInstallType(vm, RELEASE_VERSION, GITHUB_BRANCH)
+  
+ 
+  # The formatting on this is a little weird, but it allows inserting variables
+  # and still using the heredoc formatting with escapped quotes
+  writePrivateRegistry = <<~'SCRIPT'.chomp % {net: NETWORK4_PREFIX}
+  mkdir -p /etc/rancher/k3s/
+  echo "mirrors:
+    docker.io:
+    registry.example.com:
+  " > /etc/rancher/k3s/registries.yaml
+  SCRIPT
+
+  if role.include?("server") && role_num == 0
+    vm.provision "private-registry", type: "shell", inline: writePrivateRegistry
+    vm.provision "create-images-dir", type: "shell", inline: "mkdir -p -m 777 /tmp/images /var/lib/rancher/k3s/agent/images"
+    vm.provision "copy-images-file", type: "file", source: "../../../scripts/airgap/image-list.txt", destination: "/tmp/images/image-list.txt"
+    vm.provision "move-images-file", type: "shell", inline: "mv /tmp/images/image-list.txt /var/lib/rancher/k3s/agent/images/image-list.txt"
+
+    vm.provision 'k3s-primary-server', type: 'k3s', run: 'once' do |k3s|
+      k3s.args = "server "
+      k3s.config = <<~YAML
+        token: vagrant
+        node-external-ip: #{node_ip4},#{node_ip6}
+        node-ip: #{node_ip4},#{node_ip6}
+        cluster-cidr: 10.42.0.0/16,2001:cafe:42::/56
+        service-cidr: 10.43.0.0/16,2001:cafe:43::/112
+        flannel-iface: eth1
+        cluster-init: true
+        embedded-registry: true
+        debug: true
+      YAML
+      k3s.env = %W[K3S_KUBECONFIG_MODE=0644 #{install_type}]
+      k3s.config_mode = '0644' # side-step https://github.com/k3s-io/k3s/issues/4321
+    end
+  
+  elsif role.include?("server") && role_num != 0
+    vm.provision "shell", inline: writePrivateRegistry
+    vm.provision "create-images-dir", type: "shell", inline: "mkdir -p -m 777 /tmp/images /var/lib/rancher/k3s/agent/images"
+    vm.provision "copy-images-file", type: "file", source: "../../../scripts/airgap/image-list.txt", destination: "/tmp/images/image-list.txt"
+    vm.provision "move-images-file", type: "shell", inline: "mv /tmp/images/image-list.txt /var/lib/rancher/k3s/agent/images/image-list.txt"
+
+    vm.provision 'k3s-secondary-server', type: 'k3s', run: 'once' do |k3s|
+      k3s.args = "server"
+      k3s.config = <<~YAML
+        token: vagrant
+        server: "https://#{NETWORK4_PREFIX}.100:6443"
+        node-external-ip: #{node_ip4},#{node_ip6}
+        node-ip: #{node_ip4},#{node_ip6}
+        cluster-cidr: 10.42.0.0/16,2001:cafe:42::/56
+        service-cidr: 10.43.0.0/16,2001:cafe:43::/112
+        flannel-iface: eth1
+        embedded-registry: true
+        debug: true
+      YAML
+      k3s.env = %W[K3S_KUBECONFIG_MODE=0644 K3S_TOKEN=vagrant #{install_type}]
+      k3s.config_mode = '0644' # side-step https://github.com/k3s-io/k3s/issues/4321
+    end
+  end
+  
+  if role.include?("agent")
+    vm.provision "shell", inline: writePrivateRegistry
+
+    vm.provision 'k3s-agent', type: 'k3s', run: 'once' do |k3s|
+      k3s.args = "agent"
+      k3s.config = <<~YAML
+        server: "https://#{NETWORK4_PREFIX}.100:6443"
+        token: vagrant
+        node-external-ip: #{node_ip4},#{node_ip6}
+        node-ip: #{node_ip4},#{node_ip6}
+        flannel-iface: eth1
+        disable-default-registry-endpoint: true
+        debug: true
+      YAML
+      k3s.env = %W[K3S_KUBECONFIG_MODE=0644 #{install_type}]
+      k3s.config_mode = '0644' # side-step https://github.com/k3s-io/k3s/issues/4321
+    end
+  end
+  if vm.box.to_s.include?("microos")
+    vm.provision 'k3s-reload', type: 'reload', run: 'once'
+  end
+end
+
+
+Vagrant.configure("2") do |config|
+  config.vagrant.plugins = ["vagrant-k3s", "vagrant-reload"]
+  # Default provider is libvirt, virtualbox is only provided as a backup
+  config.vm.provider "libvirt" do |v|
+    v.cpus = NODE_CPUS
+    v.memory = NODE_MEMORY
+    # We replicate the default prefix, but add a timestamp to enable parallel runs and cleanup of old VMs
+    v.default_prefix = File.basename(Dir.getwd) + "_" + Time.now.to_i.to_s + "_"
+  end
+  config.vm.provider "virtualbox" do |v|
+    v.cpus = NODE_CPUS
+    v.memory = NODE_MEMORY
+  end
+  
+  if NODE_ROLES.kind_of?(String)
+    NODE_ROLES = NODE_ROLES.split(" ", -1)
+  end
+  if NODE_BOXES.kind_of?(String)
+    NODE_BOXES = NODE_BOXES.split(" ", -1)
+  end
+
+  NODE_ROLES.each_with_index do |role, i|
+    role_num = role.split("-", -1).pop.to_i
+    config.vm.define role do |node|
+      provision(node.vm, role, role_num, i)
+    end
+  end
+end

@@ -1,0 +1,6 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "service-worker",
+	"main": "./workers/service-worker.ts",
+	"compatibility_date": "2025-05-01",
+}

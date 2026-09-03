@@ -1,0 +1,420 @@
+name: CI
+
+on:
+  pull_request:
+  workflow_call:
+    inputs:
+      # comes from cargo-dist workflow call
+      plan:
+        required: true
+        type: string
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - release-*
+
+jobs:
+  workspace-hack-check:
+    name: Check workspace-hack
+    runs-on: warp-ubuntu-latest-x64-4x
+    env:
+      RUSTFLAGS: -D warnings
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install cargo-hakari
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-hakari
+      - name: Check workspace-hack Cargo.toml is up-to-date
+        run: cargo hakari generate --diff
+      - name: Check all crates depend on workspace-hack
+        run: cargo hakari manage-deps --dry-run
+  build-and-test:
+    name: Build and test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      packages: read
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [warp-ubuntu-latest-x64-16x]
+    env:
+      RUST_BACKTRACE: full
+    steps:
+      # Disabled as uring is not used in production yet.
+      # - name: Install liburing
+      #   run: sudo apt-get update && sudo apt-get install -y liburing-dev
+
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: clippy
+          rustflags: ""
+          cache: false
+
+      - name: Setup Rust Caching
+        uses: WarpBuilds/rust-cache@v2 # a fork of Swatinem/rust-cache@v2 that uses warpbuild cache
+        with:
+          prefix-key: "v1-rust"
+          cache-on-failure: "true"
+
+      - name: Disk usage after cache restore
+        run: df -h / && du -sh target/ 2>/dev/null || true
+
+      - name: Install cargo-hakari
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-hakari
+
+      - name: Disable hakari
+        run: cargo hakari disable
+
+      - name: Install protoc
+        uses: ./.github/actions/install-protoc
+
+      - name: Install nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: nextest@0.9.98
+
+      - name: Setup just
+        uses: extractions/setup-just@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check Cargo.lock file is updated
+        run: cargo update -w --locked
+
+      - name: Run lint
+        run: just lint
+
+      - name: Disk usage after lint
+        run: df -h / && du -sh target/ 2>/dev/null || true
+
+      - name: Run test
+        run: just test
+        env:
+          LOCAL_CLUSTER_RUNNER_FORWARD_LOGS: "true"
+          LOCAL_CLUSTER_RUNNER_RETAIN_TEMPDIR: "true"
+          LOCAL_CLUSTER_RUNNER_TEMPDIR: ${{ runner.temp }}/lcr
+
+      - name: Disk usage after test
+        if: always()
+        run: df -h / && du -sh target/ 2>/dev/null || true
+
+      - name: Run doctest
+        run: just doctest
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: local-cluster-runner
+          path: ${{ runner.temp }}/lcr
+
+      - name: Disk usage before cache save
+        if: always()
+        run: df -h / && du -sh target/ 2>/dev/null || true
+
+  docker:
+    name: Create docker image
+    uses: ./.github/workflows/docker.yml
+    with:
+      uploadImageAsTarball: "restate.tar"
+      platforms: linux/amd64
+      # additional features added for CI validation builds only
+      features: metadata-api
+
+  sdk-java:
+    name: Run SDK-Java integration tests
+    permissions:
+      contents: read
+      issues: read
+      checks: write
+      pull-requests: write
+      actions: read
+    secrets: inherit
+    needs: docker
+    uses: restatedev/sdk-java/.github/workflows/integration.yaml@main
+    with:
+      restateCommit: ${{ github.event.pull_request.head.sha || github.sha }}
+      serviceImage: "ghcr.io/restatedev/test-services-java:main"
+
+  sdk-java-vqueues:
+    name: Vqueues Run SDK-Java integration tests
+    # for the time being we don't expect all tests to pass
+    permissions:
+      contents: read
+      issues: read
+      checks: write
+      pull-requests: write
+      actions: read
+    secrets: inherit
+    needs: docker
+    uses: restatedev/sdk-java/.github/workflows/integration.yaml@main
+    with:
+      restateCommit: ${{ github.event.pull_request.head.sha || github.sha }}
+      serviceImage: "ghcr.io/restatedev/test-services-java:main"
+      testArtifactOutput: sdk-java-integration-vqueues-test-report
+      envVars: |
+        RESTATE_EXPERIMENTAL_ENABLE_VQUEUES=true
+      # we don't expect all tests to pass, that's why we continue on error
+      continueOnError: true
+
+  sdk-python:
+    name: Run SDK-Python integration tests
+    permissions:
+      contents: read
+      issues: read
+      checks: write
+      pull-requests: write
+      actions: read
+    secrets: inherit
+    needs: docker
+    uses: restatedev/sdk-python/.github/workflows/integration.yaml@main
+    with:
+      restateCommit: ${{ github.event.pull_request.head.sha || github.sha }}
+      serviceImage: "ghcr.io/restatedev/test-services-python:main"
+
+  sdk-python-protocol-v7:
+    name: Run SDK-Python integration tests with Protocol V7
+    permissions:
+      contents: read
+      issues: read
+      checks: write
+      pull-requests: write
+      actions: read
+    secrets: inherit
+    needs: docker
+    uses: restatedev/sdk-python/.github/workflows/integration.yaml@main
+    with:
+      restateCommit: ${{ github.event.pull_request.head.sha || github.sha }}
+      serviceImage: "ghcr.io/restatedev/test-services-python:main"
+      envVars: |
+        RESTATE_experimental_enable_protocol_v7=true
+      testArtifactOutput: sdk-python-protocol-v7-test-report
+
+  sdk-go:
+    name: Run SDK-Go integration tests
+    permissions:
+      contents: read
+      issues: read
+      checks: write
+      pull-requests: write
+      actions: read
+    secrets: inherit
+    needs: docker
+    uses: restatedev/sdk-go/.github/workflows/integration.yaml@main
+    with:
+      restateCommit: ${{ github.event.pull_request.head.sha || github.sha }}
+
+  sdk-typescript:
+    name: Run SDK-Typescript integration tests
+    permissions:
+      contents: read
+      issues: read
+      checks: write
+      pull-requests: write
+      actions: read
+    secrets: inherit
+    needs: docker
+    uses: restatedev/sdk-typescript/.github/workflows/integration.yaml@main
+    with:
+      restateCommit: ${{ github.event.pull_request.head.sha || github.sha }}
+      serviceImage: "ghcr.io/restatedev/test-services-node:main"
+
+  sdk-typescript-protocol-v7:
+    name: Run SDK-Typescript integration tests with Protocol V7
+    permissions:
+      contents: read
+      issues: read
+      checks: write
+      pull-requests: write
+      actions: read
+    secrets: inherit
+    needs: docker
+    uses: restatedev/sdk-typescript/.github/workflows/integration.yaml@main
+    with:
+      restateCommit: ${{ github.event.pull_request.head.sha || github.sha }}
+      envVars: |
+        RESTATE_experimental_enable_protocol_v7=true
+      testArtifactOutput: sdk-typescript-protocol-v7-test-report
+  
+  sdk-rust:
+    name: Run SDK-Rust integration tests
+    permissions:
+      contents: read
+      issues: read
+      checks: write
+      pull-requests: write
+      actions: read
+    secrets: inherit
+    needs: docker
+    uses: restatedev/sdk-rust/.github/workflows/integration.yaml@main
+    with:
+      restateCommit: ${{ github.event.pull_request.head.sha || github.sha }}
+      serviceImage: "ghcr.io/restatedev/test-services-rust:main"
+
+  e2e:
+    name: Run E2E tests
+    runs-on: warp-ubuntu-latest-x64-4x
+    permissions:
+      contents: read
+      issues: read
+      checks: write
+      pull-requests: write
+      actions: read
+    needs: docker
+    steps:
+      - name: Set up Docker containerd snapshotter
+        uses: docker/setup-docker-action@v4
+        with:
+          version: "v28.5.2"
+          set-host: true
+          daemon-config: |
+            {
+              "features": {
+                "containerd-snapshotter": true
+              }
+            }
+
+      ### Download the Restate container image, if needed
+      - name: Download restate snapshot from in-progress workflow
+        uses: actions/download-artifact@v4
+        with:
+          name: restate.tar
+      - name: Install restate snapshot
+        run: |
+          output=$(docker load --input restate.tar | head -n 1)
+          docker tag "${output#*: }" "localhost/restatedev/restate-commit-download:latest"
+          docker image ls -a
+
+      ### Run e2e tests
+      - name: Run E2E tests
+        uses: restatedev/e2e/e2e-tests@main
+        with:
+          testArtifactOutput: e2e-test-report
+          restateContainerImage: localhost/restatedev/restate-commit-download:latest
+
+  e2e-vqueues:
+    name: Run E2E tests with vqueues
+    runs-on: warp-ubuntu-latest-x64-4x
+    # we don't expect all tests to pass, that's why we continue on error
+    continue-on-error: true
+    permissions:
+      contents: read
+      issues: read
+      checks: write
+      pull-requests: write
+      actions: read
+    needs: docker
+    steps:
+      - name: Set up Docker containerd snapshotter
+        uses: docker/setup-docker-action@v4
+        with:
+          version: "v28.5.2"
+          set-host: true
+          daemon-config: |
+            {
+              "features": {
+                "containerd-snapshotter": true
+              }
+            }
+
+      ### Download the Restate container image, if needed
+      - name: Download restate snapshot from in-progress workflow
+        uses: actions/download-artifact@v4
+        with:
+          name: restate.tar
+      - name: Install restate snapshot
+        run: |
+          output=$(docker load --input restate.tar | head -n 1)
+          docker tag "${output#*: }" "localhost/restatedev/restate-commit-download:latest"
+          docker image ls -a
+
+      ### Run e2e tests with vqueues enabled.
+      - name: Run E2E tests
+        uses: restatedev/e2e/e2e-tests@main
+        with:
+          testArtifactOutput: e2e-test-vqueues-report
+          restateContainerImage: localhost/restatedev/restate-commit-download:latest
+          envVars: |
+            RESTATE_EXPERIMENTAL_ENABLE_VQUEUES=true
+          # We will never support the forward compatibility tests for v1.5 when using vqueues.
+          # The backward compatibility tests are temporarily disabled until we support migration from v1.5 -> v1.6
+          exclusions: |
+            exclusions:
+              "versionCompat":
+                - "dev.restate.sdktesting.tests.ForwardCompatibilityTest.*"
+                - "dev.restate.sdktesting.tests.BackwardCompatibilityTest.*"
+
+  jepsen:
+    if: github.event.repository.fork == false && github.event.pull_request.head.repo.full_name == 'restatedev/restate' && github.ref == 'refs/heads/main'
+    runs-on: warp-ubuntu-latest-arm64-4x
+    name: Run Jepsen tests
+    env:
+      CLUSTER_NAME: restatedev-restate-${{ github.event.pull_request.number != null && format('pr{0}', github.event.pull_request.number) || format('run{0}', github.run_id) }}
+    permissions:
+      actions: read
+      checks: write
+      contents: read
+      id-token: write # NB: can obtain OIDC tokens on behalf of this repository!
+      issues: read
+      pull-requests: write
+
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: us-east-1 # co-locate with WarpBuild worker
+          role-to-assume: "arn:aws:iam::339713187748:role/github-restatedev-restate-actions-role"
+      - name: Setup Jepsen cluster ${{ env.CLUSTER_NAME }}
+        uses: restatedev/jepsen/.github/actions/setup@main
+        with:
+          ref: ${{ inputs.ref }}
+          clusterName: ${{ env.CLUSTER_NAME }}
+          bucketName: "restate-jepsen-test-clusters-us-east-1"
+      - name: Drop AWS credentials
+        run: |
+          echo "AWS_ACCESS_KEY_ID=" >> $GITHUB_ENV
+          echo "AWS_SECRET_ACCESS_KEY=" >> $GITHUB_ENV
+          echo "AWS_SESSION_TOKEN=" >> $GITHUB_ENV
+
+      - name: Wait for Docker image artifact
+        id: wait-for-docker
+        uses: fountainhead/action-wait-for-check@v1.2.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          checkName: "Create docker image / build-and-push-image"
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          timeoutSeconds: 1800
+          intervalSeconds: 10
+
+      - name: Run Jepsen tests
+        uses: restatedev/jepsen/.github/actions/run-tests@main
+        if: steps.wait-for-docker.outputs.conclusion == 'success'
+        with:
+          restateCommit: ${{ github.event.pull_request.head.sha || github.sha }}
+          testConfig: '{ "workloads": "set-vo set-mds set-mds-s3", "nemeses": "partition-random-node", "duration": "60", "rate": "10", "concurrency": "5n", "testCount": "1" }'
+
+      - name: Fail if no Docker artifact
+        if: steps.wait-for-docker.outputs.conclusion != 'success'
+        run: |
+          echo "::error::Docker step did not complete?"
+          exit 1
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: us-east-1
+          role-to-assume: "arn:aws:iam::339713187748:role/github-restatedev-restate-actions-role"
+        if: always()
+      - name: Tear down Jepsen cluster ${{ env.CLUSTER_NAME }}
+        uses: restatedev/jepsen/.github/actions/teardown@main
+        if: always()
+        with:
+          clusterName: ${{ env.CLUSTER_NAME }}
+          bucketName: "restate-jepsen-test-clusters-us-east-1"

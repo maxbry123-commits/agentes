@@ -1,0 +1,14 @@
+ARG GOLANG=golang:1.26.7-alpine3.24
+
+FROM ${GOLANG} AS test-base
+
+RUN apk -U --no-cache add bash jq
+ENV K3S_SOURCE=/go/src/github.com/k3s-io/k3s/
+WORKDIR ${K3S_SOURCE}
+
+COPY . ${K3S_SOURCE}
+
+FROM test-base AS test-mods
+
+COPY ./scripts/test-mods /bin/
+ENTRYPOINT ["/bin/test-mods"]

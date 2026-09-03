@@ -1,0 +1,904 @@
+// Copyright (c) 2023 - 2026 Restate Software, Inc., Restate GmbH.
+// All rights reserved.
+//
+// Use of this software is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date specified in that file, in accordance with
+// the Business Source License, use of this software will be governed
+// by the Apache License, Version 2.0.
+
+mod entry;
+mod inbox;
+mod inbox_reader;
+mod input;
+mod key_codec;
+mod metadata;
+mod reader;
+mod running_reader;
+
+use std::collections::BTreeSet;
+use std::pin::Pin;
+
+pub use entry::{EntryStatusKey, EntryStatusKeyRef};
+pub use inbox::InboxKey;
+pub use input::InputPayloadKey;
+pub use metadata::*;
+
+use anyhow::Context;
+use bilrost::{BorrowedMessage, Message, OwnedMessage};
+use bytes::BytesMut;
+use futures::FutureExt;
+use rocksdb::{DBRawIteratorWithThreadMode, ReadOptions};
+use strum::EnumCount;
+use tracing::error;
+
+use restate_rocksdb::{Priority, StorageTaskKind};
+use restate_storage_api::StorageError;
+use restate_storage_api::vqueue_table::filters::{ScanEntryIdFilter, ScanMetaFilter};
+use restate_storage_api::vqueue_table::metadata::{VQueueMeta, VQueueMetaRef};
+use restate_storage_api::vqueue_table::{
+    EntryKey, EntryMetadata, EntryStatusHeader, EntryValue, ReadVQueueTable, ScanVQueueTable,
+    Stage, Status, WriteVQueueTable, stats::EntryStatistics,
+};
+use restate_storage_api::vqueue_table::{
+    RawStatusHeader, RawStatusHeaderRef, ScanVQueueEntries, ScanVQueueEntryStatusTable,
+    ScanVQueueMetaTable,
+};
+use restate_types::sharding::{KeyRange, PartitionKey};
+use restate_types::vqueues::{EntryId, Seq, VQueueEntryId, VQueueId};
+
+use self::entry::{EntryStatusKeyBuilder, entry_status_header_from_raw};
+use crate::keys::{DecodeTableKey, EncodeTableKey, EncodeTableKeyPrefix, KeyKind};
+use crate::scan::TableScan;
+use crate::vqueue_table::input::InputPayloadKeyRef;
+use crate::{
+    PartitionDb, PartitionStore, PartitionStoreTransaction, Result, StorageAccess, TableKind,
+    break_on_err,
+};
+
+impl ScanVQueueTable for PartitionDb {
+    fn scan_active_vqueues(
+        &self,
+        mut on_item: impl FnMut(VQueueId, VQueueMeta),
+    ) -> Result<(), StorageError> {
+        const BATCH_SIZE: usize = 1000;
+        // read the active vqueues list
+        let mut iterator_opts = ReadOptions::default();
+        // NOTE: Cannot use key prefixes because the prefix length doesn't match our start
+        // key.
+        // iterator_opts.set_prefix_same_as_start(true);
+        iterator_opts.set_async_io(true);
+        // Do not remove this!
+        iterator_opts.set_total_order_seek(true);
+        // this is not the place to be concerned about corruption, we favor speed
+        // over safety for this particular use-case.
+        iterator_opts.set_verify_checksums(false);
+
+        // We know how big the prefix is
+        let mut key_buf = [0u8; ActiveKey::by_partition_prefix_len()];
+        {
+            // Serialize prefix bytes
+            // so we go directly to custom serialization because ActiveKey calls for
+            // the entire VQueueId, but we only want to supply the partition-key portion
+            // of it.
+            let mut key_buf = key_buf.as_mut();
+            ActiveKey::serialize_key_kind(&mut key_buf);
+            crate::keys::serialize(&self.partition().key_range.start(), &mut key_buf);
+        }
+
+        // setting iterator bounds.
+        iterator_opts.set_iterate_lower_bound(key_buf);
+
+        // the end prefix is one byte beyond the max partition key on this key kind prefix.
+        {
+            // Serialize prefix bytes
+            // so we go directly to custom serialization because ActiveKey calls for
+            // the entire VQueueId, but we only want to supply the partition-key portion
+            // of it.
+            let mut key_buf = key_buf.as_mut();
+            ActiveKey::serialize_key_kind(&mut key_buf);
+            crate::keys::serialize(&self.partition().key_range.end(), &mut key_buf);
+        }
+        let _success = crate::convert_to_upper_bound(&mut key_buf);
+        debug_assert!(_success);
+        iterator_opts.set_iterate_upper_bound(key_buf);
+
+        let rocksdb = self.rocksdb().inner().as_raw_db();
+
+        let cf = self.table_cf_handle(crate::TableKind::VQueue);
+
+        let mut it = rocksdb.raw_iterator_cf_opt(cf, iterator_opts);
+
+        it.seek_to_first();
+
+        let mut meta_keys_bytes_buf =
+            BytesMut::with_capacity(BATCH_SIZE * MetaKey::serialized_length_fixed());
+        // read items, and every 1000 we batch them up and perform a multi-get
+
+        let mut meta_keys_bytes: Vec<BytesMut> = Vec::with_capacity(BATCH_SIZE);
+        let mut queue_ids: Vec<VQueueId> = Vec::with_capacity(BATCH_SIZE);
+        let mut end = false;
+
+        while !end {
+            match it.key() {
+                Some(mut key) => {
+                    let meta_key_bytes = {
+                        let meta_key = MetaKey::from(ActiveKey::deserialize_from(&mut key)?);
+                        EncodeTableKey::serialize_to(&meta_key, &mut meta_keys_bytes_buf);
+                        queue_ids.push(VQueueId::from(meta_key));
+                        meta_keys_bytes_buf.split()
+                    };
+                    meta_keys_bytes.push(meta_key_bytes);
+                    it.next();
+                }
+                None => {
+                    it.status()
+                        .context("failed to scan active vqueues")
+                        .map_err(StorageError::Generic)?;
+                    end = true;
+                }
+            }
+
+            // every 1000, we perform a multi-get to fetch the vqueues from rocksdb.
+            if meta_keys_bytes.len() == BATCH_SIZE || (end && !meta_keys_bytes.is_empty()) {
+                let mut readopts = ReadOptions::default();
+                readopts.set_async_io(true);
+                let results =
+                    rocksdb.batched_multi_get_cf_opt(cf, &meta_keys_bytes, true, &readopts);
+                meta_keys_bytes.clear();
+
+                for (queue_id, result) in queue_ids.drain(..).zip(results) {
+                    let result = result.context("failed to get active vqueue in multi-get")?;
+                    let Some(meta) = result else {
+                        // data integrity error, active vqueues must be present in meta
+                        error!(
+                            "Active vqueues must be present in meta. Active vqueue {queue_id:?} was not found in vqueue_meta index during the batched read"
+                        );
+                        return Err(StorageError::DataIntegrityError);
+                    };
+                    let meta = VQueueMeta::decode(&mut meta.as_ref())?;
+                    on_item(queue_id, meta);
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+impl WriteVQueueTable for PartitionStoreTransaction<'_> {
+    fn create_vqueue(&mut self, qid: &VQueueId, meta: &VQueueMeta) {
+        let key_buffer = MetaKey::from(qid).to_bytes();
+        let value_buf = {
+            let value_buf = self.cleared_value_buffer_mut(meta.encoded_len());
+            // unwrap is safe because we know the buffer is big enough.
+            meta.encode(value_buf).unwrap();
+            value_buf.split()
+        };
+
+        self.raw_put_cf(KeyKind::VQueueMeta, key_buffer, value_buf);
+    }
+
+    fn update_vqueue(
+        &mut self,
+        qid: &VQueueId,
+        update: &restate_storage_api::vqueue_table::metadata::Update,
+    ) {
+        let key_buffer = MetaKey::from(qid).to_bytes();
+        self.raw_merge_cf(
+            KeyKind::VQueueMeta,
+            key_buffer,
+            update.encode_contiguous().into_vec(),
+        );
+    }
+
+    fn put_vqueue_inbox(
+        &mut self,
+        qid: &VQueueId,
+        stage: Stage,
+        key: &EntryKey,
+        value: &EntryValue,
+    ) {
+        let key_buffer = inbox::encode_stage_key(stage, qid, key);
+
+        let value_buf = {
+            let value_buf = self.cleared_value_buffer_mut(value.encoded_len());
+            // unwrap is safe because we know the buffer is big enough.
+            value.encode(value_buf).unwrap();
+            value_buf.split()
+        };
+
+        // Note: the key kind here is not used, so we always use the InboxStage key kind.
+        self.raw_put_cf(KeyKind::VQueueInboxStage, key_buffer, value_buf)
+    }
+
+    fn get_vqueue_inbox(
+        &mut self,
+        qid: &VQueueId,
+        stage: Stage,
+        key: &EntryKey,
+    ) -> Result<Option<EntryValue>> {
+        let key_buffer = inbox::encode_stage_key(stage, qid, key);
+
+        Ok(match self.get(TableKind::VQueue, key_buffer)? {
+            Some(raw_value) => Some(EntryValue::decode(&mut raw_value.as_ref())?),
+            None => None,
+        })
+    }
+
+    fn delete_vqueue_inbox(&mut self, qid: &VQueueId, stage: Stage, key: &EntryKey) {
+        // Note: the key kind here is not used, so we always use the InboxKey.
+        self.raw_single_delete_cf(
+            KeyKind::VQueueInboxStage,
+            inbox::encode_stage_key(stage, qid, key),
+        );
+    }
+
+    fn mark_vqueue_as_active(&mut self, qid: &VQueueId) {
+        let mut key_buffer = [0u8; ActiveKey::serialized_length_fixed()];
+        ActiveKeyRef::builder()
+            .qid(qid)
+            .serialize_to(&mut key_buffer.as_mut());
+        self.raw_put_cf(KeyKind::VQueueActive, key_buffer, []);
+    }
+
+    fn mark_vqueue_as_dormant(&mut self, qid: &restate_types::vqueues::VQueueId) {
+        let mut key_buffer = [0u8; ActiveKey::serialized_length_fixed()];
+        ActiveKeyRef::builder()
+            .qid(qid)
+            .serialize_to(&mut key_buffer.as_mut());
+        self.raw_single_delete_cf(KeyKind::VQueueActive, key_buffer);
+    }
+
+    fn put_vqueue_entry_status(
+        &mut self,
+        qid: &VQueueId,
+        stage: Stage,
+        entry_key: &EntryKey,
+        metadata: &EntryMetadata,
+        stats: EntryStatistics,
+        status: Status,
+    ) {
+        let mut key_buffer = [0u8; EntryStatusKey::serialized_length_fixed()];
+        EntryStatusKeyRef::builder()
+            .partition_key(&qid.partition_key())
+            .id(entry_key.entry_id())
+            .serialize_to(&mut key_buffer.as_mut());
+
+        let header = RawStatusHeaderRef {
+            qid: qid.into(),
+            stage,
+            has_lock: entry_key.has_lock(),
+            next_run_at: entry_key.run_at(),
+            seq: entry_key.seq(),
+            metadata: metadata.into(),
+            stats,
+            status,
+        };
+
+        let value_buf = {
+            let header_len = header.encoded_len();
+            let header_len = header_len + bilrost::encoding::encoded_len_varint(header_len as u64);
+
+            let value_buf = self.cleared_value_buffer_mut(header_len);
+            // unwrap is safe because we know the buffer is big enough.
+            header.encode_length_delimited(value_buf).unwrap();
+            value_buf.split()
+        };
+
+        self.raw_put_cf(KeyKind::VQueueEntryStatus, key_buffer, value_buf);
+    }
+
+    fn delete_vqueue_entry_status(&mut self, partition_key: PartitionKey, id: &EntryId) {
+        let mut key_buffer = [0u8; EntryStatusKey::serialized_length_fixed()];
+        EntryStatusKeyRef::builder()
+            .partition_key(&partition_key)
+            .id(id)
+            .serialize_to(&mut key_buffer.as_mut());
+
+        // Cannot use single delete because we constantly overwrite the same key on transitions
+        self.raw_delete_cf(KeyKind::VQueueEntryStatus, key_buffer);
+    }
+
+    fn put_vqueue_input_payload<E>(
+        &mut self,
+        qid: &VQueueId,
+        seq: impl Into<Seq>,
+        id: &EntryId,
+        item: E,
+    ) where
+        E: Message,
+    {
+        let seq = seq.into();
+        let mut key_buffer = [0u8; InputPayloadKey::serialized_length_fixed()];
+        InputPayloadKeyRef::builder()
+            .qid(qid)
+            .seq(&seq)
+            .id(id)
+            .serialize_to(&mut key_buffer.as_mut());
+
+        let value_buffer = self.cleared_value_buffer_mut(item.encoded_len());
+
+        item.encode(value_buffer)
+            .expect("enough space to encode item");
+        let value = value_buffer.split();
+
+        self.raw_put_cf(KeyKind::VQueueInput, key_buffer, value);
+    }
+
+    fn delete_vqueue_input_payload(&mut self, qid: &VQueueId, seq: impl Into<Seq>, id: &EntryId) {
+        let key_buf = {
+            let seq = seq.into();
+            let key = InputPayloadKeyRef::builder().qid(qid).seq(&seq).id(id);
+            let key_buf = self.cleared_key_buffer_mut(key.serialized_length());
+            key.serialize_to(key_buf);
+            key_buf.split()
+        };
+
+        self.raw_single_delete_cf(KeyKind::VQueueInput, key_buf);
+    }
+}
+
+impl ReadVQueueTable for PartitionStoreTransaction<'_> {
+    async fn get_vqueue(&self, qid: &VQueueId) -> Result<Option<VQueueMeta>, StorageError> {
+        let mut key_buffer = [0u8; MetaKey::serialized_length_fixed()];
+        MetaKeyRef::builder()
+            .qid(qid)
+            .serialize_to(&mut key_buffer.as_mut());
+        let Some(raw_value) = self.get(TableKind::VQueue, key_buffer)? else {
+            return Ok(None);
+        };
+
+        Ok(Some(VQueueMeta::decode(&mut raw_value.as_ref())?))
+    }
+
+    async fn get_vqueue_entry_status(
+        &self,
+        partition_key: PartitionKey,
+        id: &EntryId,
+    ) -> Result<Option<impl EntryStatusHeader + 'static>> {
+        let mut key_buffer = [0u8; EntryStatusKey::serialized_length_fixed()];
+        EntryStatusKeyRef::builder()
+            .partition_key(&partition_key)
+            .id(id)
+            .serialize_to(&mut key_buffer.as_mut());
+
+        let Some(raw_value) = self.get(TableKind::VQueue, key_buffer)? else {
+            return Ok(None);
+        };
+
+        let header = RawStatusHeader::decode_length_delimited(&mut raw_value.as_ref())?;
+
+        Ok(Some(entry_status_header_from_raw(*id, header)))
+    }
+
+    async fn get_vqueue_input_payload<E>(
+        &self,
+        qid: &VQueueId,
+        seq: impl Into<Seq>,
+        id: &EntryId,
+    ) -> Result<Option<E>>
+    where
+        E: OwnedMessage,
+    {
+        let mut key_buffer = [0u8; InputPayloadKey::serialized_length_fixed()];
+        let seq = seq.into();
+        InputPayloadKeyRef::builder()
+            .qid(qid)
+            .seq(&seq)
+            .id(id)
+            .serialize_to(&mut key_buffer.as_mut());
+
+        let Some(raw_value) = self.get(TableKind::VQueue, key_buffer)? else {
+            return Ok(None);
+        };
+
+        Ok(Some(E::decode(&mut raw_value.as_ref())?))
+    }
+}
+
+impl ScanVQueueMetaTable for PartitionStore {
+    fn for_each_vqueue_meta<F>(
+        &self,
+        filter: ScanMetaFilter,
+        mut f: F,
+    ) -> Result<impl Future<Output = Result<()>> + Send>
+    where
+        F: for<'a> FnMut((&'a VQueueId, &'a VQueueMetaRef<'a>)) -> std::ops::ControlFlow<()>
+            + Send
+            + Sync
+            + 'static,
+    {
+        // Fast path: each vqueue id maps to exactly one fixed-length key, so an
+        // exact set is served via batched multi-get calls instead of scanning
+        // every metadata row in the partition-key range.
+        if let ScanMetaFilter::MetaIdSet(ids) = filter {
+            return Ok(multi_get_vqueue_meta(self, ids, f).boxed());
+        }
+
+        let scan = match filter {
+            ScanMetaFilter::PartitionKey(range) => {
+                TableScan::ScanPartitionKeyRange::<MetaKey>(range)
+            }
+            ScanMetaFilter::MetaIdRange(range) => {
+                let start = MetaKey::from(&range.start);
+                let end = MetaKey::from(&range.last);
+                TableScan::RangeInclusive(start, end)
+            }
+            ScanMetaFilter::MetaIdSet(_) => unreachable!("handled above"),
+        };
+
+        let scan_fut = self
+            .iterator_for_each(
+                "df-vqueue-meta",
+                Priority::Low,
+                scan,
+                move |(mut key, value)| {
+                    let meta_key = break_on_err(MetaKey::deserialize_from(&mut key))?;
+                    let meta = break_on_err(
+                        VQueueMetaRef::decode_borrowed(value).map_err(StorageError::BilrostDecode),
+                    )?;
+
+                    let (vqueue_id,) = meta_key.split();
+                    f((&vqueue_id, &meta)).map_break(Ok)
+                },
+            )
+            .map_err(|_| StorageError::OperationalError)?;
+
+        Ok(scan_fut.boxed())
+    }
+}
+
+/// Maximum number of vqueue-metadata keys passed to one RocksDB multi-get call.
+const VQUEUE_META_MULTI_GET_BATCH_SIZE: usize = 500;
+
+/// Serves a vqueue-metadata lookup for a known set of ids via batched
+/// `batched_multi_get` calls, dispatched on the storage background thread-pool.
+///
+/// `ids` is already sorted in on-disk key order (`VQueueId`'s `Ord` matches its
+/// key byte encoding, which is prefixed by the partition key), which is what
+/// `batched_multi_get_cf_opt`'s `sorted_input=true` requires.
+///
+/// `MetaKey`s are fixed-length, so each batch is packed back-to-back into a
+/// single buffer and handed to the multi-get as `chunks_exact` slices.
+fn multi_get_vqueue_meta<F>(
+    store: &PartitionStore,
+    ids: BTreeSet<VQueueId>,
+    mut f: F,
+) -> impl Future<Output = Result<()>> + Send
+where
+    F: for<'a> FnMut((&'a VQueueId, &'a VQueueMetaRef<'a>)) -> std::ops::ControlFlow<()>
+        + Send
+        + Sync
+        + 'static,
+{
+    const KEY_LEN: usize = MetaKey::serialized_length_fixed();
+
+    let rocksdb = store.partition_db().rocksdb().clone();
+    let cf_name: restate_rocksdb::CfName = store.partition_db().partition().cf_name().into();
+
+    async move {
+        rocksdb
+            .run_background_read_op(
+                "df-vqueue-meta",
+                StorageTaskKind::MultiGet,
+                Priority::Low,
+                move |raw_db| -> Result<()> {
+                    let Some(cf) = raw_db.cf_handle(cf_name.as_str()) else {
+                        return Err(StorageError::Generic(anyhow::anyhow!(
+                            "column family {cf_name} not found for vqueue meta multi-get"
+                        )));
+                    };
+
+                    let batch_capacity = ids.len().min(VQUEUE_META_MULTI_GET_BATCH_SIZE);
+                    let mut key_buf = BytesMut::with_capacity(batch_capacity * KEY_LEN);
+                    let mut batch_ids = Vec::with_capacity(batch_capacity);
+
+                    let mut readopts = ReadOptions::default();
+                    // future proofing to make use of parallel L0 reads and async-io
+                    // if/when we build rocksdb with COROUTINES=1 and IO-URING support.
+                    // by default, this will not do anything.
+                    readopts.set_async_io(true);
+                    readopts.set_optimize_multiget_for_io(true);
+
+                    let mut ids = ids.into_iter();
+                    loop {
+                        key_buf.clear();
+                        batch_ids.clear();
+
+                        for id in ids.by_ref().take(VQUEUE_META_MULTI_GET_BATCH_SIZE) {
+                            EncodeTableKey::serialize_to(&MetaKey::from(&id), &mut key_buf);
+                            batch_ids.push(id);
+                        }
+
+                        if batch_ids.is_empty() {
+                            break;
+                        }
+
+                        let results = raw_db.batched_multi_get_cf_opt(
+                            &cf,
+                            key_buf.chunks_exact(KEY_LEN),
+                            true,
+                            &readopts,
+                        );
+
+                        for (id, result) in batch_ids.iter().zip(results) {
+                            let Some(value) =
+                                result.map_err(|e| StorageError::Generic(e.into()))?
+                            else {
+                                continue;
+                            };
+
+                            let meta = VQueueMetaRef::decode_borrowed(value.as_ref())
+                                .map_err(StorageError::BilrostDecode)?;
+
+                            if f((id, &meta)).is_break() {
+                                return Ok(());
+                            }
+                        }
+
+                        if batch_ids.len() < VQUEUE_META_MULTI_GET_BATCH_SIZE {
+                            break;
+                        }
+                    }
+
+                    Ok(())
+                },
+            )
+            .await
+            .map_err(|_| StorageError::OperationalError)?
+    }
+}
+
+impl ScanVQueueEntryStatusTable for PartitionStore {
+    fn for_each_vqueue_entry_status<F>(
+        &self,
+        filter: ScanEntryIdFilter,
+        mut f: F,
+    ) -> Result<impl Future<Output = Result<()>> + Send>
+    where
+        F: for<'a> FnMut(
+                PartitionKey,
+                &'a EntryId,
+                &'a RawStatusHeaderRef<'a>,
+            ) -> std::ops::ControlFlow<()>
+            + Send
+            + Sync
+            + 'static,
+    {
+        if let ScanEntryIdFilter::EntryIdSet(ids) = filter {
+            return Ok(multi_get_vqueue_entry_status(self, ids, f).boxed());
+        }
+
+        let scan = match filter {
+            ScanEntryIdFilter::PartitionKey(range) => {
+                TableScan::ScanPartitionKeyRange::<EntryStatusKeyBuilder>(range)
+            }
+            ScanEntryIdFilter::EntryIdRange(range) => {
+                let start_partition_key = range.start.partition_key();
+                let end_partition_key = range.last.partition_key();
+                let start = EntryStatusKey::builder()
+                    .partition_key(start_partition_key)
+                    .id(range.start.into());
+
+                let end = EntryStatusKey::builder()
+                    .partition_key(end_partition_key)
+                    .id(range.last.into());
+
+                TableScan::RangeInclusive(start, end)
+            }
+            ScanEntryIdFilter::EntryIdSet(_) => unreachable!("handled above"),
+        };
+
+        let scan_fut = self
+            .iterator_for_each(
+                "df-vqueue-entry-status",
+                Priority::Low,
+                scan,
+                move |(mut key, mut value)| {
+                    let status_key = break_on_err(EntryStatusKey::deserialize_from(&mut key))?;
+                    let (partition_key, entry_id) = status_key.split();
+                    let header = break_on_err(
+                        RawStatusHeaderRef::decode_borrowed_length_delimited(&mut value)
+                            .map_err(StorageError::BilrostDecode),
+                    )?;
+
+                    f(partition_key, &entry_id, &header).map_break(Ok)
+                },
+            )
+            .map_err(|_| StorageError::OperationalError)?;
+
+        Ok(scan_fut.boxed())
+    }
+}
+
+/// Maximum number of entry-status keys passed to one RocksDB multi-get call.
+const ENTRY_STATUS_MULTI_GET_BATCH_SIZE: usize = 500;
+
+fn multi_get_vqueue_entry_status<F>(
+    store: &PartitionStore,
+    ids: BTreeSet<VQueueEntryId>,
+    mut f: F,
+) -> impl Future<Output = Result<()>> + Send
+where
+    F: for<'a> FnMut(
+            PartitionKey,
+            &'a EntryId,
+            &'a RawStatusHeaderRef<'a>,
+        ) -> std::ops::ControlFlow<()>
+        + Send
+        + Sync
+        + 'static,
+{
+    const KEY_LEN: usize = EntryStatusKey::serialized_length_fixed();
+
+    let rocksdb = store.partition_db().rocksdb().clone();
+    let cf_name: restate_rocksdb::CfName = store.partition_db().partition().cf_name().into();
+
+    async move {
+        rocksdb
+            .run_background_read_op(
+                "df-vqueue-entry-status",
+                StorageTaskKind::MultiGet,
+                Priority::Low,
+                move |raw_db| -> Result<()> {
+                    let Some(cf) = raw_db.cf_handle(cf_name.as_str()) else {
+                        return Err(StorageError::Generic(anyhow::anyhow!(
+                            "column family {cf_name} not found for vqueue entry-status multi-get"
+                        )));
+                    };
+
+                    let batch_capacity = ids.len().min(ENTRY_STATUS_MULTI_GET_BATCH_SIZE);
+                    let mut key_buf = BytesMut::with_capacity(batch_capacity * KEY_LEN);
+                    let mut batch_ids = Vec::with_capacity(batch_capacity);
+
+                    let mut readopts = ReadOptions::default();
+                    // future proofing to make use of parallel L0 reads and async-io
+                    // if/when we build rocksdb with COROUTINES=1 and IO-URING support.
+                    // by default, this will not do anything.
+                    readopts.set_async_io(true);
+                    readopts.set_optimize_multiget_for_io(true);
+
+                    let mut ids = ids.into_iter();
+                    loop {
+                        key_buf.clear();
+                        batch_ids.clear();
+
+                        for id in ids.by_ref().take(ENTRY_STATUS_MULTI_GET_BATCH_SIZE) {
+                            EncodeTableKey::serialize_to(
+                                &EntryStatusKey {
+                                    partition_key: id.partition_key(),
+                                    id: EntryId::from(id),
+                                },
+                                &mut key_buf,
+                            );
+                            batch_ids.push(id);
+                        }
+
+                        if batch_ids.is_empty() {
+                            break;
+                        }
+
+                        let results = raw_db.batched_multi_get_cf_opt(
+                            &cf,
+                            key_buf.chunks_exact(KEY_LEN),
+                            true,
+                            &readopts,
+                        );
+
+                        for (id, result) in batch_ids.iter().zip(results) {
+                            let Some(value) =
+                                result.map_err(|e| StorageError::Generic(e.into()))?
+                            else {
+                                continue;
+                            };
+
+                            let entry_id = EntryId::from(*id);
+                            let mut value = value.as_ref();
+                            let header =
+                                RawStatusHeaderRef::decode_borrowed_length_delimited(&mut value)
+                                    .map_err(StorageError::BilrostDecode)?;
+
+                            if f(id.partition_key(), &entry_id, &header).is_break() {
+                                return Ok(());
+                            }
+                        }
+
+                        if batch_ids.len() < ENTRY_STATUS_MULTI_GET_BATCH_SIZE {
+                            break;
+                        }
+                    }
+
+                    Ok(())
+                },
+            )
+            .await
+            .map_err(|_| StorageError::OperationalError)?
+    }
+}
+
+/// Default scan order when no stages are explicitly requested. Skips
+/// `Stage::Unknown` which has no on-disk representation.
+const ALL_SCANNABLE_STAGES: [Stage; Stage::COUNT - 1] = [
+    Stage::Inbox,
+    Stage::Running,
+    Stage::Suspended,
+    Stage::Paused,
+    Stage::Finished,
+];
+
+fn scan_single_stage<'store, K, F>(
+    partition_store: &'store PartitionStore,
+    scanner_name: &'static str,
+    range: KeyRange,
+    stage: Stage,
+    f: std::sync::Arc<tokio::sync::Mutex<F>>,
+) -> Result<Pin<Box<dyn Future<Output = Result<()>> + Send + 'store>>>
+where
+    K: EncodeTableKeyPrefix + 'store,
+    F: for<'a> FnMut(
+            (&'a VQueueId, Stage, &'a EntryKey, &'a EntryValue),
+        ) -> std::ops::ControlFlow<()>
+        + Send
+        + 'static,
+{
+    // Each stage holds its own Arc clone exclusively inside the iterator
+    // closure. Once iteration acquires the first row, the closure takes the
+    // Arc and converts it to an owned mutex guard that it holds for the rest
+    // of the scan; the guard (and thus the Arc) is dropped on the iterator's
+    // background thread. This keeps the wrapped callback off the tokio
+    // runtime, which is required because data-fusion's `BatchSender` performs
+    // blocking I/O during `Drop`.
+    let mut f_arc = Some(f);
+    let mut f_guard: Option<tokio::sync::OwnedMutexGuard<F>> = None;
+
+    let future = partition_store
+        .iterator_for_each(
+            scanner_name,
+            Priority::Low,
+            TableScan::ScanPartitionKeyRange::<K>(range),
+            move |(mut key, mut value)| {
+                // Skip the key-kind byte; the iterator was opened with a stage-specific
+                // prefix so every row belongs to `stage`.
+                break_on_err(KeyKind::deserialize(&mut key))?;
+                let qid: VQueueId = break_on_err(crate::keys::deserialize(&mut key))?;
+                let entry_key: EntryKey = break_on_err(crate::keys::deserialize(&mut key))?;
+                let entry = break_on_err(
+                    EntryValue::decode(&mut value).map_err(StorageError::BilrostDecode),
+                )?;
+
+                let f = f_guard.get_or_insert_with(|| {
+                    f_arc
+                        .take()
+                        .expect("Arc is taken at most once per iterator")
+                        .blocking_lock_owned()
+                });
+                f((&qid, stage, &entry_key, &entry)).map_break(Ok)
+            },
+        )
+        .map_err(|_| StorageError::OperationalError)?;
+
+    Ok(Box::pin(future))
+}
+
+fn scanner_for_stage<'store, F>(
+    partition_store: &'store PartitionStore,
+    range: KeyRange,
+    stage: Stage,
+    f: std::sync::Arc<tokio::sync::Mutex<F>>,
+) -> Result<Pin<Box<dyn Future<Output = Result<()>> + Send + 'store>>>
+where
+    F: for<'a> FnMut(
+            (&'a VQueueId, Stage, &'a EntryKey, &'a EntryValue),
+        ) -> std::ops::ControlFlow<()>
+        + Send
+        + 'static,
+{
+    match stage {
+        Stage::Unknown => Err(StorageError::Generic(anyhow::anyhow!(
+            "Unknown stage can't be scanned"
+        ))),
+        Stage::Inbox => {
+            scan_single_stage::<inbox::InboxKey, _>(partition_store, "df-vqueues", range, stage, f)
+        }
+        Stage::Running => scan_single_stage::<inbox::RunningKey, _>(
+            partition_store,
+            "df-vqueues",
+            range,
+            stage,
+            f,
+        ),
+        Stage::Suspended => scan_single_stage::<inbox::SuspendedKey, _>(
+            partition_store,
+            "df-vqueues",
+            range,
+            stage,
+            f,
+        ),
+        Stage::Paused => {
+            scan_single_stage::<inbox::PausedKey, _>(partition_store, "df-vqueues", range, stage, f)
+        }
+        Stage::Finished => scan_single_stage::<inbox::FinishedKey, _>(
+            partition_store,
+            "df-vqueues",
+            range,
+            stage,
+            f,
+        ),
+    }
+}
+
+impl ScanVQueueEntries for PartitionStore {
+    fn for_each_vqueue_entry<F, S>(
+        &self,
+        range: KeyRange,
+        stages: S,
+        f: F,
+    ) -> Result<impl Future<Output = Result<()>> + Send>
+    where
+        F: for<'a> FnMut(
+                (&'a VQueueId, Stage, &'a EntryKey, &'a EntryValue),
+            ) -> std::ops::ControlFlow<()>
+            + Send
+            + Sync
+            + 'static,
+        S: IntoIterator<Item = Stage>,
+    {
+        // The Arc must not outlive the iterator closures: BatchSender's Drop
+        // performs blocking I/O, so its final drop has to happen on a storage
+        // thread, not on a tokio worker. We achieve that by moving the *only*
+        // Arc handle through the loop — every stage but the last gets a clone,
+        // and the last stage consumes the remaining handle. Once this function
+        // returns, no Arc references survive outside the spawned iterator
+        // tasks, so the last task to finish runs the Drop on its storage
+        // thread. See also the comment in `scan_single_stage`.
+        let stages: Vec<Stage> = {
+            let mut iter = stages.into_iter().peekable();
+            if iter.peek().is_some() {
+                iter.collect()
+            } else {
+                ALL_SCANNABLE_STAGES.to_vec()
+            }
+        };
+        debug_assert!(
+            !stages.is_empty(),
+            "stages iterator and fallback are both non-empty"
+        );
+
+        let last_idx = stages.len() - 1;
+        let mut f_opt = Some(std::sync::Arc::new(tokio::sync::Mutex::new(f)));
+        let mut scans = Vec::with_capacity(stages.len());
+        for (i, stage) in stages.into_iter().enumerate() {
+            let f_for_stage = if i < last_idx {
+                f_opt
+                    .as_ref()
+                    .expect("f_opt is taken only on the last stage")
+                    .clone()
+            } else {
+                f_opt.take().expect("f_opt is taken only on the last stage")
+            };
+            scans.push(scanner_for_stage(self, range, stage, f_for_stage)?);
+        }
+
+        Ok(async move {
+            for scan in scans {
+                scan.await?;
+            }
+            Ok(())
+        })
+    }
+}
+
+// ## Safety
+// The iterator is guaranteed to be dropped before the database is dropped, we hold to the
+// PartitionDb in this struct for as long as the iterator is alive.
+unsafe fn ignore_iterator_lifetime<'a>(
+    iter: DBRawIteratorWithThreadMode<'a, rocksdb::DB>,
+) -> DBRawIteratorWithThreadMode<'static, rocksdb::DB> {
+    unsafe {
+        std::mem::transmute::<
+            DBRawIteratorWithThreadMode<'a, rocksdb::DB>,
+            DBRawIteratorWithThreadMode<'static, rocksdb::DB>,
+        >(iter)
+    }
+}

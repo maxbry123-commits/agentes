@@ -1,0 +1,12 @@
+{
+	"$schema": "http://turbo.build/schema.json",
+	"extends": ["//"],
+	"tasks": {
+		"build": {
+			"outputs": ["dist/**"]
+		},
+		"check:type": {
+			"dependsOn": ["build", "@cloudflare/workers-utils#build"]
+		}
+	}
+}

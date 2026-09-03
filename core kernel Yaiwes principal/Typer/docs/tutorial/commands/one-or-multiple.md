@@ -1,0 +1,148 @@
+# One or Multiple Commands
+
+You might have noticed that if you create a single command, as in the following example:
+
+{* docs_src/typer_app/tutorial001_py310.py hl[3,6,12] *}
+
+**Typer** is smart enough to create a CLI application with that single function as the main CLI application, not as a command/subcommand:
+
+<div class="termy">
+
+```console
+// Without a CLI argument
+$ uv run python main.py
+
+Usage: main.py [OPTIONS] {name}
+Try "main.py --help" for help.
+
+Error: Missing argument 'name'.
+
+// With the 'name' CLI argument
+$ uv run python main.py Camila
+
+Hello Camila
+
+// Asking for help
+$ uv run python main.py --help
+
+Usage: main.py [OPTIONS] {name}
+
+Options:
+  --install-completion  Install completion for the current shell.
+  --show-completion     Show completion for the current shell, to copy it or customize the installation.
+  --help                Show this message and exit.
+```
+
+</div>
+
+/// tip
+
+Notice that it doesn't show a command `main`, even though the function name is `main`.
+
+///
+
+But if you add multiple commands, **Typer** will create one *CLI command* for each one of them:
+
+{* docs_src/commands/index/tutorial002_py310.py hl[6,11] *}
+
+Here we have 2 commands `create` and `delete`:
+
+<div class="termy">
+
+```console
+// Check the help
+$ uv run python main.py --help
+
+Usage: main.py [OPTIONS] COMMAND [ARGS]...
+
+Options:
+  --install-completion  Install completion for the current shell.
+  --show-completion     Show completion for the current shell, to copy it or customize the installation.
+  --help                Show this message and exit.
+
+Commands:
+  create
+  delete
+
+// Test the commands
+$ uv run python main.py create
+
+Creating user: Hiro Hamada
+
+$ uv run python main.py delete
+
+Deleting user: Hiro Hamada
+```
+
+</div>
+
+## One command and one callback
+
+If you want to create a CLI app with one single command but you still want it to be a command/subcommand you can just add a callback:
+
+{* docs_src/commands/one_or_multiple/tutorial001_py310.py hl[11,12,13] *}
+
+And now your CLI program will have a single command.
+
+Check it:
+
+<div class="termy">
+
+```console
+// Check the help
+$ uv run python main.py --help
+
+// Notice the single command create
+Usage: main.py [OPTIONS] COMMAND [ARGS]...
+
+Options:
+  --install-completion  Install completion for the current shell.
+  --show-completion     Show completion for the current shell, to copy it or customize the installation.
+  --help                Show this message and exit.
+
+Commands:
+  create
+
+// Try it
+$ uv run python main.py create
+
+Creating user: Hiro Hamada
+```
+
+</div>
+
+## Using the callback to document
+
+Now that you are using a callback just to have a single command, you might as well use it to add documentation for your app:
+
+{* docs_src/commands/one_or_multiple/tutorial002_py310.py hl[11,12,13,14,15,16,17] *}
+
+And now the docstring from the callback will be used as the help text:
+
+<div class="termy">
+
+```console
+$ uv run python main.py --help
+
+// Notice the help text from the docstring
+Usage: main.py [OPTIONS] COMMAND [ARGS]...
+
+  Creates a single user Hiro Hamada.
+
+  In the next version it will create 5 more users.
+
+Options:
+  --install-completion  Install completion for the current shell.
+  --show-completion     Show completion for the current shell, to copy it or customize the installation.
+  --help                Show this message and exit.
+
+Commands:
+  create
+
+// And it still works the same, the callback does nothing
+$ uv run python main.py create
+
+Creating user: Hiro Hamada
+```
+
+</div>

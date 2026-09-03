@@ -1,0 +1,28 @@
+[package]
+name = "restate-test-util"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[features]
+prost = ["dep:prost"]
+
+[dependencies]
+restate-workspace-hack = { workspace = true }
+
+assert2 = { workspace = true }
+bytes = { workspace = true }
+bytestring = { workspace = true }
+googletest = { workspace = true }
+pretty_assertions = "1.4.1"
+prost = { workspace = true, optional = true }
+rand = { workspace = true }
+
+[dev-dependencies]
+prost-types = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,85 @@
+# CLI Options with Multiple Values
+
+You can also declare a *CLI option* that takes several values of different types.
+
+You can set the number of values and types to anything you want, but it has to be a fixed number of values.
+
+For this, use the standard Python `tuple`:
+
+{* docs_src/multiple_values/options_with_multiple_values/tutorial001_an_py310.py hl[9] *}
+
+Each of the internal types defines the type of each value in the tuple.
+
+So:
+
+```Python
+user: tuple[str, int, bool]
+```
+
+means that the parameter `user` is a tuple of 3 values.
+
+* The first value is a `str`.
+* The second value is an `int`.
+* The third value is a `bool`.
+
+Later we do:
+
+```Python
+username, coins, is_wizard = user
+```
+
+If you hadn't seen that, it means that `user` is a tuple with 3 values, and we are assigning each of the values to a new variable:
+
+* The first value in the tuple `user` (a `str`) goes to the variable `username`.
+* The second value in the tuple `user` (an `int`) goes to the variable `coins`.
+* The third value in the tuple `user` (a `bool`) goes to the variable `is_wizard`.
+
+So, this:
+
+```Python
+username, coins, is_wizard = user
+```
+
+is equivalent to this:
+
+```Python
+username = user[0]
+coins = user[1]
+is_wizard = user[2]
+```
+
+## Check it
+
+Now let's see how this works in the terminal:
+
+<div class="termy">
+
+```console
+// check the help
+$ uv run python main.py --help
+
+// Notice the <str int boolean>
+Usage: main.py [OPTIONS]
+
+Options:
+  --user <str int boolean>...
+  --help                       Show this message and exit.
+
+// Now try it
+$ uv run python main.py --user Camila 50 yes
+
+The username Camila has 50 coins
+And this user is a wizard!
+
+// With other values
+$ uv run python main.py --user Morty 3 no
+
+The username Morty has 3 coins
+
+// Try with invalid values (not enough)
+$ uv run python main.py --user Camila 50
+
+Error: Option '--user' requires 3 arguments
+```
+
+</div>

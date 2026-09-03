@@ -1,0 +1,519 @@
+// Copyright (c) 2023 - 2026 Restate Software, Inc., Restate GmbH.
+// All rights reserved.
+//
+// Use of this software is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date specified in that file, in accordance with
+// the Business Source License, use of this software will be governed
+// by the Apache License, Version 2.0.
+
+use std::sync::Arc;
+use std::sync::atomic::AtomicUsize;
+use std::time::Duration;
+
+use ahash::{HashMap, HashMapExt};
+use metrics::{counter, gauge};
+use tracing::{info, trace, warn};
+
+use restate_core::{ShutdownError, TaskCenter, TaskKind, cancellation_watcher};
+use restate_types::config::{Configuration, StorageOptions};
+use restate_types::identifiers::PartitionId;
+use restate_util_bytecount::ByteCount;
+
+use crate::metric_definitions::{NUM_OPEN_PARTITIONS, PARTITION_MEMTABLE_BUDGET, RECLAIM_FLUSH};
+use crate::{PartitionDb, SharedState};
+
+const INITIAL_NUM_PARTITIONS: usize = 24;
+const DEBUG_MEMORY_REPORTING: bool = false;
+
+// RocksDB applies this floor when opening a column family. Apply it here too so
+// dynamic updates use the same effective value.
+const MIN_WRITE_BUFFER_SIZE: usize = 64 * 1024;
+// We need at least 3 write buffers so we can accept writes while a flush is in progress and 2 older
+// memtables are being merged into one.
+const MIN_WRITE_BUFFERS: u32 = 3;
+// Merge 2 memtables when flushing to L0.
+const WRITE_BUFFERS_TO_MERGE: u32 = 2;
+/// Matches rocksdb default (target_file_size_base * 25)
+const COMPACTION_BYTES_MULTIPLIER: u32 = 25;
+/// Try to keep the table files above this size if partition write buffers are too small
+const MIN_FILE_SIZE: usize = 8 * 1024 * 1024;
+
+pub struct PartitionDbMemoryConfig {
+    memory_budget: usize,
+    l0_num_compaction_trigger: u32,
+    max_file_size: usize,
+}
+
+impl PartitionDbMemoryConfig {
+    pub fn calculate(memory_budget: usize, opts: &StorageOptions) -> Self {
+        Self {
+            memory_budget,
+            l0_num_compaction_trigger: opts
+                .rocksdb_l0_num_compaction_trigger
+                .get()
+                .min(i32::MAX as u32),
+            max_file_size: MIN_FILE_SIZE.max(opts.rocksdb_max_file_size.as_usize()),
+        }
+    }
+
+    pub fn memory_budget(&self) -> usize {
+        self.memory_budget
+    }
+
+    pub fn write_buffer_size(&self) -> usize {
+        MIN_WRITE_BUFFER_SIZE.max(
+            self.memory_budget()
+                .div_ceil(self.num_write_buffers() as usize),
+        )
+    }
+
+    pub fn min_write_buffer_number_to_merge(&self) -> u32 {
+        WRITE_BUFFERS_TO_MERGE
+    }
+
+    pub fn num_write_buffers(&self) -> u32 {
+        // We need at least 3 write buffers so we can accept writes while a flush is in progress and 2 older
+        // memtables are being merged into one.
+        MIN_WRITE_BUFFERS.max(
+            self.memory_budget()
+                .div_ceil(self.max_file_size)
+                .min(i32::MAX as usize) as u32,
+        )
+    }
+
+    pub const fn level_zero_file_num_compaction_trigger(&self) -> u32 {
+        self.l0_num_compaction_trigger
+    }
+
+    pub fn max_bytes_for_level_base(&self) -> usize {
+        self.write_buffer_size()
+            .saturating_mul(self.min_write_buffer_number_to_merge() as usize)
+            .saturating_mul(self.level_zero_file_num_compaction_trigger() as usize)
+    }
+
+    pub fn target_file_size_base(&self) -> usize {
+        self.write_buffer_size().max(self.max_file_size)
+    }
+
+    pub fn max_compaction_bytes(&self) -> usize {
+        self.target_file_size_base()
+            .saturating_mul(COMPACTION_BYTES_MULTIPLIER as usize)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::num::NonZeroU32;
+
+    use super::*;
+
+    #[test]
+    fn sanitize_rocksdb_sizing_limits() {
+        let mut options = StorageOptions::default();
+        options.rocksdb_l0_num_compaction_trigger = NonZeroU32::MAX;
+
+        let config = PartitionDbMemoryConfig::calculate(1, &options);
+        assert_eq!(config.write_buffer_size(), MIN_WRITE_BUFFER_SIZE);
+        assert_eq!(
+            config.level_zero_file_num_compaction_trigger(),
+            i32::MAX as u32
+        );
+
+        options.rocksdb_l0_num_compaction_trigger = NonZeroU32::MIN;
+        let config = PartitionDbMemoryConfig::calculate(usize::MAX, &options);
+        assert_eq!(config.num_write_buffers(), i32::MAX as u32);
+
+        options.rocksdb_max_file_size =
+            restate_util_bytecount::NonZeroByteCount::new(std::num::NonZeroUsize::MAX);
+        options.rocksdb_l0_num_compaction_trigger = NonZeroU32::MAX;
+        let config = PartitionDbMemoryConfig::calculate(usize::MAX, &options);
+        assert_eq!(config.max_bytes_for_level_base(), usize::MAX);
+        assert_eq!(config.max_compaction_bytes(), usize::MAX);
+    }
+}
+
+pub(crate) struct MemoryBudget {
+    // manages memory budgets for rocksdb-based partition stores.
+    budget_per_partition: AtomicUsize,
+}
+
+impl MemoryBudget {
+    fn new() -> Arc<Self> {
+        let budget_per_partition = AtomicUsize::new(
+            Configuration::pinned()
+                .worker
+                .storage
+                .rocksdb_memory_budget()
+                .as_usize()
+                / INITIAL_NUM_PARTITIONS,
+        );
+
+        Arc::new(Self {
+            budget_per_partition,
+        })
+    }
+
+    pub fn get_total_memory_budget(&self) -> usize {
+        let config = Configuration::pinned();
+        config.worker.storage.rocksdb_memory_budget().as_usize()
+    }
+
+    pub fn current_per_partition_budget(&self) -> usize {
+        self.budget_per_partition
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    fn set_per_partition_budget(&self, budget: usize) {
+        self.budget_per_partition
+            .store(budget, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+pub struct MemoryController {
+    // manages memory budgets for rocksdb-based partition stores.
+    pub(crate) memory_budget: Arc<MemoryBudget>,
+}
+
+impl MemoryController {
+    pub fn start(psm_state: Arc<SharedState>) -> Result<MemoryController, ShutdownError> {
+        let memory_budget = MemoryBudget::new();
+        // this task will not run in tests to avoid interfering with the test environment
+        if cfg!(not(test)) {
+            TaskCenter::spawn(
+                TaskKind::Background,
+                "partition-memory-controller",
+                memory_controller_task(memory_budget.clone(), psm_state),
+            )?;
+        } else {
+            info!("Memory controller is disabled in tests");
+        }
+
+        Ok(Self { memory_budget })
+    }
+}
+
+async fn memory_controller_task(
+    memory_budget: Arc<MemoryBudget>,
+    psm_state: Arc<SharedState>,
+) -> anyhow::Result<()> {
+    let mut cancel = std::pin::pin!(cancellation_watcher());
+    let mut interval = tokio::time::interval(Duration::from_secs(5));
+    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    let mut last_total_budget = memory_budget.get_total_memory_budget();
+    let mut config_watch = Configuration::watcher();
+
+    loop {
+        tokio::select! {
+            _ = &mut cancel => {
+                break;
+            }
+            _ = interval.tick() => {
+                if let Err(e) = rebalance_memory(&memory_budget, &psm_state).await {
+                    warn!("Failed to rebalance partition stores memory: {}", e);
+                }
+            }
+            () = config_watch.changed() => {
+                let total_budget = memory_budget.get_total_memory_budget();
+                if total_budget != last_total_budget {
+                    info!("Detected a change in memory budget for partitions in configuration file (from {} -> {}), will rebalance",
+                        ByteCount::from(last_total_budget),
+                        ByteCount::from(total_budget)
+                    );
+                    last_total_budget = total_budget;
+                    interval.reset_after(Duration::from_secs(1));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+#[derive(Default)]
+struct CollectedMemoryUsage {
+    partitions: HashMap<PartitionId, (MemoryUsage, PartitionDb)>,
+    num_open_partitions: usize,
+    total_usage: usize,
+    usage_from_closed: usize,
+    total_reclaimable: usize,
+    total_pinned: usize,
+    partitions_exceeding_budget: usize,
+    num_pending_flushes: usize,
+}
+
+async fn collect_memory_usage(
+    psm_state: &SharedState,
+    partition_budget: usize,
+) -> anyhow::Result<CollectedMemoryUsage> {
+    let dbs = psm_state.get_maybe_open_dbs().await;
+    if dbs.is_empty() {
+        return Ok(Default::default());
+    }
+
+    let mut partitions: HashMap<PartitionId, (MemoryUsage, PartitionDb)> =
+        HashMap::with_capacity(dbs.len());
+    let mut num_open_partitions = 0;
+    let mut total_usage = 0usize;
+    let mut usage_from_closed = 0usize;
+    let mut total_reclaimable = 0usize;
+    let mut total_pinned = 0usize;
+    let mut partitions_exceeding_budget = 0usize;
+    let mut num_pending_flushes = 0usize;
+
+    for db_state in dbs.iter() {
+        assert!(db_state.maybe_open());
+        let db = db_state.db().unwrap().clone();
+        let usage = MemoryUsage::create(db_state).await?;
+        // a partition will be considered open if it's Open or Closed for less than 30 seconds.
+        if db_state
+            .closed_since()
+            .is_none_or(|elapsed| elapsed < Duration::from_secs(30))
+        {
+            num_open_partitions += 1;
+        }
+
+        total_usage += usage.total_bytes;
+        if !usage.is_open() {
+            usage_from_closed += usage.total_bytes;
+        }
+
+        total_reclaimable += if usage.is_open() {
+            usage.immutable_bytes()
+        } else {
+            usage.total_bytes
+        };
+
+        total_pinned += usage.pinned_bytes();
+        if usage.total_bytes > partition_budget {
+            partitions_exceeding_budget += 1;
+        }
+        num_pending_flushes += if usage.is_flush_pending { 1 } else { 0 };
+
+        trace!(partition_id = %db.partition().id(), "  - Partition memory: {}", usage);
+        partitions.insert(db.partition().id(), (usage, db));
+    }
+
+    Ok(CollectedMemoryUsage {
+        partitions,
+        num_open_partitions,
+        total_usage,
+        usage_from_closed,
+        total_reclaimable,
+        total_pinned,
+        partitions_exceeding_budget,
+        num_pending_flushes,
+    })
+}
+
+async fn rebalance_memory(
+    memory_budget: &MemoryBudget,
+    psm_state: &SharedState,
+) -> anyhow::Result<()> {
+    // If system is shutting down, do not rebalance memory.
+    if TaskCenter::is_shutdown_requested() {
+        return Ok(());
+    }
+
+    let total_budget = memory_budget.get_total_memory_budget();
+    let current_per_partition_budget = memory_budget.current_per_partition_budget();
+    let collected = collect_memory_usage(psm_state, current_per_partition_budget).await?;
+
+    if DEBUG_MEMORY_REPORTING {
+        report_memory_usage(&collected, total_budget);
+    }
+
+    if let Some(new_partition_budget) = total_budget.checked_div(collected.num_open_partitions) {
+        // budget has changed since last time we checked
+        if new_partition_budget != current_per_partition_budget {
+            if DEBUG_MEMORY_REPORTING {
+                report_memory_usage(&collected, total_budget);
+            }
+            memory_budget.set_per_partition_budget(new_partition_budget);
+            gauge!(PARTITION_MEMTABLE_BUDGET).set(new_partition_budget as f64);
+            gauge!(NUM_OPEN_PARTITIONS).set(collected.num_open_partitions as f64);
+
+            info!(
+                "Rebalancing the memory budget over {} open partitions. Budget per partition changed from {} -> {}. \
+                    total_usage: {}/{}",
+                collected.num_open_partitions,
+                ByteCount::from(current_per_partition_budget),
+                ByteCount::from(new_partition_budget),
+                ByteCount::from(collected.total_usage),
+                ByteCount::from(total_budget)
+            );
+            for (_usage, partition_db) in collected.partitions.values() {
+                // Note: we deliberately don't filter out closed partitions since they might be
+                // opened again and we don't want to leave them behind. They'll be flushed to disk
+                // if their memory usage exceeds the predefined threshold (512KiB) and their new
+                // memtable will sit idle roughly at 8KiB regardless of what we configure here.
+                //
+                // If/when it gets re-opened, we'll be monitoring its memory usage against the
+                // latest budget anyway and we'll be able to flush it prematurely if it exceeds the
+                // per-partition budget. This or WBM might hit it first.
+                partition_db
+                    .update_memory_budget(new_partition_budget)
+                    .await;
+            }
+        }
+    }
+
+    // refresh the partition_budget since previous step may have changed it
+    let current_per_partition_budget = memory_budget.current_per_partition_budget();
+
+    let mut reclaim_candidates: Vec<_> = Vec::with_capacity(collected.partitions.len());
+    // did we exceed the total memory budget?
+    for (usage, partition_db) in collected.partitions.values() {
+        // is this an offending partition? only if it exceeds its budget by 50%
+        if !usage.is_flush_pending
+            && usage.total_bytes
+                > (current_per_partition_budget + current_per_partition_budget.div_ceil(2))
+        {
+            reclaim_candidates.push((usage, partition_db));
+        }
+        if !usage.is_open() {
+            // 512KiB threshold for closed partitions. This is primarily a heuristic to avoid
+            // re-flushing the same partitions over and over again.
+            if usage.total_bytes > 512 * 1024 * 1024 {
+                reclaim_candidates.push((usage, partition_db));
+            }
+        }
+    }
+
+    for (usage, partition_db) in reclaim_candidates {
+        if TaskCenter::is_shutdown_requested() {
+            // Flushes take time, let's make sure we don't do them if we're shutting down.
+            break;
+        }
+        if Configuration::pinned()
+            .worker
+            .storage
+            .rocksdb_disable_auto_memory_reclaimer
+        {
+            info!(
+                "partition {} exceeded its memory budget. partition_usage: {}/{}. \
+                    Not reclaiming memory because 'worker.storage.rocksdb-disable-auto-memory-reclaimer' is set to 'true'",
+                partition_db.partition().id(),
+                ByteCount::from(usage.total_bytes),
+                ByteCount::from(current_per_partition_budget),
+            );
+        } else {
+            info!(
+                "Flushing partition {} to reclaim memory. partition_usage: {}/{}",
+                partition_db.partition().id(),
+                ByteCount::from(usage.total_bytes),
+                ByteCount::from(current_per_partition_budget),
+            );
+            counter!(RECLAIM_FLUSH).increment(1);
+            partition_db.flush_memtables(true).await?;
+        }
+    }
+
+    Ok(())
+}
+
+fn report_memory_usage(collected: &CollectedMemoryUsage, total_budget: usize) {
+    info!(
+        "Partition memory report. open: {}, closed: {}, total_usage: {}/{}, \
+            usage_from_closed_partitions: {}, total_reclaimable_bytes: {}, pinned_bytes: {}, \
+            num_partitions_exceeding_budget: {}, flush_pending: {}",
+        collected.num_open_partitions,
+        collected.partitions.len() - collected.num_open_partitions,
+        ByteCount::from(collected.total_usage),
+        ByteCount::from(total_budget),
+        ByteCount::from(collected.usage_from_closed),
+        ByteCount::from(collected.total_reclaimable),
+        ByteCount::from(collected.total_pinned),
+        collected.partitions_exceeding_budget,
+        collected.num_pending_flushes
+    );
+}
+
+/// A snapshot of the memory usage of a partition database.
+struct MemoryUsage {
+    /// Whether the partition is open or closed.
+    closed_since: Option<Duration>,
+    /// - "rocksdb.cur-size-active-mem-table": bytes in active memtable
+    mutable_bytes: usize,
+    /// - "rocksdb.cur-size-all-mem-tables": (bytes in active + immutable memtables)
+    total_bytes: usize,
+    ///-  "rocksdb.size-all-mem-tables" (immutable + pinned)
+    immutable_and_pinned_bytes: usize,
+    /// - "rocksdb.mem-table-flush-pending": 1 if a flush is pending
+    is_flush_pending: bool,
+}
+
+impl MemoryUsage {
+    const fn immutable_bytes(&self) -> usize {
+        self.total_bytes.saturating_sub(self.mutable_bytes)
+    }
+
+    const fn pinned_bytes(&self) -> usize {
+        self.immutable_and_pinned_bytes
+            .saturating_sub(self.total_bytes)
+    }
+
+    async fn create(partition_state: &crate::partition_db::State) -> anyhow::Result<Self> {
+        assert!(partition_state.maybe_open());
+        let partition_db = partition_state.db().unwrap();
+
+        let cf_names = partition_db.cf_names();
+        let rocks_db = partition_db.rocksdb().clone();
+
+        let mut memory_usage = Self {
+            closed_since: partition_state.closed_since(),
+            mutable_bytes: 0,
+            total_bytes: 0,
+            immutable_and_pinned_bytes: 0,
+            is_flush_pending: false,
+        };
+
+        tokio::task::spawn_blocking(move || {
+            let raw_rocks_db = rocks_db.inner();
+
+            for cf in cf_names {
+                memory_usage.total_bytes += raw_rocks_db
+                    .get_property_int_cf(&cf, "rocksdb.cur-size-all-mem-tables")?
+                    .unwrap_or_default() as usize;
+
+                memory_usage.immutable_and_pinned_bytes += raw_rocks_db
+                    .get_property_int_cf(&cf, "rocksdb.size-all-mem-tables")?
+                    .unwrap_or_default()
+                    as usize;
+
+                memory_usage.mutable_bytes += raw_rocks_db
+                    .get_property_int_cf(&cf, "rocksdb.cur-size-active-mem-table")?
+                    .unwrap_or_default() as usize;
+
+                memory_usage.is_flush_pending |= raw_rocks_db
+                    .get_property_int_cf(&cf, "rocksdb.mem-table-flush-pending")?
+                    .unwrap_or_default()
+                    == 1;
+            }
+
+            Ok(memory_usage)
+        })
+        .await?
+    }
+
+    /// a partition will be considered open if it's Open or Closed for less than 30 seconds.
+    fn is_open(&self) -> bool {
+        self.closed_since
+            .is_none_or(|elapsed| elapsed < Duration::from_secs(30))
+    }
+}
+
+impl std::fmt::Display for MemoryUsage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let immutable = self.total_bytes - self.mutable_bytes;
+        write!(
+            f,
+            "mutable={}, immutable={}, pinned={}, total={}, flush_pending?={}",
+            ByteCount::from(self.mutable_bytes),
+            ByteCount::from(immutable),
+            ByteCount::from(self.immutable_and_pinned_bytes - immutable),
+            ByteCount::from(self.total_bytes),
+            self.is_flush_pending
+        )
+    }
+}

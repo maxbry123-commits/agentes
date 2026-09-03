@@ -1,0 +1,80 @@
+---
+id: sdk-v-1-flags
+title: "sdk_v1_flags"
+description: "Retrieve the flags for an environment."
+sidebar_label: "sdk_v1_flags"
+hide_title: true
+hide_table_of_contents: true
+api: eJztVt9v2zYQ/lcI7iFdYVvx1icjzeYl6RA0TYvELQrEQUJLJ4uNTKokpcYz/L/vjpRsOXKHDMXelgfHJu/3ffcdV1wXYISTWp0nfMRt8nBXDe/SXMwt7/EEbGxkQdd4eQXOSKiAuQyYF2GpNkwoBqqSRqsFKDeYqqnq9/tT9fJSO3g5Yt8yUKwwupKJVHOvfJ+CcKWBe/a1BLNkwsxLUu7hrbRoLim0VI59k3k+VQZQFp1IVEV3zKKZHJiefYHYMYqAvTp8xV7INEQWbLNEg2VKOwaP0rqfGaaJ+lPlMoxYsBwPu8GWNsS4G4XLKEuZYIgylRgEXidQGIiFgwStfMhBWEBtzC0ShYyqYRTEnQQb/bZVfX20/X58z6SyDkQywGIXwogFODCWj25WXOEPLHqdDd5L6oGvV6czlyjL9G76TrM5OH9kHYaJ96hn4wwWgo9W3C0Lsm+xp2qONwupLkDNXcZHw/X6tscN2EIrC5akfzk8pH+7blEr1sphOnQniiKXscdS9MWSwKrrThgjKH7pYGFb56GZeyCHRbbowG77TshjL5o0fW7YXI8RSNhs6VN+Q/BcUOOuT9/66hpCOnWDvDZV7aS043BrpJbvYddTSW6EI0h7AOY4Ejm5eJrKrkuZtNJFWMEcDF/36j4/7ce6MddtFKhygQjh15Px5en46hSP3n28mJx/Gl+djydn/Ha9puZ9LaWBhATRc+2mNnq7JitilkM7ppnWiGJFrut073xx7yqRlz4SVeY5afGRMyX0uFbwPvVg7aS1x2onxU6gTUy9Fur3hYKK9Idohrg00i19DGdbEmLjD+fsLdD5LUHZEZ2hA6Q3jj9xyjJNdIcD4gePQM+bufXMFtGsgKmaaSxNjiKZc4UdRREkcxig+CBtEDKI9aKD3i1+zlCBguIUTRP1NQ1HAMfe2LdDU0g6qCkgQ77AGjfI4Z/7Le1+EHwSB3IkjsGG0eyAHQmWGUhfHzQpJTq2u+lEcS5pECIcCPdTUc5wuvsYSn9j5uD4jVQJ06VjC23gKBLHA4LPO4GkZv51IuMS22LkX55C9iYxTpClvN0fSsXICsH0vFxmwsqYImulQY4aLvUYJxk/svoB1BPhH8l5Qvb6aJ4YByVpcQSGDUupGR7kIuSlRzYNGlPOaTqkSrUPRDqa2RYcCYk9TuAOfqrh97F7YNkJFgQXYOJBhLpY9JMM4gdfrWeUH2u7cY23ftX7LEKVwxYRsd8iuC4kjZoti0Ib9/vuhGFWiELAreT5KNTwj+tTdlGfYtab9Rqu+r/2T3KBm9nXpNDWLYRqaSMnsGrI9j55Vtv99v/r5799/dTT4uDRRUUupN9DnnVXNUHf0CgRbAmsTbuIzjPsKV2vVjQpH02+XtNxeCoReSfS1ssuFbmFf2jy8x9Se+N9ILZrLa96c3JP+5UwMmzPG1rANRNQfEFtHMdQuJZW50G1bu+uP88mKCs6ZPPgyab+0trNQi1btvctjRAGfbaW9a7aahXoDCvcyIer72psCC9IU51off8Ns7BNQg==
+sidebar_class_name: "get api-method"
+info_path: sdk-api/flagsmith-api
+custom_edit_url: null
+---
+
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
+
+<Heading
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"sdk_v1_flags"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"get"}
+  path={"/api/v1/flags/"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+Retrieve the flags for an environment.
+
+---
+*Note*: when providing the `feature` query argument, this endpoint will
+return either a single object or a 404 (if the feature does not exist) rather
+than a list.
+
+---
+*Note*: using this endpoint with an identifier is deprecated.
+Please use `/api/v1/identities/?identifier=<identifier>` instead.
+
+<Heading
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+  children={"Request"}
+>
+</Heading>
+
+<ParamsDetails
+  parameters={[{"name":"feature","in":"query","description":"Name of the feature to get the state of","schema":{"type":"string","minLength":1}}]}
+>
+  
+</ParamsDetails>
+
+<RequestSchema
+  title={"Body"}
+  body={undefined}
+>
+  
+</RequestSchema>
+
+<StatusCodes
+  id={undefined}
+  label={undefined}
+  responses={{"200":{"description":"","content":{"application/json":{"schema":{"type":"array","items":{"type":"object","description":"Represents a single flag (feature state) returned by the Flagsmith SDK.","properties":{"feature":{"description":"Represents a Flagsmith feature, defined at project level.","type":"object","properties":{"id":{"type":"integer"},"name":{"type":"string"},"type":{"type":"string","enum":["STANDARD","MULTIVARIATE"]}},"required":["id","name","type"]},"enabled":{"type":"boolean"},"feature_state_value":{"nullable":true,"oneOf":[{"type":"integer"},{"type":"boolean"},{"type":"string"}]}},"required":["enabled","feature","feature_state_value"]}}}}}}}
+>
+  
+</StatusCodes>
+
+
+      

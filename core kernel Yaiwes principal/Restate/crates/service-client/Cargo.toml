@@ -1,0 +1,75 @@
+[package]
+name = "restate-service-client"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[features]
+default = []
+test_util = []
+options_schema = ["restate-types/schemars"]
+
+[dependencies]
+restate-workspace-hack = { workspace = true }
+
+restate-types = { workspace = true }
+restate-util-time = { workspace = true }
+
+ahash = { workspace = true }
+arc-swap = { workspace = true }
+aws-config = { workspace = true }
+aws-credential-types = { workspace = true }
+aws-sdk-lambda = {version = "1.112.0", default-features = false, features = ["behavior-version-latest", "rt-tokio", "default-https-client"]}
+aws-sdk-sts = {version = "1.95.0", default-features = false, features = ["behavior-version-latest", "rt-tokio", "default-https-client"]}
+base64 = { workspace = true }
+bs58 = { workspace = true }
+bytes = { workspace = true }
+bytestring = { workspace = true }
+dashmap = { workspace = true }
+derive_builder = { workspace = true }
+futures = { workspace = true }
+google-cloud-auth = { workspace = true }
+h2 = { version = "0.4.18" }
+http = { workspace = true }
+http-body = { workspace = true }
+http-body-util = { workspace = true }
+http-serde = { workspace = true }
+hyper = { workspace = true, features = ["http1", "http2", "client"] }
+hyper-rustls = { workspace = true }
+hyper-util = { workspace = true, features = ["client-legacy"] }
+jsonwebtoken = { workspace = true }
+parking_lot = { workspace = true }
+pem = { version = "3.0.6" }
+pin-project = { workspace = true }
+metrics = { workspace = true }
+ring = { version = "0.17.14" }
+rustls = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_with = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["tracing"] }
+tokio-util = { workspace = true }
+tokio-rustls = "0.26"
+tower = { workspace = true }
+tracing = { workspace = true }
+zstd = { workspace = true }
+
+[dev-dependencies]
+restate-service-client = { path = ".", features = ["test_util"] }
+criterion = { workspace = true, features = ["async_tokio"] }
+googletest = { workspace = true }
+hyper = { workspace = true, features = ["server"] }
+pprof = { version = "0.15", features = ["criterion", "flamegraph"] }
+tempfile = { workspace = true }
+tokio-stream = {workspace = true}
+
+[[bench]]
+name = "h2_pool_benchmark"
+harness = false
+
+[lints]
+workspace = true
