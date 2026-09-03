@@ -1,0 +1,40 @@
+{
+  "name": "durable",
+  "version": "2.0.35",
+  "description": "A lightweight rules engine for real-time, consistent and scalable coordination of events.",
+  "keywords": [
+    "business rules",
+    "rules engine",
+    "rete",
+    "forward chaining",
+    "streaming analytics",
+    "complex event processing",
+    "state machine",
+    "workflow"
+  ],
+  "dependencies": {
+    "bindings": "^1.5.0",
+    "escodegen": "^1.12.0",
+    "esprima": "^3.1.3",
+    "nan": "^1.9.0",
+    "node-gyp": "^6.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "http://github.com/jruizgit/rules"
+  },
+  "main": "./libjs/durable",
+  "scripts": {
+    "install": "node-gyp rebuild"
+  },
+  "license": "MIT",
+  "gypfile": true,
+  "engines": {
+    "node": ">=12.11 <13.11",
+    "npm": ">=6.11"
+  },
+  "author": {
+    "name": "Jesus Ruiz",
+    "email": "jr3791@live.com"
+  }
+}

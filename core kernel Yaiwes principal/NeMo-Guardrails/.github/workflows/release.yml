@@ -1,0 +1,181 @@
+name: Prepare Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Stable release version (e.g. 0.23.0)"
+        required: true
+        type: string
+      bump_type:
+        description: "Version bump type (only used if version is not provided)"
+        required: false
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: patch
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.10"
+
+      - name: Install uv
+        uses: ./.github/actions/setup-uv
+        with:
+          enable-cache: "false"
+
+      - name: Install git-cliff
+        # not allowed by NVIDIA
+        # uses: kenji-miyake/setup-git-cliff@v2
+        run: |
+          # download and install git-cliff binary directly
+          CLIFF_VERSION="2.7.0"
+          wget -q https://github.com/orhun/git-cliff/releases/download/v${CLIFF_VERSION}/git-cliff-${CLIFF_VERSION}-x86_64-unknown-linux-gnu.tar.gz
+          tar -xzf git-cliff-${CLIFF_VERSION}-x86_64-unknown-linux-gnu.tar.gz
+          sudo mv git-cliff-${CLIFF_VERSION}/git-cliff /usr/local/bin/
+          rm -rf git-cliff-${CLIFF_VERSION}*
+          # verify installation
+          git cliff --version
+
+      - name: Determine version
+        id: version
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          if [ -n "${INPUT_VERSION}" ]; then
+            VERSION="${INPUT_VERSION}"
+          else
+            # Use git-cliff to determine the next version based on commits
+            VERSION=$(git cliff --bumped-version)
+          fi
+
+          # Remove 'v' prefix if present
+          VERSION=${VERSION#v}
+          if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Release version must use the stable X.Y.Z format."
+            exit 1
+          fi
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "tag=v${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Generate changelog block
+        run: |
+          git cliff \
+            --unreleased \
+            --tag     v${STEPS_VERSION_OUTPUTS_VERSION} \
+            --strip all \
+            > CHANGELOG.new.md
+        env:
+          STEPS_VERSION_OUTPUTS_VERSION: ${{ steps.version.outputs.version }}
+
+      - name: Inject release block just above the previous entry
+        run: |
+          awk '
+            BEGIN { done = 0 }
+            # On the *first* version header, insert the new block
+            /^## \[/ && done == 0 {
+              system("cat CHANGELOG.new.md")
+              print ""      # blank line between blocks
+              done = 1
+            }
+            { print }
+          ' CHANGELOG.md > CHANGELOG.tmp \
+            && mv CHANGELOG.tmp CHANGELOG.md \
+            && rm CHANGELOG.new.md
+
+      - name: Update version with uv
+        run: uv version --no-sync "${STEPS_VERSION_OUTPUTS_VERSION}"
+        env:
+          STEPS_VERSION_OUTPUTS_VERSION: ${{ steps.version.outputs.version }}
+
+      - name: Update version in README.md
+        env:
+          REPOSITORY: ${{ github.repository }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          uv run --no-project python - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          path = Path("README.md")
+          lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+          marker = "> **LATEST RELEASE / DEVELOPMENT VERSION**:"
+          marker_lines = [index for index, line in enumerate(lines) if line.startswith(marker)]
+          if len(marker_lines) != 1:
+              raise SystemExit(
+                  f"Expected exactly one README release marker, found {len(marker_lines)}."
+              )
+
+          version = os.environ["VERSION"]
+          release_link = re.compile(
+              r"\[[0-9]+\.[0-9]+\.[0-9]+\]"
+              r"\(https://github\.com/[^/()]+/[^/()]+/tree/v"
+              r"[0-9]+\.[0-9]+\.[0-9]+\)"
+          )
+          repository = os.environ["REPOSITORY"]
+          replacement = (
+              f"[{version}]"
+              f"(https://github.com/{repository}/tree/v{version})"
+          )
+          index = marker_lines[0]
+          lines[index], replacements = release_link.subn(replacement, lines[index])
+          if replacements != 1:
+              raise SystemExit(
+                  "Expected exactly one stable release link on the README release marker, "
+                  f"found {replacements}."
+              )
+
+          path.write_text("".join(lines), encoding="utf-8")
+          PY
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: chore/release-${{ steps.version.outputs.version }}
+          base: develop
+          title: "chore: prepare for release v${{ steps.version.outputs.version }}"
+          body: |
+            ## 🚀 Release v${{ steps.version.outputs.version }}
+
+            This PR was automatically created by the release workflow.
+
+            ### Changes included:
+            - ✅ Updated version to v${{ steps.version.outputs.version }}
+            - ✅ Updated CHANGELOG.md with latest changes
+            - ✅ Updated version references in README.md
+
+            ---
+
+            After merging this PR, a tag will be created and a GitHub release will be published.
+          labels: |
+            release
+            automated
+          add-paths: |
+            CHANGELOG.md
+            pyproject.toml
+            uv.lock
+            README.md
+          commit-message: "chore(release): prepare for v${{ steps.version.outputs.version }}"
+
+      - name: Clean up
+        run: rm -f RELEASE_NOTES.md

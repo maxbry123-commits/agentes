@@ -1,0 +1,29 @@
+
+flow llama guard check input
+  $response = await LlamaGuardCheckInputAction(model_name="llama_guard")
+  global $allowed
+  $allowed = not $response.is_blocked
+  # Policy violations are currently unused, but can be used to better phrase the bot output
+  global $llama_guard_policy_violations
+  $llama_guard_policy_violations = $response.metadata["policy_violations"]
+
+  if not $allowed
+    if $system.config.enable_rails_exceptions
+      send LlamaGuardInputRailException(message="Input not allowed. The input was blocked by the 'llama guard check input' flow. Please ensure your input meets the required criteria.")
+    else
+      bot refuse to respond
+    abort
+
+flow llama guard check output
+  $response = await LlamaGuardCheckOutputAction(model_name="llama_guard")
+  global $allowed
+  $allowed = not $response.is_blocked
+  global $llama_guard_policy_violations
+  $llama_guard_policy_violations = $response.metadata["policy_violations"]
+
+  if not $allowed
+    if $system.config.enable_rails_exceptions
+      send LlamaGuardOutputRailException(message="Output not allowed. The output was blocked by the 'llama guard check output' flow. Please ensure your output meets the required criteria.")
+    else
+      bot refuse to respond
+    abort

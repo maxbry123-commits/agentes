@@ -1,0 +1,71 @@
+syntax = "proto3";
+
+package chroma;
+
+import "google/protobuf/empty.proto";
+
+message WorkQueueRecord {
+    string fn_id = 1;
+    string input_coll_id = 2;
+    int64 completion_offset = 3;
+    int64 compaction_offset = 4;
+}
+
+message PushWorkRequest {
+    string fn_id = 1;
+    string input_coll_id = 2;
+    int64 completion_offset = 3;
+    int64 compaction_offset = 4;
+}
+
+message FinishWorkRequest {
+    string fn_id = 1;
+    string input_coll_id = 2;
+    int64 completion_offset = 3;
+}
+
+// Reports an execution failure for one queued attached-function invocation.
+message FailFunctionRequest {
+    string fn_id = 1;
+    string input_coll_id = 2;
+}
+
+// Moves work that is not ready yet behind other queued work without recording
+// an execution failure.
+message DeferWorkRequest {
+    string fn_id = 1;
+    string input_coll_id = 2;
+}
+
+// Sets the failure count for one queued attached-function invocation.
+message SetFunctionFailureCountRequest {
+    string fn_id = 1;
+    string input_coll_id = 2;
+    int32 failure_count = 3;
+}
+
+message GetWorkRequest {
+    string shard_id = 1;
+    uint32 limit = 2;
+    int32 max_failure_count = 3;
+}
+
+message WorkItemResult {
+    string fn_id = 1;
+    string input_coll_id = 2;
+    int64 completion_offset = 3;
+    optional int64 compaction_offset = 4;
+}
+
+message GetWorkResponse {
+    repeated WorkItemResult items = 1;
+}
+
+service WorkQueueService {
+    rpc PushWork(PushWorkRequest) returns (google.protobuf.Empty);
+    rpc FinishWork(FinishWorkRequest) returns (google.protobuf.Empty);
+    rpc FailFunction(FailFunctionRequest) returns (google.protobuf.Empty);
+    rpc DeferWork(DeferWorkRequest) returns (google.protobuf.Empty);
+    rpc SetFunctionFailureCount(SetFunctionFailureCountRequest) returns (google.protobuf.Empty);
+    rpc GetWork(GetWorkRequest) returns (GetWorkResponse);
+}

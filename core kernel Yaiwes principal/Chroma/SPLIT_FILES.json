@@ -1,0 +1,9 @@
+[
+  {
+    "repo": "Chroma",
+    "path": "examples/multimodal/multimodal_retrieval.ipynb",
+    "chunks_dir": "Chroma/examples/multimodal/multimodal_retrieval.ipynb.chunks",
+    "bytes": 10206502,
+    "chunk_bytes": 8388608
+  }
+]

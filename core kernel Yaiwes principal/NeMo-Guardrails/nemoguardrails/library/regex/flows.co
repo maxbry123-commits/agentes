@@ -1,0 +1,33 @@
+# INPUT RAILS
+
+flow regex check input
+  """Check if the user input matches any forbidden regex patterns."""
+  $response = await DetectRegexPatternAction(source="input", text=$user_message)
+
+  if $response.is_blocked
+    bot refuse to respond
+    abort
+
+
+# OUTPUT RAILS
+
+
+flow regex check output
+  """Check if the bot output matches any forbidden regex patterns."""
+  $response = await DetectRegexPatternAction(source="output", text=$bot_message)
+
+  if $response.is_blocked
+    bot refuse to respond
+    abort
+
+
+# RETRIEVAL RAILS
+
+
+flow regex check retrieval
+  """Check if the relevant chunks from the knowledge base match any forbidden regex patterns.
+  """
+  $response = await DetectRegexPatternAction(source="retrieval", text=$relevant_chunks)
+
+  if $response.is_transform
+    $relevant_chunks = $response.transform_text["relevant_chunks"]
