@@ -3,7 +3,7 @@ name: research-download-chain
 description: Copia, descarga+extrae, reubica y verifica componentes mediante GitHub Actions con deduplicación, fuente fijada, SHA, ZIP por partes, manifiesto y recuperación aislada de GAPS. Úsalo cuando YAIWES, Luna u otro agente deba incorporar código sin reescribirlo.
 metadata:
   type: workflow
-  version: "3.4.1"
+  version: "3.5.0"
 ---
 
 # Research Download Chain
@@ -302,3 +302,74 @@ Para HTTP/API:
 - respeta `Retry-After` y `x-ratelimit-reset`;
 - aplica backoff acotado solo a errores transitorios;
 - no repitas mutaciones a ciegas y no conviertas 403/404/422 en retry infinito.
+
+
+## 17. Supervisor único, Sentinel pasivo y LOOP sin tormenta de dispatch
+
+Una cadena de recuperación tiene **una sola autoridad de mutación/dispatch por destino**. No permitas que Repair Guardian, Watchdog Auditor, Sentinel y Supervisor despachen reparaciones simultáneamente para el mismo `repository + branch + destination_root`.
+
+Roles:
+
+- **Repair Guardian / Single Writer:** único escritor del árbol y único proceso que puede publicar el lote actual.
+- **Supervisor:** único actor autorizado para decidir el siguiente `repository_dispatch` cuando termina el lote y el read-back confirma que quedan GAPs reintentables.
+- **Watchdog Auditor / Sentinel:** solo inspeccionan estado, jobs, logs, hashes, árbol, destino y read-back. No despachan si ya existe Supervisor activo para la misma cadena.
+- **Judge/Guardian de cierre:** solo certifica; nunca muta ni reabre trabajo.
+
+Reglas anti-duplicación:
+
+1. Antes de despachar, consulta runs `queued|pending|in_progress` del mismo repair/concurrency group.
+2. Si existe uno activo, registra `ACTIVE_REPAIR_EXISTS` y no crees otro.
+3. Usa un `concurrency.group` estable por `repository + branch + destination_root`; `cancel-in-progress: false`.
+4. Runs cancelados por exclusión de concurrencia no cuentan como fallo de contenido; clasifícalos `CONCURRENCY_SUPERSEDED`.
+5. No uses simultáneamente auto-dispatch del Repair Guardian y dispatch del Watchdog para la misma cadena.
+6. Un Sentinel externo o tarea horaria puede auditar, pero no debe crear una segunda cola de escritores.
+
+### Read-back después de un push válido
+
+Si `commit/push=PASS` pero falla el paso posterior de read-back, no vuelvas a extraer ni republishes el mismo lote a ciegas.
+
+Secuencia obligatoria:
+
+`PUSH_PASS → FETCH_REMOTE_MAIN → VERIFY_COMMIT_REACHABLE → VERIFY_PATHS/HASHES → REBUILD_CHECKPOINT → CONTINUE`.
+
+Clasificación:
+
+- commit alcanzable y archivos/hashes correctos → `READ_BACK_CONTROL_GAP`; repara solo el control/checkpoint.
+- commit ausente → `PUSH_VISIBILITY_GAP`; verifica ref/branch antes de cualquier retry.
+- contenido remoto distinto → `READ_BACK_CONTENT_MISMATCH`; bloquear y auditar colisión/origen.
+- no vuelvas a adquirir ZIP si el archivo existente y su SHA ya están verificados.
+
+El finalizador debe conservar evidencia aunque falle el control posterior al push. Usa `if: always()` y separa `content_result` de `control_result`.
+
+### Presupuesto temporal
+
+- Ningún Repair Guardian o repair descendiente puede declarar `timeout-minutes` superior a **480 minutos (8 horas)**.
+- Un Watchdog/Sentinel de auditoría debería ser corto; **60 minutos** es el valor recomendado salvo evidencia de que la auditoría necesita más.
+- Si una operación puede exceder 8 horas, divide por lotes/checkpoints reproducibles; no amplíes indefinidamente el timeout.
+- La persistencia se logra por múltiples runs encadenados y checkpoint, no por un runner infinito.
+
+### Política de lote adaptativa
+
+El límite por número de componentes es secundario al volumen real:
+
+- calcula bytes ZIP, bytes previstos de extracción, cantidad de archivos y mayor blob;
+- componentes pequeños pueden agruparse;
+- componentes grandes se procesan solos;
+- un GAP no reintentable se aísla y no consume los siguientes ciclos;
+- si el throughput cae por cola/concurrency, reduce fuentes de dispatch antes de aumentar paralelismo.
+
+### Gate final del LOOP
+
+El Supervisor solo puede emitir otro dispatch cuando:
+
+`active_writer_jobs=0 AND last_push=PASS AND read_back=PASS AND retryable_gaps>0`.
+
+Debe detener el LOOP automático cuando:
+
+- `remaining_gaps=0` → pasar a auditor independiente;
+- `retryable_gaps=0 AND blocked_gaps>0` → `GAPS_PENDING_NONRETRYABLE`;
+- `active_writer_jobs>0` → esperar sin duplicar;
+- `read_back!=PASS` → reparar primero el control/read-back;
+- cualquier intento de LFS → `SOURCE_LFS_POINTER_GAP` o GAP de política, sin workaround.
+
+`VERIFIED_CLOSED` requiere además `active_jobs=0`, cero colisiones/failures, SHA/CRC/tree/destination/read-back PASS y auditor independiente PASS.
