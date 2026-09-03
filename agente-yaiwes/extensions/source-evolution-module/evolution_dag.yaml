@@ -1,36 +1,55 @@
 name: yaiwes-native-autoevolution
-version: 1
+version: 2
 determinism: 95
 llm_maximum: 5
 fail_closed: true
+goals_contract: EVOLUTION_GOALS_50.yaml
+workspace_constitution: ../../multi-workflow-engine/instances/source-evolution-workflow/YAIWES_EVOLUTION.md
 states:
   - RECEIVED
   - VALIDATED
+  - INVENTORIED
   - RESEARCHED
+  - REFUTED
   - CLASSIFIED
   - PROPOSED
   - AWAITING_DIRECTOR
   - AUTHORIZED
   - ACQUIRED
   - SANDBOXED
+  - ADAPTED
   - VERIFIED
   - MOUNTED
+  - MONITORED
   - ROLLED_BACK
+  - VERIFIED_CLOSED
 dag:
-  - {id: watchdog, run: evolution_engine.awakened, next: validate}
-  - {id: validate, run: schema+source+license+sheriff, next: reuse}
-  - {id: reuse, run: reuse_12.py, next: research}
-  - {id: research, run: authoritative-source+community-cross-check, next: consilio}
-  - {id: consilio, run: 12-refutations, next: classify}
-  - {id: classify, run: deterministic-placement, next: propose}
-  - {id: propose, run: passport+abi+download-plan, next: director_gate}
-  - {id: director_gate, run: explicit-human-authorization, next: acquire}
-  - {id: acquire, run: skills/research-download-chain/SKILL.md, next: sandbox}
-  - {id: sandbox, run: deny-egress+verify-sha+parts+limits, next: mount}
-  - {id: mount, run: extension-kernel-abi-or-workflow-or-pool, next: verify}
-  - {id: verify, run: tests+traceability+rollback-check, next: done}
+  - {id: watchdog, controller: sentinel, run: evolution_engine.awakened, next: sheriff}
+  - {id: sheriff, controller: sheriff, run: validate-scope-prohibitions-destination, next: inventory}
+  - {id: inventory, controller: validator, run: forensic-xray+capability-index+deduplicate, next: research}
+  - {id: research, controller: supervisor, run: github+huggingface+official-docs+developer-community, minimum_per_active_lane: 100, next: consilio}
+  - {id: consilio, controller: judge, run: 12-ask-consilio+3-simulations+3-refutations, next: classify}
+  - {id: classify, controller: judge, run: extension-kernel|new-workflow|tools-pool|knowledge, next: propose}
+  - {id: propose, controller: validator, run: passport+abi+schema+download-plan+test-plan+rollback, next: director_gate}
+  - {id: director_gate, controller: sentinel, run: explicit-human-authorization, next: acquire}
+  - {id: acquire, controller: supervisor, run: skills/research-download-chain/SKILL.md, next: sandbox}
+  - {id: sandbox, controller: guardian, run: deny-egress+deny-secrets+verify-source+sha+license, next: adapt}
+  - {id: adapt, controller: validator, run: registry+adapter+plugin-bus+schema, next: verify}
+  - {id: verify, controller: judge, run: individual-tests+e2e+hot-swap+rollback, next: mount}
+  - {id: mount, controller: guardian, run: atomic-mount+read-back, next: monitor}
+  - {id: monitor, controller: supervisor, run: kpi+structured-errors+complaints+recurrence, next: close_or_recover}
+  - {id: close_or_recover, controller: guardian, run: zero-gaps?verified-closed:rollback-or-nct-handoff}
 guards:
   mutation_before_authorized: deny
-  direct_external_import_into_kernel: deny
   llm_authorization: deny
-  missing_evidence: await_director
+  direct_external_import_into_kernel: deny
+  external_decision_loop_when_pruned: deny
+  missing_evidence: deny
+  incompatible_license: reference_only
+  raw_chat_or_secret_storage: deny
+  code_over_100_lines_without_source_or_director_nct_authorization: deny
+  pass_with_active_job_gap_collision_or_failed_test: deny
+recovery:
+  first: rollback
+  second: isolated_repair_workflow
+  third: director_authorized_nct_workflow_code_handoff
