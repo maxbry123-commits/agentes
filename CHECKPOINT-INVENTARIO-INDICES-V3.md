@@ -1,181 +1,179 @@
 # CHECKPOINT INVENTARIO E ÍNDICES V3
 
 contract_id: YAIWES-INVENTORY-INDEXES-V3
-run_timestamp: 2026-09-03T00:22:30Z
-iteration: 5
+run_timestamp: 2026-09-03T01:03:00Z
+iteration: 7
 phase: GAP_RECOVERY
+verdict: RUNNING
 
 repositories:
   total: 7
-  audited: 6
   pass: 4
-  gaps: 1
-
-components:
-  discovered: 124
-  unique: 124
-  complete: 123
-  relocated: 1
-  skipped: 0
-  gaps: 0
-  insufficient_evidence: 0
-
-repository_resolution:
-  - requested: maxbry123-commits/osquestador
-    result: 404
-    resolved_repository: maxbry123-commits/Orquestador-Maxbry-
-    evidence: account repository search for orquestador; public repo on owner; main exists
-  - requested: maxbry123-commits/osquestador-auditor-memoria
-    result: 404
-    resolved_repository: maxbry123-commits/osquestador-auditor
-    evidence: account repository search for osquestador auditor / auditor memoria; public repo on owner; root contains downloaded components and folders named osquestador auditor memoria
+  pass_repositories:
+    - maxbry123-commits/nct-core
+    - maxbry123-commits/router-universal-router-inteligente-
+    - maxbry123-commits/Orquestador-Maxbry-
+    - maxbry123-commits/frontend
+  pending_repositories:
+    - maxbry123-commits/agentes
+    - maxbry123-commits/osquestador-auditor
+    - maxbry123-commits/Agentes-motores-Wordflow-YAIWES
 
 verified_repositories:
   - repository: maxbry123-commits/nct-core
     audit_verdict: PASS
     downloaded_components: 43
     complete: 43
-    duplicate_relocated: 0
-    skipped_in_component_universe: 0
     gaps: 0
+    skipped_in_component_universe: 0
     insufficient_evidence: 0
-    recovery_run_url: https://github.com/maxbry123-commits/nct-core/actions/runs/33694193995
+    recovery_run: 33694193995
     artifact_digest: sha256:3acadba3a8b42c888d6bdb8debfce659db8629563dc8006e1914688583d999e2
   - repository: maxbry123-commits/router-universal-router-inteligente-
     audit_verdict: PASS
     downloaded_components: 56
     complete: 55
     duplicate_relocated: 1
-    skipped_in_component_universe: 0
     gaps: 0
+    skipped_in_component_universe: 0
     insufficient_evidence: 0
-    recovery_run_url: https://github.com/maxbry123-commits/router-universal-router-inteligente-/actions/runs/33694032348
-    independent_confirmation_run_url: https://github.com/maxbry123-commits/router-universal-router-inteligente-/actions/runs/33694156546
-    exclusion_run_url: https://github.com/maxbry123-commits/router-universal-router-inteligente-/actions/runs/33694631520
-    recovery_artifact_digest: sha256:b661f8f555bc9b6bd5e9ee17133b0c264db85165151cf76b272faa50af8f4d86
-    independent_artifact_digest: sha256:1046b89e87c1c487058af3635f1ee3fcbdcfa772f8ac14292a2779e3c8d59075
-    exclusion_artifact_digest: sha256:ef4d62bc227ab8c18e5324b1ae1986e788a90ee5125e85330b1df9737774e259
-    resolved_duplicate: MCP-Python-SDK has canonical source/commit and two verified locations; one global component entry will retain both locations
-    excluded_non_downloaded: websockets manifest row says SKIPPED reason=clone, has no source_commit, no parts and zero matching ZIPs; excluded from downloaded-component universe
+    recovery_run: 33694032348
   - repository: maxbry123-commits/Orquestador-Maxbry-
     audit_verdict: PASS
     downloaded_components: 0
     excluded_unassociated_archives: 5
     gaps: 0
     insufficient_evidence: 0
-    provenance_run_url: https://github.com/maxbry123-commits/Orquestador-Maxbry-/actions/runs/33694667205
-    artifact_digest: sha256:aa128d4dea82da08ff2e13006644b749ddbf7fa12a91f8f2f71a6da683102b48
-    note: NUL-safe V2 confirmed all 5 ZIP archives. Repository contains zero RESEARCH_DOWNLOAD_MANIFEST.jsonl and no archive has a unique external GitHub URL + 40-char source SHA pair. Archives are recorded as EXCLUDED_UNASSOCIATED_ARCHIVE, not invented components.
+    provenance_run: 33694667205
   - repository: maxbry123-commits/frontend
     audit_verdict: PASS
     downloaded_components: 25
     complete: 25
-    duplicate_relocated: 0
-    skipped_in_component_universe: 0
     gaps: 0
+    skipped_in_component_universe: 0
     insufficient_evidence: 0
-    recovery_run_url: https://github.com/maxbry123-commits/frontend/actions/runs/33694616279
-    artifact_digest: sha256:1900518dbd6710589748f20cb1c179535c53a196cade4217f5fa85079fa1c380
-    note: dedicated recovery restricted the universe to RESEARCH_DOWNLOAD_MANIFEST.jsonl; 25/25 components have source URL, 40-char SHA, ZIP/parts and verified destination.
+    recovery_run: 33694616279
 
-failed_workflows:
-  - repository: maxbry123-commits/Agentes-motores-Wordflow-YAIWES
-    run_url: https://github.com/maxbry123-commits/Agentes-motores-Wordflow-YAIWES/actions/runs/33693743835
-    run_id: 33693743835
-    status: completed
-    conclusion: failure
-    exact_gap: HTTP 403 during repeated GitHub API tree traversal; evidence generation aborted before artifact upload
-    action: isolated replacement created using local git ls-tree/git show only; old workflow was not reactivated or rerun
+agentes:
+  base_run: 33699624351
+  base_run_status: SUCCESS
+  base_artifact_digest: sha256:62f9e965fb0be619a17b343a53bac97377c2bf74778cf8b180f67488728c7379
+  manifest_rows: 335
+  excluded_non_downloaded:
+    - source: https://github.com/RUCAIBox/Math-Shepherd.git
+      classification: EXCLUDED_NON_DOWNLOADED
+      reason: SKIPPED clone row without SHA/parts; no downloaded version established
+  unique_versions: 260
+  unique_canonical: 212
+  base_complete: 199
+  base_duplicate_relocated: 47
+  base_gaps: 11
+  base_insufficient_evidence: 3
+  evidence_run: 33700146789
+  evidence_run_status: SUCCESS
+  evidence_artifact_digest: sha256:a5700ce3aa452c04122ded425a22f83baf9e71cf099dbf43ab6379eed71854cb
+  recovery_findings:
+    - all 11 base GAP slugs have complete ZIP sequences in other verified download directories; final remapping remains blocked by active legacy run gate
+    - HelpSteer2 Hugging Face row has URL, 40-char SHA and complete ZIP sequence; previous INSUFFICIENT_EVIDENCE came from github.com-only source predicate
+    - Math-Shepherd Hugging Face downloaded row has URL, 40-char SHA and complete ZIP sequence; previous INSUFFICIENT_EVIDENCE came from github.com-only source predicate
+    - legacy https://github.com/explodinggradients/ragas.git row has no source_commit and no parts; recovery shows Ragas ZIPs but cannot prove a version identity for that legacy source, so it is excluded from the versioned downloaded-component universe rather than invented as a component
+  preserved_active_run: 33694014240
+  preserved_active_run_status: in_progress
+  provisional_verdict: BLOCKED_ACTIVE_JOB
 
-active_workflows:
-  - repository: maxbry123-commits/agentes
-    run_url: https://github.com/maxbry123-commits/agentes/actions/runs/33694014240
-    run_id: 33694014240
+osquestador_auditor:
+  manifest: Download code osquestador auditor memoria/RESEARCH_DOWNLOAD_MANIFEST.jsonl
+  manifest_rows: 127
+  expected_downloaded_universe: 126
+  excluded_non_downloaded:
+    - slug: wisemapping
+      classification: EXCLUDED_NON_DOWNLOADED
+      reason: SKIPPED without SHA/parts
+  fast_run: 33699559368
+  fast_run_conclusion: failure
+  fast_run_failure_classification: TEMPLATE_TYPEERROR_NOT_DATA
+  scoped_recovery_run: 33699966103
+  scoped_recovery_status: SUCCESS
+  scoped_recovery_artifact_digest: sha256:988a2c53b973654fb4a186b3c06dbbf6bdee5f5ff19425463ae9d74ff8ad089b
+  scoped_recovery_result:
+    unique_versions: 126
+    complete: 40
+    gaps: 86
+    insufficient_evidence: 0
+    excluded_non_downloaded: 1
+  action_taken:
+    workflow: .github/workflows/inventory-forensic-v3-recovery-global-zipmap-auditor.yml
+    commit: 374282342a869b5f8bcab2c3e83af5b4a02fee6b
+    run: 33702002739
+    purpose: isolated read-only global ZIP/destination mapping for the 126-row downloaded universe
     status: in_progress
-    conclusion: null
-    purpose: GAP-AGENTES-ZIPMAP-001
-  - repository: maxbry123-commits/osquestador-auditor
-    run_url: https://github.com/maxbry123-commits/osquestador-auditor/actions/runs/33693813584
-    run_id: 33693813584
-    status: in_progress
-    conclusion: null
-    purpose: initial forensic inventory
-  - repository: maxbry123-commits/Agentes-motores-Wordflow-YAIWES
-    run_url: https://github.com/maxbry123-commits/Agentes-motores-Wordflow-YAIWES/actions/runs/33699206723
-    run_id: 33699206723
-    status: in_progress
-    conclusion: null
-    purpose: GAP-MOTORES-ZIPDEST-002 isolated ZIP/destination recovery
+  preserved_original_run: 33693813584
+  preserved_original_run_status: in_progress
+  provisional_verdict: BLOCKED_ACTIVE_JOB_AND_86_SCOPED_GAPS
 
-pending_tasks:
-  - id: GAP-AGENTES-ZIPMAP-001
-    repository: maxbry123-commits/agentes
-    gap: 338 first-pass manifest rows await ZIP/destination mapping
-    recovery: preserve active isolated ZIP-map workflow and verify artifact after completion
-  - id: WAIT-AUDITOR-001
-    repository: maxbry123-commits/osquestador-auditor
-    gap: initial workflow still active; not PASS
-    recovery: preserve run; verify artifact after completion
-  - id: GAP-MOTORES-ZIPDEST-002
-    repository: maxbry123-commits/Agentes-motores-Wordflow-YAIWES
-    gap: local-git recovery completed SUCCESS but classified 198/198 rows INSUFFICIENT_EVIDENCE because exact_path/destination was not mapped to the verified ZIP directory
-    recovery: isolated inventory-forensic-v3-recovery-zipmap-motores applies the already-PASS nct-core ZIP-directory rule without downloading or moving components; run 33699206723 in_progress
+motores:
+  repository: maxbry123-commits/Agentes-motores-Wordflow-YAIWES
+  localgit_run: 33698158009
+  localgit_status: SUCCESS
+  localgit_result:
+    discovered: 198
+    complete: 0
+    insufficient_evidence: 198
+    root_cause: destination mapping only
+  zip_destination_recovery_run: 33699206723
+  zip_destination_recovery_status: in_progress
+  provisional_verdict: BLOCKED_ACTIVE_JOB
 
-artifacts:
+active_inventory_jobs:
+  count_known: 4
+  runs:
+    - repository: maxbry123-commits/agentes
+      run: 33694014240
+      status: in_progress
+    - repository: maxbry123-commits/osquestador-auditor
+      run: 33693813584
+      status: in_progress
+    - repository: maxbry123-commits/osquestador-auditor
+      run: 33702002739
+      status: in_progress
+    - repository: maxbry123-commits/Agentes-motores-Wordflow-YAIWES
+      run: 33699206723
+      status: in_progress
+
+stage_2_indexes:
+  status: BLOCKED
   global_index_url: null
   local_index_urls: []
   audit_report_url: null
+  reason: requires active_jobs=0 and 7/7 PASS with gaps=0 skipped=0 insufficient_evidence=0 inside downloaded universe
 
-verdict: RUNNING
+closure_gates:
+  active_jobs: FAIL
+  repositories_7_of_7_pass: FAIL
+  gaps_zero: FAIL
+  skipped_zero_inside_downloaded_universe: PASS_FOR_VERIFIED_SCOPE
+  insufficient_evidence_zero: FAIL_PENDING_REMAP
+  broken_links_zero: NOT_RUN
+  four_pass_audit: NOT_RUN
+  verified_closed: false
 
-## Current evidence snapshot
+## Iteration 7 — 2026-09-03T01:03:00Z
 
-- PASS repositories: 4/7 — nct-core, router-universal-router-inteligente-, Orquestador-Maxbry-, frontend.
-- Verified downloaded-component universe so far: 124 unique entries across PASS repositories; 123 COMPLETE + 1 DUPLICATE_RELOCATED; 0 SKIPPED, 0 GAP, 0 INSUFFICIENT_EVIDENCE inside that verified universe.
-- Agentes-motores-Wordflow-YAIWES run 33698158009 completed SUCCESS and produced an artifact, but the artifact reported 198 components, COMPLETE=0 and INSUFFICIENT_EVIDENCE=198 because destination_verified was false for every row. It is not PASS.
-- GAP-MOTORES-ZIPDEST-002 is being repaired by run 33699206723 using the same manifest-directory + exact ZIP-parts mapping rule already verified in nct-core.
-- agentes run 33694014240 and osquestador-auditor run 33693813584 remain in_progress and are not PASS.
-- Stage 2 index generation remains blocked until 7/7 repositories have verified audit artifacts.
+- Preserved PASS state at 4/7.
+- Downloaded and read agentes base artifact from run 33699624351 and GAP evidence artifact from run 33700146789.
+- Confirmed agentes 11 GAPs have matching complete ZIP sequences elsewhere in the evidence trees; confirmed Hugging Face HelpSteer2 and Math-Shepherd false INSUFFICIENT classifications were caused by a github.com-only source predicate.
+- Legacy explodinggradients/ragas row remains without SHA/parts. ZIP existence alone does not establish a version identity, so no component/version is invented from that row.
+- Preserved agentes run 33694014240 because it remains in_progress.
+- Downloaded and read auditor scoped artifact from run 33699966103: 126 downloaded versions, 40 COMPLETE, 86 GAP, 0 INSUFFICIENT, plus 1 excluded wisemapping SKIPPED row.
+- Created isolated read-only auditor global ZIP/destination recovery workflow; commit 374282342a869b5f8bcab2c3e83af5b4a02fee6b; run 33702002739 is in_progress.
+- Preserved auditor original run 33693813584 because it remains in_progress.
+- Motores recovery run 33699206723 remains in_progress.
+- No indexes generated and no repository newly promoted to PASS because active inventory jobs remain.
 
-## Iteration history
+## Iteration 6 — supplied latest state
 
-### Iteration 5 — 2026-09-03T00:22:30Z
-
-- repositories PASS: 4/7
-- motores local-git recovery completed SUCCESS but evidence verdict remained non-PASS: 198 INSUFFICIENT_EVIDENCE due to missing destination mapping
-- isolated ZIP/destination recovery created: .github/workflows/inventory-forensic-v3-recovery-zipmap-motores.yml
-- recovery run: https://github.com/maxbry123-commits/Agentes-motores-Wordflow-YAIWES/actions/runs/33699206723
-- active runs: agentes ZIP-map, osquestador-auditor initial audit, motores ZIP/destination recovery
-- indexes: blocked pending 7/7 PASS
-
-### Iteration 4 — 2026-09-03T00:09:30Z
-
-- repositories PASS: 4/7
-- frontend promoted to PASS: 25/25 COMPLETE
-- motores initial run failed: HTTP 403 during API traversal
-- isolated repair created: .github/workflows/inventory-forensic-v3-recovery-localgit-motores.yml
-- recovery run: https://github.com/maxbry123-commits/Agentes-motores-Wordflow-YAIWES/actions/runs/33698158009
-- active/queued runs: agentes, osquestador-auditor, motores recovery
-- indexes: blocked pending 7/7 PASS
-
-### Iteration 3 — 2026-09-02T23:23:30Z
-
-- repositories audited: 5/7
-- PASS: 3/7
-- active recoveries: agentes, frontend
-- active initial audits: osquestador-auditor, motores-YAIWES
-
-### Iteration 2 — 2026-09-02T23:16:00Z
-
-- repositories audited: 4/7
-- PASS: 0
-- active recoveries: agentes, nct-core, router, Orquestador provenance
-- active initial audits: osquestador-auditor, motores-YAIWES, frontend
-- checkpoint commit: 6e92ee0aa7c1187682ff00ba84fe2ca1f135705d
-
-### Iteration 1 — 2026-09-02T23:12:00Z
-
-- repositories audited: 2/7
-- PASS: 0
-- confirmed gaps: agentes ZIP-map; router ZIP-map
-- checkpoint commit: da5755fd2def32ac2a82a8e80caf36d3116d11cd
+- PASS confirmed 4/7: nct-core, router-universal-router-inteligente-, Orquestador-Maxbry-, frontend.
+- agentes run 33699624351 SUCCESS; 335 manifest rows; 1 GitHub Math-Shepherd SKIPPED excluded; 260 URL+SHA versions; 212 canonical URLs; 199 COMPLETE; 47 DUPLICATE_RELOCATED; 11 GAP; 3 INSUFFICIENT.
+- Cross-check located complete ZIP sequences for all 11 agentes GAPs; Hugging Face HelpSteer2 and Math-Shepherd have valid URL+40-char SHA+ZIP and were false INSUFFICIENT under a github.com-only predicate.
+- auditor manifest has 127 rows = 126 downloaded COMPLETE-intent rows + 1 wisemapping SKIPPED excluded; fast run 33699559368 failed from template TypeError, not data.
+- motores localgit run 33698158009 SUCCESS but 198 INSUFFICIENT from destination mapping; ZIP/destination recovery 33699206723 active.
