@@ -1,0 +1,430 @@
+package extractors
+
+import (
+	"bytes"
+	"embed"
+	"encoding/json"
+	"fmt"
+	"math"
+	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
+
+	"github.com/inngest/inngest/pkg/enums"
+	"github.com/inngest/inngest/pkg/tracing/metadata"
+	"github.com/inngest/inngest/pkg/util"
+	"github.com/inngest/inngest/pkg/util/aigateway"
+)
+
+//tygo:generate
+const (
+	KindInngestAI metadata.Kind = "inngest.ai"
+)
+
+//tygo:generate
+type AIMetadata struct {
+	InputTokens   int64  `json:"input_tokens"`
+	OutputTokens  int64  `json:"output_tokens"`
+	RequestModel  string `json:"request_model"`
+	Provider      string `json:"provider"`
+	OperationName string `json:"operation_name"`
+
+	// Response identity. ResponseModel is the model that served the request (may
+	// differ from the RequestModel, e.g. a dated snapshot). FinishReasons is
+	// stored raw per emitter — note OpenAI's native "tool_calls" is emitted as
+	// the singular "tool_call" by some instrumentations.
+	ResponseModel string   `json:"response_model,omitempty"`
+	ResponseID    string   `json:"response_id,omitempty"`
+	FinishReasons []string `json:"finish_reasons,omitempty"`
+
+	LatencyMs     *int64   `json:"latency_ms,omitempty"`
+	TotalTokens   *int64   `json:"total_tokens,omitempty"`
+	EstimatedCost *float64 `json:"estimated_cost,omitempty"`
+
+	// Granular token usage. Cache semantics differ by provider: OpenAI reports
+	// cached tokens as a subset of InputTokens, whereas Anthropic reports them
+	// additively — values are stored raw and left unreconciled.
+	CacheReadTokens     *int64 `json:"cache_read_tokens,omitempty"`
+	CacheCreationTokens *int64 `json:"cache_creation_tokens,omitempty"`
+	ReasoningTokens     *int64 `json:"reasoning_tokens,omitempty"`
+
+	// Request parameters. Pointers so an explicit zero (e.g. temperature 0 or
+	// seed 0) is distinguishable from an absent attribute.
+	Temperature      *float64 `json:"temperature,omitempty"`
+	TopP             *float64 `json:"top_p,omitempty"`
+	MaxTokens        *int64   `json:"max_tokens,omitempty"`
+	FrequencyPenalty *float64 `json:"frequency_penalty,omitempty"`
+	PresencePenalty  *float64 `json:"presence_penalty,omitempty"`
+	Seed             *int64   `json:"seed,omitempty"`
+}
+
+func (ms AIMetadata) Kind() metadata.Kind {
+	return KindInngestAI
+}
+
+func (ms AIMetadata) Op() metadata.Opcode {
+	return enums.MetadataOpcodeMerge
+}
+
+func (ms AIMetadata) Serialize() (metadata.Values, error) {
+	var rawMetadata metadata.Values
+	err := rawMetadata.FromStruct(ms)
+	if err != nil {
+		return nil, err
+	}
+
+	return rawMetadata, nil
+}
+
+func ExtractAIGatewayMetadata(req aigateway.Request, respStatus int, resp []byte, serverProcessingMs int64) ([]metadata.Structured, error) {
+	parsedInput, err := aigateway.ParseInput(req)
+	if err != nil {
+		return nil, &metadata.WarningError{
+			Key: "inngest.ai.request.parsing.failed",
+			Err: err,
+		}
+	}
+
+	u, err := url.Parse(parsedInput.URL)
+	if err != nil {
+		return nil, &metadata.WarningError{
+			Key: "inngest.ai.request.parsing.failed",
+			Err: err,
+		}
+	}
+
+	parsedOutput, err := aigateway.ParseOutput(req.Format, resp)
+	if err != nil {
+		return nil, &metadata.WarningError{
+			Key: "inngest.ai.response.parsing.failed",
+			Err: err,
+		}
+	}
+
+	inputTokens := int64(parsedOutput.TokensIn)
+	outputTokens := int64(parsedOutput.TokensOut)
+	totalTokens := inputTokens + outputTokens
+
+	var latencyMs *int64
+	if serverProcessingMs > 0 {
+		latencyMs = &serverProcessingMs
+	}
+
+	aiMd := &AIMetadata{
+		RequestModel:  parsedInput.Model,
+		ResponseModel: parsedOutput.Model,
+		Provider:      req.Format,
+		OperationName: "",
+
+		InputTokens:  inputTokens,
+		OutputTokens: outputTokens,
+		TotalTokens:  &totalTokens,
+		LatencyMs:    latencyMs,
+	}
+	backfillEstimatedCost(aiMd)
+
+	return []metadata.Structured{
+		aiMd,
+		&HTTPMetadata{
+			Method:             http.MethodPost,
+			Domain:             util.ToPtr(u.Host),
+			Path:               util.ToPtr(u.Path),
+			RequestContentType: util.ToPtr("application/json"),
+			RequestSize:        util.ToPtr(int64(len(req.Body))),
+
+			ResponseContentType: util.ToPtr("application/json"),
+			ResponseSize:        util.ToPtr(int64(len(resp))),
+			ResponseStatus:      util.ToPtr(int64(respStatus)),
+		},
+	}, nil
+}
+
+type vercelAIUsage struct {
+	InputTokens  int64 `json:"inputTokens"`
+	OutputTokens int64 `json:"outputTokens"`
+	TotalTokens  int64 `json:"totalTokens"`
+}
+
+type vercelAIStepResponse struct {
+	ModelID string            `json:"modelId"`
+	Headers map[string]string `json:"headers"`
+}
+
+type vercelAIStepRequest struct {
+	Body struct {
+		Model string `json:"model"`
+	} `json:"body"`
+}
+
+type vercelAIStep struct {
+	Usage    *vercelAIUsage        `json:"usage"`
+	Response *vercelAIStepResponse `json:"response"`
+	Request  *vercelAIStepRequest  `json:"request"`
+}
+
+type vercelAIResponseData struct {
+	TotalUsage *vercelAIUsage `json:"totalUsage"`
+	Steps      []vercelAIStep `json:"steps"`
+}
+
+// vercelAIResponse represents the Vercel AI SDK response format from step.ai.wrap.
+// The step output is wrapped in {"data": ...} by Inngest.
+type vercelAIResponse struct {
+	Data *vercelAIResponseData `json:"data"`
+}
+
+// ExtractAIOutputMetadata extracts ai metadata from step output
+// which contains vercel ai sdk response format.
+// stepDurationMs is the step execution duration in milliseconds, used as fallback for latency.
+func ExtractAIOutputMetadata(output []byte, stepDurationMs int64) ([]metadata.Structured, error) {
+	// skip unmarshal if output doesn't contain ai-specific fields
+	if !bytes.Contains(output, []byte("totalUsage")) &&
+		!bytes.Contains(output, []byte("inputTokens")) {
+		return nil, nil
+	}
+
+	var resp vercelAIResponse
+	if err := json.Unmarshal(output, &resp); err != nil {
+		return nil, nil
+	}
+
+	// check if we have the expected vercel ai sdk structure
+	if resp.Data == nil {
+		return nil, nil
+	}
+
+	// extract the first step for model and latency lookups
+	var firstStep *vercelAIStep
+	if len(resp.Data.Steps) > 0 {
+		firstStep = &resp.Data.Steps[0]
+	}
+
+	// try to get usage from totalUsage first, then from first step
+	var inputTokens, outputTokens, totalTokens int64
+	if resp.Data.TotalUsage != nil {
+		inputTokens = resp.Data.TotalUsage.InputTokens
+		outputTokens = resp.Data.TotalUsage.OutputTokens
+		totalTokens = resp.Data.TotalUsage.TotalTokens
+	} else if firstStep != nil && firstStep.Usage != nil {
+		inputTokens = firstStep.Usage.InputTokens
+		outputTokens = firstStep.Usage.OutputTokens
+		totalTokens = firstStep.Usage.TotalTokens
+	} else {
+		return nil, nil
+	}
+
+	var requestModel string
+	var responseModel string
+	if firstStep != nil {
+		if firstStep.Response != nil && firstStep.Response.ModelID != "" {
+			responseModel = firstStep.Response.ModelID
+		}
+
+		if firstStep.Request != nil && firstStep.Request.Body.Model != "" {
+			requestModel = firstStep.Request.Body.Model
+		}
+	}
+
+	// extract latency from provider headers, fallback to step duration
+	var latencyMs *int64
+	if firstStep != nil && firstStep.Response != nil && firstStep.Response.Headers != nil {
+		headers := firstStep.Response.Headers
+		// try OpenAI header
+		if ms, ok := headers["openai-processing-ms"]; ok {
+			if parsed, err := strconv.ParseInt(ms, 10, 64); err == nil {
+				latencyMs = &parsed
+			}
+		}
+		// TODO: Add other provider headers (Anthropic, etc.) as needed
+	}
+
+	// fallback to step duration if no provider header
+	if latencyMs == nil && stepDurationMs > 0 {
+		latencyMs = &stepDurationMs
+	}
+
+	aiMd := &AIMetadata{
+		InputTokens:   inputTokens,
+		OutputTokens:  outputTokens,
+		TotalTokens:   &totalTokens,
+		RequestModel:  requestModel,
+		ResponseModel: responseModel,
+		Provider:      "vercel-ai",
+		LatencyMs:     latencyMs,
+	}
+	backfillEstimatedCost(aiMd)
+
+	return []metadata.Structured{aiMd}, nil
+}
+
+// ModelPricing contains input/output pricing per token in USD.
+type ModelPricing struct {
+	InputPerToken  float64
+	OutputPerToken float64
+}
+
+//go:embed model_prices.json
+var modelPricesFile embed.FS
+
+// modelPriceEntry mirrors the fields we need from LiteLLM's
+// model_prices_and_context_window.json (https://github.com/BerriAI/litellm,
+// MIT licensed outside its enterprise/ directory), the community-maintained
+// source of model cost data that tools like tokencost also republish. Costs
+// are USD per token. Refresh the embedded snapshot with
+// scripts/update-model-prices.sh.
+type modelPriceEntry struct {
+	InputCostPerToken  *float64 `json:"input_cost_per_token"`
+	OutputCostPerToken *float64 `json:"output_cost_per_token"`
+}
+
+// modelPricingPlaceholderKey is a documentation-only placeholder entry
+// present in the upstream file (a template showing every possible field,
+// with dummy zero-value costs) - it isn't a real model and must be excluded.
+const modelPricingPlaceholderKey = "sample_spec"
+
+// modelPricing is the exact-match pricing table, keyed by lowercase model
+// name, in USD per token. It's parsed at init time from the embedded
+// model_prices.json snapshot.
+var modelPricing = mustLoadModelPricing()
+
+func mustLoadModelPricing() map[string]ModelPricing {
+	raw, err := modelPricesFile.ReadFile("model_prices.json")
+	if err != nil {
+		panic(fmt.Errorf("extractors: reading embedded model_prices.json: %w", err))
+	}
+
+	var entries map[string]modelPriceEntry
+	if err := json.Unmarshal(raw, &entries); err != nil {
+		panic(fmt.Errorf("extractors: parsing embedded model_prices.json: %w", err))
+	}
+
+	pricing := make(map[string]ModelPricing, len(entries))
+	for model, entry := range entries {
+		if model == modelPricingPlaceholderKey {
+			continue
+		}
+		if entry.InputCostPerToken == nil || entry.OutputCostPerToken == nil {
+			// Non-token-priced entries (image/audio/embedding models, etc.)
+			// aren't usable for our per-token cost estimate.
+			continue
+		}
+		if *entry.InputCostPerToken == 0 && *entry.OutputCostPerToken == 0 {
+			// A model priced at exactly zero for both input and output is
+			// almost always an unfilled upstream placeholder, not a
+			// genuinely free model - excluding it avoids a real model's
+			// usage silently costing nothing.
+			continue
+		}
+		pricing[strings.ToLower(model)] = ModelPricing{
+			InputPerToken:  *entry.InputCostPerToken,
+			OutputPerToken: *entry.OutputCostPerToken,
+		}
+	}
+
+	return pricing
+}
+
+// estimatedCostForTokens prefers the response model (the model that actually
+// served the request) for cost estimation, falling back to the requested
+// model.
+func estimatedCostForTokens(responseModel, requestModel string, inputTokens, outputTokens int64) *float64 {
+	costModel := responseModel
+	if costModel == "" {
+		costModel = requestModel
+	}
+	return EstimateCost(costModel, inputTokens, outputTokens)
+}
+
+// backfillEstimatedCost sets md.EstimatedCost from model + token usage only
+// when it isn't already populated — so an extractor that already supplies
+// its own EstimatedCost (e.g. a provider-reported cost) is never
+// overwritten. Every AIMetadata construction site should call this instead
+// of computing cost inline, so the response-model-preferred-over-request-model
+// rule lives in one place.
+func backfillEstimatedCost(md *AIMetadata) {
+	if md.EstimatedCost != nil {
+		return
+	}
+	md.EstimatedCost = estimatedCostForTokens(md.ResponseModel, md.RequestModel, md.InputTokens, md.OutputTokens)
+}
+
+// BackfillEstimatedCostInValues fills an "estimated_cost" entry into raw
+// "inngest.ai" metadata values when one isn't already present. Unlike
+// backfillEstimatedCost, this operates on untyped metadata.Values — the shape
+// AI metadata takes when it's submitted directly by an SDK or API caller
+// (e.g. inngest.metadata.update or the AddRunMetadata API) rather than
+// produced by the extractor functions above, so it never passes through an
+// AIMetadata struct at all.
+func BackfillEstimatedCostInValues(values metadata.Values) {
+	if values == nil {
+		return
+	}
+
+	if raw, ok := values["estimated_cost"]; ok {
+		var existing *float64
+		if err := json.Unmarshal(raw, &existing); err == nil && existing != nil {
+			return
+		}
+	}
+
+	var inputTokens, outputTokens int64
+	_ = json.Unmarshal(values["input_tokens"], &inputTokens)
+	_ = json.Unmarshal(values["output_tokens"], &outputTokens)
+
+	var responseModel, requestModel string
+	_ = json.Unmarshal(values["response_model"], &responseModel)
+	_ = json.Unmarshal(values["request_model"], &requestModel)
+
+	cost := estimatedCostForTokens(responseModel, requestModel, inputTokens, outputTokens)
+	if cost == nil {
+		return
+	}
+
+	if b, err := json.Marshal(cost); err == nil {
+		values["estimated_cost"] = b
+	}
+}
+
+// EstimateCost calculates the estimated cost in USD for the given model and token counts
+func EstimateCost(model string, inputTokens, outputTokens int64) *float64 {
+	if model == "" {
+		return nil
+	}
+
+	modelLower := strings.ToLower(model)
+
+	pricing, ok := findPricingBySegment(modelLower)
+	if !ok {
+		return nil
+	}
+
+	// Calculate cost: tokens * price_per_token
+	inputCost := float64(inputTokens) * pricing.InputPerToken
+	outputCost := float64(outputTokens) * pricing.OutputPerToken
+	totalCost := inputCost + outputCost
+
+	// Round to 6 decimal places
+	rounded := math.Round(totalCost*1_000_000) / 1_000_000
+
+	return &rounded
+}
+
+// findPricingBySegment finds pricing for a model by exact match, falling back
+// to progressively dropping trailing "-"-delimited segments (e.g.
+// "a-b-c-date" tries "a-b-c-date", then "a-b-c", then "a-b", then "a") until
+// an exact match is found. This avoids substring-prefix false positives, e.g.
+// "gpt-5.7-newmodel" must not match a pricing entry for "gpt-5.6-luna".
+func findPricingBySegment(model string) (ModelPricing, bool) {
+	for {
+		if pricing, ok := modelPricing[model]; ok {
+			return pricing, true
+		}
+
+		idx := strings.LastIndex(model, "-")
+		if idx == -1 {
+			return ModelPricing{}, false
+		}
+		model = model[:idx]
+	}
+}

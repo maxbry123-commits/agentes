@@ -1,0 +1,121 @@
+[
+  {
+    "repo": "Inngest",
+    "path": "api.test",
+    "chunks_dir": "Inngest/api.test.chunks",
+    "bytes": 18908162,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Inngest",
+    "path": "vendor/modernc.org/sqlite/lib/sqlite_linux_arm64.go",
+    "chunks_dir": "Inngest/vendor/modernc.org/sqlite/lib/sqlite_linux_arm64.go.chunks",
+    "bytes": 8720927,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Inngest",
+    "path": "vendor/modernc.org/sqlite/lib/sqlite_darwin_amd64.go",
+    "chunks_dir": "Inngest/vendor/modernc.org/sqlite/lib/sqlite_darwin_amd64.go.chunks",
+    "bytes": 8893194,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Inngest",
+    "path": "vendor/modernc.org/sqlite/lib/sqlite_linux_386.go",
+    "chunks_dir": "Inngest/vendor/modernc.org/sqlite/lib/sqlite_linux_386.go.chunks",
+    "bytes": 8705538,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Inngest",
+    "path": "vendor/modernc.org/sqlite/lib/sqlite_openbsd_amd64.go",
+    "chunks_dir": "Inngest/vendor/modernc.org/sqlite/lib/sqlite_openbsd_amd64.go.chunks",
+    "bytes": 8668189,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Inngest",
+    "path": "vendor/modernc.org/sqlite/lib/sqlite_linux_s390x.go",
+    "chunks_dir": "Inngest/vendor/modernc.org/sqlite/lib/sqlite_linux_s390x.go.chunks",
+    "bytes": 8718079,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Inngest",
+    "path": "vendor/modernc.org/sqlite/lib/sqlite_linux_arm.go",
+    "chunks_dir": "Inngest/vendor/modernc.org/sqlite/lib/sqlite_linux_arm.go.chunks",
+    "bytes": 8727199,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Inngest",
+    "path": "vendor/modernc.org/sqlite/lib/sqlite_darwin_arm64.go",
+    "chunks_dir": "Inngest/vendor/modernc.org/sqlite/lib/sqlite_darwin_arm64.go.chunks",
+    "bytes": 8880230,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Inngest",
+    "path": "vendor/modernc.org/sqlite/lib/sqlite_freebsd_amd64.go",
+    "chunks_dir": "Inngest/vendor/modernc.org/sqlite/lib/sqlite_freebsd_amd64.go.chunks",
+    "bytes": 8692331,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Inngest",
+    "path": "vendor/modernc.org/sqlite/lib/sqlite_freebsd_arm64.go",
+    "chunks_dir": "Inngest/vendor/modernc.org/sqlite/lib/sqlite_freebsd_arm64.go.chunks",
+    "bytes": 8704042,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Inngest",
+    "path": "vendor/modernc.org/sqlite/lib/sqlite_linux_loong64.go",
+    "chunks_dir": "Inngest/vendor/modernc.org/sqlite/lib/sqlite_linux_loong64.go.chunks",
+    "bytes": 8711838,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Inngest",
+    "path": "vendor/modernc.org/sqlite/lib/sqlite_openbsd_arm64.go",
+    "chunks_dir": "Inngest/vendor/modernc.org/sqlite/lib/sqlite_openbsd_arm64.go.chunks",
+    "bytes": 8680497,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Inngest",
+    "path": "vendor/modernc.org/sqlite/lib/sqlite_linux_riscv64.go",
+    "chunks_dir": "Inngest/vendor/modernc.org/sqlite/lib/sqlite_linux_riscv64.go.chunks",
+    "bytes": 8720074,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Inngest",
+    "path": "vendor/modernc.org/sqlite/lib/sqlite_windows_386.go",
+    "chunks_dir": "Inngest/vendor/modernc.org/sqlite/lib/sqlite_windows_386.go.chunks",
+    "bytes": 10465006,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Inngest",
+    "path": "vendor/modernc.org/sqlite/lib/sqlite_windows.go",
+    "chunks_dir": "Inngest/vendor/modernc.org/sqlite/lib/sqlite_windows.go.chunks",
+    "bytes": 10465069,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Inngest",
+    "path": "vendor/modernc.org/sqlite/lib/sqlite_linux_ppc64le.go",
+    "chunks_dir": "Inngest/vendor/modernc.org/sqlite/lib/sqlite_linux_ppc64le.go.chunks",
+    "bytes": 8722407,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Inngest",
+    "path": "vendor/modernc.org/sqlite/lib/sqlite_linux_amd64.go",
+    "chunks_dir": "Inngest/vendor/modernc.org/sqlite/lib/sqlite_linux_amd64.go.chunks",
+    "bytes": 8709475,
+    "chunk_bytes": 8388608
+  }
+]

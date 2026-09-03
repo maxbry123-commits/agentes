@@ -1,0 +1,280 @@
+import { type AgentRunRequest, type ToolPermission } from "../../protocol.ts";
+import { claimSessionOwnership, REPLICA_ID } from "../../sessions/alive.ts";
+import {
+  configuredIngestBases,
+  isAgentaIngest,
+  platformAuthorizationProvider,
+  publicApiBaseConfigured,
+  resolveOtlpTraceEndpoint,
+  type AuthorizationProvider,
+} from "../../tracing/otel.ts";
+import { endpointHost } from "../../tracing/export-diagnostics.ts";
+import { PendingApprovalPauseController } from "./pause.ts";
+
+type Log = (message: string) => void;
+
+/** Extract the run credential from the OTLP export headers (initial value, constant for the run). */
+export function runCredential(request: AgentRunRequest): string {
+  const headers = (request.telemetry?.exporters?.otlp?.headers ?? {}) as Record<
+    string,
+    string
+  >;
+  return (headers["authorization"] ?? headers["Authorization"] ?? "").trim();
+}
+
+/** Endpoints already warned about, so a per-turn read warns once instead of every run. */
+const warnedEndpoints = new Set<string>();
+
+/** Test-only: forget which endpoints have warned, so a case can assert on its own warning. */
+export function resetPlatformCredentialWarnings(): void {
+  warnedEndpoints.clear();
+}
+
+/**
+ * The legacy wire has one authorization header for two possible owners. Treat it as an Agenta
+ * platform credential only when the configured destination is Agenta ingest; for an external
+ * collector it belongs exclusively to that collector and must never enter platform calls.
+ *
+ * That attribution is only decidable once the runner knows its platform's PUBLIC api base
+ * (`AGENTA_API_URL`), because the public form is what a dispatched run carries: the API hands the
+ * SDK `https://<host>/api`, while the runner's own hop is usually the internal `http://api:8000`.
+ * A runner told ONLY its internal hop cannot tell its own API under its public name from a
+ * third-party collector. Refusing there fails closed on the wrong axis — it silently strips the
+ * credential from every run in an otherwise healthy self-hosted deployment, and the damage
+ * surfaces far away as a 401 on session persistence. So the strict check arms itself only when
+ * the operator has supplied the base that makes it decidable, and otherwise keeps the credential
+ * and says loudly what to configure.
+ */
+export function platformCredentialForRequest(
+  request: AgentRunRequest,
+  log: Log = (message) => process.stderr.write(`${message}\n`),
+): string {
+  const endpoint = resolveOtlpTraceEndpoint(
+    request.telemetry?.exporters?.otlp?.endpoint,
+  );
+  if (isAgentaIngest(endpoint)) return runCredential(request);
+
+  const credential = runCredential(request);
+  if (!credential) return "";
+
+  if (!publicApiBaseConfigured()) {
+    if (!warnedEndpoints.has(endpoint)) {
+      warnedEndpoints.add(endpoint);
+      log(
+        `[sessions] WARNING: trace endpoint host ${endpointHost(endpoint)} matches no configured ` +
+          `Agenta ingest host (${configuredIngestBases().map(endpointHost).join(", ")}), and AGENTA_API_URL is not set, so the ` +
+          `run credential cannot be attributed. Using it for platform calls anyway. Set ` +
+          `AGENTA_API_URL to this deployment's public api base (e.g. https://<host>/api) to ` +
+          `attribute it properly and to keep third-party collector credentials out of platform calls.`,
+      );
+    }
+    return credential;
+  }
+
+  if (!warnedEndpoints.has(endpoint)) {
+    warnedEndpoints.add(endpoint);
+    log(
+      `[sessions] trace endpoint host ${endpointHost(endpoint)} is not Agenta ingest ` +
+        `(${configuredIngestBases().map(endpointHost).join(", ")}); dropping the run credential from platform ` +
+        `calls. Session persistence and history rebuild will fail with HTTP 401 if this ` +
+        `endpoint IS this deployment's api base.`,
+    );
+  }
+  return "";
+}
+
+export interface RunOtlpTarget {
+  endpoint: string;
+  authorization: AuthorizationProvider;
+  authorizationSource: "platform" | "exporter";
+}
+
+/**
+ * Bind one run to its trusted OTLP destination and the credential that belongs to it.
+ * Agenta ingest follows the renewable platform credential; an external collector keeps the
+ * exporter header from the original request and never receives a refreshed platform token.
+ */
+export function resolveRunOtlpTarget(
+  request: AgentRunRequest,
+  platformAuthorization: AuthorizationProvider,
+): RunOtlpTarget {
+  const endpoint = resolveOtlpTraceEndpoint(
+    request.telemetry?.exporters?.otlp?.endpoint,
+  );
+  if (isAgentaIngest(endpoint)) {
+    return {
+      endpoint,
+      authorization: platformAuthorizationProvider(platformAuthorization),
+      authorizationSource: "platform",
+    };
+  }
+  const exporterAuthorization = runCredential(request) || undefined;
+  return {
+    endpoint,
+    authorization: () => exporterAuthorization,
+    authorizationSource: "exporter",
+  };
+}
+
+export function serverPermissionsFromRequest(
+  request: AgentRunRequest,
+): ReadonlyMap<string, ToolPermission> {
+  const permissions = new Map<string, ToolPermission>();
+  for (const server of request.mcpServers ?? []) {
+    if (server.policy?.permission !== undefined) {
+      permissions.set(server.name, server.policy.permission);
+    }
+  }
+  return permissions;
+}
+
+export function shouldSuppressPausedToolCallUpdate(
+  update: unknown,
+  pause: PendingApprovalPauseController,
+): boolean {
+  const frame = update as
+    | { sessionUpdate?: unknown; toolCallId?: unknown; status?: unknown }
+    | undefined;
+  const kind = frame?.sessionUpdate;
+  if (kind !== "tool_call" && kind !== "tool_call_update") return false;
+  const toolCallId =
+    typeof frame?.toolCallId === "string" ? frame.toolCallId : undefined;
+  // F-024: a paused (gated) tool call's later frames are teardown artifacts and never reach the
+  // stream.
+  if (pause.isPausedToolCall(toolCallId)) return true;
+  // Answered allows and denies both carry authoritative terminal evidence through a sibling pause.
+  if (
+    kind === "tool_call_update" &&
+    pause.active &&
+    frame?.status === "failed" &&
+    !pause.isAllowedExecution(toolCallId) &&
+    !pause.isAnsweredDeny(toolCallId)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+const CLAUDE_STRICT_DEPLOYMENTS = new Set([
+  "custom",
+  "bedrock",
+  "vertex",
+  "vertex_ai",
+]);
+
+export function applyClaudeConnectionEnv(
+  env: Record<string, string>,
+  request: AgentRunRequest,
+  acpAgent: string,
+  logger: Log,
+): void {
+  if (acpAgent !== "claude") return;
+
+  // Disable the Claude Agent SDK's Tool-Search feature for every Claude run. The bundled
+  // SDK defaults Tool-Search ON, which makes Claude DEFER the `agenta-tools` MCP tools and
+  // call them before their `inputSchema` is loaded — so it emits an empty `input: {}` and
+  // tools-with-args (reference workflows, commit_revision) never receive their arguments.
+  // Our tool count is small, so deferral buys nothing and only strips the schema. The SDK
+  // treats only `false`/`0`/`no`/`off` as off, so the string must be "false" (not "0"/"100").
+  // This is applied after `buildDaemonEnv`'s clear and is not in `KNOWN_PROVIDER_ENV_VARS`,
+  // so it is never stripped, and it reaches the Daytona sandbox like `ANTHROPIC_BASE_URL`.
+  env.ENABLE_TOOL_SEARCH = "false";
+
+  const deployment = request.modelConnection?.deployment;
+  const selectedModel = request.model;
+  const baseUrl = request.modelConnection?.endpoint?.baseUrl;
+  if (baseUrl) {
+    env.ANTHROPIC_BASE_URL = baseUrl;
+    logger(`claude base_url: ${baseUrl}`);
+  }
+
+  if (deployment === "bedrock") {
+    env.CLAUDE_CODE_USE_BEDROCK = "1";
+    const region = request.modelConnection?.endpoint?.region;
+    if (region) {
+      env.AWS_REGION = region;
+      env.AWS_DEFAULT_REGION ??= region;
+    }
+  } else if (deployment === "vertex" || deployment === "vertex_ai") {
+    env.CLAUDE_CODE_USE_VERTEX = "1";
+  }
+
+  if (
+    selectedModel &&
+    (baseUrl || (deployment && CLAUDE_STRICT_DEPLOYMENTS.has(deployment)))
+  ) {
+    env.ANTHROPIC_MODEL = selectedModel;
+    env.ANTHROPIC_CUSTOM_MODEL_OPTION = selectedModel;
+    logger(
+      `claude model=${selectedModel} deployment=${deployment ?? "<none>"}`,
+    );
+  }
+}
+
+/**
+ * Whether a requested-but-unsettable model fails the run (F-007). Strict by default on every
+ * harness path: a user who picks a model either runs that model or sees a loud error, never a
+ * silent (often pricier) fallback to the harness default. `AGENTA_AGENT_MODEL_STRICT=false` is
+ * the explicit opt-out that restores the legacy warn-and-fallback behavior. A run that requests
+ * no model is unaffected either way — it keeps the harness default.
+ */
+export function modelResolutionStrict(): boolean {
+  return process.env.AGENTA_AGENT_MODEL_STRICT !== "false";
+}
+
+export async function defaultResolveLocalRunnerOwner(
+  sessionId: string,
+  authorization: string,
+): Promise<{ replicaId: string; ownerReplicaId: string | undefined }> {
+  // No credential ⇒ the claim would 401; treat as "no known owner" (pass), never worse than today.
+  if (!authorization) {
+    return { replicaId: REPLICA_ID, ownerReplicaId: undefined };
+  }
+  return claimSessionOwnership(sessionId, authorization);
+}
+
+export function isTransportEndpointDisconnected(err: unknown): boolean {
+  const message = String(err instanceof Error ? err.message : err);
+  const code =
+    typeof err === "object" && err !== null && "code" in err
+      ? String((err as { code?: unknown }).code)
+      : "";
+  return (
+    code === "ENOTCONN" ||
+    message.includes("ENOTCONN") ||
+    message.includes("Transport endpoint is not connected")
+  );
+}
+
+export function containsTransportEndpointDisconnected(value: unknown): boolean {
+  const seen = new Set<object>();
+
+  const visit = (current: unknown): boolean => {
+    if (typeof current === "string") {
+      return isTransportEndpointDisconnected(current);
+    }
+    if (current instanceof Error) {
+      return isTransportEndpointDisconnected(current);
+    }
+    if (!current || typeof current !== "object") {
+      return false;
+    }
+    if (seen.has(current)) {
+      return false;
+    }
+    seen.add(current);
+
+    const code =
+      "code" in current ? String((current as { code?: unknown }).code) : "";
+    if (code === "ENOTCONN") {
+      return true;
+    }
+
+    if (Array.isArray(current)) {
+      return current.some(visit);
+    }
+    return Object.values(current as Record<string, unknown>).some(visit);
+  };
+
+  return visit(value);
+}

@@ -1,0 +1,337 @@
+# QA lessons: the traps, and how to not re-learn them
+
+Written during the 2026-07-14 pre-release QA. Every item here cost real time to discover. Read
+this BEFORE writing another agent QA test — most of these produce a **green test that proves
+nothing**, which is worse than a red one.
+
+The one-line summary: **assert on the wire and on side effects, never on model prose — and make
+your test client behave EXACTLY like the real frontend, or you are testing your own bug.**
+
+---
+
+## 1. The test client must replay history byte-faithfully, or every turn silently goes COLD
+
+**The trap.** Our driver replayed each assistant turn as a text-only message
+(`{role:"assistant", parts:[{type:"text",...}]}`), dropping the assistant's **tool parts**.
+
+The runner fingerprints the conversation over **(ordered user texts, ordered deduped tool-call
+ids, user-turn count)** — `session-pool.ts:226` `historyFingerprint`, and `:252`
+`expectedNextHistoryFingerprint`, which folds in the tool-call ids the runner emitted last turn.
+A replay with no tool-call ids therefore **cannot match** after any tool-using turn:
+
+```
+[keepalive] mismatch (history) key=…; evict + cold
+```
+
+**Why it poisons everything.** Every turn goes cold → a fresh harness process → the runner replays
+a hand-rendered transcript instead of the harness's real context. So:
+- warm/cold numbers are meaningless (nothing was ever warm),
+- **compaction never triggers** (the harness context never accumulates), so a long-context /
+  "loses information" test can pass while testing nothing at all.
+
+**The rule.** Echo back the **full** assistant `UIMessage.parts` — text parts *and* `tool-<name>`
+parts with `toolCallId`, `input`, `state`, `output` — exactly as the AI SDK does
+(`web/packages/agenta-playground/src/state/execution/agentRequest.ts:401`). If your driver
+synthesizes assistant turns, it is not testing the product.
+
+**The tell.** `grep 'mismatch (history)'` in the runner log. If it fires on turns your client
+believes are warm, your client is the bug.
+
+## 2. Never assert on the model's prose. It will lie to you.
+
+First version of the tool test asked the agent to run `echo "QA-BASH-$((6*7+1))"` and asserted the
+reply contained `QA-BASH-43`. The model **computed 43 itself and reported it without running
+bash** — so a *denied* tool call still produced a "passing" reply. The wire said denied; the text
+said success.
+
+**The rule.** Ground truth is the frame stream:
+- tool executed → `tool-output-available`
+- tool refused → `tool-output-error` / `tool-output-denied`
+- approval raised → `tool-approval-request`
+A token in the text is only ever *corroborating* evidence, and only if the model **cannot compute
+it** (use a container hostname, a random file's contents — never arithmetic stated in the prompt).
+
+## 3. Scope tool assertions to ONE tool call, keyed by its INPUT
+
+A turn routinely contains several tool calls — an auto-approved read-only one alongside the gated
+one. A turn-wide "did any tool run?" gives false failures.
+
+And you cannot key on `toolCallId`: **on approval-resume the harness RE-ISSUES the gated call under
+a brand-new `toolCallId`**. You cannot key on the tool name either: Claude calls the shell
+`Terminal`, Pi calls it `Bash`. **Key on the tool's `input`** (the command itself).
+
+## 4. `tool-input-available` carries INCOMPLETE input, and the tool name changes case mid-stream
+
+The frame fires repeatedly for one call, streaming a progressively-built partial input:
+
+```
+toolName "bash"  input {"command":"echo \"QA-BASH-"}          <- partial!
+toolName "bash"  input {"command":"echo \"QA-BASH-$(hostname"}
+toolName "Bash"  input {"command":"echo \"QA-BASH-$(hostname)\""}   <- complete; name case flips
+```
+
+Take the **last** frame per `toolCallId`. Taking the first — a reasonable reading of "available" —
+approves a **truncated command under the wrong name**; the runner keys approval decisions by
+name+args, so the decision misses the parked gate and **the approval re-parks forever**.
+(Reported as F-5: the frame name is a genuine wire-hygiene bug.)
+
+## 5. Approvals are IN-BAND. The REST route is a different product.
+
+The browser approves by re-POSTing the whole message history to `/invoke` with the tool part set to
+`state:"approval-responded"`, `approval:{id, approved}`. There IS a REST endpoint
+(`/api/sessions/interactions/{id}/respond`) but it is the **out-of-band Slack/trigger** path.
+Testing it tests code the UI never runs.
+
+## 6. A paused turn "finishes"
+
+An approval-paused turn ends with `finish.finishReason: "other"`, not a distinct status. "The turn
+ended" does NOT mean "the turn completed". Assert the reason.
+
+## 7. `code` tools do not exist on the product path
+
+The sidecar rejects them: *"Code tools are not supported by the sidecar."* They only work against
+the in-process service — which is what the OLD driver (`run_matrix.py`) targets, and why copying
+its scenarios into a product-path test fails instantly. The product's real tool surface is the
+always-active harness built-ins plus `gateway` / `mcp`.
+
+## 8. Gateway tools: discovery output is NOT config input, and the action has no prefix
+
+- The action is **`FETCH_EMAILS`**, not `GMAIL_FETCH_EMAILS`. The prefixed name appears inside the
+  tool's own description text, which is how you get seduced into using it. Wrong name → run fails
+  with `Action not found: composio/gmail/GMAIL_FETCH_EMAILS (HTTP 404)`.
+- `/api/tools/discover` returns the tool WITH `input_schema` + `description`; `GatewayToolConfig`
+  **forbids** those keys. Feeding discovery's own output back into the agent config 500s with
+  `extra_forbidden`. Strip to `{type, provider, integration, action, connection, name, permission}`.
+  (Reported as F-8 — the round trip should just work.)
+
+## 9. NEVER diagnose from a run that overlapped a container restart
+
+A full matrix run showed every cell failing with 500s (`Could not verify credentials … 404`), plus
+a UI-visible `404 on /api/workflows/revisions/resolve`, plus `[sessions/persist] DROPPED … fetch
+failed` and `getaddrinfo ENOTFOUND api`. **All phantoms** — another agent was recreating the
+api/worker containers at that moment. Everything went green on re-run.
+
+Check `docker ps` uptimes before believing a failure. Re-run before reporting.
+
+## 10. Read-only by construction when real accounts are connected
+
+The project has live Gmail and GitHub connections. QA must never send mail, reply to a thread, or
+write to GitHub as a side effect. Derive tools from read-only use-cases, then **allowlist** the
+result: keep only actions whose name begins with a known read verb (FETCH/LIST/GET/READ/SEARCH/
+VIEW/DESCRIBE/COUNT/FIND) and drop everything else. A write-verb *denylist* fails open — an action
+whose verb you never anticipated slips through and could mutate the real account. The allowlist
+fails closed: an unfamiliar action is dropped rather than run against the connected account.
+
+## 11. The product fails OPEN, so absence of an error means nothing
+
+The recurring shape of every serious bug this pass: **a component fails, the runner logs it and
+carries on.** The turn succeeds. The UI looks normal.
+
+- mounts 503 → run in a throwaway `/tmp` cwd, every file lost (F-1)
+- Pi permission extension can't install → **run with no enforcement**; `ask` never asks, `deny`
+  never denies (F-3)
+- Daytona's tunnel to the store fails → skip the mount, "not fatal"; files never persist (F-7)
+- session records fail to POST → dropped after 3 retries, turn proceeds
+
+**Therefore: a passing turn is not evidence.** For every capability, verify the side effect
+(the file is really there next turn; the commit really exists) and grep the runner log for
+`degraded|skipped|without this mount|tunnel discovery failed|DROPPED|cold`.
+
+## 12. Environment-shaped bugs hide behind image differences
+
+Pi's permission enforcement failed only on the deployment's image, because
+`PI_CODING_AGENT_DIR=/pi-agent` doesn't exist there and the runner runs as uid 1000; our EE dev
+image runs as root and ships the dir. Same code, opposite behavior. **Always check the container's
+user and the actual paths** (`docker exec … id; ls -ld <dir>`) before concluding the code is fine.
+And note a workaround applied with `docker exec` is **lost on container recreate** — re-verify it
+before every batch.
+
+---
+
+## 13. Findings expire on redeploy — re-run blocker-level findings after the stack is rebuilt
+
+F-9 ("Claude harness never resumes its native session") was CONFIRMED across 72h of real traffic
+and triaged as a release blocker. A deployment repair landed later the same day, pulling in recent
+upstream fixes. Nobody re-ran F-9 against the rebuilt stack before trusting it — until a decisive
+cold-context experiment on 2026-07-14 showed native session resume now working 4/4 runs, downgrading
+F-9 to a residual resilience concern (see STATUS.md).
+
+**The trap.** A deployment under active repair invalidates earlier observations made against it.
+Once the repair lands, the finding is stale, not necessarily wrong — but you don't know which
+until you re-check. Treating "CONFIRMED" as permanent past a redeploy is how a fixed bug survives
+in a triage doc as a blocker.
+
+**The rule.** For any blocker-level finding, record WHICH build/commit/deploy window it was
+observed on. After any redeploy that touches the relevant code path, re-run the decisive experiment
+before shipping a release decision on that finding — do not just re-read the old evidence.
+
+## 14. The v0 revision is a SEED — a committed config only persists on the SECOND commit
+
+Committing an agent config as a workflow revision (`POST /api/workflows/revisions/commit`) looks
+like it stores your `data.parameters` immediately. It does not on the first commit. The DAO
+force-nulls `data`/`flags`/`meta` for **version 0** (`api/oss/src/dbs/postgres/git/dao.py`
+`_null_revision_fields`, `if revision.version == "0"`). So a fresh variant's first commit is an
+empty seed; your config lands on the **second** commit (v1). A test that commits once and asserts
+`data.parameters == X` fails with `KeyError: 'data'` and looks like a broken endpoint — it is not.
+Commit twice (seed, then the real change) and assert v0→v1 plus the changed field surviving a
+`GET /api/workflows/revisions/{id}`. Also: `data` is `extra="forbid"` — only
+`{uri,url,headers,runtime,script,schemas,parameters}` are accepted.
+
+Second trap in the same area: this is a WORKFLOW-revision commit, NOT the in-stream
+`data-committed-revision` SSE frame (which is a different mechanism — the agent committing during a
+turn) and NOT a git commit. The playground's Save/Commit button hits the REST route above.
+
+## 15. User MCP servers are Claude-only, public-HTTPS-only, and the harness dials them
+
+Three things will each silently break an MCP smoke test:
+
+- **Pi rejects any run that declares `mcps`** (`run-plan.ts` `PI_USER_MCP_UNSUPPORTED_MESSAGE`).
+  User MCP needs a harness with `capabilities.mcpTools` — i.e. **Claude**. Do not smoke-test MCP on
+  a Pi cell; SKIP it there.
+- **A local MCP server is unreachable.** The SDK resolver AND the runner both run an SSRF guard
+  (`assert_endpoint_url_allowed` / `validateUserMcpUrl`) that rejects `http://` and
+  private/loopback/metadata hosts unless `AGENTA_INSECURE_EGRESS_ALLOWED` /
+  `AGENTA_AGENT_MCPS_HOST_ALLOWLIST` is set (neither is, on bighetzner). Use a **public HTTPS**
+  server. DeepWiki (`https://mcp.deepwiki.com/mcp`, no auth) works.
+- **The harness — not the runner process — opens the connection**, from the runner host on `local`
+  (from the sandbox on Daytona). The endpoint must be reachable from wherever the harness runs.
+
+The config entry is a full object, not a URL string:
+`{"name","connection":{"type":"http","url":...},"policy":{"tools":{"mode":"all"}}}`. Assert on the
+wire: a `tool-output-available` frame for a tool named `mcp__<server>__<tool>`.
+
+## 16. A warm multi-turn test cannot see anything the object store cannot represent
+
+The agent's working directory is durable because it is a geesefs mount over S3. It only makes the
+round trip through the store when something **unmounts and remounts** it — an eviction, a rebuild,
+a new replica. A test that stays on the live daemon never takes that trip, so any entry the store
+cannot represent survives in the FUSE cache and the test goes green.
+
+That is how #5692 shipped: the Codex subscription path symlinks `auth.json` into the durable cwd,
+S3 has no symlinks, and the entry came back as a **0-byte object**; an `existsSync` guard read the
+0-byte file as "already linked" and never rebuilt it. Turn 1 worked, every later turn failed. The
+pre-merge QA that covered that configuration was four **single-turn** checks, and the gate's
+multi-turn journey was warm-only. Known siblings of the same class: SQLite WAL (already designed
+around — `CODEX_SQLITE_HOME` is split onto container-local disk) and hard links.
+
+**Two rules.**
+
+- Any claim about durability needs a turn that reads the directory back **from the store**, not
+  from the live mount. `cold1` forces it from the client (change the agent's instructions → the
+  config fingerprint changes → `evict + cold` → unmount + remount); `cold2` needs the replica
+  replaced.
+- **Confirm the store was in play.** With no store configured the runner degrades silently to an
+  ephemeral directory (`mount degraded kind=session_cwd`) and every turn still looks fine, so a
+  continuity pass on such a deployment means nothing. Resolve the session's mount over the API
+  (`GET /api/sessions/mounts/?session_id=…`) and refuse to report green without it — that is what
+  `--require-store` enforces. Read the durable file back with `GET /api/mounts/{id}/files?read=…`:
+  the API reads S3 directly, so a hit is store-side proof, and the same listing shows any 0-byte
+  objects — the fingerprint of this whole bug class.
+
+## Two Daytona-era traps for the lifecycle (L*) cases — 2026-08-31
+
+**Fixture connections must be vault-backed.** A fixture built by copying the Claude defaults and
+changing only the harness keeps `llm.connection = {"mode":"self_managed","slug":null}`. A
+self_managed Pi run needs the `PI_CODING_AGENT_DIR` mount, which a gate deployment does not have,
+so turn 1 errors and the case fails before it tests anything. Set
+`llm.connection = {"mode":"agenta","slug":null}` on every non-default-harness fixture (caught on
+#6371; the Pi fixtures in `matrix_l5_live_route_observed.py` and `bench_lib.py` already do this).
+
+**A stuck-substitution rebuild is not an eviction.** Since the credential preflight (#6370), a
+fresh Daytona sandbox whose Secret wiring failed (a vendor-side per-sandbox fault, a few percent
+of creates) is convicted at ~10s and rebuilt ONCE. A warm-reuse case that counts sandbox ids can
+therefore see two ids without any lifecycle regression. Before ruling a warm case failed, grep
+the runner log for `[credential-preflight] STUCK`: if it fired inside the run, re-run the case
+instead of reporting the eviction.
+
+## On a placeholder 401, read the proxy log before you blame a key — 2026-08-31
+
+A free-credits user on cloud hit a 401 on their first message. The product told them to add the
+project's OpenAI key. That advice was wrong three ways: their key was fine, adding one would not
+have helped, and the run was retryable. The real cause was the first-call race. On a Daytona run
+the real key never enters the sandbox — it is a Daytona Secret, and the sandbox holds a
+`dtn_secret_<id>` placeholder that Daytona substitutes into egress asynchronously, with no
+confirmation signal, 10-24s after the Secret is created. A cold sandbox whose FIRST model call
+beats that propagation sends the raw placeholder, and the provider refuses it with a 401.
+
+**The rule.** A 401 from a Daytona run is not evidence about the user's key until you have read
+the litellm-proxy log. Grep it for `Received=dtn_`. If the line is there, the key was never the
+problem and no key change will fix it: the run needed a retry.
+
+**An ABSENT marker proves nothing.** The marker is one-directional evidence — present, it
+confirms a placeholder refusal; absent, it is silence, and silence has many causes. A direct
+provider never emits it at all (`api.anthropic.com` answers "Invalid bearer token" and echoes
+nothing), a remote deployment has no reachable proxy log, and incomplete log access looks
+identical to a clean window. Reading an empty grep as "so it really was the user's key" is how F6
+survived a whole release. When the marker is absent, judge on the other evidence instead: the
+stored error's CODE (`credential_delivery_failed` is the runner's own verdict and outranks any
+grep), whether the sandbox was freshly created, and whether the copy contradicts itself by
+advising a key change on a run whose key was delivered seconds earlier. The runner classifies
+this correctly as `credential_delivery_failed`
+(see `PLACEHOLDER_CREDENTIAL` in `services/runner/src/engines/sandbox_agent/errors.ts`), so a
+run that reports an add-a-key message over a placeholder refusal is a product bug, not a user
+error. The related trap already recorded above still holds: a stuck-substitution rebuild is not an
+eviction, so grep `[credential-preflight] STUCK` before calling a warm case failed.
+
+Four standing checks came out of this incident. Run all four on every gate; each one is described
+in full in the skill's resource inventory.
+
+1. `matrix_c5_first_call_race.py` — forces a cold Daytona sandbox and sends one message
+   immediately, so the first model call lands as early as it can. FAILs when a placeholder refusal
+   is reported as the user's key problem.
+2. `sweep_disagree.py` — run AFTER a gate session. Greps the runner log for
+   `[reconcile] shadow ... DISAGREE ...`, the over-eviction signature that never shows on the wire.
+3. `matrix_h1_bad_harness.py` — a malformed harness must be refused at some boundary and must
+   never run as a silent defaulted turn.
+4. `check_secrets_teardown.py` — a Daytona Secret must not outlive its run. Names only, never
+   values.
+
+## Two traps the incident checks hit on their first live run — 2026-08-31
+
+**The Daytona Secrets API is singular, paginated, and lies about `page`.** `/secrets` does not
+exist; it 404s with "Cannot GET". The real paths are `/secret`, `/secret/paginated` and
+`/secret/{secretId}` (verified against `@daytona/api-client@0.198.0` inside the runner). Plain
+`/secret` is deprecated and, per the client's own docs, "fails for organizations with more than
+1500 secrets" — and the org holds ~3510, so it is unusable. The paginated listing returns 100 per
+response and a `page` parameter is SILENTLY IGNORED: the same 100 ids come back every time, which
+makes a page-based walk loop forever on identical data while looking like progress. Follow
+`nextCursor` to exhaustion, refuse a cursor that repeats, and bound the walk. A useful side
+effect: because `/secret` and `/secret/paginated` return 403 for an under-scoped key while
+`/secrets` returns 404, you can confirm the right path without any list access at all.
+
+**Never pick a container by name match on a shared box.** `matrix_c5` originally took the first
+`docker ps` name containing "litellm" and found `starter-litellm-proxy` — a different project's
+container — while the stack under test had no proxy at all. A foreign container's log is worse
+than no log: it invents evidence about a deployment that was never under test. Resolve a
+container by its `com.docker.compose.project` label against the target stack's project (derive
+the project from whichever container publishes the port in `AGENTA_BASE`), or take it explicitly.
+When nothing matches, say so and continue.
+
+## Standing reds: expected, named, never softened
+
+A check that goes red for a filed finding stays red — softening it would hide the next real
+break behind the same shape. What it gets instead is a NAME in its failure message, so a reader
+scanning a gate report recognizes it in one line instead of chasing it as fresh breakage. This is
+how the W5 steer red is handled, and it now applies to one more:
+
+- **`matrix_h1_bad_harness.py`, the `null_kind` case — finding SF2.** A cleared harness
+  (`{"kind": null}`) is not rejected: it silently defaults to `pi_core`, so on any config whose
+  model spelling suits Pi the turn runs and the cell correctly fails. Filed for the next release,
+  not fixed in v0.114.4. The failure message says so. When SF2 is fixed the case turns green on
+  its own and the `known_finding` key stops appearing — that is the signal to delete the note.
+  A wrong-type or unknown-string harness that runs is a DIFFERENT, unfiled defect and is
+  deliberately not covered by the name.
+
+## The checklist for the next QA run
+
+1. `docker ps` — is anything restarting? If yes, wait.
+2. Does the runner have its harness dirs (`/pi-agent`)? Is it root or not?
+3. Drive the **product path** (`/services/agent/v0/invoke`), not the service `/invoke`.
+4. Echo history **faithfully** (tool parts included), then confirm `hit-continue` in the log.
+5. Assert on frames + side effects. Never on prose.
+6. After every capability passes, grep the log for silent degradation.
+7. Re-run anything that failed once before reporting it.
+8. Before trusting an existing blocker-level finding, check whether the stack has been redeployed
+   since it was observed — if so, re-run the decisive experiment.
+9. Is the deployment store-backed? If yes, run the continuity journeys with `--require-store`; if
+   no, do not read their result as durability coverage.

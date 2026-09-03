@@ -1,0 +1,1549 @@
+package expressions
+
+import (
+	"context"
+	"fmt"
+	"math/rand"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/inngest/inngest/pkg/event"
+	"github.com/stretchr/testify/require"
+)
+
+func TestParse(t *testing.T) {
+	tests := []struct {
+		expr      string
+		expected  [][]string
+		shouldErr bool
+	}{
+		// with events
+		{
+			expr: `"lol" == event.data || event.name == "foo" || (async.source == 'test' || async.source == 'google') && date(async.next_visit) > now_plus("24h") && async.email == 'test@example.com'`,
+			expected: [][]string{
+				{"event", "data"},
+				{"event", "name"},
+				{"async", "email"},
+				{"async", "next_visit"},
+				{"async", "source"},
+				// Using the lifted expression filter, we should get extra variables as the strings are removed.
+				{"vars", "a"},
+				{"vars", "b"},
+				{"vars", "c"},
+				{"vars", "d"},
+				{"vars", "e"},
+				{"vars", "f"},
+			},
+		},
+		// nested
+		{
+			expr: `event.data.action == 'opened'`,
+			expected: [][]string{
+				{"event", "data", "action"},
+				// Using the lifted expression filter, we should get extra variables as the strings are removed.
+				{"vars", "a"},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		expr, err := NewExpressionEvaluator(context.Background(), test.expr)
+		require.NoError(t, err, test.expr)
+		attrs := expr.UsedAttributes(context.Background()).FullPaths()
+		require.Equal(t, err == nil, !test.shouldErr, "unexpected err result %s for '%s'", err, test.expr)
+		require.Equal(t, len(test.expected), len(attrs), test.expr, attrs)
+		require.ElementsMatch(t, test.expected, attrs, test.expr)
+	}
+}
+
+func TestEvaluateExpression(t *testing.T) {
+	tests := []struct {
+		expr string
+		data map[string]interface{}
+
+		expected  any
+		earliest  *time.Time
+		shouldErr bool
+		errMsg    string
+	}{
+		// Returning data
+		{
+			"event.data.name",
+			map[string]interface{}{
+				"event": event.Event{
+					Data: map[string]interface{}{
+						"name": "Tester McTestyFace",
+					},
+				},
+			},
+			"Tester McTestyFace",
+			nil,
+			false,
+			"",
+		},
+		{
+			"5 + 4",
+			map[string]interface{}{
+				"event": event.Event{
+					Data: map[string]interface{}{
+						"name": "Tester McTestyFace",
+					},
+				},
+			},
+			int64(9),
+			nil,
+			false,
+			"",
+		},
+		{
+			// concat str + number
+			"event.data.name + '-' + event.data.number + '-' + event.data.bool + '-' + event.data.list + '-' + event.data.obj + '-' + event.data.missing",
+			map[string]interface{}{
+				"event": event.Event{
+					Data: map[string]interface{}{
+						"name":   "hi",
+						"number": 9.1,
+						"bool":   true,
+						"list":   []any{3, "ok?", true},
+						"obj": map[string]any{
+							"name": "inngest",
+						},
+					},
+				},
+			},
+			"hi-9.1-true-[3 ok? true]-map[name:inngest]-",
+			nil,
+			false,
+			"",
+		},
+		{
+			// missing attr
+			"event.data.name + '-' + event.data.foo",
+			map[string]interface{}{
+				"event": event.Event{
+					Data: map[string]interface{}{
+						"name": "Tester McTestyFace",
+					},
+				},
+			},
+			"Tester McTestyFace-",
+			nil,
+			false,
+			"",
+		},
+		{
+			"uppercase(event.data.name) + ' is my name'",
+			map[string]interface{}{
+				"event": event.Event{
+					Data: map[string]interface{}{
+						"name": "Tester McTestyFace",
+					},
+				},
+			},
+			"TESTER MCTESTYFACE is my name",
+			nil,
+			false,
+			"",
+		},
+
+		// Base64 decoding
+		{
+			`b64decode("aGkgdGhlcmUh") + " - b64 data"`,
+			map[string]interface{}{
+				"event": event.Event{
+					Data: map[string]interface{}{},
+				},
+			},
+			"hi there! - b64 data",
+			nil,
+			false,
+			"",
+		},
+		{
+			`b64decode("aGkgdGhlcmUh") == "hi there!"`,
+			map[string]interface{}{
+				"event": event.Event{
+					Data: map[string]interface{}{},
+				},
+			},
+			true,
+			nil,
+			false,
+			"",
+		},
+		// Base64 decoding a JSON map and accesing object
+		{
+			`json_parse(b64decode(event.data.encoded)).nested.data`,
+			map[string]interface{}{
+				"event": event.Event{
+					Data: map[string]interface{}{
+						"encoded": "eyJuZXN0ZWQiOnsiZGF0YSI6InllYSJ9fQ==",
+						// this is the JSON-decoded base64 string above.
+						"decoded": map[string]any{
+							"nested": map[string]any{
+								"data": "yea",
+							},
+						},
+					},
+				},
+			},
+			"yea",
+			nil,
+			false,
+			"",
+		},
+		{
+			`json_parse(b64decode(event.data.encoded)).nested.data == "yea"`,
+			map[string]interface{}{
+				"event": event.Event{
+					Data: map[string]interface{}{
+						"encoded": "eyJuZXN0ZWQiOnsiZGF0YSI6InllYSJ9fQ==",
+						// this is the JSON-decoded base64 string above.
+						"decoded": map[string]any{
+							"nested": map[string]any{
+								"data": "yea",
+							},
+						},
+					},
+				},
+			},
+			true,
+			nil,
+			false,
+			"",
+		},
+		// map equality
+		{
+			"event.data == event.data",
+			map[string]interface{}{
+				"event": event.Event{
+					Data: map[string]any{
+						"nope": nil,
+						"inner": map[string]any{
+							"eval": "ok",
+						},
+					},
+				},
+			},
+			true,
+			nil,
+			false,
+			"",
+		},
+		{
+			"event.data.a == event.data.b",
+			map[string]interface{}{
+				"event": event.Event{
+					Data: map[string]any{
+						"nope": nil,
+						"a": map[string]any{
+							"eval": "ok",
+							"num":  1.161,
+						},
+						"b": map[string]any{
+							"eval": "ok",
+							"num":  1.161,
+						},
+					},
+				},
+			},
+			true,
+			nil,
+			false,
+			"",
+		},
+		{
+			"event.data.a == event.data.b",
+			map[string]interface{}{
+				"event": event.Event{
+					Data: map[string]any{
+						"nope": nil,
+						"a": map[string]any{
+							"eval": "ok",
+							"num":  9,
+						},
+						"b": map[string]any{
+							"eval": "ok",
+							"num":  1.161,
+						},
+					},
+				},
+			},
+			false,
+			nil,
+			false,
+			"",
+		},
+
+		// Basic boolean expressions
+		{
+			"null > 0",
+			map[string]interface{}{
+				"event": event.Event{
+					Data: map[string]interface{}{
+						"nope": nil,
+					},
+				},
+			},
+			false,
+			nil,
+			false,
+			"",
+		},
+		{
+			"size(event.data.nope) > 0",
+			map[string]interface{}{
+				"event": event.Event{
+					Data: map[string]interface{}{
+						"nope": nil,
+					},
+				},
+			},
+			false,
+			nil,
+			false,
+			"",
+		},
+		{
+			"event.data.action > 0",
+			map[string]interface{}{
+				"event": event.Event{
+					Data: map[string]interface{}{
+						"action": nil,
+					},
+				},
+			},
+			false,
+			nil,
+			false,
+			"",
+		},
+		{
+			"event.data.float <= null && event.data.int < null",
+			map[string]interface{}{
+				"event": event.Event{
+					Data: map[string]interface{}{
+						"float": 3.141,
+						"int":   8,
+					},
+				},
+			},
+			false,
+			nil,
+			false,
+			"",
+		},
+		{
+			// a, b, c must all be false
+			"!((has(event.data.a) && event.data.a) || (has(event.data.b) && event.data.b) || (has(event.data.c) && event.data.c))",
+			map[string]interface{}{
+				"event": event.Event{
+					Data: map[string]interface{}{
+						"a": false,
+						"b": false,
+						"c": false,
+					},
+				},
+			},
+			true,
+			nil,
+			false,
+			"",
+		},
+		{
+			// a, b, c must all be false
+			"!((has(event.data.a) && event.data.a) || (has(event.data.b) && event.data.b) || (has(event.data.c) && event.data.c))",
+			map[string]interface{}{
+				"event": event.Event{
+					Data: map[string]interface{}{
+						"a": true,
+						"b": false,
+						"c": false,
+					},
+				},
+			},
+			false,
+			nil,
+			false,
+			"",
+		},
+
+		// For more information on available macros and overloads, look at
+		// cel-go/common/operators/operators.go and
+		// cel-go/common/overloads/overloads.go.
+		// Type coercion
+		{
+			// comparing against unknowns / null
+			"event.data.int > event.data.unknown",
+			map[string]interface{}{
+				"event": event.Event{
+					Data: map[string]interface{}{
+						"int": 2,
+					},
+				},
+			},
+			true,
+			nil,
+			false,
+			"",
+		},
+		{
+			"event.data.something == null",
+			map[string]interface{}{
+				"event": event.Event{
+					Data: map[string]interface{}{
+						"something": "hi",
+					},
+				},
+			},
+			false,
+			nil,
+			false,
+			"",
+		},
+		{
+			"event.data.float > null && event.data.int > null",
+			map[string]interface{}{
+				"event": event.Event{
+					Data: map[string]interface{}{
+						"float": 3.141,
+						"int":   8,
+					},
+				},
+			},
+			true,
+			nil,
+			false,
+			"",
+		},
+		{
+			"event.data.float <= null && event.data.int < null",
+			map[string]interface{}{
+				"event": event.Event{
+					Data: map[string]interface{}{
+						"float": 3.141,
+						"int":   8,
+					},
+				},
+			},
+			false,
+			nil,
+			false,
+			"",
+		},
+		{
+			"event.data.int > 3.141 && event.data.float <= 2",
+			map[string]interface{}{
+				"event": event.Event{
+					Data: map[string]interface{}{
+						"int":   8,
+						"float": 1.111,
+					},
+				},
+			},
+			true,
+			nil,
+			false,
+			"",
+		},
+		// nulls
+		{
+			"event.data.something == null",
+			map[string]interface{}{
+				"event": event.Event{
+					Data: map[string]interface{}{
+						"something": nil,
+					},
+				},
+			},
+			true,
+			nil,
+			false,
+			"",
+		},
+		{
+			"event.data.another == null",
+			map[string]interface{}{
+				"event": event.Event{
+					Data: map[string]interface{}{},
+				},
+			},
+			true,
+			nil,
+			false,
+			"",
+		},
+		// basics
+		{
+			expr: `event.first.foo == 'test' && event.second.bar != true && event.second.baz != true`,
+			data: map[string]interface{}{
+				"event": map[string]map[string]interface{}{
+					"first": {
+						"foo": "test",
+					},
+					"second": {
+						"foo": "test",
+					},
+				},
+			},
+			expected:  true,
+			earliest:  nil,
+			shouldErr: false,
+		},
+		{
+			expr: `async.first.foo != 'test' && (async.first.bar == true || async.second.baz == true)`,
+			data: map[string]interface{}{
+				"async": map[string]map[string]interface{}{
+					"first": {
+						"foo": "test",
+					},
+				},
+			},
+			expected:  false,
+			earliest:  nil,
+			shouldErr: false,
+		},
+
+		{
+			"event.data.foo != '' && 'item' in event.data.issue.fields.tags",
+			map[string]interface{}{
+				"event": event.Event{
+					Data: map[string]interface{}{},
+				},
+			},
+			false,
+			nil,
+			false,
+			"",
+		},
+		{
+			"event.data.foo != ''",
+			map[string]interface{}{
+				"event": event.Event{
+					Data: map[string]interface{}{
+						"foo": "hi",
+					},
+				},
+			},
+			true,
+			nil,
+			false,
+			"",
+		},
+		{
+			"event['data'].foo != '' && event['data'].bar != true",
+			map[string]interface{}{
+				"event": event.Event{
+					Data: map[string]interface{}{
+						"foo": "hi",
+					},
+				},
+			},
+			true,
+			nil,
+			false,
+			"",
+		},
+		// unknowns
+		{
+			"event.data.something == null",
+			map[string]interface{}{
+				"event": event.Event{
+					Data: map[string]interface{}{
+						"something": nil,
+					},
+				},
+			},
+			true,
+			nil,
+			false,
+			"",
+		},
+		{
+			"event.data.NOPE == null",
+			map[string]interface{}{
+				"event": event.Event{},
+			},
+			true,
+			nil,
+			false,
+			"",
+		},
+		{
+			"event.data.name == async.first.result.name",
+			map[string]interface{}{
+				"event": event.Event{
+					Data: map[string]interface{}{"name": "no"},
+				},
+			},
+			false,
+			nil,
+			false,
+			"",
+		},
+		// deeply nested
+		{
+			"event.data.issue.field.another == 'another'",
+			map[string]interface{}{
+				"event": event.Event{
+					Data: map[string]interface{}{
+						"issue": nil,
+					},
+				},
+			},
+			false,
+			nil,
+			false,
+			"",
+		},
+		{
+			"event.data.issue.field.another == 'another'",
+			map[string]interface{}{
+				"event": event.Event{
+					Data: map[string]interface{}{
+						"issue": nil,
+					},
+				},
+			},
+			false,
+			nil,
+			false,
+			"",
+		},
+		// deeply nested, testing non-existent fields.
+		{
+			"event.data.test == true && event.data.issue.field.another != 'another'",
+			map[string]interface{}{
+				"event": event.Event{
+					Data: map[string]interface{}{
+						"test":  true,
+						"issue": nil,
+					},
+				},
+			},
+			true,
+			nil,
+			false,
+			"",
+		},
+		// includes
+		{
+			expr:      `event.nonexistent.exists(x, x == 'a')`,
+			expected:  false,
+			earliest:  nil,
+			shouldErr: false,
+		},
+		{
+			expr: `async.first.foo == 'test' && async.first.bar != true`,
+			data: map[string]interface{}{
+				"async": map[string]map[string]interface{}{
+					"first": {
+						"foo": "test",
+					},
+				},
+			},
+			expected:  true,
+			earliest:  nil,
+			shouldErr: false,
+		},
+		{
+			expr: `async.first.foo == 'test' && async.first.bar != true`,
+			data: map[string]interface{}{
+				"async": map[string]map[string]interface{}{
+					"first": {
+						"foo": "test",
+					},
+				},
+			},
+			expected:  true,
+			earliest:  nil,
+			shouldErr: false,
+		},
+		// matches
+		{
+			`event.data.title.matches('^[a-z\\d]{0,10}$')`,
+			map[string]interface{}{
+				"event": event.Event{
+					Data: map[string]interface{}{
+						"title": "nope",
+					},
+				},
+			},
+			true,
+			nil,
+			false,
+			"",
+		},
+		{
+			`event.data.title.matches('\w')`,
+			map[string]interface{}{
+				"event": event.Event{
+					Data: map[string]interface{}{
+						"title": "nope",
+					},
+				},
+			},
+			true,
+			nil,
+			false,
+			"",
+		},
+		// contains
+		{
+			"event.data.some.unknown.contains(event.data.title)",
+			map[string]interface{}{
+				"event": event.Event{
+					Data: map[string]interface{}{
+						"title": "nope",
+					},
+				},
+			},
+			false,
+			nil,
+			false,
+			"",
+		},
+		{
+			"'hello'.contains('llo')",
+			map[string]interface{}{
+				"event": event.Event{
+					Data: map[string]interface{}{
+						"action": "opened",
+					},
+				},
+				"async": map[string]interface{}{"status": "200"},
+			},
+			true,
+			nil,
+			false,
+			"",
+		},
+		{
+			"'hello'.contains('what')",
+			map[string]interface{}{
+				"event": event.Event{
+					Data: map[string]interface{}{
+						"action": "opened",
+					},
+				},
+				"async": map[string]interface{}{"status": "200"},
+			},
+			false,
+			nil,
+			false,
+			"",
+		},
+		// size text
+		{
+			"size(event.data.action) > 0",
+			map[string]interface{}{
+				"event": event.Event{
+					Data: map[string]interface{}{
+						"action": nil,
+					},
+				},
+			},
+			false,
+			nil,
+			false,
+			"",
+		},
+		{
+			"size(event.data.action) > 0",
+			map[string]interface{}{
+				"event": event.Event{
+					Data: map[string]interface{}{
+						"action": "opened",
+					},
+				},
+			},
+			true,
+			nil,
+			false,
+			"",
+		},
+		{
+			"size(event.data.action) == 6",
+			map[string]interface{}{
+				"event": event.Event{
+					Data: map[string]interface{}{
+						"action": "opened",
+					},
+				},
+			},
+			true,
+			nil,
+			false,
+			"",
+		},
+		// inputs
+		{
+			// A complex input
+			"event.data.action == 'opened'",
+			map[string]interface{}{
+				"event": event.Event{
+					Data: map[string]interface{}{
+						"action": "opened",
+					},
+				},
+				"async": map[string]interface{}{"status": "200"},
+			},
+			true,
+			nil,
+			false,
+			"",
+		},
+		{
+			"int(async.status) == 200",
+			map[string]interface{}{
+				"async": map[string]interface{}{"status": "200"},
+			},
+			true,
+			nil,
+			false,
+			"",
+		},
+		// upper/lower
+		{
+			"uppercase(event.priority) == 'P1'",
+			map[string]interface{}{
+				"event": map[string]interface{}{
+					"priority": "p1",
+				},
+			},
+			true,
+			nil,
+			false,
+			"",
+		},
+		{
+			"lowercase(event.priority) == 'urgent'",
+			map[string]interface{}{
+				"event": map[string]interface{}{
+					"priority": "URGENT",
+				},
+			},
+			true,
+			nil,
+			false,
+			"",
+		},
+		// multiline
+		{
+			`
+											int(event.status) >= 400 &&
+											event.error == true
+										`,
+			map[string]interface{}{
+				"event": map[string]interface{}{"status": "400", "error": true},
+			},
+			true,
+			nil,
+			false,
+			"",
+		},
+		// Array funcs
+		{
+			"size(event.data.tags) == 0",
+			map[string]interface{}{
+				"event": map[string]interface{}{
+					"data": map[string]interface{}{},
+				},
+			},
+			true,
+			nil,
+			false,
+			"",
+		},
+		{
+			"size(event.data.tags) == 1",
+			map[string]interface{}{
+				"event": map[string]interface{}{
+					"data": map[string]interface{}{},
+				},
+			},
+			false,
+			nil,
+			false,
+			"",
+		},
+		{
+			"size(event.data.tags) == 0",
+			map[string]interface{}{
+				"event": map[string]interface{}{
+					"data": map[string]interface{}{
+						"tags": []string{},
+					},
+				},
+			},
+			true,
+			nil,
+			false,
+			"",
+		},
+		{
+			"size(event.data.tags) > 2",
+			map[string]interface{}{
+				"event": map[string]interface{}{
+					"data": map[string]interface{}{
+						"tags": []string{"a", "b", "c"},
+					},
+				},
+			},
+			true,
+			nil,
+			false,
+			"",
+		},
+		{
+			"event.data.tags.exists(x, x == 'a')",
+			map[string]interface{}{
+				"event": map[string]interface{}{
+					"data": map[string]interface{}{
+						"tags": []string{"a", "b", "c"},
+					},
+				},
+			},
+			true,
+			nil,
+			false,
+			"",
+		},
+		{
+			"event.data.tags.exists(x, x == 'd' || x == 'a')",
+			map[string]interface{}{
+				"event": map[string]interface{}{
+					"data": map[string]interface{}{
+						"tags": []string{"a", "b", "c"},
+					},
+				},
+			},
+			true,
+			nil,
+			false,
+			"",
+		},
+		{
+			"event.data.tags.exists(x, x == 'd')",
+			map[string]interface{}{
+				"event": map[string]interface{}{
+					"data": map[string]interface{}{
+						"tags": []string{"a", "b", "c"},
+					},
+				},
+			},
+			false,
+			nil,
+			false,
+			"",
+		},
+		{
+			"event.data.tags.exists(x, x == 'd') == false",
+			map[string]interface{}{
+				"event": map[string]interface{}{
+					"data": map[string]interface{}{
+						"tags": []string{"a", "b", "c"},
+					},
+				},
+			},
+			true,
+			nil,
+			false,
+			"",
+		},
+		// in
+		{
+			"event.data.issue in ['Bug', 'Issue', 'Epic'] == true",
+			map[string]interface{}{
+				"event": map[string]interface{}{
+					"data": map[string]interface{}{
+						"issue": "Bug",
+					},
+				},
+			},
+			true,
+			nil,
+			false,
+			"",
+		},
+		{
+			"event.data.issue in ['LOL', 'Issue', 'Epic'] == false",
+			map[string]interface{}{
+				"event": map[string]interface{}{
+					"data": map[string]interface{}{
+						"issue": "Bug",
+					},
+				},
+			},
+			true,
+			nil,
+			false,
+			"",
+		},
+		{
+			"event.data.nonexistent in ['LOL', 'Issue', 'Epic'] == false",
+			map[string]interface{}{
+				"event": map[string]interface{}{
+					"data": map[string]interface{}{
+						"issue": "Bug",
+					},
+				},
+			},
+			true,
+			nil,
+			false,
+			"",
+		},
+		// Struct + cel stdlib expressions
+		{
+			"[1, 2, 3].all(x, x > 0) && event.status == '200'",
+			map[string]interface{}{
+				"event": map[string]interface{}{"status": "200"},
+			},
+			true,
+			nil,
+			false,
+			"",
+		},
+		{
+			"async.status == 200",
+			map[string]interface{}{
+				"event": map[string]interface{}{"foo": "bar"},
+				"async": map[string]interface{}{"status": "200"},
+			},
+			false,
+			nil,
+			false,
+			// no error, but it doesn't match.
+			"",
+		},
+		// Event data time manipulation
+		{
+			"date(event.from) + duration('6h35m10s') == date('2020-01-01T18:35:10')",
+			map[string]interface{}{
+				"event": map[string]any{
+					"from": "2020-01-01T12:00:00",
+				},
+			},
+			true,
+			nil,
+			false,
+			"",
+		},
+
+		// Logical OR with non-boolean operands uses JS-like truthy coercion.
+		// This returns the first truthy value, enabling expressions like
+		// "event.data.ingressId || event.data.userId" as debounce keys.
+		{
+			// Both present: returns the first truthy value (lhs)
+			expr: "event.data.ingressId || event.data.userId",
+			data: map[string]interface{}{
+				"event": map[string]interface{}{
+					"data": map[string]interface{}{
+						"ingressId": "IN_Mwj9Dm8r9QP2",
+						"userId":    "e67aed6a-4cd4-4465-ba23-bca6ef584292",
+					},
+				},
+			},
+			expected:  "IN_Mwj9Dm8r9QP2",
+			shouldErr: false,
+		},
+		{
+			// lhs present, rhs missing: returns lhs
+			expr: "event.data.ingressId || event.data.missing",
+			data: map[string]interface{}{
+				"event": map[string]interface{}{
+					"data": map[string]interface{}{
+						"ingressId": "IN_Mwj9Dm8r9QP2",
+					},
+				},
+			},
+			expected:  "IN_Mwj9Dm8r9QP2",
+			shouldErr: false,
+		},
+		{
+			// lhs missing, rhs present: returns rhs (fallback)
+			expr: "event.data.missing || event.data.userId",
+			data: map[string]interface{}{
+				"event": map[string]interface{}{
+					"data": map[string]interface{}{
+						"userId": "user-123",
+					},
+				},
+			},
+			expected:  "user-123",
+			shouldErr: false,
+		},
+		{
+			// lhs is empty string (falsy), rhs present: returns rhs
+			expr: "event.data.empty || event.data.userId",
+			data: map[string]interface{}{
+				"event": map[string]interface{}{
+					"data": map[string]interface{}{
+						"empty":  "",
+						"userId": "user-123",
+					},
+				},
+			},
+			expected:  "user-123",
+			shouldErr: false,
+		},
+		{
+			// both fields missing: both unknowns are falsy, returns rhs (unknown -> false)
+			expr: "event.data.a || event.data.b",
+			data: map[string]interface{}{
+				"event": map[string]interface{}{
+					"data": map[string]interface{}{},
+				},
+			},
+			expected:  false,
+			shouldErr: false,
+		},
+		{
+			// || with boolean operands still works correctly via native CEL
+			expr: "event.data.flagA || event.data.flagB",
+			data: map[string]interface{}{
+				"event": map[string]interface{}{
+					"data": map[string]interface{}{
+						"flagA": false,
+						"flagB": true,
+					},
+				},
+			},
+			expected:  true,
+			shouldErr: false,
+		},
+		{
+			// || with boolean operands, both false
+			expr: "event.data.flagA || event.data.flagB",
+			data: map[string]interface{}{
+				"event": map[string]interface{}{
+					"data": map[string]interface{}{
+						"flagA": false,
+						"flagB": false,
+					},
+				},
+			},
+			expected:  false,
+			shouldErr: false,
+		},
+		// Logical AND with non-boolean operands uses JS-like truthy coercion.
+		// Returns the first falsy value, or the last value if all truthy.
+		{
+			// Both truthy: returns rhs (last value)
+			expr: "event.data.a && event.data.b",
+			data: map[string]interface{}{
+				"event": map[string]interface{}{
+					"data": map[string]interface{}{
+						"a": "first",
+						"b": "second",
+					},
+				},
+			},
+			expected:  "second",
+			shouldErr: false,
+		},
+		{
+			// lhs is empty string (falsy): returns lhs
+			expr: "event.data.a && event.data.b",
+			data: map[string]interface{}{
+				"event": map[string]interface{}{
+					"data": map[string]interface{}{
+						"a": "",
+						"b": "second",
+					},
+				},
+			},
+			expected:  "",
+			shouldErr: false,
+		},
+	}
+
+	for n, item := range tests {
+		test := item
+		t.Run(test.expr, func(t *testing.T) {
+			for i := 0; i <= 100; i++ {
+				go func() {
+					// Test thread safety of evaluate and Validate().  We don't care about the results,
+					// as these are checked below.
+					_, _ = Evaluate(context.Background(), test.expr, test.data)
+					_ = Validate(context.Background(), nil, test.expr)
+				}()
+			}
+
+			actual, err := Evaluate(context.Background(), test.expr, test.data)
+
+			require.Equal(t, err == nil, !test.shouldErr, "unexpected err result '%v' for '%s'", err, test.expr)
+			require.Equal(t, test.expected, actual, "unexpected match result (%t): for (%d) '%s'", actual, n, test.expr)
+
+			if test.shouldErr && err != nil {
+				require.True(t, strings.Contains(err.Error(), test.errMsg), "Error should contain %s, got %s", test.errMsg, err.Error())
+			}
+		})
+
+	}
+}
+
+func TestEvaluateTernaryWithMissingConditionField(t *testing.T) {
+	result, err := Evaluate(
+		context.Background(),
+		"event.data.primaryCandidateId ? event.data.primaryCandidateId : event.data.candidateId",
+		map[string]interface{}{
+			"event": map[string]interface{}{
+				"data": map[string]interface{}{
+					"candidateId": "candidate-123",
+				},
+			},
+		},
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, "candidate-123", result)
+}
+
+func TestFilteredAttributes(t *testing.T) {
+	tests := []struct {
+		expr     string
+		in       *Data
+		expected *Data
+	}{
+		{
+			// one present, one mising
+			expr: `event.data.name == "hi" && event.favourites == ['a']`,
+			in: NewData(map[string]interface{}{
+				"event": map[string]interface{}{
+					"data": map[string]interface{}{
+						"name":  "hi",
+						"email": "some",
+					},
+					"event": map[string]interface{}{
+						"external_id": 1,
+						"email":       "test@egypt.lol",
+					},
+				},
+			}),
+			expected: NewData(map[string]interface{}{
+				"event": map[string]interface{}{
+					"data": map[string]interface{}{
+						"name": "hi",
+					},
+				},
+			}),
+		},
+		{
+			expr: `event.data.name == "hi" && event.user.email == "what" && async.first.data.ok == true && async.something == false`,
+			in: NewData(map[string]interface{}{
+				"event": map[string]interface{}{
+					"data": map[string]interface{}{
+						"name":  "hi",
+						"email": "some",
+					},
+					"user": map[string]interface{}{
+						"external_id": 1,
+						"email":       "test@egypt.lol",
+					},
+				},
+				"async": map[string]interface{}{
+					"first": map[string]interface{}{
+						"data": map[string]interface{}{
+							"ok":      false,
+							"another": 1274,
+						},
+					},
+					"2": map[string]interface{}{
+						"data": map[string]interface{}{
+							"excluded": true,
+						},
+					},
+				},
+			}),
+			expected: NewData(map[string]interface{}{
+				"event": map[string]interface{}{
+					"data": map[string]interface{}{
+						"name": "hi",
+					},
+					"user": map[string]interface{}{
+						"email": "test@egypt.lol",
+					},
+				},
+				"async": map[string]interface{}{
+					"first": map[string]interface{}{
+						"data": map[string]interface{}{
+							"ok": false,
+						},
+					},
+				},
+			}),
+		},
+		{
+			// three present, different attrs
+			expr: `event.data.name == "hi" && event.user.email == "what" && async.first.data.ok == true && async.something == false`,
+			in: NewData(map[string]interface{}{
+				"event": map[string]interface{}{
+					"data": map[string]interface{}{
+						"name":  "hi",
+						"email": "some",
+					},
+					"user": map[string]interface{}{
+						"external_id": 1,
+						"email":       "test@egypt.lol",
+					},
+				},
+				"async": map[string]interface{}{
+					"first": map[string]interface{}{
+						"data": map[string]interface{}{
+							"ok":      false,
+							"another": 1274,
+						},
+					},
+					"2": map[string]interface{}{
+						"data": map[string]interface{}{
+							"excluded": true,
+						},
+					},
+				},
+			}),
+			expected: NewData(map[string]interface{}{
+				"event": map[string]interface{}{
+					"data": map[string]interface{}{
+						"name": "hi",
+					},
+					"user": map[string]interface{}{
+						"email": "test@egypt.lol",
+					},
+				},
+				"async": map[string]interface{}{
+					"first": map[string]interface{}{
+						"data": map[string]interface{}{
+							"ok": false,
+						},
+					},
+				},
+			}),
+		},
+	}
+
+	ctx := context.Background()
+
+	for _, test := range tests {
+		eval, err := NewExpressionEvaluator(ctx, test.expr)
+		require.NoError(t, err)
+		require.NotNil(t, test.in)
+		actual := eval.FilteredAttributes(ctx, test.in)
+		require.Equal(t, test.expected, actual)
+	}
+}
+
+// TestDebounceKeyExpressions tests expression patterns commonly used as debounce keys.
+// Debounce keys use expressions.Evaluate() (not EvaluateBoolean), expecting the result
+// to be a string key. This test documents which patterns work and which fail.
+func TestDebounceKeyExpressions(t *testing.T) {
+	eventData := map[string]interface{}{
+		"event": map[string]interface{}{
+			"data": map[string]interface{}{
+				"ingressId": "IN_Mwj9Dm8r9QP2",
+				"timestamp": "2026-03-26T08:02:01.538Z",
+				"userId":    "e67aed6a-4cd4-4465-ba23-bca6ef584292",
+			},
+			"id":   "01KMMJM9P2JQWH09SKMQM4J1DF",
+			"name": "livekit/stream.started",
+			"ts":   1774512121538,
+			"user": map[string]interface{}{},
+		},
+	}
+
+	tests := []struct {
+		name      string
+		expr      string
+		data      map[string]interface{}
+		expected  interface{}
+		shouldErr bool
+	}{
+		{
+			name:     "simple field access returns string value",
+			expr:     "event.data.ingressId",
+			data:     eventData,
+			expected: "IN_Mwj9Dm8r9QP2",
+		},
+		{
+			name:     "string concatenation for composite key",
+			expr:     "event.data.ingressId + '-' + event.data.userId",
+			data:     eventData,
+			expected: "IN_Mwj9Dm8r9QP2-e67aed6a-4cd4-4465-ba23-bca6ef584292",
+		},
+		{
+			// This is the exact expression from the production error.
+			// || with non-boolean operands now uses JS-like truthy coercion,
+			// returning the first truthy value.
+			name:     "logical OR returns first truthy string value",
+			expr:     "event.data.ingressId || event.data.userId",
+			data:     eventData,
+			expected: "IN_Mwj9Dm8r9QP2",
+		},
+		{
+			name:     "logical OR falls back to second value when first is missing",
+			expr:     "event.data.nonexistent || event.data.userId",
+			data:     eventData,
+			expected: "e67aed6a-4cd4-4465-ba23-bca6ef584292",
+		},
+		{
+			name:     "missing field returns empty string via concatenation",
+			expr:     "event.data.ingressId + event.data.missing",
+			data:     eventData,
+			expected: "IN_Mwj9Dm8r9QP2",
+		},
+		{
+			name: "missing field alone returns false (treated as null/unknown)",
+			expr: "event.data.nonexistent",
+			data: eventData,
+			// Missing fields are treated as unknowns, which resolve to false.
+			expected: false,
+		},
+		{
+			name:     "event.id as debounce key",
+			expr:     "event.id",
+			data:     eventData,
+			expected: "01KMMJM9P2JQWH09SKMQM4J1DF",
+		},
+		{
+			name:     "event.name as debounce key",
+			expr:     "event.name",
+			data:     eventData,
+			expected: "livekit/stream.started",
+		},
+	}
+
+	ctx := context.Background()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := Evaluate(ctx, tt.expr, tt.data)
+			if tt.shouldErr {
+				require.Error(t, err, "expected error for expression: %s", tt.expr)
+				return
+			}
+			require.NoError(t, err, "unexpected error for expression: %s", tt.expr)
+			require.Equal(t, tt.expected, result, "unexpected result for expression: %s", tt.expr)
+		})
+	}
+}
+
+func BenchmarkEvaluate(b *testing.B) {
+	expression := `["P0", "P1"].exists(p, p in event.data.tag) && lowercase(event.data.project) == "benchmark" && user.email.endsWith("example.net")`
+	data := NewData(map[string]interface{}{
+		"event": map[string]interface{}{
+			"data": map[string]interface{}{
+				"project": "Benchmark",
+				"tag":     []string{"P0"},
+			},
+		},
+		"user": map[string]interface{}{"email": "hi@example.net"},
+	})
+	ctx := context.Background()
+
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		expr, err := NewBooleanEvaluator(ctx, expression)
+		if err != nil {
+			b.Fatalf("unknown error in benchmark: %s", err)
+		}
+		res, err := expr.Evaluate(ctx, data)
+		if err != nil {
+			b.Fatalf("unknown error in benchmark: %s", err)
+		}
+		if !res {
+			b.Fatalf("benchmark expression failed")
+		}
+	}
+}
+
+func BenchmarkEvaluateParallel(b *testing.B) {
+	expression := `["P0", "P1"].exists(p, p in event.data.tag) && lowercase(event.data.project) == "benchmark" && user.email.endsWith("example.net") && event.data.parallel != true`
+	data := NewData(map[string]interface{}{
+		"event": map[string]interface{}{
+			"data": map[string]interface{}{
+				"project": "Benchmark",
+				"tag":     []string{"P0"},
+			},
+		},
+		"user": map[string]interface{}{"email": "hi@example.net"},
+	})
+	ctx := context.Background()
+
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			expr, _ := NewBooleanEvaluator(ctx, expression)
+			res, err := expr.Evaluate(ctx, data)
+			if err != nil {
+				b.Fatalf("unknown error in benchmark: %s", err)
+			}
+			if !res {
+				b.Fatalf("benchmark expression failed")
+			}
+		}
+	})
+}
+
+func BenchmarkEvaluateRandomDataParallel(b *testing.B) {
+	expression := `["P0", "P1"].exists(p, p in event.data.tag) && lowercase(event.data.project) == "benchmark" && user.email.endsWith("example.net") && event.data.random == true`
+	ctx := context.Background()
+
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			data := NewData(map[string]interface{}{
+				"event": map[string]interface{}{
+					"data": map[string]interface{}{
+						"project": "Benchmark",
+						"tag":     []string{"P0"},
+						"lol":     rand.Int(),
+						"another": rand.Int(),
+						"nested": map[string]interface{}{
+							"yea": "plz",
+						},
+					},
+				},
+				"user": map[string]interface{}{"email": "hi@example.net"},
+			})
+			expr, err := NewExpressionEvaluator(ctx, expression)
+			if err != nil {
+				b.Fatalf("unknown error in benchmark: %s", err)
+			}
+			_, err = expr.Evaluate(ctx, data)
+			if err != nil {
+				b.Fatalf("unknown error in benchmark: %s", err)
+			}
+		}
+	})
+}
+
+func BenchmarkEvaluateRandomExpressionParallel(b *testing.B) {
+	data := NewData(map[string]interface{}{
+		"event": map[string]interface{}{
+			"data": map[string]interface{}{
+				"project": "Benchmark",
+				"tag":     []string{"P0"},
+			},
+		},
+		"user": map[string]interface{}{"email": "hi@example.net"},
+	})
+	ctx := context.Background()
+
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			// Create a new expression in parallel to ignore the cache.
+			expression := fmt.Sprintf(`["P0", "P1"].exists(p, p in event.data.tag) && lowercase(event.data.project) == "benchmark" && user.email.endsWith("example.net") && 1 < %d`, rand.Int())
+			expr, err := NewExpressionEvaluator(ctx, expression)
+			if err != nil {
+				b.Fatalf("unknown error in benchmark: %s", err)
+			}
+			_, err = expr.Evaluate(ctx, data)
+			if err != nil {
+				b.Fatalf("unknown error in benchmark: %s", err)
+			}
+		}
+	})
+}

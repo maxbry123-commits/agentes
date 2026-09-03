@@ -1,0 +1,436 @@
+import { useState } from 'react';
+import { Error } from '@inngest/components/Error/Error';
+import { RiArrowDownSFill, RiArrowRightSFill } from '@remixicon/react';
+import { gql, type TypedDocumentNode } from 'urql';
+
+import {
+  MetricsScope,
+  type VolumeMetricsQuery,
+  type VolumeMetricsQueryVariables,
+} from '@/gql/graphql';
+import { useSkippableGraphQLQuery } from '@/utils/useGraphQLQuery';
+import { useEnvironment } from '../Environments/environment-context';
+import { useBooleanFlag } from '../FeatureFlags/hooks';
+import { AccountConcurrency } from './AccountConcurrency';
+import { AUTO_REFRESH_INTERVAL } from './ActionMenu';
+import { Backlog } from './Backlog';
+import { Concurrency } from './Concurrency';
+import {
+  ConnectWorkerPercentage,
+  ConnectWorkerTotalCapacity,
+} from './ConnectWorkerMetrics';
+import { type EntityLookup } from './Dashboard';
+import { sumScopedMetricsByGroup } from './metricAggregation';
+import { RunsThrougput } from './RunsThroughput';
+import { SdkThroughput } from './SdkThroughput';
+import { StepsThroughput } from './StepsThroughput';
+
+export type MetricsFilters = {
+  from: Date;
+  until?: Date;
+  selectedApps?: string[];
+  selectedFns?: string[];
+  autoRefresh?: boolean;
+  entities: EntityLookup;
+  functions: EntityLookup;
+  scope: MetricsScope;
+  concurrencyLimit?: number;
+  isMarketplace: boolean;
+};
+
+type AllFunctionConcurrencyMetrics = {
+  metrics: Array<{
+    id: string;
+    data: Array<{
+      value: number;
+      bucket: string;
+    }>;
+  }>;
+};
+
+type AccountConcurrencyMetrics = {
+  data: Array<{
+    value: number;
+    bucket: string;
+  }>;
+};
+
+type VolumeMetricsWithConcurrencyQuery = {
+  accountConcurrency: AccountConcurrencyMetrics;
+  workspace: VolumeMetricsQuery['workspace'] & {
+    allFunctionConcurrency: AllFunctionConcurrencyMetrics;
+  };
+};
+
+const GetVolumeMetrics: TypedDocumentNode<
+  VolumeMetricsWithConcurrencyQuery,
+  VolumeMetricsQueryVariables
+> = gql`
+  query VolumeMetrics(
+    $workspaceId: ID!
+    $from: Time!
+    $functionIDs: [UUID!]
+    $appIDs: [UUID!]
+    $until: Time
+    $scope: MetricsScope!
+  ) {
+    # accountConcurrency is the unscoped account-level gauge, read directly as a
+    # single series. Account-scoped rows carry workspace_id = nil,
+    # so they are only reachable from the root field, never from workspace().
+    accountConcurrency: metrics(
+      opts: { name: "steps_running", from: $from, to: $until }
+    ) {
+      data {
+        bucket
+        value
+      }
+    }
+
+    workspace(id: $workspaceId) {
+      allFunctionConcurrency: scopedMetrics(
+        filter: {
+          name: "steps_running"
+          scope: FN
+          from: $from
+          until: $until
+        }
+      ) {
+        metrics {
+          id
+          data {
+            value
+            bucket
+          }
+        }
+      }
+      runsThroughput: scopedMetrics(
+        filter: {
+          name: "function_run_ended_total"
+          scope: $scope
+          from: $from
+          functionIDs: $functionIDs
+          appIDs: $appIDs
+          until: $until
+        }
+      ) {
+        metrics {
+          id
+          tagName
+          tagValue
+          data {
+            value
+            bucket
+          }
+        }
+      }
+    }
+    workspace(id: $workspaceId) {
+      sdkThroughputEnded: scopedMetrics(
+        filter: {
+          name: "sdk_req_ended_total"
+          scope: $scope
+          from: $from
+          functionIDs: $functionIDs
+          appIDs: $appIDs
+          until: $until
+        }
+      ) {
+        metrics {
+          id
+          tagName
+          tagValue
+          data {
+            value
+            bucket
+          }
+        }
+      }
+    }
+    workspace(id: $workspaceId) {
+      sdkThroughputStarted: scopedMetrics(
+        filter: {
+          name: "sdk_req_started_total"
+          scope: $scope
+          from: $from
+          functionIDs: $functionIDs
+          appIDs: $appIDs
+          until: $until
+        }
+      ) {
+        metrics {
+          id
+          tagName
+          tagValue
+          data {
+            value
+            bucket
+          }
+        }
+      }
+    }
+    workspace(id: $workspaceId) {
+      sdkThroughputScheduled: scopedMetrics(
+        filter: {
+          name: "sdk_req_scheduled_total"
+          scope: $scope
+          from: $from
+          functionIDs: $functionIDs
+          appIDs: $appIDs
+          until: $until
+        }
+      ) {
+        metrics {
+          id
+          tagName
+          tagValue
+          data {
+            value
+            bucket
+          }
+        }
+      }
+    }
+    workspace(id: $workspaceId) {
+      stepThroughput: scopedMetrics(
+        filter: {
+          name: "steps_running"
+          scope: $scope
+          from: $from
+          functionIDs: $functionIDs
+          appIDs: $appIDs
+          until: $until
+        }
+      ) {
+        metrics {
+          id
+          tagName
+          tagValue
+          data {
+            value
+            bucket
+          }
+        }
+      }
+    }
+    workspace(id: $workspaceId) {
+      backlog: scopedMetrics(
+        filter: {
+          name: "steps_scheduled"
+          scope: $scope
+          from: $from
+          functionIDs: $functionIDs
+          appIDs: $appIDs
+          until: $until
+        }
+      ) {
+        metrics {
+          id
+          tagName
+          tagValue
+          data {
+            value
+            bucket
+          }
+        }
+      }
+    }
+    workspace(id: $workspaceId) {
+      stepRunning: scopedMetrics(
+        filter: {
+          name: "steps_running"
+          scope: $scope
+          from: $from
+          functionIDs: $functionIDs
+          appIDs: $appIDs
+          until: $until
+        }
+      ) {
+        metrics {
+          id
+          tagName
+          tagValue
+          data {
+            value
+            bucket
+          }
+        }
+      }
+    }
+    workspace(id: $workspaceId) {
+      concurrency: scopedMetrics(
+        filter: {
+          name: "concurrency_limit_reached_total"
+          scope: $scope
+          from: $from
+          until: $until
+        }
+      ) {
+        metrics {
+          id
+          tagName
+          tagValue
+          data {
+            value
+            bucket
+          }
+        }
+      }
+    }
+    workspace(id: $workspaceId) {
+      workerPercentageUsed: connectWorkerMetrics(
+        filter: { name: "worker_percentage_used", from: $from, until: $until }
+      ) {
+        metrics {
+          id
+          tagName
+          tagValue
+          data {
+            value
+            bucket
+          }
+        }
+      }
+    }
+    workspace(id: $workspaceId) {
+      workerTotalCapacity: connectWorkerMetrics(
+        filter: { name: "worker_total_capacity", from: $from, until: $until }
+      ) {
+        metrics {
+          id
+          tagName
+          tagValue
+          data {
+            value
+            bucket
+          }
+        }
+      }
+    }
+  }
+`;
+
+export const MetricsVolume = ({
+  from,
+  until,
+  selectedApps = [],
+  selectedFns = [],
+  autoRefresh = false,
+  entities,
+  functions,
+  scope,
+  concurrencyLimit,
+  isMarketplace = false,
+}: MetricsFilters) => {
+  const [volumeOpen, setVolumeOpen] = useState(true);
+  const [connectOpen, setConnectOpen] = useState(true);
+
+  const env = useEnvironment();
+
+  const { value: connectMetricsEnabled, isReady: connectMetricsReady } =
+    useBooleanFlag('connect-worker-concurrency-metrics');
+
+  const variables = {
+    workspaceId: env.id,
+    from: from.toISOString(),
+    appIDs: selectedApps,
+    functionIDs: selectedFns,
+    until: until ? until.toISOString() : null,
+    scope,
+  };
+
+  const { error, data } = useSkippableGraphQLQuery({
+    skip: !env.id,
+    query: GetVolumeMetrics,
+    pollIntervalInMilliseconds: autoRefresh ? AUTO_REFRESH_INTERVAL * 1000 : 0,
+    variables,
+  });
+
+  error && console.error('Error fetcthing metrics data for', variables, error);
+
+  const accountConcurrency = data?.accountConcurrency.data;
+
+  const appConcurrency = data
+    ? sumScopedMetricsByGroup(
+        data.workspace.allFunctionConcurrency.metrics,
+        ({ id }) => functions[id]?.appID,
+      )
+    : undefined;
+
+  const concurrencyMetrics =
+    scope === MetricsScope.App
+      ? appConcurrency
+      : data?.workspace.stepRunning.metrics;
+
+  return (
+    <div className="item-start flex h-full w-full flex-col items-start">
+      <div
+        className="text-subtle my-4 flex w-full cursor-pointer flex-row items-center justify-start gap-x-2 text-xs uppercase"
+        onClick={() => setVolumeOpen(!volumeOpen)}
+      >
+        {volumeOpen ? <RiArrowDownSFill /> : <RiArrowRightSFill />}
+        <div>Volume</div>
+
+        <hr className="border-subtle w-full" />
+      </div>
+      {volumeOpen && (
+        <>
+          {error && (
+            <Error message="There was an error fetching volume metrics data." />
+          )}
+
+          <div className="relative grid w-full auto-cols-max grid-cols-1 gap-2 overflow-hidden md:grid-cols-2">
+            <RunsThrougput workspace={data?.workspace} entities={entities} />
+            <StepsThroughput workspace={data?.workspace} entities={entities} />
+            <SdkThroughput workspace={data?.workspace} />
+            <Backlog workspace={data?.workspace} entities={entities} />
+
+            <Concurrency
+              metrics={concurrencyMetrics}
+              entities={entities}
+              isMarketplace={isMarketplace}
+            />
+            <AccountConcurrency
+              accountConcurrency={accountConcurrency}
+              limit={concurrencyLimit}
+              isMarketplace={isMarketplace}
+            />
+          </div>
+        </>
+      )}
+
+      {/* Connect Section */}
+      {connectMetricsEnabled &&
+        connectMetricsReady &&
+        data &&
+        (data.workspace.workerPercentageUsed.metrics.length > 0 ||
+          data.workspace.workerTotalCapacity.metrics.length > 0) && (
+          <>
+            <div
+              className="text-subtle my-4 flex w-full cursor-pointer flex-row items-center justify-start gap-x-2 text-xs uppercase"
+              onClick={() => setConnectOpen(!connectOpen)}
+            >
+              {connectOpen ? <RiArrowDownSFill /> : <RiArrowRightSFill />}
+              <div>Connect</div>
+              <hr className="border-subtle w-full" />
+            </div>
+            {connectOpen && (
+              <div className="relative grid w-full auto-cols-max grid-cols-1 gap-2 overflow-hidden md:grid-cols-2">
+                {data.workspace.workerPercentageUsed.metrics.length > 0 && (
+                  <ConnectWorkerPercentage
+                    workspace={data.workspace}
+                    entities={entities}
+                  />
+                )}
+                {data.workspace.workerTotalCapacity.metrics.length > 0 && (
+                  <ConnectWorkerTotalCapacity
+                    workspace={data.workspace}
+                    entities={entities}
+                  />
+                )}
+              </div>
+            )}
+          </>
+        )}
+    </div>
+  );
+};

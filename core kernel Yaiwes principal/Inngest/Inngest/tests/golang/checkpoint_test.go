@@ -1,0 +1,146 @@
+package golang
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/inngest/inngest/pkg/event"
+	"github.com/inngest/inngest/pkg/util"
+	"github.com/inngest/inngest/tests/client"
+	"github.com/inngest/inngestgo"
+	"github.com/inngest/inngestgo/pkg/checkpoint"
+	"github.com/inngest/inngestgo/step"
+	"github.com/stretchr/testify/require"
+)
+
+func TestFnCheckpoint(t *testing.T) {
+	ctx := context.Background()
+	c := client.New(t)
+
+	inngestClient, server, registerFuncs := NewSDKHandler(t, "checkpoint")
+	defer server.Close()
+
+	configs := []*checkpoint.Config{
+		checkpoint.ConfigSafe,
+		checkpoint.ConfigPerformant,
+		{
+			BatchSteps:    3,
+			BatchInterval: time.Second,
+		},
+	}
+
+	delays := []time.Duration{
+		time.Millisecond,
+		time.Second,
+		2 * time.Second,
+	}
+
+	gt := &goroutineT{}
+	wg := sync.WaitGroup{}
+	for _, cfg := range configs {
+		for _, delay := range delays {
+			wg.Go(func() {
+				rid := NewRunID()
+				evtName := fmt.Sprintf("invoke-checkpoint-delay-%v-cfg-%v", delay.String(), util.XXHash(cfg))
+				fmt.Println(evtName)
+
+				_, err := inngestgo.CreateFunction(
+					inngestClient,
+					inngestgo.FunctionOpts{
+						ID:         evtName,
+						Checkpoint: cfg,
+					},
+					inngestgo.EventTrigger(evtName, nil),
+					func(ctx context.Context, input inngestgo.Input[DebounceEvent]) (any, error) {
+						rid.Send(input.InputCtx.RunID)
+
+						_, _ = step.Run(ctx, "a", func(ctx context.Context) (string, error) { return "a", nil })
+						fmt.Println("a")
+						_, _ = step.Run(ctx, "b", func(ctx context.Context) (string, error) {
+							<-time.After(delay)
+							return "b", nil
+						})
+						fmt.Println("b")
+						_, _ = step.Run(ctx, "c", func(ctx context.Context) (string, error) {
+							<-time.After(delay)
+							return "c", nil
+						})
+						fmt.Println("c (done), ", input.InputCtx.RunID)
+						return nil, nil
+					},
+				)
+				require.NoError(gt, err)
+				registerFuncs()
+
+				_, err = inngestClient.Send(ctx, &event.Event{Name: evtName})
+				require.NoError(gt, err)
+
+				runID := rid.Wait(gt)
+				run := c.WaitForRunStatus(ctx, gt, "COMPLETED", runID, client.WaitForRunStatusOpts{Timeout: 120 * time.Second})
+				var output string
+				err = json.Unmarshal([]byte(run.Output), &output)
+				require.NotEmpty(gt, runID)
+				require.NoError(gt, err)
+			})
+		}
+	}
+
+	wg.Wait()
+	gt.check(t)
+}
+
+func TestCheckpointMaxDuration(t *testing.T) {
+	ctx := context.Background()
+	r := require.New(t)
+	c := client.New(t)
+
+	inngestClient, server, registerFuncs := NewSDKHandler(t, "checkpoint")
+	defer server.Close()
+
+	rid := NewRunID()
+	evtName := "invoke-checkpoint-timeout"
+	fmt.Println(evtName)
+
+	_, err := inngestgo.CreateFunction(
+		inngestClient,
+		inngestgo.FunctionOpts{
+			ID: evtName,
+			Checkpoint: &checkpoint.Config{
+				BatchSteps:    3,
+				BatchInterval: time.Second,
+				MaxRuntime:    time.Second * 2,
+			},
+		},
+		inngestgo.EventTrigger(evtName, nil),
+		func(ctx context.Context, input inngestgo.Input[DebounceEvent]) (any, error) {
+			rid.Send(input.InputCtx.RunID)
+
+			for i := range 8 {
+				_, _ = step.Run(ctx, fmt.Sprintf("%d", i), func(ctx context.Context) (string, error) {
+					<-time.After(1 * time.Second)
+					return "a", nil
+				})
+				fmt.Println(i)
+			}
+			fmt.Println("c (done), ", input.InputCtx.RunID)
+			return nil, nil
+		},
+	)
+	r.NoError(err)
+	registerFuncs()
+
+	// Trigger the main function and successfully invoke the other function
+	_, err = inngestClient.Send(ctx, &event.Event{Name: evtName})
+	r.NoError(err)
+
+	runID := rid.Wait(t)
+	run := c.WaitForRunStatus(ctx, t, "COMPLETED", runID)
+	var output string
+	err = json.Unmarshal([]byte(run.Output), &output)
+	require.NotEmpty(t, runID)
+	r.NoError(err)
+}

@@ -1,0 +1,1664 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+## [v1.44.0] - 2026-08-26
+
+### 🚀 Features
+
+- *(ai)* Add run-level AI usage summary (#4758)
+- *(ui)* Show run AI usage summary (#4759)
+- *(scores)* Show recorded scores on timeline bars (#4736)
+
+### 🐛 Bug Fixes
+
+- *(queue)* Renew capacity leases before dispatch (#4766)
+- *(insights)* Fix broken download with invalid dates (#4769)
+- *(connect)* Track reply delivery outcomes (#4774)
+
+### 🚜 Refactor
+
+- *(connect)* Remove executor ACK RPC (#4751)
+
+### ⚡ Performance
+
+- *(expressions)* Avoid cloning event data per evaluation (#4762)
+- *(batching)* Adding metrics for batching to capture redis memory usage and batch duration (#4763)
+
+### ⚙️ Miscellaneous Tasks
+
+- Update CODEOWNERS (#4771)
+- Remove former owners from CODEOWNERS (#4785)
+
+## [v1.43.0] - 2026-08-20
+
+### 🚀 Features
+
+- *(cli)* Add cli user agent for api analytics (#4752)
+- *(dashboard)* Add app filtering to functions table (#4199)
+
+### 🐛 Bug Fixes
+
+- *(ci)* Add --force-with-lease to the Sync Staging workflow push (#4629)
+
+### ⚙️ Miscellaneous Tasks
+
+- *(release)* V1.43.0 (#4756)
+
+## [v1.42.0] - 2026-08-19
+
+### 🚀 Features
+
+- Add SDK feature observations (#4700)
+- *(connect)* Adding support for connect HA (#4714)
+- *(queue)* Let custom scanners declare roles (#4723)
+- *(api)* Add v2 sandbox contracts (#4716)
+- Surface event scheduling in the dashboard (#4720)
+- *(ai metadata)* More robust AI model cost data (#4728)
+- *(improvement)* Add-scores-and-experiments-empty-states-to-dev-server (#4697)
+- *(improvement)* Cloud MCP UI (#4729)
+- *(ui-mcp)* Re-add MCP setup page (#4740)
+- *(mcp)* Restore setup docs with public operations (#4748)
+- *(ui)* Adding a concurrency color in the graph (#4744)
+- *(api)* Add v2 send event endpoint (#4724)
+
+### 🐛 Bug Fixes
+
+- *(traces)* Scope span self-join by run_id (#4718)
+- 64 bit linux download link for install.sh script (#4727)
+- *(queue)* Preserve sentinel shard selection errors (#4726)
+- Revert "feat(improvement): Cloud MCP UI (#4729)" (#4739)
+- *(ui-mcp)* Revert MCP setup page redesign (#4745)
+- *(redis-state)* Tolerate legacy idempotency tombstones (#4747)
+- *(batch)* Propagate timeout scheduling errors so source events retry (#4749)
+- *(traces)* Hide expand/collapse all when there is nothing to toggle (#4737)
+- *(ui)* Adding legend for concurrency limit on hover (#4753)
+- *(queue)* Disable constraint checks when key queues are disabled (#4754)
+
+### 🚜 Refactor
+
+- *(runs)* Remove legacy tokens from run output header (#4721)
+- *(queue)* Split queue reader capabilities (#4743)
+- *(connect)* Remove the async ACK gateway -> executor (#4215)
+
+### 📚 Documentation
+
+- *(api)* Improve v2 app sync and insights docs (#4732)
+
+### ⚙️ Miscellaneous Tasks
+
+- *(queue)* Remove system queue migrations (#4722)
+- *(batch)* Add more context to schedule batch execution (#4742)
+- *(connect)* Adding run id to logs (#4698)
+- *(release)* V1.42.0 (#4715)
+
+## [v1.41.1] - 2026-08-05
+
+### ⚙️ Miscellaneous Tasks
+
+- *(support)* Add graphql-codegen to support app (#4701)
+- *(e2e)* Run more tests on Depot (#4710)
+- *(release)* V1.41.1 (#4707)
+
+## [v1.41.0] - 2026-08-03
+
+### 🚀 Features
+
+- *(ai-overview)* Add insights-backed AI dashboard (#4662)
+- *(ui)* Nudge metadata usage in run details (#4683)
+
+### 🐛 Bug Fixes
+
+- *(connect)* Prevent connection state regression during gateway draining (#4685)
+- *(queue)* Isolate unavailable shards (#4688)
+- *(connect)* Make lease renewal idempotent after lost ACKs (#4687)
+
+### ⚙️ Miscellaneous Tasks
+
+- *(release)* V1.41.0 (#4686)
+
+## [v1.40.0] - 2026-07-30
+
+### 🚀 Features
+
+- *(mcp)* Generate mcp tools from rest api v2 (#4674)
+- *(api)* Add v2 apps list endpoint (#4657)
+
+### 🐛 Bug Fixes
+
+- *(epxressions)* Add support for falsy terns (#4676)
+- *(queue)* Correct reversed errors.Is arguments for ErrQueueItemNotFound (#4679)
+
+### ⚙️ Miscellaneous Tasks
+
+- *(release)* V1.40.0 (#4677)
+
+## [v1.39.0] - 2026-07-28
+
+### 🚀 Features
+
+- *(api)* Rest v2 rerun from step (#4645)
+- *(metadata)* Augment incoming ai metadata with cost estimates (#4661)
+- *(api)* V2 api cancel run (#4638)
+
+### 🐛 Bug Fixes
+
+- *(cli)* Improve cli timestamp arg handling (#4650)
+- Use snapshots to handle map race access (#4653)
+- *(queue)* Skip constraint lease on missing account (#4604)
+- Race creating workflow and checkpointing durable endpoint step (#4668)
+- *(executor)* Recover from panics in event lifecycle listeners (#4672)
+
+### 🚜 Refactor
+
+- *(queue)* Add shard scanner boundary (#4655)
+- *(queue)* Add scanner runtime (#4665)
+- *(queue)* Expose available worker count (#4666)
+
+### ⚙️ Miscellaneous Tasks
+
+- *(logging)* Add logging middleware for API (#4646)
+- Make cancellation deadline configurable (#4659)
+- *(state)* Add primitives for cross-backend run state migration (#4654)
+- *(release)* V1.39.0 (#4651)
+
+## [v1.38.1] - 2026-07-21
+
+### 🐛 Bug Fixes
+
+- *(api)* Clarify run list commands and docs (#4647)
+
+### ⚙️ Miscellaneous Tasks
+
+- *(release)* V1.38.1 (#4648)
+
+## [v1.38.0] - 2026-07-21
+
+### 🚀 Features
+
+- *(dashboard)* Add Sandboxes waitlist (#4611)
+- *(queue)* Define grpc service interfaces for queue producer and consumer (#4610)
+- *(queue)* Route RequeueByJobID through producer (#4613)
+- Enforce one-year maximum duration for sleep and wait-for-event (#4628)
+- Normalize and instrument AI feature empty state pages (#4620)
+- *(cli)* Add API command usage metrics (#4642)
+- *(api)* Add v2 runs list endpoints (#4621)
+
+### 🐛 Bug Fixes
+
+- Fix the ordering and queue time of async opcodes (#4608)
+- *(queue)* Expose partition size on job queue reader (#4619)
+- *(insights ai)* Attribute Insights cost/latency/token scores to their experiment variant (bump inngest 4.13.0) (#4641)
+
+### 🚜 Refactor
+
+- *(queue)* Route processor dequeue and requeue through queue interfaces (#4639)
+- *(runs)* Consolidate oss runs queries (#4623)
+
+### 📚 Documentation
+
+- EXE-2021 Add CLI callout to API docs (#4618)
+- Add guidance on Postgres retention for self-hosting (#4357)
+
+### ⚙️ Miscellaneous Tasks
+
+- Add event lifecycle hooks (#4624)
+- Align auto-labels with Linear (#4634)
+- *(release)* V1.38.0 (#4615)
+
+## [v1.37.0] - 2026-07-14
+
+### 🚀 Features
+
+- *(queue)* Make pause requeue extension configurable (#4569)
+- *(constraintapi)* Return lease usage from lifecycle ops (#4596)
+- Bring AI Metadata extraction from extended traces to parity with JS SDK (#4572)
+- *(traces)* Remove run-details-v4 flag and legacy RunDetailsV3, always render V4 (#4584)
+- *(api)* Add v2 score endpoint (#4453)
+
+### 🐛 Bug Fixes
+
+- *(execution)* Improve copy for error responses that do not come from the SDK (#4566)
+- Hydrate determinstic spans for sleep queue items on retries (#4592)
+- Lease race causing wasted work (#4593)
+- *(constraintapi)* Fix Constraint API marshaling (#4602)
+- *(dashboard)* Update Scores and Sessions nav icons (#4605)
+- *(tracing)* Stop dev server finalization group spans from duplicating in the trace UI (#4600)
+- Display errored attempts without step as `Function Error` rather than Finalization (#4571)
+- *(tracing)* Drop duplicate finalization span on errored runs (#4598)
+- *(sessions)* Sessions docs url (#4609)
+
+### 🚜 Refactor
+
+- *(queue)* Subsume QueueManager APIs into other appropriate narrow interfaces (#4581)
+- *(ui)* Decompose traceRollup into focused helpers (#4597)
+- *(queue)* Break up queueProcessor (#4606)
+
+### ⚡ Performance
+
+- Reduce sleep queue item payload size (#4591)
+
+### 🧪 Testing
+
+- *(constraintapi)* Add Redis Lua compatibility regression (#4603)
+- Capture WaitForRunStatus status-transition history on timeout (#4447)
+- *(dnscache)* Test DNS cache against mock servers to reduce flakes (#4595)
+
+### ⚙️ Miscellaneous Tasks
+
+- *(e2e)* Check that the dev server comes up (#4583)
+- *(tygo-collect)* Gofmt generated output (#4586)
+- Remove unused TotalSystemQueueDepth from QueueManager interface (#4574)
+- Cache our pnpm installation (#4588)
+- *(release)* V1.37.0 (#4587)
+
+## [v1.36.0] - 2026-07-08
+
+### 🚀 Features
+
+- Differentiate between request and response model for AI Metadata extraction with ai.step.* (#4518)
+
+### 🐛 Bug Fixes
+
+- *(release)* Open homebrew-tap PRs as ready for review (non-draft) (#4576)
+- Update AI Metadata field names (#4516)
+
+### ⚙️ Miscellaneous Tasks
+
+- *(go)* Move one unit test job to Depot (#4568)
+- *(release)* V1.36.0 (#4573)
+
+### 🛡️ Security
+
+- Address Go vulnerabilities (#4570)
+
+## [v1.35.0] - 2026-07-07
+
+### 🚀 Features
+
+- *(experiments)* Visualize numeric metrics using box plots (#4517)
+- *(function-view)* Show key queues setting (#4546)
+- *(experiments)* Update charts/layout to match new design (#4551)
+- *(queue)* Jitter PartitionRequeue default case (#4561)
+- *(api)* Experiments api (#4504)
+
+### 🐛 Bug Fixes
+
+- Should not coalesce parallel steps for the V1 execution engine (#4538)
+- *(experiments)* Fix boxplot colors (#4542)
+
+### 🚜 Refactor
+
+- *(queue)* Clean up QueueManager interface (#4541)
+
+### ⚙️ Miscellaneous Tasks
+
+- *(go)* Drop key-queues test matrix dimension (#4552)
+- Upload test results to CodeCov to analyze flake rates (#4545)
+- Use a depot runner for linting (#4554)
+- *(queue)* Add timeout to backlog size (#4556)
+- Track partition processing that yielded 0 peeks (#4562)
+- Cleanup unused queue injections (#4564)
+- *(release)* V1.35.0 (#4535)
+
+### ◀️ Revert
+
+- Always SavePending after parallel ops to coalesce discovery (#4021) (#4534)
+
+## [v1.34.0] - 2026-06-29
+
+### 🚀 Features
+
+- *(sessions)* Add search to `/sessions/:sessionsKey` route (#4499)
+- *(sessions)* Design feedback (#4524)
+
+### 🐛 Bug Fixes
+
+- Custom concurrency cache keys (#4501)
+- Wrong experiments docs URL (#4503)
+- *(queue)* Handle wrapped iterator errors (#4507)
+- *(support)* Fix React hydration — UI interactions unresponsive (#4510)
+- *(metadata)* Show last attempt metadata for retry groups (#4513)
+- Support only OTel GenAI in Extended Traces AI Metadata Extractor (#4509)
+- *(dashboard)* Scoring formula slider interaction (#4484)
+- The display of extended traces for steps with multiple attempts (#4523)
+- Rerun from step (#4182)
+- *(rerun-from-step)* Enable rerun from step everywhere (#4531)
+
+### 🚜 Refactor
+
+- *(queue)* Resolve shards by scope instead of acctID (#4475)
+- *(session)* Session ui empty state refactor (#4508)
+
+### ⚙️ Miscellaneous Tasks
+
+- Bump SDK from 4.8.0 to 4.10.0 (#4496)
+- *(release)* Use homebrew_casks with goreleaser (#3462)
+- *(sessions)* Sessions UI feedback (#4500)
+- *(release)* For homebrew installed inngest-cli, use homebrew-tap for latest version (#4511)
+- Adding metrics for run duration (#4445)
+- *(release)* V1.34.0 (#4497)
+
+## [v1.33.0] - 2026-06-23
+
+### 🚀 Features
+
+- *(debugapi)* Add semaphore routes to the debug API (#4488)
+- *(sessions)* Allow sessions in invoke button (#4489)
+- Insights ai experiments updates (#4492)
+
+### 🚜 Refactor
+
+- *(queue)* Make Producer configurable in Queue (#4078)
+
+### ⚙️ Miscellaneous Tasks
+
+- *(release)* V1.33.0 (#4490)
+
+## [v1.32.0] - 2026-06-22
+
+### 🚀 Features
+
+- *(tracing)* Allow system queue tracing (#4442)
+- *(score)* Make score kind constant (#4482)
+- *(sessions)* Sessions page optimization (#4480)
+
+### 🐛 Bug Fixes
+
+- *(support)* Fix local dev deps misalignment (#4472)
+- Update experiments docs links (#4481)
+- *(dashboard)* Drop vite back down until we can test thoroughly (#4486)
+
+### ⚙️ Miscellaneous Tasks
+
+- Dedup parallel fan-in discovery via coalesce key (#4452)
+- *(insights)* Add "Open in Insights" button on Failed Functions chart on the Metrics page (#4046)
+- *(metrics)* Add counter to checkpoint ops (#4478)
+- *(release)* V1.32.0 (#4469)
+
+## [v1.31.0] - 2026-06-18
+
+### 🚀 Features
+
+- Session server parse + emit (#4404)
+- Add sessions dashboard UI (#4403)
+
+### 🐛 Bug Fixes
+
+- *(traces)* Deduplicate nonstep/step spans in trace view (#4448)
+- *(extended traces)* Reparent orphaned extended trace spans using span attributes (#4443)
+- *(trace view)* Fix the ordering/timestamps of finalization spans (#4456)
+
+### 💼 Other
+
+- *(npm)* Address UI dependency alerts (#4260)
+
+### 🚜 Refactor
+
+- *(devServer)* New Information Architecture (#4395)
+
+### ⚙️ Miscellaneous Tasks
+
+- *(release)* V1.31.0 (#4451)
+
+## [v1.30.0] - 2026-06-17
+
+### 🚀 Features
+
+- V2 api rerun (#4410)
+
+### ⚙️ Miscellaneous Tasks
+
+- *(release)* V1.30.0 (#4450)
+
+## [v1.29.0] - 2026-06-17
+
+### 🚀 Features
+
+- *(queue)* Track earliest peek time before Constraint API (#4391)
+
+### 🐛 Bug Fixes
+
+- Queue item cleanup race in non-key-queues postgres cancel path (#4337)
+- *(dashboard)* Use distinct speedometer icon for sidebar Overview (#4429)
+- *(tests)* Widen timing tolerance from 10ms to 100ms in TestStartAll/TestSingleSvcError (#4115)
+- Alias conflicting grpc import (#4436)
+- *(tests)* Replace 50ms settle delay with deterministic clock.BlockUntil() in TestQueueItemProcessWithConstraintChecks (#4434)
+- *(queue)* Ignore already-leased partitions during scan (#4438)
+- Keep completed runs from being reported as reverted (#4247)
+- *(tests)* Increase WaitForRunStatus timeouts in all affected E2E tests (#4435)
+- Make WaitForRunStatus tolerate transient not found GQL errors (#4206)
+- *(executor)* Always SavePending after parallel ops to coalesce discovery (#4021)
+- Scope GetSpanOutput query by run_id to prevent cross-run data leak (#4441)
+- *(scoring)* Improve scoring dashboard ui (#4433)
+
+### 🧪 Testing
+
+- *(cqrs)* Cover all terminal trace run statuses (#4446)
+
+### ⚙️ Miscellaneous Tasks
+
+- *(tests)* Fix flaky test status (#4439)
+- *(tests)* Flaky test fix (#4440)
+- Ttl upsert pkg (#4432)
+- *(release)* V1.29.0 (#4428)
+
+## [v1.28.0] - 2026-06-16
+
+### ⚙️ Miscellaneous Tasks
+
+- *(release)* V1.28.0 (#4373)
+
+## [v1.27.1] - 2026-06-16
+
+### 🚀 Features
+
+- Implements v2 api/cli get function (#4353)
+- *(queue)* Enable shard ForEach using feature flag (#4375)
+- Deterministic finalized step span IDs  (#4370)
+- *(experiments)* Change experiment_name -> name in metadata (#4355)
+- *(metadata)* Use deterministic step span IDs (#4386)
+- Rest v2 api get functions  (#4385)
+- V2 rest api get app (#4389)
+
+### 🐛 Bug Fixes
+
+- Return consistent function ids across v2 endpoints (#4377)
+- *(release)* Mark prerelease tags as non-latest (#4380)
+- State leak when new state is created but ErrQueueItemExists is hit (#4394)
+- Exact matching on ErrQueueItemExists causing unnecessary retries (#4400)
+- Properly identify the response AI model while parsing OTel attributes (EXE-1837) (#4398)
+- Don't double count Vercel SDK AI spans (EXE-1837) (#4399)
+- *(pauses)* Filter deleted block pauses during iteration (#4358)
+- *(queue)* Fix Semaphore Key Queues edge case (#4411)
+- *(queue)* Self-heal stale global partition pointers (#4244)
+- *(devserver)* Reapply postgres connection pool settings (#4392)
+- *(cron)* Set envid on health check resync path (#4419)
+
+### ⚡ Performance
+
+- Add state metadata option to skip fetching stack & step metadata (#4393)
+- Improvements for OSS filters (#4299)
+
+### 🧪 Testing
+
+- Synchronize compaction in TestCompactionSkipsPhantomBlocks (#4382)
+
+### ⚙️ Miscellaneous Tasks
+
+- Measure non-atomic state idempotency claim races (#4365)
+- Log warning on hitting the duplicate state metric (#4388)
+
+## [v1.27.0] - 2026-06-09
+
+### 🚀 Features
+
+- UI: Group top-level step spans using step/group IDs (#4305)
+- Extended traces metrics with hard caps (#4293)
+- Deterministic finalized step span IDs (#4274)
+
+### 🐛 Bug Fixes
+
+- Preserve debounce on migration failure (#4243)
+- *(debounce)* Preserve TTL from DebounceUpdate (#4349)
+- Preserve debounce migration guard on cleanup failure (#4354)
+- Fudge planned step span times slightly to prevent rollup race condition (#4364)
+- V2 api event/runs statuses (#4361)
+- Re-enable parallel processing for crons (#4369)
+
+### 🚜 Refactor
+
+- *(checkpointing)* RequestID -> GenerationID (#4342)
+- Refactor tel package to remove noise (#4352)
+
+### ⚡ Performance
+
+- *(cron)* Split cron partitions by workspace (#4356)
+
+### ⚙️ Miscellaneous Tasks
+
+- Update v2 /runs to use latest trace span structures (#4346)
+- Expand batch buffer wait metric buckets (#3867)
+- *(release)* V1.27.0 (#4347)
+
+### ◀️ Revert
+
+- "feat: Deterministic finalized step span IDs" (#4360)
+
+## [v1.26.0] - 2026-06-05
+
+### 🚀 Features
+
+- Add support for parsing span attribute data from Langfuse (EXE-1914) (#4318)
+- A/B test insights query-writer model and score tokens/cost (#4331)
+- Promote api cli, add redirect message and beta tag (#4344)
+
+### 🐛 Bug Fixes
+
+- Mark insights api as internal to get docs gen working again (#4327)
+- Make v2 api path match mono/docs & improve host/port handling (#4302)
+- Status, duration, output in v2 api event/runs (#4343)
+
+### 🚜 Refactor
+
+- Use step.run for llm calls in insights experiment (#4338)
+- Use Item.Kind for shard selection instead of Item.QueueName (#4336)
+
+### ⚙️ Miscellaneous Tasks
+
+- *(tracing)* Add more conditional traces around scheduling (#4323)
+- *(release)* V1.26.0 (#4328)
+
+## [v1.25.0] - 2026-06-03
+
+### 🚀 Features
+
+- EXE-1837: Add a few Open Inference attributes to Metadata (#4297)
+- EXE-1918: Parse total tokens from AI Metadata (#4307)
+- Add Group ID & Request ID attributes to most execution spans (#4304)
+- EXE-1918: Add Response Model, Response ID, and finish reasons to extracted AI Metadata (#4311)
+- Use queue item timestamps for traces (#4316)
+- Add event runs query for v2 api (#4282)
+- Add event runs v2 api contract and implementation (#4283)
+- EXE-1913: Add support for parsing span attribute data from Vercel's AI SDK (#4312)
+
+### 🐛 Bug Fixes
+
+- *(queue)* Log queue role acquire and loss (#4300)
+- *(realtime)* Websocket memory leak (#4309)
+- Add app name to run spans (#4314)
+
+### ⚙️ Miscellaneous Tasks
+
+- Add function metadata to run spans (#4287)
+- Improve usability on deferred runs (#4320)
+- *(release)* V1.25.0 (#4301)
+
+## [v1.24.0] - 2026-06-01
+
+### 🚀 Features
+
+- Surface deferred runs in run details (#4290)
+
+### 🐛 Bug Fixes
+
+- *(queue)* Quarantine deleted account partitions (#4281)
+- Properly calculate discover step (#4280)
+- Prevent duplicate function.finished on overlapping finalize (#4242)
+- Validate dispatch generation on async checkpoints (#4140)
+
+### 🚜 Refactor
+
+- *(queue)* Introduce queue roles (#4289)
+
+### ⚙️ Miscellaneous Tasks
+
+- *(release)* V1.24.0 (#4288)
+
+## [v1.23.0] - 2026-05-28
+
+### 🚀 Features
+
+- *(queue)* Allow EnqueueItem on other shard types (#4263)
+- Accept positional path params in agentic cli (#4246)
+
+### 🐛 Bug Fixes
+
+- *(executor)* Initialize synthetic cancel metadata config (#4261)
+- *(queue)* Handle renewed item lease during processing (#4267)
+- Get outputs working again with v2 runs (#4273)
+
+### 🚜 Refactor
+
+- *(connect)* Gate gateway routing by connection phase (#4241)
+- *(queue)* Add Scope to more queue methods (#4271)
+
+### ⚙️ Miscellaneous Tasks
+
+- Update go sdk (#4264)
+- Improve agentic api cli help  (#4245)
+- *(release)* V1.23.0 (#4258)
+
+### ◀️ Revert
+
+- "chore: add a concurrency safe marshal to state configs" (#4257)
+
+## [v1.22.0] - 2026-05-22
+
+### 🚀 Features
+
+- Insights: Add stubs for new insights API endpoints (#4189)
+- Add update notifier to select commands (#4185)
+- Phase 1 scoring (#4170)
+
+### 🐛 Bug Fixes
+
+- *(syncs)* Fix function orphaning on app resync after <v1.15 upgrade (#4143)
+- *(pauses)* Retry enqueueing edge after consuming pause (#4228)
+- *(batching)* Enforce batch size limits in the in-memory batching path. (#3871)
+- Add feature flag for enforcing state size limits (#4251)
+- Bulk canel bug (#4255)
+
+### 💼 Other
+
+- *(deps)* Update pgx and goose (#4248)
+- *(deps)* Remove vulnerable docker module (#4249)
+
+### ⚡ Performance
+
+- *(batch)* Split batch partition into workspace-scoped partitions (#4236)
+
+### 🧪 Testing
+
+- *(connect)* Forward regression test (#4214)
+
+### ⚙️ Miscellaneous Tasks
+
+- Add a concurrency safe marshal to state configs (#4256)
+- *(release)* V1.22.0 (#4230)
+
+### 🛡️ Security
+
+- *(npm)* Address vulnerable npm dependencies (#4250)
+
+## [v1.21.0] - 2026-05-19
+
+### 🚀 Features
+
+- EXE-1547 - Accept StepPlanned upon beginning to run a step (#4201)
+
+### 🐛 Bug Fixes
+
+- *(ci)* Disable provenance on publish (#4226)
+
+### ⚙️ Miscellaneous Tasks
+
+- *(release)* V1.21.0 (#4227)
+
+## [v1.20.0] - 2026-05-19
+
+### 🚀 Features
+
+- Track GenerationID on QueueItem (#4219)
+- Agentic api cli (#4197)
+
+### 🐛 Bug Fixes
+
+- Adding A Check For Minimum Number of Apps Per Connection (#4193)
+- *(connect)* Keep worker messages alive on transient gateway errors (#4211)
+- *(pauses)* Dedup evaluables fix upstream (#4213)
+- Enforce step state limit & total state size for checkpointing (#4212)
+- Use listener directly in Serve() (#4222)
+
+### 🚜 Refactor
+
+- *(queue)* Remove duplicate global partition peek method (#4204)
+- *(db)* Move CQRS bootstrap into dialect packages (#4203)
+- *(cqrs)* Move composite manager package (#4209)
+- *(connect)* Split gateway message handlers (#4210)
+
+### 📚 Documentation
+
+- Add markdown and llms.txt generation to API docs site (#4218)
+
+### ⚡ Performance
+
+- *(connect)* Split heartbeats into a high priority goroutine (#4224)
+
+### ⚙️ Miscellaneous Tasks
+
+- Add graceful failure handling for linear-release step (#4192)
+- Add submodules to checkout (#4221)
+- *(release)* V1.20.0 (#4205)
+
+## [v1.19.4] - 2026-05-15
+
+### 🐛 Bug Fixes
+
+- ARM docker image base image mismatch (#2912)
+- Missing retries in UI (#4202)
+
+### 🚜 Refactor
+
+- *(queue)* Remove duplicate item lookup method (#4194)
+- *(queue)* Scope debounce and singleton operations (#4198)
+- *(cqrs)* Establish package boundaries (#4045)
+
+### 📚 Documentation
+
+- Update API docs to recommend api keys (#4156)
+
+### ⚙️ Miscellaneous Tasks
+
+- *(release)* Restore tag-triggered publishing (#4191)
+- Update protobuf to add deltas/changed bool (#4195)
+- Add missing metric on state store delete (#4200)
+- *(release)* V1.19.4 (#4196)
+
+## [v1.19.3] - 2026-05-14
+
+### 🐛 Bug Fixes
+
+- *(connect)* Keep persisted SDK replies from closing Connect workers (#4152)
+- *(grpc)* Handle unimplemented error for `LoadDefersMeta` for backwards compatibility (#4159)
+- Gracefully handle checkpoint dupes (#4130)
+- Opcode Gateway -> StepTypeFetch (#4180)
+
+### 💼 Other
+
+- Add phase 1 agentic api contract (#3984)
+- Entirely Synchronous Durable endpoints move to Completed Status (#4119)
+- Test Durable Endpoints against JS SDK (#4146)
+- Remove release/next branch trigger
+
+### 🚜 Refactor
+
+- Refactor debouncer ops to expose via ShardOperations (SYS-824) (#4127)
+
+### ⚡ Performance
+
+- *(pauses)* Evaluations containing string comparisons (#4154)
+
+### ⚙️ Miscellaneous Tasks
+
+- Fix PR release job (#4163)
+- Run full CI for release PRs
+- Link release PRs to compare view
+- Update semaphore manager to return idempotency info (#4186)
+- Add "docs" to allowed list (#4175)
+- *(release)* V1.19.3 (#4188)
+
+## [v1.19.2] - 2026-05-07
+
+### 🚀 Features
+
+- Add SDK conformance CLI serve runner (#4027)
+
+### 🐛 Bug Fixes
+
+- *(registration)* Nil-pointer panic on empty-function sync (/fn/register) (#4129)
+
+## [v1.9.2-beta.1] - 2026-05-05
+
+### 🐛 Bug Fixes
+
+- *(tests)* Increase TestWorkerConcurrency timeouts for CI stability (#4100)
+- *(queue)* Pass RequestTime in queue Acquire to bypass stale constraint cache (#4104)
+- Add rueidis goleak ignore for singleflight goroutine (#4116)
+
+### 💼 Other
+
+- Drop 5-candidate clamp in pickConnection (#4112)
+- API Docs (#3968)
+- Log step name for duplicate/failed step saves (#4077)
+- Create a ShardRegisty interface that owns all known shards and shard selector logic (#4082)
+- Make Singleton Manager blissfully unaware of underlying queue stores. (#4081)
+- Rename NewRedisCronManager to NewManager (#4109)
+
+### ⚙️ Miscellaneous Tasks
+
+- *(build)* Bump MCP and go-jwt package versions for CVE fixes (#4099)
+
+## [v1.19.1] - 2026-04-30
+
+### 🐛 Bug Fixes
+
+- Broaden hasPlanOp check (#4079)
+
+### 💼 Other
+
+- Add tables to schema explorer (#4072)
+
+## [v1.19.0] - 2026-04-29
+
+### 🐛 Bug Fixes
+
+- *(cqrs/postgres)* COALESCE finish columns in function-run LEFT JOINs (#4043)
+
+### 💼 Other
+
+- Flexible table column widths (#4033)
+- Accept date in WaitForEventOpts.Expires (#4048)
+- Add per-function Prometheus metrics (#4070)
+
+## [v1.18.0] - 2026-04-22
+
+### 🐛 Bug Fixes
+
+- Anchor fake clock to minute boundary in TestBacklogsByPartition and TestItemsByPartition (#3936)
+- Protect messages slice with mutex and use Eventually in TestRealtime (#3925)
+- Stop clock advances after Release() to prevent flaky early-release test (#3937)
+- Future-date cancellation spans (#3995)
+- *(deps)* Upgrade pgx to v5.9.1 to patch CVE-2026-33816 (#4014)
+
+### 💼 Other
+
+- Reset queue item from status key sets when calling RemoveQueueItem (#3982)
+- Gracefully handle long userland attributes (#4035)
+
+### 🚜 Refactor
+
+- *(base_cqrs)* Switch migrations to goose baselines (#3945)
+
+### ⚙️ Miscellaneous Tasks
+
+- Run go generate and go mod tidy after protobuf regen to keep generated files in sync (#3939)
+- Clean up base cqrs migrations (#4024)
+
+## [v1.17.9] - 2026-04-03
+
+### 🐛 Bug Fixes
+
+- Tolerate expected write errors in TestStreamResponseTooLarge (#3924)
+
+## [v1.17.6] - 2026-03-30
+
+### 🐛 Bug Fixes
+
+- Userland OTel span parenting w/checkpointing (#3804)
+- Make http response_status metadata nilable & omitempty (#3829)
+
+### 💼 Other
+
+- Lots more ux defense around neon/supabase failure scenarios (#3806)
+- Fixes partition iterator bug referencing wrong timestamp (#3902)
+
+## [v1.17.2] - 2026-03-05
+
+### 🚀 Features
+
+- Implement useTripleEscapeToggle hook and integrate into RunDetails components to toggle between old and new views (#3711)
+- Reset `die` after parallelism ends (#3717)
+
+### 🐛 Bug Fixes
+
+- Propagate SaveStep errors in checkpoint API (#3758)
+
+### 💼 Other
+
+- Moar logging (#3709)
+- Release shard leases when done (#3745)
+- New code block api cleanup (#3743)
+- Retry transient shard renewal failures (#3752)
+- Add test for duplicate apps (#3777)
+
+## [v1.17.1] - 2026-02-18
+
+### 🚀 Features
+
+- Store skip reason and display in UI (#3538)
+- Display HTTP response headers and status code in RunDetailsV4 Headers tab (#3690)
+
+### 💼 Other
+
+- Add a counter metric for shard lease contention (#3678)
+- Add a callback for OnShardLeaseAcquired (#3685)
+- Update diagnostics banner w/ new design (#3671)
+- Use sql-formatter clickhouse dialect for SQL formatting (#3692)
+- Add a suffix option to ShardLeaseKeys (#3700)
+- Updated data table (#3694)
+
+## [v1.17.0] - 2026-02-11
+
+### 💼 Other
+
+- Shard group leasing for dynamic executor-to-shard assignment (#3575)
+
+## [v1.16.2] - 2026-02-06
+
+### 💼 Other
+
+- Return new status when first event in a batch is retried (#3590)
+- Fix runs list pagination for self-hosted Inngest with postgres (#3626)
+
+## [v1.16.1] - 2026-01-21
+
+### 🐛 Bug Fixes
+
+- Add a bit of wait for runID to populate in tests (#3508)
+
+### 💼 Other
+
+- Tidy invoke event logic (#3521)
+- Update guards with new clauses (#3524)
+- [ConstraintAPI] Add conditional high cardinality metrics for leases requested vs granted (#3473)
+
+### 🛡️ Security
+
+- Upgrade tar version to latest (#3571)
+
+## [v1.16.0] - 2026-01-07
+
+### 🚀 Features
+
+- Update StepInfo to include loading, No output available and No trace data available messages when applicable (#3365)
+- Add Handlebars support to system prompts in Insights agents and make query-writer aware of data schemas (#3502)
+
+### 🐛 Bug Fixes
+
+- Correct dev server event URL path (#3498)
+
+### 🚜 Refactor
+
+- Unified SendEventModal (#3440)
+
+## [v1.15.2] - 2025-12-22
+
+### 💼 Other
+
+- Add metrics to track constraint API usage and rollout (#3429)
+
+## [v1.15.1] - 2025-12-17
+
+### 🚀 Features
+
+- Send multiple events on the dev server (#3410)
+
+## [v1.15.0] - 2025-12-10
+
+### 🐛 Bug Fixes
+
+- Move dev-server Toaster from _dashboard to __root (#3394)
+- Extended trace span IDs (#3392)
+
+## [v1.14.2] - 2025-12-05
+
+### 🐛 Bug Fixes
+
+- Plumb missing metadata scope in GQL (#3364)
+
+### 💼 Other
+
+- Improve logging for crons (#3339)
+
+## [v1.14.3] - 2025-11-21
+
+### 💼 Other
+
+- Fallback to Github for binary (#3318)
+- Implement new telemetry (#3329)
+
+## [v1.13.7] - 2025-11-13
+
+### 💼 Other
+
+- Remove select-none in SchemaViewer ValueRow (#3292)
+
+## [v1.13.6] - 2025-11-12
+
+### 🐛 Bug Fixes
+
+- Plumb App ID in state (#3273)
+
+### 💼 Other
+
+- Implement rate limiting in pure Lua (#3265)
+- Remove Key Count Pill from Schema Objects (#3274)
+
+### 🚜 Refactor
+
+- Store AppID and FunctionID on userland traces (#3270)
+
+## [v1.13.5] - 2025-11-11
+
+### 💼 Other
+
+- Improve UI Rendering of Custom Event Schemas (#3251)
+
+## [v1.13.3] - 2025-11-05
+
+### 💼 Other
+
+- Render Common Event Schema in Schema Explorer (#3228)
+- Fix Schema Widget Resizable Overlap Issue (#3240)
+- Event emitter for dynamic run list status and endedAt (#3250)
+- Update transformJSONSchema for Arbitrary Schemas (#3249)
+
+### 🚜 Refactor
+
+- Improve userland trace view (#3241)
+
+## [v1.13.2] - 2025-11-03
+
+### 🐛 Bug Fixes
+
+- Don't zero-out userland trace span EndedAt (#3232)
+
+### 💼 Other
+
+- Introduce transformJSONSchema to Simplify UI Schema Rendering (#3226)
+
+### 🧪 Testing
+
+- Add error/retry tests for Go SDK (#3225)
+
+## [v1.13.0] - 2025-10-30
+
+### 🐛 Bug Fixes
+
+- Show error on function runs page instead of no results on error (#3106)
+- Clarify ErrDenied to include timeout as a cause (#3105)
+- Collapse steps with a single attempt (#3111)
+- Unwrap extra StandardError wrapping (#3120)
+- Correct CreateSpan call args (#3202)
+- Remove singleton tracer to prevent stale metadata (#3208)
+
+### 💼 Other
+
+- Modify editorSuggestWidget background color (#3086)
+- Global feature flag toggle (#3121)
+- Insights SQL Agent (#3007)
+- Increment function version on syncs. (#3114)
+- Always add a status when enqueueing root spans (#3140)
+- Update event runs API endpoint (#3144)
+- Default trace preview feature flag call to true (#3143)
+- Bump pnpm 8 to pnpm 10 and add minimumReleaseAge setting (#3122)
+- Redo cron using queues (#2847)
+- Skip docker hub release for beta tag (#3182)
+- Cron Health Checks (#3201)
+
+## [v1.12.0] - 2025-10-01
+
+### 🚀 Features
+
+- Add OpcodeStepFailed support (#2992)
+
+### 💼 Other
+
+- Publish on localhost via realtime forwarding (#3023)
+- Make Insights panels resizable, introduce Resizable (#3060)
+
+## [v1.11.13] - 2025-09-19
+
+### 🐛 Bug Fixes
+
+- Only trigger 1 onFailure call on parallel step failure (#2907)
+- Problem with multiple event trigger expressions (#2951)
+
+### 💼 Other
+
+- Improve function configuration table tooltip (#2903)
+- Add permanent home (icon) tab (#2934)
+- Point Insights feedback link to support page (#2985)
+- Tabs]: Prevent active tab switch when closing a tab (#2997)
+
+## [v1.11.9] - 2025-08-28
+
+### 💼 Other
+
+- Support reusable Tabs component dynamic variant (#2825)
+
+### ⚙️ Miscellaneous Tasks
+
+- Sort OtelSpans deterministically in GraphQL (#2859)
+
+## [v1.11.7] - 2025-08-21
+
+### 💼 Other
+
+- Add tests for batching events + if triggers (#2817)
+- Source paused status from new getter, migration from lock key (#2806)
+- Add conditional expression for batching eligibility (#2818)
+
+## [v1.11.4] - 2025-08-05
+
+### 💼 Other
+
+- Add (mocked) results table (#2773)
+
+## [v1.11.2] - 2025-07-31
+
+### 💼 Other
+
+- Introduce nav item and route (#2757)
+
+## [v1.11.0] - 2025-07-25
+
+### 💼 Other
+
+- Update actions UX (#2731)
+
+## [v1.10.0] - 2025-07-21
+
+### 💼 Other
+
+- Add debug run and session ids to scheduler and rerun from step resolver (#2722)
+
+## [v1.7.0] - 2025-06-16
+
+### 💼 Other
+
+- Show FunctionConfiguration in dev server (#2546)
+
+## [v1.6.0] - 2025-05-19
+
+### 💼 Other
+
+- Return syscode error when request > 2h (#2430)
+
+## [v1.5.12] - 2025-05-09
+
+### 🚀 Features
+
+- Add some indexes to increase performance of self hosted dashboard using postgres (#2318)
+
+### 💼 Other
+
+- Log a warning if waitForEvent.If CEL expression fails validation (#2405)
+
+## [v1.5.3] - 2025-03-14
+
+### 💼 Other
+
+- Trace run start/first step alignment fix & finalization (#2242)
+- Break out cancel run button (#2244)
+
+## [v1.5.0] - 2025-03-06
+
+### 💼 Other
+
+- Swap in split button, input fixes (#2225)
+
+## [v1.4.7] - 2025-02-24
+
+### 💼 Other
+
+- New run AI traces (#2151)
+
+## [v1.4.4] - 2025-01-28
+
+### 💼 Other
+
+- Ensure wildcards are matched during execution (#2117)
+
+## [v1.4.2] - 2025-01-22
+
+### 💼 Other
+
+- Improve auto discovery to reduce noise and excessive polling (#2094)
+
+## [v1.4.0-beta.1] - 2025-01-16
+
+### 💼 Other
+
+- Also set has ai in span attributes on function finished (#2037)
+- Add release documentation (#2040)
+- Support ai indicators and rerun from step in cloud (#2038)
+
+## [v1.3.3] - 2024-12-17
+
+### 🐛 Bug Fixes
+
+- Update url for useFeatureFlags hook to support non default port (#2015)
+
+## [v1.3.2] - 2024-12-05
+
+### 💼 Other
+
+- Pass ai gateway step op code up to ui (#1998)
+- Add ai indicator for runs and add decoration to runs ui (#2001)
+
+## [v1.2.0] - 2024-11-19
+
+### 🐛 Bug Fixes
+
+- Set concurrency in expressions.NewAggregator (#1910)
+- Race condition in LoadEventEvaluator (#1911)
+- Check for nil persistence interval in single node mode (#1965)
+
+### 💼 Other
+
+- Metrics latest charts (#1838)
+- Lift QueueItem into common queue struct and interface (#1872)
+- Fix timeouts duration parsing (#1968)
+
+## [v1.1.1-beta.1] - 2024-10-03
+
+### 💼 Other
+
+- Always set inner queue name (i.Data.QueueName) during Enqueue() (#1817)
+
+### 🛡️ Security
+
+- Upgrade next-clerk (#1829)
+
+## [v1.1.0] - 2024-09-26
+
+### 💼 Other
+
+- Wire up function run and step throughput charts (#1792)
+- Rounding, function list fetching, etc (#1809)
+
+## [v1.0.1] - 2024-09-22
+
+### 💼 Other
+
+- Metrics dashboard failed function chart and failed function rate list (#1763)
+
+## [v1.0.0] - 2024-09-20
+
+### 💼 Other
+
+- Track started batches (#1762)
+
+## [v0.29.9] - 2024-09-16
+
+### 💼 Other
+
+- Skip non-default partitions in Scavenge (#1717)
+- Add a new user survey link (#1740)
+- Metrics dashboard added, function status chart wired up (#1709)
+
+## [v0.30.0-beta-2] - 2024-08-19
+
+### 🐛 Bug Fixes
+
+- Worker capacity should be run regularly outside of the lease (#1666)
+
+### 💼 Other
+
+- Graceful pause deletion (#1617)
+- Dev server ia nav (#1642)
+
+## [v0.29.4] - 2024-08-09
+
+### 💼 Other
+
+- Add circular font to the dashboard (#1544)
+- New ia nav wip (#1584)
+- The rest of the side navigation widgets (#1605)
+- Ia nav functions (#1627)
+- A handful of ui/ux fixes (#1662)
+
+## [v0.29.2] - 2024-07-03
+
+### 💼 Other
+
+- New integrations (#1421)
+- Maze survey cannot be clicked when overlay is shown (#1521)
+- Move to proper alert (#1523)
+- Implement state size limit (#1543)
+
+## [v0.29.1] - 2024-06-07
+
+### 🐛 Bug Fixes
+
+- Executor.Schedule returns ErrFunctionSkipped when a function is paused (#1337)
+
+### 💼 Other
+
+- Support function pausing (#1330)
+- Make code editor support tailwind/system color schema and overrides (#1357)
+- Trace tweaks (#1371)
+- Swap in new date picker for function replay range (#1367)
+- Add helper method in Span to store SDK resp (#1403)
+- Fix event stream pagination by using ulid as cursor (#1409)
+- Date range picker (#1391)
+
+## [v0.28.0] - 2024-05-03
+
+### 💼 Other
+
+- Minor tweaks for span annotations (#1280)
+
+## [v0.26.6] - 2024-04-03
+
+### 💼 Other
+
+- Incorporate tracer into codebase for user traces (#1237)
+- Fix empty event payloads in UI due to resolver bug (#1258)
+
+## [v0.26.4] - 2024-03-13
+
+### ⚙️ Miscellaneous Tasks
+
+- Remove IGassmann from CODEOWNERS (#1227)
+
+## [v0.26.3] - 2024-03-05
+
+### 💼 Other
+
+- Ensure `cancelOn` works with `event.ts` in the future (#1206)
+- Fix custom event IDs are not idempotent (#1202)
+
+## [v0.26.2] - 2024-02-27
+
+### 💼 Other
+
+- Add additional charts to the UI for showing backlog and the number of steps currently running (#1170)
+
+## [v0.26.0] - 2024-02-22
+
+### 🚀 Features
+
+- *(dashboard)* Improve auth for URQL (#1076)
+- *(dashboard)* Retry unauthenticated requests (#1079)
+- *(dashboard)* Redirect to sign-in with an error after retries of unauthenticated errors (#1096)
+- *(dashboard)* OrganizationDropdown (#1116)
+- *(dashboard)* UserDropdown (#1117)
+- Move anonymous ID to cookies (#488)
+- *(auth)* Link to new sign-in and sign-up URLs (#499)
+- *(docs)* Add [object, object] type to concurrency (#582)
+- *(docs)* Add FAQ for endpoint authentication (#585)
+- *(docs)* Replay functions guide (#596)
+- *(website)* Enable website workflow file
+- *(website)* Add Algolia variables and secrets
+
+### 🐛 Bug Fixes
+
+- Cron with trailing space fail to parse (#1108)
+- *(docs)* Remove plural form for event trigger (#350)
+- *(sign-up)* Input text is invisible (#403)
+- *(docs)* Deploy link breaks Dev Server (#442)
+- Broken links (#475)
+- *(patterns)* Incomplete sentence (#541)
+- Docs page open graph image for homepage
+- *(website)* Website - On Deployment workflow
+- *(website)* Next-mdx-remote types
+- *(website)* On deployment workflow
+
+### 💼 Other
+
+- Add AppID as a field for state identifier (#1082)
+- New site
+- Workflow CLI
+- Add new high level arch doc
+- Add Next.js HTTP function post
+- Add basic http functions page
+- Add Managing Secrets
+- Inngest Dev Server
+- Open source announcement
+- Make posts live for launch day
+- A/B test homepage hero text and graphic
+- Trigger your code directly from Retool
+- No workers necessary Node/Express
+- Cron page
+- Completing the Jamstack in 2022
+- Patterns: Run code on a schedule
+- Build reliable webhooks
+- Patterns: Reliably run critical workflows
+- Patterns: Reliable scheduling systems
+- Blog: Build more reliable workflows with events
+- New local development doc page with dev server
+- Add deduplication id info
+- Remove outdated framework docs. Redirect to serve framework docs
+- Blog post: E-commerce API imports
+- Docs search cannot re-focus search
+- Blog: Long running background functions on Vercel
+- Customer quote on mobile
+- Hide AI code generator banner
+- Blog: April announcement blog post (#363)
+- *(blog)* Is the Next.js 13 App Router Stable Enough for Production? (#367)
+- *(blog)* Adapt Next.js blog post (#376)
+- Cloud Functions, more consistent serve docs (#377)
+- Docs: Working With Environments (#385)
+- Create reference section (#386)
+- Meta tags: description & use case pages (#391)
+- Blog: Branch Environments (#364)
+- Add handling failures reference (#401)
+- Add docs regarding our current limitations (#400)
+- Add docs related for logging (#411)
+- Pricing Page Updates (#412)
+- Clarify event key security further (#425)
+- Create user-defined workflows guide (#406)
+- Improvements in Quick Start Tutorial (#430)
+- *(docs)* Make http://localhost:8288 string a link (#438)
+- *(docs)* Add missing types for req and res (#439)
+- *(docs)* Add comment to indicate placement of previous code (#440)
+- *(docs)* Typo (#441)
+- Blog: Seed fundraising announcement (#437)
+- Add guide for batching and update references (#435)
+- Add blog post for event batching feature (#446)
+- Blog: Migrating from Vite to Next.js (#463)
+- *(blog)* Style callout (#464)
+- *(blog)* Set `moduleResolution` to `bundler` (#467)
+- Discord link due to expired link (#474)
+- Switch to pnpm (#471)
+- Pin dependencies (#472)
+- Docs: Add Vercel bypass protection docs (#486)
+- Add concurrency key to docs (#500)
+- Create rateLimit reference (#509)
+- Add if option to event trigger docs (#518)
+- Document idempotency key (#521)
+- Add blog post for fn metrics release (#550)
+- Add custom environments to the docs (#559)
+- Create new webhooks platform guide (#580)
+- Building metrics with TimescaleDB (#584)
+- Show free plan has Discord support (#606)
+- Write guide on expressions (#613)
+- Add handling idempotency guide (#610)
+- Add launch week landing page and banner (#622)
+- Create new cancelation guide
+- Updated fan-out guide (#637)
+- Move event api info to send events guide (#635)
+- Fix broken links on blog (#663)
+- Add a16z funding blog post (#668)
+
+### 🚜 Refactor
+
+- *(website)* Move files to ui/apps/website/
+- *(website)* Merge website repository
+- *(website)* Remove pnpm-lock.yaml
+- Align package.json metadata
+- *(website)* Align .gitignore
+- *(website)* Remove duplicated shell.nix
+
+### 📚 Documentation
+
+- *(package)* Clean up package.json (#473)
+- *(basics)* Replace serve landing page with dev server (#566)
+
+### ⚙️ Miscellaneous Tasks
+
+- Run pnpm install
+- *(website)* Update next-mdx-remote to latest
+- Format files
+- *(website)* Align postcss version
+- *(ui)* Align zod version
+- Remove website app (#1151)
+
+## [v0.24.0] - 2024-01-17
+
+### 💼 Other
+
+- *(dashboard)* Occasional 500 errors (#940)
+- Add function to retrieve total number of items in the function (#1027)
+
+### ⚙️ Miscellaneous Tasks
+
+- *(postinstall.ts)* Use `package.json` version instead of an env variable (#1013)
+
+## [v0.23.0] - 2023-12-07
+
+### 🚀 Features
+
+- *(dashboard)* Function replay (#767)
+
+### 🐛 Bug Fixes
+
+- Revert Node.js and pnpm version upgrade (#898)
+
+### ⚙️ Miscellaneous Tasks
+
+- *(dashboard)* Run GraphQL Codegen during build (#879)
+- Update @clerk/nextjs to latest
+- Update @sentry/nextjs to latest
+- Update Next.js to latest
+- Add @launchdarkly/node-server-sdk
+
+## [v0.22.0] - 2023-11-27
+
+### 🚀 Features
+
+- *(dashboard)* Hook up function config (#857)
+
+## [v0.21.1] - 2023-11-15
+
+### 🚀 Features
+
+- Use Tailwind CSS default font sizes
+- Use Tailwind CSS default border radius
+- Add fallback mono fonts
+- Add base.json file (#706)
+- *(dashboard)* Make chart legend colors consistent (#729)
+- *(dashboard)* Function replay modal (#763)
+- *(dashboard)* Display error message on user creation (#830)
+- *(dashboard)* Function config (#835)
+
+### 🐛 Bug Fixes
+
+- *(dev-server-ui)* GraphQL codegen (#701)
+- *(components)* Ambiguous root paths (#742)
+- *(components)* Don't render multiple html and body tags
+
+### 💼 Other
+
+- *(tailwind)* Align content lookup
+- *(tailwind)* Don't override existing colors
+- *(tailwind)* Remove unneeded custom grid templates
+- *(tailwind)* Remove unused grid templates
+- Type check Tailwind config file
+- Add chart for the number of sdk requests being made from the executor (#724)
+- Display recent tickets. Switch to Plain threads. (#781)
+- Add actions for syncing main with next branch (#807)
+
+### 🚜 Refactor
+
+- Remove unused ui/.github/ dir (#693)
+- Remove unneeded display config
+- Use camelCase for variable
+- Remove unused font
+- Use complete class names
+- Remove custom plugin for icon sizes
+- Move dev-server-ui/ to ui/apps/
+- Clean up package.json files
+- Change paths for runners
+- Align Tailwind CSS configuration (#700)
+- Set up shared tsconfig (#704)
+
+### ⚙️ Miscellaneous Tasks
+
+- Set up env vars with Vercel (#695)
+- Update pnpm lock file
+- Hoist prettier
+- Clean up package.json
+- Clean up .gitignore
+- Align TypeScript configurations (#702)
+- Update Next.js to latest
+- Update storybook to latest
+- Update @sentry/nextjs to latest
+- Update @clerk/nextjs to latest
+
+### 🛡️ Security
+
+- Add security scan for golang (#760)
+
+## [v0.19.0] - 2023-10-11
+
+### 💼 Other
+
+- Add granularity to usage opts and deprecate period (#682)
+
+## [v0.18.1] - 2023-10-09
+
+### 💼 Other
+
+- Use time.Duration instead of string for granularity (#676)
+
+## [v0.18.0] - 2023-10-06
+
+### 💼 Other
+
+- Replace MaxBatchSize with DefaultBatchSize to make it more configurable (#651)
+- Add API structure for timeseries related data for metrics (#668)
+
+## [v0.17.0] - 2023-09-26
+
+### 💼 Other
+
+- Add tests and additional check for invalid URIs (#642)
+
+## [v0.15.6] - 2023-07-28
+
+### 💼 Other
+
+- Add telemetry setup (#530)
+- Add back tracing (#537)
+
+## [v0.15.5] - 2023-07-20
+
+### 💼 Other
+
+- Remove tracer for now (#528)
+
+## [v0.15.0] - 2023-07-12
+
+### 💼 Other
+
+- Add batch related configs (#465)
+- Add actions to be truncated and comment it out for now to (#475)
+- *(ui)* Switch to pnpm (#478)
+- *(ui)* Migrate from Vite to Next.js (#479)
+- *(ui)* Pin dependencies (#480)
+- Allow batching to work (#477)
+- Add Apps Page (#490)
+
+## [v0.14.1] - 2023-06-14
+
+### 💼 Other
+
+- Allow `Event` list in state input for batching (#450)
+
+## [v0.13.0] - 2023-05-01
+
+### 💼 Other
+
+- Refactored the UserError function to handle arbitrary response (#435)
+
+## [v0.13.1] - 2023-03-31
+
+### 🚀 Features
+
+- Automatically display newly created events (#386)
+
+### 📚 Documentation
+
+- *(readme)* Correct typos (#403)
+- *(contributing)* Add contributing guide (#404)
+
+## [v0.10.0] - 2023-02-08
+
+### 🐛 Bug Fixes
+
+- Skip saving response if generator res is empty
+- Executor re-queuing edges as sleeps after a sleep is found
+- `waitForEvent` op erroneously setting stack before returning
+- Generator SDK returning 200 fails to save final step data (#383)
+
+## [v0.5.4] - 2022-08-16
+
+### 💼 Other
+
+- Matrix for `go test`
+
+## [v0.4.0] - 2022-07-05
+
+### 💼 Other
+
+- Add basic Redis state implementation
+
+## [v0.3.0] - 2022-06-09
+
+### 💼 Other
+
+- Drag in open source executor
+
+## [v0.1.0] - 2022-03-10
+
+### 💼 Other
+
+- Support scopes defined in actions
+
+## [v0.0.1] - 2021-07-09
+
+<!-- generated by git-cliff -->

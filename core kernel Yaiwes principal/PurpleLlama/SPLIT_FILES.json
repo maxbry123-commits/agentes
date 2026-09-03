@@ -1,0 +1,23 @@
+[
+  {
+    "repo": "PurpleLlama",
+    "path": "CybersecurityBenchmarks/datasets/third-party.txt",
+    "chunks_dir": "PurpleLlama/CybersecurityBenchmarks/datasets/third-party.txt.chunks",
+    "bytes": 40265617,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "PurpleLlama",
+    "path": "LlamaFirewall/website/static/img/llamafirewall_demo1.webm",
+    "chunks_dir": "PurpleLlama/LlamaFirewall/website/static/img/llamafirewall_demo1.webm.chunks",
+    "bytes": 8807660,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "PurpleLlama",
+    "path": "LlamaFirewall/website/static/img/llamafirewall_demo2.webm",
+    "chunks_dir": "PurpleLlama/LlamaFirewall/website/static/img/llamafirewall_demo2.webm.chunks",
+    "bytes": 8453002,
+    "chunk_bytes": 8388608
+  }
+]

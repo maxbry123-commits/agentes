@@ -1,0 +1,8 @@
+{
+  "name": "@inngest/tsconfig",
+  "files": [
+    "base.json",
+    "react-library.json"
+  ],
+  "private": true
+}

@@ -1,0 +1,14 @@
+---
+name: prompty_with_no_execution_setting
+description: prompty without execution setting
+metadata:
+  authors:
+    - markwallace
+  tags:
+    - basic
+inputs:
+  - name: prompt
+    kind: string
+    default: dummy
+---
+{{prompt}}

@@ -1,0 +1,40 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+.direnv/
+cmd/cmd
+target/
+dist/
+testfns/
+build/*
+
+main
+pkg/devserver/static/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+/.vercel/
+.inngest
+
+.idea
+/tmp/
+!/tmp/nats/.gitkeep
+
+__debug_bin*
+.claude/
+
+# Generated OpenAPI documentation
+docs/openapi/v2/
+docs/openapi/v3/api/v2/
+
+/bin/
+
+# Go workspace file
+go.work
+go.work.sum
+
+pkg/execution/state/redis_state/testdata
+.specify/
+specs/**
+.retrospeced/**

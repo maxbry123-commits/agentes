@@ -1,0 +1,822 @@
+scalar Time
+
+"""
+The environment for the function to be run: `"prod"` or `"test"`
+"""
+scalar Environment
+
+scalar Uint
+scalar ULID
+scalar UUID
+scalar Bytes
+scalar Unknown
+scalar Int64
+scalar SpanMetadataKind
+scalar SpanMetadataScope
+scalar SpanMetadataValues
+scalar HTTPHeaders
+
+"The pagination information in a connection."
+type PageInfo {
+  "Indicates if there are any pages subsequent to the current page."
+  hasNextPage: Boolean!
+
+  "Indicates if there are any pages prior to the current page."
+  hasPreviousPage: Boolean!
+
+  "When paginating backward, the cursor to query the previous page."
+  startCursor: String
+
+  "When paginating forward, the cursor to query the next page."
+  endCursor: String
+}
+
+type Workspace {
+  id: ID!
+}
+
+type StreamItem {
+  id: ID!
+  trigger: String! # Event name or cron
+  type: StreamType!
+  createdAt: Time!
+  runs: [FunctionRun]
+  inBatch: Boolean!
+}
+
+enum StreamType {
+  EVENT
+  CRON
+}
+
+type FunctionVersion {
+  functionId: ID!
+  version: Uint!
+  config: String!
+
+  validFrom: Time
+  validTo: Time
+  createdAt: Time!
+  updatedAt: Time!
+}
+
+type Event {
+  id: ULID!
+  externalID: String
+  workspace: Workspace
+  name: String
+  createdAt: Time
+  payload: String
+  schema: String
+  status: EventStatus
+  pendingRuns: Int
+  # The total number of function runs triggered by this event.
+  totalRuns: Int
+  # The raw JSON of this event, as it would've be sent by the producer.
+  raw: String
+  functionRuns: [FunctionRun!]
+}
+
+enum EventStatus {
+  # The event has triggered one or more functions, none of them have failed, and
+  # some of are them are still running.
+  RUNNING
+
+  # The event has triggered one or more functions and all of them have completed
+  # successfully.
+  COMPLETED
+
+  # The event has triggered one or more functions and has paused for a period of
+  # time or is waiting for an event.
+  PAUSED
+
+  # The event has triggered one or more functions and all have failed.
+  FAILED
+
+  # The event has triggered one or more functions, at least one - but not all -
+  # have failed, and all have run finished running.
+  PARTIALLY_FAILED
+
+  # The event triggered no functions.
+  NO_FUNCTIONS
+}
+
+type EventsConnection {
+  edges: [EventsEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type EventsEdge {
+  node: EventV2!
+  cursor: String!
+}
+
+type EventV2 {
+  envID: UUID!
+
+  # Internal ID.
+  id: ULID!
+
+  # The "id" field.
+  idempotencyKey: String
+
+  name: String!
+
+  # The "ts" field, or receivedAt if "ts" was not set.
+  occurredAt: Time!
+
+  # The raw event data. Basically what the event producer sent.
+  raw: String!
+
+  # When the event was received by Inngest.
+  receivedAt: Time!
+
+  # NOTE: Should this use Relay-style pagination?
+  runs: [FunctionRunV2!]!
+
+  source: EventSource
+
+  # The "version" field.
+  version: String
+}
+
+type EventSource {
+  id: ID!
+  name: String
+  sourceKind: String!
+}
+
+enum FunctionStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+  # todo: SLEEPING, WAITING FOR EVENT when this is available with queue changes.
+}
+
+type App {
+  id: ID!
+  externalID: String!
+  name: String!
+  sdkLanguage: String!
+  sdkVersion: String!
+  framework: String
+  url: String
+  checksum: String
+  error: String
+  functions: [Function!]!
+
+  method: AppMethod!
+
+  appVersion: String
+  sdkFeatureReadiness: SDKFeatureReadiness!
+
+  # These fields are UI convenience fields
+  connected: Boolean!
+  functionCount: Int!
+  autodiscovered: Boolean!
+}
+
+type SDKFeatureReadiness {
+  aiMetadataExtraction: SDKFeatureStatus
+  extendedTraces: SDKFeatureStatus
+}
+
+type SDKFeatureStatus {
+  ready: Boolean!
+  reason: Int
+}
+
+type Function {
+  id: String!
+  name: String!
+  slug: String!
+  failureHandler: Function
+  config: String!
+  configuration: FunctionConfiguration!
+  concurrency: Int!
+  triggers: [FunctionTrigger!]
+  url: String!
+  appID: String!
+  app: App!
+}
+
+enum FunctionTriggerTypes {
+  EVENT
+  CRON
+}
+
+type FunctionTrigger {
+  type: FunctionTriggerTypes!
+  value: String!
+  condition: String
+}
+
+enum FunctionRunStatus {
+  COMPLETED
+  FAILED
+  CANCELLED
+  RUNNING
+  QUEUED
+  SKIPPED
+}
+
+enum FunctionEventType {
+  STARTED
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+type FunctionEvent {
+  workspace: Workspace
+  functionRun: FunctionRun
+  type: FunctionEventType
+  output: String
+  createdAt: Time
+}
+
+type FunctionConfiguration {
+  cancellations: [CancellationConfiguration!]!
+  retries: RetryConfiguration!
+  priority: String
+  eventsBatch: EventsBatchConfiguration
+  concurrency: [ConcurrencyConfiguration!]!
+  rateLimit: RateLimitConfiguration
+  debounce: DebounceConfiguration
+  throttle: ThrottleConfiguration
+  singleton: SingletonConfiguration
+}
+
+type CancellationConfiguration {
+  event: String!
+  timeout: String
+  condition: String
+}
+
+type RetryConfiguration {
+  value: Int!
+  isDefault: Boolean
+}
+
+type EventsBatchConfiguration {
+  "The maximum number of events a batch can have."
+  maxSize: Int!
+
+  "How long to wait before running the function with the batch."
+  timeout: String!
+
+  key: String
+}
+
+type ConcurrencyConfiguration {
+  scope: ConcurrencyScope!
+  limit: ConcurrencyLimitConfiguration!
+  key: String
+}
+
+enum ConcurrencyScope {
+  ACCOUNT
+  ENVIRONMENT
+  FUNCTION
+}
+
+type ConcurrencyLimitConfiguration {
+  value: Int!
+  isPlanLimit: Boolean
+}
+
+type RateLimitConfiguration {
+  limit: Int!
+  period: String!
+  key: String
+}
+
+type DebounceConfiguration {
+  period: String!
+  key: String
+}
+
+type ThrottleConfiguration {
+  burst: Int!
+  key: String
+  limit: Int!
+  period: String!
+}
+
+type SingletonConfiguration {
+  mode: SingletonMode!
+  key: String
+}
+
+enum SingletonMode {
+  SKIP
+  CANCEL
+}
+
+enum StepEventType {
+  SCHEDULED
+  STARTED
+  COMPLETED
+  ERRORED
+  FAILED
+  WAITING
+}
+
+type StepEvent {
+  workspace: Workspace
+  functionRun: FunctionRun
+  stepID: String
+  name: String
+  type: StepEventType
+  output: String
+  createdAt: Time
+  waitingFor: StepEventWait
+}
+
+union FunctionRunEvent = FunctionEvent | StepEvent
+
+type StepEventWait {
+  eventName: String
+  expression: String
+  expiryTime: Time!
+}
+
+type FunctionRun {
+  id: ID!
+  functionID: String!
+
+  # related fields
+  function: Function
+  workspace: Workspace
+  event: Event
+  events: [Event!]!
+  batchID: ULID
+  batchCreatedAt: Time
+
+  status: FunctionRunStatus
+  waitingFor: StepEventWait
+  pendingSteps: Int @deprecated
+  startedAt: Time
+  finishedAt: Time
+  output: String # JSON encoded output of the function, or JSON encoded error if this is a failure.
+  history: [RunHistoryItem!]!
+  historyItemOutput(id: ULID!): String
+  eventID: ID!
+  cron: String
+}
+
+enum HistoryType {
+  FunctionCancelled
+  FunctionCompleted
+  FunctionFailed
+  FunctionScheduled
+  FunctionStarted
+  FunctionStatusUpdated
+  None
+  StepCompleted
+  StepErrored
+  StepFailed
+  StepScheduled
+  StepSleeping
+  StepStarted
+  StepWaiting
+}
+
+enum HistoryStepType {
+  Run
+  Send
+  Sleep
+  Wait
+}
+
+type RunHistoryItem {
+  attempt: Int!
+  cancel: RunHistoryCancel
+  createdAt: Time!
+  functionVersion: Int!
+  groupID: UUID
+  id: ULID!
+  result: RunHistoryResult
+  sleep: RunHistorySleep
+  stepName: String
+  stepType: HistoryStepType
+  type: HistoryType!
+  url: String
+  waitForEvent: RunHistoryWaitForEvent
+  waitResult: RunHistoryWaitResult
+  invokeFunction: RunHistoryInvokeFunction
+  invokeFunctionResult: RunHistoryInvokeFunctionResult
+}
+
+type RunHistoryCancel {
+  eventID: ULID
+  expression: String
+  userID: UUID
+}
+
+type RunHistoryResult {
+  durationMS: Int!
+  errorCode: String
+  framework: String
+  platform: String
+  sdkLanguage: String!
+  sdkVersion: String!
+  sizeBytes: Int!
+}
+
+type RunHistorySleep {
+  until: Time!
+}
+
+type RunHistoryWaitForEvent {
+  eventName: String!
+  expression: String
+  timeout: Time!
+}
+
+type RunHistoryWaitResult {
+  eventID: ULID
+  timeout: Boolean!
+}
+
+type RunHistoryInvokeFunction {
+  eventID: ULID!
+  functionID: String!
+  correlationID: String!
+  timeout: Time!
+}
+
+type RunHistoryInvokeFunctionResult {
+  eventID: ULID
+  timeout: Boolean!
+  runID: ULID
+}
+
+# trace runs
+input RunsFilterV2 {
+  from: Time!
+  until: Time
+  timeField: RunsV2OrderByField = QUEUED_AT
+
+  status: [FunctionRunStatus!]
+  functionIDs: [UUID!]
+  appIDs: [UUID!]
+
+  isDeferred: Boolean
+
+  query: String # CEL query string
+}
+
+input RunsV2OrderBy {
+  field: RunsV2OrderByField!
+  direction: RunsOrderByDirection!
+}
+
+enum RunsV2OrderByField {
+  QUEUED_AT
+  STARTED_AT
+  ENDED_AT
+}
+
+enum RunsOrderByDirection {
+  ASC
+  DESC
+}
+
+type FunctionRunV2 {
+  id: ULID!
+  appID: UUID!
+  app: App!
+  functionID: UUID!
+  function: Function!
+  traceID: String!
+
+  # timestamps
+  queuedAt: Time!
+  startedAt: Time
+  endedAt: Time
+
+  status: FunctionRunStatus!
+  sourceID: String # The parent trace / run that triggered this run
+  triggerIDs: [ULID!]!
+  eventName: String
+  isBatch: Boolean!
+  batchCreatedAt: Time
+  cronSchedule: String
+
+  output: Bytes
+
+  trace(preview: Boolean): RunTraceSpan
+  hasAI: Boolean!
+  defers: [RunDefer!]!
+  siblingDefers: [RunDefer!]!
+  deferredFrom: [RunDeferredFrom!]!
+  isDeferred: Boolean!
+}
+
+type RunsV2Connection {
+  edges: [FunctionRunV2Edge!]!
+  pageInfo: PageInfo!
+  totalCount(preview: Boolean): Int!
+}
+
+type FunctionRunV2Edge {
+  node: FunctionRunV2!
+  cursor: String!
+}
+
+type RunDefer {
+  hashedDeferID: String!
+  userlandDeferID: String!
+  fnSlug: String!
+
+  # Status of the defer itself (not the run).
+  status: RunDeferStatus!
+
+  # Only null if the fnSlug does not match a function. Will exist before run
+  # schedules.
+  function: Function
+
+  runID: ULID
+
+  # Eventually consistent some time after runID exists.
+  run: FunctionRunV2
+}
+
+enum RunDeferStatus {
+  SCHEDULED
+  ABORTED
+  REJECTED
+}
+
+type RunDeferredFrom {
+  runID: ULID!
+  function: Function!
+  run: FunctionRunV2
+}
+
+enum RunTraceSpanStatus {
+  FAILED # step completed with an error
+  QUEUED # step of run is queued but not started
+  RUNNING # actively being executed right now
+  COMPLETED # step completed successfully
+  # TIMED_OUT # wait for event timed out waiting
+  WAITING # sleeping, waiting for an event
+  CANCELLED # cancelled run
+  SKIPPED # run was skipped (e.g. singleton, paused, backlog limit)
+}
+
+enum StepOp {
+  INVOKE # invoke another function
+  RUN # run a step
+  SLEEP # sleep for a duration
+  WAIT_FOR_EVENT # wait for an event
+  AI_GATEWAY
+  WAIT_FOR_SIGNAL
+}
+
+union StepInfo =
+    InvokeStepInfo
+  | SleepStepInfo
+  | WaitForEventStepInfo
+  | RunStepInfo
+  | WaitForSignalStepInfo
+
+type InvokeStepInfo {
+  triggeringEventID: ULID!
+  functionID: String!
+  timeout: Time!
+  returnEventID: ULID
+  runID: ULID
+  timedOut: Boolean
+}
+
+type SleepStepInfo {
+  sleepUntil: Time!
+}
+
+type WaitForEventStepInfo {
+  eventName: String!
+  expression: String
+  timeout: Time!
+  foundEventID: ULID
+  timedOut: Boolean
+}
+
+type WaitForSignalStepInfo {
+  signal: String!
+  timeout: Time!
+  timedOut: Boolean
+}
+
+type RunStepInfo {
+  type: String
+}
+
+type RunTraceSpan {
+  appID: UUID!
+  functionID: UUID!
+
+  runID: ULID!
+  run: FunctionRun! # the run that generated this span <== links should be here
+  # Internal
+  spanID: String! # internal span ID, or a virtual span ID
+  traceID: String! # the internal ID of the trace this span belongs to
+  groupID: String # the group ID of this span, used for grouping spans together in the UI, e.g. retries
+  # Required
+  name: String! # the name of the span
+  status: RunTraceSpanStatus! # the status of the span
+  attempts: Int # if this node contains retry attempts, this is the current attempt number
+  # groupID: String!
+
+  # cursor: String! # used for "pagination", is just a hash to the user
+  duration: Int # the duration of the span in milliseconds (calculated), if null, it's still running
+  outputID: String
+  queuedAt: Time!
+  scheduledAt: Time # the time this span was scheduled to run
+  startedAt: Time # the start time of the span
+  endedAt: Time # the end time of the span, only present if it's ended
+  childrenSpans: [RunTraceSpan!]! # the children spans of this span - invoke
+  stepOp: StepOp # the operation this span represents; nil means it can't be attributed to a step yet
+  stepID: String # the ID of the step this span is associated with
+  stepInfo: StepInfo # info about the step - use fragments to access appropriately
+  stepType: String!
+  # Nice-to-haves for navigating the trace
+  isRoot: Boolean! # whether this span is the root span of the trace (shortcut for presence of rootspan)
+  parentSpanID: String
+  parentSpan: RunTraceSpan # the parent span of this span
+  isUserland: Boolean! # whether this span is a userland span
+  userlandSpan: UserlandSpan
+  debugRunID: ULID
+  debugSessionID: ULID
+  debugPaused: Boolean!
+  skipReason: String
+  skipExistingRunID: String
+  metadata: [SpanMetadata!]!
+  response: RunTraceSpanResponseInfo # Response status and headers
+}
+
+type RunTraceSpanResponseInfo {
+  statusCode: Int!
+  headers: HTTPHeaders!
+}
+
+type SpanMetadata {
+  scope: SpanMetadataScope!
+  kind: SpanMetadataKind!
+  values: SpanMetadataValues!
+  updatedAt: Time!
+}
+
+type UserlandSpan {
+  spanName: String
+  spanKind: String
+  serviceName: String
+  resourceAttrs: Bytes
+  scopeName: String
+  scopeVersion: String
+  spanAttrs: Bytes
+}
+
+type RunTraceSpanOutput {
+  input: Bytes
+  data: Bytes
+  error: StepError
+}
+
+type StepError {
+  message: String!
+  name: String
+  stack: String
+  cause: Unknown
+}
+
+type RunTraceTrigger {
+  eventName: String
+  IDs: [ULID!]! # the ULIDs of all events associated with this run
+  payloads: [Bytes!]! # a list of event objects
+  timestamp: Time! # the timestamp of the single event or the batch
+  isBatch: Boolean! # indicates if this trigger is a batch trigger
+  batchID: ULID # the batchID of this list of events if available
+  cron: String # The cron expression if available
+}
+
+# debug types
+
+type DebugRun {
+  debugTraces: [RunTraceSpan!]
+}
+
+type DebugSessionRun {
+  status: RunTraceSpanStatus!
+  queuedAt: Time!
+  startedAt: Time
+  endedAt: Time
+  debugRunID: ULID
+  tags: [String!]
+  versions: [String!]
+}
+
+type DebugSession {
+  debugRuns: [DebugSessionRun!]
+}
+
+type RunStep {
+  stepID: String!
+  name: String!
+  stepOp: StepOp
+}
+
+# connect
+
+enum ConnectV1ConnectionStatus {
+  CONNECTED
+  READY
+  DRAINING
+  DISCONNECTING
+  DISCONNECTED
+}
+
+input ConnectV1WorkerConnectionsFilter {
+  from: Time
+  until: Time
+  timeField: ConnectV1WorkerConnectionsOrderByField = CONNECTED_AT
+
+  status: [ConnectV1ConnectionStatus!]
+  appIDs: [UUID!]
+}
+
+input ConnectV1WorkerConnectionsOrderBy {
+  field: ConnectV1WorkerConnectionsOrderByField!
+  direction: ConnectV1WorkerConnectionsOrderByDirection!
+}
+
+enum ConnectV1WorkerConnectionsOrderByField {
+  CONNECTED_AT
+  LAST_HEARTBEAT_AT
+  DISCONNECTED_AT
+}
+
+enum ConnectV1WorkerConnectionsOrderByDirection {
+  ASC
+  DESC
+}
+
+type ConnectV1WorkerConnection {
+  id: ULID!
+  gatewayId: ULID!
+  instanceId: String!
+  workerIp: String!
+  maxWorkerConcurrency: Int64!
+
+  appName: String
+  appID: UUID
+  app: App
+
+  # timestamps
+  connectedAt: Time!
+  lastHeartbeatAt: Time
+  disconnectedAt: Time
+
+  disconnectReason: String
+
+  status: ConnectV1ConnectionStatus!
+
+  groupHash: String!
+  sdkLang: String!
+  sdkVersion: String!
+  sdkPlatform: String!
+  syncId: UUID
+    @deprecated(reason: "buildId is deprecated. Use appVersion instead.")
+  buildId: String
+  appVersion: String
+
+  functionCount: Int!
+
+  cpuCores: Int!
+  memBytes: Int!
+  os: String!
+}
+
+type ConnectV1WorkerConnectionsConnection {
+  edges: [ConnectV1WorkerConnectionEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type ConnectV1WorkerConnectionEdge {
+  node: ConnectV1WorkerConnection!
+  cursor: String!
+}
+
+enum AppMethod {
+  SERVE
+  CONNECT
+  API
+}
+
+input AppsFilterV1 {
+  method: AppMethod
+}

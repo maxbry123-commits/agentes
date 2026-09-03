@@ -1,0 +1,120 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { ExperimentScoringMetric } from '@inngest/components/Experiments';
+import useDebounce from '@inngest/components/hooks/useDebounce';
+
+import { trackScoringWeightUpdated } from '@/utils/analyticsEvents';
+
+import {
+  useExperimentScoringConfig,
+  useUpdateExperimentScoringConfig,
+} from './useExperiments';
+
+const DEBOUNCE_MS = 600;
+
+const SCORING_METRIC_CHANGED_FIELDS = [
+  ['enabled', 'enabled'],
+  ['points', 'points'],
+  ['invert', 'invert'],
+  ['minValue', 'min_value'],
+  ['maxValue', 'max_value'],
+  ['labelWorst', 'label_worst'],
+  ['labelBest', 'label_best'],
+  ['displayName', 'display_name'],
+] as const;
+
+/**
+ * Manages local scoring-config state with debounced persistence.
+ *
+ * Every `updateMetric` call applies optimistically and schedules a save after
+ * DEBOUNCE_MS of inactivity. The save is skipped when the local state matches
+ * the last-known server state.
+ */
+export function useScoringConfig(functionID: string, experimentName: string) {
+  const scoring = useExperimentScoringConfig(functionID, experimentName);
+  const updateScoring = useUpdateExperimentScoringConfig(
+    functionID,
+    experimentName,
+  );
+
+  const [localMetrics, setLocalMetrics] = useState<
+    ExperimentScoringMetric[] | null
+  >(null);
+
+  useEffect(() => {
+    const next = scoring.data?.metrics;
+    if (!next) return;
+    // Preserve the existing reference when values are unchanged. After a
+    // successful save, React Query puts a new object into the cache even though
+    // the server echoed back what we just sent. Without this check, the new
+    // reference propagates through props and tanstack-react-table would rebuild
+    // the VariantsTable columns, unmounting the metric-settings Popover.
+    setLocalMetrics((prev) => {
+      if (prev && JSON.stringify(prev) === JSON.stringify(next)) return prev;
+      return next;
+    });
+  }, [scoring.data]);
+
+  const localMetricsRef = useRef(localMetrics);
+  localMetricsRef.current = localMetrics;
+  const serverMetricsRef = useRef<ExperimentScoringMetric[] | null>(null);
+  const mutateRef = useRef(updateScoring.mutate);
+  mutateRef.current = updateScoring.mutate;
+
+  useEffect(() => {
+    serverMetricsRef.current = scoring.data?.metrics ?? null;
+  }, [scoring.data]);
+
+  const debouncedSave = useDebounce(() => {
+    const current = localMetricsRef.current;
+    const serverMetrics = serverMetricsRef.current;
+    if (!current || !serverMetrics) return;
+    if (JSON.stringify(current) === JSON.stringify(serverMetrics)) return;
+
+    const previousByKey = new Map(serverMetrics.map((m) => [m.key, m]));
+    mutateRef.current(current, {
+      onSuccess: () => {
+        for (const metric of current) {
+          const previous = previousByKey.get(metric.key);
+          if (!previous) continue;
+
+          const changedFields = SCORING_METRIC_CHANGED_FIELDS.filter(
+            ([field]) => previous[field] !== metric[field],
+          ).map(([, snakeField]) => snakeField);
+          if (changedFields.length === 0) continue;
+
+          trackScoringWeightUpdated({
+            feature: 'experiments',
+            metricKey: metric.key,
+            metricKind: metric.kind,
+            enabled: metric.enabled,
+            points: metric.points,
+            changedFields,
+          });
+        }
+      },
+    });
+  }, DEBOUNCE_MS);
+
+  useEffect(() => {
+    if (!localMetrics) return;
+    debouncedSave();
+  }, [localMetrics, debouncedSave]);
+
+  const updateMetric = useCallback(
+    (key: string, patch: Partial<ExperimentScoringMetric>) => {
+      setLocalMetrics((prev) =>
+        prev ? prev.map((m) => (m.key === key ? { ...m, ...patch } : m)) : prev,
+      );
+    },
+    [],
+  );
+
+  return {
+    metrics: localMetrics,
+    updateMetric,
+    isSaving: updateScoring.isPending,
+    isPending: scoring.isPending,
+    error: updateScoring.error ?? scoring.error,
+    refetch: scoring.refetch,
+  };
+}
