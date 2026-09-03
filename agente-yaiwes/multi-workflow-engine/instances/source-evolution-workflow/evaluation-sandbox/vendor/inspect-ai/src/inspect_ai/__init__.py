@@ -1,0 +1,59 @@
+# ruff: noqa: F401 F403 F405
+
+from importlib.metadata import version as importlib_version
+
+from inspect_ai._eval.eval import eval, eval_async, eval_retry, eval_retry_async
+from inspect_ai._eval.evalset import eval_set, task_identifier
+from inspect_ai._eval.list import list_tasks
+from inspect_ai._eval.registry import task, task_source
+from inspect_ai._eval.score import score, score_async
+from inspect_ai._eval.task import (
+    Epochs,
+    SampleSource,
+    Task,
+    TaskInfo,
+    TaskSource,
+    task_with,
+)
+from inspect_ai._eval.task.enqueue import enqueue_task
+from inspect_ai._eval.task.sample_source import enqueue_sample
+from inspect_ai._eval.task.scan import ScannerConfig, Scanners
+from inspect_ai._eval.task.tasks import Tasks
+from inspect_ai._util.constants import PKG_NAME
+from inspect_ai._view.view import view
+from inspect_ai.agent._human.agent import human_cli
+from inspect_ai.log._metric import recompute_metrics
+from inspect_ai.log._score import edit_score
+from inspect_ai.solver._human_agent import human_agent
+
+__version__ = importlib_version(PKG_NAME)
+
+
+__all__ = [
+    "__version__",
+    "eval",
+    "eval_async",
+    "eval_retry",
+    "eval_retry_async",
+    "eval_set",
+    "task_identifier",
+    "list_tasks",
+    "score",
+    "score_async",
+    "edit_score",
+    "recompute_metrics",
+    "Epochs",
+    "Scanners",
+    "ScannerConfig",
+    "SampleSource",
+    "Task",
+    "Tasks",
+    "TaskInfo",
+    "TaskSource",
+    "task",
+    "task_source",
+    "task_with",
+    "enqueue_sample",
+    "enqueue_task",
+    "view",
+]

@@ -1,0 +1,38 @@
+---
+title: Scorers
+llms-description: Scorers evaluate the work of solvers and aggregate scores into metrics. Overview of the built-in scorers and pointers to custom scorers, metrics, and the scoring workflow.
+---
+
+## Overview
+
+Scorers evaluate whether solvers were successful in finding the right `output` for the `target` defined in the dataset, and in what measure. Scorers generally take one of the following forms:
+
+1.  Extracting a specific answer out of a model's completion output using a variety of heuristics.
+
+2.  Applying a text similarity algorithm to see if the model's completion is close to what is set out in the `target`.
+
+3.  Using another model to assess whether the model's completion satisfies a description of the ideal answer in `target`.
+
+4.  Using another rubric entirely (e.g. did the model produce a valid version of a file format, etc.)
+
+Scorers also define one or more metrics which are used to aggregate scores (e.g. `accuracy()` which computes what percentage of scores are correct, or `mean()` which provides an average for scores that exist on a continuum).
+
+This page covers the built-in scorers that ship with Inspect. The [Scoring](scoring.qmd) section covers everything else: writing your own scorers, defining and customising metrics, combining multiple scorers, and the offline scoring workflow.
+
+{{< include _builtin-scorers.md >}}
+
+## Going Further
+
+The [Scoring](scoring.qmd) section covers the rest of the scoring system in depth:
+
+-   [Custom Scorers](custom-scorers.qmd): write your own scorers using the `Score`, `Value`, and `Target` types.
+
+-   [Model Grading](model-graded.qmd): customise the model graders, use multiple grader models, and present chat history.
+
+-   [Multiple Scorers](multiple-scorers.qmd): use several scorers together, emit multiple scores, and reduce them.
+
+-   [Scoring Workflow](scoring-workflow.qmd): defer scoring, re-score logs with `inspect score`, and edit scores.
+
+-   [Perplexity](perplexity.qmd): score how well a model predicts text using prompt log probabilities.
+
+You can also customise how scores are displayed in the log viewer. See [Task Views](task-views.qmd).

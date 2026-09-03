@@ -1,0 +1,30 @@
+{
+  "schema_version": "1.0",
+  "workflow": "source-evolution-workflow",
+  "boundary": "evaluation-sandbox",
+  "components": [
+    {
+      "name": "inspect-ai",
+      "role": ["evaluation-engine", "scorer", "solver", "sandbox-contract"],
+      "source_mode": "COPY",
+      "execution_state": "ADAPTER_REQUIRED",
+      "license_gate": "PASS_MIT",
+      "kernel_import": false
+    },
+    {
+      "name": "inspect-sandboxing",
+      "role": ["sandbox-policy-reference", "isolation-selection"],
+      "source_mode": "COPY",
+      "execution_state": "DOCUMENTATION_ONLY",
+      "license_gate": "BLOCK_EXECUTION_LICENSE_NOT_DECLARED",
+      "kernel_import": false
+    }
+  ],
+  "route": "microkernel -> evaluation-sandbox -> sheriff -> authorization-gate",
+  "rules": {
+    "llm_may_authorize": false,
+    "network_default": "deny",
+    "external_code_direct_kernel_import": false,
+    "rollback_required": true
+  }
+}
