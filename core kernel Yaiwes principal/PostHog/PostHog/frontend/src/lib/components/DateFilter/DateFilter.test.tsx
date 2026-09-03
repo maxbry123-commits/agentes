@@ -1,0 +1,156 @@
+import '@testing-library/jest-dom'
+
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { Provider } from 'kea'
+
+import { dateMapping } from 'lib/utils/dateFilters'
+
+import { initKeaTests } from '~/test/init'
+
+import { DateFilter } from './DateFilter'
+
+describe('DateFilter', () => {
+    let onChange = jest.fn()
+    let rerender: ReturnType<typeof render>['rerender']
+    beforeEach(() => {
+        initKeaTests()
+        onChange = jest.fn()
+        rerender = render(
+            <Provider>
+                <DateFilter onChange={onChange} dateOptions={dateMapping} />
+            </Provider>
+        ).rerender
+    })
+
+    afterEach(() => {
+        cleanup()
+    })
+
+    it('Can set the date filter and show the right grouping interval', async () => {
+        const dateFilter = screen.getByTestId('date-filter')
+        await userEvent.click(dateFilter)
+
+        const yesterdayButton = screen.getByText('Yesterday')
+        await userEvent.click(yesterdayButton)
+
+        expect(onChange).toHaveBeenCalledWith('-1dStart', '-1dEnd', false)
+    })
+
+    it('can set a future relative date', async () => {
+        rerender(
+            <Provider>
+                <DateFilter
+                    onChange={onChange}
+                    dateOptions={dateMapping}
+                    isFixedDateMode
+                    allowFutureRelativeDateOptions
+                />
+            </Provider>
+        )
+        await userEvent.click(screen.getByTestId('date-filter'))
+
+        const futureFilter = screen.getByTestId('future-rolling-date-range-filter')
+        const futureInput = within(futureFilter).getByTestId('rolling-date-range-input')
+        await userEvent.clear(futureInput)
+        await userEvent.type(futureInput, '10')
+        await userEvent.click(futureFilter)
+
+        await waitFor(() => expect(onChange).toHaveBeenCalledWith('+10d', null, false))
+    })
+
+    it('can set a custom rolling date range', async () => {
+        const dateFilter = screen.getByTestId('date-filter')
+        await userEvent.click(dateFilter)
+
+        const rollingInput = screen.getByTestId('rolling-date-range-input')
+        await userEvent.clear(rollingInput)
+        await userEvent.type(rollingInput, '5')
+        await userEvent.keyboard('{Enter}')
+
+        const dateOptionsSelector = screen.getByTestId('rolling-date-range-date-options-selector')
+        await userEvent.click(dateOptionsSelector)
+
+        const rollingLabel = screen.getByTestId('rolling-date-range-filter')
+        expect(rollingLabel).toHaveTextContent('In the last')
+        await userEvent.click(rollingLabel)
+
+        await waitFor(() => expect(onChange).toHaveBeenCalledWith('-5d', null, false))
+    })
+})
+
+describe('DateFilter with allowFixedRangeWithTime', () => {
+    let onChange = jest.fn()
+    beforeEach(() => {
+        initKeaTests()
+        onChange = jest.fn()
+        render(
+            <Provider>
+                <DateFilter onChange={onChange} dateOptions={dateMapping} allowFixedRangeWithTime />
+            </Provider>
+        )
+    })
+
+    afterEach(() => {
+        cleanup()
+    })
+
+    it('shows include time toggle in custom fixed date range', async () => {
+        const dateFilter = screen.getByTestId('date-filter')
+        await userEvent.click(dateFilter)
+
+        const fixedRangeOption = screen.getByText(/custom fixed date range…$/i)
+        await userEvent.click(fixedRangeOption)
+
+        await waitFor(() => {
+            expect(screen.getByText(/include time\?/i)).toBeInTheDocument()
+        })
+    })
+
+    it('opens the time range picker when toggling include time', async () => {
+        const dateFilter = screen.getByTestId('date-filter')
+        await userEvent.click(dateFilter)
+
+        const fixedRangeOption = screen.getByText(/custom fixed date range…$/i)
+        await userEvent.click(fixedRangeOption)
+
+        await waitFor(() => {
+            expect(screen.getByText(/include time\?/i)).toBeInTheDocument()
+        })
+
+        const timeToggle = screen.getByRole('switch')
+        await userEvent.click(timeToggle)
+
+        await waitFor(() => {
+            expect(screen.getByText(/select a date and time range/i)).toBeInTheDocument()
+        })
+    })
+})
+
+describe('DateFilter without custom ranges', () => {
+    beforeEach(() => {
+        initKeaTests()
+        render(
+            <Provider>
+                <DateFilter
+                    onChange={jest.fn()}
+                    dateOptions={dateMapping.filter(({ values }) => values[0] === '-1h')}
+                    showRollingRangePicker={false}
+                    showCustomRangeOptions={false}
+                />
+            </Provider>
+        )
+    })
+
+    afterEach(() => {
+        cleanup()
+    })
+
+    it('only shows the supplied presets', async () => {
+        await userEvent.click(screen.getByTestId('date-filter'))
+
+        expect(screen.getByText('Last hour')).toBeInTheDocument()
+        expect(screen.queryByTestId('rolling-date-range-input')).not.toBeInTheDocument()
+        expect(screen.queryByText(/custom/i)).not.toBeInTheDocument()
+    })
+})

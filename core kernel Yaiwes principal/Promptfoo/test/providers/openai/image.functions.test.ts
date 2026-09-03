@@ -1,0 +1,636 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { fetchWithCache } from '../../../src/cache';
+import {
+  buildStructuredImageOutputs,
+  calculateImageCost,
+  callOpenAiImageApi,
+  DALLE2_COSTS,
+  DALLE3_COSTS,
+  formatOutput,
+  GPT_IMAGE2_COSTS,
+  prepareRequestBody,
+  processApiResponse,
+  validateSizeForModel,
+} from '../../../src/providers/openai/image';
+
+vi.mock('../../../src/cache', async (importOriginal) => {
+  return {
+    ...(await importOriginal()),
+    fetchWithCache: vi.fn(),
+  };
+});
+
+describe('OpenAI Image Provider Functions', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  describe('validateSizeForModel', () => {
+    it('should validate valid DALL-E 3 sizes', () => {
+      expect(validateSizeForModel('1024x1024', 'dall-e-3')).toEqual({ valid: true });
+      expect(validateSizeForModel('1792x1024', 'dall-e-3')).toEqual({ valid: true });
+      expect(validateSizeForModel('1024x1792', 'dall-e-3')).toEqual({ valid: true });
+    });
+
+    it('should invalidate incorrect DALL-E 3 sizes', () => {
+      const result = validateSizeForModel('512x512', 'dall-e-3');
+      expect(result.valid).toBe(false);
+      expect(result.message).toContain('Invalid size "512x512" for DALL-E 3');
+    });
+
+    it('should validate valid DALL-E 2 sizes', () => {
+      expect(validateSizeForModel('256x256', 'dall-e-2')).toEqual({ valid: true });
+      expect(validateSizeForModel('512x512', 'dall-e-2')).toEqual({ valid: true });
+      expect(validateSizeForModel('1024x1024', 'dall-e-2')).toEqual({ valid: true });
+    });
+
+    it('should invalidate incorrect DALL-E 2 sizes', () => {
+      const result = validateSizeForModel('1792x1024', 'dall-e-2');
+      expect(result.valid).toBe(false);
+      expect(result.message).toContain('Invalid size "1792x1024" for DALL-E 2');
+    });
+
+    it('should validate any size for unknown models', () => {
+      expect(validateSizeForModel('any-size', 'unknown-model')).toEqual({ valid: true });
+    });
+
+    it('should validate chatgpt-image-latest using GPT Image sizes', () => {
+      expect(validateSizeForModel('1024x1024', 'chatgpt-image-latest')).toEqual({ valid: true });
+      expect(validateSizeForModel('auto', 'chatgpt-image-latest')).toEqual({ valid: true });
+      expect(validateSizeForModel('512x512', 'chatgpt-image-latest')).toMatchObject({
+        valid: false,
+      });
+    });
+
+    it('should validate GPT Image 2 sizes using dimensional constraints', () => {
+      expect(validateSizeForModel('auto', 'gpt-image-2')).toEqual({ valid: true });
+      expect(validateSizeForModel('1024x1024', 'gpt-image-2')).toEqual({ valid: true });
+      expect(validateSizeForModel('2048x1152', 'gpt-image-2')).toEqual({ valid: true });
+      expect(validateSizeForModel('3840x2160', 'gpt-image-2')).toEqual({ valid: true });
+    });
+
+    it('should invalidate GPT Image 2 sizes that violate constraints', () => {
+      expect(validateSizeForModel('512x512', 'gpt-image-2')).toMatchObject({
+        valid: false,
+      });
+      expect(validateSizeForModel('1024x1000', 'gpt-image-2')).toMatchObject({
+        valid: false,
+      });
+      expect(validateSizeForModel('3840x1024', 'gpt-image-2')).toMatchObject({
+        valid: false,
+      });
+      expect(validateSizeForModel('4096x2048', 'gpt-image-2').message).toContain(
+        'Invalid size "4096x2048" for GPT Image 2',
+      );
+    });
+  });
+
+  describe('formatOutput', () => {
+    it('should format URL output correctly', () => {
+      const data = {
+        data: [{ url: 'https://example.com/image.png' }],
+      };
+      const prompt = 'A test prompt';
+      const result = formatOutput(data, prompt, 'url');
+      expect(typeof result).toBe('string');
+      expect(result).toContain('![');
+      expect(result).toContain('](https://example.com/image.png)');
+    });
+
+    it('should sanitize prompt text with special characters', () => {
+      const data = {
+        data: [{ url: 'https://example.com/image.png' }],
+      };
+      const prompt = 'A test [with] brackets\nand newlines';
+      const result = formatOutput(data, prompt, 'url');
+      expect(typeof result).toBe('string');
+      expect(result).toContain('A test (with) brackets and newlines');
+    });
+
+    it('should format base64 output correctly', () => {
+      const mockData = {
+        data: [{ b64_json: 'base64encodeddata' }],
+      };
+      const result = formatOutput(mockData, 'prompt', 'b64_json');
+      expect(typeof result).toBe('string');
+      expect(result).toBe('data:image/png;base64,base64encodeddata');
+    });
+
+    it('should honor output format when formatting base64 output', () => {
+      const mockData = {
+        data: [{ b64_json: 'base64encodeddata' }],
+      };
+      const result = formatOutput(mockData, 'prompt', 'b64_json', 'jpeg');
+      expect(typeof result).toBe('string');
+      expect(result).toBe('data:image/jpeg;base64,base64encodeddata');
+    });
+
+    it('should return error when URL is missing', () => {
+      const data = { data: [{}] };
+      const result = formatOutput(data, 'prompt');
+      expect(typeof result).toBe('object');
+      expect(result).toHaveProperty('error');
+    });
+
+    it('should return error when base64 data is missing', () => {
+      const data = { data: [{}] };
+      const result = formatOutput(data, 'prompt', 'b64_json');
+      expect(typeof result).toBe('object');
+      expect(result).toHaveProperty('error');
+    });
+  });
+
+  describe('prepareRequestBody', () => {
+    it('should prepare basic request body correctly', () => {
+      const model = 'dall-e-2';
+      const prompt = 'A test prompt';
+      const size = '512x512';
+      const responseFormat = 'url';
+      const config = {};
+
+      const body = prepareRequestBody(model, prompt, size, responseFormat, config);
+
+      expect(body).toEqual({
+        model,
+        prompt,
+        size,
+        n: 1,
+        response_format: responseFormat,
+      });
+    });
+
+    it('should include n parameter from config', () => {
+      const config = { n: 2 };
+      const body = prepareRequestBody('dall-e-2', 'prompt', '512x512', 'url', config);
+      expect(body.n).toBe(2);
+    });
+
+    it('should include user parameter from config', () => {
+      const config = { user: 'promptfoo-user-123' };
+      const body = prepareRequestBody('gpt-image-2', 'prompt', '1024x1024', 'b64_json', config);
+      expect(body.user).toBe('promptfoo-user-123');
+    });
+
+    it('should include DALL-E 3 specific parameters', () => {
+      const config = {
+        quality: 'hd',
+        style: 'vivid',
+      };
+      const body = prepareRequestBody('dall-e-3', 'prompt', '1024x1024', 'url', config);
+
+      expect(body).toEqual({
+        model: 'dall-e-3',
+        prompt: 'prompt',
+        size: '1024x1024',
+        n: 1,
+        response_format: 'url',
+        quality: 'hd',
+        style: 'vivid',
+      });
+    });
+
+    it('should not include DALL-E 3 parameters for DALL-E 2', () => {
+      const config = {
+        quality: 'hd',
+        style: 'vivid',
+      };
+      const body = prepareRequestBody('dall-e-2', 'prompt', '512x512', 'url', config);
+
+      expect(body).not.toHaveProperty('quality');
+      expect(body).not.toHaveProperty('style');
+    });
+
+    it('should prepare GPT Image 2 request body without response_format', () => {
+      const config = {
+        quality: 'high',
+        background: 'opaque',
+        output_format: 'webp',
+        output_compression: 90,
+        moderation: 'low',
+      };
+      const body = prepareRequestBody('gpt-image-2', 'prompt', '2048x1152', 'url', config);
+
+      expect(body).toEqual({
+        model: 'gpt-image-2',
+        prompt: 'prompt',
+        size: '2048x1152',
+        n: 1,
+        quality: 'high',
+        background: 'opaque',
+        output_format: 'webp',
+        output_compression: 90,
+        moderation: 'low',
+      });
+    });
+
+    it('should prepare chatgpt-image-latest request body without response_format', () => {
+      expect(
+        prepareRequestBody('chatgpt-image-latest', 'prompt', '1024x1024', 'url', {
+          quality: 'high',
+          output_format: 'webp',
+        }),
+      ).toEqual({
+        model: 'chatgpt-image-latest',
+        prompt: 'prompt',
+        size: '1024x1024',
+        n: 1,
+        quality: 'high',
+        output_format: 'webp',
+      });
+    });
+  });
+
+  describe('calculateImageCost', () => {
+    it('should calculate correct cost for DALL-E 2', () => {
+      expect(calculateImageCost('dall-e-2', '256x256')).toBe(DALLE2_COSTS['256x256']);
+      expect(calculateImageCost('dall-e-2', '512x512')).toBe(DALLE2_COSTS['512x512']);
+      expect(calculateImageCost('dall-e-2', '1024x1024')).toBe(DALLE2_COSTS['1024x1024']);
+    });
+
+    it('should use default size cost if size is invalid for DALL-E 2', () => {
+      expect(calculateImageCost('dall-e-2', 'invalid-size')).toBe(DALLE2_COSTS['1024x1024']);
+    });
+
+    it('should calculate correct cost for standard DALL-E 3', () => {
+      expect(calculateImageCost('dall-e-3', '1024x1024', 'standard')).toBe(
+        DALLE3_COSTS['standard_1024x1024'],
+      );
+      expect(calculateImageCost('dall-e-3', '1024x1792', 'standard')).toBe(
+        DALLE3_COSTS['standard_1024x1792'],
+      );
+    });
+
+    it('should calculate correct cost for HD DALL-E 3', () => {
+      expect(calculateImageCost('dall-e-3', '1024x1024', 'hd')).toBe(DALLE3_COSTS['hd_1024x1024']);
+      expect(calculateImageCost('dall-e-3', '1024x1792', 'hd')).toBe(DALLE3_COSTS['hd_1024x1792']);
+    });
+
+    it('should use standard quality if quality is not specified for DALL-E 3', () => {
+      expect(calculateImageCost('dall-e-3', '1024x1024')).toBe(DALLE3_COSTS['standard_1024x1024']);
+    });
+
+    it('should use default cost if model is unknown', () => {
+      expect(calculateImageCost('unknown-model', '1024x1024')).toBe(0.04);
+    });
+
+    it('should multiply cost by number of images', () => {
+      expect(calculateImageCost('dall-e-2', '256x256', undefined, 3)).toBe(
+        DALLE2_COSTS['256x256'] * 3,
+      );
+      expect(calculateImageCost('dall-e-3', '1024x1024', 'standard', 2)).toBe(
+        DALLE3_COSTS['standard_1024x1024'] * 2,
+      );
+    });
+
+    it('should calculate correct cost for GPT Image 2 common sizes', () => {
+      expect(calculateImageCost('gpt-image-2', '1024x1024', 'low')).toBe(
+        GPT_IMAGE2_COSTS['low_1024x1024'],
+      );
+      expect(calculateImageCost('gpt-image-2', '1024x1536', 'medium')).toBe(
+        GPT_IMAGE2_COSTS['medium_1024x1536'],
+      );
+      expect(calculateImageCost('gpt-image-2', '1536x1024', 'high', 2)).toBe(
+        GPT_IMAGE2_COSTS['high_1536x1024'] * 2,
+      );
+    });
+
+    it('should calculate GPT Image 1.5-compatible fallback cost for chatgpt-image-latest', () => {
+      expect(calculateImageCost('chatgpt-image-latest', '1024x1024', 'low')).toBe(0.009);
+    });
+
+    it('should not invent GPT Image 2 cost for auto quality or custom sizes', () => {
+      expect(calculateImageCost('gpt-image-2', '1024x1024')).toBeUndefined();
+      expect(calculateImageCost('gpt-image-2', '1024x1024', 'auto')).toBeUndefined();
+      expect(calculateImageCost('gpt-image-2', '2048x1152', 'high')).toBeUndefined();
+    });
+
+    it('should use default cost for models other than DALL-E 2 or 3', () => {
+      expect(calculateImageCost('gpt-4', '1024x1024')).toBe(0.04);
+      expect(calculateImageCost('', '1024x1024')).toBe(0.04);
+    });
+  });
+
+  describe('callOpenAiImageApi', () => {
+    it('should call fetchWithCache with correct parameters', async () => {
+      const mockResponse = {
+        data: { some: 'data' },
+        cached: false,
+        status: 200,
+        statusText: 'OK',
+      };
+
+      vi.mocked(fetchWithCache).mockResolvedValue(mockResponse);
+
+      const url = 'https://api.openai.com/v1/images/generations';
+      const body = { model: 'dall-e-3', prompt: 'test' };
+      const headers = { 'Content-Type': 'application/json' };
+      const timeout = 30000;
+
+      const result = await callOpenAiImageApi(url, body, headers, timeout);
+
+      expect(fetchWithCache).toHaveBeenCalledWith(
+        url,
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(body),
+        },
+        timeout,
+      );
+      expect(result).toEqual(mockResponse);
+    });
+
+    it.each([
+      ['https://gateway.example/v1/images/generations?api_key=tenant-secret', {}],
+      ['https://gateway.example/v1/token_privateTenantCredential123/images/generations', {}],
+      ['https://gateway.example/v1/images/generations', { Authorization: 'Bearer tenant-secret' }],
+      ['https://gateway.example/v1/images/generations', { 'X-Route': 'Bearer tenant-secret' }],
+    ])(
+      'should bypass persistent image caching for an authenticated custom gateway',
+      async (url, headers) => {
+        vi.mocked(fetchWithCache).mockResolvedValue({
+          data: { some: 'data' },
+          cached: false,
+          status: 200,
+          statusText: 'OK',
+        });
+
+        await callOpenAiImageApi(
+          url,
+          { model: 'gpt-image-1', prompt: 'test' },
+          { 'Content-Type': 'application/json', ...headers },
+          30000,
+        );
+
+        expect(fetchWithCache).toHaveBeenCalledWith(
+          url,
+          expect.objectContaining({ method: 'POST' }),
+          30000,
+          'json',
+          true,
+        );
+      },
+    );
+
+    it('should bypass persistent image caching when the request body embeds a credential', async () => {
+      vi.mocked(fetchWithCache).mockResolvedValue({
+        data: { some: 'data' },
+        cached: false,
+        status: 200,
+        statusText: 'OK',
+      });
+
+      await callOpenAiImageApi(
+        'https://api.openai.com/v1/images/generations',
+        {
+          model: 'gpt-image-1',
+          prompt: 'Render this key: sk-proj-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        },
+        { 'Content-Type': 'application/json' },
+        30000,
+      );
+
+      expect(fetchWithCache).toHaveBeenCalledWith(
+        'https://api.openai.com/v1/images/generations',
+        expect.objectContaining({ method: 'POST' }),
+        30000,
+        'json',
+        true,
+      );
+    });
+
+    it.each([
+      [
+        'api.openai.com with an Authorization header',
+        'https://api.openai.com/v1/images/generations',
+        { Authorization: 'Bearer sk-proj-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' },
+      ],
+      ['a credential-free custom gateway', 'https://gateway.example/v1/images/generations', {}],
+    ])('should preserve persistent image caching for %s', async (_label, url, headers) => {
+      // Positive controls for the bypass cases above: a credential header on the
+      // DEFAULT endpoint and a clean custom gateway must both keep caching
+      // enabled. The exact three-argument call pins bust=false — the bust path
+      // appends ('json', true).
+      vi.mocked(fetchWithCache).mockResolvedValue({
+        data: { some: 'data' },
+        cached: false,
+        status: 200,
+        statusText: 'OK',
+      });
+      const body = { model: 'gpt-image-1', prompt: 'test' };
+      const fullHeaders = { 'Content-Type': 'application/json', ...headers };
+
+      await callOpenAiImageApi(url, body, fullHeaders, 30000);
+
+      expect(fetchWithCache).toHaveBeenCalledWith(
+        url,
+        { method: 'POST', headers: fullHeaders, body: JSON.stringify(body) },
+        30000,
+      );
+    });
+  });
+
+  describe('processApiResponse', () => {
+    it('should handle error in data', async () => {
+      const mockDeleteFromCache = vi.fn();
+      const data = {
+        error: { message: 'Some API error' },
+        deleteFromCache: mockDeleteFromCache,
+      };
+
+      const result = await processApiResponse(
+        data,
+        'prompt',
+        'url',
+        false,
+        'dall-e-2',
+        '512x512',
+        undefined,
+      );
+
+      expect(mockDeleteFromCache).toHaveBeenCalledWith();
+      expect(result).toHaveProperty('error');
+      expect(result.error).toContain('Some API error');
+    });
+
+    it('should return formatted output for successful response', async () => {
+      const data = {
+        data: [{ url: 'https://example.com/image.png' }],
+      };
+
+      const result = await processApiResponse(
+        data,
+        'test prompt',
+        'url',
+        false,
+        'dall-e-2',
+        '512x512',
+        undefined,
+      );
+
+      expect(result).toHaveProperty('output');
+      expect(result).toHaveProperty('cost');
+      expect(result.cost).toBe(DALLE2_COSTS['512x512']);
+    });
+
+    it('should include base64 flags for b64_json response format', async () => {
+      const data = {
+        data: [{ b64_json: 'base64data' }],
+      };
+
+      const result = await processApiResponse(
+        data,
+        'test prompt',
+        'b64_json',
+        false,
+        'dall-e-3',
+        '1024x1024',
+        undefined,
+        'standard',
+      );
+
+      expect(result).toHaveProperty('isBase64', true);
+      expect(result).toHaveProperty('format', 'json');
+    });
+
+    it('should use output_format when building structured base64 images', async () => {
+      const data = {
+        data: [{ b64_json: 'base64data' }],
+      };
+
+      const result = await processApiResponse(
+        data,
+        'test prompt',
+        'b64_json',
+        false,
+        'gpt-image-1',
+        '1024x1024',
+        undefined,
+        'low',
+        1,
+        'webp',
+      );
+
+      expect(result).toMatchObject({
+        output: 'data:image/webp;base64,base64data',
+        images: [{ data: 'data:image/webp;base64,base64data', mimeType: 'image/webp' }],
+      });
+    });
+
+    it('should set cost to 0 for cached responses', async () => {
+      const data = {
+        data: [{ url: 'https://example.com/image.png' }],
+      };
+
+      const result = await processApiResponse(
+        data,
+        'test prompt',
+        'url',
+        true,
+        'dall-e-2',
+        '512x512',
+        undefined,
+      );
+
+      expect(result.cost).toBe(0);
+    });
+
+    it('should map image API usage to token usage and metadata', async () => {
+      const data = {
+        data: [{ b64_json: 'base64data' }],
+        usage: {
+          total_tokens: 30,
+          input_tokens: 10,
+          output_tokens: 20,
+          input_tokens_details: { text_tokens: 10, image_tokens: 0 },
+        },
+      };
+
+      const result = await processApiResponse(
+        data,
+        'test prompt',
+        'b64_json',
+        false,
+        'gpt-image-2',
+        '1024x1024',
+        undefined,
+      );
+
+      expect(result).toMatchObject({
+        tokenUsage: {
+          prompt: 10,
+          completion: 20,
+          total: 30,
+          numRequests: 1,
+        },
+        metadata: {
+          usage: data.usage,
+        },
+      });
+      expect(result.cost).toBeCloseTo((10 * 5 + 20 * 30) / 1e6, 12);
+    });
+
+    it('should handle errors during output formatting', async () => {
+      const mockDeleteFromCache = vi.fn();
+      const data = {
+        data: undefined,
+        deleteFromCache: mockDeleteFromCache,
+      };
+
+      const result = await processApiResponse(
+        data,
+        'test prompt',
+        'url',
+        false,
+        'dall-e-2',
+        '512x512',
+        undefined,
+      );
+
+      expect(result).toHaveProperty('error');
+      expect(result.error).toContain('API error: TypeError');
+      expect(result.error).toContain('Cannot read properties of undefined');
+      expect(mockDeleteFromCache).toHaveBeenCalledWith();
+    });
+
+    it('should handle a specific error case with malformed response', async () => {
+      const mockDeleteFromCache = vi.fn();
+      const data = {
+        data: { data: 'not-an-array' },
+        deleteFromCache: mockDeleteFromCache,
+      };
+
+      const result = await processApiResponse(
+        data,
+        'test prompt',
+        'url',
+        false,
+        'dall-e-2',
+        '512x512',
+        undefined,
+      );
+
+      expect(result).toHaveProperty('error');
+      expect(result.error).toContain('API error:');
+      expect(mockDeleteFromCache).toHaveBeenCalledWith();
+    });
+  });
+
+  describe('buildStructuredImageOutputs', () => {
+    it('should infer mime type from URL extensions', () => {
+      expect(
+        buildStructuredImageOutputs({
+          data: [{ url: 'https://example.com/image.jpg?size=large' }],
+        }),
+      ).toEqual([{ data: 'https://example.com/image.jpg?size=large', mimeType: 'image/jpeg' }]);
+    });
+
+    it('should omit mime type when URL extension is unknown', () => {
+      expect(
+        buildStructuredImageOutputs({
+          data: [{ url: 'https://example.com/generated-image' }],
+        }),
+      ).toEqual([{ data: 'https://example.com/generated-image' }]);
+    });
+  });
+});

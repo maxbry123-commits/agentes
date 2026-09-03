@@ -1,0 +1,4 @@
+#!/bin/bash
+# Wrapper script for backward compatibility
+# Calls the Nginx Unit server script
+exec "$(dirname "$0")/docker-server-unit" "$@"

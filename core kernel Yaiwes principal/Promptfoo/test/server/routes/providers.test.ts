@@ -1,0 +1,742 @@
+import type { Server } from 'node:http';
+
+import request from 'supertest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createApp } from '../../../src/server/server';
+
+import type { ProviderTestResult } from '../../../src/node/testProvider';
+import type { ApiProvider, ProviderOptions } from '../../../src/types/providers';
+
+// Mock dependencies
+vi.mock('../../../src/providers/index');
+vi.mock('../../../src/node/testProvider');
+vi.mock('../../../src/server/config/serverConfig');
+vi.mock('../../../src/redteam/commands/discover');
+vi.mock('../../../src/redteam/remoteGeneration');
+vi.mock('../../../src/util/fetch/index');
+vi.mock('../../../src/globalConfig/cloud', () => ({
+  cloudConfig: {
+    isEnabled: vi.fn(),
+    getApiHost: vi.fn(),
+    getAuthHeaders: vi.fn(),
+  },
+}));
+
+// Import after mocking
+import { cloudConfig } from '../../../src/globalConfig/cloud';
+import { testProviderConnectivity, testProviderSession } from '../../../src/node/testProvider';
+import { loadApiProvider } from '../../../src/providers/index';
+import { doTargetPurposeDiscovery } from '../../../src/redteam/commands/discover';
+import { neverGenerateRemote } from '../../../src/redteam/remoteGeneration';
+import { getAvailableProviders } from '../../../src/server/config/serverConfig';
+import { fetchWithProxy } from '../../../src/util/fetch/index';
+
+const mockedLoadApiProvider = vi.mocked(loadApiProvider);
+const mockedDoTargetPurposeDiscovery = vi.mocked(doTargetPurposeDiscovery);
+const mockedNeverGenerateRemote = vi.mocked(neverGenerateRemote);
+const mockedTestProviderConnectivity = vi.mocked(testProviderConnectivity);
+const mockedGetAvailableProviders = vi.mocked(getAvailableProviders);
+const mockedTestProviderSession = vi.mocked(testProviderSession);
+const mockedFetchWithProxy = vi.mocked(fetchWithProxy);
+
+describe('Providers Routes', () => {
+  let api: ReturnType<typeof request.agent>;
+  let server: Server;
+
+  beforeAll(async () => {
+    await new Promise<void>((resolve, reject) => {
+      server = createApp().listen(0, '127.0.0.1', (error?: Error) =>
+        error ? reject(error) : resolve(),
+      );
+    });
+    api = request.agent(server);
+  });
+
+  afterAll(async () => {
+    if (!server.listening) {
+      return;
+    }
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+    });
+  });
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    // Default to the non-cloud path so host-dependent assertions are deterministic
+    // regardless of the machine's cloud-login state.
+    vi.mocked(cloudConfig.isEnabled).mockReturnValue(false);
+    vi.mocked(cloudConfig.getApiHost).mockReturnValue('https://api.promptfoo.app');
+    vi.mocked(cloudConfig.getAuthHeaders).mockReturnValue(undefined);
+  });
+
+  afterEach(() => {
+    vi.resetAllMocks();
+  });
+
+  describe('GET /providers/config-status', () => {
+    it('should return hasCustomConfig: false when no custom config exists', async () => {
+      // getAvailableProviders returns empty array when no config
+      mockedGetAvailableProviders.mockReturnValue([]);
+
+      const response = await api.get('/api/providers/config-status');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        success: true,
+        data: { hasCustomConfig: false },
+      });
+    });
+
+    it('should return hasCustomConfig: true when custom config exists', async () => {
+      const customProviders = [
+        { id: 'openai:gpt-4o-mini' },
+        { id: 'anthropic:messages:claude-haiku-4-5-20251001' },
+      ];
+
+      mockedGetAvailableProviders.mockReturnValue(customProviders);
+
+      const response = await api.get('/api/providers/config-status');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        success: true,
+        data: { hasCustomConfig: true },
+      });
+    });
+
+    it('should return standardized 500 errors when config status loading fails', async () => {
+      mockedGetAvailableProviders.mockImplementation(() => {
+        throw new Error('config unavailable');
+      });
+
+      const response = await api.get('/api/providers/config-status');
+
+      expect(response.status).toBe(500);
+      expect(response.body).toEqual({ error: 'Failed to load provider config status' });
+    });
+  });
+
+  describe('POST /providers/test', () => {
+    let mockProvider: ApiProvider;
+
+    beforeEach(() => {
+      // Setup mock provider
+      mockProvider = {
+        id: vi.fn(() => 'test-provider'),
+        callApi: vi.fn(),
+        config: {},
+      } as any;
+
+      // Default mock implementations
+      mockedLoadApiProvider.mockResolvedValue(mockProvider);
+    });
+
+    it('should handle valid request with prompt', async () => {
+      const testPrompt = 'Test prompt';
+      const providerOptions: ProviderOptions = {
+        id: 'http://example.com/api',
+        config: {
+          method: 'POST',
+        },
+      };
+
+      const mockResult: ProviderTestResult = {
+        success: true,
+        message: 'Provider test successful',
+        providerResponse: { output: 'Test response' },
+        transformedRequest: { url: 'http://example.com/api' },
+      };
+
+      mockedTestProviderConnectivity.mockResolvedValue(mockResult);
+
+      const response = await api.post('/api/providers/test').send({
+        prompt: testPrompt,
+        providerOptions,
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        testResult: {
+          success: true,
+          message: 'Provider test successful',
+          error: undefined,
+          changes_needed: undefined,
+          changes_needed_reason: undefined,
+          changes_needed_suggestions: undefined,
+        },
+        providerResponse: { output: 'Test response' },
+        transformedRequest: { url: 'http://example.com/api' },
+      });
+
+      expect(mockedLoadApiProvider).toHaveBeenCalledWith('http://example.com/api', {
+        options: {
+          ...providerOptions,
+          config: {
+            ...providerOptions.config,
+            maxRetries: 1,
+          },
+        },
+      });
+
+      expect(mockedTestProviderConnectivity).toHaveBeenCalledWith({
+        provider: mockProvider,
+        prompt: testPrompt,
+        inputs: undefined,
+      });
+    });
+
+    it('should handle valid request without prompt (optional)', async () => {
+      const providerOptions: ProviderOptions = {
+        id: 'http://example.com/api',
+        config: {},
+      };
+
+      const mockResult: ProviderTestResult = {
+        success: true,
+        message: 'Provider test successful',
+      };
+
+      mockedTestProviderConnectivity.mockResolvedValue(mockResult);
+
+      const response = await api.post('/api/providers/test').send({
+        providerOptions,
+      });
+
+      expect(response.status).toBe(200);
+      expect(mockedTestProviderConnectivity).toHaveBeenCalledWith({
+        provider: mockProvider,
+        prompt: undefined,
+        inputs: undefined,
+      });
+    });
+
+    it('should return 400 for missing providerOptions', async () => {
+      const response = await api.post('/api/providers/test').send({
+        prompt: 'Test prompt',
+      });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual(
+        expect.objectContaining({
+          error: expect.stringContaining('providerOptions'),
+        }),
+      );
+    });
+
+    it('should return 400 for missing provider id', async () => {
+      const response = await api.post('/api/providers/test').send({
+        providerOptions: { config: {} },
+      });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toHaveProperty('error');
+    });
+
+    it('should return 400 when provider id is a number', async () => {
+      const response = await api.post('/api/providers/test').send({
+        providerOptions: { id: 123 },
+      });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toHaveProperty('error');
+    });
+
+    it('should return 400 when provider id is an object', async () => {
+      const response = await api.post('/api/providers/test').send({
+        providerOptions: { id: {} },
+      });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toHaveProperty('error');
+    });
+
+    it('should return 400 when provider id is empty string', async () => {
+      const response = await api.post('/api/providers/test').send({
+        providerOptions: { id: '' },
+      });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toHaveProperty('error');
+    });
+
+    it('should handle provider loading failure', async () => {
+      const providerOptions: ProviderOptions = {
+        id: 'invalid-provider',
+        config: {},
+      };
+
+      mockedLoadApiProvider.mockRejectedValue(new Error('Failed to load provider'));
+
+      const response = await api.post('/api/providers/test').send({
+        providerOptions,
+      });
+
+      // The route should catch the error and return 500
+      expect(response.status).toBe(500);
+    });
+
+    it('should handle connectivity test failure', async () => {
+      const providerOptions: ProviderOptions = {
+        id: 'http://example.com/api',
+        config: {},
+      };
+
+      const mockResult: ProviderTestResult = {
+        success: false,
+        message: 'Connection failed',
+        error: 'Network timeout',
+      };
+
+      mockedTestProviderConnectivity.mockResolvedValue(mockResult);
+
+      const response = await api.post('/api/providers/test').send({
+        providerOptions,
+        prompt: 'Test',
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        testResult: {
+          success: false,
+          message: 'Connection failed',
+          error: 'Network timeout',
+          changes_needed: undefined,
+          changes_needed_reason: undefined,
+          changes_needed_suggestions: undefined,
+        },
+        providerResponse: undefined,
+        transformedRequest: undefined,
+      });
+    });
+
+    it('should handle successful test with analysis and suggestions', async () => {
+      const providerOptions: ProviderOptions = {
+        id: 'http://example.com/api',
+        config: {},
+      };
+
+      const mockResult: ProviderTestResult = {
+        success: true,
+        message: 'Test completed with suggestions',
+        providerResponse: { output: 'Response' },
+        analysis: {
+          changes_needed: true,
+          changes_needed_reason: 'Response format is not optimal',
+          changes_needed_suggestions: [
+            'Add response transform to extract text field',
+            'Update headers to include authentication',
+          ],
+        },
+      };
+
+      mockedTestProviderConnectivity.mockResolvedValue(mockResult);
+
+      const response = await api.post('/api/providers/test').send({
+        providerOptions,
+        prompt: 'Test',
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        testResult: {
+          success: true,
+          message: 'Test completed with suggestions',
+          error: undefined,
+          changes_needed: true,
+          changes_needed_reason: 'Response format is not optimal',
+          changes_needed_suggestions: [
+            'Add response transform to extract text field',
+            'Update headers to include authentication',
+          ],
+        },
+        providerResponse: { output: 'Response' },
+        transformedRequest: undefined,
+      });
+    });
+
+    it('should properly structure response with all fields', async () => {
+      const providerOptions: ProviderOptions = {
+        id: 'http://example.com/api',
+        config: {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        },
+      };
+
+      const mockResult: ProviderTestResult = {
+        success: true,
+        message: 'All systems operational',
+        error: undefined,
+        providerResponse: {
+          output: 'AI response text',
+          metadata: { latency: 150 },
+        },
+        transformedRequest: {
+          url: 'http://example.com/api',
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: { prompt: 'Comprehensive test' },
+        },
+        analysis: {
+          changes_needed: false,
+        },
+      };
+
+      mockedTestProviderConnectivity.mockResolvedValue(mockResult);
+
+      const response = await api.post('/api/providers/test').send({
+        providerOptions,
+        prompt: 'Comprehensive test',
+      });
+
+      expect(response.status).toBe(200);
+
+      // Verify testResult structure
+      expect(response.body.testResult.success).toBe(true);
+      expect(response.body.testResult.message).toBe('All systems operational');
+      expect(response.body.testResult.error).toBeUndefined();
+      expect(response.body.testResult.changes_needed).toBe(false);
+      expect(response.body.testResult.changes_needed_reason).toBeUndefined();
+      expect(response.body.testResult.changes_needed_suggestions).toBeUndefined();
+
+      // Verify providerResponse
+      expect(response.body.providerResponse).toEqual({
+        output: 'AI response text',
+        metadata: { latency: 150 },
+      });
+
+      // Verify transformedRequest
+      expect(response.body.transformedRequest).toEqual({
+        url: 'http://example.com/api',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: { prompt: 'Comprehensive test' },
+      });
+    });
+
+    it('should pass maxRetries: 1 to provider config', async () => {
+      const providerOptions: ProviderOptions = {
+        id: 'http://example.com/api',
+        config: {
+          maxRetries: 5, // Should be overridden to 1
+          timeout: 30000,
+        },
+      };
+
+      const mockResult: ProviderTestResult = {
+        success: true,
+        message: 'Success',
+      };
+
+      mockedTestProviderConnectivity.mockResolvedValue(mockResult);
+
+      const response = await api.post('/api/providers/test').send({
+        providerOptions,
+      });
+
+      expect(response.status).toBe(200);
+      expect(mockedLoadApiProvider).toHaveBeenCalledWith('http://example.com/api', {
+        options: {
+          ...providerOptions,
+          config: {
+            maxRetries: 1, // Should be 1, not 5
+            timeout: 30000,
+          },
+        },
+      });
+    });
+  });
+
+  describe('POST /providers/http-generator validation', () => {
+    it('should return generated HTTP configuration objects from the cloud API', async () => {
+      const generatedConfig = {
+        url: 'https://api.example.com/v1/chat',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      };
+      mockedFetchWithProxy.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue(generatedConfig),
+      } as any);
+
+      const response = await api
+        .post('/api/providers/http-generator')
+        .send({ requestExample: 'curl https://api.example.com/v1/chat' });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual(generatedConfig);
+      expect(mockedFetchWithProxy).toHaveBeenCalledWith(
+        'https://api.promptfoo.app/api/v1/http-provider-generator',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({
+            requestExample: 'curl https://api.example.com/v1/chat',
+            responseExample: undefined,
+          }),
+        }),
+      );
+    });
+
+    it('should call the configured on-prem cloud host with a bearer token when cloud is enabled', async () => {
+      vi.mocked(cloudConfig.isEnabled).mockReturnValue(true);
+      vi.mocked(cloudConfig.getApiHost).mockReturnValue('https://onprem.example.com/');
+      vi.mocked(cloudConfig.getAuthHeaders).mockReturnValue({
+        Authorization: 'Bearer test-onprem-key',
+      });
+
+      const generatedConfig = {
+        url: 'https://api.example.com/v1/chat',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      };
+      mockedFetchWithProxy.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue(generatedConfig),
+      } as any);
+
+      const response = await api
+        .post('/api/providers/http-generator')
+        .send({ requestExample: 'curl https://api.example.com/v1/chat' });
+
+      expect(response.status).toBe(200);
+      const [calledUrl, calledOpts] = mockedFetchWithProxy.mock.calls[0];
+      // Trailing slash on the configured host is normalized (no //api/v1).
+      expect(calledUrl).toBe('https://onprem.example.com/api/v1/http-provider-generator');
+      expect(calledUrl).not.toContain('api.promptfoo.app');
+      expect((calledOpts?.headers as Record<string, string>)?.Authorization).toBe(
+        'Bearer test-onprem-key',
+      );
+    });
+
+    it('should not send an Authorization header when cloud is not enabled', async () => {
+      // default beforeEach: isEnabled=false
+      mockedFetchWithProxy.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue({ url: 'https://x', method: 'POST', headers: {} }),
+      } as any);
+
+      const response = await api
+        .post('/api/providers/http-generator')
+        .send({ requestExample: 'curl https://api.example.com/v1/chat' });
+
+      expect(response.status).toBe(200);
+      const [calledUrl, calledOpts] = mockedFetchWithProxy.mock.calls[0];
+      expect(calledUrl).toBe('https://api.promptfoo.app/api/v1/http-provider-generator');
+      expect((calledOpts?.headers as Record<string, string>)?.Authorization).toBeUndefined();
+    });
+
+    it('should send the cloud credential under a configured custom header name', async () => {
+      vi.mocked(cloudConfig.isEnabled).mockReturnValue(true);
+      vi.mocked(cloudConfig.getApiHost).mockReturnValue('https://onprem.example.com/');
+      vi.mocked(cloudConfig.getAuthHeaders).mockReturnValue({
+        'X-Promptfoo-Api-Key': 'Bearer test-onprem-key',
+      });
+
+      mockedFetchWithProxy.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue({ url: 'https://x', method: 'POST', headers: {} }),
+      } as any);
+
+      const response = await api
+        .post('/api/providers/http-generator')
+        .send({ requestExample: 'curl https://api.example.com/v1/chat' });
+
+      expect(response.status).toBe(200);
+      const [, calledOpts] = mockedFetchWithProxy.mock.calls[0];
+      const headers = calledOpts?.headers as Record<string, string>;
+      expect(headers?.['X-Promptfoo-Api-Key']).toBe('Bearer test-onprem-key');
+      expect(headers?.Authorization).toBeUndefined();
+    });
+
+    it('should not call the hosted HTTP generator when remote generation is disabled', async () => {
+      mockedNeverGenerateRemote.mockReturnValue(true);
+
+      const response = await api
+        .post('/api/providers/http-generator')
+        .send({ requestExample: 'curl https://api.example.com/v1/chat' });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual({ error: 'Requires remote generation be enabled.' });
+      expect(mockedFetchWithProxy).not.toHaveBeenCalled();
+    });
+
+    it('should return 500 when the cloud API returns a non-object generator response', async () => {
+      mockedFetchWithProxy.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue(['not', 'a', 'config']),
+      } as any);
+
+      const response = await api
+        .post('/api/providers/http-generator')
+        .send({ requestExample: 'curl https://api.example.com/v1/chat' });
+
+      expect(response.status).toBe(500);
+      expect(response.body).toEqual({ error: 'Failed to generate HTTP configuration' });
+    });
+
+    it('should return 400 for empty body', async () => {
+      const response = await api.post('/api/providers/http-generator').send({});
+
+      expect(response.status).toBe(400);
+      expect(response.body).toHaveProperty('error');
+    });
+
+    it('should return 400 for empty string requestExample', async () => {
+      const response = await api.post('/api/providers/http-generator').send({ requestExample: '' });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toHaveProperty('error');
+    });
+
+    it('should return 400 for non-string requestExample', async () => {
+      const response = await api
+        .post('/api/providers/http-generator')
+        .set('Content-Type', 'application/json')
+        .send(JSON.stringify({ requestExample: 123 }));
+
+      expect(response.status).toBe(400);
+      expect(response.body).toHaveProperty('error');
+    });
+  });
+
+  describe('POST /providers/test-session validation', () => {
+    it('should return 400 for empty body', async () => {
+      const response = await api.post('/api/providers/test-session').send({});
+
+      expect(response.status).toBe(400);
+      expect(response.body).toHaveProperty('error');
+    });
+
+    it('should return 400 for missing provider', async () => {
+      const response = await api
+        .post('/api/providers/test-session')
+        .send({ sessionConfig: {}, mainInputVariable: 'input' });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toHaveProperty('error');
+    });
+
+    it('should return 400 when provider is not an object', async () => {
+      const response = await api
+        .post('/api/providers/test-session')
+        .send({ provider: 'not-an-object' });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toHaveProperty('error');
+    });
+
+    it('should return 400 when provider.id is a number', async () => {
+      const response = await api
+        .post('/api/providers/test-session')
+        .send({ provider: { id: 123 } });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toHaveProperty('error');
+    });
+
+    it('should return 400 when provider.id is an object', async () => {
+      const response = await api.post('/api/providers/test-session').send({ provider: { id: {} } });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toHaveProperty('error');
+    });
+
+    it('should accept valid minimal body', async () => {
+      const mockProvider = {
+        id: vi.fn(() => 'test-provider'),
+        callApi: vi.fn(),
+        config: {},
+      } as any;
+
+      mockedLoadApiProvider.mockResolvedValue(mockProvider);
+      mockedTestProviderSession.mockResolvedValue({
+        success: true,
+        message: 'Session test successful',
+      } as any);
+
+      const response = await api
+        .post('/api/providers/test-session')
+        .send({ provider: { id: 'http://example.com/api' } });
+
+      expect(response.status).toBe(200);
+    });
+
+    it('should return standardized 500 errors when session provider loading fails', async () => {
+      mockedLoadApiProvider.mockRejectedValue(new Error('provider unavailable'));
+
+      const response = await api
+        .post('/api/providers/test-session')
+        .send({ provider: { id: 'http://example.com/api' } });
+
+      expect(response.status).toBe(500);
+      expect(response.body).toEqual({ error: 'Failed to test session' });
+    });
+  });
+
+  describe('POST /providers/discover validation', () => {
+    it('should return discovered target metadata for valid provider options', async () => {
+      const mockProvider = {
+        id: vi.fn(() => 'test-provider'),
+        callApi: vi.fn(),
+        config: {},
+      } as any;
+      const discoveryResult = {
+        purpose: 'Help users',
+        limitations: 'No medical advice',
+        user: 'Support agents',
+        tools: [
+          {
+            name: 'lookup',
+            description: 'Fetch account details',
+            arguments: [{ name: 'id', description: 'Account id', type: 'string' }],
+          },
+        ],
+      };
+
+      mockedNeverGenerateRemote.mockReturnValue(false);
+      mockedLoadApiProvider.mockResolvedValue(mockProvider);
+      mockedDoTargetPurposeDiscovery.mockResolvedValue(discoveryResult);
+
+      const response = await api.post('/api/providers/discover').send({ id: 'echo' });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual(discoveryResult);
+    });
+
+    it('should return 400 for empty body (missing id)', async () => {
+      const response = await api.post('/api/providers/discover').send({});
+
+      expect(response.status).toBe(400);
+      expect(response.body).toHaveProperty('error');
+    });
+
+    it('should return 400 when id is a number', async () => {
+      const response = await api.post('/api/providers/discover').send({ id: 123 });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toHaveProperty('error');
+    });
+
+    it('should return 400 when id is an object', async () => {
+      const response = await api.post('/api/providers/discover').send({ id: {} });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toHaveProperty('error');
+    });
+
+    it('should return 400 for non-object body', async () => {
+      const response = await api
+        .post('/api/providers/discover')
+        .send('not-an-object')
+        .set('Content-Type', 'application/json');
+
+      expect(response.status).toBe(400);
+    });
+  });
+});

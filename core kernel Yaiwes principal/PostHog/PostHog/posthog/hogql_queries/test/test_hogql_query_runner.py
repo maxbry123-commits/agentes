@@ -1,0 +1,526 @@
+from datetime import UTC, datetime
+from typing import cast
+
+from posthog.test.base import APIBaseTest, ClickhouseTestMixin, _create_event, _create_person, flush_persons_and_events
+from unittest.mock import MagicMock, patch
+
+from parameterized import parameterized
+
+from posthog.schema import (
+    CachedHogQLQueryResponse,
+    HogQLFilters,
+    HogQLPropertyFilter,
+    HogQLQuery,
+    HogQLQueryModifiers,
+    HogQLQueryResponse,
+    HogQLVariable,
+    QueryStatus,
+    SessionTableVersion,
+)
+
+from posthog.hogql import ast
+from posthog.hogql.errors import ExposedHogQLError, QueryError
+from posthog.hogql.query import execute_hogql_query
+from posthog.hogql.user_query_validator import HOGQL_PERSONAL_API_KEY_OFFSET_ALLOWED_FLAG, OFFSET_NOT_ALLOWED_MESSAGE
+from posthog.hogql.visitor import clear_locations
+
+from posthog.caching.utils import ThresholdMode, staleness_threshold_map
+from posthog.hogql_queries.hogql_query_runner import HogQLQueryRunner
+from posthog.hogql_queries.query_runner import ExecutionMode
+from posthog.models.utils import UUIDT
+
+from products.managed_warehouse.backend.facade.query_labels import MANAGED_WAREHOUSE_QUERY_STATUS_LABEL_PREFIX
+from products.product_analytics.backend.facade.models import InsightVariable
+from products.warehouse_sources.backend.facade.models import MANAGED_WAREHOUSE_SOURCE_PREFIX, ExternalDataSource
+from products.warehouse_sources.backend.facade.types import ExternalDataSourceType
+
+
+class TestHogQLQueryRunner(ClickhouseTestMixin, APIBaseTest):
+    maxDiff = None
+    random_uuid: str
+
+    def _create_random_persons(self) -> str:
+        random_uuid = f"RANDOM_TEST_ID::{UUIDT()}"
+        for index in range(10):
+            _create_person(
+                properties={
+                    "email": f"jacob{index}@{random_uuid}.posthog.com",
+                    "name": f"Mr Jacob {random_uuid}",
+                    "random_uuid": random_uuid,
+                    "index": index,
+                },
+                team=self.team,
+                distinct_ids=[f"id-{random_uuid}-{index}"],
+                is_identified=True,
+            )
+            _create_event(
+                distinct_id=f"id-{random_uuid}-{index}",
+                event=f"clicky-{index}",
+                team=self.team,
+            )
+        flush_persons_and_events()
+        return random_uuid
+
+    def _create_runner(self, query: HogQLQuery) -> HogQLQueryRunner:
+        return HogQLQueryRunner(team=self.team, query=query)
+
+    def setUp(self):
+        super().setUp()
+        self.random_uuid = self._create_random_persons()
+
+    def test_calculate_with_query_modifiers_matches_unthreaded_executor_sql(self):
+        # The runner hands the executor a context wired to its shared database, which is
+        # built from the runner's resolved modifiers. Query-level modifiers reshape that
+        # database (e.g. which sessions table backs `sessions`), so the printed SQL must
+        # match what the executor produces when it builds the database itself.
+        query = "select count() from sessions limit 1"
+        modifiers = HogQLQueryModifiers(sessionTableVersion=SessionTableVersion.V1)
+        runner = self._create_runner(HogQLQuery(query=query, modifiers=modifiers))
+        threaded = runner.calculate()
+        baseline = execute_hogql_query(query=query, team=self.team, modifiers=modifiers)
+        assert threaded.clickhouse == baseline.clickhouse
+
+    def test_calculate_reports_modifiers_matching_its_shared_database(self):
+        # The shared database is built from the runner's resolved modifiers, which prefer the
+        # constructor modifiers over the query's own. The executor must run and report those same
+        # modifiers, or a caller that sets both gets SQL built for one schema and a response that
+        # describes another. sessionTableVersion picks which table backs `sessions`.
+        query = "select count() from sessions limit 1"
+        runner = HogQLQueryRunner(
+            team=self.team,
+            query=HogQLQuery(query=query, modifiers=HogQLQueryModifiers(sessionTableVersion=SessionTableVersion.V2)),
+            modifiers=HogQLQueryModifiers(sessionTableVersion=SessionTableVersion.V1),
+        )
+        response = runner.calculate()
+        baseline = execute_hogql_query(
+            query=query, team=self.team, modifiers=HogQLQueryModifiers(sessionTableVersion=SessionTableVersion.V1)
+        )
+        # SQL is built from the shared database's modifiers (V1), and the reported modifiers agree.
+        assert response.clickhouse == baseline.clickhouse
+        assert response.modifiers is not None
+        assert response.modifiers.sessionTableVersion == SessionTableVersion.V1
+        assert runner.get_cache_payload()["hogql_modifier_precedence"] == "runner"
+
+    def test_default_hogql_query(self):
+        runner = self._create_runner(HogQLQuery(query="select count(event) from events"))
+        query = runner.to_query()
+        query = clear_locations(query)
+        expected = ast.SelectQuery(
+            select=[ast.Call(name="count", args=[ast.Field(chain=["event"])])],
+            select_from=ast.JoinExpr(table=ast.Field(chain=["events"])),
+        )
+        self.assertEqual(clear_locations(query), expected)
+        response = runner.calculate()
+        self.assertEqual(response.results[0][0], 10)
+
+        self.assertEqual(response.hasMore, False)
+        self.assertIsNotNone(response.limit)
+
+    def test_default_hogql_query_with_limit(self):
+        runner = self._create_runner(HogQLQuery(query="select event from events limit 5"))
+        response = runner.calculate()
+        assert response.results is not None
+        self.assertEqual(len(response.results), 5)
+        self.assertNotIn("hasMore", response)
+
+    def test_hogql_query_filters(self):
+        runner = self._create_runner(
+            HogQLQuery(
+                query="select count(event) from events where {filters}",
+                filters=HogQLFilters(properties=[HogQLPropertyFilter(key="event='clicky-3'")]),
+            )
+        )
+        query = runner.to_query()
+        query = clear_locations(query)
+        expected = ast.SelectQuery(
+            select=[ast.Call(name="count", args=[ast.Field(chain=["event"])])],
+            select_from=ast.JoinExpr(table=ast.Field(chain=["events"])),
+            where=ast.CompareOperation(
+                left=ast.Field(chain=["event"]),
+                op=ast.CompareOperationOp.Eq,
+                right=ast.Constant(value="clicky-3"),
+            ),
+        )
+        self.assertEqual(clear_locations(query), expected)
+        response = runner.calculate()
+        self.assertEqual(response.results[0][0], 1)
+
+    def test_hogql_query_values(self):
+        runner = self._create_runner(
+            HogQLQuery(
+                query="select count(event) from events where event={e}",
+                values={"e": "clicky-3"},
+            )
+        )
+        query = runner.to_query()
+        query = clear_locations(query)
+        expected = ast.SelectQuery(
+            select=[ast.Call(name="count", args=[ast.Field(chain=["event"])])],
+            select_from=ast.JoinExpr(table=ast.Field(chain=["events"])),
+            where=ast.CompareOperation(
+                left=ast.Field(chain=["event"]),
+                op=ast.CompareOperationOp.Eq,
+                right=ast.Constant(value="clicky-3"),
+            ),
+        )
+        self.assertEqual(clear_locations(query), expected)
+        response = runner.calculate()
+        self.assertEqual(response.results[0][0], 1)
+
+    def test_cache_target_age_is_two_hours_in_future_after_run(self):
+        runner = self._create_runner(HogQLQuery(query="select count(event) from events"))
+
+        fixed_now = datetime(2023, 1, 1, 12, 0, 0, tzinfo=UTC)
+        expected_target_age = fixed_now + staleness_threshold_map[ThresholdMode.DEFAULT]["day"]
+
+        with patch("posthog.hogql_queries.query_runner.datetime") as mock_datetime:
+            mock_datetime.now.return_value = fixed_now
+            mock_datetime.timezone.utc = UTC
+
+            response = cast(CachedHogQLQueryResponse, runner.run())
+
+            self.assertIsNotNone(response.cache_target_age)
+            self.assertEqual(response.cache_target_age, expected_target_age)
+
+    @parameterized.expand(
+        [
+            # system.information_schema.* mirrors mutable data-catalog state, so it must never be
+            # served from the query cache — recompute every time regardless of the caller's mode.
+            ("metrics", "select name, status from system.information_schema.metrics", True),
+            ("tables", "select * from system.information_schema.tables", True),
+            ("relationships", "select * from system.information_schema.relationships", True),
+            ("columns", "select * from system.information_schema.columns", True),
+            # system.activity_logs is floored to the plan's retention window, which moves with the clock,
+            # so a stored row outlives the entitlement that let it be read.
+            ("activity_logs", "select * from system.activity_logs", True),
+            ("other_system_table", "select id, name from system.insights", False),
+            ("events", "select count(event) from events", False),
+            ("unparseable", "INVALID SQL SYNTAX", False),
+        ]
+    )
+    def test_requires_fresh_calculation(self, _name: str, query: str, expected: bool):
+        runner = self._create_runner(HogQLQuery(query=query))
+        self.assertEqual(runner.requires_fresh_calculation(), expected)
+
+    def test_requires_fresh_calculation_false_for_external_connection(self):
+        # External-connection queries run against an upstream source, never the ClickHouse catalog,
+        # so they keep normal caching even if the text happens to reference information_schema.
+        runner = self._create_runner(
+            HogQLQuery(query="select * from system.information_schema.metrics", connectionId="conn-123")
+        )
+        self.assertFalse(runner.requires_fresh_calculation())
+
+    def test_variables_in_hog_expression(self):
+        variable = InsightVariable.objects.create(team=self.team, name="Foo", code_name="foo", type="Boolean")
+        variable_id = str(variable.id)
+
+        runner = self._create_runner(
+            HogQLQuery(
+                query="select {variables.foo ? 'exists' : 'does not'}",
+                variables={
+                    variable_id: HogQLVariable(code_name=variable.code_name, variableId=variable_id, value=True)
+                },
+            )
+        )
+
+        response = runner.calculate()
+        self.assertEqual(response.results[0][0], "exists")
+
+    def test_variables_in_hog_expression_sql(self):
+        variable = InsightVariable.objects.create(team=self.team, name="Bar", code_name="bar", type="Boolean")
+        variable_id = str(variable.id)
+
+        _create_event(distinct_id=f"id-{self.random_uuid}-3", event="clicky-3", team=self.team)
+        flush_persons_and_events()
+
+        query = "select count() from events where {variables.bar ? sql(event = 'clicky-3') : sql(event = 'clicky-4')}"
+
+        runner_true = self._create_runner(
+            HogQLQuery(
+                query=query,
+                variables={
+                    variable_id: HogQLVariable(code_name=variable.code_name, variableId=variable_id, value=True)
+                },
+            )
+        )
+        result_true = runner_true.calculate()
+        self.assertEqual(result_true.results[0][0], 2)
+
+        runner_false = self._create_runner(
+            HogQLQuery(
+                query=query,
+                variables={
+                    variable_id: HogQLVariable(code_name=variable.code_name, variableId=variable_id, value=False)
+                },
+            )
+        )
+        result_false = runner_false.calculate()
+        self.assertEqual(result_false.results[0][0], 1)
+
+    def test_invalid_connection_id_raises_exposed_hogql_error(self):
+        runner = self._create_runner(
+            HogQLQuery(
+                query="select 1",
+                connectionId=str(UUIDT()),
+            )
+        )
+
+        with self.assertRaises(ExposedHogQLError):
+            runner.calculate()
+
+    @patch(
+        "posthog.permissions.posthog_feature_flag_enabled",
+        side_effect=AssertionError("managed warehouse query execution must not evaluate a product feature flag"),
+    )
+    @patch("posthog.hogql_queries.hogql_query_runner.execute_hogql_query")
+    def test_managed_warehouse_cache_and_status_do_not_evaluate_a_feature_flag(
+        self, mock_execute_hogql_query: MagicMock, feature_flag_lookup: MagicMock
+    ) -> None:
+        source = ExternalDataSource.objects.create(
+            source_id="managed-source",
+            connection_id="managed-connection",
+            destination_id="managed-destination",
+            team=self.team,
+            status=ExternalDataSource.Status.COMPLETED,
+            source_type=ExternalDataSourceType.POSTGRES,
+            prefix=MANAGED_WAREHOUSE_SOURCE_PREFIX,
+            access_method=ExternalDataSource.AccessMethod.DIRECT,
+            direct_query_enabled=True,
+            connection_metadata={
+                "engine": "duckdb",
+                "system_managed": True,
+                "credential_kind": "project_reader",
+                "reader_configured": True,
+            },
+            job_inputs={
+                "host": "managed.example.com",
+                "port": 5432,
+                "database": "ducklake",
+                "user": f"posthog_team_{self.team.id}",
+                "password": "reader-password",
+            },
+        )
+        query = HogQLQuery(query="select 1::int as value", connectionId=str(source.id), sendRawQuery=True)
+        mock_execute_hogql_query.return_value = HogQLQueryResponse(results=[(1,)], columns=["value"], types=[])
+
+        runner = self._create_runner(query)
+        expected_query_status_labels = [f"{MANAGED_WAREHOUSE_QUERY_STATUS_LABEL_PREFIX}{source.id}"]
+        self.assertEqual(runner.query_status_labels(), expected_query_status_labels)
+        built_in_cache_key = runner.get_cache_key()
+        response = cast(
+            HogQLQueryResponse,
+            runner.run(execution_mode=ExecutionMode.CALCULATE_BLOCKING_ALWAYS),
+        )
+        self.assertEqual(response.results, [(1,)])
+
+        with patch(
+            "posthog.hogql_queries.query_runner.enqueue_process_query_task",
+            return_value=QueryStatus(id="managed-query", team_id=self.team.id),
+        ) as enqueue_process_query_task:
+            self._create_runner(query).run(execution_mode=ExecutionMode.CALCULATE_ASYNC_ALWAYS)
+        self.assertEqual(
+            enqueue_process_query_task.call_args.kwargs["labels"],
+            expected_query_status_labels,
+        )
+
+        second_runner = self._create_runner(query)
+        self.assertEqual(second_runner.query_status_labels(), expected_query_status_labels)
+        self.assertEqual(second_runner.get_cache_key(), built_in_cache_key)
+        second_response = cast(
+            HogQLQueryResponse,
+            second_runner.run(execution_mode=ExecutionMode.CALCULATE_BLOCKING_ALWAYS),
+        )
+        self.assertEqual(second_response.results, [(1,)])
+
+        assert isinstance(source.connection_metadata, dict)
+        source.connection_metadata["reader_configured"] = False
+        source.save(update_fields=["connection_metadata"])
+        with self.assertRaisesMessage(ExposedHogQLError, "Invalid connectionId"):
+            self._create_runner(query).run()
+
+        self.assertEqual(mock_execute_hogql_query.call_count, 2)
+        feature_flag_lookup.assert_not_called()
+
+    def test_legacy_managed_cache_and_status_are_stable(self) -> None:
+        source = ExternalDataSource.objects.create(
+            source_id="managed-source",
+            connection_id="managed-connection",
+            destination_id="managed-destination",
+            team=self.team,
+            status=ExternalDataSource.Status.COMPLETED,
+            source_type=ExternalDataSourceType.POSTGRES,
+            prefix=MANAGED_WAREHOUSE_SOURCE_PREFIX,
+            access_method=ExternalDataSource.AccessMethod.DIRECT,
+            direct_query_enabled=True,
+            connection_metadata={
+                "engine": "duckdb",
+                "system_managed": True,
+                "credential_kind": "org_root",
+            },
+            job_inputs={
+                "host": "managed.example.com",
+                "port": 5432,
+                "database": "ducklake",
+                "user": "org-root",
+                "password": "root-password",
+            },
+        )
+        query = HogQLQuery(query="select 1::int as value", connectionId=str(source.id), sendRawQuery=True)
+
+        first_runner = self._create_runner(query)
+        self.assertIsNone(first_runner.query_status_labels())
+        self.assertNotIn("managed_warehouse_sql_mode", first_runner.get_cache_payload())
+        first_cache_key = first_runner.get_cache_key()
+
+        second_runner = self._create_runner(query)
+        self.assertIsNone(second_runner.query_status_labels())
+        self.assertEqual(second_runner.get_cache_key(), first_cache_key)
+
+    @patch("posthog.hogql_queries.hogql_query_runner.execute_hogql_query")
+    def test_send_raw_query_uses_raw_query_string_for_direct_connections(self, mock_execute_hogql_query):
+        source = ExternalDataSource.objects.create(
+            source_id="selected-upstream-source",
+            connection_id="selected-connection",
+            destination_id="destination-1",
+            team=self.team,
+            status=ExternalDataSource.Status.COMPLETED,
+            source_type=ExternalDataSourceType.POSTGRES,
+            access_method=ExternalDataSource.AccessMethod.DIRECT,
+        )
+        mock_execute_hogql_query.return_value = HogQLQueryResponse(results=[(1,)], columns=["value"], types=[])
+
+        runner = self._create_runner(
+            HogQLQuery(
+                query="select 1::int as value",
+                connectionId=str(source.id),
+                sendRawQuery=True,
+            )
+        )
+
+        response = runner.calculate()
+
+        self.assertEqual(response.results, [(1,)])
+        mock_execute_hogql_query.assert_called_once()
+        self.assertEqual(mock_execute_hogql_query.call_args.kwargs["query"], "select 1::int as value")
+        self.assertEqual(mock_execute_hogql_query.call_args.kwargs["connection_id"], str(source.id))
+        self.assertEqual(mock_execute_hogql_query.call_args.kwargs["send_raw_query"], True)
+
+    @patch("posthog.hogql_queries.hogql_query_runner.execute_hogql_query")
+    def test_send_raw_query_is_ignored_without_direct_connection(self, mock_execute_hogql_query):
+        mock_execute_hogql_query.return_value = HogQLQueryResponse(results=[(10,)], columns=["count"], types=[])
+
+        runner = self._create_runner(
+            HogQLQuery(
+                query="select count(event) from events limit 100",
+                sendRawQuery=True,
+            )
+        )
+
+        response = runner.calculate()
+
+        self.assertEqual(response.results, [(10,)])
+        mock_execute_hogql_query.assert_called_once()
+        self.assertIsInstance(mock_execute_hogql_query.call_args.kwargs["query"], ast.SelectQuery)
+        self.assertNotIn("send_raw_query", mock_execute_hogql_query.call_args.kwargs)
+
+    def test_soft_deleted_connection_id_raises_exposed_hogql_error(self):
+        source = ExternalDataSource.objects.create(
+            source_id="selected-upstream-source",
+            connection_id="selected-connection",
+            destination_id="destination-1",
+            team=self.team,
+            status=ExternalDataSource.Status.COMPLETED,
+            source_type=ExternalDataSourceType.POSTGRES,
+            deleted=True,
+        )
+        runner = self._create_runner(
+            HogQLQuery(
+                query="select 1",
+                connectionId=str(source.id),
+            )
+        )
+
+        with self.assertRaises(ExposedHogQLError):
+            runner.calculate()
+
+    def test_non_direct_connection_id_raises_exposed_hogql_error(self):
+        source = ExternalDataSource.objects.create(
+            source_id="selected-upstream-source",
+            connection_id="selected-connection",
+            destination_id="destination-1",
+            team=self.team,
+            status=ExternalDataSource.Status.COMPLETED,
+            source_type=ExternalDataSourceType.STRIPE,
+            access_method=ExternalDataSource.AccessMethod.WAREHOUSE,
+        )
+
+        runner = self._create_runner(
+            HogQLQuery(
+                query="select * from stripe.customers limit 1",
+                connectionId=str(source.id),
+            )
+        )
+
+        with self.assertRaises(ExposedHogQLError):
+            runner.calculate()
+
+    @parameterized.expand(
+        [
+            # Plain OFFSET on SelectQuery
+            ("top_level", "select event from events limit 10 offset 5"),
+            # Recursion into a subquery
+            ("subquery", "select * from (select event from events limit 10 offset 5) sub"),
+            # Distinct AST node: SelectSetQuery.offset (OFFSET at UNION level)
+            (
+                "select_set_outer",
+                "(select event from events limit 5) union all (select event from events limit 5) limit 10 offset 5",
+            ),
+            # Distinct AST node: LimitByExpr.offset_value
+            ("limit_by", "select event, timestamp from events limit 5 by event offset 10"),
+            # OFFSET arrives via placeholder — proves hook runs after to_query() substitution.
+            ("placeholder", "select event from events limit 10 offset {o}"),
+        ]
+    )
+    @patch("posthoganalytics.feature_enabled", return_value=False)
+    def test_query_service_rejects_offset(self, _name, sql, _mock_flag):
+        values = {"o": 50} if "{o}" in sql else None
+        runner = self._create_runner(HogQLQuery(query=sql, values=values))
+        runner.is_query_service = True
+
+        with self.assertRaises(QueryError) as ctx:
+            runner.calculate()
+        self.assertEqual(OFFSET_NOT_ALLOWED_MESSAGE, str(ctx.exception))
+
+    @patch("posthoganalytics.feature_enabled", return_value=True)
+    def test_query_service_allows_offset_when_org_on_allow_list(self, _mock_flag):
+        # Grandfathered via the allow-list flag → query passes through to execution.
+        runner = self._create_runner(HogQLQuery(query="select event from events limit 10 offset 5"))
+        runner.is_query_service = True
+
+        response = runner.calculate()
+        self.assertEqual(len(response.results), 5)
+
+    def test_query_service_fails_open_when_flag_service_errors(self):
+        # Flag-service outage must not cascade into rejecting previously-valid traffic.
+        # Scope the error to our flag only — a blanket raise would break unrelated flag checks
+        # downstream in the query execution path.
+        def flag_side_effect(flag, *_args, **_kwargs):
+            if flag == HOGQL_PERSONAL_API_KEY_OFFSET_ALLOWED_FLAG:
+                raise RuntimeError("flag service down")
+            return False
+
+        runner = self._create_runner(HogQLQuery(query="select event from events limit 10 offset 5"))
+        runner.is_query_service = True
+
+        with patch("posthoganalytics.feature_enabled", side_effect=flag_side_effect):
+            response = runner.calculate()
+        self.assertEqual(len(response.results), 5)
+
+    @patch("posthoganalytics.feature_enabled", return_value=False)
+    def test_non_query_service_allows_offset(self, _mock_flag):
+        # Product queries (Trends/Funnels/etc.) have is_query_service=False — must pass through
+        # even when the flag says "deny everything." Guards the `if self.is_query_service:` gate.
+        runner = self._create_runner(HogQLQuery(query="select event from events limit 10 offset 5"))
+
+        response = runner.calculate()
+        self.assertEqual(len(response.results), 5)

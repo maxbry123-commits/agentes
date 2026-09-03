@@ -1,0 +1,251 @@
+from typing import cast
+
+from posthog.schema import (
+    CachedEventTaxonomyQueryResponse,
+    EventTaxonomyItem,
+    EventTaxonomyQuery,
+    EventTaxonomyQueryResponse,
+)
+
+from posthog.hogql import ast
+from posthog.hogql.constants import HogQLGlobalSettings
+from posthog.hogql.parser import parse_expr, parse_select
+from posthog.hogql.property import action_to_expr
+
+from posthog.clickhouse.query_tagging import Product, tags_context
+from posthog.hogql_queries.ai.utils import TaxonomyCacheMixin
+from posthog.hogql_queries.paginators import HogQLHasMorePaginator
+from posthog.hogql_queries.query_runner import AnalyticsQueryRunner
+from posthog.models.event.new_events_schema import use_new_events_schema
+
+from products.actions.backend.models.action import Action
+
+DEFAULT_LIMIT = 500
+
+
+class EventTaxonomyQueryRunner(TaxonomyCacheMixin, AnalyticsQueryRunner[EventTaxonomyQueryResponse]):
+    """
+    Retrieves the event or action taxonomy for the last 30 days: properties and N-most
+    frequent property values for a property.
+    """
+
+    query: EventTaxonomyQuery
+    cached_response: CachedEventTaxonomyQueryResponse
+    settings: HogQLGlobalSettings | None
+
+    def __init__(self, *args, settings: HogQLGlobalSettings | None = None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.settings = settings
+        self._use_new_events_schema = use_new_events_schema(self.team.pk)
+        self.paginator = HogQLHasMorePaginator(
+            limit=self.query.limit or DEFAULT_LIMIT,
+            offset=self.query.offset or 0,
+        )
+
+    def _calculate(self):
+        query = self.to_query()
+        hogql = self.response_hogql(query)
+
+        with tags_context(product=Product.MAX_AI):
+            self.paginator.execute_hogql_query(
+                query_type="EventTaxonomyQuery",
+                query=query,
+                team=self.team,
+                user=self.user,
+                timings=self.timings,
+                modifiers=self.modifiers,
+                limit_context=self.limit_context,
+                context=self.build_hogql_context(use_new_events_schema=self._use_new_events_schema),
+            )
+
+        results: list[EventTaxonomyItem] = []
+        for prop, sample_values, sample_count in self.paginator.results:
+            results.append(
+                EventTaxonomyItem(
+                    property=prop,
+                    sample_values=sample_values,
+                    sample_count=sample_count,
+                )
+            )
+
+        return EventTaxonomyQueryResponse(
+            results=results,
+            timings=self.paginator.response.timings if self.paginator.response else None,
+            hogql=hogql,
+            modifiers=self.modifiers,
+            **self.paginator.response_params(),
+        )
+
+    def to_query(self) -> ast.SelectQuery | ast.SelectSetQuery:
+        count_expr = ast.Constant(value=self.query.maxPropertyValues or 5)
+
+        return parse_select(
+            """
+                SELECT
+                    key,
+                    arrayMap(item -> item.3, arraySlice(reverse(arraySort(item -> (item.1, item.2, item.3), groupArray((value_count, latest_seen, value)))), 1, {count})) AS values,
+                    count(DISTINCT value) AS total_count
+                FROM {from_query}
+                GROUP BY key
+                ORDER BY total_count DESC, key ASC
+            """,
+            placeholders={
+                "from_query": self._get_subquery(),
+                "count": count_expr,
+            },
+        )
+
+    def _get_omit_filter(self):
+        """
+        Ignore properties that are not useful for AI.
+        """
+        omit_list = [
+            # events
+            r"\$set",
+            r"\$time",
+            r"\$set_once",
+            r"\$sent_at",
+            "distinct_id",
+            # privacy-related
+            r"\$ip",
+            # feature flags and experiments
+            r"\$feature\/",
+            r"\$feature_enrollment\/",
+            r"\$feature_interaction\/",
+            # product tours
+            r"\$product_tour",
+            # flatten-properties-plugin
+            "__",
+            # surveys
+            "survey_dismiss",
+            "survey_responded",
+            # other metadata
+            "phjs",
+            "partial_filter_chosen",
+            "changed_action",
+            "window-id",
+            "changed_event",
+            "partial_filter",
+        ]
+        regex_conditions = "|".join(omit_list)
+
+        return ast.Not(
+            expr=ast.Call(
+                name="match",
+                args=[
+                    ast.Field(chain=["key"]),
+                    ast.Constant(value=f"({regex_conditions})"),
+                ],
+            )
+        )
+
+    def _properties_document_expr(self) -> ast.Expr:
+        if self._use_new_events_schema:
+            return ast.Call(name="toJSONString", args=[ast.Field(chain=["properties"])])
+        return ast.Field(chain=["properties"])
+
+    def _get_subquery_filter(self) -> ast.Expr:
+        date_filter = parse_expr("timestamp >= now() - INTERVAL 30 DAY")
+        filter_expr: list[ast.Expr] = [date_filter]
+        if self.query.event:
+            filter_expr.append(
+                ast.CompareOperation(
+                    left=ast.Field(chain=["event"]),
+                    op=ast.CompareOperationOp.Eq,
+                    right=ast.Constant(value=self.query.event),
+                )
+            )
+        elif self.query.actionId:
+            action = Action.objects.get(pk=self.query.actionId, team__project_id=self.team.project_id)
+            filter_expr.append(action_to_expr(action))
+        else:
+            raise ValueError("Either event or action ID must be provided.")
+
+        if self.query.properties:
+            filter_expr.append(
+                ast.Or(
+                    exprs=[
+                        ast.CompareOperation(
+                            left=ast.Call(
+                                name="JSONExtractString",
+                                args=[ast.Field(chain=["properties"]), ast.Constant(value=prop)],
+                            ),
+                            op=ast.CompareOperationOp.NotEq,
+                            right=ast.Constant(value=""),
+                        )
+                        for prop in self.query.properties
+                    ]
+                )
+            )
+
+        return ast.And(exprs=filter_expr)
+
+    def _get_subquery(self) -> ast.SelectQuery:
+        if self.query.properties:
+            query = parse_select(
+                """
+                    SELECT
+                        key,
+                        value,
+                        count() as value_count,
+                        max(timestamp) as latest_seen
+                    FROM (
+                        SELECT
+                            {props} as kv,
+                            timestamp
+                        FROM
+                            events
+                        WHERE {filter}
+                    )
+                    ARRAY JOIN kv.1 AS key, kv.2 AS value
+                    WHERE value IS NOT NULL AND value != ''
+                    GROUP BY key, value
+                """,
+                placeholders={
+                    "props": ast.Array(
+                        exprs=[
+                            ast.Tuple(
+                                exprs=[
+                                    ast.Constant(value=prop),
+                                    ast.Call(
+                                        name="JSONExtractString",
+                                        args=[ast.Field(chain=["properties"]), ast.Constant(value=prop)],
+                                    ),
+                                ]
+                            )
+                            for prop in self.query.properties
+                        ]
+                    ),
+                    "filter": self._get_subquery_filter(),
+                },
+            )
+        else:
+            query = parse_select(
+                """
+                        SELECT
+                            key,
+                            value,
+                            count() as value_count,
+                            max(timestamp) as latest_seen
+                        FROM (
+                            SELECT
+                                JSONExtractKeysAndValues({properties_doc}, 'String') as kv,
+                                timestamp
+                            FROM
+                                events
+                            WHERE {subquery_filter}
+                            ORDER BY timestamp desc
+                            LIMIT 100
+                        )
+                        ARRAY JOIN kv.1 AS key, kv.2 AS value
+                        WHERE {omit_filter} AND value IS NOT NULL AND value != ''
+                        GROUP BY key, value
+                    """,
+                placeholders={
+                    "properties_doc": self._properties_document_expr(),
+                    "subquery_filter": self._get_subquery_filter(),
+                    "omit_filter": self._get_omit_filter(),
+                },
+            )
+
+        return cast(ast.SelectQuery, query)

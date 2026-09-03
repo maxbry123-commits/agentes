@@ -1,0 +1,962 @@
+from collections.abc import Iterable
+from datetime import datetime, timedelta
+from typing import Any, Optional, cast
+
+import posthoganalytics
+from prometheus_client import Counter
+
+from posthog.schema import (
+    ActionsNode,
+    DataWarehouseNode,
+    EventPropertyFilter,
+    EventsNode,
+    HogQLQueryModifiers,
+    PersonsOnEventsMode,
+    PropertyOperator,
+    RecordingsQuery,
+)
+
+from posthog.hogql import ast
+from posthog.hogql.property import property_to_expr
+from posthog.hogql.query import execute_hogql_query, tracer
+
+from posthog.clickhouse.client.connection import ClickHouseUser
+from posthog.clickhouse.query_tagging import Feature, Product, tag_queries
+from posthog.hogql_queries.legacy_compatibility.filter_to_query import MathAvailability, legacy_entity_to_node
+from posthog.models import Entity, EventProperty, Team
+from posthog.ph_client import feature_enabled_or_false
+from posthog.session_recordings.queries.sub_queries.base_query import SessionRecordingsListingBaseQuery
+from posthog.session_recordings.queries.sub_queries.group_key_resolver import resolved_group_key_expr
+from posthog.session_recordings.queries.utils import (
+    INVERSE_OPERATOR_FOR,
+    NEGATIVE_OPERATORS,
+    SessionRecordingQueryResult,
+    _entity_to_expr,
+    is_anonymous_cohort_fix_enabled,
+    is_cohort_property,
+    is_event_property,
+    is_group_property,
+    is_person_property,
+)
+from posthog.types import AnyPropertyFilter
+
+# Cap on the negative blocklist subquery, kept for memory safety. Sessions past the cap
+# are silently not excluded, so hitting it is observed by check_negative_blocklist_truncation.
+NEGATIVE_BLOCKLIST_LIMIT = 1_000_000
+
+REPLAY_NEGATIVE_BLOCKLIST_TRUNCATED_COUNTER = Counter(
+    "replay_negative_blocklist_truncated",
+    "A replay exclusion blocklist hit its row cap, so some sessions were not excluded from the results",
+)
+
+# Modes where events.person_id is resolved through person_distinct_id_overrides, so it follows
+# a person merge instead of reporting whoever the event was attributed to at ingest.
+PERSON_ID_OVERRIDE_MODES = frozenset(
+    {
+        PersonsOnEventsMode.PERSON_ID_OVERRIDE_PROPERTIES_ON_EVENTS,
+        PersonsOnEventsMode.PERSON_ID_OVERRIDE_PROPERTIES_JOINED,
+    }
+)
+
+# Person properties eligible for hybrid query optimization
+# These are high-selectivity identity properties where the three-stage query provides value
+HYBRID_QUERY_ELIGIBLE_PROPERTIES = {
+    "email",
+    "name",
+    "username",
+    "user_id",
+    "external_id",
+    "distinct_id",
+}
+
+
+def _event_session_id_field() -> ast.Field:
+    return ast.Field(chain=["properties", "$session_id"])
+
+
+def get_negative_entity_properties(
+    entities: list[EventsNode | ActionsNode | DataWarehouseNode | str],
+) -> list[AnyPropertyFilter]:
+    negative_props: list[AnyPropertyFilter] = []
+    for entity in entities:
+        if isinstance(entity, DataWarehouseNode | str) or not entity.properties:
+            continue
+        for prop in entity.properties:
+            if is_negative_prop(prop):
+                negative_props.append(prop)
+    return negative_props
+
+
+def is_negative_prop(prop: AnyPropertyFilter) -> bool:
+    if not hasattr(prop, "operator"):
+        return False
+    if prop.operator in NEGATIVE_OPERATORS:
+        return True
+    # NOT_IN is intentionally omitted from NEGATIVE_OPERATORS for event/person filters
+    # (it has different semantics there), but for cohort filters it IS the negative form.
+    if is_cohort_property(prop) and prop.operator == PropertyOperator.NOT_IN:
+        return True
+    return False
+
+
+class ReplayFiltersEventsSubQuery(SessionRecordingsListingBaseQuery):
+    def __init__(
+        self,
+        team: Team,
+        query: RecordingsQuery,
+        allow_event_property_expansion: bool = False,
+        hogql_query_modifiers: Optional[HogQLQueryModifiers] = None,
+        sample_factor: Optional[float] = None,
+        events_timestamp_floor: Optional[datetime] = None,
+        resolve_group_properties: ClickHouseUser | None = None,
+    ):
+        super().__init__(team, query)
+        self._hogql_query_modifiers = hogql_query_modifiers
+        self._allow_event_property_expansion = allow_event_property_expansion
+        self._sample_factor = sample_factor
+        # Extra lower bound on positive events scans; only ever narrows the date-range bound. For
+        # callers that re-run often over a wide session window. Exclusion blocklists never apply it,
+        # since a truncated blocklist would under-exclude.
+        self._events_timestamp_floor = events_timestamp_floor
+        self._resolve_group_properties = resolve_group_properties
+        self.emitted_sampled_subquery = False
+
+    def _events_join(self, sample: bool = True) -> ast.JoinExpr:
+        join = ast.JoinExpr(table=ast.Field(chain=["events"]))
+        # Only positive session-selectors sample; a sampled exclusion blocklist would under-exclude.
+        if sample and self._sample_factor is not None:
+            join.sample = ast.SampleExpr(sample_value=ast.RatioExpr(left=ast.Constant(value=self._sample_factor)))
+            self.emitted_sampled_subquery = True
+        return join
+
+    @staticmethod
+    def _event_predicates(
+        entities: Iterable[EventsNode | ActionsNode | DataWarehouseNode | str], team: Team
+    ) -> list[ast.Expr]:
+        event_exprs: list[ast.Expr] = []
+
+        for entity in entities:
+            if isinstance(entity, DataWarehouseNode | str):
+                continue
+
+            # this is always _positive_ operations
+            entity_exprs = [_entity_to_expr(entity=entity)]
+
+            if entity.properties:
+                entity_exprs.append(property_to_expr(entity.properties, team=team, scope="replay_entity"))
+
+            event_exprs.append(ast.And(exprs=entity_exprs))
+
+        return event_exprs
+
+    def _select_from_events(
+        self,
+        select_expr: ast.Expr | list[ast.Expr],
+        where_expr: ast.Expr | list[ast.Expr],
+        group_by: list[ast.Expr],
+        limit_expr: ast.Expr,
+    ) -> ast.SelectQuery:
+        # NOTE: ORDER BY can cause incorrect results in globalIn contexts on distributed ClickHouse tables.
+        # The ORDER BY was meant to prefer recent sessions when hitting LIMIT, but we saw a
+        # with a bad experience filtering out 60% of results incorrectly
+        # We use a feature flag to control this behavior for safe rollout.
+
+        remove_order_by = feature_enabled_or_false(
+            "remove-order-by-for-event-subquery",
+            str(self._team.organization.id),
+            send_feature_flag_events=False,
+        )
+
+        order_by = None
+        if not remove_order_by:
+            # Legacy behavior: include ORDER BY (may cause incorrect results)
+            order_by = [ast.OrderExpr(expr=ast.Call(name="min", args=[ast.Field(chain=["timestamp"])]), order="DESC")]
+
+        return ast.SelectQuery(
+            select=select_expr if isinstance(select_expr, list) else [select_expr],
+            select_from=self._events_join(),
+            where=self._where_predicates(where_expr),
+            having=self._having_predicates(),
+            group_by=group_by,
+            order_by=order_by,
+            limit=limit_expr,
+        )
+
+    def _is_hybrid_query_mode_enabled(self) -> bool:
+        """
+        Hybrid mode uses a three-stage query to find all sessions for persons matching properties,
+        including sessions from before the person was identified.
+
+        This solves the "late identification problem" where filtering by person properties
+        in standard PoE mode only finds sessions where those properties existed at event time.
+
+        The flag is the only switch. Turn it off and this path is dead, whatever mode the
+        project is in.
+        """
+        return feature_enabled_or_false(
+            "enable-hybrid-poe-replay-filtering",
+            str(self._team.id),
+            send_feature_flag_events=False,
+        )
+
+    def _should_use_hybrid_query(self, person_properties: list) -> bool:
+        """
+        Determine if hybrid query is appropriate for the given person properties.
+
+        Returns:
+            True if at least one property is in the allowlist and feature flag is enabled
+        """
+        if not self._is_hybrid_query_mode_enabled():
+            return False
+
+        # Don't use hybrid query if there are negative operators
+        # Negative operators (IS_NOT, NOT_ICONTAINS, NOT_IN, etc.) would match too many people
+        # For example, "email doesn't contain @company.com" matches almost everyone
+        # Or "user not in cohort X" matches everyone except cohort members
+        # This would load 100-1000 random people and miss the actual recordings we want
+        HYBRID_QUERY_UNSAFE_OPERATORS = [
+            PropertyOperator.IS_NOT_SET,
+            PropertyOperator.IS_NOT,
+            PropertyOperator.NOT_REGEX,
+            PropertyOperator.NOT_ICONTAINS,
+            PropertyOperator.NOT_STARTS_WITH,
+            PropertyOperator.NOT_ENDS_WITH,
+            PropertyOperator.NOT_IN,  # Cohort negation (e.g., user not in cohort X)
+        ]
+        for prop in person_properties:
+            if hasattr(prop, "operator") and prop.operator in HYBRID_QUERY_UNSAFE_OPERATORS:
+                return False
+
+        # Check if at least one property is eligible for hybrid query
+        for prop in person_properties:
+            if hasattr(prop, "key") and prop.key in HYBRID_QUERY_ELIGIBLE_PROPERTIES:
+                return True
+
+        return False
+
+    def _build_persons_query(
+        self,
+        person_properties: list,
+        person_id_limit: int,
+    ) -> ast.SelectQuery:
+        """
+        Stage 1: Build query to find person_ids from persons table.
+
+        Returns:
+            SelectQuery that finds person_ids matching the property filters
+        """
+        # Build person property filter expression
+        person_filter_expr = property_to_expr(
+            person_properties,
+            team=self._team,
+            scope="person",
+        )
+
+        # Query persons table directly
+        return ast.SelectQuery(
+            select=[ast.Alias(alias="person_id", expr=ast.Field(chain=["id"]))],
+            select_from=ast.JoinExpr(table=ast.Field(chain=["persons"])),
+            where=person_filter_expr,
+            limit=ast.Constant(value=person_id_limit),
+        )
+
+    def _build_distinct_ids_query(
+        self,
+        persons_subquery: ast.SelectQuery,
+    ) -> ast.SelectQuery:
+        """
+        Stage 2: Build query to find all distinct_ids for the person_ids from Stage 1.
+
+        This expands from person_ids to all distinct_ids associated with those persons,
+        including distinct_ids from before the person was identified.
+
+        Args:
+            persons_subquery: The query from Stage 1 that returns person_ids
+
+        Returns:
+            SelectQuery that finds all distinct_ids for those person_ids
+        """
+        return ast.SelectQuery(
+            select=[ast.Field(chain=["distinct_id"])],
+            select_from=ast.JoinExpr(
+                table=ast.Field(chain=["person_distinct_ids"])  # HogQL virtual table
+            ),
+            where=ast.CompareOperation(
+                op=ast.CompareOperationOp.In,
+                left=ast.Field(chain=["person_id"]),
+                right=persons_subquery,  # Nested subquery
+            ),
+        )
+
+    def _build_sessions_query(
+        self,
+        person_match: ast.Expr,
+    ) -> ast.SelectQuery:
+        """
+        Final stage: every session an event attributes to the matching persons, within the
+        query date range (with buffers).
+
+        Args:
+            person_match: how an event is tied back to those persons, either by resolved
+                person id or by one of their distinct ids
+
+        Returns:
+            SelectQuery that finds all session_ids for those persons
+        """
+        # Calculate date range with ±1 day buffer to match events_subquery behavior
+        # Events can arrive before session starts or after it ends
+        date_from_buffered = self._events_date_from() or self.query_date_range.date_from() - timedelta(days=1)
+        date_to_buffered = self.query_date_range.date_to() + timedelta(days=1)
+
+        return ast.SelectQuery(
+            select=[ast.Alias(alias="session_id", expr=_event_session_id_field())],
+            select_from=self._events_join(),
+            where=ast.And(
+                exprs=[
+                    ast.CompareOperation(
+                        op=ast.CompareOperationOp.Eq,
+                        left=ast.Field(chain=["team_id"]),
+                        right=ast.Constant(value=self._team.pk),
+                    ),
+                    person_match,
+                    ast.CompareOperation(
+                        op=ast.CompareOperationOp.GtEq,
+                        left=ast.Field(chain=["timestamp"]),
+                        right=ast.Constant(value=date_from_buffered),
+                    ),
+                    ast.CompareOperation(
+                        op=ast.CompareOperationOp.LtEq,
+                        left=ast.Field(chain=["timestamp"]),
+                        right=ast.Constant(value=date_to_buffered),
+                    ),
+                    # notEmpty, not `empty(...) != 1`: an absent session id reads as NULL, and
+                    # HogQL prints `!=` as ifNull(notEquals(...), 1), so the NULL would compare
+                    # true and reach the GROUP BY. The caller matches this against the replay
+                    # table's non-nullable session_id, which rejects a NULL in the set.
+                    ast.Call(name="notEmpty", args=[_event_session_id_field()]),
+                ]
+            ),
+            group_by=[_event_session_id_field()],  # DISTINCT session_id
+            limit=ast.Constant(value=1000000),
+        )
+
+    def _get_person_id_based_sessions_query(
+        self,
+        person_properties: list,
+    ) -> ast.SelectQuery:
+        """
+        Build three-stage hybrid query for person properties in PoE mode.
+
+        This is the Pure AST implementation that:
+        1. Queries persons table for person_ids (Phase 1 optimization - 100x faster)
+        2. Finds all distinct_ids for those person_ids
+        3. Finds all sessions for those distinct_ids
+
+        The three-stage approach ensures we find ALL sessions for a person,
+        including sessions from before they were identified (solves late identification problem).
+
+        Example timeline:
+            Day 1: User browses anonymously → session "abc" with distinct_id "anon123"
+            Day 3: User signs up with email → person gets email property, merges with "anon123"
+
+            Standard PoE: Filtering by email only finds Day 3+ sessions
+            Hybrid query: Finds ALL sessions (Day 1+) because we find all distinct_ids for the person
+
+        Returns:
+            SelectQuery that returns session_ids for persons matching the properties
+        """
+        # Detect if we're using fuzzy operators that might match many people
+        has_fuzzy_operators = False
+        for prop in person_properties:
+            if hasattr(prop, "operator") and prop.operator in [
+                PropertyOperator.ICONTAINS,
+                PropertyOperator.NOT_ICONTAINS,
+                PropertyOperator.STARTS_WITH,
+                PropertyOperator.NOT_STARTS_WITH,
+                PropertyOperator.ENDS_WITH,
+                PropertyOperator.NOT_ENDS_WITH,
+                PropertyOperator.REGEX,
+                PropertyOperator.NOT_REGEX,
+                PropertyOperator.IS_SET,
+                PropertyOperator.IS_NOT_SET,
+            ]:
+                has_fuzzy_operators = True
+                break
+
+        # Exact operators (email="user@example.com") typically match 1-10 people
+        # Fuzzy operators (email icontains "gmail") might match thousands
+        person_id_limit = 1000 if has_fuzzy_operators else 100
+
+        # Track hybrid query usage for monitoring
+        try:
+            from opentelemetry import trace
+
+            property_keys = [p.key if hasattr(p, "key") else "unknown" for p in person_properties]
+            operators = [str(p.operator) if hasattr(p, "operator") else "unknown" for p in person_properties]
+
+            # Check which properties are in the allowlist
+            eligible_properties = [
+                p.key for p in person_properties if hasattr(p, "key") and p.key in HYBRID_QUERY_ELIGIBLE_PROPERTIES
+            ]
+            ineligible_properties = [
+                p.key for p in person_properties if hasattr(p, "key") and p.key not in HYBRID_QUERY_ELIGIBLE_PROPERTIES
+            ]
+
+            posthoganalytics.capture(
+                distinct_id=str(self._team.id),
+                event="hybrid_poe_replay_query_executed",
+                properties={
+                    "team_id": self._team.id,
+                    "property_count": len(person_properties),
+                    "property_keys": property_keys,
+                    "eligible_property_keys": eligible_properties,
+                    "ineligible_property_keys": ineligible_properties,
+                    "operators": operators,
+                    "has_fuzzy_operators": has_fuzzy_operators,
+                    "person_id_limit": person_id_limit,
+                    "date_range_days": (self.query_date_range.date_to() - self.query_date_range.date_from()).days,
+                    "$feature/hybrid-poe-replay-filtering": True,
+                },
+            )
+
+            # Add OpenTelemetry span attributes for tracing
+            span = trace.get_current_span()
+            if span:
+                span.set_attribute("replay.hybrid_query.property_count", len(person_properties))
+                span.set_attribute("replay.hybrid_query.eligible_property_count", len(eligible_properties))
+                span.set_attribute("replay.hybrid_query.has_fuzzy_operators", has_fuzzy_operators)
+                span.set_attribute("replay.hybrid_query.person_id_limit", person_id_limit)
+
+        except Exception as e:
+            posthoganalytics.capture_exception(e, properties={"context": "hybrid_query_monitoring"})
+
+        # Stage 1: the persons whose properties match
+        persons_query = self._build_persons_query(person_properties, person_id_limit)
+
+        if self._team.person_on_events_mode in PERSON_ID_OVERRIDE_MODES:
+            # events.person_id already resolves through the overrides table in these modes, so it
+            # follows a merge: an event sent under an anonymous distinct id reports the person it
+            # was later merged into. Matching on it reaches pre-identification sessions directly,
+            # the same way the person profile's replay tab does.
+            #
+            # This trusts person_distinct_id_overrides to hold the merge. A merge that reached
+            # person_distinct_ids but not the overrides table would be missed here and found by
+            # the distinct-id expansion below, which reads the other table. The two are written
+            # by the same merge path, so they only diverge while one lags.
+            return self._build_sessions_query(
+                ast.CompareOperation(
+                    op=ast.CompareOperationOp.In,
+                    left=ast.Field(chain=["person_id"]),
+                    right=persons_query,
+                )
+            )
+
+        # Otherwise events.person_id is the value frozen at ingest and does not follow a merge,
+        # so the persons have to be expanded to their distinct ids first.
+        return self._build_sessions_query(
+            ast.CompareOperation(
+                op=ast.CompareOperationOp.In,
+                left=ast.Field(chain=["distinct_id"]),
+                right=self._build_distinct_ids_query(persons_query),
+            )
+        )
+
+    def _get_queries_for_matching(
+        self, select_expr: ast.Expr, group_by: list[ast.Expr], union_entities: bool = False
+    ) -> list[ast.SelectQuery]:
+        """
+        takes each filter in the query that can be queried from the events table
+        and makes a separate query for each
+        this might be slower than the previous approach of having one huge event query
+        but that approach is horribly complex, and we keep getting bug reports
+        that are avoidable with a simpler approach
+
+        `union_entities` merges the event/action filters into a single subquery, for callers that
+        intersect the subqueries by event id rather than by session id (see
+        `get_query_for_event_id_matching`).
+        """
+        gathered_exprs: list[ast.Expr] = []
+        event_where_exprs = self._event_predicates(self.entities, self._team)
+        if event_where_exprs:
+            gathered_exprs += (
+                [ast.Or(exprs=event_where_exprs)]
+                if union_entities and len(event_where_exprs) > 1
+                else event_where_exprs
+            )
+
+        # Skip event properties with negative operators since they're handled by _negative_guard_query
+        skip_negative_properties = self._query.operand == "AND"
+
+        for p in self.event_properties:
+            if skip_negative_properties and is_negative_prop(p):
+                continue
+
+            if self._allow_event_property_expansion:
+                events_seen_with_this_property, property_expr = self.with_team_events_added(p, self._team)
+                gathered_exprs.append(
+                    ast.And(
+                        # we can include with the property the events it was seen with
+                        # this should recruit the table's order by and speeed things up
+                        exprs=[
+                            ast.CompareOperation(
+                                op=ast.CompareOperationOp.In,
+                                left=ast.Field(chain=["events", "event"]),
+                                # sort them only so the snapshot tests don't flap
+                                right=ast.Constant(value=sorted(events_seen_with_this_property)),
+                            ),
+                            property_expr,
+                        ]
+                    )
+                    if events_seen_with_this_property
+                    else property_expr
+                )
+            else:
+                gathered_exprs.append(
+                    property_to_expr(
+                        p,
+                        team=self._team,
+                        scope="replay",
+                    )
+                )
+
+        for p in self.group_properties:
+            if skip_negative_properties and is_negative_prop(p):
+                continue
+            resolved = (
+                resolved_group_key_expr(self._team, p, self._resolve_group_properties)
+                if self._resolve_group_properties is not None
+                else None
+            )
+            gathered_exprs.append(resolved if resolved is not None else property_to_expr(p, team=self._team))
+
+        # Handle person properties with hybrid query mode if enabled and appropriate
+        hybrid_query: Optional[ast.SelectQuery] = None
+        if self._team.person_on_events_mode and self.person_properties:
+            if self._should_use_hybrid_query(self.person_properties):
+                hybrid_query = self._get_person_id_based_sessions_query(self.person_properties)
+                # Don't add person properties to gathered_exprs - we've handled them via hybrid query
+            else:
+                # Use standard PoE approach (fast but potentially incomplete)
+                # Used for all non-identity properties or when feature flag is off
+                for p in self.person_properties:
+                    if skip_negative_properties and is_negative_prop(p):
+                        continue
+                    gathered_exprs.append(property_to_expr(p, team=self._team, scope="event"))
+
+        # Positive cohort filters (IN cohort) become events-table predicates here,
+        # same shape as a PoE person-property filter. Negative cohort filters (NOT IN
+        # cohort) are skipped on this path — they're picked up by _collect_negative_properties
+        # and emitted by _negative_blocklist_query as `NOT GlobalIn (sessions where some
+        # event IS in the cohort)`. Anonymous events can't be in a cohort, so their
+        # sessions don't enter the blocklist and aren't filtered out.
+        if self._should_push_cohorts_to_events_query():
+            for p in self.cohort_properties:
+                if skip_negative_properties and is_negative_prop(p):
+                    continue
+                gathered_exprs.append(property_to_expr(p, team=self._team, scope="event"))
+
+        queries: list[ast.SelectQuery] = []
+
+        # Add hybrid query first if we used it for person properties
+        if hybrid_query:
+            queries.append(hybrid_query)
+        for expr in gathered_exprs:
+            # Increased LIMIT from 10000 to 1000000 to handle cases where:
+            # 1. Session recording sampling is enabled (only small % of sessions have recordings)
+            # 2. Replay was recently disabled (recent sessions have no recordings)
+            # With the original 10000 limit, we might miss all sessions that actually have recordings.
+            queries.append(
+                self._select_from_events(select_expr, expr, group_by=group_by, limit_expr=ast.Constant(value=1000000))
+            )
+
+        return queries
+
+    def get_queries_for_session_id_matching(self) -> list[ast.SelectQuery]:
+        return self._get_queries_for_matching(
+            select_expr=ast.Alias(alias="session_id", expr=_event_session_id_field()),
+            group_by=[_event_session_id_field()],
+        )
+
+    def get_negative_blocklist_query(self) -> ast.SelectQuery | None:
+        return self._negative_blocklist_query()
+
+    def get_excluded_sessions_query(self, session_ids: list[str]) -> ast.SelectQuery | None:
+        """Which of `session_ids` carry an event that a negative filter excludes.
+
+        Same predicates as the in-query blocklist, asked the other way round. That form builds every
+        blocked session in the lookback so it can be anti-joined during selection; this one starts
+        from candidates the caller already holds, so naming them lets the scan prune on session id
+        instead of sweeping the window. It returns nothing when the query has no negative filters.
+
+        The `timestamp <= now()` bound is dropped here. Senders choose the timestamp, and a
+        future-dated event would otherwise let its session through.
+        """
+        if not session_ids:
+            return None
+        where_expr = self._inverted_negative_expr()
+        if where_expr is None:
+            return None
+
+        where = ast.And(
+            exprs=[
+                self._where_predicates(where_expr, apply_timestamp_floor=False, apply_future_bound=False),
+                ast.CompareOperation(
+                    op=ast.CompareOperationOp.In,
+                    left=_event_session_id_field(),
+                    right=ast.Constant(value=session_ids),
+                ),
+            ]
+        )
+        return ast.SelectQuery(
+            select=[ast.Alias(alias="session_id", expr=_event_session_id_field())],
+            select_from=self._events_join(sample=False),
+            where=where,
+            group_by=[_event_session_id_field()],
+            # A session id can only be returned once, so the input bounds the output.
+            limit=ast.Constant(value=len(session_ids)),
+        )
+
+    def _inverted_negative_expr(self) -> ast.Expr | None:
+        """Everything that disqualifies a session, as a positive predicate over its events.
+
+        Shared by the in-query blocklist and the scoped exclusion so the two cannot cover different
+        filters. None when this query excludes nothing.
+        """
+        # a negated entity's predicate is already the positive form: sessions performing it get blocked
+        blocklist_exprs: list[ast.Expr] = self._event_predicates(self.negated_entities, self._team)
+
+        if self._query.operand != "OR":
+            for prop in self._collect_negative_properties():
+                operator = cast(PropertyOperator, prop.operator)  # type: ignore[union-attr]
+                inverted = prop.model_copy(update={"operator": INVERSE_OPERATOR_FOR[operator]})
+                blocklist_exprs.append(property_to_expr(inverted, team=self._team, scope="event"))
+
+        if not blocklist_exprs:
+            return None
+        # Any event matching any positive condition → session goes in blocklist
+        return ast.Or(exprs=blocklist_exprs) if len(blocklist_exprs) > 1 else blocklist_exprs[0]
+
+    def get_query_for_event_id_matching(self) -> ast.SelectQuery | ast.SelectSetQuery:
+        """
+        The ids of a session's events that matched ANY ONE of the query's event/action filters,
+        still combined with the query's property filters under its operand. Deliberately weaker
+        than the session-id matching path: it does not prove the session satisfied every filter
+        (that's a question about the session, which `get_queries_for_session_id_matching`
+        answers), it names the events that made the session relevant.
+        """
+        # Subqueries only need to return uuid for the GlobalIn comparison
+        select_queries: list[ast.SelectQuery] = self._get_queries_for_matching(
+            select_expr=ast.Field(chain=["uuid"]),
+            # when matching we want to select flag lists of event UUIds so we group by session_id, and then uuid
+            group_by=[_event_session_id_field(), ast.Field(chain=["uuid"])],
+            # The subqueries are intersected by event id below, and an event has exactly one name,
+            # so keeping one subquery per entity would match nothing as soon as there are two.
+            union_entities=True,
+        )
+        select_exprs: list[ast.Expr] = []
+        for q in select_queries:
+            select_exprs.append(
+                ast.CompareOperation(
+                    # this hits the distributed events table from the distributed events table
+                    # so we should use GlobalIn
+                    # see https://clickhouse.com/docs/en/sql-reference/operators/in#distributed-subqueries
+                    op=ast.CompareOperationOp.GlobalIn,
+                    left=ast.Field(chain=["uuid"]),
+                    right=q,
+                )
+            )
+        # Exclusion-only filter sets (every entity negated) produce no positive predicates.
+        # Wrapping an empty list prints as `and()`, which ClickHouse rejects, so match nothing:
+        # there are no positive events to highlight in the player.
+        where_expr: ast.Expr = (
+            self.wrapped_with_query_operand(exprs=select_exprs) if select_exprs else ast.Constant(value=False)
+        )
+        return self._select_from_events(
+            select_expr=[ast.Field(chain=["uuid"]), ast.Call(name="any", args=[ast.Field(chain=["timestamp"])])],
+            where_expr=where_expr,
+            # when matching we want to select flag lists of event UUIds so we group by session_id, and then uuid
+            group_by=[_event_session_id_field(), ast.Field(chain=["uuid"])],
+            limit_expr=ast.Constant(value=10000),
+        )
+
+    def get_event_ids_for_session(self) -> SessionRecordingQueryResult:
+        query = self.get_query_for_event_id_matching()
+
+        tag_queries(product=Product.REPLAY, feature=Feature.QUERY, team_id=self._team.id)
+        hogql_query_response = execute_hogql_query(
+            query=query,
+            team=self._team,
+            query_type="SessionRecordingMatchingEventsForSessionQuery",
+            modifiers=self._hogql_query_modifiers,
+        )
+
+        return SessionRecordingQueryResult(
+            results=hogql_query_response.results,
+            has_more_recording=False,
+            timings=hogql_query_response.timings,
+        )
+
+    def _events_date_from(self, apply_floor: bool = True) -> Optional[datetime]:
+        """Lower bound for an events scan, or None when nothing bounds it.
+
+        The recording date range is pushed a day earlier because events can arrive before the
+        recording starts. A floor tightens that bound, and can only ever narrow it.
+        """
+        bounds: list[datetime] = []
+        if self._query.date_from:
+            bounds.append(self.query_date_range.date_from() - timedelta(days=1))
+        if apply_floor and self._events_timestamp_floor is not None:
+            bounds.append(self._events_timestamp_floor)
+        return max(bounds) if bounds else None
+
+    def _where_predicates(
+        self,
+        where_expr: ast.Expr | list[ast.Expr] | None,
+        apply_timestamp_floor: bool = True,
+        apply_future_bound: bool = True,
+    ) -> ast.Expr:
+        exprs: list[ast.Expr] = [
+            ast.Call(
+                name="notEmpty",
+                args=[_event_session_id_field()],
+            ),
+        ]
+        if apply_future_bound:
+            exprs.append(
+                ast.CompareOperation(
+                    op=ast.CompareOperationOp.LtEq,
+                    left=ast.Field(chain=["timestamp"]),
+                    right=ast.Call(name="now", args=[]),
+                )
+            )
+
+        if isinstance(where_expr, ast.Expr):
+            exprs.append(where_expr)
+        elif isinstance(where_expr, list):
+            exprs += where_expr
+
+        # TRICKY: we're adding a buffer to the date range to ensure we get all the events
+        # you can start sending us events before the session starts
+        events_date_from = self._events_date_from(apply_floor=apply_timestamp_floor)
+        if events_date_from is not None:
+            exprs.append(
+                ast.CompareOperation(
+                    op=ast.CompareOperationOp.GtEq,
+                    left=ast.Field(chain=["timestamp"]),
+                    # TRICKY: technically you could start sending us events
+                    # almost 24 hours before the session recording starts
+                    # so we push the events date range a day earlier
+                    right=ast.Constant(value=events_date_from),
+                )
+            )
+
+        # and the events can end almost 24 hours after the session recording ends
+        # so we push the events date range a day later
+        if self._query.date_to:
+            exprs.append(
+                ast.CompareOperation(
+                    op=ast.CompareOperationOp.LtEq,
+                    left=ast.Field(chain=["timestamp"]),
+                    right=ast.Constant(value=self.query_date_range.date_to() + timedelta(days=1)),
+                )
+            )
+
+        if self._query.session_ids:
+            exprs.append(
+                ast.CompareOperation(
+                    op=ast.CompareOperationOp.In,
+                    left=_event_session_id_field(),
+                    right=ast.Constant(value=self._query.session_ids),
+                )
+            )
+
+        return ast.And(exprs=exprs)
+
+    def _having_predicates(self) -> ast.Expr:
+        if self._query.operand == "OR":
+            return ast.Constant(value=True)
+
+        def countif_zero(prop: AnyPropertyFilter) -> ast.Expr:
+            operator = cast(PropertyOperator, prop.operator)  # type: ignore[union-attr]
+            inverted = prop.model_copy(update={"operator": INVERSE_OPERATOR_FOR[operator]})
+            return ast.CompareOperation(
+                op=ast.CompareOperationOp.Eq,
+                left=ast.Call(name="countIf", args=[property_to_expr(inverted, team=self._team, scope="event")]),
+                right=ast.Constant(value=0),
+            )
+
+        exprs = [countif_zero(p) for p in self._collect_negative_properties()]
+        return self.wrapped_with_query_operand(exprs=exprs) if exprs else ast.Constant(value=True)
+
+    @staticmethod
+    def _is_negated_entity(raw_entity: dict[str, Any]) -> bool:
+        return bool(raw_entity.get("negation"))
+
+    @property
+    def action_entities(self):
+        # TODO what do we send to the API instead to avoid needing to do this
+        return [
+            legacy_entity_to_node(Entity(e), True, MathAvailability.Unavailable)
+            for e in self._query.actions or []
+            if not self._is_negated_entity(e)
+        ]
+
+    @property
+    def event_entities(self):
+        # TODO what do we send to the API instead to avoid needing to do this
+        # TODO is this overkill since it feels like we only need a few things off the entity
+        return [
+            legacy_entity_to_node(Entity(e), True, MathAvailability.Unavailable)
+            for e in self._query.events or []
+            if not self._is_negated_entity(e)
+        ]
+
+    @property
+    def entities(self):
+        return self.action_entities + self.event_entities
+
+    @property
+    def negated_entities(self) -> list[EventsNode | ActionsNode | DataWarehouseNode | str]:
+        # the legacy Entity class drops unknown keys, so negation is read off the raw dicts
+        return [
+            legacy_entity_to_node(Entity(e), True, MathAvailability.Unavailable)
+            for e in (self._query.actions or []) + (self._query.events or [])
+            if self._is_negated_entity(e)
+        ]
+
+    @property
+    def event_properties(self):
+        return [g for g in (self._query.properties or []) if is_event_property(g)]
+
+    @property
+    def group_properties(self):
+        return [g for g in (self._query.properties or []) if is_group_property(g)]
+
+    @property
+    def person_properties(self) -> list[AnyPropertyFilter] | None:
+        return [g for g in (self._query.properties or []) if is_person_property(g)]
+
+    @property
+    def cohort_properties(self) -> list[AnyPropertyFilter]:
+        return [g for g in (self._query.properties or []) if is_cohort_property(g)]
+
+    def _should_push_cohorts_to_events_query(self) -> bool:
+        """True when this subquery should handle cohort filters instead of CohortPropertyGroupsSubQuery.
+
+        Scoped to PoE teams with the feature flag enabled, and only for operand=AND where
+        the _negative_blocklist_query path exists. Non-PoE and OR-operand queries continue
+        to use the separate cohort subquery.
+        """
+        return bool(
+            self._team.person_on_events_mode
+            and self._query.operand != "OR"
+            and self.cohort_properties
+            and is_anonymous_cohort_fix_enabled(self._team)
+        )
+
+    def _collect_negative_properties(self) -> list[AnyPropertyFilter]:
+        negative_props = [p for p in self.event_properties if is_negative_prop(p)]
+        negative_props += get_negative_entity_properties(self.entities)
+        negative_props += [p for p in self.group_properties if is_negative_prop(p)]
+        if self._team.person_on_events_mode and self.person_properties:
+            negative_props += [p for p in self.person_properties if is_negative_prop(p)]
+        if self._should_push_cohorts_to_events_query():
+            negative_props += [p for p in self.cohort_properties if is_negative_prop(p)]
+        return negative_props
+
+    def _negative_blocklist_query(self) -> ast.SelectQuery | None:
+        """Returns session IDs that should be EXCLUDED because they contain events
+        matching at least one inverted negative condition or one negated entity.
+
+        This is a blocklist approach: instead of scanning ALL events and keeping sessions
+        where no events match (allowlist), we find the small set of sessions that DO match
+        the positive form of negative filters. The main query then excludes these with NOT GlobalIn.
+
+        The blocklist is much smaller than the allowlist for typical negative filters
+        (e.g. "host is not internal IP" → blocklist contains only internal IP sessions).
+        This avoids hitting the LIMIT on high-traffic teams with millions of event-sessions.
+
+        Negated entities ("did not perform X") are global constraints and apply under both
+        operands. Negative property filters stay AND-only because inverting them under OR
+        would change existing semantics.
+        """
+        where_expr = self._inverted_negative_expr()
+        if where_expr is None:
+            return None
+
+        return ast.SelectQuery(
+            select=[ast.Alias(alias="session_id", expr=_event_session_id_field())],
+            select_from=self._events_join(sample=False),
+            where=self._where_predicates(where_expr, apply_timestamp_floor=False),
+            group_by=[_event_session_id_field()],
+            # Negating a very common event (e.g. $pageview) can push the blocklist past this cap on
+            # high-traffic teams, silently under-excluding sessions beyond it. Typical negatives (rare
+            # events, property filters) stay well under it, so the bound is kept for memory safety.
+            limit=ast.Constant(value=NEGATIVE_BLOCKLIST_LIMIT),
+        )
+
+    def check_negative_blocklist_truncation(self) -> None:
+        """The blocklist is embedded as a NOT GlobalIn subquery, so the main query never sees
+        its row count. Probe it separately and record when it hit its cap, because past the cap
+        sessions that DID perform the excluded event come back in the results. Only runs when
+        negated entities are present, to bound the extra query cost to the exclusion feature."""
+        if not self.negated_entities:
+            return
+        blocklist = self._negative_blocklist_query()
+        if blocklist is None:
+            return
+        try:
+            with tracer.start_as_current_span(
+                "ReplayFiltersEventsSubQuery.check_negative_blocklist_truncation"
+            ) as span:
+                response = execute_hogql_query(
+                    query=ast.SelectQuery(
+                        select=[ast.Call(name="count", args=[])],
+                        select_from=ast.JoinExpr(table=blocklist),
+                    ),
+                    team=self._team,
+                    query_type="ReplayNegativeBlocklistTruncationProbe",
+                    modifiers=self._hogql_query_modifiers,
+                )
+                blocklist_size = response.results[0][0] if response.results else 0
+                truncated = blocklist_size >= NEGATIVE_BLOCKLIST_LIMIT
+                span.set_attribute("replay.negative_blocklist.size", blocklist_size)
+                span.set_attribute("replay.negative_blocklist.truncated", truncated)
+                if truncated:
+                    REPLAY_NEGATIVE_BLOCKLIST_TRUNCATED_COUNTER.inc()
+        except Exception as e:
+            posthoganalytics.capture_exception(e, properties={"replay_feature": "negative_blocklist_truncation_probe"})
+
+    @staticmethod
+    @tracer.start_as_current_span("ReplayFiltersEventsSubQuery.with_team_events_added")
+    def with_team_events_added(p: AnyPropertyFilter, team: Team) -> tuple[list[str], ast.Expr]:
+        """
+        We support property only filters because users expect it, but unlike insights
+        we don't have event series to help us hit the good-spot of an events table query
+        and these can get slow fast.
+        this should be fixed elsewhere but in the short term,
+        we can load the events for a given property from postgres and return the event properties used and the property expression
+        """
+        try:
+            if not isinstance(p, EventPropertyFilter):
+                # something unexpected has been passed to us,
+                # but we would always have called property_to_expr before
+                # so let's just do that
+                return [], property_to_expr(p, team=team, scope="replay")
+
+            events_that_have_the_property: list[str] = list(
+                EventProperty.objects.filter(team_id=team.id, property=p.key).values_list("event", flat=True)[:101]
+            )
+
+            if len(events_that_have_the_property) > 100:
+                # Skip expansion when too many events have this property (e.g. $current_url).
+                # Inlining thousands of event names into WHERE event IN (...) can exceed
+                # ClickHouse's max_query_size limit without providing meaningful optimization.
+                return [], property_to_expr(p, team=team, scope="replay")
+
+            return events_that_have_the_property, property_to_expr(p, team=team, scope="replay")
+        except Exception as e:
+            posthoganalytics.capture_exception(e, properties={"replay_feature": "with_team_events_added"})
+            # we can return this transformation here because this is what was always run in the past
+            # so if _that_ is going to fail nothing this method can do could change it
+            return [], property_to_expr(p, team=team, scope="replay")

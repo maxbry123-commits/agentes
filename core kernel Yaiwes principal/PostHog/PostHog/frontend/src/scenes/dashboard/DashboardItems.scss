@@ -1,0 +1,273 @@
+.dashboard-items-wrapper {
+    width: 100%; // This provides the width for the dashboard items grid
+    padding-top: 0.5rem;
+
+    .InsightCard__viz {
+        z-index: 0; // Keep viz below CardMeta details overlay on dashboards
+
+        .InsightVizDisplay .LineGraph {
+            padding: 0.25rem;
+        }
+    }
+}
+
+.react-grid-layout {
+    position: relative;
+    transition: height 100ms ease;
+
+    /* Preserve the tile border transition while spacing changes animate. */
+    &.dashboard-view-mode .react-grid-item {
+        transition:
+            transform 220ms ease-out,
+            width 220ms ease-out,
+            height 220ms ease-out,
+            border-color 100ms ease;
+
+        /* Skip rendering for off-screen tiles during resize/reflow */
+        content-visibility: auto;
+        contain-intrinsic-size: auto 30rem;
+
+        /* content-visibility paint-clips the resize handles revealed on border hover; lift it while one shows */
+        &:has(> .handle) {
+            content-visibility: visible;
+        }
+    }
+
+    &.dashboard-tile-spacing-changing {
+        transition: none;
+
+        .react-grid-item {
+            transition: none;
+        }
+    }
+
+    &.dashboard-layout-interaction .react-grid-item {
+        transition: none;
+    }
+
+    &.dashboard-layout-settling .react-grid-item:not(.react-draggable-dragging, .resizing) {
+        transition: transform 180ms ease-out;
+    }
+}
+
+.react-grid-item.cssTransforms {
+    transition-property: transform;
+}
+
+.react-grid-item.resizing {
+    z-index: 1;
+
+    // Snap to the pointer — without this the cssTransforms transition eases the move and the tile trails the cursor.
+    transition: none;
+    will-change: width, height;
+}
+
+.react-grid-item.react-draggable.DashboardTileCard {
+    .CardMeta,
+    .TextCard__body,
+    .ButtonTileCard__body,
+    .WidgetCard__header {
+        // CardMeta: insight + widget (dashboard_tile layout). Bodies: text/button tiles. Header: widget (simple layout).
+        cursor: grab;
+        user-select: none; // Prevent accidental text selection while dragging
+    }
+}
+
+.react-grid-item.react-draggable-dragging {
+    z-index: 105;
+    cursor: grabbing;
+    transition: none;
+    will-change: transform;
+}
+
+.react-grid-item.dropping {
+    visibility: hidden;
+}
+
+.react-grid-item.react-grid-placeholder {
+    position: relative;
+    z-index: 2;
+    max-width: 100%;
+    user-select: none;
+    border: 1px solid var(--color-accent);
+    border-radius: var(--radius);
+    outline: 1px solid var(--color-accent);
+    transition: 100ms ease;
+}
+
+.react-resizable-hide > .react-resizable-handle {
+    display: none;
+}
+
+.react-grid-item {
+    box-sizing: border-box;
+    transition:
+        transform 220ms ease-out,
+        width 220ms ease-out,
+        height 220ms ease-out;
+
+    // Drop InsightCard's fixed 30rem so RGL's inline height is the only constraint.
+    &.DashboardTileCard.InsightCard {
+        height: unset;
+    }
+
+    // Decorative resize overlays: anchor to the grid cell, not an inner wrapper.
+    & > .handle {
+        position: absolute;
+        inset: 0;
+        z-index: var(--z-raised);
+        display: flex;
+        align-items: flex-end;
+        justify-content: center;
+        pointer-events: none;
+
+        &.horizontal {
+            svg {
+                transform: rotate(90deg) translateX(0.75rem);
+            }
+
+            &.top {
+                align-items: flex-start;
+
+                svg {
+                    transform: rotate(90deg) translateX(-0.75rem);
+                }
+            }
+        }
+
+        &.vertical {
+            flex-direction: column;
+
+            &.right {
+                align-items: flex-end;
+                justify-content: center;
+
+                svg {
+                    transform: translateX(0.5rem);
+                }
+            }
+
+            &.left {
+                align-items: flex-start;
+                justify-content: center;
+
+                svg {
+                    transform: translateX(-0.5rem);
+                }
+            }
+        }
+
+        &.corner {
+            align-items: flex-end;
+            justify-content: flex-end;
+
+            svg {
+                transform: translate(0.5rem, 0.5rem);
+            }
+
+            &.bottom-left {
+                align-items: flex-end;
+                justify-content: flex-start;
+
+                svg {
+                    transform: translate(-0.5rem, 0.5rem) rotateY(180deg);
+                }
+            }
+
+            &.top-right {
+                align-items: flex-start;
+                justify-content: flex-end;
+
+                svg {
+                    transform: translate(0.5rem, -0.5rem) rotateX(180deg);
+                }
+            }
+
+            &.top-left {
+                align-items: flex-start;
+                justify-content: flex-start;
+
+                svg {
+                    transform: translate(-0.5rem, -0.5rem) rotateX(180deg) rotateY(180deg);
+                }
+            }
+        }
+    }
+
+    & > .react-resizable-handle {
+        position: absolute;
+        right: -0.5rem;
+        bottom: -0.5rem;
+        z-index: 10;
+        width: 2rem;
+        height: 2rem;
+        cursor: se-resize;
+    }
+
+    & > .react-resizable-handle.react-resizable-handle-se {
+        cursor: se-resize;
+    }
+
+    & > .react-resizable-handle.react-resizable-handle-e {
+        top: 0;
+        bottom: 2rem;
+        height: auto;
+        cursor: ew-resize;
+    }
+
+    & > .react-resizable-handle.react-resizable-handle-s {
+        right: 2rem;
+        left: 0;
+        width: auto;
+        cursor: ns-resize;
+    }
+
+    & > .react-resizable-handle.react-resizable-handle-n {
+        top: -0.5rem;
+        right: 3rem;
+        left: 3rem;
+        width: auto;
+        height: 1rem;
+        cursor: ns-resize;
+    }
+
+    & > .react-resizable-handle.react-resizable-handle-w {
+        top: 0;
+        bottom: 2rem;
+        left: -0.5rem;
+        width: 2rem;
+        height: auto;
+        cursor: ew-resize;
+    }
+
+    & > .react-resizable-handle.react-resizable-handle-nw {
+        top: -0.5rem;
+        left: -0.5rem;
+        width: 2rem;
+        height: 2rem;
+        cursor: nw-resize;
+    }
+
+    & > .react-resizable-handle.react-resizable-handle-ne {
+        top: -0.5rem;
+        right: -0.5rem;
+        width: 2rem;
+        height: 2rem;
+        cursor: ne-resize;
+    }
+
+    & > .react-resizable-handle.react-resizable-handle-sw {
+        bottom: -0.5rem;
+        left: -0.5rem;
+        width: 2rem;
+        height: 2rem;
+        cursor: sw-resize;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .react-grid-layout.dashboard-view-mode .react-grid-item,
+    .react-grid-layout .react-grid-item {
+        transition: none;
+    }
+}

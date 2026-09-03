@@ -1,0 +1,83 @@
+import { router } from 'kea-router'
+import { expectLogic } from 'kea-test-utils'
+
+import { sceneLogic } from 'scenes/sceneLogic'
+import { emptySceneParams } from 'scenes/scenes'
+import { Scene } from 'scenes/sceneTypes'
+import { urls } from 'scenes/urls'
+
+import { initKeaTests } from '~/test/init'
+
+import { customerAnalyticsSceneLogic } from './customerAnalyticsSceneLogic'
+
+describe('customerAnalyticsSceneLogic', () => {
+    let logic: ReturnType<typeof customerAnalyticsSceneLogic.build>
+
+    beforeEach(() => {
+        initKeaTests()
+        localStorage.clear()
+        sceneLogic.mount()
+        router.actions.push(urls.customerAnalytics())
+        logic = customerAnalyticsSceneLogic()
+        logic.mount()
+    })
+
+    afterEach(() => {
+        logic.unmount()
+        localStorage.clear()
+    })
+
+    describe('filterTestAccounts', () => {
+        it('defaults to true', () => {
+            expectLogic(logic).toMatchValues({
+                filterTestAccounts: true,
+            })
+        })
+
+        it('can be toggled off', async () => {
+            await expectLogic(logic, () => {
+                logic.actions.setFilterTestAccounts(false)
+            }).toMatchValues({
+                filterTestAccounts: false,
+            })
+        })
+
+        it('can be toggled on', async () => {
+            logic.actions.setFilterTestAccounts(false)
+
+            await expectLogic(logic, () => {
+                logic.actions.setFilterTestAccounts(true)
+            }).toMatchValues({
+                filterTestAccounts: true,
+            })
+        })
+    })
+
+    describe('URL sync', () => {
+        it('activates the Requests tab for its scene key', () => {
+            sceneLogic.actions.setScene(Scene.CustomerAnalytics, 'customerAnalyticsFeatureRequests', emptySceneParams)
+
+            expectLogic(logic).toMatchValues({ activeTab: 'feature_requests' })
+        })
+
+        it('activates the Accounts tab for the account detail scene key', () => {
+            sceneLogic.actions.setScene(Scene.CustomerAnalyticsAccount, 'customerAnalyticsAccount', emptySceneParams)
+
+            expectLogic(logic).toMatchValues({ activeTab: 'accounts' })
+        })
+
+        it('reads filter_test_accounts from URL', () => {
+            expectLogic(logic).toMatchValues({
+                filterTestAccounts: true,
+            })
+
+            router.actions.push(urls.customerAnalytics(), {
+                filter_test_accounts: 'false',
+            })
+
+            expectLogic(logic).toMatchValues({
+                filterTestAccounts: false,
+            })
+        })
+    })
+})

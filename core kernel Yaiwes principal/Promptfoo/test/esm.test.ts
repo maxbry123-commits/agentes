@@ -1,0 +1,495 @@
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  clearWrapperDirCache,
+  getWrapperDir,
+  importModule,
+  isCjsInEsmError,
+  resolvePackageEntryPoint,
+} from '../src/esm';
+import logger from '../src/logger';
+
+// Use __dirname directly since tests run in CommonJS mode
+const testDir = __dirname;
+
+vi.mock('../src/logger', () => ({
+  __esModule: true,
+  default: {
+    debug: vi.fn(),
+    error: vi.fn(),
+    warn: vi.fn(),
+    info: vi.fn(),
+  },
+}));
+
+describe('ESM utilities', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    clearWrapperDirCache();
+    vi.restoreAllMocks();
+  });
+
+  describe('getWrapperDir', () => {
+    afterEach(() => {
+      clearWrapperDirCache();
+    });
+
+    it('returns python wrapper directory', () => {
+      const result = getWrapperDir('python');
+      expect(result).toContain('python');
+      expect(result).toMatch(/python$/);
+    });
+
+    it('returns ruby wrapper directory', () => {
+      const result = getWrapperDir('ruby');
+      expect(result).toContain('ruby');
+      expect(result).toMatch(/ruby$/);
+    });
+
+    it('returns golang wrapper directory', () => {
+      const result = getWrapperDir('golang');
+      expect(result).toContain('golang');
+      expect(result).toMatch(/golang$/);
+    });
+
+    it('caches wrapper directory paths', () => {
+      const first = getWrapperDir('python');
+      const second = getWrapperDir('python');
+      expect(first).toBe(second);
+    });
+
+    it('clears cache when clearWrapperDirCache is called', () => {
+      const first = getWrapperDir('python');
+      clearWrapperDirCache();
+      // After clearing, the next call should still return the same path
+      // (the path computation is deterministic)
+      const second = getWrapperDir('python');
+      expect(first).toBe(second);
+    });
+  });
+
+  describe('importModule', () => {
+    it('imports JavaScript modules', async () => {
+      const modulePath = path.resolve(testDir, '__fixtures__/testModule.js');
+
+      const result = await importModule(modulePath);
+      // importModule extracts the nested default from CommonJS modules
+      expect(result).toEqual({
+        testFunction: expect.any(Function),
+      });
+      expect(result.testFunction()).toBe('js default test result');
+      expect(logger.debug).toHaveBeenCalledWith(
+        expect.stringContaining('Successfully imported module'),
+      );
+    });
+
+    it('imports TypeScript modules', async () => {
+      const modulePath = path.resolve(testDir, '__fixtures__/testModule.ts');
+
+      const result = await importModule(modulePath);
+      expect(result).toEqual({
+        testFunction: expect.any(Function),
+        defaultProp: 'ts default property',
+      });
+      expect(result.testFunction()).toBe('ts default test result');
+    });
+
+    it.each([
+      { extension: 'JS', source: "module.exports = { value: 'js' };", value: 'js' },
+      { extension: 'MJS', source: "export const value = 'mjs';", value: 'mjs' },
+      { extension: 'CJS', source: "module.exports = { value: 'cjs' };", value: 'cjs' },
+      { extension: 'TS', source: "export const value = 'ts';", value: 'ts' },
+      { extension: 'MTS', source: "export const value = 'mts';", value: 'mts' },
+      { extension: 'CTS', source: "export const value = 'cts';", value: 'cts' },
+    ])(
+      'imports modules referenced with an uppercase .$extension extension',
+      async ({ extension, source, value }) => {
+        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'promptfoo-esm-case-test-'));
+        const lowerCasePath = path.join(tempDir, `provider.${extension.toLowerCase()}`);
+        const upperCasePath = path.join(tempDir, `provider.${extension}`);
+        fs.writeFileSync(lowerCasePath, source);
+
+        try {
+          const result = await importModule(upperCasePath);
+          expect(result.value).toBe(value);
+        } finally {
+          fs.rmSync(tempDir, { recursive: true, force: true });
+        }
+      },
+    );
+
+    it('does not substitute a different module on case-sensitive file systems', async () => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'promptfoo-esm-case-test-'));
+      const lowerCasePath = path.join(tempDir, 'provider.js');
+      const upperCasePath = path.join(tempDir, 'provider.JS');
+      fs.writeFileSync(lowerCasePath, "module.exports = { value: 'lower' };");
+
+      try {
+        if (fs.existsSync(upperCasePath)) {
+          expect(fs.statSync(upperCasePath).ino).toBe(fs.statSync(lowerCasePath).ino);
+          return;
+        }
+
+        fs.writeFileSync(upperCasePath, "module.exports = { value: 'upper' };");
+        expect(fs.statSync(upperCasePath).ino).not.toBe(fs.statSync(lowerCasePath).ino);
+        try {
+          const result = await importModule(upperCasePath);
+          expect(result).toEqual({ value: 'upper' });
+        } catch (error) {
+          expect(error).toMatchObject({ code: 'ERR_UNKNOWN_FILE_EXTENSION' });
+        }
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it('imports TypeScript modules with transitive TypeScript dependencies', async () => {
+      const modulePath = path.resolve(testDir, '__fixtures__/testModuleWithTransitiveTsImport.ts');
+
+      const result = await importModule(modulePath);
+
+      expect(result.testFunction).toEqual(expect.any(Function));
+      expect(result.testFunction()).toBe('transitive TypeScript helper result');
+    });
+
+    it('imports package-less TypeScript modules with extensionless transitive imports', async () => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'promptfoo-esm-test-'));
+      const helperPath = path.join(tempDir, 'helper.ts');
+      const modulePath = path.join(tempDir, 'provider.ts');
+
+      fs.writeFileSync(
+        helperPath,
+        'export function formatValue(value: string): string {\n  return `package-less ${value}`;\n}\n',
+      );
+      fs.writeFileSync(
+        modulePath,
+        "import { formatValue } from './helper';\n\nexport const testFunction = () => formatValue('result');\n",
+      );
+
+      try {
+        const result = await importModule(modulePath);
+
+        expect(result.testFunction).toEqual(expect.any(Function));
+        expect(result.testFunction()).toBe('package-less result');
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it('imports CommonJS modules', async () => {
+      const modulePath = path.resolve(testDir, '__fixtures__/testModule.cjs');
+
+      const result = await importModule(modulePath);
+      // importModule extracts the nested default from CommonJS modules
+      expect(result).toEqual({
+        testFunction: expect.any(Function),
+      });
+      expect(result.testFunction()).toBe('cjs default test result');
+    });
+
+    it('imports ESM modules', async () => {
+      const modulePath = path.resolve(testDir, '__fixtures__/testModule.mjs');
+
+      const result = await importModule(modulePath);
+      expect(result).toEqual({
+        testFunction: expect.any(Function),
+        defaultProp: 'esm default property',
+      });
+      expect(result.testFunction()).toBe('esm default test result');
+    });
+
+    it('imports simple modules without nested defaults', async () => {
+      const modulePath = path.resolve(testDir, '__fixtures__/testModuleSimple.js');
+
+      const result = await importModule(modulePath);
+      expect(result).toEqual(expect.any(Function));
+      expect(result()).toBe('simple function result');
+    });
+
+    it('returns named function when functionName is specified', async () => {
+      const modulePath = path.resolve(testDir, '__fixtures__/testModule.js');
+
+      const result = await importModule(modulePath, 'testFunction');
+      expect(result).toEqual(expect.any(Function));
+      expect(result()).toBe('js default test result');
+      expect(logger.debug).toHaveBeenCalledWith('Returning named export: testFunction');
+    });
+
+    it('returns named function from TypeScript module', async () => {
+      const modulePath = path.resolve(testDir, '__fixtures__/testModule.ts');
+
+      const result = await importModule(modulePath, 'testFunction');
+      expect(result).toEqual(expect.any(Function));
+      expect(result()).toBe('ts default test result');
+    });
+
+    it('handles absolute paths', async () => {
+      const absolutePath = path.resolve(__dirname, '__fixtures__/testModule.js');
+
+      const result = await importModule(absolutePath);
+      expect(result).toEqual({
+        testFunction: expect.any(Function),
+      });
+      expect(result.testFunction()).toBe('js default test result');
+    });
+
+    it.each(['cjs', 'cts', 'js', 'mjs', 'mts', 'ts'])(
+      'throws ENOENT without logging an error or stack for a missing .%s module',
+      async (extension) => {
+        const nonExistentPath = path.resolve(__dirname, `__fixtures__/nonExistent.${extension}`);
+
+        // Missing files are expected during config discovery, including in verbose logs.
+        await expect(importModule(nonExistentPath)).rejects.toMatchObject({
+          code: 'ENOENT',
+          path: nonExistentPath,
+        });
+        expect(logger.error).not.toHaveBeenCalled();
+        expect(logger.debug).not.toHaveBeenCalledWith(
+          expect.stringMatching(/ERR_MODULE_NOT_FOUND|Cannot find module|\n\s+at /),
+        );
+      },
+    );
+
+    it.each([
+      {
+        name: 'missing dependency',
+        source: "import './missing-dependency.mjs';",
+        error: { code: 'ERR_MODULE_NOT_FOUND' },
+      },
+      {
+        // A missing bare specifier names the package, never the entry module's path,
+        // so the ENOENT normalization must not claim the config file itself is absent.
+        name: 'missing bare package dependency',
+        source: "import 'promptfoo-not-a-real-package';",
+        error: { code: 'ERR_MODULE_NOT_FOUND' },
+      },
+      {
+        name: 'invalid syntax',
+        source: 'export default {;',
+        // Vite reports parse failures as Error rather than Node's SyntaxError.
+        error: { message: expect.stringMatching(/syntax|Unexpected token/i) },
+      },
+      {
+        name: 'runtime failure',
+        source: "throw new Error('config initialization failed');",
+        error: { message: 'config initialization failed' },
+      },
+    ])('preserves and logs a $name in an existing module', async ({ source, error }) => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'promptfoo-esm-error-test-'));
+      const modulePath = path.join(tempDir, 'config.mjs');
+      fs.writeFileSync(modulePath, source);
+
+      try {
+        const thrown = await importModule(modulePath).catch((err) => err);
+        expect(thrown).toMatchObject(error);
+        expect(thrown.stack).toEqual(expect.any(String));
+        expect(logger.debug).toHaveBeenCalledWith(thrown.stack);
+        expect(logger.error).toHaveBeenCalledWith(`ESM import failed: ${thrown}`);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it('logs debug information during import process', async () => {
+      const modulePath = path.resolve(testDir, '__fixtures__/testModule.js');
+
+      await importModule(modulePath);
+
+      expect(logger.debug).toHaveBeenCalledWith(
+        expect.stringContaining('Attempting to import module'),
+      );
+      expect(logger.debug).toHaveBeenCalledWith(
+        expect.stringContaining('Attempting ESM import from'),
+      );
+    });
+
+    it('imports CommonJS modules via ESM', async () => {
+      const modulePath = path.resolve(testDir, '__fixtures__/testModule.cjs');
+
+      const result = await importModule(modulePath);
+      expect(result).toEqual({
+        testFunction: expect.any(Function),
+      });
+
+      // In Vitest's ESM environment, .cjs files are imported successfully via ESM
+      expect(logger.debug).toHaveBeenCalledWith(
+        expect.stringContaining('Successfully imported module'),
+      );
+    });
+
+    it('extracts named export from ESM module', async () => {
+      const modulePath = path.resolve(testDir, '__fixtures__/testModule.mjs');
+
+      const result = await importModule(modulePath, 'testFunction');
+      expect(result).toEqual(expect.any(Function));
+      expect(result()).toBe('esm default test result');
+    });
+
+    it('sets error.cause with both ESM and CJS errors when combined error is thrown', () => {
+      const esmError = new Error('require is not defined');
+      const cjsError = new Error('Cannot find module');
+      const combinedError = new Error(
+        'Failed to load module test.js:\n' +
+          '  ESM import error: require is not defined\n' +
+          '  CJS fallback error: Cannot find module',
+        { cause: { esmError, cjsError } },
+      );
+
+      expect(combinedError).toBeInstanceOf(Error);
+      expect(combinedError.message).toContain('Failed to load module');
+      expect(combinedError.message).toContain('ESM import error');
+      expect(combinedError.message).toContain('CJS fallback error');
+      expect(combinedError.cause).toBeDefined();
+      const cause = combinedError.cause as { esmError: Error; cjsError: Error };
+      expect(cause.esmError).toBe(esmError);
+      expect(cause.cjsError).toBe(cjsError);
+    });
+
+    describe('CJS fallback for .js files', () => {
+      it('loads CommonJS .js files via CJS fallback when ESM fails', async () => {
+        const modulePath = path.resolve(testDir, '__fixtures__/testModuleCjsFallback.js');
+
+        const result = await importModule(modulePath);
+        expect(result).toEqual({
+          testValue: 'cjs-fallback-test',
+          testFunction: expect.any(Function),
+        });
+        expect(result.testFunction()).toBe('cjs fallback result');
+      });
+
+      it('returns named export via CJS fallback', async () => {
+        const modulePath = path.resolve(testDir, '__fixtures__/testModuleCjsFallback.js');
+
+        const result = await importModule(modulePath, 'testFunction');
+        expect(result).toEqual(expect.any(Function));
+        expect(result()).toBe('cjs fallback result');
+      });
+
+      it('returns named value via CJS fallback', async () => {
+        const modulePath = path.resolve(testDir, '__fixtures__/testModuleCjsFallback.js');
+
+        const result = await importModule(modulePath, 'testValue');
+        expect(result).toBe('cjs-fallback-test');
+      });
+    });
+  });
+
+  describe('isCjsInEsmError', () => {
+    it('detects "require is not defined" error', () => {
+      expect(isCjsInEsmError('ReferenceError: require is not defined')).toBe(true);
+    });
+
+    it('detects "module is not defined" error', () => {
+      expect(isCjsInEsmError('ReferenceError: module is not defined in ES module scope')).toBe(
+        true,
+      );
+    });
+
+    it('detects "exports is not defined" error', () => {
+      expect(isCjsInEsmError('ReferenceError: exports is not defined')).toBe(true);
+    });
+
+    it('detects "__dirname is not defined" error', () => {
+      expect(isCjsInEsmError('ReferenceError: __dirname is not defined in ES module scope')).toBe(
+        true,
+      );
+    });
+
+    it('detects "__filename is not defined" error', () => {
+      expect(isCjsInEsmError('ReferenceError: __filename is not defined')).toBe(true);
+    });
+
+    it('detects ERR_REQUIRE_ESM error', () => {
+      expect(isCjsInEsmError('Error [ERR_REQUIRE_ESM]: require() of ES Module not supported')).toBe(
+        true,
+      );
+    });
+
+    it('returns false for unrelated errors', () => {
+      expect(isCjsInEsmError('SyntaxError: Unexpected token')).toBe(false);
+      expect(isCjsInEsmError('TypeError: Cannot read property')).toBe(false);
+      expect(isCjsInEsmError('Module not found')).toBe(false);
+    });
+  });
+
+  describe('resolvePackageEntryPoint', () => {
+    const mockPackagesDir = path.resolve(testDir, '__fixtures__/mock-packages');
+
+    it('resolves ESM-only package with exports field', () => {
+      const result = resolvePackageEntryPoint('@test/esm-only-pkg', mockPackagesDir);
+
+      expect(result).toBe(
+        path.join(mockPackagesDir, 'node_modules/@test/esm-only-pkg/dist/index.js'),
+      );
+    });
+
+    it('resolves package with main field', () => {
+      const result = resolvePackageEntryPoint('@test/module-field-pkg', mockPackagesDir);
+
+      expect(result).toBe(
+        path.join(mockPackagesDir, 'node_modules/@test/module-field-pkg/esm/index.js'),
+      );
+    });
+
+    it('resolves CommonJS package with main field', () => {
+      const result = resolvePackageEntryPoint('@test/cjs-pkg', mockPackagesDir);
+
+      // CommonJS packages are resolved via require.resolve, which returns the main field
+      expect(result).toBe(path.join(mockPackagesDir, 'node_modules/@test/cjs-pkg/lib/index.js'));
+    });
+
+    it('returns null for non-existent package', () => {
+      const result = resolvePackageEntryPoint('@test/non-existent-pkg', mockPackagesDir);
+
+      expect(result).toBeNull();
+    });
+
+    it('returns null when base directory does not exist', () => {
+      const result = resolvePackageEntryPoint('@test/esm-only-pkg', '/non/existent/dir');
+
+      expect(result).toBeNull();
+    });
+
+    it('handles scoped packages correctly', () => {
+      // Test that scoped package names (@org/pkg) are split correctly
+      const result = resolvePackageEntryPoint('@test/esm-only-pkg', mockPackagesDir);
+
+      expect(result).not.toBeNull();
+      expect(result).toContain('@test');
+      expect(result).toContain('esm-only-pkg');
+    });
+
+    it('resolves package with direct string exports field', () => {
+      // Tests: "exports": "./index.js"
+      const result = resolvePackageEntryPoint('@test/string-exports-pkg', mockPackagesDir);
+
+      expect(result).toBe(
+        path.join(mockPackagesDir, 'node_modules/@test/string-exports-pkg/index.js'),
+      );
+    });
+
+    it('resolves package with shorthand object exports field', () => {
+      // Tests: "exports": { ".": "./index.js" }
+      const result = resolvePackageEntryPoint('@test/shorthand-exports-pkg', mockPackagesDir);
+
+      expect(result).toBe(
+        path.join(mockPackagesDir, 'node_modules/@test/shorthand-exports-pkg/index.js'),
+      );
+    });
+
+    it('resolves package with default conditional exports field', () => {
+      // Tests: "exports": { ".": { "default": "./index.js" } }
+      const result = resolvePackageEntryPoint('@test/default-exports-pkg', mockPackagesDir);
+
+      expect(result).toBe(
+        path.join(mockPackagesDir, 'node_modules/@test/default-exports-pkg/index.js'),
+      );
+    });
+  });
+});

@@ -1,0 +1,141 @@
+/* eslint-disable @next/next/no-img-element */
+import {
+  ArchiveIcon,
+  DatabaseIcon,
+  Home,
+  ListTreeIcon,
+  ScrollTextIcon,
+  SheetIcon,
+  ShieldCheckIcon,
+  TagIcon,
+  TestTube2,
+  TriangleAlertIcon,
+  UsersIcon,
+  Code2Icon,
+} from "lucide-react";
+import { useRouter } from "next/router";
+import React, { useMemo } from "react";
+import DesktopSidebar from "./DesktopSidebar";
+import { ChangelogItem, NavigationItem } from "./types";
+
+interface SidebarProps {
+  changelog: ChangelogItem[];
+  sidebarRef: React.RefObject<HTMLDivElement>;
+}
+
+const Sidebar = ({ changelog, sidebarRef }: SidebarProps) => {
+  const router = useRouter();
+  const { pathname } = router;
+
+  const NAVIGATION: NavigationItem[] = useMemo(
+    () => [
+      {
+        name: "Dashboard",
+        href: "/dashboard",
+        icon: Home,
+        current: pathname.includes("/dashboard"),
+      },
+      {
+        name: "Requests",
+        href: "/requests",
+        icon: SheetIcon,
+        current: pathname.includes("/requests"),
+      },
+      {
+        name: "Segments",
+        href: "/segments",
+        icon: null,
+        current: false,
+        subItems: [
+          {
+            name: "Sessions",
+            href: "/sessions",
+            icon: ListTreeIcon,
+            current: pathname.includes("/sessions"),
+          },
+          {
+            name: "Properties",
+            href: "/properties",
+            icon: TagIcon,
+            current: pathname.includes("/properties"),
+          },
+          {
+            name: "Users",
+            href: "/users",
+            icon: UsersIcon,
+            current: pathname.includes("/users"),
+          },
+          {
+            name: "Cache",
+            href: "/cache",
+            icon: ArchiveIcon,
+            current: pathname.includes("/cache"),
+          },
+          {
+            name: "HQL",
+            href: "/hql",
+            icon: Code2Icon,
+            current: pathname.includes("/hql"),
+          },
+        ],
+      },
+      {
+        name: "Improve",
+        href: "/improve",
+        icon: null,
+        current: false,
+        subItems: [
+          {
+            name: "Prompts",
+            href: "/prompts",
+            icon: ScrollTextIcon,
+            current: pathname.includes("/prompts"),
+          },
+          {
+            name: "Datasets",
+            href: "/datasets",
+            icon: DatabaseIcon,
+            current: pathname.includes("/datasets"),
+          },
+          {
+            name: "Playground",
+            href: "/playground",
+            icon: TestTube2,
+            current: pathname.includes("/playground"),
+          },
+        ],
+      },
+      {
+        name: "Monitor",
+        href: "/monitor",
+        icon: null,
+        current: false,
+        subItems: [
+          {
+            name: "Rate Limits",
+            href: "/rate-limit",
+            icon: ShieldCheckIcon,
+            current: pathname === "/rate-limit",
+          },
+          {
+            name: "Alerts",
+            href: "/alerts",
+            icon: TriangleAlertIcon,
+            current: pathname.includes("/alerts"),
+          },
+        ],
+      },
+    ],
+    [pathname],
+  );
+
+  return (
+    <DesktopSidebar
+      sidebarRef={sidebarRef}
+      changelog={changelog}
+      NAVIGATION={NAVIGATION}
+    />
+  );
+};
+
+export default Sidebar;

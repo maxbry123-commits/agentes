@@ -1,0 +1,23 @@
+[
+  {
+    "repo": "SQLite",
+    "path": "test/fuzzdata2.db",
+    "chunks_dir": "SQLite/test/fuzzdata2.db.chunks",
+    "bytes": 17021952,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "SQLite",
+    "path": "test/fuzzdata3.db",
+    "chunks_dir": "SQLite/test/fuzzdata3.db.chunks",
+    "bytes": 11848704,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "SQLite",
+    "path": "test/fuzzdata7.db",
+    "chunks_dir": "SQLite/test/fuzzdata7.db.chunks",
+    "bytes": 16819200,
+    "chunk_bytes": 8388608
+  }
+]

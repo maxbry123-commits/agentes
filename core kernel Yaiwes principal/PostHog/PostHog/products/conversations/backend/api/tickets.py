@@ -1,0 +1,1852 @@
+from __future__ import annotations
+
+import json
+import time
+import uuid
+from collections.abc import Sequence
+from datetime import datetime
+from typing import TYPE_CHECKING, Any, Literal, TypedDict, cast
+
+from django.db import transaction
+from django.db.models import Q, QuerySet, Sum
+from django.http import Http404
+
+import structlog
+import posthoganalytics
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiParameter,
+    OpenApiResponse,
+    PolymorphicProxySerializer,
+    extend_schema,
+    extend_schema_field,
+    extend_schema_view,
+)
+from rest_framework import (
+    pagination,
+    serializers,
+    status as drf_status,
+    viewsets,
+)
+from rest_framework.decorators import action
+from rest_framework.exceptions import MethodNotAllowed, ValidationError
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+
+from posthog.api.person import get_person_name
+from posthog.api.routing import TeamAndOrgViewSetMixin
+from posthog.api.tagged_item import TaggedItemSerializerMixin, TaggedItemViewSetMixin
+from posthog.dataclasses import frozen
+from posthog.event_usage import report_user_action
+from posthog.exceptions_capture import capture_exception
+from posthog.helpers.impersonation import is_impersonated
+from posthog.models import OrganizationMembership
+from posthog.models.activity_logging.activity_log import Change, Detail, Trigger, log_activity
+from posthog.models.comment import Comment
+from posthog.models.person.person import Person
+from posthog.models.person.util import get_person_by_distinct_id, get_persons_by_distinct_ids
+from posthog.permissions import APIScopePermission
+from posthog.personhog_client.caller_tag import personhog_caller_tag
+from posthog.rate_limit import ComposeTicketBurstThrottle, ComposeTicketSustainedThrottle
+
+from products.access_control.backend.models.role import Role
+from products.access_control.backend.presentation.access_control import (
+    AccessControlViewSetMixin,
+    UserAccessControlSerializerMixin,
+)
+from products.conversations.backend.api.serializers import TicketAssignmentSerializer
+from products.conversations.backend.api.ticket_filters import (
+    AI_TRIAGE_FILTER_VALUES,
+    apply_ticket_filters,
+    is_ticket_number_search,
+    parse_stored_view_filters,
+    query_params_to_view_filters,
+)
+from products.conversations.backend.cache import (
+    get_cached_unread_count,
+    invalidate_unread_count_cache,
+    set_cached_unread_count,
+)
+from products.conversations.backend.events import (
+    capture_ticket_assigned,
+    capture_ticket_priority_changed,
+    capture_ticket_status_changed,
+)
+from products.conversations.backend.metrics import TICKET_SEARCH_DURATION_SECONDS
+from products.conversations.backend.models import EmailChannel, EmailChannelKind, Ticket, TicketAssignment, TicketView
+from products.conversations.backend.models.constants import Channel, ChannelDetail, Status
+from products.conversations.backend.person_lookup import _get_persons_by_email
+
+from .. import reply_dedupe
+
+if TYPE_CHECKING:
+    from posthog.models import Organization, User
+
+logger = structlog.get_logger(__name__)
+
+
+class UserTicketAssignee(TypedDict):
+    id: int
+    type: Literal["user"]
+
+
+class RoleTicketAssignee(TypedDict):
+    id: str
+    type: Literal["role"]
+
+
+TicketAssignee = UserTicketAssignee | RoleTicketAssignee
+
+
+class TicketErrorSerializer(serializers.Serializer):
+    detail = serializers.CharField()
+    error_type = serializers.CharField(required=False)
+
+
+class TicketMessageSerializer(serializers.Serializer):
+    """A single message in a ticket thread (output-only)."""
+
+    id = serializers.UUIDField(read_only=True, help_text="Message (comment) UUID.")
+    content = serializers.CharField(read_only=True, help_text="Plain-text message body.")
+    rich_content = serializers.JSONField(read_only=True, allow_null=True, help_text="TipTap rich content JSON, if any.")
+    author_type = serializers.CharField(read_only=True, help_text="One of: customer, support, AI.")
+    author_name = serializers.CharField(read_only=True, help_text="Display name of the author.")
+    is_private = serializers.BooleanField(
+        read_only=True, help_text="True for internal notes not visible to the customer."
+    )
+    version = serializers.IntegerField(read_only=True, help_text="Edit count. 0 means never edited.")
+    created_at = serializers.DateTimeField(read_only=True)
+
+
+class TicketNoteUpdateRequestSerializer(serializers.Serializer):
+    """Payload for updating a private note on a ticket."""
+
+    message = serializers.CharField(
+        max_length=5000,
+        help_text="Updated note content in markdown.",
+    )
+    rich_content = serializers.JSONField(
+        required=False,
+        allow_null=True,
+        help_text=(
+            "Optional TipTap rich content JSON. Omit or pass null to clear previous rich content "
+            "so the thread falls back to the markdown message."
+        ),
+    )
+
+    def validate_message(self, value: str) -> str:
+        if not value or not value.strip():
+            raise serializers.ValidationError("Message content is required.")
+        return value.strip()
+
+    def validate_rich_content(self, value: object) -> object:
+        if value is None:
+            return value
+        try:
+            serialized = json.dumps(value)
+        except (TypeError, ValueError) as e:
+            raise serializers.ValidationError("Rich content must be JSON-serializable.") from e
+        if len(serialized) > 100_000:
+            raise serializers.ValidationError("Rich content too large (max 100KB).")
+        return value
+
+
+class TicketReplyRequestSerializer(serializers.Serializer):
+    """Payload for posting a reply or internal note to a ticket."""
+
+    message = serializers.CharField(
+        max_length=5000,
+        help_text="Reply content in markdown.",
+    )
+    is_private = serializers.BooleanField(
+        default=False,
+        help_text=(
+            "If true, store as an internal note (not sent to the customer). "
+            "If false, the reply is delivered to the customer over the ticket's channel."
+        ),
+    )
+    rich_content = serializers.JSONField(
+        required=False,
+        allow_null=True,
+        help_text="Optional TipTap rich content JSON for formatted messages.",
+    )
+
+    def validate_message(self, value: str) -> str:
+        if not value or not value.strip():
+            raise serializers.ValidationError("Message content is required.")
+        return value.strip()
+
+    def validate_rich_content(self, value: object) -> object:
+        if value is None:
+            return value
+        try:
+            serialized = json.dumps(value)
+        except (TypeError, ValueError) as e:
+            raise serializers.ValidationError("Rich content must be JSON-serializable.") from e
+        if len(serialized) > 100_000:
+            raise serializers.ValidationError("Rich content too large (max 100KB).")
+        return value
+
+
+class AiFeedbackRequestSerializer(serializers.Serializer):
+    """Payload for recording reviewer feedback on an AI reply."""
+
+    message_id = serializers.CharField(max_length=200, help_text="ID of the AI message being rated.")
+    rating = serializers.ChoiceField(choices=["good", "bad"], help_text="Reviewer rating: good or bad.")
+    feedback_text = serializers.CharField(
+        required=False, allow_blank=True, max_length=2000, help_text="Optional text explaining a bad rating."
+    )
+
+
+class ComposeTicketSerializer(serializers.Serializer):
+    recipient_email = serializers.EmailField(
+        help_text="Recipient email address.",
+    )
+    recipient_distinct_id = serializers.CharField(
+        required=False,
+        max_length=400,
+        help_text="PostHog distinct_id to link the ticket to a person. Falls back to recipient_email.",
+    )
+    email_subject = serializers.CharField(
+        required=False,
+        max_length=500,
+        help_text="Email subject line.",
+    )
+    email_config_id = serializers.UUIDField(
+        help_text="ID of the EmailChannel to send from.",
+    )
+    message = serializers.CharField(
+        max_length=5000,
+        help_text="Message content in markdown.",
+    )
+    rich_content = serializers.JSONField(
+        required=False,
+        allow_null=True,
+        help_text="TipTap rich content JSON for formatted messages.",
+    )
+
+    def validate_message(self, value: str) -> str:
+        if not value or not value.strip():
+            raise serializers.ValidationError("Message content is required.")
+        return value.strip()
+
+    def validate_rich_content(self, value: object) -> object:
+        if value is None:
+            return value
+        try:
+            serialized = json.dumps(value)
+        except (TypeError, ValueError) as e:
+            raise serializers.ValidationError("Rich content must be JSON-serializable.") from e
+        if len(serialized) > 100_000:
+            raise serializers.ValidationError("Rich content too large (max 100KB).")
+        return value
+
+
+class ComposeTicketResponseSerializer(serializers.Serializer):
+    id = serializers.UUIDField(help_text="Created ticket UUID.")
+    ticket_number = serializers.IntegerField(help_text="Human-readable ticket number.")
+
+
+BULK_UPDATE_STATUS_MAX_IDS = 500
+
+
+class BulkUpdateStatusRequestSerializer(serializers.Serializer):
+    ids = serializers.ListField(
+        child=serializers.UUIDField(),
+        allow_empty=False,
+        max_length=BULK_UPDATE_STATUS_MAX_IDS,
+        help_text="List of ticket UUIDs to update.",
+    )
+    status = serializers.ChoiceField(
+        choices=Status.choices,
+        help_text="New status to apply to all selected tickets: new, open, pending, on_hold, or resolved.",
+    )
+
+
+class BulkUpdateStatusResponseSerializer(serializers.Serializer):
+    updated = serializers.IntegerField(help_text="Number of tickets whose status actually changed.")
+    ids = serializers.ListField(
+        child=serializers.UUIDField(),
+        help_text="UUIDs of the tickets whose status changed.",
+    )
+
+
+class TicketPagination(pagination.LimitOffsetPagination):
+    default_limit = 100
+    max_limit = 1000
+
+
+class TicketMessagePagination(pagination.LimitOffsetPagination):
+    default_limit = 50
+    max_limit = 200
+
+
+class TicketPersonSerializer(serializers.Serializer):
+    """Minimal person serializer for embedding in ticket responses."""
+
+    id = serializers.UUIDField(source="uuid", read_only=True)
+    name = serializers.SerializerMethodField()
+    distinct_ids = serializers.ListField(child=serializers.CharField(), read_only=True)
+    properties = serializers.DictField(read_only=True)
+    created_at = serializers.DateTimeField(read_only=True)
+    is_identified = serializers.BooleanField(read_only=True)
+
+    def get_name(self, person: Person) -> str:
+        team = self.context.get("team")
+        if team is None:
+            return ""
+        return get_person_name(team, person)
+
+
+class TicketSerializer(UserAccessControlSerializerMixin, TaggedItemSerializerMixin, serializers.ModelSerializer):
+    assignee = TicketAssignmentSerializer(source="assignment", read_only=True)
+    person = TicketPersonSerializer(read_only=True, allow_null=True)
+    email_to = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Ticket
+        fields = [
+            "id",
+            "ticket_number",
+            "channel_source",
+            "channel_detail",
+            "distinct_id",
+            "status",
+            "priority",
+            "assignee",
+            "anonymous_traits",
+            "identity_verified",
+            "ai_resolved",
+            "escalation_reason",
+            "ai_triage",
+            "created_at",
+            "updated_at",
+            "message_count",
+            "last_message_at",
+            "last_message_text",
+            "unread_team_count",
+            "unread_customer_count",
+            "session_id",
+            "session_context",
+            "sla_due_at",
+            "snoozed_until",
+            "slack_channel_id",
+            "slack_thread_ts",
+            "slack_team_id",
+            "email_subject",
+            "email_from",
+            "email_to",
+            "cc_participants",
+            "github_repo",
+            "github_issue_number",
+            "zendesk_ticket_id",
+            "organization_id",
+            "organization_id_source",
+            "person",
+            "tags",
+            "user_access_level",
+        ]
+        read_only_fields = [
+            "id",
+            "ticket_number",
+            "channel_source",
+            "channel_detail",
+            "distinct_id",
+            "created_at",
+            "message_count",
+            "last_message_at",
+            "last_message_text",
+            "unread_team_count",
+            "unread_customer_count",
+            "assignee",
+            "session_id",
+            "session_context",
+            "slack_channel_id",
+            "slack_thread_ts",
+            "slack_team_id",
+            "email_subject",
+            "email_from",
+            "email_to",
+            "cc_participants",
+            "github_repo",
+            "github_issue_number",
+            "zendesk_ticket_id",
+            "organization_id",
+            "organization_id_source",
+            "person",
+            "ai_triage",
+            "identity_verified",
+        ]
+        extra_kwargs = {
+            "identity_verified": {
+                "help_text": (
+                    "Trust signal indicating whether the ticket's claimed identity was attested by the server "
+                    "(widget HMAC, SPF-authenticated email, or a signature-validated platform webhook). "
+                    "True when verified, false when assessed but not attested, null when unknown "
+                    "(e.g. created before this signal existed)."
+                )
+            },
+            "status": {"help_text": "Ticket status: new, open, pending, on_hold, or resolved"},
+            "priority": {"help_text": "Ticket priority: low, medium, high, or critical. Null if unset."},
+            "sla_due_at": {"help_text": "SLA deadline set via workflows. Null means no SLA."},
+            "anonymous_traits": {"help_text": "Customer-provided traits such as name and email"},
+            "organization_id": {
+                "help_text": "Customer's PostHog organization group key, resolved at ticket creation. Null when unknown."
+            },
+            "organization_id_source": {
+                "help_text": "How organization_id was resolved: 'person' (from the requester's identity) or "
+                "'slack_channel_account' (inferred from the customer analytics account linked to the ticket's Slack channel). "
+                "Null when organization_id is unset."
+            },
+            "ai_triage": {
+                "help_text": "AI support pipeline triage and outcome (status, result, ticket_type, confidence, attempts, etc.)."
+            },
+        }
+
+    def get_email_to(self, obj: Ticket) -> str | None:
+        config = getattr(obj, "email_config", None)
+        if config is not None:
+            return config.from_email
+        return None
+
+
+class UserTicketAssigneeRequestSerializer(serializers.Serializer):
+    type = serializers.CharField(help_text="Assign the ticket to a user.")
+    id = serializers.IntegerField(help_text="User ID.")
+
+
+class RoleTicketAssigneeRequestSerializer(serializers.Serializer):
+    type = serializers.CharField(help_text="Assign the ticket to a role.")
+    id = serializers.UUIDField(help_text="Role ID.")
+
+
+_TICKET_ASSIGNEE_REQUEST_SCHEMA = PolymorphicProxySerializer(
+    component_name="TicketAssigneeRequest",
+    serializers={
+        "user": UserTicketAssigneeRequestSerializer,
+        "role": RoleTicketAssigneeRequestSerializer,
+    },
+    resource_type_field_name="type",
+)
+
+
+@extend_schema_field(_TICKET_ASSIGNEE_REQUEST_SCHEMA)
+class TicketAssigneeRequestField(serializers.Field):
+    def to_internal_value(self, data: object) -> TicketAssignee | None:
+        try:
+            return validate_assignee(data)
+        except serializers.ValidationError as error:
+            if isinstance(error.detail, dict) and "assignee" in error.detail:
+                raise serializers.ValidationError(error.detail["assignee"]) from error
+            raise
+
+
+class TicketUpdateRequestSerializer(TaggedItemSerializerMixin, serializers.ModelSerializer):
+    """Fields accepted when updating a ticket."""
+
+    assignee = TicketAssigneeRequestField(
+        required=False,
+        allow_null=True,
+        write_only=True,
+        help_text="User or role to assign. Pass null to remove the current assignee.",
+    )
+    tags = serializers.ListField(
+        child=serializers.CharField(),
+        required=False,
+        help_text="Tag names to set on the ticket.",
+    )
+
+    class Meta:
+        model = Ticket
+        fields = [
+            "status",
+            "priority",
+            "assignee",
+            "anonymous_traits",
+            "ai_resolved",
+            "escalation_reason",
+            "sla_due_at",
+            "snoozed_until",
+            "tags",
+        ]
+        extra_kwargs = {
+            "status": {"help_text": "Ticket status: new, open, pending, on_hold, or resolved."},
+            "priority": {"help_text": "Ticket priority: low, medium, high, or critical. Pass null to clear it."},
+            "anonymous_traits": {"help_text": "Customer details such as name and email."},
+            "ai_resolved": {"help_text": "Whether AI resolved the ticket."},
+            "escalation_reason": {"help_text": "Reason the ticket was escalated. Pass null to clear it."},
+            "sla_due_at": {"help_text": "SLA deadline. Pass null to clear it."},
+            "snoozed_until": {"help_text": "Time to reopen the ticket. Pass null to reopen it now."},
+        }
+
+    def update(self, instance: Ticket, validated_data: dict[str, Any]) -> Ticket:
+        validated_data.pop("assignee", None)
+        return super().update(instance, validated_data)
+
+
+TICKET_ID_PARAM = OpenApiParameter(
+    name="id",
+    type=OpenApiTypes.STR,
+    location=OpenApiParameter.PATH,
+    description="The ticket's UUID or its numeric ticket number.",
+)
+
+NOTE_MESSAGE_ID_PARAM = OpenApiParameter(
+    name="message_id",
+    type=OpenApiTypes.UUID,
+    location=OpenApiParameter.PATH,
+    description="The UUID of the private note (comment) to edit or delete.",
+)
+
+
+def _status_implied_by_snooze(before: datetime | None, after: datetime | None) -> str | None:
+    """Return the status a snooze change implies, or None when it implies no status change.
+
+    Snoozing a ticket puts it on hold, and unsnoozing reopens it. Moving a snooze to a
+    different time leaves the status alone.
+    """
+    if before is None and after is not None:
+        return Status.ON_HOLD
+    if before is not None and after is None:
+        return Status.OPEN
+    return None
+
+
+def _activity_value(value: Any) -> Any:
+    """Render a field value for the activity log. Datetimes go in as ISO strings."""
+    return value.isoformat() if isinstance(value, datetime) else value
+
+
+def _ticket_action_properties(ticket: Ticket) -> dict[str, Any]:
+    return {
+        "channel_source": ticket.channel_source,
+        "ticket_status": ticket.status,
+        "is_assigned": getattr(ticket, "assignment", None) is not None,
+    }
+
+
+@frozen
+class _TicketFields:
+    """The ticket fields a single-ticket update compares before and after saving."""
+
+    status: str
+    priority: str | None
+    sla_due_at: datetime | None
+    snoozed_until: datetime | None
+
+    @classmethod
+    def read_from(cls, ticket: Ticket) -> _TicketFields:
+        return cls(
+            status=ticket.status,
+            priority=ticket.priority,
+            sla_due_at=ticket.sla_due_at,
+            snoozed_until=ticket.snoozed_until,
+        )
+
+
+@frozen
+class _TicketUpdateDiff:
+    """What a single-ticket update changed, and therefore which side effects run."""
+
+    before: _TicketFields
+    after: _TicketFields
+    # True when the request carried an assignee, which is not the same as the assignment
+    # having changed. assign_ticket() decides that, and stays silent when it did not.
+    assignee_submitted: bool
+
+    @property
+    def status_changed(self) -> bool:
+        return self.before.status != self.after.status
+
+    @property
+    def priority_changed(self) -> bool:
+        return self.before.priority != self.after.priority
+
+    @property
+    def crosses_resolved(self) -> bool:
+        return self.status_changed and Status.RESOLVED in (self.before.status, self.after.status)
+
+    @property
+    def has_changes(self) -> bool:
+        return self.assignee_submitted or self.before != self.after
+
+    def activity_changes(self) -> list[Change]:
+        """Build the activity-log entries for every field this update touched."""
+        fields: list[tuple[str, Any, Any]] = [
+            ("status", self.before.status, self.after.status),
+            ("priority", self.before.priority, self.after.priority),
+            ("sla_due_at", self.before.sla_due_at, self.after.sla_due_at),
+            ("snoozed_until", self.before.snoozed_until, self.after.snoozed_until),
+        ]
+        # Compare the raw values, so two datetimes for the same instant in different
+        # timezones do not register as a change, then render for the log.
+        return [
+            Change(
+                type="Ticket",
+                field=field,
+                before=_activity_value(before),
+                after=_activity_value(after),
+                action="changed",
+            )
+            for field, before, after in fields
+            if before != after
+        ]
+
+
+@extend_schema_view(
+    retrieve=extend_schema(parameters=[TICKET_ID_PARAM]),
+    update=extend_schema(
+        parameters=[TICKET_ID_PARAM], request=TicketUpdateRequestSerializer, responses=TicketSerializer
+    ),
+    partial_update=extend_schema(
+        parameters=[TICKET_ID_PARAM], request=TicketUpdateRequestSerializer, responses=TicketSerializer
+    ),
+    destroy=extend_schema(parameters=[TICKET_ID_PARAM]),
+)
+class TicketViewSet(TaggedItemViewSetMixin, TeamAndOrgViewSetMixin, AccessControlViewSetMixin, viewsets.ModelViewSet):
+    scope_object = "ticket"
+    scope_object_read_actions = ["list", "retrieve", "unread_count", "messages"]
+    # "create" stays listed so a ticket:write token reaches the create() override below and
+    # gets a clear 405 (pointing to the SDK), rather than a misleading "not supported" 403.
+    scope_object_write_actions = [
+        "create",
+        "update",
+        "partial_update",
+        "patch",
+        "compose",
+        "reply",
+        "ai_feedback",
+        "note",
+        "delete_note",
+    ]
+    queryset = Ticket.objects.all()
+    serializer_class = TicketSerializer
+    permission_classes = [IsAuthenticated, APIScopePermission]
+    pagination_class = TicketPagination
+
+    # Which search branch safely_get_queryset applied, for the latency histogram.
+    _search_path: str | None = None
+
+    def safely_get_queryset(self, queryset: QuerySet) -> QuerySet:
+        """Filter tickets by team."""
+        queryset = queryset.filter(team_id=self.team_id)
+        queryset = queryset.select_related("assignment", "assignment__user", "assignment__role", "email_config")
+
+        filters: dict[str, Any] = {}
+        view_short_id = self.request.query_params.get("view")
+        if view_short_id:
+            filters = self._get_view_filters(view_short_id)
+        # Explicit query params override the saved view's values, so a caller can apply
+        # a view and still narrow it further.
+        filters.update(query_params_to_view_filters(self.request.query_params))
+
+        channel_detail = self.request.query_params.get("channel_detail")
+        if channel_detail and channel_detail in [d.value for d in ChannelDetail]:
+            queryset = queryset.filter(channel_detail=channel_detail)
+
+        # Related-ticket matching: a ticket belongs to the same customer if it shares one of the
+        # person's merged distinct_ids OR the same email address. Email widens the match to tickets
+        # whose distinct_id was never merged into the person (a separate anonymous session, or an
+        # email-only ticket). The two params OR together when both are supplied.
+        match_q = Q()
+
+        distinct_ids_param = self.request.query_params.get("distinct_ids")
+        if distinct_ids_param:
+            ids = [id.strip() for id in distinct_ids_param.split(",") if id.strip()][:100]
+            if ids:
+                match_q |= Q(distinct_id__in=ids)
+
+        emails_param = self.request.query_params.get("emails")
+        if emails_param:
+            emails = [e.strip() for e in emails_param.split(",") if e.strip()][:100]
+            email_q = Q()
+            for email in emails:
+                email_q |= Q(email_from__iexact=email)
+            if email_q:
+                match_q |= email_q
+
+        if match_q:
+            queryset = queryset.filter(match_q)
+
+        snoozed_param = self.request.query_params.get("snoozed")
+        if snoozed_param is not None:
+            if snoozed_param.lower() == "true":
+                queryset = queryset.filter(snoozed_until__isnull=False)
+            elif snoozed_param.lower() == "false":
+                queryset = queryset.filter(snoozed_until__isnull=True)
+
+        search = filters.get("search")
+        if search:
+            self._search_path = "ticket_number" if is_ticket_number_search(search) else "text"
+
+        # Hide tickets the user has been explicitly denied object-level access to (list action only).
+        queryset = self._filter_queryset_by_access_level(queryset)
+
+        user = cast("User", self.request.user) if self.request.user and self.request.user.is_authenticated else None
+        return apply_ticket_filters(queryset, filters, team=self.team, user=user)
+
+    def _get_view_filters(self, short_id: str) -> dict[str, Any]:
+        """Resolve a saved ticket view into the canonical filter shape for apply_ticket_filters."""
+        try:
+            view = TicketView.objects.get(team_id=self.team_id, short_id=short_id)
+        except TicketView.DoesNotExist:
+            raise ValidationError({"view": "No saved ticket view matches this short_id."})
+        return parse_stored_view_filters(view.filters)
+
+    def safely_get_object(self, queryset):
+        """
+        Support looking up tickets by either UUID or ticket_number.
+        This allows URLs like /tickets/123/ (ticket_number) alongside /tickets/<uuid>/ for backward compatibility.
+        """
+        lookup_value: str | None = self.kwargs.get("pk")
+
+        if not lookup_value:
+            raise Http404("Ticket not found")
+
+        # Try to parse as UUID first
+        try:
+            uuid.UUID(lookup_value)
+            # It's a valid UUID - look up by id
+            try:
+                return queryset.get(id=lookup_value)
+            except Ticket.DoesNotExist:
+                raise Http404("Ticket not found")
+        except (ValueError, AttributeError):
+            # Not a UUID - try as ticket_number (integer)
+            try:
+                ticket_num = int(lookup_value)
+                try:
+                    return queryset.get(ticket_number=ticket_num)
+                except Ticket.DoesNotExist:
+                    raise Http404("Ticket not found")
+            except (ValueError, TypeError):
+                # Neither UUID nor integer
+                raise Http404("Ticket not found")
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context["team"] = self.team
+        return context
+
+    @extend_schema(exclude=True)
+    def create(self, *args, **kwargs):
+        # Tickets are created through their channel (widget, email, Slack, etc.) or the
+        # `compose` action, all of which assign team + ticket_number. The bare collection
+        # POST can't set those and is not a supported intake path — reject it explicitly
+        # instead of 500ing on the NOT NULL violation.
+        raise MethodNotAllowed(
+            method="POST",
+            detail="Creating tickets via this endpoint is not supported. "
+            "Use posthog.conversations.sendMessage() from the JavaScript SDK. "
+            "See https://posthog.com/docs/support/javascript-api for details.",
+        )
+
+    def _attach_persons_to_tickets(self, tickets: Sequence[Ticket]) -> None:
+        """Batch-fetch persons by distinct_id and attach to tickets."""
+        distinct_ids = sorted([t.distinct_id for t in tickets if t.distinct_id])
+        if not distinct_ids:
+            return
+
+        with personhog_caller_tag("conversations/ticket-attach-persons"):
+            persons = get_persons_by_distinct_ids(self.team_id, distinct_ids)
+
+        distinct_id_to_person: dict[str, Person] = {}
+        distinct_ids_set = set(distinct_ids)
+        for person in persons:
+            for did in person.distinct_ids:
+                if did in distinct_ids_set:
+                    distinct_id_to_person[did] = person
+
+        # Attach person to each ticket (dynamic attribute for serialization)
+        for ticket in tickets:
+            if ticket.distinct_id:
+                ticket.person = distinct_id_to_person.get(ticket.distinct_id)
+
+        # Fallback: for email-channel tickets with no person match,
+        # try matching on properties.email (handles cases where the
+        # person's distinct_id differs from their email address)
+        unmatched = [
+            t
+            for t in tickets
+            if t.distinct_id and not getattr(t, "person", None) and t.channel_source == Channel.EMAIL and t.email_from
+        ]
+        if unmatched:
+            emails = [t.email_from for t in unmatched if t.email_from]
+            email_to_person = _get_persons_by_email(self.team, emails)
+            for ticket in unmatched:
+                if ticket.email_from:
+                    found = email_to_person.get(ticket.email_from.lower())
+                    if found is not None:
+                        ticket.person = found
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                "view",
+                OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description=(
+                    "Apply a saved ticket view's filters by its `short_id` (list views via the "
+                    "`conversations/views` endpoint). Any filter param passed explicitly overrides "
+                    "the view's saved value for that dimension. Returns 400 if no view matches."
+                ),
+            ),
+            OpenApiParameter(
+                "status",
+                OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description=(
+                    "Filter by status. Accepts a single value or a comma-separated list "
+                    "(e.g. `new,open,pending`). Valid values: `new`, `open`, `pending`, `on_hold`, `resolved`."
+                ),
+            ),
+            OpenApiParameter(
+                "priority",
+                OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description=(
+                    "Filter by priority. Accepts a single value or a comma-separated list "
+                    "(e.g. `medium,high`). Valid values: `low`, `medium`, `high`, `critical`."
+                ),
+            ),
+            OpenApiParameter(
+                "channel_source",
+                OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                enum=[c.value for c in Channel],
+                description="Filter by the channel the ticket originated from.",
+            ),
+            OpenApiParameter(
+                "channel_detail",
+                OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                enum=[d.value for d in ChannelDetail],
+                description="Filter by the channel sub-type (e.g. `widget_embedded`, `slack_bot_mention`).",
+            ),
+            OpenApiParameter(
+                "assignee",
+                OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description=(
+                    "Filter by assignee. Accepts a single value or a comma-separated list "
+                    "(matches any, max 100 entries). Each entry is `unassigned` (no assignee), "
+                    "`me` (the requesting user), `user:<user_id>`, or `role:<role_uuid>`, "
+                    "e.g. `assignee=unassigned,user:123`."
+                ),
+            ),
+            OpenApiParameter(
+                "date_from",
+                OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description=(
+                    "Only include tickets updated on or after this date. Accepts absolute dates (`2026-01-01`) "
+                    "or relative ones (`-7d`, `-1mStart`). Pass `all` to disable the filter."
+                ),
+            ),
+            OpenApiParameter(
+                "date_to",
+                OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description="Only include tickets updated on or before this date. Same format as `date_from`.",
+            ),
+            OpenApiParameter(
+                "distinct_ids",
+                OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description="Comma-separated list of person `distinct_id`s to filter by (max 100).",
+            ),
+            OpenApiParameter(
+                "emails",
+                OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description=(
+                    "Comma-separated list of email addresses to filter by, matched case-insensitively "
+                    "against `email_from` (max 100). When combined with `distinct_ids`, tickets matching "
+                    "either the distinct_ids or the emails are returned (OR)."
+                ),
+            ),
+            OpenApiParameter(
+                "search",
+                OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description=(
+                    "Free-text search. A numeric value (optionally prefixed with `#`) matches a ticket number "
+                    "exactly; otherwise matches against the customer's name or email, the email subject, or "
+                    "message content (case-insensitive, partial match)."
+                ),
+            ),
+            OpenApiParameter(
+                "sla",
+                OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                enum=["breached", "at-risk", "on-track"],
+                description=(
+                    "Filter by SLA state. `breached` = past `sla_due_at`, `at-risk` = due within the next hour, "
+                    "`on-track` = more than an hour remaining."
+                ),
+            ),
+            OpenApiParameter(
+                "tags",
+                OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description='JSON-encoded array of tag names; returns tickets with ANY of them (OR), e.g. `["billing","urgent"]`.',
+            ),
+            OpenApiParameter(
+                "tags_all",
+                OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description='JSON-encoded array of tag names; returns tickets that have ALL of them (AND), e.g. `["billing","urgent"]`.',
+            ),
+            OpenApiParameter(
+                "tags_exclude",
+                OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description='JSON-encoded array of tag names; returns tickets that have NONE of them (NOT), e.g. `["escalated"]`.',
+            ),
+            OpenApiParameter(
+                "ai_triage_result",
+                OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description=(
+                    "Filter by AI triage outcome. Accepts a single value or a comma-separated list. "
+                    f"Valid values: {', '.join(f'`{v}`' for v in AI_TRIAGE_FILTER_VALUES)}."
+                ),
+            ),
+            OpenApiParameter(
+                "snoozed",
+                OpenApiTypes.BOOL,
+                location=OpenApiParameter.QUERY,
+                description="Filter by snooze state: `true` returns only snoozed tickets, `false` only non-snoozed.",
+            ),
+            OpenApiParameter(
+                "order_by",
+                OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                enum=[
+                    "updated_at",
+                    "-updated_at",
+                    "sla_due_at",
+                    "-sla_due_at",
+                    "created_at",
+                    "-created_at",
+                    "ticket_number",
+                    "-ticket_number",
+                ],
+                description="Sort order. Prefix with `-` for descending. Defaults to `-updated_at`.",
+            ),
+        ],
+    )
+    def list(self, request, *args, **kwargs):
+        """List tickets with person data attached."""
+        # _search_path starts as the class default (None) on each request's fresh
+        # viewset instance; filter_queryset sets it when a search filter is applied.
+        start = time.perf_counter()
+        try:
+            queryset = self.filter_queryset(self.get_queryset())
+            page = self.paginate_queryset(queryset)
+
+            if page is not None:
+                self._attach_persons_to_tickets(page)
+                serializer = self.get_serializer(page, many=True)
+                return self.get_paginated_response(serializer.data)
+
+            tickets = list(queryset)
+            self._attach_persons_to_tickets(tickets)
+            serializer = self.get_serializer(tickets, many=True)
+            return Response(serializer.data)
+        finally:
+            if self._search_path is not None:
+                TICKET_SEARCH_DURATION_SECONDS.labels(search_path=self._search_path).observe(
+                    time.perf_counter() - start
+                )
+
+    def retrieve(self, request, *args, **kwargs):
+        """Get single ticket and mark as read by team."""
+        instance = self.get_object()
+        # Marking as read is a write to shared team state - gate it by editor access so a
+        # viewer can't clear the team's unread indicator just by opening a ticket.
+        can_edit = self.user_access_control.check_access_level_for_object(instance, required_level="editor")
+        if can_edit and instance.unread_team_count > 0:
+            instance.unread_team_count = 0
+            instance.save(update_fields=["unread_team_count"])
+            # Invalidate cache since unread count changed
+            invalidate_unread_count_cache(self.team_id)
+
+        # Attach person data
+        self._attach_persons_to_tickets([instance])
+
+        # Track internal analytics
+        try:
+            report_user_action(
+                request.user,
+                "support ticket viewed",
+                _ticket_action_properties(instance),
+                team=self.team,
+                request=request,
+            )
+        except Exception as e:
+            capture_exception(e, {"ticket_id": str(instance.id)})
+
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
+
+    def update(self, request, *args, **kwargs):
+        """Handle ticket updates including assignee changes."""
+        partial = kwargs.pop("partial", False)
+        instance = self.get_object()
+        before = _TicketFields.read_from(instance)
+
+        serializer = TicketUpdateRequestSerializer(
+            instance,
+            data=request.data,
+            partial=partial,
+            context=self.get_serializer_context(),
+        )
+        serializer.is_valid(raise_exception=True)
+
+        assignee_submitted = "assignee" in serializer.validated_data
+        validated_assignee = serializer.validated_data.get("assignee")
+        if assignee_submitted:
+            validate_assignee_membership(validated_assignee, self.organization)
+
+        self._save_ticket_fields(
+            serializer,
+            instance,
+            before,
+            explicit_status="status" in serializer.validated_data,
+        )
+
+        if assignee_submitted:
+            _assign_ticket(
+                instance,
+                validated_assignee,
+                self.organization,
+                request.user,
+                self.team_id,
+                is_impersonated(request),
+            )
+            instance.refresh_from_db()
+
+        diff = _TicketUpdateDiff(
+            before=before,
+            after=_TicketFields.read_from(instance),
+            assignee_submitted=assignee_submitted,
+        )
+        self._emit_update_side_effects(request, instance, diff)
+
+        # Re-serialize to include updated assignee
+        response_serializer = self.get_serializer(instance)
+        return Response(response_serializer.data)
+
+    def _save_ticket_fields(
+        self,
+        serializer: serializers.BaseSerializer,
+        instance: Ticket,
+        before: _TicketFields,
+        *,
+        explicit_status: bool,
+    ) -> None:
+        """Persist the submitted fields, then apply the status a snooze change implies.
+
+        A status in the same request wins over the implied one, so a caller can snooze a
+        ticket and keep it pending.
+        """
+        with transaction.atomic():
+            self.perform_update(serializer)
+
+            implied_status = _status_implied_by_snooze(before.snoozed_until, instance.snoozed_until)
+            if implied_status is not None and not explicit_status:
+                instance.status = implied_status
+                instance.save(update_fields=["status"])
+
+    def _emit_update_side_effects(self, request, instance: Ticket, diff: _TicketUpdateDiff) -> None:
+        if diff.crosses_resolved:
+            invalidate_unread_count_cache(self.team_id)
+
+        self._capture_update_events(request, instance, diff)
+        self._log_update_activity(request, instance, diff)
+
+        if diff.has_changes:
+            self._report_ticket_updated(request, instance)
+
+    def _capture_update_events(self, request, instance: Ticket, diff: _TicketUpdateDiff) -> None:
+        """Emit the analytics events that workflow triggers listen for."""
+        try:
+            if diff.status_changed:
+                capture_ticket_status_changed(
+                    instance, diff.before.status, diff.after.status, actor=request.user, actor_type="user"
+                )
+
+            if diff.priority_changed:
+                capture_ticket_priority_changed(
+                    instance, diff.before.priority, diff.after.priority, actor=request.user, actor_type="user"
+                )
+        except Exception as e:
+            capture_exception(e, {"ticket_id": str(instance.id)})
+
+    def _log_update_activity(self, request, instance: Ticket, diff: _TicketUpdateDiff) -> None:
+        changes = diff.activity_changes()
+        if not changes:
+            return
+
+        try:
+            log_activity(
+                organization_id=self.organization.id,
+                team_id=self.team_id,
+                user=request.user,
+                was_impersonated=is_impersonated(request),
+                item_id=str(instance.id),
+                scope="Ticket",
+                activity="updated",
+                detail=Detail(
+                    name=f"Ticket #{instance.ticket_number}",
+                    changes=changes,
+                ),
+            )
+        except Exception as e:
+            capture_exception(e, {"ticket_id": str(instance.id)})
+
+    def _report_ticket_updated(self, request, instance: Ticket) -> None:
+        try:
+            report_user_action(
+                request.user,
+                "support ticket updated",
+                _ticket_action_properties(instance),
+                team=self.team,
+                request=request,
+            )
+        except Exception as e:
+            capture_exception(e, {"ticket_id": str(instance.id)})
+
+    def _emit_status_change_side_effects(self, request, ticket: Ticket, old_status: str, new_status: str) -> None:
+        """Emit analytics + activity log for a single ticket status change.
+
+        Used by ``bulk_update_status()``. Single-ticket updates log every changed
+        field in one entry, so they build their own activity log entry instead.
+        """
+        try:
+            capture_ticket_status_changed(ticket, old_status, new_status, actor=request.user, actor_type="user")
+        except Exception as e:
+            capture_exception(e, {"ticket_id": str(ticket.id)})
+
+        try:
+            log_activity(
+                organization_id=self.organization.id,
+                team_id=self.team_id,
+                user=request.user,
+                was_impersonated=is_impersonated(request),
+                item_id=str(ticket.id),
+                scope="Ticket",
+                activity="updated",
+                detail=Detail(
+                    name=f"Ticket #{ticket.ticket_number}",
+                    changes=[
+                        Change(
+                            type="Ticket",
+                            field="status",
+                            before=old_status,
+                            after=new_status,
+                            action="changed",
+                        )
+                    ],
+                ),
+            )
+        except Exception as e:
+            capture_exception(e, {"ticket_id": str(ticket.id)})
+
+    @extend_schema(
+        request=BulkUpdateStatusRequestSerializer,
+        responses={200: OpenApiResponse(response=BulkUpdateStatusResponseSerializer)},
+    )
+    @action(detail=False, methods=["POST"])
+    def bulk_update_status(self, request, *args, **kwargs):
+        """Update the status of multiple tickets in a single request.
+
+        Only tickets belonging to the current team are affected; other-team UUIDs
+        are silently ignored. Tickets the caller lacks editor-level access to (denied
+        or view-only via object-level access control) are silently skipped too, the
+        same way single-ticket updates enforce object-level access via get_object().
+        Tickets already in the requested status are skipped.
+        """
+        serializer = BulkUpdateStatusRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        ticket_ids: list[uuid.UUID] = serializer.validated_data["ids"]
+        new_status: str = serializer.validated_data["status"]
+
+        changed: list[tuple[Ticket, str]] = []
+        with transaction.atomic():
+            tickets = list(self.get_queryset().filter(id__in=ticket_ids).select_for_update(of=("self",)))
+            self.user_access_control.preload_object_access_controls(tickets)
+            tickets = [
+                ticket
+                for ticket in tickets
+                if self.user_access_control.check_access_level_for_object(ticket, required_level="editor")
+            ]
+            for ticket in tickets:
+                old_status = ticket.status
+                if old_status == new_status:
+                    continue
+                ticket.status = new_status
+                ticket.save(update_fields=["status", "updated_at"])
+                changed.append((ticket, old_status))
+
+        def _emit_bulk_side_effects() -> None:
+            if any(old == "resolved" or new_status == "resolved" for _, old in changed):
+                invalidate_unread_count_cache(self.team_id)
+
+            for ticket, old_status in changed:
+                self._emit_status_change_side_effects(request, ticket, old_status, new_status)
+
+            if changed:
+                try:
+                    report_user_action(
+                        request.user,
+                        "support tickets bulk status updated",
+                        {"count": len(changed), "ticket_status": new_status},
+                        team=self.team,
+                        request=request,
+                    )
+                except Exception as e:
+                    capture_exception(e, {"team_id": self.team_id})
+
+        transaction.on_commit(_emit_bulk_side_effects)
+
+        return Response({"updated": len(changed), "ids": [str(t.id) for t, _ in changed]})
+
+    @action(detail=False, methods=["get"])
+    def unread_count(self, request, *args, **kwargs):
+        """
+        Get total unread ticket count for the team.
+
+        Returns the sum of unread_team_count for all non-resolved tickets visible to the
+        caller. The team-wide Redis cache (30s TTL, invalidated on changes) is only used for
+        callers without object-level ticket restrictions, since it holds one unscoped total
+        per team - serving it to a restricted member would leak counts for tickets they can't
+        see.
+        """
+        team_id = self.team_id
+
+        # Check if support is enabled
+        if not self.team.conversations_enabled:
+            return Response({"count": 0})
+
+        uac = self.user_access_control
+        is_restricted = bool(uac.blocked_resource_ids_by_scope.get("ticket")) or not uac.has_resource_access("ticket")
+
+        if not is_restricted:
+            cached_count = get_cached_unread_count(team_id)
+            if cached_count is not None:
+                return Response({"count": cached_count})
+
+        # Query database - only non-resolved tickets with unread messages
+        queryset = Ticket.objects.filter(team_id=team_id).exclude(status="resolved").filter(unread_team_count__gt=0)
+        if is_restricted:
+            queryset = uac.filter_queryset_by_access_level(queryset)
+
+        count = queryset.aggregate(total=Sum("unread_team_count"))["total"] or 0
+
+        if not is_restricted:
+            set_cached_unread_count(team_id, count)
+
+        return Response({"count": count})
+
+    @extend_schema(
+        parameters=[TICKET_ID_PARAM],
+        responses={200: TicketMessageSerializer(many=True)},
+    )
+    @action(detail=True, methods=["get"], pagination_class=TicketMessagePagination)
+    def messages(self, request, *args, **kwargs):
+        """Return the message thread for a ticket, ordered chronologically (paginated)."""
+        ticket = self.get_object()
+
+        comments = (
+            Comment.objects.filter(
+                team_id=self.team_id,
+                scope="conversations_ticket",
+                item_id=str(ticket.id),
+                deleted=False,
+            )
+            .select_related("created_by")
+            .order_by("created_at")
+        )
+
+        page = self.paginate_queryset(comments)
+        comments_to_serialize = page if page is not None else list(comments)
+
+        message_list = [self._serialize_message(comment, ticket) for comment in comments_to_serialize]
+        data = TicketMessageSerializer(message_list, many=True).data
+
+        if page is not None:
+            return self.get_paginated_response(data)
+        return Response(data)
+
+    def _serialize_message(self, comment: Comment, ticket: Ticket) -> dict:
+        item_context = comment.item_context or {}
+        author_type = item_context.get("author_type", "customer")
+
+        # Per-message author identity (Slack/Teams/Zendesk store each comment's own
+        # author) takes precedence over the ticket-level requester, so a thread reply
+        # from a second participant doesn't show as the ticket owner.
+        context_author_name = (
+            item_context.get("author_name")
+            or item_context.get("author_email")
+            or item_context.get("slack_author_name")
+            or item_context.get("teams_author_name")
+            or item_context.get("teams_author_email")
+            or item_context.get("email_from_name")
+        )
+
+        if comment.created_by:
+            author_name = comment.created_by.first_name or comment.created_by.email
+        elif author_type == "AI":
+            author_name = "PostHog Assistant"
+        elif context_author_name:
+            author_name = context_author_name
+        elif author_type == "customer":
+            traits = ticket.anonymous_traits or {}
+            author_name = traits.get("name") or traits.get("email") or "Customer"
+        else:
+            author_name = "Support"
+
+        return {
+            "id": comment.id,
+            "content": comment.content,
+            "rich_content": comment.rich_content,
+            "author_type": author_type,
+            "author_name": author_name,
+            "is_private": item_context.get("is_private") is True,
+            "version": comment.version,
+            "created_at": comment.created_at,
+        }
+
+    def _get_editable_private_note(
+        self, ticket: Ticket, message_id: str, *, action: str
+    ) -> tuple[Comment | None, Response | None]:
+        """Look up a private note the caller may edit/delete, or return an error response.
+
+        `action` is the present-tense verb ("edit" / "delete") used in author-facing errors.
+        """
+        action_participle = {"edit": "edited", "delete": "deleted"}[action]
+
+        try:
+            uuid.UUID(str(message_id))
+        except (ValueError, TypeError, AttributeError):
+            return None, Response(
+                {"detail": "Note not found.", "error_type": "note_not_found"},
+                status=drf_status.HTTP_404_NOT_FOUND,
+            )
+
+        try:
+            comment = Comment.objects.get(
+                id=message_id,
+                team_id=self.team_id,
+                scope="conversations_ticket",
+                item_id=str(ticket.id),
+                deleted=False,
+            )
+        except Comment.DoesNotExist:
+            return None, Response(
+                {"detail": "Note not found.", "error_type": "note_not_found"},
+                status=drf_status.HTTP_404_NOT_FOUND,
+            )
+
+        item_context = comment.item_context or {}
+        if item_context.get("is_private") is not True:
+            return None, Response(
+                {"detail": f"Only private notes can be {action_participle}.", "error_type": "not_private_note"},
+                status=drf_status.HTTP_400_BAD_REQUEST,
+            )
+
+        if comment.created_by_id != self.request.user.id:
+            return None, Response(
+                {
+                    "detail": f"You can only {action} your own private notes.",
+                    "error_type": "not_note_author",
+                },
+                status=drf_status.HTTP_403_FORBIDDEN,
+            )
+
+        return comment, None
+
+    @extend_schema(
+        parameters=[TICKET_ID_PARAM],
+        request=TicketReplyRequestSerializer,
+        responses={
+            200: OpenApiResponse(
+                response=TicketMessageSerializer,
+                description=(
+                    "An identical message was already posted by a recent request. The original "
+                    "message is returned and nothing new is written."
+                ),
+            ),
+            201: OpenApiResponse(response=TicketMessageSerializer),
+            400: OpenApiResponse(response=TicketErrorSerializer),
+            409: OpenApiResponse(
+                response=TicketErrorSerializer,
+                description="An identical message is still being created by another request.",
+            ),
+        },
+    )
+    @action(
+        detail=True,
+        methods=["post"],
+        pagination_class=None,
+        throttle_classes=[ComposeTicketBurstThrottle, ComposeTicketSustainedThrottle],
+    )
+    def reply(self, request, *args, **kwargs):
+        """Post a reply or internal note to a ticket.
+
+        With is_private=false, the reply is delivered to the customer via the
+        ticket's channel (email, Slack, Teams, GitHub). With is_private=true,
+        the message is stored as an internal note only visible to team members.
+
+        Retrying an identical message from the same author within a short window returns the
+        original message with a 200 rather than posting it twice, and a 409 while a concurrent
+        request is still creating it.
+        """
+        ticket = self.get_object()
+
+        if not self.team.conversations_enabled:
+            return Response(
+                {"detail": "Support is not enabled."},
+                status=drf_status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = TicketReplyRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        item_context = {"author_type": "support", "is_private": data["is_private"]}
+
+        def create_comment() -> Comment:
+            return Comment.objects.create(
+                team=self.team,
+                created_by=request.user,
+                scope="conversations_ticket",
+                item_id=str(ticket.id),
+                content=data["message"],
+                rich_content=data.get("rich_content"),
+                item_context=item_context,
+            )
+
+        fingerprint = reply_dedupe.ReplyFingerprint.build(
+            team_id=self.team_id,
+            created_by_id=request.user.id,
+            scope="conversations_ticket",
+            item_id=str(ticket.id),
+            content=data["message"],
+            rich_content=data.get("rich_content"),
+            item_context=item_context,
+        )
+        if fingerprint is None:
+            return self._reply_response(create_comment(), ticket, created=True)
+
+        guarded = reply_dedupe.create_deduplicated(fingerprint, create_comment)
+        if guarded.outcome is reply_dedupe.CreateOutcome.CONFLICT:
+            return Response(
+                {
+                    "detail": reply_dedupe.REPLY_IN_PROGRESS_DETAIL,
+                    "error_type": reply_dedupe.REPLY_IN_PROGRESS_ERROR_TYPE,
+                },
+                status=drf_status.HTTP_409_CONFLICT,
+            )
+        return self._reply_response(
+            cast(Comment, guarded.comment), ticket, created=guarded.outcome is reply_dedupe.CreateOutcome.CREATED
+        )
+
+    def _reply_response(self, comment: Comment, ticket: Ticket, *, created: bool) -> Response:
+        return Response(
+            TicketMessageSerializer(self._serialize_message(comment, ticket)).data,
+            status=drf_status.HTTP_201_CREATED if created else drf_status.HTTP_200_OK,
+        )
+
+    @extend_schema(
+        parameters=[TICKET_ID_PARAM, NOTE_MESSAGE_ID_PARAM],
+        request=TicketNoteUpdateRequestSerializer,
+        responses={
+            200: OpenApiResponse(response=TicketMessageSerializer),
+            400: OpenApiResponse(response=TicketErrorSerializer),
+            403: OpenApiResponse(response=TicketErrorSerializer),
+            404: OpenApiResponse(response=TicketErrorSerializer),
+        },
+    )
+    @action(
+        detail=True,
+        methods=["patch"],
+        url_path=r"notes/(?P<message_id>[^/.]+)",
+        pagination_class=None,
+    )
+    def note(self, request, message_id: str | None = None, *args, **kwargs):
+        """Update a private note on a ticket.
+
+        Only the note's author can edit it. Customer-facing replies cannot be
+        edited (outbound delivery only runs on create).
+        """
+        ticket = self.get_object()
+        comment, error = self._get_editable_private_note(ticket, message_id or "", action="edit")
+        if error is not None:
+            return error
+        assert comment is not None
+
+        serializer = TicketNoteUpdateRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        with transaction.atomic():
+            locked = Comment.objects.select_for_update().get(pk=comment.pk)
+            if locked.deleted:
+                return Response(
+                    {"detail": "Note not found.", "error_type": "note_not_found"},
+                    status=drf_status.HTTP_404_NOT_FOUND,
+                )
+            if locked.created_by_id != request.user.id:
+                return Response(
+                    {
+                        "detail": "You can only edit your own private notes.",
+                        "error_type": "not_note_author",
+                    },
+                    status=drf_status.HTTP_403_FORBIDDEN,
+                )
+            locked.content = data["message"]
+            # Always write rich_content: omitting it clears stale TipTap JSON so markdown-only
+            # MCP/API edits don't keep rendering the previous note body.
+            locked.rich_content = data.get("rich_content")
+            locked.version = locked.version + 1
+            locked.save(update_fields=["content", "rich_content", "version"])
+
+        return Response(TicketMessageSerializer(self._serialize_message(locked, ticket)).data)
+
+    @extend_schema(
+        parameters=[TICKET_ID_PARAM, NOTE_MESSAGE_ID_PARAM],
+        responses={
+            204: OpenApiResponse(description="Note soft-deleted."),
+            400: OpenApiResponse(response=TicketErrorSerializer),
+            403: OpenApiResponse(response=TicketErrorSerializer),
+            404: OpenApiResponse(response=TicketErrorSerializer),
+        },
+    )
+    @note.mapping.delete
+    def delete_note(self, request, message_id: str | None = None, *args, **kwargs):
+        """Soft-delete a private note on a ticket.
+
+        Only the note's author can delete it. Customer-facing replies cannot be
+        deleted via this endpoint.
+        """
+        ticket = self.get_object()
+        comment, error = self._get_editable_private_note(ticket, message_id or "", action="delete")
+        if error is not None:
+            return error
+        assert comment is not None
+
+        with transaction.atomic():
+            locked = Comment.objects.select_for_update().get(pk=comment.pk)
+            if locked.deleted:
+                return Response(
+                    {"detail": "Note not found.", "error_type": "note_not_found"},
+                    status=drf_status.HTTP_404_NOT_FOUND,
+                )
+            if locked.created_by_id != request.user.id:
+                return Response(
+                    {
+                        "detail": "You can only delete your own private notes.",
+                        "error_type": "not_note_author",
+                    },
+                    status=drf_status.HTTP_403_FORBIDDEN,
+                )
+            locked.deleted = True
+            locked.save(update_fields=["deleted"])
+
+        return Response(status=drf_status.HTTP_204_NO_CONTENT)
+
+    @extend_schema(
+        parameters=[TICKET_ID_PARAM],
+        request=AiFeedbackRequestSerializer,
+        responses={202: None},
+    )
+    @action(detail=True, methods=["post"])
+    def ai_feedback(self, request, *args, **kwargs):
+        """Record reviewer feedback on an AI reply, captured to the internal analytics project."""
+        ticket = self.get_object()
+        serializer = AiFeedbackRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        ai_triage = ticket.ai_triage or {}
+        trace_id = ai_triage.get("ai_trace_id")
+        distinct_id = f"reviewer:{request.user.distinct_id}"
+
+        feedback_text = data.get("feedback_text", "").strip()
+
+        if feedback_text and data["rating"] == "bad":
+            feedback_properties: dict[str, Any] = {
+                "$ai_feedback_text": feedback_text,
+                "ai_product": "conversations",
+                "ticket_id": str(ticket.id),
+                "message_id": data["message_id"],
+                "ai_triage_result": ai_triage.get("result"),
+                "confidence": ai_triage.get("confidence"),
+            }
+            if trace_id:
+                feedback_properties["$ai_trace_id"] = trace_id
+            posthoganalytics.capture(distinct_id=distinct_id, event="$ai_feedback", properties=feedback_properties)
+        else:
+            properties: dict[str, Any] = {
+                "$ai_metric_name": "reviewer_quality",
+                "$ai_metric_value": 1 if data["rating"] == "good" else 0,
+                "ai_product": "conversations",
+                "ticket_id": str(ticket.id),
+                "message_id": data["message_id"],
+                "ai_triage_result": ai_triage.get("result"),
+                "confidence": ai_triage.get("confidence"),
+            }
+            if trace_id:
+                properties["$ai_trace_id"] = trace_id
+            posthoganalytics.capture(distinct_id=distinct_id, event="$ai_metric", properties=properties)
+
+        return Response(status=drf_status.HTTP_202_ACCEPTED)
+
+    @extend_schema(
+        request=ComposeTicketSerializer,
+        responses={
+            201: OpenApiResponse(response=ComposeTicketResponseSerializer),
+            400: OpenApiResponse(response=TicketErrorSerializer),
+        },
+    )
+    @action(
+        detail=False,
+        methods=["POST"],
+        pagination_class=None,
+        throttle_classes=[ComposeTicketBurstThrottle, ComposeTicketSustainedThrottle],
+    )
+    def compose(self, request, *args, **kwargs):
+        """Create a new outbound ticket and send the first message to the customer."""
+        serializer = ComposeTicketSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        team = self.team
+
+        if not team.conversations_enabled:
+            return Response(
+                {"detail": "Support is not enabled."},
+                status=drf_status.HTTP_400_BAD_REQUEST,
+            )
+
+        settings = team.conversations_settings or {}
+
+        if not settings.get("email_enabled"):
+            return Response(
+                {"detail": "Email channel is not enabled."},
+                status=drf_status.HTTP_400_BAD_REQUEST,
+            )
+
+        email_config = EmailChannel.objects.filter(
+            id=data["email_config_id"],
+            team=team,
+            kind=EmailChannelKind.SUPPORT,
+            domain_verified=True,
+        ).first()
+        if not email_config:
+            return Response(
+                {"detail": "Email configuration not found or domain not verified."},
+                status=drf_status.HTTP_400_BAD_REQUEST,
+            )
+
+        recipient_email = data["recipient_email"]
+        distinct_id = data.get("recipient_distinct_id", "") or recipient_email
+
+        person: Person | None = None
+        if distinct_id != recipient_email:
+            # Only person.properties is read for this lookup, so skip the distinct-id fetch.
+            with personhog_caller_tag("conversations/ticket-recipient-lookup"):
+                person = get_person_by_distinct_id(team.id, distinct_id, distinct_id_limit=0)
+
+        if person is None:
+            person = _get_persons_by_email(team, [recipient_email]).get(recipient_email.lower())
+            if person is not None and person.distinct_ids:
+                distinct_id = person.distinct_ids[0]
+
+        if data.get("recipient_distinct_id") and person is not None:
+            person_email = (person.properties or {}).get("email", "")
+            if person_email and person_email.lower() != recipient_email.lower():
+                return Response(
+                    {"detail": "Recipient email does not match the person's email on file."},
+                    status=drf_status.HTTP_400_BAD_REQUEST,
+                )
+
+        with transaction.atomic():
+            ticket = Ticket.objects.create_with_number(
+                team=team,
+                channel_source=Channel.EMAIL,
+                distinct_id=distinct_id,
+                status=Status.OPEN,
+                widget_session_id=str(uuid.uuid4()),
+                email_config=email_config,
+                email_from=recipient_email,
+                email_subject=data.get("email_subject", ""),
+                # Ticket search, the person display and restore-by-email all read the
+                # customer's address from traits, so outbound tickets must carry it too.
+                anonymous_traits={"email": recipient_email},
+                # The recipient hasn't proven control of this address — a team member just typed it —
+                # so leave identity unknown. It's promoted to verified if/when they reply and authenticate.
+                identity_verified=None,
+            )
+
+            Comment.objects.create(
+                team=team,
+                created_by=request.user,
+                scope="conversations_ticket",
+                item_id=str(ticket.id),
+                content=data["message"],
+                rich_content=data.get("rich_content"),
+                item_context={"author_type": "human", "is_private": False},
+            )
+
+        try:
+            report_user_action(
+                request.user,
+                "support ticket composed",
+                {"channel_source": Channel.EMAIL},
+                team=team,
+                request=request,
+            )
+        except Exception as e:
+            capture_exception(e, {"ticket_id": str(ticket.id)})
+
+        return Response(
+            {"id": str(ticket.id), "ticket_number": ticket.ticket_number},
+            status=drf_status.HTTP_201_CREATED,
+        )
+
+
+def validate_assignee(assignee: object) -> TicketAssignee | None:
+    """Validate assignee payload structure."""
+    if assignee is None:
+        return None
+    if not isinstance(assignee, dict):
+        raise serializers.ValidationError({"assignee": "must be an object"})
+    if "type" not in assignee or "id" not in assignee:
+        raise serializers.ValidationError({"assignee": "must have 'type' and 'id'"})
+    if assignee["type"] not in ("user", "role"):
+        raise serializers.ValidationError({"assignee": "type must be 'user' or 'role'"})
+
+    if assignee["type"] == "user":
+        if not isinstance(assignee["id"], int):
+            raise serializers.ValidationError({"assignee": "user id must be an integer"})
+    elif assignee["type"] == "role":
+        try:
+            uuid.UUID(str(assignee["id"]))
+        except (ValueError, AttributeError):
+            raise serializers.ValidationError({"assignee": "role id must be a valid UUID"})
+
+    return cast(TicketAssignee, assignee)
+
+
+def validate_assignee_membership(assignee: TicketAssignee | None, organization: Organization) -> None:
+    """Validate that the assignee belongs to the organization."""
+    if assignee is None:
+        return
+
+    if assignee["type"] == "user":
+        if not OrganizationMembership.objects.filter(organization=organization, user_id=assignee["id"]).exists():
+            raise serializers.ValidationError({"assignee": "user is not a member of this organization"})
+    elif assignee["type"] == "role":
+        if not Role.objects.filter(id=assignee["id"], organization=organization).exists():
+            raise serializers.ValidationError({"assignee": "role does not belong to this organization"})
+
+
+def assign_ticket(
+    ticket: Ticket,
+    assignee: object,
+    organization: Organization,
+    user: User | None,
+    team_id: int,
+    was_impersonated: bool,
+    trigger: Trigger | None = None,
+) -> None:
+    """
+    Assign a ticket to a user or role.
+
+    Args:
+        ticket: The ticket to assign
+        assignee: Dict with 'type' ('user' or 'role') and 'id', or None to unassign
+        organization: The organization
+        user: The user making the change
+        team_id: The team ID
+        was_impersonated: Whether the session is impersonated
+        trigger: Optional Trigger identifying an automated source (e.g. a workflow) that made the change
+    """
+    validated_assignee = validate_assignee(assignee)
+    validate_assignee_membership(validated_assignee, organization)
+    _assign_ticket(ticket, validated_assignee, organization, user, team_id, was_impersonated, trigger)
+
+
+def _assign_ticket(
+    ticket: Ticket,
+    assignee: TicketAssignee | None,
+    organization: Organization,
+    user: User | None,
+    team_id: int,
+    was_impersonated: bool,
+    trigger: Trigger | None = None,
+) -> None:
+    with transaction.atomic():
+        # Lock the ticket to prevent concurrent modifications
+        Ticket.objects.select_for_update().get(id=ticket.id, team_id=team_id)
+        assignment_before = TicketAssignment.objects.filter(ticket_id=ticket.id).first()
+        serialized_assignment_before = TicketAssignmentSerializer(assignment_before).data if assignment_before else None
+
+        if assignee:
+            assignment_after, _ = TicketAssignment.objects.update_or_create(
+                ticket_id=ticket.id,
+                defaults={
+                    "user_id": None if assignee["type"] != "user" else assignee["id"],
+                    "role_id": None if assignee["type"] != "role" else assignee["id"],
+                },
+            )
+            serialized_assignment_after = TicketAssignmentSerializer(assignment_after).data
+        else:
+            if assignment_before:
+                assignment_before.delete()
+            serialized_assignment_after = None
+
+        # Callers pass the assignee whenever it's present in the payload (the ticket UI always
+        # sends the full form), so skip logging and the assignment event when nothing changed —
+        # otherwise every save writes "assigned to unassigned" and fires assignment-triggered
+        # workflows.
+        if serialized_assignment_before == serialized_assignment_after:
+            return
+
+        log_activity(
+            organization_id=organization.id,
+            team_id=team_id,
+            user=user,
+            was_impersonated=was_impersonated,
+            item_id=str(ticket.id),
+            scope="Ticket",
+            activity="assigned",
+            detail=Detail(
+                name=f"Ticket #{ticket.ticket_number}",
+                changes=[
+                    Change(
+                        type="Ticket",
+                        field="assignee",
+                        before=serialized_assignment_before,
+                        after=serialized_assignment_after,
+                        action="changed",
+                    )
+                ],
+                trigger=trigger,
+            ),
+        )
+
+        # Emit analytics event for workflow triggers
+        try:
+            if assignee:
+                assignee_type = assignee["type"]
+                assignee_id = str(assignee["id"])
+            else:
+                assignee_type = None
+                assignee_id = None
+            capture_ticket_assigned(ticket, assignee_type, assignee_id, actor=user, actor_type="user")
+        except Exception as e:
+            capture_exception(e, {"ticket_id": str(ticket.id)})

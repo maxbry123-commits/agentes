@@ -1,0 +1,1771 @@
+import * as fs from 'fs';
+
+import async from 'async';
+import chalk from 'chalk';
+import cliProgress from 'cli-progress';
+import Table from 'cli-table3';
+import cliState from '../cliState';
+import { getEnvString } from '../envars';
+import logger, { getLogLevel } from '../logger';
+import { checkRemoteHealth } from '../util/apiHealth';
+import { maybeLoadFromExternalFile } from '../util/file';
+import invariant from '../util/invariant';
+import { extractVariablesFromTemplates } from '../util/templates';
+import { loadYaml } from '../util/yamlLoad';
+import {
+  ALIASED_PLUGIN_MAPPINGS,
+  BIAS_PLUGINS,
+  DATASET_EXEMPT_PLUGINS,
+  FINANCIAL_PLUGINS,
+  FOUNDATION_PLUGINS,
+  getDefaultNFanout,
+  HARM_PLUGINS,
+  INSURANCE_PLUGINS,
+  isFanoutStrategy,
+  MEDICAL_PLUGINS,
+  MULTI_INPUT_EXCLUDED_PLUGINS,
+  MULTI_INPUT_VAR,
+  PHARMACY_PLUGINS,
+  PII_PLUGINS,
+  riskCategorySeverityMap,
+  Severity,
+  STRATEGY_COLLECTION_MAPPINGS,
+  STRATEGY_COLLECTIONS,
+  TEEN_SAFETY_PLUGINS,
+  TELECOM_PLUGINS,
+} from './constants';
+import { CODING_AGENT_CORE_PLUGINS, CODING_AGENT_PLUGINS } from './constants/codingAgents';
+import { extractEntities } from './extraction/entities';
+import { extractSystemPurpose } from './extraction/purpose';
+import { trackGenerationTokenUsage } from './generationTokenUsage';
+import { CustomPlugin } from './plugins/custom';
+import { Plugins } from './plugins/index';
+import { isValidPolicyObject, makeInlinePolicyIdSync } from './plugins/policy/utils';
+import { redteamProviderManager } from './providers/shared';
+import { getRemoteHealthUrl, shouldGenerateRemote } from './remoteGeneration';
+import {
+  remoteGenerationContextPayload,
+  resolveRedteamGenerationContext,
+} from './remoteGenerationContext';
+import {
+  getGeneratedPromptOverLimit,
+  getMaxCharsPerMessageModifierValue,
+  MAX_CHARS_PER_MESSAGE_MODIFIER_KEY,
+} from './shared/promptLength';
+import { validateSharpDependency } from './sharpAvailability';
+import { loadStrategy, Strategies, validateStrategies } from './strategies/index';
+import { pluginMatchesStrategyTargets } from './strategies/util';
+import {
+  extractGoalFromPrompt,
+  extractMaterializedVariablesFromJsonWithMetadata,
+  getShortPluginId,
+} from './util';
+
+import type { ApiProvider, Inputs, TestCase, TestCaseWithPlugin, TokenUsage } from '../types/index';
+import type { RedteamProviderSelection } from './providers/shared';
+import type {
+  FailedPluginInfo,
+  Policy,
+  RedteamGenerationContext,
+  RedteamPluginObject,
+  RedteamStrategyObject,
+  SynthesizeOptions,
+} from './types';
+
+const MATERIALIZED_MULTI_INPUT_PROMPT_METADATA_KEY = '__promptfooMaterializedMultiInputPrompt';
+
+function getMaterializedMultiInputPromptSnapshot(
+  metadata: TestCase['metadata'] | undefined,
+): string | undefined {
+  const snapshot = metadata?.[MATERIALIZED_MULTI_INPUT_PROMPT_METADATA_KEY];
+  return typeof snapshot === 'string' ? snapshot : undefined;
+}
+
+function getMaterializedMultiInputPromptMetadata(
+  vars: TestCase['vars'] | undefined,
+): Record<string, string> | undefined {
+  const prompt = vars?.[MULTI_INPUT_VAR];
+  return typeof prompt === 'string'
+    ? { [MATERIALIZED_MULTI_INPUT_PROMPT_METADATA_KEY]: prompt }
+    : undefined;
+}
+
+function getPolicyText(metadata: TestCase['metadata'] | undefined): string | undefined {
+  if (!metadata || metadata.policy === undefined || metadata.policy === null) {
+    return undefined;
+  }
+
+  const policyValue = metadata.policy as unknown;
+
+  if (typeof policyValue === 'string') {
+    return policyValue;
+  }
+
+  if (typeof policyValue === 'object') {
+    const policyObject = policyValue as { text?: string };
+    return typeof policyObject.text === 'string' && policyObject.text.length > 0
+      ? policyObject.text
+      : undefined;
+  }
+
+  return undefined;
+}
+
+async function rematerializeStrategyInputVars(
+  testCase: TestCase,
+  injectVar: string,
+  provider: ApiProvider,
+  purpose: string,
+  materializationIndex: number,
+): Promise<{
+  inputMaterialization: Record<string, unknown> | undefined;
+  vars: TestCase['vars'];
+}> {
+  const inputs = testCase.metadata?.pluginConfig?.inputs as Inputs | undefined;
+  const inputMaterialization = testCase.metadata?.inputMaterialization as
+    | Record<string, unknown>
+    | undefined;
+  const materializedPromptSnapshot = getMaterializedMultiInputPromptSnapshot(testCase.metadata);
+  const currentInjectVar = testCase.vars?.[injectVar];
+
+  if (!inputs || Object.keys(inputs).length === 0 || !currentInjectVar) {
+    return {
+      inputMaterialization,
+      vars: testCase.vars,
+    };
+  }
+
+  const promptChangedSinceMaterialization =
+    typeof currentInjectVar === 'string' &&
+    typeof materializedPromptSnapshot === 'string' &&
+    currentInjectVar !== materializedPromptSnapshot;
+  const alreadyMaterialized =
+    Boolean(inputMaterialization) &&
+    Object.keys(inputs).every((key) =>
+      Object.prototype.hasOwnProperty.call(testCase.vars ?? {}, key),
+    );
+  if (alreadyMaterialized && !promptChangedSinceMaterialization) {
+    return {
+      inputMaterialization,
+      vars: testCase.vars,
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(String(currentInjectVar));
+    const materializedVars = await extractMaterializedVariablesFromJsonWithMetadata(
+      parsed,
+      inputs,
+      {
+        materializationIndex,
+        pluginId: String(testCase.metadata?.pluginId || 'unknown-plugin'),
+        provider,
+        purpose,
+      },
+    );
+
+    return {
+      inputMaterialization: materializedVars.metadata
+        ? {
+            ...inputMaterialization,
+            ...materializedVars.metadata,
+          }
+        : inputMaterialization,
+      vars: {
+        ...testCase.vars,
+        ...materializedVars.vars,
+      },
+    };
+  } catch {
+    return {
+      inputMaterialization,
+      vars: testCase.vars,
+    };
+  }
+}
+
+export const MAX_MAX_CONCURRENCY = 20;
+
+/**
+ * Gets the severity level for a plugin based on its ID and configuration.
+ * @param pluginId - The ID of the plugin.
+ * @param pluginConfig - Optional configuration for the plugin.
+ * @returns The severity level.
+ */
+function getPluginSeverity(pluginId: string, pluginConfig?: Record<string, any>): Severity {
+  if (pluginConfig?.severity) {
+    return pluginConfig.severity;
+  }
+
+  const shortId = getShortPluginId(pluginId);
+  return shortId in riskCategorySeverityMap
+    ? riskCategorySeverityMap[shortId as keyof typeof riskCategorySeverityMap]
+    : Severity.Low;
+}
+
+// Maximum length for policy text preview in display
+const POLICY_PREVIEW_MAX_LENGTH = 20;
+
+/**
+ * Truncates and normalizes text for display preview.
+ */
+function truncateForPreview(text: string): string {
+  const normalized = text.trim().replace(/\n+/g, ' ');
+  return normalized.length > POLICY_PREVIEW_MAX_LENGTH
+    ? normalized.slice(0, POLICY_PREVIEW_MAX_LENGTH) + '...'
+    : normalized;
+}
+
+/**
+ * Generates a unique display ID for a plugin instance.
+ * The returned string serves as both the unique key and the human-readable display.
+ *
+ * For policy plugins, the ID includes a 12-char identifier (hash or UUID prefix) for uniqueness:
+ * - Named cloud policy: "Policy Name"
+ * - Unnamed cloud policy: "policy [12-char-id]: preview..."
+ * - Inline policy: "policy [hash]: preview..."
+ *
+ * @param plugin - The plugin configuration.
+ * @returns A unique display ID string.
+ */
+function getPluginDisplayId(plugin: { id: string; config?: Record<string, any> }): string {
+  if (plugin.id !== 'policy') {
+    return plugin.id;
+  }
+
+  const policyConfig = plugin.config?.policy;
+
+  // Cloud policy (object with id)
+  if (typeof policyConfig === 'object' && policyConfig !== null && policyConfig.id) {
+    if (policyConfig.name) {
+      return policyConfig.name;
+    }
+    const shortId = policyConfig.id.replace(/-/g, '').slice(0, 12);
+    const preview = policyConfig.text ? truncateForPreview(String(policyConfig.text)) : '';
+    return preview ? `policy [${shortId}]: ${preview}` : `policy [${shortId}]`;
+  }
+
+  // Inline policy (string)
+  if (typeof policyConfig === 'string') {
+    const hash = makeInlinePolicyIdSync(policyConfig);
+    const preview = truncateForPreview(policyConfig);
+    return `policy [${hash}]: ${preview}`;
+  }
+
+  return 'policy';
+}
+
+/**
+ * Determines the status of test generation based on requested and generated counts.
+ * @param requested - The number of requested tests.
+ * @param generated - The number of generated tests.
+ * @returns A colored string indicating the status.
+ */
+function getStatus(requested: number, generated: number): string {
+  if (requested === 0 && generated === 0) {
+    return chalk.gray('Skipped');
+  }
+  if (generated === 0) {
+    return chalk.red('Failed');
+  }
+  if (generated < requested) {
+    return chalk.yellow('Partial');
+  }
+  return chalk.green('Success');
+}
+
+/**
+ * Generates a report of plugin and strategy results.
+ * @param pluginResults - Results from plugin executions (key is the display ID).
+ * @param strategyResults - Results from strategy executions.
+ * @returns A formatted string containing the report.
+ */
+function generateReport(
+  pluginResults: Record<string, { requested: number; generated: number }>,
+  strategyResults: Record<string, { requested: number; generated: number }>,
+): string {
+  const table = new Table({
+    head: ['#', 'Type', 'ID', 'Requested', 'Generated', 'Status'].map((h) =>
+      chalk.dim(chalk.white(h)),
+    ),
+    colWidths: [5, 10, 40, 12, 12, 14],
+  });
+
+  let rowIndex = 1;
+
+  Object.entries(pluginResults)
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .forEach(([displayId, { requested, generated }]) => {
+      table.push([
+        rowIndex++,
+        'Plugin',
+        displayId,
+        requested,
+        generated,
+        getStatus(requested, generated),
+      ]);
+    });
+
+  Object.entries(strategyResults)
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .forEach(([id, { requested, generated }]) => {
+      table.push([
+        rowIndex++,
+        'Strategy',
+        id,
+        requested,
+        generated,
+        getStatus(requested, generated),
+      ]);
+    });
+
+  return `\nTest Generation Report:\n${table.toString()}`;
+}
+
+/**
+ * Resolves top-level file paths in the plugin configuration.
+ * @param config - The plugin configuration to resolve.
+ * @returns The resolved plugin configuration.
+ */
+export function resolvePluginConfig(config: Record<string, any> | undefined): Record<string, any> {
+  if (!config) {
+    return {};
+  }
+
+  for (const key in config) {
+    const value = config[key];
+    if (typeof value === 'string' && value.startsWith('file://')) {
+      const filePath = value.slice('file://'.length);
+
+      if (!fs.existsSync(filePath)) {
+        throw new Error(`File not found: ${filePath}`);
+      }
+
+      if (filePath.endsWith('.yaml')) {
+        config[key] = loadYaml(fs.readFileSync(filePath, 'utf8'));
+      } else if (filePath.endsWith('.json')) {
+        config[key] = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+      } else {
+        config[key] = fs.readFileSync(filePath, 'utf8');
+      }
+    }
+  }
+  return config;
+}
+
+function resolvePluginConfigWithMaxChars(
+  config: Record<string, any> | undefined,
+  maxCharsPerMessage?: number,
+): Record<string, any> {
+  return {
+    ...resolvePluginConfig(config),
+    ...(maxCharsPerMessage ? { maxCharsPerMessage } : {}),
+  };
+}
+
+function buildRedteamModifiers({
+  maxCharsPerMessage,
+  pluginConfig,
+  testGenerationInstructions,
+}: {
+  maxCharsPerMessage?: number;
+  pluginConfig?: Record<string, any>;
+  testGenerationInstructions?: string;
+}): Record<string, string> {
+  const modifiers: Record<string, string> = {
+    ...(testGenerationInstructions ? { testGenerationInstructions } : {}),
+    ...((pluginConfig?.modifiers as Record<string, string> | undefined) ?? {}),
+  };
+  const maxCharsPerMessageModifier = getMaxCharsPerMessageModifierValue(
+    maxCharsPerMessage ?? pluginConfig?.maxCharsPerMessage,
+  );
+  if (maxCharsPerMessageModifier) {
+    modifiers[MAX_CHARS_PER_MESSAGE_MODIFIER_KEY] = maxCharsPerMessageModifier;
+  }
+  return modifiers;
+}
+
+const categories = {
+  foundation: FOUNDATION_PLUGINS,
+  harmful: Object.keys(HARM_PLUGINS),
+  'coding-agent:core': CODING_AGENT_CORE_PLUGINS,
+  'coding-agent:all': CODING_AGENT_PLUGINS,
+  bias: BIAS_PLUGINS,
+  pii: PII_PLUGINS,
+  medical: MEDICAL_PLUGINS,
+  pharmacy: PHARMACY_PLUGINS,
+  insurance: INSURANCE_PLUGINS,
+  financial: FINANCIAL_PLUGINS,
+  telecom: TELECOM_PLUGINS,
+  'teen-safety': TEEN_SAFETY_PLUGINS,
+} as const;
+
+/**
+ * Formats the test count for display.
+ * @param numTests - The number of tests.
+ * @param strategy - Whether the test count is for a strategy.
+ * @returns A formatted string representing the test count.
+ */
+const formatTestCount = (numTests: number, strategy: boolean): string =>
+  numTests === 1
+    ? `1 ${strategy ? 'additional ' : ''}test`
+    : `${numTests} ${strategy ? 'additional ' : ''}tests`;
+
+function getPluginLanguageCount(
+  plugin: SynthesizeOptions['plugins'][number],
+  language?: string | string[],
+): number {
+  const pluginLanguageConfig = plugin.config?.language ?? language;
+  return Array.isArray(pluginLanguageConfig) ? pluginLanguageConfig.length : 1;
+}
+
+// Cache resolved intent counts per plugin instance. Resolving `file://`
+// intent lists requires disk I/O + parsing; `getExpectedPluginTestCount` is
+// invoked many times per run (totals, logging, progress, reporting), so we
+// memoize on the plugin object identity to avoid redundant reads.
+const intentTestCountCache = new WeakMap<object, number>();
+
+function getIntentTestCount(plugin: SynthesizeOptions['plugins'][number]): number | undefined {
+  if (plugin.id !== 'intent') {
+    return undefined;
+  }
+
+  const cached = intentTestCountCache.get(plugin as object);
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  const intent = plugin.config?.intent;
+  if (!intent) {
+    intentTestCountCache.set(plugin as object, 0);
+    return 0;
+  }
+
+  // Resolve `file://` references so pre-generation totals match what IntentPlugin
+  // will actually emit at runtime. Falls back to the literal value if the file
+  // can't be read yet (e.g. the path is unresolved or doesn't exist locally).
+  let resolved: unknown;
+  try {
+    resolved = maybeLoadFromExternalFile(intent as string | object);
+  } catch (err) {
+    logger.debug(
+      `[redteam] Failed to resolve intent file for pre-generation count; treating as a single intent. Run-time count from IntentPlugin will be authoritative. Error: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    resolved = intent;
+  }
+
+  const count = Array.isArray(resolved) ? resolved.length : 1;
+  intentTestCountCache.set(plugin as object, count);
+  return count;
+}
+
+function getExpectedPluginTestCount(
+  plugin: SynthesizeOptions['plugins'][number],
+  language?: string | string[],
+): number {
+  const languageCount = getPluginLanguageCount(plugin, language);
+  return (getIntentTestCount(plugin) ?? plugin.numTests ?? 0) * languageCount;
+}
+
+/**
+ * Gets the language from a test case's metadata.
+ * Checks both metadata.language and metadata.modifiers.language.
+ * @param test - The test case to get language from.
+ * @returns The language string or undefined if not found.
+ */
+function getLanguageForTestCase(test: TestCase | undefined): string | undefined {
+  if (!test) {
+    return undefined;
+  }
+  return test.metadata?.language || test.metadata?.modifiers?.language;
+}
+
+function filterOversizedTestCases<T extends TestCase>(
+  testCases: T[],
+  injectVar: string,
+  sourceLabel: string,
+  maxCharsPerMessage?: number,
+): T[] {
+  return testCases.filter((testCase) => {
+    const testCaseMaxCharsPerMessage =
+      maxCharsPerMessage ??
+      (testCase.metadata?.strategyConfig as { maxCharsPerMessage?: number } | undefined)
+        ?.maxCharsPerMessage ??
+      (testCase.metadata?.pluginConfig as { maxCharsPerMessage?: number } | undefined)
+        ?.maxCharsPerMessage;
+    const violation = getGeneratedPromptOverLimit(
+      String(testCase.vars?.[injectVar] ?? ''),
+      testCaseMaxCharsPerMessage,
+    );
+    if (!violation) {
+      return true;
+    }
+
+    logger.warn(
+      `[${sourceLabel}] Dropping generated test case that exceeds maxCharsPerMessage=${violation.limit} (${violation.length} chars)`,
+    );
+    return false;
+  });
+}
+
+/**
+ * Adds comprehensive metadata to plugin test cases including language, plugin info, and severity.
+ * @param test - The test case to add metadata to.
+ * @param lang - The language for this test.
+ * @param plugin - The plugin configuration.
+ * @param testGenerationInstructions - Optional test generation instructions.
+ * @returns Test case with complete metadata.
+ */
+function addLanguageToPluginMetadata(
+  test: TestCase,
+  lang: string | undefined,
+  plugin: RedteamPluginObject,
+  maxCharsPerMessage?: number,
+  testGenerationInstructions?: string,
+): TestCase {
+  const existingLanguage = getLanguageForTestCase(test);
+  const languageToAdd = lang && !existingLanguage ? { language: lang } : {};
+  const includePluginConfig = !(
+    test.metadata &&
+    Object.hasOwn(test.metadata, 'pluginConfig') &&
+    test.metadata.pluginConfig === undefined
+  );
+
+  // Use modifiers from the test's pluginConfig first (which may have been computed by appendModifiers),
+  // then fall back to the original plugin.config?.modifiers
+  const pluginModifiers = buildRedteamModifiers({
+    maxCharsPerMessage,
+    pluginConfig:
+      (test.metadata?.pluginConfig as Record<string, any> | undefined) ||
+      plugin.config ||
+      undefined,
+    testGenerationInstructions,
+  });
+
+  return {
+    ...test,
+    metadata: {
+      ...test.metadata,
+      pluginId: plugin.id,
+      ...(includePluginConfig && {
+        pluginConfig: {
+          ...resolvePluginConfigWithMaxChars(plugin.config, maxCharsPerMessage),
+          ...((test.metadata?.pluginConfig as Record<string, any> | undefined) ?? {}),
+        },
+      }),
+      severity: plugin.severity ?? getPluginSeverity(plugin.id, resolvePluginConfig(plugin.config)),
+      modifiers: {
+        ...pluginModifiers,
+        ...test.metadata?.modifiers,
+        // Add language to modifiers if not already present (respect existing)
+        ...languageToAdd,
+      },
+      // Hoist language to top-level metadata for backward compatibility and easier access
+      ...languageToAdd,
+      ...getMaterializedMultiInputPromptMetadata(test.vars),
+    },
+  };
+}
+
+/**
+ * Determines whether a strategy should be applied to a test case based on plugin targeting rules.
+ *
+ * This function evaluates multiple criteria to decide if a strategy matches a test case:
+ * - Excludes strategy-exempt plugins (defined in STRATEGY_EXEMPT_PLUGINS)
+ * - Excludes sequence providers (which are verbatim and don't support strategies)
+ * - Respects plugin-level strategy exclusions via excludeStrategies config
+ * - Matches against target plugins through direct ID match or category prefixes
+ *
+ * @param testCase - The test case containing plugin metadata to evaluate
+ * @param strategyId - The ID of the strategy being considered for application
+ * @param targetPlugins - Optional array of plugin IDs or categories that the strategy targets.
+ *                       If undefined or empty, strategy applies to all non-exempt plugins.
+ *                       Supports both exact matches and category prefixes (e.g., 'harmful' matches 'harmful:hate')
+ * @returns True if the strategy should be applied to this test case, false otherwise
+ */
+
+/**
+ * Applies strategies to the test cases.
+ * @param testCases - The initial test cases generated by plugins.
+ * @param strategies - The strategies to apply.
+ * @param injectVar - The variable to inject.
+ * @returns An array of new test cases generated by strategies.
+ */
+async function applyStrategies(
+  testCases: TestCaseWithPlugin[],
+  strategies: RedteamStrategyObject[],
+  injectVar: string,
+  providerSelection: RedteamProviderSelection,
+  purpose: string,
+  excludeTargetOutputFromAgenticAttackGeneration?: boolean,
+  maxCharsPerMessage?: number,
+  redteamGenerationContext?: RedteamGenerationContext,
+  wrapGenerationProvider?: (provider: ApiProvider) => ApiProvider,
+): Promise<{
+  testCases: TestCaseWithPlugin[];
+  strategyResults: Record<string, { requested: number; generated: number }>;
+}> {
+  const newTestCases: TestCaseWithPlugin[] = [];
+  const strategyResults: Record<string, { requested: number; generated: number }> = {};
+
+  for (const strategy of strategies) {
+    logger.debug(`Generating ${strategy.id} tests`);
+
+    let strategyAction;
+    if (strategy.id.startsWith('file://')) {
+      const loadedStrategy = await loadStrategy(strategy.id);
+      strategyAction = loadedStrategy.action;
+    } else {
+      // First try to find the exact strategy ID (e.g., jailbreak:composite)
+      let builtinStrategy = Strategies.find((s) => s.id === strategy.id);
+
+      // If not found, handle custom strategy variants (e.g., custom:aggressive)
+      if (!builtinStrategy && strategy.id.includes(':')) {
+        const baseStrategyId = strategy.id.split(':')[0];
+        builtinStrategy = Strategies.find((s) => s.id === baseStrategyId);
+      }
+
+      if (!builtinStrategy) {
+        logger.warn(`Strategy ${strategy.id} not registered, skipping`);
+        continue;
+      }
+      strategyAction = builtinStrategy.action;
+    }
+
+    const targetPlugins = strategy.config?.plugins;
+    const applicableTestCases = testCases.filter((t) => {
+      // Check plugin matching first
+      if (!pluginMatchesStrategyTargets(t, strategy.id, targetPlugins)) {
+        return false;
+      }
+
+      // Skip retry tests - they shouldn't be transformed by strategies
+      if (t.metadata?.retry === true) {
+        logger.debug(
+          `Skipping ${strategy.id} for retry test (plugin: ${t.metadata?.pluginId}) - retry tests are not transformed`,
+        );
+        return false;
+      }
+
+      return true;
+    });
+
+    // Apply numTests pre-limit if configured (with defensive check for NaN/Infinity)
+    const numTestsLimit = strategy.config?.numTests;
+    if (typeof numTestsLimit === 'number' && Number.isFinite(numTestsLimit) && numTestsLimit >= 0) {
+      // Early exit for numTests=0 - skip strategy entirely
+      if (numTestsLimit === 0) {
+        logger.warn(`[Strategy] ${strategy.id}: numTests=0 configured, skipping strategy`);
+        continue;
+      }
+    }
+
+    // Pre-limit test cases before passing to strategy (avoids wasted computation)
+    let testCasesToProcess = applicableTestCases;
+    if (typeof numTestsLimit === 'number' && Number.isFinite(numTestsLimit) && numTestsLimit > 0) {
+      if (applicableTestCases.length > numTestsLimit) {
+        logger.debug(
+          `[Strategy] ${strategy.id}: Pre-limiting ${applicableTestCases.length} tests to numTests=${numTestsLimit}`,
+        );
+        testCasesToProcess = applicableTestCases.slice(0, numTestsLimit);
+      }
+    }
+
+    const strategyTestCases: (TestCase | undefined)[] = await strategyAction(
+      testCasesToProcess,
+      injectVar,
+      {
+        ...(strategy.config || {}),
+        ...(maxCharsPerMessage ? { maxCharsPerMessage } : {}),
+        excludeTargetOutputFromAgenticAttackGeneration,
+        ...remoteGenerationContextPayload(redteamGenerationContext),
+      },
+      strategy.id,
+      {
+        // Keep every local strategy phase on the provider already selected for this synthesis run.
+        // The source tells strategies whether the choice was explicit or an implicit default.
+        generationProviderSelection: providerSelection,
+        // Specialized local providers still need to contribute to generation usage totals.
+        wrapGenerationProvider,
+      },
+    );
+
+    // Filter out null/undefined
+    let resultTestCases = strategyTestCases.filter(
+      (t): t is NonNullable<typeof t> => t !== null && t !== undefined,
+    );
+
+    // Post-cap safety net for strategies that generate more outputs than inputs (1:N fan-out)
+    if (typeof numTestsLimit === 'number' && Number.isFinite(numTestsLimit) && numTestsLimit > 0) {
+      if (resultTestCases.length > numTestsLimit) {
+        logger.warn(
+          `[Strategy] ${strategy.id}: Post-cap safety net applied (${resultTestCases.length} -> ${numTestsLimit}). Strategy generated more tests than input.`,
+        );
+        resultTestCases = resultTestCases.slice(0, numTestsLimit);
+      }
+    }
+
+    resultTestCases = filterOversizedTestCases(
+      resultTestCases,
+      injectVar,
+      `Strategy ${strategy.id}`,
+      maxCharsPerMessage,
+    );
+
+    newTestCases.push(
+      ...(await Promise.all(
+        resultTestCases.map(async (t, materializationIndex) => {
+          const { inputMaterialization, vars } = await rematerializeStrategyInputVars(
+            t,
+            injectVar,
+            providerSelection.provider,
+            purpose,
+            materializationIndex,
+          );
+          const strategyConfig = {
+            ...(strategy.config || {}),
+            ...(maxCharsPerMessage ? { maxCharsPerMessage } : {}),
+            ...(t?.metadata?.strategyConfig || {}),
+          };
+
+          return {
+            ...t,
+            vars,
+            metadata: {
+              ...(t?.metadata || {}),
+              // Don't set strategyId for retry strategy (it's not user-facing)
+              ...(strategy.id !== 'retry' && {
+                strategyId: t?.metadata?.strategyId || strategy.id,
+              }),
+              ...(t?.metadata?.pluginId && { pluginId: t.metadata.pluginId }),
+              ...(t?.metadata?.pluginConfig && {
+                pluginConfig: t.metadata.pluginConfig,
+              }),
+              ...(inputMaterialization && {
+                inputMaterialization,
+              }),
+              ...(Object.keys(strategyConfig).length > 0 && {
+                strategyConfig,
+              }),
+              ...getMaterializedMultiInputPromptMetadata(vars),
+            },
+          };
+        }),
+      )),
+    );
+
+    // Compute a display id for reporting (helpful for layered strategies)
+    const displayId =
+      strategy.id === 'layer' && Array.isArray(strategy.config?.steps)
+        ? `layer(${(strategy.config!.steps as any[])
+            .map((st) => (typeof st === 'string' ? st : st.id))
+            .join('→')})`
+        : strategy.id;
+
+    // Check if strategy generated tests across multiple languages
+    // Language can be in metadata.language or metadata.modifiers.language
+    // Note: Language is passed to strategies via test metadata.modifiers.language from plugin generation
+    const languagesInResults = new Set(
+      strategyTestCases
+        .map((t) => getLanguageForTestCase(t))
+        .filter((lang): lang is string => lang !== undefined),
+    );
+
+    // Helper to apply numTests cap to requested count (with defensive check for NaN/Infinity)
+    const applyNumTestsCap = (calculatedRequested: number): number => {
+      const numTestsCap = strategy.config?.numTests;
+      if (typeof numTestsCap === 'number' && Number.isFinite(numTestsCap) && numTestsCap >= 0) {
+        return Math.min(calculatedRequested, numTestsCap);
+      }
+      return calculatedRequested;
+    };
+
+    if (languagesInResults.size > 1) {
+      // Strategy was applied to multilingual tests - break down by language
+      // Don't show language suffix for English (en) - it's the default
+      const resultsByLanguage: Record<string, { requested: number; generated: number }> = {};
+
+      for (const lang of languagesInResults) {
+        const testsForLang = resultTestCases.filter((t) => getLanguageForTestCase(t) === lang);
+        const applicableForLang = applicableTestCases.filter(
+          (t) => getLanguageForTestCase(t) === lang,
+        );
+
+        let n = 1;
+        if (typeof strategy.config?.n === 'number') {
+          n = strategy.config.n;
+        } else if (isFanoutStrategy(strategy.id)) {
+          n = getDefaultNFanout(strategy.id);
+        }
+
+        resultsByLanguage[lang] = {
+          requested: applyNumTestsCap(applicableForLang.length * n),
+          generated: testsForLang.length,
+        };
+      }
+
+      for (const [lang, result] of Object.entries(resultsByLanguage)) {
+        const strategyDisplayId = lang === 'en' ? displayId : `${displayId} (${lang})`;
+        strategyResults[strategyDisplayId] = result;
+      }
+    } else if (strategy.id === 'layer') {
+      // Layer strategy: requested count is same as applicable test cases
+      strategyResults[displayId] = {
+        requested: applyNumTestsCap(applicableTestCases.length),
+        generated: resultTestCases.length,
+      };
+    } else {
+      // get an accurate 'Requested' count for strategies that add additional tests during generation
+      let n = 1;
+      if (typeof strategy.config?.n === 'number') {
+        n = strategy.config.n;
+      } else if (isFanoutStrategy(strategy.id)) {
+        n = getDefaultNFanout(strategy.id);
+      }
+
+      strategyResults[displayId] = {
+        requested: applyNumTestsCap(applicableTestCases.length * n),
+        generated: resultTestCases.length,
+      };
+    }
+  }
+
+  return { testCases: newTestCases, strategyResults };
+}
+
+/**
+ * Helper function to get the test count based on strategy configuration.
+ * @param strategy - The strategy object to evaluate.
+ * @param totalPluginTests - The total number of plugin tests.
+ * @param strategies - The array of strategies.
+ * @returns The calculated test count.
+ */
+export function getTestCount(
+  strategy: RedteamStrategyObject,
+  totalPluginTests: number,
+  _strategies: RedteamStrategyObject[],
+): number {
+  let count: number;
+
+  // Basic strategy either keeps original count or removes all tests
+  if (strategy.id === 'basic') {
+    count = strategy.config?.enabled === false ? 0 : totalPluginTests;
+  } else if (strategy.id === 'layer') {
+    // Layer strategy: returns the same count as plugin tests
+    // (plugins already account for language multipliers)
+    count = totalPluginTests;
+  } else if (strategy.id === 'retry') {
+    // Retry strategy has its own numTests handling (additive semantics)
+    const configuredNumTests = strategy.config?.numTests as number | undefined;
+    const additionalTests = configuredNumTests ?? totalPluginTests;
+    return totalPluginTests + additionalTests;
+  } else {
+    // Apply fan-out multiplier if this is a fan-out strategy
+    let n = 1;
+    if (typeof strategy.config?.n === 'number') {
+      n = strategy.config.n;
+    } else if (isFanoutStrategy(strategy.id)) {
+      n = getDefaultNFanout(strategy.id);
+    }
+    count = totalPluginTests * n;
+  }
+
+  // Apply numTests cap if configured (for non-retry strategies, with defensive check)
+  const numTestsCap = strategy.config?.numTests;
+  if (typeof numTestsCap === 'number' && Number.isFinite(numTestsCap) && numTestsCap >= 0) {
+    count = Math.min(count, numTestsCap);
+  }
+
+  return count;
+}
+
+/**
+ * Calculates the total number of tests to be generated based on plugins and strategies.
+ * @param plugins - The array of plugins to generate tests for
+ * @param strategies - The array of strategies to apply
+ * @returns Object containing total tests and intermediate calculations
+ */
+export function calculateTotalTests(
+  plugins: SynthesizeOptions['plugins'],
+  strategies: RedteamStrategyObject[],
+  language?: string | string[],
+): {
+  effectiveStrategyCount: number;
+  includeBasicTests: boolean;
+  totalPluginTests: number;
+  totalTests: number;
+} {
+  const retryStrategy = strategies.find((s) => s.id === 'retry');
+  const basicStrategy = strategies.find((s) => s.id === 'basic');
+
+  const basicStrategyExists = basicStrategy !== undefined;
+  const includeBasicTests = basicStrategy?.config?.enabled ?? true;
+
+  const effectiveStrategyCount =
+    basicStrategyExists && !includeBasicTests ? strategies.length - 1 : strategies.length;
+
+  // Calculate total plugin tests accounting for multiple languages
+  // Each plugin's tests are multiplied by the number of languages when multiple languages are configured
+  const totalPluginTests = plugins.reduce((sum, p) => {
+    return sum + getExpectedPluginTestCount(p, language);
+  }, 0);
+
+  // When there are no strategies, or only a disabled basic strategy
+  if (
+    strategies.length === 0 ||
+    (strategies.length === 1 && basicStrategyExists && !includeBasicTests)
+  ) {
+    return {
+      effectiveStrategyCount: 0,
+      includeBasicTests: strategies.length === 0 ? true : includeBasicTests,
+      totalPluginTests,
+      totalTests: includeBasicTests ? totalPluginTests : 0,
+    };
+  }
+
+  // Start with base test count from basic strategy
+  let totalTests = includeBasicTests ? totalPluginTests : 0;
+
+  // Apply retry strategy first if present
+  if (retryStrategy) {
+    totalTests = getTestCount(retryStrategy, totalTests, strategies);
+  }
+
+  // Apply other non-basic, non-retry strategies
+  for (const strategy of strategies) {
+    if (['basic', 'retry'].includes(strategy.id)) {
+      continue;
+    }
+    // Add the tests from this strategy to the total, not replace the total
+    totalTests += getTestCount(strategy, totalPluginTests, strategies);
+  }
+
+  return {
+    effectiveStrategyCount,
+    includeBasicTests,
+    totalPluginTests,
+    totalTests,
+  };
+}
+
+/**
+ * Type guard to check if a strategy ID is a strategy collection
+ */
+function isStrategyCollection(id: string): id is keyof typeof STRATEGY_COLLECTION_MAPPINGS {
+  return STRATEGY_COLLECTIONS.includes(id as keyof typeof STRATEGY_COLLECTION_MAPPINGS);
+}
+
+/**
+ * Synthesizes test cases based on provided options.
+ * @param options - The options for test case synthesis.
+ * @returns A promise that resolves to an object containing the purpose, entities, and test cases.
+ */
+export async function synthesize({
+  abortSignal,
+  cloudTargetDatabaseId: explicitCloudTargetDatabaseId,
+  delay,
+  entities: entitiesOverride,
+  injectVar,
+  inputs,
+  language,
+  maxCharsPerMessage,
+  maxConcurrency = 1,
+  plugins,
+  prompts,
+  provider,
+  purpose: purposeOverride,
+  redteamGenerationContext: inputRedteamGenerationContext,
+  strategies,
+  targetIds,
+  showProgressBar: showProgressBarOverride,
+  excludeTargetOutputFromAgenticAttackGeneration,
+  testGenerationInstructions,
+}: SynthesizeOptions): Promise<{
+  purpose: string;
+  entities: string[];
+  testCases: TestCaseWithPlugin[];
+  injectVar: string;
+  failedPlugins: FailedPluginInfo[];
+  generationTokenUsage?: TokenUsage;
+}> {
+  // Add abort check helper
+  const checkAbort = () => {
+    if (abortSignal?.aborted) {
+      throw new Error('Operation cancelled');
+    }
+  };
+
+  // Add abort checks at key points
+  checkAbort();
+
+  if (prompts.length === 0) {
+    throw new Error('Prompts array cannot be empty');
+  }
+  if (delay && maxConcurrency > 1) {
+    maxConcurrency = 1;
+    logger.warn('Delay is enabled, setting max concurrency to 1.');
+  }
+
+  const redteamGenerationContext = resolveRedteamGenerationContext({
+    cloudTargetDatabaseId: explicitCloudTargetDatabaseId,
+    redteamGenerationContext: inputRedteamGenerationContext,
+    targetIds,
+  });
+  const cloudTargetId = redteamGenerationContext.cloudTargetId;
+
+  if (maxConcurrency > MAX_MAX_CONCURRENCY) {
+    maxConcurrency = MAX_MAX_CONCURRENCY;
+    logger.info(`Max concurrency for test generation is capped at ${MAX_MAX_CONCURRENCY}.`);
+  }
+
+  const expandedStrategies: typeof strategies = [];
+  strategies.forEach((strategy) => {
+    if (isStrategyCollection(strategy.id)) {
+      const aliasedStrategies = STRATEGY_COLLECTION_MAPPINGS[strategy.id];
+      if (aliasedStrategies) {
+        aliasedStrategies.forEach((strategyId) => {
+          expandedStrategies.push({
+            ...strategy,
+            id: strategyId,
+          });
+        });
+      } else {
+        logger.warn(`Strategy collection ${strategy.id} has no mappings, skipping`);
+      }
+    } else {
+      expandedStrategies.push(strategy);
+    }
+  });
+
+  // Deduplicate strategies by a key. For most strategies, the key is the id.
+  // For 'layer', use label if provided, otherwise include the ordered step ids.
+  const seen = new Set<string>();
+  const keyForStrategy = (s: (typeof strategies)[number]): string => {
+    if (s.id === 'layer' && s.config) {
+      const config = s.config as Record<string, unknown>;
+      // If label is provided, use it for uniqueness (allows multiple layer strategies)
+      if (typeof config.label === 'string' && config.label.trim()) {
+        return `layer/${config.label}`;
+      }
+      // Otherwise use steps for uniqueness
+      if (Array.isArray(config.steps)) {
+        const steps = (config.steps as Array<string | { id?: string }>).map((st) =>
+          typeof st === 'string' ? st : (st?.id ?? 'unknown'),
+        );
+        return `layer:${steps.join('->')}`;
+      }
+    }
+    return s.id;
+  };
+  strategies = expandedStrategies.filter((strategy) => {
+    const key = keyForStrategy(strategy);
+    if (seen.has(key)) {
+      logger.debug(`[Synthesize] Skipping duplicate strategy: ${key}`);
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+
+  // Only extract intent/goal when strategies that need it are selected
+  const needsGoalExtraction = strategies.some(
+    (s) => Strategies.find((def) => def.id === s.id)?.requiresGoalExtraction,
+  );
+
+  await validateStrategies(strategies);
+  await validateSharpDependency(strategies, plugins);
+
+  const providerSelection = await redteamProviderManager.getProviderSelection({
+    provider,
+  });
+  const generationTokenUsage: TokenUsage = {
+    cached: 0,
+    completion: 0,
+    numRequests: 0,
+    prompt: 0,
+    total: 0,
+  };
+  const redteamProvider = trackGenerationTokenUsage(
+    providerSelection.provider,
+    generationTokenUsage,
+  );
+  const trackedProviderSelection = {
+    ...providerSelection,
+    provider: redteamProvider,
+  };
+
+  const { effectiveStrategyCount, includeBasicTests, totalPluginTests, totalTests } =
+    calculateTotalTests(plugins, strategies, language);
+
+  logger.info(
+    `Synthesizing test cases for ${prompts.length} ${
+      prompts.length === 1 ? 'prompt' : 'prompts'
+    }...\nUsing plugins:\n\n${chalk.yellow(
+      plugins
+        .map((p) => {
+          // Calculate actual test count accounting for multiple languages
+          const actualTestCount = getExpectedPluginTestCount(p, language);
+          // Build a concise display string for the plugin
+          let configSummary = '';
+          if (p.config) {
+            if (p.id === 'policy') {
+              const policy = p.config?.policy as Policy;
+              if (isValidPolicyObject(policy)) {
+                const policyText = policy.text!.trim().replace(/\n+/g, ' ');
+                const truncated =
+                  policyText.length > 70 ? policyText.slice(0, 70) + '...' : policyText;
+                if (policy.name) {
+                  configSummary = ` ${policy.name}:`;
+                }
+                configSummary += ` "${truncated}"`;
+              } else {
+                const policyText = policy.trim().replace(/\n+/g, ' ');
+                const truncated =
+                  policyText.length > 70 ? policyText.slice(0, 70) + '...' : policyText;
+                configSummary = truncated;
+              }
+            } else {
+              // For other plugins with config, just indicate config exists
+              configSummary = ' (custom config)';
+            }
+            logger.debug('Plugin config', {
+              pluginId: p.id,
+              configKeyCount: Object.keys(p.config).length,
+            });
+          }
+          return `${p.id} (${formatTestCount(actualTestCount, false)})${configSummary}`;
+        })
+        .sort()
+        .join('\n'),
+    )}\n`,
+  );
+  if (strategies.length > 0) {
+    logger.info(
+      `Using strategies:\n\n${chalk.yellow(
+        strategies
+          .filter((s) => !['basic', 'retry'].includes(s.id))
+          .map((s) => {
+            // Apply fan-out multiplier if this is a fan-out strategy
+            let n = 1;
+            if (typeof s.config?.n === 'number') {
+              n = s.config.n;
+            } else if (isFanoutStrategy(s.id)) {
+              n = getDefaultNFanout(s.id);
+            }
+            // For non-basic strategies, we want to show the additional tests they generate
+            let testCount = totalPluginTests * n;
+            // Apply numTests cap if configured (consistent with calculateExpectedStrategyTests)
+            const numTestsCap = s.config?.numTests;
+            if (
+              typeof numTestsCap === 'number' &&
+              Number.isFinite(numTestsCap) &&
+              numTestsCap >= 0
+            ) {
+              testCount = Math.min(testCount, numTestsCap);
+            }
+            return `${s.id} (${formatTestCount(testCount, true)})`;
+          })
+          .sort()
+          .join('\n'),
+      )}\n`,
+    );
+  }
+
+  logger.info(
+    chalk.bold(`Test Generation Summary:`) +
+      `\n• Total tests: ${chalk.cyan(totalTests)}` +
+      `\n• Plugin tests: ${chalk.cyan(totalPluginTests)}` +
+      `\n• Plugins: ${chalk.cyan(plugins.length)}` +
+      `\n• Strategies: ${chalk.cyan(effectiveStrategyCount)}` +
+      `\n• Max concurrency: ${chalk.cyan(maxConcurrency)}\n` +
+      (delay ? `• Delay: ${chalk.cyan(delay)}\n` : ''),
+  );
+
+  // Handle multi-input mode: use MULTI_INPUT_VAR to prevent namespace collisions
+  const hasMultipleInputs = inputs && Object.keys(inputs).length > 0;
+  if (hasMultipleInputs) {
+    const inputKeys = Object.keys(inputs);
+    logger.info(
+      `Using multi-input mode with ${inputKeys.length} variables: ${inputKeys.join(', ')}`,
+    );
+    // In multi-input mode, use MULTI_INPUT_VAR to prevent namespace collisions
+    // with user-defined input variable names
+    injectVar = MULTI_INPUT_VAR;
+
+    // Some plugins don't support multi-input mode; skip them
+    const multiInputExcluded = [...DATASET_EXEMPT_PLUGINS, ...MULTI_INPUT_EXCLUDED_PLUGINS];
+    const removedPlugins = plugins.filter((p) => multiInputExcluded.includes(p.id as any));
+    plugins = plugins.filter((p) => !multiInputExcluded.includes(p.id as any));
+    if (removedPlugins.length > 0) {
+      logger.info(
+        `Skipping ${removedPlugins.length} plugin${removedPlugins.length > 1 ? 's' : ''} in multi-input mode: ${removedPlugins.map((p) => p.id).join(', ')}`,
+      );
+    }
+  }
+
+  // Determine injectVar if not explicitly set (only applies to single-input mode)
+  if (typeof injectVar !== 'string') {
+    const parsedVars = extractVariablesFromTemplates(prompts);
+    if (parsedVars.length > 1) {
+      logger.warn(
+        `\nMultiple variables found in prompts: ${parsedVars.join(', ')}. Using the last one "${parsedVars[parsedVars.length - 1]}". Override this selection with --injectVar`,
+      );
+    } else if (parsedVars.length === 0) {
+      logger.warn('No variables found in prompts. Using "query" as the inject variable.');
+    }
+    // Odds are that the last variable is the user input since the user input usually goes at the end of the prompt
+    injectVar = parsedVars[parsedVars.length - 1] || 'query';
+    invariant(typeof injectVar === 'string', `Inject var must be a string, got ${injectVar}`);
+  }
+
+  // Expand plugins first
+  for (const [category, categoryPlugins] of Object.entries(categories)) {
+    const plugin = plugins.find((p) => p.id === category);
+    if (plugin) {
+      plugins.push(...categoryPlugins.map((p) => ({ id: p, numTests: plugin.numTests })));
+    }
+  }
+
+  const expandedPlugins: typeof plugins = [];
+  const expandPlugin = (
+    plugin: (typeof plugins)[0],
+    mapping: { plugins: string[]; strategies: string[] },
+  ) => {
+    mapping.plugins.forEach((p: string) =>
+      expandedPlugins.push({ id: p, numTests: plugin.numTests }),
+    );
+    strategies.push(...mapping.strategies.map((s: string) => ({ id: s })));
+  };
+
+  plugins.forEach((plugin) => {
+    // First check if this is a direct plugin that should not be expanded
+    // This is for plugins like bias:gender that have a prefix matching an alias
+    const isDirectPlugin = Plugins.some((p) => p.key === plugin.id);
+
+    if (isDirectPlugin) {
+      expandedPlugins.push(plugin);
+      return;
+    }
+
+    const mappingKey = Object.keys(ALIASED_PLUGIN_MAPPINGS).find(
+      (key) => plugin.id === key || plugin.id.startsWith(`${key}:`),
+    );
+
+    if (mappingKey) {
+      const mapping =
+        ALIASED_PLUGIN_MAPPINGS[mappingKey][plugin.id] ||
+        Object.values(ALIASED_PLUGIN_MAPPINGS[mappingKey]).find((_m) =>
+          plugin.id.startsWith(`${mappingKey}:`),
+        );
+      if (mapping) {
+        expandPlugin(plugin, mapping);
+      }
+    } else {
+      expandedPlugins.push(plugin);
+    }
+  });
+
+  const validatePlugin: (plugin: (typeof plugins)[0]) => boolean = (plugin) => {
+    if (Object.keys(categories).includes(plugin.id)) {
+      return false;
+    }
+    const registeredPlugin = Plugins.find((p) => p.key === plugin.id);
+
+    if (!registeredPlugin) {
+      if (!plugin.id.startsWith('file://')) {
+        logger.debug(`Plugin ${plugin.id} not registered, skipping validation`);
+      }
+    } else if (registeredPlugin.validate) {
+      try {
+        const resolvedPluginConfig = resolvePluginConfigWithMaxChars(
+          plugin.config,
+          maxCharsPerMessage,
+        );
+        registeredPlugin.validate({
+          language,
+          ...resolvedPluginConfig,
+          modifiers: buildRedteamModifiers({
+            maxCharsPerMessage,
+            pluginConfig: resolvedPluginConfig,
+            testGenerationInstructions,
+          }),
+        });
+      } catch (error) {
+        logger.warn(`Validation failed for plugin ${plugin.id}: ${error}, skipping plugin.`);
+        return false;
+      }
+    }
+
+    return true;
+  };
+
+  // Validate all plugins upfront
+  logger.debug('Validating plugins...');
+  plugins = [...new Set(expandedPlugins)].filter(validatePlugin).sort();
+
+  // Check API health before proceeding
+  if (shouldGenerateRemote()) {
+    const healthUrl = getRemoteHealthUrl();
+    if (healthUrl) {
+      logger.debug(`Checking Promptfoo API health at ${healthUrl}...`);
+      const healthResult = await checkRemoteHealth(healthUrl);
+      if (healthResult.status !== 'OK') {
+        throw new Error(
+          `Unable to proceed with test generation: ${healthResult.message}\n` +
+            'Please check your API configuration or try again later.',
+        );
+      }
+      logger.debug('API health check passed');
+    }
+  }
+
+  // Start the progress bar
+  let progressBar: cliProgress.SingleBar | null = null;
+  const isWebUI = Boolean(cliState.webUI);
+
+  const showProgressBar =
+    !isWebUI &&
+    getEnvString('LOG_LEVEL') !== 'debug' &&
+    getLogLevel() !== 'debug' &&
+    showProgressBarOverride !== false;
+  if (showProgressBar) {
+    progressBar = new cliProgress.SingleBar(
+      {
+        format: 'Generating | {bar} | {percentage}% | {value}/{total} | {task}',
+        gracefulExit: true,
+      },
+      cliProgress.Presets.shades_classic,
+    );
+    // Use totalTests to include both plugin and strategy tests in progress tracking
+    progressBar.start(totalTests, 0, { task: 'Initializing' });
+  }
+
+  // Replace progress bar updates with logger calls when in web UI
+  if (showProgressBar) {
+    progressBar?.update({ task: 'Extracting system purpose' });
+  } else {
+    logger.info('Extracting system purpose...');
+  }
+  const purpose =
+    purposeOverride ||
+    (await extractSystemPurpose(redteamProvider, prompts, redteamGenerationContext));
+
+  if (showProgressBar) {
+    progressBar?.update({ task: 'Extracting entities' });
+  } else {
+    logger.info('Extracting entities...');
+  }
+  const entities: string[] = Array.isArray(entitiesOverride)
+    ? entitiesOverride
+    : await extractEntities(redteamProvider, prompts, redteamGenerationContext);
+
+  logger.debug(`System purpose: ${purpose}`);
+
+  const pluginResults: Record<string, { requested: number; generated: number }> = {};
+  const testCases: TestCaseWithPlugin[] = [];
+  await async.forEachLimit(plugins, maxConcurrency, async (plugin) => {
+    // Check for abort signal before generating tests
+    checkAbort();
+
+    if (showProgressBar) {
+      progressBar?.update({ task: plugin.id });
+    } else {
+      logger.info(`Generating tests for ${plugin.id}...`);
+    }
+    const { action } = Plugins.find((p) => p.key === plugin.id) || {};
+
+    if (action) {
+      logger.debug(`Generating tests for ${plugin.id}...`);
+
+      // If plugin has its own language, use that; otherwise use global language
+      const languageConfig = plugin.config?.language ?? language;
+      const languages = Array.isArray(languageConfig)
+        ? languageConfig
+        : languageConfig
+          ? [languageConfig]
+          : [undefined];
+
+      logger.debug(
+        `[Language Processing] Plugin: ${plugin.id}, Languages: ${JSON.stringify(languages)}, NumTests per language: ${plugin.numTests}${plugin.config?.language ? ' (plugin override)' : ''}`,
+      );
+
+      // Generate tests for each language in parallel using Promise.allSettled
+      const allPluginTests: TestCase[] = [];
+      const resultsPerLanguage: Record<string, { requested: number; generated: number }> = {};
+
+      const languagePromises = languages.map(async (lang) => {
+        const pluginTests = await action({
+          provider: redteamProvider,
+          purpose,
+          injectVar,
+          n: plugin.numTests,
+          delayMs: delay || 0,
+          targetId: cloudTargetId,
+          redteamGenerationContext,
+          config: {
+            ...resolvePluginConfigWithMaxChars(plugin.config, maxCharsPerMessage),
+            ...(lang ? { language: lang } : {}),
+            // Pass inputs to plugin for multi-variable test case generation
+            ...(hasMultipleInputs ? { inputs } : {}),
+            modifiers: buildRedteamModifiers({
+              maxCharsPerMessage,
+              pluginConfig: plugin.config,
+              testGenerationInstructions,
+            }),
+          },
+        });
+        {
+          const langKey = lang;
+
+          if (Array.isArray(pluginTests) && pluginTests.length > 0) {
+            // Add all metadata (language + plugin info) so strategies can access it
+            const testsWithMetadata = pluginTests.map((test) =>
+              addLanguageToPluginMetadata(
+                test,
+                lang,
+                plugin,
+                maxCharsPerMessage,
+                testGenerationInstructions,
+              ),
+            );
+            const constrainedTests = filterOversizedTestCases(
+              testsWithMetadata,
+              injectVar,
+              `Plugin ${plugin.id}`,
+              maxCharsPerMessage,
+            );
+
+            return {
+              lang: langKey,
+              tests: constrainedTests,
+              requested: plugin.numTests,
+              generated: constrainedTests.length,
+            };
+          }
+
+          logger.warn(
+            `[Language Processing] No tests generated for ${plugin.id} in language: ${lang || 'default'}`,
+          );
+
+          return {
+            lang: langKey,
+            tests: [],
+            requested: plugin.numTests,
+            generated: 0,
+          };
+        }
+      });
+
+      const languageResults = await Promise.allSettled(languagePromises);
+
+      for (const [index, result] of languageResults.entries()) {
+        if (result.status === 'fulfilled') {
+          const { lang, tests, requested, generated } = result.value;
+
+          allPluginTests.push(...tests);
+          resultsPerLanguage[lang || 'default'] = { requested, generated };
+        } else {
+          const lang = languages[index];
+          // Handle rejected promise
+          logger.warn(
+            `[Language Processing] Error generating tests for ${plugin.id}: ${result.reason}`,
+          );
+          resultsPerLanguage[lang || 'default'] = { requested: plugin.numTests, generated: 0 };
+        }
+      }
+
+      logger.debug(
+        `[Language Processing] Total tests generated for ${plugin.id}: ${allPluginTests.length} (across ${languages.length} language(s))`,
+      );
+
+      if (!Array.isArray(allPluginTests) || allPluginTests.length === 0) {
+        logger.warn(`Failed to generate tests for ${plugin.id}`);
+      } else {
+        // Metadata already added in promise resolution above (including pluginId)
+        const testCasesWithMetadata = allPluginTests as TestCaseWithPlugin[];
+
+        // Extract goal for this plugin's tests (only needed for agentic strategies)
+        if (needsGoalExtraction) {
+          logger.debug(
+            `Extracting goal for ${testCasesWithMetadata.length} tests from ${plugin.id}...`,
+          );
+          for (const testCase of testCasesWithMetadata) {
+            const promptVar = testCase.vars?.[injectVar];
+            const prompt = Array.isArray(promptVar) ? promptVar[0] : String(promptVar);
+
+            const policy = getPolicyText(testCase.metadata);
+            const extractedGoal = await extractGoalFromPrompt(
+              prompt,
+              purpose,
+              plugin.id,
+              policy,
+              cloudTargetId,
+              redteamProvider,
+            );
+
+            (testCase.metadata as any).goal = extractedGoal;
+          }
+        }
+
+        // Add the results to main test cases array
+        testCases.push(...testCasesWithMetadata);
+      }
+
+      if (showProgressBar) {
+        // Increment by expected count so the bar's running total stays aligned
+        // with `totalTests` (which is computed from `getExpectedPluginTestCount`).
+        // For intent, the helper now resolves `file://` references so the expected
+        // count matches what was actually generated in the happy path.
+        progressBar?.increment(getExpectedPluginTestCount(plugin, language));
+      } else {
+        logger.info(`Generated ${allPluginTests.length} tests for ${plugin.id}`);
+      }
+      logger.debug(`Added ${allPluginTests.length} ${plugin.id} test cases`);
+
+      // If multiple defined languages were used, create separate report entries for each language
+      // Otherwise, use the aggregated result for the plugin
+      const definedLanguages = languages.filter((lang) => lang !== undefined);
+
+      // Get the display ID for this plugin (also serves as the unique key)
+      const baseDisplayId = getPluginDisplayId(plugin);
+
+      if (definedLanguages.length > 1) {
+        // Multiple languages - create separate entries for each
+        // Put language prefix at the beginning so it's visible even with truncation
+        for (const [langKey, result] of Object.entries(resultsPerLanguage)) {
+          // Use format like "(Hmong) Policy Name" so language is visible in truncated table
+          const displayId = langKey === 'en' ? baseDisplayId : `(${langKey}) ${baseDisplayId}`;
+          // For intent plugin, requested should equal generated (same as single-language behavior)
+          const requested = plugin.id === 'intent' ? result.generated : result.requested;
+          pluginResults[displayId] = { requested, generated: result.generated };
+        }
+      } else {
+        // Single language or no language - use aggregated result
+        const requested =
+          plugin.id === 'intent'
+            ? allPluginTests.length
+            : getExpectedPluginTestCount(plugin, language);
+        const generated = allPluginTests.length;
+        pluginResults[baseDisplayId] = { requested, generated };
+      }
+    } else if (plugin.id.startsWith('file://')) {
+      try {
+        const languageConfig = plugin.config?.language ?? language;
+        const languages = Array.isArray(languageConfig)
+          ? languageConfig
+          : languageConfig
+            ? [languageConfig]
+            : [undefined];
+        const allCustomTests: TestCaseWithPlugin[] = [];
+        const resultsPerLanguage: Record<string, { requested: number; generated: number }> = {};
+
+        const languagePromises = languages.map(async (lang) => {
+          const resolvedConfig = {
+            ...resolvePluginConfigWithMaxChars(plugin.config, maxCharsPerMessage),
+            ...(lang ? { language: lang } : {}),
+            ...(hasMultipleInputs ? { inputs } : {}),
+          };
+          const customPluginConfig = {
+            ...resolvedConfig,
+            modifiers: buildRedteamModifiers({
+              maxCharsPerMessage,
+              pluginConfig: resolvedConfig,
+              testGenerationInstructions,
+            }),
+          };
+          const customPlugin = new CustomPlugin(
+            redteamProvider,
+            purpose,
+            injectVar,
+            plugin.id,
+            customPluginConfig,
+          );
+          const customTests = await customPlugin.generateTests(plugin.numTests, delay);
+
+          // Add metadata to each test case
+          const testCasesWithMetadata = filterOversizedTestCases(
+            customTests.map((t) =>
+              addLanguageToPluginMetadata(
+                t,
+                lang,
+                plugin,
+                maxCharsPerMessage,
+                testGenerationInstructions,
+              ),
+            ),
+            injectVar,
+            `Custom plugin ${plugin.id}`,
+            maxCharsPerMessage,
+          );
+
+          return {
+            lang,
+            tests: testCasesWithMetadata as TestCaseWithPlugin[],
+            requested: plugin.numTests,
+            generated: testCasesWithMetadata.length,
+          };
+        });
+
+        const languageResults = await Promise.allSettled(languagePromises);
+
+        for (const [index, result] of languageResults.entries()) {
+          if (result.status === 'fulfilled') {
+            const { lang, tests, requested, generated } = result.value;
+
+            allCustomTests.push(...tests);
+            resultsPerLanguage[lang || 'default'] = { requested, generated };
+          } else {
+            const lang = languages[index];
+            logger.warn(
+              `[Language Processing] Error generating tests for custom plugin ${plugin.id}: ${result.reason}`,
+            );
+            resultsPerLanguage[lang || 'default'] = { requested: plugin.numTests, generated: 0 };
+          }
+        }
+
+        // Extract goal for custom plugin's tests (only needed for agentic strategies)
+        if (needsGoalExtraction) {
+          logger.debug(
+            `Extracting goal for ${allCustomTests.length} custom tests from ${plugin.id}...`,
+          );
+          for (const testCase of allCustomTests) {
+            const promptVar = testCase.vars?.[injectVar];
+            const prompt = Array.isArray(promptVar) ? promptVar[0] : String(promptVar);
+
+            const policy = getPolicyText(testCase.metadata);
+            const extractedGoal = await extractGoalFromPrompt(
+              prompt,
+              purpose,
+              plugin.id,
+              policy,
+              cloudTargetId,
+              redteamProvider,
+            );
+
+            (testCase.metadata as any).goal = extractedGoal;
+          }
+        }
+
+        // Add the results to main test cases array
+        testCases.push(...allCustomTests);
+
+        logger.debug(`Added ${allCustomTests.length} custom test cases from ${plugin.id}`);
+        const baseDisplayId = getPluginDisplayId(plugin);
+        const definedLanguages = languages.filter((lang) => lang !== undefined);
+
+        if (definedLanguages.length > 1) {
+          for (const [langKey, result] of Object.entries(resultsPerLanguage)) {
+            const displayId = langKey === 'en' ? baseDisplayId : `(${langKey}) ${baseDisplayId}`;
+            pluginResults[displayId] = { requested: result.requested, generated: result.generated };
+          }
+        } else {
+          pluginResults[baseDisplayId] = {
+            requested: getExpectedPluginTestCount(plugin, language),
+            generated: allCustomTests.length,
+          };
+        }
+
+        progressBar?.increment(getExpectedPluginTestCount(plugin, language));
+      } catch (e) {
+        logger.error(`Error generating tests for custom plugin ${plugin.id}: ${e}`);
+        const displayId = getPluginDisplayId(plugin);
+        pluginResults[displayId] = { requested: plugin.numTests, generated: 0 };
+      }
+    } else {
+      logger.warn(`Plugin ${plugin.id} not registered, skipping`);
+      const displayId = getPluginDisplayId(plugin);
+      pluginResults[displayId] = { requested: plugin.numTests, generated: 0 };
+      progressBar?.increment(plugin.numTests);
+    }
+  });
+
+  // After generating plugin test cases but before applying strategies:
+  const pluginTestCases = testCases;
+
+  // Initialize strategy results
+  const strategyResults: Record<string, { requested: number; generated: number }> = {};
+
+  // Apply retry strategy first if it exists
+  const retryStrategy = strategies.find((s) => s.id === 'retry');
+  if (retryStrategy) {
+    if (showProgressBar) {
+      progressBar?.update({ task: 'Applying retry strategy' });
+    }
+    logger.debug('Applying retry strategy first');
+    retryStrategy.config = {
+      targetIds: redteamGenerationContext.providerTargetIds,
+      ...retryStrategy.config,
+    };
+    const { testCases: retryTestCases, strategyResults: retryResults } = await applyStrategies(
+      pluginTestCases,
+      [retryStrategy],
+      injectVar,
+      trackedProviderSelection,
+      purpose,
+      undefined,
+      maxCharsPerMessage,
+      redteamGenerationContext,
+      (providerToWrap) => trackGenerationTokenUsage(providerToWrap, generationTokenUsage),
+    );
+    pluginTestCases.push(...retryTestCases);
+    Object.assign(strategyResults, retryResults);
+    // Update progress bar with retry strategy tests generated
+    if (showProgressBar) {
+      progressBar?.increment(retryTestCases.length);
+    }
+  }
+
+  // Check for abort signal or apply non-basic strategies
+  checkAbort();
+  const nonBasicStrategies = strategies.filter((s) => !['basic', 'retry'].includes(s.id));
+  if (showProgressBar && nonBasicStrategies.length > 0) {
+    progressBar?.update({ task: 'Applying strategies' });
+  }
+  const { testCases: strategyTestCases, strategyResults: otherStrategyResults } =
+    await applyStrategies(
+      pluginTestCases,
+      nonBasicStrategies,
+      injectVar,
+      trackedProviderSelection,
+      purpose,
+      excludeTargetOutputFromAgenticAttackGeneration,
+      maxCharsPerMessage,
+      redteamGenerationContext,
+      (providerToWrap) => trackGenerationTokenUsage(providerToWrap, generationTokenUsage),
+    );
+
+  Object.assign(strategyResults, otherStrategyResults);
+  // Update progress bar with strategy tests generated
+  if (showProgressBar && strategyTestCases.length > 0) {
+    progressBar?.increment(strategyTestCases.length);
+  }
+
+  // Combine test cases based on basic strategy setting
+  const finalTestCases = [...(includeBasicTests ? pluginTestCases : []), ...strategyTestCases];
+
+  // Check for abort signal
+  checkAbort();
+
+  progressBar?.update({ task: 'Done.' });
+  progressBar?.stop();
+  if (progressBar) {
+    // Newline after progress bar to avoid overlap
+    logger.info('');
+  }
+
+  logger.info(generateReport(pluginResults, strategyResults));
+
+  // Calculate failed plugins (those that generated 0 tests when they should have generated some)
+  const failedPlugins: FailedPluginInfo[] = Object.entries(pluginResults)
+    .filter(([_, { requested, generated }]) => requested > 0 && generated === 0)
+    .map(([pluginId, { requested }]) => ({ pluginId, requested }));
+
+  return {
+    purpose,
+    entities,
+    testCases: finalTestCases,
+    injectVar,
+    failedPlugins,
+    generationTokenUsage,
+  };
+}

@@ -1,0 +1,39 @@
+# yaml-language-server: $schema=https://promptfoo.dev/config-schema.json
+
+# Learn more about building a configuration: https://promptfoo.dev/docs/configuration/guide
+
+description: 'Basic query demonstration'
+
+prompts:
+  - Why is {{concept}}?
+
+providers:
+  # Using Gemini 3.1 Flash Live Preview
+  - id: 'google:live:gemini-3.1-flash-live-preview'
+    config:
+      generationConfig:
+        response_modalities: ['audio']
+        outputAudioTranscription: {}
+      timeoutMs: 10000
+
+defaultTest:
+  assert:
+    - type: icontains
+      value: salt
+      transform: output.text
+    - type: icontains-any
+      value:
+        - weathering
+        - erosion
+        - erodes
+        - eroded
+        - runoff
+        - rocks
+        - minerals
+        - rivers
+        - rain
+      transform: output.text
+
+tests:
+  - vars:
+      concept: the sea salty

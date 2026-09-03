@@ -1,0 +1,16 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "properties": {
+        "full_refresh": {
+            "default": false,
+            "description": "Rebuild the whole table instead of updating it incrementally. Has no effect on a view that is not incremental. This is how you reprocess history after changing what the query means without changing its text, or after upstream data was corrected.",
+            "type": "boolean"
+        },
+        "id": {
+            "description": "A UUID string identifying this data warehouse saved query.",
+            "type": "string"
+        }
+    },
+    "required": ["id"],
+    "type": "object"
+}

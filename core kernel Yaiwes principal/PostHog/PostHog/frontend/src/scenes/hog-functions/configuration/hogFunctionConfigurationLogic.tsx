@@ -1,0 +1,2232 @@
+import { deepEqual as equal } from 'fast-equals'
+import {
+    MakeLogicType,
+    actions,
+    afterMount,
+    connect,
+    isBreakpoint,
+    kea,
+    key,
+    listeners,
+    path,
+    props,
+    reducers,
+    selectors,
+} from 'kea'
+import { DeepPartialMap, ValidationErrorType, forms } from 'kea-forms'
+import type { DeepPartial, FieldName } from 'kea-forms'
+import { loaders } from 'kea-loaders'
+import { beforeUnload, router, urlToAction } from 'kea-router'
+import { CombinedLocation } from 'kea-router/lib/utils'
+import { subscriptions } from 'kea-subscriptions'
+import posthog from 'posthog-js'
+
+import { lemonToast } from '@posthog/lemon-ui'
+
+import api from 'lib/api'
+import { ApiError } from 'lib/api-error'
+import {
+    CyclotronJobInputsValidation,
+    CyclotronJobInputsValidationResult,
+} from 'lib/components/CyclotronJob/CyclotronJobInputsValidation'
+import { dayjs } from 'lib/dayjs'
+import { deleteWithUndo } from 'lib/utils/deleteWithUndo'
+import { uuid } from 'lib/utils/dom'
+import { addProductIntent } from 'lib/utils/product-intents'
+import { asDisplay } from 'scenes/persons/person-utils'
+import { projectLogic } from 'scenes/projectLogic'
+import { buildSurveyExampleInvocationGlobals } from 'scenes/surveys/utils'
+import { teamLogic } from 'scenes/teamLogic'
+import { urls } from 'scenes/urls'
+import { userLogic } from 'scenes/userLogic'
+
+import { deleteFromTree, refreshTreeItem } from '~/layout/panel-layout/ProjectTree/projectTreeLogic'
+import { groupsModel } from '~/models/groupsModel'
+import { defaultDataTableColumns } from '~/queries/nodes/DataTable/utils'
+import { performQuery } from '~/queries/query'
+import {
+    DataTableNode,
+    EventsNode,
+    EventsQuery,
+    NodeKind,
+    ProductIntentContext,
+    ProductKey,
+    TrendsQuery,
+} from '~/queries/schema/schema-general'
+import { escapePropertyAsHogQLIdentifier, hogql, setLatestVersionsOnQuery } from '~/queries/utils'
+import {
+    AnyPropertyFilter,
+    AvailableFeature,
+    BaseMathType,
+    ChartDisplayType,
+    CyclotronJobFiltersType,
+    CyclotronJobInputSchemaType,
+    CyclotronJobInputType,
+    CyclotronJobInvocationGlobals,
+    CyclotronJobInvocationGlobalsWithInputs,
+    EventType,
+    FilterLogicalOperator,
+    HogFunctionConfigurationContextId,
+    HogFunctionConfigurationType,
+    HogFunctionMappingType,
+    HogFunctionTemplateType,
+    HogFunctionType,
+    HogFunctionTypeType,
+    HogWatcherState,
+    PersonType,
+    PropertyFilterType,
+    PropertyGroupFilter,
+    PropertyGroupFilterValue,
+    Survey,
+    SurveyEventName,
+    SurveyEventProperties,
+} from '~/types'
+
+import type { GroupType, GroupTypeIndex, HogFunctionMappingTemplateType, ProjectType } from '../../../types'
+import type { TeamPublicType, TeamType } from '../../../types'
+import { performWideEventsQueryInTwoPhases } from '../sampleEventsQuery'
+import { eventToHogFunctionContextId } from '../sub-templates/sub-templates'
+import { SAMPLE_GLOBALS_CONTEXTS } from './sampleGlobalsContexts'
+
+export interface HogFunctionConfigurationLogicProps {
+    logicKey?: string
+    templateId?: string | null
+    subTemplateId?: string | null
+    id?: string | null
+}
+
+export const EVENT_VOLUME_DAILY_WARNING_THRESHOLD = 1000
+const UNSAVED_CONFIGURATION_TTL = 1000 * 60 * 5
+export const HOG_CODE_SIZE_LIMIT = 100 * 1024 // 100KB to match backend limit
+
+const VALIDATION_RULES = {
+    SITE_DESTINATION_REQUIRES_MAPPINGS: (data: HogFunctionConfigurationType) =>
+        data.type === 'site_destination' && (!data.mappings || data.mappings.length === 0)
+            ? 'You must add at least one mapping'
+            : undefined,
+    INTERNAL_DESTINATION_REQUIRES_FILTERS: (data: HogFunctionConfigurationType) =>
+        data.type === 'internal_destination' && !data.filters?.events?.length ? 'You must choose a filter' : undefined,
+} as const
+
+const NEW_FUNCTION_TEMPLATE: HogFunctionTemplateType = {
+    id: 'new',
+    free: false,
+    type: 'destination',
+    name: '',
+    description: '',
+    inputs_schema: [],
+    code_language: 'hog',
+    code: "print('Hello, world!');",
+    status: 'stable',
+}
+
+export const TYPES_WITH_GLOBALS: HogFunctionTypeType[] = ['transformation', 'transformation_log', 'destination']
+export const TYPES_WITH_REAL_EVENTS: HogFunctionTypeType[] = ['destination', 'site_destination', 'transformation']
+export const TYPES_WITH_VOLUME_WARNING: HogFunctionTypeType[] = ['destination', 'site_destination']
+
+const TYPE_TO_PRODUCT_KEY: Partial<Record<HogFunctionTypeType, ProductKey>> = {
+    destination: ProductKey.PIPELINE_DESTINATIONS,
+    site_destination: ProductKey.PIPELINE_DESTINATIONS,
+    transformation: ProductKey.PIPELINE_TRANSFORMATIONS,
+    transformation_log: ProductKey.LOGS,
+    site_app: ProductKey.SITE_APPS,
+}
+
+// Sample record shown in the log transformation testing UI (no events table to sample from).
+const EXAMPLE_LOG_RECORD: NonNullable<CyclotronJobInvocationGlobals['record']> = {
+    body: 'GET /api/users 200 in 42ms user=jane@example.com',
+    attributes: { 'http.method': 'GET', 'http.status_code': '200' },
+    resource_attributes: { 'service.name': 'api', 'k8s.namespace.name': 'production' },
+    severity_text: 'info',
+    severity_number: 9,
+    service_name: 'api',
+    instrumentation_scope: 'http.server',
+    event_name: null,
+    timestamp: 1780000000000000000,
+    observed_timestamp: 1780000000000000000,
+    trace_id: null,
+    span_id: null,
+}
+
+export function sanitizeInputs(
+    data: Pick<HogFunctionMappingType, 'inputs_schema' | 'inputs'>
+): Record<string, CyclotronJobInputType> {
+    const sanitizedInputs: Record<string, CyclotronJobInputType> = {}
+    data.inputs_schema?.forEach((inputSchema) => {
+        const templatingEnabled = inputSchema.templating ?? true
+        const input = data.inputs?.[inputSchema.key]
+        const secret = input?.secret
+        let value = input?.value
+
+        if (secret) {
+            // The value was not retyped, so keep the stored secret. Leave value undefined - it is
+            // dropped from the JSON payload, and a placeholder here can be encrypted as the new
+            // secret if the backend does not strip it.
+            sanitizedInputs[inputSchema.key] = {
+                value: undefined,
+                secret: true,
+            }
+            return
+        }
+
+        if (inputSchema.type === 'json' && typeof value === 'string') {
+            try {
+                value = JSON.parse(value)
+            } catch {
+                // Ignore
+            }
+        }
+
+        sanitizedInputs[inputSchema.key] = {
+            value: value,
+            templating: templatingEnabled ? (input?.templating ?? 'hog') : undefined,
+        }
+    })
+
+    return sanitizedInputs
+}
+
+export function sanitizeConfiguration(data: HogFunctionConfigurationType): HogFunctionConfigurationType {
+    const filters = data.filters ?? {}
+    filters.source = data.type === 'internal_destination' ? 'internal-events' : (filters.source ?? 'events')
+
+    if (filters.source === 'person-updates' || Array.isArray(data?.mappings)) {
+        // Ensure we aren't passing in values that aren't supported
+        delete filters.actions
+        delete filters.events
+    } else if (filters.source === 'internal-events') {
+        delete filters.actions
+        delete filters.data_warehouse
+    }
+
+    const payload: HogFunctionConfigurationType = {
+        ...data,
+        filters: data.filters,
+        mappings: data.mappings?.map((mapping) => ({
+            ...mapping,
+            inputs: sanitizeInputs(mapping),
+        })),
+        inputs: sanitizeInputs(data),
+        masking: data.masking?.hash ? data.masking : null,
+        icon_url: data.icon_url,
+    }
+
+    return payload
+}
+
+export const templateToConfiguration = (template: HogFunctionTemplateType): HogFunctionConfigurationType => {
+    function getInputs(inputs_schema?: CyclotronJobInputSchemaType[] | null): Record<string, CyclotronJobInputType> {
+        const inputs: Record<string, CyclotronJobInputType> = {}
+        inputs_schema?.forEach((schema) => {
+            if (schema.default !== undefined) {
+                inputs[schema.key] = { value: schema.default }
+            }
+        })
+        return inputs
+    }
+
+    let mappings: HogFunctionMappingType[] | undefined
+
+    if (template?.mapping_templates) {
+        mappings = template.mapping_templates
+            .filter((t) => t.include_by_default)
+            .map((template) => ({
+                ...template,
+                inputs: template.inputs_schema?.reduce(
+                    (acc, input) => {
+                        acc[input.key] = { value: input.default }
+                        return acc
+                    },
+                    {} as Record<string, CyclotronJobInputType>
+                ),
+            }))
+    }
+
+    return {
+        type: template.type ?? 'destination',
+        name: template.name,
+        description: typeof template.description === 'string' ? template.description : '',
+        inputs_schema: template.inputs_schema,
+        filters: template.filters,
+        mappings: mappings,
+        hog: template.code,
+        icon_url: template.icon_url,
+        inputs: getInputs(template.inputs_schema),
+        enabled: true,
+    }
+}
+
+export function convertToHogFunctionInvocationGlobals(
+    event: EventType,
+    person: PersonType
+): CyclotronJobInvocationGlobals {
+    const team = teamLogic.findMounted()?.values?.currentTeam
+    const projectUrl = `${window.location.origin}/project/${team?.id}`
+    return {
+        project: {
+            id: team?.id ?? 0,
+            name: team?.name ?? 'Default project',
+            url: projectUrl,
+        },
+        event: {
+            uuid: event.uuid ?? '',
+            event: event.event,
+            distinct_id: event.distinct_id,
+            elements_chain: event.elements_chain ?? '',
+            properties: event.properties,
+            timestamp: event.timestamp,
+
+            url: `${projectUrl}/events/${encodeURIComponent(event.uuid ?? '')}/${encodeURIComponent(event.timestamp)}`,
+        },
+        person: {
+            id: person.uuid ?? '',
+            properties: person.properties,
+
+            name: asDisplay(person),
+            url: `${projectUrl}/person/${encodeURIComponent(event.distinct_id)}`,
+        },
+        groups: {},
+    }
+}
+
+export type SparklineData = {
+    data: { name: string; values: number[]; color: string }[]
+    count: number
+    labels: string[]
+    warning?: string
+}
+
+// Helper function to check if code might return null/undefined
+export function mightDropEvents(code: string): boolean {
+    const sanitizedCode = code
+        .replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, '') // Remove comments
+        .replace(/\s+/g, ' ') // Collapse whitespace
+        .trim()
+
+    if (!sanitizedCode) {
+        return false
+    }
+
+    // Direct null/undefined returns
+    if (
+        sanitizedCode.includes('return null') ||
+        sanitizedCode.includes('return undefined') ||
+        /\breturn\b\s*;/.test(sanitizedCode) ||
+        /\breturn\b\s*$/.test(sanitizedCode) ||
+        /\bif\s*\([^)]*\)\s*\{\s*\breturn\s+(null|undefined)\b/.test(sanitizedCode)
+    ) {
+        return true
+    }
+
+    // Check for variables set to null/undefined that are also returned
+    const nullVarMatch = code.match(/\blet\s+(\w+)\s*:?=\s*(null|undefined)/g)
+    if (nullVarMatch) {
+        // Extract variable names
+        const nullVars = nullVarMatch
+            .map((match) => {
+                return match.match(/\blet\s+(\w+)/)?.[1]
+            })
+            .filter(Boolean)
+
+        // Check if any of these variables are returned
+        for (const varName of nullVars) {
+            if (new RegExp(`\\breturn\\s+${varName}\\b`).test(code)) {
+                return true
+            }
+        }
+    }
+
+    return false
+}
+
+// Generated by kea-typegen. Update if you're an agent, ignore if you're human.
+export interface hogFunctionConfigurationLogicValues {
+    groupTypes: Map<GroupTypeIndex, GroupType> // groupsModel
+    currentProject: ProjectType | null // projectLogic
+    currentProjectId: number | null // projectLogic
+    currentTeam: TeamPublicType | TeamType | null // teamLogic
+    hasAvailableFeature: (feature: AvailableFeature, currentUsage?: number | undefined) => boolean // userLogic
+    baseEventsQuery: EventsQuery | null
+    canEditSource: boolean
+    canLoadSampleGlobals: boolean
+    configuration: HogFunctionConfigurationType
+    configurationAllErrors: Record<string, any>
+    configurationChanged: boolean
+    configurationErrors: DeepPartialMap<HogFunctionConfigurationType, ValidationErrorType>
+    configurationHasErrors: boolean
+    configurationManualErrors: Record<string, any>
+    configurationTouched: boolean
+    configurationTouches: Record<string, boolean>
+    configurationValidationErrors: DeepPartialMap<HogFunctionConfigurationType, ValidationErrorType>
+    contextId: HogFunctionConfigurationContextId
+    currentHogCode: string
+    currentInputs: CyclotronJobInputSchemaType[]
+    defaultFormState: HogFunctionConfigurationType | null
+    eventsDataTableNode: DataTableNode | null
+    exampleInvocationGlobals: CyclotronJobInvocationGlobals
+    filtersContainPersonProperties: boolean
+    hasGroupsAddon: boolean
+    hasHadSubmissionErrors: boolean
+    hogFunction: HogFunctionType | null
+    hogFunctionLoading: boolean
+    inputFormErrors: Record<string, string> | null
+    inputFormWarnings: Record<string, string>
+    inputsDiff: {
+        newInputs: CyclotronJobInputSchemaType[]
+        oldInputs: CyclotronJobInputSchemaType[]
+    } | null
+    inputsValidation: CyclotronJobInputsValidationResult
+    isConfigurationSubmitting: boolean
+    isConfigurationValid: boolean
+    isLegacyPlugin: boolean | undefined
+    lastEventQuery: EventsQuery | null
+    lastEventSecondQuery: EventsQuery | null
+    loaded: boolean
+    loading: boolean
+    logicProps: HogFunctionConfigurationLogicProps
+    mappingTemplates: HogFunctionMappingTemplateType[]
+    matchingFilters: PropertyGroupFilter
+    mightDropEvents: boolean
+    newFilters: CyclotronJobFiltersType | null
+    newHogCode: string | null
+    newInputs: CyclotronJobInputSchemaType[] | null
+    oldFilters: CyclotronJobFiltersType | null
+    oldHogCode: string | null
+    oldInputs: CyclotronJobInputSchemaType[] | null
+    sampleGlobals: CyclotronJobInvocationGlobals | null
+    sampleGlobalsError: string | null
+    sampleGlobalsLoading: boolean
+    sampleGlobalsWithInputs: CyclotronJobInvocationGlobalsWithInputs
+    showConfigurationErrors: boolean
+    showEventsList: boolean
+    showExpectedVolume: boolean
+    showFilters: boolean
+    showSource: boolean
+    showTesting: boolean
+    sourceUsesEvents: boolean
+    sparkline: SparklineData | null
+    sparklineLoading: boolean
+    sparklineQuery: TrendsQuery | null
+    survey: Survey | null
+    surveyIdFromFilters: string | null
+    surveyLoading: boolean
+    template: HogFunctionTemplateType | null
+    templateHasChanged: boolean | '' | undefined
+    templateId: string | undefined
+    templateLoading: boolean
+    type: HogFunctionTypeType
+    unsavedConfiguration: {
+        configuration: HogFunctionConfigurationType
+        timestamp: number
+    } | null
+    useMapping: number | true | undefined
+    usesGroups: boolean
+    willChangeEnabledOnSave: boolean
+    willReEnableOnSave: boolean
+}
+
+// Generated by kea-typegen. Update if you're an agent, ignore if you're human.
+export interface hogFunctionConfigurationLogicActions {
+    clearFiltersDiff: () => {
+        value: true
+    }
+    clearHogCodeDiff: () => {
+        value: true
+    }
+    clearInputsDiff: () => {
+        value: true
+    }
+    deleteHogFunction: () => {
+        value: true
+    }
+    duplicate: () => {
+        value: true
+    }
+    duplicateFromTemplate: () => {
+        value: true
+    }
+    loadHogFunction: () => any
+    loadHogFunctionFailure: (
+        error: string,
+        errorObject?: any
+    ) => {
+        error: string
+        errorObject?: any
+    }
+    loadHogFunctionSuccess: (
+        hogFunction: HogFunctionType | null,
+        payload?: any
+    ) => {
+        hogFunction: HogFunctionType | null
+        payload?: any
+    }
+    loadSampleGlobals: (payload?: { eventId?: string }) => {
+        eventId: string | undefined
+    }
+    loadSampleGlobalsFailure: (
+        error: string,
+        errorObject?: any
+    ) => {
+        error: string
+        errorObject?: any
+    }
+    loadSampleGlobalsSuccess: (
+        sampleGlobals: CyclotronJobInvocationGlobals | null,
+        payload?: {
+            eventId: string | undefined
+        }
+    ) => {
+        sampleGlobals: CyclotronJobInvocationGlobals | null
+        payload?: {
+            eventId: string | undefined
+        }
+    }
+    loadSurvey: () => any
+    loadSurveyFailure: (
+        error: string,
+        errorObject?: any
+    ) => {
+        error: string
+        errorObject?: any
+    }
+    loadSurveySuccess: (
+        survey: Survey | null,
+        payload?: any
+    ) => {
+        survey: Survey | null
+        payload?: any
+    }
+    loadTemplate: () => any
+    loadTemplateFailure: (
+        error: string,
+        errorObject?: any
+    ) => {
+        error: string
+        errorObject?: any
+    }
+    loadTemplateSuccess: (
+        template: HogFunctionTemplateType | null,
+        payload?: any
+    ) => {
+        template: HogFunctionTemplateType | null
+        payload?: any
+    }
+    persistForUnload: () => {
+        value: true
+    }
+    reportAIFiltersAccepted: () => {
+        value: true
+    }
+    reportAIFiltersPromptOpen: () => {
+        value: true
+    }
+    reportAIFiltersPrompted: () => {
+        value: true
+    }
+    reportAIFiltersRejected: () => {
+        value: true
+    }
+    reportAIHogFunctionAccepted: () => {
+        value: true
+    }
+    reportAIHogFunctionInputsAccepted: () => {
+        value: true
+    }
+    reportAIHogFunctionInputsPromptOpen: () => {
+        value: true
+    }
+    reportAIHogFunctionInputsPrompted: () => {
+        value: true
+    }
+    reportAIHogFunctionInputsRejected: () => {
+        value: true
+    }
+    reportAIHogFunctionPromptOpen: () => {
+        value: true
+    }
+    reportAIHogFunctionPrompted: () => {
+        value: true
+    }
+    reportAIHogFunctionRejected: () => {
+        value: true
+    }
+    resetConfiguration: (values?: HogFunctionConfigurationType) => {
+        values?: HogFunctionConfigurationType
+    }
+    resetForm: () => {
+        value: true
+    }
+    resetToTemplate: () => {
+        value: true
+    }
+    setConfigurationManualErrors: (errors: Record<string, any>) => {
+        errors: Record<string, any>
+    }
+    setConfigurationValue: (
+        key: FieldName,
+        value: any
+    ) => {
+        name: FieldName
+        value: any
+    }
+    setConfigurationValues: (values: DeepPartial<HogFunctionConfigurationType>) => {
+        values: DeepPartial<HogFunctionConfigurationType>
+    }
+    setNewFilters: (newFilters: CyclotronJobFiltersType) => {
+        newFilters: CyclotronJobFiltersType
+    }
+    setNewHogCode: (newHogCode: string) => {
+        newHogCode: string
+    }
+    setNewInputs: (newInputs: CyclotronJobInputSchemaType[]) => {
+        newInputs: CyclotronJobInputSchemaType[]
+    }
+    setOldFilters: (oldFilters: CyclotronJobFiltersType) => {
+        oldFilters: CyclotronJobFiltersType
+    }
+    setOldHogCode: (oldHogCode: string) => {
+        oldHogCode: string
+    }
+    setOldInputs: (oldInputs: CyclotronJobInputSchemaType[]) => {
+        oldInputs: CyclotronJobInputSchemaType[]
+    }
+    setSampleGlobals: (sampleGlobals: CyclotronJobInvocationGlobals | null) => {
+        sampleGlobals: CyclotronJobInvocationGlobals | null
+    }
+    setSampleGlobalsError: (error: any) => {
+        error: any
+    }
+    setShowEventsList: (showEventsList: boolean) => {
+        showEventsList: boolean
+    }
+    setShowSource: (showSource: boolean) => {
+        showSource: boolean
+    }
+    setUnsavedConfiguration: (configuration: HogFunctionConfigurationType | null) => {
+        configuration: HogFunctionConfigurationType | null
+    }
+    sparklineQueryChanged: (sparklineQuery: TrendsQuery) => {
+        sparklineQuery: TrendsQuery
+    }
+    sparklineQueryChangedFailure: (
+        error: string,
+        errorObject?: any
+    ) => {
+        error: string
+        errorObject?: any
+    }
+    sparklineQueryChangedSuccess: (
+        sparkline:
+            | {
+                  count: any
+                  data: {
+                      color: string
+                      name: string
+                      values: number[]
+                  }[]
+                  labels: any
+                  warning: string | undefined
+              }
+            | {
+                  count: any
+                  data: {
+                      color: string
+                      name: string
+                      values: number[]
+                  }[]
+                  labels: any
+                  warning?: undefined
+              }
+            | null,
+        payload?: {
+            sparklineQuery: TrendsQuery
+        }
+    ) => {
+        sparkline:
+            | {
+                  count: any
+                  data: {
+                      color: string
+                      name: string
+                      values: number[]
+                  }[]
+                  labels: any
+                  warning: string | undefined
+              }
+            | {
+                  count: any
+                  data: {
+                      color: string
+                      name: string
+                      values: number[]
+                  }[]
+                  labels: any
+                  warning?: undefined
+              }
+            | null
+        payload?: {
+            sparklineQuery: TrendsQuery
+        }
+    }
+    submitConfiguration: () => {
+        value: boolean
+    }
+    submitConfigurationFailure: (
+        error: Error,
+        errors: Record<string, any>
+    ) => {
+        error: Error
+        errors: Record<string, any>
+    }
+    submitConfigurationRequest: (configuration: HogFunctionConfigurationType) => {
+        configuration: HogFunctionConfigurationType
+    }
+    submitConfigurationSuccess: (configuration: HogFunctionConfigurationType) => {
+        configuration: HogFunctionConfigurationType
+    }
+    touchConfigurationField: (key: string) => {
+        key: string
+    }
+    upsertHogFunction: (configuration: HogFunctionConfigurationType) => {
+        configuration: HogFunctionConfigurationType
+    }
+    upsertHogFunctionFailure: (
+        error: string,
+        errorObject?: any
+    ) => {
+        error: string
+        errorObject?: any
+    }
+    upsertHogFunctionSuccess: (
+        hogFunction: HogFunctionType,
+        payload?: {
+            configuration: HogFunctionConfigurationType
+        }
+    ) => {
+        hogFunction: HogFunctionType
+        payload?: {
+            configuration: HogFunctionConfigurationType
+        }
+    }
+}
+
+// Generated by kea-typegen. Update if you're an agent, ignore if you're human.
+export interface hogFunctionConfigurationLogicMeta {
+    key: string
+    __keaTypeGenInternalSelectorTypes: {
+        logicProps: (arg: any) => HogFunctionConfigurationLogicProps
+        surveyIdFromFilters: (configuration: HogFunctionConfigurationType) => string | null
+        type: (configuration: HogFunctionConfigurationType, hogFunction: HogFunctionType | null) => HogFunctionTypeType
+        hasGroupsAddon: (
+            hasAvailableFeature: (feature: AvailableFeature, currentUsage?: number | undefined) => boolean
+        ) => boolean
+        useMapping: (
+            hogFunction: HogFunctionType | null,
+            template: HogFunctionTemplateType | null
+        ) => number | true | undefined
+        defaultFormState: (
+            template: HogFunctionTemplateType | null,
+            hogFunction: HogFunctionType | null
+        ) => HogFunctionConfigurationType | null
+        templateId: (
+            template: HogFunctionTemplateType | null,
+            hogFunction: HogFunctionType | null
+        ) => string | undefined
+        loading: (hogFunctionLoading: boolean, templateLoading: boolean) => boolean
+        loaded: (hogFunction: HogFunctionType | null, template: HogFunctionTemplateType | null) => boolean
+        contextId: (configuration: HogFunctionConfigurationType) => HogFunctionConfigurationContextId
+        inputsValidation: (configuration: HogFunctionConfigurationType) => CyclotronJobInputsValidationResult
+        inputFormErrors: (inputsValidation: CyclotronJobInputsValidationResult) => Record<string, string> | null
+        inputFormWarnings: (inputsValidation: CyclotronJobInputsValidationResult) => Record<string, string>
+        willReEnableOnSave: (
+            configuration: HogFunctionConfigurationType,
+            hogFunction: HogFunctionType | null
+        ) => boolean
+        willChangeEnabledOnSave: (
+            configuration: HogFunctionConfigurationType,
+            hogFunction: HogFunctionType | null
+        ) => boolean
+        exampleInvocationGlobals: (
+            configuration: HogFunctionConfigurationType,
+            currentProject: ProjectType | null,
+            groupTypes: Map<GroupTypeIndex, GroupType>,
+            contextId: HogFunctionConfigurationContextId,
+            survey: Survey | null
+        ) => CyclotronJobInvocationGlobals
+        sampleGlobalsWithInputs: (
+            sampleGlobals: CyclotronJobInvocationGlobals | null,
+            exampleInvocationGlobals: CyclotronJobInvocationGlobals,
+            configuration: HogFunctionConfigurationType
+        ) => CyclotronJobInvocationGlobalsWithInputs
+        matchingFilters: (
+            configuration: HogFunctionConfigurationType,
+            useMapping: number | true | undefined
+        ) => PropertyGroupFilter
+        filtersContainPersonProperties: (configuration: HogFunctionConfigurationType) => boolean
+        sourceUsesEvents: (configuration: HogFunctionConfigurationType, type: HogFunctionTypeType) => boolean
+        sparklineQuery: (
+            configuration: HogFunctionConfigurationType,
+            matchingFilters: PropertyGroupFilter,
+            sourceUsesEvents: boolean
+        ) => TrendsQuery | null
+        baseEventsQuery: (
+            configuration: HogFunctionConfigurationType,
+            matchingFilters: PropertyGroupFilter,
+            groupTypes: Map<GroupTypeIndex, GroupType>,
+            sourceUsesEvents: boolean
+        ) => EventsQuery | null
+        eventsDataTableNode: (baseEventsQuery: EventsQuery | null) => DataTableNode | null
+        lastEventQuery: (baseEventsQuery: EventsQuery | null) => EventsQuery | null
+        lastEventSecondQuery: (lastEventQuery: EventsQuery | null) => EventsQuery | null
+        templateHasChanged: (
+            hogFunction: HogFunctionType | null,
+            configuration: HogFunctionConfigurationType
+        ) => boolean | '' | undefined
+        mappingTemplates: (
+            hogFunction: HogFunctionType | null,
+            template: HogFunctionTemplateType | null
+        ) => HogFunctionMappingTemplateType[]
+        usesGroups: (configuration: HogFunctionConfigurationType) => boolean
+        mightDropEvents: (configuration: HogFunctionConfigurationType, type: HogFunctionTypeType) => boolean
+        currentHogCode: (newHogCode: string | null, configuration: HogFunctionConfigurationType) => string
+        currentInputs: (
+            newInputs: CyclotronJobInputSchemaType[] | null,
+            configuration: HogFunctionConfigurationType
+        ) => CyclotronJobInputSchemaType[]
+        inputsDiff: (
+            oldInputs: CyclotronJobInputSchemaType[] | null,
+            newInputs: CyclotronJobInputSchemaType[] | null
+        ) => {
+            newInputs: CyclotronJobInputSchemaType[]
+            oldInputs: CyclotronJobInputSchemaType[]
+        } | null
+        canLoadSampleGlobals: (
+            lastEventQuery: EventsQuery | null,
+            contextId: HogFunctionConfigurationContextId
+        ) => boolean
+        showFilters: (type: HogFunctionTypeType) => boolean
+        showExpectedVolume: (type: HogFunctionTypeType, sourceUsesEvents: boolean) => boolean
+        canEditSource: (
+            type: HogFunctionTypeType,
+            template: HogFunctionTemplateType | null,
+            hogFunction: HogFunctionType | null
+        ) => boolean
+        showTesting: (type: HogFunctionTypeType) => boolean
+        isLegacyPlugin: (
+            template: HogFunctionTemplateType | null,
+            hogFunction: HogFunctionType | null
+        ) => boolean | undefined
+    }
+}
+
+export type hogFunctionConfigurationLogicType = MakeLogicType<
+    hogFunctionConfigurationLogicValues,
+    hogFunctionConfigurationLogicActions,
+    HogFunctionConfigurationLogicProps,
+    hogFunctionConfigurationLogicMeta
+>
+
+export const hogFunctionConfigurationLogic = kea<hogFunctionConfigurationLogicType>([
+    path((id) => ['scenes', 'pipeline', 'hogFunctionConfigurationLogic', id]),
+    props({} as HogFunctionConfigurationLogicProps),
+    key(({ id, templateId, subTemplateId, logicKey }: HogFunctionConfigurationLogicProps) => {
+        let baseKey = id ?? templateId ?? 'new'
+        if (subTemplateId) {
+            baseKey = `${subTemplateId}_${baseKey}`
+        }
+        return logicKey ? `${logicKey}_${baseKey}` : baseKey
+    }),
+    connect(() => ({
+        values: [
+            projectLogic,
+            ['currentProjectId', 'currentProject'],
+            groupsModel,
+            ['groupTypes'],
+            userLogic,
+            ['hasAvailableFeature'],
+            teamLogic,
+            ['currentTeam'],
+        ],
+    })),
+    actions({
+        setShowSource: (showSource: boolean) => ({ showSource }),
+        resetForm: true,
+        upsertHogFunction: (configuration: HogFunctionConfigurationType) => ({ configuration }),
+        duplicate: true,
+        duplicateFromTemplate: true,
+        resetToTemplate: true,
+        deleteHogFunction: true,
+        sparklineQueryChanged: (sparklineQuery: TrendsQuery) =>
+            ({
+                sparklineQuery,
+            }) as { sparklineQuery: TrendsQuery },
+        loadSampleGlobals: (payload?: { eventId?: string }) => ({ eventId: payload?.eventId }),
+        setUnsavedConfiguration: (configuration: HogFunctionConfigurationType | null) => ({ configuration }),
+        persistForUnload: true,
+        setSampleGlobalsError: (error) => ({ error }),
+        setSampleGlobals: (sampleGlobals: CyclotronJobInvocationGlobals | null) => ({ sampleGlobals }),
+        setShowEventsList: (showEventsList: boolean) => ({ showEventsList }),
+        setOldHogCode: (oldHogCode: string) => ({ oldHogCode }),
+        setNewHogCode: (newHogCode: string) => ({ newHogCode }),
+        clearHogCodeDiff: true,
+        reportAIHogFunctionPrompted: true,
+        reportAIHogFunctionAccepted: true,
+        reportAIHogFunctionRejected: true,
+        reportAIHogFunctionPromptOpen: true,
+        setOldFilters: (oldFilters: CyclotronJobFiltersType) => ({ oldFilters }),
+        setNewFilters: (newFilters: CyclotronJobFiltersType) => ({ newFilters }),
+        clearFiltersDiff: true,
+        reportAIFiltersPrompted: true,
+        reportAIFiltersAccepted: true,
+        reportAIFiltersRejected: true,
+        reportAIFiltersPromptOpen: true,
+        setOldInputs: (oldInputs: CyclotronJobInputSchemaType[]) => ({ oldInputs }),
+        setNewInputs: (newInputs: CyclotronJobInputSchemaType[]) => ({ newInputs }),
+        clearInputsDiff: true,
+        reportAIHogFunctionInputsPrompted: true,
+        reportAIHogFunctionInputsAccepted: true,
+        reportAIHogFunctionInputsRejected: true,
+        reportAIHogFunctionInputsPromptOpen: true,
+    }),
+    reducers(({ props }) => ({
+        sampleGlobals: [
+            null as CyclotronJobInvocationGlobals | null,
+            {
+                setSampleGlobals: (_, { sampleGlobals }) => sampleGlobals,
+            },
+        ],
+        showSource: [
+            // Show source by default for blank templates when creating a new function
+            !!(!props.id && props.templateId?.startsWith('template-blank-')),
+            {
+                setShowSource: (_, { showSource }) => showSource,
+            },
+        ],
+
+        hasHadSubmissionErrors: [
+            false,
+            {
+                upsertHogFunctionFailure: () => true,
+            },
+        ],
+
+        unsavedConfiguration: [
+            null as { timestamp: number; configuration: HogFunctionConfigurationType } | null,
+            { persist: true },
+            {
+                setUnsavedConfiguration: (_, { configuration }) =>
+                    configuration ? { timestamp: Date.now(), configuration } : null,
+            },
+        ],
+
+        sampleGlobalsError: [
+            null as null | string,
+            {
+                loadSampleGlobals: () => null,
+                setSampleGlobalsError: (_, { error }) => error,
+            },
+        ],
+        showEventsList: [
+            false,
+            {
+                setShowEventsList: (_, { showEventsList }) => showEventsList,
+            },
+        ],
+        oldHogCode: [
+            null as string | null,
+            {
+                setOldHogCode: (_, { oldHogCode }) => oldHogCode,
+                clearHogCodeDiff: () => null,
+            },
+        ],
+        newHogCode: [
+            null as string | null,
+            {
+                setNewHogCode: (_, { newHogCode }) => newHogCode,
+                clearHogCodeDiff: () => null,
+            },
+        ],
+        oldFilters: [
+            null as CyclotronJobFiltersType | null,
+            {
+                setOldFilters: (_, { oldFilters }) => oldFilters,
+                clearFiltersDiff: () => null,
+            },
+        ],
+        newFilters: [
+            null as CyclotronJobFiltersType | null,
+            {
+                setNewFilters: (_, { newFilters }) => newFilters,
+                clearFiltersDiff: () => null,
+            },
+        ],
+        oldInputs: [
+            null as CyclotronJobInputSchemaType[] | null,
+            {
+                setOldInputs: (_, { oldInputs }) => oldInputs,
+                clearInputsDiff: () => null,
+            },
+        ],
+        newInputs: [
+            null as CyclotronJobInputSchemaType[] | null,
+            {
+                setNewInputs: (_, { newInputs }) => newInputs,
+                clearInputsDiff: () => null,
+            },
+        ],
+    })),
+    loaders(({ actions, props, values, cache }) => ({
+        template: [
+            null as HogFunctionTemplateType | null,
+            {
+                loadTemplate: async () => {
+                    cache.configFromUrl = router.values.hashParams.configuration
+                    if (!props.templateId) {
+                        return null
+                    }
+
+                    if (props.templateId === 'new') {
+                        return {
+                            ...NEW_FUNCTION_TEMPLATE,
+                        }
+                    }
+
+                    const res = await api.hogFunctions.getTemplate(props.templateId)
+
+                    if (!res) {
+                        throw new Error('Template not found')
+                    }
+                    return res
+                },
+            },
+        ],
+
+        hogFunction: [
+            null as HogFunctionType | null,
+            {
+                loadHogFunction: async () => {
+                    if (!props.id || props.id === 'new') {
+                        return null
+                    }
+
+                    try {
+                        return await api.hogFunctions.get(props.id)
+                    } catch (e) {
+                        // A missing id, or one from another project reached via a cross-project deep
+                        // link, 404s here. Fall back to null so the scene renders its not-found state
+                        // instead of filing the rejection in error tracking.
+                        if (e instanceof ApiError && e.status === 404) {
+                            return null
+                        }
+                        throw e
+                    }
+                },
+
+                upsertHogFunction: async ({ configuration }) => {
+                    const isNew = !props.id || props.id === 'new'
+                    const res = isNew
+                        ? await api.hogFunctions.create(configuration)
+                        : await api.hogFunctions.update(props.id!, configuration)
+
+                    posthog.capture('hog function saved', {
+                        id: res.id,
+                        template_id: res.template?.id,
+                        template_name: res.template?.name,
+                        type: res.type,
+                        enabled: res.enabled,
+                    })
+
+                    // Track product intent when creating a new hog function
+                    if (isNew) {
+                        const productKey = TYPE_TO_PRODUCT_KEY[res.type]
+                        if (productKey) {
+                            void addProductIntent({
+                                product_type: productKey,
+                                intent_context: ProductIntentContext.DATA_PIPELINE_CREATED,
+                            })
+                        }
+                    }
+
+                    const errorTrackingTriggerEvent = res.filters?.events
+                        ?.map((event) => event.id)
+                        ?.find((id) =>
+                            [
+                                '$error_tracking_issue_created',
+                                '$error_tracking_issue_reopened',
+                                '$error_tracking_issue_spiking',
+                            ].includes(id)
+                        )
+                    if (isNew && errorTrackingTriggerEvent) {
+                        posthog.capture('error_tracking_alert_created', {
+                            source: 'traditional',
+                            trigger_event: errorTrackingTriggerEvent,
+                            subtemplate_id: res.template?.id,
+                            has_custom_filters: res.filters && Object.keys(res.filters).length > 1,
+                            enabled: res.enabled,
+                        })
+                    }
+
+                    lemonToast.success('Configuration saved')
+                    refreshTreeItem('hog_function/', res.id)
+
+                    return res
+                },
+            },
+        ],
+
+        sparkline: [
+            null as null | SparklineData,
+            {
+                sparklineQueryChanged: async ({ sparklineQuery }, breakpoint) => {
+                    if (!TYPES_WITH_REAL_EVENTS.includes(values.type)) {
+                        return null
+                    }
+                    if (values.sparkline === null) {
+                        await breakpoint(100)
+                    } else {
+                        await breakpoint(1000)
+                    }
+                    const result = await performQuery(sparklineQuery)
+                    breakpoint()
+
+                    const dataValues: number[] = result?.results?.[0]?.data ?? []
+                    const showVolumeWarning = TYPES_WITH_VOLUME_WARNING.includes(values.type)
+
+                    if (showVolumeWarning) {
+                        const [underThreshold, overThreshold] = dataValues.reduce(
+                            (acc, val: number) => {
+                                acc[0].push(Math.min(val, EVENT_VOLUME_DAILY_WARNING_THRESHOLD))
+                                acc[1].push(Math.max(0, val - EVENT_VOLUME_DAILY_WARNING_THRESHOLD))
+                                return acc
+                            },
+                            [[], []] as [number[], number[]]
+                        )
+                        const data = [
+                            {
+                                name: 'Low volume',
+                                values: underThreshold,
+                                color: 'success',
+                            },
+                            {
+                                name: 'High volume',
+                                values: overThreshold,
+                                color: 'warning',
+                            },
+                        ]
+                        return { data, count: result?.results?.[0]?.count, labels: result?.results?.[0]?.labels }
+                    }
+                    // For transformations, just show the raw values without warning thresholds
+                    const data = [
+                        {
+                            name: 'Volume',
+                            values: dataValues,
+                            color: 'success',
+                        },
+                    ]
+                    return {
+                        data,
+                        count: result?.results?.[0]?.count,
+                        labels: result?.results?.[0]?.labels,
+                        warning:
+                            values.type === 'transformation'
+                                ? 'Historical volume may not reflect future volume after transformation is applied.'
+                                : undefined,
+                    }
+                },
+            },
+        ],
+
+        sampleGlobals: [
+            null as CyclotronJobInvocationGlobals | null,
+            {
+                loadSampleGlobals: async ({ eventId }, breakpoint) => {
+                    const sampleGlobalsLoader = SAMPLE_GLOBALS_CONTEXTS[values.contextId]
+                    if (sampleGlobalsLoader) {
+                        try {
+                            const globals = await sampleGlobalsLoader(values.exampleInvocationGlobals)
+                            breakpoint()
+                            return globals
+                        } catch (e: any) {
+                            if (isBreakpoint(e)) {
+                                // Superseded by a newer load — abort without dispatching a result
+                                throw e
+                            }
+                            actions.setSampleGlobalsError(e.message)
+                            return values.exampleInvocationGlobals
+                        }
+                    }
+                    if (!values.lastEventQuery) {
+                        return values.sampleGlobals
+                    }
+                    const errorMessage =
+                        'No events match these filters in the last 30 days. Showing an example $pageview event instead.'
+                    try {
+                        await breakpoint(values.sampleGlobals === null ? 10 : 1000)
+                        let response = await performWideEventsQueryInTwoPhases({
+                            ...values.lastEventQuery,
+                            properties: eventId
+                                ? [
+                                      {
+                                          type: PropertyFilterType.HogQL,
+                                          key: `uuid = '${eventId}'`,
+                                      },
+                                  ]
+                                : undefined,
+                        })
+                        if (!response?.results?.[0] && values.lastEventSecondQuery) {
+                            response = await performWideEventsQueryInTwoPhases({
+                                ...values.lastEventSecondQuery,
+                                properties: eventId
+                                    ? [
+                                          {
+                                              type: PropertyFilterType.HogQL,
+                                              key: `uuid = '${eventId}'`,
+                                          },
+                                      ]
+                                    : undefined,
+                            })
+                        }
+                        if (!response?.results?.[0]) {
+                            throw new Error(errorMessage)
+                        }
+                        const event: EventType = response?.results?.[0]?.[0]
+                        const person: PersonType = response?.results?.[0]?.[1]
+                        const globals = convertToHogFunctionInvocationGlobals(event, person)
+                        globals.groups = {}
+                        values.groupTypes.forEach((groupType, index) => {
+                            const tuple = response?.results?.[0]?.[2 + index]
+                            if (tuple && Array.isArray(tuple) && tuple[2]) {
+                                let properties = {}
+                                try {
+                                    properties = JSON.parse(tuple[3])
+                                } catch {
+                                    // Ignore
+                                }
+                                globals.groups![groupType.group_type] = {
+                                    type: groupType.group_type,
+                                    index: tuple[1],
+                                    id: tuple[2], // TODO: rename to "key"?
+                                    url: `${window.location.origin}/groups/${tuple[1]}/${encodeURIComponent(tuple[2])}`,
+                                    properties,
+                                }
+                            }
+                        })
+                        globals.source = {
+                            name: values.configuration?.name ?? 'Unnamed',
+                            url: window.location.href.split('#')[0],
+                        }
+                        return globals
+                    } catch (e: any) {
+                        if (!isBreakpoint(e)) {
+                            actions.setSampleGlobalsError(e.message ?? errorMessage)
+                        }
+                        return values.exampleInvocationGlobals
+                    }
+                },
+            },
+        ],
+
+        survey: [
+            null as Survey | null,
+            {
+                loadSurvey: async () => {
+                    const surveyId = values.surveyIdFromFilters
+                    if (!surveyId) {
+                        return null
+                    }
+                    try {
+                        return await api.surveys.get(surveyId)
+                    } catch {
+                        return null
+                    }
+                },
+            },
+        ],
+    })),
+    forms(({ values, props, asyncActions }) => ({
+        configuration: {
+            defaults: {} as HogFunctionConfigurationType,
+            alwaysShowErrors: true,
+            errors: (data) => {
+                return {
+                    name: !data.name ? 'Name is required' : undefined,
+                    mappings: VALIDATION_RULES.SITE_DESTINATION_REQUIRES_MAPPINGS(data) as unknown as DeepPartialMap<
+                        HogFunctionMappingType[],
+                        ValidationErrorType
+                    >,
+                    filters: VALIDATION_RULES.INTERNAL_DESTINATION_REQUIRES_FILTERS(data) as unknown as DeepPartialMap<
+                        HogFunctionConfigurationType['filters'],
+                        ValidationErrorType
+                    >,
+                    inputs: (values.inputFormErrors ?? {}) as DeepPartialMap<
+                        HogFunctionConfigurationType['inputs'],
+                        ValidationErrorType
+                    >,
+                }
+            },
+            submit: async (data) => {
+                // Check HOG code size immediately before submission
+                if (data.hog) {
+                    const hogSize = new Blob([data.hog]).size
+                    if (hogSize > HOG_CODE_SIZE_LIMIT) {
+                        lemonToast.error(
+                            `Hog code exceeds maximum size of ${
+                                HOG_CODE_SIZE_LIMIT / 1024
+                            }KB. Please simplify your code or contact support to increase the limit.`
+                        )
+                        return
+                    }
+                }
+
+                const payload: Record<string, any> = sanitizeConfiguration(data)
+                // Only sent on create
+                payload.template_id = props.templateId || values.hogFunction?.template?.id
+
+                if (!props.id || props.id === 'new') {
+                    const type = values.type
+                    const typeFolder =
+                        type === 'site_app'
+                            ? 'Web scripts'
+                            : type === 'transformation'
+                              ? 'Transformations'
+                              : type === 'transformation_log'
+                                ? 'Log transformations'
+                                : type === 'source_webhook'
+                                  ? 'Sources'
+                                  : 'Destinations'
+                    payload._create_in_folder = `Unfiled/${typeFolder}`
+                }
+                await asyncActions.upsertHogFunction(payload as HogFunctionConfigurationType)
+            },
+        },
+    })),
+    selectors(() => ({
+        logicProps: [() => [(_, props) => props], (props: HogFunctionConfigurationLogicProps) => props],
+        surveyIdFromFilters: [
+            (s) => [s.configuration],
+            (configuration: HogFunctionConfigurationType): string | null => {
+                for (const event of configuration?.filters?.events ?? []) {
+                    const prop = (event.properties as AnyPropertyFilter[] | undefined)?.find(
+                        (p) => p.key === SurveyEventProperties.SURVEY_ID && 'value' in p && p.value
+                    )
+                    if (prop) {
+                        return String(prop.value)
+                    }
+                }
+                return null
+            },
+        ],
+        type: [
+            (s) => [s.configuration, s.hogFunction],
+            (configuration: HogFunctionConfigurationType, hogFunction: HogFunctionType | null) =>
+                configuration?.type ?? hogFunction?.type ?? 'loading',
+        ],
+        hasGroupsAddon: [
+            (s) => [s.hasAvailableFeature],
+            (hasAvailableFeature: (feature: AvailableFeature, currentUsage?: number | undefined) => boolean) => {
+                return hasAvailableFeature(AvailableFeature.GROUP_ANALYTICS)
+            },
+        ],
+        useMapping: [
+            (s) => [s.hogFunction, s.template],
+            // If the function has mappings, or the template has mapping templates, we use mappings
+            (hogFunction: HogFunctionType | null, template: HogFunctionTemplateType | null) =>
+                Array.isArray(hogFunction?.mappings) || template?.mapping_templates?.length,
+        ],
+        defaultFormState: [
+            (s) => [s.template, s.hogFunction],
+            (
+                template: HogFunctionTemplateType | null,
+                hogFunction: HogFunctionType | null
+            ): HogFunctionConfigurationType | null => {
+                if (template) {
+                    return templateToConfiguration(template)
+                }
+                return hogFunction ?? null
+            },
+        ],
+
+        templateId: [
+            (s) => [s.template, s.hogFunction],
+            (template: HogFunctionTemplateType | null, hogFunction: HogFunctionType | null) =>
+                template?.id || hogFunction?.template?.id,
+        ],
+
+        loading: [
+            (s) => [s.hogFunctionLoading, s.templateLoading],
+            (hogFunctionLoading: boolean, templateLoading: boolean) => hogFunctionLoading || templateLoading,
+        ],
+        loaded: [
+            (s) => [s.hogFunction, s.template],
+            (hogFunction: HogFunctionType | null, template: HogFunctionTemplateType | null) =>
+                !!hogFunction || !!template,
+        ],
+
+        contextId: [
+            (s) => [s.configuration],
+            (configuration: HogFunctionConfigurationType): HogFunctionConfigurationContextId => {
+                return eventToHogFunctionContextId(configuration.filters?.events?.[0]?.id)
+            },
+        ],
+
+        inputsValidation: [
+            (s) => [s.configuration],
+            (configuration: HogFunctionConfigurationType): CyclotronJobInputsValidationResult =>
+                CyclotronJobInputsValidation.validate(configuration.inputs ?? {}, configuration.inputs_schema ?? []),
+        ],
+        inputFormErrors: [
+            (s) => [s.inputsValidation],
+            (inputsValidation: CyclotronJobInputsValidationResult): Record<string, string> | null =>
+                inputsValidation.valid ? null : inputsValidation.errors,
+        ],
+        inputFormWarnings: [
+            (s) => [s.inputsValidation],
+            (inputsValidation: CyclotronJobInputsValidationResult): Record<string, string> => inputsValidation.warnings,
+        ],
+        willReEnableOnSave: [
+            (s) => [s.configuration, s.hogFunction],
+            (configuration: HogFunctionConfigurationType, hogFunction: HogFunctionType | null) => {
+                const hogState = hogFunction?.status?.state ?? 0
+                return configuration?.enabled && hogState === HogWatcherState.disabled
+            },
+        ],
+
+        willChangeEnabledOnSave: [
+            (s) => [s.configuration, s.hogFunction],
+            (configuration: HogFunctionConfigurationType, hogFunction: HogFunctionType | null) => {
+                return configuration?.enabled !== (hogFunction?.enabled ?? false)
+            },
+        ],
+        exampleInvocationGlobals: [
+            (s) => [s.configuration, s.currentProject, s.groupTypes, s.contextId, s.survey],
+            (
+                configuration: HogFunctionConfigurationType,
+                currentProject: null | import('~/types').ProjectType,
+                groupTypes: Map<import('~/types').GroupTypeIndex, import('~/types').GroupType>,
+                contextId: HogFunctionConfigurationContextId,
+                survey: Survey | null
+            ): CyclotronJobInvocationGlobals => {
+                // Log transformations are seeded with a sample record (no event), so the inline
+                // tester shows something useful to run against instead of an empty object.
+                if (configuration?.type === 'transformation_log') {
+                    return {
+                        project: {
+                            id: currentProject?.id ?? 0,
+                            name: currentProject?.name ?? '',
+                            url: `${window.location.origin}/project/${currentProject?.id}`,
+                        },
+                        record: EXAMPLE_LOG_RECORD,
+                    } as CyclotronJobInvocationGlobals
+                }
+                const currentUrl = window.location.href.split('#')[0]
+                const eventId = uuid()
+                const personId = uuid()
+                const source = {
+                    name: configuration?.name ?? 'Unnamed',
+                    url: currentUrl,
+                }
+                const globals: CyclotronJobInvocationGlobals =
+                    configuration?.filters?.events?.[0]?.id === SurveyEventName.SENT
+                        ? buildSurveyExampleInvocationGlobals({
+                              survey,
+                              projectId: currentProject?.id || 0,
+                              projectName: currentProject?.name || '',
+                              projectUrl: `${window.location.origin}/project/${currentProject?.id}`,
+                              source,
+                              eventUuid: eventId,
+                              distinctId: uuid(),
+                              timestamp: dayjs().toISOString(),
+                              personId,
+                              personName: 'Example person',
+                              personEmail: 'example@posthog.com',
+                          })
+                        : {
+                              event: {
+                                  uuid: eventId,
+                                  distinct_id: uuid(),
+                                  timestamp: dayjs().toISOString(),
+                                  elements_chain: '',
+                                  url: `${window.location.origin}/project/${currentProject?.id}/events/`,
+                                  ...(contextId === 'error-tracking'
+                                      ? {
+                                            event:
+                                                configuration?.filters?.events?.[0].id ||
+                                                '$error_tracking_issue_created',
+                                            properties: {
+                                                name: 'Test issue',
+                                                description: 'This is the issue description',
+                                            },
+                                        }
+                                      : contextId === 'health-alerts'
+                                        ? {
+                                              event:
+                                                  configuration?.filters?.events?.[0].id ||
+                                                  '$health_check_issue_firing',
+                                              properties: {
+                                                  kind: 'sdk_outdated',
+                                                  severity: 'warning',
+                                                  issue_id: '00000000-0000-0000-0000-000000000000',
+                                                  title: 'posthog-python SDK is outdated',
+                                                  summary: 'posthog-python is on 7.0.0, latest is 7.14.0',
+                                                  link: '/health/sdk-health',
+                                                  payload: {
+                                                      sdk_name: 'posthog-python',
+                                                      latest_version: '7.14.0',
+                                                  },
+                                              },
+                                          }
+                                        : contextId === 'activity-log'
+                                          ? {
+                                                event: '$activity_log_entry_created',
+                                                properties: {
+                                                    activity: 'created',
+                                                    scope: 'Insight',
+                                                    item_id: 'abcdef',
+                                                },
+                                            }
+                                          : {
+                                                event: '$pageview',
+                                                properties: {
+                                                    $current_url: currentUrl,
+                                                    $browser: 'Chrome',
+                                                    $ip: '89.160.20.129',
+                                                    this_is_an_example_event: true,
+                                                },
+                                            }),
+                              },
+                              person:
+                                  contextId !== 'error-tracking'
+                                      ? {
+                                            id: personId,
+                                            properties: {
+                                                email: 'example@posthog.com',
+                                            },
+                                            name: 'Example person',
+                                            url: `${window.location.origin}/person/${personId}`,
+                                        }
+                                      : undefined,
+                              groups: {},
+                              project: {
+                                  id: currentProject?.id || 0,
+                                  name: currentProject?.name || '',
+                                  url: `${window.location.origin}/project/${currentProject?.id}`,
+                              },
+                              source,
+                          }
+
+                if (contextId !== 'error-tracking') {
+                    groupTypes.forEach((groupType) => {
+                        const id = uuid()
+                        globals.groups![groupType.group_type] = {
+                            id: id,
+                            type: groupType.group_type,
+                            index: groupType.group_type_index,
+                            url: `${window.location.origin}/groups/${groupType.group_type_index}/${encodeURIComponent(
+                                id
+                            )}`,
+                            properties: {},
+                        }
+                    })
+                }
+
+                return globals
+            },
+        ],
+        sampleGlobalsWithInputs: [
+            (s) => [s.sampleGlobals, s.exampleInvocationGlobals, s.configuration],
+            (
+                sampleGlobals: CyclotronJobInvocationGlobals | null,
+                exampleInvocationGlobals: CyclotronJobInvocationGlobals,
+                configuration: HogFunctionConfigurationType
+            ): CyclotronJobInvocationGlobalsWithInputs => {
+                const inputs: Record<string, any> = {}
+                for (const input of configuration?.inputs_schema || []) {
+                    inputs[input.key] = input.type
+                }
+
+                if (configuration.type === 'source_webhook') {
+                    return {
+                        request: {
+                            body: {},
+                            headers: {},
+                            ip: '127.0.0.1',
+                        },
+                        inputs,
+                    }
+                }
+
+                const baseGlobals = sampleGlobals ?? exampleInvocationGlobals
+
+                // Transformations only receive `project` and `event` at runtime
+                // (see HogTransformerService.createInvocationGlobals). Hide `person`,
+                // `groups`, `source`, etc. so input templates can't reference them
+                // and trigger a "Global variable not found" failure in production.
+                if (configuration.type === 'transformation') {
+                    return {
+                        project: baseGlobals.project,
+                        event: baseGlobals.event,
+                        inputs,
+                    }
+                }
+
+                // Log transformations receive `project` and `record` at runtime (see
+                // buildLogRecordGlobals). There is no event table to sample from, so show a
+                // representative record the user can edit.
+                if (configuration.type === 'transformation_log') {
+                    return {
+                        project: baseGlobals.project,
+                        record: EXAMPLE_LOG_RECORD,
+                        inputs,
+                    }
+                }
+
+                return {
+                    ...baseGlobals,
+                    inputs,
+                }
+            },
+        ],
+        matchingFilters: [
+            (s) => [s.configuration, s.useMapping],
+            (
+                configuration: HogFunctionConfigurationType,
+                useMapping: number | true | undefined
+            ): PropertyGroupFilter => {
+                // We're using mappings, but none are provided, so match zero events.
+                if (useMapping && !configuration.mappings?.length) {
+                    return {
+                        type: FilterLogicalOperator.And,
+                        values: [
+                            {
+                                type: FilterLogicalOperator.And,
+                                values: [
+                                    {
+                                        type: PropertyFilterType.HogQL,
+                                        key: 'false',
+                                    },
+                                ],
+                            },
+                        ],
+                    }
+                }
+
+                const seriesProperties: PropertyGroupFilterValue = {
+                    type: FilterLogicalOperator.Or,
+                    values: [],
+                }
+                const properties: PropertyGroupFilter = {
+                    type: FilterLogicalOperator.And,
+                    values: [seriesProperties],
+                }
+                const allPossibleEventFilters = configuration.filters?.events ?? []
+                const allPossibleActionFilters = configuration.filters?.actions ?? []
+
+                if (Array.isArray(configuration.mappings)) {
+                    for (const mapping of configuration.mappings) {
+                        if (mapping.filters?.events) {
+                            allPossibleEventFilters.push(...mapping.filters.events)
+                        }
+                        if (mapping.filters?.actions) {
+                            allPossibleActionFilters.push(...mapping.filters.actions)
+                        }
+                    }
+                }
+
+                for (const event of allPossibleEventFilters) {
+                    const eventProperties: AnyPropertyFilter[] = [...(event.properties ?? [])]
+                    if (event.id) {
+                        eventProperties.push({
+                            type: PropertyFilterType.HogQL,
+                            key: hogql`event = ${event.id}`,
+                        })
+                    }
+                    if (eventProperties.length === 0) {
+                        eventProperties.push({
+                            type: PropertyFilterType.HogQL,
+                            key: 'true',
+                        })
+                    }
+                    seriesProperties.values.push({
+                        type: FilterLogicalOperator.And,
+                        values: eventProperties,
+                    })
+                }
+                for (const action of allPossibleActionFilters) {
+                    const actionProperties: AnyPropertyFilter[] = [...(action.properties ?? [])]
+                    if (action.id) {
+                        actionProperties.push({
+                            type: PropertyFilterType.HogQL,
+                            key: hogql`matchesAction(${parseInt(action.id)})`,
+                        })
+                    }
+                    seriesProperties.values.push({
+                        type: FilterLogicalOperator.And,
+                        values: actionProperties,
+                    })
+                }
+                if ((configuration.filters?.properties?.length ?? 0) > 0) {
+                    const globalProperties: PropertyGroupFilterValue = {
+                        type: FilterLogicalOperator.And,
+                        values: [],
+                    }
+                    for (const property of configuration.filters?.properties ?? []) {
+                        globalProperties.values.push(property as AnyPropertyFilter)
+                    }
+                    properties.values.push(globalProperties)
+                }
+                return properties
+            },
+            { resultEqualityCheck: equal },
+        ],
+
+        filtersContainPersonProperties: [
+            (s) => [s.configuration],
+            (configuration: HogFunctionConfigurationType) => {
+                const filters = configuration.filters
+                let containsPersonProperties = false
+                if (filters?.properties && !containsPersonProperties) {
+                    containsPersonProperties = filters.properties.some((p) => p.type === 'person')
+                }
+                if (filters?.actions && !containsPersonProperties) {
+                    containsPersonProperties = filters.actions.some((a) =>
+                        a.properties?.some((p) => p.type === 'person')
+                    )
+                }
+                if (filters?.events && !containsPersonProperties) {
+                    containsPersonProperties = filters.events.some((e) =>
+                        e.properties?.some((p) => p.type === 'person')
+                    )
+                }
+                return containsPersonProperties
+            },
+        ],
+
+        sourceUsesEvents: [
+            (s) => [s.configuration, s.type],
+            (configuration: HogFunctionConfigurationType, type: HogFunctionTypeType) => {
+                return TYPES_WITH_REAL_EVENTS.includes(type) && (configuration.filters?.source ?? 'events') === 'events'
+            },
+        ],
+
+        sparklineQuery: [
+            (s) => [s.configuration, s.matchingFilters, s.sourceUsesEvents],
+            (
+                configuration: HogFunctionConfigurationType,
+                matchingFilters: PropertyGroupFilter,
+                sourceUsesEvents: boolean
+            ): TrendsQuery | null => {
+                if (!sourceUsesEvents) {
+                    return null
+                }
+                return setLatestVersionsOnQuery({
+                    kind: NodeKind.TrendsQuery,
+                    filterTestAccounts: configuration.filters?.filter_test_accounts,
+                    series: [
+                        {
+                            kind: NodeKind.EventsNode,
+                            event: null,
+                            name: 'All Events',
+                            math: BaseMathType.TotalCount,
+                        } satisfies EventsNode,
+                    ],
+                    properties: matchingFilters,
+                    interval: 'day',
+                    dateRange: {
+                        date_from: '-7d',
+                    },
+                    trendsFilter: {
+                        display: ChartDisplayType.ActionsBar,
+                    },
+                    modifiers: {
+                        personsOnEventsMode: 'person_id_no_override_properties_on_events',
+                    },
+                })
+            },
+            { resultEqualityCheck: equal },
+        ],
+
+        baseEventsQuery: [
+            (s) => [s.configuration, s.matchingFilters, s.groupTypes, s.sourceUsesEvents],
+            (
+                configuration: HogFunctionConfigurationType,
+                matchingFilters: PropertyGroupFilter,
+                groupTypes: Map<import('~/types').GroupTypeIndex, import('~/types').GroupType>,
+                sourceUsesEvents: boolean
+            ): EventsQuery | null => {
+                if (!sourceUsesEvents) {
+                    return null
+                }
+                const query: EventsQuery = {
+                    kind: NodeKind.EventsQuery,
+                    filterTestAccounts: configuration.filters?.filter_test_accounts,
+                    fixedProperties: [matchingFilters],
+                    select: ['*', 'person'],
+                    after: '-7d',
+                    orderBy: ['timestamp DESC'],
+                    modifiers: {
+                        // NOTE: We always want to show events with the person properties at the time the event was created as that is what the function will see
+                        personsOnEventsMode: 'person_id_no_override_properties_on_events',
+                    },
+                }
+                groupTypes.forEach((groupType) => {
+                    const name = escapePropertyAsHogQLIdentifier(groupType.group_type)
+                    query.select.push(
+                        `tuple(${name}.created_at, ${name}.index, ${name}.key, ${name}.properties, ${name}.updated_at)`
+                    )
+                })
+                return setLatestVersionsOnQuery(query)
+            },
+            { resultEqualityCheck: equal },
+        ],
+
+        eventsDataTableNode: [
+            (s) => [s.baseEventsQuery],
+            (baseEventsQuery: EventsQuery | null): DataTableNode | null => {
+                return baseEventsQuery
+                    ? setLatestVersionsOnQuery(
+                          {
+                              kind: NodeKind.DataTableNode,
+                              source: {
+                                  ...baseEventsQuery,
+                                  select: defaultDataTableColumns(NodeKind.EventsQuery),
+                              },
+                          },
+                          { recursion: false }
+                      )
+                    : null
+            },
+        ],
+
+        lastEventQuery: [
+            (s) => [s.baseEventsQuery],
+            (baseEventsQuery: EventsQuery | null): EventsQuery | null => {
+                return baseEventsQuery ? { ...baseEventsQuery, limit: 1 } : null
+            },
+            { resultEqualityCheck: equal },
+        ],
+        lastEventSecondQuery: [
+            (s) => [s.lastEventQuery],
+            (lastEventQuery: EventsQuery | null): EventsQuery | null =>
+                lastEventQuery ? { ...lastEventQuery, after: '-30d' } : null,
+        ],
+        templateHasChanged: [
+            (s) => [s.hogFunction, s.configuration],
+            (hogFunction: HogFunctionType | null, configuration: HogFunctionConfigurationType) => {
+                return hogFunction?.template?.code && hogFunction.template.code !== configuration.hog
+            },
+        ],
+        mappingTemplates: [
+            (s) => [s.hogFunction, s.template],
+            (hogFunction: HogFunctionType | null, template: HogFunctionTemplateType | null) =>
+                template?.mapping_templates ?? hogFunction?.template?.mapping_templates ?? [],
+        ],
+
+        usesGroups: [
+            (s) => [s.configuration],
+            (configuration: HogFunctionConfigurationType) => {
+                // NOTE: Bit hacky but works good enough...
+                const configStr = JSON.stringify(configuration)
+                return configStr.includes('groups.') || configStr.includes('{groups}')
+            },
+        ],
+        mightDropEvents: [
+            (s) => [s.configuration, s.type],
+            (configuration: HogFunctionConfigurationType, type: HogFunctionTypeType) => {
+                if (type !== 'transformation' && type !== 'transformation_log') {
+                    return false
+                }
+                const hogCode = configuration.hog || ''
+
+                return mightDropEvents(hogCode)
+            },
+        ],
+
+        currentHogCode: [
+            (s) => [s.newHogCode, s.configuration],
+            (newHogCode: string | null, configuration: HogFunctionConfigurationType) => {
+                return newHogCode ?? configuration.hog ?? ''
+            },
+        ],
+
+        currentInputs: [
+            (s) => [s.newInputs, s.configuration],
+            (newInputs: CyclotronJobInputSchemaType[] | null, configuration: HogFunctionConfigurationType) => {
+                return newInputs ?? configuration.inputs_schema ?? []
+            },
+        ],
+
+        inputsDiff: [
+            (s) => [s.oldInputs, s.newInputs],
+            (oldInputs: CyclotronJobInputSchemaType[] | null, newInputs: CyclotronJobInputSchemaType[] | null) => {
+                if (!oldInputs || !newInputs) {
+                    return null
+                }
+                return { oldInputs, newInputs }
+            },
+        ],
+
+        canLoadSampleGlobals: [
+            (s) => [s.lastEventQuery, s.contextId],
+            (lastEventQuery: EventsQuery | null, contextId: HogFunctionConfigurationContextId) => {
+                return !!lastEventQuery || !!SAMPLE_GLOBALS_CONTEXTS[contextId]
+            },
+        ],
+
+        showFilters: [
+            (s) => [s.type],
+            (type: HogFunctionTypeType) => {
+                return ['destination', 'internal_destination', 'site_destination', 'transformation'].includes(type)
+            },
+        ],
+
+        showExpectedVolume: [
+            (s) => [s.type, s.sourceUsesEvents],
+            (type: HogFunctionTypeType, sourceUsesEvents: boolean) => {
+                return sourceUsesEvents && ['destination', 'site_destination', 'transformation'].includes(type)
+            },
+        ],
+
+        canEditSource: [
+            (s) => [s.type, s.template, s.hogFunction],
+            (
+                type: HogFunctionTypeType,
+                template: HogFunctionTemplateType | null,
+                hogFunction: HogFunctionType | null
+            ) => {
+                const codeLanguage = template?.code_language || hogFunction?.template?.code_language
+
+                if (type === 'site_app' || type === 'site_destination') {
+                    return true
+                }
+
+                // Only allow editing if code language is 'hog'
+                if (codeLanguage && codeLanguage !== 'hog') {
+                    return false
+                }
+
+                return ['source_webhook', 'transformation', 'transformation_log', 'destination'].includes(type)
+            },
+        ],
+
+        showTesting: [
+            (s) => [s.type],
+            (type: HogFunctionTypeType) => {
+                return ['destination', 'internal_destination', 'transformation', 'transformation_log'].includes(type)
+            },
+        ],
+
+        isLegacyPlugin: [
+            (s) => [s.template, s.hogFunction],
+            (template: HogFunctionTemplateType | null, hogFunction: HogFunctionType | null) => {
+                return (template?.id || hogFunction?.template?.id)?.startsWith('plugin-')
+            },
+        ],
+    })),
+
+    listeners(({ actions, values, cache }) => ({
+        reportAIHogFunctionPrompted: () => {
+            posthog.capture('ai_hog_function_prompted', { type: values.type })
+        },
+        reportAIHogFunctionAccepted: () => {
+            posthog.capture('ai_hog_function_accepted', { type: values.type })
+        },
+        reportAIHogFunctionRejected: () => {
+            posthog.capture('ai_hog_function_rejected', { type: values.type })
+        },
+        reportAIHogFunctionPromptOpen: () => {
+            posthog.capture('ai_hog_function_prompt_open', { type: values.type })
+        },
+        reportAIFiltersPrompted: () => {
+            posthog.capture('ai_hog_function_filters_prompted', { type: values.type })
+        },
+        reportAIFiltersAccepted: () => {
+            posthog.capture('ai_hog_function_filters_accepted', { type: values.type })
+        },
+        reportAIFiltersRejected: () => {
+            posthog.capture('ai_hog_function_filters_rejected', { type: values.type })
+        },
+        reportAIFiltersPromptOpen: () => {
+            posthog.capture('ai_hog_function_filters_prompt_open', { type: values.type })
+        },
+        reportAIHogFunctionInputsPrompted: () => {
+            posthog.capture('ai_hog_function_inputs_prompted', { type: values.type })
+        },
+        reportAIHogFunctionInputsAccepted: () => {
+            posthog.capture('ai_hog_function_inputs_accepted', { type: values.type })
+        },
+        reportAIHogFunctionInputsRejected: () => {
+            posthog.capture('ai_hog_function_inputs_rejected', { type: values.type })
+        },
+        reportAIHogFunctionInputsPromptOpen: () => {
+            posthog.capture('ai_hog_function_inputs_prompt_open', { type: values.type })
+        },
+        loadTemplateSuccess: () => actions.resetForm(),
+        loadHogFunctionSuccess: () => {
+            actions.resetForm()
+        },
+        upsertHogFunctionSuccess: () => {
+            actions.resetForm()
+        },
+
+        upsertHogFunctionFailure: ({ errorObject }) => {
+            const maybeValidationError = errorObject.data
+
+            if (maybeValidationError?.type === 'validation_error' && maybeValidationError.attr) {
+                // Errors on `type` (the feature gate and the enabled-function cap reject there)
+                // have no rendered form field, so a toast is the only way the user sees them.
+                if (maybeValidationError.attr === 'type') {
+                    lemonToast.error(maybeValidationError.detail)
+                }
+                setTimeout(() => {
+                    // TRICKY: We want to run on the next tick otherwise the errors don't show (possibly because of the async wait in the submit)
+                    if (maybeValidationError.attr.includes('inputs__')) {
+                        actions.setConfigurationManualErrors({
+                            inputs: {
+                                [maybeValidationError.attr.split('__')[1]]: maybeValidationError.detail,
+                            },
+                        })
+                    } else {
+                        // A nested attr names a path inside a form field (`filters__events`), and the
+                        // form only has a manual-error slot for the field itself — anchoring the
+                        // message at the leaf renders nothing at all.
+                        actions.setConfigurationManualErrors({
+                            [maybeValidationError.attr.split('__')[0]]: maybeValidationError.detail,
+                        })
+                    }
+                }, 1)
+            } else {
+                console.error(errorObject)
+                lemonToast.error(maybeValidationError?.detail ?? 'Error submitting configuration')
+            }
+        },
+
+        resetForm: () => {
+            const baseConfig = values.defaultFormState
+            if (!baseConfig) {
+                return
+            }
+
+            const config: HogFunctionConfigurationType = {
+                ...baseConfig,
+                ...cache.configFromUrl,
+            }
+
+            const paramsFromUrl = cache.paramsFromUrl ?? {}
+            const unsavedConfigurationToApply =
+                (values.unsavedConfiguration?.timestamp ?? 0) > Date.now() - UNSAVED_CONFIGURATION_TTL
+                    ? values.unsavedConfiguration?.configuration
+                    : null
+
+            actions.resetConfiguration(config)
+
+            if (unsavedConfigurationToApply) {
+                actions.setConfigurationValues(unsavedConfigurationToApply)
+            }
+
+            actions.setUnsavedConfiguration(null)
+
+            if (paramsFromUrl.integration_target && paramsFromUrl.integration_id) {
+                const inputs = values.configuration?.inputs ?? {}
+                inputs[paramsFromUrl.integration_target] = {
+                    value: paramsFromUrl.integration_id,
+                }
+
+                actions.setConfigurationValues({
+                    inputs,
+                })
+            }
+        },
+
+        duplicate: async () => {
+            if (values.hogFunction) {
+                const newConfig = {
+                    ...values.configuration,
+                    name: `${values.configuration.name} (copy)`,
+                }
+                // TODO: What to do if no template?
+                const originalTemplate = values.hogFunction.template!
+                router.actions.push(urls.hogFunctionNew(originalTemplate.id), undefined, {
+                    configuration: newConfig,
+                })
+            }
+        },
+        duplicateFromTemplate: async () => {
+            if (values.hogFunction?.template) {
+                const newConfig: HogFunctionTemplateType = {
+                    ...values.hogFunction.template,
+                }
+                router.actions.push(urls.hogFunctionNew(values.hogFunction.template.id), undefined, {
+                    configuration: newConfig,
+                })
+            }
+        },
+        resetToTemplate: async () => {
+            const template = values.hogFunction?.template ?? values.template
+            if (template) {
+                const config = templateToConfiguration(template)
+
+                const inputs = config.inputs ?? {}
+
+                // Keep any non-default values
+                Object.entries(values.configuration.inputs ?? {}).forEach(([key, value]) => {
+                    inputs[key] = inputs[key] ?? value
+                })
+
+                actions.setConfigurationValues({
+                    ...config,
+                    enabled: values.configuration.enabled,
+                    filters: values.configuration.filters ?? config.filters,
+                    // NOTE: Technically mapping should also be sanitized against the template mappings but this is a bit of a pain
+                    mappings: values.configuration.mappings?.length ? values.configuration.mappings : config.mappings,
+                    // Keep some existing things when manually resetting the template
+                    name: values.configuration.name,
+                    description: values.configuration.description,
+                })
+
+                lemonToast.success('Template updates applied but not saved.')
+            }
+        },
+        setConfigurationValue: () => {
+            if (values.hasHadSubmissionErrors) {
+                // Clear the manually set errors otherwise the submission won't work
+                actions.setConfigurationManualErrors({})
+            }
+        },
+
+        deleteHogFunction: async () => {
+            const hogFunction = values.hogFunction
+            if (!hogFunction) {
+                return
+            }
+            await deleteWithUndo({
+                endpoint: `projects/${values.currentProjectId}/hog_functions`,
+                object: {
+                    id: hogFunction.id,
+                    name: hogFunction.name,
+                },
+                callback(undo) {
+                    if (undo) {
+                        router.actions.replace(urls.hogFunction(hogFunction.id))
+                        refreshTreeItem('hog_function/', hogFunction.id)
+                    } else {
+                        deleteFromTree('hog_function/', hogFunction.id)
+                    }
+                },
+            })
+
+            router.actions.replace(urls.hogFunction(hogFunction.id))
+        },
+
+        persistForUnload: () => {
+            actions.setUnsavedConfiguration(values.configuration)
+        },
+    })),
+    afterMount(({ props, actions, cache }) => {
+        cache.paramsFromUrl = {
+            integration_id: router.values.searchParams.integration_id,
+            integration_target: router.values.searchParams.integration_target,
+        }
+
+        if (props.templateId) {
+            cache.configFromUrl = router.values.hashParams.configuration
+            actions.loadTemplate()
+        } else if (props.id && props.id !== 'new') {
+            actions.loadHogFunction()
+        }
+
+        if (router.values.searchParams.integration_target) {
+            const searchParams = router.values.searchParams
+            delete searchParams.integration_id
+            delete searchParams.integration_target
+            // Clear query params so we don't keep trying to set the integration
+            router.actions.replace(router.values.location.pathname, searchParams, router.values.hashParams)
+        }
+    }),
+
+    subscriptions(({ props, actions, cache }) => ({
+        hogFunction: (hogFunction) => {
+            if (hogFunction && props.templateId) {
+                // Catch all for any scenario where we need to redirect away from the template to the actual hog function
+
+                cache.disabledBeforeUnload = true
+                // Preserve existing search params (integration params, returnTo, etc.) on redirect
+                router.actions.replace(urls.hogFunction(hogFunction.id), router.values.searchParams)
+            }
+        },
+        sparklineQuery: async (sparklineQuery) => {
+            if (sparklineQuery) {
+                actions.sparklineQueryChanged(sparklineQuery)
+            }
+        },
+        configuration: (configuration, oldConfiguration) => {
+            if (
+                typeof configuration?.filters?.source === 'string' &&
+                typeof oldConfiguration?.filters?.source === 'string' &&
+                configuration?.filters?.source !== oldConfiguration?.filters?.source
+            ) {
+                actions.setConfigurationValue('filters', {
+                    ...configuration.filters,
+                    events: [],
+                    actions: [],
+                    data_warehouse: [],
+                })
+            }
+        },
+        surveyIdFromFilters: (surveyId) => {
+            if (surveyId) {
+                actions.loadSurvey()
+            } else {
+                actions.loadSurveySuccess(null)
+            }
+        },
+    })),
+
+    urlToAction(({ actions, values, cache }) => ({
+        [urls.hogFunctionNew(':templateId')]: (_, __, hashParams) => {
+            const newConfig = hashParams?.configuration
+            if (values.template && !equal(newConfig, cache.configFromUrl)) {
+                cache.configFromUrl = newConfig
+                actions.resetForm()
+            }
+        },
+    })),
+
+    beforeUnload(({ values, cache }) => ({
+        enabled: (newLocation?: CombinedLocation) => {
+            if (cache.disabledBeforeUnload || values.unsavedConfiguration || !values.configurationChanged) {
+                return false
+            }
+
+            // the oldRoute includes the project id, so we remove it for comparison
+            const oldRoute = router.values.location.pathname.replace(/\/project\/\d+/, '').split('/')
+            const newRoute = newLocation?.pathname.replace(/\/project\/\d+/, '').split('/')
+
+            if (!newRoute || newRoute.length !== oldRoute.length) {
+                return true
+            }
+
+            for (let i = 0; i < oldRoute.length - 1; i++) {
+                if (oldRoute[i] !== newRoute[i]) {
+                    return true
+                }
+            }
+
+            // TODO: Fix this!!
+            // const possibleMenuIds: string[] = [PipelineNodeTab.Configuration, PipelineNodeTab.Testing]
+            // if (
+            //     !(
+            //         possibleMenuIds.includes(newRoute[newRoute.length - 1]) &&
+            //         possibleMenuIds.includes(oldRoute[newRoute.length - 1])
+            //     )
+            // ) {
+            //     return true
+            // }
+
+            return false
+        },
+        message: 'Changes you made will be discarded.',
+        onConfirm: () => {
+            cache.disabledBeforeUnload = true
+        },
+    })),
+])

@@ -1,0 +1,16 @@
+[
+  {
+    "repo": "Erlang-OTP",
+    "path": "lib/crypto/test/crypto_SUITE_data/cmactestvectors.zip",
+    "chunks_dir": "Erlang-OTP/lib/crypto/test/crypto_SUITE_data/cmactestvectors.zip.chunks",
+    "bytes": 8823056,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Erlang-OTP",
+    "path": "lib/crypto/test/crypto_SUITE_data/gcmtestvectors.zip",
+    "chunks_dir": "Erlang-OTP/lib/crypto/test/crypto_SUITE_data/gcmtestvectors.zip.chunks",
+    "bytes": 9154174,
+    "chunk_bytes": 8388608
+  }
+]

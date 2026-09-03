@@ -1,0 +1,72 @@
+# Codecov configuration for promptfoo
+# https://docs.codecov.com/docs/codecov-yaml
+
+coverage:
+  status:
+    project:
+      default:
+        # Backend (`src/`) and frontend (`src/app/src/`) coverage are gated
+        # in-repo by the coverage ratchet (`npm run test:coverage:ratchet`, run
+        # in CI as the "Check Backend/Frontend Coverage Ratchets" steps), not by
+        # Codecov. (The `site` flag has no ratchet, so it is informational-only
+        # — no in-repo gate.) Keep this status informational so Codecov
+        # measurement noise — carryforward flags, sharded/partial uploads —
+        # can't fail PRs that don't change source (e.g. a dependency bump
+        # reporting a spurious -0.01%). codecov/project is not a required check.
+        target: auto
+        threshold: 0%
+        informational: true
+    patch:
+      default:
+        # Require new code in PRs to have reasonable coverage
+        target: 50%
+        threshold: 0%
+        informational: false
+
+comment:
+  layout: 'header, diff, flags, components'
+  behavior: default
+  require_changes: false
+
+# Ignore generated files and test files in coverage reports
+ignore:
+  - 'dist/**/*'
+  - 'coverage/**/*'
+  - 'node_modules/**/*'
+  - '**/*.test.ts'
+  - '**/*.test.tsx'
+  - '**/*.d.ts'
+  - 'src/app/**/*' # Frontend has separate coverage
+  - 'examples/**/*'
+  - 'drizzle/**/*'
+  - 'scripts/**/*'
+
+# Component flags for separate coverage tracking
+flag_management:
+  default_rules:
+    carryforward: true
+    statuses:
+      # Per-flag project status is informational. The backend and frontend
+      # flags are gated in-repo by the coverage ratchet, so a blocking Codecov
+      # status would be redundant; the site flag has no ratchet, so we accept it
+      # as informational-only rather than block PRs on Codecov measurement noise.
+      - type: project
+        target: auto
+        threshold: 0%
+        informational: true
+      - type: patch
+        target: 50%
+
+flags:
+  backend:
+    paths:
+      - src/
+    carryforward: true
+  frontend:
+    paths:
+      - src/app/src/
+    carryforward: true
+  site:
+    paths:
+      - site/src/
+    carryforward: true

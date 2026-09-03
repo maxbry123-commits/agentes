@@ -1,0 +1,108 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "properties": {
+        "assignee": {
+            "anyOf": [
+                {
+                    "anyOf": [
+                        {
+                            "properties": {
+                                "id": {
+                                    "description": "User ID.",
+                                    "type": "number"
+                                },
+                                "type": {
+                                    "description": "Assign the ticket to a user.",
+                                    "enum": ["user"],
+                                    "type": "string"
+                                }
+                            },
+                            "required": ["type", "id"],
+                            "type": "object"
+                        },
+                        {
+                            "properties": {
+                                "id": {
+                                    "description": "Role ID.",
+                                    "type": "string"
+                                },
+                                "type": {
+                                    "description": "Assign the ticket to a role.",
+                                    "enum": ["role"],
+                                    "type": "string"
+                                }
+                            },
+                            "required": ["type", "id"],
+                            "type": "object"
+                        }
+                    ]
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "User or role to assign. Pass null to remove the current assignee."
+        },
+        "id": {
+            "description": "The ticket's UUID or its numeric ticket number.",
+            "type": "string"
+        },
+        "priority": {
+            "anyOf": [
+                {
+                    "description": "* `low` - Low\n* `medium` - Medium\n* `high` - High\n* `critical` - Critical",
+                    "enum": ["low", "medium", "high", "critical"],
+                    "type": "string"
+                },
+                {
+                    "enum": [""],
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "Ticket priority: low, medium, high, or critical. Pass null to clear it.\n\n* `low` - Low\n* `medium` - Medium\n* `high` - High\n* `critical` - Critical"
+        },
+        "sla_due_at": {
+            "anyOf": [
+                {
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "SLA deadline. Pass null to clear it."
+        },
+        "snoozed_until": {
+            "anyOf": [
+                {
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "Time to reopen the ticket. Pass null to reopen it now."
+        },
+        "status": {
+            "description": "Ticket status: new, open, pending, on_hold, or resolved.\n\n* `new` - New\n* `open` - Open\n* `pending` - Pending\n* `on_hold` - On hold\n* `resolved` - Resolved",
+            "enum": ["new", "open", "pending", "on_hold", "resolved"],
+            "type": "string"
+        },
+        "tags": {
+            "description": "Tag names to set on the ticket.",
+            "items": {
+                "type": "string"
+            },
+            "type": "array"
+        }
+    },
+    "required": ["id"],
+    "type": "object"
+}

@@ -1,0 +1,600 @@
+/**
+ * Auto-generated from the Django backend OpenAPI schema.
+ * To modify these types, update the Django serializers or views, then run:
+ *   hogli build:openapi
+ * Questions or issues? #team-devex on Slack
+ *
+ * PostHog API - generated
+ * OpenAPI spec version: 1.0.0
+ */
+export interface StaffCohortApi {
+    /** Cohort id. */
+    id: number
+    /**
+     * Cohort name.
+     * @nullable
+     */
+    name: string | null
+    /** Id of the team the cohort belongs to. */
+    team_id: number
+    /** Name of the team the cohort belongs to. */
+    team_name: string
+    /** Project id the cohort's team belongs to, for building /project/<id>/cohorts/<id> links. */
+    project_id: number
+    /** Whether the cohort is soft-deleted. */
+    deleted: boolean
+    /** Whether the cohort is static (populated once from a source rather than recalculated). */
+    is_static: boolean
+    /** Whether a calculation is currently marked as in flight. */
+    is_calculating: boolean
+    /**
+     * When the last calculation completed, or null if never calculated.
+     * @nullable
+     */
+    last_calculation: string | null
+    /**
+     * Duration of the last completed calculation in milliseconds.
+     * @nullable
+     */
+    last_calculation_duration_ms: number | null
+    /** Consecutive calculation failures; above 20 the cohort is excluded from periodic recalculation. */
+    errors_calculating: number
+    /**
+     * When the last calculation error was recorded.
+     * @nullable
+     */
+    last_error_at: string | null
+    /**
+     * Version of the last completed calculation.
+     * @nullable
+     */
+    version: number | null
+    /**
+     * Version most recently requested; greater than `version` while a calculation is pending or stuck.
+     * @nullable
+     */
+    pending_version: number | null
+    /**
+     * Number of persons in the cohort as of the last completed calculation.
+     * @nullable
+     */
+    count: number | null
+    /**
+     * When the cohort was created.
+     * @nullable
+     */
+    created_at: string | null
+}
+
+export interface StaffCohortLookupResponseApi {
+    /** Requested cohorts, in request order. */
+    results: StaffCohortApi[]
+    /** Requested cohort ids that do not exist. */
+    not_found_cohort_ids: number[]
+}
+
+export interface StaffCohortRecalculateApi {
+    /**
+     * Cohort ids to force-recalculate (max 10 per request).
+     * @minItems 1
+     * @maxItems 10
+     */
+    cohort_ids: number[]
+}
+
+export interface StaffCohortFailedApi {
+    /** Cohort id that raised while being enqueued. */
+    cohort_id: number
+    /** Error message from the failed enqueue attempt. */
+    error: string
+}
+
+export interface StaffCohortSkippedApi {
+    /** Cohort id that was skipped. */
+    cohort_id: number
+    /** Why the cohort was not enqueued for recalculation. */
+    reason: string
+}
+
+export interface StaffCohortRecalculateResponseApi {
+    /** Cohort ids for which a recalculation was enqueued (including their dependency chains). */
+    queued_cohort_ids: number[]
+    /** Subset of queued_cohort_ids whose dependency chain failed to resolve, so only the cohort itself (not its dependents/dependencies) was enqueued. Those related cohorts are still stale; re-request recalculation for them explicitly once the dependency issue is fixed. */
+    partial_cohort_ids: number[]
+    /** Cohort ids that raised while being enqueued and were not queued at all. Cohorts listed elsewhere in this response already had their enqueue attempted; retry only these ids rather than the whole batch. */
+    failed_cohort_ids: StaffCohortFailedApi[]
+    /** Cohorts that exist but were not enqueued, with the reason. */
+    skipped: StaffCohortSkippedApi[]
+    /** Requested cohort ids that do not exist. */
+    not_found_cohort_ids: number[]
+}
+
+export interface StaffStuckCohortsResponseApi {
+    /** Stuck cohorts, oldest last_calculation first (max 100). */
+    results: StaffCohortApi[]
+    /** Total number of stuck cohorts instance-wide. */
+    total_count: number
+}
+
+export type PropertyGroupOperatorApi = (typeof PropertyGroupOperatorApi)[keyof typeof PropertyGroupOperatorApi]
+
+export const PropertyGroupOperatorApi = {
+    And: 'AND',
+    Or: 'OR',
+} as const
+
+export type EventPropFilterTypeEnumApi = (typeof EventPropFilterTypeEnumApi)[keyof typeof EventPropFilterTypeEnumApi]
+
+export const EventPropFilterTypeEnumApi = {
+    Event: 'event',
+    Element: 'element',
+} as const
+
+export interface EventPropFilterApi {
+    type: EventPropFilterTypeEnumApi
+    key: string
+    value: unknown
+    operator?: string | null
+}
+
+export interface HogQLFilterApi {
+    type: 'hogql'
+    key: string
+    value?: unknown
+}
+
+export interface BehavioralFilterApi {
+    bytecode?: unknown[] | null
+    bytecode_error?: string | null
+    conditionHash?: string | null
+    type: 'behavioral'
+    key: string | number
+    value: string
+    event_type: string
+    time_value?: number | null
+    time_interval?: string | null
+    negation?: boolean
+    operator?: string | null
+    operator_value?: number | null
+    seq_time_interval?: string | null
+    seq_time_value?: number | null
+    seq_event?: string | number | null
+    seq_event_type?: string | null
+    total_periods?: number | null
+    min_periods?: number | null
+    event_filters?: (EventPropFilterApi | HogQLFilterApi)[] | null
+    explicit_datetime?: string | null
+    explicit_datetime_to?: string | null
+}
+
+export interface CohortFilterApi {
+    bytecode?: unknown[] | null
+    bytecode_error?: string | null
+    conditionHash?: string | null
+    type: 'cohort'
+    key: 'id'
+    value: number
+    negation?: boolean
+}
+
+export interface PersonFilterApi {
+    operator?: string | null
+    value?: unknown
+    bytecode?: unknown[] | null
+    bytecode_error?: string | null
+    conditionHash?: string | null
+    type: 'person'
+    key: string
+    negation?: boolean
+}
+
+/**
+ * Filter on a top-level persons-table column (e.g. created_at) rather than the
+ * properties JSON. The matching key must be one of PERSON_METADATA_FIELDS.
+ */
+export interface PersonMetadataFilterApi {
+    operator?: string | null
+    value?: unknown
+    bytecode?: unknown[] | null
+    bytecode_error?: string | null
+    conditionHash?: string | null
+    type: 'person_metadata'
+    key: string
+    negation?: boolean
+}
+
+/**
+ * AND/OR group containing cohort filters. Named to avoid collision with analytics Group model.
+ */
+export interface CohortFilterGroupApi {
+    type: PropertyGroupOperatorApi
+    values: (BehavioralFilterApi | CohortFilterApi | PersonFilterApi | PersonMetadataFilterApi | CohortFilterGroupApi)[]
+}
+
+export interface CohortFiltersApi {
+    properties: CohortFilterGroupApi
+    filterTestAccounts?: boolean | null
+}
+
+/**
+ * * `engineering` - Engineering
+ * * `data` - Data
+ * * `product` - Product Management
+ * * `founder` - Founder
+ * * `leadership` - Leadership
+ * * `marketing` - Marketing
+ * * `sales` - Sales / Success
+ * * `student` - Student
+ * * `other` - Other
+ */
+export type RoleAtOrganizationEnumApi = (typeof RoleAtOrganizationEnumApi)[keyof typeof RoleAtOrganizationEnumApi]
+
+export const RoleAtOrganizationEnumApi = {
+    Engineering: 'engineering',
+    Data: 'data',
+    Product: 'product',
+    Founder: 'founder',
+    Leadership: 'leadership',
+    Marketing: 'marketing',
+    Sales: 'sales',
+    Student: 'student',
+    Other: 'other',
+} as const
+
+export type BlankEnumApi = (typeof BlankEnumApi)[keyof typeof BlankEnumApi]
+
+export const BlankEnumApi = {
+    '': '',
+} as const
+
+/**
+ * @nullable
+ */
+export type UserBasicApiHedgehogConfig = { [key: string]: unknown } | null
+
+export interface UserBasicApi {
+    readonly id: number
+    readonly uuid: string
+    /**
+     * @maxLength 200
+     * @nullable
+     */
+    distinct_id?: string | null
+    /** @maxLength 150 */
+    first_name?: string
+    /** @maxLength 150 */
+    last_name?: string
+    /** @maxLength 254 */
+    email: string
+    /** @nullable */
+    is_email_verified?: boolean | null
+    /** @nullable */
+    readonly hedgehog_config: UserBasicApiHedgehogConfig
+    role_at_organization?: RoleAtOrganizationEnumApi | BlankEnumApi | null
+}
+
+/**
+ * * `static` - static
+ * * `person_property` - person_property
+ * * `behavioral` - behavioral
+ * * `realtime` - realtime
+ * * `analytical` - analytical
+ */
+export type CohortTypeEnumApi = (typeof CohortTypeEnumApi)[keyof typeof CohortTypeEnumApi]
+
+export const CohortTypeEnumApi = {
+    Static: 'static',
+    PersonProperty: 'person_property',
+    Behavioral: 'behavioral',
+    Realtime: 'realtime',
+    Analytical: 'analytical',
+} as const
+
+export interface CohortConditionTypeFlagsApi {
+    /** The filters include a person property or person_metadata condition. */
+    person_properties: boolean
+    /** The filters include a behavioral condition that is not lifecycle-style (e.g. performed_event, performed_event_multiple, performed_event_sequence, or their negations). */
+    behavioral: boolean
+    /** The filters include a lifecycle-style behavioral condition (first-seen/regularly/stopped/restarted performing an event). */
+    lifecycle: boolean
+    /** The filters include a nested reference to another cohort. */
+    cohorts: boolean
+}
+
+export type SearchMatchTypeEnumApi = (typeof SearchMatchTypeEnumApi)[keyof typeof SearchMatchTypeEnumApi]
+
+export const SearchMatchTypeEnumApi = {
+    Exact: 'exact',
+    Similar: 'similar',
+} as const
+
+export interface CohortApi {
+    readonly id: number
+    /**
+     * @maxLength 400
+     * @nullable
+     */
+    name?: string | null
+    /** @maxLength 1000 */
+    description?: string
+    groups?: unknown
+    deleted?: boolean
+    filters?: CohortFiltersApi | null
+    query?: unknown
+    /** @nullable */
+    readonly version: number | null
+    /** @nullable */
+    readonly pending_version: number | null
+    readonly is_calculating: boolean
+    readonly created_by: UserBasicApi
+    /** @nullable */
+    readonly created_at: string | null
+    /** @nullable */
+    readonly last_calculation: string | null
+    /** @nullable */
+    readonly last_backfill_person_properties_at: string | null
+    readonly errors_calculating: number
+    /** @nullable */
+    readonly last_error_message: string | null
+    /** @nullable */
+    readonly count: number | null
+    /**
+     * Number of IDs supplied by the most recent static cohort import. Null if the cohort was never populated from a list of IDs.
+     * @nullable
+     */
+    readonly last_import_total_count: number | null
+    /**
+     * How many of the IDs in the most recent static cohort import matched no person, and so were not added to the cohort.
+     * @nullable
+     */
+    readonly last_import_unmatched_count: number | null
+    is_static?: boolean
+    /** Type of cohort based on filter complexity
+     *
+     * * `static` - static
+     * * `person_property` - person_property
+     * * `behavioral` - behavioral
+     * * `realtime` - realtime
+     * * `analytical` - analytical */
+    cohort_type?: CohortTypeEnumApi | BlankEnumApi | null
+    /** Flags describing which kinds of conditions the cohort's filters contain. Null when the cohort has no filters to classify. */
+    readonly condition_type: CohortConditionTypeFlagsApi | null
+    readonly experiment_set: readonly number[]
+    /** How this row matched the `search` query parameter: `exact` (the term is a case-insensitive substring of a searched field) or `similar` (a fuzzy trigram match, returned only when no exact match exists). Null when the list is not filtered by `search`. */
+    readonly search_match_type: SearchMatchTypeEnumApi | null
+    _create_in_folder?: string
+    _create_static_person_ids?: string[]
+}
+
+export interface PaginatedCohortListApi {
+    count: number
+    /** @nullable */
+    next?: string | null
+    /** @nullable */
+    previous?: string | null
+    results: CohortApi[]
+}
+
+export interface PatchedCohortApi {
+    readonly id?: number
+    /**
+     * @maxLength 400
+     * @nullable
+     */
+    name?: string | null
+    /** @maxLength 1000 */
+    description?: string
+    groups?: unknown
+    deleted?: boolean
+    filters?: CohortFiltersApi | null
+    query?: unknown
+    /** @nullable */
+    readonly version?: number | null
+    /** @nullable */
+    readonly pending_version?: number | null
+    readonly is_calculating?: boolean
+    readonly created_by?: UserBasicApi
+    /** @nullable */
+    readonly created_at?: string | null
+    /** @nullable */
+    readonly last_calculation?: string | null
+    /** @nullable */
+    readonly last_backfill_person_properties_at?: string | null
+    readonly errors_calculating?: number
+    /** @nullable */
+    readonly last_error_message?: string | null
+    /** @nullable */
+    readonly count?: number | null
+    /**
+     * Number of IDs supplied by the most recent static cohort import. Null if the cohort was never populated from a list of IDs.
+     * @nullable
+     */
+    readonly last_import_total_count?: number | null
+    /**
+     * How many of the IDs in the most recent static cohort import matched no person, and so were not added to the cohort.
+     * @nullable
+     */
+    readonly last_import_unmatched_count?: number | null
+    is_static?: boolean
+    /** Type of cohort based on filter complexity
+     *
+     * * `static` - static
+     * * `person_property` - person_property
+     * * `behavioral` - behavioral
+     * * `realtime` - realtime
+     * * `analytical` - analytical */
+    cohort_type?: CohortTypeEnumApi | BlankEnumApi | null
+    /** Flags describing which kinds of conditions the cohort's filters contain. Null when the cohort has no filters to classify. */
+    readonly condition_type?: CohortConditionTypeFlagsApi | null
+    readonly experiment_set?: readonly number[]
+    /** How this row matched the `search` query parameter: `exact` (the term is a case-insensitive substring of a searched field) or `similar` (a fuzzy trigram match, returned only when no exact match exists). Null when the list is not filtered by `search`. */
+    readonly search_match_type?: SearchMatchTypeEnumApi | null
+    _create_in_folder?: string
+    _create_static_person_ids?: string[]
+}
+
+export interface PatchedAddPersonsToStaticCohortRequestApi {
+    /** List of person UUIDs to add to the cohort */
+    person_ids?: string[]
+}
+
+/**
+ * * `person` - person
+ */
+export type CohortPersonResultTypeEnumApi =
+    (typeof CohortPersonResultTypeEnumApi)[keyof typeof CohortPersonResultTypeEnumApi]
+
+export const CohortPersonResultTypeEnumApi = {
+    Person: 'person',
+} as const
+
+export type CohortPersonResultApiProperties = { [key: string]: unknown }
+
+export type CohortPersonResultApiMatchedRecordingsItem = { [key: string]: unknown }
+
+export interface CohortPersonResultApi {
+    id: string
+    uuid: string
+    type: CohortPersonResultTypeEnumApi
+    name: string
+    distinct_ids: string[]
+    properties: CohortPersonResultApiProperties
+    /** @nullable */
+    created_at: string | null
+    /** @nullable */
+    last_seen_at: string | null
+    /** @nullable */
+    is_identified: boolean | null
+    matched_recordings: CohortPersonResultApiMatchedRecordingsItem[]
+    /** @nullable */
+    value_at_data_point: number | null
+}
+
+export interface CohortPersonsResponseApi {
+    results: CohortPersonResultApi[]
+    /** @nullable */
+    next: string | null
+    /** @nullable */
+    previous: string | null
+}
+
+export interface PatchedRemovePersonRequestApi {
+    /** Person UUID to remove from the cohort */
+    person_id?: string
+}
+
+export interface CohortUsedInFlagApi {
+    /** Feature flag database ID */
+    id: number
+    /** Feature flag key (URL slug) */
+    key: string
+    /**
+     * Feature flag display name
+     * @nullable
+     */
+    name: string | null
+}
+
+export interface CohortUsedInFlagsBlockApi {
+    /** Feature flags referencing this cohort, capped at 100 results */
+    results: CohortUsedInFlagApi[]
+    /** Total number of feature flags referencing this cohort, before truncation */
+    total: number
+    /** True when more feature flags exist beyond the truncation cap */
+    has_more: boolean
+}
+
+export interface CohortUsedInInsightApi {
+    /** Insight database ID */
+    id: number
+    /** Insight short ID used for routing in the frontend */
+    short_id: string
+    /** Insight display name; falls back to derived name, then to 'Unnamed' when both are empty */
+    name: string
+}
+
+export interface CohortUsedInInsightsBlockApi {
+    /** Insights referencing this cohort, capped at 100 results */
+    results: CohortUsedInInsightApi[]
+    /** Total number of insights referencing this cohort, before truncation */
+    total: number
+    /** True when more insights exist beyond the truncation cap */
+    has_more: boolean
+}
+
+export interface CohortUsedInCohortApi {
+    /** Cohort database ID */
+    id: number
+    /** Cohort display name; falls back to 'Unnamed' when empty */
+    name: string
+}
+
+export interface CohortUsedInCohortsBlockApi {
+    /** Cohorts that include this cohort as a criterion, capped at 100 results */
+    results: CohortUsedInCohortApi[]
+    /** Total number of cohorts referencing this cohort, before truncation */
+    total: number
+    /** True when more cohorts exist beyond the truncation cap */
+    has_more: boolean
+}
+
+export interface CohortUsedInResponseApi {
+    /** Feature flags (active and inactive, excluding soft-deleted) that reference this cohort in their targeting conditions, with truncation metadata */
+    feature_flags: CohortUsedInFlagsBlockApi
+    /** Insights referencing this cohort with truncation metadata */
+    insights: CohortUsedInInsightsBlockApi
+    /** Other cohorts that include this cohort as a criterion, with truncation metadata */
+    cohorts: CohortUsedInCohortsBlockApi
+}
+
+export type CohortsStaffListParams = {
+    /**
+     * Cohort ids to look up (max 50 per request). Repeat the param (?cohort_ids=1&cohort_ids=2) or pass one comma-separated value (?cohort_ids=1,2).
+     * @minItems 1
+     * @maxItems 50
+     */
+    cohort_ids: number[]
+}
+
+export type CohortsListParams = {
+    /**
+     * Return a basic payload that omits the `query`, `groups`, `last_error_message`, and `experiment_set` fields (`filters` is kept). Useful for pickers that only need id/name/count.
+     */
+    basic?: boolean
+    /**
+     * Set true to exclude behavioral (event-based) cohorts, which can't be used in feature flags or batch workflow audiences.
+     */
+    hide_behavioral_cohorts?: boolean
+    /**
+     * Number of results to return per page.
+     */
+    limit?: number
+    /**
+     * The initial index from which to return the results.
+     */
+    offset?: number
+    /**
+     * Optional. Match against cohort `name`. Returns exact (case-insensitive substring) matches only; if no exact match exists, returns similar (fuzzy trigram — typos, transpositions, prefix-as-you-type) matches instead. Each result's `search_match_type` is `exact` or `similar`. Results are ordered by relevance. When omitted, cohorts are ordered newest-first. Capped at 200 characters; longer queries return a 400 error.
+     */
+    search?: string
+}
+
+export type CohortsPersonsRetrieveParams = {
+    format?: CohortsPersonsRetrieveFormat
+    /**
+     * Maximum number of persons to return per page (defaults to 100).
+     */
+    limit?: number
+    /**
+     * Number of persons to skip before starting to return results.
+     */
+    offset?: number
+}
+
+export type CohortsPersonsRetrieveFormat =
+    (typeof CohortsPersonsRetrieveFormat)[keyof typeof CohortsPersonsRetrieveFormat]
+
+export const CohortsPersonsRetrieveFormat = {
+    Csv: 'csv',
+    Json: 'json',
+} as const

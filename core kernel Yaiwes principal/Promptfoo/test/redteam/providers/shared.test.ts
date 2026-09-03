@@ -1,0 +1,1856 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import cliState from '../../../src/cliState';
+import { PromptfooChatCompletionProvider } from '../../../src/providers/promptfoo';
+import {
+  ATTACKER_MODEL,
+  ATTACKER_MODEL_SMALL,
+  TEMPERATURE,
+} from '../../../src/redteam/providers/constants';
+import {
+  accumulateGraderResult,
+  accumulateUnblockingTokenUsage,
+  BLOCKING_QUESTION_ANALYSIS_FEATURE_FLAG_TIMESTAMP,
+  buildGraderResultAssertion,
+  callGradingProvider,
+  callTargetProvider,
+  createIterationContext,
+  formatRedteamHistoryAsTranscript,
+  getGraderAssertionValue,
+  getTargetResponse,
+  type Message,
+  messagesToRedteamHistory,
+  redteamProviderManager,
+  resetRedteamProviderLoader,
+  runRedteamGrader,
+  setRedteamProviderLoader,
+  tryUnblocking,
+} from '../../../src/redteam/providers/shared';
+import { isRateLimitWrapped, RateLimitRegistry } from '../../../src/scheduler';
+import { withProviderCallTracingContext } from '../../../src/scheduler/providerCallExecutionContext';
+import { sleep } from '../../../src/util/time';
+import { createMockProvider } from '../../factories/provider';
+import { mockProcessEnv } from '../../util/utils';
+
+import type { RedteamGraderBase } from '../../../src/redteam/plugins/base';
+import type { ProviderCallTracingContext } from '../../../src/scheduler/providerCallExecutionContext';
+import type {
+  ApiProvider,
+  Assertion,
+  AssertionSet,
+  CallApiContextParams,
+  CallApiOptionsParams,
+  Prompt,
+} from '../../../src/types/index';
+
+// Hoisted mocks for class constructor and loadApiProviders
+const mockLoadApiProviders = vi.hoisted(() => vi.fn());
+const mockCheckServerFeatureSupport = vi.hoisted(() => vi.fn());
+// Create a hoisted mock class that can be instantiated with `new`
+const mockOpenAiInstances: any[] = [];
+const MockOpenAiChatCompletionProvider = vi.hoisted(() => {
+  return class MockOpenAiChatCompletionProvider {
+    id: () => string;
+    callApi: any;
+    toString: () => string;
+    config: any;
+    getApiKey: any;
+    getApiUrl: any;
+    getApiUrlDefault: any;
+    getOrganization: any;
+    requiresApiKey: any;
+    initializationPromise: null;
+    loadedFunctionCallbacks: {};
+    mcpClient: null;
+
+    constructor(model: string, options?: any) {
+      this.id = () => `openai:${model}`;
+      this.callApi = vi.fn();
+      this.toString = () => `OpenAI(${model})`;
+      this.config = options?.config || {};
+      this.getApiKey = vi.fn();
+      this.getApiUrl = vi.fn();
+      this.getApiUrlDefault = vi.fn();
+      this.getOrganization = vi.fn();
+      this.requiresApiKey = vi.fn();
+      this.initializationPromise = null;
+      this.loadedFunctionCallbacks = {};
+      this.mcpClient = null;
+      mockOpenAiInstances.push(this);
+    }
+
+    static mock: ReturnType<typeof vi.fn> = vi.fn();
+  };
+});
+
+vi.mock('../../../src/util/time');
+vi.mock('../../../src/cliState', () => ({
+  __esModule: true,
+  default: {
+    config: {
+      redteam: {
+        provider: undefined,
+      },
+    },
+  },
+}));
+vi.mock('../../../src/providers/openai/chat', () => ({
+  OpenAiChatCompletionProvider: MockOpenAiChatCompletionProvider,
+}));
+vi.mock('../../../src/providers/index', () => ({
+  loadApiProviders: mockLoadApiProviders,
+}));
+vi.mock('../../../src/util/server', () => ({
+  checkServerFeatureSupport: mockCheckServerFeatureSupport,
+}));
+
+const mockedSleep = vi.mocked(sleep);
+const mockedLoadApiProviders = mockLoadApiProviders;
+const mockedCheckServerFeatureSupport = mockCheckServerFeatureSupport;
+
+function setCliStateConfig(config: typeof cliState.config) {
+  cliState.config = config;
+}
+
+describe('shared redteam provider utilities', () => {
+  describe('accumulateUnblockingTokenUsage', () => {
+    it('attributes nested blocking-analysis usage to one grading task', () => {
+      const tokenUsage = {};
+
+      accumulateUnblockingTokenUsage(tokenUsage, {
+        attempted: true,
+        tokenUsage: {
+          total: 0,
+          numRequests: 0,
+          assertions: {
+            total: 34,
+            prompt: 21,
+            completion: 13,
+            numRequests: 0,
+            completionDetails: { reasoning: 5 },
+          },
+        },
+      });
+
+      expect(tokenUsage).toMatchObject({
+        assertions: {
+          total: 34,
+          prompt: 21,
+          completion: 13,
+          numRequests: 1,
+          completionDetails: { reasoning: 5 },
+        },
+      });
+      expect(tokenUsage).not.toHaveProperty('attacker');
+      expect(tokenUsage).not.toHaveProperty('numRequests');
+    });
+
+    it('omits disabled unblocking tasks and keeps cached tasks out of incurred usage', () => {
+      const disabledUsage = {};
+      accumulateUnblockingTokenUsage(disabledUsage, { attempted: false });
+      expect(disabledUsage).toEqual({});
+
+      const cachedUsage = {};
+      accumulateUnblockingTokenUsage(cachedUsage, {
+        attempted: true,
+        cached: true,
+        tokenUsage: { total: 15, cached: 15, numRequests: 0 },
+      });
+      expect(cachedUsage).toMatchObject({
+        assertions: { total: 15, cached: 15, numRequests: 1 },
+        incurredTokenUsage: { assertions: { total: 0, numRequests: 0 } },
+      });
+    });
+  });
+
+  afterEach(() => {
+    resetRedteamProviderLoader();
+    vi.resetAllMocks();
+  });
+
+  beforeEach(() => {
+    // Clear all mocks thoroughly
+    vi.clearAllMocks();
+
+    // Reset specific mocks
+    mockedSleep.mockReset();
+    mockedLoadApiProviders.mockReset();
+    mockedCheckServerFeatureSupport.mockReset();
+
+    // Clear the instances array
+    mockOpenAiInstances.length = 0;
+
+    // Clear the redteam provider manager cache
+    redteamProviderManager.clearProvider();
+    // clearProvider() intentionally keeps the rate limit registry, so reset it
+    // here to keep provider-wrapping state from leaking across shuffled tests.
+    redteamProviderManager.setRateLimitRegistry(undefined);
+    resetRedteamProviderLoader();
+
+    // Reset cliState to default
+    setCliStateConfig({
+      redteam: {
+        provider: undefined,
+      },
+    });
+  });
+
+  describe('RedteamProviderManager', () => {
+    const mockApiProvider = createMockProvider({ response: { output: 'test output' } });
+
+    it('creates default OpenAI provider when no provider specified', async () => {
+      const result = await redteamProviderManager.getProvider({});
+
+      // Check that an instance was created with the correct parameters
+      expect(mockOpenAiInstances.length).toBe(1);
+      expect(result.id()).toBe(`openai:${ATTACKER_MODEL}`);
+      expect(mockOpenAiInstances[0].config).toEqual({
+        temperature: TEMPERATURE,
+        response_format: undefined,
+      });
+    });
+
+    it('clears cached providers', async () => {
+      // First call to set up the cache
+      await redteamProviderManager.getProvider({});
+      expect(mockOpenAiInstances.length).toBe(1);
+
+      // Clear the cache and instances array
+      redteamProviderManager.clearProvider();
+      mockOpenAiInstances.length = 0;
+
+      // Second call should create a new provider
+      await redteamProviderManager.getProvider({});
+
+      expect(mockOpenAiInstances.length).toBe(1);
+    });
+
+    it('loads provider from string identifier', async () => {
+      mockedLoadApiProviders.mockResolvedValue([mockApiProvider]);
+
+      const result = await redteamProviderManager.getProvider({ provider: 'test-provider' });
+
+      expect(result).toBe(mockApiProvider);
+      expect(mockedLoadApiProviders).toHaveBeenCalledWith(['test-provider']);
+    });
+
+    it('loads configured providers through an injected provider loader', async () => {
+      const injectedLoader = vi.fn().mockResolvedValue([mockApiProvider]);
+      const restoreLoader = setRedteamProviderLoader(injectedLoader);
+
+      try {
+        const result = await redteamProviderManager.getProvider({ provider: 'test-provider' });
+
+        expect(result).toBe(mockApiProvider);
+        expect(injectedLoader).toHaveBeenCalledWith(['test-provider']);
+        expect(mockedLoadApiProviders).not.toHaveBeenCalled();
+      } finally {
+        restoreLoader();
+      }
+    });
+
+    it('setRedteamProviderLoader returns a disposer that restores the previous loader', async () => {
+      const firstLoader = vi.fn().mockResolvedValue([createMockProvider({ id: 'first' })]);
+      const secondLoader = vi.fn().mockResolvedValue([createMockProvider({ id: 'second' })]);
+
+      const restoreFirst = setRedteamProviderLoader(firstLoader);
+      const restoreSecond = setRedteamProviderLoader(secondLoader);
+
+      try {
+        // Dispose in reverse order — second disposer restores the first loader.
+        restoreSecond();
+        redteamProviderManager.clearProvider();
+        await redteamProviderManager.getProvider({ provider: 'afterSecond' });
+        expect(firstLoader).toHaveBeenCalledWith(['afterSecond']);
+        expect(secondLoader).not.toHaveBeenCalled();
+
+        // Disposing the first restores the default, which dispatches through
+        // the file-level vi.mock of '../../../src/providers/index'.
+        restoreFirst();
+        redteamProviderManager.clearProvider();
+        firstLoader.mockClear();
+        mockedLoadApiProviders.mockResolvedValueOnce([createMockProvider({ id: 'default' })]);
+        await redteamProviderManager.getProvider({ provider: 'afterFirst' });
+        expect(firstLoader).not.toHaveBeenCalled();
+        expect(mockedLoadApiProviders).toHaveBeenCalledWith(['afterFirst']);
+      } finally {
+        resetRedteamProviderLoader();
+      }
+    });
+
+    it('resetRedteamProviderLoader restores the default loader path', async () => {
+      // Guards the production default-loader path, which is otherwise masked
+      // by the file-level vi.mock of '../../../src/providers/index'.
+      const injectedLoader = vi.fn().mockResolvedValue([mockApiProvider]);
+      const restoreLoader = setRedteamProviderLoader(injectedLoader);
+
+      try {
+        await redteamProviderManager.getProvider({ provider: 'injected-provider' });
+        expect(injectedLoader).toHaveBeenCalledWith(['injected-provider']);
+        expect(mockedLoadApiProviders).not.toHaveBeenCalled();
+
+        restoreLoader();
+        redteamProviderManager.clearProvider();
+
+        const secondProvider = createMockProvider({ id: 'from-default-loader' });
+        mockedLoadApiProviders.mockResolvedValueOnce([secondProvider]);
+
+        const result = await redteamProviderManager.getProvider({ provider: 'default-provider' });
+
+        expect(result).toBe(secondProvider);
+        expect(mockedLoadApiProviders).toHaveBeenCalledWith(['default-provider']);
+        expect(injectedLoader).toHaveBeenCalledTimes(1);
+      } finally {
+        resetRedteamProviderLoader();
+      }
+    });
+
+    it('loads provider from provider options', async () => {
+      const providerOptions = { id: 'test-provider', apiKey: 'test-key' };
+      mockedLoadApiProviders.mockResolvedValue([mockApiProvider]);
+
+      const result = await redteamProviderManager.getProvider({ provider: providerOptions });
+
+      expect(result).toBe(mockApiProvider);
+      expect(mockedLoadApiProviders).toHaveBeenCalledWith([providerOptions]);
+    });
+
+    it('uses small model when preferSmallModel is true', async () => {
+      const result = await redteamProviderManager.getProvider({ preferSmallModel: true });
+
+      // Check that an instance was created with the small model
+      expect(mockOpenAiInstances.length).toBe(1);
+      expect(result.id()).toBe(`openai:${ATTACKER_MODEL_SMALL}`);
+      expect(mockOpenAiInstances[0].config).toEqual({
+        temperature: TEMPERATURE,
+        response_format: undefined,
+      });
+    });
+
+    it('sets response_format to json_object when jsonOnly is true', async () => {
+      const result = await redteamProviderManager.getProvider({ jsonOnly: true });
+
+      // Check that an instance was created with json_object response_format
+      expect(mockOpenAiInstances.length).toBe(1);
+      expect(result.id()).toBe(`openai:${ATTACKER_MODEL}`);
+      expect(mockOpenAiInstances[0].config).toEqual({
+        temperature: TEMPERATURE,
+        response_format: { type: 'json_object' },
+      });
+    });
+
+    it('uses provider from cliState if available', async () => {
+      const mockStateProvider = createMockProvider({ id: 'state-provider' });
+
+      // Clear and set up cliState for this test
+      setCliStateConfig({
+        redteam: {
+          provider: mockStateProvider,
+        },
+      });
+
+      const result = await redteamProviderManager.getProvider({});
+
+      expect(result).toBe(mockStateProvider);
+    });
+
+    it('sets and reuses providers', async () => {
+      const mockProvider = createMockProvider({ response: { output: 'test output' } });
+      mockedLoadApiProviders.mockResolvedValue([mockProvider]);
+
+      // Set the provider
+      await redteamProviderManager.setProvider('test-provider');
+
+      // Get the provider - should use cached version
+      const result = await redteamProviderManager.getProvider({});
+      const jsonResult = await redteamProviderManager.getProvider({ jsonOnly: true });
+
+      expect(result).toBe(mockProvider);
+      expect(jsonResult).toBe(mockProvider);
+      expect(mockedLoadApiProviders).toHaveBeenCalledTimes(2); // Preloads regular and jsonOnly caches
+      expect(mockedLoadApiProviders).toHaveBeenNthCalledWith(1, ['test-provider']);
+      expect(mockedLoadApiProviders).toHaveBeenNthCalledWith(2, ['test-provider']);
+      expect(await redteamProviderManager.getProviderSelection()).toMatchObject({
+        provider: mockProvider,
+        source: 'cache',
+        persistableId: 'test-provider',
+      });
+    });
+
+    it('does not expose runtime provider instances as cached provider specs', async () => {
+      const runtimeProvider = createMockProvider({ id: 'runtime-provider' });
+      setCliStateConfig({ redteam: { provider: 'stale-provider' } });
+
+      await redteamProviderManager.setProvider(runtimeProvider);
+
+      expect(await redteamProviderManager.getProviderSelection()).toMatchObject({
+        provider: runtimeProvider,
+        source: 'cache',
+        persistableId: undefined,
+      });
+    });
+
+    it('returns the defaultTest provider selection when it wins resolution', async () => {
+      setCliStateConfig({ defaultTest: { options: { provider: 'default-test-provider' } } });
+      mockedLoadApiProviders.mockResolvedValue([mockApiProvider]);
+
+      expect(await redteamProviderManager.getProviderSelection()).toMatchObject({
+        provider: mockApiProvider,
+        source: 'explicit',
+        persistableId: 'default-test-provider',
+      });
+    });
+
+    it('reports fallback and default selections distinctly', async () => {
+      const fallbackProvider = createMockProvider({ id: 'fallback-provider' });
+      mockedLoadApiProviders.mockResolvedValue([fallbackProvider]);
+
+      expect(
+        await redteamProviderManager.getProviderSelection({
+          fallbackProvider: 'fallback-provider',
+        }),
+      ).toMatchObject({
+        provider: fallbackProvider,
+        source: 'fallback',
+        persistableId: 'fallback-provider',
+      });
+
+      redteamProviderManager.clearProvider();
+      setCliStateConfig({ redteam: { provider: undefined } });
+      expect(await redteamProviderManager.getProviderSelection()).toMatchObject({
+        source: 'default',
+        persistableId: undefined,
+      });
+    });
+
+    it('does not replace a working cache when preloading a new variant fails', async () => {
+      const oldProvider = createMockProvider({ id: 'old-provider' });
+      const newProvider = createMockProvider({ id: 'new-provider' });
+      mockedLoadApiProviders
+        .mockResolvedValueOnce([oldProvider])
+        .mockResolvedValueOnce([oldProvider])
+        .mockResolvedValueOnce([newProvider])
+        .mockRejectedValueOnce(new Error('json-only load failed'));
+
+      await redteamProviderManager.setProvider('old-provider');
+      await expect(redteamProviderManager.setProvider('new-provider')).rejects.toThrow(
+        'json-only load failed',
+      );
+
+      expect(await redteamProviderManager.getProviderSelection()).toMatchObject({
+        provider: oldProvider,
+        source: 'cache',
+        persistableId: 'old-provider',
+      });
+    });
+
+    it('loads the built-in default without consulting stale cliState', async () => {
+      setCliStateConfig({ redteam: { provider: 'stale-provider' } });
+
+      const provider = await redteamProviderManager.getDefaultProvider({
+        jsonOnly: true,
+        preferSmallModel: true,
+      });
+
+      expect(provider.id()).toBe(`openai:${ATTACKER_MODEL_SMALL}`);
+      expect(mockedLoadApiProviders).not.toHaveBeenCalled();
+      expect(mockOpenAiInstances[0].config.response_format).toEqual({ type: 'json_object' });
+    });
+
+    it('ignores stale cliState while preserving the built-in default selection', async () => {
+      setCliStateConfig({
+        redteam: { provider: 'stale-provider' },
+        defaultTest: { provider: 'stale-default-test-provider' },
+      });
+
+      const selection = await redteamProviderManager.getProviderSelection({
+        ignoreCliState: true,
+      });
+
+      expect(selection.source).toBe('default');
+      expect(selection.persistableId).toBeUndefined();
+      expect(selection.provider.id()).toBe(`openai:${ATTACKER_MODEL}`);
+      expect(mockedLoadApiProviders).not.toHaveBeenCalled();
+    });
+
+    it('keeps the cache ahead of ignoreCliState preview defaults', async () => {
+      const cachedProvider = createMockProvider({ id: 'cached-provider' });
+      mockedLoadApiProviders.mockResolvedValue([cachedProvider]);
+      setCliStateConfig({ redteam: { provider: 'stale-provider' } });
+      await redteamProviderManager.setProvider('cached-provider');
+
+      const selection = await redteamProviderManager.getProviderSelection({
+        ignoreCliState: true,
+      });
+
+      expect(selection).toMatchObject({
+        provider: cachedProvider,
+        source: 'cache',
+        persistableId: 'cached-provider',
+      });
+      expect(mockedLoadApiProviders).toHaveBeenCalledTimes(2);
+    });
+
+    it('prefers an explicit provider over cached providers', async () => {
+      const cachedProvider = createMockProvider({ id: 'cached-provider' });
+      const explicitProvider = createMockProvider({ id: 'explicit-provider' });
+      mockedLoadApiProviders.mockResolvedValue([cachedProvider]);
+
+      await redteamProviderManager.setProvider('cached-provider');
+
+      const result = await redteamProviderManager.getProvider({
+        provider: explicitProvider,
+        jsonOnly: true,
+      });
+
+      expect(result).toBe(explicitProvider);
+      expect(mockedLoadApiProviders).toHaveBeenCalledTimes(2);
+    });
+
+    it('prefers cached providers over request-scoped fallback providers', async () => {
+      const cachedProvider = createMockProvider({ id: 'cached-provider' });
+      mockedLoadApiProviders.mockResolvedValue([cachedProvider]);
+
+      await redteamProviderManager.setProvider('cached-provider');
+
+      const result = await redteamProviderManager.getProvider({
+        fallbackProvider: 'fallback-provider',
+      });
+
+      expect(result).toBe(cachedProvider);
+      expect(mockedLoadApiProviders).toHaveBeenCalledTimes(2);
+    });
+
+    it('uses a request-scoped fallback before stale cliState config', async () => {
+      const fallbackProvider = createMockProvider({ id: 'fallback-provider' });
+      mockedLoadApiProviders.mockResolvedValue([fallbackProvider]);
+      setCliStateConfig({
+        redteam: {
+          provider: 'stale-provider',
+        },
+      });
+
+      const result = await redteamProviderManager.getProvider({
+        fallbackProvider: 'fallback-provider',
+      });
+
+      expect(result).toBe(fallbackProvider);
+      expect(mockedLoadApiProviders).toHaveBeenCalledWith(['fallback-provider']);
+    });
+
+    describe('getGradingProvider', () => {
+      it('returns cached grading provider set via setGradingProvider', async () => {
+        redteamProviderManager.clearProvider();
+        const gradingInstance = createMockProvider({ id: 'grading-cached' });
+
+        // Set concrete instance and retrieve it (jsonOnly false)
+        await redteamProviderManager.setGradingProvider(gradingInstance as any);
+        const got = await redteamProviderManager.getGradingProvider();
+        expect(got.id()).toBe('grading-cached');
+      });
+
+      it('uses defaultTest chain when no cached grading provider', async () => {
+        redteamProviderManager.clearProvider();
+        const mockProvider = createMockProvider({ id: 'from-defaultTest-provider' });
+        mockedLoadApiProviders.mockResolvedValue([mockProvider]);
+
+        // Inject defaultTest provider config
+        setCliStateConfig({
+          defaultTest: {
+            provider: 'from-defaultTest-provider',
+          },
+        });
+
+        const got = await redteamProviderManager.getGradingProvider();
+        expect(got).toBe(mockProvider);
+        expect(mockedLoadApiProviders).toHaveBeenCalledWith(['from-defaultTest-provider']);
+      });
+
+      it('falls back to redteam provider when grading not set', async () => {
+        redteamProviderManager.clearProvider();
+        setCliStateConfig({}); // no defaultTest
+
+        // Expect fallback to default OpenAI redteam provider
+        const got = await redteamProviderManager.getGradingProvider({ jsonOnly: true });
+        expect(got.id()).toContain('openai:');
+      });
+    });
+
+    describe('getProvider with defaultTest fallback', () => {
+      afterEach(() => {
+        vi.resetAllMocks();
+      });
+
+      it('uses defaultTest.options.provider when no redteam.provider is set', async () => {
+        redteamProviderManager.clearProvider();
+        const mockProvider = createMockProvider({ id: 'defaultTest-provider' });
+        mockedLoadApiProviders.mockResolvedValue([mockProvider]);
+
+        // Set defaultTest.options.provider but not redteam.provider
+        setCliStateConfig({
+          redteam: {
+            provider: undefined,
+          },
+          defaultTest: {
+            options: {
+              provider: 'defaultTest-provider',
+            },
+          },
+        });
+
+        const got = await redteamProviderManager.getProvider({});
+        expect(got).toBe(mockProvider);
+        expect(mockedLoadApiProviders).toHaveBeenCalledWith(['defaultTest-provider']);
+      });
+
+      it('uses defaultTest.provider when no redteam.provider is set', async () => {
+        redteamProviderManager.clearProvider();
+        const mockProvider = createMockProvider({ id: 'defaultTest-direct-provider' });
+        mockedLoadApiProviders.mockResolvedValue([mockProvider]);
+
+        // Set defaultTest.provider directly
+        setCliStateConfig({
+          redteam: {
+            provider: undefined,
+          },
+          defaultTest: {
+            provider: 'defaultTest-direct-provider',
+          },
+        });
+
+        const got = await redteamProviderManager.getProvider({});
+        expect(got).toBe(mockProvider);
+        expect(mockedLoadApiProviders).toHaveBeenCalledWith(['defaultTest-direct-provider']);
+      });
+
+      it('prefers redteam.provider over defaultTest provider', async () => {
+        redteamProviderManager.clearProvider();
+        const redteamProvider = createMockProvider({ id: 'redteam-explicit-provider' });
+        mockedLoadApiProviders.mockResolvedValue([redteamProvider]);
+
+        // Set both redteam.provider and defaultTest.options.provider
+        setCliStateConfig({
+          redteam: {
+            provider: 'redteam-explicit-provider',
+          },
+          defaultTest: {
+            options: {
+              provider: 'defaultTest-provider',
+            },
+          },
+        });
+
+        const got = await redteamProviderManager.getProvider({});
+        expect(got).toBe(redteamProvider);
+        expect(mockedLoadApiProviders).toHaveBeenCalledWith(['redteam-explicit-provider']);
+      });
+
+      it('falls back to OpenAI default when neither redteam.provider nor defaultTest provider is set', async () => {
+        redteamProviderManager.clearProvider();
+        mockOpenAiInstances.length = 0;
+
+        setCliStateConfig({
+          redteam: {
+            provider: undefined,
+          },
+          // No defaultTest
+        });
+
+        const got = await redteamProviderManager.getProvider({});
+        expect(got.id()).toContain('openai:');
+        expect(mockOpenAiInstances.length).toBe(1);
+      });
+
+      it('wraps the defaultTest fallback provider with the configured rate limit registry', async () => {
+        redteamProviderManager.clearProvider();
+        const mockProvider = createMockProvider({ id: 'defaultTest-wrapped-provider' });
+        mockedLoadApiProviders.mockResolvedValue([mockProvider]);
+
+        const registry = new RateLimitRegistry({ maxConcurrency: 1 });
+        redteamProviderManager.setRateLimitRegistry(registry);
+
+        setCliStateConfig({
+          redteam: {
+            provider: undefined,
+          },
+          defaultTest: {
+            options: {
+              provider: 'defaultTest-provider',
+            },
+          },
+        });
+
+        const got = await redteamProviderManager.getProvider({});
+
+        // The defaultTest fallback path must apply rate limiting like every other return path.
+        expect(isRateLimitWrapped(got)).toBe(true);
+        expect(got.id()).toBe('defaultTest-wrapped-provider');
+        expect(mockedLoadApiProviders).toHaveBeenCalledWith(['defaultTest-provider']);
+      });
+    });
+
+    it('handles thrown errors in getTargetResponse', async () => {
+      const mockProvider = createMockProvider({
+        callApi: vi.fn<ApiProvider['callApi']>().mockRejectedValue(new Error('Network error')),
+      });
+
+      const result = await getTargetResponse(mockProvider, 'test prompt');
+
+      expect(result).toEqual({
+        output: '',
+        error: 'Network error',
+        tokenUsage: { numRequests: 1 },
+      });
+    });
+
+    it('re-throws AbortError from getTargetResponse and does not swallow it', async () => {
+      const abortError = new Error('The operation was aborted');
+      abortError.name = 'AbortError';
+
+      const mockProvider = createMockProvider({
+        callApi: vi.fn<ApiProvider['callApi']>().mockRejectedValue(abortError),
+      });
+
+      await expect(getTargetResponse(mockProvider, 'test prompt')).rejects.toThrow(
+        'The operation was aborted',
+      );
+    });
+
+    it('swallows non-AbortError exceptions and returns error response', async () => {
+      const regularError = new Error('API timeout');
+
+      const mockProvider = createMockProvider({
+        callApi: vi.fn<ApiProvider['callApi']>().mockRejectedValue(regularError),
+      });
+
+      const result = await getTargetResponse(mockProvider, 'test prompt');
+
+      expect(result.error).toBe('API timeout');
+      expect(result.output).toBe('');
+    });
+
+    describe('Multilingual provider', () => {
+      it('getMultilingualProvider returns undefined when not set', async () => {
+        // Ensure clean state
+        redteamProviderManager.clearProvider();
+        const result = await redteamProviderManager.getMultilingualProvider();
+        expect(result).toBeUndefined();
+      });
+
+      it('setMultilingualProvider caches provider and getMultilingualProvider returns it', async () => {
+        const mockProvider = createMockProvider({ id: 'test-multilingual-provider' });
+
+        mockedLoadApiProviders.mockResolvedValueOnce([mockProvider]);
+
+        await redteamProviderManager.setMultilingualProvider('test-multilingual-provider');
+        const result = await redteamProviderManager.getMultilingualProvider();
+
+        expect(result).toBe(mockProvider);
+        expect(mockedLoadApiProviders).toHaveBeenCalledWith(['test-multilingual-provider']);
+      });
+
+      it('setMultilingualProvider uses jsonOnly response_format when defaulting to OpenAI', async () => {
+        // Pass undefined to trigger default provider creation
+        await redteamProviderManager.setMultilingualProvider(undefined as any);
+
+        // Check that an instance was created with json_object response_format
+        expect(mockOpenAiInstances.length).toBe(1);
+        expect(mockOpenAiInstances[0].config).toEqual({
+          temperature: TEMPERATURE,
+          response_format: { type: 'json_object' },
+        });
+      });
+    });
+  });
+
+  describe('getTargetResponse', () => {
+    it('returns an error before calling the target when the prompt exceeds maxCharsPerMessage', async () => {
+      setCliStateConfig({
+        redteam: {
+          maxCharsPerMessage: 5,
+        },
+      });
+      const mockProvider = createMockProvider({
+        response: {
+          output: 'test response',
+          tokenUsage: { numRequests: 1 },
+        },
+      });
+
+      const result = await getTargetResponse(mockProvider, 'too long');
+
+      expect(mockProvider.callApi).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        output: '',
+        error: 'Target prompt message at prompt exceeds maxCharsPerMessage=5: 8 characters.',
+        tokenUsage: { numRequests: 0 },
+      });
+    });
+
+    it('only enforces maxCharsPerMessage for user messages in chat arrays', async () => {
+      setCliStateConfig({
+        redteam: {
+          maxCharsPerMessage: 5,
+        },
+      });
+      const mockProvider = createMockProvider({
+        response: {
+          output: 'ok',
+          tokenUsage: { numRequests: 1 },
+        },
+      });
+      const prompt = JSON.stringify([
+        { role: 'system', content: 'this system message is long' },
+        { role: 'user', content: 'short' },
+      ]);
+
+      const result = await getTargetResponse(mockProvider, prompt);
+
+      expect(mockProvider.callApi).toHaveBeenCalledWith(prompt, undefined, undefined);
+      expect(result.output).toBe('ok');
+    });
+
+    it('uses maxCharsPerMessage from test metadata when cliState is unset', async () => {
+      const mockProvider = createMockProvider({
+        response: {
+          output: 'test response',
+          tokenUsage: { numRequests: 1 },
+        },
+      });
+      const context = {
+        prompt: { raw: '', label: '' },
+        vars: {},
+        test: {
+          metadata: {
+            pluginConfig: {
+              maxCharsPerMessage: 5,
+            },
+          },
+        },
+      } as CallApiContextParams;
+
+      const result = await getTargetResponse(mockProvider, 'too long', context);
+
+      expect(mockProvider.callApi).not.toHaveBeenCalled();
+      expect(result.error).toBe(
+        'Target prompt message at prompt exceeds maxCharsPerMessage=5: 8 characters.',
+      );
+    });
+
+    it('checks GOAT audio/image hybrid payload transcript text without counting base64 blobs', async () => {
+      const mockProvider = createMockProvider({
+        response: {
+          output: 'ok',
+          tokenUsage: { numRequests: 1 },
+        },
+      });
+      const context = {
+        prompt: { raw: '', label: '' },
+        vars: {},
+        test: {
+          metadata: {
+            pluginConfig: {
+              maxCharsPerMessage: 5,
+            },
+          },
+        },
+      } as CallApiContextParams;
+      const prompt = JSON.stringify({
+        _promptfoo_audio_hybrid: true,
+        history: [
+          { role: 'user', content: 'tiny' },
+          { role: 'assistant', content: 'this assistant response is long and should be ignored' },
+        ],
+        currentTurn: {
+          role: 'user',
+          transcript: 'short',
+          image: {
+            data: 'a'.repeat(500),
+            format: 'png',
+          },
+        },
+      });
+
+      const result = await getTargetResponse(mockProvider, prompt, context);
+
+      expect(mockProvider.callApi).toHaveBeenCalledWith(prompt, context, undefined);
+      expect(result.output).toBe('ok');
+    });
+
+    it('rejects GOAT audio/image hybrid payloads when currentTurn transcript exceeds maxCharsPerMessage', async () => {
+      const mockProvider = createMockProvider({
+        response: {
+          output: 'ok',
+          tokenUsage: { numRequests: 1 },
+        },
+      });
+      const context = {
+        prompt: { raw: '', label: '' },
+        vars: {},
+        test: {
+          metadata: {
+            pluginConfig: {
+              maxCharsPerMessage: 5,
+            },
+          },
+        },
+      } as CallApiContextParams;
+      const prompt = JSON.stringify({
+        _promptfoo_audio_hybrid: true,
+        history: [],
+        currentTurn: {
+          role: 'user',
+          transcript: 'too long',
+          audio: {
+            data: 'a'.repeat(500),
+            format: 'mp3',
+          },
+        },
+      });
+
+      const result = await getTargetResponse(mockProvider, prompt, context);
+
+      expect(mockProvider.callApi).not.toHaveBeenCalled();
+      expect(result.error).toBe(
+        'Target prompt message at currentTurn.transcript exceeds maxCharsPerMessage=5: 8 characters.',
+      );
+    });
+
+    it('returns successful response with string output', async () => {
+      const mockProvider = createMockProvider({
+        response: {
+          output: 'test response',
+          tokenUsage: { total: 10, prompt: 5, completion: 5, numRequests: 1 },
+          sessionId: 'test-session',
+        },
+      });
+
+      const result = await getTargetResponse(mockProvider, 'test prompt');
+
+      expect(result).toEqual({
+        output: 'test response',
+        tokenUsage: { total: 10, prompt: 5, completion: 5, numRequests: 1 },
+        sessionId: 'test-session',
+      });
+    });
+
+    it('passes through context and options', async () => {
+      const mockCallApi = vi.fn().mockResolvedValue({
+        output: 'test response',
+        tokenUsage: { numRequests: 1 },
+      });
+
+      const mockProvider = createMockProvider({ callApi: mockCallApi });
+
+      const prompt: Prompt = {
+        raw: 'test prompt',
+        label: 'test',
+      };
+
+      const context: CallApiContextParams = {
+        prompt,
+        vars: { test: 'value' },
+      };
+      const options: CallApiOptionsParams = {};
+
+      await getTargetResponse(mockProvider, 'test prompt', context, options);
+
+      expect(mockCallApi).toHaveBeenCalledWith('test prompt', context, options);
+    });
+
+    it('traces target calls and forwards the target span traceparent', async () => {
+      const traceparent = '00-0123456789abcdef0123456789abcdef-0123456789abcdef-01';
+      const mockProvider = createMockProvider({ response: { output: 'test response' } });
+      const context: CallApiContextParams = {
+        prompt: { raw: 'test prompt', label: 'target' },
+        vars: {},
+      };
+      const withProviderSpan: ProviderCallTracingContext['withProviderSpan'] = async (
+        { callContext },
+        invoke,
+      ) => invoke({ ...callContext!, traceparent });
+      const providerSpan = vi.fn(withProviderSpan);
+
+      await withProviderCallTracingContext(
+        {
+          getActiveTraceparent: () => traceparent,
+          withGraderSpan: async (_options, invoke) => invoke(),
+          withProviderSpan: providerSpan,
+        },
+        () => getTargetResponse(mockProvider, 'test prompt', context),
+      );
+
+      expect(providerSpan).toHaveBeenCalledWith(
+        { provider: mockProvider, callContext: context },
+        expect.any(Function),
+      );
+      expect(mockProvider.callApi).toHaveBeenCalledWith(
+        'test prompt',
+        { ...context, traceparent },
+        undefined,
+      );
+    });
+
+    it('keeps direct strategy target calls unmodified when tracing is disabled', async () => {
+      const response = { output: 'test response', metadata: { strategy: 'goat' } };
+      const mockProvider = createMockProvider({ response });
+      const context: CallApiContextParams = {
+        prompt: { raw: 'test prompt', label: 'target' },
+        vars: {},
+      };
+      const options: CallApiOptionsParams = {};
+
+      await expect(callTargetProvider(mockProvider, 'test prompt', context, options)).resolves.toBe(
+        response,
+      );
+      expect(mockProvider.callApi).toHaveBeenCalledWith('test prompt', context, options);
+    });
+
+    it('stringifies non-string output', async () => {
+      const mockProvider = createMockProvider({
+        response: {
+          output: { key: 'value' },
+          tokenUsage: { numRequests: 1 },
+        },
+      });
+
+      const result = await getTargetResponse(mockProvider, 'test prompt');
+
+      expect(result).toEqual({
+        output: '{"key":"value"}',
+        tokenUsage: { numRequests: 1 },
+      });
+    });
+
+    it('handles provider error response', async () => {
+      const mockProvider = createMockProvider({
+        response: {
+          error: 'API error',
+          sessionId: 'error-session',
+        },
+      });
+
+      const result = await getTargetResponse(mockProvider, 'test prompt');
+
+      expect(result).toEqual({
+        output: '',
+        error: 'API error',
+        sessionId: 'error-session',
+        tokenUsage: { numRequests: 1 },
+      });
+    });
+
+    it('respects provider delay for non-cached responses', async () => {
+      const mockProvider = createMockProvider({
+        delay: 100,
+        response: {
+          output: 'test response',
+          tokenUsage: { numRequests: 1 },
+        },
+      });
+
+      await getTargetResponse(mockProvider, 'test prompt');
+
+      expect(mockedSleep).toHaveBeenCalledWith(100);
+    });
+
+    it('skips delay for cached responses', async () => {
+      const mockProvider = createMockProvider({
+        delay: 100,
+        response: {
+          output: 'test response',
+          cached: true,
+          tokenUsage: { numRequests: 1 },
+        },
+      });
+
+      await getTargetResponse(mockProvider, 'test prompt');
+
+      expect(mockedSleep).not.toHaveBeenCalled();
+    });
+
+    it('throws error when neither output nor error is set', async () => {
+      const mockProvider = createMockProvider({ response: {} });
+
+      await expect(getTargetResponse(mockProvider, 'test prompt')).rejects.toThrow(
+        /Target returned malformed response: expected either `output` or `error` property to be set/,
+      );
+    });
+
+    it('uses default tokenUsage when not provided', async () => {
+      const mockProvider = createMockProvider({
+        response: {
+          output: 'test response',
+        },
+      });
+
+      const result = await getTargetResponse(mockProvider, 'test prompt');
+
+      expect(result).toEqual({
+        output: 'test response',
+        tokenUsage: { numRequests: 1 },
+      });
+    });
+
+    it('accepts conversationEnded without output or error', async () => {
+      const mockProvider = createMockProvider({
+        response: {
+          conversationEnded: true,
+          conversationEndReason: 'thread_closed',
+        },
+      });
+
+      const result = await getTargetResponse(mockProvider, 'test prompt');
+
+      expect(result).toEqual({
+        output: '',
+        conversationEnded: true,
+        conversationEndReason: 'thread_closed',
+        tokenUsage: { numRequests: 1 },
+      });
+    });
+
+    describe('edge cases for empty and falsy responses', () => {
+      it('handles empty string output correctly', async () => {
+        const mockProvider = createMockProvider({
+          response: {
+            output: '', // Empty string
+            tokenUsage: { numRequests: 1 },
+          },
+        });
+
+        const result = await getTargetResponse(mockProvider, 'test prompt');
+
+        expect(result).toEqual({
+          output: '',
+          tokenUsage: { numRequests: 1 },
+        });
+      });
+
+      it('handles zero output correctly', async () => {
+        const mockProvider = createMockProvider({
+          response: {
+            output: 0, // Zero value
+            tokenUsage: { numRequests: 1 },
+          },
+        });
+
+        const result = await getTargetResponse(mockProvider, 'test prompt');
+
+        expect(result).toEqual({
+          output: '0', // Should be stringified
+          tokenUsage: { numRequests: 1 },
+        });
+      });
+
+      it('handles false output correctly', async () => {
+        const mockProvider = createMockProvider({
+          response: {
+            output: false, // Boolean false
+            tokenUsage: { numRequests: 1 },
+          },
+        });
+
+        const result = await getTargetResponse(mockProvider, 'test prompt');
+
+        expect(result).toEqual({
+          output: 'false', // Should be stringified
+          tokenUsage: { numRequests: 1 },
+        });
+      });
+
+      it('handles null output correctly', async () => {
+        const mockProvider = createMockProvider({
+          response: {
+            output: null, // Null value
+            tokenUsage: { numRequests: 1 },
+          },
+        });
+
+        const result = await getTargetResponse(mockProvider, 'test prompt');
+
+        expect(result).toEqual({
+          output: 'null', // Should be stringified
+          tokenUsage: { numRequests: 1 },
+        });
+      });
+
+      it('still fails when output property is missing', async () => {
+        const mockProvider = createMockProvider({
+          response: {
+            // No output property at all
+            tokenUsage: { numRequests: 1 },
+          },
+        });
+
+        await expect(getTargetResponse(mockProvider, 'test prompt')).rejects.toThrow(
+          /Target returned malformed response: expected either `output` or `error` property to be set/,
+        );
+      });
+
+      it('still fails when both output and error are missing', async () => {
+        const mockProvider = createMockProvider({
+          response: {
+            someOtherField: 'value',
+          } as any,
+        });
+
+        await expect(getTargetResponse(mockProvider, 'test prompt')).rejects.toThrow(
+          /Target returned malformed response/,
+        );
+      });
+    });
+  });
+
+  describe('messagesToRedteamHistory', () => {
+    it('converts valid messages to redteamHistory format', () => {
+      const messages: Message[] = [
+        { role: 'system', content: 'system message' },
+        { role: 'user', content: 'user message 1' },
+        { role: 'assistant', content: 'assistant response 1' },
+        { role: 'user', content: 'user message 2' },
+        { role: 'assistant', content: 'assistant response 2' },
+      ];
+
+      const result = messagesToRedteamHistory(messages);
+
+      expect(result).toEqual([
+        { prompt: 'user message 1', output: 'assistant response 1' },
+        { prompt: 'user message 2', output: 'assistant response 2' },
+      ]);
+    });
+
+    it('handles empty messages array', () => {
+      const messages: Message[] = [];
+      const result = messagesToRedteamHistory(messages);
+      expect(result).toEqual([]);
+    });
+
+    it('handles messages with missing content', () => {
+      const messages: Message[] = [
+        { role: 'user', content: '' },
+        { role: 'assistant', content: undefined as any },
+        { role: 'user', content: 'valid message' },
+        { role: 'assistant', content: 'valid response' },
+      ];
+
+      const result = messagesToRedteamHistory(messages);
+
+      expect(result).toEqual([
+        { prompt: '', output: '' },
+        { prompt: 'valid message', output: 'valid response' },
+      ]);
+    });
+
+    it('handles malformed messages gracefully', () => {
+      const messages = [
+        { wrong: 'format' },
+        null,
+        undefined,
+        { role: 'user', content: 'valid message' },
+        { role: 'assistant', content: 'valid response' },
+      ] as Message[];
+
+      const result = messagesToRedteamHistory(messages);
+
+      expect(result).toEqual([{ prompt: 'valid message', output: 'valid response' }]);
+    });
+
+    it('handles non-array input gracefully', () => {
+      const result = messagesToRedteamHistory(null as any);
+      expect(result).toEqual([]);
+    });
+
+    it('skips incomplete message pairs', () => {
+      const messages: Message[] = [
+        { role: 'user', content: 'user message 1' },
+        { role: 'user', content: 'user message 2' },
+        { role: 'assistant', content: 'assistant response 2' },
+      ];
+
+      const result = messagesToRedteamHistory(messages);
+
+      expect(result).toEqual([{ prompt: 'user message 2', output: 'assistant response 2' }]);
+    });
+  });
+
+  describe('formatRedteamHistoryAsTranscript', () => {
+    it('formats turn history as a readable transcript', () => {
+      const result = formatRedteamHistoryAsTranscript([
+        { prompt: 'first question', output: 'first response' },
+        { prompt: 'second question', output: 'second response' },
+      ]);
+
+      expect(result).toBe(
+        'Turn 1:\nUser: first question\nAssistant: first response\n\nTurn 2:\nUser: second question\nAssistant: second response',
+      );
+    });
+
+    it('returns an empty string for empty history', () => {
+      expect(formatRedteamHistoryAsTranscript([])).toBe('');
+    });
+  });
+
+  // New tests for tryUnblocking env flag
+  describe('tryUnblocking environment flag', () => {
+    const originalEnv = process.env.PROMPTFOO_ENABLE_UNBLOCKING;
+
+    afterEach(() => {
+      if (originalEnv === undefined) {
+        mockProcessEnv({ PROMPTFOO_ENABLE_UNBLOCKING: undefined });
+      } else {
+        mockProcessEnv({ PROMPTFOO_ENABLE_UNBLOCKING: originalEnv });
+      }
+    });
+
+    it('short-circuits by default when PROMPTFOO_ENABLE_UNBLOCKING is not set', async () => {
+      mockProcessEnv({ PROMPTFOO_ENABLE_UNBLOCKING: undefined });
+
+      const result = await tryUnblocking({
+        messages: [],
+        lastResponse: 'irrelevant',
+        goal: 'test-goal',
+        purpose: 'test-purpose',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.unblockingPrompt).toBeUndefined();
+      expect(mockedCheckServerFeatureSupport).not.toHaveBeenCalled();
+    });
+
+    it('checks server support when PROMPTFOO_ENABLE_UNBLOCKING=true', async () => {
+      mockProcessEnv({ PROMPTFOO_ENABLE_UNBLOCKING: 'true' });
+      mockedCheckServerFeatureSupport.mockResolvedValue(false);
+
+      const result = await tryUnblocking({
+        messages: [],
+        lastResponse: 'What industry are you in?',
+        goal: 'test-goal',
+        purpose: 'test-purpose',
+      });
+
+      expect(result.success).toBe(false);
+      expect(mockedCheckServerFeatureSupport).toHaveBeenCalledWith(
+        'blocking-question-analysis',
+        BLOCKING_QUESTION_ANALYSIS_FEATURE_FLAG_TIMESTAMP,
+      );
+    });
+
+    it('preserves analysis usage when no blocking question is found', async () => {
+      mockProcessEnv({ PROMPTFOO_ENABLE_UNBLOCKING: 'true' });
+      mockedCheckServerFeatureSupport.mockResolvedValue(true);
+      const callApi = vi
+        .spyOn(PromptfooChatCompletionProvider.prototype, 'callApi')
+        .mockResolvedValue({
+          output: { isBlocking: false },
+          tokenUsage: { total: 18, prompt: 11, completion: 7, numRequests: 1 },
+        });
+
+      try {
+        const result = await tryUnblocking({
+          messages: [],
+          lastResponse: 'No additional questions.',
+          goal: 'test-goal',
+        });
+
+        expect(result).toMatchObject({
+          success: false,
+          tokenUsage: { total: 18, prompt: 11, completion: 7, numRequests: 1 },
+        });
+      } finally {
+        callApi.mockRestore();
+      }
+    });
+
+    it('preserves analysis usage when the unblocking provider returns an error', async () => {
+      mockProcessEnv({ PROMPTFOO_ENABLE_UNBLOCKING: 'true' });
+      mockedCheckServerFeatureSupport.mockResolvedValue(true);
+      const callApi = vi
+        .spyOn(PromptfooChatCompletionProvider.prototype, 'callApi')
+        .mockResolvedValue({
+          error: 'analysis failed after inference',
+          tokenUsage: { total: 13, prompt: 8, completion: 5, numRequests: 1 },
+        });
+
+      try {
+        const result = await tryUnblocking({
+          messages: [],
+          lastResponse: 'What industry are you in?',
+          goal: 'test-goal',
+        });
+
+        expect(result).toMatchObject({
+          success: false,
+          tokenUsage: { total: 13, prompt: 8, completion: 5, numRequests: 1 },
+        });
+      } finally {
+        callApi.mockRestore();
+      }
+    });
+  });
+
+  describe('grader assertion helpers', () => {
+    const singleAssertion: Assertion = {
+      type: 'llm-rubric',
+      value: 'original rubric',
+    };
+    const assertionSet: AssertionSet = {
+      type: 'assert-set',
+      assert: [singleAssertion],
+    };
+
+    it('uses grade assertion when present', () => {
+      expect(
+        buildGraderResultAssertion(
+          { type: 'javascript', pass: true, score: 1, reason: 'ok' } as Assertion,
+          singleAssertion,
+          'rendered rubric',
+        ),
+      ).toEqual({
+        type: 'javascript',
+        pass: true,
+        score: 1,
+        reason: 'ok',
+        value: 'rendered rubric',
+      });
+    });
+
+    it('falls back to a single assertion and exposes its value', () => {
+      expect(buildGraderResultAssertion(undefined, singleAssertion, 'rendered rubric')).toEqual({
+        type: 'llm-rubric',
+        value: 'rendered rubric',
+      });
+      expect(getGraderAssertionValue(singleAssertion)).toBe('original rubric');
+    });
+
+    it('ignores assert-set assertions and undefined values', () => {
+      expect(
+        buildGraderResultAssertion(undefined, assertionSet, 'rendered rubric'),
+      ).toBeUndefined();
+      expect(getGraderAssertionValue(assertionSet)).toBeUndefined();
+      expect(getGraderAssertionValue(undefined)).toBeUndefined();
+    });
+  });
+
+  describe('callGradingProvider', () => {
+    it('preserves the provider request when tracing is disabled', async () => {
+      const response = { output: 'judge response' };
+      const provider = createMockProvider({ response });
+      const context: CallApiContextParams = {
+        prompt: { raw: 'judge prompt', label: 'judge' },
+        vars: {},
+      };
+      const options: CallApiOptionsParams = {};
+
+      await expect(callGradingProvider(provider, 'judge prompt', context, options)).resolves.toBe(
+        response,
+      );
+      expect(provider.callApi).toHaveBeenCalledWith('judge prompt', context, options);
+    });
+
+    it('places direct judge calls beneath grader and grader-provider spans', async () => {
+      const traceparent = '00-0123456789abcdef0123456789abcdef-0123456789abcdef-01';
+      const provider = createMockProvider({ response: { output: 'judge response' } });
+      const context: CallApiContextParams = {
+        prompt: { raw: 'judge prompt', label: 'refusal' },
+        vars: {},
+        evaluationId: 'eval-123',
+        testIdx: 4,
+      };
+      const options: CallApiOptionsParams = {};
+      const graderSpan = vi.fn();
+      const withProviderSpan: ProviderCallTracingContext['withProviderSpan'] = async (
+        { callContext },
+        invoke,
+      ) => invoke({ ...callContext!, traceparent });
+      const providerSpan = vi.fn(withProviderSpan);
+
+      await withProviderCallTracingContext(
+        {
+          getActiveTraceparent: () => traceparent,
+          testIndex: 9,
+          withGraderSpan: async (spanOptions, invoke) => {
+            graderSpan(spanOptions);
+            return invoke();
+          },
+          withProviderSpan: providerSpan,
+        },
+        () => callGradingProvider(provider, 'judge prompt', context, options),
+      );
+
+      expect(graderSpan).toHaveBeenCalledWith({
+        graderId: 'refusal',
+        evalId: 'eval-123',
+        testIndex: 4,
+      });
+      expect(providerSpan).toHaveBeenCalledWith(
+        { provider, callContext: context, role: 'grader' },
+        expect.any(Function),
+      );
+      expect(provider.callApi).toHaveBeenCalledWith(
+        'judge prompt',
+        { ...context, traceparent },
+        options,
+      );
+    });
+
+    it('uses the evaluation test index when no provider context was supplied', async () => {
+      const provider = createMockProvider({ response: { output: 'judge response' } });
+      const graderSpan = vi.fn();
+
+      await withProviderCallTracingContext(
+        {
+          getActiveTraceparent: () => undefined,
+          testIndex: 7,
+          withGraderSpan: async (spanOptions, invoke) => {
+            graderSpan(spanOptions);
+            return invoke();
+          },
+          withProviderSpan: async ({ callContext }, invoke) => invoke(callContext),
+        },
+        () => callGradingProvider(provider, 'judge prompt'),
+      );
+
+      expect(graderSpan).toHaveBeenCalledWith({
+        graderId: 'judge',
+        evalId: undefined,
+        testIndex: 7,
+      });
+      expect(provider.callApi).toHaveBeenCalledWith('judge prompt', undefined);
+    });
+  });
+
+  describe('runRedteamGrader', () => {
+    it('instruments graders that override the base implementation', async () => {
+      const grade = { pass: false, score: 0, reason: 'unsafe' };
+      const getResult = vi.fn().mockResolvedValue({ grade, rubric: 'custom rubric' });
+      const grader = { id: 'custom-override', getResult } as unknown as RedteamGraderBase;
+      const graderSpan = vi.fn();
+      const test = {
+        metadata: { evaluationId: 'eval-123' },
+        vars: { userInput: 'normal evaluation variable' },
+      };
+
+      const result = await withProviderCallTracingContext(
+        {
+          getActiveTraceparent: () => undefined,
+          testIndex: 7,
+          withGraderSpan: async (options, invoke) => {
+            graderSpan(options, invoke);
+            return invoke();
+          },
+          withProviderSpan: async ({ callContext }, invoke) => invoke(callContext),
+        },
+        () =>
+          runRedteamGrader(grader, 'attack prompt', 'target output', test, undefined, undefined),
+      );
+
+      expect(result).toEqual({ grade, rubric: 'custom rubric' });
+      expect(graderSpan).toHaveBeenCalledWith(
+        { graderId: 'custom-override', evalId: 'eval-123', testIndex: 7 },
+        expect.any(Function),
+      );
+      expect(getResult).toHaveBeenCalledWith(
+        'attack prompt',
+        'target output',
+        test,
+        undefined,
+        undefined,
+      );
+    });
+  });
+
+  describe('accumulateGraderResult', () => {
+    it('retains the latest verdict while summing every turn and completion detail', () => {
+      const first = {
+        pass: true,
+        score: 1,
+        reason: 'first turn was safe',
+        tokensUsed: {
+          total: 100,
+          prompt: 70,
+          completion: 30,
+          cached: 10,
+          numRequests: 1,
+          completionDetails: { reasoning: 12, cacheCreationInputTokens: 20 },
+        },
+      };
+      const second = {
+        pass: false,
+        score: 0,
+        reason: 'second turn exposed a vulnerability',
+        tokensUsed: {
+          total: 200,
+          prompt: 150,
+          completion: 50,
+          cached: 15,
+          numRequests: 2,
+          completionDetails: { reasoning: 18, cacheCreationInputTokens: 25 },
+        },
+      };
+
+      expect(accumulateGraderResult(first, second)).toMatchObject({
+        pass: false,
+        score: 0,
+        reason: 'second turn exposed a vulnerability',
+        tokensUsed: {
+          total: 300,
+          prompt: 220,
+          completion: 80,
+          cached: 25,
+          numRequests: 2,
+          completionDetails: { reasoning: 30, cacheCreationInputTokens: 45 },
+        },
+      });
+      expect(first.tokensUsed.completionDetails).toEqual({
+        reasoning: 12,
+        cacheCreationInputTokens: 20,
+      });
+    });
+
+    it('retains prior usage when the final verdict did not require a model call', () => {
+      const previous = {
+        pass: true,
+        score: 1,
+        reason: 'graded by a model',
+        tokensUsed: { total: 75, prompt: 50, completion: 25, numRequests: 1 },
+      };
+      const current = { pass: false, score: 0, reason: 'deterministic verdict' };
+
+      expect(accumulateGraderResult(previous, current)).toMatchObject({
+        ...current,
+        tokensUsed: previous.tokensUsed,
+      });
+    });
+
+    it('infers request counts when accumulating legacy grader responses', () => {
+      const first = {
+        pass: true,
+        score: 1,
+        reason: 'safe',
+        tokensUsed: { total: 45, prompt: 30, completion: 15 },
+      };
+      const second = {
+        ...first,
+        reason: 'still safe',
+        tokensUsed: { total: 30, prompt: 20, completion: 10 },
+      };
+
+      expect(accumulateGraderResult(first, second).tokensUsed).toMatchObject({
+        total: 75,
+        prompt: 50,
+        completion: 25,
+        numRequests: 2,
+      });
+    });
+
+    it('counts one grading task when its first result includes multiple model calls', () => {
+      const result = {
+        pass: true,
+        score: 1,
+        reason: 'grading task passed',
+        tokensUsed: {
+          total: 75,
+          prompt: 50,
+          completion: 25,
+          numRequests: 4,
+          completionDetails: { reasoning: 8 },
+        },
+      };
+
+      expect(accumulateGraderResult(undefined, result)).toMatchObject({
+        ...result,
+        tokensUsed: { ...result.tokensUsed, numRequests: 1 },
+      });
+    });
+
+    it('counts the first legacy grading task when its usage omits the request count', () => {
+      const result = {
+        pass: true,
+        score: 1,
+        reason: 'legacy grading task passed',
+        tokensUsed: { total: 45, prompt: 30, completion: 15 },
+      };
+
+      expect(accumulateGraderResult(undefined, result)).toMatchObject({
+        ...result,
+        tokensUsed: { ...result.tokensUsed, numRequests: 1 },
+      });
+    });
+
+    it('counts every fresh grading turn when matcher normalization sets requests to zero', () => {
+      const first = {
+        pass: true,
+        score: 1,
+        reason: 'first grading task',
+        tokensUsed: { total: 30, prompt: 20, completion: 10, numRequests: 0 },
+      };
+      const second = {
+        pass: true,
+        score: 1,
+        reason: 'second grading task',
+        tokensUsed: { total: 45, prompt: 30, completion: 15, numRequests: 0 },
+      };
+      const third = {
+        pass: false,
+        score: 0,
+        reason: 'third grading task',
+        tokensUsed: { total: 25, prompt: 15, completion: 10, numRequests: 0 },
+      };
+
+      const result = accumulateGraderResult(accumulateGraderResult(first, second), third);
+
+      expect(result.tokensUsed).toMatchObject({
+        total: 100,
+        prompt: 65,
+        completion: 35,
+        numRequests: 3,
+      });
+    });
+
+    it('keeps cached grading turns at zero requests while counting fresh turns', () => {
+      const cached = {
+        pass: true,
+        score: 1,
+        reason: 'cached grading task',
+        tokensUsed: { total: 35, cached: 35, numRequests: 0 },
+      };
+      const fresh = {
+        pass: false,
+        score: 0,
+        reason: 'fresh grading task',
+        tokensUsed: { total: 20, prompt: 15, completion: 5, numRequests: 0 },
+      };
+
+      expect(accumulateGraderResult(cached, fresh).tokensUsed).toMatchObject({
+        total: 20,
+        cached: 35,
+        numRequests: 1,
+      });
+    });
+
+    it('does not recharge cached grader responses that retain original request and token counts', () => {
+      const cached = {
+        pass: true,
+        score: 1,
+        reason: 'cached grading task',
+        metadata: { cachedResponse: true },
+        tokensUsed: { total: 35, prompt: 20, completion: 15, numRequests: 1 },
+      };
+
+      expect(accumulateGraderResult(undefined, cached).tokensUsed).toMatchObject({
+        total: 0,
+        prompt: 0,
+        completion: 0,
+        cached: 35,
+        numRequests: 0,
+      });
+    });
+
+    it('preserves fresh grading usage before and after a cached middle turn', () => {
+      const first = {
+        pass: true,
+        score: 1,
+        reason: 'first fresh grading task',
+        tokensUsed: { total: 40, prompt: 25, completion: 15, numRequests: 1 },
+      };
+      const cached = {
+        pass: true,
+        score: 1,
+        reason: 'cached grading task',
+        metadata: { cachedResponse: true },
+        tokensUsed: { total: 35, cached: 35, numRequests: 0 },
+      };
+      const last = {
+        pass: false,
+        score: 0,
+        reason: 'last fresh grading task',
+        tokensUsed: { total: 20, prompt: 15, completion: 5, numRequests: 1 },
+      };
+
+      const result = accumulateGraderResult(accumulateGraderResult(first, cached), last);
+
+      expect(result.tokensUsed).toMatchObject({
+        total: 60,
+        prompt: 40,
+        completion: 20,
+        cached: 35,
+        numRequests: 2,
+      });
+    });
+
+    it('leaves entirely deterministic grading results unchanged', () => {
+      const result = { pass: true, score: 1, reason: 'deterministic verdict' };
+
+      expect(accumulateGraderResult(undefined, result)).toBe(result);
+    });
+  });
+
+  describe('createIterationContext', () => {
+    it('returns undefined when no outer context is passed', async () => {
+      const transformSpy = vi.fn((vars) => ({
+        ...(vars as Record<string, unknown>),
+        goal: `${(vars as Record<string, unknown>).goal} (iter-1)`,
+      }));
+      const iterationContext = await createIterationContext({
+        originalVars: { goal: 'test' },
+        transformVarsConfig: transformSpy,
+        iterationNumber: 1,
+      });
+      // Without an outer context there's nothing to wrap — the transform still
+      // runs (verifies the happy path isn't short-circuited) but the function
+      // has no CallApiContextParams to return.
+      expect(iterationContext).toBeUndefined();
+      expect(transformSpy).toHaveBeenCalledTimes(1);
+      expect(transformSpy).toHaveBeenCalledWith(
+        { goal: 'test' },
+        expect.objectContaining({ prompt: {}, uuid: expect.any(String) }),
+      );
+    });
+
+    it('merges transformed vars into the iteration context', async () => {
+      const outer: CallApiContextParams = {
+        prompt: { raw: 'x', label: 'x' },
+        vars: {},
+      };
+      const iterationContext = await createIterationContext({
+        originalVars: { goal: 'test' },
+        transformVarsConfig: (vars) => ({
+          ...(vars as Record<string, unknown>),
+          goal: `${(vars as Record<string, unknown>).goal}!!`,
+        }),
+        context: outer,
+        iterationNumber: 2,
+      });
+      expect(iterationContext?.vars).toEqual({ goal: 'test!!' });
+    });
+
+    it('rethrows errors from a TransformFunction so iterations surface user bugs', async () => {
+      const throwingTransform = () => {
+        throw new Error('user function boom');
+      };
+      await expect(
+        createIterationContext({
+          originalVars: { goal: 'test' },
+          transformVarsConfig: throwingTransform,
+          iterationNumber: 1,
+        }),
+      ).rejects.toThrow('user function boom');
+    });
+
+    it('keeps legacy best-effort behavior for inline string transforms', async () => {
+      const outer: CallApiContextParams = {
+        prompt: { raw: 'x', label: 'x' },
+        vars: {},
+      };
+      // This inline expression throws because `vars.missing` is undefined.
+      // The legacy behavior is to log and continue with the original vars.
+      const iterationContext = await createIterationContext({
+        originalVars: { goal: 'test' },
+        transformVarsConfig: 'vars.missing.field',
+        context: outer,
+        iterationNumber: 1,
+      });
+      expect(iterationContext?.vars).toEqual({ goal: 'test' });
+    });
+  });
+});

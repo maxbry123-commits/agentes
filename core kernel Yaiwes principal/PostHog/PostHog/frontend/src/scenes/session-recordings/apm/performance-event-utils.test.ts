@@ -1,0 +1,389 @@
+import { getPerformanceEvents, itemSizeInfo } from 'scenes/session-recordings/apm/performance-event-utils'
+
+import { PerformanceEvent } from '~/types'
+
+const aSingleSnapshotWithNetworkPayloads = {
+    windowId: '018d5247-079c-7126-8e43-464605576a62',
+    type: 6,
+    data: {
+        plugin: 'rrweb/network@1',
+        payload: {
+            requests: [
+                // a page navigation
+                {
+                    name: 'http://localhost:8000/project/1/replay/recent?sessionRecordingId=018d51f0-b624-7b16-964d-f1109f28b3da',
+                    entryType: 'navigation',
+                    startTime: 0,
+                    duration: 5704.5999999940395,
+                    initiatorType: 'navigation',
+                    deliveryType: '',
+                    nextHopProtocol: 'http/1.1',
+                    renderBlockingStatus: 'non-blocking',
+                    workerStart: 0,
+                    redirectStart: 0,
+                    redirectEnd: 0,
+                    fetchStart: 2.699999988079071,
+                    domainLookupStart: 2.699999988079071,
+                    domainLookupEnd: 2.699999988079071,
+                    connectStart: 2.699999988079071,
+                    secureConnectionStart: 0,
+                    connectEnd: 2.699999988079071,
+                    requestStart: 9.699999988079071,
+                    responseStart: 4818.5999999940395,
+                    firstInterimResponseStart: 0,
+                    responseEnd: 4891.9000000059605,
+                    transferSize: 82597,
+                    encodedBodySize: 82297,
+                    decodedBodySize: 82297,
+                    responseStatus: 200,
+                    serverTiming: [],
+                    unloadEventStart: 4907.199999988079,
+                    unloadEventEnd: 4907.199999988079,
+                    domInteractive: 5515.199999988079,
+                    domContentLoadedEventStart: 5515.199999988079,
+                    domContentLoadedEventEnd: 5515.199999988079,
+                    domComplete: 5703.799999982119,
+                    loadEventStart: 5704.5,
+                    loadEventEnd: 5704.5999999940395,
+                    type: 'reload',
+                    redirectCount: 0,
+                    activationStart: 0,
+                    criticalCHRestart: 0,
+                    endTime: 4892,
+                    timeOrigin: 1706482394939,
+                    timestamp: 1706482394939,
+                    isInitial: true,
+                },
+                // a resoutce
+                {
+                    name: 'http://localhost:8234/static/index.css',
+                    entryType: 'resource',
+                    startTime: 5445,
+                    duration: 72.09999999403954,
+                    initiatorType: 'link',
+                    deliveryType: '',
+                    nextHopProtocol: '',
+                    renderBlockingStatus: 'non-blocking',
+                    workerStart: 0,
+                    redirectStart: 0,
+                    redirectEnd: 0,
+                    fetchStart: 5445.199999988079,
+                    domainLookupStart: 0,
+                    domainLookupEnd: 0,
+                    connectStart: 0,
+                    secureConnectionStart: 0,
+                    connectEnd: 0,
+                    requestStart: 0,
+                    responseStart: 0,
+                    firstInterimResponseStart: 0,
+                    responseEnd: 5517.299999982119,
+                    transferSize: 0,
+                    encodedBodySize: 0,
+                    decodedBodySize: 0,
+                    responseStatus: 0,
+                    serverTiming: [],
+                    endTime: 5517,
+                    timeOrigin: 1706482394939,
+                    timestamp: 1706482400384,
+                    isInitial: true,
+                },
+                // fetch
+                {
+                    name: 'http://localhost:8000/decide/?v=3&ip=1&_=1706482405545&ver=1.103.0',
+                    entryType: 'resource',
+                    startTime: 10606,
+                    duration: 2524.300000011921,
+                    initiatorType: 'xmlhttprequest',
+                    deliveryType: '',
+                    nextHopProtocol: 'http/1.1',
+                    renderBlockingStatus: 'non-blocking',
+                    workerStart: 0,
+                    redirectStart: 0,
+                    redirectEnd: 0,
+                    fetchStart: 10605.799999982119,
+                    domainLookupStart: 10605.799999982119,
+                    domainLookupEnd: 10605.799999982119,
+                    connectStart: 10605.799999982119,
+                    secureConnectionStart: 0,
+                    connectEnd: 10605.799999982119,
+                    requestStart: 12689,
+                    responseStart: 13084.40000000596,
+                    firstInterimResponseStart: 0,
+                    responseEnd: 13130.09999999404,
+                    transferSize: 3311,
+                    encodedBodySize: 3011,
+                    decodedBodySize: 3011,
+                    responseStatus: 200,
+                    serverTiming: [],
+                    endTime: 13130,
+                    timeOrigin: 1706482394938,
+                    timestamp: 1706482405543,
+                    isInitial: true,
+                },
+                // fetch which matches server timings
+                {
+                    name: 'http://localhost:8000/api/projects/1/important_changes?unread=true',
+                    entryType: 'resource',
+                    startTime: 10640,
+                    duration: 2521.800000011921,
+                    initiatorType: 'fetch',
+                    deliveryType: '',
+                    nextHopProtocol: 'http/1.1',
+                    renderBlockingStatus: 'non-blocking',
+                    workerStart: 0,
+                    redirectStart: 0,
+                    redirectEnd: 0,
+                    fetchStart: 10640.09999999404,
+                    domainLookupStart: 12721.799999982119,
+                    domainLookupEnd: 12721.90000000596,
+                    connectStart: 12721.90000000596,
+                    secureConnectionStart: 0,
+                    connectEnd: 12722.59999999404,
+                    requestStart: 12722.699999988079,
+                    responseStart: 13161.299999982119,
+                    firstInterimResponseStart: 0,
+                    responseEnd: 13161.90000000596,
+                    transferSize: 947,
+                    encodedBodySize: 647,
+                    decodedBodySize: 3337,
+                    responseStatus: 200,
+                    serverTiming: [{}, {}, {}, {}, {}],
+                    endTime: 13162,
+                    timeOrigin: 1706482394938,
+                    timestamp: 1706482405578,
+                    isInitial: true,
+                },
+                {
+                    timeOrigin: 1706482394938,
+                    timestamp: 1706482405578,
+                    startTime: 10640,
+                    name: 'gather_query_parts',
+                    duration: 223.65,
+                    entryType: 'serverTiming',
+                },
+                {
+                    timeOrigin: 1706482394938,
+                    timestamp: 1706482405578,
+                    startTime: 10640,
+                    name: 'query_for_candidate_ids',
+                    duration: 42.63,
+                    entryType: 'serverTiming',
+                },
+                {
+                    timeOrigin: 1706482394938,
+                    timestamp: 1706482405578,
+                    startTime: 10640,
+                    name: 'construct_query',
+                    duration: 3.75,
+                    entryType: 'serverTiming',
+                },
+                {
+                    timeOrigin: 1706482394938,
+                    timestamp: 1706482405578,
+                    startTime: 10640,
+                    name: 'query_for_data',
+                    duration: 0.08,
+                    entryType: 'serverTiming',
+                },
+                {
+                    timeOrigin: 1706482394938,
+                    timestamp: 1706482405578,
+                    startTime: 10640,
+                    name: 'serialize',
+                    duration: 39.98,
+                    entryType: 'serverTiming',
+                },
+                // another fetch which matches different server timings
+                {
+                    name: 'http://localhost:8000/api/projects/1/session_recordings?session_recording_duration=%7B%22type%22%3A%22recording%22%2C%22key%22%3A%22duration%22%2C%22value%22%3A1%2C%22operator%22%3A%22gt%22%7D&properties=%5B%5D&events=%5B%5D&actions=%5B%5D&date_from=-7d&console_logs=%5B%5D&person_uuid=&limit=20',
+                    entryType: 'resource',
+                    startTime: 10654,
+                    duration: 2927.100000023842,
+                    initiatorType: 'fetch',
+                    deliveryType: '',
+                    nextHopProtocol: 'http/1.1',
+                    renderBlockingStatus: 'non-blocking',
+                    workerStart: 0,
+                    redirectStart: 0,
+                    redirectEnd: 0,
+                    fetchStart: 10654.299999982119,
+                    domainLookupStart: 10654.299999982119,
+                    domainLookupEnd: 10654.299999982119,
+                    connectStart: 10654.299999982119,
+                    secureConnectionStart: 0,
+                    connectEnd: 10654.299999982119,
+                    requestStart: 12803.699999988079,
+                    responseStart: 13577,
+                    firstInterimResponseStart: 0,
+                    responseEnd: 13581.40000000596,
+                    transferSize: 3089,
+                    encodedBodySize: 2789,
+                    decodedBodySize: 61551,
+                    responseStatus: 200,
+                    serverTiming: [{}, {}, {}],
+                    endTime: 13581,
+                    timeOrigin: 1706482394938,
+                    timestamp: 1706482405592,
+                    isInitial: true,
+                },
+                {
+                    timeOrigin: 1706482394938,
+                    timestamp: 1706482405592,
+                    startTime: 10654,
+                    name: 'load_recordings_from_clickhouse',
+                    duration: 384.21,
+                    entryType: 'serverTiming',
+                },
+                {
+                    timeOrigin: 1706482394938,
+                    timestamp: 1706482405592,
+                    startTime: 10654,
+                    name: 'load_persons',
+                    duration: 0.72,
+                    entryType: 'serverTiming',
+                },
+                {
+                    timeOrigin: 1706482394938,
+                    timestamp: 1706482405592,
+                    startTime: 10654,
+                    name: 'process_persons',
+                    duration: 7.12,
+                    entryType: 'serverTiming',
+                },
+            ],
+        },
+    },
+    timestamp: 1706482463172,
+}
+
+const someData = {
+    '018d5247-079c-7126-8e43-464605576a62': [aSingleSnapshotWithNetworkPayloads],
+}
+
+describe('performance-event-utils', () => {
+    it('can map network events containing server timings', () => {
+        expect(aSingleSnapshotWithNetworkPayloads.data.payload.requests.map((r) => r.entryType)).toEqual([
+            'navigation',
+            'resource',
+            'resource',
+            'resource',
+            'serverTiming',
+            'serverTiming',
+            'serverTiming',
+            'serverTiming',
+            'serverTiming',
+            'resource',
+            'serverTiming',
+            'serverTiming',
+            'serverTiming',
+        ])
+        // there are 13 requests in the sample data
+        // only 5 should remain after collapsing server timings
+        const actual = getPerformanceEvents(someData)
+        // we're collapsing server timings into their parent, so we'll have no top-level server timings
+        expect(actual.map((a) => a.entry_type)).toEqual(['navigation', 'resource', 'resource', 'resource', 'resource'])
+    })
+
+    it.each([
+        ['rrweb/network@1 with missing payload', { plugin: 'rrweb/network@1' }],
+        ['rrweb/network@1 with null payload', { plugin: 'rrweb/network@1', payload: null }],
+        ['posthog/network@1 with missing payload', { plugin: 'posthog/network@1' }],
+        ['posthog/network@1 with null payload', { plugin: 'posthog/network@1', payload: null }],
+    ])('does not crash when network snapshot has no usable payload (%s)', (_name, snapshotData) => {
+        const snapshot = {
+            windowId: '018d5247-079c-7126-8e43-464605576a62',
+            type: 6,
+            data: snapshotData,
+            timestamp: 1700000000000,
+        } as any
+
+        const result = getPerformanceEvents({
+            '018d5247-079c-7126-8e43-464605576a62': [snapshot],
+        })
+        expect(result).toEqual([])
+    })
+
+    it.each([
+        // browser reports a literal 0 for an unmeasurable request (cross-origin, opaque, blocked)
+        [
+            'unmeasurable 0 is treated as unknown',
+            { transfer_size: 0, encoded_body_size: 0, decoded_body_size: 0 },
+            null,
+        ],
+        // a cached request has no transfer size but keeps its decoded body size
+        ['cached request reports its decoded size', { transfer_size: 0, decoded_body_size: 5120 }, 5120],
+        ['transfer size wins when present', { transfer_size: 3311, decoded_body_size: 3011 }, 3311],
+        // the SDK stores a diagnostic string as the body when it cannot read the real one;
+        // it must not be measured as the response size (a "too large" body would invert to a few bytes)
+        [
+            'diagnostic body is not measured as a size',
+            { transfer_size: 0, response_body: '[SessionReplay] Timeout while trying to read body' },
+            null,
+        ],
+        // the SDK writes these without the "[SessionReplay] " prefix
+        [
+            'unprefixed content-type diagnostic is not measured',
+            { transfer_size: 0, response_body: 'Content-Type video/mp4 is not supported' },
+            null,
+        ],
+        [
+            'deny list diagnostic is not measured',
+            { transfer_size: 0, response_body: 'api.company.com is in deny list' },
+            null,
+        ],
+        [
+            'a redacted body is not measured',
+            { transfer_size: 0, response_body: '[SessionRecording] content redacted' },
+            null,
+        ],
+        // a real captured body is still estimated when no measured size is available
+        [
+            'real body falls back to its estimated size',
+            { transfer_size: 0, response_body: 'hello', response_headers: {} },
+            7,
+        ],
+    ])('itemSizeInfo bytes: %s', (_name, item, expectedBytes) => {
+        const sizeInfo = itemSizeInfo(item as PerformanceEvent)
+        expect(sizeInfo.bytes).toEqual(expectedBytes)
+        if (expectedBytes === null) {
+            expect(sizeInfo.formattedBytes).toEqual('')
+        }
+    })
+
+    it.each([
+        // the detail view prefers formattedDecodedBodySize; an unknown 0 must not become "0 bytes",
+        // or it contradicts the "size not available" row
+        [
+            'an unknown (0) body size is not formatted',
+            { transfer_size: 0, encoded_body_size: 0, decoded_body_size: 0 },
+            null,
+        ],
+        ['a measured body size is formatted', { transfer_size: 0, decoded_body_size: 5120 }, '5.00 kB'],
+    ])('itemSizeInfo formattedDecodedBodySize: %s', (_name, item, expected) => {
+        expect(itemSizeInfo(item as PerformanceEvent).formattedDecodedBodySize).toEqual(expected)
+    })
+
+    it('skips malformed entries in rrweb/network@1 requests instead of crashing', () => {
+        const snapshot = {
+            windowId: '018d5247-079c-7126-8e43-464605576a62',
+            type: 6,
+            data: {
+                plugin: 'rrweb/network@1',
+                payload: {
+                    requests: [
+                        null,
+                        'not-a-request',
+                        42,
+                        { entryType: 'resource', name: 'https://example.com/a.js', timestamp: 1700000000000 },
+                    ],
+                },
+            },
+            timestamp: 1700000000000,
+        } as any
+
+        const result = getPerformanceEvents({
+            '018d5247-079c-7126-8e43-464605576a62': [snapshot],
+        })
+        expect(result.map((r) => r.name)).toEqual(['https://example.com/a.js'])
+    })
+})

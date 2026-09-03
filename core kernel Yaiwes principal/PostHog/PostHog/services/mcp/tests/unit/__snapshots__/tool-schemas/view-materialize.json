@@ -1,0 +1,17 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "properties": {
+        "id": {
+            "description": "A UUID string identifying this data warehouse saved query.",
+            "type": "string"
+        },
+        "sync_frequency": {
+            "default": "24hour",
+            "description": "How often to refresh the materialized table, defaulting to daily. Rejected with a 400 when it falls outside what the query's lineage allows: no more often than its sources deliver new data, and no less often than a downstream view or endpoint needs.\n\n* `15min` - 15min\n* `30min` - 30min\n* `1hour` - 1hour\n* `6hour` - 6hour\n* `12hour` - 12hour\n* `24hour` - 24hour\n* `7day` - 7day\n* `30day` - 30day",
+            "enum": ["15min", "30min", "1hour", "6hour", "12hour", "24hour", "7day", "30day"],
+            "type": "string"
+        }
+    },
+    "required": ["id"],
+    "type": "object"
+}

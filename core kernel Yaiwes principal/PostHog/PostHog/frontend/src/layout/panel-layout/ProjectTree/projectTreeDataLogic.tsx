@@ -1,0 +1,1829 @@
+import { MakeLogicType, actions, afterMount, connect, kea, listeners, path, reducers, selectors } from 'kea'
+import { loaders } from 'kea-loaders'
+import posthog from 'posthog-js'
+
+import { IconDocument, IconFolder, IconPlus } from '@posthog/icons'
+import { LemonDialog } from '@posthog/lemon-ui'
+
+import api from 'lib/api'
+import { GroupsAccessStatus } from 'lib/introductions/groupsAccessLogic'
+import { lemonToast } from 'lib/lemon-ui/LemonToast'
+import { TreeDataItem } from 'lib/lemon-ui/LemonTree/LemonTree'
+import { Spinner } from 'lib/lemon-ui/Spinner'
+import { featureFlagLogic } from 'lib/logic/featureFlagLogic'
+import { getEntryAccessDisabledReason, getProductAccessDisabledReason } from 'lib/utils/accessControlUtils'
+import { withTimeout } from 'lib/utils/async'
+import { eventUsageLogic } from 'lib/utils/eventUsageLogic'
+import { getCurrentTeamIdOrNone } from 'lib/utils/getAppContext'
+import { capitalizeFirstLetter, humanList, identifierToHuman, pluralize } from 'lib/utils/strings'
+import { urls } from 'scenes/urls'
+import { userLogic } from 'scenes/userLogic'
+
+import { breadcrumbsLogic } from '~/layout/navigation/Breadcrumbs/breadcrumbsLogic'
+import {
+    getDefaultTreeData,
+    getDefaultTreeDataAndPeople,
+    getDefaultTreeNew,
+    getDefaultTreePersons,
+    getDefaultTreeProducts,
+} from '~/layout/panel-layout/ProjectTree/defaultTree'
+import { RecentResults, SearchResults, projectTreeLogic } from '~/layout/panel-layout/ProjectTree/projectTreeLogic'
+import { FolderState, ProjectTreeAction } from '~/layout/panel-layout/ProjectTree/types'
+import {
+    appendResultsToFolders,
+    convertFileSystemEntryToTreeDataItem,
+    escapePath,
+    formatUrlAsName,
+    isGroupViewShortcut,
+    isPathUnder,
+    joinPath,
+    matchesRefType,
+    parentPath,
+    refTypeParams,
+    reparentPath,
+    sortFilesAndFolders,
+    splitPath,
+} from '~/layout/panel-layout/ProjectTree/utils'
+import { FEATURE_FLAGS } from '~/lib/constants'
+import { groupsModel } from '~/models/groupsModel'
+import { FileSystemEntry, FileSystemIconType, FileSystemImport } from '~/queries/schema/schema-general'
+import { UserBasicType } from '~/types'
+
+import type { FeatureFlagsSet } from '../../../lib/logic/featureFlagLogic'
+import type { Noun } from '../../../models/groupsModel'
+import type { UserProductListItem } from '../../../queries/schema/schema-general'
+import type { GroupType, GroupTypeIndex, ProjectTreeRef, UserType } from '../../../types'
+import { panelLayoutLogic } from '../panelLayoutLogic'
+import type { PanelLayoutNavIdentifier } from '../panelLayoutLogic'
+import { customProductsLogic } from './customProductsLogic'
+
+const MOVE_ALERT_LIMIT = 50
+const DELETE_ALERT_LIMIT = 0
+/**
+ * Upper bound on how long the starred-shortcuts fetch may run before we give up. A stalled
+ * request that never settles would otherwise leave `shortcutDataHasLoaded` false forever,
+ * freezing the global search page on a loading skeleton (the flag only flips via the loader's
+ * Success/Failure reducers).
+ */
+const SHORTCUTS_LOADER_TIMEOUT_MS = 10000
+/**
+ * Upper bound on a single move request. A batch reports only once every one of its moves has settled, so
+ * without this one stalled request would withhold the toast and the Undo from every item that already
+ * succeeded, and leave the batch in `cache.moveBatches` for the logic's lifetime.
+ */
+const MOVE_TIMEOUT_MS = 30000
+export const PAGINATION_LIMIT = 100
+// Reporting a move per item would toast N times for a bulk move, and because react-toastify dedupes
+// identical messages the user would see one toast whose Undo reverts only the item it was built for. Every
+// move therefore goes through `moveItems`, as a batch of one or more, and reports when the batch settles.
+export interface MovedItem {
+    item: FileSystemEntry
+    oldPath: string
+    newPath: string
+}
+
+interface MoveBatch {
+    // Emptying this is what tells the batch every move has settled.
+    pending: Set<string>
+    moved: MovedItem[]
+    failed: { error: unknown }[]
+    projectTreeLogicKey: string
+}
+
+let lastMoveBatchId = 0
+
+// Returns `shortcuts` reordered to match `orderedIds`. Any shortcut not referenced in
+// `orderedIds` is appended at the end so a partial input never silently drops items.
+function applyOrder(shortcuts: FileSystemEntry[], orderedIds: string[]): FileSystemEntry[] {
+    const byId = new Map(shortcuts.map((s) => [s.id, s]))
+    const reordered = orderedIds.map((id) => byId.get(id)).filter((s): s is FileSystemEntry => !!s)
+    const referenced = new Set(orderedIds)
+    const trailing = shortcuts.filter((s) => s.id && !referenced.has(s.id))
+    return [...reordered, ...trailing]
+}
+
+type DeleteFolderDialogContentProps = {
+    folderName: string
+    folderPath: string
+    entries: FileSystemEntry[]
+    totalCount: number
+    hasMore: boolean
+}
+
+const DeleteFolderDialogContent = ({
+    folderName,
+    folderPath,
+    entries,
+    totalCount,
+    hasMore,
+}: DeleteFolderDialogContentProps): JSX.Element => {
+    const prefix = folderPath ? `${folderPath}/` : ''
+    const relativeEntries = entries.map((entry) => {
+        const relativePath = prefix && entry.path.startsWith(prefix) ? entry.path.slice(prefix.length) : entry.path
+        return { entry, relativePath }
+    })
+
+    const remainingCount = Math.max(totalCount - entries.length, 0)
+
+    return (
+        <div className="space-y-3">
+            <p className="text-sm">
+                Deleting <span className="font-semibold">"{folderName}"</span> will permanently remove{' '}
+                {pluralize(totalCount, 'item')}.
+            </p>
+            {relativeEntries.length ? (
+                <>
+                    <div className="max-h-64 overflow-y-auto rounded border border-border bg-bg-light">
+                        <ul>
+                            {relativeEntries.map(({ entry, relativePath }) => {
+                                const IconComponent = entry.type === 'folder' ? IconFolder : IconDocument
+                                return (
+                                    <li
+                                        key={entry.id}
+                                        className="flex items-center gap-3 px-3 py-2 text-sm border-b border-border last:border-b-0"
+                                    >
+                                        <IconComponent className="size-4 text-muted-alt" />
+                                        <div className="flex-1">
+                                            <div className="font-medium leading-tight">
+                                                {relativePath || entry.path}
+                                            </div>
+                                            {entry.type ? (
+                                                <div className="text-xs text-muted-alt">
+                                                    {identifierToHuman(entry.type)}
+                                                </div>
+                                            ) : null}
+                                        </div>
+                                    </li>
+                                )
+                            })}
+                        </ul>
+                    </div>
+                    {hasMore && remainingCount > 0 ? (
+                        <p className="text-xs text-muted-alt">
+                            Plus {pluralize(remainingCount, 'additional item')} not shown here.
+                        </p>
+                    ) : null}
+                </>
+            ) : (
+                <p className="text-sm text-muted-alt">This folder does not contain any additional items.</p>
+            )}
+        </div>
+    )
+}
+
+const humanizeFileSystemEntryType = (type?: string): string => {
+    if (!type) {
+        return 'item'
+    }
+
+    const humanizedType = identifierToHuman(type).toLowerCase()
+
+    if (humanizedType.startsWith('hog function ')) {
+        return humanizedType.replace('hog function ', '')
+    }
+
+    return humanizedType
+}
+
+// Generated by kea-typegen. Update if you're an agent, ignore if you're human.
+export interface projectTreeDataLogicValues {
+    projectTreeRef: ProjectTreeRef | null // breadcrumbsLogic
+    customProducts: UserProductListItem[] // customProductsLogic
+    featureFlags: FeatureFlagsSet // featureFlagLogic
+    aggregationLabel: (groupTypeIndex: number | null | undefined, deferToUserWording?: boolean) => Noun // groupsModel
+    groupTypes: Map<GroupTypeIndex, GroupType> // groupsModel
+    groupTypesLoading: boolean // groupsModel
+    groupsAccessStatus: GroupsAccessStatus // groupsModel
+    user: UserType | null // userLogic
+    folderLoadOffset: Record<string, number>
+    folderStates: Record<string, FolderState>
+    folders: Record<string, FileSystemEntry[]>
+    getCustomProductTreeItems: (searchTerm: string) => TreeDataItem[]
+    getShortcutTreeItems: (searchTerm: string, onlyFolders: boolean) => TreeDataItem[]
+    getStaticTreeItems: (searchTerm: string, onlyFolders: boolean) => TreeDataItem[]
+    groupItems: FileSystemImport[]
+    itemsByHref: Record<string, FileSystemEntry>
+    itemsByPath: Record<string, FileSystemEntry>
+    itemsByRef: Record<string, FileSystemEntry>
+    lastNewFolder: string | null
+    loadingPaths: Record<string, boolean>
+    pendingActions: ProjectTreeAction[]
+    pendingLoader: boolean
+    pendingLoaderLoading: boolean
+    projectTreeRefEntry: FileSystemEntry | null
+    savedItems: FileSystemEntry[]
+    savedItemsLoading: boolean
+    shortcutData: FileSystemEntry[]
+    shortcutDataHasLoaded: boolean
+    shortcutDataLoading: boolean
+    shortcutEntryIdMap: Map<string, string>
+    shortcutNonFolderPaths: Set<string>
+    sortedItems: FileSystemEntry[]
+    treeItemsNew: TreeDataItem[]
+    unfiledItems: boolean
+    unfiledItemsLoading: boolean
+    users: Record<string, UserBasicType>
+    viableItems: FileSystemEntry[]
+    viableItemsById: Record<string, FileSystemEntry>
+}
+
+// Generated by kea-typegen. Update if you're an agent, ignore if you're human.
+export interface projectTreeDataLogicActions {
+    setActivePanelIdentifier: (identifier: PanelLayoutNavIdentifier) => {
+        identifier: PanelLayoutNavIdentifier
+    } // panelLayoutLogic
+    addLoadedResults: (results: RecentResults | SearchResults) => {
+        results: RecentResults | SearchResults
+    }
+    addLoadedUsers: (users: UserBasicType[]) => {
+        users: UserBasicType[]
+    }
+    addShortcutItem: (item: FileSystemEntry) => {
+        item: FileSystemEntry
+    }
+    addShortcutItemFailure: (
+        error: string,
+        errorObject?: any
+    ) => {
+        error: string
+        errorObject?: any
+    }
+    addShortcutItemSuccess: (
+        shortcutData: FileSystemEntry[],
+        payload?: {
+            item: FileSystemEntry
+        }
+    ) => {
+        shortcutData: FileSystemEntry[]
+        payload?: {
+            item: FileSystemEntry
+        }
+    }
+    createSavedItem: (savedItem: FileSystemEntry) => {
+        savedItem: FileSystemEntry
+    }
+    deleteItem: (
+        item: FileSystemEntry,
+        projectTreeLogicKey: string
+    ) => {
+        item: FileSystemEntry
+        projectTreeLogicKey: string
+    }
+    deleteSavedItem: (savedItem: FileSystemEntry) => {
+        savedItem: FileSystemEntry
+    }
+    deleteShortcut: (id: FileSystemEntry['id']) => {
+        id: string
+    }
+    deleteShortcutFailure: (
+        error: string,
+        errorObject?: any
+    ) => {
+        error: string
+        errorObject?: any
+    }
+    deleteShortcutSuccess: (
+        shortcutData: FileSystemEntry[],
+        payload?: {
+            id: string
+        }
+    ) => {
+        shortcutData: FileSystemEntry[]
+        payload?: {
+            id: string
+        }
+    }
+    deleteTypeAndRef: (
+        type: string,
+        ref: string
+    ) => {
+        ref: string
+        type: string
+    }
+    linkItem: (
+        oldPath: string,
+        newPath: string,
+        force: boolean,
+        projectTreeLogicKey: string
+    ) => {
+        force: boolean
+        newPath: string
+        oldPath: string
+        projectTreeLogicKey: string
+    }
+    loadFolder: (
+        folder: string,
+        forceReload?: boolean
+    ) => {
+        folder: string
+        forceReload: boolean
+    }
+    loadFolderFailure: (
+        folder: string,
+        error: string
+    ) => {
+        error: string
+        folder: string
+    }
+    loadFolderIfNotLoaded: (folderId: string) => {
+        folderId: string
+    }
+    loadFolderStart: (
+        folder: string,
+        forceReload?: boolean
+    ) => {
+        folder: string
+        forceReload: boolean
+    }
+    loadFolderSuccess: (
+        folder: string,
+        entries: FileSystemEntry[],
+        hasMore: boolean,
+        offsetIncrease: number,
+        forceReload?: boolean
+    ) => {
+        entries: FileSystemEntry[]
+        folder: string
+        forceReload: boolean
+        hasMore: boolean
+        offsetIncrease: number
+    }
+    loadShortcuts: () => {
+        value: true
+    }
+    loadShortcutsFailure: (
+        error: string,
+        errorObject?: any
+    ) => {
+        error: string
+        errorObject?: any
+    }
+    loadShortcutsSuccess: (
+        shortcutData: FileSystemEntry[],
+        payload?: {
+            value: true
+        }
+    ) => {
+        shortcutData: FileSystemEntry[]
+        payload?: {
+            value: true
+        }
+    }
+    loadUnfiledItems: () => {
+        value: true
+    }
+    loadUnfiledItemsFailure: (
+        error: string,
+        errorObject?: any
+    ) => {
+        error: string
+        errorObject?: any
+    }
+    loadUnfiledItemsSuccess: (
+        unfiledItems: boolean,
+        payload?: {
+            value: true
+        }
+    ) => {
+        unfiledItems: boolean
+        payload?: {
+            value: true
+        }
+    }
+    moveItem: (
+        item: FileSystemEntry,
+        newPath: string,
+        force: boolean,
+        projectTreeLogicKey: string
+    ) => {
+        force: boolean
+        item: FileSystemEntry
+        newPath: string
+        projectTreeLogicKey: string
+    }
+    moveItems: (
+        moves: { item: FileSystemEntry; newPath: string }[],
+        force: boolean,
+        projectTreeLogicKey: string
+    ) => {
+        force: boolean
+        moves: { item: FileSystemEntry; newPath: string }[]
+        projectTreeLogicKey: string
+    }
+    movedItem: (
+        item: FileSystemEntry,
+        oldPath: string,
+        newPath: string
+    ) => {
+        item: FileSystemEntry
+        newPath: string
+        oldPath: string
+    }
+    movesSettled: (moved: MovedItem[]) => {
+        moved: MovedItem[]
+    }
+    pruneClosedFolders: (expandedFolders: string[]) => {
+        expandedFolders: string[]
+    }
+    queueAction: (
+        action: ProjectTreeAction,
+        projectTreeLogicKey: string
+    ) => {
+        action: ProjectTreeAction
+        projectTreeLogicKey: string
+    }
+    queueActionFailure: (
+        error: string,
+        errorObject?: any
+    ) => {
+        error: string
+        errorObject?: any
+    }
+    queueActionSuccess: (
+        pendingLoader: boolean,
+        payload?: {
+            action: ProjectTreeAction
+            projectTreeLogicKey: string
+        }
+    ) => {
+        pendingLoader: boolean
+        payload?: {
+            action: ProjectTreeAction
+            projectTreeLogicKey: string
+        }
+    }
+    removeQueuedAction: (action: ProjectTreeAction) => {
+        action: ProjectTreeAction
+    }
+    reorderShortcutByDrag: (
+        activeTreeId: string,
+        overTreeId: string,
+        position: 'after' | 'before'
+    ) => {
+        activeTreeId: string
+        overTreeId: string
+        position: 'after' | 'before'
+    }
+    reorderShortcuts: (orderedIds: NonNullable<FileSystemEntry['id']>[]) => {
+        orderedIds: string[]
+    }
+    reorderShortcutsFailure: (
+        error: string,
+        errorObject?: any
+    ) => {
+        error: string
+        errorObject?: any
+    }
+    reorderShortcutsSuccess: (
+        shortcutData: FileSystemEntry[],
+        payload?: {
+            orderedIds: string[]
+        }
+    ) => {
+        shortcutData: FileSystemEntry[]
+        payload?: {
+            orderedIds: string[]
+        }
+    }
+    restoredItems: () => {
+        value: true
+    }
+    setLastNewFolder: (folder: string | null) => {
+        folder: string | null
+    }
+    syncTypeAndRef: (
+        type: string,
+        ref: string
+    ) => {
+        ref: string
+        type: string
+    }
+}
+
+// Generated by kea-typegen. Update if you're an agent, ignore if you're human.
+export interface projectTreeDataLogicMeta {
+    __keaTypeGenInternalSelectorTypes: {
+        savedItems: (folders: Record<string, FileSystemEntry[]>) => FileSystemEntry[]
+        shortcutEntryIdMap: (shortcutData: FileSystemEntry[]) => Map<string, string>
+        savedItemsLoading: (folderStates: Record<string, FolderState>) => boolean
+        viableItems: (savedItems: FileSystemEntry[], pendingActions: ProjectTreeAction[]) => FileSystemEntry[]
+        sortedItems: (viableItems: FileSystemEntry[]) => FileSystemEntry[]
+        itemsByRef: (sortedItems: FileSystemEntry[]) => Record<string, FileSystemEntry>
+        itemsByHref: (sortedItems: FileSystemEntry[]) => Record<string, FileSystemEntry>
+        itemsByPath: (sortedItems: FileSystemEntry[]) => Record<string, FileSystemEntry>
+        viableItemsById: (viableItems: FileSystemEntry[]) => Record<string, FileSystemEntry>
+        loadingPaths: (
+            unfiledItemsLoading: boolean,
+            savedItemsLoading: boolean,
+            pendingLoaderLoading: boolean,
+            pendingActions: ProjectTreeAction[]
+        ) => Record<string, boolean>
+        projectTreeRefEntry: (
+            projectTreeRef: ProjectTreeRef | null,
+            sortedItems: FileSystemEntry[]
+        ) => FileSystemEntry | null
+        groupItems: (
+            groupTypes: Map<GroupTypeIndex, GroupType>,
+            groupsAccessStatus: GroupsAccessStatus,
+            aggregationLabel: (groupTypeIndex: number | null | undefined, deferToUserWording?: boolean) => Noun,
+            shortcutData: FileSystemEntry[],
+            featureFlags: FeatureFlagsSet
+        ) => FileSystemImport[]
+        getShortcutTreeItems: (
+            shortcutData: FileSystemEntry[],
+            viableItems: FileSystemEntry[],
+            folderStates: Record<string, FolderState>,
+            users: Record<string, UserBasicType>,
+            featureFlags: FeatureFlagsSet
+        ) => (searchTerm: string, onlyFolders: boolean) => TreeDataItem[]
+        getStaticTreeItems: (
+            featureFlags: FeatureFlagsSet,
+            getShortcutTreeItems: (searchTerm: string, onlyFolders: boolean) => TreeDataItem[],
+            groupItems: FileSystemImport[]
+        ) => (searchTerm: string, onlyFolders: boolean) => TreeDataItem[]
+        treeItemsNew: (
+            getStaticTreeItems: (searchTerm: string, onlyFolders: boolean) => TreeDataItem[]
+        ) => TreeDataItem[]
+        shortcutNonFolderPaths: (shortcutData: FileSystemEntry[]) => Set<string>
+        getCustomProductTreeItems: (
+            customProducts: UserProductListItem[],
+            featureFlags: FeatureFlagsSet,
+            folderStates: Record<string, FolderState>,
+            users: Record<string, UserBasicType>
+        ) => (searchTerm: string) => TreeDataItem[]
+    }
+}
+
+export type projectTreeDataLogicType = MakeLogicType<
+    projectTreeDataLogicValues,
+    projectTreeDataLogicActions,
+    Record<string, any>,
+    projectTreeDataLogicMeta
+>
+
+export const projectTreeDataLogic = kea<projectTreeDataLogicType>([
+    path(['layout', 'panel-layout', 'ProjectTree', 'projectTreeDataLogic']),
+    connect(() => ({
+        values: [
+            featureFlagLogic,
+            ['featureFlags'],
+            breadcrumbsLogic,
+            ['projectTreeRef'],
+            groupsModel,
+            ['aggregationLabel', 'groupTypes', 'groupTypesLoading', 'groupsAccessStatus'],
+            customProductsLogic,
+            ['customProducts'],
+            userLogic,
+            ['user'],
+        ],
+        actions: [panelLayoutLogic, ['setActivePanelIdentifier']],
+    })),
+    actions({
+        loadUnfiledItems: true,
+
+        loadFolder: (folder: string, forceReload: boolean = false) => ({ folder, forceReload }),
+        loadFolderIfNotLoaded: (folderId: string) => ({ folderId }),
+        loadFolderStart: (folder: string, forceReload: boolean = false) => ({ folder, forceReload }),
+        loadFolderSuccess: (
+            folder: string,
+            entries: FileSystemEntry[],
+            hasMore: boolean,
+            offsetIncrease: number,
+            forceReload: boolean = false
+        ) => ({
+            folder,
+            entries,
+            hasMore,
+            offsetIncrease,
+            forceReload,
+        }),
+        loadFolderFailure: (folder: string, error: string) => ({ folder, error }),
+
+        addLoadedUsers: (users: UserBasicType[]) => ({ users }),
+        addLoadedResults: (results: RecentResults | SearchResults) => ({ results }),
+
+        createSavedItem: (savedItem: FileSystemEntry) => ({ savedItem }),
+        deleteSavedItem: (savedItem: FileSystemEntry) => ({ savedItem }),
+        deleteItem: (item: FileSystemEntry, projectTreeLogicKey: string) => ({ item, projectTreeLogicKey }),
+        linkItem: (oldPath: string, newPath: string, force: boolean, projectTreeLogicKey: string) => ({
+            oldPath,
+            newPath,
+            force,
+            projectTreeLogicKey,
+        }),
+        moveItem: (item: FileSystemEntry, newPath: string, force: boolean, projectTreeLogicKey: string) => ({
+            item,
+            newPath,
+            force,
+            projectTreeLogicKey,
+        }),
+        // Prefer this over looping `moveItem`, which would report each move separately (see MoveBatch).
+        moveItems: (
+            moves: { item: FileSystemEntry; newPath: string }[],
+            force: boolean,
+            projectTreeLogicKey: string
+        ) => ({
+            moves,
+            force,
+            projectTreeLogicKey,
+        }),
+        movedItem: (item: FileSystemEntry, oldPath: string, newPath: string) => ({ item, oldPath, newPath }),
+        // Sits beside `movedItem` rather than replacing it: that one re-paths a single row as it lands, this
+        // one is for work worth doing once per operation, such as a refetch.
+        movesSettled: (moved: MovedItem[]) => ({ moved }),
+        // Emitted after an undo-delete restores items, so consumers (e.g. the dashboards tree) can refetch.
+        restoredItems: true,
+        queueAction: (action: ProjectTreeAction, projectTreeLogicKey: string) => ({ action, projectTreeLogicKey }),
+        removeQueuedAction: (action: ProjectTreeAction) => ({ action }),
+
+        syncTypeAndRef: (type: string, ref: string) => ({ type, ref }),
+        deleteTypeAndRef: (type: string, ref: string) => ({ type, ref }),
+
+        setLastNewFolder: (folder: string | null) => ({ folder }),
+
+        addShortcutItem: (item: FileSystemEntry) => ({ item }),
+        deleteShortcut: (id: FileSystemEntry['id']) => ({ id }),
+        loadShortcuts: true,
+        reorderShortcuts: (orderedIds: NonNullable<FileSystemEntry['id']>[]) => ({ orderedIds }),
+        // Resolves a sibling drag ('before' / 'after' a target row) into a new ordered list and
+        // dispatches `reorderShortcuts`. Lives here so the component stays free of business logic.
+        reorderShortcutByDrag: (activeTreeId: string, overTreeId: string, position: 'before' | 'after') => ({
+            activeTreeId,
+            overTreeId,
+            position,
+        }),
+
+        pruneClosedFolders: (expandedFolders: string[]) => ({ expandedFolders }),
+    }),
+    loaders(({ actions, values, cache }) => ({
+        unfiledItems: [
+            false as boolean,
+            {
+                loadUnfiledItems: async () => {
+                    if (!getCurrentTeamIdOrNone()) {
+                        return false
+                    }
+                    const response = await api.fileSystem.unfiled()
+                    if ((response?.count ?? 0) > 0) {
+                        actions.loadFolder('Unfiled')
+                        for (const folder of Object.keys(values.folders)) {
+                            if (folder.startsWith('Unfiled/')) {
+                                actions.loadFolder(folder)
+                            }
+                        }
+                    }
+                    return true
+                },
+            },
+        ],
+        pendingLoader: [
+            false,
+            {
+                queueAction: async ({ action, projectTreeLogicKey }) => {
+                    // Undo has to revert every item that landed, so the batch reports only once none are left
+                    // in flight.
+                    const settleMoveBatch = (settle: (batch: MoveBatch) => void): void => {
+                        const batch: MoveBatch | undefined = action.batchId
+                            ? cache.moveBatches?.get(action.batchId)
+                            : undefined
+                        if (!batch || !action.item.id || !batch.pending.delete(action.item.id)) {
+                            return
+                        }
+                        settle(batch)
+                        if (batch.pending.size > 0) {
+                            return
+                        }
+                        cache.moveBatches.delete(action.batchId)
+                        if (batch.moved.length > 0) {
+                            // Every `movedItem` has already patched its row; this marks the operation boundary.
+                            actions.movesSettled(batch.moved)
+                            lemonToast.success(`Moved ${pluralize(batch.moved.length, 'item')}`, {
+                                button: {
+                                    label: 'Undo',
+                                    dataAttr: 'undo-project-tree-move',
+                                    action: () => {
+                                        actions.moveItems(
+                                            batch.moved.map(({ item, oldPath, newPath }) => ({
+                                                item: { ...item, path: newPath },
+                                                newPath: oldPath,
+                                            })),
+                                            false,
+                                            batch.projectTreeLogicKey
+                                        )
+                                    },
+                                },
+                            })
+                        }
+                        if (batch.failed.length === 1) {
+                            // A lone failure keeps the underlying error, which is the only place a user (or a
+                            // support ticket) can see why the move was rejected.
+                            lemonToast.error(`Error moving item: ${batch.failed[0].error}`)
+                        } else if (batch.failed.length > 1) {
+                            lemonToast.error(`Could not move ${pluralize(batch.failed.length, 'item')}. Try again.`)
+                        }
+                    }
+                    if ((action.type === 'prepare-move' || action.type === 'prepare-link') && action.newPath) {
+                        const verb = action.type === 'prepare-link' ? 'link' : 'move'
+                        const verbing = action.type === 'prepare-link' ? 'linking' : 'moving'
+                        try {
+                            const response = await api.fileSystem.count(action.item.id)
+                            actions.removeQueuedAction(action)
+                            if (response && response.count > MOVE_ALERT_LIMIT) {
+                                const confirmMessage = `You're about to ${verb} ${response.count} items. Are you sure?`
+                                if (!confirm(confirmMessage)) {
+                                    // Nothing will land for this item, so settling it as neither moved nor
+                                    // failed keeps the rest of the batch from waiting on it.
+                                    settleMoveBatch(() => {})
+                                    return false
+                                }
+                            }
+                            actions.queueAction({ ...action, type: verb }, projectTreeLogicKey)
+                        } catch (error) {
+                            console.error(`Error ${verbing} item:`, error)
+                            if (action.type === 'prepare-link') {
+                                lemonToast.error(`Error ${verbing} item: ${error}`)
+                            } else {
+                                settleMoveBatch((batch) => batch.failed.push({ error }))
+                            }
+                            actions.removeQueuedAction(action)
+                        }
+                    } else if (action.type === 'move' && action.newPath) {
+                        try {
+                            const oldPath = action.item.path
+                            const newPath = action.newPath
+                            await withTimeout(
+                                () => api.fileSystem.move(action.item.id, newPath),
+                                MOVE_TIMEOUT_MS,
+                                `projectTreeDataLogic: moving ${action.item.type} timed out`
+                            )
+                            actions.removeQueuedAction(action)
+                            actions.movedItem(action.item, oldPath, newPath)
+                            settleMoveBatch((batch) => batch.moved.push({ item: action.item, oldPath, newPath }))
+                        } catch (error) {
+                            // The batch toast can only report a count, so the item and its batch have to reach
+                            // error tracking here or a failed bulk move leaves nothing to diagnose from.
+                            console.error('Error moving item:', error, {
+                                itemId: action.item.id,
+                                itemType: action.item.type,
+                                batchId: action.batchId,
+                            })
+                            posthog.captureException(error, {
+                                item_id: action.item.id,
+                                item_type: action.item.type,
+                                move_batch_id: action.batchId,
+                            })
+                            settleMoveBatch((batch) => batch.failed.push({ error }))
+                            actions.removeQueuedAction(action)
+                        }
+                    } else if (action.type === 'link' && action.newPath) {
+                        try {
+                            const newPath = action.newPath
+                            const newItem = await api.fileSystem.link(action.item.id, newPath)
+                            actions.removeQueuedAction(action)
+                            if (newItem) {
+                                actions.createSavedItem(newItem)
+                            }
+                            if (action.item.type === 'folder') {
+                                actions.loadFolder(newPath)
+                            }
+                            lemonToast.success('Item linked successfully') // TODO: undo for linking
+                        } catch (error) {
+                            console.error('Error linking item:', error)
+                            lemonToast.error(`Error linking item: ${error}`)
+                            actions.removeQueuedAction(action)
+                        }
+                    } else if (action.type === 'create') {
+                        try {
+                            const response = await api.fileSystem.create(action.item)
+                            actions.removeQueuedAction(action)
+                            actions.createSavedItem(response)
+                            lemonToast.success('Folder created successfully', {
+                                button: {
+                                    label: 'Undo',
+                                    dataAttr: 'undo-project-tree-create-folder',
+                                    action: () => {
+                                        actions.deleteItem(response, projectTreeLogicKey)
+                                    },
+                                },
+                            })
+
+                            // Expand in the logic that called this data flow
+                            projectTreeLogic
+                                .findMounted({ key: projectTreeLogicKey })
+                                ?.actions.expandProjectFolder(action.item.path)
+                        } catch (error) {
+                            console.error('Error creating folder:', error)
+                            lemonToast.error(`Error creating folder: ${error}`)
+                            actions.removeQueuedAction(action)
+                        }
+                    } else if (action.type === 'prepare-delete' && action.item.id) {
+                        try {
+                            const response = await api.fileSystem.count(action.item.id)
+                            actions.removeQueuedAction(action)
+                            if (response && response.count > DELETE_ALERT_LIMIT) {
+                                const folderName =
+                                    splitPath(action.item.path).pop() ?? action.item.path ?? 'this folder'
+                                LemonDialog.open({
+                                    title: `Delete "${folderName}"?`,
+                                    content: (
+                                        <DeleteFolderDialogContent
+                                            folderName={folderName}
+                                            folderPath={action.item.path ?? ''}
+                                            entries={response.entries ?? []}
+                                            totalCount={response.count}
+                                            hasMore={response.has_more ?? false}
+                                        />
+                                    ),
+                                    primaryButton: {
+                                        children: 'Delete folder',
+                                        status: 'danger',
+                                        onClick: () => {
+                                            actions.queueAction({ ...action, type: 'delete' }, projectTreeLogicKey)
+                                        },
+                                    },
+                                    secondaryButton: {
+                                        children: 'Cancel',
+                                    },
+                                })
+                                return false
+                            }
+                            actions.queueAction({ ...action, type: 'delete' }, projectTreeLogicKey)
+                        } catch (error) {
+                            console.error('Error deleting item:', error)
+                            lemonToast.error(`Error deleting item: ${error}`)
+                            actions.removeQueuedAction(action)
+                        }
+                    } else if (action.type === 'delete' && action.item.id) {
+                        try {
+                            const deletionResult = await api.fileSystem.delete(action.item.id)
+                            actions.removeQueuedAction(action)
+                            actions.deleteSavedItem(action.item)
+                            const deletionSummary = deletionResult?.deleted ?? []
+                            const countsByType = new Map<string, number>()
+                            for (const entry of deletionSummary) {
+                                countsByType.set(entry.type, (countsByType.get(entry.type) ?? 0) + 1)
+                            }
+                            const summaryParts = Array.from(countsByType.entries()).map(([type, count]) =>
+                                pluralize(count, humanizeFileSystemEntryType(type), undefined, count !== 1)
+                            )
+                            const message =
+                                summaryParts.length > 0
+                                    ? `Deleted ${humanList(summaryParts)}.`
+                                    : 'Item deleted successfully'
+                            const undoableEntries = deletionSummary.filter(
+                                (entry) => entry.can_undo && Boolean(entry.ref)
+                            )
+                            lemonToast.success(message, {
+                                button: undoableEntries.length
+                                    ? {
+                                          label: 'Undo',
+                                          dataAttr: 'project-tree-undo-delete',
+                                          action: async () => {
+                                              try {
+                                                  await api.fileSystem.undoDelete(
+                                                      undoableEntries.map((entry) => ({
+                                                          type: entry.type,
+                                                          ref: entry.ref as string,
+                                                          ...(entry.path !== undefined ? { path: entry.path } : {}),
+                                                      }))
+                                                  )
+                                                  const foldersToReload = new Set(
+                                                      undoableEntries.map((entry) => parentPath(entry.path))
+                                                  )
+                                                  for (const folder of foldersToReload) {
+                                                      actions.loadFolder(folder, true)
+                                                      if (folder) {
+                                                          projectTreeLogic
+                                                              .findMounted({ key: projectTreeLogicKey })
+                                                              ?.actions.expandProjectFolder(folder)
+                                                      }
+                                                  }
+                                                  // Signal non-sidebar consumers (the dashboards tree) to refetch.
+                                                  actions.restoredItems()
+                                                  const restoreCountsByType = new Map<string, number>()
+                                                  for (const entry of undoableEntries) {
+                                                      restoreCountsByType.set(
+                                                          entry.type,
+                                                          (restoreCountsByType.get(entry.type) ?? 0) + 1
+                                                      )
+                                                  }
+                                                  const restoreParts = Array.from(restoreCountsByType.entries()).map(
+                                                      ([type, count]) =>
+                                                          pluralize(
+                                                              count,
+                                                              humanizeFileSystemEntryType(type),
+                                                              undefined,
+                                                              count !== 1
+                                                          )
+                                                  )
+                                                  const restoreMessage =
+                                                      restoreParts.length > 0
+                                                          ? `Restored ${humanList(restoreParts)}.`
+                                                          : 'Item restored.'
+                                                  lemonToast.success(restoreMessage)
+                                              } catch (undoError) {
+                                                  console.error('Error undoing delete:', undoError)
+                                                  lemonToast.error(`Error undoing delete: ${undoError}`)
+                                              }
+                                          },
+                                      }
+                                    : undefined,
+                            })
+                        } catch (error) {
+                            console.error('Error deleting item:', error)
+                            lemonToast.error(`Error deleting item: ${error}`)
+                            actions.removeQueuedAction(action)
+                        }
+                    }
+                    return true
+                },
+            },
+        ],
+        shortcutData: [
+            [] as FileSystemEntry[],
+            {
+                loadShortcuts: async () => {
+                    if (!getCurrentTeamIdOrNone()) {
+                        return []
+                    }
+
+                    // A stalled fetch that never settles would leave `shortcutDataHasLoaded` false
+                    // forever and freeze the search page on a loading skeleton. The timeout makes
+                    // the loader settle: on timeout it rejects, firing loadShortcutsFailure (which
+                    // flips shortcutDataHasLoaded), and kea-loaders' global onFailure handler in
+                    // initKea captures the exception so the previously-silent hang is surfaced.
+                    const response = await withTimeout(
+                        (signal) => api.fileSystemShortcuts.list({ signal }),
+                        SHORTCUTS_LOADER_TIMEOUT_MS,
+                        'loadShortcuts timed out'
+                    )
+                    return response.results
+                },
+                addShortcutItem: async ({ item }) => {
+                    const shortcutPath = joinPath([splitPath(item.path).pop() ?? 'Unnamed'])
+
+                    const shortcutItem =
+                        item.type === 'folder'
+                            ? {
+                                  path: shortcutPath,
+                                  type: 'folder',
+                                  ref: item.path,
+                              }
+                            : {
+                                  path: shortcutPath,
+                                  type: (item as FileSystemImport).iconType || item.type,
+                                  ref: item.ref,
+                                  href: item.href,
+                              }
+                    const response = await api.fileSystemShortcuts.create(shortcutItem)
+                    eventUsageLogic.actions.reportNavbarStarredItemAdded(shortcutItem.type ?? 'unknown', shortcutPath)
+                    lemonToast.success('Added to starred', {
+                        button: {
+                            label: 'View',
+                            dataAttr: 'project-tree-view-shortcuts',
+                            action: () => {
+                                actions.setActivePanelIdentifier('Shortcuts')
+                            },
+                        },
+                    })
+                    return [...values.shortcutData, response]
+                },
+                reorderShortcuts: async ({ orderedIds }) => {
+                    try {
+                        await api.fileSystemShortcuts.reorder(orderedIds)
+                    } catch (error) {
+                        lemonToast.error('Could not save starred order')
+                        throw error
+                    }
+                    // Optimistic reducer below already applied the new order; return the live
+                    // current state so concurrent mutations during the request aren't clobbered
+                    // when kea-loaders' success handler sets `shortcutData` to the resolved value.
+                    return values.shortcutData
+                },
+                deleteShortcut: async ({ id }) => {
+                    const shortcut = values.shortcutData.find((s) => s.id === id)
+                    await api.fileSystemShortcuts.delete(id)
+                    eventUsageLogic.actions.reportNavbarStarredItemRemoved(
+                        shortcut?.type ?? 'unknown',
+                        shortcut?.path ?? 'unknown'
+                    )
+                    lemonToast.success('Removed from starred')
+                    return values.shortcutData.filter((s) => s.id !== id)
+                },
+            },
+        ],
+    })),
+    reducers({
+        folders: [
+            {} as Record<string, FileSystemEntry[]>,
+            {
+                loadFolderSuccess: (state, { folder, entries }) => {
+                    // Deduplicate entries by ID to prevent duplicate items from appearing
+                    const seenIds = new Set<string>()
+                    const uniqueEntries = entries.filter((entry) => {
+                        if (!entry.id || seenIds.has(entry.id)) {
+                            return false
+                        }
+                        seenIds.add(entry.id)
+                        return true
+                    })
+                    return { ...state, [folder]: uniqueEntries }
+                },
+                addLoadedResults: (state, { results }) => appendResultsToFolders(results, state),
+                createSavedItem: (state, { savedItem }) => {
+                    const folder = parentPath(savedItem.path)
+                    return {
+                        ...state,
+                        [folder]: (state[folder] || []).find((f) => f.id === savedItem.id)
+                            ? state[folder].map((item) => (item.id === savedItem.id ? savedItem : item))
+                            : [...(state[folder] || []), savedItem],
+                    }
+                },
+                deleteSavedItem: (state, { savedItem }) => {
+                    const folder = parentPath(savedItem.path)
+                    const newState = { ...state }
+                    // The parent folder may not be loaded into the store yet (folders load lazily); only
+                    // prune it when it's present — otherwise state[folder] is undefined and .filter throws.
+                    if (newState[folder]) {
+                        newState[folder] = newState[folder].filter((item) => item.id !== savedItem.id)
+                    }
+                    if (savedItem.type === 'folder') {
+                        for (const folder of Object.keys(newState)) {
+                            if (isPathUnder(folder, savedItem.path)) {
+                                delete newState[folder]
+                            }
+                        }
+                    }
+                    return newState
+                },
+                deleteTypeAndRef: (state, { type, ref }) => {
+                    const newState = { ...state }
+                    for (const [folder, files] of Object.entries(newState)) {
+                        if (files.some((file) => matchesRefType(file.type, type) && file.ref === ref)) {
+                            newState[folder] = files.filter(
+                                (file) => !matchesRefType(file.type, type) || file.ref !== ref
+                            )
+                        }
+                    }
+                    return newState
+                },
+                movedItem: (state, { oldPath, newPath, item }) => {
+                    const newState = { ...state }
+                    const oldParentFolder = parentPath(oldPath)
+                    for (const folder of Object.keys(newState)) {
+                        if (folder === oldParentFolder) {
+                            newState[folder] = newState[folder].filter((i) => i.id !== item.id)
+                            const newParentFolder = parentPath(newPath)
+                            newState[newParentFolder] = [
+                                ...(newState[newParentFolder] ?? []),
+                                { ...item, path: newPath },
+                            ]
+                            continue
+                        }
+                        const newFolder = reparentPath(folder, oldPath, newPath)
+                        if (newFolder !== null) {
+                            newState[newFolder] = [
+                                ...(newState[newFolder] ?? []),
+                                ...newState[folder].map((entry) => ({
+                                    ...entry,
+                                    path: reparentPath(entry.path, folder, newFolder) ?? entry.path,
+                                })),
+                            ]
+                            delete newState[folder]
+                        }
+                    }
+                    return newState
+                },
+                pruneClosedFolders: (state, { expandedFolders }) => {
+                    const expandedPaths = new Set(expandedFolders.map((f) => f.replace(/^project:\/\//, '')))
+                    const newState: Record<string, FileSystemEntry[]> = {}
+                    for (const [key, value] of Object.entries(state)) {
+                        if (key === '' || expandedPaths.has(key)) {
+                            newState[key] = value
+                        }
+                    }
+                    return newState
+                },
+            },
+        ],
+        folderLoadOffset: [
+            {} as Record<string, number>,
+            {
+                loadFolderSuccess: (state, { folder, offsetIncrease, forceReload }) => {
+                    const previousOffset = forceReload ? 0 : (state[folder] ?? 0)
+                    return { ...state, [folder]: previousOffset + offsetIncrease }
+                },
+                pruneClosedFolders: (state, { expandedFolders }) => {
+                    const expandedPaths = new Set(expandedFolders.map((f) => f.replace(/^project:\/\//, '')))
+                    const newState: Record<string, number> = {}
+                    for (const [key, value] of Object.entries(state)) {
+                        if (key === '' || expandedPaths.has(key)) {
+                            newState[key] = value
+                        }
+                    }
+                    return newState
+                },
+            },
+        ],
+        folderStates: [
+            {} as Record<string, FolderState>,
+            {
+                loadFolderStart: (state, { folder }) => ({ ...state, [folder]: 'loading' }),
+                loadFolderSuccess: (state, { folder, hasMore }) => ({
+                    ...state,
+                    [folder]: hasMore ? 'has-more' : 'loaded',
+                }),
+                loadFolderFailure: (state, { folder }) => ({ ...state, [folder]: 'error' }),
+                pruneClosedFolders: (state, { expandedFolders }) => {
+                    const expandedPaths = new Set(expandedFolders.map((f) => f.replace(/^project:\/\//, '')))
+                    const newState: Record<string, FolderState> = {}
+                    for (const [key, value] of Object.entries(state)) {
+                        if (key === '' || expandedPaths.has(key)) {
+                            newState[key] = value
+                        }
+                    }
+                    return newState
+                },
+            },
+        ],
+        users: [
+            {} as Record<string, UserBasicType>,
+            {
+                addLoadedUsers: (state, { users }) => {
+                    if (!users || users.length === 0) {
+                        return state
+                    }
+                    const newState = { ...state }
+                    for (const user of users) {
+                        newState[user.id] = user
+                    }
+                    return newState
+                },
+            },
+        ],
+        pendingActions: [
+            [] as ProjectTreeAction[],
+            {
+                queueAction: (state, { action }) => [...state, action],
+                removeQueuedAction: (state, { action }) => state.filter((a) => a !== action),
+            },
+        ],
+        lastNewFolder: [
+            null as string | null,
+            {
+                setLastNewFolder: (_, { folder }) => {
+                    return folder ?? null
+                },
+            },
+        ],
+        shortcutData: [
+            [] as FileSystemEntry[],
+            {
+                deleteTypeAndRef: (state, { type, ref }) => state.filter((s) => s.type !== type || s.ref !== ref),
+                addLoadedResults: (state, { results }) => {
+                    const filesByTypeAndRef = Object.fromEntries(
+                        results.results.map((file) => [`${file.type}//${file.ref}`, file])
+                    )
+                    return state.map((item) => {
+                        const file = filesByTypeAndRef[`${item.type}//${item.ref}`]
+                        if (file) {
+                            return { ...item, path: escapePath(splitPath(file.path).pop() ?? 'Unnamed') }
+                        }
+                        return item
+                    })
+                },
+                // Apply reorder optimistically so the UI updates immediately while the API call is in flight.
+                reorderShortcuts: (state, { orderedIds }) => applyOrder(state, orderedIds),
+            },
+        ],
+        shortcutDataHasLoaded: [
+            false,
+            {
+                loadShortcutsSuccess: () => true,
+                loadShortcutsFailure: () => true,
+            },
+        ],
+    }),
+    selectors({
+        savedItems: [
+            (s) => [s.folders],
+            (folders: Record<string, FileSystemEntry[]>): FileSystemEntry[] =>
+                Object.entries(folders).reduce((acc, [_, items]) => acc.concat(items), [] as FileSystemEntry[]),
+        ],
+        // Maps each top-level Starred row's tree id to the underlying FileSystemEntry id, so the
+        // drag handler can resolve sibling drops without rebuilding the lookup on every render.
+        // Children inside an expanded folder-shortcut use the `project://` protocol and are
+        // intentionally excluded.
+        shortcutEntryIdMap: [
+            (s) => [s.shortcutData],
+            (shortcutData: FileSystemEntry[]): Map<string, string> => {
+                const map = new Map<string, string>()
+                for (const shortcut of shortcutData) {
+                    if (!shortcut.id) {
+                        continue
+                    }
+                    const treeId =
+                        shortcut.type === 'folder' ? `shortcuts://${shortcut.path}` : `shortcuts/${shortcut.id}`
+                    map.set(treeId, shortcut.id)
+                }
+                return map
+            },
+        ],
+        savedItemsLoading: [
+            (s) => [s.folderStates],
+            (folderStates: Record<string, FolderState>): boolean =>
+                Object.values(folderStates).some((state) => state === 'loading'),
+        ],
+        viableItems: [
+            // Combine savedItems with pendingActions
+            (s) => [s.savedItems, s.pendingActions],
+            (savedItems: FileSystemEntry[], pendingActions: ProjectTreeAction[]): FileSystemEntry[] => {
+                const initialItems = [...savedItems]
+                const itemsByPath = initialItems.reduce(
+                    (acc, item) => {
+                        acc[item.path] = acc[item.path] ? [...acc[item.path], item] : [item]
+                        return acc
+                    },
+                    {} as Record<string, FileSystemEntry[]>
+                )
+
+                for (const action of pendingActions) {
+                    if ((action.type === 'move' || action.type === 'prepare-move') && action.newPath) {
+                        if (!itemsByPath[action.path] || itemsByPath[action.path].length === 0) {
+                            console.error("Item not found, can't move", action.path)
+                            continue
+                        }
+                        for (const item of itemsByPath[action.path]) {
+                            const itemTarget = itemsByPath[action.newPath]?.[0]
+                            if (item.type === 'folder') {
+                                if (!itemTarget || itemTarget.type === 'folder') {
+                                    for (const path of Object.keys(itemsByPath)) {
+                                        if (path.startsWith(action.path + '/')) {
+                                            for (const loopItem of itemsByPath[path]) {
+                                                const newPath = action.newPath + loopItem.path.slice(action.path.length)
+                                                if (!itemsByPath[newPath]) {
+                                                    itemsByPath[newPath] = []
+                                                }
+                                                itemsByPath[newPath] = [
+                                                    ...itemsByPath[newPath],
+                                                    { ...loopItem, path: newPath, _loading: true },
+                                                ]
+                                            }
+                                            delete itemsByPath[path]
+                                        }
+                                    }
+                                }
+                                if (!itemTarget) {
+                                    itemsByPath[action.newPath] = [
+                                        ...(itemsByPath[action.newPath] ?? []),
+                                        { ...item, path: action.newPath, _loading: true },
+                                    ]
+                                }
+                                delete itemsByPath[action.path]
+                            } else if (item.id === action.item.id) {
+                                if (!itemsByPath[action.newPath]) {
+                                    itemsByPath[action.newPath] = []
+                                }
+                                itemsByPath[action.newPath] = [
+                                    ...itemsByPath[action.newPath],
+                                    { ...item, path: action.newPath, _loading: true },
+                                ]
+                                if (itemsByPath[action.path].length > 1) {
+                                    itemsByPath[action.path] = itemsByPath[action.path].filter((i) => i.id !== item.id)
+                                } else {
+                                    delete itemsByPath[action.path]
+                                }
+                            }
+                        }
+                    } else if (action.type === 'create' && action.newPath) {
+                        if (!itemsByPath[action.newPath]) {
+                            itemsByPath[action.newPath] = [
+                                ...(itemsByPath[action.newPath] ?? []),
+                                { ...action.item, path: action.newPath, _loading: true },
+                            ]
+                        } else {
+                            console.error("Item already exists, can't create", action.item)
+                        }
+                    } else if (action.path && itemsByPath[action.path]) {
+                        itemsByPath[action.path] = itemsByPath[action.path].map((i) => ({ ...i, loading: true }))
+                    }
+                }
+                return Object.values(itemsByPath).flatMap((a) => a)
+            },
+        ],
+        sortedItems: [
+            (s) => [s.viableItems],
+            (viableItems: FileSystemEntry[]): FileSystemEntry[] => [...viableItems].sort(sortFilesAndFolders),
+        ],
+        itemsByRef: [
+            (s) => [s.sortedItems],
+            (sortedItems: FileSystemEntry[]): Record<string, FileSystemEntry> => {
+                const keyedByRef: Record<string, FileSystemEntry> = {}
+
+                for (const item of sortedItems) {
+                    if (item.type && item.ref) {
+                        keyedByRef[`${item.type}::${item.ref}`] = item
+                    }
+                }
+
+                return keyedByRef
+            },
+        ],
+        itemsByHref: [
+            (s) => [s.sortedItems],
+            (sortedItems: FileSystemEntry[]): Record<string, FileSystemEntry> => {
+                const keyedByHref: Record<string, FileSystemEntry> = {}
+
+                for (const item of sortedItems) {
+                    if (item.href) {
+                        keyedByHref[item.href] = item
+                    }
+                }
+
+                return keyedByHref
+            },
+        ],
+        itemsByPath: [
+            (s) => [s.sortedItems],
+            (sortedItems: FileSystemEntry[]): Record<string, FileSystemEntry> => {
+                const keyedByPath: Record<string, FileSystemEntry> = {}
+
+                for (const item of sortedItems) {
+                    if (typeof item.path === 'string') {
+                        keyedByPath[item.path] = item
+                    }
+                }
+
+                return keyedByPath
+            },
+        ],
+        viableItemsById: [
+            (s) => [s.viableItems],
+            (viableItems: FileSystemEntry[]): Record<string, FileSystemEntry> =>
+                viableItems.reduce(
+                    (acc, item) =>
+                        Object.assign(acc, {
+                            [item.type === 'folder' ? 'project://' + item.path : 'project/' + item.id]: item,
+                        }),
+                    {} as Record<string, FileSystemEntry>
+                ),
+        ],
+        loadingPaths: [
+            // Paths that are currently being loaded
+            (s) => [s.unfiledItemsLoading, s.savedItemsLoading, s.pendingLoaderLoading, s.pendingActions],
+            (
+                unfiledItemsLoading: boolean,
+                savedItemsLoading: boolean,
+                pendingLoaderLoading: boolean,
+                pendingActions: ProjectTreeAction[]
+            ) => {
+                const loadingPaths: Record<string, boolean> = {}
+                if (unfiledItemsLoading) {
+                    loadingPaths['Unfiled'] = true
+                    loadingPaths[''] = true
+                }
+                if (savedItemsLoading) {
+                    loadingPaths[''] = true
+                }
+                if (pendingLoaderLoading && pendingActions.length > 0) {
+                    loadingPaths[pendingActions[0].newPath || pendingActions[0].path] = true
+                }
+                return loadingPaths
+            },
+        ],
+        projectTreeRefEntry: [
+            (s) => [s.projectTreeRef, s.sortedItems],
+            (
+                projectTreeRef: null | import('~/types').ProjectTreeRef,
+                sortedItems: FileSystemEntry[]
+            ): FileSystemEntry | null => {
+                if (!projectTreeRef || !projectTreeRef.type || !projectTreeRef.ref) {
+                    return null
+                }
+                const treeItem = sortedItems.find(
+                    (item) => matchesRefType(item.type, projectTreeRef.type) && item.ref === projectTreeRef.ref
+                )
+                return treeItem ?? null
+            },
+        ],
+        groupItems: [
+            (s) => [s.groupTypes, s.groupsAccessStatus, s.aggregationLabel, s.shortcutData, s.featureFlags],
+            (
+                groupTypes: Map<import('~/types').GroupTypeIndex, import('~/types').GroupType>,
+                groupsAccessStatus: GroupsAccessStatus,
+                aggregationLabel: (
+                    groupTypeIndex: number | null | undefined,
+                    deferToUserWording?: boolean
+                ) => import('~/models/groupsModel').Noun,
+                shortcutData: FileSystemEntry[],
+                featureFlags: import('lib/logic/featureFlagLogic').FeatureFlagsSet
+            ): FileSystemImport[] => {
+                const showGroupsIntroductionPage = [
+                    GroupsAccessStatus.HasAccess,
+                    GroupsAccessStatus.HasGroupTypes,
+                    GroupsAccessStatus.NoAccess,
+                ].includes(groupsAccessStatus)
+
+                const groupItems: FileSystemImport[] = showGroupsIntroductionPage
+                    ? [
+                          {
+                              path: 'Groups',
+                              category: 'Groups',
+                              iconType: 'group',
+                              href: urls.groups(0),
+                              visualOrder: 30,
+                          },
+                      ]
+                    : Array.from(groupTypes.values()).map((groupType) => ({
+                          path: capitalizeFirstLetter(aggregationLabel(groupType.group_type_index).plural),
+                          category: 'Groups',
+                          iconType: `group_${groupType.group_type_index}` as FileSystemIconType,
+                          href: urls.groups(groupType.group_type_index),
+                          visualOrder: 30 + groupType.group_type_index,
+                      }))
+
+                // these are created when users save filtered views
+                // from the groups page and should appear in the persons:// tree under "Saved Views"
+                const groupFilterShortcuts = featureFlags[FEATURE_FLAGS.CRM_ITERATION_ONE]
+                    ? shortcutData
+                          .filter((shortcut) => isGroupViewShortcut(shortcut))
+                          .map((shortcut) => ({
+                              id: shortcut.id,
+                              path: shortcut.path,
+                              type: shortcut.type,
+                              category: 'Saved Views',
+                              iconType: 'group' as FileSystemIconType,
+                              href: shortcut.href || '',
+                              visualOrder: 100,
+                              shortcut: true,
+                              tags: shortcut.tags || [],
+                          }))
+                    : []
+
+                return [...groupItems, ...groupFilterShortcuts]
+            },
+        ],
+        getShortcutTreeItems: [
+            (s) => [s.shortcutData, s.viableItems, s.folderStates, s.users, s.featureFlags],
+            (
+                shortcutData: FileSystemEntry[],
+                viableItems: FileSystemEntry[],
+                folderStates: Record<string, FolderState>,
+                users: Record<string, UserBasicType>,
+                featureFlags: import('lib/logic/featureFlagLogic').FeatureFlagsSet
+            ): ((searchTerm: string, onlyFolders: boolean) => TreeDataItem[]) => {
+                return function getStaticItems(searchTerm: string, onlyFolders: boolean): TreeDataItem[] {
+                    const newShortcutData = []
+                    for (const shortcut of shortcutData.filter(
+                        // only remove shortcuts that are group view shortcuts when CRM iteration one is enabled
+                        (shortcut) => !(featureFlags[FEATURE_FLAGS.CRM_ITERATION_ONE] && isGroupViewShortcut(shortcut))
+                    )) {
+                        const shortcutTreeItem = convertFileSystemEntryToTreeDataItem({
+                            root: 'shortcuts://',
+                            imports: [shortcut],
+                            checkedItems: {},
+                            folderStates,
+                            users,
+                            foldersFirst: true,
+                            disabledReason: (item) =>
+                                getEntryAccessDisabledReason(item) ??
+                                (onlyFolders && item.type !== 'folder' ? 'Only folders can be selected' : undefined),
+                        })[0]
+
+                        if (shortcut.type === 'folder' && shortcut.ref) {
+                            const allImports = viableItems.filter((item) => item.path.startsWith(shortcut.ref + '/'))
+                            let converted: TreeDataItem[] = convertFileSystemEntryToTreeDataItem({
+                                root: 'project://',
+                                imports: allImports.map((item) => ({ ...item, protocol: 'project://' })),
+                                checkedItems: {},
+                                folderStates,
+                                users,
+                                foldersFirst: true,
+                                searchTerm,
+                                disabledReason: (item) =>
+                                    getEntryAccessDisabledReason(item) ??
+                                    (onlyFolders && item.type !== 'folder'
+                                        ? 'Only folders can be selected'
+                                        : undefined),
+                            })
+                            for (let i = 0; i < splitPath(shortcut.ref).length; i++) {
+                                converted = converted[0]?.children || []
+                            }
+                            if (folderStates[shortcut.ref] === 'has-more') {
+                                converted.push({
+                                    id: `project://-load-more/${shortcut.ref}`,
+                                    name: 'Load more...',
+                                    displayName: <>Load more...</>,
+                                    icon: <IconPlus />,
+                                    disableSelect: true,
+                                })
+                            } else if (folderStates[shortcut.ref] === 'loading') {
+                                converted.push({
+                                    id: `project://-loading/${shortcut.ref}`,
+                                    name: 'Loading...',
+                                    displayName: <>Loading...</>,
+                                    icon: <Spinner />,
+                                    disableSelect: true,
+                                    type: 'loading-indicator',
+                                })
+                            }
+
+                            newShortcutData.push({ ...shortcutTreeItem, children: converted })
+                        } else {
+                            newShortcutData.push(shortcutTreeItem)
+                        }
+                    }
+                    return newShortcutData
+                }
+            },
+        ],
+        getStaticTreeItems: [
+            (s) => [s.featureFlags, s.getShortcutTreeItems, s.groupItems],
+            (
+                featureFlags: import('lib/logic/featureFlagLogic').FeatureFlagsSet,
+                getShortcutTreeItems: (searchTerm: string, onlyFolders: boolean) => TreeDataItem[],
+                groupItems: FileSystemImport[]
+            ): ((searchTerm: string, onlyFolders: boolean) => TreeDataItem[]) => {
+                const convert = (
+                    imports: FileSystemImport[],
+                    protocol: string,
+                    searchTerm: string | undefined,
+                    onlyFolders: boolean
+                ): TreeDataItem[] =>
+                    convertFileSystemEntryToTreeDataItem({
+                        root: protocol,
+                        imports: imports
+                            .filter((f) => !f.flag || (featureFlags as Record<string, boolean>)[f.flag])
+                            .map((i) => ({
+                                ...i,
+                                protocol,
+                            })),
+                        checkedItems: {},
+                        folderStates: {},
+                        users: {},
+                        foldersFirst: false,
+                        searchTerm,
+                        disabledReason: (item) =>
+                            getProductAccessDisabledReason(item as FileSystemImport) ??
+                            (onlyFolders && item.type !== 'folder' ? 'Only folders can be selected' : undefined),
+                    })
+                return function getStaticItems(searchTerm: string, onlyFolders: boolean): TreeDataItem[] {
+                    const data: [string, FileSystemImport[]][] = [
+                        ['products://', getDefaultTreeProducts()],
+                        ['data://', getDefaultTreeData()],
+                        ['persons://', [...getDefaultTreePersons(), ...groupItems]],
+                        ['data-and-people://', [...getDefaultTreeDataAndPeople(), ...groupItems]],
+                        ['new://', getDefaultTreeNew()],
+                    ]
+                    const staticItems = data.map(([protocol, files]) => ({
+                        id: protocol,
+                        name: protocol,
+                        displayName: <>{formatUrlAsName(protocol)}</>,
+                        record: { type: 'folder', protocol, path: '' },
+                        children: convert(files, protocol, searchTerm, onlyFolders),
+                    }))
+                    staticItems.push({
+                        id: 'shortcuts://',
+                        name: 'Shortcuts',
+                        displayName: <>Shortcuts</>,
+                        record: { type: 'folder', protocol: 'shortcuts://', path: '' },
+                        children: getShortcutTreeItems(searchTerm, onlyFolders),
+                    })
+                    return staticItems
+                }
+            },
+        ],
+        treeItemsNew: [
+            (s) => [s.getStaticTreeItems],
+            (getStaticTreeItems: (searchTerm: string, onlyFolders: boolean) => TreeDataItem[]) =>
+                getStaticTreeItems('', false).find((item) => item.id === 'new://')?.children ?? [],
+        ],
+        shortcutNonFolderPaths: [
+            (s) => [s.shortcutData],
+            (shortcutData: FileSystemEntry[]) =>
+                new Set(shortcutData.filter((shortcut) => shortcut.type !== 'folder').map((shortcut) => shortcut.path)),
+        ],
+        getCustomProductTreeItems: [
+            (s) => [s.customProducts, s.featureFlags, s.folderStates, s.users],
+            (
+                customProducts: import('~/queries/schema/schema-general').UserProductListItem[],
+                featureFlags: import('lib/logic/featureFlagLogic').FeatureFlagsSet,
+                folderStates: Record<string, FolderState>,
+                users: Record<string, UserBasicType>
+            ): ((searchTerm: string) => TreeDataItem[]) => {
+                return function getCustomProductItems(searchTerm: string): TreeDataItem[] {
+                    const allProducts = getDefaultTreeProducts()
+                    const productMap = new Map<string, FileSystemImport>(allProducts.map((p) => [p.path, p]))
+                    const customProductMap = new Map(customProducts.map((item) => [item.product_path, item]))
+                    const selectedProductPaths = new Set<string>()
+                    const orderedSelectedProductPaths: string[] = []
+
+                    for (const item of customProducts) {
+                        if (selectedProductPaths.has(item.product_path)) {
+                            continue
+                        }
+                        selectedProductPaths.add(item.product_path)
+                        orderedSelectedProductPaths.push(item.product_path)
+                    }
+
+                    const selectedProducts = orderedSelectedProductPaths
+                        .map((productPath) => {
+                            const product = productMap.get(productPath)
+                            if (!product) {
+                                return null
+                            }
+                            const customProduct = customProductMap.get(productPath)
+                            return {
+                                ...product,
+                                created_at: customProduct?.created_at, // Underscore because it comes from backend if it's an actual `FileSystemImport`
+                            } as FileSystemImport
+                        })
+                        .filter((p): p is FileSystemImport => p !== null)
+
+                    const imports = selectedProducts
+                        .filter((f) => !f.flag || (featureFlags as Record<string, boolean>)[f.flag])
+                        .map((i) => ({
+                            ...i,
+                            protocol: 'custom-products://',
+                        }))
+
+                    return convertFileSystemEntryToTreeDataItem({
+                        root: 'custom-products://',
+                        imports,
+                        checkedItems: {},
+                        folderStates,
+                        users,
+                        foldersFirst: false,
+                        searchTerm,
+                        // With only a few tools pinned, category headers add more noise than structure —
+                        // list them in sequence instead.
+                        disableCategories: imports.length <= 5,
+                        disabledReason: (item) => getProductAccessDisabledReason(item as FileSystemImport),
+                    })
+                }
+            },
+        ],
+    }),
+    listeners(({ actions, values, cache }) => ({
+        reorderShortcutByDrag: ({ activeTreeId, overTreeId, position }) => {
+            const map = values.shortcutEntryIdMap
+            const activeEntryId = map.get(activeTreeId)
+            const overEntryId = map.get(overTreeId)
+            if (!activeEntryId || !overEntryId || activeEntryId === overEntryId) {
+                return
+            }
+            const currentIds = values.shortcutData.map((s) => s.id).filter((id): id is string => !!id)
+            const fromIndex = currentIds.indexOf(activeEntryId)
+            const targetIndex = currentIds.indexOf(overEntryId)
+            if (fromIndex < 0 || targetIndex < 0) {
+                return
+            }
+            // Insert above (`before`) or below (`after`) the target, then compensate for the
+            // index shift caused by removing the moved entry from its old position.
+            const insertAt = position === 'after' ? targetIndex + 1 : targetIndex
+            const next = [...currentIds]
+            next.splice(fromIndex, 1)
+            next.splice(fromIndex < insertAt ? insertAt - 1 : insertAt, 0, activeEntryId)
+            actions.reorderShortcuts(next)
+        },
+        reorderShortcutsSuccess: ({ shortcutData }) => {
+            eventUsageLogic.actions.reportNavbarStarredItemsReordered(shortcutData.length, true)
+        },
+        reorderShortcutsFailure: () => {
+            actions.loadShortcuts()
+        },
+        loadFolder: async ({ folder, forceReload }) => {
+            const currentState = values.folderStates[folder]
+            if (!forceReload && (currentState === 'loading' || currentState === 'loaded')) {
+                return
+            }
+            actions.loadFolderStart(folder, forceReload)
+            try {
+                const previousFiles = forceReload ? [] : values.folders[folder] || []
+                const offset = forceReload ? 0 : (values.folderLoadOffset[folder] ?? 0)
+                const response = await api.fileSystem.list({
+                    parent: folder,
+                    depth: splitPath(folder).length + 1,
+                    limit: PAGINATION_LIMIT + 1,
+                    offset: offset,
+                })
+
+                let files = response.results
+                let hasMore = false
+                if (files.length > PAGINATION_LIMIT) {
+                    files = files.slice(0, PAGINATION_LIMIT)
+                    hasMore = true
+                }
+                const fileIds = new Set(files.map((file) => file.id))
+                const previousUniqueFiles = forceReload
+                    ? []
+                    : previousFiles.filter((prevFile) => !fileIds.has(prevFile.id) && prevFile.path !== folder)
+                if (response.users?.length > 0) {
+                    actions.addLoadedUsers(response.users)
+                }
+                actions.loadFolderSuccess(
+                    folder,
+                    [...previousUniqueFiles, ...files],
+                    hasMore,
+                    files.length,
+                    !!forceReload
+                )
+            } catch (error) {
+                actions.loadFolderFailure(folder, String(error))
+            }
+        },
+        syncTypeAndRef: async ({ type, ref }) => {
+            const items = await api.fileSystem.list({ ...refTypeParams(type), ref })
+            if (items.users?.length > 0) {
+                actions.addLoadedUsers(items.users)
+            }
+            actions.addLoadedResults(items as any as SearchResults)
+        },
+        deleteItem: async ({ item, projectTreeLogicKey }) => {
+            if (isGroupViewShortcut(item) && values.featureFlags[FEATURE_FLAGS.CRM_ITERATION_ONE]) {
+                actions.deleteShortcut(item?.id)
+                return
+            }
+
+            if (!item.id) {
+                const response = await api.fileSystem.list({ type: 'folder', path: item.path })
+                const items = response.results ?? []
+                if (items.length > 0) {
+                    item = items[0]
+                } else {
+                    lemonToast.error(`Could not find filesystem entry for ${item.path}. Can't delete.`)
+                    return
+                }
+            }
+            actions.queueAction(
+                { type: item.type === 'folder' ? 'prepare-delete' : 'delete', item, path: item.path },
+                projectTreeLogicKey
+            )
+        },
+        moveItem: ({ item, newPath, force, projectTreeLogicKey }) => {
+            actions.moveItems([{ item, newPath }], force, projectTreeLogicKey)
+        },
+        moveItems: ({ moves, force, projectTreeLogicKey }) => {
+            const moving = moves.filter(({ item, newPath }) => {
+                if (newPath === item.path) {
+                    return false
+                }
+                if (!item.id) {
+                    lemonToast.error("Sorry, can't move an unsaved item (no id)")
+                    return false
+                }
+                return true
+            })
+            if (moving.length === 0) {
+                return
+            }
+            const batchId = String(++lastMoveBatchId)
+            cache.moveBatches = cache.moveBatches ?? new Map<string, MoveBatch>()
+            cache.moveBatches.set(batchId, {
+                pending: new Set(moving.map(({ item }) => item.id as string)),
+                moved: [],
+                failed: [],
+                projectTreeLogicKey,
+            })
+            for (const { item, newPath } of moving) {
+                actions.queueAction(
+                    {
+                        type: !force && item.type === 'folder' ? 'prepare-move' : 'move',
+                        item,
+                        path: item.path,
+                        newPath,
+                        batchId,
+                    },
+                    projectTreeLogicKey
+                )
+            }
+        },
+        linkItem: async ({ oldPath, newPath, force, projectTreeLogicKey }) => {
+            if (newPath === oldPath) {
+                lemonToast.error('Cannot link folder into itself')
+                return
+            }
+            const item = values.viableItems.find((item) => item.path === oldPath)
+            if (item && item.path === oldPath) {
+                if (!item.id) {
+                    lemonToast.error("Sorry, can't link an unsaved item (no id)")
+                    return
+                }
+                actions.queueAction(
+                    {
+                        type: !force && item.type === 'folder' ? 'prepare-link' : 'link',
+                        item,
+                        path: item.path,
+                        newPath: newPath + item.path.slice(oldPath.length),
+                    },
+                    projectTreeLogicKey
+                )
+            }
+        },
+    })),
+    afterMount(({ actions }) => {
+        actions.loadFolder('')
+        actions.loadUnfiledItems()
+        actions.loadShortcuts()
+    }),
+])
