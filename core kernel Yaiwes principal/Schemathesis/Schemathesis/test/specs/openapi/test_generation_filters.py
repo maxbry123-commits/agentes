@@ -1,0 +1,207 @@
+import pytest
+import requests
+from hypothesis import given, settings
+from hypothesis import strategies as st
+
+from schemathesis.core import NOT_SET
+from schemathesis.openapi.generation.filters import is_valid_header, is_valid_path, is_valid_query, is_valid_urlencoded
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ({"key": "1"}, True),
+        ({"key": 1}, True),
+        ({"key": "\udcff"}, False),
+        ({"key": ["1", "abc", "\udcff"]}, False),
+    ],
+)
+def test_is_valid_query(value, expected):
+    assert is_valid_query(value) == expected
+
+
+@pytest.mark.hypothesis_nested
+def test_is_valid_query_strategy():
+    strategy = st.sampled_from([{"key": "1"}, {"key": "\udcff"}]).filter(is_valid_query)
+
+    @given(strategy)
+    @settings(max_examples=10)
+    def test(value):
+        assert value == {"key": "1"}
+
+    test()
+
+
+@pytest.mark.parametrize(
+    "valid_params",
+    [
+        {"key": "1"},
+        {"key": 1},
+        {"a": "b", "c": "d"},
+    ],
+    ids=["string-value", "int-value", "multiple-params"],
+)
+def test_valid_query_can_be_sent_by_requests(valid_params):
+    assert is_valid_query(valid_params)
+    req = requests.Request("GET", "http://example.com", params=valid_params)
+    prepared = req.prepare()
+    assert "?" in prepared.url
+
+
+@pytest.mark.parametrize(
+    "invalid_params",
+    [
+        {"key": "\udcff"},
+        {"\udcff": "value"},
+    ],
+    ids=["surrogate-in-value", "surrogate-in-key"],
+)
+def test_invalid_query_fails_with_requests(invalid_params):
+    assert not is_valid_query(invalid_params)
+    req = requests.Request("GET", "http://example.com", params=invalid_params)
+    with pytest.raises(UnicodeEncodeError):
+        req.prepare()
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "/",
+        "%2F",
+        "%2f",
+        "foo%2Fbar",
+        "{",
+        "}",
+        "%7B",
+        "%7D",
+        "\x00",
+        "%00",
+        "%00%00",
+        "\udc9b",
+        "abc%00def",
+        "abc\x00def",
+        "prefix%00suffix",
+        # Dot path-segments collapse during URL normalization (RFC 3986),
+        # routing the request to a different operation than declared.
+        ".",
+        "..",
+        "%2E",
+        "%2e",
+        "%2E%2E",
+        "%2e%2e",
+    ],
+)
+def test_filter_path_parameters(value):
+    assert not is_valid_path({"foo": value})
+
+
+@pytest.mark.parametrize(
+    ("params", "allow_encoded_slash_for", "expected"),
+    [
+        ({"block": "192.168.1.0%2F24"}, None, False),
+        ({"block": "192.168.1.0%2F24"}, {"block"}, True),
+        ({"block": "192.168.1.0/24"}, {"block"}, False),
+        ({"block": "%00"}, {"block"}, False),
+    ],
+    ids=[
+        "encoded-slash-rejected-by-default",
+        "encoded-slash-allowed-for-explicit",
+        "raw-slash-rejected-when-explicit",
+        "encoded-nul-rejected-when-explicit",
+    ],
+)
+def test_filter_path_parameters_with_explicit(params, allow_encoded_slash_for, expected):
+    kwargs = {"allow_encoded_slash_for": allow_encoded_slash_for} if allow_encoded_slash_for is not None else {}
+    assert is_valid_path(params, **kwargs) == expected
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        # Valid cases - can be sent via requests
+        ({"key": "value"}, True),
+        ({"a": 1, "b": "2"}, True),
+        ({}, True),
+        ([("key", "value")], True),
+        ([("a", "1"), ("b", "2")], True),
+        (NOT_SET, True),
+        # Invalid cases - cannot be URL-encoded by requests
+        ([1, 2, 3], False),
+        ([("a",)], False),
+        ([("a", "b", "c")], False),
+        (None, False),
+    ],
+    ids=[
+        "dict",
+        "dict-mixed-values",
+        "empty-dict",
+        "list-of-tuples",
+        "list-of-multiple-tuples",
+        "not-set",
+        "list-of-ints",
+        "list-of-1-tuples",
+        "list-of-3-tuples",
+        "none",
+    ],
+)
+def test_is_valid_urlencoded(value, expected):
+    assert is_valid_urlencoded(value) == expected
+
+
+@pytest.mark.parametrize(
+    "valid_data",
+    [
+        {"key": "value"},
+        {"a": "1", "b": "2"},
+        [("key", "value")],
+        [("a", "1"), ("b", "2")],
+    ],
+    ids=["dict", "dict-multiple", "list-tuples", "list-tuples-multiple"],
+)
+def test_valid_urlencoded_can_be_sent_by_requests(valid_data):
+    assert is_valid_urlencoded(valid_data)
+    req = requests.Request("POST", "http://example.com", data=valid_data)
+    prepared = req.prepare()
+    assert prepared.body is not None
+
+
+@pytest.mark.parametrize(
+    "invalid_data",
+    [
+        [1, 2, 3],
+        [("a",)],
+        [("a", "b", "c")],
+    ],
+    ids=["list-of-ints", "1-tuple", "3-tuple"],
+)
+def test_invalid_urlencoded_fails_with_requests(invalid_data):
+    assert not is_valid_urlencoded(invalid_data)
+    req = requests.Request("POST", "http://example.com", data=invalid_data)
+    with pytest.raises((TypeError, ValueError)):
+        req.prepare()
+
+
+@pytest.mark.parametrize(
+    ("headers", "expected"),
+    [
+        ({"X-Token": "valid"}, True),
+        # RFC 9110 Section 5.5: 0x00-0x08, 0x0A-0x1F, 0x7F are invalid field value chars
+        ({"Authorization": "Bearer \x16hW"}, False),  # 0x16 SYN — from issue #3696
+        ({"Authorization": "Bearer \x00null"}, False),  # 0x00 NUL
+        ({"Authorization": "Bearer \x7fDEL"}, False),  # 0x7F DEL
+        ({"Authorization": "Bearer \x01start"}, False),  # 0x01 SOH
+    ],
+    ids=["valid", "syn-0x16", "nul-0x00", "del-0x7f", "soh-0x01"],
+)
+def test_is_valid_header_rejects_rfc9110_control_chars(headers, expected):
+    assert is_valid_header(headers) == expected
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [([], False), ([""], False), (["", ""], True), (["a"], True), ([0], True)],
+    ids=["empty", "single-empty-item", "two-empty-items", "single-item", "zero"],
+)
+def test_filter_array_path_parameters(value, expected):
+    # Arrays render as their comma-joined items; an empty rendering blanks the path segment.
+    assert is_valid_path({"foo": value}) is expected

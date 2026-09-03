@@ -1,0 +1,58 @@
+{
+  "operations": {
+    "GET /brands/{id}": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "path",
+          "parameter_name": "id",
+          "resource": "Brand",
+          "resource_field": "brandId"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "Brand",
+          "status_code": "200"
+        }
+      ]
+    },
+    "POST /brands": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "Brand",
+          "status_code": "201"
+        }
+      ]
+    }
+  },
+  "resources": {
+    "Brand": {
+      "fields": [
+        "brandId"
+      ],
+      "fk_fields": [
+        {
+          "field_name": "brandId",
+          "is_array": false,
+          "target_field": "id",
+          "target_resource": "Brand"
+        }
+      ],
+      "types": {
+        "brandId": [
+          "string"
+        ]
+      }
+    }
+  }
+}

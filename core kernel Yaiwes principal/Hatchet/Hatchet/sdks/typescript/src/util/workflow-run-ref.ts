@@ -1,0 +1,228 @@
+import {
+  RunListenerClient,
+  StepRunEvent,
+} from '@hatchet/clients/listeners/run-listener/child-listener-client';
+import { Status } from 'nice-grpc';
+import { getGrpcErrorCode, getGrpcErrorDetails } from './grpc-error';
+import { RunsClient } from '@hatchet/v1';
+import { WorkflowRunEventType } from '../protoc/dispatcher';
+
+type EventualWorkflowRunId =
+  | string
+  | Promise<string>
+  | Promise<{
+      workflowRunId: string;
+    }>;
+
+export class DedupeViolationErr extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'DedupeViolationErr';
+  }
+}
+
+async function getWorkflowRunId(workflowRunId: EventualWorkflowRunId): Promise<string> {
+  if (typeof workflowRunId === 'string') {
+    return workflowRunId;
+  }
+
+  if (workflowRunId instanceof Promise) {
+    try {
+      const resolved = await workflowRunId;
+      if (typeof resolved === 'string') {
+        return resolved;
+      }
+
+      return resolved.workflowRunId;
+    } catch (e: unknown) {
+      if (getGrpcErrorCode(e) === Status.ALREADY_EXISTS) {
+        throw new DedupeViolationErr(getGrpcErrorDetails(e) ?? '');
+      }
+
+      throw e;
+    }
+  }
+
+  throw new Error('Invalid workflowRunId: must be a string or a promise');
+}
+
+export default class WorkflowRunRef<T> {
+  workflowRunId: EventualWorkflowRunId;
+  parentWorkflowRunId?: string;
+  private client: RunListenerClient;
+  private runs: RunsClient | undefined;
+  _standaloneTaskName?: string;
+  /**
+   * Optional default AbortSignal used for listener-backed waits (e.g. `.result()`).
+   * This is primarily set when a run is spawned from within a task so cancellations propagate
+   * without manually threading `{ signal }` everywhere.
+   */
+  defaultSignal?: AbortSignal;
+
+  constructor(
+    workflowRunId:
+      | string
+      | Promise<string>
+      | Promise<{
+          workflowRunId: string;
+        }>,
+    client: RunListenerClient,
+    runsClient?: RunsClient,
+    parentWorkflowRunId?: string,
+    standaloneTaskName?: string,
+    defaultSignal?: AbortSignal
+  ) {
+    this.workflowRunId = workflowRunId;
+    this.parentWorkflowRunId = parentWorkflowRunId;
+    this.client = client;
+    this.runs = runsClient;
+    this._standaloneTaskName = standaloneTaskName;
+    this.defaultSignal = defaultSignal;
+  }
+
+  // TODO docstrings
+  get runId() {
+    return this.getWorkflowRunId();
+  }
+
+  // @deprecated use runId
+  async getWorkflowRunId(): Promise<string> {
+    return getWorkflowRunId(this.workflowRunId);
+  }
+
+  async stream(): Promise<AsyncGenerator<StepRunEvent, void, unknown>> {
+    const workflowRunId = await getWorkflowRunId(this.workflowRunId);
+    return this.client.stream(workflowRunId);
+  }
+
+  get output(): Promise<T> {
+    return this.result();
+  }
+
+  /**
+   * @alias output
+   * @deprecated use output
+   */
+  async result(): Promise<T> {
+    const workflowRunId = await getWorkflowRunId(this.workflowRunId);
+
+    const streamable = await this.client.get(workflowRunId);
+
+    return new Promise<T>((resolve, reject) => {
+      (async () => {
+        const signal = this.defaultSignal;
+        for await (const event of streamable.stream({ signal })) {
+          if (event.eventType === WorkflowRunEventType.WORKFLOW_RUN_EVENT_TYPE_FINISHED) {
+            // A present-but-empty error field is ambiguous (e.g. a batch member that was
+            // explicitly cancelled via ctx.cancel() and resolved with no further error);
+            // only a non-empty message is treated as a genuine failure here.
+            if (event.results.some((r) => r.error !== undefined && r.error !== '')) {
+              const errors = event.results
+                .filter((r) => r.error !== undefined && r.error !== '')
+                .map((r) => r.error);
+
+              reject(errors);
+              return;
+            }
+
+            if (event.results.length === 0) {
+              const data = await this.client.api.workflowRunGetShape(
+                this.client.config.tenant_id,
+                event.workflowRunId
+              );
+
+              const mostRecentJobRun = data.data.jobRuns?.[0];
+
+              if (!mostRecentJobRun) {
+                reject(new Error('No job runs found'));
+                return;
+              }
+
+              // A task run that fails before ever being dispatched (e.g. a batch group-key
+              // CEL expression that fails to parse) never gets a StepRunResult in the
+              // WORKFLOW_RUN_EVENT_TYPE_FINISHED event, so `event.results` above is empty.
+              // Check step statuses here too, or this codepath would resolve as if the run
+              // had succeeded.
+              const failedStepRun = mostRecentJobRun.stepRuns?.find(
+                (stepRun) => stepRun.status === 'FAILED' || stepRun.status === 'CANCELLED'
+              );
+
+              if (failedStepRun) {
+                reject(
+                  new Error(failedStepRun.error || failedStepRun.cancelledReason || 'task failed')
+                );
+                return;
+              }
+
+              const outputs: Record<string, unknown> = {};
+
+              mostRecentJobRun.stepRuns?.forEach((stepRun) => {
+                const readable = mostRecentJobRun.job?.steps?.find(
+                  (step) => step.metadata.id === stepRun.stepId
+                );
+                const readableStepName = `${readable?.readableId}`;
+                try {
+                  outputs[readableStepName] = JSON.parse(stepRun.output || '{}');
+                } catch {
+                  outputs[readableStepName] = stepRun.output;
+                }
+              });
+
+              if (!this._standaloneTaskName) {
+                resolve(outputs as T);
+                return;
+              }
+
+              resolve(outputs[this._standaloneTaskName] as T);
+              return;
+            }
+
+            const result = event.results.reduce(
+              (acc, r) => ({
+                ...acc,
+                [r.taskName]: JSON.parse(r.output || '{}'),
+              }),
+              {} as T
+            );
+
+            if (!this._standaloneTaskName) {
+              resolve(result);
+              return;
+            }
+
+            resolve((result as Record<string, unknown>)[this._standaloneTaskName] as T);
+            return;
+          }
+        }
+      })().catch(reject);
+    });
+  }
+
+  async toJSON(): Promise<string> {
+    return JSON.stringify({
+      workflowRunId: await this.workflowRunId,
+    });
+  }
+
+  async cancel() {
+    if (!this.runs) {
+      throw new Error('cancel is a v1 only feature, please upgrade your sdk');
+    }
+
+    const workflowRunId = await getWorkflowRunId(this.workflowRunId);
+    await this.runs.cancel({
+      ids: [workflowRunId],
+    });
+  }
+
+  async replay() {
+    if (!this.runs) {
+      throw new Error('replay is a v1 only feature, please upgrade your sdk');
+    }
+
+    const workflowRunId = await getWorkflowRunId(this.workflowRunId);
+    await this.runs.replay({
+      ids: [workflowRunId],
+    });
+  }
+}

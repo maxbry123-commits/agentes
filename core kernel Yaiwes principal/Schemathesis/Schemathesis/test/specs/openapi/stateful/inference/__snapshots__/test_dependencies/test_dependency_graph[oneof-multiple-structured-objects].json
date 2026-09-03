@@ -1,0 +1,33 @@
+{
+  "operations": {
+    "GET /items": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "Product",
+          "status_code": "200"
+        }
+      ]
+    }
+  },
+  "resources": {
+    "Product": {
+      "fields": [
+        "id",
+        "price"
+      ],
+      "types": {
+        "id": [
+          "string"
+        ],
+        "price": [
+          "number"
+        ]
+      }
+    }
+  }
+}

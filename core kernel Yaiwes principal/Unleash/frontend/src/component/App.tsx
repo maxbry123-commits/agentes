@@ -1,0 +1,143 @@
+import { Suspense, useEffect } from 'react';
+import { Route, Routes, useLocation } from 'react-router';
+import { ConditionallyRender } from 'component/common/ConditionallyRender/ConditionallyRender';
+import { FeedbackNPS } from 'component/feedback/FeedbackNPS/FeedbackNPS';
+import { LayoutPicker } from 'component/layout/LayoutPicker/LayoutPicker';
+import Loader from 'component/common/Loader/Loader';
+import NotFound from 'component/common/NotFound/NotFound';
+import { ProtectedRoute } from 'component/common/ProtectedRoute/ProtectedRoute';
+import { SWRProvider } from 'component/providers/SWRProvider/SWRProvider';
+import ToastRenderer from 'component/common/ToastRenderer/ToastRenderer';
+import { routes } from 'component/menu/routes';
+import { useAuthDetails } from 'hooks/api/getters/useAuth/useAuthDetails';
+import { useAuthUser } from 'hooks/api/getters/useAuth/useAuthUser';
+import { SplashOverlay } from 'component/splash/SplashOverlay/SplashOverlay';
+import useUiConfig from 'hooks/api/getters/useUiConfig/useUiConfig';
+
+import { MaintenanceBanner } from './maintenance/MaintenanceBanner.tsx';
+import { styled } from '@mui/material';
+import { InitialRedirect, useLastViewedPage } from './InitialRedirect.tsx';
+import { InternalBanners } from './banners/internalBanners/InternalBanners.tsx';
+import { ExternalBanners } from './banners/externalBanners/ExternalBanners.tsx';
+import { LicenseBanner } from './banners/internalBanners/LicenseBanner.tsx';
+import { Demo } from './demo/Demo.tsx';
+import { LoginRedirect } from './common/LoginRedirect/LoginRedirect.tsx';
+import { SecurityBanner } from './banners/internalBanners/SecurityBanner.tsx';
+import { MonthsOldVersionBanner } from './banners/internalBanners/MonthsOldVersionBanner.tsx';
+import { SignupDialog } from './signup/SignupDialog/SignupDialog.tsx';
+import { WelcomeDialog } from './personalDashboard/WelcomeDialog.tsx';
+import { SkipNavLink } from './common/SkipNavLink/SkipNavLink.tsx';
+import { IntroProvider } from './onboarding/intro/IntroProvider.tsx';
+import { useUiFlag } from 'hooks/useUiFlag';
+import { UxTweakWidgets } from './uxtweak/UxTweakWidgets.tsx';
+
+const StyledContainer = styled('div')(() => ({
+    '& ul': {
+        margin: 0,
+    },
+}));
+
+export const App = () => {
+    const { authDetails } = useAuthDetails();
+    const { refetch: refetchUiConfig } = useUiConfig();
+    const { user } = useAuthUser();
+    const hasFetchedAuth = Boolean(authDetails || user);
+
+    const { isOss, uiConfig } = useUiConfig();
+
+    const availableRoutes = isOss()
+        ? routes.filter((route) => !route.enterprise)
+        : routes;
+
+    useEffect(() => {
+        if (hasFetchedAuth && user?.id) {
+            refetchUiConfig();
+        }
+    }, [user, hasFetchedAuth, refetchUiConfig]);
+
+    const isLoggedIn = Boolean(user?.id);
+    const uxTweakSurveysEnabled = useUiFlag('uxTweakSurveys');
+
+    const location = useLocation();
+    useLastViewedPage(location);
+
+    return (
+        <SWRProvider>
+            <Suspense fallback={<Loader type='fullscreen' />}>
+                <ConditionallyRender
+                    condition={!hasFetchedAuth}
+                    show={<Loader type='fullscreen' />}
+                    elseShow={
+                        <Demo>
+                            <>
+                                <SkipNavLink />
+                                <ConditionallyRender
+                                    condition={Boolean(
+                                        uiConfig?.maintenanceMode,
+                                    )}
+                                    show={<MaintenanceBanner />}
+                                />
+                                <LicenseBanner />
+                                <SecurityBanner />
+                                <MonthsOldVersionBanner />
+                                <ExternalBanners />
+                                <InternalBanners />
+                                <StyledContainer>
+                                    <IntroProvider>
+                                        <ToastRenderer />
+                                        <Routes>
+                                            {availableRoutes.map((route) => (
+                                                <Route
+                                                    key={route.path}
+                                                    path={route.path}
+                                                    element={
+                                                        <LayoutPicker
+                                                            isStandalone={
+                                                                route.isStandalone ===
+                                                                true
+                                                            }
+                                                        >
+                                                            <ProtectedRoute
+                                                                route={route}
+                                                            />
+                                                        </LayoutPicker>
+                                                    }
+                                                />
+                                            ))}
+                                            <Route
+                                                path='/'
+                                                element={<InitialRedirect />}
+                                            />
+                                            <Route
+                                                path='*'
+                                                element={
+                                                    isLoggedIn ? (
+                                                        <NotFound />
+                                                    ) : (
+                                                        <LoginRedirect />
+                                                    )
+                                                }
+                                            />
+                                        </Routes>
+
+                                        <FeedbackNPS openUrl='http://feedback.unleash.run' />
+
+                                        {isLoggedIn && uxTweakSurveysEnabled ? (
+                                            <UxTweakWidgets />
+                                        ) : null}
+
+                                        <SplashOverlay />
+
+                                        <WelcomeDialog />
+
+                                        <SignupDialog />
+                                    </IntroProvider>
+                                </StyledContainer>
+                            </>
+                        </Demo>
+                    }
+                />
+            </Suspense>
+        </SWRProvider>
+    );
+};

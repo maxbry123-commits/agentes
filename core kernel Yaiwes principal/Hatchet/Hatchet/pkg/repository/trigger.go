@@ -1,0 +1,3032 @@
+package repository
+
+import (
+	"context"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"slices"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/rs/zerolog"
+	"go.opentelemetry.io/otel/attribute"
+
+	"github.com/hatchet-dev/hatchet/internal/cel"
+	v1contracts "github.com/hatchet-dev/hatchet/internal/services/shared/proto/v1"
+	"github.com/hatchet-dev/hatchet/pkg/constants"
+	"github.com/hatchet-dev/hatchet/pkg/repository/sqlchelpers"
+	"github.com/hatchet-dev/hatchet/pkg/repository/sqlcv1"
+	"github.com/hatchet-dev/hatchet/pkg/telemetry"
+)
+
+type EventTriggerOpts struct {
+	ExternalId uuid.UUID
+
+	SeenAt time.Time
+
+	Key string
+
+	Data []byte
+
+	AdditionalMetadata []byte
+
+	Priority *int32
+
+	Scope *string
+
+	TriggeringWebhookName *string
+}
+
+type TriggerTaskData struct {
+	// (required) the workflow name
+	WorkflowName string `json:"workflow_name" validate:"required"`
+
+	// (optional) the workflow run data
+	Data []byte `json:"data"`
+
+	// (optional) the workflow run metadata
+	AdditionalMetadata []byte `json:"additional_metadata"`
+
+	// (optional) the desired worker id
+	DesiredWorkerId *uuid.UUID `json:"desired_worker_id"`
+
+	// (optional) the parent external id
+	ParentExternalId *uuid.UUID `json:"parent_external_id"`
+
+	// (optional) the parent task id
+	ParentTaskId *int64 `json:"parent_task_id"`
+
+	// (optional) the parent inserted_at
+	ParentTaskInsertedAt *time.Time `json:"parent_task_inserted_at"`
+
+	// (optional) the child index
+	ChildIndex *int64 `json:"child_index"`
+
+	// (optional) the child key
+	ChildKey *string `json:"child_key"`
+
+	// (optional) the priority of the task
+	Priority *int32 `json:"priority"`
+
+	// (optional) overrides for desired worker labels for the task, used for routing a task to a specific worker (or worker pool)
+	DesiredWorkerLabels []*sqlcv1.GetDesiredLabelsRow `json:"desired_worker_labels"`
+
+	// (optional) task run external IDs of parent tasks for durable DAG orchestration
+	DagParentTaskRunIds []uuid.UUID `json:"dag_parent_task_run_ids,omitempty"`
+
+	// (optional) when set, only trigger this specific step by action ID (used by DAG operator)
+	TargetActionId *string `json:"target_action_id,omitempty"`
+
+	// (optional) when set, resolve to this exact workflow version instead of latest by name
+	WorkflowVersionId *uuid.UUID `json:"workflow_version_id,omitempty"`
+
+	// (optional) a human-readable label shown in the activity log for this durable event entry
+	UserMessage *string `json:"user_message,omitempty"`
+
+	// (optional) when set, the task is created in SKIPPED state immediately (used by DAG operator)
+	IsSkipped bool `json:"is_skipped,omitempty"`
+
+	// (optional) when set, the task is created in CANCELLED state immediately (used by DAG operator)
+	IsCancelled bool `json:"is_cancelled,omitempty"`
+
+	// (optional) when set, overrides the workflow_run_id for the created task (used by DAG operator to group child tasks under the orchestrator's run ID)
+	WorkflowRunId *uuid.UUID `json:"workflow_run_id,omitempty"`
+
+	// (optional) the OLAP DAG identity for operator-managed runs (the orchestrator task's id and
+	// inserted_at). Stamped onto the created task's OLAP representation only — core v1_task.dag_id
+	// stays NULL so native DAG replay semantics don't apply to operator children.
+	OlapDagId *int64 `json:"olap_dag_id,omitempty"`
+
+	// (optional) see OlapDagId
+	OlapDagInsertedAt *time.Time `json:"olap_dag_inserted_at,omitempty"`
+}
+
+func ProtoToDesiredWorkerLabel(key string, strValue *string, intValue *int32, required *bool, weight *int32, comparator *string) *sqlcv1.GetDesiredLabelsRow {
+	row := &sqlcv1.GetDesiredLabelsRow{
+		Key:        key,
+		Comparator: sqlcv1.WorkerLabelComparatorEQUAL,
+		Weight:     100,
+	}
+
+	if strValue != nil {
+		row.StrValue = pgtype.Text{String: *strValue, Valid: true}
+	}
+
+	if intValue != nil {
+		row.IntValue = pgtype.Int4{Int32: *intValue, Valid: true}
+	}
+
+	if required != nil {
+		row.Required = *required
+	}
+
+	if weight != nil {
+		row.Weight = *weight
+	}
+
+	if comparator != nil {
+		row.Comparator = sqlcv1.WorkerLabelComparator(*comparator)
+	}
+
+	return row
+}
+
+type createDAGOpts struct {
+	// (required) the external id
+	ExternalId uuid.UUID `validate:"required"`
+
+	// (required) the input bytes to the DAG
+	Input []byte
+
+	// (required) a list of task external ids that are part of this DAG
+	TaskIds []uuid.UUID
+
+	// (required) a parallel list of step readable ids for each task
+	TaskStepReadableIds []string
+
+	// (required) the workflow id for this DAG
+	WorkflowId uuid.UUID
+
+	// (required) the workflow version id for this DAG
+	WorkflowVersionId uuid.UUID
+
+	// (required) the name of the workflow
+	WorkflowName string
+
+	// (optional) the additional metadata for the DAG
+	AdditionalMetadata []byte
+
+	ParentTaskExternalID *uuid.UUID
+
+	// (optional) overrides for desired worker labels, propagated to all downstream tasks
+	DesiredWorkerLabels []*sqlcv1.GetDesiredLabelsRow
+
+	// (optional) the idempotency key that the dag claimed before being run
+	IdempotencyKey *string
+}
+
+type TriggerRepository interface {
+	TriggerFromEvents(ctx context.Context, tenantId uuid.UUID, opts []EventTriggerOpts) (*TriggerFromEventsResult, error)
+
+	TriggerFromWorkflowNames(ctx context.Context, tenantId uuid.UUID, opts []*WorkflowNameTriggerOpts) ([]*V1TaskWithPayload, []*DAGWithData, []IdempotencyCollision, []CELEvaluationFailure, error)
+
+	PopulateExternalIdsForWorkflow(ctx context.Context, tenantId uuid.UUID, opts []*WorkflowNameTriggerOpts) error
+
+	PopulateWorkflowIdempotencyPresence(ctx context.Context, tenantId uuid.UUID, opts []*WorkflowNameTriggerOpts) error
+
+	PreflightVerifyWorkflowNameOpts(ctx context.Context, tenantId uuid.UUID, opts []*WorkflowNameTriggerOpts) error
+
+	NewTriggerTaskData(ctx context.Context, tenantId uuid.UUID, req *v1contracts.TriggerWorkflowRequest, parentTask *sqlcv1.FlattenExternalIdsRow) (*TriggerTaskData, error)
+}
+
+type TriggerRepositoryImpl struct {
+	*sharedRepository
+}
+
+func newTriggerRepository(s *sharedRepository) TriggerRepository {
+	return &TriggerRepositoryImpl{
+		sharedRepository: s,
+	}
+}
+
+type Run struct {
+	Id                    int64
+	InsertedAt            time.Time
+	FilterId              *uuid.UUID
+	WorkflowRunExternalID uuid.UUID
+}
+
+type TriggerFromEventsResult struct {
+	Tasks                 []*V1TaskWithPayload
+	Dags                  []*DAGWithData
+	EventExternalIdToRuns map[uuid.UUID][]*Run
+	CELEvaluationFailures []CELEvaluationFailure
+}
+
+type TriggerDecision struct {
+	ShouldTrigger bool
+	FilterPayload []byte
+	FilterId      *uuid.UUID
+}
+
+func (r *sharedRepository) makeTriggerDecisions(ctx context.Context, filters []*sqlcv1.V1Filter, hasAnyFilters bool, opt EventTriggerOpts) ([]TriggerDecision, []CELEvaluationFailure) {
+	celEvaluationFailures := make([]CELEvaluationFailure, 0)
+
+	// Cases to handle:
+	// 1. If there are no filters that exist for the workflow, we should trigger it.
+	// 2. If there _are_ filters that exist, but the list is empty, then there were no scope matches so we should _not_ trigger.
+	// 3. If there _are_ filters that exist and the list is non-empty, then we should loop through the list and evaluate each expression, and trigger if the expression evaluates to `true`.
+
+	// Case 1 - no filters exist for the workflow
+	if !hasAnyFilters {
+		return []TriggerDecision{
+			{
+				ShouldTrigger: true,
+				FilterPayload: nil,
+				FilterId:      nil,
+			},
+		}, celEvaluationFailures
+	}
+
+	// Case 2 - no filters were found matching the provided scope,
+	// so we should not trigger the workflow
+	if len(filters) == 0 {
+		return []TriggerDecision{
+			{
+				ShouldTrigger: false,
+				FilterPayload: nil,
+				FilterId:      nil,
+			},
+		}, celEvaluationFailures
+	}
+
+	// Case 3 - we have filters, so we should evaluate each expression and return a list of decisions
+	decisions := make([]TriggerDecision, 0, len(filters))
+
+	for _, filter := range filters {
+		if filter == nil {
+			continue
+		}
+
+		filterId := filter.ID
+
+		if filter.Expression == "" {
+			decisions = append(decisions, TriggerDecision{
+				ShouldTrigger: false,
+				FilterPayload: filter.Payload,
+				FilterId:      &filterId,
+			})
+		} else {
+			shouldTrigger, err := r.processWorkflowExpression(ctx, filter.Expression, opt, filter.Payload)
+
+			if err != nil {
+				r.l.Error().
+					Err(err).
+					Str("expression", filter.Expression).
+					Msg("Failed to evaluate workflow expression")
+
+				// If we fail to parse the expression, we should not run the workflow.
+				// See: https://github.com/hatchet-dev/hatchet/pull/1676#discussion_r2073790939
+				decisions = append(decisions, TriggerDecision{
+					ShouldTrigger: false,
+					FilterPayload: filter.Payload,
+					FilterId:      &filterId,
+				})
+
+				celEvaluationFailures = append(celEvaluationFailures, CELEvaluationFailure{
+					Source:       sqlcv1.V1CelEvaluationFailureSourceFILTER,
+					ErrorMessage: err.Error(),
+				})
+			}
+
+			decisions = append(decisions, TriggerDecision{
+				ShouldTrigger: shouldTrigger,
+				FilterPayload: filter.Payload,
+				FilterId:      &filterId,
+			})
+		}
+	}
+
+	return decisions, celEvaluationFailures
+}
+
+type EventExternalIdFilterId struct {
+	ExternalId uuid.UUID
+	FilterId   *uuid.UUID
+}
+
+type EventIds struct {
+	SeenAt pgtype.Timestamptz
+	Id     int64
+}
+
+type WorkflowAndScope struct {
+	WorkflowId uuid.UUID
+	Scope      string
+}
+
+func (r *TriggerRepositoryImpl) TriggerFromEvents(ctx context.Context, tenantId uuid.UUID, opts []EventTriggerOpts) (*TriggerFromEventsResult, error) {
+	pre, post := r.m.Meter(ctx, nil, sqlcv1.LimitResourceEVENT, tenantId, int32(len(opts))) // nolint: gosec
+
+	if err := pre(); err != nil {
+		return nil, err
+	}
+
+	result, err := r.doTriggerFromEvents(ctx, nil, tenantId, opts)
+
+	if err != nil {
+		return nil, err
+	}
+
+	post()
+
+	return result, nil
+}
+
+func (r *sharedRepository) doTriggerFromEvents(
+	ctx context.Context,
+	tx *OptimisticTx,
+	tenantId uuid.UUID,
+	opts []EventTriggerOpts,
+) (*TriggerFromEventsResult, error) {
+	var prepareTx sqlcv1.DBTX
+
+	if tx != nil {
+		prepareTx = tx.tx
+	} else {
+		prepareTx = r.pool
+	}
+
+	triggerOpts, createCoreEventOpts, externalIdToEventIdAndFilterId, celEvaluationFailures, err := r.prepareTriggerFromEvents(ctx, prepareTx, tenantId, opts)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to prepare trigger from events: %w", err)
+	}
+
+	tasks, dags, _, workflowCelFailures, err := r.triggerWorkflows(ctx, tx, tenantId, triggerOpts, createCoreEventOpts)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to trigger workflows: %w", err)
+	}
+
+	eventExternalIdToRuns := getEventExternalIdToRuns(opts, externalIdToEventIdAndFilterId, tasks, dags)
+
+	return &TriggerFromEventsResult{
+		Tasks:                 tasks,
+		Dags:                  dags,
+		EventExternalIdToRuns: eventExternalIdToRuns,
+		CELEvaluationFailures: append(celEvaluationFailures, workflowCelFailures...),
+	}, nil
+}
+
+func getEventExternalIdToRuns(opts []EventTriggerOpts, externalIdToEventIdAndFilterId map[uuid.UUID]EventExternalIdFilterId, tasks []*V1TaskWithPayload, dags []*DAGWithData) map[uuid.UUID][]*Run {
+	eventExternalIdToRuns := make(map[uuid.UUID][]*Run)
+
+	for _, opt := range opts {
+		eventExternalIdToRuns[opt.ExternalId] = make([]*Run, 0)
+	}
+
+	for _, task := range tasks {
+		externalId := task.ExternalID
+
+		eventIdAndFilterId, ok := externalIdToEventIdAndFilterId[externalId]
+
+		if !ok {
+			continue
+		}
+
+		eventExternalIdToRuns[eventIdAndFilterId.ExternalId] = append(eventExternalIdToRuns[eventIdAndFilterId.ExternalId], &Run{
+			Id:                    task.ID,
+			InsertedAt:            task.InsertedAt.Time,
+			FilterId:              eventIdAndFilterId.FilterId,
+			WorkflowRunExternalID: task.WorkflowRunID,
+		})
+	}
+
+	for _, dag := range dags {
+		externalId := dag.ExternalID
+
+		eventIdAndFilterId, ok := externalIdToEventIdAndFilterId[externalId]
+
+		if !ok {
+			continue
+		}
+
+		eventExternalIdToRuns[eventIdAndFilterId.ExternalId] = append(eventExternalIdToRuns[eventIdAndFilterId.ExternalId], &Run{
+			Id:                    dag.ID,
+			InsertedAt:            dag.InsertedAt.Time,
+			FilterId:              eventIdAndFilterId.FilterId,
+			WorkflowRunExternalID: dag.ExternalID,
+		})
+	}
+
+	return eventExternalIdToRuns
+}
+
+// appendOperatorDAGs synthesizes OLAP-only DAGs for operator-managed runs from their
+// orchestrator tasks. Every caller of triggerWorkflowsCore must call this, or the run's
+// tasks are written with a dag_id pointing at a DAG that never gets created.
+//
+// This cannot move into triggerWorkflowsCore: an operator DAG shares its orchestrator
+// task's id and external id, so appending it before that function builds event matches
+// and payload store opts would duplicate both for a row the task already covers.
+func (s *sharedRepository) appendOperatorDAGs(
+	tenantId uuid.UUID,
+	tasks []*V1TaskWithPayload,
+	dags []*DAGWithData,
+	operatorDagTuples map[uuid.UUID]triggerTuple,
+) []*DAGWithData {
+	if len(operatorDagTuples) == 0 {
+		return dags
+	}
+
+	unix := time.Now().UnixMilli()
+
+	for _, task := range tasks {
+		tuple, ok := operatorDagTuples[task.ExternalID]
+
+		if !ok {
+			continue
+		}
+
+		dags = append(dags, &DAGWithData{
+			V1Dag: &sqlcv1.V1Dag{
+				ID:                   task.ID,
+				InsertedAt:           task.InsertedAt,
+				TenantID:             tenantId,
+				ExternalID:           task.ExternalID,
+				DisplayName:          fmt.Sprintf("%s-%d", tuple.workflowName, unix),
+				WorkflowID:           tuple.workflowId,
+				WorkflowVersionID:    tuple.workflowVersionId,
+				ParentTaskExternalID: tuple.parentExternalId,
+			},
+			Input:                tuple.input,
+			AdditionalMetadata:   tuple.additionalMetadata,
+			ParentTaskExternalID: tuple.parentExternalId,
+			IsOperatorRun:        true,
+		})
+	}
+
+	return dags
+}
+
+func (s *sharedRepository) triggerFromWorkflowNames(ctx context.Context, tx *OptimisticTx, tenantId uuid.UUID, opts []*WorkflowNameTriggerOpts) ([]*V1TaskWithPayload, []*DAGWithData, []IdempotencyCollision, []CELEvaluationFailure, []StorePayloadOpts, error) {
+	triggerOpts, err := s.prepareTriggerFromWorkflowNames(ctx, tx.tx, tenantId, opts)
+
+	if err != nil {
+		return nil, nil, nil, nil, nil, fmt.Errorf("failed to prepare trigger from workflow names: %w", err)
+	}
+
+	tasks, dags, idempotencyKeyCollisions, celEvaluationFailures, storePayloadOpts, operatorDagTuples, err := s.triggerWorkflowsCore(ctx, tx, tenantId, triggerOpts, nil, false)
+
+	if err != nil {
+		return nil, nil, nil, nil, nil, err
+	}
+
+	dags = s.appendOperatorDAGs(tenantId, tasks, dags, operatorDagTuples)
+
+	return tasks, dags, idempotencyKeyCollisions, celEvaluationFailures, storePayloadOpts, nil
+}
+
+func (r *TriggerRepositoryImpl) TriggerFromWorkflowNames(ctx context.Context, tenantId uuid.UUID, opts []*WorkflowNameTriggerOpts) ([]*V1TaskWithPayload, []*DAGWithData, []IdempotencyCollision, []CELEvaluationFailure, error) {
+	tx, err := r.PrepareOptimisticTx(ctx)
+
+	if err != nil {
+		return nil, nil, nil, nil, fmt.Errorf("failed to prepare tx: %w", err)
+	}
+
+	defer tx.Rollback()
+
+	tasks, dags, idempotencyKeyCollisions, celEvaluationFailures, storePayloadOpts, err := r.triggerFromWorkflowNames(ctx, tx, tenantId, opts)
+
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+
+	if len(storePayloadOpts) > 0 {
+		if err := r.payloadStore.Store(ctx, tx.tx, storePayloadOpts...); err != nil {
+			return nil, nil, nil, nil, fmt.Errorf("failed to store payloads: %w", err)
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, nil, nil, nil, err
+	}
+
+	return tasks, dags, idempotencyKeyCollisions, celEvaluationFailures, nil
+}
+
+type ErrNamesNotFound struct {
+	Names []string
+}
+
+func (e *ErrNamesNotFound) Error() string {
+	return fmt.Sprintf("workflow names not found: %s", strings.Join(e.Names, ", "))
+}
+
+func (r *TriggerRepositoryImpl) PreflightVerifyWorkflowNameOpts(ctx context.Context, tenantId uuid.UUID, opts []*WorkflowNameTriggerOpts) error {
+	// get a list of workflow names
+	workflowNamesFound := make(map[string]bool)
+
+	for _, opt := range opts {
+		workflowNamesFound[opt.WorkflowName] = false
+	}
+
+	uniqueWorkflowNames := make([]string, 0, len(workflowNamesFound))
+
+	for name := range workflowNamesFound {
+		uniqueWorkflowNames = append(uniqueWorkflowNames, name)
+	}
+
+	rows, err := r.listWorkflowsByNames(ctx, r.pool, tenantId, uniqueWorkflowNames)
+
+	if err != nil {
+		return fmt.Errorf("failed to list workflows by names: %w", err)
+	}
+
+	for _, row := range rows {
+		workflowNamesFound[row.WorkflowName] = true
+	}
+
+	workflowNamesNotFound := make([]string, 0)
+
+	for name, found := range workflowNamesFound {
+		if !found {
+			workflowNamesNotFound = append(workflowNamesNotFound, name)
+		}
+	}
+
+	if len(workflowNamesNotFound) > 0 {
+		return &ErrNamesNotFound{
+			Names: workflowNamesNotFound,
+		}
+	}
+
+	return nil
+}
+
+func (r *TriggerRepositoryImpl) PopulateWorkflowIdempotencyPresence(ctx context.Context, tenantId uuid.UUID, opts []*WorkflowNameTriggerOpts) error {
+	if len(opts) == 0 {
+		return nil
+	}
+
+	uniqueNames := make(map[string]struct{})
+	names := make([]string, 0, len(uniqueNames))
+
+	for _, opt := range opts {
+		if _, ok := uniqueNames[opt.WorkflowName]; !ok {
+			names = append(names, opt.WorkflowName)
+		}
+
+		uniqueNames[opt.WorkflowName] = struct{}{}
+	}
+
+	rows, err := r.listWorkflowsByNames(ctx, r.pool, tenantId, names)
+
+	if err != nil {
+		return fmt.Errorf("failed to list workflows by names: %w", err)
+	}
+
+	nameToRow := make(map[string]*sqlcv1.ListWorkflowsByNamesRow, len(rows))
+
+	for _, row := range rows {
+		nameToRow[row.WorkflowName] = row
+	}
+
+	for _, opt := range opts {
+		row, ok := nameToRow[opt.WorkflowName]
+
+		if !ok {
+			r.l.Error().Str("workflowName", opt.WorkflowName).Msg("workflow name not found when populating idempotency presence")
+			continue
+		}
+
+		opt.HasIdempotencyKey = row.IdempotencyKeyExpression.Valid && row.IdempotencyKeyTtlMs.Valid
+	}
+
+	return nil
+}
+
+type TriggeredBy interface {
+	ToMetadata([]byte) []byte
+}
+
+type TriggeredByEvent struct {
+	l        *zerolog.Logger
+	eventID  uuid.UUID
+	eventKey string
+}
+
+// ensureTraceparent guarantees a W3C traceparent exists in metadata. If the
+// SDK already injected a traceparent, it is left intact so the engine's
+// workflow_run root span can read the SDK's span_id as its parent at span
+// construction time. When no traceparent is present, a deterministic one is
+// created from the workflow run (or parent/source) UUID.
+func ensureTraceparent(additionalMetadata []byte, workflowRunExternalID uuid.UUID) []byte {
+	meta := make(map[string]interface{})
+
+	if len(additionalMetadata) > 0 {
+		if err := json.Unmarshal(additionalMetadata, &meta); err != nil {
+			meta = make(map[string]interface{})
+		}
+	}
+
+	if existingTP, ok := meta["traceparent"].(string); ok {
+		if _, _, ok := parseW3CTraceparent(existingTP); ok {
+			out, err := json.Marshal(meta)
+			if err != nil {
+				return additionalMetadata
+			}
+			return out
+		}
+	}
+
+	traceOwnerID := workflowRunExternalID
+
+	if parentIDStr, ok := meta["hatchet__parent_workflow_run_id"].(string); ok {
+		if parsed, err := uuid.Parse(parentIDStr); err == nil {
+			traceOwnerID = parsed
+		}
+	} else if sourceIDStr, ok := meta["hatchet__source_workflow_run_id"].(string); ok {
+		if parsed, err := uuid.Parse(sourceIDStr); err == nil {
+			traceOwnerID = parsed
+		}
+	}
+
+	traceID := hex.EncodeToString(DeriveWorkflowRunTraceID(traceOwnerID))
+	spanID := hex.EncodeToString(DeriveWorkflowRunSpanID(workflowRunExternalID))
+
+	meta["traceparent"] = fmt.Sprintf("00-%s-%s-01", traceID, spanID)
+
+	out, err := json.Marshal(meta)
+	if err != nil {
+		return additionalMetadata
+	}
+
+	return out
+}
+
+func parseW3CTraceparent(tp string) (traceID, spanID string, ok bool) {
+	parts := strings.Split(tp, "-")
+	if len(parts) != 4 || len(parts[1]) != 32 || len(parts[2]) != 16 {
+		return "", "", false
+	}
+	return parts[1], parts[2], true
+}
+
+func cleanAdditionalMetadata(additionalMetadata []byte) map[string]interface{} {
+	res := make(map[string]interface{})
+
+	if len(additionalMetadata) == 0 {
+		res = make(map[string]interface{})
+	} else {
+		err := json.Unmarshal(additionalMetadata, &res)
+
+		if err != nil || res == nil {
+			res = make(map[string]interface{})
+		}
+	}
+
+	for key := range res {
+		if strings.HasPrefix(key, "hatchet__") {
+			delete(res, key)
+		}
+	}
+
+	return res
+}
+
+func (t *TriggeredByEvent) ToMetadata(additionalMetadata []byte) []byte {
+	var origMeta map[string]interface{}
+	if len(additionalMetadata) > 0 {
+		_ = json.Unmarshal(additionalMetadata, &origMeta)
+	}
+
+	res := cleanAdditionalMetadata(additionalMetadata)
+
+	res[constants.EventIDKey.String()] = t.eventID
+	res[constants.EventKeyKey.String()] = t.eventKey
+
+	if v, ok := origMeta["hatchet__source_workflow_run_id"]; ok {
+		res["hatchet__source_workflow_run_id"] = v
+	}
+	if v, ok := origMeta["hatchet__source_step_run_id"]; ok {
+		res["hatchet__source_step_run_id"] = v
+	}
+
+	resBytes, err := json.Marshal(res)
+
+	if err != nil {
+		t.l.Error().Err(err).Msg("failed to marshal additional metadata")
+		return nil
+	}
+
+	return resBytes
+}
+
+type triggerTuple struct {
+	desiredWorkerId           *uuid.UUID
+	childKey                  *string
+	childIndex                *int64
+	parentTaskInsertedAt      *time.Time
+	parentTaskId              *int64
+	parentExternalId          *uuid.UUID
+	priority                  *int32
+	externalId                uuid.UUID
+	workflowVersionId         uuid.UUID
+	workflowName              string
+	workflowId                uuid.UUID
+	isPaused                  bool
+	additionalMetadata        []byte
+	filterPayload             []byte
+	input                     []byte
+	desiredWorkerLabels       []*sqlcv1.GetDesiredLabelsRow
+	triggeringEventExternalId *uuid.UUID
+	triggeringEventKey        *string
+	idempotency               *IdempotencyConfig
+	dagParentTaskRunIds       []uuid.UUID
+	targetActionId            *string
+	isSkipped                 bool
+	isCancelled               bool
+	workflowRunId             *uuid.UUID
+	olapDagId                 *int64
+	olapDagInsertedAt         *time.Time
+}
+
+func (t triggerTuple) effectiveWorkflowRunId() uuid.UUID {
+	if t.workflowRunId != nil {
+		return *t.workflowRunId
+	}
+
+	return t.externalId
+}
+
+type createCoreUserEventOpts struct {
+	externalIdToEventIdAndFilterId map[uuid.UUID]EventExternalIdFilterId
+	externalIdsToPayloads          map[uuid.UUID][]byte
+	params                         sqlcv1.BulkCreateEventsParams
+}
+
+const internalIdempotencyKeyPrefix = "hatchet_internal_"
+
+func (r *sharedRepository) evalIdempotencyKey(tuple triggerTuple) (string, error) {
+	inputData := make(map[string]any)
+	if len(tuple.input) > 0 {
+		if err := json.Unmarshal(tuple.input, &inputData); err != nil {
+			return "", fmt.Errorf("failed to unmarshal input for idempotency key evaluation: %w", err)
+		}
+	}
+
+	additionalMetadata := make(map[string]any)
+	if len(tuple.additionalMetadata) > 0 {
+		if err := json.Unmarshal(tuple.additionalMetadata, &additionalMetadata); err != nil {
+			return "", fmt.Errorf("failed to unmarshal additional metadata for idempotency key evaluation: %w", err)
+		}
+	}
+
+	key, err := r.celParser.ParseAndEvalWorkflowString(
+		tuple.idempotency.Expression,
+		cel.NewInput(
+			cel.WithInput(inputData),
+			cel.WithAdditionalMetadata(additionalMetadata),
+		),
+	)
+	if err != nil {
+		return "", fmt.Errorf("failed to evaluate idempotency key expression %q: %w", tuple.idempotency.Expression, err)
+	}
+
+	if strings.HasPrefix(key, internalIdempotencyKeyPrefix) {
+		return "", fmt.Errorf("idempotency key %q uses reserved prefix %q", key, internalIdempotencyKeyPrefix)
+	}
+
+	return key, nil
+}
+
+func (r *sharedRepository) triggerWorkflowsCore(
+	ctx context.Context,
+	optTx *OptimisticTx,
+	tenantId uuid.UUID,
+	triggerCandidateTuples []triggerTuple,
+	coreEvents *createCoreUserEventOpts,
+	ownsTx bool,
+) ([]*V1TaskWithPayload, []*DAGWithData, []IdempotencyCollision, []CELEvaluationFailure, []StorePayloadOpts, map[uuid.UUID]triggerTuple, error) {
+	if optTx == nil {
+		return nil, nil, nil, nil, nil, nil, fmt.Errorf("triggerWorkflowsCore requires a non-nil transaction")
+	}
+
+	preflightTx := optTx.tx
+
+	if ownsTx {
+		preflightTx = r.pool
+	}
+
+	tuples := make([]triggerTuple, 0, len(triggerCandidateTuples))
+
+	keys := make([]string, 0, len(triggerCandidateTuples))
+	expiresAts := make([]pgtype.Timestamptz, 0, len(triggerCandidateTuples))
+	claimedByExternalIds := make([]uuid.UUID, 0, len(triggerCandidateTuples))
+	externalIdToTuple := make(map[uuid.UUID]triggerTuple)
+	externalIdToIdempotencyKey := make(map[uuid.UUID]string)
+
+	var celEvaluationFailures []CELEvaluationFailure
+
+	for _, tuple := range triggerCandidateTuples {
+		if tuple.idempotency == nil {
+			tuples = append(tuples, tuple)
+		} else {
+			externalIdToTuple[tuple.externalId] = tuple
+			key, err := r.evalIdempotencyKey(tuple)
+			if err != nil {
+				r.l.Error().Ctx(ctx).Err(err).Msg("failed to evaluate idempotency key, skipping tuple")
+				celEvaluationFailures = append(celEvaluationFailures, CELEvaluationFailure{
+					Source:       sqlcv1.V1CelEvaluationFailureSourceIDEMPOTENCYKEY,
+					ErrorMessage: err.Error(),
+				})
+				continue
+			}
+
+			keys = append(keys, key)
+			expiresAts = append(expiresAts, pgtype.Timestamptz{
+				Time:  time.Now().Add(time.Duration(tuple.idempotency.TTLMs) * time.Millisecond),
+				Valid: true,
+			})
+			claimedByExternalIds = append(claimedByExternalIds, tuple.externalId)
+			externalIdToIdempotencyKey[tuple.externalId] = key
+		}
+	}
+
+	var idempotencyKeyCollisions []IdempotencyCollision
+
+	if len(keys) > 0 {
+		claims, err := r.queries.ClaimIdempotencyKeys(ctx, preflightTx, sqlcv1.ClaimIdempotencyKeysParams{
+			Keys:                 keys,
+			Expiresats:           expiresAts,
+			Claimedbyexternalids: claimedByExternalIds,
+			Tenantid:             tenantId,
+		})
+
+		if err != nil {
+			return nil, nil, nil, nil, nil, nil, fmt.Errorf("failed to claim idempotency keys: %w", err)
+		}
+
+		idempotencyKeyToLockHolder := make(map[string]uuid.UUID, len(claims))
+		for _, claim := range claims {
+			if claim.ClaimedByExternalID != nil {
+				idempotencyKeyToLockHolder[claim.Key] = *claim.ClaimedByExternalID
+			}
+		}
+
+		for i, key := range keys {
+			requestedId := claimedByExternalIds[i]
+			lockHolderExternalId, ok := idempotencyKeyToLockHolder[key]
+			if !ok {
+				continue
+			}
+
+			if lockHolderExternalId == requestedId {
+				tuple, ok := externalIdToTuple[requestedId]
+				if !ok {
+					continue
+				}
+				tuples = append(tuples, tuple)
+			} else {
+				idempotencyKeyCollisions = append(idempotencyKeyCollisions, IdempotencyCollision{
+					RequestedExternalId: requestedId,
+					ExistingExternalId:  lockHolderExternalId,
+				})
+			}
+		}
+	}
+
+	// get unique workflow version ids
+	uniqueWorkflowVersionIds := make(map[uuid.UUID]struct{})
+	pausedWorkflowIds := make(map[uuid.UUID]struct{})
+
+	for i, tuple := range tuples {
+		tuples[i].additionalMetadata = ensureTraceparent(tuples[i].additionalMetadata, tuples[i].externalId)
+		uniqueWorkflowVersionIds[tuple.workflowVersionId] = struct{}{}
+
+		if tuple.isPaused {
+			pausedWorkflowIds[tuple.workflowId] = struct{}{}
+		}
+	}
+
+	// get all data for triggering tasks in this workflow
+	workflowVersionIds := make([]uuid.UUID, 0, len(uniqueWorkflowVersionIds))
+
+	for id := range uniqueWorkflowVersionIds {
+		workflowVersionIds = append(workflowVersionIds, id)
+	}
+
+	workflowVersionToSteps, err := r.listStepsByWorkflowVersionIds(ctx, preflightTx, tenantId, workflowVersionIds)
+
+	if err != nil {
+		return nil, nil, nil, nil, nil, nil, fmt.Errorf("failed to get workflow versions for engine: %w", err)
+	}
+
+	// group steps by workflow version ids
+	stepIdsToReadableIds := make(map[uuid.UUID]string)
+	stepsWithAdditionalMatchConditions := make([]uuid.UUID, 0)
+
+	for _, steps := range workflowVersionToSteps {
+		for _, step := range steps {
+			stepIdsToReadableIds[step.ID] = step.ReadableId.String
+
+			if step.MatchConditionCount > 0 {
+				stepsWithAdditionalMatchConditions = append(stepsWithAdditionalMatchConditions, step.ID)
+			}
+		}
+	}
+
+	countWorkflowRuns := 0
+	countTasks := 0
+
+	for _, tuple := range tuples {
+		countWorkflowRuns++
+
+		steps, ok := workflowVersionToSteps[tuple.workflowVersionId]
+
+		if !ok {
+			continue
+		}
+
+		countTasks += len(steps)
+	}
+
+	preTask, postTask := r.m.Meter(ctx, preflightTx, sqlcv1.LimitResourceTASKRUN, tenantId, int32(countTasks)) // nolint: gosec
+
+	if err := preTask(); err != nil {
+		return nil, nil, nil, nil, nil, nil, err
+	}
+
+	stepsToAdditionalMatches := make(map[uuid.UUID][]*sqlcv1.V1StepMatchCondition)
+
+	if len(stepsWithAdditionalMatchConditions) > 0 {
+		additionalMatches, err := r.queries.ListStepMatchConditions(ctx, preflightTx, sqlcv1.ListStepMatchConditionsParams{
+			Stepids:  stepsWithAdditionalMatchConditions,
+			Tenantid: tenantId,
+		})
+
+		if err != nil {
+			return nil, nil, nil, nil, nil, nil, fmt.Errorf("failed to list step match conditions: %w", err)
+		}
+
+		for _, match := range additionalMatches {
+			stepId := match.StepID
+
+			stepsToAdditionalMatches[stepId] = append(stepsToAdditionalMatches[stepId], match)
+		}
+	}
+
+	// start constructing options for creating tasks, DAGs, and triggers. logic is as follows:
+	//
+	// 1. if a step does not have any parent steps, create a task
+	// 2. if a workflow version has multiple steps, create a DAG and a task
+	//
+	// FIXME: this logic will change slightly once we add arbitrary event triggers for tasks. The
+	// new logic will be as follows:
+	//
+	// 1. if a step does not have any parent steps, create a task directly
+	// 2. if a workflow version has a single step and has additional step triggers, create a task and a trigger
+	// 3. if a workflow version has multiple steps, create a DAG and tasks for any non-parent
+
+	dagOpts := make([]createDAGOpts, 0)
+
+	// map of task external IDs to task options
+	dagTaskOpts := make(map[uuid.UUID][]CreateTaskOpts)
+	nonDagTaskOpts := make([]CreateTaskOpts, 0)
+
+	// map of task external IDs to matches
+	eventMatches := make(map[uuid.UUID][]CreateMatchOpts)
+	createMatchOpts := make([]CreateMatchOpts, 0)
+
+	// a map of trigger tuples to step external IDs
+	stepsToExternalIds := make([]map[uuid.UUID]uuid.UUID, len(tuples))
+	dagToTaskIds := make(map[uuid.UUID][]uuid.UUID)
+	dagToTaskReadableIds := make(map[uuid.UUID][]string)
+
+	// generate UUIDs for each step
+	for i, tuple := range tuples {
+		stepsToExternalIds[i] = make(map[uuid.UUID]uuid.UUID)
+
+		allSteps, ok := workflowVersionToSteps[tuple.workflowVersionId]
+
+		if !ok {
+			// TODO: properly handle this error
+			r.l.Error().Msgf("could not find steps for workflow version id: %s", tuple.workflowVersionId)
+			continue
+		}
+
+		if len(allSteps) == 0 {
+			// TODO: properly handle this error
+			r.l.Error().Msgf("no steps found for workflow version id: %s", tuple.workflowVersionId)
+			continue
+		}
+
+		regularSteps := regularUserSteps(allSteps)
+		if tuple.targetActionId != nil {
+			regularSteps = filterStepsByActionId(regularSteps, *tuple.targetActionId)
+		}
+		isDag := len(regularSteps) > 1
+
+		for _, step := range regularSteps {
+			if !isDag {
+				stepsToExternalIds[i][step.ID] = tuple.externalId
+			} else {
+				externalId := uuid.New()
+				stepsToExternalIds[i][step.ID] = externalId
+				dagToTaskIds[tuple.externalId] = append(dagToTaskIds[tuple.externalId], externalId)
+				dagToTaskReadableIds[tuple.externalId] = append(dagToTaskReadableIds[tuple.externalId], step.ReadableId.String)
+			}
+		}
+	}
+
+	tx := optTx.tx
+
+	// check if we should skip the creation of any workflows if they're child workflows which
+	// already have a signal registered
+	tuplesToSkip, err := r.registerChildWorkflows(ctx, tx, tenantId, tuples, stepsToExternalIds, workflowVersionToSteps)
+
+	if err != nil {
+		return nil, nil, nil, nil, nil, nil, fmt.Errorf("failed to register child workflows: %w", err)
+	}
+
+	// for operator-managed DAG runs, we synthesize an OLAP-only DAG from the orchestrator
+	// task after it's created, keyed by the run's external id
+	operatorDagTuples := make(map[uuid.UUID]triggerTuple)
+
+	// OLAP-only DAG stamps for operator children, keyed by the child's external id
+	type olapDagStamp struct {
+		dagInsertedAt time.Time
+		dagId         int64
+	}
+
+	olapDagStamps := make(map[uuid.UUID]olapDagStamp)
+
+	for i, tuple := range tuples {
+		if _, ok := tuplesToSkip[tuple.externalId]; ok {
+			continue
+		}
+
+		tupleExternalId := tuple.effectiveWorkflowRunId()
+
+		steps, ok := workflowVersionToSteps[tuple.workflowVersionId]
+
+		if !ok {
+			// TODO: properly handle this error
+			r.l.Error().Msgf("could not find steps for workflow version id: %s", tuple.workflowVersionId)
+			continue
+		}
+
+		if len(steps) == 0 {
+			// TODO: properly handle this error
+			r.l.Error().Msgf("no steps found for workflow version id: %s", tuple.workflowVersionId)
+			continue
+		}
+
+		regularSteps := regularUserSteps(steps)
+		if tuple.targetActionId != nil {
+			regularSteps = filterStepsByActionId(regularSteps, *tuple.targetActionId)
+
+			if len(regularSteps) == 0 {
+				// Matching no step would silently hang the caller's durable log entry forever.
+				return nil, nil, nil, nil, nil, nil, fmt.Errorf("no step with action id %q found in workflow version %s", *tuple.targetActionId, tuple.workflowVersionId)
+			}
+		}
+		isDag := len(regularSteps) > 1
+
+		var orchestratorStep *sqlcv1.ListStepsByWorkflowVersionIdsRow
+		for _, s := range steps {
+			if s.IsDagOrchestrator {
+				orchestratorStep = s
+				break
+			}
+		}
+		useOperatorPath := orchestratorStep != nil && tuple.targetActionId == nil
+
+		if useOperatorPath {
+			orchestratorInput := r.newTaskInput(tuple.input, nil, tuple.filterPayload, tuple.dagParentTaskRunIds)
+			orchestratorInput.DesiredWorkerLabels = tuple.desiredWorkerLabels
+
+			operatorDagTuples[tuple.externalId] = tuple
+
+			nonDagTaskOpts = append(nonDagTaskOpts, CreateTaskOpts{
+				ExternalId:                tuple.externalId,
+				WorkflowRunId:             tuple.externalId,
+				StepId:                    orchestratorStep.ID,
+				Input:                     orchestratorInput,
+				AdditionalMetadata:        tuple.additionalMetadata,
+				InitialState:              sqlcv1.V1TaskInitialStateQUEUED,
+				DesiredWorkerId:           tuple.desiredWorkerId,
+				ParentTaskExternalId:      tuple.parentExternalId,
+				ParentTaskId:              tuple.parentTaskId,
+				ParentTaskInsertedAt:      tuple.parentTaskInsertedAt,
+				ChildIndex:                tuple.childIndex,
+				ChildKey:                  tuple.childKey,
+				Priority:                  tuple.priority,
+				TriggeringEventExternalId: tuple.triggeringEventExternalId,
+				TriggeringEventKey:        tuple.triggeringEventKey,
+			})
+		}
+
+		for stepIndex, step := range orderSteps(regularSteps) {
+			if useOperatorPath {
+				break
+			}
+
+			stepId := step.ID
+			taskExternalId := stepsToExternalIds[i][stepId]
+
+			// if this is an on failure step, create match conditions for every other step in the DAG.
+			// This only applies when triggering the whole DAG at once (no targetActionId): an
+			// operator-targeted trigger for a single step (including the on-failure step) has
+			// already had its wait/skip conditions resolved by the caller and must go through the
+			// direct-create branch below instead.
+			switch {
+			case step.JobKind == sqlcv1.JobKindONFAILURE && tuple.targetActionId == nil:
+				conditions := make([]GroupMatchCondition, 0)
+				groupId := uuid.New()
+
+				for _, otherStep := range regularSteps {
+					if otherStep.ID == stepId {
+						continue
+					}
+
+					otherExternalId := stepsToExternalIds[i][otherStep.ID]
+					readableId := otherStep.ReadableId.String
+
+					conditions = append(conditions, getParentOnFailureGroupMatches(groupId, otherExternalId, readableId)...)
+				}
+
+				var (
+					parentTaskExternalId *uuid.UUID
+					parentTaskId         pgtype.Int8
+					parentTaskInsertedAt pgtype.Timestamptz
+					childIndex           pgtype.Int8
+					childKey             pgtype.Text
+					priority             pgtype.Int4
+					triggeringEventKey   pgtype.Text
+				)
+
+				if tuple.parentExternalId != nil {
+					parsed := *tuple.parentExternalId
+					parentTaskExternalId = &parsed
+				}
+
+				if tuple.parentTaskId != nil {
+					parentTaskId = pgtype.Int8{
+						Int64: *tuple.parentTaskId,
+						Valid: true,
+					}
+				}
+
+				if tuple.parentTaskInsertedAt != nil {
+					parentTaskInsertedAt = sqlchelpers.TimestamptzFromTime(*tuple.parentTaskInsertedAt)
+				}
+
+				if tuple.childIndex != nil {
+					childIndex = pgtype.Int8{
+						Int64: *tuple.childIndex,
+						Valid: true,
+					}
+				}
+
+				if tuple.childKey != nil {
+					childKey = pgtype.Text{
+						String: *tuple.childKey,
+						Valid:  true,
+					}
+				}
+
+				if tuple.priority != nil {
+					priority = pgtype.Int4{
+						Int32: *tuple.priority,
+						Valid: true,
+					}
+				}
+
+				if tuple.triggeringEventKey != nil {
+					triggeringEventKey = pgtype.Text{
+						String: *tuple.triggeringEventKey,
+						Valid:  true,
+					}
+				}
+
+				eventMatches[tuple.externalId] = append(eventMatches[tuple.externalId], CreateMatchOpts{
+					Kind:                 sqlcv1.V1MatchKindTRIGGER,
+					Conditions:           conditions,
+					TriggerExternalId:    &taskExternalId,
+					TriggerWorkflowRunId: &tupleExternalId,
+					TriggerStepId:        &stepId,
+					TriggerStepIndex: pgtype.Int8{
+						Int64: int64(stepIndex),
+						Valid: true,
+					},
+					TriggerParentTaskExternalId: parentTaskExternalId,
+					TriggerParentTaskId:         parentTaskId,
+					TriggerParentTaskInsertedAt: parentTaskInsertedAt,
+					TriggerChildIndex:           childIndex,
+					TriggerChildKey:             childKey,
+					TriggerPriority:             priority,
+					TriggerEventExternalId:      tuple.triggeringEventExternalId,
+					TriggerEventKey:             triggeringEventKey,
+				})
+			case len(step.Parents) == 0 || tuple.targetActionId != nil:
+				// When targetActionId is set, the DAG operator has already evaluated all wait/skip
+				// conditions before calling TriggerDAGStep, so we must create the task directly
+				// without re-applying the step's match conditions.
+				var additionalMatches []*sqlcv1.V1StepMatchCondition
+				if tuple.targetActionId == nil {
+					additionalMatches = stepsToAdditionalMatches[stepId]
+				}
+
+				if len(additionalMatches) > 0 {
+					// create an event match
+					groupConditions := make([]GroupMatchCondition, 0)
+
+					for _, condition := range additionalMatches {
+						switch condition.Kind {
+						case sqlcv1.V1StepMatchConditionKindSLEEP:
+							c, err := r.durableSleepCondition(
+								ctx,
+								tx,
+								tenantId,
+								condition.OrGroupID,
+								condition.ReadableDataKey,
+								condition.SleepDuration.String,
+								condition.Action,
+							)
+
+							if err != nil {
+								return nil, nil, nil, nil, nil, nil, fmt.Errorf("failed to create sleep condition: %w", err)
+							}
+
+							groupConditions = append(groupConditions, *c)
+						case sqlcv1.V1StepMatchConditionKindUSEREVENT:
+							groupConditions = append(groupConditions, r.userEventCondition(
+								condition.OrGroupID,
+								condition.ReadableDataKey,
+								condition.EventKey.String,
+								condition.Expression.String,
+								condition.Action,
+							))
+						default:
+							// PARENT_OVERRIDE is another kind, but it isn't processed here
+							continue
+						}
+					}
+
+					var (
+						parentTaskExternalId *uuid.UUID
+						parentTaskId         pgtype.Int8
+						parentTaskInsertedAt pgtype.Timestamptz
+						childIndex           pgtype.Int8
+						childKey             pgtype.Text
+						priority             pgtype.Int4
+						triggeringEventKey   pgtype.Text
+					)
+
+					if tuple.parentExternalId != nil {
+						parsed := *tuple.parentExternalId
+						parentTaskExternalId = &parsed
+					}
+
+					if tuple.parentTaskId != nil {
+						parentTaskId = pgtype.Int8{
+							Int64: *tuple.parentTaskId,
+							Valid: true,
+						}
+					}
+
+					if tuple.parentTaskInsertedAt != nil {
+						parentTaskInsertedAt = sqlchelpers.TimestamptzFromTime(*tuple.parentTaskInsertedAt)
+					}
+
+					if tuple.childIndex != nil {
+						childIndex = pgtype.Int8{
+							Int64: *tuple.childIndex,
+							Valid: true,
+						}
+					}
+
+					if tuple.childKey != nil {
+						childKey = pgtype.Text{
+							String: *tuple.childKey,
+							Valid:  true,
+						}
+					}
+
+					if tuple.priority != nil {
+						priority = pgtype.Int4{
+							Int32: *tuple.priority,
+							Valid: true,
+						}
+					}
+
+					if tuple.triggeringEventKey != nil {
+						triggeringEventKey = pgtype.Text{
+							String: *tuple.triggeringEventKey,
+							Valid:  true,
+						}
+					}
+
+					eventMatches[tuple.externalId] = append(eventMatches[tuple.externalId], CreateMatchOpts{
+						Kind:                 sqlcv1.V1MatchKindTRIGGER,
+						Conditions:           groupConditions,
+						TriggerExternalId:    &taskExternalId,
+						TriggerWorkflowRunId: &tupleExternalId,
+						TriggerStepId:        &stepId,
+						TriggerStepIndex: pgtype.Int8{
+							Int64: int64(stepIndex),
+							Valid: true,
+						},
+						TriggerParentTaskExternalId: parentTaskExternalId,
+						TriggerParentTaskId:         parentTaskId,
+						TriggerParentTaskInsertedAt: parentTaskInsertedAt,
+						TriggerChildIndex:           childIndex,
+						TriggerChildKey:             childKey,
+						TriggerPriority:             priority,
+						TriggerEventExternalId:      tuple.triggeringEventExternalId,
+						TriggerEventKey:             triggeringEventKey,
+					})
+				} else {
+					labels := tuple.desiredWorkerLabels
+
+					for i := range labels {
+						labels[i].StepId = stepId
+					}
+
+					initialState := sqlcv1.V1TaskInitialStateQUEUED
+					if tuple.isSkipped {
+						initialState = sqlcv1.V1TaskInitialStateSKIPPED
+					} else if tuple.isCancelled {
+						initialState = sqlcv1.V1TaskInitialStateCANCELLED
+					}
+
+					if tuple.olapDagId != nil && tuple.olapDagInsertedAt != nil {
+						olapDagStamps[taskExternalId] = olapDagStamp{
+							dagId:         *tuple.olapDagId,
+							dagInsertedAt: *tuple.olapDagInsertedAt,
+						}
+					}
+
+					opt := CreateTaskOpts{
+						ExternalId:                taskExternalId,
+						WorkflowRunId:             tuple.effectiveWorkflowRunId(),
+						StepId:                    step.ID,
+						Input:                     r.newTaskInput(tuple.input, nil, tuple.filterPayload, tuple.dagParentTaskRunIds),
+						AdditionalMetadata:        tuple.additionalMetadata,
+						InitialState:              initialState,
+						DesiredWorkerId:           tuple.desiredWorkerId,
+						ParentTaskExternalId:      tuple.parentExternalId,
+						ParentTaskId:              tuple.parentTaskId,
+						ParentTaskInsertedAt:      tuple.parentTaskInsertedAt,
+						StepIndex:                 stepIndex,
+						ChildIndex:                tuple.childIndex,
+						ChildKey:                  tuple.childKey,
+						Priority:                  tuple.priority,
+						DesiredWorkerLabels:       labels,
+						TriggeringEventExternalId: tuple.triggeringEventExternalId,
+						TriggeringEventKey:        tuple.triggeringEventKey,
+					}
+
+					idempotencyKey, ok := externalIdToIdempotencyKey[tuple.externalId]
+
+					if ok {
+						opt.IdempotencyKey = &idempotencyKey
+					}
+
+					if isDag {
+						dagTaskOpts[tuple.externalId] = append(dagTaskOpts[tuple.externalId], opt)
+					} else {
+						nonDagTaskOpts = append(nonDagTaskOpts, opt)
+					}
+				}
+			default:
+				conditions := make([]GroupMatchCondition, 0)
+
+				cancelGroupId := uuid.New()
+
+				additionalMatches, ok := stepsToAdditionalMatches[stepId]
+
+				if !ok {
+					additionalMatches = make([]*sqlcv1.V1StepMatchCondition, 0)
+				}
+
+				for _, parent := range step.Parents {
+					parentExternalId := stepsToExternalIds[i][parent]
+					readableId := stepIdsToReadableIds[parent]
+
+					hasUserEventOrSleepMatches := false
+					hasAnySkippingParentOverrides := false
+
+					parentOverrideMatches := make([]*sqlcv1.V1StepMatchCondition, 0)
+
+					for _, match := range additionalMatches {
+						if match.Kind == sqlcv1.V1StepMatchConditionKindPARENTOVERRIDE {
+							if match.ParentReadableID.String == readableId {
+								parentOverrideMatches = append(parentOverrideMatches, match)
+							}
+
+							if match.Action == sqlcv1.V1MatchConditionActionSKIP {
+								hasAnySkippingParentOverrides = true
+							}
+						} else {
+							hasUserEventOrSleepMatches = true
+						}
+					}
+
+					conditions = append(conditions, getParentInDAGGroupMatch(cancelGroupId, parentExternalId, readableId, parentOverrideMatches, hasUserEventOrSleepMatches, hasAnySkippingParentOverrides)...)
+				}
+
+				var (
+					parentTaskExternalId *uuid.UUID
+					parentTaskId         pgtype.Int8
+					parentTaskInsertedAt pgtype.Timestamptz
+					childIndex           pgtype.Int8
+					childKey             pgtype.Text
+					priority             pgtype.Int4
+					triggeringEventKey   pgtype.Text
+				)
+
+				if tuple.parentExternalId != nil {
+					parentTaskExternalId = tuple.parentExternalId
+				}
+
+				if tuple.parentTaskId != nil {
+					parentTaskId = pgtype.Int8{
+						Int64: *tuple.parentTaskId,
+						Valid: true,
+					}
+				}
+
+				if tuple.parentTaskInsertedAt != nil {
+					parentTaskInsertedAt = sqlchelpers.TimestamptzFromTime(*tuple.parentTaskInsertedAt)
+				}
+
+				if tuple.childIndex != nil {
+					childIndex = pgtype.Int8{
+						Int64: *tuple.childIndex,
+						Valid: true,
+					}
+				}
+
+				if tuple.childKey != nil {
+					childKey = pgtype.Text{
+						String: *tuple.childKey,
+						Valid:  true,
+					}
+				}
+
+				if tuple.priority != nil {
+					priority = pgtype.Int4{
+						Int32: *tuple.priority,
+						Valid: true,
+					}
+				}
+
+				if tuple.triggeringEventKey != nil {
+					triggeringEventKey = pgtype.Text{
+						String: *tuple.triggeringEventKey,
+						Valid:  true,
+					}
+				}
+
+				// create an event match
+				eventMatches[tuple.externalId] = append(eventMatches[tuple.externalId], CreateMatchOpts{
+					Kind:                 sqlcv1.V1MatchKindTRIGGER,
+					Conditions:           conditions,
+					TriggerExternalId:    &taskExternalId,
+					TriggerWorkflowRunId: &tupleExternalId,
+					TriggerStepId:        &stepId,
+					TriggerStepIndex: pgtype.Int8{
+						Int64: int64(stepIndex),
+						Valid: true,
+					},
+					TriggerParentTaskExternalId: parentTaskExternalId,
+					TriggerParentTaskId:         parentTaskId,
+					TriggerParentTaskInsertedAt: parentTaskInsertedAt,
+					TriggerChildIndex:           childIndex,
+					TriggerChildKey:             childKey,
+					TriggerPriority:             priority,
+					TriggerEventExternalId:      tuple.triggeringEventExternalId,
+					TriggerEventKey:             triggeringEventKey,
+				})
+			}
+		}
+
+		if isDag && !useOperatorPath {
+			dagOpt := createDAGOpts{
+				ExternalId:           tuple.externalId,
+				Input:                tuple.input,
+				TaskIds:              dagToTaskIds[tuple.externalId],
+				TaskStepReadableIds:  dagToTaskReadableIds[tuple.externalId],
+				WorkflowId:           tuple.workflowId,
+				WorkflowVersionId:    tuple.workflowVersionId,
+				WorkflowName:         tuple.workflowName,
+				AdditionalMetadata:   tuple.additionalMetadata,
+				ParentTaskExternalID: tuple.parentExternalId,
+				DesiredWorkerLabels:  tuple.desiredWorkerLabels,
+			}
+
+			if idempotencyKey, ok := externalIdToIdempotencyKey[tuple.externalId]; ok {
+				dagOpt.IdempotencyKey = &idempotencyKey
+			}
+
+			dagOpts = append(dagOpts, dagOpt)
+		}
+	}
+
+	// create DAGs
+	dags, err := r.createDAGs(ctx, tx, tenantId, dagOpts)
+
+	if err != nil {
+		return nil, nil, nil, nil, nil, nil, fmt.Errorf("failed to create DAGs: %w", err)
+	}
+
+	// populate taskOpts with inserted DAG data
+	createTaskOpts := nonDagTaskOpts
+
+	for _, dag := range dags {
+		opts, ok := dagTaskOpts[dag.ExternalID]
+
+		if !ok {
+			r.l.Error().Msgf("could not find task opts for DAG with external id: %s", dag.ExternalID.String())
+			continue
+		}
+
+		for _, opt := range opts {
+			opt.DagId = &dag.ID
+			opt.DagInsertedAt = dag.InsertedAt
+			createTaskOpts = append(createTaskOpts, opt)
+		}
+	}
+
+	// create tasks
+	tasks, err := r.createTasks(ctx, tx, tenantId, createTaskOpts)
+
+	if err != nil {
+		return nil, nil, nil, nil, nil, nil, fmt.Errorf("failed to create tasks: %w", err)
+	}
+
+	// stamp the OLAP DAG identity onto operator children so they're written to OLAP as DAG
+	// subtasks; core v1_task.dag_id intentionally stays NULL for these tasks
+	for _, task := range tasks {
+		if stamp, ok := olapDagStamps[task.ExternalID]; ok {
+			task.DagID = pgtype.Int8{Int64: stamp.dagId, Valid: true}
+			task.DagInsertedAt = sqlchelpers.TimestamptzFromTime(stamp.dagInsertedAt)
+			task.IsOperatorRun = true
+		}
+	}
+
+	if len(pausedWorkflowIds) > 0 {
+		workflowIds := make([]uuid.UUID, 0, len(pausedWorkflowIds))
+
+		for id := range pausedWorkflowIds {
+			workflowIds = append(workflowIds, id)
+		}
+
+		if err := r.queries.MovePausedWorkflowQueueItems(ctx, tx, sqlcv1.MovePausedWorkflowQueueItemsParams{
+			Workflowids: workflowIds,
+			Tenantid:    tenantId,
+		}); err != nil {
+			return nil, nil, nil, nil, nil, nil, fmt.Errorf("failed to move queue items for paused workflows: %w", err)
+		}
+	}
+
+	for _, dag := range dags {
+		opts := eventMatches[dag.ExternalID]
+
+		for _, opt := range opts {
+			opt.TriggerDAGId = &dag.ID
+			opt.TriggerDAGInsertedAt = dag.InsertedAt
+
+			createMatchOpts = append(createMatchOpts, opt)
+		}
+	}
+
+	err = r.createEventMatches(ctx, tx, tenantId, createMatchOpts)
+
+	if err != nil {
+		return nil, nil, nil, nil, nil, nil, fmt.Errorf("failed to create event matches: %w", err)
+	}
+
+	storePayloadOpts := make([]StorePayloadOpts, 0, len(tasks)+len(dags))
+
+	for _, task := range tasks {
+		storePayloadOpts = append(storePayloadOpts, StorePayloadOpts{
+			Id:         task.ID,
+			InsertedAt: task.InsertedAt,
+			ExternalId: task.ExternalID,
+			Type:       sqlcv1.V1PayloadTypeTASKINPUT,
+			Payload:    task.Payload,
+			TenantId:   tenantId,
+		})
+	}
+
+	for _, dag := range dags {
+		storePayloadOpts = append(storePayloadOpts, StorePayloadOpts{
+			Id:         dag.ID,
+			InsertedAt: dag.InsertedAt,
+			ExternalId: dag.ExternalID,
+			Type:       sqlcv1.V1PayloadTypeDAGINPUT,
+			Payload:    dag.Input,
+			TenantId:   tenantId,
+		})
+	}
+
+	if coreEvents != nil {
+		createdEvents, err := r.queries.BulkCreateEvents(ctx, tx, coreEvents.params)
+
+		if err != nil {
+			return nil, nil, nil, nil, nil, nil, fmt.Errorf("failed to create core events: %w", err)
+		}
+
+		for _, e := range createdEvents {
+			payload, ok := coreEvents.externalIdsToPayloads[e.ExternalID]
+
+			if !ok {
+				continue
+			}
+
+			storePayloadOpts = append(storePayloadOpts, StorePayloadOpts{
+				Id:         e.ID,
+				InsertedAt: e.SeenAt,
+				ExternalId: e.ExternalID,
+				Type:       sqlcv1.V1PayloadTypeUSEREVENTINPUT,
+				Payload:    payload,
+				TenantId:   tenantId,
+			})
+		}
+	}
+
+	optTx.AddPostCommit(postTask)
+
+	return tasks, dags, idempotencyKeyCollisions, celEvaluationFailures, storePayloadOpts, operatorDagTuples, nil
+}
+
+func (r *sharedRepository) triggerWorkflows(
+	ctx context.Context,
+	existingTx *OptimisticTx,
+	tenantId uuid.UUID,
+	triggerCandidateTuples []triggerTuple,
+	coreEvents *createCoreUserEventOpts,
+) ([]*V1TaskWithPayload, []*DAGWithData, []IdempotencyCollision, []CELEvaluationFailure, error) {
+	tx := existingTx
+	ownsTx := false
+
+	if tx == nil {
+		var err error
+		tx, err = r.PrepareOptimisticTx(ctx)
+
+		if err != nil {
+			return nil, nil, nil, nil, err
+		}
+
+		defer tx.Rollback()
+		ownsTx = true
+	}
+
+	tasks, dags, idempotencyKeyCollisions, celEvaluationFailures, storePayloadOpts, operatorDagTuples, err := r.triggerWorkflowsCore(ctx, tx, tenantId, triggerCandidateTuples, coreEvents, ownsTx)
+
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+
+	if len(storePayloadOpts) > 0 {
+		if err := r.payloadStore.Store(ctx, tx.tx, storePayloadOpts...); err != nil {
+			return nil, nil, nil, nil, fmt.Errorf("failed to store payloads: %w", err)
+		}
+	}
+
+	dags = r.appendOperatorDAGs(tenantId, tasks, dags, operatorDagTuples)
+
+	// commit if we started the transaction
+	if ownsTx {
+		if err := tx.Commit(ctx); err != nil {
+			return nil, nil, nil, nil, err
+		}
+	}
+
+	return tasks, dags, idempotencyKeyCollisions, celEvaluationFailures, nil
+}
+
+type DAGWithData struct {
+	*sqlcv1.V1Dag
+
+	Input []byte
+
+	AdditionalMetadata []byte
+
+	ParentTaskExternalID *uuid.UUID
+
+	TotalTasks int
+
+	TaskExternalIDs     []uuid.UUID
+	TaskStepReadableIDs []string
+
+	// IsOperatorRun is true when this DAG has no core v1_dag row and represents an
+	// operator-managed run: the orchestrator task shares the DAG's external id, and the
+	// DAG exists only on the OLAP side.
+	IsOperatorRun bool `json:"is_operator_run,omitempty"`
+}
+
+type V1TaskWithPayload struct {
+	*sqlcv1.V1Task
+	Runtime *sqlcv1.V1TaskRuntime `json:"runtime,omitempty"`
+	Payload []byte                `json:"payload"`
+
+	// IsOperatorRun is true for an operator-managed run's children. The orchestrator itself is
+	// never written to OLAP as a task, so it is never flagged here.
+	IsOperatorRun bool `json:"is_operator_run,omitempty"`
+}
+
+type V1TaskEventWithPayload struct {
+	*sqlcv1.V1TaskEvent
+	Payload []byte `json:"payload"`
+}
+
+func (r *sharedRepository) createDAGs(ctx context.Context, tx sqlcv1.DBTX, tenantId uuid.UUID, opts []createDAGOpts) ([]*DAGWithData, error) {
+	if len(opts) == 0 {
+		return nil, nil
+	}
+
+	tenantIds := make([]uuid.UUID, 0, len(opts))
+	externalIds := make([]uuid.UUID, 0, len(opts))
+	displayNames := make([]string, 0, len(opts))
+	workflowIds := make([]uuid.UUID, 0, len(opts))
+	workflowVersionIds := make([]uuid.UUID, 0, len(opts))
+	parentTaskExternalIds := make([]uuid.UUID, 0, len(opts))
+	dagIdToOpt := make(map[uuid.UUID]createDAGOpts, 0)
+	desiredWorkerLabels := make([][]byte, 0, len(opts))
+	idempotencyKeys := make([]string, 0, len(opts))
+
+	unix := time.Now().UnixMilli()
+
+	for _, opt := range opts {
+		tenantIds = append(tenantIds, tenantId)
+		externalIds = append(externalIds, opt.ExternalId)
+		displayNames = append(displayNames, fmt.Sprintf("%s-%d", opt.WorkflowName, unix))
+		workflowIds = append(workflowIds, opt.WorkflowId)
+		workflowVersionIds = append(workflowVersionIds, opt.WorkflowVersionId)
+
+		if opt.ParentTaskExternalID == nil {
+			parentTaskExternalIds = append(parentTaskExternalIds, uuid.UUID{})
+		} else {
+			parentTaskExternalIds = append(parentTaskExternalIds, *opt.ParentTaskExternalID)
+		}
+
+		if opt.IdempotencyKey == nil {
+			idempotencyKeys = append(idempotencyKeys, "")
+		} else {
+			idempotencyKeys = append(idempotencyKeys, *opt.IdempotencyKey)
+		}
+
+		var desiredWorkerLabelsBytes []byte
+		var err error
+
+		if len(opt.DesiredWorkerLabels) > 0 {
+			desiredWorkerLabelsBytes, err = json.Marshal(opt.DesiredWorkerLabels)
+			if err != nil {
+				return nil, fmt.Errorf("could not marshal desired worker labels: %w", err)
+			}
+		}
+
+		desiredWorkerLabels = append(desiredWorkerLabels, desiredWorkerLabelsBytes)
+
+		dagIdToOpt[opt.ExternalId] = opt
+	}
+
+	createdDAGs, err := r.queries.CreateDAGs(ctx, tx, sqlcv1.CreateDAGsParams{
+		Tenantids:             tenantIds,
+		Externalids:           externalIds,
+		Displaynames:          displayNames,
+		Workflowids:           workflowIds,
+		Workflowversionids:    workflowVersionIds,
+		Parenttaskexternalids: parentTaskExternalIds,
+		Desiredworkerlabels:   desiredWorkerLabels,
+		Idempotencykeys:       idempotencyKeys,
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	dagDataParams := make([]sqlcv1.CreateDAGDataParams, 0, len(createdDAGs))
+	res := make([]*DAGWithData, 0, len(createdDAGs))
+
+	for _, dag := range createdDAGs {
+		externalId := dag.ExternalID
+		opt, ok := dagIdToOpt[externalId]
+
+		if !ok {
+			r.l.Error().Msgf("could not find DAG opt for DAG with external id: %s", externalId)
+			continue
+		}
+
+		input := opt.Input
+
+		if len(input) == 0 {
+			input = []byte("{}")
+		}
+
+		additionalMeta := opt.AdditionalMetadata
+
+		if len(additionalMeta) == 0 {
+			additionalMeta = []byte("{}")
+		}
+
+		dagDataParams = append(dagDataParams, sqlcv1.CreateDAGDataParams{
+			DagID:              dag.ID,
+			DagInsertedAt:      dag.InsertedAt,
+			Input:              []byte("{}"),
+			AdditionalMetadata: additionalMeta,
+		})
+
+		res = append(res, &DAGWithData{
+			V1Dag:                dag,
+			Input:                input,
+			AdditionalMetadata:   additionalMeta,
+			ParentTaskExternalID: opt.ParentTaskExternalID,
+			TotalTasks:           len(opt.TaskIds),
+			TaskExternalIDs:      opt.TaskIds,
+			TaskStepReadableIDs:  opt.TaskStepReadableIds,
+		})
+	}
+
+	_, err = r.queries.CreateDAGData(ctx, tx, dagDataParams)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return res, nil
+}
+
+func (r *sharedRepository) registerChildWorkflows(
+	ctx context.Context,
+	tx sqlcv1.DBTX,
+	tenantId uuid.UUID,
+	tuples []triggerTuple,
+	stepsToExternalIds []map[uuid.UUID]uuid.UUID,
+	workflowVersionToSteps map[uuid.UUID][]*sqlcv1.ListStepsByWorkflowVersionIdsRow,
+) (tuplesToSkip map[uuid.UUID]struct{}, err error) {
+	potentialMatchKeys := make([]string, 0, len(tuples))
+	potentialMatchTaskIds := make([]int64, 0, len(tuples))
+	potentialMatchTaskInsertedAts := make([]pgtype.Timestamptz, 0, len(tuples))
+	externalIdsToKeys := make(map[uuid.UUID]string)
+
+	for i, tuple := range tuples {
+		if tuple.parentTaskId == nil {
+			continue
+		}
+
+		if tuple.parentExternalId == nil {
+			r.l.Error().Msg("could not find parent external id")
+			continue
+		}
+
+		if tuple.parentTaskInsertedAt == nil {
+			r.l.Error().Msg("could not find parent task inserted at")
+			continue
+		}
+
+		if tuple.childIndex == nil {
+			r.l.Error().Msg("could not find child index for child workflow")
+			continue
+		}
+
+		steps, ok := workflowVersionToSteps[tuple.workflowVersionId]
+
+		if !ok {
+			// TODO: properly handle this error
+			r.l.Error().Msgf("could not find steps for workflow version id: %s", tuple.workflowVersionId)
+			continue
+		}
+
+		if len(steps) == 0 {
+			// TODO: properly handle this error
+			r.l.Error().Msgf("no steps found for workflow version id: %s", tuple.workflowVersionId)
+			continue
+		}
+
+		for stepIndex, step := range orderSteps(steps) {
+			stepId := step.ID
+			stepExternalId := stepsToExternalIds[i][stepId]
+
+			k := getChildSignalEventKey(*tuple.parentExternalId, int64(stepIndex), *tuple.childIndex, tuple.childKey)
+
+			potentialMatchKeys = append(potentialMatchKeys, k)
+			potentialMatchTaskIds = append(potentialMatchTaskIds, *tuple.parentTaskId)
+			potentialMatchTaskInsertedAts = append(potentialMatchTaskInsertedAts, sqlchelpers.TimestamptzFromTime(*tuple.parentTaskInsertedAt))
+			externalIdsToKeys[stepExternalId] = k
+		}
+	}
+
+	// if we have no potential matches, return early
+	if len(potentialMatchKeys) == 0 {
+		return nil, nil
+	}
+
+	matchingEvents, err := r.queries.LockSignalCreatedEvents(
+		ctx,
+		tx,
+		sqlcv1.LockSignalCreatedEventsParams{
+			Tenantid:        tenantId,
+			Taskids:         potentialMatchTaskIds,
+			Taskinsertedats: potentialMatchTaskInsertedAts,
+			Eventkeys:       potentialMatchKeys,
+		},
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	// only need to hit the payload store for events created before the child_external_id column existed
+	retrievePayloadOpts := make([]RetrievePayloadOpts, 0, len(matchingEvents))
+
+	for _, event := range matchingEvents {
+		if event.ChildExternalID != nil {
+			continue
+		}
+
+		retrievePayloadOpts = append(retrievePayloadOpts, RetrievePayloadOpts{
+			Id:         event.ID,
+			InsertedAt: event.InsertedAt,
+			Type:       sqlcv1.V1PayloadTypeTASKEVENTDATA,
+			TenantId:   tenantId,
+			ExternalId: event.ExternalID,
+		})
+	}
+
+	var payloads map[RetrievePayloadOpts][]byte
+
+	if len(retrievePayloadOpts) > 0 {
+		payloads, err = r.payloadStore.Retrieve(ctx, tx, retrievePayloadOpts...)
+
+		if err != nil {
+			return nil, fmt.Errorf("failed to retrieve payloads for signal created events: %w", err)
+		}
+	}
+
+	// parse the event match data, and determine whether the child external ID has already been written
+	// we're safe to do this read since we've acquired a lock on the relevant rows
+	rootExternalIdsToLookup := make([]uuid.UUID, 0, len(matchingEvents))
+
+	for _, event := range matchingEvents {
+		var childExternalId uuid.UUID
+
+		if event.ChildExternalID != nil {
+			childExternalId = *event.ChildExternalID
+		} else {
+			payload, ok := payloads[RetrievePayloadOpts{
+				Id:         event.ID,
+				InsertedAt: event.InsertedAt,
+				Type:       sqlcv1.V1PayloadTypeTASKEVENTDATA,
+				TenantId:   tenantId,
+				ExternalId: event.ExternalID,
+			}]
+
+			if !ok {
+				payload = event.Data
+			}
+
+			c, err := newChildWorkflowSignalCreatedDataFromBytes(payload)
+
+			if err != nil {
+				r.l.Error().Msgf("failed to unmarshal child workflow signal created data: %s", err)
+				continue
+			}
+
+			childExternalId = c.ChildExternalId
+		}
+
+		if childExternalId != uuid.Nil {
+			rootExternalIdsToLookup = append(rootExternalIdsToLookup, childExternalId)
+		}
+	}
+
+	// get the child external IDs that have already been written
+	existingExternalIds, err := r.queries.LookupExternalIds(ctx, tx, sqlcv1.LookupExternalIdsParams{
+		Tenantid:    tenantId,
+		Externalids: rootExternalIdsToLookup,
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	tuplesToSkip = make(map[uuid.UUID]struct{})
+
+	for _, dbExternalId := range existingExternalIds {
+		tuplesToSkip[dbExternalId.ExternalID] = struct{}{}
+	}
+
+	createMatchOpts := make([]CreateMatchOpts, 0)
+	tuplesToSkip = make(map[uuid.UUID]struct{})
+
+	for i, tuple := range tuples {
+		if _, ok := tuplesToSkip[tuple.externalId]; ok {
+			continue
+		}
+
+		// if this is a child workflow run, create a match condition for the parent for each
+		// step in the DAG
+		if tuple.parentTaskId != nil && tuple.parentExternalId != nil {
+			steps, ok := workflowVersionToSteps[tuple.workflowVersionId]
+
+			if !ok {
+				// TODO: properly handle this error
+				r.l.Error().Msgf("could not find steps for workflow version id: %s", tuple.workflowVersionId)
+				continue
+			}
+
+			if len(steps) == 0 {
+				// TODO: properly handle this error
+				r.l.Error().Msgf("no steps found for workflow version id: %s", tuple.workflowVersionId)
+				continue
+			}
+
+			for _, step := range orderSteps(steps) {
+				stepId := step.ID
+				stepReadableId := step.ReadableId.String
+				stepExternalId := stepsToExternalIds[i][stepId]
+
+				key := externalIdsToKeys[stepExternalId]
+
+				createMatchOpts = append(createMatchOpts, CreateMatchOpts{
+					Kind:                 sqlcv1.V1MatchKindSIGNAL,
+					Conditions:           getChildWorkflowGroupMatches(stepExternalId, stepReadableId),
+					SignalExternalId:     tuple.parentExternalId,
+					SignalTaskId:         tuple.parentTaskId,
+					SignalTaskExternalId: tuple.parentExternalId,
+					SignalTaskInsertedAt: sqlchelpers.TimestamptzFromTime(*tuple.parentTaskInsertedAt),
+					SignalKey:            &key,
+				})
+			}
+		}
+	}
+
+	// create the relevant matches
+	err = r.createEventMatches(ctx, tx, tenantId, createMatchOpts)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return tuplesToSkip, nil
+}
+
+// getParentInDAGGroupMatch encodes the following default behavior:
+// - If all parents complete, the child task is created
+// - If all parents are skipped, the child task is skipped
+// - If parents are both created and skipped, the child is created
+// - If any parent is cancelled, the child is cancelled
+// - If any parent fails, the child is cancelled
+//
+// Users can override this behavior by setting their own skip and creation conditions.
+func getParentInDAGGroupMatch(
+	cancelGroupId, parentExternalId uuid.UUID, parentReadableId string,
+	parentOverrideMatches []*sqlcv1.V1StepMatchCondition,
+	hasUserEventOrSleepMatches, hasAnySkippingParentOverrides bool,
+) []GroupMatchCondition {
+	completeAction := sqlcv1.V1MatchConditionActionQUEUE
+
+	if hasUserEventOrSleepMatches {
+		completeAction = sqlcv1.V1MatchConditionActionCREATEMATCH
+	}
+
+	actionsToOverrides := make(map[sqlcv1.V1MatchConditionAction][]*sqlcv1.V1StepMatchCondition)
+
+	for _, match := range parentOverrideMatches {
+		actionsToOverrides[match.Action] = append(actionsToOverrides[match.Action], match)
+	}
+
+	res := []GroupMatchCondition{}
+
+	if len(actionsToOverrides[sqlcv1.V1MatchConditionActionQUEUE]) > 0 {
+		for _, override := range actionsToOverrides[sqlcv1.V1MatchConditionActionQUEUE] {
+			hint := parentExternalId.String()
+			res = append(res, GroupMatchCondition{
+				GroupId:           override.OrGroupID,
+				EventType:         sqlcv1.V1EventTypeINTERNAL,
+				EventKey:          string(sqlcv1.V1TaskEventTypeCOMPLETED),
+				ReadableDataKey:   parentReadableId,
+				EventResourceHint: &hint,
+				Expression:        override.Expression.String,
+				Action:            completeAction,
+			})
+		}
+	} else {
+		hint := parentExternalId.String()
+		res = append(res, GroupMatchCondition{
+			GroupId:           uuid.New(),
+			EventType:         sqlcv1.V1EventTypeINTERNAL,
+			EventKey:          string(sqlcv1.V1TaskEventTypeCOMPLETED),
+			ReadableDataKey:   parentReadableId,
+			EventResourceHint: &hint,
+			// NOTE: complete match on skip takes precedence over queue, so we might meet all QUEUE conditions with a skipped
+			// parent but end up skipping anyway
+			Expression: "true",
+			Action:     completeAction,
+		})
+	}
+
+	if len(actionsToOverrides[sqlcv1.V1MatchConditionActionSKIP]) > 0 {
+		hint := parentExternalId.String()
+		for _, override := range actionsToOverrides[sqlcv1.V1MatchConditionActionSKIP] {
+			res = append(res, GroupMatchCondition{
+				GroupId:           override.OrGroupID,
+				EventType:         sqlcv1.V1EventTypeINTERNAL,
+				EventKey:          string(sqlcv1.V1TaskEventTypeCOMPLETED),
+				ReadableDataKey:   parentReadableId,
+				EventResourceHint: &hint,
+				Expression:        override.Expression.String,
+				Action:            sqlcv1.V1MatchConditionActionSKIP,
+			})
+		}
+	} else if !hasAnySkippingParentOverrides {
+		hint := parentExternalId.String()
+		res = append(res, GroupMatchCondition{
+			GroupId:           uuid.New(),
+			EventType:         sqlcv1.V1EventTypeINTERNAL,
+			EventKey:          string(sqlcv1.V1TaskEventTypeCOMPLETED),
+			ReadableDataKey:   parentReadableId,
+			EventResourceHint: &hint,
+			Expression:        "has(output.skipped) && output.skipped",
+			Action:            sqlcv1.V1MatchConditionActionSKIP,
+		})
+	}
+
+	if len(actionsToOverrides[sqlcv1.V1MatchConditionActionCANCEL]) > 0 {
+		for _, override := range actionsToOverrides[sqlcv1.V1MatchConditionActionCANCEL] {
+			hint := parentExternalId.String()
+			res = append(res,
+				GroupMatchCondition{
+					GroupId:   override.OrGroupID,
+					EventType: sqlcv1.V1EventTypeINTERNAL,
+					// The custom cancel condition matches on the completed event
+					EventKey:          string(sqlcv1.V1TaskEventTypeCOMPLETED),
+					ReadableDataKey:   parentReadableId,
+					EventResourceHint: &hint,
+					Expression:        override.Expression.String,
+					Action:            sqlcv1.V1MatchConditionActionCANCEL,
+				},
+				// always add the original cancel group match conditions. these can't be modified otherwise DAGs risk
+				// getting stuck in a concurrency queue.
+				GroupMatchCondition{
+					GroupId:           override.OrGroupID,
+					EventType:         sqlcv1.V1EventTypeINTERNAL,
+					EventKey:          string(sqlcv1.V1TaskEventTypeFAILED),
+					ReadableDataKey:   parentReadableId,
+					EventResourceHint: &hint,
+					Expression:        "true",
+					Action:            sqlcv1.V1MatchConditionActionCANCEL,
+				}, GroupMatchCondition{
+					GroupId:           override.OrGroupID,
+					EventType:         sqlcv1.V1EventTypeINTERNAL,
+					EventKey:          string(sqlcv1.V1TaskEventTypeCANCELLED),
+					ReadableDataKey:   parentReadableId,
+					EventResourceHint: &hint,
+					Expression:        "true",
+					Action:            sqlcv1.V1MatchConditionActionCANCEL,
+				})
+		}
+	} else {
+		hint := parentExternalId.String()
+		res = append(res, GroupMatchCondition{
+			GroupId:           cancelGroupId,
+			EventType:         sqlcv1.V1EventTypeINTERNAL,
+			EventKey:          string(sqlcv1.V1TaskEventTypeFAILED),
+			ReadableDataKey:   parentReadableId,
+			EventResourceHint: &hint,
+			Expression:        "true",
+			Action:            sqlcv1.V1MatchConditionActionCANCEL,
+		}, GroupMatchCondition{
+			GroupId:           cancelGroupId,
+			EventType:         sqlcv1.V1EventTypeINTERNAL,
+			EventKey:          string(sqlcv1.V1TaskEventTypeCANCELLED),
+			ReadableDataKey:   parentReadableId,
+			EventResourceHint: &hint,
+			Expression:        "true",
+			Action:            sqlcv1.V1MatchConditionActionCANCEL,
+		})
+	}
+
+	return res
+}
+
+func getChildWorkflowGroupMatches(taskExternalId uuid.UUID, stepReadableId string) []GroupMatchCondition {
+	groupId := uuid.New()
+	hint := taskExternalId.String()
+	return []GroupMatchCondition{
+		{
+			GroupId:           groupId,
+			EventType:         sqlcv1.V1EventTypeINTERNAL,
+			EventKey:          string(sqlcv1.V1TaskEventTypeCOMPLETED),
+			ReadableDataKey:   stepReadableId,
+			EventResourceHint: &hint,
+			Expression:        "true",
+			Action:            sqlcv1.V1MatchConditionActionCREATE,
+		},
+		{
+			GroupId:           groupId,
+			EventType:         sqlcv1.V1EventTypeINTERNAL,
+			EventKey:          string(sqlcv1.V1TaskEventTypeFAILED),
+			ReadableDataKey:   stepReadableId,
+			EventResourceHint: &hint,
+			Expression:        "true",
+			Action:            sqlcv1.V1MatchConditionActionCREATE,
+		},
+		{
+			GroupId:           groupId,
+			EventType:         sqlcv1.V1EventTypeINTERNAL,
+			EventKey:          string(sqlcv1.V1TaskEventTypeCANCELLED),
+			ReadableDataKey:   stepReadableId,
+			EventResourceHint: &hint,
+			Expression:        "true",
+			Action:            sqlcv1.V1MatchConditionActionCREATE,
+		},
+	}
+}
+
+func getParentOnFailureGroupMatches(createGroupId, parentExternalId uuid.UUID, parentReadableId string) []GroupMatchCondition {
+	cancelGroupId := uuid.New()
+	hint := parentExternalId.String()
+	return []GroupMatchCondition{
+		{
+			GroupId:           createGroupId,
+			EventType:         sqlcv1.V1EventTypeINTERNAL,
+			EventKey:          string(sqlcv1.V1TaskEventTypeFAILED),
+			ReadableDataKey:   parentReadableId,
+			EventResourceHint: &hint,
+			Expression:        "true",
+			Action:            sqlcv1.V1MatchConditionActionQUEUE,
+		},
+		{
+			GroupId:           cancelGroupId,
+			EventType:         sqlcv1.V1EventTypeINTERNAL,
+			EventKey:          string(sqlcv1.V1TaskEventTypeCOMPLETED),
+			ReadableDataKey:   parentReadableId,
+			EventResourceHint: &hint,
+			Expression:        "true",
+			Action:            sqlcv1.V1MatchConditionActionSKIP,
+		},
+		{
+			GroupId:           cancelGroupId,
+			EventType:         sqlcv1.V1EventTypeINTERNAL,
+			EventKey:          string(sqlcv1.V1TaskEventTypeCANCELLED),
+			ReadableDataKey:   parentReadableId,
+			EventResourceHint: &hint,
+			Expression:        "true",
+			Action:            sqlcv1.V1MatchConditionActionSKIP,
+		},
+	}
+}
+
+func filterStepsByActionId(steps []*sqlcv1.ListStepsByWorkflowVersionIdsRow, actionId string) []*sqlcv1.ListStepsByWorkflowVersionIdsRow {
+	for _, s := range steps {
+		if s.ActionId == actionId {
+			return []*sqlcv1.ListStepsByWorkflowVersionIdsRow{s}
+		}
+	}
+	return nil
+}
+
+func regularUserSteps(steps []*sqlcv1.ListStepsByWorkflowVersionIdsRow) []*sqlcv1.ListStepsByWorkflowVersionIdsRow {
+	out := make([]*sqlcv1.ListStepsByWorkflowVersionIdsRow, 0, len(steps))
+	for _, s := range steps {
+		if !s.IsDagOrchestrator {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+func orderSteps(steps []*sqlcv1.ListStepsByWorkflowVersionIdsRow) []*sqlcv1.ListStepsByWorkflowVersionIdsRow {
+	slices.SortStableFunc(steps, func(i, j *sqlcv1.ListStepsByWorkflowVersionIdsRow) int {
+		idA := i.ID.String()
+		idB := j.ID.String()
+		return strings.Compare(idA, idB)
+	})
+
+	return steps
+}
+
+func (r *sharedRepository) processWorkflowExpression(ctx context.Context, expression string, opt EventTriggerOpts, filterPayload []byte) (bool, error) {
+	var inputData map[string]interface{}
+	if opt.Data != nil {
+		err := json.Unmarshal(opt.Data, &inputData)
+		if err != nil {
+			return false, fmt.Errorf("failed to unmarshal input data: %w", err)
+		}
+	} else {
+		inputData = make(map[string]interface{})
+	}
+
+	var additionalMetadata map[string]interface{}
+	if opt.AdditionalMetadata != nil {
+		err := json.Unmarshal(opt.AdditionalMetadata, &additionalMetadata)
+		if err != nil {
+			return false, fmt.Errorf("failed to unmarshal additional metadata: %w", err)
+		}
+	} else {
+		additionalMetadata = make(map[string]interface{})
+	}
+
+	payload := make(map[string]interface{})
+	if filterPayload != nil {
+		err := json.Unmarshal(filterPayload, &payload)
+
+		if err != nil {
+			return false, fmt.Errorf("failed to unmarshal filter payload: %w", err)
+		}
+	}
+
+	match, err := r.celParser.EvaluateEventExpression(
+		expression,
+		cel.NewInput(
+			cel.WithInput(inputData),
+			cel.WithAdditionalMetadata(additionalMetadata),
+			cel.WithPayload(payload),
+			cel.WithEventID(opt.ExternalId),
+			cel.WithEventKey(opt.Key),
+		),
+	)
+
+	if err != nil {
+		r.l.Warn().
+			Err(err).
+			Str("expression", expression).
+			Msg("Failed to evaluate event expression")
+
+		return false, err
+	}
+
+	return match, nil
+}
+
+func (r *sharedRepository) listWorkflowsByNames(ctx context.Context, tx sqlcv1.DBTX, tenantId uuid.UUID, names []string) ([]*sqlcv1.ListWorkflowsByNamesRow, error) {
+	// lookup names in the cache
+	workflowNamesToLookup := make([]string, 0)
+	res := make([]*sqlcv1.ListWorkflowsByNamesRow, 0, len(names))
+
+	for _, name := range names {
+		k := fmt.Sprintf("%s:%s", tenantId, name)
+		if value, ok := r.tenantIdWorkflowNameCache.Get(k); ok {
+			res = append(res, value)
+			continue
+		}
+
+		workflowNamesToLookup = append(workflowNamesToLookup, name)
+	}
+
+	if len(workflowNamesToLookup) > 0 {
+		// look up the workflow versions for the workflow names
+		workflowVersions, err := r.queries.ListWorkflowsByNames(ctx, tx, sqlcv1.ListWorkflowsByNamesParams{
+			Tenantid:      tenantId,
+			Workflownames: workflowNamesToLookup,
+		})
+
+		if err != nil {
+			return nil, fmt.Errorf("failed to list workflows by names: %w", err)
+		}
+
+		for _, workflowVersion := range workflowVersions {
+			// store in the cache
+			k := fmt.Sprintf("%s:%s", tenantId, workflowVersion.WorkflowName)
+
+			r.tenantIdWorkflowNameCache.Add(k, workflowVersion)
+
+			res = append(res, workflowVersion)
+		}
+	}
+
+	return res, nil
+}
+
+func (r *sharedRepository) listStepsByWorkflowVersionIds(ctx context.Context, tx sqlcv1.DBTX, tenantId uuid.UUID, workflowVersionIds []uuid.UUID) (map[uuid.UUID][]*sqlcv1.ListStepsByWorkflowVersionIdsRow, error) {
+	if len(workflowVersionIds) == 0 {
+		return make(map[uuid.UUID][]*sqlcv1.ListStepsByWorkflowVersionIdsRow), nil
+	}
+
+	workflowVersionsToLookup := make([]uuid.UUID, 0, len(workflowVersionIds))
+	res := make(map[uuid.UUID][]*sqlcv1.ListStepsByWorkflowVersionIdsRow)
+
+	for _, id := range workflowVersionIds {
+		if steps, found := r.stepsInWorkflowVersionCache.Get(id); found {
+			res[id] = steps
+			continue
+		}
+
+		workflowVersionsToLookup = append(workflowVersionsToLookup, id)
+	}
+
+	if len(workflowVersionsToLookup) > 0 {
+		steps, err := r.queries.ListStepsByWorkflowVersionIds(ctx, tx, sqlcv1.ListStepsByWorkflowVersionIdsParams{
+			Tenantid: tenantId,
+			Ids:      workflowVersionsToLookup,
+		})
+
+		if err != nil {
+			return nil, fmt.Errorf("failed to list steps by workflow version ids: %w", err)
+		}
+
+		for _, step := range steps {
+			k := step.WorkflowVersionId
+			res[k] = append(res[k], step)
+		}
+
+		// update the cache with all entries we looked up
+		for _, id := range workflowVersionsToLookup {
+			k := id
+
+			if steps, ok := res[k]; ok {
+				r.stepsInWorkflowVersionCache.Add(k, steps)
+			}
+		}
+	}
+
+	return res, nil
+}
+
+func (r *sharedRepository) listStepMatchConditions(ctx context.Context, tx sqlcv1.DBTX, tenantId uuid.UUID, stepIds []uuid.UUID) ([]*sqlcv1.V1StepMatchCondition, error) {
+	if len(stepIds) == 0 {
+		return nil, nil
+	}
+
+	stepsToLookup := make([]uuid.UUID, 0, len(stepIds))
+	res := make([]*sqlcv1.V1StepMatchCondition, 0, len(stepIds))
+
+	for _, id := range stepIds {
+		if conditions, found := r.stepIdMatchConditionsCache.Get(id); found {
+			res = append(res, conditions...)
+			continue
+		}
+
+		stepsToLookup = append(stepsToLookup, id)
+	}
+
+	if len(stepsToLookup) > 0 {
+		conditions, err := r.queries.ListStepMatchConditions(ctx, tx, sqlcv1.ListStepMatchConditionsParams{
+			Stepids:  stepsToLookup,
+			Tenantid: tenantId,
+		})
+
+		if err != nil {
+			return nil, fmt.Errorf("failed to list step match conditions: %w", err)
+		}
+
+		byStepId := make(map[uuid.UUID][]*sqlcv1.V1StepMatchCondition, len(stepsToLookup))
+
+		for _, condition := range conditions {
+			byStepId[condition.StepID] = append(byStepId[condition.StepID], condition)
+		}
+
+		for _, id := range stepsToLookup {
+			r.stepIdMatchConditionsCache.Add(id, byStepId[id])
+		}
+
+		res = append(res, conditions...)
+	}
+
+	return res, nil
+}
+
+func (r *sharedRepository) prepareTriggerFromEvents(ctx context.Context, tx sqlcv1.DBTX, tenantId uuid.UUID, opts []EventTriggerOpts) (
+	[]triggerTuple,
+	*createCoreUserEventOpts,
+	map[uuid.UUID]EventExternalIdFilterId,
+	[]CELEvaluationFailure,
+	error,
+) {
+	eventKeysToOpts := make(map[string][]EventTriggerOpts)
+
+	var createCoreEventOpts *createCoreUserEventOpts
+
+	createCoreEventsTenantIds := []uuid.UUID{}
+	createCoreEventsExternalIds := []uuid.UUID{}
+	createCoreEventsSeenAts := []pgtype.Timestamptz{}
+	createCoreEventsKeys := []string{}
+	createCoreEventsAdditionalMetadatas := [][]byte{}
+	createCoreEventsScopes := []pgtype.Text{}
+	createCoreEventsTriggeringWebhookNames := []pgtype.Text{}
+
+	eventExternalIdsToPayloads := make(map[uuid.UUID][]byte)
+
+	eventKeys := make([]string, 0, len(opts))
+	uniqueEventKeys := make(map[string]struct{})
+
+	for _, opt := range opts {
+		createCoreEventsTenantIds = append(createCoreEventsTenantIds, tenantId)
+		createCoreEventsExternalIds = append(createCoreEventsExternalIds, opt.ExternalId)
+		createCoreEventsSeenAts = append(createCoreEventsSeenAts, sqlchelpers.TimestamptzFromTime(opt.SeenAt))
+		createCoreEventsKeys = append(createCoreEventsKeys, opt.Key)
+		eventExternalIdsToPayloads[opt.ExternalId] = opt.Data
+		createCoreEventsAdditionalMetadatas = append(createCoreEventsAdditionalMetadatas, opt.AdditionalMetadata)
+		createCoreEventsScopes = append(createCoreEventsScopes, sqlchelpers.TextFromMaybeStr(opt.Scope))
+		createCoreEventsTriggeringWebhookNames = append(createCoreEventsTriggeringWebhookNames, sqlchelpers.TextFromMaybeStr(opt.TriggeringWebhookName))
+
+		eventKeysToOpts[opt.Key] = append(eventKeysToOpts[opt.Key], opt)
+
+		if _, ok := uniqueEventKeys[opt.Key]; ok {
+			continue
+		}
+
+		uniqueEventKeys[opt.Key] = struct{}{}
+		eventKeys = append(eventKeys, opt.Key)
+	}
+
+	workflowVersionIdsAndEventKeys, err := r.queries.ListWorkflowsForEvents(ctx, tx, sqlcv1.ListWorkflowsForEventsParams{
+		Eventkeys: eventKeys,
+		Tenantid:  tenantId,
+	})
+
+	if err != nil {
+		return nil, nil, nil, nil, fmt.Errorf("failed to list workflows for events: %w", err)
+	}
+
+	externalIdToEventIdAndFilterId := make(map[uuid.UUID]EventExternalIdFilterId)
+
+	workflowIdScopePairs := make(map[WorkflowAndScope]bool)
+
+	// important: need to include all workflow ids here, regardless of whether or
+	// not the corresponding event was pushed with a scope, so we can correctly
+	// tell if there are any filters for the workflows with these events registered
+	workflowIdsForFilterCounts := make([]uuid.UUID, 0, len(workflowVersionIdsAndEventKeys))
+
+	for _, workflow := range workflowVersionIdsAndEventKeys {
+		opts, ok := eventKeysToOpts[workflow.IncomingEventKey]
+
+		if !ok {
+			continue
+		}
+
+		workflowIdsForFilterCounts = append(workflowIdsForFilterCounts, workflow.WorkflowId)
+
+		for _, opt := range opts {
+			if opt.Scope == nil {
+				continue
+			}
+
+			workflowIdScopePairs[WorkflowAndScope{
+				WorkflowId: workflow.WorkflowId,
+				Scope:      *opt.Scope,
+			}] = true
+		}
+	}
+
+	workflowIds := make([]uuid.UUID, 0, len(workflowIdScopePairs))
+	scopes := make([]string, 0, len(workflowIdScopePairs))
+
+	for pair := range workflowIdScopePairs {
+		workflowIds = append(workflowIds, pair.WorkflowId)
+		scopes = append(scopes, pair.Scope)
+	}
+
+	filters, err := r.queries.ListFiltersForEventTriggers(ctx, tx, sqlcv1.ListFiltersForEventTriggersParams{
+		Tenantid:    tenantId,
+		Workflowids: workflowIds,
+		Scopes:      scopes,
+	})
+
+	if err != nil {
+		return nil, nil, nil, nil, fmt.Errorf("failed to list filters: %w", err)
+	}
+
+	workflowIdAndScopeToFilters := make(map[WorkflowAndScope][]*sqlcv1.V1Filter)
+
+	for _, filter := range filters {
+		key := WorkflowAndScope{
+			WorkflowId: filter.WorkflowID,
+			Scope:      filter.Scope,
+		}
+
+		workflowIdAndScopeToFilters[key] = append(workflowIdAndScopeToFilters[key], filter)
+	}
+
+	filterCounts, err := r.queries.ListFilterCountsForWorkflows(ctx, tx, sqlcv1.ListFilterCountsForWorkflowsParams{
+		Tenantid:    tenantId,
+		Workflowids: workflowIdsForFilterCounts,
+	})
+
+	if err != nil {
+		return nil, nil, nil, nil, fmt.Errorf("failed to list filter counts: %w", err)
+	}
+
+	workflowIdToCount := make(map[uuid.UUID]int64)
+
+	for _, count := range filterCounts {
+		workflowIdToCount[count.WorkflowID] = count.Count
+	}
+
+	// each (workflowVersionId, eventKey, opt) is a separate workflow that we need to create
+	triggerOpts := make([]triggerTuple, 0)
+	celEvaluationFailures := make([]CELEvaluationFailure, 0)
+
+	for _, workflow := range workflowVersionIdsAndEventKeys {
+		opts, ok := eventKeysToOpts[workflow.IncomingEventKey]
+
+		if !ok {
+			continue
+		}
+
+		numFilters := workflowIdToCount[workflow.WorkflowId]
+
+		hasAnyFilters := numFilters > 0
+
+		for _, opt := range opts {
+			var filters = []*sqlcv1.V1Filter{}
+
+			if opt.Scope != nil {
+				key := WorkflowAndScope{
+					WorkflowId: workflow.WorkflowId,
+					Scope:      *opt.Scope,
+				}
+
+				filters = workflowIdAndScopeToFilters[key]
+			}
+
+			triggerDecisions, evalFailures := r.makeTriggerDecisions(ctx, filters, hasAnyFilters, opt)
+
+			celEvaluationFailures = append(celEvaluationFailures, evalFailures...)
+
+			for _, decision := range triggerDecisions {
+				if !decision.ShouldTrigger {
+					continue
+				}
+
+				triggerConverter := &TriggeredByEvent{
+					l:        r.l,
+					eventID:  opt.ExternalId,
+					eventKey: opt.Key,
+				}
+
+				additionalMetadata := triggerConverter.ToMetadata(opt.AdditionalMetadata)
+				externalId := uuid.New()
+
+				var idempotency *IdempotencyConfig
+
+				if workflow.IdempotencyKeyExpression.Valid && workflow.IdempotencyKeyTtlMs.Valid {
+					idempotency = &IdempotencyConfig{
+						Expression: workflow.IdempotencyKeyExpression.String,
+						TTLMs:      workflow.IdempotencyKeyTtlMs.Int64,
+					}
+				}
+
+				triggerOpts = append(triggerOpts, triggerTuple{
+					workflowVersionId:         workflow.WorkflowVersionId,
+					workflowId:                workflow.WorkflowId,
+					workflowName:              workflow.WorkflowName,
+					isPaused:                  workflow.WorkflowIsPaused.Bool,
+					externalId:                externalId,
+					input:                     opt.Data,
+					additionalMetadata:        additionalMetadata,
+					priority:                  opt.Priority,
+					filterPayload:             decision.FilterPayload,
+					triggeringEventExternalId: &opt.ExternalId,
+					triggeringEventKey:        &opt.Key,
+					idempotency:               idempotency,
+				})
+
+				externalIdToEventIdAndFilterId[externalId] = EventExternalIdFilterId{
+					ExternalId: opt.ExternalId,
+					FilterId:   decision.FilterId,
+				}
+			}
+		}
+	}
+
+	createCoreEventOpts = &createCoreUserEventOpts{
+		params: sqlcv1.BulkCreateEventsParams{
+			Tenantids:              createCoreEventsTenantIds,
+			Externalids:            createCoreEventsExternalIds,
+			Seenats:                createCoreEventsSeenAts,
+			Keys:                   createCoreEventsKeys,
+			Additionalmetadatas:    createCoreEventsAdditionalMetadatas,
+			Scopes:                 createCoreEventsScopes,
+			TriggeringWebhookNames: createCoreEventsTriggeringWebhookNames,
+		},
+		externalIdToEventIdAndFilterId: externalIdToEventIdAndFilterId,
+		externalIdsToPayloads:          eventExternalIdsToPayloads,
+	}
+
+	return triggerOpts, createCoreEventOpts, externalIdToEventIdAndFilterId, celEvaluationFailures, nil
+}
+
+func (r *sharedRepository) prepareTriggerFromWorkflowNames(ctx context.Context, tx sqlcv1.DBTX, tenantId uuid.UUID, opts []*WorkflowNameTriggerOpts) (
+	[]triggerTuple,
+	error,
+) {
+	// each (workflowVersionId, opt) is a separate workflow that we need to create
+	triggerOpts := make([]triggerTuple, 0, len(opts))
+
+	workflowNames := make([]string, 0, len(opts))
+	uniqueNames := make(map[string]struct{})
+	namesToOpts := make(map[string][]*WorkflowNameTriggerOpts)
+
+	workflowVersionIds := make([]uuid.UUID, 0, len(opts))
+	for _, opt := range opts {
+		if opt.WorkflowVersionId != nil {
+			workflowVersionIds = append(workflowVersionIds, *opt.WorkflowVersionId)
+		}
+	}
+
+	workflowVersionIdToWorkflowVersion := make(map[uuid.UUID]*sqlcv1.WorkflowVersion)
+
+	if len(workflowVersionIds) > 0 {
+		pinnedWorkflowVersions, err := r.queries.ListWorkflowVersionsByIds(ctx, tx, workflowVersionIds)
+
+		if err != nil {
+			return nil, fmt.Errorf("failed to list pinned workflow versions: %w", err)
+		}
+
+		for _, pinned := range pinnedWorkflowVersions {
+			workflowVersionIdToWorkflowVersion[pinned.ID] = pinned
+		}
+	}
+
+	for _, opt := range opts {
+		// Pinned-version opts (DAG operator) bypass the by-name/latest-version lookup below.
+		if opt.WorkflowVersionId != nil {
+			pinned, ok := workflowVersionIdToWorkflowVersion[*opt.WorkflowVersionId]
+
+			if !ok {
+				return nil, fmt.Errorf("failed to get pinned workflow version %s", *opt.WorkflowVersionId)
+			}
+
+			var idempotency *IdempotencyConfig
+			if pinned.IdempotencyKeyExpression.Valid && pinned.IdempotencyKeyTtlMs.Valid {
+				idempotency = &IdempotencyConfig{
+					Expression: pinned.IdempotencyKeyExpression.String,
+					TTLMs:      pinned.IdempotencyKeyTtlMs.Int64,
+				}
+			}
+
+			triggerOpts = append(triggerOpts, triggerTuple{
+				workflowVersionId:    pinned.ID,
+				workflowId:           pinned.WorkflowId,
+				workflowName:         opt.WorkflowName,
+				externalId:           opt.ExternalId,
+				input:                opt.Data,
+				additionalMetadata:   opt.AdditionalMetadata,
+				desiredWorkerId:      opt.DesiredWorkerId,
+				parentExternalId:     opt.ParentExternalId,
+				parentTaskId:         opt.ParentTaskId,
+				parentTaskInsertedAt: opt.ParentTaskInsertedAt,
+				childIndex:           opt.ChildIndex,
+				childKey:             opt.ChildKey,
+				priority:             opt.Priority,
+				desiredWorkerLabels:  opt.DesiredWorkerLabels,
+				idempotency:          idempotency,
+				dagParentTaskRunIds:  opt.DagParentTaskRunIds,
+				targetActionId:       opt.TargetActionId,
+				isSkipped:            opt.IsSkipped,
+				isCancelled:          opt.IsCancelled,
+				workflowRunId:        opt.WorkflowRunId,
+				olapDagId:            opt.OlapDagId,
+				olapDagInsertedAt:    opt.OlapDagInsertedAt,
+			})
+
+			continue
+		}
+
+		namesToOpts[opt.WorkflowName] = append(namesToOpts[opt.WorkflowName], opt)
+
+		if _, ok := uniqueNames[opt.WorkflowName]; ok {
+			continue
+		}
+
+		uniqueNames[opt.WorkflowName] = struct{}{}
+		workflowNames = append(workflowNames, opt.WorkflowName)
+	}
+
+	workflowVersionsByNames, err := r.listWorkflowsByNames(ctx, tx, tenantId, workflowNames)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to list workflows for names: %w", err)
+	}
+
+	for _, workflowVersion := range workflowVersionsByNames {
+		opts, ok := namesToOpts[workflowVersion.WorkflowName]
+
+		if !ok {
+			continue
+		}
+
+		for _, opt := range opts {
+			var idempotency *IdempotencyConfig
+			if workflowVersion.IdempotencyKeyExpression.Valid && workflowVersion.IdempotencyKeyTtlMs.Valid {
+				idempotency = &IdempotencyConfig{
+					Expression: workflowVersion.IdempotencyKeyExpression.String,
+					TTLMs:      workflowVersion.IdempotencyKeyTtlMs.Int64,
+				}
+			}
+
+			triggerOpts = append(triggerOpts, triggerTuple{
+				workflowVersionId:    workflowVersion.WorkflowVersionId,
+				workflowId:           workflowVersion.WorkflowId,
+				workflowName:         workflowVersion.WorkflowName,
+				isPaused:             workflowVersion.WorkflowIsPaused.Bool,
+				externalId:           opt.ExternalId,
+				input:                opt.Data,
+				additionalMetadata:   opt.AdditionalMetadata,
+				desiredWorkerId:      opt.DesiredWorkerId,
+				parentExternalId:     opt.ParentExternalId,
+				parentTaskId:         opt.ParentTaskId,
+				parentTaskInsertedAt: opt.ParentTaskInsertedAt,
+				childIndex:           opt.ChildIndex,
+				childKey:             opt.ChildKey,
+				priority:             opt.Priority,
+				desiredWorkerLabels:  opt.DesiredWorkerLabels,
+				idempotency:          idempotency,
+				dagParentTaskRunIds:  opt.DagParentTaskRunIds,
+				targetActionId:       opt.TargetActionId,
+				isSkipped:            opt.IsSkipped,
+				isCancelled:          opt.IsCancelled,
+				workflowRunId:        opt.WorkflowRunId,
+				olapDagId:            opt.OlapDagId,
+				olapDagInsertedAt:    opt.OlapDagInsertedAt,
+			})
+		}
+	}
+
+	return triggerOpts, nil
+}
+
+type TriggerOptInvalidArgumentError struct {
+	Err error
+}
+
+func (r *TriggerOptInvalidArgumentError) Error() string {
+	return fmt.Sprintf("err %v", r.Err)
+}
+
+// operator DAG steps are standalone tasks under an orchestrator rather than rows in a v1_dag, so
+// they carry no dag_id and take their run id from the orchestrator
+func isOperatorDagStep(task *sqlcv1.FlattenExternalIdsRow) bool {
+	return !task.IsDagOrchestrator &&
+		!task.DagID.Valid &&
+		task.WorkflowRunID != task.ExternalID
+}
+
+func (r *sharedRepository) NewTriggerTaskData(
+	ctx context.Context,
+	tenantId uuid.UUID,
+	req *v1contracts.TriggerWorkflowRequest,
+	parentTask *sqlcv1.FlattenExternalIdsRow,
+) (*TriggerTaskData, error) {
+	_, span := telemetry.NewSpan(ctx, "sharedRepository.NewTriggerTaskData")
+	defer span.End()
+
+	span.SetAttributes(
+		attribute.String("sharedRepository.NewTriggerTaskData.workflow_name", req.Name),
+		attribute.Int("sharedRepository.NewTriggerTaskData.payload_size", len(req.Input)),
+		attribute.Bool("sharedRepository.NewTriggerTaskData.is_child_workflow", req.ParentTaskRunExternalId != nil),
+	)
+
+	additionalMeta := ""
+
+	if req.AdditionalMetadata != nil {
+		additionalMeta = *req.AdditionalMetadata
+	}
+
+	var desiredWorkerId *uuid.UUID
+	if req.DesiredWorkerId != nil {
+		if *req.DesiredWorkerId != "" {
+			workerId, err := uuid.Parse(*req.DesiredWorkerId)
+			if err != nil {
+				return nil, &TriggerOptInvalidArgumentError{
+					Err: fmt.Errorf("desiredWorkerId must be a valid UUID: %w", err),
+				}
+			}
+			desiredWorkerId = &workerId
+		}
+	}
+
+	t := &TriggerTaskData{
+		WorkflowName:       req.Name,
+		Data:               []byte(req.Input),
+		AdditionalMetadata: []byte(additionalMeta),
+		DesiredWorkerId:    desiredWorkerId,
+		Priority:           req.Priority,
+	}
+
+	if len(req.DesiredWorkerLabels) > 0 {
+		labels := make([]*sqlcv1.GetDesiredLabelsRow, 0, len(req.DesiredWorkerLabels))
+		for key, label := range req.DesiredWorkerLabels {
+			var comparator *string
+			if label.Comparator != nil {
+				c := label.Comparator.String()
+				comparator = &c
+			}
+			labels = append(labels, ProtoToDesiredWorkerLabel(
+				key,
+				label.StrValue,
+				label.IntValue,
+				label.Required,
+				label.Weight,
+				comparator,
+			))
+		}
+		t.DesiredWorkerLabels = labels
+	}
+
+	if req.Priority != nil {
+		if *req.Priority < 1 || *req.Priority > 3 {
+			return nil, &TriggerOptInvalidArgumentError{
+				Err: fmt.Errorf("priority must be between 1 and 3, got %d", *req.Priority),
+			}
+		}
+		t.Priority = req.Priority
+	}
+
+	if parentTask != nil {
+		// DAG steps keep ExternalID, so children attach to the step that spawned them and each
+		// step spawns into its own dedupe namespace, and so OLAP consumers can resolve parent
+		// refs against v1_tasks_olap.external_id. Durable and orchestrator parents use
+		// WorkflowRunID instead so their children are queryable by the run.
+		parentExternalId := parentTask.ExternalID
+		if !parentTask.DagID.Valid && !isOperatorDagStep(parentTask) {
+			parentExternalId = parentTask.WorkflowRunID
+		}
+
+		t.ParentExternalId = &parentExternalId
+		t.ParentTaskId = &parentTask.ID
+		t.ParentTaskInsertedAt = &parentTask.InsertedAt.Time
+		t.ChildKey = req.ChildKey
+
+		if req.ChildIndex != nil {
+			childIndex := int64(*req.ChildIndex)
+			t.ChildIndex = &childIndex
+		}
+
+		t.AdditionalMetadata = injectParentIDs(
+			t.AdditionalMetadata,
+			parentTask.AdditionalMetadata,
+			parentTask.WorkflowRunID,
+			parentTask.ExternalID,
+		)
+	}
+
+	return t, nil
+}
+
+func (r *sharedRepository) lookupParentOutputsByWorkflowRunIds(ctx context.Context, tenantId uuid.UUID, parentTaskExternalIds []uuid.UUID) (map[uuid.UUID]*TaskOutputEvent, error) {
+	rows, err := r.queries.ListTaskOutputEventIdsByTaskRunExternalIds(ctx, r.pool, parentTaskExternalIds)
+	if err != nil {
+		return nil, err
+	}
+
+	retrieveOpts := make([]RetrievePayloadOpts, 0, len(rows))
+
+	for _, row := range rows {
+		retrieveOpts = append(retrieveOpts, RetrievePayloadOpts{
+			Id:         row.TaskEventID,
+			InsertedAt: row.TaskEventInsertedAt,
+			Type:       sqlcv1.V1PayloadTypeTASKEVENTDATA,
+			TenantId:   tenantId,
+			ExternalId: row.OutputEventExternalID,
+		})
+	}
+
+	payloads, err := r.payloadStore.Retrieve(ctx, r.pool, retrieveOpts...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve parent output payloads: %w", err)
+	}
+
+	result := make(map[uuid.UUID]*TaskOutputEvent, len(rows))
+
+	for _, payload := range payloads {
+		e, err := newTaskEventFromBytes(payload)
+		if err != nil {
+			r.l.Warn().Ctx(ctx).Msgf("failed to parse parent task output: %v", err)
+			continue
+		}
+
+		if e.IsCompleted() {
+			result[e.TaskExternalId] = e
+		}
+	}
+
+	return result, nil
+}
+
+func injectParentIDs(additionalMetadata []byte, parentAdditionalMetadata []byte, parentWorkflowRunID, parentStepRunID uuid.UUID) []byte {
+	// Seed with the parent's custom metadata (skipping internal hatchet__ keys) so they
+	// flow down to child workflows automatically.
+	meta := make(map[string]interface{})
+	if len(parentAdditionalMetadata) > 0 {
+		parentMeta := make(map[string]interface{})
+		if err := json.Unmarshal(parentAdditionalMetadata, &parentMeta); err == nil {
+			for k, v := range parentMeta {
+				if !strings.HasPrefix(k, "hatchet__") {
+					meta[k] = v
+				}
+			}
+		}
+	}
+
+	// Child's own metadata takes precedence over inherited keys.
+	if len(additionalMetadata) > 0 {
+		childMeta := make(map[string]interface{})
+		if err := json.Unmarshal(additionalMetadata, &childMeta); err == nil {
+			for k, v := range childMeta {
+				meta[k] = v
+			}
+		}
+	}
+
+	meta["hatchet__parent_workflow_run_id"] = parentWorkflowRunID.String()
+	meta["hatchet__parent_step_run_id"] = parentStepRunID.String()
+
+	out, err := json.Marshal(meta)
+	if err != nil {
+		return additionalMetadata
+	}
+	return out
+}

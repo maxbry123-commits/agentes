@@ -1,0 +1,48 @@
+{
+  "operations": {
+    "PATCH /comments/{id}/read": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "path",
+          "parameter_name": "id",
+          "resource": "Comment",
+          "resource_field": "id"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/data",
+          "resource": "Read",
+          "status_code": "200"
+        }
+      ]
+    }
+  },
+  "resources": {
+    "Comment": {
+      "fields": [
+        "id"
+      ],
+      "types": {}
+    },
+    "Read": {
+      "fields": [
+        "id"
+      ],
+      "types": {
+        "id": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ]
+      }
+    }
+  }
+}

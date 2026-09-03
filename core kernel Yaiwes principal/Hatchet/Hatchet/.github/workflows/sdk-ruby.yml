@@ -1,0 +1,319 @@
+name: ruby
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/**"
+      - "api/**"
+      - "api-contracts/**"
+      - "internal/**"
+      - "pkg/**"
+      - "sdks/ruby/**"
+  push:
+    branches:
+      - main
+    paths:
+      - "sdks/ruby/**"
+
+defaults:
+  run:
+    working-directory: ./sdks/ruby/src
+
+jobs:
+  lint:
+    runs-on: ubicloud-standard-4
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@d45b1a4e94b71acab930e56e79c6aa188764e7f9 # v1.316.0
+        with:
+          ruby-version: "3.2"
+          bundler-cache: true
+          working-directory: ./sdks/ruby/src
+
+      - name: Run RuboCop
+        run: bundle exec rubocop
+
+      - name: Run RBS validate
+        run: rbs -I sig validate
+
+      - name: Setup Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: "1.26"
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+
+      - name: Install pre-commit
+        run: pip install pre-commit
+
+      - name: Generate OpenAPI spec
+        working-directory: .
+        run: sh hack/oas/generate-server.sh
+
+      - name: Generate protobuf & REST client bindings
+        run: bundle exec bash ../generate.sh
+
+      - name: Check generated bindings are up to date
+        run: |
+          cd "$GITHUB_WORKSPACE"
+
+          git add -A sdks/ruby/src/lib/hatchet/contracts sdks/ruby/src/lib/hatchet/clients/rest
+          if ! git diff --cached --exit-code -- sdks/ruby/src/lib/hatchet/contracts sdks/ruby/src/lib/hatchet/clients/rest; then
+            echo "::error::Generated protobuf/REST bindings are out of date. Run 'sdks/ruby/generate.sh' and commit the changes."
+            exit 1
+          fi
+
+      - name: Test gem build
+        run: gem build hatchet-sdk.gemspec
+
+  test:
+    runs-on: ubicloud-standard-4
+    strategy:
+      matrix:
+        ruby-version: ${{ github.event_name == 'pull_request' && fromJSON('["3.2"]') || fromJSON('["3.2", "3.3"]') }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
+        with:
+          version: "25.1"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Task
+        uses: arduino/setup-task@c0bc642852239c2689f73f4ea6459c29405f3c52 # v3.0.0
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: "1.26"
+
+      - name: Start Docker dependencies
+        working-directory: .
+        run: docker compose up -d
+
+      - name: Generate
+        working-directory: .
+        run: |
+          export DATABASE_URL="postgresql://hatchet:hatchet@127.0.0.1:5431/hatchet"
+          go run ./cmd/hatchet-migrate
+
+      - name: Setup
+        working-directory: .
+        run: |
+          export SERVER_PORT=8080
+          export SERVER_URL=http://localhost:8080
+          export SERVER_AUTH_COOKIE_DOMAIN=localhost
+          export SERVER_AUTH_COOKIE_INSECURE=true
+          export SERVER_MSGQUEUE_RABBITMQ_URL="amqp://user:password@localhost:5672/"
+          export SERVER_SECURITY_CHECK_ENABLED=false
+
+          go run ./cmd/hatchet-admin quickstart
+
+          go run ./cmd/hatchet-engine --config ./generated/ > engine.log 2>&1 &
+          go run ./cmd/hatchet-api --config ./generated/ > api.log 2>&1 &
+
+          sleep 30
+
+      - name: Set up Ruby ${{ matrix.ruby-version }}
+        uses: ruby/setup-ruby@d45b1a4e94b71acab930e56e79c6aa188764e7f9 # v1.316.0
+        with:
+          ruby-version: ${{ matrix.ruby-version }}
+          bundler-cache: true
+          working-directory: ./sdks/ruby/src
+
+      - name: Display Ruby version
+        run: ruby -v
+
+      - name: Generate Env File
+        working-directory: .
+        run: |
+          echo "HATCHET_CLIENT_TOKEN=$(go run ./cmd/hatchet-admin token create --config ./generated/ --tenant-id 707d0855-80ab-4e1f-a156-f1c4546cbf52)" >> $GITHUB_ENV
+          echo "HATCHET_CLIENT_TLS_ROOT_CA_FILE=../../../certs/ca.cert" >> $GITHUB_ENV
+          echo "HATCHET_CLIENT_WORKER_HEALTHCHECK_ENABLED=true" >> $GITHUB_ENV
+
+      - name: Set HATCHET_CLIENT_NAMESPACE
+        run: |
+          RUBY_VER=$(ruby -e "puts \"rb#{RUBY_VERSION.gsub('.','')[0..1]}\"")
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          echo "HATCHET_CLIENT_NAMESPACE=${RUBY_VER}-${SHORT_SHA}" >> $GITHUB_ENV
+
+      - name: Run unit tests
+        run: |
+          echo "Using HATCHET_CLIENT_NAMESPACE: $HATCHET_CLIENT_NAMESPACE"
+          bundle exec rspec --format documentation --tag ~integration
+
+      - name: Run integration tests
+        run: bundle exec rspec spec/integration/ --format documentation --tag integration
+
+      - name: Set up Ruby for examples
+        uses: ruby/setup-ruby@d45b1a4e94b71acab930e56e79c6aa188764e7f9 # v1.316.0
+        with:
+          ruby-version: ${{ matrix.ruby-version }}
+          bundler-cache: true
+          working-directory: ./sdks/ruby/examples
+
+      - name: Wait for API readiness
+        working-directory: .
+        run: |
+          echo "Waiting for API at http://localhost:8080/api/ready..."
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:8080/api/ready > /dev/null 2>&1; then
+              echo "API ready after ${i}s"
+              break
+            fi
+            if [ "$i" -eq 60 ]; then
+              echo "API did not become ready within 60s"
+              tail -n 50 engine.log 2>/dev/null || true
+              tail -n 50 api.log 2>/dev/null || true
+              exit 1
+            fi
+            sleep 1
+          done
+          sleep 5
+
+      - name: Start example worker and wait for health
+        working-directory: ./sdks/ruby/examples
+        run: |
+          export HATCHET_CLIENT_WORKER_HEALTHCHECK_PORT=8001
+          stdbuf -o0 -e0 bundle exec ruby worker.rb > worker.log 2>&1 &
+          WORKER_PID=$!
+          echo "Worker started with PID $WORKER_PID"
+
+          MAX_WAIT=45
+          POLL_INTERVAL=1
+          echo "Waiting 5s for worker to initialize..."
+          sleep 5
+
+          for i in $(seq 1 $MAX_WAIT); do
+            if ! kill -0 "$WORKER_PID" 2>/dev/null; then
+              echo "Worker process (PID $WORKER_PID) exited before becoming healthy"
+              echo "=== worker.log ==="
+              cat worker.log || true
+              echo "=== tail engine.log ==="
+              tail -n 80 "$GITHUB_WORKSPACE/engine.log" 2>/dev/null || true
+              echo "=== tail api.log ==="
+              tail -n 80 "$GITHUB_WORKSPACE/api.log" 2>/dev/null || true
+              exit 1
+            fi
+            if curl -sf http://localhost:8001/health > /dev/null 2>&1; then
+              echo "Worker is healthy after ${i}s"
+              exit 0
+            fi
+            if [ $((i % 5)) -eq 0 ]; then
+              echo "Still waiting for worker health... ${i}s/${MAX_WAIT}s"
+              echo "--- worker.log (last 25 lines) ---"
+              tail -n 25 worker.log 2>/dev/null || true
+              echo "--- engine.log (last 25 lines) ---"
+              tail -n 25 "$GITHUB_WORKSPACE/engine.log" 2>/dev/null || true
+              echo "--- api.log (last 25 lines) ---"
+              tail -n 25 "$GITHUB_WORKSPACE/api.log" 2>/dev/null || true
+            fi
+            sleep $POLL_INTERVAL
+          done
+
+          echo "Worker failed to become healthy within ${MAX_WAIT}s"
+          echo "=== worker.log ==="
+          cat worker.log || true
+          echo "=== tail engine.log ==="
+          tail -n 80 "$GITHUB_WORKSPACE/engine.log" 2>/dev/null || true
+          echo "=== tail api.log ==="
+          tail -n 80 "$GITHUB_WORKSPACE/api.log" 2>/dev/null || true
+          exit 1
+
+      - name: Run e2e tests
+        working-directory: ./sdks/ruby/examples
+        run: bundle exec rspec -f d --fail-fast
+
+      - name: Upload worker logs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ env.HATCHET_CLIENT_NAMESPACE }}-worker-logs
+          path: ./sdks/ruby/examples/worker.log
+
+      - name: Upload engine logs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ env.HATCHET_CLIENT_NAMESPACE }}-engine-logs
+          path: engine.log
+
+      - name: Upload API logs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ env.HATCHET_CLIENT_NAMESPACE }}-api-logs
+          path: api.log
+
+  publish:
+    runs-on: ubicloud-standard-4
+    needs: [lint, test]
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          submodules: recursive
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@d45b1a4e94b71acab930e56e79c6aa188764e7f9 # v1.316.0
+        with:
+          ruby-version: "3.2"
+          bundler-cache: true
+          working-directory: ./sdks/ruby/src
+
+      - name: Check if version changed
+        id: version_check
+        run: |
+          NEW_VERSION=$(ruby -e "require_relative 'lib/hatchet/version'; puts Hatchet::VERSION")
+          CURRENT_VERSION=$(gem info hatchet-sdk --remote --exact 2>/dev/null | grep -oP 'hatchet-sdk \(\K[^)]+' || echo "0.0.0")
+
+          if [ "$CURRENT_VERSION" == "$NEW_VERSION" ]; then
+            echo "Version has not changed ($NEW_VERSION). Skipping publish."
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Publishing version $NEW_VERSION (current: $CURRENT_VERSION)"
+            echo "should_publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Configure RubyGems credentials
+        if: steps.version_check.outputs.should_publish == 'true'
+        uses: rubygems/configure-rubygems-credentials@main
+
+      - name: Publish to RubyGems
+        if: steps.version_check.outputs.should_publish == 'true'
+        run: |
+          gem build hatchet-sdk.gemspec
+          NEW_VERSION=$(ruby -e "require_relative 'lib/hatchet/version'; puts Hatchet::VERSION")
+          gem push hatchet-sdk-${NEW_VERSION}.gem
+          echo "VERSION_TAG=$NEW_VERSION" >> $GITHUB_ENV
+
+      - name: "Generate release notes"
+        if: env.VERSION_TAG != ''
+        working-directory: ${{ github.workspace }}
+        run: ./hack/ci/release-notes.sh ruby > ./release_notes.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: "Release"
+        if: env.VERSION_TAG != ''
+        working-directory: ${{ github.workspace }}
+        run: |
+          gh release create "rb/${VERSION_TAG}" \
+            --target "$GITHUB_SHA" \
+            --title "Ruby SDK ${VERSION_TAG}" \
+            --notes-file ./release_notes.md \
+            --latest=false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

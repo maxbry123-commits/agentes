@@ -1,0 +1,29 @@
+name: 'Notify enterprise of commit in main'
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - coverage/**
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Trigger sync
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.UNLEASH_CI_BUILDER_GITHUB_TOKEN }}
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: 'bricks-software',
+              repo: 'unleash-enterprise',
+              workflow_id: 'sync-oss-subtree.yml',
+              ref: 'main',
+            })

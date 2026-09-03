@@ -1,0 +1,118 @@
+# This is our package-publishing pipeline.
+# When executed, it automatically publishes the output of the 'official pipeline' (the nupkgs) to our internal ADO feed.
+# It may optionally also publish the packages to NuGet, but that is gated behind a manual approval.
+
+trigger: none # only trigger is manual
+pr: none # only trigger is manual
+
+resources:
+    repositories:
+        - repository: 1es
+          type: git
+          name: 1ESPipelineTemplates/1ESPipelineTemplates
+          ref: refs/tags/release
+
+    pipelines:
+    - pipeline: officialPipeline # Reference to the pipeline to be used as an artifact source
+      source: 'durable-extension.official'
+
+extends:
+  template: v1/1ES.Official.PipelineTemplate.yml@1es
+  parameters:
+    pool:
+        name: 1es-pool-azfunc
+        image: 1es-windows-2022
+        os: windows
+
+    stages:
+    - stage: release
+      jobs:
+
+      # ADO release
+      - job: AdoRelease
+        displayName: ADO Release
+        templateContext:
+          type: releaseJob
+          isProduction: true
+          inputs:
+          - input: pipelineArtifact
+            pipeline: officialPipeline  # Pipeline reference, as defined in the resources section
+            artifactName: drop
+            targetPath: $(System.DefaultWorkingDirectory)/drop
+        steps:
+        - task: 1ES.PublishNuget@1
+          displayName: 'Push to durabletask ADO feed'
+          inputs:
+            command: push
+            packageParentPath: $(System.DefaultWorkingDirectory) # This needs to be set to some prefix of the `packagesToPush` parameter. Apparently it helps with SDL tooling
+            packagesToPush: '$(System.DefaultWorkingDirectory)/**/*.nupkg;!$(System.DefaultWorkingDirectory)/**/*.symbols.nupkg'
+            publishVstsFeed: 'internal/durabletask-internal'
+            allowPackageConflicts: true
+
+      # NuGet approval gate
+      - job: nugetApproval
+        displayName: NuGetApproval
+        pool: server # This task only works when executed on server pools, so this needs to be specified
+        steps:
+          # Wait for manual approval. 
+          - task: ManualValidation@1
+            inputs:
+              instructions: Confirm you want to push to NuGet
+              onTimeout: 'reject'
+
+      #================== NuGet publishing section ==================
+      # We publish each nupkg to NuGet in a separate job so that a duplicate version failure
+      # for one package does not block the other packages from being published.
+      # The 1ES.PublishNuget@1 task will fail the ADO job if we attempt to push any package
+      # versions that were already uploaded to NuGet. By splitting each package into its own
+      # job, the other packages can still be published independently.
+
+      # NuGet release (Microsoft.Azure.WebJobs.Extensions.DurableTask)
+      - job: nugetRelease_WebJobs_Extensions_DurableTask
+        displayName: NuGet Release (Microsoft.Azure.WebJobs.Extensions.DurableTask)
+        dependsOn: nugetApproval
+        condition: succeeded('nugetApproval')
+        templateContext:
+          type: releaseJob
+          isProduction: true
+          inputs:
+          - input: pipelineArtifact
+            pipeline: officialPipeline  # Pipeline reference as defined in the resources section
+            artifactName: drop
+            targetPath: $(System.DefaultWorkingDirectory)/drop
+        steps:
+        - task: 1ES.PublishNuget@1
+          displayName: 'NuGet push (Microsoft.Azure.WebJobs.Extensions.DurableTask)'
+          inputs:
+            command: push
+            nuGetFeedType: external
+            publishFeedCredentials: 'DurableTask org NuGet API Key'
+            # the packages to push pattern explicitly excludes:
+            # - 'Microsoft.Azure.WebJobs.Extensions.DurableTask.Analyzers'
+            # - 'Microsoft.Azure.WebJobs.Extensions.DurableTask.FunctionsScale'
+            # which could match the same prefix
+            packagesToPush: '$(System.DefaultWorkingDirectory)/drop/Microsoft.Azure.WebJobs.Extensions.DurableTask.*.nupkg;!$(System.DefaultWorkingDirectory)/drop/Microsoft.Azure.WebJobs.Extensions.DurableTask.Analyzers.*.nupkg;!$(System.DefaultWorkingDirectory)/drop/Microsoft.Azure.WebJobs.Extensions.DurableTask.FunctionsScale.*.nupkg;!$(System.DefaultWorkingDirectory)/**/*.symbols.nupkg'
+            packageParentPath: $(System.DefaultWorkingDirectory) # This needs to be set to some prefix of the `packagesToPush` parameter. Apparently it helps with SDL tooling
+
+      # NuGet release (Microsoft.Azure.Functions.Worker.Extensions.DurableTask)
+      - job: nugetRelease_Worker_Extensions_DurableTask
+        displayName: NuGet Release (Microsoft.Azure.Functions.Worker.Extensions.DurableTask)
+        dependsOn: nugetApproval
+        condition: succeeded('nugetApproval')
+        templateContext:
+          type: releaseJob
+          isProduction: true
+          inputs:
+          - input: pipelineArtifact
+            pipeline: officialPipeline  # Pipeline reference as defined in the resources section
+            artifactName: drop
+            targetPath: $(System.DefaultWorkingDirectory)/drop
+        steps:
+        - task: 1ES.PublishNuget@1
+          displayName: 'NuGet push (Microsoft.Azure.Functions.Worker.Extensions.DurableTask)'
+          inputs:
+            command: push
+            nuGetFeedType: external
+            publishFeedCredentials: 'DurableTask org NuGet API Key'
+            packagesToPush: '$(System.DefaultWorkingDirectory)/drop/Microsoft.Azure.Functions.Worker.Extensions.DurableTask.*.nupkg;!$(System.DefaultWorkingDirectory)/**/*.symbols.nupkg'
+            packageParentPath: $(System.DefaultWorkingDirectory) # This needs to be set to some prefix of the `packagesToPush` parameter.

@@ -1,0 +1,443 @@
+version: "3"
+
+tasks:
+  setup:
+    cmds:
+      - task: install-dependencies
+      - task: set-env-db
+      - task: migrate
+      - task: generate-local-encryption-keys
+      - task: generate-docs
+      - task: set-env-all
+      - task: seed-dev
+  set-env-db:
+    cmds:
+      - |
+        cat > .env <<EOF
+        DATABASE_URL='postgresql://hatchet:hatchet@127.0.0.1:5431/hatchet'
+        DATABASE_PGBOUNCER_URL='postgresql://hatchet:hatchet@127.0.0.1:6431/hatchet'
+        EOF
+  set-env-all:
+    cmds:
+      - |
+        randstring() { openssl rand -base64 69 | tr -d "\n" | tr -d "=+/" | cut -c1-$1; }
+
+        cat > .env <<EOF
+        DATABASE_URL='postgresql://hatchet:hatchet@127.0.0.1:5431/hatchet'
+        DATABASE_PGBOUNCER_URL='postgresql://hatchet:hatchet@127.0.0.1:6431/hatchet'
+
+        SERVER_ENCRYPTION_MASTER_KEYSET_FILE=./hack/dev/encryption-keys/master.key
+        SERVER_ENCRYPTION_JWT_PRIVATE_KEYSET_FILE=./hack/dev/encryption-keys/private_ec256.key
+        SERVER_ENCRYPTION_JWT_PUBLIC_KEYSET_FILE=./hack/dev/encryption-keys/public_ec256.key
+
+        SERVER_PORT=8080
+        SERVER_URL=http://localhost:8080
+
+        SERVER_AUTH_COOKIE_SECRETS="$(randstring 16) $(randstring 16)"
+        SERVER_AUTH_COOKIE_DOMAIN=app.dev.hatchet-tools.com
+        SERVER_AUTH_COOKIE_INSECURE=true
+        SERVER_AUTH_SET_EMAIL_VERIFIED=true
+
+        SERVER_MSGQUEUE_KIND=rabbitmq
+        SERVER_MSGQUEUE_RABBITMQ_URL=amqp://user:password@127.0.0.1:5672/
+
+        SERVER_ADDITIONAL_LOGGERS_QUEUE_LEVEL=warn
+        SERVER_ADDITIONAL_LOGGERS_QUEUE_FORMAT=console
+        SERVER_ADDITIONAL_LOGGERS_PGXSTATS_LEVEL=error
+        SERVER_ADDITIONAL_LOGGERS_PGXSTATS_FORMAT=console
+        SERVER_LOGGER_LEVEL=warn
+        SERVER_LOGGER_FORMAT=console
+        DATABASE_LOGGER_LEVEL=warn
+        DATABASE_LOGGER_FORMAT=console
+
+        SERVER_GRPC_BROADCAST_ADDRESS=127.0.0.1:7070
+        SERVER_GRPC_INSECURE=true
+        SERVER_INTERNAL_CLIENT_BASE_STRATEGY=none
+        SERVER_INTERNAL_CLIENT_BASE_INHERIT_BASE=false
+        EOF
+  fmt-go:
+    cmd: gofmt -s -w .
+  fmt-app:
+    dir: frontend/app
+    cmd: pnpm run prettier:fix && pnpm run prettier:check
+  fmt-docs:
+    dir: frontend/docs
+    cmd: pnpm run prettier:fix && pnpm run prettier:check
+  sync-agent-instructions:
+    desc: Sync agent-instructions MDX files into hatchet-cli skill-assets references
+    cmds:
+      - |
+        src="frontend/docs/content/docs/agent-instructions"
+        dest="cmd/hatchet-cli/cli/skill-assets/hatchet-cli/references"
+        for f in "$src"/*.mdx; do
+          name=$(basename "$f" .mdx)
+          awk 'BEGIN{fm=0; body=0} NR==1 && $0=="---"{fm=1; next} fm==1{if($0=="---") fm=2; next} fm==2 && body==0 && $0==""{next} {body=1; print}' "$f" > "$dest/$name.md"
+        done
+
+  sync-changelog:
+    desc: Sync released changes from CHANGELOG.md into Hatchet docs
+    silent: true
+    vars:
+      CHANGELOGS:
+        map:
+          platform: "CHANGELOG.md"
+          python: "sdks/python/CHANGELOG.md"
+          typescript: "sdks/typescript/CHANGELOG.md"
+          ruby: "sdks/ruby/src/CHANGELOG.md"
+    cmd:
+      for: { var: CHANGELOGS }
+      cmd: bash ./hack/docs/sync-changelog.sh {{.ITEM}} frontend/docs/content/docs/reference/changelog/{{.KEY}}.mdx
+  pre:
+    aliases: [fmt]
+    cmds:
+      - task: sync-agent-instructions
+      - task: fmt-go
+      - task: fmt-app
+      - task: fmt-docs
+      - task: pre-commit-run
+  start-db:
+    cmds:
+      - docker compose up -d
+  stop-db:
+    cmds:
+      - docker compose down {{.CLI_ARGS}}
+  recreate-db-from-scratch:
+    cmds:
+      - docker compose down -v
+      - docker compose up -d
+      - task: setup
+      - task: init-dev-env
+  set-etc-hosts:
+    cmds:
+      - sudo bash ./hack/dev/manage-hosts.sh add 127.0.0.1 app.dev.hatchet-tools.com
+  empty-migration:
+    cmds:
+      - goose -dir cmd/hatchet-migrate/migrate/migrations/ create {{.CLI_ARGS | default "empty_migration"}} sql
+  migrate:
+    cmds:
+      - task: generate-sqlc
+      - task: goose-migrate
+  goose-migrate:
+    cmds:
+      - bash ./hack/dev/migrate.sh
+  migrate-down:
+    desc: "Migrate down to a specific version. Usage: task migrate-down -- 20260223180620 (for v1.0.82)"
+    dotenv: [.env]
+    cmds:
+      - |
+        if [ -z "{{.CLI_ARGS}}" ]; then
+          echo "Usage: task migrate-down -- <version>"
+          echo "Example: task migrate-down -- 20260223180620  # v1.0.82"
+          exit 1
+        fi
+        go run ./cmd/hatchet-migrate --down {{.CLI_ARGS}}
+  seed-dev:
+    dotenv: [.env]
+    cmds:
+      - go run ./cmd/hatchet-admin seed
+  seed-cypress:
+    dotenv: [.env]
+    cmds:
+      - go run ./cmd/hatchet-admin seed-cypress
+  start-dev:
+    deps:
+      - task: goose-migrate
+      - task: start-db
+      - task: start-api
+      - task: start-engine
+      - task: start-frontend
+  start-dev-tmux:
+    cmds:
+      - bash ./hack/dev/start-dev-tmux.sh
+  start-api:
+    cmds:
+      - bash ./hack/dev/start-api.sh
+  start-api-ci:
+    cmds:
+      - bash ./hack/ci/start-api.sh
+  start-engine:
+    cmds:
+      - bash ./hack/dev/start-engine.sh
+  start-engine-ci:
+    cmds:
+      - bash ./hack/ci/start-engine.sh
+  start-frontend:
+    cmds:
+      - bash ./hack/dev/start-frontend.sh
+  embed-cli-ui:
+    desc: Build the dashboard UI and embed it into the hatchet CLI binary assets.
+    cmds:
+      - bash ./hack/build/embedded-ui.sh
+  build-cli:
+    desc: Build the hatchet CLI with the dashboard UI embedded.
+    deps: [embed-cli-ui]
+    cmds:
+      - go build -o bin/hatchet ./cmd/hatchet-cli
+  write-e2e-env:
+    cmds:
+      - bash ./hack/ci/write-e2e-env.sh
+  e2e-frontend:
+    desc: Run Cypress E2E for frontend/app against a locally started API stack (CI-friendly).
+    cmds:
+      - bash ./hack/ci/e2e-frontend.sh
+  start-lite:
+    cmds:
+      - bash ./hack/dev/start-lite.sh
+  start-ngrok:
+    cmds:
+      - ngrok http 8080
+  generate-all:
+    aliases: [generate]
+    cmds:
+      - task: install-dependencies
+      - task: generate-api
+      - task: generate-proto
+      - task: generate-sqlc
+      - task: generate-docs
+      - task: generate-sdk-docs
+      - task: pre-commit-run
+  install-dependencies:
+    deps: [venv]
+    cmds:
+      - go mod download
+      - cd frontend/app/ && pnpm install
+      - cd frontend/docs/ && pnpm install
+      - source .venv/bin/activate && pip install pre-commit
+  generate-api:
+    cmds:
+      - task: generate-api-server
+      - task: generate-api-client
+  generate-docs:
+    deps: [venv]
+    dir: frontend/snippets
+    cmds:
+      - "source {{.ROOT_DIR}}/.venv/bin/activate && python -X utf8 generate.py"
+      - task: sync-changelog
+      - task: fmt
+      - task: sync-agent-instructions
+  generate-sdk-docs:
+    desc: Regenerate SDK reference docs into frontend/docs/content/docs/reference
+    cmds:
+      - task: generate-sdk-docs-python
+      - task: generate-sdk-docs-typescript
+      - task: generate-sdk-docs-go
+      - task: generate-sdk-docs-ruby
+  generate-sdk-docs-python:
+    dir: sdks/python
+    cmds:
+      - bash docs/generate.sh
+  generate-sdk-docs-typescript:
+    dir: sdks/typescript
+    cmds:
+      - bash docs/generate.sh
+  generate-sdk-docs-go:
+    dir: sdks/go
+    cmds:
+      - go run ./docs/generator
+  generate-sdk-docs-ruby:
+    dir: sdks/ruby
+    cmds:
+      - bash docs/generate.sh
+  generate-certs:
+    cmds:
+      - bash ./hack/dev/generate-x509-certs.sh ./hack/dev/certs
+  generate-local-encryption-keys:
+    cmds:
+      - bash ./hack/dev/generate-local-encryption-keys.sh ./hack/dev/encryption-keys
+  init-dev-env:
+    dotenv: [.env]
+    cmds:
+      - bash ./hack/dev/init-dev-token-and-env.sh
+  generate-dev-api-token:
+    cmds:
+      - bash ./hack/dev/generate-dev-api-token.sh
+  generate-api-server:
+    cmds:
+      - bash ./hack/oas/generate-server.sh
+    silent: true
+  generate-api-client:
+    cmds:
+      - bash ./hack/oas/generate-clients.sh
+    silent: true
+  generate-proto:
+    cmds:
+      - bash ./hack/proto/proto.sh
+  generate-proto-python:
+    dir: ./python-sdk
+    cmds:
+      - sh ./generate.sh
+  generate-sqlc:
+    cmds:
+      - go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.29.0 generate --file pkg/repository/sqlcv1/sqlc.yaml
+  generate-hatchet-oss-model:
+    desc: Generate a standalone HTML view of the hatchet-oss database model
+    cmd: python3 hack/db/generate-oss-db-model.py {{.CLI_ARGS}}
+  update-go-quickstart-deps:
+    desc: Update Go quickstart template Hatchet SDK to latest (or VERSION=vX.Y.Z)
+    cmds:
+      - bash ./hack/update-go-quickstart-deps.sh {{.VERSION | default "latest"}}
+  lint:
+    cmds:
+      - task: lint-go
+      - task: lint-go-guides
+      - task: lint-python-guides
+      - task: lint-typescript-guides
+      - task: lint-ruby-guides
+      - task: lint-app
+      - task: lint-docs
+  lint-go:
+    cmd: golangci-lint run ./... --config .golangci.yml
+  lint-go-guides:
+    dir: sdks/guides/go
+    cmd: golangci-lint run ./... --config .golangci.yml
+  lint-python-guides:
+    dir: sdks/guides/python
+    cmd: poetry run ruff check .
+  lint-typescript-guides:
+    dir: sdks/guides/typescript
+    cmd: pnpm install && pnpm run lint:check
+  lint-ruby-guides:
+    dir: sdks/guides/ruby
+    cmd: bundle install && bundle exec rubocop
+  lint-app:
+    dir: frontend/app
+    cmd: pnpm run lint:check
+  lint-docs:
+    dir: frontend/docs
+    cmd: npm run lint:check
+  kill-apis:
+    cmds:
+      - ps -A | grep 'cmd/hatchet-api' | grep -v grep | awk '{print $1}' | xargs kill -9 $1
+      - ps -A | grep 'exe/hatchet-api' | grep -v grep | awk '{print $1}' | xargs kill -9 $1
+  kill-engines:
+    cmds:
+      - ps -A | grep 'cmd/hatchet-engine' | grep -v grep | awk '{print $1}' | xargs kill -9 $1
+      - ps -A | grep 'exe/hatchet-engine' | grep -v grep | awk '{print $1}' | xargs kill -9 $1
+  copy-ca-to-sdks:
+    cmds:
+      - mkdir -p ./python-sdk/certs/ && cp ./hack/dev/certs/ca.cert ./python-sdk/certs/
+  venv:
+    status: [test -d .venv]
+    cmd: python3 -m venv .venv
+  pre-commit-install:
+    deps: [venv]
+    cmd: source .venv/bin/activate && pip install pre-commit && pre-commit install
+  pre-commit-run:
+    deps: [venv]
+    cmd: "source .venv/bin/activate && pre-commit run --all-files || pre-commit run --all-files"
+  docs:
+    deps: [venv]
+    cmds:
+      - cmd: "cd frontend/snippets && source {{.ROOT_DIR}}/.venv/bin/activate && python -X utf8 generate.py"
+      - task: sync-changelog
+      - task: fmt-go
+      - task: fmt-docs
+      - task: sync-agent-instructions
+      - |
+        # Create a trap to kill the watcher when the task exits
+        trap 'kill $(jobs -p) 2>/dev/null' EXIT
+
+        npx chokidar "sdks/**/*.{py,ts,go}" --ignore "**/node_modules/**" --ignore "**/.git/**" --ignore "**/dist/**" --ignore "**/build/**" --initial -c "echo 'TODO: Add a task to generate and sync the docs'" &
+
+        cd frontend/docs/ && pnpm run dev
+  pytest:
+    dir: ./sdks/python
+    vars:
+      WORKERS: '{{.WORKERS | default "auto"}}'
+      RETRIES: '{{.RETRIES | default "3"}}'
+      EXTRA_ARGS: '{{.EXTRA_ARGS | default ""}}'
+    cmds:
+      - poetry run pytest -n 32 --retries 3 --retry-delay 5
+  start-telemetry:
+    cmds:
+      - docker compose -f docker-compose.infra.yml up -d
+  test:
+    cmds:
+      - go test -count=1 $(go list ./... | grep -v "quickstart") -v -failfast
+  test-integration:
+    deps:
+      - start-db
+      - goose-migrate
+      - generate-local-encryption-keys
+    cmds:
+      - defer:
+          task: stop-db
+      - go test -count=1 -tags integration $(go list ./... | grep -v "quickstart") -v -failfast
+
+  release:
+    desc: Create and push annotated tag, triggering the release pipeline.
+    vars:
+      CURRENT:
+        sh: git tag --points-at HEAD --sort=-v:refname | head -n1
+      TAG: "{{.TAG | default .CURRENT}}"
+    preconditions:
+      - sh: '[ -n "{{.TAG}}" ]'
+        msg: "No TAG value found"
+      - sh: "! gh release view {{.TAG}} >/dev/null 2>&1"
+        msg: "{{.TAG}} already has a GitHub Release."
+      - sh: '[ "$(git cat-file -t {{.TAG}})" != "tag" ]'
+        msg: "{{.TAG}} is already an annotated tag."
+      - sh: ./hack/ci/release-notes-cli.sh {{.TAG}}
+        msg: "CHANGELOG.md must contain an entry for {{.TAG}}."
+    prompt: Create new release for tag {{.TAG}}?
+    cmds:
+      # cleanup=verbatim: markdown header hashes are otherwise stripped as comments.
+      - ./hack/ci/release-notes-cli.sh {{.TAG}} | git tag --cleanup=verbatim -a -f {{.TAG}} HEAD -F -
+      - git push --force origin {{.TAG}}
+
+  patch:
+    desc: Bump patch version (e.g. v0.83.16 → v0.83.17) and push the tag
+    cmds:
+      - |
+        set -e
+        branch=$(git rev-parse --abbrev-ref HEAD)
+        if [ "${branch}" != "main" ]; then
+          echo "Error: must be on 'main' to bump the version (currently on '${branch}')" >&2
+          exit 1
+        fi
+        git fetch origin main
+        git pull origin main
+        current=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -1)
+        IFS='.' read -r major minor patch <<< "${current#v}"
+        patch=$((patch + 1))
+        next="v${major}.${minor}.${patch}"
+        echo "Bumping ${current} → ${next}"
+        git tag "${next}"
+        git push origin "${next}"
+
+  minor:
+    desc: Bump minor version (e.g. v0.83.16 → v0.84.0) and push the tag
+    cmds:
+      - |
+        set -e
+        branch=$(git rev-parse --abbrev-ref HEAD)
+        if [ "${branch}" != "main" ]; then
+          echo "Error: must be on 'main' to bump the version (currently on '${branch}')" >&2
+          exit 1
+        fi
+        git fetch origin main
+        git pull origin main
+        current=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -1)
+        IFS='.' read -r major minor patch <<< "${current#v}"
+        minor=$((minor + 1))
+        next="v${major}.${minor}.0"
+        echo "Bumping ${current} → ${next}"
+        git tag "${next}"
+        git push origin "${next}"
+
+  alpha:
+    desc: Bump to next alpha pre-release (e.g. v0.83.16 → v0.83.16-alpha.0, or v0.83.16-alpha.0 → v0.83.16-alpha.1)
+    cmds:
+      - |
+        set -e
+        current=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -1)
+        base="${current%%-alpha.*}"
+        if [[ "${current}" == *-alpha.* ]]; then
+          alpha_num="${current##*-alpha.}"
+          next="${base}-alpha.$((alpha_num + 1))"
+        else
+          next="${base}-alpha.0"
+        fi
+        echo "Bumping ${current} → ${next}"
+        git tag "${next}"
+        git push origin "${next}"

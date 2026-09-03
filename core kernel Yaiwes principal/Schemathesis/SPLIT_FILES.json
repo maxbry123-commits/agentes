@@ -1,0 +1,16 @@
+[
+  {
+    "repo": "Schemathesis",
+    "path": "corpus/data/swagger-2.0.tar.gz",
+    "chunks_dir": "Schemathesis/corpus/data/swagger-2.0.tar.gz.chunks",
+    "bytes": 12856230,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Schemathesis",
+    "path": "corpus/data/openapi-3.0.tar.gz",
+    "chunks_dir": "Schemathesis/corpus/data/openapi-3.0.tar.gz.chunks",
+    "bytes": 43819882,
+    "chunk_bytes": 8388608
+  }
+]

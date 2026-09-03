@@ -1,0 +1,41 @@
+{
+  "operations": {
+    "DELETE /items/{runner_group_id}": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "path",
+          "parameter_name": "runner_group_id",
+          "resource": "RunnerGroup",
+          "resource_field": "id"
+        }
+      ],
+      "outputs": []
+    },
+    "GET /items/runner-groups": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "MANY",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/runner_groups",
+          "resource": "RunnerGroup",
+          "status_code": "200"
+        }
+      ]
+    }
+  },
+  "resources": {
+    "RunnerGroup": {
+      "fields": [
+        "id"
+      ],
+      "types": {
+        "id": [
+          "string"
+        ]
+      }
+    }
+  }
+}

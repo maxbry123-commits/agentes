@@ -1,0 +1,34 @@
+{
+  "operations": {
+    "PUT /test": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "WebService",
+          "status_code": "201"
+        }
+      ]
+    }
+  },
+  "resources": {
+    "WebService": {
+      "fields": [
+        "key1"
+      ],
+      "types": {
+        "key1": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ]
+      }
+    }
+  }
+}

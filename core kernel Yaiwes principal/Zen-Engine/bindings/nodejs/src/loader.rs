@@ -1,0 +1,98 @@
+use std::fmt::{Debug, Formatter};
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
+
+use napi::anyhow::anyhow;
+use napi::bindgen_prelude::{Buffer, Promise};
+use napi::threadsafe_function::ThreadsafeFunction;
+use napi::{Either, Status};
+
+use zen_engine::loader::{
+    DecisionLoader as DecisionLoaderTrait, LoaderError, LoaderResponse, LoaderResult,
+};
+use zen_engine::model::DecisionContent;
+
+use crate::content::ZenDecisionContent;
+
+pub(crate) type LoaderTsfn = Arc<
+    ThreadsafeFunction<
+        String,
+        Promise<Option<Either<Buffer, &'static ZenDecisionContent>>>,
+        String,
+        Status,
+        false,
+        true,
+    >,
+>;
+
+#[derive(Default)]
+pub(crate) struct DecisionLoader {
+    function: Option<LoaderTsfn>,
+}
+
+impl Debug for DecisionLoader {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "DecisionLoader")
+    }
+}
+
+impl DecisionLoader {
+    pub fn new(tsf: LoaderTsfn) -> Self {
+        Self {
+            function: Some(tsf),
+        }
+    }
+
+    pub async fn get_key(&self, key: &str) -> LoaderResult<Arc<DecisionContent>> {
+        let Some(function) = &self.function else {
+            return Err(LoaderError::Internal {
+                key: key.to_string(),
+                source: anyhow!("Loader is undefined"),
+            }
+            .into());
+        };
+
+        let promise: Promise<Option<Either<Buffer, &ZenDecisionContent>>> = function
+            .clone()
+            .call_async(key.to_string())
+            .await
+            .map_err(|e| LoaderError::Internal {
+                key: key.to_string(),
+                source: anyhow!(e.reason.clone()),
+            })?;
+
+        let result = promise.await.map_err(|e| LoaderError::Internal {
+            key: key.to_string(),
+            source: anyhow!(e.reason.clone()),
+        })?;
+
+        let Some(buffer) = result else {
+            return Err(LoaderError::NotFound(key.to_string()).into());
+        };
+
+        let decision_content = match buffer {
+            Either::A(buf) => Arc::new(serde_json::from_slice(buf.as_ref()).map_err(|e| {
+                LoaderError::Internal {
+                    key: key.to_string(),
+                    source: e.into(),
+                }
+            })?),
+            Either::B(dc) => dc.inner.clone(),
+        };
+
+        Ok(decision_content)
+    }
+}
+
+impl DecisionLoaderTrait for DecisionLoader {
+    fn load<'a>(
+        &'a self,
+        key: &'a str,
+    ) -> Pin<Box<dyn Future<Output = LoaderResponse> + 'a + Send>> {
+        Box::pin(async move {
+            let decision_content = self.get_key(key).await?;
+            Ok(decision_content)
+        })
+    }
+}

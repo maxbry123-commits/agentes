@@ -1,0 +1,54 @@
+{
+  "operations": {
+    "GET /recipes/{slug}": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "path",
+          "parameter_name": "slug",
+          "resource": "Recipe",
+          "resource_field": "slug"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "Recipe",
+          "status_code": "200"
+        }
+      ]
+    },
+    "POST /recipes": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": true,
+          "pointer": "/",
+          "resource": "Recipe",
+          "status_code": "201"
+        }
+      ]
+    }
+  },
+  "resources": {
+    "Recipe": {
+      "fields": [
+        "name",
+        "slug"
+      ],
+      "types": {
+        "name": [
+          "string"
+        ],
+        "slug": [
+          "string"
+        ]
+      }
+    }
+  }
+}

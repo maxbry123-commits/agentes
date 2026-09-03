@@ -1,0 +1,1008 @@
+{
+  "operations": {
+    "DELETE /api/patch/v1/systems/{inventory_id}": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "path",
+          "parameter_name": "inventory_id",
+          "resource": "Inventory",
+          "resource_field": "inventory_id"
+        }
+      ],
+      "outputs": []
+    },
+    "GET /api/patch/v1/advisories": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "MANY",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/data",
+          "resource": "controllers.AdvisoryItem",
+          "status_code": "200"
+        },
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/data/*/attributes",
+          "resource": "controllers.AdvisoryItemAttributes",
+          "status_code": "200"
+        }
+      ]
+    },
+    "GET /api/patch/v1/advisories/{advisory_id}": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "path",
+          "parameter_name": "advisory_id",
+          "resource": "Advisory",
+          "resource_field": "advisory_id"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/data",
+          "resource": "controllers.AdvisoryDetailItem",
+          "status_code": "200"
+        }
+      ]
+    },
+    "GET /api/patch/v1/advisories/{advisory_id}/systems": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "path",
+          "parameter_name": "advisory_id",
+          "resource": "Advisory",
+          "resource_field": "advisory_id"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "MANY",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/data",
+          "resource": "controllers.SystemItem",
+          "status_code": "200"
+        },
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/data/*/attributes",
+          "resource": "controllers.SystemItemAttributes",
+          "status_code": "200"
+        }
+      ]
+    },
+    "GET /api/patch/v1/export/advisories": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "MANY",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "controllers.AdvisoryInlineItem",
+          "status_code": "200"
+        }
+      ]
+    },
+    "GET /api/patch/v1/export/advisories/{advisory_id}/systems": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "path",
+          "parameter_name": "advisory_id",
+          "resource": "Advisory",
+          "resource_field": "advisory_id"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "MANY",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "controllers.SystemInlineItem",
+          "status_code": "200"
+        }
+      ]
+    },
+    "GET /api/patch/v1/export/packages": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "MANY",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "controllers.PackageItem",
+          "status_code": "200"
+        }
+      ]
+    },
+    "GET /api/patch/v1/export/packages/{package_name}/systems": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "path",
+          "parameter_name": "package_name",
+          "resource": "Package",
+          "resource_field": "package_name"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "MANY",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "controllers.PackageSystemItem",
+          "status_code": "200"
+        }
+      ]
+    },
+    "GET /api/patch/v1/export/systems": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "MANY",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "controllers.SystemInlineItem",
+          "status_code": "200"
+        }
+      ]
+    },
+    "GET /api/patch/v1/export/systems/{inventory_id}/advisories": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "path",
+          "parameter_name": "inventory_id",
+          "resource": "Inventory",
+          "resource_field": "inventory_id"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "MANY",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "controllers.SystemAdvisoriesDBLookup",
+          "status_code": "200"
+        }
+      ]
+    },
+    "GET /api/patch/v1/export/systems/{inventory_id}/packages": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "path",
+          "parameter_name": "inventory_id",
+          "resource": "Inventory",
+          "resource_field": "inventory_id"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "MANY",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "controllers.SystemPackageInline",
+          "status_code": "200"
+        }
+      ]
+    },
+    "GET /api/patch/v1/packages/": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "MANY",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/data",
+          "resource": "controllers.PackageItem",
+          "status_code": "200"
+        }
+      ]
+    },
+    "GET /api/patch/v1/packages/{package_name}": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "path",
+          "parameter_name": "package_name",
+          "resource": "Package",
+          "resource_field": "package_name"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/data",
+          "resource": "controllers.PackageDetailItem",
+          "status_code": "200"
+        }
+      ]
+    },
+    "GET /api/patch/v1/packages/{package_name}/systems": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "path",
+          "parameter_name": "package_name",
+          "resource": "Package",
+          "resource_field": "package_name"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "MANY",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/data",
+          "resource": "controllers.PackageSystemItem",
+          "status_code": "200"
+        }
+      ]
+    },
+    "GET /api/patch/v1/packages/{package_name}/versions": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "path",
+          "parameter_name": "package_name",
+          "resource": "Package",
+          "resource_field": "package_name"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "MANY",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/data",
+          "resource": "controllers.PackageVersionItem",
+          "status_code": "200"
+        }
+      ]
+    },
+    "GET /api/patch/v1/systems": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "MANY",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/data",
+          "resource": "controllers.SystemItem",
+          "status_code": "200"
+        },
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/data/*/attributes",
+          "resource": "controllers.SystemItemAttributes",
+          "status_code": "200"
+        }
+      ]
+    },
+    "GET /api/patch/v1/systems/{inventory_id}": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "path",
+          "parameter_name": "inventory_id",
+          "resource": "Inventory",
+          "resource_field": "inventory_id"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/data",
+          "resource": "controllers.SystemItem",
+          "status_code": "200"
+        }
+      ]
+    },
+    "GET /api/patch/v1/systems/{inventory_id}/advisories": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "path",
+          "parameter_name": "inventory_id",
+          "resource": "Inventory",
+          "resource_field": "inventory_id"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "MANY",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/data",
+          "resource": "controllers.SystemAdvisoryItem",
+          "status_code": "200"
+        },
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/data/*/attributes",
+          "resource": "controllers.SystemAdvisoryItemAttributes",
+          "status_code": "200"
+        }
+      ]
+    },
+    "GET /api/patch/v1/systems/{inventory_id}/packages": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "path",
+          "parameter_name": "inventory_id",
+          "resource": "Inventory",
+          "resource_field": "inventory_id"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "MANY",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/data",
+          "resource": "controllers.SystemPackageData",
+          "status_code": "200"
+        },
+        {
+          "cardinality": "MANY",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/data/*/updates",
+          "resource": "models.PackageUpdate",
+          "status_code": "200"
+        }
+      ]
+    },
+    "POST /api/patch/v1/views/advisories/systems": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/data",
+          "resource": "controllers.AdvisoriesSystemsResponse",
+          "status_code": "200"
+        }
+      ]
+    },
+    "POST /api/patch/v1/views/systems/advisories": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/data",
+          "resource": "controllers.SystemsAdvisoriesResponse",
+          "status_code": "200"
+        }
+      ]
+    }
+  },
+  "resources": {
+    "Advisory": {
+      "fields": [
+        "advisory_id"
+      ],
+      "types": {}
+    },
+    "Inventory": {
+      "fields": [
+        "inventory_id"
+      ],
+      "types": {}
+    },
+    "Package": {
+      "fields": [
+        "package_name"
+      ],
+      "types": {}
+    },
+    "controllers.AdvisoriesSystemsResponse": {
+      "fields": [],
+      "types": {}
+    },
+    "controllers.AdvisoryDetailItem": {
+      "fields": [
+        "attributes",
+        "id",
+        "type"
+      ],
+      "types": {
+        "attributes": [
+          "object"
+        ],
+        "id": [
+          "string"
+        ],
+        "type": [
+          "string"
+        ]
+      }
+    },
+    "controllers.AdvisoryInlineItem": {
+      "fields": [
+        "advisory_type",
+        "applicable_systems",
+        "cve_count",
+        "description",
+        "id",
+        "public_date",
+        "severity",
+        "synopsis"
+      ],
+      "types": {
+        "advisory_type": [
+          "integer"
+        ],
+        "applicable_systems": [
+          "integer"
+        ],
+        "cve_count": [
+          "integer"
+        ],
+        "description": [
+          "string"
+        ],
+        "id": [
+          "string"
+        ],
+        "public_date": [
+          "string"
+        ],
+        "severity": [
+          "integer"
+        ],
+        "synopsis": [
+          "string"
+        ]
+      }
+    },
+    "controllers.AdvisoryItem": {
+      "fields": [
+        "attributes",
+        "id",
+        "type"
+      ],
+      "types": {
+        "attributes": [
+          "object"
+        ],
+        "id": [
+          "string"
+        ],
+        "type": [
+          "string"
+        ]
+      }
+    },
+    "controllers.AdvisoryItemAttributes": {
+      "fields": [
+        "advisory_type",
+        "applicable_systems",
+        "cve_count",
+        "description",
+        "public_date",
+        "severity",
+        "synopsis"
+      ],
+      "types": {
+        "advisory_type": [
+          "integer"
+        ],
+        "applicable_systems": [
+          "integer"
+        ],
+        "cve_count": [
+          "integer"
+        ],
+        "description": [
+          "string"
+        ],
+        "public_date": [
+          "string"
+        ],
+        "severity": [
+          "integer"
+        ],
+        "synopsis": [
+          "string"
+        ]
+      }
+    },
+    "controllers.PackageDetailItem": {
+      "fields": [
+        "attributes",
+        "id",
+        "type"
+      ],
+      "nested_fk_fields": [
+        {
+          "field_name": "advisory_id",
+          "is_array": false,
+          "pointer": "/attributes/advisory_id",
+          "target_field": "id",
+          "target_resource": "Advisory"
+        }
+      ],
+      "types": {
+        "attributes": [
+          "object"
+        ],
+        "id": [
+          "string"
+        ],
+        "type": [
+          "string"
+        ]
+      }
+    },
+    "controllers.PackageItem": {
+      "fields": [
+        "name",
+        "summary",
+        "systems_installed",
+        "systems_updatable"
+      ],
+      "types": {
+        "name": [
+          "string"
+        ],
+        "summary": [
+          "string"
+        ],
+        "systems_installed": [
+          "integer"
+        ],
+        "systems_updatable": [
+          "integer"
+        ]
+      }
+    },
+    "controllers.PackageSystemItem": {
+      "fields": [
+        "available_evra",
+        "display_name",
+        "id",
+        "installed_evra",
+        "updatable"
+      ],
+      "types": {
+        "available_evra": [
+          "string"
+        ],
+        "display_name": [
+          "string"
+        ],
+        "id": [
+          "string"
+        ],
+        "installed_evra": [
+          "string"
+        ],
+        "updatable": [
+          "boolean"
+        ]
+      }
+    },
+    "controllers.PackageVersionItem": {
+      "fields": [
+        "evra"
+      ],
+      "types": {
+        "evra": [
+          "string"
+        ]
+      }
+    },
+    "controllers.SystemAdvisoriesDBLookup": {
+      "fields": [
+        "advisory_type",
+        "cve_count",
+        "description",
+        "id",
+        "public_date",
+        "severity",
+        "synopsis"
+      ],
+      "types": {
+        "advisory_type": [
+          "integer"
+        ],
+        "cve_count": [
+          "integer"
+        ],
+        "description": [
+          "string"
+        ],
+        "id": [
+          "string"
+        ],
+        "public_date": [
+          "string"
+        ],
+        "severity": [
+          "integer"
+        ],
+        "synopsis": [
+          "string"
+        ]
+      }
+    },
+    "controllers.SystemAdvisoryItem": {
+      "fields": [
+        "attributes",
+        "id",
+        "type"
+      ],
+      "types": {
+        "attributes": [
+          "object"
+        ],
+        "id": [
+          "string"
+        ],
+        "type": [
+          "string"
+        ]
+      }
+    },
+    "controllers.SystemAdvisoryItemAttributes": {
+      "fields": [
+        "advisory_type",
+        "cve_count",
+        "description",
+        "public_date",
+        "severity",
+        "synopsis"
+      ],
+      "types": {
+        "advisory_type": [
+          "integer"
+        ],
+        "cve_count": [
+          "integer"
+        ],
+        "description": [
+          "string"
+        ],
+        "public_date": [
+          "string"
+        ],
+        "severity": [
+          "integer"
+        ],
+        "synopsis": [
+          "string"
+        ]
+      }
+    },
+    "controllers.SystemInlineItem": {
+      "fields": [
+        "created",
+        "culled_timestamp",
+        "display_name",
+        "id",
+        "insights_id",
+        "last_evaluation",
+        "last_upload",
+        "os_major",
+        "os_minor",
+        "os_name",
+        "other_count",
+        "packages_installed",
+        "packages_updatable",
+        "rhba_count",
+        "rhea_count",
+        "rhsa_count",
+        "rhsm",
+        "stale",
+        "stale_timestamp",
+        "stale_warning_timestamp",
+        "third_party"
+      ],
+      "fk_fields": [
+        {
+          "field_name": "insights_id",
+          "is_array": false,
+          "target_field": "id",
+          "target_resource": "Insights"
+        }
+      ],
+      "types": {
+        "created": [
+          "string"
+        ],
+        "culled_timestamp": [
+          "string"
+        ],
+        "display_name": [
+          "string"
+        ],
+        "id": [
+          "string"
+        ],
+        "insights_id": [
+          "string"
+        ],
+        "last_evaluation": [
+          "string"
+        ],
+        "last_upload": [
+          "string"
+        ],
+        "os_major": [
+          "string"
+        ],
+        "os_minor": [
+          "string"
+        ],
+        "os_name": [
+          "string"
+        ],
+        "other_count": [
+          "integer"
+        ],
+        "packages_installed": [
+          "integer"
+        ],
+        "packages_updatable": [
+          "integer"
+        ],
+        "rhba_count": [
+          "integer"
+        ],
+        "rhea_count": [
+          "integer"
+        ],
+        "rhsa_count": [
+          "integer"
+        ],
+        "rhsm": [
+          "string"
+        ],
+        "stale": [
+          "boolean"
+        ],
+        "stale_timestamp": [
+          "string"
+        ],
+        "stale_warning_timestamp": [
+          "string"
+        ],
+        "third_party": [
+          "boolean"
+        ]
+      }
+    },
+    "controllers.SystemItem": {
+      "fields": [
+        "attributes",
+        "id",
+        "type"
+      ],
+      "nested_fk_fields": [
+        {
+          "field_name": "insights_id",
+          "is_array": false,
+          "pointer": "/attributes/insights_id",
+          "target_field": "id",
+          "target_resource": "Insights"
+        }
+      ],
+      "types": {
+        "attributes": [
+          "object"
+        ],
+        "id": [
+          "string"
+        ],
+        "type": [
+          "string"
+        ]
+      }
+    },
+    "controllers.SystemItemAttributes": {
+      "fields": [
+        "created",
+        "culled_timestamp",
+        "display_name",
+        "insights_id",
+        "last_evaluation",
+        "last_upload",
+        "os_major",
+        "os_minor",
+        "os_name",
+        "other_count",
+        "packages_installed",
+        "packages_updatable",
+        "rhba_count",
+        "rhea_count",
+        "rhsa_count",
+        "rhsm",
+        "stale",
+        "stale_timestamp",
+        "stale_warning_timestamp",
+        "third_party"
+      ],
+      "fk_fields": [
+        {
+          "field_name": "insights_id",
+          "is_array": false,
+          "target_field": "id",
+          "target_resource": "Insights"
+        }
+      ],
+      "types": {
+        "created": [
+          "string"
+        ],
+        "culled_timestamp": [
+          "string"
+        ],
+        "display_name": [
+          "string"
+        ],
+        "insights_id": [
+          "string"
+        ],
+        "last_evaluation": [
+          "string"
+        ],
+        "last_upload": [
+          "string"
+        ],
+        "os_major": [
+          "string"
+        ],
+        "os_minor": [
+          "string"
+        ],
+        "os_name": [
+          "string"
+        ],
+        "other_count": [
+          "integer"
+        ],
+        "packages_installed": [
+          "integer"
+        ],
+        "packages_updatable": [
+          "integer"
+        ],
+        "rhba_count": [
+          "integer"
+        ],
+        "rhea_count": [
+          "integer"
+        ],
+        "rhsa_count": [
+          "integer"
+        ],
+        "rhsm": [
+          "string"
+        ],
+        "stale": [
+          "boolean"
+        ],
+        "stale_timestamp": [
+          "string"
+        ],
+        "stale_warning_timestamp": [
+          "string"
+        ],
+        "third_party": [
+          "boolean"
+        ]
+      }
+    },
+    "controllers.SystemPackageData": {
+      "fields": [
+        "description",
+        "evra",
+        "name",
+        "summary",
+        "updatable",
+        "updates"
+      ],
+      "types": {
+        "description": [
+          "string"
+        ],
+        "evra": [
+          "string"
+        ],
+        "name": [
+          "string"
+        ],
+        "summary": [
+          "string"
+        ],
+        "updatable": [
+          "boolean"
+        ],
+        "updates": [
+          "array"
+        ]
+      }
+    },
+    "controllers.SystemPackageInline": {
+      "fields": [
+        "description",
+        "evra",
+        "latest_evra",
+        "name",
+        "summary",
+        "updatable"
+      ],
+      "types": {
+        "description": [
+          "string"
+        ],
+        "evra": [
+          "string"
+        ],
+        "latest_evra": [
+          "string"
+        ],
+        "name": [
+          "string"
+        ],
+        "summary": [
+          "string"
+        ],
+        "updatable": [
+          "boolean"
+        ]
+      }
+    },
+    "controllers.SystemsAdvisoriesResponse": {
+      "fields": [],
+      "types": {}
+    },
+    "models.PackageUpdate": {
+      "fields": [
+        "advisory",
+        "evra"
+      ],
+      "types": {
+        "advisory": [
+          "string"
+        ],
+        "evra": [
+          "string"
+        ]
+      }
+    }
+  }
+}

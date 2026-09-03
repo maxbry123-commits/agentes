@@ -1,0 +1,395 @@
+//go:build e2e_cli
+
+package cli
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"testing"
+	"time"
+
+	cliconfig "github.com/hatchet-dev/hatchet/cmd/hatchet-cli/cli/internal/config/cli"
+	"github.com/hatchet-dev/hatchet/cmd/hatchet-cli/cli/internal/config/worker"
+	"github.com/hatchet-dev/hatchet/cmd/hatchet-cli/cli/internal/templater"
+	profileconfig "github.com/hatchet-dev/hatchet/pkg/config/cli"
+)
+
+type templateTestCase struct {
+	useCase        string
+	language       string
+	packageManager string
+	// trigger is the hatchet.yaml trigger name the test runs once the worker
+	// is up
+	trigger string
+}
+
+// This suite proves the released CLI end to end against the embedded
+// quickstarts module, from an accepted selection through generation,
+// worker startup, and a completed trigger. The quickstarts repository
+// tests template content but cannot test this CLI integration. Content
+// edits inside a template do not touch this file; adding or removing a
+// supported combination is an intentional contract change made in the two
+// lists below.
+
+// languagePackageManagers is the supported matrix, shared by every use
+// case the CLI currently ships.
+var languagePackageManagers = []struct {
+	language       string
+	packageManager string
+}{
+	{"python", "poetry"},
+	{"python", "uv"},
+	{"python", "pip"},
+	{"typescript", "npm"},
+	{"typescript", "pnpm"},
+	{"typescript", "yarn"},
+	{"typescript", "bun"},
+	{"go", "go"},
+}
+
+// useCaseTriggers pairs each use case with the trigger its templates
+// register.
+var useCaseTriggers = []struct {
+	useCase string
+	trigger string
+}{
+	{"simple", "simple"},
+	{"scheduled", "manual-run"},
+}
+
+func templateTests() []templateTestCase {
+	var tests []templateTestCase
+	for _, uc := range useCaseTriggers {
+		for _, lp := range languagePackageManagers {
+			tests = append(tests, templateTestCase{
+				useCase:        uc.useCase,
+				language:       lp.language,
+				packageManager: lp.packageManager,
+				trigger:        uc.trigger,
+			})
+		}
+	}
+	return tests
+}
+
+func TestQuickstartTemplates(t *testing.T) {
+	for _, tt := range templateTests() {
+		t.Run(fmt.Sprintf("%s_%s_%s", tt.useCase, tt.language, tt.packageManager), func(t *testing.T) {
+			testTemplate(t, tt)
+		})
+	}
+}
+
+func testTemplate(t *testing.T, tt templateTestCase) {
+	// 1. Create temp directory
+	tmpDir := t.TempDir()
+	projectDir := filepath.Join(tmpDir, "test-project")
+	projectName := "test-project"
+
+	t.Logf("Testing %s %s with %s in %s", tt.useCase, tt.language, tt.packageManager, projectDir)
+
+	// 2. Generate quickstart project using the CLI implementation
+	selection := templater.Selection{
+		UseCase:        tt.useCase,
+		Language:       tt.language,
+		PackageManager: tt.packageManager,
+	}
+
+	_, err := GenerateQuickstart(selection, projectName, projectDir)
+	if err != nil {
+		t.Fatalf("quickstart generation failed: %v", err)
+	}
+
+	t.Logf("Project generated successfully")
+
+	// 3. Verify project structure
+	if err := verifyProjectStructure(t, projectDir, tt); err != nil {
+		t.Fatalf("Project structure verification failed: %v", err)
+	}
+
+	// 4. Change to project directory and load worker config
+	originalDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Failed to get current directory: %v", err)
+	}
+	defer os.Chdir(originalDir)
+
+	if err := os.Chdir(projectDir); err != nil {
+		t.Fatalf("Failed to change to project directory: %v", err)
+	}
+
+	workerConfig, err := worker.LoadWorkerConfig()
+	if err != nil {
+		t.Fatalf("Failed to load worker config: %v", err)
+	}
+
+	if workerConfig == nil {
+		t.Fatal("Worker config is nil")
+	}
+
+	// 5. Get the local profile (created by hatchet server start)
+	profile, err := cliconfig.GetProfile("local")
+	if err != nil {
+		t.Fatalf("Failed to get local profile: %v", err)
+	}
+
+	// 6. Start worker in dev mode using the CLI implementation and ensure it runs for 15 seconds without error
+	t.Log("Starting worker dev mode...")
+	if err := testWorkerDev(t, workerConfig, profile, tt.trigger); err != nil {
+		t.Fatalf("Worker dev test failed: %v", err)
+	}
+
+	// 7. Verify Dockerfile builds
+	t.Log("Verifying Dockerfile builds...")
+	if err := testDockerfileBuild(t, projectDir, tt); err != nil {
+		t.Fatalf("Dockerfile build test failed: %v", err)
+	}
+
+	t.Logf("Successfully tested %s %s with %s", tt.useCase, tt.language, tt.packageManager)
+}
+
+func testWorkerDev(t *testing.T, workerConfig *worker.WorkerConfig, profile *profileconfig.Profile, triggerName string) error {
+	// Create a context with timeout (safety net)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	// Channel to signal when pre-commands complete
+	preCmdsComplete := make(chan struct{}, 1)
+	errChan := make(chan error, 1)
+
+	// Start the worker process using the CLI implementation in a goroutine
+	go func() {
+		t.Log("Starting worker process using RunWorkerDev...")
+		// Call the actual CLI implementation
+		// Note: devConfig.Reload is set to false to avoid file watching in tests
+		testDevConfig := workerConfig.Dev
+		testDevConfig.Reload = false
+
+		if err := RunWorkerDev(ctx, profile, &testDevConfig, preCmdsComplete); err != nil {
+			errChan <- fmt.Errorf("worker process failed: %w", err)
+			return
+		}
+		errChan <- nil
+	}()
+
+	// Wait for pre-commands to complete (dependency installation)
+	select {
+	case <-preCmdsComplete:
+		t.Log("Pre-commands completed, worker starting...")
+	case err := <-errChan:
+		if err != nil {
+			return err
+		}
+		return fmt.Errorf("worker exited before pre-commands completed")
+	case <-time.After(4 * time.Minute):
+		return fmt.Errorf("timeout waiting for pre-commands to complete")
+	}
+
+	// Wait 5 seconds for the worker to fully start
+	time.Sleep(5 * time.Second)
+
+	// Validate that there are no worker runner errors
+	select {
+	case err := <-errChan:
+		if err != nil {
+			return fmt.Errorf("worker exited during startup: %w", err)
+		}
+		return fmt.Errorf("worker exited unexpectedly during startup (no error)")
+	default:
+	}
+
+	// Trigger the named workflow if it exists in the config
+	if len(workerConfig.Triggers) > 0 {
+		var trigger *worker.Trigger
+		for i := range workerConfig.Triggers {
+			if workerConfig.Triggers[i].Name == triggerName {
+				trigger = &workerConfig.Triggers[i]
+				break
+			}
+		}
+
+		if trigger != nil {
+			t.Logf("Triggering workflow using command: %s", trigger.Command)
+			triggerCtx, triggerCancel := context.WithTimeout(ctx, 30*time.Second)
+			err := executeTriggerCommand(triggerCtx, trigger.Command, profile)
+			triggerCancel()
+			if err != nil {
+				return fmt.Errorf("failed to trigger workflow: %w", err)
+			}
+			t.Log("Successfully triggered workflow")
+		}
+	}
+
+	// Wait another 10 seconds for the workflow to process
+	time.Sleep(10 * time.Second)
+	cancel()
+
+	// Check if any error occurred
+	select {
+	case err := <-errChan:
+		if err != nil {
+			return fmt.Errorf("worker process error: %w", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Log("Worker process cleanup timeout after cancel")
+	}
+
+	t.Log("Worker ran successfully")
+	return nil
+}
+
+func verifyProjectStructure(t *testing.T, projectDir string, tt templateTestCase) error {
+	t.Logf("Verifying project structure for %s %s with %s", tt.useCase, tt.language, tt.packageManager)
+
+	// Common files that should exist
+	commonFiles := []string{
+		"README.md",
+		"hatchet.yaml",
+		"Dockerfile",
+	}
+
+	for _, file := range commonFiles {
+		path := filepath.Join(projectDir, file)
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			return fmt.Errorf("expected file %s does not exist", file)
+		}
+	}
+
+	// Language-specific files
+	switch tt.language {
+	case "python":
+		pythonWorkflowFile := "src/workflows/first_workflow.py"
+		if tt.useCase == "scheduled" {
+			pythonWorkflowFile = "src/workflows/scheduled_workflow.py"
+		}
+
+		pythonFiles := []string{
+			"src/hatchet_client.py",
+			"src/run.py",
+			"src/worker.py",
+			pythonWorkflowFile,
+		}
+		for _, file := range pythonFiles {
+			path := filepath.Join(projectDir, file)
+			if _, err := os.Stat(path); os.IsNotExist(err) {
+				return fmt.Errorf("expected Python file %s does not exist", file)
+			}
+		}
+
+		// Check for package manager specific files
+		switch tt.packageManager {
+		case "poetry":
+			if _, err := os.Stat(filepath.Join(projectDir, "pyproject.toml")); os.IsNotExist(err) {
+				return fmt.Errorf("expected pyproject.toml for poetry")
+			}
+		case "uv":
+			if _, err := os.Stat(filepath.Join(projectDir, "pyproject.toml")); os.IsNotExist(err) {
+				return fmt.Errorf("expected pyproject.toml for uv")
+			}
+		case "pip":
+			if _, err := os.Stat(filepath.Join(projectDir, "requirements.txt")); os.IsNotExist(err) {
+				return fmt.Errorf("expected requirements.txt for pip")
+			}
+		}
+
+	case "typescript":
+		tsWorkflowFile := "src/workflows/first-workflow.ts"
+		if tt.useCase == "scheduled" {
+			tsWorkflowFile = "src/workflows/scheduled-workflow.ts"
+		}
+
+		tsFiles := []string{
+			"src/hatchet-client.ts",
+			"src/run.ts",
+			"src/worker.ts",
+			tsWorkflowFile,
+			"tsconfig.json",
+			"package.json",
+		}
+		for _, file := range tsFiles {
+			path := filepath.Join(projectDir, file)
+			if _, err := os.Stat(path); os.IsNotExist(err) {
+				return fmt.Errorf("expected TypeScript file %s does not exist", file)
+			}
+		}
+
+	case "go":
+		workflowFile := "workflows/first_workflow.go"
+		if tt.useCase == "scheduled" {
+			workflowFile = "workflows/scheduled_workflow.go"
+		}
+
+		goFiles := []string{
+			"cmd/worker/main.go",
+			"cmd/run/main.go",
+			"client/client.go",
+			workflowFile,
+			"go.mod",
+		}
+		for _, file := range goFiles {
+			path := filepath.Join(projectDir, file)
+			if _, err := os.Stat(path); os.IsNotExist(err) {
+				return fmt.Errorf("expected Go file %s does not exist", file)
+			}
+		}
+	}
+
+	return nil
+}
+
+func testDockerfileBuild(t *testing.T, projectDir string, tt templateTestCase) error {
+	// Verify Dockerfile exists
+	dockerfilePath := filepath.Join(projectDir, "Dockerfile")
+	if _, err := os.Stat(dockerfilePath); os.IsNotExist(err) {
+		return fmt.Errorf("Dockerfile does not exist at %s", dockerfilePath)
+	}
+
+	t.Logf("Building Dockerfile for %s %s with %s...", tt.useCase, tt.language, tt.packageManager)
+
+	// Build the Docker image
+	// Use a unique tag for each test to avoid conflicts
+	imageName := fmt.Sprintf("hatchet-test-%s-%s-%s:latest", tt.useCase, tt.language, tt.packageManager)
+
+	cmd := exec.Command("docker", "build", "-t", imageName, ".")
+	cmd.Dir = projectDir
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("docker build failed: %v\nOutput: %s", err, output)
+	}
+
+	t.Logf("Successfully built Docker image: %s", imageName)
+
+	// Clean up the image after test
+	cleanupCmd := exec.Command("docker", "rmi", imageName)
+	if err := cleanupCmd.Run(); err != nil {
+		t.Logf("Warning: failed to clean up Docker image %s: %v", imageName, err)
+	}
+
+	return nil
+}
+
+func executeTriggerCommand(ctx context.Context, command string, profile *profileconfig.Profile) error {
+	// Use sh -c to execute the command with proper environment
+	cmd := exec.CommandContext(ctx, "sh", "-c", command)
+
+	// Set environment variables from profile
+	env := os.Environ()
+	env = append(env, fmt.Sprintf("HATCHET_CLIENT_TOKEN=%s", profile.Token))
+	env = append(env, fmt.Sprintf("HATCHET_CLIENT_TLS_STRATEGY=%s", profile.TLSStrategy))
+	if profile.GrpcHostPort != "" {
+		env = append(env, fmt.Sprintf("HATCHET_CLIENT_HOST_PORT=%s", profile.GrpcHostPort))
+	}
+	cmd.Env = env
+
+	// Capture output for debugging
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("command failed: %w\nOutput: %s", err, string(output))
+	}
+
+	return nil
+}

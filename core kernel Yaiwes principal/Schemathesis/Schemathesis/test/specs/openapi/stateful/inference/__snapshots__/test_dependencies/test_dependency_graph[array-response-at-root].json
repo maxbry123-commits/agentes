@@ -1,0 +1,64 @@
+{
+  "operations": {
+    "GET /channels/{channel_id}/messages": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "path",
+          "parameter_name": "channel_id",
+          "resource": "Channel",
+          "resource_field": "id"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "MANY",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "Message",
+          "status_code": "200"
+        }
+      ]
+    },
+    "POST /channels": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "Channel",
+          "status_code": "201"
+        }
+      ]
+    }
+  },
+  "resources": {
+    "Channel": {
+      "fields": [
+        "id"
+      ],
+      "types": {
+        "id": [
+          "string"
+        ]
+      }
+    },
+    "Message": {
+      "fields": [
+        "id",
+        "text"
+      ],
+      "types": {
+        "id": [
+          "string"
+        ],
+        "text": [
+          "string"
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,377 @@
+{
+  "operations": {
+    "GET /atms/v1/atm": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/Atms",
+          "resource": "Atms",
+          "status_code": "200"
+        },
+        {
+          "cardinality": "MANY",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/Atms/Atm",
+          "resource": "Atm",
+          "status_code": "200"
+        }
+      ]
+    },
+    "GET /atms/v1/country": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/Countries",
+          "resource": "Countries",
+          "status_code": "200"
+        },
+        {
+          "cardinality": "MANY",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/Countries/Country",
+          "resource": "Country",
+          "status_code": "200"
+        }
+      ]
+    },
+    "GET /atms/v1/countrysubdivision": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/CountrySubdivisions",
+          "resource": "CountrySubdivisions",
+          "status_code": "200"
+        },
+        {
+          "cardinality": "MANY",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/CountrySubdivisions/CountrySubdivision",
+          "resource": "CountrySubdivision",
+          "status_code": "200"
+        }
+      ]
+    },
+    "GET /merchants/v1/category": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/Categories",
+          "resource": "Categories",
+          "status_code": "200"
+        }
+      ]
+    },
+    "GET /merchants/v1/country": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/Countries",
+          "resource": "Countries",
+          "status_code": "200"
+        },
+        {
+          "cardinality": "MANY",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/Countries/Country",
+          "resource": "Country",
+          "status_code": "200"
+        }
+      ]
+    },
+    "GET /merchants/v1/countrysubdivision": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/CountrySubdivisions",
+          "resource": "CountrySubdivisions",
+          "status_code": "200"
+        },
+        {
+          "cardinality": "MANY",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/CountrySubdivisions/CountrySubdivision",
+          "resource": "CountrySubdivision",
+          "status_code": "200"
+        }
+      ]
+    },
+    "GET /merchants/v1/merchant": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/Merchants",
+          "resource": "Merchants",
+          "status_code": "200"
+        },
+        {
+          "cardinality": "MANY",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/Merchants/Merchant",
+          "resource": "Merchant",
+          "status_code": "200"
+        }
+      ]
+    }
+  },
+  "resources": {
+    "Atm": {
+      "fields": [
+        "AccessFees",
+        "Availability",
+        "Camera",
+        "HandicapAccessible",
+        "InternationalMaestroAccepted",
+        "Location",
+        "Owner",
+        "SharedDeposit",
+        "Sponsor",
+        "SupportEMV",
+        "SurchargeFreeAlliance",
+        "SurchargeFreeAllianceNetwork"
+      ],
+      "types": {
+        "AccessFees": [
+          "string"
+        ],
+        "Availability": [
+          "string"
+        ],
+        "Camera": [
+          "string"
+        ],
+        "HandicapAccessible": [
+          "string"
+        ],
+        "InternationalMaestroAccepted": [
+          "integer"
+        ],
+        "Location": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "Owner": [
+          "string"
+        ],
+        "SharedDeposit": [
+          "string"
+        ],
+        "Sponsor": [
+          "string"
+        ],
+        "SupportEMV": [
+          "integer"
+        ],
+        "SurchargeFreeAlliance": [
+          "string"
+        ],
+        "SurchargeFreeAllianceNetwork": [
+          "string"
+        ]
+      }
+    },
+    "Atms": {
+      "fields": [
+        "Atm",
+        "PageOffset",
+        "TotalCount"
+      ],
+      "types": {
+        "Atm": [
+          "array"
+        ],
+        "PageOffset": [
+          "string"
+        ],
+        "TotalCount": [
+          "integer"
+        ]
+      }
+    },
+    "Categories": {
+      "fields": [
+        "Category"
+      ],
+      "types": {
+        "Category": [
+          "array"
+        ]
+      }
+    },
+    "Countries": {
+      "fields": [
+        "Country"
+      ],
+      "types": {
+        "Country": [
+          "array"
+        ]
+      }
+    },
+    "Country": {
+      "fields": [
+        "Code",
+        "Geocoding",
+        "Name"
+      ],
+      "types": {
+        "Code": [
+          "string"
+        ],
+        "Geocoding": [
+          "boolean"
+        ],
+        "Name": [
+          "string"
+        ]
+      }
+    },
+    "CountrySubdivision": {
+      "fields": [
+        "Code",
+        "Name"
+      ],
+      "types": {
+        "Code": [
+          "string"
+        ],
+        "Name": [
+          "string"
+        ]
+      }
+    },
+    "CountrySubdivisions": {
+      "fields": [
+        "CountrySubdivision"
+      ],
+      "types": {
+        "CountrySubdivision": [
+          "array"
+        ]
+      }
+    },
+    "Merchant": {
+      "fields": [
+        "Acceptance",
+        "Category",
+        "Features",
+        "Id",
+        "Location",
+        "MerchantOfferId",
+        "Name",
+        "PhoneNumber",
+        "Products",
+        "Topup",
+        "WebsiteUrl"
+      ],
+      "types": {
+        "Acceptance": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "Category": [
+          "string"
+        ],
+        "Features": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "Id": [
+          "string"
+        ],
+        "Location": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "MerchantOfferId": [
+          "string"
+        ],
+        "Name": [
+          "string"
+        ],
+        "PhoneNumber": [
+          "string"
+        ],
+        "Products": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "Topup": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "WebsiteUrl": [
+          "string"
+        ]
+      }
+    },
+    "Merchants": {
+      "fields": [
+        "Merchant",
+        "PageOffset",
+        "TotalCount"
+      ],
+      "types": {
+        "Merchant": [
+          "array"
+        ],
+        "PageOffset": [
+          "string"
+        ],
+        "TotalCount": [
+          "integer"
+        ]
+      }
+    }
+  }
+}

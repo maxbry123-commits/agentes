@@ -1,0 +1,1286 @@
+package hatchet
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+	"sync"
+
+	"github.com/rs/zerolog"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
+	"golang.org/x/sync/errgroup"
+
+	v1 "github.com/hatchet-dev/hatchet/internal/services/shared/proto/v1"
+	v0Client "github.com/hatchet-dev/hatchet/pkg/client"
+	"github.com/hatchet-dev/hatchet/pkg/worker"
+	"github.com/hatchet-dev/hatchet/sdks/go/features"
+	"github.com/hatchet-dev/hatchet/sdks/go/internal"
+	evictionpkg "github.com/hatchet-dev/hatchet/sdks/go/internal/eviction"
+	hatchetotel "github.com/hatchet-dev/hatchet/sdks/go/opentelemetry"
+)
+
+// Client provides the main interface for interacting with Hatchet.
+type Client struct {
+	legacyClient v0Client.Client
+
+	embeddedShutdown func(context.Context) error
+
+	// Feature clients (lazy loaded)
+	metrics    *features.MetricsClient
+	rateLimits *features.RateLimitsClient
+	crons      *features.CronsClient
+	cel        *features.CELClient
+	schedules  *features.SchedulesClient
+	filters    *features.FiltersClient
+	runs       *features.RunsClient
+	workers    *features.WorkersClient
+	workflows  *features.WorkflowsClient
+	logs       *features.LogsClient
+	webhooks   *features.WebhooksClient
+}
+
+// NewClient creates a new Hatchet client.
+// Configuration options can be provided to customize the client behavior.
+func NewClient(opts ...v0Client.ClientOpt) (*Client, error) {
+	probe := &v0Client.ClientOpts{} //nolint:staticcheck // SA1019
+	for _, o := range opts {
+		o(probe)
+	}
+
+	embeddedCfg, err := resolveEmbeddedConfig(probe)
+	if err != nil {
+		return nil, err
+	}
+
+	var shutdown func(context.Context) error
+	if embeddedCfg != nil {
+		if embeddedBackend == nil {
+			return nil, errors.New("embedded mode requires a blank import of github.com/hatchet-dev/hatchet-embedded")
+		}
+		sd, err := embeddedBackend(context.Background(), *embeddedCfg)
+		if err != nil {
+			return nil, err
+		}
+		shutdown = sd
+	}
+
+	legacyClient, err := v0Client.New(opts...)
+	if err != nil {
+		if shutdown != nil {
+			_ = shutdown(context.Background())
+		}
+		return nil, err
+	}
+
+	return &Client{
+		legacyClient:     legacyClient,
+		embeddedShutdown: shutdown,
+	}, nil
+}
+
+// Close shuts down the client. It is a no-op unless the client runs in embedded mode,
+// in which case it shuts down the in-process engine.
+func (c *Client) Close(ctx context.Context) error {
+	if c.embeddedShutdown != nil {
+		return c.embeddedShutdown(ctx)
+	}
+	return nil
+}
+
+// Worker represents a worker that can execute workflows.
+type Worker struct {
+	worker *worker.Worker
+	name   string
+
+	// legacyDurable is set when connected to an older engine that needs separate
+	// durable/non-durable workers. nil when using the new unified slot_config approach.
+	legacyDurable *worker.Worker
+
+	// dispatcher is the gRPC dispatcher client used for durable task streams.
+	dispatcher v0Client.DispatcherClient
+
+	// evictionManager manages durable task eviction. nil when not using durable tasks.
+	evictionManager *evictionpkg.DurableEvictionManager
+
+	// durableTaskListener manages the bidirectional stream for durable tasks. nil when not available.
+	durableTaskListener *v0Client.DurableTaskListener
+
+	// durableInitOnce gates lazy initialization of the DurableTaskListener and the
+	// eviction manager. Initialization is deferred until the first durable action
+	// is dispatched so that we can use the worker_id carried on the Action, which
+	// avoids a startup race against worker registration.
+	durableInitOnce sync.Once
+
+	// evictionPolicies maps action ID -> eviction policy for durable tasks.
+	evictionPolicies map[string]*EvictionPolicy
+
+	// supportsDurableEviction is set by checkEvictionSupport after resolving the engine
+	// version. When true, durable waits register over the DurableTask bidi stream; when
+	// false, they fall back to the legacy RegisterDurableEvent RPC path.
+	supportsDurableEviction bool
+
+	hasDurable bool
+	logger     *zerolog.Logger
+}
+
+// slotType represents supported slot types (internal use).
+type slotType string
+
+const (
+	slotTypeDefault slotType = "default"
+	slotTypeDurable slotType = "durable"
+)
+
+// NewWorker creates a worker that can execute workflows.
+func (c *Client) NewWorker(name string, options ...WorkerOption) (*Worker, error) {
+	config := &workerConfig{
+		slots:        100,
+		durableSlots: 1000,
+	}
+
+	for _, opt := range options {
+		opt(config)
+	}
+
+	dumps := gatherWorkflowDumps(config.workflows)
+
+	// Check engine version to decide between new and legacy worker architecture
+	isLegacy, err := c.isLegacyEngine()
+	if err != nil {
+		return nil, err
+	}
+	if isLegacy {
+		return newLegacyWorker(c, name, config, dumps)
+	}
+
+	initialSlotConfig := map[slotType]int{}
+	if config.slotsSet {
+		initialSlotConfig[slotTypeDefault] = config.slots
+	}
+	if config.durableSlotsSet {
+		initialSlotConfig[slotTypeDurable] = config.durableSlots
+	}
+	slotConfig := resolveWorkerSlotConfig(initialSlotConfig, dumps)
+
+	workerOpts := []worker.WorkerOpt{
+		worker.WithClient(c.legacyClient),
+		worker.WithName(name),
+	}
+
+	slotConfigMap := make(map[string]int32, len(slotConfig))
+	for key, value := range slotConfig {
+		slotConfigMap[string(key)] = int32(value) // #nosec G115 -- worker slot count is developer-configured, not attacker-controlled
+	}
+	workerOpts = append(workerOpts, worker.WithSlotConfig(slotConfigMap))
+
+	if config.logger != nil {
+		workerOpts = append(workerOpts, worker.WithLogger(config.logger))
+	}
+
+	if config.labels != nil {
+		workerOpts = append(workerOpts, worker.WithLabels(config.labels))
+	}
+
+	mainWorker, err := worker.NewWorker(workerOpts...)
+	if err != nil {
+		return nil, err
+	}
+
+	if config.panicHandler != nil {
+		mainWorker.SetPanicHandler(config.panicHandler)
+	}
+
+	w := &Worker{
+		worker:           mainWorker,
+		name:             name,
+		dispatcher:       c.legacyClient.Dispatcher(),
+		evictionPolicies: make(map[string]*EvictionPolicy),
+		logger:           config.logger,
+	}
+
+	hasDurable := false
+	for _, dump := range dumps {
+		if len(dump.durableActions) > 0 {
+			hasDurable = true
+			break
+		}
+		for _, task := range dump.req.Tasks {
+			if task.IsDurable {
+				hasDurable = true
+				break
+			}
+		}
+	}
+	w.hasDurable = hasDurable
+
+	if hasDurable {
+		durableSlotCount := config.durableSlots
+		if durableSlotCount < 0 {
+			durableSlotCount = 1000
+		}
+
+		w.evictionManager = evictionpkg.NewDurableEvictionManager(
+			durableSlotCount,
+			func(key string) {
+				mainWorker.CancelStepRun(key)
+			},
+			func(ctx context.Context, key string, rec *evictionpkg.DurableRunRecord) error {
+				if w.durableTaskListener == nil {
+					return nil
+				}
+				return w.durableTaskListener.SendEvictionRequest(ctx, rec.StepRunID, rec.InvocationCount)
+			},
+			evictionpkg.DefaultDurableEvictionConfig,
+			config.logger,
+		)
+	}
+
+	for _, dump := range dumps {
+		err := mainWorker.RegisterWorkflowV1(dump.req)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, namedFn := range dump.durableActions {
+			if namedFn.EvictionPolicy != nil {
+				ep := namedFn.EvictionPolicy
+				w.evictionPolicies[namedFn.ActionID] = &EvictionPolicy{
+					TTL:                   ep.TTL,
+					AllowCapacityEviction: ep.AllowCapacityEviction,
+					Priority:              ep.Priority,
+				}
+			}
+
+			actionID := namedFn.ActionID
+			fn := namedFn.Fn
+			err = mainWorker.RegisterAction(actionID, w.wrapDurableAction(actionID, fn)) //nolint:staticcheck // SA1019
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		for _, namedFn := range dump.regularActions {
+			err = mainWorker.RegisterAction(namedFn.ActionID, namedFn.Fn)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		// Register on failure function if exists
+		if dump.req.OnFailureTask != nil && dump.onFailureFn != nil {
+			actionId := dump.req.OnFailureTask.Action
+			err = mainWorker.RegisterAction(actionId, func(ctx worker.HatchetContext) (any, error) {
+				return dump.onFailureFn(ctx)
+			})
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	return w, nil
+}
+
+// ensureDurableInfra lazily starts the DurableTaskListener and the eviction
+// manager on the first durable action. The worker_id carried on the action is
+// guaranteed to be present by the time we get here, so we don't need to poll
+// w.worker.ID() (which races worker registration at startup).
+func (w *Worker) ensureDurableInfra(workerID string) {
+	if workerID == "" {
+		return
+	}
+	w.durableInitOnce.Do(func() {
+		w.durableTaskListener = v0Client.NewDurableTaskListener(
+			workerID,
+			func(ctx context.Context) (v1.V1Dispatcher_DurableTaskClient, error) {
+				return w.dispatcher.DurableTaskStream(ctx)
+			},
+			w.logger,
+		)
+
+		if w.evictionManager != nil {
+			mgr := w.evictionManager
+			w.durableTaskListener.SetServerEvictCallback(func(taskExternalID string, invocationCount int32, reason string) {
+				mgr.HandleServerEviction(taskExternalID, int(invocationCount))
+			})
+		}
+
+		w.durableTaskListener.Start(context.Background())
+
+		if w.evictionManager != nil {
+			w.evictionManager.Start()
+		}
+	})
+}
+
+// wrapDurableAction wraps a durable action function with eviction cache registration
+// and attaches the DurableTask bidi listener so durable waits can round-trip through
+// the new engine durable-event log.
+func (w *Worker) wrapDurableAction(actionID string, fn internal.WrappedTaskFn) func(ctx worker.HatchetContext) (any, error) {
+	return func(ctx worker.HatchetContext) (any, error) {
+		w.ensureDurableInfra(ctx.WorkerId())
+
+		key := ctx.StepRunId()
+
+		var evictionHook worker.DurableEvictionHook
+		if w.evictionManager != nil {
+			// The engine omits invocation_count on the first invocation of a durable
+			// task (no entry in the durable event log yet). Treat zero as the implicit
+			// first attempt.
+			invCount := ctx.DurableTaskInvocationCount()
+			if invCount == 0 {
+				invCount = 1
+			}
+
+			var ep *evictionpkg.EvictionPolicy
+			if policy, ok := w.evictionPolicies[actionID]; ok {
+				ep = &evictionpkg.EvictionPolicy{
+					TTL:                   policy.TTL,
+					AllowCapacityEviction: policy.AllowCapacityEviction,
+					Priority:              policy.Priority,
+				}
+			}
+
+			w.evictionManager.RegisterRun(key, key, int(invCount), ep)
+			defer w.evictionManager.UnregisterRun(key)
+
+			evictionHook = w.evictionManager
+		}
+
+		worker.SetContextDurableHooks(ctx, evictionHook, w.durableTaskListener, w.supportsDurableEviction)
+		defer worker.SetContextDurableHooks(ctx, nil, nil, false)
+
+		return fn(ctx)
+	}
+}
+
+type workflowDump struct {
+	req            *v1.CreateWorkflowVersionRequest
+	regularActions []internal.NamedFunction
+	durableActions []internal.NamedFunction
+	onFailureFn    internal.WrappedTaskFn
+}
+
+func gatherWorkflowDumps(workflows []WorkflowBase) []workflowDump {
+	dumps := make([]workflowDump, 0, len(workflows))
+	for _, workflow := range workflows {
+		req, regularActions, durableActions, onFailureFn := workflow.Dump()
+		dumps = append(dumps, workflowDump{
+			req:            req,
+			regularActions: regularActions,
+			durableActions: durableActions,
+			onFailureFn:    onFailureFn,
+		})
+	}
+	return dumps
+}
+
+func resolveWorkerSlotConfig(
+	slotConfig map[slotType]int,
+	dumps []workflowDump,
+) map[slotType]int {
+	requiredSlotTypes := map[slotType]bool{}
+	addFromRequests := func(requests map[string]int32) {
+		if requests == nil {
+			return
+		}
+		if _, ok := requests[string(slotTypeDefault)]; ok {
+			requiredSlotTypes[slotTypeDefault] = true
+		}
+		if _, ok := requests[string(slotTypeDurable)]; ok {
+			requiredSlotTypes[slotTypeDurable] = true
+		}
+	}
+
+	for _, dump := range dumps {
+		for _, task := range dump.req.Tasks {
+			addFromRequests(task.SlotRequests)
+		}
+		if dump.req.OnFailureTask != nil {
+			addFromRequests(dump.req.OnFailureTask.SlotRequests)
+		}
+	}
+
+	if len(dumps) > 0 {
+		for _, dump := range dumps {
+			for _, task := range dump.req.Tasks {
+				if task.IsDurable {
+					requiredSlotTypes[slotTypeDurable] = true
+					break
+				}
+			}
+		}
+	}
+
+	if requiredSlotTypes[slotTypeDefault] {
+		if _, ok := slotConfig[slotTypeDefault]; !ok {
+			slotConfig[slotTypeDefault] = 100
+		}
+	}
+	if requiredSlotTypes[slotTypeDurable] {
+		if _, ok := slotConfig[slotTypeDurable]; !ok {
+			slotConfig[slotTypeDurable] = 1000
+		}
+	}
+
+	if len(slotConfig) == 0 {
+		slotConfig[slotTypeDefault] = 100
+	}
+
+	return slotConfig
+}
+
+// checkEvictionSupport fetches the engine version and, if the engine is too old to
+// support durable-task eviction, strips the configured eviction policies and logs a
+// warning. Matches the Python SDK's _check_eviction_support behavior: we warn instead
+// of failing so that older engines continue to function.
+//
+// Callers who want a hard error when an eviction policy is unsupported can check the
+// engine version explicitly via `client.GetEngineVersion` + `SupportsDurableEviction`
+// and compare against `EvictionNotSupportedError`.
+
+func (w *Worker) checkEvictionSupport(ctx context.Context) error {
+	engineVersion, err := w.fetchEngineVersion(ctx)
+	if err != nil {
+		if w.logger != nil {
+			w.logger.Warn().Err(err).Msg("unable to resolve engine version; skipping eviction-support check")
+		}
+		return nil
+	}
+
+	if engineVersion != "" {
+		if supported, verr := SupportsDurableEviction(engineVersion); verr == nil && supported {
+			w.supportsDurableEviction = true
+		}
+	}
+
+	if len(w.evictionPolicies) == 0 {
+		return nil
+	}
+
+	if engineVersion == "" {
+		return nil
+	}
+
+	if w.supportsDurableEviction {
+		return nil
+	}
+
+	names := make([]string, 0, len(w.evictionPolicies))
+	for name := range w.evictionPolicies {
+		names = append(names, name)
+	}
+
+	if w.logger != nil {
+		w.logger.Warn().
+			Str("engine_version", engineVersion).
+			Str("required_version", MinEngineVersion.DurableEviction).
+			Strs("tasks", names).
+			Msg("engine does not support durable eviction; configured eviction policies will be ignored")
+	}
+
+	w.evictionPolicies = make(map[string]*EvictionPolicy)
+	w.evictionManager = nil
+
+	return nil
+}
+
+func (w *Worker) fetchEngineVersion(ctx context.Context) (string, error) {
+	if w.dispatcher == nil {
+		return "", nil
+	}
+	return w.dispatcher.GetVersion(ctx)
+}
+
+// Use registers middleware functions on the worker.
+// Middleware functions are called in order for each step run execution.
+//
+//nolint:staticcheck // SA1019: worker.MiddlewareFunc is deprecated but still used internally
+func (w *Worker) Use(mws ...worker.MiddlewareFunc) {
+	if w.worker != nil {
+		w.worker.Use(mws...) //nolint:staticcheck // SA1019
+	}
+	if w.legacyDurable != nil {
+		w.legacyDurable.Use(mws...) //nolint:staticcheck // SA1019
+	}
+}
+
+// Starts the worker instance and returns a cleanup function.
+func (w *Worker) Start() (func() error, error) {
+	var workers []*worker.Worker
+
+	if w.worker != nil {
+		workers = append(workers, w.worker)
+	}
+
+	if w.legacyDurable != nil {
+		workers = append(workers, w.legacyDurable)
+	}
+
+	if err := w.checkEvictionSupport(context.Background()); err != nil {
+		return nil, err
+	}
+
+	// Track cleanup functions with a mutex to safely access from multiple goroutines
+	var cleanupFuncs []func() error
+	var cleanupMu sync.Mutex
+
+	// Use errgroup to start workers concurrently
+	g := new(errgroup.Group)
+
+	// Start all workers concurrently
+	for i := range workers {
+		worker := workers[i] // Capture the worker for the goroutine
+		g.Go(func() error {
+			cleanup, err := worker.Start()
+			if err != nil {
+				return fmt.Errorf("failed to start worker %s: %w", *worker.ID(), err)
+			}
+
+			cleanupMu.Lock()
+			cleanupFuncs = append(cleanupFuncs, cleanup)
+			cleanupMu.Unlock()
+			return nil
+		})
+	}
+
+	// Wait for all workers to start
+	if err := g.Wait(); err != nil {
+		// Clean up any workers that did start
+		for _, cleanupFn := range cleanupFuncs {
+			_ = cleanupFn()
+		}
+		return nil, err
+	}
+
+	// Return a combined cleanup function that also uses errgroup for concurrent cleanup
+	return func() error {
+		// Evict all waiting durable runs before stopping workers
+		if w.evictionManager != nil {
+			w.evictionManager.EvictAllWaiting(context.Background())
+		}
+
+		// Stop the durable task listener
+		if w.durableTaskListener != nil {
+			w.durableTaskListener.Stop()
+		}
+
+		g := new(errgroup.Group)
+
+		for _, cleanup := range cleanupFuncs {
+			cleanupFn := cleanup // Capture the cleanup function for the goroutine
+			g.Go(func() error {
+				return cleanupFn()
+			})
+		}
+
+		// Wait for all cleanup operations to complete and return any error
+		if err := g.Wait(); err != nil {
+			return fmt.Errorf("worker cleanup error: %w", err)
+		}
+
+		return nil
+	}, nil
+}
+
+// StartBlocking starts the worker and blocks until it completes.
+// This is a convenience method for common usage patterns.
+func (w *Worker) StartBlocking(ctx context.Context) error {
+	cleanup, err := w.Start()
+	if err != nil {
+		return err
+	}
+
+	<-ctx.Done()
+
+	err = cleanup()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// NewWorkflow creates a new workflow definition.
+// Workflows can be configured with triggers, events, and other options.
+func (c *Client) NewWorkflow(name string, options ...WorkflowOption) *Workflow {
+	return newWorkflow(name, c.legacyClient, options...)
+}
+
+// StandaloneTask represents a single task that runs independently without a workflow wrapper.
+// It's essentially a specialized workflow containing only one task.
+type StandaloneTask struct {
+	workflow *Workflow
+	task     *Task
+}
+
+// GetName returns the name of the standalone task.
+func (st *StandaloneTask) GetName() string {
+	return st.workflow.declaration.Name()
+}
+
+// Dump implements the WorkflowBase interface for internal use.
+func (st *StandaloneTask) Dump() (*v1.CreateWorkflowVersionRequest, []internal.NamedFunction, []internal.NamedFunction, internal.WrappedTaskFn) {
+	return st.workflow.declaration.Dump()
+}
+
+// StandaloneTaskOption represents options that can be applied to standalone tasks.
+// This interface allows both WorkflowOption and TaskOption to be used interchangeably.
+type StandaloneTaskOption any
+
+// promoteTaskTriggers moves cron and event triggers from task options to workflow
+// options. The engine treats these as workflow-level concerns, but the standalone
+// task API exposes them as TaskOption (WithCron, WithEvents) for ergonomics.
+func promoteTaskTriggers(taskOptions []TaskOption, workflowOptions []WorkflowOption) []WorkflowOption {
+	cfg := &taskConfig{}
+	for _, opt := range taskOptions {
+		opt(cfg)
+	}
+	if len(cfg.onCron) > 0 {
+		workflowOptions = append(workflowOptions, WithWorkflowCron(cfg.onCron...))
+	}
+	if len(cfg.onEvents) > 0 {
+		workflowOptions = append(workflowOptions, WithWorkflowEvents(cfg.onEvents...))
+	}
+	return workflowOptions
+}
+
+// NewStandaloneTask creates a standalone task that can be triggered independently.
+// This is a specialized workflow containing only one task, making it easier to create
+// simple single-task workflows without the workflow boilerplate.
+//
+// The function parameter must have the signature:
+//
+//	func(ctx hatchet.Context, input any) (any, error)
+//
+// Function signatures are validated at runtime using reflection.
+//
+// Options can be any combination of WorkflowOption and TaskOption.
+func (c *Client) NewStandaloneTask(name string, fn any, options ...StandaloneTaskOption) *StandaloneTask {
+	if name == "" {
+		panic("standalone task name cannot be empty")
+	}
+
+	// Separate workflow and task options
+	var workflowOptions []WorkflowOption
+	var taskOptions []TaskOption
+
+	for _, opt := range options {
+		switch o := opt.(type) {
+		case WorkflowOption:
+			workflowOptions = append(workflowOptions, o)
+		case TaskOption:
+			taskOptions = append(taskOptions, o)
+		default:
+			panic("invalid option type for standalone task - must be WorkflowOption or TaskOption")
+		}
+	}
+
+	workflowOptions = promoteTaskTriggers(taskOptions, workflowOptions)
+
+	// Create a workflow with the same name as the task
+	workflow := c.NewWorkflow(name, workflowOptions...)
+
+	// Create the single task within the workflow
+	task := workflow.NewTask(name, fn, taskOptions...)
+
+	return &StandaloneTask{
+		workflow: workflow,
+		task:     task,
+	}
+}
+
+// NewStandaloneBatchTask creates a standalone batch task that can be triggered independently.
+// This is a specialized workflow containing only one batch task, making it easier to create
+// simple single-task workflows without the workflow boilerplate.
+//
+// The function parameter must have the signature:
+//
+//	func(ctx hatchet.Context, input map[string]T) (map[string]R, error)
+//
+// or, when batch.BroadcastOutput is true:
+//
+//	func(ctx hatchet.Context, input map[string]T) (R, error)
+//
+// Function signatures are validated at runtime using reflection.
+//
+// Options can be any combination of WorkflowOption and TaskOption.
+//
+// Preview: batch tasks are in beta and may change in future releases.
+func (c *Client) NewStandaloneBatchTask(name string, fn any, batch BatchConfig, options ...StandaloneTaskOption) *StandaloneTask {
+	if name == "" {
+		panic("standalone task name cannot be empty")
+	}
+
+	// Separate workflow and task options
+	var workflowOptions []WorkflowOption
+	var taskOptions []TaskOption
+
+	for _, opt := range options {
+		switch o := opt.(type) {
+		case WorkflowOption:
+			workflowOptions = append(workflowOptions, o)
+		case TaskOption:
+			taskOptions = append(taskOptions, o)
+		default:
+			panic("invalid option type for standalone batch task - must be WorkflowOption or TaskOption")
+		}
+	}
+
+	workflowOptions = promoteTaskTriggers(taskOptions, workflowOptions)
+
+	// Create a workflow with the same name as the task
+	workflow := c.NewWorkflow(name, workflowOptions...)
+
+	// Create the single batch task within the workflow
+	task := workflow.NewBatchTask(name, fn, batch, taskOptions...)
+
+	return &StandaloneTask{
+		workflow: workflow,
+		task:     task,
+	}
+}
+
+// NewStandaloneDurableTask creates a standalone durable task that can be triggered independently.
+// This is a specialized workflow containing only one durable task, making it easier to create
+// simple single-task workflows with durable functionality.
+//
+// The function parameter must have the signature:
+//
+//	func(ctx hatchet.DurableContext, input any) (any, error)
+//
+// Function signatures are validated at runtime using reflection.
+//
+// Options can be any combination of WorkflowOption and TaskOption.
+func (c *Client) NewStandaloneDurableTask(name string, fn any, options ...StandaloneTaskOption) *StandaloneTask {
+	if name == "" {
+		panic("standalone durable task name cannot be empty")
+	}
+
+	// Separate workflow and task options
+	var workflowOptions []WorkflowOption
+	var taskOptions []TaskOption
+
+	for _, opt := range options {
+		switch o := opt.(type) {
+		case WorkflowOption:
+			workflowOptions = append(workflowOptions, o)
+		case TaskOption:
+			taskOptions = append(taskOptions, o)
+		default:
+			panic("invalid option type for standalone durable task - must be WorkflowOption or TaskOption")
+		}
+	}
+
+	workflowOptions = promoteTaskTriggers(taskOptions, workflowOptions)
+
+	// Create a workflow with the same name as the task
+	workflow := c.NewWorkflow(name, workflowOptions...)
+
+	// Create the single durable task within the workflow
+	task := workflow.NewDurableTask(name, fn, taskOptions...)
+
+	return &StandaloneTask{
+		workflow: workflow,
+		task:     task,
+	}
+}
+
+// Run executes the standalone task with the provided input and waits for completion.
+func (st *StandaloneTask) Run(ctx context.Context, input any, opts ...RunOptFunc) (*TaskResult, error) {
+	workflowRunRef, err := st.workflow.Run(ctx, input, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	res := WorkflowResult{result: workflowRunRef.result, RunId: workflowRunRef.RunId}
+
+	return res.TaskOutput(st.task.name), nil
+}
+
+// RunNoWait executes the standalone task with the provided input without waiting for completion.
+// Returns a workflow run reference that can be used to track the run status.
+func (st *StandaloneTask) RunNoWait(ctx context.Context, input any, opts ...RunOptFunc) (*WorkflowRunRef, error) {
+	workflowRunRef, err := st.workflow.RunNoWait(ctx, input, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	return workflowRunRef, nil
+}
+
+// RunMany executes multiple standalone task instances with different inputs.
+// Returns workflow run IDs that can be used to track the run statuses.
+func (st *StandaloneTask) RunMany(ctx context.Context, inputs []RunManyOpt) ([]WorkflowRunRef, error) {
+	workflowRefs, err := st.workflow.RunMany(ctx, inputs)
+	if err != nil {
+		return nil, err
+	}
+
+	return workflowRefs, nil
+}
+
+// OnFailure sets a failure handler for the standalone task.
+// The handler will be called when the standalone task fails.
+func (st *StandaloneTask) OnFailure(fn any) {
+	st.workflow.OnFailure(fn)
+}
+
+// WorkflowRunRef is a type that represents a reference to a workflow run.
+type WorkflowRunRef struct {
+	RunId      string
+	v0Workflow *v0Client.Workflow
+	resultFn   func() (*WorkflowResult, error)
+}
+
+// Result blocks until the workflow run completes and returns its result.
+func (wr *WorkflowRunRef) Result() (*WorkflowResult, error) {
+	return wr.resultWithContext(nil)
+}
+
+func (wr *WorkflowRunRef) resultWithContext(ctx context.Context) (*WorkflowResult, error) {
+	if wr.resultFn != nil {
+		return wr.resultFn()
+	}
+
+	var result *v0Client.WorkflowResult
+	var err error
+	if ctx == nil {
+		result, err = wr.v0Workflow.Result()
+	} else {
+		result, err = wr.v0Workflow.ResultWithContext(ctx)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	workflowResult, err := result.Results()
+	if err != nil {
+		return nil, err
+	}
+
+	return &WorkflowResult{result: workflowResult, RunId: wr.RunId}, nil
+}
+
+// WorkflowResult wraps workflow execution results and provides type-safe conversion methods.
+type WorkflowResult struct {
+	RunId  string
+	result any
+}
+
+// TaskResult wraps a single task's output and provides type-safe conversion methods.
+type TaskResult struct {
+	RunId  string
+	result any
+}
+
+// TaskOutput extracts the output of a specific task from the workflow result.
+// Returns a TaskResult that can be used to convert the task output into the desired type.
+//
+// Example usage:
+//
+//	taskResult := workflowResult.TaskOutput("myTask")
+//	var output MyOutputType
+//	err := taskResult.Into(&output)
+func (wr *WorkflowResult) TaskOutput(taskName string) *TaskResult {
+	// Handle different result structures that might come from workflow execution
+	resultData := wr.result
+
+	taskResult := &TaskResult{RunId: wr.RunId}
+
+	// Check if this is a raw v0Client.WorkflowResult that we need to extract from
+	if workflowResult, ok := resultData.(*v0Client.WorkflowResult); ok {
+		// Try to get the workflow results as a map
+		results, err := workflowResult.Results()
+		if err != nil {
+			// Return empty TaskResult if we can't extract results
+			return taskResult
+		}
+		resultData = results
+	}
+
+	// If the result is a map, look for the specific task
+	if resultMap, ok := resultData.(map[string]any); ok {
+		if taskOutput, exists := resultMap[taskName]; exists {
+			taskResult.result = taskOutput
+			return taskResult
+		}
+	}
+
+	// If we can't find the specific task, return the entire result
+	// This handles cases where there's only one task
+	taskResult.result = resultData
+	return taskResult
+}
+
+// Into converts the task result into the provided destination using JSON marshal/unmarshal.
+// The destination should be a pointer to the desired type.
+//
+// Example usage:
+//
+//	var output MyOutputType
+//	err := taskResult.Into(&output)
+func (tr *TaskResult) Into(dest any) error {
+	// Handle different result structures that might come from task execution
+	resultData := tr.result
+
+	// If the result is a pointer to interface{}, dereference it
+	if ptr, ok := resultData.(*any); ok && ptr != nil {
+		resultData = *ptr
+	}
+
+	// If the result is a pointer to string (JSON), unmarshal it directly
+	if strPtr, ok := resultData.(*string); ok && strPtr != nil {
+		return json.Unmarshal([]byte(*strPtr), dest)
+	}
+
+	// Convert the result to JSON and then unmarshal to destination
+	jsonData, err := json.Marshal(resultData)
+	if err != nil {
+		return fmt.Errorf("failed to marshal result to JSON: %w", err)
+	}
+
+	if err := json.Unmarshal(jsonData, dest); err != nil {
+		return fmt.Errorf("failed to unmarshal JSON to destination: %w", err)
+	}
+
+	return nil
+}
+
+// Raw returns the raw, undecoded workflow result.
+func (wr *WorkflowResult) Raw() any {
+	return wr.result
+}
+
+// Run executes a workflow with the provided input and waits for completion.
+func (c *Client) Run(ctx context.Context, workflowName string, input any, opts ...RunOptFunc) (*WorkflowResult, error) {
+	tracer := otel.Tracer("github.com/hatchet-dev/hatchet/sdks/go")
+	otelCtx := ctx
+	if hCtx, ok := ctx.(Context); ok {
+		otelCtx = hCtx.GetContext()
+	}
+	otelCtx, span := tracer.Start(otelCtx, hatchetotel.SpanRunWorkflow,
+		trace.WithSpanKind(trace.SpanKindProducer),
+		trace.WithAttributes(
+			attribute.String(hatchetotel.AttrInstrumentor, hatchetotel.AttrInstrumentorValue),
+			attribute.String(hatchetotel.AttrWorkflowName, workflowName),
+		),
+	)
+	defer span.End()
+
+	workflowRunRef, err := c.runWorkflowInternal(ctx, otelCtx, span, workflowName, input, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	result, err := workflowRunRef.Result()
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		span.RecordError(err)
+		return nil, err
+	}
+
+	span.SetStatus(codes.Ok, "")
+	return result, nil
+}
+
+// RunNoWait executes a workflow with the provided input without waiting for completion.
+// Returns a workflow run reference that can be used to track the run status.
+func (c *Client) RunNoWait(ctx context.Context, workflowName string, input any, opts ...RunOptFunc) (*WorkflowRunRef, error) {
+	tracer := otel.Tracer("github.com/hatchet-dev/hatchet/sdks/go")
+	otelCtx := ctx
+	if hCtx, ok := ctx.(Context); ok {
+		otelCtx = hCtx.GetContext()
+	}
+	otelCtx, span := tracer.Start(otelCtx, hatchetotel.SpanRunWorkflow,
+		trace.WithSpanKind(trace.SpanKindProducer),
+		trace.WithAttributes(
+			attribute.String(hatchetotel.AttrInstrumentor, hatchetotel.AttrInstrumentorValue),
+			attribute.String(hatchetotel.AttrWorkflowName, workflowName),
+		),
+	)
+	defer span.End()
+
+	return c.runWorkflowInternal(ctx, otelCtx, span, workflowName, input, opts...)
+}
+
+// runWorkflowInternal contains the shared logic for Run and RunNoWait.
+func (c *Client) runWorkflowInternal(ctx context.Context, otelCtx context.Context, span trace.Span, workflowName string, input any, opts ...RunOptFunc) (*WorkflowRunRef, error) {
+	runOpts := &runOpts{}
+	for _, opt := range opts {
+		opt(runOpts)
+	}
+
+	var priority *int32
+	if runOpts.Priority != nil {
+		priority = &[]int32{int32(*runOpts.Priority)}[0]
+	}
+
+	var additionalMetadata *map[string]string
+	if runOpts.AdditionalMetadata != nil {
+		additionalMetadata = &map[string]string{}
+		for key, value := range *runOpts.AdditionalMetadata {
+			(*additionalMetadata)[key] = fmt.Sprintf("%v", value)
+		}
+	}
+
+	// Inject traceparent for cross-workflow trace propagation.
+	// Use otelCtx (not ctx) so the span's trace context is propagated.
+	additionalMetadata = injectTraceparentToMap(otelCtx, additionalMetadata)
+	runOpts.AdditionalMetadata = additionalMetadata
+
+	var v0Opts []v0Client.RunOptFunc
+	if additionalMetadata != nil {
+		v0Opts = append(v0Opts, v0Client.WithRunMetadata(*additionalMetadata))
+	}
+	if priority != nil {
+		v0Opts = append(v0Opts, v0Client.WithPriority(*priority))
+	}
+	if runOpts.DesiredWorkerLabels != nil {
+		v0Opts = append(v0Opts, v0Client.WithDesiredWorkerLabels(runOpts.DesiredWorkerLabels))
+	}
+
+	var v0Workflow *v0Client.Workflow
+	var err error
+
+	hCtx, ok := ctx.(Context)
+	if ok {
+		durableWorkflowName := workflowName
+		if ns := c.legacyClient.Namespace(); ns != "" && !strings.HasPrefix(durableWorkflowName, ns) {
+			durableWorkflowName = fmt.Sprintf("%s%s", ns, durableWorkflowName)
+		}
+
+		durableRef, handled, durableErr := runDurableChildWorkflowIfSupported(ctx, durableWorkflowName, input, runOpts)
+		if handled {
+			if durableErr != nil {
+				span.SetStatus(codes.Error, durableErr.Error())
+				span.RecordError(durableErr)
+				return nil, durableErr
+			}
+			span.SetAttributes(attribute.String(hatchetotel.AttrChildWorkflowRunID, durableRef.RunId))
+			return durableRef, nil
+		}
+
+		v0Workflow, err = hCtx.SpawnWorkflow(workflowName, input, &worker.SpawnWorkflowOpts{
+			Key:                 runOpts.Key,
+			Sticky:              runOpts.Sticky,
+			Priority:            priority,
+			AdditionalMetadata:  additionalMetadata,
+			DesiredWorkerLabels: runOpts.DesiredWorkerLabels,
+		})
+	} else {
+		v0Workflow, err = c.legacyClient.Admin().RunWorkflow(workflowName, input, v0Opts...)
+	}
+
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		span.RecordError(err)
+		return nil, err
+	}
+
+	span.SetAttributes(attribute.String(hatchetotel.AttrChildWorkflowRunID, v0Workflow.RunId()))
+
+	return &WorkflowRunRef{RunId: v0Workflow.RunId(), v0Workflow: v0Workflow}, nil
+}
+
+// RunManyOpt is a type that represents the options for running multiple instances of a workflow with different inputs and options.
+type RunManyOpt struct {
+	Input any
+	Opts  []RunOptFunc
+}
+
+// RunMany executes multiple workflow instances with different inputs.
+// Returns workflow run IDs that can be used to track the run statuses.
+func (c *Client) RunMany(ctx context.Context, workflowName string, inputs []RunManyOpt) ([]WorkflowRunRef, error) {
+	tracer := otel.Tracer("github.com/hatchet-dev/hatchet/sdks/go")
+	originalCtx := ctx
+	otelCtx := ctx
+	if hCtx, ok := ctx.(Context); ok {
+		otelCtx = hCtx.GetContext()
+	}
+	otelCtx, span := tracer.Start(otelCtx, hatchetotel.SpanRunWorkflows,
+		trace.WithSpanKind(trace.SpanKindProducer),
+		trace.WithAttributes(
+			attribute.String(hatchetotel.AttrInstrumentor, hatchetotel.AttrInstrumentorValue),
+			attribute.String(hatchetotel.AttrWorkflowName, workflowName),
+			attribute.Int(hatchetotel.AttrNumWorkflows, len(inputs)),
+		),
+	)
+	defer span.End()
+
+	if _, ok := originalCtx.(Context); ok {
+		durableWorkflowName := workflowName
+		if ns := c.legacyClient.Namespace(); ns != "" && !strings.HasPrefix(durableWorkflowName, ns) {
+			durableWorkflowName = fmt.Sprintf("%s%s", ns, durableWorkflowName)
+		}
+
+		if durableRefs, handled, err := runManyDurableChildWorkflows(originalCtx, otelCtx, durableWorkflowName, inputs); handled {
+			if err != nil {
+				span.SetStatus(codes.Error, err.Error())
+				return durableRefs, err
+			}
+
+			span.SetStatus(codes.Ok, "")
+			return durableRefs, nil
+		}
+	}
+
+	var workflowRefs []WorkflowRunRef
+
+	var wg sync.WaitGroup
+	var errs []error
+	var errsMutex sync.Mutex
+	var workflowRefsMutex sync.Mutex
+
+	wg.Add(len(inputs))
+
+	for _, input := range inputs {
+		go func() {
+			defer wg.Done()
+
+			workflowRef, err := c.RunNoWait(originalCtx, workflowName, input.Input, input.Opts...)
+			if err != nil {
+				errsMutex.Lock()
+				errs = append(errs, err)
+				errsMutex.Unlock()
+				return
+			}
+
+			workflowRefsMutex.Lock()
+			workflowRefs = append(workflowRefs, *workflowRef)
+			workflowRefsMutex.Unlock()
+		}()
+	}
+
+	wg.Wait()
+
+	if err := errors.Join(errs...); err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		return workflowRefs, err
+	}
+
+	span.SetStatus(codes.Ok, "")
+	return workflowRefs, nil
+}
+
+// Metrics returns a feature client for interacting with workflow and task metrics.
+func (c *Client) Metrics() *features.MetricsClient {
+	if c.metrics == nil {
+		tenantId := c.legacyClient.TenantId()
+		c.metrics = features.NewMetricsClient(c.legacyClient.API(), tenantId)
+	}
+
+	return c.metrics
+}
+
+// RateLimits returns a client for managing rate limits.
+func (c *Client) RateLimits() *features.RateLimitsClient {
+	if c.rateLimits == nil {
+		tenantId := c.legacyClient.TenantId()
+		admin := c.legacyClient.Admin()
+		c.rateLimits = features.NewRateLimitsClient(c.legacyClient.API(), tenantId, admin)
+	}
+
+	return c.rateLimits
+}
+
+// Runs returns a client for managing workflow runs.
+func (c *Client) Runs() *features.RunsClient {
+	if c.runs == nil {
+		tenantId := c.legacyClient.TenantId()
+		c.runs = features.NewRunsClient(c.legacyClient.API(), tenantId, c.legacyClient)
+	}
+
+	return c.runs
+}
+
+// Workers returns a client for managing workers.
+func (c *Client) Workers() *features.WorkersClient {
+	if c.workers == nil {
+		tenantId := c.legacyClient.TenantId()
+		c.workers = features.NewWorkersClient(c.legacyClient.API(), tenantId)
+	}
+
+	return c.workers
+}
+
+// Workflows returns a client for managing workflow definitions.
+func (c *Client) Workflows() *features.WorkflowsClient {
+	if c.workflows == nil {
+		tenantId := c.legacyClient.TenantId()
+		c.workflows = features.NewWorkflowsClient(c.legacyClient.API(), tenantId)
+	}
+
+	return c.workflows
+}
+
+// Crons returns a client for managing cron triggers.
+func (c *Client) Crons() *features.CronsClient {
+	if c.crons == nil {
+		tenantId := c.legacyClient.TenantId()
+		c.crons = features.NewCronsClient(c.legacyClient.API(), tenantId)
+	}
+
+	return c.crons
+}
+
+// CEL returns a client for working with CEL expressions.
+func (c *Client) CEL() *features.CELClient {
+	if c.cel == nil {
+		tenantId := c.legacyClient.TenantId()
+		c.cel = features.NewCELClient(c.legacyClient.API(), tenantId)
+	}
+
+	return c.cel
+}
+
+// Schedules returns a client for managing scheduled workflow runs.
+func (c *Client) Schedules() *features.SchedulesClient {
+	if c.schedules == nil {
+		tenantId := c.legacyClient.TenantId()
+		namespace := c.legacyClient.Namespace()
+		c.schedules = features.NewSchedulesClient(c.legacyClient.API(), tenantId, &namespace)
+	}
+
+	return c.schedules
+}
+
+// Filters returns a client for managing event filters.
+func (c *Client) Filters() *features.FiltersClient {
+	if c.filters == nil {
+		tenantId := c.legacyClient.TenantId()
+		c.filters = features.NewFiltersClient(c.legacyClient.API(), tenantId)
+	}
+
+	return c.filters
+}
+
+// Events returns a client for sending and managing events.
+func (c *Client) Events() v0Client.EventClient {
+	return c.legacyClient.Event()
+}
+
+// Logs returns a client for managing task logs.
+func (c *Client) Logs() *features.LogsClient {
+	if c.logs == nil {
+		tenantId := c.legacyClient.TenantId()
+		c.logs = features.NewLogsClient(c.legacyClient.API(), tenantId)
+	}
+
+	return c.logs
+}
+
+// Webhooks returns a client for managing webhooks.
+func (c *Client) Webhooks() *features.WebhooksClient {
+	if c.webhooks == nil {
+		tenantId := c.legacyClient.TenantId()
+		c.webhooks = features.NewWebhooksClient(c.legacyClient.API(), tenantId)
+	}
+
+	return c.webhooks
+}

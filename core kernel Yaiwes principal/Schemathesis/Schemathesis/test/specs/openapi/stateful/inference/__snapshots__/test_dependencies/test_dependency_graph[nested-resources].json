@@ -1,0 +1,79 @@
+{
+  "operations": {
+    "GET /users/{userId}/posts/{postId}": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "path",
+          "parameter_name": "userId",
+          "resource": "User",
+          "resource_field": "id"
+        },
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "path",
+          "parameter_name": "postId",
+          "resource": "Post",
+          "resource_field": "id"
+        }
+      ],
+      "outputs": []
+    },
+    "POST /users": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "User",
+          "status_code": "201"
+        }
+      ]
+    },
+    "POST /users/{userId}/posts": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "path",
+          "parameter_name": "userId",
+          "resource": "User",
+          "resource_field": "id"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "Post",
+          "status_code": "201"
+        }
+      ]
+    }
+  },
+  "resources": {
+    "Post": {
+      "fields": [
+        "id"
+      ],
+      "types": {
+        "id": [
+          "string"
+        ]
+      }
+    },
+    "User": {
+      "fields": [
+        "id"
+      ],
+      "types": {
+        "id": [
+          "string"
+        ]
+      }
+    }
+  }
+}

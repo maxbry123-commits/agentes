@@ -1,0 +1,25 @@
+[package]
+name = "zen-python"
+version = "2.0.2"
+edition = "2021"
+license = "MIT"
+publish = false
+
+[lib]
+name = "zen"
+crate-type = ["cdylib"]
+
+[dependencies]
+anyhow = { workspace = true }
+either = "1"
+pyo3 = { version = "0.25", features = ["anyhow", "serde", "either", "abi3-py38"] }
+pyo3-async-runtimes = { version = "0.25", features = ["tokio-runtime", "attributes"] }
+pythonize = "0.25"
+json_dotpath = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+rust_decimal = { workspace = true, features = ["maths-nopanic"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+zen-engine = { path = "../../core/engine", features = ["arbitrary_precision"] }
+zen-expression = { path = "../../core/expression", features = ["arbitrary_precision"] }
+zen-tmpl = { path = "../../core/template" }

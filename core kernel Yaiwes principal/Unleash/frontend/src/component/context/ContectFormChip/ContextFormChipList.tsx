@@ -1,0 +1,25 @@
+import type React from 'react';
+import { styled } from '@mui/material';
+
+const StyledContainer = styled('ul')(({ theme }) => ({
+    listStyleType: 'none',
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: theme.spacing(1),
+    padding: theme.spacing(2),
+    margin: 0,
+    '&&': {
+        marginTop: theme.spacing(1),
+    },
+    maxHeight: '412px',
+    overflow: 'auto',
+    borderRadius: theme.shape.borderRadiusMedium,
+    border: `1px solid ${theme.palette.divider}`,
+    backgroundColor: theme.palette.background.paper,
+    '&:empty': {
+        display: 'none',
+    },
+}));
+
+export const ContextFormChipList: React.FC<{ children?: React.ReactNode }> =
+    StyledContainer;

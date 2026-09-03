@@ -1,0 +1,60 @@
+{
+  "operations": {
+    "GET /items/search": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "query",
+          "parameter_name": "itemId",
+          "resource": "Item",
+          "resource_field": "id"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "Search",
+          "status_code": "200"
+        }
+      ]
+    },
+    "POST /items": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "Item",
+          "status_code": "201"
+        }
+      ]
+    }
+  },
+  "resources": {
+    "Item": {
+      "fields": [
+        "id"
+      ],
+      "types": {
+        "id": [
+          "string"
+        ]
+      }
+    },
+    "Search": {
+      "fields": [
+        "id"
+      ],
+      "types": {
+        "id": [
+          "string"
+        ]
+      }
+    }
+  }
+}

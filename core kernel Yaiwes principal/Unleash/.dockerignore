@@ -1,0 +1,17 @@
+*
+!src
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!scripts
+!tsconfig.json
+!docs
+!CHANGELOG.md
+!LICENSE
+!README.md
+!frontend
+frontend/node_modules
+node_modules
+!docker/index.js
+!.pnpm
+!patches

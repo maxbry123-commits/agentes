@@ -1,0 +1,782 @@
+# Copyright 2020 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+"""Generic utility functions that are used in the framework."""
+
+import base64
+import hashlib
+import json
+import logging
+import os
+import platform
+import re
+import signal
+import subprocess
+import time
+import typing
+from collections import defaultdict, namedtuple
+from contextlib import contextmanager
+from pathlib import Path
+from typing import Dict
+
+import psutil
+import semver
+from packaging import version
+from tenacity import (
+    Retrying,
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    stop_after_delay,
+    wait_fixed,
+)
+
+FLUSH_CMD = 'screen -S {session} -X colon "logfile flush 0^M"'
+CommandReturn = namedtuple("CommandReturn", "returncode stdout stderr")
+CMDLOG = logging.getLogger("commands")
+
+
+def get_threads(pid: int) -> dict:
+    """Return dict consisting of child threads."""
+    try:
+        proc = psutil.Process(pid)
+
+        threads_map = defaultdict(list)
+        for thread in proc.threads():
+            threads_map[psutil.Process(thread.id).name()].append(thread.id)
+        return threads_map
+    except psutil.NoSuchProcess:
+        return {}
+
+
+def get_cpu_affinity(pid: int) -> list:
+    """Get CPU affinity for a thread."""
+    return psutil.Process(pid).cpu_affinity()
+
+
+def set_cpu_affinity(pid: int, cpulist: list) -> list:
+    """Set CPU affinity for a thread."""
+    real_cpulist = list(map(CpuMap, cpulist))
+    return psutil.Process(pid).cpu_affinity(real_cpulist)
+
+
+CpuTimes = namedtuple("CpuTimes", ["user", "system"])
+
+
+def get_cpu_times(process: psutil.Process) -> Dict[str, CpuTimes]:
+    """Return a dict mapping thread name to CPU usage (in seconds) since start."""
+    # We're consciously ignoring whatever erorr is returned by psutil and returning
+    # empty {} as result in case of any error retrieving the process threads
+    # information
+    # pylint: disable=locally-disabled, broad-exception-caught
+
+    threads = []
+    try:
+        threads = process.threads()
+    except Exception as exc:
+        logging.warning("Process %d does not exist", process.pid, exc_info=exc)
+        return {}
+
+    cpu_times = {}
+    for thread in threads:
+        try:
+            thread_name = psutil.Process(thread.id).name()
+            cpu_times[thread_name] = CpuTimes(thread.user_time, thread.system_time)
+        except Exception as exc:
+            logging.warning("Thread %d no longer exists", thread.id, exc_info=exc)
+            continue
+
+    return cpu_times
+
+
+def get_cpu_utilization(
+    process: psutil.Process,
+    interval: int = 1,
+    split_user_system: bool = False,
+) -> Dict[str, float | CpuTimes]:
+    """Return current process per thread CPU utilization over the interval (seconds)."""
+    cpu_utilization = {}
+    cpu_times_before = get_cpu_times(process)
+    time.sleep(interval)
+    cpu_times_after = get_cpu_times(process)
+    threads = set(cpu_times_before.keys()) & set(cpu_times_after.keys())
+    for thread_name in threads:
+        before = cpu_times_before[thread_name]
+        after = cpu_times_after[thread_name]
+        user = (after.user - before.user) / interval * 100
+        system = (after.system - before.system) / interval * 100
+        if split_user_system:
+            cpu_utilization[thread_name] = CpuTimes(user, system)
+        else:
+            cpu_utilization[thread_name] = user + system
+    return cpu_utilization
+
+
+def track_cpu_utilization(
+    pid: int, iterations: int, omit: int
+) -> Dict[str, list[float]]:
+    """Tracks cpu utilization of a process for certain number of
+    iterations. Sleeps for first `omit` seconds.
+    """
+    assert iterations > 0
+
+    # Sleep first `omit` secconds
+    time.sleep(omit)
+
+    cpu_utilization = defaultdict(list)
+    process = psutil.Process(pid)
+    for _ in range(iterations):
+        current_cpu_utilization = get_cpu_utilization(process)
+        assert len(current_cpu_utilization) > 0
+
+        for thread_name, value in current_cpu_utilization.items():
+            cpu_utilization[thread_name].append(value)
+    return cpu_utilization
+
+
+def get_resident_memory(process: psutil.Process):
+    """Returns current memory utilization in KiB, including used HugeTLBFS"""
+
+    proc_status = Path("/proc", str(process.pid), "status").read_text("utf-8")
+    for line in proc_status.splitlines():
+        if line.startswith("HugetlbPages:"):  # entry is in KiB
+            hugetlbfs_usage = int(line.split()[1])
+            break
+    else:
+        assert False, f"HugetlbPages not found in {str(proc_status)}"
+    return hugetlbfs_usage + process.memory_info().rss // 1024
+
+
+@contextmanager
+def chroot(path):
+    """
+    Create a chroot environment for running some code
+    """
+
+    # Need to keep these around so we can exit the chroot
+    real_root = os.open("/", os.O_RDONLY)
+    working_dir = os.getcwd()
+
+    try:
+        # Jump in the chroot
+        os.chroot(path)
+        os.chdir("/")
+        yield
+
+    finally:
+        # Jump out of the chroot
+        os.fchdir(real_root)
+        os.chroot(".")
+        os.chdir(working_dir)
+
+
+class CpuMap:
+    """Cpu map from real cpu cores to containers visible cores.
+
+    When a docker container is restricted in terms of assigned cpu cores,
+    the information from `/proc/cpuinfo` will present all the cpu cores
+    of the machine instead of showing only the container assigned cores.
+    This class maps the real assigned host cpu cores to virtual cpu cores,
+    starting from 0.
+    """
+
+    arr = []
+
+    def __new__(cls, cpu):
+        """Instantiate the class field."""
+        assert CpuMap.len() > cpu
+        if not CpuMap.arr:
+            CpuMap.arr = CpuMap._cpus()
+        return CpuMap.arr[cpu]
+
+    @staticmethod
+    def len():
+        """Get the host cpus count."""
+        if not CpuMap.arr:
+            CpuMap.arr = CpuMap._cpus()
+        return len(CpuMap.arr)
+
+    @classmethod
+    def _cpus(cls):
+        """Obtain the real processor map.
+
+        See this issue for details:
+        https://github.com/moby/moby/issues/20770.
+
+        Note that this method is called only once when `CpuMap.arr` is
+        initialized.
+        """
+        # https://psutil.readthedocs.io/en/latest/#psutil.Process.cpu_affinity
+        # > If no argument is passed it returns the current CPU affinity as a
+        # > list of intergers.
+        return psutil.Process().cpu_affinity()
+
+
+class CmdBuilder:
+    """Command builder class."""
+
+    def __init__(self, bin_path):
+        """Initialize the command builder."""
+        self._bin_path = bin_path
+        self._args = {}
+
+    def with_arg(self, flag, value=""):
+        """Add a new argument."""
+        self._args[flag] = value
+        return self
+
+    def build(self):
+        """Build the command."""
+        cmd = self._bin_path + " "
+        for flag, value in self._args.items():
+            cmd += f"{flag} {value} "
+        return cmd
+
+
+def search_output_from_cmd(cmd: str, find_regex: typing.Pattern) -> typing.Match:
+    """
+    Run a shell command and search a given regex object in stdout.
+
+    If the regex object is not found, a RuntimeError exception is raised.
+
+    :param cmd: command to run
+    :param find_regex: regular expression object to search for
+    :return: result of re.search()
+    """
+    # Run the given command in a shell
+    _, stdout, _ = check_output(cmd)
+
+    # Search for the object
+    content = re.search(find_regex, stdout)
+
+    # If the result is not None, return it
+    if content:
+        return content
+
+    raise RuntimeError(
+        "Could not find '%s' in output for '%s'" % (find_regex.pattern, cmd)
+    )
+
+
+def get_stable_rss_mem(uvm, percentage_delta=1):
+    """
+    Get the RSS memory that a guest uses, given the pid of the guest.
+
+    Wait till the fluctuations in RSS drop below percentage_delta.
+    Or print a warning if this does not happen.
+    """
+
+    first_rss = 0
+    second_rss = 0
+    for _ in range(5):
+        first_rss = get_resident_memory(uvm.ps)
+        time.sleep(1)
+        second_rss = get_resident_memory(uvm.ps)
+        abs_diff = abs(first_rss - second_rss)
+        abs_delta = abs_diff / first_rss * 100
+        print(
+            f"RSS readings (bytes): old: {first_rss} new: {second_rss} abs_diff: {abs_diff} abs_delta: {abs_delta}"
+        )
+        if abs_delta < percentage_delta:
+            return second_rss
+
+        time.sleep(1)
+
+    print("WARNING: RSS readings did not stabilize")
+    return second_rss
+
+
+def _format_output_message(proc, stdout, stderr):
+    output_message = f"\n[{proc.pid}] Command:\n{proc.args}"
+    # Append stdout/stderr to the output message
+    if stdout != "":
+        output_message += f"\n[{proc.pid}] stdout:\n{stdout.decode()}"
+    if stderr != "":
+        output_message += f"\n[{proc.pid}] stderr:\n{stderr.decode()}"
+    output_message += f"\nReturned error code: {proc.returncode}"
+    return output_message
+
+
+def run_cmd(cmd, check=False, shell=True, cwd=None, timeout=None) -> CommandReturn:
+    """
+    Execute a given command.
+
+    :param cmd: command to execute
+    :param check: whether a non-zero return code should result in a `ChildProcessError` or not.
+    :param shell: run the command in a sub-shell
+    :param cwd: sets the current directory before the child is executed
+    :param timeout: Time before command execution should be aborted with a `TimeoutExpired` exception
+    :return: return code, stdout, stderr
+    """
+    if isinstance(cmd, list) or not shell:
+        # Create the async process
+        proc = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=cwd
+        )
+    else:
+        proc = subprocess.Popen(
+            cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=cwd
+        )
+
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+
+        # Sometimes stdout/stderr are passed on to children, in which case killing
+        # the parent won't close them and communicate will still hang.
+        proc.stdout.close()
+        proc.stderr.close()
+
+        stdout, stderr = proc.communicate()
+
+        # Log the message with one call so that multiple statuses
+        # don't get mixed up
+        CMDLOG.warning(
+            "Timeout executing command: %s\n",
+            _format_output_message(proc, stdout, stderr),
+        )
+
+        raise
+
+    output_message = _format_output_message(proc, stdout, stderr)
+
+    # If a non-zero return code was thrown, raise an exception
+    if check and proc.returncode != 0:
+        raise ChildProcessError(output_message)
+
+    CMDLOG.debug(output_message)
+
+    return CommandReturn(proc.returncode, stdout.decode(), stderr.decode())
+
+
+def check_output(cmd, shell=True, cwd=None, timeout=None) -> CommandReturn:
+    """Identical to `run_cmd`, but always sets `check_output` to `True`."""
+    return run_cmd(cmd, True, shell, cwd, timeout)
+
+
+def assert_seccomp_level(pid, seccomp_level):
+    """Test that seccomp_level applies to all threads of a process."""
+    # Get number of threads
+    cmd = "ps -T --no-headers -p {} | awk '{{print $2}}'".format(pid)
+    process = check_output(cmd)
+    threads_out_lines = process.stdout.splitlines()
+    for tid in threads_out_lines:
+        # Verify each thread's Seccomp status
+        cmd = "cat /proc/{}/status | grep Seccomp:".format(tid)
+        process = check_output(cmd)
+        seccomp_line = "".join(process.stdout.split())
+        assert seccomp_line == "Seccomp:" + seccomp_level
+
+
+def run_guest_cmd(ssh_connection, cmd, expected, use_json=False):
+    """Runs a shell command at the remote accessible via SSH"""
+    _, stdout, stderr = ssh_connection.check_output(cmd)
+    assert stderr == ""
+    stdout = stdout if not use_json else json.loads(stdout)
+    assert stdout == expected
+
+
+def dump_proc_state(pid):
+    """Log diagnostic info for a process that failed to exit after SIGKILL."""
+    log = logging.getLogger(__name__)
+
+    # Confirm we can still see this PID at all (catches namespace issues).
+    try:
+        os.kill(pid, 0)
+        log.error("Process %d kill -0: still visible", pid)
+    except ProcessLookupError:
+        log.error("Process %d kill -0: ESRCH (gone or invisible from sender)", pid)
+        return
+    except OSError as err:
+        log.error("Process %d kill -0: errno=%d (%s)", pid, err.errno, err.strerror)
+
+    try:
+        status = Path(f"/proc/{pid}/status").read_text(encoding="utf-8")
+        log.error(
+            "Process %d did not exit after SIGKILL. /proc/%d/status:\n%s",
+            pid,
+            pid,
+            status,
+        )
+    except FileNotFoundError:
+        log.error("Process %d exited between timeout and diagnostics collection", pid)
+        return
+    try:
+        cmdline = Path(f"/proc/{pid}/cmdline").read_bytes().decode(errors="replace")
+        log.error("Process %d cmdline: %s", pid, cmdline.replace("\x00", " "))
+    except (FileNotFoundError, PermissionError):
+        pass
+    # /proc/PID/stat field 41 = exit_state (non-zero = task in exit path)
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8").strip()
+        # comm in stat is parenthesized and may contain spaces; split after last ')'
+        rest = stat.rsplit(")", 1)[1].split()
+        # field indexing per proc(5): pid(1) comm(2) state(3) ppid(4) ...
+        # rest[0] is field 3 onwards. exit_state is field 41 → rest[38]
+        if len(rest) > 38:
+            log.error("Process %d exit_state (stat[41]): %s", pid, rest[38])
+    except (FileNotFoundError, PermissionError, IndexError, ValueError):
+        pass
+    # /proc/PID/sched scheduling stats (voluntary_ctxt_switches etc.)
+    try:
+        sched = Path(f"/proc/{pid}/sched").read_text(encoding="utf-8")
+        relevant = [
+            line
+            for line in sched.splitlines()
+            if any(
+                k in line for k in ("voluntary", "exec_runtime", "wait_sum", "switches")
+            )
+        ]
+        if relevant:
+            log.error("Process %d sched:\n%s", pid, "\n".join(relevant))
+    except (FileNotFoundError, PermissionError):
+        pass
+    # Per-thread state: identify which thread is stuck
+    try:
+        tids = sorted(int(t) for t in os.listdir(f"/proc/{pid}/task"))
+    except FileNotFoundError:
+        return
+    for tid in tids:
+        for fname in ("comm", "wchan", "syscall", "stack"):
+            try:
+                content = (
+                    Path(f"/proc/{pid}/task/{tid}/{fname}")
+                    .read_text(encoding="utf-8", errors="replace")
+                    .strip()
+                )
+                log.error("Process %d task %d %s:\n%s", pid, tid, fname, content)
+            except (FileNotFoundError, PermissionError):
+                pass
+        try:
+            tstatus = Path(f"/proc/{pid}/task/{tid}/status").read_text(encoding="utf-8")
+            for line in tstatus.splitlines():
+                if line.startswith(("State:", "SigBlk:", "SigPnd:", "ShdPnd:")):
+                    log.error("Process %d task %d %s", pid, tid, line.strip())
+        except (FileNotFoundError, PermissionError):
+            pass
+
+    # Tail of dmesg may show RCU stalls, hung_task, OOM, soft lockups.
+    try:
+        result = subprocess.run(
+            ["dmesg", "--ctime", "--time-format", "iso"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+        tail = "\n".join(result.stdout.splitlines()[-50:])
+        if tail:
+            log.error("dmesg tail (last 50 lines):\n%s", tail)
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        pass
+
+    # All processes parented to our test session (the subreaper) — reveals
+    # any sibling processes (UFFD handlers, vhost-user backends, leftover FCs)
+    # that might be keeping the stuck FC's resources alive.
+    try:
+        result = subprocess.run(
+            ["ps", "axo", "pid,ppid,pgid,sid,stat,wchan,comm"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+        own_pid = os.getpid()
+        related = [result.stdout.splitlines()[0]]
+        for line in result.stdout.splitlines()[1:]:
+            fields = line.split(maxsplit=6)
+            if len(fields) < 2:
+                continue
+            try:
+                ppid = int(fields[1])
+            except ValueError:
+                continue
+            if ppid in (own_pid, pid):
+                related.append(line)
+        if len(related) > 1:
+            log.error(
+                "Processes parented to test worker %d or stuck FC %d:\n%s",
+                own_pid,
+                pid,
+                "\n".join(related),
+            )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        pass
+
+
+def wait_process_termination(p_pid, timeout=10.0):
+    """Wait for a process to terminate via waitpid().
+
+    Requires the test session to be a subreaper (set via PR_SET_CHILD_SUBREAPER
+    in conftest.py) so orphaned descendants reparent to us. Polls with WNOHANG
+    so we can enforce a timeout.
+
+    Returns successfully if the process exits within `timeout` seconds.
+    Raises TimeoutError if it does not.
+    """
+    deadline = time.time() + timeout
+    while True:
+        try:
+            pid, _status = os.waitpid(p_pid, os.WNOHANG)
+        except ChildProcessError:
+            # Process is not our child (already reaped, or never reparented to us).
+            return
+        if pid == p_pid:
+            return
+        if time.time() >= deadline:
+            raise TimeoutError(f"Process {p_pid} did not exit within {timeout}s")
+        time.sleep(0.05)
+
+
+def get_firecracker_version_from_toml():
+    """
+    Return the version of the firecracker crate, from Cargo.toml.
+
+    Should be the same as the output of `./firecracker --version`, if
+    the code has not been released.
+    """
+    cmd = "cd ../src/firecracker && cargo pkgid | cut -d# -f2 | cut -d: -f2"
+    _, stdout, _ = check_output(cmd)
+    return semver.Version.parse(stdout)
+
+
+def get_kernel_version(level=2):
+    """Return the current kernel version in format `major.minor.patch`."""
+    linux_version = platform.release()
+    actual_level = 0
+    for idx, char in enumerate(linux_version):
+        if char == ".":
+            actual_level += 1
+        if actual_level > level or (not char.isdigit() and char != "."):
+            linux_version = linux_version[0:idx]
+            break
+    return linux_version
+
+
+def supports_hugetlbfs_discard():
+    """Returns True if the kernel supports hugetlbfs discard"""
+    return version.parse(get_kernel_version()) >= version.parse("5.18.0")
+
+
+def generate_mmds_session_token(
+    ssh_connection, ipv4_address, token_ttl, imds_compat=False
+):
+    """Generate session token used for MMDS V2 requests."""
+    cmd = "curl -m 2 -s"
+    cmd += " -X PUT"
+    if imds_compat:
+        cmd += ' -H "X-aws-ec2-metadata-token-ttl-seconds: {}"'.format(token_ttl)
+    else:
+        cmd += ' -H "X-metadata-token-ttl-seconds: {}"'.format(token_ttl)
+    cmd += " http://{}/latest/api/token".format(ipv4_address)
+    _, stdout, _ = ssh_connection.run(cmd)
+    token = stdout
+
+    return token
+
+
+def generate_mmds_get_request(
+    ipv4_address, token=None, app_json=True, imds_compat=False
+):
+    """Build `GET` request to fetch metadata from MMDS."""
+    cmd = "curl -m 2 -s"
+
+    if token is not None:
+        cmd += " -X GET"
+        if imds_compat:
+            cmd += ' -H "X-aws-ec2-metadata-token: {}"'.format(token)
+        else:
+            cmd += ' -H "X-metadata-token: {}"'.format(token)
+
+    if app_json:
+        cmd += ' -H "Accept: application/json"'
+
+    cmd += " http://{}/".format(ipv4_address)
+
+    return cmd
+
+
+def configure_mmds(
+    test_microvm, iface_ids, version=None, ipv4_address=None, imds_compat=False
+):
+    """Configure mmds service."""
+    mmds_config = {"network_interfaces": iface_ids}
+
+    if version is not None:
+        mmds_config["version"] = version
+
+    if ipv4_address:
+        mmds_config["ipv4_address"] = ipv4_address
+
+    if imds_compat is not None:
+        mmds_config["imds_compat"] = imds_compat
+
+    response = test_microvm.api.mmds_config.put(**mmds_config)
+    return response
+
+
+def populate_data_store(test_microvm, data_store):
+    """Populate the MMDS data store of the microvm with the provided data"""
+    response = test_microvm.api.mmds.get()
+    assert response.json() == {}
+
+    test_microvm.api.mmds.put(**data_store)
+    response = test_microvm.api.mmds.get()
+    assert response.json() == data_store
+
+
+def start_screen_process(screen_log, session_name, binary_path, binary_params):
+    """Start binary process into a screen session."""
+    start_cmd = "screen -L -Logfile {logfile} -dmS {session} {binary} {params}"
+    start_cmd = start_cmd.format(
+        logfile=screen_log,
+        session=session_name,
+        binary=binary_path,
+        params=" ".join(binary_params),
+    )
+
+    check_output(start_cmd)
+
+    # Build a regex object to match (number).session_name
+    regex_object = re.compile(r"([0-9]+)\.{}".format(session_name))
+
+    # Run 'screen -ls' in a retry loop, 30 times with a 1s delay between calls.
+    # If the output of 'screen -ls' matches the regex object, it will return the
+    # PID. Otherwise, a RuntimeError will be raised.
+    for attempt in Retrying(
+        retry=retry_if_exception_type(RuntimeError),
+        stop=stop_after_attempt(30),
+        wait=wait_fixed(1),
+        reraise=True,
+    ):
+        with attempt:
+            screen_pid = search_output_from_cmd(
+                cmd="screen -ls", find_regex=regex_object
+            ).group(1)
+
+    # Make sure the screen process launched successfully
+    # As the parent process for the binary.
+    screen_ps = psutil.Process(int(screen_pid))
+    wait_process_running(screen_ps)
+
+    # Configure screen to flush stdout to file.
+    check_output(FLUSH_CMD.format(session=session_name))
+
+    return screen_pid
+
+
+def guest_run_fio_iteration(ssh_connection, iteration):
+    """Run FIO workload on a microVM and verify IO completed successfully."""
+    fio = (
+        "fio --filename=/dev/vda --direct=1 --rw=randread --bs=4k "
+        "--ioengine=libaio --iodepth=16 --runtime=10 --numjobs=4 --time_based "
+        "--group_reporting --name=iops-test-job --readonly --output-format=json"
+    )
+    _, stdout, _ = ssh_connection.check_output(fio)
+    total_read = json.loads(stdout)["jobs"][0]["read"]["io_bytes"]
+    assert total_read > 0, f"fio iteration {iteration}: no bytes read from block device"
+
+
+def check_filesystem(ssh_connection, disk_fmt, disk):
+    """Check for filesystem corruption inside a microVM."""
+    if disk_fmt == "squashfs":
+        return
+    ssh_connection.check_output(f"fsck.{disk_fmt} -n {disk}")
+
+
+def check_entropy(ssh_connection):
+    """Check that we can get random numbers from /dev/hwrng"""
+    ssh_connection.check_output("dd if=/dev/hwrng of=/dev/null bs=4096 count=1")
+
+
+def check_network_data_integrity(ssh_connection, size_bytes=64 * 1024):
+    """Push random bytes to the guest over SSH and verify the guest-side sha256
+    matches the host-side hash. Exercises the virtio-net RX path end-to-end."""
+    payload = os.urandom(size_bytes)
+    host_hash = hashlib.sha256(payload).hexdigest()
+    b64 = base64.b64encode(payload).decode("ascii")
+    _, stdout, _ = ssh_connection.check_output(f"echo {b64} | base64 -d | sha256sum")
+    guest_hash = stdout.strip().split()[0]
+    assert (
+        guest_hash == host_hash
+    ), f"Guest hash {guest_hash} does not match host hash {host_hash}"
+
+
+@retry(wait=wait_fixed(0.5), stop=stop_after_attempt(5), reraise=True)
+def wait_process_running(process):
+    """Wait for a process to run.
+
+    Will return successfully if the process is in
+    a running state and will otherwise raise an exception.
+    """
+    assert process.is_running()
+
+
+class Timeout:
+    """
+    A Context Manager to timeout sections of code.
+
+    >>> with Timeout(30):     # doctest: +SKIP
+    ...    time.sleep(35)     # doctest: +SKIP
+    """
+
+    def __init__(self, seconds, msg="Timed out"):
+        self.seconds = seconds
+        self.msg = msg
+
+    def handle_timeout(self, signum, frame):
+        """Handle SIGALRM signal"""
+        raise TimeoutError()
+
+    def __enter__(self):
+        signal.signal(signal.SIGALRM, self.handle_timeout)
+        signal.alarm(self.seconds)
+
+    def __exit__(self, _type, _value, _traceback):
+        signal.alarm(0)
+
+
+def pvh_supported() -> bool:
+    """Checks if PVH boot is supported"""
+    return platform.architecture() == "x86_64"
+
+
+def wait_for_tcp_port_on_host(network_prefix, port, timeout=5.0):
+    """Poll until a TCP port is accepting connections on localhost."""
+    for attempt in Retrying(
+        wait=wait_fixed(0.1), stop=stop_after_delay(timeout), reraise=True
+    ):
+        with attempt:
+            exit_code, _, _ = run_cmd(f"{network_prefix} ss -tln | grep -q ':{port} '")
+            assert exit_code == 0, f"Port {port} not open on host"
+
+
+def wait_for_tcp_port_on_guest(vm, port, timeout=5.0):
+    """Poll via SSH until a TCP port is listening inside the guest."""
+    for attempt in Retrying(
+        wait=wait_fixed(0.1), stop=stop_after_delay(timeout), reraise=True
+    ):
+        with attempt:
+            exit_code, _, _ = vm.ssh.run(f"ss -tln | grep -q ':{port} '")
+            assert exit_code == 0, f"Port {port} not open on guest"
+
+
+def kill_and_wait_on_host(process_name, timeout=5.0):
+    """Kills the given process on the host, and waits for its termination via waitpid"""
+    exit_code, pid, _ = run_cmd(["pgrep", process_name])
+    if exit_code == 0:
+        # Note: process might be spawned as a child, I need to explicitly
+        # wait for it, otherwise it might remain a zombie
+        run_cmd(f"kill {pid}")
+        wait_process_termination(int(pid), timeout)
+
+
+def kill_and_wait_on_guest(vm, process_name, timeout=5.0):
+    """Kills the given process on the guest"""
+    vm.ssh.run(f"pkill {process_name}")
+    for attempt in Retrying(
+        wait=wait_fixed(0.1), stop=stop_after_delay(timeout), reraise=True
+    ):
+        with attempt:
+            exit_code, _, _ = vm.ssh.run(f"pgrep {process_name}")
+            assert exit_code == 1, f"{process_name} is still running on guest"

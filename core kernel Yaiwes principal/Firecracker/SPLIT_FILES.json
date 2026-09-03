@@ -1,0 +1,9 @@
+[
+  {
+    "repo": "Firecracker",
+    "path": "src/vmm/src/test_utils/mock_resources/test_noisy_elf.bin",
+    "chunks_dir": "Firecracker/src/vmm/src/test_utils/mock_resources/test_noisy_elf.bin.chunks",
+    "bytes": 22198832,
+    "chunk_bytes": 8388608
+  }
+]

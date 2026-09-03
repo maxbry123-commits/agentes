@@ -1,0 +1,60 @@
+{
+  "operations": {
+    "GET /groups": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "MANY",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/value",
+          "resource": "Group",
+          "status_code": "200"
+        }
+      ]
+    },
+    "GET /groups/{groupId}/users": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "path",
+          "parameter_name": "groupId",
+          "resource": "Group",
+          "resource_field": "id"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "MANY",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/value",
+          "resource": "User",
+          "status_code": "200"
+        }
+      ]
+    }
+  },
+  "resources": {
+    "Group": {
+      "fields": [
+        "id"
+      ],
+      "types": {
+        "id": [
+          "string"
+        ]
+      }
+    },
+    "User": {
+      "fields": [
+        "id"
+      ],
+      "types": {
+        "id": [
+          "string"
+        ]
+      }
+    }
+  }
+}

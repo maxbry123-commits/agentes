@@ -1,0 +1,179 @@
+{
+  "operations": {
+    "GET /entities": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "MANY",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "entities",
+          "status_code": "200"
+        },
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/*/statistics",
+          "resource": "statistics",
+          "status_code": "200"
+        }
+      ]
+    },
+    "GET /error-codes": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "MANY",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "error-codes",
+          "status_code": "200"
+        }
+      ]
+    },
+    "POST /entities": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "MANY",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "entity-data",
+          "status_code": "200"
+        },
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/*/statistics",
+          "resource": "statistics",
+          "status_code": "200"
+        }
+      ]
+    }
+  },
+  "resources": {
+    "entities": {
+      "fields": [
+        "bic",
+        "code",
+        "inputs",
+        "logo",
+        "name",
+        "statistics"
+      ],
+      "nested_fk_fields": [
+        {
+          "field_name": "operation_id",
+          "is_array": false,
+          "pointer": "/statistics/operation_id",
+          "target_field": "id",
+          "target_resource": "Operation"
+        }
+      ],
+      "types": {
+        "bic": [
+          "string"
+        ],
+        "code": [
+          "string"
+        ],
+        "inputs": [
+          "object"
+        ],
+        "logo": [
+          "string"
+        ],
+        "name": [
+          "string"
+        ],
+        "statistics": [
+          "object"
+        ]
+      }
+    },
+    "entity-data": {
+      "fields": [
+        "payload",
+        "statistics",
+        "success"
+      ],
+      "nested_fk_fields": [
+        {
+          "field_name": "operation_id",
+          "is_array": false,
+          "pointer": "/statistics/operation_id",
+          "target_field": "id",
+          "target_resource": "Operation"
+        }
+      ],
+      "types": {
+        "payload": [
+          "object"
+        ],
+        "statistics": [
+          "object"
+        ],
+        "success": [
+          "boolean"
+        ]
+      }
+    },
+    "error-codes": {
+      "fields": [
+        "code",
+        "description",
+        "how_to_proceed",
+        "possible_reasons"
+      ],
+      "types": {
+        "code": [
+          "integer"
+        ],
+        "description": [
+          "string"
+        ],
+        "how_to_proceed": [
+          "string"
+        ],
+        "possible_reasons": [
+          "string"
+        ]
+      }
+    },
+    "statistics": {
+      "fields": [
+        "SESSION",
+        "execution_time",
+        "operation_id",
+        "token"
+      ],
+      "fk_fields": [
+        {
+          "field_name": "operation_id",
+          "is_array": false,
+          "target_field": "id",
+          "target_resource": "Operation"
+        }
+      ],
+      "types": {
+        "SESSION": [
+          "string"
+        ],
+        "execution_time": [
+          "number"
+        ],
+        "operation_id": [
+          "string"
+        ],
+        "token": [
+          "string"
+        ]
+      }
+    }
+  }
+}

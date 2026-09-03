@@ -1,0 +1,142 @@
+import { parentPort, workerData } from 'worker_threads';
+import { Logger } from '@util/logger';
+import { ClientConfig, HatchetLogger } from '@hatchet/clients/hatchet-client';
+import { DispatcherClient as PbDispatcherClient } from '@hatchet/protoc/dispatcher';
+import { ConfigLoader } from '@hatchet/util/config-loader';
+import { Status, createClientFactory } from 'nice-grpc';
+import { getErrorMessage } from '@util/errors/hatchet-error';
+import { getGrpcErrorCode } from '@util/grpc-error';
+import { addTokenMiddleware, channelFactory } from '@hatchet/util/grpc-helpers';
+import { DispatcherClient } from '../dispatcher-client';
+import { HeartbeatMessage, STOP_HEARTBEAT } from './heartbeat-controller';
+import { classifyHeartbeatFailure } from './heartbeat-severity';
+
+const HEARTBEAT_INTERVAL = 4000;
+// Fail fast on a stalled connection: without a deadline, a heartbeat RPC on a dead
+// TCP connection can hang for 50+ seconds, well past the engine's 30s reassignment
+// window, while setInterval stacks overlapping in-flight requests behind it.
+const HEARTBEAT_TIMEOUT = 5000;
+
+const postMessage = (message: HeartbeatMessage) => {
+  parentPort?.postMessage(message);
+};
+
+class HeartbeatWorker {
+  heartbeatInterval: ReturnType<typeof setInterval> | undefined;
+  logger: Logger;
+  client: PbDispatcherClient;
+  workerId: string;
+  timeLastHeartbeat = new Date().getTime();
+  missedHeartbeats = 0;
+
+  constructor(config: ClientConfig, workerId: string) {
+    this.workerId = workerId;
+
+    this.logger = new HatchetLogger(`HeartbeatThread`, config.log_level);
+
+    this.logger.debug('Heartbeat thread starting...');
+    const credentials = ConfigLoader.createCredentials(config.tls_config);
+    const clientFactory = createClientFactory().use(addTokenMiddleware(config.token));
+
+    const dispatcher = new DispatcherClient(
+      { ...config, logger: (ctx, level) => new HatchetLogger(ctx, level) },
+      channelFactory(config, credentials),
+      clientFactory
+    );
+
+    this.client = dispatcher.client;
+    postMessage({
+      type: 'debug',
+      message: 'Heartbeat thread started.',
+    });
+  }
+
+  async start() {
+    if (this.heartbeatInterval) {
+      return;
+    }
+
+    const beat = async () => {
+      try {
+        this.logger.debug('Heartbeat sending...');
+        postMessage({
+          type: 'debug',
+          message: 'Heartbeat sending...',
+        });
+
+        await this.client.heartbeat(
+          {
+            workerId: this.workerId,
+            heartbeatAt: new Date(),
+          },
+          { signal: AbortSignal.timeout(HEARTBEAT_TIMEOUT) }
+        );
+        const now = new Date().getTime();
+
+        const actualInterval = now - this.timeLastHeartbeat;
+
+        if (actualInterval > HEARTBEAT_INTERVAL * 1.2) {
+          const message = `Heartbeat interval delay (${actualInterval}ms >> ${HEARTBEAT_INTERVAL}ms)`;
+          this.logger.debug(message);
+          postMessage({
+            type: 'warn',
+            message,
+          });
+        }
+
+        this.logger.debug(`Heartbeat sent ${actualInterval}ms ago`);
+        postMessage({
+          type: 'debug',
+          message: `Heartbeat sent ${actualInterval}ms ago`,
+        });
+        this.timeLastHeartbeat = now;
+        this.missedHeartbeats = 0;
+      } catch (e: unknown) {
+        if (getGrpcErrorCode(e) === Status.UNIMPLEMENTED) {
+          // break out of interval
+          const message = 'Heartbeat not implemented, closing heartbeat';
+          this.logger.debug(message);
+          postMessage({
+            type: 'error',
+            message,
+          });
+          this.stop();
+          return;
+        }
+
+        this.missedHeartbeats += 1;
+
+        const message = `Failed to send heartbeat: ${getErrorMessage(e)}`;
+        this.logger.debug(message);
+
+        const severity = classifyHeartbeatFailure(e, this.missedHeartbeats);
+        if (severity !== 'silent') {
+          postMessage({
+            type: severity,
+            message,
+          });
+        }
+      }
+    };
+
+    // start with a heartbeat
+    await beat();
+    this.heartbeatInterval = setInterval(beat, HEARTBEAT_INTERVAL);
+  }
+
+  stop() {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = undefined;
+    }
+  }
+}
+
+const heartbeat = new HeartbeatWorker(workerData.config, workerData.workerId);
+heartbeat.start();
+
+parentPort?.on('message', (msg) => {
+  if (msg === STOP_HEARTBEAT) {
+    heartbeat.stop();
+  }
+});

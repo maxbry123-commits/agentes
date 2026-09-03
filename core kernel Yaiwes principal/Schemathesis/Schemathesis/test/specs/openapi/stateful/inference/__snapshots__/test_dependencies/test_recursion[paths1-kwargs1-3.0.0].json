@@ -1,0 +1,23 @@
+{
+  "operations": {
+    "GET /test": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "EmployeesResponse",
+          "status_code": "200"
+        }
+      ]
+    }
+  },
+  "resources": {
+    "EmployeesResponse": {
+      "fields": [],
+      "types": {}
+    }
+  }
+}

@@ -1,0 +1,89 @@
+import { WorkerList } from '@hatchet/clients/rest/generated/data-contracts';
+import { checkDurableEvictionSupport, poll, stopWorker } from '../__e2e__/harness';
+import { Worker } from '../../client/worker/worker';
+import { hatchet } from '../hatchet-client';
+import { affinityExampleTask } from './workflow';
+import { applyNamespace } from '@util/apply-namespace';
+
+const labels = ['foo', 'bar'] as const;
+
+describe('runtime-affinity-e2e', () => {
+  let workerA: Worker | undefined;
+  let workerB: Worker | undefined;
+  let evictionSupported = false;
+
+  beforeAll(async () => {
+    evictionSupported = await checkDurableEvictionSupport(hatchet);
+  });
+
+  afterAll(async () => {
+    await stopWorker(workerA);
+    await stopWorker(workerB);
+  });
+
+  it('routes runs to the correct worker based on desired labels', async () => {
+    if (!evictionSupported) {
+      return;
+    }
+
+    workerA = await hatchet.worker('runtime-affinity-worker', {
+      workflows: [affinityExampleTask],
+      labels: { affinity: labels[0] },
+    });
+    workerA.start().catch((err) => console.error('[affinity-test] workerA start error:', err));
+    await workerA.waitUntilReady(10_000);
+
+    workerB = await hatchet.worker('runtime-affinity-worker', {
+      workflows: [affinityExampleTask],
+      labels: { affinity: labels[1] },
+    });
+    workerB.start().catch((err) => console.error('[affinity-test] workerB start error:', err));
+    await workerB.waitUntilReady(10_000);
+    const runtimeAffinityWorkerName = applyNamespace(
+      'runtime-affinity-worker',
+      hatchet.config.namespace
+    );
+    const workerResult = await poll(() => hatchet.workers.list(), {
+      timeoutMs: 120_000,
+      intervalMs: 500,
+      label: 'active runtime-affinity workers',
+      shouldStop: (result: WorkerList) =>
+        (result.rows || []).filter(
+          (w) => w.status === 'ACTIVE' && `${w.name}`.includes(runtimeAffinityWorkerName)
+        ).length === 2,
+    });
+    const activeWorkers = (workerResult.rows || []).filter(
+      (w) => w.status === 'ACTIVE' && `${w.name}`.includes(runtimeAffinityWorkerName)
+    );
+    expect(activeWorkers.length).toBe(2);
+
+    const workerLabelToId: Record<string, string> = {};
+    for (const worker of activeWorkers) {
+      for (const label of worker.labels || []) {
+        if (label.key === 'affinity' && labels.includes(label.value as any)) {
+          workerLabelToId[label.value!] = worker.metadata.id;
+        }
+      }
+    }
+
+    expect(Object.keys(workerLabelToId).sort()).toEqual([...labels].sort());
+
+    for (let i = 0; i < 20; i++) {
+      const targetWorker = labels[i % 2];
+      const res = await affinityExampleTask.run(
+        {},
+        {
+          desiredWorkerLabels: {
+            affinity: {
+              value: targetWorker,
+              required: true,
+            },
+          },
+        }
+      );
+
+      expect(res.affinity_t1.worker_id).toBe(workerLabelToId[targetWorker]);
+      expect(res.affinity_t2.worker_id).toBe(workerLabelToId[targetWorker]);
+    }
+  }, 180_000);
+});

@@ -1,0 +1,250 @@
+package posthog
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/posthog/posthog-go"
+	"github.com/rs/zerolog"
+
+	"github.com/hatchet-dev/hatchet/pkg/analytics"
+)
+
+type zerologAdapter struct {
+	l *zerolog.Logger
+}
+
+func (z *zerologAdapter) Debugf(format string, args ...interface{}) {
+	z.l.Debug().Msgf(format, args...)
+}
+
+func (z *zerologAdapter) Logf(format string, args ...interface{}) {
+	z.l.Info().Msgf(format, args...)
+}
+
+func (z *zerologAdapter) Warnf(format string, args ...interface{}) {
+	z.l.Warn().Msgf(format, args...)
+}
+
+func (z *zerologAdapter) Errorf(format string, args ...interface{}) {
+	z.l.Error().Msgf(format, args...)
+}
+
+type PosthogAnalytics struct {
+	client     *posthog.Client
+	l          *zerolog.Logger
+	aggregator *analytics.Aggregator
+	serverURL  string
+}
+
+type PosthogAnalyticsOpts struct {
+	ApiKey           string
+	Endpoint         string
+	Logger           *zerolog.Logger
+	AggregateEnabled bool
+	FlushInterval    time.Duration
+	MaxKeys          int64
+	ServerURL        string
+}
+
+func NewPosthogAnalytics(opts *PosthogAnalyticsOpts) (*PosthogAnalytics, error) {
+	if opts.ApiKey == "" || opts.Endpoint == "" {
+		return nil, fmt.Errorf("api key and endpoint are required if posthog is enabled")
+	}
+	if opts.Logger == nil {
+		return nil, fmt.Errorf("logger is required")
+	}
+
+	flushInterval := opts.FlushInterval
+
+	phClient, err := posthog.NewWithConfig(
+		opts.ApiKey,
+		posthog.Config{
+			Endpoint: opts.Endpoint,
+			Logger:   &zerologAdapter{l: opts.Logger},
+		},
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to create posthog client: %w", err)
+	}
+
+	p := &PosthogAnalytics{
+		client:    &phClient,
+		l:         opts.Logger,
+		serverURL: opts.ServerURL,
+	}
+	p.aggregator = analytics.NewAggregator(opts.Logger, opts.AggregateEnabled, flushInterval, opts.MaxKeys, p.flushCount)
+	return p, nil
+}
+
+func (p *PosthogAnalytics) Enqueue(ctx context.Context, resource analytics.Resource, action analytics.Action, resourceId string, properties analytics.Properties) {
+	userID := analytics.UserIDFromContext(ctx)
+	tenantID := analytics.TenantIDFromContext(ctx)
+	tokenID := analytics.TokenIDFromContext(ctx)
+
+	event := string(resource) + ":" + string(action)
+
+	props := analytics.Properties{
+		"resource_id": resourceId,
+	}
+	if userID != nil {
+		props["user_id"] = userID.String()
+	}
+	if tokenID != nil {
+		props["token_id"] = tokenID.String()
+	}
+	if source := analytics.SourceFromContext(ctx); source != "" {
+		props["source"] = string(source)
+	}
+	if p.serverURL != "" {
+		props["server_url"] = p.serverURL
+	}
+	for k, v := range properties {
+		props[k] = v
+	}
+
+	orgID := analytics.OrganizationIDFromContext(ctx)
+	accountID := analytics.AccountIDFromContext(ctx)
+
+	var group posthog.Groups
+
+	if tenantID != nil || orgID != nil || accountID != nil {
+		group = posthog.NewGroups()
+		if tenantID != nil {
+			group.Set("tenant", *tenantID)
+		}
+		if orgID != nil {
+			group.Set("organization", *orgID)
+		}
+		if accountID != nil {
+			group.Set("account", *accountID)
+		}
+	}
+
+	err := (*p.client).Enqueue(posthog.Capture{
+		DistinctId: analytics.DistinctID(userID, tokenID, tenantID),
+		Event:      event,
+		Properties: posthog.Properties(props),
+		Groups:     group,
+	})
+
+	if err != nil {
+		p.l.Error().Err(err).Str("event", event).Msg("error enqueuing posthog event")
+	}
+}
+
+func (p *PosthogAnalytics) Count(ctx context.Context, resource analytics.Resource, action analytics.Action, props ...analytics.Properties) {
+	tenantID := analytics.TenantIDFromContext(ctx)
+	tokenID := analytics.TokenIDFromContext(ctx)
+
+	var tid uuid.UUID
+	if tenantID != nil {
+		tid = *tenantID
+	}
+
+	merged := make(analytics.Properties)
+	if len(props) > 0 && props[0] != nil {
+		for k, v := range props[0] {
+			merged[k] = v
+		}
+	}
+	if source := analytics.SourceFromContext(ctx); source != "" {
+		merged["source"] = string(source)
+	}
+
+	p.aggregator.Count(resource, action, tid, tokenID, 1, merged)
+}
+
+func (p *PosthogAnalytics) flushCount(resource analytics.Resource, action analytics.Action, tenantID uuid.UUID, tokenID *uuid.UUID, count int64, firstEventAt, lastEventAt time.Time, properties analytics.Properties) {
+	merged := analytics.Properties{"count": count}
+	for k, v := range properties {
+		merged[k] = v
+	}
+
+	// The event-time bounds always come from the aggregator, never from
+	// caller properties. The aggregate_ prefix keeps them from colliding
+	// with caller-owned property names.
+	delete(merged, "aggregate_first_event_at")
+	delete(merged, "aggregate_last_event_at")
+	if !firstEventAt.IsZero() {
+		merged["aggregate_first_event_at"] = firstEventAt
+	}
+	if !lastEventAt.IsZero() {
+		merged["aggregate_last_event_at"] = lastEventAt
+	}
+	ctx := context.Background()
+	ctx = context.WithValue(ctx, analytics.TenantIDKey, tenantID)
+	if tokenID != nil {
+		ctx = context.WithValue(ctx, analytics.APITokenIDKey, *tokenID)
+	}
+	p.Enqueue(ctx, resource, action, "", merged)
+}
+
+func (p *PosthogAnalytics) Start() {
+	p.aggregator.Start()
+}
+
+func (p *PosthogAnalytics) Identify(userId uuid.UUID, properties analytics.Properties) {
+	if p.serverURL != "" {
+		properties["server_url"] = p.serverURL
+	}
+
+	err := (*p.client).Enqueue(posthog.Identify{
+		DistinctId: analytics.DistinctID(&userId, nil, nil),
+		Properties: posthog.Properties(properties),
+	})
+
+	if err != nil {
+		p.l.Error().Err(err).Str("user_id", userId.String()).Msg("error enqueuing posthog identify")
+	}
+}
+
+func (p *PosthogAnalytics) Tenant(tenantId uuid.UUID, data analytics.Properties) {
+	p.Group("tenant", tenantId.String(), data)
+}
+
+func (p *PosthogAnalytics) Group(groupType string, groupKey string, data analytics.Properties) {
+	if p.serverURL != "" {
+		data["server_url"] = p.serverURL
+	}
+
+	err := (*p.client).Enqueue(posthog.GroupIdentify{
+		Type:       groupType,
+		Key:        groupKey,
+		Properties: posthog.Properties(data),
+	})
+	if err != nil {
+		p.l.Error().Err(err).Str("group_type", groupType).Str("group_key", groupKey).Msg("error enqueuing posthog group identify")
+	}
+}
+
+func (p *PosthogAnalytics) IsFeatureEnabled(_ context.Context, flagKey string, tenantID uuid.UUID, isEnabledIfNoPosthog bool) (bool, error) {
+	result, err := (*p.client).IsFeatureEnabled(
+		posthog.FeatureFlagPayload{
+			Key:        flagKey,
+			DistinctId: analytics.DistinctID(nil, nil, &tenantID),
+			Groups:     posthog.NewGroups().Set("tenant", tenantID.String()),
+		},
+	)
+
+	if err != nil {
+		p.l.Error().Err(err).Str("flag_key", flagKey).Str("tenant_id", tenantID.String()).Msg("error evaluating feature flag, returning default value")
+		return isEnabledIfNoPosthog, nil
+	}
+
+	enabled, ok := result.(bool)
+	if !ok {
+		p.l.Err(err).Msg("unexpected type for feature flag result, expected bool")
+		return isEnabledIfNoPosthog, nil
+	}
+
+	return enabled, nil
+}
+
+func (p *PosthogAnalytics) Close() error {
+	p.aggregator.Shutdown()
+	return (*p.client).Close()
+}

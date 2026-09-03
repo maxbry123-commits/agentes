@@ -1,0 +1,37 @@
+{
+  "operations": {
+    "GET /merchants": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "MANY",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/Merchants",
+          "resource": "Merchant",
+          "status_code": "200"
+        }
+      ]
+    }
+  },
+  "resources": {
+    "Merchant": {
+      "fields": [
+        "category",
+        "id",
+        "name"
+      ],
+      "types": {
+        "category": [
+          "string"
+        ],
+        "id": [
+          "string"
+        ],
+        "name": [
+          "string"
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "operations": {
+    "GET /profile": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "User",
+          "status_code": "200"
+        }
+      ]
+    },
+    "GET /search": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "query",
+          "parameter_name": "user_guid",
+          "resource": "User",
+          "resource_field": "guid"
+        }
+      ],
+      "outputs": []
+    }
+  },
+  "resources": {
+    "User": {
+      "fields": [
+        "guid"
+      ],
+      "types": {
+        "guid": [
+          "string"
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,156 @@
+name: CI
+
+on:
+  pull_request:
+    paths:
+      - "**.py"
+      - ".github/workflows/*.yml"
+      - ".pre-commit-config.yaml"
+      - ".relint.yml"
+      - ".yamllint"
+      - "pyproject.toml"
+      - "tox.ini"
+      - "mypy.ini"
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_COLOR: "1"
+  TOX_TESTENV_PASSENV: FORCE_COLOR
+
+jobs:
+  pre-commit:
+    name: Generic pre-commit checks
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: 3.11
+
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+
+      - run: uvx prek run --all-files
+
+  corpus-tooling:
+    name: Corpus tooling
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          cache-dependency-glob: |
+            **/pyproject.toml
+            **/uv.lock
+          cache-suffix: corpus-tooling-3.14-v1
+
+      - run: uvx ruff check tools scripts/analyze test/tooling
+
+      - run: uvx ruff format --check tools scripts/analyze test/tooling
+
+      - run: uvx --with=".[tests]" --with=mypy --with=types-PyYAML mypy tools/corpus scripts/analyze
+
+      - run: uvx --with="tox" --with="tox-uv" tox -e tooling
+
+  tests:
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, windows-2022]
+        python: ["3.10", "3.11", "3.12", "3.13", "3.14", "3.14t"]
+      fail-fast: false
+
+    name: Tests (Python ${{ matrix.python }} on ${{ matrix.os }} ${{ matrix.tox_env }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python }}
+
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          cache-dependency-glob: |
+            **/pyproject.toml
+            **/uv.lock
+          cache-suffix: ${{ matrix.python }}-v2
+
+      - if: ${{ matrix.tox_env }}
+        run: uvx --with="tox" --with="tox-gh-actions" --with="tox-uv" tox -e ${{ matrix.tox_env }}
+
+      - if: ${{ !matrix.tox_env }}
+        run: uvx --with="tox" --with="tox-gh-actions" --with="tox-uv" tox
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          files: coverage.xml
+          disable_search: true
+          fail_ci_if_error: true
+          verbose: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  # On windows redirecting output to a file could lead to an error due to the default IO encoding being CP-1252
+  tests-pipe-with-encoding:
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, windows-2022]
+      fail-fast: false
+    name: Test piping output to a file with CP1252 encoding on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+
+      - run: uv tool install ".[dev]"
+
+      - run: uv tool run schemathesis run /openapi.json --app=cp1252_app:app -c custom_check > out.txt || true
+        working-directory: ./test/apps
+        env:
+          SCHEMATHESIS_HOOKS: hooks
+          PYTHONIOENCODING: cp1252
+
+      - run: |
+          if grep -Fq "UnicodeEncodeError" "out.txt"; then
+            echo "Failed!"
+            exit 1
+          fi
+        working-directory: ./test/apps
+        shell: bash
+
+  spell-check:
+    name: Spell Check
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: crate-ci/typos@a8168dc2984a9e2352f183ffe788f0f23a300389 # v1.49.1

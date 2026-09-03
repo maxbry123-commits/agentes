@@ -1,0 +1,96 @@
+# Schemathesis
+
+Schemathesis automatically generates property-based tests from your OpenAPI or GraphQL schema and exercises the edge cases that break your API.
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/schemathesis/schemathesis/master/img/demo.gif" alt="Schemathesis automatically finding a server error"/>
+  <br>
+  <i>Finding a server error that manual testing missed</i>
+</p>
+
+<div align="center" markdown>
+[Find Bugs in Your API in 5 Minutes :octicons-rocket-24:](quick-start.md){ .md-button .md-button--primary }
+</div>
+
+## Try it now
+
+```console
+uvx schemathesis run https://example.schemathesis.io/openapi.json
+```
+
+This command will immediately find real bugs in a demo API and show you exactly how to reproduce them.
+
+## Supported specifications
+
+| Specification | Versions |
+|---|---|
+| OpenAPI | 2.0 (Swagger), 3.0, 3.1, 3.2 |
+| GraphQL | June 2018 and later |
+
+## Why teams choose Schemathesis
+
+- 🎯 Find real bugs on the first run (commonly 5–15 in production schemas).
+- 🧠 Adapts as it runs: learns from server responses, threads real values into later requests, and shifts effort away from operations that aren't producing useful signal.
+- ⏱️ No per-endpoint tests to maintain — point it at your schema and run.
+- 🐛 Every finding ships with a minimal `curl` reproducer.
+- 🔌 Plugs into existing setups: CLI, `pytest`, GitHub Actions, plus Allure, JUnit XML, and HAR output.
+
+!!! quote "Developer feedback"
+    "The tool is amazing as it can test negative scenarios instead of me and much faster!" 
+    
+    *— Luděk Nový, JetBrains*
+
+## Documentation
+
+<div class="grid cards" markdown>
+
+-   :material-book-open-page-variant:{ .lg .middle style="color: #2196F3" } __New to Schemathesis?__
+
+    ---
+
+    Get started in minutes:
+
+    - [:octicons-arrow-right-24: Quick Start - 5 minutes](quick-start.md)
+    - [:octicons-arrow-right-24: CLI Tutorial - 20 minutes](tutorials/cli.md)
+    - [:octicons-arrow-right-24: Pytest Tutorial - 15 minutes](tutorials/pytest.md)
+
+-   :material-puzzle:{ .lg .middle style="color: #4CAF50" } __How-To Guides__
+
+    ---
+
+    Practical guides for common scenarios:
+
+     - [:octicons-arrow-right-24: CI/CD Integration](guides/cicd.md)
+     - [:octicons-arrow-right-24: Extending Schemathesis](guides/extending.md)
+     - [:octicons-arrow-right-24: More...](guides/index.md)
+
+-   :material-puzzle:{ .lg .middle style="color: #9C27B0" } __Want to understand how it works?__
+
+    ---
+
+    Deep dive into concepts:
+
+     - [:octicons-arrow-right-24: Data Generation](explanations/data-generation.md)
+     - [:octicons-arrow-right-24: Example Testing](explanations/examples.md)
+     - [:octicons-arrow-right-24: Stateful Testing](explanations/stateful.md)
+
+-   :material-file-document-outline:{ .lg .middle style="color: #FF9800" } __Need technical details?__
+
+    ---
+
+    Complete reference:
+
+     - [:octicons-arrow-right-24: Command-Line Interface](reference/cli.md)
+     - [:octicons-arrow-right-24: Python API](reference/python.md)
+     - [:octicons-arrow-right-24: Configuration File](reference/configuration.md)
+
+</div>
+
+
+!!! important
+    **Upgrading from older versions?** See the [Migration Guide](migration.md) for key changes.
+
+## Need help?
+
+* **[Resources](resources.md)** — Community articles, videos, and tutorials
+* **[FAQ](faq.md)** — Frequently Asked Questions

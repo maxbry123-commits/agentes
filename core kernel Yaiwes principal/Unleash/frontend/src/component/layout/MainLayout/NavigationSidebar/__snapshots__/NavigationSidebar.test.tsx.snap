@@ -1,0 +1,200 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`order of items in navigation > menu for enterprise plan 1`] = `
+[
+  {
+    "icon": null,
+    "text": ".cls-1{fill:#1a4049;}.cls-2{fill:#fff;}.cls-3{fill:#817afe;}",
+  },
+  {
+    "icon": "DashboardOutlinedIcon",
+    "text": "Dashboard",
+  },
+  {
+    "icon": "UnleashProjectIcon",
+    "text": "Projects",
+  },
+  {
+    "icon": "FlagOutlinedIcon",
+    "text": "Flags overview",
+  },
+  {
+    "icon": "MergeTypeIcon",
+    "text": "Change requests",
+  },
+  {
+    "icon": "AutoFixNormalIcon",
+    "text": "Playground",
+  },
+  {
+    "icon": "InsightsIcon",
+    "text": "Analytics",
+  },
+  {
+    "icon": "StopRoundedIcon",
+    "text": "Applications",
+  },
+  {
+    "icon": "StopRoundedIcon",
+    "text": "Context fields",
+  },
+  {
+    "icon": "StopRoundedIcon",
+    "text": "Feature flag types",
+  },
+  {
+    "icon": "StopRoundedIcon",
+    "text": "Strategy types",
+  },
+  {
+    "icon": "StopRoundedIcon",
+    "text": "Environments",
+  },
+  {
+    "icon": "StopRoundedIcon",
+    "text": "Release templates",
+  },
+  {
+    "icon": "StopRoundedIcon",
+    "text": "Tag types",
+  },
+  {
+    "icon": "StopRoundedIcon",
+    "text": "Integrations",
+  },
+  {
+    "icon": "StopRoundedIcon",
+    "text": "Segments",
+  },
+  {
+    "icon": "SettingsIcon",
+    "text": "Admin settings",
+  },
+]
+`;
+
+exports[`order of items in navigation > menu for open-source 1`] = `
+[
+  {
+    "icon": null,
+    "text": ".cls-1{fill:#1a4049;}.cls-2{fill:#fff;}.cls-3{fill:#817afe;}",
+  },
+  {
+    "icon": "DashboardOutlinedIcon",
+    "text": "Dashboard",
+  },
+  {
+    "icon": "UnleashProjectIcon",
+    "text": "Projects",
+  },
+  {
+    "icon": "FlagOutlinedIcon",
+    "text": "Flags overview",
+  },
+  {
+    "icon": "AutoFixNormalIcon",
+    "text": "Playground",
+  },
+  {
+    "icon": "StopRoundedIcon",
+    "text": "Applications",
+  },
+  {
+    "icon": "StopRoundedIcon",
+    "text": "Context fields",
+  },
+  {
+    "icon": "StopRoundedIcon",
+    "text": "Feature flag types",
+  },
+  {
+    "icon": "StopRoundedIcon",
+    "text": "Strategy types",
+  },
+  {
+    "icon": "StopRoundedIcon",
+    "text": "Tag types",
+  },
+  {
+    "icon": "StopRoundedIcon",
+    "text": "Integrations",
+  },
+  {
+    "icon": "StopRoundedIcon",
+    "text": "Segments",
+  },
+  {
+    "icon": "SettingsIcon",
+    "text": "Admin settings",
+  },
+]
+`;
+
+exports[`order of items in navigation > menu for pro plan 1`] = `
+[
+  {
+    "icon": null,
+    "text": ".cls-1{fill:#1a4049;}.cls-2{fill:#fff;}.cls-3{fill:#817afe;}",
+  },
+  {
+    "icon": "DashboardOutlinedIcon",
+    "text": "Dashboard",
+  },
+  {
+    "icon": "UnleashProjectIcon",
+    "text": "Projects",
+  },
+  {
+    "icon": "FlagOutlinedIcon",
+    "text": "Flags overview",
+  },
+  {
+    "icon": "AutoFixNormalIcon",
+    "text": "Playground",
+  },
+  {
+    "icon": "InsightsIcon",
+    "text": "Analytics",
+  },
+  {
+    "icon": "StopRoundedIcon",
+    "text": "Applications",
+  },
+  {
+    "icon": "StopRoundedIcon",
+    "text": "Context fields",
+  },
+  {
+    "icon": "StopRoundedIcon",
+    "text": "Feature flag types",
+  },
+  {
+    "icon": "StopRoundedIcon",
+    "text": "Strategy types",
+  },
+  {
+    "icon": "StopRoundedIcon",
+    "text": "Environments",
+  },
+  {
+    "icon": "StopRoundedIcon",
+    "text": "Release templates",
+  },
+  {
+    "icon": "StopRoundedIcon",
+    "text": "Tag types",
+  },
+  {
+    "icon": "StopRoundedIcon",
+    "text": "Integrations",
+  },
+  {
+    "icon": "StopRoundedIcon",
+    "text": "Segments",
+  },
+  {
+    "icon": "SettingsIcon",
+    "text": "Admin settings",
+  },
+]
+`;

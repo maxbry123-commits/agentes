@@ -1,0 +1,503 @@
+import { RunsProvider } from '../hooks/runs-provider';
+import {
+  RunDetailSearchProvider,
+  useRunDetailSearch,
+} from '../hooks/use-run-detail-search';
+import {
+  isTerminalState,
+  useWorkflowDetails,
+} from '../hooks/use-workflow-details';
+import { isFailureEventType } from './v2components/event-utils';
+import { V1RunDetailHeader } from './v2components/header';
+import { JobMiniMap } from './v2components/mini-map';
+import { PausedWorkflowNotice } from './v2components/paused-workflow-notice';
+import { Observability } from './v2components/step-run-detail/observability/observability';
+import {
+  TASK_RUN_TERMINAL_STATUSES,
+  TabOption,
+  TaskRunDetail,
+} from './v2components/step-run-detail/step-run-detail';
+import { StepRunEvents } from './v2components/step-run-events-for-workflow-run';
+import { ViewToggle } from './v2components/view-toggle';
+import { WorkflowRunInputDialog } from './v2components/workflow-run-input';
+import { WorkflowRunLogs } from './v2components/workflow-run-logs';
+import WorkflowRunVisualizer from './v2components/workflow-run-visualizer-v2';
+import type { TaskSummaryForSynthesis } from '@/components/v1/agent-prism/convert-otel-spans-to-agent-prism-span-tree';
+import { RestrictedPayloads } from '@/components/v1/shared/restricted-payloads';
+import { Badge } from '@/components/v1/ui/badge';
+import { CodeHighlighter } from '@/components/v1/ui/code-highlighter';
+import { Spinner } from '@/components/v1/ui/loading';
+import { Separator } from '@/components/v1/ui/separator';
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from '@/components/v1/ui/tabs';
+import { useSidePanel } from '@/hooks/use-side-panel';
+import api, {
+  V1TaskStatus,
+  V1TaskSummary,
+  V1WorkflowRunDetails,
+  WorkflowRunShapeForWorkflowRunDetails,
+} from '@/lib/api';
+import { preferredWorkflowRunViewAtom } from '@/lib/atoms';
+import { getErrorStatus, shouldRetryQueryError } from '@/lib/error-utils';
+import { ResourceNotFound } from '@/pages/error/components/resource-not-found';
+import { appRoutes, tenantRunRoute } from '@/router';
+import { useQuery } from '@tanstack/react-query';
+import { useParams } from '@tanstack/react-router';
+import { isAxiosError } from 'axios';
+import { useAtom } from 'jotai';
+import { RefreshCcw } from 'lucide-react';
+import { useCallback, useMemo, useRef } from 'react';
+
+class StatusError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
+function statusToBadgeVariant(status: V1TaskStatus) {
+  switch (status) {
+    case V1TaskStatus.COMPLETED:
+      return 'successful';
+    case V1TaskStatus.FAILED:
+      return 'failed';
+    case V1TaskStatus.CANCELLED:
+      return 'cancelled';
+    case V1TaskStatus.QUEUED:
+      return 'queued';
+    case V1TaskStatus.RUNNING:
+      return 'inProgress';
+    default: {
+      const exhaustivenessCheck: never = status;
+      throw new Error(`Unknown status: ${exhaustivenessCheck}`);
+    }
+  }
+}
+
+const GraphView = ({
+  shape,
+  handleTaskRunExpand,
+}: {
+  shape: WorkflowRunShapeForWorkflowRunDetails;
+  handleTaskRunExpand: (stepRunId: string) => void;
+}) => {
+  const [view] = useAtom(preferredWorkflowRunViewAtom);
+
+  const showGraphView =
+    view == 'graph' && shape.some((task) => task.childrenStepIds.length > 0);
+
+  return showGraphView ? (
+    <WorkflowRunVisualizer setSelectedTaskRunId={handleTaskRunExpand} />
+  ) : (
+    <JobMiniMap
+      onClick={(stepRunId) => {
+        if (stepRunId) {
+          handleTaskRunExpand(stepRunId);
+        }
+      }}
+    />
+  );
+};
+
+type TaskRunDispatchQueryReturnType = {
+  status: V1TaskStatus;
+  type: 'task' | 'dag';
+  task?: V1TaskSummary;
+  dag?: V1WorkflowRunDetails;
+};
+
+async function fetchTaskRun(id: string) {
+  try {
+    return await api.v1TaskGet(id);
+  } catch (error) {
+    if (isAxiosError(error) && error.response?.status === 404) {
+      return undefined;
+    }
+
+    throw error;
+  }
+}
+
+async function fetchDAGRun(id: string) {
+  try {
+    return await api.v1WorkflowRunGet(id);
+  } catch (error) {
+    if (isAxiosError(error) && error.response?.status === 404) {
+      return undefined;
+    }
+
+    throw error;
+  }
+}
+
+export default function Run() {
+  const params = useParams({ from: appRoutes.tenantRunRoute.to });
+  const { run } = params;
+  const { wasRedirectedFromTrigger } = tenantRunRoute.useSearch();
+
+  // Once we've shown the redirect-404 page, stay on it during subsequent refetches
+  // instead of flashing back to the full-page spinner (which would unmount the component
+  // and reset the icon spin animation state).
+  const seenRedirect404 = useRef(false);
+
+  const taskRunQuery = useQuery({
+    queryKey: ['workflow-run', run],
+    queryFn: async (): Promise<TaskRunDispatchQueryReturnType> => {
+      const [task, dag] = await Promise.all([
+        fetchTaskRun(run),
+        fetchDAGRun(run),
+      ]);
+
+      if (!task && !dag) {
+        throw new StatusError(
+          `Task or Workflow Run with ID ${run} not found`,
+          404,
+        );
+      }
+
+      if (task?.data) {
+        const taskData = task.data;
+
+        return {
+          status: taskData.status,
+          type: 'task',
+          task: taskData,
+        };
+      }
+
+      if (dag?.data?.run) {
+        const dagData = dag.data;
+
+        return {
+          status: dagData.run.status,
+          type: 'dag',
+          dag: dagData,
+        };
+      }
+
+      throw new Error(`Task or Workflow Run with ID ${run} not found`);
+    },
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+
+      if (isTerminalState(status)) {
+        return 5000;
+      }
+
+      return 1000;
+    },
+    retry: (_failureCount, error) => shouldRetryQueryError(error),
+  });
+
+  if (
+    taskRunQuery.isError &&
+    wasRedirectedFromTrigger === true &&
+    getErrorStatus(taskRunQuery.error) === 404
+  ) {
+    seenRedirect404.current = true;
+  }
+
+  if (taskRunQuery.isLoading && !seenRedirect404.current) {
+    return <Spinner />;
+  }
+
+  if (
+    taskRunQuery.isError ||
+    (seenRedirect404.current && taskRunQuery.isLoading)
+  ) {
+    const status = taskRunQuery.isError
+      ? getErrorStatus(taskRunQuery.error)
+      : 404;
+
+    if (status === 404 && wasRedirectedFromTrigger) {
+      return (
+        <ResourceNotFound
+          resource="Run"
+          description={
+            <span className="mx-auto block max-w-96">
+              The run was triggered successfully, but has not been replicated to
+              the analytics database yet. Once it's replicated, it will show up
+              on this page.{' '}
+              <strong className="text-foreground">
+                You do not need to re-trigger the run.
+              </strong>
+            </span>
+          }
+          primaryAction={{
+            label: 'Try refreshing',
+            icon: RefreshCcw,
+            actionOverride: () => taskRunQuery.refetch(),
+          }}
+        />
+      );
+    } else if (status === 400 || status === 404) {
+      return (
+        <ResourceNotFound
+          resource="Run"
+          primaryAction={{
+            label: 'Back to Runs',
+            navigate: {
+              to: appRoutes.tenantRunsRoute.to,
+              params: { tenant: params.tenant },
+            },
+          }}
+        />
+      );
+    }
+
+    if (taskRunQuery.isError) {
+      throw taskRunQuery.error;
+    }
+  }
+
+  const runData = taskRunQuery.data;
+
+  if (!runData) {
+    return null;
+  }
+
+  if (runData.type === 'task') {
+    return (
+      <RunsProvider tableKey={`task-runs-${run}`}>
+        <RunDetailSearchProvider>
+          <ExpandedTaskRun id={run} />
+        </RunDetailSearchProvider>
+      </RunsProvider>
+    );
+  }
+
+  if (runData.type === 'dag') {
+    return (
+      <RunsProvider tableKey={`workflow-runs-${run}`}>
+        <RunDetailSearchProvider>
+          <ExpandedWorkflowRun id={run} />
+        </RunDetailSearchProvider>
+      </RunsProvider>
+    );
+  }
+}
+
+function ExpandedTaskRun({ id }: { id: string }) {
+  return <TaskRunDetail taskRunId={id} defaultOpenTab={TabOption.Activity} />;
+}
+
+function ExpandedWorkflowRun({ id }: { id: string }) {
+  const { open } = useSidePanel();
+  const executingRef = useRef(false);
+  const search = useRunDetailSearch();
+  const activeTab = search.tab ?? 'overview';
+
+  const handleTaskRunExpand = useCallback(
+    (taskRunId: string) => {
+      // hack to prevent click handler from firing multiple times,
+      // causing index offset issues
+      if (executingRef.current) {
+        return;
+      }
+
+      executingRef.current = true;
+
+      open({
+        type: 'task-run-details',
+        content: {
+          taskRunId,
+          defaultOpenTab: TabOption.Activity,
+          showViewTaskRunButton: true,
+        },
+      });
+
+      setTimeout(() => {
+        executingRef.current = false;
+      }, 100);
+    },
+    [open],
+  );
+
+  const { workflowRun, shape, taskRuns, taskEvents, isLoading, isError } =
+    useWorkflowDetails();
+
+  const tasksForSynthesis = useMemo((): TaskSummaryForSynthesis[] => {
+    const result: TaskSummaryForSynthesis[] = [];
+    const flatten = (tasks: V1TaskSummary[]) => {
+      for (const t of tasks) {
+        result.push({
+          externalId: t.metadata.id,
+          displayName: t.displayName,
+          status: t.status,
+          createdAt: t.createdAt,
+          startedAt: t.startedAt,
+        });
+        if (t.children) {
+          flatten(t.children);
+        }
+      }
+    };
+    flatten(taskRuns);
+    return result;
+  }, [taskRuns]);
+
+  const taskExternalIds = useMemo(
+    () => taskRuns.map((t) => t.taskExternalId),
+    [taskRuns],
+  );
+
+  const durableTaskIds = useMemo(
+    () =>
+      taskRuns
+        .filter((t) => t.isDurable && t.taskExternalId !== id)
+        .map((t) => t.taskExternalId),
+    [taskRuns, id],
+  );
+
+  if (isLoading || isError || !workflowRun) {
+    return null;
+  }
+
+  const inputData = JSON.stringify(workflowRun.input || {});
+  const additionalMetadata = workflowRun.additionalMetadata;
+
+  return (
+    <div className="flex h-full w-full flex-1 flex-col min-h-0">
+      <div className="mx-auto flex h-full w-full flex-1 min-h-0 flex-col px-4 pt-2 sm:px-6 lg:px-8">
+        <V1RunDetailHeader />
+        <Separator className="my-4" />
+        <div className="mb-4 flex flex-row gap-x-4">
+          <p className="font-semibold">Status</p>
+          <Badge variant={statusToBadgeVariant(workflowRun.status)}>
+            {workflowRun.status}
+          </Badge>
+        </div>
+        <div className="h-4" />
+        <Tabs
+          value={activeTab}
+          onValueChange={search.setTab}
+          className="flex min-h-0 flex-1 flex-col"
+        >
+          <TabsList layout="underlined" className="mb-4">
+            <TabsTrigger variant="underlined" value="overview">
+              Overview
+            </TabsTrigger>
+            <TabsTrigger variant="underlined" value="traces">
+              Traces
+            </TabsTrigger>
+            <TabsTrigger variant="underlined" value="logs">
+              Logs
+            </TabsTrigger>
+          </TabsList>
+          <PausedWorkflowNotice
+            workflowId={workflowRun.workflowId}
+            status={workflowRun.status}
+          />
+          <TabsContent
+            value="overview"
+            className="flex min-h-0 flex-1 flex-col"
+          >
+            <div className="relative flex w-full shrink-0 overflow-auto bg-slate-100 dark:bg-slate-900">
+              <GraphView
+                shape={shape}
+                handleTaskRunExpand={handleTaskRunExpand}
+              />
+              <ViewToggle />
+            </div>
+            <div className="h-4" />
+            <Tabs
+              defaultValue="activity"
+              className="flex h-full flex-col min-h-0"
+            >
+              <TabsList layout="underlined">
+                <TabsTrigger variant="underlined" value="activity">
+                  Activity
+                </TabsTrigger>
+                <TabsTrigger variant="underlined" value="output">
+                  Output
+                </TabsTrigger>
+                <TabsTrigger variant="underlined" value="input">
+                  Input
+                </TabsTrigger>
+                <TabsTrigger variant="underlined" value="additional-metadata">
+                  Additional Metadata
+                </TabsTrigger>
+              </TabsList>
+              <TabsContent
+                value="activity"
+                className="flex min-h-0 flex-1 flex-col py-4"
+              >
+                <StepRunEvents
+                  workflowRunId={id}
+                  fallbackTaskDisplayName={workflowRun.displayName}
+                  onClick={handleTaskRunExpand}
+                  durableTaskIds={durableTaskIds}
+                  events={taskEvents.filter(
+                    (e) => e.taskId !== id || isFailureEventType(e.eventType),
+                  )}
+                />
+              </TabsContent>
+              <TabsContent
+                value="output"
+                className="flex min-h-0 flex-1 flex-col py-4"
+              >
+                {workflowRun.payloadsRestricted ? (
+                  <RestrictedPayloads />
+                ) : (
+                  <CodeHighlighter
+                    className="flex-1 min-h-0 overflow-hidden"
+                    maxHeight="100%"
+                    minHeight="100%"
+                    language="json"
+                    code={
+                      workflowRun.status === V1TaskStatus.FAILED
+                        ? workflowRun.errorMessage || ''
+                        : JSON.stringify(workflowRun.output, null, 2)
+                    }
+                  />
+                )}
+              </TabsContent>
+              <TabsContent
+                value="input"
+                className="flex min-h-0 flex-1 flex-col py-4"
+              >
+                {workflowRun.payloadsRestricted ? (
+                  <RestrictedPayloads />
+                ) : (
+                  <WorkflowRunInputDialog input={JSON.parse(inputData)} />
+                )}
+              </TabsContent>
+              <TabsContent
+                value="additional-metadata"
+                className="flex min-h-0 flex-1 flex-col py-4"
+              >
+                <CodeHighlighter
+                  className="flex-1 min-h-0 overflow-hidden"
+                  maxHeight="100%"
+                  minHeight="100%"
+                  language="json"
+                  code={JSON.stringify(additionalMetadata, null, 2)}
+                />
+              </TabsContent>
+            </Tabs>
+          </TabsContent>
+          <TabsContent value="traces" className="min-h-0 flex-1">
+            <Observability
+              workflowRunExternalId={id}
+              isRunning={
+                !TASK_RUN_TERMINAL_STATUSES.includes(workflowRun.status)
+              }
+              tasks={tasksForSynthesis}
+              workflowRunCreatedAt={workflowRun.metadata.createdAt}
+              workflowRunStartedAt={workflowRun.startedAt}
+            />
+          </TabsContent>
+          <TabsContent value="logs">
+            <WorkflowRunLogs taskExternalIds={taskExternalIds} />
+          </TabsContent>
+        </Tabs>
+      </div>
+    </div>
+  );
+}

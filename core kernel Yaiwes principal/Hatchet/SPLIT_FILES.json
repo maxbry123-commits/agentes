@@ -1,0 +1,23 @@
+[
+  {
+    "repo": "Hatchet",
+    "path": "frontend/docs/public/schedule-dash.gif",
+    "chunks_dir": "Hatchet/frontend/docs/public/schedule-dash.gif.chunks",
+    "bytes": 25412187,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Hatchet",
+    "path": "frontend/docs/public/cron-dash.gif",
+    "chunks_dir": "Hatchet/frontend/docs/public/cron-dash.gif.chunks",
+    "bytes": 21242705,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Hatchet",
+    "path": "frontend/docs/public/reference/cli/runs_view.mp4",
+    "chunks_dir": "Hatchet/frontend/docs/public/reference/cli/runs_view.mp4.chunks",
+    "bytes": 9530219,
+    "chunk_bytes": 8388608
+  }
+]

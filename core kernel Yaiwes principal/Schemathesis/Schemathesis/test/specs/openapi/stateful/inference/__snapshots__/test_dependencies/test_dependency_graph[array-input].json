@@ -1,0 +1,49 @@
+{
+  "operations": {
+    "GET /tags/{tagId}": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "path",
+          "parameter_name": "tagId",
+          "resource": "Tag",
+          "resource_field": "id"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "Tag",
+          "status_code": "200"
+        }
+      ]
+    },
+    "POST /tags/bulk": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "body",
+          "parameter_name": 0,
+          "resource": "Tag",
+          "resource_field": null
+        }
+      ],
+      "outputs": []
+    }
+  },
+  "resources": {
+    "Tag": {
+      "fields": [
+        "id"
+      ],
+      "types": {
+        "id": [
+          "string"
+        ]
+      }
+    }
+  }
+}

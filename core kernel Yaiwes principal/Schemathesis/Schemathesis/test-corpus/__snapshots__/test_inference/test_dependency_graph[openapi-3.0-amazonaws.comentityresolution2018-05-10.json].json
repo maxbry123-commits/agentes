@@ -1,0 +1,939 @@
+{
+  "operations": {
+    "DELETE /matchingworkflows/{workflowName}": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "DeleteMatchingWorkflow",
+          "status_code": "200"
+        }
+      ]
+    },
+    "DELETE /schemas/{schemaName}": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "path",
+          "parameter_name": "schemaName",
+          "resource": "CreateSchemaMapping",
+          "resource_field": "schemaName"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "DeleteSchemaMapping",
+          "status_code": "200"
+        }
+      ]
+    },
+    "DELETE /tags/{resourceArn}#tagKeys": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "path",
+          "parameter_name": "resourceArn",
+          "resource": "Tag",
+          "resource_field": "resourceArn"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "UntagResource",
+          "status_code": "200"
+        }
+      ]
+    },
+    "GET /matchingworkflows": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "ListMatchingWorkflows",
+          "status_code": "200"
+        }
+      ]
+    },
+    "GET /matchingworkflows/{workflowName}": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "GetMatchingWorkflow",
+          "status_code": "200"
+        }
+      ]
+    },
+    "GET /matchingworkflows/{workflowName}/jobs": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "MANY",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/jobs",
+          "resource": "JobSummary",
+          "status_code": "200"
+        }
+      ]
+    },
+    "GET /matchingworkflows/{workflowName}/jobs/{jobId}": {
+      "inputs": [
+        {
+          "is_suffix_matched": true,
+          "parameter_location": "path",
+          "parameter_name": "jobId",
+          "resource": "StartMatchingJob",
+          "resource_field": "jobId"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "GetMatchingJob",
+          "status_code": "200"
+        }
+      ]
+    },
+    "GET /schemas": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "ListSchemaMappings",
+          "status_code": "200"
+        }
+      ]
+    },
+    "GET /schemas/{schemaName}": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "path",
+          "parameter_name": "schemaName",
+          "resource": "CreateSchemaMapping",
+          "resource_field": "schemaName"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "GetSchemaMapping",
+          "status_code": "200"
+        }
+      ]
+    },
+    "GET /tags/{resourceArn}": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "path",
+          "parameter_name": "resourceArn",
+          "resource": "Tag",
+          "resource_field": "resourceArn"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/tags",
+          "resource": "TagMap",
+          "status_code": "200"
+        }
+      ]
+    },
+    "POST /matchingworkflows": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "body",
+          "parameter_name": "roleArn",
+          "resource": "Role",
+          "resource_field": "roleArn"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "CreateMatchingWorkflow",
+          "status_code": "200"
+        }
+      ]
+    },
+    "POST /matchingworkflows/{workflowName}/jobs": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "StartMatchingJob",
+          "status_code": "200"
+        }
+      ]
+    },
+    "POST /matchingworkflows/{workflowName}/matches": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "GetMatchId",
+          "status_code": "200"
+        }
+      ]
+    },
+    "POST /schemas": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "body",
+          "parameter_name": "schemaName",
+          "resource": "Schema",
+          "resource_field": "schemaName"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "CreateSchemaMapping",
+          "status_code": "200"
+        },
+        {
+          "body_field": "schemaName",
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "",
+          "resource": "Schema",
+          "status_code": "200"
+        }
+      ]
+    },
+    "POST /tags/{resourceArn}": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "path",
+          "parameter_name": "resourceArn",
+          "resource": "Tag",
+          "resource_field": "resourceArn"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "TagResource",
+          "status_code": "200"
+        },
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "path_parameter": "resourceArn",
+          "pointer": "",
+          "resource": "Tag",
+          "status_code": "200"
+        }
+      ]
+    },
+    "PUT /matchingworkflows/{workflowName}": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "body",
+          "parameter_name": "roleArn",
+          "resource": "CreateMatchingWorkflow",
+          "resource_field": "roleArn"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "UpdateMatchingWorkflow",
+          "status_code": "200"
+        }
+      ]
+    }
+  },
+  "resources": {
+    "CreateMatchingWorkflow": {
+      "fields": [
+        "description",
+        "incrementalRunConfig",
+        "inputSourceConfig",
+        "outputSourceConfig",
+        "resolutionTechniques",
+        "roleArn",
+        "workflowArn",
+        "workflowName"
+      ],
+      "types": {
+        "description": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "incrementalRunConfig": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "inputSourceConfig": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "outputSourceConfig": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "resolutionTechniques": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "roleArn": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "workflowArn": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "workflowName": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ]
+      }
+    },
+    "CreateSchemaMapping": {
+      "fields": [
+        "description",
+        "mappedInputFields",
+        "schemaArn",
+        "schemaName"
+      ],
+      "types": {
+        "description": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "mappedInputFields": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "schemaArn": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "schemaName": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ]
+      }
+    },
+    "DeleteMatchingWorkflow": {
+      "fields": [
+        "message"
+      ],
+      "types": {
+        "message": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ]
+      }
+    },
+    "DeleteSchemaMapping": {
+      "fields": [
+        "message"
+      ],
+      "types": {
+        "message": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ]
+      }
+    },
+    "GetMatchId": {
+      "fields": [
+        "matchId"
+      ],
+      "fk_fields": [
+        {
+          "field_name": "matchId",
+          "is_array": false,
+          "target_field": "id",
+          "target_resource": "Match"
+        }
+      ],
+      "types": {
+        "matchId": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ]
+      }
+    },
+    "GetMatchingJob": {
+      "fields": [
+        "endTime",
+        "errorDetails",
+        "jobId",
+        "metrics",
+        "startTime",
+        "status"
+      ],
+      "fk_fields": [
+        {
+          "field_name": "jobId",
+          "is_array": false,
+          "target_field": "id",
+          "target_resource": "Job"
+        }
+      ],
+      "types": {
+        "endTime": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "errorDetails": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "jobId": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "metrics": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "startTime": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "status": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ]
+      }
+    },
+    "GetMatchingWorkflow": {
+      "fields": [
+        "createdAt",
+        "description",
+        "incrementalRunConfig",
+        "inputSourceConfig",
+        "outputSourceConfig",
+        "resolutionTechniques",
+        "roleArn",
+        "tags",
+        "updatedAt",
+        "workflowArn",
+        "workflowName"
+      ],
+      "types": {
+        "createdAt": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "description": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "incrementalRunConfig": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "inputSourceConfig": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "outputSourceConfig": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "resolutionTechniques": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "roleArn": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "tags": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "updatedAt": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "workflowArn": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "workflowName": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ]
+      }
+    },
+    "GetSchemaMapping": {
+      "fields": [
+        "createdAt",
+        "description",
+        "mappedInputFields",
+        "schemaArn",
+        "schemaName",
+        "tags",
+        "updatedAt"
+      ],
+      "types": {
+        "createdAt": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "description": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "mappedInputFields": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "schemaArn": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "schemaName": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "tags": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "updatedAt": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ]
+      }
+    },
+    "JobSummary": {
+      "fields": [
+        "endTime",
+        "jobId",
+        "startTime",
+        "status"
+      ],
+      "fk_fields": [
+        {
+          "field_name": "jobId",
+          "is_array": false,
+          "target_field": "id",
+          "target_resource": "Job"
+        }
+      ],
+      "types": {
+        "endTime": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "jobId": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "startTime": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "status": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ]
+      }
+    },
+    "ListMatchingWorkflows": {
+      "fields": [
+        "nextToken",
+        "workflowSummaries"
+      ],
+      "types": {
+        "nextToken": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "workflowSummaries": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ]
+      }
+    },
+    "ListSchemaMappings": {
+      "fields": [
+        "nextToken",
+        "schemaList"
+      ],
+      "types": {
+        "nextToken": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "schemaList": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ]
+      }
+    },
+    "Role": {
+      "fields": [
+        "roleArn"
+      ],
+      "types": {}
+    },
+    "Schema": {
+      "fields": [
+        "schemaName"
+      ],
+      "types": {}
+    },
+    "StartMatchingJob": {
+      "fields": [
+        "jobId"
+      ],
+      "fk_fields": [
+        {
+          "field_name": "jobId",
+          "is_array": false,
+          "target_field": "id",
+          "target_resource": "Job"
+        }
+      ],
+      "types": {
+        "jobId": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ]
+      }
+    },
+    "Tag": {
+      "fields": [
+        "resourceArn"
+      ],
+      "types": {}
+    },
+    "TagMap": {
+      "fields": [],
+      "types": {}
+    },
+    "TagResource": {
+      "fields": [],
+      "types": {}
+    },
+    "UntagResource": {
+      "fields": [],
+      "types": {}
+    },
+    "UpdateMatchingWorkflow": {
+      "fields": [
+        "description",
+        "incrementalRunConfig",
+        "inputSourceConfig",
+        "outputSourceConfig",
+        "resolutionTechniques",
+        "roleArn",
+        "workflowName"
+      ],
+      "types": {
+        "description": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "incrementalRunConfig": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "inputSourceConfig": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "outputSourceConfig": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "resolutionTechniques": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "roleArn": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ],
+        "workflowName": [
+          "array",
+          "boolean",
+          "null",
+          "number",
+          "object",
+          "string"
+        ]
+      }
+    }
+  }
+}

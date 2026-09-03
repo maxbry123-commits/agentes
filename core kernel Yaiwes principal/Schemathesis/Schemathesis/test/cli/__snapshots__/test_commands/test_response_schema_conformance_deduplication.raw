@@ -1,0 +1,84 @@
+Exit code: 1
+---
+Stdout:
+Schemathesis dev
+━━━━━━━━━━━━━━━━
+
+
+ ✅  Loaded specification from http://127.0.0.1/openapi.json (in 0.00s)
+
+     Base URL:         http://127.0.0.1/
+     Specification:    Open API 3.0.2
+     Operations:       1 selected / 1 total
+
+
+ ✅  API capabilities:
+
+     Supports NULL byte in headers:                            ✓
+     Accepts backslash and control characters in URL paths:    ✓
+
+ ⏭   Examples (in 0.00s)
+
+     ⏭  1 skipped
+
+ ❌  Coverage (in 0.00s)
+
+     ❌ 1 failed
+
+ ❌  Fuzzing (in 0.00s)
+
+     ❌ 1 failed
+
+=================================== FAILURES ===================================
+_____________________________ GET /api/conformance _____________________________
+1. Test Case ID: <PLACEHOLDER>
+
+- Response violates schema
+
+    "e32ab85ed4634c38a320eb0b22460da9" is not one of "foo"
+
+    Validated against the response schema for status code 200.
+
+    Schema at /properties/value:
+
+        {
+            "enum": [
+                "foo"
+            ]
+        }
+
+    Value:
+
+        "e32ab85ed4634c38a320eb0b22460da9"
+
+[200] OK:
+
+    `{"value":"e32ab85ed4634c38a320eb0b22460da9"}`
+
+Reproduce with:
+
+    curl -X GET http://127.0.0.1/api/conformance
+
+    st replay <PLACEHOLDER>
+
+=================================== SUMMARY ====================================
+
+API Operations:
+  Selected: 1/1
+  Tested: 1
+
+Test Phases:
+  ⏭  Examples
+  ❌ Coverage
+  ❌ Fuzzing
+  ⏭  Stateful (not applicable)
+
+Failures:
+  ❌ Response violates schema: 1
+
+Test cases:
+  9 generated, 1 found 1 unique failures, 7 skipped
+
+Seed: 42
+
+============================== 1 failure in 1.00s ==============================

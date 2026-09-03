@@ -1,0 +1,43 @@
+{
+  "operations": {
+    "GET /tags/{resourceArn}": {
+      "inputs": [
+        {
+          "is_suffix_matched": false,
+          "parameter_location": "path",
+          "parameter_name": "resourceArn",
+          "resource": "Tag",
+          "resource_field": "resourceArn"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/tags",
+          "resource": "TagMap",
+          "status_code": "200"
+        }
+      ]
+    }
+  },
+  "resources": {
+    "Tag": {
+      "fields": [
+        "resourceArn"
+      ],
+      "types": {}
+    },
+    "TagMap": {
+      "fields": [
+        "id"
+      ],
+      "types": {
+        "id": [
+          "string"
+        ]
+      }
+    }
+  }
+}

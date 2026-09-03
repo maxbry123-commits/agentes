@@ -1,0 +1,81 @@
+import { Notification } from './types';
+import useAuthDisabled from '@/hooks/use-auth-disabled';
+import { queries } from '@/lib/api';
+import { useUserUniverse } from '@/providers/user-universe';
+import { appRoutes } from '@/router';
+import { useQuery } from '@tanstack/react-query';
+import { useMemo } from 'react';
+
+function exactlyOneElement<T>(array: T[]): array is [T] {
+  return array.length === 1;
+}
+
+export const useOnboardingNotifications = () => {
+  const { tenantMemberships } = useUserUniverse();
+  const authDisabled = useAuthDisabled();
+
+  const tenants = useMemo(
+    () =>
+      (tenantMemberships ?? [])
+        .map((m) => m.tenant)
+        .filter((t): t is NonNullable<typeof t> => t != null),
+    [tenantMemberships],
+  );
+
+  const hasOneTenant = exactlyOneElement(tenants);
+  const tenantId = hasOneTenant ? tenants[0].metadata.id : '';
+
+  const workflowQuery = useQuery({
+    ...queries.workflows.list(tenantId, { limit: 1 }),
+    enabled: hasOneTenant,
+  });
+
+  const tokenQuery = useQuery({
+    ...queries.tokens.list(tenantId),
+    enabled: hasOneTenant && !authDisabled,
+  });
+
+  const isLoading = workflowQuery.isLoading || tokenQuery.isLoading;
+
+  const notifications = useMemo((): Notification[] => {
+    // Why not when they have zero tenants?  Because in that case they're getting redirected to the tenant creation screen
+    if (!hasOneTenant || isLoading) {
+      return [];
+    }
+
+    // Auth-disabled instances have no API-token onboarding step
+    if (authDisabled) {
+      return [];
+    }
+
+    const hasWorkflows = (workflowQuery.data?.rows?.length ?? 0) > 0;
+    const hasTokens = (tokenQuery.data?.rows?.length ?? 0) > 0;
+
+    if (hasWorkflows || hasTokens) {
+      return [];
+    }
+
+    return [
+      {
+        color: 'blue',
+        shortTitle: 'Get started',
+        title: 'Get started with Hatchet',
+        message: 'Create an API token and run your first workflow',
+        timestamp: new Date().toISOString(),
+        url: appRoutes.tenantOverviewRoute.to.replace('$tenant', tenantId),
+      },
+    ];
+  }, [
+    hasOneTenant,
+    isLoading,
+    tenantId,
+    workflowQuery.data,
+    tokenQuery.data,
+    authDisabled,
+  ]);
+
+  return {
+    notifications,
+    isLoading,
+  };
+};

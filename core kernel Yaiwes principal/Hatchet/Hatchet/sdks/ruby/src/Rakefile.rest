@@ -1,0 +1,49 @@
+# frozen_string_literal: true
+
+# Additional Rake tasks for REST API client generation
+#
+# All generation goes through sdks/ruby/generate.sh, which is the single
+# entry point for both protobuf and REST generation.
+
+require "rake"
+
+namespace :api do
+  # Path to the unified generate script
+  GENERATE_SH = File.expand_path("../../generate.sh", __dir__)
+
+  desc "Generate REST API client from OpenAPI specification"
+  task :generate do
+    puts "Generating REST API client..."
+    system("bash", GENERATE_SH, "rest") || abort("REST API generation failed")
+  end
+
+  desc "Clean generated REST API client files"
+  task :clean do
+    rest_client_dir = File.join(__dir__, "lib", "hatchet", "clients", "rest")
+
+    if Dir.exist?(rest_client_dir)
+      puts "Cleaning generated REST API client files..."
+      require "fileutils"
+      FileUtils.rm_rf(rest_client_dir)
+      puts "REST API client files cleaned"
+    else
+      puts "No REST API client files to clean"
+    end
+  end
+
+  desc "Regenerate REST API client (clean + generate)"
+  task regenerate: [:clean, :generate]
+
+  desc "Generate REST API client only if not already present"
+  task :generate_if_missing do
+    rest_client_dir = File.join(__dir__, "lib", "hatchet", "clients", "rest")
+    main_client_file = File.join(rest_client_dir, "lib", "hatchet-sdk-rest.rb")
+
+    unless File.exist?(main_client_file)
+      puts "REST API client not found, generating..."
+      Rake::Task["api:generate"].invoke
+    else
+      puts "REST API client already exists, skipping generation"
+    end
+  end
+end

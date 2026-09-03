@@ -1,0 +1,29 @@
+{
+  "operations": {
+    "POST /users": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "User",
+          "status_code": "201"
+        }
+      ]
+    }
+  },
+  "resources": {
+    "User": {
+      "fields": [
+        "id"
+      ],
+      "types": {
+        "id": [
+          "string"
+        ]
+      }
+    }
+  }
+}

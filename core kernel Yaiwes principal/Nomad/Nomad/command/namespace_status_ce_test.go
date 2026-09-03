@@ -1,0 +1,12 @@
+// Copyright IBM Corp. 2015, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+//go:build !ent
+
+package command
+
+import "github.com/hashicorp/nomad/api"
+
+func testQuotaSpec() *api.QuotaSpec {
+	panic("not implemented - enterprise only")
+}

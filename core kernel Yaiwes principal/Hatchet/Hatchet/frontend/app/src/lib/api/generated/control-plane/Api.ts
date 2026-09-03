@@ -1,0 +1,1726 @@
+/* eslint-disable */
+/* tslint:disable */
+// @ts-nocheck
+/*
+ * ---------------------------------------------------------------
+ * ## THIS FILE WAS GENERATED VIA SWAGGER-TYPESCRIPT-API        ##
+ * ##                                                           ##
+ * ## AUTHOR: acacode                                           ##
+ * ## SOURCE: https://github.com/acacode/swagger-typescript-api ##
+ * ---------------------------------------------------------------
+ */
+
+import {
+  AcceptOrganizationInviteRequest,
+  AcceptTenantInviteRequest,
+  AddOrgMembersToTenantRequest,
+  AddUserGroupMemberRequest,
+  APIControlPlaneMetadata,
+  APIError,
+  APIErrors,
+  APIMetaAuth,
+  APITokenList,
+  AuditLogList,
+  CreateManagementTokenRequest,
+  CreateManagementTokenResponse,
+  CreateNewTenantForOrganizationRequest,
+  CreateOrganizationInviteRequest,
+  CreateOrganizationRequest,
+  CreateOrganizationSsoDomainRequest,
+  CreateTenantAPITokenRequest,
+  CreateTenantAPITokenResponse,
+  CreateTenantInviteRequest,
+  CreateUserGroupRequest,
+  ListAPIMetaIntegration,
+  ManagementTokenList,
+  Organization,
+  OrganizationAvailableShardList,
+  OrganizationBillingState,
+  OrganizationCreditBalance,
+  OrganizationEntitlements,
+  OrganizationForUserList,
+  OrganizationInviteList,
+  OrganizationMember,
+  OrganizationPaymentMethodList,
+  OrganizationTenant,
+  OrganizationTenantResourceLimitsList,
+  RejectOrganizationInviteRequest,
+  RejectTenantInviteRequest,
+  RemoveOrganizationMembersRequest,
+  SetTagsRequest,
+  SsoConfig,
+  SsoDomainArray,
+  SubscriptionPlanList,
+  TagList,
+  TenantExchangeToken,
+  TenantInvite,
+  TenantInviteList,
+  TenantMember,
+  TenantMemberList,
+  TenantTransferMemberPreviewList,
+  TransferTenantRequest,
+  UpdateOrganizationMemberRequest,
+  UpdateOrganizationRequest,
+  UpdateOrganizationSubscriptionRequest,
+  UpdateOrganizationSubscriptionResponse,
+  UpdateTenantInviteRequest,
+  UpdateTenantMemberRequest,
+  UpdateUserGroupRequest,
+  User,
+  UserChangePasswordRequest,
+  UserGroup,
+  UserGroupList,
+  UserGroupMemberList,
+  UserLoginRequest,
+  UserRegisterRequest,
+  UserTenantMembershipsList,
+} from "./data-contracts";
+import { ContentType, HttpClient, RequestParams } from "./http-client";
+
+export class Api<
+  SecurityDataType = unknown,
+> extends HttpClient<SecurityDataType> {
+  /**
+   * @description Gets the readiness status
+   *
+   * @tags Healthcheck
+   * @name ReadinessGet
+   * @summary Get readiness
+   * @request GET:/api/ready
+   */
+  readinessGet = (params: RequestParams = {}) =>
+    this.request<void, APIErrors>({
+      path: `/api/ready`,
+      method: "GET",
+      ...params,
+    });
+  /**
+   * @description Gets the liveness status
+   *
+   * @tags Healthcheck
+   * @name LivenessGet
+   * @summary Get liveness
+   * @request GET:/api/live
+   */
+  livenessGet = (params: RequestParams = {}) =>
+    this.request<void, APIErrors>({
+      path: `/api/live`,
+      method: "GET",
+      ...params,
+    });
+  /**
+   * @description Gets metadata for the Hatchet instance
+   *
+   * @tags Metadata
+   * @name MetadataGet
+   * @summary Get metadata
+   * @request GET:/api/v1/control-plane/metadata
+   */
+  metadataGet = (params: RequestParams = {}) =>
+    this.request<APIControlPlaneMetadata, APIErrors>({
+      path: `/api/v1/control-plane/metadata`,
+      method: "GET",
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description List all integrations
+   *
+   * @tags Metadata
+   * @name MetadataListIntegrations
+   * @summary List integrations
+   * @request GET:/api/v1/control-plane/metadata/integrations
+   * @secure
+   */
+  metadataListIntegrations = (params: RequestParams = {}) =>
+    this.request<ListAPIMetaIntegration, APIErrors>({
+      path: `/api/v1/control-plane/metadata/integrations`,
+      method: "GET",
+      secure: true,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description Logs in a cloud user.
+   *
+   * @tags User
+   * @name CloudUserUpdateLogin
+   * @summary Login user
+   * @request POST:/api/v1/control-plane/users/login
+   */
+  cloudUserUpdateLogin = (data: UserLoginRequest, params: RequestParams = {}) =>
+    this.request<User, APIErrors>({
+      path: `/api/v1/control-plane/users/login`,
+      method: "POST",
+      body: data,
+      type: ContentType.Json,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description Logs out a cloud user.
+   *
+   * @tags User
+   * @name CloudUserUpdateLogout
+   * @summary Logout user
+   * @request POST:/api/v1/control-plane/users/logout
+   * @secure
+   */
+  cloudUserUpdateLogout = (params: RequestParams = {}) =>
+    this.request<User, APIErrors>({
+      path: `/api/v1/control-plane/users/logout`,
+      method: "POST",
+      secure: true,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description Update a cloud user password.
+   *
+   * @tags User
+   * @name CloudUserUpdatePassword
+   * @summary Change user password
+   * @request POST:/api/v1/control-plane/users/password
+   * @secure
+   */
+  cloudUserUpdatePassword = (
+    data: UserChangePasswordRequest,
+    params: RequestParams = {},
+  ) =>
+    this.request<User, APIErrors>({
+      path: `/api/v1/control-plane/users/password`,
+      method: "POST",
+      body: data,
+      secure: true,
+      type: ContentType.Json,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description Registers a cloud user.
+   *
+   * @tags User
+   * @name CloudUserCreate
+   * @summary Register user
+   * @request POST:/api/v1/control-plane/users/register
+   */
+  cloudUserCreate = (data: UserRegisterRequest, params: RequestParams = {}) =>
+    this.request<User, APIErrors>({
+      path: `/api/v1/control-plane/users/register`,
+      method: "POST",
+      body: data,
+      type: ContentType.Json,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description Gets the current cloud user
+   *
+   * @tags User
+   * @name CloudUserGetCurrent
+   * @summary Get current cloud user
+   * @request GET:/api/v1/control-plane/users/current
+   * @secure
+   */
+  cloudUserGetCurrent = (params: RequestParams = {}) =>
+    this.request<User, APIErrors>({
+      path: `/api/v1/control-plane/users/current`,
+      method: "GET",
+      secure: true,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description Starts the OAuth flow
+   *
+   * @tags User
+   * @name CloudUserUpdateGoogleOauthStart
+   * @summary Start OAuth flow
+   * @request GET:/api/v1/control-plane/users/google/start
+   */
+  cloudUserUpdateGoogleOauthStart = (params: RequestParams = {}) =>
+    this.request<any, void>({
+      path: `/api/v1/control-plane/users/google/start`,
+      method: "GET",
+      ...params,
+    });
+  /**
+   * @description Completes the OAuth flow
+   *
+   * @tags User
+   * @name CloudUserUpdateGoogleOauthCallback
+   * @summary Complete OAuth flow
+   * @request GET:/api/v1/control-plane/users/google/callback
+   */
+  cloudUserUpdateGoogleOauthCallback = (params: RequestParams = {}) =>
+    this.request<any, void>({
+      path: `/api/v1/control-plane/users/google/callback`,
+      method: "GET",
+      ...params,
+    });
+  /**
+   * @description Starts the OAuth flow
+   *
+   * @tags User
+   * @name CloudUserUpdateGithubOauthStart
+   * @summary Start OAuth flow
+   * @request GET:/api/v1/control-plane/users/github/start
+   */
+  cloudUserUpdateGithubOauthStart = (params: RequestParams = {}) =>
+    this.request<any, void>({
+      path: `/api/v1/control-plane/users/github/start`,
+      method: "GET",
+      ...params,
+    });
+  /**
+   * @description Completes the OAuth flow
+   *
+   * @tags User
+   * @name CloudUserUpdateGithubOauthCallback
+   * @summary Complete OAuth flow
+   * @request GET:/api/v1/control-plane/users/github/callback
+   */
+  cloudUserUpdateGithubOauthCallback = (params: RequestParams = {}) =>
+    this.request<any, void>({
+      path: `/api/v1/control-plane/users/github/callback`,
+      method: "GET",
+      ...params,
+    });
+  /**
+   * @description Starts the Slack OAuth flow for a tenant
+   *
+   * @tags User
+   * @name CloudUserUpdateSlackOauthStart
+   * @summary Start Slack OAuth flow
+   * @request GET:/api/v1/control-plane/tenants/{tenant}/slack/start
+   * @secure
+   */
+  cloudUserUpdateSlackOauthStart = (
+    tenant: string,
+    params: RequestParams = {},
+  ) =>
+    this.request<any, void>({
+      path: `/api/v1/control-plane/tenants/${tenant}/slack/start`,
+      method: "GET",
+      secure: true,
+      ...params,
+    });
+  /**
+   * @description Completes the Slack OAuth flow
+   *
+   * @tags User
+   * @name CloudUserUpdateSlackOauthCallback
+   * @summary Complete Slack OAuth flow
+   * @request GET:/api/v1/control-plane/users/slack/callback
+   * @secure
+   */
+  cloudUserUpdateSlackOauthCallback = (params: RequestParams = {}) =>
+    this.request<any, void>({
+      path: `/api/v1/control-plane/users/slack/callback`,
+      method: "GET",
+      secure: true,
+      ...params,
+    });
+  /**
+   * @description List Hatchet deployment shards in the SHARED pool (available to any organization without dedicated shards).
+   *
+   * @tags Management
+   * @name ShardsListShared
+   * @summary List SHARED deployment shards
+   * @request GET:/api/v1/control-plane/shared-shards
+   * @secure
+   */
+  shardsListShared = (params: RequestParams = {}) =>
+    this.request<OrganizationAvailableShardList, APIError>({
+      path: `/api/v1/control-plane/shared-shards`,
+      method: "GET",
+      secure: true,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description List all organizations the authenticated user is a member of
+   *
+   * @name OrganizationList
+   * @summary List Organizations
+   * @request GET:/api/v1/control-plane/organizations
+   * @secure
+   */
+  organizationList = (params: RequestParams = {}) =>
+    this.request<OrganizationForUserList, APIError>({
+      path: `/api/v1/control-plane/organizations`,
+      method: "GET",
+      secure: true,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description Create a new organization
+   *
+   * @name OrganizationCreate
+   * @summary Create Organization
+   * @request POST:/api/v1/control-plane/organizations
+   * @secure
+   */
+  organizationCreate = (
+    data: CreateOrganizationRequest,
+    params: RequestParams = {},
+  ) =>
+    this.request<Organization, APIError>({
+      path: `/api/v1/control-plane/organizations`,
+      method: "POST",
+      body: data,
+      secure: true,
+      type: ContentType.Json,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description Get organization details
+   *
+   * @tags Management
+   * @name OrganizationGet
+   * @summary Get Organization
+   * @request GET:/api/v1/control-plane/organizations/{organization}
+   * @secure
+   */
+  organizationGet = (organization: string, params: RequestParams = {}) =>
+    this.request<Organization, APIError>({
+      path: `/api/v1/control-plane/organizations/${organization}`,
+      method: "GET",
+      secure: true,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description Update an organization
+   *
+   * @name OrganizationUpdate
+   * @summary Update Organization
+   * @request PATCH:/api/v1/control-plane/organizations/{organization}
+   * @secure
+   */
+  organizationUpdate = (
+    organization: string,
+    data: UpdateOrganizationRequest,
+    params: RequestParams = {},
+  ) =>
+    this.request<Organization, APIError>({
+      path: `/api/v1/control-plane/organizations/${organization}`,
+      method: "PATCH",
+      body: data,
+      secure: true,
+      type: ContentType.Json,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description Create a new tenant in the organization
+   *
+   * @tags Management
+   * @name OrganizationCreateTenant
+   * @summary Create Tenant in Organization
+   * @request POST:/api/v1/control-plane/organizations/{organization}/tenants
+   * @secure
+   */
+  organizationCreateTenant = (
+    organization: string,
+    data: CreateNewTenantForOrganizationRequest,
+    params: RequestParams = {},
+  ) =>
+    this.request<OrganizationTenant, APIError>({
+      path: `/api/v1/control-plane/organizations/${organization}/tenants`,
+      method: "POST",
+      body: data,
+      secure: true,
+      type: ContentType.Json,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description List Hatchet deployment shards available for new tenants in this organization
+   *
+   * @tags Management
+   * @name OrganizationListAvailableShards
+   * @summary List available deployment shards for organization
+   * @request GET:/api/v1/control-plane/organizations/{organization}/available-shards
+   * @secure
+   */
+  organizationListAvailableShards = (
+    organization: string,
+    params: RequestParams = {},
+  ) =>
+    this.request<OrganizationAvailableShardList, APIError>({
+      path: `/api/v1/control-plane/organizations/${organization}/available-shards`,
+      method: "GET",
+      secure: true,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description List audit logs across the organization's tenants (federated across shards)
+   *
+   * @tags Management
+   * @name OrganizationListAuditLogs
+   * @summary List Audit Logs for Organization
+   * @request GET:/api/v1/control-plane/organizations/{organization}/audit-logs
+   * @secure
+   */
+  organizationListAuditLogs = (
+    organization: string,
+    query?: {
+      /**
+       * Optional tenant ID to scope results to a single tenant
+       * @format uuid
+       * @minLength 36
+       * @maxLength 36
+       */
+      tenant?: string;
+      /**
+       * The maximum number of rows to return
+       * @format int32
+       * @min 1
+       * @max 1000
+       * @default 1000
+       */
+      limit?: number;
+      /**
+       * The number of rows to skip for pagination
+       * @format int32
+       * @min 0
+       * @default 0
+       */
+      offset?: number;
+      /**
+       * The start of the time range (RFC3339). When omitted, defaults to the beginning of the retained audit history (i.e. results are not limited to a recent window); the response is still bounded by limit and offset, returning the most recent rows first.
+       * @format date-time
+       */
+      since?: string;
+      /**
+       * The end of the time range (RFC3339). When omitted, defaults to the current time.
+       * @format date-time
+       */
+      until?: string;
+    },
+    params: RequestParams = {},
+  ) =>
+    this.request<AuditLogList, APIError>({
+      path: `/api/v1/control-plane/organizations/${organization}/audit-logs`,
+      method: "GET",
+      query: query,
+      secure: true,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description Delete (archive) a tenant in the organization
+   *
+   * @tags Management
+   * @name OrganizationTenantDelete
+   * @summary Delete Tenant in Organization
+   * @request DELETE:/api/v1/control-plane/organization-tenants/{tenant}
+   * @secure
+   */
+  organizationTenantDelete = (tenant: string, params: RequestParams = {}) =>
+    this.request<OrganizationTenant, APIError>({
+      path: `/api/v1/control-plane/organization-tenants/${tenant}`,
+      method: "DELETE",
+      secure: true,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description Transfer a tenant to a different organization. Requires organization OWNER permissions on both source and destination organizations. Every user who is currently a member of the tenant is automatically added to the destination organization as a MEMBER (their existing tenant-level role is preserved). Returns 404 when the destination organization doesn't exist or the caller isn't an owner there.
+   *
+   * @tags Management
+   * @name OrganizationTenantTransfer
+   * @summary Transfer Tenant to Another Organization
+   * @request POST:/api/v1/control-plane/organizations/{organization}/tenants/{tenant}/transfer
+   * @secure
+   */
+  organizationTenantTransfer = (
+    organization: string,
+    tenant: string,
+    data: TransferTenantRequest,
+    params: RequestParams = {},
+  ) =>
+    this.request<OrganizationTenant, APIError>({
+      path: `/api/v1/control-plane/organizations/${organization}/tenants/${tenant}/transfer`,
+      method: "POST",
+      body: data,
+      secure: true,
+      type: ContentType.Json,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description Preview which of this tenant's current members would be newly added to destinationOrganizationId if the tenant were transferred there right now (members who already belong to the destination org are omitted, since they wouldn't actually change). Requires the same OWNER-of-both-orgs permission as the transfer itself. Returns 404, not 403, when the destination organization doesn't exist or the caller isn't an owner there, so a caller can't distinguish "no such organization" from "not yours" and enumerate organization IDs.
+   *
+   * @tags Management
+   * @name OrganizationTenantTransferPreview
+   * @summary Preview Tenant Transfer
+   * @request GET:/api/v1/control-plane/organizations/{organization}/tenants/{tenant}/transfer-preview
+   * @secure
+   */
+  organizationTenantTransferPreview = (
+    organization: string,
+    tenant: string,
+    query: {
+      /**
+       * The organization the tenant would transfer to
+       * @format uuid
+       * @minLength 36
+       * @maxLength 36
+       */
+      destinationOrganizationId: string;
+    },
+    params: RequestParams = {},
+  ) =>
+    this.request<TenantTransferMemberPreviewList, APIError>({
+      path: `/api/v1/control-plane/organizations/${organization}/tenants/${tenant}/transfer-preview`,
+      method: "GET",
+      query: query,
+      secure: true,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description List all API tokens for a tenant
+   *
+   * @tags Management
+   * @name OrganizationTenantListApiTokens
+   * @summary List API Tokens for Tenant
+   * @request GET:/api/v1/control-plane/organization-tenants/{tenant}/api-tokens
+   * @secure
+   */
+  organizationTenantListApiTokens = (
+    tenant: string,
+    params: RequestParams = {},
+  ) =>
+    this.request<APITokenList, APIError>({
+      path: `/api/v1/control-plane/organization-tenants/${tenant}/api-tokens`,
+      method: "GET",
+      secure: true,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description Create a new API token for a tenant
+   *
+   * @tags Management
+   * @name OrganizationTenantCreateApiToken
+   * @summary Create API Token for Tenant
+   * @request POST:/api/v1/control-plane/organization-tenants/{tenant}/api-tokens
+   * @secure
+   */
+  organizationTenantCreateApiToken = (
+    tenant: string,
+    data: CreateTenantAPITokenRequest,
+    params: RequestParams = {},
+  ) =>
+    this.request<CreateTenantAPITokenResponse, APIError>({
+      path: `/api/v1/control-plane/organization-tenants/${tenant}/api-tokens`,
+      method: "POST",
+      body: data,
+      secure: true,
+      type: ContentType.Json,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description Delete an API token for a tenant
+   *
+   * @tags Management
+   * @name OrganizationTenantDeleteApiToken
+   * @summary Delete API Token for Tenant
+   * @request DELETE:/api/v1/control-plane/organization-tenants/{tenant}/api-tokens/{api-token}
+   * @secure
+   */
+  organizationTenantDeleteApiToken = (
+    tenant: string,
+    apiToken: string,
+    params: RequestParams = {},
+  ) =>
+    this.request<void, APIError>({
+      path: `/api/v1/control-plane/organization-tenants/${tenant}/api-tokens/${apiToken}`,
+      method: "DELETE",
+      secure: true,
+      ...params,
+    });
+  /**
+   * @description Update an organization member's role
+   *
+   * @tags Management
+   * @name OrganizationMemberUpdate
+   * @summary Update Organization Member Role
+   * @request PATCH:/api/v1/control-plane/organization-members/{organization-member}
+   * @secure
+   */
+  organizationMemberUpdate = (
+    organizationMember: string,
+    data: UpdateOrganizationMemberRequest,
+    params: RequestParams = {},
+  ) =>
+    this.request<OrganizationMember, APIError>({
+      path: `/api/v1/control-plane/organization-members/${organizationMember}`,
+      method: "PATCH",
+      body: data,
+      secure: true,
+      type: ContentType.Json,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description Remove a member from an organization
+   *
+   * @tags Management
+   * @name OrganizationMemberDelete
+   * @summary Remove Member from Organization
+   * @request DELETE:/api/v1/control-plane/organization-members/{organization-member}
+   * @secure
+   */
+  organizationMemberDelete = (
+    organizationMember: string,
+    data: RemoveOrganizationMembersRequest,
+    params: RequestParams = {},
+  ) =>
+    this.request<void, APIError>({
+      path: `/api/v1/control-plane/organization-members/${organizationMember}`,
+      method: "DELETE",
+      body: data,
+      secure: true,
+      type: ContentType.Json,
+      ...params,
+    });
+  /**
+   * @description Create a new management token for an organization
+   *
+   * @tags Management
+   * @name ManagementTokenCreate
+   * @summary Create Management Token for Organization
+   * @request POST:/api/v1/control-plane/organizations/{organization}/management-tokens
+   * @secure
+   */
+  managementTokenCreate = (
+    organization: string,
+    data: CreateManagementTokenRequest,
+    params: RequestParams = {},
+  ) =>
+    this.request<CreateManagementTokenResponse, APIError>({
+      path: `/api/v1/control-plane/organizations/${organization}/management-tokens`,
+      method: "POST",
+      body: data,
+      secure: true,
+      type: ContentType.Json,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description Get management tokens for an organization
+   *
+   * @name ManagementTokenList
+   * @summary Get Management Tokens for Organization
+   * @request GET:/api/v1/control-plane/organizations/{organization}/management-tokens
+   * @secure
+   */
+  managementTokenList = (organization: string, params: RequestParams = {}) =>
+    this.request<ManagementTokenList, APIError>({
+      path: `/api/v1/control-plane/organizations/${organization}/management-tokens`,
+      method: "GET",
+      secure: true,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description Delete a management token for an organization
+   *
+   * @name ManagementTokenDelete
+   * @summary Delete Management Token for Organization
+   * @request DELETE:/api/v1/control-plane/management-tokens/{management-token}
+   * @secure
+   */
+  managementTokenDelete = (
+    managementToken: string,
+    params: RequestParams = {},
+  ) =>
+    this.request<void, APIError>({
+      path: `/api/v1/control-plane/management-tokens/${managementToken}`,
+      method: "DELETE",
+      secure: true,
+      ...params,
+    });
+  /**
+   * @description List all organization invites for the authenticated user
+   *
+   * @name UserListOrganizationInvites
+   * @summary List Organization Invites for User
+   * @request GET:/api/v1/control-plane/invites
+   * @secure
+   */
+  userListOrganizationInvites = (params: RequestParams = {}) =>
+    this.request<OrganizationInviteList, APIError>({
+      path: `/api/v1/control-plane/invites`,
+      method: "GET",
+      secure: true,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description Accept an organization invite
+   *
+   * @name OrganizationInviteAccept
+   * @summary Accept Organization Invite for User
+   * @request POST:/api/v1/control-plane/invites/accept
+   * @secure
+   */
+  organizationInviteAccept = (
+    data: AcceptOrganizationInviteRequest,
+    params: RequestParams = {},
+  ) =>
+    this.request<void, APIError>({
+      path: `/api/v1/control-plane/invites/accept`,
+      method: "POST",
+      body: data,
+      secure: true,
+      type: ContentType.Json,
+      ...params,
+    });
+  /**
+   * @description Reject an organization invite
+   *
+   * @name OrganizationInviteReject
+   * @summary Reject Organization Invite for User
+   * @request POST:/api/v1/control-plane/invites/reject
+   * @secure
+   */
+  organizationInviteReject = (
+    data: RejectOrganizationInviteRequest,
+    params: RequestParams = {},
+  ) =>
+    this.request<void, APIError>({
+      path: `/api/v1/control-plane/invites/reject`,
+      method: "POST",
+      body: data,
+      secure: true,
+      type: ContentType.Json,
+      ...params,
+    });
+  /**
+   * @description List all organization invites for an organization
+   *
+   * @tags Management
+   * @name OrganizationInviteList
+   * @summary List Organization Invites for Organization
+   * @request GET:/api/v1/control-plane/organizations/{organization}/invites
+   * @secure
+   */
+  organizationInviteList = (organization: string, params: RequestParams = {}) =>
+    this.request<OrganizationInviteList, APIError>({
+      path: `/api/v1/control-plane/organizations/${organization}/invites`,
+      method: "GET",
+      secure: true,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description Create a new organization invite
+   *
+   * @tags Management
+   * @name OrganizationInviteCreate
+   * @summary Create Organization Invite for Organization
+   * @request POST:/api/v1/control-plane/organizations/{organization}/invites
+   * @secure
+   */
+  organizationInviteCreate = (
+    organization: string,
+    data: CreateOrganizationInviteRequest,
+    params: RequestParams = {},
+  ) =>
+    this.request<void, APIError>({
+      path: `/api/v1/control-plane/organizations/${organization}/invites`,
+      method: "POST",
+      body: data,
+      secure: true,
+      type: ContentType.Json,
+      ...params,
+    });
+  /**
+   * @description Delete an organization invite
+   *
+   * @tags Management
+   * @name OrganizationInviteDelete
+   * @summary Delete Organization Invite for Organization
+   * @request DELETE:/api/v1/control-plane/organization-invites/{organization-invite}
+   * @secure
+   */
+  organizationInviteDelete = (
+    organizationInvite: string,
+    params: RequestParams = {},
+  ) =>
+    this.request<void, APIError>({
+      path: `/api/v1/control-plane/organization-invites/${organizationInvite}`,
+      method: "DELETE",
+      secure: true,
+      ...params,
+    });
+  /**
+   * @description List all SSO configurations the organization has created
+   *
+   * @name SsoList
+   * @summary List Organization's SSO Configs
+   * @request GET:/api/v1/control-plane/organizations/{organization}/sso
+   * @secure
+   */
+  ssoList = (organization: string, params: RequestParams = {}) =>
+    this.request<APIMetaAuth, APIError>({
+      path: `/api/v1/control-plane/organizations/${organization}/sso`,
+      method: "GET",
+      secure: true,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description Create a new organization SSO config
+   *
+   * @name SsoUpdate
+   * @summary Upsert organization SSO config
+   * @request POST:/api/v1/control-plane/organizations/{organization}/sso
+   * @secure
+   */
+  ssoUpdate = (
+    organization: string,
+    data: {
+      idpInfoFromCustomer: object;
+    },
+    params: RequestParams = {},
+  ) =>
+    this.request<void, APIError>({
+      path: `/api/v1/control-plane/organizations/${organization}/sso`,
+      method: "POST",
+      body: data,
+      secure: true,
+      type: ContentType.Json,
+      ...params,
+    });
+  /**
+   * @description Delete organization SSO config
+   *
+   * @name SsoDelete
+   * @request DELETE:/api/v1/control-plane/organizations/{organization}/sso
+   * @secure
+   */
+  ssoDelete = (organization: string, params: RequestParams = {}) =>
+    this.request<void, APIError>({
+      path: `/api/v1/control-plane/organizations/${organization}/sso`,
+      method: "DELETE",
+      secure: true,
+      ...params,
+    });
+  /**
+   * @description List all SSO domains for organization
+   *
+   * @name SsoDomainList
+   * @summary List Organization's SSO Domains
+   * @request GET:/api/v1/control-plane/organizations/{organization}/sso-domain
+   * @secure
+   */
+  ssoDomainList = (organization: string, params: RequestParams = {}) =>
+    this.request<SsoDomainArray, APIError>({
+      path: `/api/v1/control-plane/organizations/${organization}/sso-domain`,
+      method: "GET",
+      secure: true,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description Add a new SSO Domain for an organization
+   *
+   * @name SsoDomainCreate
+   * @summary Create Organization SSO Domain
+   * @request POST:/api/v1/control-plane/organizations/{organization}/sso-domain
+   * @secure
+   */
+  ssoDomainCreate = (
+    organization: string,
+    data: CreateOrganizationSsoDomainRequest,
+    params: RequestParams = {},
+  ) =>
+    this.request<void, APIError>({
+      path: `/api/v1/control-plane/organizations/${organization}/sso-domain`,
+      method: "POST",
+      body: data,
+      secure: true,
+      type: ContentType.Json,
+      ...params,
+    });
+  /**
+   * @description Delete SSO Domain for organization
+   *
+   * @name SsoDomainDelete
+   * @request DELETE:/api/v1/control-plane/organizations/sso-domain/{sso-domain}
+   * @secure
+   */
+  ssoDomainDelete = (ssoDomain: string, params: RequestParams = {}) =>
+    this.request<void, APIError>({
+      path: `/api/v1/control-plane/organizations/sso-domain/${ssoDomain}`,
+      method: "DELETE",
+      secure: true,
+      ...params,
+    });
+  /**
+   * @description Get SSO config for organization
+   *
+   * @name SsoConfigGet
+   * @summary List Organization's SSO Domains
+   * @request GET:/api/v1/control-plane/organizations/{organization}/sso-config
+   * @secure
+   */
+  ssoConfigGet = (organization: string, params: RequestParams = {}) =>
+    this.request<SsoConfig, APIError>({
+      path: `/api/v1/control-plane/organizations/${organization}/sso-config`,
+      method: "GET",
+      secure: true,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description Update SSO config for organization
+   *
+   * @name SsoConfigUpdate
+   * @summary Update organization SSO config
+   * @request POST:/api/v1/control-plane/organizations/{organization}/sso-config
+   * @secure
+   */
+  ssoConfigUpdate = (
+    organization: string,
+    data: SsoConfig,
+    params: RequestParams = {},
+  ) =>
+    this.request<void, APIError>({
+      path: `/api/v1/control-plane/organizations/${organization}/sso-config`,
+      method: "POST",
+      body: data,
+      secure: true,
+      type: ContentType.Json,
+      ...params,
+    });
+  /**
+   * @description Get entitlements for an organization
+   *
+   * @name OrganizationEntitlementsGet
+   * @summary Get organization entitlements
+   * @request GET:/api/v1/control-plane/organizations/{organization}/entitlements
+   * @secure
+   */
+  organizationEntitlementsGet = (
+    organization: string,
+    params: RequestParams = {},
+  ) =>
+    this.request<OrganizationEntitlements, APIError>({
+      path: `/api/v1/control-plane/organizations/${organization}/entitlements`,
+      method: "GET",
+      secure: true,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description List the tags applied to a tenant
+   *
+   * @tags Management
+   * @name OrganizationTenantListTags
+   * @summary List Tenant Tags
+   * @request GET:/api/v1/control-plane/organizations/{organization}/tenants/{tenant}/tags
+   * @secure
+   */
+  organizationTenantListTags = (
+    organization: string,
+    tenant: string,
+    params: RequestParams = {},
+  ) =>
+    this.request<TagList, APIError>({
+      path: `/api/v1/control-plane/organizations/${organization}/tenants/${tenant}/tags`,
+      method: "GET",
+      secure: true,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description Replace all tags on a tenant. Triggers a membership sync workflow to add or remove tenant members based on the new tags.
+   *
+   * @tags Management
+   * @name OrganizationTenantSetTags
+   * @summary Set Tenant Tags
+   * @request PUT:/api/v1/control-plane/organizations/{organization}/tenants/{tenant}/tags
+   * @secure
+   */
+  organizationTenantSetTags = (
+    organization: string,
+    tenant: string,
+    data: SetTagsRequest,
+    params: RequestParams = {},
+  ) =>
+    this.request<TagList, APIError>({
+      path: `/api/v1/control-plane/organizations/${organization}/tenants/${tenant}/tags`,
+      method: "PUT",
+      body: data,
+      secure: true,
+      type: ContentType.Json,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description Directly add one or more org members to a tenant, bypassing tag matching. Only org OWNERs can call this endpoint. The memberships are marked explicit and will not be removed by tag sync.
+   *
+   * @tags Management
+   * @name OrganizationTenantMembersAdd
+   * @summary Add Org Members to Tenant
+   * @request POST:/api/v1/control-plane/organizations/{organization}/tenants/{tenant}/members
+   * @secure
+   */
+  organizationTenantMembersAdd = (
+    organization: string,
+    tenant: string,
+    data: AddOrgMembersToTenantRequest,
+    params: RequestParams = {},
+  ) =>
+    this.request<void, APIError>({
+      path: `/api/v1/control-plane/organizations/${organization}/tenants/${tenant}/members`,
+      method: "POST",
+      body: data,
+      secure: true,
+      type: ContentType.Json,
+      ...params,
+    });
+  /**
+   * @description List all user groups for an organization
+   *
+   * @tags Management
+   * @name OrganizationUserGroupsList
+   * @summary List User Groups
+   * @request GET:/api/v1/control-plane/organizations/{organization}/user-groups
+   * @secure
+   */
+  organizationUserGroupsList = (
+    organization: string,
+    params: RequestParams = {},
+  ) =>
+    this.request<UserGroupList, APIError>({
+      path: `/api/v1/control-plane/organizations/${organization}/user-groups`,
+      method: "GET",
+      secure: true,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description Create a new user group for an organization
+   *
+   * @tags Management
+   * @name OrganizationUserGroupsCreate
+   * @summary Create User Group
+   * @request POST:/api/v1/control-plane/organizations/{organization}/user-groups
+   * @secure
+   */
+  organizationUserGroupsCreate = (
+    organization: string,
+    data: CreateUserGroupRequest,
+    params: RequestParams = {},
+  ) =>
+    this.request<UserGroup, APIError>({
+      path: `/api/v1/control-plane/organizations/${organization}/user-groups`,
+      method: "POST",
+      body: data,
+      secure: true,
+      type: ContentType.Json,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description Get a user group by ID
+   *
+   * @tags Management
+   * @name OrganizationUserGroupGet
+   * @summary Get User Group
+   * @request GET:/api/v1/control-plane/organizations/{organization}/user-groups/{user-group}
+   * @secure
+   */
+  organizationUserGroupGet = (
+    organization: string,
+    userGroup: string,
+    params: RequestParams = {},
+  ) =>
+    this.request<UserGroup, APIError>({
+      path: `/api/v1/control-plane/organizations/${organization}/user-groups/${userGroup}`,
+      method: "GET",
+      secure: true,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description Update a user group's name or role
+   *
+   * @tags Management
+   * @name OrganizationUserGroupUpdate
+   * @summary Update User Group
+   * @request PATCH:/api/v1/control-plane/organizations/{organization}/user-groups/{user-group}
+   * @secure
+   */
+  organizationUserGroupUpdate = (
+    organization: string,
+    userGroup: string,
+    data: UpdateUserGroupRequest,
+    params: RequestParams = {},
+  ) =>
+    this.request<UserGroup, APIError>({
+      path: `/api/v1/control-plane/organizations/${organization}/user-groups/${userGroup}`,
+      method: "PATCH",
+      body: data,
+      secure: true,
+      type: ContentType.Json,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description Delete a user group. Triggers a membership sync to remove tag-based access granted by this group.
+   *
+   * @tags Management
+   * @name OrganizationUserGroupDelete
+   * @summary Delete User Group
+   * @request DELETE:/api/v1/control-plane/organizations/{organization}/user-groups/{user-group}
+   * @secure
+   */
+  organizationUserGroupDelete = (
+    organization: string,
+    userGroup: string,
+    params: RequestParams = {},
+  ) =>
+    this.request<void, APIError>({
+      path: `/api/v1/control-plane/organizations/${organization}/user-groups/${userGroup}`,
+      method: "DELETE",
+      secure: true,
+      ...params,
+    });
+  /**
+   * @description List the tags applied to a user group
+   *
+   * @tags Management
+   * @name OrganizationUserGroupListTags
+   * @summary List User Group Tags
+   * @request GET:/api/v1/control-plane/organizations/{organization}/user-groups/{user-group}/tags
+   * @secure
+   */
+  organizationUserGroupListTags = (
+    organization: string,
+    userGroup: string,
+    params: RequestParams = {},
+  ) =>
+    this.request<TagList, APIError>({
+      path: `/api/v1/control-plane/organizations/${organization}/user-groups/${userGroup}/tags`,
+      method: "GET",
+      secure: true,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description Replace all tags on a user group. Triggers a membership sync for all group members.
+   *
+   * @tags Management
+   * @name OrganizationUserGroupSetTags
+   * @summary Set User Group Tags
+   * @request PUT:/api/v1/control-plane/organizations/{organization}/user-groups/{user-group}/tags
+   * @secure
+   */
+  organizationUserGroupSetTags = (
+    organization: string,
+    userGroup: string,
+    data: SetTagsRequest,
+    params: RequestParams = {},
+  ) =>
+    this.request<TagList, APIError>({
+      path: `/api/v1/control-plane/organizations/${organization}/user-groups/${userGroup}/tags`,
+      method: "PUT",
+      body: data,
+      secure: true,
+      type: ContentType.Json,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description List members of a user group
+   *
+   * @tags Management
+   * @name OrganizationUserGroupListMembers
+   * @summary List User Group Members
+   * @request GET:/api/v1/control-plane/organizations/{organization}/user-groups/{user-group}/members
+   * @secure
+   */
+  organizationUserGroupListMembers = (
+    organization: string,
+    userGroup: string,
+    params: RequestParams = {},
+  ) =>
+    this.request<UserGroupMemberList, APIError>({
+      path: `/api/v1/control-plane/organizations/${organization}/user-groups/${userGroup}/members`,
+      method: "GET",
+      secure: true,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description Add an organization member to a user group. Triggers a membership sync for the added member.
+   *
+   * @tags Management
+   * @name OrganizationUserGroupAddMember
+   * @summary Add Member to User Group
+   * @request POST:/api/v1/control-plane/organizations/{organization}/user-groups/{user-group}/members
+   * @secure
+   */
+  organizationUserGroupAddMember = (
+    organization: string,
+    userGroup: string,
+    data: AddUserGroupMemberRequest,
+    params: RequestParams = {},
+  ) =>
+    this.request<void, APIError>({
+      path: `/api/v1/control-plane/organizations/${organization}/user-groups/${userGroup}/members`,
+      method: "POST",
+      body: data,
+      secure: true,
+      type: ContentType.Json,
+      ...params,
+    });
+  /**
+   * @description Remove an organization member from a user group. Triggers a membership sync for the removed member.
+   *
+   * @tags Management
+   * @name OrganizationUserGroupRemoveMember
+   * @summary Remove Member from User Group
+   * @request DELETE:/api/v1/control-plane/organizations/{organization}/user-groups/{user-group}/members/{organization-member}
+   * @secure
+   */
+  organizationUserGroupRemoveMember = (
+    organization: string,
+    userGroup: string,
+    organizationMember: string,
+    params: RequestParams = {},
+  ) =>
+    this.request<void, APIError>({
+      path: `/api/v1/control-plane/organizations/${organization}/user-groups/${userGroup}/members/${organizationMember}`,
+      method: "DELETE",
+      secure: true,
+      ...params,
+    });
+  /**
+   * @description Starts the OAuth flow
+   *
+   * @tags User
+   * @name CloudUserUpdateSsoOauthStart
+   * @summary Start OAuth flow
+   * @request GET:/api/v1/control-plane/users/sso/start
+   */
+  cloudUserUpdateSsoOauthStart = (
+    query: {
+      /** The user email */
+      email: string;
+    },
+    params: RequestParams = {},
+  ) =>
+    this.request<any, void>({
+      path: `/api/v1/control-plane/users/sso/start`,
+      method: "GET",
+      query: query,
+      ...params,
+    });
+  /**
+   * @description Completes the OAuth flow
+   *
+   * @tags User
+   * @name CloudUserUpdateSsoOauthCallback
+   * @summary Complete OAuth flow
+   * @request GET:/api/v1/control-plane/users/sso/callback
+   */
+  cloudUserUpdateSsoOauthCallback = (params: RequestParams = {}) =>
+    this.request<any, void>({
+      path: `/api/v1/control-plane/users/sso/callback`,
+      method: "GET",
+      ...params,
+    });
+  /**
+   * @description Lists all tenant memberships for the current user
+   *
+   * @tags User
+   * @name TenantMembershipsList
+   * @summary List tenant memberships
+   * @request GET:/api/v1/control-plane/users/memberships
+   * @secure
+   */
+  tenantMembershipsList = (params: RequestParams = {}) =>
+    this.request<UserTenantMembershipsList, APIErrors>({
+      path: `/api/v1/control-plane/users/memberships`,
+      method: "GET",
+      secure: true,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description Lists all pending tenant invites for the current user
+   *
+   * @tags Tenant
+   * @name UserListTenantInvites
+   * @summary List tenant invites
+   * @request GET:/api/v1/control-plane/users/tenant-invites
+   * @secure
+   */
+  userListTenantInvites = (params: RequestParams = {}) =>
+    this.request<TenantInviteList, APIErrors>({
+      path: `/api/v1/control-plane/users/tenant-invites`,
+      method: "GET",
+      secure: true,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description Accepts a tenant invite
+   *
+   * @tags Tenant
+   * @name TenantInviteAccept
+   * @summary Accept tenant invite
+   * @request POST:/api/v1/control-plane/users/tenant-invites/accept
+   * @secure
+   */
+  tenantInviteAccept = (
+    data: AcceptTenantInviteRequest,
+    params: RequestParams = {},
+  ) =>
+    this.request<void, APIErrors>({
+      path: `/api/v1/control-plane/users/tenant-invites/accept`,
+      method: "POST",
+      body: data,
+      secure: true,
+      type: ContentType.Json,
+      ...params,
+    });
+  /**
+   * @description Rejects a tenant invite
+   *
+   * @tags Tenant
+   * @name TenantInviteReject
+   * @summary Reject tenant invite
+   * @request POST:/api/v1/control-plane/users/tenant-invites/reject
+   * @secure
+   */
+  tenantInviteReject = (
+    data: RejectTenantInviteRequest,
+    params: RequestParams = {},
+  ) =>
+    this.request<void, APIErrors>({
+      path: `/api/v1/control-plane/users/tenant-invites/reject`,
+      method: "POST",
+      body: data,
+      secure: true,
+      type: ContentType.Json,
+      ...params,
+    });
+  /**
+   * @description Generate a signed exchange token for the tenant, embedding the tenant's API URL in the claims
+   *
+   * @tags Tenant
+   * @name ExchangeTokenCreate
+   * @summary Generate Tenant Token
+   * @request POST:/api/v1/control-plane/tenants/{tenant}/token
+   * @secure
+   */
+  exchangeTokenCreate = (tenant: string, params: RequestParams = {}) =>
+    this.request<TenantExchangeToken, APIError>({
+      path: `/api/v1/control-plane/tenants/${tenant}/token`,
+      method: "POST",
+      secure: true,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description List all members of a tenant
+   *
+   * @tags Tenant
+   * @name TenantMemberList
+   * @summary List Tenant Members
+   * @request GET:/api/v1/control-plane/tenants/{tenant}/members
+   * @secure
+   */
+  tenantMemberList = (tenant: string, params: RequestParams = {}) =>
+    this.request<TenantMemberList, APIError>({
+      path: `/api/v1/control-plane/tenants/${tenant}/members`,
+      method: "GET",
+      secure: true,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description Update a tenant member's role
+   *
+   * @tags Tenant
+   * @name TenantMemberUpdate
+   * @summary Update Tenant Member
+   * @request PATCH:/api/v1/control-plane/tenants/{tenant}/members/{tenant-member}
+   * @secure
+   */
+  tenantMemberUpdate = (
+    tenant: string,
+    tenantMember: string,
+    data: UpdateTenantMemberRequest,
+    params: RequestParams = {},
+  ) =>
+    this.request<TenantMember, APIError>({
+      path: `/api/v1/control-plane/tenants/${tenant}/members/${tenantMember}`,
+      method: "PATCH",
+      body: data,
+      secure: true,
+      type: ContentType.Json,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description Delete a tenant member
+   *
+   * @tags Tenant
+   * @name TenantMemberDelete
+   * @summary Delete Tenant Member
+   * @request DELETE:/api/v1/control-plane/tenants/{tenant}/members/{tenant-member}
+   * @secure
+   */
+  tenantMemberDelete = (
+    tenant: string,
+    tenantMember: string,
+    params: RequestParams = {},
+  ) =>
+    this.request<void, APIError>({
+      path: `/api/v1/control-plane/tenants/${tenant}/members/${tenantMember}`,
+      method: "DELETE",
+      secure: true,
+      ...params,
+    });
+  /**
+   * @description List all pending invites for a tenant
+   *
+   * @tags Tenant
+   * @name TenantInviteList
+   * @summary List Tenant Invites
+   * @request GET:/api/v1/control-plane/tenants/{tenant}/invites
+   * @secure
+   */
+  tenantInviteList = (tenant: string, params: RequestParams = {}) =>
+    this.request<TenantInviteList, APIError>({
+      path: `/api/v1/control-plane/tenants/${tenant}/invites`,
+      method: "GET",
+      secure: true,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description Create a new tenant invite
+   *
+   * @tags Tenant
+   * @name TenantInviteCreate
+   * @summary Create Tenant Invite
+   * @request POST:/api/v1/control-plane/tenants/{tenant}/invites
+   * @secure
+   */
+  tenantInviteCreate = (
+    tenant: string,
+    data: CreateTenantInviteRequest,
+    params: RequestParams = {},
+  ) =>
+    this.request<TenantInvite, APIError>({
+      path: `/api/v1/control-plane/tenants/${tenant}/invites`,
+      method: "POST",
+      body: data,
+      secure: true,
+      type: ContentType.Json,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description Update a tenant invite's role
+   *
+   * @tags Tenant
+   * @name TenantInviteUpdate
+   * @summary Update Tenant Invite
+   * @request PATCH:/api/v1/control-plane/tenants/{tenant}/invites/{tenant-invite}
+   * @secure
+   */
+  tenantInviteUpdate = (
+    tenant: string,
+    tenantInvite: string,
+    data: UpdateTenantInviteRequest,
+    params: RequestParams = {},
+  ) =>
+    this.request<TenantInvite, APIError>({
+      path: `/api/v1/control-plane/tenants/${tenant}/invites/${tenantInvite}`,
+      method: "PATCH",
+      body: data,
+      secure: true,
+      type: ContentType.Json,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description Delete a tenant invite
+   *
+   * @tags Tenant
+   * @name TenantInviteDelete
+   * @summary Delete Tenant Invite
+   * @request DELETE:/api/v1/control-plane/tenants/{tenant}/invites/{tenant-invite}
+   * @secure
+   */
+  tenantInviteDelete = (
+    tenant: string,
+    tenantInvite: string,
+    params: RequestParams = {},
+  ) =>
+    this.request<void, APIError>({
+      path: `/api/v1/control-plane/tenants/${tenant}/invites/${tenantInvite}`,
+      method: "DELETE",
+      secure: true,
+      ...params,
+    });
+  /**
+   * @description List all available subscription plans and their features
+   *
+   * @tags Billing
+   * @name SubscriptionPlansList
+   * @summary List subscription plans
+   * @request GET:/api/v1/control-plane/billing/plans
+   */
+  subscriptionPlansList = (params: RequestParams = {}) =>
+    this.request<SubscriptionPlanList, APIErrors>({
+      path: `/api/v1/control-plane/billing/plans`,
+      method: "GET",
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description Gets the billing state for an organization
+   *
+   * @tags Organization
+   * @name OrganizationBillingStateGet
+   * @summary Get the billing state for an organization
+   * @request GET:/api/v1/control-plane/billing/organizations/{organization}
+   * @secure
+   */
+  organizationBillingStateGet = (
+    organization: string,
+    params: RequestParams = {},
+  ) =>
+    this.request<OrganizationBillingState, APIErrors | APIError>({
+      path: `/api/v1/control-plane/billing/organizations/${organization}`,
+      method: "GET",
+      secure: true,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description Gets the current resource limits for tenants in an organization
+   *
+   * @tags Organization
+   * @name OrganizationTenantResourceLimitsGet
+   * @summary Get tenant resource limits for an organization
+   * @request GET:/api/v1/control-plane/billing/organizations/{organization}/tenant-resource-limits
+   * @secure
+   */
+  organizationTenantResourceLimitsGet = (
+    organization: string,
+    params: RequestParams = {},
+  ) =>
+    this.request<OrganizationTenantResourceLimitsList, APIErrors | APIError>({
+      path: `/api/v1/control-plane/billing/organizations/${organization}/tenant-resource-limits`,
+      method: "GET",
+      secure: true,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description Update an organization subscription
+   *
+   * @tags Billing
+   * @name OrganizationSubscriptionUpdate
+   * @summary Update organization subscription
+   * @request PATCH:/api/v1/control-plane/billing/organizations/{organization}/subscription
+   * @secure
+   */
+  organizationSubscriptionUpdate = (
+    organization: string,
+    data: UpdateOrganizationSubscriptionRequest,
+    params: RequestParams = {},
+  ) =>
+    this.request<UpdateOrganizationSubscriptionResponse, APIErrors>({
+      path: `/api/v1/control-plane/billing/organizations/${organization}/subscription`,
+      method: "PATCH",
+      body: data,
+      secure: true,
+      type: ContentType.Json,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description Get the billing portal link
+   *
+   * @tags Billing
+   * @name BillingPortalLinkGet
+   * @summary Create a link to the billing portal
+   * @request GET:/api/v1/control-plane/billing/organizations/{organization}/billing-portal-link
+   * @secure
+   */
+  billingPortalLinkGet = (organization: string, params: RequestParams = {}) =>
+    this.request<
+      {
+        /** The url to the billing portal */
+        url?: string;
+      },
+      APIErrors
+    >({
+      path: `/api/v1/control-plane/billing/organizations/${organization}/billing-portal-link`,
+      method: "GET",
+      secure: true,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description Get the payment methods for an organization
+   *
+   * @tags Billing
+   * @name OrganizationPaymentMethodsGet
+   * @summary Get the payment methods for an organization
+   * @request GET:/api/v1/control-plane/billing/organizations/{organization}/payment-methods
+   * @secure
+   */
+  organizationPaymentMethodsGet = (
+    organization: string,
+    params: RequestParams = {},
+  ) =>
+    this.request<OrganizationPaymentMethodList, APIErrors>({
+      path: `/api/v1/control-plane/billing/organizations/${organization}/payment-methods`,
+      method: "GET",
+      secure: true,
+      format: "json",
+      ...params,
+    });
+  /**
+   * @description Get the Stripe credit balance for an organization
+   *
+   * @tags Billing
+   * @name OrganizationCreditBalanceGet
+   * @summary Get the Stripe credit balance for an organization
+   * @request GET:/api/v1/control-plane/billing/organizations/{organization}/credit-balance
+   * @secure
+   */
+  organizationCreditBalanceGet = (
+    organization: string,
+    params: RequestParams = {},
+  ) =>
+    this.request<OrganizationCreditBalance, APIErrors>({
+      path: `/api/v1/control-plane/billing/organizations/${organization}/credit-balance`,
+      method: "GET",
+      secure: true,
+      format: "json",
+      ...params,
+    });
+}

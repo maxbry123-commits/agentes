@@ -1,0 +1,427 @@
+import { createUuid } from 'utils/createUuid';
+import { useEffect, useRef, useState } from 'react';
+import FormTemplate from 'component/common/FormTemplate/FormTemplate';
+import useUiConfig from 'hooks/api/getters/useUiConfig/useUiConfig';
+import { useRequiredQueryParam } from 'hooks/useRequiredQueryParam';
+import { useRequiredPathParam } from 'hooks/useRequiredPathParam';
+import useFeatureStrategyApi from 'hooks/api/actions/useFeatureStrategyApi/useFeatureStrategyApi';
+import { formatUnknownError } from 'utils/formatUnknownError';
+import { useNavigate } from 'react-router';
+import useToast from 'hooks/useToast';
+import type {
+    IFeatureStrategy,
+    IStrategy,
+    StrategyFormState,
+} from 'interfaces/strategy';
+import { UPDATE_FEATURE_STRATEGY } from 'component/providers/AccessProvider/permissions';
+
+import { useFormErrors } from 'hooks/useFormErrors';
+import { useStrategy } from 'hooks/api/getters/useStrategy/useStrategy';
+import { sortStrategyParameters } from 'utils/sortStrategyParameters';
+import { useCollaborateData } from 'hooks/useCollaborateData';
+import { useFeature } from 'hooks/api/getters/useFeature/useFeature';
+import type {
+    IFeatureEnvironment,
+    IFeatureToggle,
+} from 'interfaces/featureToggle';
+import {
+    comparisonModerator,
+    createStrategyPayload,
+} from '../featureStrategy.utils';
+import { useChangeRequestsEnabled } from 'hooks/useChangeRequestsEnabled';
+import { useChangeRequestApi } from 'hooks/api/actions/useChangeRequestApi/useChangeRequestApi';
+import { usePendingChangeRequests } from 'hooks/api/getters/usePendingChangeRequests/usePendingChangeRequests';
+import { useEventTracker } from 'hooks/useEventTracker';
+import { FeatureStrategyForm } from '../FeatureStrategyForm/FeatureStrategyForm.tsx';
+import { useScheduledChangeRequestsWithStrategy } from 'hooks/api/getters/useScheduledChangeRequestsWithStrategy/useScheduledChangeRequestsWithStrategy';
+import {
+    getChangeRequestConflictCreatedData,
+    getChangeRequestConflictCreatedDataFromScheduleData,
+} from './change-request-conflict-data.ts';
+import { constraintId } from 'constants/constraintId.ts';
+import { apiPayloadConstraintReplacer } from 'utils/api-payload-constraint-replacer.ts';
+import { summarizeStrategy } from '../summarizeStrategy.ts';
+import { useDefaultProjectSettings } from 'hooks/useDefaultProjectSettings';
+import { createFeatureStrategy } from 'utils/createFeatureStrategy.ts';
+import { refreshFeatureChangeRequests } from 'utils/refreshAllPendingChangeRequests.ts';
+import { useOptionalPathParam } from 'hooks/useOptionalPathParam.ts';
+import type { UpdateFeatureStrategySchema } from 'openapi/index.ts';
+
+const addIdSymbolToConstraints = (strategy?: IFeatureStrategy) => {
+    if (!strategy) return;
+
+    return strategy?.constraints.map((constraint) => {
+        return { ...constraint, [constraintId]: createUuid() };
+    });
+};
+
+export const FeatureStrategyEdit = () => {
+    const projectId = useRequiredPathParam('projectId');
+    const featureId = useRequiredPathParam('featureId');
+    const environmentId = useRequiredQueryParam('environmentId');
+    const strategyId = useRequiredQueryParam('strategyId');
+    const [previousStrategyState, setPreviousStrategyState] =
+        useState<StrategyFormState | null>(null);
+
+    const [strategy, setStrategy] = useState<StrategyFormState>({
+        name: '', // populated in the effect
+    });
+    const [strategyScope, setStrategyScope] =
+        useState<FeatureEnvironmentStrategyScope>('default');
+    const {
+        updateStrategyOnFeature,
+        updateMilestoneStrategyOnFeature,
+        loading,
+    } = useFeatureStrategyApi();
+    const { strategyDefinition } = useStrategy(strategy.name);
+    const { defaultStickiness } = useDefaultProjectSettings(projectId);
+    const { setToastData, setToastApiError } = useToast();
+    const errors = useFormErrors();
+    const { uiConfig } = useUiConfig();
+    const { unleashUrl } = uiConfig;
+    const navigate = useNavigate();
+    const { addChange } = useChangeRequestApi();
+    const { isChangeRequestConfigured } = useChangeRequestsEnabled(projectId);
+    const { refetch: refetchChangeRequests, data: pendingChangeRequests } =
+        usePendingChangeRequests(projectId);
+    const featureName = useOptionalPathParam('featureId');
+
+    const { feature, refetchFeature } = useFeature(projectId, featureId);
+
+    const ref = useRef<IFeatureToggle>(feature);
+
+    const { data, staleDataNotification, forceRefreshCache } =
+        useCollaborateData<IFeatureToggle>(
+            {
+                unleashGetter: useFeature,
+                params: [projectId, featureId],
+                dataKey: 'feature',
+                refetchFunctionKey: 'refetchFeature',
+                options: {},
+            },
+            feature,
+            {
+                afterSubmitAction: refetchFeature,
+            },
+            comparisonModerator,
+        );
+
+    useEffect(() => {
+        if (ref.current.name === '' && feature.name) {
+            forceRefreshCache(feature);
+            ref.current = feature;
+        }
+    }, [feature]);
+
+    const { trackEvent } = useEventTracker();
+    const { changeRequests: scheduledChangeRequestThatUseStrategy } =
+        useScheduledChangeRequestsWithStrategy(projectId, strategyId);
+
+    const pendingCrsUsingThisStrategy = getChangeRequestConflictCreatedData(
+        pendingChangeRequests,
+        featureId,
+        strategyId,
+        uiConfig,
+    );
+
+    const scheduledCrsUsingThisStrategy =
+        getChangeRequestConflictCreatedDataFromScheduleData(
+            scheduledChangeRequestThatUseStrategy,
+            uiConfig,
+        );
+
+    const emitConflictsCreatedEvents = (): void =>
+        [
+            ...pendingCrsUsingThisStrategy,
+            ...scheduledCrsUsingThisStrategy,
+        ].forEach((data) => {
+            trackEvent('change_request', {
+                props: {
+                    ...data,
+                    action: 'edit-strategy',
+                    eventType: 'conflict-created',
+                },
+            });
+        });
+
+    useEffect(() => {
+        const environmentConfig: IFeatureEnvironment | undefined =
+            data?.environments.find((env) => env.name === environmentId);
+
+        if (!environmentConfig) {
+            return;
+        }
+
+        const foundStrategy = environmentConfig.strategies.find(
+            (strategy) => strategy.id === strategyId,
+        );
+
+        const savedStrategy =
+            foundStrategy ??
+            environmentConfig.releasePlans
+                ?.flatMap((plan) =>
+                    plan.milestones.flatMap(
+                        (milestone) => milestone.strategies,
+                    ),
+                )
+                .find((strategy) => strategy.id === strategyId);
+
+        if (savedStrategy && 'milestoneId' in savedStrategy) {
+            setStrategyScope('milestone');
+        }
+
+        const constraintsWithId = addIdSymbolToConstraints(savedStrategy);
+
+        const formattedStrategy: StrategyFormState = {
+            ...savedStrategy,
+            constraints: constraintsWithId,
+            name: savedStrategy?.name || savedStrategy?.strategyName || '',
+        };
+
+        setStrategy((prev) => ({ ...prev, ...formattedStrategy }));
+        setPreviousStrategyState(formattedStrategy);
+    }, [strategyId, data]);
+
+    useEffect(() => {
+        if (!strategyDefinition) {
+            return;
+        }
+
+        const defaultParameters = createFeatureStrategy(
+            featureId,
+            strategyDefinition,
+            defaultStickiness,
+        ).parameters;
+
+        setStrategy((prev) => {
+            return {
+                ...prev,
+                parameters: {
+                    ...defaultParameters,
+                    ...prev.parameters,
+                },
+            };
+        });
+    }, [defaultStickiness, strategyDefinition?.name]);
+
+    const payload = createStrategyPayload(strategy);
+
+    const onStrategyEdit = async (payload: UpdateFeatureStrategySchema) => {
+        const updateFn =
+            strategyScope === 'milestone'
+                ? updateMilestoneStrategyOnFeature
+                : updateStrategyOnFeature;
+
+        await updateFn(
+            projectId,
+            featureId,
+            environmentId,
+            strategyId,
+            payload,
+        );
+
+        setToastData({
+            text: 'Strategy updated',
+            type: 'success',
+        });
+    };
+
+    const onStrategyRequestEdit = async (
+        payload: UpdateFeatureStrategySchema,
+    ) => {
+        await addChange(projectId, environmentId, {
+            action:
+                strategyScope === 'milestone'
+                    ? 'updateMilestoneStrategy'
+                    : 'updateStrategy',
+            feature: featureId,
+            payload: { ...payload, id: strategyId },
+        });
+        setToastData({
+            text: 'Change added to draft',
+            type: 'success',
+        });
+        refetchChangeRequests();
+        await Promise.all([
+            refetchChangeRequests(),
+            featureName
+                ? refreshFeatureChangeRequests(projectId, featureName)
+                : Promise.resolve(),
+        ]);
+    };
+
+    const onSubmit = async () => {
+        if (strategyScope === 'milestone') {
+            trackEvent('edit-milestone-strategy', {
+                props: {
+                    eventType: 'form submitted',
+                },
+            });
+        }
+
+        const viaChangeRequest = isChangeRequestConfigured(environmentId);
+
+        const flagStrategyProps = {
+            eventType: 'strategy-updated',
+            viaChangeRequest,
+            previous: summarizeStrategy(previousStrategyState),
+            current: summarizeStrategy(strategy),
+        };
+
+        trackEvent('flag-strategy', {
+            props: {
+                ...flagStrategyProps,
+                action: 'submitted',
+            },
+        });
+
+        try {
+            if (viaChangeRequest) {
+                await onStrategyRequestEdit(payload);
+            } else {
+                await onStrategyEdit(payload);
+            }
+            trackEvent('flag-strategy', {
+                props: {
+                    ...flagStrategyProps,
+                    action: 'succeeded',
+                },
+            });
+            emitConflictsCreatedEvents();
+            refetchFeature();
+            navigate(formatFeaturePath(projectId, featureId));
+        } catch (error: unknown) {
+            trackEvent('flag-strategy', {
+                props: {
+                    ...flagStrategyProps,
+                    action: 'failed',
+                },
+            });
+            setToastApiError(formatUnknownError(error));
+        }
+    };
+
+    if (!strategy.id || !strategyDefinition) {
+        return null;
+    }
+
+    if (!data) return null;
+
+    return (
+        <FormTemplate
+            modal
+            disablePadding
+            description={featureStrategyHelp}
+            documentationLink={featureStrategyDocsLink}
+            documentationLinkLabel={featureStrategyDocsLinkLabel}
+            formatApiCode={() =>
+                formatUpdateStrategyApiCode({
+                    strategyScope,
+                    projectId,
+                    featureId,
+                    environmentId,
+                    strategyId,
+                    strategy: payload,
+                    strategyDefinition,
+                    unleashUrl,
+                })
+            }
+        >
+            <FeatureStrategyForm
+                feature={data}
+                strategy={strategy}
+                setStrategy={setStrategy}
+                environmentId={environmentId}
+                onSubmit={onSubmit}
+                loading={loading}
+                permission={UPDATE_FEATURE_STRATEGY}
+                errors={errors}
+                changeRequestsEnabled={isChangeRequestConfigured(environmentId)}
+            />
+            {staleDataNotification}
+        </FormTemplate>
+    );
+};
+
+export const formatFeaturePath = (
+    projectId: string,
+    featureId: string,
+): string => {
+    return `/projects/${projectId}/features/${featureId}`;
+};
+
+export const formatEditStrategyPath = (
+    projectId: string,
+    featureId: string,
+    environmentId: string,
+    strategyId: string,
+): string => {
+    const params = new URLSearchParams({ environmentId, strategyId });
+
+    return `/projects/${projectId}/features/${featureId}/strategies/edit?${params}`;
+};
+
+export type FeatureEnvironmentStrategyScope = 'default' | 'milestone';
+
+type FormatUpdateStrategyApiCodeProps = {
+    strategyScope?: FeatureEnvironmentStrategyScope;
+    projectId: string;
+    featureId: string;
+    environmentId: string;
+    strategyId: string;
+    strategy: UpdateFeatureStrategySchema;
+    strategyDefinition: IStrategy;
+    unleashUrl?: string;
+};
+
+export const formatUpdateStrategyApiCode = ({
+    strategyScope = 'default',
+    projectId,
+    featureId,
+    environmentId,
+    strategyId,
+    strategy,
+    strategyDefinition,
+    unleashUrl,
+}: FormatUpdateStrategyApiCodeProps): string => {
+    if (!unleashUrl) {
+        return '';
+    }
+
+    // Sort the strategy parameters payload so that they match
+    // the order of the input fields in the form, for usability.
+    const sortedStrategy = {
+        ...strategy,
+        parameters: sortStrategyParameters(
+            strategy.parameters ?? {},
+            strategyDefinition,
+        ),
+    };
+
+    const baseUrl = `${unleashUrl}/api/admin/projects/${projectId}/features/${featureId}/environments/${environmentId}`;
+    const url =
+        strategyScope === 'milestone'
+            ? `${baseUrl}/milestone-strategies/${strategyId}`
+            : `${baseUrl}/strategies/${strategyId}`;
+
+    const payload = JSON.stringify(
+        sortedStrategy,
+        apiPayloadConstraintReplacer,
+        2,
+    );
+
+    return `curl --location --request PUT '${url}' \\
+    --header 'Authorization: INSERT_API_KEY' \\
+    --header 'Content-Type: application/json' \\
+    --data-raw '${payload}'`;
+};
+
+export const featureStrategyHelp = `
+    An activation strategy will only run when a feature flag is enabled and provides a way to control who will get access to the feature.
+    If any of a feature flag's activation strategies returns true, the user will get access.
+`;
+
+export const featureStrategyDocsLink =
+    'https://docs.getunleash.io/concepts/activation-strategies';
+
+export const featureStrategyDocsLinkLabel = 'Strategies documentation';

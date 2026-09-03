@@ -1,0 +1,207 @@
+import { faker } from '@faker-js/faker';
+import dbInit, { type ITestDb } from '../helpers/database-init.js';
+import getLogger from '../../fixtures/no-logger.js';
+import type {
+    IClientApplicationsStore,
+    IUnleashStores,
+} from '../../../lib/types/index.js';
+import type { IClientApplication } from '../../../lib/types/stores/client-applications-store.js';
+import { subDays } from 'date-fns';
+
+let db: ITestDb;
+let stores: IUnleashStores;
+let clientApplicationsStore: IClientApplicationsStore;
+
+beforeAll(async () => {
+    db = await dbInit('client_application_store_e2e_serial', getLogger);
+    stores = db.stores;
+    clientApplicationsStore = stores.clientApplicationsStore;
+});
+
+afterAll(async () => {
+    await db.destroy();
+});
+
+test("Should be able to keep track of what we've announced", async () => {
+    const clientRegistration = {
+        appName: faker.internet.domainName(),
+        instanceId: faker.string.uuid(),
+        strategies: ['default'],
+        started: Date.now(),
+        interval: faker.number.int(),
+        sdkVersion: '3.11.2',
+        icon: '',
+        description: faker.company.catchPhrase(),
+        color: faker.color.rgb(),
+    };
+    await clientApplicationsStore.upsert(clientRegistration);
+    let unannounced = await clientApplicationsStore.getUnannounced();
+    expect(unannounced.length).toBe(1);
+    const announce = await clientApplicationsStore.setUnannouncedToAnnounced();
+    expect(announce.length).toBe(1);
+    unannounced = await clientApplicationsStore.getUnannounced();
+    expect(unannounced.length).toBe(0);
+});
+
+test('Multiple instances should still only announce once per app', async () => {
+    const clientRegistration = {
+        appName: faker.internet.domainName(),
+        instanceId: faker.string.uuid(),
+        strategies: ['default'],
+        started: Date.now(),
+        interval: faker.number.int(),
+        sdkVersion: '3.11.2',
+        icon: '',
+        description: faker.company.catchPhrase(),
+        color: faker.color.rgb(),
+    };
+    const clientReg2 = { ...clientRegistration, instanceId: 'someotherid' };
+    await clientApplicationsStore.upsert(clientRegistration);
+    await clientApplicationsStore.upsert(clientReg2);
+    let unannounced = await clientApplicationsStore.getUnannounced();
+    expect(unannounced.length).toBe(1);
+    const announce = await clientApplicationsStore.setUnannouncedToAnnounced();
+    expect(announce.length).toBe(1);
+    unannounced = await clientApplicationsStore.getUnannounced();
+    expect(unannounced.length).toBe(0);
+});
+
+test('Multiple applications should also be possible to announce', async () => {
+    const clients: Omit<
+        IClientApplication,
+        'createdAt' | 'updatedAt' | 'lastSeen' | 'announced' | 'url'
+    >[] = [];
+    while (clients.length < 10) {
+        const clientRegistration = {
+            appName: `${faker.internet.domainName()}_${clients.length}`,
+            instanceId: faker.string.uuid(),
+            strategies: ['default'],
+            started: Date.now(),
+            interval: faker.number.int(),
+            sdkVersion: '3.11.2',
+            icon: '',
+            description: faker.company.catchPhrase(),
+            color: faker.color.rgb(),
+            createdBy: 'test',
+            createdByUserId: -1337,
+        };
+        clients.push(clientRegistration);
+    }
+    await clientApplicationsStore.bulkUpsert(clients);
+    let unannounced = await clientApplicationsStore.getUnannounced();
+    expect(unannounced.length).toBe(10);
+    const announce = await clientApplicationsStore.setUnannouncedToAnnounced();
+    expect(announce.length).toBe(10);
+    unannounced = await clientApplicationsStore.getUnannounced();
+    expect(unannounced.length).toBe(0);
+});
+
+test('Same application registered multiple times should still only be announced once', async () => {
+    const clientRegistration = {
+        appName: faker.internet.domainName(),
+        instanceId: faker.string.uuid(),
+        strategies: ['default'],
+        started: Date.now(),
+        interval: faker.number.int(),
+        sdkVersion: '3.11.2',
+        icon: '',
+        description: faker.company.catchPhrase(),
+        color: faker.color.rgb(),
+    };
+    await clientApplicationsStore.upsert(clientRegistration);
+    let unannounced = await clientApplicationsStore.getUnannounced();
+    expect(unannounced.length).toBe(1);
+    let announce = await clientApplicationsStore.setUnannouncedToAnnounced();
+    expect(announce.length).toBe(1);
+    unannounced = await clientApplicationsStore.getUnannounced();
+    expect(unannounced.length).toBe(0);
+
+    await clientApplicationsStore.upsert(clientRegistration);
+    announce = await clientApplicationsStore.setUnannouncedToAnnounced();
+    expect(announce.length).toBe(0);
+});
+
+test('Merge keeps value for single row in database', async () => {
+    const clientRegistration = {
+        appName: faker.internet.domainName(),
+        instanceId: faker.string.uuid(),
+        strategies: ['default'],
+        started: Date.now(),
+        icon: faker.color.rgb(),
+        description: faker.company.catchPhrase(),
+        color: faker.color.rgb(),
+    };
+    await clientApplicationsStore.upsert(clientRegistration);
+    await clientApplicationsStore.upsert({
+        appName: clientRegistration.appName,
+        description: 'new description',
+    });
+    const stored = await clientApplicationsStore.get(
+        clientRegistration.appName,
+    );
+    expect(stored!.color).toBe(clientRegistration.color);
+    expect(stored!.description).toBe('new description');
+});
+
+test('Multi row merge also works', async () => {
+    const clients: Omit<
+        IClientApplication,
+        'createdAt' | 'updatedAt' | 'lastSeen' | 'announced' | 'url'
+    >[] = [];
+    while (clients.length < 10) {
+        const clientRegistration = {
+            appName: `${faker.internet.domainName()}_${clients.length}`,
+            instanceId: faker.string.uuid(),
+            strategies: ['default'],
+            started: Date.now(),
+            icon: faker.color.rgb(),
+            description: faker.company.catchPhrase(),
+            color: faker.color.rgb(),
+            createdBy: 'test-user',
+            createdByUserId: -1337,
+        };
+        clients.push(clientRegistration);
+    }
+    await clientApplicationsStore.bulkUpsert(clients);
+    const alteredClients = clients.map((c) => ({
+        appName: c.appName,
+        icon: 'red',
+    }));
+    await clientApplicationsStore.bulkUpsert(alteredClients);
+    const stored = await Promise.all(
+        clients.map(async (c) => clientApplicationsStore.get(c.appName!)),
+    );
+    stored.forEach((s, i) => {
+        expect(s!.description).toBe(clients[i].description);
+    });
+});
+
+test('Remove inactive applications', async () => {
+    const clientRegistration = {
+        appName: faker.internet.domainName(),
+        instanceId: faker.string.uuid(),
+        strategies: ['default'],
+        started: Date.now(),
+        interval: faker.number.int(),
+        sdkVersion: '3.11.2',
+        icon: '',
+        description: faker.company.catchPhrase(),
+        color: faker.color.rgb(),
+    };
+
+    await clientApplicationsStore.upsert({
+        ...clientRegistration,
+        lastSeen: subDays(Date.now(), 29),
+    });
+    const noRemovedItems =
+        await clientApplicationsStore.removeInactiveApplications();
+    expect(noRemovedItems).toBe(0);
+
+    await clientApplicationsStore.upsert({
+        ...clientRegistration,
+        lastSeen: subDays(Date.now(), 30),
+    });
+    const removedItems =
+        await clientApplicationsStore.removeInactiveApplications();
+    expect(removedItems).toBe(1);
+});

@@ -1,0 +1,72 @@
+{
+  "operations": {
+    "GET /blog/posts/{postId}": {
+      "inputs": [
+        {
+          "is_suffix_matched": true,
+          "parameter_location": "path",
+          "parameter_name": "postId",
+          "resource": "Blog post public",
+          "resource_field": "id"
+        }
+      ],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "Blog post",
+          "status_code": "200"
+        }
+      ]
+    },
+    "POST /blog/posts": {
+      "inputs": [],
+      "outputs": [
+        {
+          "cardinality": "ONE",
+          "extract_object_keys": false,
+          "is_primitive_identifier": false,
+          "pointer": "/",
+          "resource": "Blog post public",
+          "status_code": "201"
+        }
+      ]
+    }
+  },
+  "resources": {
+    "Blog post": {
+      "fields": [
+        "body",
+        "checksum",
+        "id"
+      ],
+      "types": {
+        "body": [
+          "string"
+        ],
+        "checksum": [
+          "string"
+        ],
+        "id": [
+          "string"
+        ]
+      }
+    },
+    "Blog post public": {
+      "fields": [
+        "body",
+        "id"
+      ],
+      "types": {
+        "body": [
+          "string"
+        ],
+        "id": [
+          "string"
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,319 @@
+from __future__ import annotations
+
+import json
+import os
+import struct
+from collections.abc import Callable
+from functools import lru_cache, wraps
+from pathlib import Path
+from typing import Any, TypeVar
+
+import pytest
+import requests
+import urllib3
+import yaml
+from syrupy import SnapshotAssertion
+
+import schemathesis
+from schemathesis import Case
+from schemathesis.checks import CheckContext
+from schemathesis.config import ChecksConfig
+from schemathesis.core.deserialization import deserialize_yaml
+from schemathesis.core.errors import format_exception
+from schemathesis.engine import Status, events, from_schema
+from schemathesis.engine.events import EngineEvent, EngineFinished, NonFatalError, ScenarioFinished
+from schemathesis.engine.recorder import Interaction
+from schemathesis.engine.run import PhaseName
+from schemathesis.schemas import BaseSchema
+from test.apps import builders
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+
+# Hypothesis renamed this header in 6.159.0 ("Falsifying example" -> "Failing test case"). Tests that
+# assert the header is *present* fail loudly on a future rename, which is what keeps the tests asserting
+# its absence from silently passing against a string Hypothesis no longer emits.
+HYPOTHESIS_FAILURE_HEADERS = ("Failing test case", "Falsifying example")
+
+
+def has_hypothesis_failure_header(text: str, test_name: str = "") -> bool:
+    return any(f"{header}: {test_name}" in text for header in HYPOTHESIS_FAILURE_HEADERS)
+
+
+def get_schema_path(schema_name: str) -> str:
+    return os.path.join(HERE, "data", schema_name)
+
+
+def to_float32(value: float) -> float:
+    """Narrow a double to single precision, mirroring how a server stores a `format: float` value."""
+    try:
+        return struct.unpack("<f", struct.pack("<f", value))[0]
+    except OverflowError:
+        return float("inf") if value > 0 else float("-inf")
+
+
+SIMPLE_PATH = get_schema_path("simple_swagger.yaml")
+
+
+def get_schema(schema_name: str = "simple_swagger.yaml", **kwargs: Any) -> BaseSchema:
+    schema = make_schema(schema_name, **kwargs)
+    return schemathesis.openapi.from_dict(schema)
+
+
+def make_openapi_schema(
+    paths: dict[str, Any] | None = None, *, version: str = "3.0.2", **kwargs: Any
+) -> dict[str, Any]:
+    return builders.build_schema(paths, version=version, **kwargs)
+
+
+def merge_recursively(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
+    """Merge two dictionaries recursively."""
+    for key in b:
+        if key in a:
+            if isinstance(a[key], dict) and isinstance(b[key], dict):
+                merge_recursively(a[key], b[key])
+            else:
+                a[key] = b[key]
+        else:
+            a[key] = b[key]
+    return a
+
+
+def make_schema(schema_name: str = "simple_swagger.yaml", **kwargs: Any) -> dict[str, Any]:
+    schema = load_schema(schema_name)
+    return merge_recursively(kwargs, schema)
+
+
+@lru_cache
+def load_schema(schema_name: str) -> dict[str, Any]:
+    path = get_schema_path(schema_name)
+    with open(path) as fd:
+        return deserialize_yaml(fd)
+
+
+def integer(**kwargs: Any) -> dict[str, Any]:
+    return {"type": "integer", "in": "query", **kwargs}
+
+
+def as_param(*parameters: Any) -> dict[str, Any]:
+    return {"paths": {"/users": {"get": {"parameters": list(parameters), "responses": {"200": {"description": "OK"}}}}}}
+
+
+def noop(value: Any) -> bool:
+    return True
+
+
+def _assert_value(value: Any, type: type, predicate: Callable = noop) -> None:
+    assert isinstance(value, type)
+    assert predicate(value)
+
+
+def assert_int(value: Any, predicate: Callable = noop) -> None:
+    _assert_value(value, int, predicate)
+
+
+def assert_str(value: Any, predicate: Callable = noop) -> None:
+    _assert_value(value, str, predicate)
+
+
+def assert_list(value: Any, predicate: Callable = noop) -> None:
+    _assert_value(value, list, predicate)
+
+
+def assert_requests_call(case: Case):
+    """Verify that all generated input parameters are usable by requests."""
+    with pytest.raises((requests.exceptions.ConnectionError, urllib3.exceptions.NewConnectionError)):
+        # On Windows it may take time to get the connection error, hence we set a timeout
+        case.call(base_url="http://127.0.0.1:1", timeout=0.001)
+
+
+def assert_cli_snapshot(result: Any, snapshot: Any) -> None:
+    """Match a CLI Result against ``snapshot_cli``; show un-normalised stdout on failure."""
+    raw_stdout = getattr(result, "stdout", "") or ""
+    assert result == snapshot, f"\n--- raw stdout ---\n{raw_stdout}\n--- end ---"
+
+
+def load_yaml_or_fail(path: str | os.PathLike, *, context: str = "") -> dict:
+    """Load YAML; surface raw file + caller context if it doesn't parse to a dict."""
+    raw = Path(path).read_text(encoding="utf-8")
+    parsed = yaml.safe_load(raw)
+    assert isinstance(parsed, dict), (
+        f"YAML at {path} parsed to {type(parsed).__name__} (expected dict). "
+        f"File size: {len(raw)} bytes.{_format_context(context)}\n--- raw ---\n{raw}\n--- end raw ---"
+    )
+    return parsed
+
+
+def load_json_or_fail(path: str | os.PathLike, *, context: str = "") -> Any:
+    """Load JSON; surface raw file + caller context on parse failure or None result."""
+    raw = Path(path).read_text(encoding="utf-8")
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise AssertionError(
+            f"JSON at {path} failed to parse: {exc}. File size: {len(raw)} bytes."
+            f"{_format_context(context)}\n--- raw ---\n{raw}\n--- end raw ---"
+        ) from exc
+    assert parsed is not None, (
+        f"JSON at {path} parsed to None. File size: {len(raw)} bytes."
+        f"{_format_context(context)}\n--- raw ---\n{raw}\n--- end raw ---"
+    )
+    return parsed
+
+
+def _format_context(context: str) -> str:
+    return f"\n--- context ---\n{context}\n--- end context ---" if context else ""
+
+
+def flaky(*, max_runs: int, min_passes: int):
+    """A decorator to mark a test as flaky."""
+
+    def decorate(test):
+        @wraps(test)
+        def inner(*args, **kwargs):
+            snapshot_fixture_name = None
+            snapshot_cli = None
+            for name, kwarg in kwargs.items():
+                if isinstance(kwarg, SnapshotAssertion):
+                    snapshot_fixture_name = name
+                    snapshot_cli = kwarg
+                    break
+            runs = passes = 0
+            while passes < min_passes:
+                runs += 1
+                try:
+                    test(*args, **kwargs)
+                except Exception:
+                    if snapshot_fixture_name is not None:
+                        kwargs[snapshot_fixture_name] = snapshot_cli.rebuild()
+                    if runs >= max_runs:
+                        raise
+                else:
+                    passes += 1
+
+        return inner
+
+    return decorate
+
+
+E = TypeVar("E", bound=EngineEvent)
+
+
+class EventStream:
+    def __init__(
+        self,
+        schema,
+        *,
+        checks=None,
+        phases=None,
+        seed=None,
+        max_examples=None,
+        deterministic=None,
+        headers=None,
+        auth=None,
+        workers=1,
+        max_failures=None,
+        request_timeout=None,
+        tls_verify=None,
+        with_security_parameters=True,
+        parameters=None,
+        max_steps=None,
+        modes=None,
+    ):
+        schema.config.checks.update(
+            included_check_names=[c.__name__ for c in checks] if checks else ["not_a_server_error"],
+        )
+        phases = phases or [PhaseName.EXAMPLES, PhaseName.FUZZING, PhaseName.STATEFUL_TESTING]
+        schema.config.phases.update(phases=[phase.value.lower() for phase in phases])
+        database = schema.config.generation.database
+        if database is None and not deterministic:
+            database = "none"
+        schema.config.generation.update(
+            max_examples=max_examples,
+            deterministic=deterministic,
+            with_security_parameters=with_security_parameters,
+            modes=modes,
+            database=database,
+        )
+        schema.config.update(headers=headers, workers=workers, request_timeout=request_timeout, tls_verify=tls_verify)
+        if auth is not None:
+            schema.config.auth.update(basic=auth)
+        schema.config.seed = seed
+        schema.config.max_failures = max_failures
+        if max_steps is not None:
+            schema.config.phases.stateful.max_steps = max_steps
+        if parameters is not None:
+            result = schema.config.parameters or {}
+            for name, value in parameters.items():
+                result[name] = value
+            schema.config.parameters = result
+        self.schema = from_schema(schema)
+
+    def execute(self) -> EventStream:
+        self.events = list(self.schema.execute())
+        return self
+
+    def find(self, ty: type[E], **attrs) -> E | None:
+        """Find first event of specified type matching all attribute predicates."""
+        return next(
+            (
+                e
+                for e in self.events
+                if isinstance(e, ty)
+                and all(v(getattr(e, k)) if callable(v) else getattr(e, k) == v for k, v in attrs.items())
+            ),
+            None,
+        )
+
+    def find_all(self, ty: type[E], **attrs) -> list[E]:
+        """Find all events of specified type matching all attribute predicates."""
+        return [
+            e
+            for e in self.events
+            if isinstance(e, ty)
+            and all(v(getattr(e, k)) if callable(v) else getattr(e, k) == v for k, v in attrs.items())
+        ]
+
+    def find_all_interactions(self) -> list[Interaction]:
+        return sum([list(event.recorder.interactions.values()) for event in self.find_all(events.ScenarioFinished)], [])
+
+    def assert_errors(self):
+        assert self.find(NonFatalError) is not None
+
+    def assert_no_errors(self):
+        event = self.find(NonFatalError)
+        assert event is None, format_exception(event.value)
+
+    def assert_after_execution_status(self, status: Status) -> None:
+        assert self.find_all(ScenarioFinished)[-1].status == status
+
+    @property
+    def failures_count(self) -> int:
+        result = 0
+        for event in self.events:
+            if (isinstance(event, events.ScenarioFinished) and event.status == Status.FAILURE) or (
+                isinstance(event, events.PhaseFinished)
+                and event.phase.name == PhaseName.STATEFUL_TESTING
+                and event.phase.is_enabled
+                and event.status == Status.FAILURE
+            ):
+                result += 1
+        return result
+
+    def assert_no_failures(self):
+        assert self.failures_count == 0
+
+    @property
+    def finished(self) -> EngineFinished | None:
+        return self.find(EngineFinished)
+
+
+def check_context(config=None, *, recorder=None):
+    return CheckContext(
+        override=None,
+        auth=None,
+        headers=None,
+        config=config or ChecksConfig(),
+        transport_kwargs=None,
+        recorder=recorder,
+        response_checks=None,
+    )

@@ -1,0 +1,23 @@
+[
+  {
+    "repo": "CrewAI",
+    "path": "docs/images/mlflow-tracing.gif",
+    "chunks_dir": "CrewAI/docs/images/mlflow-tracing.gif.chunks",
+    "bytes": 17153907,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "CrewAI",
+    "path": "docs/images/crewai_traces.gif",
+    "chunks_dir": "CrewAI/docs/images/crewai_traces.gif.chunks",
+    "bytes": 10977409,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "CrewAI",
+    "path": "docs/images/weave-tracing.gif",
+    "chunks_dir": "CrewAI/docs/images/weave-tracing.gif.chunks",
+    "bytes": 13774971,
+    "chunk_bytes": 8388608
+  }
+]

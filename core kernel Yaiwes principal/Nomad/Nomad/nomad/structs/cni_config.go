@@ -1,0 +1,30 @@
+// Copyright IBM Corp. 2015, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+package structs
+
+import (
+	"maps"
+)
+
+type CNIConfig struct {
+	Args map[string]string
+}
+
+func (d *CNIConfig) Copy() *CNIConfig {
+	if d == nil {
+		return nil
+	}
+	newMap := make(map[string]string)
+	maps.Copy(newMap, d.Args)
+	return &CNIConfig{
+		Args: newMap,
+	}
+}
+
+func (d *CNIConfig) Equal(o *CNIConfig) bool {
+	if d == nil || o == nil {
+		return d == o
+	}
+	return maps.Equal(d.Args, o.Args)
+}

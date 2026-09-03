@@ -1,0 +1,50 @@
+from __future__ import annotations
+
+from enum import Enum
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from schemathesis.engine.core import Engine
+    from schemathesis.schemas import BaseSchema
+
+
+class Status(str, Enum):
+    SUCCESS = "success"
+    FAILURE = "failure"
+    ERROR = "error"
+    INTERRUPTED = "interrupted"
+    SKIP = "skip"
+
+    def __lt__(self, other: Status) -> bool:  # type: ignore[override]
+        return _STATUS_ORDER[self] < _STATUS_ORDER[other]
+
+
+_STATUS_ORDER = {Status.SUCCESS: 0, Status.FAILURE: 1, Status.ERROR: 2, Status.INTERRUPTED: 3, Status.SKIP: 4}
+
+
+class StopReason(str, Enum):
+    """Why the engine stopped."""
+
+    COMPLETED = "completed"
+    INTERRUPTED = "interrupted"
+    FAILURE_LIMIT = "failure_limit"
+    MAX_TIME = "max_time"
+
+    @property
+    def skip_explanation(self) -> str | None:
+        """Why operations went untested when the run stopped this way; `None` when it ran to completion."""
+        match self:
+            case StopReason.INTERRUPTED:
+                return "Interrupted"
+            case StopReason.FAILURE_LIMIT:
+                return "Failure limit reached"
+            case StopReason.MAX_TIME:
+                return "Time limit reached"
+            case StopReason.COMPLETED:
+                return None
+
+
+def from_schema(schema: BaseSchema) -> Engine:
+    from .core import Engine
+
+    return Engine(schema=schema)

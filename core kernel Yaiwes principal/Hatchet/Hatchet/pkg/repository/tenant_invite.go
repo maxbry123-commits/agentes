@@ -1,0 +1,305 @@
+package repository
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
+
+	"github.com/hatchet-dev/hatchet/pkg/repository/sqlchelpers"
+	"github.com/hatchet-dev/hatchet/pkg/repository/sqlcv1"
+)
+
+var ErrInviteAlreadyExists = errors.New("invite already exists for this email")
+
+type CreateTenantInviteOpts struct {
+	// (required) the invitee email
+	InviteeEmail string `validate:"required,email"`
+
+	// (required) the inviter email
+	InviterEmail string `validate:"required,email"`
+
+	// (required) when the invite expires
+	ExpiresAt time.Time `validate:"required,future"`
+
+	// (required) the role of the invitee
+	Role string `validate:"omitempty,oneof=OWNER ADMIN MEMBER VIEWER"`
+
+	// (optional) whether the invitee can view payloads
+	CanViewPayloads *bool `validate:"omitempty"`
+
+	// (optional) the maximum number pending of invites the inviter can have
+
+	MaxPending int `validate:"omitempty"`
+}
+
+type UpdateTenantInviteOpts struct {
+	Status *string `validate:"omitempty,oneof=ACCEPTED REJECTED"`
+
+	// (optional) the role of the invitee
+	Role *string `validate:"omitempty,oneof=OWNER ADMIN MEMBER VIEWER"`
+
+	CanViewPayloads *bool `validate:"omitempty"`
+}
+
+type ListTenantInvitesOpts struct {
+	// (optional) the status of the invite
+	Status *string `validate:"omitempty,oneof=PENDING ACCEPTED REJECTED"`
+
+	// (optional) whether the invite has expired
+	Expired *bool `validate:"omitempty"`
+}
+
+type TenantInviteRepository interface {
+	RegisterCreateCallback(callback UnscopedCallback[*sqlcv1.TenantInviteLink])
+	RegisterUpdateCallback(callback UnscopedCallback[*sqlcv1.TenantInviteLink])
+	RegisterDeleteCallback(callback UnscopedCallback[*sqlcv1.TenantInviteLink])
+
+	// CreateTenantInvite creates a new tenant invite with the given options
+	CreateTenantInvite(ctx context.Context, tenantId uuid.UUID, opts *CreateTenantInviteOpts) (*sqlcv1.TenantInviteLink, error)
+
+	// GetTenantInvite returns the tenant invite with the given id
+	GetTenantInvite(ctx context.Context, id uuid.UUID) (*sqlcv1.TenantInviteLink, error)
+
+	// ListTenantInvitesByEmail returns the list of tenant invites for the given invitee email for invites
+	// which are not expired
+	ListTenantInvitesByEmail(ctx context.Context, email string) ([]*sqlcv1.ListTenantInvitesByEmailRow, error)
+
+	// ListTenantInvitesByTenantId returns the list of tenant invites for the given tenant id
+	ListTenantInvitesByTenantId(ctx context.Context, tenantId uuid.UUID, opts *ListTenantInvitesOpts) ([]*sqlcv1.TenantInviteLink, error)
+
+	// UpdateTenantInvite updates the tenant invite with the given id
+	UpdateTenantInvite(ctx context.Context, id uuid.UUID, opts *UpdateTenantInviteOpts) (*sqlcv1.TenantInviteLink, error)
+
+	// DeleteTenantInvite deletes the tenant invite with the given id
+	DeleteTenantInvite(ctx context.Context, id uuid.UUID) error
+}
+
+type tenantInviteRepository struct {
+	*sharedRepository
+
+	createCallbacks []UnscopedCallback[*sqlcv1.TenantInviteLink]
+	updateCallbacks []UnscopedCallback[*sqlcv1.TenantInviteLink]
+	deleteCallbacks []UnscopedCallback[*sqlcv1.TenantInviteLink]
+}
+
+func newTenantInviteRepository(shared *sharedRepository) TenantInviteRepository {
+	return &tenantInviteRepository{
+		sharedRepository: shared,
+	}
+}
+
+func (r *tenantInviteRepository) RegisterCreateCallback(callback UnscopedCallback[*sqlcv1.TenantInviteLink]) {
+	if r.createCallbacks == nil {
+		r.createCallbacks = make([]UnscopedCallback[*sqlcv1.TenantInviteLink], 0)
+	}
+
+	r.createCallbacks = append(r.createCallbacks, callback)
+}
+
+func (r *tenantInviteRepository) RegisterUpdateCallback(callback UnscopedCallback[*sqlcv1.TenantInviteLink]) {
+	if r.updateCallbacks == nil {
+		r.updateCallbacks = make([]UnscopedCallback[*sqlcv1.TenantInviteLink], 0)
+	}
+
+	r.updateCallbacks = append(r.updateCallbacks, callback)
+}
+
+func (r *tenantInviteRepository) RegisterDeleteCallback(callback UnscopedCallback[*sqlcv1.TenantInviteLink]) {
+	if r.deleteCallbacks == nil {
+		r.deleteCallbacks = make([]UnscopedCallback[*sqlcv1.TenantInviteLink], 0)
+	}
+
+	r.deleteCallbacks = append(r.deleteCallbacks, callback)
+}
+
+func (r *tenantInviteRepository) CreateTenantInvite(ctx context.Context, tenantId uuid.UUID, opts *CreateTenantInviteOpts) (*sqlcv1.TenantInviteLink, error) {
+	if err := r.v.Validate(opts); err != nil {
+		return nil, err
+	}
+
+	tx, commit, rollback, err := sqlchelpers.PrepareTx(ctx, r.pool, r.l)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer rollback()
+
+	if opts.MaxPending != 0 {
+		invites, err := r.queries.CountActiveInvites(
+			ctx,
+			tx,
+			tenantId,
+		)
+
+		if err != nil {
+			r.l.Error().Ctx(ctx).Err(err).Msg("error counting pending invites")
+			return nil, err
+		}
+
+		if invites >= int64(opts.MaxPending) {
+			r.l.Error().Ctx(ctx).Msg("max pending invites reached")
+			return nil, fmt.Errorf("max pending invites reached")
+		}
+	}
+
+	_, err = r.queries.GetExistingInvite(
+		ctx,
+		tx,
+		sqlcv1.GetExistingInviteParams{
+			Tenantid:     tenantId,
+			Inviteeemail: opts.InviteeEmail,
+		},
+	)
+
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return nil, err
+	} else if err == nil {
+		return nil, ErrInviteAlreadyExists
+	}
+
+	invite, err := r.queries.CreateTenantInvite(
+		ctx,
+		tx,
+		sqlcv1.CreateTenantInviteParams{
+			Tenantid:        tenantId,
+			Inviteremail:    opts.InviterEmail,
+			Inviteeemail:    opts.InviteeEmail,
+			Expires:         sqlchelpers.TimestampFromTime(opts.ExpiresAt),
+			Role:            sqlcv1.TenantMemberRole(opts.Role),
+			CanViewPayloads: canViewPayloadsParam(opts.CanViewPayloads),
+		},
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if err := commit(ctx); err != nil {
+		return nil, err
+	}
+
+	for _, cb := range r.createCallbacks {
+		cb.Do(r.l, invite)
+	}
+
+	return invite, nil
+}
+
+func (r *tenantInviteRepository) GetTenantInvite(ctx context.Context, id uuid.UUID) (*sqlcv1.TenantInviteLink, error) {
+	return r.queries.GetInviteById(
+		ctx,
+		r.pool,
+		id,
+	)
+}
+
+func (r *tenantInviteRepository) ListTenantInvitesByEmail(ctx context.Context, email string) ([]*sqlcv1.ListTenantInvitesByEmailRow, error) {
+	return r.queries.ListTenantInvitesByEmail(
+		ctx,
+		r.pool,
+		email,
+	)
+}
+
+func (r *tenantInviteRepository) ListTenantInvitesByTenantId(ctx context.Context, tenantId uuid.UUID, opts *ListTenantInvitesOpts) ([]*sqlcv1.TenantInviteLink, error) {
+	if err := r.v.Validate(opts); err != nil {
+		return nil, err
+	}
+
+	params := sqlcv1.ListInvitesByTenantIdParams{
+		Tenantid: tenantId,
+	}
+
+	if opts.Status != nil {
+		params.Status = sqlcv1.NullInviteLinkStatus{
+			InviteLinkStatus: sqlcv1.InviteLinkStatus(*opts.Status),
+			Valid:            true,
+		}
+	}
+
+	if opts.Expired != nil {
+		params.Expired = pgtype.Bool{
+			Bool:  *opts.Expired,
+			Valid: true,
+		}
+	}
+
+	return r.queries.ListInvitesByTenantId(
+		ctx,
+		r.pool,
+		params,
+	)
+}
+
+func (r *tenantInviteRepository) UpdateTenantInvite(ctx context.Context, id uuid.UUID, opts *UpdateTenantInviteOpts) (*sqlcv1.TenantInviteLink, error) {
+	if err := r.v.Validate(opts); err != nil {
+		return nil, err
+	}
+
+	params := sqlcv1.UpdateTenantInviteParams{
+		ID: id,
+	}
+
+	if opts.Role != nil {
+		params.Role = sqlcv1.NullTenantMemberRole{
+			TenantMemberRole: sqlcv1.TenantMemberRole(*opts.Role),
+			Valid:            true,
+		}
+	}
+
+	if opts.Status != nil {
+		params.Status = sqlcv1.NullInviteLinkStatus{
+			InviteLinkStatus: sqlcv1.InviteLinkStatus(*opts.Status),
+			Valid:            true,
+		}
+	}
+
+	if opts.CanViewPayloads != nil {
+		params.CanViewPayloads = sqlchelpers.BoolFromBoolean(*opts.CanViewPayloads)
+	}
+
+	updated, err := r.queries.UpdateTenantInvite(
+		ctx,
+		r.pool,
+		params,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	for _, cb := range r.updateCallbacks {
+		cb.Do(r.l, updated)
+	}
+
+	return updated, nil
+}
+
+func (r *tenantInviteRepository) DeleteTenantInvite(ctx context.Context, id uuid.UUID) error {
+	var invite *sqlcv1.TenantInviteLink
+
+	if len(r.deleteCallbacks) > 0 {
+		var err error
+		invite, err = r.queries.GetInviteById(ctx, r.pool, id)
+
+		if err != nil {
+			return err
+		}
+	}
+
+	if err := r.queries.DeleteTenantInvite(ctx, r.pool, id); err != nil {
+		return err
+	}
+
+	for _, cb := range r.deleteCallbacks {
+		cb.Do(r.l, invite)
+	}
+
+	return nil
+}
