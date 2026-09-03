@@ -1,0 +1,124 @@
+name: Extraction Repair Guardian Repair 01 2026-09-03
+run-name: Extraction repair-01 • ${{ github.run_id }}
+
+on:
+  workflow_dispatch:
+  repository_dispatch:
+    types: [extraction-repair-needed-r01]
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/extraction-repair-guardian-repair-01-20260903.yml"
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: extraction-single-writer-main
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 480
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+
+      - name: Enforce NO-LFS runner policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config --local filter.lfs.clean cat
+          git config --local filter.lfs.smudge cat
+          git config --local --unset-all filter.lfs.process || true
+          git config --local filter.lfs.required false
+
+      - name: Extract next bounded batch safely
+        id: extract
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 scripts/extract_guardian_repair_20260903.py --limit 10 | tee extraction-result.json
+
+      - name: Commit extracted trees and immutable evidence
+        id: publish
+        if: ${{ steps.extract.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -A -- . ':(exclude).github/workflows' ':(exclude)extraction-result.json' ':(exclude)audit-result.json'
+          python3 -c 'import subprocess,sys; marker=b"version https://git-lfs.github.com/spec/v1\n"; paths=subprocess.check_output(["git","diff","--cached","--name-only","-z"]).split(b"\0"); bad=[p.decode("utf-8","surrogateescape") for p in paths if p and __import__("pathlib").Path(p.decode("utf-8","surrogateescape")).is_file() and __import__("pathlib").Path(p.decode("utf-8","surrogateescape")).read_bytes()[:1024].startswith(marker)]; print("SOURCE_LFS_POINTER_GAP\n"+"\n".join(bad)) if bad else None; sys.exit(73 if bad else 0)'
+          if ! git diff --cached --quiet; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git commit -m "fix(extraction): publish verified NO-LFS batch [run ${GITHUB_RUN_ID}]"
+            python3 -c 'import subprocess,sys; raw=subprocess.check_output(["git","status","--porcelain","-z"]).split(b"\0"); allowed={"extraction-result.json","audit-result.json"}; bad=[r[3:].decode("utf-8","surrogateescape") for r in raw if r and r[3:].decode("utf-8","surrogateescape") not in allowed]; print("UNEXPECTED_DIRTY_WORKTREE_GAP\n"+"\n".join(bad)) if bad else None; sys.exit(74 if bad else 0)'
+            LOCAL_COMMIT="$(git rev-parse HEAD)"
+            git restore --worktree --staged -- extraction-result.json audit-result.json 2>/dev/null || true
+            rm -f extraction-result.json audit-result.json
+            if git push --no-verify origin HEAD:main; then
+              exit 0
+            fi
+            for attempt in 1 2 3; do
+              if git fetch origin main; then
+                break
+              fi
+              test "$attempt" -lt 3 || exit 41
+              sleep $((attempt*10))
+            done
+            TMP_WORKTREE="$(mktemp -d)"
+            cleanup_worktree() {
+              git worktree remove --force "$TMP_WORKTREE" >/dev/null 2>&1 || true
+              rm -rf "$TMP_WORKTREE"
+            }
+            trap cleanup_worktree EXIT
+            git worktree add --detach "$TMP_WORKTREE" origin/main
+            git -C "$TMP_WORKTREE" config filter.lfs.clean cat
+            git -C "$TMP_WORKTREE" config filter.lfs.smudge cat
+            git -C "$TMP_WORKTREE" config --unset-all filter.lfs.process || true
+            git -C "$TMP_WORKTREE" config filter.lfs.required false
+            git -C "$TMP_WORKTREE" config user.name 'github-actions[bot]'
+            git -C "$TMP_WORKTREE" config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git -C "$TMP_WORKTREE" cherry-pick "$LOCAL_COMMIT"
+            git -C "$TMP_WORKTREE" push --no-verify origin HEAD:main
+          fi
+
+      - name: Read-back and continue only while retryable gaps remain
+        if: ${{ always() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "EXTRACT_OUTCOME=${{ steps.extract.outcome }}"
+          echo "PUBLISH_OUTCOME=${{ steps.publish.outcome }}"
+          test "${{ steps.extract.outcome }}" = "success" || exit 42
+          test "${{ steps.publish.outcome }}" = "success" || exit 41
+          git fetch origin main
+          git reset --hard origin/main
+          python3 scripts/extract_guardian_repair_20260903.py --audit-only | tee audit-result.json
+          read -r GAPS RETRYABLE BLOCKED VERDICT <<< "$(python3 -c 'import json; d=json.load(open("audit-result.json")); c=d.get("counts",{}); print(c.get("remaining",len(d.get("remaining_gaps",[]))), c.get("retryable",len(d.get("retryable_gaps",[]))), c.get("blocked",len(d.get("blocked_gaps",[]))), d.get("verdict","GAPS_PENDING"))')"
+          echo "REMAINING_GAPS=$GAPS"
+          echo "RETRYABLE_GAPS=$RETRYABLE"
+          echo "BLOCKED_GAPS=$BLOCKED"
+          echo "VERDICT=$VERDICT"
+          if [ "$GAPS" -eq 0 ]; then
+            echo "VERIFIED_CLOSED"
+            exit 0
+          fi
+          if [ "$RETRYABLE" -gt 0 ]; then
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/dispatches" -f event_type=extraction-repair-needed-r01
+            echo "NEXT_REPAIR_DISPATCHED retryable=$RETRYABLE blocked=$BLOCKED"
+            exit 0
+          fi
+          echo "GAPS_PENDING_NONRETRYABLE blocked=$BLOCKED"
+          exit 73
