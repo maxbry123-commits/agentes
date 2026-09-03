@@ -1,8 +1,8 @@
 # CHECKPOINT INVENTARIO E ÍNDICES V3
 
 contract_id: YAIWES-INVENTORY-INDEXES-V3
-run_timestamp: 2026-09-03T00:09:30Z
-iteration: 4
+run_timestamp: 2026-09-03T00:22:30Z
+iteration: 5
 phase: GAP_RECOVERY
 
 repositories:
@@ -101,11 +101,11 @@ active_workflows:
     conclusion: null
     purpose: initial forensic inventory
   - repository: maxbry123-commits/Agentes-motores-Wordflow-YAIWES
-    run_url: https://github.com/maxbry123-commits/Agentes-motores-Wordflow-YAIWES/actions/runs/33698158009
-    run_id: 33698158009
-    status: queued
+    run_url: https://github.com/maxbry123-commits/Agentes-motores-Wordflow-YAIWES/actions/runs/33699206723
+    run_id: 33699206723
+    status: in_progress
     conclusion: null
-    purpose: GAP-MOTORES-API403-001 isolated local-git recovery
+    purpose: GAP-MOTORES-ZIPDEST-002 isolated ZIP/destination recovery
 
 pending_tasks:
   - id: GAP-AGENTES-ZIPMAP-001
@@ -116,10 +116,10 @@ pending_tasks:
     repository: maxbry123-commits/osquestador-auditor
     gap: initial workflow still active; not PASS
     recovery: preserve run; verify artifact after completion
-  - id: GAP-MOTORES-API403-001
+  - id: GAP-MOTORES-ZIPDEST-002
     repository: maxbry123-commits/Agentes-motores-Wordflow-YAIWES
-    gap: initial scanner exhausted/was forbidden by GitHub API during tree traversal
-    recovery: new isolated workflow inventory-forensic-v3-recovery-localgit-motores reads main via local git only; run 33698158009 queued
+    gap: local-git recovery completed SUCCESS but classified 198/198 rows INSUFFICIENT_EVIDENCE because exact_path/destination was not mapped to the verified ZIP directory
+    recovery: isolated inventory-forensic-v3-recovery-zipmap-motores applies the already-PASS nct-core ZIP-directory rule without downloading or moving components; run 33699206723 in_progress
 
 artifacts:
   global_index_url: null
@@ -132,12 +132,21 @@ verdict: RUNNING
 
 - PASS repositories: 4/7 — nct-core, router-universal-router-inteligente-, Orquestador-Maxbry-, frontend.
 - Verified downloaded-component universe so far: 124 unique entries across PASS repositories; 123 COMPLETE + 1 DUPLICATE_RELOCATED; 0 SKIPPED, 0 GAP, 0 INSUFFICIENT_EVIDENCE inside that verified universe.
-- frontend recovery completed SUCCESS: 25 discovered, 25 unique, 25 COMPLETE, 0 duplicates, 0 SKIPPED, 0 GAP, 0 INSUFFICIENT_EVIDENCE.
-- Agentes-motores-Wordflow-YAIWES initial workflow failed because repeated GitHub API traversal returned HTTP 403. A new isolated workflow was created; it uses local git metadata and does not reactivate or rerun the failed workflow.
-- agentes and osquestador-auditor remain in_progress and are not PASS.
+- Agentes-motores-Wordflow-YAIWES run 33698158009 completed SUCCESS and produced an artifact, but the artifact reported 198 components, COMPLETE=0 and INSUFFICIENT_EVIDENCE=198 because destination_verified was false for every row. It is not PASS.
+- GAP-MOTORES-ZIPDEST-002 is being repaired by run 33699206723 using the same manifest-directory + exact ZIP-parts mapping rule already verified in nct-core.
+- agentes run 33694014240 and osquestador-auditor run 33693813584 remain in_progress and are not PASS.
 - Stage 2 index generation remains blocked until 7/7 repositories have verified audit artifacts.
 
 ## Iteration history
+
+### Iteration 5 — 2026-09-03T00:22:30Z
+
+- repositories PASS: 4/7
+- motores local-git recovery completed SUCCESS but evidence verdict remained non-PASS: 198 INSUFFICIENT_EVIDENCE due to missing destination mapping
+- isolated ZIP/destination recovery created: .github/workflows/inventory-forensic-v3-recovery-zipmap-motores.yml
+- recovery run: https://github.com/maxbry123-commits/Agentes-motores-Wordflow-YAIWES/actions/runs/33699206723
+- active runs: agentes ZIP-map, osquestador-auditor initial audit, motores ZIP/destination recovery
+- indexes: blocked pending 7/7 PASS
 
 ### Iteration 4 — 2026-09-03T00:09:30Z
 
