@@ -46,3 +46,5 @@ Tres pasadas adicionales de investigación sobre descargas/extracción y GitHub 
 - `repository_dispatch`/`workflow_dispatch` son excepciones explícitas que sí pueden iniciar workflows desde `GITHUB_TOKEN`; el workflow debe existir en la rama por defecto.
 
 - Integridad adicional: después de materializar cualquier puntero fuente se recalculan `files`, `bytes` y `deterministic_tree_sha256`; un hash calculado sobre el puntero previo no puede certificar el árbol final. (`post-materialization tree rehash`)
+
+- Mejora de volumen: para fuentes GitHub fijadas a commit se puede consultar el Git tree y obtener `blob_count`, `source_tree_bytes` y `max_blob_bytes` antes de descargar. Esto permitió aislar IBM Plex (23,723 blobs; ~1.69 GB; blob máximo ~46.9 MB). (`source-tree size preflight`)
