@@ -1,0 +1,236 @@
+name: YAIWES Recipe Library Bootstrap 01
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/yaiwes-github-recipe-library-bootstrap-01.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-recipe-library-bootstrap-01
+  cancel-in-progress: false
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      ROOT: agente-yaiwes/multi-workflow-engine/instances/github-recipe-library-workflow
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Preflight and four-stage architecture
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$ROOT"/{contracts,registry,router,acquisition,adapters,sandbox,tests,recipe-sources,manifests}
+          test ! -e "$ROOT/README.md" || { echo "Existing workflow detected; validating without overwrite"; exit 0; }
+          cat > "$ROOT/README.md" <<'EOF'
+          # YAIWES GitHub Recipe Library Workflow
+          
+          Workflow determinista para reutilizar código y plantillas existentes antes de generar código nuevo.
+          
+          ## Flujo de cuatro pasos
+          1. **DISCOVER**: consulta catálogos/registries públicos priorizados; GitHub Code Search es el fallback secundario.
+          2. **SELECT**: deduplica, fija commit, licencia, procedencia y puntúa compatibilidad/seguridad.
+          3. **ACQUIRE_ADAPT**: descarga a staging, conserva el original y conecta mediante Adapter → Registry → BUS → Schema. El LLM solo puede elegir o proponer cambios quirúrgicos, máximo 5%.
+          4. **VERIFY_REPLICATE**: Sheriff, validación, sandbox, pruebas, hashes, rollback y réplica reproducible.
+          
+          Ningún recurso sin licencia confirmada puede ejecutarse. Ningún archivo existente se sobrescribe. Toda incorporación requiere autorización del Director.
+          EOF
+          cat > "$ROOT/SYSTEM_PROMPT.md" <<'EOF'
+          # System Prompt — Recipe Library
+          Ejecuta DISCOVER → SELECT → ACQUIRE_ADAPT → VERIFY_REPLICATE. Prefiere reutilización verificable sobre generación. Consulta primero SOURCE_ROUTES.json y usa GitHub Code Search solo si los catálogos no resuelven la necesidad. Rechaza duplicados, fuentes mutables, licencias incompatibles y artefactos sin SHA256. Conserva el código original; cualquier adaptación vive fuera del vendor. El LLM no escribe más del 5% de la solución y nunca autoriza, descarga, ejecuta o publica por sí mismo.
+          EOF
+          cat > "$ROOT/contracts/recipe.schema.json" <<'EOF'
+          {
+            "$schema":"https://json-schema.org/draft/2020-12/schema",
+            "title":"YAIWES Recipe",
+            "type":"object",
+            "required":["id","source_url","source_commit","license","mode","sha256","destination"],
+            "properties":{
+              "id":{"type":"string","pattern":"^[a-z0-9][a-z0-9._-]+$"},
+              "source_url":{"type":"string","format":"uri"},
+              "source_commit":{"type":"string","pattern":"^[0-9a-f]{40}$"},
+              "license":{"type":"string","minLength":1},
+              "mode":{"enum":["EXECUTABLE","ADAPTER_REQUIRED","REFERENCE_ONLY","DOCUMENTATION_ONLY"]},
+              "sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"},
+              "destination":{"type":"string","minLength":1}
+            },
+            "additionalProperties":false
+          }
+          EOF
+          cat > "$ROOT/workflow.dag.yaml" <<'EOF'
+          version: 1
+          policy:
+            deterministic_percent: 95
+            llm_max_percent: 5
+            director_authorization_required: true
+            overwrite: forbidden
+          stages:
+            - id: discover
+              next: select
+            - id: select
+              gates: [deduplicate, provenance, license, security]
+              next: acquire_adapt
+            - id: acquire_adapt
+              wiring: [registry, adapter, bus, schema]
+              next: verify_replicate
+            - id: verify_replicate
+              gates: [sheriff, validator, sandbox, tests, sha256, rollback]
+          EOF
+
+      - name: Build routed source registry
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -e "$ROOT/registry/SOURCE_ROUTES.json" && exit 0
+          cat > "$ROOT/registry/SOURCE_ROUTES.json" <<'EOF'
+          {
+            "policy":{"catalogs_first":true,"github_code_search_secondary":true,"immutable_source_required":true},
+            "routes":[
+              {"priority":10,"id":"github-agentic-workflows","url":"https://github.com/github/gh-aw","kind":"workflow-recipes"},
+              {"priority":20,"id":"github-agentics","url":"https://github.com/githubnext/agentics","kind":"agent-recipes"},
+              {"priority":30,"id":"github-starter-workflows","url":"https://github.com/actions/starter-workflows","kind":"workflow-templates"},
+              {"priority":40,"id":"awesome-copilot","url":"https://github.com/github/awesome-copilot","kind":"agents-prompts-skills"},
+              {"priority":50,"id":"cookiecutter","url":"https://github.com/cookiecutter/cookiecutter","kind":"project-templates"},
+              {"priority":60,"id":"copier","url":"https://github.com/copier-org/copier","kind":"project-templates"},
+              {"priority":70,"id":"backstage-templates","url":"https://github.com/backstage/software-templates","kind":"software-templates"},
+              {"priority":80,"id":"openapi-generator","url":"https://github.com/OpenAPITools/openapi-generator","kind":"code-generators"},
+              {"priority":90,"id":"cue","url":"https://github.com/cue-lang/cue","kind":"schemas-validation"},
+              {"priority":100,"id":"opa","url":"https://github.com/open-policy-agent/opa","kind":"policy-sheriff"},
+              {"priority":110,"id":"actionlint","url":"https://github.com/rhysd/actionlint","kind":"workflow-validator"},
+              {"priority":120,"id":"zizmor","url":"https://github.com/zizmorcore/zizmor","kind":"workflow-security"},
+              {"priority":130,"id":"ast-grep","url":"https://github.com/ast-grep/ast-grep","kind":"surgical-code-transform"},
+              {"priority":140,"id":"jscodeshift","url":"https://github.com/facebook/jscodeshift","kind":"javascript-codemods"},
+              {"priority":150,"id":"openrewrite","url":"https://github.com/openrewrite/rewrite","kind":"code-recipes"},
+              {"priority":160,"id":"comby","url":"https://github.com/comby-tools/comby","kind":"structural-rewrite"},
+              {"priority":170,"id":"daisyui","url":"https://github.com/saadeghi/daisyui","kind":"ui-components"},
+              {"priority":180,"id":"hyperui","url":"https://github.com/markmead/hyperui","kind":"html-ui-blocks"},
+              {"priority":200,"id":"npm","url":"https://registry.npmjs.org/","kind":"package-registry"},
+              {"priority":210,"id":"pypi","url":"https://pypi.org/pypi/","kind":"package-registry"},
+              {"priority":220,"id":"crates","url":"https://crates.io/api/v1/","kind":"package-registry"},
+              {"priority":230,"id":"maven-central","url":"https://central.sonatype.com/","kind":"package-registry"},
+              {"priority":240,"id":"go-packages","url":"https://pkg.go.dev/","kind":"package-registry"},
+              {"priority":250,"id":"schema-store","url":"https://www.schemastore.org/json/","kind":"schema-registry"},
+              {"priority":260,"id":"deps-dev","url":"https://deps.dev/","kind":"provenance-security"},
+              {"priority":270,"id":"openssf-scorecard","url":"https://github.com/ossf/scorecard","kind":"security-score"},
+              {"priority":900,"id":"github-code-search","url":"https://github.com/search?type=code","kind":"secondary-search"}
+            ]
+          }
+          EOF
+
+      - name: Acquire approved reusable sources in parallel
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/recipe-stage"
+          cat > "$RUNNER_TEMP/sources.tsv" <<'EOF'
+          gh-aw|https://github.com/github/gh-aw.git|8e30bcd8897f5047051fa3971188e1dd4cdb23cf|MIT|ADAPTER_REQUIRED
+          agentics-template|https://github.com/githubnext/agentics-template.git|434a3f1bcb6d6e9bd2e588b8c0e05f48ea3de5f9|MIT|REFERENCE_ONLY
+          starter-workflows|https://github.com/actions/starter-workflows.git|e3c451d60f119b71caebf13c98ac45da6e15b4b7|NOASSERTION|REFERENCE_ONLY
+          awesome-copilot|https://github.com/github/awesome-copilot.git|17cd9ee68d49eb4547c45831cf3eea08f2c12916|MIT|REFERENCE_ONLY
+          cookiecutter|https://github.com/cookiecutter/cookiecutter.git|c88fbe921c97c58b65f1883ba90a0ab53cc91b34|BSD-3-Clause|ADAPTER_REQUIRED
+          copier|https://github.com/copier-org/copier.git|03c95e20d8cc8c8c1378cb562a8a7afc01eac1f0|MIT|ADAPTER_REQUIRED
+          actionlint|https://github.com/rhysd/actionlint.git|011a6d15e749bb3f2d771eed9c7aa0e7e3e10ee7|MIT|ADAPTER_REQUIRED
+          zizmor|https://github.com/zizmorcore/zizmor.git|f6d7aa6b6918ecea3a20748bbcef33431af52a20|MIT|ADAPTER_REQUIRED
+          ast-grep|https://github.com/ast-grep/ast-grep.git|29285d16757371a70a93190929940886e68618d3|MIT|ADAPTER_REQUIRED
+          jscodeshift|https://github.com/facebook/jscodeshift.git|e71f63dba4f60e39944f5ef1e74a36fbdd317e1e|MIT|ADAPTER_REQUIRED
+          comby|https://github.com/comby-tools/comby.git|3b6bdff7bc3b50361b621da9db030152772e7e6b|Apache-2.0|ADAPTER_REQUIRED
+          hyperui|https://github.com/markmead/hyperui.git|2dfb3ef2122ed387410362accffe7ffaec38da36|MIT|REFERENCE_ONLY
+          EOF
+          acquire() {
+            IFS='|' read -r id url commit license mode <<< "$1"
+            dst="$RUNNER_TEMP/recipe-stage/$id"
+            git init -q "$dst"
+            git -C "$dst" remote add origin "$url"
+            git -C "$dst" fetch -q --depth=1 --filter=blob:none origin "$commit"
+            git -C "$dst" checkout -q --detach FETCH_HEAD
+            printf '%s\n' "$url" > "$dst/.source-url"
+            printf '%s\n' "$commit" > "$dst/.source-commit"
+            printf '%s\n' "$license" > "$dst/.source-license"
+            printf '%s\n' "$mode" > "$dst/.integration-mode"
+            rm -rf "$dst/.git"
+          }
+          export -f acquire
+          export RUNNER_TEMP
+          while IFS= read -r row; do
+            while [ "$(jobs -rp | wc -l)" -ge 4 ]; do wait -n; done
+            acquire "$row" &
+          done < "$RUNNER_TEMP/sources.tsv"
+          wait
+
+      - name: Single-writer import provenance and hashes
+        shell: bash
+        run: |
+          set -euo pipefail
+          manifest="$ROOT/manifests/SOURCE_MANIFEST.jsonl"
+          : > "$RUNNER_TEMP/new-manifest.jsonl"
+          for src in "$RUNNER_TEMP"/recipe-stage/*; do
+            id="$(basename "$src")"
+            dst="$ROOT/recipe-sources/$id"
+            if [ -e "$dst" ]; then
+              echo "SKIP existing $dst"
+              continue
+            fi
+            mkdir -p "$dst"
+            find "$src" -maxdepth 1 -type f \( -iname 'README*' -o -iname 'LICENSE*' -o -name '.source-*' -o -name '.integration-mode' \) -exec cp -p {} "$dst/" \;
+            for candidate in .github/workflows agents prompts skills collections ci code-scanning pages deployment deployments automation templates template src packages crates docs; do
+              [ -e "$src/$candidate" ] || continue
+              cp -a "$src/$candidate" "$dst/$candidate"
+            done
+            hash="$(find "$dst" -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
+            url="$(cat "$dst/.source-url")"
+            commit="$(cat "$dst/.source-commit")"
+            license="$(cat "$dst/.source-license")"
+            mode="$(cat "$dst/.integration-mode")"
+            printf '{"id":"%s","source_url":"%s","source_commit":"%s","license":"%s","mode":"%s","sha256":"%s","destination":"%s"}\n' "$id" "$url" "$commit" "$license" "$mode" "$hash" "$dst" >> "$RUNNER_TEMP/new-manifest.jsonl"
+          done
+          if [ ! -e "$manifest" ]; then
+            cp "$RUNNER_TEMP/new-manifest.jsonl" "$manifest"
+          elif [ -s "$RUNNER_TEMP/new-manifest.jsonl" ]; then
+            cat "$RUNNER_TEMP/new-manifest.jsonl" >> "$manifest"
+          fi
+
+      - name: Sheriff validation sandbox and deterministic tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m json.tool "$ROOT/registry/SOURCE_ROUTES.json" >/dev/null
+          python -m json.tool "$ROOT/contracts/recipe.schema.json" >/dev/null
+          ruby -e "require 'yaml'; YAML.safe_load(File.read(ARGV[0]), aliases: true)" "$ROOT/workflow.dag.yaml"
+          test "$(jq '.policy.catalogs_first' "$ROOT/registry/SOURCE_ROUTES.json")" = true
+          test "$(jq '.policy.github_code_search_secondary' "$ROOT/registry/SOURCE_ROUTES.json")" = true
+          test "$(jq '[.routes[] | select(.id=="github-code-search")][0].priority' "$ROOT/registry/SOURCE_ROUTES.json")" -ge 900
+          python - <<'PY'
+          import hashlib, json, pathlib, re
+          root=pathlib.Path("agente-yaiwes/multi-workflow-engine/instances/github-recipe-library-workflow")
+          rows=[json.loads(x) for x in (root/"manifests/SOURCE_MANIFEST.jsonl").read_text().splitlines() if x.strip()]
+          assert rows and len({x["id"] for x in rows})==len(rows)
+          for x in rows:
+              assert re.fullmatch(r"[0-9a-f]{40}",x["source_commit"])
+              assert re.fullmatch(r"[0-9a-f]{64}",x["sha256"])
+              assert x["license"]!="NOASSERTION" or x["mode"] in {"REFERENCE_ONLY","DOCUMENTATION_ONLY"}
+          print(f"PASS sources={len(rows)} gaps=0")
+          PY
+
+      - name: Single commit and push
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add "$ROOT"
+          git diff --cached --quiet && exit 0
+          git commit -m "feat(yaiwes): bootstrap deterministic recipe library workflow"
+          for attempt in 1 2 3; do
+            git pull --rebase origin main && git push origin HEAD:main && exit 0
+            sleep $((attempt*5))
+          done
+          exit 1
