@@ -1,0 +1,150 @@
+{
+  "schema": "yaiwes.extraction.canonical-retry.v2",
+  "run_id": "33843060208",
+  "shard_index": 2,
+  "shard_count": 4,
+  "selected": [
+    {
+      "slug": "Apache-Airflow",
+      "target": "Agente core kernel Yaiwes principal/Apache-Airflow"
+    },
+    {
+      "slug": "Azure-Durable-Functions",
+      "target": "Agente core kernel Yaiwes principal/Azure-Durable-Functions"
+    },
+    {
+      "slug": "E2B",
+      "target": "Agente core kernel Yaiwes principal/E2B"
+    },
+    {
+      "slug": "FastMCP",
+      "target": "Agente core kernel Yaiwes principal/FastMCP"
+    },
+    {
+      "slug": "Flowable",
+      "target": "Agente core kernel Yaiwes principal/Flowable"
+    },
+    {
+      "slug": "Inngest",
+      "target": "Agente core kernel Yaiwes principal/Inngest"
+    }
+  ],
+  "processed": [
+    {
+      "slug": "Apache-Airflow",
+      "target": "Agente core kernel Yaiwes principal/Apache-Airflow",
+      "status": "EXTRACTED_VERIFIED",
+      "parts": 9,
+      "part_sha256": {
+        "Agente core kernel Yaiwes principal/Apache-Airflow_0001.zip": "68a9f14ebfb5feb2a2ab8ae4b6351f6268b0e98cd9e3aee331246780d28d3321",
+        "Agente core kernel Yaiwes principal/Apache-Airflow_0002.zip": "64347f1c47a46e4d38f5b6de599fd6413bed743482c13c7c9552903e439a2a03",
+        "Agente core kernel Yaiwes principal/Apache-Airflow_0003.zip": "7fbd8e8fedcb8b150af14d5bf0ea6af340100f9a9b75ccc9a04e247dce3210c0",
+        "Agente core kernel Yaiwes principal/Apache-Airflow_0004.zip": "41ca2e4cef8a81fd1251d6372788d27635a8bbcc2c4d8c3c69f3e9564bfee88d",
+        "Agente core kernel Yaiwes principal/Apache-Airflow_0005.zip": "388ea2ad5b7cb6010d04f8dca5437c6462f079a157116352c79cab059fdabe8a",
+        "Agente core kernel Yaiwes principal/Apache-Airflow_0006.zip": "64e6c0ab96b3ce56ae2e0b0050b8451888b9d772d5a011282d2369a708cfeae4",
+        "Agente core kernel Yaiwes principal/Apache-Airflow_0007.zip": "998d5960c009f900498847bc5c6c2d921de713070d3ca11d97ce0341bd2f940e",
+        "Agente core kernel Yaiwes principal/Apache-Airflow_0008.zip": "0c989a803c21efc71d469e204974cb039792087442ffaa8f2a7537900b6140ce",
+        "Agente core kernel Yaiwes principal/Apache-Airflow_0009.zip": "a40a31e91493fbec357cbf0478d2a8f92dbe801b15275aaa4290da50871b37bb"
+      },
+      "copied": 5,
+      "mirrors": [],
+      "files": 13895,
+      "bytes": 185353722,
+      "tree_sha256": "3e25e07f05c381fa60e5972c9e347cba4be7505ea262574f735cab69d9567c87",
+      "excluded_lfs_source_members": []
+    },
+    {
+      "slug": "Azure-Durable-Functions",
+      "target": "Agente core kernel Yaiwes principal/Azure-Durable-Functions",
+      "status": "EXTRACTED_VERIFIED",
+      "parts": 1,
+      "part_sha256": {
+        "Agente core kernel Yaiwes principal/Azure-Durable-Functions_0001.zip": "1348781a7592e4cfed7a500a7378fc399e3bd8353c73aedee25e0c8002aeafb9"
+      },
+      "copied": 4,
+      "mirrors": [],
+      "files": 1299,
+      "bytes": 17201378,
+      "tree_sha256": "5ec37d0fa25744d3341e9f72c36f7f9183575cf071da4a467b9ec5cc012a2b23",
+      "excluded_lfs_source_members": []
+    },
+    {
+      "slug": "E2B",
+      "target": "Agente core kernel Yaiwes principal/E2B",
+      "status": "EXTRACTED_VERIFIED",
+      "parts": 1,
+      "part_sha256": {
+        "Agente core kernel Yaiwes principal/E2B_0001.zip": "b19cfce61fe447d1770f482145ab1dff5c4830338bb703a65626436b7955069c"
+      },
+      "copied": 4,
+      "mirrors": [],
+      "files": 1027,
+      "bytes": 6779023,
+      "tree_sha256": "1dc33576f46b77bcd0579ecb8868d7a5e1e372c0689bf2d7b57c586d3a8e3a84",
+      "excluded_lfs_source_members": []
+    },
+    {
+      "slug": "FastMCP",
+      "target": "Agente core kernel Yaiwes principal/FastMCP",
+      "status": "EXTRACTED_VERIFIED",
+      "parts": 4,
+      "part_sha256": {
+        "Agente core kernel Yaiwes principal/FastMCP_0001.zip": "4a158938ea684bf37a2206acf89338c829f1040478a63be4e8a2bf999880200e",
+        "Agente core kernel Yaiwes principal/FastMCP_0002.zip": "ff98b6209197b5ff9b69780fd2e79a2da2da30dab38a416bf14f54120b33bb9e",
+        "Agente core kernel Yaiwes principal/FastMCP_0003.zip": "453eb951d80812a56103a3a2e84fd5c5721d7c33cf59c4dd9a0098d4b84d35bd",
+        "Agente core kernel Yaiwes principal/FastMCP_0004.zip": "3dcce126508c8f54ea95d50d64be83c3866e4d9b18718cf264127c41f3022df1"
+      },
+      "copied": 2,
+      "mirrors": [],
+      "files": 1712,
+      "bytes": 59995305,
+      "tree_sha256": "dacd504c86fdcb42de6e6eb0e1bdd2bb3ae9f61f5b97a909d4422bd3505e21d6",
+      "excluded_lfs_source_members": []
+    },
+    {
+      "slug": "Flowable",
+      "target": "Agente core kernel Yaiwes principal/Flowable",
+      "status": "EXTRACTED_VERIFIED",
+      "parts": 6,
+      "part_sha256": {
+        "Agente core kernel Yaiwes principal/Flowable_0001.zip": "84fce30370c61872e532affab4e16adeacb55bbc4bda23cdb80c6b398308952b",
+        "Agente core kernel Yaiwes principal/Flowable_0002.zip": "a3c235327492154371d169bf86059b78d657103f395fb792516a872a6c349bbc",
+        "Agente core kernel Yaiwes principal/Flowable_0003.zip": "059a10176c9a8fad9cc695ca25e7c4f031a248abdcbee0f1bc101e7dd9d30bdb",
+        "Agente core kernel Yaiwes principal/Flowable_0004.zip": "d62da50e0f66d11d6e9cfc3b9ce4e8f8d751dc4bc88315fb7dfac006f71dc14e",
+        "Agente core kernel Yaiwes principal/Flowable_0005.zip": "4b195aec639859b73a1012d05fe7d87fac59bed2e86051480e3347bcdcc84966",
+        "Agente core kernel Yaiwes principal/Flowable_0006.zip": "1d9e005953896589417025e5c1da7c394c1b4a0ceafdb20d9404d5aceb09a6ab"
+      },
+      "copied": 1,
+      "mirrors": [],
+      "files": 16070,
+      "bytes": 140316980,
+      "tree_sha256": "66b6ee26d588507cb368c78ae4cba896fa28399942b35428f15b01092f07e7b0",
+      "excluded_lfs_source_members": []
+    },
+    {
+      "slug": "Inngest",
+      "target": "Agente core kernel Yaiwes principal/Inngest",
+      "status": "EXTRACTED_VERIFIED",
+      "parts": 9,
+      "part_sha256": {
+        "Agente core kernel Yaiwes principal/Inngest_0001.zip": "84893a650939b976416a4bba28d94c8e8cd22362f1404228349c634364251bcc",
+        "Agente core kernel Yaiwes principal/Inngest_0002.zip": "4dd53277a93e7a0859c9a0dc555fca85f9f9022f270f9bf00aedfe0fbba40e14",
+        "Agente core kernel Yaiwes principal/Inngest_0003.zip": "510bedebe8b9bd40d02b55f6641a84af668729fffbba9fc5b350a28e95628dfb",
+        "Agente core kernel Yaiwes principal/Inngest_0004.zip": "5660aa61ee0693db09368f824b861decdf074881657234469170220e8d85efa6",
+        "Agente core kernel Yaiwes principal/Inngest_0005.zip": "42a621458ddab1826cd11ffb76378258a04a8ab4d1d3f40b55a922af9ac22568",
+        "Agente core kernel Yaiwes principal/Inngest_0006.zip": "480d489d0b804cffe3a840fb25f3179bde7703b6ce62ae688ce8208a1769483d",
+        "Agente core kernel Yaiwes principal/Inngest_0007.zip": "a1571eaee369ce21aefaee1ad33a807ac822594a349c3f7b708ce521a450fed5",
+        "Agente core kernel Yaiwes principal/Inngest_0008.zip": "5b3461ea16af549513492ef9dcda421353ed646762bd49748c10919f0b126e0b",
+        "Agente core kernel Yaiwes principal/Inngest_0009.zip": "3eace13cc4a857c2025ae8c3dd741e33fb696598d6e6a64ac2ee31514181e3f8"
+      },
+      "copied": 8,
+      "mirrors": [],
+      "files": 13009,
+      "bytes": 356057541,
+      "tree_sha256": "44dd219c801d0ab5b46d6a58eee36932302a5a0da29aaf842f60e11b39c27a3c",
+      "excluded_lfs_source_members": []
+    }
+  ],
+  "failures": [],
+  "verdict": "SHARD_PASS"
+}
