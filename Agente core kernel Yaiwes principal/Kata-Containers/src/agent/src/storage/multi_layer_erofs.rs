@@ -1,0 +1,1266 @@
+// Copyright (c) 2026 Ant Group
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+
+//! Multi-layer EROFS storage handler
+//!
+//! This handler implements the guest-side processing of multi-layer EROFS rootfs:
+//! - Optional Storage with X-kata.overlay-upper: ext4 rw layer (upperdir)
+//! - If no upper storage is provided, a directory under /run/kata-containers is used
+//! - Storage with X-kata.overlay-lower: erofs layers (lowerdir)
+//! - Creates overlay to combine them
+//! - Supports X-kata.mkdir.path options to create directories in upper layer before overlay mount
+//! - Supports GPT-partitioned disks with dm-verity integrity verification for each partition
+
+use std::collections::HashMap;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::time::sleep;
+
+use crate::device::block_device_handler::get_virtio_blk_pci_device_name;
+use crate::device::scsi_device_handler::get_scsi_device_name;
+use crate::linux_abi::pcipath_from_dev_tree_path;
+use crate::mount::baremount;
+use crate::rpc::CONTAINER_BASE;
+use crate::sandbox::Sandbox;
+use crate::storage::{StorageContext, StorageHandler};
+use anyhow::{anyhow, Context, Result};
+use kata_sys_util::mount::{create_mount_destination, Mounter};
+use kata_types::device::{DRIVER_BLK_PCI_TYPE, DRIVER_SCSI_TYPE};
+#[cfg(feature = "devicemapper")]
+use kata_types::dmverity::{cleanup_dmverity_devices, create_dmverity_device, DmVerityInfo};
+use kata_types::mount::StorageDevice;
+use protocols::agent::Storage;
+use safe_path::scoped_join;
+use slog::Logger;
+use tokio::sync::Mutex;
+
+/// EROFS Type
+const EROFS_TYPE: &str = "erofs";
+/// ext4 Type (upper virtio disk based rw layer)
+const EXT4_TYPE: &str = "ext4";
+/// Overlay Type
+const OVERLAY_TYPE: &str = "overlay";
+
+/// Driver type for multi-layer EROFS
+pub const DRIVER_MULTI_LAYER_EROFS: &str = "erofs.multi-layer";
+
+/// Custom storage option markers
+const OPT_OVERLAY_UPPER: &str = "X-kata.overlay-upper";
+const OPT_OVERLAY_LOWER: &str = "X-kata.overlay-lower";
+const OPT_MULTI_LAYER: &str = "X-kata.multi-layer=true";
+const OPT_GPT_PARTITIONED: &str = "X-kata.gpt-partitioned=true";
+const OPT_MKDIR_PATH: &str = "X-kata.mkdir.path=";
+const OPT_PARTITION_NUMBER: &str = "X-kata.partition-number=";
+
+/// dm-verity related storage options
+#[allow(dead_code)]
+const OPT_DMVERITY_ENABLED: &str = "X-kata.dmverity-enabled=true";
+#[cfg(feature = "devicemapper")]
+const OPT_DMVERITY_ROOT_HASH: &str = "X-kata.dmverity.roothash=";
+#[cfg(feature = "devicemapper")]
+const OPT_DMVERITY_HASH_OFFSET: &str = "X-kata.dmverity.hashoffset=";
+#[cfg(feature = "devicemapper")]
+const OPT_DMVERITY_BLOCK_SIZE: &str = "X-kata.dmverity.blocksize=";
+#[cfg(feature = "devicemapper")]
+const OPT_DMVERITY_HASH_SIZE: &str = "X-kata.dmverity.hashsize=";
+#[cfg(feature = "devicemapper")]
+const OPT_DMVERITY_HASH_ALGORITHM: &str = "X-kata.dmverity.algorithm=";
+#[cfg(feature = "devicemapper")]
+const OPT_DMVERITY_SALT: &str = "X-kata.dmverity.salt=";
+#[cfg(feature = "devicemapper")]
+const OPT_DMVERITY_HASH_TYPE: &str = "X-kata.dmverity.hashtype=";
+#[cfg(feature = "devicemapper")]
+const OPT_DMVERITY_NO_SUPERBLOCK: &str = "X-kata.dmverity.no-superblock=";
+
+#[derive(Debug)]
+pub struct MultiLayerErofsHandler {}
+
+#[derive(Debug, Clone)]
+pub struct MultiLayerErofsResult {
+    pub mount_point: String,
+    pub processed_mount_points: Vec<String>,
+    /// Temporary mount points (explicit upper, lower-0, lower-1, …) that back
+    /// the overlay. These must be tracked so they are unmounted *after* the
+    /// overlay target during container teardown.
+    pub temp_mount_points: Vec<String>,
+    /// dm-verity device paths that need to be destroyed during cleanup
+    pub verity_devices: Vec<String>,
+}
+
+#[derive(Debug)]
+struct MkdirDirective {
+    raw_path: String,
+}
+
+/// Helper struct to track layer mount information including dm-verity devices
+#[derive(Debug)]
+struct LayerMountInfo {
+    verity_device: Option<String>,
+}
+
+#[async_trait::async_trait]
+impl StorageHandler for MultiLayerErofsHandler {
+    fn driver_types(&self) -> &[&str] {
+        &[DRIVER_MULTI_LAYER_EROFS]
+    }
+
+    async fn create_device(
+        &self,
+        storage: Storage,
+        ctx: &mut StorageContext,
+    ) -> Result<Arc<dyn StorageDevice>> {
+        // This is called when a single storage has driver="erofs.multi-layer"
+        // For now, treat it as a regular mount point
+        info!(
+            ctx.logger,
+            "multi-layer EROFS handler invoked for single storage";
+            "driver" => &storage.driver,
+            "source" => &storage.source,
+            "fstype" => &storage.fstype,
+            "mount-point" => &storage.mount_point,
+        );
+
+        let path = crate::storage::common_storage_handler(ctx.logger, &storage)?;
+        crate::storage::new_device(path)
+    }
+}
+
+pub fn is_multi_layer_storage(storage: &Storage) -> bool {
+    storage.options.iter().any(|o| o == OPT_MULTI_LAYER)
+        || storage.driver == DRIVER_MULTI_LAYER_EROFS
+}
+
+pub async fn handle_multi_layer_erofs_group(
+    trigger: &Storage,
+    storages: &[Storage],
+    cid: &Option<String>,
+    sandbox: &Arc<Mutex<Sandbox>>,
+    logger: &Logger,
+) -> Result<MultiLayerErofsResult> {
+    let logger = logger.new(o!(
+        "subsystem" => "multi-layer-erofs",
+        "trigger-mount-point" => trigger.mount_point.clone(),
+    ));
+
+    let multi_layer_storages: Vec<&Storage> = storages
+        .iter()
+        .filter(|s| is_multi_layer_storage(s))
+        .collect();
+
+    if multi_layer_storages.is_empty() {
+        return Err(anyhow!("no multi-layer storages found"));
+    }
+
+    let mut upper_storage: Option<&Storage> = None;
+    let mut erofs_storages: Vec<&Storage> = Vec::new();
+    let mut mkdir_dirs: Vec<MkdirDirective> = Vec::new();
+    let mut has_gpt_partition: bool = false;
+
+    for storage in &multi_layer_storages {
+        // Collect all X-kata.mkdir.path directives from this multi-layer EROFS group.
+        for opt in &storage.options {
+            if let Some(mkdir_spec) = opt.strip_prefix(OPT_MKDIR_PATH) {
+                mkdir_dirs.push(parse_mkdir_directive(mkdir_spec)?);
+            }
+        }
+
+        if storage.options.iter().any(|o| o == OPT_OVERLAY_UPPER) && storage.fstype != EXT4_TYPE {
+            return Err(anyhow!(
+                "multi-layer erofs explicit upper layer must be ext4, got '{}'; omit the upper storage for the implicit /run-backed upper",
+                storage.fstype
+            ));
+        }
+
+        if is_upper_storage(storage) {
+            if upper_storage.is_some() {
+                return Err(anyhow!(
+                    "multi-layer erofs currently supports exactly one explicit ext4 upper layer"
+                ));
+            }
+            upper_storage = Some(*storage);
+        } else if is_lower_storage(storage) {
+            // Each GPT partition is provided as a separate storage entry by the host
+            // No special handling needed here - just add to erofs_storages
+            if !has_gpt_partition && is_gpt_partitioned(storage) {
+                has_gpt_partition = true;
+            }
+            erofs_storages.push(*storage);
+        }
+    }
+
+    if erofs_storages.is_empty() {
+        return Err(anyhow!(
+            "multi-layer erofs missing erofs lower layer storage"
+        ));
+    }
+
+    // Only sort erofs layers by partition number in GPT mode.
+    // In GPT mode, each storage carries X-kata.partition-number=N and layers
+    // must be ordered by partition number so that the overlay lowerdir
+    // precedence is correct (lower partition number = higher overlay priority).
+    // In non-GPT mode all partition numbers are None, so sorting would be a
+    // no-op that needlessly reorders elements.
+    if has_gpt_partition {
+        erofs_storages.sort_by_key(|storage| get_partition_number(storage).unwrap_or(u32::MAX));
+    }
+
+    // With an explicit upper layer, the upper Storage carries the final overlay
+    // target. With an implicit /run-backed upper, the runtime puts that target
+    // on the first EROFS lower Storage.
+    let target_mount_point = upper_storage
+        .map(|upper| upper.mount_point.clone())
+        .unwrap_or_else(|| erofs_storages[0].mount_point.clone());
+    // Explicit uppers have a device source, while the implicit
+    // layout uses a directory under /run rather than a block device.
+    let upper_source = upper_storage
+        .map(|upper| upper.source.as_str())
+        .unwrap_or("run-backed directory");
+
+    info!(
+        logger,
+        "Handling multi-layer erofs group";
+        "upper-source" => upper_source,
+        "erofs-devices" => erofs_storages
+            .iter()
+            .map(|s| s.source.as_str())
+            .collect::<Vec<_>>()
+            .join(","),
+        "mount-point" => &target_mount_point,
+        "mkdir-dirs-count" => mkdir_dirs.len(),
+    );
+
+    // Create temporary backing paths for upper and lower layers
+    let cid_str = cid.as_deref().unwrap_or("sandbox");
+    // Validate container ID to prevent path traversal via crafted cid values
+    validate_container_id(cid_str)?;
+    let container_base =
+        scoped_join(CONTAINER_BASE, cid_str).context("failed to build container temporary path")?;
+    fs::create_dir_all(&container_base).context("failed to create container temporary path")?;
+    let temp_base =
+        scoped_join(&container_base, "multi-layer").context("failed to build multi-layer path")?;
+    fs::create_dir_all(&temp_base).context("failed to create temp mount base")?;
+
+    // Validate mount point to prevent path traversal via crafted mount_point values
+    validate_mount_point(&target_mount_point)?;
+
+    let upper_mount = temp_base.join("upper");
+    fs::create_dir_all(&upper_mount).context("failed to create upper mount dir")?;
+
+    if let Some(upper) = upper_storage {
+        wait_and_mount_layer(upper, &upper_mount, sandbox, &logger, None).await?;
+    } else {
+        info!(
+            logger,
+            "Using /run-backed upper directory";
+            "mount-point" => upper_mount.display(),
+        );
+    }
+
+    for mkdir_dir in &mkdir_dirs {
+        // As {{ mount 1 }} refers to the first lower layer, which is not available until we mount it.
+        // Just skip it for now and handle it in a second pass after mounting the lower layers.
+        if mkdir_dir.raw_path.contains("{{ mount 1 }}") {
+            continue;
+        }
+        let resolved_path = resolve_mkdir_path(&mkdir_dir.raw_path, &upper_mount, None)?;
+        info!(
+            logger,
+            "Creating mkdir directory in upper layer";
+            "raw-path" => &mkdir_dir.raw_path,
+            "resolved-path" => resolved_path.display().to_string(),
+        );
+
+        fs::create_dir_all(&resolved_path).context(format!(
+            "failed to create mkdir directory: {}",
+            resolved_path.display()
+        ))?;
+    }
+
+    let mut lower_mounts = Vec::new();
+    let mut verity_devices = Vec::new();
+
+    // Pre-resolve all base device paths outside the parallel block to avoid
+    // contention on the sandbox lock and the HashMap.
+    let erofs_count = erofs_storages.len();
+    let mut resolved_base_devs: Vec<Option<String>> = Vec::with_capacity(erofs_count);
+    let mut base_device_cache: HashMap<String, String> = HashMap::with_capacity(erofs_count);
+    for erofs in &erofs_storages {
+        let base_dev = if is_gpt_partitioned(erofs) {
+            Some(
+                base_device_cache
+                    .entry(erofs.source.clone())
+                    .or_insert(resolve_base_device_path(erofs, sandbox).await?)
+                    .clone(),
+            )
+        } else {
+            None
+        };
+        resolved_base_devs.push(base_dev);
+    }
+
+    // Pre-create all lower mount directories so they are ready before
+    // concurrent mounting begins.
+    let lower_mount_paths: Vec<PathBuf> = (0..erofs_count)
+        .map(|index| temp_base.join(format!("lower-{}", index)))
+        .collect();
+    for lm in &lower_mount_paths {
+        fs::create_dir_all(lm)
+            .context(format!("failed to create lower mount dir {}", lm.display()))?;
+    }
+
+    // Concurrently create dm-verity devices and mount layers.
+    // No worry about that because each layer has independent device nodes and mount points,
+    // so there is no ordering dependency during creation — only the final lowerdir list must
+    // preserve the original sort order.
+    let futures: Vec<_> = erofs_storages
+        .iter()
+        .enumerate()
+        .zip(resolved_base_devs)
+        .map(|((index, erofs), base_dev_path)| {
+            let lower_mount = lower_mount_paths[index].clone();
+            let sandbox = Arc::clone(sandbox);
+            let logger = logger.clone();
+            async move {
+                wait_and_mount_layer(erofs, &lower_mount, &sandbox, &logger, base_dev_path)
+                    .await
+                    .map(|mount_info| (index, lower_mount, mount_info))
+            }
+        })
+        .collect();
+
+    info!(
+        logger,
+        "Starting concurrent mounting of EROFS layers";
+        "layer-count" => erofs_count,
+    );
+
+    let mut results: Vec<(usize, PathBuf, LayerMountInfo)> = Vec::with_capacity(erofs_count);
+    let mut failed_verity_devices: Vec<String> = Vec::new();
+    let mut failed_mount_points: Vec<PathBuf> = Vec::new();
+    let mut first_err: Option<anyhow::Error> = None;
+
+    for result in futures::future::join_all(futures).await {
+        match result {
+            Ok(t) => results.push(t),
+            Err(e) => {
+                if first_err.is_none() {
+                    first_err = Some(e);
+                }
+            }
+        }
+    }
+
+    if let Some(e) = first_err {
+        // Collect resources from successfully created layers
+        let mut sort_results: Vec<_> = results;
+        sort_results.sort_by_key(|(index, _, _)| *index);
+        for (_, lower_mount, mount_info) in sort_results {
+            if let Some(verity_dev) = mount_info.verity_device {
+                failed_verity_devices.push(verity_dev);
+            }
+            failed_mount_points.push(lower_mount);
+        }
+
+        // Unmount layers before destroying dm-verity devices.
+        for mp in failed_mount_points.iter().rev() {
+            if let Err(umount_err) = nix::mount::umount(mp) {
+                warn!(
+                    logger,
+                    "failed to unmount layer during concurrent-mount cleanup";
+                    "mount-point" => mp.display(),
+                    "error" => format!("{:#}", umount_err),
+                );
+            }
+        }
+
+        #[cfg(feature = "devicemapper")]
+        if !failed_verity_devices.is_empty() {
+            cleanup_dmverity_devices(&failed_verity_devices, &logger);
+        }
+
+        return Err(e.context("failed to mount one or more EROFS layers concurrently"));
+    }
+
+    // Restore the original sort order so that lowerdir precedence
+    // matches the host-supplied partition ordering.
+    results.sort_by_key(|(index, _, _)| *index);
+
+    for (_, lower_mount, mount_info) in results {
+        lower_mounts.push(lower_mount);
+        if let Some(verity_dev) = mount_info.verity_device {
+            verity_devices.push(verity_dev);
+        }
+    }
+
+    // If any mkdir directive refers to {{ mount 1 }}, resolve it now using the first lower mount.
+    // This matches current supported placeholder behavior without inventing a broader template scheme.
+    for mkdir_dir in &mkdir_dirs {
+        if mkdir_dir.raw_path.contains("{{ mount 1 }}") {
+            let first_lower = lower_mounts
+                .first()
+                .ok_or_else(|| anyhow!("lower mount is missing while resolving mkdir path"))?;
+            let resolved_path =
+                resolve_mkdir_path(&mkdir_dir.raw_path, &upper_mount, Some(first_lower))?;
+            info!(
+                logger,
+                "Creating deferred mkdir directory";
+                "raw-path" => &mkdir_dir.raw_path,
+                "resolved-path" => resolved_path.display().to_string(),
+            );
+
+            fs::create_dir_all(&resolved_path).context(format!(
+                "failed to create deferred mkdir directory: {}",
+                resolved_path.display()
+            ))?;
+        }
+    }
+
+    let upperdir = upper_mount.join("upper");
+    let workdir = upper_mount.join("work");
+
+    if !upperdir.exists() {
+        fs::create_dir_all(&upperdir).context("failed to create upperdir")?;
+    }
+    fs::create_dir_all(&workdir).context("failed to create workdir")?;
+
+    let lowerdir = lower_mounts
+        .iter()
+        .map(|p| p.display().to_string())
+        .collect::<Vec<_>>()
+        .join(":");
+
+    info!(
+        logger,
+        "Creating overlay mount";
+        "upperdir" => upperdir.display(),
+        "lowerdir" => &lowerdir,
+        "workdir" => workdir.display(),
+        "target" => &target_mount_point,
+    );
+
+    create_mount_destination(
+        Path::new(OVERLAY_TYPE),
+        Path::new(&target_mount_point),
+        "",
+        OVERLAY_TYPE,
+    )
+    .context("failed to create overlay mount destination")?;
+
+    let overlay_mount = kata_types::mount::Mount {
+        source: OVERLAY_TYPE.to_string(),
+        destination: PathBuf::from(&target_mount_point),
+        fs_type: OVERLAY_TYPE.to_string(),
+        options: vec![
+            format!("upperdir={}", upperdir.display()),
+            format!("lowerdir={}", lowerdir),
+            format!("workdir={}", workdir.display()),
+        ],
+        ..Default::default()
+    };
+
+    overlay_mount
+        .mount(Path::new(&target_mount_point))
+        .context("failed to mount overlay")?;
+
+    info!(
+        logger,
+        "Multi-layer EROFS overlay mounted successfully";
+        "mount-point" => &target_mount_point,
+    );
+
+    // Collect all unique mount points to maintain a clean resource state.
+    //
+    // In multi-layer EROFS configurations, upper and lower storages may share
+    // the same mount point.
+    // We must deduplicate these entries before processing to prevent:
+    // 1. Double-incrementing sandbox refcounts for the same resource.
+    // 2. Redundant bookkeeping operations that could lead to state inconsistency.
+    //
+    // Note: We maintain the original order of insertion, which is essential for
+    // ensuring a predictable and correct sequence during resource cleanup.
+    let processed_mount_points = multi_layer_storages.iter().fold(Vec::new(), |mut acc, s| {
+        if !acc.contains(&s.mount_point) {
+            acc.push(s.mount_point.clone());
+        }
+        acc
+    });
+
+    // Collect temporary backing mounts. The implicit /run-backed upper is just
+    // a directory under the container bundle and is removed with that bundle.
+    let mut temp_mount_points =
+        Vec::with_capacity(usize::from(upper_storage.is_some()) + lower_mounts.len());
+    if upper_storage.is_some() {
+        temp_mount_points.push(upper_mount.display().to_string());
+    }
+    for lm in &lower_mounts {
+        temp_mount_points.push(lm.display().to_string());
+    }
+
+    Ok(MultiLayerErofsResult {
+        mount_point: target_mount_point,
+        processed_mount_points,
+        temp_mount_points,
+        verity_devices,
+    })
+}
+
+async fn track_temporary_mount_for_cleanup(
+    sandbox: &Arc<tokio::sync::Mutex<Sandbox>>,
+    mount_point: &Path,
+    logger: &Logger,
+) -> Result<()> {
+    let mount_point_str = mount_point.display().to_string();
+    let mut sandbox = sandbox.lock().await;
+    if !sandbox.storages.contains_key(&mount_point_str) {
+        sandbox.add_sandbox_storage(&mount_point_str, false).await;
+
+        let device = crate::storage::StorageDeviceGeneric::new(mount_point_str.clone());
+        sandbox
+            .update_sandbox_storage(&mount_point_str, Arc::new(device))
+            .map_err(|_| anyhow!("failed to update sandbox storage for {}", mount_point_str))?;
+
+        info!(
+            logger,
+            "Tracking temporary mount point for cleanup";
+            "mount-point" => &mount_point_str
+        );
+    }
+    Ok(())
+}
+
+fn is_upper_storage(storage: &Storage) -> bool {
+    storage.fstype == EXT4_TYPE
+        && (storage.options.iter().any(|o| o == OPT_OVERLAY_UPPER)
+            || storage.options.iter().any(|o| o == OPT_MULTI_LAYER))
+}
+
+fn is_lower_storage(storage: &Storage) -> bool {
+    storage.options.iter().any(|o| o == OPT_OVERLAY_LOWER)
+        || (storage.fstype == EROFS_TYPE && storage.options.iter().any(|o| o == OPT_MULTI_LAYER))
+}
+
+/// Check if dm-verity is enabled for this storage
+fn is_dmverity_enabled(storage: &Storage) -> bool {
+    storage.options.iter().any(|o| o == OPT_DMVERITY_ENABLED)
+}
+
+/// Parse dm-verity configuration from storage options
+#[cfg(feature = "devicemapper")]
+pub fn parse_dmverity_options(storage: &Storage) -> Result<DmVerityInfo> {
+    let mut hashtype = String::from("sha256");
+    let mut hash = String::new();
+    let mut blocknum: u64 = 0;
+    let mut blocksize: u64 = 4096;
+    let mut hashsize: u64 = 4096;
+    let mut offset: u64 = 0;
+    let mut salt: Option<String> = None;
+    let mut hash_type: u32 = 1;
+    let mut no_superblock: bool = false;
+
+    for opt in &storage.options {
+        if let Some(value) = opt.strip_prefix(OPT_DMVERITY_ROOT_HASH) {
+            hash = value.to_string();
+        } else if let Some(value) = opt.strip_prefix(OPT_DMVERITY_HASH_OFFSET) {
+            offset = value.parse::<u64>().context("Invalid hashoffset value")?;
+        } else if let Some(value) = opt.strip_prefix(OPT_DMVERITY_BLOCK_SIZE) {
+            blocksize = value.parse::<u64>().context("Invalid blocksize value")?;
+        } else if let Some(value) = opt.strip_prefix(OPT_DMVERITY_HASH_SIZE) {
+            hashsize = value.parse::<u64>().context("Invalid hashsize value")?;
+        } else if let Some(value) = opt.strip_prefix(OPT_DMVERITY_HASH_ALGORITHM) {
+            hashtype = value.to_string();
+        } else if let Some(value) = opt.strip_prefix(OPT_DMVERITY_SALT) {
+            salt = if value.is_empty() || value == "-" {
+                None
+            } else {
+                Some(value.to_string())
+            };
+        } else if let Some(value) = opt.strip_prefix(OPT_DMVERITY_HASH_TYPE) {
+            hash_type = value.parse::<u32>().context("Invalid hash type value")?;
+        } else if let Some(value) = opt.strip_prefix(OPT_DMVERITY_NO_SUPERBLOCK) {
+            no_superblock = value
+                .parse::<bool>()
+                .context("Invalid no-superblock value")?;
+        }
+    }
+
+    // Calculate blocknum from hashoffset and blocksize
+    if offset > 0 && blocksize > 0 {
+        blocknum = offset / blocksize;
+    }
+
+    if hash.is_empty() {
+        return Err(anyhow!("dm-verity roothash is required but not provided"));
+    }
+    if offset == 0 {
+        return Err(anyhow!("dm-verity hashoffset is required but not provided"));
+    }
+    if blocksize == 0 || hashsize == 0 {
+        return Err(anyhow!("dm-verity blocksize/hashsize must be non-zero"));
+    }
+    if !offset.is_multiple_of(blocksize) {
+        return Err(anyhow!(
+            "dm-verity hashoffset {} is not aligned to blocksize {}",
+            offset,
+            blocksize
+        ));
+    }
+    if blocknum == 0 {
+        return Err(anyhow!(
+            "dm-verity blocknum resolved to zero from hashoffset {} and blocksize {}",
+            offset,
+            blocksize
+        ));
+    }
+
+    Ok(DmVerityInfo {
+        hashtype,
+        hash,
+        blocknum,
+        blocksize,
+        hashsize,
+        offset,
+        salt,
+        hash_type,
+        no_superblock,
+    })
+}
+
+/// Create dm-verity device for a partition and return the verity device path
+#[cfg(feature = "devicemapper")]
+async fn create_partition_dmverity_device(
+    partition_path: &str,
+    storage: &Storage,
+    logger: &Logger,
+) -> Result<String> {
+    info!(
+        logger,
+        "Creating dm-verity device for partition";
+        "partition" => partition_path,
+        "source" => &storage.source,
+    );
+
+    // Parse dm-verity options from storage
+    let verity_info =
+        parse_dmverity_options(storage).context("Failed to parse dm-verity options")?;
+
+    // Create dm-verity device
+    let verity_device_path = create_dmverity_device(&verity_info, Path::new(partition_path))
+        .await
+        .context("failed to create dm-verity device")?;
+
+    info!(
+        logger,
+        "Successfully created dm-verity device";
+        "partition" => partition_path,
+        "verity-device" => &verity_device_path,
+    );
+
+    Ok(verity_device_path)
+}
+
+#[cfg(not(feature = "devicemapper"))]
+async fn create_partition_dmverity_device(
+    _partition_path: &str,
+    _storage: &Storage,
+    _logger: &Logger,
+) -> Result<String> {
+    Err(anyhow!(
+        "dm-verity support not compiled in: build with `--features devicemapper` to enable",
+    ))
+}
+
+/// Validate that a container ID does not contain path traversal sequences.
+///
+/// Container IDs are used to construct filesystem paths. A malicious ID containing
+/// path separators or ".." components could be used to escape the intended directory.
+fn validate_container_id(cid: &str) -> Result<()> {
+    if cid.is_empty() {
+        return Err(anyhow!("container ID must not be empty"));
+    }
+    if cid.contains('/') || cid.contains('\\') || cid.contains("..") || cid.contains('\0') {
+        return Err(anyhow!(
+            "container ID contains invalid characters (path separators, '..', or null bytes): '{}'",
+            cid
+        ));
+    }
+    Ok(())
+}
+
+/// Validate that a mount point path is absolute and does not contain path traversal sequences.
+fn validate_mount_point(mount_point: &str) -> Result<()> {
+    if mount_point.is_empty() {
+        return Err(anyhow!("mount point must not be empty"));
+    }
+    if !mount_point.starts_with('/') {
+        return Err(anyhow!(
+            "mount point must be an absolute path, got: '{}'",
+            mount_point
+        ));
+    }
+    if mount_point.contains("..") {
+        return Err(anyhow!(
+            "mount point must not contain path traversal sequences: '{}'",
+            mount_point
+        ));
+    }
+    Ok(())
+}
+
+fn parse_mkdir_directive(spec: &str) -> Result<MkdirDirective> {
+    let parts: Vec<&str> = spec.splitn(2, ':').collect();
+    if parts.is_empty() || parts[0].is_empty() {
+        return Err(anyhow!("invalid X-kata.mkdir.path directive: '{}'", spec));
+    }
+
+    let raw_path = parts[0];
+
+    // Reject null bytes
+    if raw_path.contains('\0') {
+        return Err(anyhow!("X-kata.mkdir.path contains null bytes: '{}'", spec));
+    }
+
+    Ok(MkdirDirective {
+        raw_path: raw_path.to_string(),
+    })
+}
+
+/// Resolve a mkdir path template and ensure it is safely scoped under the given root.
+///
+/// Templates may contain `{{ mount 0 }}` (upper layer) and `{{ mount 1 }}` (first lower layer)
+/// placeholders. After substitution, the resolved path is validated using `safe_path::scoped_join`
+/// to prevent path traversal attacks.
+fn resolve_mkdir_path(
+    raw_path: &str,
+    upper_mount: &Path,
+    first_lower_mount: Option<&Path>,
+) -> Result<PathBuf> {
+    let mut resolved = raw_path.replace("{{ mount 0 }}", upper_mount.to_str().unwrap_or(""));
+
+    if let Some(lower) = first_lower_mount {
+        resolved = resolved.replace("{{ mount 1 }}", lower.to_str().unwrap_or(""));
+    }
+
+    let resolved_path = Path::new(&resolved);
+
+    // Determine the scoping root: the resolved path should be under one of the known mount points.
+    // We use the upper_mount as the default scope root when the path references it,
+    // and the first_lower_mount when the path references that instead.
+    let scope_root = if let Some(lower) = first_lower_mount {
+        if resolved.starts_with(lower.to_str().unwrap_or("")) {
+            lower
+        } else {
+            upper_mount
+        }
+    } else {
+        upper_mount
+    };
+
+    // Extract the relative portion after the scope root prefix
+    let relative = if let Ok(rel) = resolved_path.strip_prefix(scope_root) {
+        rel.to_path_buf()
+    } else {
+        // If the path doesn't start with any known root, treat the whole path as unsafe
+        PathBuf::from(&resolved)
+    };
+
+    // Use scoped_join to ensure the final path cannot escape the scope root.
+    // This handles "..", symlinks, and other traversal techniques.
+    let safe = scoped_join(scope_root, &relative).context(format!(
+        "path traversal detected in mkdir path: raw='{}', resolved='{}', scope_root='{}'",
+        raw_path,
+        resolved,
+        scope_root.display()
+    ))?;
+
+    Ok(safe)
+}
+
+/// Wait for a block-backed layer device, then mount it at `layer_mount`.
+async fn wait_and_mount_layer(
+    layer: &Storage,
+    layer_mount: &Path,
+    sandbox: &Arc<Mutex<Sandbox>>,
+    logger: &Logger,
+    base_dev_path: Option<String>,
+) -> Result<LayerMountInfo> {
+    info!(
+        logger,
+        "Waiting for layer device";
+        "device" => &layer.source,
+        "driver" => &layer.driver,
+        "mount-point" => layer_mount.display(),
+    );
+
+    let is_gpt = is_gpt_partitioned(layer);
+    let partition_num = get_partition_number(layer);
+    let dmverity_enabled = is_dmverity_enabled(layer);
+
+    // Get the base device path
+    let base_dev_path = match base_dev_path {
+        Some(path) => path,
+        None => resolve_base_device_path(layer, sandbox).await?,
+    };
+
+    // For GPT-partitioned disks, use the partition device path
+    let partition_path = if is_gpt {
+        if let Some(part_num) = partition_num {
+            let path = get_partition_device_path(&base_dev_path, part_num);
+            info!(
+                logger,
+                "GPT-partitioned mode: using partition device";
+                "base-device" => &base_dev_path,
+                "partition-number" => part_num,
+                "partition-device" => &path,
+            );
+
+            // Wait for partition device node to appear
+            wait_for_partition_device(&path, logger).await?;
+
+            Some(path)
+        } else {
+            return Err(anyhow!(
+                "GPT-partitioned storage missing partition number: {:?}",
+                layer
+            ));
+        }
+    } else {
+        // Non-GPT mode: no partition path
+        None
+    };
+
+    // Determine the device path to mount
+    // If dm-verity is enabled, we'll create a verity device and mount that instead
+    let (dev_path, verity_device_path) = if dmverity_enabled {
+        // dm-verity mode: create verity device from partition
+        let partition = partition_path.as_ref().ok_or_else(|| {
+            anyhow!("dm-verity requires GPT-partitioned storage with partition number")
+        })?;
+
+        // Create dm-verity device
+        let verity_device = create_partition_dmverity_device(partition, layer, logger).await?;
+        info!(
+            logger,
+            "Using dm-verity device for mount";
+            "partition" => partition,
+            "verity-device" => &verity_device,
+        );
+        (verity_device.clone(), Some(verity_device))
+    } else if let Some(ref partition) = partition_path {
+        // GPT mode without dm-verity: use partition directly
+        (partition.clone(), None)
+    } else {
+        // Non-GPT mode: use base device directly
+        (base_dev_path.clone(), None)
+    };
+
+    info!(
+        logger,
+        "Mounting layer";
+        "device" => &layer.source,
+        "fstype" => &layer.fstype,
+        "devname" => &dev_path,
+        "mount-point" => layer_mount.display(),
+        "gpt-mode" => is_gpt,
+        "dmverity-enabled" => dmverity_enabled,
+    );
+
+    create_mount_destination(Path::new(&dev_path), layer_mount, "", &layer.fstype)
+        .context("failed to create layer mount destination")?;
+
+    let (flags, options) = if layer.fstype == EROFS_TYPE {
+        info!(
+            logger,
+            "Mounting EROFS layer";
+            "device" => &layer.source,
+            "devname" => &dev_path,
+            "mount-point" => layer_mount.display(),
+        );
+        // EROFS layers must be mounted read-only
+        (nix::mount::MsFlags::MS_RDONLY, "ro".to_string())
+    } else {
+        // For non-EROFS layers, we can apply any specified mount options.
+        // Filter out X-kata.* custom options before mount
+        let mount_options: Vec<String> = layer
+            .options
+            .iter()
+            .filter(|o| !o.starts_with("X-kata."))
+            .cloned()
+            .collect();
+        info!(
+            logger,
+            "Mounting rwlayer";
+            "device" => &layer.source,
+            "devname" => &dev_path,
+            "original-options" => layer.options.join(","),
+            "mount-point" => layer_mount.display(),
+        );
+        kata_sys_util::mount::parse_mount_options(&mount_options)?
+    };
+
+    baremount(
+        Path::new(&dev_path),
+        layer_mount,
+        &layer.fstype,
+        flags,
+        options.as_str(),
+        logger,
+    )
+    .context("failed to mount layer")?;
+
+    // After successfully mounting the layer, we track the mount point for cleanup.
+    track_temporary_mount_for_cleanup(sandbox, layer_mount, logger).await?;
+
+    Ok(LayerMountInfo {
+        verity_device: verity_device_path,
+    })
+}
+
+async fn resolve_base_device_path(
+    layer: &Storage,
+    sandbox: &Arc<Mutex<Sandbox>>,
+) -> Result<String> {
+    let base_dev_path = match layer.driver.as_str() {
+        DRIVER_SCSI_TYPE => {
+            // For SCSI devices, we need to wait for the device to appear and get its path before mounting.
+            get_scsi_device_name(sandbox, &layer.source).await?
+        }
+        DRIVER_BLK_PCI_TYPE => {
+            let (root_complex, pcipath) = pcipath_from_dev_tree_path(&layer.source)?;
+            get_virtio_blk_pci_device_name(sandbox, root_complex, &pcipath).await?
+        }
+        _ => {
+            // For non-SCSI devices, we can assume the source is directly mountable.
+            return Err(anyhow!(
+                "unsupported driver type '{}' for multi-layer erofs",
+                layer.driver
+            ));
+        }
+    };
+
+    Ok(base_dev_path)
+}
+
+/// Check if the storage is GPT-partitioned
+fn is_gpt_partitioned(storage: &Storage) -> bool {
+    storage.options.iter().any(|o| o == OPT_GPT_PARTITIONED)
+}
+
+/// Extract partition number from storage options
+/// Returns None if not specified (non-GPT mode)
+fn get_partition_number(storage: &Storage) -> Option<u32> {
+    for opt in &storage.options {
+        if let Some(num_str) = opt.strip_prefix(OPT_PARTITION_NUMBER) {
+            return num_str.parse::<u32>().ok();
+        }
+    }
+    None
+}
+
+/// Get the partition device path for a GPT-partitioned disk
+///
+/// For GPT mode: the storage.source contains the base disk path (e.g., "/dev/vda")
+/// We need to append the partition number to get the partition path (e.g., "/dev/vda1")
+///
+/// Follows the kernel naming rule: if the base device name ends with a digit,
+/// insert a 'p' separator before the partition number to avoid ambiguity.
+/// This correctly handles all device families:
+/// - /dev/vda   -> /dev/vda1   (no trailing digit, bare number)
+/// - /dev/sda   -> /dev/sda1
+/// - /dev/nvme0n1 -> /dev/nvme0n1p1 (trailing digit, needs 'p')
+/// - /dev/mmcblk0 -> /dev/mmcblk0p1
+/// - /dev/loop0 -> /dev/loop0p1
+fn get_partition_device_path(base_path: &str, partition_number: u32) -> String {
+    if base_path.ends_with(char::is_numeric) {
+        format!("{}p{}", base_path, partition_number)
+    } else {
+        format!("{}{}", base_path, partition_number)
+    }
+}
+
+/// Wait for partition device node to appear in /dev.
+///
+/// When a virtio-blk device with a GPT is hotplugged, the kernel automatically
+/// scans the partition table and creates partition nodes. However, devtmpfs node
+/// creation may lag slightly behind the uevent, so we poll briefly if needed.
+async fn wait_for_partition_device(device_path: &str, logger: &Logger) -> Result<()> {
+    let device_path_buf = PathBuf::from(device_path);
+    if device_path_buf.exists() {
+        return Ok(());
+    }
+
+    const MAX_WAIT_MS: u64 = 1000;
+    const POLL_INTERVAL_MS: u64 = 50;
+
+    for attempt in 0..(MAX_WAIT_MS / POLL_INTERVAL_MS) {
+        sleep(Duration::from_millis(POLL_INTERVAL_MS)).await;
+        if device_path_buf.exists() {
+            info!(
+                logger,
+                "Partition device node appeared after polling: {} (attempt {})",
+                device_path,
+                attempt + 1
+            );
+            return Ok(());
+        }
+    }
+
+    Err(anyhow!(
+        "partition device {} did not appear within {} ms",
+        device_path,
+        MAX_WAIT_MS
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rstest::rstest;
+
+    // --- validate_container_id ---
+
+    #[rstest]
+    #[case("abc123", true)]
+    #[case("container-id-with-dashes", true)]
+    #[case("UPPER", true)]
+    #[case("a", true)]
+    #[case("", false)]
+    #[case("../escape", false)]
+    #[case("foo/bar", false)]
+    #[case("foo\\bar", false)]
+    #[case("foo\0bar", false)]
+    #[case("a..b", false)]
+    fn test_validate_container_id(#[case] cid: &str, #[case] should_pass: bool) {
+        let result = validate_container_id(cid);
+        assert_eq!(
+            result.is_ok(),
+            should_pass,
+            "validate_container_id({:?}) = {:?}",
+            cid,
+            result
+        );
+    }
+
+    // --- validate_mount_point ---
+
+    #[rstest]
+    #[case("/mnt/foo", true)]
+    #[case("/", true)]
+    #[case("/a/b/c", true)]
+    #[case("", false)]
+    #[case("relative/path", false)]
+    #[case("/mnt/../escape", false)]
+    #[case("/mnt/a..b", false)]
+    fn test_validate_mount_point(#[case] mp: &str, #[case] should_pass: bool) {
+        let result = validate_mount_point(mp);
+        assert_eq!(
+            result.is_ok(),
+            should_pass,
+            "validate_mount_point({:?}) = {:?}",
+            mp,
+            result
+        );
+    }
+
+    // --- parse_mkdir_directive ---
+
+    #[test]
+    fn test_parse_mkdir_directive_rejects_null_bytes() {
+        assert!(parse_mkdir_directive("foo\0bar").is_err());
+    }
+
+    // --- resolve_mkdir_path ---
+
+    #[test]
+    fn test_resolve_mkdir_path_upper_only() {
+        let upper = PathBuf::from("/tmp/test-upper");
+        std::fs::create_dir_all(&upper).unwrap();
+
+        let result = resolve_mkdir_path("{{ mount 0 }}/subdir", &upper, None);
+        let resolved = result.expect("expected Ok");
+        assert!(
+            resolved.starts_with(&upper),
+            "resolved path {:?} should be under upper {:?}",
+            resolved,
+            upper
+        );
+        assert!(resolved.ends_with("subdir"));
+
+        let _ = std::fs::remove_dir_all(&upper);
+    }
+
+    #[test]
+    fn test_resolve_mkdir_path_with_lower() {
+        let upper = PathBuf::from("/tmp/test-resolve-upper");
+        let lower = PathBuf::from("/tmp/test-resolve-lower");
+        std::fs::create_dir_all(&upper).unwrap();
+        std::fs::create_dir_all(&lower).unwrap();
+
+        let result = resolve_mkdir_path("{{ mount 1 }}/data", &upper, Some(&lower));
+        let resolved = result.expect("expected Ok");
+        assert!(
+            resolved.starts_with(&lower),
+            "resolved path {:?} should be under lower {:?}",
+            resolved,
+            lower
+        );
+
+        let _ = std::fs::remove_dir_all(&upper);
+        let _ = std::fs::remove_dir_all(&lower);
+    }
+
+    // --- is_upper_storage / is_lower_storage ---
+
+    #[test]
+    fn test_is_upper_storage() {
+        let mut s = Storage::default();
+        assert!(!is_upper_storage(&s));
+
+        s.fstype = EXT4_TYPE.to_string();
+        s.options.push(OPT_OVERLAY_UPPER.to_string());
+        assert!(is_upper_storage(&s));
+
+        let s2 = Storage {
+            fstype: EXT4_TYPE.to_string(),
+            options: vec![OPT_MULTI_LAYER.to_string()],
+            ..Default::default()
+        };
+        assert!(is_upper_storage(&s2));
+
+        let s3 = Storage {
+            fstype: "tmpfs".to_string(),
+            options: vec![OPT_OVERLAY_UPPER.to_string(), OPT_MULTI_LAYER.to_string()],
+            ..Default::default()
+        };
+        assert!(!is_upper_storage(&s3));
+    }
+
+    #[test]
+    fn test_is_lower_storage() {
+        let mut s = Storage::default();
+        assert!(!is_lower_storage(&s));
+
+        s.options.push(OPT_OVERLAY_LOWER.to_string());
+        assert!(is_lower_storage(&s));
+
+        let s2 = Storage {
+            fstype: EROFS_TYPE.to_string(),
+            options: vec![OPT_MULTI_LAYER.to_string()],
+            ..Default::default()
+        };
+        assert!(is_lower_storage(&s2));
+    }
+
+    // --- is_multi_layer_storage ---
+
+    #[rstest]
+    #[case(vec![], "", false)]
+    #[case(vec![OPT_MULTI_LAYER.to_string()], "", true)]
+    #[case(vec![], DRIVER_MULTI_LAYER_EROFS, true)]
+    #[case(vec!["ro".to_string()], "virtio-blk", false)]
+    fn test_is_multi_layer_storage(
+        #[case] options: Vec<String>,
+        #[case] driver: &str,
+        #[case] expected: bool,
+    ) {
+        let s = Storage {
+            options,
+            driver: driver.to_string(),
+            ..Default::default()
+        };
+        assert_eq!(
+            is_multi_layer_storage(&s),
+            expected,
+            "is_multi_layer_storage with driver={:?}, options={:?}",
+            s.driver,
+            s.options
+        );
+    }
+
+    // --- get_partition_device_path ---
+
+    #[rstest]
+    #[case("/dev/vda", 1, "/dev/vda1")]
+    #[case("/dev/sda", 3, "/dev/sda3")]
+    #[case("/dev/hda", 2, "/dev/hda2")]
+    #[case("/dev/nvme0n1", 1, "/dev/nvme0n1p1")]
+    #[case("/dev/nvme0n1", 2, "/dev/nvme0n1p2")]
+    #[case("/dev/mmcblk0", 1, "/dev/mmcblk0p1")]
+    #[case("/dev/loop0", 1, "/dev/loop0p1")]
+    #[case("/dev/nbd0", 3, "/dev/nbd0p3")]
+    fn test_get_partition_device_path(
+        #[case] base: &str,
+        #[case] part: u32,
+        #[case] expected: &str,
+    ) {
+        assert_eq!(
+            get_partition_device_path(base, part),
+            expected,
+            "get_partition_device_path({}, {})",
+            base,
+            part
+        );
+    }
+
+    // --- parse_dmverity_options ---
+
+    #[cfg(feature = "devicemapper")]
+    #[test]
+    fn test_parse_dmverity_options_required_fields_and_blocknum() {
+        // Test required fields and blocknum calculation.
+        //
+        // dm-verity roothash and hashoffset are mandatory — without them the
+        // verity table cannot be constructed. blocknum is computed as
+        // offset/blocksize and must be non-zero for a valid verity device.
+        // Uses hashoffset=8192, blocksize=4096 so blocknum = 8192/4096 = 2.
+        let make_valid_dmverity_storage = || -> Storage {
+            Storage {
+                options: vec![
+                    OPT_DMVERITY_ENABLED.to_string(),
+                    format!("{}{}", OPT_DMVERITY_ROOT_HASH, "aabbccdd"),
+                    format!("{}{}", OPT_DMVERITY_HASH_OFFSET, "8192"),
+                    format!("{}{}", OPT_DMVERITY_BLOCK_SIZE, "4096"),
+                    format!("{}{}", OPT_DMVERITY_HASH_SIZE, "4096"),
+                    format!("{}{}", OPT_DMVERITY_SALT, "0000000000000000"),
+                    format!("{}{}", OPT_DMVERITY_NO_SUPERBLOCK, "false"),
+                ],
+                ..Default::default()
+            }
+        };
+
+        // Missing roothash
+        let mut s = make_valid_dmverity_storage();
+        s.options.retain(|o| !o.starts_with(OPT_DMVERITY_ROOT_HASH));
+        let err = parse_dmverity_options(&s).unwrap_err();
+        assert!(
+            err.to_string().contains("roothash is required"),
+            "expected roothash error, got: {}",
+            err
+        );
+
+        // hashoffset=0
+        let mut s = make_valid_dmverity_storage();
+        s.options
+            .retain(|o| !o.starts_with(OPT_DMVERITY_HASH_OFFSET));
+        s.options
+            .push(format!("{}{}", OPT_DMVERITY_HASH_OFFSET, "0"));
+        let err = parse_dmverity_options(&s).unwrap_err();
+        assert!(
+            err.to_string().contains("hashoffset is required"),
+            "expected hashoffset error, got: {}",
+            err
+        );
+
+        // Valid case: verify blocknum = offset / blocksize
+        let s = make_valid_dmverity_storage();
+        let info = parse_dmverity_options(&s).expect("valid options should succeed");
+        assert_eq!(info.blocknum, 2); // 8192 / 4096
+        assert_eq!(info.offset, 8192);
+        assert_eq!(info.blocksize, 4096);
+        assert_eq!(info.salt.as_deref(), Some("0000000000000000"));
+        assert!(!info.no_superblock);
+    }
+}

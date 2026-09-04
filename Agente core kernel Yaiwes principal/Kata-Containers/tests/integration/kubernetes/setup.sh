@@ -1,0 +1,143 @@
+#!/usr/bin/env bash
+# Copyright (c) 2023 Microsoft Corporation
+#
+# SPDX-License-Identifier: Apache-2.0
+
+set -o errexit
+set -o nounset
+set -o pipefail
+
+DEBUG="${DEBUG:-}"
+[[ -n "${DEBUG}" ]] && set -x
+
+export AUTO_GENERATE_POLICY="${AUTO_GENERATE_POLICY:-no}"
+export KATA_HOST_OS="${KATA_HOST_OS:-}"
+export KATA_HYPERVISOR="${KATA_HYPERVISOR:-}"
+export PULL_TYPE="${PULL_TYPE:-default}"
+export RUNS_ON_AKS="${RUNS_ON_AKS:-false}"
+
+kubernetes_dir=$(dirname "$(readlink -f "$0")")
+declare -r kubernetes_dir
+declare -r runtimeclass_workloads_work_dir="${kubernetes_dir}/runtimeclass_workloads_work"
+declare -r runtimeclass_workloads_dir="${kubernetes_dir}/runtimeclass_workloads"
+declare -r kata_opa_dir="${kubernetes_dir}/../../../src/kata-opa"
+# shellcheck source=/dev/null
+source "${kubernetes_dir}/../../common.bash"
+# shellcheck source=/dev/null
+source "${kubernetes_dir}/tests_common.sh"
+
+
+if [[ -n "${K8S_TEST_POLICY_FILES:-}" ]]; then
+	K8S_TEST_POLICY_FILES=("${K8S_TEST_POLICY_FILES}")
+else
+	K8S_TEST_POLICY_FILES=( \
+		"allow-all.rego" \
+		"allow-all-except-exec-process.rego" \
+		"allow-set-policy.rego" \
+    )
+fi
+
+reset_workloads_work_dir() {
+	rm -rf "${runtimeclass_workloads_work_dir}"
+	cp -R "${runtimeclass_workloads_dir}" "${runtimeclass_workloads_work_dir}"
+	setup_policy_files
+}
+
+setup_policy_files() {
+	# Copy hard-coded policy files used for basic policy testing.
+	for policy_file in "${K8S_TEST_POLICY_FILES[@]}"
+	do
+		cp "${kata_opa_dir}/${policy_file}" "${runtimeclass_workloads_work_dir}"
+	done
+
+	# For testing more sophisticated policies, create genpolicy settings that are common for all tests.
+	# Some of the tests will make temporary copies of these common settings and customize them as needed.
+	create_common_genpolicy_settings "${runtimeclass_workloads_work_dir}"
+}
+
+add_annotations_to_yaml() {
+	local yaml_file="$1"
+	local annotation_name="$2"
+	local annotation_value="$3"
+
+	# Previous version of yq was not ready to handle multiple objects in a single yaml.
+	# By default was changing only the first object.
+	# With yq>4 we need to make it explicit during the read and write.
+	local resource_kind
+	resource_kind="$(yq .kind "${yaml_file}" | head -1 || true)"
+
+	case "${resource_kind}" in
+
+	Pod)
+		info "Adding \"${annotation_name}=${annotation_value}\" to ${resource_kind} from ${yaml_file}"
+		yq -i \
+		  ".metadata.annotations.\"${annotation_name}\" = \"${annotation_value}\"" \
+		  "${yaml_file}"
+		;;
+
+	Deployment|Job|ReplicationController)
+		info "Adding \"${annotation_name}=${annotation_value}\" to ${resource_kind} from ${yaml_file}"
+		yq -i \
+		  ".spec.template.metadata.annotations.\"${annotation_name}\" = \"${annotation_value}\"" \
+		  "${yaml_file}"
+		;;
+
+	CronJob)
+		info "Adding \"${annotation_name}=${annotation_value}\" to ${resource_kind} from ${yaml_file}"
+		yq -i \
+		  ".spec.jobTemplate.spec.template.metadata.annotations.\"${annotation_name}\" = \"${annotation_value}\"" \
+		  "${yaml_file}"
+		;;
+
+	List)
+		info "Issue #7765: adding annotations to ${resource_kind} from ${yaml_file} is not implemented yet"
+		;;
+
+	ConfigMap|LimitRange|Namespace|PersistentVolume|PersistentVolumeClaim|PriorityClass|RuntimeClass|Secret|Service)
+		info "Annotations are not required for ${resource_kind} from ${yaml_file}"
+		;;
+
+	*)
+		info "k8s resource type ${resource_kind} from ${yaml_file} is not yet supported for annotations testing"
+		return 1
+		;;
+	esac
+}
+
+add_runtime_handler_annotation_to_yaml() {
+	local -r yaml_file="$1"
+	if is_confidential_runtime_class "${KATA_HYPERVISOR}"; then
+		local -r handler_annotation="io.containerd.cri.runtime-handler"
+		local handler_value
+		handler_value="$(get_test_runtime_class)"
+		add_annotations_to_yaml "${yaml_file}" "${handler_annotation}" "${handler_value}"
+	fi
+}
+
+add_runtime_handler_annotations() {
+	if [[ "${PULL_TYPE}" != "guest-pull" ]]; then
+		info "Not adding runtime-handler annotation for ${PULL_TYPE} pull type"
+		return
+	fi
+
+	for K8S_TEST_YAML in runtimeclass_workloads_work/*.yaml
+	do
+		add_runtime_handler_annotation_to_yaml "${K8S_TEST_YAML}"
+	done
+
+	for K8S_TEST_YAML in runtimeclass_workloads_work/openvpn/*.yaml
+	do
+		add_runtime_handler_annotation_to_yaml "${K8S_TEST_YAML}"
+	done
+}
+
+main() {
+	ensure_yq
+	reset_workloads_work_dir
+	# Default to the plain RuntimeClass; triage retries flip to debug on failure.
+	export KATA_TEST_RUNTIME_CLASS_MODE="${KATA_TEST_RUNTIME_CLASS_MODE:-plain}"
+	set_workloads_runtime_class "${runtimeclass_workloads_work_dir}"
+	add_runtime_handler_annotations
+}
+
+main "$@"

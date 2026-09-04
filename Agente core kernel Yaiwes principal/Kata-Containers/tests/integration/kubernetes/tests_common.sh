@@ -1,0 +1,918 @@
+#!/bin/bash
+#
+# Copyright (c) 2021 Red Hat, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# This script is evoked within an OpenShift Build to product the binary image,
+# which will contain the Kata Containers installation into a given destination
+# directory.
+#
+
+# This contains variables and functions common to all e2e tests.
+
+# Variables used by the kubernetes tests
+export container_images_agnhost_name="registry.k8s.io/e2e-test-images/agnhost"
+export container_images_agnhost_version="2.21"
+
+# Timeout options, mainly for use with waitForProcess(). Use them unless the
+# operation needs to wait longer.
+export wait_time=90
+export sleep_time=3
+
+# Timeout for use with `kubectl wait`, unless it needs to wait longer.
+# Note: try to keep timeout and wait_time equal.
+export timeout=90s
+
+# issues that can't test yet.
+export fc_limitations="https://github.com/kata-containers/documentation/issues/351"
+export dragonball_limitations="https://github.com/kata-containers/kata-containers/issues/6621"
+
+# Path to the kubeconfig file which is used by kubectl and other tools.
+# Note: the init script sets that variable but if you want to run the tests in
+# your own provisioned cluster and you know what you are doing then you should
+# overwrite it.
+export KUBECONFIG="${KUBECONFIG:-${HOME}/.kube/config}"
+
+K8S_TEST_DIR="${kubernetes_dir:-"${BATS_TEST_DIRNAME}"}"
+
+# shellcheck source=/dev/null
+source "${K8S_TEST_DIR}/../../gha-run-k8s-common.sh"
+
+AUTO_GENERATE_POLICY="${AUTO_GENERATE_POLICY:-}"
+GENPOLICY_PULL_METHOD="${GENPOLICY_PULL_METHOD:-}"
+GENPOLICY_BINARY="${GENPOLICY_BINARY:-"/opt/kata/bin/genpolicy"}"
+GENPOLICY_SETTINGS_DIR="${GENPOLICY_SETTINGS_DIR:-"/opt/kata/share/defaults/kata-containers"}"
+GENPOLICY_LAYERS_CACHE_FILE_PATH="${GENPOLICY_LAYERS_CACHE_FILE_PATH:-}"
+KATA_HYPERVISOR="${KATA_HYPERVISOR:-}"
+KATA_HOST_OS="${KATA_HOST_OS:-}"
+RUNS_ON_AKS="${RUNS_ON_AKS:-false}"
+
+# Common setup for tests.
+#
+# Global variables exported:
+#	$node	             - random picked node that has kata installed
+#	$node_start_date     - start date/time at the $node for the sake of
+#                          fetching logs
+#
+setup_common() {
+	node=$(get_one_kata_node)
+	[[ -n "${node}" ]]
+
+	node_start_time=$(measure_node_time "${node}")
+
+	export node node_start_time
+
+	k8s_delete_all_pods_if_any_exists || true
+
+	get_pod_config_dir
+}
+
+get_pod_config_dir() {
+	export pod_config_dir="${BATS_TEST_DIRNAME}/runtimeclass_workloads_work"
+	info "k8s configured to use runtimeclass"
+}
+
+# Return the RuntimeClass (and containerd runtime handler) the tests run on.
+#
+# kata-deploy applies the guest debug settings (enable_debug, the debug console,
+# agent.log=debug and initcall_debug on the kernel cmdline) solely to the extra
+# kata-<shim>-debug RuntimeClass it creates when deployed with debug enabled, so
+# that the plain kata-<shim> class keeps the kernel cmdline, and therefore the
+# guest measurements, of a non-debug installation.
+#
+# By default the suites run on the plain class (KATA_TEST_RUNTIME_CLASS_MODE=plain).
+# Set KATA_TEST_RUNTIME_CLASS_MODE=debug to target the debug class — used for
+# tests that hard-require guest console forwarding, and for triage re-runs after
+# a plain failure (see run_kubernetes_bats_tests).
+#
+# A multi-install names every class after its own suffix (kata-<shim>-<suffix>,
+# and kata-<shim>-<suffix>-debug for the variant), so build the name from the
+# same MULTI_INSTALL_SUFFIX kata-deploy was given rather than assuming the plain
+# one, which is not deployed at all in that case.
+get_test_runtime_class() {
+	if [[ -z "${test_runtime_class:-}" ]]; then
+		local base="kata-${KATA_HYPERVISOR}${MULTI_INSTALL_SUFFIX:+-${MULTI_INSTALL_SUFFIX}}"
+		local mode="${KATA_TEST_RUNTIME_CLASS_MODE:-plain}"
+
+		case "${mode}" in
+			debug)
+				if kubectl get runtimeclass "${base}-debug" &>/dev/null; then
+					test_runtime_class="${base}-debug"
+				else
+					test_runtime_class="${base}"
+				fi
+				;;
+			plain | *)
+				test_runtime_class="${base}"
+				;;
+		esac
+		export test_runtime_class
+	fi
+
+	echo "${test_runtime_class}"
+}
+
+# Drop the cached RuntimeClass so the next get_test_runtime_class() call
+# re-reads KATA_TEST_RUNTIME_CLASS_MODE.
+clear_test_runtime_class_cache() {
+	unset test_runtime_class
+}
+
+# Whether the tests run on a RuntimeClass that carries the guest debug settings.
+test_runtime_class_has_guest_debug() {
+	[[ "$(get_test_runtime_class)" == *-debug ]]
+}
+
+# Point the workloads at the RuntimeClass the tests are meant to run on.
+#
+# Fixtures ship with `runtimeClassName: kata` (alias for the deployment default
+# shim). Rewrite them to the explicit class from get_test_runtime_class so plain
+# and debug modes both land on the right handler. Idempotent: also matches an
+# already-rewritten kata-<shim>[-debug] name so triage retries can flip modes.
+#
+# Optional $1 overrides the workloads work directory; defaults to the k8s test
+# suite's runtimeclass_workloads_work.
+set_workloads_runtime_class() {
+	local workloads_dir="${1:-${K8S_TEST_DIR}/runtimeclass_workloads_work}"
+	local runtime_class
+
+	clear_test_runtime_class_cache
+	runtime_class="$(get_test_runtime_class)"
+	info "Running the test workloads with the ${runtime_class} RuntimeClass (mode=${KATA_TEST_RUNTIME_CLASS_MODE:-plain})"
+
+	find "${workloads_dir}" -type f \
+		\( -name '*.yaml' -o -name '*.yaml.in' \) -print0 |
+		xargs -0 --no-run-if-empty sed -i -E \
+			"s/^([[:space:]]*runtimeClassName:[[:space:]]+)kata(-[^[:space:]]*)?[[:space:]]*$/\1${runtime_class}/"
+}
+
+# Re-apply RuntimeClass and (when present) the matching containerd
+# runtime-handler annotation after KATA_TEST_RUNTIME_CLASS_MODE changes.
+apply_test_runtime_class_mode() {
+	local mode="${1:-${KATA_TEST_RUNTIME_CLASS_MODE:-plain}}"
+	local workloads_dir="${2:-${K8S_TEST_DIR}/runtimeclass_workloads_work}"
+	local runtime_class
+
+	export KATA_TEST_RUNTIME_CLASS_MODE="${mode}"
+	clear_test_runtime_class_cache
+	set_workloads_runtime_class "${workloads_dir}"
+
+	runtime_class="$(get_test_runtime_class)"
+
+	# Keep guest-pull handler annotations in sync when setup.sh already added them.
+	local -a annotated_yamls=()
+	mapfile -t annotated_yamls < <(
+		find "${workloads_dir}" -type f -name '*.yaml' -print0 2>/dev/null |
+			xargs -0 --no-run-if-empty grep -l 'io\.containerd\.cri\.runtime-handler' 2>/dev/null || true
+	)
+	local yaml_file
+	for yaml_file in "${annotated_yamls[@]}"; do
+		[[ -z "${yaml_file}" ]] && continue
+		sed -i -E \
+			"s|^([[:space:]]*io\.containerd\.cri\.runtime-handler:[[:space:]]*).*$|\1\"${runtime_class}\"|" \
+			"${yaml_file}"
+	done
+}
+
+# Return the first worker found that is kata-runtime labeled.
+get_one_kata_node() {
+	local resource_name
+	resource_name="$(kubectl get node -l katacontainers.io/kata-runtime=true -o name | head -1)"
+	# Remove leading "/node"
+	echo "${resource_name/"node/"}"
+}
+
+auto_generate_policy_enabled() {
+	[[ "${AUTO_GENERATE_POLICY}" == "yes" ]]
+}
+
+is_coco_platform() {
+	is_confidential_runtime_class "${KATA_HYPERVISOR}"
+}
+
+is_nvidia_gpu_platform() {
+	case "${KATA_HYPERVISOR}" in
+		qemu-nvidia-gpu*)
+			return 0
+			;;
+		*)
+			return 1
+	esac
+}
+
+is_aks_cluster() {
+	if [[ "${RUNS_ON_AKS}" = "true" ]]; then
+		return 0
+	fi
+
+	return 1
+}
+
+is_k3s_or_rke2() {
+	case "${KUBERNETES:-}" in
+		k3s|rke2) return 0 ;;
+		*) return 1 ;;
+	esac
+}
+
+# The arm64 runner owners keep containerd updates synced across all runners.
+is_arm64_host() {
+	[[ "$(uname -m)" == "aarch64" ]] && return 0
+	return 1
+}
+
+# Return the kubelet data directory, which varies by Kubernetes distribution.
+get_kubelet_data_dir() {
+	case "${KUBERNETES:-}" in
+		k0s) echo "/var/lib/k0s/kubelet" ;;
+		*) echo "/var/lib/kubelet" ;;
+	esac
+}
+
+# Return the Kata runtime config directory of the RuntimeClass under test.
+#
+# This is the directory that holds configuration-<shim>.toml and config.d/.
+# kata-deploy gives every handler it derives from a shim, the kata-<shim>-debug
+# one included, a private copy of the configuration under custom-runtimes/, so
+# look there first: a drop-in written elsewhere would not reach the pods.
+# Probe the filesystem instead of parsing the shim name, since some runtime-rs
+# shims like dragonball do not use the -runtime-rs suffix.
+get_kata_runtime_config_dir() {
+	local node_name="$1"
+	local base="/opt/kata/share/defaults/kata-containers"
+	local handler_dir
+	handler_dir="${base}/custom-runtimes/$(get_test_runtime_class)"
+	local rs_dir="${base}/runtime-rs/runtimes/${KATA_HYPERVISOR}"
+	local go_dir="${base}/runtimes/${KATA_HYPERVISOR}"
+	local legacy_dir="${base}"
+
+	if exec_host "${node_name}" "test -d '${handler_dir}'" >/dev/null 2>&1; then
+		echo "${handler_dir}"
+	elif exec_host "${node_name}" "test -d '${rs_dir}'" >/dev/null 2>&1; then
+		echo "${rs_dir}"
+	elif exec_host "${node_name}" "test -d '${go_dir}'" >/dev/null 2>&1; then
+		echo "${go_dir}"
+	elif exec_host "${node_name}" "test -f '${legacy_dir}/configuration-${KATA_HYPERVISOR}.toml'" >/dev/null 2>&1; then
+		echo "${legacy_dir}"
+	else
+		return 1
+	fi
+}
+
+get_kata_runtime_config_file() {
+	local node_name="$1"
+	local config_dir
+
+	config_dir="$(get_kata_runtime_config_dir "${node_name}")" || return 1
+	echo "${config_dir}/configuration-${KATA_HYPERVISOR}.toml"
+}
+
+get_kata_runtime_config_dropin_dir() {
+	local node_name="$1"
+	local config_dir
+
+	config_dir="$(get_kata_runtime_config_dir "${node_name}")" || return 1
+	echo "${config_dir}/config.d"
+}
+
+# Copy a local TOML fragment under the active Kata runtime config.d directory
+# on a k8s node. Echoes the full drop-in path.
+#
+# Callers must pair this with remove_kata_runtime_config_dropin_file during
+# teardown. A leaked drop-in would silently affect every subsequent pod on the
+# same node.
+set_kata_runtime_config_dropin_file() {
+	local node_name="$1"
+	local local_dropin="$2"
+	local dropin_file
+	local dropin_dir
+	local dropin_path
+	local quoted_dropin_dir
+
+	[[ -f "${local_dropin}" ]] || die "Kata runtime config drop-in file does not exist: ${local_dropin}"
+	dropin_file="$(basename "${local_dropin}")"
+
+	case "${dropin_file}" in
+		""|*/*|*[^A-Za-z0-9._-]*)
+			die "Invalid Kata runtime config drop-in file name: ${dropin_file}"
+			;;
+	esac
+	case "${dropin_file}" in
+		*.toml) ;;
+		*) die "Kata runtime config drop-in file must end in .toml: ${dropin_file}" ;;
+	esac
+
+	dropin_dir="$(get_kata_runtime_config_dropin_dir "${node_name}")" || return 1
+	dropin_path="${dropin_dir}/${dropin_file}"
+	printf -v quoted_dropin_dir "%q" "${dropin_dir}"
+	exec_host "${node_name}" "mkdir -p ${quoted_dropin_dir}" || return 1
+	copy_file_to_host "${local_dropin}" "${node_name}" "${dropin_path}" || return 1
+	echo "${dropin_path}"
+}
+
+# Remove a TOML fragment created under the active Kata runtime config.d
+# directory. Empty paths are accepted as a no-op for teardown convenience.
+remove_kata_runtime_config_dropin_file() {
+	local node_name="$1"
+	local dropin_path="${2:-}"
+	local dropin_dir
+	local quoted_dropin_path
+
+	[[ -n "${dropin_path}" ]] || return 0
+
+	dropin_dir="$(get_kata_runtime_config_dropin_dir "${node_name}")" || return 1
+	case "${dropin_path}" in
+		"${dropin_dir}"/*.toml) ;;
+		*) die "Refusing to remove path outside Kata runtime config.d: ${dropin_path}" ;;
+	esac
+
+	printf -v quoted_dropin_path "%q" "${dropin_path}"
+	exec_host "${node_name}" "rm -f ${quoted_dropin_path}"
+	echo "# Removed drop-in ${dropin_path}"
+}
+
+is_runtime_rs() {
+	[[ "${KATA_HYPERVISOR}" == *-runtime-rs ]] || [[ "${KATA_HYPERVISOR}" == "dragonball" ]]
+}
+
+# True for hypervisors that run the guest in a separate VMM process (i.e. not
+# dragonball, which runs the guest in-process in the shim).
+has_separate_vmm() {
+	[[ "${KATA_HYPERVISOR}" != *dragonball* ]]
+}
+
+# Echo the PID of the Kata shim for the pod with UID $2, on node $1.
+# Returns non-zero if no matching shim is found.
+#
+# The UID is matched in both cgroup-path forms (dashed for cgroupfs,
+# underscored for systemd) so a shim from another namespace is not selected.
+# The pgrep pattern is bracketed ("[c]ontainerd") so it doesn't also match the
+# `bash -c` wrapper exec_host runs, whose command line contains the pattern.
+shim_pid_for_pod() {
+	local node_name="$1" uid_dashed="$2" uid_underscored pid
+	uid_underscored="${uid_dashed//-/_}"
+	pid="$(exec_host "${node_name}" "for p in \$(pgrep -f '[c]ontainerd-shim-kata-v2'); do grep -qE 'pod(${uid_dashed}|${uid_underscored})' /proc/\$p/cgroup 2>/dev/null && echo \$p && break; done; true")"
+	[[ -n "${pid}" ]] || return 1
+	echo "${pid}"
+}
+
+# Copy the right combination of drop-ins from drop-in-examples/ into
+# genpolicy-settings.d/. Drop-ins are layered: 10-* for platform base,
+# 20-* for OCI version and other overlays.
+install_genpolicy_drop_ins() {
+	local -r settings_d="$1"
+	local -r examples_dir="$2"
+
+	# 10-* platform base
+	if ! is_coco_platform; then
+		if is_aks_cluster && [[ "${KATA_HOST_OS:-}" == "cbl-mariner" ]]; then
+			cp "${examples_dir}/10-non-coco-aks-cbl-mariner-drop-in.json" "${settings_d}/"
+		elif is_aks_cluster; then
+			cp "${examples_dir}/10-non-coco-aks-drop-in.json" "${settings_d}/"
+		else
+			cp "${examples_dir}/10-non-coco-drop-in.json" "${settings_d}/"
+		fi
+	fi
+
+	# 20-* OCI version overlay
+	if [[ "${KATA_HOST_OS:-}" == "cbl-mariner" ]]; then
+		cp "${examples_dir}/20-oci-1.3.0-drop-in.json" "${settings_d}/"
+	elif is_k3s_or_rke2 || is_nvidia_gpu_platform || is_snp_hypervisor "${KATA_HYPERVISOR}" || is_tdx_hypervisor "${KATA_HYPERVISOR}" || [[ -n "${CONTAINER_ENGINE_VERSION:-}" ]] || is_arm64_host; then
+		cp "${examples_dir}/20-oci-1.3.0-drop-in.json" "${settings_d}/"
+	fi
+}
+
+# If auto-generated policy testing is enabled, make a copy of the genpolicy settings
+# and set up the scenario drop-ins. genpolicy is run with -j <dir> so it loads
+# genpolicy-settings.json and genpolicy-settings.d/*.json (drop-ins).
+create_common_genpolicy_settings() {
+	declare -r genpolicy_settings_dir="$1"
+
+	auto_generate_policy_enabled || return 0
+
+	cp "${GENPOLICY_SETTINGS_DIR}/genpolicy-settings.json" "${genpolicy_settings_dir}"
+	cp "${GENPOLICY_SETTINGS_DIR}/rules.rego" "${genpolicy_settings_dir}"
+
+	mkdir -p "${genpolicy_settings_dir}/genpolicy-settings.d"
+	install_genpolicy_drop_ins \
+		"${genpolicy_settings_dir}/genpolicy-settings.d" \
+		"${GENPOLICY_SETTINGS_DIR}/drop-in-examples"
+}
+
+# If auto-generated policy testing is enabled, make a copy of the common genpolicy settings
+# (including genpolicy-settings.d/) into a temporary directory for the current test case.
+create_tmp_policy_settings_dir() {
+	declare -r common_settings_dir="$1"
+
+	auto_generate_policy_enabled || return 0
+
+	tmp_settings_dir=$(mktemp -d --tmpdir="${common_settings_dir}" genpolicy.XXXXXXXXXX)
+	cp "${common_settings_dir}/rules.rego" "${tmp_settings_dir}"
+	cp "${common_settings_dir}/genpolicy-settings.json" "${tmp_settings_dir}"
+	cp "${common_settings_dir}/default-initdata.toml" "${tmp_settings_dir}"
+	if [[ -d "${common_settings_dir}/genpolicy-settings.d" ]]; then
+		cp -r "${common_settings_dir}/genpolicy-settings.d" "${tmp_settings_dir}/"
+	fi
+
+	echo "${tmp_settings_dir}"
+}
+
+# Delete a directory created by create_tmp_policy_settings_dir.
+delete_tmp_policy_settings_dir() {
+	local settings_dir="$1"
+
+	auto_generate_policy_enabled || return 0
+
+	if [[ -d "${settings_dir}" ]]; then
+		info "Deleting ${settings_dir}"
+		rm -rf "${settings_dir}"
+	fi
+}
+
+# Execute genpolicy to auto-generate policy for a test YAML file.
+auto_generate_policy() {
+	declare -r settings_dir="$1"
+	declare -r yaml_file="$2"
+	declare -r config_map_yaml_file="${3:-""}"
+	declare additional_flags="${4:-""}"
+
+	seed_initdata_from_yaml "${settings_dir}" "${yaml_file}"
+
+	additional_flags="${additional_flags} --initdata-path=${settings_dir}/default-initdata.toml"
+
+	auto_generate_policy_no_added_flags "${settings_dir}" "${yaml_file}" "${config_map_yaml_file}" "${additional_flags}"
+}
+
+auto_generate_policy_no_added_flags() {
+	declare -r settings_dir="$1"
+	declare -r yaml_file="$2"
+	declare -r config_map_yaml_file="${3:-""}"
+	declare -r additional_flags="${4:-""}"
+
+	auto_generate_policy_enabled || return 0
+	local genpolicy_command="RUST_LOG=info ${GENPOLICY_BINARY} -u -y ${yaml_file}"
+	local quoted_layers_cache_file_path
+	genpolicy_command+=" -p ${settings_dir}/rules.rego"
+	genpolicy_command+=" -j ${settings_dir}"
+
+	if [[ -n "${GENPOLICY_LAYERS_CACHE_FILE_PATH}" ]]; then
+		printf -v quoted_layers_cache_file_path "%q" "${GENPOLICY_LAYERS_CACHE_FILE_PATH}"
+		genpolicy_command+=" --layers-cache-file-path=${quoted_layers_cache_file_path}"
+	fi
+
+	if [[ -n "${config_map_yaml_file}" ]]; then
+		genpolicy_command+=" -c ${config_map_yaml_file}"
+	fi
+
+	if [[ "${GENPOLICY_PULL_METHOD}" == "containerd" ]]; then
+		genpolicy_command+=" -d"
+	fi
+
+	genpolicy_command+=" ${additional_flags}"
+
+	# Retry if genpolicy fails, because typical failures of this tool are caused by
+	# transient network errors.
+	for _ in {1..6}; do
+		info "Executing: ${genpolicy_command}"
+		eval "${genpolicy_command}" && return 0
+		info "Sleeping after command failed..."
+		sleep 10s
+	done
+	return 1
+}
+
+# 99-test-overrides.json is an RFC 6902 JSON Patch (array of ops). We append to it.
+
+# Change genpolicy settings to allow "kubectl exec" to execute a command
+# and to read console output from a test pod. Appends an "add" op to 99-test-overrides.json.
+add_exec_to_policy_settings() {
+	auto_generate_policy_enabled || return 0
+
+	local -r settings_dir="$1"
+	shift
+
+	local drop_in_dir="${settings_dir}/genpolicy-settings.d"
+	mkdir -p "${drop_in_dir}"
+	local overrides_file="${drop_in_dir}/99-test-overrides.json"
+	[[ -f "${overrides_file}" ]] || echo '[]' > "${overrides_file}"
+
+	local exec_args
+	exec_args=$(printf "%s\n" "$@" | jq -R | jq -sc)
+	info "Adding exec allowed_commands to ${overrides_file}: ${exec_args}"
+	jq --argjson args "${exec_args}" \
+		'. + [{"op":"add","path":"/request_defaults/ExecProcessRequest/allowed_commands/-","value":$args}]' \
+		"${overrides_file}" > "${overrides_file}.tmp" && mv "${overrides_file}.tmp" "${overrides_file}"
+}
+
+# Change genpolicy settings to allow one or more ttrpc requests from the Host to the Guest.
+# Appends "replace" ops to 99-test-overrides.json.
+add_requests_to_policy_settings() {
+	declare -r settings_dir="$1"
+	shift
+	declare -r requests=("$@")
+
+	auto_generate_policy_enabled || return 0
+
+	local drop_in_dir="${settings_dir}/genpolicy-settings.d"
+	mkdir -p "${drop_in_dir}"
+	local overrides_file="${drop_in_dir}/99-test-overrides.json"
+	[[ -f "${overrides_file}" ]] || echo '[]' > "${overrides_file}"
+
+	for request in "${requests[@]}"; do
+		info "Allowing ${request} in ${overrides_file}"
+		jq --arg req "${request}" '. + [{"op":"replace","path":("/request_defaults/" + $req),"value":true}]' \
+			"${overrides_file}" > "${overrides_file}.tmp" && mv "${overrides_file}.tmp" "${overrides_file}"
+	done
+}
+
+# Change genpolicy settings to use the requested emptyDir storage type.
+# Appends a "replace" op to 99-test-overrides.json.
+set_genpolicy_emptydir_type() {
+	declare -r settings_dir="$1"
+	declare -r emptydir_type="$2"
+
+	auto_generate_policy_enabled || return 0
+
+	case "${emptydir_type}" in
+		shared-fs|block-encrypted|block-plain) ;;
+		*) die "Unsupported genpolicy emptydir_type ${emptydir_type}" ;;
+	esac
+
+	local drop_in_dir="${settings_dir}/genpolicy-settings.d"
+	mkdir -p "${drop_in_dir}"
+	local overrides_file="${drop_in_dir}/99-test-overrides.json"
+	[[ -f "${overrides_file}" ]] || echo '[]' > "${overrides_file}"
+
+	info "Setting genpolicy emptydir_type to ${emptydir_type} in ${overrides_file}"
+	jq --arg emptydir_type "${emptydir_type}" \
+		'. + [{"op":"replace","path":"/cluster_config/emptydir_type","value":$emptydir_type}]' \
+		"${overrides_file}" > "${overrides_file}.tmp" && mv "${overrides_file}.tmp" "${overrides_file}"
+}
+
+# Change Rego rules to allow one or more ttrpc requests from the Host to the Guest.
+allow_requests() {
+	declare -r settings_dir="$1"
+	shift
+	declare -r requests=("$@")
+
+	auto_generate_policy_enabled || return 0
+
+	for request in "${requests[@]}"
+	do
+		info "${settings_dir}/rules.rego: allowing ${request}"
+		sed -i "s/^default \(${request}\).\+/default \1 := true/" "${settings_dir}"/rules.rego
+	done
+}
+
+# Change genpolicy settings to allow executing on the Guest VM the commands
+# used by "kubectl cp" from the Host to the Guest.
+add_copy_from_host_to_policy_settings() {
+	local -r genpolicy_settings_dir="$1"
+
+	local exec_command=(test -d /tmp)
+	add_exec_to_policy_settings "${genpolicy_settings_dir}" "${exec_command[@]}"
+	exec_command=(tar -xmf - -C /tmp)
+	add_exec_to_policy_settings "${genpolicy_settings_dir}" "${exec_command[@]}"
+}
+
+# Change genpolicy settings to allow executing on the Guest VM the commands
+# used by "kubectl cp" from the Guest to the Host.
+add_copy_from_guest_to_policy_settings() {
+	local -r genpolicy_settings_dir="$1"
+	local -r copied_file="$2"
+
+	exec_command=(tar cf - "${copied_file}")
+	add_exec_to_policy_settings "${genpolicy_settings_dir}" "${exec_command[@]}"
+}
+
+hard_coded_policy_tests_enabled() {
+	local enabled="no"
+	# CI is testing hard-coded policies just on a the platforms listed here. Outside of CI,
+	# users can enable testing of the same policies (plus the auto-generated policies) by
+	# specifying AUTO_GENERATE_POLICY=yes.
+	local -r enabled_hypervisors=("qemu-coco-dev" "qemu-snp" "qemu-snp-runtime-rs" "qemu-tdx" "qemu-tdx-runtime-rs" "qemu-coco-dev-runtime-rs" "clh-runtime-rs" "clh-azure-runtime-rs")
+	for enabled_hypervisor in "${enabled_hypervisors[@]}"
+	do
+		if [[ "${enabled_hypervisor}" == "${KATA_HYPERVISOR}" ]]; then
+			enabled="yes"
+			break
+		fi
+	done
+
+	# https://github.com/kata-containers/kata-containers/issues/12720
+	if [[ "${enabled}" == "no" && "${KATA_HOST_OS}" == "cbl-mariner" && \
+		  "${KATA_HYPERVISOR}" =~ ^clh(-azure)?$ ]]; then
+		enabled="yes"
+	fi
+
+	if [[ "${enabled}" == "no" ]] && auto_generate_policy_enabled; then
+		enabled="yes"
+	fi
+
+	[[ "${enabled}" == "yes" ]]
+}
+
+encode_policy_in_init_data() {
+  local input="$1"   # either a filename or a policy
+  local POLICY
+
+  # if input is a file, read its contents
+  if [[ -f "${input}" ]]; then
+    POLICY="$(< "${input}")"
+  else
+    POLICY="${input}"
+  fi
+
+  cat <<EOF | gzip -c | base64 -w0
+version = "0.1.0"
+algorithm = "sha256"
+
+[data]
+"policy.rego" = '''
+${POLICY}
+'''
+EOF
+}
+
+# ALLOW_ALL_POLICY is a Rego policy that allows all the Agent ttrpc requests.
+ALLOW_ALL_POLICY="${ALLOW_ALL_POLICY:-$(encode_policy_in_init_data "${K8S_TEST_DIR}/../../../src/kata-opa/allow-all.rego")}"
+
+add_allow_all_policy_to_yaml() {
+	hard_coded_policy_tests_enabled || return 0
+
+	local yaml_file="$1"
+	# Previous version of yq was not ready to handle multiple objects in a single yaml.
+	# By default was changing only the first object.
+	# With yq>4 we need to make it explicit during the read and write.
+	local resource_kind
+	resource_kind=$(yq eval 'select(documentIndex == 0) | .kind' "${yaml_file}")
+
+	case "${resource_kind}" in
+	Pod)
+		info "Adding allow all policy to ${resource_kind} from ${yaml_file}"
+		yq -i \
+			".metadata.annotations.\"io.katacontainers.config.hypervisor.cc_init_data\" = \"${ALLOW_ALL_POLICY}\"" \
+      "${yaml_file}"
+		;;
+
+	Deployment|Job|ReplicationController)
+		info "Adding allow all policy to ${resource_kind} from ${yaml_file}"
+		yq -i \
+			".spec.template.metadata.annotations.\"io.katacontainers.config.hypervisor.cc_init_data\" = \"${ALLOW_ALL_POLICY}\"" \
+      "${yaml_file}"
+		;;
+
+	List)
+		die "Issue #7765: adding allow all policy to ${resource_kind} from ${yaml_file} is not implemented yet"
+		;;
+
+	ConfigMap|LimitRange|Namespace|PersistentVolume|PersistentVolumeClaim|RuntimeClass|Secret|Service)
+		info "Policy is not required for ${resource_kind} from ${yaml_file}"
+		;;
+
+	*)
+		die "k8s resource type ${resource_kind} from ${yaml_file} is not yet supported for policy testing"
+		;;
+
+	esac
+}
+
+get_cc_init_data_annotation_from_yaml() {
+	local yaml_file="$1"
+	local resource_kind
+	resource_kind=$(yq eval 'select(documentIndex == 0) | .kind' "${yaml_file}")
+
+	case "${resource_kind}" in
+	Pod)
+		yq eval \
+			'select(documentIndex == 0) | .metadata.annotations."io.katacontainers.config.hypervisor.cc_init_data" // ""' \
+			"${yaml_file}"
+		;;
+
+	Deployment|Job|ReplicationController)
+		yq eval \
+			'select(documentIndex == 0) | .spec.template.metadata.annotations."io.katacontainers.config.hypervisor.cc_init_data" // ""' \
+			"${yaml_file}"
+		;;
+
+	*)
+		echo ""
+		;;
+	esac
+}
+
+seed_initdata_from_yaml() {
+	local settings_dir="$1"
+	local yaml_file="$2"
+	local existing_initdata
+
+	auto_generate_policy_enabled || return 0
+
+	existing_initdata="$(get_cc_init_data_annotation_from_yaml "${yaml_file}")"
+	[[ -z "${existing_initdata}" ]] && return 0
+
+	if ! printf "%s" "${existing_initdata}" | base64 -d | gzip -d > "${settings_dir}/default-initdata.toml"; then
+		die "Failed to decode existing cc_init_data annotation from ${yaml_file}"
+	fi
+}
+
+# Execute "kubectl describe pods -l app=${app_label}, until its output contains "${endpoint} is blocked by policy"
+wait_for_blocked_deployment_request() {
+	local -r endpoint="$1"
+	local -r app_label="$2"
+
+	local -r command="kubectl describe pods -l app=${app_label} | grep \"${endpoint} is blocked by policy\""
+	info "Waiting ${wait_time} seconds for: ${command}"
+	waitForProcess "${wait_time}" "${sleep_time}" "${command}" >/dev/null 2>/dev/null
+}
+
+# Execute "kubectl describe ${pod}" in a loop, until its output contains "${endpoint} is blocked by policy"
+wait_for_blocked_request() {
+	local -r endpoint="$1"
+	local -r pod="$2"
+
+	local -r command="kubectl describe pod ${pod} | grep \"${endpoint} is blocked by policy\""
+	info "Waiting ${wait_time} seconds for: ${command}"
+	waitForProcess "${wait_time}" "${sleep_time}" "${command}" >/dev/null 2>/dev/null
+}
+
+# Execute in a pod a command that is allowed by policy.
+pod_exec_allowed_command() {
+	local -r pod_name="$1"
+	shift
+
+	local -r exec_output=$(kubectl exec "${pod_name}" -- "${@}" 2>&1)
+
+	local -r exec_args=$(printf '"%s",' "${@}")
+	info "Pod ${pod_name}: <${exec_args::-1}>:"
+	info "${exec_output}"
+
+	(echo "${exec_output}" | grep "policy") && die "exec was blocked by policy!"
+	return 0
+}
+
+# Execute in a pod a command that is blocked by policy.
+pod_exec_blocked_command() {
+	local -r pod_name="$1"
+	shift
+
+	local -r exec_output=$(kubectl exec "${pod_name}" -- "${@}" 2>&1)
+
+	local -r exec_args=$(printf '"%s",' "${@}")
+	info "Pod ${pod_name}: <${exec_args::-1}>:"
+	info "${exec_output}"
+
+	(echo "${exec_output}" | grep "ExecProcessRequest is blocked by policy" > /dev/null) || die "exec was not blocked by policy!"
+}
+
+# Common teardown for tests.
+#
+# Parameters:
+#	$1	- node name where kata is installed
+#	$2	- start time at the node for the sake of fetching logs
+#
+teardown_common() {
+	local node="$1"
+	local node_start_time="$2"
+
+	kubectl describe pods
+	k8s_delete_all_pods_if_any_exists || true
+
+	local node_end_time
+	node_end_time=$(measure_node_time "${node}")
+
+	echo "Journal LOG starts at ${node_start_time:-}, ends at ${node_end_time:-}"
+	print_node_journal_since_test_start "${node}" "${node_start_time}" "${BATS_TEST_COMPLETED:-}"
+}
+
+measure_node_time() {
+	local node="$1"
+	[[ -n "${node}" ]]
+
+	local node_time
+	node_time=$(exec_host "${node}" date +\"%Y-%m-%d %H:%M:%S\")
+	local count=0
+	while [[ -z "${node_time}" ]] && [[ "${count}" -lt 3 ]]; do
+		echo "node_time is empty, trying again..."
+		sleep 2
+		node_time=$(exec_host "${node}" date +\"%Y-%m-%d %H:%M:%S\")
+		count=$((count + 1))
+	done
+	[[ -n "${node_time}" ]]
+
+	printf '%s\n' "${node_time}"
+}
+
+# Execute a command in a pod and grep kubectl's output.
+#
+# Parameters:
+#	$1	- pod name
+#	$2	- the grep pattern
+#	$3+	- the command to execute using "kubectl exec"
+#
+# Exit code:
+#	Equal to grep's exit code
+grep_pod_exec_output() {
+	local -r pod_name="$1"
+	shift
+	local -r grep_arg="$1"
+	shift
+	pod_exec "${pod_name}" "$@" | grep "${grep_arg}"
+}
+
+# Execute a command in a pod and echo kubectl's output to stdout.
+#
+# Parameters:
+#	$1	- pod name
+#	$2+	- the command to execute using "kubectl exec"
+#
+# Exit code:
+#	0
+pod_exec() {
+	local -r pod_name="$1"
+	shift
+	local -r container_name=""
+
+	container_exec "${pod_name}" "${container_name}" "$@"
+}
+
+# Execute a command in a pod's container and echo kubectl's output to stdout.
+#
+# If the caller specifies an empty container name as parameter, the command is executed in pod's default container,
+# or in pod's first container if there is no default.
+#
+# Parameters:
+#	$1	- pod name
+#	$2	- container name
+#	$3+	- the command to execute using "kubectl exec"
+#
+# Exit code:
+#	0
+container_exec() {
+	local -r pod_name="$1"
+	shift
+	local -r container_name="$1"
+	shift
+	local cmd_out=""
+
+	if [[ -n "${container_name}" ]]; then
+		bats_unbuffered_info "Executing in pod ${pod_name}, container ${container_name}: $*"
+		if ! cmd_out=$(kubectl exec "${pod_name}" -c "${container_name}" -- "$@"); then
+			bats_unbuffered_info "kubectl exec failed"
+			cmd_out=""
+			# preserve failure semantics: return kubectl's exit code
+			return 1
+		fi
+	else
+		bats_unbuffered_info "Executing in pod ${pod_name}: $*"
+		if ! cmd_out=$(kubectl exec "${pod_name}" -- "$@"); then
+			bats_unbuffered_info "kubectl exec failed"
+			cmd_out=""
+			# preserve failure semantics: return kubectl's exit code
+			return 1
+		fi
+	fi
+
+	if [[ -n "${cmd_out}" ]]; then
+		bats_unbuffered_info "command output: ${cmd_out}"
+	else
+		bats_unbuffered_info "Warning: empty output from kubectl exec"
+	fi
+
+	echo "${cmd_out}"
+}
+
+set_nginx_image() {
+	input_yaml=$1
+	output_yaml=$2
+
+	ensure_yq
+	nginx_registry=$(get_from_kata_deps ".docker_images.nginx.registry")
+	nginx_digest=$(get_from_kata_deps ".docker_images.nginx.digest")
+	nginx_image="${nginx_registry}@${nginx_digest}"
+
+	NGINX_IMAGE="${nginx_image}" envsubst < "${input_yaml}" > "${output_yaml}"
+
+	auto_generate_policy_enabled || return 0
+
+	case "$(yq -r 'select(documentIndex == 0) | .kind' "${output_yaml}")" in
+		Pod)
+			set_pod_spec_security_context "${output_yaml}" ".spec" "" "" "1, 2, 3, 4, 6, 10, 11, 20, 26, 27"
+			;;
+		Deployment|ReplicationController)
+			set_pod_spec_security_context "${output_yaml}" ".spec.template.spec" "" "" "1, 2, 3, 4, 6, 10, 11, 20, 26, 27"
+			;;
+	esac
+}
+
+print_node_journal_since_test_start() {
+	local node="${1}"
+	local node_start_time="${2:-}"
+	local BATS_TEST_COMPLETED="${3:-}"
+
+	if [[ -n "${node_start_time:-}" && -z "${BATS_TEST_COMPLETED:-}" ]]; then
+		echo "DEBUG: system logs of node '${node}' since test start time (${node_start_time})"
+		exec_host "${node}" journalctl -t "kata" --since '"'"${node_start_time}"'"' -o cat || true
+	fi
+}

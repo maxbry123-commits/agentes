@@ -1,0 +1,64 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kata-system
+
+---
+
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  labels:
+    app.kubernetes.io/name: kata-monitor
+  name: kata-monitor
+  namespace: kata-system
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kata-monitor
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kata-monitor
+      annotations:
+        prometheus.io/scrape: "true"
+    spec:
+      containers:
+      - name: kata-monitor
+        # The `kata-monitor` image is published as part of every Kata
+        # Containers release starting with 3.32.0. Pinning to a specific
+        # release tag (e.g. `3.32.0`) is strongly recommended for
+        # production deployments. Use
+        # `quay.io/kata-containers/kata-monitor-ci:latest` to track the
+        # tip of `main`.
+        image: quay.io/kata-containers/kata-monitor:latest
+        args:
+          - -listen-address=0.0.0.0:8090
+          - -log-level=debug
+          - -runtime-endpoint=unix:///run/containerd/containerd.sock
+        ports:
+          - containerPort: 8090
+        resources:
+          limits:
+            cpu: 200m
+            memory: 300Mi
+          requests:
+            cpu: 200m
+            memory: 300Mi
+        volumeMounts:
+        - name: containerd-sock
+          mountPath: /run/containerd
+          readOnly: true
+        - name: sbs
+          mountPath: /run/vc/sbs/
+          readOnly: true
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - name: containerd-sock
+        hostPath:
+          path: /run/containerd
+          type: Directory
+      - name: sbs
+        hostPath:
+          path: /run/vc/sbs/
+          type: DirectoryOrCreate

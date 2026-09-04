@@ -1,0 +1,48 @@
+# Copyright (c) 2025 NVIDIA Corporation
+# Copyright (c) 2023-2024 Intel Corporation
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+apiVersion: v1
+kind: Pod
+metadata:
+  name: aa-test-cc
+spec:
+  runtimeClassName: ${RUNTIME_CLASS_NAME}
+  containers:
+    # Same image as pod-attestable.yaml.in. Kept separate from the CUDA
+    # container so Ready does not depend on apt-installing curl inside the
+    # guest (which routinely blows the 90s wait on 1-vCPU SNP sandboxes).
+    - name: bash-curl
+      image: quay.io/kata-containers/alpine-bash-curl:latest
+      imagePullPolicy: Always
+      command:
+        - sh
+        - -c
+        - |
+          set -e
+          attempts=60
+          while ! curl -fsS http://127.0.0.1:8006/cdh/resource/default/aa/key; do
+            attempts=$((attempts-1))
+            [ "$attempts" -gt 0 ] || exit 1
+            sleep 1
+          done
+          sleep 1000
+      resources:
+        limits:
+          cpu: "1"
+          memory: 512Mi
+    - name: nvidia-smi
+      image: nvcr.io/nvidia/cuda:12.2.0-base-ubuntu22.04
+      imagePullPolicy: Always
+      command:
+        - sh
+        - -c
+        - |
+          nvidia-smi conf-compute -grs
+          sleep 1000
+      resources:
+        limits:
+          cpu: "2"
+          nvidia.com/pgpu: "1"
+          memory: 16Gi

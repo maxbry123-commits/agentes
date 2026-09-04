@@ -1,0 +1,403 @@
+name: CI | Build kata-static tarball for s390x
+on:
+  workflow_call:
+    inputs:
+      stage:
+        required: false
+        type: string
+        default: test
+      tarball-suffix:
+        required: false
+        type: string
+      push-to-registry:
+        required: false
+        type: string
+        default: no
+      commit-hash:
+        required: false
+        type: string
+      target-branch:
+        required: false
+        type: string
+        default: ""
+    secrets:
+      QUAY_DEPLOYER_PASSWORD:
+        required: true
+
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-tarball-s390x
+  cancel-in-progress: true
+
+jobs:
+  build-asset:
+    name: build-asset
+    runs-on: ubuntu-24.04-s390x
+    permissions:
+      contents: read
+      packages: write # needed to push build artifacts to ghcr.io
+      id-token: write # needed to sign images and generate attestations
+      attestations: write # needed to generate artifact attestations
+    strategy:
+      matrix:
+        asset:
+          - agent
+          - coco-guest-components
+          - fake-boot-image-se
+          - fake-boot-image-se-runtime-rs
+          - kernel
+          - pause-image
+          - qemu
+          - virtiofsd
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.job }}-${{ github.event.pull_request.number || github.ref }}-s390x-${{ toJSON(matrix) }}
+      cancel-in-progress: true
+    env:
+      PERFORM_ATTESTATION: ${{ inputs.push-to-registry == 'yes' && 'yes' || 'no' }}
+    steps:
+      - name: Login to Kata Containers quay.io
+        if: ${{ inputs.push-to-registry == 'yes' }}
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        with:
+          registry: quay.io
+          username: ${{ vars.QUAY_DEPLOYER_USERNAME }}
+          password: ${{ secrets.QUAY_DEPLOYER_PASSWORD }}
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ inputs.commit-hash }}
+          fetch-depth: 0 # This is needed in order to keep the commit ids history
+          persist-credentials: false
+
+      - name: Rebase atop of the latest target branch
+        run: |
+          ./tests/git-helper.sh "rebase-atop-of-the-latest-target-branch"
+        env:
+          TARGET_BRANCH: ${{ inputs.target-branch }}
+
+      - name: Build ${{ matrix.asset }}
+        id: build
+        run: |
+          if [ "${KATA_ASSET}" = "fake-boot-image-se" ]; then
+            make FAKE_SE_IMAGE=true boot-image-se-tarball
+            TARBALL_NAME="boot-image-se"
+          elif [ "${KATA_ASSET}" = "fake-boot-image-se-runtime-rs" ]; then
+            make FAKE_SE_IMAGE=true boot-image-se-runtime-rs-tarball
+            TARBALL_NAME="boot-image-se-runtime-rs"
+          else
+            make "${KATA_ASSET}-tarball"
+            TARBALL_NAME="${KATA_ASSET}"
+          fi
+          build_dir=$(readlink -f build)
+          # store-artifact does not work with symlink
+          mkdir -p kata-build && cp "${build_dir}"/kata-static-"${TARBALL_NAME}"*.tar.* kata-build/.
+        env:
+          KATA_ASSET: ${{ matrix.asset }}
+          TAR_OUTPUT: ${{ matrix.asset }}.tar.gz
+          PUSH_TO_REGISTRY: ${{ inputs.push-to-registry }}
+          ARTEFACT_REGISTRY: ghcr.io
+          ARTEFACT_REGISTRY_USERNAME: ${{ github.actor }}
+          ARTEFACT_REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+          TARGET_BRANCH: ${{ inputs.target-branch }}
+          RELEASE: ${{ inputs.stage == 'release' && 'yes' || 'no' }}
+          USE_DEVMAPPER: ${{ matrix.asset == 'agent' && 'yes' || 'no' }}
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Parse OCI image name and digest
+        id: parse-oci-segments
+        if: ${{ env.PERFORM_ATTESTATION == 'yes' && matrix.asset != 'fake-boot-image-se' && matrix.asset != 'fake-boot-image-se-runtime-rs' }}
+        env:
+          ASSET: ${{ matrix.asset }}
+        run: |
+          oci_image="$(<"build/${ASSET}-oci-image")"
+          echo "oci-name=${oci_image%@*}" >> "$GITHUB_OUTPUT"
+          echo "oci-digest=${oci_image#*@}" >> "$GITHUB_OUTPUT"
+
+      # for pushing attestations to the registry
+      - uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        if: ${{ env.PERFORM_ATTESTATION == 'yes' }}
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/attest-build-provenance@ef244123eb79f2f7a7e75d99086184180e6d0018 # v1.4.4
+        if: ${{ env.PERFORM_ATTESTATION == 'yes' && matrix.asset != 'fake-boot-image-se' && matrix.asset != 'fake-boot-image-se-runtime-rs' }}
+        with:
+          subject-name: ${{ steps.parse-oci-segments.outputs.oci-name }}
+          subject-digest: ${{ steps.parse-oci-segments.outputs.oci-digest }}
+          push-to-registry: true
+
+      - name: store-artifact ${{ matrix.asset }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: kata-artifacts-s390x-${{ matrix.asset }}${{ inputs.tarball-suffix }}
+          path: kata-build/kata-static-${{ matrix.asset == 'fake-boot-image-se' && 'boot-image-se' || matrix.asset == 'fake-boot-image-se-runtime-rs' && 'boot-image-se-runtime-rs' || matrix.asset }}.tar.zst
+          retention-days: 15
+          if-no-files-found: error
+
+  build-kata-deploy-components:
+    name: build-kata-deploy-components
+    runs-on: ubuntu-24.04-s390x
+    strategy:
+      matrix:
+        component:
+          - kata-deploy-binary
+          - nydus-snapshotter-for-coco-guest-pull
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.job }}-${{ github.event.pull_request.number || github.ref }}-s390x-${{ toJSON(matrix) }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ inputs.commit-hash }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Rebase atop of the latest target branch
+        run: |
+          ./tests/git-helper.sh "rebase-atop-of-the-latest-target-branch"
+        env:
+          TARGET_BRANCH: ${{ inputs.target-branch }}
+
+      - name: Build ${{ matrix.component }}
+        run: |
+          make "${KATA_DEPLOY_COMPONENT}-tarball"
+          mkdir -p kata-deploy-build
+          cp "tools/packaging/kata-deploy/local-build/build/kata-deploy-static-${KATA_DEPLOY_COMPONENT}.tar.zst" kata-deploy-build/
+        env:
+          KATA_DEPLOY_COMPONENT: ${{ matrix.component }}
+
+      - name: store-artifact ${{ matrix.component }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: kata-artifacts-s390x-${{ matrix.component }}${{ inputs.tarball-suffix }}
+          path: kata-deploy-build/kata-deploy-static-${{ matrix.component }}.tar.zst
+          retention-days: 15
+          if-no-files-found: error
+
+  build-asset-rootfs:
+    name: build-asset-rootfs
+    runs-on: s390x
+    needs: build-asset
+    permissions:
+      contents: read
+      packages: write # needed to push build artifacts to ghcr.io
+    strategy:
+      matrix:
+        asset:
+          - rootfs-image
+          - rootfs-image-confidential
+          - rootfs-image-coco-extension
+          - rootfs-initrd
+          - rootfs-initrd-confidential
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.job }}-${{ github.event.pull_request.number || github.ref }}-s390x-${{ toJSON(matrix) }}
+      cancel-in-progress: true
+    steps:
+      - name: Login to Kata Containers quay.io
+        if: ${{ inputs.push-to-registry == 'yes' }}
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        with:
+          registry: quay.io
+          username: ${{ vars.QUAY_DEPLOYER_USERNAME }}
+          password: ${{ secrets.QUAY_DEPLOYER_PASSWORD }}
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ inputs.commit-hash }}
+          fetch-depth: 0 # This is needed in order to keep the commit ids history
+          persist-credentials: false
+
+      - name: Rebase atop of the latest target branch
+        run: |
+          ./tests/git-helper.sh "rebase-atop-of-the-latest-target-branch"
+        env:
+          TARGET_BRANCH: ${{ inputs.target-branch }}
+
+      - name: get-artifacts
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          pattern: kata-artifacts-s390x-*${{ inputs.tarball-suffix }}
+          path: kata-artifacts
+          merge-multiple: true
+
+      - name: Build ${{ matrix.asset }}
+        id: build
+        run: |
+          make install-prebuilt-artifacts
+          make DEPS= "${KATA_ASSET}-tarball"
+          build_dir=$(readlink -f build)
+          # store-artifact does not work with symlink
+          mkdir -p kata-build && cp "${build_dir}"/kata-static-"${KATA_ASSET}"*.tar.* kata-build/.
+        env:
+          KATA_ASSET: ${{ matrix.asset }}
+          TAR_OUTPUT: ${{ matrix.asset }}.tar.gz
+          PUSH_TO_REGISTRY: ${{ inputs.push-to-registry }}
+          ARTEFACT_REGISTRY: ghcr.io
+          ARTEFACT_REGISTRY_USERNAME: ${{ github.actor }}
+          ARTEFACT_REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+          TARGET_BRANCH: ${{ inputs.target-branch }}
+          RELEASE: ${{ inputs.stage == 'release' && 'yes' || 'no' }}
+          GH_TOKEN: ${{ github.token }}
+
+      - name: store-artifact ${{ matrix.asset }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: kata-artifacts-s390x-${{ matrix.asset }}${{ inputs.tarball-suffix }}
+          path: kata-build/kata-static-${{ matrix.asset }}.tar.zst
+          retention-days: 15
+          if-no-files-found: error
+
+  # We don't need the binaries installed in the rootfs as part of the release tarball, so can delete them now we've built the rootfs
+  remove-rootfs-binary-artifacts:
+    name: remove-rootfs-binary-artifacts
+    runs-on: ubuntu-22.04
+    needs: build-asset-rootfs
+    strategy:
+      matrix:
+        asset:
+          - agent
+          - coco-guest-components
+          - pause-image
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.job }}-${{ github.event.pull_request.number || github.ref }}-s390x-${{ toJSON(matrix) }}
+      cancel-in-progress: true
+    steps:
+      - uses: geekyeggo/delete-artifact@176a747ab7e287e3ff4787bf8a148716375ca118 # v6.0.0
+        if: ${{ inputs.stage == 'release' }}
+        with:
+          name: kata-artifacts-s390x-${{ matrix.asset}}${{ inputs.tarball-suffix }}
+
+  build-asset-shim-v2:
+    name: build-asset-shim-v2
+    runs-on: ubuntu-24.04-s390x
+    needs: [build-asset, build-asset-rootfs, remove-rootfs-binary-artifacts]
+    permissions:
+      contents: read
+      packages: write # needed to push build artifacts to ghcr.io
+    strategy:
+      matrix:
+        asset:
+          - shim-v2-go
+          - shim-v2-rust
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.job }}-${{ github.event.pull_request.number || github.ref }}-s390x-${{ toJSON(matrix) }}
+      cancel-in-progress: true
+    steps:
+      - name: Login to Kata Containers quay.io
+        if: ${{ inputs.push-to-registry == 'yes' }}
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        with:
+          registry: quay.io
+          username: ${{ vars.QUAY_DEPLOYER_USERNAME }}
+          password: ${{ secrets.QUAY_DEPLOYER_PASSWORD }}
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ inputs.commit-hash }}
+          fetch-depth: 0 # This is needed in order to keep the commit ids history
+          persist-credentials: false
+
+      - name: Rebase atop of the latest target branch
+        run: |
+          ./tests/git-helper.sh "rebase-atop-of-the-latest-target-branch"
+        env:
+          TARGET_BRANCH: ${{ inputs.target-branch }}
+
+      - name: get-artifacts
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          pattern: kata-artifacts-s390x-*${{ inputs.tarball-suffix }}
+          path: kata-artifacts
+          merge-multiple: true
+
+      - name: Build ${{ matrix.asset }}
+        id: build
+        run: |
+          make install-prebuilt-artifacts
+          make DEPS= "${KATA_ASSET}-tarball"
+          build_dir=$(readlink -f build)
+          # store-artifact does not work with symlink
+          mkdir -p kata-build && cp "${build_dir}"/kata-static-"${KATA_ASSET}"*.tar.* kata-build/.
+        env:
+          KATA_ASSET: ${{ matrix.asset }}
+          TAR_OUTPUT: ${{ matrix.asset }}.tar.gz
+          PUSH_TO_REGISTRY: ${{ inputs.push-to-registry }}
+          ARTEFACT_REGISTRY: ghcr.io
+          ARTEFACT_REGISTRY_USERNAME: ${{ github.actor }}
+          ARTEFACT_REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+          TARGET_BRANCH: ${{ inputs.target-branch }}
+          RELEASE: ${{ inputs.stage == 'release' && 'yes' || 'no' }}
+          MEASURED_ROOTFS: no
+
+      - name: store-artifact ${{ matrix.asset }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: kata-artifacts-s390x-${{ matrix.asset }}${{ inputs.tarball-suffix }}
+          path: kata-build/kata-static-${{ matrix.asset }}.tar.zst
+          retention-days: 15
+          if-no-files-found: error
+
+  create-kata-tarball:
+    name: create-kata-tarball
+    runs-on: ubuntu-24.04-s390x
+    timeout-minutes: 10
+    needs:
+      - build-asset
+      - build-asset-rootfs
+      - build-asset-shim-v2
+    permissions:
+      contents: read
+      packages: write # needed to push build artifacts to ghcr.io
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ inputs.commit-hash }}
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+      - name: Rebase atop of the latest target branch
+        run: |
+          ./tests/git-helper.sh "rebase-atop-of-the-latest-target-branch"
+        env:
+          TARGET_BRANCH: ${{ inputs.target-branch }}
+      - name: get-artifacts
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          pattern: kata-artifacts-s390x-*${{ inputs.tarball-suffix }}
+          path: kata-artifacts
+          merge-multiple: true
+      - name: merge-artifacts
+        run: |
+          ./tools/packaging/kata-deploy/local-build/kata-deploy-merge-release-tarballs.sh kata-artifacts versions.yaml s390x
+        env:
+          RELEASE: ${{ inputs.stage == 'release' && 'yes' || 'no' }}
+      - name: Check kata tarball sizes (GitHub release asset limit)
+        run: |
+          # https://docs.github.com/en/repositories/releasing-projects-on-github/about-releases#storage-and-bandwidth-quotas
+          GITHUB_ASSET_MAX_BYTES=2147483648
+          for tarball in kata-static.tar.zst kata-go-static.tar.zst; do
+            tarball_size=$(stat -c "%s" "${tarball}")
+            if [[ "${tarball_size}" -ge "${GITHUB_ASSET_MAX_BYTES}" ]]; then
+              echo "::error::${tarball} size (${tarball_size} bytes) >= GitHub release asset limit (${GITHUB_ASSET_MAX_BYTES} bytes)"
+              exit 1
+            fi
+            echo "${tarball} size: ${tarball_size} bytes"
+          done
+      - name: store runtime-rs artifacts
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: kata-static-tarball-s390x${{ inputs.tarball-suffix }}
+          path: kata-static.tar.zst
+          retention-days: 15
+          if-no-files-found: error
+      - name: store Go runtime artifacts
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: kata-go-static-tarball-s390x${{ inputs.tarball-suffix }}
+          path: kata-go-static.tar.zst
+          retention-days: 15
+          if-no-files-found: error

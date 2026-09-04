@@ -1,0 +1,202 @@
+#!/usr/bin/env bats
+# Copyright (c) 2024 IBM Corporation
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
+load "${BATS_TEST_DIRNAME}/lib.sh"
+load "${BATS_TEST_DIRNAME}/confidential_common.sh"
+
+export KBS="${KBS:-false}"
+export SNAPSHOTTER="${SNAPSHOTTER:-}"
+export EXPERIMENTAL_FORCE_GUEST_PULL="${EXPERIMENTAL_FORCE_GUEST_PULL:-}"
+
+setup() {
+    if ! is_confidential_runtime_class; then
+        skip "Test not supported for ${KATA_HYPERVISOR}."
+    fi
+
+    if [ "${SNAPSHOTTER}" != "nydus" ] && [ -z "${EXPERIMENTAL_FORCE_GUEST_PULL}" ]; then
+        skip "Either SNAPSHOTTER=nydus or EXPERIMENTAL_FORCE_GUEST_PULL must be set for this test"
+    fi
+
+    setup_common || die "setup_common failed"
+    AUTHENTICATED_IMAGE="${AUTHENTICATED_IMAGE:-quay.io/kata-containers/confidential-containers-auth:test}"
+    authenticated_image_supplemental_groups="10"
+    AUTHENTICATED_IMAGE_USER=${AUTHENTICATED_IMAGE_USER:-}
+    AUTHENTICATED_IMAGE_PASSWORD=${AUTHENTICATED_IMAGE_PASSWORD:-}
+    CREDENTIALS_KBS_URI="kbs:///default/credentials/test"
+
+    if [[ -z ${AUTHENTICATED_IMAGE_USER} || -z ${AUTHENTICATED_IMAGE_PASSWORD} ]]; then
+        if [[ -n ${GITHUB_ACTION:-} ]]; then
+            die "User and/or password not supplied to authenticated registry test"
+        else
+            skip "running test locally due to missing user/password"
+        fi
+    fi
+
+    # shellcheck disable=SC2154 # BATS_FILE_TMPDIR is provided by bats.
+    setup_genpolicy_registry_auth \
+        "${AUTHENTICATED_IMAGE}" \
+        "${AUTHENTICATED_IMAGE_USER}" \
+        "${AUTHENTICATED_IMAGE_PASSWORD}" \
+        "${BATS_FILE_TMPDIR}/docker-genpolicy"
+    policy_settings_dir="$(create_tmp_policy_settings_dir "${pod_config_dir}")"
+
+    # Set up Kubernetes secret for the nydus-snapshotter metadata pull
+    kubectl delete secret cococred --ignore-not-found
+    kubectl create secret docker-registry cococred --docker-server="https://"$(echo "$AUTHENTICATED_IMAGE" | cut -d':' -f1) \
+    --docker-username="${AUTHENTICATED_IMAGE_USER}" --docker-password="${AUTHENTICATED_IMAGE_PASSWORD}"
+}
+
+function setup_kbs_credentials() {
+    image=$1
+    user=$2
+    password=$3
+
+    if [ "${KBS}" = "false" ]; then
+        skip "Test skipped as KBS not setup"
+    fi
+
+    registry_credential_encoded=$(echo "${user}:${password}" | base64 -w 0)
+    registry=$(echo "$image" | cut -d':' -f1)
+
+    auth_json=$(echo "{
+    \"auths\": {
+        \"${registry}\": {
+            \"auth\": \"${registry_credential_encoded}\"
+        }
+    }
+}")
+
+    if ! is_confidential_hardware; then
+        kbs_set_allow_all_resources
+    fi
+
+    kbs_set_resource "default" "credentials" "test" "${auth_json}"
+}
+
+function get_initdata_with_auth_registry_config() {
+
+    image_section_with_policy=$(cat << EOF
+[image]
+authenticated_registry_credentials_uri = "${CREDENTIALS_KBS_URI}"
+EOF
+    )
+
+    get_initdata_with_cdh_image_section "${image_section_with_policy}"
+}
+
+@test "Test that creating a container from an authenticated image, with correct credentials works" {
+
+    setup_kbs_credentials "${AUTHENTICATED_IMAGE}" ${AUTHENTICATED_IMAGE_USER} ${AUTHENTICATED_IMAGE_PASSWORD}
+
+    create_coco_pod_yaml "${AUTHENTICATED_IMAGE}" "" "kbs:///default/credentials/test" "" "resource" "$node" \
+        "" "" "${authenticated_image_supplemental_groups}"
+    yq -i ".spec.imagePullSecrets[0].name = \"cococred\"" "${kata_pod}"
+    auto_generate_policy "${policy_settings_dir}" "${kata_pod}"
+
+    # For debug sake
+    echo "Pod ${kata_pod}: $(cat ${kata_pod})"
+
+    k8s_create_pod "${kata_pod}"
+    echo "Kata pod test-e2e from authenticated image is running"
+}
+
+@test "Test that creating a container from an authenticated image, with incorrect credentials fails" {
+
+    setup_kbs_credentials "${AUTHENTICATED_IMAGE}" ${AUTHENTICATED_IMAGE_USER} "junk"
+
+    create_coco_pod_yaml "${AUTHENTICATED_IMAGE}" "" "kbs:///default/credentials/test" "" "resource" "$node" \
+        "" "" "${authenticated_image_supplemental_groups}"
+    yq -i ".spec.imagePullSecrets[0].name = \"cococred\"" "${kata_pod}"
+    auto_generate_policy "${policy_settings_dir}" "${kata_pod}"
+
+    # For debug sake
+    echo "Pod ${kata_pod}: $(cat ${kata_pod})"
+
+    assert_pod_fail "${kata_pod}"
+    assert_logs_contain "${node}" kata "${node_start_time}" "Not authorized"
+}
+
+@test "Test that creating a container from an authenticated image, with no credentials fails" {
+
+    # Create pod config, but don't add agent.image_registry_auth annotation
+    create_coco_pod_yaml "${AUTHENTICATED_IMAGE}" "" "" "" "resource" "$node" \
+        "" "" "${authenticated_image_supplemental_groups}"
+    yq -i ".spec.imagePullSecrets[0].name = \"cococred\"" "${kata_pod}"
+    auto_generate_policy "${policy_settings_dir}" "${kata_pod}"
+
+    # For debug sake
+    echo "Pod ${kata_pod}: $(cat ${kata_pod})"
+
+    assert_pod_fail "${kata_pod}"
+    assert_logs_contain "${node}" kata "${node_start_time}" "Not authorized"
+}
+
+@test "Test that creating a container from an authenticated image, with correct credentials works (with initdata)" {
+
+
+    setup_kbs_credentials "${AUTHENTICATED_IMAGE}" ${AUTHENTICATED_IMAGE_USER} ${AUTHENTICATED_IMAGE_PASSWORD}
+
+    initdata=$(get_initdata_with_auth_registry_config)
+    create_coco_pod_yaml_with_annotations "${AUTHENTICATED_IMAGE}" "" "${initdata}" "${node}" \
+        "" "" "${authenticated_image_supplemental_groups}"
+    yq -i ".spec.imagePullSecrets[0].name = \"cococred\"" "${kata_pod}"
+    auto_generate_policy "${policy_settings_dir}" "${kata_pod}"
+
+    # For debug sake
+    echo "Pod ${kata_pod}: $(cat ${kata_pod})"
+
+    k8s_create_pod "${kata_pod}"
+    echo "Kata pod test-e2e from authenticated image is running"
+}
+
+@test "Test that creating a container from an authenticated image, with incorrect credentials fails (with initdata)" {
+
+
+    setup_kbs_credentials "${AUTHENTICATED_IMAGE}" ${AUTHENTICATED_IMAGE_USER} "junk"
+
+    initdata=$(get_initdata_with_auth_registry_config)
+    create_coco_pod_yaml_with_annotations "${AUTHENTICATED_IMAGE}" "" "${initdata}" "${node}" \
+        "" "" "${authenticated_image_supplemental_groups}"
+    yq -i ".spec.imagePullSecrets[0].name = \"cococred\"" "${kata_pod}"
+    auto_generate_policy "${policy_settings_dir}" "${kata_pod}"
+
+    # For debug sake
+    echo "Pod ${kata_pod}: $(cat ${kata_pod})"
+
+    assert_pod_fail "${kata_pod}"
+    assert_logs_contain "${node}" kata "${node_start_time}" "Not authorized"
+}
+
+@test "Test that creating a container from an authenticated image, with no credentials fails (with initdata)" {
+
+
+    # Create pod config, but don't add image_registry_auth to initdata
+    initdata=$(get_initdata_with_cdh_image_section "")
+    create_coco_pod_yaml_with_annotations "${AUTHENTICATED_IMAGE}" "" "${initdata}" "${node}" \
+        "" "" "${authenticated_image_supplemental_groups}"
+    yq -i ".spec.imagePullSecrets[0].name = \"cococred\"" "${kata_pod}"
+    auto_generate_policy "${policy_settings_dir}" "${kata_pod}"
+
+    # For debug sake
+    echo "Pod ${kata_pod}: $(cat ${kata_pod})"
+
+    assert_pod_fail "${kata_pod}"
+    assert_logs_contain "${node}" kata "${node_start_time}" "Not authorized"
+}
+
+teardown() {
+    if ! is_confidential_runtime_class; then
+        skip "Test not supported for ${KATA_HYPERVISOR}."
+    fi
+
+    if [ "${SNAPSHOTTER}" != "nydus" ] && [ -z "${EXPERIMENTAL_FORCE_GUEST_PULL}" ]; then
+        skip "Either SNAPSHOTTER=nydus or EXPERIMENTAL_FORCE_GUEST_PULL must be set for this test"
+    fi
+
+    delete_tmp_policy_settings_dir "${policy_settings_dir:-}"
+    confidential_teardown_common "${node}" "${node_start_time:-}"
+    kubectl delete secret cococred --ignore-not-found
+}

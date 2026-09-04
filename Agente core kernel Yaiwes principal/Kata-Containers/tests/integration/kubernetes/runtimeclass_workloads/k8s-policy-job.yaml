@@ -1,0 +1,31 @@
+#
+# Copyright (c) 2024 Microsoft
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: policy-job
+spec:
+  template:
+    spec:
+      runtimeClassName: kata
+      securityContext:
+        supplementalGroups: [10]
+      containers:
+        - name: hello
+          image: quay.io/prometheus/busybox:latest
+          command: ["/bin/sh"]
+          args:
+            - "-c"
+            - echo
+            - hello
+          env:
+            - name: var1
+              value: val1
+            - name: var2
+          securityContext:
+            readOnlyRootFilesystem: true
+      restartPolicy: Never
+  backoffLimit: 4

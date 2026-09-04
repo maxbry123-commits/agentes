@@ -1,0 +1,113 @@
+// Copyright (c) 2019 Ant Financial
+// Copyright (c) 2023 Alibaba Cloud
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+
+use std::fs;
+use std::io::ErrorKind;
+use std::path::Path;
+use std::sync::Arc;
+
+use crate::storage::{common_storage_handler, new_device, StorageContext, StorageHandler};
+use anyhow::{anyhow, Context, Result};
+use kata_types::device::{DRIVER_OVERLAYFS_TYPE, DRIVER_VIRTIOFS_TYPE};
+use kata_types::mount::{StorageDevice, KATA_VOLUME_OVERLAYFS_CREATE_DIR};
+use protocols::agent::Storage;
+use tracing::instrument;
+
+#[derive(Debug)]
+pub struct OverlayfsHandler {}
+
+fn ensure_directory_exists(path: &Path) -> Result<()> {
+    match fs::create_dir_all(path) {
+        Ok(()) => Ok(()),
+        Err(err) if err.kind() == ErrorKind::AlreadyExists && path.is_dir() => Ok(()),
+        Err(err) if err.raw_os_error() == Some(libc::ENOSYS) => {
+            if path.is_dir() {
+                Ok(())
+            } else {
+                Err(err).context(format!(
+                    "failed to create overlay directory {}: filesystem does not support mkdir",
+                    path.display()
+                ))
+            }
+        }
+        Err(err) => Err(err).context(format!(
+            "failed to create overlay directory {}",
+            path.display()
+        )),
+    }
+}
+
+#[async_trait::async_trait]
+impl StorageHandler for OverlayfsHandler {
+    #[instrument]
+    fn driver_types(&self) -> &[&str] {
+        &[DRIVER_OVERLAYFS_TYPE]
+    }
+
+    #[instrument]
+    async fn create_device(
+        &self,
+        mut storage: Storage,
+        ctx: &mut StorageContext,
+    ) -> Result<Arc<dyn StorageDevice>> {
+        if storage
+            .options
+            .iter()
+            .any(|e| e == "io.katacontainers.fs-opt.overlay-rw")
+        {
+            let cid = ctx
+                .cid
+                .clone()
+                .ok_or_else(|| anyhow!("No container id in rw overlay"))?;
+            let cpath = Path::new(crate::rpc::CONTAINER_BASE).join(cid);
+            let work = cpath.join("work");
+            let upper = cpath.join("upper");
+
+            fs::create_dir_all(&work).context("Creating overlay work directory")?;
+            fs::create_dir_all(&upper).context("Creating overlay upper directory")?;
+
+            storage.fstype = "overlay".into();
+            storage
+                .options
+                .push(format!("upperdir={}", upper.to_string_lossy()));
+            storage
+                .options
+                .push(format!("workdir={}", work.to_string_lossy()));
+        }
+        let overlay_create_dir_prefix = &(KATA_VOLUME_OVERLAYFS_CREATE_DIR.to_string() + "=");
+        for driver_option in &storage.driver_options {
+            if let Some(dir) = driver_option
+                .as_str()
+                .strip_prefix(overlay_create_dir_prefix)
+            {
+                ensure_directory_exists(Path::new(dir))?;
+            }
+        }
+        let path = common_storage_handler(ctx.logger, &storage)?;
+        new_device(path)
+    }
+}
+
+#[derive(Debug)]
+pub struct VirtioFsHandler {}
+
+#[async_trait::async_trait]
+impl StorageHandler for VirtioFsHandler {
+    #[instrument]
+    fn driver_types(&self) -> &[&str] {
+        &[DRIVER_VIRTIOFS_TYPE]
+    }
+
+    #[instrument]
+    async fn create_device(
+        &self,
+        storage: Storage,
+        ctx: &mut StorageContext,
+    ) -> Result<Arc<dyn StorageDevice>> {
+        let path = common_storage_handler(ctx.logger, &storage)?;
+        new_device(path)
+    }
+}

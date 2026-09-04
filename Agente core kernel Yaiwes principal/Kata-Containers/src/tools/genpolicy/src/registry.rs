@@ -1,0 +1,1015 @@
+// Copyright (c) 2023 Microsoft Corporation
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+
+// Allow Docker image config field names.
+#![allow(non_snake_case)]
+
+use crate::containerd;
+use crate::layers_cache::ImageLayersCache;
+use crate::policy;
+use crate::utils::Config;
+
+use anyhow::{anyhow, bail, Result};
+use docker_credential::{CredentialRetrievalError, DockerCredential};
+use log::{debug, info, warn};
+use oci_client::{
+    client::{linux_amd64_resolver, ClientConfig, ClientProtocol},
+    manifest,
+    secrets::RegistryAuth,
+    Client, Reference,
+};
+use serde::{Deserialize, Serialize};
+use std::{
+    collections::BTreeMap,
+    io::Read,
+    io::Write,
+    path::{Component, Path},
+};
+use tokio::io::AsyncWriteExt;
+
+/// Container image properties obtained from an OCI repository.
+#[derive(Clone, Debug, Default)]
+pub struct Container {
+    #[allow(dead_code)]
+    pub image: String,
+    pub config_layer: DockerConfigLayer,
+    pub passwd: String,
+    pub group: String,
+}
+
+/// Image config layer properties.
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct DockerConfigLayer {
+    architecture: String,
+    pub config: DockerImageConfig,
+    pub rootfs: DockerRootfs,
+}
+
+/// See: https://docs.docker.com/reference/dockerfile/.
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct DockerImageConfig {
+    User: Option<String>,
+    Tty: Option<bool>,
+    Env: Option<Vec<String>>,
+    Cmd: Option<Vec<String>>,
+    WorkingDir: Option<String>,
+    Entrypoint: Option<Vec<String>>,
+    pub Volumes: Option<BTreeMap<String, DockerVolumeHostDirectory>>,
+}
+
+/// Container rootfs information.
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct DockerRootfs {
+    r#type: String,
+    pub diff_ids: Vec<String>,
+}
+
+/// This application's image layer properties.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ImageLayer {
+    pub diff_id: String,
+    pub passwd: String,
+    pub group: String,
+}
+
+/// See https://docs.docker.com/reference/dockerfile/#volume.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DockerVolumeHostDirectory {
+    // This struct is empty because, according to the documentation:
+    // "The VOLUME instruction does not support specifying a host-dir
+    // parameter. You must specify the mountpoint when you create or
+    // run the container."
+}
+
+/// A single record in a Unix passwd file.
+#[derive(Debug)]
+struct PasswdRecord {
+    pub user: String,
+    #[allow(dead_code)]
+    pub validate: bool,
+    pub uid: u32,
+    pub gid: u32,
+    #[allow(dead_code)]
+    pub gecos: String,
+    #[allow(dead_code)]
+    pub home: String,
+    #[allow(dead_code)]
+    pub shell: String,
+}
+
+/// A single record in a Unix group file.
+#[derive(Debug)]
+struct GroupRecord {
+    #[allow(dead_code)]
+    pub name: String,
+    #[allow(dead_code)]
+    pub validate: bool,
+    pub gid: u32,
+    pub user_list: Vec<String>,
+}
+
+/// Path to /etc/passwd in a container layer's tar file.
+const PASSWD_FILE_TAR_PATH: &str = "etc/passwd";
+
+/// Path to /etc/group in a container layer's tar file.
+const GROUP_FILE_TAR_PATH: &str = "etc/group";
+
+/// Path to a file indicating a whiteout of the /etc/passwd file in a container
+/// layer's tar file (i.e., /etc/passwd was deleted in the layer).
+const PASSWD_FILE_WHITEOUT_TAR_PATH: &str = "etc/.wh.passwd";
+
+/// Path to a file indicating a whiteout of the /etc/group file in a container
+/// layer's tar file (i.e., /etc/group was deleted in the layer).
+const GROUP_FILE_WHITEOUT_TAR_PATH: &str = "etc/.wh.group";
+
+/// A marker used to track whether a particular container layer has had its
+/// /etc/* file deleted, and thus any such files read from previous, lower
+/// layers should be discarded.
+pub const WHITEOUT_MARKER: &str = "WHITEOUT";
+
+impl Container {
+    pub async fn new(config: &Config, image: &str) -> Result<Self> {
+        info!("============================================");
+        info!("Pulling manifest and config for {image}");
+        let image_string = image.to_string();
+        let reference: Reference = image_string.parse().unwrap();
+        let auth = build_auth(&reference);
+
+        let mut client = Client::new(ClientConfig {
+            protocol: ClientProtocol::HttpsExcept(config.insecure_registries.clone()),
+            platform_resolver: Some(Box::new(linux_amd64_resolver)),
+            ..Default::default()
+        });
+
+        let (manifest, digest_hash, config_layer_str) = match client
+            .pull_manifest_and_config(&reference, &auth)
+            .await
+        {
+            Ok((m, d, c)) => (m, d, c),
+            Err(oci_client::errors::OciDistributionError::AuthenticationFailure(message)) => {
+                panic!("Container image registry authentication failure ({}). Are docker credentials set-up for current user?", &message);
+            }
+            Err(e) => {
+                panic!(
+                    "Failed to pull container image manifest and config - error: {:#?}",
+                    &e
+                );
+            }
+        };
+
+        debug!("Container:new: digest_hash: {:?}", digest_hash);
+        debug!(
+            "Container:new: manifest: {}",
+            serde_json::to_string_pretty(&manifest).unwrap()
+        );
+        debug!("Container:new: config_layer string: {config_layer_str}");
+        let config_layer: DockerConfigLayer = serde_json::from_str(&config_layer_str).unwrap();
+        debug!("Container:new: config_layer: {:?}", &config_layer);
+
+        let mut passwd = String::new();
+        let mut group = String::new();
+
+        let image_layers = get_image_layers(
+            &config.layers_cache,
+            &mut client,
+            &reference,
+            &manifest,
+            &config_layer,
+        )
+        .await
+        .unwrap();
+
+        // Find the last layer with an /etc/* file, respecting whiteouts.
+        info!("Parsing users and groups in image layers");
+        for layer in &image_layers {
+            if layer.passwd == WHITEOUT_MARKER {
+                passwd = String::new();
+            } else if !layer.passwd.is_empty() {
+                passwd = layer.passwd.clone();
+                debug!("Container:new: Found in image layer passwd = \n{passwd}");
+            }
+
+            if layer.group == WHITEOUT_MARKER {
+                group = String::new();
+            } else if !layer.group.is_empty() {
+                group = layer.group.clone();
+                debug!("Container:new: Found in image layer group = \n{group}");
+            }
+        }
+
+        Ok(Container {
+            image: image_string,
+            config_layer,
+            passwd,
+            group,
+        })
+    }
+
+    pub fn get_gid_from_passwd_uid(&self, uid: u32) -> Result<u32> {
+        if self.passwd.is_empty() {
+            return Err(anyhow!(
+                "No /etc/passwd file is available, unable to parse gids from uid"
+            ));
+        }
+        match parse_passwd_file(&self.passwd) {
+            Ok(records) => {
+                if let Some(record) = records.iter().find(|&r| r.uid == uid) {
+                    debug!(
+                        "parse_passwd_file: found GID = {} for UID = {uid} in image layer",
+                        record.gid
+                    );
+                    Ok(record.gid)
+                } else {
+                    Err(anyhow!("Failed to find uid {} in /etc/passwd", uid))
+                }
+            }
+            Err(inner_e) => Err(anyhow!("Failed to parse /etc/passwd - error {inner_e}")),
+        }
+    }
+
+    /// Whether the image configuration explicitly selects a process user.
+    pub fn has_configured_user(&self) -> bool {
+        self.config_layer
+            .config
+            .User
+            .as_ref()
+            .is_some_and(|user| !user.is_empty())
+    }
+
+    pub fn get_uid_gid_from_passwd_user(&self, user: String) -> Result<(u32, u32)> {
+        if user.is_empty() {
+            return Err(anyhow!("User is empty"));
+        }
+
+        if self.passwd.is_empty() {
+            return Err(anyhow!(
+                "No /etc/passwd file is available, unable to parse uid/gid from user"
+            ));
+        }
+
+        match parse_passwd_file(&self.passwd) {
+            Ok(records) => {
+                if let Some(record) = records.iter().find(|&r| r.user == user) {
+                    debug!(
+                        "parse_passwd_file: found GID = {} for user = {user} in image layer",
+                        record.gid
+                    );
+                    Ok((record.uid, record.gid))
+                } else {
+                    Err(anyhow!("Failed to find user {} in /etc/passwd", user))
+                }
+            }
+            Err(inner_e) => Err(anyhow!("Failed to parse /etc/passwd - error {inner_e}.")),
+        }
+    }
+
+    fn get_user_from_passwd_uid(&self, uid: u32) -> Result<String> {
+        for record in parse_passwd_file(&self.passwd)? {
+            if record.uid == uid {
+                return Ok(record.user);
+            }
+        }
+        Err(anyhow!("No user found with uid {uid}"))
+    }
+
+    pub fn get_additional_groups_from_uid(&self, uid: u32) -> Result<Vec<u32>> {
+        if self.group.is_empty() || self.passwd.is_empty() {
+            return Err(anyhow!(
+                "No /etc/group, /etc/passwd file is available, unable to parse additional group membership from uid"
+            ));
+        }
+
+        let user = self.get_user_from_passwd_uid(uid)?;
+
+        match parse_group_file(&self.group) {
+            Ok(records) => {
+                let mut groups = Vec::new();
+                for record in records.iter() {
+                    record.user_list.iter().for_each(|u| {
+                        if u == &user && &record.name != u {
+                            // The second condition works around containerd bug
+                            // https://github.com/containerd/containerd/issues/11937.
+                            debug!(
+                                "get_additional_groups_from_uid: found AdditionalGID = {} for user = {user} in image layer",
+                                record.gid
+                            );
+                            groups.push(record.gid);
+                        }
+                    });
+                }
+                Ok(groups)
+            }
+            Err(inner_e) => Err(anyhow!("Failed to parse /etc/group - error {inner_e}")),
+        }
+    }
+
+    fn parse_user_string(&self, user: &str) -> u32 {
+        if user.is_empty() {
+            return 0;
+        }
+
+        match user.parse::<u32>() {
+            Ok(uid) => uid,
+            // If the user is not a number, interpret it as a user name.
+            Err(outer_e) => {
+                debug!(
+                    "parse_user_string: failed to parse {} as u32, using it as a user name - error {outer_e}",
+                    user
+                );
+                match self.get_uid_gid_from_passwd_user(user.to_string().clone()) {
+                    Ok((uid, _)) => {
+                        debug!("parse_user_string: parsed user = {user} to uid = {uid}");
+                        uid
+                    }
+                    Err(err) => {
+                        warn!(
+                            "parse_user_string: could not resolve named user {}, defaulting to uid 0: {}",
+                            user, err
+                        );
+                        0
+                    }
+                }
+            }
+        }
+    }
+
+    /// Parses the group component of an image's `Config.User`.
+    ///
+    /// Numeric groups are used directly and named groups are resolved through
+    /// the image's `/etc/group`. An empty or unresolvable group returns `None`,
+    /// leaving the caller to resolve the user's primary GID through
+    /// `/etc/passwd`.
+    fn parse_group_string(&self, group: &str) -> Option<u32> {
+        if group.is_empty() {
+            return None;
+        }
+
+        if let Ok(gid) = group.parse::<u32>() {
+            return Some(gid);
+        }
+
+        parse_group_file(&self.group)
+            .ok()?
+            .iter()
+            .find(|record| record.name == group)
+            .map(|record| record.gid)
+    }
+
+    // Convert Docker image config to policy data.
+    pub fn get_process(
+        &self,
+        process: &mut policy::KataProcess,
+        yaml_has_command: bool,
+        yaml_has_args: bool,
+        is_pause_container: bool,
+    ) {
+        let docker_config = &self.config_layer.config;
+        debug!(
+            "Container::get_process: getting process field for docker config with User = {:?}",
+            &docker_config.User
+        );
+
+        /*
+         * The user field may:
+         *
+         * 1. Be empty
+         * 2. Contain only a UID
+         * 3. Contain a UID:GID pair, in that format
+         * 4. Contain a user name, which we need to translate into a UID/GID pair
+         * 5. Contain a user name:group name pair
+         * 6. Be erroneous, somehow
+         *
+         * Kubernetes constructs workload and pause container users through
+         * different paths:
+         *
+         * For a workload container, kubelet's getImageUser calls CRI
+         * ImageStatus, which exposes only a UID or user name. Kubelet copies
+         * that value into the container's CRI security context. containerd
+         * prioritizes this CRI value over the original imageConfig.User, so an
+         * image group component is no longer available. Keep genpolicy aligned
+         * with this path: USER user:group behaves like USER user, and USER
+         * uid:gid behaves like USER uid.
+         *
+         * Kubelet does not resolve the pause image user. In
+         * sandboxContainerSpecOpts, containerd falls back directly to the full
+         * imageConfig.User and passes it to oci.WithUser. oci.WithUser parses
+         * and applies both user and group components, so genpolicy must retain
+         * the image group for a pause container.
+         *
+         * The presence of Config.User matters even when the resulting IDs are
+         * the same. With no pod-level user, an absent Config.User and
+         * Config.User="0:0" both produce UID=0 and GID=0, but only the explicit
+         * value invokes oci.WithUser and replaces the pod's supplemental groups
+         * with the primary GID.
+         *
+         * Relevant upstream functions:
+         * - Kubernetes: getImageUser and determineEffectiveSecurityContext
+         * - containerd: sandboxContainerSpecOpts and oci.WithUser
+         */
+        if let Some(image_user) = &docker_config.User {
+            if !image_user.is_empty() {
+                let mut image_gid = None;
+                if image_user.contains(':') {
+                    debug!(
+                        "Container::get_process: splitting Docker config user = {:?}",
+                        image_user
+                    );
+                    let user: Vec<&str> = image_user.split(':').collect();
+                    let parts_count = user.len();
+                    if parts_count != 2 {
+                        warn!(
+                            "Container::get_process: failed to split user, expected two parts, got {}, using uid = gid = 0",
+                            parts_count
+                        );
+                    } else {
+                        debug!(
+                            "Container::get_process: parsing uid from user[0] = {}",
+                            &user[0]
+                        );
+                        process.User.UID = self.parse_user_string(user[0]);
+
+                        if is_pause_container {
+                            image_gid = self.parse_group_string(user[1]);
+                            debug!(
+                                "Container::get_process: parsed pause GID = {:?} from image user",
+                                image_gid
+                            );
+                        } else {
+                            debug!(
+                                "Container::get_process: overriding OCI container GID with UID:GID mapping from /etc/passwd"
+                            );
+                        }
+                    }
+                } else {
+                    debug!(
+                        "Container::get_process: parsing uid from image_user = {}",
+                        image_user
+                    );
+                    process.User.UID = self.parse_user_string(image_user);
+
+                    debug!("Container::get_process: Using UID:GID mapping from /etc/passwd");
+                }
+
+                let gid = image_gid
+                    .map(Ok)
+                    .unwrap_or_else(|| self.get_gid_from_passwd_uid(process.User.UID));
+                match gid {
+                    Ok(gid) => {
+                        process.User.GID = gid;
+                        debug!(
+                            "Container::get_process: set GID = {gid} from container image for UID = {}",
+                            process.User.UID
+                        );
+
+                        process.User.AdditionalGids.insert(gid);
+                        debug!(
+                            "get_container_process: inserted GID = {gid} into AdditionalGids: User = {:?}",
+                            &process.User
+                        );
+                    }
+                    Err(e) => {
+                        debug!(
+                            "Container::get_process: no GID for UID = {} in container image, error {e}",
+                            process.User.UID
+                        );
+                    }
+                }
+            }
+        }
+
+        if let Some(terminal) = docker_config.Tty {
+            process.Terminal = terminal;
+        } else {
+            process.Terminal = false;
+        }
+
+        assert!(process.Env.is_empty());
+        if let Some(config_env) = &docker_config.Env {
+            for env in config_env {
+                process.Env.push(env.clone());
+            }
+        } else {
+            containerd::get_default_unix_env(&mut process.Env);
+        }
+
+        let policy_args = &mut process.Args;
+        debug!(
+            "Container::get_process: already existing policy args: {:?}",
+            policy_args
+        );
+
+        if let Some(entry_points) = &docker_config.Entrypoint {
+            debug!(
+                "Container::get_process: image Entrypoint: {:?}",
+                entry_points
+            );
+            if !yaml_has_command {
+                debug!("Container::get_process: inserting Entrypoint into policy args");
+
+                let mut reversed_entry_points = entry_points.clone();
+                reversed_entry_points.reverse();
+
+                for entry_point in reversed_entry_points {
+                    policy_args.insert(0, entry_point.clone());
+                }
+            } else {
+                debug!("Container::get_process: ignoring image Entrypoint because YAML specified the container command");
+            }
+        } else {
+            debug!("Container::get_process: no image Entrypoint");
+        }
+
+        debug!(
+            "Container::get_process: updated policy args: {:?}",
+            policy_args
+        );
+
+        if yaml_has_command {
+            debug!("Container::get_process: ignoring image Cmd because YAML specified the container command");
+        } else if yaml_has_args {
+            debug!("Container::get_process: ignoring image Cmd because YAML specified the container args");
+        } else if let Some(commands) = &docker_config.Cmd {
+            debug!(
+                "container::get_process: adding to policy args the image Cmd: {:?}",
+                commands
+            );
+
+            for cmd in commands {
+                policy_args.push(cmd.clone());
+            }
+        } else {
+            debug!("Container::get_process: image Cmd field is not present");
+        }
+
+        debug!(
+            "Container::get_process: updated policy args: {:?}",
+            policy_args
+        );
+
+        if let Some(working_dir) = &docker_config.WorkingDir {
+            if !working_dir.is_empty() {
+                process.Cwd.clone_from(working_dir);
+            }
+        }
+
+        debug!("Container::get_process: succeeded.");
+    }
+}
+
+async fn get_image_layers(
+    layers_cache: &ImageLayersCache,
+    client: &mut Client,
+    reference: &Reference,
+    manifest: &manifest::OciImageManifest,
+    config_layer: &DockerConfigLayer,
+) -> Result<Vec<ImageLayer>> {
+    let mut layer_index = 0;
+    let mut layers = Vec::new();
+
+    for layer in &manifest.layers {
+        if layer
+            .media_type
+            .eq(manifest::IMAGE_DOCKER_LAYER_GZIP_MEDIA_TYPE)
+            || layer.media_type.eq(manifest::IMAGE_LAYER_GZIP_MEDIA_TYPE)
+        {
+            if layer_index < config_layer.rootfs.diff_ids.len() {
+                let mut imageLayer = get_users_from_layer(
+                    layers_cache,
+                    client,
+                    reference,
+                    &layer.digest,
+                    &config_layer.rootfs.diff_ids[layer_index].clone(),
+                )
+                .await?;
+                imageLayer.diff_id = config_layer.rootfs.diff_ids[layer_index].clone();
+                layers.push(imageLayer);
+            } else {
+                return Err(anyhow!("Too many Docker gzip layers"));
+            }
+
+            layer_index += 1;
+        }
+    }
+
+    Ok(layers)
+}
+
+async fn get_users_from_layer(
+    layers_cache: &ImageLayersCache,
+    client: &mut Client,
+    reference: &Reference,
+    layer_digest: &str,
+    diff_id: &str,
+) -> Result<ImageLayer> {
+    if let Some(layer) = layers_cache.get_layer(diff_id) {
+        info!("get_users_from_layer: using cache file");
+        return Ok(layer);
+    }
+
+    let temp_dir = tempfile::tempdir_in(".")?;
+    let base_dir = temp_dir.path();
+    // Use file names supported by both Linux and Windows.
+    let file_name = str::replace(layer_digest, ":", "-");
+    let mut decompressed_path = base_dir.join(file_name);
+    decompressed_path.set_extension("tar");
+
+    let mut compressed_path = decompressed_path.clone();
+    compressed_path.set_extension("gz");
+
+    if let Err(e) = create_decompressed_layer_file(
+        client,
+        reference,
+        layer_digest,
+        &decompressed_path,
+        &compressed_path,
+    )
+    .await
+    {
+        bail!(format!("Failed to decompress image layer, error {e}"));
+    };
+
+    match get_users_from_decompressed_layer(&decompressed_path) {
+        Err(e) => {
+            temp_dir.close()?;
+            bail!(format!("Failed to get users from image layer, error {e}"));
+        }
+        Ok((passwd, group)) => {
+            let layer = ImageLayer {
+                diff_id: diff_id.to_string(),
+                passwd,
+                group,
+            };
+            layers_cache.insert_layer(&layer);
+            Ok(layer)
+        }
+    }
+}
+
+async fn create_decompressed_layer_file(
+    client: &mut Client,
+    reference: &Reference,
+    layer_digest: &str,
+    decompressed_path: &Path,
+    compressed_path: &Path,
+) -> Result<()> {
+    info!(
+        "create_decompressed_layer_file: pulling layer {:?}",
+        layer_digest
+    );
+    let mut file = tokio::fs::File::create(&compressed_path)
+        .await
+        .map_err(|e| anyhow!(e))?;
+    client
+        .pull_blob(reference, layer_digest, &mut file)
+        .await
+        .map_err(|e| anyhow!(e))?;
+    file.flush().await.map_err(|e| anyhow!(e))?;
+
+    info!("create_decompressed_layer_file: decompressing layer");
+    let compressed_file = std::fs::File::open(compressed_path).map_err(|e| anyhow!(e))?;
+    let mut decompressed_file = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(decompressed_path)?;
+    let mut gz_decoder = flate2::read::GzDecoder::new(compressed_file);
+    std::io::copy(&mut gz_decoder, &mut decompressed_file).map_err(|e| anyhow!(e))?;
+
+    decompressed_file.flush().map_err(|e| anyhow!(e))?;
+    Ok(())
+}
+
+pub fn get_users_from_decompressed_layer(path: &Path) -> Result<(String, String)> {
+    let file = std::fs::File::open(path)?;
+    let mut passwd = String::new();
+    let mut group = String::new();
+    let (mut found_passwd, mut found_group) = (false, false);
+    for entry_wrap in tar::Archive::new(file).entries()? {
+        let mut entry = entry_wrap?;
+        let entry_path = entry.header().path()?;
+        let Some(path_str) = normalized_layer_path(&entry_path) else {
+            continue;
+        };
+        if path_str == PASSWD_FILE_TAR_PATH {
+            entry.read_to_string(&mut passwd)?;
+            found_passwd = true;
+            if found_passwd && found_group {
+                break;
+            }
+        } else if path_str == PASSWD_FILE_WHITEOUT_TAR_PATH {
+            passwd = WHITEOUT_MARKER.to_owned();
+            found_passwd = true;
+            if found_passwd && found_group {
+                break;
+            }
+        } else if path_str == GROUP_FILE_TAR_PATH {
+            entry.read_to_string(&mut group)?;
+            found_group = true;
+            if found_passwd && found_group {
+                break;
+            }
+        } else if path_str == GROUP_FILE_WHITEOUT_TAR_PATH {
+            group = WHITEOUT_MARKER.to_owned();
+            found_group = true;
+            if found_passwd && found_group {
+                break;
+            }
+        }
+    }
+
+    Ok((passwd, group))
+}
+
+fn normalized_layer_path(path: &Path) -> Option<String> {
+    let mut components = Vec::new();
+
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::Normal(part) => components.push(part.to_str()?),
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => return None,
+        }
+    }
+
+    if components.is_empty() {
+        return None;
+    }
+
+    Some(components.join("/"))
+}
+
+pub async fn get_container(config: &Config, image: &str) -> Result<Container> {
+    if let Some(socket_path) = &config.containerd_socket_path {
+        return Container::new_containerd_pull(config, image, socket_path).await;
+    }
+    Container::new(config, image).await
+}
+
+fn build_auth(reference: &Reference) -> RegistryAuth {
+    debug!("build_auth: {:?}", reference);
+
+    let server = reference
+        .resolve_registry()
+        .strip_suffix('/')
+        .unwrap_or_else(|| reference.resolve_registry());
+
+    match docker_credential::get_credential(server) {
+        Ok(DockerCredential::UsernamePassword(username, password)) => {
+            debug!("build_auth: Found docker credentials");
+            return RegistryAuth::Basic(username, password);
+        }
+        Ok(DockerCredential::IdentityToken(_)) => {
+            warn!("build_auth: Cannot use contents of docker config, identity token not supported. Using anonymous access.");
+        }
+        Err(CredentialRetrievalError::ConfigNotFound) => {
+            debug!("build_auth: Docker config not found - using anonymous access.");
+        }
+        Err(CredentialRetrievalError::NoCredentialConfigured) => {
+            debug!("build_auth: Docker credentials not configured - using anonymous access.");
+        }
+        Err(CredentialRetrievalError::ConfigReadError) => {
+            debug!("build_auth: Cannot read docker credentials - using anonymous access.");
+        }
+        Err(CredentialRetrievalError::HelperFailure {
+            helper: _,
+            stdout,
+            stderr,
+        }) => {
+            if stdout == "credentials not found in native keychain\n" {
+                // On WSL, this error is generated when credentials are not
+                // available in ~/.docker/config.json.
+                debug!("build_auth: Docker credentials not found - using anonymous access.");
+            } else {
+                warn!("build_auth: Docker credentials not found - using anonymous access. stderr = {}, stdout = {}",
+                    &stderr, &stdout);
+            }
+        }
+        Err(e) => panic!("Error handling docker configuration file: {e}"),
+    }
+
+    RegistryAuth::Anonymous
+}
+
+fn parse_passwd_file(passwd: &str) -> Result<Vec<PasswdRecord>> {
+    let mut records = Vec::new();
+
+    for rec in passwd.lines() {
+        let fields: Vec<&str> = rec.split(':').collect();
+
+        let field_count = fields.len();
+        if field_count != 7 {
+            return Err(anyhow!(
+                "Incorrect passwd record, expected 7 fields, got {}",
+                field_count
+            ));
+        }
+
+        records.push(PasswdRecord {
+            user: fields[0].to_string(),
+            validate: fields[1] == "x",
+            uid: fields[2].parse().unwrap(),
+            gid: fields[3].parse().unwrap(),
+            gecos: fields[4].to_string(),
+            home: fields[5].to_string(),
+            shell: fields[6].to_string(),
+        });
+    }
+
+    Ok(records)
+}
+
+fn parse_group_file(group: &str) -> Result<Vec<GroupRecord>> {
+    let mut records = Vec::new();
+
+    for rec in group.lines() {
+        let fields: Vec<&str> = rec.split(':').collect();
+
+        let field_count = fields.len();
+        if field_count != 4 {
+            return Err(anyhow!(
+                "Incorrect group record, expected 3 fields, got {}",
+                field_count
+            ));
+        }
+
+        let mut user_list = vec![];
+        if !fields[3].is_empty() {
+            user_list = fields[3].split(',').map(|s| s.to_string()).collect();
+        }
+
+        records.push(GroupRecord {
+            name: fields[0].to_string(),
+            validate: fields[1] == "x",
+            gid: fields[2].parse().unwrap(),
+            user_list,
+        });
+    }
+
+    Ok(records)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    fn container_with_image_user(user: &str) -> Container {
+        Container {
+            image: "test-image".to_string(),
+            config_layer: DockerConfigLayer {
+                config: DockerImageConfig {
+                    User: Some(user.to_string()),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            passwd:
+                "root:x:0:0:root:/root:/bin/sh\nwww-data:x:33:33:www-data:/var/www:/sbin/nologin\n"
+                    .to_string(),
+            group: "root:x:0:\nwww-data:x:33:\nstaff:x:50:\nwheel:x:10:\n".to_string(),
+        }
+    }
+
+    fn create_tar_layer(path: &Path, entries: &[(&str, &str)]) {
+        let layer_file = std::fs::File::create(path).unwrap();
+        let mut archive = tar::Builder::new(layer_file);
+
+        for (entry_path, content) in entries {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(content.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            archive
+                .append_data(&mut header, entry_path, Cursor::new(content.as_bytes()))
+                .unwrap();
+        }
+
+        archive.finish().unwrap();
+    }
+
+    #[test]
+    fn image_user_group_component_matches_kubernetes_path() {
+        let cases = [
+            "33:10",
+            "33:wheel",
+            "www-data:50",
+            "www-data:staff",
+            "www-data:thisgroupdoesnotexist",
+        ];
+
+        for image_user in cases {
+            let container = container_with_image_user(image_user);
+            let mut process = policy::KataProcess::default();
+
+            container.get_process(&mut process, false, false, false);
+
+            assert_eq!(process.User.UID, 33, "image user: {image_user}");
+            assert_eq!(process.User.GID, 33, "image user: {image_user}");
+            assert_eq!(
+                process
+                    .User
+                    .AdditionalGids
+                    .iter()
+                    .copied()
+                    .collect::<Vec<_>>(),
+                vec![33],
+                "image user: {image_user}"
+            );
+        }
+    }
+
+    #[test]
+    fn pause_image_user_retains_group_component() {
+        for (image_user, expected_gid) in [("33:10", 10), ("www-data:staff", 50)] {
+            let container = container_with_image_user(image_user);
+            let mut process = policy::KataProcess::default();
+
+            container.get_process(&mut process, false, false, true);
+
+            assert_eq!(process.User.UID, 33, "image user: {image_user}");
+            assert_eq!(process.User.GID, expected_gid, "image user: {image_user}");
+            assert_eq!(
+                process
+                    .User
+                    .AdditionalGids
+                    .iter()
+                    .copied()
+                    .collect::<Vec<_>>(),
+                vec![expected_gid],
+                "image user: {image_user}"
+            );
+        }
+    }
+
+    #[test]
+    fn detects_whether_image_config_selects_a_user() {
+        assert!(!Container::default().has_configured_user());
+        assert!(!container_with_image_user("").has_configured_user());
+        assert!(container_with_image_user("0").has_configured_user());
+        assert!(container_with_image_user("65535:65535").has_configured_user());
+    }
+
+    #[test]
+    fn reads_passwd_and_group_with_dot_slash_tar_paths() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let layer_path = temp_dir.path().join("layer.tar");
+        let passwd = "root:x:0:0:root:/root:/bin/sh\n";
+        let group = "root:x:0:\n";
+
+        create_tar_layer(
+            &layer_path,
+            &[("./etc/passwd", passwd), ("./etc/group", group)],
+        );
+
+        assert_eq!(
+            get_users_from_decompressed_layer(&layer_path).unwrap(),
+            (passwd.to_string(), group.to_string())
+        );
+    }
+
+    #[test]
+    fn normalizes_layer_paths_with_curdir_components() {
+        let cases = [
+            ("etc/passwd", Some(PASSWD_FILE_TAR_PATH)),
+            ("./etc/passwd", Some(PASSWD_FILE_TAR_PATH)),
+            ("././etc/passwd", Some(PASSWD_FILE_TAR_PATH)),
+            ("etc/./passwd", Some(PASSWD_FILE_TAR_PATH)),
+            ("./etc/./passwd", Some(PASSWD_FILE_TAR_PATH)),
+            ("etc/.wh.passwd", Some(PASSWD_FILE_WHITEOUT_TAR_PATH)),
+            ("./etc/.wh.passwd", Some(PASSWD_FILE_WHITEOUT_TAR_PATH)),
+            (".", None),
+            ("./", None),
+            ("../etc/passwd", None),
+            ("etc/../passwd", None),
+            ("/etc/passwd", None),
+        ];
+
+        for (path, expected) in cases {
+            assert_eq!(
+                normalized_layer_path(Path::new(path)),
+                expected.map(str::to_string),
+                "path: {path}"
+            );
+        }
+    }
+
+    #[test]
+    fn reads_whiteout_with_dot_slash_tar_path() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let layer_path = temp_dir.path().join("layer.tar");
+
+        create_tar_layer(
+            &layer_path,
+            &[("./etc/.wh.passwd", ""), ("./etc/.wh.group", "")],
+        );
+
+        assert_eq!(
+            get_users_from_decompressed_layer(&layer_path).unwrap(),
+            (WHITEOUT_MARKER.to_string(), WHITEOUT_MARKER.to_string())
+        );
+    }
+}

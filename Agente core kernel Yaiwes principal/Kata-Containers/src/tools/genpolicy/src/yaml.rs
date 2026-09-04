@@ -1,0 +1,514 @@
+// Copyright (c) 2023 Microsoft Corporation
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+
+// Allow K8s YAML field names.
+#![allow(non_snake_case)]
+
+use crate::config_map;
+use crate::cronjob;
+use crate::daemon_set;
+use crate::deployment;
+use crate::job;
+use crate::list;
+use crate::mount_and_storage;
+use crate::no_policy;
+use crate::obj_meta::ObjectMeta;
+use crate::pod;
+use crate::policy;
+use crate::replica_set;
+use crate::replication_controller;
+use crate::secret;
+use crate::settings;
+use crate::stateful_set;
+use crate::utils::Config;
+
+use async_trait::async_trait;
+use core::fmt::Debug;
+use kata_types::annotations::KATA_ANNO_CFG_HYPERVISOR_INIT_DATA;
+use log::debug;
+use protocols::agent;
+use serde::{Deserialize, Serialize};
+use std::boxed;
+use std::collections::BTreeMap;
+use std::fs::read_to_string;
+
+/// K8s API version and resource type.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct YamlHeader {
+    pub apiVersion: String,
+    pub kind: String,
+}
+
+/// Trait implemented by each supportes K8s resource type (e.g., Pod or Deployment).
+#[async_trait]
+pub trait K8sResource {
+    async fn init(
+        &mut self,
+        config: &Config,
+        doc_mapping: &serde_yaml::Value,
+        silent_unsupported_fields: bool,
+    );
+
+    fn generate_initdata_anno(&self, _agent_policy: &policy::AgentPolicy) -> String {
+        panic!("Unsupported");
+    }
+
+    fn serialize(&mut self, _policy: &str) -> String {
+        panic!("Unsupported");
+    }
+
+    fn get_sandbox_name(&self) -> Option<String> {
+        panic!("Unsupported");
+    }
+
+    fn get_namespace(&self) -> Option<String> {
+        panic!("Unsupported");
+    }
+
+    fn get_container_mounts_and_storages(
+        &self,
+        _policy_mounts: &mut Vec<policy::KataMount>,
+        _storages: &mut Vec<agent::Storage>,
+        _container: &pod::Container,
+        _settings: &settings::Settings,
+    ) {
+        panic!("Unsupported");
+    }
+
+    fn get_containers(&self) -> &Vec<pod::Container> {
+        panic!("Unsupported");
+    }
+
+    fn get_annotations(&self) -> &Option<BTreeMap<String, String>> {
+        panic!("Unsupported");
+    }
+
+    fn use_host_network(&self) -> bool {
+        panic!("Unsupported");
+    }
+
+    fn use_sandbox_pidns(&self) -> bool {
+        panic!("Unsupported");
+    }
+
+    fn get_runtime_class_name(&self) -> Option<String> {
+        None
+    }
+
+    fn get_process_fields(
+        &self,
+        _process: &mut policy::KataProcess,
+        _must_check_passwd: &mut bool,
+        _is_pause_container: bool,
+    ) {
+        // No need to implement support for securityContext or similar fields
+        // for some of the K8s resource types.
+    }
+
+    fn get_pod_security_context(&self) -> Option<&pod::PodSecurityContext> {
+        None
+    }
+
+    fn get_sysctls(&self) -> Vec<pod::Sysctl> {
+        vec![]
+    }
+
+    fn get_labels(&self) -> &Option<BTreeMap<String, String>> {
+        panic!("Unsupported");
+    }
+}
+
+/// See Reference / Kubernetes API / Common Definitions / LabelSelector.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct LabelSelector {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    matchLabels: Option<BTreeMap<String, String>>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    matchExpressions: Option<Vec<LabelSelectorRequirement>>,
+}
+
+/// See Reference / Kubernetes API / Common Definitions / LabelSelector.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct LabelSelectorRequirement {
+    key: String,
+    operator: String,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    values: Option<Vec<String>>,
+}
+
+/// Creates one of the supported K8s objects from a YAML string.
+pub fn new_k8s_resource(
+    yaml: &str,
+    silent_unsupported_fields: bool,
+) -> anyhow::Result<(boxed::Box<dyn K8sResource + Sync + Send>, String)> {
+    let header = get_yaml_header(yaml)?;
+    let kind: &str = &header.kind;
+    let d = serde_yaml::Deserializer::from_str(yaml);
+
+    match kind {
+        "ConfigMap" => {
+            let config_map: config_map::ConfigMap = serde_ignored::deserialize(d, |path| {
+                handle_unused_field(&path.to_string(), silent_unsupported_fields);
+            })
+            .unwrap();
+            debug!("{:#?}", &config_map);
+            Ok((boxed::Box::new(config_map), header.kind))
+        }
+        "DaemonSet" => {
+            let daemon: daemon_set::DaemonSet = serde_ignored::deserialize(d, |path| {
+                handle_unused_field(&path.to_string(), silent_unsupported_fields);
+            })
+            .unwrap();
+            debug!("{:#?}", &daemon);
+            Ok((boxed::Box::new(daemon), header.kind))
+        }
+        "Deployment" => {
+            let deployment: deployment::Deployment = serde_ignored::deserialize(d, |path| {
+                handle_unused_field(&path.to_string(), silent_unsupported_fields);
+            })
+            .unwrap();
+            debug!("{:#?}", &deployment);
+            Ok((boxed::Box::new(deployment), header.kind))
+        }
+        "Job" => {
+            let job: job::Job = serde_ignored::deserialize(d, |path| {
+                handle_unused_field(&path.to_string(), silent_unsupported_fields);
+            })
+            .unwrap();
+            debug!("{:#?}", &job);
+            Ok((boxed::Box::new(job), header.kind))
+        }
+        "CronJob" => {
+            let cronJob: cronjob::CronJob = serde_ignored::deserialize(d, |path| {
+                handle_unused_field(&path.to_string(), silent_unsupported_fields);
+            })
+            .unwrap();
+            debug!("{:#?}", &cronJob);
+            Ok((boxed::Box::new(cronJob), header.kind))
+        }
+        "List" => {
+            let list: list::List = serde_ignored::deserialize(d, |path| {
+                handle_unused_field(&path.to_string(), silent_unsupported_fields);
+            })
+            .unwrap();
+            debug!("{:#?}", &list);
+            Ok((boxed::Box::new(list), header.kind))
+        }
+        "Pod" => {
+            let pod: pod::Pod = serde_ignored::deserialize(d, |path| {
+                handle_unused_field(&path.to_string(), silent_unsupported_fields);
+            })
+            .unwrap();
+            debug!("{:#?}", &pod);
+            Ok((boxed::Box::new(pod), header.kind))
+        }
+        "ReplicaSet" => {
+            let set: replica_set::ReplicaSet = serde_ignored::deserialize(d, |path| {
+                handle_unused_field(&path.to_string(), silent_unsupported_fields);
+            })
+            .unwrap();
+            debug!("{:#?}", &set);
+            Ok((boxed::Box::new(set), header.kind))
+        }
+        "ReplicationController" => {
+            let controller: replication_controller::ReplicationController =
+                serde_ignored::deserialize(d, |path| {
+                    handle_unused_field(&path.to_string(), silent_unsupported_fields);
+                })
+                .unwrap();
+            debug!("{:#?}", &controller);
+            Ok((boxed::Box::new(controller), header.kind))
+        }
+        "Secret" => {
+            let secret: secret::Secret = serde_ignored::deserialize(d, |path| {
+                handle_unused_field(&path.to_string(), silent_unsupported_fields);
+            })
+            .unwrap();
+            debug!("{:#?}", &secret);
+            Ok((boxed::Box::new(secret), header.kind))
+        }
+        "StatefulSet" => {
+            let set: stateful_set::StatefulSet = serde_ignored::deserialize(d, |path| {
+                handle_unused_field(&path.to_string(), silent_unsupported_fields);
+            })
+            .unwrap();
+            debug!("{:#?}", &set);
+            Ok((boxed::Box::new(set), header.kind))
+        }
+        "ClusterRole"
+        | "ClusterRoleBinding"
+        | "LimitRange"
+        | "Namespace"
+        | "PersistentVolume"
+        | "PersistentVolumeClaim"
+        | "PodDisruptionBudget"
+        | "PriorityClass"
+        | "ResourceQuota"
+        | "Role"
+        | "RoleBinding"
+        | "Service"
+        | "ServiceAccount" => {
+            let no_policy = no_policy::NoPolicyResource {
+                yaml: yaml.to_string(),
+            };
+            debug!("{:#?}", &no_policy);
+            Ok((boxed::Box::new(no_policy), header.kind))
+        }
+        _ => todo!("Unsupported YAML spec kind: {}", kind),
+    }
+}
+
+pub fn get_input_yaml(yaml_file: &Option<String>) -> anyhow::Result<String> {
+    let yaml_string = if let Some(yaml) = yaml_file {
+        read_to_string(yaml)?
+    } else {
+        std::io::read_to_string(std::io::stdin())?
+    };
+
+    Ok(yaml_string)
+}
+
+pub fn get_yaml_header(yaml: &str) -> anyhow::Result<YamlHeader> {
+    Ok(serde_yaml::from_str(yaml)?)
+}
+
+pub async fn k8s_resource_init(spec: &mut pod::PodSpec, config: &Config) {
+    for container in &mut spec.containers {
+        container.init(config).await;
+    }
+
+    pod::add_pause_container(&mut spec.containers, config).await;
+
+    if let Some(init_containers) = &spec.initContainers {
+        for container in init_containers {
+            let mut new_container = container.clone();
+            new_container.init(config).await;
+            spec.containers.insert(1, new_container);
+        }
+    }
+}
+
+pub fn get_container_mounts_and_storages(
+    policy_mounts: &mut Vec<policy::KataMount>,
+    storages: &mut Vec<agent::Storage>,
+    container: &pod::Container,
+    settings: &settings::Settings,
+    podSpec: &pod::PodSpec,
+) {
+    if let Some(volumes) = &podSpec.volumes {
+        if let Some(volume_mounts) = &container.volumeMounts {
+            for volume in volumes {
+                for volume_mount in volume_mounts {
+                    if volume_mount.name.eq(&volume.name) {
+                        mount_and_storage::get_mount_and_storage(
+                            settings,
+                            policy_mounts,
+                            storages,
+                            volume,
+                            volume_mount,
+                            &podSpec.securityContext,
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    // Add storage and mount for each volume defined in the docker container image
+    // configuration layer.
+    if let Some(volumes) = &container.registry.config_layer.config.Volumes {
+        for volume in volumes {
+            debug!("get_container_mounts_and_storages: {:?}", &volume);
+
+            mount_and_storage::get_image_mount_and_storage(settings, policy_mounts, volume.0);
+        }
+    }
+}
+
+/// Add the [`KATA_ANNO_CFG_HYPERVISOR_INIT_DATA`] into
+/// a serde representation of a K8s resource YAML.
+pub fn add_policy_annotation(
+    mut ancestor: &mut serde_yaml::Value,
+    metadata_path: &str,
+    policy: &str,
+) {
+    let annotations_key = serde_yaml::Value::String("annotations".to_string());
+    let policy_key = serde_yaml::Value::String(KATA_ANNO_CFG_HYPERVISOR_INIT_DATA.to_string());
+    let policy_value = serde_yaml::Value::String(policy.to_string());
+
+    if !metadata_path.is_empty() {
+        let path_components = metadata_path.split('.');
+        for name in path_components {
+            ancestor = ancestor.get_mut(name).unwrap();
+        }
+    }
+
+    // Add metadata to the output if the input YAML didn't include it.
+    let metadata = "metadata";
+    if ancestor.get(metadata).is_none() {
+        let new_mapping = serde_yaml::Value::Mapping(serde_yaml::Mapping::new());
+        ancestor
+            .as_mapping_mut()
+            .unwrap()
+            .insert(serde_yaml::Value::String(metadata.to_string()), new_mapping);
+    }
+    ancestor = ancestor.get_mut(metadata).unwrap();
+
+    if let Some(annotations) = ancestor.get_mut(&annotations_key) {
+        if let Some(annotation) = annotations.get_mut(&policy_key) {
+            *annotation = policy_value;
+        } else if let Some(mapping_mut) = annotations.as_mapping_mut() {
+            mapping_mut.insert(policy_key, policy_value);
+        } else {
+            let mut new_annotations = serde_yaml::Mapping::new();
+            new_annotations.insert(policy_key, policy_value);
+            *annotations = serde_yaml::Value::Mapping(new_annotations);
+        }
+    } else {
+        let mut new_annotations = serde_yaml::Mapping::new();
+        new_annotations.insert(policy_key, policy_value);
+        ancestor
+            .as_mapping_mut()
+            .unwrap()
+            .insert(annotations_key, serde_yaml::Value::Mapping(new_annotations));
+    }
+}
+
+/// Remove [`KATA_ANNO_CFG_HYPERVISOR_INIT_DATA`] annotation
+pub fn remove_policy_annotation(annotations: &mut BTreeMap<String, String>) {
+    annotations.remove(KATA_ANNO_CFG_HYPERVISOR_INIT_DATA);
+}
+
+/// Report a fatal error if this app encounters an unsupported input YAML field,
+/// unless the user requested this app to ignore unsupported input fields.
+/// "Silent unsupported fields" is an expert level feature, because some of
+/// the fields ignored silently might be relevant for the output policy,
+/// with hard to predict outcomes.
+fn handle_unused_field(path: &str, silent_unsupported_fields: bool) {
+    if !silent_unsupported_fields {
+        panic!("Unsupported field: {path}");
+    }
+}
+
+/// Applies pod `fsGroup` and `supplementalGroups` to `AdditionalGids`.
+pub fn apply_pod_fs_group_and_supplemental_groups(
+    process: &mut policy::KataProcess,
+    security_context: Option<&pod::PodSecurityContext>,
+) {
+    let Some(context) = security_context else {
+        return;
+    };
+
+    if let Some(fs_group) = context.fsGroup {
+        let gid: u32 = fs_group.try_into().unwrap();
+        process.User.AdditionalGids.insert(gid);
+        debug!(
+            "apply_pod_fs_group_and_supplemental_groups: inserted fs_group = {gid} into AdditionalGids, User = {:?}",
+            &process.User
+        );
+    }
+
+    if let Some(supplemental_groups) = &context.supplementalGroups {
+        supplemental_groups.iter().for_each(|g| {
+            process.User.AdditionalGids.insert(*g);
+        });
+        debug!(
+            "apply_pod_fs_group_and_supplemental_groups: inserted supplementalGroups = {:?} into AdditionalGids, User = {:?}",
+            &supplemental_groups, &process.User
+        );
+    }
+}
+
+pub fn get_process_fields(
+    process: &mut policy::KataProcess,
+    must_check_passwd: &mut bool,
+    is_pause_container: bool,
+    security_context: &Option<pod::PodSecurityContext>,
+) {
+    debug!(
+        "get_process_fields: is_pause_container = {is_pause_container}, security_context = {:?}",
+        security_context
+    );
+
+    if let Some(context) = security_context {
+        if let Some(uid) = context.runAsUser {
+            process.User.UID = uid.try_into().unwrap();
+            debug!(
+                "get_process_fields: set UID from runAsUser = {}, User = {:?}",
+                process.User.UID, &process.User
+            );
+
+            // Changing the UID can break the GID mapping
+            // if a /etc/passwd file is present.
+            // The proper GID is determined, in order of preference:
+            // 1. The securityContext runAsGroup field - applied below.
+            // 2. /etc/passwd - parsed in policy::get_container_process().
+            // 3. From the container image configuration - read from registry::get_process().
+            //
+            // This behavior comes from the containerd runtime implementation:
+            // WithUser https://github.com/containerd/containerd/blob/main/pkg/oci/spec_opts.go#L592
+            //
+            // We can't parse the /etc/passwd file here because
+            // we are in the resource context. Defer execution to outside
+            // the resource context, in policy::get_container_process()
+            // IFF the UID is changed by the resource securityContext but not the GID.
+            *must_check_passwd = true;
+        }
+
+        if let Some(gid) = context.runAsGroup {
+            process.User.GID = gid.try_into().unwrap();
+            debug!(
+                "get_process_fields: set GID from runAsGroup = {}, User = {:?}",
+                process.User.GID, &process.User
+            );
+
+            process.User.AdditionalGids.clear();
+            debug!(
+                "get_process_fields: cleared AdditionalGids due to runAsGroup = {}, User = {:?}",
+                process.User.GID, &process.User
+            );
+
+            process.User.AdditionalGids.insert(process.User.GID);
+            debug!(
+                "get_process_fields: inserted GID = {} into AdditionalGids, User = {:?}",
+                process.User.GID, &process.User
+            );
+
+            *must_check_passwd = false;
+        }
+
+        if let Some(allow) = context.allowPrivilegeEscalation {
+            process.NoNewPrivileges = !allow
+        }
+
+        debug!("get_process_fields: returning User = {:?}", &process.User);
+    }
+}
+
+pub fn get_sysctls(security_context: &Option<pod::PodSecurityContext>) -> Vec<pod::Sysctl> {
+    if let Some(context) = security_context {
+        if let Some(ref sysctls) = context.sysctls {
+            return sysctls.clone();
+        }
+    }
+    vec![]
+}
+
+/// Constructs a non-anchored regex for an object according to k8s naming conventions:
+/// 1. If the name field is set, return that literally.
+/// 2. If name is unset but generateName is set, return regex that matches generateName and a random suffix.
+/// 3. Otherwise, return None. This object is not considered valid by the k8s API server!
+pub fn name_regex_from_meta(meta: &ObjectMeta) -> Option<String> {
+    meta.name.clone().or_else(|| {
+        meta.generateName
+            .as_ref()
+            .map(|p| format!("{}{}", regex::escape(p), GENERATE_NAME_SUFFIX_REGEX))
+    })
+}
+
+// https://github.com/kubernetes/kubernetes/blob/b35c5c0a301d326fdfa353943fca077778544ac6/staging/src/k8s.io/apimachinery/pkg/util/rand/rand.go#L81-L83
+pub const GENERATE_NAME_SUFFIX_REGEX: &str = "[bcdfghjklmnpqrstvwxz2456789]+";

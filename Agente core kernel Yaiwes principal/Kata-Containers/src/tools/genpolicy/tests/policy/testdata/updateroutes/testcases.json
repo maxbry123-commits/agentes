@@ -1,0 +1,124 @@
+[
+  {
+    "allowed": true,
+    "description": "compliant routes",
+    "kind": "UpdateRoutesRequest",
+    "request": {
+      "routes": {
+        "Routes": [
+          {
+            "dest": "",
+            "device": "eth0",
+            "family": 0,
+            "gateway": "10.244.0.1",
+            "scope": 0,
+            "source": ""
+          }
+        ]
+      }
+    }
+  },
+  {
+    "allowed": false,
+    "description": "forbidden device",
+    "kind": "UpdateRoutesRequest",
+    "request": {
+      "routes": {
+        "Routes": [
+          {
+            "dest": "",
+            "device": "lo",
+            "family": 0,
+            "gateway": "10.244.0.1",
+            "scope": 0,
+            "source": ""
+          }
+        ]
+      }
+    }
+  },
+  {
+    "allowed": false,
+    "description": "one compliant route, one noncompliant",
+    "kind": "UpdateRoutesRequest",
+    "request": {
+      "routes": {
+        "Routes": [
+          {
+            "dest": "",
+            "device": "eth0",
+            "family": 0,
+            "gateway": "10.244.0.1",
+            "scope": 0,
+            "source": ""
+          },
+          {
+            "dest": "",
+            "device": "eth0",
+            "family": 0,
+            "gateway": "10.244.0.1",
+            "scope": 0,
+            "source": "::1"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "allowed": false,
+    "description": "noncompliant routes",
+    "kind": "UpdateRoutesRequest",
+    "request": {
+      "routes": {
+        "Routes": [
+          {
+            "dest": "",
+            "device": "eth0",
+            "family": 0,
+            "gateway": "10.244.0.1",
+            "scope": 0,
+            "source": "127.0.0.1"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "allowed": false,
+    "description": "noncompliant routes ipv6 1",
+    "kind": "UpdateRoutesRequest",
+    "request": {
+      "routes": {
+        "Routes": [
+          {
+            "dest": "",
+            "device": "eth0",
+            "family": 0,
+            "gateway": "10.244.0.1",
+            "scope": 0,
+            "source": "::1"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "allowed": false,
+    "description": "noncompliant routes ipv6 2",
+    "kind": "UpdateRoutesRequest",
+    "request": {
+      "routes": {
+        "Routes": [
+          {
+            "dest": "",
+            "device": "eth0",
+            "family": 0,
+            "gateway": "10.244.0.1",
+            "scope": 0,
+            "source": "00::001"
+          }
+        ]
+      }
+    }
+  }
+]

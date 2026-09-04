@@ -1,0 +1,9 @@
+[
+  {
+    "repo": "Coconut",
+    "path": "data/prosqa_train.json",
+    "chunks_dir": "Coconut/data/prosqa_train.json.chunks",
+    "bytes": 30872695,
+    "chunk_bytes": 8388608
+  }
+]
