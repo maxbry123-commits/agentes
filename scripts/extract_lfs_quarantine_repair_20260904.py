@@ -13,7 +13,7 @@ ROOT_SLUGS = {
         "Microsoft-AutoGen","AG2","Prometheus-Evaluator-LM","TruLens","Cerbos","Microsoft-Agent-Framework"
     }),
     "agent": (Path("Agente core kernel Yaiwes principal"), {
-        "HelpSteer2","BAML","autogen","TruLens","Cerbos","Microsoft-Agent-Framework","PRM800K"
+        "HelpSteer2","BAML","OpenAI-Evals","autogen","TruLens","Cerbos","Microsoft-Agent-Framework","PRM800K"
     }),
 }
 IMAGE_FONT = {".png",".jpg",".jpeg",".gif",".webp",".svg",".ttf",".otf",".ico"}
