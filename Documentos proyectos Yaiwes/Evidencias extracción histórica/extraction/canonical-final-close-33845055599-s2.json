@@ -1,0 +1,258 @@
+{
+  "schema": "yaiwes.canonical.final-close.v1",
+  "run_id": "33845055599-s2",
+  "selected": 11,
+  "processed": [
+    {
+      "target": "core kernel Yaiwes principal/MINIX3",
+      "slug": "MINIX3",
+      "actual_target": "Core kernel Yaiwes/Componentes recuperados B/MINIX3",
+      "status": "FINAL_REPAIRED_VERIFIED",
+      "files": 71066,
+      "bytes": 532124965,
+      "tree_sha256": "a0e8e654f97fe8c1d494eb0414193a74025266a20facc7ba6f053de17f8a3621",
+      "copied": 168,
+      "collision_backups": [],
+      "pointer_backups": [],
+      "excluded_lfs_source_members": [],
+      "dataset_recovery": null,
+      "part_sha256": {
+        "Core kernel Yaiwes/Componentes recuperados B/MINIX3_0001.zip": "b294d02b31e70a35e48d4d4951787637e41929e0333d227dbe59352ac05c0ae0",
+        "Core kernel Yaiwes/Componentes recuperados B/MINIX3_0002.zip": "1a6d030b3af7ce898a6e4c4b6931e3cacbabf53f7e99faf881ad2f3da7aaaf38",
+        "Core kernel Yaiwes/Componentes recuperados B/MINIX3_0003.zip": "9f6b28e42e14aea87c31057817463c997b6806cd514789ec536b7d9b9411997d",
+        "Core kernel Yaiwes/Componentes recuperados B/MINIX3_0004.zip": "e2db96bf66bebeb0a0bd8c39a1aa9635d8395b8bbc56fc2112b80ce105bdc6c2",
+        "Core kernel Yaiwes/Componentes recuperados B/MINIX3_0005.zip": "90ed3987ba951f25cf0502bac8aa4554b5cb7bb940e5139e0d492340a636ccc8",
+        "Core kernel Yaiwes/Componentes recuperados B/MINIX3_0006.zip": "8c6351d6951b624e5bd3bfdfc068a4570c248f7bf2a40e05af773b02fc5cdace",
+        "Core kernel Yaiwes/Componentes recuperados B/MINIX3_0007.zip": "3ebe5f22ed6d96ebd0012613356b2272d673a7603922a3a662c5e43a88fa803f",
+        "Core kernel Yaiwes/Componentes recuperados B/MINIX3_0008.zip": "f68b10a7b1e83bd39b2fcbb1617da2e6b5ba5092244b0e267976843f73f4f428",
+        "Core kernel Yaiwes/Componentes recuperados B/MINIX3_0009.zip": "5886632f90afa34ffe90c2d3374252d92577d7b37ab8febc94f0d91198966430",
+        "Core kernel Yaiwes/Componentes recuperados B/MINIX3_0010.zip": "6468197378c46a23143d3fd20064754745c2845c3adf993a580c5a4c8ec21a09",
+        "Core kernel Yaiwes/Componentes recuperados B/MINIX3_0011.zip": "d7909be7d977b41ad1742b0e1c02bf1d60cb34ffd71e5ac62141bc74d740ea37",
+        "Core kernel Yaiwes/Componentes recuperados B/MINIX3_0012.zip": "2c2b1c2d88b0b758c9b4ab420a6ff078cba778d115d931e8b34a513c93ad78aa",
+        "Core kernel Yaiwes/Componentes recuperados B/MINIX3_0013.zip": "60b7118c7a7c63a5e61ea1acc8ca038ac8266fb38fdf9f454f28cff57c4abf70",
+        "Core kernel Yaiwes/Componentes recuperados B/MINIX3_0014.zip": "948eda8f39887c1b386ea695083670287e5540f1469a745b947741f5038d11b8",
+        "Core kernel Yaiwes/Componentes recuperados B/MINIX3_0015.zip": "aff5929fdc2c75d57adcbf7e44b1ab7e89df3a42dfd320a50f8f51e4038fff03"
+      }
+    },
+    {
+      "target": "core kernel Yaiwes principal/n8n",
+      "slug": "n8n",
+      "actual_target": "Core kernel Yaiwes/Componentes recuperados B/n8n",
+      "status": "FINAL_REPAIRED_VERIFIED",
+      "files": 27675,
+      "bytes": 198732499,
+      "tree_sha256": "4d346d26fddee582ded80f6c9d19b05ffc187a9007f7020c5980d17d8b475997",
+      "copied": 9,
+      "collision_backups": [],
+      "pointer_backups": [],
+      "excluded_lfs_source_members": [],
+      "dataset_recovery": null,
+      "part_sha256": {
+        "Core kernel Yaiwes/Componentes recuperados B/n8n_0001.zip": "044ee57c6e5c04fa42b5dd08da76eef09151f4b1846f6b2da17d52e73976befc",
+        "Core kernel Yaiwes/Componentes recuperados B/n8n_0002.zip": "376c4dd2da8c132418cb71baefe34ff26f055752b3e8f999450089c493514e76",
+        "Core kernel Yaiwes/Componentes recuperados B/n8n_0003.zip": "7608b6ea633864b06b6529e9b9f39ab79dfb5628872cfd42f2b8731511be28b6",
+        "Core kernel Yaiwes/Componentes recuperados B/n8n_0004.zip": "e854c0ad94e4b85c80dc1b6a799a6676052d220c4f1fe5244d726d8372ccf692",
+        "Core kernel Yaiwes/Componentes recuperados B/n8n_0005.zip": "2d9c0c93ca059dc4bd640e18a7f09ac15db3fe18e39b0f116c2ee4b8e5a9a9cf",
+        "Core kernel Yaiwes/Componentes recuperados B/n8n_0006.zip": "ab3be8466718cf3b859c7de0c98585c3e4b310ad6745d06f6cea0fa7fadc76c3",
+        "Core kernel Yaiwes/Componentes recuperados B/n8n_0007.zip": "c222dc220f938330d9ab6df5d7721758cb54cd034baaab477de03929e1c5313e"
+      }
+    },
+    {
+      "target": "core kernel Yaiwes principal/PostHog",
+      "slug": "PostHog",
+      "actual_target": "Core kernel Yaiwes/Componentes recuperados B/PostHog",
+      "status": "FINAL_REPAIRED_VERIFIED",
+      "files": 47890,
+      "bytes": 602988723,
+      "tree_sha256": "84cd4f82434c4fcfa454a4a5a43b35da81f720aebb0536d821bff0935a0fe14f",
+      "copied": 161,
+      "collision_backups": [
+        {
+          "path": "PostHog/products/slack_app/evals/__init__.py",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/B/PostHog/PostHog/products/slack_app/evals/__init__.py"
+        }
+      ],
+      "pointer_backups": [],
+      "excluded_lfs_source_members": [],
+      "dataset_recovery": null,
+      "part_sha256": {
+        "Core kernel Yaiwes/Componentes recuperados B/PostHog_0001.zip": "843c3e6ea08c51e17d621d1bc9bfc1b7a9cfad2d9ffb878894d1b71230fb6646",
+        "Core kernel Yaiwes/Componentes recuperados B/PostHog_0002.zip": "21074cb1fb3f6eb56475ae7df37b2b6ceb3ff3e99324e298022990b0c445f13f",
+        "Core kernel Yaiwes/Componentes recuperados B/PostHog_0003.zip": "bae85974f0e33a7ba67f384cd6e21ec2a2e07d48c63dbb3bbf7b24cca95335df",
+        "Core kernel Yaiwes/Componentes recuperados B/PostHog_0004.zip": "4a1dadc3445730f262c6e5d88dad90e1154f86ab7b467d146a0765f91d521198",
+        "Core kernel Yaiwes/Componentes recuperados B/PostHog_0005.zip": "d660fc85da6de29796a5789a252e0d80026479b3d014744825b4939e7b26d2ad",
+        "Core kernel Yaiwes/Componentes recuperados B/PostHog_0006.zip": "c95c8cf1506fcbe958e44df256d9c59e7b59a8dcb2b7a631e999e8994fdf077b",
+        "Core kernel Yaiwes/Componentes recuperados B/PostHog_0007.zip": "92ee88217fff5a3be09aa3bf45b11764fbca76f4fd720f50a893d7bca7c89c25",
+        "Core kernel Yaiwes/Componentes recuperados B/PostHog_0008.zip": "4af67b3c64732b9dd649ef6dc117c3d6b9a53fbc0616acc0a37987653d5bf13d",
+        "Core kernel Yaiwes/Componentes recuperados B/PostHog_0009.zip": "af2d0957ac77ec132286acf91dd8869607f19fa6ed24ed1464e00af486e624b2",
+        "Core kernel Yaiwes/Componentes recuperados B/PostHog_0010.zip": "0557f6fa45ee307b4b392e98f511fa41eb50adb84b9564d96e694ab5540654fc",
+        "Core kernel Yaiwes/Componentes recuperados B/PostHog_0011.zip": "e5f0eb073cf3884d7e7642dbb1ba0da3a03602667fac476edc44a7ab3926cfa8",
+        "Core kernel Yaiwes/Componentes recuperados B/PostHog_0012.zip": "5b35b2ed0562679970f0e4368adb9128ded3ed18225fdb180aa64fdf6f2fa5f8",
+        "Core kernel Yaiwes/Componentes recuperados B/PostHog_0013.zip": "e65d79c548675de238a3df986badcb045dad5a1624bd8cf39aa06088d589cdf9",
+        "Core kernel Yaiwes/Componentes recuperados B/PostHog_0014.zip": "17793fdb8ceff1559d1f04a48ed3e91fa146b75b55a9405c79b2db9d6d07a27f",
+        "Core kernel Yaiwes/Componentes recuperados B/PostHog_0015.zip": "fa32c02d8e48cd75bb80306836d2a6cfa4c76739f33947a670e288f295abb28d",
+        "Core kernel Yaiwes/Componentes recuperados B/PostHog_0016.zip": "eddcbc5f051222d9657a9dde016f6d5c4d7bd663f9602383a792702b5ad6b68e",
+        "Core kernel Yaiwes/Componentes recuperados B/PostHog_0017.zip": "f9b4fd6f7d47668738caabb9832ae6014952c2321812132ec736eb4e10a8b07c",
+        "Core kernel Yaiwes/Componentes recuperados B/PostHog_0018.zip": "619010e5d700bd4ba3aece324490dd5c471bc34205f2644f0534b02ac8d87737"
+      }
+    },
+    {
+      "target": "core kernel Yaiwes principal/Camunda",
+      "slug": "Camunda",
+      "actual_target": "Core kernel Yaiwes/Componentes recuperados B/Camunda",
+      "status": "FINAL_REPAIRED_VERIFIED",
+      "files": 26078,
+      "bytes": 216112242,
+      "tree_sha256": "a554e24fff1198c95b6037682e92dde26eef9cdcd1f83d2953ed23269d22ad99",
+      "copied": 31,
+      "collision_backups": [],
+      "pointer_backups": [],
+      "excluded_lfs_source_members": [],
+      "dataset_recovery": null,
+      "part_sha256": {
+        "Core kernel Yaiwes/Componentes recuperados B/Camunda_0001.zip": "146ea6172211a3b796b58812fe0d2e09b07acb395d76324ec7eaf5509d266ae0",
+        "Core kernel Yaiwes/Componentes recuperados B/Camunda_0002.zip": "1f7c43e9e8e56a5b7fb645e3942916c041c42594a2e0b52846014aad92a652c9",
+        "Core kernel Yaiwes/Componentes recuperados B/Camunda_0003.zip": "67c7ace3e6b1ecf8d1d0eb1434824bfdd3cd5533d168b5eb422444162dd3a522",
+        "Core kernel Yaiwes/Componentes recuperados B/Camunda_0004.zip": "8a49a2071573202783b12eb9799511fa94605c95113a9e13b9fa331455a373f6",
+        "Core kernel Yaiwes/Componentes recuperados B/Camunda_0005.zip": "1f8012a1db5220725b04232399198af4cae0d640e4c5f42c5be74aac0a4e569b",
+        "Core kernel Yaiwes/Componentes recuperados B/Camunda_0006.zip": "a828654a17bf67c85d15d3bb46ec74640348f48ca1fd92d971d9f1c92b28a24e",
+        "Core kernel Yaiwes/Componentes recuperados B/Camunda_0007.zip": "1a273653b679ad0c70c3c6371679ddb00d16b93b6d59f7c40888166858a0919d",
+        "Core kernel Yaiwes/Componentes recuperados B/Camunda_0008.zip": "476e3132a2dace72ca7efa022e34c2ea2207202f51e75d12a4825704a5b0c911"
+      }
+    },
+    {
+      "target": "core kernel Yaiwes principal/Trigger-dev",
+      "slug": "Trigger-dev",
+      "actual_target": "Core kernel Yaiwes/Componentes recuperados B/Trigger-dev",
+      "status": "FINAL_REPAIRED_VERIFIED",
+      "files": 6024,
+      "bytes": 69108969,
+      "tree_sha256": "6b1bfe8c0c2cd86da713e24a0d3437693f367ee6fb67d4756152009607926568",
+      "copied": 2,
+      "collision_backups": [],
+      "pointer_backups": [],
+      "excluded_lfs_source_members": [],
+      "dataset_recovery": null,
+      "part_sha256": {
+        "Core kernel Yaiwes/Componentes recuperados B/Trigger-dev_0001.zip": "3b40a8b4017ce3942ebcd15d9eca3a5dc27c5693b1b431ba266c3027811a1cee",
+        "Core kernel Yaiwes/Componentes recuperados B/Trigger-dev_0002.zip": "e8f29b19c723371d6a8fdb3f6129ce1c574eaab3e0d244ad55998bc30d6a2ee7",
+        "Core kernel Yaiwes/Componentes recuperados B/Trigger-dev_0003.zip": "7079d7dc5f808ce25f8d7dcff2bf16af9b2edac935db7607ddf9ea970783699f",
+        "Core kernel Yaiwes/Componentes recuperados B/Trigger-dev_0004.zip": "ab72ddaf5be3dfc6114ff98d395b7726c78dc99d7862d05cf5e7efda42b2b6d9"
+      }
+    },
+    {
+      "target": "core kernel Yaiwes principal/Microsoft-Presidio",
+      "slug": "Microsoft-Presidio",
+      "actual_target": "Core kernel Yaiwes/Componentes recuperados B/Microsoft-Presidio",
+      "status": "FINAL_REPAIRED_VERIFIED",
+      "files": 916,
+      "bytes": 160623120,
+      "tree_sha256": "e21cebe996025199447ecd9173c1790f60d5124f31bd9e257cfdd342def4dc54",
+      "copied": 1,
+      "collision_backups": [],
+      "pointer_backups": [],
+      "excluded_lfs_source_members": [],
+      "dataset_recovery": null,
+      "part_sha256": {
+        "Core kernel Yaiwes/Componentes recuperados B/Microsoft-Presidio_0001.zip": "cac1945c0f19aa11eb9527c276762b0d49d19723534847bfe4dcd6cd7eb21dda",
+        "Core kernel Yaiwes/Componentes recuperados B/Microsoft-Presidio_0002.zip": "b975b0700c5553bc91940c1bd97c428a188781d998064037b073586d77b59d09",
+        "Core kernel Yaiwes/Componentes recuperados B/Microsoft-Presidio_0003.zip": "7367bb4c1d4b2cc22adb3e546593998dfbe8ff106dcaad66c8fddaab7915f5f0",
+        "Core kernel Yaiwes/Componentes recuperados B/Microsoft-Presidio_0004.zip": "94504b33059e527e091779008ea9f7c008008866cf2fe86e6cd4d72220882e15",
+        "Core kernel Yaiwes/Componentes recuperados B/Microsoft-Presidio_0005.zip": "aed3de97bce0ff633af035e0e7e980b87d175be6d13c418cd83da1ec19f42c20",
+        "Core kernel Yaiwes/Componentes recuperados B/Microsoft-Presidio_0006.zip": "d32919d7ab05d8c7ae7b7c3a171a6b32bdfd23652fcd42ed2d8bfc1ff4d27a8d",
+        "Core kernel Yaiwes/Componentes recuperados B/Microsoft-Presidio_0007.zip": "ad6225f3c1b05a318a6966d2bd01e09f3e14eb6620ea8a44dba08db34c03cac0",
+        "Core kernel Yaiwes/Componentes recuperados B/Microsoft-Presidio_0008.zip": "b4832d031d6634d7c6d1e2374944c56c9bcadef9bf15557cc04336c67c307bf8",
+        "Core kernel Yaiwes/Componentes recuperados B/Microsoft-Presidio_0009.zip": "fa6f99fdfaf07287a75b52429685a4a6c7209c73fa9543ecd67137e8bcd34156",
+        "Core kernel Yaiwes/Componentes recuperados B/Microsoft-Presidio_0010.zip": "d326904329eda67b1fc1b13c3fb51448f54dc5b0e639e86fcff6f912de41f867"
+      }
+    },
+    {
+      "target": "core kernel Yaiwes principal/Mem0",
+      "slug": "Mem0",
+      "actual_target": "Core kernel Yaiwes/Componentes recuperados B/Mem0",
+      "status": "FINAL_REPAIRED_VERIFIED",
+      "files": 1786,
+      "bytes": 34989030,
+      "tree_sha256": "3fb1508ecc71de45bd8fdba7866cdd4fe28c3a59652f4b2ab43a24dff6664234",
+      "copied": 1,
+      "collision_backups": [],
+      "pointer_backups": [],
+      "excluded_lfs_source_members": [],
+      "dataset_recovery": null,
+      "part_sha256": {
+        "Core kernel Yaiwes/Componentes recuperados B/Mem0_0001.zip": "90ccce1d3fc9b24a3e91c497d16eaadf79426b9cb948e00062b7c6a95cdd6149",
+        "Core kernel Yaiwes/Componentes recuperados B/Mem0_0002.zip": "b962c50c132f25db1d67c6482f17c619df17b5285f7dadc7c581bd34b4d623f7"
+      }
+    },
+    {
+      "target": "core kernel Yaiwes principal/NeMo-Guardrails",
+      "slug": "NeMo-Guardrails",
+      "actual_target": "Core kernel Yaiwes/Componentes recuperados B/NeMo-Guardrails",
+      "status": "FINAL_REPAIRED_VERIFIED",
+      "files": 2069,
+      "bytes": 19759082,
+      "tree_sha256": "638b609959d33a476dd83ec03f7706565914adf8b4350718a8dcbd168afe7d29",
+      "copied": 4,
+      "collision_backups": [],
+      "pointer_backups": [],
+      "excluded_lfs_source_members": [],
+      "dataset_recovery": null,
+      "part_sha256": {
+        "Core kernel Yaiwes/Componentes recuperados B/NeMo-Guardrails_0001.zip": "041909fc5f63f195d2a50485098d8703032e710fc1b05280fc813b7f994d9c45"
+      }
+    },
+    {
+      "target": "core kernel Yaiwes principal/JSON-Schema",
+      "slug": "JSON-Schema",
+      "actual_target": "Core kernel Yaiwes/Componentes recuperados B/JSON-Schema",
+      "status": "FINAL_REPAIRED_VERIFIED",
+      "files": 66,
+      "bytes": 760032,
+      "tree_sha256": "f5782b83c0b8c5d511bb47c85c35521d812912c8e7f8cc4e370b4265e6b2416d",
+      "copied": 1,
+      "collision_backups": [],
+      "pointer_backups": [],
+      "excluded_lfs_source_members": [],
+      "dataset_recovery": null,
+      "part_sha256": {
+        "Core kernel Yaiwes/Componentes recuperados B/JSON-Schema_0001.zip": "db885f0efcd25be673e303af28068f8c77bed7dd04a4a2246f66e9a541348830"
+      }
+    },
+    {
+      "target": "core kernel Yaiwes principal/BullMQ",
+      "slug": "BullMQ",
+      "actual_target": "Core kernel Yaiwes/Componentes recuperados B/BullMQ",
+      "status": "FINAL_REPAIRED_VERIFIED",
+      "files": 981,
+      "bytes": 10475373,
+      "tree_sha256": "fe8244b08a3dba9d50bb513ece59e429570913138dec6f4a9f2364169b82719e",
+      "copied": 1,
+      "collision_backups": [],
+      "pointer_backups": [],
+      "excluded_lfs_source_members": [],
+      "dataset_recovery": null,
+      "part_sha256": {
+        "Core kernel Yaiwes/Componentes recuperados B/BullMQ_0001.zip": "976d0d047ff31feefc03892ef7c70ad04c272360f5ca081eb5f22ae2aca7c2d4"
+      }
+    },
+    {
+      "target": "core kernel Yaiwes principal/LangGraph",
+      "slug": "LangGraph",
+      "actual_target": "Core kernel Yaiwes/Componentes recuperados B/LangGraph",
+      "status": "FINAL_REPAIRED_VERIFIED",
+      "files": 673,
+      "bytes": 13728061,
+      "tree_sha256": "8441c8a9d0919ba0401fbd952215b2a47a08b3f85723dbb57d7bfe85285c3caf",
+      "copied": 6,
+      "collision_backups": [],
+      "pointer_backups": [],
+      "excluded_lfs_source_members": [],
+      "dataset_recovery": null,
+      "part_sha256": {
+        "Core kernel Yaiwes/Componentes recuperados B/LangGraph_0001.zip": "a66fa428b94979132b29696aabd8246f087c28d8da47437a2a7ca8b849768ea3"
+      }
+    }
+  ],
+  "failures": [],
+  "verdict": "REPAIR_PASS"
+}
