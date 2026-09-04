@@ -1,0 +1,749 @@
+{
+  "schema": "yaiwes.canonical.final-close.v1",
+  "run_id": "33844315501-s0",
+  "selected": 24,
+  "processed": [
+    {
+      "target": "core kernel Yaiwes principal/AI-Scientist",
+      "slug": "AI-Scientist",
+      "actual_target": "Core kernel Yaiwes/Componentes recuperados B/AI-Scientist",
+      "status": "FINAL_REPAIRED_VERIFIED",
+      "files": 2332,
+      "bytes": 200598290,
+      "tree_sha256": "0b2d7dd45dc0ceeab3dd58a282faa1a445da8f6f0a8288c67bbe27709b3a028d",
+      "copied": 4,
+      "collision_backups": [],
+      "pointer_backups": [],
+      "excluded_lfs_source_members": [],
+      "dataset_recovery": null,
+      "part_sha256": {
+        "Core kernel Yaiwes/Componentes recuperados B/AI-Scientist_0001.zip": "cdd0aee1068492b363a15e60e3b238797f0d6955c9a5e9faa92dc754ea604f74",
+        "Core kernel Yaiwes/Componentes recuperados B/AI-Scientist_0002.zip": "43cd8e287276a2d648f7415d946dc945f5ba9bdb5ad34b22f75ee6be16c3a496",
+        "Core kernel Yaiwes/Componentes recuperados B/AI-Scientist_0003.zip": "74caefd225741a9c28772c03b16e422ca2bdb1ad9feb96058c6d6af4f19b401c",
+        "Core kernel Yaiwes/Componentes recuperados B/AI-Scientist_0004.zip": "c0176101881a74f54bab3bc61a9e19000f5743030de4da24d1802a6965020d3f",
+        "Core kernel Yaiwes/Componentes recuperados B/AI-Scientist_0005.zip": "0d77cee9e6d4f6d1f0d67dcfddb53edd1d53e9235c11c440911505dc05699ab0",
+        "Core kernel Yaiwes/Componentes recuperados B/AI-Scientist_0006.zip": "39369521ffea4ced71092fafb0078925a64a7ca176f2c6becb046be10b9e387a",
+        "Core kernel Yaiwes/Componentes recuperados B/AI-Scientist_0007.zip": "68983affa60cdf0078297d18fd02ab4d971d1ab67e4a937798aac0086f3f2468",
+        "Core kernel Yaiwes/Componentes recuperados B/AI-Scientist_0008.zip": "75d71ae42696aa2b2df3678d14d5eab3a3ef4f0db2618d9c3d5fb55cf85275d6",
+        "Core kernel Yaiwes/Componentes recuperados B/AI-Scientist_0009.zip": "3cea690b2d0fe92a2afaf5f0486c3982b2a9900079db821971653107c2659232",
+        "Core kernel Yaiwes/Componentes recuperados B/AI-Scientist_0010.zip": "4e988cf0240fb02c842e6bbfd040bd33fbbf0ed89a422843c545c5eb0f8a16c2",
+        "Core kernel Yaiwes/Componentes recuperados B/AI-Scientist_0011.zip": "01715dd128853aec6c2cd2dc02bf2d5c35953fb761ed285ad93161989d731893",
+        "Core kernel Yaiwes/Componentes recuperados B/AI-Scientist_0012.zip": "a8cfdda2fe4a564eb95175fea70ec0b5c16bac9169c64ea38bbed14e3ec8562c"
+      }
+    },
+    {
+      "target": "core kernel Yaiwes principal/k3s",
+      "slug": "k3s",
+      "actual_target": "Core kernel Yaiwes/Componentes recuperados B/k3s",
+      "status": "FINAL_REPAIRED_VERIFIED",
+      "files": 664,
+      "bytes": 3062464,
+      "tree_sha256": "d4566752cf4d0f1fe55a438e38fe5707a064a992c7454bb38eafeddcb046d9c1",
+      "copied": 3,
+      "collision_backups": [],
+      "pointer_backups": [],
+      "excluded_lfs_source_members": [],
+      "dataset_recovery": null,
+      "part_sha256": {
+        "Core kernel Yaiwes/Componentes recuperados B/k3s_0001.zip": "ee587641df8603a6c28ba608ac29f426213a934d4850a28c9595fefc5187ee14"
+      }
+    },
+    {
+      "target": "core kernel Yaiwes principal/Kong",
+      "slug": "Kong",
+      "actual_target": "Core kernel Yaiwes/Componentes recuperados B/Kong",
+      "status": "FINAL_REPAIRED_VERIFIED",
+      "files": 2507,
+      "bytes": 16933394,
+      "tree_sha256": "be996d3ac0b1ed93e7b242575c3822b6cfc025991decfac88e0d6756245589e3",
+      "copied": 1,
+      "collision_backups": [],
+      "pointer_backups": [],
+      "excluded_lfs_source_members": [],
+      "dataset_recovery": null,
+      "part_sha256": {
+        "Core kernel Yaiwes/Componentes recuperados B/Kong_0001.zip": "804370c926f0bc64c22a5d8760802ca81d236290db8b405b9711808afaba8a68"
+      }
+    },
+    {
+      "target": "core kernel Yaiwes principal/Flagsmith",
+      "slug": "Flagsmith",
+      "actual_target": "Core kernel Yaiwes/Componentes recuperados B/Flagsmith",
+      "status": "FINAL_REPAIRED_VERIFIED",
+      "files": 3938,
+      "bytes": 42610794,
+      "tree_sha256": "6565d99780dca4f2f3a37686fb1bfcbceb7aefbed3079fe0048fdffe5515353a",
+      "copied": 1,
+      "collision_backups": [],
+      "pointer_backups": [],
+      "excluded_lfs_source_members": [],
+      "dataset_recovery": null,
+      "part_sha256": {
+        "Core kernel Yaiwes/Componentes recuperados B/Flagsmith_0001.zip": "227f5f24ddde77621aa07702b2e4e20b7dfd715a50afe2b5a40e06be31670b92",
+        "Core kernel Yaiwes/Componentes recuperados B/Flagsmith_0002.zip": "014d2ed9a2287f7ec25be4bf62ff34e273b2015287d920996b9716cf1a4ce278",
+        "Core kernel Yaiwes/Componentes recuperados B/Flagsmith_0003.zip": "da34c4386729d70d45ef38704409791a55aebc443ba25da85abee5e9ef14f776"
+      }
+    },
+    {
+      "target": "core kernel Yaiwes principal/Luigi",
+      "slug": "Luigi",
+      "actual_target": "Core kernel Yaiwes/Componentes recuperados B/Luigi",
+      "status": "FINAL_REPAIRED_VERIFIED",
+      "files": 400,
+      "bytes": 5626772,
+      "tree_sha256": "7310955f50d767d57876e277d3523bbb4b6e0cd2f5502a48c771b11193f16464",
+      "copied": 4,
+      "collision_backups": [],
+      "pointer_backups": [],
+      "excluded_lfs_source_members": [],
+      "dataset_recovery": null,
+      "part_sha256": {
+        "Core kernel Yaiwes/Componentes recuperados B/Luigi_0001.zip": "908f056a7729843c0b0596bd87de4d767fa6d27fb88ed4fb96b41b4833ac0d23"
+      }
+    },
+    {
+      "target": "core kernel Yaiwes principal/sqlite-vec",
+      "slug": "sqlite-vec",
+      "actual_target": "Core kernel Yaiwes/Componentes recuperados B/sqlite-vec",
+      "status": "FINAL_REPAIRED_VERIFIED",
+      "files": 325,
+      "bytes": 2793662,
+      "tree_sha256": "e124b35aae6e17511a75fa5147a888ce94c59d0b0d7eba52921c82ace4bef268",
+      "copied": 28,
+      "collision_backups": [],
+      "pointer_backups": [],
+      "excluded_lfs_source_members": [],
+      "dataset_recovery": null,
+      "part_sha256": {
+        "Core kernel Yaiwes/Componentes recuperados B/sqlite-vec_0001.zip": "979adfc6fca03f2fbd62822725c2aed89a733e0b2def8b8457f8362951b68242"
+      }
+    },
+    {
+      "target": "core kernel Yaiwes principal/VictoriaMetrics",
+      "slug": "VictoriaMetrics",
+      "actual_target": "Core kernel Yaiwes/Componentes recuperados B/VictoriaMetrics",
+      "status": "FINAL_REPAIRED_VERIFIED",
+      "files": 8080,
+      "bytes": 180605878,
+      "tree_sha256": "65c8ff9575ef366528b0a3984dd6d543b81f14f48e487ec6de64a855fb137230",
+      "copied": 1,
+      "collision_backups": [],
+      "pointer_backups": [],
+      "excluded_lfs_source_members": [],
+      "dataset_recovery": null,
+      "part_sha256": {
+        "Core kernel Yaiwes/Componentes recuperados B/VictoriaMetrics_0001.zip": "0baef18268b695bcba712395daaf3a8e7372a245e2ea7efa2af57adeb33844dc",
+        "Core kernel Yaiwes/Componentes recuperados B/VictoriaMetrics_0002.zip": "f925a00cab991e5c2b4d10d80db1968481c5e2748a1302c418996255ab8fa273",
+        "Core kernel Yaiwes/Componentes recuperados B/VictoriaMetrics_0003.zip": "7f99c71ebfd207724ba694edfebef1524dbe7915517abdb9199fc595f9835f77",
+        "Core kernel Yaiwes/Componentes recuperados B/VictoriaMetrics_0004.zip": "9ee8a2dc2cb5a96d637cc1366ca318df96f2f8553fabed3f689bd08d31bb3cc4",
+        "Core kernel Yaiwes/Componentes recuperados B/VictoriaMetrics_0005.zip": "56e34da3c85a8319653fc6bd924fa6f9d0f79238069f60c3a3df480b0bca2b14",
+        "Core kernel Yaiwes/Componentes recuperados B/VictoriaMetrics_0006.zip": "97b9dadb8785e8b4ccf8beb3dff8d68c70b373f01fd7a19566ed4aa829a23beb"
+      }
+    },
+    {
+      "target": "core kernel Yaiwes principal/LMQL",
+      "slug": "LMQL",
+      "actual_target": "Core kernel Yaiwes/Componentes recuperados B/LMQL",
+      "status": "FINAL_REPAIRED_VERIFIED",
+      "files": 415,
+      "bytes": 10993455,
+      "tree_sha256": "d41eecb25dc758c57235fb5c12a6dfb390f9dfa2dab87b9bf88286f751f1cf71",
+      "copied": 4,
+      "collision_backups": [],
+      "pointer_backups": [],
+      "excluded_lfs_source_members": [],
+      "dataset_recovery": null,
+      "part_sha256": {
+        "Core kernel Yaiwes/Componentes recuperados B/LMQL_0001.zip": "3e4510b729ca66e071808670241a79955df280d75ead3b5fcbf342c16d20c34a"
+      }
+    },
+    {
+      "target": "core kernel Yaiwes principal/Cadence",
+      "slug": "Cadence",
+      "actual_target": "Core kernel Yaiwes/Componentes recuperados B/Cadence",
+      "status": "FINAL_REPAIRED_VERIFIED",
+      "files": 2902,
+      "bytes": 48097095,
+      "tree_sha256": "d45dbdb8d5c2584fc58933dddf914785210103753f4d29d1e5af96bfba10f32f",
+      "copied": 7,
+      "collision_backups": [],
+      "pointer_backups": [],
+      "excluded_lfs_source_members": [],
+      "dataset_recovery": null,
+      "part_sha256": {
+        "Core kernel Yaiwes/Componentes recuperados B/Cadence_0001.zip": "b1c1baa1c64c5e880d16c5d1a9572e8fb0263e79891b3ea8b301d132f2a11bf6",
+        "Core kernel Yaiwes/Componentes recuperados B/Cadence_0002.zip": "00f58d99a5ad633735de1000052fe71a92f71ff020e16176c8b844c9bd70e564"
+      }
+    },
+    {
+      "target": "core kernel Yaiwes principal/Portkey-AI-Gateway",
+      "slug": "Portkey-AI-Gateway",
+      "actual_target": "Core kernel Yaiwes/Componentes recuperados B/Portkey-AI-Gateway",
+      "status": "FINAL_REPAIRED_VERIFIED",
+      "files": 768,
+      "bytes": 39254633,
+      "tree_sha256": "fd6054089f7ef908e69a708f17da3b1f32ae806c1c88d323be91f9a0bba55bc9",
+      "copied": 1,
+      "collision_backups": [],
+      "pointer_backups": [],
+      "excluded_lfs_source_members": [],
+      "dataset_recovery": null,
+      "part_sha256": {
+        "Core kernel Yaiwes/Componentes recuperados B/Portkey-AI-Gateway_0001.zip": "c40039aa72628e8c6d2317da715b80ff907b6b71adbb139b41306172d1b6f07b",
+        "Core kernel Yaiwes/Componentes recuperados B/Portkey-AI-Gateway_0002.zip": "e3b5537d284fd41b1e1f4a5a5dcb7429a98c19aec603aed92bbe13840a42192c",
+        "Core kernel Yaiwes/Componentes recuperados B/Portkey-AI-Gateway_0003.zip": "d26208ebe9d4d0ae5c8a255aeef4fc48c1be64e0188f9734872129a9d2d557dd"
+      }
+    },
+    {
+      "target": "core kernel Yaiwes principal/SWE-agent",
+      "slug": "SWE-agent",
+      "actual_target": "Core kernel Yaiwes/Componentes recuperados B/SWE-agent",
+      "status": "FINAL_REPAIRED_VERIFIED",
+      "files": 411,
+      "bytes": 36071795,
+      "tree_sha256": "cb42c967a43ab098d3e2d6f9d42db9a0540323536e797589f3dc8f0e92598d83",
+      "copied": 22,
+      "collision_backups": [],
+      "pointer_backups": [],
+      "excluded_lfs_source_members": [],
+      "dataset_recovery": null,
+      "part_sha256": {
+        "Core kernel Yaiwes/Componentes recuperados B/SWE-agent_0001.zip": "7832422d81ce2877a457e678b10feaa359115b5d31905eb1e355b96cd7296393",
+        "Core kernel Yaiwes/Componentes recuperados B/SWE-agent_0002.zip": "fed75af1c2d5f830dad705c8b92fa170b07687054e44765248ca980e443a61ca",
+        "Core kernel Yaiwes/Componentes recuperados B/SWE-agent_0003.zip": "580af2a86cd3c263b8f77af50668994164415478404c8333872ad8f790a23be6"
+      }
+    },
+    {
+      "target": "core kernel Yaiwes principal/Cronie",
+      "slug": "Cronie",
+      "actual_target": "Core kernel Yaiwes/Componentes recuperados B/Cronie",
+      "status": "FINAL_REPAIRED_VERIFIED",
+      "files": 74,
+      "bytes": 569385,
+      "tree_sha256": "ca170ab93717f2612801e4531264e60c3f4c71edb25502767fe04c41af75401a",
+      "copied": 1,
+      "collision_backups": [],
+      "pointer_backups": [],
+      "excluded_lfs_source_members": [],
+      "dataset_recovery": null,
+      "part_sha256": {
+        "Core kernel Yaiwes/Componentes recuperados B/Cronie_0001.zip": "3ac88f2f8ddc29a1c0de3928fe8939447a8853274929a271cb6c2b6a213c899a"
+      }
+    },
+    {
+      "target": "Agente core kernel Yaiwes principal/Self-Refine",
+      "slug": "Self-Refine",
+      "actual_target": "Core kernel Yaiwes/Componentes recuperados A/Self-Refine",
+      "status": "FINAL_REPAIRED_VERIFIED",
+      "files": 188,
+      "bytes": 93536251,
+      "tree_sha256": "d067857c54e605055de7d6e10c28f1820a8de2d65012f3b773f22cdcc9858824",
+      "copied": 35,
+      "collision_backups": [],
+      "pointer_backups": [],
+      "excluded_lfs_source_members": [],
+      "dataset_recovery": null,
+      "part_sha256": {
+        "Core kernel Yaiwes/Componentes recuperados A/Self-Refine_0001.zip": "da372a054603ed0ba97c8ab1e1e7f0c5ec5a67212da65c7f3631dfbcd9aaeda2",
+        "Core kernel Yaiwes/Componentes recuperados A/Self-Refine_0002.zip": "eaa306abb3a5aa584772ed58938a8864977ff06071861bd540ff28beff43f74e",
+        "Core kernel Yaiwes/Componentes recuperados A/Self-Refine_0003.zip": "310d572b08aa244d48b9e95bfc4734c887f81c87d324660956fb4ea62da1a746",
+        "Core kernel Yaiwes/Componentes recuperados A/Self-Refine_0004.zip": "550d713ffa1d9eb6daf88cd8deb21f7f15dfb09658140ec0e981a53462d4fb08",
+        "Core kernel Yaiwes/Componentes recuperados A/Self-Refine_0005.zip": "6dd604b108fb46f4515e52ac1189629103031cdd4ac13e54d3adae346513da71",
+        "Core kernel Yaiwes/Componentes recuperados A/Self-Refine_0006.zip": "3d6a8f4b149e732ff48dac33ce57befc3c04e70f0db9b1304a301cea79fa6d7b"
+      }
+    },
+    {
+      "target": "Agente core kernel Yaiwes principal/Envoy",
+      "slug": "Envoy",
+      "actual_target": "Core kernel Yaiwes/Componentes recuperados A/Envoy",
+      "status": "FINAL_REPAIRED_VERIFIED",
+      "files": 14718,
+      "bytes": 159993164,
+      "tree_sha256": "2c6bbc0e8f89d3aa3a68e8afdef316982cb17b24e0910fa0ea76976127962085",
+      "copied": 80,
+      "collision_backups": [
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case000",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case000"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case001",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case001"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case002",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case002"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case003",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case003"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case004",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case004"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case005",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case005"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case006",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case006"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case007",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case007"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case008",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case008"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case009",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case009"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case010",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case010"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case011",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case011"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case012",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case012"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case013",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case013"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case014",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case014"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case015",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case015"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case016",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case016"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case017",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case017"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case018",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case018"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case019",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case019"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case020",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case020"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case021",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case021"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case022",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case022"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case023",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case023"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case024",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case024"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case025",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case025"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case026",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case026"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case027",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case027"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case028",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case028"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case029",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case029"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case030",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case030"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case031",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case031"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case032",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case032"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case033",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case033"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case034",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case034"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case035",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case035"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case036",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case036"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case037",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case037"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case038",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case038"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case039",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case039"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case040",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case040"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case041",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case041"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case042",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case042"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case043",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case043"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case044",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case044"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case045",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case045"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case046",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case046"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case047",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case047"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case048",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case048"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case049",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case049"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case050",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case050"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case051",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case051"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case052",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case052"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case053",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case053"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case054",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case054"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case055",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case055"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case056",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case056"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case057",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case057"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case058",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case058"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case059",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case059"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case060",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case060"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case061",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case061"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case062",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case062"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case063",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case063"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case064",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case064"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case065",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case065"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case066",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case066"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case067",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case067"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case068",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case068"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case069",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case069"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case070",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case070"
+        },
+        {
+          "path": "Envoy/test/common/http/http1/http1_connection_corpus/case071",
+          "backup": "Documentos proyectos Yaiwes/Evidencias extracción histórica/collision backups/A/Envoy/Envoy/test/common/http/http1/http1_connection_corpus/case071"
+        }
+      ],
+      "pointer_backups": [],
+      "excluded_lfs_source_members": [],
+      "dataset_recovery": null,
+      "part_sha256": {
+        "Core kernel Yaiwes/Componentes recuperados A/Envoy_0001.zip": "1724850502105b5b525b801f52826c1796fe1f54a908532bb83fc7f5aae61e43",
+        "Core kernel Yaiwes/Componentes recuperados A/Envoy_0002.zip": "8ae2de9fbca6735b720e53b01e0065df3551973499107fb1685d795e9a535d45",
+        "Core kernel Yaiwes/Componentes recuperados A/Envoy_0003.zip": "a8190e855db00b9b080acc78f9dbc43c8fc2c20e3d72ebf482c8a913aa60e438",
+        "Core kernel Yaiwes/Componentes recuperados A/Envoy_0004.zip": "63c43d61a012093a50016535723cd87e56da1ec645b957a3a9a09e71e603e809",
+        "Core kernel Yaiwes/Componentes recuperados A/Envoy_0005.zip": "c86a8cac7d74ecf6247822951f597154c37732861be9c50a45e0636782b92922",
+        "Core kernel Yaiwes/Componentes recuperados A/Envoy_0006.zip": "2bb74bdaaa6a839e145d4bda17835b26475e4e1ebc320e6d42d8493535f2792b"
+      }
+    },
+    {
+      "target": "Agente core kernel Yaiwes principal/Promptfoo",
+      "slug": "Promptfoo",
+      "actual_target": "Core kernel Yaiwes/Componentes recuperados A/Promptfoo",
+      "status": "FINAL_REPAIRED_VERIFIED",
+      "files": 5542,
+      "bytes": 238152680,
+      "tree_sha256": "418ca6d54fa66a3d2d80b245268a7d671c4119980d8f0a20fde6e21f41cea5f7",
+      "copied": 17,
+      "collision_backups": [],
+      "pointer_backups": [],
+      "excluded_lfs_source_members": [],
+      "dataset_recovery": null,
+      "part_sha256": {
+        "Core kernel Yaiwes/Componentes recuperados A/Promptfoo_0001.zip": "c2d1491d4d7008d3459c74ed1f9f7f2817f543785aee6cae54a66d6469109090",
+        "Core kernel Yaiwes/Componentes recuperados A/Promptfoo_0002.zip": "ac68bd8cb879e203b3776e1be1b6de7363f75b5fe0e9d44e359c54b7c0b55b16",
+        "Core kernel Yaiwes/Componentes recuperados A/Promptfoo_0003.zip": "dd75446ab17012a9a70c1320f4ccfa17a52f34ce2ffdf2cee4fcea50d7f94389",
+        "Core kernel Yaiwes/Componentes recuperados A/Promptfoo_0004.zip": "0ec2538247031acf923448a7e97935cd2be1d3a8734a49c2b65fe2ae98ab1cd7",
+        "Core kernel Yaiwes/Componentes recuperados A/Promptfoo_0005.zip": "142403c91f0dd5d3bed52c6738d7c69566112b86b21797a280f35898dbf6d745",
+        "Core kernel Yaiwes/Componentes recuperados A/Promptfoo_0006.zip": "9a16a68e8bd6379b1355edaf398b780ae670340cab8c7e58b737bdf1be4b4a96",
+        "Core kernel Yaiwes/Componentes recuperados A/Promptfoo_0007.zip": "2daba7f4eb890019b0c96fbb5475b08bd7a7a89d6513c49d01a505735d087b64",
+        "Core kernel Yaiwes/Componentes recuperados A/Promptfoo_0008.zip": "c4ee3e9864c91206f373e4695cf46fc0a73586c4ae09c421c487601e0c6b5f50",
+        "Core kernel Yaiwes/Componentes recuperados A/Promptfoo_0009.zip": "18009d226e268931132980025cea26b2008b46a1c661380186eb889e42d046d8",
+        "Core kernel Yaiwes/Componentes recuperados A/Promptfoo_0010.zip": "897bb3290e995dac175faa2ae2bb2e2d6c2f168070e2fe194e9425ff053758f2",
+        "Core kernel Yaiwes/Componentes recuperados A/Promptfoo_0011.zip": "c76a9a87bd548d345826f3c814382182739be044547e97b189fc90ebf9fcd7fb",
+        "Core kernel Yaiwes/Componentes recuperados A/Promptfoo_0012.zip": "42dc6f1f31bc756bebdcd3ad4433d60ff4af7d46a3ebcb0f669359185e647d73",
+        "Core kernel Yaiwes/Componentes recuperados A/Promptfoo_0013.zip": "fdec901b9257620a6d4e851e9596496e7b18e5f347652f9f5285b7fad0ad4ddb",
+        "Core kernel Yaiwes/Componentes recuperados A/Promptfoo_0014.zip": "0e52bfa03d38223f050ac08bbea4b9a4dd684c95a539945983fd5fafa3fc352f",
+        "Core kernel Yaiwes/Componentes recuperados A/Promptfoo_0015.zip": "3ff92397ea5f3b7db5bfb99f15c543ad9891b3c1f5250dd5f77fbdbd2ef74800",
+        "Core kernel Yaiwes/Componentes recuperados A/Promptfoo_0016.zip": "9f9431a3563e2230a8e2ec518295cc1188ff2a5846436e55940443ee3f6d3a04"
+      }
+    },
+    {
+      "target": "Agente core kernel Yaiwes principal/Kong",
+      "slug": "Kong",
+      "actual_target": "Core kernel Yaiwes/Componentes recuperados A/Kong",
+      "status": "FINAL_REPAIRED_VERIFIED",
+      "files": 2507,
+      "bytes": 16933394,
+      "tree_sha256": "be996d3ac0b1ed93e7b242575c3822b6cfc025991decfac88e0d6756245589e3",
+      "copied": 1,
+      "collision_backups": [],
+      "pointer_backups": [],
+      "excluded_lfs_source_members": [],
+      "dataset_recovery": null,
+      "part_sha256": {
+        "Core kernel Yaiwes/Componentes recuperados A/Kong_0001.zip": "cbba75cb57635f72576c844bb03d14f59c9356523671839d434bac7c1c92250c"
+      }
+    },
+    {
+      "target": "Agente core kernel Yaiwes principal/MCP-Python-SDK",
+      "slug": "MCP-Python-SDK",
+      "actual_target": "Core kernel Yaiwes/Componentes recuperados A/MCP-Python-SDK",
+      "status": "FINAL_REPAIRED_VERIFIED",
+      "files": 1665,
+      "bytes": 14774162,
+      "tree_sha256": "d1d21e7866c746c42b6645a554029d0787fe5ff4bb0eff3570fc3a5955858282",
+      "copied": 4,
+      "collision_backups": [],
+      "pointer_backups": [],
+      "excluded_lfs_source_members": [],
+      "dataset_recovery": null,
+      "part_sha256": {
+        "Core kernel Yaiwes/Componentes recuperados A/MCP-Python-SDK_0001.zip": "4bc3bb4f48bbf1e718d7b5094bc6189cc537f5e4fb4247f6fa8aca8fa065c23f"
+      }
+    },
+    {
+      "target": "Agente core kernel Yaiwes principal/Mem0",
+      "slug": "Mem0",
+      "actual_target": "Core kernel Yaiwes/Componentes recuperados A/Mem0",
+      "status": "FINAL_REPAIRED_VERIFIED",
+      "files": 1786,
+      "bytes": 34988782,
+      "tree_sha256": "8c4e4a63df2fa8008577dbb259d3eea853f9ce8eeaa3b378a76e3cd9e483eca9",
+      "copied": 1,
+      "collision_backups": [],
+      "pointer_backups": [],
+      "excluded_lfs_source_members": [],
+      "dataset_recovery": null,
+      "part_sha256": {
+        "Core kernel Yaiwes/Componentes recuperados A/Mem0_0001.zip": "6d3c686533669acd021fb7bd3520471fdf3ff87958087c6ba67dfd2199a1eb33",
+        "Core kernel Yaiwes/Componentes recuperados A/Mem0_0002.zip": "461ece12c13674438853c4a3435c108053c2e236d81534467cc8d7dd40894fa7"
+      }
+    },
+    {
+      "target": "Agente core kernel Yaiwes principal/Microsoft-Agent-Framework",
+      "slug": "Microsoft-Agent-Framework",
+      "actual_target": "Core kernel Yaiwes/Componentes recuperados A/Microsoft-Agent-Framework",
+      "status": "VERIFIED_EXISTING_ACTUAL",
+      "files": 5194,
+      "tree_sha256": "f6b123a3173bd6c8da2e3d28bfc6b90e457190206c3bbd6b9e9c055cce3278cf"
+    },
+    {
+      "target": "Agente core kernel Yaiwes principal/Unleash",
+      "slug": "Unleash",
+      "actual_target": "Core kernel Yaiwes/Componentes recuperados A/Unleash",
+      "status": "FINAL_REPAIRED_VERIFIED",
+      "files": 6710,
+      "bytes": 25297895,
+      "tree_sha256": "132740c65ffc4bda9fe1403e473a5d70ae1ee10e3c7707c2a677ce6fa7ef8088",
+      "copied": 4,
+      "collision_backups": [],
+      "pointer_backups": [],
+      "excluded_lfs_source_members": [],
+      "dataset_recovery": null,
+      "part_sha256": {
+        "Core kernel Yaiwes/Componentes recuperados A/Unleash_0001.zip": "16e32c2ba26f9bf6154d44d69de73dca61ed8521c35a419ef78d6c222c69cd66",
+        "Core kernel Yaiwes/Componentes recuperados A/Unleash_0002.zip": "dd40b3ca2f693ed2565539411c8f81850d8a5a5ca1cf4e4b4a971b81609545f3"
+      }
+    },
+    {
+      "target": "Agente core kernel Yaiwes principal/OpenThoughts-Agent",
+      "slug": "OpenThoughts-Agent",
+      "actual_target": "Core kernel Yaiwes/Componentes recuperados A/OpenThoughts-Agent",
+      "status": "FINAL_REPAIRED_VERIFIED",
+      "files": 2266,
+      "bytes": 41304056,
+      "tree_sha256": "51f37e10716333f61888e08f37bed2caa9e2d6c3c57a085234ebc04a0d8494a4",
+      "copied": 49,
+      "collision_backups": [],
+      "pointer_backups": [],
+      "excluded_lfs_source_members": [],
+      "dataset_recovery": null,
+      "part_sha256": {
+        "Core kernel Yaiwes/Componentes recuperados A/OpenThoughts-Agent_0001.zip": "a22306d718dbaf4587814c4185c470108c1aec724e30514cb840f3884fa74b8f"
+      }
+    },
+    {
+      "target": "Agente core kernel Yaiwes principal/Temporal",
+      "slug": "Temporal",
+      "actual_target": "Core kernel Yaiwes/Componentes recuperados A/Temporal",
+      "status": "FINAL_REPAIRED_VERIFIED",
+      "files": 3861,
+      "bytes": 39896649,
+      "tree_sha256": "02d3c8f2ed89db8e2a1ba76f6f70a9051e9bce71c18fd196312d85a155b7ef8b",
+      "copied": 1,
+      "collision_backups": [],
+      "pointer_backups": [],
+      "excluded_lfs_source_members": [],
+      "dataset_recovery": null,
+      "part_sha256": {
+        "Core kernel Yaiwes/Componentes recuperados A/Temporal_0001.zip": "e72e6245b4d4869614b37ac01a3b33c2e127c1eed42e58013f606285a2ea1ccb"
+      }
+    },
+    {
+      "target": "Agente core kernel Yaiwes principal/SWE-agent",
+      "slug": "SWE-agent",
+      "actual_target": "Core kernel Yaiwes/Componentes recuperados A/SWE-agent",
+      "status": "FINAL_REPAIRED_VERIFIED",
+      "files": 411,
+      "bytes": 36071795,
+      "tree_sha256": "cb42c967a43ab098d3e2d6f9d42db9a0540323536e797589f3dc8f0e92598d83",
+      "copied": 22,
+      "collision_backups": [],
+      "pointer_backups": [],
+      "excluded_lfs_source_members": [],
+      "dataset_recovery": null,
+      "part_sha256": {
+        "Core kernel Yaiwes/Componentes recuperados A/SWE-agent_0001.zip": "49ecf496172a68310b06db052ce48fcef2277f9d45b28eff317e2fc3c4e43441",
+        "Core kernel Yaiwes/Componentes recuperados A/SWE-agent_0002.zip": "e3f74e548633857118efdee4dd161d5c3449db4304d02e2de2a633e3aa49b63c",
+        "Core kernel Yaiwes/Componentes recuperados A/SWE-agent_0003.zip": "3235f12c2d70b299147ac363cb4b4c6481cd8905fb3c4d40f63d1abf96783471"
+      }
+    },
+    {
+      "target": "Agente core kernel Yaiwes principal/OpenTelemetry-Collector",
+      "slug": "OpenTelemetry-Collector",
+      "actual_target": "Core kernel Yaiwes/Componentes recuperados A/OpenTelemetry-Collector",
+      "status": "FINAL_REPAIRED_VERIFIED",
+      "files": 2826,
+      "bytes": 11267257,
+      "tree_sha256": "eb7b98fdda35b9b6981a65c6b94755dec44a6b0304a53b2371eaa7a09366389b",
+      "copied": 1,
+      "collision_backups": [],
+      "pointer_backups": [],
+      "excluded_lfs_source_members": [],
+      "dataset_recovery": null,
+      "part_sha256": {
+        "Core kernel Yaiwes/Componentes recuperados A/OpenTelemetry-Collector_0001.zip": "7bafaf7140bc69ff3d5b21d641f5476d7420373e26333f324c1f0c61c7d0f746"
+      }
+    }
+  ],
+  "failures": [],
+  "verdict": "REPAIR_PASS"
+}
