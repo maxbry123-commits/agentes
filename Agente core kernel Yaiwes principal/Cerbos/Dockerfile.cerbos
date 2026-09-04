@@ -1,0 +1,14 @@
+FROM alpine:3.16@sha256:452e7292acee0ee16c332324d7de05fa2c99f9994ecc9f0779c602916a672ae4 AS base
+RUN apk add -U --no-cache ca-certificates && update-ca-certificates
+
+FROM scratch
+ARG TARGETPLATFORM
+EXPOSE 3592 3593
+ENV CERBOS_CONFIG="__default__"
+VOLUME ["/policies", "/tmp", "/.cache"]
+ENTRYPOINT ["/cerbos"]
+CMD ["server"]
+HEALTHCHECK --interval=10s --timeout=2s --retries=2 CMD ["/cerbos", "healthcheck"]
+COPY --from=base /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY ${TARGETPLATFORM}/cerbos /cerbos
+

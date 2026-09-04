@@ -1,0 +1,104 @@
+---
+name: AlbumObjectTestSuite
+description: Tests for verifying the album:object resource policy
+resources:
+  alicia_private_album:
+    id: "XX125"
+    kind: "album:object"
+    attr:
+      owner: "alicia"
+      public: false
+      flagged: false
+
+  alicia_public_album:
+    id: "XX525"
+    kind: "album:object"
+    attr:
+      owner: "alicia"
+      public: true
+      flagged: false
+
+  alicia_flagged_album:
+    id: "XX666"
+    kind: "album:object"
+    attr:
+      owner: "alicia"
+      public: true
+      flagged: true
+
+principals:
+  alicia:
+    id: "alicia"
+    roles: ["user"]
+
+  bradley:
+    id: "bradley"
+    roles: ["user"]
+
+  maria:
+    id: "maria"
+    roles: ["moderator", "user"]
+
+tests:
+  - name: View album
+    input: &testInput
+      principals:
+        - alicia
+        - bradley
+        - maria
+      actions:
+        - view
+      resources:
+        - alicia_private_album
+        - alicia_public_album
+        - alicia_flagged_album
+    expected:
+      - &viewExp
+        principal: alicia
+        resource: alicia_private_album
+        actions:
+          view: EFFECT_ALLOW
+
+      - <<: *viewExp
+        resource: alicia_public_album
+
+      - <<: *viewExp
+        resource: alicia_flagged_album
+
+      - <<: *viewExp
+        principal: bradley
+        resource: alicia_public_album
+
+      - <<: *viewExp
+        principal: bradley
+        resource: alicia_flagged_album
+
+      - <<: *viewExp
+        principal: maria
+        resource: alicia_public_album
+
+      - <<: *viewExp
+        principal: maria
+        resource: alicia_flagged_album
+
+  - name: Delete album
+    input:
+      <<: *testInput
+      actions:
+        - delete
+    expected:
+      - &deleteExp
+        principal: alicia
+        resource: alicia_private_album
+        actions:
+          delete: EFFECT_ALLOW
+
+      - <<: *deleteExp
+        resource: alicia_public_album
+
+      - <<: *deleteExp
+        resource: alicia_flagged_album
+
+      - <<: *deleteExp
+        principal: maria
+        resource: alicia_flagged_album

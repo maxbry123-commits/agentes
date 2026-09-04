@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=../.jsonschema/CompileTestCase.schema.json
+---
+wantErrors:
+  - file: principal_policies/donald_duck_20210210.yaml
+    error: scripts in conditions are no longer supported
+    description: |-
+      Unsupported feature
+    position:
+      line: 10
+      column: 11
+      path: "$.principalPolicy.rules[0].actions[0].condition"
+mainDef: "principal_policies/donald_duck_20210210.yaml"

@@ -1,0 +1,530 @@
+include::ROOT:partial$attributes.adoc[]
+
+= `cerbosctl`
+
+include::ROOT:partial$version-check.adoc[]
+
+:page-aliases: ctl.adoc
+
+This utility can be downloaded as a separate container, tar archive, or link:https://www.npmjs.com/package/cerbosctl[npm package]. It is automatically installed when installing Cerbos through xref:ROOT:installation/binary.adoc#linux-packages[Linux packages or the Homebrew tap].
+
+
+.Run from the container
+[source,sh,subs="attributes"]
+----
+docker run -it {cerbosctl-docker-img} \
+    --server=192.168.1.10:3593 \
+    --username=user \
+    --password=password \
+    get rp
+----
+
+.Download and run the appropriate binary from {app-github-releases-page}
+[caption=]
+[%header,cols=".^1,.^1,3m",grid=rows]
+|===
+|OS | Arch | Bundle
+|Linux | x86-64 | cerbosctl_{app-version}_Linux_x86_64.tar.gz
+|Linux | arm64 | cerbosctl_{app-version}_Linux_arm64.tar.gz
+|MacOS | universal | cerbosctl_{app-version}_Darwin_all.tar.gz
+|MacOS | x86-64 | cerbosctl_{app-version}_Darwin_x86_64.tar.gz
+|MacOS | arm64 | cerbosctl_{app-version}_Darwin_arm64.tar.gz
+|===
+
+
+Cerbosctl requires the xref:configuration:server.adoc#admin-api[Admin API to be enabled] on the Cerbos server.
+
+The server address to connect to and the credentials to authenticate can be provided through environment variables or as arguments to the command.
+
+[source]
+----
+Usage: cerbosctl <command>
+
+A CLI for managing Cerbos
+
+The Cerbos Admin API must be enabled in order for these commands to work.
+The Admin API requires credentials. They can be provided using a netrc file,
+environment variables or command-line arguments.
+
+Environment variables
+
+  - CERBOS_SERVER: gRPC address of the Cerbos server
+  - CERBOS_USERNAME: Admin username
+  - CERBOS_PASSWORD: Admin password
+
+When more than one method is used to provide credentials, the precedence from
+lowest to highest is: netrc < environment < command line.
+
+Examples
+
+    # Connect to a TLS enabled server while skipping certificate verification and launch the decisions viewer
+    cerbosctl --server=localhost:3593 --username=user --password=password --insecure decisions
+
+    # Connect to a non-TLS server and launch the decisions viewer
+    cerbosctl --server=localhost:3593 --username=user --password=password --plaintext decisions
+
+Flags:
+  -h, --help                       Show context-sensitive help.
+      --server="localhost:3593"    Address of the Cerbos server ($CERBOS_SERVER)
+      --username=STRING            Admin username ($CERBOS_USERNAME)
+      --password=STRING            Admin password ($CERBOS_PASSWORD)
+      --ca-cert=STRING             Path to the CA certificate for verifying server identity
+      --client-cert=STRING         Path to the TLS client certificate
+      --client-key=STRING          Path to the TLS client key
+      --insecure                   Skip validating server certificate
+      --plaintext                  Use plaintext protocol without TLS
+
+Commands:
+  get derived_roles (derived_role,dr) [<id> ...]
+
+  get export_constants (ec) [<id> ...]
+
+  get export_variables (ev) [<id> ...]
+
+  get principal_policies (principal_policy,pp) [<id> ...]
+
+  get resource_policies (resource_policy,rp) [<id> ...]
+
+  get role_policies (role_policy,rlp) [<id> ...]
+
+  get schemas (schema,s) [<id> ...]
+
+  inspect policies (p) [<id> ...]
+    Inspect policies in the store
+
+  store export (e) <path>
+
+  store reload (r)
+
+  delete policy (policies,p) <id> ...
+
+  delete schema (schemas,s) <id> ...
+
+  disable policy (policies,p) <id> ...
+
+  enable policy (policies,p) <id> ...
+
+  put policy (policies,p) <paths> ...
+
+  put schema (schemas,s) <paths> ...
+
+  decisions
+    Interactive decision log viewer
+
+  audit
+    View audit logs
+
+  version
+    Show cerbosctl and PDP version
+
+Run "cerbosctl <command> --help" for more information on a command.
+----
+
+
+[#audit]
+== `audit`
+
+This command allows you to view the audit logs captured by the Cerbos server. xref:configuration:audit.adoc[Audit logging] must be enabled on the server to obtain the data through this command.
+
+[#audit-filters]
+.Filters
+****
+
+tail:: Get the last N records (e.g. `--tail=10`)
+between:: Get records between two ISO-8601 timestamps. If the last timestamp is left out, get records from the first timestamp up to now.
++
+- `--between=2021-07-01T00:00:00Z,2021-07-02T00:00:00Z`: From midnight of 2021-07-01 to midnight of 2021-07-02.
+- `--between=2021-07-01T00:00:00Z`: From midnight of 2021-07-01 to now.
+
+since:: Get records from N hours/minutes/second ago to now. (e.g. `--since=3h`)
+lookup:: Get a specific record by ID. (e.g. `--lookup=01F9Y5MFYTX7Y87A30CTJ2FB0S`)
+
+****
+
+.View the last 10 access logs
+[source,sh]
+----
+cerbosctl audit --kind=access --tail=10
+----
+
+.View the decision logs from midnight 2021-07-01 to midnight 2021-07-02
+[source,sh]
+----
+cerbosctl audit --kind=decision --between=2021-07-01T00:00:00Z,2021-07-02T00:00:00Z
+----
+
+.View the decision logs from midnight 2021-07-01 to now
+[source,sh]
+----
+cerbosctl audit --kind=decision --between=2021-07-01T00:00:00Z
+----
+
+.View the access logs from 3 hours ago to now as newline-delimited JSON
+[source,sh]
+----
+cerbosctl audit --kind=access --since=3h --raw
+----
+
+.View a specific access log entry by call ID
+[source,sh]
+----
+cerbosctl audit --kind=access --lookup=01F9Y5MFYTX7Y87A30CTJ2FB0S
+----
+
+
+[#decisions]
+== `decisions`
+
+This command starts an interactive text user interface to view and analyze the decision records captured by the Cerbos server. It accepts the same xref:#audit-filters[filter flags] as the `audit` command.
+
+
+image:decisions-tui.png[alt="Decisions",role="center-img"]
+
+- kbd:[tab] Switch focus to different panes in the UI
+- kbd:[esc] Close window (or exit if you are in the main screen)
+- kbd:[q] Exit
+
+Use the arrow keys (or Vim keys kbd:[h], kbd:[j], kbd:[k], kbd:[l]) to scroll horizontally or vertically. Press kbd:[enter] to select/open an item.
+
+
+.Start analyzing the last 20 decision records
+[source,sh]
+----
+cerbosctl decisions --tail=20
+----
+
+[#delete]
+== `delete`
+
+This command deletes the polices and the schemas with the specified ids.
+
+.Delete policies
+----
+cerbosctl delete policies derived_roles.my_derived_roles
+cerbosctl delete policy derived_roles.my_derived_roles
+cerbosctl delete p derived_roles.my_derived_roles
+----
+
+.Delete multiple policies
+----
+cerbosctl delete policies derived_roles.my_derived_roles resource.leave_request.default
+cerbosctl delete policy derived_roles.my_derived_roles resource.leave_request.default
+cerbosctl delete p derived_roles.my_derived_roles resource.leave_request.default
+----
+
+.Delete schemas
+----
+cerbosctl delete schemas principal.json
+cerbosctl delete schema principal.json
+cerbosctl delete s principal.json
+----
+
+.Delete multiple schemas
+----
+cerbosctl delete schemas principal.json leave_request.json
+cerbosctl delete schema principal.json leave_request.json
+cerbosctl delete s principal.json leave_request.json
+----
+
+[#disable]
+== `disable`
+
+This command disables the policies with the specified ids.
+
+.Disable policies
+----
+cerbosctl disable policies derived_roles.my_derived_roles
+cerbosctl disable policy derived_roles.my_derived_roles
+cerbosctl disable p derived_roles.my_derived_roles
+----
+
+.Disable multiple policies
+----
+cerbosctl disable policies derived_roles.my_derived_roles resource.leave_request.default
+cerbosctl disable policy derived_roles.my_derived_roles resource.leave_request.default
+cerbosctl disable p derived_roles.my_derived_roles resource.leave_request.default
+----
+
+CAUTION: Scoped policies must have unbroken scope chains. If you're disabling a scoped policy, make sure that its descendant policies are disabled as well.
+
+[#enable]
+== `enable`
+
+This command enables the policies with the specified ids.
+
+.Enable policies
+----
+cerbosctl enable policies derived_roles.my_derived_roles
+cerbosctl enable policy derived_roles.my_derived_roles
+cerbosctl enable p derived_roles.my_derived_roles
+----
+
+.Enable multiple policies
+----
+cerbosctl enable policies derived_roles.my_derived_roles resource.leave_request.default
+cerbosctl enable policy derived_roles.my_derived_roles resource.leave_request.default
+cerbosctl enable p derived_roles.my_derived_roles resource.leave_request.default
+----
+
+[#get]
+== `get`
+
+This command lists the policies available in the configured policy repository.
+You can also retrieve individual policies or schemas by their identifiers and view their definitions as YAML or JSON.
+
+You can filter the output using the `name` and `version` flags. Each flag accepts multiple comma-separated values which are OR'ed together. For example, `--name=a.yaml,b.yaml` matches policies that are either named `a.yaml` or `b.yaml`.
+
+Separately, you can filter the output using the `name-regexp`, `version-regexp` and `scope-regexp` flags. Each flag accepts a regular expression string. These are separate from the `name` and `version` flags above, and cannot be used with their respective counterparts.
+
+You can include disabled policies in the results by adding `--include-disabled` flag.
+
+You can optionally restrict the list to a specific set of policies by supplying their IDs as trailing arguments.
+
+.List derived roles
+----
+cerbosctl get derived_roles
+cerbosctl get derived_role
+cerbosctl get dr
+----
+
+.List principal policies
+----
+cerbosctl get principal_policies
+cerbosctl get principal_policy
+cerbosctl get pp
+----
+
+.List resource policies
+----
+cerbosctl get resource_policies
+cerbosctl get resource_policy
+cerbosctl get rp
+----
+
+.List derived_roles where `name` is `my_policy` or `a_policy`
+----
+cerbosctl get derived_roles --name my_policy,a_policy
+cerbosctl get dr --name my_policy,a_policy
+----
+
+.List derived_roles where `name` is `my_policy` or `a_policy`, using regular expression
+----
+cerbosctl get derived_roles --name-regexp "^(my|a)_policy\$"
+cerbosctl get dr --name-regexp "^(my|a)_policy\$"
+----
+
+.Get derived roles policies having the ID `common_roles.yaml` and `other_roles.yaml`
+----
+cerbosctl get derived_roles common_roles.yaml other_roles.yaml
+cerbosctl get dr common_roles.yaml other_roles.yaml
+----
+
+.List principal_policies where `version` is `default` or `v1`
+----
+cerbosctl get principal_policies --version default,v1
+cerbosctl get pp --version default,v1
+----
+
+.List principal_policies where `version` is `default` or `v1`, using regular expression
+----
+cerbosctl get principal_policies --version-regexp "(default|v1)"
+cerbosctl get pp --version-regexp "(default|v1)"
+----
+
+.Get principal_policies having the ID `alex.yaml` and `john.yaml`
+----
+cerbosctl get principal_policies alex.yaml john.yaml
+cerbosctl get pp alex.yaml john.yaml
+----
+
+.List resource_policies where `scope` includes the substring `foo`, using regular expression
+----
+cerbosctl get resource_policies --scope-regexp foo
+cerbosctl get rp --scope-regexp foo
+----
+
+.Get resource_policies having the ID `leave_request.yaml` and `purchase_order.yaml`
+----
+cerbosctl get resource_policies leave_request.yaml purchase_order.yaml
+cerbosctl get rp leave_request.yaml purchase_order.yaml
+----
+
+.List derived_roles and sort by column `policyId` or `name`
+----
+cerbosctl get derived_roles --sort-by policyId
+cerbosctl get dr --sort-by policyId
+
+cerbosctl get derived_roles --sort-by name
+cerbosctl get dr --sort-by name
+----
+
+.List principal_policies and sort by column `policyId`, `name` or `version`
+----
+cerbosctl get principal_policies --sort-by policyId
+cerbosctl get pp --sort-by policyId
+
+cerbosctl get principal_policies --sort-by name
+cerbosctl get pp --sort-by name
+
+cerbosctl get principal_policies --sort-by version
+cerbosctl get pp --sort-by version
+----
+
+.List resource_policies and sort by column `policyId`, `name` or `version`
+----
+cerbosctl get resource_policies --sort-by policyId
+cerbosctl get rp --sort-by policyId
+
+cerbosctl get resource_policies --sort-by name
+cerbosctl get rp --sort-by name
+
+cerbosctl get resource_policies --sort-by version
+cerbosctl get rp --sort-by version
+----
+
+.Get JSON
+----
+cerbosctl get derived_roles my_derived_roles --output=json
+----
+
+.Get YAML
+----
+cerbosctl get derived_roles my_derived_roles --output=yaml
+----
+
+[#hub]
+== `hub`
+
+Operations related to Cerbos Hub.
+
+[#inspect-policies]
+== `inspect policies`
+
+This command is to inspect policies in the store. Currently, it lists actions and variables defined in the policies.
+
+.Inspect policies
+----
+cerbosctl inspect policies
+----
+
+[#put]
+== `put`
+
+This command puts the given policies or schemas to the configured policy repository.
+
+.Put policies
+----
+cerbosctl put policies ./path/to/policy.yaml
+cerbosctl put policy ./path/to/policy.yaml
+cerbosctl put p ./path/to/policy.yaml
+----
+
+.Put multiple policies
+----
+cerbosctl put policy ./path/to/policy.yaml ./path/to/other/policy.yaml
+----
+
+.Put policies under a directory
+----
+cerbosctl put policy ./dir/to/policies ./other/dir/to/policies
+----
+
+.Put policies under a directory recursively
+----
+cerbosctl put policy --recursive ./dir/to/policies
+cerbosctl put policy -R ./dir/to/policies
+----
+
+.Put policies from a zip file
+----
+cerbosctl put policy ./dir/to/policies.zip
+----
+
+.Put schemas
+----
+cerbosctl put schemas ./path/to/schema.json
+cerbosctl put schema ./path/to/schema.json
+cerbosctl put s ./path/to/schema.json
+----
+
+.Put multiple schemas
+----
+cerbosctl put schema ./path/to/schema.json ./path/to/other/schema.json
+----
+
+.Put schemas under a directory
+----
+cerbosctl put schema ./dir/to/schemas ./other/dir/to/schemas
+----
+
+.Put schemas under a directory recursively
+----
+cerbosctl put schema --recursive ./dir/to/schemas
+cerbosctl put schema -R ./dir/to/schemas
+----
+
+.Put schemas from a zip file
+----
+cerbosctl put schema ./dir/to/schemas.zip
+----
+
+[#store]
+== `store`
+
+Trigger operations on the policy store of the PDP
+
+[#export]
+=== `export`
+
+Exports the policies and schemas from the store into a directory.
+
+.Export policies and schemas from the store into a directory
+----
+cerbosctl store export path/to/dir
+----
+
+.Export policies and schemas from the store into a zip archive
+----
+cerbosctl store export path/to/archive.zip
+----
+
+.Export policies and schemas from the store into a gzip archive
+----
+cerbosctl store export path/to/archive.gzip
+cerbosctl store export path/to/archive.tar.gz
+----
+
+[#reload]
+=== `reload`
+
+Reloads the store.
+
+.Reload the store
+----
+cerbosctl store reload
+----
+
+.Reload the store and wait until it finishes
+----
+cerbosctl store reload --wait`
+----
+
+[#revisions]
+=== `revisions`
+
+Trigger operations on the policy store revisions
+
+[#purge]
+==== `purge`
+
+Deletes revisions from the `policy_revision` table
+
+.Purge all revisions
+----
+cerbosctl store revisions purge
+----
+
+.Purge all revisions but keep last 2 revisions of each policy.
+----
+cerbosctl store revisions purge --keep-last=2
+----

@@ -1,0 +1,43 @@
+{
+  "name": "{{ .Name }}",
+  "version": "{{ .Version }}",
+  "description": "The {{ .Name }} binary",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cerbos/cerbos.git",
+    "directory": "npm/packages/{{ .Name }}"
+  },
+  "homepage": "https://cerbos.dev",
+  "bugs": {
+    "url": "https://github.com/cerbos/cerbos/issues"
+  },
+  "author": "Cerbos <help@cerbos.dev> (https://cerbos.dev)",
+  "license": "Apache-2.0",
+  "bin": {
+    "{{ .Name }}": "bin.js"
+  },
+  "main": "index.js",
+  "types": "index.d.ts",
+  "files": [
+    "bin.js",
+    "index.d.ts",
+    "index.js"
+  ],
+  "keywords": [
+    "Cerbos",
+    "authorization",
+    "access control",
+    "roles",
+    "permissions",
+    "policy",
+    "security",
+    "role-based access control",
+    "RBAC",
+    "attribute-based access control",
+    "ABAC",
+    "policy decision point",
+    "PDP"
+  ],
+  "scripts": {},
+  "optionalDependencies": {{ .OptionalDependencies }}
+}

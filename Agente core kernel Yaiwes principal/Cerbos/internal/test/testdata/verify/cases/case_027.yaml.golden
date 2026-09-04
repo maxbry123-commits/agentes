@@ -1,0 +1,16 @@
+{
+  "suites": [
+    {
+      "file": "suite_test.yaml",
+      "name": "TestSuite",
+      "summary": {
+        "overallResult": "RESULT_ERRORED"
+      },
+      "error": "failed to load test fixtures from testdata: failed to load aux data:\n4:5 unknown field \"jort\"",
+      "description": "Tests for verifying something"
+    }
+  ],
+  "summary": {
+    "overallResult": "RESULT_ERRORED"
+  }
+}

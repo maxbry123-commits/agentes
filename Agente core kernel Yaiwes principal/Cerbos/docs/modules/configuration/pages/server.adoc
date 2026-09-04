@@ -1,0 +1,158 @@
+include::ROOT:partial$attributes.adoc[]
+
+= Server block
+
+include::ROOT:partial$version-check.adoc[]
+
+
+== Listen addresses
+
+By default the server will start an HTTP server on port `3592` and a gRPC server on `3593` that will listen on all available interfaces.
+
+.Listen on all available interfaces (default)
+[source,yaml,linenums]
+----
+server:
+  httpListenAddr: ":3592"
+  grpcListenAddr: ":3593"
+----
+
+.Listen on a specific interface
+[source,yaml,linenums]
+----
+server:
+  httpListenAddr: "192.168.0.17:3592"
+  grpcListenAddr: "192.168.0.17:3593"
+----
+
+.Listen on a Unix domain socket
+[source,yaml,linenums]
+----
+server:
+  httpListenAddr: "unix:/var/sock/cerbos.http"
+  grpcListenAddr: "unix:/var/sock/cerbos.grpc"
+----
+
+.Listen on a Unix domain socket with specific file mode
+[source,yaml,linenums]
+----
+server:
+  httpListenAddr: "unix:/var/sock/cerbos.http"
+  grpcListenAddr: "unix:/var/sock/cerbos.grpc"
+  udsFileMode: 0o776
+----
+
+== Metrics
+
+By default, Prometheus metrics are available to scrape from the `/_cerbos/metrics` HTTP endpoint. If you want to disable metrics reporting, set `metricsEnabled` to `false`.
+
+[source,yaml,linenums]
+----
+server:
+  metricsEnabled: false
+----
+
+== Payload logging
+
+For debugging or auditing purposes, you can enable request and response payload logging for each request.
+
+CAUTION: Enabling this setting affects server performance and could expose potentially sensitive data contained in the requests to anyone with access to the server logs.
+
+[source,yaml,linenums]
+----
+server:
+  logRequestPayloads: true
+----
+
+== Transport layer security (TLS)
+
+You can enable transport layer security (TLS) by defining the paths to the certificate and key file in the `TLS` section.
+
+[source,yaml,linenums]
+----
+server:
+  tls:
+    cert: /path/to/certificate
+    key: /path/to/private_key
+----
+
+NOTE: For production use cases that require automatic certificate reloading, workload identities and other advanced features, we recommend running a proxy server such as link:https://www.envoyproxy.io[Envoy], link:https://github.com/ghostunnel/ghostunnel[Ghostunnel] or link:https://traefik.io[Traefik] in front of the Cerbos server.
+
+
+== CORS
+
+By default, link:https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS[CORS] is enabled on the HTTP service with all origins allowed. The default allowed headers are `accept`, `content-type`, `user-agent` and `x-requested-with`. You can disable CORS by setting `server.cors.disabled` to `true`. You can also restrict the list of allowed origins and headers by setting `server.cors.allowedOrigins` and `server.cors.allowedHeaders` respectively.
+
+[source,yaml,linenums]
+----
+server:
+  cors:
+    allowedOrigins:
+      - example.com
+      - example.org
+    allowedHeaders:
+      - accept
+      - content-type
+      - user-agent
+      - x-custom-header
+      - x-requested-with
+----
+
+[#request-limits]
+== Request limits
+
+By default, each Cerbos API request can include a batch of 50 resources with up to 50 actions to be checked for each resource. This limit is in place to prevent the server from being overloaded by very large requests -- which affects throughput and CPU,memory,I/O usage.
+
+WARNING: Changing these settings could have a large impact on the performance and resource utilisation of Cerbos instances.
+
+[source,yaml,linenums]
+----
+server:
+  requestLimits:
+    maxActionsPerResource: 50
+    maxResourcesPerRequest: 50
+----
+
+
+[#admin-api]
+== Enable Admin API
+
+The xref:api:admin_api.adoc[Cerbos Admin API] provides administration functions such as adding or updating policies (if the underlying storage engine supports it) to the running Cerbos instance. It is disabled by default.
+
+Authentication is mandatory for the Admin API. See xref:api:admin_api.adoc[Cerbos Admin API documentation] for more details.
+
+IMPORTANT: TLS should be enabled to ensure that credentials are transmitted securely over the network. We also highly recommend changing the default username and password when deploying Cerbos.
+
+[source,yaml,linenums]
+----
+server:
+  adminAPI:
+    enabled: true
+    adminCredentials:
+      username: cerbos
+      passwordHash: JDJ5JDEwJE5HYnk4cTY3VTE1bFV1NlR2bmp3ME9QOXdXQXFROGtBb2lWREdEY2xXbzR6WnoxYWtSNWNDCgo=
+----
+
+[#password-hash]
+=== Generating a password hash
+
+Cerbos expects the password to be hashed with bcrypt and encoded with base64. This can be achieved using the `htpasswd` and `base64` utilities available on most operating systems.
+
+[source, sh]
+----
+echo "cerbosAdmin" | htpasswd -niBC 10 cerbos | cut -d ':' -f 2 | base64 -w0
+----
+
+[NOTE]
+====
+On MacOS, the `base64` utility does not require the `-w0` argument.
+
+[source, sh]
+----
+echo "cerbosAdmin" | htpasswd -niBC 10 cerbos | cut -d ':' -f 2 | base64
+----
+
+====
+
+NOTE: The output of the above command for a given password value is not deterministic. It will vary between invocations or between different machines. This is because the `bcrypt` algorithm uses a salt (random noise) to make password cracking harder.
+

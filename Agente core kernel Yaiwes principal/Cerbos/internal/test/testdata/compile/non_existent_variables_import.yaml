@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=../.jsonschema/CompileTestCase.schema.json
+---
+wantErrors:
+  - file: resource_policies/example.yaml
+    error: import not found
+    description: |-
+      Variables import 'example' cannot be found
+    position:
+      line: 10
+      column: 9
+      path: "$.resourcePolicy.variables.import[0]"
+mainDef: resource_policies/example.yaml

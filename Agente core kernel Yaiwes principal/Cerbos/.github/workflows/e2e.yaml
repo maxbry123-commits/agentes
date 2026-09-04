@@ -1,0 +1,76 @@
+---
+name: E2E Tests
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: "Package"
+        required: false
+        type: string
+        default: ""
+  schedule:
+    - cron: 0 1 * * 1-5
+permissions: {}
+jobs:
+  runE2ETests:
+    name: Run E2E Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Free disk space
+        uses: ./.github/actions/free-disk-space
+
+      - name: Install Go and restore cached dependencies
+        uses: ./.github/actions/setup-go
+
+      - name: Install tools
+        uses: cerbos/actions/install-tools@69bd18cfe7152a480728c2617569acfcb3fcc3b7 # main
+        with:
+          tools: |-
+            helm
+            helmfile
+            kind
+            kubectl
+            stern
+            telepresence
+
+      - name: Install Helm Secrets
+        shell: bash
+        env:
+          HELM_SECRETS_VERSION: "4.7.6"
+        run: |-
+          curl --silent 'https://github.com/jkroepke.gpg' | gpg --import -
+          gpg --export > ~/.gnupg/pubring.gpg # Helm doesn't work with gpg 2.x (https://github.com/helm/helm/issues/2843)
+          helm plugin install "https://github.com/jkroepke/helm-secrets/releases/download/v${HELM_SECRETS_VERSION}/secrets-${HELM_SECRETS_VERSION}.tgz"
+          helm plugin install "https://github.com/jkroepke/helm-secrets/releases/download/v${HELM_SECRETS_VERSION}/secrets-getter-${HELM_SECRETS_VERSION}.tgz"
+          helm plugin install "https://github.com/jkroepke/helm-secrets/releases/download/v${HELM_SECRETS_VERSION}/secrets-post-renderer-${HELM_SECRETS_VERSION}.tgz"
+
+      - name: Configure Telepresence
+        run: |
+          mkdir -p ~/.config/telepresence
+          cat >~/.config/telepresence/config.yml <<EOF
+          timeouts:
+            helm: 60s
+            trafficManagerAPI: 30s
+          EOF
+
+      - name: Initialize Helmfile
+        run: helmfile init --force
+
+      - name: Run E2E Tests
+        run: e2e/run.sh
+        env:
+          E2E_NO_CLEANUP: "true"
+          E2E_PACKAGE: ${{ inputs.package }}
+
+      - name: Notify Slack on failure
+        if: "!success()"
+        uses: cerbos/actions/notify-slack@69bd18cfe7152a480728c2617569acfcb3fcc3b7 # main
+        with:
+          webhook-url: ${{ secrets.SLACK_CI_NOTIFICATIONS_WEBHOOK_URL }}

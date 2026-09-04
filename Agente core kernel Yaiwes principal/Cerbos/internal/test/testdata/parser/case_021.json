@@ -1,0 +1,13 @@
+{
+    "description": "YAML file with unterminated string",
+    "wantErrors": [
+        {
+            "kind": "KIND_PARSE_ERROR",
+            "position": {
+                "line": 5,
+                "column": 3
+            },
+            "message": "could not find end character of double-quoted text"
+        }
+    ]
+}

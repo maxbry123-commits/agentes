@@ -1,0 +1,44 @@
+= Cerbos authorization management platform
+:page-layout: home
+
+Cerbos is an authorization management platform for applications, APIs, AI agents, MCP servers, services, and workloads. It works alongside your application to produce fine-grained, contextual access decisions based on policies you define.
+
+The platform is composed of four components. Each can be adopted independently.
+
+== Platform components
+
+[cols="1,3", frame=none, grid=none]
+|===
+
+| *Cerbos PDP*
+| The open-source policy decision point. Evaluates authorization requests against policy definitions and returns decisions. Stateless, AuthZEN-compliant, and designed to run anywhere including container orchestrators like Kubernetes, serverless runtimes, and edge environments.
+
+xref:cerbos:ROOT:what-is-cerbos.adoc[Cerbos PDP documentation →]
+
+| *Cerbos Hub*
+| The control plane for Cerbos PDPs with centralised policy authoring, versioning, testing, secure distribution, and audit log aggregation. Create multiple deployments for your different environments or systems and any policy changes are automatically tested and pushed to the relevant PDPs without restarts or redeployments. All requests and decisions made by the PDPs are aggregated and stored to help with security investigations and comply with SOC 2, ISO 27001, HIPAA, PCI DSS, and GDPR audit requirements.
+
+xref:cerbos-hub:ROOT:index.adoc[Cerbos Hub documentation →]
+
+| *Cerbos Synapse*
+| A customisable context enrichment layer for the PDP. Intercept and enrich requests and responses to/from the PDP with identity, resource, and relationship data from identity providers, databases, graph stores, and internal APIs. Use Cerbos policies with systems that support external authorization such as Envoy, Kafka, and Trino.
+
+xref:synapse:ROOT:index.adoc[Cerbos Synapse documentation →]
+
+| *Cerbos PEP Integrations*
+| Client libraries and integrations for calling the PDP from application code. Available for JavaScript, Go, Python, Java, .NET, Rust, PHP, and Ruby.
+
+https://www.cerbos.dev/ecosystem[PEP Integrations →]
+
+|===
+
+== How Cerbos works
+
+image::_images/how_cerbos_works.png[alt="How Cerbos works", role="center-img", width=85%]
+
+== Get started
+
+xref:cerbos:ROOT:quickstart.adoc[Quick start]:: Run a Cerbos PDP locally and make your first authorization decision.
+xref:cerbos:ROOT:what-is-cerbos.adoc[What is Cerbos PDP?]:: How the policy decision point works and where it sits in an application stack.
+xref:cerbos:policies:index.adoc[Cerbos policies]:: The policy kinds and how rules are evaluated.
+https://hub.cerbos.cloud?utm_campaign=brand_cerbos&utm_source=documentation&utm_medium=text&utm_content=home_hub[Sign up for Cerbos Hub]:: Test and distribute policies without running your own build and release pipeline. See the xref:cerbos-hub:ROOT:getting-started.adoc[Cerbos Hub quick start].

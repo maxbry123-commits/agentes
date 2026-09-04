@@ -1,0 +1,61 @@
+# yaml-language-server: $schema=../.jsonschema/EngineTestCase.schema.json
+---
+description: "Only principal policy with no matching resource policy (#1397)"
+
+config:
+  lenientScopeSearch:
+    - false
+    - true
+  schemaEnforcement:
+    - ENFORCEMENT_NONE
+    - ENFORCEMENT_WARN
+    - ENFORCEMENT_REJECT
+  strictEvaluation:
+    - false
+    - true
+
+inputs: &inputs
+  - requestId: test
+    actions:
+      - view
+      - edit
+    principal:
+      id: daisy_duck
+      roles:
+        - employee
+      attr:
+        department: finance
+        geography: GB
+    resource:
+      kind: expenses
+      id: XX125
+      attr:
+        department: marketing
+        geography: GB
+        id: XX125
+        owner: john
+        team: design
+
+wantOutputs: &outputs
+  - requestId: test
+    resourceId: XX125
+    actions:
+      view:
+        effect: EFFECT_ALLOW
+        policy: principal.daisy_duck.vdefault
+      edit:
+        effect: EFFECT_DENY
+        policy: NO_MATCH
+
+wantDecisionLogs:
+  - checkResources:
+      inputs: *inputs
+      outputs: *outputs
+    auditTrail:
+      effectivePolicies:
+        principal.daisy_duck.vdefault:
+          attributes:
+            driver: disk
+            source: principal_policies/policy_03.yaml
+    policySource:
+      disk: {}

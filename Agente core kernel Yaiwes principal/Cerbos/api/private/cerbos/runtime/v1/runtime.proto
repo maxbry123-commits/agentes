@@ -1,0 +1,444 @@
+// Copyright 2021-2026 Zenauth Ltd.
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package cerbos.runtime.v1;
+
+import "cerbos/effect/v1/effect.proto";
+import "cerbos/policy/v1/policy.proto";
+import "cerbos/source/v1/source.proto";
+import "google/api/expr/v1alpha1/checked.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/struct.proto";
+
+option go_package = "github.com/cerbos/cerbos/api/genpb/cerbos/runtime/v1;runtimev1";
+
+message RunnablePolicySet {
+  string fqn = 1;
+  oneof policy_set {
+    RunnableResourcePolicySet resource_policy = 2;
+    RunnablePrincipalPolicySet principal_policy = 3;
+    RunnableDerivedRolesSet derived_roles = 4 [deprecated = true];
+    RunnableVariablesSet variables = 5 [deprecated = true];
+    RunnableRolePolicySet role_policy = 7;
+  }
+  uint32 compiler_version = 6;
+}
+
+message EvaluationKeyTuple {
+  string prefix = 1;
+  string resource = 2;
+  string principal = 3;
+  string role = 4;
+  string derived_role = 5;
+  string version = 6;
+  string scope = 7;
+  string rule_name = 8;
+  uint32 rule_id = 9;
+}
+
+message RuleTable {
+  message RuleRow {
+    message AllowActions {
+      map<string, google.protobuf.Empty> actions = 1;
+    }
+
+    message Params {
+      repeated Variable ordered_variables = 1;
+      map<string, google.protobuf.Value> constants = 2;
+    }
+
+    string origin_fqn = 1;
+    string resource = 2;
+    string role = 3;
+    oneof action_set {
+      string action = 4;
+      AllowActions allow_actions = 15;
+    }
+    Condition condition = 5;
+    Condition derived_role_condition = 6;
+    cerbos.effect.v1.Effect effect = 7;
+    string scope = 8;
+    cerbos.policy.v1.ScopePermissions scope_permissions = 9;
+    string version = 10;
+    string origin_derived_role = 11;
+    Output emit_output = 12;
+    string name = 13;
+    string principal = 14;
+    Params params = 16;
+    Params derived_role_params = 17;
+    string evaluation_key = 18;
+    cerbos.policy.v1.Kind policy_kind = 19;
+    bool from_role_policy = 20;
+    EvaluationKeyTuple evaluation_key_tuple = 21;
+  }
+
+  message RoleParentRoles {
+    message ParentRoles {
+      repeated string roles = 1;
+    }
+
+    map<string, ParentRoles> role_parent_roles = 1;
+  }
+
+  message PolicyDerivedRoles {
+    map<string, RunnableDerivedRole> derived_roles = 1;
+  }
+
+  message JSONSchema {
+    bytes content = 1;
+  }
+
+  message Manifest {
+    string bundle_id = 1;
+  }
+
+  repeated RuleRow rules = 1;
+  map<uint64, cerbos.policy.v1.Schemas> schemas = 2;
+  map<uint64, RuleTableMetadata> meta = 3;
+  map<string, RoleParentRoles> scope_parent_roles = 4;
+  map<uint64, PolicyDerivedRoles> policy_derived_roles = 5;
+  map<string, JSONSchema> json_schemas = 6;
+  Manifest manifest = 7;
+  uint32 compiler_version = 8;
+}
+
+message RuleTableMetadata {
+  string fqn = 1;
+  oneof name {
+    string resource = 2;
+    string role = 3;
+    string principal = 7;
+  }
+  string version = 4;
+  map<string, cerbos.policy.v1.SourceAttributes> source_attributes = 5;
+  map<string, string> annotations = 6;
+}
+
+message RunnableRolePolicySet {
+  message Metadata {
+    string fqn = 1;
+    string version = 4;
+    map<string, cerbos.policy.v1.SourceAttributes> source_attributes = 2;
+    map<string, string> annotations = 3;
+  }
+
+  message Rule {
+    string resource = 1;
+    map<string, google.protobuf.Empty> allow_actions = 2;
+    Condition condition = 3;
+    string name = 4;
+    Output emit_output = 5;
+  }
+
+  message RuleList {
+    repeated Rule rules = 1;
+  }
+
+  Metadata meta = 1;
+  string role = 2;
+  string scope = 3;
+  // Deprecated: no-op.
+  cerbos.policy.v1.ScopePermissions scope_permissions = 5 [deprecated = true];
+  repeated string parent_roles = 6;
+  map<string, RuleList> resources = 7;
+  repeated Variable ordered_variables = 8;
+  map<string, google.protobuf.Value> constants = 9;
+}
+
+// RunnableResourcePolicySet is a container for all "compiled" resource policies
+// belonging to a particular scope hierarchy. For example, consider the
+// following policy files:
+//
+// Resource       Version     Scope
+// --------------------------------
+// leave_request  default     foo.bar.baz
+// leave_request  default     foo.bar
+// leave_request  default     foo
+// leave_request  staging     foo
+//
+// After "compiling", the above would result in two RunnableResourcePolicySet
+// objects. One containing the three leave_request:default polcies and one
+// containing the single leave_request:staging policy.
+message RunnableResourcePolicySet {
+  message Metadata {
+    string fqn = 1;
+    string resource = 2;
+    string version = 3;
+    map<string, cerbos.policy.v1.SourceAttributes> source_attributes = 4;
+    map<string, string> annotations = 5;
+  }
+
+  message Policy {
+    message Rule {
+      string name = 1;
+      map<string, google.protobuf.Empty> actions = 2;
+      map<string, google.protobuf.Empty> derived_roles = 3;
+      map<string, google.protobuf.Empty> roles = 4;
+      Condition condition = 5;
+      cerbos.effect.v1.Effect effect = 6;
+      Expr output = 7 [deprecated = true];
+      Output emit_output = 8;
+    }
+
+    string scope = 1;
+    map<string, RunnableDerivedRole> derived_roles = 2;
+    map<string, Expr> variables = 3 [deprecated = true];
+    repeated Rule rules = 4;
+    cerbos.policy.v1.Schemas schemas = 5;
+    repeated Variable ordered_variables = 6;
+    cerbos.policy.v1.ScopePermissions scope_permissions = 7;
+    map<string, google.protobuf.Value> constants = 8;
+  }
+
+  Metadata meta = 1;
+  repeated Policy policies = 2;
+  cerbos.policy.v1.Schemas schemas = 3;
+}
+
+message RunnableDerivedRole {
+  string name = 1;
+  map<string, google.protobuf.Empty> parent_roles = 2;
+  map<string, Expr> variables = 3 [deprecated = true];
+  Condition condition = 4;
+  repeated Variable ordered_variables = 5;
+  map<string, google.protobuf.Value> constants = 6;
+  string origin_fqn = 7;
+}
+
+message RunnableDerivedRolesSet {
+  option deprecated = true;
+
+  message Metadata {
+    string fqn = 1;
+    map<string, string> annotations = 2;
+  }
+
+  Metadata meta = 1;
+  map<string, RunnableDerivedRole> derived_roles = 2;
+}
+
+message RunnableVariablesSet {
+  option deprecated = true;
+
+  message Metadata {
+    string fqn = 1;
+    map<string, string> annotations = 2;
+  }
+
+  Metadata meta = 1;
+  map<string, Expr> variables = 2;
+}
+
+// RunnablePrincipalPolicySet is a container for all "compiled" principal
+// policies belonging to a particular scope hierarchy. See the description of
+// RunnableResourcePolicySet to get an idea about how this is constructed.
+message RunnablePrincipalPolicySet {
+  message Metadata {
+    string fqn = 1;
+    string principal = 2;
+    string version = 3;
+    map<string, cerbos.policy.v1.SourceAttributes> source_attributes = 4;
+    map<string, string> annotations = 5;
+  }
+
+  message Policy {
+    message ActionRule {
+      string action = 1;
+      string name = 2;
+      Condition condition = 3;
+      cerbos.effect.v1.Effect effect = 4;
+      Expr output = 5 [deprecated = true];
+      Output emit_output = 6;
+    }
+
+    message ResourceRules {
+      repeated ActionRule action_rules = 1;
+    }
+
+    string scope = 1;
+    map<string, Expr> variables = 2 [deprecated = true];
+    map<string, ResourceRules> resource_rules = 3;
+    repeated Variable ordered_variables = 4;
+    cerbos.policy.v1.ScopePermissions scope_permissions = 5;
+    map<string, google.protobuf.Value> constants = 6;
+  }
+
+  Metadata meta = 1;
+  repeated Policy policies = 2;
+}
+
+message Expr {
+  string original = 1;
+  google.api.expr.v1alpha1.CheckedExpr checked = 2;
+}
+
+message Output {
+  message When {
+    Expr rule_activated = 1;
+    Expr condition_not_met = 2;
+  }
+
+  When when = 1;
+}
+
+message Variable {
+  string name = 1;
+  Expr expr = 2;
+}
+
+message Condition {
+  message ExprList {
+    repeated Condition expr = 1;
+  }
+
+  oneof op {
+    ExprList all = 1;
+    ExprList any = 2;
+    ExprList none = 3;
+    Expr expr = 4;
+  }
+}
+
+message CompileErrors {
+  message Err {
+    string file = 1;
+    string error = 2;
+    string description = 3;
+    cerbos.source.v1.Position position = 4;
+    string context = 5;
+  }
+
+  repeated Err errors = 1;
+}
+
+message IndexBuildErrors {
+  message DuplicateDef {
+    string file = 1;
+    string other_file = 2;
+    string policy = 3;
+    cerbos.source.v1.Position position = 4;
+  }
+
+  message MissingImport {
+    string importing_file = 1;
+    string desc = 2;
+    string importing_policy = 3;
+    string import_kind = 4;
+    string import_name = 5;
+    cerbos.source.v1.Position position = 6;
+    string context = 7;
+  }
+
+  message MissingScope {
+    string missing_policy = 1;
+    repeated string descendants = 2;
+  }
+
+  message ScopePermissionsConflicts {
+    string scope = 1;
+  }
+
+  message LoadFailure {
+    string file = 1;
+    string error = 2 [deprecated = true];
+    cerbos.source.v1.Error error_details = 3;
+  }
+
+  message Disabled {
+    string file = 1;
+    string policy = 2;
+    cerbos.source.v1.Position position = 3;
+  }
+
+  repeated string disabled = 1 [deprecated = true];
+  repeated DuplicateDef duplicate_defs = 2;
+  repeated LoadFailure load_failures = 3;
+  repeated MissingImport missing_imports = 4;
+  repeated string missing_scopes = 5 [deprecated = true];
+  repeated Disabled disabled_defs = 6;
+  repeated MissingScope missing_scope_details = 7;
+  repeated ScopePermissionsConflicts scope_permissions_conflicts = 8;
+}
+
+message Errors {
+  oneof kind {
+    IndexBuildErrors index_build_errors = 1;
+    CompileErrors compile_errors = 2;
+  }
+}
+
+// BitmapIndex is a wire-only format for persisting a pre-computed roaring
+// bitmap index. It is not a runtime type; consumers unmarshal it into the
+// existing in-memory index structures.
+message BitmapIndex {
+  message Entry {
+    string key = 1;
+    bytes bitmap = 2;
+  }
+
+  message GlobDimension {
+    repeated Entry literals = 1;
+    repeated Entry globs = 2;
+  }
+
+  message AllowActions {
+    repeated string actions = 1;
+  }
+
+  message Binding {
+    uint32 id = 1;
+    uint32 core_index = 2;
+    string role = 3;
+    string scope = 4;
+    string version = 5;
+    string resource = 6;
+    string principal = 8;
+    string origin_fqn = 9;
+    string origin_derived_role = 10;
+    string name = 11;
+    string evaluation_key = 12;
+    EvaluationKeyTuple evaluation_key_tuple = 14;
+    oneof action_set {
+      string action = 7;
+      AllowActions allow_actions = 13;
+    }
+  }
+
+  // FunctionalCore captures the behavioral part of a rule. Fields only needed
+  // for mutation (origins, sum, fqnBindings) are omitted because the
+  // unmarshaled index is static (no DeletePolicy or incremental IndexRules).
+  message FunctionalCore {
+    cerbos.effect.v1.Effect effect = 1;
+    Condition condition = 2;
+    Condition derived_role_condition = 3;
+    Output emit_output = 4;
+    cerbos.policy.v1.ScopePermissions scope_permissions = 5;
+    cerbos.policy.v1.Kind policy_kind = 6;
+    bool from_role_policy = 7;
+    RuleTable.RuleRow.Params params = 8;
+    RuleTable.RuleRow.Params derived_role_params = 9;
+  }
+
+  message Parents {
+    repeated string parents = 1;
+  }
+
+  message RoleParents {
+    map<string, Parents> roles = 1;
+  }
+
+  repeated Entry version = 1;
+  repeated Entry scope = 2;
+  GlobDimension role = 3;
+  GlobDimension action = 4;
+  GlobDimension resource = 5;
+  map<int32, bytes> policy_kind = 6;
+  repeated Entry principal = 7;
+  bytes universe = 8;
+  bytes allow_actions_bitmap = 9;
+  repeated Binding bindings = 10;
+  repeated FunctionalCore cores = 11;
+  map<string, RoleParents> parent_roles = 12;
+}

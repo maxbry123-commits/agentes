@@ -1,0 +1,15 @@
+{
+  "suites": [
+    {
+      "file": "suite_test.yaml",
+      "name": "Unknown",
+      "summary": {
+        "overallResult": "RESULT_ERRORED"
+      },
+      "error": "failed to load test suite:\n19:17 tests[0].expected[0]: principal, principals, or principalGroups must be present\n36:18 tests[1].expected[0]: principal and principals may not both be present\n57:18 tests[2].expected[0]: resource, resources, or resourceGroups must be present\n74:18 tests[3].expected[0]: resource and resources may not both be present"
+    }
+  ],
+  "summary": {
+    "overallResult": "RESULT_ERRORED"
+  }
+}

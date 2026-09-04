@@ -1,0 +1,190 @@
+{
+  "$id": "https://api.cerbos.dev/cerbos/request/v1/CheckResourcesRequest.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "cerbos.audit.v1.RequestContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "annotations": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/google.protobuf.Value"
+          },
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "cerbos.engine.v1.Principal": {
+      "type": "object",
+      "required": [
+        "id",
+        "roles"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "attr": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/google.protobuf.Value"
+          },
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "policyVersion": {
+          "type": "string",
+          "pattern": "^[0-9A-Z_a-z]*$"
+        },
+        "roles": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "scope": {
+          "type": "string",
+          "pattern": "^(^$|\\.|[0-9A-Za-z][\\-0-9A-Z_a-z]*(\\.[0-9A-Z_a-z][\\-0-9A-Z_a-z]*)*)$"
+        }
+      }
+    },
+    "cerbos.engine.v1.Resource": {
+      "type": "object",
+      "required": [
+        "kind",
+        "id"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "attr": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/google.protobuf.Value"
+          },
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "policyVersion": {
+          "type": "string",
+          "pattern": "^[0-9A-Z_a-z]*$"
+        },
+        "scope": {
+          "type": "string",
+          "pattern": "^(^$|\\.|[0-9A-Za-z][\\-0-9A-Z_a-z]*(\\.[0-9A-Z_a-z][\\-0-9A-Z_a-z]*)*)$"
+        }
+      }
+    },
+    "cerbos.request.v1.AuxData": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "jwt": {
+          "$ref": "#/definitions/cerbos.request.v1.AuxData.JWT"
+        },
+        "jwts": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/cerbos.request.v1.AuxData.JWT"
+          },
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "cerbos.request.v1.AuxData.JWT": {
+      "type": "object",
+      "required": [
+        "token"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "keySetId": {
+          "type": "string"
+        },
+        "token": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "cerbos.request.v1.CheckResourcesRequest.ResourceEntry": {
+      "type": "object",
+      "required": [
+        "actions",
+        "resource"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "actions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "resource": {
+          "$ref": "#/definitions/cerbos.engine.v1.Resource"
+        }
+      }
+    },
+    "google.protobuf.Value": {
+      "title": "Value",
+      "description": "A dynamically-typed value."
+    }
+  },
+  "type": "object",
+  "required": [
+    "principal",
+    "resources"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "auxData": {
+      "$ref": "#/definitions/cerbos.request.v1.AuxData"
+    },
+    "includeMeta": {
+      "type": "boolean"
+    },
+    "principal": {
+      "$ref": "#/definitions/cerbos.engine.v1.Principal"
+    },
+    "requestContext": {
+      "$ref": "#/definitions/cerbos.audit.v1.RequestContext"
+    },
+    "requestId": {
+      "type": "string"
+    },
+    "resources": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/cerbos.request.v1.CheckResourcesRequest.ResourceEntry"
+      },
+      "minItems": 1
+    }
+  }
+}

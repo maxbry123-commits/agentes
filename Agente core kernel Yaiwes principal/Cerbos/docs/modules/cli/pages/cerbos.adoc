@@ -1,0 +1,392 @@
+include::ROOT:partial$attributes.adoc[]
+
+= `cerbos`
+
+include::ROOT:partial$version-check.adoc[]
+
+:page-aliases: compile.adoc, server.adoc
+
+See xref:ROOT:installation/binary.adoc[] or xref:ROOT:installation/container.adoc[] for instructions on how to install the `cerbos` binary.
+
+This binary provides the following sub commands:
+
+`compile`:: Validate, compile and run tests on a policy repo
+`compile-store`:: Validate and compile policies on any Cerbos store
+`healthcheck`:: Perform a healthcheck on a Cerbos PDP
+`repl`:: An interactive REPL (read-evaluate-print-loop) for CEL conditions
+`run`:: Start a PDP and run a command within its context
+`server`:: Start the PDP server
+
+.Example: Running `compile` using the binary
+[source,sh,subs="attributes"]
+----
+./{app-name} compile --help
+----
+
+.Example: Running `compile` using the container
+[source,sh,subs="attributes"]
+----
+docker run -i -t {app-docker-img} compile --help
+----
+
+
+[#compile]
+== `compile` Command
+
+Runs the Cerbos compiler to validate policy definitions and run any test suites. See xref:policies:compile.adoc[Policy compilation] for more information.
+
+This command exits with different exit codes depending on the kind of failure.
+
+[cols="1m,3"]
+|===
+| 0 | No compile or test failures
+| 1 | Unknown failure
+| 2 | Invalid arguments to command
+| 3 | Compilation failed
+| 4 | Tests failed
+|===
+
+[source]
+----
+Usage: cerbos compile <dir> [flags]
+
+Compile and test policies
+
+Examples:
+
+# Compile and run tests found in /path/to/policy/repo
+
+cerbos compile /path/to/policy/repo
+
+# Compile but skip tests
+
+cerbos compile --skip-tests /path/to/policy/repo
+
+# Compile and run tests matching a filter (globs for suite, test, principal, resource, action)
+
+cerbos compile --test-filter='suite=MySuite;test=album*;principal=alice;resource=my_album;action=view' /path/to/policy/repo
+
+# Multiple filters can be combined (all filter dimensions are merged)
+
+cerbos compile --test-filter='principal=alice,bob' --test-filter='action=view,edit' /path/to/policy/repo
+
+Arguments:
+  <dir>    Policy directory
+
+Flags:
+  -h, --help                       Show context-sensitive help.
+      --version                    Show cerbos version
+
+      --ignore-schemas             Ignore schemas during compilation
+      --test-filter=TEST-FILTER    Filter tests by dimensions (suite, test, principal, resource, action). Format: 'dimension=glob1,glob2;...'. Can be specified multiple times.
+      --skip-tests                 Skip tests
+      --skip-batching              Skip batching tests
+      --strict-evaluation          Run tests with strict evaluation enabled.
+      --test-output=TEST-OUTPUT    Test output format. If unspecified matches the value of the output flag. (tree,list,json,junit)
+  -o, --output="tree"              Output format (tree,list,json)
+      --color=COLOR                Output color level (auto,never,always,256,16m). Defaults to auto.
+      --no-color                   Disable colored output
+      --verbose                    Verbose output on test failure
+----
+
+[#compile-store]
+== `compile-store` Command
+
+Runs the Cerbos compiler to validate policy definitions on any Cerbos store. See xref:policies:compile.adoc[Policy compilation] and xref:configuration:storage.adoc[Storage] for more information.
+
+This command exits with different exit codes depending on the kind of failure.
+
+[cols="1m,3"]
+|===
+| 0 | No compile or test failures
+| 1 | Unknown failure
+| 2 | Invalid arguments to command
+| 3 | Compilation failed
+| 4 | Tests failed
+|===
+
+[source]
+----
+Usage: cerbos compile-store <config> [flags]
+
+Compile store
+
+Examples:
+
+# Compile store
+
+cerbos compile-store /path/to/cerbos/config.yaml
+cerbos compile-store --output=json /path/to/cerbos/config.yaml
+
+# Compile database store and disable invalid policies
+
+cerbos compile-store --disable-invalid /path/to/cerbos/config.yaml
+cerbos compile-store --disable-invalid --output=json /path/to/cerbos/config.yaml
+
+Arguments:
+  <config>    Path to config file ($CERBOS_CONFIG)
+
+Flags:
+  -h, --help                                    Show context-sensitive help.
+      --version                                 Show cerbos version
+
+      --set=server.adminAPI.enabled=true,...    Config overrides
+      --disable-invalid                         Disable invalid policies if database store
+      --assume-yes                              Answer yes to all confirmation questions
+  -o, --output="tree"                           Output format (tree,list,json)
+      --color=COLOR                             Output color level (auto,never,always,256,16m). Defaults to auto.
+      --no-color                                Disable colored output
+----
+
+[#healthcheck]
+== `healthcheck` Command
+
+Utility to perform healthchecks on a Cerbos PDP. Can be used as a link:https://docs.docker.com/engine/reference/builder/#healthcheck[Docker HEALTHCHECK] command.
+
+You can share the configuration between Cerbos PDP and the healthcheck by using the `CERBOS_CONFIG` environment variable to define the path to the config file.
+
+.Example: Docker healthcheck based on mounted config file
+[source,sh,subs="attributes"]
+----
+docker run -i -t -p 3592:3592 -p 3593:3593 \
+    -v /path/to/conf/dir:/config \
+    -e CERBOS_CONFIG=/config/.cerbos.yaml \
+    {app-docker-img}
+----
+
+[source]
+----
+Usage: cerbos healthcheck (hc)
+
+Healthcheck utility
+
+Performs a healthcheck on a Cerbos PDP. This can be used as a Docker HEALTHCHECK command. When the path to the Cerbos config file is provided via the '--config' flag or the CERBOS_CONFIG environment variable, the
+healthcheck will be automatically configured based on the settings from the file. By default, the gRPC endpoint will be checked using the gRPC healthcheck protocol. This is usually sufficient for most cases as the Cerbos
+REST API is built on top of the gRPC API as well.
+
+Examples:
+
+# Check gRPC endpoint
+
+cerbos healthcheck --config=/path/to/.cerbos.yaml
+
+# Check HTTP endpoint and ignore server certificate verification
+
+cerbos healthcheck --config=/path/to/.cerbos.yaml --kind=http --insecure
+
+# Check the HTTP endpoint of a specific host with no TLS.
+
+cerbos healthcheck --kind=http --host-port=10.0.1.5:3592 --no-tls
+
+Flags:
+  -h, --help           Show context-sensitive help.
+      --version        Show cerbos version
+
+      --kind="grpc"    Healthcheck kind (grpc,http) ($CERBOS_HC_KIND)
+      --insecure       Do not verify server certificate ($CERBOS_HC_INSECURE)
+      --timeout=10s    Healthcheck timeout ($CERBOS_HC_TIMEOUT)
+
+config
+  --config=STRING    Cerbos config file ($CERBOS_CONFIG)
+
+manual
+  --host-port=STRING    Host and port to connect to ($CERBOS_HC_HOSTPORT)
+  --ca-cert=STRING      Path to CA cert for validating server cert ($CERBOS_HC_CACERT)
+  --no-tls              Don't use TLS ($CERBOS_HC_NOTLS)
+----
+
+[#repl]
+== `repl` Command
+
+The REPL is an interactive utility to experiment with xref:policies:conditions.adoc[CEL conditions] used in Cerbos policy rules. All Cerbos library functions and special variables (`request`, `R`, `P` and so on) are available in this environment.
+
+.Example: Running the REPL using the binary
+[source,sh,subs="attributes"]
+----
+./{app-name} repl
+----
+
+.Example: Running the REPL using the container
+[source,sh,subs="attributes"]
+----
+docker run -i -t {app-docker-img} repl
+----
+
+You can type in valid CEL expressions at the prompt to instantly evaluate them.
+
+[listing]
+----
+-> 5 + 1
+_ = 6
+
+-> "test".charAt(1)
+_ = "e"
+----
+
+The special variable `_` holds the result of the last expression evaluated.
+
+[listing]
+----
+-> 5 + 5
+_ = 10
+
+-> _ * 10
+_ = 100
+----
+
+You can define variables using the `:let` directive.
+
+[listing]
+----
+-> :let x = hierarchy("a.b.c")
+x = [
+  "a",
+  "b",
+  "c"
+]
+
+-> :let y = hierarchy("a.b")
+y = [
+  "a",
+  "b"
+]
+
+-> x.immediateChildOf(y)
+_ = true
+----
+
+You can also set special variables used in Cerbos policies (`request`, `variables`, `R`, `P`, `V`) and try out CEL expressions using them.
+
+[listing]
+----
+-> :let request = {
+>   "principal":{"id":"john","roles":["employee"],"attr":{"scope":"foo.bar.baz.qux"}},
+>   "resource":{"id":"x1","kind":"leave_request","attr":{"scope":"foo.bar"}}
+> }
+
+-> hierarchy(R.attr.scope).ancestorOf(hierarchy(P.attr.scope))
+_ = true
+----
+
+Type `:vars` to display the values of all the variables currently defined in the environment.
+
+You can load a Cerbos policy into the REPL by typing `:load path/to/policy_file.yaml`. This will read the policy and load any rules that have conditions attached. These can be viewed by typing `:rules`. Execute any rule by providing its number to the `:exec` directive (for example, `:exec #2`). Rules are executed using the variables defined in the current REPL session. You can set or update them using the `:let` directive and re-execute the rules to see the effects.
+
+[listing]
+----
+-> :load store/leave_request.yaml
+Loaded resource.leave_request.v20210210
+
+Policy variables:
+{
+  "pending_approval": "(\"PENDING_APPROVAL\")",
+  "principal_location": "(P.attr.ip_address.inIPAddrRange(\"10.20.0.0/16\") ? \"GB\" : \"\")"
+}
+
+Conditional rules in 'resource.leave_request.v20210210'
+
+[#0]
+    actions:
+    - approve
+    condition:
+      match:
+        expr: request.resource.attr.status == V.pending_approval
+    derivedRoles:
+    - direct_manager
+    effect: EFFECT_ALLOW
+
+
+-> :exec #0
+└──request.resource.attr.status == V.pending_approval [false]
+----
+
+Type `:help` or `:h` to display help. Type `:quit`, `:q` or `:exit` to exit the REPL.
+
+TIP: Use the up/down arrow keys (or kbd:[Ctrl+P]/kbd:[Ctrl+N]) to navigate command history. Most of the standard line-editing commands such as kbd:[Ctrl+a], kbd:[Ctrl+h], kbd:[Ctrl+r] are supported as well.
+
+
+[#run]
+== `run` Command
+
+This provides a quick way to try out Cerbos. It launches a Cerbos PDP instance and then invokes a command of your choice that can then use the PDP to make access decisions. A good use case for this command is as an integration test runner. If you have written some tests that make use of Cerbos, you can run them within the context of an actual PDP instance as follows:
+
+[source,sh]
+----
+cerbos run -- python -m unittest
+----
+
+By default, the policies are loaded from the `policies` directory in the current working directory and HTTP and gRPC endpoints will be exposed on `127.0.0.1:3592` and `127.0.0.1:3593` respectively. Your application can obtain the actual endpoint addresses by inspecting the `CERBOS_HTTP` or `CERBOS_GRPC` environment variables.
+
+If a file named `.cerbos.yaml` exists in the current working directory, that file will be used as the Cerbos xref:configuration:index.adoc[configuration file]. You can use a different config file or override specific config values using the same flags as the `server` command above.
+
+
+[source]
+----
+Usage: cerbos run <command> ...
+
+Run a command in the context of a Cerbos PDP
+
+Launches a command within the context of a Cerbos PDP. The policies are loaded by default from a directory named "policies" in the current working directory. The launched application can access Cerbos endpoints using the
+values from CERBOS_HTTP or CERBOS_GRPC environment variables.
+
+If a file named ".cerbos.yaml" exists in the current working directory, it will be used as the configuration file for the PDP. You can override the config file and/or other configuration options using the flags described
+below.
+
+Examples:
+
+# Launch Go tests within a Cerbos context
+
+cerbos run -- go test ./...
+
+# Start Cerbos with a custom configuration file and run Python tests within the context
+
+cerbos run --config=myconf.yaml -- python -m unittest
+
+# Silence Cerbos log output
+
+cerbos run --log-level=error -- curl -I http://127.0.0.1:3592/_cerbos/health
+
+Arguments:
+  <command> ...    Command to run
+
+Flags:
+  -h, --help                                    Show context-sensitive help.
+      --version                                 Show cerbos version
+
+      --log-level="info"                        Log level (debug,info,warn,error)
+      --config=.cerbos.yaml                     Path to config file
+      --set=server.adminAPI.enabled=true,...    Config overrides
+      --timeout=30s                             Cerbos startup timeout
+----
+
+
+[#server]
+== `server` Command
+
+Starts the Cerbos PDP.
+
+[source]
+----
+Usage: cerbos server --config=.cerbos.yaml
+
+Start Cerbos server (PDP)
+
+Examples:
+
+# Start the server
+
+cerbos server --config=/path/to/.cerbos.yaml
+
+# Start the server with the Admin API enabled and the 'sqlite' storage driver
+
+cerbos server --config=/path/to/.cerbos.yaml --set=server.adminAPI.enabled=true --set=storage.driver=sqlite3 --set=storage.sqlite3.dsn=':memory:'
+
+Flags:
+  -h, --help                                    Show context-sensitive help.
+      --version                                 Show cerbos version
+
+      --debug-listen-addr=:6666                 Address to start the gops listener
+      --log-level="info"                        Log level (debug,info,warn,error)
+      --config=.cerbos.yaml                     Path to config file
+      --set=server.adminAPI.enabled=true,...    Config overrides
+----

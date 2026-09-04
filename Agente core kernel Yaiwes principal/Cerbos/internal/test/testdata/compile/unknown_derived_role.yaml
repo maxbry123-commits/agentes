@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=../.jsonschema/CompileTestCase.schema.json
+---
+wantErrors:
+  - file: resource_policies/leave_request_20210210.yaml
+    error: unknown derived role
+    description: |-
+      Derived role "some_employee" is not defined in any imports
+    position:
+      line: 26
+      column: 11
+      path: "$.resourcePolicy.rules[3].derivedRoles[0]"
+mainDef: "resource_policies/leave_request_20210210.yaml"

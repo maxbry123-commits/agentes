@@ -1,0 +1,626 @@
+include::ROOT:partial$attributes.adoc[]
+
+= Conditions
+
+include::ROOT:partial$version-check.adoc[]
+
+[.lead]
+Conditions are CEL expressions evaluated at request time against principal, resource, and request attributes. A rule with a condition applies only when the expression evaluates to true.
+
+A powerful feature of Cerbos policies is the ability to define conditions that are evaluated against the data provided in the request. Conditions are written using the link:https://github.com/google/cel-spec/blob/master/doc/intro.md[Common Expression Language (CEL)].
+
+TIP: Cerbos ships with an interactive REPL that can be used to experiment with writing CEL conditions. It can be started by running `cerbos repl`. See xref:cli:cerbos.adoc#repl[the REPL documentation] for more information.
+
+Every condition expression must evaluate to a boolean true/false value. A condition block in a policy can contain either a single condition expression, or multiple expressions combined using the `all`, `any`, or `none` operators. These logical operators may be nested.
+
+.Condition block
+[source,yaml,linenums]
+----
+condition:
+  match:
+    all:
+      of:
+        - expr: request.resource.attr.status == "PENDING_APPROVAL"
+        - expr: >
+            "GB" in request.resource.attr.geographies
+----
+
+
+[#top_level_identifiers]
+== Top-level identifiers
+
+Within a condition expression, you have access to several top-level identifiers:
+
+`request`:: Data provided in the check or plan request (principal, resource, and auxiliary data).
+`runtime`:: Additional data computed while evaluating the policy.
+`variables`:: Variables declared in the xref:variables.adoc#variables[`variables` section of the policy].
+`constants`:: Variables declared in the xref:variables.adoc#constants[`constants` section of the policy].
+`globals`:: Global variables declared in the xref:configuration:engine.adoc#globals[policy engine configuration].
+
+There are also single-letter aliases available to allow you to write terser expressions:
+
+`P`:: `request.principal`
+`R`:: `request.resource`
+`V`:: `variables`
+`C`:: `constants`
+`G`:: `globals`
+
+.The `request` object
+
+[source,yaml,linenums]
+----
+request:
+  principal: <1>
+    id: alice <2>
+    roles: <3>
+      - employee
+    attr: <4>
+      geography: GB
+
+  resource: <5>
+    kind: leave_request <6>
+    id: XX125 <7>
+    attr: <8>
+      owner: alice
+
+  auxData: <9>
+    jwt: <10>
+      iss: acme.corp
+    jwts: <11>
+      token_a:
+        claims:
+          iss: acme.corp
+          sub: foo
+      token_b:
+        claims:
+          iss: acme.corp
+          sub: bar
+----
+<1> The principal whose permissions are being checked.
+<2> ID of the principal.
+<3> Static roles that are assigned to the principal by your identity management system.
+<4> Free-form context data about the principal.
+<5> The resource on which the principal is performing actions.
+<6> Resource kind.
+<7> ID of the resource instance.
+<8> Free-form context data about the resource instance.
+<9> xref:configuration:auxdata.adoc[Auxiliary data sources].
+<10> JWT claims. Mutually exclusive with `jwts`.
+<11> Named JWT claims. Since Cerbos 0.55.0 only. Mutually exclusive with `jwt`.
+
+
+.The `runtime` object
+[source,yaml,linenums]
+----
+runtime:
+  effectiveDerivedRoles: <1>
+    - owner
+    - gb_employee
+----
+<1> xref:derived_roles.adoc[Derived roles] that were assigned to to the principal by Cerbos while evaluating the policy. This is only populated in expressions in resource policies, and only includes derived roles that are referenced in at least one policy rule.
+
+
+== Expressions and blocks
+
+.Single boolean expression
+[source,yaml,linenums]
+----
+condition:
+  match:
+    expr: P.id.matches("^dev_.*")
+----
+
+.``all`` operator: all expressions must evaluate to true (logical AND)
+[source,yaml,linenums]
+----
+condition:
+  match:
+    all:
+      of:
+        - expr: R.attr.status == "PENDING_APPROVAL"
+        - expr: >
+            "GB" in R.attr.geographies
+        - expr: P.attr.geography == "GB"
+----
+
+.``any`` operator: only one of the expressions has to evaluate to true (logical OR)
+[source,yaml,linenums]
+----
+condition:
+  match:
+    any:
+      of:
+        - expr: R.attr.status == "PENDING_APPROVAL"
+        - expr: >
+            "GB" in R.attr.geographies
+        - expr: P.attr.geography == "GB"
+----
+
+
+.``none`` operator: none of the expressions should evaluate to true (logical negation)
+[source,yaml,linenums]
+----
+condition:
+  match:
+    none:
+      of:
+        - expr: R.attr.status == "PENDING_APPROVAL"
+        - expr: >
+            "GB" in R.attr.geographies
+        - expr: P.attr.geography == "GB"
+----
+
+
+.Nesting operators
+[source,yaml,linenums]
+----
+condition:
+  match:
+    all:
+      of:
+        - expr: R.attr.status == "DRAFT"
+        - any:
+            of:
+              - expr: R.attr.dev == true
+              - expr: R.attr.id.matches("^[98][0-9]+")
+        - none:
+            of:
+              - expr: R.attr.qa == true
+              - expr: R.attr.canary == true
+----
+
+The above nested block is equivalent to the following:
+
+[source,yaml,linenums]
+----
+condition:
+  match:
+    expr: >
+      (R.attr.status == "DRAFT" &&
+        (R.attr.dev == true || R.attr.id.matches("^[98][0-9]+")) &&
+        !(R.attr.qa == true || R.attr.canary == true))
+----
+
+.Quotes in expressions
+****
+Single and double quotes have special meanings in YAML. To avoid parsing errors when your expression contains quotes, use the YAML block scalar syntax or wrap the expression in parentheses.
+
+[source,yaml]
+----
+expr: >
+  "GB" in R.attr.geographies
+----
+
+[source,yaml]
+----
+expr: ("GB" in R.attr.geographies)
+----
+****
+
+[WARNING]
+====
+A CEL *runtime error* while evaluating a condition (for example comparing incompatible types such as `R.attr.amount > 1000` when `amount` is a string, or referencing a missing attribute) causes the condition to be treated as not satisfied. For `ALLOW` rules this fails closed: the rule simply does not match. For `DENY` rules it currently fails *open*: the deny is skipped, so a matching `ALLOW` can still grant the request.
+
+From Cerbos v0.55 a `DENY` rule whose condition raises a runtime error will fail closed (the deny is applied). Cerbos v0.54 logs every runtime error raised during evaluation and includes the errors in audit log entries so you can find and fix affected policies before upgrading. The xref:configuration:engine.adoc#cel_error_log_level[`engine.celErrorLogLevel`] setting controls the level of the log messages.
+====
+
+== Policy variables
+
+To avoid duplication in condition expressions, you can define xref:variables.adoc[variables and constants in policies].
+
+
+[id="auxdata"]
+== Auxiliary data
+
+If you have xref:configuration:auxdata.adoc[auxiliary data sources configured], they can be accessed using `request.auxData`.
+
+.Accessing JWT claims
+[source,yaml,linenums]
+----
+"cerbie" in request.auxData.jwt.aud && request.auxData.jwt.iss == "cerbos"
+----
+
+.Accessing named JWT claims (Cerbos 0.55.0 and above)
+[source,yaml,linenums]
+----
+"cerbie" in request.auxData.jwts.token_a.claims.aud && request.auxData.jwts.token_b.claims.iss == "cerbos"
+----
+
+NOTE: When multiple JWTs are referenced (since Cerbos 0.55.0 only), the syntax is `request.auxData.jwts.TOKEN_NAME.claims.CLAIM_NAME` or `request.auxData.jwts["TOKEN_NAME"].claims["CLAIM_NAME]`. Note the `claims` mandatory field between the token name and the claim name.
+
+
+
+== Operators
+
+NOTE: CEL has many builtin functions and operators. The fully up-to-date list can be found at https://github.com/google/cel-spec/blob/master/doc/langdef.md#list-of-standard-definitions.
+
+[caption=]
+[%header,cols=".^1m,.^4",grid=rows]
+|===
+| Operator | Description
+| !        | Logical negation (NOT)
+| -        | Subtraction/numeric negation
+| !=       | Unequals
+| %        | Modulo
+| &&       | Logical AND
+| \|\|     | Logical OR
+| *        | Multiplication
+| +        | Addition/concatenation
+| /        | Division
+| \<=      | Less than or equal to
+| <        | Less than
+| ==       | Equals
+| >=       | Greater than or equal to
+| >        | Greater than
+| in       | Membership in lists or maps
+| ? :      | Ternary condition (if-then-else)
+|===
+
+
+== Durations
+
+[NOTE]
+====
+
+Duration values must be specified in one of the following units. Larger units like days, weeks or years are not supported because of ambiguity around their meaning due to factors such as daylight saving time transitions.
+
+[caption=]
+[%header,cols=".^1m,.^4",grid=rows]
+|===
+| Suffix | Unit
+| ns     | Nanoseconds
+| us     | Microseconds
+| ms     | Milliseconds
+| s      | Seconds
+| m      | Minutes
+| h      | Hours
+|===
+
+
+====
+
+.Test data
+[source,json,linenums]
+----
+...
+"resource": {
+  "kind": "leave_request",
+  "attr": {
+    "cooldownPeriod": "3750s",
+    "lastAccessed": "2021-04-20T10:00:20.021-05:00"
+  }
+}
+...
+----
+
+[caption=]
+[%header,cols=".^1m,.^2,4m",grid=rows]
+|===
+| Function | Description | Example
+| duration | Convert a string to a duration. The string must contain a valid duration suffixed by one of `ns`, `us`, `ms`, `s`, `m` or `h`. E.g. `3750s` | duration(R.attr.cooldownPeriod).getSeconds() == 3750
+| getHours | Get hours from a duration | duration(R.attr.cooldownPeriod).getHours() == 1
+| getMilliseconds | Get milliseconds from a duration | duration(R.attr.cooldownPeriod).getMilliseconds() == 3750000
+| getMinutes | Get minutes from a duration | duration(R.attr.cooldownPeriod).getMinutes() == 62
+| getSeconds | Get seconds from a duration | duration(R.attr.cooldownPeriod).getSeconds() == 3750
+| timeSince | Time elapsed since the given timestamp to current time on the server. This is a Cerbos extension to CEL | timestamp(R.attr.lastAccessed).timeSince() > duration("1h")
+|===
+
+
+[#hierarchies]
+== Hierarchies
+
+NOTE: The hierarchy functions are Cerbos-specific extensions to CEL.
+
+.Test data
+[source,json,linenums]
+----
+...
+"principal": {
+  "id": "john",
+  "roles": ["employee"],
+  "attr": {
+    "scope": "foo.bar.baz.qux",
+  }
+},
+"resource": {
+  "kind": "leave_request",
+  "attr": {
+    "scope": "foo.bar",
+  }
+}
+...
+----
+
+[caption=]
+[%header,cols=".^1m,.^2,4m",grid=rows]
+|===
+| Function | Description | Example
+| hierarchy | Convert a dotted string or a string list to a hierarchy | hierarchy("a.b.c") == hierarchy(["a","b","c"])
+| hierarchy | Convert a delimited string representation to a hierarchy | hierarchy("a:b:c", ":").size() == 3
+| ancestorOf | Returns true if the first hierarchy shares a common prefix with the second hierarchy | hierarchy("a.b").ancestorOf(hierarchy("a.b.c.d")) == true
+| commonAncestors | Returns the common ancestor hierarchy | hierarchy(R.attr.scope).commonAncestors(hierarchy(P.attr.scope)) == hierarchy("foo.bar")
+| descendentOf | Mirror function of `ancestorOf` | hierarchy("a.b.c.d").descendentOf(hierarchy("a.b")) == true
+| immediateChildOf | Returns true if the first hierarchy is a first-level child of the second hierarchy | hierarchy("a.b.c").immediateChildOf(hierarchy("a.b")) == true && hierarchy("a.b.c.d").immediateChildOf(hierarchy("a.b")) == false
+| immediateParentOf | Mirror function of `immediateChildOf` | hierarchy("a.b").immediateParentOf(hierarchy("a.b.c")) == true && hierarchy("a.b").immediateParentOf(hierarchy("a.b.c.d")) == false
+| overlaps | Returns true if one of the hierarchies is a prefix of the other | hierarchy("a.b.c").overlaps(hierarchy("a.b.c.d.e")) == true && hierarchy("a.b.x").overlaps(hierarchy("a.b.c.d.e")) == false
+| siblingOf | Returns true if both hierarchies share the same parent | hierarchy("a.b.c").siblingOf(hierarchy("a.b.d")) == true
+| size | Returns the number of levels in the hierarchy | hierarchy("a.b.c").size() == 3
+| []   | Access a level in the hierarchy | hierarchy("a.b.c.d")[1] == "b"
+|===
+
+
+== IP addresses
+
+NOTE: The `inIPAddrRange` is a Cerbos-specific extension function to CEL.
+
+.Test data
+[source,json,linenums]
+----
+...
+"principal": {
+  "id": "elmer_fudd",
+  "attr": {
+    "ipv4Address": "192.168.0.10",
+    "ipv6Address": "2001:0db8:0000:0000:0000:0000:1000:0000"
+  }
+}
+...
+----
+
+[caption=]
+[%header,cols=".^1m,.^2,4m",grid=rows]
+|===
+| Function | Description | Example
+| cidr(<cidr>).containsCIDR | Returns whether the CIDR contains the given CIDR. Since v0.55.0 only. | cidr("192.168.0.0/8").containsCIDR(cidr("192.168.1.0/24")) == true
+| cidr(<cidr>).containsIP | Returns whether the CIDR contains the given IP. Since v0.55.0 only. Use `inIPAddrRange` for older versions. | cidr("2001:db8::/48").containsIP(P.attr.ipv6Address) == true
+| cidr(<cidr>).isMask | Returns whether the CIDR is a mask. Since v0.55.0 only. | cidr("192.168.0.0/8").isMask() == true
+| cidr(<cidr>).masked | Returns the masked CIDR for the value. Since v0.55.0 only. | cidr("192.168.1.5/24").masked() == cidr("192.168.1.0/24")
+| cidr(<cidr>).prefixLength | Returns the prefix length of the CIDR. Since v0.55.0 only. | cidr("192.168.1.0/24").prefixLength() == 24
+| inIPAddrRange | Check whether the IP address is in the range defined by the CIDR | P.attr.ipv4Address.inIPAddrRange("192.168.0.0/24") && P.attr.ipv6Address.inIPAddrRange("2001:db8::/48")
+| ip(<ip>).family | Returns the IP family. Since v0.55.0 only. | ip(P.attr.ipv4Address) == 4
+| ip(<ip>).isGlobalUnicast | Returns true if the IP address is a global unicast address. Since v0.55.0 only. | ip(P.attr.ipv6Address).isGlobalUnicast() == true
+| ip(<ip>).isLinkLocalMulticast | Returns true if the IP address is a link local multicast address. Since v0.55.0 only. | ip(P.attr.ipv6Address).isLinkLocalMulticast() == false
+| ip(<ip>).isLinkLocalUnicast | Returns true if the IP address is a link local unicast address. Since v0.55.0 only. | ip(P.attr.ipv6Address).isLinkLocalUnicast() == false
+| ip(<ip>).isLoopback | Returns true if the IP address is a loopback address. Since v0.55.0 only. | ip(P.attr.ipv4Address).isLoopback() == false
+| ip(<ip>).isUnspecified | Returns true if the IP address is unspecified (either `0.0.0.0` or `::`). Since v0.55.0 only. | ip(P.attr.ipv6Address).isUnspecified() == false
+| ip.isCanonical | Check whether the IPv6 string conforms to https://www.rfc-editor.org/rfc/rfc5952.html[RFC 5952]. Since v0.55.0 only. | ip.isCanonical(P.attr.ipv6Address) == false
+| isCIDR | Returns true if the string is an IPv4 or IPv6 CIDR. Since v0.55.0 only. | isCIDR("::1/128") == true
+| isIP | Returns true if the string is an IPv4 or IPv6 address. Since v0.55.0 only. | isIP(P.attr.ipv4Address) == true
+|===
+
+
+== Lists, maps, and sets
+
+.Test data
+[source,json,linenums]
+----
+...
+"principal": {
+  "id": "elmer_fudd",
+  "attr": {
+    "id": "125",
+    "teams": ["design", "communications", "product", "commercial"],
+    "limits": {
+        "design": 10,
+        "product": 25
+    },
+    "clients": {
+      "acme": {"active": true},
+      "bb inc": {"active": true}
+    }
+  }
+}
+...
+----
+
+[caption=]
+[%header,cols=".^1m,.^2,4m",grid=rows]
+|===
+| Operator/Function | Description | Example
+| + | Concatenates lists | P.attr.teams + ["design", "engineering"]
+| []       | Index into a list or a map | P.attr.teams[0] == "design" && P.attr.clients["acme"]["active"] == true
+| all      | Check whether all elements in a list match the predicate. | P.attr.teams.all(t, size(t) > 3) && [1, 2, 3].all(i, j, i < j)
+| distinct | Returns the distinct elements of a list | [1, 2, 2, 3, 3, 3].distinct() == [1, 2, 3]
+| except   | Produces the set difference of two lists | P.attr.teams.except(["design", "engineering"]) == ["communications", "product", "commercial"]
+| exists   | Check whether at least one element matching the predicate exists in a list or map. | P.attr.teams.exists(t, t.startsWith("comm")) && P.attr.limits.exists(k, v, k == "design" && v > 0)
+| exists_one | Check that only one element matching the predicate exists. | P.attr.teams.exists_one(t, t.startsWith("comm")) == false && P.attr.limits.exists_one(k, v, k == "design" && v > 0) == false
+| filter   | Filter a list using the predicate. | size(P.attr.teams.filter(t, t.matches("^comm"))) == 2
+| flatten   | Flattens a list. If an optional depth is provided, the list is flattened to the specified level | [1,2,[],[],[3,4]].flatten() == [1, 2, 3, 4] && [1,[2,[3,[4]]]].flatten(2) == [1, 2, 3, [4]]
+| hasIntersection| Checks whether the lists have at least one common element | hasIntersection(["design", "engineering"], P.attr.teams)
+| in       | Check whether the given element is contained in the list or map | ("design" in P.attr.teams) && ("acme" in P.attr.clients)
+| intersect| Produces the set intersection of two lists | intersect(["design", "engineering"], P.attr.teams) == ["design"]
+| isSubset | Checks whether the list is a subset of another list | ["design", "engineering"].isSubset(P.attr.teams) == false
+| lists.range    | Returns a list of integers from 0 to n-1 | lists.range(5) == [0, 1, 2, 3, 4]
+| map      | Transform each element in a list | "DESIGN" in P.attr.teams.map(t, t.upperAscii())
+| reverse  | Returns the elements of a list in reverse order | [5, 3, 1, 2].reverse() == [2, 1, 3, 5]
+| sets.contains | Checks whether the first list contains all the elements of the second list. Since v0.55.0 only. | sets.contains(P.attr.teams, ["design"]) == true
+| sets.equivalent | Checks whether for every item in the first list, there exists an equal item in the second list. Since v0.55.0 only. | sets.equivalent(P.attr.teams, ["commercial", "product", "communications", "design"])  == true
+| sets.intersects | Checks whether the lists have at least one item in common. Since v0.55.0 only. Use `hasIntersection` for older versions. |  sets.intersects(["design", "engineering"], P.attr.teams) == true
+| size     | Number of elements in a list or map | size(P.attr.teams) == 4 && size(P.attr.clients) == 2
+| slice    | Returns a new sub-list using the indexes provided | [1,2,3,4].slice(1, 3) == [2, 3]
+| sort     | Sorts a list with comparable elements | [3, 2, 1].sort() == [1, 2, 3]
+| sortBy   | Sorts a list by a key value, i.e., the order is determined by the result of an expression applied to each element of the list | [{ "name": "foo", "score": 0 },{ "name": "bar", "score": -10 },{ "name": "baz", "score": 1000 }].sortBy(e, e.score).map(e, e.name) == ["bar", "foo", "baz"]
+| transformList | Converts a map or a list into a list value. The output expression determines the contents of the output list. Elements in the list may optionally be filtered | [1, 2, 3].transformList(i, v, i > 0, 2 * v) == [4, 6] && +
+[1, 2, 3].transformList(i, v, 2 * v) == [2, 4, 6]
+| transformMap | Converts a map or a list into a map value. The key remains unchanged and only the value is changed. | [1, 2, 3].transformMap(i, v, i > 0, 2 * v) == {1: 4, 2: 6}
+| transformMapEntry | Converts a map or a list into a map value; however, this transform expects the entry expression be a map literal. Elements in the map may optionally be filtered | {'greeting': 'hello'}.transformMapEntry(k, v, {v: k}) == {'hello': 'greeting'}
+|===
+
+
+== Math
+
+[caption=]
+[%header,cols=".^1m,.^2,4m",grid=rows]
+|===
+| Function | Description | Example
+| math.abs | Returns the absolute value of the numeric type provided as input | math.abs(1.2) == 1.2 && math.abs(-2) == 2
+| math.bitAnd | Performs a bitwise-AND operation over two int or uint values | math.bitAnd(3u, 2u) == 2u && math.bitAnd(3, 5) == 1 && math.bitAnd(-3, -5) == -7
+| math.bitNot | Function which accepts a single int or uint and performs a bitwise-NOT ones-complement of the given binary value | math.bitNot(1) == -1 && math.bitNot(-1) == 0 && math.bitNot(0u) == 18446744073709551615u
+| math.bitOr | Performs a bitwise-OR operation over two int or uint values | math.bitOr(1u, 2u) == 3u && math.bitOr(-2, -4) == -2
+| math.bitShiftLeft | Perform a left shift of bits on the first parameter, by the amount of bits specified in the second parameter. The first parameter is either a uint or an int. The second parameter must be an int | math.bitShiftLeft(1, 2) == 4 && math.bitShiftLeft(-1, 2) == -4 && math.bitShiftLeft(1u, 2) == 4u && math.bitShiftLeft(1u, 200) == 0u
+| math.bitShiftRight | Perform a right shift of bits on the first parameter, by the amount of bits specified in the second parameter. The first parameter is either a uint or an int. The second parameter must be an int | math.bitShiftRight(1024, 2) == 256 && math.bitShiftRight(1024u, 2) == 256u && math.bitShiftLeft(1024u, 64) == 0u
+| math.bitXor | Performs a bitwise-XOR operation over two int or uint values | math.bitXor(3u, 5u) == 6u && math.bitXor(1, 3) == 2
+| math.ceil | Compute the ceiling of a double value | math.ceil(1.2) == 2.0 && math.ceil(-1.2) == -1.0
+| math.floor | Compute the floor of a double value | math.floor(1.2) == 1.0 && math.floor(-1.2) == -2.0
+| math.greatest | Get the greatest valued number present in the arguments | math.greatest([1, 3, 5]) == 5 && math.greatest(1, 3, 5) == 5
+| math.isFinite | Returns true if the value is a finite number | !math.isFinite(0.0/0.0) && math.isFinite(1.2)
+| math.isInf | Returns true if the input double value is -Inf or +Inf | math.isInf(1.0/0.0) && !math.isInf(1.2)
+| math.isNaN | Returns true if the input double value is NaN, false otherwise | math.isNaN(0.0/0.0) && !math.isNaN(1.2)
+| math.least | Get the least valued number present in the arguments | math.least([1, 3, 5]) == 1 && math.least(1, 3, 5) == 1
+| math.round | Rounds the double value to the nearest whole number with ties rounding away from zero, e.g. 1.5 -> 2.0, -1.5 -> -2.0 | math.round(1.2) == 1.0 && math.round(1.5) == 2.0 && math.round(-1.5) == -2.0
+| math.sign | Returns the sign of the numeric type, either -1, 0, 1 | math.sign(1.2) == 1.0 && math.sign(-2) == -1 && math.sign(0) == 0
+| math.trunc | Truncates the fractional portion of the double value | math.trunc(1.2) == 1.0 && math.trunc(-1.2) == -1.0
+|===
+
+[#paths]
+== Paths
+
+NOTE: The path functions are Cerbos-specific extensions to CEL.
+
+[caption=]
+[%header,cols=".^1m,.^2,4m",grid=rows]
+|===
+| Function       | Description                                                    | Example
+| basePath       | Returns the last element of a path                             | basePath("/path/to/dir") == "dir"
+| dirPath        | Returns the directory portion of a path                        | dirPath("/path/to/file.txt") == "/path/to"
+| extPath        | Returns the file extension of a path including the leading dot | extPath("/path/to/file.txt") == ".txt"
+| joinPath       | Joins a list of path segments into a single path               | joinPath(["/path", "to", "file.txt"]) == "/path/to/file.txt"
+| pathHasPrefix  | Returns true if the second path is a prefix of the first path  | pathHasPrefix("/path/to/dir", "/path/to") == true && "/path/to/dir".pathHasPrefix("/path/to") == true
+| pathMatch      | Returns true if path matches a given glob pattern              | pathMatch("/path/to/file.zip", "/path/to/+*+.zip") == true && "/path/to/file.zip".pathMatch("/path/to/+*+.zip") == true
+| pathMatchAnyOf | Returns true if path matches any of the given glob patterns    | pathMatchAnyOf("/path/to/file.zip", ["/path/to/+*+.tar.gz", "/path/to/+*+.zip"]) == true && "/path/to/file.zip".pathMatchAnyOf(["/path/to/+*+.tar.gz", "/path/to/+*+.zip"]) == true
+| relPath        | Returns the relative path from a base path to a target path    | relPath("/path/to", "/path/to/file.txt") == "file.txt"
+| volumeName     | Returns leading volume name for Windows paths                  | volumeName("C:\path\to\dir") == "C:"
+|===
+
+[#spiffe]
+== SPIFFE
+
+NOTE: The SPIFFE functions are Cerbos-specific extensions to CEL.
+
+.Test data
+[source,json,linenums]
+----
+...
+"principal": {
+  "id": "spiffe://cerbos.dev/ns/privileged/sa/curl",
+  "roles": ["api"],
+}
+...
+----
+
+[caption=]
+[%header,cols=".^1m,.^2,4m",grid=rows]
+|===
+| Function | Description | Example
+| spiffeID.isMemberOf | Check whether the ID belongs to given trust domain | spiffeID(P.id).isMemberOf(spiffeTrustDomain("spiffe://cerbos.dev"))
+| spiffeID.path | Get the path element of ID | spiffeID(P.id).path() == "/ns/privileged/sa/curl"
+| spiffeID.trustDomain | Get the trust domain of ID | spiffeID(P.id).trustDomain() == spiffeTrustDomain("spiffe://cerbos.dev")
+| spiffeMatchAny | Match any SPIFFE ID | spiffeMatchAny().matchesID(spiffeID(P.id)) == true
+| spiffeMatchExact | Match a single SPIFFE ID | spiffeMatchExact(spiffeID("spiffe://cerbos.dev/ns/privileged/sa/curl")).matchesID(spiffeID(P.id)) == true
+| spiffeMatchOneOf | Match any one of SPIFFE IDs | spiffeMatchOneOf(["spiffe://cerbos.dev/ns/privileged/sa/curl", "spiffe://cerbos.dev/ns/privileged/sa/foo"]).matchesID(spiffeID(P.id)) == true
+| spiffeMatchTrustDomain | Match any ID from the trust domain | spiffeMatchTrustDomain(spiffeTrustDomain("spiffe://cerbos.dev")).matchesID(spiffeID(P.id)) == true
+| spiffeTrustDomain.id | Fully qualified trust domain ID   | spiffeTrustDomain("cerbos.dev").id() == "spiffe://cerbos.dev"
+| spiffeTrustDomain.name | Name of trust domain   | spiffeTrustDomain("spiffe://cerbos.dev").name() == "cerbos.dev"
+|===
+
+
+== Strings
+
+.Test data
+[source,json,linenums]
+----
+...
+"resource": {
+  "kind": "leave_request",
+  "attr": {
+    "id": "125",
+    "department": "marketing"
+  }
+}
+...
+----
+
+[caption=]
+[%header,cols=".^1m,.^2,4m",grid=rows]
+|===
+| Function | Description | Example
+| base64.encode | Encode as base64 | base64.encode(bytes("hello")) == "aGVsbG8="
+| base64.decode | Decode base64    | base64.decode("aGVsbG8=") == bytes("hello")
+| charAt   | Get the character at given index | R.attr.department.charAt(1) == 'a'
+| contains | Check whether a string contains the given substring | R.attr.department.contains("arket")
+| endsWith | Check whether a string has the given suffix | R.attr.department.endsWith("ing")
+| format   | Format a string with the given arguments | "department_%s_%d".format(["marketing", 1])
+| indexOf  | Index of the first occurrence of the given character | R.attr.department.indexOf('a') == 1
+| json.encode | Encode as JSON. Since v0.55.0 only. | json.encode(R.attr) == '{"id":"125","department":"marketing"}'
+| lastIndexOf | Index of the last occurrence of the given character | R.attr.department.lastIndexOf('g') == 8
+| lowerAscii  | Convert ASCII characters to lowercase | "MARKETING".lowerAscii() == R.attr.department
+| matches  | Check whether a string matches a link:https://github.com/google/re2/wiki/Syntax[RE2] regular expression | R.attr.department.matches("^[mM].*g$")
+| regex.extractAll | Extract all occurrences of a https://github.com/google/re2/wiki/Syntax[RE2] regular expression match. Since v0.55.0 only. | regex.extractAll("a bb a cc", "a") == ["a", "a"]
+| regex.replace | Replace all occurrences of a https://github.com/google/re2/wiki/Syntax[RE2] regular expression match. Since v0.55.0 only. | regex.replace("banana", "a", "i") == "binini"
+| regex.replace | Replace occurrences of a https://github.com/google/re2/wiki/Syntax[RE2] regular expression match with a limit. Since v0.55.0 only. | regex.replace("banana", "a", "i", 1) == "binana" && regex.replace("banana", "b(a).*", r"\1") == "a"
+| replace  | Replace all occurrences of a substring | R.attr.department.replace("market", "engineer") == "engineering"
+| replace  | Replace with limits. Limit 0 replaces nothing, -1 replaces all. | "engineering".replace("e", "a", 1) == "angineering" && "engineering".replace("e", "a", -1) == "anginaaring"
+| size     | Get the length of the string | size(R.attr.department) == 9
+| split    | Split a string using a delimiter | "a,b,c,d".split(",")[1] == "b"
+| split    | Split a string with limits. Limit 0 returns an empty list, 1 returns a list containing the original string. | "a,b,c,d".split(",", 2)[1] == "b,c,d"
+| startsWith | Check whether a string has the given prefix | R.attr.department.startsWith("mark")
+| substring | Selects a substring from the string | R.attr.department.substring(4) == "eting" && R.attr.department.substring(4, 6) == "et"
+| trim     | Remove whitespace from beginning and end | "  marketing  ".trim() == "marketing"
+| upperAscii | Convert ASCII characters to uppercase | R.attr.department.upperAscii() == "MARKETING"
+|===
+
+
+== Timestamps
+
+IMPORTANT: All timestamp getters (getHours, getMinutes, getDayOfWeek, and similar) take a time zone parameter. If omitted, the 'UTC' time zone is used by default.
+
+.Test data
+[source,json,linenums]
+----
+...
+"resource": {
+  "kind": "leave_request",
+  "attr": {
+    "lastAccessed": "2021-04-20T10:00:20.021-05:00",
+    "lastUpdateTime": "2021-05-01T13:34:12.024Z",
+  }
+}
+...
+----
+
+[caption=]
+[%header,cols=".^1m,.^2,4m",grid=rows]
+|===
+| Function | Description | Example
+| timestamp | Convert an RFC3339 formatted string to a timestamp | timestamp(R.attr.lastAccessed).getFullYear() == 2021
+| getDate  | Get day of month from a timestamp | timestamp(R.attr.lastAccessed).getDate() == 20
+| getDayOfMonth | Get day of month from a timestamp. Returns a zero-based value | timestamp(R.attr.lastAccessed).getDayOfMonth() == 19
+| getDayOfWeek | Get day of week from a timestamp. Returns a zero-based value where Sunday is 0 | timestamp(R.attr.lastAccessed).getDayOfWeek() == 2
+| getDayOfYear | Get day of year from a timestamp. Returns a zero-based value | timestamp(R.attr.lastAccessed).getDayOfYear() == 109
+| getFullYear | Get full year from a timestamp | timestamp(R.attr.lastAccessed).getFullYear() == 2021
+| getHours | Get hours from a timestamp | timestamp(R.attr.lastAccessed).getHours("-05:00") == 10
+| getMilliseconds | Get milliseconds from a timestamp | timestamp(R.attr.lastAccessed).getMilliseconds() == 21
+| getMinutes | Get minutes from a timestamp | timestamp(R.attr.lastAccessed).getMinutes("UTC") == 5
+| getMonth | Get month from a timestamp. Returns a zero-based value where January is 0 | timestamp(R.attr.lastAccessed).getMonth("NZ") == 3
+| getSeconds | Get seconds from a timestamp | timestamp(R.attr.lastAccessed).getSeconds() == 20
+| now | Current time on the server. This is a Cerbos extension to CEL | now() > timestamp(R.attr.lastAccessed)
+| timeSince | Time elapsed since the given timestamp to current time on the server. This is a Cerbos extension to CEL | timestamp(R.attr.lastAccessed).timeSince() > duration("1h")
+|===
+
+
+.Example: Assert that more than 36 hours has elapsed between last access time and last update time
+[source,yaml,linenums]
+----
+timestamp(R.attr.lastUpdateTime) - timestamp(R.attr.lastAccessed) > duration("36h")
+----
+
+.Example: Add a duration to a timestamp
+[source,yaml,linenums]
+----
+timestamp(R.attr.lastUpdateTime) + duration("24h") == timestamp("2021-05-02T13:34:12.024Z")
+----
+
+[TIP]
+====
+For patterns that translate condition logic into database queries, see https://www.cerbos.dev/blog/filtering-database-results-with-cerbos-query-plans[Filtering database results with Cerbos query plans]. For implementation review, https://www.cerbos.dev/workshop?utm_campaign=brand_cerbos&utm_source=documentation&utm_medium=text&utm_content=conditions[speak to us].
+====

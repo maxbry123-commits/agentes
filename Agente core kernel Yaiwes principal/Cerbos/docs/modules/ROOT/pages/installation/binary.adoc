@@ -1,0 +1,126 @@
+include::partial$attributes.adoc[]
+
+= Install from binary
+
+include::partial$version-check.adoc[]
+
+
+Cerbos PDP binaries are available for multiple operating systems and architectures. See the link:{app-github-releases-page}[releases page] for all available downloads.
+
+[caption=]
+[%header,cols=".^1,.^1,3m",grid=rows]
+|===
+|OS | Arch | Bundle
+|Linux | x86-64 | {app-name}_{app-version}_Linux_x86_64.tar.gz
+|Linux | arm64 | {app-name}_{app-version}_Linux_arm64.tar.gz
+|MacOS | universal | {app-name}_{app-version}_Darwin_all.tar.gz
+|MacOS | x86-64 | {app-name}_{app-version}_Darwin_x86_64.tar.gz
+|MacOS | arm64 | {app-name}_{app-version}_Darwin_arm64.tar.gz
+|===
+
+You can download the binaries by running the following command. Substitute `<BUNDLE>` with the appropriate value from the above table.
+
+[source,sh,subs="attributes,macros"]
+----
+curl -L -o {app-name}.tar.gz "{app-github-download-page}/$$<$$BUNDLE$$>$$"
+tar xvf {app-name}.tar.gz
+chmod +x {app-name}
+----
+
+[NOTE]
+====
+
+Cerbos PDP binaries are signed using link:https://www.sigstore.dev[sigstore] tools during the automated build process and the verification bundle is published along with the binary as `<BUNDLE>.sigstore.json`.
+
+The following example demonstrates how to verify the Linux X86_64 bundle archive.
+
+[source,sh,subs="attributes,macros"]
+----
+# Download the bundle archive
+curl -L \
+  -o {app-name}_{app-version}_Linux_x86_64.tar.gz \
+  "{app-github-download-page}/{app-name}_{app-version}_Linux_x86_64.tar.gz"
+
+# Download the verification bundle
+curl -L \
+  -o {app-name}_{app-version}_Linux_x86_64.tar.gz.sigstore.json \
+  "{app-github-download-page}/{app-name}_{app-version}_Linux_x86_64.tar.gz.sigstore.json"
+
+# Verify the signature
+cosign verify-blob \
+  --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+  --certificate-identity="https://github.com/cerbos/cerbos/.github/workflows/release.yaml@refs/tags/v{app-version}" \
+  --bundle="{app-name}_{app-version}_Linux_x86_64.tar.gz.sigstore.json" \
+  "{app-name}_{app-version}_Linux_x86_64.tar.gz"
+----
+
+====
+
+[id="linux-packages"]
+== Linux packages
+
+Cerbos PDP DEB and RPM packages can be installed on any Linux distribution that supports one of those package formats. You can download the appropriate package for your system from the link:{app-github-releases-page}[releases page].
+
+IMPORTANT: Cerbos PDP packages are currently only designed to work with systems where `systemd` is the init system. If you use a different init system, consider installing cerbos from the tarballs instead.
+
+
+
+The packages install the `cerbos` and `cerbosctl` binaries to `/usr/local/bin` and create a systemd service to automatically start the Cerbos PDP server. The default configuration is setup to look for policies in `/var/cerbos/policies` but you can change this by editing `/etc/cerbos/yaml` and reloading the service with `sudo systemctl restart cerbos`.
+
+
+[source,sh]
+----
+# Show status of the service
+sudo systemctl status cerbos
+
+# Restart the service
+sudo systemctl restart cerbos
+
+# View logs
+sudo journalctl -xeu cerbos.service
+----
+
+[id="homebrew"]
+== Homebrew
+
+You can install Cerbos PDP binaries using Homebrew as well.
+
+[source,sh]
+----
+brew tap cerbos/tap
+brew install cerbos
+----
+
+[id="npm"]
+== npm
+
+You can install Cerbos PDP binaries from the npm registry. This removes a separate setup step for JavaScript projects and allows you to lock Cerbos PDP to a specific version to ensure a consistent development environment.
+
+link:https://www.npmjs.com/package/cerbos[cerbos] and link:https://www.npmjs.com/package/cerbosctl[cerbosctl] are available as separate packages.
+
+[source,sh]
+----
+npm install --save-dev cerbos cerbosctl
+----
+
+Note that the npm packages rely on platform-specific optional dependencies, so make sure you don't omit these when installing dependencies (for example, don't pass the `--no-optional` flag to `npm`).
+
+[id="nix"]
+== Nix flake
+
+A link:https://nixos.wiki/wiki/Flakes[Nix flake] is available at https://github.com/cerbos/cerbos-flake.
+
+[source]
+----
+# Launch a Cerbos PDP server
+nix run github:cerbos/cerbos-flake#cerbos -- server --set=storage.disk.directory=/path/to/policy_directory
+
+# Launch a REPL
+nix run github:cerbos/cerbos-flake#cerbos -- repl
+
+# Launch cerbosctl
+nix run github:cerbos/cerbos-flake#cerbosctl
+
+# Start a Nix shell session with cerbos and cerbosctl installed
+nix shell github:cerbos/cerbos-flake
+----

@@ -1,0 +1,84 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Cerbos Lambda Function
+
+Metadata:
+  AWS::ServerlessRepo::Application:
+    Name: "cerbos-lambda-function"
+    Description: "Cerbos is an authorization layer that evolves with your product. This Lambda function provides a serverless Policy Decision Point (PDP) for evaluating access control policies."
+    Author: "Cerbos"
+    SpdxLicenseId: Apache-2.0
+    LicenseUrl: ../../../LICENSE
+    ReadmeUrl: ../../../README.md
+    Labels: 
+      - authorization
+      - access-control
+      - RBAC
+      - ABAC
+      - PBAC
+      - policy
+      - security
+    HomePageUrl: https://cerbos.dev
+    SourceCodeUrl: https://github.com/cerbos/cerbos
+
+# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
+Globals:
+  Function:
+    Timeout: 5
+
+Resources:
+  CerbosConfigLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: cerbos-config
+      Description: Cerbos confg
+      ContentUri: config-layer/
+      CompatibleRuntimes:
+        - provided.al2
+        - provided.al2023
+      CompatibleArchitectures:
+        - arm64
+
+  CerbosFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: provided.al2
+      CodeUri: dist/
+      Handler: bootstrap
+      Architectures:
+        - arm64
+      MemorySize: 1024
+      Layers:
+        - !Ref CerbosConfigLayer
+      Events:
+        CheckResources:
+          Type: HttpApi
+          Properties:
+            Path: /api/check/resources
+            Method: POST
+        PlanResources:
+          Type: HttpApi
+          Properties:
+            Path: /api/plan/resources
+            Method: POST
+        HealthCheck:
+          Type: HttpApi
+          Properties:
+            Path: /
+            Method: GET
+      Environment:
+        Variables:
+          CERBOS_LOG_LEVEL: debug
+          XDG_CACHE_HOME: /tmp
+          CERBOS_CONFIG: /opt/.cerbos.yaml
+
+Outputs:
+  CerbosFunctionAPI:
+    Description: "API Gateway endpoint URL for Cerbos Function"
+    Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com"
+  CerbosFunction:
+    Description: "Cerbos Lambda Function ARN"
+    Value: !GetAtt CerbosFunction.Arn
+  CerbosFunctionIamRole:
+    Description: "IAM Role created for the Cerbos Lambda function"
+    Value: !GetAtt CerbosFunctionRole.Arn

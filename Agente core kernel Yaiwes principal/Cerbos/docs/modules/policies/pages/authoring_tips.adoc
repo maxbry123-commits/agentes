@@ -1,0 +1,214 @@
+include::ROOT:partial$attributes.adoc[]
+
+:policy-schema-file: /policy/v1/Policy.schema.json
+:test-schema-file: /policy/v1/TestSuite.schema.json
+:testdata-principals-schema-file: /policy/v1/TestFixture/Principals.schema.json
+:testdata-resources-schema-file: /policy/v1/TestFixture/Resources.schema.json
+:testdata-auxdata-schema-file: /policy/v1/TestFixture/AuxData.schema.json
+
+:current-policy-schema-url: {app-schema-url-current}{policy-schema-file}
+:latest-policy-schema-url: {app-schema-url-latest}{policy-schema-file}
+:current-test-schema-url: {app-schema-url-current}{test-schema-file}
+:latest-test-schema-url: {app-schema-url-latest}{test-schema-file}
+:current-testdata-principals-schema-url: {app-schema-url-current}{testdata-principals-schema-file}
+:latest-testdata-principals-schema-url: {app-schema-url-latest}{testdata-principals-schema-file}
+:current-testdata-resources-schema-url: {app-schema-url-current}{testdata-resources-schema-file}
+:latest-testdata-resources-schema-url: {app-schema-url-latest}{testdata-resources-schema-file}
+:current-testdata-auxdata-schema-url: {app-schema-url-current}{testdata-auxdata-schema-file}
+:latest-testdata-auxdata-schema-url: {app-schema-url-latest}{testdata-auxdata-schema-file}
+
+
+
+= Policy authoring
+
+include::ROOT:partial$version-check.adoc[]
+
+
+== Tips for working with policies
+
+* Policies can be in either YAML or JSON formats. Accepted file extensions are `.yml`, `.yaml` or `.json`. All other extensions are ignored.
+* The JSON schemas for Cerbos files are available at:
+** Policy
+*** `{current-policy-schema-url}`
+** xref:compile.adoc#testing[Test suite]
+*** `{current-test-schema-url}`
+** xref:compile.adoc#fixtures[Principal test fixtures]
+*** `{current-testdata-principals-schema-url}`
+** xref:compile.adoc#fixtures[Resources test fixtures]
+*** `{current-testdata-resources-schema-url}`
+** xref:compile.adoc#fixtures[Auxiliary data test fixtures]
+*** `{current-testdata-auxdata-schema-url}`
+* If you prefer to always use the latest version, they can be accessed at:
+** `{latest-policy-schema-url}`
+** `{latest-test-schema-url}`
+** `{latest-testdata-principals-schema-url}`
+** `{latest-testdata-resources-schema-url}`
+** `{latest-testdata-auxdata-schema-url}`
+
+== Policy structure
+
+* The policy header is common for all policy types:
+** `apiVersion`: Required. Must be `api.cerbos.dev/v1`.
+** `description`: Optional. Description of the policy.
+** `disabled`: Optional. Set to `true` to make the Cerbos engine ignore this policy file.
+** `metadata.sourceFile`: Optional. Set to the source of the policy data for auditing purposes.
+** `metadata.annotations`: Optional. Key-value pairs of strings holding free-form data for auditing purposes.
+* Resource names, actions, and principal names can be hierarchical. Use `:` as the delimiter. For example: `app:component:resource`.
+* Wildcard matches are allowed on certain fields. Wildcards respect the hierarchy delimiter `:`.
+* xref:scoped_policies.adoc[Scoped policies] (optional) are handy for use cases like multi-tenancy where you may want to override particular rules for some tenants.
+* See xref:conditions.adoc[Conditions] to learn how to write conditions in policy rules.
+* See xref:schemas.adoc[Schemas] to learn how you can define schemas for validating requests.
+* See xref:best_practices.adoc[Best practices] to check out a growing collection of snippets detailing the optimal way to write policies.
+
+== Editing policies
+
+The quickest and the easiest way to get familiar with Cerbos policies is to use the link:https://play.cerbos.dev[online playground]. It provides an IDE-like experience with an interactive editor, examples, code snippets, test cases and other useful utilities to help you design policies.
+
+
+=== Editor configurations
+
+Editors with support for the link:https://microsoft.github.io/language-server-protocol/[Language Server Protocol (LSP)] can make use of the link:https://github.com/redhat-developer/yaml-language-server[YAML language server] implementation when working with Cerbos policies. Simply add the following line at the beginning of your policy file to get context-sensitive code suggestions and validation messages from the editor.
+
+[source,yaml,subs="+attributes"]
+----
+# yaml-language-server: $schema={latest-policy-schema-url}
+----
+
+The same method can be used for xref:compile.adoc#testing[tests]:
+
+[source,yaml,subs="+attributes"]
+----
+# yaml-language-server: $schema={latest-test-schema-url}
+----
+
+xref:compile.adoc#fixtures[Resource fixtures] for tests:
+
+[source,yaml,subs="+attributes"]
+----
+# yaml-language-server: $schema={latest-testdata-resources-schema-url}
+----
+
+xref:compile.adoc#fixtures[Principal fixtures] for tests:
+
+[source,yaml,subs="+attributes"]
+----
+# yaml-language-server: $schema={latest-testdata-principals-schema-url}
+----
+
+xref:compile.adoc#fixtures[Auxiliary data fixtures] for tests:
+
+[source,yaml,subs="+attributes"]
+----
+# yaml-language-server: $schema={latest-testdata-auxdata-schema-url}
+----
+
+YAML language server also supports per-directory settings. If all your Cerbos policies are contained in a specific directory, you can configure the editor to always use the correct schema for the YAML files in that directory. Refer to the link:https://github.com/redhat-developer/yaml-language-server#language-server-settings=[YAML language server documentation] for more information.
+
+.Example: Apply the schema to all files in the /cerbos directory
+[source,yaml,subs="+attributes"]
+----
+yaml.schemas: {
+    "{latest-policy-schema-url}": "/cerbos/*",
+    "{latest-test-schema-url}": "/cerbos/**/*_test.yaml",
+    "{latest-testdata-resources-schema-url}": "/cerbos/**/testdata/resources.yaml",
+    "{latest-testdata-principals-schema-url}": "/cerbos/**/testdata/principals.yaml",
+    "{latest-testdata-auxdata-schema-url}": "/cerbos/**/testdata/auxdata.yaml"
+}
+----
+
+JSON files can specify the schema using the `$schema` top-level property.
+
+[source,json,subs="+attributes"]
+----
+"$schema": "{latest-policy-schema-url}",
+----
+
+==== Neovim
+
+Refer to your plugin manager documentation to figure out how to install link:https://github.com/neovim/nvim-lspconfig/tree/master[nvim-lspconfig] and link:https://github.com/neovim/nvim-lspconfig/blob/master/doc/server_configurations.md#yamlls[configure the yaml-language-server]. Plugins such as link:https://github.com/williamboman/mason-lspconfig.nvim[mason-lspconfig] can automatically download and install language servers as well.
+
+The following is an example of using link:https://github.com/folke/lazy.nvim[lazy.nvim] and link:https://github.com/williamboman/mason.nvim[mason.nvim] to install and configure yaml-language-server. It follows the link:https://github.com/folke/lazy.nvim#-structuring-your-plugins[recommended way of configuring lazy plugins].
+
+.~/.config/nvim/lua/plugins/lspconfig.lua
+[source,lua,subs="+attributes"]
+----
+return {
+    {
+        "neovim/nvim-lspconfig",
+        dependencies = {
+            {
+                "williamboman/mason.nvim",
+            },
+            {
+                "williamboman/mason-lspconfig.nvim",
+                opts = {
+                    ensure_installed = { "yamlls" },
+                },
+            },
+        },
+        opts = {
+            servers = {
+                yamlls = {
+                    settings = {
+                        yaml = {
+                            schemas = {
+                                "{latest-policy-schema-url}": "/cerbos/*",
+                                "{latest-test-schema-url}": "/cerbos/**/*_test.yaml",
+                                "{latest-testdata-resources-schema-url}": "/cerbos/**/testdata/resources.yaml",
+                                "{latest-testdata-principals-schema-url}": "/cerbos/**/testdata/principals.yaml",
+                                "{latest-testdata-auxdata-schema-url}": "/cerbos/**/testdata/auxdata.yaml"
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    }
+}
+----
+
+==== JetBrains IDEs
+
+Navigate to the menu:Preferences[Languages & Frameworks > Schemas and DTDs > JSON Schema Mappings] in JetBrains IDE of your choice.
+
+Add an entry with the following configuration:
+
+[subs="attributes"]
+----
+Name: Cerbos
+Schema file or URL: {latest-policy-schema-url}
+Schema version: JSON Schema Version 7
+File path pattern: cerbos/*
+----
+image:jetbrains-menu.png[alt="JetBrains JSON Schema Mappings menu",role="center-img"]
+
+NOTE: In the example above, the schema is applied to all files in the cerbos directory.
+
+==== Visual Studio Code
+
+If you are new to Visual Studio Code, refer to the
+link:https://code.visualstudio.com/docs/getstarted/settings[documentation] for more information about how to change settings.
+
+Install the YAML language server extension from https://marketplace.visualstudio.com/items?itemName=redhat.vscode-yaml
+
+After the extension is installed, hit kbd:[Ctrl+,] or menu:File[Preferences > Settings] to edit settings. Expand menu:Extensions[YAML], click `Edit in settings.json` under `Yaml: Schemas`. and add the following snippet:
+
+[source,json,subs="attributes"]
+----
+{
+  "yaml.schemas": {
+    "{latest-policy-schema-url}": "cerbos/*",
+    "{latest-test-schema-url}": "/cerbos/**/*_test.yaml",
+    "{latest-testdata-resources-schema-url}": "/cerbos/**/testdata/resources.yaml",
+    "{latest-testdata-principals-schema-url}": "/cerbos/**/testdata/principals.yaml",
+    "{latest-testdata-auxdata-schema-url}": "/cerbos/**/testdata/auxdata.yaml"
+  }
+}
+----
+
+NOTE: In the example above, the schema is applied to all files in the cerbos directory.
+
+[TIP]
+====
+For a review of policy design against a specific use case, https://www.cerbos.dev/workshop?utm_campaign=brand_cerbos&utm_source=documentation&utm_medium=text&utm_content=authoring_tips[book a policy review session with Cerbos].
+====

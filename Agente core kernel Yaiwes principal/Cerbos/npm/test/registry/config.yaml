@@ -1,0 +1,15 @@
+auth:
+
+log:
+  type: file
+  path: ./storage/.verdaccio.log
+  level: debug
+
+max_body_size: 100mb
+
+packages:
+  "**":
+    access: $all
+    publish: $all
+
+storage: ./storage

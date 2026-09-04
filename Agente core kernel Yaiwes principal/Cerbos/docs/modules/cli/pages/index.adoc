@@ -1,0 +1,11 @@
+include::ROOT:partial$attributes.adoc[]
+
+= Cerbos CLI
+
+include::ROOT:partial$version-check.adoc[]
+
+
+Every link:{app-github-releases-page}[Cerbos release] ships with two binaries:
+
+xref:cerbos.adoc[`cerbos`]:: The Cerbos PDP server and the compiler/test runner
+xref:cerbosctl.adoc[`cerbosctl`]:: Command line utility to interact with Cerbos PDP instances that have the xref:configuration:server.adoc#admin-api[Admin API enabled] 

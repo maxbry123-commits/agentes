@@ -1,0 +1,154 @@
+{
+  "$id": "https://api.cerbos.dev/cerbos/engine/v1/PlanResourcesOutput.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "cerbos.engine.v1.EvaluationError": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "celError": {
+          "$ref": "#/definitions/cerbos.engine.v1.EvaluationError.CELError"
+        }
+      }
+    },
+    "cerbos.engine.v1.EvaluationError.CELError": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "expression": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    },
+    "cerbos.engine.v1.PlanResourcesFilter": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "condition": {
+          "$ref": "#/definitions/cerbos.engine.v1.PlanResourcesFilter.Expression.Operand"
+        },
+        "kind": {
+          "$ref": "#/definitions/cerbos.engine.v1.PlanResourcesFilter.Kind"
+        }
+      }
+    },
+    "cerbos.engine.v1.PlanResourcesFilter.Expression": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "operands": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/cerbos.engine.v1.PlanResourcesFilter.Expression.Operand"
+          }
+        },
+        "operator": {
+          "type": "string"
+        }
+      }
+    },
+    "cerbos.engine.v1.PlanResourcesFilter.Expression.Operand": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "expression": {
+          "$ref": "#/definitions/cerbos.engine.v1.PlanResourcesFilter.Expression"
+        },
+        "value": {
+          "$ref": "#/definitions/google.protobuf.Value"
+        },
+        "variable": {
+          "type": "string"
+        }
+      }
+    },
+    "cerbos.engine.v1.PlanResourcesFilter.Kind": {
+      "type": "string",
+      "enum": [
+        "KIND_UNSPECIFIED",
+        "KIND_ALWAYS_ALLOWED",
+        "KIND_ALWAYS_DENIED",
+        "KIND_CONDITIONAL"
+      ]
+    },
+    "cerbos.schema.v1.ValidationError": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "message": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/definitions/cerbos.schema.v1.ValidationError.Source"
+        }
+      }
+    },
+    "cerbos.schema.v1.ValidationError.Source": {
+      "type": "string",
+      "enum": [
+        "SOURCE_UNSPECIFIED",
+        "SOURCE_PRINCIPAL",
+        "SOURCE_RESOURCE"
+      ]
+    },
+    "google.protobuf.Value": {
+      "title": "Value",
+      "description": "A dynamically-typed value."
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "action": {
+      "type": "string"
+    },
+    "actions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "evaluationErrors": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/cerbos.engine.v1.EvaluationError"
+      }
+    },
+    "filter": {
+      "$ref": "#/definitions/cerbos.engine.v1.PlanResourcesFilter"
+    },
+    "filterDebug": {
+      "type": "string"
+    },
+    "kind": {
+      "type": "string"
+    },
+    "matchedScopes": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "policyVersion": {
+      "type": "string"
+    },
+    "requestId": {
+      "type": "string"
+    },
+    "scope": {
+      "type": "string"
+    },
+    "validationErrors": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/cerbos.schema.v1.ValidationError"
+      }
+    }
+  }
+}

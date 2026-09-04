@@ -1,0 +1,245 @@
+{
+  "$id": "https://api.cerbos.test/cerbos/private/v1/IndexBuilderTestCase.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "cerbos.private.v1.IndexBuilderTestCase.CompilationUnit": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ancestorFqns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "definitionFqns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "mainFqn": {
+          "type": "string"
+        }
+      }
+    },
+    "cerbos.runtime.v1.IndexBuildErrors": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "disabled": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "disabledDefs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/cerbos.runtime.v1.IndexBuildErrors.Disabled"
+          }
+        },
+        "duplicateDefs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/cerbos.runtime.v1.IndexBuildErrors.DuplicateDef"
+          }
+        },
+        "loadFailures": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/cerbos.runtime.v1.IndexBuildErrors.LoadFailure"
+          }
+        },
+        "missingImports": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/cerbos.runtime.v1.IndexBuildErrors.MissingImport"
+          }
+        },
+        "missingScopeDetails": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/cerbos.runtime.v1.IndexBuildErrors.MissingScope"
+          }
+        },
+        "missingScopes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "scopePermissionsConflicts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/cerbos.runtime.v1.IndexBuildErrors.ScopePermissionsConflicts"
+          }
+        }
+      }
+    },
+    "cerbos.runtime.v1.IndexBuildErrors.Disabled": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "file": {
+          "type": "string"
+        },
+        "policy": {
+          "type": "string"
+        },
+        "position": {
+          "$ref": "#/definitions/cerbos.source.v1.Position"
+        }
+      }
+    },
+    "cerbos.runtime.v1.IndexBuildErrors.DuplicateDef": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "file": {
+          "type": "string"
+        },
+        "otherFile": {
+          "type": "string"
+        },
+        "policy": {
+          "type": "string"
+        },
+        "position": {
+          "$ref": "#/definitions/cerbos.source.v1.Position"
+        }
+      }
+    },
+    "cerbos.runtime.v1.IndexBuildErrors.LoadFailure": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "error": {
+          "type": "string"
+        },
+        "errorDetails": {
+          "$ref": "#/definitions/cerbos.source.v1.Error"
+        },
+        "file": {
+          "type": "string"
+        }
+      }
+    },
+    "cerbos.runtime.v1.IndexBuildErrors.MissingImport": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "context": {
+          "type": "string"
+        },
+        "desc": {
+          "type": "string"
+        },
+        "importKind": {
+          "type": "string"
+        },
+        "importName": {
+          "type": "string"
+        },
+        "importingFile": {
+          "type": "string"
+        },
+        "importingPolicy": {
+          "type": "string"
+        },
+        "position": {
+          "$ref": "#/definitions/cerbos.source.v1.Position"
+        }
+      }
+    },
+    "cerbos.runtime.v1.IndexBuildErrors.MissingScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "descendants": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "missingPolicy": {
+          "type": "string"
+        }
+      }
+    },
+    "cerbos.runtime.v1.IndexBuildErrors.ScopePermissionsConflicts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "scope": {
+          "type": "string"
+        }
+      }
+    },
+    "cerbos.source.v1.Error": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "context": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/definitions/cerbos.source.v1.Error.Kind"
+        },
+        "message": {
+          "type": "string"
+        },
+        "position": {
+          "$ref": "#/definitions/cerbos.source.v1.Position"
+        }
+      }
+    },
+    "cerbos.source.v1.Error.Kind": {
+      "type": "string",
+      "enum": [
+        "KIND_UNSPECIFIED",
+        "KIND_PARSE_ERROR",
+        "KIND_VALIDATION_ERROR"
+      ]
+    },
+    "cerbos.source.v1.Position": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "column": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "path": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "files": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "wantCompilationUnits": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/cerbos.private.v1.IndexBuilderTestCase.CompilationUnit"
+      }
+    },
+    "wantErr": {
+      "type": "string"
+    },
+    "wantErrList": {
+      "$ref": "#/definitions/cerbos.runtime.v1.IndexBuildErrors"
+    }
+  }
+}

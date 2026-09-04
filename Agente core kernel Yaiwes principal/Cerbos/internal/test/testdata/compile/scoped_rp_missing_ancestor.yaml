@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=../.jsonschema/CompileTestCase.schema.json
+---
+wantErrors:
+  - file: leave_request.acme.hr.uk.yaml
+    error: missing policy definition
+    description: |-
+      Missing ancestor policy "resource.leave_request.v20210210/acme.hr"
+
+  - file: leave_request.acme.hr.uk.yaml
+    error: missing policy definition
+    description: |-
+      Missing ancestor policy "resource.leave_request.v20210210"
+mainDef: "leave_request.acme.hr.uk.yaml"

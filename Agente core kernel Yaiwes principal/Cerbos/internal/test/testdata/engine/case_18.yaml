@@ -1,0 +1,50 @@
+# yaml-language-server: $schema=../.jsonschema/EngineTestCase.schema.json
+---
+description: Globals
+
+config:
+  globals:
+    environment: test
+  lenientScopeSearch:
+    - false
+    - true
+  schemaEnforcement:
+    - ENFORCEMENT_NONE
+    - ENFORCEMENT_WARN
+    - ENFORCEMENT_REJECT
+  strictEvaluation:
+    - false
+    - true
+
+inputs: &inputs
+  - requestId: test
+    actions:
+      - test
+    principal:
+      id: andy
+      roles:
+        - employee
+    resource:
+      kind: global
+      id: test
+
+wantOutputs: &outputs
+  - requestId: test
+    resourceId: test
+    actions:
+      test:
+        effect: EFFECT_ALLOW
+        policy: resource.global.vdefault
+
+wantDecisionLogs:
+  - checkResources:
+      inputs: *inputs
+      outputs: *outputs
+    auditTrail:
+      effectivePolicies:
+        resource.global.vdefault:
+          attributes:
+            driver: disk
+            source: resource_policies/policy_08.yaml
+    policySource:
+      disk: {}
