@@ -3,7 +3,7 @@ name: research-download-chain
 description: Copia, descarga+extrae, reubica y verifica componentes mediante GitHub Actions y APIs Git de GitHub con deduplicación, fuente fijada, SHA, ZIP por partes, manifiesto y recuperación aislada de GAPS. Úsalo cuando YAIWES, Luna u otro agente deba incorporar o reorganizar código sin reescribirlo.
 metadata:
   type: workflow
-  version: "3.6.0"
+  version: "3.7.0"
 ---
 
 # Research Download Chain
@@ -128,7 +128,7 @@ No borres ZIP ni staging del repositorio salvo autorización; el staging del run
 - Si usas jobs separados, el job final único recoge artefactos y escribe cuando exista un destino común.
 - `concurrency.group` debe incluir repositorio y destino; no uses un grupo global compartido por tareas no relacionadas.
 - `cancel-in-progress: false`.
-- Antes del push desde runner: `git fetch origin <branch> && git rebase --autostash origin/<branch>`.
+- Antes del push desde runner: `git fetch origin <branch> && git rebase --autostash origin/<branch>` solo para cambios ordinarios ya libres de filtros/punteros; para finalizadores de recuperación usa la política de snapshot fresco de la sección 19.
 - Reintenta push como máximo tres veces con espera creciente. Una colisión de contenido nunca se reintenta.
 - Para mutaciones directas por API usa CAS optimista: lee `HEAD=H` y `TREE=T`, construye el tree sobre `T`, crea commit con padre `H`, vuelve a leer `HEAD` y actualiza el ref con `force=false` solo si sigue siendo `H`; si cambió, reconstruye sobre el nuevo snapshot.
 
@@ -392,7 +392,7 @@ Este método evita descargar/re-subir bytes y conserva identidad de blob. Para u
 
 ### Método runner/local Git
 
-Úsalo cuando la operación forma parte natural de una Action de adquisición/extracción o cuando se necesita una transformación Git que la API no expresa cómodamente. Para MOVE autorizado usa `git mv`; para COPY usa `cp -a`; para publicación usa fetch + rebase y push sin force. No uses runner solo para reorganización masiva si Git Trees API resuelve la operación de manera atómica.
+Úsalo cuando la operación forma parte natural de una Action de adquisición/extracción o cuando se necesita una transformación Git que la API no expresa cómodamente. Para MOVE autorizado usa `git mv`; para COPY usa `cp -a`; para publicación usa fetch + rebase y push sin force salvo los finalizadores de recuperación de la sección 19. No uses runner solo para reorganización masiva si Git Trees API resuelve la operación de manera atómica.
 
 ### Método branch + commit + PR
 
@@ -417,3 +417,87 @@ Reglas universales:
 - Nunca uses `force=true`/force-push para organización.
 - Un commit creado pero no alcanzable desde la rama no cuenta como cambio aplicado.
 - El cierre exige read-back desde la rama publicada, no desde el tree/commit local recién creado.
+
+## 19. Lecciones forenses de cierre, GH008 y autorización de escritura
+
+### Autorización de escritura por alcance
+
+Por defecto, investigación, lectura de árbol, inspección de Actions, logs, manifests, hashes y comparación son **solo lectura**. Una orden para investigar o auditar no autoriza mutaciones.
+
+- No crear, actualizar, borrar, mover ni renombrar ningún archivo fuera de la ruta o conjunto de rutas que el usuario autorice explícitamente.
+- Autorizar la actualización de este `SKILL.md` no autoriza tocar workflows, scripts, manifests, componentes, índices, documentación ni evidencias.
+- Una autorización previa de una fase no se extiende automáticamente a una fase nueva si el usuario la revoca o limita después.
+- Antes de cualquier write, identifica `AUTHORIZED_WRITE_SCOPE`; fuera de ese scope, `READ_ONLY`.
+- La ejecución automática de un workflow también es una mutación operacional: si el usuario limita la tarea a lectura o a un único archivo, no despaches ni rerun Actions salvo autorización explícita.
+
+### Separar GAP real de GAP histórico/control
+
+No trates cada fila de un baseline histórico como un fallo nuevo. Mantén tres contadores independientes:
+
+- `remaining_component_gaps`: componentes realmente ausentes o incompletos en el árbol final;
+- `control_gaps`: push, read-back, permisos, cola o bookkeeping;
+- `historical_baseline_rows`: evidencia histórica ya reparada o superseded.
+
+Nunca sumes las tres categorías para afirmar que “siguen saliendo más GAPS”. Un componente reparado y verificado debe salir del conjunto activo aunque permanezca mencionado en evidencias antiguas.
+
+### Patrón observado de GH008 / unknown LFS objects
+
+Si una reparación produce contenido correcto pero el push devuelve `GH008: unknown Git LFS objects`, clasifica primero `PUBLISH_LFS_FILTER_GAP`, no `COMPONENT_EXTRACTION_GAP`.
+
+Causas a comprobar en orden:
+
+1. punteros LFS crudos añadidos como evidencia;
+2. `.gitattributes` heredado aplicando `filter=lfs` durante `git add`;
+3. commit/rebase que arrastra objetos/punteros creados por otro shard;
+4. staging que no representa los bytes reales que se verificaron en disco;
+5. archivos grandes partidos demasiado cerca del límite operativo.
+
+Reglas de cierre:
+
+- nunca publiques el puntero LFS crudo como evidencia; conserva solo metadatos JSON/texto con ruta, OID, tamaño y origen;
+- verifica el **índice staged**, no solo el working tree: todo blob nuevo debe inspeccionarse antes del commit y ningún blob staged puede empezar por `version https://git-lfs.github.com/spec/v1`;
+- para bytes ordinarios bajo filtros heredados usa el mecanismo `--no-filters` ya definido en la sección 14;
+- un GH008 determinista no se reintenta ocho veces: se detiene ese publisher, se corrige la causa y se crea una publicación nueva desde snapshot fresco.
+
+### Publicación final: snapshot fresco, no rebase de commits generados
+
+Cuando varios shards reparan componentes del mismo destino/branch, pueden preparar trabajo por separado, pero la publicación debe ser **estrictamente serial**.
+
+Para cada shard finalizador:
+
+1. espera a que el publisher anterior termine;
+2. obtiene `origin/main` fresco;
+3. posiciona el checkout exactamente en ese HEAD remoto;
+4. aplica/genera únicamente su conjunto de rutas autorizado;
+5. convierte evidencia LFS cruda a metadatos antes del staging;
+6. stagea solo rutas del shard y ejecuta el gate del índice;
+7. crea commit sobre ese HEAD remoto;
+8. intenta push fast-forward una sola vez;
+9. si aparece non-fast-forward, descarta ese commit generado y reconstruye desde el nuevo `origin/main`; **no rebasees el commit de payload generado**;
+10. read-back después del push.
+
+La extracción/verificación puede paralelizarse en staging o por destinos realmente disjuntos; la mutación de una misma rama/destino final no.
+
+### Tamaño conservador sin LFS
+
+Git normal bloquea blobs de 100 MiB y GitHub advierte a partir de 50 MiB. Para payloads que deban permanecer sin LFS, usa un tamaño de parte conservador de **45 MiB o menor** cuando sea necesario fragmentar archivos grandes.
+
+Cada split debe incluir manifest con orden, SHA256 y bytes de cada parte, SHA256/bytes del original y procedimiento de reconstrucción. No confundas un split verificado con el archivo original reconstruido: el cierre debe declarar qué representación quedó instalada.
+
+### Watchdog de runs >24 h
+
+Un run `in_progress` o `queued` con edad superior a 24 h es una anomalía de control que requiere auditoría inmediata. No se clasifica automáticamente como GAP de componente.
+
+Secuencia:
+
+1. comprobar `status`, `created_at`, workflow path, head SHA y jobs;
+2. si es escritor activo relevante, detener nuevos publishers hasta resolverlo;
+3. intentar cancel normal solo cuando el estado lo permita;
+4. si normal cancel falla, probar force-cancel cuando la API lo permita;
+5. si ambos devuelven 409 por un estado fantasma/queued, registrar `STALE_RUN_CONTROL_GAP` y no generar una tormenta de nuevos runs;
+6. borrar el run solo si existe autorización y permisos suficientes;
+7. un stale run histórico cuyo workflow ya no existe no debe inflar `remaining_component_gaps`.
+
+### Cierre probado del patrón
+
+El patrón correcto se considera probado cuando todos los publishers seriales pasan, el verificador independiente pasa, el read-back pasa y `remaining_component_gaps=0`. El número de shards pendientes no equivale al número de tareas funcionales pendientes: un cierre puede tener 4 shards y, tras terminar todos, quedar únicamente auditoría/read-back; o puede quedar cero tareas si el verificador final ya certificó `VERIFIED_CLOSED`.
