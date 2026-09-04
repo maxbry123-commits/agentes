@@ -1,0 +1,64 @@
+import type React from 'react';
+import { Link as RouterLink } from 'react-router';
+import { ConditionallyRender } from 'component/common/ConditionallyRender/ConditionallyRender';
+import { Highlighter } from 'component/common/Highlighter/Highlighter';
+import { useSearchHighlightContext } from 'component/common/Table/SearchHighlightContext/SearchHighlightContext';
+import { Truncator } from 'component/common/Truncator/Truncator';
+import { StyledWrapper, StyledLink, StyledContainer } from './LinkCell.styles';
+
+interface ILinkCellProps {
+    title?: string;
+    to?: string;
+    onClick?: () => void;
+    subtitle?: string;
+    children?: React.ReactNode;
+}
+
+export const LinkCell: React.FC<ILinkCellProps> = ({
+    title,
+    to,
+    onClick,
+    subtitle,
+    children,
+}) => {
+    const { searchQuery } = useSearchHighlightContext();
+
+    const renderSubtitle = (
+        <Truncator lines={1} title={subtitle} arrow data-loading>
+            <Highlighter search={searchQuery}>{subtitle}</Highlighter>
+        </Truncator>
+    );
+
+    const content = (
+        <StyledContainer>
+            <Truncator lines={1} title={title} arrow data-loading>
+                <span>
+                    <Highlighter search={searchQuery}>{title}</Highlighter>
+                    {children}
+                </span>
+            </Truncator>
+            <ConditionallyRender
+                condition={Boolean(subtitle)}
+                show={renderSubtitle}
+            />
+        </StyledContainer>
+    );
+
+    if (to) {
+        return (
+            <StyledLink component={RouterLink} to={to} underline='hover'>
+                {content}
+            </StyledLink>
+        );
+    }
+
+    if (onClick) {
+        return (
+            <StyledLink onClick={onClick} underline='hover'>
+                {content}
+            </StyledLink>
+        );
+    }
+
+    return <StyledWrapper>{content}</StyledWrapper>;
+};

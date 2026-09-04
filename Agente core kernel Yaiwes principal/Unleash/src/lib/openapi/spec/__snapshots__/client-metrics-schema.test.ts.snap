@@ -1,0 +1,18 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`clientMetricsSchema should fail when required field is missing 1`] = `
+{
+  "errors": [
+    {
+      "instancePath": "/bucket",
+      "keyword": "required",
+      "message": "must have required property 'stop'",
+      "params": {
+        "missingProperty": "stop",
+      },
+      "schemaPath": "#/properties/bucket/required",
+    },
+  ],
+  "schema": "#/components/schemas/clientMetricsSchema",
+}
+`;

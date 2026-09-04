@@ -1,0 +1,50 @@
+[package]
+name = "restate-local-cluster-runner"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[features]
+default = []
+
+[dependencies]
+restate-workspace-hack = { workspace = true }
+
+restate-core = { workspace = true }
+restate-clock = { workspace = true }
+restate-metadata-store = { workspace = true }
+restate-metadata-providers = { workspace = true, features = ["replicated"] }
+restate-metadata-server-grpc = { workspace = true, features = ["grpc-client"] }
+# nb features here will also affect the compiled restate-server binary in integration tests
+restate-types = { workspace = true, features = ["unsafe-mutable-config"] }
+
+anyhow = { workspace = true }
+arc-swap = { workspace = true }
+clap = { workspace = true }
+clap-verbosity-flag = { workspace = true }
+derive_more = { workspace = true, features = ["display"] }
+futures = { workspace = true }
+enumset = { workspace = true }
+http = { workspace = true }
+itertools = { workspace = true }
+nix = { version = "0.30.1", features = ["signal"] }
+rand = { workspace = true }
+regex = { workspace = true }
+reqwest = { workspace = true }
+rev_lines = "0.3.0"
+serde = { workspace = true }
+strum = { workspace = true }
+tempfile = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["process", "fs"] }
+tonic = { workspace = true }
+toml = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+typed-builder = { workspace = true }
+
+[lints]
+workspace = true

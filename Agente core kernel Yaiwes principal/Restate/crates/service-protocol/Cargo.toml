@@ -1,0 +1,41 @@
+[package]
+name = "restate-service-protocol"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[features]
+default = []
+codec = ["dep:restate-types", "dep:paste"]
+message = ["dep:restate-types", "dep:bytes-utils", "dep:codederror", "dep:restate-errors", "dep:tracing"]
+test-util = ["restate-types/test-util"]
+
+[dependencies]
+restate-workspace-hack = { workspace = true }
+
+restate-errors = { workspace = true, optional = true }
+restate-util-bytecount = { workspace = true, features = ["serde"] }
+restate-types = { workspace = true, optional = true }
+
+bytes = { workspace = true }
+bytes-utils = { workspace = true, optional = true }
+codederror = { workspace = true, optional = true }
+paste = { workspace = true, optional = true }
+prost = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true, optional = true }
+
+[dev-dependencies]
+# We need the codec feature to test Decoder/Encoder activated by the message feature :-(
+restate-service-protocol = { path = ".", features = ["codec"]}
+restate-test-util = { workspace = true }
+restate-types = { workspace = true, features = ["test-util"] }
+googletest = { workspace = true }
+
+tokio = { workspace = true }
+
+[lints]
+workspace = true

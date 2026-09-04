@@ -1,0 +1,9 @@
+{
+	"extends": "@cloudflare/workers-tsconfig/worker.json",
+	"compilerOptions": {
+		"declaration": true,
+		"declarationMap": true
+	},
+	"include": ["src"],
+	"exclude": ["src/workers", "src/__tests__/fixtures"]
+}

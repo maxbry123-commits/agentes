@@ -1,0 +1,12 @@
+{
+	"name": "worker",
+	"main": "./src/index.ts",
+	"compatibility_date": "2024-12-30",
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "prisma-demo-db",
+			"database_id": "local",
+		},
+	],
+}

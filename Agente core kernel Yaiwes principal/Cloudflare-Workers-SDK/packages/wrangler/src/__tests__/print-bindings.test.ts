@@ -1,0 +1,244 @@
+import { stripVTControlCharacters } from "node:util";
+import { INHERIT_SYMBOL } from "@cloudflare/workers-utils";
+import { describe, it } from "vitest";
+import { printBindings, warnOrError } from "../utils/print-bindings";
+import { mockConsoleMethods } from "./helpers/mock-console";
+import type { StartDevWorkerInput } from "../api/startDevWorker/types";
+
+function callPrintBindings(bindings: StartDevWorkerInput["bindings"]) {
+	const lines: string[] = [];
+	printBindings(bindings, [], [], [], {
+		log: (msg: string) => lines.push(msg),
+	});
+	return lines.map((l) => stripVTControlCharacters(l)).join("\n");
+}
+
+describe("printBindings — variable display", () => {
+	it("shows config vars literally", ({ expect }) => {
+		const output = callPrintBindings({
+			CONFIG_VAR: { type: "plain_text", value: "visible value" },
+		});
+
+		expect(output).toContain('env.CONFIG_VAR ("visible value")');
+	});
+
+	it("shows --var/--vars as (hidden)", ({ expect }) => {
+		const output = callPrintBindings({
+			CLI_VAR: { type: "plain_text", value: "secret from cli", hidden: true },
+		});
+
+		expect(output).toContain('env.CLI_VAR ("(hidden)")');
+		expect(output).not.toContain("secret from cli");
+	});
+
+	it("shows .dev.vars / secret file vars as (hidden)", ({ expect }) => {
+		const output = callPrintBindings({
+			SECRET_VAR: { type: "secret_text", value: "secret from dotenv" },
+		});
+
+		expect(output).toContain('env.SECRET_VAR ("(hidden)")');
+		expect(output).not.toContain("secret from dotenv");
+	});
+
+	it("shows json vars literally", ({ expect }) => {
+		const output = callPrintBindings({
+			JSON_VAR: { type: "json", value: { key: "val" } },
+		});
+
+		expect(output).toContain("env.JSON_VAR");
+		expect(output).toContain('{"key":"val"}');
+	});
+
+	it("handles all three sources together in one table", ({ expect }) => {
+		const output = callPrintBindings({
+			FROM_CONFIG: { type: "plain_text", value: "config value" },
+			FROM_CLI: { type: "plain_text", value: "cli value", hidden: true },
+			FROM_DOTENV: { type: "secret_text", value: "dotenv value" },
+		});
+
+		expect(output).toContain('env.FROM_CONFIG ("config value")');
+		expect(output).toContain('env.FROM_CLI ("(hidden)")');
+		expect(output).toContain('env.FROM_DOTENV ("(hidden)")');
+		expect(output).not.toContain("cli value");
+		expect(output).not.toContain("dotenv value");
+	});
+
+	it("truncates long config var values", ({ expect }) => {
+		const longValue = "a".repeat(100);
+		const output = callPrintBindings({
+			LONG_VAR: { type: "plain_text", value: longValue },
+		});
+
+		expect(output).toContain("aaa...");
+		expect(output).not.toContain(longValue);
+	});
+});
+
+describe("printBindings — AI Search bindings", () => {
+	it("shows AI Search namespace bindings", ({ expect }) => {
+		const output = callPrintBindings({
+			AI_SEARCH: {
+				type: "ai_search_namespace",
+				namespace: "production",
+			},
+		});
+
+		expect(output).toContain("AI_SEARCH");
+		expect(output).toContain("AI Search Namespace");
+		expect(output).toContain("production");
+	});
+
+	it("shows AI Search instance bindings", ({ expect }) => {
+		const output = callPrintBindings({
+			BLOG_SEARCH: {
+				type: "ai_search",
+				instance_name: "cloudflare-blog",
+			},
+		});
+
+		expect(output).toContain("BLOG_SEARCH");
+		expect(output).toContain("AI Search Instance");
+		expect(output).toContain("cloudflare-blog");
+	});
+
+	it("renders inherited AI Search namespace bindings as `(inherited)`", ({
+		expect,
+	}) => {
+		const output = callPrintBindings({
+			AI_SEARCH: {
+				type: "ai_search_namespace",
+				namespace: INHERIT_SYMBOL,
+			},
+		});
+
+		expect(output).toContain("AI_SEARCH");
+		expect(output).toContain("(inherited)");
+		expect(output).not.toContain("Symbol(inherit_binding)");
+	});
+
+	it("shows Agent Memory bindings", ({ expect }) => {
+		const output = callPrintBindings({
+			MEMORY: {
+				type: "agent_memory",
+				namespace: "my-agent",
+			},
+		});
+
+		expect(output).toContain("MEMORY");
+		expect(output).toContain("Agent Memory");
+		expect(output).toContain("my-agent");
+	});
+
+	it("renders inherited Agent Memory bindings as `(inherited)`", ({
+		expect,
+	}) => {
+		const output = callPrintBindings({
+			MEMORY: {
+				type: "agent_memory",
+				namespace: INHERIT_SYMBOL,
+			},
+		});
+
+		expect(output).toContain("MEMORY");
+		expect(output).toContain("(inherited)");
+		expect(output).not.toContain("Symbol(inherit_binding)");
+	});
+});
+
+describe("printBindings -- Artifacts bindings", () => {
+	it("shows Artifacts bindings", ({ expect }) => {
+		const output = callPrintBindings({
+			MY_ARTIFACTS: {
+				type: "artifacts",
+				namespace: "default",
+			},
+		});
+
+		expect(output).toContain("MY_ARTIFACTS");
+		expect(output).toContain("Artifacts");
+		expect(output).toContain("default");
+	});
+});
+
+describe("warnOrError", () => {
+	const std = mockConsoleMethods();
+
+	describe("local-only bindings", () => {
+		it("throws when `remote: true` is set on a local-only binding", ({
+			expect,
+		}) => {
+			expect(() => warnOrError("ratelimit", true)).toThrow(
+				"Rate Limit bindings do not support accessing remote resources."
+			);
+		});
+
+		it("does not throw or warn for `remote: false` or `remote: undefined`", ({
+			expect,
+		}) => {
+			expect(() => warnOrError("ratelimit", false)).not.toThrow();
+			expect(() => warnOrError("ratelimit", undefined)).not.toThrow();
+			expect(std.warn).toBe("");
+		});
+	});
+
+	describe("remote-only bindings (no local simulator yet)", () => {
+		it("throws when `remote: false` is set on a remote-only binding", ({
+			expect,
+		}) => {
+			expect(() => warnOrError("vectorize", false)).toThrow(
+				"Vectorize Index bindings do not support local development. You can set `remote: true` for the binding definition in your configuration file to access a remote version of the resource."
+			);
+		});
+
+		it("warns (but does not throw) when `remote` is omitted on a remote-only binding", ({
+			expect,
+		}) => {
+			expect(() => warnOrError("vectorize", undefined)).not.toThrow();
+			expect(std.warn).toContain(
+				"Vectorize Index bindings do not support local development"
+			);
+		});
+
+		it("does not throw or warn when `remote: true` is set on a remote-only binding", ({
+			expect,
+		}) => {
+			expect(() => warnOrError("vectorize", true)).not.toThrow();
+			expect(std.warn).toBe("");
+		});
+	});
+
+	describe("always-remote bindings (no local simulator, ever)", () => {
+		it("throws when `remote: false` is set on an always-remote binding", ({
+			expect,
+		}) => {
+			expect(() => warnOrError("ai", false)).toThrow(
+				"AI bindings do not support local development. You can set `remote: true` for the binding definition in your configuration file to access a remote version of the resource."
+			);
+		});
+
+		it("warns about usage charges when `remote` is omitted on an always-remote binding", ({
+			expect,
+		}) => {
+			expect(() => warnOrError("ai", undefined)).not.toThrow();
+			expect(std.warn).toContain(
+				"AI bindings always access remote resources, and so may incur usage charges even in local dev"
+			);
+		});
+
+		it("does not throw or warn when `remote: true` is set on an always-remote binding", ({
+			expect,
+		}) => {
+			expect(() => warnOrError("ai", true)).not.toThrow();
+			expect(std.warn).toBe("");
+		});
+	});
+
+	describe("local-and-remote bindings", () => {
+		it("does not throw or warn for any `remote` value", ({ expect }) => {
+			expect(() => warnOrError("kv_namespace", true)).not.toThrow();
+			expect(() => warnOrError("kv_namespace", false)).not.toThrow();
+			expect(() => warnOrError("kv_namespace", undefined)).not.toThrow();
+			expect(std.warn).toBe("");
+		});
+	});
+});

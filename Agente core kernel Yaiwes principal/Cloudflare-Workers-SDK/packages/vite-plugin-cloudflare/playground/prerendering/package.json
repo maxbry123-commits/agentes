@@ -1,0 +1,20 @@
+{
+	"name": "@playground/prerendering",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"build:default": "vite build",
+		"build:assets-only": "vite build -c ./vite.config.assets-only.ts",
+		"check:type": "tsc --build",
+		"dev": "vite dev",
+		"preview": "vite preview"
+	},
+	"devDependencies": {
+		"@cloudflare/vite-plugin": "workspace:*",
+		"@cloudflare/workers-tsconfig": "workspace:*",
+		"@cloudflare/workers-types": "catalog:default",
+		"typescript": "catalog:default",
+		"vite": "catalog:default",
+		"wrangler": "workspace:*"
+	}
+}

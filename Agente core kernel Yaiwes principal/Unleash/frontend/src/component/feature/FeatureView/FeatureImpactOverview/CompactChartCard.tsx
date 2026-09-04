@@ -1,0 +1,185 @@
+import type { FC } from 'react';
+import { Link } from 'react-router';
+import { styled, Tooltip, Typography } from '@mui/material';
+import ShieldOutlined from '@mui/icons-material/ShieldOutlined';
+import { ImpactMetricsChart } from 'component/impact-metrics/ImpactMetricsChart';
+import { useImpactMetricsData } from 'hooks/api/getters/useImpactMetricsData/useImpactMetricsData';
+import { formatLargeNumbers } from 'component/impact-metrics/metricsFormatters';
+import { Truncator } from 'component/common/Truncator/Truncator';
+import type { ImpactMetricsConfigSchema } from 'openapi';
+
+const StyledCard = styled(Link)(({ theme }) => ({
+    borderRadius: theme.shape.borderRadiusMedium,
+    border: `1px solid ${theme.palette.divider}`,
+    backgroundColor: theme.palette.background.paper,
+    display: 'flex',
+    flexDirection: 'column',
+    minWidth: 0,
+    textDecoration: 'none',
+    color: 'inherit',
+    cursor: 'pointer',
+}));
+
+const StyledHeader = styled('div')(({ theme }) => ({
+    display: 'flex',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    padding: theme.spacing(1.5, 2, 0, 2),
+    gap: theme.spacing(1),
+}));
+
+const StyledHeaderLeft = styled('div')({
+    display: 'flex',
+    flexDirection: 'column',
+});
+
+const StyledTitleRow = styled('div')(({ theme }) => ({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
+}));
+
+const StyledShieldIcon = styled(ShieldOutlined)(({ theme }) => ({
+    fontSize: theme.fontSizes.smallBody,
+    color: theme.palette.primary.main,
+    width: theme.spacing(2.5),
+    height: theme.spacing(2.5),
+}));
+
+const StyledTitle = styled(Typography)(({ theme }) => ({
+    fontSize: theme.fontSizes.smallBody,
+    fontWeight: theme.typography.fontWeightBold,
+    color: theme.palette.text.primary,
+}));
+
+const StyledSubtitle = styled(Typography)(({ theme }) => ({
+    fontSize: theme.fontSizes.smallerBody,
+    color: theme.palette.text.secondary,
+}));
+
+const StyledCurrentValue = styled(Typography)(({ theme }) => ({
+    fontSize: theme.fontSizes.bodySize,
+    fontWeight: theme.typography.fontWeightBold,
+    color: theme.palette.text.primary,
+    whiteSpace: 'nowrap',
+}));
+
+const StyledChartWrapper = styled('div')(({ theme }) => ({
+    padding: theme.spacing(1.5, 2, 1, 0.5),
+    height: theme.spacing(16),
+}));
+
+const timeRangeLabels: Record<string, string> = {
+    hour: 'Last hour',
+    day: 'Last 24 hours',
+    week: 'Last 7 days',
+    month: 'Last 30 days',
+};
+
+interface CompactChartCardProps {
+    config: ImpactMetricsConfigSchema;
+    projectId: string;
+    featureName: string;
+}
+
+export const CompactChartCard: FC<CompactChartCardProps> = ({
+    config,
+    projectId,
+    featureName,
+}) => {
+    const title = config.title || config.displayName;
+    const timeLabel = timeRangeLabels[config.timeRange] ?? config.timeRange;
+
+    const { data } = useImpactMetricsData({
+        metricName: config.metricName,
+        range: config.timeRange,
+        aggregationMode: config.aggregationMode,
+        labels:
+            Object.keys(config.labelSelectors).length > 0
+                ? config.labelSelectors
+                : undefined,
+        source: config.source,
+        mode: 'display',
+    });
+
+    const currentValue = (() => {
+        if (!data.series?.length) return null;
+        const seriesData = data.series[0].data;
+        if (!seriesData.length) return null;
+        const lastValue = Number(seriesData[seriesData.length - 1][1]);
+        const shouldSum =
+            config.aggregationMode === 'count' ||
+            config.aggregationMode === 'sum';
+        const aggregated = shouldSum
+            ? seriesData.reduce((sum, [, v]) => sum + Number(v), 0)
+            : lastValue;
+        const suffix = config.aggregationMode === 'rps' ? '/s' : '';
+        return `${formatLargeNumbers(aggregated)}${suffix}`;
+    })();
+
+    return (
+        <StyledCard
+            to={`/projects/${projectId}/features/${featureName}/metrics`}
+        >
+            <StyledHeader>
+                <StyledHeaderLeft>
+                    <Truncator title={title} arrow component={StyledTitle}>
+                        {title}
+                    </Truncator>
+                    <StyledSubtitle>
+                        {timeLabel} &middot; {config.aggregationMode}
+                    </StyledSubtitle>
+                </StyledHeaderLeft>
+                <StyledTitleRow>
+                    {currentValue !== null && (
+                        <StyledCurrentValue>{currentValue}</StyledCurrentValue>
+                    )}
+                    {config.mode === 'read' && (
+                        <Tooltip title='Used by a safeguard' arrow>
+                            <StyledShieldIcon />
+                        </Tooltip>
+                    )}
+                </StyledTitleRow>
+            </StyledHeader>
+            <StyledChartWrapper>
+                <ImpactMetricsChart
+                    metricName={config.metricName}
+                    timeRange={config.timeRange}
+                    labelSelectors={config.labelSelectors}
+                    yAxisMin={config.yAxisMin}
+                    aggregationMode={config.aggregationMode}
+                    source={config.source}
+                    showComponents={['xAxis', 'yAxis']}
+                    overrideOptions={{
+                        maintainAspectRatio: false,
+                        elements: {
+                            point: { radius: 0 },
+                            line: { borderWidth: 2 },
+                        },
+                        scales: {
+                            x: {
+                                ticks: {
+                                    maxTicksLimit: 3,
+                                    maxRotation: 0,
+                                    font: { size: 10 },
+                                },
+                                grid: { display: false },
+                            },
+                            y: {
+                                title: { display: false },
+                                ticks: {
+                                    maxTicksLimit: 3,
+                                    font: { size: 10 },
+                                },
+                                border: { display: false },
+                            },
+                        },
+                        plugins: {
+                            tooltip: { enabled: false },
+                        },
+                    }}
+                />
+            </StyledChartWrapper>
+        </StyledCard>
+    );
+};

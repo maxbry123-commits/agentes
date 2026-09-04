@@ -1,0 +1,5 @@
+{
+	"name": "web-assembly",
+	"main": "src/index.ts",
+	// don't provide compatibility_date so that vitest will infer the latest one
+}

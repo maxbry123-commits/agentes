@@ -1,0 +1,412 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`returns all baseRoutes 1`] = `
+[
+  {
+    "isStandalone": true,
+    "menu": {},
+    "path": "/splash/:splashId",
+    "title": "Unleash",
+    "type": "protected",
+  },
+  {
+    "menu": {
+      "primary": true,
+    },
+    "path": "/personal",
+    "title": "Dashboard",
+    "type": "protected",
+  },
+  {
+    "enterprise": true,
+    "menu": {},
+    "parent": "/projects",
+    "path": "/projects/create",
+    "title": "Create",
+    "type": "protected",
+  },
+  {
+    "menu": {},
+    "parent": "/projects/:projectId/features/:featureId/",
+    "path": "/projects/:projectId/features/:featureId/copy",
+    "title": "Copy",
+    "type": "protected",
+  },
+  {
+    "menu": {},
+    "parent": "/projects",
+    "path": "/projects/:projectId/features/:featureId/edit",
+    "title": "Edit feature",
+    "type": "protected",
+  },
+  {
+    "menu": {},
+    "parent": "/projects",
+    "path": "/projects/:projectId/features/:featureId/*",
+    "title": "FeatureView",
+    "type": "protected",
+  },
+  {
+    "flag": "P",
+    "menu": {},
+    "parent": "/projects",
+    "path": "/projects/:projectId/*",
+    "title": ":projectId",
+    "type": "protected",
+  },
+  {
+    "menu": {
+      "primary": true,
+    },
+    "path": "/projects",
+    "title": "Projects",
+    "type": "protected",
+  },
+  {
+    "enterprise": true,
+    "menu": {},
+    "path": "/projects-archive",
+    "title": "Projects archive",
+    "type": "protected",
+  },
+  {
+    "menu": {
+      "primary": true,
+    },
+    "path": "/search",
+    "title": "Flags overview",
+    "type": "protected",
+  },
+  {
+    "enterprise": true,
+    "menu": {
+      "primary": true,
+    },
+    "path": "/change-requests",
+    "title": "Change Requests",
+    "type": "protected",
+  },
+  {
+    "hidden": false,
+    "menu": {
+      "primary": true,
+    },
+    "path": "/playground",
+    "title": "Playground",
+    "type": "protected",
+  },
+  {
+    "enterprise": true,
+    "menu": {
+      "primary": true,
+    },
+    "path": "/insights",
+    "title": "Analytics",
+    "type": "protected",
+  },
+  {
+    "enterprise": true,
+    "menu": {
+      "primary": true,
+    },
+    "notFlag": "disableImpactMetrics",
+    "path": "/impact-metrics",
+    "title": "Impact metrics",
+    "type": "protected",
+  },
+  {
+    "enterprise": true,
+    "flag": "impactViews",
+    "menu": {
+      "primary": true,
+    },
+    "path": "/impact-views",
+    "title": "Impact views",
+    "type": "protected",
+  },
+  {
+    "menu": {},
+    "parent": "/applications",
+    "path": "/applications/:name/*",
+    "title": ":name",
+    "type": "protected",
+  },
+  {
+    "menu": {
+      "main": true,
+    },
+    "path": "/applications",
+    "title": "Applications",
+    "type": "protected",
+  },
+  {
+    "menu": {},
+    "parent": "/context",
+    "path": "/context/create",
+    "title": "Create",
+    "type": "protected",
+  },
+  {
+    "menu": {},
+    "parent": "/context",
+    "path": "/context/clone/:name",
+    "title": "Clone",
+    "type": "protected",
+  },
+  {
+    "menu": {},
+    "parent": "/context",
+    "path": "/context/edit/:name",
+    "title": ":name",
+    "type": "protected",
+  },
+  {
+    "menu": {
+      "main": true,
+    },
+    "path": "/context",
+    "title": "Context fields",
+    "type": "protected",
+  },
+  {
+    "menu": {
+      "main": true,
+    },
+    "path": "/feature-toggle-type/*",
+    "title": "Feature flag types",
+    "type": "protected",
+  },
+  {
+    "menu": {},
+    "parent": "/strategies",
+    "path": "/strategies/create",
+    "title": "Create",
+    "type": "protected",
+  },
+  {
+    "menu": {},
+    "parent": "/strategies",
+    "path": "/strategies/:name/edit",
+    "title": ":name",
+    "type": "protected",
+  },
+  {
+    "menu": {},
+    "parent": "/strategies",
+    "path": "/strategies/:name",
+    "title": ":name",
+    "type": "protected",
+  },
+  {
+    "menu": {
+      "main": true,
+    },
+    "path": "/strategies",
+    "title": "Strategy types",
+    "type": "protected",
+  },
+  {
+    "menu": {},
+    "parent": "/environments",
+    "path": "/environments/create",
+    "title": "Environments",
+    "type": "protected",
+  },
+  {
+    "menu": {},
+    "path": "/environments/:id",
+    "title": "Edit",
+    "type": "protected",
+  },
+  {
+    "enterprise": true,
+    "menu": {
+      "main": true,
+    },
+    "path": "/environments",
+    "title": "Environments",
+    "type": "protected",
+  },
+  {
+    "flag": "feedbackPosting",
+    "menu": {},
+    "path": "/feedback",
+    "title": "Feedback",
+    "type": "protected",
+  },
+  {
+    "menu": {
+      "main": true,
+      "mode": [
+        "enterprise",
+      ],
+    },
+    "path": "/release-templates",
+    "title": "Release templates",
+    "type": "protected",
+  },
+  {
+    "enterprise": true,
+    "menu": {
+      "mode": [
+        "enterprise",
+      ],
+    },
+    "parent": "/release-templates",
+    "path": "/release-templates/create-template",
+    "title": "Create release template",
+    "type": "protected",
+  },
+  {
+    "enterprise": true,
+    "menu": {
+      "mode": [
+        "enterprise",
+      ],
+    },
+    "parent": "/release-templates",
+    "path": "/release-templates/edit/:templateId",
+    "title": "Edit release template",
+    "type": "protected",
+  },
+  {
+    "menu": {},
+    "parent": "/tag-types",
+    "path": "/tag-types/create",
+    "title": "Create",
+    "type": "protected",
+  },
+  {
+    "menu": {},
+    "parent": "/tag-types",
+    "path": "/tag-types/edit/:name",
+    "title": ":name",
+    "type": "protected",
+  },
+  {
+    "menu": {
+      "main": true,
+    },
+    "path": "/tag-types",
+    "title": "Tag types",
+    "type": "protected",
+  },
+  {
+    "menu": {},
+    "parent": "/addons",
+    "path": "/addons/create/:providerId",
+    "title": "Create",
+    "type": "protected",
+  },
+  {
+    "menu": {},
+    "parent": "/addons",
+    "path": "/addons/edit/:addonId",
+    "title": "Edit",
+    "type": "protected",
+  },
+  {
+    "hidden": false,
+    "menu": {},
+    "path": "/addons",
+    "title": "Addons",
+    "type": "protected",
+  },
+  {
+    "menu": {},
+    "parent": "/integrations",
+    "path": "/integrations/create/:providerId",
+    "title": "Create",
+    "type": "protected",
+  },
+  {
+    "menu": {},
+    "parent": "/integrations",
+    "path": "/integrations/view/:providerId",
+    "title": "View",
+    "type": "protected",
+  },
+  {
+    "menu": {},
+    "parent": "/integrations",
+    "path": "/integrations/edit/:addonId",
+    "title": "Edit",
+    "type": "protected",
+  },
+  {
+    "hidden": false,
+    "menu": {
+      "main": true,
+    },
+    "path": "/integrations",
+    "title": "Integrations",
+    "type": "protected",
+  },
+  {
+    "hidden": false,
+    "layout": "main",
+    "menu": {},
+    "path": "/segments/create",
+    "title": "Segments",
+    "type": "protected",
+  },
+  {
+    "hidden": false,
+    "layout": "main",
+    "menu": {},
+    "path": "/segments/edit/:segmentId",
+    "title": "Segments",
+    "type": "protected",
+  },
+  {
+    "hidden": false,
+    "menu": {
+      "main": true,
+    },
+    "path": "/segments",
+    "title": "Segments",
+    "type": "protected",
+  },
+  {
+    "menu": {
+      "adminSettings": true,
+    },
+    "path": "/history",
+    "title": "Event log",
+    "type": "protected",
+  },
+  {
+    "menu": {
+      "adminSettings": true,
+    },
+    "path": "/admin/logins",
+    "title": "Login history",
+    "type": "protected",
+  },
+  {
+    "menu": {},
+    "path": "/archive",
+    "title": "Archived flags",
+    "type": "protected",
+  },
+  {
+    "menu": {},
+    "path": "/unknown-flags",
+    "title": "Unknown flags",
+    "type": "protected",
+  },
+  {
+    "hidden": false,
+    "menu": {},
+    "path": "/admin/*",
+    "title": "Admin",
+    "type": "protected",
+  },
+  {
+    "menu": {},
+    "path": "/profile/*",
+    "title": "Profile",
+    "type": "protected",
+  },
+]
+`;

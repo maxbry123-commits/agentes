@@ -1,0 +1,178 @@
+import {
+    validateSemver,
+    validateLegalValues,
+    validateRegex,
+} from './constraint-types.js';
+import type { ILegalValue } from '../../features/context/context-field-store-type.js';
+
+const legalValues: Readonly<ILegalValue[]> = [
+    { value: '100' },
+    { value: '200' },
+    { value: '300' },
+];
+
+test('semver validation should throw with bad format', () => {
+    const badSemver = 'a.b.c';
+    expect.assertions(1);
+
+    try {
+        validateSemver(badSemver);
+    } catch (e) {
+        expect(e.message).toContain(
+            `the provided value is not a valid semver format. The value provided was: ${badSemver}`,
+        );
+    }
+});
+
+test('semver valdiation should pass with correct format', () => {
+    const validSemver = '1.2.3';
+    expect.assertions(0);
+
+    try {
+        validateSemver(validSemver);
+    } catch (e) {
+        expect(e.message).toContain(
+            `the provided value is not a valid semver format. The value provided was: ${validSemver}`,
+        );
+    }
+});
+
+test('semver validation should pass with build metadata and prerelease', () => {
+    expect(() => validateSemver('1.2.3+4000')).not.toThrow();
+    expect(() => validateSemver('1.2.3-beta.1')).not.toThrow();
+    expect(() => validateSemver('1.2.3-beta.1+build.5')).not.toThrow();
+});
+
+test('semver validation should fail partial semver', () => {
+    const partial = '1.2';
+    expect.assertions(1);
+
+    try {
+        validateSemver(partial);
+    } catch (e) {
+        expect(e.message).toContain(
+            `the provided value is not a valid semver format. The value provided was: ${partial}`,
+        );
+    }
+});
+
+test('semver validation should fail with leading v', () => {
+    const leadingV = 'v1.2.0';
+    expect.assertions(1);
+
+    try {
+        validateSemver(leadingV);
+    } catch (e) {
+        expect(e.message).toContain(
+            `the provided value is not a valid semver format. The value provided was: ${leadingV}`,
+        );
+    }
+});
+
+/* Legal values tests */
+test('should fail validation if value does not exist in single legal value', () => {
+    const value = '500';
+    expect.assertions(1);
+
+    try {
+        validateLegalValues(legalValues, value);
+    } catch (error) {
+        expect(error.message).toContain(
+            `${value} is not specified as a legal value on this context field`,
+        );
+    }
+});
+
+test('should pass validation if value exists in single legal value', () => {
+    const value = '100';
+    expect.assertions(0);
+
+    try {
+        validateLegalValues(legalValues, value);
+    } catch (error) {
+        expect(error.message).toContain(
+            `${value} is not specified as a legal value on this context field`,
+        );
+    }
+});
+
+test('should fail validation if one of the values does not exist in multiple legal values', () => {
+    const values = ['500', '100'];
+    expect.assertions(1);
+
+    try {
+        validateLegalValues(legalValues, values);
+    } catch (error) {
+        expect(error.message).toContain(
+            `input values are not specified as a legal value on this context field`,
+        );
+    }
+});
+
+test('should pass validation if all of the values exists in legal values', () => {
+    const values = ['200', '100'];
+    expect.assertions(0);
+
+    try {
+        validateLegalValues(legalValues, values);
+    } catch (error) {
+        expect(error.message).toContain(
+            `input values are not specified as a legal value on this context field`,
+        );
+    }
+});
+
+test('regex validation should throw with invalid regex', () => {
+    const badRegex = '(unclosed';
+    expect.assertions(1);
+
+    try {
+        validateRegex(badRegex);
+    } catch (e) {
+        expect(e.message).toContain(
+            `Request validation failed: your request body or params contain invalid data: the provided value is not a valid regex string. Error: error parsing regexp: missing closing ): \`(unclosed\``,
+        );
+    }
+});
+
+test('regex validation should throw with invalid regex type', () => {
+    const badRegex = 500;
+    expect.assertions(1);
+
+    try {
+        validateRegex(badRegex);
+    } catch (e) {
+        expect(e.message).toContain(
+            `Request validation failed: your request body or params contain invalid data: the provided value is not a valid regex string.`,
+        );
+    }
+});
+
+test('regex validation should accept a valid regex', () => {
+    const goodRegex = '^[a-zA-Z0-9]+$';
+
+    expect(() => validateRegex(goodRegex)).not.toThrow();
+});
+
+test('regex validation should throw when inverted is true', () => {
+    const goodRegex = '^[a-zA-Z0-9]+$';
+    expect.assertions(1);
+
+    try {
+        validateRegex(goodRegex, true);
+    } catch (e) {
+        expect(e.message).toContain('REGEX operator cannot be inverted.');
+    }
+});
+
+test('regex validation should not throw when inverted is false', () => {
+    const goodRegex = '^[a-zA-Z0-9]+$';
+
+    expect(() => validateRegex(goodRegex, false)).not.toThrow();
+});
+
+test('regex validation should not throw when inverted is undefined', () => {
+    const goodRegex = '^[a-zA-Z0-9]+$';
+
+    expect(() => validateRegex(goodRegex, undefined)).not.toThrow();
+});

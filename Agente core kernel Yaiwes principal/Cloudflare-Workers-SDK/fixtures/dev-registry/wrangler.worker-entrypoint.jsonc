@@ -1,0 +1,48 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "worker-entrypoint",
+	"main": "./workers/worker-entrypoint.ts",
+	"compatibility_date": "2025-05-01",
+	"services": [
+		{
+			"binding": "SERVICE_WORKER",
+			"service": "service-worker",
+		},
+		{
+			"binding": "EXPORTED_HANDLER",
+			"service": "exported-handler",
+		},
+		{
+			"binding": "EXPORTED_HANDLER_WITH_ASSETS",
+			"service": "exported-handler",
+		},
+		{
+			"binding": "WORKER_ENTRYPOINT_WITH_ASSETS",
+			"service": "worker-entrypoint-with-assets",
+		},
+		{
+			"binding": "NAMED_ENTRYPOINT_WITH_ASSETS",
+			"service": "worker-entrypoint-with-assets",
+			"entrypoint": "NamedEntrypoint",
+		},
+	],
+	// Tail relationships across these configs form a one-directional chain:
+	// worker-entrypoint -> exported-handler-with-assets -> exported-handler.
+	// Keep it acyclic and confined to the tail tests. A dev session that
+	// outlives a tail consumer it has already connected to aborts workerd on
+	// Windows, and a cycle makes a safe shutdown order impossible to pick.
+	"tail_consumers": [
+		{
+			"service": "exported-handler-with-assets",
+		},
+	],
+	"queues": {
+		"consumers": [
+			{
+				"queue": "test-queue",
+				"max_batch_size": 1,
+				"max_batch_timeout": 0,
+			},
+		],
+	},
+}

@@ -1,0 +1,59 @@
+import { styled } from '@mui/material';
+import { FavoriteButton } from 'component/common/FavoriteButton/FavoriteButton';
+import { Highlighter } from 'component/common/Highlighter/Highlighter';
+import { useSearchHighlightContext } from 'component/common/Table/SearchHighlightContext/SearchHighlightContext';
+import { Truncator } from 'component/common/Truncator/Truncator';
+import { OnboardingStatusBadge } from 'component/project/ProjectCard/OnboardingStatusBadge/OnboardingStatusBadge';
+import { ProjectModeBadge } from 'component/project/ProjectCard/ProjectModeBadge/ProjectModeBadge';
+import type { ProjectSchema } from 'openapi';
+import { QuietLink } from 'component/common/QuietLink';
+
+const StyledCellContainer = styled('div')(({ theme }) => ({
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    padding: theme.spacing(1, 2),
+}));
+
+const StyledFeatureLink = styled(QuietLink)(({ theme }) => ({
+    fontWeight: theme.typography.fontWeightBold,
+}));
+
+type ProjectsListTableNameCellProps = {
+    row: {
+        original: ProjectSchema;
+    };
+    isFavorite: boolean;
+    onFavorite: () => void;
+};
+
+export const ProjectsListTableNameCell = ({
+    row,
+    isFavorite,
+    onFavorite,
+}: ProjectsListTableNameCellProps) => {
+    const { searchQuery } = useSearchHighlightContext();
+    const { onboardingStatus } = row.original;
+    const isOnboardingInProgress =
+        onboardingStatus && onboardingStatus.status !== 'onboarded';
+
+    return (
+        <StyledCellContainer>
+            <ProjectModeBadge mode={row.original.mode} />
+            <StyledFeatureLink to={`/projects/${row.original.id}`}>
+                <Truncator title={row.original.name} lines={2} arrow>
+                    <Highlighter search={searchQuery}>
+                        {row.original.name}
+                    </Highlighter>
+                </Truncator>
+            </StyledFeatureLink>
+            {isOnboardingInProgress ? (
+                <OnboardingStatusBadge onboardingStatus={onboardingStatus} />
+            ) : null}
+            <FavoriteButton
+                isFavorite={Boolean(isFavorite)}
+                onClick={onFavorite}
+            />
+        </StyledCellContainer>
+    );
+};

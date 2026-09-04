@@ -1,0 +1,301 @@
+import type { FromSchema } from 'json-schema-to-ts';
+import { addonSchema } from './addon-schema.js';
+import { addonTypeSchema } from './addon-type-schema.js';
+import { addonParameterSchema } from './addon-parameter-schema.js';
+import { tagTypeSchema } from './tag-type-schema.js';
+import { ADDON_CONFIG_CREATED, FEATURE_CREATED } from '../../events/index.js';
+
+export const addonsSchema = {
+    $id: '#/components/schemas/addonsSchema',
+    type: 'object',
+    required: ['addons', 'providers'],
+    description: `An object containing two things:
+1. A list of all [addons](https://docs.getunleash.io/integrate) defined on this Unleash instance
+2. A list of all addon providers defined on this instance`,
+    properties: {
+        addons: {
+            type: 'array',
+            description:
+                'All the addons that exist on this instance of Unleash.',
+            items: {
+                $ref: '#/components/schemas/addonSchema',
+            },
+        },
+        providers: {
+            type: 'array',
+            description:
+                'A list of  all available addon providers, along with their parameters and descriptions.',
+            example: [
+                {
+                    name: 'webhook',
+                    displayName: 'Webhook',
+                    description:
+                        'A Webhook is a generic way to post messages from Unleash to third party services.',
+                    documentationUrl:
+                        'https://docs.getunleash.io/integrate/webhook',
+                    parameters: [
+                        {
+                            name: 'url',
+                            displayName: 'Webhook URL',
+                            description:
+                                '(Required) Unleash will perform a HTTP Post to the specified URL (one retry if first attempt fails)',
+                            type: 'url',
+                            required: true,
+                            sensitive: true,
+                        },
+                        {
+                            name: 'contentType',
+                            displayName: 'Content-Type',
+                            placeholder: 'application/json',
+                            description:
+                                '(Optional) The Content-Type header to use. Defaults to "application/json".',
+                            type: 'text',
+                            required: false,
+                            sensitive: false,
+                        },
+                        {
+                            name: 'authorization',
+                            displayName: 'Authorization',
+                            placeholder: '',
+                            description:
+                                '(Optional) The Authorization header to use. Not used if left blank.',
+                            type: 'text',
+                            required: false,
+                            sensitive: true,
+                        },
+                        {
+                            name: 'bodyTemplate',
+                            displayName: 'Body template',
+                            placeholder: `{
+  "event": "{{event.type}}",
+  "createdBy": "{{event.createdBy}}",
+  "featureToggle": "{{event.data.name}}",
+  "timestamp": "{{event.data.createdAt}}"
+}`,
+                            description:
+                                "(Optional) You may format the body using a mustache template. If you don't specify anything, the format will be similar to the events format (https://docs.getunleash.io/concepts/events)",
+                            type: 'textfield',
+                            required: false,
+                            sensitive: false,
+                        },
+                    ],
+                    events: [
+                        'feature-created',
+                        'feature-updated',
+                        'feature-archived',
+                        'feature-revived',
+                        'feature-stale-on',
+                        'feature-stale-off',
+                        'feature-environment-enabled',
+                        'feature-environment-disabled',
+                        'feature-strategy-remove',
+                        'feature-strategy-update',
+                        'feature-strategy-add',
+                        'feature-metadata-updated',
+                        'feature-variants-updated',
+                        'feature-project-change',
+                        'feature-tagged',
+                        'feature-untagged',
+                        'change-request-created',
+                        'change-request-discarded',
+                        'change-added',
+                        'change-discarded',
+                        'change-request-approved',
+                        'change-request-approval-added',
+                        'change-request-cancelled',
+                        'change-request-sent-to-review',
+                        'change-request-applied',
+                    ],
+                },
+                {
+                    name: 'new-app',
+                    displayName: 'Addon Name',
+                    description:
+                        'The App for X that can be combined with Unleash.',
+                    documentationUrl: 'https://docs.getunleash.io/integrate/',
+                    parameters: [
+                        {
+                            name: 'accessToken',
+                            displayName: 'Access token',
+                            description: '(Required)',
+                            type: 'text',
+                            required: true,
+                            sensitive: true,
+                        },
+                        {
+                            name: 'defaultChannels',
+                            displayName: 'Channels',
+                            description:
+                                'A comma-separated list of channels to post the configured events to. These channels are always notified, regardless of the event type or the presence of a addon tag.',
+                            type: 'text',
+                            required: false,
+                            sensitive: false,
+                        },
+                    ],
+                    events: [ADDON_CONFIG_CREATED, FEATURE_CREATED],
+                    tagTypes: [
+                        {
+                            name: 'tag-name',
+                            description:
+                                'A tag used by the X-addon to specify a configuration.',
+                            icon: 'S',
+                        },
+                    ],
+                },
+                {
+                    name: 'teams-workflow',
+                    displayName: 'Microsoft Teams Workflow',
+                    description:
+                        'Allows Unleash to post updates to Microsoft Teams through a predefined Workflow',
+                    documentationUrl:
+                        'https://docs.getunleash.io/integrate/teams-workflow',
+                    parameters: [
+                        {
+                            name: 'url',
+                            displayName: 'Microsoft Teams Workflow webhook URL',
+                            description: '(Required)',
+                            type: 'url',
+                            required: true,
+                            sensitive: true,
+                        },
+                    ],
+                    events: [
+                        'feature-created',
+                        'feature-updated',
+                        'feature-archived',
+                        'feature-revived',
+                        'feature-stale-on',
+                        'feature-stale-off',
+                        'feature-environment-enabled',
+                        'feature-environment-disabled',
+                        'feature-strategy-remove',
+                        'feature-strategy-update',
+                        'feature-strategy-add',
+                        'feature-metadata-updated',
+                        'feature-variants-updated',
+                        'feature-project-change',
+                        'feature-potentially-stale-on',
+                        'change-added',
+                        'change-discarded',
+                        'change-edited',
+                        'change-request-applied',
+                        'change-request-approval-added',
+                        'change-request-approved',
+                        'change-request-cancelled',
+                        'change-request-created',
+                        'change-request-discarded',
+                        'change-request-rejected',
+                        'change-request-sent-to-review',
+                        'change-request-scheduled',
+                        'change-request-scheduled-application-success',
+                        'change-request-scheduled-application-failure',
+                        'change-request-schedule-suspended',
+                        'release-plan-progressions-paused',
+                        'release-plan-progressions-resumed',
+                    ],
+                },
+                {
+                    name: 'teams',
+                    displayName: 'Microsoft Teams',
+                    description:
+                        'Allows Unleash to post updates to Microsoft Teams.',
+                    deprecated:
+                        'This plugin is deprecated due to Microsoft no longer supporting direct incoming webhooks. Use teams-workflow instead',
+                    documentationUrl:
+                        'https://docs.getunleash.io/integrate/teams',
+                    parameters: [
+                        {
+                            name: 'url',
+                            displayName: 'Microsoft Teams webhook URL',
+                            description: '(Required)',
+                            type: 'url',
+                            required: true,
+                            sensitive: true,
+                        },
+                    ],
+                    events: [
+                        'feature-created',
+                        'feature-updated',
+                        'feature-archived',
+                        'feature-revived',
+                        'feature-stale-on',
+                        'feature-stale-off',
+                        'feature-environment-enabled',
+                        'feature-environment-disabled',
+                        'feature-strategy-remove',
+                        'feature-strategy-update',
+                        'feature-strategy-add',
+                        'feature-metadata-updated',
+                        'feature-variants-updated',
+                        'feature-project-change',
+                    ],
+                },
+                {
+                    name: 'datadog',
+                    displayName: 'Datadog',
+                    description: 'Allows Unleash to post updates to Datadog.',
+                    documentationUrl:
+                        'https://docs.getunleash.io/integrate/datadog',
+                    parameters: [
+                        {
+                            name: 'url',
+                            displayName: 'Datadog Events URL',
+                            description:
+                                "Default URL: https://api.datadoghq.com/api/v1/events. Needs to be changed if your're not using the US1 site.",
+                            type: 'url',
+                            required: false,
+                            sensitive: false,
+                        },
+                        {
+                            name: 'apiKey',
+                            displayName: 'Datadog API key',
+                            placeholder: 'j96c23b0f12a6b3434a8d710110bd862',
+                            description:
+                                '(Required) API key to connect to Datadog',
+                            type: 'text',
+                            required: true,
+                            sensitive: true,
+                        },
+                    ],
+                    events: [
+                        'feature-created',
+                        'feature-updated',
+                        'feature-archived',
+                        'feature-revived',
+                        'feature-stale-on',
+                        'feature-stale-off',
+                        'feature-environment-enabled',
+                        'feature-environment-disabled',
+                        'feature-strategy-remove',
+                        'feature-strategy-update',
+                        'feature-strategy-add',
+                        'feature-metadata-updated',
+                        'feature-project-change',
+                        'feature-variants-updated',
+                    ],
+                    tagTypes: [
+                        {
+                            name: 'datadog',
+                            description:
+                                'All Datadog tags added to a specific feature are sent to datadog event stream.',
+                            icon: 'D',
+                        },
+                    ],
+                },
+            ],
+            items: {
+                $ref: '#/components/schemas/addonTypeSchema',
+            },
+        },
+    },
+    components: {
+        schemas: {
+            addonSchema,
+            addonTypeSchema,
+            tagTypeSchema,
+            addonParameterSchema,
+        },
+    },
+} as const;
+
+export type AddonsSchema = FromSchema<typeof addonsSchema>;

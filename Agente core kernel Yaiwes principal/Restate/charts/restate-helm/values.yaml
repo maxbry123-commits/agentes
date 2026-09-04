@@ -1,0 +1,103 @@
+replicaCount: 1
+nameOverride: "restate"
+# DEPRECATED: Use image.tag instead. This field will be removed in a future release.
+version: ""
+
+image:
+  repository: docker.restate.dev/restatedev/restate
+  pullPolicy: IfNotPresent
+  # -- Image tag to use. Defaults to Chart.Version if not set.
+  # tag: ""
+  # -- Image digest to use (e.g., sha256:abc123...).
+  # If set, takes precedence over tag and version. Must start with 'sha256:'.
+  # digest: ""
+
+imagePullSecrets: []
+
+serviceAccount:
+  create: true
+  annotations: {}
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  fsGroup: 2000
+  fsGroupChangePolicy: "OnRootMismatch"
+securityContext:
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 3000
+
+logging:
+  env_filter: info
+
+nodeName: $(POD_NAME)
+# Use the stable network identifier (dns resolvable) provided by the stateful set
+advertisedAddress: http://$(POD_NAME).$(SERVICE_NAME):5122
+
+env:
+  - name: RESTATE_LOG_FORMAT
+    value: json
+  - name: RESTATE_CLUSTER_NAME
+    value: helm-single-node
+  - name: RESTATE_ROCKSDB_TOTAL_MEMORY_SIZE
+    # This value should less than 50% of the container memory limit, which defaults to 8Gi below.
+    # If provisioning restate with a different memory limit, make sure to update this value
+    value: 3Gi
+
+service:
+  type: ClusterIP
+  annotations: {}
+
+resources:
+  limits:
+    cpu: 6
+    # note the comment above re 'RESTATE_ROCKSDB_TOTAL_MEMORY_SIZE'
+    memory: 8Gi
+  requests:
+    cpu: 4
+    memory: 8Gi
+
+storage:
+  # If provided the volume will be mounted with the specified claim
+  existingClaim: ""
+  size: 64Gi
+  # -- Storage class to be used.
+  # If defined, storageClassName: <storageClass>.
+  # If empty or set to null, no storageClassName spec is set, choosing the default provisioner.
+  # If set to "-", storageClassName: "", which disables dynamic provisioning.
+  storageClassName: null
+
+extraInitContainers: []
+
+extraVolumes: []
+extraVolumeMounts: []
+
+identityPrivateKey:
+  enabled: false
+  secretName: ""
+  keyName: private.pem
+
+serviceMonitor:
+  enabled: false
+  path: /metrics
+  scheme: http
+
+# https://kubernetes.io/docs/concepts/workloads/pods/pod-topology-spread-constraints/
+topologySpreadConstraints:
+  maxSkew: 1
+  topologyKey: topology.kubernetes.io/zone
+  whenUnsatisfiable: ScheduleAnyway
+
+# https://kubernetes.io/docs/tasks/run-application/configure-pdb/
+# podDisruptionBudget:
+#   maxUnavailable: 1
+
+nodeSelector: {}
+
+tolerations: []

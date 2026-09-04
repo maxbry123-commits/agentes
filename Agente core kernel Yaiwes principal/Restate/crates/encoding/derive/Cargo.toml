@@ -1,0 +1,20 @@
+[package]
+name = "restate-encoding-derive"
+version = "0.1.0"
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+proc-macro = true
+
+[dependencies]
+quote = {workspace = true}
+syn = { workspace = true, features = ["full", "extra-traits"] }
+
+restate-workspace-hack = { workspace = true }
+
+[lints]
+workspace = true

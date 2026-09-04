@@ -1,0 +1,298 @@
+// Copyright (c) 2023 - 2026 Restate Software, Inc., Restate GmbH.
+// All rights reserved.
+//
+// Use of this software is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date specified in that file, in accordance with
+// the Business Source License, use of this software will be governed
+// by the Apache License, Version 2.0.
+
+use std::collections::BTreeMap;
+use std::time::{Duration, Instant};
+
+use prost_dto::IntoProst;
+
+use restate_encoding::NetSerde;
+
+use crate::identifiers::{LeaderEpoch, PartitionId};
+use crate::logs::Lsn;
+use crate::partitions::StorageVersion;
+use crate::partitions::features::PersistedFeatures;
+pub use crate::protobuf::cluster::{BrokenReason, DetailedRunMode};
+use crate::time::MillisSinceEpoch;
+use crate::{GenerationalNodeId, PlainNodeId, Version};
+
+/// A container for health information about every node and partition in the
+/// cluster.
+#[derive(Debug, Clone, IntoProst)]
+#[prost(target = "crate::protobuf::cluster::ClusterState")]
+pub struct LegacyClusterState {
+    #[into_prost(map = "instant_to_proto")]
+    pub last_refreshed: Option<Instant>,
+    #[prost(required)]
+    pub nodes_config_version: Version,
+    #[prost(required)]
+    pub partition_table_version: Version,
+    #[prost(required)]
+    pub logs_metadata_version: Version,
+    pub nodes: BTreeMap<PlainNodeId, NodeState>,
+}
+
+impl LegacyClusterState {
+    pub fn is_reliable(&self) -> bool {
+        // todo: make this configurable
+        // If the cluster state is older than 10 seconds, then it is not reliable.
+        self.last_refreshed
+            .map(|last_refreshed| last_refreshed.elapsed().as_secs() < 10)
+            .unwrap_or(false)
+    }
+
+    pub fn alive_nodes(&self) -> impl Iterator<Item = &AliveNode> {
+        self.nodes.values().flat_map(|node| match node {
+            NodeState::Alive(alive_node) => Some(alive_node),
+            NodeState::Dead(_) => None,
+        })
+    }
+
+    #[cfg(feature = "test-util")]
+    pub fn empty() -> Self {
+        LegacyClusterState {
+            last_refreshed: None,
+            nodes_config_version: Version::INVALID,
+            partition_table_version: Version::INVALID,
+            logs_metadata_version: Version::INVALID,
+            nodes: BTreeMap::default(),
+        }
+    }
+
+    pub fn is_partition_processor_active(
+        &self,
+        partition_id: &PartitionId,
+        node_id: &PlainNodeId,
+    ) -> bool {
+        self.nodes
+            .get(node_id)
+            .and_then(|node| match node {
+                NodeState::Alive(alive) => alive
+                    .partitions
+                    .get(partition_id)
+                    .map(|partition_state| partition_state.replay_status == ReplayStatus::Active),
+                NodeState::Dead(_) => None,
+            })
+            .unwrap_or_default()
+    }
+
+    /// Returns true if the given node runs the partition processor leader for the given partition
+    /// id. The decision is based on the partition processor reporting as their effective_mode
+    /// `RunMode::Leader`.
+    pub fn runs_partition_processor_leader(
+        &self,
+        node_id: &PlainNodeId,
+        partition_id: &PartitionId,
+    ) -> bool {
+        self.nodes
+            .get(node_id)
+            .map(|node| match node {
+                NodeState::Alive(alive) => alive
+                    .partitions
+                    .get(partition_id)
+                    .map(|partition_state| partition_state.effective_mode == RunMode::Leader)
+                    .unwrap_or_default(),
+                NodeState::Dead(_) => false,
+            })
+            .unwrap_or_default()
+    }
+}
+
+fn instant_to_proto(t: Instant) -> prost_types::Duration {
+    t.elapsed().try_into().unwrap()
+}
+
+#[derive(Debug, Clone, IntoProst, strum::Display)]
+#[prost(target = "crate::protobuf::cluster::NodeState", oneof = "state")]
+#[strum(serialize_all = "snake_case")]
+pub enum NodeState {
+    Alive(AliveNode),
+    // #[deprecated(since ="1.3.3", note = "Use restate_types::cluster_state::ClusterState instead for detecting dead nodes")]
+    Dead(DeadNode),
+}
+
+#[derive(Debug, Clone, IntoProst)]
+#[prost(target = "crate::protobuf::cluster::AliveNode")]
+pub struct AliveNode {
+    #[prost(required)]
+    pub last_heartbeat_at: MillisSinceEpoch,
+    #[prost(required)]
+    pub generational_node_id: GenerationalNodeId,
+    pub partitions: BTreeMap<PartitionId, PartitionProcessorStatus>,
+    // age of daemon in seconds
+    #[prost(name=uptime_s)]
+    #[into_prost(map=Duration::as_secs, map_by_ref)]
+    pub uptime: Duration,
+}
+
+#[derive(Debug, Clone, IntoProst)]
+#[prost(target = "crate::protobuf::cluster::DeadNode")]
+pub struct DeadNode {
+    pub last_seen_alive: Option<MillisSinceEpoch>,
+}
+
+#[derive(
+    Debug, Clone, Copy, Eq, PartialEq, IntoProst, strum::Display, bilrost::Enumeration, NetSerde,
+)]
+#[prost(target = "crate::protobuf::cluster::RunMode")]
+#[strum(serialize_all = "snake_case")]
+pub enum RunMode {
+    Follower = 0,
+    Leader = 1,
+}
+
+#[derive(
+    Debug, Clone, Copy, Eq, PartialEq, IntoProst, strum::Display, bilrost::Enumeration, NetSerde,
+)]
+#[prost(target = "crate::protobuf::cluster::ReplayStatus")]
+#[strum(serialize_all = "snake_case")]
+pub enum ReplayStatus {
+    Starting = 0,
+    Active = 1,
+    CatchingUp = 2,
+}
+
+#[derive(Debug, Clone, IntoProst, bilrost::Message, NetSerde)]
+#[prost(target = "crate::protobuf::cluster::PartitionProcessorStatus")]
+#[bilrost(reserved_tags(8))]
+pub struct PartitionProcessorStatus {
+    #[prost(required)]
+    #[bilrost(1)]
+    pub updated_at: MillisSinceEpoch,
+    #[bilrost(2)]
+    pub planned_mode: RunMode,
+    #[bilrost(3)]
+    pub effective_mode: RunMode,
+    #[bilrost(4)]
+    pub last_observed_leader_epoch: Option<LeaderEpoch>,
+    #[bilrost(5)]
+    pub last_observed_leader_node: Option<GenerationalNodeId>,
+    #[bilrost(6)]
+    pub last_applied_log_lsn: Option<Lsn>,
+    #[bilrost(7)]
+    pub last_record_applied_at: Option<MillisSinceEpoch>,
+    #[bilrost(9)]
+    pub replay_status: ReplayStatus,
+    #[bilrost(10)]
+    pub durable_lsn: Option<Lsn>,
+    #[bilrost(11)]
+    pub last_archived_log_lsn: Option<Lsn>,
+    // Set if replay_status is CatchingUp
+    #[bilrost(12)]
+    pub target_tail_lsn: Option<Lsn>,
+    /// Version of the rule book currently applied by the partition processor.
+    /// `None` until the first rule book is observed (i.e. while the state
+    /// machine still holds `RuleBook::default()` at `Version::INVALID`).
+    #[bilrost(13)]
+    pub last_applied_rule_book_version: Option<Version>,
+    /// Version of the schema currently applied by the partition processor.
+    /// `None` until the first schema is observed.
+    #[bilrost(14)]
+    pub last_applied_schema_version: Option<Version>,
+    /// State-machine features currently enabled on this partition processor.
+    /// Translated to a list of names at the protobuf boundary so older clients
+    /// can render unknown feature names without code changes.
+    #[into_prost(map = "enabled_features_to_proto", map_by_ref)]
+    #[bilrost(15)]
+    pub enabled_features: PersistedFeatures,
+    /// Partition-store on-disk storage version (StorageVersion discriminant).
+    /// Set once on partition open by `verify_and_run_migrations`.
+    #[bilrost(16)]
+    #[into_prost(map = "storage_version_to_u32")]
+    pub storage_version: Option<StorageVersion>,
+
+    /// Since v1.7.3 (if Unknown, use effective_mode)
+    #[bilrost(17)]
+    pub detailed_effective_mode: DetailedRunMode,
+
+    /// Set when the node has parked this partition processor instead of retrying it.
+    /// All other fields carry their defaults in that case.
+    ///
+    /// Since v1.7.3
+    #[bilrost(18)]
+    pub broken_reason: BrokenReason,
+}
+
+impl PartitionProcessorStatus {
+    /// The node running this processor gave up on it and will not retry until an
+    /// operator intervenes.
+    pub fn is_broken(&self) -> bool {
+        self.broken_reason != BrokenReason::NotBroken
+    }
+
+    pub fn effective_mode(&self) -> DetailedRunMode {
+        match self.detailed_effective_mode {
+            DetailedRunMode::Unknown => self.effective_mode.into(),
+            other => other,
+        }
+    }
+}
+
+impl From<RunMode> for DetailedRunMode {
+    fn from(value: RunMode) -> Self {
+        match value {
+            RunMode::Leader => DetailedRunMode::Leader,
+            RunMode::Follower => DetailedRunMode::Follower,
+        }
+    }
+}
+
+impl From<DetailedRunMode> for RunMode {
+    fn from(value: DetailedRunMode) -> Self {
+        match value {
+            DetailedRunMode::Unknown | DetailedRunMode::Follower | DetailedRunMode::Candidate => {
+                RunMode::Follower
+            }
+            DetailedRunMode::Leader | DetailedRunMode::BecomingLeader => RunMode::Leader,
+        }
+    }
+}
+
+fn storage_version_to_u32(v: StorageVersion) -> u32 {
+    v as u32
+}
+
+fn enabled_features_to_proto(f: &PersistedFeatures) -> Vec<String> {
+    f.enabled_names().map(String::from).collect()
+}
+
+impl Default for PartitionProcessorStatus {
+    fn default() -> Self {
+        Self {
+            updated_at: MillisSinceEpoch::now(),
+            planned_mode: RunMode::Follower,
+            effective_mode: RunMode::Follower,
+            detailed_effective_mode: DetailedRunMode::Follower,
+            last_observed_leader_epoch: None,
+            last_observed_leader_node: None,
+            last_applied_log_lsn: None,
+            last_record_applied_at: None,
+            replay_status: ReplayStatus::Starting,
+            durable_lsn: None,
+            last_archived_log_lsn: None,
+            target_tail_lsn: None,
+            last_applied_rule_book_version: None,
+            last_applied_schema_version: None,
+            enabled_features: PersistedFeatures::default(),
+            storage_version: None,
+            broken_reason: BrokenReason::NotBroken,
+        }
+    }
+}
+
+impl PartitionProcessorStatus {
+    pub fn is_effective_leader(&self) -> bool {
+        self.effective_mode == RunMode::Leader
+    }
+
+    pub fn new() -> Self {
+        Self::default()
+    }
+}

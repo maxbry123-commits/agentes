@@ -1,0 +1,379 @@
+import getLogger from '../../test/fixtures/no-logger.js';
+import { CLIENT } from '../types/permissions.js';
+import { createTestConfig } from '../../test/config/test-config.js';
+import ApiUser from '../types/api-user.js';
+import { ALL } from '../types/models/api-token.js';
+import { ApiTokenType } from '../types/model.js';
+import apiTokenMiddleware, {
+    TOKEN_TYPE_ERROR_MESSAGE,
+} from './api-token-middleware.js';
+import type { ApiTokenService } from '../services/index.js';
+import type { ReadOnlyApiTokenV2Service } from '../features/apitokensv2/api-token-v2-service.js';
+import type { IUnleashConfig } from '../types/index.js';
+import { vi } from 'vitest';
+
+let config: IUnleashConfig;
+const validApiTokenV2 = `default:production.v2_${'a'.repeat(22)}_${'b'.repeat(
+    43,
+)}`;
+
+beforeEach(() => {
+    config = createTestConfig({
+        getLogger,
+        authentication: {
+            enableApiToken: true,
+        },
+        experimental: {
+            flags: {
+                secureTokenStorage: true,
+            },
+        },
+    });
+});
+
+test('should not do anything if request does not contain a authorization', async () => {
+    const apiTokenService = {
+        getUserForToken: vi.fn(),
+    } as unknown as ApiTokenService;
+
+    const func = apiTokenMiddleware(config, { apiTokenService });
+
+    const cb = vi.fn();
+
+    const req = {
+        header: vi.fn(),
+    };
+
+    await func(req, undefined, cb);
+
+    expect(req.header).toHaveBeenCalledTimes(1);
+    expect(cb).toHaveBeenCalledTimes(1);
+});
+
+test('should not add user if unknown token', async () => {
+    const apiTokenService = {
+        getUserForToken: vi.fn(),
+    } as unknown as ApiTokenService;
+
+    const func = apiTokenMiddleware(config, { apiTokenService });
+
+    const cb = vi.fn();
+
+    const req = {
+        header: vi.fn().mockReturnValue('some-token'),
+        user: undefined,
+    };
+
+    await func(req, undefined, cb);
+
+    expect(cb).toHaveBeenCalled();
+    expect(req.header).toHaveBeenCalled();
+    expect(req.user).toBeFalsy();
+});
+
+test('should not make database query when provided PAT format', async () => {
+    const apiTokenService = {
+        getUserForToken: vi.fn(),
+    } as unknown as ApiTokenService;
+
+    const func = apiTokenMiddleware(config, { apiTokenService });
+
+    const cb = vi.fn();
+
+    const req = {
+        header: vi.fn().mockReturnValue('user:asdkjsdhg3'),
+        user: undefined,
+    };
+
+    await func(req, undefined, cb);
+
+    expect(apiTokenService.getUserForToken).not.toHaveBeenCalled();
+    expect(req.header).toHaveBeenCalled();
+    expect(cb).toHaveBeenCalled();
+    expect(req.user).toBeFalsy();
+});
+
+test('should add user if known token', async () => {
+    const apiUser = new ApiUser({
+        tokenName: 'default',
+        permissions: [CLIENT],
+        project: ALL,
+        environment: ALL,
+        type: ApiTokenType.BACKEND,
+        secret: 'a',
+    });
+    const apiTokenService = {
+        getUserForToken: vi.fn().mockReturnValue(apiUser),
+    } as unknown as ApiTokenService;
+
+    const func = apiTokenMiddleware(config, { apiTokenService });
+
+    const cb = vi.fn();
+
+    const req = {
+        header: vi.fn().mockReturnValue('some-known-token'),
+        user: undefined,
+        path: '/api/client',
+    };
+
+    await func(req, undefined, cb);
+
+    expect(cb).toHaveBeenCalled();
+    expect(req.header).toHaveBeenCalled();
+    expect(req.user).toBe(apiUser);
+});
+
+test('uses the V2 verifier for V2 token format', async () => {
+    const apiUser = new ApiUser({
+        tokenName: 'default',
+        permissions: [CLIENT],
+        project: ALL,
+        environment: ALL,
+        type: ApiTokenType.BACKEND,
+        secret: 'selector',
+    });
+    const apiTokenService = {
+        getUserForToken: vi.fn(),
+    } as unknown as ApiTokenService;
+    const apiTokenV2Service = {
+        getUserForToken: vi.fn().mockResolvedValue(apiUser),
+    } as unknown as ReadOnlyApiTokenV2Service;
+
+    const func = apiTokenMiddleware(config, {
+        apiTokenService,
+        apiTokenV2Service,
+    });
+    const cb = vi.fn();
+    const req = {
+        header: vi.fn().mockReturnValue(validApiTokenV2),
+        user: undefined,
+        path: '/api/client',
+    };
+
+    await func(req, undefined, cb);
+
+    expect(apiTokenV2Service.getUserForToken).toHaveBeenCalledTimes(1);
+    expect(apiTokenService.getUserForToken).not.toHaveBeenCalled();
+    expect(req.user).toBe(apiUser);
+});
+
+test('uses the V2 verifier for V2 token format when secure token storage is disabled', async () => {
+    const localConfig = createTestConfig({
+        getLogger,
+        authentication: {
+            enableApiToken: true,
+        },
+        experimental: {
+            flags: {
+                secureTokenStorage: false,
+            },
+        },
+    });
+    const apiUser = new ApiUser({
+        tokenName: 'default',
+        permissions: [CLIENT],
+        project: ALL,
+        environment: ALL,
+        type: ApiTokenType.BACKEND,
+        secret: 'selector',
+    });
+    const apiTokenService = {
+        getUserForToken: vi.fn(),
+    } as unknown as ApiTokenService;
+    const apiTokenV2Service = {
+        getUserForToken: vi.fn().mockResolvedValue(apiUser),
+    } as unknown as ReadOnlyApiTokenV2Service;
+
+    const func = apiTokenMiddleware(localConfig, {
+        apiTokenService,
+        apiTokenV2Service,
+    });
+    const cb = vi.fn();
+    const req = {
+        header: vi.fn().mockReturnValue(validApiTokenV2),
+        user: undefined,
+        path: '/api/client',
+    };
+
+    await func(req, undefined, cb);
+
+    expect(apiTokenV2Service.getUserForToken).toHaveBeenCalledTimes(1);
+    expect(apiTokenService.getUserForToken).not.toHaveBeenCalled();
+    expect(req.user).toBe(apiUser);
+});
+
+test('with flag set should set user if known token', async () => {
+    const localConfig = createTestConfig({
+        getLogger,
+        authentication: {
+            enableApiToken: true,
+        },
+        experimental: {
+            flags: {
+                allowDeprecatedApiTokenMiddleware: true,
+            },
+        },
+    });
+    const apiUser = new ApiUser({
+        tokenName: 'default',
+        permissions: [CLIENT],
+        project: ALL,
+        environment: 'development',
+        type: ApiTokenType.BACKEND,
+        secret: 'some-known-token',
+    });
+    const apiTokenService = {
+        getUserForToken: vi.fn().mockReturnValue(apiUser),
+    } as unknown as ApiTokenService;
+
+    const func = apiTokenMiddleware(localConfig, { apiTokenService });
+
+    const cb = vi.fn();
+
+    const req = {
+        header: vi.fn().mockReturnValue('*:development.some-known-token'),
+        user: undefined,
+        path: '/api/client',
+    };
+
+    await func(req, undefined, cb);
+
+    expect(cb).toHaveBeenCalled();
+    expect(req.header).toHaveBeenCalled();
+    expect(req.user).toBe(apiUser);
+});
+
+test.each([
+    ApiTokenType.CLIENT,
+    ApiTokenType.BACKEND,
+])('should not add user if not /api/client with token type %s', async (type) => {
+    expect.assertions(5);
+
+    const apiUser = new ApiUser({
+        tokenName: 'default',
+        permissions: [CLIENT],
+        project: ALL,
+        environment: ALL,
+        type,
+        secret: 'a',
+    });
+
+    const apiTokenService = {
+        getUserForToken: vi.fn().mockReturnValue(apiUser),
+    } as unknown as ApiTokenService;
+
+    const func = apiTokenMiddleware(config, { apiTokenService });
+    const cb = vi.fn();
+
+    const res = {
+        status: (code: unknown) => ({
+            send: (data: unknown) => {
+                expect(code).toEqual(403);
+                expect(data).toEqual({ message: TOKEN_TYPE_ERROR_MESSAGE });
+            },
+        }),
+    };
+
+    const req = {
+        header: vi.fn().mockReturnValue('some-known-token'),
+        user: undefined,
+        path: '/api/admin',
+    };
+
+    await func(req, res, cb);
+
+    expect(cb).not.toHaveBeenCalled();
+    expect(req.header).toHaveBeenCalled();
+    expect(req.user).toBeUndefined();
+});
+
+test('should not add user if disabled', async () => {
+    const apiUser = new ApiUser({
+        tokenName: 'default',
+        permissions: [CLIENT],
+        project: ALL,
+        environment: ALL,
+        type: ApiTokenType.BACKEND,
+        secret: 'a',
+    });
+    const apiTokenService = {
+        getUserForToken: vi.fn().mockReturnValue(apiUser),
+    } as unknown as ApiTokenService;
+
+    const disabledConfig = createTestConfig({
+        getLogger,
+        authentication: {
+            enableApiToken: false,
+            createAdminUser: false,
+        },
+    });
+
+    const func = apiTokenMiddleware(disabledConfig, { apiTokenService });
+
+    const cb = vi.fn();
+
+    const req = {
+        header: vi.fn().mockReturnValue('some-known-token'),
+        user: undefined,
+    };
+
+    const send = vi.fn();
+    const res = {
+        status: () => {
+            return {
+                send: send,
+            };
+        },
+    };
+
+    await func(req, res, cb);
+
+    expect(send).not.toHaveBeenCalled();
+    expect(cb).toHaveBeenCalled();
+    expect(req.user).toBeFalsy();
+});
+
+test('should call next if apiTokenService throws', async () => {
+    getLogger.setMuteError(true);
+    const apiTokenService = {
+        getUserForToken: () => {
+            throw new Error('hi there, i am stupid');
+        },
+    } as unknown as ApiTokenService;
+
+    const func = apiTokenMiddleware(config, { apiTokenService });
+
+    const cb = vi.fn();
+
+    const req = {
+        header: vi.fn().mockReturnValue('some-token'),
+        user: undefined,
+    };
+
+    await func(req, undefined, cb);
+
+    expect(cb).toHaveBeenCalled();
+    getLogger.setMuteError(false);
+});
+
+test('should call next if apiTokenService throws x2', async () => {
+    vi.spyOn(global.console, 'error').mockImplementation(() => vi.fn());
+    const apiTokenService = {
+        getUserForToken: () => {
+            throw new Error('hi there, i am stupid');
+        },
+    } as unknown as ApiTokenService;
+
+    const func = apiTokenMiddleware(config, { apiTokenService });
+
+    const cb = vi.fn();
+
+    const req = {
+        header: vi.fn().mockReturnValue('some-token'),
+        user: undefined,
+    };
+
+    await func(req, undefined, cb);
+
+    expect(cb).toHaveBeenCalled();
+});

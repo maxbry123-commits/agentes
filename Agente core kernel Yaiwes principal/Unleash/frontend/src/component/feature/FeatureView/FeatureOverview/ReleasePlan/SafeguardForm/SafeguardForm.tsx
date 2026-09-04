@@ -1,0 +1,771 @@
+import {
+    Button,
+    FormControl,
+    TextField,
+    Box,
+    styled,
+    Select,
+    Typography,
+} from '@mui/material';
+import ShieldIcon from '@mui/icons-material/ShieldOutlined';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlineOutlined';
+import type { FormEvent, ReactNode } from 'react';
+import { useEffect, useMemo, useState, type FC } from 'react';
+import { useRequiredPathParam } from 'hooks/useRequiredPathParam';
+import { useNumericStringInput } from 'hooks/useNumericStringInput';
+import { MiniMetricsChartWithTooltip } from './MiniMetricsChartWithTooltip.tsx';
+import {
+    useImpactMetricsOptions,
+    type ImpactMetric,
+} from 'hooks/api/getters/useImpactMetricsMetadata/useImpactMetricsMetadata';
+import { useImpactMetricsLabels } from 'hooks/api/getters/useImpactMetricsData/useImpactMetricsLabels';
+import { RangeSelector } from 'component/impact-metrics/ImpactMetricModal/ImpactMetricsControls/RangeSelector/RangeSelector';
+import { ModeSelector } from 'component/impact-metrics/ImpactMetricModal/ImpactMetricsControls/ModeSelector/ModeSelector';
+import {
+    MetricSelector,
+    type MetricSelection,
+} from 'component/impact-metrics/ImpactMetricModal/ImpactMetricsControls/SeriesSelector/MetricSelector.tsx';
+import type { MetricSource } from 'component/impact-metrics/types';
+import {
+    getDefaultAggregation,
+    getMetricType,
+    type MetricType,
+} from 'component/impact-metrics/metricsFormatters.ts';
+import type { CreateSafeguardSchema } from 'openapi/models/createSafeguardSchema';
+import type { MetricQuerySchemaTimeRange } from 'openapi/models/metricQuerySchemaTimeRange';
+import type { MetricQuerySchemaAggregationMode } from 'openapi/models/metricQuerySchemaAggregationMode';
+import type { SafeguardTriggerConditionSchemaOperator } from 'openapi/models/safeguardTriggerConditionSchemaOperator';
+import {
+    createStyledIcon,
+    type FormMode,
+    StyledButtonGroup,
+    StyledFormContainer,
+    StyledLabel,
+    StyledMenuItem,
+    StyledSelect,
+    StyledTopRow,
+} from '../shared/SharedFormComponents.tsx';
+import type { ISafeguard } from 'interfaces/safeguard.ts';
+import {
+    UPDATE_FEATURE_ENVIRONMENT,
+    UPDATE_FEATURE_STRATEGY,
+} from 'component/providers/AccessProvider/permissions.ts';
+import PermissionButton from 'component/common/PermissionButton/PermissionButton.tsx';
+import PermissionIconButton from 'component/common/PermissionIconButton/PermissionIconButton.tsx';
+
+const StyledIcon = createStyledIcon(ShieldIcon);
+
+const SafeguardFormLayout = styled(Box)(({ theme }) => ({
+    display: 'flex',
+    gap: theme.spacing(2),
+}));
+
+const SafeguardConfigurationSection = styled(Box)({
+    flex: 1,
+    minWidth: 0,
+});
+export type SafeguardType = 'releasePlan' | 'featureEnvironment';
+
+const buildLabelSelectors = (
+    appName: string,
+    environment?: string,
+): Record<string, string[]> => {
+    const selectors: Record<string, string[]> = {};
+
+    if (environment) {
+        selectors.environment = [environment];
+    }
+
+    if (appName !== '*') {
+        selectors.appName = [appName];
+    }
+
+    return selectors;
+};
+
+interface IBaseSafeguardFormProps {
+    onSubmit: (data: CreateSafeguardSchema) => void;
+    onCancel?: () => void;
+    onDelete?: () => void;
+    safeguard?: ISafeguard;
+    environment: string;
+    featureId: string;
+    badge?: ReactNode;
+    safeguardType?: SafeguardType;
+    typeSelector?: ReactNode;
+    headerAction?: ReactNode;
+}
+
+const getInitialValues = (safeguard?: ISafeguard) => ({
+    metric: {
+        metricName: safeguard?.impactMetric.metricName || '',
+        source: safeguard?.impactMetric.source,
+    },
+    appName: safeguard?.impactMetric.labelSelectors.appName?.[0] || '*',
+    aggregationMode: (safeguard?.impactMetric.aggregationMode ||
+        'rps') as MetricQuerySchemaAggregationMode,
+    operator: (safeguard?.triggerCondition?.operator ||
+        '>') as SafeguardTriggerConditionSchemaOperator,
+    threshold: safeguard?.triggerCondition?.threshold || 0,
+    timeRange: (safeguard?.impactMetric.timeRange ||
+        'hour') as MetricQuerySchemaTimeRange,
+});
+
+const useSafeguardFormValues = (safeguard?: ISafeguard) => {
+    const initialValues = useMemo(
+        () => getInitialValues(safeguard),
+        [safeguard],
+    );
+
+    const [metric, setMetric] = useState<MetricSelection>(initialValues.metric);
+    const [appName, setAppName] = useState(initialValues.appName);
+    const [aggregationMode, setAggregationMode] =
+        useState<MetricQuerySchemaAggregationMode>(
+            initialValues.aggregationMode,
+        );
+    const [operator, setOperator] =
+        useState<SafeguardTriggerConditionSchemaOperator>(
+            initialValues.operator,
+        );
+    const [threshold, setThreshold] = useState(initialValues.threshold);
+    const [timeRange, setTimeRange] = useState<MetricQuerySchemaTimeRange>(
+        initialValues.timeRange,
+    );
+
+    const resetToOriginalValues = () => {
+        if (!safeguard) return;
+
+        setMetric(initialValues.metric);
+        setAppName(initialValues.appName);
+        setAggregationMode(initialValues.aggregationMode);
+        setOperator(initialValues.operator);
+        setThreshold(initialValues.threshold);
+        setTimeRange(initialValues.timeRange);
+    };
+
+    return {
+        metric,
+        setMetric,
+        appName,
+        setAppName,
+        aggregationMode,
+        setAggregationMode,
+        operator,
+        setOperator,
+        threshold,
+        setThreshold,
+        timeRange,
+        setTimeRange,
+        resetToOriginalValues,
+        initialValues,
+    };
+};
+
+const useSafeguardFormMode = (safeguard?: ISafeguard) => {
+    const [mode, setMode] = useState<FormMode>(
+        safeguard ? 'display' : 'create',
+    );
+
+    const enterEditMode = () => {
+        if (mode === 'display') {
+            setMode('edit');
+        }
+    };
+
+    return {
+        mode,
+        setMode,
+        enterEditMode,
+    };
+};
+
+const useSafeguardMetricsData = (
+    metricName: string,
+    environment: string,
+    source?: MetricSource,
+) => {
+    const { metricOptions, loading } = useImpactMetricsOptions();
+    const { labels } = useImpactMetricsLabels(metricName, source);
+
+    const applicationNames = useMemo(() => {
+        const appNames = labels.appName || [];
+        return ['*', ...appNames];
+    }, [labels.appName]);
+
+    const metricType = getMetricType(metricName, labels.metric_type);
+
+    // External Prometheus metrics may not have an environment label —
+    // only filter by environment when the metric actually exposes one.
+    // When the label exists, always filter by the current environment even
+    // if it's not in the values list — showing unfiltered data from other
+    // environments (e.g. development data in production) would be misleading.
+    const metricEnvironment = labels.environment ? environment : undefined;
+
+    return {
+        metricOptions,
+        loading,
+        applicationNames,
+        metricType,
+        metricEnvironment,
+    };
+};
+
+const useSafeguardFormHandlers = (
+    formValues: ReturnType<typeof useSafeguardFormValues>,
+    formMode: ReturnType<typeof useSafeguardFormMode>,
+    metricOptions: ImpactMetric[],
+    metricType: MetricType,
+) => {
+    const {
+        setMetric,
+        setAppName,
+        setAggregationMode,
+        setOperator,
+        setThreshold,
+        setTimeRange,
+    } = formValues;
+    const { enterEditMode } = formMode;
+    const initialMetricName = formValues.initialValues.metric.metricName;
+
+    // Auto-select first metric when options become available
+    useEffect(() => {
+        if (metricOptions.length > 0 && !formValues.metric.metricName) {
+            setMetric({
+                metricName: metricOptions[0].name,
+                source: metricOptions[0].source,
+            });
+        }
+    }, [metricOptions, formValues.metric.metricName, setMetric]);
+
+    // Set default aggregation when metric type becomes known
+    // Skip when metric hasn't changed from initial (existing safeguard opened)
+    useEffect(() => {
+        if (
+            formValues.metric.metricName !== initialMetricName &&
+            metricType !== 'unknown'
+        ) {
+            setAggregationMode(getDefaultAggregation(metricType));
+        }
+    }, [formValues.metric.metricName, initialMetricName, metricType]);
+
+    const handleMetricChange = (selection: MetricSelection) => {
+        enterEditMode();
+        setMetric(selection);
+        setAppName('*');
+    };
+
+    const handleApplicationChange = (value: string) => {
+        enterEditMode();
+        setAppName(value);
+    };
+
+    const handleAggregationModeChange = (
+        value: MetricQuerySchemaAggregationMode,
+    ) => {
+        enterEditMode();
+        setAggregationMode(value);
+    };
+
+    const handleOperatorChange = (
+        value: SafeguardTriggerConditionSchemaOperator,
+    ) => {
+        enterEditMode();
+        setOperator(value);
+    };
+
+    const handleThresholdChange = (value: number) => {
+        enterEditMode();
+        setThreshold(value);
+    };
+
+    const handleTimeRangeChange = (value: MetricQuerySchemaTimeRange) => {
+        enterEditMode();
+        setTimeRange(value);
+    };
+
+    return {
+        handleMetricChange,
+        handleApplicationChange,
+        handleAggregationModeChange,
+        handleOperatorChange,
+        handleThresholdChange,
+        handleTimeRangeChange,
+    };
+};
+
+const useSafeguardFormState = (
+    safeguard: ISafeguard | undefined,
+    featureId: string,
+    environment: string,
+    onSubmit: (data: CreateSafeguardSchema) => void,
+) => {
+    const projectId = useRequiredPathParam('projectId');
+    const formValues = useSafeguardFormValues(safeguard);
+    const formMode = useSafeguardFormMode(safeguard);
+    const metricsData = useSafeguardMetricsData(
+        formValues.metric.metricName,
+        environment,
+        formValues.metric.source,
+    );
+    const handlers = useSafeguardFormHandlers(
+        formValues,
+        formMode,
+        metricsData.metricOptions,
+        metricsData.metricType,
+    );
+
+    const labelSelectors = useMemo(
+        () =>
+            buildLabelSelectors(
+                formValues.appName,
+                metricsData.metricEnvironment,
+            ),
+        [formValues.appName, metricsData.metricEnvironment],
+    );
+
+    const safeguardData: CreateSafeguardSchema = useMemo(
+        () => ({
+            impactMetric: {
+                metricName: formValues.metric.metricName,
+                timeRange: formValues.timeRange,
+                aggregationMode: formValues.aggregationMode,
+                labelSelectors,
+                source: formValues.metric.source ?? 'internal',
+            },
+            triggerCondition: {
+                operator: formValues.operator,
+                threshold: Number(formValues.threshold),
+            },
+        }),
+        [
+            formValues.metric,
+            formValues.timeRange,
+            formValues.aggregationMode,
+            labelSelectors,
+            formValues.operator,
+            formValues.threshold,
+        ],
+    );
+
+    const handleSubmit = (e: FormEvent) => {
+        e.preventDefault();
+
+        if (Number.isNaN(Number(formValues.threshold))) {
+            return;
+        }
+
+        onSubmit(safeguardData);
+
+        if (formMode.mode === 'edit' || formMode.mode === 'create') {
+            formMode.setMode('display');
+        }
+    };
+
+    return {
+        ...formValues,
+        ...formMode,
+        ...metricsData,
+        ...handlers,
+        projectId,
+        featureId,
+        labelSelectors,
+        handleSubmit,
+    };
+};
+
+interface SafeguardFormBaseProps {
+    formState: ReturnType<typeof useSafeguardFormState>;
+    onSubmit: (e: FormEvent) => void;
+    onCancel?: () => void;
+    onDelete?: () => void;
+    environment: string;
+    badge?: ReactNode;
+    children?: React.ReactNode;
+    safeguardType?: SafeguardType;
+    typeSelector?: ReactNode;
+    headerAction?: ReactNode;
+}
+
+const safeguardTypeLabel: Record<SafeguardType, string> = {
+    releasePlan: 'Pause automation when',
+    featureEnvironment: 'Disable environment when',
+};
+
+const safeguardTypeOptionLabel: Record<SafeguardType, string> = {
+    featureEnvironment: 'Disable environment',
+    releasePlan: 'Pause release plan automation',
+};
+
+const safeguardTypeDescription: Record<SafeguardType, string> = {
+    featureEnvironment:
+        'If your chosen metric crosses its threshold, this flag is turned off in this environment. Existing users stop seeing the flag immediately.',
+    releasePlan:
+        'If your chosen metric crosses its threshold, automatic milestone progression stops. The current milestone keeps serving traffic.',
+};
+
+const StyledTypeSelect = styled(Select)(({ theme }) => ({
+    fontSize: theme.typography.body2.fontSize,
+}));
+
+const safeguardTypes: SafeguardType[] = ['featureEnvironment', 'releasePlan'];
+
+const StyledTypeOptionMenuItem = styled(StyledMenuItem)(({ theme }) => ({
+    whiteSpace: 'normal',
+    alignItems: 'flex-start',
+    paddingTop: theme.spacing(1.25),
+    paddingBottom: theme.spacing(1.25),
+}));
+
+const StyledOptionDescription = styled(Typography)(({ theme }) => ({
+    display: 'block',
+    marginTop: theme.spacing(0.25),
+    color: theme.palette.text.secondary,
+}));
+
+export const safeguardTypeOption = (
+    type: SafeguardType,
+    disabledReason?: string,
+) => (
+    <StyledTypeOptionMenuItem
+        key={type}
+        value={type}
+        disabled={Boolean(disabledReason)}
+    >
+        <Box>
+            <Typography variant='body2'>
+                {safeguardTypeOptionLabel[type]}
+            </Typography>
+            <StyledOptionDescription variant='caption'>
+                {disabledReason ?? safeguardTypeDescription[type]}
+            </StyledOptionDescription>
+        </Box>
+    </StyledTypeOptionMenuItem>
+);
+
+export const SafeguardTypeSelect: FC<{
+    value: SafeguardType;
+    onChange: (type: SafeguardType) => void;
+    children: ReactNode;
+}> = ({ value, onChange, children }) => (
+    <FormControl variant='outlined' size='large'>
+        <StyledTypeSelect
+            value={value}
+            onChange={(e) => {
+                const type = e.target.value as SafeguardType;
+                if (safeguardTypes.includes(type)) {
+                    onChange(type);
+                }
+            }}
+            variant='outlined'
+            size='large'
+            SelectDisplayProps={{ 'aria-label': 'Safeguard action' }}
+            renderValue={(selected) =>
+                safeguardTypeOptionLabel[selected as SafeguardType]
+            }
+            MenuProps={{
+                slotProps: {
+                    paper: {
+                        sx: { maxWidth: (theme) => theme.spacing(45) },
+                    },
+                },
+            }}
+        >
+            {children}
+        </StyledTypeSelect>
+    </FormControl>
+);
+
+const SafeguardFormBase: FC<SafeguardFormBaseProps> = ({
+    formState,
+    onSubmit,
+    onCancel,
+    onDelete,
+    environment,
+    badge,
+    children,
+    safeguardType = 'releasePlan',
+    typeSelector,
+    headerAction,
+}) => {
+    const {
+        metric,
+        appName,
+        aggregationMode,
+        operator,
+        threshold,
+        timeRange,
+        mode,
+        setMode,
+        metricOptions,
+        loading,
+        applicationNames,
+        metricType,
+        projectId,
+        featureId,
+        handleMetricChange,
+        handleApplicationChange,
+        handleAggregationModeChange,
+        handleOperatorChange,
+        handleThresholdChange,
+        handleTimeRangeChange,
+        resetToOriginalValues,
+        enterEditMode,
+        labelSelectors,
+    } = formState;
+
+    const permission =
+        safeguardType === 'featureEnvironment'
+            ? UPDATE_FEATURE_ENVIRONMENT
+            : UPDATE_FEATURE_STRATEGY;
+
+    const handleCancel = () => {
+        if (mode === 'create') {
+            onCancel?.();
+            return;
+        }
+
+        resetToOriginalValues();
+        setMode('display');
+    };
+
+    const handleDelete = () => {
+        if (onDelete) {
+            onDelete();
+        }
+    };
+
+    const showButtons = mode === 'create' || mode === 'edit';
+
+    const miniChartMetricDisplayName = metricOptions.find(
+        (m) =>
+            m.name === metric.metricName &&
+            m.source === (metric.source ?? 'internal'),
+    )?.displayName;
+
+    const {
+        inputValue: thresholdInputValue,
+        handleInputChange: handleThresholdInputChange,
+        handleInputBlur: handleThresholdInputBlur,
+        handleKeyDown: handleThresholdKeyDown,
+        handleFocus: handleThresholdFocus,
+    } = useNumericStringInput(threshold, handleThresholdChange, {
+        onEditStart: enterEditMode,
+    });
+
+    return (
+        <StyledFormContainer onSubmit={onSubmit} mode={mode}>
+            <StyledTopRow>
+                <StyledIcon />
+                {mode === 'create' && typeSelector ? (
+                    <>
+                        {typeSelector}
+                        <StyledLabel sx={{ mr: 'auto' }}>when</StyledLabel>
+                    </>
+                ) : (
+                    <StyledLabel sx={{ mr: 'auto' }}>
+                        {safeguardTypeLabel[safeguardType]}
+                    </StyledLabel>
+                )}
+                {mode === 'display' && badge}
+                {headerAction}
+                {metric.metricName && (
+                    <MiniMetricsChartWithTooltip
+                        metricName={metric.metricName}
+                        metricDisplayName={miniChartMetricDisplayName}
+                        timeRange={timeRange}
+                        labelSelectors={labelSelectors}
+                        aggregationMode={aggregationMode}
+                        threshold={threshold}
+                        projectId={projectId}
+                        featureId={featureId}
+                        source={metric.source}
+                    />
+                )}
+                {mode !== 'create' && onDelete && (
+                    <PermissionIconButton
+                        permission={permission}
+                        projectId={projectId}
+                        environmentId={environment}
+                        onClick={handleDelete}
+                        size='medium'
+                        aria-label='Remove safeguard'
+                        tooltipProps={{
+                            title: 'Remove safeguard',
+                        }}
+                        sx={{ padding: 0.5 }}
+                    >
+                        <DeleteOutlineIcon />
+                    </PermissionIconButton>
+                )}
+            </StyledTopRow>
+
+            <SafeguardFormLayout>
+                <SafeguardConfigurationSection>
+                    <StyledTopRow sx={{ ml: 3, mb: 1.5 }}>
+                        <MetricSelector
+                            value={metric.metricName}
+                            valueSource={metric.source}
+                            onChange={handleMetricChange}
+                            options={metricOptions}
+                            loading={loading}
+                            label=''
+                            entryPoint='flag-safeguards'
+                        />
+
+                        <StyledTopRow>
+                            <StyledLabel>filtered by</StyledLabel>
+                            <FormControl variant='outlined' size='large'>
+                                <StyledSelect
+                                    value={appName}
+                                    onChange={(e) =>
+                                        handleApplicationChange(
+                                            String(e.target.value),
+                                        )
+                                    }
+                                    variant='outlined'
+                                    size='large'
+                                >
+                                    {applicationNames.map((app) => (
+                                        <StyledMenuItem key={app} value={app}>
+                                            {app === '*' ? 'All' : app}
+                                        </StyledMenuItem>
+                                    ))}
+                                </StyledSelect>
+                            </FormControl>
+                        </StyledTopRow>
+
+                        <StyledTopRow>
+                            <StyledLabel>aggregated by</StyledLabel>
+                            <ModeSelector
+                                value={aggregationMode}
+                                onChange={handleAggregationModeChange}
+                                metricType={metricType}
+                                label=''
+                            />
+                        </StyledTopRow>
+                    </StyledTopRow>
+                    <StyledTopRow sx={{ ml: 0.75 }}>
+                        <StyledTopRow>
+                            <StyledLabel sx={{ ml: 2.5 }}>is</StyledLabel>
+                            <FormControl variant='outlined' size='large'>
+                                <StyledSelect
+                                    value={operator}
+                                    onChange={(e) =>
+                                        handleOperatorChange(
+                                            e.target
+                                                .value as SafeguardTriggerConditionSchemaOperator,
+                                        )
+                                    }
+                                    variant='outlined'
+                                    size='large'
+                                >
+                                    <StyledMenuItem value='>'>
+                                        More than
+                                    </StyledMenuItem>
+                                    <StyledMenuItem value='<'>
+                                        Less than
+                                    </StyledMenuItem>
+                                </StyledSelect>
+                            </FormControl>
+
+                            <FormControl variant='outlined' size='large'>
+                                <TextField
+                                    type='number'
+                                    value={thresholdInputValue}
+                                    onChange={handleThresholdInputChange}
+                                    onFocus={handleThresholdFocus}
+                                    onBlur={handleThresholdInputBlur}
+                                    onKeyDown={handleThresholdKeyDown}
+                                    placeholder='Value'
+                                    variant='outlined'
+                                    size='large'
+                                    required
+                                    slotProps={{
+                                        htmlInput: {
+                                            step: 0.1,
+                                        },
+                                    }}
+                                />
+                            </FormControl>
+                        </StyledTopRow>
+
+                        <StyledTopRow>
+                            <StyledLabel>over</StyledLabel>
+                            {/* Every range has an alert observation window equal to its step. Backend implies the step from the range */}
+                            <RangeSelector
+                                value={timeRange}
+                                onChange={handleTimeRangeChange}
+                                label=''
+                                options={[
+                                    { key: 'hour', label: 'Last minute' },
+                                    { key: 'day', label: 'Last 15 minutes' },
+                                    { key: 'week', label: 'Last 3 hours' },
+                                    { key: 'month', label: 'Last day' },
+                                ]}
+                            />
+                        </StyledTopRow>
+                    </StyledTopRow>
+                </SafeguardConfigurationSection>
+            </SafeguardFormLayout>
+
+            {showButtons && (
+                <StyledButtonGroup>
+                    <Button
+                        variant='outlined'
+                        onClick={handleCancel}
+                        size='medium'
+                    >
+                        Cancel
+                    </Button>
+                    <PermissionButton
+                        permission={permission}
+                        projectId={projectId}
+                        environmentId={environment}
+                        variant='contained'
+                        color='primary'
+                        size='medium'
+                        type='submit'
+                        disabled={Number.isNaN(Number(threshold))}
+                    >
+                        Save
+                    </PermissionButton>
+                </StyledButtonGroup>
+            )}
+            {children}
+        </StyledFormContainer>
+    );
+};
+
+export const SafeguardForm: FC<IBaseSafeguardFormProps> = ({
+    onSubmit,
+    onCancel,
+    onDelete,
+    safeguard,
+    environment,
+    featureId,
+    badge,
+    safeguardType,
+    typeSelector,
+    headerAction,
+}) => {
+    const formState = useSafeguardFormState(
+        safeguard,
+        featureId,
+        environment,
+        onSubmit,
+    );
+
+    return (
+        <SafeguardFormBase
+            formState={formState}
+            onSubmit={formState.handleSubmit}
+            onCancel={onCancel}
+            onDelete={onDelete}
+            environment={environment}
+            badge={badge}
+            safeguardType={safeguardType}
+            typeSelector={typeSelector}
+            headerAction={headerAction}
+        />
+    );
+};

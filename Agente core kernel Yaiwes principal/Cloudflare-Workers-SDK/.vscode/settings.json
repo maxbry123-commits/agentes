@@ -1,0 +1,112 @@
+{
+	"cSpell.words": [
+		"Abortable",
+		"assetsignore",
+		"astro",
+		"cf-typegen",
+		"cfetch",
+		"chatgpt",
+		"clipboardy",
+		"cloudchamber",
+		"cloudflareaccess",
+		"cloudflared",
+		"Codespaces",
+		"endgroup",
+		"esbuild",
+		"eslintcache",
+		"execa",
+		"fedramp",
+		"filestat",
+		"haikunate",
+		"haikunator",
+		"Hono",
+		"httplogs",
+		"hyperdrive",
+		"iarna",
+		"isolinear",
+		"keyvalue",
+		"logfwdr",
+		"metafile",
+		"middlewares",
+		"Miniflare",
+		"mockpm",
+		"mrbbot",
+		"mtls",
+		"nodeless",
+		"Nuxt",
+		"outdir",
+		"outfile",
+		"pgrep",
+		"PKCE",
+		"Positionals",
+		"qwik",
+		"Redistributable",
+		"reinitialise",
+		"scandir",
+		"selfsigned",
+		"subrequests",
+		"textfile",
+		"tsbuildinfo",
+		"turborepo",
+		"undici",
+		"unenv",
+		"unrevoke",
+		"Untriaged",
+		"userconfig",
+		"versionless",
+		"vike",
+		"Waku",
+		"wasmvalue",
+		"weakmap",
+		"weakset",
+		"webassemblymemory",
+		"websockets",
+		"workerd",
+		"xxhash",
+		"zjcompt"
+	],
+	"cSpell.ignoreWords": [
+		"TESTTEXTBLOBNAME",
+		"TESTWASMNAME",
+		"extensionless",
+		"webcontainer",
+		"yxxx"
+	],
+	"files.trimTrailingWhitespace": true,
+	"typescript.tsdk": "node_modules/typescript/lib",
+	"files.associations": {
+		"turbo.json": "jsonc",
+		"api-extractor.json": "jsonc",
+		"CODEOWNERS": "plaintext",
+		"*.template": "javascript",
+		"wrangler.json": "jsonc"
+	},
+
+	"[ignore]": {
+		"editor.defaultFormatter": "foxundermoon.shell-format"
+	},
+	"eslint.workingDirectories": [
+		{
+			"mode": "auto"
+		}
+	],
+	"editor.formatOnSave": true,
+	"editor.defaultFormatter": "oxc.oxc-vscode",
+	"[javascript]": {
+		"editor.defaultFormatter": "oxc.oxc-vscode"
+	},
+	"[typescript]": {
+		"editor.defaultFormatter": "oxc.oxc-vscode"
+	},
+	"[typescriptreact]": {
+		"editor.defaultFormatter": "oxc.oxc-vscode"
+	},
+	"[javascriptreact]": {
+		"editor.defaultFormatter": "oxc.oxc-vscode"
+	},
+	"[json]": {
+		"editor.defaultFormatter": "oxc.oxc-vscode"
+	},
+	"oxc.path.oxfmt": "node_modules/.bin/oxfmt",
+	"oxc.path.oxlint": "node_modules/.bin/oxlint"
+}

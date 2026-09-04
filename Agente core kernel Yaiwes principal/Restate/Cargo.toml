@@ -1,0 +1,377 @@
+[workspace]
+members = [
+    "cli",
+    "crates/*",
+    "util/*",
+    "crates/core/derive",
+    "crates/encoding/derive",
+    "crates/codederror/derive",
+    "server",
+    "lite",
+    "benchmarks",
+    "tools/bifrost-benchpress",
+    "tools/logserver-bench",
+    "tools/pp-bench",
+    "tools/mock-service-endpoint",
+    "tools/restate-doctor",
+    "tools/restatectl",
+    "tools/service-protocol-wireshark-dissector",
+    "tools/xtask",
+    "workspace-hack",
+]
+default-members = [
+    "cli",
+    "util/*",
+    "crates/*",
+    "crates/core/derive",
+    "crates/codederror/derive",
+    "server",
+    "tools/restate-doctor",
+    "tools/restatectl"
+]
+resolver = "2"
+
+[workspace.package]
+version = "1.7.9-dev"
+authors = ["restate.dev"]
+edition = "2024"
+rust-version = "1.96.1"
+license = "BUSL-1.1"
+repository = "https://github.com/restatedev/restate"
+homepage = "https://github.com/restatedev/restate"
+description = "Restate makes distributed applications easy!"
+
+[workspace.dependencies]
+# Own crates
+codederror = { path = "crates/codederror" }
+mock-service-endpoint = { path = "tools/mock-service-endpoint" }
+restate-admin = { path = "crates/admin" }
+restate-admin-rest-model = { path = "crates/admin-rest-model" }
+restate-base64-util = { path = "crates/base64-util" }
+restate-bifrost = { path = "crates/bifrost" }
+restate-cli-util = { path = "crates/cli-util" }
+restate-clock = { path = "crates/clock" }
+restate-cloud-tunnel-client = { path = "crates/cloud-tunnel-client" }
+restate-core = { path = "crates/core" }
+restate-core-derive = { path = "crates/core/derive" }
+restate-encoding = { path = "crates/encoding" }
+restate-errors = { path = "crates/errors" }
+restate-fs-util = { path = "crates/fs-util" }
+restate-futures-util = { path = "crates/futures-util" }
+restate-hyper-uds = { path = "crates/hyper-uds" }
+restate-ingress-http = { path = "crates/ingress-http" }
+restate-ingress-kafka = { path = "crates/ingress-kafka" }
+restate-invoker-impl = { path = "crates/invoker-impl" }
+restate-local-cluster-runner = { path = "crates/local-cluster-runner" }
+restate-log-server = { path = "crates/log-server" }
+restate-log-server-grpc = { path = "crates/log-server-grpc" }
+restate-memory = { path = "crates/memory" }
+restate-metadata-providers = { path = "crates/metadata-providers" }
+restate-metadata-server = { path = "crates/metadata-server" }
+restate-metadata-server-grpc = { path = "crates/metadata-server-grpc" }
+restate-metadata-store = { path = "crates/metadata-store" }
+restate-node = { path = "crates/node" }
+restate-object-store-util = { path = "crates/object-store-util" }
+restate-partition-store = { path = "crates/partition-store" }
+restate-platform = { path = "crates/platform" }
+restate-queue = { path = "crates/queue" }
+restate-rocksdb = { path = "crates/rocksdb" }
+restate-serde-util = { path = "crates/serde-util" }
+restate-server = { path = "server" }
+restate-lite = { path = "lite" }
+restate-service-client = { path = "crates/service-client" }
+restate-service-protocol = { path = "crates/service-protocol" }
+restate-service-protocol-v4 = { path = "crates/service-protocol-v4" }
+restate-storage-api = { path = "crates/storage-api" }
+restate-storage-query-datafusion = { path = "crates/storage-query-datafusion" }
+restate-sharding = { path = "crates/sharding" }
+restate-util-bytecount = { path = "util/bytecount" }
+restate-util-random = { path = "util/random" }
+restate-util-string = { path = "util/string" }
+restate-util-time = { path = "util/time" }
+restate-test-util = { path = "crates/test-util" }
+restate-timer = { path = "crates/timer" }
+restate-timer-queue = { path = "crates/timer-queue" }
+restate-tracing = { path = "crates/tracing" }
+restate-tracing-instrumentation = { path = "crates/tracing-instrumentation" }
+restate-types = { path = "crates/types" }
+restate-utoipa = { path = "crates/utoipa" }
+restate-vqueues = { path = "crates/vqueues" }
+restate-wal-protocol = { path = "crates/wal-protocol" }
+restate-worker = { path = "crates/worker" }
+restate-worker-api = { path = "crates/worker-api" }
+restate-ingestion-client = { path = "crates/ingestion-client" }
+restate-limiter = { path = "crates/limiter" }
+
+# this workspace-hack package is overridden by a patch below to use workspace-hack subdir when building in this repo
+# outside this repo, the crates.io restate-workspace-hack (an empty package) will be used instead
+restate-workspace-hack = "0.0.1"
+
+# External crates
+adaptive-timeout = { version = "0.0.1-alpha.4" }
+ahash = "0.8.12"
+anyhow = "1"
+arc-swap = "1.9"
+arrayvec = { version = "0.7" }
+arrow = { version = "58.3.0", default-features = false }
+assert2 = "0.3.16"
+async-channel = "2.5.0"
+async-trait = "0.1.89"
+aws-config = "1.8.18"
+aws-credential-types = "1.2.14"
+aws-msk-iam-sasl-signer = "1.0.0"
+aws-sdk-dynamodb = { version = "1.101.0", default-features = false, features = ["behavior-version-latest", "rt-tokio", "default-https-client"] }
+aws-smithy-async = { version = "1.2.14", default-features = false }
+aws-smithy-runtime-api = "1.12.3"
+aws-smithy-types = "1.5.0"
+axum = { version = "0.8.8", default-features = false }
+base64 = "0.22"
+bilrost = { version = "0.1014", default-features = false, features = ["std", "auto-optimize", "derive"] }
+bincode = { version = "2.0.1", default-features = false }
+bitflags = { version = "2.10.0" }
+bs58 = { version = "0.5.1" }
+bytes = { version = "1.11", features = ["serde"] }
+bytes-utils = "0.1.4"
+bytesize = { version = "2.3.1" }
+bytestring = { version = "1.5", features = ["serde"] }
+chrono = { version = "0.4.42", default-features = false, features = ["clock"] }
+chrono-humanize = { version = "0.2.3" }
+ciborium = { version = "0.2.2" }
+clap = { version = "4", default-features = false }
+clap-verbosity-flag = { version = "3.0.4" }
+clap_complete = { version = "4.5" }
+cling = { version = "0.1.3", default-features = false, features = ["derive"] }
+comfy-table = { version = "7.2.1" }
+compact_str = { version = "0.9", default-features = false }
+const_format = "0.2.35"
+criterion = "0.5"
+crossterm = { version = "0.29.0" }
+dashmap = { version = "6" }
+datafusion = { version = "54.0.0", default-features = false, features = [
+    "crypto_expressions",
+    "encoding_expressions",
+    "nested_expressions",
+    "regex_expressions",
+    "unicode_expressions",
+    "recursive_protection",
+] }
+datafusion-functions-json = { version = "0.54.2" }
+datafusion-proto = { version = "54.0.0", default-features = false }
+derive_builder = "0.20.2"
+derive_more = { version = "2.1.1", default-features = false }
+dialoguer = { version = "0.12.0" }
+downcast-rs = { version = "2.0.2" }
+enum-map = { version = "2.7.3" }
+enumset = { version = "1.1.10" }
+etcd-client = { version = "0.17" }
+flexbuffers = { version = "25.12.19" }
+futures = "0.3.31"
+futures-sink = "0.3.31"
+futures-util = "0.3.31"
+gardal = { version = "0.0.1-alpha.9" }
+generic-array = { version = "1.4.1" }
+google-cloud-auth = { version = "1.10", features = ["idtoken"] }
+googletest = { version = "0.10", features = ["anyhow"] }
+hashbrown = { version = "0.16" }
+slotmap = { version = "1" }
+hostname = { version = "0.4.2" }
+http = "1.4.0"
+http-body = "1.0.1"
+http-body-util = "0.1.3"
+http-serde = { version = "2.1.1" }
+humantime = "2.3.0"
+hyper = { version = "1.11", default-features = false }
+hyper-rustls = { version = "0.27.7", default-features = false, features = [
+    "http1",
+    "http2",
+    "ring",
+    "native-tokio",
+    "tls12",
+    "logging",
+] }
+hyper-util = { version = "0.1" }
+indexmap = "2.12"
+itertools = "0.14.0"
+jiff = "0.2.17"
+jsonptr = "0.7.1"
+jsonschema = { version = "0.38.1", default-features = false }
+jsonwebtoken = { version = "10.3.0", features = ["aws_lc_rs"] }
+metrics = { version = "0.24" }
+metrics-exporter-prometheus = { version = "0.18.1", default-features = false, features = [
+    "async-runtime",
+] }
+metrics-util = { version = "0.20.1" }
+moka = "0.12.12"
+mockall = { version = "0.14.0" }
+num-traits = { version = "0.2.19" }
+num_cpus = { version = "1.17.0" }
+object_store = { version = "0.13.0", features = ["aws", "azure", "gcp"] }
+octocrab = { version = "0.44.1" }
+opentelemetry = { version = "0.31" }
+opentelemetry-contrib = { version = "0.23" }
+opentelemetry-otlp = { version = "0.31" }
+opentelemetry-semantic-conventions = { version = "0.31" }
+opentelemetry_sdk = { version = "0.31" }
+parking_lot = { version = "0.12" }
+paste = "1.0"
+pin-project = "1.1"
+pin-project-lite = { version = "0.2" }
+prost = { version = "0.14.1" }
+prost-build = { version = "0.14.1" }
+priority-queue = { version = "2.7.0" }
+proc-macro2 = "1.0"
+prost-dto = { version = "0.0.4" }
+prost-types = { version = "0.14.1" }
+quote = "1"
+rand = "0.10.1"
+rcgen = "0.13"
+regex = { version = "1.12" }
+reqwest = { version = "0.12", default-features = false, features = [
+    "json",
+    "rustls-tls",
+    "stream",
+] }
+rlimit = { version = "0.11.0" }
+rocksdb = { version = "0.51.1", package = "rust-rocksdb", features = [
+    "multi-threaded-cf",
+    "jemalloc",
+], git = "https://github.com/restatedev/rust-rocksdb", rev = "5df796cd539c15cec10f5c3c0d9dff1b4fbc6e42" }
+rstest = "0.26.1"
+rustls = { version = "0.23.35", default-features = false, features = ["ring"] }
+rustyline = { version = "14.0.0" }
+schemars = { version = "1.2", features = ["bytes1"] }
+semver = { version = "1.0", features = ["serde"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_core = { version = "1" }
+serde_json = "1.0"
+serde_with = "3.16"
+sha2 = { version = "0.10.9" }
+static_assertions = { version = "1.1.0" }
+strum = { version = "0.28.0", features = ["derive"] }
+smallvec = { version = "1.15.1", features = ["serde", "union"] }
+syn = "2.0"
+tempfile = "3.24.0"
+test-log = { version = "0.2.19", default-features = false, features = [
+    "trace",
+] }
+tikv-jemallocator = { version = "0.7", features = [
+    "unprefixed_malloc_on_supported_platforms",
+    "profiling",
+] }
+tikv-jemalloc-ctl = { version = "0.7", features = ["stats"] }
+tikv-jemalloc-sys = { version = "0.7", features = ["profiling"] }
+thiserror = "2.0"
+tokio = { version = "1.48.0", default-features = false, features = [
+    "rt-multi-thread",
+    "signal",
+    "macros",
+    "parking_lot",
+] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring"] }
+tokio-stream = "0.1.17"
+tokio-util = { version = "0.7.17" }
+toml = { version = "0.9" }
+tonic = { version = "0.14.2", default-features = false }
+tonic-reflection = { version = "0.14.2" }
+tonic-prost = "0.14.2"
+tonic-prost-build = { version = "0.14.2" }
+tower = "0.5.2"
+tower-http = { version = "0.6.8", default-features = false }
+tracing = { version = "0.1" }
+tracing-opentelemetry = { version = "0.32.0" }
+tracing-subscriber = { version = "0.3", features = [
+    "env-filter",
+    "fmt",
+    "parking_lot",
+] }
+tracing-test = { version = "0.2.5" }
+typed-builder = "0.23.2"
+typify = { version = "0.5.0" }
+ulid = { version = "1.2.1" }
+url = { version = "2.5" }
+urlencoding = { version = "2.1" }
+utoipa = { version = "5.4" }
+utoipa-axum = "0.2"
+uuid = { version = "1.19.0", features = ["v7", "serde"] }
+vergen = { version = "8.0.0", default-features = false }
+wildmatch = "2.6.1"
+x509-parser = "0.16"
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
+zstd = { version = "0.13" }
+
+[patch.crates-io.restate-workspace-hack]
+path = "workspace-hack"
+
+[patch.crates-io]
+# Cross compilation fixes: Use autotools to detect cross compilation tool chain.
+# The fixes are based on rust-sasl v0.1.22.
+# Todo: Upstream changes and get rid of patch
+sasl2-sys = { git = "https://github.com/restatedev/rust-sasl", rev = "d3e87c54e87327ddbd226881d7546ab7696bf683" }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+panic = "unwind"
+
+[profile.release-debug]
+inherits = "release"
+debug = true
+
+# Iteration profile for perf experiments: same opt-level as release, but trades
+# ThinLTO and single-codegen-unit (which dominate link time) for faster rebuilds.
+# Use `release-debug` for final measurements.
+[profile.release-lite]
+inherits = "release"
+lto = "off"
+codegen-units = 256
+split-debuginfo = "unpacked"
+debug = true
+
+[profile.dev]
+panic = "unwind"
+split-debuginfo = "unpacked"
+
+[profile.release-lite.package."*"]
+debug = "line-tables-only"
+
+# Reduce debug info for third-party dependencies to speed up linking.
+# Keeps full debuginfo for workspace crates (useful for debugging our code)
+# while only emitting line tables for deps (sufficient for backtraces/flamegraphs).
+[profile.dev.package."*"]
+debug = "line-tables-only"
+
+[profile.release.package.service-protocol-wireshark-dissector]
+opt-level = "z" # Optimize for size.
+strip = true    # Automatically strip symbols from the binary.
+
+[profile.bench]
+# Should be enabled for benchmarking runs; increases binary size
+debug = true
+
+[profile.dev.package.tikv-jemalloc-sys]
+opt-level = 2
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+
+[workspace.lints.rust]
+# Temporarily allow unused assignments until https://github.com/rust-lang/rust/issues/147648 has been fixed.
+# The problem is that error fields used by thiserror::error attribute generate false positives for unused_assignments.
+unused_assignments = "allow"
+
+[workspace.lints.clippy]
+or_fun_call = "deny"
+redundant_test_prefix = "deny"
+clear_with_drain = "deny"
+collection_is_never_read = "deny"
+naive_bytecount = "deny"
+stable_sort_primitive = "deny"
+large_stack_frames = "deny"
+large_types_passed_by_value = "deny"
+redundant_clone = "deny"
+assigning_clones = "deny"
+large_futures = "warn"
+mutex_atomic = "deny"
+to_string_in_format_args = "deny"

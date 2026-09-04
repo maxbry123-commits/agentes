@@ -1,0 +1,95 @@
+﻿// Copyright (c) .NET Foundation. All rights reserved.
+// Licensed under the MIT License. See LICENSE in the project root for license information.
+
+using System.Text;
+using Microsoft.Azure.WebJobs.Extensions.DurableTask.Options;
+
+namespace Microsoft.Azure.WebJobs.Extensions.DurableTask
+{
+    /// <summary>
+    /// Configuration of the trace options
+    /// for the Durable Task Extension.
+    /// </summary>
+    public class TraceOptions
+    {
+        /// <summary>
+        /// Gets or sets a value indicating whether to trace the inputs and outputs of function calls.
+        /// </summary>
+        /// <remarks>
+        /// The default behavior when tracing function execution events is to include the number of bytes in the serialized
+        /// inputs and outputs for function calls. This provides minimal information about what the inputs and outputs look
+        /// like without bloating the logs or inadvertently exposing sensitive information to the logs. Setting
+        /// <see cref="TraceInputsAndOutputs"/> to <c>true</c> will instead cause the default function logging to log
+        /// the entire contents of function inputs and outputs.
+        /// </remarks>
+        /// <value>
+        /// <c>true</c> to trace the raw values of inputs and outputs; otherwise <c>false</c>.
+        /// </value>
+        public bool TraceInputsAndOutputs { get; set; }
+
+        /// <summary>
+        /// Gets or sets if Azure linux telemetry should include verbose logs.
+        /// </summary>
+        /// <remarks>
+        /// The default behaviour is false, which disables verbose logs. When set
+        /// to true, performance may be affected due to the amount of verbose logs.
+        /// We recommend setting this to true primarily for debugging purposes.
+        /// <value>
+        /// <c>true</c> to enable verbose telemetry; <c>false</c> otherwise.
+        /// </value>
+        /// </remarks>
+        public bool AllowVerboseLinuxTelemetry { get; set; } = false;
+
+        /// <summary>
+        /// Gets or sets if logs for replay events need to be recorded.
+        /// </summary>
+        /// <remarks>
+        /// The default value is false, which disables the logging of replay events.
+        /// </remarks>
+        /// <value>
+        /// Boolean value specifying if the replay events should be logged.
+        /// </value>
+        public bool TraceReplayEvents { get; set; }
+
+        /// <summary>
+        /// Gets or sets a flag indicating whether to enable distributed tracing.
+        /// The default value is false.
+        /// </summary>
+        public bool DistributedTracingEnabled { get; set; } = false;
+
+        /// <summary>
+        /// Gets or sets a protocol for distributed Tracing.
+        /// Possible values are "HttpCorrelationProtocol" and "W3CTraceContext".
+        /// The default value is "HttpCorrelationProtocol".
+        /// This setting is only used when <see cref="Version"/> is `DurableDistributedTracingVersion.V1`.
+        /// </summary>
+        public string DistributedTracingProtocol { get; set; } = "HttpCorrelationProtocol";
+
+        /// <summary>
+        /// Gets or sets a <see cref="Version" /> value indicating which version of distributed tracing to use.
+        /// The default value is 'DurableDistributedTracingVersion.V1'.
+        /// </summary>
+        public DurableDistributedTracingVersion Version { get; set; } = DurableDistributedTracingVersion.V1;
+
+        /// <summary>
+        /// Gets or sets a value indicating whether to include the orchestration instance ID in the
+        /// Application Insights operation name (operation_Name).
+        /// </summary>
+        /// <remarks>
+        /// When set to <c>true</c>, the orchestration instance ID will be appended to the operation name
+        /// in the format "{FunctionName} ({InstanceId})". This allows for better grouping and filtering
+        /// of failures in Application Insights by individual orchestration instance.
+        /// The default value is <c>false</c> to maintain backward compatibility.
+        /// </remarks>
+        /// <value>
+        /// <c>true</c> to include the instance ID in the operation name; <c>false</c> otherwise.
+        /// </value>
+        public bool IncludeInstanceIdInOperationName { get; set; } = false;
+
+        internal void AddToDebugString(StringBuilder builder)
+        {
+            builder.Append(nameof(this.TraceReplayEvents)).Append(": ").Append(this.TraceReplayEvents).Append(", ");
+            builder.Append(nameof(this.TraceInputsAndOutputs)).Append(": ").Append(this.TraceInputsAndOutputs);
+        }
+    }
+}

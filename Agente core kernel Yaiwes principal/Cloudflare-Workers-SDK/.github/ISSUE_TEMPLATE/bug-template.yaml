@@ -1,0 +1,35 @@
+name: "\U0001F41B Bug Report"
+description: Report an issue or possible bug
+type: Bug
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for taking the time to file a bug report! Please fill out this form as completely as possible.
+  - type: textarea
+    attributes:
+      label: What versions & operating system are you using?
+      description: "Make sure you've checked that you meet our system requirements as listed here: https://developers.cloudflare.com/workers/wrangler/install-and-update/. Please provide the output of running `npx envinfo --system --npmPackages '{wrangler,create-cloudflare,miniflare,@cloudflare/*}' --binaries`"
+      placeholder: e.g. Wrangler v4.6, Node v20, Windows 11 etc...
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: Please provide a link to a minimal reproduction
+      placeholder: https://github.com/foobar-user/minimal-repro
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Describe the Bug
+      description: Please describe the bug in as much detail as possible, including steps to reproduce, the behaviour you're seeing, and the behaviour you expect.
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Please provide any relevant error logs
+      description: Although not required, we often request logs to help troubleshoot the issue, so providing this up-front streamlines the process towards resolution. Please be careful to hide any sensitive information.
+    validations:
+      required: false

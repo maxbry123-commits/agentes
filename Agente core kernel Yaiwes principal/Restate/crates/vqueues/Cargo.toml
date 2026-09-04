@@ -1,0 +1,69 @@
+[package]
+name = "restate-vqueues"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[features]
+default = []
+test-util = []
+
+[dependencies]
+restate-workspace-hack = { workspace = true }
+
+restate-clock = { workspace = true }
+restate-futures-util = { workspace = true }
+restate-limiter = { workspace = true }
+restate-memory = { workspace = true }
+# Used only for migrations
+restate-partition-store = { workspace = true }
+restate-platform = { workspace = true }
+restate-rocksdb = { workspace = true }
+restate-storage-api = { workspace = true }
+restate-types = { workspace = true }
+restate-util-bytecount = { workspace = true, features = ["serde"] }
+restate-util-string = { workspace = true }
+restate-util-time = { workspace = true }
+restate-worker-api = { workspace = true }
+
+anyhow = { workspace = true }
+arrayvec = { workspace = true }
+bilrost = { workspace = true, features = ["smallvec"] }
+bytes = { workspace = true }
+derive_more = { workspace = true, features = ["debug", "is_variant"] }
+enum-map = { workspace = true }
+gardal = { workspace = true, features = ["tokio"] }
+hashbrown = { workspace = true }
+itertools = { workspace = true }
+metrics = { workspace = true }
+pin-project = { workspace = true }
+rocksdb = { workspace = true }
+sha2 = { workspace = true }
+slotmap = { workspace = true }
+smallvec = { workspace = true, features = ["const_new"] }
+tokio = { workspace = true, features = ["sync"] }
+tokio-util = { workspace = true, features = ["time"] }
+tracing = { workspace = true }
+
+[target.'cfg(not(target_os = "windows"))'.dependencies]
+sha2 = { workspace = true, features = ["asm"] }
+
+[dev-dependencies]
+restate-core = { workspace = true, features = ["test-util"] }
+restate-partition-store = { workspace = true }
+
+criterion = { workspace = true }
+pprof = { version = "0.15", features = ["criterion", "flamegraph", "frame-pointer"] }
+
+[target.'cfg(not(target_env = "msvc"))'.dev-dependencies]
+tikv-jemallocator = { workspace = true }
+
+[[bench]]
+name = "generate_vqueue_id"
+harness = false
+
+[lints]
+workspace = true

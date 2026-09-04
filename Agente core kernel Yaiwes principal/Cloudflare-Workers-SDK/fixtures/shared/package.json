@@ -1,0 +1,9 @@
+{
+	"name": "@fixture/shared",
+	"private": true,
+	"description": "Shared fixtures for testing",
+	"devDependencies": {
+		"@cloudflare/workers-utils": "workspace:*",
+		"wrangler": "workspace:*"
+	}
+}
