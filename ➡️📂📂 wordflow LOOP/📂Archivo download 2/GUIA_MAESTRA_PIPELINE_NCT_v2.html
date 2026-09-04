@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NCT — Guía Maestra: qué es el PIPELINE, contenido y diseño</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,800&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+  :root{
+    --fondo:#2B2926; --texto:#E4DFD3; --texto-tenue:#A39C8C;
+    --capsula:#17150F; --capsula-header:#0E0D09;
+    --azul:#5B9BD5; --rojo:#E0554F; --verde:#6FBF73;
+  }
+  *{box-sizing:border-box; margin:0}
+  body{background:var(--fondo); color:var(--texto);
+    font:16px/1.65 'IBM Plex Mono', ui-monospace, monospace;
+    padding:20px 16px; max-width:840px; margin:0 auto}
+  h1{font-family:'Fraunces',Georgia,serif; font-weight:800;
+    font-size:clamp(22px,4.5vw,32px); margin-bottom:6px}
+  h2{font-family:'Fraunces',Georgia,serif; font-weight:800;
+    font-size:19px; margin:30px 0 12px}
+  h2 .n{color:var(--azul)}
+  h3{font-size:14.5px; color:var(--azul); margin:16px 0 8px;
+    text-transform:uppercase; letter-spacing:.5px}
+  .meta{color:var(--texto-tenue); font-size:12.5px; margin-bottom:18px}
+  hr{border:0; border-top:1px solid #4A473F; margin:24px 0}
+  p{margin:8px 0}
+  code{background:var(--capsula); color:var(--verde); padding:1px 6px;
+    border-radius:4px; font-size:14px}
+  ul,ol{margin:8px 0 8px 20px}
+  li{margin-bottom:5px}
+
+  .json-header{background:var(--capsula-header); border:1px solid #3D3833;
+    border-radius:10px; padding:16px; margin:16px 0; overflow-x:auto}
+  .json-header pre{font-size:12px; color:#8FD3A0; white-space:pre}
+
+  .capsula{background:var(--capsula); border-radius:10px; margin:14px 0;
+    overflow:hidden}
+  .capsula-header{background:var(--capsula-header); padding:7px 14px;
+    font-size:12px; color:var(--texto-tenue)}
+  .capsula pre{padding:14px; font-size:13.5px; color:var(--texto);
+    white-space:pre-wrap; line-height:1.7; overflow-x:auto}
+
+  .paleta{display:flex; gap:10px; flex-wrap:wrap; margin:14px 0}
+  .swatch{width:100px}
+  .swatch .caja{height:56px; border-radius:8px; border:1px solid #4A473F}
+  .swatch .etiqueta{font-size:11px; color:var(--texto-tenue); margin-top:5px}
+  .swatch .hex{font-size:11px; color:var(--texto)}
+
+  .ejemplo-fase{border:1px dashed var(--azul); border-radius:10px;
+    padding:14px; margin:14px 0}
+  .fase-titulo{font-family:'Fraunces',Georgia,serif; font-weight:800;
+    font-size:17px}
+  .fase-titulo .v{color:var(--verde)}
+  .campo{margin:8px 0; font-size:14px}
+  .campo b{color:var(--azul)}
+
+  .par{display:grid; gap:10px; margin:12px 0}
+  @media(min-width:680px){.par{grid-template-columns:1fr 1fr}}
+  .bloque{background:var(--capsula); border-radius:8px; padding:12px 14px;
+    font-size:13.5px}
+  .bloque.tecnica{border-left:3px solid var(--azul)}
+  .bloque.simple{border-left:3px solid var(--verde)}
+  .bloque.fuente{border-left:3px solid var(--texto-tenue)}
+  .etq{font-size:11px; text-transform:uppercase; letter-spacing:1px;
+    font-weight:700; margin-bottom:6px}
+  .tecnica .etq{color:var(--azul)} .simple .etq{color:var(--verde)}
+  .fuente .etq{color:var(--texto-tenue)}
+
+  table{width:100%; border-collapse:collapse; font-size:13px; margin:12px 0}
+  th,td{border:1px solid #4A473F; padding:7px 9px; text-align:left}
+  th{color:var(--azul); font-size:11px; text-transform:uppercase}
+
+  .checklist{list-style:none; margin:10px 0}
+  .checklist li{margin-bottom:7px}
+  .checklist li::before{content:"☐ "; color:var(--azul)}
+
+  .aviso{border-left:3px solid var(--rojo); background:var(--capsula);
+    border-radius:8px; padding:12px 14px; margin:14px 0; font-size:14px}
+  .aviso b{color:var(--rojo)}
+
+  .destacado{border-left:3px solid var(--verde); background:var(--capsula);
+    border-radius:8px; padding:14px 16px; margin:16px 0; font-size:15px}
+</style>
+</head>
+<body>
+
+<h1>Guía maestra del PIPELINE de NCT</h1>
+<div class="meta">
+  Qué es, qué contenido lleva, cómo se construye, cómo se ve, y cómo
+  termina siendo UOOS Parte 1/2 + despliegue determinista
+</div>
+
+<div class="json-header">
+<pre>{
+  "documento": "GUIA_MAESTRA_PIPELINE_NCT",
+  "version": "2.0",
+  "corrige_v1": "la version anterior solo explicaba estetica/formato, no el contenido ni el proposito real — esta version incluye ambos",
+  "audiencia": "cualquier instancia de Claude que continue este proyecto"
+}</pre>
+</div>
+
+<hr>
+
+<h2><span class="n">1.</span> QUÉ ES EL PIPELINE (definición real, no estética)</h2>
+<div class="destacado">
+El PIPELINE es el <b>mapa completo y verificable de todo el sistema
+NCT</b>: recorre cada una de las 21 fases reales del proyecto (el
+roadmap oficial, no una lista inventada), y por cada una documenta qué
+existe de verdad — qué archivo la construye, si funciona, si está
+probada, o si todavía no existe nada. No es una explicación bonita: es
+una auditoría permanente convertida en documento de lectura.
+</div>
+
+<h3>Qué representa dentro del sistema completo</h3>
+<p>El PIPELINE cumple 3 funciones a la vez:</p>
+<ol>
+  <li><b>Auditoría viva</b> — muestra, fase por fase, qué está
+  construido y qué falta (el estado real, no el planeado).</li>
+  <li><b>Documento de traspaso</b> — permite que cualquier persona o
+  cualquier IA nueva entienda el sistema completo sin tener que leer
+  los ~135 archivos sueltos uno por uno.</li>
+  <li><b>Materia prima de UOOS</b> — su contenido, una vez cerrado, se
+  reorganiza directamente en los documentos UOOS Parte 1 (diseño) y
+  Parte 2 (ejecución/despliegue) — ver secciones 6 y 7.</li>
+</ol>
+
+<h3>Qué NO es</h3>
+<ul>
+  <li>No es un documento de diseño especulativo — solo entra lo real.</li>
+  <li>No es una lista de 21 motores separados — las 21 fases comparten
+  UN solo motor de ejecución (el pipeline técnico F-1→F5 ya construido);
+  el PIPELINE documenta esa relación, no la inventa distinta.</li>
+  <li>No es narrativa temática — es documentación técnica de software.</li>
+</ul>
+
+<hr>
+
+<h2><span class="n">2.</span> EL CONTENIDO REAL QUE DEBE LLEVAR (la información, no la forma)</h2>
+<p>Antes de maquetar nada, cada fase del PIPELINE necesita esta
+información real, sacada de las fuentes verdaderas del proyecto:</p>
+
+<h3>2.1 La arquitectura de 6 capas (contexto que todas las fases comparten)</h3>
+<table>
+  <tr><th>Capa</th><th>Quién/qué es</th></tr>
+  <tr><td>0</td><td>Director — aprueba cada fase, firma decisiones</td></tr>
+  <tr><td>1</td><td>Diseño (Fable) — emite especificaciones y órdenes</td></tr>
+  <tr><td>2</td><td>Ejecución (Claude Code) — único que corre comandos reales</td></tr>
+  <tr><td>3</td><td>Router — única puerta de entrada/salida del sistema</td></tr>
+  <tr><td>4</td><td>Staff de agentes — solo conocen al Router, nunca a los proveedores</td></tr>
+  <tr><td>5</td><td>Infraestructura — VPS, GitHub, servicios externos</td></tr>
+</table>
+
+<h3>2.2 Las 21 fases reales (el índice que ordena todo el PIPELINE)</h3>
+<div class="capsula">
+  <div class="capsula-header"><span>Código</span></div>
+  <pre>00 Núcleo del proyecto / gobernanza global
+01 Descubrimiento de la idea
+02 Requisitos
+03 Arquitectura del sistema
+04 Diseño UX/UI
+05 Desarrollo e implementación
+06 Testing y validación
+07 Seguridad
+08 DevOps
+09 Operación, monitoreo y observabilidad
+10 Mantenimiento y ciclo de vida
+11 IA, agentes y orquestación cognitiva
+12 Biblioteca de conocimiento y activos reutilizables
+13 Gobernanza y administración del ecosistema
+14 Autoevaluación y mejora continua
+15 Gestión de producto, estrategia y roadmap
+16 Ingeniería de datos y persistencia
+17 UX research
+18 Documentación técnica y gestión del conocimiento
+19 Automatización avanzada y DevSecOps
+20 Analítica, telemetría e inteligencia del negocio</pre>
+</div>
+<p>Esta lista sale del archivo fuente real del proyecto (251
+checkpoints verificados) — nunca se inventa una lista distinta ni se
+confunde con los pasos internos de una sola ejecución del sistema.</p>
+
+<h3>2.3 Por cada fase, la información mínima que hay que reunir ANTES de escribir</h3>
+<ul>
+  <li>Qué archivos reales existen para esa fase (ruta exacta)</li>
+  <li>Si tienen código funcional o solo diseño en un documento</li>
+  <li>Qué prueba real se le hizo (o si nunca se probó)</li>
+  <li>Qué falta exactamente — no en general, sino la función precisa
+  que no existe todavía</li>
+</ul>
+<div class="aviso">
+  Esta información se obtiene por <b>auditoría directa</b> (leer los
+  archivos, no asumir por el nombre) — nunca se rellena "a ojo".
+</div>
+
+<hr>
+
+<h2><span class="n">3.</span> CÓMO SE CONSTRUYE — el proceso paso a paso</h2>
+<ol>
+  <li><b>3 pasadas de análisis</b> sobre las fuentes de esa fase
+  (documentos de diseño + código ya construido).</li>
+  <li><b>3 revisiones internas</b> del borrador — comparando que cada
+  frase tenga un archivo real detrás.</li>
+  <li><b>Verificación cruzada</b> contra el PIPELINE original de
+  Fable — el resultado mejora ese documento, nunca lo reemplaza por
+  algo inventado distinto.</li>
+  <li>Recién ahí se escribe la fase con el formato fijo (sección 5).</li>
+</ol>
+<div class="aviso">
+  <b>Prohibido:</b> lenguaje de metáfora navideña o similar como
+  explicación. Se nombra cada pieza como la nombraría la documentación
+  real de Cursor, Copilot, Replit o Antigravity — herramientas de
+  software reales, no historias.
+</div>
+
+<hr>
+
+<h2><span class="n">4.</span> SISTEMA VISUAL — la estética exacta</h2>
+<div class="paleta">
+  <div class="swatch"><div class="caja" style="background:#2B2926"></div>
+    <div class="etiqueta">Fondo</div><div class="hex">#2B2926</div></div>
+  <div class="swatch"><div class="caja" style="background:#E4DFD3"></div>
+    <div class="etiqueta">Texto</div><div class="hex">#E4DFD3</div></div>
+  <div class="swatch"><div class="caja" style="background:#17150F"></div>
+    <div class="etiqueta">Cápsula</div><div class="hex">#17150F</div></div>
+  <div class="swatch"><div class="caja" style="background:#5B9BD5"></div>
+    <div class="etiqueta">Azul·técnica</div><div class="hex">#5B9BD5</div></div>
+  <div class="swatch"><div class="caja" style="background:#6FBF73"></div>
+    <div class="etiqueta">Verde·simple</div><div class="hex">#6FBF73</div></div>
+  <div class="swatch"><div class="caja" style="background:#E0554F"></div>
+    <div class="etiqueta">Rojo·crítico</div><div class="hex">#E0554F</div></div>
+</div>
+<p><b>Tipografía:</b> títulos <code>Fraunces</code>/Georgia serif 700-800.
+Cuerpo y código <code>IBM Plex Mono</code>. El color es SOLO acento
+puntual, nunca repinta el fondo general.</p>
+
+<hr>
+
+<h2><span class="n">5.</span> FORMATO DE CADA FASE (la Rosetta)</h2>
+<div class="ejemplo-fase">
+  <div class="fase-titulo">FASE N · NOMBRE REAL · estado: <span class="v">✅</span></div>
+  <div class="campo"><b>Archivo raíz:</b> ruta/al/archivo.py</div>
+  <div class="campo"><b>Proceso:</b> qué hace, en una frase técnica</div>
+  <div class="campo"><b>Diagrama:</b> entrada → paso → paso → salida</div>
+</div>
+<div class="par">
+  <div class="bloque tecnica"><div class="etq">Explicación técnica</div>
+    Para ingeniero o IA: firma, algoritmo, contrato — sin resumir.</div>
+  <div class="bloque simple"><div class="etq">Explicación simple</div>
+    El MISMO comportamiento, sin jerga. Debe describir exactamente lo
+    mismo que el recuadro técnico.</div>
+</div>
+<div class="bloque fuente"><div class="etq">Fuentes de este bloque</div>
+  Archivo por archivo, sin omitir ninguno.</div>
+<p>Cada tramo grande lleva, además, <b>diagrama horizontal</b> (flujo
+en línea) Y <b>diagrama transversal</b> (tabla de sistemas que vigilan
+todas las fases a la vez) — nunca solo uno de los dos.</p>
+
+<hr>
+
+<h2><span class="n">6.</span> CÓMO SE CONVIERTE EN UOOS PARTE 1</h2>
+<div class="capsula">
+  <div class="capsula-header"><span>Mapeo PIPELINE → UOOS Parte 1</span></div>
+  <pre>B1 Manifest    ← resumen + inventario de archivos de la fase
+B2 State       ← los nodos/tareas que esa fase representa
+B3 Nodos DSL   ← cada "Diagrama" se vuelve un nodo con contrato
+                 input/output y dependencias
+B4 DAG         ← el orden entre nodos (el diagrama horizontal ya
+                 lo muestra, solo se formaliza)</pre>
+</div>
+
+<h2><span class="n">7.</span> CÓMO EL CIERRE SE CONVIERTE EN UOOS PARTE 2 + DESPLIEGUE</h2>
+<div class="aviso">
+  <b>El agente nunca decide cómo desplegar.</b> Si una tarea se
+  resuelve con reglas fijas, se le da a un script, nunca a un modelo
+  de lenguaje para que "piense" cómo hacerla.
+</div>
+<div class="capsula">
+  <div class="capsula-header"><span>Código</span></div>
+  <pre>PASO 1 organizar  → script clasifica archivos por reglas fijas
+PASO 2 desplegar  → script crea repos + commits reales, sin preguntar
+PASO 3 detectar   → script compara hash de hoy vs anterior, versiona solo
+PASO 4 subir      → un comando crea remotos y sube todo
+
+ORDEN AL AGENTE (siempre así de corta):
+"Ejecuta estos 2 comandos exactos y reporta la salida.
+ No analices, no propongas cambios, no decidas nada."</pre>
+</div>
+<p>Patrón ya construido y probado (<code>despliegue/organizador.py</code>,
+<code>desplegador.py</code>, <code>detector_version.py</code>,
+<code>subir_a_github.sh</code>) — se reusa, no se inventa de nuevo.</p>
+
+<hr>
+
+<h2><span class="n">8.</span> CHECKLIST FINAL</h2>
+<ul class="checklist">
+  <li>Información real reunida por auditoría directa (sección 2)</li>
+  <li>21 fases reales usadas, no una lista inventada</li>
+  <li>3 pasadas + 3 revisiones + verificación cruzada hechas</li>
+  <li>Formato de fase completo (4 campos + estado)</li>
+  <li>Diagrama horizontal Y transversal presentes</li>
+  <li>Explicación técnica + simple, mismo contenido</li>
+  <li>Fuentes citadas archivo por archivo</li>
+  <li>Cero lenguaje de metáfora narrativa</li>
+  <li>Paleta y tipografía exactas de la sección 4</li>
+  <li>Contenido mapeable directo a UOOS Parte 1 y 2</li>
+</ul>
+
+</body>
+</html>

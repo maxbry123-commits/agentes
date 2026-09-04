@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UOOS — Cómo funciona</title>
+<style>
+  :root{
+    --bg:#0a0a0a;
+    --panel:#111318;
+    --white:#f2f2f2;
+    --blue:#3b82f6;
+    --blue-dim:#1e3a6d;
+    --red:#e11d2e;
+    --red-dim:#5c1017;
+    --line:#232323;
+    --mono: "SF Mono", "JetBrains Mono", ui-monospace, Menlo, monospace;
+    --sans: -apple-system, "Inter", "Segoe UI", sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--white);
+    font-family:var(--sans); -webkit-font-smoothing:antialiased;}
+  body{line-height:1.55; padding:0 0 80px;}
+
+  .topbar{
+    position:sticky; top:0; z-index:10;
+    background:rgba(10,10,10,.92); backdrop-filter:blur(6px);
+    border-bottom:1px solid var(--line);
+    padding:14px 20px; display:flex; align-items:center; gap:10px;
+  }
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--red);
+    box-shadow:0 0 8px var(--red);}
+  .topbar span{font-family:var(--mono); font-size:12px; letter-spacing:.14em;
+    color:var(--blue); text-transform:uppercase;}
+
+  header.hero{padding:56px 20px 30px; max-width:760px; margin:0 auto;}
+  .eyebrow{font-family:var(--mono); font-size:11px; color:var(--red);
+    letter-spacing:.18em; text-transform:uppercase; margin-bottom:14px;}
+  h1{font-size:clamp(28px,6vw,42px); margin:0 0 12px; font-weight:800;
+    letter-spacing:-.01em; line-height:1.08;}
+  h1 .accent{color:var(--blue);}
+  .lede{color:#b7b7b7; font-size:15.5px; max-width:56ch;}
+
+  main{max-width:760px; margin:0 auto; padding:0 20px;}
+
+  .flow{
+    display:flex; flex-direction:column; gap:0;
+    margin:34px 0 42px; border:1px solid var(--line); border-radius:14px;
+    overflow:hidden;
+  }
+  .flow-step{
+    display:grid; grid-template-columns:64px 1fr; gap:16px;
+    padding:20px 18px; border-bottom:1px solid var(--line);
+    background:var(--panel);
+  }
+  .flow-step:last-child{border-bottom:none;}
+  .flow-step .num{
+    font-family:var(--mono); font-size:22px; font-weight:700;
+    color:var(--red); line-height:1;
+  }
+  .flow-step h3{margin:0 0 6px; font-size:15px; color:var(--blue);}
+  .flow-step p{margin:0; font-size:13.5px; color:#c9c9c9;}
+  .flow-step code{
+    background:#000; border:1px solid var(--line); color:var(--white);
+    padding:1px 6px; border-radius:5px; font-family:var(--mono); font-size:12.5px;
+  }
+
+  .arrow{
+    display:flex; justify-content:center; align-items:center;
+    color:var(--blue); font-family:var(--mono); font-size:13px;
+    padding:2px 0; opacity:.7;
+  }
+
+  h2{
+    font-size:13px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--red); border-top:1px solid var(--line);
+    padding-top:34px; margin:44px 0 16px;
+  }
+
+  .parts{display:grid; gap:14px; grid-template-columns:1fr; margin-bottom:6px;}
+  @media(min-width:620px){.parts{grid-template-columns:1fr 1fr;}}
+  .part{
+    border:1px solid var(--line); border-radius:12px; padding:18px 18px 20px;
+    background:var(--panel); position:relative;
+  }
+  .part .tag{
+    display:inline-block; font-family:var(--mono); font-size:10.5px;
+    letter-spacing:.1em; padding:3px 8px; border-radius:5px; margin-bottom:10px;
+  }
+  .part.p1 .tag{background:var(--blue-dim); color:#9cc0ff;}
+  .part.p2 .tag{background:var(--red-dim); color:#ff9ba3;}
+  .part h3{margin:0 0 8px; font-size:16px;}
+  .part p{margin:0 0 10px; font-size:13.5px; color:#c2c2c2;}
+  .part ul{margin:0; padding-left:18px; font-size:13px; color:#b0b0b0;}
+  .part li{margin-bottom:4px;}
+  .part .who{
+    margin-top:12px; font-family:var(--mono); font-size:11.5px;
+    color:var(--white); border-top:1px dashed var(--line); padding-top:10px;
+  }
+  .part .who b{color:var(--blue);}
+  .part.p2 .who b{color:var(--red);}
+
+  .docs{
+    display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin:18px 0 8px;
+  }
+  @media(max-width:560px){.docs{grid-template-columns:repeat(2,1fr);}}
+  .docs div{
+    border:1px solid var(--line); border-radius:8px; padding:9px 6px;
+    text-align:center; font-family:var(--mono); font-size:11px; color:#9c9c9c;
+    background:#0d0d0d;
+  }
+  .docs div b{display:block; color:var(--blue); font-size:12px; margin-bottom:2px;}
+
+  .cmds{
+    display:flex; flex-wrap:wrap; gap:8px; margin:16px 0 6px;
+  }
+  .cmds code{
+    font-family:var(--mono); font-size:12px; background:#000;
+    border:1px solid var(--blue-dim); color:var(--blue);
+    padding:6px 10px; border-radius:7px;
+  }
+  .cmds code.warn{border-color:var(--red-dim); color:var(--red);}
+
+  .steps-usage{counter-reset:step; margin-top:8px;}
+  .step-item{
+    display:grid; grid-template-columns:26px 1fr; gap:12px;
+    margin-bottom:16px; align-items:start;
+  }
+  .step-item .bullet{
+    counter-increment:step; width:26px; height:26px; border-radius:50%;
+    border:1px solid var(--blue); color:var(--blue);
+    display:flex; align-items:center; justify-content:center;
+    font-family:var(--mono); font-size:12px; flex-shrink:0;
+  }
+  .step-item .bullet::before{content:counter(step);}
+  .step-item p{margin:2px 0 0; font-size:13.5px; color:#c9c9c9;}
+  .step-item strong{color:var(--white);}
+
+  .rule-box{
+    border-left:3px solid var(--red); background:#160b0c;
+    padding:14px 16px; border-radius:0 10px 10px 0; margin:22px 0;
+    font-size:13px; color:#e8c6c8;
+  }
+  .rule-box b{color:var(--red);}
+
+  footer{
+    max-width:760px; margin:50px auto 0; padding:20px 20px 0;
+    border-top:1px solid var(--line); font-family:var(--mono);
+    font-size:11px; color:#6b6b6b; display:flex; justify-content:space-between;
+    flex-wrap:wrap; gap:8px;
+  }
+  footer .v{color:var(--blue);}
+</style>
+</head>
+<body>
+
+<div class="topbar"><span class="dot"></span><span>UOOS · Sistema Operativo Documental</span></div>
+
+<header class="hero">
+  <div class="eyebrow">Readme — resumen de uso</div>
+  <h1>Dos documentos.<br>Un sistema que <span class="accent">se ejecuta solo</span>.</h1>
+  <p class="lede">UOOS es un par de especificaciones que convierten cualquier código o
+  instrucción ya generada en un sistema orquestado, auto-ejecutable y determinista —
+  sin que tengas que volver a explicar nada.</p>
+</header>
+
+<main>
+
+  <div class="flow">
+    <div class="flow-step">
+      <div class="num">01</div>
+      <div><h3>Claude te genera trabajo</h3>
+      <p>Código o instrucciones, en el chat de siempre.</p></div>
+    </div>
+    <div class="flow-step">
+      <div class="num">02</div>
+      <div><h3>Pegas <code>UOOS Parte 1 (AUTO-RUN)</code></h3>
+      <p>Detecta el modo, descompone el trabajo en nodos, y entrega 8 documentos
+      <code>B1–B8</code> bloque por bloque. Tú apruebas con <code>OK</code>.</p></div>
+    </div>
+    <div class="flow-step">
+      <div class="num">03</div>
+      <div><h3>Guardas B1–B8 en <code>/UOOS/</code></h3>
+      <p>En el repo del proyecto, o los subes directo al agente ejecutor.</p></div>
+    </div>
+    <div class="flow-step">
+      <div class="num">04</div>
+      <div><h3>Pegas <code>UOOS Parte 2 (RUNTIME)</code> en Claude Code / OpenClaw</h3>
+      <p>El agente hace boot, verifica integridad, y ejecuta el DAG nodo por nodo.
+      Tú solo dices <code>GO</code>.</p></div>
+    </div>
+  </div>
+
+  <h2>Las dos piezas</h2>
+  <div class="parts">
+    <div class="part p1">
+      <span class="tag">PARTE 1 · AUTO-RUN</span>
+      <h3>El Arquitecto</h3>
+      <p>Escanea el trabajo previo y lo convierte en especificación completa,
+      lista para cualquier ejecutor.</p>
+      <ul>
+        <li>Detecta MODO A (código) o MODO B (instrucciones)</li>
+        <li>Genera 8 bloques: Manifest, state, DSL, DAG, Loops, Tribunal, Plan, Recovery</li>
+        <li>Entrega uno por uno, con gate de aprobación</li>
+      </ul>
+      <div class="who">Se lo das a: <b>Claude / Opus (Arquitecto)</b></div>
+    </div>
+    <div class="part p2">
+      <span class="tag">PARTE 2 · RUNTIME</span>
+      <h3>El Ejecutor</h3>
+      <p>Lee B1–B8 como única fuente de verdad y ejecuta sin criterio propio,
+      sin preguntar de más, sin desviarse.</p>
+      <ul>
+        <li>Boot en 5 pasos: versión, integridad, preflight, skills, reanudación</li>
+        <li>Ciclo por nodo con Tribunal + verificación real del objetivo</li>
+        <li>12 reglas estrictas que prohíben iniciativa y replanificación</li>
+      </ul>
+      <div class="who">Se lo das a: <b>Claude Code / OpenClaw / agente</b></div>
+    </div>
+  </div>
+
+  <h2>Los 8 documentos que produce la Parte 1</h2>
+  <div class="docs">
+    <div><b>B1</b>Manifest</div>
+    <div><b>B2</b>state.json</div>
+    <div><b>B3</b>Nodos DSL</div>
+    <div><b>B4</b>DAG</div>
+    <div><b>B5</b>11 Loops</div>
+    <div><b>B6</b>Tribunal</div>
+    <div><b>B7</b>Plan</div>
+    <div><b>B8</b>Recovery</div>
+  </div>
+
+  <h2>Cómo lo usas, paso a paso</h2>
+  <div class="steps-usage">
+    <div class="step-item"><div class="bullet"></div>
+      <p><strong>Genera o ten listo el trabajo</strong> en un chat con Claude
+      (código o instrucciones, no importa cuál).</p></div>
+    <div class="step-item"><div class="bullet"></div>
+      <p><strong>Pega UOOS Parte 1</strong> en ese mismo chat. No expliques nada más:
+      el documento ya sabe qué hacer.</p></div>
+    <div class="step-item"><div class="bullet"></div>
+      <p><strong>Aprueba bloque por bloque</strong> con <code>OK</code>, o pide un
+      ajuste con <code>FIX &lt;detalle&gt;</code>.</p></div>
+    <div class="step-item"><div class="bullet"></div>
+      <p><strong>Guarda los 8 documentos</strong> en <code>/UOOS/</code> dentro del
+      repo, o súbelos como archivos al agente ejecutor.</p></div>
+    <div class="step-item"><div class="bullet"></div>
+      <p><strong>Pega UOOS Parte 2</strong> como primer mensaje al agente ejecutor
+      (Claude Code, OpenClaw, etc).</p></div>
+    <div class="step-item"><div class="bullet"></div>
+      <p><strong>Espera el boot</strong> — el agente confirma <code>8/8 OK</code> y
+      te muestra el orden de ejecución.</p></div>
+    <div class="step-item"><div class="bullet"></div>
+      <p><strong>Escribe <code>GO</code></strong> y el agente ejecuta el DAG completo,
+      nodo por nodo, sin pedirte nada que ya esté escrito en los documentos.</p></div>
+  </div>
+
+  <h2>Comandos que necesitas saber</h2>
+  <div class="cmds">
+    <code>GO</code><code>OK</code><code class="warn">FIX &lt;detalle&gt;</code>
+    <code>PAUSA</code><code>ESTADO</code><code class="warn">SALTAR T-X</code>
+    <code class="warn">UNLOCK &lt;doc&gt;</code><code class="warn">ABORT</code>
+  </div>
+
+  <div class="rule-box">
+    <b>Regla de oro del sistema:</b> si algo no está escrito en B1–B8, el agente
+    debe preguntar — nunca inventar. Y si el Tribunal aprueba pero el objetivo del
+    nodo no se cumple del todo, el nodo <b>no</b> se marca como terminado.
+  </div>
+
+</main>
+
+<footer>
+  <span>UOOS — Universal Orchestrator Operating Specification</span>
+  <span class="v">Parte 1 v2.0 · Parte 2 v3.0</span>
+</footer>
+
+</body>
+</html>
