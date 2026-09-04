@@ -1,0 +1,129 @@
+{
+  "schema": "yaiwes.extraction.canonical-retry.v2",
+  "run_id": "33843593619",
+  "shard_index": 2,
+  "shard_count": 4,
+  "selected": [
+    {
+      "slug": "LangGraph",
+      "target": "Agente core kernel Yaiwes principal/LangGraph"
+    },
+    {
+      "slug": "NeMo-Guardrails",
+      "target": "Agente core kernel Yaiwes principal/NeMo-Guardrails"
+    },
+    {
+      "slug": "OpenHands",
+      "target": "Agente core kernel Yaiwes principal/OpenHands"
+    },
+    {
+      "slug": "Phoenix",
+      "target": "Agente core kernel Yaiwes principal/Phoenix"
+    },
+    {
+      "slug": "Semantic-Router",
+      "target": "Agente core kernel Yaiwes principal/Semantic-Router"
+    },
+    {
+      "slug": "Zod",
+      "target": "Agente core kernel Yaiwes principal/Zod"
+    }
+  ],
+  "processed": [
+    {
+      "slug": "LangGraph",
+      "target": "Agente core kernel Yaiwes principal/LangGraph",
+      "status": "EXTRACTED_VERIFIED",
+      "parts": 1,
+      "part_sha256": {
+        "Agente core kernel Yaiwes principal/LangGraph_0001.zip": "01f82f01b28291b096d4789053c8407bbb37c21bd0b4c396db25e0f7272fb881"
+      },
+      "copied": 673,
+      "mirrors": [],
+      "files": 673,
+      "bytes": 13727424,
+      "tree_sha256": "c60d0375cb27ecbc99465a1d06e75dc0a0dc536b267ea05225d11bbb03d4e0cd",
+      "excluded_lfs_source_members": []
+    },
+    {
+      "slug": "NeMo-Guardrails",
+      "target": "Agente core kernel Yaiwes principal/NeMo-Guardrails",
+      "status": "EXTRACTED_VERIFIED",
+      "parts": 1,
+      "part_sha256": {
+        "Agente core kernel Yaiwes principal/NeMo-Guardrails_0001.zip": "d1b5ec6ba2c770c8bfe4a04725936be7dca9b77baaabd0fda6cbd8e609701031"
+      },
+      "copied": 4,
+      "mirrors": [],
+      "files": 2069,
+      "bytes": 19759082,
+      "tree_sha256": "638b609959d33a476dd83ec03f7706565914adf8b4350718a8dcbd168afe7d29",
+      "excluded_lfs_source_members": []
+    },
+    {
+      "slug": "OpenHands",
+      "target": "Agente core kernel Yaiwes principal/OpenHands",
+      "status": "EXTRACTED_VERIFIED",
+      "parts": 1,
+      "part_sha256": {
+        "Agente core kernel Yaiwes principal/OpenHands_0001.zip": "a8a40a5e391fdeb4e0844050da4ff3ed0603c61518ba03a06fb4b02024750d29"
+      },
+      "copied": 2186,
+      "mirrors": [],
+      "files": 2186,
+      "bytes": 14472834,
+      "tree_sha256": "f46204bc7dcede51e0c2c9e69222edf608df5db41ea684733c0a4d0f94fc5c49",
+      "excluded_lfs_source_members": []
+    },
+    {
+      "slug": "Phoenix",
+      "target": "Agente core kernel Yaiwes principal/Phoenix",
+      "status": "EXTRACTED_VERIFIED",
+      "parts": 2,
+      "part_sha256": {
+        "Agente core kernel Yaiwes principal/Phoenix_0001.zip": "504193cafe9bfddfa05eefec25bcf79cd5ff40fe87c0aaf3a3bf49cd5f45a6db",
+        "Agente core kernel Yaiwes principal/Phoenix_0002.zip": "daa5a7cb42130a90f6c957f07b1f8e879f3ea14a88af08c165e0755b68619678"
+      },
+      "copied": 2,
+      "mirrors": [],
+      "files": 7251,
+      "bytes": 60771590,
+      "tree_sha256": "0665c5dad401021879a9d2d0d0325c73452d17168930434690d7b773d2fa91ea",
+      "excluded_lfs_source_members": []
+    },
+    {
+      "slug": "Semantic-Router",
+      "target": "Agente core kernel Yaiwes principal/Semantic-Router",
+      "status": "EXTRACTED_VERIFIED",
+      "parts": 3,
+      "part_sha256": {
+        "Agente core kernel Yaiwes principal/Semantic-Router_0001.zip": "84ed884eded2d80e6ad5bb07f569513b70f4778fb250bededbbb2980cde9e6b7",
+        "Agente core kernel Yaiwes principal/Semantic-Router_0002.zip": "c3886989acc5c1d3d6943762caccda16b54508efba1a6ffc221b18b2ef99f94c",
+        "Agente core kernel Yaiwes principal/Semantic-Router_0003.zip": "1912dbcfb98cf6f4324347f191b81acd664ea87ec62ef980341983d5104067d0"
+      },
+      "copied": 1,
+      "mirrors": [],
+      "files": 216,
+      "bytes": 33588132,
+      "tree_sha256": "5b58758b51b89e2d3211a2fc92902d3adba8381066a8f53e7392aab1f310bb42",
+      "excluded_lfs_source_members": []
+    },
+    {
+      "slug": "Zod",
+      "target": "Agente core kernel Yaiwes principal/Zod",
+      "status": "EXTRACTED_VERIFIED",
+      "parts": 1,
+      "part_sha256": {
+        "Agente core kernel Yaiwes principal/Zod_0001.zip": "0cb967abb6a85123883fd6a7a55dc2c38d90df88ee3a0266b2bb9490abb59831"
+      },
+      "copied": 1,
+      "mirrors": [],
+      "files": 720,
+      "bytes": 15319370,
+      "tree_sha256": "376e4caf3267204d2664dcf9f9f00e2a72a393333ccba08ae575100f576e9897",
+      "excluded_lfs_source_members": []
+    }
+  ],
+  "failures": [],
+  "verdict": "SHARD_PASS"
+}
