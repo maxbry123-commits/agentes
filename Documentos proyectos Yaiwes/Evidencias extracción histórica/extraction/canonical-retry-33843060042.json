@@ -1,0 +1,172 @@
+{
+  "schema": "yaiwes.extraction.canonical-retry.v2",
+  "run_id": "33843060042",
+  "shard_index": 3,
+  "shard_count": 4,
+  "selected": [
+    {
+      "slug": "Cognee",
+      "target": "Agente core kernel Yaiwes principal/Cognee"
+    },
+    {
+      "slug": "Dagster",
+      "target": "Agente core kernel Yaiwes principal/Dagster"
+    },
+    {
+      "slug": "Flagsmith",
+      "target": "Agente core kernel Yaiwes principal/Flagsmith"
+    },
+    {
+      "slug": "Graph-of-Thoughts",
+      "target": "Agente core kernel Yaiwes principal/Graph-of-Thoughts"
+    },
+    {
+      "slug": "LlamaIndex",
+      "target": "Agente core kernel Yaiwes principal/LlamaIndex"
+    },
+    {
+      "slug": "NVIDIA-Garak",
+      "target": "Agente core kernel Yaiwes principal/NVIDIA-Garak"
+    }
+  ],
+  "processed": [
+    {
+      "slug": "Cognee",
+      "target": "Agente core kernel Yaiwes principal/Cognee",
+      "status": "EXTRACTED_VERIFIED",
+      "parts": 7,
+      "part_sha256": {
+        "Agente core kernel Yaiwes principal/Cognee_0001.zip": "689efd945ca53a71532f09a0c231b1f14ff83d93666d722fef3827c24b370e19",
+        "Agente core kernel Yaiwes principal/Cognee_0002.zip": "df978ea730cb568516eb97bf7e894920e34e40d4a8d38509933d97ef1bd10483",
+        "Agente core kernel Yaiwes principal/Cognee_0003.zip": "7f81789a2264bffcd2351555fe4deeb858aa4774033313d300b254f51f468b03",
+        "Agente core kernel Yaiwes principal/Cognee_0004.zip": "0d01e0050a1c03d8b26d8215f561aef8894b21108f93f93b4540ef283fa8ada9",
+        "Agente core kernel Yaiwes principal/Cognee_0005.zip": "ade05adb8c72a89cbe350c71666e78e92454adaab8e317dc44103844281f7c43",
+        "Agente core kernel Yaiwes principal/Cognee_0006.zip": "506e59b773edf3c0c87cfaabeffc7ce25c932182db626ab73dd51954f9163f47",
+        "Agente core kernel Yaiwes principal/Cognee_0007.zip": "8c8880d7acaf48cbdfdd945223ae1299f4d9937faf137c12addc56d25d3786df"
+      },
+      "copied": 2,
+      "mirrors": [],
+      "files": 3150,
+      "bytes": 96565486,
+      "tree_sha256": "c587b97e1ac69c89f835adf35087c5805f216458d411b4212d696cc44a5013c2",
+      "excluded_lfs_source_members": []
+    },
+    {
+      "slug": "Dagster",
+      "target": "Agente core kernel Yaiwes principal/Dagster",
+      "status": "EXTRACTED_VERIFIED",
+      "parts": 14,
+      "part_sha256": {
+        "Agente core kernel Yaiwes principal/Dagster_0001.zip": "a75ee0313ef309e6dc0964158f3e96e6a8e71f5e855efd74dbfbb01435cf2a67",
+        "Agente core kernel Yaiwes principal/Dagster_0002.zip": "92c9ff90d9d39d4264d0954c866896805857de52e8903664e5329b0bfd3e0606",
+        "Agente core kernel Yaiwes principal/Dagster_0003.zip": "66e96b17dba9b67638e8a5040c147c0e630428cf44ee48e55547d64ee6e67d62",
+        "Agente core kernel Yaiwes principal/Dagster_0004.zip": "9f4d2b3c3a2679cff8c32b936f2fc64b44070517f7684152617f4bf003ef457c",
+        "Agente core kernel Yaiwes principal/Dagster_0005.zip": "0a34a202f03e1956a561529d9bc330af40734620fe9e6be9538e05590c9cbb0f",
+        "Agente core kernel Yaiwes principal/Dagster_0006.zip": "37c31fb36d451a8a785c2a4a6bef9afd32b6856844cac0ff59b96804e36acfc4",
+        "Agente core kernel Yaiwes principal/Dagster_0007.zip": "04b58dc795a4225f909f85a2245070221c946ff8e0c0b0e92baf8cf319ded2f1",
+        "Agente core kernel Yaiwes principal/Dagster_0008.zip": "497b9e49a5895e0a9b2d9df100f28accaa95001a69227480ce9c5ae2ebd64e9d",
+        "Agente core kernel Yaiwes principal/Dagster_0009.zip": "2e72f4daf57465ec9501226226c436b3705579fa339fa555f083defa15b251b9",
+        "Agente core kernel Yaiwes principal/Dagster_0010.zip": "6b2f33554b3f0edb15e520def53485f756dc2a1f86e8cecf5b279210a80d2b69",
+        "Agente core kernel Yaiwes principal/Dagster_0011.zip": "89fef745470ae24ec195493e370e06d1110e8321d989b798a9715f3d98e33b52",
+        "Agente core kernel Yaiwes principal/Dagster_0012.zip": "67cefa06152b4f147f3da5471a1e5f707cd605db95603396b2aece630931c3b3",
+        "Agente core kernel Yaiwes principal/Dagster_0013.zip": "c4af9ad7d7d3643210f0b2d09856f42302fbd64e09814c1a1e537916c42dda73",
+        "Agente core kernel Yaiwes principal/Dagster_0014.zip": "1d3d955b241961ae6e8e429e065ec6af65d0e129de0cf6762905b963f2626e82"
+      },
+      "copied": 2,
+      "mirrors": [],
+      "files": 14354,
+      "bytes": 317572929,
+      "tree_sha256": "bff3e7ee35bee896bc2e9bbf7586ae296da5ff771bd97528d0e6a48b62b57964",
+      "excluded_lfs_source_members": []
+    },
+    {
+      "slug": "Flagsmith",
+      "target": "Agente core kernel Yaiwes principal/Flagsmith",
+      "status": "EXTRACTED_VERIFIED",
+      "parts": 3,
+      "part_sha256": {
+        "Agente core kernel Yaiwes principal/Flagsmith_0001.zip": "048c8a13d943d0b4b99d9b2ae06ec3af80cb22a2995a72eb20657cb5aead76ef",
+        "Agente core kernel Yaiwes principal/Flagsmith_0002.zip": "717ebad4bc57813f8681679211c8958d8d8bbaca5d71abf889100cdf914841f0",
+        "Agente core kernel Yaiwes principal/Flagsmith_0003.zip": "7ecb4a1d8b039cd82df9266e55341aa8d1fa458bb5cca5d5f2813f1f1a8f9401"
+      },
+      "copied": 1,
+      "mirrors": [],
+      "files": 3909,
+      "bytes": 42524134,
+      "tree_sha256": "7f0df15eae96a5b343d3daab6bf0cd7717f9c454b3c6726301eb71c39e4acf50",
+      "excluded_lfs_source_members": []
+    },
+    {
+      "slug": "Graph-of-Thoughts",
+      "target": "Agente core kernel Yaiwes principal/Graph-of-Thoughts",
+      "status": "EXTRACTED_VERIFIED",
+      "parts": 1,
+      "part_sha256": {
+        "Agente core kernel Yaiwes principal/Graph-of-Thoughts_0001.zip": "d2ede2d168b473e3848b8f43c1ca106a8cce952dca6957ff0baae760bb89ebb3"
+      },
+      "copied": 63,
+      "mirrors": [],
+      "files": 63,
+      "bytes": 12400776,
+      "tree_sha256": "3a60fd15699a112b4dceca0c2ce43f956cb995afa7a45af006d97ef78a5a36ef",
+      "excluded_lfs_source_members": []
+    },
+    {
+      "slug": "LlamaIndex",
+      "target": "Agente core kernel Yaiwes principal/LlamaIndex",
+      "status": "EXTRACTED_VERIFIED",
+      "parts": 26,
+      "part_sha256": {
+        "Agente core kernel Yaiwes principal/LlamaIndex_0001.zip": "9aff9c9d7a69d73c67f0c588da8da826edaffb2d6416008d29a7edf1cfb018ac",
+        "Agente core kernel Yaiwes principal/LlamaIndex_0002.zip": "3e2d506b245d6814da9fe77fd1d22b698e4f563ea82ca57fc53c19707588335e",
+        "Agente core kernel Yaiwes principal/LlamaIndex_0003.zip": "cbd7d5ae7446fe20dc94a80aa8eb36b6e5b885b5b11bd70241b0d504c6662636",
+        "Agente core kernel Yaiwes principal/LlamaIndex_0004.zip": "a47ac0b2549df61170be70c95272ce3c77322f61bf858dced09d33460aaf01b1",
+        "Agente core kernel Yaiwes principal/LlamaIndex_0005.zip": "cf6405b7025896faf1247e9394b0711e4b28a1977d2b396a48d207ee806d28cb",
+        "Agente core kernel Yaiwes principal/LlamaIndex_0006.zip": "7cc2e323ccfb7916a12c5da14da9973904de4bf4958f9c52db8b2f13d16ec34d",
+        "Agente core kernel Yaiwes principal/LlamaIndex_0007.zip": "1df8c5962130a6f7b7a543ce7d944312950e263f758ad619db8ee41aa281f140",
+        "Agente core kernel Yaiwes principal/LlamaIndex_0008.zip": "492ce42e02e6218d2502b50407b9e5e0ad261855879a5fc0690207dcd99ee9dc",
+        "Agente core kernel Yaiwes principal/LlamaIndex_0009.zip": "c677283835b6ab206ad9bf3dfb93a4bdac6550686cf629aba6bbcc3ce4cde0ea",
+        "Agente core kernel Yaiwes principal/LlamaIndex_0010.zip": "9f0a65c9675de9d897578f45c094099d2588e229975b3a01dc70220d1f75172e",
+        "Agente core kernel Yaiwes principal/LlamaIndex_0011.zip": "01e5124ad520f73e11d37c53d02859553832cf533a2659830d3bba55e6ac97ea",
+        "Agente core kernel Yaiwes principal/LlamaIndex_0012.zip": "0d69d6e78c5c03e9ff57bee98089b6596203f2ca426f116891491e3ba765d8c5",
+        "Agente core kernel Yaiwes principal/LlamaIndex_0013.zip": "59ea3e67386a5c3b872d167d3f5ff5d8c31f1ae6e3dec7437351d992b4900c5e",
+        "Agente core kernel Yaiwes principal/LlamaIndex_0014.zip": "119f27f1b40556ab43d7d5e78c6913856583e1794e7e8a5c8845d6d06254b175",
+        "Agente core kernel Yaiwes principal/LlamaIndex_0015.zip": "6263969e706cf578db9915a0ba71a531eff040ae2e703848c0c189a71ade4e7c",
+        "Agente core kernel Yaiwes principal/LlamaIndex_0016.zip": "c8edb4d974bd46158965a4a70c56d42c3dee8eceaca4eb4f4bfc87ed5f09db03",
+        "Agente core kernel Yaiwes principal/LlamaIndex_0017.zip": "e10828e4c8fa362817f2a2763fff9663c148fa9228eb2a0881011da66a8b2312",
+        "Agente core kernel Yaiwes principal/LlamaIndex_0018.zip": "38e7568a9e12527fd885173250ca6ab6e673fcbf82d39f8b9c3ef4929352988f",
+        "Agente core kernel Yaiwes principal/LlamaIndex_0019.zip": "4180bbc8c5c693877d7b8e7a84ea2c639746812ba39eed0561045ec68b3e985b",
+        "Agente core kernel Yaiwes principal/LlamaIndex_0020.zip": "8d46f338d65ad18cd444b23ddd444262e7046465397074c48124c34bb5b11c60",
+        "Agente core kernel Yaiwes principal/LlamaIndex_0021.zip": "868f786151e99c40dfd4710be8d12dc7f1eb473ffbff883fc253966ae6d98e4c",
+        "Agente core kernel Yaiwes principal/LlamaIndex_0022.zip": "ab6fc0dea4c69d1513fb68dcc61648e594fbdb16fb1e892e74a324eb05aca018",
+        "Agente core kernel Yaiwes principal/LlamaIndex_0023.zip": "5149306f89f5dc5626ba16600e56f27bd73bc77dd67641e4d8e8a7cb87375455",
+        "Agente core kernel Yaiwes principal/LlamaIndex_0024.zip": "f3f01bdbaf94c6c7305f030c79015d34c3844dc5202c1784b6c1ff4250a0ac88",
+        "Agente core kernel Yaiwes principal/LlamaIndex_0025.zip": "8948921b1ba4527915620ac211a83da17514700f50cbfe573fffc660db945494",
+        "Agente core kernel Yaiwes principal/LlamaIndex_0026.zip": "f72e972306dfd7dbcb47c60c4d8a8ccbcda6e02070bba87ebc51be1ee2be740a"
+      },
+      "copied": 7,
+      "mirrors": [],
+      "files": 9850,
+      "bytes": 765391490,
+      "tree_sha256": "a338f8ad739219db2a05e0caa95b3c77c0c853f3d6319b841e089e994250aa9d",
+      "excluded_lfs_source_members": []
+    },
+    {
+      "slug": "NVIDIA-Garak",
+      "target": "Agente core kernel Yaiwes principal/NVIDIA-Garak",
+      "status": "EXTRACTED_VERIFIED",
+      "parts": 1,
+      "part_sha256": {
+        "Agente core kernel Yaiwes principal/NVIDIA-Garak_0001.zip": "9aee0414defd4e1f14d9b2ce76cec5e97c06374edabe7beea20b0ef3ecb17bd4"
+      },
+      "copied": 869,
+      "mirrors": [],
+      "files": 869,
+      "bytes": 11447118,
+      "tree_sha256": "3cdaf4966ae1a634897b1a8a9b381a48526a4a05b8b3d82cb76847ccbebf9a89",
+      "excluded_lfs_source_members": []
+    }
+  ],
+  "failures": [],
+  "verdict": "SHARD_PASS"
+}
