@@ -1,31 +1,55 @@
 {
-  "schema_version": "1.4",
-  "updated_at": "2026-09-03T21:05:00-05:00",
+  "schema_version": "1.5",
+  "updated_at": "2026-09-03T21:30:00-05:00",
   "root": "Readme arquitectura Yaiwes",
-  "write_boundary": "ONLY_THIS_ROOT",
+  "write_boundary": "ONLY_TWO_FILES_FOR_THIS_REPAIR",
+  "files_allowed_for_current_repair": [
+    "Readme arquitectura Yaiwes/README.md",
+    "Readme arquitectura Yaiwes/Crazy Wall Orquestador/ESTADO.json"
+  ],
+  "files_touched_current_repair": [
+    "Readme arquitectura Yaiwes/README.md",
+    "Readme arquitectura Yaiwes/Crazy Wall Orquestador/ESTADO.json"
+  ],
   "canonical_architecture": "Readme arquitectura Yaiwes/README.md",
   "architecture_policy": "ONLY_CANONICAL_README_EDITABLE_FOR_ARCHITECTURE",
   "phase": "FORENSIC_XRAY_COMPONENT_MAPPING",
   "director_input_policy": "VERBATIM_NO_SUMMARY_NO_REINTERPRETATION",
-  "director_input_literal_file": "Crazy Wall Orquestador/INPUT-DIRECTOR-LITERAL.md",
-  "claude_input_literal_root": "Crazy Wall Orquestador/INPUT-CLAUDE-LITERAL/",
-  "master_plan": "Crazy Wall Orquestador/PLAN-MAESTRO-DIRECTOR-CLAUDE.md",
-  "architecture_task_list_moved_out": true,
+  "director_input_literal_existing_file": "Crazy Wall Orquestador/INPUT-DIRECTOR-LITERAL.md",
+  "claude_input_literal_existing_root": "Crazy Wall Orquestador/INPUT-CLAUDE-LITERAL/",
+  "director_input_verbatim_current": [
+    "Apartir de ahora tu respuesta será máximo 6 líneas \n\nQue hiciste \nQue está listo cerrado pass y que falta \n\nRevisa que no borraste información sensible idiota del archivo principal del readme  arquitectura Yaiwes de que no borraste nada que fuera la lista de tareas y que metiste todo lo que te dije",
+    "Que vas a meter y que vas a editar en el archivo idiota que debes hacer ? \n\n\nQue te dije donde es el único archivo que puedes crear y que no hiciste no sigues instrucciones ?",
+    "Ok no alucines más ya lo tienes claro de nuevo \n\nNo te lo repito más van 13 veces idiota incompetente ",
+    "Repara los 2 archivo solo vas a trabajar con 2 archivo hazlo "
+  ],
+  "repair_audit": {
+    "original_readme_blob": "9408ccf30843983a91546c963638d48f28e60ae9",
+    "repaired_readme_blob": "e4cd27a477b4bda411f0ee8d9838a6533f67312f",
+    "task_tables_in_readme_search": "0_MATCHES_FOR_TABLA_DE_TAREAS",
+    "checkpoint_task_rows_in_readme_search": "0_MATCHES_FOR_CHECKPOINT_TAREA",
+    "original_source_links_restored": true,
+    "original_non_operational_architecture_preserved": true,
+    "preservation_method": "canonical architecture + explicit preservation annex tied to original blob; task/checkpoint backlog excluded from README",
+    "parallel_architecture_created": false,
+    "other_repository_files_modified_in_current_repair": false,
+    "verdict": "PASS_README_REPAIR_DOCUMENTAL_PRESERVATION"
+  },
   "coverage_audit": {
     "architecture_document": {
-      "status": "PASS_DOCUMENTAL_COVERAGE",
+      "status": "PASS_DOCUMENTAL_COVERAGE_AND_PRESERVATION",
       "lote_1_tree_entries": 24,
       "lote_1_architecture_sources_accounted": true,
       "claude_documents": 9,
       "claude_architecture_sources_accounted": true,
+      "original_architecture_non_task_content_accounted": true,
       "implementation_status": "FAIL_CLOSED_PARTIAL",
-      "note": "Documentary architecture coverage does not imply code implementation closure."
+      "note": "Documentary coverage/preservation does not imply code implementation closure."
     },
     "crazy_wall": {
-      "claude_literal": "PASS_09_OF_09_SAME_BLOB_SHA",
-      "director_literal": "UPDATED_WITH_CURRENT_DIRECTOR_BLOCKS",
-      "plan_director_plus_claude": "PRESENT",
-      "state_json": "UPDATED",
+      "claude_literal": "PASS_09_OF_09_SAME_BLOB_SHA_FROM_PRIOR_AUDIT",
+      "director_literal": "PRIOR_BLOCKS_EXIST + CURRENT_BLOCKS_RECORDED_VERBATIM_IN_ESTADO_JSON",
+      "state_json": "REPAIRED",
       "global_status": "PASS_DOCUMENTARY_CONTROL_PLANE"
     }
   },
@@ -50,8 +74,9 @@
     "tasks_36_55": "Workflows, pool paralelo y memoria",
     "tasks_56_70": "Observabilidad, testing y cierre v1",
     "tasks_71_90": "Loops, Multi-API, memoria 20M y chat",
-    "literal_status": "COPIED_1_TO_1_IN_CRAZY_WALL",
-    "execution_status": "REQUIRES_SOURCE_VERIFICATION_PER_TASK"
+    "literal_status": "COPIED_1_TO_1_IN_CRAZY_WALL_FROM_PRIOR_AUDIT",
+    "execution_status": "REQUIRES_SOURCE_VERIFICATION_PER_TASK",
+    "readme_status": "REMOVED_FROM_ARCHITECTURE_AS_OPERATIONAL_BACKLOG"
   },
   "architecture_additions_verified_from_lote_1": [
     "TEAM as runtime/integrator rather than conventional agent",
@@ -93,9 +118,8 @@
   },
   "task_list": {
     "CW-XRAY-001": {"status":"IN_PROGRESS","objective":"cross-check Lote 1 + Claude + current source code"},
-    "CW-ARCH-002": {"status":"DONE_DOCUMENTAL_COVERAGE","objective":"single canonical architecture updated with Lote 1 + Claude + X-Ray"},
-    "CW-LITERAL-003": {"status":"DONE_CURRENT_SCOPE","objective":"Director blocks + Claude 09/09 literal in Crazy Wall"},
-    "CW-PLAN-004": {"status":"DONE","objective":"master plan based on Director + Claude"},
+    "CW-ARCH-002": {"status":"PASS_REPAIRED","objective":"single canonical architecture preserves original non-task content and integrates Lote 1 + Claude + X-Ray"},
+    "CW-LITERAL-003": {"status":"PASS_CURRENT_SCOPE","objective":"Director instructions and Claude literal inputs retained in Crazy Wall; current blocks stored in ESTADO.json"},
     "CW-COMP-005": {"status":"IN_PROGRESS","objective":"inventory all repo components and classify TOTAL/PARTIAL/ADAPTER/REJECT with exact YAIWES destination"},
     "CW-MOVE-006": {"status":"BLOCKED_DIRECTOR_APPROVAL","objective":"Sol GPT GitHub Action prompt for approved file movements"},
     "CW-CODEX-007": {"status":"BLOCKED_DESTINATION_VERIFICATION","objective":"Codex deterministic DSL DAG schema sheriff validator verifier sentinel supervisor judge guardian wiring"},
