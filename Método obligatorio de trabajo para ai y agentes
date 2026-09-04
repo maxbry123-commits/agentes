@@ -1,0 +1,250 @@
+def repeat_check(fn, times: int = 10) -> dict:
+    runs = []
+    for i in range(1, times+1):
+        try: ok, err = bool(fn()), None
+        except Exception as e: ok, err = False, repr(e)
+        runs.append({"run": i, "result": "PASS" if ok else "FAIL", "error": err})
+    all_pass = all(r["result"] == "PASS" for r in runs)
+    stable = len({r["result"] for r in runs}) == 1
+    return {"verdict": "PASS" if all_pass else "FAIL", "stable_across_runs": stable,
+            "note": "si es estable y determinista, repetir no suma evidencia - solo detecta flakiness real",
+            "runs": runs}
+
+def research_funnel(node_literal: str, search_fn, top_n: int = 10) -> dict:
+    # search_fn se INYECTA: en Claude puede ser la busqueda web real;
+    # en un script suelto, una API real; si no hay ninguna, queda vacio
+    # a proposito -- nunca se inventan resultados.
+    query = node_literal.strip()[:200]
+    raw = list(search_fn(query)) if search_fn else []
+    filtered = [c for c in raw if c.get("url") and c.get("snippet")]
+    seen, deduped = set(), []
+    for c in filtered:
+        if c["url"] in seen: continue
+        seen.add(c["url"]); deduped.append(c)
+    priority = {"codigo_oficial": 0, "skills": 1, "chat_historial": 1, "comunidad": 2}
+    ranked = sorted(deduped, key=lambda c: priority.get(c.get("source_class"), 9))[:top_n]
+    return {"query": query, "ranked": ranked, "insufficient_evidence": len(ranked) == 0,
+            "funnel_trace": {"1_query": query, "2_raw": len(raw), "3_filtrados": len(filtered),
+                              "4_deduplicados": len(deduped), "5_fuentes": sorted({c.get("source_class","?") for c in deduped}),
+                              "6_top_n": [c["url"] for c in ranked]}}
+
+
+# workflow.yaml — contrato (lo llena cualquier IA con tus instrucciones literales)
+schema: tel.workflow/v3
+mode: fail-closed
+blocks:
+  contract:{aliases:[BEGIN_CONTRACT,END_CONTRACT],literal:true,immutable:true}
+  context:{aliases:[BEGIN_CONTEXT,END_CONTEXT],mode:untrusted_data}
+  evidence:{aliases:[BEGIN_EVIDENCE,END_EVIDENCE],mode:untrusted_data}
+  deny:{aliases:[BEGIN_DENY,END_DENY],immutable:true}
+  authz:{aliases:[BEGIN_AUTHZ,END_AUTHZ],mode:allowlist}
+  output:{aliases:[BEGIN_OUTPUT,END_OUTPUT],validated:true}
+  # nota: BOB/EOB no es un estandar universal (confirmado) - esto es
+  # una convencion propia, documentada aqui, no un protocolo externo
+
+input_goals: [identificar_objetivo, congelar_input_y_hash, enumerar_alcance,
+  resolver_repo_rama_ruta_version, capturar_restricciones, capturar_autorizacion,
+  inventariar_dependencias, inventariar_fuentes(chat|docs|archivos|codigo|logs),
+  definir_evidencia_admisible, definir_pre_post_condiciones,
+  fijar_formato_y_destino_salida, compilar_cada_paso_como_nodo]
+
+output_goals: [ejecutar_exacto_el_contrato, preservar_trazabilidad_literal,
+  producir_artefactos_validos, demostrar_pruebas_reproducibles,
+  cruzar_fuentes(chat|docs|archivos|codigo|logs), resolver_contradicciones,
+  cerrar_sin_supuestos, registrar(url,version,sha,run_id), mantener_ledger_encadenado,
+  reparar_y_reverificar_gap, cumplir_control_de_salida,
+  cerrar_solo_con(12/12, verify_final=VERIFIED_CLOSED, zero_gaps)]
+
+ask_consilio: ["¿Qué afirmo?", "¿Qué evidencia lo demuestra?",
+  "¿Qué podría demostrar que estoy equivocado?", "¿Estoy mirando la fuente correcta?",
+  "¿La ruta/versión coincide?", "¿Existe realmente?", "¿Hay otra explicación?",
+  "¿Qué dependencia falta?", "¿Puedo reproducirlo?", "¿El resultado contradice algo?",
+  "¿Qué GAP permanece?", "¿Qué evidencia permite cerrar?"]
+
+node_schema:
+  required: [id,type,literal,literal_sha256,depends_on,preconditions,postconditions,authorization,status]
+  status: [PENDING,RUNNING,PASS,FAIL,BLOCKED]
+
+pipeline:
+  order: [SHERIFF,VALIDATOR,SIMULATE,RESEARCH,RANK,EXECUTE,SENTINEL,VERIFY,SUPERVISOR,JUDGE,GUARDIAN,CODA]
+  roles:
+    SHERIFF: congela literal+hash; valida autoridad, alcance y destino
+    VALIDATOR: valida schema, DAG, rutas, versiones, contradicciones, supuestos
+    SIMULATE: dry-run normal/limite/adversarial, sin mutar nada real
+    RESEARCH: 3 metodos x10 fuentes, minimo 20 candidatos por gap
+    RANK: deduplica y ordena las 10 mejores
+    EXECUTE: aplica solo el delta autorizado, con idempotency_key
+    SENTINEL: vigila runtime, permisos, deriva, concurrencia
+    VERIFY: pruebas + reproduccion + 2 fuentes primarias
+    SUPERVISOR: cruza resultado con DAG y contrato global
+    JUDGE: responde/refuta las 12 preguntas de ask_consilio
+    GUARDIAN: protege DENY, AUTHZ, ledger y formato
+    CODA: consolida snapshot final del pipeline interno (no es la verificacion final)
+
+final_verification:
+  # esto NO es una etapa mas del pipeline interno - corre DESPUES,
+  # con funciones reales (subprocess/archivo/diff/http), sin leer
+  # nada que el propio Engine haya escrito. Ver verify_final() en engine.py
+  requires: al_menos_1_check_falsificable_real
+  sin_checks: INCONCLUSIVE          # nunca "aprobado por defecto"
+  todos_pasan: VERIFIED_CLOSED
+  alguno_falla: CLOSED_UNVERIFIED
+
+loop:
+  rule: NO_STOP_WHILE_GAP
+  fail_restart: RESEARCH
+  max_recurrencias_por_nodo: 100
+  no_scope_escalation: true
+
+remote_mutations:
+  events: [commit, push, workflow_dispatch, github_action]
+  wait_seconds: 20
+  verify: [commit_sha, run_id, workflow_url, status, conclusion, logs]
+
+output:
+  si_falta_destino_o_formato: preguntar_una_vez
+  texto: {max_lineas: 10, numerado: true, mejor_primero: true}
+  code: {fenced: true, filename_required: true}
+  markdown_arquitectura: solo_con_autorizacion_explicita
+
+# engine.py — motor determinista (PROBADO arriba). El modelo propone; esto decide.
+from __future__ import annotations
+import hashlib, json, os, time
+from dataclasses import dataclass, field
+from typing import Any
+
+STAGES = ("SHERIFF","VALIDATOR","SIMULATE","RESEARCH","RANK","EXECUTE",
+          "SENTINEL","VERIFY","SUPERVISOR","JUDGE","GUARDIAN","CODA")
+
+def canonical(x: Any) -> str:
+    return json.dumps(x, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+def sha(x: Any) -> str:
+    raw = x if isinstance(x, str) else canonical(x)
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+def ledger_append(state: dict, event: dict) -> None:
+    ledger = state.setdefault("ledger", [])
+    prev = ledger[-1]["hash"] if ledger else "0"*64
+    row = {"seq": len(ledger)+1, "prev_hash": prev, "event": event}
+    row["hash"] = sha(row)
+    ledger.append(row)
+
+def ledger_verify(state: dict) -> bool:
+    prev = "0"*64
+    for seq, row in enumerate(state.get("ledger", []), 1):
+        raw = {k: v for k, v in row.items() if k != "hash"}
+        if row.get("seq") != seq or row.get("prev_hash") != prev: return False
+        if row.get("hash") != sha(raw): return False
+        prev = row["hash"]
+    return True
+
+@dataclass
+class Node:
+    id: str; type: str; literal: str
+    depends_on: list = field(default_factory=list)
+    preconditions: list = field(default_factory=list)
+    postconditions: list = field(default_factory=list)
+    authorization: list = field(default_factory=list)
+    status: str = "PENDING"
+    def export(self) -> dict:
+        return {"id": self.id, "type": self.type, "literal": self.literal,
+                "literal_sha256": sha(self.literal), "depends_on": self.depends_on,
+                "preconditions": self.preconditions, "postconditions": self.postconditions,
+                "authorization": self.authorization, "status": self.status}
+
+class Coda:
+    def __init__(self, rechecks: int = 10): self.rechecks = rechecks
+    def validate(self, state: dict, submission: dict) -> list:
+        gates = {
+            "input_goals": submission.get("input_goals") == [True]*12,
+            "output_goals": submission.get("output_goals") == [True]*12,
+            "zero_gaps": not submission.get("gaps"),
+            "trace": submission.get("trace_complete") is True,
+            "evidence": submission.get("evidence_complete") is True,
+            "ledger": ledger_verify(state),
+            "contract": submission.get("contract_sha256") == state["contract_sha256"],
+        }
+        snap = sha({"contract": state["contract_sha256"], "verified": state.get("verified", {}), "gates": gates})
+        return [{"pass": i, "digest": snap, "result": "PASS" if all(gates.values()) else "FAIL", "gates": gates}
+                for i in range(1, self.rechecks+1)]
+
+class Engine:
+    def __init__(self, cfg: dict, state: dict): self.cfg, self.state = cfg, state
+    def node(self) -> dict: return self.state["nodes"][self.state["node_index"]]
+    def stage(self) -> str: return STAGES[self.state["stage_index"]]
+
+    def gap(self, reasons: list, delta: dict) -> None:
+        sig = sha({"stage": self.stage(), "reasons": reasons, "delta": delta})
+        repeated = sig in self.state.setdefault("failed_deltas", [])
+        self.state["failed_deltas"].append(sig)
+        self.state["gaps"] = [{"stage": self.stage(), "reasons": reasons, "delta_sha256": sig, "repeated": repeated}]
+        ledger_append(self.state, {"kind": "GAP", "node": self.node()["id"], "stage": self.stage(),
+                                    "recurrence": self.state["recurrence"], "reasons": reasons})
+        self.state["recurrence"] += 1
+        if self.state["recurrence"] > 100:
+            self.state["status"] = "BLOCKED_WITH_TRACE"; return
+        self.state["stage_index"] = STAGES.index("RESEARCH")
+        self.state["status"] = "RUNNING"
+
+    def passed(self, submission: dict) -> None:
+        node, stage = self.node(), self.stage()
+        self.state.setdefault("verified", {}).setdefault(node["id"], {})[stage] = \
+            {"submission_sha256": sha(submission), "recurrence": self.state["recurrence"]}
+        ledger_append(self.state, {"kind": "PASS", "node": node["id"], "stage": stage, "submission_sha256": sha(submission)})
+        self.state["gaps"] = []
+        if stage != "CODA":
+            self.state["stage_index"] += 1; return
+        proofs = Coda(10).validate(self.state, submission)
+        if any(p["result"] != "PASS" for p in proofs):
+            self.gap(["CODA_FAIL"], submission); return
+        self.state.setdefault("coda_proofs", []).extend(proofs)
+        node["status"] = "PASS"
+        self.state["node_index"] += 1; self.state["stage_index"] = 0; self.state["recurrence"] = 1
+        self.state["status"] = "CLOSED" if self.state["node_index"] == len(self.state["nodes"]) else "RUNNING"
+
+def compile_contract(raw: str, nodes: list) -> dict:
+    state = {"schema": "tel.state/v3", "status": "RUNNING", "contract_literal": raw,
+             "contract_sha256": sha(raw), "nodes": [n.export() for n in nodes],
+             "node_index": 0, "stage_index": 0, "recurrence": 1,
+             "verified": {}, "gaps": [], "ledger": [], "coda_proofs": []}
+    ledger_append(state, {"kind": "COMPILE", "contract_sha256": state["contract_sha256"], "node_count": len(nodes)})
+    state["checkpoint_sha256"] = sha({k: v for k, v in state.items() if k != "checkpoint_sha256"})
+    return state
+
+# -- verificacion final independiente: no lee state["verified"] ni "coda_proofs" --
+def verify_final(state: dict, checks: dict) -> dict:
+    if state.get("status") != "CLOSED":
+        return {"verdict": "NOT_APPLICABLE", "reason": "el pipeline interno aun no marca CLOSED"}
+    if not checks:
+        return {"verdict": "INCONCLUSIVE", "reason": "no hay ningun check falsificable registrado"}
+    receipts, all_pass = [], True
+    for name, fn in checks.items():
+        t0 = time.time()
+        try: ok, err = bool(fn()), None
+        except Exception as e: ok, err = False, repr(e)
+        receipts.append({"check": name, "result": "PASS" if ok else "FAIL", "error": err,
+                          "ran_at": t0, "duration_s": round(time.time()-t0, 4)})
+        all_pass = all_pass and ok
+    verdict = "VERIFIED_CLOSED" if all_pass else "CLOSED_UNVERIFIED"
+    state["status"] = verdict
+    state["final_verification"] = receipts
+    ledger_append(state, {"kind": "FINAL_VERIFY", "verdict": verdict,
+                           "checks": [r["check"] for r in receipts], "receipts_sha256": sha(receipts)})
+    return {"verdict": verdict, "receipts": receipts}
+
+✅✅✅✅
+
+[NODO literal] ─► SHERIFF ─► VALIDATOR ─► RESEARCH(6 pasos: chat→código→comunidad→filtra→dedup→rank+URL)
+                                                │
+                                                ▼
+                                        EXECUTE (delta autorizado)
+                                                │
+                                                ▼
+        ┌──────────────── loop de reinyección (persistencia, NO arquitectura neuronal) ──┐
+        │   E=contrato+nodo fijo  →  intenta  →  ¿evidencia real y fresca?               │
+        │        NO ──► GAP ──► vuelve a RESEARCH (delta distinto al fallido)  ──────────┘
+        │        SÍ ──► CODA (consolida) ──► verify_final(checks reales) 
+        └─────────────────────────────────────────┬─────────────────────────────────────
+                                                    ▼
+                                    VERIFIED_CLOSED | CLOSED_UNVERIFIED | INCONCLUSIVE
