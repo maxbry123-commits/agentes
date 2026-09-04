@@ -24,7 +24,7 @@
 11. `PIPELINE/FORENSE_PASADA_04_CIERRE.md`
 
 ### Lote 1 — documentos de arquitectura YAIWES
-La revisión incorpora el inventario completo de `Documentos arquitectura Yaiwes lote 1/`, incluyendo Mythos/Fables, Muse, Rufo, PLAN YAIWES, core kernel de razonamiento, diagramas v0–v3.1, Ley Principal TEAM, MAVIS/MAX-SYSTEM, orquestador, memoria Wordflow y el documento de faltantes de kernel/extensión-kernel.
+La revisión incorpora el inventario completo de `Documentos arquitectura Yaiwes lote 1/`, incluyendo Mythos/Fables, Muse, Ruflo, PLAN YAIWES, core kernel de razonamiento, diagramas v0–v3.1, Ley Principal TEAM, MAVIS/MAX-SYSTEM, orquestador, memoria Wordflow y el documento de faltantes de kernel/extensión-kernel.
 
 El documento `PLAN_YAIWES_AGENTE_WORDFLOW.md` reafirma como reglas: no inventar planes paralelos; no reescribir el hot path sin paridad; aplicar regla lego; reutilizar `goal_lock.py`, `cognitive_loop.py` y `evidence_packet.py` por referencia; usar `gateway/intelligence.py` + `router_http.py` como punto de enchufe; y terminar/cablear p01→p12 en vez de rehacerlos.
 
@@ -382,3 +382,220 @@ Generador y evaluador no deben ser la misma instancia/contexto cuando el resulta
 Este README describe exclusivamente arquitectura y su estado X-Ray. El backlog completo Claude 1–90, instrucciones literales del Director, checkpoints, prompts de agentes, estado JSON, notas y plan viven en `Crazy Wall Orquestador/`.
 
 El siguiente paso arquitectónico no es diseñar otra capa: es completar el inventario componente→destino con evidencia, someter la primera integración al Director y ejecutar el ciclo aprobado de movimiento→verificación→Codex→auditoría.
+
+## 16. Registros centrales del TEAM Runtime
+
+La fuente de verdad del Lote 1 exige que TEAM no sea un agente convencional sino un **runtime integrador/fusionador**. Para evitar que herramientas, skills, modelos y harnesses queden como accesorios externos sin gobernanza, la arquitectura incorpora registros centrales separados pero interoperables:
+
+```text
+Registry Fabric
+├── Agent Registry
+├── Skill Registry
+├── Tool Registry
+├── Prompt Registry
+├── Workflow Registry
+├── MCP Registry
+├── Knowledge Registry
+├── Capability Registry
+├── Harness Registry
+├── Model Registry
+├── Memory Provider Registry
+└── Policy Registry
+```
+
+Regla de estado para cualquier recurso descubierto:
+
+```text
+REGISTERED ≠ AVAILABLE ≠ HEALTHY ≠ AUTHORIZED
+```
+
+El Router y el Resource Brain solo pueden seleccionar recursos que hayan pasado discovery, mapping, health, authorization y contract validation.
+
+## 17. Capability Compiler / Specialty Compiler / Evolution Kernel
+
+El Lote 1 establece que TEAM no debe conservar roles, prompts o métodos como texto muerto cuando puedan convertirse en artefactos ejecutables. La arquitectura adopta este pipeline:
+
+```text
+REPOSITORY / DOCUMENT / SKILL / AGENT
+→ DISCOVERY
+→ CAPABILITY EXTRACTION
+→ CONTRACT/FICHA
+→ TEMPLATE
+→ CAPABILITY or SPECIALTY COMPILER
+→ DSL / DAG / SCHEMA / VALIDATORS / SHERIFF
+→ ADAPTERS
+→ TESTS / BENCHMARKS
+→ CAPABILITY PASSPORT
+→ REGISTRY
+→ RUNTIME
+```
+
+Un rol como `python.backend.engineer` se materializa como paquete gobernado con manifest, capabilities, goals, inputs, outputs, methods, workflows, schemas, validators, sheriff, adapters, libraries lock, knowledge, examples, benchmarks, failures y learning. El LLM puede descubrir/diseñar; el Evolution Kernel compila; el runtime determinista ejecuta.
+
+## 18. Arquitectura de adquisición selectiva Ruflo / Muse / agentes externos
+
+### Ruflo
+No se instala ni se forkea como dependencia permanente. Se congela commit SHA, se reconstruye árbol completo, se genera inventario forense, se valida completitud y después se extraen selectivamente capacidades útiles como memoria/AgentDB/HNSW, graph, swarm, coordination, routing, guidance, security, proof, hooks y learning.
+
+Carril:
+
+```text
+SOURCE LOCK
+→ COMPLETE TREE
+→ FORENSIC INVENTORY
+→ COMPLETENESS AUDIT
+→ CAPABILITY MAP
+→ SELECTIVE EXTRACTION
+→ TEAM ADAPTERS
+→ CAPABILITY PASSPORT
+→ TEAM KERNEL / WORKFLOW
+```
+
+### Muse
+Muse se trata como referencia de capacidades, no como código descargable oficial mientras no exista fuente verificable. Las capacidades arquitectónicas absorbibles son: persistent event log, background agents, parallel execution, git worktree isolation, planning mode, goal conditioning/goal loop y subagent delegation + context compaction.
+
+Esas capacidades se mapean a state-events-durability, agent-fleet-parallelism, execution-engine-pool, execution-orchestration y session-resilience.
+
+## 19. Paralelismo 100x y ejecución multi-sandbox
+
+Los documentos MAVIS/MAX añaden patrones que quedan fuera del microkernel pero dentro del runtime de ejecución:
+
+- fan-out/fan-in;
+- batching;
+- sharding por key;
+- persistent worker pools;
+- priority queue;
+- async pipeline con backpressure;
+- cache/dedup;
+- idempotency keys;
+- dead-letter queue;
+- outbox + CDC cuando aplique;
+- time-wheel;
+- pre-warming/autoscaling por queue depth;
+- multi-pool por concern;
+- worktree y sandbox isolation.
+
+El microkernel solo decide política/orden/contrato. La implementación de throughput vive en `execution-engine-pool`, `agent-fleet-parallelism`, `resource-governance`, `state-events-durability` y `execution-orchestration`.
+
+## 20. Workflow ↔ Memory/Audit Orchestrator
+
+La memoria de largo contexto no se implementa intentando colocar 20M tokens en la ventana activa. Se define como memoria externa jerárquica recuperable.
+
+Fronteras:
+
+```text
+WORKFLOW = qué hacemos ahora
+MEMORY/AUDIT = qué información recuperamos, conservamos y validamos
+SANDBOX = dónde ejecutamos la unidad
+LLM = procesa/razona la unidad asignada
+CONSOLIDATOR = integra piezas globalmente
+AUDITOR = verifica confiabilidad/completitud
+CHECKPOINT = recuperación/rollback/continuación
+ROUTER = selecciona recursos
+POLICY = autoridad
+STATE MACHINE = transiciones deterministas
+```
+
+Contrato mínimo:
+
+```text
+WORKFLOW
+→ GET_CONTEXT / GET_MEMORY / GET_EVIDENCE / GET_STATE / GET_HISTORY / GET_ARTIFACT / GET_RELATIONS
+→ MEMORY/AUDIT: RETRIEVE → RERANK → AUDIT → RELATE → BUILD_CONTEXT
+→ CONTEXT PACK
+→ SANDBOX → LLM
+→ STATE DELTA
+→ MEMORY/AUDIT: VALIDATE → STORE → AUDIT → CONSOLIDATE
+→ WORKFLOW
+```
+
+La UI permanece última; el comportamiento real debe funcionar sin interfaz.
+
+## 21. Workspace Orchestration / Multi-project
+
+Cada proyecto puede materializarse como workspace aislado administrado por:
+
+```text
+ORQUESTADOR
+├── Workspace Manager
+├── Agent Manager
+├── Document Manager
+├── Git Manager
+├── Knowledge Manager
+├── Memory Manager
+└── Sync Manager
+```
+
+El workspace mantiene IDs, configuración, documentación, código, memoria, graph, logs, checkpoints, prompts, reports y state. Esta capa vive en `multi-project-orchestration/` y no modifica el microkernel.
+
+## 22. Input anchoring y pre-investigación
+
+El orquestador incorpora la separación conceptual:
+
+```text
+RAW INPUT
+→ InputClassifier
+↘ BackgroundResearch en paralelo
+→ Structured/Socratic Questions cuando sean necesarias
+→ Integrator
+→ AnchoredInput
+→ Orquestador principal
+```
+
+El input anclado conserva tipo, keywords, entidades, aclaraciones del usuario, contexto investigado, confianza y gaps. La investigación paralela no debe modificar el GOAL_LOCK original.
+
+## 23. Cobertura documental Lote 1 — 23/23 fuentes registradas
+
+La arquitectura canónica reconoce explícitamente todos los documentos del Lote 1 como fuentes. Cada uno tiene un destino conceptual dentro de esta arquitectura:
+
+| # | Documento Lote 1 | Aporte arquitectónico absorbido |
+|---|---|---|
+| 1 | `11-razonamiento-mythos.md` | EURS, Mythos 40, Fables, micro-ciclo, DRE, separación control/LLM |
+| 2 | `Descargar muse code y fusiónar componentes con agente team YAIWES.md` | event log, background agents, parallel, worktrees, planning, goal loop, compaction |
+| 3 | `Descargar y integrar la capacidades del agente rufo con el agente TEAM.md` | adquisición determinista, source-lock, inventario, extracción selectiva, adapters |
+| 4 | `FABLES_Mythos_Paso_01_Ingesta.md` | ingesta/input, contratos iniciales y preparación Mythos |
+| 5 | `FABLES_Mythos_Paso_02B_Codigo.md` | ejecución/código/validación del pipeline Fables |
+| 6 | `FABLES_Mythos_Paso_03C_Cierre.md` | cierre, evidencia, verificación y salida |
+| 7 | `Json promt fables grupo a .md` | schemas/prompts estructurados; contenido versionado, no control hardcodeado |
+| 8 | `PLAN_YAIWES_AGENTE_WORDFLOW.md` | mapa origen→destino, regla lego, hot path, S1–S12 como fuente operativa trasladada a Crazy Wall |
+| 9 | `README.md` | índice del Lote 1 |
+| 10 | `Sistema ... descubre → registra → mapea → verifica → selecciona → prepara → carga → ejecuta.md` | Resource/Capability/Memory Provider Registry y health/authorization states |
+| 11 | `core kernel razonamiento fusión para Yaiwes.md` | cognitive kernel/operators/model router y razonamiento como graph/skills |
+| 12 | `diagram-v0.html` | visualización histórica de arquitectura |
+| 13 | `diagram-v1.html` | visualización histórica/evolución |
+| 14 | `diagram-v2.html` | visualización histórica/evolución |
+| 15 | `diagram-v3.1.html` | visualización histórica/evolución |
+| 16 | `diagram-v3.html` | visualización histórica/evolución |
+| 17 | `todo el concepto ... fuente de la verdad ... agente TEAM nueva versión.md` | TEAM como runtime fusionador, universal harness, registries, determinismo alto |
+| 18 | `Ley principal ... OpenClaw y Hermes ... TEAM.md` | capability distillation/compiler, no absorber cerebros, conservar capacidades/runtimes |
+| 19 | `MAVIS-PARALLEL-100X.md` | worker pool, priority queue, cache, batch, backpressure, async, dedup |
+| 20 | `MAX-SYSTEM-100X-FINAL-1.md` | fanout, sharding, time-wheel, idempotency, DLQ, outbox/CDC, multi-pool, prewarm |
+| 21 | `si o si orquestador parte 2.md` | Workspace Orchestration multi-proyecto |
+| 22 | `si o si para el orquestador Maxbry.md` | input anchor, pre-research paralelo, herramientas transversales |
+| 23 | `memoria del Wordflow ... 20 millones ...` + `falta integrar al kernel ...` | Memory/Audit contract, context fabric, specialty/evolution compiler |
+
+**Nota de trazabilidad:** el árbol físico del Lote 1 contiene 24 entradas contando su README/índice; las dos fuentes finales de memoria/evolution se agrupan en la fila 23 por compartir la misma frontera arquitectura runtime↔memory/evolution. Ningún documento del Lote 1 se usa como prueba de implementación: solo como requisito/fuente arquitectónica.
+
+## 24. Cobertura Claude — 09/09 literal + arquitectura absorbida
+
+| Claude | Arquitectura absorbida |
+|---|---|
+| 01 | kernel base, 8 primitivas, wrappers, manifest, regresión |
+| 02 | reasoning/governance, contracts, timeout, idempotencia, sheriff/judge/forensic |
+| 03 | workflow real, DAG/FSM, pool, adapters, mount guard, memoria |
+| 04 | observabilidad, durability, retry/breaker, watchdog, E2E, cierre |
+| 05 | arquitectura Fables completa y separación sesión/harness |
+| 06 | catálogo OSS como candidatos, no dependencias automáticas |
+| 07 | Time-Wheel, Multi-API, InputBlock, Fleet, memoria 5 niveles, chat |
+| 08 | gate kernel simple Nivel A antes de Nivel B |
+| 09 | protocolo de integración/reutilización de código; afirmaciones verificadas contra fuente antes de aceptar |
+
+Los nueve archivos Claude están copiados literal 1:1 en Crazy Wall con los mismos blob SHA que sus originales.
+
+## 25. Veredicto de cobertura arquitectónica
+
+**Cobertura documental:** `PASS_DOCUMENTAL_23_LOTE1 + 09_CLAUDE`.
+
+**Cobertura de implementación:** `FAIL_CLOSED_PARTIAL` porque todavía faltan verificaciones/cableados/tests reales.
+
+La arquitectura se considera ahora documentalmente fusionada; no se considera implementada. Cualquier contradicción futura entre documento y código se resuelve a favor del código real y actualiza este mismo README, nunca creando una arquitectura paralela.
