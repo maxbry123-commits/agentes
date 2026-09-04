@@ -43,8 +43,16 @@ jobs:
               esac
               if [ "$stale" = true ] || [ "$duplicate" = true ]; then
                 echo "cancel id=$id status=$status age_seconds=$age path=$path"
-                gh api --method POST "repos/${repo}/actions/runs/${id}/cancel" || true
-                canceled=$((canceled+1))
+                if gh api --method POST "repos/${repo}/actions/runs/${id}/cancel"; then
+                  canceled=$((canceled+1))
+                else
+                  echo "normal cancel rejected; trying force-cancel id=$id"
+                  if gh api --method POST "repos/${repo}/actions/runs/${id}/force-cancel"; then
+                    canceled=$((canceled+1))
+                  else
+                    echo "FORCE_CANCEL_GAP id=$id path=$path"
+                  fi
+                fi
               fi
             done
           done
