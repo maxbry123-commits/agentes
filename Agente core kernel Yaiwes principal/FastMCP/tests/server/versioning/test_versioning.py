@@ -1,0 +1,417 @@
+"""Core versioning functionality: VersionKey, utilities, and components."""
+# ruff: noqa: F811  # Intentional function redefinition for version testing
+
+from __future__ import annotations
+
+from typing import cast
+
+import pytest
+from mcp_types import TextContent
+
+from fastmcp import FastMCP
+from fastmcp.tools import Tool
+from fastmcp.utilities.versions import (
+    VersionKey,
+    VersionSpec,
+    compare_versions,
+    is_version_greater,
+    version_sort_key,
+)
+
+
+class TestVersionKey:
+    """Tests for VersionKey comparison class."""
+
+    def test_none_sorts_lowest(self):
+        """None (unversioned) should sort lower than any version."""
+        assert VersionKey(None) < VersionKey("1.0")
+        assert VersionKey(None) < VersionKey("0.1")
+        assert VersionKey(None) < VersionKey("anything")
+
+    def test_none_equals_none(self):
+        """Two None versions should be equal."""
+        assert VersionKey(None) == VersionKey(None)
+        assert not (VersionKey(None) < VersionKey(None))
+        assert not (VersionKey(None) > VersionKey(None))
+
+    def test_pep440_versions_compared_semantically(self):
+        """Valid PEP 440 versions should compare semantically."""
+        assert VersionKey("1.0") < VersionKey("2.0")
+        assert VersionKey("1.0") < VersionKey("1.1")
+        assert VersionKey("1.9") < VersionKey("1.10")  # Semantic, not string
+        assert VersionKey("2") < VersionKey("10")  # Semantic, not string
+
+    def test_v_prefix_stripped(self):
+        """Versions with 'v' prefix should be handled correctly."""
+        assert VersionKey("v1.0") == VersionKey("1.0")
+        assert VersionKey("v2.0") > VersionKey("v1.0")
+
+    def test_string_fallback_for_invalid_versions(self):
+        """Invalid PEP 440 versions should fall back to string comparison."""
+        # Dates are not valid PEP 440
+        assert VersionKey("2024-01-01") < VersionKey("2025-01-01")
+        # String comparison (lexicographic)
+        assert VersionKey("alpha") < VersionKey("beta")
+
+    def test_pep440_sorts_before_strings(self):
+        """PEP 440 versions sort before invalid string versions."""
+        # "1.0" is valid PEP 440, "not-semver" is not
+        assert VersionKey("1.0") < VersionKey("not-semver")
+        assert VersionKey("999.0") < VersionKey("aaa")  # PEP 440 < string
+
+    def test_repr(self):
+        """Test string representation."""
+        assert repr(VersionKey("1.0")) == "VersionKey('1.0')"
+        assert repr(VersionKey(None)) == "VersionKey(None)"
+
+
+class TestVersionFunctions:
+    """Tests for version comparison functions."""
+
+    def test_compare_versions(self):
+        """Test compare_versions function."""
+        assert compare_versions("1.0", "2.0") == -1
+        assert compare_versions("2.0", "1.0") == 1
+        assert compare_versions("1.0", "1.0") == 0
+        assert compare_versions(None, "1.0") == -1
+        assert compare_versions("1.0", None) == 1
+        assert compare_versions(None, None) == 0
+
+    def test_is_version_greater(self):
+        """Test is_version_greater function."""
+        assert is_version_greater("2.0", "1.0")
+        assert not is_version_greater("1.0", "2.0")
+        assert not is_version_greater("1.0", "1.0")
+        assert is_version_greater("1.0", None)
+        assert not is_version_greater(None, "1.0")
+
+
+def _tool(version: str | None) -> Tool:
+    """Build a real Tool component (a FastMCPComponent) with a version."""
+    return Tool.from_function(lambda: None, name="t", version=version)
+
+
+class TestVersionSpecEq:
+    """Tests for VersionSpec(eq=...) matching semantics."""
+
+    def test_exact_string_match(self):
+        assert VersionSpec(eq="1.0").matches("1.0")
+        assert not VersionSpec(eq="1.0").matches("2.0")
+
+    def test_v_prefix_insensitive_both_directions(self):
+        # Spec has v-prefix, component does not
+        assert VersionSpec(eq="v1.0").matches("1.0")
+        # Component has v-prefix, spec does not
+        assert VersionSpec(eq="1.0").matches("v1.0")
+        assert VersionSpec(eq="v2.3").matches("v2.3")
+
+    def test_pep440_equivalent_spellings_match(self):
+        """PEP 440 treats 1, 1.0, 1.0.0 as the same version."""
+        assert VersionSpec(eq="1.0").matches("1")
+        assert VersionSpec(eq="1").matches("1.0")
+        assert VersionSpec(eq="1.0").matches("1.0.0")
+        assert not VersionSpec(eq="1.0").matches("1.0.1")
+
+    def test_malformed_versions_use_exact_string_equality(self):
+        """Non-PEP 440 strings compare exactly (no normalization, no crash)."""
+        assert VersionSpec(eq="latest").matches("latest")
+        assert not VersionSpec(eq="latest").matches("LATEST")
+        assert VersionSpec(eq="2024-01-01").matches("2024-01-01")
+        assert not VersionSpec(eq="2024-01-01").matches("2024-01-02")
+
+    def test_eq_does_not_match_none_when_match_none_false(self):
+        assert VersionSpec(eq="1.0").matches(None, match_none=False) is False
+        assert VersionSpec(eq="1.0").matches(None, match_none=True) is True
+
+
+class TestVersionSelectionDeterminism:
+    """Selection among PEP 440-equivalent spellings must be deterministic.
+
+    Regression: previously `max(matching, key=version_sort_key)` returned the
+    first element on a tie, so registering both "1" and "1.0" made selection
+    depend on registration order. version_sort_key now has a raw tie-breaker.
+    """
+
+    def test_version_sort_key_is_total_ordering_tuple(self):
+        # PEP 440-equivalent but distinct spellings tie on VersionKey;
+        # the raw string breaks the tie deterministically.
+        k1 = version_sort_key(_tool("1"))
+        k10 = version_sort_key(_tool("1.0"))
+        assert k1[0] == k10[0]  # same VersionKey (PEP 440 equal)
+        assert k1 != k10  # but distinct sort keys
+        assert k10 > k1  # deterministic order ("1.0" > "1")
+
+    def test_unversioned_components_do_not_crash_tiebreak(self):
+        # Two unversioned components: raw tie-breaker is "" for both,
+        # must compare equal without raising (None < None would).
+        a = version_sort_key(_tool(None))
+        b = version_sort_key(_tool(None))
+        assert a == b
+
+    def test_distinct_versions_unaffected_by_tiebreak(self):
+        # Primary ordering still wins; raw tie-breaker never overrides it.
+        # "1.9" < "1.10" semantically even though "1.9" > "1.10" as strings.
+        k19 = version_sort_key(_tool("1.9"))
+        k110 = version_sort_key(_tool("1.10"))
+        assert k110 > k19
+
+    async def test_selection_is_registration_order_independent(self):
+        """End-to-end: registering two PEP 440-equivalent spellings of the
+        same tool must select the same one regardless of registration order
+        (exercises the real `max(..., key=version_sort_key)` selection path)."""
+
+        forward = FastMCP()
+
+        @forward.tool(name="add", version="1")
+        def add_a(x: int) -> int:
+            return x
+
+        @forward.tool(name="add", version="1.0")
+        def add_b(x: int) -> int:
+            return x
+
+        reverse = FastMCP()
+
+        @reverse.tool(name="add", version="1.0")
+        def add_c(x: int) -> int:
+            return x
+
+        @reverse.tool(name="add", version="1")
+        def add_d(x: int) -> int:
+            return x
+
+        fwd = await forward.get_tool("add")
+        rev = await reverse.get_tool("add")
+        assert fwd is not None and rev is not None
+        # Deterministic regardless of order (previously order-dependent).
+        assert fwd.version == rev.version == "1.0"
+
+
+class TestComponentVersioning:
+    """Tests for versioning in FastMCP components."""
+
+    async def test_tool_with_version(self):
+        """Tool version should be reflected in key."""
+        mcp = FastMCP()
+
+        @mcp.tool(version="2.0")
+        def my_tool(x: int) -> int:
+            return x * 2
+
+        tools = await mcp.list_tools()
+        assert len(tools) == 1
+        assert tools[0].name == "my_tool"
+        assert tools[0].version == "2.0"
+        assert tools[0].key == "tool:my_tool@2.0"
+
+    async def test_tool_without_version(self):
+        """Tool without version should have @ sentinel in key but empty version."""
+        mcp = FastMCP()
+
+        @mcp.tool
+        def my_tool(x: int) -> int:
+            return x * 2
+
+        tools = await mcp.list_tools()
+        assert len(tools) == 1
+        assert tools[0].version is None
+        # Keys always have @ sentinel for unambiguous parsing
+        assert tools[0].key == "tool:my_tool@"
+
+    async def test_tool_version_as_int(self):
+        """Tool version as int should be coerced to string."""
+        mcp = FastMCP()
+
+        @mcp.tool(version=2)
+        def my_tool(x: int) -> int:
+            return x * 2
+
+        tools = await mcp.list_tools()
+        assert len(tools) == 1
+        assert tools[0].version == "2"
+        assert tools[0].key == "tool:my_tool@2"
+
+    async def test_tool_version_zero_is_truthy(self):
+        """Version 0 should become "0" (truthy string), not empty."""
+        mcp = FastMCP()
+
+        @mcp.tool(version=0)
+        def my_tool(x: int) -> int:
+            return x * 2
+
+        tools = await mcp.list_tools()
+        assert len(tools) == 1
+        assert tools[0].version == "0"
+        assert tools[0].key == "tool:my_tool@0"  # Not "tool:my_tool@"
+
+    async def test_multiple_tool_versions_all_returned(self):
+        """list_tools returns all versions; get_tool returns highest."""
+        mcp = FastMCP()
+
+        @mcp.tool(version="1.0")
+        def add(x: int, y: int) -> int:
+            return x + y
+
+        @mcp.tool(version="2.0")
+        def add(x: int, y: int, z: int = 0) -> int:
+            return x + y + z
+
+        # list_tools returns all versions
+        tools = await mcp.list_tools()
+        assert len(tools) == 2
+        versions = {t.version for t in tools}
+        assert versions == {"1.0", "2.0"}
+
+        # get_tool returns highest version
+        tool = await mcp.get_tool("add")
+        assert tool is not None
+        assert tool.version == "2.0"
+
+    async def test_call_tool_invokes_highest_version(self):
+        """Calling a tool by name should invoke the highest version."""
+        mcp = FastMCP()
+
+        @mcp.tool(version="1.0")
+        def add(x: int, y: int) -> int:
+            return x + y
+
+        @mcp.tool(version="2.0")
+        def add(x: int, y: int) -> int:
+            return (x + y) * 10  # Different behavior to distinguish
+
+        result = await mcp.call_tool("add", {"x": 1, "y": 2})
+        # Should invoke v2.0 which multiplies by 10
+        assert isinstance(result.content[0], TextContent)
+        assert result.content[0].text == "30"
+
+    async def test_mixing_versioned_and_unversioned_rejected(self):
+        """Cannot mix versioned and unversioned tools with the same name."""
+        import pytest
+
+        mcp = FastMCP()
+
+        @mcp.tool
+        def my_tool() -> str:
+            return "unversioned"
+
+        # Adding versioned tool when unversioned exists should fail
+        with pytest.raises(ValueError, match="versioned.*unversioned"):
+
+            @mcp.tool(version="1.0")
+            def my_tool() -> str:
+                return "v1.0"
+
+    async def test_mixing_unversioned_after_versioned_rejected(self):
+        """Cannot add unversioned tool when versioned exists."""
+        import pytest
+
+        mcp = FastMCP()
+
+        @mcp.tool(version="1.0")
+        def my_tool() -> str:
+            return "v1.0"
+
+        # Adding unversioned tool when versioned exists should fail
+        with pytest.raises(ValueError, match="unversioned.*versioned"):
+
+            @mcp.tool
+            def my_tool() -> str:
+                return "unversioned"
+
+    async def test_resource_with_version(self):
+        """Resource version should work like tool version."""
+        mcp = FastMCP()
+
+        @mcp.resource("file:///config", version="1.0")
+        def config_v1() -> str:
+            return "config v1"
+
+        @mcp.resource("file:///config", version="2.0")
+        def config_v2() -> str:
+            return "config v2"
+
+        # list_resources returns all versions
+        resources = await mcp.list_resources()
+        assert len(resources) == 2
+        versions = {r.version for r in resources}
+        assert versions == {"1.0", "2.0"}
+
+        # get_resource returns highest version
+        resource = await mcp.get_resource("file:///config")
+        assert resource is not None
+        assert resource.version == "2.0"
+
+    async def test_prompt_with_version(self):
+        """Prompt version should work like tool version."""
+        mcp = FastMCP()
+
+        @mcp.prompt(version="1.0")
+        def greet(name: str) -> str:
+            return f"Hello, {name}!"
+
+        @mcp.prompt(version="2.0")
+        def greet(name: str) -> str:
+            return f"Greetings, {name}!"
+
+        # list_prompts returns all versions
+        prompts = await mcp.list_prompts()
+        assert len(prompts) == 2
+        versions = {p.version for p in prompts}
+        assert versions == {"1.0", "2.0"}
+
+        # get_prompt returns highest version
+        prompt = await mcp.get_prompt("greet")
+        assert prompt is not None
+        assert prompt.version == "2.0"
+
+
+class TestVersionValidation:
+    """Tests for version type validation in components and server."""
+
+    async def test_fastmcp_version_int_coerced(self):
+        """FastMCP(version=42) should coerce to string '42'."""
+        mcp = FastMCP(version=42)
+        assert mcp._mcp_server.version == "42"
+
+    async def test_fastmcp_version_float_coerced(self):
+        """FastMCP(version=1.5) should coerce to string."""
+        mcp = FastMCP(version=1.5)
+        assert mcp._mcp_server.version == "1.5"
+
+    async def test_tool_version_list_rejected(self):
+        """Tool with version=[1, 2] should raise TypeError."""
+        with pytest.raises(TypeError, match="Version must be a string"):
+            Tool(
+                name="t",
+                version=cast(str, [1, 2]),
+                parameters={"type": "object"},
+            )
+
+    async def test_tool_version_dict_rejected(self):
+        """Tool with version={'major': 1} should raise TypeError."""
+        with pytest.raises(TypeError, match="Version must be a string"):
+            Tool(
+                name="t",
+                version=cast(str, {"major": 1}),
+                parameters={"type": "object"},
+            )
+
+    async def test_fastmcp_version_list_rejected(self):
+        """FastMCP(version=[1, 2]) should raise TypeError."""
+        with pytest.raises(TypeError, match="Version must be a string"):
+            FastMCP(version=cast(str, [1, 2]))
+
+    async def test_fastmcp_version_dict_rejected(self):
+        """FastMCP(version={'v': 1}) should raise TypeError."""
+        with pytest.raises(TypeError, match="Version must be a string"):
+            FastMCP(version=cast(str, {"v": 1}))
+
+    async def test_fastmcp_version_true_rejected(self):
+        """FastMCP(version=True) should raise TypeError, not coerce to 'True'."""
+        with pytest.raises(TypeError, match="got bool"):
+            FastMCP(version=cast(str, True))
+
+    async def test_fastmcp_version_false_rejected(self):
+        """FastMCP(version=False) should raise TypeError, not coerce to 'False'."""
+        with pytest.raises(TypeError, match="got bool"):
+            FastMCP(version=cast(str, False))

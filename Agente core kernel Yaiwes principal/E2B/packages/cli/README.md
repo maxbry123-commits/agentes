@@ -1,0 +1,41 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/e2b-dev/E2B/refs/heads/main/readme-assets/logo-white.png">
+    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/e2b-dev/E2B/refs/heads/main/readme-assets/logo-black.png">
+    <img alt="E2B Logo" src="https://raw.githubusercontent.com/e2b-dev/E2B/refs/heads/main/readme-assets/logo-black.png" width="200">
+  </picture>
+</p>
+
+# E2B CLI
+
+This CLI tool allows you to build manager your running E2B sandbox and sandbox templates. Learn more in [our documentation](https://docs.e2b.dev/?utm_source=npm&utm_medium=referral&utm_campaign=readme&utm_content=e2b-cli).
+
+### 1. Install the CLI
+
+**Using Homebrew (on macOS)**
+
+```bash
+brew install e2b
+```
+
+**Using NPM**
+
+```bash
+npm install -g @e2b/cli
+```
+
+### 2. Authenticate
+
+```bash
+e2b auth login
+```
+
+> [!NOTE]
+> To authenticate without the ability to open the browser (e.g. in CI/CD),
+> provide `E2B_API_KEY` as an environment variable. You can find your API key
+> in the [API Keys](https://e2b.dev/dashboard?tab=keys&utm_source=npm&utm_medium=referral&utm_campaign=readme&utm_content=e2b-cli) tab in the E2B dashboard.
+> Then use the CLI like this: `E2B_API_KEY=e2b_... e2b template create`.
+
+### 3. Check out docs
+
+Visit our [CLI documentation](https://docs.e2b.dev/?utm_source=npm&utm_medium=referral&utm_campaign=readme&utm_content=e2b-cli) to learn more.

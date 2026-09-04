@@ -1,0 +1,9 @@
+[
+  {
+    "repo": "ClawHub",
+    "path": "fixtures/public-corpus/corpus.jsonl",
+    "chunks_dir": "ClawHub/fixtures/public-corpus/corpus.jsonl.chunks",
+    "bytes": 13939787,
+    "chunk_bytes": 8388608
+  }
+]

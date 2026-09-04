@@ -1,0 +1,491 @@
+from unittest.mock import MagicMock
+
+import pytest
+
+from fastmcp.server.context import (
+    Context,
+    reset_transport,
+    set_transport,
+)
+from fastmcp.server.server import FastMCP
+
+
+@pytest.fixture
+def context():
+    return Context(fastmcp=FastMCP())
+
+
+class TestSessionId:
+    def test_session_id_with_http_headers(self, context):
+        """Test that session_id returns the value from mcp-session-id header."""
+        from fastmcp.server.dependencies import (
+            FastMCPRequestContext,
+            fastmcp_request_ctx,
+        )
+
+        mock_headers = {"mcp-session-id": "test-session-123"}
+
+        token = fastmcp_request_ctx.set(
+            FastMCPRequestContext(
+                session=MagicMock(wraps={}),
+                request_id="0",
+                meta=None,
+                request=MagicMock(headers=mock_headers),
+                protocol_version="2025-06-18",
+                close_sse_stream=None,
+                lifespan_context=MagicMock(),
+                _srctx=MagicMock(meta=None),
+            )
+        )
+
+        try:
+            assert context.session_id == "test-session-123"
+        finally:
+            fastmcp_request_ctx.reset(token)
+
+    def test_session_id_without_http_headers(self, context):
+        """Test that session_id returns a UUID when no HTTP headers are available.
+
+        For STDIO/SSE/in-memory transports, we generate a UUID and cache it
+        on the session for consistency with state operations.
+        """
+        import uuid
+
+        from fastmcp.server.dependencies import (
+            FastMCPRequestContext,
+            fastmcp_request_ctx,
+        )
+
+        mock_session = MagicMock(wraps={})
+        token = fastmcp_request_ctx.set(
+            FastMCPRequestContext(
+                session=mock_session,
+                request_id="0",
+                meta=None,
+                request=None,
+                protocol_version="2025-06-18",
+                close_sse_stream=None,
+                lifespan_context=MagicMock(),
+                _srctx=MagicMock(meta=None),
+            )
+        )
+
+        try:
+            # session_id should be a valid UUID for non-HTTP transports
+            session_id = context.session_id
+            assert uuid.UUID(session_id)  # Valid UUID format
+            # Should be cached on session
+            assert mock_session._fastmcp_state_prefix == session_id
+        finally:
+            fastmcp_request_ctx.reset(token)
+
+
+class TestContextState:
+    """Test suite for Context state functionality."""
+
+    async def test_context_state_basic(self):
+        """Test basic get/set/delete state operations."""
+        server = FastMCP("test")
+        mock_session = MagicMock()  # Use same session for consistent id()
+
+        async with Context(fastmcp=server, session=mock_session) as context:
+            # Initially empty
+            assert await context.get_state("test1") is None
+            assert await context.get_state("test2") is None
+
+            # Set values
+            await context.set_state("test1", "value")
+            await context.set_state("test2", 2)
+
+            # Retrieve values
+            assert await context.get_state("test1") == "value"
+            assert await context.get_state("test2") == 2
+
+            # Update value
+            await context.set_state("test1", "new_value")
+            assert await context.get_state("test1") == "new_value"
+
+            # Delete value
+            await context.delete_state("test1")
+            assert await context.get_state("test1") is None
+
+    async def test_context_state_session_isolation(self):
+        """Test that different sessions have isolated state."""
+        server = FastMCP("test")
+        session_a = MagicMock()
+        session_b = MagicMock()
+
+        async with Context(fastmcp=server, session=session_a) as context1:
+            await context1.set_state("key", "value-from-A")
+
+        async with Context(fastmcp=server, session=session_b) as context2:
+            # Session B should not see session A's state
+            assert await context2.get_state("key") is None
+            await context2.set_state("key", "value-from-B")
+            assert await context2.get_state("key") == "value-from-B"
+
+        # Verify session A's state is still intact
+        async with Context(fastmcp=server, session=session_a) as context3:
+            assert await context3.get_state("key") == "value-from-A"
+
+    async def test_context_state_persists_across_requests(self):
+        """Test that state persists across multiple context instances (requests)."""
+        server = FastMCP("test")
+        mock_session = MagicMock()  # Same session = same id()
+
+        # First request sets state
+        async with Context(fastmcp=server, session=mock_session) as context1:
+            await context1.set_state("counter", 1)
+
+        # Second request in same session sees the state
+        async with Context(fastmcp=server, session=mock_session) as context2:
+            counter = await context2.get_state("counter")
+            assert counter == 1
+            await context2.set_state("counter", counter + 1)
+
+        # Third request sees updated state
+        async with Context(fastmcp=server, session=mock_session) as context3:
+            assert await context3.get_state("counter") == 2
+
+    async def test_context_state_nested_contexts_share_state(self):
+        """Test that nested contexts within the same session share state."""
+        server = FastMCP("test")
+        mock_session = MagicMock()
+
+        async with Context(fastmcp=server, session=mock_session) as context1:
+            await context1.set_state("key", "outer-value")
+
+            async with Context(fastmcp=server, session=mock_session) as context2:
+                # Nested context sees same state (same session)
+                assert await context2.get_state("key") == "outer-value"
+
+                # Nested context can modify shared state
+                await context2.set_state("key", "inner-value")
+
+            # Outer context sees the modification
+            assert await context1.get_state("key") == "inner-value"
+
+    async def test_two_clients_same_key_isolated_by_session(self):
+        """Test that two different clients can store the same key independently.
+
+        Each client gets an auto-generated session ID, and their state is isolated.
+        """
+        import json
+
+        from fastmcp import Client
+
+        server = FastMCP("test")
+        stored_session_ids: list[str] = []
+
+        @server.tool
+        async def store_and_read(value: str, ctx: Context) -> dict:
+            """Store a value and return all state info."""
+            stored_session_ids.append(ctx.session_id)
+            existing = await ctx.get_state("shared_key")
+            await ctx.set_state("shared_key", value)
+            new_value = await ctx.get_state("shared_key")
+            return {
+                "session_id": ctx.session_id,
+                "existing_value": existing,
+                "new_value": new_value,
+            }
+
+        # Client 1 stores "value-from-client-1"
+        async with Client(server) as client1:
+            result1 = await client1.call_tool(
+                "store_and_read", {"value": "value-from-client-1"}
+            )
+            data1 = json.loads(result1.content[0].text)
+            assert data1["existing_value"] is None  # First write
+            assert data1["new_value"] == "value-from-client-1"
+            session_id_1 = data1["session_id"]
+
+        # Client 2 stores "value-from-client-2" with the SAME key
+        async with Client(server) as client2:
+            result2 = await client2.call_tool(
+                "store_and_read", {"value": "value-from-client-2"}
+            )
+            data2 = json.loads(result2.content[0].text)
+            # Client 2 should NOT see client 1's value (different session)
+            assert data2["existing_value"] is None
+            assert data2["new_value"] == "value-from-client-2"
+            session_id_2 = data2["session_id"]
+
+        # Verify session IDs were auto-generated and are different
+        assert session_id_1 is not None
+        assert session_id_2 is not None
+        assert session_id_1 != session_id_2
+
+        # Client 1 reconnects and should still see their value
+        async with Client(server) as client1_again:
+            # But this is a NEW session (new connection = new session ID)
+            result3 = await client1_again.call_tool(
+                "store_and_read", {"value": "value-from-client-1-again"}
+            )
+            data3 = json.loads(result3.content[0].text)
+            # New session, so existing value is None
+            assert data3["existing_value"] is None
+            assert data3["session_id"] != session_id_1  # Different session
+
+
+class TestContextStateSerializable:
+    """Tests for the serializable parameter on set_state."""
+
+    async def test_set_state_serializable_false_stores_arbitrary_objects(self):
+        """Non-serializable objects can be stored with serializable=False."""
+        server = FastMCP("test")
+        mock_session = MagicMock()
+
+        class MyClient:
+            def __init__(self):
+                self.connected = True
+
+        client = MyClient()
+
+        async with Context(fastmcp=server, session=mock_session) as context:
+            await context.set_state("client", client, serializable=False)
+            result = await context.get_state("client")
+            assert result is client
+            assert result.connected is True
+
+    async def test_set_state_serializable_false_does_not_persist_across_requests(self):
+        """Non-serializable state is request-scoped and gone in a new context."""
+        server = FastMCP("test")
+        mock_session = MagicMock()
+
+        async with Context(fastmcp=server, session=mock_session) as context:
+            await context.set_state("key", object(), serializable=False)
+            assert await context.get_state("key") is not None
+
+        async with Context(fastmcp=server, session=mock_session) as context:
+            assert await context.get_state("key") is None
+
+    async def test_set_state_serializable_true_rejects_non_serializable(self):
+        """Default set_state raises TypeError for non-serializable values."""
+        server = FastMCP("test")
+        mock_session = MagicMock()
+
+        async with Context(fastmcp=server, session=mock_session) as context:
+            with pytest.raises(TypeError, match="serializable=False"):
+                await context.set_state("key", object())
+
+    async def test_set_state_serializable_false_shadows_session_state(self):
+        """Request-scoped state shadows session-scoped state for the same key."""
+        server = FastMCP("test")
+        mock_session = MagicMock()
+
+        async with Context(fastmcp=server, session=mock_session) as context:
+            await context.set_state("key", "session-value")
+            assert await context.get_state("key") == "session-value"
+
+            await context.set_state("key", "request-value", serializable=False)
+            assert await context.get_state("key") == "request-value"
+
+    async def test_delete_state_removes_from_both_stores(self):
+        """delete_state clears both request-scoped and session-scoped values."""
+        server = FastMCP("test")
+        mock_session = MagicMock()
+
+        async with Context(fastmcp=server, session=mock_session) as context:
+            await context.set_state("key", "session-value")
+            await context.set_state("key", "request-value", serializable=False)
+            assert await context.get_state("key") == "request-value"
+
+            await context.delete_state("key")
+            assert await context.get_state("key") is None
+
+    async def test_serializable_state_still_persists_across_requests(self):
+        """Serializable state (default) still persists across requests."""
+        server = FastMCP("test")
+        mock_session = MagicMock()
+
+        async with Context(fastmcp=server, session=mock_session) as context:
+            await context.set_state("key", "persistent")
+
+        async with Context(fastmcp=server, session=mock_session) as context:
+            assert await context.get_state("key") == "persistent"
+
+    async def test_serializable_write_clears_request_scoped_shadow(self):
+        """Writing serializable state clears any request-scoped shadow for the same key."""
+        server = FastMCP("test")
+        mock_session = MagicMock()
+
+        async with Context(fastmcp=server, session=mock_session) as context:
+            await context.set_state("key", "request-value", serializable=False)
+            assert await context.get_state("key") == "request-value"
+
+            # Serializable write should clear the shadow
+            await context.set_state("key", "session-value")
+            assert await context.get_state("key") == "session-value"
+
+
+class TestContextMeta:
+    """Test suite for Context meta functionality."""
+
+    def test_request_context_meta_access(self, context):
+        """Test that the lifted _meta dict is accessible from request context.
+
+        In the v2 SDK port the wrapper's ``meta`` is the raw ``_meta`` block
+        lifted from the request params (a dict), not a typed object.
+        """
+        from fastmcp.server.dependencies import (
+            FastMCPRequestContext,
+            fastmcp_request_ctx,
+        )
+
+        meta_dict = {
+            "user_id": "user-123",
+            "trace_id": "trace-456",
+            "custom_field": "custom-value",
+        }
+
+        token = fastmcp_request_ctx.set(
+            FastMCPRequestContext(
+                session=MagicMock(wraps={}),
+                request_id="0",
+                meta=meta_dict,
+                request=None,
+                protocol_version="2025-06-18",
+                close_sse_stream=None,
+                lifespan_context=MagicMock(),
+                _srctx=MagicMock(meta=None),
+            )
+        )
+
+        retrieved_meta = context.request_context.meta
+        assert retrieved_meta is not None
+        assert retrieved_meta["user_id"] == "user-123"
+        assert retrieved_meta["trace_id"] == "trace-456"
+        assert retrieved_meta["custom_field"] == "custom-value"
+
+        fastmcp_request_ctx.reset(token)
+
+    def test_request_context_meta_none(self, context):
+        """Test that context handles None meta gracefully."""
+        from fastmcp.server.dependencies import (
+            FastMCPRequestContext,
+            fastmcp_request_ctx,
+        )
+
+        token = fastmcp_request_ctx.set(
+            FastMCPRequestContext(
+                session=MagicMock(wraps={}),
+                request_id="0",
+                meta=None,
+                request=None,
+                protocol_version="2025-06-18",
+                close_sse_stream=None,
+                lifespan_context=MagicMock(),
+                _srctx=MagicMock(meta=None),
+            )
+        )
+
+        retrieved_meta = context.request_context.meta
+        assert retrieved_meta is None
+
+        fastmcp_request_ctx.reset(token)
+
+
+class TestTransport:
+    """Test suite for Context transport property."""
+
+    def test_transport_returns_none_outside_server_context(self, context):
+        """Test that transport returns None when not in a server context."""
+        assert context.transport is None
+
+    def test_transport_returns_stdio(self, context):
+        """Test that transport returns 'stdio' when set."""
+        token = set_transport("stdio")
+        try:
+            assert context.transport == "stdio"
+        finally:
+            reset_transport(token)
+
+    def test_transport_returns_sse(self, context):
+        """Test that transport returns 'sse' when set."""
+        token = set_transport("sse")
+        try:
+            assert context.transport == "sse"
+        finally:
+            reset_transport(token)
+
+    def test_transport_returns_streamable_http(self, context):
+        """Test that transport returns 'streamable-http' when set."""
+        token = set_transport("streamable-http")
+        try:
+            assert context.transport == "streamable-http"
+        finally:
+            reset_transport(token)
+
+    def test_transport_reset(self, context):
+        """Test that transport resets correctly."""
+        assert context.transport is None
+        token = set_transport("stdio")
+        assert context.transport == "stdio"
+        reset_transport(token)
+        assert context.transport is None
+
+
+class TestTransportIntegration:
+    """Integration tests for transport property with actual server/client."""
+
+    async def test_transport_in_tool_via_client(self):
+        """Test that transport is accessible from within a tool via Client."""
+        from fastmcp import Client
+
+        mcp = FastMCP("test")
+        observed_transport = None
+
+        @mcp.tool
+        def get_transport(ctx: Context) -> str:
+            nonlocal observed_transport
+            observed_transport = ctx.transport
+            return observed_transport or "none"
+
+        # Client uses in-memory transport which doesn't set transport type
+        # so we expect None here (the transport is only set by run_* methods)
+        async with Client(mcp) as client:
+            result = await client.call_tool("get_transport", {})
+            assert observed_transport is None
+            assert result.data == "none"
+
+    async def test_transport_set_manually_is_visible_in_tool(self):
+        """Test that manually set transport is visible from within a tool."""
+        from fastmcp import Client
+
+        mcp = FastMCP("test")
+        observed_transport = None
+
+        @mcp.tool
+        def get_transport(ctx: Context) -> str:
+            nonlocal observed_transport
+            observed_transport = ctx.transport
+            return observed_transport or "none"
+
+        # Manually set transport before running
+        token = set_transport("stdio")
+        try:
+            async with Client(mcp) as client:
+                result = await client.call_tool("get_transport", {})
+                assert observed_transport == "stdio"
+                assert result.data == "stdio"
+        finally:
+            reset_transport(token)
+
+    async def test_transport_set_via_http_middleware(self):
+        """Test that transport is set per-request via HTTP middleware."""
+        from fastmcp.utilities.tests import asgi_client
+
+        mcp = FastMCP("test")
+        observed_transport = None
+
+        @mcp.tool
+        def get_transport(ctx: Context) -> str:
+            nonlocal observed_transport
+            observed_transport = ctx.transport
+            return observed_transport or "none"
+
+        async with asgi_client(mcp, transport="streamable-http") as client:
+            result = await client.call_tool("get_transport", {})
+            assert observed_transport == "streamable-http"
+            assert result.data == "streamable-http"

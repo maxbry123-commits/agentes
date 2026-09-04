@@ -1,0 +1,18 @@
+{
+  "name": "huggingface-skills",
+  "owner": {
+    "name": "Hugging Face"
+  },
+  "metadata": {
+    "description": "Core Hugging Face Hub operations through the hf CLI, including skill installation, repo management, jobs, datasets, models, Spaces, and discovery.",
+    "version": "1.0.26"
+  },
+  "plugins": [
+    {
+      "name": "hf-cli",
+      "source": "./skills/hf-cli",
+      "skills": "./",
+      "description": "Execute Hugging Face Hub operations using the hf CLI. Install additional Hugging Face skills, discover agent resources, download models/datasets, upload files, manage repos, and run cloud compute jobs."
+    }
+  ]
+}
