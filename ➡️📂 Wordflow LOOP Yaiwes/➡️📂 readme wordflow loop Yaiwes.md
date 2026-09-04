@@ -215,3 +215,29 @@ Todo quedó como **PROPUESTA, no integrado** hasta que digas `APROBADO`/`INCORP�
 - OUTPUT BLOCK 001: REGISTRADO / PROPUESTA.
 - Notas X-Ray Claude: 11/11 creadas.
 - Integraciones aprobadas por Director: NINGUNA todavía.
+
+---
+
+## INPUT BLOCK 004 — DIRECTOR — LITERAL
+
+Vamos a construir el loop wordflow por capas no monolítico 
+Cada capa del proceso en archivos separados y sobre esta clase vas a crear el code phyton 95% deteminetista y 5% llm 
+Skills y system promt DSL Dag shema sheriff validador verificación sentinela supervisor juez guardián todo como un contrato vas a y el sistema readme.md tipo OPEN claw 
+
+➡️ Ejemplo ➡️
+📂 Capa 1 investigación 
+📂 Cala 2 auditoría forense x Ray De documentos 
+📂 Buscar auditoría forense x Ray del code en todos los repos de la cuenta de Github Maxbry 123 especialmente en ➡️ agente motores Wordflow YAIWES ➡️ router inteligente ➡️ agentes ➡️
+📂 Capa 3 copiar y mover archivo 
+📂 Investigar en Github code fuente listo de repos open soure que ya tienen el code que se necesita y iniciar el sistema de Github acción extracción 
+Ubicas en la raíz de ➡️ yaiwes existen 2 wordflow que tú hiciste 📌1. Sistema de descarga y extracción de archivos 📌 2. Sistema de evolución copias solo el sistema de readme.md tipo OPEN claw para añadirlo al wordflow 
+📂
+
+---
+
+## ESTADO ACTUALIZADO
+
+- INPUT BLOCKS registrados: 001–004.
+- INPUT BLOCK 004: REGISTRADO LITERAL.
+- Arquitectura por capas del Wordflow LOOP: PENDIENTE DE MATERIALIZAR.
+- Integraciones aprobadas por Director: NINGUNA todavía.
