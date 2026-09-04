@@ -1,0 +1,88 @@
+# Multilingual test case words (not spelling errors)
+Analise
+Ignora
+Prozess
+Responde
+adresse
+approches
+exemple
+fonction
+funktion
+ist
+alle
+Meu
+meu
+hava
+hace
+Calle
+ignora
+lokale
+processus
+implemente
+informations
+repositor
+sie
+valide
+varios
+tread
+ot
+Sie
+# Language codes (ISO 639-1) used in HuggingFace dataset configs
+te
+# NPM package names (not spelling errors)
+devlop
+trough
+# Intentional typos for typo augmentation training (ft_linear_lora_consistency.py)
+teh
+adn
+taht
+wiht
+tihs
+hvae
+thier
+tehre
+tehse
+thsoe
+waht
+wehn
+wehre
+whcih
+expalin
+calculte
+follwing
+strcture
+# Legal and medical terms (training data)
+lien
+liens
+infarction
+# Kubernetes operators (not spelling errors)
+NotIn
+notin
+# Cloud provider acronyms (not spelling errors)
+AKS
+# Rust programming terms (not spelling errors)
+statics
+# Intentional typos for fuzzy matching tests (keyword_accuracy_test.go, keyword_nlp_test.go)
+immedaite
+pasword
+critcal
+# Intentional partial name for exact-match test (authz_classifier_test.go)
+admi
+# Frontend identifier names (not spelling errors)
+currentY
+curRect
+# Academic citation names (not spelling errors)
+Brin
+# Fleet simulator notation, citation names, and local abbreviations
+nD
+Joo
+ROUGE
+Mor
+Parth
+sav
+# Mathematical/CS terms (not spelling errors)
+disjointness
+deques
+# Intentional typos for config unknown-field validation tests (validate_test.go)
+wieght
+naem

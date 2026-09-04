@@ -1,0 +1,683 @@
+import { FixtureHogFlowBuilder } from '~/cdp/_tests/builders/hogflow.builder'
+import { createExampleInvocation } from '~/cdp/_tests/fixtures'
+import { HogFlowAction } from '~/cdp/schema/hogflow'
+import { CyclotronJobInvocationHogFunction } from '~/cdp/types'
+import { closeHub, createHub } from '~/common/utils/db/hub'
+import { PostgresUse } from '~/common/utils/db/postgres'
+import { logger } from '~/common/utils/logger'
+import { UUIDT } from '~/common/utils/utils'
+import { createTestTeamFixture } from '~/tests/helpers/sql'
+import { Hub, Team } from '~/types'
+
+import { RecipientsManagerService } from '../managers/recipients-manager.service'
+import { EmailSuppressionService, emailSuppressionConfigFromEnv } from './email-suppression.service'
+import { RecipientPreferencesService } from './recipient-preferences.service'
+import { RecipientTokensService } from './recipient-tokens.service'
+
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+describe('RecipientPreferencesService', () => {
+    let hub: Hub
+    let team: Team
+    let service: RecipientPreferencesService
+    let mockRecipientsManager: RecipientsManagerService
+    let mockEmailSuppressionService: EmailSuppressionService
+    let mockRecipientsManagerGet: jest.SpyInstance
+    let mockRecipientsManagerGetPreference: jest.SpyInstance
+    let mockRecipientsManagerGetAllMarketingMessagingPreference: jest.SpyInstance
+
+    beforeEach(async () => {
+        hub = await createHub()
+        team = (await createTestTeamFixture(hub.postgres)).team
+        mockRecipientsManager = new RecipientsManagerService(hub.postgres)
+        mockRecipientsManagerGet = jest.spyOn(mockRecipientsManager, 'get')
+        mockRecipientsManagerGetPreference = jest.spyOn(mockRecipientsManager, 'getPreference')
+        mockRecipientsManagerGetAllMarketingMessagingPreference = jest.spyOn(
+            mockRecipientsManager,
+            'getAllMarketingMessagingPreference'
+        )
+
+        mockEmailSuppressionService = new EmailSuppressionService(hub.postgres, emailSuppressionConfigFromEnv())
+        service = new RecipientPreferencesService(mockRecipientsManager, mockEmailSuppressionService)
+    })
+
+    afterEach(async () => {
+        jest.restoreAllMocks()
+        await closeHub(hub)
+    })
+
+    const createRecipient = (
+        identifier: string,
+        preferences: Record<string, string> = {}
+    ): {
+        id: string
+        team_id: number
+        identifier: string
+        preferences: Record<string, string>
+        created_at: string
+        updated_at: string
+    } => ({
+        id: new UUIDT().toString(),
+        team_id: team.id,
+        identifier,
+        preferences,
+        created_at: '2023-01-01T00:00:00Z',
+        updated_at: '2023-01-01T00:00:00Z',
+    })
+
+    const createFunctionStepInvocation = (
+        action: Extract<HogFlowAction, { type: 'function' | 'function_email' | 'function_sms' | 'function_push' }>
+    ): CyclotronJobInvocationHogFunction => {
+        const hogFlow = new FixtureHogFlowBuilder()
+            .withTeamId(team.id)
+            .withWorkflow({
+                actions: {
+                    test: action,
+                    exit: {
+                        type: 'exit',
+                        config: {},
+                    },
+                },
+                edges: [
+                    {
+                        from: 'test',
+                        to: 'exit',
+                        type: 'continue',
+                    },
+                ],
+            })
+            .build()
+
+        // Hacky but we just want to test the service, so we'll add the inputs to the invocation
+        const inputs = Object.entries(action.config.inputs).reduce(
+            (acc, [key, value]) => {
+                acc[key] = value.value
+                return acc
+            },
+            {} as Record<string, any>
+        )
+
+        // HogFlow only overlaps HogFunctionType structurally; updated_at diverges (Date|number vs string)
+        return createExampleInvocation(hogFlow as unknown as Parameters<typeof createExampleInvocation>[0], {
+            inputs,
+        })
+    }
+
+    describe('shouldSkipAction', () => {
+        describe('for email actions', () => {
+            const createEmailAction = (
+                to: string = 'test@example.com',
+                categoryId: string,
+                categoryType?: 'marketing' | 'transactional'
+            ): Extract<HogFlowAction, { type: 'function_email' }> => ({
+                id: 'email',
+                name: 'Send email',
+                description: 'Send an email to the recipient',
+                type: 'function_email',
+                filters: null,
+                config: {
+                    template_id: 'template-email',
+                    message_category_id: categoryId,
+                    message_category_type: categoryType,
+                    inputs: {
+                        email: {
+                            value: {
+                                to: {
+                                    email: to,
+                                },
+                                from: {
+                                    integrationId: 1,
+                                },
+                                subject: 'Test Subject',
+                                text: 'Test Text',
+                                html: 'Test HTML',
+                            },
+                        },
+                    },
+                },
+                created_at: Date.now(),
+                updated_at: Date.now(),
+            })
+
+            it('should return true if recipient is opted out for the specific category', async () => {
+                const action = createEmailAction('test@example.com', '123e4567-e89b-12d3-a456-426614174000')
+                const invocation = createFunctionStepInvocation(action)
+                const recipient = createRecipient('test@example.com', {
+                    '123e4567-e89b-12d3-a456-426614174000': 'OPTED_OUT',
+                })
+
+                mockRecipientsManagerGet.mockResolvedValue(recipient)
+                mockRecipientsManagerGetPreference.mockReturnValue('OPTED_OUT')
+                mockRecipientsManagerGetAllMarketingMessagingPreference.mockReturnValue('NO_PREFERENCE')
+
+                const result = await service.shouldSkipAction(invocation, action)
+
+                expect(result).toBe('opted_out')
+                expect(mockRecipientsManagerGet).toHaveBeenCalledWith({
+                    teamId: team.id,
+                    identifier: 'test@example.com',
+                })
+                expect(mockRecipientsManagerGetPreference).toHaveBeenCalledWith(
+                    recipient,
+                    '123e4567-e89b-12d3-a456-426614174000'
+                )
+            })
+
+            it('should return false if recipient is opted in', async () => {
+                const action = createEmailAction('test@example.com', '123e4567-e89b-12d3-a456-426614174000')
+                const invocation = createFunctionStepInvocation(action)
+                const recipient = createRecipient('test@example.com', {
+                    '123e4567-e89b-12d3-a456-426614174000': 'OPTED_IN',
+                })
+
+                mockRecipientsManagerGet.mockResolvedValue(recipient)
+                mockRecipientsManagerGetPreference.mockReturnValue('OPTED_IN')
+                mockRecipientsManagerGetAllMarketingMessagingPreference.mockReturnValue('NO_PREFERENCE')
+
+                const result = await service.shouldSkipAction(invocation, action)
+
+                expect(result).toBeNull()
+            })
+
+            it('should return false if recipient has no preference', async () => {
+                const action = createEmailAction('test@example.com', '123e4567-e89b-12d3-a456-426614174000')
+                const invocation = createFunctionStepInvocation(action)
+                const recipient = createRecipient('test@example.com', {})
+
+                mockRecipientsManagerGet.mockResolvedValue(recipient)
+                mockRecipientsManagerGetPreference.mockReturnValue('NO_PREFERENCE')
+                mockRecipientsManagerGetAllMarketingMessagingPreference.mockReturnValue('NO_PREFERENCE')
+
+                const result = await service.shouldSkipAction(invocation, action)
+
+                expect(result).toBeNull()
+            })
+
+            it('should return false if recipient is not found', async () => {
+                const action = createEmailAction('test@example.com', '123e4567-e89b-12d3-a456-426614174000')
+                const invocation = createFunctionStepInvocation(action)
+
+                mockRecipientsManagerGet.mockResolvedValue(null)
+
+                const result = await service.shouldSkipAction(invocation, action)
+
+                expect(result).toBeNull()
+                expect(mockRecipientsManagerGet).toHaveBeenCalledWith({
+                    teamId: team.id,
+                    identifier: 'test@example.com',
+                })
+                expect(mockRecipientsManagerGetPreference).not.toHaveBeenCalled()
+            })
+
+            it('should handle errors gracefully and return false', async () => {
+                const action = createEmailAction('test@example.com', '123e4567-e89b-12d3-a456-426614174000')
+                const invocation = createFunctionStepInvocation(action)
+                const loggerSpy = jest.spyOn(logger, 'error').mockImplementation()
+
+                mockRecipientsManagerGet.mockRejectedValue(new Error('Database error'))
+
+                const result = await service.shouldSkipAction(invocation, action)
+
+                expect(result).toBeNull()
+                expect(loggerSpy).toHaveBeenCalledWith(
+                    'Failed to fetch recipient preferences for test@example.com:',
+                    expect.any(Error)
+                )
+
+                loggerSpy.mockRestore()
+            })
+
+            it('should throw error if no email identifier is found', async () => {
+                const action = createEmailAction('', '123e4567-e89b-12d3-a456-426614174000')
+                const invocation = createFunctionStepInvocation(action)
+
+                await expect(service.shouldSkipAction(invocation, action)).rejects.toThrow(
+                    `No recipient identifier found for message action [Action:${action.id}]. Check that the message 'to' field is set correctly for this person.`
+                )
+            })
+
+            it('should return true if recipient is opted out of all marketing messaging', async () => {
+                const action = createEmailAction('test@example.com', '123e4567-e89b-12d3-a456-426614174000')
+                const invocation = createFunctionStepInvocation(action)
+                const recipient = createRecipient('test@example.com', {
+                    '123e4567-e89b-12d3-a456-426614174000': 'OPTED_IN', // Opted in for this category
+                    $all: 'OPTED_OUT', // But opted out of all marketing
+                })
+
+                mockRecipientsManagerGet.mockResolvedValue(recipient)
+                mockRecipientsManagerGetPreference.mockReturnValue('OPTED_IN')
+                mockRecipientsManagerGetAllMarketingMessagingPreference.mockReturnValue('OPTED_OUT')
+
+                const result = await service.shouldSkipAction(invocation, action)
+
+                expect(result).toBe('opted_out')
+                expect(mockRecipientsManagerGetAllMarketingMessagingPreference).toHaveBeenCalledWith(recipient)
+            })
+
+            it.each([
+                ['the specific category', { '123e4567-e89b-12d3-a456-426614174000': 'OPTED_OUT' }],
+                ['all marketing messaging', { $all: 'OPTED_OUT' }],
+            ])(
+                'should return false for a transactional email even when recipient is opted out of %s',
+                async (_label, preferences) => {
+                    const action = createEmailAction(
+                        'test@example.com',
+                        '123e4567-e89b-12d3-a456-426614174000',
+                        'transactional'
+                    )
+                    const invocation = createFunctionStepInvocation(action)
+
+                    mockRecipientsManagerGet.mockResolvedValue(createRecipient('test@example.com', preferences))
+
+                    const result = await service.shouldSkipAction(invocation, action)
+
+                    expect(result).toBeNull()
+                    // Transactional messages bypass the opt-out lookup entirely
+                    expect(mockRecipientsManagerGet).not.toHaveBeenCalled()
+                }
+            )
+
+            it('should return true if recipient is opted out of specific category even when opted in to all marketing', async () => {
+                const action = createEmailAction('test@example.com', '123e4567-e89b-12d3-a456-426614174000')
+                const invocation = createFunctionStepInvocation(action)
+                const recipient = createRecipient('test@example.com', {
+                    '123e4567-e89b-12d3-a456-426614174000': 'OPTED_OUT', // Opted out for this category
+                    $all: 'OPTED_IN', // But opted in for all marketing
+                })
+
+                mockRecipientsManagerGet.mockResolvedValue(recipient)
+                mockRecipientsManagerGetPreference.mockReturnValue('OPTED_OUT')
+                mockRecipientsManagerGetAllMarketingMessagingPreference.mockReturnValue('OPTED_IN')
+
+                const result = await service.shouldSkipAction(invocation, action)
+
+                expect(result).toBe('opted_out')
+                expect(mockRecipientsManagerGetAllMarketingMessagingPreference).toHaveBeenCalledWith(recipient)
+            })
+
+            it('should return false if recipient is opted in to both specific category and all marketing', async () => {
+                const action = createEmailAction('test@example.com', '123e4567-e89b-12d3-a456-426614174000')
+                const invocation = createFunctionStepInvocation(action)
+                const recipient = createRecipient('test@example.com', {
+                    '123e4567-e89b-12d3-a456-426614174000': 'OPTED_IN',
+                    $all: 'OPTED_IN',
+                })
+
+                mockRecipientsManagerGet.mockResolvedValue(recipient)
+                mockRecipientsManagerGetPreference.mockReturnValue('OPTED_IN')
+                mockRecipientsManagerGetAllMarketingMessagingPreference.mockReturnValue('OPTED_IN')
+
+                const result = await service.shouldSkipAction(invocation, action)
+
+                expect(result).toBeNull()
+                expect(mockRecipientsManagerGetAllMarketingMessagingPreference).toHaveBeenCalledWith(recipient)
+            })
+
+            it('should return false if recipient has no preference for category but is opted in to all marketing', async () => {
+                const action = createEmailAction('test@example.com', '123e4567-e89b-12d3-a456-426614174000')
+                const invocation = createFunctionStepInvocation(action)
+                const recipient = createRecipient('test@example.com', {
+                    $all: 'OPTED_IN',
+                })
+
+                mockRecipientsManagerGet.mockResolvedValue(recipient)
+                mockRecipientsManagerGetPreference.mockReturnValue('NO_PREFERENCE')
+                mockRecipientsManagerGetAllMarketingMessagingPreference.mockReturnValue('OPTED_IN')
+
+                const result = await service.shouldSkipAction(invocation, action)
+
+                expect(result).toBeNull()
+                expect(mockRecipientsManagerGetAllMarketingMessagingPreference).toHaveBeenCalledWith(recipient)
+            })
+
+            it('should return false if recipient has no preference for either category or all marketing', async () => {
+                const action = createEmailAction('test@example.com', '123e4567-e89b-12d3-a456-426614174000')
+                const invocation = createFunctionStepInvocation(action)
+                const recipient = createRecipient('test@example.com', {})
+
+                mockRecipientsManagerGet.mockResolvedValue(recipient)
+                mockRecipientsManagerGetPreference.mockReturnValue('NO_PREFERENCE')
+                mockRecipientsManagerGetAllMarketingMessagingPreference.mockReturnValue('NO_PREFERENCE')
+
+                const result = await service.shouldSkipAction(invocation, action)
+
+                expect(result).toBeNull()
+                expect(mockRecipientsManagerGetAllMarketingMessagingPreference).toHaveBeenCalledWith(recipient)
+            })
+
+            describe('when the recipient is on the suppression list', () => {
+                // Suppression is a deliverability signal that must apply even to transactional
+                // messages — the parameterized case guards that ordering.
+                const insertSuppressionRow = async (email: string): Promise<void> => {
+                    await hub.postgres.query(
+                        PostgresUse.COMMON_WRITE,
+                        `INSERT INTO posthog_messagesuppression
+                            (id, team_id, identifier, source, reason, transient_bounce_count,
+                             suppressed, suppressed_at, deleted, created_at, updated_at)
+                         VALUES (gen_random_uuid(), $1, $2, 'BOUNCE', 'test row', 5,
+                             true, NOW(), false, NOW(), NOW())`,
+                        [team.id, email],
+                        'test-insert-suppression'
+                    )
+                }
+
+                it.each([
+                    ['marketing', 'marketing' as const],
+                    ['transactional', 'transactional' as const],
+                ])('skips a %s email to a suppressed recipient', async (_label, categoryType) => {
+                    const email = `suppressed-${categoryType}@example.com`
+                    await insertSuppressionRow(email)
+                    const action = createEmailAction(email, '123e4567-e89b-12d3-a456-426614174000', categoryType)
+                    const invocation = createFunctionStepInvocation(action)
+
+                    const result = await service.shouldSkipAction(invocation, action)
+
+                    expect(result).toBe('suppressed')
+                })
+
+                // A suppressed address placed in cc or bcc must still block the send, because SES
+                // delivers to every recipient list, not just `to`.
+                it.each([
+                    ['cc', 'suppressed-cc@example.com', 'suppressed-cc@example.com'],
+                    ['bcc', 'suppressed-bcc@example.com', 'suppressed-bcc@example.com'],
+                    [
+                        'cc RFC-822 bracketed',
+                        'suppressed-name@example.com',
+                        '"Blocked User" <suppressed-name@example.com>',
+                    ],
+                    [
+                        'bcc mixed comma-separated list',
+                        'suppressed-mixed@example.com',
+                        'ok@example.com, suppressed-mixed@example.com, other@example.com',
+                    ],
+                ] as const)(
+                    'skips when a suppressed address appears in %s',
+                    async (field, suppressedEmail, headerValue) => {
+                        await insertSuppressionRow(suppressedEmail)
+                        const action = createEmailAction(
+                            'legit-to@example.com',
+                            '123e4567-e89b-12d3-a456-426614174000',
+                            'marketing'
+                        )
+                        const invocation = createFunctionStepInvocation(action)
+                        // Inject the cc/bcc into the resolved invocation inputs (this is what the
+                        // executor sees at send time after template resolution).
+                        const emailInputs = invocation.state.globals!.inputs!.email as {
+                            to: { email: string }
+                            cc?: string
+                            bcc?: string
+                        }
+                        if (field.startsWith('cc')) {
+                            emailInputs.cc = headerValue
+                        } else {
+                            emailInputs.bcc = headerValue
+                        }
+
+                        const result = await service.shouldSkipAction(invocation, action)
+
+                        expect(result).toBe('suppressed')
+                    }
+                )
+
+                it('does not skip when cc/bcc contain only non-suppressed addresses', async () => {
+                    // Sanity check: the CC/BCC scan must not over-suppress. `to` is not suppressed
+                    // and cc/bcc contain unrelated addresses → fall through to the opt-out path.
+                    const action = createEmailAction(
+                        'legit-to@example.com',
+                        '123e4567-e89b-12d3-a456-426614174000',
+                        'marketing'
+                    )
+                    const invocation = createFunctionStepInvocation(action)
+                    const emailInputs = invocation.state.globals!.inputs!.email as {
+                        to: { email: string }
+                        cc?: string
+                        bcc?: string
+                    }
+                    emailInputs.cc = 'ok1@example.com, ok2@example.com'
+                    emailInputs.bcc = 'ok3@example.com'
+                    mockRecipientsManagerGet.mockResolvedValue(null)
+
+                    const result = await service.shouldSkipAction(invocation, action)
+
+                    expect(result).toBeNull()
+                })
+            })
+        })
+
+        describe('for SMS actions', () => {
+            const createSmsAction = (
+                toNumber: string = '+1234567890',
+                categoryId: string
+            ): Extract<HogFlowAction, { type: 'function_sms' }> => ({
+                id: 'sms',
+                name: 'Send SMS',
+                description: 'Send an SMS to the recipient',
+                type: 'function_sms',
+                filters: null,
+                config: {
+                    template_id: 'template-twilio',
+                    message_category_id: categoryId,
+                    inputs: {
+                        to_number: { value: toNumber },
+                    },
+                },
+                created_at: Date.now(),
+                updated_at: Date.now(),
+            })
+
+            it('should return true if SMS recipient is opted out', async () => {
+                const action = createSmsAction('+1234567890', '123e4567-e89b-12d3-a456-426614174000')
+                const invocation = createFunctionStepInvocation(action)
+                const recipient = createRecipient('+1234567890', {
+                    '123e4567-e89b-12d3-a456-426614174000': 'OPTED_OUT',
+                })
+
+                mockRecipientsManagerGet.mockResolvedValue(recipient)
+                mockRecipientsManagerGetPreference.mockReturnValue('OPTED_OUT')
+                mockRecipientsManagerGetAllMarketingMessagingPreference.mockReturnValue('NO_PREFERENCE')
+
+                const result = await service.shouldSkipAction(invocation, action)
+
+                expect(result).toBe('opted_out')
+                expect(mockRecipientsManagerGet).toHaveBeenCalledWith({
+                    teamId: team.id,
+                    identifier: '+1234567890',
+                })
+            })
+
+            it('should return false if SMS recipient is opted in', async () => {
+                const action = createSmsAction('+1234567890', '123e4567-e89b-12d3-a456-426614174000')
+                const invocation = createFunctionStepInvocation(action)
+                const recipient = createRecipient('+1234567890', {
+                    '123e4567-e89b-12d3-a456-426614174000': 'OPTED_IN',
+                })
+
+                mockRecipientsManagerGet.mockResolvedValue(recipient)
+                mockRecipientsManagerGetPreference.mockReturnValue('OPTED_IN')
+                mockRecipientsManagerGetAllMarketingMessagingPreference.mockReturnValue('NO_PREFERENCE')
+
+                const result = await service.shouldSkipAction(invocation, action)
+
+                expect(result).toBeNull()
+            })
+
+            it('should throw error if no SMS identifier is found', async () => {
+                const action = createSmsAction('', '123e4567-e89b-12d3-a456-426614174000')
+                const invocation = createFunctionStepInvocation(action)
+
+                await expect(service.shouldSkipAction(invocation, action)).rejects.toThrow(
+                    `No recipient identifier found for message action [Action:${action.id}]. Check that the message 'to' field is set correctly for this person.`
+                )
+            })
+
+            it('should return true if SMS recipient is opted out of all marketing messaging', async () => {
+                const action = createSmsAction('+1234567890', '123e4567-e89b-12d3-a456-426614174000')
+                const invocation = createFunctionStepInvocation(action)
+                const recipient = createRecipient('+1234567890', {
+                    '123e4567-e89b-12d3-a456-426614174000': 'OPTED_IN', // Opted in for this category
+                    $all: 'OPTED_OUT', // But opted out of all marketing
+                })
+
+                mockRecipientsManagerGet.mockResolvedValue(recipient)
+                mockRecipientsManagerGetPreference.mockReturnValue('OPTED_IN')
+                mockRecipientsManagerGetAllMarketingMessagingPreference.mockReturnValue('OPTED_OUT')
+
+                const result = await service.shouldSkipAction(invocation, action)
+
+                expect(result).toBe('opted_out')
+                expect(mockRecipientsManagerGetAllMarketingMessagingPreference).toHaveBeenCalledWith(recipient)
+            })
+
+            it('should return false if SMS recipient is opted in to both specific category and all marketing', async () => {
+                const action = createSmsAction('+1234567890', '123e4567-e89b-12d3-a456-426614174000')
+                const invocation = createFunctionStepInvocation(action)
+                const recipient = createRecipient('+1234567890', {
+                    '123e4567-e89b-12d3-a456-426614174000': 'OPTED_IN',
+                    $all: 'OPTED_IN',
+                })
+
+                mockRecipientsManagerGet.mockResolvedValue(recipient)
+                mockRecipientsManagerGetPreference.mockReturnValue('OPTED_IN')
+                mockRecipientsManagerGetAllMarketingMessagingPreference.mockReturnValue('OPTED_IN')
+
+                const result = await service.shouldSkipAction(invocation, action)
+
+                expect(result).toBeNull()
+                expect(mockRecipientsManagerGetAllMarketingMessagingPreference).toHaveBeenCalledWith(recipient)
+            })
+        })
+
+        describe('for push actions', () => {
+            const createPushAction = (
+                categoryId: string,
+                categoryType?: 'marketing' | 'transactional'
+            ): Extract<HogFlowAction, { type: 'function_push' }> => ({
+                id: 'push',
+                name: 'Send push',
+                description: 'Send a push notification to the recipient',
+                type: 'function_push',
+                filters: null,
+                config: {
+                    template_id: 'template-native-push',
+                    message_category_id: categoryId,
+                    message_category_type: categoryType,
+                    inputs: {},
+                },
+                created_at: Date.now(),
+                updated_at: Date.now(),
+            })
+
+            // Push is keyed by the recipient's distinct_id (from the triggering event), not an email/phone
+            // 'to' field — that is the identifier the device token was registered under.
+            it.each([
+                ['opted out', 'OPTED_OUT', 'opted_out'],
+                ['opted in', 'OPTED_IN', null],
+            ] as const)(
+                'marketing push to a recipient %s of the category → skipReason=%s',
+                async (_label, status, expectedReason) => {
+                    const action = createPushAction('123e4567-e89b-12d3-a456-426614174000', 'marketing')
+                    const invocation = createFunctionStepInvocation(action)
+                    const recipient = createRecipient('distinct_id', {
+                        '123e4567-e89b-12d3-a456-426614174000': status,
+                    })
+
+                    mockRecipientsManagerGet.mockResolvedValue(recipient)
+                    mockRecipientsManagerGetPreference.mockReturnValue(status)
+                    mockRecipientsManagerGetAllMarketingMessagingPreference.mockReturnValue('NO_PREFERENCE')
+
+                    const result = await service.shouldSkipAction(invocation, action)
+
+                    expect(result).toBe(expectedReason)
+                    expect(mockRecipientsManagerGet).toHaveBeenCalledWith({
+                        teamId: team.id,
+                        identifier: 'distinct_id',
+                    })
+                }
+            )
+
+            it('should return false for a transactional push without checking preferences', async () => {
+                const action = createPushAction('123e4567-e89b-12d3-a456-426614174000', 'transactional')
+                const invocation = createFunctionStepInvocation(action)
+
+                const result = await service.shouldSkipAction(invocation, action)
+
+                expect(result).toBeNull()
+                expect(mockRecipientsManagerGet).not.toHaveBeenCalled()
+            })
+
+            it('keys the opt-out on the delivered-to person, not the triggering event', async () => {
+                // Delivery reads the device token from globals.person, so the opt-out must check that same
+                // person even when the triggering event distinct_id differs (e.g. a configured inputs.distinctId).
+                const action = createPushAction('123e4567-e89b-12d3-a456-426614174000', 'marketing')
+                const invocation = createFunctionStepInvocation(action)
+                invocation.state.globals.person!.distinct_id = 'delivered-person'
+                invocation.state.globals.event!.distinct_id = 'trigger-person'
+
+                mockRecipientsManagerGet.mockResolvedValue(
+                    createRecipient('delivered-person', {
+                        '123e4567-e89b-12d3-a456-426614174000': 'OPTED_OUT',
+                    })
+                )
+                mockRecipientsManagerGetPreference.mockReturnValue('OPTED_OUT')
+                mockRecipientsManagerGetAllMarketingMessagingPreference.mockReturnValue('NO_PREFERENCE')
+
+                const result = await service.shouldSkipAction(invocation, action)
+
+                expect(result).toBe('opted_out')
+                expect(mockRecipientsManagerGet).toHaveBeenCalledWith({
+                    teamId: team.id,
+                    identifier: 'delivered-person',
+                })
+            })
+        })
+
+        describe('for other action types', () => {
+            it('should return false for function actions', async () => {
+                const action: Extract<HogFlowAction, { type: 'function' }> = {
+                    id: 'function',
+                    name: 'Execute function',
+                    description: 'Execute a custom hog function',
+                    type: 'function',
+                    filters: null,
+                    config: {
+                        template_id: 'template-function',
+                        inputs: {},
+                    },
+                    created_at: Date.now(),
+                    updated_at: Date.now(),
+                }
+                const invocation = createFunctionStepInvocation(action)
+
+                const result = await service.shouldSkipAction(invocation, action)
+
+                expect(result).toBeNull()
+                expect(mockRecipientsManagerGet).not.toHaveBeenCalled()
+            })
+        })
+    })
+
+    describe('recipient token URLs', () => {
+        let tokensService: RecipientTokensService
+
+        beforeEach(() => {
+            tokensService = new RecipientTokensService(hub.ENCRYPTION_SALT_KEYS, hub.SITE_URL)
+        })
+
+        it('should generate a preferences URL with a trailing slash', () => {
+            const url = tokensService.generatePreferencesUrl({ team_id: team.id, identifier: 'test@example.com' })
+
+            expect(url).toMatch(new RegExp(`^${escapeRegExp(hub.SITE_URL)}/messaging-preferences/[^/]+/$`))
+        })
+
+        it('should generate a one-click unsubscribe URL with the query param', () => {
+            const url = tokensService.generateOneClickUnsubscribeUrl({
+                team_id: team.id,
+                identifier: 'test@example.com',
+            })
+
+            expect(url).toMatch(
+                new RegExp(`^${escapeRegExp(hub.SITE_URL)}/messaging-preferences/[^/]+/\\?one_click_unsubscribe=1$`)
+            )
+        })
+    })
+})

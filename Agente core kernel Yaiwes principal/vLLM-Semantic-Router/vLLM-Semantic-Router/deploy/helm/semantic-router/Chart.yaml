@@ -1,0 +1,55 @@
+apiVersion: v2
+name: semantic-router
+description: A Helm chart for deploying Semantic Router - an intelligent routing system for LLM applications
+type: application
+version: 0.2.0
+# appVersion is the default image tag used when the chart is deployed without
+# an explicit image.tag override.  "latest" corresponds to the most recent
+# successful build from the main branch (published by docker-publish.yml).
+# During the CI release pipeline (helm-publish.yml) this value is overridden
+# to the actual release tag (e.g. "v0.3.0") via `helm package --app-version`.
+# For production deployments always pin the image tag explicitly in your
+# values file rather than relying on this default.
+appVersion: "latest"
+keywords:
+  - semantic-router
+  - llm
+  - vllm
+  - ai
+  - routing
+  - classification
+home: https://github.com/vllm-project/semantic-router
+sources:
+  - https://github.com/vllm-project/semantic-router
+maintainers:
+  - name: Semantic Router Team
+    url: https://github.com/vllm-project/semantic-router
+icon: https://raw.githubusercontent.com/vllm-project/semantic-router/main/website/static/img/logo.png
+dependencies:
+  - name: redis
+    alias: semantic-cache-redis
+    version: ">=0.0.0"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: dependencies.semanticCache.redis.enabled
+  - name: milvus
+    alias: semantic-cache-milvus
+    version: ">=0.0.0"
+    repository: "https://milvus-io.github.io/milvus-helm/"
+    condition: dependencies.semanticCache.milvus.enabled
+  - name: redis
+    alias: response-api-redis
+    version: ">=0.0.0"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: dependencies.responseApi.redis.enabled
+  - name: jaeger
+    version: ">=0.0.0"
+    repository: "https://jaegertracing.github.io/helm-charts"
+    condition: dependencies.observability.jaeger.enabled
+  - name: prometheus
+    version: ">=0.0.0"
+    repository: "https://prometheus-community.github.io/helm-charts"
+    condition: dependencies.observability.prometheus.enabled
+  - name: grafana
+    version: ">=0.0.0"
+    repository: "https://grafana.github.io/helm-charts"
+    condition: dependencies.observability.grafana.enabled

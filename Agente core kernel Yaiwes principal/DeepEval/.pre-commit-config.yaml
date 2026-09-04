@@ -1,0 +1,21 @@
+repos:
+  - repo: https://github.com/psf/black
+    rev: 25.12.0
+    hooks:
+      - id: black
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: [--fix]   # auto-fix lint issues
+  # Scoped to the telemetry package on purpose: no free strings are allowed to
+  # reach an analytics backend, and that only holds if it is checked.
+  # Repo-wide strict typing is a much larger, separate project.
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.11.2
+    hooks:
+      - id: mypy
+        name: mypy (telemetry)
+        files: ^deepeval/telemetry/
+        args: [--strict, --ignore-missing-imports]
+        additional_dependencies: [types-requests]

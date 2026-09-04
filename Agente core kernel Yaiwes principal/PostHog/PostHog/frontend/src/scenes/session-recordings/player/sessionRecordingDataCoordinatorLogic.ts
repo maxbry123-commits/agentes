@@ -1,0 +1,1165 @@
+import { deepEqual as equal } from 'fast-equals'
+import {
+    MakeLogicType,
+    actions,
+    beforeUnmount,
+    connect,
+    kea,
+    key,
+    listeners,
+    path,
+    props,
+    reducers,
+    selectors,
+} from 'kea'
+import { subscriptions } from 'kea-subscriptions'
+import posthog from 'posthog-js'
+import { EventType, IncrementalSource, customEvent, eventWithTime } from 'posthog-js/rrweb-types'
+
+import {
+    getHrefFromSnapshot,
+    keyForSource,
+    processAllSnapshots,
+    SnapshotStore,
+    SourceKey,
+    SourceLoadingState,
+} from '@posthog/replay-shared'
+
+import { FEATURE_FLAGS } from 'lib/constants'
+import { Dayjs, dayjs, now } from 'lib/dayjs'
+import { featureFlagLogic, FeatureFlagsSet } from 'lib/logic/featureFlagLogic'
+import { metricCount } from 'lib/operationalMetrics'
+
+import {
+    RecordingSegment,
+    RecordingSnapshot,
+    SessionPlayerData,
+    SessionRecordingId,
+    SessionRecordingType,
+    TeamPublicType,
+    TeamType,
+} from '~/types'
+
+import type { ViewportResolution } from '../../../../../common/replay-shared/src/index'
+import type {
+    AnnotationType,
+    CommentType,
+    PersonType,
+    RecordingEventType,
+    SessionRecordingSnapshotSource,
+} from '../../../types'
+import { ExportedSessionRecordingFileV2 } from '../file-playback/types'
+import { sessionRecordingEventUsageLogic } from '../sessionRecordingEventUsageLogic'
+import type { RecordingComment } from './inspector/playerInspectorLogic'
+import { sessionEventsDataLogic } from './sessionEventsDataLogic'
+import { sessionRecordingCommentsLogic } from './sessionRecordingCommentsLogic'
+import { sessionRecordingMetaLogic } from './sessionRecordingMetaLogic'
+import { posthogTelemetry } from './snapshot-processing/process-all-snapshots'
+import { snapshotDataLogic } from './snapshotDataLogic'
+import { createSegments, mapSnapshotsToWindowId } from './utils/segmenter'
+
+// Tab-freezing recordings are both large overall and made of huge individual events (giant DOM
+// mutations); most large recordings are ordinary small events and play fine, so both must trip
+export const OVERSIZED_RECORDING_AUTOLOAD_LIMIT_BYTES = 30 * 1024 * 1024
+export const OVERSIZED_RECORDING_AVG_EVENT_BYTES = 100 * 1024
+// Adds concentrated in one playback second freeze the tab; the same adds spread out play fine
+export const OVERSIZED_MUTATION_WINDOW_MS = 1000
+export const OVERSIZED_MUTATION_WINDOW_ADDED_NODES = 15000
+
+export interface OversizedMutationRange {
+    start: number
+    // Exclusive; Infinity when no full snapshot follows the burst
+    end: number
+}
+
+// A full snapshot rebuilds the DOM from scratch, so a burst and everything up to the next full snapshot can be dropped safely
+export function findOversizedMutationRanges(events: eventWithTime[]): OversizedMutationRange[] {
+    const ranges: OversizedMutationRange[] = []
+    const windowMutations: { timestamp: number; adds: number; index: number }[] = []
+    let windowAdds = 0
+    for (let i = 0; i < events.length; i++) {
+        const event = events[i]
+        if (
+            event.type !== EventType.IncrementalSnapshot ||
+            event.data?.source !== IncrementalSource.Mutation ||
+            !Array.isArray(event.data.adds) ||
+            event.data.adds.length === 0
+        ) {
+            continue
+        }
+        windowMutations.push({ timestamp: event.timestamp, adds: event.data.adds.length, index: i })
+        windowAdds += event.data.adds.length
+        while (event.timestamp - windowMutations[0].timestamp > OVERSIZED_MUTATION_WINDOW_MS) {
+            windowAdds -= windowMutations.shift()!.adds
+        }
+        if (windowAdds < OVERSIZED_MUTATION_WINDOW_ADDED_NODES) {
+            continue
+        }
+        const start = windowMutations[0].timestamp
+        // The recovery point can sit inside the sliding window, before the mutation that tripped the threshold
+        let end = Infinity
+        for (let j = windowMutations[0].index; j < events.length; j++) {
+            if (events[j].type === EventType.FullSnapshot && events[j].timestamp > start) {
+                end = events[j].timestamp
+                break
+            }
+        }
+        ranges.push({ start, end })
+        if (end === Infinity) {
+            break
+        }
+        // Rescan from the recovery point so mutations kept past it count toward the next window
+        let resume = windowMutations[0].index
+        while (resume < events.length && events[resume].timestamp < end) {
+            resume++
+        }
+        i = resume - 1
+        windowMutations.length = 0
+        windowAdds = 0
+    }
+    return ranges
+}
+
+export interface SessionRecordingDataCoordinatorLogicProps {
+    sessionRecordingId: SessionRecordingId
+    // allows disabling polling for new sources in tests
+    blobV2PollingDisabled?: boolean
+    playerKey?: string
+    accessToken?: string
+}
+
+// For a short window after a recording starts it may still be ingesting, so a missing full
+// snapshot is not yet definitive — late data (including the initial full snapshot) can still
+// arrive. Past this grace period a missing full snapshot means the data never reached PostHog.
+// NB: this clock is anchored on recording start, whereas snapshotDataLogic's
+// POLLING_INACTIVITY_TIMEOUT_MS is anchored on the last source change — they both happen to be
+// ~5 minutes but measure from different events, so tune them together, not in isolation.
+export const INGESTION_GRACE_PERIOD_MINUTES = 5
+
+export function isWithinIngestionGracePeriod(start: Dayjs | null): boolean {
+    return start != null && now().diff(start, 'minute') <= INGESTION_GRACE_PERIOD_MINUTES
+}
+
+// Generated by kea-typegen. Update if you're an agent, ignore if you're human.
+export interface sessionRecordingDataCoordinatorLogicValues {
+    sessionComments: CommentType[] // commentsLogic
+    sessionCommentsLoading: boolean // commentsLogic
+    sessionNotebookComments: any // commentsLogic
+    sessionNotebookCommentsLoading: boolean // commentsLogic
+    AIEvents: RecordingEventType[] // eventsLogic
+    sessionEventsData: RecordingEventType[] | null // eventsLogic
+    sessionEventsDataLoading: boolean // eventsLogic
+    viewportForTimestamp: (timestamp: number) => ViewportResolution | undefined // eventsLogic
+    webVitalsEvents: RecordingEventType[] // eventsLogic
+    featureFlags: FeatureFlagsSet // featureFlagLogic
+    annotations: AnnotationType[] // metaLogic
+    annotationsLoading: boolean // metaLogic
+    currentTeam: TeamPublicType | TeamType | null // metaLogic
+    getWindowId: (uuid: string | undefined) => number | undefined // metaLogic
+    isLoadingSnapshots: boolean // metaLogic
+    isNotFound: boolean // metaLogic
+    isRecordingDeleted: boolean // metaLogic
+    loadMetaError: boolean // metaLogic
+    recordingDeletedAt: number | null // metaLogic
+    recordingDeletedBy: string | null // metaLogic
+    sessionPlayerMetaData: SessionRecordingType | null // metaLogic
+    sessionPlayerMetaDataLoading: boolean // metaLogic
+    snapshotSources: SessionRecordingSnapshotSource[] | null // metaLogic
+    snapshotsLoaded: boolean // metaLogic
+    snapshotsLoading: boolean // metaLogic
+    trackedWindow: number | null // metaLogic
+    uuidToIndex: Record<string, number> // metaLogic
+    snapshotStore: SnapshotStore // snapLogic
+    sourceLoadingStates: SourceLoadingState[] // snapLogic
+    storeVersion: number // snapLogic
+    bufferedToTime: number | null
+    createExportJSON: () => ExportedSessionRecordingFileV2
+    customRRWebEvents: customEvent[]
+    durationMs: number
+    effectiveSourceLoadingStates: SourceLoadingState[]
+    end: Dayjs | null
+    fullyLoaded: boolean
+    hasOversizedMutations: boolean
+    isOldAndInvalid: boolean
+    isRecentAndInvalid: boolean
+    oversizedMutationRanges: Record<number, OversizedMutationRange[]>
+    playableSnapshotsByWindowId: Record<number, eventWithTime[]>
+    processedSnapshots: RecordingSnapshot[]
+    recordingTooLargeToPlay: boolean
+    reportedLoaded: boolean
+    segments: RecordingSegment[]
+    sessionPlayerData: SessionPlayerData
+    snapshots: RecordingSnapshot[]
+    snapshotsByWindowId: Record<number, eventWithTime[]>
+    snapshotsInvalid: boolean
+    start: Dayjs | null
+    urls: {
+        timestamp: number
+        url: string
+    }[]
+    windowIdForTimestamp: (timestamp: number) => number | undefined
+    windowIds: number[]
+    windowsHaveFullSnapshot: Record<string, boolean>
+}
+
+// Generated by kea-typegen. Update if you're an agent, ignore if you're human.
+export interface sessionRecordingDataCoordinatorLogicActions {
+    loadRecordingComments: () => {
+        value: true
+    } // commentsLogic
+    loadRecordingCommentsSuccess: (
+        sessionComments: CommentType[],
+        payload?:
+            | {
+                  value: true
+              }
+            | undefined
+    ) => {
+        payload?: {
+            value: true
+        }
+        sessionComments: CommentType[]
+    } // commentsLogic
+    loadRecordingNotebookComments: () => {
+        value: true
+    } // commentsLogic
+    loadRecordingNotebookCommentsSuccess: (
+        sessionNotebookComments: RecordingComment[],
+        payload?:
+            | {
+                  value: true
+              }
+            | undefined
+    ) => {
+        payload?: {
+            value: true
+        }
+        sessionNotebookComments: RecordingComment[]
+    } // commentsLogic
+    loadEvents: () => {
+        value: true
+    } // eventsLogic
+    loadEventsSuccess: (
+        sessionEventsData: RecordingEventType[] | null,
+        payload?:
+            | {
+                  value: true
+              }
+            | undefined
+    ) => {
+        payload?: {
+            value: true
+        }
+        sessionEventsData: RecordingEventType[] | null
+    } // eventsLogic
+    loadFullEventData: (event: RecordingEventType | RecordingEventType[]) => {
+        event: RecordingEventType | RecordingEventType[]
+    } // eventsLogic
+    loadFullEventDataSuccess: (
+        sessionEventsData: RecordingEventType[] | null,
+        payload?:
+            | {
+                  event: RecordingEventType | RecordingEventType[]
+              }
+            | undefined
+    ) => {
+        payload?: {
+            event: RecordingEventType | RecordingEventType[]
+        }
+        sessionEventsData: RecordingEventType[] | null
+    } // eventsLogic
+    loadRecordingFromFile: (recording: {
+        id: SessionRecordingType['id']
+        person: SessionRecordingType['person']
+        snapshots: RecordingSnapshot[]
+    }) => {
+        recording: {
+            id: string
+            person: PersonType | undefined
+            snapshots: RecordingSnapshot[]
+        }
+    } // metaLogic
+    loadRecordingMeta: () => {
+        value: true
+    } // metaLogic
+    loadRecordingMetaFailure: (
+        error: string,
+        errorObject?: any
+    ) => {
+        error: string
+        errorObject?: any
+    } // metaLogic
+    loadRecordingMetaSuccess: (
+        sessionPlayerMetaData: SessionRecordingType | null,
+        payload?:
+            | {
+                  value: true
+              }
+            | undefined
+    ) => {
+        payload?: {
+            value: true
+        }
+        sessionPlayerMetaData: SessionRecordingType | null
+    } // metaLogic
+    loadSnapshotSources: (breakpointLength?: number | undefined) => {
+        breakpointLength: number | undefined
+    } // metaLogic
+    loadSnapshots: () => {
+        value: true
+    } // metaLogic
+    loadSnapshotsForSourceSuccess: (
+        snapshotsForSource:
+            | {
+                  source: Pick<SessionRecordingSnapshotSource, 'blob_key' | 'source'>
+                  sources?: undefined
+              }
+            | {
+                  source?: undefined
+                  sources: Pick<SessionRecordingSnapshotSource, 'blob_key' | 'source'>[]
+              },
+        payload?:
+            | {
+                  sources: Pick<SessionRecordingSnapshotSource, 'blob_key' | 'source'>[]
+              }
+            | undefined
+    ) => {
+        payload?: {
+            sources: Pick<SessionRecordingSnapshotSource, 'blob_key' | 'source'>[]
+        }
+        snapshotsForSource:
+            | {
+                  source: Pick<SessionRecordingSnapshotSource, 'blob_key' | 'source'>
+                  sources?: undefined
+              }
+            | {
+                  source?: undefined
+                  sources: Pick<SessionRecordingSnapshotSource, 'blob_key' | 'source'>[]
+              }
+    } // metaLogic
+    maybeLoadRecordingMeta: () => {
+        value: true
+    } // metaLogic
+    registerWindowId: (uuid: string) => {
+        uuid: string
+    } // metaLogic
+    setSnapshots: (snapshots: import('@posthog/replay-shared').RecordingSnapshot[]) => {
+        snapshots: RecordingSnapshot[]
+    } // metaLogic
+    setTrackedWindow: (windowId: number | null) => {
+        windowId: number | null
+    } // metaLogic
+    reportRecordingLoaded: (
+        playerData: SessionPlayerData,
+        metadata: SessionRecordingType | null
+    ) => {
+        metadata: SessionRecordingType | null
+        playerData: SessionPlayerData
+    } // sessionRecordingEventUsageLogic
+    storeUpdated: () => {
+        value: true
+    } // snapLogic
+    loadRecordingData: () => {
+        value: true
+    }
+    processSnapshotsAsync: () => {
+        value: true
+    }
+    reportUsageIfFullyLoaded: () => {
+        value: true
+    }
+    setProcessedSnapshots: (snapshots: RecordingSnapshot[]) => {
+        snapshots: RecordingSnapshot[]
+    }
+    setRecordingReportedLoaded: () => {
+        value: true
+    }
+    snapshotProcessingFailed: () => {
+        value: true
+    }
+}
+
+// Generated by kea-typegen. Update if you're an agent, ignore if you're human.
+export interface sessionRecordingDataCoordinatorLogicMeta {
+    key: string
+    __keaTypeGenInternalSelectorTypes: {
+        recordingTooLargeToPlay: (
+            sessionPlayerMetaData: SessionRecordingType | null,
+            featureFlags: FeatureFlagsSet
+        ) => boolean
+        oversizedMutationRanges: (
+            snapshotsByWindowId: Record<number, eventWithTime[]>,
+            featureFlags: FeatureFlagsSet
+        ) => Record<number, OversizedMutationRange[]>
+        hasOversizedMutations: (oversizedMutationRanges: Record<number, OversizedMutationRange[]>) => boolean
+        playableSnapshotsByWindowId: (
+            snapshotsByWindowId: Record<number, eventWithTime[]>,
+            oversizedMutationRanges: Record<number, OversizedMutationRange[]>
+        ) => Record<number, eventWithTime[]>
+        snapshots: (processedSnapshots: import('@posthog/replay-shared').RecordingSnapshot[]) => RecordingSnapshot[]
+        start: (
+            snapshots: import('@posthog/replay-shared').RecordingSnapshot[],
+            sessionPlayerMetaData: SessionRecordingType | null
+        ) => Dayjs | null
+        end: (
+            snapshots: import('@posthog/replay-shared').RecordingSnapshot[],
+            sessionPlayerMetaData: SessionRecordingType | null
+        ) => Dayjs | null
+        durationMs: (
+            start: Dayjs | null,
+            end: Dayjs | null,
+            sessionPlayerMetaData: SessionRecordingType | null,
+            fullyLoaded: boolean
+        ) => number
+        segments: (
+            snapshots: import('@posthog/replay-shared').RecordingSnapshot[],
+            start: Dayjs | null,
+            end: Dayjs | null,
+            trackedWindow: number | null,
+            snapshotsByWindowId: Record<number, eventWithTime[]>,
+            snapshotStore: SnapshotStore,
+            storeVersion: number
+        ) => RecordingSegment[]
+        snapshotsByWindowId: (
+            snapshots: import('@posthog/replay-shared').RecordingSnapshot[]
+        ) => Record<number, eventWithTime[]>
+        bufferedToTime: (segments: import('@posthog/replay-shared').RecordingSegment[]) => number | null
+        windowIdForTimestamp: (
+            segments: import('@posthog/replay-shared').RecordingSegment[]
+        ) => (timestamp: number) => number | undefined
+        urls: (snapshots: import('@posthog/replay-shared').RecordingSnapshot[]) => {
+            timestamp: number
+            url: string
+        }[]
+        windowsHaveFullSnapshot: (snapshotsByWindowId: Record<number, eventWithTime[]>) => Record<string, boolean>
+        snapshotsInvalid: (
+            windowsHaveFullSnapshot: Record<string, boolean>,
+            fullyLoaded: boolean,
+            start: Dayjs | null,
+            sessionRecordingId: string,
+            currentTeam: TeamPublicType | TeamType | null
+        ) => boolean
+        isRecentAndInvalid: (start: Dayjs | null, snapshotsInvalid: boolean) => boolean
+        isOldAndInvalid: (snapshotsInvalid: boolean, isRecentAndInvalid: boolean) => boolean
+        windowIds: (snapshotsByWindowId: Record<number, eventWithTime[]>) => number[]
+        createExportJSON: (
+            sessionPlayerMetaData: SessionRecordingType | null,
+            snapshots: import('@posthog/replay-shared').RecordingSnapshot[]
+        ) => () => ExportedSessionRecordingFileV2
+        customRRWebEvents: (snapshots: import('@posthog/replay-shared').RecordingSnapshot[]) => customEvent[]
+        effectiveSourceLoadingStates: (
+            sourceLoadingStates: SourceLoadingState[],
+            segments: import('@posthog/replay-shared').RecordingSegment[]
+        ) => SourceLoadingState[]
+        fullyLoaded: (
+            snapshots: import('@posthog/replay-shared').RecordingSnapshot[],
+            segments: import('@posthog/replay-shared').RecordingSegment[],
+            sessionPlayerMetaDataLoading: boolean,
+            snapshotsLoading: boolean,
+            sessionEventsDataLoading: boolean,
+            sessionCommentsLoading: boolean,
+            sessionNotebookCommentsLoading: boolean
+        ) => boolean
+        sessionPlayerData: (
+            sessionPlayerMetaData: SessionRecordingType | null,
+            snapshotsByWindowId: Record<number, eventWithTime[]>,
+            segments: import('@posthog/replay-shared').RecordingSegment[],
+            bufferedToTime: number | null,
+            start: Dayjs | null,
+            end: Dayjs | null,
+            durationMs: number,
+            fullyLoaded: boolean,
+            sessionRecordingId: string
+        ) => SessionPlayerData
+    }
+}
+
+export type sessionRecordingDataCoordinatorLogicType = MakeLogicType<
+    sessionRecordingDataCoordinatorLogicValues,
+    sessionRecordingDataCoordinatorLogicActions,
+    SessionRecordingDataCoordinatorLogicProps,
+    sessionRecordingDataCoordinatorLogicMeta
+>
+
+export const sessionRecordingDataCoordinatorLogic = kea<sessionRecordingDataCoordinatorLogicType>([
+    path((key) => ['scenes', 'session-recordings', 'sessionRecordingDataCoordinatorLogic', key]),
+    props({} as SessionRecordingDataCoordinatorLogicProps),
+    key(({ sessionRecordingId }) => sessionRecordingId || 'no-session-recording-id'),
+    connect(({ sessionRecordingId, blobV2PollingDisabled, accessToken }: SessionRecordingDataCoordinatorLogicProps) => {
+        const metaLogic = sessionRecordingMetaLogic({
+            sessionRecordingId,
+            blobV2PollingDisabled,
+            accessToken,
+        })
+        const eventsLogic = sessionEventsDataLogic({
+            sessionRecordingId,
+            blobV2PollingDisabled,
+            accessToken,
+        })
+        const commentsLogic = sessionRecordingCommentsLogic({
+            sessionRecordingId,
+        })
+        const snapLogic = snapshotDataLogic({
+            sessionRecordingId,
+            blobV2PollingDisabled,
+            accessToken,
+        })
+        return {
+            actions: [
+                sessionRecordingEventUsageLogic,
+                ['reportRecordingLoaded'],
+                metaLogic,
+                [
+                    'loadRecordingMeta',
+                    'loadRecordingMetaSuccess',
+                    'loadRecordingMetaFailure',
+                    'maybeLoadRecordingMeta',
+                    'setTrackedWindow',
+                    'loadSnapshots',
+                    'loadSnapshotSources',
+                    'loadSnapshotsForSourceSuccess',
+                    'setSnapshots',
+                    'loadRecordingFromFile',
+                    'registerWindowId',
+                ],
+                eventsLogic,
+                ['loadEvents', 'loadFullEventData', 'loadEventsSuccess', 'loadFullEventDataSuccess'],
+                commentsLogic,
+                [
+                    'loadRecordingComments',
+                    'loadRecordingNotebookComments',
+                    'loadRecordingCommentsSuccess',
+                    'loadRecordingNotebookCommentsSuccess',
+                ],
+                snapLogic,
+                ['storeUpdated'],
+            ],
+            values: [
+                metaLogic,
+                [
+                    'sessionPlayerMetaData',
+                    'sessionPlayerMetaDataLoading',
+                    'isNotFound',
+                    'loadMetaError',
+                    'trackedWindow',
+                    'snapshotSources',
+                    'snapshotsLoading',
+                    'snapshotsLoaded',
+                    'currentTeam',
+                    'annotations',
+                    'annotationsLoading',
+                    'isLoadingSnapshots',
+                    'uuidToIndex',
+                    'getWindowId',
+                    'isRecordingDeleted',
+                    'recordingDeletedAt',
+                    'recordingDeletedBy',
+                ],
+                eventsLogic,
+                [
+                    'sessionEventsData',
+                    'sessionEventsDataLoading',
+                    'webVitalsEvents',
+                    'AIEvents',
+                    'viewportForTimestamp',
+                ],
+                commentsLogic,
+                [
+                    'sessionComments',
+                    'sessionCommentsLoading',
+                    'sessionNotebookComments',
+                    'sessionNotebookCommentsLoading',
+                ],
+                snapLogic,
+                ['snapshotStore', 'storeVersion', 'sourceLoadingStates'],
+                featureFlagLogic,
+                ['featureFlags'],
+            ],
+        }
+    }),
+    actions({
+        loadRecordingData: true,
+        reportUsageIfFullyLoaded: true,
+        setRecordingReportedLoaded: true,
+        processSnapshotsAsync: true,
+        setProcessedSnapshots: (snapshots: RecordingSnapshot[]) => ({ snapshots }),
+        // Terminal: snapshot processing kept throwing and all retries are exhausted. The player maps
+        // this to an error state — without it the affected sources stay unpromoted forever and the
+        // player buffers with no error surfaced.
+        snapshotProcessingFailed: true,
+    }),
+    reducers(() => ({
+        reportedLoaded: [
+            false,
+            {
+                setRecordingReportedLoaded: () => true,
+            },
+        ],
+        processedSnapshots: [
+            [] as RecordingSnapshot[],
+            {
+                setProcessedSnapshots: (_, { snapshots }) => snapshots,
+            },
+        ],
+    })),
+    listeners(({ values, actions, props, cache }) => ({
+        loadRecordingData: () => {
+            actions.loadRecordingMeta()
+        },
+
+        loadRecordingMetaSuccess: () => {
+            if (props.sessionRecordingId && !values.recordingTooLargeToPlay) {
+                actions.loadSnapshotSources()
+            }
+            actions.reportUsageIfFullyLoaded()
+        },
+
+        loadRecordingMetaFailure: ({ errorObject }) => {
+            // A 404 is an expected outcome (expired or deleted recording), not a player
+            // failure; separate series so real failures stay alertable.
+            const is404 = (errorObject as { status?: number } | undefined)?.status === 404
+            metricCount('replay_player_load_failures', 1, { kind: is404 ? 'meta_not_found' : 'meta' })
+        },
+
+        loadNextSnapshotSource: () => {
+            actions.reportUsageIfFullyLoaded()
+        },
+
+        loadEventsSuccess: () => {
+            actions.reportUsageIfFullyLoaded()
+            // Events carry the viewport data used to patch missing meta events. Sources processed
+            // before events loaded were left uncached (viewportGaps) — re-run so they get their meta.
+            if (cache.processingCache?.viewportGaps?.size) {
+                actions.processSnapshotsAsync()
+            }
+        },
+
+        // loadFullEventData shares the sessionEventsData loader, so while it is in flight
+        // fullyLoaded is false — re-check once it settles or the loaded report can be skipped
+        loadFullEventDataSuccess: () => {
+            actions.reportUsageIfFullyLoaded()
+        },
+
+        loadSnapshotsForSourceSuccess: () => {
+            actions.reportUsageIfFullyLoaded()
+            actions.processSnapshotsAsync()
+        },
+
+        loadRecordingCommentsSuccess: () => {
+            actions.reportUsageIfFullyLoaded()
+        },
+
+        loadRecordingNotebookCommentsSuccess: () => {
+            actions.reportUsageIfFullyLoaded()
+        },
+
+        setProcessedSnapshots: () => {
+            actions.reportUsageIfFullyLoaded()
+        },
+
+        processSnapshotsAsync: async (_, breakpoint) => {
+            cache.processingCache = cache.processingCache || { snapshots: {} }
+
+            const sources = values.snapshotSources
+            const snapshotsBySource = {} as Record<string, { snapshots: RecordingSnapshot[] }>
+            // fetched sources this pass will cover — promoted to loaded on completion, including empty
+            // ones that contribute no snapshots. Tracked by key, not index: a setSources refresh during
+            // the await below re-indexes entries, and promoting stale indexes would flip the wrong source.
+            const coveredKeys: SourceKey[] = []
+            if (sources) {
+                for (let i = 0; i < sources.length; i++) {
+                    const entry = values.snapshotStore.getEntry(i)
+                    if (entry?.state === 'fetched') {
+                        coveredKeys.push(keyForSource(sources[i]))
+                    }
+                    if (entry?.state !== 'unloaded' && entry?.processedSnapshots?.length) {
+                        snapshotsBySource[keyForSource(sources[i])] = {
+                            snapshots: entry.processedSnapshots,
+                        }
+                    }
+                }
+            }
+
+            let result: RecordingSnapshot[]
+            try {
+                result = await processAllSnapshots(
+                    sources,
+                    snapshotsBySource,
+                    cache.processingCache,
+                    values.viewportForTimestamp,
+                    props.sessionRecordingId,
+                    posthogTelemetry
+                )
+            } catch (error) {
+                // A processing throw on the final batch would otherwise leave fetched sources unplayable forever (nothing re-triggers processing), so retry with backoff.
+                posthog.captureException(error)
+                cache.processingFailureCount = (cache.processingFailureCount ?? 0) + 1
+                if (cache.processingFailureCount <= 3) {
+                    await breakpoint(cache.processingFailureCount * 1000)
+                    actions.processSnapshotsAsync()
+                } else {
+                    // Give up loudly: nothing re-triggers processing from here, so surface a terminal
+                    // error instead of leaving the player buffering forever.
+                    metricCount('replay_player_load_failures', 1, { kind: 'snapshot_processing' })
+                    actions.snapshotProcessingFailed()
+                }
+                return
+            }
+            cache.processingFailureCount = 0
+
+            breakpoint()
+
+            const keyToIndex = new Map((values.snapshotSources ?? []).map((s, i) => [keyForSource(s), i]))
+            const coveredIndexes = coveredKeys.map((k) => keyToIndex.get(k)).filter((i): i is number => i !== undefined)
+
+            // Promotion is what makes these sources count as playable — the oracle, segments, and planner all key on it, so it must land with the processed snapshots.
+            const promoted = values.snapshotStore.markProcessed(coveredIndexes)
+            // processAllSnapshots may synthesize full snapshots (e.g. for mobile recordings).
+            // Sync them back to the store so canPlayAt() and the load planner work correctly.
+            const synced = values.snapshotStore.syncFullSnapshotTimestamps(result)
+
+            // Release raw snapshot arrays from the store — only the metadata (fullSnapshots, state) is
+            // still needed. Sources processed without viewport data keep their raw snapshots so the
+            // loadEventsSuccess re-run below can re-process them with a viewport.
+            const viewportGapIndexes = new Set(
+                [...(cache.processingCache.viewportGaps ?? [])]
+                    .map((k) => keyToIndex.get(k))
+                    .filter((i): i is number => i !== undefined)
+            )
+            values.snapshotStore.clearSnapshotData(viewportGapIndexes)
+
+            if (promoted || synced) {
+                actions.storeUpdated()
+            }
+            actions.setProcessedSnapshots(result)
+        },
+
+        reportUsageIfFullyLoaded: (_, breakpoint) => {
+            breakpoint()
+            if (values.fullyLoaded && !values.reportedLoaded) {
+                actions.setRecordingReportedLoaded()
+                actions.reportRecordingLoaded(values.sessionPlayerData, values.sessionPlayerMetaData)
+            }
+        },
+    })),
+    selectors(() => ({
+        recordingTooLargeToPlay: [
+            (s) => [s.sessionPlayerMetaData, s.featureFlags],
+            (meta: SessionRecordingType | null, featureFlags: FeatureFlagsSet): boolean => {
+                if (!featureFlags[FEATURE_FLAGS.REPLAY_OVERSIZED_RECORDING_GATE]) {
+                    return false
+                }
+                // Mobile recordings are screenshot-based: large events, but cheap to play
+                if (meta?.snapshot_source !== 'web') {
+                    return false
+                }
+                const totalSize = meta?.total_size ?? 0
+                const eventCount = meta?.event_count ?? 0
+                return (
+                    totalSize > OVERSIZED_RECORDING_AUTOLOAD_LIMIT_BYTES &&
+                    eventCount > 0 &&
+                    totalSize / eventCount > OVERSIZED_RECORDING_AVG_EVENT_BYTES
+                )
+            },
+        ],
+
+        oversizedMutationRanges: [
+            (s) => [s.snapshotsByWindowId, s.featureFlags],
+            (
+                snapshotsByWindowId: Record<number, eventWithTime[]>,
+                featureFlags: FeatureFlagsSet
+            ): Record<number, OversizedMutationRange[]> => {
+                if (!featureFlags[FEATURE_FLAGS.REPLAY_OVERSIZED_RECORDING_GATE]) {
+                    return {}
+                }
+                const rangesByWindowId: Record<number, OversizedMutationRange[]> = {}
+                for (const [windowId, events] of Object.entries(snapshotsByWindowId)) {
+                    const ranges = findOversizedMutationRanges(events)
+                    if (ranges.length > 0) {
+                        rangesByWindowId[windowId as unknown as number] = ranges
+                    }
+                }
+                return rangesByWindowId
+            },
+        ],
+
+        hasOversizedMutations: [
+            (s) => [s.oversizedMutationRanges],
+            (oversizedMutationRanges: Record<number, OversizedMutationRange[]>): boolean => {
+                return Object.keys(oversizedMutationRanges).length > 0
+            },
+        ],
+
+        // Replayer input only; export, segments, and the inspector keep the raw events
+        playableSnapshotsByWindowId: [
+            (s) => [s.snapshotsByWindowId, s.oversizedMutationRanges],
+            (
+                snapshotsByWindowId: Record<number, eventWithTime[]>,
+                oversizedMutationRanges: Record<number, OversizedMutationRange[]>
+            ): Record<number, eventWithTime[]> => {
+                if (Object.keys(oversizedMutationRanges).length === 0) {
+                    return snapshotsByWindowId
+                }
+                const result = { ...snapshotsByWindowId }
+                for (const [windowId, ranges] of Object.entries(oversizedMutationRanges)) {
+                    result[windowId as unknown as number] = snapshotsByWindowId[windowId as unknown as number].filter(
+                        (event) =>
+                            event.type !== EventType.IncrementalSnapshot ||
+                            !ranges.some((range) => event.timestamp >= range.start && event.timestamp < range.end)
+                    )
+                }
+                return result
+            },
+        ],
+
+        snapshots: [
+            (s) => [s.processedSnapshots],
+            (processedSnapshots: RecordingSnapshot[]): RecordingSnapshot[] => {
+                return processedSnapshots
+            },
+        ],
+
+        start: [
+            (s) => [s.snapshots, s.sessionPlayerMetaData],
+            (snapshots: RecordingSnapshot[], meta: SessionRecordingType | null): Dayjs | null => {
+                const firstSnapshot = snapshots[0] || null
+                const eventStart = meta?.start_time ? dayjs(meta.start_time) : null
+                const snapshotStart = firstSnapshot ? dayjs(firstSnapshot.timestamp) : null
+
+                if (eventStart && snapshotStart) {
+                    return eventStart.isBefore(snapshotStart) ? eventStart : snapshotStart
+                }
+                return eventStart || snapshotStart
+            },
+        ],
+
+        end: [
+            (s) => [s.snapshots, s.sessionPlayerMetaData],
+            (snapshots: RecordingSnapshot[], meta: SessionRecordingType | null): Dayjs | null => {
+                const lastSnapshot = snapshots[snapshots.length - 1] || null
+                const eventEnd = meta?.end_time ? dayjs(meta.end_time) : null
+                const snapshotEnd = lastSnapshot ? dayjs(lastSnapshot.timestamp) : null
+
+                if (eventEnd && snapshotEnd) {
+                    return eventEnd.isAfter(snapshotEnd) ? eventEnd : snapshotEnd
+                }
+                return eventEnd || snapshotEnd
+            },
+        ],
+
+        durationMs: [
+            (s) => [s.start, s.end, s.sessionPlayerMetaData, s.fullyLoaded],
+            (
+                start: Dayjs | null,
+                end: Dayjs | null,
+                meta: SessionRecordingType | null,
+                fullyLoaded: boolean
+            ): number => {
+                if (!start || !end) {
+                    return 0
+                }
+                const snapshotDuration = end.diff(start)
+                if (fullyLoaded && meta?.recording_duration) {
+                    return Math.min(snapshotDuration, meta.recording_duration * 1000)
+                }
+                return snapshotDuration
+            },
+        ],
+
+        segments: [
+            (s) => [
+                s.snapshots,
+                s.start,
+                s.end,
+                s.trackedWindow,
+                s.snapshotsByWindowId,
+                s.snapshotStore,
+                s.storeVersion,
+            ],
+            (
+                snapshots: RecordingSnapshot[],
+                start: Dayjs | null,
+                end: Dayjs | null,
+                trackedWindow: number | null,
+                snapshotsByWindowId: Record<number, eventWithTime[]>,
+                snapshotStore: SnapshotStore
+            ): RecordingSegment[] => {
+                return createSegments(snapshots || [], start, end, trackedWindow, snapshotsByWindowId, (s, e) =>
+                    snapshotStore.isRangeLoaded(s, e)
+                )
+            },
+        ],
+
+        snapshotsByWindowId: [
+            (s) => [s.snapshots],
+            (snapshots: RecordingSnapshot[]): Record<number, eventWithTime[]> => {
+                return mapSnapshotsToWindowId(snapshots || [])
+            },
+        ],
+
+        bufferedToTime: [
+            (s) => [s.segments],
+            (segments: RecordingSegment[]): number | null => {
+                if (!segments.length) {
+                    return null
+                }
+
+                const startTime = segments[0].startTimestamp
+                const lastSegment = segments[segments.length - 1]
+
+                if (lastSegment.kind === 'buffer') {
+                    return lastSegment.startTimestamp - startTime
+                }
+
+                return lastSegment.endTimestamp - startTime
+            },
+        ],
+
+        windowIdForTimestamp: [
+            (s) => [s.segments],
+            (segments: RecordingSegment[]) => {
+                // memoized per segments recompute — segments reshape as data loads, so a logic-lifetime cache would pin stale window attributions
+                const memo: Record<number, number | undefined> = {}
+                return (timestamp: number): number | undefined => {
+                    if (timestamp in memo) {
+                        return memo[timestamp]
+                    }
+                    const matchingWindowId = segments.find(
+                        (segment) => segment.startTimestamp <= timestamp && segment.endTimestamp >= timestamp
+                    )?.windowId
+
+                    memo[timestamp] = matchingWindowId
+                    return matchingWindowId
+                }
+            },
+        ],
+
+        urls: [
+            (s) => [s.snapshots],
+            (snapshots: RecordingSnapshot[]): { url: string; timestamp: number }[] => {
+                return (
+                    snapshots
+                        .filter((snapshot) => getHrefFromSnapshot(snapshot))
+                        .map((snapshot) => {
+                            return {
+                                url: getHrefFromSnapshot(snapshot) as string,
+                                timestamp: snapshot.timestamp,
+                            }
+                        }) ?? []
+                )
+            },
+        ],
+
+        windowsHaveFullSnapshot: [
+            (s) => [s.snapshotsByWindowId],
+            (snapshotsByWindowId: Record<number, eventWithTime[]>) => {
+                return Object.entries(snapshotsByWindowId).reduce(
+                    (acc, [windowId, events]) => {
+                        acc[`window-id-${windowId}-has-full-snapshot`] = events.some(
+                            (event) => event.type === EventType.FullSnapshot
+                        )
+                        return acc
+                    },
+                    {} as Record<string, boolean>
+                )
+            },
+            {
+                resultEqualityCheck: equal,
+            },
+        ],
+
+        snapshotsInvalid: [
+            (s, p) => [s.windowsHaveFullSnapshot, s.fullyLoaded, s.start, p.sessionRecordingId, s.currentTeam],
+            (
+                windowsHaveFullSnapshot: Record<string, boolean>,
+                fullyLoaded: boolean,
+                start: Dayjs | null,
+                sessionRecordingId: SessionRecordingId,
+                currentTeam: TeamPublicType | TeamType | null
+            ): boolean => {
+                if (!fullyLoaded || !start) {
+                    return false
+                }
+
+                const noWindowHasFullSnapshot = !Object.values(windowsHaveFullSnapshot).some((x) => x)
+                const someWindowMissingFullSnapshot = !Object.values(windowsHaveFullSnapshot).every((x) => x)
+
+                const recordingAgeMs = now().diff(start, 'millisecond')
+
+                if (noWindowHasFullSnapshot) {
+                    // video is definitely unplayable
+                    posthog.capture('recording_has_no_full_snapshot', {
+                        watchedSession: sessionRecordingId,
+                        teamId: currentTeam?.id,
+                        teamName: currentTeam?.name,
+                        recordingAgeMs,
+                    })
+                } else if (someWindowMissingFullSnapshot) {
+                    posthog.capture('recording_window_missing_full_snapshot', {
+                        watchedSession: sessionRecordingId,
+                        teamID: currentTeam?.id,
+                        teamName: currentTeam?.name,
+                        recordingAgeMs,
+                    })
+                }
+
+                return noWindowHasFullSnapshot
+            },
+        ],
+
+        isRecentAndInvalid: [
+            (s) => [s.start, s.snapshotsInvalid],
+            (start: Dayjs | null, snapshotsInvalid: boolean) => {
+                return snapshotsInvalid && isWithinIngestionGracePeriod(start)
+            },
+        ],
+
+        // past the ingestion grace period, a missing full snapshot means the data never arrived,
+        // e.g. the browser closed or went offline before the recording finished uploading
+        isOldAndInvalid: [
+            (s) => [s.snapshotsInvalid, s.isRecentAndInvalid],
+            (snapshotsInvalid: boolean, isRecentAndInvalid: boolean) => snapshotsInvalid && !isRecentAndInvalid,
+        ],
+
+        windowIds: [
+            (s) => [s.snapshotsByWindowId],
+            (snapshotsByWindowId: Record<number, eventWithTime[]>): number[] => {
+                return Object.keys(snapshotsByWindowId).map(Number)
+            },
+        ],
+
+        createExportJSON: [
+            (s) => [s.sessionPlayerMetaData, s.snapshots],
+            (
+                sessionPlayerMetaData: SessionRecordingType | null,
+                snapshots: RecordingSnapshot[]
+            ): (() => ExportedSessionRecordingFileV2) => {
+                return (): ExportedSessionRecordingFileV2 => {
+                    return {
+                        version: '2023-04-28',
+                        data: {
+                            id: sessionPlayerMetaData?.id ?? '',
+                            person: sessionPlayerMetaData?.person,
+                            snapshots: snapshots,
+                        },
+                    }
+                }
+            },
+        ],
+
+        customRRWebEvents: [
+            (s) => [s.snapshots],
+            (snapshots: RecordingSnapshot[]): customEvent[] => {
+                return snapshots.filter((snapshot) => snapshot.type === EventType.Custom).map((x) => x as customEvent)
+            },
+        ],
+
+        effectiveSourceLoadingStates: [
+            (s) => [s.sourceLoadingStates, s.segments],
+            (states: SourceLoadingState[], segments: RecordingSegment[]): SourceLoadingState[] => {
+                let lastNonGapState: SourceLoadingState['state'] = 'unloaded'
+                return states.map((s) => {
+                    const inGap = !segments.some(
+                        (seg) => seg.kind !== 'gap' && seg.startTimestamp < s.endMs && seg.endTimestamp > s.startMs
+                    )
+                    if (inGap) {
+                        return { ...s, state: lastNonGapState }
+                    }
+                    lastNonGapState = s.state
+                    return s
+                })
+            },
+        ],
+
+        fullyLoaded: [
+            (s) => [
+                s.snapshots,
+                s.segments,
+                s.sessionPlayerMetaDataLoading,
+                s.snapshotsLoading,
+                s.sessionEventsDataLoading,
+                s.sessionCommentsLoading,
+                s.sessionNotebookCommentsLoading,
+            ],
+            (
+                snapshots: RecordingSnapshot[],
+                segments: RecordingSegment[],
+                sessionPlayerMetaDataLoading: boolean,
+                snapshotsLoading: boolean,
+                sessionEventsDataLoading: boolean,
+                sessionCommentsLoading: boolean,
+                sessionNotebookCommentsLoading: boolean
+            ): boolean => {
+                // Check if there's a buffer segment (unloaded data)
+                const hasBufferSegment = segments.some((segment) => segment.kind === 'buffer')
+
+                return (
+                    !!snapshots?.length &&
+                    !sessionPlayerMetaDataLoading &&
+                    !snapshotsLoading &&
+                    !sessionEventsDataLoading &&
+                    !sessionCommentsLoading &&
+                    !sessionNotebookCommentsLoading &&
+                    !hasBufferSegment
+                )
+            },
+        ],
+
+        sessionPlayerData: [
+            (s, p) => [
+                s.sessionPlayerMetaData,
+                s.snapshotsByWindowId,
+                s.segments,
+                s.bufferedToTime,
+                s.start,
+                s.end,
+                s.durationMs,
+                s.fullyLoaded,
+                p.sessionRecordingId,
+            ],
+            (
+                meta: SessionRecordingType | null,
+                snapshotsByWindowId: Record<number, eventWithTime[]>,
+                segments: RecordingSegment[],
+                bufferedToTime: number | null,
+                start: Dayjs | null,
+                end: Dayjs | null,
+                durationMs: number,
+                fullyLoaded: boolean,
+                sessionRecordingId: SessionRecordingId
+            ): SessionPlayerData => ({
+                person: meta?.person ?? null,
+                start,
+                end,
+                durationMs,
+                snapshotsByWindowId,
+                segments,
+                bufferedToTime,
+                fullyLoaded,
+                sessionRecordingId,
+                sessionRetentionPeriodDays: meta?.retention_period_days ?? null,
+            }),
+        ],
+    })),
+    beforeUnmount(({ cache, actions, values }) => {
+        cache.processingCache = undefined
+        // Force clear processedSnapshots to release memory immediately
+        // This breaks the reference chain in selector memoization cache
+        if (actions) {
+            actions.setProcessedSnapshots([])
+            // Force selectors to recompute with empty snapshots by reading them
+            // This updates the reselect cache with empty values instead of leaving old data cached
+            void values.snapshotsByWindowId
+            void values.sessionPlayerData
+        }
+    }),
+    subscriptions(({ values }) => ({
+        isRecentAndInvalid: (prev: boolean, next: boolean) => {
+            if (!prev && next) {
+                posthog.capture('recording cannot playback yet', {
+                    watchedSession: values.sessionPlayerData.sessionRecordingId,
+                })
+            }
+        },
+    })),
+])

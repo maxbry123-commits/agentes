@@ -1,0 +1,745 @@
+"""
+Module to centralize event reporting on the server-side.
+"""
+
+import re
+from enum import StrEnum
+from typing import TYPE_CHECKING, NotRequired, Optional, Required, TypedDict
+from urllib.parse import urlparse
+
+from django.contrib.auth.models import AnonymousUser
+
+import posthoganalytics
+from opentelemetry import trace
+from rest_framework.authentication import SessionAuthentication
+
+from posthog.clickhouse.query_tagging import get_query_tag_value
+from posthog.constants import POSTHOG_INTERNAL_EMAIL_SUFFIX
+from posthog.models import Organization, User
+from posthog.models.activity_logging.model_activity import is_impersonated_session
+from posthog.models.team import Team
+from posthog.oauth_provenance import get_oauth_client_id, is_first_party_oauth_client, is_interactive_desktop_grant
+from posthog.settings import SITE_URL
+from posthog.synthetic_user import SyntheticUser
+from posthog.temporal.oauth import POSTHOG_AI_OAUTH_APP_CLIENT_IDS, SIGNALS_OAUTH_APP_CLIENT_IDS
+from posthog.utils import get_instance_realm
+
+if TYPE_CHECKING:
+    from rest_framework.request import Request
+
+
+def report_user_signed_up(
+    user: User,
+    is_instance_first_user: bool,
+    is_organization_first_user: bool,
+    new_onboarding_enabled: bool = False,
+    backend_processor: str = "",  # which serializer/view processed the request
+    social_provider: str = "",  # which third-party provider processed the login (empty = no third-party)
+    user_analytics_metadata: Optional[dict] = None,  # analytics metadata taken from the User object
+    org_analytics_metadata: Optional[dict] = None,  # analytics metadata taken from the Organization object
+    role_at_organization: str = "",  # select input to ask what the user role is at the org
+    referral_source: str = "",  # free text input to ask users where did they hear about us
+    referral_source_ai_prompt: str = "",  # prompt they used when discovering PostHog via AI
+) -> None:
+    """
+    Reports that a new user has joined. Only triggered when a new user is actually created (i.e. when an existing user
+    joins a new organization, this event is **not** triggered; see `report_user_joined_organization`).
+    """
+    if not user.distinct_id:
+        return
+
+    props = {
+        "is_first_user": is_instance_first_user,
+        "is_organization_first_user": is_organization_first_user,
+        "new_onboarding_enabled": new_onboarding_enabled,
+        "signup_backend_processor": backend_processor,
+        "signup_social_provider": social_provider,
+        "realm": get_instance_realm(),
+        "role_at_organization": role_at_organization,
+        "referral_source": referral_source,
+        "referral_source_ai_prompt": referral_source_ai_prompt,
+        "is_email_verified": user.is_email_verified,
+    }
+    if user_analytics_metadata is not None:
+        props.update(user_analytics_metadata)
+
+    if org_analytics_metadata is not None:
+        for k, v in org_analytics_metadata.items():
+            props[f"org__{k}"] = v
+
+    props = {**props, "$set": {**props, **user.get_analytics_metadata()}}
+    posthoganalytics.capture(
+        distinct_id=user.distinct_id,
+        event="user signed up",
+        properties=props,
+        groups=groups(user.organization, user.team),
+    )
+
+    if is_organization_first_user and user.organization is not None:
+        exclude_internal_organization_from_crm(user.organization, user)
+
+
+def report_user_verified_email(current_user: User) -> None:
+    """
+    Triggered after a user verifies their email address.
+    """
+    if not current_user.distinct_id:
+        return
+
+    posthoganalytics.capture(
+        distinct_id=current_user.distinct_id,
+        event="user verified email",
+        properties={
+            "$set": current_user.get_analytics_metadata(),
+        },
+    )
+
+
+def alias_invite_id(user: User, invite_id: str) -> None:
+    if not user.distinct_id:
+        return
+
+    posthoganalytics.alias(user.distinct_id, f"invite_{invite_id}")
+
+
+def report_user_joined_organization(organization: Organization, current_user: User) -> None:
+    """
+    Triggered after an already existing user joins an already existing organization.
+    """
+    if not current_user.distinct_id:
+        return
+
+    posthoganalytics.capture(
+        distinct_id=current_user.distinct_id,
+        event="user joined organization",
+        properties={
+            "organization_id": str(organization.id),
+            "user_number_of_org_membership": current_user.organization_memberships.count(),
+            "org_current_invite_count": organization.active_invites.count(),
+            "org_current_project_count": organization.teams.count(),
+            "org_current_members_count": organization.memberships.count(),
+            "$set": current_user.get_analytics_metadata(),
+        },
+        groups=groups(organization),
+    )
+
+
+def report_user_logged_in(
+    user: User,
+    social_provider: str = "",  # which third-party provider processed the login (empty = no third-party)
+) -> None:
+    """
+    Reports that a user has logged in to PostHog.
+    """
+    if not user.distinct_id:
+        return
+
+    posthoganalytics.capture(
+        distinct_id=user.distinct_id,
+        event="user logged in",
+        properties={"social_provider": social_provider},
+        groups=groups(user.current_organization, user.current_team),
+    )
+
+
+def report_user_updated(user: User, updated_attrs: list[str]) -> None:
+    """
+    Reports a user has been updated. This includes current_team, current_organization & password.
+    """
+    if not user.distinct_id:
+        return
+
+    updated_attrs.sort()
+    posthoganalytics.capture(
+        distinct_id=user.distinct_id,
+        event="user updated",
+        properties={"updated_attrs": updated_attrs, "$set": user.get_analytics_metadata()},
+        groups=groups(user.current_organization, user.current_team),
+    )
+
+
+def report_user_password_reset(user: User) -> None:
+    """
+    Reports a user resetting their password.
+    """
+    if not user.distinct_id:
+        return
+
+    posthoganalytics.capture(
+        distinct_id=user.distinct_id,
+        event="user password reset",
+        groups=groups(user.current_organization, user.current_team),
+    )
+
+
+def report_team_member_invited(
+    inviting_user: User,
+    invite_id: str,
+    name_provided: bool,
+    current_invite_count: int,
+    current_member_count: int,
+    is_bulk: bool,
+    email_available: bool,
+    current_url: Optional[str] = None,
+    session_id: Optional[str] = None,
+) -> None:
+    """
+    Triggered after a user creates an **individual** invite for a new team member. See `report_bulk_invited`
+    for bulk invite creation.
+    """
+
+    properties = {
+        "name_provided": name_provided,
+        "current_invite_count": current_invite_count,  # number of invites including this one
+        "current_member_count": current_member_count,
+        "email_available": email_available,
+        "is_bulk": is_bulk,
+    }
+
+    inviting_user_properties = {
+        **properties,
+        "$current_url": current_url,
+        "$session_id": session_id,
+    }
+
+    # Report for inviting user
+    if inviting_user.distinct_id:
+        posthoganalytics.capture(
+            distinct_id=inviting_user.distinct_id,
+            event="team member invited",
+            properties=inviting_user_properties,
+            groups=groups(inviting_user.current_organization, inviting_user.current_team),
+        )
+
+    # Report for invitee
+    posthoganalytics.capture(
+        distinct_id=f"invite_{invite_id}",  # see `alias_invite_id` too
+        event="user invited",
+        properties=properties,
+        groups=groups(inviting_user.current_organization, None),
+    )
+
+
+def report_bulk_invited(
+    user: User,
+    invitee_count: int,
+    name_count: int,
+    current_invite_count: int,
+    current_member_count: int,
+    email_available: bool,
+    current_url: Optional[str] = None,
+    session_id: Optional[str] = None,
+) -> None:
+    """
+    Triggered after a user bulk creates invites for another user.
+    """
+    if not user.distinct_id:
+        return
+
+    posthoganalytics.capture(
+        distinct_id=user.distinct_id,
+        event="bulk invite executed",
+        properties={
+            "invitee_count": invitee_count,
+            "name_count": name_count,
+            "current_invite_count": current_invite_count,  # number of invites including this set
+            "current_member_count": current_member_count,
+            "email_available": email_available,
+            "$current_url": current_url,
+            "$session_id": session_id,
+        },
+        groups=groups(user.current_organization, user.current_team),
+    )
+
+
+def report_user_organization_membership_level_changed(
+    user: User,
+    organization: Organization,
+    new_level: int,
+    previous_level: int,
+) -> None:
+    """
+    Triggered after a user's membership level in an organization is changed.
+    """
+    if not user.distinct_id:
+        return
+    posthoganalytics.capture(
+        distinct_id=user.distinct_id,
+        event="membership level changed",
+        properties={
+            "new_level": new_level,
+            "previous_level": previous_level,
+            "$set": user.get_analytics_metadata(),
+        },
+        groups=groups(organization),
+    )
+
+
+class EventSource(StrEnum):
+    """Which PostHog surface a request came from.
+
+    `mcp` means a third-party agent. A PostHog surface that reaches the backend through the
+    MCP server reports itself instead, so "MCP adoption" measures other people's agents.
+    """
+
+    WEB = "web"
+    API = "api"
+    CLI = "cli"
+    POSTHOG_AI = "posthog_ai"
+    # Headless coding agents: the cloud agent and the local agent. Distinct from DESKTOP and
+    # MOBILE, which are apps a person is sitting in front of.
+    POSTHOG_CODE = "posthog_code"
+    # Signals: scouts, report implementations, and scout chat. Every one of them mints under the
+    # Signals OAuth application, which is what tells them apart from the coding agents they
+    # otherwise look identical to.
+    SELF_DRIVING = "self_driving"
+    DESKTOP = "desktop"
+    MOBILE = "mobile"
+    SLACK = "slack"
+    TERRAFORM = "terraform"
+    MCP = "mcp"
+    WIZARD = "wizard"
+    CACHE_WARMING = "cache_warming"
+    ALERT = "alert"
+    EXPORT = "export"
+    SUBSCRIPTION = "subscription"
+
+
+# Surfaces where an LLM drives the request through a managed channel (classification is stamped by
+# the harness, not self-reported by the model). Callers use this to hold agent writes to a
+# review-then-apply path; the web app has its own confirm UI, and headless callers (raw API keys,
+# Terraform) apply in one call.
+#
+# DESKTOP, MOBILE and SLACK belong here for the same reason as the rest: each is a managed channel
+# an LLM drives. Leaving one out drops the review step for that surface with nothing else to
+# signal that it happened.
+AGENT_EVENT_SOURCES = frozenset(
+    {
+        EventSource.MCP,
+        EventSource.POSTHOG_CODE,
+        EventSource.SELF_DRIVING,
+        EventSource.DESKTOP,
+        EventSource.MOBILE,
+        EventSource.SLACK,
+        EventSource.WIZARD,
+        EventSource.CLI,
+        EventSource.POSTHOG_AI,
+    }
+)
+
+# Surfaces that reach the backend through the MCP server. Code asking "did this arrive over MCP"
+# must test membership here rather than comparing against EventSource.MCP, which covers third-party
+# agents only and so leaves out every first-party surface. POSTHOG_CODE, DESKTOP and MOBILE are
+# included even though each also calls REST directly, because the overwhelming majority of their
+# traffic arrives over MCP and the direct calls come from the same clients.
+#
+# Only meaningful after DRF authentication, because desktop and Slack resolve from the OAuth grant.
+# Anything reading a source produced before that, such as the request middleware, sees plain MCP.
+MCP_TRANSPORT_EVENT_SOURCES = frozenset(
+    {
+        EventSource.MCP,
+        EventSource.DESKTOP,
+        EventSource.MOBILE,
+        EventSource.SLACK,
+        EventSource.POSTHOG_CODE,
+        EventSource.SELF_DRIVING,
+    }
+)
+
+
+class McpProps(TypedDict):
+    mcp_user_agent: str | None
+    mcp_client_name: str | None
+    mcp_client_version: str | None
+    mcp_protocol_version: str | None
+    mcp_oauth_client_name: str | None
+
+
+AnalyticsProps = TypedDict(
+    "AnalyticsProps",
+    {
+        "source": Required[EventSource],
+        "$current_url": NotRequired[str | None],
+        "$host": NotRequired[str | None],
+        "$pathname": NotRequired[str | None],
+        "$session_id": NotRequired[str | None],
+        "was_impersonated": NotRequired[bool],
+        "access_method": NotRequired[str | None],
+        "user_agent": NotRequired[str | None],
+        "mcp_user_agent": NotRequired[str | None],
+        "mcp_client_name": NotRequired[str | None],
+        "mcp_client_version": NotRequired[str | None],
+        "mcp_protocol_version": NotRequired[str | None],
+        "mcp_oauth_client_name": NotRequired[str | None],
+    },
+    total=False,
+)
+
+_POSTHOG_CODE_UA_RE = re.compile(r"posthog/(code|[\w.-]+\.hog\.dev)")
+
+# The Electron app's own user-agent, for the calls it makes straight to the REST API. Matched
+# before _POSTHOG_CODE_UA_RE, which would otherwise swallow it along with the headless agents.
+_DESKTOP_UA_TOKEN = "posthog/desktop.hog.dev"
+
+# The companion mobile app, matched ahead of _POSTHOG_CODE_UA_RE for the same reason. It
+# authenticates against the Desktop OAuth applications, so a mobile request that reached MCP
+# without declaring a consumer would resolve as DESKTOP. Nothing routes mobile through the MCP
+# server today, so the user-agent is the only signal that has to carry this surface.
+_MOBILE_UA_TOKEN = "posthog/mobile.hog.dev"
+
+# The MCP server's catch-all consumer, declared by every first-party caller that is neither Slack
+# nor PostHog AI: the cloud coding agent, signals scouts, signal_report, experiments, image_builder,
+# and the local agent PostHog Desktop hosts. That local agent forwards the user's own consented
+# Desktop token, so the OAuth grant cannot separate it from the app it runs inside. The declaration
+# is the only signal that can, which is why it outranks the grant below. The agents are not
+# separable from each other by header alone, so they share POSTHOG_CODE.
+_POSTHOG_CODE_MCP_CONSUMER = "posthog-code"
+
+# Surfaces a caller can declare in `X-Posthog-Mcp-Consumer` when it wraps the MCP server.
+# Honored only when a first-party OAuth application backs the request: the header is set by the
+# caller, so without that gate a third party could declare itself as one of PostHog's own.
+_FIRST_PARTY_MCP_CONSUMER_TO_SOURCE = {
+    "slack": EventSource.SLACK,
+    "posthog_ai": EventSource.POSTHOG_AI,
+    _POSTHOG_CODE_MCP_CONSUMER: EventSource.POSTHOG_CODE,
+}
+
+# The wizard appends `program: <id>` to its user-agent so the backend can tell the
+# self-driving onboarding program apart from other wizard programs (they all share the
+# `posthog/wizard` UA). Used to attribute self-driving-created sources distinctly.
+_WIZARD_SELF_DRIVING_PROGRAM_RE = re.compile(r"program:\s*self-driving")
+
+
+def _resolve_mcp_surface(request) -> EventSource:
+    """Which surface wrapped the MCP server, for a request the MCP server proxied.
+
+    Ends at MCP, meaning a third-party agent, unless a first-party OAuth application vouches for
+    the request, which is the only signal here a caller can't set for itself.
+
+    A declared consumer outranks the grant, because the agents PostHog Desktop hosts authenticate
+    with the same interactive token the app itself uses. Only a request that declares nothing is
+    resolved from the grant.
+    """
+    if not is_first_party_oauth_client(request):
+        return EventSource.MCP
+    consumer = request.headers.get("X-Posthog-Mcp-Consumer")
+    if consumer in (None, "") and is_interactive_desktop_grant(request):
+        return EventSource.DESKTOP
+    return _FIRST_PARTY_MCP_CONSUMER_TO_SOURCE.get(consumer, EventSource.MCP)
+
+
+def get_event_source(request) -> EventSource:
+    """Determine the source of an API request for analytics."""
+    # A token minted against the PostHog AI OAuth app is authoritative — the auth
+    # credential can't be spoofed the way UA tokens and X-PostHog-Client can, so it
+    # wins over every header-based branch below.
+    client_id = get_oauth_client_id(request)
+    if client_id in POSTHOG_AI_OAUTH_APP_CLIENT_IDS:
+        return EventSource.POSTHOG_AI
+    # Same reasoning, and it has to sit above the user-agent branches for the same reason: a
+    # Signals run is a sandbox coding agent, so it carries the posthog-code user-agent and
+    # declares the posthog-code MCP consumer. Only the application it minted under separates it.
+    if client_id in SIGNALS_OAUTH_APP_CLIENT_IDS:
+        return EventSource.SELF_DRIVING
+    user_agent = request.headers.get("user-agent", "") or ""
+    if not isinstance(user_agent, str):
+        user_agent = ""
+    # Wizard, posthog-code, posthog-cli etc. all wrap MCP — their UA tokens
+    # must win over the X-PostHog-Client header so the source reflects the
+    # outer caller.
+    if "posthog/terraform-provider" in user_agent:
+        return EventSource.TERRAFORM
+    if "posthog/wizard" in user_agent:
+        return EventSource.WIZARD
+    if _DESKTOP_UA_TOKEN in user_agent:
+        return EventSource.DESKTOP
+    if _MOBILE_UA_TOKEN in user_agent:
+        return EventSource.MOBILE
+    if _POSTHOG_CODE_UA_RE.search(user_agent):
+        return EventSource.POSTHOG_CODE
+    # The CLI is the one consumer honored without a first-party OAuth application behind it:
+    # it authenticates with a personal API key, so there is no application to vouch for it.
+    # Mis-declaring as the CLI only mislabels analytics — `cli` is already in
+    # AGENT_EVENT_SOURCES, so it buys no extra write latitude.
+    if user_agent == "posthog-cli" or request.headers.get("X-Posthog-Mcp-Consumer") == "posthog-cli":
+        return EventSource.CLI
+    if "posthog/mcp-server" in user_agent or request.headers.get("X-Posthog-Client") == "mcp":
+        return _resolve_mcp_surface(request)
+    # DRF sets successful_authenticator during view dispatch; before that
+    # (e.g. in middleware), fall back to checking the Django session cookie
+    # which is available after Django's AuthenticationMiddleware runs.
+    if isinstance(getattr(request, "successful_authenticator", None), SessionAuthentication):
+        return EventSource.WEB
+    if getattr(getattr(request, "session", None), "session_key", None) is not None:
+        return EventSource.WEB
+    return EventSource.API
+
+
+def is_wizard_self_driving_program(request) -> bool:
+    """Whether the request comes from the wizard's `self-driving` onboarding program.
+
+    All wizard programs share the `posthog/wizard` user-agent, so `get_event_source`
+    can only tell they're "the wizard". The self-driving program additionally tags its
+    UA with a `program: self-driving` marker, letting callers attribute its work apart
+    from other wizard runs.
+
+    When the request is proxied through the PostHog MCP server, that server overwrites
+    `User-Agent` with its own token and forwards the wizard's original UA — marker
+    included — in `X-Posthog-Mcp-User-Agent`. Inspect both so the marker is found whether
+    the wizard called us directly or via the MCP server.
+    """
+    user_agent = request.headers.get("user-agent", "") or ""
+    mcp_user_agent = request.headers.get("X-Posthog-Mcp-User-Agent", "") or ""
+    combined = "\n".join(part for part in (user_agent, mcp_user_agent) if isinstance(part, str))
+    return "posthog/wizard" in combined and bool(_WIZARD_SELF_DRIVING_PROGRAM_RE.search(combined))
+
+
+MAX_HEADER_VALUE_LENGTH = 1000
+
+
+def sanitize_header_value(value: str | None) -> str | None:
+    if not isinstance(value, str) or not value:
+        return None
+    return re.sub(r"[\x00-\x1f\x7f]", "", value).strip()[:MAX_HEADER_VALUE_LENGTH] or None
+
+
+def get_mcp_properties(request) -> McpProps:
+    """Extract MCP client metadata from request headers."""
+    return {
+        "mcp_user_agent": sanitize_header_value(request.headers.get("X-Posthog-Mcp-User-Agent")),
+        "mcp_client_name": sanitize_header_value(request.headers.get("X-Posthog-Mcp-Client-Name")),
+        "mcp_client_version": sanitize_header_value(request.headers.get("X-Posthog-Mcp-Client-Version")),
+        "mcp_protocol_version": sanitize_header_value(request.headers.get("X-Posthog-Mcp-Protocol-Version")),
+        "mcp_oauth_client_name": sanitize_header_value(request.headers.get("X-Posthog-Mcp-Oauth-Client-Name")),
+    }
+
+
+def get_request_analytics_properties(request) -> AnalyticsProps:
+    """Extract standard analytics properties from a request."""
+    current_url = request.headers.get("Referer")
+    host: str | None = None
+    pathname: str | None = None
+    if isinstance(current_url, str) and current_url:
+        parsed = urlparse(current_url)
+        host = parsed.netloc or None
+        pathname = parsed.path or None
+    else:
+        current_url = None
+    # Auth classes tag the query context with access_method during DRF dispatch
+    # (personal_api_key, oauth, id_jag, ...); session auth leaves it unset.
+    access_method = get_query_tag_value("access_method")
+    return {
+        "source": get_event_source(request),
+        "$current_url": current_url,
+        "$host": host,
+        "$pathname": pathname,
+        "$session_id": sanitize_header_value(request.headers.get("X-Posthog-Session-Id")),
+        "was_impersonated": is_impersonated_session(request),
+        "access_method": access_method,
+        "user_agent": sanitize_header_value(request.headers.get("User-Agent")),
+        **get_mcp_properties(request),
+    }
+
+
+_tracer = trace.get_tracer(__name__)
+
+
+def report_user_action(
+    user: User | AnonymousUser | SyntheticUser,
+    event: str,
+    properties: Optional[dict] = None,
+    *,
+    team: Optional[Team] = None,
+    organization: Optional[Organization] = None,
+    request: Optional["Request"] = None,
+    analytics_props: Optional[AnalyticsProps] = None,
+    send_feature_flags: bool = False,
+):
+    if request is not None and analytics_props is not None:
+        raise ValueError("Pass either request or analytics_props, not both")
+    if properties is None:
+        properties = {}
+    if request is not None:
+        properties = {**get_request_analytics_properties(request), **properties}
+    if analytics_props is not None:
+        properties = {**analytics_props, **properties}
+
+    # Synthetic principals (e.g. project secret API keys) have no User row but still carry a
+    # distinct_id, so service-authenticated actions are captured instead of silently dropped.
+    if isinstance(user, SyntheticUser):
+        synthetic_team = team or user.team
+        posthoganalytics.capture(
+            distinct_id=user.distinct_id,
+            event=event,
+            properties=properties,
+            groups=groups(organization or synthetic_team.organization, synthetic_team),
+        )
+        return
+
+    # isinstance works through Django's SimpleLazyObject because it proxies __class__
+    if not isinstance(user, User) or not user.distinct_id:
+        return
+    if user.email:
+        properties["$set_once"] = {"email": user.email}
+    with _tracer.start_as_current_span("report_user_action"):
+        posthoganalytics.capture(
+            distinct_id=user.distinct_id,
+            event=event,
+            properties=properties,
+            groups=groups(organization or user.current_organization, team or user.current_team),
+            send_feature_flags=send_feature_flags,
+        )
+
+
+def report_user_or_team_action(
+    event: str,
+    properties: Optional[dict] = None,
+    *,
+    user: Optional[User | AnonymousUser] = None,
+    team: Optional[Team] = None,
+    organization: Optional[Organization] = None,
+    analytics_props: Optional[AnalyticsProps] = None,
+):
+    if properties is None:
+        properties = {}
+    if analytics_props is not None:
+        properties = {**analytics_props, **properties}
+
+    # isinstance works through Django's SimpleLazyObject because it proxies __class__
+    real_user = user if isinstance(user, User) else None
+
+    distinct_id = None
+    if real_user and real_user.distinct_id:
+        distinct_id = real_user.distinct_id
+    elif team:
+        distinct_id = str(team.uuid)
+
+    if not distinct_id:
+        return
+
+    org = organization or (real_user.current_organization if real_user else None)
+    tm = team or (real_user.current_team if real_user else None)
+
+    posthoganalytics.capture(
+        distinct_id=distinct_id,
+        event=event,
+        properties=properties,
+        groups=groups(org, tm),
+    )
+
+
+def report_organization_deleted(user: User, organization: Organization):
+    if not user.distinct_id:
+        return
+    posthoganalytics.capture(
+        distinct_id=user.distinct_id,
+        event="organization deleted",
+        properties=organization.get_analytics_metadata(),
+        groups=groups(organization),
+    )
+
+
+def report_organization_deletion_initiated(user: User, organization: Organization):
+    if not user.distinct_id:
+        return
+    posthoganalytics.capture(
+        distinct_id=user.distinct_id,
+        event="organization deletion initiated",
+        properties=organization.get_analytics_metadata(),
+        groups=groups(organization),
+    )
+
+
+def report_organization_deletion_completed(user_id: int, organization_id: str) -> None:
+    from posthog.models import User as UserModel
+    from posthog.ph_client import ph_scoped_capture
+
+    user = UserModel.objects.filter(id=user_id).first()
+    if not user or not user.distinct_id:
+        return
+    with ph_scoped_capture() as capture_ph_event:
+        capture_ph_event(
+            distinct_id=user.distinct_id,
+            event="organization deletion completed",
+            properties={"organization_id": organization_id},
+            groups={"instance": SITE_URL, "organization": organization_id},
+        )
+
+
+def report_user_deleted_account(user: User):
+    if not user.distinct_id:
+        return
+    posthoganalytics.capture(
+        distinct_id=user.distinct_id,
+        event="user account deleted",
+        properties=user.get_analytics_metadata(),
+    )
+    posthoganalytics.flush()
+
+
+def groups(organization: Optional[Organization] = None, team: Optional[Team] = None):
+    result = {"instance": SITE_URL}
+    if organization is not None:
+        result["organization"] = str(organization.pk)
+        if organization.customer_id:
+            result["customer"] = organization.customer_id
+    elif team is not None and team.organization_id:
+        result["organization"] = str(team.organization_id)
+
+    if team is not None:
+        result["project"] = str(team.uuid)
+    return result
+
+
+def report_team_action(
+    team: Team,
+    event: str,
+    properties: Optional[dict] = None,
+    group_properties: Optional[dict] = None,
+):
+    """
+    For capturing events where it is unclear which user was the core actor we can use the team instead
+    """
+    if properties is None:
+        properties = {}
+    posthoganalytics.capture(distinct_id=str(team.uuid), event=event, properties=properties, groups=groups(team=team))
+
+    if group_properties:
+        posthoganalytics.group_identify("team", str(team.id), properties=group_properties)
+
+
+def report_organization_action(
+    organization: Organization,
+    event: str,
+    properties: Optional[dict] = None,
+    group_properties: Optional[dict] = None,
+):
+    """
+    For capturing events where it is unclear which user was the core actor we can use the organization instead
+    """
+    if properties is None:
+        properties = {}
+    posthoganalytics.capture(
+        distinct_id=str(organization.id),
+        event=event,
+        properties=properties,
+        groups=groups(organization=organization),
+    )
+
+    if group_properties:
+        posthoganalytics.group_identify("organization", str(organization.id), properties=group_properties)
+
+
+def exclude_internal_organization_from_crm(organization: Organization, creator: Optional[User]) -> None:
+    """
+    Organizations created by PostHog staff are internal demo or test workspaces, which must never
+    be synced to customer-facing CRM tooling. The `exclude_from_crm` organization group property
+    gates the CDP destinations that push organizations and their members to those tools.
+    """
+    if creator is None or not creator.email or not creator.email.endswith(POSTHOG_INTERNAL_EMAIL_SUFFIX):
+        return
+    posthoganalytics.group_identify(
+        "organization",
+        str(organization.id),
+        properties={"exclude_from_crm": True},
+    )

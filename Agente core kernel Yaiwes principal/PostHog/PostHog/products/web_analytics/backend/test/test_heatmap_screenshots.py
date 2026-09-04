@@ -1,0 +1,682 @@
+from datetime import timedelta
+from io import BytesIO
+from typing import Any
+
+from posthog.test.base import APIBaseTest
+from unittest.mock import MagicMock, patch
+
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import SimpleTestCase
+from django.utils import timezone
+
+from parameterized import parameterized
+from PIL import Image
+from prometheus_client import REGISTRY
+from rest_framework.test import APIClient
+
+from posthog.jwt import PosthogJwtAudience, encode_jwt
+from posthog.models import Team
+from posthog.models.personal_api_key import PersonalAPIKey
+from posthog.models.utils import generate_random_token_personal, hash_key_value
+from posthog.rate_limit import HeatmapPreflightBurstRateThrottle
+
+from products.web_analytics.backend.api.heatmaps_api import SavedHeatmapCaptureRequestSerializer
+from products.web_analytics.backend.heatmap_preflight import PreflightResult
+from products.web_analytics.backend.models import HeatmapSnapshot, SavedHeatmap
+
+
+class TestHeatmapsAPI(APIBaseTest):
+    def setUp(self):
+        super().setUp()
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+    @patch("products.web_analytics.backend.tasks.heatmap_screenshot.generate_heatmap_screenshot.delay")
+    def test_generate_creates_saved_with_target_widths(self, mock_task):
+        resp = self.client.post(
+            f"/api/environments/{self.team.id}/saved/",
+            {"url": "https://example.com", "widths": [768, 1024]},
+        )
+        self.assertEqual(resp.status_code, 201)
+        saved = SavedHeatmap.objects.get(id=resp.data["id"])
+        self.assertEqual(saved.url, "https://example.com")
+        self.assertEqual(saved.created_by, self.user)
+        self.assertEqual(saved.status, SavedHeatmap.Status.PROCESSING)
+        self.assertEqual(saved.target_widths, [768, 1024])
+        mock_task.assert_called_once_with(saved.id)
+
+    @patch("products.web_analytics.backend.tasks.heatmap_screenshot.generate_heatmap_screenshot.delay")
+    def test_create_defaults_consent_blocking_off(self, _mock_task):
+        resp = self.client.post(
+            f"/api/environments/{self.team.id}/saved/",
+            {"url": "https://example.com"},
+        )
+        self.assertEqual(resp.status_code, 201)
+        self.assertFalse(resp.data["block_consent_modals"])
+        saved = SavedHeatmap.objects.get(id=resp.data["id"])
+        self.assertFalse(saved.block_consent_modals)
+
+    @patch("products.web_analytics.backend.tasks.heatmap_screenshot.generate_heatmap_screenshot.delay")
+    def test_create_persists_consent_blocking_when_enabled(self, _mock_task):
+        resp = self.client.post(
+            f"/api/environments/{self.team.id}/saved/",
+            {"url": "https://example.com", "block_consent_modals": True},
+        )
+        self.assertEqual(resp.status_code, 201)
+        self.assertTrue(resp.data["block_consent_modals"])
+        saved = SavedHeatmap.objects.get(id=resp.data["id"])
+        self.assertTrue(saved.block_consent_modals)
+
+    @patch("products.web_analytics.backend.api.heatmaps_api.preflight_page")
+    def test_preflight_returns_the_verdict_for_the_requested_url(self, mock_preflight):
+        mock_preflight.return_value = PreflightResult(
+            framing="blocked",
+            blocked_by="frame_ancestors",
+            http_status=200,
+            body_excerpt=None,
+        )
+
+        resp = self.client.post(
+            f"/api/environments/{self.team.id}/saved/preflight/",
+            {"url": "https://example.com/page"},
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data["framing"], "blocked")
+        self.assertEqual(resp.data["blocked_by"], "frame_ancestors")
+        mock_preflight.assert_called_once_with("https://example.com/page")
+
+    def test_preflight_rejects_a_wildcard_url(self):
+        resp = self.client.post(
+            f"/api/environments/{self.team.id}/saved/preflight/",
+            {"url": "https://example.com/*"},
+        )
+
+        self.assertEqual(resp.status_code, 400)
+
+    @patch("products.web_analytics.backend.api.heatmaps_api.preflight_page")
+    @patch("posthog.rate_limit.is_rate_limit_enabled", return_value=True)
+    def test_preflight_budget_is_shared_across_personal_api_keys(self, _enabled, mock_preflight):
+        # Each probe holds a web worker for as long as the target takes to answer. The default
+        # cache key idents personal-API-key requests by key hash, so a user could mint keys to
+        # multiply that occupancy; the budget has to be one project-wide bucket.
+        mock_preflight.return_value = PreflightResult(
+            framing="allowed", blocked_by=None, http_status=200, body_excerpt=None
+        )
+        self.client.logout()
+
+        def post_with_a_fresh_key():
+            token = generate_random_token_personal()
+            PersonalAPIKey.objects.create(
+                user=self.user, label="t", secure_value=hash_key_value(token), scopes=["heatmap:read"]
+            )
+            return self.client.post(
+                f"/api/projects/{self.team.id}/saved/preflight/",
+                {"url": "https://example.com/page"},
+                headers={"authorization": f"Bearer {token}"},
+            )
+
+        with patch.object(HeatmapPreflightBurstRateThrottle, "rate", "2/minute"):
+            self.assertEqual(post_with_a_fresh_key().status_code, 200)
+            self.assertEqual(post_with_a_fresh_key().status_code, 200)
+            throttled = post_with_a_fresh_key()
+
+        self.assertEqual(throttled.status_code, 429)
+
+    @patch("products.web_analytics.backend.tasks.heatmap_screenshot.generate_heatmap_screenshot.delay")
+    def test_prewarm_starts_single_width_render_hidden_from_list(self, mock_delay):
+        resp = self.client.post(
+            f"/api/environments/{self.team.id}/saved/prewarm/",
+            {"url": "https://example.com"},
+        )
+        self.assertEqual(resp.status_code, 201)
+        saved = SavedHeatmap.objects.get(id=resp.data["id"])
+        self.assertTrue(saved.is_prewarm)
+        self.assertEqual(saved.status, SavedHeatmap.Status.PROCESSING)
+        self.assertEqual(saved.target_widths, [1024])
+        mock_delay.assert_called_once_with(saved.id)
+
+        # Speculative rows must never surface in the user's saved-heatmap list.
+        listed = self.client.get(f"/api/environments/{self.team.id}/saved/")
+        self.assertEqual(listed.status_code, 200)
+        self.assertEqual(listed.data["count"], 0)
+
+    @patch("products.web_analytics.backend.tasks.heatmap_screenshot.generate_heatmap_screenshot.delay")
+    def test_prewarm_is_idempotent_within_window(self, mock_delay):
+        first = self.client.post(
+            f"/api/environments/{self.team.id}/saved/prewarm/",
+            {"url": "https://example.com"},
+        )
+        self.assertEqual(first.status_code, 201)
+        second = self.client.post(
+            f"/api/environments/{self.team.id}/saved/prewarm/",
+            {"url": "https://example.com"},
+        )
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(second.data["id"], first.data["id"])
+        mock_delay.assert_called_once()
+        self.assertEqual(SavedHeatmap.objects.filter(team=self.team, is_prewarm=True).count(), 1)
+
+    @patch("products.web_analytics.backend.api.heatmaps_api.generate_heatmap_screenshot")
+    def test_create_promotes_matching_prewarm_and_keeps_snapshots(self, mock_task):
+        prewarm_resp = self.client.post(
+            f"/api/environments/{self.team.id}/saved/prewarm/",
+            {"url": "https://example.com"},
+        )
+        self.assertEqual(prewarm_resp.status_code, 201)
+        prewarm_id = prewarm_resp.data["id"]
+        prewarm = SavedHeatmap.objects.get(id=prewarm_id)
+        # Simulate the preview render having completed while the user finished the wizard.
+        HeatmapSnapshot.objects.create(heatmap=prewarm, width=1024, content=b"preview")
+        SavedHeatmap.objects.filter(id=prewarm_id).update(status=SavedHeatmap.Status.COMPLETED)
+
+        create_resp = self.client.post(
+            f"/api/environments/{self.team.id}/saved/",
+            {"url": "https://example.com", "name": "My heatmap", "widths": [768, 1024]},
+        )
+        self.assertEqual(create_resp.status_code, 201)
+        # Promoted in place — the same row, not a fresh insert.
+        self.assertEqual(create_resp.data["id"], prewarm_id)
+
+        prewarm.refresh_from_db()
+        self.assertFalse(prewarm.is_prewarm)
+        self.assertEqual(prewarm.name, "My heatmap")
+        self.assertEqual(prewarm.target_widths, [768, 1024])
+        # The preview snapshot survives promotion (unlike regenerate, which clears snapshots).
+        self.assertTrue(HeatmapSnapshot.objects.filter(heatmap=prewarm, width=1024, content=b"preview").exists())
+        self.assertEqual(SavedHeatmap.objects.filter(team=self.team, is_prewarm=False).count(), 1)
+        # One render enqueued for the prewarm, one for the promoted create (which skips the done width).
+        self.assertEqual(mock_task.delay.call_count, 2)
+        mock_task.delay.assert_called_with(prewarm.id)
+
+    @patch("products.web_analytics.backend.api.heatmaps_api.generate_heatmap_screenshot")
+    def test_create_reuses_in_flight_prewarm_without_a_second_render(self, mock_task):
+        prewarm_resp = self.client.post(
+            f"/api/environments/{self.team.id}/saved/prewarm/",
+            {"url": "https://example.com"},
+        )
+        self.assertEqual(prewarm_resp.status_code, 201)
+        prewarm_id = prewarm_resp.data["id"]
+        # Prewarm render still in flight: status stays 'processing', no snapshot yet.
+
+        create_resp = self.client.post(
+            f"/api/environments/{self.team.id}/saved/",
+            {"url": "https://example.com", "name": "My heatmap"},
+        )
+        self.assertEqual(create_resp.status_code, 201)
+        # Promoted the in-flight row, not a fresh insert.
+        self.assertEqual(create_resp.data["id"], prewarm_id)
+
+        prewarm = SavedHeatmap.objects.get(id=prewarm_id)
+        self.assertFalse(prewarm.is_prewarm)
+        self.assertEqual(prewarm.name, "My heatmap")
+        # Only the prewarm's own render was enqueued — create must not start a second, racing render.
+        mock_task.delay.assert_called_once_with(prewarm.id)
+
+    @patch("products.web_analytics.backend.api.heatmaps_api.generate_heatmap_screenshot")
+    def test_partial_update_consent_toggle_triggers_regenerate(self, mock_task):
+        saved = SavedHeatmap.objects.create(
+            team=self.team,
+            url="https://example.com",
+            created_by=self.user,
+            status=SavedHeatmap.Status.COMPLETED,
+            type=SavedHeatmap.Type.SCREENSHOT,
+            block_consent_modals=False,
+        )
+        HeatmapSnapshot.objects.create(heatmap=saved, width=1024, content=b"old")
+
+        r = self.client.patch(
+            f"/api/environments/{self.team.id}/saved/{saved.short_id}/",
+            {"block_consent_modals": True},
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.data["block_consent_modals"])
+        self.assertEqual(r.data["status"], "processing")
+        mock_task.delay.assert_called_once_with(saved.id)
+        self.assertEqual(HeatmapSnapshot.objects.filter(heatmap=saved).count(), 0)
+
+    def test_content_returns_202_until_snapshot_exists(self):
+        saved = SavedHeatmap.objects.create(team=self.team, url="https://example.com", created_by=self.user)
+        r = self.client.get(f"/api/environments/{self.team.id}/heatmap_screenshots/{saved.id}/content/?width=1024")
+        self.assertEqual(r.status_code, 202)
+
+    def test_content_returns_snapshot_bytes_and_defaults_width(self):
+        saved = SavedHeatmap.objects.create(
+            team=self.team,
+            url="https://example.com",
+            created_by=self.user,
+            status=SavedHeatmap.Status.COMPLETED,
+        )
+        HeatmapSnapshot.objects.create(heatmap=saved, width=1024, content=b"jpegdata1024")
+        r = self.client.get(f"/api/environments/{self.team.id}/heatmap_screenshots/{saved.id}/content/")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r["Content-Type"], "image/jpeg")
+        self.assertTrue(r["Content-Disposition"].endswith('1024.jpg"'))
+        self.assertEqual(r.content, b"jpegdata1024")
+
+    def test_content_picks_closest_snapshot_when_exact_missing(self):
+        saved = SavedHeatmap.objects.create(
+            team=self.team,
+            url="https://example.com",
+            created_by=self.user,
+            status=SavedHeatmap.Status.COMPLETED,
+        )
+        HeatmapSnapshot.objects.create(heatmap=saved, width=768, content=b"jpeg768")
+        HeatmapSnapshot.objects.create(heatmap=saved, width=1024, content=b"jpeg1024")
+        # Request 800 should pick 768 (closest)
+        r = self.client.get(f"/api/environments/{self.team.id}/heatmap_screenshots/{saved.id}/content/?width=800")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn('768.jpg"', r["Content-Disposition"])
+        self.assertEqual(r.content, b"jpeg768")
+
+    def test_content_returns_501_when_only_content_location_set(self):
+        saved = SavedHeatmap.objects.create(
+            team=self.team,
+            url="https://example.com",
+            created_by=self.user,
+            status=SavedHeatmap.Status.COMPLETED,
+        )
+        HeatmapSnapshot.objects.create(heatmap=saved, width=1024, content=None, content_location="s3://bucket/key")
+        r = self.client.get(f"/api/environments/{self.team.id}/heatmap_screenshots/{saved.id}/content/?width=1024")
+        self.assertEqual(r.status_code, 501)
+
+    def test_content_served_increments_metric(self):
+        saved = SavedHeatmap.objects.create(
+            team=self.team,
+            url="https://example.com",
+            created_by=self.user,
+            status=SavedHeatmap.Status.COMPLETED,
+        )
+        HeatmapSnapshot.objects.create(heatmap=saved, width=1024, content=b"jpegdata1024")
+
+        def _served_count() -> float:
+            return REGISTRY.get_sample_value("heatmap_screenshot_content_requests_total", {"outcome": "served"}) or 0.0
+
+        before = _served_count()
+        r = self.client.get(f"/api/environments/{self.team.id}/heatmap_screenshots/{saved.id}/content/?width=1024")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(_served_count() - before, 1)
+
+    def test_saved_list_excludes_deleted_and_includes_created_by(self):
+        SavedHeatmap.objects.create(team=self.team, url="https://a.example", created_by=self.user)
+        SavedHeatmap.objects.create(team=self.team, url="https://b.example", created_by=self.user, deleted=True)
+        r = self.client.get(f"/api/environments/{self.team.id}/saved/")
+        self.assertEqual(r.status_code, 200)
+        urls = [x["url"] for x in r.data["results"]]
+        self.assertIn("https://a.example", urls)
+        self.assertNotIn("https://b.example", urls)
+        # created_by present
+        found = next(x for x in r.data["results"] if x["url"] == "https://a.example")
+        self.assertEqual(found["created_by"]["id"], self.user.id)
+
+    @parameterized.expand(
+        [
+            ("non_integer_limit", {"limit": "abc"}, 400),
+            ("non_integer_offset", {"offset": "xyz"}, 400),
+            ("non_integer_created_by", {"created_by": "nope"}, 400),
+            ("valid_limit", {"limit": 5}, 200),
+            ("oversized_limit_does_not_500", {"limit": 100000000}, 200),
+        ]
+    )
+    def test_saved_list_validates_and_bounds_pagination(self, _name, query, expected_status):
+        SavedHeatmap.objects.create(team=self.team, url="https://a.example", created_by=self.user)
+        r = self.client.get(f"/api/environments/{self.team.id}/saved/", query)
+        assert r.status_code == expected_status
+
+    def test_team_isolation_for_content(self):
+        other_team = Team.objects.create_with_data(
+            organization=self.organization, initiating_user=self.user, name="Other Team"
+        )
+        other = SavedHeatmap.objects.create(team=other_team, url="https://example.com")
+        r = self.client.get(f"/api/environments/{self.team.id}/heatmap_screenshots/{other.id}/content/")
+        self.assertEqual(r.status_code, 404)
+
+    def test_content_endpoint_accepts_export_renderer_jwt(self):
+        # Screenshot exports render the heatmap in a headless browser that
+        # authenticates with an EXPORT_RENDERER JWT. This regression test
+        # guards against HeatmapScreenshotViewSet dropping that auth class:
+        # if it does, the exporter can't fetch the background image and the
+        # resulting PNG renders an `<img alt="Heatmap">` placeholder.
+        saved = SavedHeatmap.objects.create(
+            team=self.team,
+            url="https://example.com",
+            created_by=self.user,
+            status=SavedHeatmap.Status.COMPLETED,
+        )
+        HeatmapSnapshot.objects.create(heatmap=saved, width=1024, content=b"jpegdata1024")
+
+        token = encode_jwt(
+            {"id": self.user.id},
+            timedelta(minutes=5),
+            PosthogJwtAudience.EXPORT_RENDERER,
+        )
+        unauthenticated = APIClient()
+        r = unauthenticated.get(
+            f"/api/environments/{self.team.id}/heatmap_screenshots/{saved.id}/content/?width=1024",
+            headers={"authorization": f"Bearer {token}"},
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r["Content-Type"], "image/jpeg")
+        self.assertEqual(r.content, b"jpegdata1024")
+
+    @patch("products.web_analytics.backend.api.heatmaps_api.generate_heatmap_screenshot")
+    def test_retrieve_auto_recovers_stale_processing_heatmap(self, mock_task):
+        saved = SavedHeatmap.objects.create(
+            team=self.team,
+            url="https://example.com",
+            created_by=self.user,
+            status=SavedHeatmap.Status.PROCESSING,
+            type=SavedHeatmap.Type.SCREENSHOT,
+        )
+        HeatmapSnapshot.objects.create(heatmap=saved, width=1024, content=b"old")
+
+        # Force updated_at to 15 minutes ago
+        SavedHeatmap.objects.filter(id=saved.id).update(updated_at=timezone.now() - timedelta(minutes=15))
+
+        r = self.client.get(f"/api/environments/{self.team.id}/saved/{saved.short_id}/")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data["status"], "processing")
+
+        # Task was re-enqueued
+        mock_task.delay.assert_called_once_with(saved.id)
+
+        # Old snapshots were cleaned up
+        self.assertEqual(HeatmapSnapshot.objects.filter(heatmap=saved).count(), 0)
+
+    @patch("products.web_analytics.backend.api.heatmaps_api.generate_heatmap_screenshot")
+    def test_retrieve_does_not_recover_recent_processing_heatmap(self, mock_task):
+        saved = SavedHeatmap.objects.create(
+            team=self.team,
+            url="https://example.com",
+            created_by=self.user,
+            status=SavedHeatmap.Status.PROCESSING,
+            type=SavedHeatmap.Type.SCREENSHOT,
+        )
+
+        r = self.client.get(f"/api/environments/{self.team.id}/saved/{saved.short_id}/")
+        self.assertEqual(r.status_code, 200)
+
+        # Task was NOT re-enqueued (still within threshold)
+        mock_task.delay.assert_not_called()
+
+    @patch("products.web_analytics.backend.api.heatmaps_api.generate_heatmap_screenshot")
+    def test_regenerate_endpoint_re_enqueues_task(self, mock_task):
+        saved = SavedHeatmap.objects.create(
+            team=self.team,
+            url="https://example.com",
+            created_by=self.user,
+            status=SavedHeatmap.Status.FAILED,
+            type=SavedHeatmap.Type.SCREENSHOT,
+            exception="previous error",
+        )
+        HeatmapSnapshot.objects.create(heatmap=saved, width=1024, content=b"old")
+
+        r = self.client.post(f"/api/environments/{self.team.id}/saved/{saved.short_id}/regenerate/")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data["status"], "processing")
+        self.assertIsNone(r.data["exception"])
+
+        mock_task.delay.assert_called_once_with(saved.id)
+        self.assertEqual(HeatmapSnapshot.objects.filter(heatmap=saved).count(), 0)
+
+    def test_regenerate_rejects_non_screenshot_type(self):
+        saved = SavedHeatmap.objects.create(
+            team=self.team,
+            url="https://example.com",
+            created_by=self.user,
+            type=SavedHeatmap.Type.IFRAME,
+        )
+
+        r = self.client.post(f"/api/environments/{self.team.id}/saved/{saved.short_id}/regenerate/")
+        self.assertEqual(r.status_code, 400)
+
+
+class TestSavedHeatmapRegeneratePersonalAPIKeyScopes(APIBaseTest):
+    CONFIG_AUTO_LOGIN = False
+
+    def _auth(self, value: str) -> dict:
+        return {"HTTP_AUTHORIZATION": f"Bearer {value}"}
+
+    def test_regenerate_allowed_with_heatmap_write_scope(self):
+        key = self.create_personal_api_key_with_scopes(["heatmap:write"])
+        # Use a non-existent short_id; a 404 proves the scope gate was passed.
+        url = f"/api/environments/{self.team.id}/saved/nonexistent-short-id/regenerate/"
+        r = self.client.post(url, **self._auth(key))
+        assert r.status_code != 403, r.json()
+
+    @parameterized.expand(
+        [
+            ("read_scope_cannot_satisfy_write", ["heatmap:read"]),
+            ("unrelated_scope", ["insight:read"]),
+            ("no_scopes", []),
+        ]
+    )
+    def test_regenerate_rejected_without_heatmap_write_scope(self, _name: str, scopes: list[str]):
+        key = self.create_personal_api_key_with_scopes(scopes)
+        url = f"/api/environments/{self.team.id}/saved/nonexistent-short-id/regenerate/"
+        r = self.client.post(url, **self._auth(key))
+        assert r.status_code == 403, r.json()
+
+
+def _jpeg_bytes(width: int = 12, height: int = 12) -> bytes:
+    buf = BytesIO()
+    Image.new("RGB", (width, height), (200, 30, 30)).save(buf, format="JPEG")
+    return buf.getvalue()
+
+
+@patch("products.web_analytics.backend.tasks.heatmap_screenshot.generate_heatmap_screenshot.delay")
+class TestHeatmapToolbarCapture(APIBaseTest):
+    def setUp(self) -> None:
+        super().setUp()
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+    def _capture(self, **overrides: Any) -> Any:
+        data = {
+            "image": SimpleUploadedFile("heatmap.jpg", _jpeg_bytes(), content_type="image/jpeg"),
+            "url": "https://app.example.com/dashboard",
+            "width": 1440,
+            "name": "Dashboard",
+        }
+        data.update(overrides)
+        return self.client.post(f"/api/environments/{self.team.id}/saved/capture/", data, format="multipart")
+
+    def test_capture_creates_completed_toolbar_heatmap_and_serves_bytes(self, mock_task: MagicMock) -> None:
+        image_bytes = _jpeg_bytes()
+        resp = self.client.post(
+            f"/api/environments/{self.team.id}/saved/capture/",
+            {
+                "image": SimpleUploadedFile("heatmap.jpg", image_bytes, content_type="image/jpeg"),
+                "url": "https://app.example.com/dashboard",
+                "width": 1440,
+                "name": "Dashboard",
+            },
+            format="multipart",
+        )
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(resp.data["source"], "toolbar")
+        self.assertEqual(resp.data["status"], "completed")
+        self.assertEqual(resp.data["type"], "screenshot")
+
+        saved = SavedHeatmap.objects.get(id=resp.data["id"])
+        self.assertEqual(saved.data_url, "https://app.example.com/dashboard")
+        self.assertEqual(saved.target_widths, [1440])
+        self.assertEqual(saved.created_by, self.user)
+
+        snapshots = list(saved.snapshots.all())
+        self.assertEqual(len(snapshots), 1)
+        self.assertEqual(snapshots[0].width, 1440)
+        snapshot_content = snapshots[0].content
+        assert snapshot_content is not None
+        self.assertEqual(bytes(snapshot_content), image_bytes)
+
+        mock_task.assert_not_called()
+
+        content = self.client.get(
+            f"/api/environments/{self.team.id}/heatmap_screenshots/{saved.id}/content/?width=1440"
+        )
+        self.assertEqual(content.status_code, 200)
+        self.assertEqual(content["Content-Type"], "image/jpeg")
+        self.assertEqual(content.content, image_bytes)
+
+    def test_capture_defaults_name_to_url(self, _mock_task: MagicMock) -> None:
+        resp = self._capture(name="")
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(resp.data["name"], "https://app.example.com/dashboard")
+
+    @parameterized.expand(
+        [
+            ("wildcard_url", "https://app.example.com/*", _jpeg_bytes()),
+            ("not_an_image", "https://app.example.com/x", b"<html>not a jpeg</html>"),
+        ]
+    )
+    def test_capture_rejects_invalid_input(self, _mock_task: MagicMock, _name: str, url: str, content: bytes) -> None:
+        resp = self._capture(
+            url=url,
+            image=SimpleUploadedFile("heatmap.jpg", content, content_type="image/jpeg"),
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertFalse(SavedHeatmap.objects.filter(team=self.team).exists())
+
+    @parameterized.expand([("single",), ("multi",)])
+    @patch("products.web_analytics.backend.api.heatmaps_api.HEATMAP_SCREENSHOT_MAX_BYTES", 10)
+    def test_capture_rejects_oversized_image(self, _mock_task: MagicMock, _name: str) -> None:
+        if _name == "single":
+            payload: dict = {"image": SimpleUploadedFile("h.jpg", _jpeg_bytes(), "image/jpeg"), "width": 1440}
+        else:
+            payload = {
+                "images": [SimpleUploadedFile("h.jpg", _jpeg_bytes(), "image/jpeg") for _ in range(3)],
+                "widths": [320, 768, 1440],
+            }
+        resp = self.client.post(
+            f"/api/environments/{self.team.id}/saved/capture/",
+            {"url": "https://app.example.com/dashboard", **payload},
+            format="multipart",
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertFalse(SavedHeatmap.objects.filter(team=self.team).exists())
+
+    @patch("products.web_analytics.backend.api.heatmaps_api.MAX_CAPTURE_IMAGE_PIXELS", 100)
+    def test_capture_rejects_oversized_dimensions(self, _mock_task: MagicMock) -> None:
+        resp = self._capture()
+        self.assertEqual(resp.status_code, 400)
+        self.assertFalse(SavedHeatmap.objects.filter(team=self.team).exists())
+
+    @patch("products.web_analytics.backend.api.heatmaps_api.MAX_CAPTURE_TOTAL_BYTES", 1)
+    def test_capture_rejects_oversized_total_bytes(self, _mock_task: MagicMock) -> None:
+        resp = self._capture()
+        self.assertEqual(resp.status_code, 400)
+        self.assertFalse(SavedHeatmap.objects.filter(team=self.team).exists())
+
+    def test_capture_multi_width_creates_one_heatmap_with_all_widths(self, _mock_task: MagicMock) -> None:
+        widths = [320, 768, 1440]
+        images = [_jpeg_bytes(width=w // 100, height=6) for w in widths]
+        resp = self.client.post(
+            f"/api/environments/{self.team.id}/saved/capture/",
+            {
+                "images": [SimpleUploadedFile(f"heatmap-{w}.jpg", img, "image/jpeg") for w, img in zip(widths, images)],
+                "widths": widths,
+                "url": "https://app.example.com/dashboard",
+                "name": "Dashboard",
+            },
+            format="multipart",
+        )
+        self.assertEqual(resp.status_code, 201, resp.data)
+
+        saved = SavedHeatmap.objects.get(id=resp.data["id"])
+        self.assertEqual(saved.source, SavedHeatmap.Source.TOOLBAR)
+        self.assertEqual(saved.target_widths, widths)
+        self.assertEqual(sorted(s.width for s in saved.snapshots.all()), widths)
+
+        for w, img in zip(widths, images):
+            content = self.client.get(
+                f"/api/environments/{self.team.id}/heatmap_screenshots/{saved.id}/content/?width={w}"
+            )
+            self.assertEqual(content.status_code, 200)
+            self.assertEqual(content.content, img)
+
+    def test_regenerate_blocked_for_toolbar_capture(self, mock_task: MagicMock) -> None:
+        saved = SavedHeatmap.objects.create(
+            team=self.team,
+            url="https://app.example.com/dashboard",
+            data_url="https://app.example.com/dashboard",
+            target_widths=[1440],
+            type=SavedHeatmap.Type.SCREENSHOT,
+            source=SavedHeatmap.Source.TOOLBAR,
+            status=SavedHeatmap.Status.COMPLETED,
+            created_by=self.user,
+        )
+        resp = self.client.post(f"/api/environments/{self.team.id}/saved/{saved.short_id}/regenerate/")
+        self.assertEqual(resp.status_code, 400)
+        mock_task.assert_not_called()
+
+    def test_partial_update_blocks_render_input_change_for_toolbar_but_allows_rename(
+        self, mock_task: MagicMock
+    ) -> None:
+        saved = SavedHeatmap.objects.create(
+            team=self.team,
+            url="https://example.com",
+            data_url="https://example.com",
+            target_widths=[1440],
+            type=SavedHeatmap.Type.SCREENSHOT,
+            source=SavedHeatmap.Source.TOOLBAR,
+            status=SavedHeatmap.Status.COMPLETED,
+            block_consent_modals=False,
+            created_by=self.user,
+        )
+        HeatmapSnapshot.objects.create(heatmap=saved, width=1440, content=_jpeg_bytes())
+
+        blocked = self.client.patch(
+            f"/api/environments/{self.team.id}/saved/{saved.short_id}/",
+            {"block_consent_modals": True},
+        )
+        self.assertEqual(blocked.status_code, 400, blocked.data)
+        saved.refresh_from_db()
+        self.assertFalse(saved.block_consent_modals)
+        self.assertEqual(saved.status, SavedHeatmap.Status.COMPLETED)
+        self.assertEqual(saved.snapshots.count(), 1)
+        mock_task.delay.assert_not_called()
+
+        renamed = self.client.patch(
+            f"/api/environments/{self.team.id}/saved/{saved.short_id}/",
+            {"name": "Renamed"},
+        )
+        self.assertEqual(renamed.status_code, 200, renamed.data)
+        saved.refresh_from_db()
+        self.assertEqual(saved.name, "Renamed")
+
+
+class TestSavedHeatmapCaptureRequestSerializer(SimpleTestCase):
+    @parameterized.expand(
+        [
+            ("wildcard", "https://app.example.com/*"),
+            ("javascript_scheme", "javascript:alert"),
+            ("ftp_scheme", "ftp://app.example.com/x"),
+            ("no_scheme", "app.example.com/x"),
+        ]
+    )
+    def test_rejects_invalid_url(self, _name: str, url: str) -> None:
+        serializer = SavedHeatmapCaptureRequestSerializer(data={"url": url})
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("url", serializer.errors)
+
+    @parameterized.expand(
+        [
+            ("mismatched_lengths", [320, 768, 1440], 2, False),
+            ("both_single_and_multi", [320, 768], 2, True),
+            ("duplicate_widths", [1440, 1440], 2, False),
+        ]
+    )
+    def test_rejects_bad_multi_width_shape(
+        self, _name: str, widths: list[int], n_images: int, add_single: bool
+    ) -> None:
+        data: dict = {
+            "url": "https://app.example.com/dashboard",
+            "images": [SimpleUploadedFile("h.jpg", _jpeg_bytes(), "image/jpeg") for _ in range(n_images)],
+            "widths": widths,
+        }
+        if add_single:
+            data["image"] = SimpleUploadedFile("single.jpg", _jpeg_bytes(), "image/jpeg")
+            data["width"] = 1024
+        serializer = SavedHeatmapCaptureRequestSerializer(data=data)
+        self.assertFalse(serializer.is_valid())

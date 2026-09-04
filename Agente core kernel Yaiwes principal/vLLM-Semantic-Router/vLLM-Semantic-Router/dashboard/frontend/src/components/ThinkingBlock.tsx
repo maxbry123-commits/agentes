@@ -1,0 +1,112 @@
+import { useState, useEffect } from 'react'
+import { ThinkingOrb } from 'thinking-orbs'
+import styles from './ThinkingBlock.module.css'
+import MarkdownRenderer from './MarkdownRenderer'
+import { getTranslateAttr } from '../hooks/useNoTranslate'
+
+interface ThinkingBlockProps {
+  content: string
+  isStreaming?: boolean
+  thinkingTime?: number // in seconds
+}
+
+const AUTO_COLLAPSE_THRESHOLD = 2000 // Auto collapse when content exceeds 500 characters
+
+const ThinkingBlock = ({ content, isStreaming = false, thinkingTime }: ThinkingBlockProps) => {
+  const [displayTime, setDisplayTime] = useState(0)
+  const [isExpanded, setIsExpanded] = useState(true)
+  const [hasAutoCollapsed, setHasAutoCollapsed] = useState(false)
+
+  // Auto-collapse when content exceeds threshold (even during streaming)
+  useEffect(() => {
+    const shouldAutoCollapse = content.length > AUTO_COLLAPSE_THRESHOLD
+
+    // Auto-collapse as soon as content exceeds threshold, even while streaming
+    if (shouldAutoCollapse && !hasAutoCollapsed) {
+      setIsExpanded(false)
+      setHasAutoCollapsed(true)
+    }
+  }, [content.length, hasAutoCollapsed, isExpanded, isStreaming])
+
+  // Simulate thinking time counter when streaming
+  useEffect(() => {
+    if (isStreaming) {
+      const interval = setInterval(() => {
+        setDisplayTime((prev) => prev + 0.1)
+      }, 100)
+      return () => clearInterval(interval)
+    } else if (thinkingTime !== undefined) {
+      setDisplayTime(thinkingTime)
+    }
+  }, [isStreaming, thinkingTime])
+
+  if (!content || content.trim().length === 0) {
+    return null
+  }
+
+  const formatTime = (seconds: number) => {
+    if (seconds < 1) return `${Math.round(seconds * 1000)}ms`
+    return `${seconds.toFixed(1)}s`
+  }
+
+  return (
+    <div
+      className={styles.container}
+      translate={getTranslateAttr(isStreaming)}
+      data-testid="thinking-block"
+    >
+      <button
+        className={styles.header}
+        onClick={() => setIsExpanded(!isExpanded)}
+        aria-expanded={isExpanded}
+      >
+        <div className={styles.headerLeft}>
+          <svg
+            className={`${styles.icon} ${isExpanded ? styles.iconExpanded : ''}`}
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+          <ThinkingOrb
+            className={styles.thinkingOrb}
+            state={isStreaming ? 'working' : 'composing'}
+            size={20}
+            theme="dark"
+          />
+          <span className={styles.title}>{isStreaming ? 'Thinking' : 'Reasoning'}</span>
+        </div>
+        <div className={styles.headerRight}>
+          {displayTime > 0 && <span className={styles.time}>{formatTime(displayTime)}</span>}
+          <svg
+            className={styles.expandIcon}
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <polyline points="7 13 12 18 17 13" />
+            <polyline points="7 6 12 11 17 6" />
+          </svg>
+        </div>
+      </button>
+      {isExpanded && (
+        <div className={styles.content} data-testid="thinking-content">
+          <MarkdownRenderer content={content} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default ThinkingBlock

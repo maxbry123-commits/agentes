@@ -1,0 +1,143 @@
+/**
+ * Rerun job — the wrapper job that drives a paginated rerun of past hog
+ * function or hog flow invocations.
+ *
+ * Two paths produce these:
+ *   1. The Django→Node `/rerun` endpoint creates one with `progress.done=false`
+ *      and the user's request (either explicit ids or filter).
+ *   2. The `CdpRerunWorkerConsumer` dequeues it, runs one page of work, and
+ *      either acks (done) or `reschedule({ state })` with updated progress.
+ *
+ * Why cyclotron-v2 instead of running inline in the API request:
+ *   - A by-filter rerun can match millions of rows. We can't block on it.
+ *   - Resumable: each page persists `progress.cursor` so a crash during a
+ *     long rerun picks up where it left off rather than from the top.
+ *   - Observable: the wrapper row in cyclotron_jobs surfaces in-flight
+ *     reruns + their progress via the same machinery as every other job.
+ */
+
+export const RERUN_QUEUE_NAME = 'rerun'
+
+export type RerunFunctionKind = 'hog_function' | 'hog_flow'
+
+/**
+ * `function_kind` value we stamp on the wrapper row that the worker writes to
+ * `hog_invocation_results` to surface a re-run in the Invocations UI alongside
+ * the function's normal invocations. Suffixing avoids overloading the existing
+ * kind enum and keeps "is this a wrapper?" a trivial check on the frontend.
+ */
+export type RerunWrapperFunctionKind = 'hog_function_rerun' | 'hog_flow_rerun'
+
+export const rerunWrapperKindFor = (kind: RerunFunctionKind): RerunWrapperFunctionKind =>
+    kind === 'hog_flow' ? 'hog_flow_rerun' : 'hog_function_rerun'
+
+export const isRerunWrapperKind = (kind: string): kind is RerunWrapperFunctionKind =>
+    kind === 'hog_function_rerun' || kind === 'hog_flow_rerun'
+
+export type RerunStatusValue = 'running' | 'succeeded' | 'failed' | 'canceled'
+
+/**
+ * Filter shape for a rerun request.
+ *
+ * `window_start` / `window_end` are REQUIRED — the lifecycle table is
+ * partitioned by `toYYYYMMDD(scheduled_at)`, so a query without a time bound
+ * scans every partition (up to 30 of them, since the TTL drops parts older
+ * than that). The window also caps rerun to data that's still resident in the
+ * table — older rows are gone via TTL anyway.
+ *
+ * `invocation_ids` is an OPTIONAL additional restriction. When set, the
+ * paginator pulls only those ids within the window — a UI "rerun these
+ * specific failed runs" affordance. Server-side cap on the list size is
+ * enforced via `HOG_INVOCATION_RERUN_MAX_COUNT`.
+ */
+export interface RerunFilter {
+    window_start: string
+    window_end: string
+    status?: RerunStatusValue[]
+    error_kind?: string[]
+    /**
+     * Case-insensitive substring match on the latest error_message. Isolates one
+     * failure mode where error_kind is too coarse — most app-level errors share
+     * the generic 'hog_error' kind.
+     */
+    error_message_contains?: string
+    max_attempts?: number
+    max_count?: number
+    invocation_ids?: string[]
+}
+
+export interface RerunRequest {
+    filter: RerunFilter
+}
+
+/**
+ * Max window the user may pass — matches the ClickHouse TTL on
+ * `hog_invocation_results`. Older rows are already gone via part drop.
+ */
+export const RERUN_MAX_WINDOW_DAYS = 30
+
+export interface RerunCursor {
+    scheduled_at: string
+    invocation_id: string
+}
+
+export interface RerunJobProgress {
+    queued: number
+    skipped: number
+    /** Keyset cursor on (scheduled_at, invocation_id). Undefined on first page; null when exhausted. */
+    cursor?: RerunCursor | null
+    /** True once the worker has processed every page or exhausted max_count. */
+    done: boolean
+    /** Last error from a page; non-fatal — the next reschedule retries. */
+    last_error?: string
+    /**
+     * Consecutive page errors since the last page that made progress. Bumped on
+     * every errored page and reset to 0 whenever a page succeeds. Once it hits
+     * `RERUN_MAX_CONSECUTIVE_PAGE_ERRORS` the paginator gives up (throws) so the
+     * worker fails the wrapper job terminally instead of rescheduling it forever
+     * — an unbounded retry loop bumps the SMALLINT `transition_count` on every
+     * reschedule until it overflows (`smallint out of range`), poisoning the row.
+     */
+    consecutive_errors?: number
+    /**
+     * Number of pages that have committed progress to this job. Bumped per
+     * call to `processPage`. Surfaces on the wrapper lifecycle row as `attempts`
+     * so the Invocations UI can show "this re-run has worked X pages so far".
+     */
+    pages_processed?: number
+}
+
+export interface RerunJobState {
+    function_kind: RerunFunctionKind
+    function_id: string
+    request: RerunRequest
+    progress: RerunJobProgress
+}
+
+/** Hard cap on rows fetched per rerun page (also caps a by-IDs request slice). */
+export const RERUN_PAGE_SIZE = 200
+
+/**
+ * How many consecutive errored pages a rerun tolerates before the paginator
+ * gives up and fails the wrapper job terminally (recorded as a replayable
+ * failure). A single stuck page (malformed filter, undecodable globals,
+ * persistent ClickHouse error) otherwise reschedules indefinitely, and each
+ * reschedule increments the SMALLINT `transition_count` until it overflows at
+ * 32767, which then poisons the row so even dequeue fails.
+ *
+ * Sized together with `RERUN_PAGE_ERROR_BACKOFF_MAX_MS` so the budget outlasts
+ * a ClickHouse restart or failover: giving up on one of those permanently
+ * fails an otherwise-healthy rerun and loses its paged progress. A successful
+ * page resets the counter, so this bounds only an uninterrupted streak, and
+ * even a full streak stays two orders of magnitude below the SMALLINT ceiling.
+ */
+export const RERUN_MAX_CONSECUTIVE_PAGE_ERRORS = 200
+
+/**
+ * Ceiling for the exponential backoff the worker applies between retries of an
+ * errored page, growing from `RERUN_PAGE_DELAY_MS`. Retrying the same failing
+ * ClickHouse query at the healthy-page cadence adds load exactly when
+ * ClickHouse is already degraded, which is the condition most likely to have
+ * produced the streak in the first place.
+ */
+export const RERUN_PAGE_ERROR_BACKOFF_MAX_MS = 60_000

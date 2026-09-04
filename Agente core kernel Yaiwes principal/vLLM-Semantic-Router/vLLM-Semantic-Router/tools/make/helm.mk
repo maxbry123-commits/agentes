@@ -1,0 +1,451 @@
+# ======== helm.mk ============
+# = Helm deployment targets  =
+# ======== helm.mk ============
+
+##@ Helm
+
+# ── Configuration ────────────────────────────────────────────────────────────
+HELM_RELEASE_NAME ?= semantic-router
+HELM_NAMESPACE ?= vllm-semantic-router-system
+HELM_CHART_PATH ?= deploy/helm/semantic-router
+HELM_VALUES_FILE ?=
+HELM_SET_VALUES ?=
+HELM_TIMEOUT ?= 10m
+HELM_TEMPLATE_OUTPUT ?= /tmp/semantic-router-helm/default-template.yaml
+HELM_REPO_UPDATE ?= true
+
+# ── Remote OCI chart registry ────────────────────────────────────────────────
+# Used by helm-install-version, helm-upgrade-version, and related targets.
+# Override to point at a fork or mirror.
+HELM_OCI_REGISTRY ?= ghcr.io/vllm-project/charts
+HELM_OCI_CHART    ?= $(HELM_OCI_REGISTRY)/semantic-router
+
+# CHART_VERSION: pin to an exact chart version for remote install/upgrade.
+#
+# Release channels:
+#   CHART_VERSION=0.3.0              specific release — recommended for production
+#   CHART_VERSION=0.0.0-latest       latest main-branch build
+#   CHART_VERSION=0.0.0-nightly.YYYYMMDD  specific nightly
+#
+# When CHART_VERSION is empty, targets that require a remote chart will fail
+# with a clear error rather than silently pulling an unintended version.
+CHART_VERSION ?=
+
+# Colors for output (reuse from common.mk if available, otherwise define)
+BLUE ?= \033[0;34m
+GREEN ?= \033[0;32m
+YELLOW ?= \033[1;33m
+RED ?= \033[0;31m
+NC ?= \033[0m
+
+.PHONY: helm-lint helm-template helm-ci-setup helm-ci-validate helm-safety-validate helm-install helm-upgrade helm-install-or-upgrade \
+	helm-uninstall helm-status helm-list helm-history helm-rollback helm-test \
+	helm-package helm-dev helm-prod helm-values helm-manifest \
+	helm-port-forward-api helm-port-forward-grpc helm-port-forward-metrics \
+	helm-logs helm-clean helm-setup helm-cleanup helm-reinstall help-helm _check-k8s \
+	helm-install-version helm-upgrade-version helm-check-version _assert-chart-version
+
+##@ Helm — Remote (OCI) Version-Pinned Operations
+
+# Internal guard: fail early with a helpful message if CHART_VERSION is unset.
+_assert-chart-version:
+	@if [ -z "$(CHART_VERSION)" ]; then \
+		echo "$(RED)[ERROR]$(NC) CHART_VERSION is required for this target."; \
+		echo "$(BLUE)[INFO]$(NC) Set it to a specific release, e.g.:"; \
+		echo "  make helm-install-version  CHART_VERSION=0.3.0"; \
+		echo "  make helm-upgrade-version  CHART_VERSION=0.3.0"; \
+		echo "  make helm-install-version  CHART_VERSION=0.0.0-nightly.20260115"; \
+		exit 1; \
+	fi
+
+helm-install-version: ## Install a specific chart version from OCI — requires CHART_VERSION=x.y.z
+helm-install-version: _check-k8s _assert-chart-version
+	@$(LOG_TARGET)
+	@echo "$(BLUE)[INFO]$(NC) Installing $(HELM_OCI_CHART) version $(CHART_VERSION)"
+	@kubectl get namespace $(HELM_NAMESPACE) &>/dev/null \
+		|| kubectl create namespace $(HELM_NAMESPACE)
+	@helm install $(HELM_RELEASE_NAME) "oci://$(HELM_OCI_CHART)" \
+		--version "$(CHART_VERSION)" \
+		$(if $(HELM_VALUES_FILE),-f $(HELM_VALUES_FILE)) \
+		$(if $(HELM_SET_VALUES),--set $(HELM_SET_VALUES)) \
+		--namespace $(HELM_NAMESPACE) \
+		--wait \
+		--timeout $(HELM_TIMEOUT)
+	@echo "$(GREEN)[SUCCESS]$(NC) Installed $(HELM_RELEASE_NAME) at chart version $(CHART_VERSION)"
+	@$(MAKE) helm-status
+
+helm-upgrade-version: ## Upgrade to a specific chart version from OCI — requires CHART_VERSION=x.y.z
+helm-upgrade-version: _check-k8s _assert-chart-version
+	@$(LOG_TARGET)
+	@echo "$(BLUE)[INFO]$(NC) Upgrading $(HELM_RELEASE_NAME) → $(HELM_OCI_CHART):$(CHART_VERSION)"
+	@helm upgrade $(HELM_RELEASE_NAME) "oci://$(HELM_OCI_CHART)" \
+		--version "$(CHART_VERSION)" \
+		$(if $(HELM_VALUES_FILE),-f $(HELM_VALUES_FILE)) \
+		$(if $(HELM_SET_VALUES),--set $(HELM_SET_VALUES)) \
+		--namespace $(HELM_NAMESPACE) \
+		--reset-then-reuse-values \
+		--wait \
+		--timeout $(HELM_TIMEOUT)
+	@echo "$(GREEN)[SUCCESS]$(NC) Upgraded $(HELM_RELEASE_NAME) to chart version $(CHART_VERSION)"
+	@$(MAKE) helm-status
+
+helm-check-version: ## Show the currently deployed chart version and available remote versions
+helm-check-version: _check-k8s
+	@$(LOG_TARGET)
+	@echo "$(BLUE)[INFO]$(NC) Deployed release:"
+	@helm list -n $(HELM_NAMESPACE) \
+		--filter "^$(HELM_RELEASE_NAME)$$" \
+		--output table 2>/dev/null \
+		|| echo "  (no release found in namespace $(HELM_NAMESPACE))"
+	@echo ""
+	@echo "$(BLUE)[INFO]$(NC) Release history:"
+	@helm history $(HELM_RELEASE_NAME) -n $(HELM_NAMESPACE) 2>/dev/null \
+		|| echo "  (no history found)"
+
+##@ Helm — Local Chart Operations
+
+helm-lint: ## Lint the Helm chart
+helm-lint:
+	@$(LOG_TARGET)
+	@helm lint $(HELM_CHART_PATH)
+	@echo "$(GREEN)[SUCCESS]$(NC) Helm chart linted successfully"
+
+helm-template: ## Template the Helm chart (dry-run)
+helm-template:
+	@$(LOG_TARGET)
+	@helm template $(HELM_RELEASE_NAME) $(HELM_CHART_PATH) \
+		$(if $(HELM_VALUES_FILE),-f $(HELM_VALUES_FILE)) \
+		$(if $(HELM_SET_VALUES),--set $(HELM_SET_VALUES)) \
+		--namespace $(HELM_NAMESPACE)
+
+helm-ci-setup: ## Prepare Helm repositories and chart dependencies for CI-style validation
+helm-ci-setup:
+	@$(LOG_TARGET)
+	@if [ "$(HELM_REPO_UPDATE)" = "true" ]; then \
+		helm repo add bitnami https://charts.bitnami.com/bitnami --force-update; \
+		helm repo add milvus https://milvus-io.github.io/milvus-helm/ --force-update; \
+		helm repo add jaegertracing https://jaegertracing.github.io/helm-charts --force-update; \
+		helm repo add prometheus-community https://prometheus-community.github.io/helm-charts --force-update; \
+		helm repo add grafana https://grafana.github.io/helm-charts --force-update; \
+		helm repo update; \
+		helm dependency build $(HELM_CHART_PATH); \
+	else \
+		echo "$(YELLOW)[WARN]$(NC) Skipping helm repo add/update; using Chart.lock dependency versions"; \
+		helm dependency build $(HELM_CHART_PATH) --skip-refresh; \
+	fi
+
+helm-ci-validate: ## Run the CI Helm lint and template validation flow
+helm-ci-validate: helm-ci-setup
+	@$(LOG_TARGET)
+	@$(MAKE) helm-lint
+	@mkdir -p "$$(dirname "$(HELM_TEMPLATE_OUTPUT)")"
+	@helm template $(HELM_RELEASE_NAME) $(HELM_CHART_PATH) \
+		$(if $(HELM_VALUES_FILE),-f $(HELM_VALUES_FILE)) \
+		$(if $(HELM_SET_VALUES),--set $(HELM_SET_VALUES)) \
+		--namespace $(HELM_NAMESPACE) > "$(HELM_TEMPLATE_OUTPUT)"
+	@python3 -c "import yamllint" >/dev/null 2>&1 || python3 -m pip install --user yamllint
+	@python3 -m yamllint -d '{extends: default, rules: {line-length: {max: 120}, indentation: {spaces: 2}}}' "$(HELM_TEMPLATE_OUTPUT)" || echo "Some yamllint warnings are expected for Helm templates"
+	@required_resources="ServiceAccount PersistentVolumeClaim ConfigMap Deployment Service"; \
+	for resource in $$required_resources; do \
+		if grep -q "kind: $$resource" "$(HELM_TEMPLATE_OUTPUT)"; then \
+			echo "Found resource: $$resource"; \
+		else \
+			echo "Missing resource: $$resource"; \
+			exit 1; \
+		fi; \
+	done
+	@echo "$(GREEN)[SUCCESS]$(NC) Helm CI validation completed successfully"
+
+helm-safety-validate: ## Validate Helm schema and local-state safety guards
+helm-safety-validate: helm-ci-setup
+	@$(LOG_TARGET)
+	@set -e; \
+	tmp_dir="$$(mktemp -d)"; \
+	trap 'rm -rf "$$tmp_dir"' EXIT; \
+	echo "Validating production Helm render..."; \
+	helm template $(HELM_RELEASE_NAME) $(HELM_CHART_PATH) \
+		-f "$(HELM_CHART_PATH)/values-prod.yaml" \
+		--namespace $(HELM_NAMESPACE) > "$$tmp_dir/prod.yaml"; \
+	grep -q "kind: HorizontalPodAutoscaler" "$$tmp_dir/prod.yaml"; \
+	echo "Validating schema rejection for invalid learning guard type..."; \
+	if helm template $(HELM_RELEASE_NAME) $(HELM_CHART_PATH) \
+		--set safetyGuards.rejectMultiReplicaLocalLearningState=maybe \
+		--namespace $(HELM_NAMESPACE) > "$$tmp_dir/invalid-guard.out" 2>&1; then \
+		echo "Expected invalid learning guard type to fail schema validation"; \
+		cat "$$tmp_dir/invalid-guard.out"; \
+		exit 1; \
+	fi; \
+	grep -Eq "rejectMultiReplicaLocalLearningState.*(Invalid type|want boolean)" "$$tmp_dir/invalid-guard.out"; \
+	echo "Validating schema rejection for invalid replicaCount type..."; \
+	if helm template $(HELM_RELEASE_NAME) $(HELM_CHART_PATH) \
+		--set replicaCount=oops \
+		--namespace $(HELM_NAMESPACE) > "$$tmp_dir/invalid-replica.out" 2>&1; then \
+		echo "Expected invalid replicaCount type to fail schema validation"; \
+		cat "$$tmp_dir/invalid-replica.out"; \
+		exit 1; \
+	fi; \
+	grep -Eq "replicaCount.*(Invalid type|want integer)" "$$tmp_dir/invalid-replica.out"; \
+	echo "Validating Router Learning local-state multi-replica rejection..."; \
+	if helm template $(HELM_RELEASE_NAME) $(HELM_CHART_PATH) \
+		--set autoscaling.enabled=false \
+		--set replicaCount=2 \
+		--set 'config.global.router.learning.enabled=true' \
+		--set 'config.global.router.learning.adaptation.enabled=true' \
+		--namespace $(HELM_NAMESPACE) > "$$tmp_dir/learning.out" 2>&1; then \
+		echo "Expected Router Learning local state to reject multi-replica render"; \
+		cat "$$tmp_dir/learning.out"; \
+		exit 1; \
+	fi; \
+	grep -q "multi-replica router deployments cannot use Router Learning local state" "$$tmp_dir/learning.out"; \
+	echo "Validating explicit Router Learning local-state opt-out escape hatch..."; \
+	helm template $(HELM_RELEASE_NAME) $(HELM_CHART_PATH) \
+		--set autoscaling.enabled=false \
+		--set replicaCount=2 \
+		--set safetyGuards.rejectMultiReplicaLocalLearningState=false \
+		--set 'config.global.router.learning.enabled=true' \
+		--set 'config.global.router.learning.adaptation.enabled=true' \
+		--namespace $(HELM_NAMESPACE) > "$$tmp_dir/unsafe-learning.yaml"; \
+	grep -q "learning:" "$$tmp_dir/unsafe-learning.yaml"; \
+	grep -q "replicas: 2" "$$tmp_dir/unsafe-learning.yaml"; \
+	echo "Validating HPA replica bound rejection..."; \
+	if helm template $(HELM_RELEASE_NAME) $(HELM_CHART_PATH) \
+		--set autoscaling.enabled=true \
+		--set autoscaling.minReplicas=3 \
+		--set autoscaling.maxReplicas=2 \
+		--namespace $(HELM_NAMESPACE) > "$$tmp_dir/hpa-bounds.out" 2>&1; then \
+		echo "Expected HPA minReplicas > maxReplicas to fail template validation"; \
+		cat "$$tmp_dir/hpa-bounds.out"; \
+		exit 1; \
+	fi; \
+	grep -q "autoscaling.minReplicas (3) cannot be greater than autoscaling.maxReplicas (2)" "$$tmp_dir/hpa-bounds.out"; \
+	echo "Validating Router Learning local-state HPA rejection..."; \
+	if helm template $(HELM_RELEASE_NAME) $(HELM_CHART_PATH) \
+		--set autoscaling.enabled=true \
+		--set autoscaling.maxReplicas=2 \
+		--set 'config.global.router.learning.enabled=true' \
+		--set 'config.global.router.learning.protection.enabled=true' \
+		--namespace $(HELM_NAMESPACE) > "$$tmp_dir/learning-hpa.out" 2>&1; then \
+		echo "Expected Router Learning local state to reject HPA multi-replica render"; \
+		cat "$$tmp_dir/learning-hpa.out"; \
+		exit 1; \
+	fi; \
+	grep -q "multi-replica router deployments cannot use Router Learning local state" "$$tmp_dir/learning-hpa.out"
+	@echo "$(GREEN)[SUCCESS]$(NC) Helm safety validation completed successfully"
+
+helm-install: ## Install the Helm chart
+helm-install: _check-k8s
+	@$(LOG_TARGET)
+	@echo "Installing Helm release: $(HELM_RELEASE_NAME)"
+	@if helm list -n $(HELM_NAMESPACE) 2>/dev/null | grep -q "^$(HELM_RELEASE_NAME)"; then \
+		echo "$(YELLOW)[WARNING]$(NC) Release $(HELM_RELEASE_NAME) already exists in namespace $(HELM_NAMESPACE)"; \
+		echo "$(BLUE)[INFO]$(NC) Use 'make helm-upgrade' to upgrade or 'make helm-uninstall' to remove it first"; \
+		exit 1; \
+	fi
+	@echo "$(BLUE)[INFO]$(NC) Ensuring namespace $(HELM_NAMESPACE) exists..."
+	@kubectl get namespace $(HELM_NAMESPACE) &>/dev/null || kubectl create namespace $(HELM_NAMESPACE)
+	@helm install $(HELM_RELEASE_NAME) $(HELM_CHART_PATH) \
+		$(if $(HELM_VALUES_FILE),-f $(HELM_VALUES_FILE)) \
+		$(if $(HELM_SET_VALUES),--set $(HELM_SET_VALUES)) \
+		--namespace $(HELM_NAMESPACE) \
+		--wait \
+		--timeout $(HELM_TIMEOUT)
+	@echo "$(GREEN)[SUCCESS]$(NC) Helm chart installed successfully"
+	@$(MAKE) helm-status
+
+helm-upgrade: ## Upgrade the Helm release
+helm-upgrade: _check-k8s
+	@$(LOG_TARGET)
+	@echo "Upgrading Helm release: $(HELM_RELEASE_NAME)"
+	@helm upgrade $(HELM_RELEASE_NAME) $(HELM_CHART_PATH) \
+		$(if $(HELM_VALUES_FILE),-f $(HELM_VALUES_FILE)) \
+		$(if $(HELM_SET_VALUES),--set $(HELM_SET_VALUES)) \
+		--namespace $(HELM_NAMESPACE) \
+		--wait \
+		--timeout $(HELM_TIMEOUT)
+	@echo "$(GREEN)[SUCCESS]$(NC) Helm release upgraded successfully"
+	@$(MAKE) helm-status
+
+helm-install-or-upgrade: ## Install or upgrade the Helm release (idempotent)
+helm-install-or-upgrade: _check-k8s
+	@if helm list -n $(HELM_NAMESPACE) 2>/dev/null | grep -q "^$(HELM_RELEASE_NAME)"; then \
+		echo "$(BLUE)[INFO]$(NC) Release exists, upgrading..."; \
+		$(MAKE) helm-upgrade; \
+	else \
+		echo "$(BLUE)[INFO]$(NC) Release does not exist, installing..."; \
+		$(MAKE) helm-install; \
+	fi
+
+helm-uninstall: ## Uninstall the Helm release
+helm-uninstall:
+	@$(LOG_TARGET)
+	@helm uninstall $(HELM_RELEASE_NAME) --namespace $(HELM_NAMESPACE)
+	@echo "$(GREEN)[SUCCESS]$(NC) Helm release uninstalled successfully"
+
+helm-status: ## Show Helm release status
+helm-status:
+	@$(LOG_TARGET)
+	@helm status $(HELM_RELEASE_NAME) --namespace $(HELM_NAMESPACE) || echo "$(RED)[ERROR]$(NC) Release not found"
+	@echo ""
+	@echo "$(BLUE)[INFO]$(NC) Deployed resources:"
+	@kubectl get all -n $(HELM_NAMESPACE) -l app.kubernetes.io/instance=$(HELM_RELEASE_NAME) || echo "$(YELLOW)[WARNING]$(NC) No resources found"
+
+helm-list: ## List all Helm releases
+helm-list:
+	@$(LOG_TARGET)
+	@helm list --all-namespaces
+
+helm-history: ## Show Helm release history
+helm-history:
+	@$(LOG_TARGET)
+	@helm history $(HELM_RELEASE_NAME) --namespace $(HELM_NAMESPACE)
+
+helm-rollback: ## Rollback to previous Helm release
+helm-rollback:
+	@$(LOG_TARGET)
+	@helm rollback $(HELM_RELEASE_NAME) --namespace $(HELM_NAMESPACE) --wait
+	@echo "$(GREEN)[SUCCESS]$(NC) Helm release rolled back successfully"
+	@$(MAKE) helm-status
+
+helm-test: ## Test the Helm release
+helm-test: _check-k8s
+	@$(LOG_TARGET)
+	@if ! helm list -n $(HELM_NAMESPACE) 2>/dev/null | grep -q "^$(HELM_RELEASE_NAME)"; then \
+		echo "$(RED)[ERROR]$(NC) Release $(HELM_RELEASE_NAME) not found in namespace $(HELM_NAMESPACE)"; \
+		echo "$(BLUE)[INFO]$(NC) Please run 'make helm-install' or 'make helm-setup' first"; \
+		exit 1; \
+	fi
+	@echo "$(BLUE)[INFO]$(NC) Checking deployment status..."
+	@kubectl wait --for=condition=Available deployment/$(HELM_RELEASE_NAME) \
+		-n $(HELM_NAMESPACE) --timeout=300s || echo "$(RED)[ERROR]$(NC) Deployment not ready"
+	@echo "$(BLUE)[INFO]$(NC) Checking pod status..."
+	@kubectl get pods -n $(HELM_NAMESPACE) -l app.kubernetes.io/instance=$(HELM_RELEASE_NAME) || echo "$(RED)[ERROR]$(NC) Cannot get pods"
+	@echo "$(BLUE)[INFO]$(NC) Checking services..."
+	@kubectl get svc -n $(HELM_NAMESPACE) -l app.kubernetes.io/instance=$(HELM_RELEASE_NAME) || echo "$(RED)[ERROR]$(NC) Cannot get services"
+	@echo "$(BLUE)[INFO]$(NC) Checking PVC..."
+	@kubectl get pvc -n $(HELM_NAMESPACE) || echo "$(YELLOW)[WARNING]$(NC) Cannot get PVC"
+	@echo "$(GREEN)[SUCCESS]$(NC) Helm release test completed"
+
+helm-package: ## Package the Helm chart
+helm-package:
+	@$(LOG_TARGET)
+	@mkdir -p ./dist
+	@tmp_dir=$$(mktemp -d); \
+	trap 'rm -rf "$$tmp_dir"' EXIT; \
+	cp -a $(HELM_CHART_PATH) "$$tmp_dir/chart"; \
+	helm package -u "$$tmp_dir/chart" --destination ./dist
+	@echo "$(GREEN)[SUCCESS]$(NC) Helm chart packaged successfully"
+	@ls -lh ./dist/semantic-router-*.tgz
+
+helm-dev: ## Deploy with development configuration
+helm-dev:
+	@$(LOG_TARGET)
+	@$(MAKE) helm-install HELM_VALUES_FILE=$(HELM_CHART_PATH)/values-dev.yaml
+	@echo ""
+	@echo "$(GREEN)[SUCCESS]$(NC) Development deployment completed!"
+	@echo "$(BLUE)[INFO]$(NC) Next steps:"
+	@echo "  - Test deployment: make helm-test"
+	@echo "  - Port forward API: make helm-port-forward-api"
+	@echo "  - View logs: make helm-logs"
+
+helm-prod: ## Deploy with production configuration
+helm-prod:
+	@$(LOG_TARGET)
+	@$(MAKE) helm-install HELM_VALUES_FILE=$(HELM_CHART_PATH)/values-prod.yaml
+
+helm-values: ## Show computed Helm values
+helm-values:
+	@$(LOG_TARGET)
+	@helm get values $(HELM_RELEASE_NAME) --namespace $(HELM_NAMESPACE) --all
+
+helm-manifest: ## Show deployed Helm manifest
+helm-manifest:
+	@$(LOG_TARGET)
+	@helm get manifest $(HELM_RELEASE_NAME) --namespace $(HELM_NAMESPACE)
+
+helm-port-forward-api: ## Port forward Classification API (8080)
+helm-port-forward-api:
+	@$(LOG_TARGET)
+	@echo "$(YELLOW)[INFO]$(NC) Access API at: http://localhost:8080"
+	@echo "$(YELLOW)[INFO]$(NC) Health check: curl http://localhost:8080/health"
+	@echo "$(YELLOW)[INFO]$(NC) Press Ctrl+C to stop port forwarding"
+	@kubectl port-forward -n $(HELM_NAMESPACE) svc/$(HELM_RELEASE_NAME) 8080:8080
+
+helm-port-forward-grpc: ## Port forward gRPC API (50051)
+helm-port-forward-grpc:
+	@$(LOG_TARGET)
+	@echo "$(YELLOW)[INFO]$(NC) Access gRPC API at: localhost:50051"
+	@echo "$(YELLOW)[INFO]$(NC) Press Ctrl+C to stop port forwarding"
+	@kubectl port-forward -n $(HELM_NAMESPACE) svc/$(HELM_RELEASE_NAME) 50051:50051
+
+helm-port-forward-metrics: ## Port forward Prometheus metrics (9190)
+helm-port-forward-metrics:
+	@$(LOG_TARGET)
+	@echo "$(YELLOW)[INFO]$(NC) Access metrics at: http://localhost:9190/metrics"
+	@echo "$(YELLOW)[INFO]$(NC) Press Ctrl+C to stop port forwarding"
+	@kubectl port-forward -n $(HELM_NAMESPACE) svc/$(HELM_RELEASE_NAME)-metrics 9190:9190
+
+helm-logs: ## Show semantic-router logs
+helm-logs:
+	@$(LOG_TARGET)
+	@kubectl logs -n $(HELM_NAMESPACE) -l app.kubernetes.io/instance=$(HELM_RELEASE_NAME) -f
+
+helm-setup: helm-dev ## Complete setup: install with dev configuration
+helm-setup:
+	@echo "$(GREEN)[SUCCESS]$(NC) Helm setup completed!"
+	@echo "$(BLUE)[INFO]$(NC) Next steps:"
+	@echo "  - Test deployment: make helm-test"
+	@echo "  - Port forward API: make helm-port-forward-api"
+	@echo "  - View logs: make helm-logs"
+
+helm-cleanup: helm-uninstall ## Complete cleanup: uninstall and delete namespace
+helm-cleanup:
+	@$(LOG_TARGET)
+	@echo "Cleaning up namespace..."
+	@kubectl delete namespace $(HELM_NAMESPACE) --ignore-not-found=true
+	@echo "$(GREEN)[SUCCESS]$(NC) Complete cleanup finished!"
+
+helm-clean: ## Alias for helm-cleanup
+helm-clean: helm-cleanup
+
+helm-reinstall: ## Force reinstall: cleanup and install fresh
+helm-reinstall:
+	@$(LOG_TARGET)
+	@echo "$(YELLOW)[INFO]$(NC) Force reinstalling Helm release..."
+	@echo "$(BLUE)[STEP 1/5]$(NC) Uninstalling existing release (if any)..."
+	@helm uninstall $(HELM_RELEASE_NAME) --namespace $(HELM_NAMESPACE) 2>/dev/null || echo "No existing release found"
+	@echo "$(BLUE)[STEP 2/5]$(NC) Deleting namespace..."
+	@kubectl delete namespace $(HELM_NAMESPACE) --ignore-not-found=true --wait=false 2>/dev/null || true
+	@echo "$(BLUE)[STEP 3/5]$(NC) Waiting for namespace to be fully deleted..."
+	@timeout=30; \
+	elapsed=0; \
+	while kubectl get namespace $(HELM_NAMESPACE) &>/dev/null && [ $$elapsed -lt $$timeout ]; do \
+		echo "  Waiting for namespace $(HELM_NAMESPACE) to terminate... ($$elapsed/$$timeout seconds)"; \
+		sleep 2; \
+		elapsed=$$((elapsed + 2)); \
+	done; \
+	if kubectl get namespace $(HELM_NAMESPACE) &>/dev/null; then \
+		echo "$(YELLOW)[WARNING]$(NC) Namespace still exists after $$timeout seconds, forcing cleanup..."; \
+		kubectl get namespace $(HELM_NAMESPACE) -o json 2>/dev/null | jq '.spec.finalizers = []' | kubectl replace --raw /api/v1/namespaces/$(HELM_NAMESPACE)/finalize -f - 2>/dev/null || true; \
+		sleep 2; \
+	fi
+	@echo "$(GREEN)[✓]$(NC) Namespace deleted successfully"
+	@echo "$(BLUE)[STEP 4/5]$(NC) Ensuring namespace is gone..."
+	@sleep 3
+	@echo "$(BLUE)[STEP 5/5]$(NC) Installing fresh release..."
+	@$(MAKE) helm-install
+	@echo "$(GREEN)[SUCCESS]$(NC) Helm release reinstalled successfully!"
+
+# Internal helper target to check if Kubernetes is available
+_check-k8s:
+	@if ! kubectl cluster-info &>/dev/null; then \
+		echo "$(RED)[ERROR]$(NC) Kubernetes cluster is not accessible"; \
+		echo "$(BLUE)[INFO]$(NC) Please ensure your Kubernetes cluster is running:"; \
+		echo "  - For local development: minikube start / kind create cluster / docker desktop"; \
+		echo "  - For remote clusters: check your kubeconfig and cluster connection"; \
+		echo ""; \
+		echo "$(YELLOW)[TIP]$(NC) You can use the following commands to start a local cluster:"; \
+		echo "  - minikube: make kube-up"; \
+		echo "  - kind: make kind-cluster-create"; \
+		exit 1; \
+	fi
+	@echo "$(GREEN)[✓]$(NC) Kubernetes cluster is accessible"

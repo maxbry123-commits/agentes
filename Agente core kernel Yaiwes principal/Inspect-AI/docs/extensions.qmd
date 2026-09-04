@@ -1,0 +1,18 @@
+---
+title: Extensions
+llms-description: Extending Inspect with new Model APIs, tool execution environments, and storage platforms.
+---
+
+Inspect can be extended to integrate with systems and workflows beyond what the core package supports:
+
+| | |
+|---|---|
+| [Model APIs](extensions-model-api.qmd) | Model hosting services, local inference engines, etc. |
+| [Components](extensions-components.qmd) | Tasks, solvers, scorers, and tools distributed in packages. |
+| [Sandboxes](extensions-sandboxes.qmd) | Local or cloud container runtimes for tool execution. |
+| [Approvers](extensions-approvers.qmd) | Approve, modify, or reject tool calls. |
+| [Hooks](extensions-hooks.qmd) | Logging and monitoring lifecycle hooks. |
+| [Filesystems](extensions-filesystems.qmd) | Storage for datasets, prompts, and evaluation logs. |
+: {.borderless tbl-colwidths=[35,65]}
+
+Each of the extension types above can be implemented within your own Python package and then used without any special registration—Inspect discovers them automatically through [setuptools entry points](https://setuptools.pypa.io/en/latest/userguide/entry_point.html).

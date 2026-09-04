@@ -1,0 +1,130 @@
+set -x
+
+source .buildkite/hooks/libhook
+
+# Clear any downloaded credentials.
+rm -f repo.key
+
+# Upload all relevant test failures.
+make -s testlogs 2>/dev/null | grep // | sort | uniq | (
+  declare log_count=0
+  while read target log; do
+    if test -z "${target}"; then
+      continue
+    fi
+
+    # N.B. If *all* tests fail due to some common cause, then we will
+    # end up spending way too much time uploading logs. Instead, we just
+    # upload the first 10 and stop. That is hopefully enough to debug.
+    #
+    # We include this test in the metadata, but note that we cannot
+    # upload the actual test logs. The user should rerun locally.
+    log_count=$((${log_count}+1))
+    if test "${log_count}" -ge 10; then
+      echo " * ${target} (no upload)" | \
+        buildkite-agent annotate --style error --context failures --append
+    else
+      buildkite-agent artifact upload "${log}"
+      echo " * [${target}](artifact://${log#/}) (${BUILDKITE_LABEL})" | \
+        buildkite-agent annotate --style error --context failures --append
+
+      # Upload any boot log files found in the test's directory (e.g. undeclared outputs).
+      log_dir=$(dirname "${log}")
+      find "${log_dir}" -iname "*.boot.txt" -print 2>/dev/null | while read -r boot_log; do
+        buildkite-agent artifact upload "${boot_log}"
+      done
+
+      # List the first 5 specific failing go tests as sub-bullets.
+      sed -n '/^--- FAIL:/ {s/^--- FAIL: \([^ ]*\) (.*)/\1/p}' "${log}" | \
+        grep -v 'main_test' | head -n 5 | xargs -I {} echo "   * {}" | \
+        buildkite-agent annotate --style error --context failures --append
+      # List the first 5 specific failing cpp tests as sub-bullets.
+      sed -n '/\[  FAILED  \]/ {s/.*\[  FAILED  \] \([^ ]*\) (.*)/\1/p}' "${log}" | \
+        grep -v 'main_test' | head -n 5 | xargs -I {} echo "   * {}" | \
+        buildkite-agent annotate --style error --context failures --append
+    fi
+  done
+)
+
+# Upload all profiles, and include in an annotation.
+declare profile_output=$(mktemp --tmpdir)
+for file in $(find /tmp/profile -name \*.pprof -print 2>/dev/null | sort); do
+  # Generate a link to the profile parsing function in gvisor.dev, which
+  # implicitly uses a prefix of https://storage.googleapis.com. Note that
+  # this relies on the specific BuildKite bucket location, and will break if
+  # this changes (although the artifacts will still exist and be just fine).
+  profile_name="${file#/tmp/profile/}"
+  profile_url="https://gvisor.dev/profile/gvisor-buildkite/${BUILDKITE_BUILD_ID}/${BUILDKITE_JOB_ID}/${file#/}/"
+  buildkite-agent artifact upload "${file}"
+  echo "<li><a href='${profile_url}'>${profile_name}</a></li>" >> "${profile_output}"
+done
+
+# Upload if we had outputs.
+if test -s "${profile_output}"; then
+  # Make the list a collapsible section in markdown.
+  sed -i "1s|^|<details><summary>${BUILDKITE_LABEL}</summary><ul>\n|" "${profile_output}"
+  echo "</ul></details>" >> "${profile_output}"
+  cat "${profile_output}" | buildkite-agent annotate --style info --context profiles --append
+fi
+rm -rf "${profile_output}"
+
+# Clean the bazel cache, if there's failure.
+if test "${BUILDKITE_COMMAND_EXIT_STATUS}" -ne "0"; then
+  set -x
+  dmesg -kT | tail -n 50
+  # LINT.IfChange
+  runtime="buildkite_runtime"
+  # LINT.ThenChange(pre-command)
+  if [ -d "/tmp/${runtime}/" ]; then
+      tar -czf "/tmp/${BUILDKITE_JOB_ID}.tar.gz" -C /tmp/ "${runtime}"
+      buildkite-agent artifact upload "/tmp/${BUILDKITE_JOB_ID}.tar.gz"
+  fi
+  # Attempt to clear the cache and shut down.
+  make clean || echo "make clean failed with code $?"
+  make bazel-shutdown || echo "make bazel-shutdown failed with code $?"
+  # Attempt to clear any Go cache.
+  sudo rm -rf "${HOME}/.cache/go-build"
+  sudo rm -rf "${HOME}/go"
+fi
+
+# Track consecutive failures.
+CONSECUTIVE_FAILURES_FILE="/tmp/consecutive_failures"
+if test "${BUILDKITE_COMMAND_EXIT_STATUS}" -ne "0"; then
+  count="$(cat "${CONSECUTIVE_FAILURES_FILE}" 2>/dev/null || echo 0)"
+  echo "$((count + 1))" > "${CONSECUTIVE_FAILURES_FILE}.tmp"
+  mv "${CONSECUTIVE_FAILURES_FILE}.tmp" "${CONSECUTIVE_FAILURES_FILE}"
+else
+  rm -f "${CONSECUTIVE_FAILURES_FILE}"
+fi
+
+# Track last job completed time and job assignment.
+JOB_ASSIGNED_FILE="/tmp/job_assigned"
+touch "${JOB_ASSIGNED_FILE}"
+LAST_JOB_COMPLETED_FILE="/tmp/last_job_completed_time"
+date +%s > "${LAST_JOB_COMPLETED_FILE}.tmp"
+mv "${LAST_JOB_COMPLETED_FILE}.tmp" "${LAST_JOB_COMPLETED_FILE}"
+
+clear_docker_containers
+
+set -euo pipefail
+
+if [[ "${BUILDKITE_PIPELINE_INSTALL_RUNTIME:-}" == "true" ]]; then
+  # Remove all Docker runtimes that may be installed.
+  num_docker_runtimes="$(jq \
+      '(if has("runtimes") then .runtimes else {} end) | length' \
+      < /etc/docker/daemon.json)"
+  if [[ "$num_docker_runtimes" -gt 0 ]]; then
+    cat /etc/docker/daemon.json | jq '.runtimes = {}' \
+      | sudo tee /etc/docker/daemon.json.tmp
+    sudo mv /etc/docker/daemon.json.tmp /etc/docker/daemon.json
+    echo 'Removed all Docker runtimes; reloading Docker daemon with this new configuration:' >&2
+    cat /etc/docker/daemon.json >&2
+    bash -c "$DOCKER_RELOAD_COMMAND"
+    sleep 3  # Give some time for Docker to actually reload.
+  fi
+fi
+
+# Cleanup temporary directory where STAGED_BINARIES may have been extracted.
+if [[ -n "${BUILDKITE_STAGED_BINARIES_DIRECTORY:-}" ]]; then
+  rm -rf "$BUILDKITE_STAGED_BINARIES_DIRECTORY" || true
+fi

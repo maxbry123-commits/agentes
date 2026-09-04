@@ -1,0 +1,52 @@
+use posthog_cli::{
+    cmd, invocation_context::init_posthog_telemetry, safe_eprintln,
+    utils::broken_pipe::BrokenPipeSafeStderr,
+};
+
+fn main() {
+    let subscriber = tracing_subscriber::fmt()
+        .with_writer(BrokenPipeSafeStderr)
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::builder()
+                .with_default_directive(tracing::Level::INFO.into())
+                .from_env_lossy(),
+        )
+        .finish();
+
+    tracing::subscriber::set_global_default(subscriber).expect("Failed to set tracing subscriber");
+    init_posthog_telemetry();
+
+    let result = cmd::Cli::run();
+    posthog_rs::flush();
+
+    match result {
+        // A child process (the `api` proxy) failed: telemetry is flushed above,
+        // so exiting with the child's code here no longer loses events.
+        Ok(Some(code)) if code != 0 => std::process::exit(code),
+        Ok(_) => {}
+        Err(e) => {
+            match e.exception_id {
+                Some(id) => {
+                    safe_eprintln!("Oops! {}", e.inner);
+                    safe_eprintln!();
+                    safe_eprintln!("Exception ID: {id}");
+                }
+                None => {
+                    safe_eprintln!("Oops! {}", e.inner);
+
+                    let mut source = e.inner.source();
+                    if source.is_some() {
+                        safe_eprintln!("\nCaused by:");
+                        let mut index = 0;
+                        while let Some(err) = source {
+                            safe_eprintln!("    {index}: {err}");
+                            source = err.source();
+                            index += 1;
+                        }
+                    }
+                }
+            };
+            std::process::exit(1);
+        }
+    }
+}

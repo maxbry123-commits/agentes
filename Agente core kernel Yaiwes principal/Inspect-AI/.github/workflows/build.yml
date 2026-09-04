@@ -1,0 +1,670 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+      - "release/**"
+  workflow_dispatch:
+
+# Cancel superseded in-flight runs when a PR branch is updated; runs on
+# main queue rather than cancel so every merge commit gets a full build.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  UV_VERSION: 0.9.4
+
+jobs:
+  ruff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          # blob:none: all refs/commits for setuptools_scm, no historical
+          # file contents (the full pack is ~400MB and fetch time is erratic)
+          filter: "blob:none"
+      - name: Lint with Ruff
+        uses: astral-sh/ruff-action@v4.1.0
+        with:
+          version-file: requirements-dev.txt
+      - name: Format with Ruff
+        uses: astral-sh/ruff-action@v4.1.0
+        with:
+          version-file: requirements-dev.txt
+          args: "format --check"
+
+  mypy:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11"]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          filter: "blob:none"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |-
+          uv venv
+          uv pip install .[dev]
+
+      - name: Run mypy
+        run: uv run mypy --exclude tests/test_package src tests
+
+      - name: Minimize uv cache
+        if: ${{ !cancelled() }}
+        run: uv cache prune --ci
+
+  pre-commit:
+    runs-on: ubuntu-latest
+    env:
+      SKIP: "ruff"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          filter: "blob:none"
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          version: "${{ env.UV_VERSION }}"
+
+      - name: Install dependencies
+        run: uv pip install --system .[dev]
+
+      - uses: pre-commit/action@v3.0.1
+
+      - name: Minimize uv cache
+        if: ${{ !cancelled() }}
+        run: uv cache prune --ci
+
+  # Detect which areas changed so conditional jobs (docs, sandbox-tools-unit)
+  # can be skipped. A skipped job-level `if` still reports a (non-blocking)
+  # check, unlike workflow-level `paths-ignore` which would strand a
+  # required check. That only holds for non-matrix jobs: a skipped matrix
+  # job reports one check run under its unexpanded name, so required
+  # contexts named for the expanded legs (`test (3.10)`, `test (3.11)`)
+  # would never report. Docs-only detection for the test matrix therefore
+  # lives inside the test job itself — see the comment there.
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      sandbox_tools: ${{ steps.areas.outputs.sandbox_tools }}
+      docs: ${{ steps.areas.outputs.docs }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@v4
+        id: areas
+        with:
+          filters: |
+            sandbox_tools:
+              - 'src/inspect_sandbox_tools/**'
+            docs:
+              - 'docs/**'
+              - 'requirements-doc.txt'
+
+  # Validate the Quarto docs site whenever docs change — on docs-only PRs
+  # (where the test matrix is skipped) and on mixed docs+code PRs alike.
+  # Spell checking (typos, scoped to docs and markdown) already runs
+  # unconditionally via the pre-commit job, so this job only needs to prove
+  # the site renders. The site has `execute: enabled: false`, so rendering
+  # is pure conversion: no code execution, no API keys.
+  docs:
+    needs: changes
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.docs == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          filter: "blob:none"
+
+      # The cache holds only a marker recording that this exact input set
+      # rendered successfully, never the rendered site — nothing consumes
+      # this job's output, so a stale hit can only skip a redundant
+      # validation, not publish stale docs. The key covers everything the
+      # render reads: the docs sources, the doc toolchain pins, and the
+      # inspect_ai source that reference docs are generated from (griffe).
+      # The marker is created only after a successful render and the cache
+      # is saved only when the job succeeds, so a hit implies a past pass.
+      - name: Check for previous successful render
+        id: render-cache
+        uses: actions/cache@v6
+        with:
+          path: .docs-render-ok
+          key: docs-render-${{ hashFiles('docs/**', 'requirements-doc.txt', 'src/inspect_ai/**') }}
+
+      - name: Install uv
+        if: steps.render-cache.outputs.cache-hit != 'true'
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: "3.11"
+
+      # The package itself is installed because reference docs are
+      # generated from the inspect_ai module (griffe).
+      - name: Install dependencies
+        if: steps.render-cache.outputs.cache-hit != 'true'
+        run: |-
+          uv venv
+          uv pip install -r requirements-doc.txt .
+
+      - name: Render docs
+        if: steps.render-cache.outputs.cache-hit != 'true'
+        run: |-
+          uv run quarto render docs
+          touch .docs-render-ok
+
+      - name: Minimize uv cache
+        if: ${{ !cancelled() && steps.render-cache.outputs.cache-hit != 'true' }}
+        run: uv cache prune --ci
+
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: read
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11"]
+
+    steps:
+      # Docs-only detection runs as a step rather than a `needs: changes`
+      # job gate for two reasons. Latency: the job queues at run start
+      # instead of behind a full queue+run cycle of the changes job
+      # (~2.5 min median, ~8 min p90 of PR wall clock under runner
+      # contention). Correctness: `test (3.10)` and `test (3.11)` are
+      # required status checks under their expanded matrix names, and a
+      # skipped matrix job reports a single check run under the unexpanded
+      # name `test`, so a job-level `if` would leave the required contexts
+      # unreported and block docs-only PRs forever. Gated no-op steps let
+      # each leg report success under its required name in seconds.
+      #
+      # On pull_request the filter reads the diff from the API and needs no
+      # checkout, so it runs first and docs-only PRs skip the checkout too.
+      # On push it diffs the pushed commits and requires a checkout, hence
+      # the split checkout steps. On workflow_dispatch there is no base to
+      # diff against (paths-filter sees only the last commit), so manual
+      # runs always do the full build.
+      # 'every' is required for the negations to bite: the default 'some'
+      # quantifier matches a file against ANY pattern, and '**' matches
+      # everything, so `code` would be unconditionally true.
+      - uses: actions/checkout@v7
+        if: github.event_name != 'pull_request'
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          filter: "blob:none"
+          submodules: true
+
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          predicate-quantifier: every
+          filters: |
+            code:
+              - '**'
+              - '!docs/**'
+              - '!design/**'
+              - '!**/*.md'
+
+      - name: Set RUN_TESTS
+        run: echo "RUN_TESTS=${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.code == 'true' }}" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v7
+        if: github.event_name == 'pull_request' && env.RUN_TESTS == 'true'
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          filter: "blob:none"
+          submodules: true
+
+      - name: Install uv
+        if: env.RUN_TESTS == 'true'
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        if: env.RUN_TESTS == 'true'
+        # tests/test_package is pre-installed so ensure_test_package_installed()
+        # short-circuits instead of pip-installing it mid-run (~9s on the
+        # xdist critical path, paid by whichever test calls it first).
+        run: |-
+          uv venv
+          uv pip install .[dev]
+          uv pip install --no-deps ./tests/test_package
+
+      - name: Test with pytest
+        if: env.RUN_TESTS == 'true'
+        # --timeout (thread method) dumps a traceback and fails a hung test
+        # rather than letting the job hang to the job-level timeout; this works
+        # even through anyio cancel shields, which the conftest async timeout
+        # cannot. The 900s budget sits above the conftest 300s per-test timeout
+        # so it only fires on genuine hangs.
+        # --durations feeds the recurring CI-performance analysis
+        # (design/ci-perf/): per-test timings are mined from these logs.
+        # --report-log records each test's worker and completion order, so a
+        # failure caused by an earlier test on the same worker can be replayed
+        # and bisected offline with scripts/pytest_bisect.py. Written
+        # uncompressed: reportlog flushes every line, and flushing a .gz forces
+        # a zlib flush per line (~4x the per-test cost). upload-artifact
+        # compresses on upload anyway.
+        # -n logical, not auto: auto means physical cores when psutil is
+        # importable (it always is — a runtime dependency), using only 2 of
+        # the runner's 4 vCPUs. Measured: 449s → 334s of pytest wall.
+        run: uv run pytest -ra --doctest-modules --color=yes -n logical --timeout=900 --timeout-method=thread --durations=50 --durations-min=1 --report-log=test-report-log.jsonl --report-log-exclude-logs-on-passed-tests
+
+      - name: Upload test order log
+        if: ${{ !cancelled() && env.RUN_TESTS == 'true' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-report-log-${{ matrix.python-version }}
+          path: test-report-log.jsonl
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Minimize uv cache
+        if: ${{ !cancelled() && env.RUN_TESTS == 'true' }}
+        run: uv cache prune --ci
+
+  # Tests for the injected sandbox-tools package. These live under
+  # src/inspect_sandbox_tools/ with the package's own pytest config and dev
+  # dependencies; the root `test` job neither installs this package nor
+  # collects its tests. Runs on any change to the package — including test-only
+  # changes — and needs no Docker or built binary (unlike the
+  # slow-tool-tests-* jobs below).
+  sandbox-tools-unit:
+    needs: changes
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.sandbox_tools == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: "3.11"
+
+      - name: Install sandbox-tools package (with dev deps)
+        run: |-
+          uv venv
+          uv pip install "./src/inspect_sandbox_tools[dev]"
+
+      - name: Test with pytest
+        run: uv run pytest src/inspect_sandbox_tools/tests/ -ra --color=yes
+
+      - name: Minimize uv cache
+        if: ${{ !cancelled() }}
+        run: uv cache prune --ci
+
+  # See design/sandbox-tools-ci-gates.md for the full gate matrix.
+
+  detect-slow:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      tools_changed: ${{ steps.tools.outputs.tools }}
+      injectable_src_changed: ${{ steps.injectable.outputs.injectable_src }}
+      areas: ${{ steps.areas.outputs.changes }}
+    steps:
+      - uses: actions/checkout@v7
+      # Special case: tools carries injectable-build/version/S3 baggage, so its
+      # filters feed a dedicated chain (check-version-bump -> slow-tool-tests-*)
+      # rather than the generic slow-tests matrix below.
+      - uses: dorny/paths-filter@v4
+        id: tools
+        with:
+          filters: |
+            tools:
+              - "src/inspect_ai/tool/**"
+              - "src/inspect_sandbox_tools/**"
+              - "tests/tools/**"
+      # Separate step because the negation requires `every` semantics (a file
+      # must match ALL patterns), which would break the OR-style filters above.
+      # Keep the exclusions in sync with _check_main_divergence in
+      # src/inspect_ai/tool/_sandbox_tools_utils/sandbox.py — the runtime uses
+      # the same definition of "injectable source" to decide dev vs published.
+      - uses: dorny/paths-filter@v4
+        id: injectable
+        with:
+          predicate-quantifier: every
+          filters: |
+            injectable_src:
+              - "src/inspect_sandbox_tools/**"
+              - "!src/inspect_sandbox_tools/tests/**"
+              - "!src/inspect_sandbox_tools/**/*.md"
+              - "!src/inspect_sandbox_tools/design/**"
+      # Generic, growable table of areas whose slow tests run with nothing but
+      # `uv pip install .[dev]` + Docker-on-the-runner. `changes` is a JSON list
+      # of the keys that matched; the slow-tests matrix fans out over it.
+      # Convention: each key is also the tests/<key>/ directory to run.
+      # Tests needing an API key self-skip via skip_if_no_* (no secrets here),
+      # so only add an area whose slow tests need no build artifact or secret.
+      - uses: dorny/paths-filter@v4
+        id: areas
+        with:
+          filters: |
+            checkpoint:
+              - "src/inspect_ai/util/_checkpoint/**"
+              - "tests/checkpoint/**"
+
+  # Fast gate: confirm sandbox_tools_version.txt is bumped to exactly N+1
+  # when the injectable source changed. Blocks downstream slow jobs on
+  # failure so PR contributors don't wait on a Docker build to learn they
+  # forgot the bump.
+  check-version-bump:
+    needs: detect-slow
+    if: needs.detect-slow.outputs.tools_changed == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      version_correctly_bumped: ${{ steps.bump.outputs.correctly_bumped }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          filter: "blob:none"
+
+      - name: Check version bump
+        id: bump
+        env:
+          INJECTABLE_SRC_CHANGED: ${{ needs.detect-slow.outputs.injectable_src_changed }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          VERSION_PATH="src/inspect_ai/tool/_sandbox_tools_utils/sandbox_tools_version.txt"
+          BASE_VERSION=$(git show "origin/${BASE_REF}:${VERSION_PATH}" | tr -d '[:space:]')
+          PR_VERSION=$(tr -d '[:space:]' < "${VERSION_PATH}")
+          EXPECTED=$((BASE_VERSION + 1))
+          echo "Base (${BASE_REF}): v${BASE_VERSION}; PR: v${PR_VERSION}; expected on bump: v${EXPECTED}; injectable_src_changed=${INJECTABLE_SRC_CHANGED}"
+          if [ "$INJECTABLE_SRC_CHANGED" = "true" ]; then
+            if [ "$PR_VERSION" = "$EXPECTED" ]; then
+              echo "correctly_bumped=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "::error::src/inspect_sandbox_tools/ changed but ${VERSION_PATH} is v${PR_VERSION}; bump it to v${EXPECTED}."
+              exit 1
+            fi
+          else
+            if [ "$PR_VERSION" = "$BASE_VERSION" ]; then
+              # Unbumped direction of the digest-pinning rule: a SHA256SUMS-only
+              # change is a re-publication of an existing version, which is
+              # forbidden (published S3 objects are immutable). Applies only when
+              # the sums file exists on the base ref so the PR that seeds the
+              # file (no bump) doesn't fail the rule it introduces. The bumped
+              # direction (sums must be rewritten) is deliberately enforced only
+              # by slow-tool-tests-release: the sums are written at post-approval
+              # upload, and a red fast gate here would block slow-tool-tests-dev
+              # for the whole review window.
+              SUMS_PATH="src/inspect_ai/tool/_sandbox_tools_utils/SHA256SUMS"
+              if git cat-file -e "origin/${BASE_REF}:${SUMS_PATH}" 2>/dev/null && \
+                 ! git diff --quiet "origin/${BASE_REF}" -- "${SUMS_PATH}"; then
+                echo "::error::${SUMS_PATH} changed but ${VERSION_PATH} is unchanged. Digests for a published version are immutable; bump the version and publish fresh artifacts instead."
+                exit 1
+              fi
+              echo "correctly_bumped=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "::error::${VERSION_PATH} changed to v${PR_VERSION} but src/inspect_sandbox_tools/ is unchanged. Either revert the version change or include the injectable source change."
+              exit 1
+            fi
+          fi
+
+  # Developer gate: run the sandbox slow-test suite. When the injectable
+  # source or version changed, build a -dev binary first; otherwise let
+  # pytest resolve the published v{N} via the runtime's S3 download path.
+  slow-tool-tests-dev:
+    needs: [detect-slow, check-version-bump]
+    if: needs.detect-slow.outputs.tools_changed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          filter: "blob:none"
+          submodules: true
+
+      - name: Create local main ref
+        run: git branch main origin/main
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v4
+        with:
+          version: latest
+          driver-opts: |
+            network=host
+          buildkitd-flags: |
+            --allow-insecure-entitlement security.insecure
+            --allow-insecure-entitlement network.host
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |-
+          uv venv
+          uv pip install .[dev]
+
+      - name: Build sandbox-tools -dev binaries (glibc + musl)
+        if: needs.detect-slow.outputs.injectable_src_changed == 'true' || needs.check-version-bump.outputs.version_correctly_bumped == 'true'
+        env:
+          DOCKER_BUILDKIT: 1
+          BUILDKIT_PROGRESS: plain
+        # Both libc variants: the slow suite includes an Alpine (musl) case.
+        run: |
+          uv run python src/inspect_ai/tool/_sandbox_tools_utils/build_within_container.py --arch amd64
+          uv run python src/inspect_ai/tool/_sandbox_tools_utils/build_within_container.py --arch amd64 --musl
+
+      - name: Run slow tool tests
+        env:
+          DOCKER_BUILDKIT: 1
+          BUILDKIT_PROGRESS: plain
+          # Digest verification is warning-only by default during its soft
+          # launch; CI exercises strict mode.
+          INSPECT_SANDBOX_TOOLS_STRICT_DIGESTS: 1
+        run: uv run pytest --runslow -m slow tests/tools/ -x
+
+      - name: Minimize uv cache
+        if: ${{ !cancelled() }}
+        run: uv cache prune --ci
+
+  # Release gate: runs only when the version bumped to N+1. Verifies the
+  # new v{N+1} artifact is published to S3 (fails fast with upload_to_s3.py
+  # hint if not), then re-runs the slow tests against it. Maintainer reruns
+  # from the Actions UI after uploading. Runs in parallel with
+  # slow-tool-tests-dev: it consumes only the published S3 artifacts,
+  # nothing the dev job produces.
+  slow-tool-tests-release:
+    needs: [detect-slow, check-version-bump]
+    if: needs.detect-slow.outputs.tools_changed == 'true' && needs.check-version-bump.outputs.version_correctly_bumped == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          filter: "blob:none"
+          submodules: true
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v4
+        with:
+          version: latest
+          driver-opts: |
+            network=host
+          buildkitd-flags: |
+            --allow-insecure-entitlement security.insecure
+            --allow-insecure-entitlement network.host
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |-
+          uv venv
+          uv pip install .[dev]
+
+      - name: Fetch and verify published non-dev sandbox-tools binaries
+        run: |
+          VERSION=$(tr -d '[:space:]' < src/inspect_ai/tool/_sandbox_tools_utils/sandbox_tools_version.txt)
+          SUMS=src/inspect_ai/tool/_sandbox_tools_utils/SHA256SUMS
+          mkdir -p src/inspect_ai/binaries
+          # Digest file must be in lockstep with the version bump: four non-blank
+          # entries, all named -v${VERSION}. (Entry format/distinctness is enforced
+          # by a fast unit test.) A flag records the failure rather than an early
+          # exit: `exit 1` in the awk body jumps to END, whose own exit would
+          # override the status.
+          if ! awk -v v="v${VERSION}" 'NF { n++; if ($2 !~ ("-" v "$")) bad = 1 } END { exit (bad || n != 4) }' "$SUMS"; then
+            echo "::error::${SUMS} is not updated for v${VERSION}. Build+upload the artifacts (upload_to_s3.py rewrites it) and commit it in this PR."
+            exit 1
+          fi
+          # All four artifacts are fetched and digest-checked, not just the amd64
+          # pair the slow tests exercise on this runner. Otherwise a crash partway
+          # through upload_to_s3.py's upload order (amd64 first) would leave the
+          # gate green with the arm64 objects missing, and the committed arm64
+          # digests would never be compared against S3 by anything but the
+          # maintainer-run round trip. The extra ~30 MB download is trivial in CI.
+          for FILENAME in \
+            "inspect-sandbox-tools-amd64-v${VERSION}" \
+            "inspect-sandbox-tools-amd64-musl-v${VERSION}" \
+            "inspect-sandbox-tools-arm64-v${VERSION}" \
+            "inspect-sandbox-tools-arm64-musl-v${VERSION}"; do
+            URL="https://inspect-sandbox-tools.s3.us-east-2.amazonaws.com/${FILENAME}"
+            # Keep today's explicit not-yet-uploaded error (a bare curl -f 404 is
+            # terse and carries no ::error annotation).
+            if ! curl -fsI "$URL" >/dev/null; then
+              echo "::error::Published binary ${FILENAME} not found at ${URL}. Run: python src/inspect_ai/tool/_sandbox_tools_utils/upload_to_s3.py ${VERSION}, commit the rewritten SHA256SUMS, then rerun this job."
+              exit 1
+            fi
+            curl -fSL -o "src/inspect_ai/binaries/${FILENAME}" "$URL"
+            # Exactly-one-match assertion: without it, zero or duplicate entries
+            # feed sha256sum a malformed line and its "no properly formatted
+            # checksum lines" failure would be mislabeled a digest mismatch below.
+            DIGEST=$(awk -v f="$FILENAME" '$2 == f { print $1; n++ } END { exit n != 1 }' "$SUMS") || {
+              echo "::error::Expected exactly one ${SUMS} entry for ${FILENAME}; found none or duplicates (malformed sums file)."
+              exit 1
+            }
+            echo "${DIGEST}  src/inspect_ai/binaries/${FILENAME}" | sha256sum -c - || {
+              echo "::error::Digest mismatch for ${FILENAME}: the published S3 object does not match the digests committed in this PR. Do NOT re-upload over it. Investigate (wrong-checkout build, truncated upload, or tampering), and if the object is wrong, bump the version and publish fresh artifacts."
+              exit 1
+            }
+            chmod +x "src/inspect_ai/binaries/${FILENAME}"
+          done
+
+      - name: Run slow tool tests against published artifact
+        env:
+          DOCKER_BUILDKIT: 1
+          BUILDKIT_PROGRESS: plain
+          # Force install-state=clean so _open_executable_for_arch resolves
+          # the non-dev name; _check_main_divergence would otherwise return
+          # "edited" on this PR (version.txt differs from main).
+          INSPECT_SANDBOX_TOOLS_INSTALL_STATE: clean
+          # Digest verification is warning-only by default during its soft
+          # launch; CI exercises strict mode.
+          INSPECT_SANDBOX_TOOLS_STRICT_DIGESTS: 1
+        run: uv run pytest --runslow -m slow tests/tools/ -x
+
+      - name: Minimize uv cache
+        if: ${{ !cancelled() }}
+        run: uv cache prune --ci
+
+  # Generic per-area slow tests: one runner per changed area from the
+  # detect-slow `areas` table. Add an area by adding a filter entry there;
+  # no new job is needed. Runs plain `pytest --runslow` (no build artifact,
+  # no secrets); API-key tests self-skip via skip_if_no_*.
+  slow-tests:
+    needs: detect-slow
+    # An empty matrix vector errors, so skip the whole job when nothing matched.
+    if: needs.detect-slow.outputs.areas != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        area: ${{ fromJSON(needs.detect-slow.outputs.areas) }}
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          filter: "blob:none"
+          submodules: true
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |-
+          uv venv
+          uv pip install .[dev]
+
+      - name: Run slow tests
+        run: uv run pytest --runslow -m slow tests/${{ matrix.area }}/
+
+      - name: Minimize uv cache
+        if: ${{ !cancelled() }}
+        run: uv cache prune --ci
+
+  package:
+    name: Build & inspect the package.
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          filter: "blob:none"
+
+      - uses: hynek/build-and-inspect-python-package@v2

@@ -1,0 +1,35 @@
+{
+  "uuid": "9c39e152-53e7-43f0-8078-1e483b2af34c",
+  "baseSpans": [],
+  "agentSpans": [],
+  "llmSpans": [
+    {
+      "uuid": "adf34116-434f-445d-9a33-c890e4cfba9f",
+      "name": "llm_generation",
+      "status": "SUCCESS",
+      "type": "llm",
+      "startTime": "2026-02-15T05:55:29.267Z",
+      "endTime": "2026-02-15T05:55:30.069Z",
+      "input": [
+        {
+          "role": "user",
+          "content": "Hello, how are you?"
+        }
+      ],
+      "output": "Hello! I'm just a program, so I don't have feelings, but I'm here and ready to help you. How can I assist you today?",
+      "model": "gpt-4o",
+      "inputTokenCount": 13.0,
+      "outputTokenCount": 29.0,
+      "integration": "OpenAI",
+      "provider": "OpenAI"
+    }
+  ],
+  "retrieverSpans": [],
+  "toolSpans": [],
+  "startTime": "2026-02-15T05:55:29.267Z",
+  "endTime": "2026-02-15T05:55:30.069Z",
+  "environment": "development",
+  "input": "Hello, how are you?",
+  "output": "Hello! I'm just a program, so I don't have feelings, but I'm here and ready to help you. How can I assist you today?",
+  "status": "SUCCESS"
+}

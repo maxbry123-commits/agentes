@@ -1,0 +1,281 @@
+package router
+
+import (
+	"context"
+	"log"
+	"net/http"
+	"os"
+	"path/filepath"
+
+	"github.com/vllm-project/semantic-router/dashboard/backend/config"
+	"github.com/vllm-project/semantic-router/dashboard/backend/evaluationplane"
+	"github.com/vllm-project/semantic-router/dashboard/backend/handlers"
+	"github.com/vllm-project/semantic-router/dashboard/backend/mlpipeline"
+	"github.com/vllm-project/semantic-router/dashboard/backend/recipe"
+	"github.com/vllm-project/semantic-router/dashboard/backend/routercontract"
+	"github.com/vllm-project/semantic-router/dashboard/backend/setupmode"
+	"github.com/vllm-project/semantic-router/dashboard/backend/workflowstore"
+)
+
+type coreRouteOptions struct {
+	recipeStore              *recipe.Store
+	modelVerificationAuditor handlers.ModelVerificationAuditor
+	statusHandler            http.HandlerFunc
+}
+
+type configRouteOptions struct {
+	credentialStore          *recipe.Store
+	modelVerificationAuditor handlers.ModelVerificationAuditor
+}
+
+// setupResolver is required, not an option, because the setup routes have no
+// fallback source of truth for setup mode.
+func registerCoreRoutes(mux *http.ServeMux, cfg *config.Config, setupResolver *setupmode.Resolver, routeOptions ...coreRouteOptions) {
+	options := coreRouteOptions{}
+	if len(routeOptions) > 0 {
+		options = routeOptions[0]
+	}
+	store := selectedRecipeStore(cfg, []*recipe.Store{options.recipeStore})
+	registerHealthAndSetupRoutes(mux, cfg, setupResolver)
+	registerConfigRoutes(mux, cfg, configRouteOptions{
+		credentialStore:          store,
+		modelVerificationAuditor: options.modelVerificationAuditor,
+	})
+	registerToolRoutes(mux, cfg)
+	registerStatusRoutes(mux, cfg, options.statusHandler, store)
+	registerTopologyRoutes(mux, cfg, store)
+	registerRecipeRoutes(mux, cfg, store)
+}
+
+func registerRecipeRoutes(mux *http.ServeMux, cfg *config.Config, stores ...*recipe.Store) {
+	recipeDir := dashboardActiveRecipeDirectory(cfg)
+	store := selectedRecipeStore(cfg, stores)
+	service := recipe.NewService(recipe.Options{
+		Directory:    recipeDir,
+		RouterAPIURL: cfg.RouterAPIURL,
+	})
+	activator := handlers.NewRecipeActivator(handlers.RecipeActivatorOptions{
+		Store:        store,
+		ConfigPath:   cfg.AbsConfigPath,
+		ConfigDir:    cfg.ConfigDir,
+		RouterAPIURL: cfg.RouterAPIURL,
+	})
+	recoverRecipeActivationOnStartup(cfg, activator.Recover)
+	handler := handlers.NewRecipeHandler(service, handlers.WithRecipePackageCapabilities(store, activator, handlers.RecipePackageCapabilities{
+		ServerReadonly:        cfg.ReadonlyMode,
+		RuntimeConfigWritable: cfg.RuntimeConfigWritable,
+		RecipeStoreWritable:   cfg.RecipeStoreWritable,
+	}))
+	mux.HandleFunc("/api/recipe", handler.Descriptor)
+	mux.HandleFunc("/api/recipe/probes", handler.Probes)
+	mux.HandleFunc("/api/recipe/probes/", handler.ProbeAction)
+	mux.HandleFunc("/api/recipe/packages", handler.Packages)
+	mux.HandleFunc("/api/recipe/packages/", handler.Packages)
+	mux.HandleFunc("/api/recipe/import", handler.ImportPackage)
+	mux.HandleFunc("/api/recipe/import/", handler.ImportPackage)
+	mux.HandleFunc("/api/recipe/activate", handler.ActivatePackage)
+	mux.HandleFunc("/api/recipe/activate/", handler.ActivatePackage)
+	mux.HandleFunc("/api/recipe/activate/preview", handler.PreviewPackageActivation)
+	mux.HandleFunc("/api/recipe/activate/preview/", handler.PreviewPackageActivation)
+	mux.HandleFunc("/api/recipe/deactivate", handler.DeactivatePackage)
+	mux.HandleFunc("/api/recipe/deactivate/", handler.DeactivatePackage)
+	mux.HandleFunc("/api/recipe/deactivate/preview", handler.PreviewPackageDeactivation)
+	mux.HandleFunc("/api/recipe/deactivate/preview/", handler.PreviewPackageDeactivation)
+	log.Printf("Active Recipe API endpoints registered: /api/recipe, /api/recipe/probes/*, /api/recipe/packages, /api/recipe/import, /api/recipe/activate/preview, /api/recipe/activate, /api/recipe/deactivate/preview, /api/recipe/deactivate")
+}
+
+func recoverRecipeActivationOnStartup(cfg *config.Config, recover func(context.Context) error) {
+	if cfg.ReadonlyMode || !cfg.RuntimeConfigWritable {
+		log.Printf("Active Recipe recovery skipped: runtime configuration mutation is disabled")
+		return
+	}
+	if err := recover(context.Background()); err != nil {
+		log.Printf("Active Recipe recovery remains incomplete: %v", err)
+	}
+}
+
+func registerHealthAndSetupRoutes(mux *http.ServeMux, cfg *config.Config, setupResolver *setupmode.Resolver) {
+	runtimeConfigReadonly := cfg.ReadonlyMode || !cfg.RuntimeConfigWritable
+	mux.HandleFunc("/healthz", handlers.HealthCheck)
+	mux.HandleFunc("/api/settings", handlers.SettingsHandler(cfg, setupResolver))
+	mux.HandleFunc("/api/setup/state", handlers.SetupStateHandler(cfg.AbsConfigPath, setupResolver))
+	mux.HandleFunc("/api/setup/import-remote", handlers.SetupImportRemoteHandler(cfg.AbsConfigPath, setupResolver))
+	mux.HandleFunc("/api/setup/validate", handlers.SetupValidateHandler(cfg.AbsConfigPath, setupResolver))
+	mux.HandleFunc("/api/setup/activate", handlers.SetupActivateHandler(cfg.AbsConfigPath, runtimeConfigReadonly, cfg.ConfigDir, setupResolver))
+	mux.HandleFunc("/api/setup/presets", handlers.PresetsHandler())
+	mux.HandleFunc("/api/setup/presets/delta", handlers.PresetDeltaHandler())
+}
+
+func registerConfigRoutes(mux *http.ServeMux, cfg *config.Config, routeOptions ...configRouteOptions) {
+	options := configRouteOptions{}
+	if len(routeOptions) > 0 {
+		options = routeOptions[0]
+	}
+	runtimeConfigReadonly := cfg.ReadonlyMode || !cfg.RuntimeConfigWritable
+	mux.HandleFunc("/api/models/catalog", handlers.ModelCatalogHandler(handlers.NewPackagedModelCatalogSource(cfg.PythonPath)))
+	mux.HandleFunc("/api/models/discover", handlers.ModelDiscoveryHandler(nil))
+	mux.HandleFunc("/api/models/verify", handlers.ModelVerificationHandler(cfg.AbsConfigPath, options.modelVerificationAuditor))
+	mux.HandleFunc("/api/router/config/all", handlers.ConfigHandler(cfg.AbsConfigPath))
+	mux.HandleFunc("/api/router/config/yaml", handlers.ConfigYAMLHandler(cfg.AbsConfigPath))
+	mux.HandleFunc("/api/router/config/update", handlers.UpdateConfigHandler(cfg.AbsConfigPath, runtimeConfigReadonly, cfg.ConfigDir))
+	mux.HandleFunc("/api/router/config/deploy/preview", handlers.DeployPreviewHandler(cfg.AbsConfigPath))
+	mux.HandleFunc("/api/router/config/deploy", handlers.DeployHandler(cfg.AbsConfigPath, runtimeConfigReadonly, cfg.ConfigDir))
+	mux.HandleFunc("/api/router/config/rollback", handlers.RollbackHandler(cfg.AbsConfigPath, runtimeConfigReadonly, cfg.ConfigDir))
+	mux.HandleFunc("/api/router/config/versions", handlers.ConfigVersionsHandler(cfg.AbsConfigPath))
+	mux.HandleFunc("/api/router/config/deployments", handlers.ConfigDeploymentsHandler())
+	mux.HandleFunc("/api/router/config/deployments/", handlers.ConfigDeploymentDetailHandler())
+	mux.HandleFunc("/api/router/config/active-projection", handlers.ActiveConfigProjectionHandler())
+	log.Printf("Config API endpoints registered: /api/models/catalog, /api/models/discover, /api/models/verify, /api/router/config/all, /api/router/config/yaml, /api/router/config/update, /api/router/config/deploy, /api/router/config/deploy/preview, /api/router/config/rollback, /api/router/config/versions, /api/router/config/deployments, /api/router/config/active-projection")
+
+	mux.HandleFunc("/api/router/config/global", handlers.RouterDefaultsHandler(cfg.AbsConfigPath))
+	mux.HandleFunc("/api/router/config/global/update", handlers.UpdateRouterDefaultsHandler(cfg.AbsConfigPath, runtimeConfigReadonly, cfg.ConfigDir))
+	mux.HandleFunc("/api/router/config/global/raw", handlers.GlobalConfigYAMLHandler(cfg.AbsConfigPath))
+	mux.HandleFunc("/api/router/config/global/raw/update", handlers.UpdateGlobalConfigYAMLHandler(cfg.AbsConfigPath, runtimeConfigReadonly, cfg.ConfigDir))
+	mux.HandleFunc("/api/router/config/defaults", handlers.RouterDefaultsHandler(cfg.AbsConfigPath))
+	mux.HandleFunc("/api/router/config/defaults/update", handlers.UpdateRouterDefaultsHandler(cfg.AbsConfigPath, runtimeConfigReadonly, cfg.ConfigDir))
+	store := selectedRecipeStore(cfg, []*recipe.Store{options.credentialStore})
+	mux.HandleFunc("/api/router/config/kbs", handlers.RouterClassifierProxyHandler(cfg.RouterAPIURL, cfg.ReadonlyMode, store))
+	mux.HandleFunc("/api/router/config/kbs/", handlers.RouterClassifierProxyHandler(cfg.RouterAPIURL, cfg.ReadonlyMode, store))
+	log.Printf("Global config API endpoints registered: /api/router/config/global, /api/router/config/global/update, /api/router/config/global/raw, /api/router/config/global/raw/update (legacy aliases: /api/router/config/defaults, /api/router/config/defaults/update)")
+}
+
+func registerToolRoutes(mux *http.ServeMux, cfg *config.Config) {
+	toolsDBPath := resolveToolsDBPath(cfg)
+	mux.HandleFunc("/api/tools-db", handlers.ToolsDBHandler(toolsDBPath))
+	log.Printf("Tools DB API endpoint registered: /api/tools-db")
+
+	mux.HandleFunc("/api/tools/web-search", handlers.WebSearchHandler())
+	log.Printf("Web Search API endpoint registered: /api/tools/web-search")
+
+	mux.HandleFunc("/api/tools/open-web", handlers.OpenWebHandler())
+	log.Printf("Open Web API endpoint registered: /api/tools/open-web")
+
+	mux.HandleFunc("/api/tools/weather", handlers.WeatherHandler())
+	log.Printf("Weather API endpoint registered: /api/tools/weather")
+
+	mux.HandleFunc("/api/tools/fetch-raw", handlers.FetchRawHandler())
+	log.Printf("Fetch Raw API endpoint registered: /api/tools/fetch-raw")
+}
+
+func resolveToolsDBPath(cfg *config.Config) string {
+	toolsDBPath := filepath.Join(cfg.ConfigDir, "config", "tools_db.json")
+	toolSelection, err := routercontract.ReadToolSelection(cfg.AbsConfigPath)
+	if err != nil {
+		log.Printf("Warning: failed to parse config for tools_db_path, use the default path %s: %v", toolsDBPath, err)
+		return toolsDBPath
+	}
+	if toolSelection.ToolsDBPath != "" {
+		return toolSelection.ToolsDBPath
+	}
+	return toolsDBPath
+}
+
+func registerStatusRoutes(mux *http.ServeMux, cfg *config.Config, statusHandler http.HandlerFunc, credentialProvider ...*recipe.Store) {
+	store := selectedRecipeStore(cfg, credentialProvider)
+	if statusHandler == nil {
+		statusHandler = handlers.StatusHandler(cfg.RouterAPIURL, cfg.EnvoyURL, cfg.ConfigDir, store)
+	}
+	mux.HandleFunc("/api/status", statusHandler)
+	log.Printf("Status API endpoint registered: /api/status")
+
+	mux.HandleFunc("/api/logs", handlers.LogsHandler(cfg.RouterAPIURL))
+	log.Printf("Logs API endpoint registered: /api/logs")
+}
+
+func registerTopologyRoutes(mux *http.ServeMux, cfg *config.Config, credentialProvider ...*recipe.Store) {
+	store := selectedRecipeStore(cfg, credentialProvider)
+	mux.HandleFunc("/api/topology/test-query", handlers.TopologyTestQueryHandler(cfg.AbsConfigPath, cfg.RouterAPIURL, store))
+	log.Printf("Topology Test Query API endpoint registered: /api/topology/test-query (Router API: %s)", cfg.RouterAPIURL)
+}
+
+func registerEvaluationRoutes(mux *http.ServeMux, cfg *config.Config, credentialProviders ...*recipe.Store) *evaluationplane.Service {
+	registerRetiredEvaluationRoutes(mux)
+	if !cfg.EvaluationEnabled {
+		log.Printf("Evaluation feature disabled")
+		return nil
+	}
+	service, err := evaluationplane.NewService(evaluationplane.Options{
+		DataDir:            cfg.EvaluationDataDir,
+		PythonPath:         cfg.PythonPath,
+		RouterAPIURL:       cfg.RouterAPIURL,
+		EnvoyURL:           cfg.EnvoyURL,
+		ConfigPath:         cfg.AbsConfigPath,
+		CodeRevision:       os.Getenv("VLLM_SR_SOURCE_REVISION"),
+		EnvoyAPIKeyEnv:     cfg.EvaluationEnvoyAPIKeyEnv,
+		CredentialProvider: selectedRecipeStore(cfg, credentialProviders),
+		MaxConcurrent:      2,
+	})
+	if err != nil {
+		log.Printf("Warning: failed to initialize Evaluation Plane: %v (evaluation endpoints disabled)", err)
+		return nil
+	}
+	handler := handlers.NewEvaluationPlaneHandler(service, cfg.ReadonlyMode)
+	mux.HandleFunc("/api/evaluation/v1/catalog", handler.Catalog)
+	mux.HandleFunc("/api/evaluation/v1/runs", handler.Runs)
+	mux.HandleFunc("/api/evaluation/v1/runs/", handler.RunRoute)
+	mux.HandleFunc("/api/evaluation/v1/compare", handler.Compare)
+	log.Printf("Evaluation Plane API endpoints registered: /api/evaluation/v1/*")
+	return service
+}
+
+func registerRetiredEvaluationRoutes(mux *http.ServeMux) {
+	retired := func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Cache-Control", "private, no-store")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":"not_found","message":"Legacy evaluation API has been removed; use /api/evaluation/v1"}`))
+	}
+	mux.HandleFunc("/api/evaluation", retired)
+	mux.HandleFunc("/api/evaluation/", retired)
+}
+
+func registerMLPipelineRoutes(mux *http.ServeMux, cfg *config.Config, wf *workflowstore.Store) {
+	if !cfg.MLPipelineEnabled {
+		log.Printf("ML Pipeline feature disabled")
+		return
+	}
+
+	trainingDir := resolveMLTrainingDir(cfg)
+	mlRunner, err := mlpipeline.NewRunner(mlpipeline.RunnerConfig{
+		DataDir:      cfg.MLPipelineDataDir,
+		TrainingDir:  trainingDir,
+		PythonPath:   cfg.PythonPath,
+		MLServiceURL: cfg.MLServiceURL,
+		Workflow:     wf,
+	})
+	if err != nil {
+		log.Fatalf("ML pipeline runner: %v", err)
+	}
+	if err := wf.RecoverInterruptedMLJobs("interrupted by dashboard restart"); err != nil {
+		log.Printf("ML pipeline: recover running jobs: %v", err)
+	}
+	mlHandler := handlers.NewMLPipelineHandler(mlRunner)
+
+	mux.HandleFunc("/api/ml-pipeline/jobs", mlHandler.ListJobsHandler())
+	mux.HandleFunc("/api/ml-pipeline/jobs/", mlHandler.GetJobHandler())
+	mux.HandleFunc("/api/ml-pipeline/benchmark", mlHandler.RunBenchmarkHandler())
+	mux.HandleFunc("/api/ml-pipeline/train", mlHandler.RunTrainHandler())
+	mux.HandleFunc("/api/ml-pipeline/config", mlHandler.GenerateConfigHandler())
+	mux.HandleFunc("/api/ml-pipeline/download/", mlHandler.DownloadOutputHandler())
+	mux.HandleFunc("/api/ml-pipeline/stream/", mlHandler.StreamProgressHandler())
+	log.Printf("ML Pipeline API endpoints registered: /api/ml-pipeline/*")
+
+	if trainingDir != "" {
+		log.Printf("ML Training scripts directory: %s", trainingDir)
+		return
+	}
+	log.Printf("Warning: ML training scripts directory not configured (set ML_TRAINING_DIR)")
+}
+
+func resolveMLTrainingDir(cfg *config.Config) string {
+	if cfg.MLTrainingDir != "" {
+		return cfg.MLTrainingDir
+	}
+
+	projectRoot := filepath.Dir(cfg.ConfigDir)
+	candidate := filepath.Join(projectRoot, "src", "training", "ml_model_selection")
+	if _, err := os.Stat(candidate); err == nil {
+		return candidate
+	}
+	return ""
+}

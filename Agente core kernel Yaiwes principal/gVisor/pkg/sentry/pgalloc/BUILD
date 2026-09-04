@@ -1,0 +1,223 @@
+load("//pkg/sync/locking:locking.bzl", "declare_mutex")
+load("//tools:defs.bzl", "go_library", "go_test", "proto_library")
+load("//tools/go_generics:defs.bzl", "go_template_instance")
+
+package(
+    default_applicable_licenses = ["//:license"],
+    licenses = ["notice"],
+)
+
+declare_mutex(
+    name = "amfls_mutex",
+    out = "amfls_mutex.go",
+    package = "pgalloc",
+    prefix = "amfls",
+)
+
+declare_mutex(
+    name = "apfl_mutex",
+    out = "apfl_mutex.go",
+    package = "pgalloc",
+    prefix = "apfl",
+)
+
+declare_mutex(
+    name = "apfs_mutex",
+    out = "apfs_mutex.go",
+    package = "pgalloc",
+    prefix = "apfs",
+)
+
+declare_mutex(
+    name = "memory_file_mutex",
+    out = "memory_file_mutex.go",
+    package = "pgalloc",
+    prefix = "memoryFile",
+)
+
+go_template_instance(
+    name = "amfl_list",
+    out = "amfl_list.go",
+    package = "pgalloc",
+    prefix = "asyncMemoryFileLoad",
+    template = "//pkg/ilist:generic_list",
+    types = {
+        "Element": "*asyncMemoryFileLoad",
+        "Linker": "*asyncMemoryFileLoad",
+    },
+)
+
+go_template_instance(
+    name = "apl_unloaded_set",
+    out = "apl_unloaded_set.go",
+    imports = {
+        "memmap": "gvisor.dev/gvisor/pkg/sentry/memmap",
+    },
+    package = "pgalloc",
+    prefix = "aplUnloaded",
+    template = "//pkg/segment:generic_set",
+    types = {
+        "Key": "uint64",
+        "Range": "memmap.FileRange",
+        "Value": "aplUnloadedInfo",
+        "Functions": "aplUnloadedSetFunctions",
+    },
+)
+
+go_template_instance(
+    name = "evictable_range",
+    out = "evictable_range.go",
+    package = "pgalloc",
+    prefix = "Evictable",
+    template = "//pkg/segment:generic_range",
+    types = {
+        "T": "uint64",
+    },
+)
+
+go_template_instance(
+    name = "evictable_range_set",
+    out = "evictable_range_set.go",
+    package = "pgalloc",
+    prefix = "evictableRange",
+    template = "//pkg/segment:generic_set",
+    types = {
+        "Key": "uint64",
+        "Range": "EvictableRange",
+        "Value": "evictableRangeSetValue",
+        "Functions": "evictableRangeSetFunctions",
+    },
+)
+
+go_template_instance(
+    name = "memacct_set",
+    out = "memacct_set.go",
+    consts = {
+        "minDegree": "10",
+    },
+    imports = {
+        "memmap": "gvisor.dev/gvisor/pkg/sentry/memmap",
+    },
+    package = "pgalloc",
+    prefix = "memAcct",
+    template = "//pkg/segment:generic_set",
+    types = {
+        "Key": "uint64",
+        "Range": "memmap.FileRange",
+        "Value": "memAcctInfo",
+        "Functions": "memAcctSetFunctions",
+    },
+)
+
+go_template_instance(
+    name = "unfree_set",
+    out = "unfree_set.go",
+    consts = {
+        "minDegree": "10",
+        "trackGaps": "1",
+    },
+    imports = {
+        "memmap": "gvisor.dev/gvisor/pkg/sentry/memmap",
+    },
+    package = "pgalloc",
+    prefix = "unfree",
+    template = "//pkg/segment:generic_set",
+    types = {
+        "Key": "uint64",
+        "Range": "memmap.FileRange",
+        "Value": "unfreeInfo",
+        "Functions": "unfreeSetFunctions",
+    },
+)
+
+go_template_instance(
+    name = "unwaste_set",
+    out = "unwaste_set.go",
+    consts = {
+        "minDegree": "10",
+        "trackGaps": "1",
+    },
+    imports = {
+        "memmap": "gvisor.dev/gvisor/pkg/sentry/memmap",
+    },
+    package = "pgalloc",
+    prefix = "unwaste",
+    template = "//pkg/segment:generic_set",
+    types = {
+        "Key": "uint64",
+        "Range": "memmap.FileRange",
+        "Value": "unwasteInfo",
+        "Functions": "unwasteSetFunctions",
+    },
+)
+
+go_library(
+    name = "pgalloc",
+    srcs = [
+        "amfl_list.go",
+        "amfls_mutex.go",
+        "apfl_mutex.go",
+        "apfs_mutex.go",
+        "apl_unloaded_set.go",
+        "context.go",
+        "debug.go",
+        "evictable_range.go",
+        "evictable_range_set.go",
+        "memacct_set.go",
+        "memory_file_mutex.go",
+        "pgalloc.go",
+        "pgalloc_unsafe.go",
+        "save_restore.go",
+        "unfree_set.go",
+        "unwaste_set.go",
+    ],
+    visibility = ["//pkg/sentry:internal"],
+    deps = [
+        ":pgalloc_metadata_go_proto",
+        "//pkg/abi/linux",
+        "//pkg/atomicbitops",
+        "//pkg/bitmap",
+        "//pkg/context",
+        "//pkg/errors/linuxerr",
+        "//pkg/gohacks",
+        "//pkg/goid",
+        "//pkg/hostarch",
+        "//pkg/log",
+        "//pkg/ringdeque",
+        "//pkg/safemem",
+        "//pkg/sentry/arch",
+        "//pkg/sentry/checkpoint",
+        "//pkg/sentry/hostmm",
+        "//pkg/sentry/memmap",
+        "//pkg/sentry/state/stateio",
+        "//pkg/sentry/usage",
+        "//pkg/state",
+        "//pkg/state/wire",
+        "//pkg/sync",
+        "//pkg/sync/locking",
+        "//pkg/syncevent",
+        "//pkg/timing",
+        "//pkg/usermem",
+        "@org_golang_google_protobuf//proto:go_default_library",
+        "@org_golang_x_sys//unix:go_default_library",
+    ],
+)
+
+go_test(
+    name = "pgalloc_test",
+    size = "small",
+    srcs = [
+        "pgalloc_64k_test.go",
+        "pgalloc_test.go",
+    ],
+    library = ":pgalloc",
+    deps = [
+        "//pkg/hostarch",
+        "//pkg/sentry/memmap",
+    ],
+)
+
+proto_library(
+    name = "pgalloc_metadata",
+    srcs = ["pgalloc.proto"],
+)

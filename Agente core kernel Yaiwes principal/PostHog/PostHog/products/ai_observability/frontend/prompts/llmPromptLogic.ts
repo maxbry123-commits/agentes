@@ -1,0 +1,1516 @@
+import {
+    MakeLogicType,
+    actions,
+    afterMount,
+    beforeUnmount,
+    connect,
+    defaults,
+    kea,
+    key,
+    listeners,
+    path,
+    props,
+    reducers,
+    selectors,
+} from 'kea'
+import { forms } from 'kea-forms'
+import type { DeepPartial, DeepPartialMap, FieldName, ValidationErrorType } from 'kea-forms'
+import { loaders } from 'kea-loaders'
+import { actionToUrl, combineUrl, router, urlToAction } from 'kea-router'
+
+import { ApiConfig, ApiError } from '~/lib/api'
+import { lemonToast } from '~/lib/lemon-ui/LemonToast/LemonToast'
+import { defaultDataTableColumns } from '~/queries/nodes/DataTable/utils'
+import {
+    DataTableNode,
+    InsightVizNode,
+    NodeKind,
+    ProductIntentContext,
+    ProductKey,
+    TracesQuery,
+} from '~/queries/schema/schema-general'
+import { isTracesQuery } from '~/queries/utils'
+import { teamLogic } from '~/scenes/teamLogic'
+import { urls } from '~/scenes/urls'
+import { AnyPropertyFilter, Breadcrumb, ChartDisplayType, PropertyFilterType, PropertyOperator } from '~/types'
+
+import type { ProductIntentProperties } from '../../../../frontend/src/lib/utils/product-intents'
+import {
+    llmPromptsCreate,
+    llmPromptsNameArchiveCreate,
+    llmPromptsNameLabelsDestroy,
+    llmPromptsNameLabelsUpdate,
+    llmPromptsNamePartialUpdate,
+    llmPromptsResolveNameRetrieve,
+} from '../generated/api'
+import type { LLMPromptLabelApi, LLMPromptResolveResponseApi } from '../generated/api.schemas'
+import { llmPromptsLogic } from './llmPromptsLogic'
+import { LLM_PROMPTS_FORCE_RELOAD_PARAM } from './llmPromptsLogic'
+import { LLMPrompt, LLMPromptVersionSummary } from './types'
+import {
+    getApiErrorDetail,
+    openCreateLabelDialog,
+    openDiscardChangesDialog,
+    openMoveLabelDialog,
+    openRemoveLabelDialog,
+    requestPromptDuplicate,
+    stripPromptSceneSearchParams,
+    validatePromptName,
+} from './utils'
+
+export enum PromptMode {
+    View = 'view',
+    Edit = 'edit',
+}
+
+export enum PromptAnalyticsScope {
+    Selected = 'selected',
+    AllVersions = 'all_versions',
+}
+
+export interface PromptLogicProps {
+    promptName: string | 'new'
+    mode?: PromptMode
+}
+
+export interface PromptFormValues {
+    name: string
+    prompt: string
+    // The config JSON as editor text; '' means no config and publishes null.
+    config: string
+}
+
+export function formatPromptConfig(config: LLMPrompt['config'] | undefined): string {
+    return config == null ? '' : JSON.stringify(config, null, 2)
+}
+
+// Sorted keys so comparisons match Postgres jsonb, which doesn't preserve key order:
+// a reordered-but-equal config must not be presented as a change the server won't store.
+function canonicalizeJson(value: unknown): unknown {
+    if (Array.isArray(value)) {
+        return value.map(canonicalizeJson)
+    }
+    if (typeof value === 'object' && value !== null) {
+        const record = value as Record<string, unknown>
+        return Object.fromEntries(
+            Object.keys(record)
+                .sort()
+                .map((key) => [key, canonicalizeJson(record[key])])
+        )
+    }
+    return value
+}
+
+export function parsePromptConfig(text: string): { config: Record<string, unknown> | null; error?: string } {
+    const trimmed = text.trim()
+    if (!trimmed) {
+        return { config: null }
+    }
+    let parsed: unknown
+    try {
+        parsed = JSON.parse(trimmed)
+    } catch {
+        return { config: null, error: 'Configuration must be valid JSON' }
+    }
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+        return { config: null, error: 'Configuration must be a JSON object, e.g. {"model": "your-model-name"}' }
+    }
+    return { config: parsed as Record<string, unknown> }
+}
+
+export interface ResolvedLLMPrompt extends LLMPrompt {
+    versions: LLMPromptVersionSummary[]
+    has_more: boolean
+    labels: LLMPromptLabelApi[]
+}
+
+export function isPrompt(prompt: LLMPrompt | ResolvedLLMPrompt | PromptFormValues | null): prompt is ResolvedLLMPrompt {
+    return prompt !== null && 'id' in prompt
+}
+
+const DEFAULT_PROMPT_FORM_VALUES: PromptFormValues = {
+    name: '',
+    prompt: '',
+    config: '',
+}
+
+// Seeded into the empty editor when "Add configuration" is clicked, so users see the
+// expected shape instead of a blank JSON editor.
+const STARTER_PROMPT_CONFIG = '{\n  "model": "your-model-name",\n  "temperature": 0.7\n}'
+
+const PROMPT_FETCHED_EVENT = '$llm_prompt_fetched'
+const PROMPT_VERSIONS_LIMIT = 50
+const DEFAULT_PROMPT_ANALYTICS_DATE_FROM = '-1d'
+const STALE_PROMPT_ERROR_MESSAGE =
+    'This prompt changed while you were editing it. Your edits are preserved — review the latest version and publish again.'
+
+export interface PublishConflict {
+    latestVersion: number | null
+}
+
+export type PromptSnippetLanguage = 'python' | 'node'
+
+async function fetchResolvedPrompt(
+    promptName: string,
+    params?: { version?: number; offset?: number; before_version?: number; limit?: number }
+): Promise<ResolvedLLMPrompt> {
+    return getResolvedPrompt(
+        await llmPromptsResolveNameRetrieve(String(ApiConfig.getCurrentTeamId()), promptName, {
+            ...params,
+            limit: params?.limit ?? PROMPT_VERSIONS_LIMIT,
+        })
+    )
+}
+
+async function refreshLatestPromptState(
+    promptName: string,
+    actions: llmPromptLogicType['actions']
+): Promise<ResolvedLLMPrompt> {
+    const latestPrompt = await fetchResolvedPrompt(promptName)
+    actions.setPrompt(latestPrompt)
+    actions.setPromptFormValues(getPromptFormDefaults(latestPrompt))
+    return latestPrompt
+}
+
+function getResolvedPrompt(response: LLMPromptResolveResponseApi): ResolvedLLMPrompt {
+    // Casts apply the deliberate narrowing documented in ./types (string prompt, UserBasicType created_by).
+    return {
+        ...(response.prompt as unknown as LLMPrompt),
+        versions: response.versions as unknown as LLMPromptVersionSummary[],
+        has_more: response.has_more,
+        labels: response.labels ?? [],
+    }
+}
+
+function buildPromptVersionSummary(prompt: LLMPrompt, isLatest: boolean): LLMPromptVersionSummary {
+    return {
+        id: prompt.id,
+        version: prompt.version,
+        version_description: prompt.version_description ?? null,
+        created_by: prompt.created_by,
+        created_at: prompt.created_at,
+        is_latest: isLatest,
+        labels: [],
+    }
+}
+
+function isNameFieldValidationError(error: unknown): error is { attr: 'name'; detail: string } {
+    return (
+        error !== null &&
+        typeof error === 'object' &&
+        'attr' in error &&
+        error.attr === 'name' &&
+        'detail' in error &&
+        typeof error.detail === 'string'
+    )
+}
+
+// Generated by kea-typegen. Update if you're an agent, ignore if you're human.
+export interface llmPromptLogicValues {
+    analyticsScope: PromptAnalyticsScope
+    breadcrumbs: Breadcrumb[]
+    canCompareVersions: boolean
+    canLoadMoreVersions: boolean
+    comparePrompt: LLMPrompt | null
+    comparePromptLoading: boolean
+    compareVersion: number | null
+    compareVersionOptions: Array<{
+        label: string
+        value: number
+    }>
+    defaultRelatedTracesQuery: DataTableNode | null
+    isConfigChanged: boolean
+    isConfigEditorVisible: boolean
+    isDiffVisible: boolean
+    isEditMode: boolean
+    isHistoricalVersion: boolean
+    isNewPrompt: boolean
+    isOutlineExpanded: boolean
+    isPromptFormDirty: boolean
+    isPromptFormSubmitting: boolean
+    isPromptFormValid: boolean
+    isPromptMissing: boolean
+    isPublishReviewOpen: boolean
+    isRenderingMarkdown: boolean
+    isViewMode: boolean
+    labelPickerVersion: number | null
+    labelsByVersion: Record<number, LLMPromptLabelApi[]>
+    mode: PromptMode
+    nextVersion: number | null
+    prompt: PromptFormValues | ResolvedLLMPrompt | null
+    promptForm: PromptFormValues
+    promptFormAllErrors: Record<string, any>
+    promptFormChanged: boolean
+    promptFormErrors: DeepPartialMap<PromptFormValues, ValidationErrorType>
+    promptFormHasErrors: boolean
+    promptFormManualErrors: Record<string, any>
+    promptFormTouched: boolean
+    promptFormTouches: Record<string, boolean>
+    promptFormValidationErrors: DeepPartialMap<PromptFormValues, ValidationErrorType>
+    promptLabels: LLMPromptLabelApi[]
+    promptLoading: boolean
+    promptUsageLogQuery: DataTableNode
+    promptUsagePropertyFilter: AnyPropertyFilter[]
+    promptUsageTrendQuery: InsightVizNode
+    promptVariables: string[]
+    publishConflict: PublishConflict | null
+    relatedTracesQuery: DataTableNode | null
+    relatedTracesQueryOverride: DataTableNode | null
+    shouldDisplaySkeleton: boolean
+    showPromptFormErrors: boolean
+    snippetLanguage: PromptSnippetLanguage
+    tracePropertyFilters: AnyPropertyFilter[]
+    versionDescription: string
+    versions: LLMPromptVersionSummary[]
+    versionsLoading: boolean
+    viewAllTracesUrl: string
+}
+
+// Generated by kea-typegen. Update if you're an agent, ignore if you're human.
+export interface llmPromptLogicActions {
+    addProductIntent: (properties: ProductIntentProperties) => ProductIntentProperties // teamLogic
+    cancelEditing: () => {
+        value: true
+    }
+    closeLabelPicker: () => {
+        value: true
+    }
+    closePublishReview: () => {
+        value: true
+    }
+    deletePrompt: () => {
+        value: true
+    }
+    duplicatePrompt: (
+        sourceName: string,
+        newName: string
+    ) => {
+        newName: string
+        sourceName: string
+    }
+    loadComparePrompt: (version: number) => number
+    loadComparePromptFailure: (
+        error: string,
+        errorObject?: any
+    ) => {
+        error: string
+        errorObject?: any
+    }
+    loadComparePromptSuccess: (
+        comparePrompt: LLMPrompt,
+        payload?: number
+    ) => {
+        comparePrompt: LLMPrompt
+        payload?: number
+    }
+    loadMoreVersions: () => {
+        value: true
+    }
+    loadPrompt: () => any
+    loadPromptFailure: (
+        error: string,
+        errorObject?: any
+    ) => {
+        error: string
+        errorObject?: any
+    }
+    loadPromptSuccess: (
+        prompt: ResolvedLLMPrompt,
+        payload?: any
+    ) => {
+        prompt: ResolvedLLMPrompt
+        payload?: any
+    }
+    openLabelPicker: (version: number) => {
+        version: number
+    }
+    openPublishReview: () => {
+        value: true
+    }
+    removeConfig: () => {
+        value: true
+    }
+    removeLabel: (labelName: string) => {
+        labelName: string
+    }
+    requestPublish: () => {
+        value: true
+    }
+    requestRemoveLabel: (labelName: string) => {
+        labelName: string
+    }
+    requestSetLabel: (
+        labelName: string,
+        version: number
+    ) => {
+        labelName: string
+        version: number
+    }
+    resetPromptForm: (values?: PromptFormValues) => {
+        values?: PromptFormValues
+    }
+    setAnalyticsScope: (analyticsScope: PromptAnalyticsScope) => {
+        analyticsScope: PromptAnalyticsScope
+    }
+    setCompareVersion: (compareVersion: number | null) => {
+        compareVersion: number | null
+    }
+    setLabel: (
+        labelName: string,
+        version: number
+    ) => {
+        labelName: string
+        version: number
+    }
+    setMode: (mode: PromptMode) => {
+        mode: PromptMode
+    }
+    setPrompt: (prompt: PromptFormValues | ResolvedLLMPrompt) => {
+        prompt: PromptFormValues | ResolvedLLMPrompt
+    }
+    setPromptFormManualErrors: (errors: Record<string, any>) => {
+        errors: Record<string, any>
+    }
+    setPromptFormValue: (
+        key: FieldName,
+        value: any
+    ) => {
+        name: FieldName
+        value: any
+    }
+    setPromptFormValues: (values: DeepPartial<PromptFormValues>) => {
+        values: DeepPartial<PromptFormValues>
+    }
+    setPublishConflict: (publishConflict: PublishConflict | null) => {
+        publishConflict: PublishConflict | null
+    }
+    setRelatedTracesQuery: (query: DataTableNode) => {
+        query: DataTableNode
+    }
+    setSnippetLanguage: (snippetLanguage: PromptSnippetLanguage) => {
+        snippetLanguage: PromptSnippetLanguage
+    }
+    setVersionDescription: (versionDescription: string) => {
+        versionDescription: string
+    }
+    setVersionsLoading: (versionsLoading: boolean) => {
+        versionsLoading: boolean
+    }
+    showConfigEditor: () => {
+        value: true
+    }
+    submitPromptForm: () => {
+        value: boolean
+    }
+    submitPromptFormFailure: (
+        error: Error,
+        errors: Record<string, any>
+    ) => {
+        error: Error
+        errors: Record<string, any>
+    }
+    submitPromptFormRequest: (promptForm: PromptFormValues) => {
+        promptForm: PromptFormValues
+    }
+    submitPromptFormSuccess: (promptForm: PromptFormValues) => {
+        promptForm: PromptFormValues
+    }
+    toggleMarkdownRendering: () => {
+        value: true
+    }
+    toggleOutlineExpanded: () => {
+        value: true
+    }
+    touchPromptFormField: (key: string) => {
+        key: string
+    }
+}
+
+// Generated by kea-typegen. Update if you're an agent, ignore if you're human.
+export interface llmPromptLogicMeta {
+    key: string
+    __keaTypeGenInternalSelectorTypes: {
+        isNewPrompt: (arg: any) => boolean
+        isPromptMissing: (prompt: PromptFormValues | ResolvedLLMPrompt | null, promptLoading: boolean) => boolean
+        shouldDisplaySkeleton: (prompt: PromptFormValues | ResolvedLLMPrompt | null, promptLoading: boolean) => boolean
+        isHistoricalVersion: (prompt: PromptFormValues | ResolvedLLMPrompt | null) => boolean
+        isPromptFormDirty: (
+            promptForm: PromptFormValues,
+            prompt: PromptFormValues | ResolvedLLMPrompt | null,
+            isNewPrompt: boolean
+        ) => boolean
+        isConfigChanged: (promptForm: PromptFormValues, prompt: PromptFormValues | ResolvedLLMPrompt | null) => boolean
+        nextVersion: (prompt: PromptFormValues | ResolvedLLMPrompt | null) => number | null
+        promptVariables: (promptForm: PromptFormValues) => string[]
+        breadcrumbs: (
+            prompt: PromptFormValues | ResolvedLLMPrompt | null,
+            searchParams: Record<string, any>
+        ) => Breadcrumb[]
+        isViewMode: (mode: PromptMode, arg: any) => boolean
+        isEditMode: (mode: PromptMode, arg: any) => boolean
+        versions: (prompt: PromptFormValues | ResolvedLLMPrompt | null) => LLMPromptVersionSummary[]
+        canLoadMoreVersions: (prompt: PromptFormValues | ResolvedLLMPrompt | null) => boolean
+        promptLabels: (prompt: PromptFormValues | ResolvedLLMPrompt | null) => LLMPromptLabelApi[]
+        labelsByVersion: (promptLabels: LLMPromptLabelApi[]) => Record<number, LLMPromptLabelApi[]>
+        isDiffVisible: (compareVersion: number | null) => boolean
+        canCompareVersions: (prompt: PromptFormValues | ResolvedLLMPrompt | null) => boolean
+        compareVersionOptions: (
+            prompt: PromptFormValues | ResolvedLLMPrompt | null,
+            versions: LLMPromptVersionSummary[]
+        ) => Array<{
+            label: string
+            value: number
+        }>
+        tracePropertyFilters: (
+            prompt: PromptFormValues | ResolvedLLMPrompt | null,
+            analyticsScope: PromptAnalyticsScope
+        ) => AnyPropertyFilter[]
+        defaultRelatedTracesQuery: (
+            prompt: PromptFormValues | ResolvedLLMPrompt | null,
+            tracePropertyFilters: AnyPropertyFilter[]
+        ) => DataTableNode | null
+        relatedTracesQuery: (
+            defaultRelatedTracesQuery: DataTableNode | null,
+            relatedTracesQueryOverride: DataTableNode | null
+        ) => DataTableNode | null
+        viewAllTracesUrl: (
+            prompt: PromptFormValues | ResolvedLLMPrompt | null,
+            relatedTracesQuery: DataTableNode | null,
+            tracePropertyFilters: AnyPropertyFilter[]
+        ) => string
+        promptUsagePropertyFilter: (
+            prompt: PromptFormValues | ResolvedLLMPrompt | null,
+            analyticsScope: PromptAnalyticsScope
+        ) => AnyPropertyFilter[]
+        promptUsageTrendQuery: (
+            prompt: PromptFormValues | ResolvedLLMPrompt | null,
+            promptUsagePropertyFilter: AnyPropertyFilter[],
+            analyticsScope: PromptAnalyticsScope
+        ) => InsightVizNode
+        promptUsageLogQuery: (
+            prompt: PromptFormValues | ResolvedLLMPrompt | null,
+            promptUsagePropertyFilter: AnyPropertyFilter[],
+            analyticsScope: PromptAnalyticsScope
+        ) => DataTableNode
+    }
+}
+
+export type llmPromptLogicType = MakeLogicType<
+    llmPromptLogicValues,
+    llmPromptLogicActions,
+    PromptLogicProps,
+    llmPromptLogicMeta
+>
+
+export const llmPromptLogic = kea<llmPromptLogicType>([
+    path(['scenes', 'ai-observability', 'llmPromptLogic']),
+    props({ promptName: 'new' } as PromptLogicProps),
+    // Keyed by name only: switching versions loads into the same logic instance, so the
+    // scene chrome (header, tabs, sidebar) survives and only prompt-derived UI updates.
+    key(({ promptName }) => `prompt-${promptName}`),
+    connect(() => ({
+        actions: [teamLogic, ['addProductIntent']],
+    })),
+
+    actions({
+        setPrompt: (prompt: ResolvedLLMPrompt | PromptFormValues) => ({ prompt }),
+        deletePrompt: true,
+        duplicatePrompt: (sourceName: string, newName: string) => ({ sourceName, newName }),
+        loadMoreVersions: true,
+        setVersionsLoading: (versionsLoading: boolean) => ({ versionsLoading }),
+        setMode: (mode: PromptMode) => ({ mode }),
+        setAnalyticsScope: (analyticsScope: PromptAnalyticsScope) => ({ analyticsScope }),
+        setRelatedTracesQuery: (query: DataTableNode) => ({ query }),
+        toggleMarkdownRendering: true,
+        setCompareVersion: (compareVersion: number | null) => ({ compareVersion }),
+        toggleOutlineExpanded: true,
+        showConfigEditor: true,
+        removeConfig: true,
+        cancelEditing: true,
+        setPublishConflict: (publishConflict: PublishConflict | null) => ({ publishConflict }),
+        requestPublish: true,
+        openPublishReview: true,
+        closePublishReview: true,
+        setVersionDescription: (versionDescription: string) => ({ versionDescription }),
+        setSnippetLanguage: (snippetLanguage: PromptSnippetLanguage) => ({ snippetLanguage }),
+        openLabelPicker: (version: number) => ({ version }),
+        closeLabelPicker: true,
+        requestSetLabel: (labelName: string, version: number) => ({ labelName, version }),
+        setLabel: (labelName: string, version: number) => ({ labelName, version }),
+        requestRemoveLabel: (labelName: string) => ({ labelName }),
+        removeLabel: (labelName: string) => ({ labelName }),
+    }),
+
+    reducers(({ props }) => ({
+        prompt: [
+            null as ResolvedLLMPrompt | PromptFormValues | null,
+            {
+                loadPromptSuccess: (_, { prompt }) => prompt,
+                setPrompt: (_, { prompt }) => prompt,
+            },
+        ],
+        versionsLoading: [
+            false,
+            {
+                loadMoreVersions: () => true,
+                setVersionsLoading: (_, { versionsLoading }) => versionsLoading,
+                loadPromptSuccess: () => false,
+            },
+        ],
+        mode: [
+            props.mode ?? PromptMode.View,
+            {
+                setMode: (_, { mode }) => mode,
+            },
+        ],
+        analyticsScope: [
+            PromptAnalyticsScope.Selected as PromptAnalyticsScope,
+            {
+                setAnalyticsScope: (_, { analyticsScope }) => analyticsScope,
+            },
+        ],
+        relatedTracesQueryOverride: [
+            null as DataTableNode | null,
+            {
+                setRelatedTracesQuery: (_, { query }) => query,
+            },
+        ],
+        isRenderingMarkdown: [
+            props.promptName === 'new' ? false : (props.mode ?? PromptMode.View) !== PromptMode.Edit,
+            {
+                toggleMarkdownRendering: (state) => !state,
+                setMode: (_, { mode }) => mode !== PromptMode.Edit,
+            },
+        ],
+        compareVersion: [
+            null as number | null,
+            {
+                setCompareVersion: (_, { compareVersion }) => compareVersion,
+                loadPromptSuccess: () => null,
+            },
+        ],
+        comparePrompt: [
+            null as LLMPrompt | null,
+            {
+                setCompareVersion: (state, { compareVersion }) => (compareVersion === null ? null : state),
+                loadPromptSuccess: () => null,
+            },
+        ],
+        isOutlineExpanded: [
+            false,
+            {
+                toggleOutlineExpanded: (state) => !state,
+            },
+        ],
+        // Once shown, the config editor stays visible for the editing session even if the
+        // text is emptied (clearing the text is how a config gets removed). Resets on
+        // mode changes and reloads so view mode starts collapsed again.
+        isConfigEditorVisible: [
+            false,
+            {
+                showConfigEditor: () => true,
+                removeConfig: () => false,
+                setMode: () => false,
+                loadPromptSuccess: () => false,
+            },
+        ],
+        publishConflict: [
+            null as PublishConflict | null,
+            {
+                setPublishConflict: (_, { publishConflict }) => publishConflict,
+                setMode: () => null,
+                loadPromptSuccess: () => null,
+            },
+        ],
+        isPublishReviewOpen: [
+            false,
+            {
+                openPublishReview: () => true,
+                closePublishReview: () => false,
+                submitPromptFormSuccess: () => false,
+                // A publish conflict (409) needs the editor visible again to show the banner
+                setPublishConflict: () => false,
+                setMode: () => false,
+            },
+        ],
+        versionDescription: [
+            '',
+            {
+                setVersionDescription: (_, { versionDescription }) => versionDescription,
+                submitPromptFormSuccess: () => '',
+                closePublishReview: () => '',
+                setMode: () => '',
+            },
+        ],
+        snippetLanguage: [
+            'python' as PromptSnippetLanguage,
+            {
+                setSnippetLanguage: (_, { snippetLanguage }) => snippetLanguage,
+            },
+        ],
+        labelPickerVersion: [
+            null as number | null,
+            {
+                openLabelPicker: (_, { version }) => version,
+                closeLabelPicker: () => null,
+                requestSetLabel: () => null,
+                loadPromptSuccess: () => null,
+            },
+        ],
+    })),
+
+    loaders(({ props }) => ({
+        prompt: {
+            __default: null as ResolvedLLMPrompt | PromptFormValues | null,
+            // Version comes from the router, not props: scene props only update after
+            // React re-renders, so they are stale inside urlToAction-triggered loads.
+            loadPrompt: async () =>
+                fetchResolvedPrompt(props.promptName, {
+                    version: getSelectedVersionFromUrl(),
+                }),
+        },
+        comparePrompt: {
+            __default: null as LLMPrompt | null,
+            loadComparePrompt: async (version: number) => {
+                const resolved = await fetchResolvedPrompt(props.promptName, { version, limit: 1 })
+                return resolved as LLMPrompt
+            },
+        },
+    })),
+
+    forms(({ actions, props, values }) => ({
+        promptForm: {
+            defaults: DEFAULT_PROMPT_FORM_VALUES,
+            options: { showErrorsOnTouch: true },
+
+            errors: ({ name, prompt, config }) => ({
+                name: validatePromptName(name),
+                prompt: !prompt?.trim() ? 'Prompt content is required' : undefined,
+                config: parsePromptConfig(config ?? '').error,
+            }),
+
+            submit: async (formValues) => {
+                const isNew = props.promptName === 'new'
+
+                try {
+                    let savedPrompt: LLMPrompt
+
+                    const parsedConfig = parsePromptConfig(formValues.config).config
+
+                    if (isNew) {
+                        savedPrompt = (await llmPromptsCreate(String(ApiConfig.getCurrentTeamId()), {
+                            name: formValues.name,
+                            prompt: formValues.prompt,
+                            ...(parsedConfig ? { config: parsedConfig } : {}),
+                        })) as unknown as LLMPrompt
+                        llmPromptsLogic.findMounted()?.actions.loadPrompts(false)
+                        lemonToast.success('Prompt created successfully')
+                        router.actions.replace(urls.aiObservabilityPrompt(savedPrompt.name))
+
+                        void actions.addProductIntent({
+                            product_type: ProductKey.LLM_PROMPTS,
+                            intent_context: ProductIntentContext.LLM_PROMPT_CREATED,
+                        })
+                    } else {
+                        const currentPrompt = values.prompt
+
+                        if (!isPrompt(currentPrompt)) {
+                            throw new Error('Cannot publish prompt version: prompt data not loaded')
+                        }
+
+                        const versionDescription = values.versionDescription.trim()
+                        savedPrompt = (await llmPromptsNamePartialUpdate(
+                            String(ApiConfig.getCurrentTeamId()),
+                            props.promptName,
+                            {
+                                prompt: formValues.prompt,
+                                // Always sent: the form is the source of truth, and null clears a
+                                // previously set config (omitting the key would carry it forward).
+                                config: parsedConfig,
+                                base_version: currentPrompt.latest_version,
+                                ...(versionDescription ? { version_description: versionDescription } : {}),
+                            }
+                        )) as unknown as LLMPrompt
+                        llmPromptsLogic.findMounted()?.actions.loadPrompts(false)
+                        lemonToast.success(`Published v${savedPrompt.version}`)
+
+                        const optimisticVersions = [
+                            buildPromptVersionSummary(savedPrompt, true),
+                            ...currentPrompt.versions
+                                .filter((version) => version.id !== savedPrompt.id)
+                                .map((version) => ({ ...version, is_latest: false })),
+                        ]
+
+                        actions.setPrompt({
+                            ...savedPrompt,
+                            versions: optimisticVersions,
+                            has_more: currentPrompt.has_more,
+                            labels: currentPrompt.labels,
+                        })
+                        actions.setPromptFormValues(getPromptFormDefaults(savedPrompt))
+                        actions.setMode(PromptMode.View)
+                        router.actions.replace(urls.aiObservabilityPrompt(props.promptName))
+
+                        // PATCH already succeeded, so keep optimistic state even if follow-up read fails.
+                        try {
+                            await refreshLatestPromptState(props.promptName, actions)
+                        } catch {}
+                    }
+
+                    actions.setMode(PromptMode.View)
+                    if (isNew) {
+                        actions.setPrompt({
+                            ...savedPrompt,
+                            versions: [],
+                            has_more: false,
+                            labels: [],
+                        })
+                        actions.setPromptFormValues(getPromptFormDefaults(savedPrompt))
+                    }
+                } catch (error: unknown) {
+                    if (isNameFieldValidationError(error)) {
+                        actions.setPromptFormManualErrors({ name: error.detail })
+                        throw error
+                    }
+
+                    if (error instanceof ApiError && error.status === 409) {
+                        // Refresh the underlying prompt so base_version advances, but keep the
+                        // user's in-progress edits in the form — never overwrite their work.
+                        let latestVersion: number | null = null
+                        try {
+                            const latestPrompt = await fetchResolvedPrompt(props.promptName)
+                            actions.setPrompt(latestPrompt)
+                            latestVersion = latestPrompt.latest_version ?? latestPrompt.version
+                        } catch {}
+
+                        actions.setPublishConflict({ latestVersion })
+                        lemonToast.error(STALE_PROMPT_ERROR_MESSAGE)
+                        throw error
+                    }
+
+                    lemonToast.error(getApiErrorDetail(error) || 'Failed to save prompt')
+                    throw error
+                }
+            },
+        },
+    })),
+
+    selectors({
+        isNewPrompt: [() => [(_, props) => props], (props) => props.promptName === 'new'],
+
+        isPromptMissing: [
+            (s) => [s.prompt, s.promptLoading],
+            (prompt: PromptFormValues | ResolvedLLMPrompt | null, promptLoading: boolean) =>
+                !promptLoading && prompt === null,
+        ],
+
+        shouldDisplaySkeleton: [
+            (s) => [s.prompt, s.promptLoading],
+            (prompt: PromptFormValues | ResolvedLLMPrompt | null, promptLoading: boolean) => !prompt && promptLoading,
+        ],
+
+        isHistoricalVersion: [
+            (s) => [s.prompt],
+            (prompt: PromptFormValues | ResolvedLLMPrompt | null) => (isPrompt(prompt) ? !prompt.is_latest : false),
+        ],
+
+        isPromptFormDirty: [
+            (s) => [s.promptForm, s.prompt, s.isNewPrompt],
+            (
+                promptForm: PromptFormValues,
+                prompt: PromptFormValues | ResolvedLLMPrompt | null,
+                isNewPrompt: boolean
+            ): boolean => {
+                if (isNewPrompt) {
+                    return !!promptForm.name.trim() || !!promptForm.prompt.trim() || !!promptForm.config.trim()
+                }
+                if (!isPrompt(prompt)) {
+                    return false
+                }
+                return (
+                    promptForm.prompt !== prompt.prompt ||
+                    promptForm.config.trim() !== formatPromptConfig(prompt.config).trim()
+                )
+            },
+        ],
+
+        isConfigChanged: [
+            (s) => [s.promptForm, s.prompt],
+            (promptForm: PromptFormValues, prompt: PromptFormValues | ResolvedLLMPrompt | null): boolean => {
+                if (!isPrompt(prompt)) {
+                    return false
+                }
+                const parsed = parsePromptConfig(promptForm.config)
+                if (parsed.error) {
+                    return true
+                }
+                return (
+                    JSON.stringify(canonicalizeJson(parsed.config)) !==
+                    JSON.stringify(canonicalizeJson(prompt.config ?? null))
+                )
+            },
+        ],
+
+        nextVersion: [
+            (s) => [s.prompt],
+            (prompt: PromptFormValues | ResolvedLLMPrompt | null): number | null =>
+                isPrompt(prompt) ? (prompt.latest_version ?? prompt.version) + 1 : null,
+        ],
+
+        promptVariables: [
+            (s) => [s.promptForm],
+            (promptForm: PromptFormValues): string[] => {
+                const matches = promptForm.prompt.match(/\{\{([^}]+)\}\}/g)
+
+                if (!matches) {
+                    return []
+                }
+
+                const variables = matches.map((match: string) => match.slice(2, -2).trim())
+                return [...new Set(variables)]
+            },
+        ],
+
+        breadcrumbs: [
+            (s) => [s.prompt, router.selectors.searchParams],
+            (prompt: LLMPrompt | PromptFormValues | null, searchParams: Record<string, any>): Breadcrumb[] => [
+                {
+                    name: 'Prompts',
+                    path: combineUrl(urls.aiObservabilityPrompts(), stripPromptSceneSearchParams(searchParams)).url,
+                    key: 'AIObservabilityPrompts',
+                    iconType: 'llm_prompts',
+                },
+                {
+                    name:
+                        prompt && 'name' in prompt
+                            ? isPrompt(prompt)
+                                ? `${prompt.name} v${prompt.version}`
+                                : prompt.name || 'New prompt'
+                            : 'New prompt',
+                    key: 'AIObservabilityPrompt',
+                    iconType: 'llm_prompts',
+                },
+            ],
+        ],
+
+        isViewMode: [
+            (s) => [s.mode, (_, props) => props],
+            (mode: PromptMode, props) => props.promptName !== 'new' && mode === PromptMode.View,
+        ],
+
+        isEditMode: [
+            (s) => [s.mode, (_, props) => props],
+            (mode: PromptMode, props) => props.promptName === 'new' || mode === PromptMode.Edit,
+        ],
+
+        versions: [
+            (s) => [s.prompt],
+            (prompt: PromptFormValues | ResolvedLLMPrompt | null): LLMPromptVersionSummary[] =>
+                isPrompt(prompt) ? prompt.versions : [],
+        ],
+
+        canLoadMoreVersions: [
+            (s) => [s.prompt],
+            (prompt: PromptFormValues | ResolvedLLMPrompt | null) => (isPrompt(prompt) ? prompt.has_more : false),
+        ],
+
+        promptLabels: [
+            (s) => [s.prompt],
+            (prompt: PromptFormValues | ResolvedLLMPrompt | null): LLMPromptLabelApi[] =>
+                isPrompt(prompt) ? (prompt.labels ?? []) : [],
+        ],
+
+        labelsByVersion: [
+            (s) => [s.promptLabels],
+            (promptLabels: LLMPromptLabelApi[]): Record<number, LLMPromptLabelApi[]> => {
+                const byVersion: Record<number, LLMPromptLabelApi[]> = {}
+                for (const label of promptLabels) {
+                    byVersion[label.version] = [...(byVersion[label.version] ?? []), label]
+                }
+                return byVersion
+            },
+        ],
+
+        isDiffVisible: [(s) => [s.compareVersion], (compareVersion: number | null): boolean => compareVersion !== null],
+
+        canCompareVersions: [
+            (s) => [s.prompt],
+            (prompt: PromptFormValues | ResolvedLLMPrompt | null): boolean =>
+                isPrompt(prompt) && prompt.version_count > 1,
+        ],
+
+        compareVersionOptions: [
+            (s) => [s.prompt, s.versions],
+            (
+                prompt: PromptFormValues | ResolvedLLMPrompt | null,
+                versions: LLMPromptVersionSummary[]
+            ): Array<{ value: number; label: string }> => {
+                if (!isPrompt(prompt)) {
+                    return []
+                }
+                return versions
+                    .filter((v) => v.version !== prompt.version)
+                    .map((v) => ({
+                        value: v.version,
+                        label: `v${v.version}${v.is_latest ? ' (latest)' : ''}`,
+                    }))
+            },
+        ],
+
+        tracePropertyFilters: [
+            (s) => [s.prompt, s.analyticsScope],
+            (
+                prompt: PromptFormValues | ResolvedLLMPrompt | null,
+                analyticsScope: PromptAnalyticsScope
+            ): AnyPropertyFilter[] => {
+                if (!isPrompt(prompt)) {
+                    return []
+                }
+
+                if (analyticsScope === PromptAnalyticsScope.Selected) {
+                    return [
+                        {
+                            type: PropertyFilterType.Event,
+                            key: '$ai_prompt_name',
+                            value: prompt.name,
+                            operator: PropertyOperator.Exact,
+                        },
+                        {
+                            type: PropertyFilterType.Event,
+                            key: '$ai_prompt_version',
+                            value: prompt.version,
+                            operator: PropertyOperator.Exact,
+                        },
+                    ]
+                }
+
+                return [
+                    {
+                        type: PropertyFilterType.Event,
+                        key: '$ai_prompt_name',
+                        value: prompt.name,
+                        operator: PropertyOperator.Exact,
+                    },
+                ]
+            },
+        ],
+
+        defaultRelatedTracesQuery: [
+            (s) => [s.prompt, s.tracePropertyFilters],
+            (
+                prompt: PromptFormValues | ResolvedLLMPrompt | null,
+                tracePropertyFilters: AnyPropertyFilter[]
+            ): DataTableNode | null => {
+                if (!isPrompt(prompt)) {
+                    return null
+                }
+
+                return {
+                    kind: NodeKind.DataTableNode,
+                    source: {
+                        kind: NodeKind.TracesQuery,
+                        dateRange: {
+                            date_from: DEFAULT_PROMPT_ANALYTICS_DATE_FROM,
+                            date_to: undefined,
+                        },
+                        filterTestAccounts: false,
+                        filterSupportTraces: true,
+                        properties: tracePropertyFilters,
+                    },
+                    columns: [
+                        'id',
+                        'traceName',
+                        'promptVersion',
+                        'person',
+                        'errorCount',
+                        'totalLatency',
+                        'usage',
+                        'totalCost',
+                        'createdAt',
+                    ],
+                    showDateRange: true,
+                    showReload: true,
+                    showSearch: false,
+                    showTestAccountFilters: true,
+                    showExport: false,
+                    showOpenEditorButton: false,
+                    showColumnConfigurator: false,
+                }
+            },
+        ],
+        relatedTracesQuery: [
+            (s) => [s.defaultRelatedTracesQuery, s.relatedTracesQueryOverride],
+            (
+                defaultRelatedTracesQuery: DataTableNode | null,
+                relatedTracesQueryOverride: DataTableNode | null
+            ): DataTableNode | null => {
+                if (!defaultRelatedTracesQuery) {
+                    return null
+                }
+                if (!relatedTracesQueryOverride) {
+                    return defaultRelatedTracesQuery
+                }
+                if (
+                    !isTracesQuery(defaultRelatedTracesQuery.source) ||
+                    !isTracesQuery(relatedTracesQueryOverride.source)
+                ) {
+                    return defaultRelatedTracesQuery
+                }
+
+                return {
+                    ...defaultRelatedTracesQuery,
+                    ...relatedTracesQueryOverride,
+                    source: {
+                        ...(defaultRelatedTracesQuery.source as TracesQuery),
+                        ...(relatedTracesQueryOverride.source as TracesQuery),
+                        properties: defaultRelatedTracesQuery.source.properties,
+                    },
+                    columns: defaultRelatedTracesQuery.columns,
+                }
+            },
+        ],
+
+        viewAllTracesUrl: [
+            (s) => [s.prompt, s.relatedTracesQuery, s.tracePropertyFilters],
+            (
+                prompt: PromptFormValues | ResolvedLLMPrompt | null,
+                relatedTracesQuery: DataTableNode | null,
+                tracePropertyFilters: AnyPropertyFilter[]
+            ): string => {
+                if (!isPrompt(prompt)) {
+                    return urls.aiObservabilityTraces()
+                }
+
+                if (relatedTracesQuery && isTracesQuery(relatedTracesQuery.source)) {
+                    return combineUrl(urls.aiObservabilityTraces(), {
+                        filters: relatedTracesQuery.source.properties ?? tracePropertyFilters,
+                        date_from: relatedTracesQuery.source.dateRange?.date_from ?? DEFAULT_PROMPT_ANALYTICS_DATE_FROM,
+                        date_to: relatedTracesQuery.source.dateRange?.date_to ?? undefined,
+                    }).url
+                }
+
+                return combineUrl(urls.aiObservabilityTraces(), {
+                    filters: tracePropertyFilters,
+                    date_from: DEFAULT_PROMPT_ANALYTICS_DATE_FROM,
+                }).url
+            },
+        ],
+
+        promptUsagePropertyFilter: [
+            (s) => [s.prompt, s.analyticsScope],
+            (
+                prompt: PromptFormValues | ResolvedLLMPrompt | null,
+                analyticsScope: PromptAnalyticsScope
+            ): AnyPropertyFilter[] => {
+                if (!isPrompt(prompt)) {
+                    return []
+                }
+
+                if (analyticsScope === PromptAnalyticsScope.Selected) {
+                    return [
+                        {
+                            key: 'prompt_id',
+                            type: PropertyFilterType.Event,
+                            value: prompt.id,
+                            operator: PropertyOperator.Exact,
+                        },
+                    ]
+                }
+
+                return [
+                    {
+                        key: 'prompt_name',
+                        type: PropertyFilterType.Event,
+                        value: prompt.name,
+                        operator: PropertyOperator.Exact,
+                    },
+                ]
+            },
+        ],
+
+        promptUsageTrendQuery: [
+            (s) => [s.prompt, s.promptUsagePropertyFilter, s.analyticsScope],
+            (
+                prompt: PromptFormValues | ResolvedLLMPrompt | null,
+                promptUsagePropertyFilter: AnyPropertyFilter[],
+                analyticsScope: PromptAnalyticsScope
+            ): InsightVizNode => {
+                void prompt
+                void analyticsScope
+
+                return {
+                    kind: NodeKind.InsightVizNode,
+                    source: {
+                        kind: NodeKind.TrendsQuery,
+                        series: [
+                            { kind: NodeKind.EventsNode, event: PROMPT_FETCHED_EVENT, name: PROMPT_FETCHED_EVENT },
+                        ],
+                        properties: promptUsagePropertyFilter,
+                        dateRange: {
+                            date_from: DEFAULT_PROMPT_ANALYTICS_DATE_FROM,
+                        },
+                        interval: 'day',
+                        trendsFilter: { display: ChartDisplayType.ActionsLineGraph },
+                    },
+                    full: false,
+                    showLastComputation: true,
+                    showLastComputationRefresh: true,
+                }
+            },
+        ],
+
+        promptUsageLogQuery: [
+            (s) => [s.prompt, s.promptUsagePropertyFilter, s.analyticsScope],
+            (
+                prompt: PromptFormValues | ResolvedLLMPrompt | null,
+                promptUsagePropertyFilter: AnyPropertyFilter[],
+                analyticsScope: PromptAnalyticsScope
+            ): DataTableNode => {
+                void prompt
+                void analyticsScope
+
+                return {
+                    kind: NodeKind.DataTableNode,
+                    source: {
+                        kind: NodeKind.EventsQuery,
+                        event: PROMPT_FETCHED_EVENT,
+                        properties: promptUsagePropertyFilter,
+                        select: [
+                            ...defaultDataTableColumns(NodeKind.EventsQuery),
+                            'properties.prompt_name',
+                            'properties.prompt_version',
+                        ],
+                        after: DEFAULT_PROMPT_ANALYTICS_DATE_FROM,
+                    },
+                    full: false,
+                    showDateRange: true,
+                    showReload: true,
+                }
+            },
+        ],
+    }),
+
+    listeners(({ actions, asyncActions, props, values }) => ({
+        requestSetLabel: ({ labelName, version }) => {
+            const existing = values.promptLabels.find((label) => label.name === labelName)
+            if (existing?.version === version) {
+                return
+            }
+            if (existing) {
+                openMoveLabelDialog({
+                    labelName,
+                    fromVersion: existing.version,
+                    toVersion: version,
+                    onMove: () => asyncActions.setLabel(labelName, version),
+                })
+                return
+            }
+            // Creation confirms too: code may already fetch by this label (404 → SDK fallback),
+            // in which case creating it is the go-live moment.
+            openCreateLabelDialog({
+                labelName,
+                version,
+                onCreate: () => asyncActions.setLabel(labelName, version),
+            })
+        },
+
+        // Never throws: kea surfaces a throwing listener as an unhandled rejection. The awaited
+        // dialog button resolves either way; errors surface via toast.
+        setLabel: async ({ labelName, version }) => {
+            try {
+                const label = await llmPromptsNameLabelsUpdate(
+                    String(ApiConfig.getCurrentTeamId()),
+                    props.promptName,
+                    labelName,
+                    { version }
+                )
+                if (isPrompt(values.prompt)) {
+                    actions.setPrompt({
+                        ...values.prompt,
+                        labels: [...values.prompt.labels.filter((l) => l.name !== labelName), label],
+                    })
+                }
+                lemonToast.success(`${labelName} now points at v${version}`)
+                llmPromptsLogic.findMounted()?.actions.loadPrompts(false)
+            } catch (error) {
+                lemonToast.error(getApiErrorDetail(error) || 'Failed to set label')
+                if (error instanceof ApiError && error.status === 409) {
+                    // Lost a concurrent-write race; resync so badges show where the label actually is.
+                    actions.loadPrompt()
+                }
+            }
+        },
+
+        requestRemoveLabel: ({ labelName }) => {
+            const existing = values.promptLabels.find((label) => label.name === labelName)
+            if (!existing) {
+                return
+            }
+            openRemoveLabelDialog({
+                labelName,
+                version: existing.version,
+                onRemove: () => asyncActions.removeLabel(labelName),
+            })
+        },
+
+        removeLabel: async ({ labelName }) => {
+            try {
+                await llmPromptsNameLabelsDestroy(String(ApiConfig.getCurrentTeamId()), props.promptName, labelName)
+            } catch (error) {
+                // 404 means the label is already gone; reflect that locally like a success.
+                if (!(error instanceof ApiError && error.status === 404)) {
+                    lemonToast.error(getApiErrorDetail(error) || 'Failed to remove label')
+                    return
+                }
+            }
+            if (isPrompt(values.prompt)) {
+                actions.setPrompt({
+                    ...values.prompt,
+                    labels: values.prompt.labels.filter((l) => l.name !== labelName),
+                })
+            }
+            lemonToast.info(`Label ${labelName} removed`)
+            llmPromptsLogic.findMounted()?.actions.loadPrompts(false)
+        },
+
+        showConfigEditor: () => {
+            if (!values.promptForm.config.trim()) {
+                actions.setPromptFormValue('config', STARTER_PROMPT_CONFIG)
+            }
+        },
+
+        // Only clears the form: the stored config goes away when the version is published,
+        // and the review modal shows that as a config change first.
+        removeConfig: () => {
+            actions.setPromptFormValue('config', '')
+        },
+
+        requestPublish: () => {
+            // New prompts publish directly (v1, nothing to diff against); an empty form or
+            // invalid config goes through submit so kea-forms surfaces the validation errors.
+            if (
+                values.isNewPrompt ||
+                !values.promptForm.prompt?.trim() ||
+                parsePromptConfig(values.promptForm.config).error
+            ) {
+                actions.submitPromptForm()
+                return
+            }
+            actions.openPublishReview()
+        },
+
+        cancelEditing: () => {
+            const exitEditMode = (): void => {
+                if (values.isNewPrompt) {
+                    router.actions.push(
+                        combineUrl(
+                            urls.aiObservabilityPrompts(),
+                            stripPromptSceneSearchParams(router.values.searchParams)
+                        ).url
+                    )
+                    return
+                }
+                if (isPrompt(values.prompt)) {
+                    actions.setPromptFormValues(getPromptFormDefaults(values.prompt))
+                }
+                actions.setMode(PromptMode.View)
+            }
+
+            if (values.isPromptFormDirty) {
+                openDiscardChangesDialog(exitEditMode)
+            } else {
+                exitEditMode()
+            }
+        },
+
+        duplicatePrompt: async ({ sourceName, newName }) => {
+            await requestPromptDuplicate(sourceName, newName)
+        },
+
+        deletePrompt: async () => {
+            if (props.promptName !== 'new' && values.prompt && isPrompt(values.prompt)) {
+                try {
+                    await llmPromptsNameArchiveCreate(String(ApiConfig.getCurrentTeamId()), values.prompt.name)
+                    lemonToast.info(`${values.prompt.name || 'Prompt'} has been archived.`)
+                    llmPromptsLogic.findMounted()?.actions.loadPrompts(false)
+                    router.actions.replace(urls.aiObservabilityPrompts(), {
+                        ...stripPromptSceneSearchParams(router.values.searchParams),
+                        [LLM_PROMPTS_FORCE_RELOAD_PARAM]: String(Date.now()),
+                    })
+                } catch (error) {
+                    lemonToast.error(getApiErrorDetail(error) || 'Failed to archive prompt')
+                }
+            }
+        },
+
+        loadMoreVersions: async () => {
+            if (props.promptName === 'new' || !isPrompt(values.prompt)) {
+                actions.setVersionsLoading(false)
+                return
+            }
+
+            try {
+                const oldestLoadedVersion = values.prompt.versions[values.prompt.versions.length - 1]?.version
+                if (!oldestLoadedVersion) {
+                    actions.setVersionsLoading(false)
+                    return
+                }
+
+                const response = await fetchResolvedPrompt(props.promptName, {
+                    version: values.prompt.version,
+                    before_version: oldestLoadedVersion,
+                })
+
+                const existingVersionIds = new Set(values.prompt.versions.map((version) => version.id))
+                const appendedVersions = response.versions.filter((version) => !existingVersionIds.has(version.id))
+
+                actions.setPrompt({
+                    ...response,
+                    versions: [...values.prompt.versions, ...appendedVersions],
+                    has_more: response.has_more,
+                })
+            } catch {
+                lemonToast.error('Failed to load more versions')
+            } finally {
+                actions.setVersionsLoading(false)
+            }
+        },
+
+        loadPromptSuccess: ({ prompt }) => {
+            if (prompt && isPrompt(prompt)) {
+                actions.resetPromptForm()
+                actions.setPromptFormValues(getPromptFormDefaults(prompt))
+            }
+        },
+
+        setCompareVersion: ({ compareVersion }) => {
+            if (compareVersion !== null) {
+                actions.loadComparePrompt(compareVersion)
+            }
+        },
+
+        loadComparePromptFailure: () => {
+            lemonToast.error('Failed to load comparison version')
+        },
+    })),
+
+    defaults(
+        ({
+            props,
+        }): {
+            prompt: PromptFormValues | ResolvedLLMPrompt | null
+            promptForm: PromptFormValues
+            versionsLoading: boolean
+        } => {
+            if (props.promptName === 'new') {
+                return {
+                    prompt: DEFAULT_PROMPT_FORM_VALUES,
+                    promptForm: DEFAULT_PROMPT_FORM_VALUES,
+                    versionsLoading: false,
+                }
+            }
+
+            const existingPrompt = findExistingPrompt(props.promptName)
+
+            if (existingPrompt) {
+                return {
+                    prompt: { ...existingPrompt, versions: [], has_more: false, labels: [] },
+                    promptForm: getPromptFormDefaults(existingPrompt),
+                    versionsLoading: false,
+                }
+            }
+
+            return {
+                prompt: null,
+                promptForm: DEFAULT_PROMPT_FORM_VALUES,
+                versionsLoading: false,
+            }
+        }
+    ),
+
+    afterMount(({ actions, values, cache }) => {
+        if (values.isNewPrompt) {
+            actions.setPrompt(DEFAULT_PROMPT_FORM_VALUES)
+            actions.resetPromptForm(DEFAULT_PROMPT_FORM_VALUES)
+        } else {
+            actions.loadPrompt()
+        }
+
+        // pauseOnPageHidden: false — closing a background tab must still warn about unsaved edits.
+        cache.disposables.add(
+            () => {
+                const handler = (e: BeforeUnloadEvent): void => {
+                    if (values.isEditMode && values.isPromptFormDirty && !values.isPromptFormSubmitting) {
+                        e.preventDefault()
+                        // Some engines only show the native dialog when returnValue is set
+                        e.returnValue = ''
+                    }
+                }
+                window.addEventListener('beforeunload', handler)
+                return () => window.removeEventListener('beforeunload', handler)
+            },
+            'unsavedEditsGuard',
+            { pauseOnPageHidden: false }
+        )
+    }),
+
+    beforeUnmount(({ actions, props }) => {
+        if (props.promptName === 'new') {
+            actions.setPromptFormValues(DEFAULT_PROMPT_FORM_VALUES)
+            return
+        }
+
+        const existing = findExistingPrompt(props.promptName)
+        actions.setPromptFormValues(existing ? getPromptFormDefaults(existing) : DEFAULT_PROMPT_FORM_VALUES)
+    }),
+
+    actionToUrl(({ props }) => ({
+        // replace, not push: a push would re-trigger loadPrompt via urlToAction and
+        // its success handler would reset the form under the user's edits.
+        setMode: ({ mode }) => {
+            if (props.promptName === 'new') {
+                return undefined
+            }
+            const { edit: _edit, ...searchParams } = router.values.searchParams
+            return [
+                router.values.location.pathname,
+                mode === PromptMode.Edit ? { ...searchParams, edit: true } : searchParams,
+                router.values.hashParams,
+                { replace: true },
+            ]
+        },
+    })),
+
+    urlToAction(({ actions, values }) => ({
+        '/prompt-management/prompts/:name': (_, __, ___, { method }) => {
+            if (method === 'PUSH' && values.isNewPrompt) {
+                actions.setPrompt(DEFAULT_PROMPT_FORM_VALUES)
+                actions.resetPromptForm(DEFAULT_PROMPT_FORM_VALUES)
+                return
+            }
+
+            // POP included: back/forward between versions lands on the same logic
+            // instance, so the selected version must be re-resolved from the URL.
+            if ((method === 'PUSH' || method === 'POP') && !values.isNewPrompt) {
+                actions.loadPrompt()
+            }
+        },
+    })),
+])
+
+function getSelectedVersionFromUrl(): number | undefined {
+    const raw = router.values.searchParams?.version
+    return raw ? Number(raw) || undefined : undefined
+}
+
+function getPromptFormDefaults(prompt: LLMPrompt): PromptFormValues {
+    return {
+        name: prompt.name,
+        prompt: prompt.prompt,
+        config: formatPromptConfig(prompt.config),
+    }
+}
+
+function findExistingPrompt(promptName: string): LLMPrompt | undefined {
+    return llmPromptsLogic.findMounted()?.values.prompts.results.find((prompt) => prompt.name === promptName)
+}

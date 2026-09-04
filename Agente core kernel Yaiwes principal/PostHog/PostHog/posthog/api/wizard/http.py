@@ -1,0 +1,683 @@
+from __future__ import annotations
+
+import json
+import time
+import hashlib
+from typing import NoReturn, cast
+
+from django.conf import settings
+from django.core.cache import cache
+from django.utils.crypto import get_random_string
+
+import posthoganalytics
+from drf_spectacular.utils import extend_schema
+from google.genai.types import GenerateContentConfig, Schema
+from openai.types.chat import (
+    ChatCompletionMessageParam,
+    ChatCompletionSystemMessageParam,
+    ChatCompletionUserMessageParam,
+)
+from posthoganalytics.ai.gemini import genai
+from posthoganalytics.ai.openai import OpenAI
+from prometheus_client import Counter
+from rest_framework import exceptions, response, serializers, status, viewsets
+from rest_framework.decorators import action
+from rest_framework.exceptions import AuthenticationFailed
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.request import Request
+from rest_framework.response import Response
+
+from posthog.api.wizard.utils import json_schema_to_gemini_schema
+from posthog.auth import OAuthAccessTokenAuthentication, SessionAuthentication
+from posthog.cloud_utils import get_api_host
+from posthog.exceptions_capture import capture_exception
+from posthog.llm.wizard_gateway_token import (
+    WizardGatewayMintError,
+    mint_wizard_gateway_token,
+    wizard_gateway_base_url,
+    wizard_gateway_configured,
+    wizard_product_node,
+)
+from posthog.models import Team, User
+from posthog.models.project import Project
+from posthog.permissions import APIScopePermission
+from posthog.rate_limit import (
+    SetupWizardAuthenticationRateThrottle,
+    SetupWizardCloudRunBurstRateThrottle,
+    SetupWizardCloudRunSustainedRateThrottle,
+    SetupWizardGatewayTokenRateThrottle,
+    SetupWizardQueryRateThrottle,
+    refund_wizard_mint,
+    reserve_wizard_mint,
+)
+from posthog.storage.gateway_credential_cache import (
+    GATEWAY_CREDENTIAL_REQUIRED_SCOPE as RequiredGatewayScope,
+    oauth_credential_authorized,
+)
+from posthog.user_permissions import UserPermissions
+
+from products.tasks.backend.facade import api as tasks_facade
+
+SETUP_WIZARD_CACHE_PREFIX = "setup-wizard:v1:"
+SETUP_WIZARD_CACHE_TIMEOUT = 600
+SETUP_WIZARD_DEFAULT_MODEL = "gpt-5-mini"
+
+ERROR_GEMINI_API_KEY_NOT_CONFIGURED = "GEMINI_API_KEY is not configured"
+ERROR_INVALID_GEMINI_RESPONSE = "Invalid response from Gemini"
+ERROR_INVALID_OPENAI_JSON = "Invalid JSON response from OpenAI"
+ERROR_PROJECT_NOT_FOUND = "This project does not exist."
+
+OPENAI_SUPPORTED_MODELS = {"o4-mini", "gpt-5-mini", "gpt-5-nano", "gpt-5"}
+
+# Absolute ceiling on sandbox boots per user per day, reserved atomically right before run
+# creation. The DB-counted throttles above the view are read-then-create and can be raced by
+# parallel requests; this cache.incr cannot, so it is the hard bound a start-cancel or crash
+# loop lands on. Only requests that reach creation consume it.
+WIZARD_CLOUD_RUN_DAILY_ATTEMPT_CAP = 15
+
+WIZARD_GATEWAY_TOKEN_REQUESTS_TOTAL = Counter(
+    "posthog_wizard_gateway_token_requests_total",
+    "Wizard gateway-token mint requests, by outcome (minted/unconfigured/not_wizard_app/"
+    "scope_missing/team_ambiguous/team_missing/unauthorized/program_unknown/not_rolled_out/"
+    "mint_failed)",
+    labelnames=["outcome"],
+)
+
+WIZARD_CLOUD_RUN_REQUESTS_TOTAL = Counter(
+    "posthog_wizard_cloud_run_requests_total",
+    "Cloud-run wizard kickoff requests, by outcome (created/unavailable/invalid/permission_denied/throttled)",
+    labelnames=["outcome"],
+)
+
+# Supported Gemini models
+GEMINI_SUPPORTED_MODELS = {
+    "gemini-2.5-flash",
+    "gemini-2.5-pro",
+}
+
+ALL_SUPPORTED_MODELS = OPENAI_SUPPORTED_MODELS | GEMINI_SUPPORTED_MODELS
+
+MODEL_SEED = 7678464
+
+
+class SetupWizardSerializer(serializers.Serializer):
+    hash = serializers.CharField()
+
+    def to_representation(self, instance: str) -> dict[str, str]:
+        return {"hash": instance}
+
+    def create(self, validated_data: dict[str, str] | None = None) -> dict[str, str]:
+        hash = get_random_string(64, allowed_chars="abcdefghijklmnopqrstuvwxyz0123456789")
+        key = f"{SETUP_WIZARD_CACHE_PREFIX}{hash}"
+
+        cache.set(key, {"project_api_key": None, "host": None}, SETUP_WIZARD_CACHE_TIMEOUT)
+
+        return {"hash": hash}
+
+
+class SetupWizardQuerySerializer(serializers.Serializer):
+    message = serializers.CharField()
+    json_schema = serializers.JSONField()
+    model = serializers.CharField(default=SETUP_WIZARD_DEFAULT_MODEL)
+
+    def validate_model(self, value):
+        """Validate that the model is supported"""
+        if value not in ALL_SUPPORTED_MODELS:
+            raise serializers.ValidationError(
+                f"Model '{value}' is not supported. Supported models: {ALL_SUPPORTED_MODELS}"
+            )
+        return value
+
+
+class SetupWizardCloudRunSerializer(serializers.Serializer):
+    project_id = serializers.IntegerField(
+        help_text="ID of the PostHog project to integrate PostHog into. The authenticated user must have access to it."
+    )
+    repository = serializers.CharField(
+        help_text=(
+            "GitHub repository to set up PostHog in, as 'owner/repo' (e.g. 'posthog/posthog-js'). The user "
+            "must have a connected GitHub integration with access to it."
+        )
+    )
+    branch = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        help_text="Base branch the wizard's pull request should target. Defaults to the repository's default branch.",
+    )
+
+    def validate_repository(self, value: str) -> str:
+        repository = value.strip()
+        parts = repository.split("/")
+        if len(parts) != 2 or not all(parts):
+            raise serializers.ValidationError("Repository must be in 'owner/repo' format.")
+        return repository
+
+
+class SetupWizardCloudRunResponseSerializer(serializers.Serializer):
+    task_id = serializers.CharField(
+        help_text="ID of the created task. Poll the tasks API for its status and the resulting pull request URL."
+    )
+    run_id = serializers.CharField(help_text="ID of the task's run.")
+    status = serializers.CharField(help_text="Initial status of the run (e.g. 'queued').")
+
+
+class SetupWizardViewSet(viewsets.ViewSet):
+    permission_classes = ()
+    lookup_field = "hash"
+    lookup_url_kwarg = "hash"
+
+    def dangerously_get_permissions(self):
+        # API Level permissions are only required during the authentication step.
+        # For all other actions we use a cache key to authenticate.
+        if self.action == "authenticate":
+            return [IsAuthenticated(), APIScopePermission()]
+
+        raise NotImplementedError()
+
+    def dangerously_get_required_scopes(self):
+        if self.action == "authenticate":
+            return ["project:read"]
+
+        return []
+
+    def throttled(self, request: Request, wait: float) -> NoReturn:
+        # A rejection from DRF's own throttle check returns before the action body, so
+        # it counts here. A reservation that raises inside a body counts there instead.
+        if self.action == "cloud_run":
+            WIZARD_CLOUD_RUN_REQUESTS_TOTAL.labels(outcome="throttled").inc()
+        if self.action == "gateway_token":
+            WIZARD_GATEWAY_TOKEN_REQUESTS_TOTAL.labels(outcome="throttled").inc()
+        super().throttled(request, wait)
+
+    @action(methods=["POST"], detail=False, url_path="initialize")
+    def initialize(self, request: Request) -> Response:
+        """
+        This endpoint is used to initialize the setup wizard. It creates a unique hash for the user to authenticate themselves.
+        """
+
+        serializer = SetupWizardSerializer()
+
+        return Response(serializer.create())
+
+    @action(methods=["GET"], detail=False, url_path="data")
+    def data(self, request: Request, hash=None) -> Response:
+        """
+        This endpoint is used to get the data for the setup wizard to use.
+        """
+
+        hash = request.headers.get("X-PostHog-Wizard-Hash")
+
+        if not hash:
+            raise AuthenticationFailed("X-PostHog-Wizard-Hash header is required.")
+
+        key = f"{SETUP_WIZARD_CACHE_PREFIX}{hash}"
+
+        wizard_data = cache.get(key)
+
+        if wizard_data is None:
+            return Response(status=404, data={"error": "Invalid hash."})
+
+        if not wizard_data.get("project_api_key") or not wizard_data.get("host"):
+            return Response(status=400, data={"error": "Setup wizard not authenticated. Please login first"})
+
+        return Response(wizard_data)
+
+    @action(methods=["POST"], detail=False, url_path="query", throttle_classes=[SetupWizardQueryRateThrottle])
+    def query(self, request: Request) -> Response:
+        """
+        This endpoint acts as a proxy for the setup wizard when making AI calls.
+        """
+
+        from django.conf import settings
+
+        serializer = SetupWizardQuerySerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=400)
+
+        validated_data = serializer.validated_data
+        message = validated_data["message"]
+        json_schema = validated_data["json_schema"]
+        model = validated_data["model"]
+
+        hash = request.headers.get("X-PostHog-Wizard-Hash")
+        fixture_generation = request.headers.get("X-PostHog-Wizard-Fixture-Generation")
+        trace_id = None
+
+        if hash:
+            key = f"{SETUP_WIZARD_CACHE_PREFIX}{hash}"
+            wizard_data = cache.get(key)
+
+            # wizard_data should only be mocked during the @posthog/wizard E2E tests, so that fixtures can be generated.
+            mock_wizard_data = settings.DEBUG and fixture_generation
+
+            if mock_wizard_data:
+                wizard_data = {
+                    "project_api_key": "mock-project-api-key",
+                    "host": "http://localhost:8010",
+                    "user_distinct_id": "mock-user-id",
+                    "team_id": 1,
+                }
+                cache.set(key, wizard_data, SETUP_WIZARD_CACHE_TIMEOUT)
+
+            if wizard_data is None:
+                raise AuthenticationFailed("Invalid hash.")
+
+            if not wizard_data.get("project_api_key") or not wizard_data.get("host"):
+                raise AuthenticationFailed("Setup wizard not authenticated. Please login first")
+
+            distinct_id = wizard_data.get("user_distinct_id")
+            team_id = wizard_data.get("team_id")
+
+            trace_id = trace_id or hashlib.sha256(hash.encode()).hexdigest()
+
+        else:
+            authenticator = OAuthAccessTokenAuthentication()
+            result = authenticator.authenticate(request)
+
+            if not result:
+                raise AuthenticationFailed("Invalid access token.")
+
+            user, _ = result
+
+            if not user:
+                raise AuthenticationFailed("Invalid access token.")
+
+            distinct_id = user.distinct_id
+            scoped_team_ids = authenticator.access_token.scoped_teams or []
+            team_id = scoped_team_ids[0] if len(scoped_team_ids) == 1 else None
+
+            trace_id = request.headers.get("X-PostHog-Trace-Id") or hashlib.sha256(distinct_id.encode()).hexdigest()
+
+        posthog_client = posthoganalytics.default_client
+
+        if not posthog_client:
+            raise exceptions.ValidationError("PostHog client not found")
+
+        system_prompt = (
+            "You are a PostHog setup wizard. Only answer messages about setting up PostHog and nothing else."
+        )
+
+        if model in GEMINI_SUPPORTED_MODELS:
+            api_key = settings.GEMINI_API_KEY
+            if not api_key:
+                error = exceptions.ValidationError(ERROR_GEMINI_API_KEY_NOT_CONFIGURED)
+                capture_exception(
+                    error,
+                    {
+                        "model": model,
+                        "ai_product": "wizard",
+                    },
+                )
+                raise error
+
+            client = genai.Client(api_key=api_key, posthog_client=posthog_client)
+
+            converted_schema = json_schema_to_gemini_schema(json_schema)
+
+            response_schema = Schema(**converted_schema)
+
+            config = GenerateContentConfig(
+                system_instruction=system_prompt,
+                temperature=0,
+                seed=MODEL_SEED,
+                response_mime_type="application/json",
+                response_schema=response_schema,
+            )
+
+            response = client.models.generate_content(
+                model=model,
+                contents=message,
+                config=config,
+                posthog_distinct_id=distinct_id,
+                posthog_trace_id=trace_id,
+                posthog_properties={
+                    "ai_product": "wizard",
+                    "ai_feature": "query",
+                    "team_id": team_id,
+                },
+            )
+
+            if not response.parsed:
+                error = exceptions.ValidationError(ERROR_INVALID_GEMINI_RESPONSE)
+                capture_exception(
+                    error,
+                    {
+                        "model": model,
+                        "ai_product": "wizard",
+                        "trace_id": trace_id,
+                        "distinct_id": distinct_id,
+                    },
+                )
+                raise error
+
+            response_data = response.parsed
+
+        elif model in OPENAI_SUPPORTED_MODELS:
+            system_message = ChatCompletionSystemMessageParam(
+                role="system",
+                content=system_prompt,
+            )
+
+            user_message = ChatCompletionUserMessageParam(role="user", content=message)
+
+            messages: list[ChatCompletionMessageParam] = [system_message, user_message]
+
+            openai = OpenAI(posthog_client=posthog_client, base_url=settings.OPENAI_BASE_URL)
+
+            result = openai.chat.completions.create(
+                model=model,
+                seed=MODEL_SEED,
+                messages=messages,
+                response_format={"type": "json_schema", "json_schema": json_schema},
+                posthog_distinct_id=distinct_id,
+                posthog_trace_id=trace_id,
+                posthog_properties={
+                    "ai_product": "wizard",
+                    "ai_feature": "query",
+                    "team_id": team_id,
+                },
+                temperature=1.0,
+            )
+
+            if (
+                not result.choices
+                or len(result.choices) == 0
+                or not result.choices[0].message
+                or not result.choices[0].message.content
+            ):
+                raise exceptions.ValidationError(ERROR_INVALID_OPENAI_JSON)
+
+            try:
+                response_data = json.loads(result.choices[0].message.content)
+            except json.JSONDecodeError as e:
+                capture_exception(
+                    e,
+                    {
+                        "model": model,
+                        "ai_product": "wizard",
+                        "trace_id": trace_id,
+                        "distinct_id": distinct_id,
+                        "response_content": result.choices[0].message.content[:500]
+                        if result.choices[0].message.content
+                        else None,
+                    },
+                )
+                raise exceptions.ValidationError(ERROR_INVALID_OPENAI_JSON)
+
+        else:
+            raise exceptions.ValidationError(f"Model '{model}' is not supported.")
+
+        return Response({"data": response_data})
+
+    @action(
+        methods=["POST"],
+        detail=False,
+        url_path="gateway_token",
+        throttle_classes=[SetupWizardGatewayTokenRateThrottle],
+    )
+    def gateway_token(self, request: Request) -> Response:
+        """Mint a scoped gateway token for a wizard run.
+
+        The CLI uses the returned phe_ (pinned product=wizard / obo=<customer org>,
+        capped, expiring) as its gateway bearer and re-calls near expiry. It treats
+        a 404 as "stay on the legacy gateway", so rollout is controlled here rather
+        than by a CLI release. Every other failure fails the run.
+        """
+        if not wizard_gateway_configured():
+            WIZARD_GATEWAY_TOKEN_REQUESTS_TOTAL.labels(outcome="unconfigured").inc()
+            raise exceptions.NotFound("Wizard gateway tokens are not available.")
+
+        authenticator = OAuthAccessTokenAuthentication()
+        # authenticate() raises its own AuthenticationFailed, so the count wraps the
+        # call rather than only the two checks below.
+        try:
+            result = authenticator.authenticate(request)
+            if not result:
+                raise AuthenticationFailed("Invalid access token.")
+            user, _ = result
+            if not user:
+                raise AuthenticationFailed("Invalid access token.")
+        except AuthenticationFailed:
+            WIZARD_GATEWAY_TOKEN_REQUESTS_TOTAL.labels(outcome="invalid_token").inc()
+            raise
+
+        access_token = authenticator.access_token
+        # llm_gateway:read is on every sandbox and agent token, so the scope alone
+        # cannot identify the wizard.
+        application = getattr(access_token, "application", None)
+        client_id = getattr(application, "client_id", None)
+        if not client_id or client_id not in settings.WIZARD_GATEWAY_CLIENT_IDS:
+            WIZARD_GATEWAY_TOKEN_REQUESTS_TOTAL.labels(outcome="not_wizard_app").inc()
+            raise AuthenticationFailed("Access token was not issued to the wizard.")
+
+        # The token's own scope text: the `scopes` property filters through
+        # OAUTH2_PROVIDER["SCOPES"], where a narrowing would silently drop the scope.
+        if RequiredGatewayScope not in (access_token.scope or "").split():
+            WIZARD_GATEWAY_TOKEN_REQUESTS_TOTAL.labels(outcome="scope_missing").inc()
+            raise AuthenticationFailed("Access token lacks the gateway scope.")
+
+        scoped_team_ids = access_token.scoped_teams or []
+        if len(scoped_team_ids) != 1:
+            WIZARD_GATEWAY_TOKEN_REQUESTS_TOTAL.labels(outcome="team_ambiguous").inc()
+            raise exceptions.ValidationError("Access token must be scoped to exactly one team.")
+        team = Team.objects.select_related("organization").filter(id=scoped_team_ids[0]).first()
+        if team is None:
+            # Deliberately 403: a 404 would read as "not rolled out" and downgrade
+            # the run to legacy, but a vanished team is an authorization failure.
+            WIZARD_GATEWAY_TOKEN_REQUESTS_TOTAL.labels(outcome="team_missing").inc()
+            raise exceptions.PermissionDenied(ERROR_PROJECT_NOT_FOUND)
+
+        # scoped_teams is frozen at consent, so re-check what it cannot see.
+        if not oauth_credential_authorized(access_token, team):
+            WIZARD_GATEWAY_TOKEN_REQUESTS_TOTAL.labels(outcome="unauthorized").inc()
+            raise exceptions.PermissionDenied("Access token is no longer authorized for this project.")
+
+        distinct_id = str(user.distinct_id)
+        if not posthoganalytics.feature_enabled(
+            "wizard-gateway-v2",
+            distinct_id,
+            groups={"organization": str(team.organization_id), "project": str(team.id)},
+            group_properties={"organization": {"id": str(team.organization_id)}},
+            only_evaluate_locally=False,
+            send_feature_flag_events=False,
+        ):
+            WIZARD_GATEWAY_TOKEN_REQUESTS_TOTAL.labels(outcome="not_rolled_out").inc()
+            raise exceptions.NotFound("Wizard gateway tokens are not rolled out for this organization.")
+
+        # Refusing keeps every pinned node one that carries a budget.
+        product = wizard_product_node(request.data.get("program") if isinstance(request.data, dict) else None)
+        if product is None:
+            # 404 and not 400: the CLI falls back only on 404, so an unlisted
+            # program keeps running on legacy instead of dying. It still cannot mint.
+            WIZARD_GATEWAY_TOKEN_REQUESTS_TOTAL.labels(outcome="program_unknown").inc()
+            raise exceptions.NotFound("Unrecognized wizard program.")
+        try:
+            reserved = reserve_wizard_mint(request, self)
+        except exceptions.Throttled:
+            # The reservation raises after check_throttles ran, so the throttled()
+            # hook never sees it.
+            WIZARD_GATEWAY_TOKEN_REQUESTS_TOTAL.labels(outcome="throttled").inc()
+            raise
+        try:
+            minted = mint_wizard_gateway_token(obo=str(team.organization_id), user=distinct_id, product=product)
+        except WizardGatewayMintError as e:
+            # An ambiguous failure keeps the slot rather than risk the ceiling.
+            if not e.token_may_exist:
+                refund_wizard_mint(reserved)
+            WIZARD_GATEWAY_TOKEN_REQUESTS_TOTAL.labels(outcome="mint_failed").inc()
+            capture_exception(e, {"ai_product": "wizard", "team_id": team.id})
+            return Response({"error": "Gateway token mint failed."}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        WIZARD_GATEWAY_TOKEN_REQUESTS_TOTAL.labels(outcome="minted").inc()
+        return Response(
+            {
+                "token": minted["token"],
+                "expires_at": minted["expires_at"],
+                "cap_usd": minted.get("cap_usd"),
+                "gateway_url": wizard_gateway_base_url(),
+                # Keeps a team breakdown beside the org-level obo attribution.
+                "team_id": team.id,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(
+        methods=["POST"],
+        url_path="authenticate",
+        detail=False,
+        throttle_classes=[SetupWizardAuthenticationRateThrottle],
+    )
+    def authenticate(self, request, **kwargs):
+        hash = request.data.get("hash")
+        project_id = request.data.get("projectId")
+
+        if not hash:
+            raise serializers.ValidationError({"hash": ["This field is required."]}, code="required")
+
+        if not project_id:
+            raise serializers.ValidationError({"projectId": ["This field is required."]}, code="required")
+
+        cache_key = f"{SETUP_WIZARD_CACHE_PREFIX}{hash}"
+        wizard_data = cache.get(cache_key)
+
+        if wizard_data is None:
+            raise serializers.ValidationError({"hash": ["This hash is invalid or has expired."]}, code="invalid_hash")
+
+        try:
+            # nosemgrep: idor-lookup-without-org, idor-taint-user-input-to-org-model (permission check after lookup)
+            project = Project.objects.get(id=project_id)
+
+            # Verify user has access to this project
+            visible_project_ids = UserPermissions(request.user).project_ids_visible_for_user
+            if project.id not in visible_project_ids:
+                raise serializers.ValidationError(
+                    {"projectId": ["You don't have access to this project."]}, code="permission_denied"
+                )
+
+            project_api_token = project.passthrough_team.api_token
+            team_id = project.passthrough_team.id
+        except Project.DoesNotExist as e:
+            capture_exception(
+                e,
+                {
+                    "project_id": project_id,
+                    "user_id": request.user.id if request.user else None,
+                    "user_distinct_id": request.user.distinct_id if request.user else None,
+                    "ai_product": "wizard",
+                },
+            )
+            raise serializers.ValidationError({"projectId": [ERROR_PROJECT_NOT_FOUND]}, code="not_found")
+
+        wizard_data = {
+            "project_api_key": project_api_token,
+            "host": get_api_host(),
+            "user_distinct_id": request.user.distinct_id,
+            "team_id": team_id,
+        }
+
+        cache.set(cache_key, wizard_data, SETUP_WIZARD_CACHE_TIMEOUT)
+
+        return response.Response({"success": True}, status=200)
+
+    @extend_schema(
+        request=SetupWizardCloudRunSerializer,
+        responses={200: SetupWizardCloudRunResponseSerializer},
+    )
+    @action(
+        methods=["POST"],
+        detail=False,
+        url_path="cloud_run",
+        authentication_classes=[SessionAuthentication],
+        permission_classes=[IsAuthenticated],
+        throttle_classes=[
+            SetupWizardCloudRunBurstRateThrottle,
+            SetupWizardCloudRunSustainedRateThrottle,
+        ],
+    )
+    def cloud_run(self, request: Request) -> Response:
+        """Run the PostHog setup wizard in the cloud against the user's GitHub repository.
+
+        Provisions a task-run sandbox that runs the published wizard headlessly to integrate PostHog,
+        then hands off to the task agent to open the pull request and keep it green. The wizard
+        authenticates with a dedicated, scoped token minted under the wizard's own OAuth app — distinct
+        from the agent's sandbox token. This is the cloud alternative to copy-pasting the wizard command
+        to run locally; it is intentionally rate limited heavily because each run starts a sandbox.
+        """
+        try:
+            response = self._cloud_run(request)
+        except exceptions.NotFound:
+            WIZARD_CLOUD_RUN_REQUESTS_TOTAL.labels(outcome="unavailable").inc()
+            raise
+        except exceptions.PermissionDenied:
+            WIZARD_CLOUD_RUN_REQUESTS_TOTAL.labels(outcome="permission_denied").inc()
+            raise
+        except exceptions.ValidationError:
+            WIZARD_CLOUD_RUN_REQUESTS_TOTAL.labels(outcome="invalid").inc()
+            raise
+        except exceptions.Throttled:
+            # The atomic attempt reservation inside _cloud_run raises after check_throttles
+            # ran, so the throttled() hook below never sees it.
+            WIZARD_CLOUD_RUN_REQUESTS_TOTAL.labels(outcome="throttled").inc()
+            raise
+        WIZARD_CLOUD_RUN_REQUESTS_TOTAL.labels(outcome="created").inc()
+        return response
+
+    @staticmethod
+    def _reserve_cloud_run_attempt(user_id: int) -> None:
+        """Atomically consume one of the user's daily cloud-run attempts or raise Throttled.
+
+        Runs after validation and project access checks, immediately before run creation, so
+        rejected requests never consume the budget — while parallel requests cannot all slip
+        under the ceiling the way they can with the read-then-create DB throttles.
+        """
+        window = int(time.time()) // 86400
+        key = f"wizard_cloud_run_attempts:{user_id}:{window}"
+        cache.add(key, 0, timeout=86400)
+        try:
+            count = cache.incr(key)
+        except ValueError:
+            # The key expired between add and incr; this request is the window's first.
+            count = 1
+        if count > WIZARD_CLOUD_RUN_DAILY_ATTEMPT_CAP:
+            raise exceptions.Throttled(detail="You've reached today's limit for cloud setup runs. Try again tomorrow.")
+
+    def _cloud_run(self, request: Request) -> Response:
+        if not bool(settings.WIZARD_CLOUD_RUN_OAUTH_CLIENT_ID):
+            raise exceptions.NotFound("Running the setup wizard in the cloud is not available.")
+
+        serializer = SetupWizardCloudRunSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        project_id = serializer.validated_data["project_id"]
+        repository = serializer.validated_data["repository"]
+        branch = serializer.validated_data.get("branch") or None
+
+        visible_project_ids = UserPermissions(cast(User, request.user)).project_ids_visible_for_user
+        try:
+            # nosemgrep: idor-lookup-without-org, idor-taint-user-input-to-org-model (permission check below)
+            project = Project.objects.get(id=project_id)
+        except Project.DoesNotExist:
+            raise serializers.ValidationError({"project_id": [ERROR_PROJECT_NOT_FOUND]}, code="not_found")
+        if project.id not in visible_project_ids:
+            raise exceptions.PermissionDenied("You don't have access to this project.")
+
+        self._reserve_cloud_run_attempt(cast(User, request.user).id)
+
+        try:
+            result = tasks_facade.create_wizard_cloud_run(
+                team=project.passthrough_team,
+                user_id=cast(User, request.user).id,
+                repository=repository,
+                branch=branch,
+            )
+        except ValueError as e:
+            # e.g. the team/user has no GitHub integration with access to the repository.
+            raise exceptions.ValidationError(str(e))
+
+        latest_run = result.latest_run
+        return Response(
+            {
+                "task_id": str(result.task_id),
+                "run_id": str(latest_run.id) if latest_run else "",
+                "status": latest_run.status if latest_run else "queued",
+            }
+        )

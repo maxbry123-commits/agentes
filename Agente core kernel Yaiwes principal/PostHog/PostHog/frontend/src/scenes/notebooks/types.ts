@@ -1,0 +1,186 @@
+import { LemonButtonProps } from '@posthog/lemon-ui'
+
+import { JSONContent, RichContentNode, RichContentNodeType } from 'lib/components/RichContentEditor/types'
+
+import { UserBasicType, WithAccessControl } from '~/types'
+
+import type { NotebookNodeLogicProps } from './Nodes/notebookNodeLogic'
+
+export type NotebookListItemType = {
+    id: string
+    short_id: string
+    title?: string
+    is_template?: boolean
+    created_at: string
+    created_by: UserBasicType | null
+    last_modified_at?: string
+    last_modified_by?: UserBasicType | null
+    _create_in_folder?: string
+}
+
+export type NotebookVariableApi = {
+    name: string
+    type: string
+    value?: unknown
+}
+
+export type NotebookParentResource = {
+    type: 'account'
+    id: string
+}
+
+export type NotebookType = NotebookListItemType &
+    WithAccessControl & {
+        content: JSONContent | null
+        version: number
+        // used to power text-based search
+        text_content?: string | null
+        // null when the notebook is standalone; set when it belongs to a resource (e.g. an
+        // account note) so the scene can route breadcrumbs back to that resource's list
+        parent_resource?: NotebookParentResource | null
+        // Notebook-level variables a SQL cell reads as `{name}` and a Python cell as a global.
+        // A notebook property rather than document content, so editing prose cannot delete it.
+        variables?: NotebookVariableApi[] | null
+    }
+
+export enum NotebookNodeType {
+    Mention = RichContentNodeType.Mention,
+    MarkdownNotebook = 'ph-markdown-notebook',
+    Query = 'ph-query',
+    Dashboard = 'ph-dashboard-widget',
+    Action = 'ph-action',
+    Workflow = 'ph-workflow',
+    Python = 'ph-python',
+    // The revamped Python cell: runs in the notebook's sandbox kernel via the SQLV2 run
+    // path, unlike the legacy ph-python node's in-browser kernel.
+    PythonV2 = 'ph-python-v2',
+    DuckSQL = 'ph-duck-sql',
+    HogQLSQL = 'ph-hogql-sql',
+    SQLV2 = 'ph-sql-v2',
+    Recording = 'ph-recording',
+    RecordingPlaylist = 'ph-recording-playlist',
+    FeatureFlag = 'ph-feature-flag',
+    FeatureFlagCodeExample = 'ph-feature-flag-code-example',
+    Experiment = 'ph-experiment',
+    EarlyAccessFeature = 'ph-early-access-feature',
+    Survey = 'ph-survey',
+    Person = 'ph-person',
+    Group = 'ph-group',
+    Cohort = 'ph-cohort',
+    Backlink = 'ph-backlink',
+    ReplayTimestamp = 'ph-replay-timestamp',
+    Image = 'ph-image',
+    PersonFeed = 'ph-person-feed',
+    PersonProperties = 'ph-person-properties',
+    GroupProperties = 'ph-group-properties',
+    Map = 'ph-map',
+    Embed = 'ph-embed',
+    Latex = 'ph-latex',
+    TaskCreate = 'ph-task-create',
+    LLMTrace = 'ph-llm-trace',
+    Issues = 'ph-issues',
+    ErrorTrackingIssue = 'ph-error-tracking-issue',
+    UsageMetrics = 'ph-usage-metrics',
+    ZendeskTickets = 'ph-zendesk-tickets',
+    RelatedGroups = 'ph-related-groups',
+    CustomerJourney = 'ph-customer-journey',
+    SupportTickets = 'ph-support-tickets',
+}
+
+export type NotebookNodeResource = {
+    attrs: Record<string, any>
+    type: NotebookNodeType
+}
+
+export type NotebookNodeSettingsPlacement = 'inline' | 'left'
+
+export enum NotebookTarget {
+    Popover = 'popover',
+    Scene = 'scene',
+}
+
+export type NotebookSyncStatus = 'synced' | 'saving' | 'unsaved' | 'local'
+
+export type NotebookPopoverVisibility = 'hidden' | 'visible' | 'peek'
+
+export type CustomNotebookNodeAttributes = Record<string, any>
+
+export type NotebookNodeAttributeConfig = {
+    default?: unknown
+}
+
+export type PostHogWidgetView<T extends CustomNotebookNodeAttributes> = {
+    label: string
+    description?: string
+    Component: (props: NotebookNodeProps<T>) => JSX.Element | null
+}
+
+export type PostHogWidgetViews<T extends CustomNotebookNodeAttributes> = Record<string, PostHogWidgetView<T>>
+
+export type PostHogWidgetDefaultView = {
+    key: string
+    label: string
+    description?: string
+}
+
+export type CreatePostHogWidgetNodeOptions<T extends CustomNotebookNodeAttributes> = Omit<
+    NodeWrapperProps<T>,
+    'updateAttributes'
+> & {
+    Component: (props: NotebookNodeProps<T>) => JSX.Element | null
+    ToolbarComponent?: (props: NotebookNodeProps<T>) => JSX.Element | null
+    attributes: Record<keyof T, NotebookNodeAttributeConfig>
+    serializedText?: (attributes: NotebookNodeAttributes<T>) => string
+    defaultView?: PostHogWidgetDefaultView
+    views?: PostHogWidgetViews<T>
+}
+
+export type NodeWrapperProps<T extends CustomNotebookNodeAttributes> = Omit<NotebookNodeLogicProps, 'notebookLogic'> &
+    NotebookNodeProps<T> & {
+        Component: (props: NotebookNodeProps<T>) => JSX.Element | null
+
+        // View only props
+        href?: string | ((attributes: NotebookNodeAttributes<T>) => string | undefined)
+        expandable?: boolean
+        selected?: boolean
+        heightEstimate?: number | string
+        minHeight?: number | string
+        /** If true the metadata area will only show when hovered if in editing mode */
+        autoHideMetadata?: boolean
+        /** Expand the node if the component is clicked */
+        expandOnClick?: boolean
+        settingsPlacement?: NotebookNodeSettingsPlacement
+        defaultView?: PostHogWidgetDefaultView
+        views?: PostHogWidgetViews<T>
+    }
+
+export type NotebookNodeAttributes<T extends CustomNotebookNodeAttributes> = T & {
+    nodeId: string
+    height?: string | number
+    title?: string
+    __init?: {
+        expanded?: boolean
+        showSettings?: boolean
+    }
+    // TODO: Type this more specifically to be our supported nodes only
+    children?: NotebookNodeResource[]
+}
+
+// NOTE: Pushes users to use the parsed "attributes" instead
+export type NotebookNode = Omit<RichContentNode, 'attrs'>
+
+export type NotebookNodeAttributeProperties<T extends CustomNotebookNodeAttributes> = {
+    attributes: NotebookNodeAttributes<T>
+    updateAttributes: (attributes: Partial<NotebookNodeAttributes<T>>) => void
+}
+
+export type NotebookNodeProps<T extends CustomNotebookNodeAttributes> = NotebookNodeAttributeProperties<T>
+
+export type NotebookNodeSettings =
+    // using 'any' here shouldn't be necessary but, I couldn't figure out how to set a generic on the notebookNodeLogic props
+    (({ attributes, updateAttributes }: NotebookNodeAttributeProperties<any>) => JSX.Element) | null
+
+export type NotebookNodeAction = Pick<LemonButtonProps, 'disabledReason' | 'icon'> & {
+    text: string
+    onClick: () => void
+}

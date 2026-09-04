@@ -1,0 +1,150 @@
+import clsx from 'clsx'
+import { useActions, useValues } from 'kea'
+import { ComponentProps, CSSProperties, useId } from 'react'
+
+import { IconPencil, IconPlus } from '@posthog/icons'
+import { LemonInputSelect, LemonTag, LemonTagType } from '@posthog/lemon-ui'
+
+import { objectTagsLogic } from 'lib/components/ObjectTags/objectTagsLogic'
+import { colorForString } from 'lib/utils/colors'
+
+interface ObjectTagsPropsBase {
+    tags: string[]
+    saving?: boolean
+    style?: CSSProperties
+    id?: string
+    className?: string
+    actionButtonSize?: ComponentProps<typeof LemonTag>['size']
+    'data-attr'?: string
+    /** Label for the action button when there are no tags yet. Defaults to "Add tag". */
+    addLabel?: string
+    /** Label for the action button when tags already exist. Defaults to "Edit tags". */
+    editLabel?: string
+    /** Placeholder for the input shown while editing. Defaults to `try "official"`. */
+    inputPlaceholder?: string
+    /** Makes each displayed tag clickable, e.g. to filter by it. */
+    onTagClick?: (tag: string) => void
+    /**
+     * Let a long tag wrap and shrink rather than overflow its container. For narrow containers like a
+     * sidebar column — off by default, since it lowers the min-content width and so shifts how much
+     * room surrounding table columns get.
+     */
+    wrap?: boolean
+}
+
+export type ObjectTagsProps =
+    | (ObjectTagsPropsBase & {
+          /** Tags CAN'T be added or removed. */
+          staticOnly: true
+          onChange?: never
+          onBlur?: never
+          tagsAvailable?: never
+      })
+    | (ObjectTagsPropsBase & {
+          /** Tags CAN be added or removed.*/
+          staticOnly?: false
+          onChange?: (tags: string[]) => void
+          onBlur?: () => void
+          /** List of all tags that already exist. */
+          tagsAvailable?: string[] /** Whether this field should be gated behind a "paywall". */
+      })
+
+const COLOR_OVERRIDES: Record<string, LemonTagType> = {
+    official: 'success',
+    approved: 'success',
+    verified: 'success',
+    deprecated: 'danger',
+}
+
+export function ObjectTags({
+    tags,
+    onChange, // Required unless `staticOnly`
+    onBlur,
+    saving, // Required unless `staticOnly`
+    tagsAvailable,
+    style = {},
+    staticOnly = false,
+    className,
+    actionButtonSize = 'small',
+    'data-attr': dataAttr,
+    addLabel = 'Add tag',
+    editLabel = 'Edit tags',
+    inputPlaceholder = 'try "official"',
+    onTagClick,
+    wrap = false,
+}: ObjectTagsProps): JSX.Element {
+    const objectTagId = useId()
+    const logic = objectTagsLogic({ id: objectTagId, onChange })
+    const { editingTags } = useValues(logic)
+    const { setEditingTags, setTags } = useActions(logic)
+
+    /** Displaying nothing is confusing, so in case of empty static tags we use a dash as a placeholder */
+    const showPlaceholder = staticOnly && !tags?.length
+    if (showPlaceholder && !style.color) {
+        style.color = 'var(--color-text-secondary)'
+    }
+
+    const hasTags = tags && tags.length > 0
+
+    return (
+        <div
+            // eslint-disable-next-line react/forbid-dom-props
+            style={style}
+            className={clsx(className, 'inline-flex flex-wrap gap-0.5 items-center', wrap && 'min-w-0 max-w-full')}
+            data-attr={dataAttr}
+        >
+            {editingTags ? (
+                <LemonInputSelect
+                    mode="multiple"
+                    allowCustomValues
+                    value={tags}
+                    options={tagsAvailable?.map((t) => ({ key: t, label: t }))}
+                    onChange={setTags}
+                    onBlur={() => {
+                        setEditingTags(false)
+                        onBlur?.()
+                    }}
+                    loading={saving}
+                    data-attr="new-tag-input"
+                    placeholder={inputPlaceholder}
+                    autoFocus
+                    popoverClassName="click-outside-block"
+                />
+            ) : (
+                <>
+                    {showPlaceholder
+                        ? '—'
+                        : tags
+                              .filter((t) => !!t)
+                              .map((tag, index) => {
+                                  return (
+                                      <LemonTag
+                                          key={index}
+                                          type={COLOR_OVERRIDES[tag] || colorForString(tag)}
+                                          onClick={onTagClick ? () => onTagClick(tag) : undefined}
+                                          className={wrap ? 'max-w-full' : undefined}
+                                          wrap={wrap}
+                                      >
+                                          {tag}
+                                      </LemonTag>
+                                  )
+                              })}
+                    {!staticOnly && onChange && saving !== undefined && (
+                        <span className="inline-flex font-normal">
+                            <LemonTag
+                                type="none"
+                                onClick={() => setEditingTags(true)}
+                                data-attr="button-add-tag"
+                                icon={hasTags ? <IconPencil /> : <IconPlus />}
+                                className="border border-dashed"
+                                size={actionButtonSize}
+                            >
+                                {hasTags ? editLabel : addLabel}
+                            </LemonTag>
+                        </span>
+                    )}
+                </>
+            )}
+        </div>
+    )
+}

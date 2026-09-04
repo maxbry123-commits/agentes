@@ -1,0 +1,31 @@
+import { themeDefaultsFromCssVars } from '@posthog/quill-charts'
+
+import { getGraphColors, getSeriesColorPalette } from 'lib/colors'
+
+import type { ChartTheme } from '../types'
+
+export function buildTheme(overrides?: Partial<ChartTheme>): ChartTheme {
+    const graphColors = getGraphColors()
+
+    const base: ChartTheme = {
+        ...themeDefaultsFromCssVars(),
+        colors: getSeriesColorPalette(),
+        backgroundColor:
+            getComputedStyle(document.body).getPropertyValue('--color-bg-surface-primary').trim() || '#ffffff',
+        axisColor: graphColors.axisLabel ?? undefined,
+        tooltipBackground: graphColors.tooltipBackground ?? undefined,
+        tooltipColor: graphColors.tooltipTitle ?? undefined,
+        tooltipZIndex: 'var(--z-chart-tooltip)',
+        // Set by the withChartCanvasSnapshot decorator to keep flaky stories' snapshots deterministic.
+        skipDraw: document.body.classList.contains('storybook-skip-chart-canvas'),
+    }
+
+    if (!overrides) {
+        return base
+    }
+    return { ...base, ...overrides }
+}
+
+export function seriesColor(theme: ChartTheme, index: number): string {
+    return theme.colors[index % theme.colors.length]
+}

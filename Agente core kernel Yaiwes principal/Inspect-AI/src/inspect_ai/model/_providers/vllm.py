@@ -1,0 +1,793 @@
+import functools
+import logging
+import os
+import socket
+from subprocess import Popen
+from typing import Any
+from urllib.parse import urlparse
+
+import anyio
+from openai import APIConnectionError, APIStatusError
+from tenacity.wait import WaitBaseT, wait_fixed
+from typing_extensions import override
+
+from inspect_ai._util.content import (
+    Content,
+    ContentImage,
+    ContentReasoning,
+    ContentText,
+)
+from inspect_ai._util.error import pip_dependency_error
+from inspect_ai._util.local_server import (
+    DEFAULT_RETRY_DELAY,
+    configure_devices,
+    merge_env_server_args,
+    start_local_server,
+    terminate_process,
+)
+from inspect_ai.model._chat_message import (
+    ChatMessage,
+    ChatMessageTool,
+    ChatMessageUser,
+)
+from inspect_ai.model._generate_config import GenerateConfig
+from inspect_ai.model._model import RetryDecision
+from inspect_ai.model._model_call import ModelCall
+from inspect_ai.model._model_data.model_data import ModelInfo
+from inspect_ai.model._model_info import (
+    _get_custom_model_info,
+    _get_model_info_direct,
+    set_model_info,
+)
+from inspect_ai.model._model_output import ModelOutput
+from inspect_ai.tool._tool_choice import ToolChoice
+from inspect_ai.tool._tool_info import ToolInfo
+
+from ._vllm_lora import (
+    VLLMServer,
+    _vllm_servers,
+    ensure_adapter_loaded,
+    get_adapter_rank,
+    parse_vllm_model,
+)
+from .openai_compatible import OpenAICompatibleAPI
+
+VLLM_DEFAULT_SERVER_ARGS = "VLLM_DEFAULT_SERVER_ARGS"
+VLLM_CONFIGURE_LOGGING = "VLLM_CONFIGURE_LOGGING"
+
+CONTEXT_WINDOW_TIMEOUT = 30.0
+"""Timeout for the /v1/models fetch that resolves the served context window."""
+
+CONTEXT_WINDOW_MAX_ATTEMPTS = 3
+"""Attempts to reach /v1/models before settling for the static catalog."""
+
+_registered_context_windows: dict[str, int] = {}
+"""Context windows registered from a vLLM server, keyed by model info name.
+
+set_model_info() records no provenance, so this is what tells a caller's own
+registration (which wins) apart from one of ours (which a restarted server
+serving a different max_model_len needs to replace).
+"""
+
+logger = logging.getLogger(__name__)
+
+
+class VLLMAPI(OpenAICompatibleAPI):
+    """Provider for using vLLM models with optional LoRA adapter support.
+
+    This provider can either:
+    1. Connect to an existing vLLM server (if base_url or port is provided)
+    2. Start a new vLLM server for the specified model
+
+    LoRA adapters are specified with ``"base-model:adapter[@revision]"``
+    syntax::
+
+        # HuggingFace repo
+        get_model("vllm/meta-llama/Llama-3-8B:myorg/my-lora-adapter")
+        # HuggingFace repo pinned to a specific branch/tag/commit
+        get_model("vllm/meta-llama/Llama-3-8B:myorg/my-lora-adapter@v2")
+        # Local path
+        get_model("vllm/meta-llama/Llama-3-8B:/abs/path/to/adapter")
+        # Pre-loaded adapter on an external server (see VLLM_BASE_URL)
+        get_model("vllm/meta-llama/Llama-3-8B:my-preloaded-name")
+
+    Multiple models sharing the same base reuse a single server.  The
+    server is started lazily on the first ``generate()`` call, after all
+    model ``__init__`` calls have completed so that ``enable_lora`` and
+    ``max_lora_rank`` are computed correctly across all adapters.
+
+    Args:
+        model_name (str): Name or path of the model to use. Optionally
+            include a ``:adapter[@revision]`` suffix to specify a LoRA
+            adapter. The adapter portion is interpreted as:
+
+            - a local path, if the path exists on disk;
+            - a HuggingFace repo (``org/name`` form), optionally pinned
+              to a revision with ``@<branch|tag|commit>``;
+            - otherwise (no ``/``), treated as the ``lora_name`` of an
+              adapter already loaded on the vLLM server — useful when
+              connecting via ``VLLM_BASE_URL`` to a server whose
+              adapters were registered out-of-band.
+
+            The adapter is registered on vLLM under its full
+            ``path`` (with ``@revision`` appended if specified), so
+            ``/v1/models`` is self-describing and same-path-different-revision
+            loads don't collide.
+        base_url (str | None): Base URL of an existing vLLM server. If
+            not provided, a new server will be started on localhost.
+        port (int | None): Port of an existing vLLM server on localhost.
+            If not provided, a free port is chosen automatically.
+        api_key (str | None): API key for the vLLM server. Defaults to
+            the ``VLLM_API_KEY`` env var, or ``"inspectai"`` if unset.
+        config (GenerateConfig): Configuration for generation. Defaults
+            to ``GenerateConfig()``.
+        is_mistral (bool): Whether the model is a Mistral model. If
+            ``True``, user messages immediately following tool messages
+            are folded together (Mistral does not support this sequence).
+            Defaults to ``False``.
+        retry_delay (int | None): Seconds to wait between retries
+            (default 5).
+        lazy_init (bool): If ``True`` (default), defer server startup to
+            the first ``generate()`` call.  This ensures ``enable_lora``
+            and ``max_lora_rank`` are computed correctly when multiple
+            models share a base.  Set to ``False`` to start the server
+            immediately in ``__init__`` (useful for single-model setups
+            where you want fast failure on misconfiguration).
+        **server_args: Additional arguments forwarded to the ``vllm
+            serve`` command.  Notable keys:
+
+            - ``timeout`` (int): Server startup timeout in seconds
+              (default: 10 minutes).
+            - ``host`` (str): Host to bind the server to (default:
+              ``"0.0.0.0"``).
+            - ``configure_logging`` (bool): Enable fine-grained vLLM
+              logging (default: ``False``).
+            - ``device`` / ``devices`` (str): GPU device(s) to run the
+              server on, as used in ``CUDA_VISIBLE_DEVICES``. If
+              ``tensor_parallel_size`` is not provided, it is set to the
+              number of devices automatically.
+            - ``enable_lora`` (bool): Force LoRA mode even without
+              ``:adapter`` syntax (default: auto-detected from model
+              name).
+
+    Environment variables:
+        VLLM_BASE_URL: Base URL for an existing vLLM server.
+        VLLM_API_KEY: API key for the vLLM server.
+        VLLM_DEFAULT_SERVER_ARGS: JSON string of default server args,
+            e.g. ``'{"tensor_parallel_size": 4, "max_model_len": 8192}'``.
+        VLLM_CONFIGURE_LOGGING: Enable fine-grained vLLM logging.
+    """
+
+    def __init__(
+        self,
+        model_name: str,
+        base_url: str | None = None,
+        port: int | None = None,
+        api_key: str | None = None,
+        config: GenerateConfig = GenerateConfig(),
+        is_mistral: bool = False,
+        retry_delay: int | None = None,
+        lazy_init: bool = True,
+        client_timeout: float | None = None,
+        **server_args: Any,
+    ) -> None:
+        # Parse "base-model" or "base-model:adapter-path[@revision]"
+        self.base_model, self.adapter = parse_vllm_model(model_name)
+
+        if base_url and port:
+            raise ValueError("base_url and port cannot both be provided.")
+
+        self.api_key = api_key or os.environ.get("VLLM_API_KEY", "inspectai")
+        self.model_name = model_name
+        self.base_url: str | None = None
+
+        # Store for deferred OpenAICompatibleAPI.__init__()
+        self._init_config = config
+        self._init_base_url = f"http://localhost:{port}/v1" if port else base_url
+        self._resolved_epoch = -1
+        self._context_window_registered = False
+        self._context_window_attempts = 0
+        self._context_window_lock = anyio.Lock()
+
+        self.is_mistral = is_mistral
+        self.retry_delay = retry_delay or DEFAULT_RETRY_DELAY
+        self._client_timeout = client_timeout
+        self.port = port
+        self.server_args = merge_env_server_args(
+            VLLM_DEFAULT_SERVER_ARGS, server_args, logger
+        )
+
+        # Handle use_chat_template (same semantics as HF provider)
+        self._use_chat_template = self.server_args.pop("use_chat_template", None)
+        if self._use_chat_template is False:
+            self.server_args["chat_template"] = (
+                "{% for message in messages %}"
+                "{{ message.role }}: {{ message.content }}\n"
+                "{% endfor %}"
+            )
+
+        # Get or create the shared server entry for this base model
+        # and incrementally update LoRA config.
+        self._server = _vllm_servers.setdefault(self.base_model, VLLMServer())
+        if self.adapter:
+            self._server.enable_lora = True
+            rank = get_adapter_rank(self.adapter)
+            if rank is not None:
+                self._server.max_lora_rank = max(self._server.max_lora_rank or 0, rank)
+
+        if not lazy_init:
+            self._resolve_server()
+
+    # -- server lifecycle ----------------------------------------------------
+
+    def _resolve_server(self) -> None:
+        """Resolve or start the vLLM server, then call ``super().__init__``."""
+        if self._resolved_epoch == self._server._epoch:
+            return
+
+        server = self._server
+
+        if server.base_url is None:
+            external_url = self._init_base_url or os.environ.get("VLLM_BASE_URL")
+            server.api_key = self.api_key
+            if external_url:
+                server.base_url = external_url
+                if self._use_chat_template is False:
+                    logger.warning(
+                        "use_chat_template=False has no effect when connecting "
+                        "to an existing vLLM server. Set --chat-template when "
+                        "starting the server instead."
+                    )
+            else:
+                base_url, process, port = self._start_server(self.base_model, self.port)
+                logger.info(f"vLLM server started at {base_url}")
+
+                server.base_url = base_url
+                server.process = process
+                server.port = port
+
+        super().__init__(
+            model_name=self.base_model,
+            base_url=server.base_url,
+            api_key=self.api_key,
+            config=self._init_config,
+            service="vLLM",
+            service_base_url=server.base_url,
+            client_timeout=self._client_timeout,
+        )
+        self._resolved_epoch = self._server._epoch
+
+        if self.adapter:
+            ensure_adapter_loaded(self._server, self.adapter)
+
+    async def _ensure_server_started(self) -> None:
+        """Lazy version of ``_resolve_server`` — thread-safe for concurrent ``generate()`` calls."""
+        if self._resolved_epoch != self._server._epoch:
+            async with self._server._init_lock:
+                await anyio.to_thread.run_sync(self._resolve_server)
+        await self._register_context_window()
+
+    def _server_root(self) -> str:
+        """Base URL with any trailing ``/v1`` removed.
+
+        ``base_url`` may or may not include ``/v1``; callers append the path
+        they need (``/tokenize`` at the root, ``/v1/models`` under ``/v1``).
+        """
+        return str(self.base_url).rstrip("/").removesuffix("/v1")
+
+    async def _register_context_window(self) -> None:
+        """Register the server's ``max_model_len`` (from ``/v1/models``) as the context window.
+
+        The static catalog does not know the served window. Best-effort: any
+        failure falls back to the catalog.
+        """
+        if self._context_window_registered:
+            return
+        # Double-checked under a dedicated lock so concurrent generate() calls
+        # don't each fetch /v1/models or race on set_model_info. Not the
+        # server's _init_lock: the fetch would then block server startup for
+        # every other model sharing the server.
+        async with self._context_window_lock:
+            if self._context_window_registered:
+                return
+            self._context_window_attempts += 1
+
+            headers: dict[str, str] = {}
+            if self.api_key:
+                headers["Authorization"] = f"Bearer {self.api_key}"
+            try:
+                resp = await self.http_client.get(
+                    f"{self._server_root()}/v1/models",
+                    headers=headers,
+                    timeout=CONTEXT_WINDOW_TIMEOUT,
+                )
+            except Exception as ex:
+                # No response at all: the server may be briefly unreachable,
+                # which generate() itself retries through. Latching here would
+                # revert to the catalog for the rest of the run, so leave the
+                # flag unset and let a later generate() retry, bounded since
+                # a permanently unreachable endpoint shouldn't be re-probed on
+                # every call.
+                if self._context_window_attempts >= CONTEXT_WINDOW_MAX_ATTEMPTS:
+                    self._context_window_registered = True
+                logger.debug(f"Could not reach vLLM /v1/models: {ex}")
+                return
+
+            # A response settles the question for this server, whatever it says.
+            self._context_window_registered = True
+            try:
+                resp.raise_for_status()
+                max_model_len = _server_context_length(
+                    resp.json(), self.service_model_name(), self.base_model
+                )
+                if max_model_len:
+                    name = self.input_tokens_name()
+                    custom = _get_custom_model_info(name)
+                    if (
+                        custom is not None
+                        and _registered_context_windows.get(name)
+                        != custom.context_length
+                    ):
+                        # an explicit set_model_info() is the caller stating the
+                        # window they want, sometimes deliberately below the
+                        # served one
+                        logger.debug(
+                            f"vLLM server reports max_model_len={max_model_len} for "
+                            f"{name}; keeping the context window registered with "
+                            f"set_model_info()."
+                        )
+                        return
+                    # direct (non provider-resolving) lookup: resolving would
+                    # instantiate whichever provider shares the model's org
+                    # prefix (e.g. "openai/gpt-oss-120b") just for metadata.
+                    existing = _get_model_info_direct(name)
+                    previous = existing.context_length if existing is not None else None
+                    if existing is not None:
+                        # rebuild from public fields rather than model_copy():
+                        # a copy carries over the private _input_tokens override
+                        # that ModelInfo.input_tokens prefers over context_length,
+                        # so the served window would be registered but not used.
+                        # Dropping it also caps input capacity at max_model_len,
+                        # which bounds input and output together.
+                        fields = existing.model_dump()
+                        fields["context_length"] = max_model_len
+                        info = ModelInfo(**fields)
+                    else:
+                        info = ModelInfo(context_length=max_model_len)
+                    set_model_info(name, info)
+                    _registered_context_windows[name] = max_model_len
+                    if previous is None:
+                        # catalog miss: the model would otherwise run with the
+                        # 128k default, the scenario from #4215 — worth surfacing
+                        logger.info(
+                            f"vLLM server reports max_model_len={max_model_len} for "
+                            f"{name}; using it as the context window "
+                            f"(model not in catalog)."
+                        )
+                    elif previous != max_model_len:
+                        logger.info(
+                            f"vLLM server reports max_model_len={max_model_len} for "
+                            f"{name}; using it as the context window "
+                            f"(catalog had {previous})."
+                        )
+                    else:
+                        logger.debug(
+                            f"Registered context window {max_model_len} for {name} "
+                            f"from vLLM /v1/models."
+                        )
+            except Exception as ex:
+                logger.debug(
+                    f"Could not read context window from vLLM /v1/models: {ex}"
+                )
+
+    def _start_server(
+        self,
+        model_path: str,
+        port: int | None = None,
+    ) -> tuple[str, Popen[str], int]:
+        """Start a new vLLM server subprocess.
+
+        Args:
+            model_path: HuggingFace model ID or local path.
+            port: Port to bind to. If ``None``, a free port is chosen.
+
+        Returns:
+            Tuple of (base_url, process, port).
+        """
+        try:
+            import vllm  # type: ignore  # noqa: F401
+        except ImportError:
+            raise pip_dependency_error("vLLM Server", ["vllm"])
+
+        # Work on a copy — the pops below are destructive and the original
+        # must survive intact for restarts after close().
+        server_args = dict(self.server_args)
+
+        server = self._server
+        if server.enable_lora:
+            server_args.setdefault("enable_lora", True)
+            if server.max_lora_rank is not None:
+                server_args.setdefault("max_lora_rank", server.max_lora_rank)
+            os.environ["VLLM_ALLOW_RUNTIME_LORA_UPDATING"] = "True"
+
+        configure_logging = server_args.pop("configure_logging", False)
+        os.environ[VLLM_CONFIGURE_LOGGING] = "1" if configure_logging else "0"
+
+        server_args, env_vars = configure_devices(
+            server_args, parallel_size_param="tensor_parallel_size"
+        )
+
+        timeout = server_args.pop("timeout", None)
+        host = server_args.pop("host", "0.0.0.0")
+
+        cmd = [
+            "vllm",
+            "serve",
+            model_path,
+            "--host",
+            host,
+            "--api-key",
+            self.api_key,
+        ]
+
+        base_url, process, found_port = start_local_server(
+            cmd,
+            host=host,
+            port=port,
+            api_key=self.api_key,
+            server_type="vLLM",
+            timeout=timeout,
+            server_args=server_args,
+            env=env_vars,
+        )
+        return base_url, process, found_port
+
+    @property
+    def server_is_running(self) -> bool:
+        """Check if the server process is still alive."""
+        if self._server.process is None:
+            return False
+        return self._server.process.poll() is None
+
+    async def aclose(self) -> None:
+        """Close the OpenAI client and terminate the server if we started it."""
+        if self._resolved_epoch == self._server._epoch:
+            await super().aclose()
+        self.close()
+
+    def close(self) -> None:
+        """Terminate the server if we spawned it.
+
+        Resets internal state so the provider can be restarted by a
+        subsequent ``generate()`` call.
+
+        Does not close the OpenAI client (use ``aclose`` for that).
+        """
+        if self._server.process is not None and self._server.process.poll() is None:
+            logger.info("Cleaning up vLLM server")
+            terminate_process(self._server.process)
+
+        # Reset runtime state and bump epoch so all instances re-resolve.
+        # Preserves LoRA capability metadata (enable_lora, max_lora_rank).
+        # NOTE: close() does not hold _init_lock (it is an anyio.Lock and
+        # this method is sync).  Concurrent close + resolve on different
+        # threads could race; callers should not close while another thread
+        # is actively resolving or generating.
+        self._server.base_url = None
+        self._server.api_key = None
+        self._server.port = None
+        self._server.process = None
+        self._server.loaded_adapters.clear()
+        self._server._epoch += 1
+        # a restarted server may be serving a different max_model_len
+        self._context_window_registered = False
+        self._context_window_attempts = 0
+
+    # -- ModelAPI overrides --------------------------------------------------
+
+    @override
+    def collapse_user_messages(self) -> bool:
+        return True
+
+    @override
+    def collapse_assistant_messages(self) -> bool:
+        return True
+
+    @override
+    def retry_wait(self) -> WaitBaseT | None:
+        return wait_fixed(self.retry_delay)
+
+    @override
+    def service_model_name(self) -> str:
+        """Return adapter ``name`` for LoRA requests, else the base model.
+
+        vLLM's OpenAI-compatible API routes LoRA requests by the ``model``
+        field. The adapter is registered on the server under
+        ``adapter.name``, so we send that as the ``model`` when a LoRA
+        adapter is in use.
+        """
+        return self.adapter.name if self.adapter else self.base_model
+
+    @override
+    async def tokenize(self, text: str) -> list[int]:
+        """Tokenize text via the vLLM ``/tokenize`` endpoint.
+
+        Args:
+            text: Text to tokenize.
+
+        Returns:
+            List of token IDs.
+        """
+        await self._ensure_server_started()
+        headers: dict[str, str] = {}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        resp = await self.http_client.post(
+            f"{self._server_root()}/tokenize",
+            json={
+                "model": self.service_model_name(),
+                "prompt": text,
+                "add_special_tokens": False,
+            },
+            headers=headers,
+            timeout=30.0,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        tokens = data.get("tokens")
+        if tokens is None:
+            raise ValueError(f"vLLM /tokenize response missing 'tokens' key: {data}")
+        return list(tokens)
+
+    @override
+    def connection_key(self) -> str:
+        """Scope max_connections per vLLM endpoint.
+
+        Override the OpenAI-compatible default (which keys by api_key) since
+        vLLM is a local server: the rate-limit boundary is the endpoint URL,
+        not the credential. Multiple vLLM servers on different hosts/ports
+        are independent concurrency scopes, but all default to the same
+        api_key (`"inspectai"`) and would otherwise collapse to one slot.
+
+        Keys on construction-time identity rather than the live ``base_url``,
+        which resolves lazily on the first generate — a connection key that
+        changes mid-run splits the pool / adaptive-controller state and
+        detaches the task's sample limiter (see ``ModelAPI.connection_key``).
+        An explicit endpoint (``base_url`` / ``port`` / ``VLLM_BASE_URL``) is
+        the scope when given; otherwise the base model is — auto-started
+        servers are keyed by base model, so same base model, same endpoint.
+        """
+        return self._init_base_url or os.environ.get("VLLM_BASE_URL") or self.base_model
+
+    @override
+    def should_retry(self, ex: BaseException) -> bool | RetryDecision:
+        if _is_fatal_vllm_error(ex):
+            logger.error(
+                "Detected fatal vLLM error (OOM/illegal CUDA state); not retrying."
+            )
+            return RetryDecision.no()
+
+        if _is_dead_local_vllm_endpoint(ex, self.base_url):
+            logger.error(
+                "vLLM endpoint %s is unreachable. Failing fast.",
+                self.base_url,
+            )
+            return RetryDecision.no()
+
+        if self._server.process is not None and not self.server_is_running:
+            logger.error("Inspect-managed vLLM server process exited; not retrying.")
+            return RetryDecision.no()
+
+        # Defer to the OpenAI-compatible classifier inherited from the base.
+        return super().should_retry(ex)
+
+    # -- generation ----------------------------------------------------------
+
+    async def generate(
+        self,
+        input: list[ChatMessage],
+        tools: list[ToolInfo],
+        tool_choice: ToolChoice,
+        config: GenerateConfig,
+    ) -> ModelOutput | tuple[ModelOutput | Exception, ModelCall]:
+        await self._ensure_server_started()
+
+        # If the last message is from the assistant, continue it rather
+        # than starting a new generation turn.
+        if input[-1].role == "assistant":
+            config = config.model_copy()
+            if config.extra_body is None:
+                config.extra_body = {}
+            if (
+                "add_generation_prompt" not in config.extra_body
+                and "continue_final_message" not in config.extra_body
+            ):
+                config.extra_body["add_generation_prompt"] = False
+                config.extra_body["continue_final_message"] = True
+
+        # Mistral does not support a user message immediately after a tool
+        # message, so fold them together.
+        if self.is_mistral:
+            input = functools.reduce(mistral_message_reducer, input, [])
+
+        return await super().generate(input, tools, tool_choice, config)
+
+    @override
+    def handle_bad_request(self, ex: APIStatusError) -> ModelOutput | Exception:
+        if ex.status_code == 400:
+            if isinstance(ex.body, dict) and "message" in ex.body:
+                content = str(ex.body.get("message"))
+            else:
+                content = ex.message
+
+            if (
+                "maximum context length" in content
+                or "max_tokens must be at least 1" in content
+            ):
+                return ModelOutput.from_content(
+                    self.model_name, content=content, stop_reason="model_length"
+                )
+        return ex
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _server_context_length(
+    data: dict[str, Any], model_id: str, base_model_id: str | None = None
+) -> int | None:
+    """Extract ``max_model_len`` from a vLLM ``/v1/models`` response.
+
+    Prefers the entry whose ``id`` matches ``model_id``. vLLM sets
+    ``max_model_len`` on base model cards only; a LoRA adapter's card carries
+    ``parent`` (the base model it was loaded against) instead, so a matched
+    adapter resolves through ``parent`` and then through ``base_model_id``.
+    The window is a property of the base model either way: an adapter runs
+    within the server's ``max_model_len``.
+
+    With no match at all, falls back to the sole entry only when the endpoint
+    lists exactly one model; when several models are listed the window is
+    ambiguous, so returns ``None`` rather than risk registering an unrelated
+    model's window. Also returns ``None`` when no positive ``max_model_len``
+    is present.
+    """
+    entries = data.get("data") or []
+
+    def window(entry: dict[str, Any] | None) -> int | None:
+        max_model_len = entry.get("max_model_len") if entry else None
+        return int(max_model_len) if max_model_len else None
+
+    def find(id: Any) -> dict[str, Any] | None:
+        return next((e for e in entries if e.get("id") == id), None) if id else None
+
+    entry = find(model_id)
+    if entry is not None:
+        return (
+            window(entry)
+            or window(find(entry.get("parent")))
+            or window(find(base_model_id))
+        )
+
+    entry = find(base_model_id)
+    if entry is not None:
+        return window(entry)
+
+    if len(entries) == 1:
+        return window(entries[0])
+
+    if entries:
+        logger.debug(
+            f"vLLM /v1/models lists {len(entries)} models, none matching "
+            f"{model_id}; falling back to the static catalog window."
+        )
+    return None
+
+
+def _is_fatal_vllm_error(ex: BaseException) -> bool:
+    """Match vLLM startup OOM and CUDA OOM variants that are not transient."""
+    fatal_markers = (
+        "free memory on device",
+        "less than desired gpu memory utilization",
+        "cuda out of memory",
+        "torch.outofmemoryerror",
+        "cuda error: an illegal memory access was encountered",
+        "cudaerrorillegaladdress",
+        "torch.acceleratorerror",
+    )
+
+    seen: set[int] = set()
+    current: BaseException | None = ex
+    messages: list[str] = []
+
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        messages.append(str(current))
+        current = current.__cause__ or current.__context__
+
+    error_text = " ".join(messages).lower()
+    return any(marker in error_text for marker in fatal_markers)
+
+
+def _is_dead_local_vllm_endpoint(ex: BaseException, base_url: str | None) -> bool:
+    """Short-circuit connection failures for localhost endpoints only."""
+    if not isinstance(ex, APIConnectionError):
+        return False
+    if not base_url:
+        return False
+
+    parsed = urlparse(base_url)
+    host = (parsed.hostname or "").lower()
+    if host not in {"localhost", "127.0.0.1", "::1"}:
+        return False
+
+    port = parsed.port
+    if port is None:
+        port = 443 if parsed.scheme == "https" else 80
+
+    try:
+        with socket.create_connection((host, port), timeout=0.2):
+            return False
+    except OSError:
+        return True
+
+
+def mistral_message_reducer(
+    messages: list[ChatMessage],
+    message: ChatMessage,
+) -> list[ChatMessage]:
+    """Fold any user messages found immediately after tool messages into the last tool message."""
+    if (
+        len(messages) > 0
+        and isinstance(messages[-1], ChatMessageTool)
+        and isinstance(message, ChatMessageUser)
+    ):
+        messages[-1] = fold_user_message_into_tool_message(messages[-1], message)
+    else:
+        messages.append(message)
+
+    return messages
+
+
+def fold_user_message_into_tool_message(
+    tool_message: ChatMessageTool,
+    user_message: ChatMessageUser,
+) -> ChatMessageTool:
+    def convert_content_items_to_string(list_content: list[Content]) -> str:
+        if not all(
+            isinstance(item, (ContentText | ContentReasoning | ContentImage))
+            for item in list_content
+        ):
+            raise TypeError("Expected all items to be ContentText or ContentReasoning")
+
+        parts = []
+        for item in list_content:
+            if isinstance(item, ContentText):
+                parts.append(item.text)
+            elif isinstance(item, ContentReasoning):
+                parts.append(item.reasoning)
+            elif isinstance(item, ContentImage):
+                parts.append(f"[Image: {item.image}]")
+            else:
+                raise ValueError("Unexpected content item type")
+        return "".join(parts)
+
+    def normalise_content(
+        content: str | list[Content] | None,
+    ) -> str | None:
+        return (
+            None
+            if content is None
+            else convert_content_items_to_string(content)
+            if isinstance(content, list)
+            else content
+        )
+
+    tool_content = normalise_content(tool_message.content)
+    user_content = normalise_content(user_message.content)
+
+    return ChatMessageTool(
+        content=(tool_content or "") + (user_content or ""),
+        tool_call_id=tool_message.tool_call_id,
+    )

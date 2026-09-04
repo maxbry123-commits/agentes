@@ -1,0 +1,201 @@
+---
+id: metrics-topic-adherence
+title: Topic Adherence
+sidebar_label: Topic Adherence
+languages: [python, typescript]
+---
+<MetricTagsDisplayer usesLLMs={true} multiTurn={true} agent={true} referenceless={true} />
+
+The Topic Adherence metric is a multi-turn agentic metric that evaluates whether your **agent has answered questions only if they adhere to relevant topics**. It is a self-explaining eval, which means it outputs a reason for its metric score.
+
+## Required Arguments
+
+To use the `TopicAdherenceMetric`, you'll have to provide the following arguments when creating a [`ConversationalTestCase`](https://www.deepeval.com/docs/evaluation-multiturn-test-cases):
+
+- `turns`
+
+You can learn more about how it is calculated [here](#how-is-it-calculated).
+
+## Usage
+
+The `TopicAdherenceMetric()` can be used for [end-to-end](/docs/evaluation-end-to-end-llm-evals) multi-turn evaluations of agents.
+
+<Switch>
+
+<Case id="python">
+
+```python
+from deepeval.test_case import Turn, ConversationalTestCase, ToolCall
+from deepeval.metrics import TopicAdherenceMetric
+from deepeval import evaluate
+
+convo_test_case = ConversationalTestCase(
+    turns=[
+        Turn(role="...", content="..."), 
+        Turn(role="...", content="...", tools_called=[...])
+    ],
+)
+metric = TopicAdherenceMetric(threshold=0.5)
+
+# To run metric as a standalone
+# metric.measure(convo_test_case)
+# print(metric.score, metric.reason)
+
+evaluate(test_cases=[convo_test_case], metrics=[metric])
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript
+import { Turn, ConversationalTestCase, ToolCall } from "deepeval/test-case";
+import { TopicAdherenceMetric } from "deepeval/metrics";
+import { evaluate } from "deepeval";
+
+const convoTestCase = new ConversationalTestCase({
+  turns: [
+    new Turn({ role: "user", content: "..." }),
+    new Turn({ role: "assistant", content: "...", toolsCalled: [new ToolCall({ name: "..." })] }),
+  ],
+});
+const metric = new TopicAdherenceMetric({ relevantTopics: ["..."], threshold: 0.5 });
+
+// To run metric as a standalone
+// await metric.measure(convoTestCase);
+// console.log(metric.score, metric.reason);
+
+await evaluate([convoTestCase], [metric]);
+```
+
+</Case>
+
+</Switch>
+
+<Switch>
+
+<Case id="python">
+
+There is **ONE** mandatory and **SEVEN** optional parameters when creating a `TopicAdherenceMetric`:
+
+</Case>
+
+<Case id="typescript">
+
+There is **ONE** mandatory and **SIX** optional parameters when creating a `TopicAdherenceMetric`:
+
+</Case>
+
+</Switch>
+
+- <Term py="relevant_topics" ts="relevantTopics"/>: a list of strings that define what topics your LLM agent can answer. Any answers that don't adhere to this topic will penalise the score this metric.
+- [Optional] `threshold`: a number representing the minimum passing threshold. Can also be set to <Term py="None" ts="null"/> to run the metric in [score-only mode](/docs/metrics-introduction#metric-thresholds). Defaulted to `0.5`.
+- [Optional] `model`: a string specifying which of OpenAI's GPT models to use, **OR** [any custom LLM model](/docs/metrics-introduction#using-a-custom-llm) of type `DeepEvalBaseLLM`. Defaulted to <DefaultLLMModel />.
+- [Optional] <Term py="include_reason" ts="includeReason"/>: a boolean which when set to <Term py="True" ts="true"/>, will include a reason for its evaluation score. Defaulted to <Term py="True" ts="true"/>.
+- [Optional] <Term py="strict_mode" ts="strictMode"/>: a boolean which when set to <Term py="True" ts="true"/>, enforces a binary metric score: 1 for perfection, 0 otherwise. It also overrides the current threshold and sets it to 1. Defaulted to <Term py="False" ts="false"/>.
+- <Only id="python">
+    [Optional] `async_mode`: a boolean which when set to `True`, enables [concurrent execution within the `measure()` method.](/docs/metrics-introduction#measuring-a-metric-in-async) Defaulted to `True`.
+  </Only>
+- [Optional] <Term py="verbose_mode" ts="verboseMode"/>: a boolean which when set to <Term py="True" ts="true"/>, prints the intermediate steps used to calculate said metric to the console, as outlined in the [How Is It Calculated](#how-is-it-calculated) section. Defaulted to <Term py="False" ts="false"/>.
+- [Optional] `flaky`: a boolean which when set to <Term py="True" ts="true"/>, [marks the metric as flaky](/docs/metrics-introduction#flaky-metrics). Defaulted to <Term py="False" ts="false"/>.
+
+### As a standalone
+
+You can also run the `TopicAdherenceMetric` on a single test case as a standalone, one-off execution.
+
+<Switch>
+
+<Case id="python">
+
+```python
+...
+
+metric.measure(convo_test_case)
+print(metric.score, metric.reason)
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript
+...
+
+await metric.measure(convoTestCase);
+console.log(metric.score, metric.reason);
+```
+
+</Case>
+
+</Switch>
+
+:::caution
+This is great for debugging or if you wish to build your own evaluation pipeline, but you will **NOT** get the benefits (testing reports) and all the optimizations (speed, caching, computation) the `evaluate()` function or `deepeval test run` offers.
+:::
+
+## How Is It Calculated
+
+The `TopicAdherenceMetric` score is calculated through the following process:
+
+- Find question-answer pairs from the entire conversation, where question is taken from user and answered by the LLM agent.
+- Find the truth table values for all the question-answer pairs.
+    - **True Positives**: Question is relevant and the response correctly answers it.
+    - **True Negatives**: Question is NOT relevant, and the assistant correctly refused to answer.
+    - **False Positives**: Question is NOT relevant, but the assistant still gave an answer.
+    - **False Negatives**: Question is relevant, but the assistant refused or gave an irrelevant response.
+
+Now, the metric uses the following formula to find the final score:
+
+<Equation formula="\text{Topic Adherence Score} = \frac{\text{Number of True Positives and True Negatives}}{\text{Total Number of QA Pairs}}" />
+
+The `TopicAdherenceMetric` converts turns into individual unit interactions and iterates over each interaction to find the question-answer pairs separately, which are also evaluated individually for more accurate results.
+
+## FAQs
+
+<FAQs
+  qas={[
+    {
+      question: "How do I stop my support bot from drifting off-topic?",
+      answer: (
+        <>
+          Define allowed topics in <Term py="relevant_topics" ts="relevantTopics"/> and run{" "}
+          <code>TopicAdherenceMetric</code>. Any turn answering a question
+          outside those topics is penalized, pinpointing where the bot wandered
+          off-script.
+        </>
+      ),
+    },
+    {
+      question: "How are off-topic turns actually scored?",
+      answer: (
+        <>
+          Each user question is paired with the agent's answer: answering an
+          off-topic question is a <em>false positive</em> (bad), refusing one is
+          a <em>true negative</em> (good). The score is the share of true
+          positives and true negatives across all QA pairs.
+        </>
+      ),
+    },
+    {
+      question: "Will my agent be penalized for refusing irrelevant questions?",
+      answer: (
+        <>
+          No — refusing a question outside <Term py="relevant_topics" ts="relevantTopics"/> is a
+          true negative that <em>helps</em> the score. You're only penalized for
+          answering off-topic questions or refusing on-topic ones.
+        </>
+      ),
+    },
+    {
+      question: "What should I put in relevant topics?",
+      answer: (
+        <>
+          A list of strings describing the subject areas your agent covers (for
+          example, <code>"billing"</code> or <code>"shipping"</code>). Keep them
+          specific but not so narrow that legitimate questions get flagged.
+        </>
+      ),
+    },
+  ]}
+/>
+

@@ -1,0 +1,23 @@
+[
+  {
+    "repo": "PostHog",
+    "path": "rust/cymbal/tests/static/chunk-PGUQKT6S.js.map",
+    "chunks_dir": "PostHog/rust/cymbal/tests/static/chunk-PGUQKT6S.js.map.chunks",
+    "bytes": 9016797,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "PostHog",
+    "path": "rust/cymbal/tests/static/sourcemaps/1234.js.map",
+    "chunks_dir": "PostHog/rust/cymbal/tests/static/sourcemaps/1234.js.map.chunks",
+    "bytes": 9016797,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "PostHog",
+    "path": "posthog/models/exchange_rate/historical.csv",
+    "chunks_dir": "PostHog/posthog/models/exchange_rate/historical.csv.chunks",
+    "bytes": 8983261,
+    "chunk_bytes": 8388608
+  }
+]

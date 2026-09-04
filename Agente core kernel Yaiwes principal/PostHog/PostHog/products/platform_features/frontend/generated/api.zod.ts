@@ -1,0 +1,667 @@
+/**
+ * Auto-generated Zod validation schemas from the Django backend OpenAPI schema.
+ * To modify these schemas, update the Django serializers or views, then run:
+ *   hogli build:openapi
+ * Questions or issues? #team-devex on Slack
+ *
+ * PostHog API - generated
+ * OpenAPI spec version: 1.0.0
+ */
+import * as zod from 'zod'
+
+export const createBodyNameMax = 64
+
+export const CreateBody = /* @__PURE__ */ zod.object({
+    name: zod.string().max(createBodyNameMax),
+    logo_media_id: zod.uuid().nullish(),
+    enforce_2fa: zod.boolean().nullish(),
+    enforce_verified_domains: zod
+        .boolean()
+        .nullish()
+        .describe(
+            'When True, logins, signups, and invites for this organization are restricted to email addresses on its verified domains.'
+        ),
+    members_can_invite: zod.boolean().nullish(),
+    members_can_create_projects: zod
+        .boolean()
+        .nullish()
+        .describe(
+            'When True, organization members (below admin) are allowed to create new projects. Admins and owners can always create projects.'
+        ),
+    members_can_use_personal_api_keys: zod.boolean().optional(),
+    members_can_see_org_members: zod
+        .boolean()
+        .optional()
+        .describe(
+            'When False, members (below admin) only see themselves in the members list and only project members in access control.'
+        ),
+    allow_publicly_shared_resources: zod.boolean().optional(),
+    read_only_mcp_access: zod
+        .boolean()
+        .nullish()
+        .describe(
+            "When True, requests through the PostHog MCP server can read but not change this organization's data."
+        ),
+    is_ai_data_processing_approved: zod.boolean().nullish(),
+    is_ai_training_opted_in: zod
+        .boolean()
+        .nullish()
+        .describe('When True, this organization allows its data to be used to train PostHog AI models.'),
+    default_experiment_stats_method: zod
+        .union([
+            zod.enum(['bayesian', 'frequentist']).describe('\* `bayesian` - Bayesian\n\* `frequentist` - Frequentist'),
+            zod.enum(['']),
+            zod.null(),
+        ])
+        .optional()
+        .describe(
+            'Default statistical method for new experiments in this organization.\n\n\* `bayesian` - Bayesian\n\* `frequentist` - Frequentist'
+        ),
+    default_anonymize_ips: zod
+        .boolean()
+        .optional()
+        .describe("Default setting for 'Discard client IP data' for new projects in this organization."),
+    default_role_id: zod
+        .string()
+        .nullish()
+        .describe('ID of the role to automatically assign to new members joining the organization'),
+})
+
+export const updateBodyNameMax = 64
+
+export const UpdateBody = /* @__PURE__ */ zod.object({
+    name: zod.string().max(updateBodyNameMax),
+    logo_media_id: zod.uuid().nullish(),
+    enforce_2fa: zod.boolean().nullish(),
+    enforce_verified_domains: zod
+        .boolean()
+        .nullish()
+        .describe(
+            'When True, logins, signups, and invites for this organization are restricted to email addresses on its verified domains.'
+        ),
+    members_can_invite: zod.boolean().nullish(),
+    members_can_create_projects: zod
+        .boolean()
+        .nullish()
+        .describe(
+            'When True, organization members (below admin) are allowed to create new projects. Admins and owners can always create projects.'
+        ),
+    members_can_use_personal_api_keys: zod.boolean().optional(),
+    members_can_see_org_members: zod
+        .boolean()
+        .optional()
+        .describe(
+            'When False, members (below admin) only see themselves in the members list and only project members in access control.'
+        ),
+    allow_publicly_shared_resources: zod.boolean().optional(),
+    read_only_mcp_access: zod
+        .boolean()
+        .nullish()
+        .describe(
+            "When True, requests through the PostHog MCP server can read but not change this organization's data."
+        ),
+    is_ai_data_processing_approved: zod.boolean().nullish(),
+    is_ai_training_opted_in: zod
+        .boolean()
+        .nullish()
+        .describe('When True, this organization allows its data to be used to train PostHog AI models.'),
+    default_experiment_stats_method: zod
+        .union([
+            zod.enum(['bayesian', 'frequentist']).describe('\* `bayesian` - Bayesian\n\* `frequentist` - Frequentist'),
+            zod.enum(['']),
+            zod.null(),
+        ])
+        .optional()
+        .describe(
+            'Default statistical method for new experiments in this organization.\n\n\* `bayesian` - Bayesian\n\* `frequentist` - Frequentist'
+        ),
+    default_anonymize_ips: zod
+        .boolean()
+        .optional()
+        .describe("Default setting for 'Discard client IP data' for new projects in this organization."),
+    default_role_id: zod
+        .string()
+        .nullish()
+        .describe('ID of the role to automatically assign to new members joining the organization'),
+})
+
+export const partialUpdateBodyNameMax = 64
+
+export const PartialUpdateBody = /* @__PURE__ */ zod.object({
+    name: zod.string().max(partialUpdateBodyNameMax).optional(),
+    logo_media_id: zod.uuid().nullish(),
+    enforce_2fa: zod.boolean().nullish(),
+    enforce_verified_domains: zod
+        .boolean()
+        .nullish()
+        .describe(
+            'When True, logins, signups, and invites for this organization are restricted to email addresses on its verified domains.'
+        ),
+    members_can_invite: zod.boolean().nullish(),
+    members_can_create_projects: zod
+        .boolean()
+        .nullish()
+        .describe(
+            'When True, organization members (below admin) are allowed to create new projects. Admins and owners can always create projects.'
+        ),
+    members_can_use_personal_api_keys: zod.boolean().optional(),
+    members_can_see_org_members: zod
+        .boolean()
+        .optional()
+        .describe(
+            'When False, members (below admin) only see themselves in the members list and only project members in access control.'
+        ),
+    allow_publicly_shared_resources: zod.boolean().optional(),
+    read_only_mcp_access: zod
+        .boolean()
+        .nullish()
+        .describe(
+            "When True, requests through the PostHog MCP server can read but not change this organization's data."
+        ),
+    is_ai_data_processing_approved: zod.boolean().nullish(),
+    is_ai_training_opted_in: zod
+        .boolean()
+        .nullish()
+        .describe('When True, this organization allows its data to be used to train PostHog AI models.'),
+    default_experiment_stats_method: zod
+        .union([
+            zod.enum(['bayesian', 'frequentist']).describe('\* `bayesian` - Bayesian\n\* `frequentist` - Frequentist'),
+            zod.enum(['']),
+            zod.null(),
+        ])
+        .optional()
+        .describe(
+            'Default statistical method for new experiments in this organization.\n\n\* `bayesian` - Bayesian\n\* `frequentist` - Frequentist'
+        ),
+    default_anonymize_ips: zod
+        .boolean()
+        .optional()
+        .describe("Default setting for 'Discard client IP data' for new projects in this organization."),
+    default_role_id: zod
+        .string()
+        .nullish()
+        .describe('ID of the role to automatically assign to new members joining the organization'),
+})
+
+export const MembersUpdateBody = /* @__PURE__ */ zod.object({
+    level: zod
+        .union([zod.literal(1), zod.literal(8), zod.literal(15)])
+        .optional()
+        .describe('\* `1` - member\n\* `8` - administrator\n\* `15` - owner'),
+})
+
+export const MembersPartialUpdateBody = /* @__PURE__ */ zod.object({
+    level: zod
+        .union([zod.literal(1), zod.literal(8), zod.literal(15)])
+        .optional()
+        .describe('\* `1` - member\n\* `8` - administrator\n\* `15` - owner'),
+})
+
+/**
+ * Create a new managed reverse proxy. Provide the domain you want to proxy through. The response includes the CNAME target you need to add as a DNS record. Once the CNAME is configured, the proxy will be automatically verified and provisioned.
+ */
+export const ProxyRecordsCreateBody = /* @__PURE__ */ zod.object({
+    domain: zod
+        .string()
+        .describe("The custom domain to proxy through, e.g. 'e.example.com'. Must be a valid subdomain you control."),
+})
+
+/**
+ * Set or clear the HTTPS redirect for requests to the managed proxy domain root.
+ */
+export const proxyRecordsPartialUpdateBodyRootRedirectUrlOneMax = 1024
+
+export const proxyRecordsPartialUpdateBodyRootRedirectUrlTwoMax = 0
+
+export const ProxyRecordsPartialUpdateBody = /* @__PURE__ */ zod.object({
+    root_redirect_url: zod
+        .union([
+            zod.url().max(proxyRecordsPartialUpdateBodyRootRedirectUrlOneMax).nullable(),
+            zod.string().max(proxyRecordsPartialUpdateBodyRootRedirectUrlTwoMax),
+        ])
+        .optional()
+        .describe(
+            'HTTPS URL that requests to the proxy domain root redirect to, or null to disable the redirect. The URL must use the same registrable domain as the managed proxy.'
+        ),
+})
+
+/**
+ * Role endpoints disclose member records, so they scope them the same way the members list
+ * does when the org restricts member list visibility.
+ */
+export const rolesCreateBodyNameMax = 200
+
+export const RolesCreateBody = /* @__PURE__ */ zod.object({
+    name: zod.string().max(rolesCreateBodyNameMax),
+})
+
+/**
+ * Role endpoints disclose member records, so they scope them the same way the members list
+ * does when the org restricts member list visibility.
+ */
+export const rolesUpdateBodyNameMax = 200
+
+export const RolesUpdateBody = /* @__PURE__ */ zod.object({
+    name: zod.string().max(rolesUpdateBodyNameMax),
+})
+
+/**
+ * Role endpoints disclose member records, so they scope them the same way the members list
+ * does when the org restricts member list visibility.
+ */
+export const rolesPartialUpdateBodyNameMax = 200
+
+export const RolesPartialUpdateBody = /* @__PURE__ */ zod.object({
+    name: zod.string().max(rolesPartialUpdateBodyNameMax).optional(),
+})
+
+/**
+ * Role endpoints disclose member records, so they scope them the same way the members list
+ * does when the org restricts member list visibility.
+ */
+export const RolesRoleMembershipsCreateBody = /* @__PURE__ */ zod.object({
+    user_uuid: zod.uuid(),
+})
+
+export const advancedActivityLogsExportCreateBodyUserDistinctIdMax = 200
+
+export const advancedActivityLogsExportCreateBodyUserFirstNameMax = 150
+
+export const advancedActivityLogsExportCreateBodyUserLastNameMax = 150
+
+export const advancedActivityLogsExportCreateBodyUserEmailMax = 254
+
+export const advancedActivityLogsExportCreateBodyTeamIdMin = 0
+export const advancedActivityLogsExportCreateBodyTeamIdMax = 2147483647
+
+export const advancedActivityLogsExportCreateBodyClientMax = 32
+
+export const advancedActivityLogsExportCreateBodyActivityMax = 79
+
+export const advancedActivityLogsExportCreateBodyItemIdMax = 72
+
+export const advancedActivityLogsExportCreateBodyScopeMax = 79
+
+export const AdvancedActivityLogsExportCreateBody = /* @__PURE__ */ zod.object({
+    user: zod.object({
+        id: zod.number(),
+        uuid: zod.uuid(),
+        distinct_id: zod.string().max(advancedActivityLogsExportCreateBodyUserDistinctIdMax).nullish(),
+        first_name: zod.string().max(advancedActivityLogsExportCreateBodyUserFirstNameMax).optional(),
+        last_name: zod.string().max(advancedActivityLogsExportCreateBodyUserLastNameMax).optional(),
+        email: zod.email().max(advancedActivityLogsExportCreateBodyUserEmailMax),
+        is_email_verified: zod.boolean().nullish(),
+        hedgehog_config: zod.record(zod.string(), zod.unknown()).nullable(),
+        role_at_organization: zod
+            .union([
+                zod
+                    .enum([
+                        'engineering',
+                        'data',
+                        'product',
+                        'founder',
+                        'leadership',
+                        'marketing',
+                        'sales',
+                        'student',
+                        'other',
+                    ])
+                    .describe(
+                        '\* `engineering` - Engineering\n\* `data` - Data\n\* `product` - Product Management\n\* `founder` - Founder\n\* `leadership` - Leadership\n\* `marketing` - Marketing\n\* `sales` - Sales \/ Success\n\* `student` - Student\n\* `other` - Other'
+                    ),
+                zod.enum(['']),
+                zod.null(),
+            ])
+            .optional(),
+    }),
+    team_id: zod
+        .number()
+        .min(advancedActivityLogsExportCreateBodyTeamIdMin)
+        .max(advancedActivityLogsExportCreateBodyTeamIdMax)
+        .nullish(),
+    organization_id: zod.uuid().nullish(),
+    was_impersonated: zod.boolean().nullish(),
+    is_system: zod.boolean().nullish(),
+    client: zod.string().max(advancedActivityLogsExportCreateBodyClientMax).nullish(),
+    ip_address: zod.string().nullish(),
+    activity: zod.string().max(advancedActivityLogsExportCreateBodyActivityMax),
+    item_id: zod.string().max(advancedActivityLogsExportCreateBodyItemIdMax).nullish(),
+    scope: zod.string().max(advancedActivityLogsExportCreateBodyScopeMax),
+    detail: zod.unknown().optional(),
+    created_at: zod.iso.datetime({ offset: true }).optional(),
+})
+
+export const approvalPoliciesCreateBodyActionKeyMax = 128
+
+export const ApprovalPoliciesCreateBody = /* @__PURE__ */ zod.object({
+    action_key: zod.string().max(approvalPoliciesCreateBodyActionKeyMax),
+    conditions: zod.unknown().optional(),
+    approver_config: zod.unknown(),
+    allow_self_approve: zod.boolean().optional(),
+    bypass_org_membership_levels: zod.unknown().optional(),
+    bypass_roles: zod.array(zod.uuid()).optional(),
+    expires_after: zod.string().optional().describe('Auto-expire change requests after this duration'),
+    enabled: zod.boolean().optional(),
+})
+
+export const approvalPoliciesUpdateBodyActionKeyMax = 128
+
+export const ApprovalPoliciesUpdateBody = /* @__PURE__ */ zod.object({
+    action_key: zod.string().max(approvalPoliciesUpdateBodyActionKeyMax),
+    conditions: zod.unknown().optional(),
+    approver_config: zod.unknown(),
+    allow_self_approve: zod.boolean().optional(),
+    bypass_org_membership_levels: zod.unknown().optional(),
+    bypass_roles: zod.array(zod.uuid()).optional(),
+    expires_after: zod.string().optional().describe('Auto-expire change requests after this duration'),
+    enabled: zod.boolean().optional(),
+})
+
+export const approvalPoliciesPartialUpdateBodyActionKeyMax = 128
+
+export const ApprovalPoliciesPartialUpdateBody = /* @__PURE__ */ zod.object({
+    action_key: zod.string().max(approvalPoliciesPartialUpdateBodyActionKeyMax).optional(),
+    conditions: zod.unknown().optional(),
+    approver_config: zod.unknown().optional(),
+    allow_self_approve: zod.boolean().optional(),
+    bypass_org_membership_levels: zod.unknown().optional(),
+    bypass_roles: zod.array(zod.uuid()).optional(),
+    expires_after: zod.string().optional().describe('Auto-expire change requests after this duration'),
+    enabled: zod.boolean().optional(),
+})
+
+/**
+ * Approve a change request.
+ * If quorum is reached, automatically applies the change immediately.
+ */
+export const ChangeRequestsApproveCreateBody = /* @__PURE__ */ zod.object({
+    reason: zod.string().optional().describe('Optional note recorded with the approval vote explaining the decision.'),
+})
+
+/**
+ * Cancel a change request.
+ * Only the requester can cancel their own pending change request.
+ */
+export const ChangeRequestsCancelCreateBody = /* @__PURE__ */ zod.looseObject({})
+
+/**
+ * Reject a change request.
+ */
+export const ChangeRequestsRejectCreateBody = /* @__PURE__ */ zod.object({
+    reason: zod
+        .string()
+        .describe(
+            'Reason for rejecting the change request. Required — recorded with the rejection vote and shown to the requester.'
+        ),
+})
+
+/**
+ * Create a comment.
+ *
+ * Support messages are deduplicated: an identical message from the same author on the same
+ * ticket within a short window returns the original comment with a 200 instead of creating a
+ * second one, and a 409 while a concurrent request is still creating it.
+ */
+export const commentsCreateBodyScopeMax = 79
+
+export const commentsCreateBodyIsTaskDefault = false
+export const commentsCreateBodyItemIdMax = 72
+
+export const CommentsCreateBody = /* @__PURE__ */ zod.object({
+    scope: zod.string().max(commentsCreateBodyScopeMax).optional(),
+    item_context: zod
+        .unknown()
+        .optional()
+        .describe('Metadata for the comment target, anchor, thread state, and owning task.'),
+    deleted: zod.boolean().nullish(),
+    mentions: zod.array(zod.number()).optional(),
+    slug: zod.string().optional(),
+    is_task: zod
+        .boolean()
+        .default(commentsCreateBodyIsTaskDefault)
+        .describe(
+            'Whether this comment is an actionable task that can be marked complete. Tasks render with a checkbox in the UI and can be filtered as a separate kind. Cannot be set on replies (source_comment) or emoji reactions. Immutable after creation.'
+        ),
+    content: zod.string().nullish(),
+    rich_content: zod.unknown().optional(),
+    item_id: zod.string().max(commentsCreateBodyItemIdMax).nullish(),
+    source_comment: zod.uuid().nullish(),
+})
+
+export const commentsUpdateBodyScopeMax = 79
+
+export const commentsUpdateBodyIsTaskDefault = false
+export const commentsUpdateBodyItemIdMax = 72
+
+export const CommentsUpdateBody = /* @__PURE__ */ zod.object({
+    scope: zod.string().max(commentsUpdateBodyScopeMax).optional(),
+    item_context: zod
+        .unknown()
+        .optional()
+        .describe('Metadata for the comment target, anchor, thread state, and owning task.'),
+    deleted: zod.boolean().nullish(),
+    mentions: zod.array(zod.number()).optional(),
+    slug: zod.string().optional(),
+    is_task: zod
+        .boolean()
+        .default(commentsUpdateBodyIsTaskDefault)
+        .describe(
+            'Whether this comment is an actionable task that can be marked complete. Tasks render with a checkbox in the UI and can be filtered as a separate kind. Cannot be set on replies (source_comment) or emoji reactions. Immutable after creation.'
+        ),
+    content: zod.string().nullish(),
+    rich_content: zod.unknown().optional(),
+    item_id: zod.string().max(commentsUpdateBodyItemIdMax).nullish(),
+    source_comment: zod.uuid().nullish(),
+})
+
+export const commentsPartialUpdateBodyScopeMax = 79
+
+export const commentsPartialUpdateBodyIsTaskDefault = false
+export const commentsPartialUpdateBodyItemIdMax = 72
+
+export const CommentsPartialUpdateBody = /* @__PURE__ */ zod.object({
+    scope: zod.string().max(commentsPartialUpdateBodyScopeMax).optional(),
+    item_context: zod
+        .unknown()
+        .optional()
+        .describe('Metadata for the comment target, anchor, thread state, and owning task.'),
+    deleted: zod.boolean().nullish(),
+    mentions: zod.array(zod.number()).optional(),
+    slug: zod.string().optional(),
+    is_task: zod
+        .boolean()
+        .default(commentsPartialUpdateBodyIsTaskDefault)
+        .describe(
+            'Whether this comment is an actionable task that can be marked complete. Tasks render with a checkbox in the UI and can be filtered as a separate kind. Cannot be set on replies (source_comment) or emoji reactions. Immutable after creation.'
+        ),
+    content: zod.string().nullish(),
+    rich_content: zod.unknown().optional(),
+    item_id: zod.string().max(commentsPartialUpdateBodyItemIdMax).nullish(),
+    source_comment: zod.uuid().nullish(),
+})
+
+/**
+ * Mirror this discussion thread to a Slack channel. Posts the comment (and its existing replies) as a new Slack thread; later replies on either side sync across. A discussion mirrors to exactly one Slack thread: re-calling with the same channel returns the existing mirror; a different channel is a 400 naming the existing one. 409 while a concurrent send is in flight. 404 when the feature is not enabled for the team.
+ */
+export const commentsSendToSlackCreateBodyChannelIdMax = 255
+
+export const CommentsSendToSlackCreateBody = /* @__PURE__ */ zod.object({
+    integration_id: zod.number().describe("ID of the Slack integration (kind='slack') whose bot posts the thread."),
+    channel_id: zod
+        .string()
+        .max(commentsSendToSlackCreateBodyChannelIdMax)
+        .describe(
+            "Slack channel ID to create the mirrored thread in. The bot must be a member of the channel. The channel's display name is resolved server-side."
+        ),
+})
+
+/**
+ * Replace the authenticated user's custom facets for a product, within the current team. Pass `@me` as the UUID.
+ */
+export const UserFacetSettingsPartialUpdateBody = /* @__PURE__ */ zod.object({
+    custom_facets: zod
+        .array(
+            zod.object({
+                key: zod
+                    .string()
+                    .describe(
+                        'The log or span attribute key this facet is based on — for example `http.status_code` or `k8s.pod.name`.'
+                    ),
+                source_type: zod
+                    .enum(['attribute', 'resourceAttribute'])
+                    .describe('\* `attribute` - attribute\n\* `resourceAttribute` - resourceAttribute')
+                    .describe(
+                        'Where the key lives: `attribute` for a plain log\/span attribute, `resourceAttribute` for an OpenTelemetry resource attribute.\n\n\* `attribute` - attribute\n\* `resourceAttribute` - resourceAttribute'
+                    ),
+            })
+        )
+        .optional()
+        .describe(
+            'Ordered list of custom facets the user has pinned for this product, within the current team. Send the full list to replace the existing set.'
+        ),
+})
+
+/**
+ * Update the authenticated user's pinned sidebar tabs and/or homepage for the current team. Pass `@me` as the UUID. Send `tabs` to replace the pinned tab list, `homepage` to set the home destination (any PostHog URL — dashboard, insight, search results, scene). Either field may be omitted to leave it unchanged; sending `homepage: null` or `{}` clears the homepage.
+ */
+export const UserHomeSettingsPartialUpdateBody = /* @__PURE__ */ zod.object({
+    tabs: zod
+        .array(
+            zod.object({
+                id: zod
+                    .string()
+                    .optional()
+                    .describe('Stable identifier for the tab. Generated client-side; safe to omit on create.'),
+                pathname: zod
+                    .string()
+                    .optional()
+                    .describe(
+                        'URL pathname the tab points at — for example `\/project\/123\/dashboard\/45` or `\/project\/123\/insights`. Combined with `search` and `hash` to reconstruct the destination.'
+                    ),
+                search: zod
+                    .string()
+                    .optional()
+                    .describe(
+                        'Query string portion of the URL, including the leading `?`. Empty string when there is no query.'
+                    ),
+                hash: zod
+                    .string()
+                    .optional()
+                    .describe(
+                        'Fragment portion of the URL, including the leading `#`. Empty string when there is no fragment.'
+                    ),
+                title: zod
+                    .string()
+                    .optional()
+                    .describe(
+                        'Default tab title derived from the destination scene. Used when `customTitle` is not set.'
+                    ),
+                customTitle: zod
+                    .string()
+                    .nullish()
+                    .describe('Optional user-provided title that overrides `title` in the navigation UI.'),
+                iconType: zod
+                    .string()
+                    .optional()
+                    .describe(
+                        'Icon key shown next to the tab in the sidebar — for example `dashboard`, `insight`, `blank`.'
+                    ),
+                sceneId: zod
+                    .string()
+                    .nullish()
+                    .describe(
+                        'Scene identifier resolved from the pathname when known — used by the frontend for icon\/title hints.'
+                    ),
+                sceneKey: zod
+                    .string()
+                    .nullish()
+                    .describe(
+                        'Scene key (logic key) for the destination, paired with `sceneParams` for deeper routing context.'
+                    ),
+                sceneParams: zod
+                    .unknown()
+                    .optional()
+                    .describe(
+                        'Free-form scene parameters captured at pin time, used by the frontend to rehydrate the destination.'
+                    ),
+                pinned: zod
+                    .boolean()
+                    .optional()
+                    .describe('Whether this entry is pinned. Always coerced to true on save — pass true or omit.'),
+            })
+        )
+        .optional()
+        .describe(
+            'Ordered list of pinned navigation tabs shown in the sidebar for the authenticated user within the current team. Send the full list to replace the existing pins; omit to leave them unchanged.'
+        ),
+    homepage: zod
+        .union([
+            zod.object({
+                id: zod
+                    .string()
+                    .optional()
+                    .describe('Stable identifier for the tab. Generated client-side; safe to omit on create.'),
+                pathname: zod
+                    .string()
+                    .optional()
+                    .describe(
+                        'URL pathname the tab points at — for example `\/project\/123\/dashboard\/45` or `\/project\/123\/insights`. Combined with `search` and `hash` to reconstruct the destination.'
+                    ),
+                search: zod
+                    .string()
+                    .optional()
+                    .describe(
+                        'Query string portion of the URL, including the leading `?`. Empty string when there is no query.'
+                    ),
+                hash: zod
+                    .string()
+                    .optional()
+                    .describe(
+                        'Fragment portion of the URL, including the leading `#`. Empty string when there is no fragment.'
+                    ),
+                title: zod
+                    .string()
+                    .optional()
+                    .describe(
+                        'Default tab title derived from the destination scene. Used when `customTitle` is not set.'
+                    ),
+                customTitle: zod
+                    .string()
+                    .nullish()
+                    .describe('Optional user-provided title that overrides `title` in the navigation UI.'),
+                iconType: zod
+                    .string()
+                    .optional()
+                    .describe(
+                        'Icon key shown next to the tab in the sidebar — for example `dashboard`, `insight`, `blank`.'
+                    ),
+                sceneId: zod
+                    .string()
+                    .nullish()
+                    .describe(
+                        'Scene identifier resolved from the pathname when known — used by the frontend for icon\/title hints.'
+                    ),
+                sceneKey: zod
+                    .string()
+                    .nullish()
+                    .describe(
+                        'Scene key (logic key) for the destination, paired with `sceneParams` for deeper routing context.'
+                    ),
+                sceneParams: zod
+                    .unknown()
+                    .optional()
+                    .describe(
+                        'Free-form scene parameters captured at pin time, used by the frontend to rehydrate the destination.'
+                    ),
+                pinned: zod
+                    .boolean()
+                    .optional()
+                    .describe('Whether this entry is pinned. Always coerced to true on save — pass true or omit.'),
+            }),
+            zod.null(),
+        ])
+        .optional()
+        .describe(
+            "Tab descriptor for the user's chosen home page — the destination opened when they click the PostHog logo or hit `\/`. Set to a tab descriptor to pick a homepage, send `null` or `{}` to clear it and fall back to the project default."
+        ),
+})

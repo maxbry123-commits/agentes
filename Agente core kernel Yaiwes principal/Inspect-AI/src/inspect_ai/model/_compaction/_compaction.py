@@ -1,0 +1,505 @@
+from __future__ import annotations
+
+from logging import getLogger
+from typing import Sequence
+
+import anyio
+from pydantic import BaseModel, Field
+
+from inspect_ai._util.content import ContentReasoning
+from inspect_ai.tool import Tool, ToolDef, ToolInfo, ToolSource
+from inspect_ai.util._checkpoint import Checkpointer
+from inspect_ai.util._checkpoint.checkpointer_noop import _NoopCheckpointer
+
+from .._call_tools import get_tools_info, resolve_tools
+from .._chat_message import ChatMessage, ChatMessageAssistant, ChatMessageUser
+from .._model import (
+    REDACTED_REASONING_TOKENS_METADATA_KEY,
+    Model,
+    collapse_consecutive_messages_for_api,
+    get_model,
+)
+from .._model_info import get_model_input_tokens
+from .._model_output import ModelOutput
+from .memory import MEMORY_TOOL, memory_warning_message
+from .types import Compact, CompactionStrategy
+
+logger = getLogger(__name__)
+
+# stateless no-op session used when the caller has no checkpointer; its
+# track() returns initial_value and never registers, so the compaction
+# handler needs no special-casing
+_NOOP_CHECKPOINTER: Checkpointer = _NoopCheckpointer()
+
+
+class _CompactionState(BaseModel):
+    """Checkpointable state held by a `compaction()` handler.
+
+    Captured at each checkpoint fire and restored on resume so a resumed
+    session continues from the prior compacted view rather than re-deriving
+    (and, for summary strategies, re-invoking the model) from scratch.
+    """
+
+    compacted_input: list[ChatMessage] = Field(default_factory=list)
+    """Reduced input actually sent to the model."""
+
+    processed_message_ids: set[str] = Field(default_factory=set)
+    """IDs of messages already folded into the input."""
+
+    baseline_tokens: int | None = None
+    """Token baseline from the last `record_output` call."""
+
+    baseline_message_ids: set[str] = Field(default_factory=set)
+    """IDs of messages that produced `baseline_tokens`."""
+
+    memory_warning_issued: bool = False
+    """Whether a pre-compaction memory warning was issued for the window."""
+
+
+def compaction(
+    strategy: CompactionStrategy,
+    prefix: list[ChatMessage],
+    tools: Sequence[Tool | ToolDef | ToolInfo | ToolSource] | ToolSource | None = None,
+    model: str | Model | None = None,
+    checkpointer: Checkpointer = _NOOP_CHECKPOINTER,
+) -> Compact:
+    """Create a conversation compaction handler.
+
+    Call `compact_input()` with the full conversation history before sending
+    input to the model. Send the returned `input` and append the supplemental
+    message returned (if any) to the full history. Call `record_output()` after
+    each generate call to calibrate token estimation.
+
+    See the [Compaction](https://inspect.aisi.org.uk/compaction.html) for additional details on using compaction.
+
+    Args:
+        strategy: Compaction strategy (e.g. editing, trimming, summary, etc.)
+        prefix: Chat messages to always preserve in compacted conversations.
+        tools: Tool definitions (included in token count as they consume context).
+        model: Target model for compacted input (defaults to active model).
+        checkpointer: Session checkpointer. The handler's internal state is
+            captured at each checkpoint fire and restored on resume so the
+            resumed session continues from the prior compacted view rather
+            than re-deriving from scratch. Defaults to a no-op session.
+
+    Returns:
+        `Compact` handler with `compact_input()` and `record_output()` methods.
+    """
+    from inspect_ai.log._transcript import transcript
+
+    # mutable per-session state (see _CompactionState for field docs). The
+    # closure mutates `state` in place; it is the single source of truth.
+    #
+    # `track` registers the state for checkpointing and returns either the
+    # fresh instance passed as initial_value (no checkpointer / fresh run) or
+    # the value captured at the last fire (resume). The `lambda: state`
+    # callback hands the live instance to each fire; track never invokes it
+    # during registration, so closing over `state` before this assignment
+    # completes is safe.
+    state = checkpointer.track("compaction", lambda: state, _CompactionState())
+
+    # snapshot the prefix in case it changes
+    prefix = prefix.copy()
+
+    # serializes closure-state mutation when the same Compact instance is
+    # shared across concurrent callers (e.g. via AgentBridge)
+    _lock = anyio.Lock()
+
+    # resolve target model
+    target_model = get_model(model)
+
+    # resolve tool info and count tool/prefix tokens once (they don't change during conversation)
+    tools_info: list[ToolInfo] = []
+    tool_tokens: int | None = None
+    prefix_tokens: int | None = None
+
+    # thresholds are resolved on first use rather than here: a fractional
+    # threshold depends on the model's context window, and providers that read
+    # it from the server (e.g. vllm) only register it during their first
+    # generate(), which happens after the agent creates this handler.
+    threshold: int | None = None
+    memory_warning_threshold: int = 0
+
+    # helper to get message ID (assert away id == None)
+    def message_id(message: ChatMessage) -> str:
+        if message.id is None:
+            raise RuntimeError("Message must have an ID")
+        return message.id
+
+    async def record_output_fn(input: list[ChatMessage], output: ModelOutput) -> None:
+        """Record output from generate call to calibrate token baseline."""
+        if output.usage is None:
+            return
+
+        async with _lock:
+            # Compute total input tokens including cached tokens
+            input_tokens = output.usage.input_tokens
+            if output.usage.input_tokens_cache_read:
+                input_tokens += output.usage.input_tokens_cache_read
+            if output.usage.input_tokens_cache_write:
+                input_tokens += output.usage.input_tokens_cache_write
+
+            # `input` is the messages that produced output.usage; under
+            # concurrent bridge use `state.compacted_input` may already
+            # reflect a later call
+            state.baseline_tokens = input_tokens
+            state.baseline_message_ids = {message_id(m) for m in input}
+
+    async def compact_fn(
+        messages: list[ChatMessage],
+        force: bool = False,
+    ) -> tuple[list[ChatMessage], ChatMessageUser | None]:
+        from inspect_ai.event._compaction import CompactionEvent
+
+        # derived caches we lazily resolve (not part of checkpointed state)
+        nonlocal tool_tokens, tools_info, prefix_tokens
+        nonlocal threshold, memory_warning_threshold
+
+        async with _lock:
+            # one time resolution of the threshold (see declaration above)
+            if threshold is None:
+                threshold = _resolve_threshold(target_model, strategy.threshold)
+                memory_warning_threshold = int(0.9 * threshold)
+
+            # one time resolution of tool_tokens and prefix_tokens
+            # (must be done here b/c calls are async)
+            if tool_tokens is None:
+                tools_info = get_tools_info(await resolve_tools(tools or []))
+                tool_tokens = await target_model.count_tool_tokens(tools_info)
+            if prefix_tokens is None:
+                prefix_tokens = await target_model.count_tokens(prefix) if prefix else 0
+
+            # determine unprocessed messages (messages not yet added to input).
+            # we allow unprocessed messages to accumulate in the input until
+            # the compaction 'threshold' is reached.
+            unprocessed: list[ChatMessage] = [
+                m for m in messages if message_id(m) not in state.processed_message_ids
+            ]
+
+            # estimate total tokens using the most accurate method available
+            target_messages = state.compacted_input + unprocessed
+            target_message_ids = {message_id(m) for m in target_messages}
+
+            # On providers whose usage.input_tokens omits redacted reasoning
+            # content (e.g., OpenAI Responses with encrypted reasoning), sum
+            # the per-message redacted_reasoning_tokens stamped at generate
+            # time and add it back to the total. Compaction is automatic: if
+            # a strategy drops messages, those entries fall out of
+            # target_messages and stop contributing.
+            hidden_reasoning_tokens = _redacted_reasoning_tokens_total(
+                target_messages, target_model
+            )
+
+            if (
+                state.baseline_tokens is not None
+                and state.baseline_message_ids.issubset(target_message_ids)
+            ):
+                # Use the baseline from the last generate call (most accurate).
+                # The baseline already includes tool definitions, system messages,
+                # and API-level overhead. We only need to count NEW messages
+                # added since the baseline was established.
+                new_since_baseline = [
+                    m
+                    for m in target_messages
+                    if message_id(m) not in state.baseline_message_ids
+                ]
+                new_tokens = (
+                    await target_model.count_tokens(new_since_baseline)
+                    if new_since_baseline
+                    else 0
+                )
+                total_tokens = (
+                    state.baseline_tokens + new_tokens + hidden_reasoning_tokens
+                )
+            else:
+                # No baseline yet (first call). Fall back to per-message counting.
+                message_tokens = await target_model.count_tokens(target_messages)
+                total_tokens = tool_tokens + message_tokens + hidden_reasoning_tokens
+
+            if force or total_tokens > threshold:
+                # perform compaction (with iteration if needed)
+                c_input, c_message = await _perform_compaction(
+                    strategy=strategy,
+                    messages=target_messages,
+                    tools=tools_info,
+                    model=target_model,
+                    threshold=threshold,
+                    tool_tokens=tool_tokens,
+                    prefix_tokens=prefix_tokens,
+                )
+
+                # track all messages that were processed in this compaction pass
+                for m in state.compacted_input + unprocessed:
+                    state.processed_message_ids.add(message_id(m))
+
+                # c_message is a compaction side effect to append to the history
+                # (e.g. a summary). track it as processed as well
+                if c_message is not None:
+                    state.processed_message_ids.add(message_id(c_message))
+
+                # Preserve prefix messages based on strategy type
+                if strategy.preserve_prefix:
+                    # Non-native strategies: prepend any prefix messages not in output
+                    input_ids = {message_id(m) for m in c_input}
+                    prepend_prefix = [
+                        m for m in prefix if message_id(m) not in input_ids
+                    ]
+                else:
+                    # Native compaction: only prepend system messages
+                    # (user content is preserved by provider or in compaction block)
+                    prepend_prefix = [m for m in prefix if m.role == "system"]
+                pre_collapse_input = prepend_prefix + c_input
+                c_message_was_in_input = c_message is not None and any(
+                    m is c_message for m in pre_collapse_input
+                )
+                c_input = collapse_consecutive_messages_for_api(
+                    pre_collapse_input, target_model.api
+                )
+                if c_message_was_in_input and not any(m is c_message for m in c_input):
+                    c_message = None
+
+                # update input
+                state.compacted_input.clear()
+                state.compacted_input.extend(c_input)
+
+                # log compaction
+                compacted_tokens = await target_model.count_tokens(
+                    state.compacted_input
+                )
+                compacted_hidden = _redacted_reasoning_tokens_total(
+                    state.compacted_input, target_model
+                )
+                transcript()._event(
+                    CompactionEvent(
+                        type=strategy.type,
+                        role=target_model.role,
+                        source="inspect",
+                        tokens_before=total_tokens,
+                        tokens_after=compacted_tokens + compacted_hidden,
+                        metadata={
+                            "strategy": strategy.__class__.__name__,
+                            "messages_before": len(target_messages),
+                            "messages_after": len(state.compacted_input),
+                            "trigger": "forced" if force else "threshold",
+                        },
+                    )
+                )
+
+                # clear memory warning state
+                state.memory_warning_issued = False
+
+                # invalidate baseline (compaction changed the messages)
+                state.baseline_tokens = None
+                state.baseline_message_ids = set()
+
+                # return input and any extra message to append
+                return list(c_input), c_message
+
+            else:
+                # track unprocessed messages as now processed
+                for m in unprocessed:
+                    state.processed_message_ids.add(message_id(m))
+
+                # extend input with unprocessed messages
+                state.compacted_input.extend(unprocessed)
+
+                # check if we need to do a memory warning
+                if (
+                    strategy.memory is True
+                    and MEMORY_TOOL in [t.name for t in tools_info]
+                    and total_tokens > memory_warning_threshold
+                    and not state.memory_warning_issued
+                ):
+                    memory_message = memory_warning_message()
+                    state.compacted_input.append(memory_message)
+                    state.processed_message_ids.add(message_id(memory_message))
+                    state.memory_warning_issued = True
+
+                # return
+                return list(state.compacted_input), None
+
+    class _CompactHandler:
+        async def compact_input(
+            self,
+            messages: list[ChatMessage],
+            force: bool = False,
+        ) -> tuple[list[ChatMessage], ChatMessageUser | None]:
+            return await compact_fn(messages, force=force)
+
+        async def record_output(
+            self, input: list[ChatMessage], output: ModelOutput
+        ) -> None:
+            await record_output_fn(input, output)
+
+    return _CompactHandler()
+
+
+def _effective_reasoning_history(model: Model) -> str:
+    """Resolve the reasoning_history mode that will apply at re-injection time.
+
+    Mirrors the resolution in `resolve_reasoning_history` so compaction
+    accounts for the same filter generate will apply.
+    """
+    history: str = model.config.reasoning_history or "auto"
+    force = model.api.force_reasoning_history()
+    if force is not None:
+        return force
+    if history == "auto":
+        return model.api.auto_reasoning_history()
+    return history
+
+
+def _has_redacted_reasoning(message: ChatMessageAssistant) -> bool:
+    return isinstance(message.content, list) and any(
+        isinstance(c, ContentReasoning) and c.redacted for c in message.content
+    )
+
+
+def _has_any_reasoning(message: ChatMessageAssistant) -> bool:
+    return isinstance(message.content, list) and any(
+        isinstance(c, ContentReasoning) for c in message.content
+    )
+
+
+def _redacted_reasoning_tokens_total(messages: list[ChatMessage], model: Model) -> int:
+    """Sum stamped `redacted_reasoning_tokens` across assistant messages.
+
+    Returns 0 unless the target model's provider declares (via
+    `apply_redacted_reasoning_tokens_to_input()`) that its
+    `usage.input_tokens` omits redacted reasoning content on re-injection.
+
+    Compaction-aware on three axes:
+      - Messages dropped by a strategy fall out of the iteration.
+      - Messages whose redacted ContentReasoning has been stripped (e.g.
+        CompactionEdit clears reasoning content but preserves metadata)
+        no longer contribute, since the metadata describes a cost that
+        only applies while the redacted content is still present.
+      - The model's resolved `reasoning_history` mode gates which messages
+        survive re-injection. With "none", all reasoning is stripped before
+        generate, so nothing contributes. With "last", only the most
+        recently reasoning-bearing assistant message survives.
+    """
+    if not model.api.apply_redacted_reasoning_tokens_to_input():
+        return 0
+
+    history_mode = _effective_reasoning_history(model)
+    if history_mode == "none":
+        return 0
+
+    assistants = [m for m in messages if isinstance(m, ChatMessageAssistant)]
+
+    if history_mode == "last":
+        # Match resolve_reasoning_history: only the most recent assistant
+        # message that bears any reasoning keeps it. If that message also
+        # has redacted reasoning + stamped metadata, count it; otherwise 0.
+        for m in reversed(assistants):
+            if _has_any_reasoning(m):
+                if _has_redacted_reasoning(m):
+                    return int(
+                        (m.metadata or {}).get(
+                            REDACTED_REASONING_TOKENS_METADATA_KEY, 0
+                        )
+                    )
+                return 0
+        return 0
+
+    # "all" (or any future mode that preserves reasoning)
+    return sum(
+        (m.metadata or {}).get(REDACTED_REASONING_TOKENS_METADATA_KEY, 0)
+        for m in assistants
+        if _has_redacted_reasoning(m)
+    )
+
+
+DEFAULT_CONTEXT_WINDOW = 128_000
+
+
+async def _perform_compaction(
+    strategy: CompactionStrategy,
+    messages: list[ChatMessage],
+    tools: list[ToolInfo],
+    model: Model,
+    threshold: int,
+    tool_tokens: int,
+    prefix_tokens: int,
+) -> tuple[list[ChatMessage], ChatMessageUser | None]:
+    """Perform compaction, iterating if necessary to get under threshold.
+
+    Args:
+        strategy: Compaction strategy to use.
+        messages: Messages to compact.
+        tools: Available tools
+        model: Target model for compaction.
+        threshold: Token threshold to stay under.
+        tool_tokens: Token count for tool definitions.
+        prefix_tokens: Token count for prefix messages (for error reporting).
+
+    Returns:
+        Tuple of (compacted messages, optional summary message).
+
+    Raises:
+        RuntimeError: If compaction cannot reduce tokens below threshold.
+    """
+    MAX_ITERATIONS = 3
+    c_input, c_message = await strategy.compact(model, messages, tools)
+    compacted_tokens = await model.count_tokens(c_input)
+    # Surviving messages may still carry redacted-reasoning cost that
+    # `count_tokens` (and `usage.input_tokens`) doesn't see; include it
+    # so the threshold check reflects the model's effective context.
+    hidden_tokens = _redacted_reasoning_tokens_total(c_input, model)
+    total_compacted = tool_tokens + compacted_tokens + hidden_tokens
+
+    for _ in range(MAX_ITERATIONS):
+        if total_compacted <= threshold:
+            break  # Success
+
+        prev_total = total_compacted
+
+        # Try compacting again
+        c_input, c_message = await strategy.compact(model, list(c_input), tools)
+        compacted_tokens = await model.count_tokens(c_input)
+        hidden_tokens = _redacted_reasoning_tokens_total(c_input, model)
+        total_compacted = tool_tokens + compacted_tokens + hidden_tokens
+
+        # Stop if no progress (can't reduce further)
+        if total_compacted >= prev_total:
+            break
+
+    # Final validation
+    if total_compacted > threshold:
+        raise RuntimeError(
+            f"Compaction insufficient: {total_compacted:,} tokens "
+            f"still exceeds threshold of {threshold:,} "
+            f"(tools: {tool_tokens:,}, prefix: {prefix_tokens:,}, "
+            f"messages: {compacted_tokens:,}, "
+            f"hidden_reasoning: {hidden_tokens:,}). "
+            f"Consider using a lower compaction threshold to accommodate "
+            f"tool definitions and prefix."
+        )
+
+    return c_input, c_message
+
+
+def _resolve_threshold(model: Model, threshold: int | float) -> int:
+    """Resolve compaction threshold to an absolute token count.
+
+    Args:
+        model: Target model for compacted input.
+        threshold: Token count (int) or fraction of context window (float <= 1.0).
+
+    Returns:
+        Absolute token threshold for triggering compaction.
+    """
+    if isinstance(threshold, int) or threshold > 1.0:
+        return int(threshold)
+    else:
+        # Look up the model's input token capacity
+        context_window = get_model_input_tokens(model)
+        if context_window is None:
+            logger.warning(
+                f"Unable to determine context window for {model} (falling back to default of {DEFAULT_CONTEXT_WINDOW})"
+            )
+            context_window = DEFAULT_CONTEXT_WINDOW
+
+        # compute threshold
+        return int(threshold * context_window)

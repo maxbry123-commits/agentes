@@ -1,0 +1,587 @@
+import os
+from logging import getLogger
+from typing import Any, Literal, cast
+
+import httpx2
+from openai import (
+    APIError,
+    APIStatusError,
+    AsyncOpenAI,
+    BadRequestError,
+    DefaultAsyncHttpxClient,
+    PermissionDeniedError,
+    UnprocessableEntityError,
+)
+from openai._types import NOT_GIVEN
+from openai.types.chat import (
+    ChatCompletion,
+    ChatCompletionMessageParam,
+    ChatCompletionToolParam,
+)
+from typing_extensions import override
+
+from inspect_ai._util.logger import warn_once
+from inspect_ai.log._samples import set_active_model_event_call
+from inspect_ai.model._openai import (
+    chat_choices_from_openai,
+    openai_chat_completion_stream_final,
+    openai_classify_retry,
+)
+from inspect_ai.model._openai_responses import ResponsesModelInfo
+from inspect_ai.model._providers.openai_responses import generate_responses
+from inspect_ai.model._providers.util.chatapi import (
+    ChatAPIHandler,
+    ChatAPIMessage,
+    chat_api_messages_for_handler,
+)
+from inspect_ai.model._providers.util.hooks import HttpxHooks
+from inspect_ai.model._providers.util.llama31 import Llama31Handler
+from inspect_ai.tool import ToolChoice, ToolInfo
+from inspect_ai.util._json import JSON_SCHEMA_EXTENDED_FIELDS
+
+from ..._util.http_defaults_httpx2 import connect_timeout, default_client_kwargs
+from .._chat_message import ChatMessage, ChatMessageTool
+from .._generate_config import GenerateConfig
+from .._model import ModelAPI, RetryDecision
+from .._model_call import ModelCall, as_error_response
+from .._model_output import ChatCompletionChoice, ModelOutput
+from .._openai import (
+    OpenAIResponseError,
+    is_gpt_5_model,
+    is_o_series_model,
+    messages_to_openai,
+    model_output_from_openai,
+    needs_max_completion_tokens,
+    openai_chat_tool_choice,
+    openai_chat_tools,
+    openai_completion_params,
+    openai_handle_bad_request,
+    openai_handle_stream_error,
+    openai_media_filter,
+    supports_native_max_reasoning_effort,
+)
+from .._stream import model_stream_requested
+from .util import (
+    environment_prerequisite_error,
+    model_base_url,
+    normalize_stream_arg,
+)
+
+logger = getLogger(__name__)
+
+
+class OpenAICompatibleAPI(ModelAPI):
+    def __init__(
+        self,
+        model_name: str,
+        base_url: str | None = None,
+        api_key: str | None = None,
+        config: GenerateConfig = GenerateConfig(),
+        service: str | None = None,
+        service_base_url: str | None = None,
+        api_key_var: str | None = None,
+        emulate_tools: bool = False,
+        responses_api: bool | None = None,
+        responses_store: bool | None = None,
+        stream: bool | Literal["auto"] | None = None,
+        strict_tools: bool = True,
+        client_timeout: float | None = None,
+        **model_args: Any,
+    ) -> None:
+        # extract service prefix from model name if not specified
+        if service is None:
+            parts = model_name.split("/")
+            if len(parts) == 1:
+                raise ValueError(
+                    "openai-api model names must include a service prefix (e.g. 'openai-api/service/model')"
+                )
+            self.service = parts[0]
+        else:
+            self.service = service
+
+        # Compute API key env var name (e.g. HF_API_KEY). Callers may provide a
+        # non-standard env var (e.g. HF_TOKEN). Ensure the API key override
+        # hooks in ModelAPI receive the env var name the value actually came
+        # from.
+        service_env_name = self.service.upper().replace("-", "_")
+        api_key_var = api_key_var or f"{service_env_name}_API_KEY"
+
+        super().__init__(
+            model_name=model_name,
+            base_url=base_url,
+            api_key=api_key,
+            api_key_vars=[api_key_var],
+            config=config,
+        )
+
+        # use service prefix to lookup api_key
+        if not self.api_key:
+            self.api_key = os.environ.get(api_key_var, None)
+            if not self.api_key:
+                raise environment_prerequisite_error(
+                    self.service,
+                    [api_key_var],
+                )
+
+        # use service prefix to lookup base_url
+        if not self.base_url:
+            base_url_var = f"{service_env_name}_BASE_URL"
+            self.base_url = model_base_url(base_url, [base_url_var]) or service_base_url
+            if not self.base_url:
+                raise environment_prerequisite_error(
+                    self.service,
+                    [base_url_var],
+                )
+
+        # grab arguments
+        self.emulate_tools = emulate_tools
+        self.responses_api = responses_api
+        self.responses_store = responses_store
+        responses_phase = model_args.pop("responses_phase", False)
+        if not isinstance(responses_phase, bool):
+            raise ValueError("responses_phase must be a bool")
+        self.responses_phase: bool = responses_phase
+        if self.emulate_tools and self.responses_api:
+            raise ValueError(
+                "emulate_tools is not compatible with using the responses_api"
+            )
+        # record streaming preference (None/"auto" is auto: stream when the
+        # subclass calls for it or the caller passes on_stream to generate;
+        # an explicit True/False overrides — see resolve_stream)
+        self.stream: bool | None = normalize_stream_arg(stream)
+        self.strict_tools = strict_tools
+
+        # store client_timeout for http client creation
+        self.client_timeout = client_timeout
+
+        # store http_client and model_args for reinitialization
+        self.http_client = model_args.pop("http_client", self._create_http_client())
+        self.model_args = model_args
+
+        # create client
+        self.initialize()
+
+    def _create_http_client(self) -> DefaultAsyncHttpxClient:
+        # DefaultAsyncHttpxClient is the SDK's own httpx2.AsyncClient with
+        # OpenAI's recommended defaults. Source the client from the SDK rather
+        # than hand-building one: a client and its config objects must be the
+        # same httpx flavor — a mismatch silently corrupts the timeout config
+        # (#4837). Our kwargs win over its setdefaults.
+        if self.client_timeout is not None:
+            # client_timeout is the overall budget and must not shorten the
+            # connect deadline.
+            return DefaultAsyncHttpxClient(
+                **default_client_kwargs(
+                    timeout=httpx2.Timeout(
+                        timeout=self.client_timeout,
+                        connect=max(self.client_timeout, connect_timeout()),
+                    )
+                )
+            )
+        return DefaultAsyncHttpxClient(**default_client_kwargs())
+
+    def _create_client(self) -> AsyncOpenAI:
+        return AsyncOpenAI(
+            api_key=self.api_key,
+            base_url=self.base_url,
+            http_client=self.http_client,
+            timeout=self.client_timeout
+            if self.client_timeout is not None
+            else NOT_GIVEN,
+            **self.model_args,
+        )
+
+    def initialize(self) -> None:
+        super().initialize()
+        if self.http_client.is_closed:
+            self.http_client = self._create_http_client()
+        self.client = self._create_client()
+        self._http_hooks = HttpxHooks(self.client._client, api=self)
+
+    @override
+    async def aclose(self) -> None:
+        await self.client.close()
+
+    async def generate(
+        self,
+        input: list[ChatMessage],
+        tools: list[ToolInfo],
+        tool_choice: ToolChoice,
+        config: GenerateConfig,
+    ) -> ModelOutput | tuple[ModelOutput | Exception, ModelCall]:
+        tools, tool_choice, config = self.resolve_tools(tools, tool_choice, config)
+
+        if self.responses_api:
+            return await generate_responses(
+                client=self.client,
+                http_hooks=self._http_hooks,
+                model_name=self.service_model_name(),
+                model_family=self.model_family(),
+                input=input,
+                tools=tools,
+                tool_choice=tool_choice,
+                config=config,
+                background=None,
+                service_tier=None,
+                prompt_cache_key=NOT_GIVEN,
+                prompt_cache_retention=NOT_GIVEN,
+                safety_identifier=NOT_GIVEN,
+                responses_store=self.responses_store,
+                synthesize_phase=self.responses_phase,
+                model_info=ModelInfo(self.model_family()),
+                batcher=None,
+                handle_bad_request=self.handle_bad_request,
+                streaming=self.resolve_stream(config),
+            )
+
+        else:
+            # tool emulation if requested
+            if self.emulate_tools:
+                handler: ChatAPIHandler | None = OpenAICompatibleHandler(
+                    self.model_name
+                )
+            else:
+                handler = None
+
+            # resolve input
+            if handler:
+                input = chat_api_messages_for_handler(input, tools, handler)
+
+            # allocate request_id (so we can see it from ModelCall)
+            request_id = self._http_hooks.start_request()
+
+            # get completion params (slice off service from model name)
+            completion_params = self.completion_params(
+                config=config,
+                tools=len(tools) > 0,
+            )
+
+            # prepare request (we do this so we can log the ModelCall)
+            have_tools = (len(tools) > 0) and not self.emulate_tools
+            request = dict(
+                messages=await self.messages_to_openai(input),
+                tools=self.tools_to_openai(tools) if have_tools else NOT_GIVEN,
+                tool_choice=openai_chat_tool_choice(tool_choice)
+                if have_tools
+                else NOT_GIVEN,
+                extra_headers={HttpxHooks.REQUEST_ID_HEADER: request_id}
+                | self.request_headers(config)
+                | (config.extra_headers or {}),
+                **completion_params,
+            )
+
+            # resolve streaming and mutate the request accordingly before the
+            # ModelCall snapshot below, so the logged request matches the wire
+            # request
+            if self.resolve_stream(config):
+                # ask the server for cumulative usage on the final chunk so the
+                # streamed completion carries the same usage as a non-streamed
+                # one
+                request["stream"] = True
+                request.setdefault("stream_options", {"include_usage": True})
+
+            model_call = set_active_model_event_call(request, openai_media_filter)
+
+            try:
+                # generate completion and save response for model call
+                completion = await self._generate_completion(request, config)
+
+                # guard against the openai SDK returning a non-ChatCompletion
+                # (this can occur when the server returns a 200 with a body
+                # that parses as JSON but is not a JSON object — e.g. a bare
+                # string — which openai's construct_type passes through as-is)
+                if not isinstance(completion, ChatCompletion):
+                    raise OpenAIResponseError(
+                        "server_error",
+                        f"Unexpected non-ChatCompletion response: {completion!r}",
+                    )
+
+                response = completion.model_dump()
+                model_call.set_response(
+                    response, self._http_hooks.end_request(request_id)
+                )
+                self.on_response(response)
+
+                # get choices
+                choices = self.chat_choices_from_completion(completion, tools)
+
+                # if we have a handler, see if there are embedded tool calls we need to resolve
+                if handler:
+                    choices = [
+                        _resolve_chat_choice(choice, tools, handler)
+                        for choice in choices
+                    ]
+
+                # return output
+                return model_output_from_openai(completion, choices), model_call
+
+            except (
+                BadRequestError,
+                UnprocessableEntityError,
+                PermissionDeniedError,
+            ) as ex:
+                model_call.set_error(
+                    as_error_response(ex.body), self._http_hooks.end_request(request_id)
+                )
+                return self.handle_bad_request(ex), model_call
+            except APIStatusError as ex:
+                # 413 (payload too large) has no dedicated SDK exception type but
+                # is a bad-request-class error (e.g. CloudFlare signals context
+                # window overflow this way)
+                if ex.status_code == 413:
+                    model_call.set_error(
+                        as_error_response(ex.body),
+                        self._http_hooks.end_request(request_id),
+                    )
+                    return self.handle_bad_request(ex), model_call
+                raise
+            except APIError as ex:
+                output = openai_handle_stream_error(self.service_model_name(), ex)
+                if output is None:
+                    raise
+                model_call.set_error(
+                    as_error_response(ex.body), self._http_hooks.end_request(request_id)
+                )
+                return output, model_call
+
+    def resolve_tools(
+        self, tools: list[ToolInfo], tool_choice: ToolChoice, config: GenerateConfig
+    ) -> tuple[list[ToolInfo], ToolChoice, GenerateConfig]:
+        """Provides an opportunity for concrete classes to customize tool resolution."""
+        return tools, tool_choice, config
+
+    async def _generate_completion(
+        self, request: dict[str, Any], config: GenerateConfig
+    ) -> ChatCompletion:
+        if self.resolve_stream(config):
+            if config.prompt_logprobs is not None:
+                warn_once(
+                    logger,
+                    "prompt_logprobs is not supported with streaming and will "
+                    "be ignored. Disable streaming to receive prompt log "
+                    "probabilities.",
+                )
+            async with await self.client.chat.completions.create(**request) as stream:
+                return await openai_chat_completion_stream_final(stream)
+        else:
+            return cast(
+                ChatCompletion, await self.client.chat.completions.create(**request)
+            )
+
+    def service_model_name(self) -> str:
+        """Model name without any service prefix."""
+        return self.model_name.replace(f"{self.service}/", "", 1)
+
+    def canonical_name(self) -> str:
+        """Canonical model name for model info database lookup.
+
+        Returns a normalized model name suitable for looking up model info
+        (context window, etc.) in the model database. Subclasses may override
+        to normalize provider-specific model names to a common format
+        (e.g. HuggingFace-style names for open models).
+        """
+        return self.service_model_name()
+
+    @override
+    def should_retry(self, ex: BaseException) -> bool | RetryDecision:
+        decision = openai_classify_retry(ex)
+        return decision if decision is not None else RetryDecision.no()
+
+    @override
+    def connection_key(self) -> str:
+        """Scope adaptive concurrency per (key, model).
+
+        A pool shared across models lets the faster model's signals push the
+        adaptive limit past the slower model's actual ceiling (cram-down).
+        Per-model scoping avoids that, at the cost of slight over-fragmentation
+        when models actually share an upstream rate-limit budget.
+        """
+        return f"{self.initial_api_key}:{self.model_name}"
+
+    @override
+    def is_auth_failure(self, ex: Exception) -> bool:
+        if isinstance(ex, APIStatusError):
+            return ex.status_code == 401
+        return False
+
+    @property
+    def schema_exclude_fields(self) -> set[str] | None:
+        """Fields to exclude when dumping JSON schemas for this provider.
+
+        Defaults to excluding extended validation fields (pattern, minLength,
+        etc.) since not all OpenAI-compatible providers support them.
+        Subclasses can override to return None (allow all) or a custom set.
+        """
+        return JSON_SCHEMA_EXTENDED_FIELDS
+
+    def completion_params(self, config: GenerateConfig, tools: bool) -> dict[str, Any]:
+        params = openai_completion_params(
+            model=self.service_model_name(),
+            config=config,
+            tools=tools,
+            schema_exclude=self.schema_exclude_fields,
+        )
+
+        if needs_max_completion_tokens(self.model_family()) and "max_tokens" in params:
+            params["max_completion_tokens"] = params.pop("max_tokens")
+
+        return params
+
+    def request_headers(self, config: GenerateConfig) -> dict[str, str]:
+        """Provider-specific headers to send with this request.
+
+        Merged beneath `config.extra_headers`, so a caller-supplied value for
+        the same header wins.
+        """
+        return {}
+
+    def on_response(self, response: dict[str, Any]) -> None:
+        """Hook for subclasses to do custom response handling."""
+        pass
+
+    def should_stream(self, config: GenerateConfig) -> bool:
+        return False
+
+    def resolve_stream(self, config: GenerateConfig) -> bool:
+        """Whether to use the streaming API for this generate call.
+
+        An explicit `stream` model arg wins; when unset, stream if the
+        subclass calls for it (`should_stream`) or the caller passed
+        `on_stream` to `Model.generate()` (`model_stream_requested`) and
+        the request is `auto_streamable`.
+
+        Unlike the native OpenAI provider, there is no non-streamed retry
+        when the server rejects an auto-streamed request: OpenAI's rejection
+        shape (a 400 with `param="stream"`) is documented and detectable,
+        while compat servers' error bodies vary too much for a reliable
+        detector (a fuzzy match could misfire or miss). A compat server
+        that rejects streaming fails loudly; `-M stream=false` opts out.
+        """
+        if self.stream is not None:
+            return self.stream
+        if self.should_stream(config):
+            return True
+        return model_stream_requested() and self.auto_streamable(config)
+
+    def auto_streamable(self, config: GenerateConfig) -> bool:
+        """Whether an `on_stream` callback alone may turn on streaming.
+
+        A display-only stream request must not degrade results, so auto
+        mode declines to stream requests the streaming path is lossy for
+        (an explicit `stream=true` opt-in still streams, with a warning
+        where one applies). The base path is lossy only for
+        `prompt_logprobs`. Subclasses whose completions carry fields the
+        SDK stream accumulator drops (anything outside spec-shaped
+        `choices`/`usage`) should override to decline the affected
+        requests.
+        """
+        return config.prompt_logprobs is None
+
+    def tools_to_openai(self, tools: list[ToolInfo]) -> list[ChatCompletionToolParam]:
+        # some inference platforms (e.g. hf-inference) require strict=True
+        openai_tools = openai_chat_tools(tools, exclude=self.schema_exclude_fields)
+        for tool in openai_tools:
+            tool["function"]["strict"] = self.strict_tools
+        return openai_tools
+
+    async def messages_to_openai(
+        self, input: list[ChatMessage]
+    ) -> list[ChatCompletionMessageParam]:
+        return await messages_to_openai(input)
+
+    def chat_choices_from_completion(
+        self, completion: ChatCompletion, tools: list[ToolInfo]
+    ) -> list[ChatCompletionChoice]:
+        """Hook for subclasses to do custom chat choice processing."""
+        return chat_choices_from_openai(completion, tools)
+
+    def handle_bad_request(self, ex: APIStatusError) -> ModelOutput | Exception:
+        """Hook for subclasses to do bad request handling"""
+        # Handle DeepInfra input length errors
+        if ex.status_code == 400:
+            content = str(ex)
+            if "input length" in content:
+                return ModelOutput.from_content(
+                    self.model_name, content=content, stop_reason="model_length"
+                )
+
+        return openai_handle_bad_request(self.service_model_name(), ex)
+
+
+class OpenAICompatibleHandler(Llama31Handler):
+    @override
+    def tool_message(self, message: ChatMessageTool) -> ChatAPIMessage:
+        """Construct a chat REST API message from a tool message."""
+        # might be an error in which case we prepend 'Error'
+        results = f"Error: {message.error.message}" if message.error else message.text
+
+        # try to clearly spell out that this 'user' message is the response to a function call
+        content = f"The '{message.function}' function was called. The results are:\n\n{results}"
+
+        # return user message
+        return {"role": "user", "content": content}
+
+
+def _resolve_chat_choice(
+    choice: ChatCompletionChoice, tools: list[ToolInfo], handler: ChatAPIHandler
+) -> ChatCompletionChoice:
+    if choice.message.tool_calls is None or len(choice.message.tool_calls) == 0:
+        # see if we can resolve tool calls in the message body
+        message = handler.parse_assistant_response(choice.message.text, tools)
+        if message.tool_calls:
+            return ChatCompletionChoice(
+                message=message,
+                stop_reason=choice.stop_reason,
+                logprobs=choice.logprobs,
+            )
+        else:
+            return choice
+    else:
+        return choice
+
+
+class ModelInfo(ResponsesModelInfo):
+    def __init__(self, model_family: str = "") -> None:
+        self.model_family = model_family.lower()
+
+    def has_reasoning_options(self) -> bool:
+        return True
+
+    def reasoning_only_fallback(self) -> bool:
+        return True
+
+    def is_latest(self) -> bool:
+        return False
+
+    def is_gpt(self) -> bool:
+        return "gpt" in self.model_family
+
+    def is_gpt_5_plus(self) -> bool:
+        return "gpt-5." in self.model_family
+
+    def is_gpt_5(self) -> bool:
+        return is_gpt_5_model(self.model_family)
+
+    def is_gpt_5_pro(self) -> bool:
+        return self.is_gpt_5() and "-pro" in self.model_family
+
+    def supports_max_reasoning_effort(self) -> bool:
+        return supports_native_max_reasoning_effort(self.model_family)
+
+    def is_gpt_5_chat(self) -> bool:
+        return self.is_gpt_5() and "-chat" in self.model_family
+
+    def is_o_series(self) -> bool:
+        return is_o_series_model(self.model_family)
+
+    def is_o1(self) -> bool:
+        return "o1" in self.model_family
+
+    def is_o3_mini(self) -> bool:
+        return "o3-mini" in self.model_family
+
+    def is_deep_research(self) -> bool:
+        return "deep-research" in self.model_family
+
+    def is_codex(self) -> bool:
+        return "codex" in self.model_family

@@ -1,0 +1,543 @@
+---
+id: getting-started-chatbots
+title: Chatbot Evaluation Quickstart
+sidebar_label: Chatbots
+languages: [python, typescript]
+---
+import { ASSETS } from "@site/src/assets";
+
+Learn to evaluate any multi-turn chatbot using `deepeval` - including QA agents, customer support chatbots, and even chatrooms.
+
+## Overview
+
+Chatbot Evaluation is different from other types of evaluations because unlike single-turn tasks, conversations happen over multiple "turns". This means your chatbot must stay context-aware across the conversation, and not just accurate in individual responses.
+
+**In this 10 min quickstart, you'll learn how to:**
+
+- Prepare conversational test cases
+- Evaluate chatbot conversations
+- Simulate users interactions
+
+## Prerequisites
+
+Install `deepeval`:
+
+<Switch>
+
+<Case id="python">
+
+```bash
+pip install deepeval
+```
+
+</Case>
+
+<Case id="typescript">
+
+```bash
+npm install deepeval
+```
+
+</Case>
+
+</Switch>
+
+You'll also want a Confident AI API key (recommended). Sign up for one [here.](https://app.confident-ai.com)
+
+:::info
+Confident AI allows you to view and share your chatbot testing reports. Set your API key in the CLI:
+
+```bash
+CONFIDENT_API_KEY="confident_us..."
+```
+
+:::
+
+## Understanding Multi-Turn Evals
+
+Multi-turn evals are tricky because of the ad-hoc nature of conversations. The nth AI output will depend on the (n-1)th user input, and this depends on all prior turns up until the initial message.
+
+Hence, when running evals for the purpose of benchmarking we cannot compare different conversations by looking at their turns. In `deepeval`, multi-turn interactions are grouped by **scenarios** instead. If two conversations occur under the same scenario, we consider those the same.
+
+<ImageDisplayer src={ASSETS.conversationalTestCase} alt="Conversational Test Case" />
+
+:::note
+Scenarios are optional in the diagram because not all users start with conversations with labelled scenarios.
+:::
+
+## Run A Multi-Turn Eval
+
+In `deepeval`, chatbots are evaluated as multi-turn **interactions**. In code, you'll have to format them into test cases, which adheres to OpenAI's messages format.
+
+:::note
+
+`deepeval` provides a wide selection of LLM models that you can easily choose from and run evaluations with.
+
+<include cwd>snippets/models/configure-llm-judge-tabs.mdx</include>
+
+:::
+
+<Steps>
+<Step>
+### Create a test case
+
+
+Create a `ConversationalTestCase` by passing in a list of `Turn`s from an existing conversation, similar to OpenAI's message format.
+
+<Switch>
+
+<Case id="python">
+
+```python title="main.py" showLineNumbers={true}
+from deepeval.test_case import ConversationalTestCase, Turn
+
+test_case = ConversationalTestCase(
+    turns=[
+        Turn(role="user", content="Hello, how are you?"),
+        Turn(role="assistant", content="I'm doing well, thank you!"),
+        Turn(role="user", content="How can I help you today?"),
+        Turn(role="assistant", content="I'd like to buy a ticket to a Coldplay concert."),
+    ]
+)
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript title="main.ts" showLineNumbers={true}
+import { ConversationalTestCase, Turn } from "deepeval/test-case";
+
+const testCase = new ConversationalTestCase({
+  turns: [
+    new Turn({ role: "user", content: "Hello, how are you?" }),
+    new Turn({ role: "assistant", content: "I'm doing well, thank you!" }),
+    new Turn({ role: "user", content: "How can I help you today?" }),
+    new Turn({
+      role: "assistant",
+      content: "I'd like to buy a ticket to a Coldplay concert.",
+    }),
+  ],
+});
+```
+
+</Case>
+
+</Switch>
+
+You can learn about a `Turn`'s data model [here.](/docs/evaluation-multiturn-test-cases#turns)
+
+</Step>
+<Step>
+### Run an evaluation
+
+
+Run an evaluation on the test case using `deepeval`'s multi-turn metrics, or create your own using [Conversational G-Eval](/docs/metrics-conversational-g-eval).
+
+<Switch>
+
+<Case id="python">
+
+```python
+from deepeval.metrics import TurnRelevancyMetric, KnowledgeRetentionMetric
+from deepeval import evaluate
+...
+
+evaluate(test_cases=[test_case], metrics=[TurnRelevancyMetric(), KnowledgeRetentionMetric()])
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript
+import {
+  KnowledgeRetentionMetric,
+  TurnRelevancyMetric,
+} from "deepeval/metrics";
+import { evaluate } from "deepeval";
+...
+
+await evaluate([testCase], [
+  new TurnRelevancyMetric(),
+  new KnowledgeRetentionMetric(),
+]);
+```
+
+</Case>
+
+</Switch>
+
+Finally run your file:
+
+<Switch>
+
+<Case id="python">
+
+```bash
+python main.py
+```
+
+</Case>
+
+<Case id="typescript">
+
+```bash
+npx tsx main.ts
+```
+
+</Case>
+
+</Switch>
+
+🎉🥳 **Congratulations!** You've just ran your first multi-turn eval. Here's what happened:
+
+- When you call `evaluate()`, `deepeval` runs all your metrics against all your test cases
+- Every metric outputs a score between `0-1`, with a `threshold` defaulted to `0.5`
+- A test case passes only if all metrics pass
+
+This creates a test run, which is a "snapshot"/benchmark of your multi-turn chatbot at any point in time.
+
+</Step>
+<Step>
+### View on Confident AI (recommended)
+
+
+If you've set your `CONFIDENT_API_KEY`, test runs will appear automatically on [Confident AI](https://app.confident-ai.com), which `deepeval` integrates with natively.
+
+<VideoDisplayer
+  src={ASSETS.conversationTestReport}
+  confidentUrl="https://www.confident-ai.com/docs/llm-evaluation/dashboards/testing-reports"
+  label="Conversation test reports on Confident AI"
+  description="Review full conversations alongside their metric scores and reasons."
+/>
+
+:::tip
+If you haven't logged in, you can still upload the test run to Confident AI from local cache:
+
+<Switch>
+
+<Case id="python">
+
+```bash
+deepeval view
+```
+
+</Case>
+
+<Case id="typescript">
+
+```bash
+npx deepeval view
+```
+
+</Case>
+
+</Switch>
+
+:::
+
+</Step>
+</Steps>
+
+## Working With Datasets
+
+Although we ran an evaluation in the previous section, it's not very useful because it is far from a standardized benchmark. To create a standardized benchmark for evals, use `deepeval`'s datasets:
+
+<Switch>
+
+<Case id="python">
+
+```python title="main.py"
+from deepeval.dataset import EvaluationDataset, ConversationalGolden
+
+dataset = EvaluationDataset(
+  goldens=[
+    ConversationalGolden(scenario="Angry user asking for a refund"),
+    ConversationalGolden(scenario="Couple booking two VIP Coldplay tickets")
+  ]
+)
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript title="main.ts"
+import { ConversationalGolden, EvaluationDataset } from "deepeval/dataset";
+
+const dataset = new EvaluationDataset({
+  goldens: [
+    new ConversationalGolden({ scenario: "Angry user asking for a refund" }),
+    new ConversationalGolden({
+      scenario: "Couple booking two VIP Coldplay tickets",
+    }),
+  ],
+});
+```
+
+</Case>
+
+</Switch>
+
+A dataset is a collection of goldens in `deepeval`, and in a multi-turn context this these are represented by `ConversationalGolden`s.
+
+<ImageDisplayer src={ASSETS.evaluationDataset} alt="Evaluation Dataset" />
+
+The idea is simple - we start with a list of standardized `scenario`s for each golden, and we'll simulate turns during evaluation time for more robust evaluation.
+
+## Simulate Turns for Evals
+
+Evaluating your chatbot from [simulated turns](/docs/getting-started-chatbots#evaluate-chatbots-from-simulations) is **the best** approach for multi-turn evals, because it:
+
+- Standardizes your test bench, unlike ad-hoc evals
+- Automates the process of manual prompting, which can take hours
+
+Both of which are solved using `deepeval`'s `ConversationSimulator`.
+
+<Steps>
+<Step>
+### Create dataset of goldens
+
+
+Create a `ConversationalGolden` by providing who the user is, the scenario, and the expected outcome, for the conversation you wish to simulate.
+
+<Switch>
+
+<Case id="python">
+
+```python title="main.py"
+from deepeval.dataset import EvaluationDataset, ConversationalGolden, Persona
+
+golden = ConversationalGolden(
+    scenario="Andy Byron wants to purchase a VIP ticket to a Coldplay concert.",
+    expected_outcome="Successful purchase of a ticket.",
+    persona=Persona(characteristics="Andy Byron is the CEO of Astronomer."),
+)
+
+dataset = EvaluationDataset(goldens=[golden])
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript title="main.ts"
+import {
+  ConversationalGolden,
+  EvaluationDataset,
+  Persona,
+} from "deepeval/dataset";
+
+const golden = new ConversationalGolden({
+  scenario: "Andy Byron wants to purchase a VIP ticket to a Coldplay concert.",
+  expectedOutcome: "Successful purchase of a ticket.",
+  persona: new Persona({
+    characteristics: "Andy Byron is the CEO of Astronomer.",
+  }),
+});
+
+const dataset = new EvaluationDataset({ goldens: [golden] });
+```
+
+</Case>
+
+</Switch>
+
+If you've set your `CONFIDENT_API_KEY` correctly, you can save them on the platform to collaborate with your team:
+
+<Switch>
+
+<Case id="python">
+
+```python title="main.py"
+dataset.push(alias="A new multi-turn dataset")
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript title="main.ts"
+await dataset.push({ alias: "A new multi-turn dataset" });
+```
+
+</Case>
+
+</Switch>
+
+<VideoDisplayer
+  src={ASSETS.gettingStartedChatbotEvalsMultiturnDataset}
+  confidentUrl="https://www.confident-ai.com/docs/llm-evaluation/dataset-management/create-goldens"
+  label="Multi-turn datasets on Confident AI"
+  description="Push conversational goldens to the platform and edit them with your team."
+/>
+
+</Step>
+<Step>
+### Wrap chatbot in callback
+
+
+Define a callback function to generate the **next chatbot response** in a conversation, given the conversation history.
+
+<include cwd>snippets/evaluation/model-callback-tabs.mdx</include>
+
+:::info
+Your model callback is handed the `input`, the `turns` so far, and a stable <Term py="thread_id" ts="threadId"/> — take only the ones you need. It should return a `Turn` object.
+:::
+
+</Step>
+<Step>
+### Simulate turns
+
+
+Use `deepeval`'s `ConversationSimulator` to simulate turns using goldens in your dataset:
+
+<Switch>
+
+<Case id="python">
+
+```python title="main.py"
+from deepeval.simulator import ConversationSimulator
+
+simulator = ConversationSimulator(model_callback=model_callback)
+conversational_test_cases = simulator.simulate(
+    conversational_goldens=dataset.goldens,
+    max_user_simulations=10,
+)
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript title="main.ts"
+import { ConversationalGolden } from "deepeval/dataset";
+import { ConversationSimulator } from "deepeval";
+
+const simulator = new ConversationSimulator({ modelCallback });
+const conversationalTestCases = await simulator.simulate({
+  conversationalGoldens: dataset.goldens as ConversationalGolden[],
+  maxUserSimulations: 10,
+});
+```
+
+</Case>
+
+</Switch>
+
+Here, we only have 1 test case, but in reality you'll want to simulate from at least 20 goldens.
+
+<details>
+<summary>Click to view an example simulated test case</summary>
+
+Your generated test cases should be populated with simulated `Turn`s, along with the `scenario` and <Term py="expected_outcome" ts="expectedOutcome"/> from the conversation golden.
+
+<Switch>
+
+<Case id="python">
+
+```python
+ConversationalTestCase(
+    scenario="Andy Byron wants to purchase a VIP ticket to a Coldplay concert.",
+    expected_outcome="Successful purchase of a ticket.",
+    turns=[
+        Turn(role="user", content="Hello, how are you?"),
+        Turn(role="assistant", content="I'm doing well, thank you!"),
+        Turn(role="user", content="How can I help you today?"),
+        Turn(role="assistant", content="I'd like to buy a ticket to a Coldplay concert."),
+    ]
+)
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript
+new ConversationalTestCase({
+  scenario: "Andy Byron wants to purchase a VIP ticket to a Coldplay concert.",
+  expectedOutcome: "Successful purchase of a ticket.",
+  turns: [
+    new Turn({ role: "user", content: "Hello, how are you?" }),
+    new Turn({ role: "assistant", content: "I'm doing well, thank you!" }),
+    new Turn({ role: "user", content: "How can I help you today?" }),
+    new Turn({
+      role: "assistant",
+      content: "I'd like to buy a ticket to a Coldplay concert.",
+    }),
+  ],
+});
+```
+
+</Case>
+
+</Switch>
+
+</details>
+
+</Step>
+
+<Step>
+### Run an evaluation
+
+
+Run an evaluation like how you learnt in the previous section:
+
+<Switch>
+
+<Case id="python">
+
+```python
+from deepeval.metrics import TurnRelevancyMetric
+from deepeval import evaluate
+...
+
+evaluate(conversational_test_cases, metrics=[TurnRelevancyMetric()])
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript
+import { TurnRelevancyMetric } from "deepeval/metrics";
+import { evaluate } from "deepeval";
+...
+
+await evaluate(conversationalTestCases, [new TurnRelevancyMetric()]);
+```
+
+</Case>
+
+</Switch>
+
+✅ Done. You've successfully learnt how to benchmark your chatbot.
+
+<VideoDisplayer
+  src={ASSETS.conversationTestReport}
+  confidentUrl="https://www.confident-ai.com/docs/llm-evaluation/dashboards/testing-reports"
+  label="Conversation test reports on Confident AI"
+  description="Review full conversations alongside their metric scores and reasons."
+/>
+
+</Step>
+
+</Steps>
+
+## Next Steps
+
+Now that you have run your first chatbot evals, you should:
+
+1. **Customize your metrics**: Update the [list of metrics](/docs/metrics-introduction) based on your use case.
+2. **Setup tracing**: It helps you [log multi-turn](https://www.confident-ai.com/docs/llm-tracing/advanced-features/threads) interactions in production.
+3. **Enable evals in production**: Monitor performance over time [using the metrics](https://www.confident-ai.com/docs/llm-tracing/evaluations#offline-evaluations) you've defined on Confident AI.
+
+You'll be able to analyze performance over time on **threads** this way, and add them back to your evals dataset for further evaluation.
+
+<VideoDisplayer
+  src={ASSETS.tracingThreads}
+  confidentUrl="/docs/llm-tracing/evaluations#offline-evaluations"
+  label="Chatbot evals in production"
+  description="Group traces into threads to evaluate live conversations."
+/>

@@ -1,0 +1,867 @@
+import { MakeLogicType, actions, connect, kea, listeners, path, reducers, selectors } from 'kea'
+
+import api, { ApiMethodOptions, CountedPaginatedResponse } from 'lib/api'
+import { TaxonomicFilterValue } from 'lib/components/TaxonomicFilter/types'
+import { dayjs } from 'lib/dayjs'
+import { lemonToast } from 'lib/lemon-ui/LemonToast'
+import { colonDelimitedDuration } from 'lib/utils/durations'
+import { isKeyOf } from 'lib/utils/guards'
+import { permanentlyMount } from 'lib/utils/kea-logic-builders'
+import { toString } from 'lib/utils/strings'
+import { teamLogic } from 'scenes/teamLogic'
+
+import {
+    BreakdownKeyType,
+    GroupTypeIndex,
+    PropertyDefinition,
+    PropertyDefinitionState,
+    PropertyDefinitionType,
+    PropertyFilterType,
+    PropertyFilterValue,
+    PropertyType,
+} from '~/types'
+
+import type { GroupType } from '../types'
+import { groupsModel } from './groupsModel'
+
+export type PropertyDefinitionStorage = Record<string, PropertyDefinition | PropertyDefinitionState>
+
+/** These property filter types get suggestions based on events – filter value suggestions look just a few days back. */
+export const PROPERTY_FILTER_TYPES_WITH_TEMPORAL_SUGGESTIONS = [PropertyFilterType.Event, PropertyFilterType.Feature]
+/** These property filter types get suggestions based on persons and groups – filter value suggestions ignore time. */
+export const PROPERTY_FILTER_TYPES_WITH_ALL_TIME_SUGGESTIONS = [
+    PropertyFilterType.Person,
+    PropertyFilterType.Group,
+    // As of August 2024, session property values also aren't time-sensitive, but this may change
+    // (see RAW_SELECT_SESSION_PROP_STRING_VALUES_SQL_WITH_FILTER)
+    PropertyFilterType.Session,
+]
+
+// List of property definitions that are calculated on the backend. These
+// are valid properties that do not exist on events.
+const localProperties: PropertyDefinitionStorage = {
+    'event/$session_duration': {
+        id: '$session_duration',
+        name: '$session_duration',
+        description: 'Duration of the session',
+        is_numerical: true,
+        is_seen_on_filtered_events: false,
+        property_type: PropertyType.Duration,
+    },
+    'session/snapshot_source': {
+        id: 'snapshot_source',
+        name: 'snapshot_source',
+        description: 'Platform session occurred on',
+        is_numerical: false,
+        is_seen_on_filtered_events: false,
+        property_type: PropertyType.Selector,
+    },
+    'resource/assignee': {
+        id: 'assignee',
+        name: 'assignee',
+        description: 'User or role assigned to a resource',
+        property_type: PropertyType.Assignee,
+    },
+    'resource/first_seen': {
+        id: 'first_seen',
+        name: 'first_seen',
+        description: 'The first time the resource was seen',
+        property_type: PropertyType.DateTime,
+    },
+}
+
+const localOptions: Record<string, PropValue[]> = {
+    'session/snapshot_source': [
+        { id: 0, name: 'web' },
+        { id: 1, name: 'mobile' },
+    ],
+    'log_entry/level': [
+        { id: 0, name: 'info' },
+        { id: 1, name: 'warn' },
+        { id: 2, name: 'error' },
+    ],
+    'resource/severity': [
+        { id: 0, name: 'low' },
+        { id: 1, name: 'medium' },
+        { id: 2, name: 'high' },
+        { id: 3, name: 'critical' },
+    ],
+}
+
+export type FormatPropertyValueForDisplayFunction = (
+    propertyName?: BreakdownKeyType,
+    valueToFormat?: PropertyFilterValue,
+    type?: PropertyDefinitionType,
+    groupTypeIndex?: GroupTypeIndex | null
+) => string | string[] | null
+
+/** Update cached property definition metadata */
+export const updatePropertyDefinitions = (propertyDefinitions: PropertyDefinitionStorage): void => {
+    propertyDefinitionsModel.findMounted()?.actions.updatePropertyDefinitions(propertyDefinitions)
+}
+
+export type PropValue = {
+    id?: number
+    name?: string | boolean
+}
+
+export type Option = {
+    label?: string
+    name?: string
+    status?: 'loading' | 'loaded' | 'error'
+    allowCustomValues?: boolean
+    values?: PropValue[]
+    refreshing?: boolean
+    /** Values present when the latest background refresh started, used to identify newly appeared values. */
+    preRefreshValueNames?: string[]
+    /** Current search input for this property key. */
+    searchInput?: string
+}
+
+const getPropertyKey = (
+    type: PropertyDefinitionType,
+    propertyName?: BreakdownKeyType,
+    groupTypeIndex?: number | null
+): string => {
+    if (type === PropertyDefinitionType.Group) {
+        return `${type}/${groupTypeIndex}/${propertyName}`
+    }
+    return `${type}/${propertyName}`
+}
+
+/** Schedules an immediate background task, that fetches property definitions after a 10ms debounce. Returns the property sync if already found. */
+const checkOrLoadPropertyDefinition = (
+    propertyName: BreakdownKeyType | undefined,
+    definitionType: PropertyDefinitionType,
+    propertyDefinitionStorage: PropertyDefinitionStorage,
+    groupTypeIndex?: number | null
+): PropertyDefinition | null => {
+    const key = getPropertyKey(definitionType, propertyName, groupTypeIndex)
+    if (typeof propertyName === 'string' && !(key in propertyDefinitionStorage)) {
+        // first time we see this, schedule a fetch
+        window.setTimeout(
+            () =>
+                propertyDefinitionsModel
+                    .findMounted()
+                    ?.actions.loadPropertyDefinitions([propertyName], definitionType, groupTypeIndex),
+            0
+        )
+    }
+    const cachedResponse = propertyDefinitionStorage[key]
+    if (typeof cachedResponse === 'object') {
+        return cachedResponse
+    }
+    return null
+}
+
+const constructValuesEndpoint = (
+    endpoint: string | undefined,
+    teamId: number,
+    type: PropertyDefinitionType,
+    propertyKey: string,
+    eventNames: string[] | undefined,
+    newInput: string | undefined,
+    properties?: { key: string; values: string | string[] }[],
+    refresh?: string
+): string => {
+    let basePath: string
+
+    if (type === PropertyDefinitionType.Session) {
+        basePath = `api/environments/${teamId}/${type}s/values`
+    } else if (type === PropertyDefinitionType.FlagValue) {
+        // FlagValue is project-scoped, so use the project-scoped endpoint
+        basePath = `api/projects/${teamId}/${type}/values`
+    } else {
+        basePath = `api/${type}/values`
+    }
+
+    const path = endpoint ? endpoint : basePath + `?key=${encodeURIComponent(propertyKey)}`
+
+    let eventParams = ''
+    for (const eventName of eventNames || []) {
+        eventParams += `&event_name=${eventName}`
+    }
+
+    // Add property filters
+    if (properties?.length) {
+        for (const prop of properties) {
+            const values = Array.isArray(prop.values) ? prop.values : [prop.values]
+            eventParams += `&properties_${prop.key}=${encodeURIComponent(JSON.stringify(values))}`
+        }
+    }
+
+    return (
+        path +
+        (newInput ? '&value=' + encodeURIComponent(newInput) : '') +
+        (refresh ? '&refresh=' + refresh : '') +
+        eventParams
+    )
+}
+
+// Generated by kea-typegen. Update if you're an agent, ignore if you're human.
+export interface propertyDefinitionsModelValues {
+    groupTypes: Map<GroupTypeIndex, GroupType> // groupsModel
+    currentTeamId: number | null // teamLogic
+    describeProperty: (
+        s: TaxonomicFilterValue,
+        type: PropertyDefinitionType,
+        groupTypeIndex?: number
+    ) => PropertyType | null
+    eventMetadataPropertyDefinitions: PropertyDefinition[]
+    formatPropertyValueForDisplay: FormatPropertyValueForDisplayFunction
+    getPropertyDefinition: (
+        s: TaxonomicFilterValue,
+        type: PropertyDefinitionType,
+        groupTypeIndex?: number
+    ) => PropertyDefinition | null
+    options: Record<string, Option>
+    pendingProperties: string[]
+    personMetadataPropertyDefinitions: PropertyDefinition[]
+    propertyDefinitionStorage: PropertyDefinitionStorage
+    propertyDefinitionsByType: (type: string, groupTypeIndex?: number | null) => PropertyDefinition[]
+    rawPropertyDefinitionStorage: PropertyDefinitionStorage
+}
+
+// Generated by kea-typegen. Update if you're an agent, ignore if you're human.
+export interface propertyDefinitionsModelActions {
+    abortAnyRunningQuery: () => {
+        value: true
+    }
+    fetchAllPendingDefinitions: () => {
+        value: true
+    }
+    loadPropertyDefinitions: (
+        propertyKeys: string[],
+        type: PropertyDefinitionType,
+        groupTypeIndex?: number | null
+    ) => {
+        groupTypeIndex: number | null | undefined
+        propertyKeys: string[]
+        type: PropertyDefinitionType
+    }
+    loadPropertyValues: (payload: {
+        endpoint: string | undefined
+        eventNames?: string[]
+        newInput: string | undefined
+        properties?: {
+            key: string
+            values: string | string[]
+        }[]
+        propertyKey: string
+        refresh?: string
+        type: PropertyDefinitionType
+    }) => {
+        endpoint: string | undefined
+        eventNames?: string[] | undefined
+        newInput: string | undefined
+        properties?:
+            | {
+                  key: string
+                  values: string | string[]
+              }[]
+            | undefined
+        propertyKey: string
+        refresh?: string | undefined
+        type: PropertyDefinitionType
+    }
+    setOptions: (
+        key: string,
+        values: PropValue[],
+        allowCustomValues: boolean,
+        refreshing?: boolean
+    ) => {
+        allowCustomValues: boolean
+        key: string
+        refreshing: boolean | undefined
+        values: PropValue[]
+    }
+    setOptionsError: (key: string) => {
+        key: string
+    }
+    setOptionsLoading: (key: string) => {
+        key: string
+    }
+    setOptionsSearchInput: (
+        key: string,
+        searchInput: string
+    ) => {
+        key: string
+        searchInput: string
+    }
+    updatePropertyDefinitions: (propertyDefinitions: PropertyDefinitionStorage) => {
+        propertyDefinitions: PropertyDefinitionStorage
+    }
+}
+
+// Generated by kea-typegen. Update if you're an agent, ignore if you're human.
+export interface propertyDefinitionsModelMeta {
+    __keaTypeGenInternalSelectorTypes: {
+        pendingProperties: (propertyDefinitionStorage: PropertyDefinitionStorage) => string[]
+        propertyDefinitionsByType: (
+            propertyDefinitionStorage: PropertyDefinitionStorage
+        ) => (type: string, groupTypeIndex?: number | null) => PropertyDefinition[]
+        propertyDefinitionStorage: (
+            rawPropertyDefinitionStorage: PropertyDefinitionStorage,
+            eventMetadataPropertyDefinitions: PropertyDefinition[],
+            personMetadataPropertyDefinitions: PropertyDefinition[]
+        ) => PropertyDefinitionStorage
+        getPropertyDefinition: (
+            propertyDefinitionStorage: PropertyDefinitionStorage
+        ) => (
+            s: TaxonomicFilterValue,
+            type: PropertyDefinitionType,
+            groupTypeIndex?: number
+        ) => PropertyDefinition | null
+        describeProperty: (
+            propertyDefinitionStorage: PropertyDefinitionStorage
+        ) => (s: TaxonomicFilterValue, type: PropertyDefinitionType, groupTypeIndex?: number) => PropertyType | null
+        formatPropertyValueForDisplay: (
+            propertyDefinitionStorage: PropertyDefinitionStorage
+        ) => FormatPropertyValueForDisplayFunction
+        eventMetadataPropertyDefinitions: (groupTypes: Map<GroupTypeIndex, GroupType>) => PropertyDefinition[]
+    }
+}
+
+export type propertyDefinitionsModelType = MakeLogicType<
+    propertyDefinitionsModelValues,
+    propertyDefinitionsModelActions,
+    Record<string, any>,
+    propertyDefinitionsModelMeta
+>
+
+export const propertyDefinitionsModel = kea<propertyDefinitionsModelType>([
+    path(['models', 'propertyDefinitionsModel']),
+    connect(() => ({
+        values: [teamLogic, ['currentTeamId'], groupsModel, ['groupTypes']],
+    })),
+    actions({
+        // public
+        loadPropertyDefinitions: (
+            propertyKeys: string[],
+            type: PropertyDefinitionType,
+            groupTypeIndex?: number | null
+        ) => ({ propertyKeys, type, groupTypeIndex }),
+        updatePropertyDefinitions: (propertyDefinitions: PropertyDefinitionStorage) => ({
+            propertyDefinitions,
+        }),
+        // PropertyValue
+        loadPropertyValues: (payload: {
+            endpoint: string | undefined
+            type: PropertyDefinitionType
+            newInput: string | undefined
+            propertyKey: string
+            eventNames?: string[]
+            properties?: { key: string; values: string | string[] }[]
+            refresh?: string
+        }) => payload,
+        setOptionsLoading: (key: string) => ({ key }),
+        setOptions: (key: string, values: PropValue[], allowCustomValues: boolean, refreshing?: boolean) => ({
+            key,
+            values,
+            allowCustomValues,
+            refreshing,
+        }),
+        setOptionsSearchInput: (key: string, searchInput: string) => ({ key, searchInput }),
+        setOptionsError: (key: string) => ({ key }),
+        // internal
+        fetchAllPendingDefinitions: true,
+        abortAnyRunningQuery: true,
+    }),
+    reducers({
+        rawPropertyDefinitionStorage: [
+            { ...localProperties } as PropertyDefinitionStorage,
+            {
+                updatePropertyDefinitions: (state, { propertyDefinitions }) => {
+                    return {
+                        ...state,
+                        ...propertyDefinitions,
+                    }
+                },
+            },
+        ],
+        options: [
+            {} as Record<string, Option>,
+            {
+                setOptionsLoading: (state, { key }) => ({ ...state, [key]: { ...state[key], status: 'loading' } }),
+                setOptions: (state, { key, values: rawValues, allowCustomValues, refreshing }) => {
+                    const values = Array.isArray(rawValues) ? rawValues : []
+                    const current = state[key]
+                    const valueNames = values.map((v) => toString(v.name))
+
+                    // Capture values as the pre-refresh baseline when a refresh begins
+                    const isStartingRefresh = refreshing && !current?.refreshing
+                    const preRefreshValueNames = isStartingRefresh ? valueNames : current?.preRefreshValueNames
+
+                    return {
+                        ...state,
+                        [key]: {
+                            ...current,
+                            values: Array.from(new Set(values)),
+                            status: 'loaded',
+                            allowCustomValues,
+                            refreshing: refreshing ?? false,
+                            preRefreshValueNames,
+                        },
+                    }
+                },
+                setOptionsSearchInput: (state, { key, searchInput }) => ({
+                    ...state,
+                    [key]: { ...state[key], searchInput },
+                }),
+                setOptionsError: (state, { key }) => ({
+                    ...state,
+                    [key]: { ...state[key], status: 'error', refreshing: false },
+                }),
+            },
+        ],
+    }),
+    listeners(({ actions, values, cache }) => ({
+        loadPropertyDefinitions: async ({ propertyKeys, type, groupTypeIndex }) => {
+            const { rawPropertyDefinitionStorage } = values
+
+            const pendingStateUpdate: PropertyDefinitionStorage = {}
+            for (const propertyKey of propertyKeys) {
+                const key = getPropertyKey(type, propertyKey, groupTypeIndex)
+                if (
+                    !(key in rawPropertyDefinitionStorage) ||
+                    rawPropertyDefinitionStorage[key] === PropertyDefinitionState.Error
+                ) {
+                    pendingStateUpdate[key] = PropertyDefinitionState.Pending
+                }
+            }
+
+            // nothing new to do
+            if (Object.keys(pendingStateUpdate).length === 0) {
+                return
+            }
+
+            // set all requested properties as `PropertyDefinitionState.Pending`
+            actions.updatePropertyDefinitions(pendingStateUpdate)
+            // run the next part of this chain
+            actions.fetchAllPendingDefinitions()
+        },
+        fetchAllPendingDefinitions: async (_, breakpoint) => {
+            // take 10ms to debounce property definition requests, preventing a lot of small queries
+            await breakpoint(10)
+            if (values.pendingProperties.length === 0) {
+                return
+            }
+            // take the first 50 pending properties to avoid the 4k query param length limit
+            const allPending = values.pendingProperties.slice(0, 50)
+            const pendingByType: Record<
+                'event' | 'person' | 'group/0' | 'group/1' | 'group/2' | 'group/3' | 'group/4' | 'session',
+                string[]
+            > = {
+                event: [],
+                person: [],
+                'group/0': [],
+                'group/1': [],
+                'group/2': [],
+                'group/3': [],
+                'group/4': [],
+                session: [],
+            }
+            const unknownTypeProperties: PropertyDefinitionStorage = {}
+            for (const key of allPending) {
+                let [type, ...rest] = key.split('/')
+
+                if (type === 'group') {
+                    type = `${type}/${rest[0]}`
+                    rest = rest.slice(1)
+                }
+
+                if (isKeyOf(type, pendingByType)) {
+                    pendingByType[type].push(rest.join('/'))
+                } else {
+                    // Types without a definitions endpoint (e.g. product-seeded ones like
+                    // account_custom_property) can't be fetched — mark them missing instead of
+                    // throwing, or one stray key would wedge the pending queue for every type.
+                    unknownTypeProperties[key] = PropertyDefinitionState.Missing
+                }
+            }
+            if (Object.keys(unknownTypeProperties).length > 0) {
+                actions.updatePropertyDefinitions(unknownTypeProperties)
+            }
+            try {
+                // since this is a unique query, there is no breakpoint here to prevent out of order replies
+                const newProperties: PropertyDefinitionStorage = {}
+                for (const [type, pending] of Object.entries(pendingByType)) {
+                    if (pending.length === 0) {
+                        continue
+                    }
+                    // set them all as PropertyDefinitionState.Loading
+                    actions.updatePropertyDefinitions(
+                        Object.fromEntries(pending.map((key) => [`${type}/${key}`, PropertyDefinitionState.Loading]))
+                    )
+
+                    let queryParams = {
+                        type: type as PropertyDefinitionType,
+                        group_type_index: null as string | null,
+                    }
+                    if (type.startsWith('group')) {
+                        queryParams = {
+                            type: PropertyDefinitionType.Group,
+                            group_type_index: type.split('/')[1],
+                        }
+                    }
+
+                    // and then fetch them
+                    let propertyDefinitions: CountedPaginatedResponse<PropertyDefinition>
+                    if (type === 'session') {
+                        propertyDefinitions = await api.sessions.propertyDefinitions({
+                            properties: pending,
+                        })
+                    } else {
+                        propertyDefinitions = await api.propertyDefinitions.list({
+                            properties: pending,
+                            ...queryParams,
+                        })
+                    }
+
+                    for (const propertyDefinition of propertyDefinitions.results) {
+                        newProperties[`${type}/${propertyDefinition.name}`] = propertyDefinition
+                    }
+                    // mark those that were not returned as PropertyDefinitionState.Missing
+                    for (const property of pending) {
+                        const key = `${type}/${property}`
+                        if (
+                            !(key in newProperties) &&
+                            values.rawPropertyDefinitionStorage[key] === PropertyDefinitionState.Loading
+                        ) {
+                            newProperties[key] = PropertyDefinitionState.Missing
+                        }
+                    }
+                    actions.updatePropertyDefinitions(newProperties)
+                }
+            } catch {
+                const newProperties: PropertyDefinitionStorage = {}
+                for (const [type, pending] of Object.entries(pendingByType)) {
+                    for (const property of pending) {
+                        const key = `${type}/${property}`
+                        if (values.rawPropertyDefinitionStorage[key] === PropertyDefinitionState.Loading) {
+                            newProperties[key] = PropertyDefinitionState.Error
+                        }
+                    }
+                }
+                actions.updatePropertyDefinitions(newProperties)
+            }
+
+            // break if something is already happening
+            breakpoint()
+            // otherwise rerun if any properties remain pending
+            if (values.pendingProperties.length > 0) {
+                actions.fetchAllPendingDefinitions()
+            }
+        },
+
+        loadPropertyValues: async (
+            { endpoint, type, newInput, propertyKey, eventNames, properties, refresh },
+            breakpoint
+        ) => {
+            if (!endpoint && ['cohort', 'log', 'span', 'workflow_variable'].includes(type)) {
+                return
+            }
+            if (!propertyKey || values.currentTeamId === null) {
+                return
+            }
+
+            if (refresh !== 'force_blocking' && localOptions[getPropertyKey(type, propertyKey)]) {
+                actions.setOptions(propertyKey, localOptions[getPropertyKey(type, propertyKey)], false)
+                return
+            }
+
+            if (!endpoint && type === 'log_entry') {
+                return
+            }
+
+            await breakpoint(300)
+            actions.setOptionsLoading(propertyKey)
+            actions.abortAnyRunningQuery()
+
+            cache.abortController = new AbortController()
+            const methodOptions: ApiMethodOptions = {
+                signal: cache.abortController.signal,
+            }
+
+            actions.setOptionsSearchInput(propertyKey, newInput || '')
+
+            try {
+                const responseData: { results: PropValue[]; refreshing: boolean } = await api.get(
+                    constructValuesEndpoint(
+                        endpoint,
+                        values.currentTeamId,
+                        type,
+                        propertyKey,
+                        eventNames,
+                        newInput,
+                        properties,
+                        refresh
+                    ),
+                    methodOptions
+                )
+                breakpoint()
+
+                const propValues = Array.isArray(responseData.results) ? responseData.results : []
+                const refreshing = responseData.refreshing
+
+                actions.setOptions(propertyKey, propValues, type !== PropertyDefinitionType.FlagValue, refreshing)
+                cache.abortController = null
+
+                // Schedule a poll when the backend signals a background refresh is in progress
+                cache.pollingTimeouts = cache.pollingTimeouts || {}
+                if (refreshing) {
+                    if (cache.pollingTimeouts[propertyKey]) {
+                        clearTimeout(cache.pollingTimeouts[propertyKey])
+                    }
+                    cache.pollingTimeouts[propertyKey] = setTimeout(() => {
+                        actions.loadPropertyValues({
+                            endpoint,
+                            type,
+                            newInput,
+                            propertyKey,
+                            eventNames,
+                            properties,
+                            refresh: 'force_cache',
+                        })
+                    }, 2000)
+                } else if (cache.pollingTimeouts[propertyKey]) {
+                    clearTimeout(cache.pollingTimeouts[propertyKey])
+                    delete cache.pollingTimeouts[propertyKey]
+                }
+            } catch (e) {
+                // Bail if a newer listener invocation has superseded this one
+                breakpoint()
+
+                // Don't show error for aborted requests (user typed new search query)
+                if ((e as any)?.name === 'AbortError') {
+                    return
+                }
+                cache.abortController = null
+                actions.setOptionsError(propertyKey)
+                lemonToast.error('Failed to load property values')
+            }
+        },
+
+        abortAnyRunningQuery: () => {
+            if (cache.abortController) {
+                cache.abortController.abort()
+                cache.abortController = null
+            }
+        },
+    })),
+    selectors({
+        pendingProperties: [
+            (s) => [s.propertyDefinitionStorage],
+            (propertyDefinitionStorage: PropertyDefinitionStorage): string[] =>
+                Object.keys(propertyDefinitionStorage).filter(
+                    (key) => propertyDefinitionStorage[key] === PropertyDefinitionState.Pending
+                ),
+        ],
+        propertyDefinitionsByType: [
+            (s) => [s.propertyDefinitionStorage],
+            (
+                propertyDefinitionStorage: PropertyDefinitionStorage
+            ): ((type: string, groupTypeIndex?: number | null) => PropertyDefinition[]) => {
+                return (type, groupTypeIndex) => {
+                    const keyPrefix = type === 'group' ? `${type}/${groupTypeIndex}/` : `${type}/`
+
+                    return Object.entries(propertyDefinitionStorage ?? {})
+                        .filter(([key, value]) => key.startsWith(keyPrefix) && typeof value === 'object')
+                        .map(([, value]) => value as PropertyDefinition)
+                }
+            },
+        ],
+        propertyDefinitionStorage: [
+            (s) => [
+                s.rawPropertyDefinitionStorage,
+                s.eventMetadataPropertyDefinitions,
+                s.personMetadataPropertyDefinitions,
+            ],
+            (
+                rawPropertyDefinitionStorage: PropertyDefinitionStorage,
+                eventMetadataPropertyDefinitions: PropertyDefinition[],
+                personMetadataPropertyDefinitions: PropertyDefinition[]
+            ): PropertyDefinitionStorage => {
+                const eventMetadataDefinitions = Object.fromEntries(
+                    eventMetadataPropertyDefinitions.map((definition) => [
+                        `${PropertyDefinitionType.EventMetadata}/${definition.id}`,
+                        definition,
+                    ])
+                )
+                const personMetadataDefinitions = Object.fromEntries(
+                    personMetadataPropertyDefinitions.map((definition) => [
+                        `${PropertyDefinitionType.PersonMetadata}/${definition.id}`,
+                        definition,
+                    ])
+                )
+                return {
+                    ...rawPropertyDefinitionStorage,
+                    ...eventMetadataDefinitions,
+                    ...personMetadataDefinitions,
+                }
+            },
+        ],
+        getPropertyDefinition: [
+            (s) => [s.propertyDefinitionStorage],
+            (
+                propertyDefinitionStorage: PropertyDefinitionStorage
+            ): ((
+                s: TaxonomicFilterValue,
+                type: PropertyDefinitionType,
+                groupTypeIndex?: number
+            ) => PropertyDefinition | null) =>
+                (
+                    propertyName: TaxonomicFilterValue,
+                    type: PropertyDefinitionType,
+                    groupTypeIndex?: number
+                ): PropertyDefinition | null => {
+                    if (
+                        !propertyName ||
+                        (type === PropertyDefinitionType.Group &&
+                            (groupTypeIndex === undefined || groupTypeIndex === null))
+                    ) {
+                        return null
+                    }
+                    return checkOrLoadPropertyDefinition(propertyName, type, propertyDefinitionStorage, groupTypeIndex)
+                },
+        ],
+        describeProperty: [
+            (s) => [s.propertyDefinitionStorage],
+            (
+                propertyDefinitionStorage: PropertyDefinitionStorage
+            ): ((
+                s: TaxonomicFilterValue,
+                type: PropertyDefinitionType,
+                groupTypeIndex?: number
+            ) => PropertyType | null) =>
+                (propertyName: TaxonomicFilterValue, type: PropertyDefinitionType, groupTypeIndex?: number) => {
+                    if (
+                        !propertyName ||
+                        (type === PropertyDefinitionType.Group &&
+                            (groupTypeIndex === undefined || groupTypeIndex === null))
+                    ) {
+                        return null
+                    }
+                    return (
+                        checkOrLoadPropertyDefinition(propertyName, type, propertyDefinitionStorage, groupTypeIndex)
+                            ?.property_type ?? null
+                    )
+                },
+        ],
+        formatPropertyValueForDisplay: [
+            (s) => [s.propertyDefinitionStorage],
+            (propertyDefinitionStorage: PropertyDefinitionStorage): FormatPropertyValueForDisplayFunction => {
+                return (
+                    propertyName?: BreakdownKeyType,
+                    valueToFormat?: PropertyFilterValue | undefined,
+                    type?: PropertyDefinitionType,
+                    groupTypeIndex?: number | null
+                ) => {
+                    if (
+                        valueToFormat === null ||
+                        valueToFormat === undefined ||
+                        (type === PropertyDefinitionType.Group &&
+                            (groupTypeIndex === undefined || groupTypeIndex === null))
+                    ) {
+                        return null
+                    }
+                    const propertyDefinition: PropertyDefinition | null = checkOrLoadPropertyDefinition(
+                        propertyName,
+                        type ?? PropertyDefinitionType.Event,
+                        propertyDefinitionStorage,
+                        groupTypeIndex
+                    )
+                    const arrayOfPropertyValues = Array.isArray(valueToFormat) ? valueToFormat : [valueToFormat]
+
+                    const formattedValues = arrayOfPropertyValues.map((_propertyValue) => {
+                        const propertyValue: string | null = String(_propertyValue)
+
+                        if (propertyDefinition?.property_type === 'DateTime') {
+                            const unixTimestampMilliseconds = /^\d{13}$/
+                            const unixTimestampSeconds = /^\d{10}(\.\d*)?$/
+
+                            // dayjs parses unix timestamps differently
+                            // depending on if they're in seconds or milliseconds
+                            if (propertyValue?.match(unixTimestampSeconds)) {
+                                const numericalTimestamp = Number.parseFloat(propertyValue)
+                                return dayjs.unix(numericalTimestamp).tz().format('YYYY-MM-DD hh:mm:ss')
+                            } else if (propertyValue?.match(unixTimestampMilliseconds)) {
+                                const numericalTimestamp = Number.parseInt(propertyValue)
+                                return dayjs(numericalTimestamp).tz().format('YYYY-MM-DD hh:mm:ss')
+                            }
+                        } else if (propertyDefinition?.property_type === PropertyType.Duration) {
+                            const numericalDuration = Number.parseFloat(propertyValue)
+                            return isNaN(numericalDuration) ? propertyValue : colonDelimitedDuration(numericalDuration)
+                        }
+
+                        return propertyValue
+                    })
+
+                    // formattedValues is always an array after normalising above
+                    // but if the caller sent a single value we should return one
+                    return Array.isArray(valueToFormat) ? formattedValues : formattedValues[0]
+                }
+            },
+        ],
+        personMetadataPropertyDefinitions: [
+            () => [],
+            () =>
+                [
+                    {
+                        id: 'created_at',
+                        name: 'created_at',
+                        property_type: PropertyType.DateTime,
+                        type: PropertyDefinitionType.PersonMetadata,
+                    },
+                ] as PropertyDefinition[],
+        ],
+        eventMetadataPropertyDefinitions: [
+            (s) => [s.groupTypes],
+            (groupTypes: Map<GroupTypeIndex, import('~/types').GroupType>) => {
+                const definitions = [
+                    {
+                        id: 'event',
+                        name: 'event',
+                        property_type: PropertyType.String,
+                        type: PropertyDefinitionType.EventMetadata,
+                    },
+                    {
+                        id: 'timestamp',
+                        name: 'timestamp',
+                        property_type: PropertyType.DateTime,
+                        type: PropertyDefinitionType.EventMetadata,
+                    },
+                    {
+                        id: 'distinct_id',
+                        name: 'distinct_id',
+                        property_type: PropertyType.String,
+                        type: PropertyDefinitionType.EventMetadata,
+                    },
+                    {
+                        id: 'person_id',
+                        name: 'person_id',
+                        property_type: PropertyType.String,
+                        type: PropertyDefinitionType.EventMetadata,
+                    },
+                    {
+                        id: 'person_mode',
+                        name: 'person_mode',
+                        property_type: PropertyType.String,
+                        type: PropertyDefinitionType.EventMetadata,
+                    },
+                ] as PropertyDefinition[]
+                for (const [groupTypeIndex, groupType] of groupTypes) {
+                    const column = `$group_${groupTypeIndex}`
+                    definitions.push({
+                        id: column,
+                        name: groupType.name_singular || groupType.group_type,
+                        property_type: PropertyType.String,
+                        type: PropertyDefinitionType.EventMetadata,
+                    })
+                }
+                return definitions
+            },
+        ],
+    }),
+    permanentlyMount(),
+])

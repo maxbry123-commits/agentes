@@ -1,0 +1,4 @@
+#!/bin/bash
+set -e
+
+exec phrocs --config bin/mprocs-e2e.yaml

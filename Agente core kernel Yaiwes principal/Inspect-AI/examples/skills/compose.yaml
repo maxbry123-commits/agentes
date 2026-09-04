@@ -1,0 +1,10 @@
+services:
+  default:
+    image: ubuntu:24.04
+    command: tail -f /dev/null
+    init: true
+
+# Keep an interface for the network-info task without permitting Internet access.
+networks:
+  default:
+    internal: true

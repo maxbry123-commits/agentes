@@ -1,0 +1,728 @@
+"""Portable conformance test suite for `SandboxEnvironment` implementations.
+
+These are plain pytest test functions that exercise the `SandboxEnvironment`
+contract. They live in the package — not under `tests/` — so any sandbox provider can reuse them.
+
+To run them, a consumer:
+
+1. Pulls the checks into pytest collection::
+
+       from inspect_ai.util._sandbox.self_check import *  # noqa: F403
+
+2. Defines an async fixture named exactly ``sandbox_env`` that yields a
+   ``SandboxEnvironment`` (parameterize it over whatever sandbox configurations
+   you want to cover).
+
+3. Marks checks its sandbox can't satisfy as xfails *inside that fixture*, keyed
+   on the running check's name (``request.node.originalname``) — known failures
+   differ per provider/config. ``sandbox_env`` must be function-scoped for this
+   (a wider-scoped fixture only sees the first check's node); to share one env
+   across checks, layer it over a module-scoped fixture as Inspect's runner does.
+
+Inspect's own runner is ``tests/tools/test_sandbox_docker_and_local.py``.
+
+This module deliberately avoids importing pytest because it's in main, not test code.
+"""
+
+import random
+import string
+from typing import Any, Generic, Optional, Type, TypeVar
+
+import anyio
+
+from inspect_ai.util import (
+    OutputLimitExceededError,
+    SandboxEnvironment,
+    SandboxEnvironmentLimits,
+)
+from inspect_ai.util._sandbox.limits import override_max_read_file_size
+
+
+async def _cleanup_file(sandbox_env: SandboxEnvironment, filename: str) -> None:
+    res = await sandbox_env.exec(["rm", "-f", "--", filename])
+    assert res.success
+
+
+async def test_read_and_write_file_text(sandbox_env: SandboxEnvironment) -> None:
+    file_name = "test_read_and_write_file_text.file"
+    await sandbox_env.write_file(file_name, "great #content\nincluding newlines")
+    written_file_string = await sandbox_env.read_file(file_name, text=True)
+    assert "great #content\nincluding newlines" == written_file_string, (
+        f"unexpected content: [{written_file_string}]"
+    )
+    await _cleanup_file(sandbox_env, file_name)
+
+
+async def test_write_file_text_utf(sandbox_env: SandboxEnvironment) -> None:
+    utf_content = "✨☽︎✨🌞︎︎✨🚀✨"
+    file_name = "test_write_file_text_utf.file"
+    await sandbox_env.write_file(file_name, utf_content)
+    file_with_utf_content = await sandbox_env.read_file(file_name, text=True)
+    assert isinstance(file_with_utf_content, str), (
+        f"Expected file content to be a string, got {type(file_with_utf_content)}"
+    )
+    assert file_with_utf_content == utf_content, (
+        f"UTF-8 content should match, got {file_with_utf_content=}; expected {utf_content=}"
+    )
+    await _cleanup_file(sandbox_env, file_name)
+
+
+async def test_read_and_write_file_binary(sandbox_env: SandboxEnvironment) -> None:
+    file_name = "test_read_and_write_file_binary.file"
+    await sandbox_env.write_file(
+        file_name, b"\xc3\x28"
+    )  # invalid UTF-8 from https://stackoverflow.com/a/17199164/116509
+
+    written_file_bytes = await sandbox_env.read_file(file_name, text=False)
+    assert b"\xc3\x28" == written_file_bytes, "Binary content should match"
+    await _cleanup_file(sandbox_env, file_name)
+
+
+async def test_read_and_write_large_file_binary(
+    sandbox_env: SandboxEnvironment,
+) -> None:
+    file_name = "test_read_and_write_large_file_binary.file"
+    # Catches transport size limits. The k8s sandbox blew up at 28 MiB.
+    long_bytes = b"\xc3" * (50 * 1024 * 1024)
+    await sandbox_env.write_file(file_name, long_bytes)
+    written_file_bytes = await sandbox_env.read_file(file_name, text=False)
+    assert long_bytes == written_file_bytes, "Large binary content should match"
+    await _cleanup_file(sandbox_env, file_name)
+
+
+async def test_read_and_write_file_including_directory_absolute(
+    sandbox_env: SandboxEnvironment,
+) -> None:
+    file_name = "/tmp/test_rw_including_directory_absolute/test.file"
+    await sandbox_env.write_file(file_name, "absolutely enjoying being in a directory")
+    written_file_string = await sandbox_env.read_file(file_name, text=True)
+    assert "absolutely enjoying being in a directory" == written_file_string, (
+        f"Absolute directory content should match, got {written_file_string=}"
+    )
+    await _cleanup_file(sandbox_env, file_name)
+    await sandbox_env.exec(["rmdir", "/tmp/test_rw_including_directory_absolute"])
+
+
+async def test_read_and_write_file_including_directory_relative(
+    sandbox_env: SandboxEnvironment,
+) -> None:
+    file_name = "test_rw_including_directory_relative/test.file"
+    await sandbox_env.write_file(file_name, "relatively enjoying being in a directory")
+    written_file_string = await sandbox_env.read_file(file_name, text=True)
+    assert "relatively enjoying being in a directory" == written_file_string, (
+        f"Relative directory content should match, got {written_file_string=}"
+    )
+    await _cleanup_file(sandbox_env, file_name)
+    await sandbox_env.exec(["rmdir", "test_rw_including_directory_relative"])
+
+
+async def test_read_file_zero_length(sandbox_env: SandboxEnvironment) -> None:
+    file_name = "zero_length_file.file"
+    await sandbox_env.exec(["touch", file_name])
+    zero_length = await sandbox_env.read_file(file_name, text=True)
+    assert isinstance(zero_length, str), (
+        f"Zero-length file should return a string, got {type(zero_length)}"
+    )
+    assert zero_length == "", (
+        f"Zero-length file should be an empty string, got {zero_length=}"
+    )
+    await _cleanup_file(sandbox_env, file_name)
+
+
+async def test_read_file_not_found(sandbox_env: SandboxEnvironment) -> None:
+    file_name = "nonexistent"
+    with Raises(FileNotFoundError) as e_info:
+        await sandbox_env.read_file(file_name, text=True)
+    assert e_info is not None, "FileNotFoundError should be raised"
+    assert file_name in str(e_info.value), (
+        f"FileNotFoundError should contain the filename, got {e_info.value=}"
+    )
+
+
+async def test_read_file_not_allowed(sandbox_env: SandboxEnvironment) -> None:
+    file_name = "test_read_file_not_allowed.file"
+    await sandbox_env.write_file(file_name, "inaccessible #content")
+    await sandbox_env.exec(["chmod", "-r", file_name])
+    try:
+        with Raises(PermissionError) as e_info:
+            await sandbox_env.read_file(file_name, text=True)
+        assert e_info is not None, "PermissionError should be raised"
+        assert file_name in str(e_info.value), (
+            f"PermissionError should contain the filename, got {e_info.value=}"
+        )
+    finally:
+        await sandbox_env.exec(["chmod", "+r", file_name])
+        await _cleanup_file(sandbox_env, file_name)
+
+
+async def test_read_file_is_directory(sandbox_env: SandboxEnvironment) -> None:
+    file_name = "/etc"
+    with Raises(IsADirectoryError) as e_info:
+        await sandbox_env.read_file(file_name, text=True)
+        assert e_info is not None, "IsADirectoryError should be raised"
+    assert "directory" in str(e_info.value), (
+        f"IsADirectoryError should mention 'directory', got {e_info.value=}"
+    )
+
+
+async def test_read_file_nonsense_name(
+    sandbox_env: SandboxEnvironment,
+) -> None:
+    file_name = "https:/en.wikipedia.org/wiki/Bart%C5%82omiej_Kasprzykowski"
+    with Raises(FileNotFoundError) as e_info:
+        await sandbox_env.read_file(file_name, text=True)
+    assert e_info is not None, "FileNotFoundError should be raised"
+    assert "wikipedia" in str(e_info.value), (
+        f"FileNotFoundError should contain the filename, got {e_info.value=}"
+    )
+
+
+async def test_read_file_limit(sandbox_env: SandboxEnvironment) -> None:
+    file_name = "large.file"
+    await sandbox_env.write_file(file_name, "a" * 2048)  # 2 KiB
+    with override_max_read_file_size(1024):
+        expected_limit = SandboxEnvironmentLimits.MAX_READ_FILE_SIZE_STR
+        with Raises(OutputLimitExceededError) as e_info:
+            await sandbox_env.read_file(file_name, text=True)
+    assert e_info is not None, "OutputLimitExceededError should be raised"
+    assert f"limit of {expected_limit} was exceeded" in str(e_info.value), (
+        f"OutputLimitExceededError should mention the limit, got {e_info.value=}"
+    )
+    await _cleanup_file(sandbox_env, file_name)
+
+
+async def test_write_text_file_zero_length(sandbox_env: SandboxEnvironment) -> None:
+    file_name = "zero_length_file.file"
+    await sandbox_env.write_file(file_name, "")
+    zero_length = await sandbox_env.read_file(file_name, text=True)
+    assert isinstance(zero_length, str), (
+        f"Zero-length file should return a string, got {type(zero_length)}"
+    )
+    assert zero_length == "", (
+        f"Zero-length file should be an empty string, got {zero_length=}"
+    )
+    await _cleanup_file(sandbox_env, file_name)
+
+
+async def test_write_text_file_space(sandbox_env: SandboxEnvironment) -> None:
+    space = "to the moon"
+    file_name = "file with space.file"
+    await sandbox_env.write_file(file_name, space)
+    file_with_space = await sandbox_env.read_file(file_name, text=True)
+    assert isinstance(file_with_space, str), (
+        f"File with space should return a string, got {type(file_with_space)}"
+    )
+    assert file_with_space == space, (
+        f"File with space content should match, got {file_with_space=}; expected {space=}"
+    )
+    await _cleanup_file(sandbox_env, file_name)
+
+
+async def test_write_text_file_is_directory(
+    sandbox_env: SandboxEnvironment,
+) -> None:
+    # ensure /tmp/directory exists
+    await sandbox_env.write_file(
+        "/tmp/inspect_ai_test_write_text_file_is_directory/file", "unused content"
+    )
+    with Raises(IsADirectoryError) as e_info:
+        await sandbox_env.write_file(
+            "/tmp/inspect_ai_test_write_text_file_is_directory",
+            "content cannot go in a directory, dummy",
+        )
+    assert e_info is not None, "IsADirectoryError should be raised"
+    assert "directory" in str(e_info.value), (
+        f"IsADirectoryError should mention 'directory', got {e_info.value=}"
+    )
+    await sandbox_env.exec(
+        ["rm", "-rf", "/tmp/inspect_ai_test_write_text_file_is_directory"]
+    )
+
+
+async def test_write_text_file_without_permissions(
+    sandbox_env: SandboxEnvironment,
+) -> None:
+    file_name = "test_write_text_file_without_permissions.file"
+    await sandbox_env.write_file(file_name, "impervious #content")
+    await sandbox_env.exec(["chmod", "-w", file_name])
+    try:
+        with Raises(PermissionError) as e_info:
+            await sandbox_env.write_file(file_name, "this won't stick")
+        assert e_info is not None, "PermissionError should be raised"
+        assert file_name in str(e_info.value), (
+            f"PermissionError should contain the filename, got {e_info.value=}"
+        )
+    finally:
+        # restore perms even on failure: a leftover read-only file would make
+        # a retried attempt fail at its first write
+        await sandbox_env.exec(["chmod", "+w", file_name])
+        await _cleanup_file(sandbox_env, file_name)
+
+
+async def test_write_text_file_exists(
+    sandbox_env: SandboxEnvironment,
+) -> None:
+    file_name = "file_exists.file"
+    await sandbox_env.write_file(file_name, "mundane content")
+    await sandbox_env.write_file(file_name, "altered content")
+    altered_content = await sandbox_env.read_file(file_name, text=True)
+    assert altered_content == "altered content", (
+        f"Existing file content should be overwritten, got {altered_content=}"
+    )
+    await _cleanup_file(sandbox_env, file_name)
+
+
+async def test_write_binary_file_zero_length(sandbox_env: SandboxEnvironment) -> None:
+    file_name = "zero_length_file.file"
+    await sandbox_env.write_file(file_name, b"")
+    zero_length = await sandbox_env.read_file(file_name, text=False)
+    assert isinstance(zero_length, bytes), (
+        f"Zero-length file should return bytes, got {type(zero_length)}"
+    )
+    assert zero_length == b"", (
+        f"Zero-length file should be empty bytes, got {zero_length=}"
+    )
+    await _cleanup_file(sandbox_env, file_name)
+
+
+async def test_write_binary_file_space(sandbox_env: SandboxEnvironment) -> None:
+    binary_content = b"\xc3\x28"
+    file_name = "file with space.file"
+    await sandbox_env.write_file(file_name, binary_content)
+    file_with_space = await sandbox_env.read_file(file_name, text=False)
+    assert isinstance(file_with_space, bytes), (
+        f"File with space should return bytes, got {type(file_with_space)}"
+    )
+    assert file_with_space == binary_content, "File with space content should match"
+    await _cleanup_file(sandbox_env, file_name)
+
+
+async def test_write_binary_file_is_directory(
+    sandbox_env: SandboxEnvironment,
+) -> None:
+    # ensure /tmp/directory exists
+    await sandbox_env.write_file(
+        "/tmp/inspect_ai_test_write_binary_file_is_directory/file", "unused content"
+    )
+    with Raises(IsADirectoryError) as e_info:
+        await sandbox_env.write_file(
+            "/tmp/inspect_ai_test_write_binary_file_is_directory",
+            b"\xc3\x28",
+        )
+    assert e_info is not None, "IsADirectoryError should be raised"
+    assert "directory" in str(e_info.value), (
+        f"IsADirectoryError should mention 'directory', got {e_info.value=}"
+    )
+    await sandbox_env.exec(
+        ["rm", "-rf", "/tmp/inspect_ai_test_write_binary_file_is_directory"]
+    )
+
+
+async def test_write_binary_file_without_permissions(
+    sandbox_env: SandboxEnvironment,
+) -> None:
+    file_name = "test_write_binary_file_without_permissions.file"
+    await sandbox_env.write_file(file_name, "impervious #content")
+    await sandbox_env.exec(["chmod", "-w", file_name])
+    try:
+        with Raises(PermissionError) as e_info:
+            await sandbox_env.write_file(file_name, b"\xc3\x28")
+        assert e_info is not None, "PermissionError should be raised"
+        assert file_name in str(e_info.value), (
+            f"PermissionError should contain the filename, got {e_info.value=}"
+        )
+    finally:
+        await sandbox_env.exec(["chmod", "+w", file_name])
+        await _cleanup_file(sandbox_env, file_name)
+
+
+async def test_write_binary_file_exists(
+    sandbox_env: SandboxEnvironment,
+) -> None:
+    file_name = "file_exists.file"
+    await sandbox_env.write_file(file_name, b"\xc3\x28")
+    await sandbox_env.write_file(file_name, b"\xc3\x29")
+    altered_content = await sandbox_env.read_file(file_name, text=False)
+    assert altered_content == b"\xc3\x29", "Existing file content should be overwritten"
+    await _cleanup_file(sandbox_env, file_name)
+
+
+async def test_exec_output(sandbox_env: SandboxEnvironment) -> None:
+    exec_result = await sandbox_env.exec(["sh", "-c", "echo foo; echo bar"])
+    expected = "foo\nbar\n"
+    # in the assertion message, we show the actual bytes to help debug newline issues
+    assert exec_result.stdout == expected, (
+        f"Unexpected output:expected {expected.encode('UTF-8')!r}; got {exec_result.stdout.encode('UTF-8')!r}"
+    )
+
+
+async def test_exec_stderr(sandbox_env: SandboxEnvironment) -> None:
+    exec_result = await sandbox_env.exec(["sh", "-c", "echo boof; echo baz >&2"])
+    assert exec_result.stderr == "baz\n", (
+        f"stderr output should match; got {exec_result.stderr=}, expected 'baz\n'"
+    )
+
+
+# Non-ASCII output (valid UTF-8) must decode correctly on stdout/stderr.
+# ExecResult fields are str, so the bytes a command emits should round-trip as
+# the equivalent text. Catches implementations that surface the raw transport
+# encoding instead of decoding it (e.g. latin-1 mojibake).
+_UTF8_OUTPUT = "café résumé €100 中文 😀"
+
+
+def _utf8_octal_escapes() -> str:
+    # Octal escapes for each UTF-8 byte of _UTF8_OUTPUT, e.g. r"\303\251...".
+    # 3-digit zero-padded so an adjacent digit can't extend the escape.
+    return "".join(f"\\{b:03o}" for b in _UTF8_OUTPUT.encode("utf-8"))
+
+
+async def test_exec_output_utf(sandbox_env: SandboxEnvironment) -> None:
+    # Write the file byte-by-byte from ASCII-only octal escapes, then cat it, so
+    # the *command* carries no non-ASCII bytes. Interpolating _UTF8_OUTPUT into
+    # the command instead would let a symmetric transport bug hide: the same
+    # wrong encode going in and wrong decode coming out cancel, and the round
+    # trip passes while both directions are broken. Generating the bytes inside
+    # the sandbox exercises only the output-decode path.
+    octal = _utf8_octal_escapes()
+    file_name = "test_exec_output_utf.file"
+    exec_result = await sandbox_env.exec(
+        ["sh", "-c", f"printf '{octal}' > {file_name} && cat {file_name}"]
+    )
+    assert exec_result.stdout == _UTF8_OUTPUT, (
+        f"non-ASCII stdout should round-trip; expected {_UTF8_OUTPUT.encode('UTF-8')!r}, "
+        f"got {exec_result.stdout.encode('UTF-8')!r}"
+    )
+    await _cleanup_file(sandbox_env, file_name)
+
+
+async def test_exec_stderr_utf(sandbox_env: SandboxEnvironment) -> None:
+    octal = _utf8_octal_escapes()
+    file_name = "test_exec_stderr_utf.file"
+    exec_result = await sandbox_env.exec(
+        ["sh", "-c", f"printf '{octal}' > {file_name} && cat {file_name} >&2"]
+    )
+    assert exec_result.stderr == _UTF8_OUTPUT, (
+        f"non-ASCII stderr should round-trip; expected {_UTF8_OUTPUT.encode('UTF-8')!r}, "
+        f"got {exec_result.stderr.encode('UTF-8')!r}"
+    )
+    await _cleanup_file(sandbox_env, file_name)
+
+
+async def test_exec_returncode(sandbox_env: SandboxEnvironment) -> None:
+    exec_result = await sandbox_env.exec(["sh", "-c", "echo foo; exit 70"])
+    assert exec_result.returncode == 70, (
+        f"Return code should match, got {exec_result.returncode=}, expected 70"
+    )
+
+
+async def test_exec_timeout(sandbox_env: SandboxEnvironment) -> None:
+    with Raises(TimeoutError):
+        await sandbox_env.exec(["sleep", "4"], timeout=2)
+
+
+async def test_exec_timeout_not_raised_on_fast_signal_death(
+    sandbox_env: SandboxEnvironment,
+) -> None:
+    # a command that dies from SIGTERM immediately (exit 143) should NOT
+    # be misinterpreted as a timeout when the timeout is much longer.
+    # this guards against false positives from OOM kills, external
+    # signals, etc.
+    result = await sandbox_env.exec(["sh", "-c", "kill -TERM $$"], timeout=30)
+    assert result.returncode == 143, (
+        f"Expected exit 143 from self-SIGTERM, got {result.returncode}"
+    )
+
+
+async def test_exec_timeout_kills_process(sandbox_env: SandboxEnvironment) -> None:
+    # use a unique random marker so we can find the process later via ps,
+    # avoiding PID reuse issues and conflicts with other test runs
+    unique_marker = "timeout_test_" + "".join(
+        random.choices(string.ascii_lowercase + string.digits, k=16)
+    )
+
+    # The trailing "; :" prevents the shell from exec-optimizing into
+    # `sleep 30` (which would strip the marker from the process cmdline,
+    # making ps unable to detect a leaked process).
+    with Raises(TimeoutError):
+        await sandbox_env.exec(
+            ["sh", "-c", f"echo '{unique_marker}' > /dev/null && sleep 30; :"],
+            timeout=2,
+        )
+
+    # give cleanup a moment to complete
+    await anyio.sleep(5)
+
+    # the process containing our unique marker must not still be running.
+    # use ps + grep so we don't depend on pgrep being installed; the
+    # `grep -v grep` filter excludes the grep process itself.
+    result = await sandbox_env.exec(
+        ["sh", "-c", f"ps aux | grep '{unique_marker}' | grep -v grep"]
+    )
+    assert not result.success or result.stdout.strip() == "", (
+        f"Process with marker '{unique_marker}' should have been killed after timeout, "
+        f"but it's still running. ps output: [{result.stdout}]"
+    )
+
+
+async def test_exec_timeout_kills_child_processes(
+    sandbox_env: SandboxEnvironment,
+) -> None:
+    # spawn a backgrounded child sleep with its own marker, then wait on
+    # a parent sleep with a different marker. when the timeout fires, BOTH
+    # processes must be killed (not just the parent).
+    parent_marker = "timeout_parent_" + "".join(
+        random.choices(string.ascii_lowercase + string.digits, k=16)
+    )
+    child_marker = "timeout_child_" + "".join(
+        random.choices(string.ascii_lowercase + string.digits, k=16)
+    )
+
+    with Raises(TimeoutError):
+        await sandbox_env.exec(
+            [
+                "sh",
+                "-c",
+                f"sleep 30 # {child_marker} & sleep 30 # {parent_marker}",
+            ],
+            timeout=2,
+        )
+
+    await anyio.sleep(5)
+
+    for marker in (parent_marker, child_marker):
+        result = await sandbox_env.exec(
+            ["sh", "-c", f"ps aux | grep '{marker}' | grep -v grep"]
+        )
+        assert not result.success or result.stdout.strip() == "", (
+            f"Process with marker '{marker}' should have been killed after timeout, "
+            f"but it's still running. ps output: [{result.stdout}]"
+        )
+
+
+async def test_exec_permission_error(sandbox_env: SandboxEnvironment) -> None:
+    with Raises(PermissionError):
+        # /etc/password is not an executable file so this should fail
+        await sandbox_env.exec(["/etc/passwd"])
+
+
+async def test_exec_env_vars(sandbox_env: SandboxEnvironment) -> None:
+    exec_result = await sandbox_env.exec(
+        cmd=["sh", "-c", "echo $CUSTOM_ENV_VAR_1; echo $CUSTOM_ENV_VAR_2"],
+        env={
+            "CUSTOM_ENV_VAR_1": "chonko zamboodle",
+            "CUSTOM_ENV_VAR_2": "zeddle_zom",
+        },
+    )
+    assert exec_result.stdout == "chonko zamboodle\nzeddle_zom\n", (
+        f"env var not passed to script; got {exec_result.stdout=}"
+    )
+
+
+async def test_exec_input_text(sandbox_env: SandboxEnvironment) -> None:
+    # Catches implementations that silently drop the input parameter.
+    content = "hello\nworld\n"
+    result = await sandbox_env.exec(["cat"], input=content)
+    assert result.success, f"cat failed: stderr=[{result.stderr}]"
+    assert result.stdout == content, (
+        f"stdin not forwarded; got {result.stdout=!r}, expected {content=!r}"
+    )
+
+    # Empty-string input is non-None and must still be handled
+    # (catches `if input:` truthiness bugs).
+    empty_result = await sandbox_env.exec(["cat"], input="")
+    assert empty_result.success, (
+        f"cat failed on empty input: stderr=[{empty_result.stderr}]"
+    )
+    assert empty_result.stdout == "", (
+        f"empty input should produce empty stdout, got {empty_result.stdout=!r}"
+    )
+
+
+async def test_exec_input_shell_special(sandbox_env: SandboxEnvironment) -> None:
+    # Catches implementations that embed input into a shell command without
+    # proper escaping: variable expansion, command substitution, quoting,
+    # backslashes, newlines must all round-trip verbatim.
+    content = "$HOME `whoami` 'single' \"double\" \\backslash\nnewline\n"
+    result = await sandbox_env.exec(["cat"], input=content)
+    assert result.success, f"cat failed: stderr=[{result.stderr}]"
+    assert result.stdout == content, (
+        f"stdin should round-trip verbatim; got {result.stdout=!r}, expected {content=!r}"
+    )
+
+
+async def test_exec_input_binary(sandbox_env: SandboxEnvironment) -> None:
+    # Bytes (including invalid UTF-8 and NULs) must round-trip unchanged.
+    # Use a file as the sink because ExecResult.stdout is decoded as str.
+    file_name = "test_exec_input_binary.file"
+    payload = b"\xc3\x28\x00\xff\x01\x02bytes"
+    result = await sandbox_env.exec(["sh", "-c", f"cat > {file_name}"], input=payload)
+    assert result.success, f"cat failed: stderr=[{result.stderr}]"
+    written = await sandbox_env.read_file(file_name, text=False)
+    assert written == payload, (
+        f"binary stdin should round-trip; got {written!r}, expected {payload!r}"
+    )
+    await _cleanup_file(sandbox_env, file_name)
+
+
+async def test_exec_input_large(sandbox_env: SandboxEnvironment) -> None:
+    # Catches command-line / pipe / transport size limits. The k8s
+    # sandbox blew up at 28 MiB.
+    size = 50 * 1024 * 1024
+    payload = "a" * size
+    result = await sandbox_env.exec(["wc", "-c"], input=payload)
+    assert result.success, f"wc failed: stderr=[{result.stderr}]"
+    reported = int(result.stdout.strip().split()[0])
+    assert reported == size, (
+        f"wc -c reported {reported} bytes from stdin, expected {size}"
+    )
+
+
+async def test_exec_large_command(sandbox_env: SandboxEnvironment) -> None:
+    # Command analogue of test_exec_input_large: stresses the argv/command
+    # transport, not stdin. Many medium args rather than one giant one — a single
+    # argv element is capped at MAX_ARG_STRLEN (128 KiB) regardless of ARG_MAX, so
+    # a ~1 MiB arg fails with E2BIG. printf %s cycles over every arg, so stdout is
+    # the args concatenated.
+    chunk = "x" * (64 * 1024)
+    n = 16  # ~1 MiB total argv, under a typical 2 MiB ARG_MAX
+    result = await sandbox_env.exec(["printf", "%s", *([chunk] * n)])
+    assert result.success, f"printf failed: stderr=[{result.stderr}]"
+    expected = chunk * n
+    assert result.stdout == expected, (
+        f"large command arguments should round-trip; "
+        f"got {len(result.stdout)} bytes, expected {len(expected)}"
+    )
+
+
+async def test_exec_as_user(sandbox_env: SandboxEnvironment) -> None:
+    username = "inspect-ai-test-exec-as-user"
+
+    # Neither adduser nor useradd are part of POSIX, so we need some brittle logic here
+    adduser_help_exec_result = await sandbox_env.exec(["adduser", "--help"])
+    adduser_help_text = (
+        adduser_help_exec_result.stdout + adduser_help_exec_result.stderr
+    )
+
+    if "BusyBox" in adduser_help_text:
+        adduser_command = ["adduser", "-D", username]
+    else:
+        adduser_command = [
+            "adduser",
+            "--comment",
+            "self_check.py",
+            "--disabled-password",
+            username,
+        ]
+
+    try:
+        # Create a new user
+        add_user_result = await sandbox_env.exec(
+            adduser_command,
+            user="root",
+            timeout=10,  # in one case adduser decided to ask for input which caused the test to hang indefinitely
+        )
+        assert add_user_result.success, f"Failed to add user: {add_user_result.stderr}"
+
+        # Test exec as different users
+        root_result = await sandbox_env.exec(["whoami"], user="root")
+        assert root_result.stdout.strip() == "root", (
+            f"Expected 'root', got '{root_result.stdout.strip()}'"
+        )
+        myuser_result = await sandbox_env.exec(["whoami"], user=username)
+        assert myuser_result.stdout.strip() == username, (
+            f"Expected '{username}', got '{myuser_result.stdout.strip()}'"
+        )
+    finally:
+        # Clean up
+        await sandbox_env.exec(["userdel", "-r", username], user="root")
+
+
+async def test_exec_as_nonexistent_user(sandbox_env: SandboxEnvironment) -> None:
+    nonexistent_username = "nonexistent"
+    result = await sandbox_env.exec(["whoami"], user=nonexistent_username)
+    assert not result.success, "Command should have failed for nonexistent user"
+    assert (
+        nonexistent_username in result.stdout or nonexistent_username in result.stderr
+    ), (
+        f"Error not found in command output: '{result.stdout}' nor stderr '{result.stderr}"
+    )
+
+
+async def test_cwd_unspecified(sandbox_env: SandboxEnvironment) -> None:
+    file_name = "test_cwd_unspecified.file"
+    await sandbox_env.write_file(file_name, "ls me plz")
+    current_dir_contents = (await sandbox_env.exec(["ls", "-1"])).stdout
+    assert file_name in current_dir_contents, (
+        f"File should be in current directory contents; got {current_dir_contents=}"
+    )
+    await _cleanup_file(sandbox_env, file_name)
+
+
+async def test_cwd_custom(sandbox_env: SandboxEnvironment) -> None:
+    current_dir_contents = (await sandbox_env.exec(["ls"], cwd="/usr/bin")).stdout
+    assert "env" in current_dir_contents, (
+        f"env should be in /usr/bin; got {current_dir_contents=}"
+    )
+
+
+async def test_cwd_relative(sandbox_env: SandboxEnvironment) -> None:
+    cwd_subdirectory = "subdir"
+    await sandbox_env.exec(["mkdir", cwd_subdirectory])
+    file_name = "test_cwd_relative.file"
+    file_path = cwd_subdirectory + "/" + file_name
+    await sandbox_env.write_file(file_path, "ls me plz")
+    current_dir_contents = (await sandbox_env.exec(["ls"], cwd=cwd_subdirectory)).stdout
+    assert file_name in current_dir_contents, (
+        f"{file_name} not found in {current_dir_contents}"
+    )
+    await _cleanup_file(sandbox_env, file_path)
+
+
+async def test_cwd_absolute(sandbox_env: SandboxEnvironment) -> None:
+    cwd_directory = "/tmp/test_cwd_absolute"
+    await sandbox_env.exec(["mkdir", cwd_directory])
+    file_name = "/tmp/test_cwd_absolute/test_cwd_absolute.file"
+    await sandbox_env.write_file(file_name, "ls me plz")
+    current_dir_contents = (await sandbox_env.exec(["ls"], cwd=cwd_directory)).stdout
+    assert "test_cwd_absolute.file" in current_dir_contents, (
+        f"File should be in current directory contents, got {current_dir_contents=}"
+    )
+    await _cleanup_file(sandbox_env, file_name)
+    await sandbox_env.exec(["rmdir", cwd_directory])
+
+
+# TODO: write a test for when cwd doesn't exist
+
+# Generic type variable for exceptions
+E = TypeVar("E", bound=BaseException)
+
+
+class Raises(Generic[E]):
+    def __init__(self, expected_exception: Type[E]):
+        self.expected_exception = expected_exception
+        self.value: Optional[E] = None  # Store the caught exception
+
+    def __enter__(self) -> "Raises[E]":
+        return self
+
+    def __exit__(
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc_value: Optional[BaseException],
+        traceback: Optional[Any],
+    ) -> bool:
+        if exc_type is None:
+            raise AssertionError(
+                f"Expected exception {self.expected_exception.__name__} but no exception was raised."
+            )
+        if not issubclass(exc_type, self.expected_exception):
+            raise AssertionError(
+                f"Expected exception {self.expected_exception.__name__}, but got {exc_type.__name__}."
+            )
+        self.value = exc_value  # type: ignore
+        return True
+
+
+# Export only the check functions so `from self_check import *` pulls them (and
+# nothing else) into a consumer's pytest collection. Derived, not hand-maintained.
+__all__ = [name for name in dir() if name.startswith("test_")]

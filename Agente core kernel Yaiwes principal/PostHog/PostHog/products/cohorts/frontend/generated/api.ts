@@ -1,0 +1,351 @@
+import { apiMutator } from '../../../../frontend/src/lib/api-orval-mutator'
+/**
+ * Auto-generated from the Django backend OpenAPI schema.
+ * To modify these types, update the Django serializers or views, then run:
+ *   hogli build:openapi
+ * Questions or issues? #team-devex on Slack
+ *
+ * PostHog API - generated
+ * OpenAPI spec version: 1.0.0
+ */
+import type {
+    CohortApi,
+    CohortPersonsResponseApi,
+    CohortUsedInResponseApi,
+    CohortsListParams,
+    CohortsPersonsRetrieveParams,
+    CohortsStaffListParams,
+    PaginatedCohortListApi,
+    PatchedAddPersonsToStaticCohortRequestApi,
+    PatchedCohortApi,
+    PatchedRemovePersonRequestApi,
+    StaffCohortLookupResponseApi,
+    StaffCohortRecalculateApi,
+    StaffCohortRecalculateResponseApi,
+    StaffStuckCohortsResponseApi,
+} from './api.schemas'
+
+// https://stackoverflow.com/questions/49579094/typescript-conditional-types-filter-out-readonly-properties-pick-only-requir/49579497#49579497
+type IfEquals<X, Y, A = X, B = never> = (<T>() => T extends X ? 1 : 2) extends <T>() => T extends Y ? 1 : 2 ? A : B
+
+type WritableKeys<T> = {
+    [P in keyof T]-?: IfEquals<{ [Q in P]: T[P] }, { -readonly [Q in P]: T[P] }, P>
+}[keyof T]
+
+type UnionToIntersection<U> = (U extends any ? (k: U) => void : never) extends (k: infer I) => void ? I : never
+type DistributeReadOnlyOverUnions<T> = T extends any ? NonReadonly<T> : never
+
+type Writable<T> = Pick<T, WritableKeys<T>>
+type NonReadonly<T> = [T] extends [UnionToIntersection<T>]
+    ? {
+          [P in keyof Writable<T>]: T[P] extends object ? NonReadonly<NonNullable<T[P]>> : T[P]
+      }
+    : DistributeReadOnlyOverUnions<T>
+
+export const getCohortsStaffListUrl = (params: CohortsStaffListParams) => {
+    const normalizedParams = new URLSearchParams()
+
+    Object.entries(params || {}).forEach(([key, value]) => {
+        if (value !== undefined) {
+            normalizedParams.append(key, value === null ? 'null' : String(value))
+        }
+    })
+
+    const stringifiedParams = normalizedParams.toString()
+
+    return stringifiedParams.length > 0 ? `/api/cohorts_staff/?${stringifiedParams}` : `/api/cohorts_staff/`
+}
+
+/**
+ * Staff-only, unscoped cohort calculation tooling.
+ *
+ * Replaces the prod-shell runbook for stuck cohort calculations: look up any team's cohort by
+ * id, list cohorts whose calculation is stuck, and force-recalculate by bumping
+ * pending_version and enqueueing through the same task path organic saves use.
+ *
+ * Registered on the root router so it is not team-nested; staff act on cohorts in teams they
+ * do not belong to. Cohort.objects is not fail-closed today (the model is on the scoping
+ * baseline) — if Cohort migrates to a fail-closed manager, these cross-team queries must
+ * switch to the explicit unscoped escape hatch.
+ */
+export const cohortsStaffList = async (
+    params: CohortsStaffListParams,
+    options?: RequestInit
+): Promise<StaffCohortLookupResponseApi> => {
+    return apiMutator<StaffCohortLookupResponseApi>(getCohortsStaffListUrl(params), {
+        ...options,
+        method: 'GET',
+    })
+}
+
+export const getCohortsStaffRecalculateCreateUrl = () => {
+    return `/api/cohorts_staff/recalculate/`
+}
+
+/**
+ * Staff-only, unscoped cohort calculation tooling.
+ *
+ * Replaces the prod-shell runbook for stuck cohort calculations: look up any team's cohort by
+ * id, list cohorts whose calculation is stuck, and force-recalculate by bumping
+ * pending_version and enqueueing through the same task path organic saves use.
+ *
+ * Registered on the root router so it is not team-nested; staff act on cohorts in teams they
+ * do not belong to. Cohort.objects is not fail-closed today (the model is on the scoping
+ * baseline) — if Cohort migrates to a fail-closed manager, these cross-team queries must
+ * switch to the explicit unscoped escape hatch.
+ */
+export const cohortsStaffRecalculateCreate = async (
+    staffCohortRecalculateApi: StaffCohortRecalculateApi,
+    options?: RequestInit
+): Promise<StaffCohortRecalculateResponseApi> => {
+    return apiMutator<StaffCohortRecalculateResponseApi>(getCohortsStaffRecalculateCreateUrl(), {
+        ...options,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...options?.headers },
+        body: JSON.stringify(staffCohortRecalculateApi),
+    })
+}
+
+export const getCohortsStaffStuckRetrieveUrl = () => {
+    return `/api/cohorts_staff/stuck/`
+}
+
+/**
+ * Staff-only, unscoped cohort calculation tooling.
+ *
+ * Replaces the prod-shell runbook for stuck cohort calculations: look up any team's cohort by
+ * id, list cohorts whose calculation is stuck, and force-recalculate by bumping
+ * pending_version and enqueueing through the same task path organic saves use.
+ *
+ * Registered on the root router so it is not team-nested; staff act on cohorts in teams they
+ * do not belong to. Cohort.objects is not fail-closed today (the model is on the scoping
+ * baseline) — if Cohort migrates to a fail-closed manager, these cross-team queries must
+ * switch to the explicit unscoped escape hatch.
+ */
+export const cohortsStaffStuckRetrieve = async (options?: RequestInit): Promise<StaffStuckCohortsResponseApi> => {
+    return apiMutator<StaffStuckCohortsResponseApi>(getCohortsStaffStuckRetrieveUrl(), {
+        ...options,
+        method: 'GET',
+    })
+}
+
+export const getCohortsListUrl = (projectId: string, params?: CohortsListParams) => {
+    const normalizedParams = new URLSearchParams()
+
+    Object.entries(params || {}).forEach(([key, value]) => {
+        if (value !== undefined) {
+            normalizedParams.append(key, value === null ? 'null' : String(value))
+        }
+    })
+
+    const stringifiedParams = normalizedParams.toString()
+
+    return stringifiedParams.length > 0
+        ? `/api/projects/${projectId}/cohorts/?${stringifiedParams}`
+        : `/api/projects/${projectId}/cohorts/`
+}
+
+export const cohortsList = async (
+    projectId: string,
+    params?: CohortsListParams,
+    options?: RequestInit
+): Promise<PaginatedCohortListApi> => {
+    return apiMutator<PaginatedCohortListApi>(getCohortsListUrl(projectId, params), {
+        ...options,
+        method: 'GET',
+    })
+}
+
+export const getCohortsCreateUrl = (projectId: string) => {
+    return `/api/projects/${projectId}/cohorts/`
+}
+
+export const cohortsCreate = async (
+    projectId: string,
+    cohortApi?: NonReadonly<CohortApi>,
+    options?: RequestInit
+): Promise<CohortApi> => {
+    return apiMutator<CohortApi>(getCohortsCreateUrl(projectId), {
+        ...options,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...options?.headers },
+        body: JSON.stringify(cohortApi),
+    })
+}
+
+export const getCohortsRetrieveUrl = (projectId: string, id: number) => {
+    return `/api/projects/${projectId}/cohorts/${id}/`
+}
+
+export const cohortsRetrieve = async (projectId: string, id: number, options?: RequestInit): Promise<CohortApi> => {
+    return apiMutator<CohortApi>(getCohortsRetrieveUrl(projectId, id), {
+        ...options,
+        method: 'GET',
+    })
+}
+
+export const getCohortsUpdateUrl = (projectId: string, id: number) => {
+    return `/api/projects/${projectId}/cohorts/${id}/`
+}
+
+export const cohortsUpdate = async (
+    projectId: string,
+    id: number,
+    cohortApi?: NonReadonly<CohortApi>,
+    options?: RequestInit
+): Promise<CohortApi> => {
+    return apiMutator<CohortApi>(getCohortsUpdateUrl(projectId, id), {
+        ...options,
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...options?.headers },
+        body: JSON.stringify(cohortApi),
+    })
+}
+
+export const getCohortsPartialUpdateUrl = (projectId: string, id: number) => {
+    return `/api/projects/${projectId}/cohorts/${id}/`
+}
+
+export const cohortsPartialUpdate = async (
+    projectId: string,
+    id: number,
+    patchedCohortApi?: NonReadonly<PatchedCohortApi>,
+    options?: RequestInit
+): Promise<CohortApi> => {
+    return apiMutator<CohortApi>(getCohortsPartialUpdateUrl(projectId, id), {
+        ...options,
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...options?.headers },
+        body: JSON.stringify(patchedCohortApi),
+    })
+}
+
+export const getCohortsDestroyUrl = (projectId: string, id: number) => {
+    return `/api/projects/${projectId}/cohorts/${id}/`
+}
+
+/**
+ * Hard delete of this model is not allowed. Use a patch API call to set "deleted" to true
+ */
+export const cohortsDestroy = async (projectId: string, id: number, options?: RequestInit): Promise<unknown> => {
+    return apiMutator<unknown>(getCohortsDestroyUrl(projectId, id), {
+        ...options,
+        method: 'DELETE',
+    })
+}
+
+export const getCohortsActivityRetrieveUrl = (projectId: string, id: number) => {
+    return `/api/projects/${projectId}/cohorts/${id}/activity/`
+}
+
+export const cohortsActivityRetrieve = async (projectId: string, id: number, options?: RequestInit): Promise<void> => {
+    return apiMutator<void>(getCohortsActivityRetrieveUrl(projectId, id), {
+        ...options,
+        method: 'GET',
+    })
+}
+
+export const getCohortsAddPersonsToStaticCohortPartialUpdateUrl = (projectId: string, id: number) => {
+    return `/api/projects/${projectId}/cohorts/${id}/add_persons_to_static_cohort/`
+}
+
+export const cohortsAddPersonsToStaticCohortPartialUpdate = async (
+    projectId: string,
+    id: number,
+    patchedAddPersonsToStaticCohortRequestApi?: PatchedAddPersonsToStaticCohortRequestApi,
+    options?: RequestInit
+): Promise<void> => {
+    return apiMutator<void>(getCohortsAddPersonsToStaticCohortPartialUpdateUrl(projectId, id), {
+        ...options,
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...options?.headers },
+        body: JSON.stringify(patchedAddPersonsToStaticCohortRequestApi),
+    })
+}
+
+export const getCohortsCalculationHistoryRetrieveUrl = (projectId: string, id: number) => {
+    return `/api/projects/${projectId}/cohorts/${id}/calculation_history/`
+}
+
+export const cohortsCalculationHistoryRetrieve = async (
+    projectId: string,
+    id: number,
+    options?: RequestInit
+): Promise<void> => {
+    return apiMutator<void>(getCohortsCalculationHistoryRetrieveUrl(projectId, id), {
+        ...options,
+        method: 'GET',
+    })
+}
+
+export const getCohortsPersonsRetrieveUrl = (projectId: string, id: number, params?: CohortsPersonsRetrieveParams) => {
+    const normalizedParams = new URLSearchParams()
+
+    Object.entries(params || {}).forEach(([key, value]) => {
+        if (value !== undefined) {
+            normalizedParams.append(key, value === null ? 'null' : String(value))
+        }
+    })
+
+    const stringifiedParams = normalizedParams.toString()
+
+    return stringifiedParams.length > 0
+        ? `/api/projects/${projectId}/cohorts/${id}/persons/?${stringifiedParams}`
+        : `/api/projects/${projectId}/cohorts/${id}/persons/`
+}
+
+export const cohortsPersonsRetrieve = async (
+    projectId: string,
+    id: number,
+    params?: CohortsPersonsRetrieveParams,
+    options?: RequestInit
+): Promise<CohortPersonsResponseApi> => {
+    return apiMutator<CohortPersonsResponseApi>(getCohortsPersonsRetrieveUrl(projectId, id, params), {
+        ...options,
+        method: 'GET',
+    })
+}
+
+export const getCohortsRemovePersonFromStaticCohortPartialUpdateUrl = (projectId: string, id: number) => {
+    return `/api/projects/${projectId}/cohorts/${id}/remove_person_from_static_cohort/`
+}
+
+export const cohortsRemovePersonFromStaticCohortPartialUpdate = async (
+    projectId: string,
+    id: number,
+    patchedRemovePersonRequestApi?: PatchedRemovePersonRequestApi,
+    options?: RequestInit
+): Promise<void> => {
+    return apiMutator<void>(getCohortsRemovePersonFromStaticCohortPartialUpdateUrl(projectId, id), {
+        ...options,
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...options?.headers },
+        body: JSON.stringify(patchedRemovePersonRequestApi),
+    })
+}
+
+export const getCohortsUsedInRetrieveUrl = (projectId: string, id: number) => {
+    return `/api/projects/${projectId}/cohorts/${id}/used_in/`
+}
+
+export const cohortsUsedInRetrieve = async (
+    projectId: string,
+    id: number,
+    options?: RequestInit
+): Promise<CohortUsedInResponseApi> => {
+    return apiMutator<CohortUsedInResponseApi>(getCohortsUsedInRetrieveUrl(projectId, id), {
+        ...options,
+        method: 'GET',
+    })
+}
+
+export const getCohortsAllActivityRetrieveUrl = (projectId: string) => {
+    return `/api/projects/${projectId}/cohorts/activity/`
+}
+
+export const cohortsAllActivityRetrieve = async (projectId: string, options?: RequestInit): Promise<void> => {
+    return apiMutator<void>(getCohortsAllActivityRetrieveUrl(projectId), {
+        ...options,
+        method: 'GET',
+    })
+}

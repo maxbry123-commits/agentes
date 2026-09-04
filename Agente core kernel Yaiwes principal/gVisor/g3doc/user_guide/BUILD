@@ -1,0 +1,162 @@
+load("//website:defs.bzl", "doc")
+
+package(
+    default_applicable_licenses = ["//:license"],
+    default_visibility = ["//website:__pkg__"],
+    licenses = ["notice"],
+)
+
+doc(
+    name = "compatibility",
+    src = "compatibility.md",
+    category = "Compatibility",
+    permalink = "/docs/user_guide/compatibility/",
+    weight = "0",
+)
+
+doc(
+    name = "install",
+    src = "install.md",
+    category = "User Guide",
+    permalink = "/docs/user_guide/install/",
+    weight = "10",
+)
+
+doc(
+    name = "production",
+    src = "production.md",
+    category = "User Guide",
+    data = [
+        "sandboxing-tradeoffs.png",
+    ],
+    permalink = "/docs/user_guide/production/",
+    weight = "20",
+)
+
+doc(
+    name = "platforms",
+    src = "platforms.md",
+    category = "User Guide",
+    permalink = "/docs/user_guide/platforms/",
+    weight = "30",
+)
+
+doc(
+    name = "filesystem",
+    src = "filesystem.md",
+    category = "User Guide",
+    permalink = "/docs/user_guide/filesystem/",
+    weight = "40",
+)
+
+doc(
+    name = "fuse",
+    src = "fuse.md",
+    category = "User Guide",
+    permalink = "/docs/user_guide/fuse/",
+    weight = "41",
+)
+
+doc(
+    name = "networking",
+    src = "networking.md",
+    category = "User Guide",
+    permalink = "/docs/user_guide/networking/",
+    weight = "50",
+)
+
+doc(
+    name = "gpu",
+    src = "gpu.md",
+    category = "User Guide",
+    permalink = "/docs/user_guide/gpu/",
+    weight = "51",
+)
+
+doc(
+    name = "tpu",
+    src = "tpu.md",
+    category = "User Guide",
+    permalink = "/docs/user_guide/tpu/",
+    weight = "51",
+)
+
+doc(
+    name = "rdma",
+    src = "rdma.md",
+    category = "User Guide",
+    permalink = "/docs/user_guide/rdma/",
+    weight = "52",
+)
+
+doc(
+    name = "runtime_monitoring",
+    src = "runtime_monitoring.md",
+    category = "User Guide",
+    permalink = "/docs/user_guide/runtimemonitor/",
+    weight = "55",
+)
+
+doc(
+    name = "observability",
+    src = "observability.md",
+    category = "User Guide",
+    permalink = "/docs/user_guide/observability/",
+    weight = "56",
+)
+
+doc(
+    name = "checkpoint_restore",
+    src = "checkpoint_restore.md",
+    category = "User Guide",
+    permalink = "/docs/user_guide/checkpoint_restore/",
+    weight = "60",
+)
+
+doc(
+    name = "debugging",
+    src = "debugging.md",
+    category = "User Guide",
+    permalink = "/docs/user_guide/debugging/",
+    weight = "70",
+)
+
+doc(
+    name = "FAQ",
+    src = "FAQ.md",
+    category = "User Guide",
+    permalink = "/docs/user_guide/faq/",
+    weight = "90",
+)
+
+doc(
+    name = "systemd",
+    src = "systemd.md",
+    category = "User Guide",
+    permalink = "/docs/user_guide/systemd/",
+    weight = "91",
+)
+
+doc(
+    name = "rootfs_snapshot",
+    src = "rootfs_snapshot.md",
+    category = "User Guide",
+    permalink = "/docs/user_guide/rootfs_snapshot/",
+    weight = "92",
+)
+
+doc(
+    name = "fs_snapshot",
+    src = "fs_snapshot.md",
+    category = "User Guide",
+    permalink = "/docs/user_guide/fs_snapshot/",
+    weight = "93",
+)
+
+doc(
+    name = "rootless",
+    src = "rootless.md",
+    category = "User Guide",
+    permalink = "/docs/user_guide/rootless/",
+    weight = "94",
+)

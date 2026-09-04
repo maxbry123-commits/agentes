@@ -1,0 +1,65 @@
+import os
+import shutil
+import subprocess
+from urllib.parse import urlparse, urlunparse
+
+from pydantic import BaseModel
+
+
+class GitContext(BaseModel):
+    origin: str
+    commit: str
+    dirty: bool
+
+
+def redact_url_credentials(url: str) -> str:
+    """Strip any embedded ``user:password@`` credentials from a URL's netloc.
+
+    Used to keep authentication tokens out of recorded git origins (eval logs
+    and other persisted/shareable metadata).
+    """
+    try:
+        parts = urlparse(url)
+    except ValueError:
+        return url
+    if "@" in parts.netloc:
+        netloc = parts.netloc.rsplit("@", 1)[1]
+        return urlunparse(parts._replace(netloc=netloc))
+    return url
+
+
+def git_context() -> GitContext | None:
+    # skip git operations when running under pytest
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return None
+
+    # check for git
+    git = shutil.which("git")
+    if not git:
+        return None
+
+    # check for a git revision in this directory
+    commit_result = subprocess.run(
+        [git, "rev-parse", "--short", "HEAD"], capture_output=True, text=True
+    )
+    if commit_result.returncode != 0:
+        return None
+
+    # check for git origin (if any)
+    origin = subprocess.run(
+        [git, "remote", "get-url", "origin"],
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    origin = redact_url_credentials(origin)
+
+    # check if working tree is dirty
+    status_result = subprocess.run(
+        [git, "status", "--porcelain"],
+        capture_output=True,
+        text=True,
+    )
+    dirty = bool(status_result.stdout.strip())
+
+    # return context
+    return GitContext(origin=origin, commit=commit_result.stdout.strip(), dirty=dirty)

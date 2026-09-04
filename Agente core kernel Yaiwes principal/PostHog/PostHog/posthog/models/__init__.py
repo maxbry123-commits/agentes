@@ -1,0 +1,196 @@
+# Need to skip autoimporting because this file is severely prone to circular imports errors
+# You should try and make them alphabetically sorted manually if possible
+# isort: skip_file
+from ..session_recordings.models.session_recording import SessionRecording
+from ..session_recordings.models.session_recording_external_reference import SessionRecordingExternalReference
+from ..session_recordings.models.session_recording_playlist import SessionRecordingPlaylist
+from ..session_recordings.models.session_recording_playlist_item import SessionRecordingPlaylistItem
+from ._deprecated_prompts import Prompt, PromptSequence, UserPromptState
+from .activity_logging.activity_log import ActivityLog
+from .activity_logging.notification_viewed import NotificationViewed
+from .async_deletion import AsyncDeletion, DeletionType
+from .async_migration import AsyncMigration, AsyncMigrationError, MigrationStatus
+from .column_configuration import ColumnConfiguration
+from .comment import Comment, CommentSlackThread
+from .core_event import CoreEvent
+from .data_deletion_request import DataDeletionRequest
+from .data_color_theme import DataColorTheme
+from .element import Element
+from .element_group import ElementGroup
+from .entity import Entity
+from .event.event import Event
+from .event_buffer import EventBuffer
+
+# TODO: remove noqa once the event filters API imports from posthog.models
+from .event_filter_config import EventFilterConfig  # noqa: F401
+from products.event_definitions.backend.models import EventDefinition
+from products.event_definitions.backend.models import EventProperty
+from .file_system.file_system import FileSystem
+from .file_system.file_system_view_log import FileSystemViewLog
+from .file_system.persisted_folder import PersistedFolder
+from .file_system.user_product_list import UserProductList
+from .filters import Filter, RetentionFilter
+from .group import Group
+from .group_usage_metric import GroupUsageMetric
+from .group_type_mapping import GroupTypeMapping
+from .host_definition import HostDefinition
+from .health_issue import HealthIssue
+from .identity_provider_config import IdentityProviderConfig
+from .linked_identity_provider_config import LinkedIdentityProviderConfig  # noqa: F401
+from .instance_setting import InstanceSetting
+from .integration import Integration
+from .integration_repository_cache import IntegrationRepositoryCacheEntry
+from .materialized_column_slots import MaterializedColumnSlot, MaterializedColumnSlotState
+from .messaging import MessagingRecord
+from .object_media_preview import ObjectMediaPreview
+from .organization import Organization, OrganizationMembership
+from .organization_domain import OrganizationDomain
+from .organization_notification_lock import OrganizationMemberNotificationLock
+from .organization_integration import OrganizationIntegration
+from .organization_invite import OrganizationInvite, InviteExpiredException
+from .person import Person, PersonDistinctId, PersonOverride, PersonOverrideMapping
+from .personal_api_key import PersonalAPIKey
+from .project_secret_api_key import ProjectSecretAPIKey
+from .product_intent import ProductIntent
+from .project import Project
+from .property import Property
+from products.event_definitions.backend.models import PropertyDefinition
+from .proxy_record import ProxyRecord
+from .quick_filter import QuickFilter
+from .remote_config import RemoteConfig
+from .resource_transfer.resource_transfer import ResourceTransfer
+from products.event_definitions.backend.models import EventSchema, SchemaPropertyGroup, SchemaPropertyGroupProperty
+from .share_password import SharePassword
+from .sharing_configuration import SharingConfiguration
+from .tag import Tag
+from .tagged_item import TaggedItem
+from .team import Team, TeamRevenueAnalyticsConfig, TeamMarketingAnalyticsConfig
+from .event_ingestion_restriction_config import EventIngestionRestrictionConfig
+from .global_rate_limit_threshold_config import GlobalRateLimitThresholdConfig
+from .uploaded_media import UploadedMedia
+from .user import User, UserManager
+from .user_group import UserGroup, UserGroupMembership
+from .user_integration import GitHubInstallRequest, UserIntegration
+from .user_push_token import UserPushToken
+from .repo_routing_rule import RepoRoutingRule
+from .user_repo_preference import UserRepoPreference
+from .user_scene_personalisation import UserScenePersonalisation
+from .user_home_settings import UserHomeSettings
+from .user_facet_settings import UserFacetSettings
+from .oauth import (
+    CIMDVerificationToken,
+    OAuthAccessToken,
+    OAuthApplication,
+    OAuthGrant,
+    OAuthIDToken,
+    OAuthRefreshToken,
+)
+
+__all__ = [
+    "ActivityLog",
+    "AsyncDeletion",
+    "AsyncMigration",
+    "AsyncMigrationError",
+    "CIMDVerificationToken",
+    "ColumnConfiguration",
+    "CoreEvent",
+    "Dashboard",
+    "DataDeletionRequest",
+    "DashboardTile",
+    "DashboardTemplate",
+    "DataColorTheme",
+    "DeletionType",
+    "Element",
+    "ElementGroup",
+    "Entity",
+    "Event",
+    "EventBuffer",
+    "EventDefinition",
+    "EventProperty",
+    "FileSystem",
+    "FileSystemViewLog",
+    "PersistedFolder",
+    "UserProductList",
+    "Filter",
+    "Group",
+    "GroupUsageMetric",
+    "GroupTypeMapping",
+    "HealthIssue",
+    "HostDefinition",
+    "IdentityProviderConfig",
+    "InstanceSetting",
+    "Integration",
+    "IntegrationRepositoryCacheEntry",
+    "InviteExpiredException",
+    "MaterializedColumnSlot",
+    "MaterializedColumnSlotState",
+    "MessagingRecord",
+    "Notebook",
+    "MigrationStatus",
+    "NotificationViewed",
+    "ObjectMediaPreview",
+    "Organization",
+    "OrganizationDomain",
+    "OrganizationMemberNotificationLock",
+    "OrganizationIntegration",
+    "OrganizationInvite",
+    "OrganizationMembership",
+    "OAuthAccessToken",
+    "OAuthApplication",
+    "OAuthGrant",
+    "OAuthIDToken",
+    "OAuthRefreshToken",
+    "Person",
+    "PersonDistinctId",
+    "PersonalAPIKey",
+    "ProjectSecretAPIKey",
+    "PersonOverride",
+    "PersonOverrideMapping",
+    "ProductIntent",
+    "Project",
+    "Property",
+    "PropertyDefinition",
+    "ProxyRecord",
+    "QuickFilter",
+    "RetentionFilter",
+    "RemoteConfig",
+    "ResourceTransfer",
+    "EventSchema",
+    "SchemaPropertyGroup",
+    "SchemaPropertyGroupProperty",
+    "SessionRecording",
+    "SessionRecordingPlaylist",
+    "SessionRecordingExternalReference",
+    "SessionRecordingPlaylistItem",
+    "SharePassword",
+    "SharingConfiguration",
+    "Tag",
+    "TaggedItem",
+    "Team",
+    "TeamRevenueAnalyticsConfig",
+    "TeamMarketingAnalyticsConfig",
+    "EventIngestionRestrictionConfig",
+    "GlobalRateLimitThresholdConfig",
+    "UploadedMedia",
+    "User",
+    "RepoRoutingRule",
+    "UserRepoPreference",
+    "UserScenePersonalisation",
+    "UserHomeSettings",
+    "UserFacetSettings",
+    "UserManager",
+    "UserGroup",
+    "UserGroupMembership",
+    "GitHubInstallRequest",
+    "UserIntegration",
+    "UserPushToken",
+    "DataWarehouseTable",
+    "WebAnalyticsFilterPreset",
+    "ScheduledChange",
+    "Comment",
+    "CommentSlackThread",
+    # Deprecated models here for backwards compatibility
+    "Prompt",
+    "PromptSequence",
+    "UserPromptState",
+]

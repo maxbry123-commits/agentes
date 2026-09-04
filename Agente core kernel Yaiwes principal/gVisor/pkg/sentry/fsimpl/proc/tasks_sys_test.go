@@ -1,0 +1,375 @@
+// Copyright 2019 The gVisor Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package proc
+
+import (
+	"bytes"
+	"reflect"
+	"slices"
+	"strings"
+	"sync"
+	"testing"
+
+	"gvisor.dev/gvisor/pkg/abi/linux"
+	"gvisor.dev/gvisor/pkg/context"
+	"gvisor.dev/gvisor/pkg/errors/linuxerr"
+	"gvisor.dev/gvisor/pkg/sentry/contexttest"
+	"gvisor.dev/gvisor/pkg/sentry/inet"
+	"gvisor.dev/gvisor/pkg/tcpip"
+	"gvisor.dev/gvisor/pkg/usermem"
+)
+
+func newIPv6TestStack() *inet.TestStack {
+	s := inet.NewTestStack()
+	s.SupportsIPv6Flag = true
+	return s
+}
+
+func TestIfinet6NoAddresses(t *testing.T) {
+	n := &ifinet6{stack: newIPv6TestStack()}
+	var buf bytes.Buffer
+	n.Generate(contexttest.Context(t), &buf)
+	if buf.Len() > 0 {
+		t.Errorf("n.Generate() generated = %v, want = %v", buf.Bytes(), []byte{})
+	}
+}
+
+func TestIfinet6(t *testing.T) {
+	s := newIPv6TestStack()
+	s.InterfacesMap[1] = inet.Interface{Name: "eth0"}
+	s.InterfaceAddrsMap[1] = []inet.InterfaceAddr{
+		{
+			Family:    linux.AF_INET6,
+			PrefixLen: 128,
+			Addr:      []byte("\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f"),
+		},
+	}
+	s.InterfacesMap[2] = inet.Interface{Name: "eth1"}
+	s.InterfaceAddrsMap[2] = []inet.InterfaceAddr{
+		{
+			Family:    linux.AF_INET6,
+			PrefixLen: 128,
+			Addr:      []byte("\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f"),
+		},
+	}
+	want := map[string]struct{}{
+		"000102030405060708090a0b0c0d0e0f 01 80 00 00     eth0\n": {},
+		"101112131415161718191a1b1c1d1e1f 02 80 00 00     eth1\n": {},
+	}
+
+	n := &ifinet6{stack: s}
+	contents := n.contents()
+	if len(contents) != len(want) {
+		t.Errorf("Got len(n.contents()) = %d, want = %d", len(contents), len(want))
+	}
+	got := map[string]struct{}{}
+	for _, l := range contents {
+		got[l] = struct{}{}
+	}
+
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("Got n.contents() = %v, want = %v", got, want)
+	}
+}
+
+func TestNetStatDataRowsHaveMatchingFields(t *testing.T) {
+	n := &netStatData{}
+	var buf bytes.Buffer
+	if err := n.Generate(contexttest.Context(t), &buf); err != nil {
+		t.Fatalf("n.Generate() failed: %v", err)
+	}
+
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	if len(lines)%2 != 0 {
+		t.Fatalf("got %d lines, want name/value line pairs: %q", len(lines), buf.String())
+	}
+	for i := 0; i < len(lines); i += 2 {
+		names := strings.Fields(lines[i])
+		values := strings.Fields(lines[i+1])
+		if len(names) != len(values) {
+			t.Errorf("line %d has %d names, line %d has %d values: names=%q values=%q", i, len(names), i+1, len(values), lines[i], lines[i+1])
+		}
+		if names[0] != values[0] {
+			t.Errorf("line %d prefix = %q, line %d prefix = %q, want matching prefixes", i, names[0], i+1, values[0])
+		}
+		for _, value := range values[1:] {
+			if value != "0" {
+				t.Errorf("got netstat value %q, want 0", value)
+			}
+		}
+	}
+}
+
+type readOnlySysctlTestStack struct {
+	*inet.TestStack
+}
+
+func (*readOnlySysctlTestStack) SetTCPSACKEnabled(bool) error {
+	return linuxerr.EACCES
+}
+
+func (*readOnlySysctlTestStack) SetForwarding(tcpip.NetworkProtocolNumber, bool) error {
+	return linuxerr.EACCES
+}
+
+func TestTCPSACKReadback(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		writeErr error
+		want     string
+	}{
+		{name: "shared stack", want: "1\n"},
+		{name: "rejected write", writeErr: linuxerr.EACCES, want: "0\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := contexttest.Context(t)
+			s := inet.NewTestStack()
+			s.TCPSACKFlag = false
+			reader := &tcpSackData{stack: s}
+			writer := &tcpSackData{stack: s}
+			if tc.writeErr != nil {
+				writer = &tcpSackData{stack: &readOnlySysctlTestStack{TestStack: s}}
+				reader = writer
+			}
+			var buf bytes.Buffer
+			if err := reader.Generate(ctx, &buf); err != nil {
+				t.Fatal(err)
+			}
+
+			const value = "1\n"
+			if n, err := writer.Write(ctx, nil, usermem.BytesIOSequence([]byte(value)), 0); n != int64(len(value)) || err != tc.writeErr {
+				t.Fatalf("Write() = (%d, %v), want (%d, %v)", n, err, len(value), tc.writeErr)
+			}
+			buf.Reset()
+			if err := reader.Generate(ctx, &buf); err != nil {
+				t.Fatal(err)
+			}
+			if got := buf.String(); got != tc.want {
+				t.Errorf("Generate() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestConfigureIPForwarding tests the implementation of
+// /proc/sys/net/ipv4/ip_forward.
+func TestConfigureIPForwarding(t *testing.T) {
+	ctx := context.Background()
+	s := inet.NewTestStack()
+
+	var cases = []struct {
+		comment string
+		initial bool
+		str     string
+		final   bool
+	}{
+		{
+			comment: `Forwarding is disabled; write 1 and enable forwarding`,
+			initial: false,
+			str:     "1",
+			final:   true,
+		},
+		{
+			comment: `Forwarding is disabled; write 0 and disable forwarding`,
+			initial: false,
+			str:     "0",
+			final:   false,
+		},
+		{
+			comment: `Forwarding is enabled; write 1 and enable forwarding`,
+			initial: true,
+			str:     "1",
+			final:   true,
+		},
+		{
+			comment: `Forwarding is enabled; write 0 and disable forwarding`,
+			initial: true,
+			str:     "0",
+			final:   false,
+		},
+		{
+			comment: `Forwarding is disabled; write 2404 and enable forwarding`,
+			initial: false,
+			str:     "2404",
+			final:   true,
+		},
+		{
+			comment: `Forwarding is enabled; write 2404 and enable forwarding`,
+			initial: true,
+			str:     "2404",
+			final:   true,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.comment, func(t *testing.T) {
+			s.IPForwarding = c.initial
+
+			file := &ipForwarding{stack: s, enabled: c.initial}
+
+			// Write the values.
+			src := usermem.BytesIOSequence([]byte(c.str))
+			if n, err := file.Write(ctx, nil, src, 0); n != int64(len(c.str)) || err != nil {
+				t.Errorf("file.Write(ctx, nil, %q, 0) = (%d, %v); want (%d, nil)", c.str, n, err, len(c.str))
+			}
+
+			// Read the values from the stack and check them.
+			if got, want := s.IPForwarding, c.final; got != want {
+				t.Errorf("s.IPForwarding incorrect; got: %v, want: %v", got, want)
+			}
+		})
+	}
+
+	t.Run("rejected write", func(t *testing.T) {
+		ctx := contexttest.Context(t)
+		ipf := &ipForwarding{stack: &readOnlySysctlTestStack{TestStack: inet.NewTestStack()}}
+		if n, err := ipf.Write(ctx, nil, usermem.BytesIOSequence([]byte("1\n")), 0); n != 0 || err != linuxerr.EACCES {
+			t.Fatalf("Write() = (%d, %v), want (0, %v)", n, err, linuxerr.EACCES)
+		}
+		var buf bytes.Buffer
+		if err := ipf.Generate(ctx, &buf); err != nil {
+			t.Fatal(err)
+		}
+		if got := buf.String(); got != "0\n" {
+			t.Errorf("Generate() = %q, want %q", got, "0\n")
+		}
+	})
+
+	t.Run("concurrent readback", func(t *testing.T) {
+		ctx := contexttest.Context(t)
+		ipf := &ipForwarding{stack: inet.NewTestStack()}
+		// Leave the read and write unordered so race builds check the shared flag.
+		start := make(chan struct{})
+		var wg sync.WaitGroup
+		wg.Go(func() {
+			<-start
+			const value = "1\n"
+			if n, err := ipf.Write(ctx, nil, usermem.BytesIOSequence([]byte(value)), 0); n != int64(len(value)) || err != nil {
+				t.Errorf("Write() = (%d, %v), want (%d, nil)", n, err, len(value))
+			}
+		})
+		wg.Go(func() {
+			<-start
+			var buf bytes.Buffer
+			if err := ipf.Generate(ctx, &buf); err != nil {
+				t.Errorf("Generate(): %v", err)
+			} else if got := buf.String(); got != "0\n" && got != "1\n" {
+				t.Errorf("Generate() = %q, want 0 or 1", got)
+			}
+		})
+		close(start)
+		wg.Wait()
+
+		var buf bytes.Buffer
+		if err := ipf.Generate(ctx, &buf); err != nil {
+			t.Fatal(err)
+		}
+		if got := buf.String(); got != "1\n" {
+			t.Errorf("Generate() = %q, want %q", got, "1\n")
+		}
+	})
+}
+
+type portRangeTestStack struct {
+	*inet.TestStack
+	start, end uint16
+}
+
+func (s *portRangeTestStack) PortRange() (uint16, uint16) {
+	return s.start, s.end
+}
+
+func (s *portRangeTestStack) SetPortRange(start, end uint16) error {
+	s.start, s.end = start, end
+	return nil
+}
+
+func TestPortRangeSharedStack(t *testing.T) {
+	ctx := contexttest.Context(t)
+	s := &portRangeTestStack{TestStack: inet.NewTestStack(), start: 32768, end: 60999}
+	reader := &portRange{stack: s}
+	writer := &portRange{stack: s}
+	var buf bytes.Buffer
+	if err := reader.Generate(ctx, &buf); err != nil {
+		t.Fatal(err)
+	}
+
+	const updated = "40000 50000\n"
+	if n, err := writer.Write(ctx, nil, usermem.BytesIOSequence([]byte(updated)), 0); n != int64(len(updated)) || err != nil {
+		t.Fatalf("Write() = (%d, %v), want (%d, nil)", n, err, len(updated))
+	}
+	buf.Reset()
+	if err := reader.Generate(ctx, &buf); err != nil {
+		t.Fatal(err)
+	}
+	if got := buf.String(); got != updated {
+		t.Errorf("Generate() = %q, want %q", got, updated)
+	}
+}
+
+func TestParseInt32Vec(t *testing.T) {
+	ctx := context.Background()
+	tests := []struct {
+		name          string
+		src           []byte
+		buf           []int32
+		expectedBuf   []int32
+		expectedBytes int64
+	}{
+		{
+			name:          "EmptyInput",
+			src:           []byte(""),
+			buf:           []int32{},
+			expectedBuf:   []int32{},
+			expectedBytes: 0,
+		},
+		{
+			name:          "SingleNum",
+			src:           []byte("123"),
+			buf:           []int32{0},
+			expectedBuf:   []int32{123},
+			expectedBytes: 3,
+		},
+		{
+			name:          "MultipleNum",
+			src:           []byte("123 456"),
+			buf:           []int32{0, 0},
+			expectedBuf:   []int32{123, 456},
+			expectedBytes: 7,
+		},
+		{
+			name:          "FirstNNum",
+			src:           []byte("123 456"),
+			buf:           []int32{0, 0, 789},
+			expectedBuf:   []int32{123, 456, 789},
+			expectedBytes: 7,
+		},
+		{
+			name:          "ParsePartially",
+			src:           []byte("123 a"),
+			buf:           []int32{0},
+			expectedBuf:   []int32{123},
+			expectedBytes: 4,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			originalBuf := append([]int32(nil), test.buf...)
+			n, err := ParseInt32Vec(ctx, usermem.BytesIOSequence(test.src), test.buf)
+			if !slices.Equal(test.buf, test.expectedBuf) || n != test.expectedBytes {
+				t.Errorf("ParseInt32Vec(ctx, %v, %v) returns %v, %v, result buffer is %v; expected: %v, %v", test.src, originalBuf, n, err, test.buf, test.expectedBuf, test.expectedBytes)
+			}
+		})
+	}
+}

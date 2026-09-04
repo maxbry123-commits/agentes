@@ -1,0 +1,127 @@
+[tool.poetry]
+name = "deepeval"
+version = "4.2.0"
+description = "The LLM Evaluation Framework"
+authors = ["Jeffrey Ip <jeffreyip@confident-ai.com>"]
+license = "Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/confident-ai/deepeval"
+documentation = "https://deepeval.com"
+exclude = ["tests/*", "scripts/*", "typescript/*"]
+
+[tool.poetry.scripts]
+deepeval = 'deepeval.cli.main:app'
+
+[tool.poetry.plugins."pytest11"]
+deepeval = "deepeval.plugins.plugin"
+
+[tool.poetry.dependencies]
+python = ">=3.9, <4.0"
+requests = "^2.31.0"
+tqdm = "^4.66.1"
+pytest = "*"
+pytest-xdist = "*"
+pytest-repeat = "*"
+pytest-rerunfailures = "*"
+pytest-asyncio = "*"
+tabulate = "^0.9.0"
+rich = ">=13.6.0, <15.0.0"
+portalocker = "*"
+openai = "*"
+aiohttp = "*"
+typer = ">=0.9,<1.0.0"
+click = ">=8.0.0,<8.4.0"
+setuptools = "*"
+wheel = "*"
+nest_asyncio = "*"
+tenacity = ">=8.0.0,<=10.0.0"
+opentelemetry-api = "^1.24.0"
+opentelemetry-sdk = "^1.24.0"
+grpcio = "^1.67.1"
+
+posthog = [
+    { version = ">=5.4.0, <7.0.0", python = "<3.10" },
+    { version = ">=7.0.0, <8.0.0", python = ">=3.10" }
+]
+
+pyfiglet = "*"
+python-dotenv = "^1.1.1"
+pydantic = "^2.11.7"
+pydantic-settings = "^2.10.1"
+jinja2 = "*"
+
+textual = { version = ">=0.80,<2.0", optional = true }
+pyperclip = { version = "^1.8", optional = true }
+questionary = ">=2.0.0,<3.0.0"
+
+[tool.poetry.extras]
+inspect = ["textual", "pyperclip"]
+
+[tool.poetry.group.dev.dependencies]
+twine = "5.1.1"
+black = { extras = ["jupyter"], version = "^25.1.0" }
+chromadb = "*"
+langchain = "*"
+langchain_core = "*"
+langchain_community = "*"
+langchain_text_splitters = "*"
+tiktoken = "*"
+pypdf = "*"
+docx2txt = "*"
+pandas = "*"
+pysqlite3-binary = { version = "^0.5.4", markers = "platform_system == 'Linux'" }
+pre-commit = "^4.3.0"
+ruff = "^0.13.0"
+ollama = "*"
+anthropic = "*"
+google-genai = "^1.9.0"
+
+[tool.black]
+line-length = 80
+
+[tool.ruff]
+line-length = 80
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+addopts = "-m 'not skip_test'"
+markers = [
+    "skip_test: skip the test",
+    "enable_dotenv: allow this test to load .env files via autoload_dotenv()",
+]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+
+[tool.poetry.group.integrations]
+optional = true
+
+[tool.poetry.group.integrations.dependencies]
+crewai = { version = "*", python = ">=3.10,<3.14" }
+# Use pydantic-ai-slim with explicit extras instead of the meta-package
+# `pydantic-ai`, which transitively requires `pydantic-ai-slim[mistral]` →
+# `mistralai`. The `mistralai` project is currently quarantined on PyPI
+# (https://pypi.org/simple/mistralai/ shows
+# `<meta name="pypi:project-status" content="quarantined">` and serves no
+# files), which makes Poetry's resolution fail across every integrations
+# job. All test apps under tests/test_integrations/test_pydanticai use
+# `Agent("openai:gpt-4o-mini", ...)`, so the `openai` extra is the only
+# one we actually exercise; widen this list if a future test needs a
+# different provider.
+pydantic-ai-slim = { version = "*", extras = ["openai"], python = ">=3.10,<3.14" }
+llama-index = "^0.14.4"
+openai-agents = "^0.3.3"
+google-adk = { version = "*", python = ">=3.10,<3.15" }
+openinference-instrumentation-google-adk = { version = "*", python = ">=3.10,<3.15" }
+
+
+[tool.poetry.group.langchain]
+optional = true
+
+[tool.poetry.group.langchain.dependencies]
+langchain = { version = "1.2.4", python = ">=3.10,<4.0" }
+langchain-openai = { version = "1.1.7", python = ">=3.10,<4.0" }
+langgraph = { version = "1.0.7", python = ">=3.10,<4.0" }

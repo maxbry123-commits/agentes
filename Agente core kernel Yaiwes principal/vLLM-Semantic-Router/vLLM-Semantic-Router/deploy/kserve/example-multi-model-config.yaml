@@ -1,0 +1,125 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: semantic-router-kserve-config
+  labels:
+    app: semantic-router
+    component: config
+data:
+  config.yaml: |
+    version: v0.3
+    providers:
+      defaults:
+        default_model: granite32-8b
+        reasoning_families:
+          qwen3:
+            type: chat_template_kwargs
+            parameter: enable_thinking
+        default_reasoning_effort: medium
+      models:
+        - name: granite32-8b
+          reasoning_family: qwen3
+          provider_model_id: granite32-8b
+          backend_refs:
+            - name: granite32-8b-endpoint
+              endpoint: granite32-8b-predictor.<namespace>.svc.cluster.local:80
+              weight: 1
+        - name: granite32-78b
+          reasoning_family: qwen3
+          provider_model_id: granite32-78b
+          backend_refs:
+            - name: granite32-78b-endpoint
+              endpoint: granite32-78b-predictor.<namespace>.svc.cluster.local:80
+              weight: 1
+    routing:
+      modelCards:
+        - name: granite32-8b
+          param_size: 8B
+          capabilities:
+            - chat
+            - reasoning
+        - name: granite32-78b
+          param_size: 78B
+          capabilities:
+            - chat
+            - reasoning
+            - long-context
+      signals:
+        domains:
+          - name: business
+            description: Business and management related queries
+            mmlu_categories:
+              - business
+          - name: math
+            description: Mathematics and quantitative reasoning
+            mmlu_categories:
+              - math
+          - name: other
+            description: General knowledge and miscellaneous topics
+            mmlu_categories:
+              - other
+        complexity:
+          - name: needs_reasoning
+            threshold: 0.10
+            description: Escalate difficult or multi-step prompts.
+            hard:
+              candidates:
+                - solve this step by step
+                - analyze the tradeoffs
+            easy:
+              candidates:
+                - quick summary
+                - answer briefly
+      decisions:
+        - name: business_default
+          description: Business traffic stays on the fast Granite tier.
+          priority: 100
+          rules:
+            operator: AND
+            conditions:
+              - type: domain
+                name: business
+          modelRefs:
+            - model: granite32-8b
+              use_reasoning: false
+        - name: math_escalation
+          description: Math and other hard requests escalate to the larger model.
+          priority: 110
+          rules:
+            operator: OR
+            conditions:
+              - type: domain
+                name: math
+              - type: complexity
+                name: needs_reasoning:hard
+          modelRefs:
+            - model: granite32-78b
+              use_reasoning: true
+        - name: general_fallback
+          description: Fallback route for general prompts.
+          priority: 10
+          rules:
+            operator: AND
+            conditions:
+              - type: domain
+                name: other
+          modelRefs:
+            - model: granite32-8b
+              use_reasoning: false
+    global:
+      router:
+        strategy: priority
+      stores:
+        response_cache:
+          enabled: true
+          backend_type: memory
+          similarity_threshold: 0.85
+          max_entries: 5000
+          ttl_seconds: 7200
+      integrations:
+        tools:
+          enabled: true
+          top_k: 5
+          similarity_threshold: 0.2
+          tools_db_path: config/tools_db.json
+          fallback_to_empty: true

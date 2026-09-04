@@ -1,0 +1,53 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "properties": {
+        "conclusion": {
+            "anyOf": [
+                {
+                    "description": "* `won` - won\n* `lost` - lost\n* `inconclusive` - inconclusive\n* `stopped_early` - stopped_early\n* `invalid` - invalid",
+                    "enum": ["won", "lost", "inconclusive", "stopped_early", "invalid"],
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "The conclusion of the experiment.\n\n* `won` - won\n* `lost` - lost\n* `inconclusive` - inconclusive\n* `stopped_early` - stopped_early\n* `invalid` - invalid"
+        },
+        "conclusion_comment": {
+            "anyOf": [
+                {
+                    "maxLength": 4000,
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "Optional comment about the experiment conclusion."
+        },
+        "id": {
+            "description": "A unique integer value identifying this experiment.",
+            "type": "number"
+        },
+        "open_cleanup_pr": {
+            "default": false,
+            "description": "When true, a background PostHog Code task removes the experiment's feature flag code and opens a draft pull request. Only works for teams with the flag cleanup feature enabled; silently skipped otherwise. Additionally requires the task:write scope. Ask the user before setting this.",
+            "type": "boolean"
+        },
+        "repository": {
+            "anyOf": [
+                {
+                    "maxLength": 255,
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "description": "Repository the cleanup pull request targets, as \"organization/repository\". Must be connected to the team's GitHub integration. Omit to fall back to the experiment's saved repository, the team default, or the team's only connected repository. When several repositories are connected and no default is set, the cleanup is skipped unless this is provided."
+        }
+    },
+    "required": ["id"],
+    "type": "object"
+}

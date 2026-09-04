@@ -1,0 +1,509 @@
+from datetime import timedelta
+
+from posthog.test.base import BaseTest
+from unittest.mock import patch
+
+from django.test import override_settings
+from django.utils.timezone import now
+
+import requests
+from parameterized import parameterized
+from rest_framework.exceptions import ValidationError as DRFValidationError
+
+from posthog.models import Team
+from posthog.models.integration import GitLabIntegrationError, Integration
+
+from products.access_control.backend.models.role import Role
+from products.error_tracking.backend.facade import api, contracts
+from products.error_tracking.backend.models import (
+    ErrorTrackingExternalReference,
+    ErrorTrackingIssue,
+    ErrorTrackingIssueAssignment,
+    ErrorTrackingIssueFingerprintV2,
+    ErrorTrackingSymbolSet,
+)
+
+
+class TestErrorTrackingFacadeAPI(BaseTest):
+    def _create_issue(
+        self, *, team, name: str, description: str | None = None, severity: str | None = None
+    ) -> ErrorTrackingIssue:
+        issue = ErrorTrackingIssue.objects.create(team=team, name=name, description=description, severity=severity)
+        ErrorTrackingIssueFingerprintV2.objects.create(team=team, issue=issue, fingerprint=f"fp-{issue.id}")
+        return issue
+
+    def test_list_issues_returns_contracts_scoped_by_team(self):
+        issue = self._create_issue(team=self.team, name="Checkout failed", description="Payment intent error")
+        ErrorTrackingIssueAssignment.objects.create(issue=issue, team=self.team, user=self.user)
+
+        other_team = Team.objects.create(organization=self.organization, name="Other team")
+        self._create_issue(team=other_team, name="Other team issue")
+
+        issues = api.list_issues(team_id=self.team.id)
+
+        assert len(issues) == 1
+        assert isinstance(issues[0], contracts.ErrorTrackingIssuePreview)
+        assert issues[0].id == issue.id
+        assert issues[0].assignee is not None
+        assert issues[0].assignee.id == self.user.id
+        assert issues[0].assignee.type == "user"
+
+    def test_get_issue_returns_contract(self):
+        issue = self._create_issue(team=self.team, name="Unhandled TypeError")
+
+        result = api.get_issue(issue_id=issue.id, team_id=self.team.id)
+
+        assert isinstance(result, contracts.ErrorTrackingIssue)
+        assert result.id == issue.id
+        assert result.name == "Unhandled TypeError"
+        assert result.external_issues == []
+        assert result.cohort is None
+
+    def test_get_issue_raises_for_other_team(self):
+        issue = self._create_issue(team=self.team, name="Scoped issue")
+        other_team = Team.objects.create(organization=self.organization, name="Other team")
+
+        with self.assertRaises(api.IssueNotFoundError):
+            api.get_issue(issue_id=issue.id, team_id=other_team.id)
+
+    @patch("products.error_tracking.backend.logic.external_references.LinearIntegration.list_teams")
+    def test_create_external_reference_rejects_invalid_linear_team_id(self, mock_list_teams):
+        mock_list_teams.return_value = [{"id": "linear-team-id", "name": "Engineering"}]
+        issue = self._create_issue(team=self.team, name="Checkout TypeError")
+        integration = Integration.objects.create(
+            team=self.team,
+            kind=Integration.IntegrationKind.LINEAR.value,
+            config={"data": {"viewer": {"organization": {"urlKey": "acme"}}}},
+            sensitive_config={"access_token": "access-token"},
+        )
+
+        with self.assertRaises(api.ExternalReferenceValidationError) as context:
+            api.create_external_reference(
+                team_id=self.team.id,
+                issue_id=issue.id,
+                integration_id=integration.id,
+                config={"team_id": "other-team-id", "title": "Checkout TypeError", "description": ""},
+                distinct_id=self.user.id,
+            )
+
+        assert str(context.exception) == (
+            "Invalid Linear team_id. Use integrations-linear-teams-retrieve to choose a team from this integration."
+        )
+        mock_list_teams.assert_called_once_with()
+
+    @override_settings(LINEAR_APP_CLIENT_ID="linear-client-id", LINEAR_APP_CLIENT_SECRET="linear-client-secret")
+    @patch("products.error_tracking.backend.logic.external_references.LinearIntegration.create_issue")
+    @patch("products.error_tracking.backend.logic.external_references.LinearIntegration.list_teams")
+    def test_create_external_reference_links_linear_attachment_via_fingerprint(
+        self, mock_list_teams, mock_create_issue
+    ):
+        mock_list_teams.return_value = [{"id": "linear-team-id", "name": "Engineering"}]
+        mock_create_issue.return_value = {"id": "LIN-1"}
+        issue = ErrorTrackingIssue.objects.create(team=self.team, name="Checkout TypeError")
+        ErrorTrackingIssueFingerprintV2.objects.create(team=self.team, issue=issue, fingerprint="fp/with#chars")
+        integration = Integration.objects.create(
+            team=self.team,
+            kind=Integration.IntegrationKind.LINEAR.value,
+            config={"data": {"viewer": {"organization": {"urlKey": "acme", "name": "Acme"}}}},
+            sensitive_config={"access_token": "access-token"},
+        )
+
+        api.create_external_reference(
+            team_id=self.team.id,
+            issue_id=issue.id,
+            integration_id=integration.id,
+            config={"team_id": "linear-team-id", "title": "Checkout TypeError", "description": ""},
+            distinct_id=self.user.id,
+        )
+
+        attachment_url = mock_create_issue.call_args.args[0]
+        assert attachment_url.endswith(f"/project/{self.team.id}/error_tracking/fingerprint/fp%2Fwith%23chars")
+
+    @override_settings(LINEAR_APP_CLIENT_ID="linear-client-id", LINEAR_APP_CLIENT_SECRET="linear-client-secret")
+    @patch("products.error_tracking.backend.logic.external_references.LinearIntegration.create_issue")
+    @patch("products.error_tracking.backend.logic.external_references.LinearIntegration.list_teams")
+    def test_create_external_reference_falls_back_to_issue_url_without_fingerprints(
+        self, mock_list_teams, mock_create_issue
+    ):
+        mock_list_teams.return_value = [{"id": "linear-team-id", "name": "Engineering"}]
+        mock_create_issue.return_value = {"id": "LIN-1"}
+        issue = ErrorTrackingIssue.objects.create(team=self.team, name="No fingerprints yet")
+        integration = Integration.objects.create(
+            team=self.team,
+            kind=Integration.IntegrationKind.LINEAR.value,
+            config={"data": {"viewer": {"organization": {"urlKey": "acme", "name": "Acme"}}}},
+            sensitive_config={"access_token": "access-token"},
+        )
+
+        api.create_external_reference(
+            team_id=self.team.id,
+            issue_id=issue.id,
+            integration_id=integration.id,
+            config={"team_id": "linear-team-id", "title": "No fingerprints yet", "description": ""},
+            distinct_id=self.user.id,
+        )
+
+        attachment_url = mock_create_issue.call_args.args[0]
+        assert attachment_url.endswith(f"/project/{self.team.id}/error_tracking/{issue.id}")
+
+    @override_settings(ATLASSIAN_APP_CLIENT_ID="atlassian-client-id", ATLASSIAN_APP_CLIENT_SECRET="atlassian-secret")
+    @patch("products.error_tracking.backend.logic.external_references.JiraIntegration.create_issue")
+    def test_create_external_reference_links_existing_issue_without_creating(self, mock_create_issue):
+        issue = self._create_issue(team=self.team, name="Checkout TypeError")
+        integration = Integration.objects.create(
+            team=self.team,
+            kind=Integration.IntegrationKind.JIRA.value,
+            config={"site_url": "https://acme.atlassian.net", "site_name": "acme"},
+            sensitive_config={"access_token": "access-token"},
+        )
+
+        reference = api.create_external_reference(
+            team_id=self.team.id,
+            issue_id=issue.id,
+            integration_id=integration.id,
+            external_context={"key": "ENG-42", "id": "10042"},
+            distinct_id=self.user.id,
+        )
+
+        mock_create_issue.assert_not_called()
+        assert reference.external_url == "https://acme.atlassian.net/browse/ENG-42"
+
+    @override_settings(LINEAR_APP_CLIENT_ID="linear-client-id", LINEAR_APP_CLIENT_SECRET="linear-client-secret")
+    @patch("products.error_tracking.backend.facade.api.posthoganalytics.capture")
+    @patch("products.error_tracking.backend.logic.external_references.LinearIntegration.create_attachment")
+    @patch("products.error_tracking.backend.logic.external_references.LinearIntegration.create_issue")
+    def test_link_existing_linear_issue_creates_attachment(
+        self, mock_create_issue, mock_create_attachment, mock_capture
+    ):
+        issue = self._create_issue(team=self.team, name="Checkout TypeError")
+        integration = Integration.objects.create(
+            team=self.team,
+            kind=Integration.IntegrationKind.LINEAR.value,
+            config={"data": {"viewer": {"organization": {"urlKey": "acme", "name": "Acme"}}}},
+            sensitive_config={"access_token": "access-token"},
+        )
+
+        reference = api.create_external_reference(
+            team_id=self.team.id,
+            issue_id=issue.id,
+            integration_id=integration.id,
+            external_context={"id": "ENG-42"},
+            distinct_id=self.user.id,
+        )
+
+        mock_create_issue.assert_not_called()
+        linked_issue_id, attachment_url = mock_create_attachment.call_args.args
+        assert linked_issue_id == "ENG-42"
+        assert f"/project/{self.team.id}/error_tracking/" in attachment_url
+        assert reference.external_url == "https://linear.app/acme/issue/ENG-42"
+
+        # Linking the same issue again returns the existing reference without re-attaching.
+        duplicate = api.create_external_reference(
+            team_id=self.team.id,
+            issue_id=issue.id,
+            integration_id=integration.id,
+            external_context={"id": "ENG-42"},
+            distinct_id=self.user.id,
+        )
+        assert duplicate.id == reference.id
+        assert mock_create_attachment.call_count == 1
+        created_events = [
+            call
+            for call in mock_capture.call_args_list
+            if call.args and call.args[0] == "error_tracking_external_issue_created"
+        ]
+        assert len(created_events) == 1
+
+    @override_settings(LINEAR_APP_CLIENT_ID="linear-client-id", LINEAR_APP_CLIENT_SECRET="linear-client-secret")
+    @patch("products.error_tracking.backend.logic.external_references.LinearIntegration.create_attachment")
+    def test_link_existing_linear_issue_aborts_when_attachment_fails(self, mock_create_attachment):
+        # A failed attachment (invalid issue id, forbidden, rate limit) must not persist a
+        # reference that promises a back-link Linear never created.
+        mock_create_attachment.side_effect = DRFValidationError("Failed to attach")
+        issue = self._create_issue(team=self.team, name="Checkout TypeError")
+        integration = Integration.objects.create(
+            team=self.team,
+            kind=Integration.IntegrationKind.LINEAR.value,
+            config={"data": {"viewer": {"organization": {"urlKey": "acme", "name": "Acme"}}}},
+            sensitive_config={"access_token": "access-token"},
+        )
+
+        with self.assertRaises(DRFValidationError):
+            api.create_external_reference(
+                team_id=self.team.id,
+                issue_id=issue.id,
+                integration_id=integration.id,
+                external_context={"id": "ENG-42"},
+                distinct_id=self.user.id,
+            )
+
+        assert not ErrorTrackingExternalReference.objects.exists()
+
+    @parameterized.expand(
+        [
+            ("both", {"title": "x"}, {"key": "ENG-1"}),
+            ("neither", None, None),
+        ]
+    )
+    def test_create_external_reference_requires_exactly_one_source(self, _name, config, external_context):
+        issue = self._create_issue(team=self.team, name="Checkout TypeError")
+        integration = Integration.objects.create(
+            team=self.team,
+            kind=Integration.IntegrationKind.JIRA.value,
+            config={"site_url": "https://acme.atlassian.net"},
+            sensitive_config={"access_token": "access-token"},
+        )
+
+        with self.assertRaises(api.ExternalReferenceValidationError):
+            api.create_external_reference(
+                team_id=self.team.id,
+                issue_id=issue.id,
+                integration_id=integration.id,
+                config=config,
+                external_context=external_context,
+                distinct_id=self.user.id,
+            )
+
+    @parameterized.expand(
+        [
+            ("missing_number", {"repository": "posthog"}),
+            ("boolean_number", {"repository": "posthog", "number": False}),
+            ("zero_number", {"repository": "posthog", "number": 0}),
+            ("list_number", {"repository": "posthog", "number": [42]}),
+            ("non_numeric_number", {"repository": "posthog", "number": "not-an-issue"}),
+            ("unicode_digit_number", {"repository": "posthog", "number": "²"}),
+            ("integer_repository", {"repository": 42, "number": 42}),
+            ("blank_repository", {"repository": "   ", "number": 42}),
+            ("path_traversal_repository", {"repository": "../../settings", "number": 42}),
+            ("dot_segment_repository", {"repository": "..", "number": 42}),
+        ]
+    )
+    def test_link_existing_issue_rejects_invalid_external_context(self, _name, external_context):
+        issue = self._create_issue(team=self.team, name="Checkout TypeError")
+        integration = Integration.objects.create(
+            team=self.team,
+            kind=Integration.IntegrationKind.GITHUB.value,
+            config={"account": {"name": "acme"}},
+            sensitive_config={"access_token": "access-token"},
+        )
+
+        # Identifiers must be non-blank strings or ints; anything else would persist a broken URL.
+        with self.assertRaises(api.ExternalReferenceValidationError):
+            api.create_external_reference(
+                team_id=self.team.id,
+                issue_id=issue.id,
+                integration_id=integration.id,
+                external_context=external_context,
+                distinct_id=self.user.id,
+            )
+
+    def test_search_external_issues_requires_repository_for_github(self):
+        integration = Integration.objects.create(
+            team=self.team,
+            kind=Integration.IntegrationKind.GITHUB.value,
+            config={"account": {"name": "acme"}},
+            sensitive_config={"access_token": "access-token"},
+        )
+
+        with self.assertRaises(api.ExternalReferenceValidationError):
+            api.search_external_issues(team_id=self.team.id, integration_id=integration.id, search="boom")
+
+    def test_search_external_issues_rejects_owner_qualified_github_repository(self):
+        integration = Integration.objects.create(
+            team=self.team,
+            kind=Integration.IntegrationKind.GITHUB.value,
+            config={"account": {"name": "acme"}},
+            sensitive_config={"access_token": "access-token"},
+        )
+
+        with self.assertRaises(api.ExternalReferenceValidationError):
+            api.search_external_issues(
+                team_id=self.team.id, integration_id=integration.id, search="boom", repository="other-org/repo"
+            )
+
+    @parameterized.expand(
+        [
+            ("application_error", GitLabIntegrationError("rate limited")),
+            ("transport_error", requests.Timeout("timed out")),
+            ("malformed_body", ValueError("invalid json")),
+        ]
+    )
+    @patch("products.error_tracking.backend.logic.external_references.GitLabIntegration.search_issues")
+    def test_search_external_issues_maps_provider_failures_to_validation_errors(
+        self, _name, side_effect, mock_search_issues
+    ):
+        mock_search_issues.side_effect = side_effect
+        integration = Integration.objects.create(
+            team=self.team,
+            kind=Integration.IntegrationKind.GITLAB.value,
+            config={"hostname": "https://gitlab.example.com", "project_id": 1},
+            sensitive_config={"access_token": "access-token"},
+        )
+
+        with self.assertRaises(api.ExternalReferenceValidationError):
+            api.search_external_issues(team_id=self.team.id, integration_id=integration.id, search="boom")
+
+    @patch("products.error_tracking.backend.logic.external_references.LinearIntegration.search_issues")
+    def test_search_external_issues_dispatches_to_provider(self, mock_search_issues):
+        results = [{"id": "ENG-1", "title": "Boom", "url": "https://linear.app/x", "external_context": {"id": "ENG-1"}}]
+        mock_search_issues.return_value = results
+        integration = Integration.objects.create(
+            team=self.team,
+            kind=Integration.IntegrationKind.LINEAR.value,
+            config={"data": {"viewer": {"organization": {"urlKey": "acme"}}}},
+            sensitive_config={"access_token": "access-token"},
+        )
+
+        assert api.search_external_issues(team_id=self.team.id, integration_id=integration.id, search="boom") == results
+        mock_search_issues.assert_called_once_with("boom")
+
+    def test_issue_exists(self):
+        assert api.issue_exists(team_id=self.team.id) is False
+
+        self._create_issue(team=self.team, name="Any issue")
+
+        assert api.issue_exists(team_id=self.team.id) is True
+
+    def test_get_issue_id_for_fingerprint(self):
+        issue = ErrorTrackingIssue.objects.create(team=self.team, name="Fingerprint lookup")
+        fingerprint = "fingerprint-lookup"
+        ErrorTrackingIssueFingerprintV2.objects.create(team=self.team, issue=issue, fingerprint=fingerprint)
+
+        result = api.get_issue_id_for_fingerprint(team_id=self.team.id, fingerprint=fingerprint)
+
+        assert result == issue.id
+
+    @parameterized.expand(
+        [
+            ["name", "name", "checkout", ["Checkout timeout", "Checkout type error"]],
+            ["issue_description", "issue_description", "timeout", ["A timeout during payment"]],
+            ["severity", "severity", "hi", ["high"]],
+            ["empty_name_search", "name", None, ["Checkout timeout", "Checkout type error"]],
+            [
+                "empty_description_search",
+                "issue_description",
+                None,
+                ["A timeout during payment", "Type mismatch in checkout"],
+            ],
+            ["empty_severity_search", "severity", None, ["low", "medium", "high", "critical"]],
+            ["missing_key", None, "timeout", []],
+            ["unknown_key", "unknown", "checkout", []],
+        ]
+    )
+    def test_get_issue_values(self, _name: str, key: str | None, value: str | None, expected: list[str]):
+        self._create_issue(
+            team=self.team,
+            name="Checkout timeout",
+            description="A timeout during payment",
+            severity=ErrorTrackingIssue.Severity.HIGH,
+        )
+        self._create_issue(team=self.team, name="Checkout type error", description="Type mismatch in checkout")
+
+        values = api.get_issue_values(team_id=self.team.id, key=key, value=value)
+
+        assert sorted(values) == sorted(expected)
+
+    def test_count_issues_created_since(self):
+        self._create_issue(team=self.team, name="New issue")
+        other_team = Team.objects.create(organization=self.organization, name="Other team")
+        self._create_issue(team=other_team, name="Other team issue")
+
+        issue_count = api.count_issues_created_since(team_id=self.team.id, since=now() - timedelta(minutes=1))
+
+        assert issue_count == 1
+
+    def test_get_issue_and_symbol_set_counts_by_team(self):
+        other_team = Team.objects.create(organization=self.organization, name="Other team")
+
+        self._create_issue(team=self.team, name="Issue one")
+        self._create_issue(team=self.team, name="Issue two")
+        self._create_issue(team=other_team, name="Issue three")
+
+        ErrorTrackingSymbolSet.objects.create(team=self.team, ref="symbolset-1", storage_ptr="s3://symbolset-1")
+        ErrorTrackingSymbolSet.objects.create(team=self.team, ref="symbolset-2")
+        ErrorTrackingSymbolSet.objects.create(team=other_team, ref="symbolset-3", storage_ptr="s3://symbolset-3")
+
+        issue_counts = dict(api.get_issue_counts_by_team())
+        symbol_set_counts = dict(api.get_symbol_set_counts_by_team())
+        resolved_symbol_set_counts = dict(api.get_symbol_set_counts_by_team(resolved_only=True))
+
+        assert issue_counts[self.team.id] == 2
+        assert issue_counts[other_team.id] == 1
+        assert symbol_set_counts[self.team.id] == 2
+        assert symbol_set_counts[other_team.id] == 1
+        assert resolved_symbol_set_counts[self.team.id] == 1
+        assert resolved_symbol_set_counts[other_team.id] == 1
+
+    @parameterized.expand(
+        [
+            ["user_assignment"],
+            ["role_assignment_with_member"],
+            ["role_assignment_without_member"],
+        ]
+    )
+    def test_get_issue_assignment_for_notification(self, assignment_kind: str):
+        issue = self._create_issue(team=self.team, name="Assigned issue", description="Assigned description")
+
+        expected_user_id: int | None
+        expected_role_id = None
+        expected_role_member_user_ids: list[int] = []
+
+        if assignment_kind == "user_assignment":
+            assignment = ErrorTrackingIssueAssignment.objects.create(issue=issue, team=self.team, user=self.user)
+            expected_user_id = self.user.id
+        else:
+            role = Role.objects.create(name=f"Role for {assignment_kind}", organization=self.organization)
+            if assignment_kind == "role_assignment_with_member":
+                role.members.add(self.user)
+                expected_role_member_user_ids = [self.user.id]
+
+            assignment = ErrorTrackingIssueAssignment.objects.create(issue=issue, team=self.team, role=role)
+            expected_user_id = None
+            expected_role_id = role.id
+
+        result = api.get_issue_assignment_for_notification(assignment_id=assignment.id)
+
+        assert isinstance(result, contracts.ErrorTrackingIssueAssignmentNotification)
+        assert result.id == assignment.id
+        assert result.assigned_user_id == expected_user_id
+        assert result.role_id == expected_role_id
+        assert sorted(result.role_member_user_ids) == sorted(expected_role_member_user_ids)
+        assert result.issue.id == issue.id
+        assert result.issue.team_id == self.team.id
+        assert result.issue.name == "Assigned issue"
+
+    def test_get_settings_creates_defaults(self):
+        settings = api.get_settings(self.team.id)
+
+        assert isinstance(settings, contracts.ErrorTrackingSettings)
+        assert settings.project_rate_limit_value is None
+        assert settings.per_issue_rate_limit_value is None
+
+    def test_update_settings_persists_and_is_partial(self):
+        api.update_settings(
+            self.team.id,
+            {"project_rate_limit_value": 100, "project_rate_limit_bucket_size_minutes": 5},
+        )
+        updated = api.update_settings(self.team.id, {"per_issue_rate_limit_value": 7})
+
+        assert updated.project_rate_limit_value == 100
+        assert updated.project_rate_limit_bucket_size_minutes == 5
+        assert updated.per_issue_rate_limit_value == 7
+        # a fresh read reflects the same persisted state, scoped to the team
+        assert api.get_settings(self.team.id) == updated
+
+    def test_update_settings_scoped_by_team(self):
+        other_team = Team.objects.create(organization=self.organization, name="Other team")
+        api.update_settings(self.team.id, {"project_rate_limit_value": 42})
+
+        assert api.get_settings(other_team.id).project_rate_limit_value is None
+
+    def test_spike_detection_config_get_and_update(self):
+        config = api.get_spike_detection_config(self.team.id)
+        assert isinstance(config, contracts.ErrorTrackingSpikeDetectionConfig)
+
+        updated = api.update_spike_detection_config(self.team.id, {"multiplier": 9, "threshold": 50})
+
+        assert updated.multiplier == 9
+        assert updated.threshold == 50
+        assert api.get_spike_detection_config(self.team.id) == updated

@@ -1,0 +1,1709 @@
+import json
+from datetime import datetime
+from urllib.parse import unquote, urlencode
+from zoneinfo import ZoneInfo
+
+from freezegun import freeze_time
+from posthog.test.base import (
+    APIBaseTest,
+    ClickhouseTestMixin,
+    _create_event,
+    _create_person,
+    also_test_with_materialized_columns,
+    flush_persons_and_events,
+    override_settings,
+    snapshot_clickhouse_queries,
+)
+from unittest.mock import patch
+
+from django.conf import settings
+from django.utils import timezone
+
+from dateutil import parser
+from dateutil.relativedelta import relativedelta
+from parameterized import parameterized
+from rest_framework import status
+
+from posthog.models import Element, Organization, PropertyDefinition, User
+from posthog.models.event.legacy_events_query import _execute_events_list_query
+from posthog.test.persons import create_person
+from posthog.test.test_journeys import journeys_for
+
+from products.actions.backend.models.action import Action
+from products.cohorts.backend.models.cohort import Cohort
+
+
+class TestEvents(ClickhouseTestMixin, APIBaseTest):
+    ENDPOINT = "event"
+
+    def test_filter_events(self):
+        _create_person(
+            properties={"email": "tim@posthog.com"},
+            team=self.team,
+            distinct_ids=["2", "some-random-uid"],
+            is_identified=True,
+        )
+
+        _create_event(
+            event="$autocapture",
+            team=self.team,
+            distinct_id="2",
+            properties={"$ip": "8.8.8.8"},
+            elements=[
+                Element(tag_name="button", text="something"),
+                Element(tag_name="div"),
+            ],
+        )
+        _create_event(
+            event="$pageview",
+            team=self.team,
+            distinct_id="some-random-uid",
+            properties={"$ip": "8.8.8.8"},
+        )
+        _create_event(
+            event="$pageview",
+            team=self.team,
+            distinct_id="some-other-one",
+            properties={"$ip": "8.8.8.8"},
+        )
+        flush_persons_and_events()
+
+        response = self.client.get(f"/api/projects/{self.team.id}/events/?distinct_id=2").json()
+        assert response["results"][0]["person"] is None
+
+        response = self.client.get(f"/api/projects/{self.team.id}/events/?distinct_id=2&include_person=true").json()
+        assert response["results"][0]["person"] == {
+            "distinct_ids": ["2"],
+            "is_identified": True,
+            "properties": {"email": "tim@posthog.com"},
+        }
+        assert response["results"][0]["elements"][0]["tag_name"] == "button"
+        assert response["results"][0]["elements"][0]["order"] == 0
+        assert response["results"][0]["elements"][1]["order"] == 1
+
+    @override_settings(PERSON_ON_EVENTS_V2_OVERRIDE=False)
+    def test_filter_events_by_event_name(self):
+        _create_person(
+            properties={"email": "tim@posthog.com"},
+            team=self.team,
+            distinct_ids=["2", "some-random-uid"],
+        )
+        _create_event(
+            event="event_name",
+            team=self.team,
+            distinct_id="2",
+            properties={"$ip": "8.8.8.8"},
+        )
+        _create_event(
+            event="another event",
+            team=self.team,
+            distinct_id="2",
+            properties={"$ip": "8.8.8.8"},
+        )
+        flush_persons_and_events()
+
+        # Auth/team/membership/instance-setting lookups, plus the HogQL pipeline's per-probe
+        # access-control checks (the progressive-window loop probes several windows on this
+        # sparse dataset; the schema is built once and shared). Group-type-mapping is read via
+        # personhog, not Postgres, so it's not in this count. Was 16 before passing team=team
+        # into get_restricted_properties_for_team, which lets is_property_access_control_enabled
+        # skip its per-call Team+organization lookup. +1 for the saved-expressions fetch in the
+        # HogQL database build.
+        with self.assertNumQueries(16):
+            response = self.client.get(f"/api/projects/{self.team.id}/events/?event=event_name").json()
+            assert response["results"][0]["event"] == "event_name"
+
+    @override_settings(PERSON_ON_EVENTS_V2_OVERRIDE=False)
+    def test_filter_events_by_properties(self):
+        _create_person(
+            properties={"email": "tim@posthog.com"},
+            team=self.team,
+            distinct_ids=["2", "some-random-uid"],
+        )
+        _create_event(
+            event="event_name",
+            team=self.team,
+            distinct_id="2",
+            properties={"$browser": "Chrome"},
+        )
+        event2_uuid = _create_event(
+            event="event_name",
+            team=self.team,
+            distinct_id="2",
+            properties={"$browser": "Safari"},
+        )
+        flush_persons_and_events()
+
+        # Auth/team/membership/access-control/instance-setting lookups, plus the HogQL
+        # pipeline's per-probe access-control checks. The progressive-window loop probes several
+        # windows on this sparse dataset; the HogQL schema is built once and shared across them.
+        # Group-type-mapping is read via personhog, not Postgres, so it's not in this count.
+        # Was 24 before passing team=team into get_restricted_properties_for_team, which lets
+        # is_property_access_control_enabled skip its per-call Team+organization lookup.
+        # +1 for the saved-expressions fetch in the HogQL database build.
+        expected_queries = 23 if settings.CLICKHOUSE_HOGQL_USE_NEW_EVENTS_SCHEMA else 24
+
+        with self.assertNumQueries(expected_queries):
+            response = self.client.get(
+                f"/api/projects/{self.team.id}/events/?properties=%s"
+                % (json.dumps([{"key": "$browser", "value": "Safari"}]))
+            ).json()
+        assert response["results"][0]["id"] == event2_uuid
+
+        properties = "invalid_json"
+
+        response = self.client.get(f"/api/projects/{self.team.id}/events/?properties={properties}")
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert response.json() == self.validation_error_response("Properties are unparsable!", "invalid_input")
+
+    def test_filter_events_by_nested_property_group(self):
+        # A property group with an inner OR must keep OR semantics, not collapse to AND:
+        # (browser = Safari OR Chrome) AND os = Windows
+        _create_event(event="e", team=self.team, distinct_id="2", properties={"$browser": "Safari", "$os": "Windows"})
+        _create_event(event="e", team=self.team, distinct_id="2", properties={"$browser": "Chrome", "$os": "Windows"})
+        _create_event(event="e", team=self.team, distinct_id="2", properties={"$browser": "Firefox", "$os": "Windows"})
+        _create_event(event="e", team=self.team, distinct_id="2", properties={"$browser": "Safari", "$os": "Mac"})
+        flush_persons_and_events()
+
+        group = {
+            "type": "AND",
+            "values": [
+                {
+                    "type": "OR",
+                    "values": [
+                        {"key": "$browser", "value": "Safari", "type": "event"},
+                        {"key": "$browser", "value": "Chrome", "type": "event"},
+                    ],
+                },
+                {"key": "$os", "value": "Windows", "type": "event"},
+            ],
+        }
+        response = self.client.get(f"/api/projects/{self.team.id}/events/?properties={json.dumps(group)}").json()
+        # Firefox/Windows fails the OR; Safari/Mac fails the os filter — both excluded.
+        assert sorted(r["properties"]["$browser"] for r in response["results"]) == ["Chrome", "Safari"]
+
+    def test_filter_events_by_precalculated_cohort(self):
+        create_person(team=self.team, distinct_ids=["p1"], properties={"key": "value"})
+        _create_event(
+            team=self.team,
+            event="$pageview",
+            distinct_id="p1",
+            timestamp="2020-01-02T12:00:00Z",
+        )
+
+        create_person(team=self.team, distinct_ids=["p2"], properties={"key": "value"})
+        _create_event(
+            team=self.team,
+            event="$pageview",
+            distinct_id="p2",
+            timestamp="2020-01-02T12:00:00Z",
+        )
+
+        create_person(team=self.team, distinct_ids=["p3"], properties={"key_2": "value_2"})
+        _create_event(
+            team=self.team,
+            event="$pageview",
+            distinct_id="p3",
+            timestamp="2020-01-02T12:00:00Z",
+        )
+
+        cohort1 = Cohort.objects.create(
+            team=self.team,
+            name="cohort_1",
+            groups=[{"properties": [{"key": "key", "value": "value", "type": "person"}]}],
+        )
+
+        cohort1.calculate_people_ch(pending_version=0)
+
+        with self.settings(USE_PRECALCULATED_CH_COHORT_PEOPLE=True):  # Normally this is False in tests
+            with freeze_time("2020-01-04T13:01:01Z"):
+                response = self.client.get(
+                    f"/api/projects/{self.team.id}/events/?properties=%s"
+                    % (json.dumps([{"key": "id", "value": cohort1.id, "type": "cohort"}]))
+                ).json()
+
+        assert len(response["results"]) == 2
+
+    def test_filter_by_person(self):
+        person = _create_person(
+            properties={"email": "tim@posthog.com"},
+            distinct_ids=["2", "some-random-uid"],
+            team=self.team,
+            immediate=True,
+        )
+
+        _create_event(
+            event="random event",
+            team=self.team,
+            distinct_id="2",
+            properties={"$ip": "8.8.8.8"},
+        )
+        _create_event(
+            event="random event",
+            team=self.team,
+            distinct_id="some-random-uid",
+            properties={"$ip": "8.8.8.8"},
+        )
+        _create_event(
+            event="random event",
+            team=self.team,
+            distinct_id="some-other-one",
+            properties={"$ip": "8.8.8.8"},
+        )
+        flush_persons_and_events()
+
+        response = self.client.get(f"/api/projects/{self.team.id}/events/?person_id={person.pk}").json()
+        assert len(response["results"]) == 2
+        assert response["results"][0]["elements"] == []
+
+        response = self.client.get(f"/api/projects/{self.team.id}/events/?person_id={person.uuid}").json()
+        assert len(response["results"]) == 2
+
+    def test_filter_by_nonexisting_person(self):
+        # Events exist for a real person; a person_id that resolves to nobody must return nothing —
+        # not fall through to all events. Guards the "no match -> empty" case for both id forms.
+        _create_person(distinct_ids=["real"], team=self.team, immediate=True)
+        _create_event(event="random event", team=self.team, distinct_id="real")
+        flush_persons_and_events()
+
+        nonexistent_pk = self.client.get(f"/api/projects/{self.team.id}/events/?person_id=5555555555")
+        assert nonexistent_pk.status_code == 200
+        assert len(nonexistent_pk.json()["results"]) == 0
+
+        nonexistent_uuid = self.client.get(
+            f"/api/projects/{self.team.id}/events/?person_id=550e8400-e29b-41d4-a716-446655440000"
+        )
+        assert nonexistent_uuid.status_code == 200
+        assert len(nonexistent_uuid.json()["results"]) == 0
+
+    @freeze_time("2020-01-10")
+    def test_event_column_values(self):
+        person1 = _create_person(
+            properties={"email": "joe@posthog.com"},
+            team=self.team,
+            distinct_ids=["bla"],
+        )
+        person2 = _create_person(
+            properties={"email": "bob@posthog.com"},
+            team=self.team,
+            distinct_ids=["blu"],
+        )
+        person3 = _create_person(
+            properties={"email": "bill@posthog.com"},
+            team=self.team,
+            distinct_ids=["ble"],
+        )
+        _create_event(
+            distinct_id="bla",
+            event="random event 1",
+            team=self.team,
+        )
+        _create_event(
+            distinct_id="blu",
+            event="random event 2",
+            team=self.team,
+            properties={"random_prop": "asdf"},
+        )
+        _create_event(
+            distinct_id="ble",
+            event="another random event",
+            team=self.team,
+            properties={"random_prop": "qwerty"},
+        )
+
+        team2 = Organization.objects.bootstrap(None)[2]
+        _create_event(
+            distinct_id="bla",
+            event="random event",
+            team=team2,
+            properties={"random_prop": "abcd"},
+        )
+
+        flush_persons_and_events()
+
+        # distinct_id
+        response = self.client.get(f"/api/projects/{self.team.id}/events/values/?key=distinct_id&is_column=true").json()
+        assert sorted(x["name"] for x in response["results"]) == sorted(["bla", "ble", "blu"])
+
+        # event
+        response = self.client.get(f"/api/projects/{self.team.id}/events/values/?key=event&is_column=true").json()
+        assert sorted(x["name"] for x in response["results"]) == sorted(
+            ["another random event", "random event 1", "random event 2"]
+        )
+
+        # person_id
+        response = self.client.get(f"/api/projects/{self.team.id}/events/values/?key=person_id&is_column=true").json()
+        assert sorted(x["name"] for x in response["results"]) == sorted(
+            [str(person3.uuid), str(person2.uuid), str(person1.uuid)]
+        )
+
+        # Search
+        response = self.client.get(
+            f"/api/projects/{self.team.id}/events/values/?key=event&is_column=true&value=another"
+        ).json()
+        assert response["results"] == [{"name": "another random event"}]
+
+    def test_custom_event_values(self):
+        events = ["test", "new event", "another event"]
+        for event in events:
+            _create_event(
+                distinct_id="bla",
+                event=event,
+                team=self.team,
+                properties={
+                    "random_prop": "don't include",
+                    "some other prop": "with some text",
+                },
+            )
+        response = self.client.get(f"/api/projects/{self.team.id}/events/values/?key=custom_event").json()
+        assert sorted(events) == sorted(event["name"] for event in response["results"])
+
+    @also_test_with_materialized_columns(["random_prop"])
+    @snapshot_clickhouse_queries
+    def test_event_property_values(self):
+        with freeze_time("2020-01-10"):
+            _create_event(
+                distinct_id="bla",
+                event="random event",
+                team=self.team,
+                properties={
+                    "random_prop": "don't include",
+                    "some other prop": "with some text",
+                },
+            )
+
+        with freeze_time("2020-01-20 20:00:00"):
+            _create_event(
+                distinct_id="bla",
+                event="random event",
+                team=self.team,
+                properties={"random_prop": "asdf", "some other prop": "with some text"},
+            )
+            _create_event(
+                distinct_id="bla",
+                event="random event",
+                team=self.team,
+                properties={"random_prop": "asdf"},
+            )
+            _create_event(
+                distinct_id="bla",
+                event="random event",
+                team=self.team,
+                properties={"random_prop": "qwerty"},
+            )
+            _create_event(
+                distinct_id="bla",
+                event="random event",
+                team=self.team,
+                properties={"random_prop": True},
+            )
+            _create_event(
+                distinct_id="bla",
+                event="random event",
+                team=self.team,
+                properties={"random_prop": False},
+            )
+            _create_event(
+                distinct_id="bla",
+                event="random event",
+                team=self.team,
+                properties={"random_prop": {"first_name": "Mary", "last_name": "Smith"}},
+            )
+            _create_event(
+                distinct_id="bla",
+                event="random event",
+                team=self.team,
+                properties={"something_else": "qwerty"},
+            )
+            _create_event(
+                distinct_id="bla",
+                event="random event",
+                team=self.team,
+                properties={"random_prop": 565},
+            )
+            _create_event(
+                distinct_id="bla",
+                event="random event",
+                team=self.team,
+                properties={"random_prop": ["item1", "item2"]},
+            )
+            _create_event(
+                distinct_id="bla",
+                event="random event",
+                team=self.team,
+                properties={"random_prop": ["item3"]},
+            )
+
+            team2 = Organization.objects.bootstrap(None)[2]
+            _create_event(
+                distinct_id="bla",
+                event="random event",
+                team=team2,
+                properties={"random_prop": "abcd"},
+            )
+            response = self.client.get(f"/api/projects/{self.team.id}/events/values/?key=random_prop").json()
+
+            keys = [resp["name"].replace(" ", "") for resp in response["results"]]
+            assert set(keys) == {
+                "asdf",
+                "qwerty",
+                "565",
+                "false",
+                "true",
+                '{"first_name":"Mary","last_name":"Smith"}',
+                "item1",
+                "item2",
+                "item3",
+            }
+            assert len(response["results"]) == 9
+
+            response = self.client.get(f"/api/projects/{self.team.id}/events/values/?key=random_prop&value=qw").json()
+            assert response["results"][0]["name"] == "qwerty"
+
+            response = self.client.get(f"/api/projects/{self.team.id}/events/values/?key=random_prop&value=QW").json()
+            assert response["results"][0]["name"] == "qwerty"
+
+            response = self.client.get(f"/api/projects/{self.team.id}/events/values/?key=random_prop&value=6").json()
+            assert response["results"][0]["name"] == "565"
+
+            response = self.client.get(
+                f"/api/projects/{self.team.id}/events/values/?key=random_prop&value=6&event_name=random event"
+            ).json()
+            assert response["results"][0]["name"] == "565"
+
+            response = self.client.get(
+                f"/api/projects/{self.team.id}/events/values/?key=random_prop&value=6&event_name=foo&event_name=random event"
+            ).json()
+            assert response["results"][0]["name"] == "565"
+
+            response = self.client.get(
+                f"/api/projects/{self.team.id}/events/values/?key=random_prop&value=qw&event_name=404_i_dont_exist"
+            ).json()
+            assert response["results"] == []
+
+    @parameterized.expand(
+        [
+            ("default", "", "RECENT_CACHE_CALCULATE_ASYNC_IF_STALE_AND_BLOCKING_ON_MISS"),
+            ("refresh_force_blocking", "refresh=force_blocking", "CALCULATE_BLOCKING_ALWAYS"),
+            ("refresh_force_cache", "refresh=force_cache", "CACHE_ONLY_NEVER_CALCULATE"),
+            ("refresh_async", "refresh=async", "RECENT_CACHE_CALCULATE_ASYNC_IF_STALE"),
+        ]
+    )
+    @freeze_time("2020-01-10")
+    def test_event_property_values_refresh(self, _name, param, expected_mode_name):
+        from posthog.hogql_queries.property_values_query_runner import PropertyValuesQueryResponse
+        from posthog.hogql_queries.query_runner import ExecutionMode
+
+        _create_event(distinct_id="u1", event="pageview", team=self.team, properties={"browser": "Chrome"})
+        flush_persons_and_events()
+
+        url = f"/api/projects/{self.team.id}/events/values/?key=browser"
+        if param:
+            url += f"&{param}"
+
+        with patch(
+            "posthog.hogql_queries.property_values_query_runner.PropertyValuesQueryRunner.run",
+            return_value=PropertyValuesQueryResponse(results=[]),
+        ) as mock_run:
+            self.client.get(url)
+            mock_run.assert_called_once()
+            args, kwargs = mock_run.call_args
+            assert args[0] == ExecutionMode[expected_mode_name]
+            assert "analytics_props" in kwargs
+
+    @also_test_with_materialized_columns(["test_prop"])
+    @freeze_time("2020-01-20 20:00:00")
+    @snapshot_clickhouse_queries
+    def test_event_property_values_without_hidden_properties(self):
+        # Create events with properties first
+        _create_event(
+            distinct_id="bla",
+            event="test event",
+            team=self.team,
+            properties={"test_prop": "visible_value"},
+        )
+        _create_event(
+            distinct_id="bla",
+            event="test event",
+            team=self.team,
+            properties={"test_prop": "hidden_value"},
+        )
+        _create_event(
+            distinct_id="bla",
+            event="test event",
+            team=self.team,
+            properties={"test_prop": "another_visible"},
+        )
+
+        response = self.client.get(f"/api/projects/{self.team.id}/events/values/?key=test_prop").json()
+
+        # When property is not hidden, all values should be returned
+        keys = [resp["name"] for resp in response["results"]]
+        assert "visible_value" in keys
+        assert "hidden_value" in keys
+        assert "another_visible" in keys
+        assert len(response["results"]) == 3
+
+    @also_test_with_materialized_columns(["hidden_prop", "visible_prop"])
+    @freeze_time("2020-01-20 20:00:00")
+    @snapshot_clickhouse_queries
+    def test_event_property_values_with_hidden_properties(self):
+        # Create events with both hidden and visible properties
+        _create_event(
+            distinct_id="bla",
+            event="test event",
+            team=self.team,
+            properties={"hidden_prop": "should_not_appear", "visible_prop": "should_appear"},
+        )
+        _create_event(
+            distinct_id="bla",
+            event="test event",
+            team=self.team,
+            properties={"hidden_prop": "also_hidden", "visible_prop": "also_visible"},
+        )
+        flush_persons_and_events()
+
+        # Try to import enterprise model, skip test if not available
+        try:
+            from ee.models.property_definition import EnterprisePropertyDefinition
+
+            # Create hidden property definition - this should hide all values for this property
+            EnterprisePropertyDefinition.objects.create(
+                team=self.team, name="hidden_prop", type=PropertyDefinition.Type.EVENT, hidden=True
+            )
+        except ImportError:
+            self.skipTest("Enterprise features not available")
+
+        # Test hidden property returns no values
+        hidden_response = self.client.get(f"/api/projects/{self.team.id}/events/values/?key=hidden_prop").json()
+        assert len(hidden_response["results"]) == 0
+
+        # Test visible property still returns values
+        visible_response = self.client.get(f"/api/projects/{self.team.id}/events/values/?key=visible_prop").json()
+        assert len(visible_response["results"]) == 2
+        visible_keys = [resp["name"] for resp in visible_response["results"]]
+        assert "should_appear" in visible_keys
+        assert "also_visible" in visible_keys
+
+    def test_property_values_with_property_filters(self):
+        with freeze_time("2020-01-20 20:00:00"):
+            _create_event(
+                distinct_id="bla",
+                event="random event",
+                team=self.team,
+                properties={"random_prop": "asdf", "filter_prop": "value1"},
+            )
+            _create_event(
+                distinct_id="bla",
+                event="random event",
+                team=self.team,
+                properties={"random_prop": "qwerty", "filter_prop": "value1"},
+            )
+            _create_event(
+                distinct_id="bla",
+                event="random event",
+                team=self.team,
+                properties={"random_prop": "no match", "filter_prop": "value2"},
+            )
+
+            # Test single property filter
+            response = self.client.get(
+                f"/api/projects/{self.team.id}/events/values/?key=random_prop&properties_filter_prop=value1"
+            ).json()
+            assert {r["name"] for r in response["results"]} == {"asdf", "qwerty"}
+
+            # Test array property filter
+            response = self.client.get(
+                f"/api/projects/{self.team.id}/events/values/?key=random_prop&properties_filter_prop={json.dumps(['value1', 'value2'])}"
+            ).json()
+            assert {r["name"] for r in response["results"]} == {"asdf", "qwerty", "no match"}
+
+            # Test multiple property filters
+            _create_event(
+                distinct_id="bla",
+                event="random event",
+                team=self.team,
+                properties={"random_prop": "both filters", "filter_prop": "value1", "another_filter": "other1"},
+            )
+            response = self.client.get(
+                f"/api/projects/{self.team.id}/events/values/?key=random_prop&properties_filter_prop=value1&properties_another_filter=other1"
+            ).json()
+            assert len(response["results"]) == 1
+            assert response["results"][0]["name"] == "both filters"
+
+    def test_property_values_with_property_filters_error_handling(self):
+        with freeze_time("2020-01-20 20:00:00"):
+            _create_event(
+                distinct_id="bla",
+                event="random event",
+                team=self.team,
+                properties={"random_prop": "asdf", "filter_prop": "value1"},
+            )
+            _create_event(
+                distinct_id="bla",
+                event="random event",
+                team=self.team,
+                properties={"random_prop": "qwerty", "filter_prop": "value1"},
+            )
+
+            # Invalid JSON array - should be treated as a single value
+            response = self.client.get(
+                f"/api/projects/{self.team.id}/events/values/?key=random_prop&properties_filter_prop=[value1,value2"
+            ).json()
+            assert len(response["results"]) == 0  # No matches because "[value1,value2" is treated as a literal string
+
+            # Empty value
+            response = self.client.get(
+                f"/api/projects/{self.team.id}/events/values/?key=random_prop&properties_filter_prop="
+            ).json()
+            assert len(response["results"]) == 0
+
+            # Invalid JSON object - should be treated as a single value
+            response = self.client.get(
+                f"/api/projects/{self.team.id}/events/values/?key=random_prop&properties_filter_prop={{invalid:json}}"
+            ).json()
+            assert len(response["results"]) == 0
+
+            # Array with mixed types - should convert all values to strings for comparison
+            response = self.client.get(
+                f"/api/projects/{self.team.id}/events/values/?key=random_prop&properties_filter_prop={json.dumps(['123', 'true', 'value1'])}"
+            ).json()
+            assert {r["name"] for r in response["results"]} == {"asdf", "qwerty"}
+
+            # Test with non-string property values
+            _create_event(
+                distinct_id="bla",
+                event="random event",
+                team=self.team,
+                properties={"random_prop": "123", "filter_prop": True},
+            )
+            response = self.client.get(
+                f"/api/projects/{self.team.id}/events/values/?key=random_prop&properties_filter_prop={json.dumps(['TRUE'])}"
+            ).json()
+            assert len(response["results"]) == 1  # Should match because "TRUE".lower() == "true"
+            assert response["results"][0]["name"] == "123"  # The value should be preserved as a string
+
+    def test_before_and_after(self):
+        user = self._create_user("tim")
+        self.client.force_login(user)
+        _create_person(
+            properties={"email": "tim@posthog.com"},
+            team=self.team,
+            distinct_ids=["2", "some-random-uid"],
+        )
+
+        with freeze_time("2020-01-10"):
+            event1_uuid = _create_event(team=self.team, event="sign up", distinct_id="2")
+        with freeze_time("2020-01-8"):
+            event2_uuid = _create_event(team=self.team, event="sign up", distinct_id="2")
+        with freeze_time("2020-01-7"):
+            event3_uuid = _create_event(team=self.team, event="random other event", distinct_id="2")
+
+        # with relative values
+        with freeze_time("2020-01-11T12:03:03.829294Z"):
+            response = self.client.get(f"/api/projects/{self.team.id}/events/?after=4d&before=1d").json()
+            assert len(response["results"]) == 2
+
+            response = self.client.get(f"/api/projects/{self.team.id}/events/?after=6d&before=2h").json()
+            assert len(response["results"]) == 3
+
+            response = self.client.get(f"/api/projects/{self.team.id}/events/?before=4d").json()
+            assert len(response["results"]) == 1
+
+        action = Action.objects.create(team=self.team, steps_json=[{"event": "sign up"}])
+
+        response = self.client.get(
+            f"/api/projects/{self.team.id}/events/?after=2020-01-09T00:00:00.000Z&action_id=%s" % action.pk
+        ).json()
+        assert len(response["results"]) == 1
+        assert response["results"][0]["id"] == event1_uuid
+
+        response = self.client.get(
+            f"/api/projects/{self.team.id}/events/?before=2020-01-09T00:00:00.000Z&action_id=%s" % action.pk
+        ).json()
+        assert len(response["results"]) == 1
+        assert response["results"][0]["id"] == event2_uuid
+
+        # without action
+        response = self.client.get(f"/api/projects/{self.team.id}/events/?after=2020-01-09T00:00:00.000Z").json()
+        assert len(response["results"]) == 1
+        assert response["results"][0]["id"] == event1_uuid
+
+        response = self.client.get(f"/api/projects/{self.team.id}/events/?before=2020-01-09T00:00:00.000Z").json()
+        assert len(response["results"]) == 2
+        assert response["results"][0]["id"] == event2_uuid
+        assert response["results"][1]["id"] == event3_uuid
+
+    def test_pagination(self):
+        with freeze_time("2021-10-10T12:03:03.829294Z"):
+            _create_person(team=self.team, distinct_ids=["1"])
+            for idx in range(0, 250):
+                _create_event(
+                    team=self.team,
+                    event="some event",
+                    distinct_id="1",
+                    timestamp=timezone.now() - relativedelta(months=11) + relativedelta(days=idx, seconds=idx),
+                )
+            response = self.client.get(f"/api/projects/{self.team.id}/events/?distinct_id=1").json()
+            assert len(response["results"]) == 100
+            assert f"http://testserver/api/projects/{self.team.id}/events/?distinct_id=1&before=" in unquote(
+                response["next"]
+            )
+            response = self.client.get(f"/api/projects/{self.team.id}/events/?distinct_id=1").json()
+            assert len(response["results"]) == 100
+            assert f"http://testserver/api/projects/{self.team.id}/events/?distinct_id=1&before=" in unquote(
+                response["next"]
+            )
+
+            page2 = self.client.get(response["next"]).json()
+
+            from posthog.clickhouse.client import sync_execute
+
+            assert (
+                sync_execute(
+                    "select count(*) from events where team_id = %(team_id)s",
+                    {"team_id": self.team.pk},
+                )[0][0]
+                == 250
+            )
+
+            assert len(page2["results"]) == 100
+            assert (
+                unquote(page2["next"])
+                == f"http://testserver/api/projects/{self.team.id}/events/?distinct_id=1&before=2020-12-30T12:03:53.829294+00:00"
+            )
+
+            page3 = self.client.get(page2["next"]).json()
+            assert len(page3["results"]) == 50
+            assert page3["next"] is None
+
+    def test_pagination_bounded_date_range(self):
+        with freeze_time("2021-10-10T12:03:03.829294Z"):
+            _create_person(team=self.team, distinct_ids=["1"])
+            now = timezone.now() - relativedelta(months=11)
+            after = (now).astimezone(ZoneInfo("UTC")).isoformat()
+            before = (now + relativedelta(days=23)).astimezone(ZoneInfo("UTC")).isoformat()
+            params = {"distinct_id": "1", "after": after, "before": before, "limit": 10}
+            params_string = urlencode(params)
+            for idx in range(0, 25):
+                _create_event(
+                    team=self.team,
+                    event="some event",
+                    distinct_id="1",
+                    timestamp=now + relativedelta(days=idx, seconds=-idx),
+                )
+            response = self.client.get(f"/api/projects/{self.team.id}/events/?{params_string}").json()
+            assert len(response["results"]) == 10
+            assert "before=" in unquote(response["next"])
+            assert f"after={after}" in unquote(response["next"])
+
+            params = {"distinct_id": "1", "after": after, "before": before, "limit": 10}
+            params_string = urlencode(params)
+
+            response = self.client.get(f"/api/projects/{self.team.id}/events/?{params_string}").json()
+            assert len(response["results"]) == 10
+            assert "before=" in unquote(response["next"])
+            assert f"after={after}" in unquote(response["next"])
+
+            page2 = self.client.get(response["next"]).json()
+
+            from posthog.clickhouse.client import sync_execute
+
+            assert (
+                sync_execute(
+                    "select count(*) from events where team_id = %(team_id)s",
+                    {"team_id": self.team.pk},
+                )[0][0]
+                == 25
+            )
+
+            assert len(page2["results"]) == 10
+            assert "before=" in unquote(page2["next"])
+            assert f"after={after}" in unquote(page2["next"])
+
+            page3 = self.client.get(page2["next"]).json()
+            assert len(page3["results"]) == 3
+            assert page3["next"] is None
+
+    def test_ascending_order_timestamp(self):
+        for idx in range(20):
+            _create_event(
+                team=self.team,
+                event="some event",
+                distinct_id="1",
+                timestamp=timezone.now() - relativedelta(months=11) + relativedelta(days=idx, seconds=idx),
+            )
+
+        response = self.client.get(
+            f"/api/projects/{self.team.id}/events/?distinct_id=1&limit=10&orderBy={json.dumps(['timestamp'])}"
+        ).json()
+        assert len(response["results"]) == 10
+        assert parser.parse(response["results"][0]["timestamp"]) < parser.parse(response["results"][-1]["timestamp"])
+        assert "after=" in response["next"]
+
+    def test_default_descending_order_timestamp(self):
+        for idx in range(20):
+            _create_event(
+                team=self.team,
+                event="some event",
+                distinct_id="1",
+                timestamp=timezone.now() - relativedelta(months=11) + relativedelta(days=idx, seconds=idx),
+            )
+
+        response = self.client.get(f"/api/projects/{self.team.id}/events/?distinct_id=1&limit=10").json()
+        assert len(response["results"]) == 10
+        assert parser.parse(response["results"][0]["timestamp"]) > parser.parse(response["results"][-1]["timestamp"])
+        assert "before=" in response["next"]
+
+    def test_specified_descending_order_timestamp(self):
+        for idx in range(20):
+            _create_event(
+                team=self.team,
+                event="some event",
+                distinct_id="1",
+                timestamp=timezone.now() - relativedelta(months=11) + relativedelta(days=idx, seconds=idx),
+            )
+
+        response = self.client.get(
+            f"/api/projects/{self.team.id}/events/?distinct_id=1&limit=10&orderBy={json.dumps(['-timestamp'])}"
+        ).json()
+        assert len(response["results"]) == 10
+        assert parser.parse(response["results"][0]["timestamp"]) > parser.parse(response["results"][-1]["timestamp"])
+        assert "before=" in response["next"]
+
+    def test_retrieve_event_returns_utc_timestamp_when_project_timezone_is_not_utc(self):
+        self.team.timezone = "Africa/Algiers"
+        self.team.save()
+        event_uuid = _create_event(
+            team=self.team,
+            event="watched movie",
+            distinct_id="1",
+            timestamp="2026-06-30T20:44:19.407000Z",
+        )
+        flush_persons_and_events()
+
+        response = self.client.get(f"/api/projects/{self.team.id}/events/{event_uuid}/")
+        assert response.status_code == status.HTTP_200_OK
+        assert response.json()["timestamp"] == "2026-06-30T20:44:19.407000+00:00"
+
+    def test_list_events_returns_utc_timestamp_when_project_timezone_is_not_utc(self):
+        self.team.timezone = "Africa/Algiers"
+        self.team.save()
+        with freeze_time("2026-06-30T20:45:00Z"):
+            _create_event(
+                team=self.team,
+                event="watched movie",
+                distinct_id="1",
+                timestamp="2026-06-30T20:44:19.407000Z",
+            )
+            flush_persons_and_events()
+            response = self.client.get(f"/api/projects/{self.team.id}/events/?distinct_id=1").json()
+
+        assert len(response["results"]) == 1
+        assert response["results"][0]["timestamp"] == "2026-06-30T20:44:19.407000+00:00"
+
+    def test_action_no_steps(self):
+        action = Action.objects.create(team=self.team)
+
+        response = self.client.get(f"/api/projects/{self.team.id}/events/?action_id=%s" % action.pk)
+        assert response.status_code == 200
+        assert len(response.json()["results"]) == 0
+
+    def test_get_single_action(self):
+        event1_uuid = _create_event(
+            team=self.team,
+            event="sign up",
+            distinct_id="2",
+            properties={"key": "test_val"},
+        )
+        response = self.client.get(f"/api/projects/{self.team.id}/events/%s/" % event1_uuid)
+        assert response.status_code == 200
+        assert response.json()["event"] == "sign up"
+        assert response.json()["properties"] == {"key": "test_val"}
+
+    def test_events_in_future(self):
+        with freeze_time("2012-01-15T04:01:34.000Z"):
+            _create_event(
+                team=self.team,
+                event="5th action",
+                distinct_id="2",
+                properties={"$os": "Windows 95"},
+            )
+        # Don't show events more than 5 seconds in the future
+        with freeze_time("2012-01-15T04:01:44.000Z"):
+            _create_event(
+                team=self.team,
+                event="5th action",
+                distinct_id="2",
+                properties={"$os": "Windows 95"},
+            )
+        with freeze_time("2012-01-15T04:01:34.000Z"):
+            response = self.client.get(f"/api/projects/{self.team.id}/events/").json()
+        assert len(response["results"]) == 1
+
+    def test_get_event_by_id(self):
+        _create_person(
+            properties={"email": "someone@posthog.com"},
+            team=self.team,
+            distinct_ids=["1"],
+            is_identified=True,
+        )
+        event_id = _create_event(team=self.team, event="event", distinct_id="1", timestamp=timezone.now())
+        flush_persons_and_events()
+
+        response = self.client.get(f"/api/projects/{self.team.id}/events/{event_id}")
+        assert response.status_code == status.HTTP_200_OK
+        response_json = response.json()
+        assert response_json["event"] == "event"
+        assert response_json["person"] is None
+
+        with_person_response = self.client.get(f"/api/projects/{self.team.id}/events/{event_id}?include_person=true")
+        assert with_person_response.status_code == status.HTTP_200_OK
+        with_person_response_json = with_person_response.json()
+        assert with_person_response_json["event"] == "event"
+        assert with_person_response_json["person"] is not None
+
+        response = self.client.get(f"/api/projects/{self.team.id}/events/123456")
+        # EE will inform the user the ID passed is not a valid UUID
+        assert response.status_code in [status.HTTP_404_NOT_FOUND, status.HTTP_400_BAD_REQUEST]
+
+        response = self.client.get(f"/api/projects/{self.team.id}/events/im_a_string_not_an_integer")
+        assert response.status_code in [status.HTTP_404_NOT_FOUND, status.HTTP_400_BAD_REQUEST]
+
+    def test_limit(self):
+        _create_person(
+            properties={"email": "tim@posthog.com"},
+            team=self.team,
+            distinct_ids=["2", "some-random-uid"],
+            is_identified=True,
+        )
+
+        _create_event(
+            event="$autocapture",
+            team=self.team,
+            distinct_id="2",
+            properties={"$ip": "8.8.8.8"},
+            elements=[
+                Element(tag_name="button", text="something"),
+                Element(tag_name="div"),
+            ],
+        )
+        _create_event(
+            event="$pageview",
+            team=self.team,
+            distinct_id="some-random-uid",
+            properties={"$ip": "8.8.8.8"},
+        )
+        _create_event(
+            event="$pageview",
+            team=self.team,
+            distinct_id="some-other-one",
+            properties={"$ip": "8.8.8.8"},
+        )
+
+        response = self.client.get(f"/api/projects/{self.team.id}/events/?limit=1").json()
+        assert len(response["results"]) == 1
+
+        response = self.client.get(f"/api/projects/{self.team.id}/events/?limit=2").json()
+        assert len(response["results"]) == 2
+
+    @patch("posthog.api.event.EVENT_LIST_MAX_LIMIT", 2)
+    def test_limit_is_capped_at_event_list_max(self):
+        _create_person(team=self.team, distinct_ids=["1"], is_identified=True)
+        for _i in range(3):
+            _create_event(event="$pageview", team=self.team, distinct_id="1", properties={"$ip": "8.8.8.8"})
+
+        response = self.client.get(f"/api/projects/{self.team.id}/events/?limit=50000").json()
+        assert len(response["results"]) == 2
+
+    @patch("posthog.api.event.get_persons_mapped_by_distinct_id")
+    def test_list_without_include_person_skips_person_lookup(self, mock_get_persons):
+        _create_person(team=self.team, distinct_ids=["1"], is_identified=True)
+        _create_event(event="$pageview", team=self.team, distinct_id="1", properties={"$ip": "8.8.8.8"})
+
+        response = self.client.get(f"/api/projects/{self.team.id}/events/?distinct_id=1").json()
+        assert response["results"][0]["person"] is None
+        mock_get_persons.assert_not_called()
+
+    @patch("posthog.api.event.get_persons_mapped_by_distinct_id")
+    def test_list_with_include_person_calls_person_lookup(self, mock_get_persons):
+        _create_person(team=self.team, distinct_ids=["1"], is_identified=True)
+        _create_event(event="$pageview", team=self.team, distinct_id="1", properties={"$ip": "8.8.8.8"})
+        mock_get_persons.return_value = {}
+
+        self.client.get(f"/api/projects/{self.team.id}/events/?distinct_id=1&include_person=true")
+        mock_get_persons.assert_called_once()
+
+    def test_get_events_with_specified_token(self):
+        _, _, user2 = User.objects.bootstrap("Test", "team2@posthog.com", None)
+        assert user2.team is not None
+        assert self.team is not None
+
+        assert user2.team.id != self.team.id
+
+        event1_uuid = _create_event(
+            team=self.team,
+            event="sign up",
+            distinct_id="2",
+            properties={"key": "test_val"},
+        )
+        event2_uuid = _create_event(
+            team=user2.team,
+            event="sign up",
+            distinct_id="2",
+            properties={"key": "test_val"},
+        )
+
+        response_team1 = self.client.get(f"/api/projects/{self.team.id}/events/{event1_uuid}/")
+        response_team1_token = self.client.get(
+            f"/api/projects/{self.team.id}/events/{event1_uuid}/",
+            data={"token": self.team.api_token},
+        )
+
+        response_team2_event1 = self.client.get(
+            f"/api/projects/{self.team.id}/events/{event1_uuid}/",
+            data={"token": user2.team.api_token},
+        )
+
+        # The feature being tested here is usually used with personal API token auth,
+        # but logging in works the same way and is more to the point in the test
+        self.client.force_login(user2)
+
+        response_team2_event2 = self.client.get(
+            f"/api/projects/{self.team.id}/events/{event2_uuid}/",
+            data={"token": user2.team.api_token},
+        )
+
+        assert response_team1.status_code == status.HTTP_200_OK
+        assert response_team1_token.status_code == status.HTTP_200_OK
+        assert response_team1.json() == response_team1_token.json()
+        assert response_team1.json() != response_team2_event2.json()
+        assert response_team2_event1.status_code == status.HTTP_403_FORBIDDEN
+        assert response_team2_event2.status_code == status.HTTP_200_OK
+
+        response_invalid_token = self.client.get(f"/api/projects/{self.team.id}/events?token=invalid")
+        assert response_invalid_token.status_code == 401
+
+    @patch("posthog.models.event.legacy_events_query._execute_events_list_query")
+    def test_optimize_query_progressive_windows(self, patch_execute_query):
+        # Progressive time window optimization: tries increasingly larger windows
+        # until finding one with >= half_limit results, then falls back to full range
+        # Windows: [60, 300, 900, 3600, 21600, 86400] seconds
+
+        # With only 1 result (< half of default limit 100), tries all 6 windows + fallback = 7 calls
+        patch_execute_query.return_value = (
+            [
+                {
+                    "uuid": "event",
+                    "event": "d",
+                    "properties": "{}",
+                    "timestamp": timezone.now(),
+                    "team_id": "d",
+                    "distinct_id": "d",
+                    "elements_chain": "d",
+                }
+            ],
+            False,
+        )
+        response = self.client.get(f"/api/projects/{self.team.id}/events/").json()
+        assert len(response["results"]) == 1
+        assert patch_execute_query.call_count == 7  # 6 windows + 1 fallback
+
+        # With 50+ results (>= half of limit 100), succeeds on first window = 1 call
+        patch_execute_query.reset_mock()
+        patch_execute_query.return_value = (
+            [
+                {
+                    "uuid": "event",
+                    "event": "d",
+                    "properties": "{}",
+                    "timestamp": timezone.now(),
+                    "team_id": "d",
+                    "distinct_id": "d",
+                    "elements_chain": "d",
+                }
+                for _ in range(0, 50)
+            ],
+            False,
+        )
+        response = self.client.get(f"/api/projects/{self.team.id}/events/").json()
+        assert patch_execute_query.call_count == 1
+
+    @patch("posthog.models.event.legacy_events_query._execute_events_list_query", wraps=_execute_events_list_query)
+    @override_settings(PATCH_EVENT_LIST_MAX_OFFSET=2)
+    def test_default_after(self, patch_execute_query):
+        # With PATCH_EVENT_LIST_MAX_OFFSET=2, default after = before - 24h
+        # Progressive windows to try (< 86400s): [60, 300, 900, 3600, 21600] = 5 windows
+        # Events at: 01-01T01:01, 01-02T02:02, ..., 01-09T09:09
+        [
+            _create_event(
+                team=self.team,
+                event="$pageview",
+                distinct_id="2",
+                timestamp=datetime(2024, 1, _, _, _, 0, 12345, tzinfo=self.team.timezone_info),
+                properties={"key": "test_val"},
+            )
+            for _ in range(1, 10)
+        ]
+
+        # No events in 24h window before 2024-01-01T00:02:02Z
+        # Tries all 5 windows + fallback = 6 calls
+        response = self.client.get(f"/api/projects/{self.team.id}/events/?before=2024-01-01T00:02:02Z").json()
+        assert len(response["results"]) == 0
+        assert patch_execute_query.call_count == 6
+
+        # Event at 01-05T05:05:00 found in 300s window (05:01:02 - 05:06:02)
+        # 60s fails, 300s succeeds = 2 calls (cumulative: 8)
+        response = self.client.get(f"/api/projects/{self.team.id}/events/?before=2024-01-05T05:06:02Z&limit=1").json()
+        assert len(response["results"]) == 1
+        assert patch_execute_query.call_count == 8
+
+        # Events end at 01-09T09:09, all windows too narrow, fallback succeeds
+        # 5 windows + fallback = 6 calls (cumulative: 14)
+        response = self.client.get(f"/api/projects/{self.team.id}/events/?before=2024-01-10T09:01:02Z&limit=1").json()
+        assert len(response["results"]) == 1
+        assert patch_execute_query.call_count == 14
+
+        # No events after 01-09T09:09, all windows fail including fallback
+        # 5 windows + fallback = 6 calls (cumulative: 20)
+        response = self.client.get(f"/api/projects/{self.team.id}/events/?before=2024-01-10T10:20:02Z&limit=1").json()
+        assert len(response["results"]) == 0
+        assert patch_execute_query.call_count == 20
+
+    def test_optimize_query_with_bounded_dates(self):
+        # Test that bounded date ranges return correct results
+        _create_event(
+            team=self.team,
+            event="sign up",
+            distinct_id="2",
+            timestamp=datetime(2024, 1, 1, 1, 0, 0, 12345),
+            properties={"key": "test_val"},
+        )
+
+        response = self.client.get(
+            f"/api/projects/{self.team.id}/events/?after=2021-01-01&before=2024-01-01T02:02:02Z"
+        ).json()
+        assert len(response["results"]) == 1
+
+        [
+            _create_event(
+                team=self.team,
+                event="sign up",
+                distinct_id="2",
+                timestamp=datetime(2024, 1, 1, 1, 2, round(_ / 2), _),
+                properties={"key": "test_val"},
+            )
+            for _ in range(0, 100)
+        ]
+        response = self.client.get(
+            f"/api/projects/{self.team.id}/events/?after=2023-01-01T01:01:00Z&before=2024-01-01T02:02:01Z"
+        ).json()
+        # With progressive window optimization, the 3600s window returns 98 results (>= half_limit)
+        # so it's considered successful. Some events at exactly 01:02:00 are cut off by window boundary.
+        assert len(response["results"]) >= 50  # At least half_limit results
+
+        # Test that after parameter is respected even with many results
+        response = self.client.get(
+            f"/api/projects/{self.team.id}/events/?after=2024-01-01T01:02:00Z&before=2024-01-01T01:04:01Z"
+        ).json()
+        assert len(response["results"]) == 99
+        assert response["next"] is None
+
+    def test_filter_events_by_being_after_properties_with_date_type(self):
+        journeys_for(
+            {
+                "2": [
+                    {
+                        "event": "should_be_excluded",
+                        "properties": {"prop_that_is_a_unix_timestamp": datetime(2012, 1, 7, 18).timestamp()},
+                    },
+                    {
+                        "event": "should_be_included",
+                        "properties": {"prop_that_is_a_unix_timestamp": datetime(2012, 1, 7, 19).timestamp()},
+                    },
+                    {
+                        "event": "should_be_included",
+                        "properties": {"prop_that_is_a_unix_timestamp": datetime(2012, 1, 7, 20).timestamp()},
+                    },
+                ]
+            },
+            self.team,
+        )
+
+        response = self.client.get(
+            f"/api/projects/{self.team.id}/events/?properties=%s"
+            % (
+                json.dumps(
+                    [
+                        {
+                            "key": "prop_that_is_a_unix_timestamp",
+                            "value": "2012-01-07 18:30:00",
+                            "operator": "is_date_after",
+                            "type": "event",
+                        }
+                    ]
+                )
+            )
+        ).json()
+
+        assert [r["event"] for r in response["results"]] == ["should_be_included", "should_be_included"]
+
+    def test_filter_events_by_being_before_properties_with_date_type(self):
+        journeys_for(
+            {
+                "2": [
+                    {
+                        "event": "should_be_included",
+                        "properties": {"prop_that_is_a_unix_timestamp": datetime(2012, 1, 7, 18).timestamp()},
+                    },
+                    {
+                        "event": "should_be_excluded",
+                        "properties": {"prop_that_is_a_unix_timestamp": datetime(2012, 1, 7, 19).timestamp()},
+                    },
+                    {
+                        "event": "should_be_excluded",
+                        "properties": {"prop_that_is_a_unix_timestamp": datetime(2012, 1, 7, 20).timestamp()},
+                    },
+                ]
+            },
+            self.team,
+        )
+        response = self.client.get(
+            f"/api/projects/{self.team.id}/events/?properties=%s"
+            % (
+                json.dumps(
+                    [
+                        {
+                            "key": "prop_that_is_a_unix_timestamp",
+                            "value": "2012-01-07 18:30:00",
+                            "operator": "is_date_before",
+                            "type": "event",
+                        }
+                    ]
+                )
+            )
+        ).json()
+
+        assert [r["event"] for r in response["results"]] == ["should_be_included"]
+
+    def test_filter_events_with_date_format(self):
+        journeys_for(
+            {
+                "2": [
+                    {
+                        "event": "should_be_included",
+                        "properties": {"prop_that_is_an_sdk_style_unix_timestamp": 1639427152.339},
+                    },
+                    {
+                        "event": "should_be_excluded",
+                        "properties": {
+                            "prop_that_is_an_sdk_style_unix_timestamp": 1639427152.339 * 2
+                        },  # the far future
+                    },
+                    {
+                        "event": "should_be_excluded",
+                        "properties": {
+                            "prop_that_is_an_sdk_style_unix_timestamp": 1639427152.339 * 2
+                        },  # the far future
+                    },
+                ]
+            },
+            self.team,
+        )
+
+        response = self.client.get(
+            f"/api/projects/{self.team.id}/events/?properties=%s"
+            % (
+                json.dumps(
+                    [
+                        {
+                            "key": "prop_that_is_an_sdk_style_unix_timestamp",
+                            "value": "2021-12-25 12:00:00",
+                            "operator": "is_date_before",
+                            "type": "event",
+                            "property_type": "DateTime",
+                            "property_type_format": "unix_timestamp",
+                        }
+                    ]
+                )
+            )
+        ).json()
+
+        assert [r["event"] for r in response["results"]] == ["should_be_included"]
+
+
+class TestEventListRestrictedProperties(ClickhouseTestMixin, APIBaseTest):
+    def setUp(self):
+        super().setUp()
+        from posthog.constants import AvailableFeature
+
+        from products.access_control.backend.models.property_access_control import PropertyAccessControl
+        from products.access_control.backend.property_access_control import PropertyAccessLevel
+
+        self.organization.available_product_features = [
+            {"name": AvailableFeature.PROPERTY_ACCESS_CONTROL, "key": AvailableFeature.PROPERTY_ACCESS_CONTROL}
+        ]
+        self.organization.save()
+        secret = PropertyDefinition.objects.create(
+            team=self.team, name="secret_prop", property_type="String", type=PropertyDefinition.Type.EVENT
+        )
+        # A default rule (no member/role) restricts the property for everyone, including admins.
+        PropertyAccessControl.objects.create(
+            team=self.team, property_definition=secret, access_level=PropertyAccessLevel.NONE.value
+        )
+
+    def test_filter_referencing_restricted_property_is_rejected(self):
+        response = self.client.get(
+            f"/api/projects/{self.team.id}/events/?properties={json.dumps([{'key': 'secret_prop', 'value': 'x', 'type': 'event'}])}"
+        )
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "restricted property" in response.json()["detail"]
+
+    def test_nested_group_referencing_restricted_property_is_rejected(self):
+        # The restricted key is buried inside a nested OR — the walk must still find it.
+        group = {
+            "type": "AND",
+            "values": [
+                {"type": "OR", "values": [{"key": "secret_prop", "value": "x", "type": "event"}]},
+            ],
+        }
+        response = self.client.get(f"/api/projects/{self.team.id}/events/?properties={json.dumps(group)}")
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "restricted property" in response.json()["detail"]
+
+    def test_order_by_referencing_restricted_property_is_rejected(self):
+        response = self.client.get(
+            f"/api/projects/{self.team.id}/events/?orderBy={json.dumps(['properties.secret_prop'])}"
+        )
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "restricted property" in response.json()["detail"]
+
+    def test_unrestricted_property_filter_is_allowed(self):
+        response = self.client.get(
+            f"/api/projects/{self.team.id}/events/?properties={json.dumps([{'key': 'public_prop', 'value': 'x', 'type': 'event'}])}"
+        )
+        assert response.status_code == status.HTTP_200_OK
+
+
+class TestEventListTimeWindowOptimization(ClickhouseTestMixin, APIBaseTest):
+    def test_cache_key_generation(self):
+        from posthog.models.event.legacy_events_query import _get_event_list_cache_key, _get_limit_size_category
+
+        # Test limit size categories
+        assert _get_limit_size_category(100) == "s"
+        assert _get_limit_size_category(999) == "s"
+        assert _get_limit_size_category(1000) == "m"
+        assert _get_limit_size_category(9999) == "m"
+        assert _get_limit_size_category(10000) == "l"
+        assert _get_limit_size_category(100000) == "l"
+
+        # Test cache key format: prefix:team_id:event_flag:distinct_id_flag:size
+        assert _get_event_list_cache_key(123, False, False, 100) == "event_list_good_period:123:0:0:s"
+        assert _get_event_list_cache_key(123, True, False, 100) == "event_list_good_period:123:1:0:s"
+        assert _get_event_list_cache_key(123, False, True, 100) == "event_list_good_period:123:0:1:s"
+        assert _get_event_list_cache_key(123, True, True, 100) == "event_list_good_period:123:1:1:s"
+        assert _get_event_list_cache_key(123, True, True, 5000) == "event_list_good_period:123:1:1:m"
+        assert _get_event_list_cache_key(123, True, True, 15000) == "event_list_good_period:123:1:1:l"
+
+    @patch("posthog.models.event.legacy_events_query.cache")
+    @patch("posthog.models.event.legacy_events_query._execute_events_list_query")
+    def test_caches_successful_window_with_result_count(self, patch_execute_query, mock_cache):
+        mock_cache.get.return_value = None  # No cached window
+
+        # Return enough results (>= half of limit) to succeed on first window
+        patch_execute_query.return_value = (
+            [
+                {
+                    "uuid": "event",
+                    "event": "test",
+                    "properties": "{}",
+                    "timestamp": timezone.now(),
+                    "team_id": str(self.team.pk),
+                    "distinct_id": "1",
+                    "elements_chain": "",
+                }
+                for _ in range(50)
+            ],
+            False,
+        )
+
+        self.client.get(f"/api/projects/{self.team.id}/events/")
+
+        # Should cache the successful window AND result count
+        mock_cache.set.assert_called_once()
+        call_args = mock_cache.set.call_args
+        cached_data = call_args[0][1]
+        assert cached_data == {"window": 60, "result_count": 50}
+        assert call_args[0][2] == 86400  # TTL
+
+    @patch("posthog.models.event.legacy_events_query.cache")
+    @patch("posthog.models.event.legacy_events_query._execute_events_list_query")
+    def test_uses_cached_window_when_result_count_meets_threshold(self, patch_execute_query, mock_cache):
+        # Cached window with result_count >= half_limit (60 >= 50 for limit=100)
+        mock_cache.get.return_value = {"window": 3600, "result_count": 60}
+
+        patch_execute_query.return_value = (
+            [
+                {
+                    "uuid": "event",
+                    "event": "test",
+                    "properties": "{}",
+                    "timestamp": timezone.now(),
+                    "team_id": str(self.team.pk),
+                    "distinct_id": "1",
+                    "elements_chain": "",
+                }
+                for _ in range(60)
+            ],
+            False,
+        )
+
+        self.client.get(f"/api/projects/{self.team.id}/events/")
+
+        # Should only call once since cached window returned enough results
+        assert patch_execute_query.call_count == 1
+
+        # Should NOT update cache when data is identical (optimization)
+        mock_cache.set.assert_not_called()
+
+    @patch("posthog.api.event.EVENT_LIST_MAX_LIMIT", 6000)
+    @patch("posthog.models.event.legacy_events_query.cache")
+    @patch("posthog.models.event.legacy_events_query.LegacyEventsListQuery.run_page")
+    def test_ignores_cached_window_when_result_count_below_threshold(self, mock_run_page, mock_cache):
+        """
+        This test verifies the fix for the cache key bug where different limits
+        could share the same cache key but have different half_limit thresholds.
+
+        Scenario: A previous request with limit=4999 (half_limit=2499) cached window=3600
+        with result_count=2700. A new request with limit=6000 (half_limit=3000) should
+        ignore this cache because 2700 < 3000.
+        """
+        # Cached from a smaller limit request - not enough for current threshold
+        mock_cache.get.return_value = {"window": 3600, "result_count": 2700}
+
+        # Return 3500 results (enough for limit=6000's half_limit=3000)
+        mock_run_page.return_value = (
+            [
+                {
+                    "uuid": f"event-{i}",
+                    "event": "test",
+                    "properties": "{}",
+                    "timestamp": timezone.now(),
+                    "team_id": str(self.team.pk),
+                    "distinct_id": "1",
+                    "elements_chain": "",
+                }
+                for i in range(3500)
+            ],
+            False,  # has_more
+            60,  # applied_window
+        )
+
+        # Request with limit=6000 (half_limit=3000)
+        self.client.get(f"/api/projects/{self.team.id}/events/?limit=6000")
+
+        # Cache result_count (2700) < half_limit (3000), so cache should be ignored.
+        # Should start from smallest window (60s), not cached 3600s.
+        first_call_kwargs = mock_run_page.call_args_list[0][1]
+        assert first_call_kwargs["time_window_seconds"] == 60  # Not 3600
+
+        # Should cache new successful window with correct structure
+        mock_cache.set.assert_called_once()
+        cached_data = mock_cache.set.call_args[0][1]
+        assert cached_data == {"window": 60, "result_count": 3500}
+
+    @patch("posthog.models.event.legacy_events_query.cache")
+    @patch("posthog.models.event.legacy_events_query.LegacyEventsListQuery.run_page")
+    def test_backwards_compat_uses_old_integer_cache_format(self, mock_run_page, mock_cache):
+        """
+        Old cache entries are just integers (the window). For backwards compatibility,
+        we use these directly (we can't know if they have enough results).
+        """
+        mock_cache.get.return_value = 3600  # Old format: just the window integer
+
+        mock_run_page.return_value = (
+            [
+                {
+                    "uuid": "event",
+                    "event": "test",
+                    "properties": "{}",
+                    "timestamp": timezone.now(),
+                    "team_id": str(self.team.pk),
+                    "distinct_id": "1",
+                    "elements_chain": "",
+                }
+                for _ in range(50)
+            ],
+            False,  # has_more
+            3600,  # applied_window
+        )
+
+        self.client.get(f"/api/projects/{self.team.id}/events/")
+
+        # Should use cached window (3600) first due to backwards compatibility
+        first_call_kwargs = mock_run_page.call_args_list[0][1]
+        assert first_call_kwargs["time_window_seconds"] == 3600
+
+        # Should update cache to new format
+        mock_cache.set.assert_called_once()
+        cached_data = mock_cache.set.call_args[0][1]
+        assert cached_data == {"window": 3600, "result_count": 50}
+
+    @patch("posthog.models.event.legacy_events_query.cache")
+    @patch("posthog.models.event.legacy_events_query._execute_events_list_query")
+    def test_does_not_cache_when_fallback_used(self, patch_execute_query, mock_cache):
+        mock_cache.get.return_value = None
+
+        # Return too few results to trigger fallback
+        patch_execute_query.return_value = (
+            [
+                {
+                    "uuid": "event",
+                    "event": "test",
+                    "properties": "{}",
+                    "timestamp": timezone.now(),
+                    "team_id": str(self.team.pk),
+                    "distinct_id": "1",
+                    "elements_chain": "",
+                }
+            ],
+            False,
+        )
+
+        self.client.get(f"/api/projects/{self.team.id}/events/")
+
+        # Should not cache anything when fallback is used
+        mock_cache.set.assert_not_called()
+
+    @patch("posthog.models.event.legacy_events_query._execute_events_list_query")
+    def test_only_tries_windows_shorter_than_request(self, patch_execute_query):
+        # Request a 10-minute window (600 seconds)
+        # Should only try windows < 600: [60, 300] (2 windows) + fallback
+        patch_execute_query.return_value = (
+            [
+                {
+                    "uuid": "event",
+                    "event": "test",
+                    "properties": "{}",
+                    "timestamp": timezone.now(),
+                    "team_id": str(self.team.pk),
+                    "distinct_id": "1",
+                    "elements_chain": "",
+                }
+            ],
+            False,
+        )
+
+        # 10-minute window
+        self.client.get(f"/api/projects/{self.team.id}/events/?after=2024-01-01T00:00:00Z&before=2024-01-01T00:10:00Z")
+
+        # Should try [60, 300] + fallback = 3 calls
+        assert patch_execute_query.call_count == 3
+
+    @patch("posthog.models.event.legacy_events_query._execute_events_list_query")
+    def test_no_window_optimization_for_small_request_range(self, patch_execute_query):
+        # Request a 30-second window - smaller than smallest optimization window (60s)
+        # Should skip all windows and go straight to full request
+        patch_execute_query.return_value = (
+            [
+                {
+                    "uuid": "event",
+                    "event": "test",
+                    "properties": "{}",
+                    "timestamp": timezone.now(),
+                    "team_id": str(self.team.pk),
+                    "distinct_id": "1",
+                    "elements_chain": "",
+                }
+            ],
+            False,
+        )
+
+        self.client.get(f"/api/projects/{self.team.id}/events/?after=2024-01-01T00:00:00Z&before=2024-01-01T00:00:30Z")
+
+        # No windows < 30s, so straight to fallback = 1 call
+        assert patch_execute_query.call_count == 1
+
+    @patch("posthog.models.event.legacy_events_query.cache")
+    @patch("posthog.models.event.legacy_events_query._execute_events_list_query")
+    def test_different_cache_keys_for_different_filters(self, patch_execute_query, mock_cache):
+        mock_cache.get.return_value = None
+
+        patch_execute_query.return_value = (
+            [
+                {
+                    "uuid": "event",
+                    "event": "test",
+                    "properties": "{}",
+                    "timestamp": timezone.now(),
+                    "team_id": str(self.team.pk),
+                    "distinct_id": "1",
+                    "elements_chain": "",
+                }
+                for _ in range(50)
+            ],
+            False,
+        )
+
+        # Request without filters
+        self.client.get(f"/api/projects/{self.team.id}/events/")
+        first_cache_key = mock_cache.set.call_args[0][0]
+
+        mock_cache.reset_mock()
+
+        # Request with event filter
+        self.client.get(f"/api/projects/{self.team.id}/events/?event=test")
+        second_cache_key = mock_cache.set.call_args[0][0]
+
+        mock_cache.reset_mock()
+
+        # Request with distinct_id
+        self.client.get(f"/api/projects/{self.team.id}/events/?distinct_id=1")
+        third_cache_key = mock_cache.set.call_args[0][0]
+
+        # All cache keys should be different
+        assert first_cache_key != second_cache_key
+        assert second_cache_key != third_cache_key
+        assert first_cache_key != third_cache_key
+
+    @parameterized.expand(
+        [
+            ("no_results", 0),
+            ("many_results", 5),
+        ]
+    )
+    @patch("posthog.models.event.legacy_events_query.cache")
+    @patch("posthog.models.event.legacy_events_query._execute_events_list_query")
+    def test_asc_order_skips_window_optimization(self, _name, num_results, patch_execute_query, mock_cache):
+        """
+        ASC order queries skip window optimization entirely.
+
+        When ASC order is used:
+        - applied_window is None (window not applied)
+        - Loop breaks immediately, no retries
+        - No fallback needed (first query already uses full date range)
+        - No caching (nothing to cache)
+        """
+        mock_cache.get.return_value = None
+        patch_execute_query.return_value = (
+            [
+                {
+                    "uuid": f"event-{i}",
+                    "event": "test",
+                    "properties": "{}",
+                    "timestamp": timezone.now(),
+                    "team_id": str(self.team.pk),
+                    "distinct_id": "1",
+                    "elements_chain": "",
+                }
+                for i in range(num_results)
+            ],
+            False,
+        )
+
+        response = self.client.get(f"/api/projects/{self.team.id}/events/?orderBy={json.dumps(['timestamp'])}")
+
+        assert patch_execute_query.call_count == 1
+        assert len(response.json()["results"]) == num_results
+        mock_cache.set.assert_not_called()

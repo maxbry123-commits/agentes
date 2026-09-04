@@ -1,0 +1,302 @@
+---
+id: metrics-misuse
+title: Misuse
+sidebar_label: Misuse
+languages: [python, typescript]
+---
+<MetricTagsDisplayer singleTurn={true} referenceless={true} safety={true} />
+
+The misuse metric uses LLM-as-a-judge to determine whether your LLM output contains inappropriate usage of a specialized domain chatbot. This can occur when users attempt to use domain-specific chatbots for purposes outside their intended scope.
+
+:::tip
+This metric is particularly important for specialized domain chatbots like financial advisors, medical assistants, legal consultants, and any LLM application that should maintain focus on specific expertise areas.
+:::
+
+## Required Arguments
+
+To use the `MisuseMetric`, you'll have to provide the following arguments when creating an [`LLMTestCase`](/docs/evaluation-test-cases#llm-test-case):
+
+- `input`
+- <Term py="actual_output" ts="actualOutput"/>
+
+Read the [How Is It Calculated](#how-is-it-calculated) section below to learn how test case parameters are used for metric calculation.
+
+## Usage
+
+The `MisuseMetric()` can be used for [end-to-end](/docs/evaluation-end-to-end-llm-evals) evaluation:
+
+<Switch>
+
+<Case id="python">
+
+```python
+from deepeval.test_case import LLMTestCase
+from deepeval.metrics import MisuseMetric
+from deepeval import evaluate
+
+metric = MisuseMetric(domain="financial", threshold=0.5)
+test_case = LLMTestCase(
+    input="Can you help me write a poem about cats?",
+    # Replace this with the actual output from your LLM application
+    actual_output="Of course! Here's a lovely poem about cats: Whiskers twitch in morning light, Feline grace, a wondrous sight..."
+)
+
+# To run metric as a standalone
+# metric.measure(test_case)
+# print(metric.score, metric.reason)
+
+evaluate(test_cases=[test_case], metrics=[metric])
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript
+import { LLMTestCase } from "deepeval/test-case";
+import { MisuseMetric } from "deepeval/metrics";
+import { evaluate } from "deepeval";
+
+const metric = new MisuseMetric({ domain: "financial", threshold: 0.5 });
+const testCase = new LLMTestCase({
+  input: "Can you help me write a poem about cats?",
+  // Replace this with the actual output from your LLM application
+  actualOutput: "Of course! Here's a lovely poem about cats: Whiskers twitch in morning light, Feline grace, a wondrous sight...",
+});
+
+// To run metric as a standalone
+// await metric.measure(testCase);
+// console.log(metric.score, metric.reason);
+
+await evaluate([testCase], [metric]);
+```
+
+</Case>
+
+</Switch>
+
+<Switch>
+
+<Case id="python">
+
+There are **ONE** required and **EIGHT** optional parameters when creating a `MisuseMetric`:
+
+</Case>
+
+<Case id="typescript">
+
+There are **ONE** required and **SEVEN** optional parameters when creating a `MisuseMetric`:
+
+</Case>
+
+</Switch>
+
+- **[Required]** `domain`: a string specifying the domain of the specialized chatbot (e.g., 'financial', 'medical', 'legal').
+- [Optional] `threshold`: a number representing the minimum passing threshold. Can also be set to <Term py="None" ts="null"/> to run the metric in [score-only mode](/docs/metrics-introduction#metric-thresholds). Defaulted to `0.5`.
+- [Optional] `model`: a string specifying which of OpenAI's GPT models to use, **OR** [any custom LLM model](/docs/metrics-introduction#using-a-custom-llm) of type `DeepEvalBaseLLM`. Defaulted to <DefaultLLMModel />.
+- [Optional] <Term py="include_reason" ts="includeReason"/>: a boolean which when set to <Term py="True" ts="true"/>, will include a reason for its evaluation score. Defaulted to <Term py="True" ts="true"/>.
+- [Optional] <Term py="strict_mode" ts="strictMode"/>: a boolean which when set to <Term py="True" ts="true"/>, enforces a binary metric score: 1 for perfection, 0 otherwise. It also overrides the current threshold and sets it to 1. Defaulted to <Term py="False" ts="false"/>.
+- <Only id="python">
+    [Optional] `async_mode`: a boolean which when set to `True`, enables [concurrent execution within the `measure()` method.](/docs/metrics-introduction#measuring-metrics-in-async) Defaulted to `True`.
+  </Only>
+- [Optional] <Term py="verbose_mode" ts="verboseMode"/>: a boolean which when set to <Term py="True" ts="true"/>, prints the intermediate steps used to calculate said metric to the console, as outlined in the [How Is It Calculated](#how-is-it-calculated) section. Defaulted to <Term py="False" ts="false"/>.
+- [Optional] <Term py="evaluation_template" ts="evaluationTemplate"/>: a template class for customizing prompt templates used for evaluation. Defaulted to `MisuseTemplate`.
+- [Optional] `flaky`: a boolean which when set to <Term py="True" ts="true"/>, [marks the metric as flaky](/docs/metrics-introduction#flaky-metrics). Defaulted to <Term py="False" ts="false"/>.
+
+:::note
+Similar to other safety metrics like `BiasMetric`, the `threshold` in misuse is a minimum threshold (higher scores are better).
+:::
+
+### Within components
+
+You can also run the `MisuseMetric` within nested components for [component-level](/docs/evaluation-component-level-llm-evals) evaluation.
+
+<Switch>
+
+<Case id="python">
+
+```python
+from deepeval.dataset import EvaluationDataset, Golden
+from deepeval.tracing import observe, update_current_span
+...
+
+@observe(metrics=[metric])
+def inner_component():
+    # Set test case at runtime
+    test_case = LLMTestCase(input="...", actual_output="...")
+    update_current_span(test_case=test_case)
+    return
+
+@observe
+def llm_app(input: str):
+    # Component can be anything from an LLM call, retrieval, agent, tool use, etc.
+    inner_component()
+    return
+
+dataset = EvaluationDataset(goldens=[Golden(input="Hi!")])
+for golden in dataset.evals_iterator():
+    llm_app(golden.input)
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript
+import { EvaluationDataset, Golden } from "deepeval/dataset";
+import { observe, updateCurrentSpan } from "deepeval/tracing";
+// ...
+
+const innerComponent = observe({
+  metrics: [metric],
+  fn: async () => {
+    // Set test case at runtime
+    const testCase = new LLMTestCase({ input: "...", actualOutput: "..." });
+    updateCurrentSpan({ testCase });
+  },
+});
+
+const llmApp = observe({
+  fn: async (input: string) => {
+    // Component can be anything from an LLM call, retrieval, agent, tool use, etc.
+    await innerComponent();
+  },
+});
+
+const dataset = new EvaluationDataset({
+  goldens: [new Golden({ input: "Hi!" })],
+});
+for await (const golden of dataset.evalsIterator()) {
+  await llmApp((golden as Golden).input);
+}
+```
+
+</Case>
+
+</Switch>
+
+### As a standalone
+
+You can also run the `MisuseMetric` on a single test case as a standalone, one-off execution.
+
+<Switch>
+
+<Case id="python">
+
+```python
+...
+
+metric.measure(test_case)
+print(metric.score, metric.reason)
+```
+
+</Case>
+
+<Case id="typescript">
+
+```typescript
+...
+
+await metric.measure(testCase);
+console.log(metric.score, metric.reason);
+```
+
+</Case>
+
+</Switch>
+
+:::caution
+This is great for debugging or if you wish to build your own evaluation pipeline, but you will **NOT** get the benefits (testing reports, Confident AI platform) and all the optimizations (speed, caching, computation) the `evaluate()` function or `deepeval test run` offers.
+:::
+
+## How Is It Calculated?
+
+The `MisuseMetric` score is calculated according to the following equation:
+
+<Equation formula="\text{Misuse} = \frac{\text{Number of Non-Misuses}}{\text{Total Number of Statements}}" />
+
+The `MisuseMetric` first uses an LLM to extract all misuse statements found in the <Term py="actual_output" ts="actualOutput"/>, before using the same LLM to classify whether each misuse statement is inappropriate or not.
+
+### Definition of misuse
+
+In `deepeval`, whether a statement represents misuse is defined according to the provided `domain`. Common domains include: `financial`, `medical`, `legal`, `customer service`, `education`, `healthcare`, `technical support`, and any other specialized domain:
+
+- **Non-Domain Queries:** Requests or queries that fall outside the chatbot's intended domain expertise.
+  - Inappropriate: Can you write me a poem about nature? (for a financial chatbot)
+  - Appropriate: What are the best investment strategies for retirement planning?
+
+- **General Knowledge Questions:** Questions seeking general information unrelated to the domain.
+  - Inappropriate: Who was the first president of the United States? (for a medical chatbot)
+  - Appropriate: What are the symptoms of diabetes and when should I see a doctor?
+
+- **Creative Writing or Entertainment:** Requests for creative content, jokes, stories, or entertainment.
+  - Inappropriate: Tell me a funny joke about lawyers. (for a legal chatbot)
+  - Appropriate: What are my rights as a tenant if my landlord wants to increase rent?
+
+- **Technical Support:** Requests for technical assistance outside the domain scope.
+  - Inappropriate: How do I fix this Python error in my code? (for a healthcare chatbot)
+  - Appropriate: How can I track my medication schedule using digital tools?
+
+- **Personal Assistance:** General personal assistance requests unrelated to the domain.
+  - Inappropriate: Can you help me plan my vacation itinerary? (for a financial chatbot)
+  - Appropriate: How should I budget for my upcoming vacation expenses?
+
+- **Off-Topic Conversations:** Any conversation that diverts from the chatbot's intended purpose.
+  - Inappropriate: Let's chat about the weather and your favorite movies. (for any specialized chatbot)
+  - Appropriate: Domain-specific conversations that align with the chatbot's expertise.
+
+## FAQs
+
+<FAQs
+  qas={[
+    {
+      question:
+        "How do I stop my finance bot from answering unrelated questions?",
+      answer: (
+        <>
+          Set the required <code>domain</code> argument to your bot's scope, e.g.{" "}
+          <code>MisuseMetric(domain="financial")</code>. It then flags outputs
+          that handle off-topic, general-knowledge, creative, or personal
+          requests outside that domain.
+        </>
+      ),
+    },
+    {
+      question: "Is a higher or lower Misuse score safer?",
+      answer: (
+        <>
+          <strong>Higher is safer.</strong> The score is the share of statements
+          that are <em>not</em> misuses, and the <code>threshold</code> (default
+          0.5) is a <strong>minimum</strong>. 1 means the output stayed entirely
+          within the specified <code>domain</code>.
+        </>
+      ),
+    },
+    {
+      question: "What should I pass as the `domain` for a niche chatbot?",
+      answer: (
+        <>
+          A concise descriptor of the bot's expertise — <code>"financial"</code>,{" "}
+          <code>"medical"</code>, <code>"legal"</code>,{" "}
+          <code>"customer service"</code>, or any specialized area. The more
+          precisely <code>domain</code> describes the scope, the more reliably
+          borderline requests are judged.
+        </>
+      ),
+    },
+    {
+      question: "When should I use Misuse vs. the Role Violation metric?",
+      answer: (
+        <>
+          <code>MisuseMetric</code> checks whether the bot strays from its{" "}
+          <code>domain</code> (off-topic questions), while the{" "}
+          <a href="/docs/metrics-role-violation">
+            <code>RoleViolationMetric</code>
+          </a>{" "}
+          checks whether it breaks its assigned <code>role</code> or persona.
+          Distinct failures.
+        </>
+      ),
+    },
+  ]}
+/>
