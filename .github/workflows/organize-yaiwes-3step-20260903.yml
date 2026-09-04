@@ -1,4 +1,4 @@
-name: Organize Yaiwes 3-step 2026-09-03
+name: Organize Yaiwes NOW
 
 on:
   workflow_dispatch:
@@ -17,46 +17,28 @@ jobs:
     env:
       GIT_LFS_SKIP_SMUDGE: "1"
     steps:
-      - name: Checkout main NO-LFS
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           ref: main
-          fetch-depth: 1
+          fetch-depth: 0
           lfs: false
 
-      - name: Step 1 - audit and classify only
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "AUDIT_ONLY: classify before any mutation"
-          python3 scripts/organize_yaiwes_3step_20260903.py audit
-
-      - name: Step 2 - move code and clean non-code
+      - name: Organize, verify and publish
         shell: bash
         run: |
           set -euo pipefail
           python3 scripts/organize_yaiwes_3step_20260903.py apply
-
-      - name: Step 3 - create the only component index
-        shell: bash
-        run: |
-          set -euo pipefail
           python3 scripts/organize_yaiwes_3step_20260903.py index
-
-      - name: Safety gates and commit
-        shell: bash
-        run: |
-          set -euo pipefail
           python3 scripts/organize_yaiwes_3step_20260903.py verify
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
-          git diff --cached --quiet && echo 'NO CHANGE' && exit 0
-          git commit -m 'organize: canonical Yaiwes three-step layout'
+          if git diff --cached --quiet; then echo 'ORGANIZATION_NO_CHANGE'; exit 0; fi
+          git commit -m 'organize: canonical Yaiwes repository layout'
           for attempt in 1 2 3; do
-            if git fetch origin main && git rebase --autostash origin/main && git push --no-verify origin HEAD:main; then
-              exit 0
-            fi
+            git fetch origin main
+            git rebase --autostash origin/main
+            if git push --no-verify origin HEAD:main; then exit 0; fi
             git rebase --abort 2>/dev/null || true
             test "$attempt" -lt 3 || exit 41
             sleep $((attempt * 10))
