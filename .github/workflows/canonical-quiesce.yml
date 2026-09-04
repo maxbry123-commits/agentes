@@ -1,0 +1,36 @@
+name: Yaiwes canonical quiesce
+run-name: Yaiwes canonical quiesce • ${{ github.run_id }}
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/canonical-quiesce.yml']
+  workflow_dispatch:
+permissions: {actions: write, contents: read}
+jobs:
+  cancel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Cancel canonical workers
+        env: {GH_TOKEN: '${{ github.token }}'}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for status in in_progress queued; do
+            gh api "repos/${GITHUB_REPOSITORY}/actions/runs?status=${status}&per_page=100" --paginate --jq '.workflow_runs[] | [.id,.path] | @tsv' |
+            while IFS=$'\t' read -r id path; do
+              [ -n "${id:-}" ] || continue
+              [ "$id" = "$GITHUB_RUN_ID" ] && continue
+              case "$path" in .github/workflows/canonical-*) gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/runs/${id}/cancel" >/dev/null 2>&1 || true ;; esac
+            done
+          done
+          for n in $(seq 1 90); do
+            left=0
+            for status in in_progress queued; do
+              c=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?status=${status}&per_page=100" --paginate --jq "[.workflow_runs[] | select(.id != ${GITHUB_RUN_ID}) | select(.path | startswith(\".github/workflows/canonical-\"))] | length")
+              left=$((left+c))
+            done
+            [ "$left" -eq 0 ] && { echo QUIESCED; exit 0; }
+            sleep 10
+          done
+          exit 75
