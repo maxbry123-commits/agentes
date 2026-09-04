@@ -114,11 +114,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          known=$(( ${{ steps.audit.outputs.retryable }} + ${{ steps.audit.outputs.lfs }} + ${{ steps.audit.outputs.datasets }} ))
+          if [ "$known" -gt 0 ]; then
+            [ '${{ steps.audit.outputs.retryable }}' = '0' ] || gh api --method POST "repos/${GITHUB_REPOSITORY}/dispatches" -f event_type=canonical-retry-round
+            [ '${{ steps.audit.outputs.lfs }}' = '0' ] || gh api --method POST "repos/${GITHUB_REPOSITORY}/dispatches" -f event_type=canonical-lfs-round
+            [ '${{ steps.audit.outputs.datasets }}' = '0' ] || gh api --method POST "repos/${GITHUB_REPOSITORY}/dispatches" -f event_type=canonical-dataset-round
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/dispatches" -f event_type=canonical-watchdog-round
+            exit 0
+          fi
           if [ '${{ steps.audit.outputs.unknown }}' != '0' ]; then echo 'UNKNOWN_BLOCKED_GAPS_REQUIRE_TARGETED_REPAIR'; exit 73; fi
-          [ '${{ steps.audit.outputs.retryable }}' = '0' ] || gh api --method POST "repos/${GITHUB_REPOSITORY}/dispatches" -f event_type=canonical-retry-round
-          [ '${{ steps.audit.outputs.lfs }}' = '0' ] || gh api --method POST "repos/${GITHUB_REPOSITORY}/dispatches" -f event_type=canonical-lfs-round
-          [ '${{ steps.audit.outputs.datasets }}' = '0' ] || gh api --method POST "repos/${GITHUB_REPOSITORY}/dispatches" -f event_type=canonical-dataset-round
-          gh api --method POST "repos/${GITHUB_REPOSITORY}/dispatches" -f event_type=canonical-watchdog-round
+          exit 74
       - name: Verified closure
         if: steps.audit.outputs.remaining == '0'
         run: echo VERIFIED_CLOSED
