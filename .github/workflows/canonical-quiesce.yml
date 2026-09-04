@@ -1,0 +1,38 @@
+name: Yaiwes canonical quiesce
+run-name: Yaiwes canonical quiesce • ${{ github.run_id }}
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/canonical-quiesce.yml']
+permissions:
+  actions: write
+  contents: read
+concurrency:
+  group: yaiwes-canonical-quiesce
+  cancel-in-progress: true
+jobs:
+  stop-loop:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cancel active canonical loop runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          for status in in_progress queued; do
+            gh api "repos/${repo}/actions/runs?status=${status}&per_page=100" --paginate --jq '.workflow_runs[] | [.id,.path] | @tsv' |
+            while IFS=$'\t' read -r id path; do
+              [ -n "$id" ] || continue
+              [ "$id" = "$GITHUB_RUN_ID" ] && continue
+              case "$path" in
+                .github/workflows/canonical-*.yml)
+                  echo "cancel $id $path"
+                  gh api --method POST "repos/${repo}/actions/runs/${id}/cancel" || true
+                  ;;
+              esac
+            done
+          done
+          echo QUIESCED
