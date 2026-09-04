@@ -1,0 +1,58 @@
+# /// script
+# requires-python = ">=3.10"
+# dependencies = [
+#     "marshmallow",
+#     "packaging>=17.0",
+# ]
+# ///
+import json
+import sys
+from pprint import pprint
+
+from packaging import version
+
+from marshmallow import INCLUDE, Schema, ValidationError, fields
+
+
+class Version(fields.Field[version.Version]):
+    """Version field that deserializes to a Version object."""
+
+    def _deserialize(self, value, *args, **kwargs):
+        try:
+            return version.Version(value)
+        except version.InvalidVersion as e:
+            raise ValidationError("Not a valid version.") from e
+
+    def _serialize(self, value, *args, **kwargs):
+        return str(value)
+
+
+class PackageSchema(Schema):
+    name = fields.Str(required=True)
+    version = Version(required=True)
+    description = fields.Str(required=True)
+    main = fields.Str(required=False)
+    homepage = fields.URL(required=False)
+    scripts = fields.Dict(keys=fields.Str(), values=fields.Str())
+    license = fields.Str(required=True)
+    dependencies = fields.Dict(keys=fields.Str(), values=fields.Str(), required=False)
+    dev_dependencies = fields.Dict(
+        keys=fields.Str(),
+        values=fields.Str(),
+        required=False,
+        data_key="devDependencies",
+    )
+
+    class Meta:
+        # Include unknown fields in the deserialized output
+        unknown = INCLUDE
+
+
+if __name__ == "__main__":
+    pkg = json.load(sys.stdin)
+    try:
+        pprint(PackageSchema().load(pkg))
+    except ValidationError as error:
+        print("ERROR: package.json is invalid")
+        pprint(error.messages)
+        sys.exit(1)

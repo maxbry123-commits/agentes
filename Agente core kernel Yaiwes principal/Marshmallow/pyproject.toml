@@ -1,0 +1,154 @@
+[project]
+name = "marshmallow"
+version = "4.3.1"
+description = "A lightweight library for converting complex datatypes to and from native Python datatypes."
+readme = "README.rst"
+license = "MIT"
+authors = [{ name = "Steven Loria", email = "oss@stevenloria.com" }]
+maintainers = [
+  { name = "Steven Loria", email = "oss@stevenloria.com" },
+  { name = "Jérôme Lafréchoux", email = "jerome@jolimont.fr" },
+  { name = "Jared Deckard", email = "jared@shademaps.com" },
+]
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+]
+requires-python = ">=3.10"
+dependencies = [
+  "backports-datetime-fromisoformat; python_version < '3.11'",
+  "typing-extensions; python_version < '3.11'",
+]
+
+[project.urls]
+Changelog = "https://marshmallow.readthedocs.io/en/latest/changelog.html"
+Funding = "https://opencollective.com/marshmallow"
+Issues = "https://github.com/marshmallow-code/marshmallow/issues"
+Source = "https://github.com/marshmallow-code/marshmallow"
+Tidelift = "https://tidelift.com/subscription/pkg/pypi-marshmallow?utm_source=pypi-marshmallow&utm_medium=pypi"
+
+[dependency-groups]
+docs = [
+  "autodocsumm",
+  "furo",
+  "sphinx-copybutton",
+  "sphinx-issues",
+  "sphinx>=8.1",
+  "sphinxext-opengraph",
+]
+tests = ["pytest", "simplejson"]
+lint = ["pre-commit>=3.5,<5.0"]
+mypy = ["mypy>=1.14.1", "types-simplejson"]
+dev = [
+  { include-group = "tests" },
+  { include-group = "lint" },
+  { include-group = "mypy" },
+  "tox",
+  "tox-uv",
+]
+
+[tool.uv]
+default-groups = ["dev"]
+exclude-newer = "1 week"
+
+[build-system]
+requires = ["flit_core>=4,<5"]
+build-backend = "flit_core.buildapi"
+
+[tool.flit.sdist]
+include = [
+  "docs/",
+  "tests/",
+  "CHANGELOG.rst",
+  "SECURITY.md",
+  "NOTICE",
+  "tox.ini",
+]
+exclude = ["docs/_build/"]
+
+[tool.ruff]
+fix = true
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.ruff.lint]
+# use all checks available in ruff except the ones explicitly ignored below
+select = ["ALL"]
+ignore = [
+  "A005",    # "module {name} shadows a Python standard-library module"
+  "ANN",     # let mypy handle annotation checks
+  "ARG",     # unused arguments are common w/ interfaces
+  "COM",     # let formatter take care commas
+  "C901",    # don't enforce complexity level
+  "CPY001",  # don't require copyright notice at top of file
+  "D",       # don't require docstrings
+  "DTZ007",  # ignore false positives due to https://github.com/astral-sh/ruff/issues/1306
+  "E501",    # leave line-length enforcement to formatter
+  "EM",      # allow string messages in exceptions
+  "FIX",     # allow "FIX" comments in code
+  "INP001",  # allow Python files outside of packages
+  "N806",    # allow uppercase variable names for variables that are classes
+  "PERF203", # allow try-except within loops
+  "PLR0913", # "Too many arguments"
+  "PLR0912", # "Too many branches"
+  "PLR2004", # "Magic value used in comparison"
+  "PTH",     # don't require using pathlib instead of os
+  "RUF012",  # allow mutable class variables
+  "SIM102",  # Sometimes nested ifs are more readable than if...and...
+  "SIM105",  # "Use `contextlib.suppress(...)` instead of `try`-`except`-`pass`"
+  "SIM108",  # sometimes if-else is more readable than a ternary
+  "TD",      # allow TODO comments to be whatever we want
+  "TRY003",  # allow long messages passed to exceptions
+  "TRY004",  # allow ValueError for invalid argument types
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = [
+  "ARG",     # unused arguments are fine in tests
+  "C408",    # allow dict() instead of dict literal
+  "DTZ",     # allow naive datetimes
+  "FBT003",  # allow boolean positional argument
+  "N803",    # fixture names might be uppercase
+  "PLR0915", # allow lots of statements
+  "PT007",   # ignore false positives due to https://github.com/astral-sh/ruff/issues/14743
+  "PT011",   # don't require match when using pytest.raises
+  "PLW0108", # allow lambda: MySchema, which is needed in some of the test cases
+  "RUF043",  # allow metacharacters in match patterns
+  "S",       # allow asserts
+  "SIM117",  # allow nested with statements because it's more readable sometimes
+  "SLF001",  # allow private attribute access
+]
+"examples/*" = [
+  "S", # allow asserts
+  "T", # allow prints
+]
+"performance/benchmark.py" = [
+  "PLR0917", # allow many positional arguments
+]
+"src/marshmallow/orderedset.py" = [
+  "FBT002", # allow boolean positional argument
+  "T",      # allow prints
+]
+
+[tool.mypy]
+files = ["src", "tests", "examples"]
+ignore_missing_imports = true
+warn_unreachable = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+check_untyped_defs = true
+disable_error_code = ["call-overload", "index"]
+
+[tool.pytest.ini_options]
+norecursedirs = ".git .ropeproject .tox docs env venv tests/mypy_test_cases"
