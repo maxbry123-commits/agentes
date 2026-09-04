@@ -1,0 +1,13 @@
+{
+  "proyecto": "PECP-MAXBRY-100x",
+  "version": "4.1.0-FINAL",
+  "fase": 1,
+  "nodos": {
+    "T-001": {"estado": "skipped", "motivo": "OMITIDO_POR_INSTRUCCION_DIRECTOR"},
+    "T-007": {"estado": "done", "checkpoint": "chk_t007_pass", "score_tribunal": 92},
+    "T-011": {"estado": "done", "checkpoint": "chk_t011_pass", "score_tribunal": 90},
+    "T-013": {"estado": "done", "checkpoint": "chk_t013_pass", "score_tribunal": 92},
+    "T-014": {"estado": "done", "checkpoint": "chk_t014_pass", "score_tribunal": 89},
+    "T-015": {"estado": "done", "checkpoint": "chk_t015_pass", "score_tribunal": 89}
+  }
+}

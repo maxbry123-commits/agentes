@@ -1,0 +1,19 @@
+evidence:
+  nodo_id: "T-013"
+  timestamp: "2026-08-18T22:45:00Z"
+  que_se_hizo: "Implementación del Motor de Paralelización Mavis 100x con SmartCache, PriorityTaskQueue y semáforos asíncronos para ejecución concurrente segura."
+  archivos_tocados:
+    - "src/parallel/mavis_parallel.py"
+  tests:
+    - "test_smart_cache: PASS"
+    - "test_priority_queue: PASS"
+    - "test_mavis_pool_batch: PASS"
+  score_tribunal: 92
+  delta_vs_anterior: "Nodo T-013 integrado con soporte para concurrencia limpia mediante asyncio."
+  loc_generadas: 210
+  documentos_generados: 1
+  constitutional_pass: true
+  llm_budget_ok: true
+  cache_hit: false
+  execution_time_ms: 32
+  provider_compliance: true
