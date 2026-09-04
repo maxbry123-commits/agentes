@@ -1,0 +1,66 @@
+name: Quiesce Yaiwes Writers 2026-09-04
+run-name: Quiesce Yaiwes writers • ${{ github.run_id }}
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/quiesce-yaiwes-writers-20260904.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: quiesce-yaiwes-writers-main
+  cancel-in-progress: false
+
+jobs:
+  quiesce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Cancel active repository writers
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="${GITHUB_REPOSITORY}"
+          self="${GITHUB_RUN_ID}"
+          match_writer() {
+            case "$1" in
+              .github/workflows/extraction-*|.github/workflows/core-kernel-yaiwes-downloads-5-parts.yml|.github/workflows/download-kernel-4.yml|.github/workflows/kernel-download-*|.github/workflows/kernel-gaps-*|.github/workflows/research-download-chain*|.github/workflows/agente-core-kernel-yaiwes.yml) return 0 ;;
+              *) return 1 ;;
+            esac
+          }
+          for status in in_progress queued; do
+            gh api "repos/${repo}/actions/runs?status=${status}&per_page=100" --paginate --jq '.workflow_runs[] | [.id,.path] | @tsv' |
+            while IFS=$'\t' read -r id path; do
+              [ -n "${id:-}" ] || continue
+              [ "$id" = "$self" ] && continue
+              if match_writer "$path"; then
+                echo "CANCEL $id $path"
+                gh api --method POST "repos/${repo}/actions/runs/${id}/cancel" >/dev/null 2>&1 || true
+              fi
+            done
+          done
+          for attempt in $(seq 1 60); do
+            remaining=0
+            for status in in_progress queued; do
+              while IFS=$'\t' read -r id path; do
+                [ -n "${id:-}" ] || continue
+                [ "$id" = "$self" ] && continue
+                if match_writer "$path"; then remaining=$((remaining+1)); fi
+              done < <(gh api "repos/${repo}/actions/runs?status=${status}&per_page=100" --paginate --jq '.workflow_runs[] | [.id,.path] | @tsv')
+            done
+            if [ "$remaining" -eq 0 ]; then
+              echo 'QUIESCED'
+              exit 0
+            fi
+            echo "WAIT remaining=$remaining"
+            sleep 10
+          done
+          echo 'QUIESCE_TIMEOUT'
+          exit 75
