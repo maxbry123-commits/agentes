@@ -1,0 +1,75 @@
+[package]
+name = "bex_vm"
+version = { workspace = true }
+publish = false
+authors = { workspace = true }
+edition = { workspace = true }
+rust-version = { workspace = true }
+homepage = { workspace = true }
+documentation = { workspace = true }
+repository = { workspace = true }
+license = { workspace = true }
+description = "BAML Virtual Machine"
+
+[lib]
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+baml_builtins2 = { workspace = true }
+baml_compiler_diagnostics = { workspace = true }
+baml_type = { workspace = true }
+bex_events = { workspace = true }
+bex_heap = { workspace = true }
+bex_str = { workspace = true }
+bex_vm_types = { workspace = true }
+aes-gcm-siv = { workspace = true }
+base64 = { workspace = true }
+chacha20poly1305 = { workspace = true }
+console = { workspace = true }
+getrandom = { workspace = true }
+indexmap = { workspace = true }
+log = { workspace = true }
+num-bigint = { workspace = true }
+rand_chacha = { workspace = true }
+rand_core = { workspace = true }
+rand_xoshiro = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+sha2 = { workspace = true }
+smallvec = { workspace = true }
+time = { workspace = true }
+tokio = { workspace = true, features = [ "macros" ] }
+tokio-util = { workspace = true }
+toml = { workspace = true }
+
+# Native-only: tokio runtime so CancelToken.any can `tokio::spawn` its watcher.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tokio = { workspace = true, features = [ "rt", "macros" ] }
+
+# WASM-only: wasm-bindgen-futures for spawning the watcher.
+# `getrandom/js` is required for the `getrandom::getrandom` calls in
+# `package_baml/{bigint,float,id}.rs` to build for wasm at all (getrandom 0.2
+# hard-errors on wasm*-unknown-unknown otherwise). The feature used to arrive
+# by unification through `sys_llm`; that crate is gone, so enable it on the
+# crate that actually calls getrandom.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { workspace = true, features = [ "js" ] }
+wasm-bindgen-futures = { workspace = true }
+
+[build-dependencies]
+baml_builtins2_codegen = { workspace = true }
+
+[dev-dependencies]
+baml_db = { workspace = true }
+indexmap = { workspace = true }
+
+[features]
+default = [  ]
+heap_debug = [ "bex_heap/heap_debug", "bex_vm_types/heap_debug" ]
+# Enables the per-op VM counter for the `kperf` profiler's instructions/op
+# breakdown. Off by default — pure measurement scaffolding on the hot path.
+kperf = [  ]

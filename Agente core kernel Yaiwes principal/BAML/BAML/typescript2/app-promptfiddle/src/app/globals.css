@@ -1,0 +1,35 @@
+/* Tailwind v4 layers (no preflight — the shared file has a scoped reset) */
+@layer base, theme, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+/* Shared playground tokens + scoped reset */
+@import "../../../pkg-playground/src/styles/playground.css";
+
+/* ── Scan promptfiddle's own local components ──────────────────────── */
+@source "../playground/**/*.tsx";
+
+/* Page-load fallbacks before the VS Code theme initializes */
+@theme inline {
+  --color-app-bg: #171f2b;
+  --color-app-text: #d9dfe7;
+}
+
+/* ── Page-level base styles ────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  padding: 0;
+  margin: 0;
+  overflow: hidden;
+  font-family: var(--font-vsc);
+  color: var(--color-app-text);
+  color-scheme: dark;
+  background: var(--color-app-bg);
+}

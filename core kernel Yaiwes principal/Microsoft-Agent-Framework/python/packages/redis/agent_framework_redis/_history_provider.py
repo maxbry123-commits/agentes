@@ -1,0 +1,238 @@
+# Copyright (c) Microsoft. All rights reserved.
+
+"""New-pattern Redis history provider using HistoryProvider.
+
+This module provides ``RedisHistoryProvider``, built on the new
+:class:`HistoryProvider` hooks pattern.
+"""
+
+from __future__ import annotations
+
+import json
+from collections.abc import Awaitable, Sequence
+from inspect import isawaitable
+from typing import Any, ClassVar, TypeVar, cast
+
+import redis.asyncio as redis
+from agent_framework import Message
+from agent_framework._sessions import HistoryProvider, filter_new_messages
+from agent_framework._telemetry import mark_feature_used
+from redis.credentials import CredentialProvider
+
+from ._feature_usage import FeatureIndex
+
+_T = TypeVar("_T")
+
+
+async def _redis_result(value: Awaitable[_T] | _T) -> _T:
+    """Await a redis-py command result that is annotated as the sync/async union.
+
+    Several redis-py commands are annotated as returning ``Awaitable[T] | T`` even on the asyncio
+    client, so awaiting them directly does not type-check. Newer redis-py releases narrow those
+    annotations to the awaitable alone, which makes a bare ``# type: ignore`` *required* on the
+    older annotations and *unnecessary* on the newer ones: no single ignore comment satisfies the
+    whole supported range. Normalising through this helper type-checks on every supported version
+    without an ignore comment.
+    """
+    if isawaitable(value):
+        return cast("_T", await value)
+    return cast("_T", value)
+
+
+class RedisHistoryProvider(HistoryProvider):
+    """Redis-backed history provider using the new HistoryProvider hooks pattern.
+
+    Stores conversation history in Redis Lists, with each session isolated by a
+    unique Redis key.
+    """
+
+    DEFAULT_SOURCE_ID: ClassVar[str] = "redis_memory"
+
+    def __init__(
+        self,
+        source_id: str = DEFAULT_SOURCE_ID,
+        redis_url: str | None = None,
+        credential_provider: CredentialProvider | None = None,
+        host: str | None = None,
+        port: int = 6380,
+        ssl: bool = True,
+        username: str | None = None,
+        *,
+        key_prefix: str = "chat_messages",
+        max_messages: int | None = None,
+        load_messages: bool = True,
+        store_outputs: bool = True,
+        store_inputs: bool = True,
+        store_context_messages: bool = False,
+        store_context_from: set[str] | None = None,
+    ) -> None:
+        """Initialize the Redis history provider.
+
+        Args:
+            source_id: Unique identifier for this provider instance.
+            redis_url: Redis connection URL (e.g., "redis://localhost:6379").
+                Mutually exclusive with credential_provider.
+            credential_provider: Redis credential provider for Azure AD authentication.
+                Requires host parameter. Mutually exclusive with redis_url.
+            host: Redis host name. Required when using credential_provider.
+            port: Redis port number. Defaults to 6380 (Azure Redis SSL port).
+            ssl: Enable SSL/TLS connection. Defaults to True.
+            username: Redis username.
+            key_prefix: Prefix for Redis keys. Defaults to 'chat_messages'.
+            max_messages: Maximum number of messages to retain per session.
+                When exceeded, oldest messages are automatically trimmed.
+                None means unlimited storage; 0 retains nothing, and no message
+                payload is written to Redis at all. Stored history is left as it
+                is - use ``clear`` to remove it.
+            load_messages: Whether to load messages before invocation.
+            store_outputs: Whether to store response messages.
+            store_inputs: Whether to store input messages.
+            store_context_messages: Whether to store context from other providers.
+            store_context_from: If set, only store context from these source_ids.
+
+        Raises:
+            ValueError: If neither redis_url nor credential_provider is provided.
+            ValueError: If both redis_url and credential_provider are provided.
+            ValueError: If credential_provider is used without host parameter.
+            ValueError: If max_messages is negative.
+        """
+        super().__init__(
+            source_id,
+            load_messages=load_messages,
+            store_outputs=store_outputs,
+            store_inputs=store_inputs,
+            store_context_messages=store_context_messages,
+            store_context_from=store_context_from,
+        )
+
+        if redis_url is None and credential_provider is None:
+            raise ValueError("Either redis_url or credential_provider must be provided")
+        if redis_url is not None and credential_provider is not None:
+            raise ValueError("redis_url and credential_provider are mutually exclusive")
+        if credential_provider is not None and host is None:
+            raise ValueError("host is required when using credential_provider")
+        if max_messages is not None and max_messages < 0:
+            raise ValueError("max_messages must be None (unlimited) or a non-negative integer")
+
+        self.key_prefix = key_prefix
+        self.max_messages = max_messages
+        self.redis_url = redis_url
+
+        if credential_provider is not None and host is not None:
+            self._redis_client = redis.Redis(
+                host=host,
+                port=port,
+                ssl=ssl,
+                username=username,
+                credential_provider=credential_provider,
+                decode_responses=True,
+            )
+        else:
+            self._redis_client = redis.from_url(redis_url, decode_responses=True)  # type: ignore[no-untyped-call]
+
+    def _redis_key(self, session_id: str | None) -> str:
+        """Get the Redis key for a given session's messages."""
+        return f"{self.key_prefix}:{session_id or 'default'}"
+
+    async def get_messages(
+        self,
+        session_id: str | None,
+        *,
+        state: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> list[Message]:
+        """Retrieve stored messages for this session from Redis.
+
+        Args:
+            session_id: The session ID to retrieve messages for.
+            state: Optional session state. Unused for Redis-backed history.
+            **kwargs: Additional arguments (unused).
+
+        Returns:
+            List of stored Message objects in chronological order.
+        """
+        mark_feature_used(FeatureIndex.REDIS)
+        key = self._redis_key(session_id)
+        # ``lrange`` is annotated with a partially unknown return type across the supported redis
+        # range, so neither keeping nor dropping an ignore comment here is correct for all of it.
+        # Reaching the method through an explicitly ``Any``-typed client makes the call site
+        # version-independent, and the outer cast pins the element type that
+        # ``decode_responses=True`` guarantees.
+        redis_messages = cast("list[str]", await _redis_result(cast("Any", self._redis_client).lrange(key, 0, -1)))
+        messages: list[Message] = []
+        for serialized in redis_messages:
+            messages.append(Message.from_dict(self._deserialize_json(serialized)))
+        return messages
+
+    async def save_messages(
+        self,
+        session_id: str | None,
+        messages: Sequence[Message],
+        *,
+        state: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> None:
+        """Persist messages for this session to Redis.
+
+        Args:
+            session_id: The session ID to store messages for.
+            messages: The messages to persist.
+            state: Optional session state. Unused for Redis-backed history.
+            **kwargs: Additional arguments (unused).
+        """
+        mark_feature_used(FeatureIndex.REDIS)
+        if not messages:
+            return
+
+        if self.max_messages == 0:
+            # Retention is disabled. Trimming cannot express this - LTRIM key 0 -1 keeps
+            # the whole list - so return before serializing: no payload reaches Redis, an
+            # AOF or a replica. Stored history is deliberately left alone. _redis_key omits
+            # source_id, so the list can belong to a co-located provider, and removing
+            # stored history is what clear() is for.
+            return
+
+        key = self._redis_key(session_id)
+
+        existing_messages = await self.get_messages(session_id, state=state, **kwargs)
+        new_messages = filter_new_messages(existing_messages, messages)
+
+        if not new_messages:
+            return
+
+        serialized_messages = [self._serialize_json(msg) for msg in new_messages]
+
+        async with self._redis_client.pipeline(transaction=True) as pipe:
+            for serialized in serialized_messages:
+                await _redis_result(pipe.rpush(key, serialized))
+            await pipe.execute()
+
+        if self.max_messages is not None:
+            current_count: int = await _redis_result(self._redis_client.llen(key))
+            if current_count > self.max_messages:
+                await _redis_result(self._redis_client.ltrim(key, -self.max_messages, -1))
+
+    @staticmethod
+    def _serialize_json(message: Message) -> str:
+        """Serialize a Message to a JSON string for Redis storage."""
+        return json.dumps(message.to_dict())
+
+    @staticmethod
+    def _deserialize_json(data: str) -> dict[str, Any]:
+        """Deserialize a JSON string from Redis to a dict."""
+        return json.loads(data)
+
+    async def clear(self, session_id: str | None) -> None:
+        """Clear all messages for a session.
+
+        Args:
+            session_id: The session ID to clear messages for.
+        """
+        await self._redis_client.delete(self._redis_key(session_id))
+
+    async def aclose(self) -> None:
+        """Close the Redis connection."""
+        await self._redis_client.aclose()
+
+
+__all__ = ["RedisHistoryProvider"]

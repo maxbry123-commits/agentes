@@ -1,0 +1,5 @@
+# Generated per-fixture output (codegen writes baml_sdk/; dotnet writes bin/ and obj/).
+# Glob-based so fixture renames cannot strand stale entries.
+*/baml_sdk/
+*/bin/
+*/obj/

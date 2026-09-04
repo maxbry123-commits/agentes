@@ -1,0 +1,272 @@
+﻿// Copyright (c) Microsoft. All rights reserved.
+
+using System;
+using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
+using Microsoft.Agents.AI;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Shared.DiagnosticIds;
+using Microsoft.Shared.Diagnostics;
+
+namespace Microsoft.Extensions.AI;
+
+/// <summary>
+/// Provides extension methods for building a <see cref="ChatClientAgent"/> from a <see cref="ChatClientBuilder"/>.
+/// </summary>
+public static class ChatClientBuilderExtensions
+{
+    /// <summary>
+    /// Build a <see cref="ChatClientAgent"/> from the <see cref="IChatClient"/> pipeline described by this <see cref="ChatClientBuilder"/>.
+    /// </summary>
+    /// <param name="builder">A builder for creating pipelines of <see cref="IChatClient"/>.</param>
+    /// <param name="instructions">
+    /// Optional system instructions that guide the agent's behavior. These instructions are provided to the <see cref="IChatClient"/>
+    /// with each invocation to establish the agent's role and behavior.
+    /// </param>
+    /// <param name="name">
+    /// Optional name for the agent. This name is used for identification and logging purposes.
+    /// </param>
+    /// <param name="description">
+    /// Optional human-readable description of the agent's purpose and capabilities.
+    /// This description can be useful for documentation and agent discovery scenarios.
+    /// </param>
+    /// <param name="tools">
+    /// Optional collection of tools that the agent can invoke during conversations.
+    /// These tools augment any tools that may be provided to the agent via <see cref="ChatOptions.Tools"/> when
+    /// the agent is run.
+    /// </param>
+    /// <param name="loggerFactory">
+    /// Optional logger factory for creating loggers used by the agent and its components.
+    /// </param>
+    /// <param name="services">
+    /// Optional service provider for resolving dependencies required by AI functions and other agent components.
+    /// This is particularly important when using custom tools that require dependency injection.
+    /// </param>
+    /// <returns>A new <see cref="ChatClientAgent"/> instance.</returns>
+    public static ChatClientAgent BuildAIAgent(
+        this ChatClientBuilder builder,
+        string? instructions = null,
+        string? name = null,
+        string? description = null,
+        IList<AITool>? tools = null,
+        ILoggerFactory? loggerFactory = null,
+        IServiceProvider? services = null) =>
+        Throw.IfNull(builder).Build(services).AsAIAgent(
+            instructions: instructions,
+            name: name,
+            description: description,
+            tools: tools,
+            loggerFactory: loggerFactory,
+            services: services);
+
+    /// <summary>
+    /// Creates a new <see cref="ChatClientAgent"/> instance.
+    /// </summary>
+    /// <param name="builder">A builder for creating pipelines of <see cref="IChatClient"/>.</param>
+    /// <param name="options">
+    /// Configuration options that control all aspects of the agent's behavior, including chat settings,
+    /// message store factories, context provider factories, and other advanced configurations.
+    /// </param>
+    /// <param name="loggerFactory">
+    /// Optional logger factory for creating loggers used by the agent and its components.
+    /// </param>
+    /// <param name="services">
+    /// Optional service provider for resolving dependencies required by AI functions and other agent components.
+    /// This is particularly important when using custom tools that require dependency injection.
+    /// </param>
+    /// <returns>A new <see cref="ChatClientAgent"/> instance.</returns>
+    public static ChatClientAgent BuildAIAgent(
+        this ChatClientBuilder builder,
+        ChatClientAgentOptions? options,
+        ILoggerFactory? loggerFactory = null,
+        IServiceProvider? services = null) =>
+        Throw.IfNull(builder).Build(services).AsAIAgent(
+            options: options,
+            loggerFactory: loggerFactory,
+            services: services);
+
+    /// <summary>
+    /// Adds a <see cref="PerServiceCallChatHistoryPersistingChatClient"/> to the chat client pipeline.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This decorator should be positioned between the <see cref="FunctionInvokingChatClient"/> and the leaf
+    /// <see cref="IChatClient"/> in the pipeline. It persists chat history after each individual service call
+    /// and updates the session <see cref="ChatOptions.ConversationId"/> per call for both framework-managed
+    /// and service-stored chat history scenarios.
+    /// </para>
+    /// <para>
+    /// This extension method is intended for use with custom chat client stacks when
+    /// <see cref="ChatClientAgentOptions.UseProvidedChatClientAsIs"/> is <see langword="true"/>.
+    /// When <see cref="ChatClientAgentOptions.UseProvidedChatClientAsIs"/> is <see langword="false"/> (the default),
+    /// the <see cref="ChatClientAgent"/> automatically includes this decorator in the pipeline and activates it when
+    /// <see cref="ChatClientAgentOptions.RequirePerServiceCallChatHistoryPersistence"/> is <see langword="true"/>.
+    /// </para>
+    /// <para>
+    /// This decorator only works within the context of a running <see cref="ChatClientAgent"/> and will throw an
+    /// exception if used in any other stack.
+    /// </para>
+    /// </remarks>
+    /// <param name="builder">The <see cref="ChatClientBuilder"/> to add the decorator to.</param>
+    /// <returns>The <paramref name="builder"/> for chaining.</returns>
+    public static ChatClientBuilder UsePerServiceCallChatHistoryPersistence(this ChatClientBuilder builder)
+    {
+        return builder.Use(innerClient => new PerServiceCallChatHistoryPersistingChatClient(innerClient));
+    }
+
+    /// <summary>
+    /// Adds a <see cref="MessageInjectingChatClient"/> to the chat client pipeline.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This decorator enables external code (such as tool delegates) to inject messages into the function
+    /// execution loop. It should be positioned between the <see cref="FunctionInvokingChatClient"/> and
+    /// the <see cref="PerServiceCallChatHistoryPersistingChatClient"/> (or the leaf <see cref="IChatClient"/>)
+    /// in the pipeline.
+    /// </para>
+    /// <para>
+    /// The <see cref="MessageInjectingChatClient"/> can be retrieved from the chat client via
+    /// <c>GetService&lt;MessageInjectingChatClient&gt;</c> to enqueue messages from tool delegates or other code.
+    /// </para>
+    /// <para>
+    /// This extension method is intended for use with custom chat client stacks when
+    /// <see cref="ChatClientAgentOptions.UseProvidedChatClientAsIs"/> is <see langword="true"/>.
+    /// When <see cref="ChatClientAgentOptions.UseProvidedChatClientAsIs"/> is <see langword="false"/> (the default),
+    /// the <see cref="ChatClientAgent"/> automatically includes this decorator in the pipeline when
+    /// <see cref="ChatClientAgentOptions.RequirePerServiceCallChatHistoryPersistence"/> is <see langword="true"/>.
+    /// </para>
+    /// <para>
+    /// This decorator only works within the context of a running <see cref="ChatClientAgent"/> and will throw an
+    /// exception if used in any other stack.
+    /// </para>
+    /// </remarks>
+    /// <param name="builder">The <see cref="ChatClientBuilder"/> to add the decorator to.</param>
+    /// <returns>The <paramref name="builder"/> for chaining.</returns>
+    public static ChatClientBuilder UseMessageInjection(this ChatClientBuilder builder)
+    {
+        return builder.Use(innerClient => new MessageInjectingChatClient(innerClient));
+    }
+
+    /// <summary>
+    /// Adds an <see cref="ApprovalNotRequiredFunctionBypassingChatClient"/> to the chat client pipeline.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This decorator should be positioned above the <see cref="FunctionInvokingChatClient"/> in the pipeline
+    /// so that it can intercept approval requests for tools that do not require approval. When
+    /// <see cref="FunctionInvokingChatClient"/> converts all function calls to approval requests (because at
+    /// least one tool requires approval), this decorator removes the requests for tools that do not require
+    /// approval, stores them in the session, and automatically re-injects them as approved on the next request.
+    /// </para>
+    /// <para>
+    /// This extension method is intended for use with custom chat client stacks when
+    /// <see cref="ChatClientAgentOptions.UseProvidedChatClientAsIs"/> is <see langword="true"/>.
+    /// When <see cref="ChatClientAgentOptions.UseProvidedChatClientAsIs"/> is <see langword="false"/> (the default),
+    /// the <see cref="ChatClientAgent"/> automatically injects this decorator unless
+    /// <see cref="ChatClientAgentOptions.DisableApprovalNotRequiredFunctionBypassing"/> is <see langword="true"/>.
+    /// </para>
+    /// <para>
+    /// This decorator is intended for use within the context of a running <see cref="ChatClientAgent"/> with
+    /// an active session. When invoked outside of an agent run (for example when the built chat client is used
+    /// directly), the decorator becomes a no-op, passing the request through unchanged and logging a warning.
+    /// </para>
+    /// </remarks>
+    /// <param name="builder">The <see cref="ChatClientBuilder"/> to add the decorator to.</param>
+    /// <param name="loggerFactory">
+    /// An optional <see cref="ILoggerFactory"/> used to create a logger for the decorator. When not provided,
+    /// the factory is resolved from the pipeline's <see cref="IServiceProvider"/>; if none is available,
+    /// logging is a no-op.
+    /// </param>
+    /// <returns>The <paramref name="builder"/> for chaining.</returns>
+    public static ChatClientBuilder UseApprovalNotRequiredFunctionBypassing(this ChatClientBuilder builder, ILoggerFactory? loggerFactory = null)
+    {
+        return builder.Use((innerClient, services) =>
+            new ApprovalNotRequiredFunctionBypassingChatClient(innerClient, loggerFactory ?? services.GetService<ILoggerFactory>()));
+    }
+
+    /// <summary>
+    /// Adds an <see cref="ApprovalResponseBindingChatClient"/> to the chat client pipeline.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This decorator should be positioned as the outermost decorator, above the
+    /// <see cref="FunctionInvokingChatClient"/> in the pipeline, so that it can bind the caller's inbound
+    /// tool-approval responses to the model-originated approval requests the framework surfaced. It records each
+    /// <see cref="ToolApprovalRequestContent"/> emitted by the pipeline and, on the next request, rebinds every
+    /// <see cref="ToolApprovalResponseContent"/> to its recorded request while honoring only approvals tied to a
+    /// genuine, framework-issued request. This keeps an approved call aligned with exactly what a human was asked to
+    /// approve.
+    /// </para>
+    /// <para>
+    /// This extension method is intended for use with custom chat client stacks when
+    /// <see cref="ChatClientAgentOptions.UseProvidedChatClientAsIs"/> is <see langword="true"/>.
+    /// When <see cref="ChatClientAgentOptions.UseProvidedChatClientAsIs"/> is <see langword="false"/> (the default),
+    /// the <see cref="ChatClientAgent"/> automatically injects this decorator unless
+    /// <see cref="ChatClientAgentOptions.DisableApprovalResponseBinding"/> is <see langword="true"/>.
+    /// </para>
+    /// <para>
+    /// This decorator is intended for use within the context of a running <see cref="ChatClientAgent"/> with
+    /// an active session. When invoked outside of an agent run (for example when the built chat client is used
+    /// directly), the decorator becomes a no-op, passing the request through unchanged and logging a warning.
+    /// </para>
+    /// </remarks>
+    /// <param name="builder">The <see cref="ChatClientBuilder"/> to add the decorator to.</param>
+    /// <param name="loggerFactory">
+    /// An optional <see cref="ILoggerFactory"/> used to create a logger for the decorator. When not provided,
+    /// the factory is resolved from the pipeline's <see cref="IServiceProvider"/>; if none is available,
+    /// logging is a no-op.
+    /// </param>
+    /// <returns>The <paramref name="builder"/> for chaining.</returns>
+    public static ChatClientBuilder UseApprovalResponseBinding(this ChatClientBuilder builder, ILoggerFactory? loggerFactory = null)
+    {
+        return builder.Use((innerClient, services) =>
+            new ApprovalResponseBindingChatClient(innerClient, loggerFactory ?? services.GetService<ILoggerFactory>()));
+    }
+
+    /// <summary>
+    /// Adds an <see cref="InvocableFunctionBypassingChatClient"/> to the chat client pipeline.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This decorator should be positioned above the <see cref="FunctionInvokingChatClient"/> in the pipeline.
+    /// When <see cref="FunctionInvokingChatClient"/> returns a response containing both an invocable (backend)
+    /// <see cref="FunctionCallContent"/> and a declaration-only (frontend) <see cref="FunctionCallContent"/> in
+    /// the same iteration, this decorator removes the invocable calls, stores them in the session, and returns
+    /// only the declaration-only calls to the caller. On the next request the stored calls are re-injected as
+    /// pre-approved responses so <see cref="FunctionInvokingChatClient"/> reconstructs and executes them.
+    /// </para>
+    /// <para>
+    /// If the pipeline also contains an <see cref="ApprovalResponseBindingChatClient"/>, this decorator must be
+    /// positioned <em>below</em> it. That client drops any <see cref="ToolApprovalResponseContent"/> that does not
+    /// correspond to a request it recorded, so that a forged approval cannot execute. The responses this decorator
+    /// injects are synthetic and have no such request, so placing the binding client below this decorator would
+    /// silently discard them and prevent the stored calls from ever executing.
+    /// </para>
+    /// <para>
+    /// This extension method is intended for use with custom chat client stacks when
+    /// <see cref="ChatClientAgentOptions.UseProvidedChatClientAsIs"/> is <see langword="true"/>.
+    /// When <see cref="ChatClientAgentOptions.UseProvidedChatClientAsIs"/> is <see langword="false"/> (the default),
+    /// the <see cref="ChatClientAgent"/> automatically injects this decorator when
+    /// <see cref="ChatClientAgentOptions.EnableInvocableFunctionBypassing"/> is <see langword="true"/>.
+    /// </para>
+    /// <para>
+    /// This decorator is intended for use within the context of a running <see cref="ChatClientAgent"/> with
+    /// an active session. When invoked outside of an agent run (for example when the built chat client is used
+    /// directly), the decorator becomes a no-op, passing the request through unchanged and logging a warning.
+    /// </para>
+    /// </remarks>
+    /// <param name="builder">The <see cref="ChatClientBuilder"/> to add the decorator to.</param>
+    /// <param name="loggerFactory">
+    /// An optional <see cref="ILoggerFactory"/> used to create a logger for the decorator. When not provided,
+    /// the factory is resolved from the pipeline's <see cref="IServiceProvider"/>; if none is available,
+    /// logging is a no-op.
+    /// </param>
+    /// <returns>The <paramref name="builder"/> for chaining.</returns>
+    [Experimental(DiagnosticIds.Experiments.AgentsAIExperiments)]
+    public static ChatClientBuilder UseInvocableFunctionBypassing(this ChatClientBuilder builder, ILoggerFactory? loggerFactory = null)
+    {
+        return builder.Use((innerClient, services) =>
+            new InvocableFunctionBypassingChatClient(innerClient, loggerFactory ?? services.GetService<ILoggerFactory>()));
+    }
+}

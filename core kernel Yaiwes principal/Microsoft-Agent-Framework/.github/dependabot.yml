@@ -1,0 +1,69 @@
+# To get started with Dependabot version updates, you'll need to specify which
+# package ecosystems to update and where the package manifests are located.
+# Please see the documentation for all configuration options:
+# https://docs.github.com/github/administering-a-repository/configuration-options-for-dependency-updates
+
+version: 2
+updates:
+  # Maintain dependencies for nuget
+  - package-ecosystem: "nuget"
+    directory: "dotnet/"
+    schedule:
+      interval: "cron"
+      cronjob: "0 8 * * 4,0" # Every Thursday(4) and Sunday(0) at 8:00 UTC
+    ignore:
+      # For all System.* and Microsoft.Extensions/Bcl.* packages, ignore all major version updates
+      - dependency-name: "System.*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "Microsoft.Extensions.*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "Microsoft.Bcl.*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "Moq"
+    labels:
+      - ".NET"
+      - "dependencies"
+    cooldown:
+      default-days: 7
+
+  # Maintain dependencies for python.
+  # TODO: Remove these Python Dependabot entries after we have confidence in the
+  # Python dependency-maintenance workflow.
+  - package-ecosystem: "pip"
+    directory: "python/"
+    schedule:
+      interval: "weekly"
+      day: "thursday"
+    labels:
+      - "python"
+      - "dependencies"
+    cooldown:
+      default-days: 7
+
+  - package-ecosystem: "uv"
+    directory: "python/"
+    schedule:
+      interval: "weekly"
+      day: "thursday"
+    labels:
+      - "python"
+      - "dependencies"
+    cooldown:
+      default-days: 7
+
+  # Maintain dependencies for github-actions
+  - package-ecosystem: "github-actions"
+    # Cover both the standard workflow location and our composite actions.
+    # With `directory: "/"` Dependabot only scans `.github/workflows/*.{yml,yaml}`
+    # plus a root-level `action.yml/action.yaml`. It does NOT recurse into
+    # `.github/actions/*/action.yml`, so the glob below is required to keep the
+    # composite actions in `.github/actions/<name>/` up to date as well.
+    # Ref: https://docs.github.com/en/code-security/dependabot/working-with-dependabot/dependabot-options-reference#directories-or-directory--
+    directories:
+      - "/"
+      - "/.github/actions/*"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+    cooldown:
+      default-days: 7

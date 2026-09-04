@@ -1,0 +1,43 @@
+---
+source: crates/baml_tests/src/generated_tests.rs
+---
+=== COMPILER2 DIAGNOSTICS ===
+  [type] E0001
+
+  × mismatched types
+    ╭─[negative.baml:15:6]
+ 15 │   cb(inner)
+    ·      ──┬──
+    ·        ╰── expected `(value: int) -> int throws never`, found `(value: int) -> int throws string`
+    ╰────
+
+  [type] E0001
+
+  × mismatched types
+    ╭─[negative.baml:23:17]
+ 23 │   accept_hidden(risky)
+    ·                 ──┬──
+    ·                   ╰── expected `HiddenHandler`, found `(value: int) -> int throws string`
+    ╰────
+
+  [type] E0001
+
+  × mismatched types
+    ╭─[negative.baml:27:16]
+ 27 │   Holder { cb: risky }
+    ·                ──┬──
+    ·                  ╰── expected `(value: int) -> int throws never`, found `(value: int) -> int throws string`
+    ╰────
+
+  [type] E0001
+
+  × mismatched types
+    ╭─[negative.baml:30:62]
+ 30 │ ╭─▶ function fail_returned() -> (value: int) -> int throws never {
+ 31 │ │     let local = (value: int) -> int throws string {
+ 32 │ │       throw "boom"
+ 33 │ │     }
+ 34 │ │     local
+ 35 │ ├─▶ }
+    · ╰──── expected `(value: int) -> int throws never`, found `(value: int) -> int throws string`
+    ╰────

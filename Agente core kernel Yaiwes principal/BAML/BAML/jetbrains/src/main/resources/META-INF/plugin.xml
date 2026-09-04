@@ -1,0 +1,59 @@
+<!-- Plugin Configuration File. Read more: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
+<idea-plugin>
+    <id>com.boundaryml.jetbrains_ext</id>
+    <name>BAML v0 Playground</name>
+    <vendor>BoundaryML</vendor>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>org.jetbrains.plugins.textmate</depends>
+    <depends>com.redhat.devtools.lsp4ij</depends>
+
+    <resource-bundle>messages.BamlBundle</resource-bundle>
+
+    <actions>
+        <action
+                id="baml.openBamlPanel"
+                class="com.boundaryml.jetbrains_ext.BamlPlaygroundAction"
+                text="Open BAML v0 Playground"
+                description="Opens an interactive BAML v0 playground for running and testing BAML code."
+                icon="/icons/baml-lamb-light-mode.svg"
+        >
+        </action>
+        <action
+                id="baml.runBamlTest"
+                class="com.boundaryml.jetbrains_ext.BamlPlaygroundAction"
+                text="Run BAML Test"
+                description="Opens the BAML v0 playground and runs the specified test."
+                icon="/icons/baml-lamb-light-mode.svg"
+                >
+        </action>
+    </actions>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <!-- When changing toolWindow.id, also make sure to change BamlPlaygroundAction.kt -->
+        <toolWindow
+                id="BAML v0 Playground (beta)"
+                factoryClass="com.boundaryml.jetbrains_ext.BamlToolWindowFactory"
+                icon="/icons/baml-lamb-light-mode.svg"
+        />
+        <postStartupActivity implementation="com.boundaryml.jetbrains_ext.BamlProjectActivity" />
+        <fileType name="BAML"
+                  language="baml"
+                  fieldName="INSTANCE"
+                  implementationClass="com.boundaryml.jetbrains_ext.BamlFileType"
+                  extensions="baml"
+        />
+
+        <textmate.bundleProvider implementation="com.boundaryml.jetbrains_ext.BamlTextMateBundleProvider" />
+        <!--
+          BamlFileType implements TextMateBackedFileType, allowing TextMate's file type detector to select its own
+          highlighter for files recognized by the bundle without referencing TextMate implementation classes here.
+        -->
+
+    </extensions>
+
+
+    <xi:include xmlns:xi="http://www.w3.org/2001/XInclude" href="/META-INF/baml-lsp4ij.xml"
+                xpointer="xpointer(/idea-plugin/*)"/>
+
+</idea-plugin>
