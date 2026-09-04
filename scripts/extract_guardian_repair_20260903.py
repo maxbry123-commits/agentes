@@ -9,7 +9,7 @@ LFS_POINTER = b"version https://git-lfs.github.com/spec/v1\n"
 MAX_GIT_BLOB = 100 * 1024 * 1024
 NONRETRYABLE = {
     "SOURCE_LFS_POINTER_GAP", "GIT_BLOB_LIMIT_GAP", "COLLISION_BLOCKED",
-    "UNSAFE_ZIP", "ZIP_DUPLICATE_PATH", "CRC_FAIL"
+    "UNSAFE_ZIP", "ZIP_DUPLICATE_PATH", "CRC_FAIL", "MISSING_REQUIRED_SOURCE_FILES"
 }
 
 def norm(s): return re.sub(r"[^a-z0-9]+", "", s.lower())
@@ -86,6 +86,44 @@ def groups(src):
 def target_for(cfg, parent, slug):
     return parent if cfg["layout"] == "parent" else Path(cfg["dst"]) / slug
 
+def expected_file_paths(parts, slug):
+    """Return destination-relative archive member paths after the same wrapper rule as extraction."""
+    members=[]
+    for z in sorted(parts, key=lambda p:p.name):
+        try:
+            with zipfile.ZipFile(z) as a:
+                for info in a.infolist():
+                    if info.is_dir():
+                        continue
+                    if not validate_info(info):
+                        return [], [f"UNSAFE_ZIP:{z}:{info.filename}"]
+                    q=safe_name(info.filename)
+                    if q is None:
+                        return [], [f"UNSAFE_ZIP:{z}:{info.filename}"]
+                    members.append(q)
+        except zipfile.BadZipFile as e:
+            return [], [f"CRC_FAIL:{z}:{e}"]
+    if not members:
+        return [], ["EMPTY_EXTRACTION"]
+    strip_wrapper = all(len(q.parts) > 1 and norm(q.parts[0]) == norm(slug) for q in members)
+    expected=[]
+    for q in members:
+        rel=PurePosixPath(*q.parts[1:]) if strip_wrapper else q
+        expected.append(rel.as_posix())
+    return sorted(set(expected)), []
+
+def completeness_state(target, parts, slug):
+    base=tree_state(target)
+    expected, source_errors=expected_file_paths(parts,slug)
+    missing=[]
+    if not source_errors:
+        for rel in expected:
+            p=target/PurePosixPath(rel)
+            if not p.is_file():
+                missing.append(rel)
+    complete=base["valid"] and not source_errors and not missing and bool(expected)
+    return {**base,"expected_files":len(expected),"missing_required":missing,"source_errors":source_errors,"complete":complete}
+
 def prior_blocked():
     blocked = {}
     base = Path("forensics/extraction")
@@ -158,12 +196,12 @@ def copy_no_overwrite(src, dst):
 
 def extract_one(cfg, parent, slug, parts):
     target = target_for(cfg,parent,slug)
-    existing = tree_state(target)
+    existing = completeness_state(target,parts,slug)
     mirror_path = Path(cfg["mirror"])/slug if cfg.get("mirror") else None
-    mirror_state = tree_state(mirror_path) if mirror_path else {"valid":True}
-    if existing["valid"] and mirror_state["valid"]:
+    mirror_state = completeness_state(mirror_path,parts,slug) if mirror_path else {"complete":True}
+    if existing["complete"] and mirror_state["complete"]:
         return {"slug":slug,"target":str(target),"status":"VERIFIED_EXISTING",
-                "files":existing["files"],"bytes":existing["bytes"],"tree_sha256":existing["tree_sha256"]}
+                "files":existing["files"],"expected_files":existing["expected_files"],"bytes":existing["bytes"],"tree_sha256":existing["tree_sha256"]}
     if existing["pointers"]:
         raise RuntimeError("SOURCE_LFS_POINTER_GAP:existing:"+",".join(existing["pointers"][:20]))
     if existing["oversized"]:
@@ -186,12 +224,16 @@ def extract_one(cfg, parent, slug, parts):
         mirrors=[]
         if mirror_path:
             mirrors.append({"path":str(mirror_path),"copied":copy_no_overwrite(payload,mirror_path)})
-        final=tree_state(target)
-        if not final["valid"]:
+        final=completeness_state(target,parts,slug)
+        if final["source_errors"]:
+            raise RuntimeError(final["source_errors"][0])
+        if final["missing_required"]:
+            raise RuntimeError("MISSING_REQUIRED_SOURCE_FILES:"+",".join(final["missing_required"][:20]))
+        if not final["complete"]:
             raise RuntimeError("DESTINATION_VALIDATION_GAP")
         return {"slug":slug,"target":str(target),"status":"EXTRACTED_VERIFIED",
                 "parts":len(parts),"part_sha256":part_hashes,"copied":copied,"mirrors":mirrors,
-                "files":final["files"],"bytes":final["bytes"],"tree_sha256":final["tree_sha256"]}
+                "files":final["files"],"expected_files":final["expected_files"],"bytes":final["bytes"],"tree_sha256":final["tree_sha256"]}
 
 def main():
     ap=argparse.ArgumentParser()
@@ -204,12 +246,12 @@ def main():
     for cfg in MAPS:
         for (parent,slug),parts in groups(Path(cfg["src"])).items():
             target=target_for(cfg,parent,slug)
-            state=tree_state(target)
+            state=completeness_state(target,parts,slug)
             mirror_path=Path(cfg["mirror"])/slug if cfg.get("mirror") else None
-            mirror_ok=not mirror_path or tree_state(mirror_path)["valid"]
+            mirror_ok=not mirror_path or completeness_state(mirror_path,parts,slug)["complete"]
             observed.append((cfg,parent,slug,parts,target))
-            if not state["valid"] or not mirror_ok:
-                remaining.append({"slug":slug,"target":str(target),"mirror":cfg.get("mirror")})
+            if not state["complete"] or not mirror_ok:
+                remaining.append({"slug":slug,"target":str(target),"mirror":cfg.get("mirror"),"missing_required":state["missing_required"][:20],"source_errors":state["source_errors"][:5]})
                 if slug not in blocked:
                     candidates.append((cfg,parent,slug,parts,target))
 
@@ -232,11 +274,11 @@ def main():
 
     remaining=[]; retryable=[]; blocked_rows=[]
     for cfg,parent,slug,parts,target in observed:
-        state=tree_state(target)
+        state=completeness_state(target,parts,slug)
         mirror_path=Path(cfg["mirror"])/slug if cfg.get("mirror") else None
-        mirror_ok=not mirror_path or tree_state(mirror_path)["valid"]
-        if not state["valid"] or not mirror_ok:
-            row={"slug":slug,"target":str(target),"mirror":cfg.get("mirror")}
+        mirror_ok=not mirror_path or completeness_state(mirror_path,parts,slug)["complete"]
+        if not state["complete"] or not mirror_ok:
+            row={"slug":slug,"target":str(target),"mirror":cfg.get("mirror"),"missing_required":state["missing_required"][:20],"missing_required_count":len(state["missing_required"]),"source_errors":state["source_errors"][:5]}
             remaining.append(row)
             if slug in blocked:
                 blocked_rows.append({**row,**blocked[slug]})
@@ -244,7 +286,7 @@ def main():
                 retryable.append(row)
 
     report={
-      "schema":"yaiwes.extraction.guardian.v2",
+      "schema":"yaiwes.extraction.guardian.v3",
       "run_id":os.getenv("GITHUB_RUN_ID","local"),
       "archive_groups":len(observed),
       "processed":results,
