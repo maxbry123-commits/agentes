@@ -148,7 +148,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git add -A --sparse -- 'Core kernel Yaiwes/Componentes recuperados A' 'Core kernel Yaiwes/Componentes recuperados B' 'Documentos proyectos Yaiwes/Evidencias extracción histórica'
+          mapfile -t selected_roots < <(python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/selection.json'))
+          for p in sorted({r['root'] for r in d.get('selected',[]) if r.get('root')}): print(p)
+          PY
+          )
+          for p in "${selected_roots[@]}" 'Documentos proyectos Yaiwes/Evidencias extracción histórica'; do
+            git add -A --sparse -- "$p"
+          done
           python3 - <<'PY'
           import pathlib,subprocess,sys
           marker=b'version https://git-lfs.github.com/spec/v1\n'; bad=[]
