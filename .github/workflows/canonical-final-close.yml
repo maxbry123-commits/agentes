@@ -15,21 +15,28 @@ jobs:
   repair:
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
         shard: [0, 1, 2, 3]
     runs-on: ubuntu-latest
-    timeout-minutes: 480
+    timeout-minutes: 360
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: main
-          fetch-depth: 0
+          fetch-depth: 1
           lfs: false
           filter: blob:none
           sparse-checkout-cone-mode: false
           sparse-checkout: |
             /Core kernel Yaiwes/scripts/
             /Documentos proyectos Yaiwes/Evidencias extracción histórica/
+      - name: Refresh main before shard ${{ matrix.shard }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --depth=1 origin main
+          git reset --hard origin/main
       - name: Select unresolved destinations for shard ${{ matrix.shard }}
         shell: bash
         run: |
@@ -45,7 +52,38 @@ jobs:
           git config --local --unset-all filter.lfs.process || true
           git config --local filter.lfs.required false
           python3 'Core kernel Yaiwes/scripts/canonical_final_close_shard_20260904.py' --shard-index '${{ matrix.shard }}' --shard-count 4 --repair
-      - name: Publish shard ${{ matrix.shard }}
+      - name: Convert raw pointer evidence to metadata only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib,json,pathlib,re
+          base=pathlib.Path('Documentos proyectos Yaiwes/Evidencias extracción histórica/LFS pointer evidence')
+          marker=b'version https://git-lfs.github.com/spec/v1\n'
+          converted=0
+          if base.exists():
+              for p in sorted(x for x in base.rglob('*') if x.is_file()):
+                  data=p.read_bytes()
+                  if not data.startswith(marker):
+                      continue
+                  text=data.decode('utf-8','replace')
+                  oid=re.search(r'^oid sha256:([0-9a-f]{64})$',text,re.M)
+                  size=re.search(r'^size ([0-9]+)$',text,re.M)
+                  doc={
+                      'schema':'yaiwes.lfs-pointer-evidence-metadata.v1',
+                      'original_evidence_path':p.as_posix(),
+                      'pointer_sha256':hashlib.sha256(data).hexdigest(),
+                      'oid_sha256':oid.group(1) if oid else None,
+                      'declared_bytes':int(size.group(1)) if size else None,
+                      'raw_pointer_not_versioned':True,
+                  }
+                  q=p.with_name(p.name+'.metadata.json')
+                  q.write_text(json.dumps(doc,indent=2,ensure_ascii=False)+'\n')
+                  p.unlink()
+                  converted+=1
+          print(f'converted_raw_pointer_evidence={converted}')
+          PY
+      - name: Stage exact bytes and enforce NO-LFS index
         shell: bash
         run: |
           set -euo pipefail
@@ -53,24 +91,66 @@ jobs:
           for p in 'Core kernel Yaiwes/Componentes recuperados A' 'Core kernel Yaiwes/Componentes recuperados B'; do
             if [ -d "$p" ]; then git add -A --sparse -- "$p"; fi
           done
+          python3 - <<'PY'
+          import pathlib,subprocess,sys
+          marker=b'version https://git-lfs.github.com/spec/v1\n'
+          limit=100*1024*1024
+          raw=subprocess.check_output(['git','diff','--cached','--name-only','-z','--diff-filter=ACMRT'])
+          paths=[x.decode('utf-8','surrogateescape') for x in raw.split(b'\0') if x]
+          for s in paths:
+              p=pathlib.Path(s)
+              if not p.is_file():
+                  continue
+              n=p.stat().st_size
+              with p.open('rb') as f: head=f.read(1024)
+              if head.startswith(marker):
+                  print('STAGED_LFS_POINTER_GAP_WORKTREE',s); sys.exit(73)
+              if n>=limit:
+                  print('GIT_BLOB_LIMIT_GAP',s,n); sys.exit(74)
+              row=subprocess.check_output(['git','ls-files','-s','--',s],text=True).strip()
+              if not row:
+                  print('INDEX_ENTRY_GAP',s); sys.exit(75)
+              mode=row.split()[0]
+              blob=subprocess.check_output(['git','hash-object','-w','--no-filters','--',s],text=True).strip()
+              subprocess.check_call(['git','update-index','--add','--cacheinfo',f'{mode},{blob},{s}'])
+          raw=subprocess.check_output(['git','diff','--cached','--name-only','-z','--diff-filter=ACMRT'])
+          for b in raw.split(b'\0'):
+              if not b: continue
+              s=b.decode('utf-8','surrogateescape')
+              n=int(subprocess.check_output(['git','cat-file','-s',':'+s],text=True).strip())
+              if n>=limit:
+                  print('STAGED_GIT_BLOB_LIMIT_GAP',s,n); sys.exit(76)
+              if n<=1024:
+                  data=subprocess.check_output(['git','cat-file','blob',':'+s])
+                  if data.startswith(marker):
+                      print('STAGED_LFS_POINTER_GAP_INDEX',s); sys.exit(77)
+          print(f'STAGED_NO_LFS_PASS files={len(paths)}')
+          PY
+      - name: Publish shard ${{ matrix.shard }} from exact remote base
+        shell: bash
+        run: |
+          set -euo pipefail
           git diff --cached --quiet && exit 0
+          base="$(git rev-parse HEAD)"
+          git fetch --depth=1 origin main
+          remote="$(git rev-parse origin/main)"
+          if [ "$remote" != "$base" ]; then
+            echo "REMOTE_MOVED_REBUILD_REQUIRED base=$base remote=$remote"
+            exit 42
+          fi
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git commit -m "fix(extraction): final close shard ${{ matrix.shard }} [run ${GITHUB_RUN_ID}]"
-          for a in 1 2 3 4 5 6 7 8; do
-            if git fetch origin main && git rebase --autostash origin/main && git push --no-verify origin HEAD:main; then exit 0; fi
-            test "$a" -lt 8 || exit 41
-            sleep $((a*6))
-          done
+          git push --no-verify origin HEAD:main
   verify:
     needs: repair
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: main
-          fetch-depth: 0
+          fetch-depth: 1
           lfs: false
           filter: blob:none
           sparse-checkout-cone-mode: false
@@ -86,13 +166,12 @@ jobs:
           set -euo pipefail
           git add -A --sparse -- 'Documentos proyectos Yaiwes/Evidencias extracción histórica'
           if ! git diff --cached --quiet; then
+            base="$(git rev-parse HEAD)"
+            git fetch --depth=1 origin main
+            [ "$(git rev-parse origin/main)" = "$base" ] || { echo REMOTE_MOVED_VERIFY_REBUILD_REQUIRED; exit 42; }
             git config user.name github-actions[bot]
             git config user.email 41898282+github-actions[bot]@users.noreply.github.com
             git commit -m "audit(extraction): VERIFIED_CLOSED [run ${GITHUB_RUN_ID}]"
-            for a in 1 2 3 4 5; do
-              if git fetch origin main && git rebase --autostash origin/main && git push --no-verify origin HEAD:main; then break; fi
-              test "$a" -lt 5 || exit 41
-              sleep $((a*8))
-            done
+            git push --no-verify origin HEAD:main
           fi
           echo VERIFIED_CLOSED
