@@ -1,0 +1,70 @@
+#### PII DETECTION RAILS ####
+
+# INPUT RAILS
+
+define subflow detect pii on input
+  """Check if the user input has PII."""
+  $response = execute detect_pii(source="input", text=$user_message)
+
+  if $response.is_blocked
+    bot inform answer unknown
+    stop
+
+
+# INPUT RAILS
+
+define subflow detect pii on output
+  """Check if the bot output has PII."""
+  $response = execute detect_pii(source="output", text=$bot_message)
+
+  if $response.is_blocked
+    bot inform answer unknown
+    stop
+
+
+# RETRIVAL RAILS
+
+define subflow detect pii on retrieval
+  """Check if the relevant chunks from the knowledge base have any PII."""
+  $response = execute detect_pii(source="retrieval", text=$relevant_chunks)
+
+  if $response.is_blocked
+    $block_message = $config.bot_messages["inform answer unknown"][0]
+    $skip_output_rails = True
+    create event BotMessage(text=$block_message)
+    stop
+
+
+#######################################################
+
+
+#### PII MASKING RAILS ####
+
+# INPUT RAILS
+
+define subflow mask pii on input
+  """Mask any detected PII in the user input."""
+  $response = execute mask_pii(source="input", text=$user_message)
+
+  if $response.is_transform
+    $user_message = $response.transform_text["user_message"]
+
+
+# OUTPUT RAILS
+
+define subflow mask pii on output
+  """Mask any detected PII in the bot output."""
+  $response = execute mask_pii(source="output", text=$bot_message)
+
+  if $response.is_transform
+    $bot_message = $response.transform_text["bot_message"]
+
+
+# RETRIVAL RAILS
+
+define subflow mask pii on retrieval
+  """Mask any detected PII in the relevant chunks from the knowledge base."""
+  $response = execute mask_pii(source="retrieval", text=$relevant_chunks)
+
+  if $response.is_transform
+    $relevant_chunks = $response.transform_text["relevant_chunks"]

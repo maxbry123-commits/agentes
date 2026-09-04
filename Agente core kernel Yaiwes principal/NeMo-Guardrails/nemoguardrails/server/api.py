@@ -1,0 +1,1011 @@
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import asyncio
+import contextvars
+import importlib.util
+import json
+import logging
+import os
+import re
+import time
+import uuid
+from contextlib import asynccontextmanager
+from typing import Any, AsyncIterator, Callable, List, Literal, Optional, Union
+
+import httpx
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, ValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.middleware.exceptions import ExceptionMiddleware
+from starlette.responses import JSONResponse, RedirectResponse, StreamingResponse
+
+from nemoguardrails import Guardrails, LLMRails, RailsConfig, utils
+from nemoguardrails.exceptions import (
+    InvalidModelConfigurationError,
+    InvalidStateError,
+    LLMCallException,
+    NonStreamingWorkQueueFullError,
+    RailTypeNotConfiguredError,
+    StreamingCapacityExceededError,
+    StreamingNotSupportedError,
+)
+from nemoguardrails.guardrails.iorails import IORails
+from nemoguardrails.guardrails.model_engine import ModelEngineError
+from nemoguardrails.http.errors import HTTPClientError
+from nemoguardrails.llm.call import _prepend_think_tags
+from nemoguardrails.llm.clients._errors import build_error_payload, normalize_error_status
+from nemoguardrails.llm.models.initializer import ModelInitializationError
+from nemoguardrails.rails.llm.config import Model
+from nemoguardrails.rails.llm.options import GenerationResponse, RailStatus
+from nemoguardrails.server.datastore.datastore import DataStore
+from nemoguardrails.server.exception_handlers import (
+    bad_request_error_handler,
+    http_exception_handler,
+    internal_error_handler,
+    invalid_state_error_handler,
+    llm_call_exception_handler,
+    model_initialization_error_handler,
+    queue_full_error_handler,
+    rail_type_not_configured_error_handler,
+    streaming_capacity_error_handler,
+    validation_error_handler,
+)
+from nemoguardrails.server.schemas.openai import (
+    GuardrailCheckRequest,
+    GuardrailCheckResponse,
+    GuardrailsChatCompletion,
+    GuardrailsChatCompletionRequest,
+    OpenAIModelsList,
+)
+from nemoguardrails.server.schemas.utils import (
+    bot_message_to_chat_completion,
+    extract_bot_message_from_response,
+    fetch_models,
+    format_streaming_chunk_as_sse,
+    generation_response_to_chat_completion,
+    normalize_tool_calls_openai,
+    resolve_tool_calls,
+    warn_if_thread_history_invalid_for_tool_use,
+)
+
+try:
+    from chainlit.utils import mount_chainlit as _mount_chainlit
+except ImportError:
+    mount_chainlit: Optional[Callable[..., Any]] = None
+else:
+    mount_chainlit = _mount_chainlit
+
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger(__name__)
+
+
+class GuardrailsApp(FastAPI):
+    """Custom FastAPI subclass with additional attributes for Guardrails server."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Initialize custom attributes
+        self.default_config_id: Optional[str] = None
+        self.rails_config_path: str = ""
+        self.disable_chat_ui: bool = os.getenv("NEMO_GUARDRAILS_DISABLE_CHAT_UI", "false").lower() == "true"
+        self.auto_reload: bool = False
+        self.stop_signal: bool = False
+        self.single_config_mode: bool = False
+        self.single_config_id: Optional[str] = None
+        self.loop: Optional[asyncio.AbstractEventLoop] = None
+        self.task: Optional[asyncio.Future] = None
+
+
+# The list of registered loggers. Can be used to send logs to various
+# backends and storage engines.
+registered_loggers: List[Callable] = []
+
+
+api_description = """Guardrails Server API."""
+
+# The headers for each request
+api_request_headers: contextvars.ContextVar = contextvars.ContextVar("headers")
+
+# The datastore that the Server should use.
+# This is currently used only for storing threads.
+# TODO: refactor to wrap the FastAPI instance inside a RailsServer class
+#  and get rid of all the global attributes.
+datastore: Optional[DataStore] = None
+
+
+@asynccontextmanager
+async def lifespan(app: GuardrailsApp):
+    # Startup logic here
+    """Register any additional challenges, if available at startup."""
+    from nemoguardrails.telemetry import DeploymentTypeEnum, set_deployment_type
+
+    set_deployment_type(DeploymentTypeEnum.API.value)
+
+    challenges_files = os.path.join(app.rails_config_path, "challenges.json")
+
+    if os.path.exists(challenges_files):
+        with open(challenges_files) as f:
+            register_challenges(json.load(f))
+
+    # If there is a `config.yml` in the root `app.rails_config_path` (or in
+    # a `config/` subdirectory), set the app to single config mode.
+    if (
+        os.path.exists(os.path.join(app.rails_config_path, "config.yml"))
+        or os.path.exists(os.path.join(app.rails_config_path, "config.yaml"))
+        or os.path.exists(os.path.join(app.rails_config_path, "config", "config.yml"))
+        or os.path.exists(os.path.join(app.rails_config_path, "config", "config.yaml"))
+    ):
+        app.single_config_mode = True
+        app.single_config_id = os.path.basename(app.rails_config_path)
+    else:
+        # If we're not in single-config mode, we check if we have a config.py for the
+        # server configuration.
+        filepath = os.path.join(app.rails_config_path, "config.py")
+        if os.path.exists(filepath):
+            filename = os.path.basename(filepath)
+            spec = importlib.util.spec_from_file_location(filename, filepath)
+            if spec is not None and spec.loader is not None:
+                config_module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(config_module)
+            else:
+                config_module = None
+
+            # If there is an `init` function, we call it with the reference to the app.
+            if config_module is not None and hasattr(config_module, "init"):
+                config_module.init(app)
+
+    if app.auto_reload:
+        app.loop = asyncio.get_running_loop()
+        # Store the future directly as task
+        app.task = app.loop.run_in_executor(None, start_auto_reload_monitoring)
+
+    yield
+
+    # Shutdown logic here
+    if app.auto_reload:
+        app.stop_signal = True
+        if hasattr(app, "task") and app.task is not None:
+            app.task.cancel()
+        log.info("Shutting down file observer")
+    else:
+        pass
+
+
+app = GuardrailsApp(
+    title="Guardrails Server API",
+    description=api_description,
+    version="0.1.0",
+    license_info={"name": "Apache License, Version 2.0"},
+    lifespan=lifespan,
+)
+
+_EXCEPTION_HANDLERS = (
+    # The streaming limit is a semaphore rather than a queue, so it is not a
+    # QueueFull at all and carries its own handler.
+    (StreamingCapacityExceededError, streaming_capacity_error_handler),
+    (NonStreamingWorkQueueFullError, queue_full_error_handler),
+    # Any QueueFull raised outside the paths above still reads as overload.
+    (asyncio.QueueFull, queue_full_error_handler),
+    (LLMCallException, llm_call_exception_handler),
+    (ModelEngineError, llm_call_exception_handler),
+    (HTTPClientError, llm_call_exception_handler),
+    (ModelInitializationError, model_initialization_error_handler),
+    (StreamingNotSupportedError, bad_request_error_handler),
+    (RailTypeNotConfiguredError, rail_type_not_configured_error_handler),
+    (InvalidStateError, invalid_state_error_handler),
+    (RequestValidationError, validation_error_handler),
+    (StarletteHTTPException, http_exception_handler),
+    (Exception, internal_error_handler),
+)
+for _exc_type, _handler in _EXCEPTION_HANDLERS:
+    # Handlers are typed with their specific exception; Starlette's stub expects
+    # (Request, Exception), so ty flags the narrower signature as a false positive.
+    app.add_exception_handler(_exc_type, _handler)  # ty: ignore[invalid-argument-type]
+
+app.add_middleware(ExceptionMiddleware, handlers={Exception: internal_error_handler})
+
+ENABLE_CORS = os.getenv("NEMO_GUARDRAILS_SERVER_ENABLE_CORS", "false").lower() == "true"
+ALLOWED_ORIGINS = os.getenv("NEMO_GUARDRAILS_SERVER_ALLOWED_ORIGINS", "*")
+
+
+def _add_cors_middleware(application: FastAPI, origins: List[str]) -> None:
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+        expose_headers=["Retry-After"],
+    )
+
+
+if ENABLE_CORS:
+    # Split origins by comma
+    origins = ALLOWED_ORIGINS.split(",")
+
+    log.info(f"CORS enabled with the following origins: {origins}")
+
+    _add_cors_middleware(app, origins)
+
+app.default_config_id = None
+
+# By default, we use the rails in the examples folder
+app.rails_config_path = utils.get_examples_data_path("bots")
+
+# auto reload flag
+app.auto_reload = False
+
+# stop signal for observer
+app.stop_signal = False
+
+# Whether the server is pointed to a directory containing a single config.
+app.single_config_mode = False
+app.single_config_id = None
+
+
+@app.get(
+    "/v1/rails/configs",
+    summary="Get List of available rails configurations.",
+)
+async def get_rails_configs():
+    """Returns the list of available rails configurations."""
+
+    # In single-config mode, we return a single config.
+    if app.single_config_mode:
+        # And we use the name of the root folder as the id of the config.
+        return [{"id": app.single_config_id}]
+
+    # We extract all folder names as config names
+    config_ids = [
+        f
+        for f in os.listdir(app.rails_config_path)
+        if os.path.isdir(os.path.join(app.rails_config_path, f))
+        and f[0] != "."
+        and f[0] != "_"
+        and _has_config_file(os.path.join(app.rails_config_path, f))
+    ]
+
+    return [{"id": config_id} for config_id in config_ids]
+
+
+@app.get(
+    "/v1/health",
+    summary="Liveness health check.",
+    tags=["Health"],
+)
+@app.get(
+    "/healthz",
+    summary="Liveness health check.",
+    tags=["Health"],
+)
+async def health():
+    """Return HTTP 200 while the server process is running and able to serve requests."""
+    return JSONResponse(content={"status": "pass"}, media_type="application/health+json")
+
+
+@app.get(
+    "/v1/models",
+    response_model=OpenAIModelsList,
+    summary="Get list of available models.",
+)
+async def list_models(request: Request):
+    """Return the list of models available from the configured provider."""
+
+    engine = os.environ.get("MAIN_MODEL_ENGINE", "openai")
+
+    # Forward auth headers from the incoming request.
+    request_headers: dict[str, str] = {}
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        request_headers["Authorization"] = auth_header
+
+    try:
+        # Fetch the list of models from the configured provider
+        models = await fetch_models(engine, request_headers)
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+    except httpx.HTTPStatusError as exc:
+        log.warning("Error fetching models from upstream: HTTP %s", exc.response.status_code)
+        raise HTTPException(
+            status_code=normalize_error_status(exc.response.status_code),
+            detail=f"Error fetching models from upstream (HTTP {exc.response.status_code})",
+        )
+    except httpx.RequestError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Error connecting to upstream model server: {str(exc)}",
+        )
+
+    return OpenAIModelsList(data=models)
+
+
+# One instance of LLMRails per config id
+llm_rails_instances: dict[str, LLMRails] = {}
+llm_rails_events_history_cache: dict[str, dict] = {}
+
+
+def _has_config_file(path: str) -> bool:
+    """Check if a directory (or its 'config' subdirectory) contains a config.yml/yaml."""
+    for candidate in [path, os.path.join(path, "config")]:
+        if os.path.exists(os.path.join(candidate, "config.yml")) or os.path.exists(
+            os.path.join(candidate, "config.yaml")
+        ):
+            return True
+    return False
+
+
+def _generate_cache_key(config_ids: List[str], model_name: Optional[str] = None) -> str:
+    """Generates a cache key for the given config ids and model name."""
+    key = "-".join(config_ids)
+    if model_name:
+        key = f"{key}:{model_name}"
+    return key
+
+
+def _update_models_in_config(config: RailsConfig, main_model: Model) -> RailsConfig:
+    """Update the main model in the RailsConfig.
+
+    If a model with type="main" exists, it replaces it. Otherwise, adds it.
+    """
+    models = config.models.copy()
+    main_model_index = next(
+        (index for index, model in enumerate(models) if model.type == main_model.type),
+        None,
+    )
+
+    if main_model_index is not None:
+        models[main_model_index] = main_model
+    else:
+        models.append(main_model)
+
+    return config.model_copy(update={"models": models})
+
+
+def _configured_main_model(config: RailsConfig) -> Optional[Model]:
+    """Return the model the config declares as "main", if it declares one."""
+    for model in config.models:
+        if model.type == "main":
+            return model
+    return None
+
+
+def _resolve_main_model_engine(configured_model: Optional[Model]) -> str:
+    """Resolve the engine for an injected main model. Priority order:
+    1. MAIN_MODEL_ENGINE environment variable (warns if mismatch with `configured_model.engine`)
+    2. `configured_model.engine` if configured_model is provided
+    3. Fallback to `openai`
+    """
+    engine = os.environ.get("MAIN_MODEL_ENGINE")
+
+    if engine:
+        if configured_model is not None and configured_model.engine != engine:
+            log.warning(
+                "MAIN_MODEL_ENGINE is set to '%s', overriding the configured main model engine '%s'.",
+                engine,
+                configured_model.engine,
+            )
+        return engine
+
+    if configured_model is not None:
+        return configured_model.engine
+
+    log.warning("MAIN_MODEL_ENGINE not set and no main model is configured, defaulting to 'openai'. ")
+    return "openai"
+
+
+def _resolve_main_model_parameters(configured_model: Optional[Model]) -> dict[str, Any]:
+    """Resolve the parameters for an injected main model, preferring MAIN_MODEL_BASE_URL."""
+    parameters = dict(configured_model.parameters) if configured_model is not None else {}
+
+    base_url = os.environ.get("MAIN_MODEL_BASE_URL")
+    if base_url:
+        parameters["base_url"] = base_url
+
+    return parameters
+
+
+def _validated_main_model(model_fields: dict[str, Any]) -> Model:
+    """Build a main model from its fields, reporting a rejected field as a configuration error."""
+    try:
+        return Model.model_validate(model_fields)
+    except ValidationError as exc:
+        raise InvalidModelConfigurationError(exc.errors()[0]["msg"]) from exc
+
+
+def _build_main_model(model_name: str, configured_model: Optional[Model]) -> Model:
+    """Build the main model for a request, on top of the configured one when there is one."""
+    engine = _resolve_main_model_engine(configured_model)
+    parameters = _resolve_main_model_parameters(configured_model)
+
+    # Validating a field mapping rather than copying the configured model keeps the two
+    # cases on one path: model_copy(update=...) skips validation, so a request model name
+    # that a fresh Model would reject used to slip through whenever a main model existed.
+    configured_fields = configured_model.model_dump() if configured_model is not None else {"type": "main"}
+
+    return _validated_main_model({**configured_fields, "model": model_name, "engine": engine, "parameters": parameters})
+
+
+def _inject_model(config: RailsConfig, model_name: str) -> RailsConfig:
+    """Inject the request's model into a RailsConfig, keeping the configured main model's fields."""
+    main_model = _build_main_model(model_name, _configured_main_model(config))
+    return _update_models_in_config(config, main_model)
+
+
+async def _get_rails(config_ids: List[str], model_name: Optional[str] = None) -> LLMRails:
+    """Returns the rails instance for the given config id and model.
+
+    Args:
+        config_ids: List of configuration IDs to load
+        model_name: The model name from the request (overrides config's main model)
+    """
+    configs_cache_key = _generate_cache_key(config_ids, model_name)
+
+    if configs_cache_key in llm_rails_instances:
+        return llm_rails_instances[configs_cache_key]
+
+    # In single-config mode, we only load the main config directory
+    if app.single_config_mode:
+        if config_ids != [app.single_config_id]:
+            raise ValueError(f"Invalid configuration ids: {config_ids}")
+
+        # We set this to an empty string so tha when joined with the root path, we
+        # get the same thing.
+        config_ids = [""]
+
+    full_llm_rails_config: Optional[RailsConfig] = None
+
+    for config_id in config_ids:
+        base_path = os.path.abspath(app.rails_config_path)
+        full_path = os.path.normpath(os.path.join(base_path, config_id))
+
+        # @NOTE: (Rdinu) Reject config_ids that contain dangerous characters or sequences
+        if re.search(r"[\\/]|(\.\.)", config_id):
+            raise ValueError("Invalid config_id.")
+
+        if os.path.commonprefix([full_path, base_path]) != base_path:
+            raise ValueError("Access to the specified path is not allowed.")
+
+        rails_config = RailsConfig.from_path(full_path)
+
+        if not full_llm_rails_config:
+            full_llm_rails_config = rails_config
+        else:
+            full_llm_rails_config += rails_config
+
+    if full_llm_rails_config is None:
+        raise ValueError("No valid rails configuration found.")
+
+    if model_name:
+        full_llm_rails_config = _inject_model(full_llm_rails_config, model_name)
+
+    llm_rails = LLMRails(config=full_llm_rails_config, verbose=True)
+    llm_rails_instances[configs_cache_key] = llm_rails
+
+    # If we have a cache for the events, we restore it
+    llm_rails.events_history_cache = llm_rails_events_history_cache.get(configs_cache_key, {})
+
+    return llm_rails
+
+
+class ChunkErrorMetadata(BaseModel):
+    message: str
+    # Only the internal stream markers count as a terminal error frame; see
+    # ChunkError below.
+    type: Literal["generation_error", "downstream_error", "guardrails_violation"]
+    param: Optional[str] = None
+    code: Union[str, int, None] = None
+
+
+class ChunkError(BaseModel):
+    """A terminal error frame pushed into the stream by the guardrails runtime.
+
+    ``type`` is restricted to the internal markers so that model output which
+    merely looks like an OpenAI error object is streamed on as ordinary content
+    rather than ending the stream. Without output rails nothing else inspects a
+    chunk before it reaches ``process_chunk``, so this is the last gate.
+    """
+
+    error: ChunkErrorMetadata
+
+
+async def _prepend_stream_chunk(
+    first_chunk: Union[str, dict],
+    stream_iterator: AsyncIterator[Union[str, dict]],
+) -> AsyncIterator[Union[str, dict]]:
+    yield first_chunk
+    async for chunk in stream_iterator:
+        yield chunk
+
+
+async def _format_streaming_response(
+    stream_iterator: AsyncIterator[Union[str, dict]], model_name: str
+) -> AsyncIterator[str]:
+    """
+    Format streaming chunks from LLMRails.stream_async() as SSE events.
+
+    Args:
+        stream_iterator: AsyncIterator from stream_async() that yields str or dict chunks
+        model_name: The model name to include in the chunks
+
+    Yields:
+        SSE-formatted strings (data: {...}\n\n)
+    """
+    # Use "unknown" as default if model_name is None
+    model = model_name or "unknown"
+    chunk_id = f"chatcmpl-{uuid.uuid4()}"
+
+    try:
+        async for chunk in stream_iterator:
+            # Format the chunk as SSE using the utility function
+            processed_chunk = process_chunk(chunk)
+            if isinstance(processed_chunk, ChunkError):
+                # Yield the error and stop streaming
+                yield f"data: {json.dumps(processed_chunk.model_dump())}\n\n"
+                return
+            else:
+                yield format_streaming_chunk_as_sse(processed_chunk, model, chunk_id)
+
+    finally:
+        # Always send [DONE] event when stream ends
+        yield "data: [DONE]\n\n"
+
+
+def process_chunk(chunk: Any) -> Union[Any, ChunkError]:
+    """
+    Processes a single chunk from the stream.
+
+    Args:
+        chunk: A single chunk from the stream (can be str, dict, or other type).
+        model: The model name (not used in processing but kept for signature consistency).
+
+    Returns:
+        Union[Any, StreamingError]: StreamingError instance for errors or the original chunk.
+    """
+    # Convert chunk to string for JSON parsing if needed
+    chunk_str = chunk if isinstance(chunk, str) else json.dumps(chunk) if isinstance(chunk, dict) else str(chunk)
+
+    try:
+        validated_data = ChunkError.model_validate_json(chunk_str)
+        return validated_data  # Return the StreamingError instance directly
+    except ValidationError:
+        # Not an error, just a normal token
+        pass
+    except json.JSONDecodeError:
+        # Invalid JSON format, treat as normal token
+        pass
+    except Exception as e:
+        log.warning(
+            f"Unexpected error processing stream chunk: {type(e).__name__}: {str(e)}",
+            extra={"chunk": chunk_str},
+        )
+
+    # Return the original chunk
+    return chunk
+
+
+def _inline_reasoning_as_think_tags(res: GenerationResponse) -> GenerationResponse:
+    """Move `reasoning_content` into the assistant message as a <think> prefix and clear the field."""
+    if not res.reasoning_content:
+        return res
+    if not isinstance(res.response, list):
+        return res
+
+    inlined = False
+    for message in res.response:
+        if message.get("role") != "assistant":
+            continue
+        content = message.get("content")
+        if not isinstance(content, str):
+            continue
+        # IORails only strips inline tags when the provider gave no structured reasoning
+        # (`response.reasoning or _extract_and_remove_think_tags(...)`), so a provider that
+        # sends both leaves a block already in the content; prepending would duplicate it.
+        # TODO: this pattern is copied from `_extract_and_remove_think_tags` in
+        # nemoguardrails/llm/call.py; factor the two onto one shared matcher.
+        if re.search(r"<think>(.*?)</think>", content, re.DOTALL):
+            continue
+        message["content"] = _prepend_think_tags(content, res.reasoning_content)
+        inlined = True
+
+    # A tool-call-only message has `content=None`, so there is nowhere to put the
+    # trace; keep the field rather than dropping the reasoning on the floor.
+    if inlined:
+        res.reasoning_content = None
+    return res
+
+
+@app.post(
+    "/v1/chat/completions",
+    response_model=GuardrailsChatCompletion,
+    response_model_exclude_none=True,
+)
+async def chat_completion(body: GuardrailsChatCompletionRequest, request: Request):
+    """Chat completion for the provided conversation.
+
+    TODO: add support for explicit state object.
+    """
+    log.info("Got request for config %s", body.guardrails.config_id)
+    for logger in registered_loggers:
+        asyncio.get_event_loop().create_task(
+            logger({"endpoint": "/v1/chat/completions", "body": body.model_dump_json()})
+        )
+
+    # Save the request headers in a context variable.
+    api_request_headers.set(request.headers)
+
+    # Use Request config_ids if set, otherwise use the FastAPI default config.
+    # If neither is available we can't generate any completions as we have no config_id
+    config_ids = body.guardrails.config_ids
+
+    if not config_ids:
+        if app.default_config_id:
+            config_ids = [app.default_config_id]
+        else:
+            raise HTTPException(
+                status_code=422,
+                detail="No guardrails config_id provided and server has no default configuration",
+            )
+
+    try:
+        llm_rails = await _get_rails(config_ids, model_name=body.model)
+
+    except ValueError as ex:
+        log.exception(ex)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Could not load the requested guardrails configuration: {config_ids}",
+        )
+
+    if body.guardrails.thread_id and llm_rails.config.colang_version != "1.0":
+        raise HTTPException(
+            status_code=422,
+            detail="thread_id message-history replay is not supported for Colang 2.0.",
+        )
+
+    if (body.tools or body.tool_choice is not None or body.parallel_tool_calls is not None) and (
+        llm_rails.config.passthrough is not True or body.stream
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "The 'tools', 'tool_choice', and 'parallel_tool_calls' parameters are only "
+                "supported for non-streaming requests when the guardrails configuration has 'passthrough: true'."
+            ),
+        )
+
+    messages = body.messages or []
+    if body.guardrails.context:
+        messages.insert(0, {"role": "context", "content": body.guardrails.context})
+
+    # If we have a `thread_id` specified, we need to look up the thread
+    datastore_key = None
+
+    if body.guardrails.thread_id:
+        if datastore is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Conversation threads are not enabled on this server.",
+            )
+
+        # Fetch the existing thread messages. For easier management, we prepend
+        # the string `thread-` to all thread keys.
+        datastore_key = "thread-" + body.guardrails.thread_id
+        thread_messages = json.loads(await datastore.get(datastore_key) or "[]")
+        warn_if_thread_history_invalid_for_tool_use(thread_messages)
+
+        # And prepend them.
+        messages = thread_messages + messages
+
+    generation_options = body.guardrails.options
+
+    # Initialize llm_params if not already set
+    if generation_options.llm_params is None:
+        generation_options.llm_params = {}
+
+    # Set OpenAI-compatible parameters in llm_params
+    if body.max_tokens:
+        generation_options.llm_params["max_tokens"] = body.max_tokens
+    if body.temperature is not None:
+        generation_options.llm_params["temperature"] = body.temperature
+    if body.top_p is not None:
+        generation_options.llm_params["top_p"] = body.top_p
+    if body.stop:
+        generation_options.llm_params["stop"] = body.stop
+    if body.presence_penalty is not None:
+        generation_options.llm_params["presence_penalty"] = body.presence_penalty
+    if body.frequency_penalty is not None:
+        generation_options.llm_params["frequency_penalty"] = body.frequency_penalty
+    if body.tools is not None:
+        generation_options.llm_params["tools"] = body.tools
+    if body.tool_choice is not None:
+        generation_options.llm_params["tool_choice"] = body.tool_choice
+    if body.parallel_tool_calls is not None:
+        generation_options.llm_params["parallel_tool_calls"] = body.parallel_tool_calls
+
+    if body.stream:
+        # Use stream_async for streaming with output rails support
+        stream_iterator = llm_rails.stream_async(
+            messages=messages,
+            options=generation_options,
+        )
+
+        try:
+            first_chunk = await anext(stream_iterator)
+        except StopAsyncIteration:
+            return StreamingResponse(
+                iter(("data: [DONE]\n\n",)),
+                media_type="text/event-stream",
+            )
+
+        processed_first_chunk = process_chunk(first_chunk)
+        if isinstance(processed_first_chunk, ChunkError) and processed_first_chunk.error.type == "downstream_error":
+            close = getattr(stream_iterator, "aclose", None)
+            if callable(close):
+                await close()
+            status_code = normalize_error_status(processed_first_chunk.error.code)
+            return JSONResponse(
+                status_code=status_code,
+                content=build_error_payload(
+                    processed_first_chunk.error.message,
+                    status=status_code,
+                    code=processed_first_chunk.error.code,
+                ),
+            )
+
+        return StreamingResponse(
+            _format_streaming_response(
+                _prepend_stream_chunk(first_chunk, stream_iterator),
+                model_name=body.model,
+            ),
+            media_type="text/event-stream",
+        )
+    else:
+        res = await llm_rails.generate_async(
+            messages=messages,
+            options=generation_options,
+        )
+
+        # IORails-only: prefix `content` with `reasoning_content` and think-tags.
+        # A Guardrails wrapper can fall back to an LLMRails engine, which already
+        # inlines reasoning itself, so the engine check is what scopes this.
+        if (
+            isinstance(llm_rails, Guardrails)
+            and isinstance(llm_rails.rails_engine, IORails)
+            and isinstance(res, GenerationResponse)
+        ):
+            res = _inline_reasoning_as_think_tags(res)
+
+        # Extract bot message for thread storage if needed
+        bot_message = extract_bot_message_from_response(res)
+
+        # If we're using threads, we also need to update the data before returning
+        # the message.
+        if body.guardrails.thread_id and datastore is not None and datastore_key is not None:
+            # If using tool calls, we need to normalize them to OpenAI format before storing.
+            response_tool_calls = res.tool_calls if isinstance(res, GenerationResponse) else None
+            tool_calls_for_storage = resolve_tool_calls(bot_message, response_tool_calls)
+            if tool_calls_for_storage:
+                normalized = [tc.model_dump() for tc in normalize_tool_calls_openai(tool_calls_for_storage)]
+                storable_message = {**bot_message, "tool_calls": normalized}
+            else:
+                storable_message = bot_message
+            await datastore.set(datastore_key, json.dumps(messages + [storable_message]))
+
+        # Build the response with OpenAI-compatible format using utility function
+        if isinstance(res, GenerationResponse):
+            return generation_response_to_chat_completion(
+                response=res,
+                model=body.model,
+                config_id=config_ids[0] if config_ids else None,
+            )
+        else:
+            return bot_message_to_chat_completion(
+                bot_message=bot_message,
+                model=body.model,
+                config_id=config_ids[0] if config_ids else None,
+            )
+
+
+def _map_rail_status(status: RailStatus) -> str:
+    """Map internal RailStatus to API status string."""
+    return status.value
+
+
+@app.post(
+    "/v1/checks",
+    response_model=GuardrailCheckResponse,
+    response_model_exclude_none=True,
+)
+async def guardrail_check(body: GuardrailCheckRequest, request: Request):
+    """Guardrail check request.
+
+    Returns 422 when ``rail_types`` includes a type with no configured flows.
+    """
+    api_request_headers.set(request.headers)
+
+    if not body.messages:
+        raise HTTPException(status_code=422, detail="messages must be non-empty")
+
+    config_ids = body.guardrails.config_ids
+    if not config_ids:
+        if app.default_config_id:
+            config_ids = [app.default_config_id]
+        else:
+            raise HTTPException(
+                status_code=422,
+                detail="No guardrails config_id provided and server has no default configuration",
+            )
+    try:
+        llm_rails = await _get_rails(config_ids, model_name=body.model)
+    except ValueError as ex:
+        log.exception(ex)
+        raise HTTPException(status_code=422, detail=str(ex))
+
+    if llm_rails.config.colang_version != "1.0":
+        raise HTTPException(
+            status_code=422,
+            detail="check_async does not support Colang 2.0 configurations.",
+        )
+
+    messages = list(body.messages)
+    if body.guardrails.context:
+        messages.insert(0, {"role": "context", "content": body.guardrails.context})
+
+    result = await llm_rails.check_async(messages=messages, rail_types=body.guardrails.rail_types)
+
+    return GuardrailCheckResponse(
+        status=_map_rail_status(result.status),
+        content=result.content,
+        rail=result.rail,
+    )
+
+
+# By default, there are no challenges
+challenges = []
+
+
+def register_challenges(additional_challenges: List[dict]):
+    """Register additional challenges
+
+    Args:
+        additional_challenges: The new challenges to be registered.
+    """
+    challenges.extend(additional_challenges)
+
+
+@app.get(
+    "/v1/challenges",
+    summary="Get list of available challenges.",
+)
+async def get_challenges():
+    """Returns the list of available challenges for red teaming."""
+
+    return challenges
+
+
+def register_datastore(datastore_instance: DataStore):
+    """Registers a DataStore to be used by the server."""
+    global datastore
+
+    datastore = datastore_instance
+
+
+def register_logger(logger: Callable):
+    """Register an additional logger"""
+    registered_loggers.append(logger)
+
+
+def start_auto_reload_monitoring():
+    """Start a thread that monitors the config folder for changes."""
+    try:
+        from watchdog.events import FileSystemEventHandler
+        from watchdog.observers import Observer
+
+        class Handler(FileSystemEventHandler):
+            def on_any_event(self, event):
+                if event.is_directory:
+                    return None
+
+                elif event.event_type == "created" or event.event_type == "modified":
+                    log.info(f"Watchdog received {event.event_type} event for file {event.src_path}")
+
+                    # Compute the relative path
+                    src_path_str = str(event.src_path)
+                    rel_path = os.path.relpath(src_path_str, app.rails_config_path)
+
+                    # The config_id is the first component
+                    parts = rel_path.split(os.path.sep)
+                    config_id = parts[0]
+
+                    if (
+                        not parts[-1].startswith(".")
+                        and ".ipynb_checkpoints" not in parts
+                        and os.path.isfile(src_path_str)
+                    ):
+                        # We just remove the config from the cache so that a new one is used next time
+                        if config_id in llm_rails_instances:
+                            instance = llm_rails_instances[config_id]
+                            del llm_rails_instances[config_id]
+                            if instance:
+                                val = instance.events_history_cache
+                                # We save the events history cache, to restore it on the new instance
+                                llm_rails_events_history_cache[config_id] = val
+
+                            log.info(f"Configuration {config_id} has changed. Clearing cache.")
+
+        observer = Observer()
+        event_handler = Handler()
+        observer.schedule(event_handler, app.rails_config_path, recursive=True)
+        observer.start()
+        try:
+            while not app.stop_signal:
+                time.sleep(5)
+        finally:
+            observer.stop()
+            observer.join()
+
+    except ImportError:
+        # Since this is running in a separate thread, we just print the error.
+        print("The auto-reload feature requires `watchdog`. Please install using `pip install watchdog`.")
+        # Force close everything.
+        os._exit(-1)
+
+
+def set_default_config_id(config_id: str):
+    app.default_config_id = config_id
+
+
+class GuardrailsConfigurationError(Exception):
+    """Exception raised for errors in the configuration."""
+
+    pass
+
+
+# # Register a nicer error message for 422 error
+# def register_exception(app: FastAPI):
+#     @app.exception_handler(RequestValidationError)
+#     async def validation_exception_handler(
+#         request: Request, exc: RequestValidationError
+#     ):
+#         exc_str = f"{exc}".replace("\n", " ").replace("   ", " ")
+#         # or logger.error(f'{exc}')
+#         log.error(request, exc_str)
+#         content = {"status_code": 10422, "message": exc_str, "data": None}
+#         return JSONResponse(
+#             content=content, status_code=status.HTTP_422_UNPROCESSABLE_ENTITY
+#         )
+#
+#
+# register_exception(app)
+
+
+if not app.disable_chat_ui and mount_chainlit is not None:
+    chainlit_app_path = os.path.join(os.path.dirname(__file__), "app.py")
+    mount_chainlit(app=app, target=chainlit_app_path, path="/chat")
+
+    @app.get("/")
+    async def root_redirect():
+        return RedirectResponse(url="chat")
+
+else:
+    if not app.disable_chat_ui and mount_chainlit is None:
+        log.warning("Chainlit is not installed; chat UI disabled. Install with: pip install nemoguardrails[chat-ui]")
+
+    @app.get("/")
+    async def root_handler():
+        return {"status": "ok"}

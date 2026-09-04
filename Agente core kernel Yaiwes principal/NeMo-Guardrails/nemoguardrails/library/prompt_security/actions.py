@@ -1,0 +1,169 @@
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Prompt/Response protection using Prompt Security."""
+
+import logging
+import os
+from typing import Optional
+
+from nemoguardrails.actions import action
+from nemoguardrails.actions.rail_outcome import RailOutcome, TransformTarget
+from nemoguardrails.http import HTTPClient, http_call
+
+log = logging.getLogger(__name__)
+
+
+async def ps_protect_api_async(
+    ps_protect_url: str,
+    ps_app_id: str,
+    prompt: Optional[str] = None,
+    system_prompt: Optional[str] = None,
+    response: Optional[str] = None,
+    user: Optional[str] = None,
+    http_client: Optional[HTTPClient] = None,
+):
+    """Calls Prompt Security Protect API asynchronously.
+
+    Provider failures are logged and fail open with the default ``log``
+    action.
+
+    Args:
+        ps_protect_url: the URL of the protect endpoint given by Prompt Security.
+        URL is https://[REGION].prompt.security/api/protect where REGION is eu, useast or apac
+
+        ps_app_id: the application ID given by Prompt Security (similar to an API key).
+        Get it from the admin portal at https://[REGION].prompt.security/ where REGION is eu, useast or apac
+
+        prompt: the user message to protect.
+
+        system_prompt: the system message for context.
+
+        response: the bot message to protect.
+
+        user: the user ID or username for context.
+
+        http_client: Optional caller-owned HTTP client.
+
+    Returns:
+        A dictionary with the following items:
+        - is_blocked: True if the text should be blocked, False otherwise.
+        - is_modified: True if the text should be modified, False otherwise.
+        - modified_text: The modified text if is_modified is True, None otherwise.
+    """
+
+    headers = {
+        "APP-ID": ps_app_id,
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "prompt": prompt,
+        "system_prompt": system_prompt,
+        "response": response,
+        "user": user,
+    }
+    modified_text = None
+    ps_action = "log"
+    try:
+        result = await http_call(
+            http_client,
+            "POST",
+            ps_protect_url,
+            headers=headers,
+            json=payload,
+            raise_for_status=False,
+        )
+        data = result.json()
+        ps_action = data.get("result", {}).get("action", "log")
+        if ps_action == "modify":
+            key = "response" if response else "prompt"
+            modified_text = data.get("result", {}).get(key, {}).get("modified_text")
+    except Exception as e:
+        log.error("Error calling Prompt Security Protect API: %s", e)
+    return {
+        "is_blocked": ps_action == "block",
+        "is_modified": ps_action == "modify",
+        "modified_text": modified_text,
+    }
+
+
+def _protect_text_outcome(result: dict, target: TransformTarget) -> RailOutcome:
+    metadata = dict(result)
+    if result.get("is_blocked", True):
+        return RailOutcome.block(metadata=metadata)
+    if result.get("is_modified", False):
+        return RailOutcome.transform([(target, result.get("modified_text") or "")], metadata=metadata)
+    return RailOutcome.allow(metadata=metadata)
+
+
+@action(is_system_action=True)
+async def protect_text(
+    user_prompt: Optional[str] = None,
+    bot_response: Optional[str] = None,
+    http_client: Optional[HTTPClient] = None,
+    **kwargs,
+) -> RailOutcome:
+    """Protects the given user_prompt or bot_response.
+
+    Provider results may allow, block, or transform the selected message.
+    Provider failures fail open. A bot response takes precedence when both
+    content arguments are provided.
+
+    Args:
+        user_prompt: The user message to protect.
+        bot_response: The bot message to protect.
+        http_client: Optional caller-owned HTTP client.
+    Returns:
+        RailOutcome.block(), RailOutcome.transform(), or RailOutcome.allow().
+    Raises:
+        ValueError is returned in one of the following cases:
+        1. If PS_PROTECT_URL env variable is not set.
+        2. If PS_APP_ID env variable is not set.
+        3. If no user_prompt and no bot_response is provided.
+    """
+
+    ps_protect_url = os.getenv("PS_PROTECT_URL")
+    if not ps_protect_url:
+        raise ValueError("PS_PROTECT_URL env variable is required for Prompt Security.")
+
+    ps_app_id = os.getenv("PS_APP_ID")
+    if not ps_app_id:
+        raise ValueError("PS_APP_ID env variable is required for Prompt Security.")
+
+    if bot_response:
+        return _protect_text_outcome(
+            await ps_protect_api_async(
+                ps_protect_url,
+                ps_app_id,
+                None,
+                None,
+                bot_response,
+                http_client=http_client,
+            ),
+            TransformTarget.BOT_MESSAGE,
+        )
+
+    if user_prompt:
+        return _protect_text_outcome(
+            await ps_protect_api_async(
+                ps_protect_url,
+                ps_app_id,
+                user_prompt,
+                http_client=http_client,
+            ),
+            TransformTarget.USER_MESSAGE,
+        )
+
+    raise ValueError("Neither user_message nor bot_message was provided")

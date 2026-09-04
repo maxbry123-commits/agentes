@@ -1,0 +1,223 @@
+package git
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"regexp"
+	"strings"
+
+	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/config"
+	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/protocol/packp/capability"
+	"github.com/go-git/go-git/v5/plumbing/transport"
+	"github.com/go-git/go-git/v5/plumbing/transport/http"
+	ssh2 "github.com/go-git/go-git/v5/plumbing/transport/ssh"
+	"golang.org/x/crypto/ssh"
+
+	"github.com/argoproj/argo-workflows/v4/util/logging"
+
+	argoerrors "github.com/argoproj/argo-workflows/v4/errors"
+	wfv1 "github.com/argoproj/argo-workflows/v4/pkg/apis/workflow/v1alpha1"
+	"github.com/argoproj/argo-workflows/v4/workflow/artifacts/common"
+)
+
+// ArtifactDriver is the artifact driver for a git repo
+type ArtifactDriver struct {
+	Username              string
+	Password              string
+	SSHPrivateKey         string
+	InsecureIgnoreHostKey bool
+	InsecureSkipTLS       bool
+	DisableSubmodules     bool
+}
+
+var _ common.ArtifactDriver = &ArtifactDriver{}
+
+var sshURLRegex = regexp.MustCompile("^(ssh://)?([^/:]*?)@[^@]+$")
+
+func GetUser(url string) string {
+	matches := sshURLRegex.FindStringSubmatch(url)
+	if len(matches) > 2 {
+		return matches[2]
+	}
+	// default to `git` user unless username is specified in SSH url
+	return "git"
+}
+
+func (g *ArtifactDriver) auth(sshUser string) (func(), transport.AuthMethod, error) {
+	if g.SSHPrivateKey != "" {
+		signer, err := ssh.ParsePrivateKey([]byte(g.SSHPrivateKey))
+		if err != nil {
+			return nil, nil, err
+		}
+		privateKeyFile, err := os.CreateTemp("", "id_rsa.")
+		if err != nil {
+			return nil, nil, err
+		}
+		err = os.WriteFile(privateKeyFile.Name(), []byte(g.SSHPrivateKey), 0o600)
+		if err != nil {
+			return nil, nil, err
+		}
+		auth := &ssh2.PublicKeys{User: sshUser, Signer: signer}
+		if g.InsecureIgnoreHostKey {
+			auth.HostKeyCallback = ssh.InsecureIgnoreHostKey()
+		}
+		if g.InsecureIgnoreHostKey {
+			auth.HostKeyCallback = ssh.InsecureIgnoreHostKey()
+		}
+		return func() { _ = os.Remove(privateKeyFile.Name()) }, auth, nil
+	}
+	if g.Username != "" || g.Password != "" {
+		return func() {}, &http.BasicAuth{Username: g.Username, Password: g.Password}, nil
+	}
+	return func() {}, nil, nil
+}
+
+// Save is unsupported for git output artifacts
+func (g *ArtifactDriver) Save(ctx context.Context, path string, artifact *wfv1.Artifact) error {
+	return argoerrors.New(argoerrors.CodeBadRequest, "git output artifacts unsupported")
+}
+
+// SaveStream is unsupported for git output artifacts
+func (g *ArtifactDriver) SaveStream(ctx context.Context, reader io.Reader, artifact *wfv1.Artifact) error {
+	return argoerrors.New(argoerrors.CodeBadRequest, "git output artifacts unsupported")
+}
+
+// Delete is unsupported for git artifacts
+func (g *ArtifactDriver) Delete(ctx context.Context, s *wfv1.Artifact) error {
+	return common.ErrDeleteNotSupported
+}
+
+func (g *ArtifactDriver) Load(ctx context.Context, inputArtifact *wfv1.Artifact, path string) error {
+	a := inputArtifact.Git
+
+	// Azure DevOps requires multi_ack* capabilities which go-git does not currently support
+	// Workaround: removing these from UnsupportedCapabilities allows clones to work (see https://github.com/go-git/go-git/pull/613)
+	var newCaps []capability.Capability
+	if strings.Contains(a.Repo, "dev.azure.com") {
+		for _, c := range transport.UnsupportedCapabilities {
+			if c == capability.MultiACK || c == capability.MultiACKDetailed {
+				continue
+			}
+			newCaps = append(newCaps, c)
+		}
+		transport.UnsupportedCapabilities = newCaps
+	}
+
+	sshUser := GetUser(a.Repo)
+	closer, auth, err := g.auth(sshUser)
+	if err != nil {
+		return err
+	}
+	defer closer()
+	depth := a.GetDepth()
+	cloneOptions := &git.CloneOptions{
+		URL:             a.Repo,
+		Auth:            auth,
+		Depth:           depth,
+		SingleBranch:    a.SingleBranch,
+		InsecureSkipTLS: g.InsecureSkipTLS,
+	}
+	if a.SingleBranch && a.Branch == "" {
+		return errors.New("single branch mode without a branch specified")
+	}
+	if a.SingleBranch {
+		cloneOptions.ReferenceName = plumbing.NewBranchReferenceName(a.Branch)
+	}
+
+	r, err := git.PlainClone(path, false, cloneOptions)
+	if errors.Is(err, transport.ErrEmptyRemoteRepository) {
+		logging.RequireLoggerFromContext(ctx).Info(ctx, "Cloned an empty repository")
+		var initErr error
+		r, initErr = git.PlainInit(path, false)
+		if initErr != nil {
+			return fmt.Errorf("failed to plain init: %w", initErr)
+		}
+		if _, remoteErr := r.CreateRemote(&config.RemoteConfig{Name: git.DefaultRemoteName, URLs: []string{a.Repo}}); remoteErr != nil {
+			return fmt.Errorf("failed to create remote %q: %w", a.Repo, remoteErr)
+		}
+		branchName := a.Revision
+		if branchName == "" {
+			branchName = "master"
+		}
+		if err = r.CreateBranch(&config.Branch{Name: branchName, Remote: git.DefaultRemoteName, Merge: plumbing.Master}); err != nil {
+			return fmt.Errorf("failed to create branch %q: %w", branchName, err)
+		}
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("failed to clone %q: %w", a.Repo, err)
+	}
+	if len(a.Fetch) > 0 {
+		refSpecs := make([]config.RefSpec, len(a.Fetch))
+		for i, spec := range a.Fetch {
+			refSpecs[i] = config.RefSpec(spec)
+		}
+		opts := &git.FetchOptions{Auth: auth, RefSpecs: refSpecs, Depth: depth, InsecureSkipTLS: g.InsecureSkipTLS}
+		if validateErr := opts.Validate(); validateErr != nil {
+			return fmt.Errorf("failed to validate fetch %v: %w", refSpecs, validateErr)
+		}
+		if err = r.Fetch(opts); isFetchErr(err) {
+			return fmt.Errorf("failed to fetch %v: %w", refSpecs, err)
+		}
+	}
+	w, err := r.Worktree()
+	if err != nil {
+		return fmt.Errorf("failed to get work tree: %w", err)
+	}
+
+	if a.Revision != "" {
+		refSpecs := []config.RefSpec{"refs/heads/*:refs/heads/*"}
+		if a.SingleBranch {
+			refSpecs = []config.RefSpec{config.RefSpec(fmt.Sprintf("refs/heads/%s:refs/heads/%s", a.Branch, a.Branch))}
+		}
+		opts := &git.FetchOptions{Auth: auth, RefSpecs: refSpecs, InsecureSkipTLS: g.InsecureSkipTLS}
+		if err := opts.Validate(); err != nil {
+			return fmt.Errorf("failed to validate fetch %v: %w", refSpecs, err)
+		}
+		if err := r.Fetch(opts); isFetchErr(err) {
+			return fmt.Errorf("failed to fetch %v: %w", refSpecs, err)
+		}
+		h, err := r.ResolveRevision(plumbing.Revision(a.Revision))
+		if err != nil {
+			return fmt.Errorf("failed to get resolve revision: %w", err)
+		}
+		if err := w.Checkout(&git.CheckoutOptions{Hash: plumbing.NewHash(h.String())}); err != nil {
+			return fmt.Errorf("failed to checkout %q: %w", h, err)
+		}
+	}
+	if !a.DisableSubmodules {
+		s, err := w.Submodules()
+		if err != nil {
+			return fmt.Errorf("failed to get submodules: %w", err)
+		}
+		if err := s.Update(&git.SubmoduleUpdateOptions{
+			Init:              true,
+			RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
+			Auth:              auth,
+		}); err != nil {
+			return fmt.Errorf("failed to update submodules: %w", err)
+		}
+	}
+	return nil
+}
+
+func isFetchErr(err error) bool {
+	return err != nil && err.Error() != "already up-to-date"
+}
+
+func (g *ArtifactDriver) OpenStream(ctx context.Context, a *wfv1.Artifact) (io.ReadCloser, error) {
+	// todo: this is a temporary implementation which loads file to disk first
+	return common.LoadToStream(ctx, a, g)
+}
+
+func (g *ArtifactDriver) ListObjects(ctx context.Context, artifact *wfv1.Artifact) ([]string, error) {
+	return nil, fmt.Errorf("ListObjects is currently not supported for this artifact type, but it will be in a future version")
+}
+
+func (g *ArtifactDriver) IsDirectory(ctx context.Context, artifact *wfv1.Artifact) (bool, error) {
+	return false, argoerrors.New(argoerrors.CodeNotImplemented, "IsDirectory currently unimplemented for Git")
+}

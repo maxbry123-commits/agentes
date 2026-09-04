@@ -1,0 +1,51 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  labels:
+    workflows.argoproj.io/no-test: "expected-failure"
+  generateName: dag-primay-branch-
+spec:
+  entrypoint: statis
+  templates:
+  - name: a
+    container:
+      image:  busybox
+      command: [echo]
+      args: ["hello world"]
+  - name: b
+    retryStrategy:
+      limit: "2"
+    container:
+      image: busybox
+      command: [sh, -c]
+      args: ["sleep 30; echo haha"]
+  - name: c
+    retryStrategy:
+      limit: "3"
+    container:
+      image: busybox
+      command: [sh, -c]
+      args: ["echo intentional failure; exit 2"]
+  - name: d
+    container:
+      image: busybox
+      command: [echo]
+      args: ["hello world"]
+  - name: statis
+    dag:
+      failFast: false
+      tasks:
+      - name: A
+        template: a
+      - name: B
+        depends: "A"
+        template: b
+      - name: C
+        depends: "A"
+        template: c
+      - name: D
+        depends: "B"
+        template: d
+      - name: E
+        depends: "D"
+        template: d
