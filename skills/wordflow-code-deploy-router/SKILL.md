@@ -1,9 +1,9 @@
 ---
 name: wordflow-code-deploy-router
-description: Contrato P01-P08 + 3 salidas deploy + plugin I/O + X-Ray + council12. Trigger on Download code, Download N, Desplegar N, OP1 parte, OP2 repo completo, Maxbry_123_tokens, UOOS, Fables enchufe. Copiar INPUT BLOCK literal. No rewrite.
+description: Contrato P01-P08 + 3 salidas deploy + plugin I/O + X-Ray + council12 + operaciones seguras COPY/MOVE por lotes. Trigger on Download code, Download N, Desplegar N, OP1 parte, OP2 repo completo, Maxbry_123_tokens, UOOS, Fables enchufe, copiar lotes, mover archivos. Copiar INPUT BLOCK literal. No rewrite.
 metadata:
   type: workflow
-  version: "0.4.0-input-literal"
+  version: "0.5.0-file-transfer-safe"
   status: EDIT_UNTIL_WIRED
   repo: maxbry123-commits/agentes
 ---
@@ -32,7 +32,7 @@ AI lee INPUT BLOCK literal. No omitir opcion. STOP si gate falla. LLM no declara
 16. Usar sistema plugins de Fables. Si es JSON o prompt se convierte en python. YAML solo si es para reglas o skills.
 17. Buscar en Desplegar 1 UOOS parte 1 y 2, Enchufe universal de Fables y la ficha de conexion para que la AI sepa como se usa, como se hace la extension code y el plugins.
 18. Luego el mismo metodo con los demas archivos.
-19. Paso 4 copiar archivos con GitHub Action checkout source + checkout target + cola + cp + un commit + un push. Token dest. GITHUB_TOKEN no cruza repo.
+19. Paso 4 copiar archivos con GitHub Action checkout source + checkout target + cola + metodo COPY seguro + un commit + un push. Token dest. GITHUB_TOKEN no cruza repo.
 20. Destino = raiz organizada solo en el repo y estructura destino. Project files en raiz. src/ code. config/ config. scripts/ tools. tests/ tests. Distribuir por funcion no llenar la raiz.
 21. Cada archivo debe tener plugins obligatorios de entrada y salida. Prohibido editar mas ni tocar el archivo registrado.
 22. Paso 5 en raiz Desplegar / Desplegar 1 analizar arquitectura de cada archivo del lote.
@@ -51,6 +51,7 @@ AI lee INPUT BLOCK literal. No omitir opcion. STOP si gate falla. LLM no declara
 
 ```
 FOR item in INPUT BLOCK 1..32: mark UNCHECKED
+READ references/BATCH-COPY-MOVE-SAFETY.md
 READ METODO_ZIP_COPY_DETERMINISTA
 READ GUIA-DESPLIEGUE-ZIP-UNIVERSAL
 READ PIPELINE/07 Enchufe Universal = Fables
@@ -64,6 +65,49 @@ READ code_path_runner.py  # no rewrite
 READ research-download-chain assets  # blob lock
 TOKEN_REF in {env:Maxbry_123_tokens, env:EXTERNAL_GH_B_TOKEN, env:EXTERNAL_GH_C_TOKEN, env:HF_TOKEN, env:TARGET_REPO_TOKEN}
 IF token matches ghp_ THEN FAIL
+```
+
+## FILE OPS GLOBAL — LUNA + AGENTE (OBLIGATORIO)
+
+Antes de tocar archivos:
+
+```
+CLASSIFY operation in {COPY, MOVE_SAME_REPO, MOVE_CROSS_REPO, MIRROR, API_TRANSFER}
+READ references/BATCH-COPY-MOVE-SAFETY.md
+SET shell: set -euo pipefail
+QUOTE every path
+USE -- before pathname operands when supported
+VALIDATE src is under SRC_ROOT
+VALIDATE dst is under DST_ROOT
+REJECT absolute dst, .. traversal, symlink escape
+BUILD deterministic manifest src_rel -> dst_rel + type + size + sha256/symlink_target
+IF destination exists:
+  SAME hash/type -> SKIP_IDENTICAL
+  DIFFERENT -> FAIL unless explicit OVERWRITE gate
+NO delete source before destination verify
+NO commit/push before manifest verify
+NO LLM PASS
+```
+
+Metodo de copia se elige por necesidad; no usar siempre `cp` por costumbre:
+
+```
+A exact small queue/custom mapping -> Bash array + cp -- / cp -a --
+B rule-selected files -> find -print0 + NUL-safe loop or find -exec
+C recursive/many files -> rsync -a; first rsync -ain --checksum
+D full local tree, rsync unavailable -> tar stream source/. -> target/
+E partial repo -> actions/checkout sparse checkout, then A/B/C
+F few remote text files -> GitHub Contents API serial PUT/GET verify/DELETE
+```
+
+Movimiento:
+
+```
+MOVE_SAME_REPO tracked -> git mv -- SRC DST; git diff --check
+MOVE_LOCAL exact path -> mv -T -- SRC DST when supported
+MOVE_CROSS_REPO -> COPY -> VERIFY -> COMMIT/PUSH DEST -> VERIFY REMOTE -> DELETE SOURCE -> COMMIT/PUSH SOURCE
+API_TRANSFER move -> GET source SHA -> PUT dest -> GET+verify -> DELETE source serially
+NEVER parallel create/update + delete for same API move
 ```
 
 ## PASO 1 — DOWNLOAD (GitHub Action)
@@ -126,7 +170,7 @@ unzip -q ZIP -d .staging/<slug>
 FILTER __MACOSX .DS_Store Thumbs.db path-traversal
 FOR file:
   sha256(src)
-  COPY to live_root   # copia, no reescribe origen
+  COPY to live_root using FILE OPS method A/B/C/D
   sha256(dst) == sha256(src) else FAIL
 PLUGIN I/O obligatorio (Fables = Enchufe Universal v2 + ficha conexion)
   plugin_id, contrato, inputs[], outputs[], extension_point, estado
@@ -137,25 +181,47 @@ REPEAT same method remaining files
 READ Desplegar/Desplegar 1 + UOOS 1 + UOOS 2 + ficha.v2 antes de plugin
 ```
 
-## PASO 4 — GITHUB ACTION COPY QUEUE
+## PASO 4 — GITHUB ACTION COPY / MOVE QUEUE
+
+```yaml
+# Batch Copy/Move (contrato Director)
+# usar actions/checkout@v7 en workflows nuevos salvo pin SHA/politica superior
+on: workflow_dispatch
+
+# Checkout side-by-side: source y target en paths separados.
+# Repo privado secundario requiere token propio con minimo permiso.
+- uses: actions/checkout@v7
+  with:
+    path: source
+    fetch-depth: 1
+
+- uses: actions/checkout@v7
+  with:
+    repository: OWNER/TARGET_REPO
+    token: ${{ secrets.TARGET_REPO_TOKEN }}
+    path: target
+    fetch-depth: 1
+```
+
+Contrato de ejecucion:
 
 ```
-# Batch Copy Root Files (contrato Director)
-on workflow_dispatch
-permissions contents read on source job; dest write via secret
+SRC_ROOT=source
+DST_ROOT=target
+READ references/BATCH-COPY-MOVE-SAFETY.md
 
-checkout source path=source fetch-depth 1
-checkout target repository=OWNER/TARGET_REPO
-         token=secret dest
-         path=target fetch-depth 1
+# Seleccion de metodo
+IF exact names <= small lote OR custom MAPPED paths:
+  METHOD=A queue + cp -- / cp -a --
+ELIF recursive tree OR many files:
+  METHOD=C rsync
+ELIF selected by find rule:
+  METHOD=B find NUL-safe
+ELIF full tree AND rsync unavailable:
+  METHOD=D tar stream
 
-# cola all root files
-find source -maxdepth 1 -type f -printf '%f\n' | sort > queue/files.txt
-# OR cola controlada
-QUEUE=(exact names)
-FOR FILE in QUEUE:
-  test -f source/$FILE else EXIT 1
-  cp source/$FILE target/$MAPPED
+# NO generar cola insegura con `for f in $(find ...)` ni `ls |`.
+# Para nombres arbitrarios usar NUL delimiters.
 
 MAP organico:
   project README pyproject -> raiz
@@ -164,19 +230,47 @@ MAP organico:
   tools -> scripts/
   tests -> tests/
 
+PREVIEW / DRY RUN
+  rsync method -> rsync -ain --checksum
+  queue method -> print manifest src_rel -> dst_rel
+
+COPY/MOVE
+  quote every path
+  mkdir -p destination parent
+  reject path traversal
+  preserve dotfiles
+  preserve symlink as symlink unless policy explicitly dereferences
+  collision different hash -> FAIL by default
+
+VERIFY
+  expected count == actual declared scope
+  every regular file SHA256 matches
+  symlink target/type matches
+  unexpected extra -> FAIL in exact-scope operation
+  git diff --check
+  git status --short reviewed
+
 working-directory target
-git status --short
 git add .
 IF diff --cached --quiet THEN no commit ELSE
-  commit "Batch copy files from source repository"
+  commit "Batch copy/move files from source repository"
 git push
 NO force
+
+IF MOVE_CROSS_REPO:
+  VERIFY destination commit remotely
+  ONLY THEN delete source paths
+  commit source deletion separately
+  push source
+  evidence records DEST_COMMIT_SHA + SOURCE_DELETE_COMMIT_SHA
+
 TOKEN = dest secret
   A env:Maxbry_123_tokens
   B env:EXTERNAL_GH_B_TOKEN
   C env:EXTERNAL_GH_C_TOKEN
   alias env:TARGET_REPO_TOKEN si Director lo crea
-GITHUB_TOKEN del workflow source NO cruza dest
+GITHUB_TOKEN del workflow source NO se asume valido para repo privado distinto
+NEVER print token
 ```
 
 ## PASO 5 — DESPLEGAR N ESTADO + ATOMIC WRITE
@@ -294,7 +388,15 @@ Wordflow Code/Readme/Readme1/                parche cable only
 
 ```
 INPUT BLOCK 1..32 checked
-SHA copy match
+FILE_OP_CLASS classified
+FILE_OP_METHOD selected
+PATH containment validated
+COLLISION policy satisfied
+EXPECTED_COUNT == ACTUAL_COUNT
+SHA/type/symlink manifest match
+MOVE never deletes source before verified destination
+Cross-repo move verifies remote destination commit before source delete
+GitHub Contents API create/update + delete serialized
 EvidenceGate exit 0
 LLM never prints PASS
 ```
