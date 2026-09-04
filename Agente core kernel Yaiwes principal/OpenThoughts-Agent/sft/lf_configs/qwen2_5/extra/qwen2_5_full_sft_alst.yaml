@@ -1,0 +1,53 @@
+
+model_name_or_path: Qwen/Qwen2.5-7B-Instruct
+trust_remote_code: true
+rope_scaling: linear
+attn: fa2
+enable_liger_kernel: true
+
+sequence_parallel_size: 4
+sequence_parallel_mode: deepspeed-alst
+alst_sequence_backend: deepspeed
+alst_ulysses_degree: 4
+alst_sequence_tiling: true
+alst_memory_optimizations: true
+
+stage: sft
+do_train: true
+finetuning_type: full
+deepspeed: sft/llamafactory/examples/deepspeed/ds_z3_alst_config.json
+
+dataset: tbench_traces_sharegptv1
+template: qwen
+mask_history: true
+cutoff_len: 262144
+force_sequence_length_padding: true
+max_samples: null
+overwrite_cache: true
+preprocessing_num_workers: 8
+dataloader_num_workers: 2
+shuffle_for_sequence_parallel: false
+
+output_dir: output/qwen2_5_full_sft_alst_deepspeed
+logging_steps: 5
+save_steps: 50
+plot_loss: true
+overwrite_output_dir: true
+save_only_model: true
+report_to: wandb
+
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 2
+learning_rate: 1.5e-4
+num_train_epochs: 2.0
+lr_scheduler_type: cosine
+warmup_ratio: 0.1
+weight_decay: 0.01
+max_grad_norm: 1.0
+bf16: true
+pure_bf16: true
+gradient_checkpointing: true
+ddp_timeout: 300000
+
+dataloader_pin_memory: false
+remove_unused_columns: false

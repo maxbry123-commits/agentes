@@ -1,0 +1,5 @@
+# tb2 priority-1 re-fire (below-gate auto-registration PURGED) — 2026-07-13 driver sweep (401-fix LIVE)
+# r354 a1-nl2bash: Leo 49304851 COMPLETED below-gate vc 71.9% [192/267] (ran on OLD pre-fix harbor);
+#   auto-registered row e3286197 PURGED this sweep; warm-resume the incomplete partials on Leonardo.
+# This re-fire is the FIRST nl2bash leg to run on fixed harbor (a85970c1 Daytona-401 retry + c9a70a33 AddTestsDirError->infra).
+DCAgent/a1-nl2bash

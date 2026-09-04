@@ -1,0 +1,218 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "OpenThoughts-Agent"
+version = "0.1.0"
+description = "OT-Agent HPC launch and data tooling"
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.0.0,<3.0.0",
+    "pyyaml",
+    "omegaconf",
+    "wandb",
+    "bs4",
+    "numpy<=2.26.0",
+    "huggingface_hub>=0.20.0,<2.0.0",
+    "datasets>=2.0.0",
+    "supabase>=2.22.3",
+    "python-dotenv>=1.0.0",
+    "harbor[daytona] @ git+https://github.com/marin-community/harbor.git@main",
+    "dynamic-semaphore @ git+https://github.com/penfever/dynamic-semaphore",
+    "google-cloud-storage",
+    "h5py",
+    "certifi",
+    "rapidfuzz",
+    "huggingface_hub",
+    "uv>=0.4.17",
+    "socksio",
+]
+
+[project.optional-dependencies]
+datagen-cpu = [
+    "google-cloud-aiplatform>=1.67.0",
+    "google-genai>=0.1.0",
+    "accelerate==1.12.0",
+    "trufflehog>=2.2.0",
+]
+datagen = [
+    "boto3",
+    "gcsfs",
+    "s3fs",
+    "ray[default]>=2.50.0",
+    "torch-c-dlpack-ext==0.1.4",
+    "google-cloud-aiplatform>=1.67.0",
+    "google-genai>=0.1.0",
+    "vllm[flashinfer]>=0.19.0,<=0.20.0; platform_system != 'Darwin'",
+    "transformers>=5.3.0,<=5.5.3",
+    "torch>=2.9.0,<=2.10.0; platform_system != 'Darwin'",
+    "accelerate==1.12.0",
+    "trufflehog>=2.2.0",
+    "marin-iris @ git+https://github.com/marin-community/marin.git@839e5e9e18299d750e6009b58f4535f77f9edafa#subdirectory=lib/iris",
+]
+datagen-swesmith = [
+    "swesmith",
+]
+datagen-tpu = [
+    "google-cloud-aiplatform>=1.67.0",
+    "google-genai>=0.1.0",
+    "accelerate==1.12.0",
+    "trufflehog>=2.2.0",
+    "vllm-tpu==0.20.0",
+    "tpu-inference==0.20.0",
+    "triton==3.6.0; platform_system == 'Linux' and platform_machine == 'x86_64'",
+    "torch==2.10.0",
+    "torchvision==0.25.0+cpu; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "torchvision==0.25.0+cpu; sys_platform == 'win32' and platform_machine == 'AMD64'",
+    "torchvision==0.25.0; (sys_platform == 'linux' and platform_machine == 'aarch64') or (sys_platform == 'darwin' and platform_machine == 'arm64')",
+    "ray[default]>=2.50.0",
+    "transformers>=5.3.0",
+    "marin-iris @ git+https://github.com/marin-community/marin.git@839e5e9e18299d750e6009b58f4535f77f9edafa#subdirectory=lib/iris",
+    "marin-rigging @ git+https://github.com/marin-community/marin.git@839e5e9e18299d750e6009b58f4535f77f9edafa#subdirectory=lib/rigging",
+]
+cloud = [
+    "skypilot>=0.6.1",
+    "google-api-python-client",
+    "boto3",
+    "s3fs",
+]
+cloud-aws = [
+    "skypilot>=0.6.1",
+    "boto3",
+]
+cloud-lambda = [
+    "skypilot>=0.6.1",
+]
+cloud-vast = [
+    "skypilot>=0.6.1",
+    "vastai-sdk>=0.1.12",
+]
+cloud-kubernetes = [
+    "skypilot>=0.6.1",
+]
+cloud-all = [
+    "skypilot>=0.6.1",
+    "google-api-python-client",
+    "boto3",
+    "vastai-sdk>=0.1.12",
+]
+rl = [
+    "skyrl[vllm] @ git+https://github.com/mlfoundations/skyrl.git",
+    "Jinja2",
+]
+sft-qwen35 = [
+    "transformers>=5.3.0",
+    "torch>=2.6.0",
+    "accelerate>=1.3.0",
+    "datasets>=2.16.0",
+    "peft>=0.14.0",
+    "trl>=0.8.6",
+    "tokenizers>=0.19.0",
+    "deepspeed>=0.16.0",
+    "flash-attn>=2.7.0; platform_system != 'Darwin'",
+    "torchao>=0.8.0",
+    "liger-kernel>=0.5.0",
+    "trufflehog>=2.2.0",
+]
+
+harbor-docker = [
+    "docker>=7.0.0",
+]
+harbor-modal = [
+    "modal>=0.60.0",
+]
+harbor-all = [
+    "docker>=7.0.0",
+    "modal>=0.60.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = [
+    "data",
+    "data.*",
+    "database",
+    "database.*",
+    "sft",
+    "sft.*",
+    "eval",
+    "eval.*",
+    "hpc",
+    "hpc.*",
+    "rl",
+    "rl.*",
+    "scripts",
+    "scripts.*",
+    "train",
+    "train.*",
+]
+exclude = [
+    "docs*",
+    "notes*",
+    "wheels*",
+    "tmp*",
+]
+
+[tool.ruff]
+# Submodules carry their own tooling and are never formatted from this repo.
+line-length = 88
+extend-exclude = [
+    "sft/llamafactory",
+    "sft/axolotl",
+    # Deliberately-buggy sample repos used by the tokviz analyzer fixtures.
+    "scripts/analysis/tokviz/repos",
+    "OpenThoughts_Agent.egg-info",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = ["few-shots", "templates", "*.egg-info", ".git"]
+markers = [
+    "gpu: needs a CUDA/accelerator device (torch/vllm)",
+    "cluster: needs a live SLURM or iris/CoreWeave cluster (ssh/squeue/sbatch)",
+    "daytona: needs live Daytona sandbox API + key",
+    "hf: needs HuggingFace hub access (dataset/model download or token)",
+    "supabase: needs Supabase registry creds",
+    "net: needs outbound network / a live LLM or 3rd-party API (LiteLLM/OpenAI/S3)",
+    "slow: long-running (minutes+); excluded from the fast CI lane",
+    "integration: multi-component end-to-end (implies at least one of the above)",
+]
+
+[tool.uv.pip]
+extra-index-url = ["https://download.pytorch.org/whl/cu128"]
+
+[dependency-groups]
+dev = [
+    "boto3",
+    "matplotlib",
+    "marin-style @ git+https://github.com/marin-community/marin-style@ccbf03e7ca58486d61fff7a4e73031673d7fd8a4",
+    "marin-iris @ git+https://github.com/marin-community/marin.git@839e5e9e18299d750e6009b58f4535f77f9edafa#subdirectory=lib/iris",
+    "pytest",
+    "sympy>=1.13.3,<1.15",
+]
+
+[tool.uv]
+index-strategy = "unsafe-best-match"
+
+conflicts = [
+    [
+        { extra = "datagen" },
+        { extra = "datagen-tpu" },
+        { extra = "rl" },
+        { extra = "sft-qwen35" },
+    ],
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu", extra = "datagen-tpu" },
+]
+torchvision = [
+    { index = "pytorch-cpu", extra = "datagen-tpu" },
+]

@@ -1,0 +1,2 @@
+# TACC Vista canary — Qwen3-32B on terminal_bench_2 (tb2).
+Qwen/Qwen3-32B

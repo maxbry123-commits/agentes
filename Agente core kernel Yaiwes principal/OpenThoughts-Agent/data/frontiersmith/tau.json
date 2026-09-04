@@ -1,0 +1,62 @@
+{
+  "1": {
+    "tau": 0.18,
+    "baseline_ratio": 0.1,
+    "heuristic_ratio": 0.374,
+    "justification": "Do-nothing baseline = ratio 0.10 (Score 100/1000). TAU above it => must beat the trivial campaign."
+  },
+  "2": {
+    "tau": 0.07,
+    "baseline_ratio": 0.0,
+    "heuristic_ratio": 0.264,
+    "justification": "No-pads baseline = ratio 0.0 (relative distance improvement). TAU => real distance reduction."
+  },
+  "3": {
+    "tau": 0.54,
+    "baseline_ratio": 0.5,
+    "heuristic_ratio": 0.65,
+    "justification": "Matching the deterministic judge-baseline = ratio 0.50. TAU>0.5 => genuinely beat the baseline emitter set."
+  },
+  "4": {
+    "tau": 0.54,
+    "baseline_ratio": 0.5,
+    "heuristic_ratio": 0.653,
+    "justification": "Matching the judge-baseline (per-trail round trips) = ratio 0.50. TAU>0.5 => beat it via shared-spine walks."
+  },
+  "5": {
+    "tau": 0.12,
+    "baseline_ratio": 0.0,
+    "heuristic_ratio": 0.403,
+    "justification": "No-retuners baseline = ratio 0.0. TAU => a real objective (penalty+cost) reduction."
+  },
+  "6": {
+    "tau": 0.51,
+    "baseline_ratio": 0.5,
+    "heuristic_ratio": 0.551,
+    "justification": "Matching the judge-baseline (block-centroid K clusters) = ratio 0.50; the block-centroid baseline is a strong local optimum so TAU is set just above 0.50 (heuristic clears it via MEC-center refinement)."
+  },
+  "7": {
+    "tau": 0.23,
+    "baseline_ratio": 0.2,
+    "heuristic_ratio": 0.289,
+    "justification": "Hire-nobody baseline = ratio 0.20 (min(5,B/U)/5). TAU>0.2 => lower the total cost by hiring shuttles."
+  },
+  "8": {
+    "tau": 0.62,
+    "baseline_ratio": 0.5,
+    "heuristic_ratio": 0.903,
+    "justification": "Matching the judge-baseline (degree-sorted bay spread) = ratio 0.50. TAU>0.5 => raise total energy."
+  },
+  "9": {
+    "tau": 0.51,
+    "baseline_ratio": 0.5,
+    "heuristic_ratio": 0.556,
+    "justification": "Matching the identity-permutation judge-baseline = ratio 0.50; the baseline permutation is a strong reference so TAU is set just above 0.50 (heuristic clears it at 0.556)."
+  },
+  "10": {
+    "tau": 0.2,
+    "baseline_ratio": 0.0,
+    "heuristic_ratio": 0.697,
+    "justification": "Baseline witnesses leave U_base uncovered = ratio 0.0. TAU => cover real demand weight."
+  }
+}

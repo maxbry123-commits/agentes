@@ -1,0 +1,595 @@
+{
+  "_meta": {
+    "description": "Flag-off pinggy decision surface (G0 baseline). Regenerate ONLY on an intentional pinggy-surface change.",
+    "fixed_pinggy_url": "https://parity-fixture.a.pinggy.link",
+    "fixed_vllm_endpoint": "http://10.0.0.1:8000/v1"
+  },
+  "eval_listener": {
+    "both_set": {
+      "EVAL_PINGGY_TOKEN": "PARITY_FIXTURE_TOKEN",
+      "EVAL_PINGGY_URL": "https://parity-fixture.a.pinggy.link"
+    },
+    "neither_set": {},
+    "url_only": {
+      "EVAL_PINGGY_URL": "https://parity-fixture.a.pinggy.link"
+    }
+  },
+  "matrix": {
+    "agent='codex'|env='apptainer'": {
+      "endpoint_meta": {
+        "api_base": "http://10.0.0.1:8000/v1",
+        "metrics_endpoint": "http://10.0.0.1:8000/metrics"
+      },
+      "merged_api_base": "http://10.0.0.1:8000/v1",
+      "merged_api_key": null,
+      "merged_metrics_endpoint": "http://10.0.0.1:8000/metrics",
+      "needs_pinggy_tunnel": false,
+      "passthrough": [],
+      "use_pinggy": false
+    },
+    "agent='codex'|env='daytona'": {
+      "endpoint_meta": {
+        "api_base": "https://parity-fixture.a.pinggy.link/v1",
+        "metrics_endpoint": "https://parity-fixture.a.pinggy.link/metrics"
+      },
+      "merged_api_base": "https://parity-fixture.a.pinggy.link/v1",
+      "merged_api_key": null,
+      "merged_metrics_endpoint": "https://parity-fixture.a.pinggy.link/metrics",
+      "needs_pinggy_tunnel": true,
+      "passthrough": [],
+      "use_pinggy": true
+    },
+    "agent='codex'|env='docker'": {
+      "endpoint_meta": {
+        "api_base": "http://10.0.0.1:8000/v1",
+        "metrics_endpoint": "http://10.0.0.1:8000/metrics"
+      },
+      "merged_api_base": "http://10.0.0.1:8000/v1",
+      "merged_api_key": null,
+      "merged_metrics_endpoint": "http://10.0.0.1:8000/metrics",
+      "needs_pinggy_tunnel": false,
+      "passthrough": [],
+      "use_pinggy": false
+    },
+    "agent='codex'|env='local'": {
+      "endpoint_meta": {
+        "api_base": "http://10.0.0.1:8000/v1",
+        "metrics_endpoint": "http://10.0.0.1:8000/metrics"
+      },
+      "merged_api_base": "http://10.0.0.1:8000/v1",
+      "merged_api_key": null,
+      "merged_metrics_endpoint": "http://10.0.0.1:8000/metrics",
+      "needs_pinggy_tunnel": false,
+      "passthrough": [],
+      "use_pinggy": false
+    },
+    "agent='codex'|env='modal'": {
+      "endpoint_meta": {
+        "api_base": "https://parity-fixture.a.pinggy.link/v1",
+        "metrics_endpoint": "https://parity-fixture.a.pinggy.link/metrics"
+      },
+      "merged_api_base": "https://parity-fixture.a.pinggy.link/v1",
+      "merged_api_key": null,
+      "merged_metrics_endpoint": "https://parity-fixture.a.pinggy.link/metrics",
+      "needs_pinggy_tunnel": true,
+      "passthrough": [],
+      "use_pinggy": true
+    },
+    "agent='codex'|env='podman_hpc'": {
+      "endpoint_meta": {
+        "api_base": "http://10.0.0.1:8000/v1",
+        "metrics_endpoint": "http://10.0.0.1:8000/metrics"
+      },
+      "merged_api_base": "http://10.0.0.1:8000/v1",
+      "merged_api_key": null,
+      "merged_metrics_endpoint": "http://10.0.0.1:8000/metrics",
+      "needs_pinggy_tunnel": false,
+      "passthrough": [],
+      "use_pinggy": false
+    },
+    "agent='codex'|env='singularity'": {
+      "endpoint_meta": {
+        "api_base": "http://10.0.0.1:8000/v1",
+        "metrics_endpoint": "http://10.0.0.1:8000/metrics"
+      },
+      "merged_api_base": "http://10.0.0.1:8000/v1",
+      "merged_api_key": null,
+      "merged_metrics_endpoint": "http://10.0.0.1:8000/metrics",
+      "needs_pinggy_tunnel": false,
+      "passthrough": [],
+      "use_pinggy": false
+    },
+    "agent='codex'|env=None": {
+      "endpoint_meta": {
+        "api_base": "https://parity-fixture.a.pinggy.link/v1",
+        "metrics_endpoint": "https://parity-fixture.a.pinggy.link/metrics"
+      },
+      "merged_api_base": "https://parity-fixture.a.pinggy.link/v1",
+      "merged_api_key": null,
+      "merged_metrics_endpoint": "https://parity-fixture.a.pinggy.link/metrics",
+      "needs_pinggy_tunnel": true,
+      "passthrough": [],
+      "use_pinggy": true
+    },
+    "agent='hermes'|env='apptainer'": {
+      "endpoint_meta": {
+        "api_base": "http://10.0.0.1:8000/v1",
+        "metrics_endpoint": "http://10.0.0.1:8000/metrics"
+      },
+      "merged_api_base": "http://10.0.0.1:8000/v1",
+      "merged_api_key": null,
+      "merged_metrics_endpoint": "http://10.0.0.1:8000/metrics",
+      "needs_pinggy_tunnel": false,
+      "passthrough": [],
+      "use_pinggy": false
+    },
+    "agent='hermes'|env='daytona'": {
+      "endpoint_meta": {
+        "api_base": "https://parity-fixture.a.pinggy.link/v1",
+        "metrics_endpoint": "https://parity-fixture.a.pinggy.link/metrics"
+      },
+      "merged_api_base": "https://parity-fixture.a.pinggy.link/v1",
+      "merged_api_key": null,
+      "merged_metrics_endpoint": "https://parity-fixture.a.pinggy.link/metrics",
+      "needs_pinggy_tunnel": true,
+      "passthrough": [],
+      "use_pinggy": true
+    },
+    "agent='hermes'|env='docker'": {
+      "endpoint_meta": {
+        "api_base": "http://10.0.0.1:8000/v1",
+        "metrics_endpoint": "http://10.0.0.1:8000/metrics"
+      },
+      "merged_api_base": "http://10.0.0.1:8000/v1",
+      "merged_api_key": null,
+      "merged_metrics_endpoint": "http://10.0.0.1:8000/metrics",
+      "needs_pinggy_tunnel": false,
+      "passthrough": [],
+      "use_pinggy": false
+    },
+    "agent='hermes'|env='local'": {
+      "endpoint_meta": {
+        "api_base": "http://10.0.0.1:8000/v1",
+        "metrics_endpoint": "http://10.0.0.1:8000/metrics"
+      },
+      "merged_api_base": "http://10.0.0.1:8000/v1",
+      "merged_api_key": null,
+      "merged_metrics_endpoint": "http://10.0.0.1:8000/metrics",
+      "needs_pinggy_tunnel": false,
+      "passthrough": [],
+      "use_pinggy": false
+    },
+    "agent='hermes'|env='modal'": {
+      "endpoint_meta": {
+        "api_base": "https://parity-fixture.a.pinggy.link/v1",
+        "metrics_endpoint": "https://parity-fixture.a.pinggy.link/metrics"
+      },
+      "merged_api_base": "https://parity-fixture.a.pinggy.link/v1",
+      "merged_api_key": null,
+      "merged_metrics_endpoint": "https://parity-fixture.a.pinggy.link/metrics",
+      "needs_pinggy_tunnel": true,
+      "passthrough": [],
+      "use_pinggy": true
+    },
+    "agent='hermes'|env='podman_hpc'": {
+      "endpoint_meta": {
+        "api_base": "http://10.0.0.1:8000/v1",
+        "metrics_endpoint": "http://10.0.0.1:8000/metrics"
+      },
+      "merged_api_base": "http://10.0.0.1:8000/v1",
+      "merged_api_key": null,
+      "merged_metrics_endpoint": "http://10.0.0.1:8000/metrics",
+      "needs_pinggy_tunnel": false,
+      "passthrough": [],
+      "use_pinggy": false
+    },
+    "agent='hermes'|env='singularity'": {
+      "endpoint_meta": {
+        "api_base": "http://10.0.0.1:8000/v1",
+        "metrics_endpoint": "http://10.0.0.1:8000/metrics"
+      },
+      "merged_api_base": "http://10.0.0.1:8000/v1",
+      "merged_api_key": null,
+      "merged_metrics_endpoint": "http://10.0.0.1:8000/metrics",
+      "needs_pinggy_tunnel": false,
+      "passthrough": [],
+      "use_pinggy": false
+    },
+    "agent='hermes'|env=None": {
+      "endpoint_meta": {
+        "api_base": "https://parity-fixture.a.pinggy.link/v1",
+        "metrics_endpoint": "https://parity-fixture.a.pinggy.link/metrics"
+      },
+      "merged_api_base": "https://parity-fixture.a.pinggy.link/v1",
+      "merged_api_key": null,
+      "merged_metrics_endpoint": "https://parity-fixture.a.pinggy.link/metrics",
+      "needs_pinggy_tunnel": true,
+      "passthrough": [],
+      "use_pinggy": true
+    },
+    "agent='openhands'|env='apptainer'": {
+      "endpoint_meta": {
+        "api_base": "http://10.0.0.1:8000/v1",
+        "metrics_endpoint": "http://10.0.0.1:8000/metrics"
+      },
+      "merged_api_base": "http://10.0.0.1:8000/v1",
+      "merged_api_key": null,
+      "merged_metrics_endpoint": "http://10.0.0.1:8000/metrics",
+      "needs_pinggy_tunnel": false,
+      "passthrough": [],
+      "use_pinggy": false
+    },
+    "agent='openhands'|env='daytona'": {
+      "endpoint_meta": {
+        "api_base": "https://parity-fixture.a.pinggy.link/v1",
+        "metrics_endpoint": "https://parity-fixture.a.pinggy.link/metrics"
+      },
+      "merged_api_base": "https://parity-fixture.a.pinggy.link/v1",
+      "merged_api_key": null,
+      "merged_metrics_endpoint": "https://parity-fixture.a.pinggy.link/metrics",
+      "needs_pinggy_tunnel": true,
+      "passthrough": [],
+      "use_pinggy": true
+    },
+    "agent='openhands'|env='docker'": {
+      "endpoint_meta": {
+        "api_base": "http://10.0.0.1:8000/v1",
+        "metrics_endpoint": "http://10.0.0.1:8000/metrics"
+      },
+      "merged_api_base": "http://10.0.0.1:8000/v1",
+      "merged_api_key": null,
+      "merged_metrics_endpoint": "http://10.0.0.1:8000/metrics",
+      "needs_pinggy_tunnel": false,
+      "passthrough": [],
+      "use_pinggy": false
+    },
+    "agent='openhands'|env='local'": {
+      "endpoint_meta": {
+        "api_base": "http://10.0.0.1:8000/v1",
+        "metrics_endpoint": "http://10.0.0.1:8000/metrics"
+      },
+      "merged_api_base": "http://10.0.0.1:8000/v1",
+      "merged_api_key": null,
+      "merged_metrics_endpoint": "http://10.0.0.1:8000/metrics",
+      "needs_pinggy_tunnel": false,
+      "passthrough": [],
+      "use_pinggy": false
+    },
+    "agent='openhands'|env='modal'": {
+      "endpoint_meta": {
+        "api_base": "https://parity-fixture.a.pinggy.link/v1",
+        "metrics_endpoint": "https://parity-fixture.a.pinggy.link/metrics"
+      },
+      "merged_api_base": "https://parity-fixture.a.pinggy.link/v1",
+      "merged_api_key": null,
+      "merged_metrics_endpoint": "https://parity-fixture.a.pinggy.link/metrics",
+      "needs_pinggy_tunnel": true,
+      "passthrough": [],
+      "use_pinggy": true
+    },
+    "agent='openhands'|env='podman_hpc'": {
+      "endpoint_meta": {
+        "api_base": "http://10.0.0.1:8000/v1",
+        "metrics_endpoint": "http://10.0.0.1:8000/metrics"
+      },
+      "merged_api_base": "http://10.0.0.1:8000/v1",
+      "merged_api_key": null,
+      "merged_metrics_endpoint": "http://10.0.0.1:8000/metrics",
+      "needs_pinggy_tunnel": false,
+      "passthrough": [],
+      "use_pinggy": false
+    },
+    "agent='openhands'|env='singularity'": {
+      "endpoint_meta": {
+        "api_base": "http://10.0.0.1:8000/v1",
+        "metrics_endpoint": "http://10.0.0.1:8000/metrics"
+      },
+      "merged_api_base": "http://10.0.0.1:8000/v1",
+      "merged_api_key": null,
+      "merged_metrics_endpoint": "http://10.0.0.1:8000/metrics",
+      "needs_pinggy_tunnel": false,
+      "passthrough": [],
+      "use_pinggy": false
+    },
+    "agent='openhands'|env=None": {
+      "endpoint_meta": {
+        "api_base": "https://parity-fixture.a.pinggy.link/v1",
+        "metrics_endpoint": "https://parity-fixture.a.pinggy.link/metrics"
+      },
+      "merged_api_base": "https://parity-fixture.a.pinggy.link/v1",
+      "merged_api_key": null,
+      "merged_metrics_endpoint": "https://parity-fixture.a.pinggy.link/metrics",
+      "needs_pinggy_tunnel": true,
+      "passthrough": [],
+      "use_pinggy": true
+    },
+    "agent='qwen-code'|env='apptainer'": {
+      "endpoint_meta": {
+        "api_base": "http://10.0.0.1:8000/v1",
+        "metrics_endpoint": "http://10.0.0.1:8000/metrics"
+      },
+      "merged_api_base": "http://10.0.0.1:8000/v1",
+      "merged_api_key": null,
+      "merged_metrics_endpoint": "http://10.0.0.1:8000/metrics",
+      "needs_pinggy_tunnel": false,
+      "passthrough": [],
+      "use_pinggy": false
+    },
+    "agent='qwen-code'|env='daytona'": {
+      "endpoint_meta": {
+        "api_base": "https://parity-fixture.a.pinggy.link/v1",
+        "metrics_endpoint": "https://parity-fixture.a.pinggy.link/metrics"
+      },
+      "merged_api_base": "https://parity-fixture.a.pinggy.link/v1",
+      "merged_api_key": null,
+      "merged_metrics_endpoint": "https://parity-fixture.a.pinggy.link/metrics",
+      "needs_pinggy_tunnel": true,
+      "passthrough": [],
+      "use_pinggy": true
+    },
+    "agent='qwen-code'|env='docker'": {
+      "endpoint_meta": {
+        "api_base": "http://10.0.0.1:8000/v1",
+        "metrics_endpoint": "http://10.0.0.1:8000/metrics"
+      },
+      "merged_api_base": "http://10.0.0.1:8000/v1",
+      "merged_api_key": null,
+      "merged_metrics_endpoint": "http://10.0.0.1:8000/metrics",
+      "needs_pinggy_tunnel": false,
+      "passthrough": [],
+      "use_pinggy": false
+    },
+    "agent='qwen-code'|env='local'": {
+      "endpoint_meta": {
+        "api_base": "http://10.0.0.1:8000/v1",
+        "metrics_endpoint": "http://10.0.0.1:8000/metrics"
+      },
+      "merged_api_base": "http://10.0.0.1:8000/v1",
+      "merged_api_key": null,
+      "merged_metrics_endpoint": "http://10.0.0.1:8000/metrics",
+      "needs_pinggy_tunnel": false,
+      "passthrough": [],
+      "use_pinggy": false
+    },
+    "agent='qwen-code'|env='modal'": {
+      "endpoint_meta": {
+        "api_base": "https://parity-fixture.a.pinggy.link/v1",
+        "metrics_endpoint": "https://parity-fixture.a.pinggy.link/metrics"
+      },
+      "merged_api_base": "https://parity-fixture.a.pinggy.link/v1",
+      "merged_api_key": null,
+      "merged_metrics_endpoint": "https://parity-fixture.a.pinggy.link/metrics",
+      "needs_pinggy_tunnel": true,
+      "passthrough": [],
+      "use_pinggy": true
+    },
+    "agent='qwen-code'|env='podman_hpc'": {
+      "endpoint_meta": {
+        "api_base": "http://10.0.0.1:8000/v1",
+        "metrics_endpoint": "http://10.0.0.1:8000/metrics"
+      },
+      "merged_api_base": "http://10.0.0.1:8000/v1",
+      "merged_api_key": null,
+      "merged_metrics_endpoint": "http://10.0.0.1:8000/metrics",
+      "needs_pinggy_tunnel": false,
+      "passthrough": [],
+      "use_pinggy": false
+    },
+    "agent='qwen-code'|env='singularity'": {
+      "endpoint_meta": {
+        "api_base": "http://10.0.0.1:8000/v1",
+        "metrics_endpoint": "http://10.0.0.1:8000/metrics"
+      },
+      "merged_api_base": "http://10.0.0.1:8000/v1",
+      "merged_api_key": null,
+      "merged_metrics_endpoint": "http://10.0.0.1:8000/metrics",
+      "needs_pinggy_tunnel": false,
+      "passthrough": [],
+      "use_pinggy": false
+    },
+    "agent='qwen-code'|env=None": {
+      "endpoint_meta": {
+        "api_base": "https://parity-fixture.a.pinggy.link/v1",
+        "metrics_endpoint": "https://parity-fixture.a.pinggy.link/metrics"
+      },
+      "merged_api_base": "https://parity-fixture.a.pinggy.link/v1",
+      "merged_api_key": null,
+      "merged_metrics_endpoint": "https://parity-fixture.a.pinggy.link/metrics",
+      "needs_pinggy_tunnel": true,
+      "passthrough": [],
+      "use_pinggy": true
+    },
+    "agent='terminus-2'|env='apptainer'": {
+      "endpoint_meta": {
+        "api_base": "http://10.0.0.1:8000/v1",
+        "metrics_endpoint": "http://10.0.0.1:8000/metrics"
+      },
+      "merged_api_base": "http://10.0.0.1:8000/v1",
+      "merged_api_key": null,
+      "merged_metrics_endpoint": "http://10.0.0.1:8000/metrics",
+      "needs_pinggy_tunnel": false,
+      "passthrough": [],
+      "use_pinggy": false
+    },
+    "agent='terminus-2'|env='daytona'": {
+      "endpoint_meta": {
+        "api_base": "http://10.0.0.1:8000/v1",
+        "metrics_endpoint": "http://10.0.0.1:8000/metrics"
+      },
+      "merged_api_base": "http://10.0.0.1:8000/v1",
+      "merged_api_key": null,
+      "merged_metrics_endpoint": "http://10.0.0.1:8000/metrics",
+      "needs_pinggy_tunnel": false,
+      "passthrough": [],
+      "use_pinggy": false
+    },
+    "agent='terminus-2'|env='docker'": {
+      "endpoint_meta": {
+        "api_base": "http://10.0.0.1:8000/v1",
+        "metrics_endpoint": "http://10.0.0.1:8000/metrics"
+      },
+      "merged_api_base": "http://10.0.0.1:8000/v1",
+      "merged_api_key": null,
+      "merged_metrics_endpoint": "http://10.0.0.1:8000/metrics",
+      "needs_pinggy_tunnel": false,
+      "passthrough": [],
+      "use_pinggy": false
+    },
+    "agent='terminus-2'|env='local'": {
+      "endpoint_meta": {
+        "api_base": "http://10.0.0.1:8000/v1",
+        "metrics_endpoint": "http://10.0.0.1:8000/metrics"
+      },
+      "merged_api_base": "http://10.0.0.1:8000/v1",
+      "merged_api_key": null,
+      "merged_metrics_endpoint": "http://10.0.0.1:8000/metrics",
+      "needs_pinggy_tunnel": false,
+      "passthrough": [],
+      "use_pinggy": false
+    },
+    "agent='terminus-2'|env='modal'": {
+      "endpoint_meta": {
+        "api_base": "http://10.0.0.1:8000/v1",
+        "metrics_endpoint": "http://10.0.0.1:8000/metrics"
+      },
+      "merged_api_base": "http://10.0.0.1:8000/v1",
+      "merged_api_key": null,
+      "merged_metrics_endpoint": "http://10.0.0.1:8000/metrics",
+      "needs_pinggy_tunnel": false,
+      "passthrough": [],
+      "use_pinggy": false
+    },
+    "agent='terminus-2'|env='podman_hpc'": {
+      "endpoint_meta": {
+        "api_base": "http://10.0.0.1:8000/v1",
+        "metrics_endpoint": "http://10.0.0.1:8000/metrics"
+      },
+      "merged_api_base": "http://10.0.0.1:8000/v1",
+      "merged_api_key": null,
+      "merged_metrics_endpoint": "http://10.0.0.1:8000/metrics",
+      "needs_pinggy_tunnel": false,
+      "passthrough": [],
+      "use_pinggy": false
+    },
+    "agent='terminus-2'|env='singularity'": {
+      "endpoint_meta": {
+        "api_base": "http://10.0.0.1:8000/v1",
+        "metrics_endpoint": "http://10.0.0.1:8000/metrics"
+      },
+      "merged_api_base": "http://10.0.0.1:8000/v1",
+      "merged_api_key": null,
+      "merged_metrics_endpoint": "http://10.0.0.1:8000/metrics",
+      "needs_pinggy_tunnel": false,
+      "passthrough": [],
+      "use_pinggy": false
+    },
+    "agent='terminus-2'|env=None": {
+      "endpoint_meta": {
+        "api_base": "http://10.0.0.1:8000/v1",
+        "metrics_endpoint": "http://10.0.0.1:8000/metrics"
+      },
+      "merged_api_base": "http://10.0.0.1:8000/v1",
+      "merged_api_key": null,
+      "merged_metrics_endpoint": "http://10.0.0.1:8000/metrics",
+      "needs_pinggy_tunnel": false,
+      "passthrough": [],
+      "use_pinggy": false
+    },
+    "agent=None|env='apptainer'": {
+      "endpoint_meta": {
+        "api_base": "http://10.0.0.1:8000/v1",
+        "metrics_endpoint": "http://10.0.0.1:8000/metrics"
+      },
+      "merged_api_base": "http://10.0.0.1:8000/v1",
+      "merged_api_key": null,
+      "merged_metrics_endpoint": "http://10.0.0.1:8000/metrics",
+      "needs_pinggy_tunnel": false,
+      "passthrough": [],
+      "use_pinggy": false
+    },
+    "agent=None|env='daytona'": {
+      "endpoint_meta": {
+        "api_base": "https://parity-fixture.a.pinggy.link/v1",
+        "metrics_endpoint": "https://parity-fixture.a.pinggy.link/metrics"
+      },
+      "merged_api_base": "https://parity-fixture.a.pinggy.link/v1",
+      "merged_api_key": null,
+      "merged_metrics_endpoint": "https://parity-fixture.a.pinggy.link/metrics",
+      "needs_pinggy_tunnel": true,
+      "passthrough": [],
+      "use_pinggy": true
+    },
+    "agent=None|env='docker'": {
+      "endpoint_meta": {
+        "api_base": "http://10.0.0.1:8000/v1",
+        "metrics_endpoint": "http://10.0.0.1:8000/metrics"
+      },
+      "merged_api_base": "http://10.0.0.1:8000/v1",
+      "merged_api_key": null,
+      "merged_metrics_endpoint": "http://10.0.0.1:8000/metrics",
+      "needs_pinggy_tunnel": false,
+      "passthrough": [],
+      "use_pinggy": false
+    },
+    "agent=None|env='local'": {
+      "endpoint_meta": {
+        "api_base": "http://10.0.0.1:8000/v1",
+        "metrics_endpoint": "http://10.0.0.1:8000/metrics"
+      },
+      "merged_api_base": "http://10.0.0.1:8000/v1",
+      "merged_api_key": null,
+      "merged_metrics_endpoint": "http://10.0.0.1:8000/metrics",
+      "needs_pinggy_tunnel": false,
+      "passthrough": [],
+      "use_pinggy": false
+    },
+    "agent=None|env='modal'": {
+      "endpoint_meta": {
+        "api_base": "https://parity-fixture.a.pinggy.link/v1",
+        "metrics_endpoint": "https://parity-fixture.a.pinggy.link/metrics"
+      },
+      "merged_api_base": "https://parity-fixture.a.pinggy.link/v1",
+      "merged_api_key": null,
+      "merged_metrics_endpoint": "https://parity-fixture.a.pinggy.link/metrics",
+      "needs_pinggy_tunnel": true,
+      "passthrough": [],
+      "use_pinggy": true
+    },
+    "agent=None|env='podman_hpc'": {
+      "endpoint_meta": {
+        "api_base": "http://10.0.0.1:8000/v1",
+        "metrics_endpoint": "http://10.0.0.1:8000/metrics"
+      },
+      "merged_api_base": "http://10.0.0.1:8000/v1",
+      "merged_api_key": null,
+      "merged_metrics_endpoint": "http://10.0.0.1:8000/metrics",
+      "needs_pinggy_tunnel": false,
+      "passthrough": [],
+      "use_pinggy": false
+    },
+    "agent=None|env='singularity'": {
+      "endpoint_meta": {
+        "api_base": "http://10.0.0.1:8000/v1",
+        "metrics_endpoint": "http://10.0.0.1:8000/metrics"
+      },
+      "merged_api_base": "http://10.0.0.1:8000/v1",
+      "merged_api_key": null,
+      "merged_metrics_endpoint": "http://10.0.0.1:8000/metrics",
+      "needs_pinggy_tunnel": false,
+      "passthrough": [],
+      "use_pinggy": false
+    },
+    "agent=None|env=None": {
+      "endpoint_meta": {
+        "api_base": "https://parity-fixture.a.pinggy.link/v1",
+        "metrics_endpoint": "https://parity-fixture.a.pinggy.link/metrics"
+      },
+      "merged_api_base": "https://parity-fixture.a.pinggy.link/v1",
+      "merged_api_key": null,
+      "merged_metrics_endpoint": "https://parity-fixture.a.pinggy.link/metrics",
+      "needs_pinggy_tunnel": true,
+      "passthrough": [],
+      "use_pinggy": true
+    }
+  }
+}

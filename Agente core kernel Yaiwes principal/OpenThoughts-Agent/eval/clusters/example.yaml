@@ -1,0 +1,39 @@
+
+cluster_name: <your-cluster>
+
+slurm_partition: <PARTITION>
+slurm_account: ""
+slurm_time: "24:00:00"
+
+conda_envs:
+  otagent: <path-to-conda-env>
+
+paths:
+  project_root: <path-to-OpenThoughts-Agent-checkout>
+
+  hf_cache: <path-to-hf-hub-cache>
+
+  eval_jobs_dir: <path-to-jobs>
+
+  eval_logs_dir: eval/logs
+  listener_logs_dir: experiments/listener_logs
+
+  sbatch_script: eval/jupiter/eval_harbor.sbatch
+  dp_sbatch_script: eval/jupiter/eval_harbor.sbatch
+
+  harbor_src: <path-to-harbor-checkout>/src
+
+  datasets_dirs:
+    - <path-to-hf-hub-cache>
+
+  secrets_file: ~/secrets.env
+
+proxy:
+  enabled: false
+
+hardware:
+  gpus_per_node: <N>
+  cpus_per_node: <N>
+  mem_per_node_mb: <N>
+  arch: <ARCH>
+  cuda_home: <path-to-cuda>

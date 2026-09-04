@@ -1,0 +1,14 @@
+# tb2 priority-1 re-queue — 2026-07-13 operator-directed resume of 10 wrongly-cancelled flawed_summ legs
+# These 10 res_a1-* SLURM legs were cancelled earlier today (two-family resolve); warm harbor__* snapshot dirs persist -> cheap resume.
+# r360 nemotron_csharp · r364 qasper · r367 softwareheritage · r370 stack_dockerfile · r379 stackexchange_codereview
+# r383 synatra · r386 toolscale · r389 unitsyn_python · r506 issue_tasks · r354 nl2bash
+DCAgent/a1-nemotron_csharp
+DCAgent/a1-qasper
+DCAgent/a1-softwareheritage
+DCAgent/a1-stack_dockerfile
+DCAgent/a1-stackexchange_codereview
+DCAgent/a1-synatra
+DCAgent/a1-toolscale
+DCAgent/a1-unitsyn_python
+DCAgent/a1-issue_tasks
+DCAgent/a1-nl2bash

@@ -1,0 +1,5 @@
+# TACC flawed_summ refill 2026-07-07b — swebench preset — next a3-tier rows after RESET queue exhausted (2 iris-tpu terminals: r278/r269 freed slots)
+# r298 laion/a3-rl-laion_exp_rpt_crosscodeeval-csharp-v4-50-8B swe
+laion/a3-rl-laion_exp_rpt_crosscodeeval-csharp-v4-50-8B
+# r301 laion/a3-rl-laion_nemotron-gym-agent-workplace-v2-5-8B swe
+laion/a3-rl-laion_nemotron-gym-agent-workplace-v2-5-8B

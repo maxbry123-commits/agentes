@@ -1,0 +1,4 @@
+# 3 ID evals (swebench random-100, dev_set_v2, terminal_bench_2) for the
+# axolotl-32B SFT intermediate checkpoint accepted at step-250.
+# Launched dependency-chained on TACC 2026-07-15 (one benchmark at a time).
+laion/Qwen3-32B-OpenThoughts-Agent-SFT-10K-axolotl-step250

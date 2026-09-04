@@ -1,0 +1,32 @@
+notebooks/local_scratch
+__pycache__/
+.vscode
+.vs
+.idea/
+/build
+/dist
+*.egg-info
+*.diskcache
+.ipynb_checkpoints
+node_modules
+.eggs/
+.env
+.DS_Store
+venv/
+.venv/
+
+# Ignore native library built by setup
+guidance/*.so
+guidance/_rust/*.so
+guidance/_rust/target/
+guidance/_rust/Cargo.lock
+*.pyd
+
+notebooks/**/*.papermill_out.ipynb
+
+.mypy_cache/*
+
+**/scratch.*
+
+# Claude Code generated files
+CLAUDE.md

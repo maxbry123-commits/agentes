@@ -1,0 +1,35 @@
+
+models:
+  "allenai/tmax-9b":
+    tensor_parallel_size: 1
+    max_model_len: 65536
+    trust_remote_code: true
+    limit_mm_per_prompt: '{"image":0,"video":0}'
+    extra_args: "--enable-prefix-caching"
+
+  "Qwen/Qwen3-32B":
+    tensor_parallel_size: 1
+    max_model_len: 32768
+    swap_space: 32
+    trust_remote_code: true
+    extra_args: "--enable-prefix-caching"
+
+  "Qwen/Qwen3-8B":
+    tensor_parallel_size: 1
+    max_model_len: 32768
+    trust_remote_code: true
+    extra_args: "--enable-prefix-caching"
+
+patterns:
+  - match: "(?i)32[Bb]"
+    trust_remote_code: true
+    tensor_parallel_size: 1
+    max_model_len: 32768
+    swap_space: 32
+    extra_args: "--enable-prefix-caching"
+
+  - match: ".*"
+    trust_remote_code: true
+    tensor_parallel_size: 1
+    max_model_len: 32768
+    extra_args: "--enable-prefix-caching"

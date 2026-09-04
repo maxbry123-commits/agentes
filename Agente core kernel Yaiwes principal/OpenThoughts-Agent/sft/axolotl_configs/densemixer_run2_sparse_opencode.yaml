@@ -1,0 +1,87 @@
+# axolotl SFT — Run 2 (DenseMixer OFF = native sparse) — Qwen3-30B-A3B-Thinking-2507 on opencode traces.
+# Experiment: axolotl-sft-opencode-densemoe (task #16). The CONTROL arm of the paired ablation:
+#   BYTE-IDENTICAL to Run 1 (densemixer_run1_opencode.yaml) EXCEPT `dense_mixer: false` + `output_dir`.
+# Control discipline (POLICY §2): SAME θ₀, seed, dataset + data-ORDER (same shared prepared path),
+# seq_len, batch, packing, LR schedule, step count — the ONLY functional diff is dense_mixer true→false
+# (plugin stays loaded; with false its pre_model_load is a no-op → stock sparse top-k MoE forward).
+# Design/rationale: experiments/active/axolotl-sft-opencode-densemoe/{POLICY,STATE}.md.
+#
+# ⚠ LAUNCH PATH = DIRECT `axolotl.cli.train` (NOT hpc.launch — it would strip plugins/dense_mixer/fp8).
+# ⚠ REQUIRES image `mega_final_dm.sqsh` (densemixer==1.0.1 + the tf-5.x port baked in).
+
+# θ₀ — the SHARED init both runs start from (control discipline). IDENTICAL to Run 1.
+base_model: /mnt/home/bf996/experiments/densemixer/theta0    # Qwen/Qwen3-30B-A3B-Thinking-2507 @ 144afc2f...
+model_type: AutoModelForCausalLM
+trust_remote_code: true
+
+# === THE one-flag control diff: DenseMixer OFF ===
+# Plugin stays in the stack (identical to Run 1); `dense_mixer: false` makes its pre_model_load a
+# no-op → the model keeps the STOCK sparse top-k Qwen3MoE forward (non-selected experts' router
+# logits get zero task-loss gradient). This is the sparse baseline for the Δθ counterfactual.
+plugins:
+  - axolotl.integrations.densemixer.DenseMixerPlugin
+dense_mixer: false                # Run 2 = OFF (the ONLY functional diff vs Run 1).
+
+# opencode SFT dataset — SERVE-PARITY REBUILD (bug ledger #2 fix); IDENTICAL to Run 1 + SHARED
+# prepared path (guarantees same data ORDER). See Run 1 config for the rebuild rationale.
+# Source: laion/nemotron-code-oracle-opencode-sft-serveparity (rebuilt from literal token columns).
+datasets:
+  - path: /mnt/home/bf996/experiments/densemixer/data_opencode_serveparity
+    ds_type: parquet
+    data_files:
+      - /mnt/home/bf996/experiments/densemixer/data_opencode_serveparity/data/train-*.parquet
+    type: chat_template
+    field_messages: messages
+    field_tools: tools
+    message_property_mappings:
+      role: role
+      content: content
+    split_thinking: false
+# TRAIN==SERVE (POLICY §7): base tools-aware Qwen3 template via tokenizer_default (IDENTICAL to Run 1).
+chat_template: tokenizer_default
+dataset_prepared_path: /mnt/home/bf996/experiments/densemixer/prepared/run1_serveparity   # SHARED with Run 1 (same tokens + order)
+val_set_size: 0.0
+dataset_num_proc: 1
+dataloader_num_workers: 2
+dataloader_prefetch_factor: 2
+
+# === precision — bf16 + flash-attn (IDENTICAL to Run 1) ===
+bf16: true
+fp16: false
+fp8: false                        # ⚠ MANDATORY EXPLICIT — axolotl 0.17 auto-enables fp8 on sm_100 → nan.
+tf32: false
+attn_implementation: flash_attention_2
+
+# === memory / compute (IDENTICAL to Run 1) ===
+# ⚠ Blackwell fix (B-only, functionally inert for A): the STOCK Qwen3MoE experts default to the
+# `grouped_mm` kernel -> `torch._grouped_mm`, which is Hopper-only (cc 9.0) and RuntimeErrors on the
+# B200 (cc 10.0) at the first step (job 31707). `eager` uses the per-expert F.linear loop (no
+# grouped_mm) -> works on Blackwell. This is NOT a control confound: A (dense_mixer:true) replaces the
+# whole SparseMoeBlock.forward with the tf-5.x port that accesses expert weights directly and NEVER
+# calls self.experts.forward, so `experts_implementation` is never exercised on A's path — the only
+# FUNCTIONAL A/B difference remains dense (all-expert STE) vs sparse (top-k). Both do per-expert F.linear.
+experts_implementation: eager
+deepspeed: /opt/axolotl/deepspeed_configs/zero3_bf16.json
+gradient_checkpointing: true
+chunked_cross_entropy: true
+sequence_len: 16384
+sample_packing: true
+
+# === control discipline — IDENTICAL to Run 1 ===
+seed: 42
+micro_batch_size: 1
+gradient_accumulation_steps: 4
+num_epochs: 3.0
+learning_rate: 2.0e-5
+lr_scheduler: cosine
+warmup_ratio: 0.1
+max_grad_norm: 1.0
+optimizer: adamw_torch_fused
+weight_decay: 0.0
+
+# === checkpoint cadence (IDENTICAL to Run 1) — θ₀ + intermediate + final for the Δθ trajectory ===
+logging_steps: 1
+save_steps: 10
+save_total_limit: 100
+output_dir: /mnt/home/bf996/experiments/densemixer/run2_sparse_out   # DISTINCT from Run 1 (not a control var)
+special_tokens: {}

@@ -1,0 +1,6 @@
+# tb2 priority-1 re-fire (below-gate auto-registrations PURGED) — 2026-07-13 driver sweep
+# r354 nl2bash (Leo 49265996 COMPLETED below-gate vc 71.9%, purged row e3286197)
+# r360 nemotron_csharp (Leo 49265997 COMPLETED below-gate vc 70.8%, purged row 67214241)
+# both warm-resume the incomplete partials on Leonardo (active tb2 family)
+DCAgent/a1-nl2bash
+DCAgent/a1-nemotron_csharp

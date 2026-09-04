@@ -1,0 +1,33 @@
+"""Shared eval preset catalog.
+
+Each preset is a flat dict of eval-run defaults (datasets, n_concurrent,
+agent_parser, agent_kwargs, etc.), stored as one ``<name>.yaml`` per preset
+in this package directory. Both the SLURM orchestrator
+(``eval/unified_eval_listener.py``) and the Iris launcher
+(``eval/cloud/launch_eval_iris.py``) load presets from here, so the two paths
+stay in sync.
+"""
+
+from pathlib import Path
+
+import yaml
+
+_PRESET_DIR = Path(__file__).parent
+
+
+def load_presets() -> dict[str, dict]:
+    """Load every ``*.yaml`` in this package, keyed by filename stem.
+
+    Returns presets in sorted-key order. Each value is the parsed YAML mapping
+    for that preset, preserving field types verbatim.
+    """
+    presets: dict[str, dict] = {}
+    for path in sorted(_PRESET_DIR.glob("*.yaml")):
+        with path.open() as f:
+            presets[path.stem] = yaml.safe_load(f)
+    return presets
+
+
+def get_preset(name: str) -> dict:
+    """Return a single preset by name. Raises KeyError if unknown."""
+    return load_presets()[name]

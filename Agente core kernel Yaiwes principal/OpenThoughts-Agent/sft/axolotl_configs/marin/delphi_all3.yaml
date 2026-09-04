@@ -1,0 +1,60 @@
+# marin fork — integration example: all three ported features ON at once.
+#
+# Enables:
+#   - delphi chat template (chat_template: delphi) + the save-time footgun fix
+#     (tokenizer_save_jinja_files: false + the template_integrity plugin covering the
+#      flag-ignoring per-checkpoint save)
+#   - MFU logging (mfu: true)
+#   - Supabase model-registration (supabase_register: true) — fires only rank-0 at
+#     train-end with a hub push configured AND SUPABASE_* creds present (via env / a
+#     KEYS secrets file). Creds by env-var NAME only — NEVER put them in this YAML.
+#
+# NOTE: the delphi special tokens (<|start_think|>/<|tool_call|>/<|tool_result|> …)
+# must be single tokens on the tokenizer BEFORE training (reserved-slot rename + mean
+# init via the OT-Agent tokenizer-prep script) — same prereq as LLaMA-Factory.
+
+base_model: NousResearch/Meta-Llama-3-8B-Instruct
+
+# Upload the final model to HF — required for Supabase registration to fire.
+# hub_model_id: laion/my-delphi-sft-model
+
+plugins:
+  - axolotl.integrations.template_integrity.TemplateIntegrityPlugin
+  - axolotl.integrations.mfu.MFUPlugin
+  - axolotl.integrations.supabase_registry.SupabaseRegistryPlugin
+
+datasets:
+  - path: teknium/GPT4-LLM-Cleaned
+    type: chat_template
+
+chat_template: delphi
+# footgun fix: embed the chat_template into tokenizer_config.json on the top-level
+# output_dir save (the plugin covers the per-checkpoint dirs the flag ignores).
+tokenizer_save_jinja_files: false
+
+# MFU logging
+mfu: true
+mfu_profile_every: 50
+mfu_warmup_steps: 5
+
+# Supabase model-registration (opt-in; default off). Creds via env / KEYS only.
+supabase_register: true
+
+val_set_size: 0.05
+output_dir: ./outputs/marin-all3-out
+
+sequence_len: 2048
+sample_packing: true
+
+gradient_accumulation_steps: 2
+micro_batch_size: 2
+num_epochs: 1
+
+optimizer: adamw_torch
+lr_scheduler: cosine
+learning_rate: 0.00002
+
+bf16: auto
+tf32: false
+
+gradient_checkpointing: true

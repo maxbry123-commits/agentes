@@ -1,0 +1,128 @@
+name: Build wheels
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:  # Enable manual run
+    inputs:
+      commit_id:
+        description: 'Branch or Commit ID (optional)'
+        required: false
+        type: string
+
+jobs:
+  build_wheels:
+    name: Build wheel distribution
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo at ${{ github.event_name == 'workflow_dispatch' && inputs.commit_id || github.sha }}
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.commit_id || github.sha }}
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v8.1.0
+
+      - name: Build bdist
+        run: |
+          uv build --wheel
+
+      - name: Upload bdist
+        uses: actions/upload-artifact@v7
+        with:
+          name: bdist_files
+          path: dist/*.whl
+
+  build_sdist:
+    name: Build source distribution
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo at ${{ github.event_name == 'workflow_dispatch' && inputs.commit_id || github.sha }}
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.commit_id || github.sha }}
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v8.1.0
+
+      - name: Build sdist (pep517)
+        run: |
+          uv build --sdist
+
+      - name: Upload sdist
+        uses: actions/upload-artifact@v7
+        with:
+          name: sdist_files
+          path: dist/*.tar.gz
+
+
+  assemble_wheels:
+    name: Combine wheels
+    needs: [build_wheels, build_sdist]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: sdist_files
+          path: dist
+      
+      - uses: actions/download-artifact@v8
+        with:
+          name: bdist_files
+          path: dist
+
+      - uses: actions/upload-artifact@v7
+        with:
+          path: ./dist/*
+          name: collected_dist_files
+
+  test_wheels:
+    name: Test Wheels
+    needs: [assemble_wheels]
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-14, macos-latest]
+        python-version: ["3.11", "3.12"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: collected_dist_files
+          path: wheelhouse
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v8.1.0
+      - run: uv pip install --system guidance -f ./wheelhouse/
+        name: Install guidance from wheels
+      - run: uv pip install --system transformers torch
+        name: Other installs
+      # - run: python -c "import guidance; import transformers; lm = guidance.models.Transformers('gpt2'); lm += '1,2,3,4,5,' + guidance.gen('num', max_tokens=5, temperature=0); print(f'\n Transformers Version:{transformers.__version__}\n\n{str(lm)=}\n'); assert lm['num'].startswith('6')"
+      #   name: Run smoke test
+
+  publish_wheels:
+    permissions:
+      id-token: write
+    name: Publish wheels on pypi
+    needs: [test_wheels]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: collected_dist_files
+          path: dist
+
+      - name: Publish package to PyPI
+        uses: pypa/gh-action-pypi-publish@v1
+        if: startsWith(github.ref, 'refs/tags')
+        with:
+          user: __token__
+          password: ${{ secrets.PYPI_API_TOKEN }}

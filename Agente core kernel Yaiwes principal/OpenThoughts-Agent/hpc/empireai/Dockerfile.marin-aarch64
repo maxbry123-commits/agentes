@@ -1,0 +1,41 @@
+# Marin / Levanter (JAX) on aarch64 (Grace) + Blackwell (B200 sm_100) for Empire AI Beta.
+# The Blackwell crux is the JAX runtime: Marin moved its `gpu` extra from jax[cuda12] to
+# **jax[cuda13] (JAX 0.9.2, CUDA 13)** specifically to support B200 (marin issue #5427 / PR #5428).
+# GPU jobs also need the CUDA toolchain staged (ptxas/nvlink; PR #6637) and FA4 CuTe/THD deps (PR #6237).
+#
+# Two ways to get JAX-on-B200 into an aarch64 container:
+#   (A) Start from the NGC JAX arm64 image (nvcr.io/nvidia/jax:<25.xx>-py3, CUDA 13 era) and pip-install
+#       Marin+Levanter on top (recommended if a CUDA-13 arm JAX tag exists — verify arm64 in the manifest).
+#   (B) Start from a slim CUDA-13 arm64 base and `pip install "jax[cuda13]==0.9.2"` + marin/levanter.
+# Below = (B), the framework-agnostic path that mirrors what Marin's own `gpu` extra installs.
+FROM nvcr.io/nvidia/cuda:13.0.0-cudnn-devel-ubuntu24.04
+
+ENV DEBIAN_FRONTEND=noninteractive PIP_NO_CACHE_DIR=1
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      git curl ca-certificates python3 python3-pip python3-venv build-essential && \
+    rm -rf /var/lib/apt/lists/*
+
+# uv is how Marin manages the venv/extras; keep parity.
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:${PATH}"
+
+WORKDIR /opt
+# Pin to the Marin commit that carries the CUDA-13 gpu extra (>= PR #5428). Replace <REF> after checking.
+# (Kept as a build ARG so the supervisor can pin a validated commit.)
+ARG MARIN_REF=main
+RUN git clone https://github.com/marin-community/marin.git && \
+    cd marin && git checkout ${MARIN_REF}
+
+# Install the JAX-CUDA13 runtime + Levanter/Marin. Mirrors `uv run --extra gpu` on a CUDA-13-default tree.
+RUN cd /opt/marin && \
+    uv venv /opt/venv && . /opt/venv/bin/activate && \
+    uv pip install "jax[cuda13]==0.9.2" && \
+    uv pip install -e lib/levanter -e lib/marin && \
+    python -c "import jax; print('jax', jax.__version__); print('devices', jax.devices())"
+
+ENV PATH="/opt/venv/bin:${PATH}"
+WORKDIR /opt/marin
+# NOTE: jax.devices() at BUILD time may show CPU only (no GPU in the build step) — that's fine.
+# The real check is the Phase-2 smoke: inside srun with a B200, jax.devices() must list cuda:0 and a
+# tiny MoE (experiments/grug/nano_moe) must take a few steps. Watch for Pallas/Mosaic-GPU ptxas errors
+# (needs the staged CUDA toolchain, PR #6637) and FA4 deps (PR #6237).

@@ -1,0 +1,17 @@
+# tb2 priority-1 re-fire — 2026-07-15 driver sweep. FINALIZE-ONLY (below-gate resume-until-registered).
+# The 8 crud-purged (2026-07-15, now DE-REGISTERED) tb2 pairs + r379 (surfaced-kept below-gate).
+# All 9 gate-FAIL on harbor 55ae9e66 (f9cf327e UNSCORED-prune ACTIVE): completeness rose +7.5..+12.0pt
+# vs pre-fix, but the binding wall SHIFTED to DaytonaAuthenticationError non-benign (nb% 10.5-22.5% > 10% cap).
+# qasper is a near-miss (89.5% vc / 10.5% nb). Warm-resume prunes unscored+DaytonaAuth trials and re-runs
+# them (Daytona API token verified healthy this sweep). toolscale (r386, 49374884) EXCLUDED — still RUNNING.
+# r360 nemotron_csharp · r364 qasper · r367 softwareheritage · r370 stack_dockerfile · r379 stackexchange_codereview
+# r383 synatra · r389 unitsyn_python · r506 issue_tasks · r354 nl2bash
+DCAgent/a1-nemotron_csharp
+DCAgent/a1-qasper
+DCAgent/a1-softwareheritage
+DCAgent/a1-stack_dockerfile
+DCAgent/a1-stackexchange_codereview
+DCAgent/a1-synatra
+DCAgent/a1-unitsyn_python
+DCAgent/a1-issue_tasks
+DCAgent/a1-nl2bash

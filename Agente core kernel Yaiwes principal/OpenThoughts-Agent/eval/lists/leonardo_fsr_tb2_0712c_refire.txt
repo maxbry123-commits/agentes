@@ -1,0 +1,8 @@
+# tb2 priority-1 re-fire (below-gate incomplete legs) — 2026-07-12 driver sweep (~19:00 EDT)
+# r364 qasper (Leo 49265421 COMPLETED 215/267=80.5% valid-complete, AgentTimeout-dominated)
+# r367 softwareheritage (Leo 49265427 COMPLETED 197/267=73.8%)
+# r379 stackexchange_codereview (Leo 49265430 COMPLETED 177/267=66.3%)
+# all 3 warm-resume the incomplete partials on Leonardo (active tb2 family)
+DCAgent/a1-qasper
+DCAgent/a1-softwareheritage
+DCAgent/a1-stackexchange_codereview

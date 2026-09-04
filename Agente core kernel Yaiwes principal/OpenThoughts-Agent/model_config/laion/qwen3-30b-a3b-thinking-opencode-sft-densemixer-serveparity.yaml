@@ -1,0 +1,28 @@
+# Serve-parity re-SFT'd dense arm (task #23 Run 1). Intrinsics live at TOP LEVEL
+# (base intrinsics) — NOT in a variants: block — because the iris eval path resolves
+# model_config with hardware=None, so any variants: key (gh200/v6e/…) is INERT there
+# (model_config/resolver.py:163-165; hpc/model_config_apply.py via launch_eval_iris.py
+# apply_to_launcher(iris=True) with no hardware=). Top-level fields reach the vLLM serve
+# on iris. max_model_len=32768 (NOT 65536): the 30B-A3B MoE is proven on v6e-4 at
+# TP=4/32768/enforce-eager (agent_logs/2026-07-02_30b-coder-eval-fused-moe-export-bug.md);
+# 65536 has no TPU precedent and TPU has no swap_space CPU-offload. The 4049-char
+# tools-aware chat_template is baked into the HF repo (no metadata patch).
+model: laion/qwen3-30b-a3b-thinking-opencode-sft-densemixer-serveparity
+tool_call_parser: hermes
+max_model_len: 32768
+trust_remote_code: true
+extra_args: --enable-prefix-caching --max-num-seqs 512
+agent_kwargs:
+- extra_body={"chat_template_kwargs":{"enable_thinking":true}}
+subsystems:
+  eval:
+    variants:
+      gh200:
+        tensor_parallel_size: 1
+        max_model_len: 65536
+        swap_space: 32
+        trust_remote_code: true
+        tool_call_parser: hermes
+        agent_kwargs:
+        - extra_body={"chat_template_kwargs":{"enable_thinking":true}}
+        extra_args: --enable-prefix-caching --max-num-seqs 512

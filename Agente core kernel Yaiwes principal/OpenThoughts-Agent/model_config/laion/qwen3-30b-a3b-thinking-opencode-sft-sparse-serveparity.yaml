@@ -1,0 +1,29 @@
+# Serve-parity re-SFT'd SPARSE control arm (task #23 Run 2, SLURM 32198). Paired A/B
+# partner of the dense (densemixer) serve-parity arm; identical serve config except the
+# model name. Intrinsics live at TOP LEVEL (base intrinsics) for the iris eval path
+# (resolves model_config with hardware=None → variants: keys inert there); the gh200
+# variant carries the TACC (Vista GH200) serve. max_model_len=65536 in the gh200 variant
+# = the FAIR 64k config (eval_opencode_ctx64k.yaml, max_output 16384, limit.context 48128)
+# — matches the dense serve-parity gh200 variant and the Gen-1 densemixer/sparse configs,
+# so the TACC dense-vs-sparse A/B is served identically. Top-level 32768 is the iris/TPU
+# ceiling (no 64k TPU precedent) but sparse is not eval'd on iris, so it is inert here.
+# The 4049-char tools-aware chat_template is baked into the HF repo (no metadata patch).
+model: laion/qwen3-30b-a3b-thinking-opencode-sft-sparse-serveparity
+tool_call_parser: hermes
+max_model_len: 32768
+trust_remote_code: true
+extra_args: --enable-prefix-caching --max-num-seqs 512
+agent_kwargs:
+- extra_body={"chat_template_kwargs":{"enable_thinking":true}}
+subsystems:
+  eval:
+    variants:
+      gh200:
+        tensor_parallel_size: 1
+        max_model_len: 65536
+        swap_space: 32
+        trust_remote_code: true
+        tool_call_parser: hermes
+        agent_kwargs:
+        - extra_body={"chat_template_kwargs":{"enable_thinking":true}}
+        extra_args: --enable-prefix-caching --max-num-seqs 512

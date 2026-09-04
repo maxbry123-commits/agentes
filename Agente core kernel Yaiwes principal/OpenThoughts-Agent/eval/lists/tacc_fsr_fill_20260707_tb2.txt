@@ -1,0 +1,4 @@
+# TACC flawed_summ reeval fill 2026-07-07 — tb2 preset — RESET-queue legs (grid-row priority)
+# r185 explore-tis-temp12-75-8B tb2 · r188 explore-tis-minp-40-8B tb2
+laion/explore-tis-temp12-75-8B
+laion/explore-tis-minp-40-8B

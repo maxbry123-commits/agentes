@@ -1,0 +1,2 @@
+# TACC row-254 clean re-fire 2026-07-03 — dev_set_v2 preset — supersedes broken auto-reg 17e165a9 (87.7% valid / 12% nb-err SandboxBuildFailed)
+laion/exp-syh-tezos-stackoverflow-mixed_glm_4_7_traces_jupiter_cleaned

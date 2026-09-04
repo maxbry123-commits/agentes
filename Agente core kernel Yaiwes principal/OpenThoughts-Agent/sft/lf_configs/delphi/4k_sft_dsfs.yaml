@@ -1,0 +1,45 @@
+
+global_batch_size: 16
+
+model_name_or_path: laion/delphi-3e18-p33m67-k0p20-lr83-a003
+trust_remote_code: true
+attn: fa2
+enable_liger_kernel: true
+optim: adamw_torch_fused
+
+stage: sft
+do_train: true
+finetuning_type: full
+deepspeed: sft/lf_configs/deepspeed/ds_z3_accelerate.json
+include_mfu: true
+
+template: delphi
+cutoff_len: 4096
+overwrite_cache: true
+preprocessing_num_workers: 16
+dataloader_persistent_workers: true
+dataloader_pin_memory: true
+dataloader_num_workers: 4
+
+logging_steps: 5
+save_strategy: "steps"
+save_steps: 24107
+save_total_limit: 4
+load_best_model_at_end: false
+logging_strategy: "steps"
+plot_loss: true
+report_to: wandb
+
+learning_rate: 1.0e-5
+num_train_epochs: 1.0
+max_grad_norm: 1.0
+adam_beta2: 0.98
+lr_scheduler_type: cosine
+warmup_ratio: 0.1
+bf16: true
+pure_bf16: false
+gradient_checkpointing: true
+ddp_timeout: 180000000
+push_to_hub: false
+
+data_shared_file_system: true

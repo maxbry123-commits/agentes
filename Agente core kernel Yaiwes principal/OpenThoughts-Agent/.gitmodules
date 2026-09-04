@@ -1,0 +1,8 @@
+[submodule "sft/llamafactory"]
+	path = sft/llamafactory
+	url = https://github.com/mlfoundations/llama-factory
+	branch = penfever/working_branch
+[submodule "sft/axolotl"]
+	path = sft/axolotl
+	url = https://github.com/marin-community/axolotl.git
+	branch = feuer/lockfree-prepared-sentinel

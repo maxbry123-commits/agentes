@@ -1,0 +1,50 @@
+MarinSkyRL NON-AGENTIC RL canary configs for Leonardo (CINECA).
+
+Cluster: A100-64GB, 4 GPUs/node, x86_64, SLURM. Account AIFAC_5C0_290.
+Partition boost_usr_prod, QOS boost_qos_dbg (<=30min, <=2 nodes). 1 node x 4 A100.
+
+What this is:
+- A minimal GSM8K GRPO smoke test for the NEW MarinSkyRL upstream
+  (marin-community/MarinSkyRL, main @ 9bb6d5e, which is the penfever/working
+  line merged to main). Runs via skyrl_train.entrypoints.main_base (NOT
+  main_tbench). NO Harbor / Daytona / terminal_bench / agentic chain, NO
+  proxyserver/tunnel.
+
+Files:
+- run_gsm8k_canary.sh : the GRPO invocation (Qwen2.5-1.5B-Instruct, gsm8k env).
+    Based on MarinSkyRL examples/gsm8k/run_gsm8k.sh but shrunk for a fast
+    single-step canary inside the 30-min debug window:
+      train_batch_size 1024 -> 32, mini_batch 256 -> 32,
+      micro batches 64 -> 8, n_samples_per_prompt 5 -> 4,
+      max_generate_length 1024 -> 512, epochs 20 -> 1,
+      eval_before_train true -> false, eval_interval 5 -> 0,
+      use_kl_loss true -> false (per canary spec), logger wandb -> console.
+    Keeps: colocate_all=true, strategy=fsdp2, backend=vllm,
+      run_engines_locally=true, weight_sync_backend=nccl, advantage=grpo.
+- sbatch_gsm8k_canary.sh : Leonardo sbatch. apptainer/singularity exec --nv the
+    marinskyrl.sif, binds $WORK + $SCRATCH_FAST, fully offline
+    (HF_HUB_OFFLINE=1, WANDB_MODE=offline), LOCAL model + dataset.
+
+Pre-staged on the LOGIN node (compute has no internet):
+- model:   Qwen/Qwen2.5-1.5B-Instruct in $WORK/data/hub (HF cache, offline)
+- dataset: $WORK/data/gsm8k/{train,validation}.parquet
+           (built with MarinSkyRL examples/gsm8k/gsm8k_dataset.py)
+
+Container / env approach (DOCUMENTED):
+- Image: a WRITABLE APPTAINER SANDBOX dir at
+  $SCRATCH_FAST/marinskyrl_sandbox, built on the login node from
+  docker://anyscale/ray:2.51.1-slim-py312-cu128 (the SkyRL docker base).
+  We use a sandbox dir rather than a .sif because the mksquashfs step that
+  produces a .sif OOM-killed on the login node and hit fatal lustre.lov
+  xattr errors on Lustre tmp. apptainer execs a sandbox dir as a valid image.
+- Python env: SkyRL's NATIVE uv flow, NOT conda. Ran `uv sync --extra vllm`
+  (uv 0.9.4) inside the sandbox against the committed uv.lock; the resolved
+  venv lives at $SCRATCH_FAST/marin_venv (torch 2.8.0+cu128, vllm 0.11.0,
+  flash-attn 2.8.3, xformers, ...). Chose uv over conda because conda cannot
+  reliably satisfy SkyRL's pinned cu128 wheels + the flashinfer-jit-cache
+  custom index + the torch/vllm/flash-attn conflict graph that uv resolves
+  deterministically from uv.lock. Import check PASSED:
+    import torch (2.8.0+cu128), vllm (0.11.0), skyrl_train  -> ok
+- At runtime the sbatch binds /leonardo_work + /leonardo_scratch, runs the
+  sandbox via `singularity exec --nv --no-home`, and invokes
+  $marin_venv/bin/python -m skyrl_train.entrypoints.main_base. No internet needed.

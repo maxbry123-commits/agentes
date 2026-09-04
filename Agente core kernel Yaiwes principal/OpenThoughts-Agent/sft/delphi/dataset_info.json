@@ -1,0 +1,38 @@
+{
+  "_comment": "Delphi cold-start SFT registry (marin #6279). Five datasets: 4 instruction + 1 CoT-warmup. Each carries its own columns/tags so a heterogeneous 90/10 mix parses correctly (global CLI --role_tag cannot serve different schemas at once). Launch with --dataset_dir sft/delphi. NOTE: file_name points to local parquet data dirs in $HF_HUB_CACHE on Leonardo (LF load_from=file, fully offline) — see SFT_LEONARDO_INSTRUCTIONS.md §9.4. Re-point file_name per cluster/cache. See SFT_COLDSTART_GRID.md.",
+
+  "tulu3": {
+    "formatting": "sharegpt",
+    "columns": { "messages": "messages" },
+    "tags": { "role_tag": "role", "content_tag": "content", "user_tag": "user", "assistant_tag": "assistant", "system_tag": "system" },
+    "file_name": "/leonardo_work/AIFAC_5C0_290/bfeuer00/data/hub/datasets--allenai--tulu-3-sft-mixture/snapshots/b14afda60f1bbebe55d5d2fa1e4df5042f97f8be/data"
+  },
+
+  "magpie": {
+    "formatting": "sharegpt",
+    "columns": { "messages": "conversations" },
+    "tags": { "role_tag": "from", "content_tag": "value", "user_tag": "human", "assistant_tag": "gpt", "system_tag": "system" },
+    "file_name": "/leonardo_work/AIFAC_5C0_290/bfeuer00/data/hub/datasets--Magpie-Align--Magpie-Llama-3.3-Pro-500K-Filtered/snapshots/e0eb240932cd6ca941191730ced4430b814f302e/data"
+  },
+
+  "wildchat_1.1m": {
+    "formatting": "sharegpt",
+    "columns": { "messages": "conversation" },
+    "tags": { "role_tag": "role", "content_tag": "content", "user_tag": "user", "assistant_tag": "assistant", "system_tag": "system" },
+    "file_name": "/leonardo_work/AIFAC_5C0_290/bfeuer00/data/hub/datasets--nyu-dice-lab--wildchat50m-rewild-sft-1118773/snapshots/29b14ec51622a13c3f7fd91a16c44766463e9467/data"
+  },
+
+  "wildchat_386k": {
+    "formatting": "sharegpt",
+    "columns": { "messages": "conversation" },
+    "tags": { "role_tag": "role", "content_tag": "content", "user_tag": "user", "assistant_tag": "assistant", "system_tag": "system" },
+    "file_name": "/leonardo_work/AIFAC_5C0_290/bfeuer00/data/hub/datasets--nyu-dice-lab--wildchat50m-rewild-sft-385700/snapshots/46a5bb56fffd8c57c3ecc812e647990b1527c001/data"
+  },
+
+  "delphi_warmup": {
+    "formatting": "sharegpt",
+    "columns": { "messages": "messages" },
+    "tags": { "role_tag": "role", "content_tag": "content", "user_tag": "user", "assistant_tag": "assistant", "system_tag": "system" },
+    "file_name": "/leonardo_work/AIFAC_5C0_290/bfeuer00/data/hub/datasets--laion--llama-nemotron-science-reasoning-on-le3000tok-100k-canonical-think/snapshots/28b859eff28b774ad53e86f595c8320fafb9020c/data"
+  }
+}

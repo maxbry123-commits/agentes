@@ -1,0 +1,87 @@
+
+job_name: default-eval-job
+jobs_dir: trace_jobs
+n_attempts: 3
+timeout_multiplier: 2.0
+debug: false
+orchestrator:
+  type: local
+  n_concurrent_trials: 16
+  quiet: false
+  plain_output: true
+  adaptive_concurrency:
+    enabled: false
+    algorithm: gradient2
+    min_limit: null
+    max_limit: null
+    metrics_endpoint: null
+    metrics_timeout_sec: 10.0
+    poll_interval_sec: 120.0
+    window_size: 5
+    queue_p95_drop_threshold: null
+    algorithm_kwargs: {}
+  retry:
+    max_retries: 10
+    include_exceptions: null
+    exclude_exceptions:
+    - AgentTimeoutError
+    - AgentEnvironmentTimeoutError
+    - VerifierTimeoutError
+    - RewardFileNotFoundError
+    - RewardFileEmptyError
+    - VerifierOutputParseError
+    - SandboxBuildFailedError
+    - VerifierRuntimeError
+    - SummarizationTimeoutError
+    - ContextLengthExceededError
+    wait_multiplier: 2.0
+    min_wait_sec: 1.0
+    max_wait_sec: 90.0
+  kwargs: {}
+environment:
+  type: daytona
+  force_build: true
+  delete: true
+  override_cpus: 2
+  override_memory_mb: 8192
+  override_storage_mb: 8192
+  kwargs:
+    auto_snapshot: true
+verifier:
+  override_timeout_sec: null
+  max_timeout_sec: 14400
+  disable: false
+agents:
+- name: opencode
+  import_path: null
+  model_name: vllm/override-at-runtime
+  max_timeout_sec: 7200
+  override_setup_timeout_sec: 600
+  kwargs:
+    # FAIR CONFIG (64k window). The 32k variant capped max_output at 4096 to keep
+    # limit.context large enough (~27648) that opencode's default summarization —
+    # which these -Thinking- opencode-SFT models crash during (tool call in the
+    # summary turn) — rarely fires. But 4096 TRUNCATED the verbose SFT models
+    # asymmetrically (densemixer 17% of trials / base 6%), confounding the A/B.
+    # Here the SERVED window is bumped to 65536 (registry max_model_len), so
+    # max_output can return to 16384 AND limit.context stays large. Keep a 2k
+    # protocol margin so a request at the OpenCode boundary cannot overflow the
+    # 65536-token served vLLM window.
+    #   limit.context = max_input(64512) - max_output(16384) - margin(1024) = 47104
+    # -> no early summarization (crash-free) AND no output truncation (fair). The
+    # The served vLLM max_model_len remains 65536; max_input_tokens is the
+    # deliberately lower OpenCode protocol cap.
+    opencode_config:
+      compaction:
+        auto: false
+    model_info:
+      max_input_tokens: 64512
+      max_output_tokens: 16384
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+    trajectory_config:
+      raw_content: false
+      linear_history: true
+datasets:
+- path: /replace/with/tasks/path
+tasks: []

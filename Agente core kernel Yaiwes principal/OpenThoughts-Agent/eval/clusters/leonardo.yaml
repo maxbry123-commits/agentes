@@ -1,0 +1,39 @@
+
+cluster_name: leonardo
+
+baseline_model_configs: eval/configs/baseline_model_configs_minimal.yaml
+
+use_model_registry: true
+model_registry: eval/configs/model_configs.yaml
+hardware_profile: default
+
+slurm_partition: boost_usr_prod
+slurm_account: AIFAC_5C0_290
+slurm_time: "23:59:00"
+
+conda_envs:
+  otagent: /leonardo_work/AIFAC_5C0_290/bfeuer00/miniforge3/envs/otagent
+  eval-qwen35: /leonardo_work/AIFAC_5C0_290/bfeuer00/miniforge3/envs/eval-qwen35
+
+paths:
+  project_root: /leonardo_work/AIFAC_5C0_290/bfeuer00/code/OpenThoughts-Agent
+  hf_cache: /leonardo_work/AIFAC_5C0_290/bfeuer00/data/hub
+  eval_jobs_dir: /leonardo_work/AIFAC_5C0_290/bfeuer00/eval_jobs
+  eval_logs_dir: eval/leonardo/logs
+  listener_logs_dir: experiments/listener_logs
+  sbatch_script: eval/leonardo/eval_harbor.sbatch
+  dp_sbatch_script: eval/leonardo/eval_harbor.sbatch
+  harbor_src: /leonardo_work/AIFAC_5C0_290/bfeuer00/code/harbor/src
+  datasets_dirs:
+    - /leonardo_work/AIFAC_5C0_290/bfeuer00/data/hub
+  secrets_file: ~/secrets.env
+
+proxy:
+  enabled: false
+
+hardware:
+  gpus_per_node: 4
+  cpus_per_node: 32
+  mem_per_node_mb: 490000
+  arch: x86_64
+  cuda_home: /leonardo_work/AIFAC_5C0_290/bfeuer00/miniforge3/envs/otagent

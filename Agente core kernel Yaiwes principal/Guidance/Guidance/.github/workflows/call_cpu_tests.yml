@@ -1,0 +1,86 @@
+name: call_cpu_tests
+
+on:
+  workflow_call:
+    inputs:
+      os:
+        required: true
+        type: string
+      python-version:
+        required: true
+        type: string
+      model:
+        required: true
+        type: string
+      codeCovPython:
+        required: true
+        type: string
+        default: "3.12"
+    secrets:
+      HF_TOKEN:
+        required: false
+      CODECOV_TOKEN:
+        required: false
+  workflow_dispatch:
+    inputs:
+      os:
+        required: false
+        type: string
+        default: "Large_Linux" # can instead use "Large_Windows" or the default OSes like "macos-latest"
+      python-version:
+        required: false
+        type: string
+        default: "3.12"
+      model:
+        required: false
+        type: string
+        default: "transformers_gpt2_cpu" # also try "llamacpp_llama2_7b_cpu", etc
+      codeCovPython:
+        required: true
+        type: string
+        default: "3.12"
+      commit_id:
+        description: 'Branch or Commit ID (optional)'
+        required: false
+        type: string
+
+jobs:
+  cpu_tests:
+    runs-on: ${{ inputs.os }}
+    steps:
+      - name: Checkout repo at ${{ github.event_name == 'workflow_dispatch' && inputs.commit_id || github.sha }}
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.commit_id || github.sha }}
+      - name: Set up Python ${{ inputs.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ inputs.python-version }}
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v8.1.0
+      - name: Install guidance and dependencies
+        shell: bash
+        if: ${{ inputs.python-version != '3.14' }}
+        run: |
+          uv pip install --system --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu -e .[llamacpp,transformers,onnxruntime-genai,test]
+          uv pip install --system accelerate  # required if using smaller quantizations
+      - name: Install guidance and dependencies (3.14/ONNX workaround)
+        # https://github.com/microsoft/onnxruntime/issues/26547
+        shell: bash
+        if: ${{ inputs.python-version == '3.14' }}
+        run: |
+          uv pip install --system --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu -e .[llamacpp,transformers,test]
+          uv pip install --system accelerate  # required if using smaller quantizations
+      - name: cpu_tests for ${{ inputs.model }}
+        shell: bash
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          pytest -vv --cov=guidance --cov-report=xml --cov-report=term-missing \
+            --selected_model ${{ inputs.model }} \
+            ./tests/model_integration ./tests/model_specific
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v6
+        if: ${{ (inputs.codeCovPython == inputs.python-version) }}
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}

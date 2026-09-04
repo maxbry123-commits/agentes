@@ -1,0 +1,5 @@
+# flawed_summ tb2 re-fire — r367 + r370 (root-cause fix 2026-07-11)
+# Silent-exit-after-dataset-resolve fixed: eval_harbor.sbatch set -eo pipefail kill +
+# greedy HF-cache find (commit 2f952285). Cache pre-warmed on Leonardo. Fire tb2-only.
+DCAgent/a1-softwareheritage
+DCAgent/a1-stack_dockerfile

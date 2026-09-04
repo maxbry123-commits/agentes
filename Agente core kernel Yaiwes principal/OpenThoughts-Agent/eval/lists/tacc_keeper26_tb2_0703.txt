@@ -1,0 +1,2 @@
+# TACC keeper-26 refill 2026-07-03 — tb2 preset — next ⏳ a3 tier row 272 (row 275 HELD: in-flight already 28 after row-237 resume, refill only 4 to hit 32)
+laion/a3-rl-laion_exp_rpt_codenet-python-v2

@@ -1,0 +1,66 @@
+--- a/vllm/entrypoints/openai/chat_completion/protocol.py	2026-06-04 13:15:14
++++ b/vllm/entrypoints/openai/chat_completion/protocol.py	2026-06-04 13:15:20
+@@ -93,6 +93,10 @@
+     # not part of the OpenAI spec but is useful for tracing the tokens
+     # in agent scenarios
+     token_ids: list[int] | None = None
++    # not part of the OpenAI spec; carries the inference-time MoE
++    # expert-selection mask for the generated tokens. Only populated when the
++    # server was launched with --enable-return-routed-experts (otherwise None).
++    routed_experts: list[list[list[int]]] | None = None  # [gen_len, num_layers, top_k]
+ 
+ 
+ class ChatCompletionResponse(OpenAIBaseModel):
+--- a/vllm/entrypoints/openai/chat_completion/serving.py	2026-06-04 13:15:14
++++ b/vllm/entrypoints/openai/chat_completion/serving.py	2026-06-04 13:15:31
+@@ -1488,6 +1488,11 @@
+                     stop_reason=output.stop_reason,
+                     token_ids=(
+                         as_list(output.token_ids) if request.return_token_ids else None
++                    ),
++                    routed_experts=(
++                        output.routed_experts.tolist()
++                        if output.routed_experts is not None
++                        else None
+                     ),
+                 )
+                 choices.append(choice_data)
+@@ -1698,6 +1703,11 @@
+                 token_ids=(
+                     as_list(output.token_ids) if request.return_token_ids else None
+                 ),
++                routed_experts=(
++                    output.routed_experts.tolist()
++                    if output.routed_experts is not None
++                    else None
++                ),
+             )
+             choice_data = maybe_filter_parallel_tool_calls(choice_data, request)
+ 
+--- a/vllm/entrypoints/openai/completion/protocol.py	2026-06-04 13:15:14
++++ b/vllm/entrypoints/openai/completion/protocol.py	2026-06-04 13:15:47
+@@ -434,6 +434,10 @@
+     token_ids: list[int] | None = None  # For response
+     prompt_logprobs: list[dict[int, Logprob] | None] | None = None
+     prompt_token_ids: list[int] | None = None  # For prompt
++    # not part of the OpenAI spec; inference-time MoE expert-selection mask for
++    # the generated tokens. Only populated when the server was launched with
++    # --enable-return-routed-experts (otherwise None).
++    routed_experts: list[list[list[int]]] | None = None  # [gen_len, num_layers, top_k]
+ 
+ 
+ class CompletionResponse(OpenAIBaseModel):
+--- a/vllm/entrypoints/openai/completion/serving.py	2026-06-04 13:15:14
++++ b/vllm/entrypoints/openai/completion/serving.py	2026-06-04 13:15:49
+@@ -578,6 +578,11 @@
+                     token_ids=(
+                         as_list(output.token_ids) if request.return_token_ids else None
+                     ),
++                    routed_experts=(
++                        output.routed_experts.tolist()
++                        if output.routed_experts is not None
++                        else None
++                    ),
+                 )
+                 choices.append(choice_data)
+ 

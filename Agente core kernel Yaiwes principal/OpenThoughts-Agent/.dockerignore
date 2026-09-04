@@ -1,0 +1,40 @@
+# Trim the Docker build context. The repo is ~5.3 GB locally — most of it is
+# downloaded artifacts (HF caches, generated dataset snapshots, logs) that
+# never belong in an image. Build-context streaming time scales with this.
+#
+# If you add a new heavy/untracked directory, add it here too.
+
+# VCS + IDE noise
+.git
+.gitattributes
+.idea
+.vscode
+
+# Untracked artifact directories (large downloads, generated outputs)
+data/nemotron_gym
+data/vllm_experiments
+beta9_logs
+logs
+notebook
+paper
+baselines
+tmp
+wheels
+
+# Python caches / build artifacts
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.egg-info
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/.venv
+**/.venv-*
+.coverage
+htmlcov
+
+# OS noise
+.DS_Store
+**/.DS_Store
+Thumbs.db

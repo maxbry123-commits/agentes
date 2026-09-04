@@ -1,0 +1,2 @@
+# TACC keeper-26 refill 2026-07-03 — v2 preset — next ⏳ a3 tier row 273
+laion/a3-rl-laion_exp_rpt_methods2test-large-v2
