@@ -1,9 +1,9 @@
 ---
 name: research-download-chain
-description: Copia, descarga+extrae, reubica y verifica componentes mediante GitHub Actions con deduplicación, fuente fijada, SHA, ZIP por partes, manifiesto y recuperación aislada de GAPS. Úsalo cuando YAIWES, Luna u otro agente deba incorporar código sin reescribirlo.
+description: Copia, descarga+extrae, reubica y verifica componentes mediante GitHub Actions y APIs Git de GitHub con deduplicación, fuente fijada, SHA, ZIP por partes, manifiesto y recuperación aislada de GAPS. Úsalo cuando YAIWES, Luna u otro agente deba incorporar o reorganizar código sin reescribirlo.
 metadata:
   type: workflow
-  version: "3.5.0"
+  version: "3.6.0"
 ---
 
 # Research Download Chain
@@ -92,7 +92,7 @@ Si el destino solicitado es código utilizable, el modo predeterminado es `EXTRA
 
 ### RELOCATE
 
-Mismo repositorio: `git mv` solo si la orden autoriza explícitamente quitar el origen; de lo contrario usa `cp -a` y conserva el original. Para raíces o lotes, genera primero un mapa `origen → destino → hash`, crea todos los padres con `mkdir -p`, y procesa cada entrada con detección de colisión. Entre repositorios, ejecuta el workflow desde el repositorio destino y usa su propio `GITHUB_TOKEN` para escribir; obtiene el origen en modo solo lectura. No elimines el original sin autorización literal.
+Mismo repositorio: para lotes usa preferentemente Git Trees API; `git mv` queda como método de runner solo si la orden autoriza explícitamente quitar el origen. Si no hay autorización para retirar el origen, copia el mismo blob SHA al destino y conserva el original. Para raíces o lotes, genera primero un mapa `origen → destino → blob/hash`, crea todos los padres y procesa cada entrada con detección de colisión. Entre repositorios, ejecuta el workflow desde el repositorio destino y usa su propio `GITHUB_TOKEN` para escribir; obtiene el origen en modo solo lectura. No elimines el original sin autorización literal.
 
 ## 5. Selección inequívoca de operación
 
@@ -123,13 +123,14 @@ No borres ZIP ni staging del repositorio salvo autorización; el staging del run
 ## 7. Concurrencia y escritura
 
 - Un destino tiene un solo escritor.
-- No permitas jobs paralelos que hagan push a la misma rama.
-- Para varios componentes, copia/verifica en paralelo solo dentro de áreas temporales y realiza un único commit/push secuencial.
-- Si usas jobs separados, el job final único recoge artefactos y escribe.
+- No permitas jobs paralelos que hagan push a la misma rama si escriben rutas solapadas. Shards con destinos disjuntos pueden ejecutarse en paralelo si cada uno rebasa sobre el `main` remoto antes del push y hace read-back propio.
+- Para varios componentes, copia/verifica en paralelo solo dentro de áreas temporales y realiza un único commit/push secuencial por conjunto de rutas solapadas.
+- Si usas jobs separados, el job final único recoge artefactos y escribe cuando exista un destino común.
 - `concurrency.group` debe incluir repositorio y destino; no uses un grupo global compartido por tareas no relacionadas.
 - `cancel-in-progress: false`.
-- Antes del push: `git pull --rebase origin <branch>`.
+- Antes del push desde runner: `git fetch origin <branch> && git rebase --autostash origin/<branch>`.
 - Reintenta push como máximo tres veces con espera creciente. Una colisión de contenido nunca se reintenta.
+- Para mutaciones directas por API usa CAS optimista: lee `HEAD=H` y `TREE=T`, construye el tree sobre `T`, crea commit con padre `H`, vuelve a leer `HEAD` y actualiza el ref con `force=false` solo si sigue siendo `H`; si cambió, reconstruye sobre el nuevo snapshot.
 
 ## 8. Trazabilidad mínima por componente
 
@@ -151,7 +152,9 @@ Genera hashes con rutas relativas y excluye el propio manifiesto:
 
 ## 9. GitHub Actions
 
-Crea un workflow nuevo; nunca reactives uno fallido. Debe continuar entre componentes independientes, pero el push será único. Incluye:
+GitHub Actions es el mecanismo primario para **adquisición externa, descarga, reconstrucción/extracción, entrega final del payload y read-back**. La reorganización masiva de archivos que ya existen en el mismo repositorio usa preferentemente Git Trees API para evitar runners innecesarios y commits intermedios.
+
+Para adquisición crea un workflow nuevo; nunca reactives uno fallido. Debe continuar entre componentes independientes, pero el push será único por destino solapado. Incluye:
 
 1. checkout destino;
 2. checkout/fetch de fuentes con SHA fijado;
@@ -253,7 +256,6 @@ Antes de escribir en destino valida todos los miembros del archivo: CRC, rutas a
 - Nunca declarar `VERIFIED_CLOSED` sin read-back independiente y `remaining_gaps=0`.
 - No ejecutes `git diff --check`, autoformat, trim de whitespace ni normalización de contenido sobre árboles copiados/descargados; el payload debe conservar bytes fuente. Los validadores estructurales solo pueden inspeccionar, no reescribir ni bloquear por estilo.
 
-
 ## 15. Punteros LFS fail-closed y dispatch resiliente
 
 Git LFS está absolutamente prohibido en esta cadena. Si una fuente fijada contiene un puntero LFS:
@@ -265,7 +267,7 @@ Git LFS está absolutamente prohibido en esta cadena. Si una fuente fijada conti
 5. Conserva ZIP, manifiesto, commit fuente, ruta y evidencia del puntero.
 6. Aísla el componente bloqueado y continúa únicamente con componentes independientes que no dependan de ese GAP.
 7. Solo puede cerrarse el GAP si existe una fuente ordinaria independiente, trazable y autorizada que entregue el archivo real sin usar el puntero/OID LFS como mecanismo de recuperación; SHA, tamaño, ruta y equivalencia deben verificarse antes de publicar.
-8. Nunca marques `EXTRACTED_VERIFIED` ni `VERIFIED_CLOSED` mientras el árbol final contenga un puntero LFS.
+8. Nunca marques `EXTRACTED_VERIFIED` ni `VERIFIED_CLOSED` mientras el árbol final contenga un puntero LFS o falten archivos obligatorios del alcance seleccionado.
 
 Para el LOOP de GitHub Actions:
 
@@ -274,7 +276,7 @@ Para el LOOP de GitHub Actions:
 - el finalizador se ejecuta con `if: always()`;
 - un GAP no reintentable se persiste y no genera redispatch ciego;
 - si push + read-back pasan y quedan GAPs reintentables, despacha el siguiente lote;
-- cierre únicamente con `remaining_gaps=0`, `remaining_source_pointers=0`, `oversized_blobs=0`, read-back PASS y auditor independiente.
+- cierre únicamente con `remaining_gaps=0`, `remaining_source_pointers=0`, `missing_required_files=0`, `oversized_blobs=0`, read-back PASS y auditor independiente.
 
 ## 16. Hardening de archivos, límites y reproducibilidad
 
@@ -303,7 +305,6 @@ Para HTTP/API:
 - aplica backoff acotado solo a errores transitorios;
 - no repitas mutaciones a ciegas y no conviertas 403/404/422 en retry infinito.
 
-
 ## 17. Supervisor único, Sentinel pasivo y LOOP sin tormenta de dispatch
 
 Una cadena de recuperación tiene **una sola autoridad de mutación/dispatch por destino**. No permitas que Repair Guardian, Watchdog Auditor, Sentinel y Supervisor despachen reparaciones simultáneamente para el mismo `repository + branch + destination_root`.
@@ -326,7 +327,7 @@ Reglas anti-duplicación:
 
 ### Read-back después de un push válido
 
-Si `commit/push=PASS` pero falla el paso posterior de read-back, no vuelvas a extraer ni republishes el mismo lote a ciegas.
+Si `commit/push=PASS` pero falla el paso posterior de read-back, no vuelvas a extraer ni publiques el mismo lote a ciegas.
 
 Secuencia obligatoria:
 
@@ -366,3 +367,53 @@ Debe detener el LOOP automático cuando:
 - cualquier intento de LFS → `SOURCE_LFS_POINTER_GAP` o GAP de política, sin workaround.
 
 `VERIFIED_CLOSED` requiere además `active_jobs=0`, cero colisiones/failures, SHA/CRC/tree/destination/read-back PASS y auditor independiente PASS.
+
+## 18. Métodos de MOVE/COPY/DELETE en el mismo repositorio
+
+### Método primario: Git Trees API
+
+Úsalo para organización masiva o movimientos de muchos archivos ya existentes:
+
+1. lee el commit HEAD `H` y su tree `T`;
+2. crea el mapa exacto `source_path → destination_path → mode/type/blob_sha`;
+3. COPY: añade `destination_path` con el mismo `blob_sha` y conserva origen;
+4. MOVE: añade destino con el mismo `blob_sha` y marca el origen con `sha:null` solo cuando la retirada esté autorizada;
+5. DELETE: `sha:null` únicamente para un archivo cuya eliminación esté explícitamente autorizada y que no sea código/componente protegido;
+6. crea tree con `base_tree=T` y después commit con padre `H`;
+7. vuelve a leer HEAD; si cambió, descarta el intento de publicación y reconstruye sobre el nuevo snapshot;
+8. actualiza el ref con `force=false`;
+9. read-back recursivo y comparación de rutas + blob SHA.
+
+Este método evita descargar/re-subir bytes y conserva identidad de blob. Para un árbol movido, enumera cada archivo: Git no almacena carpetas vacías y una carpeta no es una entidad movible por sí sola.
+
+### Método secundario: Contents API
+
+Úsalo para pocos archivos de texto o cambios puntuales. Siempre lee primero el SHA actual. Ejecuta create/update/delete de forma serial cuando afecten la misma rama o área; no mezcles create/update y delete en paralelo porque pueden entrar en conflicto. Después haz read-back.
+
+### Método runner/local Git
+
+Úsalo cuando la operación forma parte natural de una Action de adquisición/extracción o cuando se necesita una transformación Git que la API no expresa cómodamente. Para MOVE autorizado usa `git mv`; para COPY usa `cp -a`; para publicación usa fetch + rebase y push sin force. No uses runner solo para reorganización masiva si Git Trees API resuelve la operación de manera atómica.
+
+### Método branch + commit + PR
+
+Úsalo cuando la rama destino está protegida, existe una política de review o se necesita una barrera humana. Construye el cambio en una rama dedicada, verifica hashes/rutas, abre PR y fusiona únicamente cuando las reglas del repositorio lo permitan.
+
+### Matriz de selección
+
+| Situación | Método |
+|---|---|
+| Muchos MOVE/COPY/DELETE en el mismo repo | Git Trees API |
+| 1–pocos archivos de texto | Contents API serial |
+| Descarga/extracción externa y entrega | GitHub Actions |
+| Rama protegida / revisión requerida | Branch + PR |
+| Operación Git especial dentro de adquisición | Runner/local Git |
+
+Reglas universales:
+
+- **Nunca borres código ni componentes por deduplicación.** Si dos árboles de código son idénticos, conserva el canónico y solo retira otro si la orden lo autoriza literalmente como MOVE; en caso contrario conserva ambos y registra la identidad.
+- Para documentación no-code, deduplica solo tras probar SHA/hash idéntico y conservar una copia canónica.
+- Si no puedes demostrar que un archivo no es código/componente, no lo borres: `CLASSIFICATION_GAP`.
+- No muevas, borres ni reescribas una ruta destino sobre la que exista una GitHub Action activa. Espera su cierre o trabaja únicamente sobre rutas disjuntas.
+- Nunca uses `force=true`/force-push para organización.
+- Un commit creado pero no alcanzable desde la rama no cuenta como cambio aplicado.
+- El cierre exige read-back desde la rama publicada, no desde el tree/commit local recién creado.
