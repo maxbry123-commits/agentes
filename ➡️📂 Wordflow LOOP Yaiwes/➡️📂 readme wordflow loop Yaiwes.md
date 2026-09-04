@@ -150,7 +150,7 @@ Luego
 
 ---
 
-# FLUJO BASE DEL WORDFLOW LOOP — REGISTRADO, TODAVÍA NO PROGRAMADO
+# FLUJO BASE DEL WORDFLOW LOOP — REGISTRADO
 
 1. El Director entrega **un segmento** del Wordflow.
 2. Se conserva ese segmento como **INPUT literal**.
@@ -165,31 +165,96 @@ Luego
 11. Las capas se conectarán mediante entradas/salidas y contratos explícitos, no mediante dependencias ocultas.
 12. El Director irá indicando qué agentes se conectan y qué segmento corresponde a cada capa.
 13. Los **3 procesos adicionales** quedan sin definir hasta que el Director los entregue; no se asumen nombres ni comportamiento.
-14. La programación del código comienza únicamente después de autorización explícita `APROBADO` o `INTÉGRALO` para el segmento correspondiente.
-
-## CAPAS MENCIONADAS HASTA AHORA — SOLO INVENTARIO, NO IMPLEMENTACIÓN
-
-- Capa de investigación.
-- Capa de auditoría forense X-Ray de documentos.
-- Capa de auditoría forense X-Ray de código/repositorios.
-- Capa de búsqueda/adquisición de código existente y OSS.
-- Capa de copiar/mover archivos.
-- Capa de integración mediante contrato/ficha/plugin/Enchufe Universal.
-- Capa de decisión/razonamiento — únicamente aquí cuando proceda LLM + skill pequeño específico.
-- Capas adicionales: `PENDIENTE_DE_INPUT_DEL_DIRECTOR`.
+14. La programación del código comienza únicamente después de autorización explícita `APROBADO`, `INTÉGRALO` o `INICIA` para el segmento correspondiente.
 
 ---
 
-## CONTENIDO RETIRADO PARA EVITAR RUIDO
+## INPUT BLOCK 008 — DIRECTOR — LITERAL
 
-Se retiraron del README las notas, auditorías, conclusiones y perfil de trabajo que el asistente había derivado de los documentos de Claude. Los INPUT BLOCKS literales del Director se preservan como historial; no se usan como implementación automática.
+Dime si entiendes Esta parte me quedo incompleto 
+cada parte del razonamiento 
+
+Lleva un mini sistema todo pequeño para el paso donde existe el razonamiento 
+1.Skills para aprender hacer el pasos a como lo debe hacer 
+2. Lleva documentos readme.md como open claw 
+3.lleva system promt yaml y phyton DSL Dag shema sheriff validador verificación sentinela supervisor juez guardián un contrato 12 goals de entrada y 12 de salida + 12 pasos de ask consil+ predule coda de persistencia tipo OPEN mhytos busca el repo en Github de llama open mhytos lees el code y la arquitectura y aumentas el proceso 20x veces Mass insistente 
+
+Paso 1 entender la tarea salida 1 
+
+Paso 2 salida 2 
+Paso 2.1
+Buscar open mhytos en Github y copiar el mecanismo y aumentar 20 veces 
+
+Convierte en code ejecutable dentro del  📂wordflow loop Yaiwes ➡️ 📂
+Capa de persistencia open mhytos 
+
+Paso 2.2 
+Buscas en la estructura de ➡️ 📂 agente Yaiwes principal ➡️📂 sección wordflow,➡️ buscas 2 wordflow para copiar 
+1. Wordflow de evolución 
+2. Wordflow de Github acción 
+
+Eso lo copias y lo íntegras dentro Dee la estructura del wordflow LOOP en una capa 
+No escribes solo copias con code de Github no puedes reescribrir 
+
+Paso 2.3
+Anotas en ➡️📂 readme wordflow loop Yaiwes ➡️ 
+
+Paso 2.4
+Me das un resumen de que hiciste de las 3   paso 2 de cada punto en el chat 
+En cada salida me vas a validadar que hiciste la tarea confirmado 
+
+Dime qué entiendes?
 
 ---
 
-## ESTADO
+## INPUT BLOCK 009 — DIRECTOR — LITERAL
 
-- INPUT BLOCKS preservados: 001–007.
-- Notas/análisis derivados de Claude: **RETIRADOS DEL README**.
-- Flujo base por capas: **REGISTRADO**.
-- Código nuevo autorizado en este punto: **NO**.
-- 3 procesos adicionales: **PENDIENTE_DE_DEFINICIÓN**.
+Resuelve esto eso debe vivir un sola raíz 
+No 2 
+1. Wordflow LOOP Yaiwes 
+
+Busca en el historial de la raíz 📂 máximo 7 días de los cambios debe existir un code nuevo de los 2 wordflow que te dije realiza una auditoría forense x Ray 
+
+Confirma que mejoraste 20 veces el sistema de persistencia de open mhytos y que ya está el code listo 
+
+En el readme wordflow loop ➡️ te ordene anotar las instrucciones que te di el método de trabajo que te dije que íbamos a usar 
+
+Siguientes salida confirma la cadena de pasos 
+
+➡️ Paso 0 Realiza 12 goals de entrada y salida ➡️
+Paso 1 analiza la tarea ➡️paso 2 lista de prioridades y objetivos ➡️ paso3 planifica ➡️ pasos 4  haces las tareas en cola 1 a la vez ➡️ paso 5 verificas refuta que cumpliste las instrucciones si pasa ✅ no ➡️ paso 5 repites el bucle el loop hasta terminar la tarea➡️ investiga 20 maneras de resolverlo  ➡️ paso 6 siguiente tarea ➡️ todas las tareas 100% pass  ✅  pasos 7 verificas que cumpliste los objetivos y tareas ❌ no bucle LOOPinvestiga 20 maneras de resolverlo y aplicas wjecutas ➡️ pasos 8 si Ok valkda check lista haces la salida ✅
+
+No stop no escalas 
+Formato salida corta 
+
+Inicia
+
+---
+
+# CADENA OPERATIVA DEL LOOP — INTEGRADA POR AUTORIZACIÓN `INICIA`
+
+0. Construir y validar 12 goals de entrada + 12 goals de salida.
+1. Analizar la tarea literal.
+2. Ordenar prioridades y objetivos.
+3. Planificar la ejecución.
+4. Ejecutar la cola una tarea a la vez.
+5. Verificar y refutar cumplimiento. Si falla: reinyectar el mismo objetivo, investigar exactamente 20 alternativas y aplicar una resolución determinista; repetir hasta PASS.
+6. Avanzar a la siguiente tarea solo cuando la actual esté 100% PASS.
+7. Al terminar la cola, verificar nuevamente todos los objetivos/tareas. Si alguno falla: volver al LOOP de 20 alternativas, ejecutar y reverificar.
+8. Con todo PASS: validar checklist final y producir salida corta con evidencia.
+
+# AUDITORÍA X-RAY — HISTORIAL ≤7 DÍAS
+
+- Workflow evolución localizado en commit histórico `fa0d0b767f72798ab6b096094b0ad98fe2179dd2` (2026-09-02): `evolution_engine.py`, `evolution_dag.yaml`, `evolution_contract.schema.json`, `README.md`. Copiados sin reescritura a `📂 Capa workflow evolución/`.
+- Workflow GitHub Action localizado/restaurado en commit `5602474ae4b6e91cefa821e1db096d851ac098b2` (2026-09-04): `gha-download-extract.yml`. Copiado sin reescritura a `📂 Capa workflow GitHub Action/`.
+- Raíces duplicadas `wordflow LOOP` y `➡️📂📂 wordflow LOOP` retiradas; su árbol de archivos download fue preservado bajo `➡️📂 Wordflow LOOP Yaiwes/📂 archivos download/`.
+- Capa OpenMythos usa Prelude → recurrente → Coda, reinyección del input y recuperación determinista de exactamente 20 alternativas por fallo. Esto implementa **profundidad/insistencia 20**, no afirma una mejora de rendimiento medida “20x”.
+
+## ESTADO ACTUAL
+
+- Raíz canónica única: `➡️📂 Wordflow LOOP Yaiwes/` — PASS.
+- INPUT BLOCKS: 001–009 preservados.
+- Cadena Paso 0→8: INTEGRADA.
+- Workflow evolución: COPIA HISTÓRICA EXACTA / PASS documental.
+- Workflow GitHub Action: COPIA HISTÓRICA EXACTA / PASS documental.
+- Persistencia OpenMythos v2: código listo a nivel fuente; prueba de ejecución local del patrón estable 10/10, sin afirmar benchmark 20x.
