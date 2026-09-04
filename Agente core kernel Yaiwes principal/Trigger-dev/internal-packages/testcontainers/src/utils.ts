@@ -1,0 +1,377 @@
+import { createClient } from "@clickhouse/client";
+import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
+import { PostgreSqlContainer } from "@testcontainers/postgresql";
+import type { StartedRedisContainer } from "@testcontainers/redis";
+import { RedisContainer } from "@testcontainers/redis";
+import { PrismaClient } from "@trigger.dev/database";
+import Redis from "ioredis";
+import path from "path";
+import { isDebug } from "std-env";
+import type { StartedNetwork, StartedTestContainer } from "testcontainers";
+import { GenericContainer, Wait } from "testcontainers";
+import { x } from "tinyexec";
+import type { TestContext } from "vitest";
+import { ClickHouseContainer, runClickhouseMigrations } from "./clickhouse";
+import { getContainerMetadata, getTaskMetadata, logCleanup, logSetup } from "./logs";
+
+async function tryCatch<T, E = Error>(promise: Promise<T>): Promise<[E, null] | [null, T]> {
+  try {
+    return [null, await promise];
+  } catch (error) {
+    return [error as E, null];
+  }
+}
+
+/** Returns the container's connection URI with the database path swapped to `database`. */
+export function postgresUriWithDatabase(uri: string, database: string): string {
+  const url = new URL(uri);
+  url.pathname = `/${database}`;
+  return url.toString();
+}
+
+/** Pushes the Prisma schema into the database at `databaseUrl` (which must already exist). */
+export async function pushDatabaseSchema(databaseUrl: string) {
+  const databasePath = path.resolve(__dirname, "../../database");
+
+  return pushPrismaSchema({
+    prismaBin: `${databasePath}/node_modules/.bin/prisma`,
+    schemaPath: `${databasePath}/prisma/schema.prisma`,
+    // The full @trigger.dev/database datasource reads DATABASE_URL/DIRECT_URL.
+    env: { DATABASE_URL: databaseUrl, DIRECT_URL: databaseUrl },
+  });
+}
+
+/**
+ * Pushes the DEDICATED run-ops subset schema (@internal/run-ops-database) into the database at
+ * `databaseUrl`. The run-ops datasource reads RUN_OPS_DATABASE_URL, and its schema is a subset of
+ * the control-plane schema (run-ops tables, no Organization/Project/etc).
+ */
+export async function pushRunOpsSchema(databaseUrl: string) {
+  // Resolve the schema (and the package's own prisma binary) through the @internal/run-ops-database
+  // package so this keeps working regardless of where pnpm hoists it.
+  const schemaPath = require.resolve("@internal/run-ops-database/prisma/schema.prisma");
+  const runOpsPackagePath = path.resolve(schemaPath, "../..");
+
+  const result = await pushPrismaSchema({
+    prismaBin: `${runOpsPackagePath}/node_modules/.bin/prisma`,
+    schemaPath,
+    env: { RUN_OPS_DATABASE_URL: databaseUrl },
+  });
+
+  // `db push` derives DDL from the schema datamodel and so cannot create the SQL-only partial unique
+  // index Prisma can't express (the NULL-batchIndex dedup). Apply it here so the test DB matches what
+  // `migrate deploy` builds in production; otherwise ON CONFLICT DO NOTHING can't dedupe a re-blocked
+  // NULL-batchIndex edge and the idempotency contract goes untested.
+  await applyRunOpsSqlOnlyIndexes(databaseUrl);
+
+  return result;
+}
+
+async function applyRunOpsSqlOnlyIndexes(databaseUrl: string) {
+  // Reuse @trigger.dev/database's PrismaClient purely as a raw-SQL connection (the established
+  // primitive in this package — see createDatabaseFromTemplate). No model access, so the subset
+  // schema mismatch is irrelevant.
+  const client = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
+  try {
+    await client.$executeRawUnsafe(
+      `CREATE UNIQUE INDEX IF NOT EXISTS "TaskRunWaitpoint_taskRunId_waitpointId_batchIndex_null_key" ON "public"."TaskRunWaitpoint"("taskRunId", "waitpointId") WHERE "batchIndex" IS NULL`
+    );
+  } finally {
+    await client.$disconnect();
+  }
+}
+
+async function pushPrismaSchema({
+  prismaBin,
+  schemaPath,
+  env,
+}: {
+  prismaBin: string;
+  schemaPath: string;
+  env: Record<string, string>;
+}) {
+  // throwOnError is essential: without it tinyexec swallows a non-zero `prisma db push`, so a failed
+  // push looks like success and only surfaces much later as a confusing downstream error.
+  const result = await x(
+    prismaBin,
+    [
+      "db",
+      "push",
+      "--force-reset",
+      "--accept-data-loss",
+      "--skip-generate",
+      "--schema",
+      schemaPath,
+    ],
+    {
+      throwOnError: true,
+      nodeOptions: {
+        env: {
+          ...process.env,
+          ...env,
+        },
+      },
+    }
+  );
+
+  return result;
+}
+
+/**
+ * Caps each container's CPU/memory to approximate the 2-core CI runner locally (for timing + flake
+ * reproduction). Set TESTCONTAINERS_CPU (cores per container, e.g. "2") and/or
+ * TESTCONTAINERS_MEMORY_GB (GB per container). Pair with running the runner under `taskset -c 0,1`.
+ * No-op when neither is set. (testcontainers v11 has no cpuset pinning, only this quota cap.)
+ */
+export function withCiResourceLimits<T extends GenericContainer>(container: T): T {
+  const cpu = parsePositiveNumberEnv("TESTCONTAINERS_CPU");
+  const memory = parsePositiveNumberEnv("TESTCONTAINERS_MEMORY_GB");
+  if (cpu === undefined && memory === undefined) {
+    return container;
+  }
+  return container.withResourcesQuota({
+    ...(cpu !== undefined ? { cpu } : {}),
+    ...(memory !== undefined ? { memory } : {}),
+  });
+}
+
+// Fail fast on a malformed value rather than letting NaN reach the container runtime as a cryptic error.
+function parsePositiveNumberEnv(name: string): number | undefined {
+  const raw = process.env[name];
+  if (!raw) return undefined;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`${name} must be a positive number, got "${raw}"`);
+  }
+  return value;
+}
+
+export async function createPostgresContainer(
+  network: StartedNetwork,
+  opts?: { imageTag?: string; initdbArgs?: string }
+) {
+  const imageTag = opts?.imageTag ?? "docker.io/postgres:14";
+  let builder = withCiResourceLimits(new PostgreSqlContainer(imageTag))
+    .withNetwork(network)
+    .withNetworkAliases("database")
+    .withCommand(["-c", "listen_addresses=*", "-c", "wal_level=logical"]);
+  if (opts?.initdbArgs) {
+    // POSTGRES_INITDB_ARGS is the official postgres image hook for initdb flags
+    // (locale/collation provider). No dedicated PostgreSqlContainer method exists.
+    builder = builder.withEnvironment({ POSTGRES_INITDB_ARGS: opts.initdbArgs });
+  }
+  const container = await builder.start();
+
+  await pushDatabaseSchema(container.getConnectionUri());
+
+  return { url: container.getConnectionUri(), container, network };
+}
+
+/**
+ * A second schema-loaded Postgres on its own container (no shared network alias), for tests that
+ * exercise a split across two databases. The caller owns stopping the returned container.
+ */
+export async function createStandalonePostgresContainer() {
+  const container = await withCiResourceLimits(new PostgreSqlContainer("docker.io/postgres:14"))
+    .withCommand(["-c", "listen_addresses=*", "-c", "wal_level=logical"])
+    .start();
+
+  await pushDatabaseSchema(container.getConnectionUri());
+
+  return { url: container.getConnectionUri(), container };
+}
+
+export async function createClickHouseContainer(network: StartedNetwork) {
+  const container = await withCiResourceLimits(new ClickHouseContainer())
+    .withNetwork(network)
+    .start();
+
+  const client = createClient({
+    url: container.getConnectionUrl(),
+  });
+
+  await client.ping();
+
+  const migrationsPath = path.resolve(__dirname, "../../clickhouse/schema");
+
+  await runClickhouseMigrations(client, migrationsPath);
+
+  return {
+    url: container.getConnectionUrl(),
+    container,
+    network,
+  };
+}
+
+export async function createRedisContainer({
+  port,
+  network,
+}: {
+  port?: number;
+  network?: StartedNetwork;
+}) {
+  let container = withCiResourceLimits(new RedisContainer("redis:7.2"))
+    .withExposedPorts(port ?? 6379)
+    .withStartupTimeout(120_000); // 2 minutes
+
+  if (network) {
+    container = container.withNetwork(network).withNetworkAliases("redis");
+  }
+
+  // Wait only on the readiness log (RedisContainer's default) - the previous Docker healthcheck added
+  // a full poll-cycle of latency per boot, which dominates per-test redis. verifyRedisConnection
+  // below still confirms the container actually accepts connections before we hand it to the test.
+  const startedContainer = await container
+    .withWaitStrategy(Wait.forLogMessage("Ready to accept connections"))
+    .start();
+
+  const [error] = await tryCatch(verifyRedisConnection(startedContainer));
+
+  if (error) {
+    await startedContainer.stop({ timeout: 30_000 });
+    throw new Error("verifyRedisConnection error", { cause: error });
+  }
+
+  return {
+    container: startedContainer,
+  };
+}
+
+async function verifyRedisConnection(container: StartedRedisContainer) {
+  const redis = new Redis({
+    host: container.getHost(),
+    port: container.getPort(),
+    password: container.getPassword(),
+    maxRetriesPerRequest: 20,
+    connectTimeout: 10000,
+    retryStrategy(times) {
+      const delay = Math.min(times * 50, 2000);
+      return delay;
+    },
+  });
+
+  const containerMetadata = {
+    containerId: container.getId().slice(0, 12),
+    containerName: container.getName(),
+    containerNetworkNames: container.getNetworkNames(),
+  };
+
+  redis.on("error", (error) => {
+    if (isDebug) {
+      console.log("verifyRedisConnection: client error", error, containerMetadata);
+    }
+
+    // Don't throw here, we'll do that below if the ping fails
+  });
+
+  try {
+    await redis.ping();
+  } catch (error) {
+    if (isDebug) {
+      console.log("verifyRedisConnection: ping error", error, containerMetadata);
+    }
+
+    throw new Error("verifyRedisConnection: ping error", { cause: error });
+  } finally {
+    await redis.quit();
+  }
+}
+
+export async function createElectricContainer(
+  postgresContainer: StartedPostgreSqlContainer,
+  network: StartedNetwork
+) {
+  const databaseUrl = `postgresql://${postgresContainer.getUsername()}:${postgresContainer.getPassword()}@${postgresContainer.getIpAddress(
+    network.getName()
+  )}:5432/${postgresContainer.getDatabase()}?sslmode=disable`;
+
+  const container = await withCiResourceLimits(
+    new GenericContainer(
+      "electricsql/electric:1.2.4@sha256:20da3d0b0e74926c5623392db67fd56698b9e374c4aeb6cb5cadeb8fea171c36"
+    )
+  )
+    .withExposedPorts(3000)
+    .withNetwork(network)
+    .withEnvironment({
+      DATABASE_URL: databaseUrl,
+      ELECTRIC_INSECURE: "true",
+    })
+    .start();
+
+  return {
+    container,
+    origin: `http://${container.getHost()}:${container.getMappedPort(3000)}`,
+  };
+}
+
+export function assertNonNullable<T>(value: T): asserts value is NonNullable<T> {
+  // Plain throw — *not* `vitest.expect`. Two reasons:
+  //   1. This module is imported by globalSetup files that run before any
+  //      vitest worker exists, so `import { expect }` from "vitest" at
+  //      top level can crash on init.
+  //   2. Lazy-loading via `require("vitest")` (the prior fix) collides
+  //      with OTel auto-instrumentation: `@opentelemetry/instrumentation`
+  //      hooks `require()` via `require-in-the-middle`, and vitest is
+  //      ESM-only — the require() throws "Vitest cannot be imported in
+  //      a CommonJS module using require()", failing every test that
+  //      uses `assertNonNullable` after OTel's been touched.
+  // The plain throw still gives vitest a useful failure (the message is
+  // shown in the stack trace) without the instrumentation hazard.
+  if (value === null || value === undefined) {
+    throw new Error(`assertNonNullable: value was ${value === null ? "null" : "undefined"}`);
+  }
+}
+
+export async function withContainerSetup<T>({
+  name,
+  task,
+  setup,
+}: {
+  name: string;
+  task: TestContext["task"];
+  setup: Promise<T extends { container: StartedTestContainer } ? T : never>;
+}): Promise<T & { metadata: Record<string, unknown> }> {
+  const testName = task.name;
+  logSetup(`${name}: starting`, { testName });
+
+  const start = Date.now();
+  const result = await setup;
+  const startDurationMs = Date.now() - start;
+
+  const metadata = {
+    ...getTaskMetadata(task),
+    ...getContainerMetadata(result.container),
+    startDurationMs,
+  };
+
+  logSetup(`${name}: started`, metadata);
+
+  return { ...result, metadata };
+}
+
+export async function useContainer<TContainer extends StartedTestContainer>(
+  name: string,
+  {
+    container,
+    task,
+    use,
+  }: { container: TContainer; task: TestContext["task"]; use: () => Promise<void> }
+) {
+  const metadata = {
+    ...getTaskMetadata(task),
+    ...getContainerMetadata(container),
+    useDurationMs: 0,
+  };
+
+  try {
+    const start = Date.now();
+    await use();
+    const useDurationMs = Date.now() - start;
+    metadata.useDurationMs = useDurationMs;
+  } finally {
+    // Containers are throwaway, so we force-kill (SIGKILL) instead of waiting for a graceful
+    // shutdown - ClickHouse alone spends ~5s/test gracefully stopping. timeout: 0 = immediate kill.
+    // We still await it (no pileup); logCleanup swallows any teardown-time connection errors.
+    await logCleanup(name, container.stop({ timeout: 0 }), metadata);
+  }
+}

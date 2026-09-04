@@ -1,0 +1,119 @@
+import { ClipboardCheckIcon, ClipboardIcon } from "lucide-react";
+import { useCopy } from "~/hooks/useCopy";
+import { cn } from "~/utils/cn";
+import { Button } from "./Buttons";
+import { SimpleTooltip } from "./Tooltip";
+
+const sizes = {
+  "extra-small": {
+    icon: "size-3",
+    button: "h-5 px-1",
+  },
+  small: {
+    icon: "size-3.5",
+    button: "h-6 px-1",
+  },
+  medium: {
+    icon: "size-4",
+    button: "h-8 px-1.5",
+  },
+};
+
+type CopyButtonProps = {
+  value: string;
+  variant?: "icon" | "button";
+  size?: keyof typeof sizes;
+  className?: string;
+  buttonClassName?: string;
+  showTooltip?: boolean;
+  buttonVariant?: "primary" | "secondary" | "tertiary" | "minimal";
+  children?: React.ReactNode;
+};
+
+export function CopyButton({
+  value,
+  variant = "button",
+  size = "medium",
+  className,
+  buttonClassName,
+  showTooltip = true,
+  buttonVariant = "tertiary",
+  children,
+}: CopyButtonProps) {
+  const { copy, copied } = useCopy(value);
+
+  const { icon: iconSize, button: buttonSize } = sizes[size];
+
+  if (variant === "button") {
+    return (
+      <span className={className}>
+        <Button
+          variant={`${buttonVariant}/${size === "extra-small" ? "small" : size}`}
+          onClick={copy}
+          className={cn("shrink-0", buttonClassName)}
+          tooltip={showTooltip ? (copied ? "Copied!" : "Copy") : undefined}
+          aria-label={children ? undefined : copied ? "Copied" : "Copy"}
+          LeadingIcon={
+            copied ? (
+              <ClipboardCheckIcon
+                className={cn(
+                  iconSize,
+                  buttonVariant === "primary" ? "text-background-dimmed" : "text-green-500"
+                )}
+              />
+            ) : (
+              <ClipboardIcon
+                className={cn(
+                  iconSize,
+                  buttonVariant === "primary" ? "text-background-dimmed" : "text-text-dimmed"
+                )}
+              />
+            )
+          }
+        >
+          {children}
+        </Button>
+      </span>
+    );
+  }
+
+  const iconButton = (
+    <button
+      type="button"
+      aria-label={copied ? "Copied" : "Copy"}
+      onClick={copy}
+      className={cn(
+        buttonSize,
+        "flex shrink-0 items-center justify-center rounded border border-border-bright bg-background-hover",
+        copied
+          ? "text-green-500"
+          : "text-text-dimmed hover:border-border-bright hover:bg-background-raised hover:text-text-bright",
+        buttonClassName
+      )}
+    >
+      {copied ? (
+        <ClipboardCheckIcon className={iconSize} />
+      ) : (
+        <ClipboardIcon className={iconSize} />
+      )}
+    </button>
+  );
+
+  if (!showTooltip) return <span className={className}>{iconButton}</span>;
+
+  return (
+    <span className={className}>
+      <SimpleTooltip
+        // The icon button is a real <button>; without asChild the tooltip
+        // trigger wraps it in its own, and the browser parser splits the nested
+        // buttons apart, which React then fails to hydrate.
+        asChild
+        tabbable
+        button={iconButton}
+        content={copied ? "Copied!" : "Copy"}
+        className="font-sans"
+        disableHoverableContent
+      />
+    </span>
+  );
+}

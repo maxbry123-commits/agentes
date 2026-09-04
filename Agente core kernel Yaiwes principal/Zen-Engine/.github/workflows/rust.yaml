@@ -1,0 +1,94 @@
+name: Rust
+
+permissions:
+  contents: read
+  id-token: write
+
+on:
+  pull_request:
+    paths-ignore:
+      - 'bindings/**'
+      - 'examples/**'
+      - '.github/workflows/python.yaml'
+      - '.github/workflows/node.yaml'
+  push:
+    tags:
+      - 'zen-engine-v*'
+
+env:
+  RUST_BACKTRACE: 1
+  RUSTUP_MAX_RETRIES: 10
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: cargo test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install Rust
+        run: rustup update stable
+      - uses: ./.github/actions/setup-rust
+        with:
+          shared-key: rust-test-${{ matrix.os }}
+          sccache-bucket: ${{ secrets.SCCACHE_S3_BUCKET }}
+          sccache-region: ${{ secrets.SCCACHE_AWS_REGION }}
+          sccache-role-arn: ${{ secrets.SCCACHE_AWS_ROLE_ARN }}
+      - run: cargo test --workspace --all-features --exclude zen-ffi --exclude zen-nodejs --exclude zen-python --locked
+      - name: Test without arbitrary_precision
+        run: cargo test --workspace --exclude zen-ffi --exclude zen-nodejs --exclude zen-python --locked
+
+  fmt:
+    name: Cargo FMT
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install Rust
+        run: rustup update stable
+      - run: cargo fmt --all -- --check
+
+  release:
+    name: Cargo Release
+    runs-on: ubuntu-latest
+    environment: release
+    if: "github.ref_type == 'tag'"
+    needs:
+      - test
+      - fmt
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Rust
+        run: rustup update stable
+
+      - name: Login to Crates.IO
+        run: cargo login ${{ secrets.CRATES_TOKEN }}
+
+      - name: Publish Macros
+        run: cd core/macros && cargo publish --locked
+
+      - name: Publish Types
+        run: cd core/types && cargo publish --locked
+
+      - name: Publish Expression
+        run: cd core/expression && cargo publish --locked
+
+      - name: Publish Template
+        run: cd core/template && cargo publish --locked
+
+      - name: Publish Engine
+        run: cd core/engine && cargo publish --locked

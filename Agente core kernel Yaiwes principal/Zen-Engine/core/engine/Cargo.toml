@@ -1,0 +1,71 @@
+[package]
+authors = ["GoRules Team <bot@gorules.io>"]
+description = "Business rules engine"
+name = "zen-engine"
+license = "MIT"
+version = "2.0.1"
+edition = "2021"
+repository = "https://github.com/gorules/zen.git"
+homepage = "https://gorules.io"
+
+[lib]
+doctest = false
+
+[dependencies]
+ahash = { workspace = true }
+anyhow = { workspace = true }
+base64 = "0.22"
+thiserror = { workspace = true }
+petgraph = { workspace = true }
+serde_json = { workspace = true, features = [] }
+serde = { workspace = true, features = ["derive", "rc"] }
+serde_path_to_error = "0.1"
+strum = { workspace = true, features = ["derive"] }
+once_cell = { workspace = true }
+json_dotpath = { workspace = true }
+rust_decimal = { workspace = true, features = ["maths-nopanic"] }
+fixedbitset = "0.5"
+tokio = { workspace = true, features = ["sync", "time"] }
+rquickjs = { version = "0.10", features = ["macro", "loader", "rust-alloc", "futures", "either", "properties"] }
+zen-types = { path = "../types", version = "2.0.1" }
+zen-expression = { path = "../expression", version = "2.0.1" }
+zen-tmpl = { path = "../template", version = "2.0.1" }
+nohash-hasher = { workspace = true }
+downcast-rs = { version = "2.0", features = ["std", "sync"] }
+arc-swap = "1"
+flate2 = { version = "1", features = ["rust_backend"] }
+zip = { version = "8", default-features = false, features = ["deflate-flate2"] }
+swc_ts_fast_strip = "53.0.0"
+swc_common = "23"
+swc_ecma_parser = "41"
+swc_ecma_ast = "25"
+typed-arena = "2"
+self_cell = "1"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+criterion = { workspace = true, features = ["async_tokio"] }
+insta = { version = "1.43", features = ["yaml", "redactions"] }
+toml = "0.8"
+mimalloc = "0.1.52"
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+async-trait = { version = "0.1" }
+http = { version = "1.3" }
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+reqsign = { version = "0.20", features = ["aws", "azure", "google", "default-context"] }
+sha2 = { version = "0.10" }
+jsonschema = { version = "0.49" }
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+jsonschema = { version = "0.49", default-features = false }
+rquickjs = { version = "0.10", features = ["macro", "loader", "rust-alloc", "futures", "either", "properties", "bindgen"] }
+
+[[bench]]
+harness = false
+name = "engine"
+
+[features]
+default = []
+bindgen = ["rquickjs/bindgen"]
+arbitrary_precision = ["serde_json/arbitrary_precision", "zen-expression/arbitrary_precision", "zen-types/arbitrary_precision", "zen-tmpl/arbitrary_precision"]

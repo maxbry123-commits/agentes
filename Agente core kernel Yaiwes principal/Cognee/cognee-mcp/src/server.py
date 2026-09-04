@@ -1,0 +1,1869 @@
+import json
+import os
+import sys
+import argparse
+import asyncio
+import base64
+import subprocess
+from collections import deque
+from datetime import datetime, timezone
+from typing import Deque, List, Optional, Tuple
+from cognee.modules.data.methods.get_datasets_by_name import get_datasets_by_name
+from cognee.modules.data.methods.get_last_added_data import get_last_added_data
+from cognee.modules.users.methods import get_default_user
+from cognee.shared.logging_utils import get_logger, setup_logging, get_log_file_location
+from cognee.shared.usage_logger import log_usage
+import importlib.util
+from contextlib import redirect_stdout
+import mcp.types as types
+from fastmcp import FastMCP
+from fastmcp.server.transforms.search import BM25SearchTransform
+from fastmcp.server.transforms.search.base import BaseSearchTransform
+from cognee.modules.storage.utils import JSONEncoder
+from starlette.responses import JSONResponse
+from starlette.middleware import Middleware
+from starlette.middleware.cors import CORSMiddleware
+import uvicorn
+
+try:
+    from .cognee_client import CogneeClient
+except ImportError:
+    from cognee_client import CogneeClient
+
+try:
+    from .strip_vectors import strip_vectors
+except ImportError:
+    from strip_vectors import strip_vectors
+
+try:
+    from .tool_registry import DEFAULT_TAG, MEMORY_TAG, ToolRegistry
+except ImportError:
+    from tool_registry import DEFAULT_TAG, MEMORY_TAG, ToolRegistry
+
+try:
+    from .server_utils import (
+        format_recall_results,
+        format_search_results,
+        normalize_delete_mode,
+        normalize_search_type,
+        parse_cognify_data,
+        parse_csv_list,
+        validate_cognify_file_paths,
+        validate_top_k,
+    )
+except ImportError:
+    from server_utils import (
+        format_recall_results,
+        format_search_results,
+        normalize_delete_mode,
+        normalize_search_type,
+        parse_cognify_data,
+        parse_csv_list,
+        validate_cognify_file_paths,
+        validate_top_k,
+    )
+
+
+try:
+    from cognee.tasks.codingagents.coding_rule_associations import (
+        add_rule_associations,
+        get_existing_rules,
+    )
+except ModuleNotFoundError:
+    from .codingagents.coding_rule_associations import (
+        add_rule_associations,
+        get_existing_rules,
+    )
+
+
+mcp = FastMCP("Cognee")
+
+# Tools register through this rather than @mcp.tool directly, so each one
+# declares its tier at the definition site (see apply_tool_mode()).
+registry = ToolRegistry(mcp)
+
+logger = get_logger()
+
+cognee_client: Optional[CogneeClient] = None
+
+# Per-dataset error ring buffer (bounded so long-running servers don't accumulate
+# unbounded memory). Each entry is (iso_timestamp, error_message).
+_TASK_ERROR_HISTORY = 50
+_task_errors: dict[str, Deque[Tuple[str, str]]] = {}
+_MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+
+# Strong references to in-flight background tasks. asyncio's event loop only keeps
+# weak references to tasks, so a fire-and-forget task can be GC'd mid-execution if
+# the only reference is a local that went out of scope. Adding here pins them; the
+# done_callback removes them on completion. See:
+# https://docs.python.org/3/library/asyncio-task.html#asyncio.create_task
+_background_tasks: set[asyncio.Task] = set()
+
+
+def _track_background(coro) -> asyncio.Task:
+    """Spawn a background task and pin it so the event loop won't GC it."""
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+    return task
+
+
+def _record_task_error(dataset: str, error: str) -> None:
+    """Append a background task error, bounded per-dataset."""
+    bucket = _task_errors.setdefault(dataset, deque(maxlen=_TASK_ERROR_HISTORY))
+    bucket.append((datetime.now(timezone.utc).isoformat(), error))
+
+
+def _transport_security_kwargs(host: str) -> dict:
+    """Build the Host/Origin guard kwargs for mcp.http_app() from env and bind host.
+
+    FastMCP 3 takes these per-app rather than off a mutable settings object, so
+    this returns kwargs instead of configuring global state.
+
+    Env vars:
+        MCP_DISABLE_DNS_REBINDING_PROTECTION: Set to "true" to disable all
+            Host/Origin header validation. Useful for LAN or Docker deployments.
+        MCP_ALLOWED_HOSTS: Comma-separated additional Host header patterns
+            (e.g. "192.168.1.50:*,myserver.local:*"). Appended to the
+            localhost defaults. Requires the ":*" port glob suffix.
+    """
+    disable = os.getenv("MCP_DISABLE_DNS_REBINDING_PROTECTION", "false").lower() == "true"
+
+    if disable:
+        logger.info("MCP transport security: DNS rebinding protection disabled")
+        return {"host_origin_protection": False}
+
+    extra_hosts = [h.strip() for h in os.getenv("MCP_ALLOWED_HOSTS", "").split(",") if h.strip()]
+
+    # "auto" only guards loopback binds and explicit allowlists. When the user
+    # binds to 0.0.0.0 or a LAN IP, we must provide the full allowed list
+    # ourselves and turn the guard on unconditionally.
+    localhost_hosts = ["127.0.0.1:*", "localhost:*", "[::1]:*"]
+    localhost_origins = ["http://127.0.0.1:*", "http://localhost:*", "http://[::1]:*"]
+
+    allowed_hosts = localhost_hosts + extra_hosts
+    # Derive origins from extra hosts so users don't need to set both.
+    allowed_origins = localhost_origins + [f"http://{h}" for h in extra_hosts]
+
+    if host not in ("127.0.0.1", "localhost", "::1") or extra_hosts:
+        logger.info(
+            "MCP transport security: allowed_hosts=%s",
+            allowed_hosts,
+        )
+        return {
+            "host_origin_protection": True,
+            "allowed_hosts": allowed_hosts,
+            "allowed_origins": allowed_origins,
+        }
+
+    # Loopback-only with no extra hosts — let FastMCP use its own defaults.
+    logger.info("MCP transport security: using FastMCP defaults (localhost only)")
+    return {}
+
+
+TOOL_MODES = ("default", "minimal", "all")
+
+# How many tools search_tools returns. Chosen from the recall sweep in
+# tests/test_tool_search_benchmark.py: over a 500-tool catalog, BM25 recall@k
+# goes 60% -> 80% between k=5 and k=10 and then plateaus, because the ranker was
+# placing the right tool just outside a 5-wide window. Recall is the metric that
+# matters — the agent sees every returned schema and picks for itself, so a tool
+# missing from the window is unrecoverable while its rank inside the window
+# barely costs anything.
+#
+# With today's small catalog this exceeds the unpinned count, so the window is
+# never the binding constraint — but that does NOT mean every search returns
+# every tool. BM25 drops zero-scoring tools, and its tokenizer does no
+# stemming, so a query only matches tokens it literally contains. Misses come
+# from vocabulary, not from k. When adding a tool, put the words an agent would
+# actually use — in both singular and plural — in its description.
+#
+# The window costs context only on turns that call search, never on the
+# per-turn tools/list payload.
+TOOL_SEARCH_MAX_RESULTS = 10
+
+
+def apply_tool_mode(mode: str = None) -> str:
+    """Gate the advertised tool surface behind FastMCP's tool-search transform.
+
+    Every tool stays registered and directly callable by name; the transform
+    only changes what ``tools/list`` advertises, replacing the non-pinned tools
+    with ``search_tools``/``call_tool``, so a fresh agent sees a handful of
+    tools instead of the whole catalog.
+
+    Modes (COGNEE_MCP_TOOL_MODE):
+        default: pin the DEFAULT_TAG tools (memory API).
+        minimal: pin only the memory API.
+        all:     no transform, advertise everything (pre-3.x behavior).
+
+    Returns the mode actually applied.
+    """
+    mode = (mode or os.getenv("COGNEE_MCP_TOOL_MODE") or "default").lower()
+
+    if mode not in TOOL_MODES:
+        logger.warning(
+            "Unknown COGNEE_MCP_TOOL_MODE=%r; falling back to 'default'. Valid: %s",
+            mode,
+            ", ".join(TOOL_MODES),
+        )
+        mode = "default"
+
+    # Drop any transform a previous call installed: add_transform() appends, so
+    # calling this twice would otherwise stack search transforms on top of each
+    # other and hide the first one's pinned tools.
+    mcp._transforms = [t for t in mcp._transforms if not isinstance(t, BaseSearchTransform)]
+
+    if mode == "all":
+        logger.info("MCP tool mode 'all': advertising all %d tools", len(registry.tags))
+        return mode
+
+    pinned = registry.names_with_tag(DEFAULT_TAG if mode == "default" else MEMORY_TAG)
+    mcp.add_transform(
+        BM25SearchTransform(max_results=TOOL_SEARCH_MAX_RESULTS, always_visible=pinned)
+    )
+    logger.info(
+        "MCP tool mode %r: advertising %s + search_tools/call_tool (%d tools searchable)",
+        mode,
+        pinned,
+        len(registry.tags) - len(pinned),
+    )
+    return mode
+
+
+def _is_running_in_docker() -> bool:
+    """Check if the process is running inside a Docker container."""
+    return os.path.exists("/.dockerenv") or os.path.isdir("/app")
+
+
+def _get_cors_origins() -> list[str]:
+    """Parse CORS allowed origins from MCP_CORS_ALLOW_ORIGINS env var."""
+    raw = os.getenv("MCP_CORS_ALLOW_ORIGINS", "http://localhost:3000")
+    return [o.strip() for o in raw.split(",") if o.strip()]
+
+
+async def _serve_with_cors(transport: str, host: str, port: int, log_level: str):
+    """Serve one of FastMCP's HTTP transports under uvicorn with CORS added.
+
+    FastMCP's own run_http_async() would bind the socket for us but gives no
+    seam for the CORS middleware, so we keep building the ASGI app ourselves.
+    """
+    app = mcp.http_app(transport=transport, **_transport_security_kwargs(host))
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_get_cors_origins(),
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    config = uvicorn.Config(
+        app,
+        host=host,
+        port=port,
+        log_level=log_level.lower(),
+    )
+    server = uvicorn.Server(config)
+    await server.serve()
+
+
+@mcp.custom_route("/health", methods=["GET"])
+async def health_check(request):
+    return JSONResponse({"status": "ok"})
+
+
+@log_usage(function_name="MCP cognify", log_type="mcp_tool")
+async def cognify(
+    data: str,
+    dataset_name: str = None,
+    graph_model_file: str = None,
+    graph_model_name: str = None,
+    custom_prompt: str = None,
+) -> list:
+    """
+    Transform ingested data into a structured knowledge graph.
+
+    This is the core processing step in Cognee that converts raw text and documents
+    into an intelligent knowledge graph. It analyzes content, extracts entities and
+    relationships, and creates semantic connections for enhanced search and reasoning.
+
+    Prerequisites:
+        - **LLM_API_KEY**: Must be configured (required for entity extraction and graph generation)
+        - **Vector Database**: Must be accessible for embeddings storage
+        - **Graph Database**: Must be accessible for relationship storage
+
+    Input Requirements:
+        - **Content Types**: Works with any text-extractable content including:
+            * Natural language documents
+            * Structured data (CSV, JSON)
+            * Code repositories
+            * Academic papers and technical documentation
+            * Mixed multimedia content (with text extraction)
+
+    Processing Pipeline:
+        1. **Document Classification**: Identifies document types and structures
+        2. **Permission Validation**: Ensures user has processing rights
+        3. **Text Chunking**: Breaks content into semantically meaningful segments
+        4. **Entity Extraction**: Identifies key concepts, people, places, organizations
+        5. **Relationship Detection**: Discovers connections between entities
+        6. **Graph Construction**: Builds semantic knowledge graph with embeddings
+        7. **Content Summarization**: Creates hierarchical summaries for navigation
+
+    Parameters
+    ----------
+    data : str
+        The data to be processed and transformed into structured knowledge.
+        This can include natural language, file location, or any text-based information
+        that should become part of the agent's memory.
+
+    graph_model_file : str, optional
+        Path to a custom schema file that defines the structure of the generated knowledge graph.
+        If provided, this file will be loaded using importlib to create a custom graph model.
+        Default is None, which uses Cognee's built-in KnowledgeGraph model.
+
+    graph_model_name : str, optional
+        Name of the class within the graph_model_file to instantiate as the graph model.
+        Required if graph_model_file is specified.
+        Default is None, which uses the default KnowledgeGraph class.
+
+    custom_prompt : str, optional
+        Custom prompt string to use for entity extraction and graph generation.
+        If provided, this prompt will be used instead of the default prompts for
+        knowledge graph extraction. The prompt should guide the LLM on how to
+        extract entities and relationships from the text content.
+
+    Returns
+    -------
+    list
+        A list containing a single TextContent object with information about the
+        background task launch and how to check its status.
+
+    Next Steps:
+        After successful cognify processing, use search functions to query the knowledge:
+
+        ```python
+        import cognee
+        from cognee import SearchType
+
+        # Process your data into knowledge graph
+        await cognee.cognify()
+
+        # Query for insights using different search types:
+
+        # 1. Natural language completion with graph context
+        insights = await cognee.search(
+            "What are the main themes?",
+            query_type=SearchType.GRAPH_COMPLETION
+        )
+
+        # 2. Get entity relationships and connections
+        relationships = await cognee.search(
+            "connections between concepts",
+            query_type=SearchType.GRAPH_COMPLETION
+        )
+
+        # 3. Find relevant document chunks
+        chunks = await cognee.search(
+            "specific topic",
+            query_type=SearchType.CHUNKS
+        )
+        ```
+
+    Environment Variables:
+        Required:
+        - LLM_API_KEY: API key for your LLM provider
+
+        Optional:
+        - LLM_PROVIDER, LLM_MODEL, VECTOR_DB_PROVIDER, GRAPH_DATABASE_PROVIDER
+        - LLM_RATE_LIMIT_ENABLED: Enable rate limiting (default: False)
+        - LLM_RATE_LIMIT_REQUESTS: Max requests per interval (default: 60)
+
+    Notes
+    -----
+    - The function launches a background task and returns immediately
+    - The actual cognify process may take significant time depending on text length
+    - Check the log file for progress
+
+    """
+
+    dataset_name = dataset_name or _agent_scoped_default_dataset()
+
+    try:
+        parsed_data = parse_cognify_data(data)
+    except ValueError as e:
+        return [
+            types.TextContent(
+                type="text",
+                text=f"Error: {str(e)}",
+            )
+        ]
+
+    file_error = validate_cognify_file_paths(
+        parsed_data.items,
+        is_running_in_docker=_is_running_in_docker,
+    )
+    if file_error:
+        return [
+            types.TextContent(
+                type="text",
+                text=f"Error: {file_error}",
+            )
+        ]
+
+    async def cognify_task(
+        data_items: list[str],
+        dataset_name: str = "main_dataset",
+        graph_model_file: str = None,
+        graph_model_name: str = None,
+        custom_prompt: str = None,
+    ) -> str:
+        """Build knowledge graph from the input text"""
+        # NOTE: MCP uses stdout to communicate, we must redirect all output
+        #       going to stdout ( like the print function ) to stderr.
+        with redirect_stdout(sys.stderr):
+            logger.info("Cognify process starting.")
+
+            graph_model = None
+            if graph_model_file and graph_model_name:
+                if cognee_client.use_api:
+                    logger.warning("Custom graph models are not supported in API mode, ignoring.")
+                else:
+                    from cognee.shared.data_models import KnowledgeGraph
+
+                    graph_model = load_class(graph_model_file, graph_model_name)
+
+            for data_item in data_items:
+                await cognee_client.add(data_item, dataset_name=dataset_name)
+
+            try:
+                await cognee_client.cognify(
+                    datasets=[dataset_name], custom_prompt=custom_prompt, graph_model=graph_model
+                )
+                logger.info("Cognify submitted; running in the background on the server.")
+            except Exception as e:
+                logger.error("Cognify process failed.")
+                raise ValueError(f"Failed to cognify: {str(e)}") from e
+
+    async def cognify_task_wrapper(**kwargs):
+        """Wrapper that captures errors from the background task."""
+        try:
+            await cognify_task(**kwargs)
+        except Exception as e:
+            dataset = kwargs.get("dataset_name", "main_dataset")
+            _record_task_error(dataset, str(e))
+            logger.error(f"Background cognify task failed for dataset '{dataset}': {e}")
+
+    _track_background(
+        cognify_task_wrapper(
+            data_items=parsed_data.items,
+            dataset_name=dataset_name,
+            graph_model_file=graph_model_file,
+            graph_model_name=graph_model_name,
+            custom_prompt=custom_prompt,
+        )
+    )
+
+    log_file = get_log_file_location()
+    text = (
+        f"Background process launched due to MCP timeout limitations.\n"
+        f"Queued {len(parsed_data.items)} item(s) for dataset '{dataset_name}'.\n"
+        f"Check the log file at: {log_file}"
+    )
+
+    return [
+        types.TextContent(
+            type="text",
+            text=text,
+        )
+    ]
+
+
+@log_usage(function_name="MCP save_interaction", log_type="mcp_tool")
+async def save_interaction(data: str) -> list:
+    """
+    Transform and save a user-agent interaction into structured knowledge.
+
+    Parameters
+    ----------
+    data : str
+        The input string containing user queries and corresponding agent answers.
+
+    Returns
+    -------
+    list
+        A list containing a single TextContent object with information about the background task launch.
+    """
+
+    async def save_user_agent_interaction(data: str) -> None:
+        """Build knowledge graph from the interaction data"""
+        with redirect_stdout(sys.stderr):
+            logger.info("Save interaction process starting.")
+
+            await cognee_client.add(data, node_set=["user_agent_interaction"])
+
+            try:
+                await cognee_client.cognify()
+
+                user = await get_default_user()
+                datasets = await get_datasets_by_name("main_dataset", user_id=user.id)
+                dataset = datasets[0]
+                added_data = await get_last_added_data(dataset.id)
+
+                logger.info("Save interaction process finished.")
+
+                # Rule associations only work in direct mode
+                if not cognee_client.use_api:
+                    logger.info("Generating associated rules from interaction data.")
+                    await add_rule_associations(
+                        data=data,
+                        rules_nodeset_name="coding_agent_rules",
+                        context={
+                            "user": user,
+                            "dataset": dataset,
+                            "data": added_data,
+                        },
+                    )
+                    logger.info("Associated rules generated from interaction data.")
+                else:
+                    logger.warning("Rule associations are not available in API mode, skipping.")
+
+            except Exception as e:
+                logger.error("Save interaction process failed.")
+                raise ValueError(f"Failed to Save interaction: {str(e)}") from e
+
+    async def save_task_wrapper(**kwargs):
+        """Wrapper that captures errors from the background task."""
+        try:
+            await save_user_agent_interaction(**kwargs)
+        except Exception as e:
+            _record_task_error("main_dataset", str(e))
+            logger.error(f"Background save_interaction task failed: {e}")
+
+    _track_background(save_task_wrapper(data=data))
+
+    log_file = get_log_file_location()
+    text = (
+        f"Background process launched to process the user-agent interaction.\n"
+        f"Check the log file at: {log_file}"
+    )
+
+    return [
+        types.TextContent(
+            type="text",
+            text=text,
+        )
+    ]
+
+
+@log_usage(function_name="MCP search", log_type="mcp_tool")
+async def search(
+    search_query: str, search_type: str, top_k: int = 15, datasets: str = None
+) -> list:
+    """
+    Search and query the knowledge graph for insights, information, and connections.
+
+    This is the final step in the Cognee workflow that retrieves information from the
+    processed knowledge graph. It supports multiple search modes optimized for different
+    use cases - from simple fact retrieval to complex reasoning and code analysis.
+
+    Search Prerequisites:
+        - **LLM_API_KEY**: Required for GRAPH_COMPLETION and RAG_COMPLETION search types
+        - **Data Added**: Must have data previously added via `cognee.add()`
+        - **Knowledge Graph Built**: Must have processed data via `cognee.cognify()`
+        - **Vector Database**: Must be accessible for semantic search functionality
+
+    Search Types & Use Cases:
+
+        **GRAPH_COMPLETION** (Recommended):
+            Natural language Q&A using full graph context and LLM reasoning.
+            Best for: Complex questions, analysis, summaries, insights.
+            Returns: Conversational AI responses with graph-backed context.
+
+        **RAG_COMPLETION**:
+            Traditional RAG using document chunks without graph structure.
+            Best for: Direct document retrieval, specific fact-finding.
+            Returns: LLM responses based on relevant text chunks.
+
+        **CHUNKS**:
+            Raw text segments that match the query semantically.
+            Best for: Finding specific passages, citations, exact content.
+            Returns: Ranked list of relevant text chunks with metadata.
+
+        **SUMMARIES**:
+            Pre-generated hierarchical summaries of content.
+            Best for: Quick overviews, document abstracts, topic summaries.
+            Returns: Multi-level summaries from detailed to high-level.
+
+        **CODE**:
+            Code-specific search with syntax and semantic understanding.
+            Best for: Finding functions, classes, implementation patterns.
+            Returns: Structured code information with context and relationships.
+
+        **CYPHER**:
+            Direct graph database queries using Cypher syntax.
+            Best for: Advanced users, specific graph traversals, debugging.
+            Returns: Raw graph query results.
+
+        **FEELING_LUCKY**:
+            Intelligently selects and runs the most appropriate search type.
+            Best for: General-purpose queries or when you're unsure which search type is best.
+            Returns: The results from the automatically selected search type.
+
+    Parameters
+    ----------
+    search_query : str
+        Your question or search query in natural language.
+        Examples:
+        - "What are the main themes in this research?"
+        - "How do these concepts relate to each other?"
+        - "Find information about machine learning algorithms"
+        - "What functions handle user authentication?"
+
+    search_type : str
+        The type of search to perform. Valid options include:
+        - "GRAPH_COMPLETION": Returns an LLM response based on the search query and Cognee's memory
+        - "RAG_COMPLETION": Returns an LLM response based on the search query and standard RAG data
+        - "CODE": Returns code-related knowledge in JSON format
+        - "CHUNKS": Returns raw text chunks from the knowledge graph
+        - "SUMMARIES": Returns pre-generated hierarchical summaries
+        - "CYPHER": Direct graph database queries
+        - "FEELING_LUCKY": Automatically selects best search type
+
+        The search_type is case-insensitive and will be converted to uppercase.
+
+    top_k : int, optional
+        Maximum number of results to return (default: 10).
+        Controls the amount of context retrieved from the knowledge graph.
+        - Lower values (3-5): Faster, more focused results
+        - Higher values (10-20): More comprehensive, but slower and more context-heavy
+        Helps manage response size and context window usage in MCP clients.
+
+    Returns
+    -------
+    list
+        A list containing a single TextContent object with the search results.
+        The format of the result depends on the search_type:
+        - **GRAPH_COMPLETION/RAG_COMPLETION**: Conversational AI response strings
+        - **CHUNKS**: Relevant text passages with source metadata
+        - **SUMMARIES**: Hierarchical summaries from general to specific
+        - **CODE**: Structured code information with context
+        - **FEELING_LUCKY**: Results in format of automatically selected search type
+        - **CYPHER**: Raw graph query results
+
+    Performance & Optimization:
+        - **GRAPH_COMPLETION**: Slower but most intelligent, uses LLM + graph context
+        - **RAG_COMPLETION**: Medium speed, uses LLM + document chunks (no graph traversal)
+        - **CHUNKS**: Fastest, pure vector similarity search without LLM
+        - **SUMMARIES**: Fast, returns pre-computed summaries
+        - **CODE**: Medium speed, specialized for code understanding
+        - **FEELING_LUCKY**: Variable speed, uses LLM + search type selection intelligently
+
+    Environment Variables:
+        Required for LLM-based search types (GRAPH_COMPLETION, RAG_COMPLETION):
+        - LLM_API_KEY: API key for your LLM provider
+
+        Optional:
+        - LLM_PROVIDER, LLM_MODEL: Configure LLM for search responses
+        - VECTOR_DB_PROVIDER: Must match what was used during cognify
+        - GRAPH_DATABASE_PROVIDER: Must match what was used during cognify
+
+    Notes
+    -----
+    - Different search types produce different output formats
+    - The function handles the conversion between Cognee's internal result format and MCP's output format
+
+    """
+
+    try:
+        normalized_search_type = normalize_search_type(search_type)
+        normalized_top_k = validate_top_k(top_k)
+    except ValueError as e:
+        return [types.TextContent(type="text", text=f"Error: {str(e)}")]
+
+    async def search_task(
+        search_query: str, search_type: str, top_k: int, datasets_list: list = None
+    ) -> str:
+        """
+        Internal task to execute knowledge graph search with result formatting.
+
+        Handles the actual search execution and formats results appropriately
+        for MCP clients based on the search type and execution mode (API vs direct).
+
+        Parameters
+        ----------
+        search_query : str
+            The search query in natural language
+        search_type : str
+            Type of search to perform (GRAPH_COMPLETION, CHUNKS, etc.)
+        top_k : int
+            Maximum number of results to return
+
+        Returns
+        -------
+        str
+            Formatted search results as a string, with format depending on search_type
+        """
+        # NOTE: MCP uses stdout to communicate, we must redirect all output
+        #       going to stdout ( like the print function ) to stderr.
+        with redirect_stdout(sys.stderr):
+            search_results = await cognee_client.search(
+                query_text=search_query,
+                query_type=search_type,
+                top_k=top_k,
+                datasets=datasets_list,
+            )
+
+            # Strip embedding vectors from results to save LLM context
+            # text_vector contains raw floats (~92KB per result), useless for clients
+            search_results = strip_vectors(search_results)
+
+            if not cognee_client.use_api and search_type == "INSIGHTS":
+                return retrieved_edges_to_string(search_results)
+
+            return format_search_results(
+                search_results,
+                search_type,
+                json_encoder=JSONEncoder,
+            )
+
+    # Parse comma-separated datasets into list
+    datasets_list = parse_csv_list(datasets)
+    try:
+        search_results = await search_task(
+            search_query,
+            normalized_search_type,
+            normalized_top_k,
+            datasets_list,
+        )
+    except Exception as e:
+        error_msg = f"Search failed: {str(e)}"
+        logger.error(error_msg)
+        return [types.TextContent(type="text", text=f"Error: {error_msg}")]
+    return [types.TextContent(type="text", text=search_results)]
+
+
+@log_usage(function_name="MCP get_document", log_type="mcp_tool")
+async def get_document(
+    document_id: str,
+    include_metadata: bool = True,
+    max_chunks: int = 0,
+) -> list:
+    """
+    Retrieve a complete source document and its chunks from the knowledge graph.
+
+    Use this after a CHUNKS search or list_data lookup when you need the full source
+    context around a result. If a chunk ID is provided instead of a document ID, the
+    tool resolves the chunk's parent document and returns that document.
+
+    Parameters
+    ----------
+    document_id : str
+        Document ID to retrieve. A DocumentChunk ID is also accepted and resolves to
+        its parent document.
+    include_metadata : bool
+        Include document metadata fields in the response (default: True).
+    max_chunks : int
+        Maximum chunks to return. Use 0 to return all chunks.
+    """
+    with redirect_stdout(sys.stderr):
+        try:
+            result = await cognee_client.get_document(
+                document_id=document_id,
+                include_metadata=include_metadata,
+                max_chunks=max_chunks,
+            )
+            return [
+                types.TextContent(
+                    type="text",
+                    text=json.dumps(result, indent=2, cls=JSONEncoder),
+                )
+            ]
+        except Exception as e:
+            error_msg = f"get_document failed: {str(e)}"
+            logger.error(error_msg)
+            return [types.TextContent(type="text", text=f"Error: {error_msg}")]
+
+
+@log_usage(function_name="MCP get_chunk_neighbors", log_type="mcp_tool")
+async def get_chunk_neighbors(
+    chunk_id: str,
+    neighbor_count: int = 2,
+    include_target: bool = True,
+    direction: str = "both",
+) -> list:
+    """
+    Retrieve neighboring chunks around a target chunk from the same document.
+
+    Use this after a CHUNKS search when the matching passage is too narrow and you
+    need local narrative context. Chunks are returned in reading order.
+
+    Parameters
+    ----------
+    chunk_id : str
+        Target DocumentChunk ID.
+    neighbor_count : int
+        Number of neighboring chunks to retrieve on each side. Must be 1-10.
+    include_target : bool
+        Include the target chunk in the returned chunk list (default: True).
+    direction : str
+        One of "both", "forward", or "backward".
+    """
+    with redirect_stdout(sys.stderr):
+        try:
+            result = await cognee_client.get_chunk_neighbors(
+                chunk_id=chunk_id,
+                neighbor_count=neighbor_count,
+                include_target=include_target,
+                direction=direction,
+            )
+            return [
+                types.TextContent(
+                    type="text",
+                    text=json.dumps(result, indent=2, cls=JSONEncoder),
+                )
+            ]
+        except Exception as e:
+            error_msg = f"get_chunk_neighbors failed: {str(e)}"
+            logger.error(error_msg)
+            return [types.TextContent(type="text", text=f"Error: {error_msg}")]
+
+
+@log_usage(function_name="MCP list_data", log_type="mcp_tool")
+async def list_data(dataset_id: str = None) -> list:
+    """
+    List all datasets and their data items with IDs for deletion operations.
+
+    This function helps users identify data IDs and dataset IDs that can be used
+    with the delete tool. It provides a comprehensive view of available data.
+
+    Parameters
+    ----------
+    dataset_id : str, optional
+        If provided, only list data items from this specific dataset.
+        If None, lists all datasets and their data items.
+        Should be a valid UUID string.
+
+    Returns
+    -------
+    list
+        A list containing a single TextContent object with formatted information
+        about datasets and data items, including their IDs for deletion.
+
+    Notes
+    -----
+    - Use this tool to identify data_id and dataset_id values for the delete tool
+    - The output includes both dataset information and individual data items
+    - UUIDs are displayed in a format ready for use with other tools
+    """
+    from uuid import UUID
+
+    with redirect_stdout(sys.stderr):
+        try:
+            output_lines = []
+
+            if dataset_id:
+                # Detailed data listing for specific dataset is only available in direct mode
+                if cognee_client.use_api:
+                    return [
+                        types.TextContent(
+                            type="text",
+                            text="❌ Detailed data listing for specific datasets is not available in API mode.\nPlease use the API directly or use direct mode.",
+                        )
+                    ]
+
+                from cognee.modules.users.methods import get_default_user
+                from cognee.modules.data.methods import get_dataset, get_dataset_data
+
+                logger.info(f"Listing data for dataset: {dataset_id}")
+                dataset_uuid = UUID(dataset_id)
+                user = await get_default_user()
+
+                dataset = await get_dataset(user.id, dataset_uuid)
+
+                if not dataset:
+                    return [
+                        types.TextContent(type="text", text=f"❌ Dataset not found: {dataset_id}")
+                    ]
+
+                # Get data items in the dataset
+                data_items = await get_dataset_data(dataset.id)
+
+                output_lines.append(f"📁 Dataset: {dataset.name}")
+                output_lines.append(f"   ID: {dataset.id}")
+                output_lines.append(f"   Created: {dataset.created_at}")
+                output_lines.append(f"   Data items: {len(data_items)}")
+                output_lines.append("")
+
+                if data_items:
+                    for i, data_item in enumerate(data_items, 1):
+                        output_lines.append(f"   📄 Data item #{i}:")
+                        output_lines.append(f"      Data ID: {data_item.id}")
+                        output_lines.append(f"      Name: {data_item.name or 'Unnamed'}")
+                        output_lines.append(f"      Created: {data_item.created_at}")
+                        output_lines.append("")
+                else:
+                    output_lines.append("   (No data items in this dataset)")
+
+            else:
+                # List all datasets - works in both modes
+                logger.info("Listing all datasets")
+                datasets = await cognee_client.list_datasets()
+
+                if not datasets:
+                    return [
+                        types.TextContent(
+                            type="text",
+                            text="📂 No datasets found.\nUse the cognify tool to create your first dataset!",
+                        )
+                    ]
+
+                output_lines.append("📂 Available Datasets:")
+                output_lines.append("=" * 50)
+                output_lines.append("")
+
+                for i, dataset in enumerate(datasets, 1):
+                    # In API mode, dataset is a dict; in direct mode, it's formatted as dict
+                    if isinstance(dataset, dict):
+                        output_lines.append(f"{i}. 📁 {dataset.get('name', 'Unnamed')}")
+                        output_lines.append(f"   Dataset ID: {dataset.get('id')}")
+                        output_lines.append(f"   Created: {dataset.get('created_at', 'N/A')}")
+                    else:
+                        output_lines.append(f"{i}. 📁 {dataset.name}")
+                        output_lines.append(f"   Dataset ID: {dataset.id}")
+                        output_lines.append(f"   Created: {dataset.created_at}")
+                    output_lines.append("")
+
+                if not cognee_client.use_api:
+                    output_lines.append("💡 To see data items in a specific dataset, use:")
+                    output_lines.append('   list_data(dataset_id="your-dataset-id-here")')
+                    output_lines.append("")
+                output_lines.append("🗑️  To delete specific data, use:")
+                output_lines.append('   delete(data_id="data-id", dataset_id="dataset-id")')
+
+            result_text = "\n".join(output_lines)
+            logger.info("List data operation completed successfully")
+
+            return [types.TextContent(type="text", text=result_text)]
+
+        except ValueError as e:
+            error_msg = f"❌ Invalid UUID format: {str(e)}"
+            logger.error(error_msg)
+            return [types.TextContent(type="text", text=error_msg)]
+
+        except Exception as e:
+            error_msg = f"❌ Failed to list data: {str(e)}"
+            logger.error(f"List data error: {str(e)}")
+            return [types.TextContent(type="text", text=error_msg)]
+
+
+@log_usage(function_name="MCP delete_dataset", log_type="mcp_tool")
+async def delete_dataset(dataset_name: str) -> list:
+    """
+    Delete an entire dataset and all its data from the knowledge graph.
+
+    This removes the dataset completely: graph data, vector indices,
+    and metadata in the relational database. This operation cannot be undone.
+
+    Parameters
+    ----------
+    dataset_name : str
+        The name of the dataset to delete (e.g. 'main_dataset').
+
+    Returns
+    -------
+    list
+        A list containing a TextContent with deletion status.
+    """
+    with redirect_stdout(sys.stderr):
+        try:
+            if cognee_client.use_api:
+                return [
+                    types.TextContent(
+                        type="text",
+                        text="❌ delete_dataset is not available in API mode. Use the API directly.",
+                    )
+                ]
+
+            from cognee.modules.users.methods import get_default_user
+            from cognee.modules.data.methods import delete_dataset as _delete_dataset
+            from cognee.modules.data.methods import get_datasets
+
+            user = await get_default_user()
+            datasets = await get_datasets(user.id)
+            matching = [ds for ds in datasets if ds.name == dataset_name]
+
+            if not matching:
+                return [types.TextContent(type="text", text=f"Dataset '{dataset_name}' not found.")]
+
+            if len(matching) > 1:
+                ids = ", ".join(str(ds.id) for ds in matching)
+                return [
+                    types.TextContent(
+                        type="text",
+                        text=f"Multiple datasets named '{dataset_name}' found (IDs: {ids}). Please delete by ID instead.",
+                    )
+                ]
+
+            await _delete_dataset(matching[0])
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"Dataset '{dataset_name}' deleted successfully. Graph, vectors, and metadata removed.",
+                )
+            ]
+        except Exception as e:
+            return [types.TextContent(type="text", text=f"Error deleting dataset: {str(e)}")]
+
+
+@log_usage(function_name="MCP delete", log_type="mcp_tool")
+async def delete(data_id: str, dataset_id: str, mode: str = "soft") -> list:
+    """
+    Delete specific data from a dataset in the Cognee knowledge graph.
+
+    This function removes a specific data item from a dataset while keeping the
+    dataset itself intact. It supports both soft and hard deletion modes.
+
+    Parameters
+    ----------
+    data_id : str
+        The UUID of the data item to delete from the knowledge graph.
+        This should be a valid UUID string identifying the specific data item.
+
+    dataset_id : str
+        The UUID of the dataset containing the data to be deleted.
+        This should be a valid UUID string identifying the dataset.
+
+    mode : str, optional
+        The deletion mode to use. Options are:
+        - "soft" (default): Removes the data but keeps related entities that might be shared
+        - "hard": Also removes degree-one entity nodes that become orphaned after deletion
+        Default is "soft" for safer deletion that preserves shared knowledge.
+
+    Returns
+    -------
+    list
+        A list containing a single TextContent object with the deletion results,
+        including status, deleted node counts, and confirmation details.
+
+    Notes
+    -----
+    - This operation cannot be undone. The specified data will be permanently removed.
+    - Hard mode may remove additional entity nodes that become orphaned
+    - The function provides detailed feedback about what was deleted
+    - Use this for targeted deletion instead of the prune tool which removes everything
+    """
+    from uuid import UUID
+
+    with redirect_stdout(sys.stderr):
+        try:
+            normalized_mode = normalize_delete_mode(mode)
+            logger.info(
+                f"Starting delete operation for data_id: {data_id}, dataset_id: {dataset_id}, mode: {normalized_mode}"
+            )
+
+            # Convert string UUIDs to UUID objects
+            data_uuid = UUID(data_id)
+            dataset_uuid = UUID(dataset_id)
+
+            # Call the cognee delete function via client
+            result = await cognee_client.delete(
+                data_id=data_uuid, dataset_id=dataset_uuid, mode=normalized_mode
+            )
+
+            logger.info(f"Delete operation completed successfully: {result}")
+
+            # Format the result for MCP response
+            formatted_result = json.dumps(result, indent=2, cls=JSONEncoder)
+
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"✅ Delete operation completed successfully!\n\n{formatted_result}",
+                )
+            ]
+
+        except ValueError as e:
+            error_msg = f"❌ Invalid delete request: {str(e)}"
+            logger.error(error_msg)
+            return [types.TextContent(type="text", text=error_msg)]
+
+        except Exception as e:
+            # Handle all other errors (DocumentNotFoundError, DatasetNotFoundError, etc.)
+            error_msg = f"❌ Delete operation failed: {str(e)}"
+            logger.error(f"Delete operation error: {str(e)}")
+            return [types.TextContent(type="text", text=error_msg)]
+
+
+@log_usage(function_name="MCP prune", log_type="mcp_tool")
+async def prune():
+    """
+    Reset the Cognee knowledge graph by removing all stored information.
+
+    This function performs a complete reset of both the data layer and system layer
+    of the Cognee knowledge graph, removing all nodes, edges, and associated metadata.
+    It is typically used during development or when needing to start fresh with a new
+    knowledge base.
+
+    Returns
+    -------
+    list
+        A list containing a single TextContent object with confirmation of the prune operation.
+
+    Notes
+    -----
+    - This operation cannot be undone. All memory data will be permanently deleted.
+    - The function prunes both data content (using prune_data) and system metadata (using prune_system)
+    - This operation is not available in API mode
+    """
+    with redirect_stdout(sys.stderr):
+        try:
+            await cognee_client.prune_data()
+            await cognee_client.prune_system(metadata=True)
+            return [types.TextContent(type="text", text="Pruned")]
+        except NotImplementedError:
+            error_msg = "❌ Prune operation is not available in API mode"
+            logger.error(error_msg)
+            return [types.TextContent(type="text", text=error_msg)]
+        except Exception as e:
+            error_msg = f"❌ Prune operation failed: {str(e)}"
+            logger.error(error_msg)
+            return [types.TextContent(type="text", text=error_msg)]
+
+
+# ---------------------------------------------------------------------------
+# Session-aware memory operations (remember, recall, forget)
+# ---------------------------------------------------------------------------
+
+
+@registry.tool(tags={DEFAULT_TAG, MEMORY_TAG})
+async def remember(
+    data: str = None,
+    filename: str = None,
+    content_base64: str = None,
+    dataset_name: str = None,
+    session_id: str = None,
+    custom_prompt: str = None,
+    background: bool = False,
+) -> list:
+    """Store data in memory.
+
+    Two modes depending on whether session_id is provided:
+
+    Without session_id (permanent memory): Runs the full add + cognify
+    pipeline to ingest data and build the knowledge graph.
+
+    With session_id (session memory): Stores the data in the session
+    cache only. Fast, no entity extraction. Omit session_id when the
+    content should be stored as permanent graph memory.
+
+    Pass either `data` (text) or `filename` + `content_base64` (a file
+    upload, up to 10 MB), not both. File uploads are permanent-memory
+    only and don't support session_id.
+
+    Parameters
+    ----------
+    data : str, optional
+        The text content to store. Mutually exclusive with
+        filename/content_base64.
+    filename : str, optional
+        Original filename for a file upload. Used to derive the stored
+        document's name. Requires content_base64.
+    content_base64 : str, optional
+        Base64-encoded file content to ingest. Requires filename.
+    dataset_name : str, optional
+        Target dataset name. Defaults to the current MCP client's
+        agent-scoped dataset (e.g. "cursor_vscode_memory"), or
+        "main_dataset" if no client identity is detected.
+    session_id : str, optional
+        Session ID. When set, stores in session cache only.
+    custom_prompt : str, optional
+        Custom prompt for entity extraction (permanent mode only).
+    background : bool
+        Queue permanent ingestion as a background task and return immediately
+        instead of waiting for the pipeline. Use when the caller has a request
+        deadline shorter than ingestion takes. Ignored with session_id, which
+        is already fast. Errors surface via cognify_status, not the return
+        value.
+    """
+    if content_base64 and data:
+        return [
+            types.TextContent(
+                type="text",
+                text="Error: pass either `data` or `filename` + `content_base64`, not both.",
+            )
+        ]
+    if not content_base64 and not data:
+        return [
+            types.TextContent(
+                type="text",
+                text="Error: provide `data` or `filename` + `content_base64`.",
+            )
+        ]
+    if content_base64 and session_id:
+        return [
+            types.TextContent(
+                type="text",
+                text="Error: file uploads (content_base64) don't support session_id.",
+            )
+        ]
+
+    if content_base64:
+        try:
+            decoded = base64.b64decode(content_base64, validate=True)
+        except Exception as e:
+            return [types.TextContent(type="text", text=f"Error: invalid base64 content ({e}).")]
+        if len(decoded) > _MAX_UPLOAD_BYTES:
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"Error: file exceeds 10 MB limit ({len(decoded):,} bytes).",
+                )
+            ]
+
+    dataset_name = dataset_name or _agent_scoped_default_dataset()
+
+    # Permanent-memory ingestion runs add + cognify (+ improve), which routinely
+    # outruns an MCP host's per-request deadline — the same constraint the
+    # cognify tool documents as "background process launched due to MCP timeout
+    # limitations". Callers that can't block pass background=True and poll
+    # cognify_status instead. Session-cache writes are fast, so they always
+    # run inline.
+    if background and not session_id:
+
+        async def remember_task_wrapper(**kwargs):
+            """Wrapper that captures errors from the background task."""
+            try:
+                await cognee_client.remember(**kwargs)
+            except Exception as e:
+                _record_task_error(dataset_name, str(e))
+                logger.error(f"Background remember task failed for dataset '{dataset_name}': {e}")
+
+        _track_background(
+            remember_task_wrapper(
+                data=data,
+                filename=filename,
+                content_base64=content_base64,
+                dataset_name=dataset_name,
+                session_id=None,
+                custom_prompt=custom_prompt,
+            )
+        )
+        queued = f"'{filename}'" if content_base64 else "text"
+        return [
+            types.TextContent(
+                type="text",
+                text=(
+                    f"Background process launched due to MCP timeout limitations.\n"
+                    f"Queued {queued} for dataset '{dataset_name}'.\n"
+                    f"Check progress with cognify_status, or the log file at: "
+                    f"{get_log_file_location()}"
+                ),
+            )
+        ]
+
+    with redirect_stdout(sys.stderr):
+        try:
+            result = await cognee_client.remember(
+                data=data,
+                filename=filename,
+                content_base64=content_base64,
+                dataset_name=dataset_name,
+                session_id=session_id,
+                custom_prompt=custom_prompt,
+            )
+            status = result.get("status", "completed")
+            if session_id:
+                text = f"Stored in session cache (session_id={session_id}, status={status})."
+            elif content_base64:
+                text = (
+                    f"Ingested '{filename}' ({len(decoded):,} bytes) into dataset "
+                    f"'{dataset_name}' (status={status})."
+                )
+            else:
+                text = f"Stored permanently in knowledge graph (dataset={dataset_name}, status={status})."
+            return [types.TextContent(type="text", text=text)]
+        except Exception as e:
+            error_msg = f"Remember failed: {str(e)}"
+            logger.error(error_msg)
+            return [types.TextContent(type="text", text=f"Error: {error_msg}")]
+
+
+@registry.tool(tags={DEFAULT_TAG, MEMORY_TAG})
+async def recall(
+    query: str,
+    search_type: str = None,
+    datasets: str = None,
+    session_id: str = None,
+    system_prompt: str = None,
+    top_k: int = 15,
+) -> list:
+    """Search memory with auto-routing and session awareness.
+
+    When session_id is provided without datasets or search_type,
+    searches session cache first by keyword matching. Falls through
+    to the permanent knowledge graph if no session results match.
+
+    Auto-routing picks the best search strategy when search_type
+    is not specified.
+
+    Parameters
+    ----------
+    query : str
+        Natural language query to search for.
+    search_type : str, optional
+        Override auto-routing. Options: GRAPH_COMPLETION,
+        GRAPH_COMPLETION_COT, RAG_COMPLETION, CHUNKS, SUMMARIES,
+        TEMPORAL, FEELING_LUCKY, etc.
+    datasets : str, optional
+        Comma-separated dataset names to search within.
+    session_id : str, optional
+        Session ID for session-first search.
+    system_prompt : str, optional
+        Override the synthesis prompt for completion searches. When omitted,
+        falls back to COGNEE_MCP_RECALL_SYSTEM_PROMPT / _FILE if configured
+        on the server.
+    top_k : int
+        Maximum results to return (default: 10).
+    """
+    with redirect_stdout(sys.stderr):
+        try:
+            normalized_top_k = validate_top_k(top_k)
+            dataset_list = parse_csv_list(datasets)
+            results = await cognee_client.recall(
+                query_text=query,
+                search_type=search_type,
+                datasets=dataset_list,
+                session_id=session_id,
+                system_prompt=system_prompt,
+                top_k=normalized_top_k,
+            )
+            return [
+                types.TextContent(
+                    type="text",
+                    text=format_recall_results(results, json_encoder=JSONEncoder),
+                )
+            ]
+        except Exception as e:
+            error_msg = f"Recall failed: {str(e)}"
+            logger.error(error_msg)
+            return [types.TextContent(type="text", text=f"Error: {error_msg}")]
+
+
+@registry.tool(tags={DEFAULT_TAG, MEMORY_TAG})
+async def forget(
+    dataset: str = None,
+    everything: bool = False,
+    data_id: str = None,
+    dataset_id: str = None,
+) -> list:
+    """Delete data from memory.
+
+    Can target a single data item, a specific dataset (by name or id), or
+    everything the user owns. Removes data from the relational DB, graph DB,
+    and vector DB.
+
+    Parameters
+    ----------
+    dataset : str, optional
+        Dataset name to delete entirely.
+    everything : bool
+        If true, delete ALL data across all datasets.
+    data_id : str, optional
+        UUID of a single data item to delete. Must be paired with `dataset`
+        or `dataset_id` so the owning dataset is unambiguous.
+    dataset_id : str, optional
+        UUID of the dataset to delete entirely, or to scope `data_id`.
+    """
+    with redirect_stdout(sys.stderr):
+        try:
+            if not dataset and not everything and not data_id and not dataset_id:
+                return [
+                    types.TextContent(
+                        type="text",
+                        text=(
+                            "Error: Specify 'dataset' name or set 'everything' to true. "
+                            "To remove a single item, pass 'data_id' with 'dataset' or "
+                            "'dataset_id'."
+                        ),
+                    )
+                ]
+            if data_id and not dataset and not dataset_id:
+                return [
+                    types.TextContent(
+                        type="text",
+                        text="Error: 'data_id' requires 'dataset' or 'dataset_id'.",
+                    )
+                ]
+
+            # The UI passes ids as strings over JSON; cognee.forget() wants UUIDs.
+            # Parse here so a malformed id is a clear message rather than a
+            # cognee-internal traceback.
+            from uuid import UUID
+
+            try:
+                parsed_data_id = UUID(data_id) if data_id else None
+                parsed_dataset_id = UUID(dataset_id) if dataset_id else None
+            except ValueError as e:
+                return [types.TextContent(type="text", text=f"Error: invalid UUID ({e}).")]
+
+            result = await cognee_client.forget(
+                dataset=dataset,
+                everything=everything,
+                data_id=parsed_data_id,
+                dataset_id=parsed_dataset_id,
+            )
+            status = result.get("status", "unknown") if isinstance(result, dict) else "completed"
+            if everything:
+                text = f"All data deleted (status={status})."
+            elif parsed_data_id:
+                text = f"Data item '{data_id}' deleted (status={status})."
+            else:
+                text = f"Dataset '{dataset or dataset_id}' deleted (status={status})."
+            return [types.TextContent(type="text", text=text)]
+        except Exception as e:
+            error_msg = f"Forget failed: {str(e)}"
+            logger.error(error_msg)
+            return [types.TextContent(type="text", text=f"Error: {error_msg}")]
+
+
+@log_usage(function_name="MCP improve", log_type="mcp_tool")
+async def improve(
+    dataset_name: str = None,
+    session_ids: str = None,
+) -> list:
+    """Enrich the knowledge graph and bridge session data to the permanent graph.
+
+    When session_ids is provided, runs a 4-stage pipeline:
+    1. Apply feedback weights from session scores to graph nodes/edges
+    2. Persist session Q&A text into the permanent knowledge graph
+    3. Enrich graph with triplet embeddings (memify)
+    4. Sync enriched graph knowledge back into session caches
+
+    Without session_ids, only stage 3 runs (triplet enrichment).
+
+    Parameters
+    ----------
+    dataset_name : str, optional
+        Dataset to process. Defaults to the current MCP client's
+        agent-scoped dataset, or "main_dataset" if no client identity is
+        detected.
+    session_ids : str, optional
+        Comma-separated session IDs to bridge into the permanent graph.
+    """
+    dataset_name = dataset_name or _agent_scoped_default_dataset()
+    with redirect_stdout(sys.stderr):
+        try:
+            session_list = parse_csv_list(session_ids)
+            result = await cognee_client.improve(
+                dataset_name=dataset_name,
+                session_ids=session_list,
+            )
+            status = result.get("status", "completed") if isinstance(result, dict) else "completed"
+            if session_list:
+                text = (
+                    f"Improve completed (status={status}). "
+                    f"Bridged {len(session_list)} session(s) into permanent graph."
+                )
+            else:
+                text = f"Graph enrichment completed (status={status})."
+            return [types.TextContent(type="text", text=text)]
+        except Exception as e:
+            error_msg = f"Improve failed: {str(e)}"
+            logger.error(error_msg)
+            return [types.TextContent(type="text", text=f"Error: {error_msg}")]
+
+
+# ---------------------------------------------------------------------------
+# V1 pipeline status tool
+# ---------------------------------------------------------------------------
+
+
+@registry.tool(
+    tags={"status"},
+    description=(
+        "Check the progress of background ingestion started by remember(background=True). "
+        "Reports active and completed pipeline jobs for a dataset, including failures that "
+        "a backgrounded call could not return inline."
+    ),
+)
+async def cognify_status(
+    dataset_name: str = None,
+    pipelines: List[str] = None,
+) -> list:
+    """
+    Get the current status of selected pipelines.
+
+    This function retrieves information about current and recently completed
+    pipeline operations in the selected dataset. When `dataset_name` is omitted
+    it defaults to the current MCP client's agent-scoped dataset (e.g.
+    "cursor_vscode_memory") so each agent sees its own status.
+
+    Returns
+    -------
+    list
+        A list containing a single TextContent object with the status information as a string.
+        The status includes information about active and completed jobs for the
+        requested pipelines.
+
+    Notes
+    -----
+    - By default this checks "cognify_pipeline" (backward compatible)
+    - Use `pipelines` to restrict to specific pipeline names
+    - Status information includes job progress, execution time, and completion status
+    - The status is returned in string format for easy reading
+    - In API mode the dataset id is resolved over HTTP and status is read
+      from the server's `GET /api/v1/datasets/status` endpoint
+    """
+    dataset_name = dataset_name or _agent_scoped_default_dataset()
+    with redirect_stdout(sys.stderr):
+        try:
+            if cognee_client.use_api:
+                # API mode: resolve the dataset id over HTTP (no local cognee
+                # instance exists in this process) before querying status.
+                datasets = await cognee_client.list_datasets()
+                dataset_id = next(
+                    (d["id"] for d in datasets if d.get("name") == dataset_name), None
+                )
+                if dataset_id is None:
+                    return [
+                        types.TextContent(
+                            type="text",
+                            text=f"❌ Dataset '{dataset_name}' not found via API",
+                        )
+                    ]
+            else:
+                from cognee.modules.data.methods.get_unique_dataset_id import get_unique_dataset_id
+                from cognee.modules.users.methods import get_default_user
+
+                user = await get_default_user()
+                dataset_id = await get_unique_dataset_id(dataset_name, user)
+
+            requested_pipelines = list(dict.fromkeys(pipelines or ["cognify_pipeline"]))
+
+            if len(requested_pipelines) == 1:
+                status = await cognee_client.get_pipeline_status(
+                    [dataset_id], requested_pipelines[0]
+                )
+            else:
+                status: dict[str, dict] = {str(dataset_id): {}}
+                for pipeline_name in requested_pipelines:
+                    pipeline_status = await cognee_client.get_pipeline_status(
+                        [dataset_id], pipeline_name
+                    )
+                    if str(dataset_id) in pipeline_status:
+                        status[str(dataset_id)][pipeline_name] = pipeline_status[str(dataset_id)]
+
+            # Append any background task errors
+            status_text = str(status)
+            dataset_errors = _task_errors.get(dataset_name, [])
+            if dataset_errors:
+                error_lines = ["\n\nBackground task errors:"]
+                for ts, err in sorted(dataset_errors, reverse=True):
+                    error_lines.append(f"  [{ts}] {err}")
+                status_text += "\n".join(error_lines)
+
+            return [types.TextContent(type="text", text=status_text)]
+        except NotImplementedError:
+            error_msg = "❌ Pipeline status is not available in API mode"
+            logger.error(error_msg)
+            return [types.TextContent(type="text", text=error_msg)]
+        except Exception as e:
+            error_msg = f"❌ Failed to get cognify status: {str(e)}"
+            # Still report background errors even if pipeline status fails
+            dataset_errors = _task_errors.get(dataset_name, [])
+            if dataset_errors:
+                error_lines = ["\n\nBackground task errors:"]
+                for ts, err in sorted(dataset_errors, reverse=True):
+                    error_lines.append(f"  [{ts}] {err}")
+                error_msg += "\n".join(error_lines)
+            logger.error(error_msg)
+            return [types.TextContent(type="text", text=error_msg)]
+
+
+def _sanitize_client_name(name: str) -> str:
+    import re
+
+    # Strip parenthetical suffixes that bridges like mcp-remote append, e.g.
+    # "cursor-vscode (via mcp-remote 0.1.37)" -> "cursor-vscode".
+    cleaned = re.sub(r"\s*\(.*?\)\s*$", "", (name or "").strip())
+    s = re.sub(r"[^a-z0-9_]+", "_", cleaned.lower()).strip("_")
+    return s or "unknown"
+
+
+def _is_agent_scoping_enabled() -> bool:
+    """Whether per-client default datasets are active.
+
+    Controlled by COGNEE_MCP_AGENT_SCOPED env var (default: 'true').
+    When 'false', tools fall back to 'main_dataset' as the default,
+    matching the pre-agent-scoping behavior.
+    """
+    return os.getenv("COGNEE_MCP_AGENT_SCOPED", "true").strip().lower() != "false"
+
+
+def _agent_scoped_default_dataset() -> str:
+    """Return the default dataset for the current MCP request.
+
+    With agent scoping enabled (default), reads clientInfo.name from the
+    active request context and returns '{sanitized}_memory' (e.g.
+    'cursor_vscode_memory'). Falls back to 'main_dataset' when:
+      - agent scoping is disabled via COGNEE_MCP_AGENT_SCOPED=false, or
+      - no client identity is available on the request.
+
+    Used as the runtime default for tool params like dataset_name so each
+    MCP client writes to its own scope automatically when the LLM omits
+    the argument.
+    """
+    if not _is_agent_scoping_enabled():
+        return "main_dataset"
+
+    from mcp.server.lowlevel.server import request_ctx
+
+    try:
+        ctx = request_ctx.get()
+        params = getattr(ctx.session, "client_params", None)
+        if params and params.clientInfo and params.clientInfo.name:
+            return f"{_sanitize_client_name(params.clientInfo.name)}_memory"
+    except LookupError:
+        pass
+    return "main_dataset"
+
+
+def node_to_string(node):
+    node_data = ", ".join(
+        [f'{key}: "{value}"' for key, value in node.items() if key in ["id", "name"]]
+    )
+
+    return f"Node({node_data})"
+
+
+def retrieved_edges_to_string(search_results):
+    edge_strings = []
+    for triplet in search_results:
+        node1, edge, node2 = triplet
+        relationship_type = edge["relationship_name"]
+        edge_str = f"{node_to_string(node1)} {relationship_type} {node_to_string(node2)}"
+        edge_strings.append(edge_str)
+
+    return "\n".join(edge_strings)
+
+
+def load_class(model_file, model_name):
+    model_file = os.path.abspath(model_file)
+
+    # Reject obvious nonsense before we hand the path to the import machinery.
+    # Note: this does not sandbox imports — anyone who can call cognify() with
+    # a custom graph_model_file can already run arbitrary code by construction.
+    # Operators exposing this tool over HTTP/SSE must enforce auth at the
+    # transport layer.
+    if not model_file.endswith(".py"):
+        raise ValueError(f"graph_model_file must be a .py file, got: {model_file}")
+    if not os.path.isfile(model_file):
+        raise ValueError(f"graph_model_file not found: {model_file}")
+
+    spec = importlib.util.spec_from_file_location("graph_model", model_file)
+    if spec is None or spec.loader is None:
+        raise ValueError(f"Could not load module from: {model_file}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    model_class = getattr(module, model_name)
+
+    return model_class
+
+
+async def main():
+    global cognee_client
+
+    # Operations run in-process by this MCP server record origin="mcp" in
+    # pipeline_runs. (In client mode the remote API records origin="api".)
+    # Guarded because cognee-mcp depends on cognee from PyPI (see
+    # pyproject.toml), which may predate cognee.modules.operations — origin
+    # stamping is optional, booting is not. Loud, not silent: the warning
+    # names exactly what is degraded and when the guard can be deleted.
+    try:
+        from cognee.modules.operations import ORIGIN_MCP, set_operation_origin
+
+        set_operation_origin(ORIGIN_MCP)
+    except ImportError:
+        logger.warning(
+            "Installed cognee has no cognee.modules.operations — pipeline_runs "
+            "records from this MCP server will show origin='sdk' instead of "
+            "'mcp'. Remove this guard once cognee-mcp requires a cognee release "
+            "that ships the operations module (SDK-399)."
+        )
+
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "--transport",
+        choices=["sse", "stdio", "http"],
+        default="stdio",
+        help="Transport to use for communication with the client. (default: stdio)",
+    )
+
+    # HTTP transport options
+    parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Host to bind the HTTP server to (default: 127.0.0.1)",
+    )
+
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8000,
+        help="Port to bind the HTTP server to (default: 8000)",
+    )
+
+    parser.add_argument(
+        "--path",
+        default="/mcp",
+        help="Path for the MCP HTTP endpoint (default: /mcp)",
+    )
+
+    parser.add_argument(
+        "--log-level",
+        default="info",
+        choices=["debug", "info", "warning", "error"],
+        help="Log level for the HTTP server (default: info)",
+    )
+
+    parser.add_argument(
+        "--no-migration",
+        default=False,
+        action="store_true",
+        help="Argument stops database migration from being attempted",
+    )
+
+    parser.add_argument(
+        "--tool-mode",
+        default=None,
+        choices=TOOL_MODES,
+        help="How many tools to advertise in tools/list. 'default' pins the memory API "
+        "and makes the rest discoverable via search_tools; "
+        "'minimal' pins only the memory API; 'all' advertises every tool. "
+        "Can also be set via COGNEE_MCP_TOOL_MODE. (default: default)",
+    )
+
+    # Cognee API connection options
+    parser.add_argument(
+        "--api-url",
+        default=os.getenv("COGNEE_BASE_URL"),
+        help="Base URL of a running Cognee FastAPI server or Cognee Cloud tenant "
+        "(e.g., https://<tenant>.cognee.ai). If provided, the MCP server connects to the "
+        "API instead of using cognee directly. Can also be set via the COGNEE_BASE_URL env var.",
+    )
+
+    parser.add_argument(
+        "--api-token",
+        default=os.getenv("COGNEE_API_KEY"),
+        help="Authentication token for the API, sent as X-Api-Key (required if the API has "
+        "authentication enabled). Can also be set via the COGNEE_API_KEY env var.",
+    )
+
+    # Cognee Cloud connection options
+    parser.add_argument(
+        "--serve-url",
+        default=None,
+        help="Cognee Cloud or remote instance URL (e.g., https://your-instance.cognee.ai). "
+        "Calls cognee.serve() at startup so all SDK operations route to the cloud. "
+        "Can also be set via COGNEE_SERVICE_URL env var.",
+    )
+
+    parser.add_argument(
+        "--serve-api-key",
+        default=None,
+        help="API key for the Cognee Cloud instance. Can also be set via COGNEE_API_KEY env var.",
+    )
+
+    args = parser.parse_args()
+
+    # Initialize the global CogneeClient
+    cognee_client = CogneeClient(api_url=args.api_url, api_token=args.api_token)
+
+    host = args.host
+    port = int(args.port)
+    apply_tool_mode(args.tool_mode)
+
+    # Resolve cloud connection: CLI args take precedence over env vars
+    serve_url = args.serve_url or os.environ.get("COGNEE_SERVICE_URL", "")
+    serve_api_key = args.serve_api_key or os.environ.get("COGNEE_API_KEY", "")
+
+    # Connect to Cognee Cloud if configured (before migrations — cloud handles its own DB)
+    if serve_url and not args.api_url:
+        import cognee
+
+        serve_kwargs = {"url": serve_url}
+        if serve_api_key:
+            serve_kwargs["api_key"] = serve_api_key
+        await cognee.serve(**serve_kwargs)
+        logger.info(f"Connected to Cognee Cloud: {serve_url}")
+
+    # Skip migrations when in API or Cloud mode (remote handles its own database)
+    is_remote = bool(args.api_url) or bool(serve_url)
+    if not args.no_migration and not is_remote:
+        from cognee.run_migrations import run_migrations
+
+        logger.info("Running database migrations...")
+
+        # Migrations print progress and "table already exists" notices to
+        # stdout. In stdio transport stdout is the JSON-RPC channel, so route
+        # that output to stderr — the same guard every tool applies around its
+        # cognee calls.
+        with redirect_stdout(sys.stderr):
+            # run_migrations() alone — it tells a fresh database from an
+            # existing one (fresh: schema from the models + `alembic stamp
+            # head`; existing: Alembic deltas + the graph/vector data chain).
+            # Running setup() before it used to spoil that check: create_all
+            # built the schema unstamped, so a brand-new database was
+            # classified as existing and replayed the full migration history.
+            # Vector-store tables are created on first write (add() runs
+            # setup()), the same as every SDK flow.
+            await run_migrations()
+
+        logger.info("Database migrations done.")
+    elif not is_remote:
+        logger.info("Skipping DB migrations")
+
+    try:
+        match args.transport.lower():
+            case "sse":
+                logger.info(f"Running MCP server with SSE transport on {host}:{port}")
+                await _serve_with_cors("sse", host, port, args.log_level)
+            case "http":
+                logger.info(
+                    f"Running MCP server with Streamable HTTP transport on {host}:{port}{args.path}"
+                )
+                await _serve_with_cors("http", host, port, args.log_level)
+            case _:
+                logger.info("Running MCP server with stdio")
+                # show_banner=False: the banner is cosmetic and its version check
+                # makes a network call on every startup.
+                await mcp.run_stdio_async(show_banner=False)
+    finally:
+        # Drain background tasks with a bounded timeout so a hung cognify can't
+        # block shutdown indefinitely. Then close the HTTP client pool.
+        if _background_tasks:
+            logger.info(f"Awaiting {len(_background_tasks)} background task(s) before shutdown")
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*_background_tasks, return_exceptions=True),
+                    timeout=10.0,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    f"{len(_background_tasks)} background task(s) still running at shutdown; cancelling"
+                )
+                for t in _background_tasks:
+                    t.cancel()
+        if cognee_client is not None:
+            await cognee_client.close()
+
+
+if __name__ == "__main__":
+    logger = setup_logging()
+
+    try:
+        asyncio.run(main())
+    except Exception as e:
+        logger.error(f"Error initializing Cognee MCP server: {str(e)}")
+        raise

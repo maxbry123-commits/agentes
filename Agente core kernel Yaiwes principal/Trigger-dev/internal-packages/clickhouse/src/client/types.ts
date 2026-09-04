@@ -1,0 +1,300 @@
+import type { Result } from "@trigger.dev/core/v3";
+import type { z } from "zod";
+import type { InsertError, QueryError } from "./errors.js";
+import {
+  type ClickHouseSettings,
+  type BaseQueryParams,
+  type CommandResult,
+  type InsertResult,
+} from "@clickhouse/client";
+import type { ClickhouseQueryBuilder, ClickhouseQueryFastBuilder } from "./queryBuilder.js";
+
+export type ClickhouseQueryFunction<TInput, TOutput> = (
+  params: TInput,
+  options?: {
+    attributes?: Record<string, string | number | boolean>;
+    params?: BaseQueryParams;
+  }
+) => Promise<Result<TOutput[], QueryError>>;
+
+/**
+ * Like {@link ClickhouseQueryFunction} but yields rows as they stream off the
+ * socket instead of buffering them into an array. The whole result set is never
+ * held in memory at once. Errors are thrown (the async iterable rejects) rather
+ * than returned as a Result tuple.
+ */
+export type ClickhouseQueryStreamFunction<TInput, TOutput> = (
+  params: TInput,
+  options?: {
+    attributes?: Record<string, string | number | boolean>;
+    params?: BaseQueryParams;
+  }
+) => AsyncIterable<TOutput>;
+
+/**
+ * Query statistics returned by ClickHouse
+ */
+export interface QueryStats {
+  read_rows: string;
+  read_bytes: string;
+  written_rows: string;
+  written_bytes: string;
+  total_rows_to_read: string;
+  result_rows: string;
+  result_bytes: string;
+  elapsed_ns: string;
+  byte_seconds: string;
+}
+
+/**
+ * Result type for queries that include stats
+ */
+export interface QueryResultWithStats<TOutput> {
+  rows: TOutput[];
+  stats: QueryStats;
+}
+
+export type ClickhouseQueryWithStatsFunction<TInput, TOutput> = (
+  params: TInput,
+  options?: {
+    attributes?: Record<string, string | number | boolean>;
+    params?: BaseQueryParams;
+  }
+) => Promise<Result<QueryResultWithStats<TOutput>, QueryError>>;
+
+export type ClickhouseQueryBuilderFunction<TOutput> = (options?: {
+  settings?: ClickHouseSettings;
+}) => ClickhouseQueryBuilder<TOutput>;
+
+export type ClickhouseQueryBuilderFastFunction<TOutput extends Record<string, any>> = (options?: {
+  settings?: ClickHouseSettings;
+}) => ClickhouseQueryFastBuilder<TOutput>;
+
+export type ColumnExpression = {
+  name: string;
+  expression: string;
+};
+
+export interface ClickhouseReader {
+  query<TIn extends z.ZodSchema<any>, TOut extends z.ZodSchema<any>>(req: {
+    /**
+     * The name of the operation.
+     * This will be used to identify the operation in the span.
+     */
+    name: string;
+    /**
+     * The SQL query to run.
+     * Use {paramName: Type} to define parameters
+     * Example: `SELECT * FROM table WHERE id = {id: String}`
+     */
+    query: string;
+    /**
+     * The schema of the parameters
+     * Example: z.object({ id: z.string() })
+     */
+    params?: TIn;
+    /**
+     * The schema of the output of each row
+     * Example: z.object({ id: z.string() })
+     */
+    schema: TOut;
+    /**
+     * The settings to use for the query.
+     * These will be merged with the default settings.
+     */
+    settings?: ClickHouseSettings;
+  }): ClickhouseQueryFunction<z.input<TIn>, z.output<TOut>>;
+
+  /**
+   * Execute a query and return both rows and query statistics.
+   * Same as `query` but includes ClickHouse query stats in the result.
+   */
+  queryWithStats<TIn extends z.ZodSchema<any>, TOut extends z.ZodSchema<any>>(req: {
+    /**
+     * The name of the operation.
+     * This will be used to identify the operation in the span.
+     */
+    name: string;
+    /**
+     * The SQL query to run.
+     * Use {paramName: Type} to define parameters
+     * Example: `SELECT * FROM table WHERE id = {id: String}`
+     */
+    query: string;
+    /**
+     * The schema of the parameters
+     * Example: z.object({ id: z.string() })
+     */
+    params?: TIn;
+    /**
+     * The schema of the output of each row
+     * Example: z.object({ id: z.string() })
+     */
+    schema: TOut;
+    /**
+     * The settings to use for the query.
+     * These will be merged with the default settings.
+     */
+    settings?: ClickHouseSettings;
+    /**
+     * Extra fields to attach to the error log if the query fails. Use this to
+     * record what produced the SQL, e.g. the TSQL a caller actually wrote.
+     */
+    logFields?: Record<string, unknown>;
+    /**
+     * Set when the SQL originates from whoever made the request rather than
+     * from us. Invalid-SQL rejections are then their mistake, not a bug.
+     */
+    userAuthoredQuery?: boolean;
+  }): ClickhouseQueryWithStatsFunction<z.input<TIn>, z.output<TOut>>;
+
+  queryFast<TOut extends Record<string, any>, TParams extends Record<string, any>>(req: {
+    /**
+     * The name of the operation.
+     * This will be used to identify the operation in the span.
+     */
+    name: string;
+    /**
+     * The SQL query to run.
+     * Use {paramName: Type} to define parameters
+     * Example: `SELECT * FROM table WHERE id = {id: String}`
+     */
+    query: string;
+
+    /**
+     * The columns returned by the query, in the order
+     *
+     * @example ["run_id", "created_at", "updated_at"]
+     */
+    columns: Array<string | ColumnExpression>;
+    /**
+     * The settings to use for the query.
+     * These will be merged with the default settings.
+     */
+    settings?: ClickHouseSettings;
+  }): ClickhouseQueryFunction<TParams, TOut>;
+
+  /**
+   * Like {@link queryFast} but streams rows instead of buffering them. Returns an
+   * async iterable so the caller can process arbitrarily large result sets with
+   * bounded memory.
+   */
+  queryFastStream<TOut extends Record<string, any>, TParams extends Record<string, any>>(req: {
+    name: string;
+    query: string;
+    columns: Array<string | ColumnExpression>;
+    settings?: ClickHouseSettings;
+  }): ClickhouseQueryStreamFunction<TParams, TOut>;
+
+  queryBuilder<TOut extends z.ZodSchema<any>>(req: {
+    /**
+     * The name of the operation.
+     * This will be used to identify the operation in the span.
+     */
+    name: string;
+    /**
+     * The initial select clause
+     *
+     * @example SELECT run_id from trigger_dev.task_runs_v1
+     */
+    baseQuery: string;
+    /**
+     * The schema of the output of each row
+     * Example: z.object({ id: z.string() })
+     */
+    schema: TOut;
+    /**
+     * The settings to use for the query.
+     * These will be merged with the default settings.
+     */
+    settings?: ClickHouseSettings;
+  }): ClickhouseQueryBuilderFunction<z.input<TOut>>;
+
+  queryBuilderFast<TOut extends Record<string, any>>(req: {
+    /**
+     * The name of the operation.
+     * This will be used to identify the operation in the span.
+     */
+    name: string;
+    /**
+     * The table to query
+     *
+     * @example trigger_dev.task_runs_v1
+     */
+    table: string;
+    /**
+     * The columns to query
+     *
+     * @example ["run_id", "created_at", "updated_at"]
+     */
+    columns: Array<string | ColumnExpression>;
+    /**
+     * The settings to use for the query.
+     * These will be merged with the default settings.
+     */
+    settings?: ClickHouseSettings;
+  }): ClickhouseQueryBuilderFastFunction<TOut>;
+
+  close(): Promise<void>;
+}
+
+export type ClickhouseCommandFunction<TInput> = (
+  params: TInput,
+  options?: {
+    attributes?: Record<string, string | number | boolean>;
+    params?: BaseQueryParams;
+  }
+) => Promise<Result<CommandResult, QueryError>>;
+
+export type ClickhouseInsertFunction<TInput> = (
+  events: TInput | TInput[],
+  options?: {
+    attributes?: Record<string, string | number | boolean>;
+    params?: BaseQueryParams;
+  }
+) => Promise<Result<InsertResult, InsertError>>;
+
+export interface ClickhouseWriter {
+  command<TSchema extends z.ZodSchema<any>>(req: {
+    name: string;
+    query: string;
+    params?: TSchema;
+    settings?: ClickHouseSettings;
+  }): ClickhouseCommandFunction<z.input<TSchema>>;
+
+  insert<TSchema extends z.ZodSchema<any>>(req: {
+    name: string;
+    table: string;
+    schema: TSchema;
+    settings?: ClickHouseSettings;
+  }): ClickhouseInsertFunction<z.input<TSchema>>;
+
+  insertUnsafe<TRecord extends Record<string, any>>(req: {
+    name: string;
+    table: string;
+    settings?: ClickHouseSettings;
+  }): ClickhouseInsertFunction<TRecord>;
+
+  insertCompact<TRecord extends Record<string, any>>(req: {
+    name: string;
+    table: string;
+    columns: readonly string[];
+    toArray: (record: TRecord) => any[];
+    settings?: ClickHouseSettings;
+  }): ClickhouseInsertFunction<TRecord>;
+
+  insertCompactRaw(req: {
+    name: string;
+    table: string;
+    columns: readonly string[];
+    settings?: ClickHouseSettings;
+  }): (
+    events: readonly any[][] | any[],
+    options?: {
+      attributes?: Record<string, string | number | boolean>;
+      params?: BaseQueryParams;
+    }
+  ) => Promise<Result<InsertResult, InsertError>>;
+
+  close(): Promise<void>;
+}

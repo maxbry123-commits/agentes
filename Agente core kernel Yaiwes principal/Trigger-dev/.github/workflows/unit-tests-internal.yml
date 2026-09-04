@@ -1,0 +1,144 @@
+name: "🧪 Unit Tests: Internal"
+
+permissions:
+  contents: read
+
+on:
+  workflow_call:
+    secrets:
+      DOCKERHUB_USERNAME:
+        required: false
+      DOCKERHUB_TOKEN:
+        required: false
+
+jobs:
+  unitTests:
+    name: "🧪 Unit Tests: Internal"
+    # Single big machine instead of a 12-job matrix: the internal suites are serial
+    # (fileParallelism: false) and container-wait-bound, so 12 in-machine shard processes
+    # fit comfortably in 32 vCPUs while paying the setup cost (install, prisma generate,
+    # image pulls) once instead of 12 times.
+    runs-on: warp-ubuntu-latest-x64-32x
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      SHARD_TOTAL: 12
+    steps:
+      - name: 🔧 Disable IPv6
+        run: |
+          sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1
+          sudo sysctl -w net.ipv6.conf.default.disable_ipv6=1
+          sudo sysctl -w net.ipv6.conf.lo.disable_ipv6=1
+
+      - name: 🔧 Configure docker address pool
+        run: |
+          CONFIG='{
+            "default-address-pools" : [
+              {
+                "base" : "172.17.0.0/12",
+                "size" : 20
+              },
+              {
+                "base" : "192.168.0.0/16",
+                "size" : 24
+              }
+            ]
+          }'
+          mkdir -p /etc/docker
+          echo "$CONFIG" | sudo tee /etc/docker/daemon.json
+
+      - name: 🔧 Restart docker daemon
+        run: sudo systemctl restart docker
+
+      - name: ⬇️ Checkout repo
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: ⎔ Setup pnpm
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+        with:
+          version: 10.33.2
+
+      - name: ⎔ Setup node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24.18.0
+          cache: "pnpm"
+
+      # ..to avoid rate limits when pulling images
+      - name: 🐳 Login to DockerHub
+        if: ${{ env.DOCKERHUB_USERNAME }}
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: 🐳 Skipping DockerHub login (no secrets available)
+        if: ${{ !env.DOCKERHUB_USERNAME }}
+        run: echo "DockerHub login skipped because secrets are not available."
+
+      - name: 🐳 Pre-pull testcontainer images
+        run: |
+          # Retry each pull - DockerHub registry timeouts are a recurring transient CI flake.
+          pull() {
+            for attempt in 1 2 3; do
+              docker pull "$1" && return 0
+              echo "::warning::docker pull $1 failed (attempt ${attempt}/3); retrying in 10s"
+              sleep 10
+            done
+            echo "::error::docker pull $1 failed after 3 attempts"
+            return 1
+          }
+          echo "Pre-pulling Docker images with authenticated session..."
+          pull postgres:14
+          pull postgres:17 # for the heterogeneous PG14/17 test fixture gate (heteroPostgresTest)
+          pull clickhouse/clickhouse-server:26.2.19.43-alpine@sha256:c6ad6a7eb2fb5999df3adfb8b69a0c7222c68fa9b8f6b04a088564ebbc959251
+          pull redis:7.2
+          pull testcontainers/ryuk:0.14.0
+          echo "Image pre-pull complete"
+
+      - name: 📥 Download deps
+        run: pnpm install --frozen-lockfile
+
+      - name: 📀 Generate Prisma Client
+        run: pnpm run generate
+
+      - name: 🏗️ Build test dependencies
+        # Build once up-front so the parallel shard runs below (turbo --only) never race
+        # to build or cache-restore the same outputs concurrently.
+        run: pnpm exec turbo run build --filter "@internal/*..."
+
+      - name: 🧪 Run Internal Unit Tests (${{ env.SHARD_TOTAL }} in-machine shards)
+        run: |
+          # Same shard partitioning as the old 12-job matrix (DurationShardingSequencer
+          # keys off --shard=i/N), but as parallel local processes. --only skips the
+          # ^build dependency handled by the step above.
+          status=0
+          declare -a pids
+          for i in $(seq 1 "$SHARD_TOTAL"); do
+            pnpm exec turbo run test --only --concurrency=1 --filter "@internal/*" -- \
+              --run --reporter=default --reporter=blob --shard="$i/$SHARD_TOTAL" --passWithNoTests \
+              > "/tmp/internal-shard-$i.log" 2>&1 &
+            pids[i]=$!
+          done
+          for i in $(seq 1 "$SHARD_TOTAL"); do
+            if ! wait "${pids[i]}"; then
+              status=1
+              echo "::error::internal unit test shard $i/$SHARD_TOTAL failed"
+            fi
+            echo "::group::🧪 shard $i/$SHARD_TOTAL"
+            cat "/tmp/internal-shard-$i.log"
+            echo "::endgroup::"
+          done
+          exit "$status"
+
+      - name: Gather all reports
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p .vitest-reports
+          find . -type f -path '*/.vitest-reports/blob-*.json' \
+            -exec bash -c 'src="$1"; basename=$(basename "$src"); pkg=$(dirname "$src" | sed "s|^\./||;s|/\.vitest-reports$||;s|/|_|g"); cp "$src" ".vitest-reports/${pkg}-${basename}"' _ {} \;
+
+      - name: 📊 Merge reports
+        if: ${{ !cancelled() }}
+        run: pnpm dlx vitest@4.1.7 run --merge-reports --pass-with-no-tests

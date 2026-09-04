@@ -1,0 +1,33 @@
+import type { TypedResponse } from "@remix-run/server-runtime";
+import { json } from "@remix-run/server-runtime";
+import type { WorkerApiRunSnapshotsSinceResponseBody } from "@trigger.dev/core/v3/workers";
+import { z } from "zod";
+import { createLoaderWorkerApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+
+export const loader = createLoaderWorkerApiRoute(
+  {
+    params: z.object({
+      runFriendlyId: z.string(),
+      snapshotId: z.string(),
+    }),
+  },
+  async ({
+    authenticatedWorker,
+    params,
+    environmentId,
+  }): Promise<TypedResponse<WorkerApiRunSnapshotsSinceResponseBody>> => {
+    const { runFriendlyId, snapshotId } = params;
+
+    const snapshots = await authenticatedWorker.getSnapshotsSince({
+      runFriendlyId,
+      snapshotId,
+      environmentId,
+    });
+
+    if (!snapshots) {
+      throw new Error("Failed to retrieve snapshots since given snapshot");
+    }
+
+    return json({ snapshots });
+  }
+);

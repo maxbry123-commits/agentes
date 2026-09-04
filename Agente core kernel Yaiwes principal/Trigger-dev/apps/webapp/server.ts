@@ -1,0 +1,363 @@
+import "./sentry.server";
+
+import { createRequestHandler } from "@remix-run/express";
+import compression from "compression";
+import type { Server as EngineServer } from "engine.io";
+import express, { type RequestHandler } from "express";
+import morgan from "morgan";
+import { nanoid } from "nanoid";
+import path from "path";
+import { pathToFileURL } from "node:url";
+import type { Server as IoServer } from "socket.io";
+import type { WebSocketServer } from "ws";
+import type { RateLimitMiddleware } from "~/services/apiRateLimit.server";
+import { type RunWithHttpContextFunction } from "~/services/httpAsyncStorage.server";
+import cluster from "node:cluster";
+import os from "node:os";
+
+const ENABLE_CLUSTER = process.env.ENABLE_CLUSTER === "1";
+const cpuCount = os.availableParallelism();
+const WORKERS =
+  Number.parseInt(process.env.WEB_CONCURRENCY || process.env.CLUSTER_WORKERS || "", 10) || cpuCount;
+// Must be greater than the upstream load balancer's idle timeout to avoid the
+// LB pipelining a request onto a connection Node has already closed (→ 502).
+const HTTP_KEEPALIVE_TIMEOUT_MS =
+  Number.parseInt(process.env.HTTP_KEEPALIVE_TIMEOUT_MS || "", 10) || 65 * 1000;
+
+function forkWorkers() {
+  for (let i = 0; i < WORKERS; i++) {
+    cluster.fork();
+  }
+}
+
+function installPrimarySignalHandlers() {
+  let didHandleSigterm = false;
+  let didHandleSigint = false;
+  let didGracefulExit = false;
+
+  const forward = (signal: NodeJS.Signals) => {
+    for (const id in cluster.workers) {
+      if (!Object.hasOwn(cluster.workers, id)) continue;
+      const w = cluster.workers[id];
+      if (w?.process?.pid) {
+        try {
+          process.kill(w.process.pid, signal);
+        } catch {}
+      }
+    }
+  };
+
+  const gracefulExit = () => {
+    if (didGracefulExit) return;
+    didGracefulExit = true;
+
+    const timeoutMs = Number(process.env.GRACEFUL_SHUTDOWN_TIMEOUT || 30_000);
+    // wait for workers to exit, then exit the primary too
+    const maybeExit = () => {
+      const alive = Object.values(cluster.workers || {}).some((w) => w && !w.isDead());
+      if (!alive) process.exit(0);
+    };
+    setInterval(maybeExit, 1000);
+    setTimeout(() => process.exit(0), timeoutMs);
+  };
+
+  process.on("SIGTERM", () => {
+    if (didHandleSigterm) return;
+    didHandleSigterm = true;
+    forward("SIGTERM");
+    gracefulExit();
+  });
+  process.on("SIGINT", () => {
+    if (didHandleSigint) return;
+    didHandleSigint = true;
+    forward("SIGINT");
+    gracefulExit();
+  });
+}
+
+// Bundled to CJS (esbuild rewrites import() to require); vite and the Remix
+// server bundle are ESM, so load them via a real dynamic import.
+const dynamicImport = new Function("specifier", "return import(specifier)") as (
+  specifier: string
+) => Promise<any>;
+
+if (ENABLE_CLUSTER && cluster.isPrimary) {
+  process.title = `node webapp-server primary`;
+  console.log(`[cluster] Primary ${process.pid} is starting with ${WORKERS} workers`);
+  forkWorkers();
+
+  cluster.on("exit", (worker, code, signal) => {
+    const intentional =
+      // If we sent "shutdown", the worker will exit with code 0 after closing.
+      code === 0 || worker.exitedAfterDisconnect;
+    console.log(
+      `[cluster] worker ${worker.process.pid} exited (code=${code}, signal=${signal}, intentional=${intentional})`
+    );
+    // If it wasn't during a shutdown, replace the worker.
+    if (!intentional) cluster.fork();
+  });
+
+  installPrimarySignalHandlers();
+} else {
+  startServer().catch((error) => {
+    console.error("Failed to start server:", error);
+    process.exit(1);
+  });
+}
+
+async function startServer() {
+  const app = express();
+
+  if (process.env.DISABLE_COMPRESSION !== "1") {
+    app.use(compression());
+  }
+
+  // http://expressjs.com/en/advanced/best-practice-security.html#at-a-minimum-disable-x-powered-by-header
+  app.disable("x-powered-by");
+
+  const MODE = process.env.NODE_ENV;
+
+  // In development, Vite serves assets (and handles HMR) via middleware.
+  // Only NODE_ENV=development boots Vite — scripts that run the built server
+  // without NODE_ENV (start:local, dev:worker) must serve the build.
+  const viteDevServer =
+    MODE === "development"
+      ? await dynamicImport("vite").then((vite) =>
+          vite.createServer({ server: { middlewareMode: true } })
+        )
+      : undefined;
+
+  if (viteDevServer) {
+    app.use(viteDevServer.middlewares);
+  } else {
+    // Vite fingerprints its assets so we can cache forever.
+    app.use("/assets", express.static("build/client/assets", { immutable: true, maxAge: "1y" }));
+    // Stale clients can request an old hashed asset; hard-404 instead of falling
+    // through to Remix and answering a .js request with HTML.
+    app.use("/assets", (_req, res) => {
+      res.status(404).end();
+    });
+    // Everything else (like favicon.ico) is cached for an hour. You may want to be
+    // more aggressive with this caching.
+    app.use(express.static("build/client", { maxAge: "1h" }));
+  }
+
+  // On high-volume machine-ingest services (e.g. otel) the per-request access
+  // log dominates log volume. HTTP_ACCESS_LOG_DISABLED suppresses successful
+  // (2xx) access logs; non-2xx responses are always logged so errors stay visible.
+  const suppressSuccessfulAccessLogs = process.env.HTTP_ACCESS_LOG_DISABLED === "1";
+  // Strip the query string from webhook ingress URLs (they may carry a
+  // url-secret) before they reach the access log. Other paths pass through.
+  morgan.token("url-redacted", (req: any) => {
+    const url: string = req.originalUrl ?? req.url ?? "";
+    if (url.startsWith("/webhooks/v1/ingest/")) {
+      const q = url.indexOf("?");
+      return q === -1 ? url : url.slice(0, q);
+    }
+    return url;
+  });
+  app.use(
+    morgan(":method :url-redacted :status :res[content-length] - :response-time ms", {
+      skip: (_req, res) =>
+        suppressSuccessfulAccessLogs && res.statusCode >= 200 && res.statusCode < 300,
+    })
+  );
+
+  process.title = ENABLE_CLUSTER
+    ? `node webapp-worker-${cluster.isWorker ? cluster.worker?.id : "solo"}`
+    : "node webapp-server";
+
+  const loadBuild = () => {
+    if (viteDevServer) {
+      return viteDevServer.ssrLoadModule("virtual:remix/server-build");
+    }
+    return dynamicImport(
+      pathToFileURL(path.join(process.cwd(), "build", "server", "index.mjs")).href
+    );
+  };
+
+  // Boots the entry.server singletons (socket.io, wss, rate limiters).
+  const build = await loadBuild();
+
+  const port = process.env.REMIX_APP_PORT || process.env.PORT || 3000;
+
+  if (process.env.HTTP_SERVER_DISABLED !== "true") {
+    // Back-compat shim: a previously-deployed client build polls this endpoint after a
+    // /build asset 404 and reloads once it reports a newer build id, letting those older
+    // tabs recover in a single reload. Temporary — safe to remove once older clients have
+    // churned out. Deliberately does NOT set an X-Build-Id response header.
+    app.get("/build-version", (_req, res) => {
+      res.set("Cache-Control", "no-store");
+      res.json({ version: build.assets.version });
+    });
+
+    const socketIo: { io: IoServer } | undefined = build.entry.module.socketIo;
+    const wss: WebSocketServer | undefined = build.entry.module.wss;
+    const apiRateLimiter: RateLimitMiddleware = build.entry.module.apiRateLimiter;
+    const deploymentRateLimiter: RateLimitMiddleware = build.entry.module.deploymentRateLimiter;
+    const engineRateLimiter: RateLimitMiddleware = build.entry.module.engineRateLimiter;
+    const otlpRateLimiter: RequestHandler = build.entry.module.otlpRateLimiter;
+    const runWithHttpContext: RunWithHttpContextFunction = build.entry.module.runWithHttpContext;
+    const tenantContextMiddleware: RequestHandler = build.entry.module.tenantContextMiddleware;
+    const dashboardAgentBodyCap: RequestHandler = build.entry.module.dashboardAgentBodyCap;
+    const webhookIngressIpRateLimiter: RequestHandler =
+      build.entry.module.webhookIngressIpRateLimiter;
+
+    app.use((req, res, next) => {
+      // helpful headers:
+      res.set("Strict-Transport-Security", `max-age=${60 * 60 * 24 * 365 * 100}`);
+
+      // Add X-Robots-Tag header for test-cloud.trigger.dev
+      if (req.hostname !== "cloud.trigger.dev") {
+        res.set("X-Robots-Tag", "noindex, nofollow");
+      }
+
+      // /clean-urls/ -> /clean-urls. Skip /ph: PostHog ingest endpoints end in
+      // a slash, and a 301 would drop sendBeacon POSTs.
+      if (req.path.endsWith("/") && req.path.length > 1 && !req.path.startsWith("/ph/")) {
+        const query = req.url.slice(req.path.length);
+        const safepath = req.path.slice(0, -1).replace(/\/+/g, "/");
+        res.redirect(301, safepath + query);
+        return;
+      }
+      next();
+    });
+
+    app.use((req, res, next) => {
+      // Generate a unique request ID for each request
+      const requestId = nanoid();
+      const abortController = new AbortController();
+      res.on("close", () => abortController.abort());
+
+      runWithHttpContext(
+        { requestId, path: req.url, host: req.hostname, method: req.method, abortController },
+        next
+      );
+    });
+
+    if (process.env.DASHBOARD_AND_API_DISABLED !== "true") {
+      if (process.env.ALLOW_ONLY_REALTIME_API === "true") {
+        // Block all requests that do not start with /realtime
+        app.use((req, res, next) => {
+          // Make sure /healthcheck is still accessible
+          if (!req.url.startsWith("/realtime") && req.url !== "/healthcheck") {
+            res.status(404).send("Not Found");
+            return;
+          }
+
+          next();
+        });
+      }
+
+      app.use(apiRateLimiter);
+      app.use(deploymentRateLimiter);
+      app.use(engineRateLimiter);
+      app.use(otlpRateLimiter);
+      app.use(webhookIngressIpRateLimiter);
+
+      app.use(tenantContextMiddleware);
+
+      // Before the Remix handler: the agent's chat body is refused while it streams, so a
+      // route never buffers one that was already too large.
+      app.use(dashboardAgentBodyCap);
+
+      app.all(
+        "*",
+        // @ts-ignore
+        createRequestHandler({
+          build: viteDevServer ? loadBuild : build,
+          mode: MODE,
+        })
+      );
+    } else {
+      // we need to do the health check here at /healthcheck — forward
+      // to the Remix handler so the loader's readiness checks (DB ping,
+      // REQUIRE_PLUGINS-gated plugin load) run in this mode too. A
+      // static 200 here would silently mask a failed plugin load.
+      app.get(
+        "/healthcheck",
+        // @ts-ignore
+        createRequestHandler({
+          build: viteDevServer ? loadBuild : build,
+          mode: MODE,
+        })
+      );
+    }
+
+    const server = app.listen(port, () => {
+      console.log(
+        `✅ server ready: http://localhost:${port} [NODE_ENV: ${MODE}]${
+          ENABLE_CLUSTER && cluster.isWorker ? ` [worker ${cluster.worker?.id}/${process.pid}]` : ""
+        }`
+      );
+    });
+
+    server.keepAliveTimeout = HTTP_KEEPALIVE_TIMEOUT_MS;
+    // Mitigate against https://github.com/triggerdotdev/trigger.dev/security/dependabot/128
+    // by not allowing 2000+ headers to be sent and causing a DoS
+    // headers will instead be limited by the maxHeaderSize
+    server.maxHeadersCount = 0;
+
+    let didCloseServer = false;
+
+    function closeServer(signal: NodeJS.Signals) {
+      if (didCloseServer) return;
+      didCloseServer = true;
+
+      server.close((err) => {
+        if (err) {
+          console.error("Error closing express server:", err);
+        } else {
+          console.log("Express server closed gracefully.");
+        }
+      });
+      // Dev-only: release Vite's file watchers and HMR websocket
+      viteDevServer?.close();
+    }
+
+    process.on("SIGTERM", closeServer);
+    process.on("SIGINT", closeServer);
+
+    socketIo?.io.attach(server);
+    server.removeAllListeners("upgrade"); // prevent duplicate upgrades from listeners created by io.attach()
+
+    server.on("upgrade", async (req, socket, head) => {
+      console.log(`Attemping to upgrade connection at url ${req.url}`);
+
+      socket.on("error", (err) => {
+        console.error("Connection upgrade error:", err);
+      });
+
+      const url = new URL(req.url ?? "", "http://localhost");
+
+      // Upgrade socket.io connection
+      if (url.pathname.startsWith("/socket.io/")) {
+        console.log(`Socket.io client connected, upgrading their connection...`);
+
+        // https://github.com/socketio/socket.io/issues/4693
+        (socketIo!.io.engine as EngineServer).handleUpgrade(req, socket, head);
+        return;
+      }
+
+      // Only upgrade the connecting if the path is `/ws`
+      if (url.pathname !== "/ws") {
+        // Setting the socket.destroy() error param causes an error event to be emitted which needs to be handled with socket.on("error") to prevent uncaught exceptions.
+        socket.destroy(
+          new Error(
+            "Cannot connect because of invalid path: Please include `/ws` in the path of your upgrade request."
+          )
+        );
+        return;
+      }
+
+      console.log(`Client connected, upgrading their connection...`);
+
+      // Handle the WebSocket connection
+      wss?.handleUpgrade(req, socket, head, (ws) => {
+        wss?.emit("connection", ws, req);
+      });
+    });
+  } else {
+    console.log(`✅ app ready (skipping http server)`);
+  }
+}

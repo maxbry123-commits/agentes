@@ -1,0 +1,197 @@
+use crate::rccell::RcCell;
+use crate::rcvalue::RcValue;
+use crate::variable::Variable;
+use ahash::AHashMap;
+use nohash_hasher::BuildNoHashHasher;
+use std::collections::HashMap;
+use std::rc::Rc;
+
+pub struct RefSerializer {
+    ref_counts: HashMap<usize, usize, BuildNoHashHasher<usize>>,
+    refs: HashMap<usize, (usize, Rc<str>), BuildNoHashHasher<usize>>,
+    string_intern: AHashMap<Rc<str>, Rc<str>>,
+    ref_data: Vec<RcValue>,
+    min_ref_count: usize,
+    min_str_len: usize,
+}
+
+impl RefSerializer {
+    pub fn new() -> Self {
+        Self {
+            ref_counts: HashMap::default(),
+            refs: HashMap::default(),
+            string_intern: AHashMap::default(),
+            ref_data: Vec::new(),
+            min_ref_count: 2,
+            min_str_len: 5,
+        }
+    }
+
+    fn escape_at_string(s: &crate::symbol::Symbol) -> Rc<str> {
+        match s.starts_with('@') {
+            true => Rc::from(format!("@{s}").as_str()),
+            false => Rc::from(s.as_str()),
+        }
+    }
+
+    fn intern_string_addr(&mut self, s: &str) -> usize {
+        if !self.string_intern.contains_key(s) {
+            let owned: Rc<str> = Rc::from(s);
+            self.string_intern.insert(owned.clone(), owned);
+        }
+
+        Rc::as_ptr(self.string_intern.get(s).expect("interned")) as *const () as usize
+    }
+
+    pub fn serialize(mut self, var: &Variable) -> RcValue {
+        self.count_refs(var);
+        self.assign_ref_ids();
+
+        let data = self.serialize_with_refs(var);
+
+        let mut result = HashMap::default();
+        if !self.ref_data.is_empty() {
+            result.insert(Rc::from("$refs"), RcValue::Array(self.ref_data));
+        }
+
+        result.insert(Variable::root_key_rc(), data);
+        RcValue::Object(result)
+    }
+
+    fn count_refs(&mut self, var: &Variable) {
+        match var {
+            Variable::String(s) => {
+                if s.len() < self.min_str_len {
+                    return;
+                }
+
+                let addr = self.intern_string_addr(s.as_str());
+                *self.ref_counts.entry(addr).or_insert(0) += 1;
+            }
+            Variable::Array(arr) => {
+                let addr = RcCell::as_ptr(arr) as *const () as usize;
+                *self.ref_counts.entry(addr).or_insert(0) += 1;
+
+                let borrowed = arr.borrow();
+                for item in borrowed.iter() {
+                    self.count_refs(item);
+                }
+            }
+            Variable::Object(obj) => {
+                let addr = RcCell::as_ptr(obj) as *const () as usize;
+                *self.ref_counts.entry(addr).or_insert(0) += 1;
+
+                let borrowed = obj.borrow();
+                for (key, value) in borrowed.iter() {
+                    let key_addr = self.intern_string_addr(key.as_str());
+                    *self.ref_counts.entry(key_addr).or_insert(0) += 1;
+                    self.count_refs(value);
+                }
+            }
+            Variable::Dynamic(_) => {}
+            _ => {} // Null, Bool, Number don't need ref counting
+        }
+    }
+
+    fn assign_ref_ids(&mut self) {
+        let mut sorted_refs: Vec<_> = self
+            .ref_counts
+            .iter()
+            .filter(|&(_, &count)| count >= self.min_ref_count)
+            .collect();
+
+        sorted_refs.sort_by(|a, b| b.1.cmp(&a.1).then(b.0.cmp(&a.0)));
+
+        self.refs.reserve(sorted_refs.len());
+        self.ref_data.reserve(sorted_refs.len());
+
+        for (&addr, _) in sorted_refs {
+            let id = self.ref_data.len();
+            let id_string = format!("@{id}");
+
+            self.refs.insert(addr, (id, Rc::from(id_string.as_str())));
+            self.ref_data.push(RcValue::Null);
+        }
+    }
+
+    fn serialize_with_refs(&mut self, var: &Variable) -> RcValue {
+        match var {
+            Variable::String(s) => {
+                let addr = self.intern_string_addr(s.as_str());
+                let Some((id, id_str)) = self.refs.get(&addr) else {
+                    return RcValue::String(Self::escape_at_string(s));
+                };
+
+                if self.ref_data[*id] == RcValue::Null {
+                    self.ref_data[*id] = RcValue::String(Self::escape_at_string(s));
+                }
+
+                RcValue::String(id_str.clone())
+            }
+
+            Variable::Array(arr) => {
+                let addr = RcCell::as_ptr(arr) as *const () as usize;
+                let data = {
+                    let borrowed = arr.borrow();
+                    let items: Vec<_> = borrowed
+                        .iter()
+                        .map(|item| self.serialize_with_refs(item))
+                        .collect();
+
+                    RcValue::Array(items)
+                };
+
+                let Some((id, id_str)) = self.refs.get(&addr) else {
+                    return data;
+                };
+
+                if self.ref_data[*id] == RcValue::Null {
+                    self.ref_data[*id] = data;
+                }
+
+                RcValue::String(id_str.clone())
+            }
+
+            Variable::Object(obj) => {
+                let addr = RcCell::as_ptr(obj) as *const () as usize;
+                let data = {
+                    let borrowed = obj.borrow();
+                    let mut map = HashMap::with_capacity_and_hasher(
+                        borrowed.len(),
+                        ahash::RandomState::new(),
+                    );
+
+                    for (key, value) in borrowed.iter() {
+                        let key_addr = self.intern_string_addr(key.as_str());
+                        let key_str = if let Some((key_id, key_id_str)) = self.refs.get(&key_addr) {
+                            if self.ref_data[*key_id] == RcValue::Null {
+                                self.ref_data[*key_id] =
+                                    RcValue::String(Self::escape_at_string(key));
+                            }
+
+                            key_id_str.clone()
+                        } else {
+                            Self::escape_at_string(key)
+                        };
+
+                        map.insert(key_str, self.serialize_with_refs(value));
+                    }
+
+                    RcValue::Object(map)
+                };
+
+                let Some((id, id_str)) = self.refs.get(&addr) else {
+                    return data;
+                };
+
+                if self.ref_data[*id] == RcValue::Null {
+                    self.ref_data[*id] = data;
+                }
+
+                RcValue::String(id_str.clone())
+            }
+
+            _ => RcValue::from(var),
+        }
+    }
+}
