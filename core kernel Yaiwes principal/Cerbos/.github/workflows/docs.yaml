@@ -1,0 +1,33 @@
+---
+name: Publish Documentation
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "docs/**"
+    branches:
+      - main
+      - "v*"
+permissions: {}
+jobs:
+  publishDocs:
+    name: Publish Documentation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          lfs: true
+          persist-credentials: false
+
+      - name: Generate docs
+        uses: ./.github/actions/antora-docs
+
+      - name: Publish to Netlify
+        uses: ./.github/actions/publish-docs
+        with:
+          auth_token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          site_id: ${{ secrets.NETLIFY_SITE_ID }}

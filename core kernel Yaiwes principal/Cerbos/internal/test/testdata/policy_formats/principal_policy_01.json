@@ -1,0 +1,39 @@
+{
+  "$schema": "../../../../schema/jsonschema/cerbos/policy/v1/Policy.schema.json",
+  "apiVersion": "api.cerbos.dev/v1",
+  "principalPolicy": {
+    "principal": "donald_duck",
+    "version": "default",
+    "constants": {
+      "import": ["my_constants"]
+    },
+    "variables": {
+      "import": ["my_variables"]
+    },
+    "rules": [
+      {
+        "resource": "leave_request",
+        "actions": [
+          {
+            "action": "*",
+            "condition": {
+              "match": {
+                "expr": "request.resource.attr.dev_record == true"
+              }
+            },
+            "effect": "EFFECT_ALLOW"
+          }
+        ]
+      },
+      {
+        "resource": "salary_record",
+        "actions": [
+          {
+            "action": "*",
+            "effect": "EFFECT_DENY"
+          }
+        ]
+      }
+    ]
+  }
+}

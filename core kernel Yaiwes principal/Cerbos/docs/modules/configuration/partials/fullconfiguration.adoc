@@ -1,0 +1,224 @@
+audit:
+  accessLogsEnabled: false # AccessLogsEnabled defines whether access logging is enabled.
+  backend: local # Backend states which backend to use for Audits.
+  decisionLogFilters: # DecisionLogFilters define the filters to apply while producing decision logs.
+    checkResources: # CheckResources defines the filters that apply to CheckResources calls.
+      ignoreAllowAll: false # IgnoreAllowAll ignores responses that don't contain an EFFECT_DENY.
+    planResources: # PlanResources defines the filters that apply to PlanResources calls.
+      ignoreAll: false # IgnoreAll prevents any plan responses from being logged. Takes precedence over other filters.
+      ignoreAlwaysAllow: false # IgnoreAlwaysAllow ignores ALWAYS_ALLOWED plans.
+  decisionLogsEnabled: false # DecisionLogsEnabled defines whether logging of policy decisions is enabled.
+  enabled: false # Enabled defines whether audit logging is enabled.
+  excludeMetadataKeys: ['authorization'] # ExcludeMetadataKeys defines which gRPC request metadata keys should be excluded from the audit logs. Takes precedence over includeMetadataKeys.
+  includeMetadataKeys: ['content-type'] # IncludeMetadataKeys defines which gRPC request metadata keys should be included in the audit logs.
+  file:
+    additionalPaths: [stdout] # AdditionalPaths to mirror the log output. Has performance implications. Use with caution.
+    logRotation: # LogRotation settings (optional).
+      maxFileAgeDays: 10 # MaxFileAgeDays sets the maximum age in days of old log files before they are deleted.
+      maxFileCount: 10 # MaxFileCount sets the maximum number of files to retain.
+      maxFileSizeMB: 100 # MaxFileSizeMB sets the maximum size of individual log files in megabytes.
+    path: /path/to/file.log # Required. Path to the log file to use as output. The special values stdout and stderr can be used to write to stdout or stderr respectively.
+  hub:
+    advanced: 
+      bufferSize: 256 
+      flushInterval: 1s 
+      gcInterval: 60s 
+      maxBatchSize: 32 
+    mask: # Mask defines a list of attributes to exclude from the audit logs, specified as lists of JSONPaths
+      checkResources: 
+        - inputs[*].principal.attr.foo
+        - inputs[*].auxData
+        - outputs 
+      metadata: ['authorization'] 
+      peer: 
+        - address
+        - forwarded_for 
+      planResources: ['input.principal.attr.nestedMap.foo'] 
+    pipeOutput: 
+      backend: file 
+      enabled: false 
+    retentionPeriod: 168h # How long to keep records for
+    storagePath: /path/to/dir # Path to store the data
+  kafka:
+    ack: all # Ack mode for producing messages. Valid values are "none", "leader" or "all" (default). Idempotency is disabled when mode is not "all".
+    authentication: # Authentication
+      tls: 
+        caPath: /path/to/ca.crt # Required. CAPath is the path to the CA certificate.
+        certPath: /path/to/tls.cert # CertPath is the path to the client certificate.
+        insecureSkipVerify: true # InsecureSkipVerify controls whether the server's certificate chain and host name are verified. Default is false.
+        keyPath: /path/to/tls.key # KeyPath is the path to the client key.
+        reloadInterval: 5m # ReloadInterval is the interval at which the TLS certificates are reloaded. The default is 0 (no reload).
+    brokers: ['localhost:9092'] # Required. Brokers list to seed the Kafka client.
+    clientID: cerbos # ClientID reported in Kafka connections.
+    closeTimeout: 30s # CloseTimeout sets how long when closing the client to wait for any remaining messages to be flushed.
+    compression: ['snappy', 'none'] # Compression sets the compression algorithm to use in order of priority. Valid values are "none", "gzip", "snappy","lz4", "zstd". Default is ["snappy", "none"].
+    encoding: json # Encoding format. Valid values are "json" (default) or "protobuf".
+    maxBufferedRecords: 1000 # MaxBufferedRecords sets the maximum number of records the client should buffer in memory in async mode.
+    produceSync: false # ProduceSync forces the client to produce messages to Kafka synchronously. This can have a significant impact on performance.
+    topic: cerbos.audit.log # Required. Topic to write audit entries to.
+  local:
+    advanced: 
+      bufferSize: 256 
+      flushInterval: 1s 
+      gcInterval: 60s 
+      maxBatchSize: 32 
+    retentionPeriod: 168h # How long to keep records for
+    storagePath: /path/to/dir # Path to store the data
+auxData:
+  jwt: # JWT holds the configuration for JWTs used as an auxiliary data source for the engine.
+    acceptableTimeSkew: 2s # AcceptableTimeSkew sets the acceptable skew when checking exp and nbf claims.
+    disableVerification: false # DisableVerification disables JWT verification.
+    keySets: # KeySets is the list of keysets to be used to verify tokens.
+      - 
+        id: ks1 # Required. ID is the unique reference to this keyset.
+        insecure: # Insecure options for relaxing security. Not recommended for production use. Use with caution.
+          optionalAlg: false # OptionalAlg configures Cerbos to not require the alg field to be set in the key set.
+          optionalKid: false # OptionalKid configures Cerbos to not require the kid field to be set in the key set.
+        local: # Local defines a local keyset. Mutually exclusive with Remote.
+          data: base64encodedJWK # Data is the encoded JWK data for this keyset. Mutually exclusive with File.
+          file: /path/to/keys.jwk # File is the path to file containing JWK data. Mutually exclusive with Data.
+          pem: true # PEM indicates that the data is PEM encoded.
+        remote: # Remote defines a remote keyset. Mutually exclusive with Local.
+          refreshInterval: 1h # RefreshInterval is the refresh interval for the keyset.
+          url: https://domain.tld/.well-known/keys.jwks # Required. URL is the JWKS URL to fetch the keyset from.
+engine:
+  celErrorLogLevel: warn # CELErrorLogLevel is the level at which CEL runtime errors raised during policy evaluation are logged. Valid values are none, debug, info, warn (default) and error.
+  defaultPolicyVersion: "default" # DefaultPolicyVersion defines what version to assume if the request does not specify one.
+  defaultScope: "" # DefaultScope defines what scope to assume if the request does not specify one.
+  globals: {"environment": "staging"} # Globals are environment-specific variables to be made available to policy conditions.
+  lenientScopeSearch: false # LenientScopeSearch configures the engine to ignore missing scopes and search upwards through the scope tree until it finds a usable policy.
+  policyLoaderTimeout: 2s # PolicyLoaderTimeout is the timeout for loading policies from the policy store.
+  strictEvaluation: false # StrictEvaluation denies the affected action when an error is raised during policy evaluation, instead of ignoring the erroring rule.
+hub:
+  credentials: # Credentials holds Cerbos Hub client credentials.
+    clientID: 92B0K05B6HOF # ClientID of the Cerbos Hub credential. Defaults to the value of the CERBOS_HUB_CLIENT_ID environment variable.
+    clientSecret: ${CERBOS_HUB_CLIENT_SECRET} # ClientSecret of the Cerbos Hub credential. Defaults to the value of the CERBOS_HUB_CLIENT_SECRET environment variable.
+    pdpID: crb-004 # PDPID is the unique identifier for this Cerbos instance. Defaults to the value of the CERBOS_HUB_PDP_ID environment variable.
+schema:
+  cacheSize: 1024 # CacheSize defines the number of schemas to cache in memory.
+  enforcement: reject # Enforcement defines level of the validations. Possible values are none, warn, reject.
+server:
+  apiExplorerEnabled: true # APIExplorerEnabled defines whether the API explorer UI is enabled.
+  adminAPI: # AdminAPI defines the admin API configuration.
+    adminCredentials: # AdminCredentials defines the admin user credentials.
+      passwordHash: JDJ5JDEwJEdEOVFzZDE2VVhoVkR0N2VkUFBVM09nalc0QnNZaC9xc2E4bS9mcUJJcEZXenp5OUpjMi91Cgo= # PasswordHash is the base64-encoded bcrypt hash of the password to use for authentication.
+      username: cerbos # Username is the hardcoded username to use for authentication.
+    enabled: true # Enabled defines whether the admin API is enabled.
+  advanced: # Advanced server settings.
+    grpc: # GRPC server settings.
+      connectionTimeout: 60s # ConnectionTimeout sets the timeout for establishing a new connection.
+      maxConcurrentStreams: 1024 # MaxConcurrentStreams sets the maximum concurrent streams per connection. Defaults to 1024. Set to 0 to allow the maximum possible number of streams.
+      maxConnectionAge: 600s # MaxConnectionAge sets the maximum age of a connection.
+      maxRecvMsgSizeBytes: 4194304 # MaxRecvMsgSizeBytes sets the maximum size of a single request message. Defaults to 4MiB. Affects performance and resource utilisation.
+    http: # HTTP server settings.
+      idleTimeout: 120s # IdleTimeout sets the keepalive timeout.
+      readHeaderTimeout: 15s # ReadHeaderTimeout sets the timeout for reading request headers.
+      readTimeout: 30s # ReadTimeout sets the timeout for reading a request.
+      writeTimeout: 30s # WriteTimeout sets the timeout for writing a response.
+  cors: # CORS defines the CORS configuration for the server.
+    allowedHeaders: ['content-type'] # AllowedHeaders is the contents of the allowed-headers header.
+    allowedOrigins: ['*'] # AllowedOrigins is the contents of the allowed-origins header.
+    disabled: false # Disabled sets whether CORS is disabled.
+    maxAge: 10s # MaxAge is the max age of the CORS preflight check.
+  grpcListenAddr: ":3593" # Required. GRPCListenAddr is the dedicated GRPC address.
+  httpListenAddr: ":3592" # Required. HTTPListenAddr is the dedicated HTTP address.
+  logRequestPayloads: false # LogRequestPayloads defines whether the request payloads should be logged.
+  metricsEnabled: true # MetricsEnabled defines whether the metrics endpoint is enabled.
+  requestLimits: # RequestLimits defines the limits for requests.
+    maxActionsPerResource: 50 # MaxActionsPerResource sets the maximum number of actions that could be checked for a resource in a single request.
+    maxResourcesPerRequest: 50 # MaxResourcesPerBatch sets the maximum number of resources that could be sent in a single request.
+  tls: # TLS defines the TLS configuration for the server.
+    caCert: /path/to/CA_certificate # CACert is the path to the optional CA certificate for verifying client requests.
+    cert: /path/to/certificate # Cert is the path to the TLS certificate file.
+    key: /path/to/private_key # Key is the path to the TLS private key file.
+  udsFileMode: 0o766 # UDSFileMode sets the file mode of the unix domain sockets created by the server.
+storage:
+  # This section is required. The field driver must be set to indicate which driver to use.
+  driver: "disk" # Required. Driver defines which storage driver to use.
+  blob:
+    # This section is required only if storage.driver is blob.
+    bucket: "s3://my-bucket-name?region=us-east-2" # Required. Bucket URL (Examples: s3://my-bucket?region=us-west-1 gs://my-bucket).
+    downloadTimeout: 30s # DownloadTimeout specifies the timeout for downloading from cloud storage.
+    prefix: policies # Prefix specifies a subdirectory to download.
+    requestTimeout: 10s # RequestTimeout specifies the timeout for an HTTP request.
+    updatePollInterval: 15s # UpdatePollInterval specifies the interval to poll the cloud storage. Set to 0 to disable.
+    workDir: ${HOME}/tmp/cerbos/work # WorkDir is the local path to check out policies to.
+  disk:
+    # This section is required only if storage.driver is disk.
+    directory: pkg/test/testdata/store # Required. Directory is the path on disk where policies are stored.
+    watchForChanges: false # Required. WatchForChanges enables watching the directory for changes.
+  git:
+    # This section is required only if storage.driver is git.
+    branch: policies # Branch is the branch to checkout.
+    checkoutDir: ${HOME}/tmp/cerbos/work # CheckoutDir is the local path to checkout the Git repo to.
+    https: # HTTPS holds auth details for the HTTPS protocol.
+      password: ${GITHUB_TOKEN} # The password (or token) to use for authentication.
+      username: cerbos # The username to use for authentication.
+    operationTimeout: 60s # OperationTimeout specifies the timeout for git operations.
+    protocol: file # Required. Protocol is the Git protocol to use. Valid values are https, ssh, and file.
+    ssh: # SSH holds auth details for the SSH protocol.
+      password: pw # The password to the SSH private key.
+      privateKeyFile: ${HOME}/.ssh/id_rsa # The path to the SSH private key file.
+      user: git # The git user. Defaults to git.
+    subDir: policies # SubDir is the path under the checked-out Git repo where the policies are stored.
+    url: file://${HOME}/tmp/cerbos/policies # Required. URL is the URL to the Git repo.
+    updatePollInterval: 60s # UpdatePollInterval specifies the interval to poll the Git repository for changes. Set to 0 to disable.
+  hub:
+    # This section is required only if storage.driver is hub.
+    cacheSize: 1024 # CacheSize defines the number of policies to cache in memory.
+    local: # Local holds configuration for local bundle source.
+      bundlePath: /path/to/bundle.crbp # Required. BundlePath is the full path to the local bundle file.
+      encryptionKey: 9b941a7f43fcade02d1e07bdaca008aedd0310e8804bc465bc44814a2010ecd3 # EncryptionKey is encryption key to decode the bundle. It must be hex encoded.
+      tempDir: ${TEMP} # TempDir is the directory to use for temporary files.
+    remote: # Remote holds configuration for remote bundle source. Takes precedence over local if both are defined.
+      cacheDir: ${XDG_CACHE_DIR} # CacheDir is the directory to use for caching downloaded bundles.
+      deploymentID: TVWD7S5W4V5O # DeploymentID to fetch from the server. Mutually exclusive with PlaygroundID
+      disableAutoUpdate: false # DisableAutoUpdate sets whether new bundles should be automatically downloaded and applied.
+      playgroundID: HDUDDWLR6ZVM # PlaygroundID to fetch from the server. Mutually exclusive with DeploymentID.
+      tempDir: ${TEMP} # TempDir is the directory to use for temporary files.
+  mysql:
+    # This section is required only if storage.driver is mysql.
+    connPool: 
+      maxLifeTime: 60m
+      maxIdleTime: 45s
+      maxOpen: 4
+      maxIdle: 1 
+    connRetry: 
+      maxAttempts: 3
+      initialInterval: 0.5s
+      maxInterval: 60s 
+    dsn: "user:password@tcp(localhost:3306)/db?interpolateParams=true" # Required. DSN is the data source connection string.
+    serverPubKey: 
+      mykey: testdata/server_public_key.pem 
+    skipSchemaCheck: false # SkipSchemaCheck skips checking for required database tables on startup.
+    tls: 
+      mytls:
+        cert: /path/to/certificate
+        key: /path/to/private_key
+        caCert: /path/to/CA_certificate
+  overlay:
+    # This section is required only if storage.driver is overlay.
+    baseDriver: blob # Required. BaseDriver is the default storage driver
+    fallbackDriver: disk # Required. FallbackDriver is the secondary or fallback storage driver
+    fallbackErrorThreshold: 5 # FallbackErrorThreshold is the max number of errors we allow within the fallbackErrorWindow period
+    fallbackErrorWindow: 5m # FallbackErrorWindow is the cyclic period within which we aggregate failures
+  postgres:
+    # This section is required only if storage.driver is postgres.
+    connPool: 
+      maxLifeTime: 60m
+      maxIdleTime: 45s
+      maxOpen: 4
+      maxIdle: 1 
+    connRetry: 
+      maxAttempts: 3
+      initialInterval: 0.5s
+      maxInterval: 60s 
+    skipSchemaCheck: false # SkipSchemaCheck skips checking for required database tables on startup.
+    url: "postgres://user:password@localhost:port/db" # Required. URL is the Postgres connection URL. See https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING
+  sqlite3:
+    # This section is required only if storage.driver is sqlite3.
+    dsn: ":memory:?_fk=true" # Required. Data source name
+telemetry:
+  disabled: false # Disabled sets whether telemetry collection is disabled or not.
+  reportInterval: 1h # ReportInterval is the interval between telemetry pings.
+  stateDir: ${HOME}/.config/cerbos # StateDir is used to persist state to avoid repeatedly sending the data over and over again.

@@ -1,0 +1,70 @@
+{
+  "fqn": "cerbos.resource.leave_request.v20210210",
+  "resourcePolicy": {
+    "meta": {
+      "fqn": "cerbos.resource.leave_request.v20210210",
+      "resource": "leave_request",
+      "version": "20210210",
+      "sourceAttributes": {
+        "resource.leave_request.v20210210": {
+          "attributes": {
+            "source": "resource_policies/leave_request_20210210.yaml"
+          }
+        }
+      }
+    },
+    "policies": [
+      {
+        "derivedRoles": {
+          "tester": {
+            "name": "tester",
+            "parentRoles": {
+              "*": {}
+            },
+            "originFqn": "cerbos.derived_roles.my_derived_roles"
+          }
+        },
+        "rules": [
+          {
+            "name": "wildcard",
+            "actions": {
+              "*": {}
+            },
+            "roles": {
+              "*": {}
+            },
+            "effect": "EFFECT_ALLOW"
+          },
+          {
+            "name": "rule-002",
+            "actions": {
+              "create": {}
+            },
+            "derivedRoles": {
+              "tester": {}
+            },
+            "effect": "EFFECT_ALLOW"
+          }
+        ],
+        "schemas": {
+          "principalSchema": {
+            "ref": "cerbos:///complex_object.json"
+          },
+          "resourceSchema": {
+            "ref": "cerbos:///complex_object.json"
+          }
+        },
+        "scopePermissions": "SCOPE_PERMISSIONS_OVERRIDE_PARENT"
+      }
+    ],
+    "schemas": {
+      "principalSchema": {
+        "ref": "cerbos:///complex_object.json"
+      },
+      "resourceSchema": {
+        "ref": "cerbos:///complex_object.json"
+      }
+    }
+  },
+  "compilerVersion": 2
+}

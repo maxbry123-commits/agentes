@@ -1,0 +1,199 @@
+{
+  "fqn": "cerbos.principal.donald_duck.v20210210/acme.hr.uk",
+  "principalPolicy": {
+    "meta": {
+      "fqn": "cerbos.principal.donald_duck.v20210210/acme.hr.uk",
+      "principal": "donald_duck",
+      "version": "20210210",
+      "sourceAttributes": {
+        "principal.donald_duck.v20210210": {
+          "attributes": {
+            "source": "donald_duck.yaml"
+          }
+        },
+        "principal.donald_duck.v20210210/acme": {
+          "attributes": {
+            "source": "donald_duck.acme.yaml"
+          }
+        },
+        "principal.donald_duck.v20210210/acme.hr": {
+          "attributes": {
+            "source": "donald_duck.acme.hr.yaml"
+          }
+        },
+        "principal.donald_duck.v20210210/acme.hr.uk": {
+          "attributes": {
+            "source": "donald_duck.acme.hr.uk.yaml"
+          }
+        }
+      }
+    },
+    "policies": [
+      {
+        "scope": "acme.hr.uk",
+        "resourceRules": {
+          "leave_request": {
+            "actionRules": [
+              {
+                "action": "*",
+                "name": "leave_request_rule-001",
+                "effect": "EFFECT_DENY"
+              }
+            ]
+          }
+        },
+        "scopePermissions": "SCOPE_PERMISSIONS_OVERRIDE_PARENT"
+      },
+      {
+        "scope": "acme.hr",
+        "resourceRules": {
+          "leave_request": {
+            "actionRules": [
+              {
+                "action": "*",
+                "name": "leave_request_rule-001",
+                "effect": "EFFECT_ALLOW"
+              }
+            ]
+          }
+        },
+        "scopePermissions": "SCOPE_PERMISSIONS_OVERRIDE_PARENT"
+      },
+      {
+        "scope": "acme",
+        "resourceRules": {
+          "leave_request": {
+            "actionRules": [
+              {
+                "action": "*",
+                "name": "leave_request_rule-001",
+                "condition": {
+                  "expr": {
+                    "original": "request.resource.attr.dev_record == true",
+                    "checked": {
+                      "referenceMap": {
+                        "1": {
+                          "overloadId": [
+                            "equals"
+                          ]
+                        },
+                        "5": {
+                          "name": "request"
+                        }
+                      },
+                      "typeMap": {
+                        "1": {
+                          "primitive": "BOOL"
+                        },
+                        "2": {
+                          "dyn": {}
+                        },
+                        "3": {
+                          "mapType": {
+                            "keyType": {
+                              "primitive": "STRING"
+                            },
+                            "valueType": {
+                              "dyn": {}
+                            }
+                          }
+                        },
+                        "4": {
+                          "messageType": "cerbos.engine.v1.Request.Resource"
+                        },
+                        "5": {
+                          "messageType": "cerbos.engine.v1.Request"
+                        },
+                        "6": {
+                          "primitive": "BOOL"
+                        }
+                      },
+                      "sourceInfo": {
+                        "location": "<input>",
+                        "lineOffsets": [
+                          41
+                        ],
+                        "positions": {
+                          "1": 33,
+                          "2": 21,
+                          "3": 16,
+                          "4": 7,
+                          "5": 0,
+                          "6": 36
+                        }
+                      },
+                      "expr": {
+                        "id": "1",
+                        "callExpr": {
+                          "function": "_==_",
+                          "args": [
+                            {
+                              "id": "2",
+                              "selectExpr": {
+                                "operand": {
+                                  "id": "3",
+                                  "selectExpr": {
+                                    "operand": {
+                                      "id": "4",
+                                      "selectExpr": {
+                                        "operand": {
+                                          "id": "5",
+                                          "identExpr": {
+                                            "name": "request"
+                                          }
+                                        },
+                                        "field": "resource"
+                                      }
+                                    },
+                                    "field": "attr"
+                                  }
+                                },
+                                "field": "dev_record"
+                              }
+                            },
+                            {
+                              "id": "6",
+                              "constExpr": {
+                                "boolValue": true
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                },
+                "effect": "EFFECT_ALLOW"
+              }
+            ]
+          },
+          "salary_record": {
+            "actionRules": [
+              {
+                "action": "*",
+                "name": "salary_record_rule-001",
+                "effect": "EFFECT_DENY"
+              }
+            ]
+          }
+        },
+        "scopePermissions": "SCOPE_PERMISSIONS_OVERRIDE_PARENT"
+      },
+      {
+        "resourceRules": {
+          "leave_request": {
+            "actionRules": [
+              {
+                "action": "*",
+                "name": "leave_request_rule-001",
+                "effect": "EFFECT_ALLOW"
+              }
+            ]
+          }
+        },
+        "scopePermissions": "SCOPE_PERMISSIONS_OVERRIDE_PARENT"
+      }
+    ]
+  },
+  "compilerVersion": 2
+}

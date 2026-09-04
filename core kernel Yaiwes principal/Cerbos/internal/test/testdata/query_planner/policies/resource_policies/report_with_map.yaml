@@ -1,0 +1,106 @@
+# yaml-language-server: $schema=../../../../../../schema/jsonschema/cerbos/policy/v1/Policy.schema.json
+---
+apiVersion: "api.cerbos.dev/v1"
+resourcePolicy:
+  version: "default"
+  importDerivedRoles:
+    - workspace
+  resource: "report_with_map"
+  constants:
+    local:
+      managerRole: MANAGER
+  variables:
+    local:
+      workspaces: P.attr.workspaces.filter(w, w.role==C.managerRole).map(w, w.name)
+  rules:
+    - actions:
+        - write
+      effect: EFFECT_ALLOW
+      roles:
+        - USER
+      condition:
+        match:
+          all:
+            of:
+              - expr: hasIntersection(R.attr.workspaces, V.workspaces)
+              - expr: isSubset(R.attr.workspaces, V.workspaces)
+              - expr: intersect(R.attr.workspaces, V.workspaces) == []
+              - expr: except(R.attr.workspaces, V.workspaces) == []
+    - actions:
+        - write-rev
+      effect: EFFECT_ALLOW
+      roles:
+        - USER
+      condition:
+        match:
+          expr: hasIntersection(V.workspaces, R.attr.workspaces)
+    - actions:
+        - write-member
+      effect: EFFECT_ALLOW
+      roles:
+        - USER
+      condition:
+        match:
+          expr: R.attr.workspaces.hasIntersection(V.workspaces)
+    - actions:
+        - write-member-rev
+      effect: EFFECT_ALLOW
+      roles:
+        - USER
+      condition:
+        match:
+          expr: V.workspaces.hasIntersection(R.attr.workspaces)
+    - actions:
+        - handle
+      effect: EFFECT_ALLOW
+      roles:
+        - USER
+      condition:
+        match:
+          expr: P.attr.workspaces.filter(w, w.role==C.managerRole).all(w, w.name.startsWith("workspace"))
+    - actions:
+        - edit
+      effect: EFFECT_ALLOW
+      roles:
+        - USER
+      condition:
+        match:
+          expr: P.attr.workspaceMap[R.attr.workspaceId] == C.managerRole
+    - actions:
+        - edit_easily
+      effect: EFFECT_ALLOW
+      roles:
+        - USER
+      condition:
+        match:
+          expr: P.attr.workspaceMapRoles[R.attr.workspaceId].role == C.managerRole
+    - actions:
+        - delete
+      effect: EFFECT_ALLOW
+      roles:
+        - USER
+      condition:
+        match:
+          expr: P.attr.workspaceMap[R.attr.workspaceId] == "ADMIN"
+    - actions:
+        - delete_vehemently
+      effect: EFFECT_ALLOW
+      roles:
+        - ADMIN
+      condition:
+        match:
+          expr: ("ADMIN" in P.attr.workspaceRolesMap[R.attr.location_id])
+    - actions:
+        - delete_easily
+      effect: EFFECT_ALLOW
+      derivedRoles:
+        - workspace_admin
+    - actions:
+        - match_by
+      effect: EFFECT_ALLOW
+      roles:
+        - USER
+      condition:
+        match:
+          expr: |-
+            P.attr.figures.exists(k, v, R.attr.color in v["colors"] && R.attr.shape in v["shapes"] && R.attr.size in v["sizes"])

@@ -1,0 +1,111 @@
+{
+  "$id": "https://api.cerbos.test/cerbos/private/v1/CompileTestCase.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "cerbos.private.v1.CompileTestCase.Variables": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "constants": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "derivedRoles": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/cerbos.private.v1.CompileTestCase.Variables.DerivedRole"
+          }
+        },
+        "scope": {
+          "type": "string"
+        },
+        "variables": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "cerbos.private.v1.CompileTestCase.Variables.DerivedRole": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "constants": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "name": {
+          "type": "string"
+        },
+        "variables": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "cerbos.runtime.v1.CompileErrors.Err": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "context": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        },
+        "file": {
+          "type": "string"
+        },
+        "position": {
+          "$ref": "#/definitions/cerbos.source.v1.Position"
+        }
+      }
+    },
+    "cerbos.source.v1.Position": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "column": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "path": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "mainDef": {
+      "type": "string"
+    },
+    "wantErrors": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/cerbos.runtime.v1.CompileErrors.Err"
+      }
+    },
+    "wantVariables": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/cerbos.private.v1.CompileTestCase.Variables"
+      }
+    }
+  }
+}

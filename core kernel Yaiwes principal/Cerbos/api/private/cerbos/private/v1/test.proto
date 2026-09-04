@@ -1,0 +1,398 @@
+// Copyright 2021-2026 Zenauth Ltd.
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package cerbos.private.v1;
+
+import "authzen/authorization/v1/evaluation.proto";
+import "buf/validate/validate.proto";
+import "cerbos/audit/v1/audit.proto";
+import "cerbos/effect/v1/effect.proto";
+import "cerbos/engine/v1/engine.proto";
+import "cerbos/policy/v1/policy.proto";
+import "cerbos/request/v1/request.proto";
+import "cerbos/response/v1/response.proto";
+import "cerbos/runtime/v1/runtime.proto";
+import "cerbos/schema/v1/schema.proto";
+import "cerbos/source/v1/source.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/wrappers.proto";
+
+option go_package = "github.com/cerbos/cerbos/api/genpb/cerbos/private/v1;privatev1";
+
+message AuxDataTestCase {
+  message Input {
+    string key = 1;
+    bool pem = 2;
+  }
+
+  string description = 1;
+  Input input = 2;
+  string want_err = 3;
+  string want_local_err = 4;
+  string want_remote_err = 5;
+}
+
+message InspectTestCase {
+  message CompileErrors {
+    repeated cerbos.runtime.v1.CompileErrors.Err compile_errors = 1;
+  }
+
+  message PoliciesExpectation {
+    map<string, cerbos.response.v1.InspectPoliciesResponse.Result> policies = 1;
+    repeated string missing_policies = 2;
+  }
+
+  message PolicySetsExpectation {
+    map<string, cerbos.response.v1.InspectPoliciesResponse.Result> policy_sets = 1;
+    oneof errors {
+      CompileErrors compile_errors = 2;
+      cerbos.runtime.v1.IndexBuildErrors index_build_errors = 3;
+    }
+  }
+
+  message RuleTablesExpectation {
+    map<string, cerbos.response.v1.InspectPoliciesResponse.Result> rule_tables = 1;
+    oneof errors {
+      CompileErrors compile_errors = 2;
+      cerbos.runtime.v1.IndexBuildErrors index_build_errors = 3;
+    }
+  }
+
+  string description = 1;
+  repeated cerbos.policy.v1.Policy inputs = 2;
+  PoliciesExpectation policies_expectation = 3;
+  PolicySetsExpectation policy_sets_expectation = 4;
+  RuleTablesExpectation rule_tables_expectation = 5;
+}
+
+message BlobClonerTestCase {
+  message File {
+    message AddOrUpdate {
+      string name = 1;
+      string content = 2; // Using string type as opposed to policy or schema to prevent protojson.Marshal from generating different files and breaking md5 hashes.
+    }
+
+    message Delete {
+      string name = 1;
+    }
+
+    oneof operation {
+      AddOrUpdate add_or_update = 1;
+      Delete delete = 2;
+    }
+  }
+
+  message Step {
+    message Differences {
+      repeated File files = 1;
+    }
+
+    message Expectation {
+      message Files {
+        repeated string files = 1;
+      }
+
+      message Info {
+        string etag = 1;
+        string file = 2;
+      }
+
+      map<string, Files> all = 1;
+      repeated Info added_or_updated = 2;
+      repeated Info deleted = 3;
+    }
+
+    oneof op {
+      Expectation expectation = 1;
+      Differences differences = 2;
+    }
+  }
+
+  repeated File inputs = 1;
+  repeated Step steps = 2;
+}
+
+message EngineConfig {
+  enum Enforcement {
+    ENFORCEMENT_UNSPECIFIED = 0;
+    ENFORCEMENT_NONE = 1;
+    ENFORCEMENT_WARN = 2;
+    ENFORCEMENT_REJECT = 3;
+  }
+
+  string default_policy_version = 1;
+  string default_scope = 2;
+  map<string, google.protobuf.Value> globals = 3;
+  repeated bool lenient_scope_search = 4 [(buf.validate.field).repeated = {
+    min_items: 1
+    unique: true
+  }];
+  repeated Enforcement schema_enforcement = 5 [(buf.validate.field).repeated = {
+    min_items: 1
+    unique: true
+  }];
+  repeated bool strict_evaluation = 6 [(buf.validate.field).repeated = {
+    min_items: 1
+    unique: true
+  }];
+}
+
+message EngineTestCase {
+  string description = 1;
+  repeated cerbos.engine.v1.CheckInput inputs = 2;
+  repeated cerbos.engine.v1.CheckOutput want_outputs = 3;
+  repeated cerbos.audit.v1.DecisionLogEntry want_decision_logs = 5;
+  EngineConfig config = 6 [(buf.validate.field).required = true];
+}
+
+message ServerTestCase {
+  message AccessEvaluationCall {
+    authzen.authorization.v1.AccessEvaluationRequest input = 1 [(buf.validate.field).ignore = IGNORE_ALWAYS];
+    authzen.authorization.v1.AccessEvaluationResponse want_response = 2;
+  }
+
+  message AccessEvaluationBatchCall {
+    authzen.authorization.v1.AccessEvaluationBatchRequest input = 1 [(buf.validate.field).ignore = IGNORE_ALWAYS];
+    authzen.authorization.v1.AccessEvaluationBatchResponse want_response = 2;
+  }
+
+  message PlanResourcesCall {
+    cerbos.request.v1.PlanResourcesRequest input = 1 [(buf.validate.field).ignore = IGNORE_ALWAYS];
+    cerbos.response.v1.PlanResourcesResponse want_response = 2;
+  }
+
+  message CheckResourceSetCall {
+    cerbos.request.v1.CheckResourceSetRequest input = 1 [(buf.validate.field).ignore = IGNORE_ALWAYS];
+    cerbos.response.v1.CheckResourceSetResponse want_response = 2;
+  }
+
+  message CheckResourceBatchCall {
+    cerbos.request.v1.CheckResourceBatchRequest input = 1 [(buf.validate.field).ignore = IGNORE_ALWAYS];
+    cerbos.response.v1.CheckResourceBatchResponse want_response = 2;
+  }
+
+  message CheckResourcesCall {
+    cerbos.request.v1.CheckResourcesRequest input = 1 [(buf.validate.field).ignore = IGNORE_ALWAYS];
+    cerbos.response.v1.CheckResourcesResponse want_response = 2;
+  }
+
+  message PlaygroundValidateCall {
+    cerbos.request.v1.PlaygroundValidateRequest input = 1 [(buf.validate.field).ignore = IGNORE_ALWAYS];
+    cerbos.response.v1.PlaygroundValidateResponse want_response = 2;
+  }
+
+  message PlaygroundTestCall {
+    cerbos.request.v1.PlaygroundTestRequest input = 1 [(buf.validate.field).ignore = IGNORE_ALWAYS];
+    cerbos.response.v1.PlaygroundTestResponse want_response = 2;
+  }
+
+  message PlaygroundEvaluateCall {
+    cerbos.request.v1.PlaygroundEvaluateRequest input = 1 [(buf.validate.field).ignore = IGNORE_ALWAYS];
+    cerbos.response.v1.PlaygroundEvaluateResponse want_response = 2;
+  }
+
+  message PlaygroundProxyCall {
+    cerbos.request.v1.PlaygroundProxyRequest input = 1 [(buf.validate.field).ignore = IGNORE_ALWAYS];
+    cerbos.response.v1.PlaygroundProxyResponse want_response = 2;
+  }
+
+  message AdminAddOrUpdatePolicyCall {
+    cerbos.request.v1.AddOrUpdatePolicyRequest input = 1 [(buf.validate.field).ignore = IGNORE_ALWAYS];
+    cerbos.response.v1.AddOrUpdatePolicyResponse want_response = 2;
+  }
+
+  message AdminAddOrUpdateSchemaCall {
+    cerbos.request.v1.AddOrUpdateSchemaRequest input = 1 [(buf.validate.field).ignore = IGNORE_ALWAYS];
+    cerbos.response.v1.AddOrUpdateSchemaResponse want_response = 2;
+  }
+
+  message Status {
+    uint32 http_status_code = 1;
+    uint32 grpc_status_code = 2;
+  }
+
+  string name = 1;
+  string description = 2;
+  bool want_error = 3;
+  Status want_status = 4;
+  oneof call_kind {
+    CheckResourceSetCall check_resource_set = 5;
+    CheckResourceBatchCall check_resource_batch = 6;
+    PlaygroundValidateCall playground_validate = 7;
+    PlaygroundEvaluateCall playground_evaluate = 8;
+    AdminAddOrUpdatePolicyCall admin_add_or_update_policy = 9;
+    PlaygroundProxyCall playground_proxy = 10;
+    PlanResourcesCall plan_resources = 11;
+    AdminAddOrUpdateSchemaCall admin_add_or_update_schema = 12;
+    PlaygroundTestCall playground_test = 13;
+    CheckResourcesCall check_resources = 14;
+    AccessEvaluationCall access_evaluation = 15;
+    AccessEvaluationBatchCall access_evaluation_batch = 16;
+  }
+}
+
+message IndexBuilderTestCase {
+  message CompilationUnit {
+    string main_fqn = 1;
+    repeated string definition_fqns = 2;
+    repeated string ancestor_fqns = 3;
+  }
+
+  map<string, string> files = 1;
+  cerbos.runtime.v1.IndexBuildErrors want_err_list = 2;
+  string want_err = 3;
+  repeated CompilationUnit want_compilation_units = 4;
+}
+
+message CompileTestCase {
+  message Variables {
+    message DerivedRole {
+      string name = 1;
+      repeated string variables = 2;
+      repeated string constants = 3;
+    }
+
+    string scope = 1;
+    repeated string variables = 2;
+    repeated DerivedRole derived_roles = 3;
+    repeated string constants = 4;
+  }
+
+  string main_def = 1;
+  repeated cerbos.runtime.v1.CompileErrors.Err want_errors = 2;
+  repeated Variables want_variables = 3;
+}
+
+message CelTestCase {
+  cerbos.policy.v1.Match condition = 1;
+  cerbos.engine.v1.Request request = 2;
+  bool want = 3;
+  bool want_error = 4;
+}
+
+message SchemaTestCase {
+  string description = 1;
+  cerbos.policy.v1.Schemas schema_refs = 2;
+  oneof input {
+    cerbos.engine.v1.CheckInput check_input = 3;
+    cerbos.engine.v1.PlanResourcesInput plan_resources_input = 4;
+  }
+  bool want_error = 5;
+  repeated cerbos.schema.v1.ValidationError want_validation_errors = 6;
+}
+
+message ValidationErrContainer {
+  repeated cerbos.schema.v1.ValidationError errors = 1;
+}
+
+message QueryPlannerTestSuite {
+  message Test {
+    cerbos.engine.v1.PlanResourcesInput.Resource resource = 1;
+    string action = 2;
+    repeated string actions = 3;
+    cerbos.engine.v1.PlanResourcesOutput want = 4;
+  }
+
+  string description = 1;
+  cerbos.engine.v1.Principal principal = 2;
+  repeated Test tests = 3;
+  cerbos.engine.v1.AuxData aux_data = 4;
+  EngineConfig config = 5 [(buf.validate.field).required = true];
+  google.protobuf.Timestamp now = 6;
+}
+
+message VerifyTestSuiteRunGetTestsTestCase {
+  cerbos.policy.v1.TestTable table = 1;
+  repeated cerbos.policy.v1.Test want_tests = 2;
+  string want_err = 3;
+}
+
+message QueryPlannerFilterTestCase {
+  string description = 1;
+  cerbos.engine.v1.PlanResourcesFilter input = 2;
+  cerbos.engine.v1.PlanResourcesFilter want_filter = 3;
+  string want_string = 4;
+}
+
+message VerifyTestCase {
+  message Config {
+    repeated string excluded_resource_policy_fqns = 1;
+    repeated string excluded_principal_policy_fqns = 2;
+    string included_test_names_regexp = 3;
+  }
+
+  string description = 1;
+  bool want_err = 2;
+  Config config = 3;
+}
+
+message ProtoYamlTestCase {
+  message Want {
+    cerbos.policy.v1.Policy message = 1;
+    repeated cerbos.source.v1.Error errors = 2;
+  }
+  string description = 1;
+  repeated Want want = 2;
+  repeated cerbos.source.v1.Error want_errors = 3;
+}
+
+message WellKnownTypes {
+  google.protobuf.ListValue list_value = 1;
+  repeated google.protobuf.ListValue repeated_list_value = 2;
+  map<string, google.protobuf.ListValue> list_value_map = 3;
+
+  google.protobuf.NullValue null_value = 4;
+  repeated google.protobuf.NullValue repeated_null_value = 5;
+  map<string, google.protobuf.NullValue> null_value_map = 6;
+
+  google.protobuf.Struct struct = 7;
+  repeated google.protobuf.Struct repeated_struct = 8;
+  map<string, google.protobuf.Struct> struct_map = 9;
+
+  google.protobuf.Value value_null = 10;
+  google.protobuf.Value value_number = 11;
+  google.protobuf.Value value_string = 12;
+  google.protobuf.Value value_bool = 13;
+  google.protobuf.Value value_struct = 14;
+  google.protobuf.Value value_list = 15;
+  repeated google.protobuf.Value repeated_value = 16;
+  map<string, google.protobuf.Value> value_map = 17;
+
+  google.protobuf.UInt64Value uint64_wrapper_number = 18;
+  google.protobuf.UInt64Value uint64_wrapper_string = 19;
+  repeated google.protobuf.UInt64Value repeated_uint64_wrapper = 20;
+  map<string, google.protobuf.UInt64Value> uint64_wrapper_map = 21;
+
+  google.protobuf.Empty empty = 22;
+  repeated google.protobuf.Empty repeated_empty = 23;
+  map<string, google.protobuf.Empty> empty_map = 24;
+
+  google.protobuf.Timestamp timestamp = 25;
+  repeated google.protobuf.Timestamp repeated_timestamp = 26;
+  map<string, google.protobuf.Timestamp> timestamp_map = 27;
+
+  WellKnownTypes nested = 28;
+}
+
+message TestTracesWrapper {
+  repeated cerbos.engine.v1.Trace engine_trace = 1;
+}
+
+message Validation {
+  cerbos.effect.v1.Effect enum_in = 1 [(buf.validate.field).enum = {
+    in: [
+      1,
+      2
+    ]
+  }];
+  map<string, cerbos.effect.v1.Effect> enum_in_map = 2 [(buf.validate.field).map.values.enum = {
+    in: [
+      1,
+      2
+    ]
+  }];
+}

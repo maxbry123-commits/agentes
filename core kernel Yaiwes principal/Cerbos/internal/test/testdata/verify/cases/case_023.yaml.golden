@@ -1,0 +1,16 @@
+{
+  "suites": [
+    {
+      "file": "suite_test.yaml",
+      "name": "TestSuite",
+      "summary": {
+        "overallResult": "RESULT_ERRORED"
+      },
+      "error": "Failed to load the test suite: invalid test \"Missing group\": principal group \"unknown\" not found",
+      "description": "Tests for verifying something"
+    }
+  ],
+  "summary": {
+    "overallResult": "RESULT_ERRORED"
+  }
+}

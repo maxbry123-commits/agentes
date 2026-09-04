@@ -1,0 +1,69 @@
+{
+  "$id": "https://api.cerbos.dev/cerbos/telemetry/v1/ServerLaunch/Stats/Policy.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "avgConditionCount": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "number"
+      }
+    },
+    "avgRuleCount": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "number"
+      }
+    },
+    "conditionCount": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "count": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "distinctActionCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "distinctResourceCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "hasOutput": {
+      "type": "boolean"
+    },
+    "hasScopedPolicies": {
+      "type": "boolean"
+    },
+    "maxConditionCount": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "maxRuleCount": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "ruleCount": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    }
+  }
+}

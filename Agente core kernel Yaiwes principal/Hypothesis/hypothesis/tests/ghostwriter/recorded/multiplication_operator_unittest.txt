@@ -1,0 +1,40 @@
+# This test code was written by the `hypothesis.extra.ghostwriter` module
+# and is provided under the Creative Commons Zero public domain dedication.
+
+import operator
+import unittest
+from hypothesis import given, strategies as st
+
+# TODO: replace st.nothing() with an appropriate strategy
+
+
+class TestBinaryOperationmul(unittest.TestCase):
+    mul_operands = st.nothing()
+
+    @given(a=mul_operands, b=mul_operands, c=mul_operands)
+    def test_associative_binary_operation_mul(self, a, b, c):
+        left = operator.mul(a, operator.mul(b, c))
+        right = operator.mul(operator.mul(a, b), c)
+        self.assertEqual(left, right)
+
+    @given(a=mul_operands, b=mul_operands)
+    def test_commutative_binary_operation_mul(self, a, b):
+        left = operator.mul(a, b)
+        right = operator.mul(b, a)
+        self.assertEqual(left, right)
+
+    @given(a=mul_operands)
+    def test_identity_binary_operation_mul(self, a):
+        identity = 1
+        self.assertEqual(a, operator.mul(a, identity))
+        self.assertEqual(a, operator.mul(identity, a))
+
+    @given(a=mul_operands, b=mul_operands, c=mul_operands)
+    def test_add_distributes_over_binary_operation_mul(self, a, b, c):
+        left = operator.mul(a, operator.add(b, c))
+        ldist = operator.add(operator.mul(a, b), operator.mul(a, c))
+        self.assertEqual(ldist, left)
+
+        right = operator.mul(operator.add(a, b), c)
+        rdist = operator.add(operator.mul(a, c), operator.mul(b, c))
+        self.assertEqual(rdist, right)

@@ -1,0 +1,4 @@
+pexpect
+pytest
+pytest-xdist
+syrupy

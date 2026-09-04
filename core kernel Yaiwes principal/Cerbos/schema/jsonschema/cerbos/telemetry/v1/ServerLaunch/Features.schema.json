@@ -1,0 +1,130 @@
+{
+  "$id": "https://api.cerbos.dev/cerbos/telemetry/v1/ServerLaunch/Features.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "cerbos.telemetry.v1.ServerLaunch.Features.AdminApi": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        }
+      }
+    },
+    "cerbos.telemetry.v1.ServerLaunch.Features.Audit": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "backend": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        }
+      }
+    },
+    "cerbos.telemetry.v1.ServerLaunch.Features.Schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enforcement": {
+          "type": "string"
+        }
+      }
+    },
+    "cerbos.telemetry.v1.ServerLaunch.Features.Storage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "blob": {
+          "$ref": "#/definitions/cerbos.telemetry.v1.ServerLaunch.Features.Storage.Blob"
+        },
+        "bundle": {
+          "$ref": "#/definitions/cerbos.telemetry.v1.ServerLaunch.Features.Storage.Bundle"
+        },
+        "disk": {
+          "$ref": "#/definitions/cerbos.telemetry.v1.ServerLaunch.Features.Storage.Disk"
+        },
+        "driver": {
+          "type": "string"
+        },
+        "git": {
+          "$ref": "#/definitions/cerbos.telemetry.v1.ServerLaunch.Features.Storage.Git"
+        }
+      }
+    },
+    "cerbos.telemetry.v1.ServerLaunch.Features.Storage.Blob": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "pollInterval": {
+          "$ref": "#/definitions/google.protobuf.Duration"
+        },
+        "provider": {
+          "type": "string"
+        }
+      }
+    },
+    "cerbos.telemetry.v1.ServerLaunch.Features.Storage.Bundle": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "bundleSource": {
+          "type": "string"
+        },
+        "clientId": {
+          "type": "string"
+        },
+        "pdpId": {
+          "type": "string"
+        }
+      }
+    },
+    "cerbos.telemetry.v1.ServerLaunch.Features.Storage.Disk": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "watch": {
+          "type": "boolean"
+        }
+      }
+    },
+    "cerbos.telemetry.v1.ServerLaunch.Features.Storage.Git": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "auth": {
+          "type": "boolean"
+        },
+        "pollInterval": {
+          "$ref": "#/definitions/google.protobuf.Duration"
+        },
+        "protocol": {
+          "type": "string"
+        }
+      }
+    },
+    "google.protobuf.Duration": {
+      "title": "Duration",
+      "description": "A signed, fixed-length span of time represented as a count of seconds and fractions of seconds at nanosecond resolution.",
+      "type": "string",
+      "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?s$"
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "adminApi": {
+      "$ref": "#/definitions/cerbos.telemetry.v1.ServerLaunch.Features.AdminApi"
+    },
+    "audit": {
+      "$ref": "#/definitions/cerbos.telemetry.v1.ServerLaunch.Features.Audit"
+    },
+    "schema": {
+      "$ref": "#/definitions/cerbos.telemetry.v1.ServerLaunch.Features.Schema"
+    },
+    "storage": {
+      "$ref": "#/definitions/cerbos.telemetry.v1.ServerLaunch.Features.Storage"
+    }
+  }
+}

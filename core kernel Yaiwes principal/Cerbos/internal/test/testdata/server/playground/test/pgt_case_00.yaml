@@ -1,0 +1,111 @@
+# yaml-language-server: $schema=../../../.jsonschema/ServerTestCase.schema.json
+---
+description: "Valid request"
+wantStatus:
+  httpStatusCode: 200
+  grpcStatusCode: 0
+playgroundTest:
+  input:
+    {
+      "playgroundId": "test",
+      "files":
+        [
+          {
+            "fileName": "common_roles.yaml",
+            "contents": "{{ fileString `store/derived_roles/common_roles.yaml` | b64enc }}",
+          },
+          {
+            "fileName": "policy_04.yaml",
+            "contents": "{{ fileString `store/resource_policies/policy_04.yaml` | b64enc }}",
+          },
+          {
+            "fileName": "policy_04_test.yaml",
+            "contents": "{{ fileString `store/tests/policy_04_test.yaml` | b64enc }}",
+          },
+        ],
+    }
+  wantResponse:
+    {
+      "playgroundId": "test",
+      "success":
+        {
+          "results":
+            {
+              "suites":
+                [
+                  {
+                    "file": "policy_04_test.yaml",
+                    "name": "album_object resource policy tests",
+                    "testCases":
+                      [
+                        {
+                          name: "User can view public album",
+                          "principals":
+                            [
+                              {
+                                "name": "user",
+                                "resources":
+                                  [
+                                    {
+                                      "name": "album",
+                                      "actions":
+                                        [
+                                          {
+                                            "name": "view",
+                                            "details":
+                                              {
+                                                "result": "RESULT_PASSED",
+                                                "success":
+                                                  { "effect": "EFFECT_ALLOW" },
+                                                "engineTraceBatch":
+                                                  {
+                                                    "definitions":
+                                                      [
+                                                        { "kind": "KIND_POLICY", "policy": "cerbos.derived_roles.apatr_common_roles" },
+                                                        { "kind": "KIND_DERIVED_ROLE", "derivedRole": "abuse_moderator" },
+                                                        { "kind": "KIND_DERIVED_ROLE", "derivedRole": "owner" },
+                                                        { "kind": "KIND_CONDITION" },
+                                                        { "kind": "KIND_EXPR", "expr": "request.resource.attr.owner == request.principal.id" },
+                                                        { "kind": "KIND_POLICY", "policy": "cerbos.resource.album_object.vdefault" },
+                                                        { "kind": "KIND_ACTION", "action": "view" },
+                                                        { "kind": "KIND_SCOPE", "scope": "" },
+                                                        { "kind": "KIND_RULE", "rule": "rule-001" },
+                                                        { "kind": "KIND_RULE", "rule": "rule-002" },
+                                                        { "kind": "KIND_EXPR", "expr": "request.resource.attr.public == true" },
+                                                      ],
+                                                    "entries":
+                                                      [
+                                                        { "componentIndices": [0, 1], "event": { "status": "STATUS_SKIPPED", "message": "No matching roles" } },
+                                                        { "componentIndices": [0, 2, 3, 4], "event": { "status": "STATUS_ACTIVATED", "result": false } },
+                                                        { "componentIndices": [5, 6, 7, 8], "event": { "status": "STATUS_SKIPPED", "message": "No matching derived roles" } },
+                                                        { "componentIndices": [5, 6, 7, 9, 3, 10], "event": { "status": "STATUS_ACTIVATED", "result": true } },
+                                                        { "componentIndices": [5, 6], "event": { "status": "STATUS_ACTIVATED", "effect": "EFFECT_ALLOW" } },
+                                                      ],
+                                                  },
+                                              },
+                                          },
+                                        ],
+                                    },
+                                  ],
+                              },
+                            ],
+                        },
+                      ],
+                    "summary":
+                      {
+                        "overallResult": "RESULT_PASSED",
+                        "testsCount": 1,
+                        "resultCounts":
+                          [{ "result": "RESULT_PASSED", "count": 1 }],
+                      },
+                  },
+                ],
+              "summary":
+                {
+                  "overallResult": "RESULT_PASSED",
+                  "testsCount": 1,
+                  "resultCounts": [{ "result": "RESULT_PASSED", "count": 1 }],
+                },
+            },
+        },
+    }

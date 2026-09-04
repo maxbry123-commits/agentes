@@ -1,0 +1,98 @@
+name: Fuzzing
+
+env:
+  # Tell pytest and other tools to produce coloured terminal output.
+  # Make sure this is also in the "passenv" section of the tox config.
+  PY_COLORS: 1
+
+on:
+  # Run every six hours, for six hours each time
+  schedule:
+    - cron:  '0 */6 * * *'
+  # Allow manual launching too so we can test any branch we like
+  workflow_dispatch:
+  # # Enable this and reduce the timeout below to check a PR is working
+  # pull_request:
+  #   branches: [ master ]
+
+permissions:
+  contents: read
+  # dawidd6/action-download-artifact requires actions: read to download
+  # artifacts from previous runs
+  actions: read
+
+jobs:
+  fuzz:
+    if: github.repository == 'HypothesisWorks/hypothesis' || github.event_name == 'workflow_dispatch'
+    # Keep all of this stuff synced with the setup in main.yml for CI
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+    - name: Set up Python 3.14
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      with:
+        python-version: "3.14.2"
+    - name: Restore cache
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          ~/.cache
+          ~/wheelhouse
+          ~/.local
+          vendor/bundle
+          .tox/
+        key: deps-${{ runner.os }}-${{ hashFiles('requirements/*.txt') }}-${{ matrix.task }}
+        restore-keys: |
+          deps-${{ runner.os }}-${{ hashFiles('requirements/*.txt') }}
+          deps-${{ runner.os }}
+
+    # OK, on to the fuzzing-specific part.
+    # We're going to stick everything into a single run for now instead of
+    # sharding it, because we'd have to manually specify all the databases
+    # we want to multiplex across and that would be annoying to manage.
+    # TODO: revisit this later; a redis-like service would be so much nicer.
+    - name: Download example database
+      uses: dawidd6/action-download-artifact@d63b86af1b34672e53c440b1b83979861906bad7 # v24
+      with:
+        name: hypothesis-example-db
+        path: .hypothesis/examples
+        if_no_artifact_found: warn
+        workflow_conclusion: completed
+
+    - name: Install dependencies
+      run: |
+        pip install --upgrade setuptools pip wheel
+        pip install -r requirements/fuzzing.txt
+        pip install hypothesis/[all]
+
+    - name: Run hypofuzz session
+      continue-on-error: true
+      # The timeout ensures that we finish all steps within the six-hour
+      # maximum runtime for Github Actions.
+      # Then run the fuzzer on everything, as for our Windows CI; avoiding
+      # the --no-dashboard option because that also disables .patch writing.
+      run: |
+        timeout --preserve-status 5.5h \
+          hypothesis fuzz -- hypothesis/tests/ \
+            --ignore=hypothesis/tests/quality/ \
+            --ignore=hypothesis/tests/ghostwriter/
+
+    - name: Upload patch files with covering and failing `@example()`s
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      if: always()
+      with:
+        name: explicit-example-patches
+        path: .hypothesis/patches/latest_hypofuzz_*.patch
+
+    # Upload the database so it'll be persisted between runs.
+    # Note that we can also pull it down to use locally via
+    # https://hypothesis.readthedocs.io/en/latest/database.html#hypothesis.database.GitHubArtifactDatabase
+    - name: Upload example database
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      if: always()
+      with:
+        name: hypothesis-example-db
+        path: .hypothesis/examples

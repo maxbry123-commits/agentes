@@ -1,0 +1,444 @@
+{
+  "$id": "https://api.cerbos.dev/cerbos/response/v1/PlaygroundProxyResponse.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "cerbos.effect.v1.Effect": {
+      "type": "string",
+      "enum": [
+        "EFFECT_UNSPECIFIED",
+        "EFFECT_ALLOW",
+        "EFFECT_DENY",
+        "EFFECT_NO_MATCH"
+      ]
+    },
+    "cerbos.engine.v1.OutputEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        },
+        "src": {
+          "type": "string"
+        },
+        "val": {
+          "$ref": "#/definitions/google.protobuf.Value"
+        }
+      }
+    },
+    "cerbos.engine.v1.PlanResourcesFilter": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "condition": {
+          "$ref": "#/definitions/cerbos.engine.v1.PlanResourcesFilter.Expression.Operand"
+        },
+        "kind": {
+          "$ref": "#/definitions/cerbos.engine.v1.PlanResourcesFilter.Kind"
+        }
+      }
+    },
+    "cerbos.engine.v1.PlanResourcesFilter.Expression": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "operands": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/cerbos.engine.v1.PlanResourcesFilter.Expression.Operand"
+          }
+        },
+        "operator": {
+          "type": "string"
+        }
+      }
+    },
+    "cerbos.engine.v1.PlanResourcesFilter.Expression.Operand": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "expression": {
+          "$ref": "#/definitions/cerbos.engine.v1.PlanResourcesFilter.Expression"
+        },
+        "value": {
+          "$ref": "#/definitions/google.protobuf.Value"
+        },
+        "variable": {
+          "type": "string"
+        }
+      }
+    },
+    "cerbos.engine.v1.PlanResourcesFilter.Kind": {
+      "type": "string",
+      "enum": [
+        "KIND_UNSPECIFIED",
+        "KIND_ALWAYS_ALLOWED",
+        "KIND_ALWAYS_DENIED",
+        "KIND_CONDITIONAL"
+      ]
+    },
+    "cerbos.response.v1.CheckResourceBatchResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "requestId": {
+          "type": "string"
+        },
+        "results": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/cerbos.response.v1.CheckResourceBatchResponse.ActionEffectMap"
+          }
+        }
+      }
+    },
+    "cerbos.response.v1.CheckResourceBatchResponse.ActionEffectMap": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "actions": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/cerbos.effect.v1.Effect"
+          }
+        },
+        "resourceId": {
+          "type": "string"
+        },
+        "validationErrors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/cerbos.schema.v1.ValidationError"
+          }
+        }
+      }
+    },
+    "cerbos.response.v1.CheckResourceSetResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "meta": {
+          "$ref": "#/definitions/cerbos.response.v1.CheckResourceSetResponse.Meta"
+        },
+        "requestId": {
+          "type": "string"
+        },
+        "resourceInstances": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/cerbos.response.v1.CheckResourceSetResponse.ActionEffectMap"
+          }
+        }
+      }
+    },
+    "cerbos.response.v1.CheckResourceSetResponse.ActionEffectMap": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "actions": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/cerbos.effect.v1.Effect"
+          }
+        },
+        "validationErrors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/cerbos.schema.v1.ValidationError"
+          }
+        }
+      }
+    },
+    "cerbos.response.v1.CheckResourceSetResponse.Meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resourceInstances": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/cerbos.response.v1.CheckResourceSetResponse.Meta.ActionMeta"
+          }
+        }
+      }
+    },
+    "cerbos.response.v1.CheckResourceSetResponse.Meta.ActionMeta": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "actions": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/cerbos.response.v1.CheckResourceSetResponse.Meta.EffectMeta"
+          }
+        },
+        "effectiveDerivedRoles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "cerbos.response.v1.CheckResourceSetResponse.Meta.EffectMeta": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "matchedPolicy": {
+          "type": "string"
+        },
+        "matchedScope": {
+          "type": "string"
+        }
+      }
+    },
+    "cerbos.response.v1.CheckResourcesResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cerbosCallId": {
+          "type": "string"
+        },
+        "requestId": {
+          "type": "string"
+        },
+        "results": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/cerbos.response.v1.CheckResourcesResponse.ResultEntry"
+          }
+        }
+      }
+    },
+    "cerbos.response.v1.CheckResourcesResponse.ResultEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "actions": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/cerbos.effect.v1.Effect"
+          }
+        },
+        "meta": {
+          "$ref": "#/definitions/cerbos.response.v1.CheckResourcesResponse.ResultEntry.Meta"
+        },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/cerbos.engine.v1.OutputEntry"
+          }
+        },
+        "resource": {
+          "$ref": "#/definitions/cerbos.response.v1.CheckResourcesResponse.ResultEntry.Resource"
+        },
+        "validationErrors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/cerbos.schema.v1.ValidationError"
+          }
+        }
+      }
+    },
+    "cerbos.response.v1.CheckResourcesResponse.ResultEntry.Meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "actions": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/cerbos.response.v1.CheckResourcesResponse.ResultEntry.Meta.EffectMeta"
+          }
+        },
+        "effectiveDerivedRoles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "cerbos.response.v1.CheckResourcesResponse.ResultEntry.Meta.EffectMeta": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "matchedPolicy": {
+          "type": "string"
+        },
+        "matchedScope": {
+          "type": "string"
+        }
+      }
+    },
+    "cerbos.response.v1.CheckResourcesResponse.ResultEntry.Resource": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "policyVersion": {
+          "type": "string"
+        },
+        "scope": {
+          "type": "string"
+        }
+      }
+    },
+    "cerbos.response.v1.PlanResourcesResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "type": "string"
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "cerbosCallId": {
+          "type": "string"
+        },
+        "filter": {
+          "$ref": "#/definitions/cerbos.engine.v1.PlanResourcesFilter"
+        },
+        "meta": {
+          "$ref": "#/definitions/cerbos.response.v1.PlanResourcesResponse.Meta"
+        },
+        "policyVersion": {
+          "type": "string"
+        },
+        "requestId": {
+          "type": "string"
+        },
+        "resourceKind": {
+          "type": "string"
+        },
+        "validationErrors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/cerbos.schema.v1.ValidationError"
+          }
+        }
+      }
+    },
+    "cerbos.response.v1.PlanResourcesResponse.Meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "filterDebug": {
+          "type": "string"
+        },
+        "matchedScope": {
+          "type": "string"
+        },
+        "matchedScopes": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "cerbos.response.v1.PlaygroundFailure": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "errors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/cerbos.response.v1.PlaygroundFailure.Error"
+          }
+        }
+      }
+    },
+    "cerbos.response.v1.PlaygroundFailure.Error": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "details": {
+          "$ref": "#/definitions/cerbos.response.v1.PlaygroundFailure.ErrorDetails"
+        },
+        "error": {
+          "type": "string"
+        },
+        "file": {
+          "type": "string"
+        }
+      }
+    },
+    "cerbos.response.v1.PlaygroundFailure.ErrorDetails": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "column": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "context": {
+          "type": "string"
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "cerbos.schema.v1.ValidationError": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "message": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/definitions/cerbos.schema.v1.ValidationError.Source"
+        }
+      }
+    },
+    "cerbos.schema.v1.ValidationError.Source": {
+      "type": "string",
+      "enum": [
+        "SOURCE_UNSPECIFIED",
+        "SOURCE_PRINCIPAL",
+        "SOURCE_RESOURCE"
+      ]
+    },
+    "google.protobuf.Value": {
+      "title": "Value",
+      "description": "A dynamically-typed value."
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "checkResourceBatch": {
+      "$ref": "#/definitions/cerbos.response.v1.CheckResourceBatchResponse"
+    },
+    "checkResourceSet": {
+      "$ref": "#/definitions/cerbos.response.v1.CheckResourceSetResponse"
+    },
+    "checkResources": {
+      "$ref": "#/definitions/cerbos.response.v1.CheckResourcesResponse"
+    },
+    "failure": {
+      "$ref": "#/definitions/cerbos.response.v1.PlaygroundFailure"
+    },
+    "planResources": {
+      "$ref": "#/definitions/cerbos.response.v1.PlanResourcesResponse"
+    },
+    "playgroundId": {
+      "type": "string"
+    }
+  }
+}

@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=../.jsonschema/CompileTestCase.schema.json
+---
+wantErrors:
+  - file: leave_request.acme.yaml
+    error: unknown derived role
+    description: |-
+      Derived role "any_employee" is not defined in any imports
+    position:
+      line: 29
+      column: 11
+      path: "$.resourcePolicy.rules[3].derivedRoles[0]"
+  - file: leave_request.acme.yaml
+    error: unknown derived role
+    description: |-
+      Derived role "direct_manager" is not defined in any imports
+    position:
+      line: 36
+      column: 11
+      path: "$.resourcePolicy.rules[4].derivedRoles[0]"
+  - file: leave_request.acme.yaml
+    error: unknown derived role
+    description: |-
+      Derived role "employee_that_owns_the_record" is not defined in any imports
+    position:
+      line: 24
+      column: 11
+      path: "$.resourcePolicy.rules[2].derivedRoles[0]"
+mainDef: "leave_request.acme.hr.uk.yaml"

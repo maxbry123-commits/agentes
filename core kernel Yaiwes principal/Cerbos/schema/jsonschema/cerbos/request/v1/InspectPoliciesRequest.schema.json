@@ -1,0 +1,28 @@
+{
+  "$id": "https://api.cerbos.dev/cerbos/request/v1/InspectPoliciesRequest.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "includeDisabled": {
+      "type": "boolean"
+    },
+    "nameRegexp": {
+      "type": "string"
+    },
+    "policyId": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "maxItems": 25
+    },
+    "scopeRegexp": {
+      "type": "string"
+    },
+    "versionRegexp": {
+      "type": "string"
+    }
+  }
+}

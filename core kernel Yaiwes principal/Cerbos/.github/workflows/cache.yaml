@@ -1,0 +1,64 @@
+name: Cache dependencies
+
+on:
+  push:
+    branches:
+      - main
+  workflow_call:
+permissions: {}
+
+jobs:
+  changes:
+    name: Check for changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      pull-requests: read
+    outputs:
+      deps: ${{ steps.filter.outputs.deps }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check for changes
+        id: filter
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        with:
+          filters: |
+            deps:
+              - .github/workflows/cache.yaml
+              - "**/go.mod"
+
+  cache:
+    name: Cache dependencies
+    needs: changes
+    if: ${{ needs.changes.outputs.deps == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions: {}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Free disk space
+        uses: ./.github/actions/free-disk-space
+
+      - name: Install Go and cache dependencies
+        id: setup
+        uses: ./.github/actions/setup-go
+        with:
+          write_deps_cache: true
+          write_build_cache: true
+
+      - name: Install just
+        uses: cerbos/actions/install-tools@69bd18cfe7152a480728c2617569acfcb3fcc3b7 # main
+        with:
+          tools: just
+
+      - name: Warm cache
+        if: ${{ steps.setup.outputs.cache_hit != 'true' }}
+        run: just warm-cache

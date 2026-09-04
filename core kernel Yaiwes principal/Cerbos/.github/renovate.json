@@ -1,0 +1,115 @@
+{
+    "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+    "extends": [
+        "github>cerbos/renovate",
+        "group:allNonMajor",
+        ":combinePatchMinorReleases"
+    ],
+    "ignoreDeps": [
+        "github.com/cerbos/go-yaml"
+    ],
+    "packageRules": [
+        {
+            "matchManagers": [
+                "helmfile"
+            ],
+            "groupName": "Helm deps",
+            "groupSlug": "helm-deps"
+        },
+        {
+            "matchManagers": [
+                "github-actions"
+            ],
+            "groupName": "GitHub Actions deps",
+            "groupSlug": "gh-actions-deps"
+        },
+        {
+            "description": "Opt-out of go.mod Go version updates: https://github.com/renovatebot/renovate/issues/16715",
+            "matchManagers": [
+                "gomod"
+            ],
+            "matchDepTypes": [
+                "golang"
+            ],
+            "enabled": false
+        },
+        {
+            "matchManagers": [
+                "gomod"
+            ],
+            "groupName": "Go deps",
+            "groupSlug": "go-deps"
+        },
+        {
+            "matchManagers": [
+                "dockerfile",
+                "docker-compose"
+            ],
+            "matchUpdateTypes": [
+                "major",
+                "minor",
+                "patch"
+            ],
+            "digest": {
+                "enabled": false
+            },
+            "groupName": "Docker deps",
+            "groupSlug": "docker-deps"
+        },
+        {
+            "matchManagers": [
+                "nodenv",
+                "npm"
+            ],
+            "groupName": "Node.js deps",
+            "groupSlug": "node-deps",
+            "rangeStrategy": "pin"
+        },
+        {
+            "matchPackageNames": [
+                "cerbos/actions",
+                "github.com/cerbos/actions"
+            ],
+            "groupName": "cerbos/actions",
+            "groupSlug": "cerbos-actions"
+        },
+        {
+            "description": "Don't update dependencies for npm test cases (they should be kept set to 'latest' because they're pulled from the private registry)",
+            "matchFileNames": [
+                "npm/test/cases/*/package.json"
+            ],
+            "matchDepTypes": [
+                "dependencies"
+            ],
+            "enabled": false
+        },
+        {
+            "description": "Don't do major version updates for package managers in npm test cases (each test case targets a specific major version)",
+            "matchFileNames": [
+                "npm/test/cases/*/package.json"
+            ],
+            "matchDepTypes": [
+                "packageManager"
+            ],
+            "matchUpdateTypes": [
+                "major"
+            ],
+            "enabled": false
+        },
+        {
+            "description": "Prevent Renovate from incorrectly updating the Helm chart values.yaml",
+            "matchPackageNames": [
+                "ghcr.io/cerbos/cerbos"
+            ],
+            "matchFileNames": [
+                "deploy/charts/cerbos/*"
+            ],
+            "enabled": false
+        }
+    ],
+    "labels": [
+        "kind/chore",
+        "area/dependencies",
+        "bots"
+    ]
+}

@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=../../../.jsonschema/ServerTestCase.schema.json
+---
+description: "Valid request"
+wantStatus:
+  httpStatusCode: 200
+  grpcStatusCode: 0
+playgroundValidate:
+  input: {
+    "playgroundId": "test",
+    "files": [
+      {
+        "fileName": "common_roles.yaml",
+        "contents": "{{ fileString `store/derived_roles/common_roles.yaml` | b64enc }}",
+      },
+      {
+        "fileName": "policy_04.yaml",
+        "contents": "{{ fileString `store/resource_policies/policy_04.yaml` | b64enc }}",
+      }
+    ]
+  }
+  wantResponse: {
+    "playgroundId": "test",
+    "success": {}
+  }

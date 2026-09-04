@@ -1,0 +1,43 @@
+-- example_test.yaml --
+name: Example test suite
+
+principals:
+  admin:
+    id: admin
+    roles:
+      - admin
+  user:
+    id: user
+    roles:
+      - user
+
+resources:
+  example:
+    kind: account
+    id: example
+
+tests:
+  - name: Example test
+    input:
+      principals:
+        - admin
+        - user
+      resources:
+        - example
+      actions:
+        - create
+        - update
+    expected:
+      - principal: admin
+        resource: example
+        actions:
+          create: EFFECT_ALLOW
+      - principal: user
+        resource: example
+        actions:
+          update: EFFECT_ALLOW
+        outputs:
+          - action: create
+            expected:
+              - src: resource.account.vdefault#rule
+                val: foo

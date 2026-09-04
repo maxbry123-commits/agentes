@@ -1,0 +1,508 @@
+// Copyright 2021-2026 Zenauth Ltd.
+// SPDX-License-Identifier: Apache-2.0
+
+package ruletable_test
+
+import (
+	"bytes"
+	"context"
+	"io/fs"
+	"testing"
+	"time"
+
+	"github.com/spf13/afero"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/structpb"
+
+	effectv1 "github.com/cerbos/cerbos/api/genpb/cerbos/effect/v1"
+	enginev1 "github.com/cerbos/cerbos/api/genpb/cerbos/engine/v1"
+	policyv1 "github.com/cerbos/cerbos/api/genpb/cerbos/policy/v1"
+	"github.com/cerbos/cerbos/internal/compile"
+	"github.com/cerbos/cerbos/internal/conditions"
+	"github.com/cerbos/cerbos/internal/engine/tracer"
+	"github.com/cerbos/cerbos/internal/evaluator"
+	"github.com/cerbos/cerbos/internal/policy"
+	"github.com/cerbos/cerbos/internal/ruletable"
+	"github.com/cerbos/cerbos/internal/schema"
+	"github.com/cerbos/cerbos/internal/storage"
+	"github.com/cerbos/cerbos/internal/storage/disk"
+	"github.com/cerbos/cerbos/internal/storage/index"
+)
+
+func TestRuleTableManager(t *testing.T) {
+	ctx, cancelFunc := context.WithCancel(t.Context())
+	defer cancelFunc()
+
+	memFsys := afero.NewMemMapFs()
+	fsys := afero.NewIOFS(memFsys)
+
+	idx, err := index.Build(ctx, fsys)
+	require.NoError(t, err)
+
+	store := disk.NewFromIndexWithConf(idx, &disk.Conf{})
+	subMgr := storage.NewSubscriptionManager(ctx)
+
+	schemaConf := schema.NewConf(schema.EnforcementNone)
+	schemaMgr := schema.NewFromConf(ctx, store, schemaConf)
+
+	compiler, err := compile.NewManager(ctx, store)
+	require.NoError(t, err)
+
+	ruleTable, err := ruletable.NewRuleTable(ruletable.NewProtoRuletable())
+	require.NoError(t, err)
+
+	ruletableMgr, err := ruletable.NewRuleTableManager(ruleTable, compiler, schemaMgr)
+	require.NoError(t, err)
+
+	subMgr.Subscribe(ruletableMgr)
+
+	// add simple, valid policy and confirm an ALLOW request
+	resourceFile := "resource_policies/rock.yaml"
+	p := &policyv1.Policy{
+		ApiVersion: "api.cerbos.dev/v1",
+		PolicyType: &policyv1.Policy_ResourcePolicy{
+			ResourcePolicy: &policyv1.ResourcePolicy{
+				Resource: "rock",
+				Version:  "default",
+				Rules: []*policyv1.ResourceRule{
+					{
+						Actions: []string{"throw"},
+						Roles:   []string{"user"},
+						Effect:  effectv1.Effect_EFFECT_ALLOW,
+					},
+				},
+			},
+		},
+	}
+
+	addOrUpdatePolicy(t, resourceFile, p, memFsys, idx, subMgr)
+
+	action := "throw"
+	input := &enginev1.CheckInput{
+		RequestId: "1",
+		Resource: &enginev1.Resource{
+			Kind: "rock",
+			Id:   "1",
+		},
+		Principal: &enginev1.Principal{
+			Id:    "sam",
+			Roles: []string{"user"},
+		},
+		Actions: []string{action},
+	}
+
+	conf := &evaluator.Conf{}
+	conf.SetDefaults()
+	evalParams := evaluator.EvalParams{
+		DefaultPolicyVersion: conf.DefaultPolicyVersion,
+		DefaultScope:         conf.DefaultScope,
+		NowFunc:              conditions.Now(),
+	}
+	tctx := tracer.Start(nil)
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		output, _, err := ruletableMgr.Check(ctx, tctx, evalParams, input)
+		require.NoError(c, err)
+
+		require.Contains(c, output.Actions, action)
+		require.Equal(c, output.Actions[action].GetEffect(), effectv1.Effect_EFFECT_ALLOW)
+	}, 1*time.Second, 50*time.Millisecond)
+
+	t.Run("maintain_valid_state_on_missing_derived_role", func(t *testing.T) {
+		// Update policy so that it references a nonexistent derived role
+		p := &policyv1.Policy{
+			ApiVersion: "api.cerbos.dev/v1",
+			PolicyType: &policyv1.Policy_ResourcePolicy{
+				ResourcePolicy: &policyv1.ResourcePolicy{
+					Resource:           "rock",
+					Version:            "default",
+					ImportDerivedRoles: []string{"special_roles"},
+					Rules: []*policyv1.ResourceRule{
+						{
+							Actions:      []string{action},
+							DerivedRoles: []string{"special_user"},
+							Effect:       effectv1.Effect_EFFECT_ALLOW,
+						},
+					},
+				},
+			},
+		}
+
+		addOrUpdatePolicy(t, resourceFile, p, memFsys, idx, subMgr)
+
+		// Check request should still return ALLOW
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			output, _, err := ruletableMgr.Check(ctx, tctx, evalParams, input)
+			require.NoError(c, err)
+
+			require.Contains(c, output.Actions, action)
+			require.Equal(c, output.Actions[action].GetEffect(), effectv1.Effect_EFFECT_ALLOW)
+		}, 1*time.Second, 50*time.Millisecond)
+	})
+
+	t.Run("adding_missing_derived_role_re_enables_updates", func(t *testing.T) {
+		derivedRoleFile := "derived_roles/special_roles.yaml"
+		p := &policyv1.Policy{
+			ApiVersion: "api.cerbos.dev/v1",
+			PolicyType: &policyv1.Policy_DerivedRoles{
+				DerivedRoles: &policyv1.DerivedRoles{
+					Name: "special_roles",
+					Definitions: []*policyv1.RoleDef{
+						{
+							Name:        "special_user",
+							ParentRoles: []string{"user"},
+							Condition: &policyv1.Condition{
+								Condition: &policyv1.Condition_Match{
+									Match: &policyv1.Match{
+										Op: &policyv1.Match_Expr{
+											Expr: "true == false",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		addOrUpdatePolicy(t, derivedRoleFile, p, memFsys, idx, subMgr)
+
+		// Check request should now return DENY
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			output, _, err := ruletableMgr.Check(ctx, tctx, evalParams, input)
+			require.NoError(c, err)
+
+			require.Contains(c, output.Actions, action)
+			require.Equal(c, output.Actions[action].GetEffect(), effectv1.Effect_EFFECT_DENY)
+		}, 1*time.Second, 50*time.Millisecond)
+	})
+
+	t.Run("updating_derived_role_affects_rule_table", func(t *testing.T) {
+		derivedRoleFile := "derived_roles/special_roles.yaml"
+		p := &policyv1.Policy{
+			ApiVersion: "api.cerbos.dev/v1",
+			PolicyType: &policyv1.Policy_DerivedRoles{
+				DerivedRoles: &policyv1.DerivedRoles{
+					Name: "special_roles",
+					Definitions: []*policyv1.RoleDef{
+						{
+							Name:        "special_user",
+							ParentRoles: []string{"user"},
+							Condition: &policyv1.Condition{
+								Condition: &policyv1.Condition_Match{
+									Match: &policyv1.Match{
+										Op: &policyv1.Match_Expr{
+											Expr: "true == true", // <-- change
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		addOrUpdatePolicy(t, derivedRoleFile, p, memFsys, idx, subMgr)
+
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			output, _, err := ruletableMgr.Check(ctx, tctx, evalParams, input)
+			require.NoError(c, err)
+
+			require.Contains(c, output.Actions, action)
+			require.Equal(c, output.Actions[action].GetEffect(), effectv1.Effect_EFFECT_ALLOW)
+		}, 1*time.Second, 50*time.Millisecond)
+	})
+
+	t.Run("adding_and_referencing_export_const_affects_rule_table", func(t *testing.T) {
+		// add the new export constant file
+		constantsFile := "export_constants/special_constants.yaml"
+		cp := &policyv1.Policy{
+			ApiVersion: "api.cerbos.dev/v1",
+			PolicyType: &policyv1.Policy_ExportConstants{
+				ExportConstants: &policyv1.ExportConstants{
+					Name: "special_constants",
+					Definitions: map[string]*structpb.Value{
+						"FlakeyTrue": structpb.NewBoolValue(true),
+					},
+				},
+			},
+		}
+		addOrUpdatePolicy(t, constantsFile, cp, memFsys, idx, subMgr)
+
+		// update the resource policy to reference it
+		rp := &policyv1.Policy{
+			ApiVersion: "api.cerbos.dev/v1",
+			PolicyType: &policyv1.Policy_ResourcePolicy{
+				ResourcePolicy: &policyv1.ResourcePolicy{
+					Resource: "rock",
+					Version:  "default",
+					Constants: &policyv1.Constants{
+						Import: []string{"special_constants"},
+					},
+					Rules: []*policyv1.ResourceRule{
+						{
+							Actions: []string{action},
+							Roles:   []string{"user"},
+							Effect:  effectv1.Effect_EFFECT_ALLOW,
+							Condition: &policyv1.Condition{
+								Condition: &policyv1.Condition_Match{
+									Match: &policyv1.Match{
+										Op: &policyv1.Match_Expr{
+											Expr: "C.FlakeyTrue == true",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+		addOrUpdatePolicy(t, resourceFile, rp, memFsys, idx, subMgr)
+
+		// The check should be allowed
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			output, _, err := ruletableMgr.Check(ctx, tctx, evalParams, input)
+			require.NoError(c, err)
+
+			require.Contains(c, output.Actions, action)
+			require.Equal(c, output.Actions[action].GetEffect(), effectv1.Effect_EFFECT_ALLOW)
+		}, 1*time.Second, 50*time.Millisecond)
+
+		// Now update the export constant rule
+		cp = &policyv1.Policy{
+			ApiVersion: "api.cerbos.dev/v1",
+			PolicyType: &policyv1.Policy_ExportConstants{
+				ExportConstants: &policyv1.ExportConstants{
+					Name: "special_constants",
+					Definitions: map[string]*structpb.Value{
+						"FlakeyTrue": structpb.NewBoolValue(false),
+					},
+				},
+			},
+		}
+		addOrUpdatePolicy(t, constantsFile, cp, memFsys, idx, subMgr)
+
+		// The rule table should be updated, and the check request should now be denied
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			output, _, err := ruletableMgr.Check(ctx, tctx, evalParams, input)
+			require.NoError(c, err)
+
+			require.Contains(c, output.Actions, action)
+			require.Equal(c, output.Actions[action].GetEffect(), effectv1.Effect_EFFECT_DENY)
+		}, 1*time.Second, 50*time.Millisecond)
+	})
+
+	t.Run("deleting_role_policy_clears_parent_roles_immediately", func(t *testing.T) {
+		resourceFile := "resource_policies/pebble.yaml"
+		roleFile := "role_policies/skipper.yaml"
+
+		allowUserPebbleSkip := &policyv1.Policy{
+			ApiVersion: "api.cerbos.dev/v1",
+			PolicyType: &policyv1.Policy_ResourcePolicy{
+				ResourcePolicy: &policyv1.ResourcePolicy{
+					Resource: "pebble",
+					Version:  "default",
+					Rules: []*policyv1.ResourceRule{
+						{
+							Actions: []string{"skip"},
+							Roles:   []string{"user"},
+							Effect:  effectv1.Effect_EFFECT_ALLOW,
+						},
+					},
+				},
+			},
+		}
+
+		skipperParentUser := &policyv1.Policy{
+			ApiVersion: "api.cerbos.dev/v1",
+			PolicyType: &policyv1.Policy_RolePolicy{
+				RolePolicy: &policyv1.RolePolicy{
+					PolicyType:  &policyv1.RolePolicy_Role{Role: "skipper"},
+					Version:     "default",
+					ParentRoles: []string{"user"},
+					Rules: []*policyv1.RoleRule{
+						{
+							Resource:     "pebble",
+							AllowActions: []string{"skip"},
+						},
+					},
+				},
+			},
+		}
+
+		addOrUpdatePolicy(t, resourceFile, allowUserPebbleSkip, memFsys, idx, subMgr)
+		addOrUpdatePolicy(t, roleFile, skipperParentUser, memFsys, idx, subMgr)
+
+		action := "skip"
+		input := &enginev1.CheckInput{
+			RequestId: "parent-role-immediate",
+			Resource: &enginev1.Resource{
+				Kind: "pebble",
+				Id:   "1",
+			},
+			Principal: &enginev1.Principal{
+				Id:    "sam",
+				Roles: []string{"skipper"},
+			},
+			Actions: []string{action},
+		}
+
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			output, _, err := ruletableMgr.Check(ctx, tctx, evalParams, input)
+			require.NoError(c, err)
+
+			require.Contains(c, output.Actions, action)
+			require.Equal(c, effectv1.Effect_EFFECT_ALLOW, output.Actions[action].GetEffect())
+		}, 1*time.Second, 50*time.Millisecond)
+
+		deletePolicy(t, roleFile, memFsys, idx, subMgr)
+
+		// Parent role expansion should be cleared immediately after deletion
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			output, _, err := ruletableMgr.Check(ctx, tctx, evalParams, input)
+			require.NoError(c, err)
+
+			require.Contains(c, output.Actions, action)
+			require.Equal(c, effectv1.Effect_EFFECT_DENY, output.Actions[action].GetEffect())
+		}, 1*time.Second, 50*time.Millisecond)
+	})
+
+	t.Run("deleting_role_policy_does_not_restore_parent_roles", func(t *testing.T) {
+		resourceFile := "resource_policies/document.yaml"
+		roleFile := "role_policies/employee.yaml"
+		unrelatedFile := "resource_policies/unrelated_parent_role_control.yaml"
+
+		allowUserDocumentView := &policyv1.Policy{
+			ApiVersion: "api.cerbos.dev/v1",
+			PolicyType: &policyv1.Policy_ResourcePolicy{
+				ResourcePolicy: &policyv1.ResourcePolicy{
+					Resource: "document",
+					Version:  "default",
+					Rules: []*policyv1.ResourceRule{
+						{
+							Actions: []string{"view"},
+							Roles:   []string{"user"},
+							Effect:  effectv1.Effect_EFFECT_ALLOW,
+						},
+					},
+				},
+			},
+		}
+
+		employeeParentUser := &policyv1.Policy{
+			ApiVersion: "api.cerbos.dev/v1",
+			PolicyType: &policyv1.Policy_RolePolicy{
+				RolePolicy: &policyv1.RolePolicy{
+					PolicyType:  &policyv1.RolePolicy_Role{Role: "employee"},
+					Version:     "default",
+					ParentRoles: []string{"user"},
+				},
+			},
+		}
+
+		addOrUpdatePolicy(t, resourceFile, allowUserDocumentView, memFsys, idx, subMgr)
+		addOrUpdatePolicy(t, roleFile, employeeParentUser, memFsys, idx, subMgr)
+
+		action := "view"
+		input := &enginev1.CheckInput{
+			RequestId: "role-parent-delete",
+			Resource: &enginev1.Resource{
+				Kind: "document",
+				Id:   "1",
+			},
+			Principal: &enginev1.Principal{
+				Id:    "sam",
+				Roles: []string{"employee"},
+			},
+			Actions: []string{action},
+		}
+
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			output, _, err := ruletableMgr.Check(ctx, tctx, evalParams, input)
+			require.NoError(c, err)
+
+			require.Contains(c, output.Actions, action)
+			require.Equal(c, effectv1.Effect_EFFECT_ALLOW, output.Actions[action].GetEffect())
+		}, 1*time.Second, 50*time.Millisecond)
+
+		deletePolicy(t, roleFile, memFsys, idx, subMgr)
+
+		unrelatedUpdate := &policyv1.Policy{
+			ApiVersion: "api.cerbos.dev/v1",
+			PolicyType: &policyv1.Policy_ResourcePolicy{
+				ResourcePolicy: &policyv1.ResourcePolicy{
+					Resource: "unrelated_parent_role_control",
+					Version:  "default",
+					Rules: []*policyv1.ResourceRule{
+						{
+							Actions: []string{"noop"},
+							Roles:   []string{"admin"},
+							Effect:  effectv1.Effect_EFFECT_ALLOW,
+						},
+					},
+				},
+			},
+		}
+
+		unrelatedAction := "noop"
+		unrelatedInput := &enginev1.CheckInput{
+			RequestId: "unrelated-update-control",
+			Resource: &enginev1.Resource{
+				Kind: "unrelated_parent_role_control",
+				Id:   "1",
+			},
+			Principal: &enginev1.Principal{
+				Id:    "sam",
+				Roles: []string{"admin"},
+			},
+			Actions: []string{unrelatedAction},
+		}
+
+		// forces reindex path which triggered the previous incorrect behaviour (building from the proto
+		// ScopeParentRoles state)
+		addOrUpdatePolicy(t, unrelatedFile, unrelatedUpdate, memFsys, idx, subMgr)
+
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			unrelatedOutput, _, err := ruletableMgr.Check(ctx, tctx, evalParams, unrelatedInput)
+			require.NoError(c, err)
+
+			require.Contains(c, unrelatedOutput.Actions, unrelatedAction)
+			require.Equal(c, effectv1.Effect_EFFECT_ALLOW, unrelatedOutput.Actions[unrelatedAction].GetEffect())
+
+			output, _, err := ruletableMgr.Check(ctx, tctx, evalParams, input)
+			require.NoError(c, err)
+
+			require.Contains(c, output.Actions, action)
+			require.Equal(c, effectv1.Effect_EFFECT_DENY, output.Actions[action].GetEffect())
+		}, 1*time.Second, 50*time.Millisecond)
+	})
+}
+
+func addOrUpdatePolicy(t *testing.T, f string, p *policyv1.Policy, memFsys afero.Fs, idx index.Index, subMgr *storage.SubscriptionManager) {
+	t.Helper()
+
+	var s bytes.Buffer
+	require.NoError(t, policy.WritePolicy(&s, p))
+
+	require.NoError(t, afero.WriteFile(memFsys, f, s.Bytes(), fs.ModeAppend))
+
+	evt, err := idx.AddOrUpdate(index.Entry{File: f, Policy: policy.Wrap(p)})
+	require.NoError(t, err)
+
+	subMgr.NotifySubscribers(evt)
+}
+
+func deletePolicy(t *testing.T, f string, memFsys afero.Fs, idx index.Index, subMgr *storage.SubscriptionManager) {
+	t.Helper()
+
+	require.NoError(t, memFsys.Remove(f))
+
+	evt, err := idx.Delete(index.Entry{File: f})
+	require.NoError(t, err)
+
+	subMgr.NotifySubscribers(evt)
+}

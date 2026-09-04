@@ -1,0 +1,141 @@
+include::ROOT:partial$attributes.adoc[]
+
+= Derived roles
+
+include::ROOT:partial$version-check.adoc[]
+
+[.lead]
+Derived roles are computed at request evaluation time from the principal's base roles and request attributes. They augment static IdP-assigned roles with context-dependent designations.
+
+Traditional RBAC roles are usually broad groupings with no context awareness. They are static and they are provided by the Identity Provider(IDP), not by Cerbos. Cerbos provides derived roles as a way of augmenting those broad roles with contextual data to provide more fine-grained control at runtime. For example, a person with the broad `manager` role can be augmented to `manager_of_scranton_branch` by taking into account the geographic location (or another factor) and giving that derived role bearer extra privileges on resources that belong to the Scranton branch.
+
+NOTE: Derived roles are dynamically determined at runtime by matching the principal's `roles` sent in the xref:api:index.adoc#check-resources[API request] to the `parentRoles` specified in the derived roles definitions. Don't use the derived role names as `roles` in the API request as Cerbos only expects that field to contain "normal" roles.
+
+[source,yaml,linenums]
+----
+---
+apiVersion: "api.cerbos.dev/v1"
+description: |-
+  Common dynamic roles used within the Apatr app
+derivedRoles:
+  name: apatr_common_roles <1>
+  constants:
+    import: <2>
+      - apatr_common_constants
+    local: <3>
+      corporate_network_ip_range: 10.20.0.0/16
+  variables:
+    import: <4>
+      - apatr_common_variables
+    local: <5>
+      flagged_resource: request.resource.attr.flagged
+  definitions:
+    - name: owner <6>
+      parentRoles: ["user"] <7>
+      condition: <8>
+        match:
+          expr: request.resource.attr.owner == request.principal.id
+
+    - name: abuse_moderator
+      parentRoles: ["moderator"]
+      condition:
+        match:
+          expr: variables.flagged_resource
+
+    - name: corporate_user
+      parentRoles: ["user"]
+      condition:
+        match:
+          expr: request.principal.attr.ip_address.inIPAddrRange(constants.corporate_network_ip_range)
+----
+<1> Name to use when importing this set of derived roles.
+<2> xref:variables.adoc#export-constants[Constant definitions] to import (optional).
+<3> xref:variables.adoc#local-constants[Local constant definitions] (optional).
+<4> xref:variables.adoc#export[Variable definitions] to import (optional).
+<5> xref:variables.adoc#local[Local variable definitions] (optional).
+<6> Descriptive name for this derived role.
+<7> The static roles (from the identity provider) to which this derived role applies to. The special value ``*`` can be used to match any role.
+<8> An (optional) set of expressions that should evaluate to true for this role to activate.
+
+
+
+.Understanding derived roles
+****
+
+To explain the concept of derived roles, consider this example from the DC Comics universe: when billionaire playboy Bruce Wayne wears the bat costume he becomes Batman, the caped crusader. Becoming Batman gives Bruce extra privileges like being able to beat up criminals without any consequences and driving a tank through the streets of Gotham. In Cerbos terms, Batman is  the `derived role` and Bruce Wayne is the `parentRole`. The `condition` for activating the Batman derived role is: `Bruce Wayne is wearing the bat costume`.
+
+Cerbos only ever deals with Bruce Wayne because he's the only real person in this scenario. However, Cerbos is smart enough to treat him as Batman whenever he's wearing his costume.
+
+[source,yaml,linenums]
+----
+---
+apiVersion: "api.cerbos.dev/v1"
+derivedRoles:
+  name: gotham_city
+  definitions:
+    - name: batman
+      parentRoles: ["bruce_wayne"]
+      condition:
+        match:
+          expr: P.attr.isWearingBatCostume
+----
+
+****
+
+[TIP]
+====
+For the tradeoffs between derived roles and dynamic attribute checks when modelling hierarchy-based permissions, see https://www.cerbos.dev/blog/mastering-hierarchy-based-permissions-with-cerbos-policy-defined-roles-vs-dynamic-attributes[Mastering hierarchy-based permissions with Cerbos]. To discuss a specific permission model, https://www.cerbos.dev/workshop?utm_campaign=brand_cerbos&utm_source=documentation&utm_medium=text&utm_content=derived_roles[speak to us].
+====
+
+[#troubleshooting]
+== Troubleshooting derived roles
+
+=== My derived role isn't being activated
+
+If a derived role isn't taking effect, work through this checklist:
+
+. *The derived roles policy is imported into the resource policy.* The resource policy must include an `importDerivedRoles` entry matching the `name` field of the derived roles policy.
++
+[source,yaml,linenums]
+----
+resourcePolicy:
+  resource: "document"
+  version: "default"
+  importDerivedRoles:
+    - my_derived_roles  # must match the `name` in the derived roles policy
+  rules:
+    - actions: ["edit"]
+      effect: EFFECT_ALLOW
+      derivedRoles:
+        - owner
+----
+
+. *The principal's static roles match `parentRoles`.* The roles sent in the API request must include at least one of the roles listed in the derived role's `parentRoles` field. These are case-sensitive.
+
+. *The condition evaluates to true.* If the derived role has a condition, verify that the attribute names and types in the request match what the expression expects. Use the xref:cli:cerbos.adoc#repl[Cerbos REPL] to test expressions interactively.
+
+. *The resource policy has a rule referencing the derived role.* A rule must include the derived role name in its `derivedRoles` list for it to grant or deny access.
+
+=== How do I see which derived roles were activated?
+
+Add `"includeMeta": true` to the `CheckResources` request. The response `meta` block includes an `effectiveDerivedRoles` list showing which derived roles were activated for the principal on each resource.
+
+See xref:debugging.adoc[debugging authorization decisions] for more details.
+
+=== A derived role does not automatically grant access
+
+Defining a derived role only creates a named condition. You must still write a rule in a resource policy that references the derived role in its `derivedRoles` list for it to have any effect on authorization decisions.
+
+=== Derived roles and wildcards
+
+The special value `*` can be used in `parentRoles` to match any static role. This is useful for derived roles based purely on resource attributes (for example, ownership) regardless of the principal's static role.
+
+[source,yaml,linenums]
+----
+definitions:
+  - name: owner
+    parentRoles: ["*"]
+    condition:
+      match:
+        expr: R.attr.owner == P.id
+----

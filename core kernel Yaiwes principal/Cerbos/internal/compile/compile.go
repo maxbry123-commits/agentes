@@ -1,0 +1,642 @@
+// Copyright 2021-2026 Zenauth Ltd.
+// SPDX-License-Identifier: Apache-2.0
+
+//go:build !js && !wasm
+
+package compile
+
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	"go.uber.org/zap"
+	"google.golang.org/protobuf/types/known/emptypb"
+
+	policyv1 "github.com/cerbos/cerbos/api/genpb/cerbos/policy/v1"
+	runtimev1 "github.com/cerbos/cerbos/api/genpb/cerbos/runtime/v1"
+	"github.com/cerbos/cerbos/internal/conditions"
+	"github.com/cerbos/cerbos/internal/namer"
+	"github.com/cerbos/cerbos/internal/policy"
+	"github.com/cerbos/cerbos/internal/schema"
+)
+
+type compilerVersionMigration func(*runtimev1.RunnablePolicySet) error
+
+const anyRoleVal = "*"
+
+var (
+	emptyVal = &emptypb.Empty{}
+
+	compilerVersionMigrations = []compilerVersionMigration{
+		migrateFromCompilerVersion0To1,
+		migrateFromCompilerVersion1To2,
+	}
+
+	compilerVersion = uint32(len(compilerVersionMigrations))
+)
+
+func BatchCompile(queue <-chan *policy.CompilationUnit, schemaMgr schema.Manager) error {
+	errs := newErrorSet()
+
+	for unit := range queue {
+		if _, err := Compile(unit, schemaMgr); err != nil {
+			errs.Add(err)
+		}
+	}
+
+	return errs.ErrOrNil()
+}
+
+// Compile compiles a single policy compilation unit into a runnable policy set.
+// The schemaMgr parameter is optional - pass nil to skip schema validation,
+// or provide a SchemaManager instance to enable validation against schema files.
+func Compile(unit *policy.CompilationUnit, schemaMgr schema.Manager) (rps *runtimev1.RunnablePolicySet, err error) {
+	uc := newUnitCtx(unit)
+	mc := uc.moduleCtx(unit.ModID)
+
+	if mc == nil || mc.def == nil {
+		return nil, fmt.Errorf("missing policy definition %d: %w", unit.ModID, errInvalidCompilationUnit)
+	}
+
+	switch pt := mc.def.PolicyType.(type) {
+	case *policyv1.Policy_ResourcePolicy:
+		rps = compileResourcePolicySet(mc, schemaMgr)
+	case *policyv1.Policy_PrincipalPolicy:
+		rps = compilePrincipalPolicySet(mc)
+	case *policyv1.Policy_RolePolicy:
+		rps = compileRolePolicySet(mc)
+	case *policyv1.Policy_DerivedRoles, *policyv1.Policy_ExportConstants, *policyv1.Policy_ExportVariables:
+	default:
+		mc.addErrWithDesc(fmt.Errorf("unknown policy type %T", pt), "Unexpected error")
+	}
+
+	return rps, uc.error()
+}
+
+func compileRolePolicySet(modCtx *moduleCtx) *runtimev1.RunnablePolicySet {
+	rp := modCtx.def.GetRolePolicy()
+	if rp == nil {
+		modCtx.addErrWithDesc(errUnexpectedErr, "Not a role policy definition")
+		return nil
+	}
+
+	compilePolicyConstants(modCtx, rp.Constants)
+	compilePolicyVariables(modCtx, rp.Variables)
+
+	version := rp.Version
+	if version == "" {
+		version = namer.DefaultVersion
+	}
+
+	resources := make(map[string]*runtimev1.RunnableRolePolicySet_RuleList)
+	for i, r := range rp.Rules {
+		if _, ok := resources[r.Resource]; !ok {
+			resources[r.Resource] = &runtimev1.RunnableRolePolicySet_RuleList{}
+		}
+
+		allowActions := make(map[string]*emptypb.Empty, len(r.AllowActions))
+		for _, a := range r.AllowActions {
+			allowActions[a] = &emptypb.Empty{}
+		}
+
+		resources[r.Resource].Rules = append(resources[r.Resource].Rules, &runtimev1.RunnableRolePolicySet_Rule{
+			Resource:     r.Resource,
+			Name:         r.Name,
+			AllowActions: allowActions,
+			Condition:    compileCondition(modCtx, policy.RolePolicyConditionProtoPath(i), r.Condition, true),
+			EmitOutput:   compileOutput(modCtx, policy.RolePolicyRuleProtoPath(i), r.Output),
+		})
+	}
+
+	rrps := &runtimev1.RunnableRolePolicySet{
+		Meta: &runtimev1.RunnableRolePolicySet_Metadata{
+			Fqn:     modCtx.fqn,
+			Version: version,
+			SourceAttributes: map[string]*policyv1.SourceAttributes{
+				namer.PolicyKeyFromFQN(modCtx.fqn): modCtx.def.GetMetadata().GetSourceAttributes(),
+			},
+			Annotations: modCtx.def.GetMetadata().GetAnnotations(),
+		},
+		Role:        rp.GetRole(),
+		ParentRoles: rp.ParentRoles,
+		Scope:       rp.Scope,
+		Resources:   resources,
+	}
+
+	rrps.Constants = modCtx.constants.Used()
+	rrps.OrderedVariables, _ = modCtx.variables.Used()
+
+	return &runtimev1.RunnablePolicySet{
+		CompilerVersion: compilerVersion,
+		Fqn:             modCtx.fqn,
+		PolicySet: &runtimev1.RunnablePolicySet_RolePolicy{
+			RolePolicy: rrps,
+		},
+	}
+}
+
+func compileResourcePolicySet(modCtx *moduleCtx, schemaMgr schema.Manager) *runtimev1.RunnablePolicySet {
+	rp := modCtx.def.GetResourcePolicy()
+	if rp == nil {
+		modCtx.addErrWithDesc(errUnexpectedErr, "Not a resource policy definition")
+		return nil
+	}
+
+	ancestors := modCtx.unit.Ancestors()
+
+	rrps := &runtimev1.RunnableResourcePolicySet{
+		Meta: &runtimev1.RunnableResourcePolicySet_Metadata{
+			Fqn:              modCtx.fqn,
+			Resource:         rp.Resource,
+			Version:          rp.Version,
+			SourceAttributes: make(map[string]*policyv1.SourceAttributes, len(ancestors)+1),
+			Annotations:      modCtx.def.GetMetadata().GetAnnotations(),
+		},
+		Policies: make([]*runtimev1.RunnableResourcePolicySet_Policy, len(ancestors)+1),
+	}
+
+	compiled, srcAttr := compileResourcePolicy(modCtx, schemaMgr)
+	if compiled == nil {
+		return nil
+	}
+
+	rrps.Policies[0] = compiled
+	rrps.Meta.SourceAttributes[namer.PolicyKeyFromFQN(modCtx.fqn)] = srcAttr
+
+	for i, ancestor := range ancestors {
+		ancModCtx := modCtx.moduleCtx(ancestor)
+		if ancModCtx == nil {
+			reportMissingAncestors(modCtx)
+			return nil
+		}
+
+		compiled, srcAttr := compileResourcePolicy(ancModCtx, schemaMgr)
+		if compiled == nil {
+			return nil
+		}
+		rrps.Policies[i+1] = compiled
+		rrps.Meta.SourceAttributes[namer.PolicyKeyFromFQN(ancModCtx.fqn)] = srcAttr
+	}
+
+	// Only schema in effect is the schema defined by the "root" policy.
+	rrps.Schemas = rrps.Policies[len(rrps.Policies)-1].Schemas
+	// TODO(cell) Check for inconsistent schema references in the policy tree.
+	// Either all policies must have the same schema references or only the "root" policy must have one and others should be empty.
+	// This should be a compiler warning instead of an error.
+
+	return &runtimev1.RunnablePolicySet{
+		CompilerVersion: compilerVersion,
+		Fqn:             modCtx.fqn,
+		PolicySet: &runtimev1.RunnablePolicySet_ResourcePolicy{
+			ResourcePolicy: rrps,
+		},
+	}
+}
+
+func compileResourcePolicy(modCtx *moduleCtx, schemaMgr schema.Manager) (*runtimev1.RunnableResourcePolicySet_Policy, *policyv1.SourceAttributes) {
+	rp := modCtx.def.GetResourcePolicy()
+	if rp == nil {
+		modCtx.addErrWithDesc(errUnexpectedErr, "Not a resource policy definition")
+		return nil, nil
+	}
+
+	referencedRoles, err := compileImportedDerivedRoles(modCtx, rp)
+	if err != nil {
+		return nil, nil
+	}
+
+	if schemaMgr != nil {
+		if err := checkReferencedSchemas(modCtx, rp, schemaMgr); err != nil {
+			return nil, nil
+		}
+	}
+
+	compilePolicyConstants(modCtx, rp.Constants)
+	compilePolicyVariables(modCtx, rp.Variables)
+
+	scopePermissions := rp.ScopePermissions
+	if scopePermissions == policyv1.ScopePermissions_SCOPE_PERMISSIONS_UNSPECIFIED {
+		scopePermissions = policyv1.ScopePermissions_SCOPE_PERMISSIONS_OVERRIDE_PARENT
+	}
+
+	rrp := &runtimev1.RunnableResourcePolicySet_Policy{
+		DerivedRoles:     referencedRoles,
+		Scope:            rp.Scope,
+		Rules:            make([]*runtimev1.RunnableResourcePolicySet_Policy_Rule, len(rp.Rules)),
+		Schemas:          rp.Schemas,
+		ScopePermissions: scopePermissions,
+	}
+
+	for i, rule := range rp.Rules {
+		rule.Name = namer.ResourceRuleName(rule, i+1)
+		cr := compileResourceRule(modCtx, policy.ResourcePolicyRuleProtoPath(i), rule)
+		if cr == nil {
+			continue
+		}
+
+		rrp.Rules[i] = cr
+	}
+
+	rrp.Constants = modCtx.constants.Used()
+	rrp.OrderedVariables, rrp.Variables = modCtx.variables.Used() //nolint:staticcheck
+
+	return rrp, modCtx.def.GetMetadata().GetSourceAttributes()
+}
+
+func compileImportedDerivedRoles(modCtx *moduleCtx, rp *policyv1.ResourcePolicy) (map[string]*runtimev1.RunnableDerivedRole, error) {
+	type derivedRoleInfo struct {
+		compiledRoles map[string]*runtimev1.RunnableDerivedRole
+		importName    string
+		sourceFile    string
+		path          string
+	}
+
+	roleImports := make(map[string][]derivedRoleInfo)
+
+	for i, imp := range rp.ImportDerivedRoles {
+		impID := namer.GenModuleIDFromFQN(namer.DerivedRolesFQN(imp))
+		path := policy.ResourcePolicyImportDerivedRolesProtoPath(i)
+
+		drModCtx := modCtx.moduleCtx(impID)
+		if drModCtx == nil {
+			modCtx.addErrForValueAtProtoPath(path, errImportNotFound, "Derived roles import %q cannot be found", imp)
+			continue
+		}
+
+		compiledRoles := compileDerivedRoles(drModCtx)
+		if compiledRoles == nil {
+			continue
+		}
+
+		for name := range compiledRoles {
+			roleImports[name] = append(roleImports[name], derivedRoleInfo{
+				importName:    imp,
+				sourceFile:    drModCtx.sourceFile,
+				compiledRoles: compiledRoles,
+				path:          path,
+			})
+		}
+	}
+
+	referencedRoles := make(map[string]*runtimev1.RunnableDerivedRole)
+
+	// used to dedupe error messages
+	unknownRoles := make(map[string]string)
+	ambiguousRoles := make(map[string]string)
+
+	for i, rule := range rp.Rules {
+		for j, r := range rule.DerivedRoles {
+			imp, ok := roleImports[r]
+			if !ok {
+				unknownRoles[r] = policy.ResourcePolicyRuleReferencedDerivedRoleProtoPath(i, j)
+				continue
+			}
+
+			if len(imp) > 1 {
+				if _, ok := ambiguousRoles[r]; ok {
+					continue
+				}
+
+				rdList := make([]string, len(imp))
+				for i, dri := range imp {
+					pos := modCtx.srcCtx.PositionOfValueAtProtoPath(dri.path)
+					if pos != nil {
+						rdList[i] = fmt.Sprintf("%s (imported as %q at %d:%d)", dri.sourceFile, dri.importName, pos.GetLine(), pos.GetColumn())
+					} else {
+						rdList[i] = fmt.Sprintf("%s (imported as %q)", dri.sourceFile, dri.importName)
+					}
+				}
+				ambiguousRoles[r] = strings.Join(rdList, ", ")
+				continue
+			}
+
+			referencedRoles[r] = imp[0].compiledRoles[r]
+		}
+	}
+
+	for ur, urPath := range unknownRoles {
+		modCtx.addErrForValueAtProtoPath(urPath, errUnknownDerivedRole, "Derived role %q is not defined in any imports", ur)
+	}
+
+	for ar, impList := range ambiguousRoles {
+		modCtx.addErrWithDesc(errAmbiguousDerivedRole, "Derived role %q is defined in more than one import: %s", ar, impList)
+	}
+
+	return referencedRoles, modCtx.error()
+}
+
+func compileDerivedRoles(modCtx *moduleCtx) map[string]*runtimev1.RunnableDerivedRole {
+	dr := modCtx.def.GetDerivedRoles()
+	if dr == nil {
+		modCtx.addErrWithDesc(errUnexpectedErr, "Not a derived roles definition")
+		return nil
+	}
+
+	compilePolicyConstants(modCtx, dr.Constants)
+	compilePolicyVariables(modCtx, dr.Variables)
+
+	// TODO(cell) Because derived roles can be imported many times, cache the result to avoid repeating the work
+	compiled := make(map[string]*runtimev1.RunnableDerivedRole, len(dr.Definitions))
+	for i, def := range dr.Definitions {
+		rdr := &runtimev1.RunnableDerivedRole{
+			Name:        def.Name,
+			ParentRoles: make(map[string]*emptypb.Empty, len(def.ParentRoles)),
+			OriginFqn:   namer.DerivedRolesFQN(dr.Name),
+		}
+
+		for _, pr := range def.ParentRoles {
+			if pr == anyRoleVal {
+				rdr.ParentRoles = map[string]*emptypb.Empty{anyRoleVal: {}}
+				break
+			}
+			rdr.ParentRoles[pr] = emptyVal
+		}
+
+		modCtx.constants.ResetUsage()
+		modCtx.variables.ResetUsage()
+		if def.Condition != nil {
+			rdr.Condition = compileCondition(modCtx, policy.DerivedRoleConditionProtoPath(i), def.Condition, true)
+		}
+		rdr.Constants = modCtx.constants.Used()
+		rdr.OrderedVariables, rdr.Variables = modCtx.variables.Used() //nolint:staticcheck
+		compiled[def.Name] = rdr
+	}
+
+	return compiled
+}
+
+func checkReferencedSchemas(modCtx *moduleCtx, rp *policyv1.ResourcePolicy, schemaMgr schema.Manager) error {
+	if rp.Schemas == nil {
+		return nil
+	}
+
+	if ps := rp.Schemas.PrincipalSchema; ps != nil && ps.Ref != "" {
+		if _, err := schemaMgr.LoadSchema(context.TODO(), ps.Ref); err != nil {
+			modCtx.addErrForValueAtProtoPath(policy.ResourcePolicyPrincipalSchemaProtoPath(), errInvalidSchema, "Failed to load principal schema %q: %v", ps.Ref, err)
+		}
+	}
+
+	if rs := rp.Schemas.ResourceSchema; rs != nil && rs.Ref != "" {
+		if _, err := schemaMgr.LoadSchema(context.TODO(), rs.Ref); err != nil {
+			modCtx.addErrForValueAtProtoPath(policy.ResourcePolicyResourceSchemaProtoPath(), errInvalidSchema, "Failed to load resource schema %q: %v", rs.Ref, err)
+		}
+	}
+
+	return modCtx.error()
+}
+
+func compileResourceRule(modCtx *moduleCtx, path string, rule *policyv1.ResourceRule) *runtimev1.RunnableResourcePolicySet_Policy_Rule {
+	if len(rule.DerivedRoles) == 0 && len(rule.Roles) == 0 {
+		modCtx.addErrForValueAtProtoPath(path, errInvalidResourceRule, "Rule '%s' does not specify any roles or derived roles to be matched", rule.Name)
+	}
+
+	cr := &runtimev1.RunnableResourcePolicySet_Policy_Rule{
+		Name:      rule.Name,
+		Condition: compileCondition(modCtx, path+".condition", rule.Condition, true),
+		Effect:    rule.Effect,
+	}
+
+	if len(rule.DerivedRoles) > 0 {
+		cr.DerivedRoles = make(map[string]*emptypb.Empty, len(rule.DerivedRoles))
+		for _, dr := range rule.DerivedRoles {
+			cr.DerivedRoles[dr] = emptyVal
+		}
+	}
+
+	if len(rule.Roles) > 0 {
+		cr.Roles = make(map[string]*emptypb.Empty, len(rule.Roles))
+		for _, r := range rule.Roles {
+			if r == anyRoleVal {
+				cr.Roles = map[string]*emptypb.Empty{anyRoleVal: {}}
+				break
+			}
+			cr.Roles[r] = emptyVal
+		}
+	}
+
+	if len(rule.Actions) > 0 {
+		cr.Actions = make(map[string]*emptypb.Empty, len(rule.Actions))
+		for _, a := range rule.Actions {
+			cr.Actions[a] = emptyVal
+		}
+	}
+
+	cr.EmitOutput = compileOutput(modCtx, path, rule.Output)
+
+	return cr
+}
+
+func compileOutput(modCtx *moduleCtx, path string, out *policyv1.Output) *runtimev1.Output {
+	if out == nil {
+		return nil
+	}
+
+	when := &runtimev1.Output_When{}
+	empty := true
+	//nolint:staticcheck
+	if out.Expr != "" {
+		when.RuleActivated = compileCELExpr(modCtx, path+".output.expr", out.Expr, true)
+		empty = false
+	}
+
+	if expr := out.When.GetRuleActivated(); expr != "" {
+		when.RuleActivated = compileCELExpr(modCtx, path+".output.when.rule_activated", expr, true)
+		empty = false
+	}
+
+	if expr := out.When.GetConditionNotMet(); expr != "" {
+		when.ConditionNotMet = compileCELExpr(modCtx, path+".output.when.condition_not_met", expr, true)
+		empty = false
+	}
+
+	if empty {
+		modCtx.addErrForValueAtProtoPath(path+".output", errEmptyOutput, "output must have at least one expression")
+	}
+
+	return &runtimev1.Output{When: when}
+}
+
+func compilePrincipalPolicySet(modCtx *moduleCtx) *runtimev1.RunnablePolicySet {
+	pp := modCtx.def.GetPrincipalPolicy()
+	if pp == nil {
+		modCtx.addErrWithDesc(errUnexpectedErr, "Not a principal policy definition")
+		return nil
+	}
+
+	ancestors := modCtx.unit.Ancestors()
+
+	rpps := &runtimev1.RunnablePrincipalPolicySet{
+		Meta: &runtimev1.RunnablePrincipalPolicySet_Metadata{
+			Fqn:              modCtx.fqn,
+			Principal:        pp.Principal,
+			Version:          pp.Version,
+			SourceAttributes: make(map[string]*policyv1.SourceAttributes, len(ancestors)+1),
+			Annotations:      modCtx.def.GetMetadata().GetAnnotations(),
+		},
+		Policies: make([]*runtimev1.RunnablePrincipalPolicySet_Policy, len(ancestors)+1),
+	}
+
+	compiled, srcAttr := compilePrincipalPolicy(modCtx)
+	rpps.Policies[0] = compiled
+	rpps.Meta.SourceAttributes[namer.PolicyKeyFromFQN(modCtx.fqn)] = srcAttr
+
+	for i, ancestor := range ancestors {
+		ancModCtx := modCtx.moduleCtx(ancestor)
+		if ancModCtx == nil {
+			reportMissingAncestors(modCtx)
+			return nil
+		}
+
+		compiled, srcAttr := compilePrincipalPolicy(ancModCtx)
+		rpps.Policies[i+1] = compiled
+		rpps.Meta.SourceAttributes[namer.PolicyKeyFromFQN(ancModCtx.fqn)] = srcAttr
+	}
+
+	return &runtimev1.RunnablePolicySet{
+		CompilerVersion: compilerVersion,
+		Fqn:             modCtx.fqn,
+		PolicySet: &runtimev1.RunnablePolicySet_PrincipalPolicy{
+			PrincipalPolicy: rpps,
+		},
+	}
+}
+
+func compilePrincipalPolicy(modCtx *moduleCtx) (*runtimev1.RunnablePrincipalPolicySet_Policy, *policyv1.SourceAttributes) {
+	pp := modCtx.def.GetPrincipalPolicy()
+	if pp == nil {
+		modCtx.addErrWithDesc(errUnexpectedErr, "Not a principal policy definition")
+		return nil, nil
+	}
+
+	compilePolicyConstants(modCtx, pp.Constants)
+	compilePolicyVariables(modCtx, pp.Variables)
+
+	scopePermissions := pp.ScopePermissions
+	if scopePermissions == policyv1.ScopePermissions_SCOPE_PERMISSIONS_UNSPECIFIED {
+		scopePermissions = policyv1.ScopePermissions_SCOPE_PERMISSIONS_OVERRIDE_PARENT
+	}
+
+	rpp := &runtimev1.RunnablePrincipalPolicySet_Policy{
+		Scope:            pp.Scope,
+		ResourceRules:    make(map[string]*runtimev1.RunnablePrincipalPolicySet_Policy_ResourceRules, len(pp.Rules)),
+		ScopePermissions: scopePermissions,
+	}
+
+	for ruleNum, rule := range pp.Rules {
+		rr := &runtimev1.RunnablePrincipalPolicySet_Policy_ResourceRules{
+			ActionRules: make([]*runtimev1.RunnablePrincipalPolicySet_Policy_ActionRule, len(rule.Actions)),
+		}
+
+		for i, action := range rule.Actions {
+			action.Name = namer.PrincipalResourceActionRuleName(action, rule.Resource, i+1)
+			path := policy.PrincipalPolicyActionRuleProtoPath(ruleNum, i)
+			actionRule := &runtimev1.RunnablePrincipalPolicySet_Policy_ActionRule{
+				Action:    action.Action,
+				Name:      action.Name,
+				Effect:    action.Effect,
+				Condition: compileCondition(modCtx, path+".condition", action.Condition, true),
+			}
+
+			actionRule.EmitOutput = compileOutput(modCtx, path, action.Output)
+
+			rr.ActionRules[i] = actionRule
+		}
+
+		rpp.ResourceRules[rule.Resource] = rr
+	}
+
+	rpp.Constants = modCtx.constants.Used()
+	rpp.OrderedVariables, rpp.Variables = modCtx.variables.Used() //nolint:staticcheck
+
+	return rpp, modCtx.def.GetMetadata().GetSourceAttributes()
+}
+
+func reportMissingAncestors(modCtx *moduleCtx) {
+	required := policy.RequiredAncestors(modCtx.def)
+	defs := modCtx.unit.Definitions
+
+	for modID, fqn := range required {
+		if _, ok := defs[modID]; !ok {
+			modCtx.addErrWithDesc(errMissingDefinition, "Missing ancestor policy %q", namer.PolicyKeyFromFQN(fqn))
+		}
+	}
+}
+
+// MigrateCompiledPolicies modifies a RunnablePolicySet compiled by a previous version of Cerbos to migrate it to the latest format.
+func MigrateCompiledPolicies(policies *runtimev1.RunnablePolicySet) error {
+	if policies.CompilerVersion == compilerVersion {
+		return nil
+	}
+
+	log := zap.L().Named("compiler")
+
+	if policies.CompilerVersion > compilerVersion {
+		log.Warn(
+			"Loading policies that were compiled by a newer version of Cerbos",
+			zap.Uint32("current_compiler_version", compilerVersion),
+			zap.Uint32("policies_compiler_version", policies.CompilerVersion),
+		)
+		return nil
+	}
+
+	log.Debug(
+		"Migrating compiled policies",
+		zap.Uint32("from_compiler_version", policies.CompilerVersion),
+		zap.Uint32("to_compiler_version", compilerVersion),
+	)
+
+	for version := policies.CompilerVersion; version < compilerVersion; version++ {
+		err := compilerVersionMigrations[version](policies)
+		if err != nil {
+			return fmt.Errorf("failed to migrate compiled policies from v%d to v%d: %w", version, version+1, err)
+		}
+	}
+
+	return nil
+}
+
+func migrateFromCompilerVersion0To1(policies *runtimev1.RunnablePolicySet) error {
+	switch set := policies.PolicySet.(type) {
+	case *runtimev1.RunnablePolicySet_PrincipalPolicy:
+		for _, principalPolicy := range set.PrincipalPolicy.Policies {
+			ordered, err := sortCompiledVariables(set.PrincipalPolicy.Meta.Fqn, principalPolicy.Variables) //nolint:staticcheck
+			if err != nil {
+				return err
+			}
+
+			principalPolicy.OrderedVariables = ordered
+		}
+
+	case *runtimev1.RunnablePolicySet_ResourcePolicy:
+		for _, resourcePolicy := range set.ResourcePolicy.Policies {
+			ordered, err := sortCompiledVariables(set.ResourcePolicy.Meta.Fqn, resourcePolicy.Variables) //nolint:staticcheck
+			if err != nil {
+				return err
+			}
+
+			resourcePolicy.OrderedVariables = ordered
+
+			for _, derivedRole := range resourcePolicy.DerivedRoles {
+				ordered, err := sortCompiledVariables(set.ResourcePolicy.Meta.Fqn, derivedRole.Variables) //nolint:staticcheck
+				if err != nil {
+					return err
+				}
+
+				derivedRole.OrderedVariables = ordered
+			}
+		}
+
+	case *runtimev1.RunnablePolicySet_DerivedRoles, *runtimev1.RunnablePolicySet_Variables:
+
+	default:
+		return fmt.Errorf("unknown policy set type %T", set)
+	}
+
+	return nil
+}
+
+func migrateFromCompilerVersion1To2(policies *runtimev1.RunnablePolicySet) error {
+	conditions.WalkExprs(policies, conditions.MigrateVariablesType)
+	return nil
+}
