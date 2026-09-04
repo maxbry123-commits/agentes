@@ -1,0 +1,12 @@
+[files]
+extend-exclude = ["website/"]
+
+[default.extend-words]
+# Rajan Chari's name
+chari = "chari"
+
+# .iif file extension (Intuit Interchange Format)
+iif = "iif"
+
+# JWS protected-header parameter (RFC 7515 §4.1.9) — not a misspelt "typo"
+typ = "typ"

@@ -1,0 +1,83 @@
+default_language_version:
+  python: python3
+ci:
+  autofix_prs: true
+  autoupdate_commit_msg: '[pre-commit.ci] pre-commit suggestions'
+  autoupdate_schedule: 'monthly'
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+    - id: check-added-large-files
+      exclude: '^uv\.lock$'
+    - id: check-ast
+    - id: check-yaml
+      exclude: 'website/mkdocs/mkdocs.yml'
+    - id: check-toml
+    - id: check-json
+    - id: trailing-whitespace
+    - id: end-of-file-fixer
+    - id: check-case-conflict
+    - id: check-merge-conflict
+    - id: detect-private-key
+    - id: no-commit-to-branch
+  - repo: local
+    hooks:
+      - id: lint
+        name: linting and formatting
+        entry: "scripts/pre-commit-lint.sh"
+        language: python
+        types: [python]
+        require_serial: true
+        verbose: true
+  - repo: https://github.com/crate-ci/typos
+    rev: v1.30.3
+    hooks:
+      - id: typos
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.1
+    hooks:
+      - id: codespell
+        additional_dependencies:
+        - tomli
+        exclude: '^_typos\.toml$'
+  # See https://jaredkhan.com/blog/mypy-pre-commit
+  - repo: local
+    hooks:
+    - id: mypy
+      name: mypy
+      entry: "./scripts/pre-commit-mypy-run.sh"
+      language: python
+      additional_dependencies: []
+      types: [python]
+      # use require_serial so that script
+      # is only called once per commit
+      require_serial: true
+      # Print the number of files as a sanity-check
+      verbose: true
+    - id: check-license-headers
+      name: check license headers
+      entry: python ./scripts/pre-commit-license-check.py
+      language: python
+      types: [python]
+      exclude: '^website/'
+
+  - repo: local
+    hooks:
+      - id: zizmor
+        name: zizmor
+        entry: zizmor --config .github/zizmor.yml .
+        language: python
+        additional_dependencies: ['zizmor==1.30.0']
+        files: '^\.github/workflows/'
+        pass_filenames: false
+
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+    - id: detect-secrets
+      args: [
+          '--exclude-files', 'website/.*',
+          '--exclude-files', 'test/.*',
+      ]

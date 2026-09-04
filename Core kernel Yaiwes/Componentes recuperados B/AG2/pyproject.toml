@@ -1,0 +1,431 @@
+[build-system]
+requires = ["uv_build>=0.9.2,<0.13"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+# Distribution is named "ag2" but the importable module lives in ./ag2
+module-root = "."
+module-name = "ag2"
+source-exclude = ["test", "notebook"]
+
+[project.urls]
+Homepage = "https://ag2.ai/"
+Documentation = "https://docs.ag2.ai"
+Tracker = "https://github.com/ag2ai/ag2/issues"
+Source = "https://github.com/ag2ai/ag2"
+Discord = "https://discord.gg/pAbnFJrkgZ"
+
+[project]
+name = "ag2"
+description = "A programming framework for agentic AI"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "Chi Wang & Qingyun Wu", email = "support@ag2.ai" }]
+
+keywords = ["ai", "agent", "autogen", "ag2", "ag2.ai", "ag2ai", "agentic"]
+
+requires-python = ">=3.10"
+
+version = "1.0.3"
+
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Operating System :: OS Independent",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Software Development",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "Framework :: Pydantic",
+    "Framework :: Pydantic :: 2",
+]
+
+dependencies = [
+    "pydantic>=2.6.1,<3",
+    "httpx>=0.28.1,<1",
+    "anyio>=4.0.0,<5.0.0",
+    # SKILL.md frontmatter (ag2.tools.skills)
+    "pyyaml>=6.0.2",
+    # for tools
+    "fast-depends[pydantic]>=3.0.8,<4.0.0",
+]
+
+[project.optional-dependencies]
+# Each extra below corresponds to a `missing_optional_dependency(..., "<extra>", ...)`
+# fallback in the codebase. Extension packages (docker, daytona, sounddevice, exa-py,
+# tinyfish, ...) use `missing_additional_dependency` and are installed directly, not as extras.
+
+# === Agent protocols ===
+a2a = ["a2a-sdk>=1.1.0,<2"]
+a2ui = ["jsonschema>=4.18.0,<5", "starlette>=0.40,<2"]
+acp = [
+    "agent-client-protocol>=0.12.1,<0.13",
+    # Tool exposure to CLI agents runs an in-process HTTP MCP server, also requiring starlette and uvicorn
+    "ag2[mcp]",
+    "starlette>=0.40,<2",
+    "uvicorn>=0.51.0,<1",
+]
+ag-ui = ["ag-ui-protocol>=0.1.15,<0.2"]
+
+# === LLM providers (ag2.config) ===
+openai = ["openai>=2.45.0,<3.0"]
+anthropic = [
+    "anthropic>=1.2.0,<2",
+    "httpx2>=2.0,<3",
+]
+gemini = [
+    # Version bounds: local types in gemini_types.py are tested for subset compatibility
+    # with the SDK (local can have extra fields for forward compatibility).
+    "google-genai>=1.68.0,<3.0",
+    # `google.auth.credentials` / `google.oauth2.service_account` in gemini_client.py.
+    # Vertex AI is reached through google-genai's own `vertexai=True`, so
+    # google-cloud-aiplatform is not needed.
+    "google-auth",
+]
+# === Voice / TTS providers (ag2.live) ===
+elevenlabs = ["elevenlabs>=1.50.0,<3"]
+
+xai = ["xai-sdk>=1.12.2,<2"]
+zai = ["zai-sdk>=0.2.3,<1"]
+mistral = ["mistralai>=2.8.0,<3"]
+ollama = ["ollama>=0.4.7"]
+bedrock = ["boto3>=1.34.149"]
+dashscope = ["dashscope>=1.25.13"]
+
+redis = ["redis>=5.0,<9"]
+# SDK only: ag2 builds spans and hands them to whatever SpanProcessor the caller
+# passes in, so the exporter (console, OTLP over http/grpc, vendor SDK) is the
+# caller's choice to install.
+tracing = ["opentelemetry-sdk>=1.20"]
+metrics = ["prometheus-client>=0.20.0,<0.30.0"]
+
+# === Search tools ===
+tavily = ["tavily-python>=0.7.4,<0.8"]
+ddgs = ["ddgs>=9.0.0,<10"]
+perplexity = ["perplexityai>=0.30.0,<1"]
+
+# === MCP (ag2.mcp) ===
+mcp = [
+    "mcp>=2.0.0,<3",
+    "mcp-types>=2.0.0,<3",
+    # imported directly to validate tool arguments; `mcp` requires it too, so this
+    # only pins what is already installed
+    "jsonschema>=4.20.0,<5",
+]
+# MCP-UI resources (ag2.mcp_ui) — return renderable UI blobs from tool results
+mcp-ui = [
+    "mcp-ui-server>=1.0.0",
+    "mcp>=2.0.0,<3",
+]
+
+[dependency-groups]
+# Dev dependency groups (PEP 735). These replace the former dev *extras* and are
+# NOT published with the package — install with `uv pip install --group <name>`
+# (or `uv sync`). Feature extras (openai, gemini, redis, …) stay in
+# [project.optional-dependencies] because they are part of the published API.
+
+# test dependencies
+test-core = [
+    "pytest==9.1.1",
+    "pytest-asyncio==1.4.0",
+    "pytest-cov==7.1.0",
+    "pytest-timeout>=2.4.0,<3",
+    "dirty-equals>=0.11,<0.12",
+]
+
+test = [
+    { include-group = "test-core" },
+    "docker>=6.0.0,<8",
+    "ag2[mcp]",
+    "ag2[mcp-ui]", # ag2.mcp_ui — MCP-UI resource & action builders
+    "pillow", # test/providers/gemini builds an image fixture; no longer implied by ag2[gemini]
+    "python-dotenv", # provider smoke tests load repo-root .env
+    "respx>=0.23.0,<0.24.0", # search tests
+    # starlette >=1.0 drives `starlette.testclient.TestClient` with httpx2 and warns
+    # (StarletteDeprecationWarning) when it has to fall back to httpx 0.x
+    "httpx2>=2.9.1,<3",
+]
+
+# All optional feature deps needed so the full (non-LLM) test suite can be
+# collected and run. This has no dev-extra equivalent; it is consumed directly
+# by the test CI workflow alongside the `test` group.
+optionals = [
+    "ag2[redis]",
+    "ag2[ag-ui]",
+    "ag2[a2a]", # ag2.a2a — without it `test/a2a` importorskips itself out of the run
+    "ag2[a2ui]", # provides starlette/jsonschema for AG-UI / a2ui serving tests
+    "ag2[mcp]", # ag2.mcp — serve an Agent as an MCP server
+    "ag2[mcp-ui]", # ag2.mcp_ui — MCP-UI resource & action builders
+    "ag2[acp]",
+    "ag2[tracing]",
+    "ag2[metrics]",
+    # search tools
+    "ag2[tavily,ddgs,perplexity]",
+    # extensions are not shipped as extras; install their packages directly for testing
+    "a2a-sdk[signing]", # AgentCard JWS signing/verification (test/a2a/test_card_signing.py); not part of ag2[a2a]
+    "agent-client-protocol[http]", # ag2.acp.remote transports — without them `test/acp/test_remote_*` importorskips itself out of the run
+    "watchdog>=4.0,<7",  # DiskKnowledgeStore (ag2.knowledge)
+    "websockets>=14.0,<17",  # WsLink (ag2.network)
+    "docker>=6.0.0,<8",  # code execution (ag2.extensions.docker)
+    "daytona>=0.171.0,<1",
+    "tenki>=0.5.4,<2",
+    "tinyfish>=0.5,<0.6; python_version>='3.11'",
+    "exa-py>=2.12.1,<3",
+    # providers
+    "ag2[openai]",
+    "ag2[anthropic]",
+    "ag2[bedrock]",
+    "ag2[gemini]",
+    "ag2[ollama]",
+    "ag2[dashscope]",
+    "ag2[xai]",
+    "ag2[zai]",
+    "ag2[mistral]",
+    "ag2[elevenlabs]",
+]
+
+docs = [
+    "ag2[a2a]",     # A2A is exposed in the public API by the optional `ag2.a2a` module
+    "ag2[tracing]", # Tracing is exposed in the public API by the optional `ag2.opentelemetry` / `ag2.middleware` module
+    "ag2[metrics]", # Metrics is exposed in the public API by the optional `ag2.middleware` module
+    "ag2[ag-ui]",   # AG-UI is exposed in the public API by the optional `ag2.ag_ui` module
+    # Extensions are not shipped as extras; install their packages directly so docs can import the modules
+    "tinyfish>=0.5,<0.6; python_version>='3.11'",
+    "daytona>=0.171.0,<1",
+    "tenki>=0.5.4,<2",
+    "exa-py>=2.12.1,<3",
+    "docker>=6.0.0,<8",                # Code execution tools are exposed in the public API by the optional `ag2.tools` module
+    "nlip-sdk>=0.1.0,<1",              # NLIP is exposed in the public API by the optional `autogen.extensions.nlip` module
+    "nlip-server>=0.1.3,<1",
+    # Optional dependencies
+    "ag2[openai]",                     # OpenAI is exposed in the public API by the optional `ag2.config` module
+    "ag2[anthropic]",                  # Anthropic is exposed in the public API by the optional `ag2.config` module
+    "ag2[gemini]",                     # Gemini is exposed in the public API by the optional `ag2.config` module
+    "ag2[ollama]",                     # Ollama is exposed in the public API by the optional `ag2.config` module
+    "ag2[dashscope]",                  # DashScope is exposed in the public API by the optional `ag2.config` module
+    "ag2[xai]",                        # xAI is exposed in the public API by the optional `ag2.config` module
+    "ag2[mistral]",                    # Mistral is exposed in the public API by the optional `ag2.config` module
+    "ag2[redis]",                      # Redis is exposed in the public API by the optional `ag2.streams` module
+    "watchdog>=4.0,<7",                # DiskKnowledgeStore (ag2.knowledge) — additional dependency
+    "websockets>=14.0,<17",            # WsLink (ag2.network) — additional dependency
+    "ag2[tavily,ddgs,perplexity]",     # Search tools are exposed by optional search modules
+    "mkdocs-material==9.7.7",
+    "mkdocs-literate-nav==0.6.3",
+    "mdx-include==1.4.2",
+    # ToDo: currently problematic and cannot be upgraded
+    "mkdocs-git-revision-date-localized-plugin==1.5.4",
+    "typer>=0.22,<0.28",
+    "mkdocs-minify-plugin==0.8.0",
+    "mkdocs-macros-plugin==1.5.0",                      # includes with variables
+    "mkdocs-glightbox==0.5.2",                          # img zoom
+    "mkdocs-redirects==1.2.3",                          # required for handling redirects natively
+    "jinja2==3.1.6",
+    "pyyaml==6.0.3",
+    "mcp>=2.0.0,<3",
+]
+
+types = [
+    "mypy==2.3.1",
+    "types-PyYAML",
+    { include-group = "test" },
+    "ag2[openai, a2a, ag-ui]",
+]
+
+lint = ["ruff==0.16.4", "codespell==2.4.3", "zizmor==1.30.0"]
+
+dev = [
+    { include-group = "lint" },
+    { include-group = "test" },
+    { include-group = "types" },
+    { include-group = "docs" },
+    "prek==0.4.14",
+]
+
+[tool.pytest.ini_options]
+addopts = '-m "not conda"'
+timeout = 45
+testpaths = ["test"]
+
+markers = [
+    "conda: test related to conda forge distribution",
+    "all",
+    "openai",
+    "openai_realtime",
+    "gemini",
+    "gemini_realtime",
+    "anthropic",
+    "zai",
+    "mistral",
+    "deepseek",
+    "cosmosdb",
+    "ollama",
+    "bedrock",
+    "cerebras",
+    "cohere",
+    "groq",
+    "together",
+    "integration",
+    "aux_neg_flag",
+    # optional deps
+    "redis",
+    "docker",
+    "docs",
+    "rag",
+    "jupyter_executor",
+    "retrievechat",
+    "retrievechat_pgvector",
+    "retrievechat_mongodb",
+    "retrievechat_qdrant",
+    "graph_rag_falkor_db",
+    "neo4j",
+    "mcp",
+    "interop",
+    "browser_use",
+    "crawl4ai",
+    "google_api",
+    "google_search",
+    "websockets",
+    "elevenlabs",
+    "commsagent_discord",
+    "commsagent_slack",
+    "commsagent-telegram",
+    "lmm",
+    "tracing",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["ag2"]
+# Store source paths relative to the repo root (with normalized separators) so
+# coverage data recorded on different runners (Linux/macOS/Windows) can be
+# merged by `coverage combine` into a single report before upload.
+relative_files = true
+
+[tool.ruff]
+fix = true
+line-length = 120
+target-version = 'py310'
+# Exclude a variety of commonly ignored directories.
+exclude = [
+    ".eggs",
+    ".git",
+    ".mypy_cache",
+    ".ruff_cache",
+    "__pypackages__",
+    "_build",
+    "build",
+    "dist",
+    "docs",
+    # This file needs to be either upgraded or removed and therefore should be
+    # ignore from type checking for now
+    "math_utils\\.py$",
+    "setup_*.py",
+]
+
+preview = true
+
+[tool.ruff.lint]
+# Enable Pyflakes `E` and `F` codes by default.
+select = [
+    "E",   # pycodestyle errors     https://docs.astral.sh/ruff/rules/#error-e
+    "W",   # pycodestyle warnings   https://docs.astral.sh/ruff/rules/#warning-w
+    "C90", # mccabe                 https://docs.astral.sh/ruff/rules/#mccabe-c90
+    "N",   # pep8-naming            https://docs.astral.sh/ruff/rules/#pep8-naming-n
+    #    "D",     # pydocstyle             https://docs.astral.sh/ruff/rules/#pydocstyle-d
+    "I",     # isort                  https://docs.astral.sh/ruff/rules/#isort-i
+    "F",     # pyflakes               https://docs.astral.sh/ruff/rules/#pyflakes-f
+    "ASYNC", # flake8-async           https://docs.astral.sh/ruff/rules/#flake8-async-async
+    "C4",    # flake8-comprehensions  https://docs.astral.sh/ruff/rules/#flake8-comprehensions-c4
+    #    "B",     # flake8-bugbear         https://docs.astral.sh/ruff/rules/#flake8-bugbear-b
+    "Q", # flake8-quotes          https://docs.astral.sh/ruff/rules/#flake8-quotes-q
+    #    "T20",   # flake8-print           https://docs.astral.sh/ruff/rules/#flake8-print-t20
+    "SIM", # flake8-simplify        https://docs.astral.sh/ruff/rules/#flake8-simplify-sim
+    #    "PT",    # flake8-pytest-style    https://docs.astral.sh/ruff/rules/#flake8-pytest-style-pt
+    #    "PTH",   # flake8-use-pathlib     https://docs.astral.sh/ruff/rules/#flake8-use-pathlib-pth
+    #    "TCH",   # flake8-type-checking   https://docs.astral.sh/ruff/rules/#flake8-type-checking-tch
+    #    "RUF",   # Ruff-specific rules    https://docs.astral.sh/ruff/rules/#ruff-specific-rules-ruf
+    #    "PERF",  # Perflint               https://docs.astral.sh/ruff/rules/#perflint-perf
+    "RUF022", # Sort __all__           https://docs.astral.sh/ruff/rules/unsorted-dunder-all/
+    "UP",     # pyupgrade              https://docs.astral.sh/ruff/rules/#pydocstyle-d
+    "D417",   # undocumented-param     https://docs.astral.sh/ruff/rules/undocumented-param/
+]
+
+ignore = [
+    "E501",
+    "F403",
+    "C901",
+    "E402",
+    "E721",
+    "E501",     # line too long, handled by formatter later
+    "C901",     # too complex
+    "ASYNC109",
+    "ASYNC240",
+]
+
+[tool.ruff.lint.mccabe]
+# Unlike Flake8, default to a complexity level of 10.
+max-complexity = 10
+
+[tool.ruff.lint.isort]
+case-sensitive = true
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.mypy]
+python_version = "3.10"
+
+# The `ag2` tree is not yet strict-clean. Strict mypy coverage is being
+# (re)introduced module-by-module; until then mypy is scoped to modules
+# that already pass under `strict = true`.
+files = [
+    "ag2/_import_utils.py",
+]
+
+strict = true
+ignore_missing_imports = true
+install_types = true
+non_interactive = true
+plugins = ["pydantic.mypy"]
+
+# remove after all files in the repo are fixed
+follow_imports = "silent"
+
+# from https://blog.wolt.com/engineering/2021/09/30/professional-grade-mypy-configuration/
+disallow_untyped_defs = true
+no_implicit_optional = true
+check_untyped_defs = true
+warn_return_any = true
+show_error_codes = true
+
+warn_unused_ignores = false
+
+disallow_incomplete_defs = true
+disallow_untyped_decorators = true
+disallow_any_unimported = true
+
+# numpy's bundled stubs use 3.12-only `type` syntax, which mypy cannot parse
+# under python_version = "3.10"; skip analysing numpy entirely (it is not our code).
+[[tool.mypy.overrides]]
+module = "numpy.*"
+follow_imports = "skip"
+follow_imports_for_stubs = true
+
+[tool.codespell]
+skip = "*.js,*.map,*.pdf,*.po,*.ts,*.json,*.svg"
+quiet-level = 3
+ignore-words-list = "ans,crasher,fulfilment,iif"

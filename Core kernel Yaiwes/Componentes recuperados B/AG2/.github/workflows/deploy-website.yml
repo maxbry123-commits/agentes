@@ -1,0 +1,17 @@
+name: Deploy MkDocs to GitHub Pages
+
+on:
+  workflow_dispatch:
+  release:
+    types:
+      - published
+
+permissions:
+  contents: write
+
+jobs:
+  build_and_deploy:
+    uses: $/.github/workflows/build-mkdocs.yml
+    with:
+      python-version: "3.10"
+      deploy: true

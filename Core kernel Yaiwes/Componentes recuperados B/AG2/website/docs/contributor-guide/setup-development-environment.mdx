@@ -1,0 +1,72 @@
+---
+title: Setting up Development Environment
+---
+
+## Setting up LLM Keys
+
+If you are contributing to the AG2 project, you will need an LLM key depending on the submodule you are working on.
+
+LLM credentials are configured through individual environment variables for each provider — `OPENAI_API_KEY`, `AZURE_OPENAI_API_KEY`, `GEMINI_API_KEY`, and so on.
+
+For example, to set up a Gemini API key:
+
+```bash
+export GEMINI_API_KEY="<your_api_key>"
+```
+
+Similarly, for OpenAI, Azure, Anthropic, etc.:
+
+```bash
+export OPENAI_API_KEY="<your_openai_api_key>"
+export AZURE_OPENAI_API_KEY="<your_azure_api_key>"
+export AZURE_OPENAI_API_BASE="<your_azure_base_url>"
+export ANTHROPIC_API_KEY="<your_anthropic_api_key>"
+# ...and so on for other providers
+```
+
+The AG2 test and tooling system picks these up automatically and constructs the required configuration for all supported LLM providers. A `.env` file in the repository root works too — the test suite loads it on startup.
+
+## Setting up the Development Environment
+
+To contribute to the AG2 project, AG2 provides two different methods to set up the development environment:
+
+<Tabs>
+  <Tab title="Codespaces">
+  1. Open the AG2 repository on GitHub and fork the repository.
+  2. Navigate to Settings -> Secrets and variables -> Codespaces.
+  3. Add the necessary LLM keys as mentioned above by clicking on the `New repository secret` button.
+  4. Navigate back to the forked repository.
+  5. Click on the `Code` button and select `Open with Codespaces`.
+  6. Once the container is built, you can start developing AG2.
+  </Tab>
+  <Tab title="Virtual Environment">
+  1. Setup the necessary LLM keys as mentioned above in your terminal.
+  2. Fork the AG2 repository and clone the forked repository.
+  3. From the root of the repository, create the virtual environment and install every dependency group:
+      ```bash
+      uv sync --all-groups
+      ```
+  4. Install the prek hooks:
+      ```bash
+      uv run prek install
+      ```
+  5. Once the dependencies are installed, you can start developing AG2.
+  </Tab>
+</Tabs>
+
+
+## Verifying the Development Environment
+
+To make sure that we have set up the development environment correctly, we can run the prek hooks and tests.
+
+To run the prek hooks, run the following command:
+
+```bash
+prek run --all-files
+```
+
+To run the non-llm tests, run the following command:
+
+```bash
+just test
+```
