@@ -1,0 +1,137 @@
+{
+  "schema": "yaiwes.extraction.canonical-retry.v2",
+  "run_id": "33843059849",
+  "shard_index": 0,
+  "shard_count": 4,
+  "selected": [
+    {
+      "slug": "Burr",
+      "target": "Agente core kernel Yaiwes principal/Burr"
+    },
+    {
+      "slug": "Camunda",
+      "target": "Agente core kernel Yaiwes principal/Camunda"
+    },
+    {
+      "slug": "Cedar",
+      "target": "Agente core kernel Yaiwes principal/Cedar"
+    },
+    {
+      "slug": "Celery",
+      "target": "Agente core kernel Yaiwes principal/Celery"
+    },
+    {
+      "slug": "ClawHub",
+      "target": "Agente core kernel Yaiwes principal/ClawHub"
+    },
+    {
+      "slug": "Cloudflare-Workers-SDK",
+      "target": "Agente core kernel Yaiwes principal/Cloudflare-Workers-SDK"
+    }
+  ],
+  "processed": [
+    {
+      "slug": "Burr",
+      "target": "Agente core kernel Yaiwes principal/Burr",
+      "status": "EXTRACTED_VERIFIED",
+      "parts": 2,
+      "part_sha256": {
+        "Agente core kernel Yaiwes principal/Burr_0001.zip": "54d099059e615c357a547356b7f569572d5877a8da7ab60171380732fc2631b7",
+        "Agente core kernel Yaiwes principal/Burr_0002.zip": "1ab1c7c2ad84dbb1c9d1677e55b2578c51e13dfe54a8c46a939cf18002ab6251"
+      },
+      "copied": 3,
+      "mirrors": [],
+      "files": 823,
+      "bytes": 27758236,
+      "tree_sha256": "0a4545beeea674285d2c6e547c727416ee9cca1ce12d7ac63d421cc9345d724b",
+      "excluded_lfs_source_members": []
+    },
+    {
+      "slug": "Camunda",
+      "target": "Agente core kernel Yaiwes principal/Camunda",
+      "status": "EXTRACTED_VERIFIED",
+      "parts": 8,
+      "part_sha256": {
+        "Agente core kernel Yaiwes principal/Camunda_0001.zip": "443a5c4b0ee27278e18f3d135cefb2ba2fba2be04469ee261bf523a370e6456b",
+        "Agente core kernel Yaiwes principal/Camunda_0002.zip": "34ccd77840bdeb2d4e5c8995c895d1e938762eb64a5ee35ce6ab1b4739eed2aa",
+        "Agente core kernel Yaiwes principal/Camunda_0003.zip": "146bc591eed32ce4321cc6cbbeb0c327e8ccc695a18e12e8c95140fe616790ac",
+        "Agente core kernel Yaiwes principal/Camunda_0004.zip": "19a883e292e5aa41910ec13ee9e4f291b9385c30ab92bfea27b0c6bb79f28d8a",
+        "Agente core kernel Yaiwes principal/Camunda_0005.zip": "ca5998bab9b31a4d3b36b3a48f4ec35ed769fda5881674cbf7bad77de6015631",
+        "Agente core kernel Yaiwes principal/Camunda_0006.zip": "62c7baad5d1c48ca148d30e1203337ace1d4bf53a9409efd7fe08a0aa4a32854",
+        "Agente core kernel Yaiwes principal/Camunda_0007.zip": "31502f01584a233ec8da167b62cbcdccfea58f0bbaacc3df7a7078a4e5e1a135",
+        "Agente core kernel Yaiwes principal/Camunda_0008.zip": "47a046925701652fd28ffdda9aae76cd7cf33c897d003d55aeca8d5ac949feaf"
+      },
+      "copied": 31,
+      "mirrors": [],
+      "files": 26069,
+      "bytes": 216006069,
+      "tree_sha256": "a10c4ffdc8819091f625f0705b2c86513cb1c6202430fb71dc17b16161ab8528",
+      "excluded_lfs_source_members": []
+    },
+    {
+      "slug": "Cedar",
+      "target": "Agente core kernel Yaiwes principal/Cedar",
+      "status": "EXTRACTED_VERIFIED",
+      "parts": 1,
+      "part_sha256": {
+        "Agente core kernel Yaiwes principal/Cedar_0001.zip": "4d8b790cb4dd3350dcfc76f4158a00c655ac16a355e776fb3446c80905e0aa1f"
+      },
+      "copied": 1,
+      "mirrors": [],
+      "files": 966,
+      "bytes": 8769950,
+      "tree_sha256": "92384f841216f0b9b2c7f416c2f6c0fc658049baa163598b2c85214eea6167eb",
+      "excluded_lfs_source_members": []
+    },
+    {
+      "slug": "Celery",
+      "target": "Agente core kernel Yaiwes principal/Celery",
+      "status": "EXTRACTED_VERIFIED",
+      "parts": 1,
+      "part_sha256": {
+        "Agente core kernel Yaiwes principal/Celery_0001.zip": "5415235a97b590da14b0170045ade25c66ef44bb16ef9791c56d8534f00a65ef"
+      },
+      "copied": 1,
+      "mirrors": [],
+      "files": 826,
+      "bytes": 6229200,
+      "tree_sha256": "aafcf5f1b3ba062f69323be0cb31b128a3a2ae030172493429d1e8f54cd79e9d",
+      "excluded_lfs_source_members": []
+    },
+    {
+      "slug": "ClawHub",
+      "target": "Agente core kernel Yaiwes principal/ClawHub",
+      "status": "EXTRACTED_VERIFIED",
+      "parts": 3,
+      "part_sha256": {
+        "Agente core kernel Yaiwes principal/ClawHub_0001.zip": "988dbc9f0e86f282a073c103330017f8b8ea7baaaf4ced4162001a756a2fa015",
+        "Agente core kernel Yaiwes principal/ClawHub_0002.zip": "f8fbcbb6316639d26b83c97332f330e02a58b8de75849b7f5d17c0a303b6088f",
+        "Agente core kernel Yaiwes principal/ClawHub_0003.zip": "1f8fdbb9ac125bfe497cd30308d8288cea1a6bd9abe9a6c29f285fbdad57bace"
+      },
+      "copied": 13,
+      "mirrors": [],
+      "files": 1881,
+      "bytes": 52672926,
+      "tree_sha256": "29f640bb778a886352c1fadfc5b36b5acbcfdb6ba08483799757171b8299ee3b",
+      "excluded_lfs_source_members": []
+    },
+    {
+      "slug": "Cloudflare-Workers-SDK",
+      "target": "Agente core kernel Yaiwes principal/Cloudflare-Workers-SDK",
+      "status": "EXTRACTED_VERIFIED",
+      "parts": 2,
+      "part_sha256": {
+        "Agente core kernel Yaiwes principal/Cloudflare-Workers-SDK_0001.zip": "35e1e5c8ee67dc81c6dc51cbf40e39e4f54370f0ea8034d948aa1d20e0b9f2bc",
+        "Agente core kernel Yaiwes principal/Cloudflare-Workers-SDK_0002.zip": "b24a5de0a718acfcc3a9e1cb433105d2dd64acfd6891c50ae20cef265c5c78b4"
+      },
+      "copied": 10,
+      "mirrors": [],
+      "files": 5533,
+      "bytes": 31566758,
+      "tree_sha256": "446db3901246621b752fb15b9531fbfd465ae65523827a4b42115fbf344c1185",
+      "excluded_lfs_source_members": []
+    }
+  ],
+  "failures": [],
+  "verdict": "SHARD_PASS"
+}
