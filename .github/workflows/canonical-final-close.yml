@@ -49,7 +49,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git add -A --sparse -- 'Core kernel Yaiwes/Componentes recuperados A' 'Core kernel Yaiwes/Componentes recuperados B' 'Documentos proyectos Yaiwes/Evidencias extracción histórica'
+          git add -A --sparse -- 'Documentos proyectos Yaiwes/Evidencias extracción histórica'
+          for p in 'Core kernel Yaiwes/Componentes recuperados A' 'Core kernel Yaiwes/Componentes recuperados B'; do
+            if [ -d "$p" ]; then git add -A --sparse -- "$p"; fi
+          done
           git diff --cached --quiet && exit 0
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
