@@ -1,0 +1,91 @@
+name: Yaiwes canonical final close
+run-name: Yaiwes FINAL CLOSE • ${{ github.run_id }}
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/canonical-final-close.yml']
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: yaiwes-canonical-final-close
+  cancel-in-progress: true
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 480
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /Core kernel Yaiwes/scripts/
+            /Documentos proyectos Yaiwes/Evidencias extracción histórica/
+      - name: Select every unresolved real destination
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 'Core kernel Yaiwes/scripts/canonical_final_close_20260904.py' --emit-sparse > /tmp/final-sparse.txt
+          git sparse-checkout set --no-cone --stdin < /tmp/final-sparse.txt
+      - name: Repair all remaining gaps once
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config --local filter.lfs.clean cat
+          git config --local filter.lfs.smudge cat
+          git config --local --unset-all filter.lfs.process || true
+          git config --local filter.lfs.required false
+          python3 'Core kernel Yaiwes/scripts/canonical_final_close_20260904.py' --repair
+      - name: Publish final repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -A --sparse -- 'Core kernel Yaiwes/Componentes recuperados A' 'Core kernel Yaiwes/Componentes recuperados B' 'Documentos proyectos Yaiwes/Evidencias extracción histórica'
+          git diff --cached --quiet && exit 0
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m "fix(extraction): one-shot final close [run ${GITHUB_RUN_ID}]"
+          for a in 1 2 3 4 5; do
+            if git fetch origin main && git rebase --autostash origin/main && git push --no-verify origin HEAD:main; then exit 0; fi
+            test "$a" -lt 5 || exit 41
+            sleep $((a*8))
+          done
+  verify:
+    needs: repair
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /Core kernel Yaiwes/scripts/
+            /Documentos proyectos Yaiwes/Evidencias extracción histórica/
+      - name: Fresh read-back closure audit
+        shell: bash
+        run: python3 'Core kernel Yaiwes/scripts/canonical_final_close_20260904.py' --verify
+      - name: Publish VERIFIED_CLOSED evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -A --sparse -- 'Documentos proyectos Yaiwes/Evidencias extracción histórica'
+          if ! git diff --cached --quiet; then
+            git config user.name github-actions[bot]
+            git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+            git commit -m "audit(extraction): VERIFIED_CLOSED [run ${GITHUB_RUN_ID}]"
+            for a in 1 2 3 4 5; do
+              if git fetch origin main && git rebase --autostash origin/main && git push --no-verify origin HEAD:main; then break; fi
+              test "$a" -lt 5 || exit 41
+              sleep $((a*8))
+            done
+          fi
+          echo VERIFIED_CLOSED
