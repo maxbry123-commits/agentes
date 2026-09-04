@@ -1,0 +1,139 @@
+{
+  "schema": "yaiwes.extraction.canonical-retry.v2",
+  "run_id": "33843059813",
+  "shard_index": 1,
+  "shard_count": 4,
+  "selected": [
+    {
+      "slug": "Apache-APISIX",
+      "target": "Agente core kernel Yaiwes principal/Apache-APISIX"
+    },
+    {
+      "slug": "Graphiti",
+      "target": "Agente core kernel Yaiwes principal/Graphiti"
+    },
+    {
+      "slug": "Guidance",
+      "target": "Agente core kernel Yaiwes principal/Guidance"
+    },
+    {
+      "slug": "Inspect-AI",
+      "target": "Agente core kernel Yaiwes principal/Inspect-AI"
+    },
+    {
+      "slug": "Instructor",
+      "target": "Agente core kernel Yaiwes principal/Instructor"
+    },
+    {
+      "slug": "LiteLLM",
+      "target": "Agente core kernel Yaiwes principal/LiteLLM"
+    }
+  ],
+  "processed": [
+    {
+      "slug": "Apache-APISIX",
+      "target": "Agente core kernel Yaiwes principal/Apache-APISIX",
+      "status": "EXTRACTED_VERIFIED",
+      "parts": 2,
+      "part_sha256": {
+        "Agente core kernel Yaiwes principal/Apache-APISIX_0001.zip": "fe4abe72f8923f7849969482b698bc778bdb26f82094f681f64ee691c7ed25fe",
+        "Agente core kernel Yaiwes principal/Apache-APISIX_0002.zip": "599265cf5fe0adaf19f6e40b3e7134ac0ff57bacefceb6e2435d4a2716ce7b66"
+      },
+      "copied": 13,
+      "mirrors": [],
+      "files": 1988,
+      "bytes": 31273775,
+      "tree_sha256": "5030affd1a72968a405719fcdda79f790e158ce6d4a5e301901e25c7b9d6e83a",
+      "excluded_lfs_source_members": []
+    },
+    {
+      "slug": "Graphiti",
+      "target": "Agente core kernel Yaiwes principal/Graphiti",
+      "status": "EXTRACTED_VERIFIED",
+      "parts": 1,
+      "part_sha256": {
+        "Agente core kernel Yaiwes principal/Graphiti_0001.zip": "7cdfbca2238f2ad79af2f64c1b603726fbd015769003cc2e7045502d21f1c9d5"
+      },
+      "copied": 361,
+      "mirrors": [],
+      "files": 361,
+      "bytes": 22366453,
+      "tree_sha256": "606ac103597b7b29ebd4d6afe7422594b8baa5c29ad86df09e9be5b5efff11ef",
+      "excluded_lfs_source_members": []
+    },
+    {
+      "slug": "Guidance",
+      "target": "Agente core kernel Yaiwes principal/Guidance",
+      "status": "EXTRACTED_VERIFIED",
+      "parts": 2,
+      "part_sha256": {
+        "Agente core kernel Yaiwes principal/Guidance_0001.zip": "6e37bc22dc1c54eca149fd270ac36c203555da901eeec0e33f27cb97882979c3",
+        "Agente core kernel Yaiwes principal/Guidance_0002.zip": "60c3d4dc74439e680ea005ca021b2fbbfa0184e4c8e0afafc56d32cc07ad44f7"
+      },
+      "copied": 1,
+      "mirrors": [],
+      "files": 326,
+      "bytes": 38251533,
+      "tree_sha256": "fc0dca8420c90b67eb98f69b1552e28ba8dcb06893a22075da21036c9e09d5d1",
+      "excluded_lfs_source_members": []
+    },
+    {
+      "slug": "Inspect-AI",
+      "target": "Agente core kernel Yaiwes principal/Inspect-AI",
+      "status": "EXTRACTED_VERIFIED",
+      "parts": 2,
+      "part_sha256": {
+        "Agente core kernel Yaiwes principal/Inspect-AI_0001.zip": "ec5adca47a585cc5c2fa8389f9781c1c7fd9458bf5e099e66ac1774c00627e18",
+        "Agente core kernel Yaiwes principal/Inspect-AI_0002.zip": "b3a574ce4f30b0f52113104ec1771d26dc8c8df83d0c37766a4755443959ba5c"
+      },
+      "copied": 2,
+      "mirrors": [],
+      "files": 2198,
+      "bytes": 57482166,
+      "tree_sha256": "02c620b1d3abe512cd85d1de57cf8eba1df89725c0e1370f958b6068ef4eeb80",
+      "excluded_lfs_source_members": []
+    },
+    {
+      "slug": "Instructor",
+      "target": "Agente core kernel Yaiwes principal/Instructor",
+      "status": "EXTRACTED_VERIFIED",
+      "parts": 6,
+      "part_sha256": {
+        "Agente core kernel Yaiwes principal/Instructor_0001.zip": "b91a5987cf00c06b3ca8823012f0f3fd2ee06e012b05af87574f920e5899ed90",
+        "Agente core kernel Yaiwes principal/Instructor_0002.zip": "dc5321c87a361c0fb0d98b6bd09f2e8cfa7938bee0337e65fd2155293e200ccd",
+        "Agente core kernel Yaiwes principal/Instructor_0003.zip": "0f316cd45a8c343d757f25e17738a272b1a23574aefa2c2e1bf4154def991748",
+        "Agente core kernel Yaiwes principal/Instructor_0004.zip": "9f16afb3683c0d345297f06328be823fda3c19d4ba5781c83021990e1922b9e0",
+        "Agente core kernel Yaiwes principal/Instructor_0005.zip": "137152c6e8878003460fa7fc97bcaa9accb906a5ec9ec616719a25ac1569e723",
+        "Agente core kernel Yaiwes principal/Instructor_0006.zip": "55747334cf07dac23c26df8fae8611f8922a725b13cdb25018669e6e817dc93c"
+      },
+      "copied": 1,
+      "mirrors": [],
+      "files": 991,
+      "bytes": 76944987,
+      "tree_sha256": "30cc77a164eb1f29b3923285913b33c1d725dd8662205fac471dbc9c01322468",
+      "excluded_lfs_source_members": []
+    },
+    {
+      "slug": "LiteLLM",
+      "target": "Agente core kernel Yaiwes principal/LiteLLM",
+      "status": "EXTRACTED_VERIFIED",
+      "parts": 6,
+      "part_sha256": {
+        "Agente core kernel Yaiwes principal/LiteLLM_0001.zip": "406a6b60082f409668c2b4d0be9e4fc57c2f08645fe8d1fcdf02a54c9919960b",
+        "Agente core kernel Yaiwes principal/LiteLLM_0002.zip": "54810645d16da03cd5b62647757861b5a13ace9e975ec4de5a53f5bff6ac1e83",
+        "Agente core kernel Yaiwes principal/LiteLLM_0003.zip": "4a5e6034ded9f1a3f6be9bb36a39b44844c022fee582d0e0b799ac781006078f",
+        "Agente core kernel Yaiwes principal/LiteLLM_0004.zip": "cacea3df295a343f2425d16e0bd42e4332b76d30978ca04871258f1c75831262",
+        "Agente core kernel Yaiwes principal/LiteLLM_0005.zip": "720f0785253082187da14df32262f80e2634add7de66ce1ada037b7f23bbe48c",
+        "Agente core kernel Yaiwes principal/LiteLLM_0006.zip": "be42f9a2aadb91062837268bd0c970ce28163f10c43b2ab18fb418daf486d635"
+      },
+      "copied": 246,
+      "mirrors": [],
+      "files": 10070,
+      "bytes": 165940450,
+      "tree_sha256": "ce205f3bf25aa8a9a71696b080ba98810bc302c9f05c9a34ca23e86f8a67e2f4",
+      "excluded_lfs_source_members": []
+    }
+  ],
+  "failures": [],
+  "verdict": "SHARD_PASS"
+}
