@@ -1,0 +1,139 @@
+{
+  "schema": "yaiwes.extraction.canonical-retry.v2",
+  "run_id": "33843593584",
+  "shard_index": 3,
+  "shard_count": 4,
+  "selected": [
+    {
+      "slug": "Open-Policy-Agent",
+      "target": "Agente core kernel Yaiwes principal/Open-Policy-Agent"
+    },
+    {
+      "slug": "PostHog",
+      "target": "Agente core kernel Yaiwes principal/PostHog"
+    },
+    {
+      "slug": "Prefect",
+      "target": "Agente core kernel Yaiwes principal/Prefect"
+    },
+    {
+      "slug": "sqlite-vec",
+      "target": "Agente core kernel Yaiwes principal/sqlite-vec"
+    },
+    {
+      "slug": "VictoriaMetrics",
+      "target": "Agente core kernel Yaiwes principal/VictoriaMetrics"
+    },
+    {
+      "slug": "vLLM-Semantic-Router",
+      "target": "Agente core kernel Yaiwes principal/vLLM-Semantic-Router"
+    },
+    {
+      "slug": "VM_logo",
+      "target": "Agente core kernel Yaiwes principal/VM_logo"
+    }
+  ],
+  "processed": [
+    {
+      "slug": "Open-Policy-Agent",
+      "target": "Agente core kernel Yaiwes principal/Open-Policy-Agent",
+      "status": "EXTRACTED_VERIFIED",
+      "parts": 4,
+      "part_sha256": {
+        "Agente core kernel Yaiwes principal/Open-Policy-Agent_0001.zip": "0e75a02ace3b5438fa6cb7afa41452b23e509013e158a8575143e6d66ea0bcc7",
+        "Agente core kernel Yaiwes principal/Open-Policy-Agent_0002.zip": "8be5304b7ec87d7e914408dda55a5eb1741d9884f2e036f545143e86811405cd",
+        "Agente core kernel Yaiwes principal/Open-Policy-Agent_0003.zip": "3e060b3b3d7bc5b3b7d7388f8d877b7de76312bcaeaf137541d9722d3bc01deb",
+        "Agente core kernel Yaiwes principal/Open-Policy-Agent_0004.zip": "1eedf105efe6ab94b66f090625420965adf36f7d4900180dff76f37b347485ad"
+      },
+      "copied": 2,
+      "mirrors": [],
+      "files": 7976,
+      "bytes": 72863367,
+      "tree_sha256": "7b6c74e27ce709350f09115f10c9a6297de0598b14f449a107e55b8032b21717",
+      "excluded_lfs_source_members": []
+    },
+    {
+      "slug": "Prefect",
+      "target": "Agente core kernel Yaiwes principal/Prefect",
+      "status": "EXTRACTED_VERIFIED",
+      "parts": 4,
+      "part_sha256": {
+        "Agente core kernel Yaiwes principal/Prefect_0001.zip": "7aabeafe802848de87616e68f2e76b8e78f97bd5974e03b0167ce58d95f6641a",
+        "Agente core kernel Yaiwes principal/Prefect_0002.zip": "e004124cf6fb932c3e27d9b5d05c4032c1223dff56d4af6ce96b0669f021e80c",
+        "Agente core kernel Yaiwes principal/Prefect_0003.zip": "0c3e5f55414a78cdc9c85b0ecfd773f19397f7046cb0968c7cbea8f545c287ce",
+        "Agente core kernel Yaiwes principal/Prefect_0004.zip": "c2b0bb6779d61f0e5daa44dcb0fdcee48bd821cb6e2c4c8e61c79c0be8cd5412"
+      },
+      "copied": 3,
+      "mirrors": [],
+      "files": 5360,
+      "bytes": 87287086,
+      "tree_sha256": "e75d6fc4be7309a07b630be45663e6c4e8fb111aefe8a173b51e92769b7cf384",
+      "excluded_lfs_source_members": []
+    },
+    {
+      "slug": "sqlite-vec",
+      "target": "Agente core kernel Yaiwes principal/sqlite-vec",
+      "status": "EXTRACTED_VERIFIED",
+      "parts": 1,
+      "part_sha256": {
+        "Agente core kernel Yaiwes principal/sqlite-vec_0001.zip": "1353018914ea7b61ac4b83e6117786ba368a9d4b7d2e0b35dc3c828707cf389d"
+      },
+      "copied": 28,
+      "mirrors": [],
+      "files": 325,
+      "bytes": 2793662,
+      "tree_sha256": "e124b35aae6e17511a75fa5147a888ce94c59d0b0d7eba52921c82ace4bef268",
+      "excluded_lfs_source_members": []
+    },
+    {
+      "slug": "VictoriaMetrics",
+      "target": "Agente core kernel Yaiwes principal/VictoriaMetrics",
+      "status": "EXTRACTED_VERIFIED",
+      "parts": 6,
+      "part_sha256": {
+        "Agente core kernel Yaiwes principal/VictoriaMetrics_0001.zip": "ed87bfd2865a43c25b21c43209cdeb450257046a632c8845c1fa2b7f2f35edc8",
+        "Agente core kernel Yaiwes principal/VictoriaMetrics_0002.zip": "759fb84fd1d27cdb6d16f45ff5d8a3b68fbfe0a4f2484d54793dbf2de73a94e1",
+        "Agente core kernel Yaiwes principal/VictoriaMetrics_0003.zip": "49f83fd42c770e7e571691ded06bac9145cb9f2ab2d3d3fd0f980993674649da",
+        "Agente core kernel Yaiwes principal/VictoriaMetrics_0004.zip": "db5368fb6a54cf497a1faf9bc7f2bc6824ac1b45652fb656eaa5c4add7bca4ed",
+        "Agente core kernel Yaiwes principal/VictoriaMetrics_0005.zip": "dbb7f80ac8439ff2c535059baa38e3daa51099c6b1f6312a49cdfca9a959b209",
+        "Agente core kernel Yaiwes principal/VictoriaMetrics_0006.zip": "3e3e9f9bc0f28211a2aa2e9fdd7ea3d15e928ea4d1d6e13017c598477e43e585"
+      },
+      "copied": 1,
+      "mirrors": [],
+      "files": 8080,
+      "bytes": 180605844,
+      "tree_sha256": "a295ad740b6bb796b8ee4528d57014086f757c9104ed9ab980e8ec2843ce6261",
+      "excluded_lfs_source_members": []
+    },
+    {
+      "slug": "VM_logo",
+      "target": "Agente core kernel Yaiwes principal/VM_logo",
+      "status": "EXTRACTED_VERIFIED",
+      "parts": 1,
+      "part_sha256": {
+        "Agente core kernel Yaiwes principal/VictoriaMetrics/VM_logo.zip": "4cd326f88067504378b2d1420859f8140d533c41b9317a09c394791f2df478be"
+      },
+      "copied": 28,
+      "mirrors": [],
+      "files": 28,
+      "bytes": 7277737,
+      "tree_sha256": "97b4662024367b6a36b6231e6ee05044be46e110dff5d9978576136520161ec4",
+      "excluded_lfs_source_members": []
+    }
+  ],
+  "failures": [
+    {
+      "slug": "PostHog",
+      "target": "Agente core kernel Yaiwes principal/PostHog",
+      "error": "COLLISION_BLOCKED:Agente core kernel Yaiwes principal/PostHog/PostHog/products/slack_app/evals/__init__.py",
+      "retryable": false
+    },
+    {
+      "slug": "vLLM-Semantic-Router",
+      "target": "Agente core kernel Yaiwes principal/vLLM-Semantic-Router",
+      "error": "COLLISION_BLOCKED:Agente core kernel Yaiwes principal/vLLM-Semantic-Router/vLLM-Semantic-Router/website/static/white-paper.pdf.chunks/white-paper.pdf.part-0000;Agente core kernel Yaiwes principal/vLLM-Semantic-Router/vLLM-Semantic-Router/website/static/white-paper.pdf.chunks/white-paper.pdf.part-0001;Agente core kernel Yaiwes principal/vLLM-Semantic-Router/vLLM-Semantic-Router/website/static/white-paper.pdf.chunks/white-paper.pdf.part-0002;Agente core kernel Yaiwes principal/vLLM-Semantic-Router/vLLM-Semantic-Router/website/static/white-paper.pdf.chunks/white-paper.pdf.part-0003",
+      "retryable": false
+    }
+  ],
+  "verdict": "SHARD_GAPS"
+}
