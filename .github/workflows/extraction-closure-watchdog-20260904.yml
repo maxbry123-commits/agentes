@@ -1,0 +1,107 @@
+name: Extraction Closure Watchdog 2026-09-04
+run-name: Extraction closure watchdog • ${{ github.run_id }}
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/extraction-closure-watchdog-20260904.yml']
+permissions:
+  contents: write
+  actions: write
+concurrency:
+  group: extraction-closure-watchdog-main
+  cancel-in-progress: false
+jobs:
+  close:
+    runs-on: ubuntu-latest
+    timeout-minutes: 480
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+      - name: Enforce NO-LFS
+        run: |
+          set -euo pipefail
+          git config --local filter.lfs.clean cat
+          git config --local filter.lfs.smudge cat
+          git config --local --unset-all filter.lfs.process || true
+          git config --local filter.lfs.required false
+      - name: Loop until forensic closure
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          salvage_fallback_attempted=0
+          for iteration in $(seq 1 180); do
+            echo "CLOSURE_ITERATION=$iteration"
+            git fetch origin main
+            git reset --hard origin/main
+            python3 scripts/extract_guardian_repair_20260903.py --audit-only > /tmp/extraction-audit.json
+            read -r gaps retryable blocked verdict <<< "$(python3 -c 'import json; d=json.load(open("/tmp/extraction-audit.json")); c=d["counts"]; print(c["remaining"],c["retryable"],c["blocked"],d["verdict"])')"
+            echo "REMAINING_GAPS=$gaps RETRYABLE_GAPS=$retryable BLOCKED_GAPS=$blocked VERDICT=$verdict"
+            if [ "$gaps" -eq 0 ]; then
+              mkdir -p forensics/extraction
+              python3 - <<'PY'
+          import json, os, subprocess
+          from datetime import datetime, timezone
+          d=json.load(open('/tmp/extraction-audit.json'))
+          out={
+            'schema':'yaiwes.extraction.closure.v1',
+            'verdict':'VERIFIED_CLOSED',
+            'counts':d['counts'],
+            'main_sha':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
+            'verified_at':datetime.now(timezone.utc).isoformat(),
+            'workflow_run_id':os.getenv('GITHUB_RUN_ID')
+          }
+          open('forensics/extraction/VERIFIED_CLOSED.json','w').write(json.dumps(out,indent=2)+'\n')
+          PY
+              git add forensics/extraction/VERIFIED_CLOSED.json
+              if ! git diff --cached --quiet; then
+                git commit -m "fix(extraction): VERIFIED_CLOSED [run ${GITHUB_RUN_ID}]"
+                for a in 1 2 3 4 5; do
+                  git fetch origin main
+                  git rebase --autostash origin/main
+                  git push --no-verify origin HEAD:main && break
+                  test "$a" -lt 5 || exit 41
+                  sleep $((a*5))
+                done
+              fi
+              echo VERIFIED_CLOSED
+              exit 0
+            fi
+            active_guardian=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?status=in_progress&per_page=100" --jq '[.workflow_runs[] | select(.path==".github/workflows/extraction-repair-guardian-20260903.yml")] | length')
+            queued_guardian=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?status=queued&per_page=100" --jq '[.workflow_runs[] | select(.path==".github/workflows/extraction-repair-guardian-20260903.yml")] | length')
+            active_salvage=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?status=in_progress&per_page=100" --jq '[.workflow_runs[] | select(.path | startswith(".github/workflows/extraction-lfs-salvage-shard-"))] | length')
+            queued_salvage=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?status=queued&per_page=100" --jq '[.workflow_runs[] | select(.path | startswith(".github/workflows/extraction-lfs-salvage-shard-"))] | length')
+            echo "ACTIVE_GUARDIAN=$active_guardian QUEUED_GUARDIAN=$queued_guardian ACTIVE_SALVAGE=$active_salvage QUEUED_SALVAGE=$queued_salvage"
+            if [ "$retryable" -gt 0 ] && [ $((active_guardian+queued_guardian)) -eq 0 ]; then
+              gh api --method POST "repos/${GITHUB_REPOSITORY}/dispatches" -f event_type=extraction-repair-needed
+              echo "GUARDIAN_DISPATCHED retryable=$retryable"
+            fi
+            if [ "$blocked" -gt 0 ] && [ $((active_salvage+queued_salvage)) -eq 0 ] && [ "$salvage_fallback_attempted" -eq 0 ]; then
+              salvage_fallback_attempted=1
+              set +e
+              python3 scripts/extract_guardian_lfs_salvage_20260904.py --shard-index 0 --shard-count 1
+              salvage_rc=$?
+              set -e
+              echo "SALVAGE_FALLBACK_RC=$salvage_rc"
+              git add -A -- 'core kernel Yaiwes principal' 'Agente core kernel Yaiwes principal' forensics/extraction
+              python3 -c 'import subprocess,sys,pathlib; m=b"version https://git-lfs.github.com/spec/v1\n"; ps=subprocess.check_output(["git","diff","--cached","--name-only","-z"]).split(b"\0"); bad=[p.decode("utf-8","surrogateescape") for p in ps if p and pathlib.Path(p.decode("utf-8","surrogateescape")).is_file() and pathlib.Path(p.decode("utf-8","surrogateescape")).read_bytes()[:1024].startswith(m)]; sys.exit(73 if bad else 0)'
+              if ! git diff --cached --quiet; then
+                git commit -m "fix(extraction): watchdog salvage fallback [run ${GITHUB_RUN_ID}]"
+                for a in 1 2 3 4 5; do
+                  git fetch origin main && git rebase --autostash origin/main && git push --no-verify origin HEAD:main && break
+                  test "$a" -lt 5 || exit 41
+                  sleep $((a*5))
+                done
+              fi
+            fi
+            sleep 60
+          done
+          echo EXTRACTION_CLOSURE_TIMEOUT
+          exit 75
