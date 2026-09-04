@@ -134,3 +134,15 @@ Luego tenías que sacar la lista que sale en el documento readme arquitectura Ya
 1. Mis instrucciones 
 2. Las instrucciones de Claude 
 Hazlo
+
+## BLOQUE 5
+
+Alucinas basura 
+
+Audita y dime si metiste toda la arquitectura que te di de los documentos que te di + lo que te di de claude revisa si la arquitectura está completo en el archivo de readme arquitectura Yaiwes? 
+
+
+Revisa si metiste todas las instrucciones de Claude mis instrucciones en el Craxy wall? 
+
+
+Maldito inbesil incompetente hazlo bien
