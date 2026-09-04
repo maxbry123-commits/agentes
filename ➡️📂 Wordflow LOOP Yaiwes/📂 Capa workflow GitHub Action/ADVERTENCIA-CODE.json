@@ -1,0 +1,52 @@
+{
+  "schema": "yaiwes.github-actions.skill.warning.v1",
+  "canonical_root": "skills/skills Github acción/",
+  "rule": "DO_NOT_REWRITE_CODE",
+  "execution_policy": "COPY_THEN_SURGICAL_EDIT",
+  "allowed_edits": [
+    "TASK_ID",
+    "source_repository/source_url",
+    "source_ref resolved to commit SHA",
+    "source_paths",
+    "destination_repository/destination_root",
+    "operation",
+    "manifest/checkpoint names",
+    "concurrency group scoped to repository+destination"
+  ],
+  "forbidden": [
+    "rewrite a workflow or script from memory",
+    "remove single-writer protection",
+    "blindly rerun deterministic failures",
+    "rebase a generated payload commit after publish conflict; rebuild from fresh origin/main instead",
+    "publish raw Git LFS pointers",
+    "skip staged-index LFS/size verification",
+    "count historical/control rows as new component gaps",
+    "declare VERIFIED_CLOSED without independent read-back"
+  ],
+  "gap_classes": ["remaining_component_gaps", "control_gaps", "historical_baseline_rows"],
+  "publish_policy": {
+    "writers_per_destination": 1,
+    "snapshot": "fresh origin/main",
+    "push": "fast-forward only",
+    "non_fast_forward": "discard generated commit and rebuild on fresh snapshot",
+    "transient_retry_max": 3
+  },
+  "hard_gates": [
+    "ZERO_LFS_POINTERS_IN_STAGED_INDEX",
+    "NO_GIT_BLOB_GE_100_MIB",
+    "SPLIT_TARGET_LE_45_MIB_WHEN_SPLIT_IS_REQUIRED",
+    "READ_BACK_PASS",
+    "remaining_component_gaps=0",
+    "active_jobs=0"
+  ],
+  "exact_code_locks": {
+    "Code Github acción descargar y extracción/gha-download-extract.yml": "4e64ca02c2bc970dc4cd246a2a43ec2fdb7b4e62",
+    "Code Github acción descargar y extracción/FORENSIC-PASS-research-download-chain-final.yml": "9ffd682ec9491741a8f49e4a7f8bb385aa62c2ee",
+    "Code Github acción descargar y extracción/FORENSIC-PASS-research_download_chain.py": "b629f9a7844a4752ff7c28b844b83e7f1d99ccb1",
+    "Code Github acción descargar y extracción/research_download_chain.py": "1504bbc7ec780a351beb105df884180c9ae2c666",
+    "Copiar lotes de archivos/gha-copy-files.yml": "81b4b8c63af58ee52be2d6b1fabe3c4dedb01644",
+    "Copiar lotes de archivos/gha-copy-skill-example.yml": "d6e27767e5e23c35ff41cc5c6afc7afd8db2e42f",
+    "Mover lotes de archivos/gha-move-files.yml": "07b8d71a83d52307d27c09b5832388853ceba8c0",
+    "Mover lotes de archivos/gha-move-root-or-files.yml": "570a06331bea41cd618eff7d882d396947d52bc2"
+  }
+}
