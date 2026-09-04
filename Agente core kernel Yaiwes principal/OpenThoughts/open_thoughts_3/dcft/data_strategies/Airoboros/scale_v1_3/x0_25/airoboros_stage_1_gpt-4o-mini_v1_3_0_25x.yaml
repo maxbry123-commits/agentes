@@ -1,0 +1,81 @@
+# Stage 1: Generate instructions
+operators:
+- id: load_airoboros_general
+  config:
+    type: load_preexisting
+    framework_name: airoboros_stage_1_general_instructions_gpt-4o-mini_0_25x 
+- id: load_airoboros_experience
+  config:
+    type: load_preexisting
+    framework_name: airoboros_stage_1_experience_instructions_gpt-4o-mini_0_25x
+- id: load_airoboros_cot
+  config:
+    type: load_preexisting
+    framework_name: airoboros_stage_1_cot_instructions_gpt-4o-mini_0_25x 
+- id: load_airoboros_plan
+  config:
+    type: load_preexisting
+    framework_name: airoboros_stage_1_plan_instructions_gpt-4o-mini_0_25x     
+- id: load_airoboros_song
+  config:
+    type: load_preexisting
+    framework_name: airoboros_stage_1_song_instructions_gpt-4o-mini_0_25x
+- id: load_airoboros_card
+  config:
+    type: load_preexisting
+    framework_name: airoboros_stage_1_card_instructions_gpt-4o-mini_0_25x
+- id: load_airoboros_agent
+  config:
+    type: load_preexisting
+    framework_name: airoboros_stage_1_agent_instructions_gpt-4o-mini_0_25x
+- id: load_airoboros_roleplay
+  config:
+    type: load_preexisting
+    framework_name: airoboros_stage_1_roleplay_instructions_gpt-4o-mini_0_25x
+- id: load_airoboros_coding
+  config:
+    type: load_preexisting
+    framework_name: airoboros_stage_1_coding_instructions_gpt-4o-mini_0_25x
+- id: load_airoboros_riddle
+  config:
+    type: load_preexisting
+    framework_name: airoboros_stage_1_riddle_instructions_gpt-4o-mini_0_25x
+- id: load_airoboros_trivia
+  config:
+    type: load_preexisting
+    framework_name: airoboros_stage_1_trivia_instructions_gpt-4o-mini_0_25x
+- id: load_airoboros_wordgame
+  config:
+    type: load_preexisting
+    framework_name: airoboros_stage_1_wordgame_instructions_gpt-4o-mini_0_25x
+- id: load_airoboros_writing
+  config:
+    type: load_preexisting
+    framework_name: airoboros_stage_1_writing_instructions_gpt-4o-mini_0_25x
+- id: load_airoboros_orca
+  config:
+    type: load_preexisting
+    framework_name: airoboros_stage_1_orca_instructions_gpt-4o-mini_0_25x
+- id: load_airoboros_joke
+  config:
+    type: load_preexisting
+    framework_name: airoboros_stage_1_joke_instructions_gpt-4o-mini_0_25x
+- id: concatenate_subsets
+  config:
+    type: concatenate
+  input_ids:
+    - load_airoboros_general
+    - load_airoboros_experience
+    - load_airoboros_cot
+    - load_airoboros_plan
+    - load_airoboros_song
+    - load_airoboros_card
+    - load_airoboros_agent
+    - load_airoboros_roleplay
+    - load_airoboros_coding
+    - load_airoboros_riddle
+    - load_airoboros_trivia
+    - load_airoboros_wordgame
+    - load_airoboros_writing
+    - load_airoboros_orca
+    - load_airoboros_joke

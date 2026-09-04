@@ -1,0 +1,16 @@
+include_hp: dcft/train/hp_settings/qwen_sft.yaml
+
+dataset_dir: ONLINE
+dataset: mlfoundations-dev/oh-dcft-v3.1-gemini-1.5-pro
+messages: conversations
+formatting: sharegpt
+
+per_device_train_batch_size: 8      # Can change depending on hardware
+gradient_accumulation_steps: 2      # Can change depending on number of GPUs
+
+output_dir: "/data4/dcft/experiments/train/checkpoints/oh-dcft-v3.1-gemini-1.5-pro"
+run_name: oh-dcft-v3.1-gemini-1.5-pro-qwen
+hub_model_id: mlfoundations-dev/oh-dcft-v3.1-gemini-1.5-pro-qwen
+report_to: wandb
+push_to_db: true
+push_to_hub: true

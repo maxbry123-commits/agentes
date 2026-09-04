@@ -1,0 +1,109 @@
+operators:
+  - id: load_numina_math
+    config:
+      type: "hf_source"
+      dataset: "AI-MO/NuminaMath-CoT"
+      split: train
+  - id: select_amc_aime
+    config:
+      type: function
+      function: data_strategies.commons.select_rows
+      function_config:
+        conditions:
+          source: amc_aime
+    input_ids:
+      - load_numina_math
+  - id: select_math
+    config:
+      type: function
+      function: data_strategies.commons.select_rows
+      function_config:
+        conditions:
+          source: math
+    input_ids:
+      - load_numina_math
+  - id: select_olympiad
+    config:
+      type: function
+      function: data_strategies.commons.select_rows
+      function_config:
+        conditions:
+          source: olympiads
+    input_ids:
+      - load_numina_math
+  - id: select_aops_forum
+    config:
+      type: function
+      function: data_strategies.commons.select_rows
+      function_config:
+        conditions:
+          source: aops_forum
+    input_ids:
+      - load_numina_math
+  - id: concat_numina
+    config:
+      type: concatenate
+    input_ids:
+      - select_olympiad
+      - select_math
+      - select_amc_aime
+      - select_aops_forum
+  - id: filter_numina
+    config:
+      type: hf_filter
+      filter_fn: dcft.data_strategies.Stratos.bespoke-stratos-data-generation-extended.math_filtering.filter_problems
+    input_ids:
+      - concat_numina
+  - id: decontaminate
+    config:
+      type: cpu_function
+      num_cpus: 80
+      function:  data_strategies.DeepSeekR1.utils.decontaminate_table
+      function_config:
+        column: problem
+        eval_datasets:
+          - HuggingFaceH4/MATH-500
+          - Maxwell-Jia/AIME_2024
+          - AI-MO/aimo-validation-amc
+          - livecodebench/code_generation_lite
+        eval_columns:
+          - problem
+          - Problem
+          - problem
+          - question_content
+        eval_splits:
+          - test
+          - train
+          - train
+          - test
+        similarity_threshold: 95.0
+    input_ids:
+      - filter_numina
+  - id: fuzzy_dedup
+    config:
+      type: cpu_function
+      num_cpus: 80
+      function: data_strategies.DeepSeekR1.utils.fuzzy_dedup
+      function_config:
+        column: problem
+        similarity_threshold: 95.0
+    input_ids:
+      - decontaminate
+
+  # Due to problems with rich progress not being displayed in the cluster, we use annotate_math_stratos_scale.py to run
+  # the reasoner on the dataset.
+  #  - id: annotate
+  #   config:
+  #     type: completions
+  #     map: deepseek_reasoner
+  #     model: deepseek-reasoner
+  #     temperature: 0.0
+  #     max_requests_per_minute: 100
+  #     max_tokens_per_minute: 100_000_000
+  #     map_config:
+  #       input_problem_column: problem
+  #       input_ground_truth_solution_column: solution
+  #       output_deepseek_solution_column: deepseek_solution
+  #   input_ids:
+  #     - decontaminate
+      

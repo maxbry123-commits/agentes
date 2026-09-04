@@ -1,0 +1,87 @@
+operators:
+- id: load_camel_math
+  config:
+    type: load_preexisting
+    framework_name: camel_math_gpt-4o-mini_v1_3
+
+- id: load_camel_chemistry
+  config:
+    type: load_preexisting
+    framework_name: camel_chemistry_gpt-4o-mini_v1_3
+
+- id: load_camel_biology
+  config:
+    type: load_preexisting
+    framework_name: camel_biology_gpt-4o-mini_v1_3
+
+- id: load_alpaca
+  config:
+    type: load_preexisting
+    framework_name: alpaca_scale_x.5
+
+- id: load_unnatural_instructions
+  config:
+    type: load_preexisting
+    framework_name: unnatural_instructions_gpt-4o-mini
+
+- id: load_opengpt
+  config:
+    type: load_preexisting
+    framework_name: opengpt_gpt-4o-mini
+  
+- id: load_slimorca
+  config:
+    type: load_preexisting
+    framework_name:  slim-orca_gpt-4o-mini_scale_for_oh_v1.2.1
+
+- id: load_evol_instruct
+  config:
+    type: load_preexisting
+    framework_name: evol_instruct_gpt-4o-mini
+
+- id: load_metamath
+  config:
+    type: load_preexisting
+    framework_name: metamath_gpt-4o-mini
+
+- id: load_airoboros
+  config:
+    type: load_preexisting
+    framework_name: airoboros_gpt-4o-mini_v1_3
+
+- id: airoboros_drop_shard_id
+  config:
+    type: function
+    function: data_strategies.commons.remove_columns
+    function_config:
+      columns:
+        - shard_id
+  input_ids:
+    - load_airoboros
+
+- id: mix
+  input_ids:
+    - load_camel_math
+    - load_camel_chemistry
+    - load_camel_biology
+    - load_evol_instruct
+    - load_alpaca
+    - load_unnatural_instructions
+    - load_opengpt
+    - load_slimorca
+    - load_metamath
+    - airoboros_drop_shard_id
+  config:
+    type: mix
+    add_shard_id_column: True
+
+- id: select_final_columns
+  config:
+    type: function
+    function: data_strategies.commons.select_columns
+    function_config:
+      columns:
+        - conversations
+        - shard_id
+  input_ids:
+    - mix

@@ -1,0 +1,21 @@
+name: oh_v1-2_only_unnatural_instructions
+operators: 
+  - id: load_oh_v1-2
+    config:
+      type: hf_source
+      dataset: mlfoundations-dev/oh-dcft-v1.2_no-curation_gpt-4o-mini
+      split: train
+      columns: 
+        - conversations
+        - shard_id
+  - id: filter
+    config:
+      type: function
+      function: data_strategies.OpenHermes.utils.keep_source_oh_dcft_v1_2
+      input_dataset_map: 
+        dataset: load_oh_v1-2
+      function_config:
+        source_to_keep: "unnatural_instructions"
+        column_name: "shard_id"
+    input_ids:
+      - load_oh_v1-2

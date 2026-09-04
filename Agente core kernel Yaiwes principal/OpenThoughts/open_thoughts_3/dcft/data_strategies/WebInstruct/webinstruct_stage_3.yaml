@@ -1,0 +1,19 @@
+operators:
+  - id: load_stage_2
+    config:
+      type: load_preexisting
+      framework_name: webinstruct_stage_2
+
+  - id: revise_qa_pairs
+    config:
+      type: completions
+      map: webinstruct_revise_qa
+      map_config:
+        input_question_column: question
+        input_answer_column: answer
+        input_source_document_column: cleaned_text
+        output_question_column: revised_question
+        output_answer_column: revised_answer
+      model: gpt-4o-mini
+    input_ids:
+      - load_stage_2

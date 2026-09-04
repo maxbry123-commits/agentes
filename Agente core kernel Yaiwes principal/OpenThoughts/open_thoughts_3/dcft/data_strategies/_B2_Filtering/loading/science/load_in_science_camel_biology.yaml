@@ -1,0 +1,141 @@
+operators:
+- id: load_discipline
+  config:
+    type: function
+    function: data_strategies.commons.load_json_string_to_dataset
+    function_config:
+      json_string: '{"discipline": ["biology"], "expert": ["Biologist"], "num_topics": [25], "num_subtopics": [25], "num_questions": [80]}'
+
+- id: sample_dataset_initial
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 25
+  input_ids:
+  - load_discipline
+- id: generate_topics
+  config:
+    type: completions
+    map: list # this uses structured output if available
+    map_config:
+      system_message: "You are a helpful assistant."
+      user_message: "Please list {{num_topics}} diverse {{discipline}} topics. Make sure the topics are {{discipline}} topics. No explanation." # number of topics
+      output_column: topic
+    model: gpt-4o-mini
+    batch: False
+  input_ids:
+    - sample_dataset_initial
+
+- id: generate_subtopics
+  config:
+    type: completions
+    map: list # this uses structured output if available
+    map_config:
+      system_message: "You are a helpful assistant."
+      user_message: "List {{num_subtopics}} different {{discipline}} {{topic}} problem topics. Be precise and make sure the problems are {{topic}} problems." # number of subtopics per topic
+      output_column: subtopic
+    model: gpt-4o-mini
+    batch: False
+  input_ids:
+    - generate_topics
+
+- id: generate_questions
+  config:
+    type: completions
+    map: list
+    map_config:
+      system_message: "You are a {{expert}}."
+      user_message: "From this {{discipline}} subject {{topic}} and this subtopic {{subtopic}} we need to write {{num_questions}} new questions for a {{discipline}} student to solve. Please write a precise problem for the student to solve."
+      output_column: question
+    model: gpt-4o-mini
+    batch: False
+  input_ids:
+    - generate_subtopics
+
+- id: rename_task_column
+  config:
+    type: function
+    function: data_strategies.commons.force_rename_columns
+    function_config:
+      column_maps:
+        question: instruction_seed
+  input_ids:
+  - generate_questions
+- id: sample_dataset_pre
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 1_100_000
+  input_ids:
+  - rename_task_column
+
+- id: add_source_name
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      _source: "camel-biology"
+  input_ids:
+  - sample_dataset_pre
+- id: decontaminate
+  config:
+    type: cpu_function
+    sharded: false
+    num_cpus: 32
+    function:  data_strategies._A1_Source.utils.decontaminate_fuzzy_w_ngram
+    function_config:
+      column: instruction_seed
+      eval_datasets:
+        - HuggingFaceH4/MATH-500
+        - Maxwell-Jia/AIME_2024
+        - AI-MO/aimo-validation-amc
+        - livecodebench/code_generation_lite
+        - mlfoundations-dev/AIME2025_combined
+        - cais/hle
+        - open-r1/codeforces
+        - Idavidrein/gpqa
+        - daman1209arora/jeebench
+        - mlfoundations-dev/mmlu_pro_eval_full
+        - Qwen/CodeElo
+        - open-r1/ioi
+      eval_columns:
+        - problem
+        - Problem
+        - problem
+        - question_content
+        - question
+        - question
+        - description
+        - Question
+        - question
+        - prompt
+        - description
+        - statement
+      eval_splits:
+        - test
+        - train
+        - train
+        - test
+        - train
+        - test
+        - test
+        - train
+        - test
+        - test
+        - test
+        - test
+      eval_subsets:
+        Idavidrein/gpqa: gpqa_diamond
+      similarity_threshold: 75.0
+      ngram_size: 13
+  input_ids:
+  - add_source_name
+- id: sample_dataset
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_limited
+    function_config:
+      num_samples: 1_000_000
+  input_ids: ["decontaminate"]

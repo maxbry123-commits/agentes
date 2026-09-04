@@ -1,0 +1,84 @@
+operators:
+
+- id: load_hf_0K_25K
+  config:
+    type: hf_source
+    dataset: mlfoundations-dev/herorun1_code_0-25000
+    split: train
+- id: load_hf_25K_30K
+  config:
+    type: hf_source
+    dataset: mlfoundations-dev/herorun1_code-test_25K_30K 
+    split: train
+- id: load_hf_30K_50K
+  config:
+    type: hf_source
+    dataset: mlfoundations-dev/herorun1_code-test_30K_50K
+    split: train
+- id: load_hf_50K_150K
+  config:
+    type: hf_source
+    dataset: mlfoundations-dev/herorun1_code-test_50k_150K
+    split: train
+- id: load_hf_150K_250K
+  config:
+    type: hf_source
+    dataset: mlfoundations-dev/herorun1_code-test_150K_250K
+    split: train
+- id: load_hf_350K_450K
+  config:
+    type: hf_source
+    dataset: mlfoundations-dev/herorun1_code-test_350K_450K
+    split: train
+- id: load_hf_250K_350K
+  config:
+    type: hf_source
+    dataset: mlfoundations-dev/herorun1_code-test_250K_350K
+    split: train
+- id: convert_reasoning_trace_to_final
+  config:
+    type: function
+    function: data_strategies.commons.convert_reasoning_trace_to_final
+    function_config:
+      reasoning_column: deepseek_reasoning
+      solution_column: deepseek_solution
+      output_column: final_reasoning_trace
+  input_ids:
+  - load_hf_0K_25K
+  - load_hf_25K_30K
+  - load_hf_30K_50K
+  - load_hf_50K_150K
+  - load_hf_150K_250K
+  - load_hf_250K_350K
+  - load_hf_350K_450K
+- id: fuzzy_dedup
+  config:
+    type: cpu_function
+    num_cpus: 80
+    function: data_strategies.DeepSeekR1.utils.fuzzy_dedup
+    function_config:
+      column: problem
+      similarity_threshold: 95.0
+  input_ids:
+    -  convert_reasoning_trace_to_final
+- id: convert_to_sharegpt
+  config:
+    type: function
+    function: data_strategies.commons.convert_instruction_response_to_sharegpt
+    function_config:
+      input_instruction_column: problem
+      input_response_column: final_reasoning_trace
+      output_sharegpt_column: conversations
+  input_ids:
+    - fuzzy_dedup
+- id: drop_columns
+  config:
+    type: function
+    function: data_strategies.commons.keep_only_columns
+    function_config:
+      columns_to_keep:    
+        - conversations
+        - source
+        - id 
+  input_ids:
+    - convert_to_sharegpt

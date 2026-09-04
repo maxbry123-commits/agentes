@@ -1,0 +1,35 @@
+operators:
+#  - id: load_stage_1
+#    config:
+#      type: load_preexisting
+#      framework_name: webinstruct_stage_1_5
+
+  - id: load_stage_1
+    config:
+      type: hf_source
+#      dataset: reinhardh/wi_generate_fasttext_training
+      dataset: mlfoundations-dev/webinstruct_stage_1_5
+      split: train
+      num_truncate: 22
+      columns: 
+        - text
+        - cleaned_text
+
+#  - id: truncate_dataset_2p5m
+#    config:
+#      type: truncate
+#      num_truncate: 25
+#    input_ids:
+#      - load_stage_1
+
+  - id: extract_qa_pairs
+    config:
+      type: completions
+      map: webinstruct_extract_qa
+      map_config:
+        input_text_column: cleaned_text
+        output_question_column: question
+        output_answer_column: answer
+      model: gpt-4o-mini
+    input_ids:
+      - load_stage_1

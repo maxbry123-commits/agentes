@@ -1,0 +1,59 @@
+dataset_dir: ONLINE
+dataset: mlfoundations-dev/oh-dcft-v1.3_no-curation_gpt-4o-mini_scale_2x
+messages: conversations
+formatting: sharegpt
+
+per_device_train_batch_size: 8      # Can change depending on hardware
+gradient_accumulation_steps: 4      # Can change depending on number of GPUs
+
+output_dir: "/scratch/10000/eguha3/trained_models/oh_scale_x2_compute_equal"
+run_name: oh_scale_x2_compute_equal
+hub_model_id: mlfoundations-dev/oh_scale_x2_compute_equal
+report_to: wandb
+push_to_db: true
+push_to_hub: true
+
+
+
+
+### model
+model_name_or_path: "meta-llama/Meta-Llama-3.1-8B"
+
+### method
+stage: sft
+do_train: true
+finetuning_type: full
+deepspeed: dcft/train/zero3.json
+packing: true
+neat_packing: true
+enable_liger_kernel: false
+
+### dataset
+template: llama3
+cutoff_len: 2048
+overwrite_cache: true
+preprocessing_num_workers: 16
+
+### output
+save_strategy: epoch
+logging_steps: 10
+plot_loss: true
+overwrite_output_dir: true
+
+### train
+adam_beta1: 0.9
+adam_beta2: 0.999
+max_grad_norm: 1
+
+global_batch_size: 512              # Do not change this
+gradient_checkpointing: true
+learning_rate: 5.0e-6
+num_train_epochs: 8.0
+lr_scheduler_type: constant
+bf16: true
+weight_decay: 0.1
+ddp_timeout: 180000000
+
+### eval
+val_size: 0.05
+eval_strategy: epoch

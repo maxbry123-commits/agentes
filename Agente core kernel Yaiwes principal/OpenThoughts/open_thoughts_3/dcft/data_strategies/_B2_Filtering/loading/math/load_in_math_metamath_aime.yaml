@@ -1,0 +1,290 @@
+operators:
+  - id: load_numina_math
+    config:
+      type: "hf_source"
+      dataset: "AI-MO/NuminaMath-CoT"
+      split: train
+  - id: select_amc_aime
+    config:
+      type: function
+      function: data_strategies.commons.select_rows
+      function_config:
+        conditions:
+          source: amc_aime
+    input_ids:
+      - load_numina_math
+  - id: select_olympiad
+    config:
+      type: function
+      function: data_strategies.commons.select_rows
+      function_config:
+        conditions:
+          source: olympiad
+    input_ids:
+      - load_numina_math
+  - id: rename_column_math
+    config:
+      type: function
+      function: data_strategies.commons.force_rename_columns
+      function_config:
+        column_maps:
+          solution: detailed_answer
+          problem: question
+    input_ids:
+      - select_olympiad
+      - select_amc_aime
+  - id: extract_math_answer
+    config:
+      type: completions
+      require_all_responses: False
+      map: metamath_extract_math_answer
+      map_config:
+        detailed_answer_column: detailed_answer
+        output_numerical_answer_column: answer
+      model: gpt-4o-mini
+      n_repeat: 2
+    input_ids:
+      - rename_column_math
+
+  - id: generate_math_problems
+    config:
+      type: completions
+      require_all_responses: False
+      map: metamath_problem_clone
+      map_config:
+        starting_id: 7501
+        ending_id: 60000
+        problems_per_input: 3
+        question_column: question
+        detailed_answer_column: detailed_answer
+        answer_column: answer
+      model: gpt-4o-mini
+      n_repeat: 1
+    input_ids:
+      - extract_math_answer
+
+  # - id: add_column_math
+  #   config:
+  #     type: function
+  #     function: data_strategies.commons.add_constant_columns
+  #     function_config:
+  #       dataset: math
+  #   input_ids:
+  #     - generate_math_problems
+
+  # - id: generate_backward_questions
+  #   config:
+  #     type: completions
+  #     require_all_responses: False
+  #     map: metamath_inverse_question
+  #     map_config:
+  #       question_column: question
+  #       output_inverse_question_column: inverse_question
+  #       output_inverse_answer_column: inverse_answer
+  #     model: gpt-4o-mini
+  #   input_ids:
+  #     - add_column_math
+
+  # - id: self_verify
+  #   config:
+  #     type: completions
+  #     require_all_responses: False
+  #     map: metamath_self_verification
+  #     map_config:
+  #       question_column: inverse_question
+  #       answer_column: answer
+  #     model: gpt-4o-mini
+  #   input_ids:
+  #     - generate_backward_questions
+
+  # - id: fobar
+  #   config:
+  #     type: function
+  #     function: data_strategies.MetaMath.utils.fobar
+  #   input_ids:
+  #     - generate_backward_questions
+
+  # - id: solve_inverse_questions
+  #   config:
+  #     type: completions
+  #     require_all_responses: False
+  #     map: metamath_solve_inverse
+  #     map_config:
+  #       inverse_question_column: inverse_question
+  #       inverse_answer_column: inverse_answer
+  #       output_predicted_answer_column: predicted_answer
+  #     model: gpt-4o-mini
+  #   input_ids:
+  #     - self_verify
+  #     - fobar
+  
+  # - id: rename_columns_inverse
+  #   config:
+  #     type: function
+  #     function: data_strategies.commons.force_rename_columns
+  #     function_config:
+  #       column_maps:
+  #         inverse_question: instruction
+  #         predicted_answer: completion
+  #   input_ids:
+  #     - solve_inverse_questions
+
+  # - id: rephrase_questions
+  #   config:
+  #     type: completions
+  #     require_all_responses: False
+  #     map: metamath_rephrase_question
+  #     map_config:
+  #       question_column: question
+  #       output_rephrased_question_column: rephrased_question
+  #     model: gpt-4o-mini
+  #   input_ids:
+  #     - add_column_math
+
+  # - id: solve_rephrased_questions
+  #   config:
+  #     type: completions
+  #     require_all_responses: False
+  #     map: metamath_solve_rephrased
+  #     map_config:
+  #       rephrased_question_column: rephrased_question
+  #       answer_column: answer
+  #       output_predicted_answer_column: predicted_answer
+  #     model: gpt-4o-mini
+  #   input_ids:
+  #     - rephrase_questions
+
+  # - id: rename_columns_rephrased
+  #   config:
+  #     type: function
+  #     function: data_strategies.commons.force_rename_columns
+  #     function_config:
+  #       column_maps:
+  #         rephrased_question: instruction
+  #         predicted_answer: completion
+  #   input_ids:
+  #     - solve_rephrased_questions
+
+  # - id: mix_rephrased_and_inverse
+  #   config:
+  #     type: mix
+  #   input_ids:
+  #     - rename_columns_inverse
+  #     - rename_columns_rephrased
+
+  # - id: keep_prompt_and_completion
+  #   config:
+  #     type: function
+  #     function: data_strategies.commons.select_columns
+  #     function_config:
+  #       columns: [instruction, completion]
+  #   input_ids:
+  #     - mix_rephrased_and_inverse
+
+  # - id: rename_task_column_final
+  #   config:
+  #     type: function
+  #     function: data_strategies.commons.force_rename_columns
+  #     function_config:
+  #       column_maps:
+  #         completion: response_seed
+  #         instruction: instruction_seed
+  #   input_ids:
+  #     - keep_prompt_and_completion
+
+  # - id: sample_dataset_pre
+  #   config:
+  #     type: function
+  #     function: data_strategies.commons.uniform_sample_fixed
+  #     function_config:
+  #       num_samples: 1_100_000
+  #   input_ids:
+  #   - rename_task_column_final
+  # - id: add_source_name
+  #   config:
+  #     type: function
+  #     function: data_strategies.commons.add_constant_columns
+  #     function_config:
+  #       _source: "MetaMath-AIME"
+  #   input_ids:
+  #   - sample_dataset_pre
+  # - id: decontaminate
+  #   config:
+  #     type: cpu_function
+  #     sharded: false
+  #     num_cpus: 32
+  #     function:  data_strategies._A1_Source.utils.decontaminate_fuzzy_w_ngram
+  #     function_config:
+  #       column: instruction_seed
+  #       eval_datasets:
+  #         - HuggingFaceH4/MATH-500
+  #         - Maxwell-Jia/AIME_2024
+  #         - AI-MO/aimo-validation-amc
+  #         - livecodebench/code_generation_lite
+  #         - mlfoundations-dev/AIME2025_combined
+  #         - cais/hle
+  #         - open-r1/codeforces
+  #         - Idavidrein/gpqa
+  #         - daman1209arora/jeebench
+  #         - mlfoundations-dev/mmlu_pro_eval_full
+  #         - Qwen/CodeElo
+  #         - open-r1/ioi
+  #       eval_columns:
+  #         - problem
+  #         - Problem
+  #         - problem
+  #         - question_content
+  #         - question
+  #         - question
+  #         - description
+  #         - Question
+  #         - question
+  #         - prompt
+  #         - description
+  #         - statement
+  #       eval_splits:
+  #         - test
+  #         - train
+  #         - train
+  #         - test
+  #         - train
+  #         - test
+  #         - test
+  #         - train
+  #         - test
+  #         - test
+  #         - test
+  #         - test
+  #       eval_subsets:
+  #         Idavidrein/gpqa: gpqa_diamond
+  #       similarity_threshold: 75.0
+  #       ngram_size: 13
+  #   input_ids:
+  #   - add_source_name
+  # - id: sample_dataset
+  #   config:
+  #     type: function
+  #     function: data_strategies.commons.uniform_sample_fixed
+  #     function_config:
+  #       num_samples: 1_000_000
+  #   input_ids: ["decontaminate"]
+  # - id: convert_reasoning_trace_to_final
+  #   config:
+  #     type: function
+  #     function: data_strategies.commons.convert_reasoning_trace_to_final
+  #     function_config:
+  #       reasoning_column: reasoning
+  #       solution_column: deepseek_solution
+  #       output_column: final_reasoning_trace
+  #   input_ids:
+  #   - sample_dataset
+  # - id: convert_to_sharegpt
+  #   config:
+  #     type: function
+  #     function: data_strategies.commons.convert_instruction_response_to_sharegpt
+  #     function_config:
+  #       input_instruction_column: instruction_seed
+  #       input_response_column: final_reasoning_trace
+  #       output_sharegpt_column: conversations
+  #   input_ids:
+  #     - convert_reasoning_trace_to_final

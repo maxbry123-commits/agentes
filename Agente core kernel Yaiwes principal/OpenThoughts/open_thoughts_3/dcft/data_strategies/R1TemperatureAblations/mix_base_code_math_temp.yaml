@@ -1,0 +1,15 @@
+operators:
+- id: load_hf_math
+  config:
+    type: load_preexisting
+    framework_name: base_math_temp
+- id: load_hf_code
+  config:
+    type: load_preexisting
+    framework_name: base_code_temp
+- id: mix
+  config:
+    type: mix
+  input_ids:
+    - load_hf_math
+    - load_hf_code

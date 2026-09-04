@@ -1,0 +1,142 @@
+[
+  {
+    "repo": "Zep",
+    "path": "benchmarks/locomo/experiments/experiment_20251207_215609/run_1_results.json",
+    "chunks_dir": "Zep/benchmarks/locomo/experiments/experiment_20251207_215609/run_1_results.json.chunks",
+    "bytes": 14751861,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Zep",
+    "path": "benchmarks/locomo/experiments/experiment_20251207_215609/run_2_results.json",
+    "chunks_dir": "Zep/benchmarks/locomo/experiments/experiment_20251207_215609/run_2_results.json.chunks",
+    "bytes": 14743224,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Zep",
+    "path": "benchmarks/locomo/experiments/experiment_20251207_215609/run_7_results.json",
+    "chunks_dir": "Zep/benchmarks/locomo/experiments/experiment_20251207_215609/run_7_results.json.chunks",
+    "bytes": 14742872,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Zep",
+    "path": "benchmarks/locomo/experiments/experiment_20251207_215609/run_10_results.json",
+    "chunks_dir": "Zep/benchmarks/locomo/experiments/experiment_20251207_215609/run_10_results.json.chunks",
+    "bytes": 14744001,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Zep",
+    "path": "benchmarks/locomo/experiments/experiment_20251207_215609/run_5_results.json",
+    "chunks_dir": "Zep/benchmarks/locomo/experiments/experiment_20251207_215609/run_5_results.json.chunks",
+    "bytes": 14748574,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Zep",
+    "path": "benchmarks/locomo/experiments/experiment_20251207_215609/run_8_results.json",
+    "chunks_dir": "Zep/benchmarks/locomo/experiments/experiment_20251207_215609/run_8_results.json.chunks",
+    "bytes": 14747602,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Zep",
+    "path": "benchmarks/locomo/experiments/experiment_20251207_215609/run_4_results.json",
+    "chunks_dir": "Zep/benchmarks/locomo/experiments/experiment_20251207_215609/run_4_results.json.chunks",
+    "bytes": 14740153,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Zep",
+    "path": "benchmarks/locomo/experiments/experiment_20251207_215609/run_9_results.json",
+    "chunks_dir": "Zep/benchmarks/locomo/experiments/experiment_20251207_215609/run_9_results.json.chunks",
+    "bytes": 14743213,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Zep",
+    "path": "benchmarks/locomo/experiments/experiment_20251207_215609/run_3_results.json",
+    "chunks_dir": "Zep/benchmarks/locomo/experiments/experiment_20251207_215609/run_3_results.json.chunks",
+    "bytes": 14748540,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Zep",
+    "path": "benchmarks/locomo/experiments/experiment_20251207_215609/run_6_results.json",
+    "chunks_dir": "Zep/benchmarks/locomo/experiments/experiment_20251207_215609/run_6_results.json.chunks",
+    "bytes": 14746543,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Zep",
+    "path": "benchmarks/locomo/experiments/experiment_20251203_171523/run_1_results.json",
+    "chunks_dir": "Zep/benchmarks/locomo/experiments/experiment_20251203_171523/run_1_results.json.chunks",
+    "bytes": 10932112,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Zep",
+    "path": "benchmarks/locomo/experiments/experiment_20251203_171523/run_2_results.json",
+    "chunks_dir": "Zep/benchmarks/locomo/experiments/experiment_20251203_171523/run_2_results.json.chunks",
+    "bytes": 10938043,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Zep",
+    "path": "benchmarks/locomo/experiments/experiment_20251203_171523/run_7_results.json",
+    "chunks_dir": "Zep/benchmarks/locomo/experiments/experiment_20251203_171523/run_7_results.json.chunks",
+    "bytes": 10941032,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Zep",
+    "path": "benchmarks/locomo/experiments/experiment_20251203_171523/run_10_results.json",
+    "chunks_dir": "Zep/benchmarks/locomo/experiments/experiment_20251203_171523/run_10_results.json.chunks",
+    "bytes": 10938909,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Zep",
+    "path": "benchmarks/locomo/experiments/experiment_20251203_171523/run_5_results.json",
+    "chunks_dir": "Zep/benchmarks/locomo/experiments/experiment_20251203_171523/run_5_results.json.chunks",
+    "bytes": 10933085,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Zep",
+    "path": "benchmarks/locomo/experiments/experiment_20251203_171523/run_8_results.json",
+    "chunks_dir": "Zep/benchmarks/locomo/experiments/experiment_20251203_171523/run_8_results.json.chunks",
+    "bytes": 10935455,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Zep",
+    "path": "benchmarks/locomo/experiments/experiment_20251203_171523/run_4_results.json",
+    "chunks_dir": "Zep/benchmarks/locomo/experiments/experiment_20251203_171523/run_4_results.json.chunks",
+    "bytes": 10938846,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Zep",
+    "path": "benchmarks/locomo/experiments/experiment_20251203_171523/run_9_results.json",
+    "chunks_dir": "Zep/benchmarks/locomo/experiments/experiment_20251203_171523/run_9_results.json.chunks",
+    "bytes": 10937625,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Zep",
+    "path": "benchmarks/locomo/experiments/experiment_20251203_171523/run_3_results.json",
+    "chunks_dir": "Zep/benchmarks/locomo/experiments/experiment_20251203_171523/run_3_results.json.chunks",
+    "bytes": 10937494,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "Zep",
+    "path": "benchmarks/locomo/experiments/experiment_20251203_171523/run_6_results.json",
+    "chunks_dir": "Zep/benchmarks/locomo/experiments/experiment_20251203_171523/run_6_results.json.chunks",
+    "bytes": 10934235,
+    "chunk_bytes": 8388608
+  }
+]

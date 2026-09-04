@@ -1,0 +1,19 @@
+operators:
+- id: load_codeforces
+  config:
+    type: hf_source
+    dataset: open-r1/codeforces-cots
+    split: train
+- id: annotate_instruction
+  config:
+    type: completions
+    map: chat
+    require_all_responses: false
+    map_config:
+      user_message_column: prompt
+      output_column: 4o_mini_completion
+    model: gpt-4o-mini
+    batch: false
+  input_ids:
+  - load_codeforces
+    

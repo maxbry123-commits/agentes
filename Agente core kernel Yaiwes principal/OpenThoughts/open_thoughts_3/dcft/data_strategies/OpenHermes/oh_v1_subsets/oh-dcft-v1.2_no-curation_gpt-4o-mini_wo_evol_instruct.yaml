@@ -1,0 +1,19 @@
+operators:
+- id: load_oh_dcft_v1-2
+  config:
+    type: hf_source
+    dataset: mlfoundations-dev/oh-dcft-v1.2_no-curation_gpt-4o-mini
+    split: train
+    columns: 
+      - conversations
+      - shard_id
+
+- id: filter_source
+  config:
+    type: function
+    function: data_strategies.OpenHermes.utils.remove_source
+    function_config:
+      source_to_remove: "evol_instruct"
+      column_name: "shard_id"
+  input_ids:
+    - load_oh_dcft_v1-2

@@ -1,0 +1,15 @@
+operators:
+  - id: load_code_contests
+    config:
+      type: "hf_source"
+      dataset: "mlfoundations-dev/code_stratos_scale_annotated"
+      split: train
+  - id: process_code
+    config:
+      type: "cpu_function"
+      function: data_strategies.Stratos.process_code.process_dataset_parallel
+      num_shards: 20
+      num_cpus: 94
+      sharded: true
+    input_ids:
+      - load_code_contests

@@ -1,0 +1,117 @@
+operators:
+  - id: load_preexisting_top_1
+    config:
+      type: load_preexisting
+      framework_name: a1_science_stackexchange_physics
+  - id: sample_dataset_pre_top_1
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample_fixed
+      function_config:
+        num_samples: 3_950
+    input_ids:
+      - load_preexisting_top_1
+
+  - id: load_preexisting_top_2
+    config:
+      type: load_preexisting
+      framework_name: a1_science_organic_chem_pdfs
+  - id: sample_dataset_pre_top_2
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample_fixed
+      function_config:
+        num_samples: 3_950
+    input_ids:
+      - load_preexisting_top_2
+
+  - id: load_preexisting_top_3
+    config:
+      type: load_preexisting
+      framework_name: a1_science_cqadupstack
+  - id: sample_dataset_pre_top_3
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample_fixed
+      function_config:
+        num_samples: 3_950
+    input_ids:
+      - load_preexisting_top_3
+    
+  - id: load_preexisting_top_4
+    config:
+      type: load_preexisting
+      framework_name: a1_science_camel_physics
+  - id: sample_dataset_pre_top_4
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample_fixed
+      function_config:
+        num_samples: 3_950
+    input_ids:
+      - load_preexisting_top_4
+
+  - id: load_preexisting_top_5
+    config:
+      type: load_preexisting
+      framework_name: a1_science_fineweb
+  - id: sample_dataset_pre_top_5
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample_fixed
+      function_config:
+        num_samples: 3_950
+    input_ids:
+      - load_preexisting_top_5
+
+  - id: load_preexisting_top_6
+    config:
+      type: load_preexisting
+      framework_name: a1_science_arxiv_biology
+  - id: sample_dataset_pre_top_6
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample_fixed
+      function_config:
+        num_samples: 3_950
+    input_ids:
+      - load_preexisting_top_6
+
+  - id: load_preexisting_top_7
+    config:
+      type: load_preexisting
+      framework_name: a1_science_wikipedia_field_of_science
+  - id: sample_dataset_pre_top_7
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample_fixed
+      function_config:
+        num_samples: 3_950
+    input_ids:
+      - load_preexisting_top_7
+    
+  - id: load_preexisting_top_8
+    config:
+      type: load_preexisting
+      framework_name: a1_science_wikipedia_biology
+  - id: sample_dataset_pre_top_8
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample_fixed
+      function_config:
+        num_samples: 3_950
+    input_ids:
+      - load_preexisting_top_8
+
+  - id: mix
+    config:
+      type: mix
+    input_ids:
+      - sample_dataset_pre_top_1
+      - sample_dataset_pre_top_2
+      - sample_dataset_pre_top_3
+      - sample_dataset_pre_top_4
+      - sample_dataset_pre_top_5
+      - sample_dataset_pre_top_6
+      - sample_dataset_pre_top_7
+      - sample_dataset_pre_top_8

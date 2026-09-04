@@ -1,0 +1,48 @@
+operators:
+  - id: load_preexisting
+    config:
+      type: load_preexisting
+      framework_name: base_get_openr1_hf
+  - id: select_rows_without_proof
+    config:
+      type: function
+      sharded: true
+      num_shards: 32
+      function: data_strategies.commons.select_rows_without
+      function_config:
+        conditions:
+          answer: "proof"
+    input_ids:
+      - load_preexisting
+  - id: extract_math_answer
+    config:
+      type: generic_resource_function
+      memory: 600
+      num_cpus: 80
+      num_shards: 16
+      sharded: true
+      function: data_strategies.OpenR1_MultipleSamples.etash_is_tired.multiple_samples_majority_consensus_openr1_math_verify.process_majority_consensus
+    input_ids:
+      - select_rows_without_proof
+  - id: load_preexisting_all_proofs
+    config:
+      type: hf_source
+      dataset: mlfoundations-dev/open_r1_hf_get_all_proofs
+      split: train
+  - id: remove_columns_proof
+    config:
+      type: function
+      sharded: true
+      num_shards: 10
+      function: data_strategies.commons.keep_only_columns
+      function_config:
+        columns_to_keep:
+          - conversations
+    input_ids:
+      - load_preexisting_all_proofs
+  - id: mix
+    config:
+      type: mix
+    input_ids:
+      - remove_columns_proof
+      - extract_math_answer

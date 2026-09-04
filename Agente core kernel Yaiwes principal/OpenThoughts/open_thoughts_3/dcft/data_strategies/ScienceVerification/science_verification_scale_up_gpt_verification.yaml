@@ -1,0 +1,54 @@
+operators:
+- id: load_preexisting
+  config:
+    type: load_preexisting
+    framework_name: science_verification_scale_up 
+- id: validate_questions
+  config:
+    type: completions
+    model: gpt-4o-mini
+    map: binary_classifier
+    map_config:
+      user_message: |
+        Is the provided solution a correct solution to the following problem?
+
+        Question: {{problem}}
+        Response: {{final_reasoning_trace}}
+      output_column: correct
+    temperature: 0.0  # From stage 1
+    top_p: 1.0
+    presence_penalty: 0.0
+  input_ids:
+    - load_preexisting
+- id: merge_together
+  config:
+    type: function
+    function: data_strategies.TestTime.generator.merge_duplicate_rows
+    function_config:
+      diff_columns: 
+        - final_reasoning_trace
+        - _id
+        - correct
+        - classifier_response
+  input_ids:
+    - validate_questions
+- id: gpt_verification
+  config:
+    type: function
+    function: data_strategies.MultipleSamples.utils.select_correct_multiple_samples
+    function_config:
+      response_column: final_reasoning_trace
+      verified_response_column: verified_final_reasoning_trace
+  input_ids:
+  - merge_together
+- id: convert_to_sharegpt
+  config:
+    type: function
+    function: data_strategies.commons.convert_instruction_response_to_sharegpt
+    function_config:
+      input_instruction_column: problem
+      input_response_column: verified_final_reasoning_trace
+      output_sharegpt_column: conversations
+  input_ids:
+    - gpt_verification
+

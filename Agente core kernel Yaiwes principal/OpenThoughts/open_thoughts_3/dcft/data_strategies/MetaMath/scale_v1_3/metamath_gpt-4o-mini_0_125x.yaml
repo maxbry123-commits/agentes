@@ -1,0 +1,205 @@
+operators:
+  - id: load_math_source
+    config:
+      type: json_source
+      file: dcft/data_strategies/MetaMath/MATH_train.json
+
+  - id: rename_column_math
+    config:
+      type: function
+      function: data_strategies.commons.force_rename_columns
+      function_config:
+        column_maps:
+          solution: detailed_answer
+          problem: question
+    input_ids:
+      - load_math_source
+
+  - id: extract_math_answer
+    config:
+      type: completions
+      map: metamath_extract_math_answer
+      map_config:
+        detailed_answer_column: detailed_answer
+        output_numerical_answer_column: answer
+      model: gpt-4o-mini
+    input_ids:
+      - rename_column_math
+
+  - id: subsample_math_problems
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample
+      function_config:
+        num_samples: 937 # 7500 * 0.125
+        seed: 42
+      materialize_output: false
+    input_ids:
+      - extract_math_answer
+
+  - id: add_column_math
+    config:
+      type: function
+      function: data_strategies.commons.add_constant_columns
+      function_config:
+        dataset: math
+    input_ids:
+      - subsample_math_problems
+
+  - id: load_gsmk8_source
+    config:
+      type: json_source
+      file: dcft/data_strategies/MetaMath/gsm8k_train.json
+
+  - id: rename_column_gsmk8
+    config:
+      type: function
+      function: data_strategies.commons.force_rename_columns
+      function_config:
+        column_maps:
+          answer_detail: detailed_answer
+    input_ids:
+      - load_gsmk8_source
+
+  - id: subsample_gsmk8_problems
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample
+      function_config:
+        num_samples: 937 # 7500 * 0.125
+        seed: 42
+      materialize_output: false
+    input_ids:
+      - rename_column_gsmk8
+
+  - id: add_column_gsmk8
+    config:
+      type: function
+      function: data_strategies.commons.add_constant_columns
+      function_config:
+        dataset: gsmk8
+    input_ids:
+      - subsample_gsmk8_problems
+
+  - id: mix_math_gsmk8
+    config:
+      type: mix
+    input_ids:
+      - add_column_gsmk8
+      - add_column_math
+
+  - id: generate_backward_questions
+    config:
+      type: completions
+      map: metamath_inverse_question
+      map_config:
+        question_column: question
+        output_inverse_question_column: inverse_question
+        output_inverse_answer_column: inverse_answer
+      model: gpt-4o-mini
+    input_ids:
+      - mix_math_gsmk8
+
+  - id: self_verify
+    config:
+      type: completions
+      map: metamath_self_verification
+      map_config:
+        question_column: inverse_question
+        answer_column: answer
+      model: gpt-4o-mini
+    input_ids:
+      - generate_backward_questions
+
+  - id: fobar
+    config:
+      type: function
+      function: data_strategies.MetaMath.utils.fobar
+    input_ids:
+      - generate_backward_questions
+
+  - id: solve_inverse_questions
+    config:
+      type: completions
+      map: metamath_solve_inverse
+      map_config:
+        inverse_question_column: inverse_question
+        inverse_answer_column: inverse_answer
+        output_predicted_answer_column: predicted_answer
+      model: gpt-4o-mini
+    input_ids:
+      - self_verify
+      - fobar
+  
+  - id: rename_columns_inverse
+    config:
+      type: function
+      function: data_strategies.commons.force_rename_columns
+      function_config:
+        column_maps:
+          inverse_question: instruction
+          predicted_answer: completion
+    input_ids:
+      - solve_inverse_questions
+
+  - id: rephrase_questions
+    config:
+      type: completions
+      map: metamath_rephrase_question
+      map_config:
+        question_column: question
+        output_rephrased_question_column: rephrased_question
+      model: gpt-4o-mini
+    input_ids:
+      - mix_math_gsmk8
+
+  - id: solve_rephrased_questions
+    config:
+      type: completions
+      map: metamath_solve_rephrased
+      map_config:
+        rephrased_question_column: rephrased_question
+        answer_column: answer
+        output_predicted_answer_column: predicted_answer
+      model: gpt-4o-mini
+    input_ids:
+      - rephrase_questions
+
+  - id: rename_columns_rephrased
+    config:
+      type: function
+      function: data_strategies.commons.force_rename_columns
+      function_config:
+        column_maps:
+          rephrased_question: instruction
+          predicted_answer: completion
+    input_ids:
+      - solve_rephrased_questions
+
+  - id: mix_rephrased_and_inverse
+    config:
+      type: mix
+    input_ids:
+      - rename_columns_inverse
+      - rename_columns_rephrased
+
+  - id: keep_prompt_and_completion
+    config:
+      type: function
+      function: data_strategies.commons.select_columns
+      function_config:
+        columns: [instruction, completion]
+    input_ids:
+      - mix_rephrased_and_inverse
+
+  - id: convert_instruction_response_to_sharegpt
+    config:
+      type: function
+      function: data_strategies.commons.convert_instruction_response_to_sharegpt
+      function_config:
+        input_instruction_column: instruction
+        input_response_column: completion
+        output_sharegpt_column: conversations
+        drop_non_output_columns: True
+    input_ids:
+      - keep_prompt_and_completion

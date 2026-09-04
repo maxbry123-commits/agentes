@@ -1,0 +1,41 @@
+operators:
+- id: load_preexisting
+  config:
+    type: load_preexisting
+    framework_name: base_open_r1_clean
+- id: expand_generation
+  config:
+    type: function
+    function: data_strategies.OpenR1_MultipleSamples.utils.apply_expand_generation
+  input_ids:
+    - load_preexisting
+- id: remove_columns
+  config:
+    type: function
+    function: data_strategies.commons.remove_columns
+    function_config:
+      columns:
+        - generations
+  input_ids:
+    - expand_generation
+- id: select_rows_without_proof
+  config:
+    type: function
+    sharded: true
+    num_shards: 10
+    function: data_strategies.commons.select_rows_without
+    function_config:
+      conditions:
+        answer: "proof"
+  input_ids:
+    - remove_columns
+- id: convert_to_sharegpt
+  config:
+    type: function
+    function: data_strategies.commons.convert_instruction_response_to_sharegpt
+    function_config:
+      input_instruction_column: problem
+      input_response_column: generation
+      output_sharegpt_column: conversations
+  input_ids:
+    - select_rows_without_proof

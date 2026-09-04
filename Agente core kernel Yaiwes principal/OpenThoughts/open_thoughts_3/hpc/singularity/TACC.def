@@ -1,0 +1,13 @@
+Bootstrap: docker
+From: nvcr.io/nvidia/pytorch:24.06-py3
+
+%files
+    ./dcft /dcft_private/dcft
+    /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem /tls-ca-bundle.pem
+
+%post
+    cd dcft_private
+    pip install -r dcft/train/requirements_no_triton.txt
+
+%environment
+    export SSL_CERT_FILE=/tls-ca-bundle.pem

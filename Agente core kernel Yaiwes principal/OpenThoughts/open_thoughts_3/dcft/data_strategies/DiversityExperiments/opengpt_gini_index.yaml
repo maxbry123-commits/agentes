@@ -1,0 +1,13 @@
+operators:
+  - id: load_oh
+    config:
+      type: load_preexisting
+      framework_name: opengpt_gpt-4o-mini
+  - id: gini_index
+    config:
+      type: function
+      function: data_strategies.DiversityExperiments.diversity_metrics.gini_index
+      function_config:
+        text_column: output
+    input_ids:
+      - load_oh

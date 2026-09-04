@@ -1,0 +1,29 @@
+operators:
+  - id: load_preexisting
+    config:
+      type: load_preexisting
+      framework_name: base_get_openr1_hf
+  - id: select_rows_with_proof
+    config:
+      type: function
+      sharded: true
+      num_shards: 10
+      function: data_strategies.commons.select_rows
+      function_config:
+        conditions:
+          answer: "proof"
+    input_ids:
+      - load_preexisting
+  - id: convert_to_sharegpt_proof
+    config:
+      type: function
+      sharded: true
+      num_shards: 10
+      function: data_strategies.commons.convert_instruction_response_to_sharegpt
+      function_config:
+        input_instruction_column: problem
+        input_response_column: generation
+        output_sharegpt_column: conversations
+    input_ids:
+      - select_rows_with_proof
+  

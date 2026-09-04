@@ -1,0 +1,40 @@
+name: oh-dcft-v1-w-oh-v3-camel-biology-gpt-4o-mini
+operators:
+  - id: load_oh_dcft_v3
+    config:
+      type: hf_source
+      dataset: mlfoundations-dev/oh-dcft-v3-sharegpt-format
+      split: train
+      columns: 
+        - conversations
+  - id: load_oh_dcft_v1
+    config:
+      type: hf_source
+      dataset: mlfoundations-dev/oh-dcft-v1-no-curation-sharegpt-format
+      split: train
+      columns:
+        - source
+        - sample
+  - id: load_choi
+    config:
+      type: hf_source
+      dataset: cchoi1/oh_with_sources
+      split: train
+      columns:
+        - conversations
+        - source
+        - source_label_exact
+  - id: remove_v1_instructions
+    config:
+      type: function
+      function: data_strategies.OH_Swap_v1_Subsets_For_v3.utils.filter_away_overlapping_v3_instructions
+      input_dataset_map:
+        v3_dataset: load_oh_dcft_v3
+        v1_dataset: load_oh_dcft_v1
+        dataset_with_sources: load_choi
+      function_config:
+        source_to_swap: "mlfoundations-dev/camel_math_gpt-4o-mini"
+    input_ids:
+      - load_oh_dcft_v3
+      - load_oh_dcft_v1
+      - load_choi

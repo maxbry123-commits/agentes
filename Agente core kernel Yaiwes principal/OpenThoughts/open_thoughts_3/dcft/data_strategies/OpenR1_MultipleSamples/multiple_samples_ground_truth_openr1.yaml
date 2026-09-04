@@ -1,0 +1,84 @@
+operators:
+  - id: load_preexisting
+    config:
+      type: load_preexisting
+      framework_name: base_get_openr1_hf
+  - id: dedup_topics
+    config:
+      type: function
+      sharded: true
+      num_shards: 32
+      function: data_strategies.commons.dedup_on_columns
+      function_config:
+        dedup_columns:
+          - problem
+    input_ids:
+      - load_preexisting
+  - id: select_rows_without_proof
+    config:
+      type: function
+      sharded: true
+      num_shards: 32
+      function: data_strategies.commons.select_rows_without
+      function_config:
+        conditions:
+          answer: "proof"
+    input_ids:
+      - dedup_topics
+  - id: merge_together
+    config:
+      type: high_memory_function
+      memory: 500
+      function: data_strategies.TestTime.generator.merge_duplicate_rows
+      function_config:
+        diff_columns: 
+          - generation
+          - correct
+          - judge_reasoning
+    input_ids:
+      - select_rows_without_proof
+  - id: ground_truth_verification
+    config:
+      type: function
+      sharded: true
+      num_shards: 32
+      function: data_strategies.MultipleSamples.utils.ground_truth_verification
+      function_config:
+        response_column: generation
+        solution_column: solution
+        output_column: verified_generation
+    input_ids:
+      - merge_together
+  - id: convert_to_sharegpt
+    config:
+      type: function
+      sharded: true
+      num_shards: 32
+      function: data_strategies.commons.convert_instruction_response_to_sharegpt
+      function_config:
+        input_instruction_column: problem
+        input_response_column: verified_generation
+        output_sharegpt_column: conversations
+    input_ids:
+      - ground_truth_verification
+  # - id: remove_columns
+  #   config:
+  #     type: function
+  #     sharded: true
+  #     num_shards: 32
+  #     function: data_strategies.commons.remove_columns
+  #     function_config:
+  #       columns:
+  #         - _majority_responses
+  #   input_ids:
+  #     - convert_to_sharegpt
+  # - id: load_preexisting_all_proofs
+  #   config:
+  #     type: load_preexisting
+  #     framework_name: open_r1_hf_get_all_proofs
+  # - id: mix
+  #   config:
+  #     type: mix
+  #   input_ids:
+  #     - load_preexisting_all_proofs
+  #     - convert_to_sharegpt

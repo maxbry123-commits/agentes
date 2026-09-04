@@ -1,0 +1,34 @@
+operators:
+  - id: load_preexisting
+    config:
+      type: load_preexisting
+      framework_name: deepseek_testtime_base
+  - id: parse_answers
+    config:
+      type: function
+      function: data_strategies.DeepSeekR1.test_time.utils.huggingface_parse_answers
+      function_config:
+        solution_column: extra_deepseek_reasoning
+        parsed_answers_column: parsed_reasonings
+    input_ids:
+      - load_preexisting
+  - id: choose_majority
+    config:
+      type: function
+      function: data_strategies.DeepSeekR1.test_time.utils.choose_majority_answer
+      function_config:
+        solution_column: extra_deepseek_reasoning
+        parsed_answers_column: parsed_reasonings
+        answer_column: chosen_reasoning
+    input_ids:
+      - load_preexisting
+  - id: convert_to_sharegpt
+    config:
+      type: function
+      function: data_strategies.commons.convert_instruction_response_to_sharegpt
+      function_config:
+        input_instruction_column: problem
+        input_response_column: chosen_reasoning
+        output_sharegpt_column: conversations
+    input_ids:
+      - choose_shortest

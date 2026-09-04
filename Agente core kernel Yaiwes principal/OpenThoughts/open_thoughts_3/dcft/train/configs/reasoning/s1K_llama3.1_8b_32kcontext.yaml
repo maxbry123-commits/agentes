@@ -1,0 +1,55 @@
+dataset_dir: ONLINE
+dataset: mlfoundations-dev/s1K_reformat
+messages: conversations
+formatting: sharegpt
+role_tag: from
+content_tag: value
+user_tag: human
+assistant_tag: gpt
+
+per_device_train_batch_size: 1      # Can change depending on hardware
+gradient_accumulation_steps: 1      # Can change depending on number of GPUs
+
+output_dir: "/data4/dcft/experiments/train/checkpoints/s1K_llama3.1_8b_32kcontext"
+run_name: s1K_llama3.1_8b_32kcontext
+hub_model_id: mlfoundations-dev/s1K_llama3.1_8b_32kcontext
+report_to: wandb
+push_to_db: true
+push_to_hub: true
+
+
+### model
+model_name_or_path: meta-llama/Meta-Llama-3.1-8B
+
+### method
+stage: sft
+do_train: true
+finetuning_type: full
+deepspeed: dcft/train/zero3_offload.json  # choices: [ds_z0_config.json, ds_z2_config.json, ds_z3_config.json]
+
+### dataset
+template: llama3
+cutoff_len: 32768
+max_samples: 1000000
+overwrite_cache: true
+preprocessing_num_workers: 16
+
+### output
+logging_steps: 1
+save_strategy: epoch
+plot_loss: true
+
+### train
+num_train_epochs: 5.0
+
+global_batch_size: 16
+bf16: true
+learning_rate: 1.0e-5
+lr_scheduler_type: cosine
+warmup_ratio: 0.05
+adam_beta1: 0.9
+adam_beta2: 0.95
+weight_decay: 1.0e-4
+
+ddp_timeout: 180000000
+

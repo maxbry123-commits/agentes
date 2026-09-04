@@ -1,0 +1,216 @@
+operators:
+- id: load_airoboros
+  config:
+    type: function
+    function: data_strategies.OpenHermes.data_curation.source_labels.load_source_prompts
+    function_config:
+      dataset_name: Airoboros 2.2
+
+- id: load_camel_bio
+  config:
+    type: function
+    function: data_strategies.OpenHermes.data_curation.source_labels.load_source_prompts
+    function_config:
+      dataset_name: CamelAI Biology
+
+- id: load_camel_chem
+  config:
+    type: function
+    function: data_strategies.OpenHermes.data_curation.source_labels.load_source_prompts
+    function_config:
+      dataset_name: CamelAI Chemistry
+
+- id: load_camel_math
+  config:
+    type: function
+    function: data_strategies.OpenHermes.data_curation.source_labels.load_source_prompts
+    function_config:
+      dataset_name: CamelAI Math
+
+- id: load_camel_physics
+  config:
+    type: function
+    function: data_strategies.OpenHermes.data_curation.source_labels.load_source_prompts
+    function_config:
+      dataset_name: CamelAI Physics
+
+- id: load_chatbot_arena
+  config:
+    type: function
+    function: data_strategies.OpenHermes.data_curation.source_labels.load_source_prompts
+    function_config:
+      dataset_name: Chatbot Arena
+
+- id: load_lmsys
+  config:
+    type: function
+    function: data_strategies.OpenHermes.data_curation.source_labels.load_source_prompts
+    function_config:
+      dataset_name: lmsys-1m
+
+- id: load_collective
+  config:
+    type: function
+    function: data_strategies.OpenHermes.data_curation.source_labels.load_source_prompts
+    function_config:
+      dataset_name: Collective Cognition
+
+- id: load_evol_70k
+  config:
+    type: function
+    function: data_strategies.OpenHermes.data_curation.source_labels.load_source_prompts
+    function_config:
+      dataset_name: Evol Instruct 70K
+
+- id: load_evol_140k
+  config:
+    type: function
+    function: data_strategies.OpenHermes.data_curation.source_labels.load_source_prompts
+    function_config:
+      dataset_name: Evol Instruct 140K
+
+- id: load_glaive
+  config:
+    type: function
+    function: data_strategies.OpenHermes.data_curation.source_labels.load_source_prompts
+    function_config:
+      dataset_name: Glaive Code Assistant
+
+- id: load_gpt4llm
+  config:
+    type: function
+    function: data_strategies.OpenHermes.data_curation.source_labels.load_source_prompts
+    function_config:
+      dataset_name: GPT4-LLM
+
+- id: load_gpteacher
+  config:
+    type: function
+    function: data_strategies.OpenHermes.data_curation.source_labels.load_source_prompts
+    function_config:
+      dataset_name: GPTeacher
+
+- id: load_metamath
+  config:
+    type: function
+    function: data_strategies.OpenHermes.data_curation.source_labels.load_source_prompts
+    function_config:
+      dataset_name: MetaMath 40k
+
+- id: load_slimorca
+  config:
+    type: function
+    function: data_strategies.OpenHermes.data_curation.source_labels.load_source_prompts
+    function_config:
+      dataset_name: SlimOrca 550K
+
+- id: load_platypus
+  config:
+    type: function
+    function: data_strategies.OpenHermes.data_curation.source_labels.load_source_prompts
+    function_config:
+      dataset_name: Platypus
+
+
+- id: load_sharegpt
+  config:
+    type: function
+    function: data_strategies.OpenHermes.data_curation.source_labels.load_source_prompts
+    function_config:
+      dataset_name: ShareGPT
+
+- id: load_cogstack
+  config:
+    type: function
+    function: data_strategies.OpenHermes.data_curation.source_labels.load_source_prompts
+    function_config:
+      dataset_name: CogStack
+
+- id: load_cot_alpaca
+  config:
+    type: function
+    function: data_strategies.OpenHermes.data_curation.source_labels.load_source_prompts
+    function_config:
+      dataset_name: CoT Alpaca
+
+- id: load_unnatural
+  config:
+    type: function
+    function: data_strategies.OpenHermes.data_curation.source_labels.load_source_prompts
+    function_config:
+      dataset_name: Unnatural Instructions
+
+- id: load_caseus
+  config:
+    type: function
+    function: data_strategies.OpenHermes.data_curation.source_labels.load_source_prompts
+    function_config:
+      dataset_name: caseus_custom
+
+- id: load_dataforge
+  config:
+    type: function
+    function: data_strategies.OpenHermes.data_curation.source_labels.load_source_prompts
+    function_config:
+      dataset_name: dataforge_economics
+
+- id: concatenate_all
+  config:
+    type: concatenate
+  input_ids:
+    - load_airoboros
+    - load_camel_bio
+    - load_camel_chem
+    - load_camel_math
+    - load_camel_physics
+    - load_chatbot_arena
+    - load_lmsys
+    - load_collective
+    - load_evol_70k
+    - load_evol_140k
+    - load_glaive
+    - load_gpt4llm
+    - load_gpteacher
+    - load_metamath
+    - load_slimorca
+    - load_platypus
+    - load_sharegpt
+    - load_cogstack
+    - load_cot_alpaca
+    - load_unnatural
+    - load_caseus
+    - load_dataforge
+
+- id: reannotate
+  input_ids:
+    - concatenate_all
+  config:
+    type: completions
+    map: chat
+    map_config:
+      user_message_column: prompt
+      output_column: model_response
+    model: gpt-4o-mini
+    batch: True
+
+- id: convert_to_shareGPT
+  input_ids:
+    - reannotate
+  config:
+    type: function
+    function: data_strategies.commons.convert_instruction_response_to_sharegpt
+    function_config:
+      input_instruction_column: prompt
+      input_response_column: model_response
+      output_sharegpt_column: conversations
+
+- id: select_conversations
+  input_ids:
+    - convert_to_shareGPT
+  config:
+    type: function
+    function: data_strategies.commons.select_columns
+    function_config:
+      columns:
+        - conversations
+        - source

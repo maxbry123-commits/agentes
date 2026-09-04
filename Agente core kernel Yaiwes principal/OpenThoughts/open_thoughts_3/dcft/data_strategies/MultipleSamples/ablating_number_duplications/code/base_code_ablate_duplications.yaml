@@ -1,0 +1,240 @@
+operators:
+- id: seed_code_codefeedback_exploit
+  config:
+    type: load_preexisting
+    framework_name: seed_code_codefeedback_exploit
+- id: add_source_codefeedback
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      source: "codefeedback"
+  input_ids:
+  - seed_code_codefeedback_exploit
+- id: sample_dataset_codefeedback
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 5_000 
+  input_ids:
+  - add_source_codefeedback
+
+- id: seed_code_dolphin_exploit
+  config:
+    type: load_preexisting
+    framework_name: seed_code_dolphin_exploit
+- id: add_source_dolphin
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      source: "dolphin"
+  input_ids:
+  - seed_code_dolphin_exploit
+- id: sample_dataset_dolphin
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 5_000 
+  input_ids:
+  - add_source_dolphin
+
+- id: seed_code_evolcodegolf_exploit
+  config:
+    type: load_preexisting
+    framework_name: seed_code_evolcodegolf_exploit
+- id: add_source_evolcodegolf
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      source: "evolcodegolf"
+  input_ids:
+  - seed_code_evolcodegolf_exploit
+- id: sample_dataset_evolcodegolf
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 5_000 
+  input_ids:
+  - add_source_evolcodegolf
+
+- id: seed_code_glaive_exploit
+  config:
+    type: load_preexisting
+    framework_name: seed_code_glaive_exploit
+- id: add_source_glaive
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      source: "glaive"
+  input_ids:
+  - seed_code_glaive_exploit
+- id: sample_dataset_glaive
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 5_000 
+  input_ids:
+  - add_source_glaive
+
+
+- id: seed_code_magicoder_exploit
+  config:
+    type: load_preexisting
+    framework_name: seed_code_magicoder_exploit
+- id: add_source_magicoder
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      source: "magicoder"
+  input_ids:
+  - seed_code_magicoder_exploit
+- id: sample_dataset_magicoder
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 5_000 
+  input_ids:
+  - add_source_magicoder
+
+- id: seed_code_sharegpt_exploit
+  config:
+    type: load_preexisting
+    framework_name: seed_code_sharegpt_exploit
+- id: add_source_sharegpt
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      source: "sharegpt"
+  input_ids:
+  - seed_code_sharegpt_exploit
+- id: sample_dataset_sharegpt
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 5_000 
+  input_ids:
+  - add_source_sharegpt
+
+
+
+- id: rename_task_column
+  config:
+    type: function
+    function: data_strategies.commons.keep_only_columns
+    function_config:
+      columns_to_keep:
+      - instruction_seed
+      - source
+  input_ids:
+  - sample_dataset_codefeedback
+  - sample_dataset_dolphin
+  - sample_dataset_evolcodegolf
+  - sample_dataset_glaive
+  - sample_dataset_magicoder
+  - sample_dataset_sharegpt
+
+
+
+- id: add_domain
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      domain: "code"
+  input_ids:
+  - rename_task_column
+- id: rename_instruction
+  config:
+    type: function
+    function: data_strategies.commons.force_rename_columns
+    function_config:
+      column_maps:
+        instruction_seed: problem
+  input_ids:
+  - add_domain
+
+- id: dedup_topics
+  config:
+    type: function
+    function: data_strategies.commons.dedup_on_columns
+    function_config:
+      dedup_columns:
+        - problem
+  input_ids:
+    - rename_instruction
+
+- id: sample_dataset
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 8_000
+  input_ids:
+    - dedup_topics
+- id: add_row_ids
+  config:
+    type: function
+    function: data_strategies.commons.add_row_ids
+    function_config:
+      column_name: id
+  input_ids:
+    - sample_dataset
+- id: duplicate
+  config:
+    type: function
+    function: data_strategies.TestTime.generator.duplicate_rows
+    function_config:
+      n_copies: 12
+  input_ids:
+    - add_row_ids
+- id: annotate_r1_distill_70b
+  config:
+    type: completions
+    map: deepseek_reasoner
+    map_config:
+      input_problem_column: problem
+    model: deepseek-reasoner
+    batch: False
+    temperature: 1.0
+    require_all_responses: false
+    backend: openai
+    backend_params:
+      max_requests_per_minute: 2_500
+      max_tokens_per_minute: 1_000_000_000
+      api_key: API_KEY
+      base_url: "https://api.deepseek.com/"
+      invalid_finish_reasons: ['content_filter']
+  input_ids:
+    - duplicate
+- id: convert_reasoning_trace_to_final
+  config:
+    type: function
+    function: data_strategies.commons.convert_reasoning_trace_to_final
+    function_config:
+      reasoning_column: reasoning
+      solution_column: deepseek_solution
+      output_column: final_reasoning_trace
+  input_ids:
+  - annotate_r1_distill_70b
+
+- id: merge_together
+  config:
+    type: function
+    function: data_strategies.TestTime.generator.merge_duplicate_rows
+    function_config:
+      diff_columns: 
+        - final_reasoning_trace
+        - id 
+  input_ids:
+    - convert_reasoning_trace_to_final

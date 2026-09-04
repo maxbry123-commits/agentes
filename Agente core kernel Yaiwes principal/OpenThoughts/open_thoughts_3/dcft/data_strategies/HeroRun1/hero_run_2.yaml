@@ -1,0 +1,20 @@
+operators:
+- id: load_hero_run_1_1
+  config:
+    type: load_preexisting
+    framework_name: herorun_1_1
+- id: load_herorun1_code_combine
+  config:
+    type: load_preexisting
+    framework_name: herorun1_code_combine
+- id: load_herorun1_math_combine
+  config:
+    type: load_preexisting
+    framework_name: herorun1_math_combine
+- id: mix
+  config:
+    type: mix
+  input_ids:
+    - load_hero_run_1_1
+    - load_herorun1_code_combine
+    - load_herorun1_math_combine

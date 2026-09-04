@@ -1,0 +1,77 @@
+operators:
+- id: args_dataset
+  config:
+    type: function
+    function: data_strategies.commons.create_constant_dataset
+    function_config:
+      language: English
+      topic_avoidance: Avoid any tasks that would be related to climate change, green tech, remewable energy, DEI, sex and/or gender, religion, politics, social issues, race, ethnicity, artificial intelligence, baking/cooking, or any topic that you would likely not respond to, or any task which a language model would not be able to respond to, e.g. tasks about emotions, feelings, physical senses, etc.
+      flesch: The output should be written in such a way as to have a Flesch-Kincaid readability score of 30 or lower - best understood by those with college education.  The response must not contain any notes or information about Flesch-Kincaid scores.
+      min_docsearch_score: 0.05
+      airoboros_subset: experience
+
+- id: generate_riddle_instructions
+  config:
+    type: completions
+    map: experience
+    map_config:
+      user_message: |
+        I'd like you to create an instruction and response pair for an imaginative experience with the AI assistant and the user. You should create a detailed setting, then actually walk the user through the experience. Be very creative and descriptive.
+
+        Select a completely random location for the new setting, and be very creative in the details.
+
+        {{flesch}}
+
+        The EXPERIENCE section of the output must be a minimum of 800 words and use extremely descriptive and immersive language so as to completely captivate the user in the experience.
+
+        Response format:
+        SETTING:
+        [description of the setting]
+
+        INSTRUCTION:
+        [instruction from the perspective of the user to ask you to describe the experience, like "Take me through this journey", but without quotes, and don't prefix it with "You might say", etc.]
+
+        EXPERIENCE:
+        [the experience]
+      output_instruction_column: instruction
+      output_response_column: response
+    model: gpt-4o-mini
+    temperature: 0.9
+    top_p: 0.5
+    presence_penalty: 2.0
+    n_repeat: 5000 # to get to target count
+  input_ids:
+    - args_dataset
+
+- id: filter_instructions  # filter both instructions and responses here just in case
+  config:
+    type: function
+    function: data_strategies.Airoboros.utils.filter_banned_responses
+    function_config:
+      response_column: instruction
+  input_ids:
+    - generate_riddle_instructions
+
+- id: filter_responses
+  config:
+    type: function
+    function: data_strategies.Airoboros.utils.filter_banned_responses
+    function_config:
+      response_column: response
+  input_ids:
+    - filter_instructions
+
+- id: drop_columns
+  config:
+    type: function
+    function: data_strategies.commons.remove_columns
+    function_config:
+      columns: 
+        - language
+        - topic_avoidance
+        - flesch
+  input_ids:
+    - filter_responses
+
+# Target count --> 2000
+# Min doc score --> 0.15

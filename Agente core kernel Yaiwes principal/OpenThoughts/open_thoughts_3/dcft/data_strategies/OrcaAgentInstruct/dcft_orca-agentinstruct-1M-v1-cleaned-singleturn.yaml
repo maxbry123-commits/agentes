@@ -1,0 +1,14 @@
+operators:
+- id: load_orca_agentinstruct
+  config:
+    type: hf_source
+    dataset: mlabonne/orca-agentinstruct-1M-v1-cleaned
+    split: train
+- id: remove_multiturn
+  config:
+    type: function
+    function: data_strategies.OrcaAgentInstruct.utils.remove_multiturn
+    function_config:
+      messages: messages
+  input_ids:
+    - load_orca_agentinstruct

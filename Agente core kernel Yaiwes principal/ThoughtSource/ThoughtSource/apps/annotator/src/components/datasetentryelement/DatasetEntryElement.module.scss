@@ -1,0 +1,43 @@
+.DatasetEntryElement {
+    margin: 30px;
+    border-radius: 3px;
+
+    align-self: center;
+    max-width: 1400px;
+
+
+    ol {
+        //list-style-type: none;
+        margin: 0px;
+        margin-top: 4px;
+        //padding: 0px
+    }
+
+    ol li {
+        list-style: upper-alpha;
+    }
+
+    .CorrectAnswer {
+        font-weight: bold;
+    }
+}
+
+.EntryHeader {
+    h3 {
+        margin-bottom: 5px;
+    }
+
+    max-width: 1000px;
+    margin-bottom: 20px;
+}
+
+.OutputsContainer {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    justify-content: center;
+    align-items: flex-start;
+
+    // at least 10 px between items
+    gap: 10px;
+}

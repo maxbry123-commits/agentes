@@ -1,0 +1,15 @@
+operators:
+- id: load_stackexchange_codegolf
+  config:
+    type: load_preexisting
+    framework_name: stackexchange_code_golf_reorg_cache
+- id: load_stackexchange_dsp
+  config:
+    type: load_preexisting
+    framework_name: stackexchange_dsp
+- id: top_2_ranking_stackexchange
+  config:
+    type: mix
+  input_ids:
+  - load_stackexchange_codegolf
+  - load_stackexchange_dsp

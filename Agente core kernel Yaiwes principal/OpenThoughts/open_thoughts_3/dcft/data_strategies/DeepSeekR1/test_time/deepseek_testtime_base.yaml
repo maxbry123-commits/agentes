@@ -1,0 +1,106 @@
+operators:
+  - id: load_stratos_math
+    config:
+      type: hf_source
+      dataset: mlfoundations-dev/math_stratos_scale_judged_and_annotated
+      split: train
+  - id: select_correct_ones
+    config:
+      type: function
+      function: data_strategies.commons.select_rows
+      function_config:
+        conditions:
+          correct: true
+    input_ids:
+      - load_stratos_math
+  - id: select_incorrect_ones
+    config:
+      type: function
+      function: data_strategies.commons.select_rows
+      function_config:
+        conditions:
+          correct: false
+    input_ids:
+      - load_stratos_math
+  - id: sample_incorrect
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample_limited
+      function_config:
+        num_samples: 1  # 1.25% of 10000 target from stage 1
+    input_ids:
+      - select_incorrect_ones
+  - id: sample_correct
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample_limited
+      function_config:
+        num_samples: 1 # 1.25% of 10000 target from stage 1
+    input_ids:
+      - select_correct_ones
+  - id: duplicate
+    config:
+      type: function
+      function: data_strategies.TestTime.generator.duplicate_rows
+      function_config:
+        n_copies: 2
+    input_ids:
+      - sample_correct
+      - sample_incorrect
+  # - id: annotate_instruction
+  #   config:
+  #     type: completions
+  #     map: deepseek_reasoner
+  #     require_all_responses: false
+  #     map_config:
+  #       input_problem_column: problem
+  #       output_deepseek_solution_column: extra_deepseek_solution
+  #       output_reasoning_column: extra_deepseek_reasoning
+  #     model: "deepseek-reasoner"
+  #     top_p: 0.95
+  #     batch: False
+  #   input_ids:
+  #     - duplicate
+  # - id: annotate_instruction
+  #   config:
+  #     type: function
+  #     function: data_strategies.DeepSeekR1.test_time.utils.annotate_kluster
+  #     function_config:
+  #       input_problem_column: problem
+  #       # output_deepseek_solution_column: extra_deepseek_solution
+  #       output_reasoning_column: extra_deepseek_reasoning
+  #   input_ids:
+  #     - duplicate
+  - id: annotate_instruction
+    config:
+      type: completions
+      map: kluster_deepseek_reasoner
+      require_all_responses: false
+      map_config:
+        input_problem_column: problem
+        output_reasoning_column: extra_deepseek_reasoning
+      model: "deepseek-r1"
+      top_p: 0.95
+      backend: "openai"
+      backend_params:
+        api_key: 053c3c16-b021-4323-8014-4c1d3bf50bbb
+      base_url: "'https://glama.ai/api/gateway/openai/v1'"
+      batch: False
+    input_ids:
+      - duplicate
+  - id: merge_together
+    config:
+      type: function
+      # memory: 300
+      function: data_strategies.TestTime.generator.merge_duplicate_rows
+      function_config:
+        diff_columns: 
+          - extra_deepseek_reasoning
+    input_ids:
+      - annotate_instruction
+  - id: add_back_old
+    config:
+      type: function
+      function: data_strategies.DeepSeekR1.test_time.utils.merge_together_existing
+    input_ids:
+      - merge_together

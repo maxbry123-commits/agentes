@@ -1,0 +1,42 @@
+name: oh_curation_study_airoboros
+operators:
+  - id: load_original_oh
+    config:
+      type: function
+      function: dcft.data_strategies.OH_curation_study.utils.extract_instruction_response_pair
+      function_config:
+        dataset_name: "OriginalOpenHermes"
+  - id: load_airoboros
+    config:
+      type: function
+      function: dcft.data_strategies.OH_curation_study.utils.extract_instruction_response_pair
+      function_config:
+        dataset_name: "Airoboros 2.2"
+  - id: remove_columns_airoboros
+    config: 
+      type: remove_columns
+      columns_to_keep:
+        - trainable_text
+    input_ids:
+      - load_airoboros
+  - id: load_dcft_v1
+    config:
+      type: function
+      function: dcft.data_strategies.OH_curation_study.utils.extract_instruction_response_pair
+      function_config:
+        dataset_name: "mlfoundations-dev/oh-dcft-v1-no-curation-sharegpt-format"
+  - id: find_unincluded_examples
+    config:
+      type: function
+      function: dcft.data_strategies.OH_curation_study.utils.find_unincluded_examples
+      input_dataset_map:
+        whole_dataset: load_original_oh
+        dataset_to_be_filtered: load_dcft_v1
+        original_subset: remove_columns_airoboros
+      function_config:
+        threshold: 10
+        max_n: 10
+    input_ids:
+      - load_dcft_v1
+      - remove_columns_airoboros
+      - load_original_oh

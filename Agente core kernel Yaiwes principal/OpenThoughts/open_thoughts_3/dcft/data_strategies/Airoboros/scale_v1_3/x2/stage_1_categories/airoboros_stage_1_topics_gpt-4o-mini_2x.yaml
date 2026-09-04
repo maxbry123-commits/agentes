@@ -1,0 +1,55 @@
+operators:
+- id: args_dataset 
+  config:
+    type: function
+    function: data_strategies.commons.create_constant_dataset
+    function_config:
+      batch_size: 20
+      topic_avoidance: Avoid any tasks that would be related to climate change, green tech, remewable energy, DEI, sex and/or gender, religion, politics, social issues, race, ethnicity, artificial intelligence, baking/cooking, or any topic that you would likely not respond to, or any task which a language model would not be able to respond to, e.g. tasks about emotions, feelings, physical senses, etc.
+
+- id: generate_topics
+  config:
+    type: completions
+    map: list  
+    map_config:
+      user_message: "Give me a list of {{batch_size}} completely random topics. {{topic_avoidance}}"
+      output_column: topic
+    model: gpt-4o-mini
+    temperature: 0.7
+    top_p: 0.5
+    presence_penalty: 2.0
+    n_repeat: 700
+  input_ids:
+    - args_dataset
+
+- id: drop_columns
+  config:
+    type: function
+    function: data_strategies.commons.remove_columns
+    function_config:
+      columns: 
+        - topic_avoidance
+        - batch_size
+  input_ids:
+    - generate_topics
+
+- id: filter_banned_responses
+  config:
+    type: function
+    function: data_strategies.Airoboros.utils.filter_banned_responses
+    function_config:
+      response_column: topic
+  input_ids:
+    - drop_columns
+
+- id: dedup_topics
+  config:
+    type: function
+    function: data_strategies.commons.dedup_on_columns
+    function_config:
+      dedup_columns:
+        - topic
+  input_ids:
+    - filter_banned_responses
+
+# TARGET COUNT is 1238 after dedup

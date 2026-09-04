@@ -1,0 +1,15 @@
+operators:
+- id: get_openr1_hf
+  config:
+    type: hf_source
+    dataset: open-r1/OpenR1-Math-Raw
+    split: train
+- id: sample_dataset
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 100_000
+      seed: 42
+  input_ids:
+    - get_openr1_hf

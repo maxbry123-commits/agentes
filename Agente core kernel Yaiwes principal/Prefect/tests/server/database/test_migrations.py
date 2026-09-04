@@ -1,0 +1,1501 @@
+import contextlib
+import importlib.util
+import json
+import textwrap
+from collections.abc import AsyncIterator
+from pathlib import Path
+from types import ModuleType, SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
+from uuid import uuid4
+
+import alembic.context
+import alembic.script
+import pytest
+import sqlalchemy as sa
+from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+
+from prefect.server.database import dependencies
+from prefect.server.database.alembic_commands import (
+    alembic_config,
+    alembic_downgrade,
+    alembic_upgrade,
+)
+from prefect.server.database.interface import DBSingleton, PrefectDBInterface
+from prefect.server.database.orm_models import (
+    AioSqliteORMConfiguration,
+    AsyncPostgresORMConfiguration,
+)
+from prefect.server.models.variables import read_variables
+from prefect.server.utilities.database import get_dialect
+from prefect.settings import (
+    PREFECT_API_DATABASE_CONNECTION_URL,
+    PREFECT_SERVER_DATABASE_CONNECTION_URL,
+    temporary_settings,
+)
+from prefect.types._datetime import now
+from prefect.utilities.asyncutils import run_sync_in_worker_thread
+
+pytestmark = [pytest.mark.service("database"), pytest.mark.clear_db]
+
+
+@contextlib.asynccontextmanager
+async def _isolated_postgres_schema_changes(
+    db: PrefectDBInterface, database_engine: AsyncEngine
+) -> AsyncIterator[None]:
+    if db.dialect.name != "postgresql":
+        yield
+        return
+
+    # Alembic uses a separate engine, so the application pool does not observe its
+    # DDL and can retain asyncpg prepared statements for types that were replaced.
+    await database_engine.dispose()
+    try:
+        yield
+    finally:
+        # The hosted test API runs in another process against the same per-worker
+        # database. Disconnect its pooled sessions too; pool_pre_ping will replace
+        # them before the next request.
+        async with database_engine.begin() as connection:
+            await connection.execute(
+                sa.text(
+                    """
+                    SELECT pg_terminate_backend(pid)
+                    FROM pg_stat_activity
+                    WHERE datname = current_database()
+                      AND pid <> pg_backend_pid()
+                    """
+                )
+            )
+        await database_engine.dispose()
+
+
+@pytest.fixture(autouse=True)
+async def isolate_migration_tests(
+    db: PrefectDBInterface, database_engine: AsyncEngine
+) -> AsyncIterator[None]:
+    async with _isolated_postgres_schema_changes(db, database_engine):
+        yield
+
+
+@pytest.fixture
+def migration_environment(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
+    """Load the Alembic environment without running migrations at import time."""
+    monkeypatch.setitem(vars(alembic.context), "config", SimpleNamespace())
+    monkeypatch.setitem(vars(alembic.context), "is_offline_mode", lambda: False)
+    monkeypatch.setattr(
+        "prefect.utilities.asyncutils.run_async_from_worker_thread", lambda _: None
+    )
+
+    path = Path(__file__).parents[3] / "src/prefect/server/database/_migrations/env.py"
+    spec = importlib.util.spec_from_file_location("test_migration_environment", path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.fixture
+def event_resource_index_migration() -> ModuleType:
+    path = (
+        Path(__file__).parents[3]
+        / "src/prefect/server/database/_migrations/versions/postgresql"
+        / "2026_07_20_000000_50737cdaee36_add_event_resources_event_id_index.py"
+    )
+    spec = importlib.util.spec_from_file_location(
+        "test_event_resource_index_migration", path
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.fixture
+def flow_run_deployment_id_index_migration() -> ModuleType:
+    path = (
+        Path(__file__).parents[3]
+        / "src/prefect/server/database/_migrations/versions/postgresql"
+        / "2026_08_20_000000_9e9dadc36797_add_flow_run_deployment_id_index.py"
+    )
+    spec = importlib.util.spec_from_file_location(
+        "test_flow_run_deployment_id_index_migration", path
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.mark.parametrize("migration_timeout", [None, 60.0])
+async def test_postgres_migration_engine_uses_migration_timeout(
+    migration_environment: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    migration_timeout: float | None,
+):
+    dedicated_engine = object()
+    observed_timeouts: list[float | None] = []
+
+    class DatabaseConfig:
+        connection_url = "postgresql+asyncpg://user:password@localhost/prefect"
+        timeout: float | None = 10.0
+
+        async def engine(self):
+            observed_timeouts.append(self.timeout)
+            return dedicated_engine
+
+    database_config = DatabaseConfig()
+    database_interface = SimpleNamespace(
+        database_config=database_config,
+        engine=AsyncMock(),
+    )
+    settings = SimpleNamespace(
+        server=SimpleNamespace(
+            database=SimpleNamespace(migration_timeout=migration_timeout)
+        )
+    )
+    monkeypatch.setattr(migration_environment, "db_interface", database_interface)
+    monkeypatch.setattr(migration_environment, "get_current_settings", lambda: settings)
+
+    engine = await migration_environment.migration_engine()
+
+    assert engine is dedicated_engine
+    assert observed_timeouts == [migration_timeout]
+    assert database_config.timeout == 10.0
+    database_interface.engine.assert_not_awaited()
+
+
+async def test_sqlite_migration_engine_reuses_application_engine(
+    migration_environment: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    application_engine = object()
+    database_interface = SimpleNamespace(
+        database_config=SimpleNamespace(
+            connection_url="sqlite+aiosqlite:///prefect.db"
+        ),
+        engine=AsyncMock(return_value=application_engine),
+    )
+    monkeypatch.setattr(migration_environment, "db_interface", database_interface)
+
+    engine = await migration_environment.migration_engine()
+
+    assert engine is application_engine
+    database_interface.engine.assert_awaited_once_with()
+
+
+@pytest.mark.parametrize("migration_fails", [False, True])
+async def test_apply_migrations_disposes_dedicated_engine(
+    migration_environment: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    migration_fails: bool,
+):
+    connection = SimpleNamespace(run_sync=AsyncMock())
+    if migration_fails:
+        connection.run_sync.side_effect = RuntimeError("migration failed")
+
+    connection_context = MagicMock()
+    connection_context.__aenter__ = AsyncMock(return_value=connection)
+    connection_context.__aexit__ = AsyncMock(return_value=None)
+
+    dedicated_engine = SimpleNamespace(
+        connect=MagicMock(return_value=connection_context),
+        dispose=AsyncMock(),
+    )
+    application_engine = object()
+    database_interface = SimpleNamespace(
+        engine=AsyncMock(return_value=application_engine),
+        orm=SimpleNamespace(versions_dir="versions"),
+    )
+    engines = {
+        "dedicated": dedicated_engine,
+        "application": application_engine,
+    }
+    script = SimpleNamespace(version_locations=None)
+    monkeypatch.setattr(migration_environment, "db_interface", database_interface)
+    monkeypatch.setattr(
+        migration_environment,
+        "migration_engine",
+        AsyncMock(return_value=dedicated_engine),
+    )
+    monkeypatch.setattr(migration_environment, "ENGINES", engines)
+    monkeypatch.setitem(vars(alembic.context), "script", script)
+
+    if migration_fails:
+        with pytest.raises(RuntimeError, match="migration failed"):
+            await migration_environment.apply_migrations()
+    else:
+        await migration_environment.apply_migrations()
+
+    assert script.version_locations == ["versions"]
+    assert engines == {"application": application_engine}
+    connection.run_sync.assert_awaited_once_with(
+        migration_environment.do_run_migrations
+    )
+    dedicated_engine.dispose.assert_awaited_once_with()
+
+
+async def test_apply_migrations_preserves_shared_engine(
+    migration_environment: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    connection = SimpleNamespace(run_sync=AsyncMock())
+    connection_context = MagicMock()
+    connection_context.__aenter__ = AsyncMock(return_value=connection)
+    connection_context.__aexit__ = AsyncMock(return_value=None)
+    shared_engine = SimpleNamespace(
+        connect=MagicMock(return_value=connection_context),
+        dispose=AsyncMock(),
+    )
+    database_interface = SimpleNamespace(
+        engine=AsyncMock(return_value=shared_engine),
+        orm=SimpleNamespace(versions_dir="versions"),
+    )
+    engines = {"shared": shared_engine}
+    monkeypatch.setattr(migration_environment, "db_interface", database_interface)
+    monkeypatch.setattr(
+        migration_environment,
+        "migration_engine",
+        AsyncMock(return_value=shared_engine),
+    )
+    monkeypatch.setattr(migration_environment, "ENGINES", engines)
+    monkeypatch.setitem(
+        vars(alembic.context),
+        "script",
+        SimpleNamespace(version_locations=None),
+    )
+
+    await migration_environment.apply_migrations()
+
+    assert engines == {"shared": shared_engine}
+    shared_engine.dispose.assert_not_awaited()
+
+
+def test_event_resource_index_migration_rebuilds_invalid_index(
+    event_resource_index_migration: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    catalog_queries: list[str] = []
+    statements: list[str] = []
+
+    class Result:
+        def scalar(self) -> int:
+            return 1
+
+    class Bind:
+        def exec_driver_sql(self, statement: str) -> Result:
+            catalog_queries.append(" ".join(statement.split()))
+            return Result()
+
+    @contextlib.contextmanager
+    def autocommit_block():
+        yield
+
+    operation = SimpleNamespace(
+        get_context=lambda: SimpleNamespace(
+            as_sql=False,
+            autocommit_block=autocommit_block,
+        ),
+        get_bind=lambda: Bind(),
+        execute=lambda statement: statements.append(" ".join(statement.split())),
+    )
+    monkeypatch.setattr(event_resource_index_migration, "op", operation)
+
+    event_resource_index_migration.upgrade()
+
+    assert catalog_queries == [
+        "SELECT 1 FROM pg_class c JOIN pg_index i ON i.indexrelid = c.oid "
+        "WHERE c.relname = 'ix_event_resources__event_id' AND NOT i.indisvalid"
+    ]
+    assert statements == [
+        "DROP INDEX CONCURRENTLY IF EXISTS ix_event_resources__event_id",
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS "
+        "ix_event_resources__event_id ON event_resources (event_id)",
+    ]
+
+
+def test_event_resource_index_migration_supports_postgres_dry_run(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+):
+    monkeypatch.setattr(
+        dependencies,
+        "MODELS_DEPENDENCIES",
+        {
+            "database_config": None,
+            "query_components": None,
+            "orm": None,
+            "interface_class": None,
+        },
+    )
+    monkeypatch.setattr(DBSingleton, "_instances", {})
+
+    with temporary_settings(
+        {
+            PREFECT_SERVER_DATABASE_CONNECTION_URL: (
+                "postgresql+asyncpg://localhost/prefect"
+            )
+        }
+    ):
+        alembic_upgrade("bad1e352c597:50737cdaee36", dry_run=True)
+
+    output = capsys.readouterr().out
+    assert (
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS "
+        "ix_event_resources__event_id ON event_resources (event_id)"
+        in " ".join(output.split())
+    )
+
+
+@pytest.mark.timeout(120)
+async def test_schema_migrations_discard_stale_postgres_prepared_statements(
+    db: PrefectDBInterface, database_engine: AsyncEngine
+):
+    if db.dialect.name != "postgresql":
+        pytest.skip(reason="asyncpg prepared statement caches are PostgreSQL-specific")
+
+    external_engine = create_async_engine(database_engine.url, pool_pre_ping=True)
+    try:
+        async with external_engine.begin() as connection:
+            await connection.execute(
+                sa.insert(db.WorkPool).values(
+                    name="external-before-schema-change",
+                    type="process",
+                    status="NOT_READY",
+                )
+            )
+
+        async with _isolated_postgres_schema_changes(db, database_engine):
+            async with database_engine.begin() as connection:
+                await connection.execute(
+                    sa.insert(db.WorkPool).values(
+                        name="before-schema-change",
+                        type="process",
+                        status="NOT_READY",
+                    )
+                )
+
+            try:
+                await run_sync_in_worker_thread(
+                    alembic_downgrade, revision="15768c2ec702"
+                )
+            finally:
+                await run_sync_in_worker_thread(alembic_upgrade)
+
+        async with database_engine.begin() as connection:
+            await connection.execute(
+                sa.insert(db.WorkPool).values(
+                    name="after-schema-change",
+                    type="process",
+                    status="NOT_READY",
+                )
+            )
+        async with external_engine.begin() as connection:
+            await connection.execute(
+                sa.insert(db.WorkPool).values(
+                    name="external-after-schema-change",
+                    type="process",
+                    status="NOT_READY",
+                )
+            )
+            result = await connection.execute(
+                sa.select(sa.func.count())
+                .select_from(db.WorkPool)
+                .where(db.WorkPool.name == "external-after-schema-change")
+            )
+        assert result.scalar_one() == 1
+    finally:
+        await external_engine.dispose()
+
+
+def test_flow_run_deployment_id_index_migration_rebuilds_invalid_index(
+    flow_run_deployment_id_index_migration: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    catalog_queries: list[str] = []
+    statements: list[str] = []
+
+    class Result:
+        def scalar(self) -> int:
+            return 1
+
+    class Bind:
+        def exec_driver_sql(self, statement: str) -> Result:
+            catalog_queries.append(" ".join(statement.split()))
+            return Result()
+
+    @contextlib.contextmanager
+    def autocommit_block():
+        yield
+
+    operation = SimpleNamespace(
+        get_context=lambda: SimpleNamespace(
+            as_sql=False,
+            autocommit_block=autocommit_block,
+        ),
+        get_bind=lambda: Bind(),
+        execute=lambda statement: statements.append(" ".join(statement.split())),
+    )
+    monkeypatch.setattr(flow_run_deployment_id_index_migration, "op", operation)
+
+    flow_run_deployment_id_index_migration.upgrade()
+
+    assert catalog_queries == [
+        "SELECT 1 FROM pg_class c JOIN pg_index i ON i.indexrelid = c.oid "
+        "WHERE c.relname = 'ix_flow_run__deployment_id' AND NOT i.indisvalid"
+    ]
+    assert statements == [
+        "DROP INDEX CONCURRENTLY IF EXISTS ix_flow_run__deployment_id",
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS "
+        "ix_flow_run__deployment_id ON flow_run (deployment_id)",
+    ]
+
+
+def test_flow_run_deployment_id_index_migration_supports_postgres_dry_run(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+):
+    monkeypatch.setattr(
+        dependencies,
+        "MODELS_DEPENDENCIES",
+        {
+            "database_config": None,
+            "query_components": None,
+            "orm": None,
+            "interface_class": None,
+        },
+    )
+    monkeypatch.setattr(DBSingleton, "_instances", {})
+
+    with temporary_settings(
+        {
+            PREFECT_SERVER_DATABASE_CONNECTION_URL: (
+                "postgresql+asyncpg://localhost/prefect"
+            )
+        }
+    ):
+        alembic_upgrade("50737cdaee36:9e9dadc36797", dry_run=True)
+
+    output = capsys.readouterr().out
+    assert (
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS "
+        "ix_flow_run__deployment_id ON flow_run (deployment_id)"
+        in " ".join(output.split())
+    )
+
+
+@pytest.fixture
+async def sample_db_data(
+    flow,
+    flow_run,
+    flow_run_state,
+    task_run,
+    task_run_state,
+    deployment,
+    block_document,
+):
+    """Adds sample data to the database for testing migrations"""
+
+
+@pytest.mark.timeout(120)
+async def test_orion_full_migration_works_with_data_in_db(sample_db_data):
+    """
+    Tests that downgrade migrations work when the database has data in it.
+    """
+    try:
+        await run_sync_in_worker_thread(alembic_downgrade, revision="base")
+    finally:
+        await run_sync_in_worker_thread(alembic_upgrade)
+
+
+@pytest.mark.parametrize(
+    "orm_config", [AioSqliteORMConfiguration, AsyncPostgresORMConfiguration]
+)
+def test_only_single_head_revision_in_migrations(orm_config):
+    config = alembic_config()
+    script = alembic.script.ScriptDirectory.from_config(config)
+
+    script.version_locations = [orm_config().versions_dir]
+
+    # This will raise if there are multiple heads
+    head = script.get_current_head()
+
+    assert head is not None, "Head revision is missing"
+
+
+async def test_backfill_state_name(db, flow):
+    """
+    Tests state_name is backfilled correctly for the flow_run
+    and task_run tables by a specific migration
+    """
+    connection_url = PREFECT_API_DATABASE_CONNECTION_URL.value()
+    dialect = get_dialect(connection_url)
+
+    # get the proper migration revisions
+    if dialect.name == "postgresql":
+        revisions = ("605ebb4e9155", "14dc68cc5853")
+    else:
+        pytest.skip(reason="Test is excessively slow on SQLite")
+        revisions = ("7f5f335cace3", "db6bde582447")
+
+    flow_run_id = uuid4()
+    null_state_flow_run_id = uuid4()
+    flow_run_state_1_id = uuid4()
+    flow_run_state_2_id = uuid4()
+
+    task_run_id = uuid4()
+    null_state_task_run_id = uuid4()
+    task_run_state_1_id = uuid4()
+    task_run_state_2_id = uuid4()
+    try:
+        # downgrade to the previous revision
+        await run_sync_in_worker_thread(alembic_downgrade, revision=revisions[0])
+        session = await db.session()
+        async with session:
+            # insert some flow and task runs into the database, using raw SQL to avoid
+            # future orm incompatibilities
+            await session.execute(
+                sa.text(
+                    f"INSERT INTO flow_run (id, name, flow_id) values ('{flow_run_id}',"
+                    f" 'foo', '{flow.id}');"
+                )
+            )
+            await session.execute(
+                sa.text(
+                    "INSERT INTO flow_run (id, name, flow_id) values"
+                    f" ('{null_state_flow_run_id}', 'null state', '{flow.id}');"
+                )
+            )
+            await session.execute(
+                sa.text(
+                    "INSERT INTO flow_run_state (id, flow_run_id, type, name) values"
+                    f" ('{flow_run_state_1_id}', '{flow_run_id}', 'SCHEDULED',"
+                    " 'Scheduled');"
+                )
+            )
+            await session.execute(
+                sa.text(
+                    "INSERT INTO flow_run_state (id, flow_run_id, type, name,"
+                    f" timestamp) values ('{flow_run_state_2_id}', '{flow_run_id}',"
+                    f" 'RUNNING', 'My Custom Name', '{now('UTC')}');"
+                )
+            )
+            await session.execute(
+                sa.text(
+                    f"UPDATE flow_run SET state_id = '{flow_run_state_2_id}' WHERE id ="
+                    f" '{flow_run_id}'"
+                )
+            )
+
+            await session.execute(
+                sa.text(
+                    "INSERT INTO task_run (id, name, task_key, dynamic_key,"
+                    f" flow_run_id) values ('{task_run_id}', 'foo-task', 'foo-task', 0,"
+                    f" '{flow_run_id}');"
+                )
+            )
+            await session.execute(
+                sa.text(
+                    "INSERT INTO task_run (id, name, task_key, dynamic_key,"
+                    f" flow_run_id) values ('{null_state_task_run_id}',"
+                    f" 'null-state-task', 'null-state-task', 0, '{flow_run_id}');"
+                )
+            )
+            await session.execute(
+                sa.text(
+                    "INSERT INTO task_run_state (id, task_run_id, type, name) values"
+                    f" ('{task_run_state_1_id}', '{task_run_id}', 'SCHEDULED',"
+                    " 'Scheduled');"
+                )
+            )
+            await session.execute(
+                sa.text(
+                    "INSERT INTO task_run_state (id, task_run_id, type, name,"
+                    f" timestamp) values ('{task_run_state_2_id}', '{task_run_id}',"
+                    f" 'RUNNING', 'My Custom Name', '{now('UTC')}');"
+                )
+            )
+            await session.execute(
+                sa.text(
+                    f"UPDATE task_run SET state_id = '{task_run_state_2_id}' WHERE id ="
+                    f" '{task_run_id}'"
+                )
+            )
+            await session.commit()
+
+        # run the migration that should backfill the state_name column
+        await run_sync_in_worker_thread(alembic_upgrade, revision=revisions[1])
+
+        # check to see the revision worked
+        session = await db.session()
+        async with session:
+            flow_runs = [
+                (str(fr[0]), fr[1], fr[2])
+                for fr in (
+                    await session.execute(
+                        sa.text(
+                            "SELECT id, name, state_name FROM flow_run order by name"
+                        )
+                    )
+                ).all()
+            ]
+            expected_flow_runs = [
+                (str(flow_run_id), "foo", "My Custom Name"),
+                (str(null_state_flow_run_id), "null state", None),
+            ]
+            assert expected_flow_runs == flow_runs, (
+                "state_name is backfilled for flow runs"
+            )
+
+            task_runs = [
+                (str(tr[0]), tr[1], tr[2])
+                for tr in (
+                    await session.execute(
+                        sa.text(
+                            "SELECT id, name, state_name FROM task_run order by name"
+                        )
+                    )
+                ).all()
+            ]
+            expected_task_runs = [
+                (str(task_run_id), "foo-task", "My Custom Name"),
+                (str(null_state_task_run_id), "null-state-task", None),
+            ]
+            assert expected_task_runs == task_runs, (
+                "state_name is backfilled for task runs"
+            )
+
+    finally:
+        await run_sync_in_worker_thread(alembic_upgrade)
+
+
+async def test_backfill_artifacts(db):
+    """
+    Tests that the backfill_artifacts migration works as expected
+    """
+    connection_url = PREFECT_API_DATABASE_CONNECTION_URL.value()
+    dialect = get_dialect(connection_url)
+
+    # get the proper migration revisions
+    if dialect.name == "postgresql":
+        revisions = ("310dda75f561", "15f5083c16bd")
+    else:
+        revisions = ("3d46e23593d6", "2dbcec43c857")
+
+    # insert some artifacts into the database
+    artifacts = [
+        {
+            "id": uuid4(),
+            "key": "foo",
+            "data": {"value": 1},
+            "description": "Artifact 1",
+            "flow_run_id": uuid4(),
+            "task_run_id": uuid4(),
+            "type": "type1",
+        },
+        {
+            "id": uuid4(),
+            "key": "bar",
+            "data": {"value": 2},
+            "description": "Artifact 2",
+            "flow_run_id": uuid4(),
+            "task_run_id": uuid4(),
+            "type": "type2",
+        },
+        {
+            "id": uuid4(),
+            "key": "voltaic",
+            "data": {"value": 3},
+            "description": "Artifact 3",
+            "flow_run_id": uuid4(),
+            "task_run_id": uuid4(),
+            "type": "type3",
+        },
+        {
+            "id": uuid4(),
+            "key": "lotus",
+            "data": {"value": 4},
+            "description": "Artifact 4",
+            "flow_run_id": uuid4(),
+            "task_run_id": uuid4(),
+            "type": "type4",
+        },
+        {
+            "id": uuid4(),
+            "key": "treasure",
+            "data": {"value": 5},
+            "description": "Artifact 5",
+            "flow_run_id": uuid4(),
+            "task_run_id": uuid4(),
+            "type": "type5",
+        },
+    ]
+    try:
+        # downgrade to the previous revision
+        await run_sync_in_worker_thread(alembic_downgrade, revision=revisions[0])
+        session = await db.session()
+        async with session:
+            for artifact in artifacts:
+                await session.execute(
+                    sa.text(
+                        "INSERT INTO artifact (id, key, data, description,"
+                        " flow_run_id, task_run_id, type) VALUES"
+                        f" ('{artifact['id']}', '{artifact['key']}',"
+                        f" '{json.dumps(artifact['data'])}',"
+                        f" '{artifact['description']}', '{artifact['flow_run_id']}',"
+                        f" '{artifact['task_run_id']}', '{artifact['type']}')"
+                    )
+                )
+                await session.execute(
+                    sa.text(
+                        "INSERT INTO artifact_collection (key, id, latest_id) VALUES"
+                        f" ('{artifact['key']}', '{uuid4()}', '{artifact['id']}')"
+                    )
+                )
+                await session.commit()
+
+        # run the migration that should backfill the artifact_collection table
+        await run_sync_in_worker_thread(alembic_upgrade, revision=revisions[1])
+
+        # check to see if the migration worked
+        session = await db.session()
+        async with session:
+            for artifact in artifacts:
+                result = (
+                    await session.execute(
+                        sa.text(
+                            "SELECT flow_run_id, task_run_id, type, description"
+                            " FROM artifact_collection WHERE latest_id ="
+                            f" '{artifact['id']}'"
+                        )
+                    )
+                ).first()
+
+                result = (
+                    str(result[0]),
+                    str(result[1]),
+                    result[2],
+                    result[3],
+                )
+
+                expected_result = (
+                    str(artifact["flow_run_id"]),
+                    str(artifact["task_run_id"]),
+                    artifact["type"],
+                    artifact["description"],
+                )
+                assert result == expected_result, (
+                    "data migration populates artifact_collection table"
+                )
+
+    finally:
+        await run_sync_in_worker_thread(alembic_upgrade)
+
+
+@pytest.mark.timeout(120)
+async def test_adding_work_pool_tables_does_not_remove_fks(db, flow):
+    """
+    Tests state_name is backfilled correctly for the flow_run
+    and task_run tables by a specific migration
+    """
+    connection_url = PREFECT_API_DATABASE_CONNECTION_URL.value()
+    dialect = get_dialect(connection_url)
+
+    # get the proper migration revisions
+    if dialect.name == "postgresql":
+        # Not relevant for Postgres
+        return
+    else:
+        revisions = ("7201de756d85", "fe77ad0dda06")
+
+    flow_run_id = uuid4()
+    flow_run_state_1_id = uuid4()
+
+    try:
+        # downgrade to the previous revision
+        await run_sync_in_worker_thread(alembic_downgrade, revision=revisions[0])
+        session = await db.session()
+        async with session:
+            # insert some flow and task runs into the database, using raw SQL to avoid
+            # future orm incompatibilities
+            await session.execute(
+                sa.text(
+                    f"INSERT INTO flow_run (id, name, flow_id) values ('{flow_run_id}',"
+                    f" 'foo', '{flow.id}');"
+                )
+            )
+
+            await session.execute(
+                sa.text(
+                    "INSERT INTO flow_run_state (id, flow_run_id, type, name) values"
+                    f" ('{flow_run_state_1_id}', '{flow_run_id}', 'SCHEDULED',"
+                    " 'Scheduled');"
+                )
+            )
+            await session.execute(
+                sa.text(
+                    f"UPDATE flow_run SET state_id = '{flow_run_state_1_id}' WHERE id ="
+                    f" '{flow_run_id}'"
+                )
+            )
+
+            await session.commit()
+
+        async with session:
+            # Confirm the state_id is populated
+            pre_migration_flow_run_state_id = (
+                await session.execute(
+                    sa.text(f"SELECT state_id FROM flow_run WHERE id = '{flow_run_id}'")
+                )
+            ).scalar()
+
+            assert pre_migration_flow_run_state_id == str(flow_run_state_1_id)
+
+        # run the migration
+        await run_sync_in_worker_thread(alembic_upgrade, revision=revisions[1])
+
+        # check to see the revision did not remove state ids
+        session = await db.session()
+        async with session:
+            # Flow runs should still have their state ids
+            post_migration_flow_run_state_id = (
+                await session.execute(
+                    sa.text(f"SELECT state_id FROM flow_run WHERE id = '{flow_run_id}'")
+                )
+            ).scalar()
+
+            assert post_migration_flow_run_state_id == str(flow_run_state_1_id)
+
+    finally:
+        await run_sync_in_worker_thread(alembic_upgrade)
+
+
+async def test_adding_default_agent_pool_with_existing_default_queue_migration(
+    db, flow
+):
+    connection_url = PREFECT_API_DATABASE_CONNECTION_URL.value()
+    dialect = get_dialect(connection_url)
+
+    # get the proper migration revisions
+    if dialect.name == "postgresql":
+        revisions = ("0a1250a5aa25", "f98ae6d8e2cc")
+    else:
+        revisions = ("b9bda9f142f1", "1678f2fb8b33")
+
+    try:
+        await run_sync_in_worker_thread(alembic_downgrade, revision=revisions[0])
+
+        session = await db.session()
+        async with session:
+            # clear the work queue table
+            await session.execute(sa.text("DELETE FROM work_queue;"))
+            await session.commit()
+
+            # insert some work queues into the database
+            await session.execute(
+                sa.text("INSERT INTO work_queue (name) values ('default');")
+            )
+            await session.execute(
+                sa.text("INSERT INTO work_queue (name) values ('queue-1');")
+            )
+            await session.execute(
+                sa.text("INSERT INTO work_queue (name) values ('queue-2');")
+            )
+            await session.commit()
+
+            # Insert a flow run and deployment to check if they are correctly assigned a work queue ID
+            flow_run_id = uuid4()
+            await session.execute(
+                sa.text(
+                    "INSERT INTO flow_run (id, name, flow_id, work_queue_name) values"
+                    f" ('{flow_run_id}', 'foo', '{flow.id}', 'queue-1');"
+                )
+            )
+            await session.execute(
+                sa.text(
+                    "INSERT INTO deployment (name, flow_id, work_queue_name) values"
+                    f" ('my-deployment', '{flow.id}', 'queue-1');"
+                )
+            )
+            await session.commit()
+
+        async with session:
+            # Confirm the work queues are present
+            pre_work_queue_ids = (
+                await session.execute(sa.text("SELECT id FROM work_queue;"))
+            ).fetchall()
+
+            assert len(pre_work_queue_ids) == 3
+
+        # run the migration
+        await run_sync_in_worker_thread(alembic_upgrade, revision=revisions[1])
+
+        session = await db.session()
+        async with session:
+            # Check that work queues are assigned to the default agent pool
+            default_pool_id = (
+                await session.execute(
+                    sa.text(
+                        "SELECT id FROM work_pool WHERE name = 'default-agent-pool';"
+                    )
+                )
+            ).scalar()
+
+            work_queue_ids = (
+                await session.execute(
+                    sa.text(
+                        "SELECT id FROM work_queue WHERE work_pool_id ="
+                        f" '{default_pool_id}';"
+                    )
+                )
+            ).fetchall()
+
+            assert len(work_queue_ids) == 3
+            assert set(work_queue_ids) == set(pre_work_queue_ids)
+
+            # Check that the flow run and deployment are assigned to the correct work queue
+            queue_1 = (
+                await session.execute(
+                    sa.text("SELECT id FROM work_queue WHERE name = 'queue-1';")
+                )
+            ).fetchone()
+            flow_run = (
+                await session.execute(
+                    sa.text(
+                        "SELECT work_queue_id FROM flow_run WHERE id ="
+                        f" '{flow_run_id}';"
+                    )
+                )
+            ).fetchone()
+            deployment = (
+                await session.execute(
+                    sa.text(
+                        "SELECT work_queue_id FROM deployment WHERE name ="
+                        " 'my-deployment';"
+                    )
+                )
+            ).fetchone()
+
+            assert queue_1[0] == flow_run[0]
+            assert queue_1[0] == deployment[0]
+
+    finally:
+        await run_sync_in_worker_thread(alembic_upgrade)
+
+
+async def test_adding_default_agent_pool_without_existing_default_queue_migration(db):
+    connection_url = PREFECT_API_DATABASE_CONNECTION_URL.value()
+    dialect = get_dialect(connection_url)
+
+    # get the proper migration revisions
+    if dialect.name == "postgresql":
+        revisions = ("0a1250a5aa25", "f98ae6d8e2cc")
+    else:
+        revisions = ("b9bda9f142f1", "1678f2fb8b33")
+
+    try:
+        await run_sync_in_worker_thread(alembic_downgrade, revision=revisions[0])
+
+        session = await db.session()
+        async with session:
+            # clear the work queue table
+            await session.execute(sa.text("DELETE FROM work_queue;"))
+            await session.commit()
+
+            # insert some work queues into the database
+            await session.execute(
+                sa.text("INSERT INTO work_queue (name) values ('queue-1');")
+            )
+            await session.execute(
+                sa.text("INSERT INTO work_queue (name) values ('queue-2');")
+            )
+            await session.execute(
+                sa.text("INSERT INTO work_queue (name) values ('queue-3');")
+            )
+            await session.commit()
+
+        async with session:
+            # Confirm the work queues are present
+            pre_work_queue_names = (
+                await session.execute(sa.text("SELECT name FROM work_queue;"))
+            ).fetchall()
+
+            assert len(pre_work_queue_names) == 3
+
+        # run the migration
+        await run_sync_in_worker_thread(alembic_upgrade, revision=revisions[1])
+
+        session = await db.session()
+        async with session:
+            # Check that work queues are assigned to the default agent pool
+            default_pool_id = (
+                await session.execute(
+                    sa.text(
+                        "SELECT id FROM work_pool WHERE name = 'default-agent-pool';"
+                    )
+                )
+            ).scalar()
+
+            work_queue_names = (
+                await session.execute(
+                    sa.text(
+                        "SELECT name FROM work_queue WHERE work_pool_id ="
+                        f" '{default_pool_id}';"
+                    )
+                )
+            ).fetchall()
+
+            assert len(work_queue_names) == 4
+            assert set(work_queue_names) == set(pre_work_queue_names).union(
+                [("default",)]
+            )
+
+    finally:
+        await run_sync_in_worker_thread(alembic_upgrade)
+
+
+async def test_not_adding_default_agent_pool_when_all_work_queues_have_work_pool(db):
+    connection_url = PREFECT_API_DATABASE_CONNECTION_URL.value()
+    dialect = get_dialect(connection_url)
+
+    # get the proper migration revisions
+    if dialect.name == "postgresql":
+        revisions = ("0a1250a5aa25", "f98ae6d8e2cc")
+    else:
+        revisions = ("b9bda9f142f1", "1678f2fb8b33")
+
+    try:
+        await run_sync_in_worker_thread(alembic_downgrade, revision=revisions[0])
+
+        session = await db.session()
+        async with session:
+            # clear the work queue table
+            await session.execute(sa.text("DELETE FROM work_queue;"))
+            await session.commit()
+
+            # insert some work queues with a work pool into the database
+            await session.execute(
+                sa.text(
+                    "INSERT INTO work_pool (name, type) VALUES ('existing-pool', 'prefect-agent');"
+                )
+            )
+            existing_pool_id = (
+                await session.execute(
+                    sa.text("SELECT id FROM work_pool WHERE name = 'existing-pool';")
+                )
+            ).scalar()
+
+            await session.execute(
+                sa.text(
+                    "INSERT INTO work_queue (name, work_pool_id) VALUES ('queue-1', :existing_pool_id);"
+                ),
+                {"existing_pool_id": existing_pool_id},
+            )
+            await session.execute(
+                sa.text(
+                    "INSERT INTO work_queue (name, work_pool_id) VALUES ('queue-2', :existing_pool_id);"
+                ),
+                {"existing_pool_id": existing_pool_id},
+            )
+            await session.execute(
+                sa.text(
+                    "INSERT INTO work_queue (name, work_pool_id) VALUES ('queue-3', :existing_pool_id);"
+                ),
+                {"existing_pool_id": existing_pool_id},
+            )
+            await session.commit()
+
+        async with session:
+            # Confirm the work queues are present
+            pre_work_queue_names = (
+                await session.execute(sa.text("SELECT name FROM work_queue;"))
+            ).fetchall()
+
+            assert len(pre_work_queue_names) == 3
+
+        # run the migration
+        await run_sync_in_worker_thread(alembic_upgrade, revision=revisions[1])
+
+        session = await db.session()
+        async with session:
+            # Check that the default-agent-pool is not created
+            default_pool_exists = (
+                await session.execute(
+                    sa.text(
+                        "SELECT COUNT(*) FROM work_pool WHERE name = 'default-agent-pool';"
+                    )
+                )
+            ).scalar()
+
+            assert default_pool_exists == 0
+
+            # Check that the existing work queues are not modified
+            work_queue_names = (
+                await session.execute(sa.text("SELECT name FROM work_queue;"))
+            ).fetchall()
+
+            assert len(work_queue_names) == 3
+            assert set(work_queue_names) == set(pre_work_queue_names)
+
+    finally:
+        await run_sync_in_worker_thread(alembic_upgrade)
+
+
+async def test_migrate_variables_to_json(db):
+    connection_url = PREFECT_API_DATABASE_CONNECTION_URL.value()
+    dialect = get_dialect(connection_url)
+
+    # get the proper migration revisions
+    if dialect.name == "postgresql":
+        revisions = ("b23c83a12cb4", "94622c1663e8")
+    else:
+        revisions = ("20fbd53b3cef", "2ac65f1758c2")
+
+    session = await db.session()
+
+    try:
+        await run_sync_in_worker_thread(alembic_downgrade, revision=revisions[0])
+
+        async with session:
+            # clear the variables table
+            await session.execute(sa.text("DELETE FROM variable;"))
+
+            await session.execute(
+                sa.text(
+                    """INSERT INTO variable (name, value) VALUES ('var1', 'value1'), ('var2', '"value2"'), ('var3', '\"value3\"')"""
+                )
+            )
+
+            await session.commit()
+
+            variable_values = (
+                await session.execute(sa.text("SELECT value FROM variable;"))
+            ).fetchall()
+
+            values = {value[0] for value in variable_values}
+            assert values == {"value1", '"value2"', '"value3"'}
+
+        # run the upgrade
+        await run_sync_in_worker_thread(alembic_upgrade, revision=revisions[1])
+
+        # string values should be able to be read as json
+        # but parsed as strings on read from the models layer
+        async with session:
+            variables = await read_variables(session)
+            values = {variable.value for variable in variables}
+            assert values == {"value1", '"value2"', '"value3"'}
+
+        # reverse the migration
+        await run_sync_in_worker_thread(alembic_downgrade, revision=revisions[0])
+
+        # original string values should be present
+        async with session:
+            variable_values = (
+                await session.execute(sa.text("SELECT value FROM variable;"))
+            ).fetchall()
+
+            values = {value[0] for value in variable_values}
+            assert values == {"value1", '"value2"', '"value3"'}
+
+    finally:
+        async with session:
+            await session.execute(sa.text("DELETE FROM variable;"))
+            await session.commit()
+        await run_sync_in_worker_thread(alembic_upgrade)
+
+
+async def test_migrate_flow_run_notifications_to_automations(db: PrefectDBInterface):
+    connection_url = PREFECT_API_DATABASE_CONNECTION_URL.value()
+    dialect = get_dialect(connection_url)
+
+    # get the proper migration revisions
+    if dialect.name == "postgresql":
+        revisions = ("7a73514ca2d6", "4160a4841eed")
+    else:
+        revisions = ("bbca16f6f218", "7655f31c5157")
+
+    session = await db.session()
+
+    try:
+        await run_sync_in_worker_thread(alembic_downgrade, revision=revisions[0])
+
+        async with session:
+            # clear the flow_run_notification_policy table
+            await session.execute(sa.text("DELETE FROM flow_run_notification_policy;"))
+            # clear the automation table
+            await session.execute(sa.text("DELETE FROM automation;"))
+            await session.commit()
+
+            # insert a block type and get the id
+            await session.execute(
+                sa.text(
+                    "INSERT INTO block_type (name, slug) VALUES ('Test Block Type', 'test-block-type');"
+                )
+            )
+            block_type_id = (
+                await session.execute(
+                    sa.text("SELECT id FROM block_type WHERE slug = 'test-block-type';")
+                )
+            ).scalar()
+
+            # insert a block schema and get the id
+            await session.execute(
+                sa.text(
+                    "INSERT INTO block_schema (block_type_id, checksum) VALUES (:block_type_id, 'test-checksum');"
+                ),
+                {"block_type_id": block_type_id},
+            )
+            block_schema_id = (
+                await session.execute(
+                    sa.text(
+                        "SELECT id FROM block_schema WHERE checksum = 'test-checksum';"
+                    )
+                )
+            ).scalar()
+
+            # insert a block document and get the id
+            await session.execute(
+                sa.text(
+                    "INSERT INTO block_document (name, block_schema_id, block_type_id) VALUES ('test-block-document', :block_schema_id, :block_type_id);"
+                ),
+                {"block_schema_id": block_schema_id, "block_type_id": block_type_id},
+            )
+            block_document_id = (
+                await session.execute(
+                    sa.text(
+                        "SELECT id FROM block_document WHERE name = 'test-block-document';"
+                    )
+                )
+            ).scalar()
+
+            # insert a flow run notification policy
+            await session.execute(
+                sa.text(
+                    "INSERT INTO flow_run_notification_policy (is_active, state_names, tags, message_template, block_document_id) VALUES (TRUE, '[]', '[]', null, :block_document_id);"
+                ),
+                {"block_document_id": block_document_id},
+            )
+
+            # insert a flow run notification policy
+            await session.execute(
+                sa.text(
+                    "INSERT INTO flow_run_notification_policy (is_active, state_names, tags, message_template, block_document_id) VALUES (FALSE, '[\"Running\"]', '[\"tag1\", \"tag2\"]', 'Flow {flow_name} is in state {flow_run_state_name}', :block_document_id);"
+                ),
+                {"block_document_id": block_document_id},
+            )
+
+            await session.commit()
+
+        # run the migration
+        await run_sync_in_worker_thread(alembic_upgrade, revision=revisions[1])
+
+        async with session:
+            # verify two automations were created
+            automations = (
+                await session.execute(
+                    sa.text(
+                        "SELECT name, description, enabled, trigger, actions FROM automation;"
+                    )
+                )
+            ).fetchall()
+            assert len(automations) == 2
+
+            enabled_automation = next(
+                automation for automation in automations if automation[2]
+            )
+            disabled_automation = next(
+                automation for automation in automations if not automation[2]
+            )
+
+            # check the name
+            assert enabled_automation[0] == "Flow Run State Change Notification"
+            assert disabled_automation[0] == "Flow Run State Change Notification"
+
+            # check the description
+            assert (
+                enabled_automation[1] == "Migrated from a flow run notification policy"
+            )
+            assert (
+                disabled_automation[1] == "Migrated from a flow run notification policy"
+            )
+
+            # check the trigger
+            enabled_trigger = (
+                json.loads(enabled_automation[3])
+                if dialect.name == "sqlite"
+                else enabled_automation[3]
+            )
+            enabled_trigger_id = enabled_trigger["id"]
+            assert enabled_trigger == {
+                "id": enabled_trigger_id,
+                "type": "event",
+                "after": [],
+                "match": {"prefect.resource.id": "prefect.flow-run.*"},
+                "expect": ["prefect.flow-run.*"],
+                "within": 10,
+                "posture": "Reactive",
+                "for_each": ["prefect.resource.id"],
+                "threshold": 1,
+                "match_related": {},
+            }
+            disabled_trigger = (
+                json.loads(disabled_automation[3])
+                if dialect.name == "sqlite"
+                else disabled_automation[3]
+            )
+            disabled_trigger_id = disabled_trigger["id"]
+            assert disabled_trigger == {
+                "id": disabled_trigger_id,
+                "type": "event",
+                "after": [],
+                "match": {"prefect.resource.id": "prefect.flow-run.*"},
+                "expect": ["prefect.flow-run.Running"],
+                "within": 10,
+                "posture": "Reactive",
+                "for_each": ["prefect.resource.id"],
+                "threshold": 1,
+                "match_related": {
+                    "prefect.resource.id": ["prefect.tag.tag1", "prefect.tag.tag2"],
+                    "prefect.resource.role": "tag",
+                },
+            }
+            # check the actions
+
+            enabled_actions = (
+                json.loads(enabled_automation[4])
+                if dialect.name == "sqlite"
+                else enabled_automation[4]
+            )
+            disabled_actions = (
+                json.loads(disabled_automation[4])
+                if dialect.name == "sqlite"
+                else disabled_automation[4]
+            )
+            assert enabled_actions == [
+                {
+                    "body": textwrap.dedent("""
+                        Flow run {{ flow.name }}/{{ flow_run.name }} observed in state `{{ flow_run.state.name }}` at {{ flow_run.state.timestamp }}.
+                        Flow ID: {{ flow_run.flow_id }}
+                        Flow run ID: {{ flow_run.id }}
+                        Flow run URL: {{ flow_run|ui_url }}
+                        State message: {{ flow_run.state.message }}
+                        """),
+                    "type": "send-notification",
+                    "subject": "Prefect flow run notification",
+                    "block_document_id": str(block_document_id),
+                }
+            ]
+            assert disabled_actions == [
+                {
+                    "body": "Flow {{ flow.name }} is in state {{ flow_run.state.name }}",
+                    "type": "send-notification",
+                    "subject": "Prefect flow run notification",
+                    "block_document_id": str(block_document_id),
+                }
+            ]
+    finally:
+        await run_sync_in_worker_thread(alembic_upgrade)
+
+
+async def test_downgrade_with_orphaned_task_run_state_ids(db, flow):
+    """
+    Tests that migration 3b86c5ea017a can be downgraded even when
+    task_run.state_id references a non-existent task_run_state row.
+
+    This is the scenario reported in GitHub issue #20939: after the FK
+    constraint was dropped (upgrade), the system no longer enforces
+    referential integrity. Orphaned state_id values are expected in
+    production. The downgrade must clean them up before re-adding the FK.
+    """
+    connection_url = PREFECT_API_DATABASE_CONNECTION_URL.value()
+    dialect = get_dialect(connection_url)
+
+    if dialect.name == "postgresql":
+        # revision just after the FK-drop migration
+        fk_drop_revision = "3b86c5ea017a"
+        pre_fk_drop_revision = "aa1234567890"
+    else:
+        fk_drop_revision = "8bb517bae6f9"
+        pre_fk_drop_revision = "bb2345678901"
+
+    flow_run_id = uuid4()
+    task_run_id = uuid4()
+    orphaned_state_id = uuid4()  # Does NOT exist in task_run_state
+
+    try:
+        # Downgrade to the FK-drop migration (FK is removed at this point)
+        await run_sync_in_worker_thread(alembic_downgrade, revision=fk_drop_revision)
+
+        # Insert a task_run with an orphaned state_id (no corresponding
+        # task_run_state row). This simulates real-world data after the FK
+        # was dropped.
+        session = await db.session()
+        async with session:
+            await session.execute(
+                sa.text(
+                    "INSERT INTO flow_run (id, name, flow_id)"
+                    f" VALUES ('{flow_run_id}', 'test-flow-run', '{flow.id}');"
+                )
+            )
+            await session.execute(
+                sa.text(
+                    "INSERT INTO task_run (id, name, task_key, dynamic_key,"
+                    f" flow_run_id, state_id) VALUES ('{task_run_id}',"
+                    f" 'test-task', 'test-task', '0', '{flow_run_id}',"
+                    f" '{orphaned_state_id}');"
+                )
+            )
+            await session.commit()
+
+        # Downgrade past the FK-drop migration — this re-adds the FK.
+        # Before the fix, this would fail with IntegrityError.
+        await run_sync_in_worker_thread(
+            alembic_downgrade, revision=pre_fk_drop_revision
+        )
+
+        # Verify the orphaned state_id was cleaned up (nulled)
+        session = await db.session()
+        async with session:
+            result = (
+                await session.execute(
+                    sa.text(f"SELECT state_id FROM task_run WHERE id = '{task_run_id}'")
+                )
+            ).scalar()
+            assert result is None, "Orphaned state_id should be nulled during downgrade"
+    finally:
+        await run_sync_in_worker_thread(alembic_upgrade)
+
+
+async def test_drop_db_removes_all_tables(db):
+    """
+    Tests that drop_db() successfully removes all tables even when the
+    database contains data that would cause downgrade migrations to fail.
+
+    drop_db() uses metadata.drop_all() instead of running the full Alembic
+    downgrade chain, making it immune to data-dependent migration failures.
+    """
+    engine = await db.engine()
+
+    # Verify tables exist before drop
+    async with engine.connect() as conn:
+        table_names = await conn.run_sync(
+            lambda sync_conn: sa.inspect(sync_conn).get_table_names()
+        )
+    assert len(table_names) > 0, "Database should have tables before drop"
+
+    # Drop the database
+    await db.drop_db()
+
+    # Verify all ORM tables and alembic_version are gone
+    async with engine.connect() as conn:
+        table_names = await conn.run_sync(
+            lambda sync_conn: sa.inspect(sync_conn).get_table_names()
+        )
+    assert len(table_names) == 0, (
+        f"All tables should be dropped, but found: {table_names}"
+    )
+
+    # Recreate the database for other tests
+    await db.create_db()

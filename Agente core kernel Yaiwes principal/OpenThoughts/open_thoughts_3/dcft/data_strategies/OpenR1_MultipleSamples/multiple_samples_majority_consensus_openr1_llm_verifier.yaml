@@ -1,0 +1,86 @@
+operators:
+  - id: load_preexisting
+    config:
+      type: load_preexisting
+      framework_name: base_get_openr1_hf
+  - id: dedup_topics
+    config:
+      type: function
+      function: data_strategies.commons.dedup_on_columns
+      function_config:
+        dedup_columns:
+          - problem
+    input_ids:
+      - load_preexisting
+  - id: select_rows_without_proof
+    config:
+      type: function
+      sharded: true
+      num_shards: 32
+      function: data_strategies.commons.select_rows_without
+      function_config:
+        conditions:
+          answer: "proof"
+    input_ids:
+      - dedup_topics
+  - id: merge_together
+    config:
+      type: high_memory_function
+      memory: 300
+      function: data_strategies.TestTime.generator.merge_duplicate_rows
+      function_config:
+        diff_columns: 
+          - generation
+    input_ids:
+      - select_rows_without_proof
+  - id: majority_gpt_verification
+    config:
+      type: completions
+      map: math_same
+      merge_shards: false
+      map_config:
+        math_column: generation
+        question_column: problem
+        output_column: correct_majority_indices
+        ending_characters: 1000
+        num_responses: 3
+      require_all_responses: False
+      model: gpt-4o-mini
+      temperature: 1.0
+    input_ids:
+    - merge_together
+  - id: majority_gpt_verification_extraction
+    config:
+      type: function
+      sharded: true
+      num_shards: 10
+      function: data_strategies.MultipleSamples.utils.code_same_verification
+      function_config:
+        verification_column: correct_majority_indices
+        code_answers_column:  r1_distill_70b_response
+        output_column: verified_r1_distill_70b_response
+    input_ids:
+    - majority_gpt_verification
+  - id: convert_to_sharegpt
+    config:
+      type: function
+      sharded: true
+      num_shards: 10
+      function: data_strategies.commons.convert_instruction_response_to_sharegpt
+      function_config:
+        input_instruction_column: problem
+        input_response_column: verified_r1_distill_70b_response
+        output_sharegpt_column: conversations
+    input_ids:
+      - majority_gpt_verification_extraction
+
+  - id: load_preexisting_all_proofs
+    config:
+      type: load_preexisting
+      framework_name: open_r1_hf_get_all_proofs
+  - id: mix
+    config:
+      type: mix
+    input_ids:
+      - load_preexisting_all_proofs
+      - convert_to_sharegpt

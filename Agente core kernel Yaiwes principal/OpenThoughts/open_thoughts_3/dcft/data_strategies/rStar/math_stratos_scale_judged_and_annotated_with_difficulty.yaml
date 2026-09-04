@@ -1,0 +1,18 @@
+operators:
+  - id: load_stratos
+    config:
+      type: hf_source
+      dataset: mlfoundations-dev/math_stratos_scale_judged_and_annotated
+      split: train
+
+  - id: sky_t1_math_difficulty
+    config:
+      type: completions
+      map: sky_t1_math_difficulty
+      map_config:
+        problem_column: problem
+        output_difficulty_column: difficulty
+        output_reasoning_column: difficulty_reasoning
+      model: gpt-4o-mini
+    input_ids:
+      - load_stratos

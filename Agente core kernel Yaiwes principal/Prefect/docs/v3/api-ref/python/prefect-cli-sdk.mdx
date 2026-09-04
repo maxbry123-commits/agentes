@@ -1,0 +1,37 @@
+---
+title: sdk
+sidebarTitle: sdk
+---
+
+# `prefect.cli.sdk`
+
+
+
+SDK command — native cyclopts implementation.
+
+Generate typed Python SDK from workspace deployments.
+
+
+## Functions
+
+### `generate` <sup><a href="https://github.com/PrefectHQ/prefect/blob/main/src/prefect/cli/sdk.py#L35" target="_blank"><Icon icon="github" style="width: 14px; height: 14px;" /></a></sup>
+
+```python
+generate() -> None
+```
+
+
+(beta) Generate a typed Python SDK from workspace deployments.
+
+The generated SDK provides IDE autocomplete and type checking for your deployments.
+Requires an active Prefect API connection (use `prefect cloud login` or configure
+`PREFECT_API_URL`).
+
+**Examples:**
+
+```bash
+$ prefect sdk generate --output ./my_sdk.py
+$ prefect sdk generate --output ./my_sdk.py --flow my-etl-flow
+$ prefect sdk generate --output ./my_sdk.py --deployment my-flow/production
+```
+

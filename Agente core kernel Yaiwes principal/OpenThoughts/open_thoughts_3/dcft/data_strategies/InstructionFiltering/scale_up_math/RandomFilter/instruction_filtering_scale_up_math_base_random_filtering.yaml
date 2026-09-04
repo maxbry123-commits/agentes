@@ -1,0 +1,51 @@
+operators:
+- id: seed_math_load_in
+  config:
+    type: load_preexisting
+    framework_name: seed_math_load_in
+- id: sample_dataset_final
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 16_000
+  input_ids:
+  - seed_math_load_in
+- id: annotate_r1_distill_70b
+  config:
+    type: completions
+    map: deepseek_reasoner
+    map_config:
+      input_problem_column: instruction_seed
+    model: deepseek-reasoner
+    batch: False
+    temperature: 1.0
+    backend: openai_client
+    backend_params:
+      max_requests_per_minute: 2_500
+      max_tokens_per_minute: 1_000_000_000
+      api_key: API_KEY
+      base_url: "https://api.deepseek.com/"
+      invalid_finish_reasons: ['content_filter']
+  input_ids:
+    - sample_dataset_final
+- id: convert_reasoning_trace_to_final
+  config:
+    type: function
+    function: data_strategies.commons.convert_reasoning_trace_to_final
+    function_config:
+      reasoning_column: reasoning
+      solution_column: deepseek_solution
+      output_column: final_reasoning_trace
+  input_ids:
+  - annotate_r1_distill_70b
+- id: convert_to_sharegpt
+  config:
+    type: function
+    function: data_strategies.commons.convert_instruction_response_to_sharegpt
+    function_config:
+      input_instruction_column: instruction_seed
+      input_response_column: final_reasoning_trace
+      output_sharegpt_column: conversations
+  input_ids:
+    - convert_reasoning_trace_to_final

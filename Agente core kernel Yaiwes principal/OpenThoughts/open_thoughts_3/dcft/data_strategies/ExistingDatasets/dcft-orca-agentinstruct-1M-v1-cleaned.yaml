@@ -1,0 +1,18 @@
+operators:
+- id: load_orca
+  config:
+    type: hf_source
+    dataset: mlabonne/orca-agentinstruct-1M-v1-cleaned
+    split: train
+- id: reformat_tags
+  config:
+    type: function
+    function: data_strategies._ExistingDatasets.utils.reformat_tags
+    function_config:
+      messages: messages
+      role_tag: role
+      content_tag: content
+      user_tag: user
+      assistant_tag: assistant
+  input_ids:
+    - load_orca

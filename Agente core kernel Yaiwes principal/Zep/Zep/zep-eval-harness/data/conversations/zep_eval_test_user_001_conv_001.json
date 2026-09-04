@@ -1,0 +1,16 @@
+{
+  "conversation_id": "conv_001",
+  "user_id": "zep_eval_test_user_001",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Hi, I'm looking for a 3-bedroom house in the Austin, Texas area. My budget is around $550,000 and I'd really like a home office since I work remotely a few days a week.",
+      "timestamp": "2025-01-10T09:15:00Z"
+    },
+    {
+      "role": "assistant",
+      "content": "Great choice — Austin has a strong market right now! For a 3-bedroom home with a dedicated office around $550K, I'd recommend looking at neighborhoods like Circle C Ranch, Avery Ranch, or Mueller. Circle C has excellent schools and newer builds with office-friendly floor plans. Would you like me to pull some listings in those areas?",
+      "timestamp": "2025-01-10T09:16:00Z"
+    }
+  ]
+}

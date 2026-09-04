@@ -1,0 +1,192 @@
+operators:
+- id: seed_code_load_in
+  config:
+    type: load_preexisting
+    framework_name: seed_code_load_in
+- id: sample_dataset
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 300_000
+  input_ids:
+  - seed_code_load_in
+- id: hf_source_taco
+  config:
+    type: hf_source
+    dataset: mlfoundations-dev/bespokelabs-sky-t1-taco-rejection-sampled
+    split: train
+- id: hf_source_leetcode
+  config:
+    type: hf_source
+    dataset: Asap7772/leetcode-rosetta-processed-with-test-cases
+    split: train
+
+- id: rename_task_column_leetcode
+  config:
+    type: function
+    function: data_strategies.commons.force_rename_columns
+    function_config:
+      column_maps:
+        content: question
+  input_ids:
+  -  hf_source_leetcode
+
+
+
+- id: hf_source_bad_seed_code_reflect
+  config:
+    type: load_preexisting
+    framework_name: reflection
+- id: hf_source_bad_seed_code_octo
+  config:
+    type: load_preexisting
+    framework_name: octopack_sft
+- id: rename_task_column
+  config:
+    type: function
+    function: data_strategies.commons.force_rename_columns
+    function_config:
+      column_maps:
+        instruction_seed: question
+  input_ids:
+  - hf_source_bad_seed_code_octo
+  - hf_source_bad_seed_code_reflect
+
+
+
+- id: calc_embeddings
+  config:
+    type: gpu_function
+    num_gpus: 1
+    num_shards: 6
+    sharded: true
+    function: data_strategies.commons.calc_sentence_transformers_embedding
+    function_config:
+      text_column: instruction_seed
+      model_name: intfloat/multilingual-e5-large-instruct
+  input_ids:
+    - sample_dataset
+
+
+  
+- id: calc_embeddings_positive
+  config:
+    type: gpu_function
+    num_gpus: 1
+    num_shards: 1
+    sharded: true
+    function: data_strategies.commons.calc_sentence_transformers_embedding
+    function_config:
+      text_column: question
+      model_name: intfloat/multilingual-e5-large-instruct
+  input_ids:
+    - rename_task_column_leetcode
+    - hf_source_taco
+
+
+- id: force_merge_shards_positive
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 1_000_000
+  input_ids:
+  - calc_embeddings_positive
+
+- id: calc_embeddings_negative
+  config:
+    type: gpu_function
+    num_gpus: 1
+    num_shards: 1
+    sharded: true
+    function: data_strategies.commons.calc_sentence_transformers_embedding
+    function_config:
+      text_column: question
+      model_name: intfloat/multilingual-e5-large-instruct
+  input_ids:
+    - rename_task_column
+
+- id: force_merge_shards_negative
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 1_000_000
+  input_ids:
+  - calc_embeddings_negative
+
+
+- id: calc_embedding_difference
+  config:
+    type: function
+    sharded: true
+    num_shards: 10
+    function: data_strategies.InstructionFiltering.EmbeddingFilter.utils.calc_embedding_score_mean
+    function_config:
+      embedding_column: embeddings
+      positive_embedding_column: embeddings
+      negative_embedding_column: embeddings
+    input_dataset_map:
+      dataset: calc_embeddings
+      negative_dataset: force_merge_shards_negative
+      positive_dataset: force_merge_shards_positive
+  input_ids:
+    - calc_embeddings
+    - force_merge_shards_negative
+    - force_merge_shards_positive
+- id: select_to_be_used
+  config:
+    type: function
+    function: data_strategies.InstructionFiltering.AskLLM.utils.filter_rank
+    function_config:
+      top_percentage: 0.10
+      rating_column: difference_score
+  input_ids:
+    - calc_embedding_difference
+- id: sample_dataset_final
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 16_000
+  input_ids:
+  - select_to_be_used
+- id: annotate_r1_distill_70b
+  config:
+    type: completions
+    map: deepseek_reasoner
+    map_config:
+      input_problem_column: instruction_seed
+    model: deepseek-reasoner
+    batch: False
+    temperature: 1.0
+    backend: openai_client
+    backend_params:
+      max_requests_per_minute: 2_500
+      max_tokens_per_minute: 1_000_000_000
+      api_key: API_KEY
+      base_url: "https://api.deepseek.com/"
+      invalid_finish_reasons: ['content_filter']
+  input_ids:
+    - sample_dataset_final
+- id: convert_reasoning_trace_to_final
+  config:
+    type: function
+    function: data_strategies.commons.convert_reasoning_trace_to_final
+    function_config:
+      reasoning_column: reasoning
+      solution_column: deepseek_solution
+      output_column: final_reasoning_trace
+  input_ids:
+  - annotate_r1_distill_70b
+- id: convert_to_sharegpt
+  config:
+    type: function
+    function: data_strategies.commons.convert_instruction_response_to_sharegpt
+    function_config:
+      input_instruction_column: instruction_seed
+      input_response_column: final_reasoning_trace
+      output_sharegpt_column: conversations
+  input_ids:
+    - convert_reasoning_trace_to_final

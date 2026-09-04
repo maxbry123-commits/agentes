@@ -1,0 +1,169 @@
+operators:
+- id: hf_source_numina
+  config:
+    type: hf_source
+    dataset: AI-MO/NuminaMath-CoT
+    split: train
+- id: select_amc_aime
+  config:
+    type: function
+    function: data_strategies.commons.select_rows
+    function_config:
+      conditions:
+        source: amc_aime
+  input_ids:
+    - hf_source_numina
+- id: select_aops
+  config:
+    type: function
+    function: data_strategies.commons.select_rows
+    function_config:
+      conditions:
+        source: aops_forum
+  input_ids:
+    - hf_source_numina
+- id: rename_task_column_numina
+  config:
+    type: function
+    function: data_strategies.commons.force_rename_columns
+    function_config:
+      column_maps:
+        problem: question
+  input_ids:
+  - select_amc_aime
+  - select_aops
+
+- id: hf_source_bad_seed_math
+  config:
+    type: load_preexisting
+    framework_name: seed_math_math_instruct
+- id: rename_task_column
+  config:
+    type: function
+    function: data_strategies.commons.force_rename_columns
+    function_config:
+      column_maps:
+        instruction_seed: question
+  input_ids:
+  - hf_source_bad_seed_math
+
+- id: calc_embeddings_positive
+  config:
+    type: gpu_function
+    num_gpus: 1
+    num_shards: 1
+    sharded: true
+    function: data_strategies.commons.calc_sentence_transformers_embedding
+    function_config:
+      text_column: question
+      model_name: intfloat/multilingual-e5-large-instruct
+  input_ids:
+    - rename_task_column_numina
+
+- id: force_merge_shards_positive
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 1_000_000
+  input_ids:
+  - calc_embeddings_positive
+
+- id: calc_embeddings_negative
+  config:
+    type: gpu_function
+    num_gpus: 1
+    num_shards: 1
+    sharded: true
+    function: data_strategies.commons.calc_sentence_transformers_embedding
+    function_config:
+      text_column: question
+      model_name: intfloat/multilingual-e5-large-instruct
+  input_ids:
+    - rename_task_column
+
+- id: force_merge_shards_negative
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 1_000_000
+  input_ids:
+  - calc_embeddings_negative
+
+- id: seed_math_load_in
+  config:
+    type: load_preexisting
+    framework_name: seed_math_load_in
+- id: get_tiger_lab_math
+  config:
+    type: function
+    function: data_strategies.commons.select_rows
+    function_config:
+      conditions:
+        source: "tiger_lab_math"
+  input_ids:
+    - seed_math_load_in
+- id: sample_tiger_lab_math_before
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 75_000
+  input_ids:
+  - get_tiger_lab_math
+- id: calc_embeddings_tiger_lab_math
+  config:
+    type: gpu_function
+    num_gpus: 1
+    num_shards: 8
+    sharded: true
+    function: data_strategies.commons.calc_sentence_transformers_embedding
+    function_config:
+      text_column: instruction_seed
+      model_name: intfloat/multilingual-e5-large-instruct
+  input_ids:
+    - sample_tiger_lab_math_before
+
+- id: force_merge_shards_actual
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 1_000_000
+  input_ids:
+  - calc_embeddings_tiger_lab_math
+
+- id: calc_embedding_difference_tiger_lab_math
+  config:
+    type: high_memory_function
+    function: data_strategies.InstructionFiltering.EmbeddingFilter.utils.calc_embedding_score_mean
+    function_config:
+      embedding_column: embeddings
+      positive_embedding_column: embeddings
+      negative_embedding_column: embeddings
+    input_dataset_map:
+      dataset:  force_merge_shards_actual
+      negative_dataset: force_merge_shards_negative
+      positive_dataset: force_merge_shards_positive
+  input_ids:
+    - force_merge_shards_actual
+    - force_merge_shards_negative
+    - force_merge_shards_positive
+- id: select_to_be_used_tiger_lab_math
+  config:
+    type: function
+    function: data_strategies.InstructionFiltering.AskLLM.utils.filter_rank
+    function_config:
+      top_percentage: 0.10
+      rating_column: difference_score
+  input_ids:
+    - calc_embedding_difference_tiger_lab_math
+- id: sample_dataset_tiger_lab_math
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 4_000
+  input_ids:
+  - select_to_be_used_tiger_lab_math

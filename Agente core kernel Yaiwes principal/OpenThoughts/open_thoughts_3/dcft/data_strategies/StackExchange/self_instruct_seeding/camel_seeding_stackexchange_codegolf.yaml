@@ -1,0 +1,39 @@
+operators:
+  - id: load_stackexchange_codegolf
+    config:
+      type: load_preexisting
+      framework_name: stackexchange_code_golf_reorg_cache
+  - id: generate_questions
+    config:
+      type: completions
+      map: list
+      map_config:
+        system_message: "You are a codegolf expert."
+        user_message: "We need to write 3 new questions for a codegolf student to solve related to this question: \n\nInstruction: {{instruction}}. \n\n Please write a precise problem for the student to solve."
+        output_column: question
+      model: gpt-4o-mini
+    input_ids:
+      - load_stackexchange_codegolf
+
+  - id: generate_answers
+    config:
+      type: completions
+      map: chat
+      map_config:
+        system_message: "You are a codegolf expert."
+        user_message: "Solve the following question: {{question}}" 
+        output_column: answer
+      model: gpt-4o-mini
+    input_ids:
+      - generate_questions
+
+  - id: convert_to_sharegpt
+    config:
+      type: function
+      function: data_strategies.commons.convert_instruction_response_to_sharegpt
+      function_config:
+        input_instruction_column: question
+        input_response_column: answer
+        output_sharegpt_column: conversations
+    input_ids:
+      - generate_answers

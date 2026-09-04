@@ -1,0 +1,101 @@
+operators:
+operators:
+  - id: load_numina
+    config:
+      type: "hf_source"
+      dataset: "mlfoundations-dev/bespokelabs-sky-t1-numina-rejection-sampled"
+      split: train
+  - id: apply_numina_map
+    config:
+      type: function
+      function: data_strategies.DeepSeekR1.utils.apply_numina_map
+    input_ids:
+      - load_numina
+  - id: load_still2
+    config:
+      type: hf_source
+      dataset: RUC-AIBOX/long_form_thought_data_5k
+      split: train
+  - id: apply_still2_map
+    config:
+      type: function
+      function: data_strategies.DeepSeekR1.utils.apply_still2_map
+    input_ids:
+      - load_still2
+  - id: load_taco
+    config:
+      type: "hf_source"
+      dataset: "mlfoundations-dev/bespokelabs-sky-t1-taco-test-rejection-sampled-shreyas"
+      split: train
+  - id: rename_columns
+    config:
+      type: function
+      function: data_strategies.commons.force_rename_columns
+      function_config:
+        column_maps:
+          input_output_y: input_output_x
+    input_ids:
+      - load_taco
+  - id: apply_taco_map
+    config:
+      type: function
+      function: data_strategies.DeepSeekR1.utils.apply_taco_map
+    input_ids:
+      - rename_columns
+  - id: load_apps
+    config:
+      type: hf_source
+      dataset: mlfoundations-dev/bespokelabs-sky-t1-apps-rejection-sampled
+      split: train
+  - id: apply_apps_map
+    config:
+      type: function
+      function: data_strategies.DeepSeekR1.utils.apply_apps_map
+    input_ids:
+      - load_apps
+  - id: concatenate_all
+    config:
+      type: concatenate
+    input_ids:
+      - apply_taco_map
+      - apply_apps_map
+      - apply_still2_map
+      - apply_numina_map
+  - id: extract_questions
+    config:
+      type: function
+      function: data_strategies.DeepSeekR1.utils.create_question_column
+    input_ids:
+     - concatenate_all
+  # - id: decontaminate
+  #   config:
+  #     type: cpu_function
+  #     function:  data_strategies.DeepSeekR1.utils.decontaminate_table
+  #     function_config:
+  #       column: problem
+  #       eval_datasets:
+  #         - HuggingFaceH4/MATH-500
+  #         - Maxwell-Jia/AIME_2024
+  #         - AI-MO/aimo-validation-amc
+  #         - livecodebench/code_generation_lite
+  #       eval_columns:
+  #         - problem
+  #         - Problem
+  #         - problem
+  #         - question_content
+  #       eval_splits:
+  #         - test
+  #         - train
+  #         - train
+  #         - test
+  #   input_ids:
+  #     - extract_questions
+  - id: fuzzy_dedup
+    config:
+      type: function
+      function: data_strategies.DeepSeekR1.utils.fuzzy_dedup
+      function_config:
+        column: extracted_instruction
+        similarity_threshold: 95.0
+    input_ids:
+      - extract_questions

@@ -1,0 +1,50 @@
+### model
+model_name_or_path: "{models_dir}/{model_name_or_path}"
+
+### method
+stage: sft
+do_train: true
+finetuning_type: full
+deepspeed: "{deepspeed}"
+packing: true
+neat_packing: true
+enable_liger_kernel: true
+
+### dataset
+dataset: "{dataset}"
+dataset_dir: "{datasets_dir}"
+template: "{chat_template}"
+messages: "{messages}"
+cutoff_len: 2048
+overwrite_cache: true
+preprocessing_num_workers: 32
+
+
+### output
+# save_strategy: "no"
+save_strategy: epoch
+output_dir: "{checkpoints_dir}/{base_model}_{dataset}_{learning_rate}_{per_device_train_batch_size}_{gradient_accumulation_steps}_{num_train_epochs}"
+logging_steps: 10
+plot_loss: true
+overwrite_output_dir: true
+
+### train
+per_device_train_batch_size: {per_device_train_batch_size}
+gradient_accumulation_steps: {gradient_accumulation_steps}
+global_batch_size: {global_batch_size}
+gradient_checkpointing: true
+learning_rate: {learning_rate}
+num_train_epochs: {num_train_epochs}
+lr_scheduler_type: cosine
+warmup_ratio: 0.1
+bf16: true
+ddp_timeout: 180000000
+report_to: wandb
+run_name: "{base_model}_{dataset}_{learning_rate}_{per_device_train_batch_size}_{gradient_accumulation_steps}_{num_train_epochs}"
+
+
+### eval
+eval_strategy: "no"
+push_to_db: false
+push_to_hub: false
+hub_model_id: "mlfoundations-dev/{base_model}_{dataset}_{learning_rate}_{per_device_train_batch_size}_{gradient_accumulation_steps}_{num_train_epochs}"

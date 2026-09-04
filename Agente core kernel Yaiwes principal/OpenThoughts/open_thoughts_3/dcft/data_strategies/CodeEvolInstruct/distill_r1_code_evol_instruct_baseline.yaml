@@ -1,0 +1,41 @@
+operators: 
+  - id: seed_code_load_in
+    config:
+      type: load_preexisting
+      framework_name: seed_code_load_in
+  - id: sample_dataset
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample_fixed
+      function_config:
+        num_samples: 2_500
+    input_ids:
+    - seed_code_load_in
+  - id: annotate
+    config:
+      type: completions
+      map: chat
+      map_config:
+        user_message_column: instruction_seed
+        output_column: r1_distill_70b_response
+      model: "together_ai/deepseek-ai/DeepSeek-R1-Distill-Llama-70B"
+      batch: False
+      temperature: 1.0
+      backend_params:
+        max_requests_per_minute: 250
+        max_tokens_per_minute: 500_000
+        invalid_finish_reasons: ['content_filter']
+      generation_params:
+        max_tokens: 32_000
+    input_ids:
+      - sample_dataset
+  - id: convert_to_sharegpt
+    config:
+      type: function
+      function: data_strategies.commons.convert_instruction_response_to_sharegpt
+      function_config:
+        input_instruction_column: instruction_seed
+        input_response_column: r1_distill_70b_response
+        output_sharegpt_column: conversations
+    input_ids:
+      - annotate

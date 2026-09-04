@@ -1,0 +1,158 @@
+operators:
+  - id: load_data
+    config:
+      type: load_preexisting
+      framework_name: oh-dcft-v1.2_no-curation_gpt-4o-mini_wo_airoboros
+  - id: load_oh
+    config: 
+      type: function
+      function:  data_strategies.DiversityExperiments.diversity_metrics.convert_conversation_to_text
+      function_config:
+        format: sharegpt
+        conversation_column: conversations
+        output_column: output
+    input_ids:
+      - load_data
+  - id: self_bleu
+    config:
+      type: cpu_function
+      num_cpus: 32
+      function: data_strategies.DiversityExperiments.diversity_metrics.self_bleu
+      function_config:
+        text_column: output
+    input_ids:
+      - load_oh
+  - id: entropy
+    config:
+      type: function
+      function: data_strategies.DiversityExperiments.diversity_metrics.entropy
+      function_config:
+        text_column: output
+    input_ids:
+      - load_oh
+  - id: gini_index
+    config:
+      type: function
+      function: data_strategies.DiversityExperiments.diversity_metrics.gini_index
+      function_config:
+        text_column: output
+    input_ids:
+      - load_oh
+  - id: calc_embeddings
+    config:
+      type: gpu_function
+      sharded: true
+      num_gpus: 0.5
+      function: data_strategies.commons.get_embeddings_batched
+      function_config:
+        text_column: output
+    input_ids:
+      - load_oh
+  - id: vendi_embeddings
+    config:
+      type: function
+      function: data_strategies.DiversityExperiments.diversity_metrics.vendi_score
+      function_config:
+        vector_column_name: embeddings
+        output_column: vendi_embeddings
+    input_ids:
+      - calc_embeddings
+  - id: kmeans_inertia_embeddings
+    config:
+      type: function
+      function: data_strategies.DiversityExperiments.diversity_metrics.kmeans_inertia
+      function_config:
+        vector_column_name: embeddings
+        output_name: kmeans_inertia_embeddings
+    input_ids:
+      - calc_embeddings
+  - id: ngram_uniqueness
+    config:
+      type: function
+      function: data_strategies.DiversityExperiments.diversity_metrics.ngram_uniqueness
+      function_config:
+        text_column: output
+    input_ids:
+      - load_oh
+  - id: convert_format
+    config:
+      type: function
+      function: data_strategies.commons.convert_sharegpt_to_openai
+      function_config:
+        conversations_column: conversations
+        output_column: new_conversations
+    input_ids:
+      - load_oh
+  - id: sample_data
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample
+      function_config:
+        num_samples: 10000
+    input_ids:
+      - convert_format
+  - id: calc_gradients
+    config:
+      type: gpu_function
+      sharded: true
+      num_gpus: 1
+      function: data_strategies.DiversityExperiments.diversity_metrics.calc_average_gradient
+      function_config:
+        conversation_column: new_conversations
+        batch_size: 3
+        projection_dimension: 8192
+        model_name: HuggingFaceTB/SmolLM2-135M-Instruct
+    input_ids:
+      - sample_data
+  - id: kmeans_inertia_gradients
+    config:
+      type: function
+      function: data_strategies.DiversityExperiments.diversity_metrics.kmeans_inertia
+      function_config:
+        vector_column_name: projected_gradients
+        output_name: kmeans_inertia_gradients
+    input_ids:
+      - calc_gradients
+  - id: vendi_gradients
+    config:
+      type: function
+      function: data_strategies.DiversityExperiments.diversity_metrics.vendi_score
+      function_config:
+        vector_column_name: projected_gradients
+        output_column: projected_gradients_vendi
+    input_ids:
+      - calc_gradients
+  - id: log_det_gradients
+    config:
+      type: function
+      function: data_strategies.DiversityExperiments.diversity_metrics.calc_log_det
+      function_config:
+        vector_column_name: projected_gradients
+        output_column: projected_gradients_log_det
+    input_ids:
+      - calc_gradients
+  - id: log_det_embeddings
+    config:
+      type: cpu_function
+      num_cpus: 64
+      function: data_strategies.DiversityExperiments.diversity_metrics.calc_log_det
+      function_config:
+        vector_column_name: embeddings
+        output_column: projected_embeddings_log_det
+    input_ids:
+      - calc_embeddings
+  - id: merge
+    config:
+      type: merge
+      join_column: output
+    input_ids:
+      - ngram_uniqueness
+      - entropy
+      - gini_index
+      - self_bleu
+      - kmeans_inertia_embeddings
+      - vendi_embeddings
+      - vendi_gradients
+      - log_det_gradients
+      - log_det_embeddings
+      - kmeans_inertia_gradients

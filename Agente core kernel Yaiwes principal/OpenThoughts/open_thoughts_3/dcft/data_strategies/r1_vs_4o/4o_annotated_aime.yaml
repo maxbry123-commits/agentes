@@ -1,0 +1,69 @@
+operators:
+  - id: load_numina_math
+    config:
+      type: "hf_source"
+      dataset: "AI-MO/NuminaMath-CoT"
+      split: train
+  - id: sample_dataset
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample_limited
+      function_config:
+        num_samples: 1000000
+    input_ids:
+      - load_numina_math
+  - id: select_amc_aime
+    config:
+      type: function
+      function: data_strategies.commons.select_rows
+      function_config:
+        conditions:
+          source: amc_aime
+    input_ids:
+      - load_numina_math
+  - id: load_annotations
+    config:
+      type: "hf_source"
+      dataset: "mlfoundations-dev/math_stratos_scale_judged_and_annotated"
+      split: train
+  - id: join_on_problem
+    config:
+      type: merge
+      chunk_size: 100
+      join_column: problem
+    input_ids:
+      - load_annotations
+      - select_amc_aime
+  - id: refilter
+    config:
+      type: function
+      function: data_strategies.commons.select_rows
+      function_config:
+        conditions:
+          source: amc_aime
+    input_ids:
+      - join_on_problem
+  - id: annotate
+    config:
+      type: completions
+      map: chat
+      map_config:
+        system_message: "You are a helpful assistant."
+        user_message_column: problem
+        output_column: 4o_response
+      model: gpt-4o-mini
+      temperature: 1.0
+      require_all_responses: False
+      batch: True
+    input_ids:
+    - refilter
+  - id: convert_to_sharegpt
+    config:
+      type: function
+      function: data_strategies.commons.convert_instruction_response_to_sharegpt
+      function_config:
+        input_instruction_column: problem
+        input_response_column: 4o_response
+        output_sharegpt_column: conversations
+    input_ids:
+      - annotate

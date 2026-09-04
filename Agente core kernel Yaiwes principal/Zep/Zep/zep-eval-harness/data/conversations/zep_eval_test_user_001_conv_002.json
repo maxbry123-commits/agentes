@@ -1,0 +1,16 @@
+{
+  "conversation_id": "conv_002",
+  "user_id": "zep_eval_test_user_001",
+  "messages": [
+    {
+      "role": "user",
+      "content": "I toured that house on Maple Ridge Drive in Circle C and loved it. The backyard was perfect for our golden retriever, Biscuit. Can we schedule a second showing this Saturday?",
+      "timestamp": "2025-01-15T14:30:00Z"
+    },
+    {
+      "role": "assistant",
+      "content": "Wonderful, I'm glad you liked 4821 Maple Ridge Drive! I'll reach out to the listing agent to set up a second showing for this Saturday. That property is listed at $535,000 and has been on the market for 12 days, so it's still fresh. I'll confirm the time and send you the details.",
+      "timestamp": "2025-01-15T14:31:00Z"
+    }
+  ]
+}

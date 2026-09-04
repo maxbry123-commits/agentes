@@ -1,0 +1,117 @@
+operators:
+  - id: load_alpaca
+    config:
+      type: hf_source
+      dataset: yahma/alpaca-cleaned
+      split: train
+  - id: evolution_prompt
+    config:
+      type: function
+      function: data_strategies.EvolInstruct.utils.prompts_for_evolving_instructions
+      function_config:
+        input_instruction_column: instruction
+        input_input_column: input
+        output_prompt_column: instruction_evolution_prompt
+    input_ids:
+      - load_alpaca
+  - id: evolve_instruction
+    input_ids:
+      - evolution_prompt
+    config:
+      type: completions
+      map: chat
+      require_all_responses: false
+      map_config:
+        user_message_column: instruction_evolution_prompt
+        output_column: evolved_instruction
+      model: gpt-4o-mini
+      top_p: 0.95
+      batch: False
+  - id: duplicate
+    config:
+      type: function
+      function: data_strategies.TestTime.generator.duplicate_rows
+      function_config:
+        n_copies: 10
+    input_ids:
+      - evolve_instruction
+  - id: annotate_instruction
+    config:
+      type: completions
+      map: chat
+      require_all_responses: false
+      map_config:
+        user_message_column: evolved_instruction
+        output_column: completion
+      model: gpt-4o-mini
+      top_p: 0.95
+      batch: False
+    input_ids:
+      - duplicate
+  - id: add_critique
+    config:
+      type: completions
+      map: critic
+      require_all_responses: false
+      map_config:
+        query_column: evolved_instruction
+        responses_column: completion
+        output_column: critique
+      model: gpt-4o-mini
+      top_p: 0.95
+      batch: False
+    input_ids:
+      - annotate_instruction
+  - id: merge_together
+    config:
+      type: high_memory_function
+      memory: 300
+      function: data_strategies.TestTime.generator.merge_duplicate_rows
+      function_config:
+        diff_columns: 
+          - completion
+          - critique
+    input_ids:
+      - add_critique
+  - id: ranker
+    config:
+      require_all_responses: false
+      type: completions
+      map: ranker
+      map_config:
+        query_column: evolved_instruction
+        responses_column: completion
+        critic_column: critique
+        output_column: ranking
+      model: gpt-4o-mini
+      top_p: 0.95
+      batch: False
+    input_ids:
+      - merge_together
+  - id: fuser
+    config:
+      type: completions
+      require_all_responses: false
+      map: fuser
+      map_config:
+        query_column: evolved_instruction
+        responses_column: completion
+        critic_column: critique
+        ranking_column: ranking
+        output_column: fused_response
+        top_ranking: 5
+      model: gpt-4o-mini
+      top_p: 0.95
+      batch: False
+    input_ids:
+      - ranker
+  - id: to_sharegpt
+    config:
+      type: function
+      function: data_strategies.commons.convert_instruction_response_to_sharegpt
+      function_config:
+        input_instruction_column: evolved_instruction
+        input_response_column: fused_response
+        output_sharegpt_column: conversations
+    input_ids:
+      - fuser

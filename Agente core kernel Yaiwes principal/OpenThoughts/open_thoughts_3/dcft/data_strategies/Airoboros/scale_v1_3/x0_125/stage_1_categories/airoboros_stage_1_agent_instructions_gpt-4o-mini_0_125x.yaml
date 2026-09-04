@@ -1,0 +1,103 @@
+operators:
+- id: args_dataset
+  config:
+    type: function
+    function: data_strategies.commons.create_constant_dataset
+    function_config:
+      batch_size: 6
+      min_docsearch_score: 0.03
+      airoboros_subset: agent
+
+- id: generate_instructions
+  config:
+    type: completions
+    map: list_qa 
+    map_config:
+      user_message: |
+        Below is an example question/answer pair that is showing examples of an "agent"/"router" prompt for an artificial intelligence assistant.
+
+        QUESTION:
+        Please select an appropriate function and parameters to use from the list of available functions below, based on the provided user input. Provide your response in YAML format.
+
+        Input: From the provided CSV, generate an aggregate table containing a count per email address.
+
+        Available functions:
+        search:
+          description: Help the user find information by converting the input query into a series of search terms and filters that may help pinpoint the location of the information.
+          parameters:
+            search_terms: List of keywords and/or phrases that are of high importance to the input.
+            alternatives: List of alternative keywords and/or phrases that are of high importance to the input, which are variations of the actual input keywords/phrases.  For example, acronyms, common alternate synonyms, etc.
+          date_range:
+            begin: Limit results to items with date greater than or equal to this value, if provided in input query.
+            end: Limit results to items with date less than or equal to this value, if provided in input query.
+        csv_analytics:
+          description: This tool is useful in performing various aggregations, counts, etc. from CSV data.
+          params:
+            action: The action we want to perform on the data, such as "count", "filter", "grouped_count", etc.
+            filters:
+              column: The column we want to filter on.
+              value: Explicit value to filter on.
+              expression: Expression value to filter on.
+
+        ANSWER:
+        function: csv_analytics
+        params:
+          action: "grouped_count"
+          filters:
+            column: "email_address"
+
+        Please generate {{batch_size}} more such example question/answer pairs, generating a random, diverse set of between 3 and 9 available functions.
+
+        Be sure the question includes the description that it's supposed to be an agent with direction to select the best function.
+
+        Be sure to include an input that could make use of one of the functions.
+
+        Be sure to format the list of available functions as proper YAML, with appropriate spacing for nested objects.
+
+        The new questions should ask for output to be in either YAML or JSON format; be sure to format each answer according to the format requested by it's corresponding question.
+
+        Be sure to randomize the ordering of the available functions so the selected function is not always the first function.  The selected function should sometimes be the first function, other times be the second function, and so on for all N in number of functions.
+
+        Response format:
+        question: [question]
+        answer: [YAML / JSON response to question]
+      output_instruction_column: instruction
+      output_response_column: response
+    model: gpt-4o-mini
+    temperature: 0.7
+    top_p: 0.5
+    presence_penalty: 2.0
+    n_repeat: 300 # to get to target count
+  input_ids:
+    - args_dataset
+
+- id: filter_instructions  # filter both instructions and responses here just in case
+  config:
+    type: function
+    function: data_strategies.Airoboros.utils.filter_banned_responses
+    function_config:
+      response_column: instruction
+  input_ids:
+    - generate_instructions
+
+- id: filter_responses
+  config:
+    type: function
+    function: data_strategies.Airoboros.utils.filter_banned_responses
+    function_config:
+      response_column: response
+  input_ids:
+    - filter_instructions
+
+- id: drop_columns
+  config:
+    type: function
+    function: data_strategies.commons.remove_columns
+    function_config:
+      columns:    
+        - batch_size
+  input_ids:
+    - filter_responses
+
+# min doc score 0.03
+# target count 10000

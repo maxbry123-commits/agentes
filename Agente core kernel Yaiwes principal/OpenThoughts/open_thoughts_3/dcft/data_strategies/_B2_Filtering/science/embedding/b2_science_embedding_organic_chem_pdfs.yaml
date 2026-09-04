@@ -1,0 +1,63 @@
+operators:
+- id: load_in
+  config:
+    type: load_preexisting
+    framework_name: load_in_science_organic_chem_pdfs
+- id: calc_embeddings
+  config:
+    type: function
+    function: data_strategies._B2_Filtering.embedding.apply_embedding_openai
+    function_config:
+      text_column: instruction_seed
+      embedding_column_name: embedding
+      split: train
+      batch_size: 100
+      max_concurrent_requests: 100
+      model: text-embedding-3-large
+  input_ids:
+    - load_in
+
+- id: load_in_negative_embeddings
+  config:
+    type: load_preexisting
+    framework_name: b2_calc_negative_embeddings_science
+- id: load_in_positive_embeddings
+  config:
+    type: load_preexisting
+    framework_name: b2_calc_positive_embeddings_science
+
+- id: calc_embedding_difference
+  config:
+    type: function
+    sharded: true
+    num_shards: 100
+    function: data_strategies.InstructionFiltering.EmbeddingFilter.utils.calc_embedding_score_mean
+    function_config:
+      embedding_column: embedding
+      positive_embedding_column: embedding
+      negative_embedding_column: embedding
+    input_dataset_map:
+      dataset: calc_embeddings
+      negative_dataset: load_in_negative_embeddings
+      positive_dataset: load_in_positive_embeddings
+  input_ids:
+    - calc_embeddings
+    - load_in_negative_embeddings
+    - load_in_positive_embeddings
+- id: select_to_be_used
+  config:
+    type: function
+    function: data_strategies._B2_Filtering.utils.filter_top_n
+    function_config:
+      n: 15_800
+      score_column: difference_score
+  input_ids:
+    - calc_embedding_difference
+- id: sample_dataset_final
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 15_800
+  input_ids:
+  - select_to_be_used

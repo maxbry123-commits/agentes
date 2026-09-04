@@ -1,0 +1,100 @@
+operators:
+#  - id: load_stage_1
+#    config:
+#      type: load_preexisting
+#      framework_name: webinstruct_stage_1_5
+  - id: load_stage_2
+    config:
+      type: hf_source
+      #dataset: reinhardh/wia_dcft_stage_2
+      dataset: mlfoundations-dev/wia_dcft_stage_2
+      split: train
+      columns: 
+        - text
+        - instruction
+        - output
+
+  #- id: truncate_dataset
+  #  config:
+  #    type: truncate
+  #    num_truncate: 101
+  #  input_ids:
+  #    - load_stage_1
+
+  - id: refine_pairs
+    input_ids:
+      - load_stage_2
+    config:
+      type: completions
+      map: chat
+      map_config:
+        system_message: "You are an AI tasked at refining instruction-output pairs from text."
+        user_message: |
+          Your task is to enhance the quality of educational question-answer pairs extracted from a text. 
+          Follow the following guidelines to refine the question and answer:
+
+          1. Formatting correction: Correct any issues with formatting. This includes ensuring that LaTeX or any mathematical symbols are properly rendered and readable, and that itemization etc are only used when necessary.
+          2. Improve coherence and flow: If necessary, but only if necessary, rewrite the content to improve flow and coherence, ensuring that the text is logical and easy to follow.
+          3. Eliminate any unnecessary or unrelated information, formating, and text but be cautious not to remove any critical details necessary for understanding the question or answer, or change formating that aids the flow.
+          4. Completeness of question: Add any missing context or details that would make the question clearer and more comprehensive based on the context provided.
+          5. Completeness of answer:  
+            - Ensure that the answer provides a complete solution or explanation, involving reasoning steps.
+            - Where necessary, add chains of thought, steps to obtain the solution, and explanations to ensure the answers have no gaps in reasoning or content.
+            - Remove any irrelevant information that does not contribute to the answer.
+
+          Your revisions should result in content that is well-structured, clear, accurate, and resembles a textbook-quality educational resource.
+          
+          Here is the context for the question and answer that you may take into account: {{text}}
+
+          Question: {{instruction}}
+          Answer: {{output}}
+
+          The output format is:
+
+          <|RevisedQuestion|> revised question here
+
+          <|RevisedAnswer|> revised answer here
+        output_column: refined
+      model: gpt-4o-mini
+      top_p: 0.95
+      batch: False
+
+  - id: filter_qa_responses
+    input_ids:
+      - refine_pairs
+    config:
+      type: function
+      function: data_strategies.WebInstructAblation.utils.extract_revised_pairs
+      function_config:
+        response_column: refined
+
+  - id: quality_check_pairs
+    input_ids:
+      - filter_qa_responses
+    config:
+      type: completions
+      map: chat
+      map_config:
+        system_message: "You are an AI tasked at checking the quality of question-answer pairs."
+        user_message: |
+          For the question and answer pair below, verify the following:
+          - Does the question contain sufficient context to answer it for an expert in the area?
+          - Is the question and context self-contained and not based on information that is not given?
+          - Is the question and answer of general educational value?
+          Be critial in the quality check. If the question and answer pass this difficult quality check, conclude your reasoning with <|passed|>, otherwise, conclude with <|failed|>.
+          
+          Question: {{revised_question}}
+          Answer: {{revised_answer}}
+        output_column: verification
+      model: gpt-4o-mini
+      top_p: 0.95
+      batch: False
+
+  - id: filter_quality_checked_responses
+    input_ids:
+      - quality_check_pairs
+    config:
+      type: function
+      function: data_strategies.WebInstructAblation.utils.filter_quality_checked_responses
+      function_config:
+        response_column: verification

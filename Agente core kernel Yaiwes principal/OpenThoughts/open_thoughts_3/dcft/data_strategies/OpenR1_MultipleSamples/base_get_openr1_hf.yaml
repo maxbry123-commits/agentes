@@ -1,0 +1,27 @@
+operators:
+- id: get_openr1_hf
+  config:
+    type: hf_source
+    dataset: open-r1/OpenR1-Math-Raw
+    split: train
+- id: expand_generation
+  config:
+    type: function
+    sharded: true
+    num_shards: 10
+    function: data_strategies.OpenR1_MultipleSamples.utils.apply_expand_generation
+  input_ids:
+    - get_openr1_hf
+- id: remove_columns
+  config:
+    type: function
+    sharded: true
+    num_shards: 10
+    function: data_strategies.commons.remove_columns
+    function_config:
+      columns:
+        - generations
+  input_ids:
+    - expand_generation
+
+

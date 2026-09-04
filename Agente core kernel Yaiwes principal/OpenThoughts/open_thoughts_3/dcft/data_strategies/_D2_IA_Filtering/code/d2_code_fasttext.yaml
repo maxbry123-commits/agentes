@@ -1,0 +1,54 @@
+operators:
+- id: load_preexisting
+  config:
+    type: load_preexisting
+    framework_name: a1_cod_cod
+- id: drop_columns
+  config:
+    type: function
+    function: data_strategies.commons.remove_columns
+    function_config:
+      columns:
+        - conversations
+  input_ids:
+    - load_preexisting
+- id: get_question_answer_string
+  config:
+    type: function
+    function: data_strategies.QuestionAnswerFiltering.utils.get_combined_question_answer_string
+    function_config:
+      answer_column: final_reasoning_trace
+      question_column: instruction_seed
+      output_column: question_answer_string
+  input_ids:
+  - load_preexisting
+- id: classify_fasttext
+  config:
+    type: fasttext
+    num_cpus: 32
+    hf_repo_id: mlfoundations-dev/instruction_filtering_pos_codeforces_neg_codeforces_gpt
+    input_column: question_answer_string
+    target_label: "__label__QA_doc"
+    just_add_scores: True
+  input_ids:
+   - get_question_answer_string
+- id: select_to_be_used
+  config:
+    type: function
+    function: data_strategies._B2_Filtering.utils.filter_top_n
+    function_config:
+      n: 31_600
+      score_column: _fasttext_score
+  input_ids:
+    - classify_fasttext
+- id: convert_to_sharegpt
+  config:
+    type: function
+    function: data_strategies.commons.convert_instruction_response_to_sharegpt
+    function_config:
+      input_instruction_column: instruction_seed
+      output_column: final_reasoning_trace
+      output_sharegpt_column: conversations
+  input_ids:
+    - gpt_verification
+

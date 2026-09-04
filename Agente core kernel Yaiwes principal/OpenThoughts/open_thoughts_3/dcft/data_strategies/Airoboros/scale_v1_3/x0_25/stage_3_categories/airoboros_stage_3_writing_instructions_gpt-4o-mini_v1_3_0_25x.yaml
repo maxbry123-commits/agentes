@@ -1,0 +1,68 @@
+operators:
+- id: load_stage_2
+  config:
+    type: load_preexisting
+    framework_name: airoboros_stage_2_gpt-4o-mini_v1_3_0_25x
+- id: select_writing_instructions
+  config:
+    type: function
+    function: data_strategies.commons.select_rows
+    function_config:
+      conditions:
+        airoboros_subset: writing
+  input_ids:
+    - load_stage_2
+- id: get_non_none_responses
+  config:
+    type: function
+    function: data_strategies.commons.filter_out_falsey_values
+    function_config:
+      filter_column: response
+  input_ids:
+    - select_writing_instructions
+- id: get_none_responses
+  config:
+    type: function
+    function: data_strategies.commons.filter_out_truey_values
+    function_config:
+      filter_column: response
+  input_ids:
+    - select_writing_instructions
+- id: complete_none_responses
+  config:
+    type: completions
+    model: gpt-4o-mini
+    map: chat
+    map_config:
+      user_message_column: instruction
+      output_column: response
+    temperature: 0.9
+    top_p: 0.5
+    presence_penalty: 2.0
+  input_ids:
+    - get_none_responses
+- id: mix_completed_instructions
+  config:
+    type: mix
+  input_ids:
+    - complete_none_responses
+    - get_non_none_responses
+- id: select_columns
+  config:
+    type: function
+    function: data_strategies.commons.select_columns
+    function_config:
+      columns:
+        - instruction
+        - response
+        - airoboros_subset
+  input_ids:
+    - mix_completed_instructions
+- id: sample_dataset
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_limited
+    function_config:
+      num_samples: 375  # 2.5% of 15000 target from stage 1
+  input_ids:
+    - select_columns 

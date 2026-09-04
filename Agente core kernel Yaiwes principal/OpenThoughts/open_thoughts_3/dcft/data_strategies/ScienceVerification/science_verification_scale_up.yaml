@@ -1,0 +1,97 @@
+operators:
+- id: load_preexisting_wikipedia_biology
+  config:
+    type: load_preexisting
+    framework_name: wikipedia_biology_seed_science
+- id: load_preexisting_camel_chemistry
+  config:
+    type: load_preexisting
+    framework_name: camel_chemistry_seed_science
+- id: load_preexisting_fineweb
+  config:
+    type: load_preexisting
+    framework_name: fineweb_seed_science
+- id: load_preexisting_stackexchange_biology
+  config:
+    type: load_preexisting
+    framework_name: stackexchange_biology_seed_science
+- id: load_preexisting_wikipedia
+  config:
+    type: load_preexisting
+    framework_name: wikipedia_seed_science
+- id: load_preexisting_stackexchange_physics
+  config:
+    type: load_preexisting
+    framework_name: stackexchange_physics_seed_science
+- id: mix_all_sources
+  config:
+    type: mix
+  input_ids:
+    - load_preexisting_wikipedia_biology
+    - load_preexisting_camel_chemistry
+    - load_preexisting_fineweb
+    - load_preexisting_stackexchange_biology
+    - load_preexisting_wikipedia
+    - load_preexisting_stackexchange_physics
+- id: drop_columns
+  config:
+    type: function
+    function: data_strategies.commons.keep_only_columns
+    function_config:
+      columns_to_keep:    
+        - problem
+  input_ids:
+  - mix_all_sources
+- id: sample_dataset
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 16_000
+  input_ids:
+    - drop_columns
+- id: add_row_ids
+  config:
+    type: function
+    function: data_strategies.commons.add_row_ids
+    function_config:
+      column_name: _id
+  input_ids:
+    - sample_dataset
+- id: duplicate
+  config:
+    type: function
+    function: data_strategies.TestTime.generator.duplicate_rows
+    function_config:
+      n_copies: 3
+  input_ids:
+    - add_row_ids
+- id: annotate_r1_distill_70b
+  config:
+    type: completions
+    map: deepseek_reasoner
+    map_config:
+      input_problem_column: problem
+    model: deepseek-reasoner
+    batch: False
+    temperature: 1.0
+    require_all_responses: false
+    backend: openai
+    backend_params:
+      max_requests_per_minute: 2_500
+      max_tokens_per_minute: 1_000_000_000
+      api_key: API_KEY
+      base_url: "https://api.deepseek.com/"
+      invalid_finish_reasons: ['content_filter']
+  input_ids:
+    - duplicate
+- id: convert_reasoning_trace_to_final
+  config:
+    type: function
+    function: data_strategies.commons.convert_reasoning_trace_to_final
+    function_config:
+      reasoning_column: reasoning
+      solution_column: deepseek_solution
+      output_column: final_reasoning_trace
+  input_ids:
+  - annotate_r1_distill_70b

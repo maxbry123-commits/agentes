@@ -1,0 +1,35 @@
+operators:
+  - id: load_hf
+    config:
+      type: hf_source
+      dataset: simplescaling/s1K
+      split: train
+  - id: unlist
+    config:
+      type: function
+      function: data_strategies.commons.list_to_string
+      function_config:
+        column_name: thinking_trajectories
+    input_ids:
+      - load_hf
+  - id: combine_thinking_and_answer
+    config:
+      type: function
+      function: data_strategies.commons.concatenate_columns
+      function_config:
+        first_column: thinking_trajectories
+        second_column: attempt
+        output_column: thinking_answer_combined
+        separator_token: <|im_start|>answer \n
+    input_ids:
+      - unlist
+  - id: convert_to_sharegpt
+    config:
+      type: function
+      function: data_strategies.commons.convert_instruction_response_to_sharegpt
+      function_config:
+        input_instruction_column: question
+        input_response_column: thinking_answer_combined
+        output_sharegpt_column: conversations
+    input_ids:
+      - combine_thinking_and_answer

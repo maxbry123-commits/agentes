@@ -1,0 +1,50 @@
+operators:
+- id: load_params
+  config:
+    type: function
+    function: data_strategies.commons.load_json_string_to_dataset
+    function_config:
+      json_string: '{"language": ["English"], "quantity": [5]}'  
+
+- id: generate_tasks
+  config:
+    type: completions
+    map: open_gpt
+    map_config:
+      user_message: |
+        You are asked to come up with a set of {{quantity}} diverse task instructions in the field of medicine and healthcare. These task instructions will be given to a Medical GPT model and we will evaluate the Medical GPT model for completing the instructions.
+
+        Here are the requirements:
+        1. Try not to repeat the verb for each instruction to maximize diversity.
+        2. The language used for the instruction also should be diverse. For example, you should combine questions with imperative instructions.
+        3. The type of instructions should be diverse. The list should include diverse kinds of tasks like step-by-step reasoning, multiple-choice-questions, open-ended generation, classification, editing, complex medical questions, simple medical questions, etc.
+        4. A GPT language model should be able to complete the instruction. For example, do not ask the assistant to create any visual or audio output. For another example, do not ask the assistant to wake you up at 5pm or set a reminder because it cannot perform any action.
+        5. The instructions should be in {{language}}.
+        6. The instructions should be 1 to 4 sentences long. Either an imperative sentence or a question is permitted.
+        7. You should generate an appropriate input to the instruction. The input field should contain a specific example provided for the instruction. It should involve realistic data and should not contain simple placeholders. The input should provide substantial content to make the instruction challenging but should ideally not exceed 300 words.
+        8. Not all instructions require input. For example, when an instruction asks about some general information, "What is diabetes", it is not necessary to provide a specific context. In this case, we simply put "<noinput>" in the input field.
+        9. The output should be an appropriate response to the instruction and the input. It should ideally not exceed 400 words.
+        10. All generated output should use the metric system for measurements and UK names for medications, substances, drugs and everything else.
+
+        List of {{quantity}} tasks (every task has the following fields: Task:, Instruction:, Input:, Output:):
+      output_task_column: task
+      output_instruction_column: instruction
+      output_input_column: input
+      output_output_column: output
+    model: gpt-4o-mini
+    n_repeat: 500
+    batch: False
+  input_ids:
+    - load_params
+
+- id: convert_alpaca_to_sharegpt
+  config:
+    type: function
+    function: data_strategies.commons.convert_alpaca_to_sharegpt
+    function_config:  # This ignores the task column since that is just to help the generation process
+      input_instruction_column: instruction
+      input_input_column: input
+      input_output_column: output
+      output_sharegpt_column: conversations
+  input_ids:
+    - generate_tasks

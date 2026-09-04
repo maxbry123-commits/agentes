@@ -1,0 +1,58 @@
+operators:
+- id: load_zsopt_data
+  config:
+    type: hf_source
+    dataset: Open-Orca/FLAN
+    split: train
+    data_dir: cot_zsopt_data
+
+- id: add_system_messages
+  input_ids:
+    - load_zsopt_data
+  config:
+    type: function
+    function: data_strategies.SlimOrca.utils.add_orca_system_messages
+    function_config:
+      mixture_name: cot
+      system_message_column: system_message
+
+- id: generate_responses
+  config:
+    type: completions
+    map: chat
+    map_config:
+      system_message_column: system_message
+      user_message_column: inputs
+      output_column: model_response
+    model: gpt-4o-mini
+    batch: True
+  input_ids:
+    - add_system_messages
+
+- id: llm_judge_filter
+  input_ids:
+    - generate_responses
+  config:
+    type: completions
+    map: judge
+    map_config:
+      input_instruction_column: inputs
+      input_golden_answer_column: targets
+      input_attempt_answer_column: model_response
+      output_judgement_decision_column: model_judgement
+      output_judgement_reasoning_column: model_judgement_full
+    model: gpt-4o-mini
+    batch: True
+  input_ids:
+    - generate_responses
+
+- id: convert_to_sharegpt
+  config:
+    type: function
+    function: data_strategies.commons.convert_instruction_response_to_sharegpt
+    function_config:
+      input_instruction_column: inputs
+      input_response_column: model_response
+      output_sharegpt_column: conversations
+  input_ids:
+    - llm_judge_filter

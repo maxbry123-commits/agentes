@@ -1,0 +1,80 @@
+operators:
+- id: load_hf_python
+  config:
+    type: hf_source
+    dataset: prithivMLmods/Coder-Stat
+    split: train
+    trust_remote_code: True
+- id: sample_dataset
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_limited
+    function_config:
+      num_samples: 250_000  # 1.25% of 10000 target from stage 1
+  input_ids:
+  - load_hf_python
+- id: generate_instructions
+  config:
+    type: completions
+    map: chat
+    map_config:
+      system_message: "You are a helpful assistant."
+      user_message: |
+        You are to generate a question or task for a language model based on the following error and code pairs. 
+
+        Error Type: {{original_status}}
+        Code: {{original_src}}
+        
+        Include only the new question and task. Do not include anything like "Here is the instruction". Include
+        the code in your question and make the task sound like what a human would ask a language model. 
+      output_column: instruction_seed
+    model: gpt-4o-mini
+    temperature: 1.0
+    batch: True
+  input_ids:
+    - sample_dataset
+- id: add_constant_column
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      response_seed: ""
+  input_ids:
+  - generate_instructions
+- id: rename_task_column
+  config:
+    type: function
+    function: data_strategies.commons.keep_only_columns
+    function_config:
+      columns_to_keep:
+      - response_seed
+      - instruction_seed
+  input_ids:
+  - add_constant_column
+- id: classify
+  config:
+    type: fasttext
+    num_cpus: 32
+    hf_repo_id: mlfoundations-dev/instruction_filtering_fast_text_code_pos_leetcode_taco_neg_reflection_octopack
+    input_column: instruction_seed
+    target_label: "__label__QA_doc"
+    top_percentage_ranking: 10
+  input_ids:
+   - rename_task_column
+- id: keep_only
+  config:
+    type: function
+    function: data_strategies.commons.keep_only_columns
+    function_config:
+      columns_to_keep:    
+        - instruction_seed
+  input_ids:
+  - classify
+- id: _add_source
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      source: "coder_stat"
+  input_ids:
+  - keep_only

@@ -1,0 +1,15 @@
+operators:
+  - id: load_open_orca
+    config:
+      type: load_preexisting
+      framework_name: open-orca_gpt-4o-mini_test_batch
+
+  - id: filter_judgements
+    config:
+      type: function
+      function: data_strategies.commons.filter_out_falsey_values
+      function_config:
+        filter_column: model_judgement
+    input_ids:
+      - load_open_orca
+

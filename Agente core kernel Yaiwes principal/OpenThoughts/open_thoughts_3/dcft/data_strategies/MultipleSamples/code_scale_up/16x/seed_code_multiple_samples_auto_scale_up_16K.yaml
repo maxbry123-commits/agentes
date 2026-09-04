@@ -1,0 +1,16 @@
+operators:
+- id: load_hf
+  config:
+    type: hf_source
+    dataset: mlfoundations-dev/seed_code_multiple_samples_scale_up_base_16K_autoverified
+    split: train
+- id: convert_to_sharegpt
+  config:
+    type: function
+    function: data_strategies.commons.convert_instruction_response_to_sharegpt
+    function_config:
+      input_instruction_column: problem
+      input_response_column: r1_distill_70b_response
+      output_sharegpt_column: conversations
+  input_ids:
+    - load_hf

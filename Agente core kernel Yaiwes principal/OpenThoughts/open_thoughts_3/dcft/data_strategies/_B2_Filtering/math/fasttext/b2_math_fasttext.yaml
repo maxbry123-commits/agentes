@@ -1,0 +1,72 @@
+operators:
+- id: load_in
+  config:
+    type: load_preexisting
+    framework_name: load_in_math_open2math
+- id: classify_fasttext_math
+  config:
+    type: fasttext
+    num_cpus: 32
+    hf_repo_id: mlfoundations-dev/instruction_filtering_fast_text_classifier_b2_math_pos_numina_neg_lap1official_math
+    input_column: instruction_seed
+    target_label: "__label__QA_doc"
+    just_add_scores: True
+  input_ids:
+   - load_in
+
+- id: select_to_be_used
+  config:
+    type: function
+    function: data_strategies._B2_Filtering.utils.filter_top_n
+    function_config:
+      n: 31_600
+      score_column: _fasttext_score
+  input_ids:
+    - classify_fasttext_math
+- id: sample_dataset_final
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 31_600
+  input_ids:
+  - select_to_be_used
+
+- id: annotate_r1
+  config:
+    type: completions
+    map: deepseek_reasoner
+    map_config:
+      input_problem_column: instruction_seed
+    model: deepseek-reasoner
+    batch: false
+    temperature: 1.0
+    require_all_responses: false
+    backend: openai
+    backend_params:
+      max_requests_per_minute: 500
+      max_tokens_per_minute: 1_000_000_000
+      base_url: "https://api.deepseek.com/"
+      invalid_finish_reasons: ['content_filter']
+  input_ids:
+    - sample_dataset_final
+- id: convert_reasoning_trace_to_final
+  config:
+    type: function
+    function: data_strategies.commons.convert_reasoning_trace_to_final
+    function_config:
+      reasoning_column: reasoning
+      solution_column: deepseek_solution
+      output_column: final_reasoning_trace
+  input_ids:
+  - annotate_r1
+- id: convert_to_sharegpt
+  config:
+    type: function
+    function: data_strategies.commons.convert_instruction_response_to_sharegpt
+    function_config:
+      input_instruction_column: instruction_seed
+      input_response_column: final_reasoning_trace
+      output_sharegpt_column: conversations
+  input_ids:
+    - convert_reasoning_trace_to_final

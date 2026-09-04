@@ -1,0 +1,15 @@
+operators:
+- id: load_extra_verified
+  config:
+    type: load_preexisting
+    framework_name: extra_verified
+- id: load_extra_code_golf
+  config:
+    type: load_preexisting
+    framework_name: extra_code_golf
+- id: mix_subsets
+  config:
+    type: mix
+  input_ids:
+  - load_extra_verified
+  - load_extra_code_golf

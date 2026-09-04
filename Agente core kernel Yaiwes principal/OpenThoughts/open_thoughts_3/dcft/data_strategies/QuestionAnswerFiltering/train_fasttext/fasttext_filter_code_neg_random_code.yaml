@@ -1,0 +1,38 @@
+operators:
+- id: load_negative
+  config:
+    type: load_preexisting
+    framework_name: get_question_answer_random_code
+- id: load_positive
+  config:
+    type: load_preexisting
+    framework_name: get_question_answer_codeforces
+- id: dummy_positive
+  config:
+    type: function
+    function: data_strategies.commons.dummy
+  input_ids:
+  - load_positive
+- id: dummy_negative
+  config:
+    type: function
+    function: data_strategies.commons.dummy
+  input_ids:
+  - load_negative
+- id: train_fasttext_classifier
+  config:
+    type: train_fasttext
+    text_column: question_answer_string
+    positive_input_ids:
+      - dummy_positive
+    negative_input_ids:
+      - dummy_negative
+    dim: 256
+    epoch: 3
+    lr: 0.1
+    word_ngrams: 2
+    min_count: 3
+    hf_repo_id: mlfoundations-dev/instruction_filtering_pos_codeforces_neg_random_code
+  input_ids:
+    - dummy_negative
+    - dummy_positive

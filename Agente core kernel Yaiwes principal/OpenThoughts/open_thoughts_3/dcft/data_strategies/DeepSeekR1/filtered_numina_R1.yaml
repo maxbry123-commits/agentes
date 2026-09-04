@@ -1,0 +1,132 @@
+operators:
+operators:
+  - id: load_numina
+    config:
+      type: "hf_source"
+      dataset: "mlfoundations-dev/bespokelabs-sky-t1-numina-rejection-sampled"
+      split: train
+  - id: decontaminate
+    config:
+      type: function
+      function:  data_strategies.DeepSeekR1.utils.decontaminate_table
+      function_config:
+        column: problem
+        eval_datasets:
+          - HuggingFaceH4/MATH-500
+          - Maxwell-Jia/AIME_2024
+          - AI-MO/aimo-validation-amc
+        eval_columns:
+          - problem
+          - Problem
+          - problem
+        eval_splits:
+          - test
+          - train
+          - train
+        similarity_threshold: 95.0
+    input_ids:
+      - load_numina
+  - id: apply_numina_map
+    config:
+      type: function
+      function: data_strategies.DeepSeekR1.utils.apply_numina_map
+    input_ids:
+      - decontaminate
+  - id: load_still2
+    config:
+      type: hf_source
+      dataset: RUC-AIBOX/long_form_thought_data_5k
+      split: train
+  - id: apply_still2_map
+    config:
+      type: function
+      function: data_strategies.DeepSeekR1.utils.apply_still2_map
+    input_ids:
+      - load_still2
+  - id: load_taco
+    config:
+      type: "hf_source"
+      dataset: "mlfoundations-dev/bespokelabs-sky-t1-taco-test-rejection-sampled-shreyas"
+      split: train
+  - id: decontaminate_taco
+    config:
+      type: function
+      function:  data_strategies.DeepSeekR1.utils.decontaminate_table
+      function_config:
+        column: question
+        eval_datasets:
+          - livecodebench/code_generation_lite
+        eval_columns:
+          - question_content
+        eval_splits:
+          - test
+        similarity_threshold: 95.0
+    input_ids:
+      - load_taco
+  - id: rename_columns
+    config:
+      type: function
+      function: data_strategies.commons.force_rename_columns
+      function_config:
+        column_maps:
+          input_output_y: input_output_x
+    input_ids:
+      - decontaminate_taco
+  - id: apply_taco_map
+    config:
+      type: function
+      function: data_strategies.DeepSeekR1.utils.apply_taco_map
+    input_ids:
+      - rename_columns
+  - id: load_apps
+    config:
+      type: hf_source
+      dataset: mlfoundations-dev/bespokelabs-sky-t1-apps-rejection-sampled
+      split: train
+  - id: decontaminate_apps
+    config:
+      type: function
+      function:  data_strategies.DeepSeekR1.utils.decontaminate_table
+      function_config:
+        column: question
+        eval_datasets:
+          - livecodebench/code_generation_lite
+        eval_columns:
+          - question_content
+        eval_splits:
+          - test
+        similarity_threshold: 95.0
+    input_ids:
+      - load_apps
+  - id: apply_apps_map
+    config:
+      type: function
+      function: data_strategies.DeepSeekR1.utils.apply_apps_map
+    input_ids:
+      - decontaminate_apps
+  - id: select_true_numina
+    config:
+      type: function
+      function: data_strategies.commons.select_rows
+      function_config:
+        conditions:
+          correct: True
+    input_ids:
+      - apply_numina_map
+  - id: select_true_code
+    config:
+      type: function
+      function: data_strategies.commons.select_rows
+      function_config:
+        conditions:
+          correctness: True
+    input_ids:
+      - apply_apps_map
+      - apply_taco_map
+  - id: concatenate_all
+    config:
+      type: concatenate
+    input_ids:
+      - select_true_code
+      - select_true_numina
+      - apply_still2_map

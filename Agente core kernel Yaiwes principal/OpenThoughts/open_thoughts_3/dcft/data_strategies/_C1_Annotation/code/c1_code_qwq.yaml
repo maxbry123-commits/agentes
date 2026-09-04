@@ -1,0 +1,66 @@
+operators:
+- id: load_in_code_golf
+  config:
+    type: load_preexisting
+    framework_name: b2_code_askllm_code_golf
+- id: load_in_opencodereasoning
+  config:
+    type: load_preexisting
+    framework_name: b2_code_askllm_opencodereasoning
+
+- id: sample_dataset_code_golf
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 15_800
+  input_ids:
+  - load_in_code_golf
+
+- id: sample_dataset_opencodereasoning
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 15_800
+  input_ids:
+  - load_in_opencodereasoning
+
+- id: mix
+  config:
+    type: mix
+  input_ids:
+  - sample_dataset_code_golf
+  - sample_dataset_opencodereasoning
+- id: annotate
+  config:
+    type: completions
+    map: together_qwen
+    map_config:
+      input_problem_column: instruction_seed
+    model: Qwen/QwQ-32B
+    batch: false
+    backend: openai
+    require_all_responses: false
+    temperature: 0.999
+    backend_params:
+      base_url: "https://api.together.ai"
+      api_key: ab025288d5a46a9a3acf23b7af22b5d824f9623cb3d62e1e69debd48291be8cc
+      max_requests_per_minute: 250
+      max_tokens_per_minute: 500000
+      invalid_finish_reasons:
+      - content_filter
+    generation_params:
+      max_tokens: 32000
+  input_ids:
+  - mix
+- id: convert_to_sharegpt
+  config:
+    type: function
+    function: data_strategies.commons.convert_instruction_response_to_sharegpt
+    function_config:
+      input_instruction_column: instruction_seed
+      input_response_column: qwq_response
+      output_sharegpt_column: conversations
+  input_ids:
+    - annotate

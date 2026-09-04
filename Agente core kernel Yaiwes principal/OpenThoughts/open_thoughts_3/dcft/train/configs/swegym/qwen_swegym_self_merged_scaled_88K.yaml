@@ -1,0 +1,53 @@
+### model
+model_name_or_path: Qwen/Qwen2.5-7B-Instruct
+
+### method
+stage: sft
+do_train: true
+finetuning_type: full
+deepspeed: dcft/train/zero3.json
+packing: true
+neat_packing: true
+enable_liger_kernel: true
+
+
+
+### dataset
+dataset: mlfoundations-dev/swegym_self_merged_scaled_88K
+dataset_dir: ONLINE
+
+template: qwen25
+cutoff_len: 16384
+overwrite_cache: true
+preprocessing_num_workers: 16
+messages: conversations
+formatting: sharegpt
+role_tag: from
+content_tag: value
+user_tag: human
+assistant_tag: gpt
+
+### output
+output_dir: /data/horse/ws/rehe951g-p_finetuning/checkpoints/qwen_swegym_self_merged_scaled_88K
+logging_steps: 1
+save_steps: 10
+plot_loss: true
+overwrite_output_dir: true
+
+### train
+global_batch_size: 128
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 2
+per_device_eval_batch_size: 1
+learning_rate: 4.0e-5
+num_train_epochs: 5.0
+lr_scheduler_type: cosine
+warmup_ratio: 0.1
+bf16: true
+ddp_timeout: 180000000
+
+report_to: wandb
+run_name: qwen_swegym_self_merged_scaled_88K
+hub_model_id: mlfoundations-dev/qwen_swegym_self_merged_scaled_88K
+push_to_db: true
+push_to_hub: true

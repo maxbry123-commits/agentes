@@ -1,0 +1,89 @@
+# Prefect Server
+
+Orchestration backend managing flow runs, scheduling, and state tracking. This is the source of truth for all state transitions.
+
+## Key Contracts
+
+- **All state changes go through the orchestration layer** — never bypass it, even in tests
+- **SQLite and PostgreSQL must be kept in lockstep** — every migration, every query. Some queries need database-specific variants where SQLite lacks PostgreSQL features. CI tests both databases.
+- **Server and client code should not mix** — the server has its own schemas (`server/schemas/`) separate from client schemas (`client/schemas/`). Keep the boundary clean.
+- **Auth token comparisons must use `hmac.compare_digest`** — never compare auth tokens with `==` or `!=`. Direct equality checks are vulnerable to timing attacks that can leak secrets. Applies to CSRF tokens (`api/middleware.py`), HTTP basic auth (`api/server.py`), and WebSocket auth (`utilities/subscriptions.py`).
+- **Use `SizedParameters` for action schema `parameters` fields** — `schemas/actions.py` defines `SizedParameters = Annotated[Dict[str, Any], AfterValidator(validate_parameter_size_field)]`. Any action model that accepts flow run or deployment parameters must use this type instead of `Dict[str, Any]`. It enforces the `PREFECT_SERVER_API_MAX_PARAMETER_SIZE` limit (default 512 KB, set to 0 to disable) and returns a 422 on violation.
+- **Use `NormalizedSchedule` for action schema `schedule` fields** — `schemas/actions.py` defines `NormalizedSchedule = Annotated[SCHEDULE_TYPES, AfterValidator(normalize_schedule_rrule)]`. Any action model that accepts a schedule on the write path must use this type instead of bare `SCHEDULE_TYPES`. The validator injects an explicit `DTSTART` into rrule strings, preventing dateutil from walking millions of occurrences from the 2020 legacy anchor on every scheduler loop (see PrefectHQ/prefect#21362). The validator is intentionally on the *field* (via `Annotated`) not on `RRuleSchedule` itself — if it were on the class it would fire on DB reads and re-phase `INTERVAL>1` schedules. The same `NormalizedSchedule` is mirrored in `client/schemas/actions.py`.
+- **Perpetual services must use `Perpetual(automatic=True, ...)`** — this lets Docket reschedule them after Redis disruptions. `tests/server/services/test_perpetual_services.py` enforces the registry-wide invariant.
+
+## Adding a New API Endpoint
+
+Follow this layering order:
+
+1. **Schema** (`schemas/`) — Define Pydantic request/response models
+2. **Model** (`models/`) — Add SQLAlchemy ORM operations
+3. **Route** (`api/`) — Wire up the FastAPI endpoint
+
+The `variables` endpoints are a good canonical example of this pattern for simple CRUD.
+
+**Singleton server settings** (not tied to a specific run or resource) skip a dedicated table — store them as JSON in the `Configuration` key-value store via `models/configuration.py`. Define a string key constant in the wrapping module (see `models/storage_defaults.py` for the pattern).
+
+## Object Lifecycle Events
+
+Domain objects emit `prefect.<object>.{created,updated,deleted}` events from their `models/` CRUD functions (`models/variables.py` is the simplest example). Two non-obvious rules:
+
+- **Builders live in `events/schemas/lifecycle.py`, not `models/events.py`.** `models/events.py` imports `models.deployments`, so a model imported early in `models/__init__` (e.g. `block_types`, `block_documents`) that imports a builder from there triggers a circular import. The builders in `lifecycle.py` are pure functions of an ORM object + timestamp with no model-layer imports, so any model can use them safely.
+- **Emission is inline and pre-commit.** `emit_*` helpers reference `clients.PrefectServerEventsClient` as a module attribute (so the autouse test fixture's single patch on `events.clients.PrefectServerEventsClient` captures them) and publish within the request transaction — there is no request-scoped buffer, so a rolled-back create still emits.
+
+## Database Migrations
+
+Migrations use Alembic via wrapper functions in `database/alembic_commands.py`:
+
+```python
+from prefect.server.database.alembic_commands import alembic_upgrade, alembic_downgrade, alembic_revision
+
+alembic_upgrade("head")              # Apply all pending migrations
+alembic_downgrade("-1")              # Roll back one migration
+alembic_revision("description")      # Create a new migration
+```
+
+**Every migration must support both SQLite and PostgreSQL.** Migration scripts live in `database/_migrations/`. Config is in `database/alembic.ini`.
+
+## Orchestration Pitfalls
+
+- **Pydantic v2 treats null JSON fields as explicitly set.** When a worker sends a state update with `field: null`, Pydantic v2 sets that field to `None`, silently overwriting any existing value. To preserve `state_details` fields across transitions (e.g. `deployment_concurrency_lease_id`), add a `FlowRunUniversalTransform` to `CoreFlowPolicy` that copies the field forward when the proposed state has `None`. See `PreserveDeploymentConcurrencyLeaseId` in `orchestration/core_policy.py` as the canonical pattern. Any new field added to `state_details` that workers may omit faces this same risk.
+
+- **`update_deployment` uses `model_fields_set` to distinguish explicit `None` from "not provided" for `work_pool_name`.** In `models/deployments.py`, when `deployment.work_pool_name is None` AND `"work_pool_name" in deployment.model_fields_set`, the work queue association is cleared (`work_queue_id = None`). If `work_pool_name` is simply absent from `model_fields_set`, the existing work pool association is left intact. This is the intentional counterpart to the Pydantic v2 null-overwrite pitfall above — here the explicit `model_fields_set` entry signals *desired* clearing. `RunnerDeployment` factory methods omit `None`-valued work pool fields from constructor kwargs; `Runner.add_flow()` then post-assigns `None` to opt into clearing. Follow this same pattern for any future field that should distinguish "clear it" from "leave it alone."
+
+- **`_find_block_schema_via_checksum` dict-index miss is definitive — no linear-scan fallback.** In `models/block_schemas.py`, passing a `checksum_index` dict makes lookups O(1); a miss returns `None` without consulting the row list. Any code calling `_construct_full_block_schema` in a bulk loop must pre-build a `checksum_index` once and thread it through all recursive calls — omitting the kwarg on a recursive call silently downgrades every lookup to an O(N) scan, restoring O(N²) overall cost. The index uses first-wins semantics to match `next()` scan order.
+
+- **`read_server_default_result_storage` bypasses the generic `Configuration` cache intentionally.** In `models/storage_defaults.py`, the read path uses a raw `sa.select` query instead of `models/configuration.read_configuration()` to avoid serving stale cached data when another server process updates the setting. Do not refactor this to use the generic `read_configuration()` helper — the cache isolation is the desired behavior.
+
+- **`GlobalConcurrencyLimitResponse.active_slots` is computed at read time, not stored.** The DB column holds the raw accumulated count; the API joins `active_slots_after_decay()` (in `models/concurrency_limits_v2.py`) on every read. Never return ORM model fields directly from `api/concurrency_limits_v2.py` — use `_global_concurrency_limit_response()` which pulls `active_slots` from the JOIN result. `PATCH` operations do not persist the decayed count; after an update, `active_slots` in the DB remains the pre-decay value.
+
+- **`force=True` routes through `MinimalFlowPolicy`, not a true bypass.** `MinimalFlowPolicy` is intentionally lightweight but still includes guards — notably `PreventResultDataLoss`, which rejects COMPLETED→COMPLETED transitions that would discard persisted result data. Do not assume `force=True` skips all orchestration rules.
+
+- **CANCELLING state transitions must call `maybe_schedule_cancelling_timeout_check_for_state()`.** Any new API path that accepts a CANCELLING transition should call this after `SetStateStatus.ACCEPT`; failures are intentionally non-fatal — log and swallow, do not raise. `cancel_subflow_run` deliberately skips subflows already in CANCELLING to preserve their existing timeout deadline — this guard has no inline comment but removing it resets the deadline. The `ensure_cancelling_timeout_checks` perpetual service re-seeds missed checks on server restart.
+
+- **`record_bulk_task_run_events` batches must be sorted by conflict key before upserting.** In `services/task_run_recorder.py`, task runs are sorted by conflict key — natural key `(flow_run_id, task_key, dynamic_key)` when available, otherwise `("id", task_run_id)` — before batching into upsert groups. This enforces deterministic row-level lock acquisition order across concurrent recorder instances; removing or reordering the sort causes deadlocks. Events that collide on either `id` or natural key are coalesced via union-find to a single canonical ID — the input `TaskRun.id` and `state.state_details.task_run_id` are mutated in-place to that canonical value. Any refactor that re-batches or re-merges must re-sort by conflict key. The function retries once internally on `IntegrityError` to handle TOCTOU races between concurrent recorders, then re-raises on a second failure — callers must catch `IntegrityError` or re-queue the batch.
+
+- **`_segment_task_runs_for_upsert` must keep emitting contiguous blocks of its input.** That property, not the batch key, is what preserves the lock ordering above, so a new condition may only *close* a segment earlier — never reorder rows. Each existing condition guards a failure that is silent on at least one dialect; see its docstring and `_fillable_columns` before relaxing one. Absent keys are `NULL`-filled and restored with `coalesce(excluded.col, task_run.col)`, applied to exactly the columns that were filled — a payload asking to write a real `NULL` keeps a plain `excluded.col`, and the batch splits rather than let one statement mean both. This is also why `flow_run_id` must stay out of `_fillable_columns`: coalescing it would break detach.
+
+- **`docket.add()` in monitor loops must pass a per-entity `key=` to prevent duplicate enqueues.** Without it, repeated iterations over the same pending entity enqueue duplicate tasks — causing duplicate state transitions. Format: `"<service-name>:<entity-id>"`, e.g., `"mark-flow-run-late:{run.id}"` in `services/late_runs.py`.
+
+## UI Serving Architecture
+
+Both V1 and V2 UI bundles are served simultaneously when available: V1 at `PREFECT_UI_SERVE_BASE` (default `/`), V2 at `{base_url}/v2`. The `redirect_to_preferred_ui` middleware routes neutral entry points using the `prefect_ui_version` cookie. `PREFECT_SERVER_UI_V2_ENABLED` sets the *default* for browsers with no saved preference — it does not remove V1 or force all users to V2. Both bundles must be built before packaging (`PREFECT_REQUIRE_PACKAGED_UI_BUNDLES=1` enforces this via `hatch_build.py`). **The version-redirect `Location` header must be a relative path** — using `request.url.replace(...)` builds an absolute URL that embeds the internal Host behind a reverse proxy and leaks it to the client.
+
+## Main Subsystems
+
+- `api/` — FastAPI REST endpoints
+- `database/` — Connections, ORM models, and Alembic migrations
+- `orchestration/` — State transition rules and policies
+- `services/` — Background services (scheduler, event services, task queue)
+- `events/` — Server-side event processing: trigger evaluation, action execution, messaging, streaming (see also `../events/` for client-side schemas)
+- `concurrency/` — Server-side concurrency management
+- `logs/` — Log storage and retrieval
+- `worker_communication/` — Pluggable server-side messaging to workers: cleanup delivery queue for expired/cancelled flow run teardown. The abstract interface is in `cleanup_queue/__init__.py`; the default in-memory backend (`cleanup_queue/memory.py`) is a process-level singleton and is not restart-safe. Configure `PREFECT_SERVER_WORKER_CHANNEL_CLEANUP_QUEUE_STORAGE` to point to a module exposing a concrete `WorkerCleanupQueue` subclass for HA or Redis-backed deployments.
+
+## Related
+
+- `../client/` → HTTP client that talks to these endpoints (see client/AGENTS.md)
+- `../events/` → Client-side event schemas and emission (see events/AGENTS.md)
+- `tests/server/` → Server tests use a stripped-down client; do not mix with full client fixtures

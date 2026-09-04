@@ -1,0 +1,60 @@
+operators:
+- id: args_dataset
+  config:
+    type: function
+    function: data_strategies.commons.create_constant_dataset
+    function_config:
+      language: English
+      batch_size: 15
+      flesch: The output should be written in such a way as to have a Flesch-Kincaid readability score of 30 or lower - best understood by those with college education.  The response must not contain any notes or information about Flesch-Kincaid scores.
+      topic_avoidance: Avoid any tasks that would be related to climate change, green tech, remewable energy, DEI, sex and/or gender, religion, politics, social issues, race, ethnicity, artificial intelligence, baking/cooking, or any topic that you would likely not respond to, or any task which a language model would not be able to respond to, e.g. tasks about emotions, feelings, physical senses, etc.
+      min_docsearch_score: 0.05
+      airoboros_subset: cot
+      
+- id: generate_cot_instructions
+  config:
+    type: completions
+    map: list
+    map_config:
+      user_message: |
+        I would like your help in producing a chain-of-thought style questions/instructions.
+
+        Below are a few examples:
+
+        Example 1: Jackie has 3 brothers. Each brother has 2 sisters. How many sisters does Jackie have? Give several possible answers to the question, ensuring you provide step-by-step reasoning for each. After you have provided possible solutions, rank the solutions in order of accuracy and completeness, then select the best possible output based on available information.
+
+        Example 2: It take 4 hours to dry 5 shirts out in the sun. How long would it take to dry 20 shirts? Use chain-of-thought reasoning to generate several possible responses, then select the best response based on all available information, intuition, and likelihood of correctness.
+
+        Provide a set of {{batch_size}} new, complex, unique, diverse tasks.
+
+        {{topic_avoidance}}
+
+        Be sure to include a wide variety of tasks, including tasks that explore ideas of set theory, information theory, parallelism, logic, extrapolation from scientific studies, etc., but also be sure to only include questions that have multiple potentially correct answers.
+
+        {{flesch}}
+
+        All output text should be in {{language}}.      
+      output_column: instruction
+    model: gpt-4o-mini
+    temperature: 0.7
+    top_p: 0.5
+    presence_penalty: 2.0
+    n_repeat: 400 # to get to target count
+  input_ids:
+    - args_dataset
+
+- id: drop_columns
+  config:
+    type: function
+    function: data_strategies.commons.remove_columns
+    function_config:
+      columns: 
+        - language
+        - topic_avoidance
+        - batch_size
+        - flesch
+  input_ids:
+    - generate_cot_instructions
+
+# target count is 6000
+# min doc search score is 0.05

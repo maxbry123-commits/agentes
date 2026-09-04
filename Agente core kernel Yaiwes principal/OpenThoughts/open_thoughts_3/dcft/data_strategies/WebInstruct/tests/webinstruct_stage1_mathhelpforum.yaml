@@ -1,0 +1,47 @@
+name: webinstruct_stage1_mathhelpforum
+operators:
+  - id: load_mathhelpforum_processed_shards
+    config:
+      type: json_source
+      directory: dcft/webinstruct/scraper/data/mathhelpforum/processed_shards
+      num_truncate: 20_000
+
+  # This breaks the framework on local, will just use my own script and load pre-parsed shards
+  - id: load_mathhelpforum_html
+  config:
+    type: json_source
+    directory: dcft/webinstruct/scraper/data/mathhelpforum/shards
+    num_truncate: 20_000
+  - id: parse_mathhelpforum_html
+    config:
+      type: function
+      function: data_strategies.WebInstruct.utils.parse_html
+      function_config:
+        input_column: html
+        output_column: extracted_text
+        remove_columns: [html, timestamp]
+        cache_file: dcft/data_strategies/WebInstruct/cache/parse_mathhelpforum_html.json
+    input_ids:
+      - load_mathhelpforum_html
+
+  - id: clean_mathhelpforum_text
+    config:
+      type: function
+      function: data_strategies.WebInstruct.utils.clean_dataset
+      function_config:
+        input_column: text
+        output_column: text
+        remove_columns: [timestamp]
+    input_ids:
+      - load_mathhelpforum_processed_shards
+
+  - id: remove_mathhelpforum_text
+    config:
+      type: function
+      function: data_strategies.WebInstruct.utils.remove_text
+      function_config:
+        input_column: text
+        output_column: text
+        phrase: "Register CTA Register on Math Help Forum! This sidebar will go away, and you will see fewer ads. Trending Discussions"
+    input_ids:
+      - clean_mathhelpforum_text

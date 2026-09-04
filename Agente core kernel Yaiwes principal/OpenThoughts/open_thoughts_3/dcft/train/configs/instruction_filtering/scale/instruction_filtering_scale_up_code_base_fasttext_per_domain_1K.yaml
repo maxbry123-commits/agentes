@@ -1,0 +1,20 @@
+include_hp: dcft/train/hp_settings/reasoning.yaml
+
+dataset_dir: ONLINE
+dataset: mlfoundations-dev/instruction_filtering_scale_up_code_base_fasttext_per_domain_1K
+messages: conversations
+formatting: sharegpt
+role_tag: from
+content_tag: value
+user_tag: human
+assistant_tag: gpt
+
+per_device_train_batch_size: 1      # Can change depending on hardware
+gradient_accumulation_steps: 12      # Can change depending on number of GPUs
+
+output_dir: "/data4/dcft/experiments/train/checkpoints/instruction_filtering_scale_up_code_base_fasttext_per_domain_1K"
+run_name: instruction_filtering_scale_up_code_base_fasttext_per_domain_1K
+hub_model_id: mlfoundations-dev/instruction_filtering_scale_up_code_base_fasttext_per_domain_1K_new
+report_to: wandb
+push_to_db: true
+push_to_hub: true

@@ -1,0 +1,273 @@
+operators:
+- id: seed_science_fineweb
+  config:
+    type: load_preexisting
+    framework_name: base_fineweb_seed_science
+- id: drop_columns_fineweb
+  config:
+    type: function
+    function: data_strategies.commons.keep_only_columns
+    function_config:
+      columns_to_keep:    
+        - problem
+  input_ids:
+  - seed_science_fineweb
+- id: add_source_fineweb
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      source: "fineweb"
+  input_ids:
+  - drop_columns_fineweb
+- id: classify_fineweb
+  config:
+    type: fasttext
+    num_cpus: 32
+    hf_repo_id: mlfoundations-dev/instruction_filtering_fast_text_classifier_seed_science_pos_expertqa
+    input_column: problem
+    target_label: "__label__QA_doc"
+    top_percentage_ranking: 10
+  input_ids:
+   - add_source_fineweb
+- id: sample_dataset_fineweb
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 2_000
+  input_ids:
+  - classify_fineweb
+
+
+
+
+
+- id: seed_science_camel_chemistry
+  config:
+    type: load_preexisting
+    framework_name: base_camel_chemistry_seed_science
+- id: drop_columns_camel_chemistry
+  config:
+    type: function
+    function: data_strategies.commons.keep_only_columns
+    function_config:
+      columns_to_keep:    
+        - problem
+  input_ids:
+  - seed_science_camel_chemistry
+- id: add_source_camel_chemistry
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      source: "camel_chemistry"
+  input_ids:
+  - drop_columns_camel_chemistry
+- id: classify_camel_chemistry
+  config:
+    type: fasttext
+    num_cpus: 32
+    hf_repo_id: mlfoundations-dev/instruction_filtering_fast_text_classifier_seed_science_pos_expertqa
+    input_column: problem
+    target_label: "__label__QA_doc"
+    top_percentage_ranking: 10
+  input_ids:
+   - add_source_camel_chemistry
+- id: sample_dataset_camel_chemistry
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 2_000
+  input_ids:
+  - classify_camel_chemistry
+
+
+- id: seed_science_stackexchange_biology
+  config:
+    type: load_preexisting
+    framework_name: base_stackexchange_biology_seed_science
+- id: drop_columns_stackexchange_biology
+  config:
+    type: function
+    function: data_strategies.commons.keep_only_columns
+    function_config:
+      columns_to_keep:    
+        - problem
+  input_ids:
+  - seed_science_stackexchange_biology
+- id: add_source_stackexchange_biology
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      source: "stackexchange_biology"
+  input_ids:
+  - drop_columns_stackexchange_biology
+- id: classify_stackexchange_biology
+  config:
+    type: fasttext
+    num_cpus: 32
+    hf_repo_id: mlfoundations-dev/instruction_filtering_fast_text_classifier_seed_science_pos_expertqa
+    input_column: problem
+    target_label: "__label__QA_doc"
+    top_percentage_ranking: 10
+  input_ids:
+   - add_source_stackexchange_biology
+- id: sample_dataset_stackexchange_biology
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 2_000
+  input_ids:
+  - classify_stackexchange_biology
+
+- id: seed_science_wikipedia_biology
+  config:
+    type: load_preexisting
+    framework_name: base_wikipedia_biology_seed_science
+- id: drop_columns_wikipedia_biology
+  config:
+    type: function
+    function: data_strategies.commons.keep_only_columns
+    function_config:
+      columns_to_keep:    
+        - problem
+  input_ids:
+  - seed_science_wikipedia_biology
+- id: add_source_wikipedia_biology
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      source: "wikipedia_biology"
+  input_ids:
+  - drop_columns_wikipedia_biology
+- id: classify_wikipedia_biology
+  config:
+    type: fasttext
+    num_cpus: 32
+    hf_repo_id: mlfoundations-dev/instruction_filtering_fast_text_classifier_seed_science_pos_expertqa
+    input_column: problem
+    target_label: "__label__QA_doc"
+    top_percentage_ranking: 10
+  input_ids:
+   - add_source_wikipedia_biology
+- id: sample_dataset_wikipedia_biology
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 2_000
+  input_ids:
+  - classify_wikipedia_biology
+
+
+
+- id: seed_science_wikipedia
+  config:
+    type: load_preexisting
+    framework_name: base_wikipedia_seed_science
+- id: drop_columns_wikipedia
+  config:
+    type: function
+    function: data_strategies.commons.keep_only_columns
+    function_config:
+      columns_to_keep:    
+        - problem
+  input_ids:
+  - seed_science_wikipedia
+- id: add_source_wikipedia
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      source: "wikipedia"
+  input_ids:
+  - drop_columns_wikipedia
+- id: classify_wikipedia
+  config:
+    type: fasttext
+    num_cpus: 32
+    hf_repo_id: mlfoundations-dev/instruction_filtering_fast_text_classifier_seed_science_pos_expertqa
+    input_column: problem
+    target_label: "__label__QA_doc"
+    top_percentage_ranking: 10
+  input_ids:
+   - add_source_wikipedia
+- id: sample_dataset_wikipedia
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 2_000
+  input_ids:
+  - classify_wikipedia
+
+
+
+- id: rename_task_column
+  config:
+    type: function
+    function: data_strategies.commons.keep_only_columns
+    function_config:
+      columns_to_keep:
+      - problem
+      - source
+  input_ids:
+  - sample_dataset_wikipedia
+  - sample_dataset_fineweb
+  - sample_dataset_camel_chemistry
+  - sample_dataset_stackexchange_biology
+  - sample_dataset_wikipedia_biology
+
+- id: add_domain
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      domain: "science"
+  input_ids:
+  - rename_task_column
+
+- id: annotate_r1_distill_70b
+  config:
+    type: completions
+    map: deepseek_reasoner
+    map_config:
+      input_problem_column: problem
+    model: deepseek-reasoner
+    batch: False
+    temperature: 1.0
+    require_all_responses: false
+    backend: openai
+    backend_params:
+      max_requests_per_minute: 2_500
+      max_tokens_per_minute: 1_000_000_000
+      api_key: API_KEY
+      base_url: "https://api.deepseek.com/"
+      invalid_finish_reasons: ['content_filter']
+  input_ids:
+    - add_domain
+- id: convert_reasoning_trace_to_final
+  config:
+    type: function
+    function: data_strategies.commons.convert_reasoning_trace_to_final
+    function_config:
+      reasoning_column: reasoning
+      solution_column: deepseek_solution
+      output_column: final_reasoning_trace
+  input_ids:
+  - annotate_r1_distill_70b
+- id: convert_to_sharegpt
+  config:
+    type: function
+    function: data_strategies.commons.convert_instruction_response_to_sharegpt
+    function_config:
+      input_instruction_column: problem
+      input_response_column: final_reasoning_trace
+      output_sharegpt_column: conversations
+  input_ids:
+    - convert_reasoning_trace_to_final

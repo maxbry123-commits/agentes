@@ -1,0 +1,97 @@
+operators:
+- id: args_dataset
+  config:
+    type: function
+    function: data_strategies.commons.create_constant_dataset
+    function_config:
+      batch_size: 50
+      min_docsearch_score: 0.01
+      airoboros_subset: riddle
+
+- id: generate_riddle_instructions
+  config:
+    type: completions
+    map: list_qa 
+    map_config:
+      user_message: |
+        I need you to help me generate some fairly tricky logical reasoning puzzles/riddles. I would like you to provide both the question and the solution.
+
+        Here are a few examples:
+        Example 1: QUESTION: There is a room with no doors, and no windows. A man is found hung from the ceiling. A puddle of water is on the floor. How did he die?
+        ANSWER: He was standing on a block of ice.
+
+        Example 2: QUESTION: A boy and a doctor were fishing. The boy is the doctor's son, but the doctor isn't the boy's father. Who is the doctor?
+        ANSWER: His mother.
+
+        Example 3: QUESTION: Two horses were born at the same time. They both traveled the world, and then died at the same time. However, they didn't live to the same age. How?
+        ANSWER: One of the hoses went east, the other west. The first horse was gaining in the number of days, the other was losing.
+
+        Example 4. QUESTION: Spot the odd one out - FIRST, SECOND, THIRD, FORTH, FIFTH, SIXTH, SEVENTH, EIGHTH
+        ANSWER: "FORTH" should be "FOURTH"
+
+        Example 5: QUESTION: There are two sisters: One gives birth to the other and she, in turn, gives birth to the first. Who are the two sisters?
+        ANSWER: Day and night.
+
+        Example 6: QUESTION: Jackie has 3 brothers. Each brother has 2 sisters. How many sisters does Jackie have?
+        ANSWER: Jackie has one sister. If each brother has 2 sisters, assuming Jackie is a female, that would mean there are two total female siblings, of which Jackie is one, so 2 - 1 = 1. The number of brothers is an extraneous detail.
+
+        Please write {{batch_size}} more examples of a similar format, with "QUESTION: [puzzle]" and "ANSWER: [answer]" with the correct answer, reasoning step-by-step for the answer when appropriate.
+
+        Try not to use common/well-known riddles; the puzzles/riddles should be highly diverse and unique.
+
+        The output format should be:
+        QUESTION: [first puzzle]
+        ANSWER: [first puzzle's answer]
+
+        QUESTION: [second puzzle]
+        ANSWER: [second puzzle's answer]
+      output_instruction_column: instruction
+      output_response_column: response
+    model: gpt-4o-mini
+    temperature: 1.
+    top_p: 0.4
+    presence_penalty: 2.0
+    n_repeat: 200 # to get to target count
+  input_ids:
+    - args_dataset
+
+- id: filter_instructions  # filter both instructions and responses here just in case
+  config:
+    type: function
+    function: data_strategies.Airoboros.utils.filter_banned_responses
+    function_config:
+      response_column: instruction
+  input_ids:
+    - generate_riddle_instructions
+
+- id: filter_responses
+  config:
+    type: function
+    function: data_strategies.Airoboros.utils.filter_banned_responses
+    function_config:
+      response_column: response
+  input_ids:
+    - filter_instructions
+
+- id: cleanup_qa
+  config:
+    type: function
+    function: data_strategies.Airoboros.utils.cleanup_qa
+    function_config:
+      instruction_column: instruction
+      response_column: response
+  input_ids:
+    - filter_responses
+
+- id: drop_columns
+  config:
+    type: function
+    function: data_strategies.commons.remove_columns
+    function_config:
+      columns:    
+        - batch_size
+  input_ids:
+    - cleanup_qa
+
+# min doc score 0.01
+# target count 3000

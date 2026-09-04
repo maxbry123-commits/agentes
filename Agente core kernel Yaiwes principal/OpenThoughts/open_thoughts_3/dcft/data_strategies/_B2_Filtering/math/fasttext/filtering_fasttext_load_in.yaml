@@ -1,0 +1,25 @@
+operators:
+- id: load_in
+  config:
+    type: load_preexisting
+    framework_name: load_in_code_apps
+- id: classify_fasttext_math
+  config:
+    type: fasttext
+    num_cpus: 32
+    hf_repo_id: mlfoundations-dev/instruction_filtering_fast_text_math_pos_numina_neg_bad_seed_math 
+    input_column: instruction_seed
+    target_label: "__label__QA_doc"
+    just_add_scores: True
+  input_ids:
+   - load_in
+
+- id: select_to_be_used
+  config:
+    type: function
+    function: data_strategies._B2_Filtering.utils.filter_top_n
+    function_config:
+      n: 100
+      score_column: _fasttext_score
+  input_ids:
+    - classify_fasttext_math

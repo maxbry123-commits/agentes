@@ -1,0 +1,15 @@
+operators: 
+- id: add_openthoughts
+  config:
+    type: load_preexisting 
+    framework_name: 32b_add_verified_extra_unverified
+- id: load_preexisting 
+  config:
+    type: load_preexisting 
+    framework_name: instruction_filtering_fasttext_seed_data_math
+- id: mix
+  config:
+    type: mix
+  input_ids:
+  - add_openthoughts
+  - load_preexisting

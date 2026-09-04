@@ -1,0 +1,90 @@
+operators: 
+- id: load_math
+  config:
+    type: hf_source
+    dataset: virtuoussy/Multi-subject-RLVR
+    split: train
+    trust_remote_code: True
+- id: sample_dataset_pre
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 200_000
+  input_ids:
+  - load_math
+- id: generate_instructions
+  config:
+    type: completions
+    map: chat
+    map_config:
+      system_message: "You are a helpful assistant."
+      user_message: |
+        You are given a text snippet. Classify the question in the text into one of the following subject categories. Respond with the category name in <> ONLY. Categories:
+        - 'Sociology'
+        - 'Clinical Medicine'
+        - 'Education'
+        - 'History'
+        - 'Materials Science'
+        - 'Earth Science'
+        - 'Preventive Medicine and Public Health'
+        - 'Law'
+        - 'Food Science and Technology'
+        - 'Information Science and System Science'
+        - 'Unclassified'
+        - 'Agronomy'
+        - 'Physics'
+        - 'Natural Science Related Engineering and Technology'
+        - 'Biology'
+        - 'Journalism and Communication'
+        - 'Psychology'
+        - 'Mechanical Engineering'
+        - 'Electronics and Communications Technology'
+        - 'Surveying and Mapping Science and Technology'
+        - 'Statistics'
+        - 'Chinese Medicine and Chinese Materia Medica'
+        - 'Political Science'
+        - 'Philosophy'
+        - 'Chemistry'
+        - 'Management'
+        - 'Literature'
+        - 'Safety Science and Technology'
+        - 'Power and Electrical Engineering'
+        - 'Chemical Engineering'
+        - 'Transportation Engineering'
+        - 'Religious Studies'
+        - 'Civil Engineering'
+        - 'Ethnology and Cultural Studies'
+        - 'Linguistics'
+        - 'Computer Science and Technology'
+        - 'Environmental / Resource Science and Technology'
+        - 'Economics'
+        - 'Mechanics'
+        - 'Art'
+        - 'Animal Husbandry and Veterinary Science'
+        - 'Library, Information, and Documentation'
+        - 'Water Conservancy Engineering'
+        - 'Basic Medicine'
+        - 'Sports Science'
+        - 'Mathematics'
+        - 'Marxism'
+        - 'Pharmacy'
+        - 'Information and System Science Related Engineering and Technology'
+
+        Text: {{query}}
+        
+      output_column: gpt_subject
+    model: gpt-4o-mini
+    temperature: 1.0
+    batch: False
+    require_all_responses: True
+  input_ids:
+    - sample_dataset_pre
+- id: add_constant_column
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      response_seed: ""
+  input_ids:
+  - generate_instructions

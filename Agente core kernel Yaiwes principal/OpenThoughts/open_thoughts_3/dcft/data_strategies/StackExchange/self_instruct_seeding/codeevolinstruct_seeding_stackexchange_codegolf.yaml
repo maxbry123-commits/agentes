@@ -1,0 +1,61 @@
+operators:
+  - id: load_stackexchange_codegolf
+    config:
+      type: load_preexisting
+      framework_name: stackexchange_code_golf_reorg_cache
+  - id: evolution_prompt
+    config:
+      type: function
+      require_all_responses: False
+      function: data_strategies.EvolInstruct.utils.codeevol_prompts_for_evolving_instructions_no_input
+      function_config:
+        input_instruction_column: instruction
+        output_prompt_column: instruction_evolution_prompt
+    input_ids:
+      - load_stackexchange_codegolf
+  - id: evolve_instruction
+    input_ids:
+      - evolution_prompt
+    config:
+      type: completions
+      map: chat
+      map_config:
+        user_message_column: instruction_evolution_prompt
+        output_column: evolved_instruction
+      model: gpt-4o-mini
+      top_p: 0.95
+      batch: True
+  - id: annotate_instruction
+    input_ids:
+      - evolve_instruction
+    config:
+      type: completions
+      map: chat
+      require_all_responses: False
+      map_config:
+        user_message_column: evolved_instruction
+        output_column: completion
+      model: gpt-4o-mini
+      top_p: 0.95
+      batch: True
+  - id: select_columns
+    config:
+      type: function
+      function: data_strategies.commons.select_columns
+      function_config:
+        columns:
+          - evolved_instruction
+          - completion
+    input_ids:
+      - annotate_instruction
+  
+  - id: to_sharegpt
+    config:
+      type: function
+      function: data_strategies.commons.convert_instruction_response_to_sharegpt
+      function_config:
+        input_instruction_column: evolved_instruction
+        input_response_column: completion
+        output_sharegpt_column: conversations
+    input_ids:
+      - select_columns

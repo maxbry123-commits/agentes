@@ -1,0 +1,135 @@
+operators:
+- id: seed_math_automath_1000000
+  config:
+    type: load_preexisting
+    framework_name: seed_math_automath_1000000
+- id: drop_columns_automath_1000000
+  config:
+    type: function
+    function: data_strategies.commons.keep_only_columns
+    function_config:
+      columns_to_keep:    
+        - instruction_seed
+  input_ids:
+  - seed_math_automath_1000000
+- id: add_source_automath
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      source: "automath"
+  input_ids:
+  - drop_columns_automath_1000000
+- id: filter_out_proofs_automath_1000000
+  config: 
+    type: function
+    function: data_strategies.MultipleSamples.utils.filter_out_proofs
+    function_config:
+      problem_column: instruction_seed
+  input_ids:
+    - add_source_automath
+
+- id: seed_math_nvidia_math_exploit
+  config:
+    type: load_preexisting
+    framework_name: seed_math_nvidia_math_exploit
+- id: drop_columns_nvidia_math_exploit
+  config:
+    type: function
+    function: data_strategies.commons.keep_only_columns
+    function_config:
+      columns_to_keep:    
+        - instruction_seed
+  input_ids:
+  - seed_math_nvidia_math_exploit
+- id: add_source_nvidia_math
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      source: "nvidia_math"
+  input_ids:
+  - drop_columns_nvidia_math_exploit
+- id: filter_out_proofs_nvidia_math
+  config: 
+    type: function
+    function: data_strategies.MultipleSamples.utils.filter_out_proofs
+    function_config:
+      problem_column: instruction_seed
+  input_ids:
+    - add_source_nvidia_math
+
+
+- id: seed_math_tiger_lab_math_exploit
+  config:
+    type: load_preexisting
+    framework_name: seed_math_tiger_lab_math_exploit
+- id: drop_columns_tiger_lab_math_exploit
+  config:
+    type: function
+    function: data_strategies.commons.keep_only_columns
+    function_config:
+      columns_to_keep:    
+        - instruction_seed
+  input_ids:
+  - seed_math_tiger_lab_math_exploit
+- id: add_source_tiger_lab_math
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      source: "tiger_lab_math"
+  input_ids:
+  - drop_columns_tiger_lab_math_exploit
+- id: filter_out_proofs_tiger_lab_math
+  config: 
+    type: function
+    function: data_strategies.MultipleSamples.utils.filter_out_proofs
+    function_config:
+      problem_column: instruction_seed
+  input_ids:
+    - add_source_tiger_lab_math
+
+- id: seed_math_tiger_math_exploit
+  config:
+    type: load_preexisting
+    framework_name: seed_math_tiger_math_exploit
+- id: drop_columns_tiger_math_exploit
+  config:
+    type: function
+    function: data_strategies.commons.keep_only_columns
+    function_config:
+      columns_to_keep:    
+        - instruction_seed
+  input_ids:
+  - seed_math_tiger_math_exploit
+- id: add_source_tiger_math
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      source: "tiger_math"
+  input_ids:
+  - drop_columns_tiger_math_exploit
+- id: filter_out_proofs_tiger_math
+  config: 
+    type: function
+    function: data_strategies.MultipleSamples.utils.filter_out_proofs
+    function_config:
+      problem_column: instruction_seed
+  input_ids:
+    - add_source_tiger_math
+
+- id: rename_task_column
+  config:
+    type: function
+    function: data_strategies.commons.keep_only_columns
+    function_config:
+      columns_to_keep:
+      - instruction_seed
+      - source
+  input_ids:
+    - filter_out_proofs_tiger_math
+    - filter_out_proofs_automath_1000000
+    - filter_out_proofs_nvidia_math
+    - filter_out_proofs_tiger_lab_math

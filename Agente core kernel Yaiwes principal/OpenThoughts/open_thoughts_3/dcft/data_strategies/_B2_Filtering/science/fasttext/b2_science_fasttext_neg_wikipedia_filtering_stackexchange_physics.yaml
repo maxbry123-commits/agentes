@@ -1,0 +1,32 @@
+operators:
+- id: load_in
+  config:
+    type: load_preexisting
+    framework_name: load_in_science_stackexchange_physics
+- id: classify_fasttext_math
+  config:
+    type: fasttext
+    num_cpus: 32
+    hf_repo_id: mlfoundations-dev/instruction_filtering_fast_text_classifier_b2_science_pos_sciq_neg_wikipedia_field_of_science
+    input_column: instruction_seed
+    target_label: "__label__QA_doc"
+    just_add_scores: True
+  input_ids:
+   - load_in
+- id: select_to_be_used
+  config:
+    type: function
+    function: data_strategies._B2_Filtering.utils.filter_top_n
+    function_config:
+      n: 15_800
+      score_column: _fasttext_score
+  input_ids:
+    - classify_fasttext_math
+- id: sample_dataset_final
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 15_800
+  input_ids:
+  - select_to_be_used

@@ -1,0 +1,58 @@
+[
+  {
+    "repo": "ThoughtSource",
+    "path": "notebooks/datasets_analysis.ipynb",
+    "chunks_dir": "ThoughtSource/notebooks/datasets_analysis.ipynb.chunks",
+    "bytes": 33170409,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "ThoughtSource",
+    "path": "notebooks/internal_documentation/datasets_analysis.ipynb",
+    "chunks_dir": "ThoughtSource/notebooks/internal_documentation/datasets_analysis.ipynb.chunks",
+    "bytes": 33467084,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "ThoughtSource",
+    "path": "notebooks/internal_documentation/paper_2/thoughtsource_33_with_some_extra_runs.json",
+    "chunks_dir": "ThoughtSource/notebooks/internal_documentation/paper_2/thoughtsource_33_with_some_extra_runs.json.chunks",
+    "bytes": 26968651,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "ThoughtSource",
+    "path": "notebooks/internal_documentation/paper_2/ts_167.json",
+    "chunks_dir": "ThoughtSource/notebooks/internal_documentation/paper_2/ts_167.json.chunks",
+    "bytes": 26932387,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "ThoughtSource",
+    "path": "notebooks/internal_documentation/paper_2/filtered_thoughtsource_100_gpt-4_false.json",
+    "chunks_dir": "ThoughtSource/notebooks/internal_documentation/paper_2/filtered_thoughtsource_100_gpt-4_false.json.chunks",
+    "bytes": 20458447,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "ThoughtSource",
+    "path": "libs/cot/cot/datasets/thoughtsource/thoughtsource_33.json",
+    "chunks_dir": "ThoughtSource/libs/cot/cot/datasets/thoughtsource/thoughtsource_33.json.chunks",
+    "bytes": 23922578,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "ThoughtSource",
+    "path": "libs/cot/cot/datasets/thoughtsource/thoughtsource_33_paper.json",
+    "chunks_dir": "ThoughtSource/libs/cot/cot/datasets/thoughtsource/thoughtsource_33_paper.json.chunks",
+    "bytes": 23108280,
+    "chunk_bytes": 8388608
+  },
+  {
+    "repo": "ThoughtSource",
+    "path": "libs/cot/cot/datasets/thoughtsource/thoughtsource_100.json",
+    "chunks_dir": "ThoughtSource/libs/cot/cot/datasets/thoughtsource/thoughtsource_100.json.chunks",
+    "bytes": 36448141,
+    "chunk_bytes": 8388608
+  }
+]

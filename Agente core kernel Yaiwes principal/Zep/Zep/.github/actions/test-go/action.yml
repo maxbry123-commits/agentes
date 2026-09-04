@@ -1,0 +1,50 @@
+name: 'Test Go Integration'
+description: 'Vet, test, and lint a Zep Go integration package'
+
+inputs:
+  package:
+    description: 'Framework key = directory name under integrations/ (e.g. adk)'
+    required: true
+  go-version:
+    description: 'Go version to test with'
+    required: true
+    default: '1.26'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Go ${{ inputs.go-version }}
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ inputs.go-version }}
+
+    - name: Resolve package dir
+      id: paths
+      shell: bash
+      run: |
+        PKG_DIR="integrations/${{ inputs.package }}/go"
+        echo "dir=$PKG_DIR" >> "$GITHUB_OUTPUT"
+        echo "Testing $PKG_DIR"
+
+    - name: Download modules
+      shell: bash
+      working-directory: ${{ steps.paths.outputs.dir }}
+      run: go mod download
+
+    - name: Vet
+      shell: bash
+      working-directory: ${{ steps.paths.outputs.dir }}
+      run: go vet ./...
+
+    - name: Test
+      shell: bash
+      working-directory: ${{ steps.paths.outputs.dir }}
+      run: go test ./...
+
+    - name: Lint
+      # v8 installs golangci-lint v2.x, which supports go >=1.25 modules
+      # (the v6/golangci-lint v1.64.8 default refuses go 1.25 go.mod directives).
+      uses: golangci/golangci-lint-action@4afd733a84b1f43292c63897423277bb7f4313a9 # v8
+      with:
+        version: latest
+        working-directory: ${{ steps.paths.outputs.dir }}

@@ -1,0 +1,54 @@
+
+
+operators:
+- id: load_hf_python
+  config:
+    type: hf_source
+    dataset: cognitivecomputations/dolphin-coder
+    split: train
+    trust_remote_code: True
+- id: drop_columns
+  config:
+    type: function
+    function: data_strategies.commons.remove_columns
+    function_config:
+      columns:    
+        - system_prompt
+  input_ids:
+  - load_hf_python
+- id: rename_task_column
+  config:
+    type: function
+    function: data_strategies.commons.force_rename_columns
+    function_config:
+      column_maps:
+        response: response_seed
+        question: instruction_seed
+  input_ids:
+  - drop_columns
+- id: sample_1000
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 10
+  input_ids:
+  - rename_task_column
+- id: annotate_r1_distill_70b
+  config:
+    type: completions
+    map: chat
+    map_config:
+      user_message_column: instruction_seed
+      output_column: final_reasoning_trace_o3
+    generation_params:
+      reasoning_effort: "high"
+    model: o3-mini
+    batch: false
+    temperature: 1.0
+    require_all_responses: false
+    backend: openai
+    backend_params:
+      max_requests_per_minute: 2_000
+  input_ids:
+  - sample_1000

@@ -1,0 +1,81 @@
+operators:
+  - id: load_seed_code_multiple_samples_all_scale_up_16K
+    config:
+      type: hf_source
+      dataset: mlfoundations-dev/seed_code_multiple_samples_all_scale_up_16K
+      split: train 
+  - id: keep_only_converstations_load_seed_code_multiple_samples_all_scale_up_16K
+    config:
+      type: function
+      function: data_strategies.commons.keep_only_columns
+      function_config:
+        columns_to_keep: [conversations]
+    input_ids:
+      - load_seed_code_multiple_samples_all_scale_up_16K
+  - id: load_seed_math_multiple_samples_scale_up_majority_consensus_llm_verifier_real_run_16K
+    config:
+      type: hf_source
+      dataset: mlfoundations-dev/seed_math_multiple_samples_scale_up_majority_consensus_llm_verifier_real_run_16K
+      split: train
+  - id: keep_only_converstations_load_seed_math_multiple_samples_scale_up_majority_consensus_llm_verifier_real_run_16K  
+    config:
+      type: function
+      function: data_strategies.commons.keep_only_columns
+      function_config:
+        columns_to_keep: [conversations]
+    input_ids:
+      - load_seed_math_multiple_samples_scale_up_majority_consensus_llm_verifier_real_run_16K
+  - id: load_fasttext_mixing_domains_top_7_code
+    config:
+      type: hf_source
+      dataset: mlfoundations-dev/fasttext_mixing_domains_top_7_code
+      split: train
+  - id: keep_only_converstations_load_fasttext_mixing_domains_top_7_code
+    config:
+      type: function
+      function: data_strategies.commons.keep_only_columns
+      function_config:
+        columns_to_keep: [conversations]
+    input_ids:
+      - load_fasttext_mixing_domains_top_7_code
+  - id: load_fasttext_mixing_domains_top_2
+    config:
+      type: hf_source
+      dataset: mlfoundations-dev/fasttext_mixing_domains_top_2
+      split: train
+  - id: keep_only_converstations_load_fasttext_mixing_domains_top_2
+    config:
+      type: function
+      function: data_strategies.commons.keep_only_columns
+      function_config:
+        columns_to_keep: [conversations]
+    input_ids:
+      - load_fasttext_mixing_domains_top_2
+  - id: load_hero_run
+    config:
+      type: hf_source
+      dataset: mlfoundations-dev/hero-1
+      split: train
+  
+  - id: mix
+    config:
+      type: mix
+    input_ids:
+      - keep_only_converstations_load_seed_code_multiple_samples_all_scale_up_16K
+      - keep_only_converstations_load_seed_math_multiple_samples_scale_up_majority_consensus_llm_verifier_real_run_16K
+      - keep_only_converstations_load_fasttext_mixing_domains_top_7_code
+      - keep_only_converstations_load_fasttext_mixing_domains_top_2
+      - load_hero_run
+  - id: rename_columns
+    config:
+      type: function
+      function: data_strategies.commons.change_tags
+      function_config:
+        conversation_column: conversations
+        tags_to_change: 
+          human: user
+          user: user
+          gpt: assistant
+          assistant: assistant
+    input_ids:
+      - mix

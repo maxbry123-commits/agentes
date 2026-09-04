@@ -1,0 +1,24 @@
+operators:
+  - id: load_oh
+    config:
+      type: load_preexisting
+      framework_name: opengpt_gpt-4o-mini
+  - id: calc_embeddings
+    config:
+      type: gpu_function
+      sharded: true
+      function: data_strategies.commons.get_embeddings_batched
+      function_config:
+        text_column: output
+    input_ids:
+      - load_oh
+  - id: log_det_embeddings
+    config:
+      type: cpu_function
+      num_cpus: 64
+      function: data_strategies.DiversityExperiments.diversity_metrics.calc_log_det
+      function_config:
+        vector_column_name: embeddings
+        output_column: projected_embeddings_log_det
+    input_ids:
+      - calc_embeddings

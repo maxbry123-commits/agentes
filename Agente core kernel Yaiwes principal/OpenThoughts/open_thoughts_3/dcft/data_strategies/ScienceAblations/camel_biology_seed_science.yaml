@@ -1,0 +1,110 @@
+operators:
+- id: load_discipline
+  config:
+    type: function
+    function: data_strategies.commons.load_json_string_to_dataset
+    function_config:
+      json_string: '{"discipline": ["biology"], "expert": ["Biologist"], "num_topics": [25], "num_subtopics": [25], "num_questions": [80]}'
+
+- id: sample_dataset_initial
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 2
+  input_ids:
+  - load_discipline
+- id: generate_topics
+  config:
+    type: completions
+    map: list # this uses structured output if available
+    map_config:
+      system_message: "You are a helpful assistant."
+      user_message: "Please list {{num_topics}} diverse {{discipline}} topics. Make sure the topics are {{discipline}} topics. No explanation." # number of topics
+      output_column: topic
+    model: gpt-4o-mini
+    batch: False
+  input_ids:
+    - sample_dataset_initial
+
+- id: generate_subtopics
+  config:
+    type: completions
+    map: list # this uses structured output if available
+    map_config:
+      system_message: "You are a helpful assistant."
+      user_message: "List {{num_subtopics}} different {{discipline}} {{topic}} problem topics. Be precise and make sure the problems are {{topic}} problems." # number of subtopics per topic
+      output_column: subtopic
+    model: gpt-4o-mini
+    batch: False
+  input_ids:
+    - generate_topics
+
+- id: generate_questions
+  config:
+    type: completions
+    map: list
+    map_config:
+      system_message: "You are a {{expert}}."
+      user_message: "From this {{discipline}} subject {{topic}} and this subtopic {{subtopic}} we need to write {{num_questions}} new questions for a {{discipline}} student to solve. Please write a precise problem for the student to solve."
+      output_column: question
+    model: gpt-4o-mini
+    batch: False
+  input_ids:
+    - generate_subtopics
+
+- id: rename_task_column
+  config:
+    type: function
+    function: data_strategies.commons.force_rename_columns
+    function_config:
+      column_maps:
+        question: problem
+  input_ids:
+  - generate_questions
+- id: sample_dataset
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 5_000
+  input_ids:
+  - rename_task_column
+- id: annotate_r1_distill_70b
+  config:
+    type: completions
+    map: deepseek_reasoner
+    map_config:
+      input_problem_column: problem
+    model: deepseek-reasoner
+    batch: False
+    temperature: 1.0
+    backend: openai_client
+    backend_params:
+      max_requests_per_minute: 2_500
+      max_tokens_per_minute: 1_000_000_000
+      api_key: API_KEY
+      base_url: "https://api.deepseek.com/"
+      invalid_finish_reasons: ['content_filter']
+  input_ids:
+    - sample_dataset
+- id: convert_reasoning_trace_to_final
+  config:
+    type: function
+    function: data_strategies.commons.convert_reasoning_trace_to_final
+    function_config:
+      reasoning_column: reasoning
+      solution_column: deepseek_solution
+      output_column: final_reasoning_trace
+  input_ids:
+  - annotate_r1_distill_70b
+- id: convert_to_sharegpt
+  config:
+    type: function
+    function: data_strategies.commons.convert_instruction_response_to_sharegpt
+    function_config:
+      input_instruction_column: problem
+      input_response_column: final_reasoning_trace
+      output_sharegpt_column: conversations
+  input_ids:
+    - convert_reasoning_trace_to_final

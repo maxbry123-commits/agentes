@@ -1,0 +1,39 @@
+operators:
+- id: load_in
+  config:
+    type: load_preexisting
+    framework_name: load_in_math_open2math
+- id: annotate_gpt41_mini
+  config:
+    type: completions
+    map: chat
+    map_config:
+      user_message_column: instruction_seed
+      output_column: gpt41_mini_response
+    model: "gpt-4.1-mini"
+    batch: False
+    temperature: 1.0
+    require_all_responses: False
+    backend_params:
+      max_requests_per_minute: 4_000
+      invalid_finish_reasons: ['content_filter']
+  input_ids:
+    - load_in
+- id: get_length
+  config:
+    type: function
+    function: data_strategies.InstructionFiltering.gemini_length_filtering.utils.get_lengths
+    function_config:
+      input_column: gpt41_mini_response
+      output_column: length
+  input_ids:
+  - annotate_gpt41_mini
+- id: select_to_be_used
+  config:
+    type: function
+    function: data_strategies._B2_Filtering.utils.filter_top_n
+    function_config:
+      n: 60_000
+      score_column: length
+  input_ids:
+    - get_length

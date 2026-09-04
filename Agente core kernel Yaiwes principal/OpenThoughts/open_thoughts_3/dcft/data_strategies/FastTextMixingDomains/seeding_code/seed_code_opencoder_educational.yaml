@@ -1,0 +1,64 @@
+operators:
+- id: load_hf_package
+  config:
+    type: hf_source
+    dataset: OpenCoder-LLM/opc-sft-stage2
+    split: train
+    subset: educational_instruct
+    trust_remote_code: True
+- id: drop_columns
+  config:
+    type: function
+    function: data_strategies.commons.keep_only_columns
+    function_config:
+      columns_to_keep:    
+        - instruction
+        - output
+        - testcase
+  input_ids:
+  - load_hf_package
+- id: rename_task_column
+  config:
+    type: function
+    function: data_strategies.commons.force_rename_columns
+    function_config:
+      column_maps:
+        output: response_seed
+        instruction: instruction_seed
+  input_ids:
+    - drop_columns
+- id: sample_dataset
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_limited
+    function_config:
+      num_samples: 1_000_000  # 1.25% of 10000 target from stage 1
+  input_ids:
+  - rename_task_column
+- id: classify
+  config:
+    type: fasttext
+    num_cpus: 32
+    hf_repo_id: mlfoundations-dev/instruction_filtering_fast_text_code_pos_leetcode_taco_neg_reflection_octopack
+    input_column: instruction_seed
+    target_label: "__label__QA_doc"
+    top_percentage_ranking: 10
+  input_ids:
+   - rename_task_column
+- id: keep_only
+  config:
+    type: function
+    function: data_strategies.commons.keep_only_columns
+    function_config:
+      columns_to_keep:    
+        - instruction_seed
+  input_ids:
+  - classify
+- id: _add_source
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      source: "opencoder_educational"
+  input_ids:
+  - keep_only

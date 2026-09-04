@@ -1,0 +1,47 @@
+operators:
+- id: load_reasoning
+  config:
+    type: hf_source
+    dataset: mlfoundations-dev/hero_run_2_fix_conversations
+    split: train
+- id: sample_reasoning
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 50_000
+  input_ids:
+  - load_reasoning
+- id: load_chat
+  config:
+    type: hf_source
+    dataset: mlfoundations-dev/oh-dcft-v3.1-llama-3.1-nemotron-70b
+    split: train
+- id: sample_chat
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 6_250
+  input_ids:
+  - load_chat
+- id: change_tags
+  config:
+    type: function
+    function: data_strategies.commons.change_tags
+    function_config:
+      conversation_column: conversations
+      tags_to_change: 
+        human: user
+        user: user
+        gpt: assistant
+        assistant: assistant
+  input_ids:
+  - sample_chat
+- id: mix
+  config:
+    type: mix
+  input_ids:
+  - sample_reasoning
+  - change_tags
+

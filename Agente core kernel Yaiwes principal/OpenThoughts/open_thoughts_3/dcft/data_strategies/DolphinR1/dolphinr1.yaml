@@ -1,0 +1,21 @@
+operators:
+  - id: load_hf
+    config:
+      type: hf_source
+      dataset: mlfoundations-dev/etashggithubsolutions
+      split: train
+  # - id: convert
+  #   config:
+  #     type: function
+  #     function: data_strategies.commons.convert_openai_to_sharegpt
+  #     function_config: 
+  #       output_column: conversations
+  #       conversations_column: messages
+  #   input_ids:
+  #     - load_hf
+  # - id: add
+  #   config:
+  #     type: function
+  #     function: data_strategies.DolphinR1.utils.map_dolphin
+  #   input_ids:
+  #     - convert

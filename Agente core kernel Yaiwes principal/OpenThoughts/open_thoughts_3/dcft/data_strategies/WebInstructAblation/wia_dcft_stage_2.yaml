@@ -1,0 +1,53 @@
+operators:
+  - id: load_stage_1
+    config:
+      type: hf_source
+      #dataset: reinhardh/wia_dcft_stage_1
+      dataset: mlfoundations-dev/wia_dcft_stage_1
+      split: train
+      columns: 
+        - text
+
+  - id: extract_instruction_output_pairs
+    input_ids:
+      - load_stage_1
+    config:
+      type: completions
+      map: chat
+      map_config:
+        system_message: "You are an AI tasked at extracting instruction-output pairs from text."
+        user_message: |
+          The following text might contain one or serval question-answer pairs or instruction-output pairs about science, technology, engineering, and mathematics (STEM).
+
+          If the text contains STEM question-answer pairs, copy the question with all relevant context and the answer with all relevant explanations.  
+          
+          Ensure the question contains all necessary context required for answering the question, better too much context than too little.
+          
+          The context can be before the question or after the question or both.
+          
+          Do only change the original text unless absolutely necessary for clarity.
+
+          The output format is:
+
+          <|Instruct|> question or instruction AND context here
+
+          <|Output|> answer or output here
+
+          If there is only a question or an instruction but no answer or output, leave the output field empty.
+          
+          If there is no question-answer or instruction-output pair, write "<|NoQA|>".
+         
+          Here is the text: {{text}}
+        output_column: response
+      model: gpt-4o-mini
+      top_p: 0.95
+      batch: False
+
+  - id: filter_qa_responses
+    input_ids:
+      - extract_instruction_output_pairs
+    config:
+      type: function
+      function: data_strategies.WebInstructAblation.utils.extract_qa_pairs
+      function_config:
+        response_column: response

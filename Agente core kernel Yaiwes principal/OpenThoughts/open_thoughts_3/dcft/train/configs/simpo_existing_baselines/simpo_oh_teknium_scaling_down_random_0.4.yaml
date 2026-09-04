@@ -1,0 +1,30 @@
+### preset
+include_hp: dcft/train/hp_settings/simpo.yaml
+
+### model
+model_name_or_path: mlfoundations-dev/oh_teknium_scaling_down_random_0.4
+
+### train
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 32
+per_device_eval_batch_size: 1
+
+### dataset
+dataset: mlfoundations-dev/gemma2-ultrafeedback-armorm
+dataset_dir: ONLINE
+template: gemma
+formatting: sharegpt
+ranking: true
+messages: conversations
+chosen: chosen
+rejected: rejected
+
+### output
+output_dir: experiments/train/checkpoints/simpo-oh_teknium_scaling_down_random_0.4
+
+## reporting
+report_to: wandb
+run_name: simpo-oh_teknium_scaling_down_random_0.4
+push_to_db: true
+push_to_hub: true
+hub_model_id: mlfoundations-dev/simpo-oh_teknium_scaling_down_random_0.4

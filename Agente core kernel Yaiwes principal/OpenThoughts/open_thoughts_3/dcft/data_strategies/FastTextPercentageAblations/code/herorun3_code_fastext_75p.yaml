@@ -1,0 +1,349 @@
+operators:
+- id: seed_code_codefeedback_exploit
+  config:
+    type: load_preexisting
+    framework_name: seed_code_codefeedback_exploit_large
+- id: add_source_codefeedback
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      source: "codefeedback"
+  input_ids:
+  - seed_code_codefeedback_exploit
+- id: fuzzy_dedup_codefeedback
+  config:
+    type: cpu_function
+    num_cpus: 80
+    function: data_strategies.DeepSeekR1.utils.fuzzy_dedup
+    function_config:
+      column: instruction_seed
+      similarity_threshold: 90.0
+  input_ids:
+  - add_source_codefeedback
+- id: classify_codefeedback
+  config:
+    type: fasttext
+    num_cpus: 32
+    hf_repo_id: mlfoundations-dev/instruction_filtering_fast_text_classifier_seed_code_best_ioi
+    input_column: instruction_seed
+    target_label: "__label__QA_doc"
+    top_percentage_ranking: 75
+  input_ids:
+   - fuzzy_dedup_codefeedback
+- id: sample_dataset_codefeedback
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 2_000
+  input_ids:
+  - classify_codefeedback
+
+- id: seed_code_dolphin_exploit
+  config:
+    type: load_preexisting
+    framework_name: seed_code_dolphin_exploit_large
+- id: add_source_dolphin
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      source: "dolphin"
+  input_ids:
+  - seed_code_dolphin_exploit
+- id: fuzzy_dedup_dolphin
+  config:
+    type: cpu_function
+    num_cpus: 80
+    function: data_strategies.DeepSeekR1.utils.fuzzy_dedup
+    function_config:
+      column: instruction_seed
+      similarity_threshold: 10.0
+  input_ids:
+    - add_source_dolphin
+- id: classify_dolphin
+  config:
+    type: fasttext
+    num_cpus: 32
+    hf_repo_id: mlfoundations-dev/instruction_filtering_fast_text_classifier_seed_code_best_ioi
+    input_column: instruction_seed
+    target_label: "__label__QA_doc"
+    top_percentage_ranking: 75
+  input_ids:
+   - fuzzy_dedup_dolphin
+- id: sample_dataset_dolphin
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 2_000
+  input_ids:
+  - classify_dolphin
+
+- id: seed_code_evolcodegolf_exploit
+  config:
+    type: load_preexisting
+    framework_name: evol_instruct_code_golf_large
+- id: add_source_evolcodegolf
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      source: "evolcodegolf"
+  input_ids:
+  - seed_code_evolcodegolf_exploit
+- id: fuzzy_dedup_evolcodegolf
+  config:
+    type: cpu_function
+    num_cpus: 80
+    function: data_strategies.DeepSeekR1.utils.fuzzy_dedup
+    function_config:
+      column: instruction_seed
+      similarity_threshold: 90.0
+  input_ids:
+  - add_source_evolcodegolf
+- id: classify_evolcodegolf
+  config:
+    type: fasttext
+    num_cpus: 32
+    hf_repo_id: mlfoundations-dev/instruction_filtering_fast_text_classifier_seed_code_best_ioi
+    input_column: instruction_seed
+    target_label: "__label__QA_doc"
+    top_percentage_ranking: 75
+  input_ids:
+   - fuzzy_dedup_evolcodegolf
+- id: sample_dataset_evolcodegolf
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 2_000
+  input_ids:
+  - add_source_evolcodegolf
+
+- id: seed_code_glaive_exploit
+  config:
+    type: load_preexisting
+    framework_name: seed_code_glaive_exploit_large
+- id: add_source_glaive
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      source: "glaive"
+  input_ids:
+  - seed_code_glaive_exploit
+- id: fuzzy_dedup_glaive
+  config:
+    type: cpu_function
+    num_cpus: 80
+    function: data_strategies.DeepSeekR1.utils.fuzzy_dedup
+    function_config:
+      column: instruction_seed
+      similarity_threshold: 90.0
+  input_ids:
+  - add_source_glaive
+- id: classify_glaive
+  config:
+    type: fasttext
+    num_cpus: 32
+    hf_repo_id: mlfoundations-dev/instruction_filtering_fast_text_classifier_seed_code_best_ioi
+    input_column: instruction_seed
+    target_label: "__label__QA_doc"
+    top_percentage_ranking: 75
+  input_ids:
+  - fuzzy_dedup_glaive
+- id: sample_dataset_glaive
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 2_000
+  input_ids:
+  - classify_glaive
+
+
+- id: seed_code_magicoder_exploit
+  config:
+    type: load_preexisting
+    framework_name: seed_code_magicoder_exploit_large
+- id: add_source_magicoder
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      source: "magicoder"
+  input_ids:
+  - seed_code_magicoder_exploit
+- id: fuzzy_dedup_magicoder
+  config:
+    type: cpu_function
+    num_cpus: 80
+    function: data_strategies.DeepSeekR1.utils.fuzzy_dedup
+    function_config:
+      column: instruction_seed
+      similarity_threshold: 90.0
+  input_ids:
+  - add_source_magicoder
+- id: classify_magicoder
+  config:
+    type: fasttext
+    num_cpus: 32
+    hf_repo_id: mlfoundations-dev/instruction_filtering_fast_text_classifier_seed_code_best_ioi
+    input_column: instruction_seed
+    target_label: "__label__QA_doc"
+    top_percentage_ranking: 75
+  input_ids:
+   - fuzzy_dedup_magicoder
+- id: sample_dataset_magicoder
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 2_000
+  input_ids:
+  - classify_magicoder
+
+- id: seed_code_sharegpt_exploit
+  config:
+    type: load_preexisting
+    framework_name: seed_code_sharegpt_exploit
+- id: add_source_sharegpt
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      source: "sharegpt"
+  input_ids:
+  - seed_code_sharegpt_exploit
+- id: fuzzy_dedup_sharegpt
+  config:
+    type: cpu_function
+    num_cpus: 80
+    function: data_strategies.DeepSeekR1.utils.fuzzy_dedup
+    function_config:
+      column: instruction_seed
+      similarity_threshold: 90
+  input_ids:
+  - add_source_sharegpt
+- id: classify_sharegpt
+  config:
+    type: fasttext
+    num_cpus: 32
+    hf_repo_id: mlfoundations-dev/instruction_filtering_fast_text_classifier_seed_code_best_ioi
+    input_column: instruction_seed
+    target_label: "__label__QA_doc"
+    top_percentage_ranking: 75
+  input_ids:
+   - fuzzy_dedup_sharegpt
+- id: sample_dataset_sharegpt
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 2_000
+  input_ids:
+  - classify_sharegpt
+
+
+
+- id: rename_task_column
+  config:
+    type: function
+    function: data_strategies.commons.keep_only_columns
+    function_config:
+      columns_to_keep:
+      - instruction_seed
+      - source
+  input_ids:
+  - sample_dataset_codefeedback
+  - sample_dataset_dolphin
+  - sample_dataset_evolcodegolf
+  - sample_dataset_glaive
+  - sample_dataset_magicoder
+  - sample_dataset_sharegpt
+- id: add_domain
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns
+    function_config:
+      domain: "code"
+  input_ids:
+  - rename_task_column
+- id: rename_instruction
+  config:
+    type: function
+    function: data_strategies.commons.force_rename_columns
+    function_config:
+      column_maps:
+        instruction_seed: problem
+  input_ids:
+  - add_domain
+- id: decontaminate
+  config:
+    type: cpu_function
+    num_cpus: 80
+    function:  data_strategies.DeepSeekR1.utils.decontaminate_table
+    function_config:
+      column: problem
+      eval_datasets:
+        - HuggingFaceH4/MATH-500
+        - Maxwell-Jia/AIME_2024
+        - AI-MO/aimo-validation-amc
+        - livecodebench/code_generation_lite
+        - mlfoundations-dev/hero_run_2_fix_conversations
+      eval_columns:
+        - problem
+        - Problem
+        - problem
+        - question_content
+        - question
+      eval_splits:
+        - test
+        - train
+        - train
+        - test
+        - train
+      similarity_threshold: 95.0
+  input_ids:
+    - rename_instruction
+- id: annotate_r1_distill_70b
+  config:
+    type: completions
+    map: deepseek_reasoner
+    map_config:
+      input_problem_column: problem
+    model: deepseek-reasoner
+    batch: False
+    temperature: 1.0
+    require_all_responses: false
+    backend: openai
+    backend_params:
+      max_requests_per_minute: 2_500
+      max_tokens_per_minute: 1_000_000_000
+      api_key: API_KEY
+      base_url: "https://api.deepseek.com/"
+      invalid_finish_reasons: ['content_filter']
+  input_ids:
+    - decontaminate
+- id: convert_reasoning_trace_to_final
+  config:
+    type: function
+    function: data_strategies.commons.convert_reasoning_trace_to_final
+    function_config:
+      reasoning_column: reasoning
+      solution_column: deepseek_solution
+      output_column: final_reasoning_trace
+  input_ids:
+  - annotate_r1_distill_70b
+- id: convert_to_sharegpt
+  config:
+    type: function
+    function: data_strategies.commons.convert_instruction_response_to_sharegpt
+    function_config:
+      input_instruction_column: problem
+      input_response_column: final_reasoning_trace
+      output_sharegpt_column: conversations
+  input_ids:
+    - convert_reasoning_trace_to_final

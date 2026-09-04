@@ -1,0 +1,20 @@
+include_hp: dcft/train/hp_settings/reasoning_tacc_hero_run_2.yaml
+
+dataset_dir: ONLINE
+dataset: mlfoundations-dev/hero_run_2
+messages: conversations
+formatting: sharegpt
+role_tag: from
+content_tag: value
+user_tag: user
+assistant_tag: assistant
+
+per_device_train_batch_size: 2      # Can change depending on hardware
+gradient_accumulation_steps: 1      # Can change depending on number of GPUs
+
+output_dir: "/tmp/dcft_checkpoints/train/checkpoints/qwen2-5_hero_run_2"
+run_name: qwen2-5_hero_run_2
+hub_model_id: mlfoundations-dev/qwen2-5_hero_run_2
+report_to: wandb
+push_to_db: true
+push_to_hub: true

@@ -1,0 +1,17 @@
+include_hp: dcft/train/hp_settings/mistral_sft.yaml
+
+dataset_dir: ONLINE
+dataset: mlfoundations-dev/oh-dcft-v3.1-llama-3.1-nemotron-70b
+template: mistral
+messages: conversations
+formatting: sharegpt
+
+per_device_train_batch_size: 16      # Can change depending on hardware
+gradient_accumulation_steps: 1      # Can change depending on number of GPUs
+
+output_dir: "/tmp/experiments/train/checkpoints/oh-dcft-v3.1-llama-3.1-nemotron-70b"
+run_name: mistral_7b_0-3_oh-dcft-v3.1-llama-3.1-nemotron-70b
+hub_model_id: mlfoundations-dev/mistral_7b_0-3_oh-dcft-v3.1-llama-3.1-nemotron-70b
+report_to: wandb
+push_to_db: true
+push_to_hub: true

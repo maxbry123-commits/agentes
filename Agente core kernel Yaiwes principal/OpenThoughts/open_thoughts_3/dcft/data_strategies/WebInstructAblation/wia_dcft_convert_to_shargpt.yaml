@@ -1,0 +1,20 @@
+operators:
+  - id: load_stage_3
+    config:
+      type: hf_source
+      dataset: mlfoundations-dev/wia_dcft_stage_3
+      split: train
+      columns: 
+        - revised_question
+        - revised_answer
+
+  - id: convert_to_sharegpt
+    config:
+      type: function
+      function: data_strategies.commons.convert_instruction_response_to_sharegpt
+      function_config:
+        input_instruction_column: revised_question
+        input_response_column: revised_answer
+        output_sharegpt_column: conversations
+    input_ids:
+      - load_stage_3

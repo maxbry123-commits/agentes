@@ -1,0 +1,61 @@
+operators:
+  - id: load_preexisting_top_1
+    config:
+      type: load_preexisting
+      framework_name: a1_math_open2math
+  - id: sample_dataset_pre_top_1
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample_fixed
+      function_config:
+        num_samples: 7_900
+    input_ids:
+      - load_preexisting_top_1
+
+  - id: load_preexisting_top_2
+    config:
+      type: load_preexisting
+      framework_name: a1_math_numina_math
+  - id: sample_dataset_pre_top_2
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample_fixed
+      function_config:
+        num_samples: 7_900
+    input_ids:
+      - load_preexisting_top_2
+
+  - id: load_preexisting_top_3
+    config:
+      type: load_preexisting
+      framework_name:  a1_math_gair_math
+  - id: sample_dataset_pre_top_3
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample_fixed
+      function_config:
+        num_samples: 7_900
+    input_ids:
+      - load_preexisting_top_3
+    
+  - id: load_preexisting_top_4
+    config:
+      type: load_preexisting
+      framework_name: a1_math_metamath_aime
+  - id: sample_dataset_pre_top_4
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample_fixed
+      function_config:
+        num_samples: 7_900
+    input_ids:
+      - load_preexisting_top_4
+
+  - id: mix
+    config:
+      type: mix
+    input_ids:
+      - sample_dataset_pre_top_1
+      - sample_dataset_pre_top_2
+      - sample_dataset_pre_top_3
+      - sample_dataset_pre_top_4

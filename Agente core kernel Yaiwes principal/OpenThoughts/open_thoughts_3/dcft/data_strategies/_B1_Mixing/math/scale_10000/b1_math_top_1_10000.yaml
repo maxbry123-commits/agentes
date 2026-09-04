@@ -1,0 +1,13 @@
+operators:
+- id: load_preexisting
+  config:
+    type: load_preexisting
+    framework_name: b1_math_top_1
+- id: sample_dataset
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 10000
+  input_ids:
+  - load_preexisting

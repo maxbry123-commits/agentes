@@ -1,0 +1,130 @@
+operators:
+  - id: load_numina_math
+    config:
+      type: "hf_source"
+      dataset: "AI-MO/NuminaMath-CoT"
+      split: train
+  - id: select_amc_aime
+    config:
+      type: function
+      function: data_strategies.commons.select_rows
+      function_config:
+        conditions:
+          source: amc_aime
+    input_ids:
+      - load_numina_math
+  - id: select_olympiad
+    config:
+      type: function
+      function: data_strategies.commons.select_rows
+      function_config:
+        conditions:
+          source: olympiad
+    input_ids:
+      - load_numina_math
+  - id: get_evolution_prompt_olympiad
+    config:
+      type: high_memory_function
+      memory: 300
+      sharded: true
+      num_shards: 32
+      function: data_strategies.OpenMathInstruct.utils.create_new_prompt_repeat
+      function_config:
+        question_column: problem
+        n_repeat: 275
+    input_ids:
+      - select_olympiad
+  - id: get_evolution_prompt_aime
+    config:
+      type: high_memory_function
+      memory: 300
+      sharded: true
+      num_shards: 32
+      function: data_strategies.OpenMathInstruct.utils.create_new_prompt_repeat
+      function_config:
+        question_column: problem
+        n_repeat: 275
+    input_ids:
+      - select_amc_aime
+  - id: generate_new_questions
+    config:
+      type: completions
+      model: gpt-4o-mini
+      map: chat
+      map_config:
+        user_message_column: prompt_for_new_question
+        output_column: response
+        output_column: instruction_seed
+      temperature: 1
+      batch: true
+    input_ids: 
+      - get_evolution_prompt_aime
+      - get_evolution_prompt_olympiad
+  # - id: add_source_name
+  #   config:
+  #     type: function
+  #     function: data_strategies.commons.add_constant_columns
+  #     function_config:
+  #       _source: "OpenMathInstruct-AIME"
+  #   input_ids:
+  #   - generate_new_questions
+  # - id: decontaminate
+  #   config:
+  #     type: cpu_function
+  #     sharded: false
+  #     num_cpus: 32
+  #     function:  data_strategies._A1_Source.utils.decontaminate_fuzzy_w_ngram
+  #     function_config:
+  #       column: instruction_seed
+  #       eval_datasets:
+  #         - HuggingFaceH4/MATH-500
+  #         - Maxwell-Jia/AIME_2024
+  #         - AI-MO/aimo-validation-amc
+  #         - livecodebench/code_generation_lite
+  #         - mlfoundations-dev/AIME2025_combined
+  #         - cais/hle
+  #         - open-r1/codeforces
+  #         - Idavidrein/gpqa
+  #         - daman1209arora/jeebench
+  #         - mlfoundations-dev/mmlu_pro_eval_full
+  #         - Qwen/CodeElo
+  #         - open-r1/ioi
+  #       eval_columns:
+  #         - problem
+  #         - Problem
+  #         - problem
+  #         - question_content
+  #         - question
+  #         - question
+  #         - description
+  #         - Question
+  #         - question
+  #         - prompt
+  #         - description
+  #         - statement
+  #       eval_splits:
+  #         - test
+  #         - train
+  #         - train
+  #         - test
+  #         - train
+  #         - test
+  #         - test
+  #         - train
+  #         - test
+  #         - test
+  #         - test
+  #         - test
+  #       eval_subsets:
+  #         Idavidrein/gpqa: gpqa_diamond
+  #       similarity_threshold: 75.0
+  #       ngram_size: 13
+  #   input_ids:
+  #   - add_source_name
+  # - id: sample_dataset
+  #   config:
+  #     type: function
+  #     function: data_strategies.commons.uniform_sample_fixed
+  #     function_config:
+  #       num_samples: 1_000_000
+  #   input_ids: ["decontaminate"]

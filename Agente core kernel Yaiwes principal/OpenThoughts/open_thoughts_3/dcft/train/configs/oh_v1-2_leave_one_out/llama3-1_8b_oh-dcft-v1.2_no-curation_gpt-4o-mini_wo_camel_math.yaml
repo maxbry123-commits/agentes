@@ -1,0 +1,18 @@
+include_hp: dcft/train/hp_settings/hritik.yaml
+
+dataset_dir: ONLINE
+dataset: mlfoundations-dev/oh-dcft-v1.2_no-curation_gpt-4o-mini_wo_camel_math
+template: llama3
+messages: conversations
+formatting: sharegpt
+cache_dir: "/tmp/hf_data_cache"
+
+per_device_train_batch_size: 16      # Can change depending on hardware
+gradient_accumulation_steps: 1      # Can change depending on number of GPUs
+
+output_dir: "/tmp/experiments/train/checkpoints/oh_v1-2_wo_camel_math"
+run_name: oh_v1-2_wo_camel_math
+hub_model_id: mlfoundations-dev/oh-dcft-v1.2_no-curation_gpt-4o-mini_wo_camel_math
+report_to: wandb
+push_to_db: true
+push_to_hub: true

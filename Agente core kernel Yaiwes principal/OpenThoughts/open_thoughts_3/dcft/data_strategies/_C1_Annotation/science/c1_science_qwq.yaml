@@ -1,0 +1,47 @@
+operators:
+- id: load_in_physics
+  config:
+    type: load_preexisting
+    framework_name: b2_science_length_filtering_stackexchange_physics
+- id: load_in_organic_chem_pdfs
+  config:
+    type: load_preexisting
+    framework_name: b2_science_length_filtering_organic_chem_pdfs
+- id: mix
+  config:
+    type: mix
+  input_ids:
+  - load_in_physics
+  - load_in_organic_chem_pdfs
+- id: annotate
+  config:
+    type: completions
+    map: together_qwen
+    map_config:
+      input_problem_column: instruction_seed
+    model: Qwen/QwQ-32B
+    batch: false
+    backend: openai
+    require_all_responses: false
+    temperature: 0.999
+    backend_params:
+      base_url: "https://api.together.ai"
+      api_key: ab025288d5a46a9a3acf23b7af22b5d824f9623cb3d62e1e69debd48291be8cc
+      max_requests_per_minute: 250
+      max_tokens_per_minute: 500000
+      invalid_finish_reasons:
+      - content_filter
+    generation_params:
+      max_tokens: 32000
+  input_ids:
+  - mix
+- id: convert_to_sharegpt
+  config:
+    type: function
+    function: data_strategies.commons.convert_instruction_response_to_sharegpt
+    function_config:
+      input_instruction_column: instruction_seed
+      input_response_column: qwq_response
+      output_sharegpt_column: conversations
+  input_ids:
+    - annotate

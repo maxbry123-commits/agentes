@@ -1,0 +1,167 @@
+operators:
+- id: seed_math_load_in
+  config:
+    type: load_preexisting
+    framework_name: seed_math_load_in
+- id: get_automath
+  config:
+    type: function
+    function: data_strategies.commons.select_rows
+    function_config:
+      conditions:
+        source: "automath"
+  input_ids:
+    - seed_math_load_in
+- id: classify_automath
+  config:
+    type: fasttext
+    num_cpus: 32
+    hf_repo_id: mlfoundations-dev/instruction_filtering_fast_text_classifier_seed_math_worst_1 
+    input_column: instruction_seed
+    target_label: "__label__QA_doc"
+    top_percentage_ranking: 10
+  input_ids:
+   - get_automath
+- id: sample_dataset_automath
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 2_500
+  input_ids:
+  - classify_automath
+
+
+- id: get_nvidia_math
+  config:
+    type: function
+    function: data_strategies.commons.select_rows
+    function_config:
+      conditions:
+        source: "nvidia_math"
+  input_ids:
+    - seed_math_load_in
+- id: classify_nvidia_math
+  config:
+    type: fasttext
+    num_cpus: 32
+    hf_repo_id: mlfoundations-dev/instruction_filtering_fast_text_classifier_seed_math_worst_1 
+    input_column: instruction_seed
+    target_label: "__label__QA_doc"
+    top_percentage_ranking: 10
+  input_ids:
+   - get_nvidia_math
+- id: sample_dataset_nvidia_math
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 2_500
+  input_ids:
+  - classify_nvidia_math
+
+
+- id: get_tiger_math
+  config:
+    type: function
+    function: data_strategies.commons.select_rows
+    function_config:
+      conditions:
+        source: "tiger_math"
+  input_ids:
+    - seed_math_load_in
+- id: classify_tiger_math
+  config:
+    type: fasttext
+    num_cpus: 32
+    hf_repo_id: mlfoundations-dev/instruction_filtering_fast_text_classifier_seed_math_worst_1 
+    input_column: instruction_seed
+    target_label: "__label__QA_doc"
+    top_percentage_ranking: 10
+  input_ids:
+   - get_tiger_math
+- id: sample_dataset_tiger_math
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 2_500
+  input_ids:
+  - classify_tiger_math
+
+
+- id: get_tiger_lab_math
+  config:
+    type: function
+    function: data_strategies.commons.select_rows
+    function_config:
+      conditions:
+        source: "tiger_lab_math"
+  input_ids:
+    - seed_math_load_in
+- id: classify_tiger_lab_math
+  config:
+    type: fasttext
+    num_cpus: 32
+    hf_repo_id: mlfoundations-dev/instruction_filtering_fast_text_classifier_seed_math_worst_1 
+    input_column: instruction_seed
+    target_label: "__label__QA_doc"
+    top_percentage_ranking: 10
+  input_ids:
+   - get_tiger_lab_math
+- id: sample_dataset_tiger_lab_math
+  config:
+    type: function
+    function: data_strategies.commons.uniform_sample_fixed
+    function_config:
+      num_samples: 2_500
+  input_ids:
+  - classify_tiger_lab_math
+
+- id: mix
+  config: 
+    type: mix
+  input_ids:
+    - sample_dataset_tiger_lab_math
+    - sample_dataset_tiger_math
+    - sample_dataset_automath
+    - sample_dataset_nvidia_math
+- id: annotate_r1_distill_70b
+  config:
+    type: completions
+    map: deepseek_reasoner
+    map_config:
+      input_problem_column: instruction_seed
+    model: deepseek-reasoner
+    batch: False
+    temperature: 1.0
+    backend: openai
+    backend_params:
+      max_requests_per_minute: 2_500
+      max_tokens_per_minute: 1_000_000_000
+      api_key: API_KEY
+      base_url: "https://api.deepseek.com"
+      invalid_finish_reasons: ['content_filter']
+  input_ids:
+    - mix
+- id: convert_reasoning_trace_to_final
+  config:
+    type: function
+    function: data_strategies.commons.convert_reasoning_trace_to_final
+    function_config:
+      reasoning_column: reasoning
+      solution_column: deepseek_solution
+      output_column: final_reasoning_trace
+  input_ids:
+  - annotate_r1_distill_70b
+- id: convert_to_sharegpt
+  config:
+    type: function
+    function: data_strategies.commons.convert_instruction_response_to_sharegpt
+    function_config:
+      input_instruction_column: instruction_seed
+      input_response_column: final_reasoning_trace
+      output_sharegpt_column: conversations
+  input_ids:
+    - convert_reasoning_trace_to_final
+

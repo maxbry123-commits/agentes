@@ -1,0 +1,155 @@
+# SKIP THIS ONE, the outputs make no sense
+operators:
+- id: load_airoboros_topics
+  config:
+    type: load_preexisting
+    framework_name: airoboros_topics_gpt-4o-mini
+
+- id: add_initial_args
+  config:
+    type: function
+    function: data_strategies.commons.add_constant_columns 
+    function_config:
+      language: English
+      topic_avoidance: Avoid any tasks that would be related to climate change, green tech, remewable energy, DEI, sex and/or gender, religion, politics, social issues, race, ethnicity, artificial intelligence, baking/cooking, or any topic that you would likely not respond to, or any task which a language model would not be able to respond to, e.g. tasks about emotions, feelings, physical senses, etc.
+      flesch: The output should be written in such a way as to have a Flesch-Kincaid readability score of 30 or lower - best understood by those with college education.  The response must not contain any notes or information about Flesch-Kincaid scores.
+      batch_size: 5
+      context_styles:
+        - news article
+        - blog post
+        - slack conversation
+        - text messages
+        - fictional short story
+        - video transcript
+        - song
+        - poem
+        - scientific study
+        - medical report
+        - reddit post with replies
+        - email
+        - tweet
+        - jira ticket
+        - github merge request
+        - gitlab issue
+        - how-to article
+      formatting_options:
+        - JSON
+        - YAML
+        - CSV
+        - markdown
+        - markdown table
+        - bullet list
+        - numbered list
+        - python dict
+        - php associative array
+        - JSONL
+        - javascript object
+        - XML
+      next_year: 2025
+  input_ids:
+    - load_airoboros_topics
+
+# adds output columns: task_display_style, input_count, metadata_counts, target_selection, task_count, include_source, task_display_style, reference_texts
+- id: sample_contextual_instructions_args
+  config:
+    type: function
+    function: data_strategies.Airoboros.utils.sample_contextual_instructions_args
+    function_config:
+      n_samples: 5 # TODO change this based on the yeild for the category
+  input_ids:
+    - add_initial_args
+
+- id: generate_contextual_instructions
+  config:
+    type: completions
+    map: contextual_instructions
+    map_config:
+      user_message: |
+        I would like you to help me generate prompts for a large language model to help train it to reduce hallucinations.
+
+        To accomplish this, I want you to generate {{input_count}} random text block(s) with random names, numbers, locations, facts, etc., making sure the content of the text does not correlate too closely with known/accurate information.
+
+        If the topic is about a specific person, place, or historical event, change the dates, locations, and facts but keep the person/place/event the same. For example, if the text is about Joe Biden, and the text indicates a date of birth of November 20, 1942, the random text should select a new random date for DoB but keep it about Joe Biden (i.e., don't change the name).
+
+        The random text block(s) should be extremely realistic, and should not include any placeholders. The dates should be before the year {{next_year}}, appropriate to the topic and text.
+
+        Each text block should be in {{language}}, but "BEGININPUT", "BEGINCONTEXT", "ENDCONTEXT", "ENDINPUT", "BEGININSTRUCTION" and "ENDINSTRUCTION" are special tokens that must not be translated.
+
+        Random text block writing style:
+        {{flesch}}
+
+        The random text block(s) should be in the style:
+        {{styles}}
+
+        {{reference_texts}}
+
+        {{topics}}
+
+        Each text block must include:
+        BEGININPUT
+        BEGINCONTEXT
+        [between 1 and 8 random metadata key value pairs appropriate to the text, such as date:, url:, author:, participants:, category:, journal:, title:, source url:, source identifier:, etc]
+        ENDCONTEXT
+        [random text]
+        ENDINPUT
+
+        After generating the text block(s), ensuring details such as dates, places, misc. factoids are randomized, add {{task_count}} complex task(s) that asks the user to generate a response based exclusively on the information of {{target_selection}}
+
+        The task(s) should be questions or instructions. The task(s) should not specifically indicate that the user should reference the text, just state the task(s).
+
+        Do not include phrasing such as "Using the first text block", or "using the blog post", etc., just assume the target audience will know where to find the answer based on the question/instruction.
+
+        The task(s) must not start with "Describe the ...", "Explain how ...", etc., and should ask for specific information, and must be completely and accurately answerable using only the random text.
+
+        The task(s) can relate to details provided in either the text, metadata, or both.
+
+        {{format_task}}
+
+        {{task_display_style}}
+
+        Don't start with, "Certainly, here's your response" or anything similar, just provide the random text and the question. Don't start with anything similar to "Here are the text blocks", just provide the text blocks one after the other in the format described.
+
+        {{topic_avoidance}}
+
+        Output format should be:
+        [list of text blocks in the format described]
+        BEGININSTRUCTION
+        [random task(s) go here]{{include_source}}
+        ENDINSTRUCTION
+      output_column: instruction
+    model: gpt-4o-mini
+    temperature: 0.5
+    top_p: 0.5
+    presence_penalty: 2.0
+  input_ids:
+    - sample_contextual_instructions_args
+
+- id: drop_columns
+  config:
+    type: function
+    function: data_strategies.commons.remove_columns
+    function_config:
+      columns:
+        - language
+        - topic_avoidance
+        - flesch
+        - batch_size
+        - topics
+        - context_styles
+        - formatting_options
+        - next_year
+        - task_display_style
+        - input_count
+        - metadata_counts
+        - target_selection
+        - task_count
+        - include_source
+        - reference_texts
+        - task_confounder
+        - styles
+        - format_task
+  input_ids:
+    - generate_contextual_instructions
+
+# TARGET COUNT is 1000 after dedup
+# Has a special response prompt

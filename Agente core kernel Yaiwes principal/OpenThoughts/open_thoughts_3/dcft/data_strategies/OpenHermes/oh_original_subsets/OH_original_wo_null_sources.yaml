@@ -1,0 +1,16 @@
+name: OH_original_wo_null_sources
+operators: 
+  - id: load_oh_choi
+    config:
+      type: hf_source
+      dataset: cchoi1/oh_with_sources
+      split: train
+      columns: 
+        - conversations
+        - source_label_exact
+  - id: filter
+    config:
+      type: function
+      function: dcft.data_strategies.OH_Subsets.utils.filter_null_sources
+    input_ids:
+      - load_oh_choi

@@ -1,0 +1,31 @@
+operators:
+- id: load_preexisting_wikipedia_biology
+  config:
+    type: load_preexisting
+    framework_name: wikipedia_biology_seed_science
+- id: load_preexisting_camel_chemistry
+  config:
+    type: load_preexisting
+    framework_name: camel_chemistry_seed_science
+- id: load_preexisting_fineweb
+  config:
+    type: load_preexisting
+    framework_name: fineweb_seed_science
+- id: load_preexisting_stackexchange_biology
+  config:
+    type: load_preexisting
+    framework_name: stackexchange_biology_seed_science
+- id: load_preexisting_wikipedia
+  config:
+    type: load_preexisting
+    framework_name: wikipedia_seed_science
+- id: mix_all_sources
+  config:
+    type: mix
+  input_ids:
+    - load_preexisting_wikipedia_biology
+    - load_preexisting_camel_chemistry
+    - load_preexisting_fineweb
+    - load_preexisting_stackexchange_biology
+    - load_preexisting_wikipedia
+    

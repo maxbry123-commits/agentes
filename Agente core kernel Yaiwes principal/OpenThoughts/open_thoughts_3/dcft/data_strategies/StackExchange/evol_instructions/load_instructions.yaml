@@ -1,0 +1,120 @@
+operators:
+  - id: load_alpaca
+    config:
+      type: hf_source
+      dataset: allenai/WildChat 
+      split: train
+  - id: filter_english
+    config:
+      type: function
+      function: data_strategies.commons.filter_dataset
+      function_config:
+        filter_column: language
+        to_include: English
+    input_ids:
+      - load_alpaca
+  - id: uniform_sample
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample_limited
+      function_config:
+        num_samples: 10000
+    input_ids:
+      - filter_english
+  - id: get_instruction
+    config:
+      type: function
+      function: data_strategies.StackExchange.evol_instructions.utils.get_conversation
+      function_config:
+        conversation_column: conversation
+        output_column: command_seed
+    input_ids:
+      - uniform_sample
+  - id: generate_cot_instructions
+    config:
+      type: completions
+      map: chat
+      map_config:
+        user_message: |
+          Give me the command used in the following question. Examples of commands would be 'Create a story', 'Make a list', 'Create a table', etc. If there is no command, please respond with N/A. This is the question:
+          
+          '{{command_seed}}'
+
+          Respond in a few words and nothing else. Now, please give me the command: 
+        output_column: command
+      model: gpt-4o-mini
+      temperature: 0.7
+      top_p: 0.5
+    input_ids:
+      - get_instruction
+  - id: filter_na
+    config:
+      type: function
+      function: data_strategies.commons.filter_dataset
+      function_config:
+        filter_column: command
+        to_not_include: N/A
+    input_ids:
+      - generate_cot_instructions
+  - id: dedup_topics
+    config:
+      type: function
+      function: data_strategies.commons.dedup_on_columns
+      function_config:
+        dedup_columns:
+          - command
+    input_ids:
+      -  filter_na
+  - id: load_preexisting_vegetarian
+    config:
+      type: load_preexisting
+      framework_name: stackexchange_stackoverflow
+  - id: combine_seed_task_and_seed_data
+    config:
+      type: function
+      function: data_strategies.StackExchange.evol_instructions.utils.combine_seed_task_and_seed_data
+      function_config:
+        seed_tasks_column: command
+        seed_content_column: instruction
+        output_column: generated_instruction_prompt
+      input_dataset_map:
+        seed_task_dataset: dedup_topics
+        seed_content_dataset: load_preexisting_vegetarian
+    input_ids:
+      - dedup_topics
+      - load_preexisting_vegetarian
+  - id: generate_final_instructions
+    config:
+      type: completions
+      map: chat
+      map_config:
+        user_message_column: generated_instruction_prompt
+        output_column: generated_instruction
+      model: gpt-4o-mini
+      temperature: 0.7
+      top_p: 0.5
+    input_ids:
+      - combine_seed_task_and_seed_data
+  - id: keep_original
+    config:
+      type: function
+      function: data_strategies.StackExchange.evol_instructions.utils.repeat_if_needed
+      function_config:
+        new_instruction_column: generated_instruction
+        old_instruction_column: instruction
+        output_column: final_instruction
+        percent_original: 0.5
+    input_ids:
+      - generate_final_instructions
+  - id: generate_final_responses
+    config:
+      type: completions
+      map: chat
+      map_config:
+        user_message_column: final_instruction
+        output_column: final_responses
+      model: gpt-4o-mini
+      temperature: 0.7
+      top_p: 0.5
+    input_ids:
+      - keep_original

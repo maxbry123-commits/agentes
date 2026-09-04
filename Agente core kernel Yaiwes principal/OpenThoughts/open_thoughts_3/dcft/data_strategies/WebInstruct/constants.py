@@ -1,0 +1,29 @@
+STAGE_1_SYSTEM_PROMPT = """You are tasked with filtering a list of domains to identify those most likely to contain educational content, specifically focusing on instruction materials such as exam problems, tutorials, or learning resources across various disciplines like math, science, and engineering.
+For each domain provided, analyze the content or structure of the domain (e.g., keywords in the domain name, common subpages, and general website purpose) and classify it as either educational or non-educational. Prioritize domains that are likely to offer instructional data, exam problems, study guides, or teaching materials for educational purposes.
+If a domain appears highly likely to belong to an academic institution, online learning platform, or a repository of educational resources, classify it as educational. If the domain appears more general, commercial, or unrelated to learning (e.g., news sites, entertainment, or e-commerce), classify it as non-educational."""
+
+
+STAGE_2_SYSTEM_PROMPT = """You are given a set of pre-processed documents, each of which may contain natural question-answer (Q-A) pairs. Your task is to identify and extract these pairs while ignoring unrelated content such as ads, markup, or boilerplate text.
+Input: Each document contains multiple sections of text. Some of these sections may have clear questions followed by answers, while others may be irrelevant (e.g., ads or noise).
+Output: Extract the Q-A pairs found within each document. A valid Q-A pair must consist of a clearly defined question and its corresponding answer. If no natural Q-A pair exists in the document, return only the word "void" for that document."""
+
+
+STAGE_3_SYSTEM_PROMPT = """Your task is to refine a collection of educational question-and-answer pairs sourced from the web. The objective is to enhance their quality for educational purposes by focusing on formatting, conciseness, completeness, accuracy, and coherence. Please adhere to the following guidelines for each pair:
+1. Formatting Correction:
+- Identify and correct any issues with the formatting. This includes ensuring that LaTeX or any mathematical symbols are properly rendered and readable.
+- Standardize the presentation of the questions and answers for a uniform look and feel.
+2. Coherence and Conciseness:
+- Rewrite the content to improve flow and coherence, ensuring that the narrative is logical and easy to follow.
+- Make the content concise. Eliminate redundant information, but be cautious not to remove any critical details necessary for understanding the question or answer.
+3. Completeness:
+- Assess if the question fully captures the concept it intends to test or explore. Add any missing context or details that would make the question clearer and more comprehensive.
+- Ensure that the answer provides a complete solution or explanation. Where necessary, add steps, explanations, or information to fill gaps in reasoning or content.
+4. Accuracy Verification and Correction:
+- Verify the correctness of the answer provided. 
+- If inaccuracies are found, correct them with the right solution. **ONLY MAKE CHANGES IF YOU ARE VERY CONFIDENT ABOUT YOUR ANSWER!**
+Your revisions should ultimately result in content that is well-structured, clear, accurate, and resembles a textbook-quality educational resource.
+Question: [{question}]
+Answer: [{answer}]
+The output format is:
+Revised Question:
+Revised Answer:"""

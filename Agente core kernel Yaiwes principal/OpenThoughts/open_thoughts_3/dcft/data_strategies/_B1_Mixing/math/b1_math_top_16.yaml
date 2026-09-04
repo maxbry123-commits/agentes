@@ -1,0 +1,229 @@
+operators:
+  - id: load_preexisting_top_1
+    config:
+      type: load_preexisting
+      framework_name: a1_math_open2math
+  - id: sample_dataset_pre_top_1
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample_fixed
+      function_config:
+        num_samples: 1_975
+    input_ids:
+      - load_preexisting_top_1
+
+  - id: load_preexisting_top_2
+    config:
+      type: load_preexisting
+      framework_name: a1_math_numina_math
+  - id: sample_dataset_pre_top_2
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample_fixed
+      function_config:
+        num_samples: 1_975
+    input_ids:
+      - load_preexisting_top_2
+
+  - id: load_preexisting_top_3
+    config:
+      type: load_preexisting
+      framework_name: a1_math_gair_math
+  - id: sample_dataset_pre_top_3
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample_fixed
+      function_config:
+        num_samples: 1_975
+    input_ids:
+      - load_preexisting_top_3
+    
+  - id: load_preexisting_top_4
+    config:
+      type: load_preexisting
+      framework_name: a1_math_metamath_aime
+  - id: sample_dataset_pre_top_4
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample_fixed
+      function_config:
+        num_samples: 1_975
+    input_ids:
+      - load_preexisting_top_4
+
+  - id: load_preexisting_top_5
+    config:
+      type: load_preexisting
+      framework_name:  a1_math_automathtext
+  - id: sample_dataset_pre_top_5
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample_fixed
+      function_config:
+        num_samples: 1_975
+    input_ids:
+      - load_preexisting_top_5
+
+  - id: load_preexisting_top_6
+    config:
+      type: load_preexisting
+      framework_name: a1_math_deepmath
+  - id: sample_dataset_pre_top_6
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample_fixed
+      function_config:
+        num_samples: 1_975
+    input_ids:
+      - load_preexisting_top_6
+
+  - id: load_preexisting_top_7
+    config:
+      type: load_preexisting
+      framework_name: a1_math_tiger_lab_math
+  - id: sample_dataset_pre_top_7
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample_fixed
+      function_config:
+        num_samples: 1_975
+    input_ids:
+      - load_preexisting_top_7
+    
+  - id: load_preexisting_top_8
+    config:
+      type: load_preexisting
+      framework_name: a1_math_formulas
+  - id: sample_dataset_pre_top_8
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample_fixed
+      function_config:
+        num_samples: 1_975
+    input_ids:
+      - load_preexisting_top_8
+
+  - id: load_preexisting_top_9
+    config:
+      type: load_preexisting
+      framework_name: a1_math_openmathinstruct2
+  - id: sample_dataset_pre_top_9
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample_fixed
+      function_config:
+        num_samples: 1_975
+    input_ids:
+      - load_preexisting_top_9
+
+  - id: load_preexisting_top_10
+    config:
+      type: load_preexisting
+      framework_name: a1_math_hendrycks
+  - id: sample_dataset_pre_top_10
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample_fixed
+      function_config:
+        num_samples: 1_975
+    input_ids:
+      - load_preexisting_top_10
+
+  - id: load_preexisting_top_11
+    config:
+      type: load_preexisting
+      framework_name: a1_math_natural_reasoning
+  - id: sample_dataset_pre_top_11
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample_fixed
+      function_config:
+        num_samples: 1_975
+    input_ids:
+      - load_preexisting_top_11
+    
+  - id: load_preexisting_top_12
+    config:
+      type: load_preexisting
+      framework_name: a1_math_big_math
+  - id: sample_dataset_pre_top_12
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample_fixed
+      function_config:
+        num_samples: 1_975
+    input_ids:
+      - load_preexisting_top_12
+
+  - id: load_preexisting_top_13
+    config:
+      type: load_preexisting
+      framework_name: a1_math_tiger_math  
+  - id: sample_dataset_pre_top_13
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample_fixed
+      function_config:
+        num_samples: 1_975
+    input_ids:
+      - load_preexisting_top_13
+
+  - id: load_preexisting_top_14
+    config:
+      type: load_preexisting
+      framework_name: a1_math_math_instruct
+  - id: sample_dataset_pre_top_14
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample_fixed
+      function_config:
+        num_samples: 1_975
+    input_ids:
+      - load_preexisting_top_14
+
+  - id: load_preexisting_top_15
+    config:
+      type: load_preexisting
+      framework_name: a1_math_baai_infinity_math
+  - id: sample_dataset_pre_top_15
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample_fixed
+      function_config:
+        num_samples: 1_975
+    input_ids:
+      - load_preexisting_top_15
+    
+  - id: load_preexisting_top_16
+    config:
+      type: load_preexisting
+      framework_name: a1_math_college_math
+  - id: sample_dataset_pre_top_16
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample_fixed
+      function_config:
+        num_samples: 1_975
+    input_ids:
+      - load_preexisting_top_16
+
+  - id: mix
+    config:
+      type: mix
+    input_ids:
+      - sample_dataset_pre_top_1
+      - sample_dataset_pre_top_2
+      - sample_dataset_pre_top_3
+      - sample_dataset_pre_top_4
+      - sample_dataset_pre_top_5
+      - sample_dataset_pre_top_6
+      - sample_dataset_pre_top_7
+      - sample_dataset_pre_top_8
+      - sample_dataset_pre_top_9
+      - sample_dataset_pre_top_10
+      - sample_dataset_pre_top_11
+      - sample_dataset_pre_top_12
+      - sample_dataset_pre_top_13
+      - sample_dataset_pre_top_14
+      - sample_dataset_pre_top_15
+      - sample_dataset_pre_top_16

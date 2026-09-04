@@ -1,0 +1,85 @@
+operators:
+  - id: load_numina_math
+    config:
+      type: "hf_source"
+      dataset: "NovaSky-AI/labeled_numina_difficulty_162K"
+      split: train
+  - id: select_amc_aime
+    config:
+      type: function
+      function: data_strategies.commons.select_rows
+      function_config:
+        conditions:
+          source: amc_aime
+    input_ids:
+      - load_numina_math
+  - id: select_math
+    config:
+      type: function
+      function: data_strategies.commons.select_rows
+      function_config:
+        conditions:
+          source: math
+    input_ids:
+      - load_numina_math
+  - id: select_olympiad
+    config:
+      type: function
+      function: data_strategies.commons.select_rows
+      function_config:
+        conditions:
+          source: olympiad
+    input_ids:
+      - load_numina_math
+  - id: annotate
+    config:
+      type: completions
+      map: deepseek_reasoner
+      model: deepseek-reasoner
+      temperature: 0.0
+<<<<<<< HEAD
+      max_requests_per_minute: 1500
+      max_tokens_per_minute: 100_000_000
+=======
+      backend_params:
+        max_requests_per_minute: 1500
+        max_tokens_per_minute: 100_000_000
+>>>>>>> 974d3860 (added R1)
+    input_ids:
+      - select_olympiad
+      - select_math
+      - select_amc_aime
+  - id: judge
+    config:
+      type: completions
+      map: deepseek_judge
+      model: gpt-4o-mini
+    input_ids:
+      - annotate
+<<<<<<< HEAD
+  # - id: select_true
+  #   config:
+  #     type: function
+  #     function: data_strategies.commons.select_rows
+  #     function_config:
+  #       conditions:
+  #         correct: True
+  #   input_ids:
+  #     - judge
+=======
+  - id: select_true
+    config:
+      type: function
+      function: data_strategies.commons.select_rows
+      function_config:
+        conditions:
+          correct: True
+    input_ids:
+      - judge
+
+
+
+
+    
+    
+>>>>>>> 974d3860 (added R1)

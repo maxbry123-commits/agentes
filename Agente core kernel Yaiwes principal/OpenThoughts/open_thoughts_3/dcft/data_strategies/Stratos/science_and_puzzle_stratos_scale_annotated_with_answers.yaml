@@ -1,0 +1,46 @@
+operators:
+- id: hf_source
+  config:
+    type: hf_source
+    dataset: mlfoundations-dev/science_and_puzzle_stratos_scale
+    split: train
+- id: rename_prompt
+  config:
+    type: function
+    function: data_strategies.commons.force_rename_columns
+    function_config:
+      column_maps:
+        question: problem
+  input_ids:
+  - hf_source
+- id: hf_source_2
+  config:
+    type: hf_source
+    dataset: mlfoundations-dev/science_and_puzzle_stratos_scale_annotated
+    split: train
+- id: merge
+  config:
+    type: merge
+    join_column: problem
+  input_ids:
+  - hf_source_2
+  - rename_prompt
+- id: judge
+  config:
+    type: completions
+    map: deepseek_judge
+    model: gpt-4o-mini
+    map_config:
+      ground_truth_column: answer
+      answer_column: deepseek_solution
+  input_ids:
+    - merge
+  # - id: select_true
+  #   config:
+  #     type: function
+  #     function: data_strategies.commons.select_rows
+  #     function_config:
+  #       conditions:
+  #         correct: True
+  #   input_ids:
+  #     - judge

@@ -1,0 +1,70 @@
+operators: 
+  - id: seed_math_filtering
+    config:
+      type: load_preexisting
+      framework_name: seed_math_filtering
+  - id: sky_t1_math_difficulty
+    config:
+      type: completions
+      map: sky_t1_math_difficulty
+      map_config:
+        problem_column: instruction
+        output_difficulty_column: difficulty
+        output_reasoning_column: difficulty_reasoning
+      model: gpt-4o-mini
+    input_ids:
+      - seed_math_filtering
+  - id: select_difficulty_9
+    config:
+      type: function
+      function: data_strategies.commons.select_rows
+      function_config:
+        conditions:
+          difficulty: 9
+    input_ids:
+      - sky_t1_math_difficulty
+  - id: select_difficulty_10
+    config:
+      type: function
+      function: data_strategies.commons.select_rows
+      function_config:
+        conditions:
+          difficulty: 10
+    input_ids:
+      - sky_t1_math_difficulty
+  - id: select_difficulty_8
+    config:
+      type: function
+      function: data_strategies.commons.select_rows
+      function_config:
+        conditions:
+          difficulty: 8
+    input_ids:
+      - sky_t1_math_difficulty
+  - id: sample_dataset
+    config:
+      type: function
+      function: data_strategies.commons.uniform_sample_limited
+      function_config:
+        num_samples: 10000000 # 1.25% of 10000 target from stage 1
+    input_ids:
+      - select_difficulty_10
+      - select_difficulty_9
+      - select_difficulty_8
+  # - id: annotate_instruction
+  #   config:
+  #     type: completions
+  #     map: deepseek_reasoner
+  #     require_all_responses: false
+  #     map_config:
+  #       input_problem_column: problem
+  #       output_deepseek_solution_column: extra_deepseek_solution
+  #       output_reasoning_column: extra_deepseek_reasoning
+  #     backend_params:
+  #       max_requests_per_minute: 1500
+  #       max_tokens_per_minute: 100_000_000
+  #     model: "deepseek-reasoner"
+  #     top_p: 0.95
+  #     batch: False
+  #   input_ids:
+  #     - sample_dataset

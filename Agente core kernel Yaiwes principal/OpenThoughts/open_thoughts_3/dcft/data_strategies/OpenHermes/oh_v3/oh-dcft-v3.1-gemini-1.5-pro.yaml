@@ -1,0 +1,67 @@
+operators:
+  - id: load_oh_original
+    config:
+      type: hf_source
+      dataset: teknium/OpenHermes-2.5
+      split: train
+      columns: 
+        - conversations
+
+  - id: convert_to_instruction_response
+    input_ids:
+      - load_oh_original
+    config:
+      type: function
+      function: data_strategies.commons.convert_sharegpt_to_instruction_response
+      function_config:
+        input_sharegpt_column: conversations
+        output_instruction_column: instruction
+        output_response_column: response
+
+  
+  - id: select_instruction_response
+    input_ids:
+      - convert_to_instruction_response
+    config:
+      type: function
+      function: data_strategies.commons.select_columns
+      function_config:
+        columns:
+          - instruction
+          - response
+
+  - id: reannotate_OH
+    input_ids:
+      - select_instruction_response
+    config:
+      type: completions
+      map: chat
+      map_config:
+        user_message_column: instruction
+        output_column: model_response
+      model: gemini/gemini-1.5-pro
+      # https://ai.google.dev/gemini-api/docs/models/gemini#gemini-1.5-pro
+      max_requests_per_minute: 1000
+      max_tokens_per_minute: 4000000
+      require_all_responses: False # ~100 requests cause the model to output copyrighted material and get content fitlered every time over 100s of attempts
+
+  - id: convert_to_shareGPT
+    input_ids:
+      - reannotate_OH
+    config:
+      type: function
+      function: data_strategies.commons.convert_instruction_response_to_sharegpt
+      function_config:
+        input_instruction_column: instruction
+        input_response_column: model_response
+        output_sharegpt_column: conversations
+
+  - id: select_conversations
+    input_ids:
+      - convert_to_shareGPT
+    config:
+      type: function
+      function: data_strategies.commons.select_columns
+      function_config:
+        columns:
+          - conversations
