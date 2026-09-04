@@ -14,25 +14,38 @@ concurrency:
 jobs:
   stop-loop:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - name: Cancel active canonical loop runs
+      - name: Cancel stale or duplicate repair runs
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
           repo="$GITHUB_REPOSITORY"
+          now="$(date -u +%s)"
+          canceled=0
           for status in in_progress queued; do
-            gh api "repos/${repo}/actions/runs?status=${status}&per_page=100" --paginate --jq '.workflow_runs[] | [.id,.path] | @tsv' |
-            while IFS=$'\t' read -r id path; do
+            gh api "repos/${repo}/actions/runs?status=${status}&per_page=100" --paginate \
+              --jq '.workflow_runs[] | [.id,.path,.created_at] | @tsv' |
+            while IFS=$'\t' read -r id path created; do
               [ -n "$id" ] || continue
               [ "$id" = "$GITHUB_RUN_ID" ] && continue
+              created_epoch="$(date -u -d "$created" +%s)"
+              age=$((now-created_epoch))
+              stale=false
+              [ "$age" -gt 86400 ] && stale=true
+              duplicate=false
               case "$path" in
-                .github/workflows/canonical-*.yml)
-                  echo "cancel $id $path"
-                  gh api --method POST "repos/${repo}/actions/runs/${id}/cancel" || true
+                .github/workflows/canonical-retry-*.yml|.github/workflows/canonical-lfs-*.yml|.github/workflows/canonical-watchdog.yml|.github/workflows/canonical-dataset-*.yml)
+                  duplicate=true
                   ;;
               esac
+              if [ "$stale" = true ] || [ "$duplicate" = true ]; then
+                echo "cancel id=$id status=$status age_seconds=$age path=$path"
+                gh api --method POST "repos/${repo}/actions/runs/${id}/cancel" || true
+                canceled=$((canceled+1))
+              fi
             done
           done
-          echo QUIESCED
+          echo "QUIESCED canceled=${canceled}"
