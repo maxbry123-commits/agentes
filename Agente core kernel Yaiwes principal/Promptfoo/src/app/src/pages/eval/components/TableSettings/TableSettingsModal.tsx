@@ -1,0 +1,77 @@
+import React from 'react';
+
+import { Button } from '@app/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@app/components/ui/dialog';
+import { Separator } from '@app/components/ui/separator';
+import { RotateCcw, Settings } from 'lucide-react';
+import SettingsPanel from './components/SettingsPanel';
+import { useSettingsState } from './hooks/useSettingsState';
+
+interface SettingsModalProps {
+  open: boolean;
+  onClose: () => void;
+  resultsTableZoom: number;
+  onResultsTableZoomChange: (zoom: number) => void;
+}
+
+const TableSettingsModal = ({
+  open,
+  onClose,
+  resultsTableZoom,
+  onResultsTableZoomChange,
+}: SettingsModalProps) => {
+  const { resetToDefaults } = useSettingsState(open);
+
+  const handleClose = () => {
+    onClose();
+  };
+
+  const handleResetToDefaults = () => {
+    resetToDefaults();
+    onResultsTableZoomChange(1);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && handleClose()}>
+      <DialogContent className="flex max-h-[90vh] max-w-[680px] flex-col overflow-hidden p-0">
+        <DialogHeader className="p-5 pb-3 border-b border-border/10">
+          <DialogTitle className="flex items-center gap-2 text-lg font-semibold">
+            <Settings className="size-5 text-primary" />
+            Table Settings
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="min-h-0 overflow-y-auto p-0">
+          <SettingsPanel
+            resultsTableZoom={resultsTableZoom}
+            onResultsTableZoomChange={onResultsTableZoomChange}
+          />
+        </div>
+
+        <Separator className="opacity-60" />
+
+        <DialogFooter className="shrink-0 justify-between px-5 py-3">
+          <Button
+            onClick={handleResetToDefaults}
+            variant="ghost"
+            size="sm"
+            aria-label="Reset settings to defaults"
+            title="Reset all settings to their default values"
+          >
+            <RotateCcw className="size-4 mr-2" />
+            Reset to Defaults
+          </Button>
+          <Button onClick={handleClose}>Done</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+export default React.memo(TableSettingsModal);

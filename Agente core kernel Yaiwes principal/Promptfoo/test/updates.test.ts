@@ -1,0 +1,365 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { mockProcessEnv } from './util/utils';
+
+// Create mock for exec - using vi.hoisted to ensure it's available in vi.mock factory
+const { mockExecAsync } = vi.hoisted(() => {
+  const mockExecAsync = vi.fn();
+  return { mockExecAsync };
+});
+
+// Mock child_process.exec with custom promisify symbol
+vi.mock('child_process', async () => {
+  const actual = await vi.importActual<typeof import('child_process')>('child_process');
+  const mockExec = Object.assign(vi.fn(), {
+    [Symbol.for('nodejs.util.promisify.custom')]: mockExecAsync,
+  });
+  return {
+    ...actual,
+    exec: mockExec,
+  };
+});
+
+vi.mock('../src/util/fetch/index.ts', () => ({
+  fetchWithTimeout: vi.fn(),
+}));
+
+vi.mock('../src/version', () => ({
+  VERSION: '0.11.0',
+  POSTHOG_KEY: '',
+}));
+
+import logger from '../src/logger';
+import {
+  checkForUpdates,
+  checkModelAuditUpdates,
+  getLatestVersion,
+  getModelAuditCurrentVersion,
+  getModelAuditLatestVersion,
+} from '../src/updates';
+import { getUpdateCommands } from '../src/updates/updateCommands';
+import { fetchWithTimeout } from '../src/util/fetch/index';
+import { VERSION } from '../src/version';
+
+beforeEach(() => {
+  vi.mocked(fetchWithTimeout).mockReset();
+  mockExecAsync.mockReset();
+  mockExecAsync.mockResolvedValue({
+    stdout: 'modelaudit, version 0.0.0',
+    stderr: '',
+  });
+});
+
+describe('getLatestVersion', () => {
+  it('should return the latest version of the package', async () => {
+    vi.mocked(fetchWithTimeout).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ latestVersion: '1.1.0' }),
+    } as never);
+
+    const latestVersion = await getLatestVersion();
+    expect(latestVersion).toBe('1.1.0');
+  });
+
+  it('should throw an error if the response is not ok', async () => {
+    vi.mocked(fetchWithTimeout).mockResolvedValueOnce({
+      ok: false,
+    } as never);
+
+    await expect(getLatestVersion()).rejects.toThrow(
+      'Failed to fetch package information for promptfoo',
+    );
+  });
+});
+
+describe('getUpdateCommands', () => {
+  it('separates official images, custom containers, and package installs', () => {
+    expect(
+      getUpdateCommands({ isContainer: false, isOfficialDockerImage: true, isNpx: false }),
+    ).toEqual({
+      primary: 'docker pull ghcr.io/promptfoo/promptfoo:latest',
+      alternative: null,
+      commandType: 'docker',
+    });
+    expect(
+      getUpdateCommands({ isContainer: true, isOfficialDockerImage: false, isNpx: false }),
+    ).toEqual({
+      primary: '',
+      alternative: null,
+      commandType: 'npm',
+      isCustomContainer: true,
+    });
+    expect(
+      getUpdateCommands({ isContainer: false, isOfficialDockerImage: false, isNpx: true }),
+    ).toEqual({
+      primary: 'npx promptfoo@latest',
+      alternative: 'npm install -g promptfoo@latest',
+      commandType: 'npx',
+    });
+    expect(
+      getUpdateCommands({ isContainer: false, isOfficialDockerImage: false, isNpx: false }),
+    ).toEqual({
+      primary: 'npm install -g promptfoo@latest',
+      alternative: 'npx promptfoo@latest',
+      commandType: 'npm',
+    });
+  });
+});
+
+describe('checkForUpdates', () => {
+  let loggerInfoSpy: ReturnType<typeof vi.spyOn>;
+  let restoreEnv: () => void;
+
+  beforeEach(() => {
+    // Reset fetchWithTimeout to clear any queued mockResolvedValueOnce from other tests
+    vi.mocked(fetchWithTimeout).mockReset();
+    restoreEnv = mockProcessEnv({ PROMPTFOO_DISABLE_UPDATE: undefined });
+    loggerInfoSpy = vi.spyOn(logger, 'info').mockImplementation(() => logger);
+  });
+
+  afterEach(() => {
+    loggerInfoSpy.mockRestore();
+    restoreEnv();
+  });
+
+  it('should skip the update check when PROMPTFOO_DISABLE_UPDATE is set', async () => {
+    const restoreDisableUpdate = mockProcessEnv({ PROMPTFOO_DISABLE_UPDATE: 'true' });
+    try {
+      expect(await checkForUpdates()).toBe(false);
+      expect(fetchWithTimeout).not.toHaveBeenCalled();
+      expect(loggerInfoSpy).not.toHaveBeenCalled();
+    } finally {
+      restoreDisableUpdate();
+    }
+  });
+
+  it('should tell official-image users to pull a new image', async () => {
+    const restoreDocker = mockProcessEnv({
+      PROMPTFOO_OFFICIAL_DOCKER_IMAGE: 'true',
+      PROMPTFOO_RUNNING_IN_DOCKER: 'true',
+    });
+    vi.mocked(fetchWithTimeout).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ latestVersion: '1.1.0' }),
+    } as never);
+
+    try {
+      await expect(checkForUpdates()).resolves.toBe(true);
+    } finally {
+      restoreDocker();
+    }
+
+    expect(loggerInfoSpy).toHaveBeenCalledWith(
+      expect.stringContaining('docker pull ghcr.io/promptfoo/promptfoo:latest'),
+    );
+  });
+
+  it('should require a source update before rebuilding a custom container', async () => {
+    const restoreContainer = mockProcessEnv({
+      PROMPTFOO_OFFICIAL_DOCKER_IMAGE: undefined,
+      PROMPTFOO_RUNNING_IN_DOCKER: 'true',
+    });
+    vi.mocked(fetchWithTimeout).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ latestVersion: '1.1.0' }),
+    } as never);
+
+    try {
+      await expect(checkForUpdates()).resolves.toBe(true);
+    } finally {
+      restoreContainer();
+    }
+
+    expect(loggerInfoSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Update the Promptfoo source, dependency, or parent image'),
+    );
+  });
+
+  it('should log an update message if a newer version is available - minor ver', async () => {
+    vi.mocked(fetchWithTimeout).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ latestVersion: '1.1.0' }),
+    } as never);
+
+    const result = await checkForUpdates();
+    expect(result).toBeTruthy();
+  });
+
+  it('should log an update message if a newer version is available - major ver', async () => {
+    vi.mocked(fetchWithTimeout).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ latestVersion: '1.1.0' }),
+    } as never);
+
+    const result = await checkForUpdates();
+    expect(result).toBeTruthy();
+  });
+
+  it('should not log an update message if the current version is up to date', async () => {
+    vi.mocked(fetchWithTimeout).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ latestVersion: VERSION }),
+    } as never);
+
+    const result = await checkForUpdates();
+    expect(result).toBeFalsy();
+  });
+});
+
+describe('getModelAuditLatestVersion', () => {
+  it('should return the latest version from PyPI', async () => {
+    vi.mocked(fetchWithTimeout).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ info: { version: '0.1.7' } }),
+    } as never);
+
+    const version = await getModelAuditLatestVersion();
+    expect(version).toBe('0.1.7');
+    expect(fetchWithTimeout).toHaveBeenCalledWith(
+      'https://pypi.org/pypi/modelaudit/json',
+      { headers: { 'x-promptfoo-silent': 'true' } },
+      10000,
+    );
+  });
+
+  it('should return null if PyPI request fails', async () => {
+    vi.mocked(fetchWithTimeout).mockResolvedValueOnce({
+      ok: false,
+    } as never);
+
+    const version = await getModelAuditLatestVersion();
+    expect(version).toBeNull();
+  });
+
+  it('should return null if fetch throws', async () => {
+    vi.mocked(fetchWithTimeout).mockRejectedValueOnce(new Error('Network error'));
+
+    const version = await getModelAuditLatestVersion();
+    expect(version).toBeNull();
+  });
+});
+
+describe('getModelAuditCurrentVersion', () => {
+  it('should return the current version from modelaudit --version', async () => {
+    mockExecAsync.mockResolvedValueOnce({
+      stdout: 'modelaudit, version 0.1.5',
+      stderr: '',
+    });
+
+    const version = await getModelAuditCurrentVersion();
+    expect(version).toBe('0.1.5');
+  });
+
+  it('should return null if modelaudit --version fails', async () => {
+    mockExecAsync.mockRejectedValueOnce(new Error('Command failed'));
+
+    const version = await getModelAuditCurrentVersion();
+    expect(version).toBeNull();
+  });
+
+  it('should return null if version pattern not found', async () => {
+    mockExecAsync.mockResolvedValueOnce({
+      stdout: 'some invalid output',
+      stderr: '',
+    });
+
+    const version = await getModelAuditCurrentVersion();
+    expect(version).toBeNull();
+  });
+});
+
+describe('checkModelAuditUpdates', () => {
+  let loggerInfoSpy: ReturnType<typeof vi.spyOn>;
+  let restoreEnv: () => void;
+
+  beforeEach(() => {
+    loggerInfoSpy = vi.spyOn(logger, 'info').mockImplementation(() => logger);
+    restoreEnv = mockProcessEnv({ PROMPTFOO_DISABLE_UPDATE: undefined });
+  });
+
+  afterEach(() => {
+    loggerInfoSpy.mockRestore();
+    restoreEnv();
+  });
+
+  it('should return true and log message when update is available', async () => {
+    mockExecAsync.mockResolvedValueOnce({
+      stdout: 'modelaudit, version 0.1.5',
+      stderr: '',
+    });
+
+    vi.mocked(fetchWithTimeout).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ info: { version: '0.1.7' } }),
+    } as never);
+
+    const result = await checkModelAuditUpdates();
+    expect(result).toBeTruthy();
+  });
+
+  it('should return false when versions are equal', async () => {
+    mockExecAsync.mockResolvedValueOnce({
+      stdout: 'modelaudit, version 0.1.7',
+      stderr: '',
+    });
+
+    vi.mocked(fetchWithTimeout).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ info: { version: '0.1.7' } }),
+    } as never);
+
+    const result = await checkModelAuditUpdates();
+    expect(result).toBeFalsy();
+  });
+
+  it('should return false when current version is newer', async () => {
+    mockExecAsync.mockResolvedValueOnce({
+      stdout: 'modelaudit, version 0.2.0',
+      stderr: '',
+    });
+
+    vi.mocked(fetchWithTimeout).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ info: { version: '0.1.7' } }),
+    } as never);
+
+    const result = await checkModelAuditUpdates();
+    expect(result).toBeFalsy();
+  });
+
+  it('should return false when PROMPTFOO_DISABLE_UPDATE is set', async () => {
+    const restoreDisableUpdate = mockProcessEnv({ PROMPTFOO_DISABLE_UPDATE: 'true' });
+    try {
+      vi.mocked(fetchWithTimeout).mockReset();
+
+      const result = await checkModelAuditUpdates();
+      expect(result).toBeFalsy();
+      expect(fetchWithTimeout).not.toHaveBeenCalled();
+    } finally {
+      restoreDisableUpdate();
+    }
+  });
+
+  it('should return false when current version cannot be determined', async () => {
+    mockExecAsync.mockRejectedValueOnce(new Error('Command failed'));
+
+    vi.mocked(fetchWithTimeout).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ info: { version: '0.1.7' } }),
+    } as never);
+
+    const result = await checkModelAuditUpdates();
+    expect(result).toBeFalsy();
+  });
+
+  it('should return false when latest version cannot be determined', async () => {
+    mockExecAsync.mockResolvedValueOnce({
+      stdout: 'modelaudit, version 0.1.5',
+      stderr: '',
+    });
+
+    vi.mocked(fetchWithTimeout).mockRejectedValueOnce(new Error('Network error'));
+
+    const result = await checkModelAuditUpdates();
+    expect(result).toBeFalsy();
+  });
+});

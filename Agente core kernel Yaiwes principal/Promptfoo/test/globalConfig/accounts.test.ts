@@ -1,0 +1,959 @@
+import input from '@inquirer/input';
+import chalk from 'chalk';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { getEnvString, isCI } from '../../src/envars';
+import {
+  checkEmailStatus,
+  checkEmailStatusAndMaybeExit,
+  clearUserEmail,
+  EmailValidationError,
+  getAuthMethod,
+  getAuthor,
+  getUserAuthInfo,
+  getUserEmail,
+  getUserId,
+  isLoggedIntoCloud,
+  promptForEmailUnverified,
+  setUserEmail,
+} from '../../src/globalConfig/accounts';
+import { cloudConfig } from '../../src/globalConfig/cloud';
+import {
+  readGlobalConfig,
+  writeGlobalConfig,
+  writeGlobalConfigPartial,
+} from '../../src/globalConfig/globalConfig';
+import logger from '../../src/logger';
+import telemetry from '../../src/telemetry';
+import { fetchWithTimeout } from '../../src/util/fetch/index';
+
+// Mock fetchWithTimeout before any imports that might use telemetry
+vi.mock('../../src/util/fetch/index', () => ({
+  fetchWithTimeout: vi.fn().mockResolvedValue({ ok: true }),
+}));
+
+vi.mock('@inquirer/input');
+vi.mock('../../src/envars');
+vi.mock('../../src/telemetry', () => {
+  const mockTelemetry = {
+    record: vi.fn().mockResolvedValue(undefined),
+    identify: vi.fn(),
+    saveConsent: vi.fn().mockResolvedValue(undefined),
+    disabled: false,
+  };
+  return {
+    default: mockTelemetry,
+    Telemetry: vi.fn().mockImplementation(() => mockTelemetry),
+  };
+});
+vi.mock('../../src/util/fetch/index.ts');
+vi.mock('../../src/globalConfig/globalConfig');
+vi.mock('../../src/util');
+vi.mock('../../src/logger');
+
+describe('accounts', () => {
+  beforeEach(() => {
+    vi.stubEnv('PROMPTFOO_API_KEY', undefined);
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.resetAllMocks();
+    vi.unstubAllEnvs();
+  });
+
+  describe('getUserId', () => {
+    it('should return existing ID from global config', () => {
+      const existingId = 'existing-test-id';
+      vi.mocked(readGlobalConfig).mockReturnValue({
+        id: existingId,
+        account: { email: 'test@example.com' },
+      });
+
+      const result = getUserId();
+
+      expect(result).toBe(existingId);
+      expect(writeGlobalConfig).not.toHaveBeenCalled();
+    });
+
+    it('should generate new ID and save to config when no ID exists', () => {
+      vi.mocked(readGlobalConfig).mockReturnValue({
+        account: { email: 'test@example.com' },
+      });
+
+      const result = getUserId();
+
+      // Should return a UUID-like string
+      expect(typeof result).toBe('string');
+      expect(result).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+
+      // Should have saved the config with the new ID
+      expect(writeGlobalConfig).toHaveBeenCalledWith({
+        account: { email: 'test@example.com' },
+        id: result,
+      });
+    });
+
+    it('should generate new ID when global config is null', () => {
+      vi.mocked(readGlobalConfig).mockReturnValue(null as any);
+
+      const result = getUserId();
+
+      // Should return a UUID-like string
+      expect(typeof result).toBe('string');
+      expect(result).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+
+      // Should have saved the config with the new ID
+      expect(writeGlobalConfig).toHaveBeenCalledWith({
+        id: result,
+      });
+    });
+
+    it('should generate new ID when global config is undefined', () => {
+      vi.mocked(readGlobalConfig).mockReturnValue(undefined as any);
+
+      const result = getUserId();
+
+      // Should return a UUID-like string
+      expect(typeof result).toBe('string');
+      expect(result).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+
+      // Should have saved the config with the new ID
+      expect(writeGlobalConfig).toHaveBeenCalledWith({
+        id: result,
+      });
+    });
+
+    it('should generate new ID when config exists but has no id property', () => {
+      vi.mocked(readGlobalConfig).mockReturnValue({
+        account: { email: 'test@example.com' },
+      });
+
+      const result = getUserId();
+
+      // Should return a UUID-like string
+      expect(typeof result).toBe('string');
+      expect(result).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+
+      // Should have saved the config with the new ID
+      expect(writeGlobalConfig).toHaveBeenCalledWith({
+        account: { email: 'test@example.com' },
+        id: result,
+      });
+    });
+  });
+
+  describe('getUserEmail', () => {
+    it('should return email from global config', () => {
+      vi.mocked(readGlobalConfig).mockReturnValue({
+        id: 'test-id',
+        account: { email: 'test@example.com' },
+      });
+      expect(getUserEmail()).toBe('test@example.com');
+    });
+
+    it('should return null if no email in config', () => {
+      vi.mocked(readGlobalConfig).mockReturnValue({
+        id: 'test-id',
+      });
+      expect(getUserEmail()).toBeNull();
+    });
+  });
+
+  describe('getUserAuthInfo', () => {
+    it('should return the account and cloud auth snapshot from one config read', () => {
+      vi.mocked(readGlobalConfig).mockReturnValue({
+        id: 'test-id',
+        account: { email: 'test@example.com' },
+        cloud: { apiKey: 'test-api-key' },
+      });
+
+      expect(getUserAuthInfo()).toEqual({
+        email: 'test@example.com',
+        isLoggedIntoCloud: true,
+        authMethod: 'api-key',
+      });
+      expect(readGlobalConfig).toHaveBeenCalledTimes(1);
+    });
+
+    it('should use the environment API key when cloud config has no API key', () => {
+      vi.stubEnv('PROMPTFOO_API_KEY', 'env-api-key');
+      vi.mocked(readGlobalConfig).mockReturnValue({
+        id: 'test-id',
+        account: { email: 'test@example.com' },
+        cloud: {},
+      });
+
+      expect(getUserAuthInfo()).toEqual({
+        email: 'test@example.com',
+        isLoggedIntoCloud: true,
+        authMethod: 'api-key',
+      });
+    });
+
+    it('should report email auth when only email is configured', () => {
+      vi.mocked(readGlobalConfig).mockReturnValue({
+        id: 'test-id',
+        account: { email: 'test@example.com' },
+      });
+
+      expect(getUserAuthInfo()).toEqual({
+        email: 'test@example.com',
+        isLoggedIntoCloud: false,
+        authMethod: 'email',
+      });
+    });
+
+    it('should report no auth when no email or API key is configured', () => {
+      vi.mocked(readGlobalConfig).mockReturnValue({
+        id: 'test-id',
+      });
+
+      expect(getUserAuthInfo()).toEqual({
+        email: null,
+        isLoggedIntoCloud: false,
+        authMethod: 'none',
+      });
+    });
+  });
+
+  describe('setUserEmail', () => {
+    it('should write email to global config', () => {
+      // Must mock readGlobalConfig to ensure clean state (no leftover account properties from other tests)
+      vi.mocked(readGlobalConfig).mockReturnValue({
+        id: 'test-id',
+      });
+      const email = 'test@example.com';
+      setUserEmail(email);
+      expect(writeGlobalConfigPartial).toHaveBeenCalledWith({
+        account: { email },
+      });
+    });
+  });
+
+  describe('clearUserEmail', () => {
+    it('should remove email from global config when email exists', () => {
+      vi.mocked(readGlobalConfig).mockReturnValue({
+        id: 'test-id',
+        account: { email: 'test@example.com' },
+      });
+      clearUserEmail();
+      expect(writeGlobalConfigPartial).toHaveBeenCalledWith({
+        account: {},
+      });
+    });
+
+    it('should handle clearing when no account exists', () => {
+      vi.mocked(readGlobalConfig).mockReturnValue({
+        id: 'test-id',
+      });
+      clearUserEmail();
+      expect(writeGlobalConfigPartial).toHaveBeenCalledWith({
+        account: {},
+      });
+    });
+
+    it('should handle clearing when global config is empty', () => {
+      vi.mocked(readGlobalConfig).mockReturnValue({});
+      clearUserEmail();
+      expect(writeGlobalConfigPartial).toHaveBeenCalledWith({
+        account: {},
+      });
+    });
+  });
+
+  describe('getAuthor', () => {
+    it('should use override when not logged into cloud', () => {
+      vi.mocked(getEnvString).mockReturnValue('');
+      vi.mocked(readGlobalConfig).mockReturnValue({ id: 'test-id' });
+      expect(getAuthor('override@example.com')).toBe('override@example.com');
+    });
+
+    it('should fall back to user email when no override and not logged into cloud', () => {
+      vi.mocked(getEnvString).mockReturnValue('');
+      vi.mocked(readGlobalConfig).mockReturnValue({
+        id: 'test-id',
+        account: { email: 'test@example.com' },
+      });
+      expect(getAuthor()).toBe('test@example.com');
+    });
+
+    it('should fall back to env var when no override and no user email', () => {
+      vi.mocked(getEnvString).mockReturnValue('author@env.com');
+      vi.mocked(readGlobalConfig).mockReturnValue({ id: 'test-id' });
+      expect(getAuthor()).toBe('author@env.com');
+    });
+
+    it('should return null if no author found', () => {
+      vi.mocked(getEnvString).mockReturnValue('');
+      vi.mocked(readGlobalConfig).mockReturnValue({ id: 'test-id' });
+      expect(getAuthor()).toBeNull();
+    });
+
+    it('should prefer cloud identity over override when logged into cloud', () => {
+      vi.mocked(getEnvString).mockReturnValue('');
+      vi.mocked(readGlobalConfig).mockReturnValue({
+        id: 'test-id',
+        account: { email: 'cloud@example.com' },
+        cloud: { apiKey: 'test-api-key' },
+      });
+      expect(getAuthor('override@example.com')).toBe('cloud@example.com');
+    });
+
+    it('should prefer cloud identity over env var when logged into cloud', () => {
+      vi.mocked(getEnvString).mockReturnValue('author@env.com');
+      vi.mocked(readGlobalConfig).mockReturnValue({
+        id: 'test-id',
+        account: { email: 'cloud@example.com' },
+        cloud: { apiKey: 'test-api-key' },
+      });
+      expect(getAuthor()).toBe('cloud@example.com');
+    });
+
+    it('should fall back to override when logged into cloud but no stored email', () => {
+      vi.mocked(getEnvString).mockReturnValue('');
+      vi.mocked(readGlobalConfig).mockReturnValue({
+        id: 'test-id',
+        cloud: { apiKey: 'test-api-key' },
+      });
+      expect(getAuthor('override@example.com')).toBe('override@example.com');
+    });
+
+    it('should fall back to env var when logged into cloud but no stored email', () => {
+      vi.mocked(getEnvString).mockReturnValue('author@env.com');
+      vi.mocked(readGlobalConfig).mockReturnValue({
+        id: 'test-id',
+        cloud: { apiKey: 'test-api-key' },
+      });
+      expect(getAuthor()).toBe('author@env.com');
+    });
+
+    it('should return null when logged into cloud, no stored email, no override, no env', () => {
+      vi.mocked(getEnvString).mockReturnValue('');
+      vi.mocked(readGlobalConfig).mockReturnValue({
+        id: 'test-id',
+        cloud: { apiKey: 'test-api-key' },
+      });
+      expect(getAuthor()).toBeNull();
+    });
+  });
+
+  describe('promptForEmailUnverified', () => {
+    beforeEach(() => {
+      process.exitCode = undefined;
+      vi.mocked(isCI).mockReturnValue(false);
+      vi.mocked(readGlobalConfig).mockReturnValue({
+        id: 'test-id',
+      });
+    });
+
+    it('should use CI email if in CI environment', async () => {
+      vi.mocked(isCI).mockReturnValue(true);
+      await promptForEmailUnverified();
+      expect(telemetry.saveConsent).not.toHaveBeenCalled();
+    });
+
+    it('should not prompt for email if already set', async () => {
+      vi.mocked(readGlobalConfig).mockReturnValue({
+        id: 'test-id',
+        account: { email: 'existing@example.com' },
+      });
+
+      await promptForEmailUnverified();
+
+      expect(input).not.toHaveBeenCalled();
+      // save consent is now called after validation, not in promptForEmailUnverified
+      expect(telemetry.saveConsent).not.toHaveBeenCalled();
+    });
+
+    it('should prompt for email and save valid input', async () => {
+      vi.mocked(input).mockResolvedValue('new@example.com');
+
+      await promptForEmailUnverified();
+
+      expect(writeGlobalConfigPartial).toHaveBeenCalledWith({
+        account: { email: 'new@example.com' },
+      });
+      // save consent is now called after validation, not in promptForEmailUnverified
+      expect(telemetry.saveConsent).not.toHaveBeenCalled();
+    });
+
+    it('should throw a recoverable error when the prompt is cancelled', async () => {
+      vi.mocked(input).mockRejectedValue({ name: 'ExitPromptError' });
+
+      await expect(promptForEmailUnverified()).rejects.toThrowError(
+        new EmailValidationError('prompt_cancelled', 'Email prompt cancelled.'),
+      );
+      expect(process.exitCode).toBeUndefined();
+      // Ctrl+C should remain a silent exit; no error/warn output.
+      expect(logger.error).not.toHaveBeenCalled();
+      expect(logger.warn).not.toHaveBeenCalled();
+    });
+
+    describe('email validation', () => {
+      let validateFn: (input: string) => Promise<string | boolean>;
+
+      beforeEach(async () => {
+        await promptForEmailUnverified();
+        validateFn = vi.mocked(input).mock.calls[0][0].validate as (
+          input: string,
+        ) => Promise<string | boolean>;
+      });
+
+      it('should reject invalid email formats with error message', async () => {
+        const invalidEmails = [
+          '',
+          'invalid',
+          '@example.com',
+          'user@',
+          'user@.',
+          'user.com',
+          'user@.com',
+          '@.',
+          'user@example.',
+          'user.@example.com',
+          'us..er@example.com',
+        ];
+
+        for (const email of invalidEmails) {
+          const result = await validateFn(email);
+          expect(typeof result).toBe('string');
+          expect(result).toBe('Invalid email address');
+        }
+      });
+
+      it('should accept valid email formats with true', async () => {
+        const validEmails = [
+          'valid@example.com',
+          'user.name@example.com',
+          'user+tag@example.com',
+          'user@subdomain.example.com',
+          'user@example.co.uk',
+          '123@example.com',
+          'user-name@example.com',
+          'user_name@example.com',
+        ];
+
+        for (const email of validEmails) {
+          await expect(validateFn(email)).toBe(true);
+        }
+      });
+    });
+  });
+
+  describe('checkEmailStatusAndMaybeExit', () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+      process.exitCode = undefined;
+    });
+
+    it('should bypass email verification checks for the CI placeholder email', async () => {
+      vi.mocked(isCI).mockReturnValue(true);
+
+      await checkEmailStatusAndMaybeExit();
+
+      expect(fetchWithTimeout).not.toHaveBeenCalled();
+      expect(process.exitCode).toBeUndefined();
+    });
+
+    it('should use user email when not in CI environment', async () => {
+      vi.mocked(isCI).mockReturnValue(false);
+      vi.mocked(readGlobalConfig).mockReturnValue({
+        id: 'test-id',
+        account: { email: 'test@example.com' },
+      });
+
+      const mockResponse = new Response(JSON.stringify({ status: 'ok' }), {
+        status: 200,
+        statusText: 'OK',
+      });
+      vi.mocked(fetchWithTimeout).mockResolvedValue(mockResponse);
+
+      await checkEmailStatusAndMaybeExit();
+
+      expect(fetchWithTimeout).toHaveBeenCalledWith(
+        expect.stringContaining('/api/users/status?email=test%40example.com'),
+        undefined,
+        500,
+      );
+    });
+
+    it('should throw a recoverable error if limit exceeded', async () => {
+      vi.mocked(isCI).mockReturnValue(false);
+      vi.mocked(readGlobalConfig).mockReturnValue({
+        id: 'test-id',
+        account: { email: 'test@example.com' },
+      });
+
+      const mockResponse = new Response(JSON.stringify({ status: 'exceeded_limit' }), {
+        status: 200,
+        statusText: 'OK',
+      });
+      vi.mocked(fetchWithTimeout).mockResolvedValue(mockResponse);
+
+      await expect(checkEmailStatusAndMaybeExit()).rejects.toThrowError(
+        new EmailValidationError(
+          'exceeded_limit',
+          'You have exceeded the maximum cloud inference limit. Please contact inquiries@promptfoo.dev to upgrade your account.',
+        ),
+      );
+
+      expect(process.exitCode).toBeUndefined();
+      expect(logger.error).toHaveBeenCalledWith(
+        'You have exceeded the maximum cloud inference limit. Please contact inquiries@promptfoo.dev to upgrade your account.',
+      );
+    });
+
+    it('should throw a recoverable error if email verification is required', async () => {
+      vi.mocked(isCI).mockReturnValue(false);
+      vi.mocked(readGlobalConfig).mockReturnValue({
+        id: 'test-id',
+        account: { email: 'test@example.com' },
+      });
+
+      const mockResponse = new Response(
+        JSON.stringify({
+          status: 'email_verification_required',
+          error: 'Please verify your email address and try again.',
+        }),
+        {
+          status: 200,
+          statusText: 'OK',
+        },
+      );
+      vi.mocked(fetchWithTimeout).mockResolvedValue(mockResponse);
+
+      await expect(checkEmailStatusAndMaybeExit()).rejects.toThrowError(
+        new EmailValidationError(
+          'email_verification_required',
+          'Please verify your email address and try again.',
+        ),
+      );
+
+      expect(process.exitCode).toBeUndefined();
+      expect(logger.error).toHaveBeenCalledWith(
+        'Please verify your email address and try again.',
+        expect.objectContaining({
+          status: 'email_verification_required',
+          hasEmail: true,
+        }),
+      );
+    });
+
+    it('should display warning message when status is show_usage_warning', async () => {
+      vi.mocked(isCI).mockReturnValue(false);
+      vi.mocked(readGlobalConfig).mockReturnValue({
+        id: 'test-id',
+        account: { email: 'test@example.com' },
+      });
+
+      const warningMessage = 'You are approaching your usage limit';
+      const mockResponse = new Response(
+        JSON.stringify({ status: 'show_usage_warning', message: warningMessage }),
+        {
+          status: 200,
+          statusText: 'OK',
+        },
+      );
+      vi.mocked(fetchWithTimeout).mockResolvedValue(mockResponse);
+
+      await checkEmailStatusAndMaybeExit();
+
+      expect(logger.info).toHaveBeenCalledTimes(2);
+      expect(logger.warn).toHaveBeenCalledWith(chalk.yellow(warningMessage));
+      expect(process.exitCode).toBeUndefined();
+    });
+
+    it('should return bad_email and not exit when status is risky_email or disposable_email', async () => {
+      vi.mocked(isCI).mockReturnValue(false);
+      vi.mocked(readGlobalConfig).mockReturnValue({
+        id: 'test-id',
+        account: { email: 'test@example.com' },
+      });
+
+      const mockResponse = new Response(JSON.stringify({ status: 'risky_email' }), {
+        status: 200,
+        statusText: 'OK',
+      });
+      vi.mocked(fetchWithTimeout).mockResolvedValue(mockResponse);
+
+      const result = await checkEmailStatusAndMaybeExit();
+
+      expect(result).toBe('bad_email');
+      expect(logger.error).toHaveBeenCalledWith('Please use a valid work email.');
+      expect(process.exitCode).toBeUndefined();
+    });
+
+    it('should handle fetch errors', async () => {
+      vi.mocked(isCI).mockReturnValue(false);
+      vi.mocked(readGlobalConfig).mockReturnValue({
+        id: 'test-id',
+        account: { email: 'test@example.com' },
+      });
+      vi.mocked(fetchWithTimeout).mockRejectedValue(new Error('Network error'));
+
+      await checkEmailStatusAndMaybeExit();
+
+      expect(logger.debug).toHaveBeenCalledWith(
+        'Failed to check user status: Error: Network error',
+      );
+      expect(process.exitCode).toBeUndefined();
+    });
+  });
+
+  describe('checkEmailStatus', () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it('should return no_email status when no email is provided', async () => {
+      vi.mocked(isCI).mockReturnValue(false);
+      vi.mocked(readGlobalConfig).mockReturnValue({});
+
+      const result = await checkEmailStatus();
+
+      expect(result).toEqual({
+        status: 'no_email',
+        hasEmail: false,
+        message: 'Redteam evals require email verification. Please enter your work email:',
+      });
+    });
+
+    it('should treat the CI placeholder email as pre-validated', async () => {
+      vi.mocked(isCI).mockReturnValue(true);
+
+      const result = await checkEmailStatus();
+
+      expect(fetchWithTimeout).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        status: 'ok',
+        hasEmail: true,
+        email: 'ci-placeholder@promptfoo.dev',
+        message: undefined,
+      });
+    });
+
+    it('should return exceeded_limit status', async () => {
+      vi.mocked(isCI).mockReturnValue(false);
+      vi.mocked(readGlobalConfig).mockReturnValue({
+        account: { email: 'test@example.com' },
+      });
+
+      const mockResponse = new Response(JSON.stringify({ status: 'exceeded_limit' }), {
+        status: 200,
+        statusText: 'OK',
+      });
+      vi.mocked(fetchWithTimeout).mockResolvedValue(mockResponse);
+
+      const result = await checkEmailStatus();
+
+      expect(result).toEqual({
+        status: 'exceeded_limit',
+        hasEmail: true,
+        email: 'test@example.com',
+        message: undefined,
+      });
+    });
+
+    it('should return show_usage_warning status with message', async () => {
+      vi.mocked(isCI).mockReturnValue(false);
+      vi.mocked(readGlobalConfig).mockReturnValue({
+        account: { email: 'test@example.com' },
+      });
+
+      const warningMessage = 'You are approaching your usage limit';
+      const mockResponse = new Response(
+        JSON.stringify({ status: 'show_usage_warning', message: warningMessage }),
+        {
+          status: 200,
+          statusText: 'OK',
+        },
+      );
+      vi.mocked(fetchWithTimeout).mockResolvedValue(mockResponse);
+
+      const result = await checkEmailStatus();
+
+      expect(result).toEqual({
+        status: 'show_usage_warning',
+        hasEmail: true,
+        email: 'test@example.com',
+        message: warningMessage,
+      });
+    });
+
+    it('should handle fetch errors gracefully', async () => {
+      vi.mocked(isCI).mockReturnValue(false);
+      vi.mocked(readGlobalConfig).mockReturnValue({
+        account: { email: 'test@example.com' },
+      });
+      vi.mocked(fetchWithTimeout).mockRejectedValue(new Error('Network error'));
+
+      const result = await checkEmailStatus();
+
+      expect(logger.debug).toHaveBeenCalledWith(
+        'Failed to check user status: Error: Network error',
+      );
+      expect(result).toEqual({
+        status: 'ok',
+        hasEmail: true,
+        email: 'test@example.com',
+        message: 'Unable to verify email status, but proceeding',
+      });
+    });
+
+    describe('with validate option', () => {
+      beforeEach(() => {
+        vi.mocked(isCI).mockReturnValue(false);
+        vi.mocked(readGlobalConfig).mockReturnValue({
+          account: { email: 'test@example.com' },
+        });
+      });
+
+      it('should call saveConsent for valid email when validate is true', async () => {
+        const mockResponse = new Response(JSON.stringify({ status: 'ok' }), {
+          status: 200,
+          statusText: 'OK',
+        });
+        vi.mocked(fetchWithTimeout).mockResolvedValue(mockResponse);
+
+        await checkEmailStatus({ validate: true });
+
+        expect(telemetry.saveConsent).toHaveBeenCalledWith('test@example.com', {
+          source: 'promptForEmailValidated',
+        });
+      });
+
+      it('should skip remote validation for the CI placeholder email', async () => {
+        vi.mocked(isCI).mockReturnValue(true);
+
+        const result = await checkEmailStatus({ validate: true });
+
+        expect(fetchWithTimeout).not.toHaveBeenCalled();
+        expect(telemetry.saveConsent).not.toHaveBeenCalled();
+        expect(result).toEqual({
+          status: 'ok',
+          hasEmail: true,
+          email: 'ci-placeholder@promptfoo.dev',
+          message: undefined,
+        });
+      });
+
+      it('should call saveConsent for invalid email when validate is true', async () => {
+        const mockResponse = new Response(JSON.stringify({ status: 'risky_email' }), {
+          status: 200,
+          statusText: 'OK',
+        });
+        vi.mocked(fetchWithTimeout).mockResolvedValue(mockResponse);
+
+        await checkEmailStatus({ validate: true });
+
+        expect(telemetry.saveConsent).toHaveBeenCalledWith('test@example.com', {
+          source: 'filteredInvalidEmail',
+        });
+      });
+
+      it('should not mark email as validated when verification is required', async () => {
+        const mockResponse = new Response(
+          JSON.stringify({
+            status: 'email_verification_required',
+            error: 'Please verify your email address and try again.',
+          }),
+          {
+            status: 200,
+            statusText: 'OK',
+          },
+        );
+        vi.mocked(fetchWithTimeout).mockResolvedValue(mockResponse);
+
+        const result = await checkEmailStatus({ validate: true });
+
+        expect(result).toEqual({
+          status: 'email_verification_required',
+          hasEmail: true,
+          email: 'test@example.com',
+          message: 'Please verify your email address and try again.',
+        });
+        expect(telemetry.saveConsent).not.toHaveBeenCalled();
+      });
+
+      it('should not call saveConsent when validate is not provided', async () => {
+        const mockResponse = new Response(JSON.stringify({ status: 'ok' }), {
+          status: 200,
+          statusText: 'OK',
+        });
+        vi.mocked(fetchWithTimeout).mockResolvedValue(mockResponse);
+
+        await checkEmailStatus();
+
+        expect(telemetry.saveConsent).not.toHaveBeenCalled();
+      });
+    });
+  });
+
+  describe('checkEmailStatus host resolution (on-prem)', () => {
+    const ONPREM_HOST = 'https://onprem.example.com';
+
+    beforeEach(() => {
+      vi.clearAllMocks();
+      vi.mocked(isCI).mockReturnValue(false);
+      vi.mocked(readGlobalConfig).mockReturnValue({
+        account: { email: 'test@example.com' },
+      });
+      vi.mocked(fetchWithTimeout).mockResolvedValue(
+        new Response(JSON.stringify({ status: 'ok' }), { status: 200, statusText: 'OK' }),
+      );
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('sends the email-status request to the configured cloud host when cloud is enabled', async () => {
+      vi.spyOn(cloudConfig, 'isEnabled').mockReturnValue(true);
+      vi.spyOn(cloudConfig, 'getApiHost').mockReturnValue(ONPREM_HOST);
+
+      await checkEmailStatus();
+
+      expect(fetchWithTimeout).toHaveBeenCalledTimes(1);
+      const calledUrl = vi.mocked(fetchWithTimeout).mock.calls[0][0] as string;
+      expect(calledUrl).toContain(`${ONPREM_HOST}/api/users/status`);
+      expect(calledUrl).not.toContain('api.promptfoo.app');
+    });
+
+    it('does not consult getApiHost and uses PROMPTFOO_CLOUD_API_URL when cloud is not enabled', async () => {
+      vi.spyOn(cloudConfig, 'isEnabled').mockReturnValue(false);
+      const getApiHostSpy = vi.spyOn(cloudConfig, 'getApiHost');
+      vi.mocked(getEnvString).mockImplementation((key: string, fallback?: any) =>
+        key === 'PROMPTFOO_CLOUD_API_URL' ? 'https://env-cloud.example.com' : fallback,
+      );
+
+      await checkEmailStatus();
+
+      const calledUrl = vi.mocked(fetchWithTimeout).mock.calls[0][0] as string;
+      expect(calledUrl).toContain('https://env-cloud.example.com/api/users/status');
+      expect(getApiHostSpy).not.toHaveBeenCalled();
+    });
+
+    it('strips a trailing slash from PROMPTFOO_CLOUD_API_URL on the non-cloud path', async () => {
+      vi.spyOn(cloudConfig, 'isEnabled').mockReturnValue(false);
+      vi.mocked(getEnvString).mockImplementation((key: string, fallback?: any) =>
+        key === 'PROMPTFOO_CLOUD_API_URL' ? 'https://env-cloud.example.com/' : fallback,
+      );
+
+      await checkEmailStatus();
+
+      const calledUrl = vi.mocked(fetchWithTimeout).mock.calls[0][0] as string;
+      // No `//api/users/status` from the trailing slash.
+      expect(calledUrl).toContain('https://env-cloud.example.com/api/users/status');
+      expect(calledUrl).not.toContain('.com//api');
+    });
+  });
+
+  describe('isLoggedIntoCloud', () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it('should return true when API key is present (not in CI)', () => {
+      vi.mocked(readGlobalConfig).mockReturnValue({
+        cloud: { apiKey: 'test-api-key' },
+      });
+      vi.mocked(isCI).mockReturnValue(false);
+      expect(isLoggedIntoCloud()).toBe(true);
+    });
+
+    it('should return true when API key is present (in CI)', () => {
+      vi.mocked(readGlobalConfig).mockReturnValue({
+        cloud: { apiKey: 'test-api-key' },
+      });
+      vi.mocked(isCI).mockReturnValue(true);
+      expect(isLoggedIntoCloud()).toBe(true);
+    });
+
+    it('should return false when no API key is present (not in CI)', () => {
+      vi.mocked(readGlobalConfig).mockReturnValue({
+        cloud: {},
+      });
+      vi.mocked(isCI).mockReturnValue(false);
+      expect(isLoggedIntoCloud()).toBe(false);
+    });
+
+    it('should return false when no API key is present (in CI)', () => {
+      vi.mocked(readGlobalConfig).mockReturnValue({
+        cloud: {},
+      });
+      vi.mocked(isCI).mockReturnValue(true);
+      expect(isLoggedIntoCloud()).toBe(false);
+    });
+
+    it('should return false when cloud config is missing', () => {
+      vi.mocked(readGlobalConfig).mockReturnValue({});
+      vi.mocked(isCI).mockReturnValue(false);
+      expect(isLoggedIntoCloud()).toBe(false);
+    });
+
+    it('should return true with email and API key (backwards compatibility)', () => {
+      vi.mocked(readGlobalConfig).mockReturnValue({
+        account: { email: 'test@example.com' },
+        cloud: { apiKey: 'test-api-key' },
+      });
+      vi.mocked(isCI).mockReturnValue(false);
+      expect(isLoggedIntoCloud()).toBe(true);
+    });
+
+    it('should return false with email but no API key', () => {
+      // Having email alone is not sufficient for cloud authentication
+      vi.mocked(readGlobalConfig).mockReturnValue({
+        account: { email: 'test@example.com' },
+        cloud: {},
+      });
+      vi.mocked(isCI).mockReturnValue(false);
+      expect(isLoggedIntoCloud()).toBe(false);
+    });
+  });
+
+  describe('getAuthMethod', () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it('should return "api-key" when API key is present', () => {
+      vi.mocked(readGlobalConfig).mockReturnValue({
+        cloud: { apiKey: 'test-api-key' },
+      });
+      expect(getAuthMethod()).toBe('api-key');
+    });
+
+    it('should return "api-key" when both API key and email are present', () => {
+      vi.mocked(readGlobalConfig).mockReturnValue({
+        account: { email: 'test@example.com' },
+        cloud: { apiKey: 'test-api-key' },
+      });
+      expect(getAuthMethod()).toBe('api-key');
+    });
+
+    it('should return "email" when only email is present (no API key)', () => {
+      vi.mocked(readGlobalConfig).mockReturnValue({
+        account: { email: 'test@example.com' },
+        cloud: {},
+      });
+      expect(getAuthMethod()).toBe('email');
+    });
+
+    it('should return "none" when neither API key nor email is present', () => {
+      vi.mocked(readGlobalConfig).mockReturnValue({
+        cloud: {},
+      });
+      expect(getAuthMethod()).toBe('none');
+    });
+
+    it('should return "none" when cloud config is missing', () => {
+      vi.mocked(readGlobalConfig).mockReturnValue({});
+      expect(getAuthMethod()).toBe('none');
+    });
+
+    it('should return "none" when global config is null', () => {
+      vi.mocked(readGlobalConfig).mockReturnValue(null as any);
+      expect(getAuthMethod()).toBe('none');
+    });
+  });
+});

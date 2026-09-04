@@ -1,0 +1,651 @@
+// Copyright (C) 2026 Yota Hamada
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+// Package file provides filesystem persistence implementations.
+package file
+
+import (
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/dagucloud/dagu/v2/internal/cmn/dirlock"
+	"github.com/dagucloud/dagu/v2/internal/cmn/fileutil"
+	"github.com/dagucloud/dagu/v2/internal/persis"
+)
+
+const recordLockDirectoryName = ".dagu_record_locks"
+
+// Collection implements [persis.Collection] as a directory of JSON files.
+// "/" in record IDs maps to the OS path separator, so hierarchical IDs
+// become nested subdirectories on disk.
+type Collection struct {
+	dir        string
+	idPrefixes []string
+	indent     bool
+	mu         sync.RWMutex
+}
+
+var _ persis.Collection = (*Collection)(nil)
+
+// CollectionOption configures a file-backed [Collection].
+type CollectionOption func(*Collection)
+
+// WithIndentedJSON stores records as two-space indented JSON on disk.
+func WithIndentedJSON() CollectionOption {
+	return func(c *Collection) { c.indent = true }
+}
+
+func withIDPrefixes(prefixes ...string) CollectionOption {
+	return func(c *Collection) {
+		prefixes = append([]string(nil), prefixes...)
+		sort.Strings(prefixes)
+		c.idPrefixes = c.idPrefixes[:0]
+		for _, prefix := range prefixes {
+			if len(c.idPrefixes) == 0 || !strings.HasPrefix(prefix, c.idPrefixes[len(c.idPrefixes)-1]) {
+				c.idPrefixes = append(c.idPrefixes, prefix)
+			}
+		}
+	}
+}
+
+// NewCollection creates a collection backed by dir. The directory is created
+// lazily on the first write.
+func NewCollection(dir string, opts ...CollectionOption) *Collection {
+	c := &Collection{dir: dir}
+	for _, opt := range opts {
+		opt(c)
+	}
+	return c
+}
+
+func sameRecord(a, b *persis.Record) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return a.ID == b.ID && bytes.Equal(a.Data, b.Data)
+}
+
+// ─── Collection methods ───────────────────────────────────────────────────────
+
+func (c *Collection) Get(_ context.Context, id string) (*persis.Record, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	path, err := c.filePath(id)
+	if err != nil {
+		return nil, err
+	}
+	rec, err := c.readFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return rec, nil
+}
+
+func (c *Collection) Put(ctx context.Context, rec *persis.Record) error {
+	if rec == nil {
+		return fmt.Errorf("file backend: nil record")
+	}
+	return c.withRecordLock(ctx, rec.ID, func() error {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+
+		path, err := c.writePath(rec.ID)
+		if err != nil {
+			return err
+		}
+		return c.writeFile(path, rec, false)
+	})
+}
+
+// Create atomically inserts rec. Returns [persis.ErrConflict] when a
+// record with rec.ID already exists.
+func (c *Collection) Create(ctx context.Context, rec *persis.Record) error {
+	if rec == nil {
+		return fmt.Errorf("file backend: nil record")
+	}
+	return c.withRecordLock(ctx, rec.ID, func() error {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+
+		path, err := c.writePath(rec.ID)
+		if err != nil {
+			return err
+		}
+		return c.writeFile(path, rec, true)
+	})
+}
+
+func (c *Collection) Delete(ctx context.Context, id string) error {
+	return c.withRecordLock(ctx, id, func() error {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+
+		path, err := c.writePath(id)
+		if err != nil {
+			return err
+		}
+		if err := fileutil.Remove(path); err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return nil
+			}
+			return err
+		}
+		removeEmptyDirs(filepath.Dir(path), c.dir)
+		return nil
+	})
+}
+
+// CompareAndDelete removes expected.ID only when the current record still
+// matches expected.
+func (c *Collection) CompareAndDelete(ctx context.Context, expected *persis.Record) error {
+	if expected == nil {
+		return fmt.Errorf("file backend: nil record")
+	}
+	return c.withRecordLock(ctx, expected.ID, func() error {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+
+		path, err := c.writePath(expected.ID)
+		if err != nil {
+			return err
+		}
+		rec, err := c.readFile(path)
+		if err != nil {
+			return err
+		}
+		if !sameRecord(rec, expected) {
+			return persis.ErrConflict
+		}
+		if err := fileutil.Remove(path); err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return persis.ErrNotFound
+			}
+			return err
+		}
+		removeEmptyDirs(filepath.Dir(path), c.dir)
+		return nil
+	})
+}
+
+// RecordIDs returns record IDs matching prefix without decoding record payloads.
+func (c *Collection) RecordIDs(_ context.Context, prefix string) ([]string, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	ids, err := c.collectIDs(prefix)
+	if err != nil {
+		return nil, err
+	}
+	sort.Strings(ids)
+	return ids, nil
+}
+
+// RecordVersion returns a cheap version token for cache validation.
+func (c *Collection) RecordVersion(_ context.Context, id string) (string, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	path, err := c.filePath(id)
+	if err != nil {
+		return "", err
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", persis.ErrNotFound
+		}
+		return "", err
+	}
+	return fmt.Sprintf("%d/%d", info.ModTime().UTC().UnixNano(), info.Size()), nil
+}
+
+func withDirLock(ctx context.Context, lockDir string, fn func() error) error {
+	lock := dirlock.New(lockDir, &dirlock.LockOptions{
+		StaleThreshold: 30 * time.Second,
+		RetryInterval:  50 * time.Millisecond,
+	})
+	if err := lock.Lock(ctx); err != nil {
+		return err
+	}
+	defer func() {
+		_ = lock.Unlock()
+	}()
+	return fn()
+}
+
+func (c *Collection) List(_ context.Context, q persis.ListQuery) (*persis.Page, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	recs, err := c.collect(q.Prefix, q.Since, q.Until)
+	if err != nil {
+		return nil, err
+	}
+
+	sort.Slice(recs, func(i, j int) bool {
+		ti, tj := recs[i].CreatedAt, recs[j].CreatedAt
+		if ti.Equal(tj) {
+			return recs[i].ID < recs[j].ID
+		}
+		return ti.Before(tj)
+	})
+
+	recs = applycursor(recs, q.Cursor)
+
+	limit := q.Limit
+	if limit <= 0 {
+		limit = len(recs)
+	}
+
+	var nextCursor string
+	if len(recs) > limit {
+		nextCursor = encodeCursor(recs[limit-1].CreatedAt, recs[limit-1].ID)
+		recs = recs[:limit]
+	}
+
+	return &persis.Page{Records: recs, NextCursor: nextCursor}, nil
+}
+
+// CompareAndSwap atomically replaces the record's Data only when the current
+// Data equals expected. Returns [persis.ErrConflict] on mismatch.
+func (c *Collection) CompareAndSwap(ctx context.Context, id string, expected, next []byte) error {
+	return c.withRecordLock(ctx, id, func() error {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+
+		path, err := c.writePath(id)
+		if err != nil {
+			return err
+		}
+		rec, err := c.readFile(path)
+		if err != nil {
+			return err
+		}
+		if !bytes.Equal(rec.Data, expected) {
+			return persis.ErrConflict
+		}
+		rec.Data = next
+		rec.UpdatedAt = time.Now().UTC()
+		return c.writeFile(path, rec, false)
+	})
+}
+
+// RemoveCorrupt removes id only when its file is invalid JSON. A non-zero
+// staleBefore restricts removal to files last modified at or before that time.
+func (c *Collection) RemoveCorrupt(ctx context.Context, id string, staleBefore time.Time) (bool, error) {
+	var removed bool
+	err := c.withRecordLock(ctx, id, func() error {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+
+		path, err := c.writePath(id)
+		if err != nil {
+			return err
+		}
+		info, err := os.Stat(path)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return persis.ErrNotFound
+			}
+			return err
+		}
+		if !staleBefore.IsZero() && info.ModTime().After(staleBefore) {
+			return nil
+		}
+		raw, err := fileutil.ReadFile(path)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return persis.ErrNotFound
+			}
+			return err
+		}
+		if json.Valid(raw) {
+			return persis.ErrConflict
+		}
+		if err := fileutil.RemoveFileDurable(path); err != nil {
+			return err
+		}
+		removed = true
+		return nil
+	})
+	return removed, err
+}
+
+// ─── internal helpers ─────────────────────────────────────────────────────────
+
+func (c *Collection) filePath(id string) (string, error) {
+	if !c.acceptsID(id) {
+		return "", persis.ErrNotFound
+	}
+	return pathUnderRoot(c.dir, id, "record ID")
+}
+
+func (c *Collection) writePath(id string) (string, error) {
+	if !c.acceptsID(id) {
+		return "", fmt.Errorf("file backend: record ID %q is outside this collection", id)
+	}
+	return pathUnderRoot(c.dir, id, "record ID")
+}
+
+func (c *Collection) acceptsID(id string) bool {
+	if len(c.idPrefixes) == 0 {
+		return true
+	}
+	for _, prefix := range c.idPrefixes {
+		if strings.HasPrefix(id, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *Collection) withRecordLock(ctx context.Context, id string, fn func() error) error {
+	if _, err := c.writePath(id); err != nil {
+		return err
+	}
+	// The first hash byte bounds lock metadata while distributing unrelated
+	// records across 256 buckets.
+	sum := sha256.Sum256([]byte(id))
+	lockDir := filepath.Join(c.dir, recordLockDirectoryName, fmt.Sprintf("%02x", sum[0]))
+	return withDirLock(ctx, lockDir, fn)
+}
+
+func pathUnderRoot(root, id, kind string) (string, error) {
+	base := filepath.Clean(root)
+	full := filepath.Clean(filepath.Join(base, idToRelPath(id)))
+	rel, err := filepath.Rel(base, full)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("file backend: %s %q escapes collection root", kind, id)
+	}
+	return full, nil
+}
+
+func (c *Collection) readFile(path string) (*persis.Record, error) {
+	raw, err := fileutil.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, persis.ErrNotFound
+		}
+		return nil, err
+	}
+	if !json.Valid(raw) {
+		return nil, fmt.Errorf("file backend: %w at %q: invalid JSON", persis.ErrCorrupt, path)
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, persis.ErrNotFound
+		}
+		return nil, err
+	}
+	rel, _ := filepath.Rel(c.dir, path)
+	mtime := info.ModTime().UTC()
+	data := raw
+	if c.indent {
+		// Normalize indentation so byte-based comparisons use canonical JSON.
+		var buf bytes.Buffer
+		_ = json.Compact(&buf, raw)
+		data = buf.Bytes()
+	}
+	return &persis.Record{
+		ID:        relPathToID(rel),
+		Data:      data,
+		CreatedAt: mtime,
+		UpdatedAt: mtime,
+	}, nil
+}
+
+func (c *Collection) writeFile(path string, rec *persis.Record, exclusive bool) error {
+	if rec == nil {
+		return fmt.Errorf("file backend: nil record")
+	}
+	if !json.Valid(rec.Data) {
+		return fmt.Errorf("file backend: invalid JSON record %q", rec.ID)
+	}
+	body := rec.Data
+	if c.indent {
+		// Preserve the human-readable format for indented collections.
+		var buf bytes.Buffer
+		if err := json.Indent(&buf, rec.Data, "", "  "); err != nil {
+			return fmt.Errorf("file backend: indent record %q: %w", rec.ID, err)
+		}
+		body = buf.Bytes()
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		return err
+	}
+	write := fileutil.WriteFileAtomic
+	if exclusive {
+		write = fileutil.WriteFileAtomicExclusive
+	}
+	if err := write(path, body, 0o600); err != nil {
+		if exclusive && errors.Is(err, fs.ErrExist) {
+			return persis.ErrConflict
+		}
+		return err
+	}
+	mtime := rec.UpdatedAt
+	if mtime.IsZero() {
+		mtime = rec.CreatedAt
+	}
+	if mtime.IsZero() {
+		return nil
+	}
+	return os.Chtimes(path, mtime, mtime)
+}
+
+func (c *Collection) collectIDs(prefix string) ([]string, error) {
+	var ids []string
+	err := c.walk(prefix, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if d.Name() == recordLockDirectoryName || dirlock.IsLockDirectoryName(d.Name()) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".json") {
+			return nil
+		}
+		rel, _ := filepath.Rel(c.dir, path)
+		id := relPathToID(rel)
+		if !c.acceptsID(id) {
+			return nil
+		}
+		if prefix != "" && !strings.HasPrefix(id, prefix) {
+			return nil
+		}
+		ids = append(ids, id)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
+// collect walks the collection directory and returns records matching the
+// given prefix and time bounds. Corrupt or missing files are silently skipped.
+func (c *Collection) collect(prefix string, since, until *time.Time) ([]*persis.Record, error) {
+	var recs []*persis.Record
+	err := c.walk(prefix, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if d.Name() == recordLockDirectoryName || dirlock.IsLockDirectoryName(d.Name()) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".json") {
+			return nil
+		}
+		rel, _ := filepath.Rel(c.dir, path)
+		id := relPathToID(rel)
+		if !c.acceptsID(id) {
+			return nil
+		}
+		if prefix != "" && !strings.HasPrefix(id, prefix) {
+			return nil
+		}
+		r, err := c.readFile(path)
+		if err != nil {
+			return nil // skip corrupt records
+		}
+		if since != nil && r.CreatedAt.Before(*since) {
+			return nil
+		}
+		if until != nil && !r.CreatedAt.Before(*until) {
+			return nil
+		}
+		recs = append(recs, r)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return recs, nil
+}
+
+func (c *Collection) walk(prefix string, fn fs.WalkDirFunc) error {
+	roots, err := c.walkRoots(prefix)
+	if err != nil {
+		return err
+	}
+	for _, root := range roots {
+		if err := filepath.WalkDir(root, fn); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *Collection) walkRoots(prefix string) ([]string, error) {
+	if len(c.idPrefixes) == 0 {
+		root, err := c.prefixWalkRoot(prefix)
+		return []string{root}, err
+	}
+
+	roots := make([]string, 0, len(c.idPrefixes))
+	for _, idPrefix := range c.idPrefixes {
+		scanPrefix := idPrefix
+		if strings.HasPrefix(prefix, idPrefix) {
+			scanPrefix = prefix
+		} else if prefix != "" && !strings.HasPrefix(idPrefix, prefix) {
+			continue
+		}
+		root, err := c.prefixWalkRoot(scanPrefix)
+		if err != nil {
+			return nil, err
+		}
+		if len(roots) == 0 || root != roots[len(roots)-1] {
+			roots = append(roots, root)
+		}
+	}
+	return roots, nil
+}
+
+// prefixWalkRoot returns the deepest directory shared by IDs matching prefix.
+func (c *Collection) prefixWalkRoot(prefix string) (string, error) {
+	if prefix == "" {
+		return c.dir, nil
+	}
+	// Use everything up to the last "/" as the subdirectory to walk.
+	lastSlash := strings.LastIndex(prefix, "/")
+	if lastSlash <= 0 {
+		return c.dir, nil
+	}
+	root := filepath.Clean(c.dir)
+	sub := filepath.Clean(filepath.Join(root, filepath.FromSlash(prefix[:lastSlash])))
+	rel, err := filepath.Rel(root, sub)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("file backend: record prefix %q escapes collection root", prefix)
+	}
+	return sub, nil
+}
+
+// ─── path helpers ─────────────────────────────────────────────────────────────
+
+// idToRelPath converts "a/b/c" → "a/b/c.json" using the OS path separator.
+func idToRelPath(id string) string {
+	return filepath.Join(strings.Split(id, "/")...) + ".json"
+}
+
+// relPathToID is the inverse of idToRelPath.
+func relPathToID(rel string) string {
+	return filepath.ToSlash(strings.TrimSuffix(rel, ".json"))
+}
+
+// ─── cursor helpers ───────────────────────────────────────────────────────────
+
+type cursorVal struct {
+	C time.Time `json:"c"`
+	I string    `json:"i"`
+}
+
+func encodeCursor(createdAt time.Time, id string) string {
+	b, _ := json.Marshal(cursorVal{C: createdAt, I: id})
+	return base64.RawStdEncoding.EncodeToString(b)
+}
+
+func decodeCursor(s string) (cursorVal, bool) {
+	b, err := base64.RawStdEncoding.DecodeString(s)
+	if err != nil {
+		return cursorVal{}, false
+	}
+	var v cursorVal
+	if err := json.Unmarshal(b, &v); err != nil {
+		return cursorVal{}, false
+	}
+	return v, true
+}
+
+func applycursor(recs []*persis.Record, cursor string) []*persis.Record {
+	if cursor == "" {
+		return recs
+	}
+	cv, ok := decodeCursor(cursor)
+	if !ok {
+		return recs
+	}
+	for i, r := range recs {
+		after := r.CreatedAt.After(cv.C)
+		sameTimeAfterID := r.CreatedAt.Equal(cv.C) && r.ID > cv.I
+		if after || sameTimeAfterID {
+			return recs[i:]
+		}
+	}
+	return nil
+}
+
+// removeEmptyDirs removes dir and its ancestors up to (but not including)
+// stopAt if they are empty.
+func removeEmptyDirs(dir, stopAt string) {
+	for dir != stopAt && strings.HasPrefix(dir, stopAt) {
+		entries, err := os.ReadDir(dir)
+		if err != nil || len(entries) > 0 {
+			return
+		}
+		if err := fileutil.Remove(dir); err != nil {
+			return
+		}
+		dir = filepath.Dir(dir)
+	}
+}

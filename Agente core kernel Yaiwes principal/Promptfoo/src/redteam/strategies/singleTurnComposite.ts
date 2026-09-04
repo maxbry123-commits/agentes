@@ -1,0 +1,157 @@
+import async from 'async';
+import { Presets, SingleBar } from 'cli-progress';
+import logger from '../../logger';
+import invariant from '../../util/invariant';
+import {
+  getRemoteGenerationExplicitlyDisabledError,
+  neverGenerateRemote,
+} from '../remoteGeneration';
+import { remoteGenerationContextPayload } from '../remoteGenerationContext';
+import { postRemoteGenerationTask } from '../remoteGenerationTask';
+
+import type { TestCase } from '../../types/index';
+import type { Inputs } from '../../types/shared';
+import type { StrategyRuntimeContext } from './types';
+
+async function generateCompositePrompts(
+  testCases: TestCase[],
+  injectVar: string,
+  config: Record<string, any> & { n?: number; modelFamily?: string },
+  runtimeContext?: StrategyRuntimeContext,
+): Promise<TestCase[]> {
+  let progressBar: SingleBar | undefined;
+  try {
+    const concurrency = 10;
+    let allResults: TestCase[] = [];
+
+    if (logger.level !== 'debug') {
+      progressBar = new SingleBar(
+        {
+          format:
+            'Composite Jailbreak Generation {bar} {percentage}% | ETA: {eta}s | {value}/{total} cases',
+          hideCursor: true,
+          gracefulExit: true,
+        },
+        Presets.shades_classic,
+      );
+      progressBar.start(testCases.length, 0);
+    }
+
+    await async.forEachOfLimit(testCases, concurrency, async (testCase, index) => {
+      logger.debug(`[Composite] Processing test case: ${JSON.stringify(testCase)}`);
+      invariant(
+        testCase.vars,
+        `Composite: testCase.vars is required, but got ${JSON.stringify(testCase)}`,
+      );
+
+      // Get inputs schema from plugin config for multi-input mode
+      const inputs = testCase.metadata?.pluginConfig?.inputs as Inputs | undefined;
+
+      const payload = {
+        task: 'jailbreak:composite',
+        prompt: testCase.vars[injectVar],
+        ...(config.n && { n: config.n }),
+        ...(config.modelFamily && { modelFamily: config.modelFamily }),
+        ...(inputs && { inputs }),
+        // Composite pipeline configuration
+        ...(config.techniques && { techniques: config.techniques }),
+        ...(config.evasions && { evasions: config.evasions }),
+        ...remoteGenerationContextPayload(config.targetId),
+        ...(config.alwaysIncludeTechniques && {
+          alwaysIncludeTechniques: config.alwaysIncludeTechniques,
+        }),
+        ...(config.compositionOrder && { compositionOrder: config.compositionOrder }),
+        ...(config.combinationMode && { combinationMode: config.combinationMode }),
+        ...(config.includeEvasionGuidance != null && {
+          includeEvasionGuidance: config.includeEvasionGuidance,
+        }),
+        ...(config.evasionGuidance && { evasionGuidance: config.evasionGuidance }),
+        ...(config.targetContext && { targetContext: config.targetContext }),
+      };
+
+      interface CompositeGenerationResponse {
+        error?: string;
+        modifiedPrompts?: string[];
+      }
+
+      const { data } = await postRemoteGenerationTask<CompositeGenerationResponse>(
+        payload,
+        runtimeContext,
+      );
+
+      logger.debug(
+        `Got composite jailbreak generation result for case ${Number(index) + 1}: ${JSON.stringify(
+          data,
+        )}`,
+      );
+      if (data.error || !data.modifiedPrompts) {
+        logger.error(`[jailbreak:composite] Error in composite generation: ${data.error}}`);
+        logger.debug(`[jailbreak:composite] Response: ${JSON.stringify(data)}`);
+        return;
+      }
+
+      const compositeTestCases = data.modifiedPrompts.map((modifiedPrompt: string) => {
+        const originalText = String(testCase.vars![injectVar]);
+        return {
+          ...testCase,
+          vars: {
+            ...testCase.vars,
+            [injectVar]: modifiedPrompt,
+          },
+          assert: testCase.assert?.map((assertion) => ({
+            ...assertion,
+            metric: assertion.metric ? `${assertion.metric}/Composite` : assertion.metric,
+          })),
+          metadata: {
+            ...testCase.metadata,
+            strategyId: 'jailbreak:composite',
+            originalText,
+          },
+        };
+      });
+
+      allResults = allResults.concat(compositeTestCases);
+
+      if (progressBar) {
+        progressBar.increment(1);
+      } else {
+        logger.debug(`Processed case ${Number(index) + 1} of ${testCases.length}`);
+      }
+    });
+
+    if (progressBar) {
+      progressBar.stop();
+    }
+
+    return allResults;
+  } catch (error) {
+    if (progressBar) {
+      progressBar.stop();
+    }
+    logger.error(`Error in composite generation: ${error}`);
+    return [];
+  }
+}
+
+export async function addCompositeTestCases(
+  testCases: TestCase[],
+  injectVar: string,
+  config: Record<string, unknown>,
+  runtimeContext?: StrategyRuntimeContext,
+): Promise<TestCase[]> {
+  if (neverGenerateRemote()) {
+    throw new Error(getRemoteGenerationExplicitlyDisabledError('Composite jailbreak strategy'));
+  }
+
+  const compositeTestCases = await generateCompositePrompts(
+    testCases,
+    injectVar,
+    config,
+    runtimeContext,
+  );
+  if (compositeTestCases.length === 0) {
+    logger.warn('No composite  jailbreak test cases were generated');
+  }
+
+  return compositeTestCases;
+}

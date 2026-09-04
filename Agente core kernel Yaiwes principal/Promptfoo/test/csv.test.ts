@@ -1,0 +1,1002 @@
+import { parse as parseCsv } from 'csv-parse/sync';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { parseCommaSeparatedValues } from '../src/assertions/contains';
+import { assertionFromString, serializeObjectArrayAsCSV, testCaseFromCsvRow } from '../src/csv';
+import logger from '../src/logger';
+
+vi.mock('../src/logger', () => ({
+  default: {
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+}));
+
+import type { Assertion, CsvRow, TestCase } from '../src/types/index';
+
+describe('testCaseFromCsvRow', () => {
+  const INVALID_THRESHOLD_VALUES = [
+    'not-a-number',
+    'abc',
+    '0abc',
+    '0,8',
+    'Infinity',
+    '1e309',
+    '0x10',
+  ] as const;
+
+  afterEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it('should create a TestCase with assertions and options from a CSV row', () => {
+    const row: CsvRow = {
+      __expected1: 'equals:Expected output',
+      __expected2: 'contains:part of output',
+      __prefix: 'Prefix',
+      __suffix: 'Suffix',
+      __description: 'Test description',
+      __providerOutput: 'Provider output',
+      __metric: 'metric-name',
+      __threshold: '0.8',
+      var1: 'value1',
+      var2: 'value2',
+    };
+
+    const expectedTestCase: TestCase = {
+      vars: {
+        var1: 'value1',
+        var2: 'value2',
+      },
+      assert: [
+        { type: 'equals', value: 'Expected output', metric: 'metric-name' },
+        { type: 'contains', value: 'part of output', metric: 'metric-name' },
+      ],
+      options: {
+        prefix: 'Prefix',
+        suffix: 'Suffix',
+      },
+      description: 'Test description',
+      providerOutput: 'Provider output',
+      threshold: 0.8,
+    };
+
+    const result = testCaseFromCsvRow(row);
+    expect(result).toEqual(expectedTestCase);
+  });
+
+  it('should properly trim whitespace and newlines from assertion values', () => {
+    const row: CsvRow = {
+      __expected1: 'equals:Expected output\n',
+      __expected2: ' contains:part of output  ',
+      var1: 'value1',
+    };
+
+    const expectedTestCase: TestCase = {
+      vars: {
+        var1: 'value1',
+      },
+      assert: [
+        { type: 'equals', value: 'Expected output' },
+        { type: 'contains', value: 'part of output' },
+      ],
+      options: {},
+    };
+
+    const result = testCaseFromCsvRow(row);
+    expect(result).toEqual(expectedTestCase);
+  });
+
+  it('should handle CSV row with only variables', () => {
+    const row: CsvRow = {
+      var1: 'value1',
+      var2: 'value2',
+    };
+
+    const expectedTestCase: TestCase = {
+      vars: {
+        var1: 'value1',
+        var2: 'value2',
+      },
+      assert: [],
+      options: {},
+    };
+
+    const result = testCaseFromCsvRow(row);
+    expect(result).toEqual(expectedTestCase);
+  });
+
+  it('should log a warning for single underscore usage with reserved keys', () => {
+    const row: CsvRow = {
+      _expected: 'equals:Expected output',
+      var1: 'value1',
+    };
+
+    testCaseFromCsvRow(row);
+    testCaseFromCsvRow(row);
+    expect(logger.warn).toHaveBeenCalledWith(
+      'You used a single underscore for the key "_expected". Did you mean to use "__expected" instead?',
+    );
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('should handle array metadata with comma splitting', () => {
+    const row: CsvRow = {
+      '__metadata:tags[]': 'tag1,tag2,tag3',
+      var1: 'value1',
+    };
+
+    const expectedTestCase: TestCase = {
+      vars: {
+        var1: 'value1',
+      },
+      assert: [],
+      options: {},
+      metadata: {
+        tags: ['tag1', 'tag2', 'tag3'],
+      },
+    };
+
+    const result = testCaseFromCsvRow(row);
+    expect(result).toEqual(expectedTestCase);
+  });
+
+  it('should handle escaped commas in array metadata', () => {
+    const row: CsvRow = {
+      '__metadata:tags[]': 'tag1,tag with\\, comma,tag3',
+      var1: 'value1',
+    };
+
+    const expectedTestCase: TestCase = {
+      vars: {
+        var1: 'value1',
+      },
+      assert: [],
+      options: {},
+      metadata: {
+        tags: ['tag1', 'tag with, comma', 'tag3'],
+      },
+    };
+
+    const result = testCaseFromCsvRow(row);
+    expect(result).toEqual(expectedTestCase);
+  });
+
+  it('should unescape every escaped comma within an array metadata value', () => {
+    const row: CsvRow = {
+      '__metadata:tags[]': 'a\\,b\\,c',
+      var1: 'value1',
+    };
+
+    const expectedTestCase: TestCase = {
+      vars: {
+        var1: 'value1',
+      },
+      assert: [],
+      options: {},
+      metadata: {
+        tags: ['a,b,c'],
+      },
+    };
+
+    const result = testCaseFromCsvRow(row);
+    expect(result).toEqual(expectedTestCase);
+  });
+
+  it('should split on unescaped commas while unescaping multiple escaped commas per value', () => {
+    const row: CsvRow = {
+      '__metadata:tags[]': 'a\\,b\\,c,d\\,e',
+      var1: 'value1',
+    };
+
+    const expectedTestCase: TestCase = {
+      vars: {
+        var1: 'value1',
+      },
+      assert: [],
+      options: {},
+      metadata: {
+        tags: ['a,b,c', 'd,e'],
+      },
+    };
+
+    const result = testCaseFromCsvRow(row);
+    expect(result).toEqual(expectedTestCase);
+  });
+
+  it('should handle single value metadata', () => {
+    const row: CsvRow = {
+      '__metadata:category': 'test-category',
+      '__metadata:priority': 'high',
+      var1: 'value1',
+    };
+
+    const expectedTestCase: TestCase = {
+      vars: {
+        var1: 'value1',
+      },
+      assert: [],
+      options: {},
+      metadata: {
+        category: 'test-category',
+        priority: 'high',
+      },
+    };
+
+    const result = testCaseFromCsvRow(row);
+    expect(result).toEqual(expectedTestCase);
+  });
+
+  it('should warn when __metadata has no key', () => {
+    const row: CsvRow = {
+      __metadata: 'foo',
+      var1: 'value1',
+    };
+
+    const expectedTestCase: TestCase = {
+      vars: {
+        var1: 'value1',
+      },
+      assert: [],
+      options: {},
+    };
+
+    const result = testCaseFromCsvRow(row);
+    expect(result).toEqual(expectedTestCase);
+
+    testCaseFromCsvRow(row);
+    expect(logger.warn).toHaveBeenCalledWith(
+      'The "__metadata" column requires a key, e.g. "__metadata:category". This column will be ignored.',
+    );
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('should properly trim whitespace from keys', () => {
+    const row: CsvRow = {
+      '  var1  ': 'value1',
+      ' __expected1 ': 'equals:Expected output',
+      __expected2: 'contains:part of output',
+      '  __metadata:category  ': 'test-category',
+    };
+
+    const expectedTestCase: TestCase = {
+      vars: {
+        var1: 'value1',
+      },
+      assert: [
+        { type: 'equals', value: 'Expected output' },
+        { type: 'contains', value: 'part of output' },
+      ],
+      options: {},
+      metadata: {
+        category: 'test-category',
+      },
+    };
+
+    const result = testCaseFromCsvRow(row);
+    expect(result).toEqual(expectedTestCase);
+  });
+
+  describe('__config columns', () => {
+    it('applies threshold to single assertion using __config:__expected:threshold', () => {
+      const row: CsvRow = {
+        __expected1: 'similar:foo',
+        '__config:__expected:threshold': '0.9',
+      };
+
+      const result = testCaseFromCsvRow(row);
+      expect(result).toEqual({
+        vars: {},
+        assert: [{ type: 'similar', value: 'foo', threshold: 0.9 }],
+        options: {},
+        metadata: { threshold: 0.9 },
+      });
+    });
+
+    it('applies threshold to the second assertion using __config:__expected2:threshold', () => {
+      const row: CsvRow = {
+        __expected1: 'similar:foo',
+        __expected2: 'similar:bar',
+        '__config:__expected2:threshold': '0.6',
+      };
+
+      const result = testCaseFromCsvRow(row);
+      expect(result).toEqual({
+        vars: {},
+        assert: [
+          { type: 'similar', value: 'foo', threshold: 0.8 },
+          { type: 'similar', value: 'bar', threshold: 0.6 },
+        ],
+        options: {},
+        metadata: { threshold: 0.6 },
+      });
+    });
+
+    it('warns and ignores invalid __config column formats', () => {
+      const row: CsvRow = {
+        __expected1: 'similar:foo',
+        // Missing config key after last colon
+        '__config:__expected1': '0.7',
+      };
+
+      const result = testCaseFromCsvRow(row);
+      expect(result).toEqual({
+        vars: {},
+        assert: [{ type: 'similar', value: 'foo', threshold: 0.8 }],
+        options: {},
+      });
+      expect(logger.warn).toHaveBeenCalledWith(
+        'Invalid __config column format: "__config:__expected1". Expected format: __config:__expected:threshold or __config:__expected<N>:threshold',
+      );
+    });
+
+    it('throws on invalid expected key in __config column', () => {
+      const key = '__config:__expectedX:threshold';
+      const row: CsvRow = {
+        __expected1: 'equals:foo',
+        [key]: '0.5',
+      } as any;
+
+      expect(() => testCaseFromCsvRow(row)).toThrow(
+        'Invalid expected key "__expectedX" in __config column',
+      );
+      expect(logger.error).toHaveBeenCalledWith(
+        'Invalid expected key "__expectedX" in __config column "__config:__expectedX:threshold". Must be __expected or __expected<N> where N is a positive integer.',
+      );
+    });
+
+    it('throws on __expected0 since indices are 1-based', () => {
+      const key = '__config:__expected0:threshold';
+      const row: CsvRow = {
+        __expected1: 'equals:foo',
+        [key]: '0.5',
+      } as any;
+
+      expect(() => testCaseFromCsvRow(row)).toThrow(
+        'Invalid expected key "__expected0" in __config column',
+      );
+      expect(logger.error).toHaveBeenCalledWith(
+        'Invalid expected key "__expected0" in __config column "__config:__expected0:threshold". Must be __expected or __expected<N> where N is a positive integer.',
+      );
+    });
+
+    it('throws on invalid config key in __config column', () => {
+      const key = '__config:__expected1:bogus';
+      const row: CsvRow = {
+        __expected1: 'equals:foo',
+        [key]: 'anything',
+      } as any;
+
+      expect(() => testCaseFromCsvRow(row)).toThrow(
+        'Invalid config key "bogus" in __config column',
+      );
+      expect(logger.error).toHaveBeenCalledWith(
+        'Invalid config key "bogus" in __config column "__config:__expected1:bogus". Valid config keys include: threshold',
+      );
+    });
+
+    it.each(INVALID_THRESHOLD_VALUES.slice(0, 3))(
+      'throws on invalid threshold value %s',
+      (thresholdValue) => {
+        const key = '__config:__expected1:threshold';
+        const row: CsvRow = {
+          __expected1: 'similar:foo',
+          [key]: thresholdValue,
+        } as any;
+
+        expect(() => testCaseFromCsvRow(row)).toThrow('Invalid numeric value for threshold');
+        expect(logger.error).toHaveBeenCalledWith(
+          `Invalid numeric value "${thresholdValue}" for config key "threshold" in column "__config:__expected1:threshold"`,
+        );
+      },
+    );
+  });
+  it('should preserve zero __threshold in the test case', () => {
+    const row: CsvRow = {
+      __expected: 'equals:ok',
+      __threshold: '0',
+      var1: 'value1',
+    };
+
+    const result = testCaseFromCsvRow(row);
+    // threshold: 0 is a valid value (e.g. "always pass regardless of score").
+    // A falsy guard like `threshold ? { threshold } : {}` silently drops it.
+    expect(result.threshold).toBe(0);
+  });
+
+  it.each([
+    ['empty', ''],
+    ['non-numeric', INVALID_THRESHOLD_VALUES[1]],
+    ['whitespace', '   '],
+    ['numeric prefix', INVALID_THRESHOLD_VALUES[2]],
+    ['comma decimal', INVALID_THRESHOLD_VALUES[3]],
+    ['non-finite literal', INVALID_THRESHOLD_VALUES[4]],
+    ['overflow', INVALID_THRESHOLD_VALUES[5]],
+    ['hexadecimal', INVALID_THRESHOLD_VALUES[6]],
+  ])('should omit threshold for a %s __threshold cell', (_label, thresholdValue) => {
+    const row: CsvRow = {
+      __expected: 'equals:ok',
+      __threshold: thresholdValue,
+      var1: 'value1',
+    };
+
+    const result = testCaseFromCsvRow(row);
+    // A blank/garbage cell must be treated as "unset" so it inherits defaultTest.threshold
+    // via `testCase.threshold ?? defaultTest?.threshold` in the evaluator. Leaking NaN here
+    // would clobber that inheritance (NaN ?? x === NaN), so the key must be omitted entirely.
+    expect(result).not.toHaveProperty('threshold');
+  });
+
+  it.each([
+    ['integer', '5', 5],
+    ['decimal', '0.8', 0.8],
+    ['leading-dot decimal', '.5', 0.5],
+    ['trailing-dot decimal', '5.', 5],
+    ['negative', '-1', -1],
+    ['exponent', '1e3', 1000],
+    ['signed exponent', '-2.5e-2', -0.025],
+    ['explicit plus', '+1', 1],
+    ['surrounding whitespace', '  0.8  ', 0.8],
+  ])('should parse a %s __threshold cell to %s', (_label, thresholdValue, expected) => {
+    const row: CsvRow = {
+      __expected: 'equals:ok',
+      __threshold: thresholdValue,
+      var1: 'value1',
+    };
+
+    const result = testCaseFromCsvRow(row);
+    // Pins the numeric contract of parseFiniteNumber: complete numeric literals
+    // (including negatives, exponents, and leading-dot decimals) are accepted and
+    // trimmed. This is intentionally wider than a bare integer parse, so the behavior
+    // is locked down here to catch any future regression in the shared parser.
+    expect(result.threshold).toBe(expected);
+  });
+});
+
+describe('assertionFromString', () => {
+  afterEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it('should create an equality assertion', () => {
+    const expected = 'Expected output';
+
+    const result: Assertion = assertionFromString(expected);
+    expect(result.type).toBe('equals');
+    expect(result.value).toBe(expected);
+  });
+
+  it('should create an is-json assertion', () => {
+    const expected = 'is-json';
+
+    const result: Assertion = assertionFromString(expected);
+    expect(result.type).toBe('is-json');
+  });
+
+  it('should create an is-json assertion with value', () => {
+    // Intentionally uses YAML-like `key:value` (without a space after `:`) to verify
+    // that assertionFromString preserves the original formatting exactly.
+    const expected = `is-json:
+      required: ['color']
+      type:object
+      properties:
+        color:
+          type:string
+`;
+
+    const result: Assertion = assertionFromString(expected);
+    expect(result.type).toBe('is-json');
+    expect(result.value).toBe(
+      `
+      required: ['color']
+      type:object
+      properties:
+        color:
+          type:string
+`,
+    );
+  });
+
+  it('should create a contains-json assertion', () => {
+    const expected = 'contains-json';
+
+    const result: Assertion = assertionFromString(expected);
+    expect(result.type).toBe('contains-json');
+  });
+
+  it('should create a function assertion', () => {
+    const expected = 'fn:output === "Expected output"';
+
+    const result: Assertion = assertionFromString(expected);
+    expect(result.type).toBe('javascript');
+    expect(result.value).toBe('output === "Expected output"');
+  });
+
+  it('should create a similarity assertion', () => {
+    const expected = 'similar(0.9):Expected output';
+
+    const result: Assertion = assertionFromString(expected);
+    expect(result.type).toBe('similar');
+    expect(result.value).toBe('Expected output');
+    expect(result.threshold).toBe(0.9);
+  });
+
+  it('should create a contains assertion', () => {
+    const expected = 'contains:substring';
+
+    const result: Assertion = assertionFromString(expected);
+    expect(result.type).toBe('contains');
+    expect(result.value).toBe('substring');
+  });
+
+  it('should create a not-contains assertion', () => {
+    const expected = 'not-contains:substring';
+
+    const result: Assertion = assertionFromString(expected);
+    expect(result.type).toBe('not-contains');
+    expect(result.value).toBe('substring');
+  });
+
+  it('should create a contains-any assertion', () => {
+    const expected = 'contains-any:substring1,substring2';
+
+    const result: Assertion = assertionFromString(expected);
+    expect(result.type).toBe('contains-any');
+    expect(result.value).toEqual(['substring1', 'substring2']);
+  });
+
+  it.each([
+    'contains-any',
+    'contains-all',
+    'icontains-any',
+    'icontains-all',
+    'not-contains-any',
+    'not-contains-all',
+    'not-icontains-any',
+    'not-icontains-all',
+  ])('should preserve quoted commas in a %s assertion read from a CSV row', (type) => {
+    const [row] = parseCsv<CsvRow>(`__expected\n"${type}:""hello, world"",foo"`, {
+      columns: true,
+    });
+
+    const result = testCaseFromCsvRow(row);
+    expect(result.assert).toEqual([{ type, value: ['hello, world', 'foo'] }]);
+  });
+
+  it('should preserve escaped and doubled quotes in contains assertion values', () => {
+    const expected = String.raw`contains-all:"say \"hello, world\"","a ""quoted"" value", plain`;
+
+    const result: Assertion = assertionFromString(expected);
+    expect(result.value).toEqual(['say "hello, world"', 'a "quoted" value', 'plain']);
+  });
+
+  it('should match runtime handling of whitespace and repeated delimiters', () => {
+    const result: Assertion = assertionFromString('icontains-any: alpha, , beta,, ');
+
+    expect(result.value).toEqual(['alpha', 'beta']);
+  });
+
+  // csv.ts intentionally keeps a private copy of the contains-assertion value
+  // parser (it cannot import the assertion handlers without bundling backend code
+  // into the frontend; see the comment in src/csv.ts). This drift guard covers
+  // representative valid and malformed inputs so changes to either implementation
+  // have to preserve the same behavior.
+  it.each([
+    '"hello, world",foo',
+    String.raw`"say \"hi\"",b`,
+    'a ""quoted"" value, plain',
+    'alpha, , beta,, ',
+    '  spaced  ,  next  ',
+    '"only one"',
+    'no-quotes-at-all',
+    '"trailing"   ',
+    'a,b,c',
+    '""',
+    '" ",x',
+    'x,"y,z"',
+    '"a","b"',
+    '"a" , "b"',
+    String.raw`"\n",x`,
+    String.raw`"\\",x`,
+    'a,',
+    ',a',
+    ',,,',
+    '"comma,inside","another, one"',
+    'mix,"quoted, field",bare',
+    '"a""b""c"',
+    '"a"b,c',
+    '"unterminated',
+  ])('csv parser matches the canonical contains parser for %j', (input) => {
+    const parseViaCsv = () => assertionFromString(`contains-any:${input}`).value;
+    const parseViaContains = () => parseCommaSeparatedValues(input);
+
+    let canonical: string[] | undefined;
+    let canonicalError: Error | undefined;
+    try {
+      canonical = parseViaContains();
+    } catch (error) {
+      canonicalError = error as Error;
+    }
+
+    if (canonicalError) {
+      expect(parseViaCsv).toThrow(canonicalError.message);
+    } else {
+      expect(parseViaCsv()).toEqual(canonical);
+    }
+  });
+
+  it('should reject malformed quoted contains assertion values', () => {
+    expect(() => assertionFromString('icontains-any:"unterminated')).toThrow(
+      'Unterminated quoted field in contains assertion value',
+    );
+    expect(() => assertionFromString('contains-all:"hello"world')).toThrow(
+      'Expected comma after quoted field in contains assertion value',
+    );
+  });
+
+  it('should create a contains-all assertion', () => {
+    const expected = 'contains-all:substring1,substring2';
+
+    const result: Assertion = assertionFromString(expected);
+    expect(result.type).toBe('contains-all');
+    expect(result.value).toEqual(['substring1', 'substring2']);
+  });
+
+  it('should create a regex assertion', () => {
+    const expected = 'regex:\\d+';
+
+    const result: Assertion = assertionFromString(expected);
+    expect(result.type).toBe('regex');
+    expect(result.value).toBe('\\d+');
+  });
+
+  it('should create a not-regex assertion', () => {
+    const expected = 'not-regex:\\d+';
+
+    const result: Assertion = assertionFromString(expected);
+    expect(result.type).toBe('not-regex');
+    expect(result.value).toBe('\\d+');
+  });
+
+  it('should create an icontains assertion', () => {
+    const expected = 'icontains:substring';
+
+    const result: Assertion = assertionFromString(expected);
+    expect(result.type).toBe('icontains');
+    expect(result.value).toBe('substring');
+  });
+
+  it('should create a not-icontains assertion', () => {
+    const expected = 'not-icontains:substring';
+
+    const result: Assertion = assertionFromString(expected);
+    expect(result.type).toBe('not-icontains');
+    expect(result.value).toBe('substring');
+  });
+
+  it('should create a webhook assertion', () => {
+    const expected = 'webhook:https://example.com';
+
+    const result: Assertion = assertionFromString(expected);
+    expect(result.type).toBe('webhook');
+    expect(result.value).toBe('https://example.com');
+  });
+
+  it('should create a not-webhook assertion', () => {
+    const expected = 'not-webhook:https://example.com';
+
+    const result: Assertion = assertionFromString(expected);
+    expect(result.type).toBe('not-webhook');
+    expect(result.value).toBe('https://example.com');
+  });
+
+  it('should create a rouge-n assertion', () => {
+    const expected = 'rouge-n(0.225):foo';
+
+    const result: Assertion = assertionFromString(expected);
+    expect(result.type).toBe('rouge-n');
+    expect(result.value).toBe('foo');
+    expect(result.threshold).toBeCloseTo(0.225);
+  });
+
+  it('should create a not-rouge-n assertion', () => {
+    const expected = 'not-rouge-n(0.225):foo';
+
+    const result: Assertion = assertionFromString(expected);
+    expect(result.type).toBe('not-rouge-n');
+    expect(result.value).toBe('foo');
+    expect(result.threshold).toBeCloseTo(0.225);
+  });
+
+  it('should create a starts-with assertion', () => {
+    const expected = 'starts-with:Expected';
+
+    const result: Assertion = assertionFromString(expected);
+    expect(result.type).toBe('starts-with');
+    expect(result.value).toBe('Expected');
+  });
+
+  it('should create a levenshtein assertion', () => {
+    const expected = 'levenshtein(5):Expected output';
+
+    const result: Assertion = assertionFromString(expected);
+    expect(result.type).toBe('levenshtein');
+    expect(result.value).toBe('Expected output');
+    expect(result.threshold).toBe(5);
+  });
+
+  it('should create a classifier assertion', () => {
+    const expected = 'classifier(0.5):classA';
+
+    const result: Assertion = assertionFromString(expected);
+    expect(result.type).toBe('classifier');
+    expect(result.value).toBe('classA');
+    expect(result.threshold).toBe(0.5);
+  });
+
+  it('should create a latency assertion', () => {
+    const expected = 'latency(1000)';
+
+    const result: Assertion = assertionFromString(expected);
+    expect(result.type).toBe('latency');
+    expect(result.threshold).toBe(1000);
+  });
+
+  it('should create a perplexity assertion', () => {
+    const expected = 'perplexity(1.5)';
+
+    const result: Assertion = assertionFromString(expected);
+    expect(result.type).toBe('perplexity');
+    expect(result.threshold).toBe(1.5);
+  });
+
+  it('should create a perplexity-score assertion', () => {
+    const expected = 'perplexity-score(0.5)';
+
+    const result: Assertion = assertionFromString(expected);
+    expect(result.type).toBe('perplexity-score');
+    expect(result.threshold).toBe(0.5);
+  });
+
+  it('should create a cost assertion', () => {
+    const expected = 'cost(0.001)';
+
+    const result: Assertion = assertionFromString(expected);
+    expect(result.type).toBe('cost');
+    expect(result.threshold).toBe(0.001);
+  });
+
+  it('should create a function call assertion', () => {
+    const expected = 'is-valid-function-call';
+
+    const result: Assertion = assertionFromString(expected);
+    expect(result.type).toBe('is-valid-function-call');
+  });
+
+  it('should create an openai function call assertion', () => {
+    const expected = 'is-valid-openai-function-call';
+
+    const result: Assertion = assertionFromString(expected);
+    expect(result.type).toBe('is-valid-openai-function-call');
+  });
+
+  it('should create a python assertion', () => {
+    const expected = 'python: file://file.py ';
+
+    const result: Assertion = assertionFromString(expected);
+    expect(result.type).toBe('python');
+    expect(result.value).toBe('file://file.py');
+  });
+
+  it('should parse python: assertion', () => {
+    const assertion = assertionFromString('python:some_python_code');
+    expect(assertion).toEqual({
+      type: 'python',
+      value: 'some_python_code',
+    });
+  });
+
+  it(`should parse file:// prefix assertion`, () => {
+    const assertion = assertionFromString('file://script.py');
+    expect(assertion).toEqual({
+      type: 'python',
+      value: 'script.py',
+    });
+  });
+
+  it(`should parse file:// prefix assertion with function name`, () => {
+    const assertion = assertionFromString('file://script.py:function_name');
+    expect(assertion).toEqual({
+      type: 'python',
+      value: 'script.py:function_name',
+    });
+  });
+
+  it('should create a javascript assertion', () => {
+    const expected = 'javascript: x > 10';
+
+    const result: Assertion = assertionFromString(expected);
+    expect(result.type).toBe('javascript');
+    expect(result.value).toBe('x > 10');
+  });
+
+  it('should create an llm-rubric assertion with "grade:" prefix', () => {
+    const expected = 'grade:Evaluate the response based on clarity and accuracy';
+
+    const result: Assertion = assertionFromString(expected);
+    expect(result.type).toBe('llm-rubric');
+    expect(result.value).toBe('Evaluate the response based on clarity and accuracy');
+  });
+
+  it('should create an llm-rubric assertion with "llm-rubric:" prefix', () => {
+    const expected = 'llm-rubric:Rate the answer on a scale of 1-10 for completeness';
+
+    const result: Assertion = assertionFromString(expected);
+    expect(result.type).toBe('llm-rubric');
+    expect(result.value).toBe('Rate the answer on a scale of 1-10 for completeness');
+  });
+
+  it('should handle legacy javascript option', () => {
+    const expected = 'javascript:output === "Expected output"';
+
+    const result: Assertion = assertionFromString(expected);
+    expect(result.type).toBe('javascript');
+    expect(result.value).toBe('output === "Expected output"');
+  });
+
+  it('should handle legacy eval option', () => {
+    const expected = 'eval:output === "Expected output"';
+
+    const result: Assertion = assertionFromString(expected);
+    expect(result.type).toBe('javascript');
+    expect(result.value).toBe('output === "Expected output"');
+  });
+
+  it('should handle legacy fn option', () => {
+    const expected = 'fn:output === "Expected output"';
+
+    const result: Assertion = assertionFromString(expected);
+    expect(result.type).toBe('javascript');
+    expect(result.value).toBe('output === "Expected output"');
+  });
+
+  it('should use DEFAULT_SEMANTIC_SIMILARITY_THRESHOLD for similar assertion without threshold', () => {
+    const expected = 'similar:Expected output';
+
+    const result: Assertion = assertionFromString(expected);
+    expect(result.type).toBe('similar');
+    expect(result.value).toBe('Expected output');
+    expect(result.threshold).toBe(0.8); // DEFAULT_SEMANTIC_SIMILARITY_THRESHOLD
+  });
+
+  it('should use 0.75 as default threshold for other assertions requiring threshold', () => {
+    const assertionTypes = [
+      'answer-relevance',
+      'classifier',
+      'context-faithfulness',
+      'context-recall',
+      'context-relevance',
+      'cost',
+      'latency',
+      'levenshtein',
+      'perplexity-score',
+      'perplexity',
+      'rouge-n',
+      'starts-with',
+    ];
+
+    for (const type of assertionTypes) {
+      const expected = `${type}:Expected output`;
+      const result: Assertion = assertionFromString(expected);
+      expect(result.type).toBe(type);
+      expect(result.value).toBe('Expected output');
+      expect(result.threshold).toBe(0.75);
+    }
+  });
+
+  it('should return complete assertion object structure for representative threshold-based assertion types', () => {
+    // All three genuinely consume `threshold` in their handlers (unlike e.g.
+    // starts-with, which receives the 0.75 default but ignores it), so the
+    // parsed default is meaningful for these types.
+    const representativeAssertions = ['answer-relevance', 'levenshtein', 'rouge-n'];
+
+    for (const type of representativeAssertions) {
+      const expected = `${type}:Expected output`;
+      const result: Assertion = assertionFromString(expected);
+
+      expect(result).toEqual({
+        type,
+        value: 'Expected output',
+        threshold: 0.75,
+      });
+    }
+  });
+
+  it('should use provided threshold when specified', () => {
+    const expected = 'similar(0.9):Expected output';
+
+    const result: Assertion = assertionFromString(expected);
+    expect(result.type).toBe('similar');
+    expect(result.value).toBe('Expected output');
+    expect(result.threshold).toBe(0.9);
+  });
+
+  it('should preserve zero threshold when explicitly specified', () => {
+    const expected = 'levenshtein(0):Expected output';
+
+    const result: Assertion = assertionFromString(expected);
+    expect(result.type).toBe('levenshtein');
+    expect(result.value).toBe('Expected output');
+    expect(result.threshold).toBe(0);
+    // This is especially important to test with the nullish coalescing operator (??),
+    // since it behaves differently than logical OR (||) for the value 0
+  });
+});
+
+describe('serializeObjectArrayAsCSV', () => {
+  it('should serialize an array of objects as a CSV string', () => {
+    expect(
+      serializeObjectArrayAsCSV([
+        { name: 'John', age: 30 },
+        { name: 'Jane', age: 25 },
+      ]),
+    ).toBe('name,age\n"John","30"\n"Jane","25"\n');
+  });
+
+  it('should escape commas in values', () => {
+    expect(
+      serializeObjectArrayAsCSV([
+        { name: 'John, Smith', age: 30 },
+        { name: 'Jane, Doe', age: 25 },
+      ]),
+    ).toBe('name,age\n"John, Smith","30"\n"Jane, Doe","25"\n');
+  });
+
+  it('should escape double quotes in values', () => {
+    expect(
+      serializeObjectArrayAsCSV([
+        { name: 'John "Smithy" Smith', age: 30 },
+        { name: 'Jane "Doge" Doe', age: 25 },
+      ]),
+    ).toBe('name,age\n"John ""Smithy"" Smith","30"\n"Jane ""Doge"" Doe","25"\n');
+  });
+
+  it('should handle multiline values', () => {
+    expect(serializeObjectArrayAsCSV([{ name: 'John Smith\nSmithy', age: 30 }])).toBe(
+      'name,age\n"John Smith\nSmithy","30"\n',
+    );
+  });
+
+  it('should serialize vars to CSV format', () => {
+    const vars = [
+      { name: 'John', age: '30' },
+      { name: 'Jane', age: '25' },
+    ];
+
+    const expected = 'name,age\n"John","30"\n"Jane","25"\n';
+    expect(serializeObjectArrayAsCSV(vars)).toBe(expected);
+  });
+
+  it('should handle empty vars array', () => {
+    const vars: any[] = [];
+    expect(() => serializeObjectArrayAsCSV(vars)).toThrow(
+      'Invariant failed: No variables to serialize',
+    );
+  });
+
+  it('should handle single var mapping', () => {
+    const vars = [{ name: 'John', age: '30' }];
+    const expected = 'name,age\n"John","30"\n';
+    expect(serializeObjectArrayAsCSV(vars)).toBe(expected);
+  });
+
+  it('should handle vars with different properties', () => {
+    const vars = [
+      { name: 'John', age: '30' },
+      { name: 'Jane', age: '25', city: 'NY' },
+    ];
+
+    // Note: The actual implementation includes quotes around values and a trailing newline
+    const expected = 'name,age\n"John","30"\n"Jane","25","NY"\n';
+    expect(serializeObjectArrayAsCSV(vars)).toBe(expected);
+  });
+});

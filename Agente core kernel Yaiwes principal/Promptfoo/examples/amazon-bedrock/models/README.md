@@ -1,0 +1,324 @@
+# amazon-bedrock/models (Amazon Bedrock Examples)
+
+You can run this example with:
+
+```bash
+npx promptfoo@latest init --example amazon-bedrock/models
+cd amazon-bedrock/models
+```
+
+## Prerequisites
+
+1. Set up your AWS credentials:
+
+   ```bash
+   export AWS_ACCESS_KEY_ID="your_access_key"
+   export AWS_SECRET_ACCESS_KEY="your_secret_key"
+   ```
+
+   See [authentication docs](https://www.promptfoo.dev/docs/providers/aws-bedrock/#authentication) for other auth methods, including SSO profiles.
+
+2. Request model access in your AWS region:
+   - Visit the [AWS Bedrock Model Access page](https://us-west-2.console.aws.amazon.com/bedrock/home?region=us-west-2#/modelaccess)
+   - Switch to your desired region. We recommend us-west-2 and us-east-1 which tend to have the most models available.
+   - Enable the models you want to use.
+3. Install required dependencies:
+
+   ```bash
+   # For basic Bedrock models
+   npm install @aws-sdk/client-bedrock-runtime
+
+   # For Knowledge Base examples
+   npm install @aws-sdk/client-bedrock-agent-runtime
+   ```
+
+## Available Examples
+
+This directory contains several example configurations for different Bedrock models:
+
+- [`promptfooconfig.claude.yaml`](promptfooconfig.claude.yaml) - Claude 4.6 Opus, Claude 4.1 Opus, Claude 4 Opus/Sonnet, Claude Haiku 4.5
+- [`promptfooconfig.openai.yaml`](promptfooconfig.openai.yaml) - OpenAI GPT-OSS models (120B and 20B) with reasoning effort
+- [`promptfooconfig.openai-frontier.yaml`](promptfooconfig.openai-frontier.yaml) - OpenAI GPT-5.6 Sol, Terra, and Luna with reasoning, explicit prompt caching, and streaming
+- [`promptfooconfig.grok.yaml`](promptfooconfig.grok.yaml) - xAI Grok 4.3 on the Bedrock Mantle endpoint (requires `AWS_BEARER_TOKEN_BEDROCK`)
+- [`promptfooconfig.mantle.yaml`](promptfooconfig.mantle.yaml) - `bedrock:mantle:` Chat Completions endpoint for mantle-only models like GLM 4.6 and DeepSeek V3.1 (requires `AWS_BEARER_TOKEN_BEDROCK`)
+- [`promptfooconfig.llama.yaml`](promptfooconfig.llama.yaml) - Llama3
+- [`promptfooconfig.mistral.yaml`](promptfooconfig.mistral.yaml) - Mistral
+- [`promptfooconfig.openai-compatible.yaml`](promptfooconfig.openai-compatible.yaml) - OpenAI-compatible families: Z.AI GLM, MiniMax, Moonshot Kimi, NVIDIA Nemotron, Google Gemma, Writer Palmyra
+- [`promptfooconfig.nova.yaml`](promptfooconfig.nova.yaml) - Amazon's Nova models
+- [`promptfooconfig.nova.tool.yaml`](promptfooconfig.nova.tool.yaml) - Nova with tool usage examples
+- [`promptfooconfig.nova.multimodal.yaml`](promptfooconfig.nova.multimodal.yaml) - Nova with multimodal capabilities
+- [`promptfooconfig.kb.yaml`](promptfooconfig.kb.yaml) - Knowledge Base RAG example with citations and contextTransform
+- [`promptfooconfig.inference-profiles.yaml`](promptfooconfig.inference-profiles.yaml) - Comprehensive Application Inference Profiles example with multiple model types
+- [`promptfooconfig.inference-profiles-simple.yaml`](promptfooconfig.inference-profiles-simple.yaml) - Simple production-ready inference profile setup for high availability
+- [`promptfooconfig.yaml`](promptfooconfig.yaml) - Combined evaluation across multiple providers
+- [`promptfooconfig.nova-sonic.yaml`](promptfooconfig.nova-sonic.yaml) - Amazon Nova Sonic model for audio
+- [`promptfooconfig.converse.yaml`](promptfooconfig.converse.yaml) - Converse API with extended thinking (ultrathink)
+- [`promptfooconfig.converse-mcp.yaml`](promptfooconfig.converse-mcp.yaml) - Converse API with Model Context Protocol (MCP) tools
+
+## Converse API Example
+
+The Converse API example (`promptfooconfig.converse.yaml`) demonstrates the unified Bedrock Converse API with extended thinking (ultrathink) support.
+
+### Key Features
+
+- **Extended Thinking**: Enable Claude's reasoning capabilities with configurable token budgets
+- **Unified Interface**: Single API format works across Claude, Nova, Llama, Mistral, and more
+- **Show/Hide Thinking**: Control whether thinking content appears in output with `showThinking`
+
+### Configuration
+
+```yaml
+providers:
+  - id: bedrock:converse:us.anthropic.claude-sonnet-4-6
+    label: Claude Sonnet 4.6 with Thinking
+    config:
+      region: us-west-2
+      maxTokens: 20000
+      thinking:
+        type: enabled
+        budget_tokens: 16000
+      showThinking: true
+```
+
+Run the Converse API example with:
+
+```bash
+promptfoo eval -c examples/amazon-bedrock/models/promptfooconfig.converse.yaml
+```
+
+## Converse MCP Example
+
+The Converse MCP example (`promptfooconfig.converse-mcp.yaml`) demonstrates how to attach Model Context Protocol (MCP) servers to a Bedrock Converse provider. MCP tools are discovered from the configured server, converted to Bedrock Converse tool definitions, and executed when the model requests a tool call.
+
+### Configuration
+
+```yaml
+providers:
+  - id: bedrock:converse:us.anthropic.claude-sonnet-4-6
+    label: Claude Sonnet 4.6 with MCP
+    config:
+      region: us-east-1
+      maxTokens: 1024
+      temperature: 0
+      mcp:
+        enabled: true
+        servers:
+          - name: deepwiki
+            url: https://mcp.deepwiki.com/mcp
+        tools:
+          - ask_question
+      toolChoice: auto
+```
+
+Run the Converse MCP example with:
+
+```bash
+promptfoo eval -c examples/amazon-bedrock/models/promptfooconfig.converse-mcp.yaml
+```
+
+Replace the `servers` entry with a local `command`/`args`, `path`, or another remote `url` to use your own MCP server.
+
+> **Note:** When the model emits `tool_use`, the provider executes the requested
+> MCP tool and returns the **raw tool result** as the eval output. There is no
+> follow-up Converse turn that feeds the tool result back to the model for a
+> synthesized answer, so the assertions in this example match substrings present
+> in the MCP server's response. If you need a model-summarized answer, wrap the
+> provider in an agent harness or run a second eval over the captured tool
+> output.
+
+## Knowledge Base Example
+
+The Knowledge Base example (`promptfooconfig.kb.yaml`) demonstrates how to use AWS Bedrock Knowledge Base for Retrieval Augmented Generation (RAG).
+
+### Knowledge Base Setup
+
+For this example, you'll need to:
+
+1. Create a Knowledge Base in AWS Bedrock
+2. Configure it to crawl or ingest content (the example assumes promptfoo documentation content)
+3. Use the Amazon Titan Embeddings model for vector embeddings
+4. Update the config with your Knowledge Base ID:
+
+```yaml
+providers:
+  - id: bedrock:kb:us.anthropic.claude-sonnet-4-6
+    config:
+      region: 'us-east-2' # Change to your region
+      knowledgeBaseId: 'YOUR_KNOWLEDGE_BASE_ID' # Replace with your KB ID
+```
+
+When running the Knowledge Base example, you'll see:
+
+- Responses from a Knowledge Base-enhanced model with citations
+- Responses from a standard model for comparison
+- Citations from source documents that show where information was retrieved from
+- Example of `contextTransform` feature extracting context from citations for evaluation
+
+The example includes questions about promptfoo configuration, providers, and evaluation techniques that work well with the embedded promptfoo documentation.
+
+**Note**: You'll need to update the `knowledgeBaseId` with your actual Knowledge Base ID and ensure the Knowledge Base is configured to work with the selected Claude model.
+
+For detailed Knowledge Base setup instructions, see the [AWS Bedrock Knowledge Base Documentation](https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base.html).
+
+## Application Inference Profiles Example
+
+The Application Inference Profiles example (`promptfooconfig.inference-profiles.yaml`) demonstrates how to use AWS Bedrock's inference profiles for multi-region failover and cost optimization.
+
+### Key Benefits of Inference Profiles
+
+- **Automatic Failover**: If one region is unavailable, requests automatically route to another region
+- **Cost Optimization**: Routes to the most cost-effective available model
+- **Simplified Management**: Use a single ARN instead of managing multiple model IDs
+- **Cross-Region Availability**: Access models across multiple regions with a single profile
+
+### Configuration Requirements
+
+When using inference profiles, you **must** specify the `inferenceModelType` parameter:
+
+```yaml
+providers:
+  - id: bedrock:arn:aws:bedrock:us-east-1:123456789012:application-inference-profile/my-profile
+    config:
+      inferenceModelType: 'claude' # Required!
+      region: 'us-east-1'
+      max_tokens: 1024
+```
+
+### Supported Model Types
+
+- `claude` - Anthropic Claude models
+- `nova` - Amazon Nova models
+- `llama` - Defaults to Llama 4
+- `llama2`, `llama3`, `llama3.1`, `llama3.2`, `llama3.3`, `llama4` - Specific Llama versions
+- `mistral` - Mistral models
+- `cohere` - Cohere models
+- `ai21` - AI21 models
+- `titan` - Amazon Titan models
+- `deepseek` - DeepSeek models (with thinking capability)
+- `openai` - OpenAI GPT-OSS models
+- `zai` - Z.AI GLM models
+- `minimax` - MiniMax models
+- `moonshot` - Moonshot Kimi models
+- `nvidia` - NVIDIA Nemotron models
+- `writer` - Writer Palmyra models
+- `gemma` - Google Gemma models
+
+### Running the Examples
+
+We provide two inference profile examples:
+
+1. **Comprehensive Example** (`promptfooconfig.inference-profiles.yaml`):
+
+   ```bash
+   promptfoo eval -c examples/amazon-bedrock/models/promptfooconfig.inference-profiles.yaml
+   ```
+
+   This includes:
+   - Multiple inference profiles for different model families
+   - Comparison with direct model IDs
+   - Use of inference profiles for grading assertions
+   - Various model-specific configurations
+
+2. **Simple Production Example** (`promptfooconfig.inference-profiles-simple.yaml`):
+   ```bash
+   promptfoo eval -c examples/amazon-bedrock/models/promptfooconfig.inference-profiles-simple.yaml
+   ```
+   This demonstrates:
+   - A realistic customer support use case
+   - High availability setup with failover
+   - Comparison between inference profile and direct model access
+   - Consistent grading using inference profiles
+
+**Note**: Replace the example ARNs with your actual application inference profile ARNs. To create an inference profile, visit the AWS Bedrock console and navigate to the "Application inference profiles" section.
+
+## OpenAI Models Example
+
+The OpenAI example (`promptfooconfig.openai.yaml`) demonstrates OpenAI's GPT-OSS models available through AWS Bedrock:
+
+- **openai.gpt-oss-120b-1:0** - 120 billion parameter model with strong reasoning capabilities
+- **openai.gpt-oss-20b-1:0** - 20 billion parameter model, more cost-effective
+
+### Key Features
+
+- **Reasoning Effort**: Control reasoning depth with `low`, `medium`, or `high` settings
+- **OpenAI API Format**: Uses familiar OpenAI parameters like `max_completion_tokens`
+- **Available in us-west-2**: Ensure you have model access in the correct region
+
+Run the OpenAI example with:
+
+```bash
+promptfoo eval -c examples/amazon-bedrock/models/promptfooconfig.openai.yaml
+```
+
+## OpenAI Frontier Models Example
+
+The frontier example (`promptfooconfig.openai-frontier.yaml`) demonstrates OpenAI's GPT-5.x frontier models on Bedrock:
+
+- **openai.gpt-5.6-sol** - Flagship reasoning tier (available in `us-east-1` and `us-east-2`)
+- **openai.gpt-5.6-terra** - Balanced tier (available in `us-east-1`, `us-east-2`, and `us-west-2`)
+- **openai.gpt-5.6-luna** - Fast, cost-efficient tier (available in `us-east-1`, `us-east-2`, and `us-west-2`)
+
+### Key Features
+
+- **Responses API**: Frontier models are served through Bedrock's OpenAI-compatible Responses API (`https://bedrock-mantle.<region>.api.aws/openai/v1/responses`), not `InvokeModel` or `Converse`. Promptfoo routes `bedrock:openai.gpt-5.x` there automatically and preserves the Bedrock model ID.
+- **Bedrock API key auth**: Unlike the gpt-oss models (AWS SDK credentials), the frontier models authenticate with an Amazon Bedrock API key. Export it first:
+
+  ```bash
+  export AWS_BEARER_TOKEN_BEDROCK="your_bedrock_api_key"
+  ```
+
+- **Native Reasoning Effort**: GPT-5.6 supports `none`, `low`, `medium`, `high`, `xhigh`, and `max` (`minimal` is not supported by these Bedrock models).
+- **Prompt caching and streaming**: The example marks its stable system instructions with an explicit cache breakpoint, uses a stable `prompt_cache_key`, and enables streaming for Luna. Cache reads receive a 90% discount; cache writes cost 1.25x the uncached input rate.
+- **Region-gated**: Request model access in a supported region before running.
+
+These are the same model IDs that back OpenAI's [Codex](https://developers.openai.com/codex/) coding agent when it is configured with the `amazon-bedrock` provider.
+
+Run the frontier example with:
+
+```bash
+promptfoo eval -c examples/amazon-bedrock/models/promptfooconfig.openai-frontier.yaml --no-cache
+```
+
+## New Converse API Features (SDK 3.943+)
+
+The Converse API supports additional stop reason handling:
+
+- `malformed_model_output`: Model produced invalid output
+- `malformed_tool_use`: Model produced a malformed tool use request
+
+These are returned as errors in the response with `metadata.isModelError: true`.
+
+## Nova Sonic Configuration
+
+Nova Sonic now supports configurable timeouts:
+
+```yaml
+providers:
+  - id: bedrock:nova-sonic:amazon.nova-sonic-v1:0
+    config:
+      region: us-east-1
+      sessionTimeout: 300000 # 5 minutes (default)
+      requestTimeout: 120000 # 2 minutes
+```
+
+Error responses include categorized error types in `metadata.errorType`:
+
+- `connection`: Network/AWS connectivity issues
+- `timeout`: Request or session timeout
+- `api`: Authentication/authorization errors
+- `parsing`: Response parsing failures
+- `session`: Bidirectional stream session errors
+
+## Getting Started
+
+1. Run the evaluation:
+
+   ```bash
+   promptfoo eval -c [path/to/config.yaml]
+   ```
+
+2. View the results:
+
+   ```bash
+   promptfoo view
+   ```

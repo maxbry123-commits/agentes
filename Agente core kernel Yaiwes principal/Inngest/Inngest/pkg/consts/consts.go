@@ -1,0 +1,239 @@
+package consts
+
+import (
+	"time"
+)
+
+const (
+	// DefaultRetryCount is used when no retry count for a step is specified.
+	// Given 4 retries, each step or function is attempted 5 times by default.
+	DefaultRetryCount = 4
+
+	// DefaultMaxEventSize represents the maximum size of the event payload we process,
+	// currently 512KB.
+	DefaultMaxEventSize = 512 * 1024
+
+	// AbsoluteMaxEventSize is the absolute maximum size of the event payload we process.
+	AbsoluteMaxEventSize = 3 * 1024 * 1024
+
+	// MaxEventNameLength is the maximum event name accepted by event ingestion.
+	MaxEventNameLength = 512
+
+	// DefaultMaxStepLimit is the maximum number of steps per function allowed.
+	DefaultMaxStepLimit = 1_000
+
+	// AbsoluteMaxStepLimit is the absolute maximium number of steps that an executor can
+	// be initialized with.
+	AbsoluteMaxStepLimit = 10_000
+
+	// MaxFunctionTimeout represents the longest running function or step allowed within
+	// our system.
+	MaxFunctionTimeout = 2 * time.Hour
+
+	// MaxStepOutputSize is the maximum size of the output of a step.
+	MaxStepOutputSize = 1024 * 1024 * 4 // 4MB
+
+	// MaxStepInputSize is the maximum size of the input of a step.
+	MaxStepInputSize = 1024 * 1024 * 4 // 4MB
+
+	// MaxSDKResponseBodySize is the maximum payload size in the response from
+	// the SDK.
+	MaxSDKResponseBodySize = MaxStepOutputSize + MaxStepInputSize
+
+	// MaxSDKRequestBodySize is the maximum payload size in the request to the
+	// SDK.
+	MaxSDKRequestBodySize = 1024 * 1024 * 4 // 4MB
+
+	// DefaultMaxStateSizeLimit is the maximum number of bytes of output state per function run allowed.
+	DefaultMaxStateSizeLimit = 1024 * 1024 * 32 // 32MB
+
+	// MaxMetadataSpanSize is the maximum size of a single metadata span in bytes (64 KB).
+	MaxMetadataSpanSize = 64 * 1024
+
+	// MaxRunMetadataSize is the maximum cumulative metadata size per function run in bytes (1 MB).
+	MaxRunMetadataSize = 1024 * 1024
+
+	// MaxUserlandTraceBodySize bounds the /v1/traces/userland request body. The
+	// cap gate runs only after the body is read and parsed (it needs the parsed
+	// spans to meter ingress bytes), so without this an over-cap or abusive
+	// account would force unbounded read+parse on every request before the 429 —
+	// the amplification the old pre-read cap gate prevented. Generous enough for
+	// a full OTLP userland span batch; well below anything that would pressure
+	// the API.
+	MaxUserlandTraceBodySize = 8 * 1024 * 1024 // 8MB
+
+	// MaxConcurrentRejectedTraceRecorders caps the background goroutine pool that
+	// runs the over-cap /v1/traces/userland ExtendedTraceRejectedRecorder.
+	MaxConcurrentRejectedTraceRecorders = 1000
+
+	// MaxRetries represents the maximum number of retries for a particular function or step
+	// possible.
+	MaxRetries = 20
+
+	// MaxRetryDuration is the furthest a retry can be scheduled.  If retries are scheduled further
+	// than now plus this duration, the retry duration will automatically be lowered to this value.
+	MaxRetryDuration = time.Hour * 24
+
+	// MinRetryDuration is the soonest a retry can be scheduled.
+	MinRetryDuration = time.Second * 1
+
+	// MinDebouncePeriod is the minimum period of time that can be used to configure a debounce.
+	MinDebouncePeriod = time.Second
+
+	// MaxDebouncePeriod is the maximum period of time that can be used to configure a debounce.  This
+	// lets users delay functions for up to MaxDebouncePeriod when events are received.
+	MaxDebouncePeriod = time.Hour * 24 * 7
+
+	// MaxSleepDuration is the furthest into the future a step can sleep.
+	// 366 days, so that a one-year sleep spanning a leap day still fits.
+	MaxSleepDuration = time.Hour * 24 * 366
+
+	// MaxWaitForEventTimeout is the furthest into the future a wait-for-event
+	// timeout can expire.  366 days, so that a one-year timeout spanning a
+	// leap day still fits.
+	MaxWaitForEventTimeout = time.Hour * 24 * 366
+
+	// MaxCancellations represents the max automatic cancellation signals per function
+	MaxCancellations = 5
+
+	// MaxDefersPerRun is the maximum number of defers allowed per function run.
+	MaxDefersPerRun = 20
+
+	// MaxDeferInputSize is the maximum size of the Input payload on a single defer.
+	MaxDeferInputSize = 1024 * 1024 * 4 // 4MB
+
+	// MaxDeferInputAggregateSize is the maximum total size, in bytes, of all
+	// defer input payloads combined for a single function run. Must be a
+	// separate budget than DefaultMaxStateSizeLimit, so that defers can't fail
+	// the parent run.
+	MaxDeferInputAggregateSize = 1024 * 1024 * 4 // 4MB
+
+	// MaxEventMetaSize is the maximum size, in bytes, of a raw event-meta blob
+	// carried opaquely on an op that persists it before validation.
+	//
+	// Currently, only DeferAdd validates. Other uses of EventMeta perform other
+	// validation before persistence.
+	//
+	// Sized from the sessions worst case: two full session layers
+	// (MaxEventSessions entries each at MaxEventSessionKeyLength +
+	// MaxEventSessionIDLength ≈ 3.2KB per layer) plus a null tombstone for every
+	// inheritable key (~0.7KB) is ~7KB, so 32KB leaves ~4.5x headroom for real
+	// tombstone use and modest future meta fields.
+	MaxEventMetaSize = 32 * 1024 // 32KB
+
+	// MaxConcurrencyLimits limits the max concurrency constraints for a specific function.
+	MaxConcurrencyLimits = 2
+
+	// MaxTriggers represents the maximum number of triggers a function can have.
+	MaxTriggers = 10
+
+	// MaxBatchTTL represents the maximum amount of duration the batch key will last
+	MaxBatchTTL = 10 * time.Minute
+
+	// DefaultConcurrencyLimit is the default concurrency limit applied when not specified
+	DefaultConcurrencyLimit = 1_000
+
+	DefaultSystemConcurrencyLimit = 100_000
+
+	// FunctionIdempotencyPeriod determines how long a specific function remains idempotent
+	// when using idempotency keys.
+	FunctionIdempotencyPeriod = 24 * time.Hour
+	// FunctionIdempotencyTombstone indicates the run associated with this idempotency key
+	// has already finished.  This is a prefix;  the run ID is still stored after this.
+	FunctionIdempotencyTombstone = '-'
+
+	DefaultBatchSizeLimit = 100
+	DefaultBatchTimeout   = 60 * time.Second
+
+	// MaxEvents is the maximum number of events we can parse in a single batch.
+	MaxEvents = 5_000
+
+	// MaxEventSessions is the maximum number of sessions on a single event.
+	MaxEventSessions = 5
+	// MaxRunSessions is the maximum number of sessions on a single run. A run
+	// aggregates the sessions of every event that triggered it (eg. when
+	// batching), so its bound is larger than MaxEventSessions. It keeps the
+	// run's session label a small fraction of the span metadata budget.
+	MaxRunSessions = 25
+	// MaxEventSessionKeyLength is the maximum number of bytes in a session key.
+	MaxEventSessionKeyLength = 128
+	// MaxEventSessionIDLength is the maximum number of bytes in a session ID.
+	MaxEventSessionIDLength = 512
+
+	InngestEventDataPrefix = "_inngest"
+	// InvokeSlugKey is the data key used to store the fn name when invoking a function
+	// via an RPC-like call, abstracting event-driven fanout.
+	InvokeFnID          = "fn_id"
+	InvokeCorrelationId = "correlation_id"
+
+	// CancelTimeout is the maximum time a cancellation can exist
+	CancelTimeout = time.Hour * 24 * 365
+
+	RequestVersionUnknown = -1
+
+	// PriorityFactorMin is the minimum priority factor for any function run, in seconds.
+	PriorityFactorMin = int64(-1 * 60 * 60 * 12)
+	// PriorityFactorMax is the maximum priority factor for any function run, in seconds.
+	// This is set to 12 hours.
+	PriorityFactorMax = int64(60 * 60 * 12)
+	// FutureQueeueFudgeLimit is the inclusive time range between [now, now() + FutureAtLimit]
+	// in which priority factors are taken into account.
+	FutureAtLimit = 2 * time.Second
+
+	DefaultQueueContinueLimit = uint(5)
+
+	PauseExpiredDeletionGracePeriod = time.Minute * 20
+
+	DefaultQueueShardName = "default"
+
+	// Minimum number of pauses before using the aggregate pause handler.
+	AggregatePauseThreshold = 50
+
+	// QueueContinuationCooldownPeriod is the cooldown period for a continuations, eg.
+	// how long we wait after a partition has continued the maximum times.
+	// This prevents partitions from greedily acquiring resources in each scan loop.
+	QueueContinuationCooldownPeriod = time.Second * 10
+	// QueueContinuationMaxPartitions represents the total capacity for partitions
+	// that can be continued.
+	QueueContinuationMaxPartitions = 50
+	// QueueContinuationSkipProbability is the probability of skipping a continuation
+	// scan loop.
+	QueueContinuationSkipProbability = 0.2
+
+	//
+	// Streaming
+	//
+	MaxStreamingMessageSizeBytes = 1024 * 512 // 512KB
+	StreamingChunkSize           = 1024       // 1KB
+	MaxStreamingChunks           = 1000       // Allow up to 1000 chunks per stream
+
+	RedisBlockingPoolSize = 10
+
+	// DefaultWorkerConcurrency is the default per-app worker concurrency used when
+	// a connect worker does not specify MaxWorkerConcurrency.
+	DefaultWorkerConcurrency int64 = 1000
+
+	ConnectWorkerHeartbeatInterval  = 10 * time.Second
+	ConnectGatewayHeartbeatInterval = 5 * time.Second
+	ConnectGCThreshold              = 5 * time.Minute
+
+	ConnectWorkerRequestLeaseDuration = 2 * time.Minute
+	ConnectWorkerRequestGracePeriod   = 5 * time.Second
+	ConnectWorkerStatusInterval       = 0 * time.Second // disabled by default
+
+	// ConnectWorkerCapacityForNoConcurrencyLimit is used to indicate that a worker has no capacity limit.
+	// Due to integer overflows of using negative numbers, we use 0 to indicate no limit.``
+	ConnectWorkerCapacityForNoConcurrencyLimit = 0
+
+	KafkaMsgTooLargeError = "MESSAGE_TOO_LARGE"
+
+	ConstraintAPIScavengerTick = 500 * time.Millisecond
+)
+
+var (
+	ConnectWorkerRequestToWorkerMappingTTL  = 6 * ConnectWorkerRequestLeaseDuration  // 12 minutes so in case of gateway failure, we don't lose the mapping for too long
+	ConnectWorkerCapacityManagerTTL         = 45 * ConnectWorkerRequestLeaseDuration // 90 minutes
+	ConnectWorkerRequestExtendLeaseInterval = ConnectWorkerRequestLeaseDuration / 4
+	QueueShadowContinuationCooldownPeriod   = QueueContinuationCooldownPeriod
+	QueueShadowContinuationMaxPartitions    = QueueContinuationMaxPartitions
+)

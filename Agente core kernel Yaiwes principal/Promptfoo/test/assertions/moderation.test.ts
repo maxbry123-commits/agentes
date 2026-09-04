@@ -1,0 +1,543 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { handleModeration } from '../../src/assertions/moderation';
+import { matchesModeration } from '../../src/matchers/moderation';
+import { createMockProvider } from '../factories/provider';
+
+import type {
+  Assertion,
+  AssertionParams,
+  AssertionValueFunctionContext,
+  TestCase,
+} from '../../src/types/index';
+
+vi.mock('../../src/matchers/moderation', () => ({
+  matchesModeration: vi.fn(),
+}));
+
+const mockedMatchesModeration = vi.mocked(matchesModeration);
+
+describe('handleModeration', () => {
+  const mockTest: TestCase = {
+    description: 'Test case',
+    vars: {},
+    assert: [],
+    options: {},
+  };
+
+  const mockAssertion: Assertion = {
+    type: 'moderation',
+    value: ['harassment'],
+  };
+
+  const mockProvider = createMockProvider({ config: {}, response: {} });
+
+  const mockContext: AssertionValueFunctionContext = {
+    prompt: 'test prompt',
+    vars: {},
+    test: mockTest,
+    logProbs: undefined,
+    provider: mockProvider,
+    providerResponse: { output: 'output' },
+  };
+
+  const baseParams: AssertionParams = {
+    assertion: mockAssertion,
+    test: mockTest,
+    outputString: 'output',
+    prompt: 'prompt',
+    baseType: 'moderation',
+    assertionValueContext: mockContext,
+    inverse: false,
+    output: 'output',
+    providerResponse: { output: 'output' },
+  };
+  const tokensUsed = {
+    total: 5,
+    prompt: 2,
+    completion: 3,
+    cached: 0,
+    numRequests: 1,
+    completionDetails: { reasoning: 0, acceptedPrediction: 0, rejectedPrediction: 0 },
+  };
+
+  beforeEach(() => {
+    mockedMatchesModeration.mockReset();
+  });
+
+  afterEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it('should pass moderation check', async () => {
+    mockedMatchesModeration.mockResolvedValue({
+      pass: true,
+      score: 1,
+      reason: 'Safe content',
+    });
+
+    const result = await handleModeration({
+      ...baseParams,
+      providerResponse: { output: 'output' },
+    });
+
+    expect(result).toEqual({
+      pass: true,
+      score: 1,
+      reason: 'Safe content',
+      assertion: mockAssertion,
+    });
+  });
+
+  it('should pass not-moderation when content IS flagged (inverse)', async () => {
+    // matchesModeration reports a flagged output as { pass: false, score: 0 }.
+    mockedMatchesModeration.mockResolvedValue({
+      pass: false,
+      score: 0,
+      reason: 'Moderation flags detected: harassment',
+    });
+
+    const result = await handleModeration({
+      ...baseParams,
+      inverse: true,
+      providerResponse: { output: 'output' },
+    });
+
+    // Before the fix the handler ignored `inverse` and returned pass: false,
+    // making not-moderation behave identically to moderation.
+    expect(result).toEqual({
+      pass: true,
+      score: 1,
+      reason: 'Moderation flags detected: harassment',
+      assertion: mockAssertion,
+    });
+  });
+
+  it('should fail not-moderation when content is clean (inverse)', async () => {
+    mockedMatchesModeration.mockResolvedValue({
+      pass: true,
+      score: 1,
+      reason: 'No moderation flags detected',
+    });
+
+    const result = await handleModeration({
+      ...baseParams,
+      inverse: true,
+      providerResponse: { output: 'output' },
+    });
+
+    expect(result).toEqual({
+      pass: false,
+      score: 0,
+      reason: 'No moderation flags detected',
+      assertion: mockAssertion,
+    });
+  });
+
+  it('should fail moderation (non-inverse) when content is flagged', async () => {
+    // Regression guard for the let/inverse refactor: the non-inverse path must
+    // still report a flagged result as a failure, byte-for-byte unchanged.
+    mockedMatchesModeration.mockResolvedValue({
+      pass: false,
+      score: 0,
+      reason: 'Moderation flags detected: harassment',
+    });
+
+    const result = await handleModeration({ ...baseParams, inverse: false });
+
+    expect(result).toEqual({
+      pass: false,
+      score: 0,
+      reason: 'Moderation flags detected: harassment',
+      assertion: mockAssertion,
+    });
+  });
+
+  it('should forward matcher token usage on a clean (pass) result', async () => {
+    // Preserve provider-reported moderation usage in assertion metrics.
+    mockedMatchesModeration.mockResolvedValue({
+      pass: true,
+      score: 1,
+      reason: 'No moderation flags detected',
+      tokensUsed,
+    });
+
+    const result = await handleModeration({
+      ...baseParams,
+      providerResponse: { output: 'output' },
+    });
+
+    expect(result).toEqual({
+      pass: true,
+      score: 1,
+      reason: 'No moderation flags detected',
+      tokensUsed,
+      assertion: mockAssertion,
+    });
+  });
+
+  it('should forward matcher token usage on a flagged (fail) result', async () => {
+    mockedMatchesModeration.mockResolvedValue({
+      pass: false,
+      score: 0,
+      reason: 'Moderation flags detected: harassment',
+      tokensUsed,
+    });
+
+    const result = await handleModeration({
+      ...baseParams,
+      providerResponse: { output: 'output' },
+    });
+
+    expect(result).toEqual({
+      pass: false,
+      score: 0,
+      reason: 'Moderation flags detected: harassment',
+      tokensUsed,
+      assertion: mockAssertion,
+    });
+  });
+
+  it('should preserve token usage when flipping pass/score for not-moderation (inverse)', async () => {
+    // `inverse` flips pass/score but must not drop token accounting.
+    mockedMatchesModeration.mockResolvedValue({
+      pass: false,
+      score: 0,
+      reason: 'Moderation flags detected: harassment',
+      tokensUsed,
+    });
+
+    const result = await handleModeration({
+      ...baseParams,
+      inverse: true,
+      providerResponse: { output: 'output' },
+    });
+
+    expect(result).toEqual({
+      pass: true,
+      score: 1,
+      reason: 'Moderation flags detected: harassment',
+      tokensUsed,
+      assertion: mockAssertion,
+    });
+  });
+
+  it('should NOT flip a moderation API error into a pass for not-moderation (inverse)', async () => {
+    // A provider/transport error is tagged metadata.graderError. The inverse flip
+    // must propagate it verbatim (fail closed) rather than turning an unchecked
+    // output into a spurious "was flagged" pass.
+    mockedMatchesModeration.mockResolvedValue({
+      pass: false,
+      score: 0,
+      reason: 'Moderation API error: provider unavailable',
+      tokensUsed,
+      metadata: { graderError: true },
+    });
+
+    const result = await handleModeration({
+      ...baseParams,
+      inverse: true,
+      providerResponse: { output: 'output' },
+    });
+
+    expect(result).toEqual({
+      pass: false,
+      score: 0,
+      reason: 'Moderation API error: provider unavailable',
+      tokensUsed,
+      metadata: { graderError: true },
+      assertion: mockAssertion,
+    });
+  });
+
+  it('should use redteam final prompt when available', async () => {
+    mockedMatchesModeration.mockResolvedValue({
+      pass: true,
+      score: 1,
+      reason: 'Safe content',
+    });
+
+    await handleModeration({
+      ...baseParams,
+      providerResponse: {
+        output: 'output',
+        metadata: { redteamFinalPrompt: 'modified prompt' },
+      },
+    });
+
+    expect(mockedMatchesModeration).toHaveBeenCalledWith(
+      {
+        userPrompt: 'modified prompt',
+        assistantResponse: 'output',
+        categories: ['harassment'],
+      },
+      {},
+    );
+  });
+
+  it('should use response.prompt (string) with highest priority', async () => {
+    mockedMatchesModeration.mockResolvedValue({
+      pass: true,
+      score: 1,
+      reason: 'Safe content',
+    });
+
+    await handleModeration({
+      ...baseParams,
+      prompt: 'original prompt',
+      providerResponse: {
+        output: 'output',
+        prompt: 'provider-generated prompt',
+        metadata: { redteamFinalPrompt: 'redteam prompt' },
+      },
+    });
+
+    // response.prompt should take priority over both redteamFinalPrompt and original prompt
+    expect(mockedMatchesModeration).toHaveBeenCalledWith(
+      {
+        userPrompt: 'provider-generated prompt',
+        assistantResponse: 'output',
+        categories: ['harassment'],
+      },
+      {},
+    );
+  });
+
+  it('should use the last user message from response.prompt chat messages with highest priority', async () => {
+    mockedMatchesModeration.mockResolvedValue({
+      pass: true,
+      score: 1,
+      reason: 'Safe content',
+    });
+
+    const chatMessages = [
+      { role: 'system' as const, content: 'You are helpful' },
+      { role: 'user' as const, content: 'Hello world' },
+    ];
+
+    await handleModeration({
+      ...baseParams,
+      prompt: 'original prompt',
+      providerResponse: {
+        output: 'output',
+        prompt: chatMessages,
+        metadata: { redteamFinalPrompt: 'redteam prompt' },
+      },
+    });
+
+    expect(mockedMatchesModeration).toHaveBeenCalledWith(
+      {
+        userPrompt: 'Hello world',
+        assistantResponse: 'output',
+        categories: ['harassment'],
+      },
+      {},
+    );
+  });
+
+  it('should fall back to redteamFinalPrompt when response.prompt is not set', async () => {
+    mockedMatchesModeration.mockResolvedValue({
+      pass: true,
+      score: 1,
+      reason: 'Safe content',
+    });
+
+    await handleModeration({
+      ...baseParams,
+      prompt: 'original prompt',
+      providerResponse: {
+        output: 'output',
+        // No response.prompt set
+        metadata: { redteamFinalPrompt: 'redteam prompt' },
+      },
+    });
+
+    // Should fall back to redteamFinalPrompt
+    expect(mockedMatchesModeration).toHaveBeenCalledWith(
+      {
+        userPrompt: 'redteam prompt',
+        assistantResponse: 'output',
+        categories: ['harassment'],
+      },
+      {},
+    );
+  });
+
+  it('should fall back to original prompt when neither response.prompt nor redteamFinalPrompt is set', async () => {
+    mockedMatchesModeration.mockResolvedValue({
+      pass: true,
+      score: 1,
+      reason: 'Safe content',
+    });
+
+    await handleModeration({
+      ...baseParams,
+      prompt: 'original prompt',
+      providerResponse: {
+        output: 'output',
+        // No response.prompt or redteamFinalPrompt
+      },
+    });
+
+    // Should fall back to original prompt
+    expect(mockedMatchesModeration).toHaveBeenCalledWith(
+      {
+        userPrompt: 'original prompt',
+        assistantResponse: 'output',
+        categories: ['harassment'],
+      },
+      {},
+    );
+  });
+
+  it('should fall back to original prompt when response.prompt is empty string', async () => {
+    mockedMatchesModeration.mockResolvedValue({
+      pass: true,
+      score: 1,
+      reason: 'Safe content',
+    });
+
+    await handleModeration({
+      ...baseParams,
+      prompt: 'original prompt',
+      providerResponse: {
+        output: 'output',
+        prompt: '',
+        metadata: { redteamFinalPrompt: 'redteam prompt' },
+      },
+    });
+
+    // Empty string prompt is not useful, should fall back to original
+    expect(mockedMatchesModeration).toHaveBeenCalledWith(
+      {
+        userPrompt: 'original prompt',
+        assistantResponse: 'output',
+        categories: ['harassment'],
+      },
+      {},
+    );
+  });
+
+  it('should fall back to original prompt when response.prompt is empty array', async () => {
+    mockedMatchesModeration.mockResolvedValue({
+      pass: true,
+      score: 1,
+      reason: 'Safe content',
+    });
+
+    await handleModeration({
+      ...baseParams,
+      prompt: 'original prompt',
+      providerResponse: {
+        output: 'output',
+        prompt: [],
+        metadata: { redteamFinalPrompt: 'redteam prompt' },
+      },
+    });
+
+    // Empty array prompt is not useful, should fall back to original
+    expect(mockedMatchesModeration).toHaveBeenCalledWith(
+      {
+        userPrompt: 'original prompt',
+        assistantResponse: 'output',
+        categories: ['harassment'],
+      },
+      {},
+    );
+  });
+
+  it('should extract the final user message from serialized chat prompts before moderation', async () => {
+    mockedMatchesModeration.mockResolvedValue({
+      pass: true,
+      score: 1,
+      reason: 'Safe content',
+    });
+
+    await handleModeration({
+      ...baseParams,
+      prompt: JSON.stringify([
+        { role: 'system', content: 'Ignore this system message' },
+        { role: 'user', content: 'Moderate this user request' },
+        { role: 'assistant', content: 'Ignore this assistant reply' },
+      ]),
+      providerResponse: {
+        output: 'output',
+      },
+    });
+
+    expect(mockedMatchesModeration).toHaveBeenCalledWith(
+      {
+        userPrompt: 'Moderate this user request',
+        assistantResponse: 'output',
+        categories: ['harassment'],
+      },
+      {},
+    );
+  });
+
+  it('should extract text from multimodal user messages instead of falling back to assistant text', async () => {
+    mockedMatchesModeration.mockResolvedValue({
+      pass: true,
+      score: 1,
+      reason: 'Safe content',
+    });
+
+    await handleModeration({
+      ...baseParams,
+      prompt: JSON.stringify([
+        { role: 'system', content: 'Ignore this system message' },
+        {
+          role: 'user',
+          content: [
+            { type: 'input_text', text: 'Moderate this multimodal user request' },
+            { type: 'input_image', image_url: 'https://example.test/image.png' },
+          ],
+        },
+        { role: 'assistant', content: 'Ignore this assistant reply' },
+      ]),
+      providerResponse: {
+        output: 'output',
+      },
+    });
+
+    expect(mockedMatchesModeration).toHaveBeenCalledWith(
+      {
+        userPrompt: 'Moderate this multimodal user request',
+        assistantResponse: 'output',
+        categories: ['harassment'],
+      },
+      {},
+    );
+  });
+
+  it('should extract the final user message from YAML chat prompts before moderation', async () => {
+    mockedMatchesModeration.mockResolvedValue({
+      pass: true,
+      score: 1,
+      reason: 'Safe content',
+    });
+
+    await handleModeration({
+      ...baseParams,
+      prompt: [
+        '- role: system',
+        '  content: Ignore this system message',
+        '- role: user',
+        '  content: Moderate this YAML user request',
+        '- role: assistant',
+        '  content: Ignore this assistant reply',
+      ].join('\n'),
+      providerResponse: {
+        output: 'output',
+      },
+    });
+
+    expect(mockedMatchesModeration).toHaveBeenCalledWith(
+      {
+        userPrompt: 'Moderate this YAML user request',
+        assistantResponse: 'output',
+        categories: ['harassment'],
+      },
+      {},
+    );
+  });
+});

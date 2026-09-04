@@ -1,0 +1,540 @@
+// Copyright (C) 2026 Yota Hamada
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+syntax = "proto3";
+
+package coordinator.v1;
+
+// protolint:disable:next MAX_LINE_LENGTH
+option go_package = "github.com/dagucloud/dagu/v2/proto/coordinator/v1;coordinatorv1";
+
+
+// Service definition for Coordinator Service.
+service CoordinatorService {
+  // Poll is called by workers to process a task.
+  rpc Poll (PollRequest) returns (PollResponse);
+  // Dispatch is called to dispatch a task to a worker.
+  rpc Dispatch (DispatchRequest) returns (DispatchResponse);
+  // GetWorkers returns the list of connected workers and their pollers.
+  rpc GetWorkers (GetWorkersRequest) returns (GetWorkersResponse);
+  // Heartbeat is called by workers to report their status.
+  rpc Heartbeat (HeartbeatRequest) returns (HeartbeatResponse);
+  // AckTaskClaim is called by workers after accepting a claimed task.
+  rpc AckTaskClaim (AckTaskClaimRequest) returns (AckTaskClaimResponse);
+  // ClaimAgentSessionCleanup reserves provider cleanup for its owning worker.
+  rpc ClaimAgentSessionCleanup (ClaimAgentSessionCleanupRequest) returns (ClaimAgentSessionCleanupResponse);
+  // CompleteAgentSessionCleanup completes or releases a provider cleanup claim.
+  rpc CompleteAgentSessionCleanup (CompleteAgentSessionCleanupRequest) returns (CompleteAgentSessionCleanupResponse);
+  // RunHeartbeat is called by workers to refresh leases for tasks owned by a
+  // specific coordinator instance.
+  rpc RunHeartbeat (RunHeartbeatRequest) returns (RunHeartbeatResponse);
+
+  // ReportStatus is called by workers to push DAG run status updates.
+  rpc ReportStatus (ReportStatusRequest) returns (ReportStatusResponse);
+
+  // StreamLogs is called by workers to stream step logs to the coordinator.
+  // Uses client streaming for efficient log transmission.
+  rpc StreamLogs (stream LogChunk) returns (StreamLogsResponse);
+
+  // StreamArtifacts is called by workers to upload DAG run artifacts to the coordinator.
+  // Uses client streaming for efficient file transmission.
+  rpc StreamArtifacts (stream ArtifactChunk) returns (StreamArtifactsResponse);
+
+  // PutWorkspaceBundle uploads an immutable content-addressed workspace bundle.
+  rpc PutWorkspaceBundle (stream WorkspaceBundleChunk) returns (PutWorkspaceBundleResponse);
+
+  // HasWorkspaceBundle checks whether a coordinator already stores a bundle.
+  rpc HasWorkspaceBundle (HasWorkspaceBundleRequest) returns (HasWorkspaceBundleResponse);
+
+  // GetWorkspaceBundle downloads an immutable content-addressed workspace bundle.
+  rpc GetWorkspaceBundle (GetWorkspaceBundleRequest) returns (stream WorkspaceBundleChunk);
+
+  // GetDAGRunStatus retrieves the status of a DAG run from the coordinator.
+  // Used by parent DAGs to poll status of remote sub-DAGs.
+  rpc GetDAGRunStatus (GetDAGRunStatusRequest) returns (GetDAGRunStatusResponse);
+
+  // RequestCancel is called to request cancellation of a DAG run.
+  // Used for sub-DAG cancellation where the parent cannot directly access the
+  // sub-DAG's attempt.
+  rpc RequestCancel (RequestCancelRequest) returns (RequestCancelResponse);
+
+  // GetState retrieves persistent DAG state from the coordinator-owned store.
+  rpc GetState (GetStateRequest) returns (GetStateResponse);
+
+  // PutState creates or updates persistent DAG state with optimistic concurrency.
+  rpc PutState (PutStateRequest) returns (PutStateResponse);
+
+  // DeleteState removes persistent DAG state.
+  rpc DeleteState (DeleteStateRequest) returns (DeleteStateResponse);
+
+  // ListState lists persistent DAG state entries by scope, namespace, and key prefix.
+  rpc ListState (ListStateRequest) returns (ListStateResponse);
+
+  // GetDAG retrieves a DAG definition (raw YAML spec) from the coordinator's DAG store.
+  // Used as a fallback when a worker's local DAG store misses a definition during
+  // sub-DAG execution.
+  rpc GetDAG (GetDAGRequest) returns (GetDAGResponse);
+
+  // ResolveSecretReference resolves or checks a Dagu-managed secret registry ref.
+  // Used by workers that cannot read the coordinator's secret store.
+  rpc ResolveSecretReference (ResolveSecretReferenceRequest) returns (ResolveSecretReferenceResponse);
+}
+
+// Request message for polling a task.
+message PollRequest {
+  string worker_id = 1;
+  string poller_id = 2; // Unique ID for this poll request
+  map<string, string> labels = 3; // Worker labels for task matching
+}
+
+// Response message for polling a task.
+message PollResponse {
+  Task task = 1; // The task to process.
+}
+
+// Request message for dispatching a task.
+message DispatchRequest {
+  Task task = 1;
+  string admission_reservation_token = 2;
+}
+
+// Response message for dispatching a task.
+message DispatchResponse {
+  // No field
+}
+
+// Task to process.
+message Task {
+  Operation operation = 6;
+  string root_dag_run_name = 1;
+  string root_dag_run_id = 2;
+  string parent_dag_run_name = 3;
+  string parent_dag_run_id = 4;
+  string dag_run_id = 5;
+  string target = 7; // DAG name or path
+  string params = 8; // Optional: parameters
+  string step = 9;   // Optional: specific step (for RETRY)
+  map<string, string> worker_selector = 10; // Required worker labels for execution
+  string definition = 11; // Optional: DAG definition (YAML) for local DAGs
+  string worker_id = 12; // ID of the worker that will execute this task
+  // Previous status for OPERATION_RETRY.
+  // When set, workers can retry without needing local DAG-run persistence.
+  DAGRunStatusProto previous_status = 13;
+  // Attempt ID created by coordinator. Workers use this to create attempts with the same ID.
+  string attempt_id = 14;
+  // Globally unique attempt identifier for cancellation tracking.
+  string attempt_key = 15;
+  // Additional labels (comma-separated key=value or key-only) to apply to the DAG run.
+  string labels = 16;
+  // Base config YAML content for workers (avoids relying on local base config files).
+  string base_config = 17;
+  // RFC 3339 timestamp of when this task was originally scheduled.
+  string schedule_time = 18;
+  // Enables parent-managed step retries for this task.
+  bool external_step_retry = 19;
+  // Queue/proc-group name used for distributed queue capacity accounting.
+  string queue_name = 20;
+  // Coordinator instance that owns this task after claim.
+  string owner_coordinator_id = 21;
+  string owner_coordinator_host = 22;
+  int32 owner_coordinator_port = 23;
+  // Durable token identifying the shared task claim.
+  string claim_token = 24;
+  // Original DAG file path for provenance-aware reschedule-from-file behavior.
+  string source_file = 25;
+  // Content-addressed workspace bundle for action sub-DAGs.
+  string workspace_bundle_digest = 27;
+  int64 workspace_bundle_size = 28;
+  string workspace_bundle_dag_path = 29;
+  string workspace_bundle_original_ref = 30;
+  string workspace_bundle_resolved_ref = 31;
+  // Runtime profile name. Workers resolve values at attempt start.
+  string profile_name = 32;
+  // Internal persisted child DAG route for a targeted step retry.
+  string retry_path = 33;
+  // Attributable actor that initiated the DAG run.
+  string trigger_actor = 34;
+  // Stable identity of the persisted DAG definition.
+  string definition_id = 35;
+  // Value bound to ITEM for a parallel child run.
+  string parallel_item = 36;
+  // Exact worker required to resume a host-owned agent session.
+  string target_worker_id = 37;
+  // When true, a targeted step retry also resets reachable descendants.
+  bool include_downstream = 38;
+}
+
+enum Operation {
+  OPERATION_UNSPECIFIED = 0;
+  OPERATION_START = 1;    // Start a new DAG run
+  OPERATION_RETRY = 2;    // Retry an existing run
+}
+
+// Health status of a worker based on heartbeat recency.
+enum WorkerHealthStatus {
+  WORKER_HEALTH_STATUS_UNSPECIFIED = 0;
+  WORKER_HEALTH_STATUS_HEALTHY = 1;      // Last heartbeat < 5 seconds
+  WORKER_HEALTH_STATUS_WARNING = 2;      // Last heartbeat 5-15 seconds
+  WORKER_HEALTH_STATUS_UNHEALTHY = 3;    // Last heartbeat > 15 seconds
+}
+
+// Request message for getting workers.
+message GetWorkersRequest {
+  // No fields needed for now
+}
+
+// Response message for getting workers.
+message GetWorkersResponse {
+  repeated WorkerInfo workers = 1;
+}
+
+// Information about a worker and its pollers.
+message WorkerInfo {
+  string worker_id = 1;
+  string poller_id = 2;  // Deprecated: Only used for backward compatibility
+  map<string, string> labels = 3;
+  int64 connected_at = 4; // Unix timestamp in seconds
+  // Aggregated stats from heartbeat
+  int32 total_pollers = 5;
+  int32 busy_pollers = 6;
+  repeated RunningTask running_tasks = 7;
+  int64 last_heartbeat_at = 8; // Unix timestamp of last heartbeat
+  WorkerHealthStatus health_status = 9; // Health status based on heartbeat recency
+}
+
+// Request message for heartbeat.
+message HeartbeatRequest {
+  string worker_id = 1;
+  map<string, string> labels = 2;
+  WorkerStats stats = 3;
+}
+
+// Response message for heartbeat.
+message HeartbeatResponse {
+  // List of DAG runs that should be cancelled by the worker.
+  // Workers check this on each heartbeat and cancel matching running tasks.
+  repeated CancelledRun cancelled_runs = 1;
+}
+
+message AckTaskClaimRequest {
+  string worker_id = 1;
+  string claim_token = 2;
+  string attempt_key = 3;
+}
+
+message AckTaskClaimResponse {
+  bool accepted = 1;
+  string error = 2;
+}
+
+message ClaimAgentSessionCleanupRequest {
+  string worker_id = 1;
+}
+
+message ClaimAgentSessionCleanupResponse {
+  bool found = 1;
+  string job_id = 2;
+  string claim_token = 3;
+  string provider = 4;
+  string session_id = 5;
+  string directory = 6;
+  string owner_coordinator_id = 7;
+  string owner_coordinator_host = 8;
+  int32 owner_coordinator_port = 9;
+}
+
+message CompleteAgentSessionCleanupRequest {
+  string worker_id = 1;
+  string job_id = 2;
+  string claim_token = 3;
+  string error = 4;
+}
+
+message CompleteAgentSessionCleanupResponse {
+  // No fields.
+}
+
+message RunHeartbeatRequest {
+  string worker_id = 1;
+  string owner_coordinator_id = 2;
+  repeated RunningTask running_tasks = 3;
+}
+
+message RunHeartbeatResponse {
+  repeated CancelledRun cancelled_runs = 1;
+}
+
+// Information about a cancelled DAG run.
+message CancelledRun {
+  string attempt_key = 1; // Globally unique attempt identifier to cancel
+}
+
+// Worker statistics reported via heartbeat.
+message WorkerStats {
+  int32 total_pollers = 1;      // Total number of pollers
+  int32 busy_pollers = 2;       // Number currently processing tasks
+  repeated RunningTask running_tasks = 3; // Details of running tasks
+}
+
+// Information about a running task.
+message RunningTask {
+  string dag_run_id = 1;
+  string dag_name = 2;
+  int64 started_at = 3;         // Unix timestamp in seconds
+  string root_dag_run_name = 4;
+  string root_dag_run_id = 5;
+  string parent_dag_run_name = 6;
+  string parent_dag_run_id = 7;
+  string attempt_key = 8;       // Globally unique attempt identifier
+}
+
+// Request message for reporting DAG run status.
+message ReportStatusRequest {
+  string worker_id = 1;
+  DAGRunStatusProto status = 2;
+  string owner_coordinator_id = 3;
+  string source_file = 4;
+  string labels = 5;
+}
+
+// Response message for reporting DAG run status.
+message ReportStatusResponse {
+  bool accepted = 1;
+  string error = 2;
+}
+
+// Full DAG run status (JSON-serialized execution.DAGRunStatus).
+message DAGRunStatusProto {
+  string json_data = 1;
+}
+
+// Log chunk sent from worker to coordinator.
+message LogChunk {
+  string worker_id = 1;
+  string dag_run_id = 2;
+  string dag_name = 3;
+  string step_name = 4;
+  LogStreamType stream_type = 5;
+  bytes data = 6;
+  uint64 sequence = 7;  // For ordering
+  bool is_final = 8;    // Last chunk for this step
+
+  // Root DAG info for sub-DAGs
+  string root_dag_run_name = 9;
+  string root_dag_run_id = 10;
+
+  // Attempt ID for the DAG run
+  string attempt_id = 11;
+  // Owner coordinator used to validate owner-bound log writes.
+  string owner_coordinator_id = 12;
+  // Durable attempt identity used to fence log writes.
+  string attempt_key = 13;
+  // When present, data is written at this absolute byte position; otherwise it is appended.
+  optional uint64 byte_offset = 14;
+}
+
+// Type of log stream.
+enum LogStreamType {
+  LOG_STREAM_TYPE_UNSPECIFIED = 0;
+  LOG_STREAM_TYPE_STDOUT = 1;
+  LOG_STREAM_TYPE_STDERR = 2;
+  LOG_STREAM_TYPE_SCHEDULER = 3;  // Scheduler/DAG run log
+}
+
+// Response message for log streaming.
+message StreamLogsResponse {
+  uint64 chunks_received = 1;
+  uint64 bytes_written = 2;
+  string error = 3;
+}
+
+// Artifact chunk sent from worker to coordinator.
+message ArtifactChunk {
+  string worker_id = 1;
+  string dag_run_id = 2;
+  string dag_name = 3;
+  string relative_path = 4;
+  bytes data = 5;
+  uint64 sequence = 6;
+  bool is_final = 7;
+
+  // Root DAG info for sub-DAGs
+  string root_dag_run_name = 8;
+  string root_dag_run_id = 9;
+
+  // Attempt ID for the DAG run
+  string attempt_id = 10;
+  // Owner coordinator used to validate owner-bound artifact writes.
+  string owner_coordinator_id = 11;
+  // Durable attempt identity used to fence artifact writes.
+  string attempt_key = 12;
+}
+
+// Response message for artifact streaming.
+message StreamArtifactsResponse {
+  uint64 chunks_received = 1;
+  uint64 bytes_written = 2;
+  string error = 3;
+}
+
+// Workspace bundle descriptor.
+message WorkspaceBundle {
+  string digest = 1;
+  int64 size = 2;
+  string dag_path = 3;
+  string original_ref = 4;
+  string resolved_ref = 5;
+}
+
+// Workspace bundle chunk for upload and download streams.
+message WorkspaceBundleChunk {
+  WorkspaceBundle bundle = 1;
+  bytes data = 2;
+  uint64 sequence = 3;
+  bool is_final = 4;
+}
+
+// Response message for workspace bundle upload.
+message PutWorkspaceBundleResponse {
+  bool accepted = 1;
+  string error = 2;
+}
+
+// Request message for checking workspace bundle presence.
+message HasWorkspaceBundleRequest {
+  string digest = 1;
+}
+
+// Response message for checking workspace bundle presence.
+message HasWorkspaceBundleResponse {
+  bool exists = 1;
+}
+
+// Request message for workspace bundle download.
+message GetWorkspaceBundleRequest {
+  string digest = 1;
+}
+
+// Request message for getting DAG run status.
+message GetDAGRunStatusRequest {
+  string dag_name = 1;      // Name of the DAG
+  string dag_run_id = 2;    // ID of the DAG run
+  // Root DAG run info for sub-DAG queries (optional).
+  // When set, the coordinator looks up the status as a sub-DAG.
+  string root_dag_run_name = 3;
+  string root_dag_run_id = 4;
+}
+
+// Response message for getting DAG run status.
+message GetDAGRunStatusResponse {
+  bool found = 1;                   // Whether the DAG run was found
+  DAGRunStatusProto status = 2;     // The status (only set if found)
+  string error = 3;                 // Error message if any
+}
+
+// Request message for cancelling a DAG run.
+message RequestCancelRequest {
+  string dag_name = 1;
+  string dag_run_id = 2;
+  // Root DAG run info for sub-DAG cancellation
+  string root_dag_run_name = 3;
+  string root_dag_run_id = 4;
+}
+
+// Response message for cancelling a DAG run.
+message RequestCancelResponse {
+  bool accepted = 1;
+  string error = 2;
+}
+
+message StateRef {
+  string scope = 1;
+  string namespace = 2;
+  string key = 3;
+}
+
+message StateUpdateSource {
+  string dag_name = 1;
+  string dag_run_id = 2;
+  string attempt_id = 3;
+  string step_name = 4;
+}
+
+message StateEntry {
+  StateRef ref = 1;
+  bytes value = 2;
+  int64 version = 3;
+  string hash = 4;
+  int64 created_at = 5;
+  int64 updated_at = 6;
+  StateUpdateSource updated_by = 7;
+}
+
+message GetStateRequest {
+  StateRef ref = 1;
+}
+
+message GetStateResponse {
+  bool found = 1;
+  StateEntry entry = 2;
+}
+
+message PutStateRequest {
+  StateRef ref = 1;
+  bytes value = 2;
+  bool has_expected_version = 3;
+  int64 expected_version = 4;
+  bool create_only = 5;
+  StateUpdateSource updated_by = 6;
+}
+
+message PutStateResponse {
+  StateEntry entry = 1;
+}
+
+message DeleteStateRequest {
+  StateRef ref = 1;
+}
+
+message DeleteStateResponse {
+  bool deleted = 1;
+}
+
+message ListStateRequest {
+  string scope = 1;
+  string namespace = 2;
+  string key_prefix = 3;
+  int32 limit = 4;
+}
+
+message ListStateResponse {
+  repeated StateEntry entries = 1;
+}
+
+// GetDAG retrieves a DAG definition (raw YAML spec) from the coordinator's DAG store.
+// Used as a fallback when a worker's local DAG store misses a definition during
+// sub-DAG execution. This eliminates race conditions in git-synced setups where
+// a new DAG YAML may not yet be present on the worker.
+message GetDAGRequest {
+  string name = 1;  // DAG name to look up
+}
+
+message GetDAGResponse {
+  string spec = 1;  // Raw YAML content of the DAG definition (empty if not found)
+  string error = 2; // Error description when the DAG cannot be retrieved
+}
+
+// ResolveSecretReference resolves or checks one Dagu-managed registry ref.
+message ResolveSecretReferenceRequest {
+  string name = 1;      // Environment variable name requested by the DAG
+  string ref = 2;       // Registry ref, for example "prod/db-password"
+  string workspace = 3; // Workspace scope; empty means global
+  bool check_only = 4;  // When true, verify access without returning plaintext
+  string worker_id = 5;   // Worker currently owning the dispatched attempt
+  string attempt_key = 6; // Active distributed attempt lease key
+  string attempt_id = 7;  // Attempt ID created by the coordinator
+}
+
+message ResolveSecretReferenceResponse {
+  string value = 1; // Plaintext secret value; empty for check_only
+}

@@ -1,0 +1,154 @@
+import { useCallback } from 'react';
+import { isValidDate } from '@inngest/components/utils/date';
+import { useClient } from 'urql';
+
+import { useEnvironment } from '@/components/Environments/environment-context';
+import { graphql } from '@/gql';
+import { InsightsColumnType, type InsightsResultsQuery } from '@/gql/graphql';
+import { UNTITLED_QUERY } from '../InsightsTabManager/constants';
+import type { InsightsFetchResult } from './types';
+
+export interface FetchInsightsParams {
+  query: string;
+  queryName: string;
+}
+
+type FetchInsightsCallback = (query: string, name: undefined | string) => void;
+
+const insightResultsQuery = graphql(`
+  query InsightsResults($query: String!, $workspaceID: ID!) {
+    insights(query: $query, workspaceID: $workspaceID) {
+      columns {
+        name
+        columnType
+      }
+      rows {
+        values
+      }
+      diagnostics {
+        position {
+          start
+          end
+          context
+        }
+        severity
+        code
+        message
+      }
+    }
+  }
+`);
+
+export function useFetchInsights() {
+  const client = useClient();
+  const environment = useEnvironment();
+
+  const fetchInsights = useCallback(
+    async (
+      { query, queryName }: FetchInsightsParams,
+      cb: FetchInsightsCallback,
+    ): Promise<InsightsFetchResult> => {
+      const res = await client
+        .query(
+          insightResultsQuery,
+          { query, workspaceID: environment.id },
+          { requestPolicy: 'network-only' },
+        )
+        .toPromise();
+      if (res.error) throw res.error;
+      if (!res.data) throw new Error('No data');
+
+      cb(query, queryName === UNTITLED_QUERY ? undefined : queryName);
+      return transformInsightsResponse(res.data.insights);
+    },
+    [client, environment.id],
+  );
+
+  return { fetchInsights };
+}
+
+function mapColumnType(
+  columnType: InsightsColumnType,
+): 'date' | 'number' | 'string' {
+  switch (columnType) {
+    case InsightsColumnType.Date:
+      return 'date';
+    case InsightsColumnType.Number:
+      return 'number';
+    case InsightsColumnType.String:
+    case InsightsColumnType.Unknown:
+    default:
+      return 'string';
+  }
+}
+
+function parseValueByType(
+  value: string,
+  columnType: InsightsColumnType,
+): string | number | Date | null {
+  switch (columnType) {
+    case InsightsColumnType.Number:
+      return parseFloat(value);
+    case InsightsColumnType.Date: {
+      const date = new Date(value);
+      return isValidDate(date) ? date : value;
+    }
+    case InsightsColumnType.String:
+    case InsightsColumnType.Unknown:
+    default:
+      return String(value);
+  }
+}
+
+function transformValuesByColumns(
+  values: string[],
+  columns: Array<{ name: string; columnType: InsightsColumnType }>,
+): Record<string, string | number | Date | null> {
+  return columns.reduce((acc, column, index) => {
+    const value = values[index];
+    if (value === undefined) {
+      acc[column.name] = null;
+      return acc;
+    }
+
+    acc[column.name] = parseValueByType(value, column.columnType);
+    return acc;
+  }, {} as Record<string, string | number | Date | null>);
+}
+
+function transformInsightsResponse(
+  insights: InsightsResultsQuery['insights'],
+): InsightsFetchResult {
+  console.log(insights);
+  return {
+    columns: insights.columns.map((col) => ({
+      name: col.name,
+      type: mapColumnType(col.columnType),
+    })),
+    rows: insights.rows.map((row, index) => ({
+      id: `row-${index}`,
+      values: transformValuesByColumns(row.values, insights.columns),
+    })),
+    diagnostics:
+      insights.diagnostics?.map((diag) => {
+        if (!diag.position) {
+          return {
+            severity: diag.severity,
+            message: diag.message,
+            code: diag.code,
+          };
+        }
+
+        return {
+          position: {
+            start: diag.position.start,
+            end: diag.position.end,
+            context: diag.position.context,
+          },
+          severity: diag.severity,
+          code: diag.code,
+          message: diag.message,
+        };
+      }) ?? [],
+  };
+}

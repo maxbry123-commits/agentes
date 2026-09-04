@@ -1,0 +1,45 @@
+# yaml-language-server: $schema=https://promptfoo.dev/config-schema.json
+description: Reproduce Mistral Magistral AIME2024 benchmark
+
+prompts:
+  - |
+    Solve this AIME mathematical problem step by step.
+
+    Problem: {{question}}
+
+    Think through this carefully and provide your final answer as a 3-digit integer (000-999).
+    End with: "Therefore, the answer is [your answer]."
+
+providers:
+  - id: mistral:magistral-medium-latest
+    label: Magistral Medium
+    config:
+      temperature: 0.7
+      top_p: 0.95
+      max_tokens: 40960
+  # The `magistral-small-latest` alias now resolves to Mistral Small 4, so use the
+  # canonical id. It contrasts a general hybrid model against native-reasoning Magistral.
+  - id: mistral:mistral-small-latest
+    label: Mistral Small 4
+    config:
+      temperature: 0.7
+      top_p: 0.95
+      max_tokens: 40960
+
+tests:
+  - huggingface://datasets/sea-snell/aime-2024?split=test
+
+defaultTest:
+  assert:
+    - type: llm-rubric
+      value: |
+        Evaluate this mathematical solution to an AIME competition problem.
+
+        The correct answer is: {{answer}}
+
+        Grade as PASS if and only if:
+        1. The response shows clear step-by-step mathematical reasoning
+        2. The final answer presented equals {{answer}} exactly
+        3. The mathematical work supports the conclusion
+
+        Grade as FAIL if the final answer is incorrect, regardless of the reasoning quality.

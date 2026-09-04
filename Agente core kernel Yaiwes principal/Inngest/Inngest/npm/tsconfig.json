@@ -1,0 +1,13 @@
+{
+  "include": ["postinstall.ts"],
+  "compilerOptions": {
+    "target": "es2016",
+    "module": "commonjs",
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "removeComments": true,
+    "resolveJsonModule": true
+  }
+}

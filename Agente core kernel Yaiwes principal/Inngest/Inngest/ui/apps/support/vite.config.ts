@@ -1,0 +1,35 @@
+import path from "node:path";
+import { tanstackStart } from "@tanstack/react-start/plugin/vite";
+import { defineConfig } from "vite";
+import tsConfigPaths from "vite-tsconfig-paths";
+import { nitro } from "nitro/vite";
+import viteReact from "@vitejs/plugin-react";
+
+export default defineConfig({
+  resolve: {
+    alias: {
+      "@inngest/components": path.resolve(
+        __dirname,
+        "../../packages/components/src",
+      ),
+    },
+  },
+  optimizeDeps: {
+    include: [
+      "use-sync-external-store/shim/index.js",
+      "use-sync-external-store/shim/with-selector.js",
+    ],
+  },
+  ssr: {
+    noExternal: ["@headlessui/tailwindcss"],
+    external: ["next"],
+  },
+  plugins: [
+    tsConfigPaths({
+      projects: ["./tsconfig.json"],
+    }),
+    tanstackStart(),
+    nitro(),
+    viteReact(),
+  ],
+});

@@ -1,0 +1,292 @@
+import headlessui from '@headlessui/tailwindcss';
+import type { Config } from 'tailwindcss';
+import defaultTheme from 'tailwindcss/defaultTheme';
+
+const config = {
+  content: ['./src/**/*.{ts,tsx,mdx}'],
+  darkMode: 'class' as const,
+  theme: {
+    extend: {
+      fontFamily: {
+        sans: ['CircularXX', ...defaultTheme.fontFamily.sans],
+        mono: ['CircularXXMono', ...defaultTheme.fontFamily.mono],
+      },
+      colors: {
+        primary: {
+          '3xSubtle': 'rgb(var(--color-primary-3xSubtle) / <alpha-value>)',
+          '2xSubtle': 'rgb(var(--color-primary-2xSubtle) / <alpha-value>)',
+          xSubtle: 'rgb(var(--color-primary-xSubtle) / <alpha-value>)',
+          subtle: 'rgb(var(--color-primary-subtle) / <alpha-value>)',
+          moderate: 'rgb(var(--color-primary-moderate) / <alpha-value>)',
+          intense: 'rgb(var(--color-primary-intense) / <alpha-value>)',
+          xIntense: 'rgb(var(--color-primary-xIntense) / <alpha-value>)',
+          '2xIntense': 'rgb(var(--color-primary-2xIntense) / <alpha-value>)',
+          '3xIntense': 'rgb(var(--color-primary-3xIntense) / <alpha-value>)',
+        },
+        secondary: {
+          '4xSubtle': 'rgb(var(--color-secondary-4xSubtle) / <alpha-value>)',
+          '3xSubtle': 'rgb(var(--color-secondary-3xSubtle) / <alpha-value>)',
+          '2xSubtle': 'rgb(var(--color-secondary-2xSubtle) / <alpha-value>)',
+          xSubtle: 'rgb(var(--color-secondary-xSubtle) / <alpha-value>)',
+          subtle: 'rgb(var(--color-secondary-subtle) / <alpha-value>)',
+          moderate: 'rgb(var(--color-secondary-moderate) / <alpha-value>)',
+          intense: 'rgb(var(--color-secondary-intense) / <alpha-value>)',
+          xIntense: 'rgb(var(--color-secondary-xIntense) / <alpha-value>)',
+          '2xIntense': 'rgb(var(--color-secondary-2xIntense) / <alpha-value>)',
+          '3xIntense': 'rgb(var(--color-secondary-3xIntense) / <alpha-value>)',
+        },
+        tertiary: {
+          '3xSubtle': 'rgb(var(--color-tertiary-3xSubtle) / <alpha-value>)',
+          '2xSubtle': 'rgb(var(--color-tertiary-2xSubtle) / <alpha-value>)',
+          xSubtle: 'rgb(var(--color-tertiary-xSubtle) / <alpha-value>)',
+          subtle: 'rgb(var(--color-tertiary-subtle) / <alpha-value>)',
+          moderate: 'rgb(var(--color-tertiary-moderate) / <alpha-value>)',
+          intense: 'rgb(var(--color-tertiary-intense) / <alpha-value>)',
+          xIntense: 'rgb(var(--color-tertiary-xIntense) / <alpha-value>)',
+          '2xIntense': 'rgb(var(--color-tertiary-2xIntense) / <alpha-value>)',
+          '3xIntense': 'rgb(var(--color-tertiary-3xIntense) / <alpha-value>)',
+        },
+        quaternary: {
+          cool3xSubtle: 'rgb(var(--color-quaternary-cool-3xSubtle) / <alpha-value>)',
+          coolxSubtle: 'rgb(var(--color-quaternary-cool-xSubtle) / <alpha-value>)',
+          coolModerate: 'rgb(var(--color-quaternary-cool-moderate) / <alpha-value>)',
+          coolxIntense: 'rgb(var(--color-quaternary-cool-xIntense) / <alpha-value>)',
+          cool3xIntense: 'rgb(var(--color-quaternary-cool-3xIntense) / <alpha-value>)',
+          warmer3xSubtle: 'rgb(var(--color-quaternary-warmer-3xSubtle) / <alpha-value>)',
+          warmerxSubtle: 'rgb(var(--color-quaternary-warmer-xSubtle) / <alpha-value>)',
+          warmerModerate: 'rgb(var(--color-quaternary-warmer-moderate) / <alpha-value>)',
+          warmerxIntense: 'rgb(var(--color-quaternary-warmer-xIntense) / <alpha-value>)',
+          warmer3xIntense: 'rgb(var(--color-quaternary-warmer-3xIntense) / <alpha-value>)',
+        },
+        accent: {
+          '3xSubtle': 'rgb(var(--color-accent-3xSubtle) / <alpha-value>)',
+          '2xSubtle': 'rgb(var(--color-accent-2xSubtle) / <alpha-value>)',
+          xSubtle: 'rgb(var(--color-accent-xSubtle) / <alpha-value>)',
+          subtle: 'rgb(var(--color-accent-subtle) / <alpha-value>)',
+          moderate: 'rgb(var(--color-accent-moderate) / <alpha-value>)',
+          intense: 'rgb(var(--color-accent-intense) / <alpha-value>)',
+          xIntense: 'rgb(var(--color-accent-xIntense) / <alpha-value>)',
+          '2xIntense': 'rgb(var(--color-accent-2xIntense) / <alpha-value>)',
+          '3xIntense': 'rgb(var(--color-accent-3xIntense) / <alpha-value>)',
+        },
+        status: {
+          failed: 'rgb(var(--color-tertiary-subtle) / <alpha-value>)',
+          failedText: 'rgb(var(--color-tertiary-intense) / <alpha-value>)',
+          running: 'rgb(var(--color-secondary-subtle) / <alpha-value>)',
+          runningSubtle: 'rgb(var(--color-secondary-2xSubtle) / <alpha-value>)',
+          runningText: 'rgb(var(--color-secondary-intense) / <alpha-value>)',
+          queued: 'rgb(var(--color-quaternary-cool-moderate) / <alpha-value>)',
+          queuedSubtle: 'rgb(var(--color-quaternary-cool-xSubtle) / <alpha-value>)',
+          queuedText: 'rgb(var(--color-quaternary-cool-xIntense) / <alpha-value>)',
+          completed: 'rgb(var(--color-primary-subtle) / <alpha-value>)',
+          completedText: 'rgb(var(--color-primary-intense) / <alpha-value>)',
+          cancelled: 'rgb(var(--color-foreground-cancelled) / <alpha-value>)',
+          cancelledText: 'rgb(var(--color-foreground-subtle) / <alpha-value>)',
+          paused: 'rgb(var(--color-foreground-paused) / <alpha-value>)',
+          pausedText: 'rgb(var(--color-foreground-subtle) / <alpha-value>)',
+        },
+      },
+      borderColor: {
+        light: 'rgb(var(--color-border-light) / <alpha-value>)',
+        subtle: 'rgb(var(--color-border-subtle) / <alpha-value>)',
+        muted: 'rgb(var(--color-border-muted) / <alpha-value>)',
+        contrast: 'rgb(var(--color-border-contrast) / <alpha-value>)',
+        disabled: 'rgb(var(--color-border-disabled) / <alpha-value>)',
+        success: 'rgb(var(--color-border-success) / <alpha-value>)',
+        error: 'rgb(var(--color-border-error) / <alpha-value>)',
+        warning: 'rgb(var(--color-border-warning) / <alpha-value>)',
+        info: 'rgb(var(--color-border-info) / <alpha-value>)',
+        active: 'rgb(var(--color-border-active) / <alpha-value>)',
+      },
+      outlineColor: {
+        subtle: 'rgb(var(--color-border-subtle) / <alpha-value>)',
+        error: 'rgb(var(--color-border-error) / <alpha-value>)',
+      },
+      divideColor: {
+        subtle: 'rgb(var(--color-border-subtle) / <alpha-value>)',
+      },
+      backgroundColor: {
+        canvasBase: 'rgb(var(--color-background-canvas-base) / <alpha-value>)',
+        canvasSubtle: 'rgb(var(--color-background-canvas-subtle) / <alpha-value>)',
+        canvasMuted: 'rgb(var(--color-background-canvas-muted) / <alpha-value>)',
+        surfaceBase: 'rgb(var(--color-background-surface-base) / <alpha-value>)',
+        surfaceSubtle: 'rgb(var(--color-background-surface-subtle) / <alpha-value>)',
+        surfaceMuted: 'rgb(var(--color-background-surface-muted) / <alpha-value>)',
+        modalBase: 'rgb(var(--color-background-modal-base) / <alpha-value>)',
+        overlay: 'rgb(var(--color-background-overlay) / <alpha-value>)',
+        disabled: 'rgb(var(--color-background-disabled) / <alpha-value>)',
+        alwaysWhite: 'rgb(var(--color-foreground-alwaysWhite) / <alpha-value>)',
+        contrast: 'rgb(var(--color-background-contrast) / <alpha-value>)',
+        success: 'rgb(var(--color-background-success) / <alpha-value>)',
+        successContrast: 'rgb(var(--color-background-successContrast) / <alpha-value>)',
+        error: 'rgb(var(--color-background-error) / <alpha-value>)',
+        errorContrast: 'rgb(var(--color-background-errorContrast) / <alpha-value>)',
+        warning: 'rgb(var(--color-background-warning) / <alpha-value>)',
+        warningContrast: 'rgb(var(--color-background-warningContrast) / <alpha-value>)',
+        info: 'rgb(var(--color-background-info) / <alpha-value>)',
+        infoContrast: 'rgb(var(--color-background-infoContrast) / <alpha-value>)',
+        codeEditor: 'rgb(var(--color-background-codeEditor) / <alpha-value>)',
+        btnPrimary: 'rgb(var(--color-background-btn-primary) / <alpha-value>)',
+        btnPrimaryHover: 'rgb(var(--color-background-btn-primaryHover) / <alpha-value>)',
+        btnPrimaryPressed: 'rgb(var(--color-background-btn-primaryPressed) / <alpha-value>)',
+        btnPrimaryDisabled: 'rgb(var(--color-background-btn-primaryDisabled) / <alpha-value>)',
+        btnDanger: 'rgb(var(--color-background-btn-danger) / <alpha-value>)',
+        btnDangerHover: 'rgb(var(--color-background-btn-dangerHover) / <alpha-value>)',
+        btnDangerPressed: 'rgb(var(--color-background-btn-dangerPressed) / <alpha-value>)',
+        btnDangerDisabled: 'rgb(var(--color-background-btn-dangerDisabled) / <alpha-value>)',
+        tableHeader: 'rgb(var(--color-background-tableHeader) / <alpha-value>)',
+      },
+      textColor: {
+        basis: 'rgb(var(--color-foreground-base) / <alpha-value>)',
+        subtle: 'rgb(var(--color-foreground-subtle) / <alpha-value>)',
+        muted: 'rgb(var(--color-foreground-muted) / <alpha-value>)',
+        light: 'rgb(var(--color-foreground-light) / <alpha-value>)',
+        onContrast: 'rgb(var(--color-foreground-onContrast) / <alpha-value>)',
+        alwaysWhite: 'rgb(var(--color-foreground-alwaysWhite) / <alpha-value>)',
+        alwaysBlack: 'rgb(var(--color-foreground-alwaysBlack) / <alpha-value>)',
+        disabled: 'rgb(var(--color-foreground-disabled) / <alpha-value>)',
+        link: 'rgb(var(--color-foreground-link) / <alpha-value>)',
+        success: 'rgb(var(--color-foreground-success) / <alpha-value>)',
+        error: 'rgb(var(--color-foreground-error) / <alpha-value>)',
+        warning: 'rgb(var(--color-foreground-warning) / <alpha-value>)',
+        info: 'rgb(var(--color-foreground-info) / <alpha-value>)',
+        btnPrimary: 'rgb(var(--color-foreground-btn-primary) / <alpha-value>)',
+        btnPrimaryDisabled: 'rgb(var(--color-foreground-btn-primaryDisabled) / <alpha-value>)',
+        btnDanger: 'rgb(var(--color-foreground-btn-danger) / <alpha-value>)',
+        btnDangerDisabled: 'rgb(var(--color-foreground-btn-dangerDisabled) / <alpha-value>)',
+        codeDelimiterBracketJson:
+          'rgb(var(--color-foreground-code-delimiterBracketJson) / <alpha-value>)',
+        codeStringKeyJson: 'rgb(var(--color-foreground-code-stringKeyJson) / <alpha-value>)',
+        codeNumberJson: 'rgb(var(--color-foreground-code-numberJson) / <alpha-value>)',
+        codeStringValueJson: 'rgb(var(--color-foreground-code-stringValueJson) / <alpha-value>)',
+        codeKeywordJson: 'rgb(var(--color-foreground-code-keywordJson) / <alpha-value>)',
+        codeComment: 'rgb(var(--color-foreground-code-comment) / <alpha-value>)',
+        codeString: 'rgb(var(--color-foreground-code-string) / <alpha-value>)',
+        codeKeyword: 'rgb(var(--color-foreground-code-keyword) / <alpha-value>)',
+        codeEntityNameFunction:
+          'rgb(var(--color-foreground-code-entityNameFunction) / <alpha-value>)',
+      },
+      caretColor: {
+        basis: 'rgb(var(--color-foreground-base) / <alpha-value>)',
+      },
+      textDecorationColor: {
+        link: 'rgb(var(--color-foreground-link) / <alpha-value>)',
+        subtle: 'rgb(var(--color-foreground-subtle) / <alpha-value>)',
+      },
+      placeholderColor: {
+        disabled: 'rgb(var(--color-foreground-disabled) / <alpha-value>)',
+      },
+      gradientColorStops: {
+        canvasMuted: 'rgb(var(--color-background-canvas-muted) / <alpha-value>)',
+      },
+      fill: {
+        //
+        // temporary tooltip token
+        tooltipArrow: 'rgb(var(--color-background-canvas-base) / <alpha-value>)',
+        onContrast: 'rgb(var(--color-foreground-onContrast) / <alpha-value>)',
+        contrast: 'rgb(var(--color-background-contrast) / <alpha-value>)',
+        basis: 'rgb(var(--color-foreground-base) / <alpha-value>)',
+        subtle: 'rgb(var(--color-foreground-subtle) / <alpha-value>)',
+        muted: 'rgb(var(--color-foreground-muted) / <alpha-value>)',
+        disabled: 'rgb(var(--color-foreground-disabled) / <alpha-value>)',
+        alwaysWhite: 'rgb(var(--color-foreground-alwaysWhite) / <alpha-value>)',
+        btnPrimary: 'rgb(var(--color-foreground-btn-primary) / <alpha-value>)',
+        btnDanger: 'rgb(var(--color-foreground-btn-danger) / <alpha-value>)',
+        link: 'rgb(var(--color-foreground-link) / <alpha-value>)',
+      },
+      stroke: {
+        disabled: 'rgb(var(--color-border-disabled) / <alpha-value>)',
+        muted: 'rgb(var(--color-border-muted) / <alpha-value>)',
+        subtle: 'rgb(var(--color-foreground-subtle) / <alpha-value>)',
+      },
+      gridTemplateColumns: {
+        dashboard: '1fr 1fr 1fr 432px',
+      },
+      boxShadowColor: {
+        //
+        // temporary tooltip token
+        tooltip: 'rgb(var(--color-background-canvas-muted) / <alpha-value>)',
+        subtle: 'rgb(var(--color-border-subtle) / <alpha-value>)',
+      },
+      boxShadow: {
+        primary:
+          '-4px 8px 12px -5px rgba(46, 46, 46, 0.08), 4px 8px 12px -5px rgba(46, 46, 46, 0.08), -2px 24px 12px -20px rgba(46, 46, 46, 0.02);',
+        floating: '0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(255, 255, 255, 0.15)',
+        // Soft elevation used by new IA chrome (sidebar+content card).
+        xs: '0 1px 2px 0 rgba(0, 0, 0, 0.04), 0 1px 1px 0 rgba(0, 0, 0, 0.03)',
+      },
+      borderWidth: {
+        // 0.5px utility for new IA chrome (cards, dividers). Renders as a
+        // crisp hairline on hi-DPI displays.
+        hairline: '0.5px',
+      },
+      outlineOffset: {
+        3: '3px',
+      },
+      keyframes: {
+        shimmer: {
+          '100%': {
+            transform: 'translateX(100%)',
+          },
+        },
+        'shimmer-left': {
+          '100%': {
+            transform: 'translateX(-100%)',
+          },
+        },
+        'shimmer-down': {
+          '100%': {
+            transform: 'translateY(100%)',
+          },
+        },
+        'shimmer-up': {
+          '100%': {
+            transform: 'translateY(-100%)',
+          },
+        },
+        'shimmer-text': {
+          '0%': {
+            backgroundPosition: '100% 0',
+          },
+          '100%': {
+            backgroundPosition: '0 0',
+          },
+        },
+        'slide-down-and-fade': {
+          '0%': { opacity: '0', transform: 'translateY(-3px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
+        'slide-left-and-fade': {
+          '0%': { opacity: '0', transform: 'translateX(2px)' },
+          '100%': { opacity: '1', transform: 'translateX(0)' },
+        },
+        'slide-up-and-fade': {
+          '0%': { opacity: '0', transform: 'translateY(2px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
+        'slide-right-and-fade': {
+          '0%': { opacity: '0', transform: 'translateX(2px)' },
+          '100%': { opacity: '1', transform: 'translateX(0)' },
+        },
+        underline: {
+          to: { width: '100%' },
+        },
+      },
+      animation: {
+        'slide-down-and-fade': 'slide-down-and-fade 400ms cubic-bezier(0.16, 1, 0.3, 1)',
+        'slide-left-and-fade': 'slide-left-and-fade 400ms cubic-bezier(0.16, 1, 0.3, 1)',
+        'slide-up-and-fade': 'slide-up-and-fade 400ms cubic-bezier(0.16, 1, 0.3, 1)',
+        'slide-right-and-fade': 'slide-right-and-fade 400ms cubic-bezier(0.16, 1, 0.3, 1)',
+        underline: 'underline 2s linear infinite',
+        'shimmer-text': 'shimmer-text 1.25s linear infinite',
+      },
+      spacing: {
+        'cmdk-margin': 'calc((100vh - (84.5px + 330px)) / 2)',
+      },
+    },
+  },
+
+  plugins: [headlessui] as Config['plugins'],
+} satisfies Config;
+
+export default config;

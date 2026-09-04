@@ -1,0 +1,257 @@
+import async from 'async';
+import chalk from 'chalk';
+import dedent from 'dedent';
+import { VERSION } from '../../constants';
+import { renderPrompt } from '../../evaluatorHelpers';
+import { getUserEmail } from '../../globalConfig/accounts';
+import logger from '../../logger';
+import { fetchWithProxy } from '../../util/fetch/index';
+import invariant from '../../util/invariant';
+import { accumulateResponseTokenUsage, createEmptyTokenUsage } from '../../util/tokenUsageUtils';
+import {
+  getRemoteGenerationExplicitlyDisabledError,
+  getRemoteGenerationHeaders,
+  getRemoteGenerationUrl,
+  neverGenerateRemote,
+} from '../remoteGeneration';
+import { remoteGenerationContextPayload } from '../remoteGenerationContext';
+import { throwIfTargetPromptExceedsMaxChars } from '../shared/promptLength';
+import { getSessionId } from '../util';
+import { callTargetProvider } from './shared';
+
+import type {
+  ApiProvider,
+  CallApiContextParams,
+  CallApiOptionsParams,
+  ProviderResponse,
+} from '../../types/providers';
+
+interface BestOfNResponse {
+  modifiedPrompts: string[];
+  task: 'jailbreak:best-of-n';
+}
+
+interface BestOfNConfig {
+  injectVar: string;
+  targetId?: string;
+  maxConcurrency: number;
+  nSteps?: number;
+  maxCandidatesPerStep?: number;
+}
+
+export default class BestOfNProvider implements ApiProvider {
+  readonly config: BestOfNConfig;
+
+  id() {
+    return 'promptfoo:redteam:best-of-n';
+  }
+
+  constructor(
+    options: {
+      injectVar?: string;
+      maxConcurrency?: number;
+      nSteps?: number;
+      maxCandidatesPerStep?: number;
+      targetId?: string;
+    } = {},
+  ) {
+    if (neverGenerateRemote()) {
+      throw new Error(getRemoteGenerationExplicitlyDisabledError('Best-of-N strategy'));
+    }
+
+    invariant(typeof options.injectVar === 'string', 'Expected injectVar to be set');
+    this.config = {
+      injectVar: options.injectVar,
+      maxConcurrency: options.maxConcurrency || 3,
+      nSteps: options.nSteps,
+      maxCandidatesPerStep: options.maxCandidatesPerStep,
+      targetId: options.targetId,
+    };
+  }
+
+  async callApi(
+    _prompt: string,
+    context?: CallApiContextParams,
+    options?: CallApiOptionsParams,
+  ): Promise<ProviderResponse> {
+    logger.debug('[Best-of-N] callApi context', { context });
+    invariant(context?.originalProvider, 'Expected originalProvider to be set');
+    invariant(context?.vars, 'Expected vars to be set');
+
+    const targetProvider: ApiProvider = context.originalProvider;
+    const targetTokenUsage = createEmptyTokenUsage();
+    let targetCost: number | undefined;
+    let incurredTargetCost: number | undefined;
+    const sessionIds: string[] = [];
+    try {
+      // Get candidate prompts from the server
+      const response = await fetchWithProxy(
+        getRemoteGenerationUrl(),
+        {
+          method: 'POST',
+          headers: getRemoteGenerationHeaders(),
+          body: JSON.stringify({
+            task: 'jailbreak:best-of-n',
+            ...remoteGenerationContextPayload(this.config.targetId),
+            prompt: context.vars[this.config.injectVar],
+            nSteps: this.config.nSteps,
+            maxCandidatesPerStep: this.config.maxCandidatesPerStep,
+            version: VERSION,
+            email: getUserEmail(),
+          }),
+        },
+        options?.abortSignal,
+      );
+
+      const data = (await response.json()) as BestOfNResponse;
+      invariant(Array.isArray(data.modifiedPrompts), 'Expected modifiedPrompts array in response');
+
+      logger.debug(
+        dedent`
+          ${chalk.bold.green('Best-of-N candidates:')}
+          ${chalk.cyan(JSON.stringify(data.modifiedPrompts, null, 2))}
+        `,
+      );
+
+      // Try candidates concurrently until one succeeds
+      let successfulResponse: ProviderResponse | null = null;
+      let lastResponse: ProviderResponse | null = null;
+      let currentStep = 0;
+
+      await async.eachLimit(
+        data.modifiedPrompts,
+        this.config.maxConcurrency,
+        async (candidatePrompt) => {
+          if (successfulResponse) {
+            return;
+          }
+
+          if (typeof candidatePrompt !== 'string') {
+            logger.warn('[Best-of-N] Skipping non-string candidate prompt from remote generation', {
+              component: 'Best-of-N',
+              event: 'SkippingCandidatePrompt',
+              reason: 'non-string',
+              candidatePromptType: typeof candidatePrompt,
+            });
+            return;
+          }
+
+          const unsafeCandidateScheme = /^\s*(file:\/\/|package:)/i
+            .exec(candidatePrompt)?.[1]
+            .toLowerCase();
+          if (unsafeCandidateScheme) {
+            const schemeLabel = unsafeCandidateScheme.startsWith('file') ? 'file://' : 'package:';
+            logger.warn(
+              `[Best-of-N] Skipping unsafe ${schemeLabel} candidate prompt from remote generation`,
+              {
+                component: 'Best-of-N',
+                event: 'SkippingCandidatePrompt',
+                reason:
+                  schemeLabel === 'file://' ? 'unsafe-file-protocol' : 'unsafe-package-protocol',
+              },
+            );
+            return;
+          }
+
+          const targetVars = {
+            ...context.vars,
+            [this.config.injectVar]: candidatePrompt,
+          };
+
+          const renderedPrompt = await renderPrompt(
+            context.prompt,
+            targetVars,
+            context.filters,
+            targetProvider,
+            [this.config.injectVar], // Skip special loading and template rendering for the injection variable
+          );
+
+          try {
+            // TODO(ian): Pass the strategy/plugin metadata maxCharsPerMessage limit here so
+            // plugin-scoped caps are enforced even when no top-level redteam cap is configured.
+            throwIfTargetPromptExceedsMaxChars(renderedPrompt);
+            const response = await callTargetProvider(
+              targetProvider,
+              renderedPrompt,
+              context,
+              options,
+            );
+            const sessionId = getSessionId(response, context);
+            if (sessionId) {
+              sessionIds.push(sessionId);
+            }
+            lastResponse = response;
+            accumulateResponseTokenUsage(targetTokenUsage, response);
+            if (response.cost !== undefined) {
+              targetCost = (targetCost ?? 0) + response.cost;
+              incurredTargetCost =
+                (incurredTargetCost ?? 0) +
+                (response.incurredCost ?? (response.cached ? 0 : response.cost));
+            }
+            currentStep++;
+            if (!response.error) {
+              successfulResponse = response;
+              successfulResponse.prompt = candidatePrompt;
+              successfulResponse.metadata = {
+                ...successfulResponse.metadata,
+                redteamFinalPrompt: candidatePrompt,
+                step: currentStep,
+              };
+              return false; // Stop processing more candidates
+            }
+          } catch (err) {
+            logger.debug(`[Best-of-N] Candidate failed: ${err}`);
+            lastResponse = { error: String(err) };
+            currentStep++;
+          }
+        },
+      );
+
+      const aggregatedResponse = (successfulResponse ?? lastResponse) as ProviderResponse | null;
+      if (aggregatedResponse) {
+        aggregatedResponse.tokenUsage = targetTokenUsage;
+        if (
+          aggregatedResponse.cached &&
+          (targetTokenUsage.incurredTokenUsage?.numRequests ?? 0) > 0
+        ) {
+          aggregatedResponse.cached = false;
+        }
+
+        if (targetCost !== undefined) {
+          aggregatedResponse.cost = targetCost;
+          if (incurredTargetCost !== targetCost || aggregatedResponse.incurredCost !== undefined) {
+            aggregatedResponse.incurredCost = incurredTargetCost;
+          }
+        }
+
+        if (!successfulResponse) {
+          aggregatedResponse.metadata = {
+            ...(aggregatedResponse.metadata ?? {}),
+            sessionIds,
+          };
+        }
+
+        return aggregatedResponse;
+      }
+
+      return {
+        error: 'All candidates failed',
+        metadata: {
+          sessionIds,
+        },
+      };
+    } catch (err) {
+      // Re-throw abort errors to properly cancel the operation
+      if (err instanceof Error && err.name === 'AbortError') {
+        throw err;
+      }
+      logger.error(`[Best-of-N] Error: ${err}`);
+      return {
+        error: String(err),
+        metadata: {
+          sessionIds,
+        },
+      };
+    }
+  }
+}

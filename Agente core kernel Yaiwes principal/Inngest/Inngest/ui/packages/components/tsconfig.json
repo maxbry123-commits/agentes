@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "@inngest/tsconfig/react-library.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "node_modules/.cache/tsbuildinfo.json",
+    "rootDirs": ["./src/", "./.storybook/", "./"],
+    "target": "ES2017"
+  },
+  "include": [
+    "./src/**/*",
+    "./.storybook/**/preview.tsx",
+    "./tailwind.config.ts",
+    "../../apps/dashboard/src/components/Secret"
+  ],
+  "exclude": ["node_modules", "./dist/"]
+}

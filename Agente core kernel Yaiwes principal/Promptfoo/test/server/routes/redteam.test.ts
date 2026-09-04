@@ -1,0 +1,1113 @@
+import request from 'supertest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createApp } from '../../../src/server/server';
+
+// Mock dependencies
+vi.mock('../../../src/redteam/plugins/index');
+vi.mock('../../../src/redteam/providers/shared');
+vi.mock('../../../src/redteam/shared');
+vi.mock('../../../src/redteam/remoteGeneration');
+vi.mock('../../../src/util/fetch/index');
+vi.mock('../../../src/server/services/redteamTestCaseGenerationService');
+
+// Import after mocking
+import logger from '../../../src/logger';
+import { Plugins } from '../../../src/redteam/plugins/index';
+import { redteamProviderManager } from '../../../src/redteam/providers/shared';
+import { getRemoteGenerationUrl, neverGenerateRemote } from '../../../src/redteam/remoteGeneration';
+import { doRedteamRun } from '../../../src/redteam/shared';
+import { Strategies } from '../../../src/redteam/strategies/index';
+import {
+  extractGeneratedPrompt,
+  getPluginConfigurationError,
+} from '../../../src/server/services/redteamTestCaseGenerationService';
+import { fetchWithProxy } from '../../../src/util/fetch/index';
+
+const mockedPlugins = vi.mocked(Plugins);
+const mockedRedteamProviderManager = vi.mocked(redteamProviderManager);
+const mockedGetPluginConfigurationError = vi.mocked(getPluginConfigurationError);
+const mockedExtractGeneratedPrompt = vi.mocked(extractGeneratedPrompt);
+const mockedDoRedteamRun = vi.mocked(doRedteamRun);
+const mockedGetRemoteGenerationUrl = vi.mocked(getRemoteGenerationUrl);
+const mockedNeverGenerateRemote = vi.mocked(neverGenerateRemote);
+const mockedFetchWithProxy = vi.mocked(fetchWithProxy);
+const debugSpy = vi.spyOn(logger, 'debug');
+
+describe('Redteam Routes', () => {
+  let app: ReturnType<typeof createApp>;
+
+  beforeEach(() => {
+    app = createApp();
+  });
+
+  describe('POST /redteam/generate-test', () => {
+    beforeEach(() => {
+      vi.resetAllMocks();
+
+      // Default mock implementations
+      mockedGetPluginConfigurationError.mockReturnValue(null);
+      mockedRedteamProviderManager.getProviderSelection.mockImplementation(
+        async ({ provider, fallbackProvider } = {}) => {
+          const selected = provider ?? fallbackProvider;
+          return {
+            provider: {
+              id: () => 'test-provider',
+              callApi: vi.fn(),
+            } as any,
+            source: provider ? 'explicit' : fallbackProvider ? 'fallback' : 'default',
+            localProviderSpec: selected,
+            persistableId: typeof selected === 'string' ? selected : undefined,
+          };
+        },
+      );
+      mockedExtractGeneratedPrompt.mockReturnValue('generated test prompt');
+    });
+
+    describe('excluded plugins logic', () => {
+      it('should NOT exclude dataset-exempt plugins without multi-input config', async () => {
+        // 'aegis' is a DATASET_EXEMPT_PLUGIN but should work without multi-input
+        const mockPluginFactory = {
+          key: 'aegis',
+          action: vi.fn().mockResolvedValue([{ vars: { query: 'test' } }]),
+        };
+        mockedPlugins.find = vi.fn().mockReturnValue(mockPluginFactory);
+
+        const response = await request(app)
+          .post('/api/redteam/generate-test')
+          .send({
+            plugin: {
+              id: 'aegis',
+              config: {},
+            },
+            strategy: {
+              id: 'basic',
+              config: {},
+            },
+            config: {
+              applicationDefinition: {
+                purpose: 'test assistant',
+              },
+            },
+          });
+
+        expect(response.status).toBe(200);
+        // Should have called the plugin factory action (not excluded)
+        expect(mockPluginFactory.action).toHaveBeenCalled();
+        expect(response.body.prompt).toBe('generated test prompt');
+      });
+
+      it('should default missing application purpose for generated tests', async () => {
+        const mockPluginFactory = {
+          key: 'aegis',
+          action: vi.fn().mockResolvedValue([{ vars: { query: 'test' } }]),
+        };
+        mockedPlugins.find = vi.fn().mockReturnValue(mockPluginFactory);
+
+        const response = await request(app)
+          .post('/api/redteam/generate-test')
+          .send({
+            plugin: {
+              id: 'aegis',
+              config: {},
+            },
+            strategy: {
+              id: 'basic',
+              config: {},
+            },
+            config: {
+              applicationDefinition: {},
+            },
+          });
+
+        expect(response.status).toBe(200);
+        expect(mockPluginFactory.action).toHaveBeenCalledWith(
+          expect.objectContaining({ purpose: 'general AI assistant' }),
+        );
+        expect(response.body.prompt).toBe('generated test prompt');
+      });
+
+      it('uses request-scoped provider selection without reading process-global config', async () => {
+        const mockPluginFactory = {
+          key: 'aegis',
+          action: vi.fn().mockResolvedValue([{ vars: { query: 'test' } }]),
+        };
+        mockedPlugins.find = vi.fn().mockReturnValue(mockPluginFactory);
+
+        const response = await request(app)
+          .post('/api/redteam/generate-test')
+          .send({
+            plugin: {
+              id: 'aegis',
+              config: {},
+            },
+            strategy: {
+              id: 'basic',
+              config: {},
+            },
+            config: {
+              applicationDefinition: {
+                purpose: 'test assistant',
+              },
+            },
+          });
+
+        expect(response.status).toBe(200);
+        expect(mockedRedteamProviderManager.getProviderSelection).toHaveBeenCalledWith({
+          provider: undefined,
+          ignoreCliState: true,
+        });
+      });
+
+      it('passes the current preview provider through validated request data', async () => {
+        const mockPluginFactory = {
+          key: 'aegis',
+          action: vi.fn().mockResolvedValue([{ vars: { query: 'test' } }]),
+        };
+        mockedPlugins.find = vi.fn().mockReturnValue(mockPluginFactory);
+
+        const response = await request(app)
+          .post('/api/redteam/generate-test')
+          .send({
+            plugin: {
+              id: 'aegis',
+              config: {},
+            },
+            strategy: {
+              id: 'basic',
+              config: {},
+            },
+            config: {
+              applicationDefinition: {
+                purpose: 'test assistant',
+              },
+            },
+            provider: 'openai:chat:gpt-4.1',
+          });
+
+        expect(response.status).toBe(200);
+        expect(mockedRedteamProviderManager.getProviderSelection).toHaveBeenCalledWith({
+          provider: 'openai:chat:gpt-4.1',
+          ignoreCliState: true,
+        });
+      });
+
+      it('preserves custom environment overrides on object preview providers', async () => {
+        const mockPluginFactory = {
+          key: 'aegis',
+          action: vi.fn().mockResolvedValue([{ vars: { query: 'test' } }]),
+        };
+        mockedPlugins.find = vi.fn().mockReturnValue(mockPluginFactory);
+
+        const provider = {
+          id: 'openai:chat:${MY_MODEL}',
+          env: {
+            MY_MODEL: 'gpt-4.1',
+            MY_CUSTOM_KEY: 'secret',
+            OPENAI_API_KEY: 'standard-key',
+          },
+        };
+        const response = await request(app)
+          .post('/api/redteam/generate-test')
+          .send({
+            plugin: { id: 'aegis', config: {} },
+            strategy: { id: 'basic', config: {} },
+            config: { applicationDefinition: { purpose: 'test assistant' } },
+            provider,
+          });
+
+        expect(response.status).toBe(200);
+        expect(mockedRedteamProviderManager.getProviderSelection).toHaveBeenCalledWith({
+          provider,
+          ignoreCliState: true,
+        });
+      });
+
+      it.each([
+        ['empty string', ''],
+        ['whitespace string', '   '],
+        ['missing object id', {}],
+        ['empty object id', { id: '' }],
+      ])('treats an %s preview provider as unset', async (_name, provider) => {
+        const mockPluginFactory = {
+          key: 'aegis',
+          action: vi.fn().mockResolvedValue([{ vars: { query: 'test' } }]),
+        };
+        mockedPlugins.find = vi.fn().mockReturnValue(mockPluginFactory);
+
+        const response = await request(app)
+          .post('/api/redteam/generate-test')
+          .send({
+            plugin: { id: 'aegis', config: {} },
+            strategy: { id: 'basic', config: {} },
+            config: { applicationDefinition: { purpose: 'test assistant' } },
+            provider,
+          });
+
+        expect(response.status).toBe(200);
+        expect(mockedRedteamProviderManager.getProviderSelection).toHaveBeenCalledWith({
+          provider: undefined,
+          ignoreCliState: true,
+        });
+      });
+
+      it('passes the resolved preview provider through strategy generation', async () => {
+        const previewProvider = {
+          id: () => 'preview-provider',
+          callApi: vi.fn(),
+        };
+        mockedRedteamProviderManager.getProviderSelection.mockResolvedValue({
+          provider: previewProvider as any,
+          source: 'explicit',
+          localProviderSpec: 'openai:chat:gpt-4.1',
+          persistableId: 'openai:chat:gpt-4.1',
+        });
+        const mockPluginFactory = {
+          key: 'aegis',
+          action: vi.fn().mockResolvedValue([{ vars: { query: 'test' } }]),
+        };
+        mockedPlugins.find = vi.fn().mockReturnValue(mockPluginFactory);
+        const strategyAction = vi.fn().mockResolvedValue([{ vars: { query: 'transformed' } }]);
+        const strategySpy = vi.spyOn(Strategies, 'find').mockReturnValue({
+          id: 'math-prompt',
+          action: strategyAction,
+        } as any);
+
+        try {
+          const response = await request(app)
+            .post('/api/redteam/generate-test')
+            .send({
+              plugin: { id: 'aegis', config: {} },
+              strategy: { id: 'math-prompt', config: {} },
+              config: { applicationDefinition: { purpose: 'test assistant' } },
+              provider: 'openai:chat:gpt-4.1',
+            });
+
+          expect(response.status).toBe(200);
+          expect(strategyAction).toHaveBeenCalledWith(
+            expect.any(Array),
+            'query',
+            expect.not.objectContaining({ redteamProvider: expect.anything() }),
+            'math-prompt',
+            {
+              generationProviderSelection: {
+                provider: previewProvider,
+                source: 'explicit',
+                localProviderSpec: 'openai:chat:gpt-4.1',
+                persistableId: 'openai:chat:gpt-4.1',
+              },
+            },
+          );
+          expect(strategyAction.mock.calls[0]?.[2]).not.toHaveProperty('__generationProvider');
+        } finally {
+          strategySpy.mockRestore();
+        }
+      });
+
+      it('keeps the cached provider spec serializable during strategy generation', async () => {
+        const previewProvider = {
+          id: () => 'cached-preview-provider',
+          callApi: vi.fn(),
+          apiKey: 'resolved-secret',
+        };
+        mockedRedteamProviderManager.getProviderSelection.mockResolvedValue({
+          provider: previewProvider as any,
+          source: 'cache',
+          localProviderSpec: 'anthropic:claude-sonnet-4',
+          persistableId: 'anthropic:claude-sonnet-4',
+        });
+        const mockPluginFactory = {
+          key: 'aegis',
+          action: vi.fn().mockResolvedValue([{ vars: { query: 'test' } }]),
+        };
+        mockedPlugins.find = vi.fn().mockReturnValue(mockPluginFactory);
+        const strategyAction = vi.fn().mockResolvedValue([{ vars: { query: 'transformed' } }]);
+        const strategySpy = vi.spyOn(Strategies, 'find').mockReturnValue({
+          id: 'math-prompt',
+          action: strategyAction,
+        } as any);
+
+        try {
+          const response = await request(app)
+            .post('/api/redteam/generate-test')
+            .send({
+              plugin: { id: 'aegis', config: {} },
+              strategy: { id: 'math-prompt', config: {} },
+              config: { applicationDefinition: { purpose: 'test assistant' } },
+            });
+
+          expect(response.status).toBe(200);
+          expect(strategyAction.mock.calls[0]?.[2]).not.toHaveProperty('redteamProvider');
+          expect(strategyAction.mock.calls[0]?.[2]).not.toHaveProperty('apiKey');
+          expect(strategyAction.mock.calls[0]?.[4]).toEqual({
+            generationProviderSelection: {
+              provider: previewProvider,
+              source: 'cache',
+              localProviderSpec: 'anthropic:claude-sonnet-4',
+              persistableId: 'anthropic:claude-sonnet-4',
+            },
+          });
+        } finally {
+          strategySpy.mockRestore();
+        }
+      });
+
+      it('should exclude dataset-exempt plugins with multi-input config', async () => {
+        // 'beavertails' is a DATASET_EXEMPT_PLUGIN - should be excluded with inputs
+        const response = await request(app)
+          .post('/api/redteam/generate-test')
+          .send({
+            plugin: {
+              id: 'beavertails',
+              config: {
+                inputs: { query: 'user query', context: 'additional context' },
+              },
+            },
+            strategy: {
+              id: 'basic',
+              config: {},
+            },
+            config: {
+              applicationDefinition: {
+                purpose: 'test assistant',
+              },
+            },
+          });
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual({ testCases: [], count: 0 });
+      });
+
+      it('should exclude multi-input excluded plugins when plugin has multi-input config', async () => {
+        // 'cca' is a MULTI_INPUT_EXCLUDED_PLUGIN - should be excluded only with multi-input
+        const response = await request(app)
+          .post('/api/redteam/generate-test')
+          .send({
+            plugin: {
+              id: 'cca',
+              config: {
+                inputs: { query: 'user query', context: 'additional context' },
+              },
+            },
+            strategy: {
+              id: 'basic',
+              config: {},
+            },
+            config: {
+              applicationDefinition: {
+                purpose: 'test assistant',
+              },
+            },
+          });
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual({ testCases: [], count: 0 });
+      });
+
+      it('should NOT exclude multi-input excluded plugins when plugin has no multi-input config', async () => {
+        // 'cca' is a MULTI_INPUT_EXCLUDED_PLUGIN - should NOT be excluded without multi-input
+        const mockPluginFactory = {
+          key: 'cca',
+          action: vi.fn().mockResolvedValue([{ vars: { query: 'test' } }]),
+        };
+        mockedPlugins.find = vi.fn().mockReturnValue(mockPluginFactory);
+
+        const response = await request(app)
+          .post('/api/redteam/generate-test')
+          .send({
+            plugin: {
+              id: 'cca',
+              config: {}, // No inputs - should not be excluded
+            },
+            strategy: {
+              id: 'basic',
+              config: {},
+            },
+            config: {
+              applicationDefinition: {
+                purpose: 'test assistant',
+              },
+            },
+          });
+
+        expect(response.status).toBe(200);
+        // Should have called the plugin factory action (not returned early)
+        expect(mockPluginFactory.action).toHaveBeenCalled();
+        // Single test case returns 'prompt' instead of 'testCases' array
+        expect(response.body.prompt).toBe('generated test prompt');
+      });
+
+      it('should NOT exclude multi-input excluded plugins when inputs is empty object', async () => {
+        // Empty inputs object should not trigger multi-input exclusion
+        const mockPluginFactory = {
+          key: 'cross-session-leak',
+          action: vi.fn().mockResolvedValue([{ vars: { query: 'test' } }]),
+        };
+        mockedPlugins.find = vi.fn().mockReturnValue(mockPluginFactory);
+
+        const response = await request(app)
+          .post('/api/redteam/generate-test')
+          .send({
+            plugin: {
+              id: 'cross-session-leak',
+              config: {
+                inputs: {}, // Empty inputs - should not be excluded
+              },
+            },
+            strategy: {
+              id: 'basic',
+              config: {},
+            },
+            config: {
+              applicationDefinition: {
+                purpose: 'test assistant',
+              },
+            },
+          });
+
+        expect(response.status).toBe(200);
+        // Should have called the plugin factory action (not returned early)
+        expect(mockPluginFactory.action).toHaveBeenCalled();
+      });
+
+      it('should not exclude system-prompt-override with multi-input config', async () => {
+        const mockPluginFactory = {
+          key: 'system-prompt-override',
+          action: vi.fn().mockResolvedValue([{ vars: { __prompt: 'test' } }]),
+        };
+        mockedPlugins.find = vi.fn().mockReturnValue(mockPluginFactory);
+
+        const response = await request(app)
+          .post('/api/redteam/generate-test')
+          .send({
+            plugin: {
+              id: 'system-prompt-override',
+              config: {
+                inputs: { systemPrompt: 'system', userInput: 'user' },
+              },
+            },
+            strategy: {
+              id: 'basic',
+              config: {},
+            },
+            config: {
+              applicationDefinition: {
+                purpose: 'test assistant',
+              },
+            },
+          });
+
+        expect(response.status).toBe(200);
+        expect(mockPluginFactory.action).toHaveBeenCalled();
+        expect(response.body.prompt).toBe('generated test prompt');
+      });
+
+      it('should NOT exclude special-token-injection without multi-input config', async () => {
+        const mockPluginFactory = {
+          key: 'special-token-injection',
+          action: vi.fn().mockResolvedValue([{ vars: { query: 'test' } }]),
+        };
+        mockedPlugins.find = vi.fn().mockReturnValue(mockPluginFactory);
+
+        const response = await request(app)
+          .post('/api/redteam/generate-test')
+          .send({
+            plugin: {
+              id: 'special-token-injection',
+              config: {}, // No inputs
+            },
+            strategy: {
+              id: 'basic',
+              config: {},
+            },
+            config: {
+              applicationDefinition: {
+                purpose: 'test assistant',
+              },
+            },
+          });
+
+        expect(response.status).toBe(200);
+        expect(mockPluginFactory.action).toHaveBeenCalled();
+      });
+
+      it('should process regular plugins normally without inputs', async () => {
+        // 'harmful:hate' is a regular plugin, not in any exclusion list
+        const mockPluginFactory = {
+          key: 'harmful:hate',
+          action: vi.fn().mockResolvedValue([{ vars: { query: 'test case' } }]),
+        };
+        mockedPlugins.find = vi.fn().mockReturnValue(mockPluginFactory);
+
+        const response = await request(app)
+          .post('/api/redteam/generate-test')
+          .send({
+            plugin: {
+              id: 'harmful:hate',
+              config: {},
+            },
+            strategy: {
+              id: 'basic',
+              config: {},
+            },
+            config: {
+              applicationDefinition: {
+                purpose: 'test assistant',
+              },
+            },
+          });
+
+        expect(response.status).toBe(200);
+        expect(mockPluginFactory.action).toHaveBeenCalled();
+        // Single test case returns 'prompt' instead of 'testCases' array
+        expect(response.body.prompt).toBe('generated test prompt');
+      });
+
+      it('should process regular plugins normally with multi-input config', async () => {
+        // Regular plugins with inputs should still be processed
+        const mockPluginFactory = {
+          key: 'harmful:hate',
+          action: vi.fn().mockResolvedValue([{ vars: { query: 'test case' } }]),
+        };
+        mockedPlugins.find = vi.fn().mockReturnValue(mockPluginFactory);
+
+        const response = await request(app)
+          .post('/api/redteam/generate-test')
+          .send({
+            plugin: {
+              id: 'harmful:hate',
+              config: {
+                inputs: { query: 'user input', context: 'context' },
+              },
+            },
+            strategy: {
+              id: 'basic',
+              config: {},
+            },
+            config: {
+              applicationDefinition: {
+                purpose: 'test assistant',
+              },
+            },
+          });
+
+        expect(response.status).toBe(200);
+        expect(mockPluginFactory.action).toHaveBeenCalled();
+        expect(response.body.prompt).toBe('generated test prompt');
+      });
+
+      it('should preserve HarmBench category filters when generating preview tests', async () => {
+        const mockPluginFactory = {
+          key: 'harmbench',
+          action: vi.fn().mockResolvedValue([{ vars: { query: 'test case' } }]),
+        };
+        mockedPlugins.find = vi.fn().mockReturnValue(mockPluginFactory);
+
+        const response = await request(app)
+          .post('/api/redteam/generate-test')
+          .send({
+            plugin: {
+              id: 'harmbench',
+              config: {
+                categories: ['misinformation'],
+                functionalCategories: ['contextual'],
+              },
+            },
+            strategy: {
+              id: 'basic',
+              config: {},
+            },
+            config: {
+              applicationDefinition: {
+                purpose: 'test assistant',
+              },
+            },
+          });
+
+        expect(response.status).toBe(200);
+        expect(mockPluginFactory.action).toHaveBeenCalledWith(
+          expect.objectContaining({
+            config: expect.objectContaining({
+              categories: ['misinformation'],
+              functionalCategories: ['contextual'],
+              language: 'en',
+              __nonce: expect.any(Number),
+            }),
+          }),
+        );
+        expect(response.body.prompt).toBe('generated test prompt');
+      });
+    });
+
+    afterEach(() => {
+      vi.resetAllMocks();
+    });
+
+    describe('validation', () => {
+      it('should return 400 for invalid plugin ID', async () => {
+        const response = await request(app)
+          .post('/api/redteam/generate-test')
+          .send({
+            plugin: {
+              id: 'invalid-plugin-id',
+              config: {},
+            },
+            strategy: {
+              id: 'basic',
+              config: {},
+            },
+            config: {
+              applicationDefinition: {
+                purpose: 'test assistant',
+              },
+            },
+          });
+
+        expect(response.status).toBe(400);
+        expect(response.body.error).toContain('Invalid plugin ID');
+      });
+
+      it('should return 400 for invalid strategy ID', async () => {
+        const response = await request(app)
+          .post('/api/redteam/generate-test')
+          .send({
+            plugin: {
+              id: 'harmful:hate',
+              config: {},
+            },
+            strategy: {
+              id: 'invalid-strategy',
+              config: {},
+            },
+            config: {
+              applicationDefinition: {
+                purpose: 'test assistant',
+              },
+            },
+          });
+
+        expect(response.status).toBe(400);
+        expect(response.body.error).toContain('Invalid strategy ID');
+      });
+
+      it('should return 400 for plugin configuration error', async () => {
+        mockedGetPluginConfigurationError.mockReturnValue(
+          'Plugin requires additional configuration',
+        );
+
+        const response = await request(app)
+          .post('/api/redteam/generate-test')
+          .send({
+            plugin: {
+              id: 'harmful:hate',
+              config: {},
+            },
+            strategy: {
+              id: 'basic',
+              config: {},
+            },
+            config: {
+              applicationDefinition: {
+                purpose: 'test assistant',
+              },
+            },
+          });
+
+        expect(response.status).toBe(400);
+        expect(response.body.error).toBe('Plugin requires additional configuration');
+      });
+    });
+  });
+
+  describe('POST /redteam/run', () => {
+    beforeEach(() => {
+      vi.resetAllMocks();
+      mockedDoRedteamRun.mockResolvedValue(undefined as any);
+    });
+
+    afterEach(() => {
+      vi.resetAllMocks();
+    });
+
+    it('should return job id for valid request', async () => {
+      const response = await request(app)
+        .post('/api/redteam/run')
+        .send({
+          config: { purpose: 'test' },
+          force: true,
+          verbose: false,
+          delay: 0,
+          maxConcurrency: 2,
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body.id).toBeDefined();
+      expect(typeof response.body.id).toBe('string');
+      expect(mockedDoRedteamRun).toHaveBeenCalled();
+    });
+
+    it('should publish a completed redteam eval through the eval job endpoint', async () => {
+      const summary = { results: [] };
+      mockedDoRedteamRun.mockResolvedValueOnce({
+        id: 'redteam-eval-id',
+        toEvaluateSummary: vi.fn().mockResolvedValue(summary),
+      } as any);
+
+      const runResponse = await request(app)
+        .post('/api/redteam/run')
+        .send({ config: { purpose: 'test' } });
+      expect(runResponse.status).toBe(200);
+
+      await vi.waitFor(async () => {
+        const completedResponse = await request(app).get(`/api/eval/job/${runResponse.body.id}`);
+        expect(completedResponse.body).toMatchObject({
+          status: 'complete',
+          evalId: 'redteam-eval-id',
+          result: summary,
+        });
+      });
+    });
+
+    it('should publish logs and cancellation through the eval job endpoint', async () => {
+      let resolveRun: ((value: undefined) => void) | undefined;
+      mockedDoRedteamRun.mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveRun = resolve;
+        }),
+      );
+
+      const runResponse = await request(app)
+        .post('/api/redteam/run')
+        .send({ config: { purpose: 'test' } });
+      expect(runResponse.status).toBe(200);
+
+      const runArgs = mockedDoRedteamRun.mock.calls[0][0];
+      runArgs.logCallback?.('working');
+
+      const inProgressResponse = await request(app).get(`/api/eval/job/${runResponse.body.id}`);
+      expect(inProgressResponse.body).toMatchObject({
+        status: 'in-progress',
+        logs: ['working'],
+      });
+
+      const cancelResponse = await request(app).post('/api/redteam/cancel');
+      expect(cancelResponse.status).toBe(200);
+
+      const cancelledResponse = await request(app).get(`/api/eval/job/${runResponse.body.id}`);
+      expect(cancelledResponse.body).toMatchObject({
+        status: 'error',
+        logs: ['working', 'Job cancelled by user'],
+      });
+
+      resolveRun!(undefined);
+      await vi.waitFor(async () => {
+        const settledResponse = await request(app).get(`/api/eval/job/${runResponse.body.id}`);
+        expect(settledResponse.body).toMatchObject({
+          status: 'error',
+          logs: ['working', 'Job cancelled by user'],
+        });
+      });
+    });
+
+    it('should keep a replaced job cancelled when its stale run settles', async () => {
+      let resolveFirstRun: ((value: any) => void) | undefined;
+      let resolveSecondRun: ((value: undefined) => void) | undefined;
+      mockedDoRedteamRun
+        .mockReturnValueOnce(
+          new Promise((resolve) => {
+            resolveFirstRun = resolve;
+          }),
+        )
+        .mockReturnValueOnce(
+          new Promise((resolve) => {
+            resolveSecondRun = resolve;
+          }),
+        );
+
+      const firstResponse = await request(app)
+        .post('/api/redteam/run')
+        .send({ config: { purpose: 'first' } });
+      const secondResponse = await request(app)
+        .post('/api/redteam/run')
+        .send({ config: { purpose: 'second' } });
+      expect(firstResponse.status).toBe(200);
+      expect(secondResponse.status).toBe(200);
+
+      const cancelledResponse = await request(app).get(`/api/eval/job/${firstResponse.body.id}`);
+      expect(cancelledResponse.body).toMatchObject({
+        status: 'error',
+        logs: ['Job cancelled - new job started'],
+      });
+
+      const toEvaluateSummary = vi.fn().mockResolvedValue({ results: [] });
+      resolveFirstRun!({
+        id: 'stale-redteam-eval-id',
+        toEvaluateSummary,
+      });
+      await vi.waitFor(async () => {
+        const settledResponse = await request(app).get(`/api/eval/job/${firstResponse.body.id}`);
+        expect(settledResponse.body).toMatchObject({
+          status: 'error',
+          logs: ['Job cancelled - new job started'],
+        });
+      });
+      expect(toEvaluateSummary).toHaveBeenCalledOnce();
+
+      resolveSecondRun!(undefined);
+      await vi.waitFor(async () => {
+        const statusResponse = await request(app).get('/api/redteam/status');
+        expect(statusResponse.body).toMatchObject({
+          hasRunningJob: false,
+          jobId: null,
+        });
+      });
+    });
+
+    it('should preserve streamed logs when the background run rejects', async () => {
+      mockedDoRedteamRun.mockImplementationOnce(async ({ logCallback }) => {
+        logCallback?.('working');
+        throw new Error('run failed');
+      });
+
+      const runResponse = await request(app)
+        .post('/api/redteam/run')
+        .send({ config: { purpose: 'test' } });
+      expect(runResponse.status).toBe(200);
+
+      await vi.waitFor(async () => {
+        const failedResponse = await request(app).get(`/api/eval/job/${runResponse.body.id}`);
+        expect(failedResponse.body).toMatchObject({
+          status: 'error',
+          logs: expect.arrayContaining(['working', 'Error: run failed']),
+        });
+      });
+    });
+
+    it('should not force runtime defaults when delay and maxConcurrency are omitted', async () => {
+      const response = await request(app)
+        .post('/api/redteam/run')
+        .send({
+          config: { purpose: 'test' },
+        });
+
+      expect(response.status).toBe(200);
+      const runArgs = mockedDoRedteamRun.mock.calls[0][0];
+      expect(runArgs.liveRedteamConfig).toEqual({ purpose: 'test' });
+      expect(runArgs).not.toHaveProperty('delay');
+      expect(runArgs).not.toHaveProperty('maxConcurrency');
+    });
+
+    it('should return 400 when config is missing', async () => {
+      const response = await request(app).post('/api/redteam/run').send({});
+
+      expect(response.status).toBe(400);
+      expect(response.body).toHaveProperty('error');
+    });
+
+    it('should return 400 when config is not an object', async () => {
+      const response = await request(app)
+        .post('/api/redteam/run')
+        .send({ config: 'not-an-object' });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toHaveProperty('error');
+    });
+
+    it('should return 400 when force is not a boolean', async () => {
+      const response = await request(app)
+        .post('/api/redteam/run')
+        .send({ config: { purpose: 'test' }, force: 'yes' });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toHaveProperty('error');
+    });
+
+    it('should accept string delay and maxConcurrency', async () => {
+      const response = await request(app)
+        .post('/api/redteam/run')
+        .send({
+          config: { purpose: 'test' },
+          delay: '100',
+          maxConcurrency: '4',
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body.id).toBeDefined();
+    });
+
+    it('should return 400 when delay is a non-numeric string', async () => {
+      const response = await request(app)
+        .post('/api/redteam/run')
+        .send({ config: { purpose: 'test' }, delay: 'abc' });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toHaveProperty('error');
+    });
+
+    it('should return 400 when maxConcurrency is a non-numeric string', async () => {
+      const response = await request(app)
+        .post('/api/redteam/run')
+        .send({ config: { purpose: 'test' }, maxConcurrency: 'abc' });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toHaveProperty('error');
+    });
+
+    it('should return 400 when maxConcurrency is less than 1', async () => {
+      const response = await request(app)
+        .post('/api/redteam/run')
+        .send({ config: { purpose: 'test' }, maxConcurrency: 0 });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toHaveProperty('error');
+    });
+
+    it('should return 400 when delay is negative', async () => {
+      const response = await request(app)
+        .post('/api/redteam/run')
+        .send({ config: { purpose: 'test' }, delay: -1 });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toHaveProperty('error');
+    });
+  });
+
+  describe('POST /redteam/:taskId', () => {
+    beforeEach(() => {
+      vi.resetAllMocks();
+      debugSpy.mockClear();
+      mockedGetRemoteGenerationUrl.mockReturnValue('https://api.example.com/task');
+    });
+
+    afterEach(() => {
+      vi.resetAllMocks();
+    });
+
+    it('should proxy valid request to cloud', async () => {
+      mockedFetchWithProxy.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ result: 'success' }),
+      } as any);
+
+      const response = await request(app).post('/api/redteam/my-task').send({ data: 'test' });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ result: 'success' });
+      expect(mockedFetchWithProxy).toHaveBeenCalledWith(
+        'https://api.example.com/task',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ data: 'test', task: 'my-task' }),
+        }),
+      );
+    });
+
+    it('should not proxy task bodies when remote generation is disabled', async () => {
+      mockedNeverGenerateRemote.mockReturnValue(true);
+
+      const response = await request(app).post('/api/redteam/my-task').send({ data: 'test' });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual({
+        success: false,
+        error: 'Requires remote generation be enabled.',
+      });
+      expect(mockedGetRemoteGenerationUrl).not.toHaveBeenCalled();
+      expect(mockedFetchWithProxy).not.toHaveBeenCalled();
+    });
+
+    it('should log task metadata without stringifying the body', async () => {
+      mockedFetchWithProxy.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ result: 'success' }),
+      } as any);
+
+      const response = await request(app).post('/api/redteam/my-task').send({
+        data: 'test',
+        secret: 'value',
+      });
+
+      expect(response.status).toBe(200);
+      expect(debugSpy).toHaveBeenCalledWith(
+        'Received my-task task request',
+        expect.objectContaining({
+          method: 'POST',
+          url: '/my-task',
+          body: expect.objectContaining({
+            data: 'test',
+            secret: '[REDACTED]',
+          }),
+        }),
+      );
+    });
+
+    it('should return 500 when cloud function fails', async () => {
+      mockedFetchWithProxy.mockResolvedValue({
+        ok: false,
+        status: 503,
+      } as any);
+
+      const response = await request(app).post('/api/redteam/my-task').send({ data: 'test' });
+
+      expect(response.status).toBe(500);
+      expect(response.body.error).toContain('Failed to process my-task task');
+    });
+
+    it('should return 400 when taskId exceeds max length', async () => {
+      const longTaskId = 'a'.repeat(129);
+      const response = await request(app).post(`/api/redteam/${longTaskId}`).send({ data: 'test' });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toHaveProperty('error');
+    });
+
+    it('should accept body with various shapes', async () => {
+      mockedFetchWithProxy.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ ok: true }),
+      } as any);
+
+      const response = await request(app)
+        .post('/api/redteam/some-task')
+        .send({ nested: { deep: true }, list: [1, 2, 3] });
+
+      expect(response.status).toBe(200);
+    });
+  });
+
+  describe('POST /redteam/cancel', () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    afterEach(() => {
+      vi.resetAllMocks();
+    });
+
+    it('should return 400 when no job is running', async () => {
+      const response = await request(app).post('/api/redteam/cancel');
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('No job currently running');
+    });
+  });
+
+  describe('GET /redteam/status', () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    afterEach(() => {
+      vi.resetAllMocks();
+    });
+
+    it('should return status shape', async () => {
+      const response = await request(app).get('/api/redteam/status');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toHaveProperty('hasRunningJob');
+      expect(response.body).toHaveProperty('jobId');
+      expect(response.body.hasRunningJob).toBe(false);
+      expect(response.body.jobId).toBeNull();
+    });
+  });
+});

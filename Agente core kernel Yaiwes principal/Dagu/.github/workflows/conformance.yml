@@ -1,0 +1,83 @@
+name: Conformance
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/conformance.yml"
+      - "conformance/**"
+      - "cmd/**"
+      - "go.mod"
+      - "go.sum"
+      - "internal/**"
+      - "Makefile"
+      - "specs/**"
+  pull_request:
+    # Keep this workflow directly rerunnable from PR-only maintenance commits.
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
+    paths:
+      - ".github/workflows/conformance.yml"
+      - "conformance/**"
+      - "cmd/**"
+      - "go.mod"
+      - "go.sum"
+      - "internal/**"
+      - "Makefile"
+      - "specs/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: "1.27.0"
+
+jobs:
+  conformance:
+    name: Conformance tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            go_test_flags: "-v --race"
+          - os: windows-latest
+            go_test_flags: "-v -p=1"
+    steps:
+      - name: Check out code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Install GNU Make
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (-not (Get-Command make -ErrorAction SilentlyContinue)) {
+            choco install make --no-progress -y
+          }
+
+      # Conformance fixtures spawn Windows PowerShell (powershell.exe) under a
+      # bounded command-substitution timeout. The first spawn on a fresh runner
+      # pays a JIT/antivirus penalty that can exceed the timeout, so pay it here
+      # instead of inside a test.
+      - name: Warm up Windows PowerShell
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: Write-Output warmup
+
+      - name: Run conformance tests
+        shell: bash
+        run: make conformance GO_TEST_FLAGS="${{ matrix.go_test_flags }}"

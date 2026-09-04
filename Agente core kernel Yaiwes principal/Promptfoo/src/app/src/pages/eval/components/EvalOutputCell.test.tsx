@@ -1,0 +1,3081 @@
+import { mockClipboard } from '@app/tests/browserMocks';
+import { restoreTestTimers, type TestTimers, useTestTimers } from '@app/tests/timers';
+import { renderWithProviders as baseRender } from '@app/utils/testutils';
+import {
+  type AssertionType,
+  type EvaluateTableOutput,
+  ResultFailureReason,
+} from '@promptfoo/types';
+import { act, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ShiftKeyProvider } from '../../../contexts/ShiftKeyContext';
+import EvalOutputCell, { isImageProvider, isVideoProvider } from './EvalOutputCell';
+
+import type { EvalOutputCellProps } from './EvalOutputCell';
+
+// Mock the EvalOutputPromptDialog component to check what props are passed to it
+vi.mock('./EvalOutputPromptDialog', () => ({
+  default: vi.fn(({ gradingResults, metadata, onClose }) => (
+    <div
+      data-testid="dialog-component"
+      data-grading-results={JSON.stringify(gradingResults)}
+      data-metadata={JSON.stringify(metadata)}
+    >
+      Mocked Dialog Component
+      <button type="button" onClick={onClose}>
+        Close mocked dialog
+      </button>
+    </div>
+  )),
+}));
+
+const renderWithProviders = (ui: React.ReactElement) => {
+  return baseRender(<ShiftKeyProvider>{ui}</ShiftKeyProvider>);
+};
+
+const dispatchClick = (element: Element) => {
+  element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+};
+
+const defaultResultsViewSettings = {
+  prettifyJson: false,
+  renderMarkdown: true,
+  showPassFail: true,
+  showPassReasons: false,
+  showMetricPills: true,
+  showPrompts: true,
+  maxImageWidth: 256,
+  maxImageHeight: 256,
+};
+
+const defaultTableStoreState = {
+  shouldHighlightSearchText: false,
+};
+
+const mockResultsViewSettings = {
+  ...defaultResultsViewSettings,
+};
+
+const mockTableStoreState = {
+  ...defaultTableStoreState,
+};
+
+const resetMockStoreState = () => {
+  Object.assign(mockResultsViewSettings, defaultResultsViewSettings);
+  Object.assign(mockTableStoreState, defaultTableStoreState);
+};
+
+beforeEach(() => {
+  resetMockStoreState();
+  window.history.replaceState({}, '', '/');
+});
+
+afterEach(() => {
+  resetMockStoreState();
+  window.history.replaceState({}, '', '/');
+  restoreTestTimers();
+});
+
+const mockClipboardWriteText = () => {
+  const clipboard = {
+    writeText: vi.fn().mockResolvedValue(undefined),
+  };
+
+  mockClipboard({ writeText: clipboard.writeText as Clipboard['writeText'] });
+
+  return clipboard;
+};
+
+vi.mock('./store', () => ({
+  useResultsViewSettingsStore: () => mockResultsViewSettings,
+  useTableStore: () => mockTableStoreState,
+}));
+
+vi.mock('../../../hooks/useShiftKey', () => ({
+  useShiftKey: () => true,
+}));
+
+interface MockEvalOutputCellProps extends EvalOutputCellProps {
+  firstOutput: EvaluateTableOutput;
+  searchText: string;
+  showDiffs: boolean;
+}
+
+describe('EvalOutputCell', () => {
+  const mockOnRating = vi.fn();
+  let timers: TestTimers | undefined;
+
+  const defaultProps: MockEvalOutputCellProps = {
+    firstOutput: {
+      cost: 0,
+      id: 'test-id',
+      latencyMs: 100,
+      namedScores: {},
+      pass: true,
+      failureReason: ResultFailureReason.NONE,
+      prompt: 'Test prompt',
+      provider: 'test-provider',
+      score: 0.8,
+      text: 'Test output text',
+      testCase: {},
+    },
+    maxTextLength: 100,
+    onRating: mockOnRating,
+    output: {
+      cost: 0,
+      gradingResult: {
+        comment: 'Initial comment',
+        componentResults: [
+          {
+            assertion: {
+              metric: 'accuracy',
+              type: 'contains' as AssertionType,
+              value: 'expected value',
+            },
+            pass: true,
+            reason: 'Perfect match',
+            score: 1.0,
+          },
+          {
+            assertion: {
+              metric: 'relevance',
+              type: 'similar',
+              value: 'another value',
+            },
+            pass: false,
+            reason: 'Partial match',
+            score: 0.6,
+          },
+        ],
+        pass: true,
+        reason: 'Test reason',
+        score: 0.8,
+      },
+      id: 'test-id',
+      latencyMs: 100,
+      namedScores: {},
+      pass: true,
+      failureReason: ResultFailureReason.NONE,
+      prompt: 'Test prompt',
+      provider: 'test-provider',
+      score: 0.8,
+      text: 'Test output text',
+      testCase: {},
+      metadata: { testKey: 'testValue' },
+    },
+    promptIndex: 0,
+    rowIndex: 0,
+    searchText: '',
+    showDiffs: false,
+    showStats: true,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetMockStoreState();
+  });
+
+  afterEach(() => {
+    timers?.restore();
+    timers = undefined;
+  });
+
+  it.each([
+    [true, 'Mark as safe', 'Mark as vulnerable', 'lucide-check', 'lucide-x'],
+    [false, 'Mark test passed', 'Mark test failed', 'lucide-thumbs-up', 'lucide-thumbs-down'],
+  ])(
+    'shows the correct grading actions when isRedteam is %s',
+    (isRedteam, passLabel, failLabel, passIcon, failIcon) => {
+      renderWithProviders(<EvalOutputCell {...defaultProps} isRedteam={isRedteam} />);
+
+      const passButton = screen.getByRole('button', { name: passLabel });
+      const failButton = screen.getByRole('button', { name: failLabel });
+
+      expect(passButton.querySelector('svg')).toHaveClass(passIcon);
+      expect(failButton.querySelector('svg')).toHaveClass(failIcon);
+      expect(passButton).not.toHaveTextContent(passLabel);
+      expect(failButton).not.toHaveTextContent(failLabel);
+    },
+  );
+
+  it('handles outputs without text without throwing', () => {
+    const propsWithoutText: MockEvalOutputCellProps = {
+      ...defaultProps,
+      output: {
+        ...defaultProps.output,
+        namedScores: undefined as unknown as Record<string, number>,
+        pass: undefined as unknown as boolean,
+        score: undefined as unknown as number,
+        text: undefined as unknown as string,
+      },
+    };
+
+    expect(() => renderWithProviders(<EvalOutputCell {...propsWithoutText} />)).not.toThrow();
+  });
+
+  it('passes metadata correctly to the dialog', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<EvalOutputCell {...defaultProps} />);
+    await user.click(screen.getByRole('button', { name: /view output and test details/i }));
+
+    const dialogComponent = screen.getByTestId('dialog-component');
+    expect(dialogComponent).toBeInTheDocument();
+
+    // Check that metadata is passed correctly
+    const passedMetadata = JSON.parse(dialogComponent.getAttribute('data-metadata') || '{}');
+    expect(passedMetadata.testKey).toBe('testValue');
+  });
+
+  it('passes the top-level grading result to the dialog when component results are absent', async () => {
+    const user = userEvent.setup();
+    const propsWithSingleAssertionResult = {
+      ...defaultProps,
+      output: {
+        ...defaultProps.output,
+        gradingResult: {
+          assertion: {
+            type: 'context-relevance' as AssertionType,
+          },
+          pass: false,
+          reason: 'Context relevance 0.00 is < 0.9',
+          score: 0,
+          metadata: {
+            graderOutputs: {
+              final: 'Insufficient Information',
+            },
+          },
+        },
+      },
+    };
+
+    renderWithProviders(<EvalOutputCell {...propsWithSingleAssertionResult} />);
+    await user.click(screen.getByRole('button', { name: /view output and test details/i }));
+
+    const dialogComponent = screen.getByTestId('dialog-component');
+    const passedGradingResults = JSON.parse(
+      dialogComponent.getAttribute('data-grading-results') || '[]',
+    );
+
+    expect(passedGradingResults).toHaveLength(1);
+    expect(passedGradingResults[0].metadata.graderOutputs.final).toBe('Insufficient Information');
+  });
+
+  it('handles enter key press to open dialog', async () => {
+    renderWithProviders(<EvalOutputCell {...defaultProps} />);
+    const promptButton = screen.getByRole('button', { name: /view output and test details/i });
+    expect(promptButton).toBeInTheDocument();
+    promptButton.focus();
+    await userEvent.keyboard('{enter}');
+
+    const dialogComponent = screen.getByTestId('dialog-component');
+    expect(dialogComponent).toBeInTheDocument();
+
+    // Check that metadata is passed correctly
+    const passedMetadata = JSON.parse(dialogComponent.getAttribute('data-metadata') || '{}');
+    expect(passedMetadata.testKey).toBe('testValue');
+  });
+
+  it('adds row and details hints when the prompt dialog opens', async () => {
+    const user = userEvent.setup();
+
+    renderWithProviders(<EvalOutputCell {...defaultProps} rowPositionIndex={50} />);
+
+    await user.click(screen.getByRole('button', { name: /view output and test details/i }));
+
+    expect(window.location.search).toBe('?rowId=51');
+    expect(window.location.hash).toBe('#details-row-1-prompt-1');
+  });
+
+  it('opens the prompt dialog from a matching details hash', () => {
+    window.history.replaceState({}, '', '/#details-row-1-prompt-1');
+    renderWithProviders(<EvalOutputCell {...defaultProps} />);
+
+    expect(screen.getByTestId('dialog-component')).toBeInTheDocument();
+    expect(window.location.hash).toBe('#details-row-1-prompt-1');
+  });
+
+  it('clears the row hint when closing a deep-linked prompt dialog', async () => {
+    const user = userEvent.setup();
+    window.history.replaceState({}, '', '/?rowId=51#details-row-1-prompt-1');
+    renderWithProviders(<EvalOutputCell {...defaultProps} />);
+
+    await user.click(screen.getByRole('button', { name: 'Close mocked dialog' }));
+
+    expect(window.location.search).toBe('');
+    expect(window.location.hash).toBe('');
+  });
+
+  it('ignores a details hash that targets a different stable row index', () => {
+    window.history.replaceState({}, '', '/#details-row-51-prompt-1');
+    renderWithProviders(<EvalOutputCell {...defaultProps} />);
+
+    expect(screen.queryByTestId('dialog-component')).not.toBeInTheDocument();
+  });
+
+  it('handles keyboard navigation between buttons', async () => {
+    renderWithProviders(<EvalOutputCell {...defaultProps} />);
+    // Start from "Mark test passed" button and tab through the remaining buttons
+    // Note: Search button is intentionally at the end to prevent position shifts
+    // when hover-only actions appear
+    const passButton = screen.getByRole('button', { name: /mark test passed/i });
+    expect(passButton).toBeInTheDocument();
+    passButton.focus();
+    expect(document.activeElement).toHaveAttribute('aria-label', 'Mark test passed');
+    await userEvent.tab();
+    expect(document.activeElement).toHaveAttribute('aria-label', 'Mark test failed');
+    await userEvent.tab();
+    expect(screen.getByRole('button', { name: /set test score/i })).toHaveFocus();
+    await userEvent.tab();
+    expect(screen.getByRole('button', { name: /edit comment/i })).toHaveFocus();
+    await userEvent.tab();
+    expect(screen.getByRole('button', { name: /view output and test details/i })).toHaveFocus();
+  });
+
+  it('preserves existing metadata citations', async () => {
+    const user = userEvent.setup();
+    const propsWithMetadataCitations = {
+      ...defaultProps,
+      output: {
+        ...defaultProps.output,
+        metadata: {
+          testKey: 'testValue',
+          citations: [{ source: 'metadata source', content: 'metadata content' }],
+        },
+      },
+    };
+
+    renderWithProviders(<EvalOutputCell {...propsWithMetadataCitations} />);
+    await user.click(screen.getByRole('button', { name: /view output and test details/i }));
+
+    const dialogComponent = screen.getByTestId('dialog-component');
+    const passedMetadata = JSON.parse(dialogComponent.getAttribute('data-metadata') || '{}');
+
+    // Metadata citations should be preserved
+    expect(passedMetadata.citations).toEqual([
+      { source: 'metadata source', content: 'metadata content' },
+    ]);
+  });
+
+  it('displays pass/fail status correctly', () => {
+    const { container } = renderWithProviders(<EvalOutputCell {...defaultProps} />);
+
+    const pillElement = screen.getByText('1 FAIL 1 PASS');
+    expect(pillElement).toBeInTheDocument();
+
+    const scoreElement = screen.getByText('(0.80)');
+    expect(scoreElement).toBeInTheDocument();
+
+    const statusElement = container.querySelector('.status.pass');
+    expect(statusElement).toBeInTheDocument();
+  });
+
+  it('combines assertion contexts in comment dialog', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<EvalOutputCell {...defaultProps} />);
+
+    await user.click(screen.getByRole('button', { name: /edit comment/i }));
+
+    const dialogContent = screen.getByTestId('context-text');
+    expect(dialogContent).toHaveTextContent('Assertion 1 (accuracy): expected value');
+    expect(dialogContent).toHaveTextContent('Assertion 2 (relevance): another value');
+  });
+
+  it('uses rendered assertion values in comment dialog when present', async () => {
+    const user = userEvent.setup();
+    const propsWithRenderedAssertionValue: MockEvalOutputCellProps = {
+      ...defaultProps,
+      output: {
+        ...defaultProps.output,
+        gradingResult: {
+          ...defaultProps.output.gradingResult,
+          componentResults: [
+            {
+              assertion: {
+                type: 'llm-rubric' as AssertionType,
+                value: 'Does output reference {{myVar}}?',
+              },
+              metadata: {
+                renderedAssertionValue: 'Does output reference hello world?',
+              },
+              pass: true,
+              reason: 'Rendered rubric passed',
+              score: 1,
+            },
+          ],
+          pass: true,
+          reason: 'Test reason',
+          score: 1,
+        },
+      },
+    };
+
+    renderWithProviders(<EvalOutputCell {...propsWithRenderedAssertionValue} />);
+
+    await user.click(screen.getByRole('button', { name: /edit comment/i }));
+
+    const dialogContent = screen.getByTestId('context-text');
+    expect(dialogContent).toHaveTextContent(
+      'Assertion 1 (llm-rubric): Does output reference hello world?',
+    );
+    expect(dialogContent).not.toHaveTextContent('{{myVar}}');
+  });
+
+  it('falls back to overall grading result when component results are empty', async () => {
+    const propsWithEmptyComponentResults: MockEvalOutputCellProps = {
+      ...defaultProps,
+      output: {
+        ...defaultProps.output,
+        gradingResult: {
+          comment: 'Initial comment',
+          componentResults: [],
+          pass: true,
+          reason: 'Test reason',
+          score: 0.8,
+        },
+      },
+    };
+
+    renderWithProviders(<EvalOutputCell {...propsWithEmptyComponentResults} />);
+
+    expect(screen.getByText('PASS')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /edit comment/i }));
+    expect(screen.getByTestId('context-text')).toHaveTextContent('Test output text');
+  });
+
+  it('uses assertion type when metric is not available', async () => {
+    const user = userEvent.setup();
+    const propsWithoutMetrics: MockEvalOutputCellProps = {
+      ...defaultProps,
+      output: {
+        ...defaultProps.output,
+        gradingResult: {
+          ...defaultProps.output.gradingResult,
+          componentResults: [
+            {
+              assertion: {
+                type: 'contains' as AssertionType,
+                value: 'expected value',
+              },
+              pass: true,
+              reason: 'Perfect match',
+              score: 1.0,
+            },
+          ],
+          pass: true,
+          reason: 'Test reason',
+          score: 1.0,
+        },
+      },
+    };
+
+    renderWithProviders(<EvalOutputCell {...propsWithoutMetrics} />);
+
+    await user.click(screen.getByRole('button', { name: /edit comment/i }));
+
+    const dialogContent = screen.getByTestId('context-text');
+    expect(dialogContent).toHaveTextContent('Assertion 1 (contains): expected value');
+  });
+
+  it('handles comment updates', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<EvalOutputCell {...defaultProps} />);
+
+    await user.click(screen.getByRole('button', { name: /edit comment/i }));
+
+    const commentInput = screen.getByRole('textbox');
+    await user.click(commentInput);
+    await user.keyboard('{Control>}a{/Control}');
+    await user.paste('New comment');
+    await user.click(screen.getByText('Save'));
+
+    expect(mockOnRating).toHaveBeenCalledWith(undefined, undefined, 'New comment');
+  });
+
+  it('handles highlight toggle', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<EvalOutputCell {...defaultProps} />);
+
+    await user.click(screen.getByLabelText('Toggle test highlight'));
+    expect(mockOnRating).toHaveBeenNthCalledWith(
+      1,
+      undefined,
+      undefined,
+      '!highlight Initial comment',
+    );
+
+    await user.click(screen.getByLabelText('Toggle test highlight'));
+
+    expect(mockOnRating).toHaveBeenNthCalledWith(2, undefined, undefined, 'Initial comment');
+  });
+
+  it('falls back to output text when no component results', async () => {
+    const user = userEvent.setup();
+    const propsWithoutResults: MockEvalOutputCellProps = {
+      ...defaultProps,
+      output: {
+        ...defaultProps.output,
+        gradingResult: {
+          ...defaultProps.output.gradingResult,
+          componentResults: undefined,
+          pass: false,
+          reason: '',
+          score: 0,
+        },
+      },
+    };
+
+    renderWithProviders(<EvalOutputCell {...propsWithoutResults} />);
+
+    await user.click(screen.getByRole('button', { name: /edit comment/i }));
+
+    const dialogContent = screen.getByTestId('context-text');
+    expect(dialogContent).toHaveTextContent('Test output text');
+  });
+
+  it('renders audio player when audio data is present', () => {
+    const propsWithAudio: MockEvalOutputCellProps = {
+      ...defaultProps,
+      output: {
+        ...defaultProps.output,
+        audio: {
+          data: 'base64audiodata',
+          format: 'wav',
+          transcript: 'Test audio transcript',
+        },
+      },
+    };
+
+    renderWithProviders(<EvalOutputCell {...propsWithAudio} />);
+
+    const audioElement = screen.getByTestId('audio-player');
+    expect(audioElement).toBeInTheDocument();
+
+    const sourceElement = screen.getByTestId('audio-player').querySelector('source');
+    expect(sourceElement).toHaveAttribute('src', 'data:audio/wav;base64,base64audiodata');
+    expect(sourceElement).toHaveAttribute('type', 'audio/wav');
+
+    expect(screen.getByText('Test audio transcript')).toBeInTheDocument();
+  });
+
+  it('handles audio without transcript', () => {
+    const propsWithAudioNoTranscript: MockEvalOutputCellProps = {
+      ...defaultProps,
+      output: {
+        ...defaultProps.output,
+        audio: {
+          data: 'base64audiodata',
+          format: 'wav',
+        },
+      },
+    };
+
+    renderWithProviders(<EvalOutputCell {...propsWithAudioNoTranscript} />);
+
+    const audioElement = screen.getByTestId('audio-player');
+    expect(audioElement).toBeInTheDocument();
+
+    expect(screen.queryByText(/transcript/i)).not.toBeInTheDocument();
+  });
+
+  it('renders response audio from redteamHistory last turn', () => {
+    const propsWithRedteamHistory: MockEvalOutputCellProps = {
+      ...defaultProps,
+      output: {
+        ...defaultProps.output,
+        metadata: {
+          redteamHistory: [
+            {
+              prompt: 'Attack prompt 1',
+              output: 'Target response 1',
+            },
+            {
+              prompt: 'Attack prompt 2',
+              output: 'Target response 2',
+              outputAudio: {
+                data: 'base64responseaudio',
+                format: 'mp3',
+              },
+            },
+          ],
+        },
+      },
+    };
+
+    renderWithProviders(<EvalOutputCell {...propsWithRedteamHistory} />);
+
+    const responseAudioElement = screen.getByTestId('response-audio-player');
+    expect(responseAudioElement).toBeInTheDocument();
+
+    const sourceElement = responseAudioElement.querySelector('source');
+    expect(sourceElement).toHaveAttribute('src', 'data:audio/mp3;base64,base64responseaudio');
+  });
+
+  it('renders response audio from redteamTreeHistory when redteamHistory is not present', () => {
+    const propsWithTreeHistory: MockEvalOutputCellProps = {
+      ...defaultProps,
+      output: {
+        ...defaultProps.output,
+        metadata: {
+          redteamTreeHistory: [
+            {
+              prompt: 'Tree attack prompt',
+              output: 'Tree response',
+              outputAudio: {
+                data: 'base64treeaudio',
+                format: 'wav',
+              },
+            },
+          ],
+        },
+      },
+    };
+
+    renderWithProviders(<EvalOutputCell {...propsWithTreeHistory} />);
+
+    const responseAudioElement = screen.getByTestId('response-audio-player');
+    expect(responseAudioElement).toBeInTheDocument();
+
+    const sourceElement = responseAudioElement.querySelector('source');
+    expect(sourceElement).toHaveAttribute('src', 'data:audio/wav;base64,base64treeaudio');
+  });
+
+  it('does not render response audio when redteamHistory has no audio in last turn', () => {
+    const propsWithNoAudio: MockEvalOutputCellProps = {
+      ...defaultProps,
+      output: {
+        ...defaultProps.output,
+        metadata: {
+          redteamHistory: [
+            {
+              prompt: 'Attack prompt',
+              output: 'Target response without audio',
+            },
+          ],
+        },
+      },
+    };
+
+    renderWithProviders(<EvalOutputCell {...propsWithNoAudio} />);
+
+    expect(screen.queryByTestId('response-audio-player')).not.toBeInTheDocument();
+  });
+
+  it('uses default wav format when format is not specified', () => {
+    const propsWithAudioNoFormat: MockEvalOutputCellProps = {
+      ...defaultProps,
+      output: {
+        ...defaultProps.output,
+        audio: {
+          data: 'base64audiodata',
+        },
+      },
+    };
+
+    renderWithProviders(<EvalOutputCell {...propsWithAudioNoFormat} />);
+
+    const sourceElement = screen.getByTestId('audio-player').querySelector('source');
+    expect(sourceElement).toHaveAttribute('src', 'data:audio/mp3;base64,base64audiodata');
+    expect(sourceElement).toHaveAttribute('type', 'audio/mp3');
+  });
+
+  it('renders video player when video data is present', () => {
+    const videoProvider = 'openai:video:sora-2';
+    const propsWithVideo: MockEvalOutputCellProps = {
+      ...defaultProps,
+      maxTextLength: 0, // Disable truncation for video output test
+      firstOutput: {
+        ...defaultProps.firstOutput,
+        provider: videoProvider,
+      },
+      output: {
+        ...defaultProps.output,
+        text: '', // Video takes precedence over text rendering
+        provider: videoProvider,
+        video: {
+          url: '/api/output/video/test-uuid/video.mp4',
+          format: 'mp4',
+          model: 'sora-2',
+          size: '1280x720',
+          duration: 10,
+          thumbnail: '/api/output/video/test-uuid/thumbnail.webp',
+        },
+      },
+    };
+
+    renderWithProviders(<EvalOutputCell {...propsWithVideo} />);
+
+    const videoElement = screen.getByTestId('video-player');
+    expect(videoElement).toBeInTheDocument();
+
+    const sourceElement = videoElement.querySelector('source');
+    expect(sourceElement).toHaveAttribute('src', '/api/output/video/test-uuid/video.mp4');
+    expect(sourceElement).toHaveAttribute('type', 'video/mp4');
+
+    expect(screen.getByText('Model: sora-2')).toBeInTheDocument();
+    expect(screen.getByText('Size: 1280x720')).toBeInTheDocument();
+    expect(screen.getByText('Duration: 10s')).toBeInTheDocument();
+  });
+
+  it('handles video without optional metadata', () => {
+    const propsWithVideoNoMetadata: MockEvalOutputCellProps = {
+      ...defaultProps,
+      output: {
+        ...defaultProps.output,
+        video: {
+          url: '/api/output/video/test-uuid/video.mp4',
+        },
+      },
+    };
+
+    renderWithProviders(<EvalOutputCell {...propsWithVideoNoMetadata} />);
+
+    const videoElement = screen.getByTestId('video-player');
+    expect(videoElement).toBeInTheDocument();
+
+    expect(screen.queryByText(/Model:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Size:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Duration:/)).not.toBeInTheDocument();
+  });
+
+  it('renders video player from response.video fallback', () => {
+    const propsWithResponseVideo: MockEvalOutputCellProps = {
+      ...defaultProps,
+      output: {
+        ...defaultProps.output,
+        response: {
+          output: 'test output',
+          video: {
+            url: 'storageRef:video/abc123.mp4',
+            format: 'mp4',
+            model: 'sora-2-pro',
+            size: '720x1280',
+            duration: 8,
+          },
+        },
+      },
+    };
+
+    renderWithProviders(<EvalOutputCell {...propsWithResponseVideo} />);
+
+    const videoElement = screen.getByTestId('video-player');
+    expect(videoElement).toBeInTheDocument();
+
+    expect(screen.getByText('Model: sora-2-pro')).toBeInTheDocument();
+    expect(screen.getByText('Size: 720x1280')).toBeInTheDocument();
+    expect(screen.getByText('Duration: 8s')).toBeInTheDocument();
+  });
+
+  it('renders raw SVG content as an image', () => {
+    const svgContent =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><circle cx="50" cy="50" r="40" fill="red"/></svg>';
+    const propsWithSvg: MockEvalOutputCellProps = {
+      ...defaultProps,
+      output: {
+        ...defaultProps.output,
+        text: svgContent,
+      },
+    };
+
+    renderWithProviders(<EvalOutputCell {...propsWithSvg} />);
+
+    const imgElement = screen.getByRole('img');
+    expect(imgElement).toBeInTheDocument();
+
+    // The SVG should be converted to a base64 data URI
+    expect(imgElement.getAttribute('src')).toMatch(/^data:image\/svg\+xml;base64,/);
+  });
+
+  it('renders raw SVG content with leading whitespace as an image', () => {
+    const svgContent =
+      '  \n  <svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="blue"/></svg>';
+    const propsWithSvg: MockEvalOutputCellProps = {
+      ...defaultProps,
+      output: {
+        ...defaultProps.output,
+        text: svgContent,
+      },
+    };
+
+    renderWithProviders(<EvalOutputCell {...propsWithSvg} />);
+
+    const imgElement = screen.getByRole('img');
+    expect(imgElement).toBeInTheDocument();
+    expect(imgElement.getAttribute('src')).toMatch(/^data:image\/svg\+xml;base64,/);
+  });
+
+  it('deduplicates markdown main image from structured images list', () => {
+    const propsWithMarkdownImageAndStructuredImages: MockEvalOutputCellProps = {
+      ...defaultProps,
+      output: {
+        ...defaultProps.output,
+        text: '![Main image](https://example.com/main.png)',
+        images: [
+          { data: 'https://example.com/main.png', mimeType: 'image/png' },
+          { data: 'https://example.com/secondary.png', mimeType: 'image/png' },
+        ],
+      },
+    };
+
+    const { container } = renderWithProviders(
+      <EvalOutputCell {...propsWithMarkdownImageAndStructuredImages} />,
+    );
+
+    const renderedSources = [...container.querySelectorAll('img')]
+      .map((img) => img.getAttribute('src'))
+      .filter((src): src is string => Boolean(src));
+
+    expect(renderedSources).toEqual([
+      'https://example.com/main.png',
+      'https://example.com/secondary.png',
+    ]);
+  });
+
+  it('deduplicates inline image from structured images list', () => {
+    const dataUri =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+    const propsWithInlineAndStructuredImages: MockEvalOutputCellProps = {
+      ...defaultProps,
+      output: {
+        ...defaultProps.output,
+        text: dataUri,
+        images: [
+          { data: dataUri, mimeType: 'image/png' },
+          { data: 'https://example.com/secondary-inline.png', mimeType: 'image/png' },
+        ],
+      },
+    };
+
+    const { container } = renderWithProviders(
+      <EvalOutputCell {...propsWithInlineAndStructuredImages} />,
+    );
+
+    const renderedSources = [...container.querySelectorAll('img')]
+      .map((img) => img.getAttribute('src'))
+      .filter((src): src is string => Boolean(src));
+
+    expect(renderedSources).toEqual([dataUri, 'https://example.com/secondary-inline.png']);
+  });
+
+  it('falls back to text when all structured images are invalid/skipped', () => {
+    const propsWithInvalidStructuredImages: MockEvalOutputCellProps = {
+      ...defaultProps,
+      output: {
+        ...defaultProps.output,
+        text: 'Fallback text should still render',
+        images: [{}, {}],
+      },
+    };
+
+    const { container } = renderWithProviders(
+      <EvalOutputCell {...propsWithInvalidStructuredImages} />,
+    );
+
+    expect(screen.getByText('Fallback text should still render')).toBeInTheDocument();
+    expect(container.querySelectorAll('img')).toHaveLength(0);
+  });
+
+  it('allows copying a cell deep-link to clipboard', async () => {
+    const user = userEvent.setup();
+    const clipboard = mockClipboardWriteText();
+    const expectedUrl = new URL(window.location.href);
+    expectedUrl.searchParams.set('rowId', '1');
+    expectedUrl.hash = '#details-row-1-prompt-1';
+
+    renderWithProviders(<EvalOutputCell {...defaultProps} />);
+
+    const shareButton = screen.getByLabelText('Copy link to output');
+    expect(shareButton).toBeInTheDocument();
+
+    await user.click(shareButton);
+
+    await waitFor(() => {
+      expect(clipboard.writeText).toHaveBeenCalledWith(expectedUrl.toString());
+    });
+  });
+
+  it('refreshes the rowId page hint when copying a cell deep-link', async () => {
+    const user = userEvent.setup();
+    const clipboard = mockClipboardWriteText();
+    window.history.replaceState({}, '', '/eval/test-eval?rowId=99&filter=foo');
+
+    const expectedUrl = new URL(window.location.href);
+    expectedUrl.searchParams.set('rowId', '1');
+    expectedUrl.hash = '#details-row-1-prompt-1';
+
+    renderWithProviders(<EvalOutputCell {...defaultProps} />);
+
+    await user.click(screen.getByLabelText('Copy link to output'));
+
+    await waitFor(() => {
+      expect(clipboard.writeText).toHaveBeenCalledWith(expectedUrl.toString());
+    });
+    const written = clipboard.writeText.mock.calls[0]?.[0];
+    expect(written).toContain('filter=foo');
+    expect(written).toContain('rowId=1');
+  });
+
+  it('shows checkmark after copying link', async () => {
+    timers = useTestTimers();
+    const clipboard = mockClipboardWriteText();
+
+    renderWithProviders(<EvalOutputCell {...defaultProps} />);
+
+    const shareButton = screen.getByRole('button', { name: /Copy link to output/i });
+    expect(shareButton).toBeInTheDocument();
+
+    await act(async () => {
+      dispatchClick(shareButton);
+      await clipboard.writeText.mock.results[0]?.value;
+    });
+
+    expect(clipboard.writeText).toHaveBeenCalled();
+    expect(shareButton.querySelector('.lucide-check')).toBeInTheDocument();
+
+    act(() => {
+      timers?.advanceBy(3000);
+    });
+
+    expect(shareButton.querySelector('.lucide-link')).toBeInTheDocument();
+  });
+
+  it('clears the link feedback timer on unmount after copying link', async () => {
+    timers = useTestTimers();
+    const clipboard = mockClipboardWriteText();
+
+    const { unmount } = renderWithProviders(<EvalOutputCell {...defaultProps} />);
+
+    await act(async () => {
+      dispatchClick(screen.getByRole('button', { name: /Copy link to output/i }));
+      await clipboard.writeText.mock.results[0]?.value;
+    });
+
+    expect(timers.getTimerCount()).toBe(1);
+
+    unmount();
+
+    expect(timers.getTimerCount()).toBe(0);
+  });
+
+  it('does not schedule link feedback after unmount if clipboard resolves late', async () => {
+    timers = useTestTimers();
+    let resolveClipboardWrite: () => void = () => {};
+    const writeTextPromise = new Promise<void>((resolve) => {
+      resolveClipboardWrite = resolve;
+    });
+    const clipboard = {
+      writeText: vi.fn().mockReturnValue(writeTextPromise),
+    };
+
+    mockClipboard({ writeText: clipboard.writeText as Clipboard['writeText'] });
+
+    const { unmount } = renderWithProviders(<EvalOutputCell {...defaultProps} />);
+
+    act(() => {
+      dispatchClick(screen.getByRole('button', { name: /Copy link to output/i }));
+    });
+    expect(clipboard.writeText).toHaveBeenCalled();
+
+    unmount();
+
+    await act(async () => {
+      resolveClipboardWrite();
+      await writeTextPromise;
+    });
+
+    expect(timers.getTimerCount()).toBe(0);
+  });
+
+  it('displays the token usage tooltip with reasoning tokens', () => {
+    const propsWithReasoningTokens: MockEvalOutputCellProps = {
+      ...defaultProps,
+      output: {
+        ...defaultProps.output,
+        tokenUsage: {
+          prompt: 10,
+          completion: 20,
+          total: 35,
+          completionDetails: {
+            reasoning: 5,
+          },
+        },
+      },
+    };
+
+    renderWithProviders(<EvalOutputCell {...propsWithReasoningTokens} />);
+
+    const expectedTooltipText =
+      '10 prompt tokens + 20 completion tokens & 5 reasoning tokens = 35 total';
+    const tooltipElement = screen.getByLabelText(expectedTooltipText);
+    expect(tooltipElement).toBeInTheDocument();
+  });
+
+  it('displays total and prompt/completion token counts when reasoning tokens are absent', () => {
+    const propsWithStandardTokens: MockEvalOutputCellProps = {
+      ...defaultProps,
+      output: {
+        ...defaultProps.output,
+        tokenUsage: {
+          prompt: 11,
+          completion: 22,
+          total: 33,
+        },
+      },
+    };
+
+    renderWithProviders(<EvalOutputCell {...propsWithStandardTokens} />);
+
+    expect(screen.getByText('33 (11+22)')).toBeInTheDocument();
+    expect(
+      screen.getByLabelText('11 prompt tokens + 22 completion tokens = 33 total'),
+    ).toBeInTheDocument();
+  });
+
+  it('italicizes the (cached) suffix on cached token usage', () => {
+    const props: MockEvalOutputCellProps = {
+      ...defaultProps,
+      output: {
+        ...defaultProps.output,
+        tokenUsage: { cached: 42 },
+      },
+    };
+
+    renderWithProviders(<EvalOutputCell {...props} />);
+
+    const cachedSuffix = screen.getByText('(cached)');
+    expect(cachedSuffix).toBeInTheDocument();
+    expect(cachedSuffix).toHaveClass('italic');
+  });
+
+  it('renders JSON diffs with added and removed fragments when showDiffs is enabled', () => {
+    const { container } = renderWithProviders(
+      <EvalOutputCell
+        {...defaultProps}
+        firstOutput={{
+          ...defaultProps.firstOutput,
+          text: '{"status":"old"}',
+        }}
+        output={{
+          ...defaultProps.output,
+          text: '{"status":"new"}',
+        }}
+        showDiffs={true}
+      />,
+    );
+
+    expect(container.querySelector('del')?.textContent).toContain('old');
+    expect(container.querySelector('ins')?.textContent).toContain('new');
+  });
+
+  it('renders word diffs for non-JSON outputs without sentence punctuation', () => {
+    const { container } = renderWithProviders(
+      <EvalOutputCell
+        {...defaultProps}
+        firstOutput={{
+          ...defaultProps.firstOutput,
+          text: 'alpha beta',
+        }}
+        output={{
+          ...defaultProps.output,
+          text: 'alpha gamma',
+        }}
+        showDiffs={true}
+      />,
+    );
+
+    expect(container.querySelector('del')?.textContent).toContain('beta');
+    expect(container.querySelector('ins')?.textContent).toContain('gamma');
+  });
+
+  it('does not highlight text when shouldHighlightSearchText is true but searchText is empty', () => {
+    mockTableStoreState.shouldHighlightSearchText = true;
+
+    const { container } = renderWithProviders(<EvalOutputCell {...defaultProps} />);
+    const highlightedText = container.querySelector('.search-highlight');
+    expect(highlightedText).toBeNull();
+
+    const outputText = screen.getByText('Test output text');
+    expect(outputText).toBeInTheDocument();
+  });
+
+  it('handles invalid regex in searchText gracefully', () => {
+    const invalidRegex = '(';
+    renderWithProviders(<EvalOutputCell {...defaultProps} searchText={invalidRegex} />);
+
+    expect(screen.getByText('Test output text')).toBeInTheDocument();
+  });
+
+  it('preserves media rendering while search highlighting is active', () => {
+    mockTableStoreState.shouldHighlightSearchText = true;
+    const dataUri = 'data:image/png;base64,primary-image-data';
+
+    const { container } = renderWithProviders(
+      <EvalOutputCell
+        {...defaultProps}
+        output={{
+          ...defaultProps.output,
+          text: dataUri,
+        }}
+        searchText="primary"
+      />,
+    );
+
+    expect(screen.getByRole('img')).toHaveAttribute('src', dataUri);
+    expect(container.querySelector('.search-highlight')).toBeNull();
+  });
+
+  it('ignores zero-length regex matches without hanging', () => {
+    mockTableStoreState.shouldHighlightSearchText = true;
+
+    const { container } = renderWithProviders(
+      <EvalOutputCell {...defaultProps} searchText="(?=Test)" />,
+    );
+
+    expect(screen.getByText('Test output text')).toBeInTheDocument();
+    expect(container.querySelector('.search-highlight')).toBeNull();
+  });
+
+  it('preserves diff output when searchText is an invalid regex', () => {
+    mockTableStoreState.shouldHighlightSearchText = true;
+
+    const { container } = renderWithProviders(
+      <EvalOutputCell
+        {...defaultProps}
+        firstOutput={{
+          ...defaultProps.firstOutput,
+          text: 'alpha beta',
+        }}
+        output={{
+          ...defaultProps.output,
+          text: 'alpha gamma',
+        }}
+        showDiffs={true}
+        searchText="("
+      />,
+    );
+
+    expect(container.querySelector('del')?.textContent).toContain('beta');
+    expect(container.querySelector('ins')?.textContent).toContain('gamma');
+  });
+
+  it('handles zero-length regex matches gracefully', () => {
+    const propsWithZeroLengthSearch: MockEvalOutputCellProps = {
+      ...defaultProps,
+      searchText: '',
+    };
+
+    renderWithProviders(<EvalOutputCell {...propsWithZeroLengthSearch} />);
+
+    expect(screen.getByText('Test output text')).toBeInTheDocument();
+  });
+
+  it('displays latency without "(cached)" when output.response.cached is not set or is false', () => {
+    const props = {
+      ...defaultProps,
+      output: {
+        ...defaultProps.output,
+        latencyMs: 123,
+        response: {},
+      },
+    };
+    renderWithProviders(<EvalOutputCell {...props} />);
+    const latencyElement = screen.getByText('123ms');
+    expect(latencyElement).toBeInTheDocument();
+
+    const props2 = {
+      ...defaultProps,
+      output: {
+        ...defaultProps.output,
+        latencyMs: 456,
+        response: { cached: false },
+      },
+    };
+    renderWithProviders(<EvalOutputCell {...props2} />);
+    const latencyElement2 = screen.getByText('456ms');
+    expect(latencyElement2).toBeInTheDocument();
+  });
+
+  it('displays small cached latency values correctly', () => {
+    const props = {
+      ...defaultProps,
+      output: {
+        ...defaultProps.output,
+        latencyMs: 0.1,
+        response: {
+          cached: true,
+        },
+      },
+    };
+
+    renderWithProviders(<EvalOutputCell {...props} />);
+
+    expect(screen.getByText('0ms')).toBeInTheDocument();
+    const cachedSuffix = screen.getByText('(cached)');
+    expect(cachedSuffix).toBeInTheDocument();
+    expect(cachedSuffix).toHaveClass('italic');
+  });
+
+  it('exposes precise milliseconds via aria-label on the latency trigger', () => {
+    const props = {
+      ...defaultProps,
+      output: {
+        ...defaultProps.output,
+        latencyMs: 3_789_665,
+        response: {},
+      },
+    };
+    renderWithProviders(<EvalOutputCell {...props} />);
+    expect(screen.getByLabelText('3,789,665 ms')).toBeInTheDocument();
+  });
+
+  it('clarifies cached latency in the aria-label', () => {
+    const props = {
+      ...defaultProps,
+      output: {
+        ...defaultProps.output,
+        latencyMs: 1234,
+        response: { cached: true },
+      },
+    };
+    renderWithProviders(<EvalOutputCell {...props} />);
+    expect(screen.getByLabelText('1,234 ms (cached response)')).toBeInTheDocument();
+  });
+
+  it('renders sub-millisecond latency without rounding away precision', () => {
+    const props = {
+      ...defaultProps,
+      output: {
+        ...defaultProps.output,
+        latencyMs: 0.123,
+        response: {},
+      },
+    };
+    renderWithProviders(<EvalOutputCell {...props} />);
+    expect(screen.getByLabelText('0.123 ms')).toBeInTheDocument();
+  });
+
+  it('falls back to raw ms when latency is non-finite or negative', () => {
+    const cases: { latencyMs: number; expected: string }[] = [
+      { latencyMs: Number.POSITIVE_INFINITY, expected: '∞ ms' },
+      { latencyMs: -1234, expected: '-1,234 ms' },
+    ];
+    for (const { latencyMs, expected } of cases) {
+      const { unmount } = renderWithProviders(
+        <EvalOutputCell
+          {...defaultProps}
+          output={{ ...defaultProps.output, latencyMs, response: {} }}
+        />,
+      );
+      expect(screen.getByLabelText(expected)).toBeInTheDocument();
+      unmount();
+    }
+  });
+
+  it('renders an exact-hour latency without trailing minutes', () => {
+    const props = {
+      ...defaultProps,
+      output: {
+        ...defaultProps.output,
+        latencyMs: 129_600_000,
+        response: {},
+      },
+    };
+    renderWithProviders(<EvalOutputCell {...props} />);
+    expect(screen.getByText('36h')).toBeInTheDocument();
+  });
+
+  it('displays large latency values in human-readable format (minutes/hours)', () => {
+    const propsMinutes = {
+      ...defaultProps,
+      output: {
+        ...defaultProps.output,
+        latencyMs: 255_718,
+        response: {},
+      },
+    };
+    renderWithProviders(<EvalOutputCell {...propsMinutes} />);
+    expect(screen.getByText('4m 16s')).toBeInTheDocument();
+
+    const propsHours = {
+      ...defaultProps,
+      output: {
+        ...defaultProps.output,
+        latencyMs: 3_789_665,
+        response: {},
+      },
+    };
+    renderWithProviders(<EvalOutputCell {...propsHours} />);
+    expect(screen.getByText('1h 3m')).toBeInTheDocument();
+  });
+
+  it('displays seconds for sub-minute latencies', () => {
+    const props = {
+      ...defaultProps,
+      output: {
+        ...defaultProps.output,
+        latencyMs: 2300,
+        response: {},
+      },
+    };
+    renderWithProviders(<EvalOutputCell {...props} />);
+    expect(screen.getByText('2.3s')).toBeInTheDocument();
+  });
+
+  it('handles searchText containing complex regex special characters', () => {
+    const complexRegex = '(?=.*[A-Z])(?=.*\\d)(?=.*[$@$!%*?&])[A-Za-z\\d$@$!%*?&]{8,}';
+    renderWithProviders(<EvalOutputCell {...defaultProps} searchText={complexRegex} />);
+
+    expect(screen.getByText('Test output text')).toBeInTheDocument();
+  });
+
+  it('updates activeRating when output prop changes with different human rating values', () => {
+    const initialOutput = {
+      ...defaultProps.output,
+      gradingResult: {
+        componentResults: [
+          {
+            assertion: {
+              type: 'human' as AssertionType,
+            },
+            pass: true,
+            score: 1.0,
+            reason: 'User rated as good',
+          },
+        ],
+        pass: true,
+        score: 1.0,
+        reason: 'User rated as good',
+      },
+    };
+
+    const { rerender } = renderWithProviders(
+      <EvalOutputCell {...defaultProps} output={initialOutput} />,
+    );
+
+    const thumbsUpButton = screen.getByRole('button', { name: 'Mark test passed' });
+    expect(thumbsUpButton).toHaveClass('active');
+
+    const updatedOutput = {
+      ...defaultProps.output,
+      gradingResult: {
+        componentResults: [
+          {
+            assertion: {
+              type: 'human' as AssertionType,
+            },
+            pass: false,
+            score: 0.0,
+            reason: 'User rated as bad',
+          },
+        ],
+        pass: false,
+        score: 0.0,
+        reason: 'User rated as bad',
+      },
+    };
+
+    rerender(<EvalOutputCell {...defaultProps} output={updatedOutput} />);
+
+    const thumbsDownButton = screen.getByRole('button', { name: 'Mark test failed' });
+    expect(thumbsDownButton).toHaveClass('active');
+  });
+
+  it('renders video metadata with long text values', () => {
+    // Test that video metadata fields are rendered correctly
+    const propsWithVideoMetadata: MockEvalOutputCellProps = {
+      ...defaultProps,
+      output: {
+        ...defaultProps.output,
+        video: {
+          url: '/api/output/video/test-uuid/video.mp4',
+          format: 'mp4',
+          model: 'sora-2-pro',
+          size: '1920x1080',
+          duration: 30,
+          thumbnail: '/api/output/video/test-uuid/thumbnail.webp',
+        },
+      },
+    };
+
+    renderWithProviders(<EvalOutputCell {...propsWithVideoMetadata} />);
+
+    // Verify video player is rendered
+    const videoElement = screen.getByTestId('video-player');
+    expect(videoElement).toBeInTheDocument();
+
+    // Verify metadata is displayed
+    expect(screen.getByText('Model: sora-2-pro')).toBeInTheDocument();
+    expect(screen.getByText('Size: 1920x1080')).toBeInTheDocument();
+    expect(screen.getByText('Duration: 30s')).toBeInTheDocument();
+  });
+});
+
+describe('EvalOutputCell search highlighting boundary conditions', () => {
+  const mockOnRating = vi.fn();
+
+  const defaultProps: MockEvalOutputCellProps = {
+    firstOutput: {
+      cost: 0,
+      id: 'test-id',
+      latencyMs: 100,
+      namedScores: {},
+      pass: true,
+      failureReason: ResultFailureReason.NONE,
+      prompt: 'Test prompt',
+      provider: 'test-provider',
+      score: 0.8,
+      text: 'Test output text',
+      testCase: {},
+    },
+    maxTextLength: 100,
+    onRating: mockOnRating,
+    output: {
+      cost: 0,
+      gradingResult: {
+        comment: 'Initial comment',
+        componentResults: [
+          {
+            assertion: {
+              metric: 'accuracy',
+              type: 'contains' as AssertionType,
+              value: 'expected value',
+            },
+            pass: true,
+            reason: 'Perfect match',
+            score: 1.0,
+          },
+          {
+            assertion: {
+              metric: 'relevance',
+              type: 'similar',
+              value: 'another value',
+            },
+            pass: false,
+            reason: 'Partial match',
+            score: 0.6,
+          },
+        ],
+        pass: true,
+        reason: 'Test reason',
+        score: 0.8,
+      },
+      id: 'test-id',
+      latencyMs: 100,
+      namedScores: {},
+      pass: true,
+      failureReason: ResultFailureReason.NONE,
+      prompt: 'Test prompt',
+      provider: 'test-provider',
+      score: 0.8,
+      text: 'Test output text',
+      testCase: {},
+      metadata: { testKey: 'testValue' },
+    },
+    promptIndex: 0,
+    rowIndex: 0,
+    searchText: '',
+    showDiffs: false,
+    showStats: true,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetMockStoreState();
+    mockTableStoreState.shouldHighlightSearchText = true;
+  });
+
+  it('should highlight when searchText matches the beginning of the output text', () => {
+    const props = {
+      ...defaultProps,
+      output: {
+        ...defaultProps.output,
+        text: 'Test output text',
+      },
+      searchText: 'Test',
+    };
+
+    renderWithProviders(<EvalOutputCell {...props} />);
+
+    const highlightedText = screen.getByText('Test');
+    expect(highlightedText).toHaveClass('search-highlight');
+  });
+
+  it('should highlight when searchText matches the end of the output text', () => {
+    const props = {
+      ...defaultProps,
+      output: {
+        ...defaultProps.output,
+        text: 'Test output text',
+      },
+      searchText: 'text',
+    };
+
+    renderWithProviders(<EvalOutputCell {...props} />);
+
+    const highlightedText = screen.getByText('text');
+    expect(highlightedText).toHaveClass('search-highlight');
+  });
+});
+
+describe('EvalOutputCell with prettified JSON', () => {
+  const mockOnRating = vi.fn();
+
+  const defaultProps: MockEvalOutputCellProps = {
+    firstOutput: {
+      cost: 0,
+      id: 'test-id',
+      latencyMs: 100,
+      namedScores: {},
+      pass: true,
+      failureReason: ResultFailureReason.NONE,
+      prompt: 'Test prompt',
+      provider: 'test-provider',
+      score: 0.8,
+      text: 'Test output text',
+      testCase: {},
+    },
+    maxTextLength: 100,
+    onRating: mockOnRating,
+    output: {
+      cost: 0,
+      gradingResult: {
+        comment: 'Initial comment',
+        componentResults: [
+          {
+            assertion: {
+              metric: 'accuracy',
+              type: 'contains' as AssertionType,
+              value: 'expected value',
+            },
+            pass: true,
+            reason: 'Perfect match',
+            score: 1.0,
+          },
+          {
+            assertion: {
+              metric: 'relevance',
+              type: 'similar',
+              value: 'another value',
+            },
+            pass: false,
+            reason: 'Partial match',
+            score: 0.6,
+          },
+        ],
+        pass: true,
+        reason: 'Test reason',
+        score: 0.8,
+      },
+      id: 'test-id',
+      latencyMs: 100,
+      namedScores: {},
+      pass: true,
+      failureReason: ResultFailureReason.NONE,
+      prompt: 'Test prompt',
+      provider: 'test-provider',
+      score: 0.8,
+      text: '{"key1": "value1", "key2": "value2 to search for"}',
+      testCase: {},
+      metadata: { testKey: 'testValue' },
+    },
+    promptIndex: 0,
+    rowIndex: 0,
+    searchText: 'value2 to search for',
+    showDiffs: false,
+    showStats: true,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetMockStoreState();
+    mockResultsViewSettings.prettifyJson = true;
+    mockResultsViewSettings.renderMarkdown = false;
+    mockTableStoreState.shouldHighlightSearchText = true;
+  });
+
+  it('highlights search matches in prettified JSON content', () => {
+    renderWithProviders(<EvalOutputCell {...defaultProps} />);
+    const highlightedText = screen.getByText('value2 to search for');
+    expect(highlightedText).toBeInTheDocument();
+    expect(highlightedText.closest('.search-highlight')).toBeInTheDocument();
+  });
+});
+
+describe('EvalOutputCell highlight toggle functionality', () => {
+  const mockOnRating = vi.fn();
+
+  const createPropsWithComment = (comment: string): MockEvalOutputCellProps => ({
+    firstOutput: {
+      cost: 0,
+      id: 'test-id',
+      latencyMs: 100,
+      namedScores: {},
+      pass: true,
+      failureReason: ResultFailureReason.NONE,
+      prompt: 'Test prompt',
+      provider: 'test-provider',
+      score: 0.8,
+      text: 'Test output text',
+      testCase: {},
+    },
+    maxTextLength: 100,
+    onRating: mockOnRating,
+    output: {
+      cost: 0,
+      gradingResult: {
+        comment,
+        componentResults: [],
+        pass: true,
+        reason: 'Test reason',
+        score: 0.8,
+      },
+      id: 'test-id',
+      latencyMs: 100,
+      namedScores: {},
+      pass: true,
+      failureReason: ResultFailureReason.NONE,
+      prompt: 'Test prompt',
+      provider: 'test-provider',
+      score: 0.8,
+      text: 'Test output text',
+      testCase: {},
+    },
+    promptIndex: 0,
+    rowIndex: 0,
+    searchText: '',
+    showDiffs: false,
+    showStats: true,
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('toggles highlight on when comment does not start with !highlight', async () => {
+    const user = userEvent.setup();
+    const props = createPropsWithComment('Regular comment');
+    renderWithProviders(<EvalOutputCell {...props} />);
+
+    // Click the highlight toggle button (only visible when shift is pressed)
+    const highlightButton = screen.getByLabelText('Toggle test highlight');
+    await user.click(highlightButton);
+
+    // Verify that onRating was called with the highlighted comment
+    expect(mockOnRating).toHaveBeenCalledWith(undefined, undefined, '!highlight Regular comment');
+  });
+
+  it('toggles highlight off when comment starts with !highlight', async () => {
+    const user = userEvent.setup();
+    const props = createPropsWithComment('!highlight Already highlighted comment');
+    renderWithProviders(<EvalOutputCell {...props} />);
+
+    const highlightButton = screen.getByLabelText('Toggle test highlight');
+    await user.click(highlightButton);
+
+    // Verify that onRating was called with the unhighlighted comment
+    expect(mockOnRating).toHaveBeenCalledWith(undefined, undefined, 'Already highlighted comment');
+  });
+
+  it('handles empty comment when toggling highlight on', async () => {
+    const user = userEvent.setup();
+    const props = createPropsWithComment('');
+    renderWithProviders(<EvalOutputCell {...props} />);
+
+    const highlightButton = screen.getByLabelText('Toggle test highlight');
+    await user.click(highlightButton);
+
+    // Verify that onRating was called with just the highlight prefix
+    expect(mockOnRating).toHaveBeenCalledWith(undefined, undefined, '!highlight');
+  });
+
+  it('handles comment with only !highlight when toggling off', async () => {
+    const user = userEvent.setup();
+    const props = createPropsWithComment('!highlight');
+    renderWithProviders(<EvalOutputCell {...props} />);
+
+    const highlightButton = screen.getByLabelText('Toggle test highlight');
+    await user.click(highlightButton);
+
+    // Verify that onRating was called with empty string
+    expect(mockOnRating).toHaveBeenCalledWith(undefined, undefined, '');
+  });
+
+  it('applies highlight styling when comment starts with !highlight', () => {
+    const props = createPropsWithComment('!highlight This cell should be highlighted');
+    const { container } = renderWithProviders(<EvalOutputCell {...props} />);
+
+    const cellElement = container.querySelector('.cell');
+    expect(cellElement).toBeInTheDocument();
+
+    // Check that the cell has highlight background but NOT text color (to avoid pill conflicts)
+    expect(cellElement).toHaveStyle({
+      backgroundColor: 'var(--cell-highlight-color)',
+    });
+
+    // The cell should NOT have text color applied directly to prevent pill text issues
+    expect(cellElement).not.toHaveStyle({
+      color: 'var(--cell-highlight-text-color)',
+    });
+  });
+
+  it('does not apply highlight styling when comment does not start with !highlight', () => {
+    const props = createPropsWithComment('Regular comment without highlight');
+    const { container } = renderWithProviders(<EvalOutputCell {...props} />);
+
+    const cellElement = container.querySelector('.cell');
+    expect(cellElement).toBeInTheDocument();
+
+    // Check that the cell does not have highlight background color
+    const style = cellElement!.getAttribute('style') || '';
+    expect(style).not.toContain('var(--cell-highlight-color)');
+  });
+
+  it('displays comment text without !highlight prefix in comment display', () => {
+    const props = createPropsWithComment('!highlight This is the actual comment text');
+    renderWithProviders(<EvalOutputCell {...props} />);
+
+    // The comment should be displayed without the !highlight prefix
+    const commentElement = screen.getByText('This is the actual comment text');
+    expect(commentElement).toBeInTheDocument();
+  });
+
+  it('shows highlight button when shift key is pressed or actions are hovered', () => {
+    const props = createPropsWithComment('Regular comment');
+    renderWithProviders(<EvalOutputCell {...props} />);
+
+    // The highlight button should be visible because useShiftKey is mocked to return true
+    const highlightButton = screen.getByLabelText('Toggle test highlight');
+    expect(highlightButton).toBeInTheDocument();
+  });
+
+  it('shows filled star icon when cell is highlighted', () => {
+    const props = createPropsWithComment('!highlight Highlighted comment');
+    const { container } = renderWithProviders(<EvalOutputCell {...props} />);
+
+    // The star icon should be filled (has fill color classes)
+    const highlightButton = screen.getByLabelText('Toggle test highlight');
+    expect(highlightButton).toHaveClass('text-amber-500');
+
+    // The star SVG should have the stroke class and be filled
+    const starIcon = container.querySelector('.lucide-star');
+    expect(starIcon).toHaveClass('stroke-amber-600');
+    expect(starIcon).toHaveAttribute('fill', 'currentColor');
+  });
+
+  it('shows unfilled star icon when cell is not highlighted', () => {
+    const props = createPropsWithComment('Regular comment');
+    const { container } = renderWithProviders(<EvalOutputCell {...props} />);
+
+    // The star icon should not be filled
+    const highlightButton = screen.getByLabelText('Toggle test highlight');
+    expect(highlightButton).not.toHaveClass('text-amber-500');
+
+    // The star SVG should not be filled
+    const starIcon = container.querySelector('.lucide-star');
+    expect(starIcon).toHaveAttribute('fill', 'none');
+  });
+
+  it('maintains comment state correctly through multiple toggles', async () => {
+    const user = userEvent.setup();
+    // Test toggling ON from regular comment
+    const regularProps = createPropsWithComment('Original comment');
+    const { rerender } = renderWithProviders(<EvalOutputCell {...regularProps} />);
+
+    const highlightButton = screen.getByLabelText('Toggle test highlight');
+    await user.click(highlightButton);
+    expect(mockOnRating).toHaveBeenNthCalledWith(
+      1,
+      undefined,
+      undefined,
+      '!highlight Original comment',
+    );
+
+    // Test toggling OFF from highlighted comment
+    mockOnRating.mockClear();
+    const highlightedProps = createPropsWithComment('!highlight Original comment');
+    rerender(<EvalOutputCell {...highlightedProps} />);
+
+    const highlightButtonAfterRerender = screen.getByLabelText('Toggle test highlight');
+    await user.click(highlightButtonAfterRerender);
+    expect(mockOnRating).toHaveBeenCalledWith(undefined, undefined, 'Original comment');
+  });
+
+  it('preserves a locally toggled highlight when rating changes immediately afterward', async () => {
+    const props = createPropsWithComment('Original comment');
+    renderWithProviders(<EvalOutputCell {...props} />);
+
+    await userEvent.click(screen.getByLabelText('Toggle test highlight'));
+    mockOnRating.mockClear();
+
+    await userEvent.click(screen.getByLabelText('Mark test failed'));
+
+    await waitFor(() => {
+      expect(mockOnRating).toHaveBeenCalledWith(false, undefined, '!highlight Original comment');
+    });
+  });
+
+  it('does not persist a canceled comment draft when rating changes afterward', async () => {
+    const user = userEvent.setup();
+    const props = createPropsWithComment('Original comment');
+    renderWithProviders(<EvalOutputCell {...props} />);
+
+    await user.click(screen.getByRole('button', { name: /edit comment/i }));
+    const commentInput = screen.getByRole('textbox');
+    await user.clear(commentInput);
+    await user.type(commentInput, 'Canceled draft');
+    await user.click(screen.getByRole('button', { name: /cancel/i }));
+    mockOnRating.mockClear();
+
+    await user.click(screen.getByLabelText('Mark test failed'));
+
+    await waitFor(() => {
+      expect(mockOnRating).toHaveBeenCalledWith(false, undefined, 'Original comment');
+    });
+  });
+
+  it('uses a saved comment edit when rating changes before the parent refreshes', async () => {
+    const user = userEvent.setup();
+    const props = createPropsWithComment('Original comment');
+    renderWithProviders(<EvalOutputCell {...props} />);
+
+    await user.click(screen.getByRole('button', { name: /edit comment/i }));
+    const commentInput = screen.getByRole('textbox');
+    await user.clear(commentInput);
+    await user.type(commentInput, 'Saved edit');
+    await user.click(screen.getByRole('button', { name: /save/i }));
+    mockOnRating.mockClear();
+
+    await user.click(screen.getByLabelText('Mark test failed'));
+
+    await waitFor(() => {
+      expect(mockOnRating).toHaveBeenCalledWith(false, undefined, 'Saved edit');
+    });
+  });
+
+  it('resets unsaved local comment text when switching to another output with the same comment value', async () => {
+    const user = userEvent.setup();
+    const firstProps = createPropsWithComment('');
+    const secondProps = {
+      ...firstProps,
+      output: {
+        ...firstProps.output,
+        id: 'second-output',
+      },
+    };
+
+    const { rerender } = renderWithProviders(<EvalOutputCell {...firstProps} />);
+
+    await user.click(screen.getByRole('button', { name: /edit comment/i }));
+    const commentInput = screen.getByRole('textbox');
+    await user.type(commentInput, 'Unsaved local note');
+    expect(commentInput).toHaveValue('Unsaved local note');
+
+    rerender(<EvalOutputCell {...secondProps} />);
+    mockOnRating.mockClear();
+
+    await user.click(screen.getByLabelText('Mark test failed'));
+
+    await waitFor(() => {
+      expect(mockOnRating).toHaveBeenCalledWith(false, undefined, '');
+    });
+  });
+});
+
+describe('EvalOutputCell provider override', () => {
+  const defaultProps: MockEvalOutputCellProps = {
+    firstOutput: {
+      cost: 0,
+      id: 'test-id',
+      latencyMs: 100,
+      namedScores: {},
+      pass: true,
+      failureReason: ResultFailureReason.NONE,
+      prompt: 'Test prompt',
+      provider: 'test-provider',
+      score: 0.8,
+      text: 'Test output text',
+      testCase: {},
+    },
+    maxTextLength: 100,
+    onRating: vi.fn(),
+    output: {
+      cost: 0,
+      id: 'test-id',
+      latencyMs: 100,
+      namedScores: {},
+      pass: true,
+      failureReason: ResultFailureReason.NONE,
+      prompt: 'Test prompt',
+      provider: 'test-provider',
+      score: 0.8,
+      text: 'Test output text',
+      testCase: {},
+    },
+    promptIndex: 0,
+    rowIndex: 0,
+    searchText: '',
+    showDiffs: false,
+    showStats: true,
+  };
+
+  it('shows provider override when test case has a provider string', () => {
+    const props = {
+      ...defaultProps,
+      output: {
+        ...defaultProps.output,
+        provider: 'openai:gpt-4',
+        testCase: {
+          provider: 'openai:gpt-4-mini',
+        },
+      },
+    };
+
+    const { container } = renderWithProviders(<EvalOutputCell {...props} />);
+    expect(container.querySelector('.provider.pill')).toHaveTextContent('openai:gpt-4-mini');
+  });
+
+  it('shows provider override when test case has a provider object', () => {
+    const props = {
+      ...defaultProps,
+      output: {
+        ...defaultProps.output,
+        provider: 'openai:gpt-4',
+        testCase: {
+          provider: {
+            id: 'openai:gpt-4-mini',
+            config: {
+              model: 'gpt-4-mini',
+            },
+          },
+        },
+      },
+    };
+
+    const { container } = renderWithProviders(<EvalOutputCell {...props} />);
+    expect(container.querySelector('.provider.pill')).toHaveTextContent('openai:gpt-4-mini');
+  });
+
+  it('does not show provider override when test case has no provider', () => {
+    const props = {
+      ...defaultProps,
+      output: {
+        ...defaultProps.output,
+        provider: 'openai:gpt-4',
+        testCase: {},
+      },
+    };
+
+    const { container } = renderWithProviders(<EvalOutputCell {...props} />);
+    expect(container.querySelector('.provider.pill')).not.toBeInTheDocument();
+  });
+});
+
+describe('EvalOutputCell cell highlighting styling', () => {
+  const mockOnRating = vi.fn();
+
+  const createPropsWithComment = (comment: string): MockEvalOutputCellProps => ({
+    firstOutput: {
+      cost: 0,
+      id: 'test-id',
+      latencyMs: 100,
+      namedScores: {},
+      pass: true,
+      failureReason: ResultFailureReason.NONE,
+      prompt: 'Test prompt',
+      provider: 'test-provider',
+      score: 0.8,
+      text: 'Test output text',
+      testCase: {},
+    },
+    maxTextLength: 100,
+    onRating: mockOnRating,
+    output: {
+      cost: 0,
+      gradingResult: {
+        comment,
+        componentResults: [],
+        pass: true,
+        reason: 'Test reason',
+        score: 0.8,
+      },
+      id: 'test-id',
+      latencyMs: 100,
+      namedScores: {},
+      pass: true,
+      failureReason: ResultFailureReason.NONE,
+      prompt: 'Test prompt',
+      provider: 'test-provider',
+      score: 0.8,
+      text: 'Test output text',
+      testCase: {},
+    },
+    promptIndex: 0,
+    rowIndex: 0,
+    searchText: '',
+    showDiffs: false,
+    showStats: true,
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('applies only background color to cell when highlighted, not text color', () => {
+    const props = createPropsWithComment('!highlight This cell should be highlighted');
+    const { container } = renderWithProviders(<EvalOutputCell {...props} />);
+
+    const cellElement = container.querySelector('.cell');
+    expect(cellElement).toBeInTheDocument();
+
+    // Check that the cell has highlight background but NO text color override
+    expect(cellElement).toHaveStyle({
+      backgroundColor: 'var(--cell-highlight-color)',
+    });
+
+    // The cell itself should NOT have the highlight text color applied directly
+    expect(cellElement).not.toHaveStyle({
+      color: 'var(--cell-highlight-text-color)',
+    });
+  });
+
+  it('applies text color only to content areas when highlighted', () => {
+    const props = createPropsWithComment('!highlight Content should be highlighted');
+    const { container } = renderWithProviders(<EvalOutputCell {...props} />);
+
+    // Find the content wrapper div that should have the text color
+    const contentElements = container.querySelectorAll(
+      'div[style*="color: var(--cell-highlight-text-color)"]',
+    );
+    expect(contentElements.length).toBeGreaterThan(0);
+
+    // Verify that main content area has the highlight text color
+    const hasContentWithHighlightColor = Array.from(contentElements).some(
+      (element) =>
+        element.textContent?.includes('Content should be highlighted') ||
+        element.querySelector('*')?.textContent?.includes('Test output text'),
+    );
+    expect(hasContentWithHighlightColor).toBe(true);
+  });
+
+  it('preserves status pill visibility and styling when cell is highlighted', () => {
+    const props = createPropsWithComment('!highlight Highlighted cell');
+    const { container } = renderWithProviders(<EvalOutputCell {...props} />);
+
+    // Find the status pill
+    const pillElement = container.querySelector('.pill');
+    expect(pillElement).toBeInTheDocument();
+    expect(pillElement).toBeVisible();
+
+    // Verify pill text is present and visible
+    expect(pillElement?.textContent).toBeTruthy();
+
+    // The pill should NOT have the cell highlight text color applied
+    expect(pillElement).not.toHaveStyle({
+      color: 'var(--cell-highlight-text-color)',
+    });
+
+    // Verify the cell has highlight background but pill maintains its own styling
+    const cellElement = container.querySelector('.cell');
+    expect(cellElement).toHaveStyle({
+      backgroundColor: 'var(--cell-highlight-color)',
+    });
+  });
+
+  it('preserves pass/fail pill colors when cell is highlighted', () => {
+    const passProps = createPropsWithComment('!highlight Pass case');
+    const { container: passContainer } = renderWithProviders(<EvalOutputCell {...passProps} />);
+
+    const passStatus = passContainer.querySelector('.status.pass');
+    expect(passStatus).toBeInTheDocument();
+
+    const passPill = passContainer.querySelector('.pill');
+    expect(passPill).toBeInTheDocument();
+    expect(passPill).toBeVisible();
+
+    // Test with fail case
+    const failProps = {
+      ...createPropsWithComment('!highlight Fail case'),
+      output: {
+        ...createPropsWithComment('!highlight Fail case').output,
+        pass: false,
+        gradingResult: {
+          comment: '!highlight Fail case',
+          componentResults: [],
+          pass: false,
+          reason: 'Test fail reason',
+          score: 0.2,
+        },
+      },
+    };
+
+    const { container: failContainer } = renderWithProviders(<EvalOutputCell {...failProps} />);
+    const failStatus = failContainer.querySelector('.status.fail');
+    expect(failStatus).toBeInTheDocument();
+
+    const failPill = failContainer.querySelector('.pill');
+    expect(failPill).toBeInTheDocument();
+    expect(failPill).toBeVisible();
+  });
+
+  it('preserves provider pill styling when cell is highlighted', () => {
+    const propsWithProvider = {
+      ...createPropsWithComment('!highlight Provider override test'),
+      output: {
+        ...createPropsWithComment('!highlight Provider override test').output,
+        testCase: {
+          provider: 'openai:gpt-4-mini',
+        },
+      },
+    };
+
+    const { container } = renderWithProviders(<EvalOutputCell {...propsWithProvider} />);
+
+    // Find the provider pill
+    const providerPill = container.querySelector('.provider.pill');
+    expect(providerPill).toBeInTheDocument();
+    expect(providerPill).toBeVisible();
+    expect(providerPill?.textContent).toBe('openai:gpt-4-mini');
+
+    // Provider pill should maintain its own styling even with cell highlighting
+    expect(providerPill).not.toHaveStyle({
+      color: 'var(--cell-highlight-text-color)',
+    });
+  });
+
+  it('applies highlight text color to comment when highlighted', () => {
+    const props = createPropsWithComment('!highlight This is a comment');
+    const { container } = renderWithProviders(<EvalOutputCell {...props} />);
+
+    // Find the comment element
+    const commentElement = container.querySelector('.comment');
+    expect(commentElement).toBeInTheDocument();
+    expect(commentElement?.textContent).toBe('This is a comment');
+
+    // Comment should have the highlight text color applied
+    expect(commentElement).toHaveStyle({
+      color: 'var(--cell-highlight-text-color)',
+    });
+  });
+
+  it('does not apply text color when not highlighted', () => {
+    const props = createPropsWithComment('Regular comment');
+    const { container } = renderWithProviders(<EvalOutputCell {...props} />);
+
+    // No elements should have the highlight text color when not highlighted
+    const elementsWithHighlightColor = container.querySelectorAll(
+      '[style*="var(--cell-highlight-text-color)"]',
+    );
+    expect(elementsWithHighlightColor.length).toBe(0);
+
+    // Cell should not have highlight background
+    const cellElement = container.querySelector('.cell');
+    const style = cellElement!.getAttribute('style') || '';
+    expect(style).not.toContain('var(--cell-highlight-color)');
+  });
+
+  it('maintains text visibility during highlight state transitions', async () => {
+    const user = userEvent.setup();
+    let currentComment = 'Regular comment';
+    const props = createPropsWithComment(currentComment);
+    const { container, rerender } = renderWithProviders(<EvalOutputCell {...props} />);
+
+    // Initial state - no highlighting
+    let pillElement = container.querySelector('.pill');
+    expect(pillElement).toBeVisible();
+    expect(pillElement?.textContent).toBeTruthy();
+
+    // Toggle highlight ON
+    const highlightButton = screen.getByLabelText('Toggle test highlight');
+    await user.click(highlightButton);
+
+    // Simulate the state change by re-rendering with highlighted comment
+    currentComment = '!highlight Regular comment';
+    const highlightedProps = createPropsWithComment(currentComment);
+    rerender(<EvalOutputCell {...highlightedProps} />);
+
+    // Verify pill is still visible with highlighting applied
+    pillElement = container.querySelector('.pill');
+    expect(pillElement).toBeVisible();
+    expect(pillElement?.textContent).toBeTruthy();
+
+    // Verify cell has highlight background
+    const cellElement = container.querySelector('.cell');
+    expect(cellElement).toHaveStyle({
+      backgroundColor: 'var(--cell-highlight-color)',
+    });
+
+    // Toggle highlight OFF
+    const newHighlightButton = screen.getByLabelText('Toggle test highlight');
+    await user.click(newHighlightButton);
+
+    // Simulate state change back to non-highlighted
+    const unhighlightedProps = createPropsWithComment('Regular comment');
+    rerender(<EvalOutputCell {...unhighlightedProps} />);
+
+    // Verify pill is still visible without highlighting
+    pillElement = container.querySelector('.pill');
+    expect(pillElement).toBeVisible();
+    expect(pillElement?.textContent).toBeTruthy();
+  });
+
+  it('uses CSS variables for highlighting colors', () => {
+    const props = createPropsWithComment('!highlight CSS variables test');
+    const { container } = renderWithProviders(<EvalOutputCell {...props} />);
+
+    const cellElement = container.querySelector('.cell');
+    expect(cellElement).toHaveStyle({
+      backgroundColor: 'var(--cell-highlight-color)',
+    });
+
+    const contentElements = container.querySelectorAll(
+      '[style*="var(--cell-highlight-text-color)"]',
+    );
+    expect(contentElements.length).toBeGreaterThan(0);
+  });
+
+  it('maintains proper DOM structure with highlighting applied', () => {
+    const props = createPropsWithComment('!highlight DOM structure test');
+    const { container } = renderWithProviders(<EvalOutputCell {...props} />);
+
+    // Verify key elements are present and properly structured
+    const cellElement = container.querySelector('.cell');
+    expect(cellElement).toBeInTheDocument();
+
+    const statusElement = container.querySelector('.status');
+    expect(statusElement).toBeInTheDocument();
+
+    const statusRowElement = container.querySelector('.status-row');
+    expect(statusRowElement).toBeInTheDocument();
+
+    const pillElement = container.querySelector('.pill');
+    expect(pillElement).toBeInTheDocument();
+
+    // Verify highlighting doesn't break the DOM hierarchy
+    expect(statusElement?.contains(statusRowElement)).toBe(true);
+    expect(statusRowElement?.contains(pillElement)).toBe(true);
+    expect(cellElement?.contains(statusElement)).toBe(true);
+  });
+});
+
+describe('EvalOutputCell extra actions hover behavior', () => {
+  const mockOnRating = vi.fn();
+
+  const defaultProps: MockEvalOutputCellProps = {
+    firstOutput: {
+      cost: 0,
+      id: 'test-id',
+      latencyMs: 100,
+      namedScores: {},
+      pass: true,
+      failureReason: ResultFailureReason.NONE,
+      prompt: 'Test prompt',
+      provider: 'test-provider',
+      score: 0.8,
+      text: 'Test output text',
+      testCase: {},
+    },
+    maxTextLength: 100,
+    onRating: mockOnRating,
+    output: {
+      cost: 0,
+      gradingResult: {
+        comment: 'Test comment',
+        componentResults: [],
+        pass: true,
+        reason: 'Test reason',
+        score: 0.8,
+      },
+      id: 'test-id',
+      latencyMs: 100,
+      namedScores: {},
+      pass: true,
+      failureReason: ResultFailureReason.NONE,
+      prompt: 'Test prompt',
+      provider: 'test-provider',
+      score: 0.8,
+      text: 'Test output text',
+      testCase: {},
+    },
+    promptIndex: 0,
+    rowIndex: 0,
+    searchText: '',
+    showDiffs: false,
+    showStats: true,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('has mouse event handlers on the actions area for hover behavior', () => {
+    const { container } = renderWithProviders(<EvalOutputCell {...defaultProps} />);
+
+    const actionsArea = container.querySelector('.cell-actions');
+    expect(actionsArea).toBeInTheDocument();
+
+    // Verify that the actions area has the required event handlers for hover behavior
+    // The actual mouseEnter/mouseLeave events will trigger the hover state
+    // which shows/hides extra actions alongside the shift key state
+    expect(actionsArea).toHaveAttribute('class', 'cell-actions');
+  });
+
+  it('shows extra actions when shift key is pressed (mocked as true)', () => {
+    // With useShiftKey mocked to return true, extra actions should be visible
+    const { container } = renderWithProviders(<EvalOutputCell {...defaultProps} />);
+
+    const actionsArea = container.querySelector('.cell-actions');
+    expect(actionsArea).toBeInTheDocument();
+
+    // Extra actions should be visible because shift key is mocked as pressed
+    expect(screen.getByLabelText('Toggle test highlight')).toBeInTheDocument();
+    expect(screen.getByLabelText('Copy link to output')).toBeInTheDocument();
+    expect(screen.getByLabelText('Copy output to clipboard')).toBeInTheDocument();
+  });
+
+  it('keeps utility and review actions in a stable, grouped order', () => {
+    const { container } = renderWithProviders(<EvalOutputCell {...defaultProps} />);
+
+    const actionsArea = container.querySelector('.cell-actions');
+    expect(actionsArea).toBeInTheDocument();
+
+    const actionNames = Array.from(actionsArea?.querySelectorAll('button') ?? []).map(
+      (button) => button.getAttribute('aria-label') ?? '',
+    );
+
+    expect(actionNames).toEqual([
+      'Copy output to clipboard',
+      'Copy link to output',
+      'Toggle test highlight',
+      'Mark test passed',
+      'Mark test failed',
+      'Set test score',
+      'Edit comment',
+      'View output and test details',
+    ]);
+  });
+});
+
+describe('isImageProvider helper function', () => {
+  it('should return true for DALL-E 3 provider', () => {
+    expect(isImageProvider('openai:image:dall-e-3')).toBe(true);
+  });
+
+  it('should return true for DALL-E 2 provider', () => {
+    expect(isImageProvider('openai:image:dall-e-2')).toBe(true);
+  });
+
+  it('should return true for any provider with :image: in the name', () => {
+    expect(isImageProvider('some-provider:image:model')).toBe(true);
+  });
+
+  it('should return true for Gemini image providers', () => {
+    expect(isImageProvider('google:gemini-3-pro-image-preview')).toBe(true);
+  });
+
+  it('should return true for Gemini 2.5 Flash image provider', () => {
+    expect(isImageProvider('google:gemini-2.5-flash-image')).toBe(true);
+  });
+
+  it('should return true for Gemini 3.1 Flash-Lite image provider (Nano Banana 2 Lite)', () => {
+    expect(isImageProvider('google:gemini-3.1-flash-lite-image')).toBe(true);
+  });
+
+  it('should return false for text completion providers', () => {
+    expect(isImageProvider('openai:gpt-4')).toBe(false);
+  });
+
+  it('should return false for chat providers', () => {
+    expect(isImageProvider('openai:chat:gpt-4')).toBe(false);
+  });
+
+  it('should return false for anthropic providers', () => {
+    expect(isImageProvider('anthropic:claude-3-opus')).toBe(false);
+  });
+
+  it('should return false for undefined provider', () => {
+    expect(isImageProvider(undefined)).toBe(false);
+  });
+
+  it('should return false for empty string', () => {
+    expect(isImageProvider('')).toBe(false);
+  });
+});
+
+describe('isVideoProvider helper function', () => {
+  it('should return true for OpenAI Sora 2 provider', () => {
+    expect(isVideoProvider('openai:video:sora-2')).toBe(true);
+  });
+
+  it('should return true for OpenAI Sora 2 Pro provider', () => {
+    expect(isVideoProvider('openai:video:sora-2-pro')).toBe(true);
+  });
+
+  it('should return true for Google Veo 3.1 provider', () => {
+    expect(isVideoProvider('google:video:veo-3.1-generate-preview')).toBe(true);
+  });
+
+  it('should return true for Google Veo 2 provider', () => {
+    expect(isVideoProvider('google:video:veo-2-generate')).toBe(true);
+  });
+
+  it('should return true for any provider with :video: in the name', () => {
+    expect(isVideoProvider('some-provider:video:model')).toBe(true);
+  });
+
+  it('should return true for a provider string with leading and trailing whitespace', () => {
+    expect(isVideoProvider(' openai:video:sora-2 ')).toBe(true);
+  });
+
+  it('should return false for text completion providers', () => {
+    expect(isVideoProvider('openai:gpt-4')).toBe(false);
+  });
+
+  it('should return false for chat providers', () => {
+    expect(isVideoProvider('openai:chat:gpt-4')).toBe(false);
+  });
+
+  it('should return false for image providers', () => {
+    expect(isVideoProvider('openai:image:dall-e-3')).toBe(false);
+  });
+
+  it('should return false for anthropic providers', () => {
+    expect(isVideoProvider('anthropic:claude-3-opus')).toBe(false);
+  });
+
+  it('should return false for undefined provider', () => {
+    expect(isVideoProvider(undefined)).toBe(false);
+  });
+
+  it('should return false for empty string', () => {
+    expect(isVideoProvider('')).toBe(false);
+  });
+});
+
+describe('EvalOutputCell provider error display', () => {
+  const mockOnRating = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('displays provider-level error in fail reasons', () => {
+    const propsWithError: MockEvalOutputCellProps = {
+      firstOutput: {
+        cost: 0,
+        id: 'test-id',
+        latencyMs: 100,
+        namedScores: {},
+        pass: false,
+        failureReason: ResultFailureReason.ERROR,
+        prompt: 'Test prompt',
+        provider: 'test-provider',
+        score: 0,
+        text: '',
+        testCase: {},
+      },
+      maxTextLength: 100,
+      onRating: mockOnRating,
+      output: {
+        cost: 0,
+        id: 'test-id',
+        latencyMs: 100,
+        namedScores: {},
+        pass: false,
+        failureReason: ResultFailureReason.ERROR,
+        prompt: 'Test prompt',
+        provider: 'file://error_provider.py',
+        score: 0,
+        text: '',
+        testCase: {},
+        error: 'ConnectionError: Failed to connect to API server',
+      },
+      promptIndex: 0,
+      rowIndex: 0,
+      searchText: '',
+      showDiffs: false,
+      showStats: true,
+    };
+
+    renderWithProviders(<EvalOutputCell {...propsWithError} />);
+
+    // The error message should be displayed in the fail reason carousel
+    expect(
+      screen.getByText('ConnectionError: Failed to connect to API server'),
+    ).toBeInTheDocument();
+  });
+
+  it('displays provider error alongside assertion failures', () => {
+    const propsWithErrorAndAssertions: MockEvalOutputCellProps = {
+      firstOutput: {
+        cost: 0,
+        id: 'test-id',
+        latencyMs: 100,
+        namedScores: {},
+        pass: false,
+        failureReason: ResultFailureReason.ERROR,
+        prompt: 'Test prompt',
+        provider: 'test-provider',
+        score: 0,
+        text: '',
+        testCase: {},
+      },
+      maxTextLength: 100,
+      onRating: mockOnRating,
+      output: {
+        cost: 0,
+        gradingResult: {
+          componentResults: [
+            {
+              assertion: {
+                type: 'contains' as AssertionType,
+                value: 'expected',
+              },
+              pass: false,
+              reason: 'Output does not contain expected value',
+              score: 0,
+            },
+          ],
+          pass: false,
+          reason: 'Assertion failed',
+          score: 0,
+        },
+        id: 'test-id',
+        latencyMs: 100,
+        namedScores: {},
+        pass: false,
+        failureReason: ResultFailureReason.ERROR,
+        prompt: 'Test prompt',
+        provider: 'file://error_provider.py',
+        score: 0,
+        text: '',
+        testCase: {},
+        error: 'AuthenticationError: Invalid API key',
+      },
+      promptIndex: 0,
+      rowIndex: 0,
+      searchText: '',
+      showDiffs: false,
+      showStats: true,
+    };
+
+    renderWithProviders(<EvalOutputCell {...propsWithErrorAndAssertions} />);
+
+    // The provider error should be displayed (it's unshifted to the front)
+    expect(screen.getByText('AuthenticationError: Invalid API key')).toBeInTheDocument();
+  });
+
+  it('does not display error when output.error is null', () => {
+    const propsWithNullError: MockEvalOutputCellProps = {
+      firstOutput: {
+        cost: 0,
+        id: 'test-id',
+        latencyMs: 100,
+        namedScores: {},
+        pass: true,
+        failureReason: ResultFailureReason.NONE,
+        prompt: 'Test prompt',
+        provider: 'test-provider',
+        score: 1,
+        text: 'Success output',
+        testCase: {},
+      },
+      maxTextLength: 100,
+      onRating: mockOnRating,
+      output: {
+        cost: 0,
+        id: 'test-id',
+        latencyMs: 100,
+        namedScores: {},
+        pass: true,
+        failureReason: ResultFailureReason.NONE,
+        prompt: 'Test prompt',
+        provider: 'test-provider',
+        score: 1,
+        text: 'Success output',
+        testCase: {},
+        error: null,
+      },
+      promptIndex: 0,
+      rowIndex: 0,
+      searchText: '',
+      showDiffs: false,
+      showStats: true,
+    };
+
+    const { container } = renderWithProviders(<EvalOutputCell {...propsWithNullError} />);
+
+    // No fail-reason element should be present
+    expect(container.querySelector('.fail-reason')).not.toBeInTheDocument();
+  });
+
+  it('does not duplicate error when failureReason is ASSERT (assertion failure)', () => {
+    // This tests the fix for GitHub issue #6915
+    // When an assertion fails, output.error is set to the same reason as the failed assertion
+    // The UI should NOT show duplicates - the error should only appear once via componentResults
+    const propsWithAssertionFailure: MockEvalOutputCellProps = {
+      firstOutput: {
+        cost: 0,
+        id: 'test-id',
+        latencyMs: 100,
+        namedScores: {},
+        pass: false,
+        failureReason: ResultFailureReason.ASSERT,
+        prompt: 'Test prompt',
+        provider: 'test-provider',
+        score: 0,
+        text: 'Some output',
+        testCase: {},
+      },
+      maxTextLength: 100,
+      onRating: mockOnRating,
+      output: {
+        cost: 0,
+        gradingResult: {
+          componentResults: [
+            {
+              assertion: {
+                type: 'contains' as AssertionType,
+                value: 'expected value',
+              },
+              pass: false,
+              reason: 'Output does not contain expected value',
+              score: 0,
+            },
+          ],
+          pass: false,
+          reason: 'Output does not contain expected value',
+          score: 0,
+        },
+        id: 'test-id',
+        latencyMs: 100,
+        namedScores: {},
+        pass: false,
+        failureReason: ResultFailureReason.ASSERT,
+        prompt: 'Test prompt',
+        provider: 'test-provider',
+        score: 0,
+        text: 'Some output',
+        testCase: {},
+        // This is the key: output.error is set to the same reason as the assertion failure
+        // (this happens in evaluator.ts when assertions fail)
+        error: 'Output does not contain expected value',
+      },
+      promptIndex: 0,
+      rowIndex: 0,
+      searchText: '',
+      showDiffs: false,
+      showStats: true,
+    };
+
+    renderWithProviders(<EvalOutputCell {...propsWithAssertionFailure} />);
+
+    // The error message should appear exactly once (from componentResults, not duplicated from output.error)
+    const errorMessages = screen.getAllByText('Output does not contain expected value');
+    expect(errorMessages).toHaveLength(1);
+
+    // Verify the fail reason carousel does NOT show pagination (1/2, etc.) since there's only one reason
+    expect(screen.queryByText(/1\/2/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/2\/2/)).not.toBeInTheDocument();
+  });
+});
+
+describe('EvalOutputCell thumbs up/down toggle functionality', () => {
+  const mockOnRating = vi.fn();
+
+  const createPropsForToggleTest = (): MockEvalOutputCellProps => ({
+    firstOutput: {
+      cost: 0,
+      id: 'test-id',
+      latencyMs: 100,
+      namedScores: {},
+      pass: true,
+      failureReason: ResultFailureReason.NONE,
+      prompt: 'Test prompt',
+      provider: 'test-provider',
+      score: 0.8,
+      text: 'Test output text',
+      testCase: {},
+    },
+    maxTextLength: 100,
+    onRating: mockOnRating,
+    output: {
+      cost: 0,
+      gradingResult: {
+        comment: 'Initial comment',
+        componentResults: [],
+        pass: true,
+        reason: 'Test reason',
+        score: 0.8,
+      },
+      id: 'test-id',
+      latencyMs: 100,
+      namedScores: {},
+      pass: true,
+      failureReason: ResultFailureReason.NONE,
+      prompt: 'Test prompt',
+      provider: 'test-provider',
+      score: 0.8,
+      text: 'Test output text',
+      testCase: {},
+    },
+    promptIndex: 0,
+    rowIndex: 0,
+    searchText: '',
+    showDiffs: false,
+    showStats: true,
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should toggle thumbs up rating to null when clicked again', async () => {
+    const props = createPropsForToggleTest();
+    renderWithProviders(<EvalOutputCell {...props} />);
+
+    const thumbsUpButton = screen.getByLabelText('Mark test passed');
+    expect(thumbsUpButton).toBeInTheDocument();
+
+    // First click - set rating to true
+    await userEvent.click(thumbsUpButton);
+    expect(mockOnRating).toHaveBeenCalledWith(true, undefined, 'Initial comment');
+
+    // Clear the mock to track the next call
+    mockOnRating.mockClear();
+
+    // On second click, it should toggle to null
+    await userEvent.click(thumbsUpButton);
+
+    // The second click should pass null (toggle off behavior)
+    expect(mockOnRating).toHaveBeenCalledWith(null, undefined, 'Initial comment');
+  });
+
+  it('should toggle thumbs down rating to null when clicked again', async () => {
+    const props = createPropsForToggleTest();
+    renderWithProviders(<EvalOutputCell {...props} />);
+
+    const thumbsDownButton = screen.getByLabelText('Mark test failed');
+    expect(thumbsDownButton).toBeInTheDocument();
+
+    // First click - set rating to false
+    await userEvent.click(thumbsDownButton);
+    expect(mockOnRating).toHaveBeenCalledWith(false, undefined, 'Initial comment');
+
+    mockOnRating.mockClear();
+
+    // On second click, it should toggle to null
+    await userEvent.click(thumbsDownButton);
+    expect(mockOnRating).toHaveBeenCalledWith(null, undefined, 'Initial comment');
+  });
+
+  it('should allow switching from thumbs up to thumbs down', async () => {
+    const props = createPropsForToggleTest();
+    renderWithProviders(<EvalOutputCell {...props} />);
+
+    const thumbsUpButton = screen.getByLabelText('Mark test passed');
+    const thumbsDownButton = screen.getByLabelText('Mark test failed');
+
+    // Click thumbs up first
+    await userEvent.click(thumbsUpButton);
+    expect(mockOnRating).toHaveBeenNthCalledWith(1, true, undefined, 'Initial comment');
+
+    // Then click thumbs down
+    await userEvent.click(thumbsDownButton);
+    expect(mockOnRating).toHaveBeenNthCalledWith(2, false, undefined, 'Initial comment');
+  });
+
+  it('should preserve comment when toggling rating', async () => {
+    const props = {
+      ...createPropsForToggleTest(),
+      output: {
+        ...createPropsForToggleTest().output,
+        gradingResult: {
+          comment: 'Important comment',
+          componentResults: [],
+          pass: true,
+          reason: 'Test reason',
+          score: 0.8,
+        },
+      },
+    };
+    renderWithProviders(<EvalOutputCell {...props} />);
+
+    const thumbsUpButton = screen.getByLabelText('Mark test passed');
+    await userEvent.click(thumbsUpButton);
+
+    // Verify comment is passed to onRating
+    expect(mockOnRating).toHaveBeenCalledWith(true, undefined, 'Important comment');
+  });
+});
+
+describe('EvalOutputCell pass reasons setting', () => {
+  const mockOnRating = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // Default mock has showPassReasons: false
+  it('should not show pass reasons when showPassReasons setting is false', () => {
+    const propsWithPassReasons: MockEvalOutputCellProps = {
+      firstOutput: {
+        cost: 0,
+        id: 'test-id',
+        latencyMs: 100,
+        namedScores: {},
+        pass: true,
+        failureReason: ResultFailureReason.NONE,
+        prompt: 'Test prompt',
+        provider: 'test-provider',
+        score: 0.9,
+        text: 'Test output text',
+        testCase: {},
+      },
+      maxTextLength: 100,
+      onRating: mockOnRating,
+      output: {
+        cost: 0,
+        gradingResult: {
+          componentResults: [
+            {
+              assertion: {
+                metric: 'accuracy',
+                type: 'llm-rubric' as AssertionType,
+                value: 'Check if response is helpful',
+              },
+              pass: true,
+              reason: 'The response was helpful and addressed all points',
+              score: 0.9,
+            },
+          ],
+          pass: true,
+          reason: 'Test passed',
+          score: 0.9,
+        },
+        id: 'test-id',
+        latencyMs: 100,
+        namedScores: {},
+        pass: true,
+        failureReason: ResultFailureReason.NONE,
+        prompt: 'Test prompt',
+        provider: 'test-provider',
+        score: 0.9,
+        text: 'Test output text',
+        testCase: {},
+      },
+      promptIndex: 0,
+      rowIndex: 0,
+      searchText: '',
+      showDiffs: false,
+      showStats: true,
+    };
+
+    const { container } = renderWithProviders(<EvalOutputCell {...propsWithPassReasons} />);
+
+    // Pass reasons should not be visible when setting is false (default)
+    expect(container.querySelector('.pass-reasons')).not.toBeInTheDocument();
+  });
+});
+
+describe('EvalOutputCell metrics pills setting', () => {
+  const mockOnRating = vi.fn();
+
+  const createPropsWithMetrics = (): MockEvalOutputCellProps => ({
+    firstOutput: {
+      cost: 0,
+      id: 'test-id',
+      latencyMs: 100,
+      namedScores: {},
+      pass: true,
+      failureReason: ResultFailureReason.NONE,
+      prompt: 'Test prompt',
+      provider: 'test-provider',
+      score: 0.9,
+      text: 'Test output text',
+      testCase: {},
+    },
+    maxTextLength: 100,
+    onRating: mockOnRating,
+    output: {
+      cost: 0,
+      id: 'test-id',
+      latencyMs: 100,
+      namedScores: {
+        accuracy: 0.9,
+      },
+      pass: true,
+      failureReason: ResultFailureReason.NONE,
+      prompt: 'Test prompt',
+      provider: 'test-provider',
+      score: 0.9,
+      text: 'Test output text',
+      testCase: {},
+    },
+    promptIndex: 0,
+    rowIndex: 0,
+    searchText: '',
+    showDiffs: false,
+    showStats: true,
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('shows metric pills by default', () => {
+    renderWithProviders(<EvalOutputCell {...createPropsWithMetrics()} />);
+
+    expect(screen.getByTestId('metric-accuracy')).toBeInTheDocument();
+  });
+
+  it('hides metric pills when the setting is disabled', () => {
+    mockResultsViewSettings.showMetricPills = false;
+
+    renderWithProviders(<EvalOutputCell {...createPropsWithMetrics()} />);
+
+    expect(screen.queryByTestId('metric-accuracy')).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * Tests for lightbox functionality with inline images.
+ * These tests verify the fix for issue #969 (markdown re-rendering)
+ * by testing that the lightbox toggle works correctly with useCallback.
+ * @see https://github.com/promptfoo/promptfoo/issues/969
+ */
+describe('EvalOutputCell inline image lightbox', () => {
+  const mockOnRating = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('opens lightbox when clicking on inline image and closes when clicking lightbox', async () => {
+    const user = userEvent.setup();
+    // Use a data URI which triggers the inline image rendering path (not markdown)
+    const dataUri =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
+    const props: MockEvalOutputCellProps = {
+      firstOutput: {
+        cost: 0,
+        id: 'test-id',
+        latencyMs: 100,
+        namedScores: {},
+        pass: true,
+        failureReason: ResultFailureReason.NONE,
+        prompt: 'Test prompt',
+        provider: 'test-provider',
+        score: 1.0,
+        text: 'First output',
+        testCase: {},
+      },
+      maxTextLength: 1000,
+      onRating: mockOnRating,
+      output: {
+        cost: 0,
+        gradingResult: {
+          componentResults: [],
+          pass: true,
+          reason: 'Test passed',
+          score: 1.0,
+        },
+        id: 'test-id',
+        latencyMs: 100,
+        namedScores: {},
+        pass: true,
+        failureReason: ResultFailureReason.NONE,
+        prompt: 'Test prompt',
+        provider: 'test-provider',
+        score: 1.0,
+        text: dataUri,
+        testCase: {},
+      },
+      promptIndex: 0,
+      rowIndex: 0,
+      searchText: '',
+      showDiffs: false,
+      showStats: false,
+    };
+
+    const { container } = renderWithProviders(<EvalOutputCell {...props} />);
+
+    const imgElement = screen.getByRole('img');
+    expect(imgElement).toBeInTheDocument();
+
+    await user.click(imgElement);
+    expect(container.querySelector('.lightbox')).toBeInTheDocument();
+
+    await user.click(container.querySelector('.lightbox')!);
+    expect(container.querySelector('.lightbox')).not.toBeInTheDocument();
+  });
+
+  it('toggleLightbox maintains stable behavior across multiple toggles', async () => {
+    const user = userEvent.setup();
+    // Use a data URI which triggers the inline image rendering path
+    const dataUri =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
+    const props: MockEvalOutputCellProps = {
+      firstOutput: {
+        cost: 0,
+        id: 'test-id',
+        latencyMs: 100,
+        namedScores: {},
+        pass: true,
+        failureReason: ResultFailureReason.NONE,
+        prompt: 'Test prompt',
+        provider: 'test-provider',
+        score: 1.0,
+        text: 'First output',
+        testCase: {},
+      },
+      maxTextLength: 1000,
+      onRating: mockOnRating,
+      output: {
+        cost: 0,
+        gradingResult: {
+          componentResults: [],
+          pass: true,
+          reason: 'Test passed',
+          score: 1.0,
+        },
+        id: 'test-id',
+        latencyMs: 100,
+        namedScores: {},
+        pass: true,
+        failureReason: ResultFailureReason.NONE,
+        prompt: 'Test prompt',
+        provider: 'test-provider',
+        score: 1.0,
+        text: dataUri,
+        testCase: {},
+      },
+      promptIndex: 0,
+      rowIndex: 0,
+      searchText: '',
+      showDiffs: false,
+      showStats: false,
+    };
+
+    const { container } = renderWithProviders(<EvalOutputCell {...props} />);
+
+    const imgElement = screen.getByRole('img');
+
+    await user.click(imgElement);
+    expect(container.querySelector('.lightbox')).toBeInTheDocument();
+
+    await user.click(container.querySelector('.lightbox')!);
+    expect(container.querySelector('.lightbox')).not.toBeInTheDocument();
+
+    await user.click(imgElement);
+    expect(container.querySelector('.lightbox')).toBeInTheDocument();
+
+    await user.click(container.querySelector('.lightbox')!);
+    expect(container.querySelector('.lightbox')).not.toBeInTheDocument();
+
+    await user.click(imgElement);
+    expect(container.querySelector('.lightbox')).toBeInTheDocument();
+  });
+});

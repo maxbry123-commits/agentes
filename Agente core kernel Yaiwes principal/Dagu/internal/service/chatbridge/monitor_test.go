@@ -1,0 +1,1090 @@
+// Copyright (C) 2026 Yota Hamada
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+package chatbridge
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"log/slog"
+	"path/filepath"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/dagucloud/dagu/v2/internal/eventstore"
+	"github.com/dagucloud/dagu/v2/internal/ir"
+	"github.com/dagucloud/dagu/v2/internal/testutil"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+type fakeNotificationTransport struct {
+	destinations []string
+	flushFn      func(context.Context, string, NotificationBatch, bool) bool
+}
+
+func (f *fakeNotificationTransport) NotificationDestinations() []string {
+	return append([]string(nil), f.destinations...)
+}
+
+func (f *fakeNotificationTransport) FlushNotificationBatch(ctx context.Context, destination string, batch NotificationBatch, allowLLM bool) bool {
+	if f.flushFn == nil {
+		return true
+	}
+	return f.flushFn(ctx, destination, batch, allowLLM)
+}
+
+type fakeRoutingNotificationTransport struct {
+	*fakeNotificationTransport
+	routeFn func(NotificationEvent) []string
+}
+
+func (f *fakeRoutingNotificationTransport) NotificationDestinationsForEvent(event NotificationEvent) []string {
+	if f.routeFn == nil {
+		return nil
+	}
+	return f.routeFn(event)
+}
+
+type fakePolicyNotificationTransport struct {
+	*fakeNotificationTransport
+	shouldDeliverFn func(NotificationBatch) bool
+}
+
+func (f *fakePolicyNotificationTransport) ShouldDeliverNotificationBatch(batch NotificationBatch) bool {
+	if f.shouldDeliverFn == nil {
+		return true
+	}
+	return f.shouldDeliverFn(batch)
+}
+
+type stubNotificationStore struct {
+	mu        sync.Mutex
+	events    []*eventstore.Event
+	failHead  bool
+	readErr   error
+	headCalls int
+	readCalls int
+}
+
+var _ eventstore.Store = (*stubNotificationStore)(nil)
+var _ eventstore.DAGRunReader = (*stubNotificationStore)(nil)
+
+func (s *stubNotificationStore) Emit(_ context.Context, event *eventstore.Event) error {
+	if event == nil {
+		return nil
+	}
+	event.Normalize()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.events = append(s.events, event)
+	return nil
+}
+
+func (s *stubNotificationStore) Query(context.Context, eventstore.QueryFilter) (*eventstore.QueryResult, error) {
+	return &eventstore.QueryResult{}, nil
+}
+
+func (s *stubNotificationStore) DAGRunHeadCursor(context.Context) (eventstore.DAGRunCursor, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.headCalls++
+	if s.failHead {
+		return eventstore.DAGRunCursor{}, errors.New("head unavailable")
+	}
+	return s.currentCursorLocked(), nil
+}
+
+func (s *stubNotificationStore) ReadDAGRunEvents(_ context.Context, cursor eventstore.DAGRunCursor) ([]*eventstore.Event, eventstore.DAGRunCursor, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.readCalls++
+	if s.readErr != nil {
+		return nil, cursor, s.readErr
+	}
+
+	index := int(cursor.Normalize().CommittedOffsets["events"])
+	if index < 0 || index > len(s.events) {
+		index = 0
+	}
+	events := append([]*eventstore.Event(nil), s.events[index:]...)
+	return events, s.currentCursorLocked(), nil
+}
+
+func (s *stubNotificationStore) currentCursorLocked() eventstore.DAGRunCursor {
+	return eventstore.DAGRunCursor{
+		CommittedOffsets: map[string]int64{"events": int64(len(s.events))},
+	}
+}
+
+func (s *stubNotificationStore) setHeadFailure(fail bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.failHead = fail
+}
+
+func (s *stubNotificationStore) stats() (int, int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.headCalls, s.readCalls
+}
+
+func TestNotificationMonitor_ShutdownDrainRetriesInFlightBatchWithoutLLM(t *testing.T) {
+	t.Parallel()
+
+	type call struct {
+		destination string
+		allowLLM    bool
+	}
+
+	var (
+		mu    sync.Mutex
+		calls []call
+	)
+	firstCall := make(chan struct{}, 1)
+	secondCall := make(chan struct{}, 1)
+	transport := &fakeNotificationTransport{
+		destinations: []string{"dest-1"},
+		flushFn: func(ctx context.Context, destination string, _ NotificationBatch, allowLLM bool) bool {
+			mu.Lock()
+			calls = append(calls, call{destination: destination, allowLLM: allowLLM})
+			callCount := len(calls)
+			mu.Unlock()
+
+			if callCount == 1 {
+				firstCall <- struct{}{}
+				<-ctx.Done()
+				return false
+			}
+			secondCall <- struct{}{}
+			return true
+		},
+	}
+	cfg := DefaultNotificationMonitorConfig()
+	cfg.UrgentWindow = 10 * time.Millisecond
+	cfg.SuccessWindow = 10 * time.Millisecond
+	cfg.FlushTimeout = time.Second
+	cfg.PollInterval = time.Hour
+	cfg.SeenEvictInterval = time.Hour
+
+	monitor := NewNotificationMonitor(nil, nil, nil, transport, slog.New(slog.NewTextHandler(io.Discard, nil)), cfg)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		monitor.Run(ctx)
+		close(done)
+	}()
+
+	status := &ir.DAGRunStatus{
+		Name:      "briefing",
+		Status:    ir.Failed,
+		DAGRunID:  "run-1",
+		AttemptID: "attempt-1",
+		Error:     "boom",
+	}
+	require.True(t, monitor.NotifyCompletion(status))
+
+	select {
+	case <-firstCall:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for first flush attempt")
+	}
+
+	cancel()
+
+	select {
+	case <-secondCall:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for shutdown retry")
+	}
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for monitor shutdown")
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Len(t, calls, 2)
+	assert.Equal(t, call{destination: "dest-1", allowLLM: true}, calls[0])
+	assert.Equal(t, call{destination: "dest-1", allowLLM: false}, calls[1])
+	assert.True(t, monitor.IsDelivered("dest-1", status))
+}
+
+func TestNotificationMonitor_NotifyCompletionSkipsFailedRunWithAutoRetryRemaining(t *testing.T) {
+	t.Parallel()
+
+	var (
+		mu    sync.Mutex
+		calls int
+	)
+	transport := &fakeNotificationTransport{
+		destinations: []string{"dest-1"},
+		flushFn: func(_ context.Context, _ string, _ NotificationBatch, _ bool) bool {
+			mu.Lock()
+			defer mu.Unlock()
+			calls++
+			return true
+		},
+	}
+
+	cfg := DefaultNotificationMonitorConfig()
+	cfg.UrgentWindow = 10 * time.Millisecond
+	cfg.PollInterval = time.Hour
+	cfg.SeenEvictInterval = time.Hour
+
+	monitor := NewNotificationMonitor(nil, nil, nil, transport, slog.New(slog.NewTextHandler(io.Discard, nil)), cfg)
+	stopMonitor := testutil.StartContextRunner(t, monitor)
+	defer stopMonitor()
+
+	status := &ir.DAGRunStatus{
+		Name:           "briefing",
+		Status:         ir.Failed,
+		DAGRunID:       "run-1",
+		AttemptID:      "attempt-1",
+		Error:          "boom",
+		AutoRetryCount: 0,
+		AutoRetryLimit: 2,
+	}
+	require.False(t, monitor.NotifyCompletion(status))
+
+	require.Never(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return calls > 0 || monitor.IsDelivered("dest-1", status)
+	}, 50*time.Millisecond, 5*time.Millisecond)
+}
+
+func TestNotificationMonitor_PollSourceRoutesEventsPerDestination(t *testing.T) {
+	t.Parallel()
+
+	type call struct {
+		destination string
+		allowLLM    bool
+	}
+
+	store := &stubNotificationStore{}
+	service := eventstore.New(store)
+	var (
+		mu    sync.Mutex
+		calls []call
+	)
+	transport := &fakeRoutingNotificationTransport{
+		fakeNotificationTransport: &fakeNotificationTransport{
+			destinations: []string{"dest-a", "dest-b"},
+			flushFn: func(_ context.Context, destination string, _ NotificationBatch, allowLLM bool) bool {
+				mu.Lock()
+				defer mu.Unlock()
+				calls = append(calls, call{destination: destination, allowLLM: allowLLM})
+				return true
+			},
+		},
+		routeFn: func(event NotificationEvent) []string {
+			if event.Status == nil {
+				return nil
+			}
+			switch event.Status.Name {
+			case "dag-a":
+				return []string{"dest-a"}
+			case "dag-b":
+				return []string{"dest-b"}
+			default:
+				return nil
+			}
+		},
+	}
+	cfg := DefaultNotificationMonitorConfig()
+	cfg.PollInterval = 10 * time.Millisecond
+	cfg.SeenEvictInterval = time.Hour
+	cfg.UrgentWindow = 10 * time.Millisecond
+	cfg.SuccessWindow = 10 * time.Millisecond
+
+	monitor := NewNotificationMonitor(service, nil, nil, transport, slog.New(slog.NewTextHandler(io.Discard, nil)), cfg)
+	stopMonitor := testutil.StartContextRunner(t, monitor)
+	defer stopMonitor()
+
+	require.Eventually(t, func() bool {
+		headCalls, _ := store.stats()
+		return headCalls > 0
+	}, time.Second, 10*time.Millisecond)
+
+	for _, status := range []*ir.DAGRunStatus{
+		{Name: "dag-a", Status: ir.Failed, DAGRunID: "run-a", AttemptID: "attempt-a"},
+		{Name: "dag-b", Status: ir.Failed, DAGRunID: "run-b", AttemptID: "attempt-b"},
+	} {
+		require.NoError(t, store.Emit(context.Background(), eventstore.NewDAGRunEvent(
+			eventstore.Source{Service: eventstore.SourceServiceServer},
+			eventstore.TypeDAGRunFailed,
+			status,
+			nil,
+		)))
+	}
+
+	require.Eventually(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(calls) == 2
+	}, time.Second, 10*time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+	destinations := []string{calls[0].destination, calls[1].destination}
+	assert.ElementsMatch(t, []string{"dest-a", "dest-b"}, destinations)
+}
+
+func TestNotificationMonitor_BootstrapDeliversStartupEvent(t *testing.T) {
+	t.Parallel()
+
+	store := &stubNotificationStore{}
+	service := eventstore.New(store)
+
+	delivered := make(chan struct{}, 1)
+	transport := &fakeNotificationTransport{
+		destinations: []string{"dest-1"},
+		flushFn: func(context.Context, string, NotificationBatch, bool) bool {
+			delivered <- struct{}{}
+			return true
+		},
+	}
+	cfg := DefaultNotificationMonitorConfig()
+	cfg.PollInterval = 10 * time.Millisecond
+	cfg.SeenEvictInterval = time.Hour
+	cfg.UrgentWindow = 10 * time.Millisecond
+	monitor := newFileBackedMonitor(
+		service,
+		filepath.Join(t.TempDir(), "state.json"),
+		transport,
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		cfg,
+	)
+	require.NoError(t, monitor.Bootstrap(context.Background()))
+
+	status := &ir.DAGRunStatus{
+		Name:      "briefing",
+		DAGRunID:  "run-1",
+		AttemptID: "attempt-1",
+		Status:    ir.Failed,
+		Error:     "boom",
+	}
+	require.NoError(t, service.Emit(context.Background(), eventstore.NewDAGRunEvent(
+		eventstore.Source{Service: eventstore.SourceServiceScheduler},
+		eventstore.TypeDAGRunFailed,
+		status,
+		nil,
+	)))
+
+	stopMonitor := testutil.StartContextRunner(t, monitor)
+	defer stopMonitor()
+
+	select {
+	case <-delivered:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for startup event delivery")
+	}
+}
+
+func TestNotificationMonitor_PollSourceDeliversDistinctWaitingStates(t *testing.T) {
+	t.Parallel()
+
+	store := &stubNotificationStore{}
+	service := eventstore.New(store)
+	var (
+		mu        sync.Mutex
+		delivered []NotificationEvent
+	)
+	transport := &fakeNotificationTransport{
+		destinations: []string{"dest-1"},
+		flushFn: func(_ context.Context, _ string, batch NotificationBatch, _ bool) bool {
+			mu.Lock()
+			defer mu.Unlock()
+			delivered = append(delivered, batch.Events...)
+			return true
+		},
+	}
+	cfg := DefaultNotificationMonitorConfig()
+	cfg.PollInterval = 10 * time.Millisecond
+	cfg.SeenEvictInterval = time.Hour
+	cfg.UrgentWindow = 10 * time.Millisecond
+	cfg.SuccessWindow = 10 * time.Millisecond
+
+	monitor := NewNotificationMonitor(service, nil, nil, transport, slog.New(slog.NewTextHandler(io.Discard, nil)), cfg)
+	stopMonitor := testutil.StartContextRunner(t, monitor)
+	defer stopMonitor()
+
+	require.Eventually(t, func() bool {
+		headCalls, _ := store.stats()
+		return headCalls > 0
+	}, time.Second, 10*time.Millisecond)
+
+	status := &ir.DAGRunStatus{
+		Name:      "briefing",
+		DAGRunID:  "run-1",
+		AttemptID: "attempt-1",
+		Status:    ir.Waiting,
+		Nodes: []*ir.Node{{
+			Step:   ir.Step{Name: "approve-build"},
+			Status: ir.NodeWaiting,
+		}},
+	}
+	require.NoError(t, service.Emit(context.Background(), eventstore.NewDAGRunEvent(
+		eventstore.Source{Service: eventstore.SourceServiceServer},
+		eventstore.TypeDAGRunWaiting,
+		status,
+		nil,
+	)))
+	require.Eventually(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(delivered) == 1
+	}, time.Second, 10*time.Millisecond)
+
+	status.Nodes[0].ApprovalIteration = 1
+	require.NoError(t, service.Emit(context.Background(), eventstore.NewDAGRunEvent(
+		eventstore.Source{Service: eventstore.SourceServiceServer},
+		eventstore.TypeDAGRunUpdated,
+		status,
+		nil,
+	)))
+	require.Eventually(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(delivered) == 2
+	}, time.Second, 10*time.Millisecond)
+
+	status.Nodes = []*ir.Node{{
+		Step:   ir.Step{Name: "approve-deploy"},
+		Status: ir.NodeWaiting,
+	}}
+	require.NoError(t, service.Emit(context.Background(), eventstore.NewDAGRunEvent(
+		eventstore.Source{Service: eventstore.SourceServiceServer},
+		eventstore.TypeDAGRunUpdated,
+		status,
+		nil,
+	)))
+	require.Eventually(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(delivered) == 3
+	}, time.Second, 10*time.Millisecond)
+
+	status.Nodes[0].Status = ir.NodeSucceeded
+	require.NoError(t, service.Emit(context.Background(), eventstore.NewDAGRunEvent(
+		eventstore.Source{Service: eventstore.SourceServiceServer},
+		eventstore.TypeDAGRunUpdated,
+		status,
+		nil,
+	)))
+	require.Never(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(delivered) > 3
+	}, 100*time.Millisecond, 10*time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Len(t, delivered, 3)
+	assert.Equal(t, eventstore.TypeDAGRunWaiting, delivered[0].Type)
+	assert.Equal(t, eventstore.TypeDAGRunWaiting, delivered[1].Type)
+	assert.Equal(t, eventstore.TypeDAGRunWaiting, delivered[2].Type)
+	assert.NotEqual(t, delivered[0].Key, delivered[1].Key)
+	assert.NotEqual(t, delivered[1].Key, delivered[2].Key)
+}
+
+func TestNotificationMonitor_MigratesDeliveredWaitingKey(t *testing.T) {
+	t.Parallel()
+
+	status := &ir.DAGRunStatus{
+		Name:      "briefing",
+		DAGRunID:  "run-1",
+		AttemptID: "attempt-1",
+		Status:    ir.Waiting,
+		Nodes: []*ir.Node{{
+			Step:   ir.Step{Name: "approve-build"},
+			Status: ir.NodeWaiting,
+		}},
+	}
+	deliveredAt := time.Now().UTC()
+	state := newNotificationMonitorState()
+	state.Destinations["dest-1"] = &notificationDestinationState{
+		Pending: make(map[string]NotificationEvent),
+		Delivered: map[string]time.Time{
+			legacyNotificationSeenKey(status): deliveredAt,
+		},
+	}
+	event := NotificationEvent{
+		Key:        NotificationSeenKey(status),
+		Type:       eventstore.TypeDAGRunWaiting,
+		Status:     status,
+		ObservedAt: deliveredAt.Add(-time.Minute),
+	}
+
+	queued, changed, accepted := enqueueNotifications(&state, []string{"dest-1"}, []NotificationEvent{event})
+
+	assert.Empty(t, queued)
+	assert.True(t, changed)
+	assert.False(t, accepted)
+	destination := state.Destinations["dest-1"]
+	assert.NotContains(t, destination.Delivered, legacyNotificationSeenKey(status))
+	assert.Equal(t, deliveredAt, destination.Delivered[event.Key])
+}
+
+func TestNotificationMonitor_DoesNotMigrateLaterWaitingKey(t *testing.T) {
+	t.Parallel()
+
+	deliveredAt := time.Now().UTC()
+	legacyStatus := &ir.DAGRunStatus{
+		Name:      "briefing",
+		DAGRunID:  "run-1",
+		AttemptID: "attempt-1",
+		Status:    ir.Waiting,
+		Nodes: []*ir.Node{{
+			Step:   ir.Step{Name: "approve-build"},
+			Status: ir.NodeWaiting,
+		}},
+	}
+	status := &ir.DAGRunStatus{
+		Name:      "briefing",
+		DAGRunID:  "run-1",
+		AttemptID: "attempt-1",
+		Status:    ir.Waiting,
+		Nodes: []*ir.Node{{
+			Step:   ir.Step{Name: "approve-deploy"},
+			Status: ir.NodeWaiting,
+		}},
+	}
+	state := newNotificationMonitorState()
+	state.Destinations["dest-1"] = &notificationDestinationState{
+		Pending: make(map[string]NotificationEvent),
+		Delivered: map[string]time.Time{
+			legacyNotificationSeenKey(legacyStatus): deliveredAt,
+		},
+	}
+	event := NotificationEvent{
+		Key:        NotificationSeenKey(status),
+		Type:       eventstore.TypeDAGRunWaiting,
+		Status:     status,
+		ObservedAt: deliveredAt.Add(time.Minute),
+	}
+
+	queued, changed, accepted := enqueueNotifications(&state, []string{"dest-1"}, []NotificationEvent{event})
+
+	require.Len(t, queued, 1)
+	assert.True(t, changed)
+	assert.True(t, accepted)
+	assert.Equal(t, event.Key, queued[0].event.Key)
+}
+
+func TestNotificationMonitor_PollSourceSkipsFailedRunWithAutoRetryRemaining(t *testing.T) {
+	t.Parallel()
+
+	store := &stubNotificationStore{}
+	service := eventstore.New(store)
+	var (
+		mu    sync.Mutex
+		calls int
+	)
+	transport := &fakeNotificationTransport{
+		destinations: []string{"dest-1"},
+		flushFn: func(_ context.Context, _ string, _ NotificationBatch, _ bool) bool {
+			mu.Lock()
+			defer mu.Unlock()
+			calls++
+			return true
+		},
+	}
+	cfg := DefaultNotificationMonitorConfig()
+	cfg.PollInterval = 10 * time.Millisecond
+	cfg.SeenEvictInterval = time.Hour
+	cfg.UrgentWindow = 10 * time.Millisecond
+	cfg.SuccessWindow = 10 * time.Millisecond
+
+	monitor := NewNotificationMonitor(service, nil, nil, transport, slog.New(slog.NewTextHandler(io.Discard, nil)), cfg)
+	stopMonitor := testutil.StartContextRunner(t, monitor)
+	defer stopMonitor()
+
+	require.Eventually(t, func() bool {
+		headCalls, _ := store.stats()
+		return headCalls > 0
+	}, time.Second, 10*time.Millisecond)
+
+	status := &ir.DAGRunStatus{
+		Name:           "briefing",
+		Status:         ir.Failed,
+		DAGRunID:       "run-1",
+		AttemptID:      "attempt-1",
+		Error:          "boom",
+		AutoRetryCount: 0,
+		AutoRetryLimit: 2,
+	}
+	require.NoError(t, store.Emit(context.Background(), eventstore.NewDAGRunEvent(
+		eventstore.Source{Service: eventstore.SourceServiceServer},
+		eventstore.TypeDAGRunFailed,
+		status,
+		nil,
+	)))
+
+	require.Eventually(t, func() bool {
+		_, readCalls := store.stats()
+		return readCalls > 1
+	}, time.Second, 10*time.Millisecond)
+	require.Never(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return calls > 0 || monitor.IsDelivered("dest-1", status)
+	}, 100*time.Millisecond, 10*time.Millisecond)
+}
+
+func TestEnqueueNotificationsByEventFiltersUnknownAndDuplicateRoutes(t *testing.T) {
+	t.Parallel()
+
+	state := newNotificationMonitorState()
+	state.Bootstrapped = true
+	require.True(t, ensureDestinations(&state, []string{"dest-a"}))
+	router := &fakeRoutingNotificationTransport{
+		fakeNotificationTransport: &fakeNotificationTransport{
+			destinations: []string{"dest-a"},
+		},
+		routeFn: func(NotificationEvent) []string {
+			return []string{"dest-a", "unknown", "dest-a", ""}
+		},
+	}
+	status := &ir.DAGRunStatus{
+		Name:      "dag-a",
+		Status:    ir.Failed,
+		DAGRunID:  "run-a",
+		AttemptID: "attempt-a",
+	}
+	event := testNotificationEvent(status)
+
+	queued, changed, accepted := enqueueNotificationsByEvent(
+		&state,
+		router,
+		destinationSet(router.NotificationDestinations()),
+		[]NotificationEvent{event},
+	)
+
+	require.True(t, accepted)
+	require.True(t, changed)
+	require.Len(t, queued, 1)
+	assert.Equal(t, "dest-a", queued[0].destination)
+	assert.Contains(t, state.Destinations, "dest-a")
+	assert.NotContains(t, state.Destinations, "unknown")
+}
+
+func TestNotificationMonitor_CommitSourceProgressDropsOldestPendingEvent(t *testing.T) {
+	t.Parallel()
+
+	cfg := DefaultNotificationMonitorConfig()
+	cfg.PendingLimit = 2
+	monitor := NewNotificationMonitor(
+		nil,
+		nil,
+		nil,
+		&fakeNotificationTransport{destinations: []string{"dest-1"}},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		cfg,
+	)
+	monitor.state.Bootstrapped = true
+
+	base := time.Now().UTC()
+	events := make([]NotificationEvent, 0, 3)
+	for i := 1; i <= 3; i++ {
+		status := &ir.DAGRunStatus{
+			Name:      "briefing",
+			DAGRunID:  fmt.Sprintf("run-%d", i),
+			AttemptID: fmt.Sprintf("attempt-%d", i),
+			Status:    ir.Failed,
+		}
+		event := testNotificationEvent(status)
+		event.ObservedAt = base.Add(time.Duration(i) * time.Second)
+		events = append(events, event)
+	}
+	nextCursor := eventstore.DAGRunCursor{CommittedOffsets: map[string]int64{"events": 3}}
+
+	queued, committed := monitor.commitSourceProgress(context.Background(), nil, nextCursor, events)
+
+	require.True(t, committed)
+	require.Len(t, queued, 2)
+	assert.True(t, monitor.state.SourceCursor.Equal(nextCursor))
+	pending := monitor.state.Destinations["dest-1"].Pending
+	require.Len(t, pending, 2)
+	assert.NotContains(t, pending, events[0].Key)
+	assert.Contains(t, pending, events[1].Key)
+	assert.Contains(t, pending, events[2].Key)
+}
+
+func TestNormalizeNotificationMonitorConfig_DefaultsPendingLimit(t *testing.T) {
+	t.Parallel()
+
+	cfg := DefaultNotificationMonitorConfig()
+	cfg.PendingLimit = 0
+	normalizeNotificationMonitorConfig(&cfg)
+
+	assert.Equal(t, DefaultNotificationPendingLimit, cfg.PendingLimit)
+}
+
+func TestNotificationMonitor_RequeuePendingDropsFailedRunWithAutoRetryRemaining(t *testing.T) {
+	t.Parallel()
+
+	transport := &fakeNotificationTransport{destinations: []string{"dest-1"}}
+	cfg := DefaultNotificationMonitorConfig()
+	cfg.UrgentWindow = 10 * time.Millisecond
+	cfg.PollInterval = time.Hour
+	cfg.SeenEvictInterval = time.Hour
+
+	monitor := NewNotificationMonitor(nil, nil, nil, transport, slog.New(slog.NewTextHandler(io.Discard, nil)), cfg)
+	status := &ir.DAGRunStatus{
+		Name:           "briefing",
+		Status:         ir.Failed,
+		DAGRunID:       "run-1",
+		AttemptID:      "attempt-1",
+		Error:          "boom",
+		AutoRetryCount: 0,
+		AutoRetryLimit: 2,
+	}
+	event := testNotificationEvent(status)
+	monitor.state = newNotificationMonitorState()
+	monitor.state.Bootstrapped = true
+	monitor.state.Destinations["dest-1"] = &notificationDestinationState{
+		Pending: map[string]NotificationEvent{
+			event.Key: event,
+		},
+		Delivered: make(map[string]time.Time),
+	}
+
+	monitor.requeuePending(context.Background(), []string{"dest-1"})
+
+	monitor.stateMu.Lock()
+	assert.Empty(t, monitor.state.Destinations["dest-1"].Pending)
+	monitor.stateMu.Unlock()
+	require.Never(t, func() bool {
+		return len(monitor.currentBatcher().TakeReady()) > 0
+	}, 50*time.Millisecond, 5*time.Millisecond)
+
+	status.AutoRetryCount = status.AutoRetryLimit
+	require.True(t, monitor.NotifyCompletion(status))
+
+	ready := waitForReadyBatch(t, monitor.currentBatcher())
+	require.Len(t, ready.Batch.Events, 1)
+	assert.Equal(t, status.AutoRetryLimit, ready.Batch.Events[0].Status.AutoRetryCount)
+}
+
+func TestNotificationMonitor_BootstrapFailureDoesNotReplayFromZeroCursor(t *testing.T) {
+	t.Parallel()
+
+	store := &stubNotificationStore{failHead: true}
+	service := eventstore.New(store)
+
+	var (
+		mu        sync.Mutex
+		delivered []string
+	)
+	transport := &fakeNotificationTransport{
+		destinations: []string{"dest-1"},
+		flushFn: func(_ context.Context, _ string, batch NotificationBatch, _ bool) bool {
+			mu.Lock()
+			defer mu.Unlock()
+			for _, event := range batch.Events {
+				if event.Status != nil {
+					delivered = append(delivered, event.Status.DAGRunID)
+				}
+			}
+			return true
+		},
+	}
+
+	cfg := DefaultNotificationMonitorConfig()
+	cfg.PollInterval = 10 * time.Millisecond
+	cfg.SuccessWindow = 10 * time.Millisecond
+	cfg.UrgentWindow = 10 * time.Millisecond
+	cfg.SeenEvictInterval = time.Hour
+
+	monitor := NewNotificationMonitor(service, nil, nil, transport, slog.New(slog.NewTextHandler(io.Discard, nil)), cfg)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	go func() {
+		monitor.Run(ctx)
+		close(done)
+	}()
+	defer func() {
+		cancel()
+		<-done
+	}()
+
+	oldStatus := &ir.DAGRunStatus{
+		Name:       "briefing",
+		DAGRunID:   "run-old",
+		AttemptID:  "attempt-old",
+		Status:     ir.Failed,
+		Error:      "old failure",
+		FinishedAt: time.Now().Add(-time.Minute).UTC().Format(time.RFC3339),
+	}
+	require.NoError(t, service.Emit(context.Background(), eventstore.NewDAGRunEvent(
+		eventstore.Source{Service: eventstore.SourceServiceServer, Instance: "test"},
+		eventstore.TypeDAGRunFailed,
+		oldStatus,
+		nil,
+	)))
+
+	require.Eventually(t, func() bool {
+		headCalls, readCalls := store.stats()
+		return headCalls > 0 && readCalls == 0
+	}, time.Second, 10*time.Millisecond)
+
+	mu.Lock()
+	assert.Empty(t, delivered)
+	mu.Unlock()
+
+	store.setHeadFailure(false)
+	require.Eventually(t, func() bool {
+		monitor.stateMu.Lock()
+		defer monitor.stateMu.Unlock()
+		return monitor.state.Bootstrapped
+	}, time.Second, 10*time.Millisecond)
+
+	mu.Lock()
+	assert.Empty(t, delivered)
+	mu.Unlock()
+
+	newStatus := &ir.DAGRunStatus{
+		Name:       "briefing",
+		DAGRunID:   "run-new",
+		AttemptID:  "attempt-new",
+		Status:     ir.Failed,
+		Error:      "new failure",
+		FinishedAt: time.Now().UTC().Format(time.RFC3339),
+	}
+	require.NoError(t, service.Emit(context.Background(), eventstore.NewDAGRunEvent(
+		eventstore.Source{Service: eventstore.SourceServiceServer, Instance: "test"},
+		eventstore.TypeDAGRunFailed,
+		newStatus,
+		nil,
+	)))
+
+	require.Eventually(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(delivered) == 1 && delivered[0] == "run-new"
+	}, time.Second, 10*time.Millisecond)
+}
+
+func TestNotificationMonitor_ShutdownDrainFlushesPendingBatchWithoutLLM(t *testing.T) {
+	t.Parallel()
+
+	type call struct {
+		destination string
+		allowLLM    bool
+	}
+
+	var (
+		mu    sync.Mutex
+		calls []call
+	)
+	transport := &fakeNotificationTransport{
+		destinations: []string{"dest-1"},
+		flushFn: func(_ context.Context, destination string, _ NotificationBatch, allowLLM bool) bool {
+			mu.Lock()
+			defer mu.Unlock()
+			calls = append(calls, call{destination: destination, allowLLM: allowLLM})
+			return true
+		},
+	}
+	cfg := DefaultNotificationMonitorConfig()
+	cfg.UrgentWindow = time.Hour
+	cfg.SuccessWindow = time.Hour
+	cfg.FlushTimeout = time.Second
+	cfg.PollInterval = time.Hour
+	cfg.SeenEvictInterval = time.Hour
+
+	monitor := NewNotificationMonitor(nil, nil, nil, transport, slog.New(slog.NewTextHandler(io.Discard, nil)), cfg)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		monitor.Run(ctx)
+		close(done)
+	}()
+
+	status := &ir.DAGRunStatus{
+		Name:      "briefing",
+		Status:    ir.Failed,
+		DAGRunID:  "run-2",
+		AttemptID: "attempt-2",
+		Error:     "boom",
+	}
+	require.True(t, monitor.NotifyCompletion(status))
+	cancel()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for monitor shutdown")
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Len(t, calls, 1)
+	assert.Equal(t, call{destination: "dest-1", allowLLM: false}, calls[0])
+	assert.True(t, monitor.IsDelivered("dest-1", status))
+}
+
+func TestNotificationMonitor_SuccessEventsAreAcknowledgedWithoutDelivery(t *testing.T) {
+	t.Parallel()
+
+	var (
+		mu    sync.Mutex
+		calls []string
+	)
+	transport := &fakeNotificationTransport{
+		destinations: []string{"dest-1"},
+		flushFn: func(_ context.Context, destination string, _ NotificationBatch, _ bool) bool {
+			mu.Lock()
+			defer mu.Unlock()
+			calls = append(calls, destination)
+			return true
+		},
+	}
+
+	cfg := DefaultNotificationMonitorConfig()
+	cfg.UrgentWindow = 10 * time.Millisecond
+	cfg.SuccessWindow = 10 * time.Millisecond
+	cfg.PollInterval = time.Hour
+	cfg.SeenEvictInterval = time.Hour
+
+	monitor := NewNotificationMonitor(nil, nil, nil, transport, slog.New(slog.NewTextHandler(io.Discard, nil)), cfg)
+	stopMonitor := testutil.StartContextRunner(t, monitor)
+	defer stopMonitor()
+
+	first := &ir.DAGRunStatus{
+		Name:      "briefing",
+		Status:    ir.Succeeded,
+		DAGRunID:  "run-1",
+		AttemptID: "attempt-1",
+	}
+	second := &ir.DAGRunStatus{
+		Name:      "briefing",
+		Status:    ir.Succeeded,
+		DAGRunID:  "run-2",
+		AttemptID: "attempt-2",
+	}
+
+	require.True(t, monitor.NotifyCompletion(first))
+	require.True(t, monitor.NotifyCompletion(second))
+
+	require.Eventually(t, func() bool {
+		return monitor.IsDelivered("dest-1", first) && monitor.IsDelivered("dest-1", second)
+	}, time.Second, 10*time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Empty(t, calls, "successful completions should be acknowledged without transport delivery")
+}
+
+func TestNotificationMonitor_PartiallySucceededEventsCanBeDeliveredByOptInTransport(t *testing.T) {
+	t.Parallel()
+
+	var (
+		mu    sync.Mutex
+		calls []NotificationBatch
+	)
+	transport := &fakePolicyNotificationTransport{
+		fakeNotificationTransport: &fakeNotificationTransport{
+			destinations: []string{"dest-1"},
+			flushFn: func(_ context.Context, _ string, batch NotificationBatch, _ bool) bool {
+				mu.Lock()
+				defer mu.Unlock()
+				calls = append(calls, batch)
+				return true
+			},
+		},
+		shouldDeliverFn: func(batch NotificationBatch) bool {
+			return batch.Class == NotificationClassSuccessDigest
+		},
+	}
+
+	cfg := DefaultNotificationMonitorConfig()
+	cfg.UrgentWindow = 10 * time.Millisecond
+	cfg.SuccessWindow = 10 * time.Millisecond
+	cfg.PollInterval = time.Hour
+	cfg.SeenEvictInterval = time.Hour
+
+	monitor := NewNotificationMonitor(nil, nil, nil, transport, slog.New(slog.NewTextHandler(io.Discard, nil)), cfg)
+	stopMonitor := testutil.StartContextRunner(t, monitor)
+	defer stopMonitor()
+
+	status := &ir.DAGRunStatus{
+		Name:      "briefing",
+		Status:    ir.PartiallySucceeded,
+		DAGRunID:  "run-1",
+		AttemptID: "attempt-1",
+	}
+	require.True(t, monitor.NotifyCompletion(status))
+
+	require.Eventually(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(calls) == 1 && monitor.IsDelivered("dest-1", status)
+	}, time.Second, 10*time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Len(t, calls, 1)
+	assert.Equal(t, NotificationClassSuccessDigest, calls[0].Class)
+	require.Len(t, calls[0].Events, 1)
+	assert.Equal(t, eventstore.TypeDAGRunPartiallySucceeded, calls[0].Events[0].Type)
+}
+
+func TestNotificationMonitor_PollSourceFiltersInterestedEventTypes(t *testing.T) {
+	t.Parallel()
+
+	store := &stubNotificationStore{}
+	service := eventstore.New(store)
+	transport := &fakeNotificationTransport{destinations: []string{"dest-1"}}
+
+	cfg := DefaultNotificationMonitorConfig()
+	cfg.UrgentWindow = 5 * time.Millisecond
+	cfg.SuccessWindow = 5 * time.Millisecond
+	cfg.InterestedEventTypes = []eventstore.EventType{eventstore.TypeDAGRunRunning}
+
+	monitor := NewNotificationMonitor(service, nil, nil, transport, slog.New(slog.NewTextHandler(io.Discard, nil)), cfg)
+	monitor.initializeSession(context.Background())
+
+	queued := &ir.DAGRunStatus{
+		Name:      "briefing",
+		DAGRunID:  "run-1",
+		AttemptID: "attempt-1",
+		Status:    ir.Queued,
+		QueuedAt:  time.Now().UTC().Format(time.RFC3339),
+	}
+	running := *queued
+	running.Status = ir.Running
+	running.StartedAt = time.Now().UTC().Format(time.RFC3339)
+
+	require.NoError(t, service.Emit(context.Background(), eventstore.NewDAGRunEvent(
+		eventstore.Source{Service: eventstore.SourceServiceServer, Instance: "test"},
+		eventstore.TypeDAGRunQueued,
+		queued,
+		nil,
+	)))
+	require.NoError(t, service.Emit(context.Background(), eventstore.NewDAGRunEvent(
+		eventstore.Source{Service: eventstore.SourceServiceServer, Instance: "test"},
+		eventstore.TypeDAGRunRunning,
+		&running,
+		nil,
+	)))
+
+	monitor.pollSource(context.Background())
+
+	ready := waitForReadyBatch(t, monitor.currentBatcher())
+	require.Len(t, ready.Batch.Events, 1)
+	assert.Equal(t, NotificationClassInformational, ready.Batch.Class)
+	assert.Equal(t, eventstore.TypeDAGRunRunning, ready.Batch.Events[0].Type)
+	assert.Equal(t, ir.Running, ready.Batch.Events[0].Status.Status)
+}

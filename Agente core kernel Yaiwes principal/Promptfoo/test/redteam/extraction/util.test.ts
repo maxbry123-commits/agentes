@@ -1,0 +1,389 @@
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { fetchWithCache } from '../../../src/cache';
+import { VERSION } from '../../../src/constants';
+import logger from '../../../src/logger';
+import { getRequestTimeoutMs } from '../../../src/providers/shared';
+import {
+  callExtraction,
+  fetchRemoteGeneration,
+  formatPrompts,
+  RedTeamGenerationResponse,
+} from '../../../src/redteam/extraction/util';
+import { trackGenerationTokenUsage } from '../../../src/redteam/generationTokenUsage';
+import { getRemoteGenerationUrl } from '../../../src/redteam/remoteGeneration';
+import {
+  createMockProvider,
+  createProviderResponse,
+  type MockApiProvider,
+} from '../../factories/provider';
+import { mockProcessEnv } from '../../util/utils';
+
+vi.mock('../../../src/cache', async (importOriginal) => {
+  return {
+    ...(await importOriginal()),
+    fetchWithCache: vi.fn(),
+  };
+});
+
+vi.mock('../../../src/logger', () => ({
+  default: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+  getLogLevel: vi.fn().mockReturnValue('info'),
+}));
+
+vi.mock('../../../src/redteam/remoteGeneration', async (importOriginal) => {
+  return {
+    ...(await importOriginal()),
+    getRemoteGenerationUrl: vi.fn().mockReturnValue('https://api.promptfoo.app/api/v1/task'),
+  };
+});
+
+describe('fetchRemoteGeneration', () => {
+  let restoreEnv: () => void;
+
+  beforeAll(() => {
+    restoreEnv = mockProcessEnv({ PROMPTFOO_REMOTE_GENERATION_URL: undefined });
+  });
+
+  afterAll(() => {
+    restoreEnv();
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getRemoteGenerationUrl).mockImplementation(function () {
+      return 'https://api.promptfoo.app/api/v1/task';
+    });
+  });
+
+  it('should fetch remote generation for purpose task', async () => {
+    const mockResponse = {
+      data: {
+        task: 'purpose',
+        result: 'This is a purpose',
+      },
+      status: 200,
+      statusText: 'OK',
+      cached: false,
+    };
+    vi.mocked(fetchWithCache).mockResolvedValue(mockResponse);
+
+    const result = await fetchRemoteGeneration('purpose', ['prompt1', 'prompt2']);
+
+    expect(result).toBe('This is a purpose');
+    expect(fetchWithCache).toHaveBeenCalledWith(
+      'https://api.promptfoo.app/api/v1/task',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          task: 'purpose',
+          prompts: ['prompt1', 'prompt2'],
+          version: VERSION,
+          email: null,
+        }),
+      },
+      getRequestTimeoutMs(),
+      'json',
+    );
+  });
+
+  it('should fetch remote generation for entities task', async () => {
+    const mockResponse = {
+      data: {
+        task: 'entities',
+        result: ['Entity1', 'Entity2'],
+      },
+      status: 200,
+      statusText: 'OK',
+      cached: false,
+    };
+    vi.mocked(fetchWithCache).mockResolvedValue(mockResponse);
+
+    const result = await fetchRemoteGeneration('entities', ['prompt1', 'prompt2']);
+
+    expect(result).toEqual(['Entity1', 'Entity2']);
+    expect(fetchWithCache).toHaveBeenCalledWith(
+      'https://api.promptfoo.app/api/v1/task',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          task: 'entities',
+          prompts: ['prompt1', 'prompt2'],
+          version: VERSION,
+          email: null,
+        }),
+      },
+      getRequestTimeoutMs(),
+      'json',
+    );
+  });
+
+  it('records token usage from uncached remote extraction requests', async () => {
+    const tokenUsage = { total: 18, prompt: 12, completion: 6 };
+    vi.mocked(fetchWithCache).mockResolvedValue({
+      data: { task: 'purpose', result: 'Tracked purpose', tokenUsage },
+      status: 200,
+      statusText: 'OK',
+      cached: false,
+    });
+    const generationUsage = {};
+    const provider = trackGenerationTokenUsage(createMockProvider(), generationUsage);
+
+    await expect(fetchRemoteGeneration('purpose', ['prompt'], undefined, provider)).resolves.toBe(
+      'Tracked purpose',
+    );
+
+    expect(generationUsage).toMatchObject({ ...tokenUsage, numRequests: 1 });
+  });
+
+  it('preserves cached remote extraction usage without incurring it again', async () => {
+    vi.mocked(fetchWithCache).mockResolvedValue({
+      data: {
+        task: 'entities',
+        result: ['cached entity'],
+        tokenUsage: { total: 18, numRequests: 1 },
+      },
+      status: 200,
+      statusText: 'OK',
+      cached: true,
+    });
+    const generationUsage = {};
+    const provider = trackGenerationTokenUsage(createMockProvider(), generationUsage);
+
+    await fetchRemoteGeneration('entities', ['prompt'], undefined, provider);
+
+    expect(generationUsage).toMatchObject({
+      total: 18,
+      cached: 18,
+      numRequests: 1,
+      incurredTokenUsage: { total: 0, numRequests: 0 },
+    });
+  });
+
+  it('counts failed remote extraction requests without token usage', async () => {
+    vi.mocked(fetchWithCache).mockRejectedValueOnce(new Error('extraction timed out'));
+    const generationUsage = {};
+    const provider = trackGenerationTokenUsage(createMockProvider(), generationUsage);
+
+    await expect(fetchRemoteGeneration('purpose', ['prompt'], undefined, provider)).rejects.toThrow(
+      'extraction timed out',
+    );
+
+    expect(generationUsage).toMatchObject({ total: 0, numRequests: 1 });
+  });
+
+  it('does not count an invalid remote extraction response twice', async () => {
+    vi.mocked(fetchWithCache).mockResolvedValue({
+      data: { task: 'purpose', tokenUsage: { total: 12 } },
+      status: 200,
+      statusText: 'OK',
+      cached: false,
+    });
+    const generationUsage = {};
+    const provider = trackGenerationTokenUsage(createMockProvider(), generationUsage);
+
+    await expect(
+      fetchRemoteGeneration('purpose', ['prompt'], undefined, provider),
+    ).rejects.toThrow();
+
+    expect(generationUsage).toMatchObject({ total: 12, numRequests: 1 });
+  });
+
+  it('should include the resolved cloud target in the remote generation payload', async () => {
+    vi.mocked(fetchWithCache).mockResolvedValue({
+      data: { task: 'purpose', result: 'This is a purpose' },
+      status: 200,
+      statusText: 'OK',
+      cached: false,
+    });
+
+    await fetchRemoteGeneration('purpose', ['prompt'], {
+      providerTargetIds: ['file://local-provider.ts'],
+      cloudTargetId: 'cloud-target-123',
+    });
+
+    expect(fetchWithCache).toHaveBeenCalledWith(
+      'https://api.promptfoo.app/api/v1/task',
+      expect.objectContaining({
+        body: JSON.stringify({
+          task: 'purpose',
+          prompts: ['prompt'],
+          version: VERSION,
+          email: null,
+          targetId: 'cloud-target-123',
+        }),
+      }),
+      getRequestTimeoutMs(),
+      'json',
+    );
+  });
+
+  it('should throw an error when fetchWithCache fails', async () => {
+    const mockError = new Error('Network error');
+    vi.mocked(fetchWithCache).mockRejectedValue(mockError);
+
+    await expect(fetchRemoteGeneration('purpose', ['prompt'])).rejects.toThrow('Network error');
+    expect(logger.warn).toHaveBeenCalledWith(
+      "Error using remote generation for task 'purpose': Error: Network error",
+    );
+  });
+
+  it('should throw an error when response parsing fails', async () => {
+    const mockResponse = {
+      data: {
+        task: 'purpose',
+        // Missing 'result' field
+      },
+      status: 200,
+      statusText: 'OK',
+      cached: false,
+    };
+    vi.mocked(fetchWithCache).mockResolvedValue(mockResponse);
+
+    await expect(fetchRemoteGeneration('purpose', ['prompt'])).rejects.toThrow('Invalid input');
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining("Error using remote generation for task 'purpose':"),
+    );
+  });
+
+  it('should use custom remote generation URL when provided', async () => {
+    const customUrl = 'https://custom-api.example.com/generate';
+    vi.mocked(getRemoteGenerationUrl).mockImplementation(function () {
+      return customUrl;
+    });
+
+    const mockResponse = {
+      data: {
+        task: 'purpose',
+        result: 'This is a purpose',
+      },
+      status: 200,
+      statusText: 'OK',
+      cached: false,
+    };
+    vi.mocked(fetchWithCache).mockResolvedValue(mockResponse);
+
+    await fetchRemoteGeneration('purpose', ['prompt1']);
+
+    expect(fetchWithCache).toHaveBeenCalledWith(
+      customUrl,
+      expect.any(Object),
+      getRequestTimeoutMs(),
+      'json',
+    );
+  });
+});
+
+describe('RedTeamGenerationResponse', () => {
+  it('should validate correct response structure', () => {
+    const validResponse = {
+      task: 'purpose',
+      result: 'This is a purpose',
+    };
+
+    expect(() => RedTeamGenerationResponse.parse(validResponse)).not.toThrow();
+  });
+
+  it('should throw error for invalid response structure', () => {
+    const invalidResponse = {
+      task: 'purpose',
+      // Missing 'result' field
+    };
+
+    expect(() => RedTeamGenerationResponse.parse(invalidResponse)).toThrow('Invalid input');
+  });
+
+  it('should validate response with string result', () => {
+    const response = {
+      task: 'purpose',
+      result: 'This is a purpose',
+    };
+
+    expect(() => RedTeamGenerationResponse.parse(response)).not.toThrow();
+  });
+
+  it('should validate response with array result', () => {
+    const response = {
+      task: 'entities',
+      result: ['Entity1', 'Entity2'],
+    };
+
+    expect(() => RedTeamGenerationResponse.parse(response)).not.toThrow();
+  });
+});
+
+describe('Extraction Utils', () => {
+  let provider: MockApiProvider;
+
+  beforeEach(() => {
+    provider = createMockProvider({
+      response: createProviderResponse({ output: 'test output' }),
+    });
+    vi.clearAllMocks();
+  });
+
+  describe('callExtraction', () => {
+    it('should call API with formatted chat message and process output correctly', async () => {
+      const result = await callExtraction(provider, 'test prompt', (output) =>
+        output.toUpperCase(),
+      );
+      expect(result).toBe('TEST OUTPUT');
+      expect(provider.callApi).toHaveBeenCalledWith(
+        JSON.stringify([{ role: 'user', content: 'test prompt' }]),
+      );
+    });
+
+    it('should throw an error if API call fails', async () => {
+      const error = new Error('API error');
+      vi.mocked(provider.callApi).mockResolvedValue({ error: error.message });
+
+      await expect(callExtraction(provider, 'test prompt', vi.fn())).rejects.toThrow(
+        'Failed to perform extraction: API error',
+      );
+    });
+
+    it('should throw an error if output is not a string', async () => {
+      vi.mocked(provider.callApi).mockResolvedValue({ output: 123 });
+
+      await expect(callExtraction(provider, 'test prompt', vi.fn())).rejects.toThrow(
+        'Invalid extraction output: expected string, got: 123',
+      );
+    });
+
+    it('should handle empty string output', async () => {
+      vi.mocked(provider.callApi).mockResolvedValue({ output: '' });
+
+      const result = await callExtraction(provider, 'test prompt', (output) => output.length);
+      expect(result).toBe(0);
+    });
+
+    it('should handle null output', async () => {
+      vi.mocked(provider.callApi).mockResolvedValue({ output: null });
+
+      await expect(callExtraction(provider, 'test prompt', vi.fn())).rejects.toThrow(
+        'Invalid extraction output: expected string, got: null',
+      );
+    });
+
+    it('should handle undefined output', async () => {
+      vi.mocked(provider.callApi).mockResolvedValue({ output: undefined });
+
+      await expect(callExtraction(provider, 'test prompt', vi.fn())).rejects.toThrow(
+        'Invalid extraction output: expected string, got: undefined',
+      );
+    });
+  });
+
+  describe('formatPrompts', () => {
+    it('should format prompts correctly', () => {
+      const formattedPrompts = formatPrompts(['prompt1', 'prompt2']);
+      expect(formattedPrompts).toBe('<Prompt>\nprompt1\n</Prompt>\n<Prompt>\nprompt2\n</Prompt>');
+    });
+  });
+});

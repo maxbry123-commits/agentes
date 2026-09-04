@@ -1,0 +1,118 @@
+package debugapi
+
+import (
+	"context"
+	"errors"
+	"fmt"
+
+	"github.com/google/uuid"
+	"github.com/inngest/inngest/pkg/consts"
+	"github.com/inngest/inngest/pkg/execution/queue"
+	pb "github.com/inngest/inngest/proto/gen/debug/v1"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
+)
+
+var ErrPartitionNotAvailable = fmt.Errorf("partition not available")
+
+func (d *debugAPI) GetPartition(ctx context.Context, req *pb.PartitionRequest) (*pb.PartitionResponse, error) {
+	id, err := uuid.Parse(req.GetId())
+	if err != nil {
+		// not a user based function, could be system queues
+
+		return &pb.PartitionResponse{
+			Id: req.GetId(),
+			Tenant: &pb.PartitionTenant{
+				AccountId: consts.DevServerAccountID.String(),
+				EnvId:     consts.DevServerEnvID.String(),
+			},
+		}, nil
+	}
+
+	fn, err := d.db.GetFunctionByInternalUUID(ctx, id)
+	if err != nil {
+		return nil, status.Error(codes.Unknown, fmt.Errorf("error retrieving function: %w", err).Error())
+	}
+
+	shard, err := d.shards.Resolve(ctx, queue.Scope{
+		AccountID:  consts.DevServerAccountID,
+		EnvID:      consts.DevServerEnvID,
+		FunctionID: fn.ID,
+	}, nil)
+	if err != nil {
+		return nil, status.Error(codes.Unknown, fmt.Errorf("error finding shard: %w", err).Error())
+	}
+
+	conf, err := fn.InngestFunction()
+	if err != nil {
+		return nil, status.Error(codes.Unknown, fmt.Errorf("error retrieving function config: %w", err).Error())
+	}
+
+	var cronSchedules []*pb.CronSchedule
+	for _, cronExpr := range conf.ScheduleExpressions() {
+		if healthCheckStatus, err := d.croner.HealthCheck(ctx, consts.DevServerAccountID, consts.DevServerEnvID, fn.ID, cronExpr, conf.FunctionVersion); err == nil {
+			cronSchedules = append(cronSchedules, &pb.CronSchedule{
+				Next:      timestamppb.New(healthCheckStatus.Next),
+				JobId:     healthCheckStatus.JobID,
+				Expr:      cronExpr,
+				Scheduled: healthCheckStatus.Scheduled,
+			})
+		}
+	}
+
+	return &pb.PartitionResponse{
+		Id:   req.GetId(),
+		Slug: fn.Slug,
+		Tenant: &pb.PartitionTenant{
+			AccountId: consts.DevServerAccountID.String(),
+			EnvId:     consts.DevServerEnvID.String(),
+			AppId:     fn.AppID.String(),
+		},
+		Config: fn.Config,
+		QueueShard: &pb.QueueShard{
+			Name: shard.Name(),
+			Kind: string(shard.Kind()),
+		},
+		Crons: cronSchedules,
+	}, nil
+}
+
+func (d *debugAPI) GetPartitionStatus(ctx context.Context, req *pb.PartitionRequest) (*pb.PartitionStatusResponse, error) {
+	var queueName *string
+	if _, err := uuid.Parse(req.GetId()); err != nil {
+		queueName = &req.Id
+	}
+
+	scope := queue.Scope{
+		AccountID: consts.DevServerAccountID,
+		EnvID:     consts.DevServerEnvID,
+	}
+	if fnID, parseErr := uuid.Parse(req.GetId()); parseErr == nil {
+		scope.FunctionID = fnID
+	}
+	shard, err := d.shards.Resolve(ctx, scope, queueName)
+	if err != nil {
+		return nil, fmt.Errorf("error finding shard for GetPartition: %w", err)
+	}
+	pt, err := d.partReader.PartitionByID(ctx, shard, scope, req.GetId())
+	if err != nil {
+		if errors.Is(err, queue.ErrPartitionNotFound) {
+			return nil, status.Error(codes.NotFound, queue.ErrPartitionNotFound.Error())
+		}
+
+		return nil, fmt.Errorf("error retrieving partition: %w", err)
+	}
+
+	return &pb.PartitionStatusResponse{
+		Id:      req.GetId(),
+		Paused:  pt.Paused,
+		Migrate: pt.Migrate,
+
+		AccountInProgress: int64(pt.AccountInProgress),
+		Ready:             int64(pt.Ready),
+		InProgress:        int64(pt.InProgress),
+		Future:            int64(pt.Future),
+		Backlogs:          int64(pt.Backlogs),
+	}, nil
+}

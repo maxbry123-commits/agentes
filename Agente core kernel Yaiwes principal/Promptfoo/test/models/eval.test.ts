@@ -1,0 +1,3000 @@
+import { eq, sql } from 'drizzle-orm';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { getDb } from '../../src/database/index';
+import { updateSignalFile, updateSignalFileForDeletedEvals } from '../../src/database/signal';
+import { evalResultsTable, evalsTable, spansTable, tracesTable } from '../../src/database/tables';
+import { getAuthor } from '../../src/globalConfig/accounts';
+import { runDbMigrations } from '../../src/migrate';
+import Eval, {
+  buildSafeJsonPath,
+  combineFilterConditions,
+  EvalQueries,
+  escapeJsonPathKey,
+  getEvalSummaries,
+} from '../../src/models/eval';
+import { getCachedResultsCount } from '../../src/models/evalPerformance';
+import EvalResult from '../../src/models/evalResult';
+import { TraceStore } from '../../src/tracing/store';
+import { type EvaluateResult, type Prompt, ResultFailureReason } from '../../src/types/index';
+import { updateResult, writeResultsToDatabase } from '../../src/util/database';
+import {
+  getCachedStandaloneEvals,
+  getStandaloneEvalCacheKey,
+  setCachedStandaloneEvals,
+} from '../../src/util/standaloneEvalCache';
+import { createEvaluateResult } from '../factories/eval';
+import EvalFactory from '../factories/evalFactory';
+
+vi.mock('../../src/globalConfig/accounts', async () => {
+  const actual = await vi.importActual('../../src/globalConfig/accounts');
+  return {
+    ...actual,
+    getUserEmail: vi.fn(),
+    getAuthor: vi.fn(),
+  };
+});
+
+vi.mock('../../src/database/signal', async () => {
+  const actual = await vi.importActual('../../src/database/signal');
+  return {
+    ...actual,
+    updateSignalFile: vi.fn(),
+    updateSignalFileForDeletedEvals: vi.fn(),
+  };
+});
+
+describe('evaluator', () => {
+  beforeAll(async () => {
+    await runDbMigrations();
+  });
+
+  beforeEach(async () => {
+    vi.mocked(getAuthor).mockReset();
+    vi.mocked(updateSignalFile).mockClear();
+
+    // Clear all tables before each test
+    const db = await getDb();
+    // Delete related tables first
+    await db.run('DELETE FROM spans');
+    await db.run('DELETE FROM traces');
+    await db.run('DELETE FROM eval_results');
+    await db.run('DELETE FROM evals_to_datasets');
+    await db.run('DELETE FROM evals_to_prompts');
+    await db.run('DELETE FROM evals_to_tags');
+    // Then delete from main table
+    await db.run('DELETE FROM evals');
+  });
+
+  afterEach(() => {
+    vi.resetAllMocks();
+  });
+
+  describe('addPrompts', () => {
+    it('should notify watchers when persisted prompt metadata changes', async () => {
+      const eval_ = await EvalFactory.create({ numResults: 0 });
+      vi.mocked(updateSignalFile).mockClear();
+
+      await eval_.addPrompts([
+        {
+          raw: 'Summarize the latest changelog entry',
+          label: 'Summarize the latest changelog entry',
+          provider: 'test-provider',
+        },
+      ]);
+
+      expect(updateSignalFile).toHaveBeenCalledWith(eval_.id);
+
+      const reloaded = await Eval.findById(eval_.id);
+      expect(reloaded?.prompts).toEqual([
+        expect.objectContaining({
+          raw: 'Summarize the latest changelog entry',
+          label: 'Summarize the latest changelog entry',
+          provider: 'test-provider',
+        }),
+      ]);
+    });
+
+    it('should not notify watchers for in-memory evals', async () => {
+      const eval_ = new Eval({});
+
+      await eval_.addPrompts([
+        {
+          raw: 'In-memory prompt',
+          label: 'In-memory prompt',
+          provider: 'test-provider',
+        },
+      ]);
+
+      expect(updateSignalFile).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('fetchResultsBatched', () => {
+    it('returns in-memory results in batches for non-persisted evals', async () => {
+      const eval_ = new Eval({});
+      const results = Array.from({ length: 3 }, (_, testIdx) => {
+        return new EvalResult({
+          id: `in-memory-${testIdx}`,
+          evalId: eval_.id,
+          promptIdx: 0,
+          testIdx,
+          testCase: { vars: { testIdx } },
+          prompt: { raw: 'Test prompt', label: 'Test prompt' },
+          provider: { id: 'test-provider' },
+          response: { output: `Result ${testIdx}` },
+          gradingResult: null,
+          namedScores: {},
+          metadata: {},
+          success: true,
+          score: 1,
+          latencyMs: 1,
+          cost: 0,
+          failureReason: ResultFailureReason.NONE,
+        });
+      });
+      await eval_.setResults(results);
+
+      const batches: EvalResult[][] = [];
+      for await (const batch of eval_.fetchResultsBatched(2)) {
+        batches.push(batch);
+      }
+
+      expect(batches.map((batch) => batch.map((result) => result.id))).toEqual([
+        ['in-memory-0', 'in-memory-1'],
+        ['in-memory-2'],
+      ]);
+    });
+
+    it('advances across sparse test indices for persisted evals', async () => {
+      const eval_ = await EvalFactory.create({ numResults: 0 });
+      const results = [150, 275].map((testIdx) => {
+        return new EvalResult({
+          id: `sparse-${eval_.id}-${testIdx}`,
+          evalId: eval_.id,
+          promptIdx: 0,
+          testIdx,
+          testCase: { vars: { testIdx } },
+          prompt: { raw: 'Test prompt', label: 'Test prompt' },
+          provider: { id: 'test-provider' },
+          response: { output: `Result ${testIdx}` },
+          gradingResult: null,
+          namedScores: {},
+          metadata: {},
+          success: true,
+          score: 1,
+          latencyMs: 1,
+          cost: 0,
+          failureReason: ResultFailureReason.NONE,
+        });
+      });
+      await eval_.setResults(results);
+
+      const batches: EvalResult[][] = [];
+      for await (const batch of eval_.fetchResultsBatched(100)) {
+        batches.push(batch);
+      }
+
+      expect(batches.map((batch) => batch.map((result) => result.testIdx))).toEqual([[150], [275]]);
+    });
+  });
+
+  describe('getFailedResultsByTestIdx', () => {
+    const makeFailedRow = (promptIdx: number) => ({
+      promptIdx,
+      testIdx: 0,
+      testCase: { vars: {} },
+      prompt: { raw: 'p', label: 'p' },
+      provider: { id: 'test-provider' },
+      response: { output: 'out' },
+      gradingResult: { pass: true, score: 1, reason: 'init', componentResults: [] },
+      namedScores: {},
+      metadata: {},
+      success: true,
+      score: 1,
+      latencyMs: 1,
+      cost: 0,
+      failureReason: ResultFailureReason.NONE,
+    });
+
+    it('reuses the reconstructed instance so comparison grading composes across passes', async () => {
+      const eval_ = new Eval({});
+      eval_.recordResultPersistenceFailure(makeFailedRow(1) as any);
+
+      const [first] = await eval_.getFailedResultsByTestIdx(0);
+      // Simulate an earlier comparison pass (e.g. select-best) demoting the failed row.
+      first.success = false;
+      first.score = 0;
+
+      const [second] = await eval_.getFailedResultsByTestIdx(0);
+      // A later pass (e.g. max-score) must see the SAME, already-mutated instance so its
+      // grading composes on top rather than rehydrating the stale pre-comparison row.
+      expect(second).toBe(first);
+      expect(second.success).toBe(false);
+      expect(second.score).toBe(0);
+    });
+
+    it('rebuilds from the raw row when the persistence failure is re-recorded', async () => {
+      const eval_ = new Eval({});
+      eval_.recordResultPersistenceFailure(makeFailedRow(0) as any);
+
+      const [first] = await eval_.getFailedResultsByTestIdx(0);
+      first.success = false;
+
+      // Re-recording the failure replaces the raw row and must drop the cached reconstruction.
+      eval_.recordResultPersistenceFailure(makeFailedRow(0) as any);
+      const [second] = await eval_.getFailedResultsByTestIdx(0);
+
+      expect(second).not.toBe(first);
+      expect(second.success).toBe(true);
+    });
+  });
+
+  describe('setResults', () => {
+    it('should persist result rows when replacing results on a persisted eval', async () => {
+      const eval_ = await EvalFactory.create({ numResults: 0 });
+      const result = new EvalResult({
+        id: 'set-results-row',
+        evalId: eval_.id,
+        promptIdx: 0,
+        testIdx: 0,
+        testCase: { vars: { state: 'colorado' } },
+        prompt: {
+          raw: 'What is the capital of colorado?',
+          label: 'What is the capital of {{state}}?',
+        },
+        provider: { id: 'test-provider' },
+        response: { output: 'Denver' },
+        gradingResult: null,
+        namedScores: {},
+        metadata: {},
+        success: true,
+        score: 1,
+        latencyMs: 12,
+        cost: 0,
+        failureReason: ResultFailureReason.NONE,
+      });
+
+      expect(await getCachedResultsCount(eval_.id)).toBe(0);
+      await eval_.setResults([result]);
+
+      const persistedResults = await EvalResult.findManyByEvalId(eval_.id);
+      expect(await getCachedResultsCount(eval_.id)).toBe(1);
+      expect(updateSignalFile).toHaveBeenCalledWith(eval_.id);
+      expect(persistedResults).toHaveLength(1);
+      expect(persistedResults[0]).toEqual(
+        expect.objectContaining({
+          evalId: eval_.id,
+          promptIdx: 0,
+          response: expect.objectContaining({ output: 'Denver' }),
+        }),
+      );
+    });
+  });
+
+  describe('summaryResults', () => {
+    it('should return all evaluations', async () => {
+      const eval1 = await EvalFactory.create();
+      const eval2 = await EvalFactory.create();
+      const eval3 = await EvalFactory.createOldResult();
+
+      const evaluations = await getEvalSummaries();
+
+      expect(evaluations).toHaveLength(3);
+
+      expect(evaluations).toContainEqual(
+        expect.objectContaining({
+          evalId: eval1.id,
+          createdAt: eval1.createdAt,
+          description: null,
+          numTests: 2,
+          isRedteam: false,
+          passRate: 50,
+          label: eval1.id,
+        }),
+      );
+
+      expect(evaluations).toContainEqual(
+        expect.objectContaining({
+          evalId: eval2.id,
+          createdAt: eval2.createdAt,
+          description: null,
+          numTests: 2,
+          isRedteam: false,
+          passRate: 50,
+          label: eval2.id,
+        }),
+      );
+
+      expect(evaluations).toContainEqual(expect.objectContaining({ evalId: eval3.id }));
+    });
+
+    it('should return evaluations in descending order by createdAt', async () => {
+      const eval1 = await EvalFactory.create();
+      const eval2 = await EvalFactory.create();
+      const eval3 = await EvalFactory.create();
+      const db = await getDb();
+      await db.update(evalsTable).set({ createdAt: 1 }).where(eq(evalsTable.id, eval1.id)).run();
+      await db.update(evalsTable).set({ createdAt: 2 }).where(eq(evalsTable.id, eval2.id)).run();
+      await db.update(evalsTable).set({ createdAt: 3 }).where(eq(evalsTable.id, eval3.id)).run();
+
+      const evaluations = await getEvalSummaries();
+
+      expect(evaluations).toHaveLength(3);
+      expect(evaluations[0].evalId).toBe(eval3.id);
+      expect(evaluations[1].evalId).toBe(eval2.id);
+      expect(evaluations[2].evalId).toBe(eval1.id);
+    });
+
+    it('should sort timestamp ties consistently in full and filtered summaries', async () => {
+      const eval1 = await Eval.create({}, []);
+      const eval2 = await Eval.create({}, []);
+      const createdAt = Date.now();
+
+      const db = await getDb();
+      await db.update(evalsTable).set({ createdAt }).where(eq(evalsTable.id, eval1.id)).run();
+      await db.update(evalsTable).set({ createdAt }).where(eq(evalsTable.id, eval2.id)).run();
+
+      const expectedIds = [eval1.id, eval2.id].sort().reverse();
+      const allIds = (await getEvalSummaries()).map(({ evalId }) => evalId);
+      const filteredIds = (await getEvalSummaries(undefined, 'eval')).map(({ evalId }) => evalId);
+
+      expect(allIds).toEqual(expectedIds);
+      expect(filteredIds).toEqual(expectedIds);
+    });
+
+    it('should update redteam classification when a persisted config changes type', async () => {
+      const redteamEvaluation = await Eval.create({ redteam: {} as any }, []);
+      const regularEvaluation = await Eval.create({}, []);
+
+      await updateResult(redteamEvaluation.id, {});
+      await updateResult(regularEvaluation.id, { redteam: {} as any });
+
+      const db = await getDb();
+      const stored = await db
+        .select({ id: evalsTable.id, isRedteam: evalsTable.isRedteam })
+        .from(evalsTable)
+        .all();
+      const redteamSummaries = await getEvalSummaries(undefined, 'redteam');
+      const evalSummaries = await getEvalSummaries(undefined, 'eval');
+
+      expect(stored).toContainEqual({ id: redteamEvaluation.id, isRedteam: false });
+      expect(stored).toContainEqual({ id: regularEvaluation.id, isRedteam: true });
+      expect(redteamSummaries).not.toContainEqual(
+        expect.objectContaining({ evalId: redteamEvaluation.id }),
+      );
+      expect(redteamSummaries).toContainEqual(
+        expect.objectContaining({ evalId: regularEvaluation.id, isRedteam: true }),
+      );
+      expect(evalSummaries).toContainEqual(
+        expect.objectContaining({ evalId: redteamEvaluation.id, isRedteam: false }),
+      );
+      expect(evalSummaries).not.toContainEqual(
+        expect.objectContaining({ evalId: regularEvaluation.id }),
+      );
+    });
+
+    it('should persist the redteam flag for legacy result writes', async () => {
+      const evalId = await writeResultsToDatabase(
+        {
+          version: 2,
+          timestamp: new Date().toISOString(),
+          results: [],
+          table: { head: { prompts: [], vars: [] }, body: [] },
+          stats: { successes: 0, failures: 0 },
+        } as any,
+        {
+          redteam: {} as any,
+          tracing: {
+            enabled: true,
+            provider: {
+              id: 'tempo',
+              endpoint: 'https://tempo.example.com',
+              auth: { token: 'legacy-runtime-secret' },
+              headers: { Authorization: 'Bearer legacy-secret', 'X-Scope-OrgID': 'tenant-a' },
+            },
+          },
+        },
+      );
+
+      const db = await getDb();
+      const stored = await db
+        .select({ isRedteam: evalsTable.isRedteam, config: evalsTable.config })
+        .from(evalsTable)
+        .where(eq(evalsTable.id, evalId))
+        .get();
+
+      expect(stored?.isRedteam).toBe(true);
+      expect(JSON.stringify(stored?.config)).not.toContain('legacy-runtime-secret');
+      expect(JSON.stringify(stored?.config)).not.toContain('legacy-secret');
+      expect(stored?.config.tracing?.provider?.headers).toEqual({ 'X-Scope-OrgID': 'tenant-a' });
+    });
+
+    it.each([
+      { label: 'redteam: {}', config: { redteam: {} as any }, expected: true },
+      { label: 'redteam: null', config: { redteam: null as any }, expected: true },
+      { label: 'no redteam key', config: {}, expected: false },
+    ])('classifies $label as isRedteam=$expected on create', async ({ config, expected }) => {
+      const eval_ = await Eval.create(config, []);
+      const db = await getDb();
+      const stored = await db
+        .select({ isRedteam: evalsTable.isRedteam })
+        .from(evalsTable)
+        .where(eq(evalsTable.id, eval_.id))
+        .get();
+      expect(stored?.isRedteam).toBe(expected);
+
+      const redteamSummaries = await getEvalSummaries(undefined, 'redteam');
+      const evalSummaries = await getEvalSummaries(undefined, 'eval');
+      const presentInRedteam = redteamSummaries.some((s) => s.evalId === eval_.id);
+      const presentInEval = evalSummaries.some((s) => s.evalId === eval_.id);
+      expect(presentInRedteam).toBe(expected);
+      expect(presentInEval).toBe(!expected);
+    });
+
+    it('should correctly deserialize all provider types', async () => {
+      // Test different provider formats
+      const testCases = [
+        // String provider
+        { providers: 'openai:gpt-4', expected: [{ id: 'openai:gpt-4', label: null }] },
+        // Array with strings
+        {
+          providers: ['openai:gpt-4', 'anthropic:claude'],
+          expected: [
+            { id: 'openai:gpt-4', label: null },
+            { id: 'anthropic:claude', label: null },
+          ],
+        },
+        // Array with ProviderOptions (explicit id)
+        {
+          providers: [{ id: 'custom-provider', label: 'Custom Label' }],
+          expected: [{ id: 'custom-provider', label: 'Custom Label' }],
+        },
+        // Array with declarative providers (record format)
+        {
+          providers: [
+            { 'openai:gpt-4': { config: { temperature: 0.5 }, label: 'GPT-4' } },
+            { 'anthropic:claude': { config: { maxTokens: 1000 } } },
+          ],
+          expected: [
+            { id: 'openai:gpt-4', label: 'GPT-4' },
+            { id: 'anthropic:claude', label: null },
+          ],
+        },
+        // Mixed array
+        {
+          providers: [
+            'openai:gpt-3.5',
+            { id: 'custom', label: 'Custom' },
+            { 'anthropic:claude': { label: 'Claude' } },
+          ],
+          expected: [
+            { id: 'openai:gpt-3.5', label: null },
+            { id: 'custom', label: 'Custom' },
+            { id: 'anthropic:claude', label: 'Claude' },
+          ],
+        },
+      ];
+
+      for (const testCase of testCases) {
+        const evaluation = await Eval.create(
+          {
+            providers: testCase.providers as any,
+            prompts: ['Test prompt'],
+            tests: [{ vars: { test: 'value' } }],
+          },
+          [{ raw: 'Test prompt', label: 'Test prompt' }],
+        );
+
+        const summaries = await getEvalSummaries(undefined, undefined, true);
+        const summary = summaries.find((s) => s.evalId === evaluation.id);
+
+        expect(summary).toBeDefined();
+        expect(summary?.providers).toEqual(testCase.expected);
+
+        // Clean up
+        await evaluation.delete();
+      }
+    });
+
+    // Note: Function providers cannot be serialized to the database,
+    // so they won't appear in getEvalSummaries() results.
+    // The deserialization logic handles them, but they're lost during storage.
+  });
+
+  describe('delete', () => {
+    it('should delete an evaluation', async () => {
+      const eval1 = await EvalFactory.create();
+      const cacheKey = getStandaloneEvalCacheKey();
+      setCachedStandaloneEvals(cacheKey, []);
+
+      const eval_ = await Eval.findById(eval1.id);
+      expect(eval_).toBeDefined();
+      expect(getCachedStandaloneEvals(cacheKey)).toBeDefined();
+
+      await eval1.delete();
+
+      const eval_2 = await Eval.findById(eval1.id);
+      expect(eval_2).toBeUndefined();
+      expect(getCachedStandaloneEvals(cacheKey)).toBeUndefined();
+      expect(updateSignalFileForDeletedEvals).toHaveBeenCalledWith([eval1.id]);
+    });
+
+    it('should delete traces and spans for an evaluation', async () => {
+      const eval1 = await EvalFactory.create();
+      const traceStore = new TraceStore();
+      await traceStore.createTrace({
+        traceId: 'trace-to-delete',
+        evaluationId: eval1.id,
+        testCaseId: 'test-case-id',
+      });
+      await traceStore.addSpans('trace-to-delete', [
+        {
+          spanId: 'span-to-delete',
+          name: 'test-span',
+          startTime: 1,
+        },
+      ]);
+
+      await eval1.delete();
+
+      const db = await getDb();
+      expect(await Eval.findById(eval1.id)).toBeUndefined();
+      await expect(db.select().from(tracesTable).all()).resolves.toHaveLength(0);
+      await expect(db.select().from(spansTable).all()).resolves.toHaveLength(0);
+    });
+
+    it('should suppress deletion signals while replacing an evaluation', async () => {
+      const eval1 = await EvalFactory.create();
+
+      await eval1.delete({ notify: false });
+
+      expect(await Eval.findById(eval1.id)).toBeUndefined();
+      expect(updateSignalFileForDeletedEvals).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('create', () => {
+    it('keeps trace-provider credentials in memory while removing them from persisted evals', async () => {
+      const config = {
+        tracing: {
+          enabled: true,
+          provider: {
+            id: 'tempo' as const,
+            endpoint: 'https://tempo.example.com/traces',
+            timeout: 5_000,
+            auth: {
+              username: 'trace-reader',
+              password: 'literal-password',
+              token: 'literal-token',
+            },
+            headers: {
+              Authorization: 'Bearer literal-authorization',
+              'X-Api-Key': 'literal-api-key',
+              'X-Honeycomb-Team': 'literal-honeycomb-key',
+              'X-Tenant-Credential': 'literal-custom-credential',
+              'X-Tempo-Reader': 'short-reader-value',
+              'X-Trace-Access': 'Bearer short-secret',
+              'X-Scope-OrgID': 'tenant-a',
+            },
+          },
+        },
+      };
+
+      const evaluation = await Eval.create(config, []);
+      const persistedEvaluation = await Eval.findById(evaluation.id);
+
+      expect(evaluation.config.tracing?.provider).toEqual(config.tracing.provider);
+      expect(persistedEvaluation?.config.tracing?.provider).toEqual({
+        id: 'tempo',
+        endpoint: 'https://tempo.example.com/traces',
+        timeout: 5_000,
+        auth: { username: 'trace-reader' },
+        headers: { 'X-Scope-OrgID': 'tenant-a' },
+      });
+      expect(JSON.stringify(persistedEvaluation?.config)).not.toContain('literal-');
+      expect(JSON.stringify(persistedEvaluation?.config)).not.toContain('short-secret');
+      expect(JSON.stringify(persistedEvaluation?.config)).not.toContain('short-reader-value');
+
+      evaluation.config.tracing!.provider!.auth!.token = 'updated-runtime-token';
+      await evaluation.save();
+
+      const savedEvaluation = await Eval.findById(evaluation.id);
+      expect(JSON.stringify(savedEvaluation?.config)).not.toContain('updated-runtime-token');
+      expect(evaluation.config.tracing?.provider?.auth?.token).toBe('updated-runtime-token');
+    });
+
+    it('preserves safe trace-provider environment references for resumed evals', async () => {
+      const config = {
+        tracing: {
+          enabled: true,
+          provider: {
+            id: 'tempo' as const,
+            endpoint: 'https://tempo.example.com',
+            auth: {
+              token: '{{ env.TEMPO_TOKEN }}',
+              password: '{{ env.TEMPO_PASSWORD | trim }}',
+            },
+            headers: {
+              Authorization: 'Bearer {{ env.TEMPO_HEADER_TOKEN }}',
+              'X-Api-Key': '{{ env["TEMPO_API_KEY"] }}',
+            },
+          },
+        },
+      };
+
+      const evaluation = await Eval.create(config, []);
+      const persistedEvaluation = await Eval.findById(evaluation.id);
+
+      expect(persistedEvaluation?.config.tracing?.provider).toEqual(config.tracing.provider);
+    });
+
+    it.each([
+      'https://tempo.example.com/tempo?token=endpoint-secret',
+      'https://tempo.example.com/tempo?opaque=endpoint-secret',
+      'https://tempo.example.com/tempo#token=endpoint-secret',
+      'https://reader:endpoint-secret@tempo.example.com/tempo',
+    ])('removes trace endpoint credentials before saving or exporting: %s', async (endpoint) => {
+      const evaluation = await Eval.create(
+        {
+          tracing: {
+            enabled: true,
+            provider: { id: 'tempo', endpoint },
+          },
+        },
+        [],
+      );
+      const persistedEvaluation = await Eval.findById(evaluation.id);
+      const exportedEvaluation = await evaluation.toResultsFile();
+
+      expect(evaluation.config.tracing?.provider?.endpoint).toBe(endpoint);
+      expect(persistedEvaluation?.config.tracing?.provider?.endpoint).toBe(
+        'https://tempo.example.com/tempo',
+      );
+      expect(exportedEvaluation.config.tracing?.provider?.endpoint).toBe(
+        'https://tempo.example.com/tempo',
+      );
+      expect(JSON.stringify(persistedEvaluation?.config)).not.toContain('endpoint-secret');
+      expect(JSON.stringify(exportedEvaluation.config)).not.toContain('endpoint-secret');
+    });
+
+    it.each([
+      'token-privateTenantCredential123',
+      '2e163f4d-28e2-4f84-b6d2-05e13058d6aa',
+      '2e163f4d28e24f84b6d205e13058d6aa',
+    ])(
+      'redacts credential-like endpoint path segments before persistence: %s',
+      async (credential) => {
+        const endpoint = `https://tempo.example.com/tempo/${credential}/traces`;
+        const evaluation = await Eval.create(
+          {
+            tracing: {
+              enabled: true,
+              provider: { id: 'tempo', endpoint },
+            },
+          },
+          [],
+        );
+        const persistedEvaluation = await Eval.findById(evaluation.id);
+        const exportedEvaluation = await evaluation.toResultsFile();
+
+        expect(evaluation.config.tracing?.provider?.endpoint).toBe(endpoint);
+        expect(persistedEvaluation?.config.tracing?.provider?.endpoint).toBe(
+          'https://tempo.example.com/tempo/%5BREDACTED%5D/traces',
+        );
+        expect(exportedEvaluation.config.tracing?.provider?.endpoint).toBe(
+          'https://tempo.example.com/tempo/%5BREDACTED%5D/traces',
+        );
+        expect(JSON.stringify(persistedEvaluation?.config)).not.toContain(credential);
+        expect(JSON.stringify(exportedEvaluation.config)).not.toContain(credential);
+      },
+    );
+
+    it('should use provided author when available', async () => {
+      const providedAuthor = 'provided@example.com';
+      // Spy must not be called — opts.author is explicit, so getAuthor() is bypassed.
+      vi.mocked(getAuthor).mockReturnValue('should-not-be-used@example.com');
+      const config = { description: 'Test eval' };
+      const renderedPrompts: Prompt[] = [
+        { raw: 'Test prompt', display: 'Test prompt', label: 'Test label' } as Prompt,
+      ];
+      const evaluation = await Eval.create(config, renderedPrompts, { author: providedAuthor });
+      expect(evaluation.author).toBe(providedAuthor);
+      expect(vi.mocked(getAuthor)).not.toHaveBeenCalled();
+      const persistedEval = await Eval.findById(evaluation.id);
+      expect(persistedEval?.author).toBe(providedAuthor);
+    });
+
+    it('should honor an explicit author even when the current user is cloud-authed (import regression)', async () => {
+      // Simulate cloud-authed user with a different identity than the imported eval.
+      vi.mocked(getAuthor).mockReturnValue('current-cloud-user@example.com');
+      const config = { description: 'Imported eval' };
+      const renderedPrompts: Prompt[] = [
+        { raw: 'Test prompt', display: 'Test prompt', label: 'Test label' } as Prompt,
+      ];
+      const evaluation = await Eval.create(config, renderedPrompts, {
+        author: 'original-author@example.com',
+      });
+      expect(evaluation.author).toBe('original-author@example.com');
+      expect(vi.mocked(getAuthor)).not.toHaveBeenCalled();
+      const persistedEval = await Eval.findById(evaluation.id);
+      expect(persistedEval?.author).toBe('original-author@example.com');
+    });
+
+    it('should persist null when author is explicitly null', async () => {
+      vi.mocked(getAuthor).mockReturnValue('should-not-be-used@example.com');
+      const config = { description: 'Test eval' };
+      const renderedPrompts: Prompt[] = [
+        { raw: 'Test prompt', display: 'Test prompt', label: 'Test label' } as Prompt,
+      ];
+      const evaluation = await Eval.create(config, renderedPrompts, { author: null });
+      expect(evaluation.author).toBeNull();
+      expect(vi.mocked(getAuthor)).not.toHaveBeenCalled();
+      const persistedEval = await Eval.findById(evaluation.id);
+      expect(persistedEval?.author).toBeNull();
+    });
+
+    it('should fall back to getAuthor when author is not provided', async () => {
+      const mockAuthor = 'default@example.com';
+      vi.mocked(getAuthor).mockReturnValue(mockAuthor);
+      const config = { description: 'Test eval' };
+      const renderedPrompts: Prompt[] = [
+        { raw: 'Test prompt', display: 'Test prompt', label: 'Test label' } as Prompt,
+      ];
+      const evaluation = await Eval.create(config, renderedPrompts);
+      expect(evaluation.author).toBe(mockAuthor);
+      const persistedEval = await Eval.findById(evaluation.id);
+      expect(persistedEval?.author).toBe(mockAuthor);
+    });
+
+    it('preserves trace linkage when results are inserted during eval creation', async () => {
+      const tracedResult = createEvaluateResult({
+        traceId: 'create-trace-id',
+        evaluationId: 'create-evaluation-id',
+        metadata: { source: 'create-path' },
+      });
+
+      const evaluation = await Eval.create({ description: 'Trace linkage create coverage' }, [], {
+        results: [tracedResult as unknown as EvalResult],
+      });
+
+      const [persistedResult] = await EvalResult.findManyByEvalId(evaluation.id);
+      expect(persistedResult.toEvaluateResult()).toMatchObject({
+        traceId: 'create-trace-id',
+        evaluationId: 'create-evaluation-id',
+        metadata: { source: 'create-path' },
+      });
+    });
+
+    it('surfaces trace linkage without leaking the reserved namespace through toEvaluateSummary (export path)', async () => {
+      // output.ts serializes JSON/JSONL/CSV via toEvaluateSummary(); assert that path surfaces
+      // traceId/evaluationId at the top level and never emits the internal `__promptfoo` key.
+      const tracedResult = createEvaluateResult({
+        traceId: 'export-trace-id',
+        evaluationId: 'export-evaluation-id',
+        metadata: { source: 'export-path' },
+      });
+
+      const evaluation = await Eval.create({ description: 'Trace linkage export coverage' }, [], {
+        results: [tracedResult as unknown as EvalResult],
+      });
+
+      const summary = await evaluation.toEvaluateSummary();
+      expect('results' in summary).toBe(true);
+      const [exportedRow] = (summary as { results: EvaluateResult[] }).results;
+      expect(exportedRow).toMatchObject({
+        traceId: 'export-trace-id',
+        evaluationId: 'export-evaluation-id',
+        metadata: { source: 'export-path' },
+      });
+      expect(exportedRow.metadata).not.toHaveProperty('__promptfoo');
+      expect(JSON.stringify(summary)).not.toContain('__promptfoo');
+    });
+  });
+
+  describe('setResults trace linkage', () => {
+    it('preserves trace linkage when results are appended to an existing eval', async () => {
+      const eval_ = await EvalFactory.create({ numResults: 0 });
+      const tracedResult = createEvaluateResult({
+        traceId: 'append-trace-id',
+        evaluationId: 'append-evaluation-id',
+        metadata: { source: 'set-results-path' },
+      });
+
+      await eval_.setResults([
+        {
+          id: 'append-trace-result',
+          evalId: eval_.id,
+          ...tracedResult,
+          failureReason: ResultFailureReason.NONE,
+          persisted: false,
+        } as unknown as EvalResult,
+      ]);
+
+      const [persistedResult] = await EvalResult.findManyByEvalId(eval_.id);
+      expect(persistedResult.toEvaluateResult()).toMatchObject({
+        traceId: 'append-trace-id',
+        evaluationId: 'append-evaluation-id',
+        metadata: { source: 'set-results-path' },
+      });
+    });
+  });
+
+  describe('copy', () => {
+    it('removes trace-provider credentials when copying a live evaluation', async () => {
+      const evaluation = await Eval.create(
+        {
+          tracing: {
+            enabled: true,
+            provider: {
+              id: 'tempo',
+              endpoint: 'https://tempo.example.com',
+              auth: { token: 'copy-runtime-secret' },
+              headers: { Authorization: 'Bearer copied-secret', 'X-Scope-OrgID': 'tenant-a' },
+            },
+          },
+        },
+        [],
+      );
+
+      const copiedEvaluation = await evaluation.copy();
+      const persistedCopy = await Eval.findById(copiedEvaluation.id);
+
+      expect(JSON.stringify(persistedCopy?.config)).not.toContain('copy-runtime-secret');
+      expect(JSON.stringify(persistedCopy?.config)).not.toContain('copied-secret');
+      expect(persistedCopy?.config.tracing?.provider?.headers).toEqual({
+        'X-Scope-OrgID': 'tenant-a',
+      });
+    });
+
+    it('drops trace linkage from copied results without copied trace records', async () => {
+      const eval_ = await EvalFactory.create({ numResults: 0 });
+      await EvalResult.createFromEvaluateResult(
+        eval_.id,
+        createEvaluateResult({
+          traceId: 'copy-source-trace',
+          evaluationId: eval_.id,
+          metadata: {
+            source: 'copy-path',
+            __promptfoo: { retained: 'internal-metadata' },
+          },
+        }),
+      );
+
+      const copy = await eval_.copy();
+      const [copiedResult] = await EvalResult.findManyByEvalId(copy.id);
+
+      expect(copiedResult.toEvaluateResult()).toMatchObject({
+        metadata: {
+          source: 'copy-path',
+          __promptfoo: { retained: 'internal-metadata' },
+        },
+      });
+      expect(copiedResult.toEvaluateResult().traceId).toBeUndefined();
+      expect(copiedResult.toEvaluateResult().evaluationId).toBeUndefined();
+    });
+  });
+
+  describe('findById', () => {
+    it('should handle empty vars array', async () => {
+      const eval1 = await EvalFactory.create({ numResults: 0 });
+      const persistedEval = await Eval.findById(eval1.id);
+      expect(persistedEval?.vars).toEqual([]);
+    });
+
+    it('should backfill vars from eval results when vars array is empty', async () => {
+      // This will create eval results with vars in test_case
+      const eval1 = await EvalFactory.create({
+        numResults: 2,
+        // @ts-expect-error: injectVarsInResults is for test factory only
+        injectVarsInResults: true,
+      });
+
+      // Remove vars from the evals table to trigger backfill
+      const db = await getDb();
+      // Drizzle's .run() does not support ? params for this case, so interpolate directly
+      await db.run(`UPDATE evals SET vars = json('[]') WHERE id = '${eval1.id}'`);
+
+      const persistedEval = await Eval.findById(eval1.id);
+      expect(persistedEval?.vars.length).toBeGreaterThan(0);
+    });
+
+    it('should store backfilled vars in database', async () => {
+      const eval1 = await EvalFactory.create({
+        numResults: 2,
+        // @ts-expect-error: injectVarsInResults is for test factory only
+        injectVarsInResults: true,
+      });
+
+      // Remove vars from the evals table to trigger backfill
+      const db = await getDb();
+      await db.run(`UPDATE evals SET vars = json('[]') WHERE id = '${eval1.id}'`);
+
+      const persistedEval1 = await Eval.findById(eval1.id);
+      const vars = persistedEval1?.vars || [];
+      expect(vars.length).toBeGreaterThan(0);
+
+      // Now, after backfilling, the next load should get the same vars from db
+      const persistedEval2 = await Eval.findById(eval1.id);
+      expect(persistedEval2?.vars).toEqual(vars);
+    });
+
+    it('should handle NaN durationMs in database by returning undefined', async () => {
+      const eval1 = await EvalFactory.create({ numResults: 0 });
+
+      // Inject NaN as durationMs in the results column
+      const db = await getDb();
+      await db.run(
+        `UPDATE evals SET results = json_set(results, '$.durationMs', 'NaN') WHERE id = '${eval1.id}'`,
+      );
+
+      const persistedEval = await Eval.findById(eval1.id);
+      const stats = persistedEval?.getStats();
+      // NaN should be filtered out, resulting in undefined
+      expect(stats?.durationMs).toBeUndefined();
+    });
+
+    it('should handle negative durationMs in database by returning undefined', async () => {
+      const eval1 = await EvalFactory.create({ numResults: 0 });
+
+      // Inject negative number as durationMs
+      const db = await getDb();
+      await db.run(
+        `UPDATE evals SET results = json_set(results, '$.durationMs', -5000) WHERE id = '${eval1.id}'`,
+      );
+
+      const persistedEval = await Eval.findById(eval1.id);
+      const stats = persistedEval?.getStats();
+      // Negative should be filtered out, resulting in undefined
+      expect(stats?.durationMs).toBeUndefined();
+    });
+
+    it('should handle string durationMs in database by returning undefined', async () => {
+      const eval1 = await EvalFactory.create({ numResults: 0 });
+
+      // Inject string as durationMs
+      const db = await getDb();
+      await db.run(
+        `UPDATE evals SET results = json_set(results, '$.durationMs', '"not a number"') WHERE id = '${eval1.id}'`,
+      );
+
+      const persistedEval = await Eval.findById(eval1.id);
+      const stats = persistedEval?.getStats();
+      // String should be filtered out, resulting in undefined
+      expect(stats?.durationMs).toBeUndefined();
+    });
+
+    it('should preserve valid durationMs from database', async () => {
+      const eval1 = await EvalFactory.create({ numResults: 0 });
+
+      // Inject valid durationMs
+      const db = await getDb();
+      await db.run(
+        `UPDATE evals SET results = json_set(results, '$.durationMs', 12345) WHERE id = '${eval1.id}'`,
+      );
+
+      const persistedEval = await Eval.findById(eval1.id);
+      const stats = persistedEval?.getStats();
+      expect(stats?.durationMs).toBe(12345);
+    });
+
+    it('should extract generationDurationMs and evaluationDurationMs from database', async () => {
+      const eval1 = await EvalFactory.create({ numResults: 0 });
+
+      const db = await getDb();
+      await db.run(
+        `UPDATE evals SET results = '${JSON.stringify({ durationMs: 15000, generationDurationMs: 10000, evaluationDurationMs: 5000 })}' WHERE id = '${eval1.id}'`,
+      );
+
+      const persistedEval = await Eval.findById(eval1.id);
+      expect(persistedEval?.generationDurationMs).toBe(10000);
+      expect(persistedEval?.evaluationDurationMs).toBe(5000);
+      expect(persistedEval?.durationMs).toBe(15000);
+    });
+
+    it('should handle missing generationDurationMs and evaluationDurationMs in database', async () => {
+      const eval1 = await EvalFactory.create({ numResults: 0 });
+
+      const db = await getDb();
+      await db.run(
+        `UPDATE evals SET results = '${JSON.stringify({ durationMs: 5000 })}' WHERE id = '${eval1.id}'`,
+      );
+
+      const persistedEval = await Eval.findById(eval1.id);
+      expect(persistedEval?.generationDurationMs).toBeUndefined();
+      expect(persistedEval?.evaluationDurationMs).toBeUndefined();
+      expect(persistedEval?.durationMs).toBe(5000);
+    });
+
+    it('should handle invalid generationDurationMs in database by returning undefined', async () => {
+      const eval1 = await EvalFactory.create({ numResults: 0 });
+
+      const db = await getDb();
+      await db.run(
+        `UPDATE evals SET results = '${JSON.stringify({ durationMs: 5000, generationDurationMs: -100, evaluationDurationMs: 'bad' })}' WHERE id = '${eval1.id}'`,
+      );
+
+      const persistedEval = await Eval.findById(eval1.id);
+      expect(persistedEval?.generationDurationMs).toBeUndefined();
+      expect(persistedEval?.evaluationDurationMs).toBeUndefined();
+      expect(persistedEval?.durationMs).toBe(5000);
+    });
+
+    it('should recompute durationMs from split fields when durationMs is missing', async () => {
+      const eval1 = await EvalFactory.create({ numResults: 0 });
+
+      const db = await getDb();
+      await db.run(
+        `UPDATE evals SET results = '${JSON.stringify({ generationDurationMs: 10000, evaluationDurationMs: 5000 })}' WHERE id = '${eval1.id}'`,
+      );
+
+      const persistedEval = await Eval.findById(eval1.id);
+      expect(persistedEval?.generationDurationMs).toBe(10000);
+      expect(persistedEval?.evaluationDurationMs).toBe(5000);
+      expect(persistedEval?.durationMs).toBe(15000);
+    });
+  });
+
+  describe('save with duration fields', () => {
+    it('should persist all three duration fields in results JSON', async () => {
+      const eval1 = await EvalFactory.create({ numResults: 0 });
+
+      eval1.setDurationMs(5000);
+      eval1.setGenerationDurationMs(10000);
+      await eval1.save();
+
+      const persistedEval = await Eval.findById(eval1.id);
+      expect(persistedEval?.durationMs).toBe(15000);
+      expect(persistedEval?.generationDurationMs).toBe(10000);
+      expect(persistedEval?.evaluationDurationMs).toBe(5000);
+    });
+
+    it('should preserve existing keys in results JSON when saving duration fields', async () => {
+      const eval1 = await EvalFactory.create({ numResults: 0 });
+
+      // Seed the results column with an extra key (simulating future fields or other data)
+      const db = await getDb();
+      await db.run(
+        `UPDATE evals SET results = '${JSON.stringify({ someOtherKey: 'preserve-me' })}' WHERE id = '${eval1.id}'`,
+      );
+
+      eval1.setDurationMs(5000);
+      await eval1.save();
+
+      // Verify duration fields were written AND the extra key survived
+      const row = await db.get<{ results: string }>(
+        `SELECT results FROM evals WHERE id = '${eval1.id}'`,
+      );
+      const results = JSON.parse(row!.results);
+      expect(results.someOtherKey).toBe('preserve-me');
+      expect(results.durationMs).toBe(5000);
+      expect(results.evaluationDurationMs).toBe(5000);
+    });
+
+    it('should recover from malformed JSON in results column', async () => {
+      const eval1 = await EvalFactory.create({ numResults: 0 });
+
+      // Corrupt the results column with invalid JSON
+      const db = await getDb();
+      await db.run(`UPDATE evals SET results = 'not-valid-json' WHERE id = '${eval1.id}'`);
+
+      eval1.setDurationMs(5000);
+      await eval1.save();
+
+      const persistedEval = await Eval.findById(eval1.id);
+      expect(persistedEval?.durationMs).toBe(5000);
+      expect(persistedEval?.evaluationDurationMs).toBe(5000);
+    });
+
+    it('should recover from non-object JSON in results column', async () => {
+      const eval1 = await EvalFactory.create({ numResults: 0 });
+
+      // Set results to a valid JSON array (non-object)
+      const db = await getDb();
+      await db.run(`UPDATE evals SET results = '[]' WHERE id = '${eval1.id}'`);
+
+      eval1.setDurationMs(3000);
+      await eval1.save();
+
+      const persistedEval = await Eval.findById(eval1.id);
+      expect(persistedEval?.durationMs).toBe(3000);
+      expect(persistedEval?.evaluationDurationMs).toBe(3000);
+    });
+
+    it('should persist only evaluationDurationMs and durationMs for non-redteam evals', async () => {
+      const eval1 = await EvalFactory.create({ numResults: 0 });
+
+      eval1.setDurationMs(5000);
+      await eval1.save();
+
+      const persistedEval = await Eval.findById(eval1.id);
+      expect(persistedEval?.durationMs).toBe(5000);
+      expect(persistedEval?.evaluationDurationMs).toBe(5000);
+      expect(persistedEval?.generationDurationMs).toBeUndefined();
+    });
+  });
+
+  describe('getStats', () => {
+    it('attributes generation metadata once without increasing target tokens or probes', () => {
+      const eval1 = new Eval({
+        metadata: {
+          generationAccounting: {
+            id: 'generation-1',
+            tokenUsage: { total: 40, prompt: 25, completion: 15, numRequests: 4 },
+          },
+        },
+      });
+      eval1.prompts = [
+        { metrics: { tokenUsage: { total: 10, numRequests: 1 } } },
+        { metrics: { tokenUsage: { total: 20, numRequests: 1 } } },
+      ] as any;
+
+      const stats = eval1.getStats();
+
+      expect(stats.tokenUsage).toMatchObject({
+        total: 30,
+        numRequests: 2,
+        generation: { total: 40, prompt: 25, completion: 15, numRequests: 4 },
+      });
+    });
+
+    it('does not attribute historical suite generation metadata without a run charge', () => {
+      const eval1 = new Eval({
+        metadata: {
+          generation: { id: 'old-generation', tokenUsage: { total: 40, numRequests: 4 } },
+          generationTokenUsage: { total: 40, numRequests: 4 },
+        },
+      });
+
+      expect(eval1.getStats().tokenUsage.generation).toBeUndefined();
+    });
+
+    it('preserves cached generation separately from incurred target usage', () => {
+      const eval1 = new Eval({
+        metadata: {
+          generationAccounting: {
+            id: 'generation-1',
+            tokenUsage: {
+              total: 40,
+              prompt: 25,
+              completion: 15,
+              cached: 40,
+              numRequests: 1,
+              incurredTokenUsage: { total: 0, numRequests: 0 },
+            },
+          },
+        },
+      });
+      eval1.prompts = [{ metrics: { tokenUsage: { total: 10, numRequests: 1 } } }] as any;
+
+      expect(eval1.getStats().tokenUsage).toMatchObject({
+        total: 10,
+        numRequests: 1,
+        generation: { total: 40, cached: 40, numRequests: 1 },
+        incurredTokenUsage: {
+          total: 10,
+          numRequests: 1,
+          generation: { total: 0, numRequests: 0 },
+        },
+      });
+    });
+
+    it('should accumulate assertion token usage correctly', () => {
+      const eval1 = new Eval({});
+      eval1.prompts = [
+        {
+          raw: 'test',
+          metrics: {
+            tokenUsage: {
+              prompt: 10,
+              completion: 20,
+              cached: 5,
+              total: 35,
+              numRequests: 1,
+              assertions: {
+                total: 100,
+                prompt: 40,
+                completion: 50,
+                cached: 10,
+                numRequests: 3,
+              },
+            },
+          },
+        } as any,
+        {
+          raw: 'test2',
+          metrics: {
+            tokenUsage: {
+              prompt: 15,
+              completion: 25,
+              cached: 10,
+              total: 50,
+              numRequests: 1,
+              assertions: {
+                total: 200,
+                prompt: 80,
+                completion: 100,
+                cached: 20,
+                numRequests: 5,
+              },
+            },
+          },
+        } as any,
+      ];
+
+      const stats = eval1.getStats();
+      expect(stats.tokenUsage.assertions).toEqual({
+        total: 300,
+        prompt: 120,
+        completion: 150,
+        cached: 30,
+        numRequests: 8,
+        completionDetails: {
+          reasoning: 0,
+          acceptedPrediction: 0,
+          rejectedPrediction: 0,
+          cacheReadInputTokens: 0,
+          cacheCreationInputTokens: 0,
+        },
+      });
+    });
+
+    it('should handle missing assertion token usage', () => {
+      const eval1 = new Eval({});
+      eval1.prompts = [
+        {
+          raw: 'test',
+          metrics: {
+            tokenUsage: {
+              prompt: 10,
+              completion: 20,
+              cached: 5,
+              total: 35,
+              numRequests: 1,
+            },
+          },
+        } as any,
+      ];
+
+      const stats = eval1.getStats();
+      expect(stats.tokenUsage.assertions).toEqual({
+        total: 0,
+        prompt: 0,
+        completion: 0,
+        cached: 0,
+        numRequests: 0,
+        completionDetails: {
+          reasoning: 0,
+          acceptedPrediction: 0,
+          rejectedPrediction: 0,
+          cacheReadInputTokens: 0,
+          cacheCreationInputTokens: 0,
+        },
+      });
+    });
+
+    it('should handle mix of prompts with and without assertion usage', () => {
+      const eval1 = new Eval({});
+      eval1.prompts = [
+        {
+          raw: 'test1',
+          metrics: {
+            tokenUsage: {
+              prompt: 10,
+              completion: 20,
+              cached: 5,
+              total: 35,
+              numRequests: 1,
+              assertions: {
+                total: 100,
+                prompt: 40,
+                completion: 50,
+                cached: 10,
+              },
+            },
+          },
+        } as any,
+        {
+          raw: 'test2',
+          metrics: {
+            tokenUsage: {
+              prompt: 15,
+              completion: 25,
+              cached: 10,
+              total: 50,
+              numRequests: 1,
+            },
+          },
+        } as any,
+      ];
+
+      const stats = eval1.getStats();
+      expect(stats.tokenUsage.assertions).toEqual({
+        total: 100,
+        prompt: 40,
+        completion: 50,
+        cached: 10,
+        numRequests: 0,
+        completionDetails: {
+          reasoning: 0,
+          acceptedPrediction: 0,
+          rejectedPrediction: 0,
+          cacheReadInputTokens: 0,
+          cacheCreationInputTokens: 0,
+        },
+      });
+    });
+
+    it('should include durationMs and evaluationDurationMs when setDurationMs is called', () => {
+      const eval1 = new Eval({});
+      eval1.setDurationMs(12345);
+
+      const stats = eval1.getStats();
+      expect(stats.durationMs).toBe(12345);
+      expect(stats.evaluationDurationMs).toBe(12345);
+    });
+
+    it('should return undefined for all duration fields when not set', () => {
+      const eval1 = new Eval({});
+
+      const stats = eval1.getStats();
+      expect(stats.durationMs).toBeUndefined();
+      expect(stats.generationDurationMs).toBeUndefined();
+      expect(stats.evaluationDurationMs).toBeUndefined();
+    });
+
+    it('should preserve durationMs when passed via constructor', () => {
+      const eval1 = new Eval({}, { durationMs: 54321 });
+
+      const stats = eval1.getStats();
+      expect(stats.durationMs).toBe(54321);
+    });
+
+    it('should compute total from generation + evaluation durations', () => {
+      const eval1 = new Eval({});
+      eval1.setDurationMs(5000); // evaluation phase
+      eval1.setGenerationDurationMs(10000); // generation phase
+
+      const stats = eval1.getStats();
+      expect(stats.generationDurationMs).toBe(10000);
+      expect(stats.evaluationDurationMs).toBe(5000);
+      expect(stats.durationMs).toBe(15000);
+    });
+
+    it('should handle setGenerationDurationMs called before setDurationMs', () => {
+      const eval1 = new Eval({});
+      eval1.setGenerationDurationMs(10000);
+
+      // durationMs should reflect generation even before evaluation is set
+      expect(eval1.generationDurationMs).toBe(10000);
+      expect(eval1.evaluationDurationMs).toBeUndefined();
+      expect(eval1.durationMs).toBe(10000);
+
+      eval1.setDurationMs(5000);
+      expect(eval1.durationMs).toBe(15000);
+    });
+
+    it('should ignore invalid duration values', () => {
+      const eval1 = new Eval({});
+      eval1.setDurationMs(5000);
+
+      eval1.setDurationMs(NaN);
+      expect(eval1.evaluationDurationMs).toBe(5000);
+
+      eval1.setDurationMs(-1);
+      expect(eval1.evaluationDurationMs).toBe(5000);
+
+      eval1.setDurationMs(Infinity);
+      expect(eval1.evaluationDurationMs).toBe(5000);
+
+      eval1.setGenerationDurationMs(NaN);
+      expect(eval1.generationDurationMs).toBeUndefined();
+
+      eval1.setGenerationDurationMs(-100);
+      expect(eval1.generationDurationMs).toBeUndefined();
+    });
+
+    it('should include generationDurationMs and evaluationDurationMs in stats', () => {
+      const eval1 = new Eval(
+        {},
+        { durationMs: 15000, generationDurationMs: 10000, evaluationDurationMs: 5000 },
+      );
+
+      const stats = eval1.getStats();
+      expect(stats.generationDurationMs).toBe(10000);
+      expect(stats.evaluationDurationMs).toBe(5000);
+      expect(stats.durationMs).toBe(15000);
+    });
+  });
+
+  describe('toResultsFile', () => {
+    it('drops malformed trace-provider headers when exporting older evaluations', async () => {
+      const evaluation = new Eval({
+        tracing: {
+          enabled: true,
+          provider: {
+            id: 'tempo',
+            endpoint: 'https://tempo.example.com',
+            headers: {
+              'X-Null': null,
+              'X-Number': 42,
+              'X-Object': { malformed: true },
+              'X-Array': ['malformed'],
+              Authorization: 'Bearer legacy-secret',
+              'X-Scope-OrgID': 'tenant-a',
+            } as unknown as Record<string, string>,
+          },
+        },
+      });
+
+      const results = await evaluation.toResultsFile();
+
+      expect(results.config.tracing?.provider?.headers).toEqual({ 'X-Scope-OrgID': 'tenant-a' });
+      expect(JSON.stringify(results.config)).not.toContain('legacy-secret');
+    });
+
+    it('removes trace-provider credentials from exported results without mutating live config', async () => {
+      const evaluation = new Eval({
+        tracing: {
+          enabled: true,
+          provider: {
+            id: 'tempo',
+            endpoint: 'https://tempo.example.com',
+            auth: { token: 'export-runtime-secret' },
+            headers: { Authorization: 'Bearer exported-secret', 'X-Scope-OrgID': 'tenant-a' },
+          },
+        },
+      });
+
+      const results = await evaluation.toResultsFile();
+
+      expect(JSON.stringify(results.config)).not.toContain('export-runtime-secret');
+      expect(JSON.stringify(results.config)).not.toContain('exported-secret');
+      expect(results.config.tracing?.provider?.headers).toEqual({ 'X-Scope-OrgID': 'tenant-a' });
+      expect(evaluation.config.tracing?.provider?.auth?.token).toBe('export-runtime-secret');
+    });
+
+    it('should return results file with correct version', async () => {
+      const eval1 = await EvalFactory.create();
+      const results = await eval1.toResultsFile();
+      expect(results.version).toBe(eval1.version());
+    });
+
+    it('should return results file with all required fields', async () => {
+      const eval1 = await EvalFactory.create();
+      const results = await eval1.toResultsFile();
+
+      expect(results).toEqual({
+        version: eval1.version(),
+        createdAt: new Date(eval1.createdAt).toISOString(),
+        config: eval1.config,
+        author: null,
+        prompts: eval1.getPrompts(),
+        ...(eval1.vars.length > 0 && { vars: eval1.vars }),
+        datasetId: null,
+        results: await eval1.toEvaluateSummary(),
+      });
+    });
+
+    it('should include persisted variable display order', async () => {
+      const eval1 = new Eval({}, { vars: ['zebra', 'apple'] });
+
+      expect((await eval1.toResultsFile()).vars).toEqual(['zebra', 'apple']);
+    });
+
+    it('omits the vars field entirely when no variable order is persisted', async () => {
+      const eval1 = new Eval({});
+
+      const results = await eval1.toResultsFile();
+
+      expect(results).not.toHaveProperty('vars');
+    });
+
+    it('should handle null author and datasetId', async () => {
+      const eval1 = new Eval({});
+      const results = await eval1.toResultsFile();
+
+      expect(results.author).toBeNull();
+      expect(results.datasetId).toBeNull();
+    });
+
+    it('should include correct results summary', async () => {
+      const eval1 = await EvalFactory.create();
+      const results = await eval1.toResultsFile();
+
+      expect(results.results).toEqual(await eval1.toEvaluateSummary());
+    });
+  });
+
+  describe('getTablePage', () => {
+    let evalWithResults: Eval;
+
+    beforeEach(async () => {
+      // Create an evaluation with varied results for testing pagination and filtering
+      evalWithResults = await EvalFactory.create({
+        numResults: 20,
+        resultTypes: ['success', 'error', 'failure'],
+        withHighlights: true,
+        withNamedScores: true,
+        searchableContent: 'searchable_content',
+      });
+    });
+
+    it('should return paginated results with default parameters', async () => {
+      const result = await evalWithResults.getTablePage({ filters: [] });
+
+      expect(result).toHaveProperty('head');
+      expect(result).toHaveProperty('body');
+      expect(result).toHaveProperty('totalCount');
+      expect(result).toHaveProperty('filteredCount');
+      expect(result).toHaveProperty('id', evalWithResults.id);
+
+      // Default limit is 50
+      expect(result.body.length).toBeLessThanOrEqual(50);
+    });
+
+    it('should respect offset and limit parameters', async () => {
+      // Create an eval with enough results to ensure we have content for two pages
+      const largeEval = await EvalFactory.create({
+        numResults: 12,
+        resultTypes: ['success', 'failure'],
+      });
+
+      const firstPage = await largeEval.getTablePage({ offset: 0, limit: 5, filters: [] });
+      const secondPage = await largeEval.getTablePage({ offset: 5, limit: 5, filters: [] });
+
+      expect(firstPage.body.length).toBeLessThanOrEqual(5);
+      expect(secondPage.body.length).toBeLessThanOrEqual(5);
+
+      // Ensure we have content in both pages for a valid test
+      expect(firstPage.body.length).toBeGreaterThan(0);
+      expect(secondPage.body.length).toBeGreaterThan(0);
+
+      // Compare test indices between pages to ensure they're different
+      const firstPageIndices = firstPage.body.map((row) => row.testIdx);
+      const secondPageIndices = secondPage.body.map((row) => row.testIdx);
+
+      // Verify no overlap between page indices
+      const intersection = firstPageIndices.filter((idx) => secondPageIndices.includes(idx));
+      expect(intersection).toHaveLength(0);
+    });
+
+    it('should filter by errors', async () => {
+      const result = await evalWithResults.getTablePage({ filterMode: 'errors', filters: [] });
+
+      // Ensure there are results for the test to be meaningful
+      const hasResults = result.body.length > 0;
+      expect(hasResults).toBe(true);
+
+      // Check all outputs for errors
+      for (const row of result.body) {
+        const hasError = row.outputs.some(
+          (output) =>
+            output.error?.includes('error') ||
+            output.text.includes('error') ||
+            (output.gradingResult?.reason || '').includes('error'),
+        );
+        expect(hasError).toBe(true);
+      }
+    });
+
+    it('should filter by failures', async () => {
+      const result = await evalWithResults.getTablePage({ filterMode: 'failures', filters: [] });
+
+      // Ensure there are results for the test to be meaningful
+      const hasResults = result.body.length > 0;
+      expect(hasResults).toBe(true);
+
+      // All results should contain at least one failed output that's not an error
+      for (const row of result.body) {
+        const hasFailure = row.outputs.some(
+          (output) => !output.pass && !output.text.includes('error'),
+        );
+        expect(hasFailure).toBe(true);
+      }
+    });
+
+    it('should filter by passes', async () => {
+      const result = await evalWithResults.getTablePage({ filterMode: 'passes', filters: [] });
+
+      // Ensure there are results for the test to be meaningful
+      const hasResults = result.body.length > 0;
+      expect(hasResults).toBe(true);
+
+      // All results should contain at least one successful output
+      for (const row of result.body) {
+        const hasSuccess = row.outputs.some((output) => output.pass === true);
+        expect(hasSuccess).toBe(true);
+      }
+    });
+
+    it('should filter by specific test indices', async () => {
+      const testIndices = [1, 3, 5];
+      const result = await evalWithResults.getTablePage({ testIndices, filters: [] });
+
+      // Should only return results for the specified test indices
+      const returnedIndices = result.body.map((row) => row.testIdx);
+      for (const idx of returnedIndices) {
+        expect(testIndices).toContain(idx);
+      }
+
+      // Should return at most the number of requested indices
+      expect(result.body.length).toBeLessThanOrEqual(testIndices.length);
+    });
+
+    it('should handle search queries across fields', async () => {
+      // This test requires setting up specific search terms in the eval factory
+      const searchTerm = 'searchable_content';
+      const result = await evalWithResults.getTablePage({ searchQuery: searchTerm, filters: [] });
+
+      // Results should contain the search term in at least one field
+      expect(result.body.length).toBeGreaterThan(0);
+      expect(result.filteredCount).toBeLessThan(result.totalCount);
+    });
+
+    it('should filter by specific metrics', async () => {
+      // This test requires setting up results with named scores in the eval factory
+      const result = await evalWithResults.getTablePage({
+        filters: [
+          JSON.stringify({
+            logicOperator: 'and',
+            type: 'metric',
+            operator: 'equals',
+            value: 'accuracy',
+          }),
+        ],
+      });
+
+      // All results should have the specified metric
+      for (const row of result.body) {
+        const hasMetric = row.outputs.some(
+          (output) => output.namedScores && output.namedScores['accuracy'] !== undefined,
+        );
+        expect(hasMetric).toBe(true);
+      }
+    });
+
+    it('should combine multiple filter types', async () => {
+      const result = await evalWithResults.getTablePage({
+        filterMode: 'passes',
+        searchQuery: 'searchable_content',
+        filters: [
+          JSON.stringify({
+            logicOperator: 'and',
+            type: 'metric',
+            operator: 'equals',
+            value: 'relevance',
+          }),
+        ],
+        limit: 10,
+      });
+
+      // Results should satisfy all conditions and respect limit
+      expect(result.body.length).toBeLessThanOrEqual(10);
+      expect(result.filteredCount).toBeLessThan(result.totalCount);
+    });
+
+    it('should be filterable by multiple metrics', async () => {
+      const result = await evalWithResults.getTablePage({
+        filters: [
+          JSON.stringify({
+            logicOperator: 'or',
+            type: 'metric',
+            operator: 'equals',
+            value: 'accuracy',
+          }),
+          JSON.stringify({
+            logicOperator: 'or',
+            type: 'metric',
+            operator: 'equals',
+            value: 'relevance',
+          }),
+        ],
+      });
+
+      // Row should have at least one of the metrics
+      for (const row of result.body) {
+        const hasMetric1 = row.outputs.some(
+          (output) => output.namedScores && output.namedScores['accuracy'] !== undefined,
+        );
+        const hasMetric2 = row.outputs.some(
+          (output) => output.namedScores && output.namedScores['relevance'] !== undefined,
+        );
+        expect(hasMetric1 || hasMetric2).toBe(true);
+      }
+    });
+
+    it('should return correct counts for filtered results', async () => {
+      const allResults = await evalWithResults.getTablePage({ filters: [] });
+      const filteredResults = await evalWithResults.getTablePage({
+        filterMode: 'passes',
+        filters: [],
+      });
+
+      // Total count should be the same for both queries
+      expect(filteredResults.totalCount).toBe(allResults.totalCount);
+
+      // Filtered count should be less than or equal to total count
+      expect(filteredResults.filteredCount).toBeLessThanOrEqual(filteredResults.totalCount);
+    });
+
+    it('should sanitize SQL inputs properly', async () => {
+      // Test with input containing SQL injection attempt
+      const result = await evalWithResults.getTablePage({
+        searchQuery: "'; DROP TABLE eval_results; --",
+        filters: [],
+      });
+
+      // Should still return results without error
+      expect(result).toBeDefined();
+      expect(result).toHaveProperty('body');
+    });
+
+    it('should handle empty result sets', async () => {
+      // Create an eval with no results
+      const emptyEval = await EvalFactory.create({ numResults: 0 });
+
+      const result = await emptyEval.getTablePage({ filters: [] });
+
+      expect(result.body).toEqual([]);
+      expect(result.totalCount).toBe(0);
+      expect(result.filteredCount).toBe(0);
+    });
+  });
+
+  describe('EvalQueries.getMetadataKeysFromEval', () => {
+    it('should return unique metadata keys from all eval results', async () => {
+      const eval_ = await EvalFactory.create();
+
+      // Add eval results with different metadata
+      const db = await getDb();
+      await db.run(
+        `INSERT INTO eval_results (
+          id, eval_id, prompt_idx, test_idx, test_case, prompt, provider,
+          success, score, metadata
+        ) VALUES
+        ('result1', '${eval_.id}', 0, 0, '{}', '{}', '{}', 1, 1.0, '{"key1": "value1", "key2": "value2"}'),
+        ('result2', '${eval_.id}', 0, 1, '{}', '{}', '{}', 1, 1.0, '{"key2": "value3", "key3": "value4"}'),
+        ('result3', '${eval_.id}', 0, 2, '{}', '{}', '{}', 1, 1.0, '{"key1": "value5", "key4": "value6"}')`,
+      );
+
+      const keys = await EvalQueries.getMetadataKeysFromEval(eval_.id);
+
+      expect(keys).toEqual(['key1', 'key2', 'key3', 'key4']);
+    });
+
+    it('should return empty array for eval with no metadata', async () => {
+      const eval_ = await EvalFactory.create();
+
+      const keys = await EvalQueries.getMetadataKeysFromEval(eval_.id);
+
+      expect(keys).toEqual([]);
+    });
+
+    it('should handle empty metadata objects gracefully', async () => {
+      const eval_ = await EvalFactory.create();
+
+      // Add eval result with empty metadata
+      const db = await getDb();
+      await db.run(
+        `INSERT INTO eval_results (
+          id, eval_id, prompt_idx, test_idx, test_case, prompt, provider,
+          success, score, metadata
+        ) VALUES
+        ('result1', '${eval_.id}', 0, 0, '{}', '{}', '{}', 1, 1.0, '{}')`,
+      );
+
+      const keys = await EvalQueries.getMetadataKeysFromEval(eval_.id);
+
+      expect(keys).toEqual([]);
+    });
+
+    it('hides the reserved __promptfoo namespace from key listings', async () => {
+      const eval_ = await EvalFactory.create();
+
+      const db = await getDb();
+      await db.run(
+        `INSERT INTO eval_results (
+          id, eval_id, prompt_idx, test_idx, test_case, prompt, provider,
+          success, score, metadata
+        ) VALUES
+        ('promptfoo-ns-1', '${eval_.id}', 0, 0, '{}', '{}', '{}', 1, 1.0,
+          '{"userKey": "shown", "__promptfoo": {"traceLinkage": {"traceId": "abc"}}}')`,
+      );
+
+      const keys = await EvalQueries.getMetadataKeysFromEval(eval_.id);
+      expect(keys).toContain('userKey');
+      expect(keys).not.toContain('__promptfoo');
+    });
+  });
+
+  describe('EvalQueries.getMetadataValuesFromEval', () => {
+    it('refuses to return values under the reserved __promptfoo namespace', async () => {
+      const eval_ = await EvalFactory.create();
+
+      const db = await getDb();
+      await db.run(
+        `INSERT INTO eval_results (
+          id, eval_id, prompt_idx, test_idx, test_case, prompt, provider,
+          success, score, metadata
+        ) VALUES
+        ('promptfoo-val-1', '${eval_.id}', 0, 0, '{}', '{}', '{}', 1, 1.0,
+          '{"__promptfoo": {"traceLinkage": {"traceId": "abc"}}}')`,
+      );
+
+      expect(await EvalQueries.getMetadataValuesFromEval(eval_.id, '__promptfoo')).toEqual([]);
+      expect(
+        await EvalQueries.getMetadataValuesFromEval(eval_.id, '__promptfoo.traceLinkage'),
+      ).toEqual([]);
+    });
+  });
+
+  describe('EvalQueries.getVarsFromEvals', () => {
+    it('returns each evaluations var keys sorted alphabetically for stable list output', async () => {
+      const eval1 = await EvalFactory.create({ numResults: 1 });
+      const eval2 = await EvalFactory.create({ numResults: 1 });
+      const db = await getDb();
+      await db.run(
+        `UPDATE eval_results SET test_case = json('{"vars":{"zebra":"z","apple":"a","mango":"m"}}') WHERE eval_id = '${eval1.id}'`,
+      );
+      await db.run(
+        `UPDATE eval_results SET test_case = json('{"vars":{"yellow":"y","banana":"b"}}') WHERE eval_id = '${eval2.id}'`,
+      );
+
+      const vars = await EvalQueries.getVarsFromEvals([eval1, eval2]);
+
+      expect(vars[eval1.id]).toEqual(['apple', 'mango', 'zebra']);
+      expect(vars[eval2.id]).toEqual(['banana', 'yellow']);
+    });
+
+    it('returns an empty object for an empty evals list', async () => {
+      const vars = await EvalQueries.getVarsFromEvals([]);
+
+      expect(vars).toEqual({});
+    });
+
+    it('omits evals whose test_case has no $.vars from the result map', async () => {
+      const evalWithVars = await EvalFactory.create({ numResults: 1 });
+      const evalWithoutVars = await EvalFactory.create({ numResults: 1 });
+      const db = await getDb();
+      await db.run(
+        `UPDATE eval_results SET test_case = json('{"vars":{"foo":"f"}}') WHERE eval_id = '${evalWithVars.id}'`,
+      );
+      // Strip $.vars so json_each(t.vars) yields no rows for this eval_id.
+      await db.run(
+        `UPDATE eval_results SET test_case = json('{}') WHERE eval_id = '${evalWithoutVars.id}'`,
+      );
+
+      const vars = await EvalQueries.getVarsFromEvals([evalWithVars, evalWithoutVars]);
+
+      expect(vars[evalWithVars.id]).toEqual(['foo']);
+      expect(vars).not.toHaveProperty(evalWithoutVars.id);
+    });
+  });
+
+  describe('queryTestIndices', () => {
+    it('returns indices with default params and correct ordering', async () => {
+      const eval_ = await EvalFactory.create({
+        numResults: 10,
+        resultTypes: ['success', 'error', 'failure'],
+      });
+      const { testIndices, filteredCount } = await (eval_ as any).queryTestIndices({});
+
+      expect(filteredCount).toBe(10);
+      expect(testIndices.length).toBeLessThanOrEqual(10);
+      // Ensure ascending order
+      const sorted = [...testIndices].sort((a, b) => a - b);
+      expect(testIndices).toEqual(sorted);
+    });
+
+    it('respects offset and limit', async () => {
+      const eval_ = await EvalFactory.create({
+        numResults: 12,
+        resultTypes: ['success', 'failure', 'error'],
+      });
+      const page1 = await (eval_ as any).queryTestIndices({ offset: 0, limit: 5 });
+      const page2 = await (eval_ as any).queryTestIndices({ offset: 5, limit: 5 });
+
+      expect(page1.testIndices.length).toBeLessThanOrEqual(5);
+      expect(page2.testIndices.length).toBeLessThanOrEqual(5);
+
+      // Verify disjoint sets for the first 10 indices
+      const overlap = page1.testIndices.filter((i: number) => page2.testIndices.includes(i));
+      expect(overlap).toHaveLength(0);
+    });
+
+    it('Mode Filtering: filters by errors, failures, and passes', async () => {
+      const numResults = 15;
+      const eval_ = await EvalFactory.create({
+        numResults,
+        resultTypes: ['success', 'error', 'failure'],
+      });
+
+      const errors = await (eval_ as any).queryTestIndices({ filterMode: 'errors' });
+      const failures = await (eval_ as any).queryTestIndices({ filterMode: 'failures' });
+      const passes = await (eval_ as any).queryTestIndices({ filterMode: 'passes' });
+
+      // With the cycling order, counts should roughly split by thirds
+      expect(errors.filteredCount).toBeGreaterThan(0);
+      expect(failures.filteredCount).toBeGreaterThan(0);
+      expect(passes.filteredCount).toBeGreaterThan(0);
+
+      // No index should appear in more than one mode simultaneously
+      const sErrors = new Set(errors.testIndices);
+      const sFailures = new Set(failures.testIndices);
+      const sPasses = new Set(passes.testIndices);
+      for (const idx of sErrors) {
+        expect(sFailures.has(idx)).toBe(false);
+        expect(sPasses.has(idx)).toBe(false);
+      }
+    });
+
+    it('filters by metric equals', async () => {
+      const eval_ = await EvalFactory.create({
+        numResults: 8,
+        resultTypes: ['success', 'failure'],
+        withNamedScores: true,
+      });
+      const { testIndices, filteredCount } = await (eval_ as any).queryTestIndices({
+        filters: [
+          JSON.stringify({
+            logicOperator: 'and',
+            type: 'metric',
+            operator: 'equals',
+            value: 'accuracy',
+          }),
+        ],
+      });
+
+      expect(testIndices.length).toBeGreaterThan(0);
+      expect(filteredCount).toBeGreaterThan(0);
+      // With named scores on every row, all indices should match
+      expect(filteredCount).toBe(8);
+    });
+
+    it('filters by metadata equals and contains', async () => {
+      const eval_ = await EvalFactory.create({
+        numResults: 6,
+        resultTypes: ['success', 'failure'],
+      });
+
+      const db = await getDb();
+      await db.run(
+        `UPDATE eval_results SET metadata = json('{"source":"unit","note":"hello world"}') WHERE eval_id = '${eval_.id}' AND test_idx = 1`,
+      );
+      await db.run(
+        `UPDATE eval_results SET metadata = json('{"source":"integration"}') WHERE eval_id = '${eval_.id}' AND test_idx = 2`,
+      );
+
+      // equals on source=unit should return only test 1
+      const eqRes = await (eval_ as any).queryTestIndices({
+        filters: [
+          JSON.stringify({
+            logicOperator: 'and',
+            type: 'metadata',
+            operator: 'equals',
+            field: 'source',
+            value: 'unit',
+          }),
+        ],
+      });
+      expect(eqRes.filteredCount).toBe(1);
+      expect(eqRes.testIndices).toEqual([1]);
+
+      // contains on note
+      const containsRes = await (eval_ as any).queryTestIndices({
+        filters: [
+          JSON.stringify({
+            logicOperator: 'and',
+            type: 'metadata',
+            operator: 'contains',
+            field: 'note',
+            value: 'hello',
+          }),
+        ],
+      });
+      expect(containsRes.filteredCount).toBe(1);
+      expect(containsRes.testIndices).toEqual([1]);
+    });
+
+    it('filters by metadata not_contains without dropping missing fields', async () => {
+      const eval_ = await EvalFactory.create({
+        numResults: 4,
+        resultTypes: ['success', 'failure'],
+      });
+
+      const db = await getDb();
+      await db.run(
+        `UPDATE eval_results SET metadata = json('{"note":"contains risky phrase"}') WHERE eval_id = '${eval_.id}' AND test_idx = 0`,
+      );
+      await db.run(
+        `UPDATE eval_results SET metadata = json('{"note":"boring"}') WHERE eval_id = '${eval_.id}' AND test_idx = 1`,
+      );
+      await db.run(
+        `UPDATE eval_results SET metadata = json('{"other":"risky"}') WHERE eval_id = '${eval_.id}' AND test_idx = 2`,
+      );
+
+      const result = await (eval_ as any).queryTestIndices({
+        filters: [
+          JSON.stringify({
+            logicOperator: 'and',
+            type: 'metadata',
+            operator: 'not_contains',
+            field: 'note',
+            value: 'risky',
+          }),
+        ],
+      });
+
+      expect(result.filteredCount).toBe(3);
+      expect(result.testIndices).toEqual([1, 2, 3]);
+    });
+
+    it('filters by metadata exists operator (non-empty values only)', async () => {
+      const eval_ = await EvalFactory.create({
+        numResults: 10,
+        resultTypes: ['success', 'failure'],
+      });
+
+      const db = await getDb();
+      // Set up test data with various field states
+      await db.run(
+        `UPDATE eval_results SET metadata = json('{"source":"unit","note":"hello"}') WHERE eval_id = '${eval_.id}' AND test_idx = 0`,
+      );
+      await db.run(
+        `UPDATE eval_results SET metadata = json('{"source":"","note":"hello"}') WHERE eval_id = '${eval_.id}' AND test_idx = 1`,
+      );
+      await db.run(
+        `UPDATE eval_results SET metadata = json('{"source":"  ","note":"hello"}') WHERE eval_id = '${eval_.id}' AND test_idx = 2`,
+      );
+      await db.run(
+        `UPDATE eval_results SET metadata = json('{"note":"hello"}') WHERE eval_id = '${eval_.id}' AND test_idx = 3`,
+      );
+      await db.run(
+        `UPDATE eval_results SET metadata = json('{"source":null,"note":"hello"}') WHERE eval_id = '${eval_.id}' AND test_idx = 4`,
+      );
+      await db.run(
+        `UPDATE eval_results SET metadata = json('{"source":"integration","note":"hello"}') WHERE eval_id = '${eval_.id}' AND test_idx = 5`,
+      );
+
+      // exists should only return rows where source field has meaningful non-empty values
+      const existsRes = await (eval_ as any).queryTestIndices({
+        filters: [
+          JSON.stringify({
+            logicOperator: 'and',
+            type: 'metadata',
+            operator: 'exists',
+            field: 'source',
+            value: '',
+          }),
+        ],
+      });
+
+      // Should only include test_idx 0 and 5 (has "unit" and "integration")
+      // Should exclude: empty string (1), whitespace (2), missing field (3), null (4)
+      expect(existsRes.filteredCount).toBe(2);
+      expect(existsRes.testIndices).toEqual([0, 5]);
+    });
+
+    it('filters by metadata exists operator with various data types', async () => {
+      const eval_ = await EvalFactory.create({
+        numResults: 10,
+        resultTypes: ['success', 'failure'],
+      });
+
+      const db = await getDb();
+      // Set up test data with different data types
+      await db.run(
+        `UPDATE eval_results SET metadata = json('{"count":42}') WHERE eval_id = '${eval_.id}' AND test_idx = 0`,
+      );
+      await db.run(
+        `UPDATE eval_results SET metadata = json('{"count":0}') WHERE eval_id = '${eval_.id}' AND test_idx = 1`,
+      );
+      await db.run(
+        `UPDATE eval_results SET metadata = json('{"active":true}') WHERE eval_id = '${eval_.id}' AND test_idx = 2`,
+      );
+      await db.run(
+        `UPDATE eval_results SET metadata = json('{"active":false}') WHERE eval_id = '${eval_.id}' AND test_idx = 3`,
+      );
+      await db.run(
+        `UPDATE eval_results SET metadata = json('{"tags":["a","b"]}') WHERE eval_id = '${eval_.id}' AND test_idx = 4`,
+      );
+      await db.run(
+        `UPDATE eval_results SET metadata = json('{"config":{"key":"value"}}') WHERE eval_id = '${eval_.id}' AND test_idx = 5`,
+      );
+
+      // Test exists for numeric field (should include both 42 and 0)
+      const countExists = await (eval_ as any).queryTestIndices({
+        filters: [
+          JSON.stringify({
+            logicOperator: 'and',
+            type: 'metadata',
+            operator: 'exists',
+            field: 'count',
+            value: '',
+          }),
+        ],
+      });
+      expect(countExists.filteredCount).toBe(2);
+      expect(countExists.testIndices).toEqual([0, 1]);
+
+      // Test exists for boolean field (should include both true and false)
+      const activeExists = await (eval_ as any).queryTestIndices({
+        filters: [
+          JSON.stringify({
+            logicOperator: 'and',
+            type: 'metadata',
+            operator: 'exists',
+            field: 'active',
+            value: '',
+          }),
+        ],
+      });
+      expect(activeExists.filteredCount).toBe(2);
+      expect(activeExists.testIndices).toEqual([2, 3]);
+
+      // Test exists for array field
+      const tagsExists = await (eval_ as any).queryTestIndices({
+        filters: [
+          JSON.stringify({
+            logicOperator: 'and',
+            type: 'metadata',
+            operator: 'exists',
+            field: 'tags',
+            value: '',
+          }),
+        ],
+      });
+      expect(tagsExists.filteredCount).toBe(1);
+      expect(tagsExists.testIndices).toEqual([4]);
+
+      // Test exists for object field
+      const configExists = await (eval_ as any).queryTestIndices({
+        filters: [
+          JSON.stringify({
+            logicOperator: 'and',
+            type: 'metadata',
+            operator: 'exists',
+            field: 'config',
+            value: '',
+          }),
+        ],
+      });
+      expect(configExists.filteredCount).toBe(1);
+      expect(configExists.testIndices).toEqual([5]);
+    });
+
+    it('filters by metadata with special characters in field names (security test)', async () => {
+      const eval_ = await EvalFactory.create({
+        numResults: 5,
+        resultTypes: ['success', 'failure'],
+      });
+
+      const db = await getDb();
+      // Test metadata keys with quotes and backslashes that could cause JSON path injection
+      await db.run(
+        `UPDATE eval_results SET metadata = json('{"field\\"with\\"quotes":"value1"}') WHERE eval_id = '${eval_.id}' AND test_idx = 0`,
+      );
+      await db.run(
+        `UPDATE eval_results SET metadata = json('{"field\\\\with\\\\backslashes":"value2"}') WHERE eval_id = '${eval_.id}' AND test_idx = 1`,
+      );
+      await db.run(
+        `UPDATE eval_results SET metadata = json('{"normal_field":"value3"}') WHERE eval_id = '${eval_.id}' AND test_idx = 2`,
+      );
+      const attackField = `field"'; DROP TABLE eval_results; --`;
+      await db
+        .update(evalResultsTable)
+        .set({ metadata: { [attackField]: 'value4' } })
+        .where(sql`${evalResultsTable.evalId} = ${eval_.id} AND ${evalResultsTable.testIdx} = ${3}`)
+        .run();
+
+      // Test equals filter with quotes in field name
+      const quotesResult = await (eval_ as any).queryTestIndices({
+        filters: [
+          JSON.stringify({
+            logicOperator: 'and',
+            type: 'metadata',
+            operator: 'equals',
+            field: 'field"with"quotes',
+            value: 'value1',
+          }),
+        ],
+      });
+      expect(quotesResult.filteredCount).toBe(1);
+      expect(quotesResult.testIndices).toEqual([0]);
+
+      // Test equals filter with backslashes in field name
+      const backslashResult = await (eval_ as any).queryTestIndices({
+        filters: [
+          JSON.stringify({
+            logicOperator: 'and',
+            type: 'metadata',
+            operator: 'equals',
+            field: 'field\\with\\backslashes',
+            value: 'value2',
+          }),
+        ],
+      });
+      expect(backslashResult.filteredCount).toBe(1);
+      expect(backslashResult.testIndices).toEqual([1]);
+
+      // Test exists filter with quotes in field name
+      const existsQuotesResult = await (eval_ as any).queryTestIndices({
+        filters: [
+          JSON.stringify({
+            logicOperator: 'and',
+            type: 'metadata',
+            operator: 'exists',
+            field: 'field"with"quotes',
+            value: '',
+          }),
+        ],
+      });
+      expect(existsQuotesResult.filteredCount).toBe(1);
+      expect(existsQuotesResult.testIndices).toEqual([0]);
+
+      // Test exists filter with backslashes in field name
+      const existsBackslashResult = await (eval_ as any).queryTestIndices({
+        filters: [
+          JSON.stringify({
+            logicOperator: 'and',
+            type: 'metadata',
+            operator: 'exists',
+            field: 'field\\with\\backslashes',
+            value: '',
+          }),
+        ],
+      });
+      expect(existsBackslashResult.filteredCount).toBe(1);
+      expect(existsBackslashResult.testIndices).toEqual([1]);
+
+      // Field names stay bound JSON paths even when they look like SQL.
+      const attackResult = await (eval_ as any).queryTestIndices({
+        filters: [
+          JSON.stringify({
+            logicOperator: 'and',
+            type: 'metadata',
+            operator: 'equals',
+            field: attackField,
+            value: 'value4',
+          }),
+        ],
+      });
+      expect(attackResult.filteredCount).toBe(1);
+      expect(attackResult.testIndices).toEqual([3]);
+
+      // The eval results table remains queryable after the attack-shaped field is filtered.
+      const tableAfterAttack = await eval_.getTablePage({ filters: [] });
+      expect(tableAfterAttack.totalCount).toBe(5);
+    });
+
+    it('filters by metadata exists operator with empty arrays and objects', async () => {
+      const eval_ = await EvalFactory.create({
+        numResults: 6,
+        resultTypes: ['success', 'failure'],
+      });
+
+      const db = await getDb();
+      // Test empty array - should match (not empty)
+      await db.run(
+        `UPDATE eval_results SET metadata = json('{"arrayField":[]}') WHERE eval_id = '${eval_.id}' AND test_idx = 0`,
+      );
+      // Test empty object - should match (not empty)
+      await db.run(
+        `UPDATE eval_results SET metadata = json('{"objectField":{}}') WHERE eval_id = '${eval_.id}' AND test_idx = 1`,
+      );
+      // Test non-empty array - should match
+      await db.run(
+        `UPDATE eval_results SET metadata = json('{"arrayField":["item"]}') WHERE eval_id = '${eval_.id}' AND test_idx = 2`,
+      );
+      // Test non-empty object - should match
+      await db.run(
+        `UPDATE eval_results SET metadata = json('{"objectField":{"key":"value"}}') WHERE eval_id = '${eval_.id}' AND test_idx = 3`,
+      );
+      // Test null field - should not match
+      await db.run(
+        `UPDATE eval_results SET metadata = json('{"nullField":null}') WHERE eval_id = '${eval_.id}' AND test_idx = 4`,
+      );
+      // Test missing field - should not match
+      await db.run(
+        `UPDATE eval_results SET metadata = json('{"otherField":"value"}') WHERE eval_id = '${eval_.id}' AND test_idx = 5`,
+      );
+
+      // Test exists filter with empty array - should match because [] is not empty
+      const emptyArrayResult = await (eval_ as any).queryTestIndices({
+        filters: [
+          JSON.stringify({
+            logicOperator: 'and',
+            type: 'metadata',
+            operator: 'exists',
+            field: 'arrayField',
+            value: '',
+          }),
+        ],
+      });
+      expect(emptyArrayResult.filteredCount).toBe(2); // Both empty and non-empty arrays
+      expect(emptyArrayResult.testIndices).toEqual([0, 2]);
+
+      // Test exists filter with empty object - should match because {} is not empty
+      const emptyObjectResult = await (eval_ as any).queryTestIndices({
+        filters: [
+          JSON.stringify({
+            logicOperator: 'and',
+            type: 'metadata',
+            operator: 'exists',
+            field: 'objectField',
+            value: '',
+          }),
+        ],
+      });
+      expect(emptyObjectResult.filteredCount).toBe(2); // Both empty and non-empty objects
+      expect(emptyObjectResult.testIndices).toEqual([1, 3]);
+
+      // Test exists filter with null field - should not match
+      const nullFieldResult = await (eval_ as any).queryTestIndices({
+        filters: [
+          JSON.stringify({
+            logicOperator: 'and',
+            type: 'metadata',
+            operator: 'exists',
+            field: 'nullField',
+            value: '',
+          }),
+        ],
+      });
+      expect(nullFieldResult.filteredCount).toBe(0); // null should not match exists
+      expect(nullFieldResult.testIndices).toEqual([]);
+    });
+
+    it('filters by plugin and strategy', async () => {
+      const eval_ = await EvalFactory.create({
+        numResults: 6,
+        resultTypes: ['success', 'failure'],
+      });
+      const db = await getDb();
+      // Set pluginId on one row and strategyId on another
+      await db.run(
+        `UPDATE eval_results SET metadata = json('{"pluginId":"harmful:harassment"}') WHERE eval_id = '${eval_.id}' AND test_idx = 3`,
+      );
+      await db.run(
+        `UPDATE eval_results SET metadata = json('{"strategyId":"s1"}') WHERE eval_id = '${eval_.id}' AND test_idx = 5`,
+      );
+
+      // Category filter should match pluginId that starts with harmful:
+      const pluginCategory = await (eval_ as any).queryTestIndices({
+        filters: [
+          JSON.stringify({
+            logicOperator: 'and',
+            type: 'plugin',
+            operator: 'equals',
+            value: 'harmful',
+          }),
+        ],
+      });
+      expect(pluginCategory.testIndices).toEqual([3]);
+
+      // Strategy equals specific id
+      const strategyEq = await (eval_ as any).queryTestIndices({
+        filters: [
+          JSON.stringify({
+            logicOperator: 'and',
+            type: 'strategy',
+            operator: 'equals',
+            value: 's1',
+          }),
+        ],
+      });
+      expect(strategyEq.testIndices).toEqual([5]);
+    });
+
+    it('filters plugin results with not_equals operator for ids and categories', async () => {
+      const eval_ = await EvalFactory.create({
+        numResults: 5,
+        resultTypes: ['success'],
+      });
+      const db = await getDb();
+      await db.run(
+        `UPDATE eval_results SET metadata = json('{"pluginId":"harmful:harassment"}') WHERE eval_id = '${eval_.id}' AND test_idx = 0`,
+      );
+      await db.run(
+        `UPDATE eval_results SET metadata = json('{"pluginId":"bias:toxicity"}') WHERE eval_id = '${eval_.id}' AND test_idx = 1`,
+      );
+      await db.run(
+        `UPDATE eval_results SET metadata = json('{"pluginId":"custom-plugin"}') WHERE eval_id = '${eval_.id}' AND test_idx = 2`,
+      );
+      // Leave test_idx = 3 without pluginId to ensure nulls are included
+
+      const excludeSpecificPlugin = await (eval_ as any).queryTestIndices({
+        filters: [
+          JSON.stringify({
+            logicOperator: 'and',
+            type: 'plugin',
+            operator: 'not_equals',
+            value: 'custom-plugin',
+          }),
+        ],
+      });
+      expect(excludeSpecificPlugin.testIndices).toEqual([0, 1, 3, 4]);
+
+      const excludeCategory = await (eval_ as any).queryTestIndices({
+        filters: [
+          JSON.stringify({
+            logicOperator: 'and',
+            type: 'plugin',
+            operator: 'not_equals',
+            value: 'harmful',
+          }),
+        ],
+      });
+      expect(excludeCategory.testIndices).toEqual([1, 2, 3, 4]);
+    });
+
+    it('filters by explicit severity override', async () => {
+      const eval_ = await EvalFactory.create({
+        numResults: 4,
+        resultTypes: ['success', 'failure'],
+      });
+      const db = await getDb();
+      await db.run(
+        `UPDATE eval_results SET metadata = json('{"severity":"high"}') WHERE eval_id = '${eval_.id}' AND test_idx = 0`,
+      );
+
+      const { testIndices, filteredCount } = await (eval_ as any).queryTestIndices({
+        filters: [
+          JSON.stringify({
+            logicOperator: 'and',
+            type: 'severity',
+            operator: 'equals',
+            value: 'high',
+          }),
+        ],
+      });
+      expect(filteredCount).toBe(1);
+      expect(testIndices).toEqual([0]);
+    });
+
+    it('searches across response, grading, named scores, metadata, and vars', async () => {
+      const eval_ = await EvalFactory.create({
+        numResults: 9,
+        resultTypes: ['success', 'failure', 'error'],
+        withNamedScores: true,
+        searchableContent: 'needle',
+      });
+      const { testIndices, filteredCount } = await (eval_ as any).queryTestIndices({
+        searchQuery: 'needle',
+      });
+
+      expect(testIndices.length).toBeGreaterThan(0);
+      expect(filteredCount).toBeGreaterThan(0);
+      // Sanity: limit should still apply
+      const limited = await (eval_ as any).queryTestIndices({ searchQuery: 'needle', limit: 2 });
+      expect(limited.testIndices.length).toBeLessThanOrEqual(2);
+      expect(limited.filteredCount).toBeGreaterThanOrEqual(limited.testIndices.length);
+    });
+  });
+
+  describe('getTraces', () => {
+    beforeEach(() => {
+      vi.resetModules();
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('should return traces with properly formatted data', async () => {
+      const eval_ = await EvalFactory.create();
+
+      const mockTraces = [
+        {
+          traceId: 'trace-123',
+          evaluationId: eval_.id,
+          testCaseId: 'test-case-1',
+          metadata: { test: 'value' },
+          spans: [
+            {
+              spanId: 'span-1',
+              name: 'Test Span',
+              startTime: 1000000000,
+              endTime: 2000000000,
+              statusCode: 1,
+            },
+          ],
+        },
+      ];
+
+      const mockTraceStore = {
+        getTracesByEvaluation: vi.fn().mockResolvedValue(mockTraces),
+      };
+
+      vi.doMock('../../src/tracing/store', () => ({
+        getTraceStore: vi.fn().mockReturnValue(mockTraceStore),
+      }));
+
+      // Force reload the module to use the mock
+      vi.resetModules();
+      const { default: EvalReloaded } = await import('../../src/models/eval');
+      const evalInstance = Object.assign(Object.create(EvalReloaded.prototype), eval_);
+
+      const traces = await evalInstance.getTraces();
+
+      expect(traces).toHaveLength(1);
+      expect(traces[0]).toMatchObject({
+        traceId: 'trace-123',
+        evaluationId: eval_.id,
+        testCaseId: 'test-case-1',
+        metadata: { test: 'value' },
+      });
+      expect(traces[0].spans).toHaveLength(1);
+      expect(mockTraceStore.getTracesByEvaluation).toHaveBeenCalledWith(eval_.id);
+    });
+
+    it('should return empty array when no traces exist', async () => {
+      const eval_ = await EvalFactory.create();
+
+      const mockTraceStore = {
+        getTracesByEvaluation: vi.fn().mockResolvedValue([]),
+      };
+
+      vi.doMock('../../src/tracing/store', () => ({
+        getTraceStore: vi.fn().mockReturnValue(mockTraceStore),
+      }));
+
+      vi.resetModules();
+      const { default: EvalReloaded } = await import('../../src/models/eval');
+      const evalInstance = Object.assign(Object.create(EvalReloaded.prototype), eval_);
+
+      const traces = await evalInstance.getTraces();
+
+      expect(traces).toEqual([]);
+      expect(mockTraceStore.getTracesByEvaluation).toHaveBeenCalledWith(eval_.id);
+    });
+
+    it('should handle spans with missing endTime', async () => {
+      const eval_ = await EvalFactory.create();
+
+      const mockTraces = [
+        {
+          traceId: 'trace-incomplete',
+          evaluationId: eval_.id,
+          testCaseId: 'test-case-2',
+          metadata: {},
+          spans: [
+            {
+              spanId: 'span-no-end',
+              name: 'Incomplete Span',
+              startTime: 1000000000,
+              endTime: null,
+              statusCode: 0,
+            },
+          ],
+        },
+      ];
+
+      const mockTraceStore = {
+        getTracesByEvaluation: vi.fn().mockResolvedValue(mockTraces),
+      };
+
+      vi.doMock('../../src/tracing/store', () => ({
+        getTraceStore: vi.fn().mockReturnValue(mockTraceStore),
+      }));
+
+      vi.resetModules();
+      const { default: EvalReloaded } = await import('../../src/models/eval');
+      const evalInstance = Object.assign(Object.create(EvalReloaded.prototype), eval_);
+
+      const traces = await evalInstance.getTraces();
+
+      expect(traces).toHaveLength(1);
+      expect(traces[0].spans[0]).toHaveProperty('spanId', 'span-no-end');
+    });
+
+    it('should map status codes correctly', async () => {
+      const eval_ = await EvalFactory.create();
+
+      const mockTraces = [
+        {
+          traceId: 'trace-status-codes',
+          evaluationId: eval_.id,
+          testCaseId: 'test-case-3',
+          metadata: {},
+          spans: [
+            {
+              spanId: 'span-ok',
+              name: 'OK Span',
+              startTime: 1000000000,
+              endTime: 2000000000,
+              statusCode: 1,
+            },
+            {
+              spanId: 'span-error',
+              name: 'Error Span',
+              startTime: 2000000000,
+              endTime: 3000000000,
+              statusCode: 2,
+            },
+            {
+              spanId: 'span-unset',
+              name: 'Unset Span',
+              startTime: 3000000000,
+              endTime: 4000000000,
+              statusCode: 0,
+            },
+          ],
+        },
+      ];
+
+      const mockTraceStore = {
+        getTracesByEvaluation: vi.fn().mockResolvedValue(mockTraces),
+      };
+
+      vi.doMock('../../src/tracing/store', () => ({
+        getTraceStore: vi.fn().mockReturnValue(mockTraceStore),
+      }));
+
+      vi.resetModules();
+      const { default: EvalReloaded } = await import('../../src/models/eval');
+      const evalInstance = Object.assign(Object.create(EvalReloaded.prototype), eval_);
+
+      const traces = await evalInstance.getTraces();
+
+      expect(traces[0].spans).toHaveLength(3);
+      // Note: The actual status mapping logic may vary based on implementation
+      expect(traces[0].spans[0].spanId).toBe('span-ok');
+      expect(traces[0].spans[1].spanId).toBe('span-error');
+      expect(traces[0].spans[2].spanId).toBe('span-unset');
+    });
+
+    it('should handle errors gracefully and return empty array', async () => {
+      const eval_ = await EvalFactory.create();
+
+      const mockTraceStore = {
+        getTracesByEvaluation: vi.fn().mockRejectedValue(new Error('Database error')),
+      };
+
+      vi.doMock('../../src/tracing/store', () => ({
+        getTraceStore: vi.fn().mockReturnValue(mockTraceStore),
+      }));
+
+      vi.resetModules();
+      const { default: EvalReloaded } = await import('../../src/models/eval');
+      const evalInstance = Object.assign(Object.create(EvalReloaded.prototype), eval_);
+
+      const traces = await evalInstance.getTraces();
+
+      expect(traces).toEqual([]);
+    });
+  });
+
+  describe('escapeJsonPathKey', () => {
+    it('should return simple keys unchanged', () => {
+      expect(escapeJsonPathKey('field')).toBe('field');
+      expect(escapeJsonPathKey('simple_field')).toBe('simple_field');
+      expect(escapeJsonPathKey('field123')).toBe('field123');
+    });
+
+    it('should escape double quotes in keys', () => {
+      expect(escapeJsonPathKey('field"with"quotes')).toBe('field\\"with\\"quotes');
+      expect(escapeJsonPathKey('"quoted"')).toBe('\\"quoted\\"');
+    });
+
+    it('should escape backslashes in keys', () => {
+      expect(escapeJsonPathKey('field\\with\\backslash')).toBe('field\\\\with\\\\backslash');
+      expect(escapeJsonPathKey('\\\\double')).toBe('\\\\\\\\double');
+    });
+
+    it('should escape both quotes and backslashes together', () => {
+      expect(escapeJsonPathKey('field\\"mixed')).toBe('field\\\\\\"mixed');
+      expect(escapeJsonPathKey('"\\key\\"')).toBe('\\"\\\\key\\\\\\"');
+    });
+
+    it('should handle SQL injection attempts in keys', () => {
+      // These should be safely escaped, not executed
+      const injection1 = 'field"; DROP TABLE users; --';
+      const escaped1 = escapeJsonPathKey(injection1);
+      // The double quote is escaped with a backslash, preventing JSON path breakout
+      expect(escaped1).toBe('field\\"; DROP TABLE users; --');
+
+      const injection2 = "field' OR 1=1; --";
+      const escaped2 = escapeJsonPathKey(injection2);
+      // Single quotes stay in the JSON path value and are bound as parameters.
+      expect(escaped2).toBe("field' OR 1=1; --");
+    });
+  });
+
+  describe('buildSafeJsonPath', () => {
+    it('should build valid JSON paths for simple field names', () => {
+      expect(buildSafeJsonPath('field')).toBe('$."field"');
+    });
+
+    it('should properly escape double quotes in field names', () => {
+      expect(buildSafeJsonPath('field"with"quotes')).toBe(String.raw`$."field\"with\"quotes"`);
+    });
+
+    it('should leave single quotes in the bound JSON path value', () => {
+      expect(buildSafeJsonPath("field'with'single'quotes")).toBe("$.\"field'with'single'quotes\"");
+    });
+
+    it('should handle complex SQL injection attempts', () => {
+      const attack = `field"'; DROP TABLE users; --`;
+      expect(buildSafeJsonPath(attack)).toBe(String.raw`$."field\"'; DROP TABLE users; --"`);
+    });
+
+    it('should handle backslashes correctly', () => {
+      expect(buildSafeJsonPath('path\\to\\field')).toBe(String.raw`$."path\\to\\field"`);
+    });
+  });
+
+  describe('combineFilterConditions', () => {
+    /**
+     * Renders a combined SQL fragment to text so tests can assert on the operators used.
+     * combineFilterConditions nests fragments as it reduces, so this must recurse —
+     * a flat map over queryChunks would hide operators inside nested fragments.
+     */
+    const toSqlText = (chunk: unknown): string => {
+      if (typeof chunk === 'string') {
+        return chunk;
+      }
+      const chunks = (chunk as { queryChunks?: unknown[] })?.queryChunks;
+      if (Array.isArray(chunks)) {
+        return chunks.map(toSqlText).join(' ');
+      }
+      // drizzle's StringChunk stores its literal text as a string[].
+      const value = (chunk as { value?: unknown })?.value;
+      if (Array.isArray(value)) {
+        return value.filter((part) => typeof part === 'string').join(' ');
+      }
+      return typeof value === 'string' ? value : '';
+    };
+
+    it('should return null for empty array', () => {
+      const result = combineFilterConditions([]);
+      expect(result).toBeNull();
+    });
+
+    it('should return single condition unwrapped', () => {
+      const condition = sql`field = ${1}`;
+      const result = combineFilterConditions([{ condition, logicOperator: 'AND' }]);
+      expect(result).toBe(condition);
+    });
+
+    it('should combine two conditions with AND', () => {
+      const cond1 = sql`field1 = ${1}`;
+      const cond2 = sql`field2 = ${2}`;
+      const result = combineFilterConditions([
+        { condition: cond1, logicOperator: 'AND' },
+        { condition: cond2, logicOperator: 'AND' },
+      ]);
+      expect(result!.queryChunks.length).toBeGreaterThan(1);
+      expect(toSqlText(result)).toContain('AND');
+      expect(toSqlText(result)).not.toContain('OR');
+    });
+
+    it('should combine two conditions with OR', () => {
+      const cond1 = sql`field1 = ${1}`;
+      const cond2 = sql`field2 = ${2}`;
+      const result = combineFilterConditions([
+        { condition: cond1, logicOperator: 'AND' },
+        { condition: cond2, logicOperator: 'OR' },
+      ]);
+      expect(toSqlText(result)).toContain('OR');
+      expect(toSqlText(result)).not.toContain('AND');
+    });
+
+    it('should handle mixed AND/OR operators', () => {
+      const cond1 = sql`a = ${1}`;
+      const cond2 = sql`b = ${2}`;
+      const cond3 = sql`c = ${3}`;
+      const cond4 = sql`d = ${4}`;
+
+      const result = combineFilterConditions([
+        { condition: cond1, logicOperator: 'AND' },
+        { condition: cond2, logicOperator: 'AND' },
+        { condition: cond3, logicOperator: 'OR' },
+        { condition: cond4, logicOperator: 'AND' },
+      ]);
+      const sqlText = toSqlText(result);
+      expect(sqlText).toContain('OR');
+      expect(sqlText).toContain('AND');
+    });
+
+    // The UI's ResultsFilter type is 'and' | 'or', so the server always receives
+    // lowercase operators; an exact-match against 'OR' silently combined with AND.
+    it.each(['or', 'Or', 'OR'])(
+      'should combine with OR for logicOperator %j',
+      (logicOperator: string) => {
+        const result = combineFilterConditions([
+          { condition: sql`field1 = ${1}`, logicOperator },
+          { condition: sql`field2 = ${2}`, logicOperator },
+        ]);
+        const sqlText = toSqlText(result);
+        expect(sqlText).toContain('OR');
+        expect(sqlText).not.toContain('AND');
+      },
+    );
+
+    // Filters are unvalidated JSON from the query string, so a non-string operator
+    // must fall back to AND rather than throwing (which would 500 the table route).
+    it.each([
+      ['unrecognized string', 'UNKNOWN'],
+      ['lowercase and', 'and'],
+      ['number', 1 as unknown as string],
+      ['object', {} as unknown as string],
+      ['undefined', undefined as unknown as string],
+    ])('should fall back to AND for a %s operator', (_label: string, logicOperator: string) => {
+      const result = combineFilterConditions([
+        { condition: sql`field1 = ${1}`, logicOperator },
+        { condition: sql`field2 = ${2}`, logicOperator },
+      ]);
+      const sqlText = toSqlText(result);
+      expect(sqlText).toContain('AND');
+      expect(sqlText).not.toContain('OR');
+    });
+  });
+
+  describe('getTablePage sessionId header detection', () => {
+    it('sorts legacy backfilled vars before appending metadata-only sessionId', async () => {
+      const eval_ = await EvalFactory.create({ numResults: 1 });
+      const db = await getDb();
+      await db.run(
+        `UPDATE eval_results SET
+          metadata = json('{"sessionId":"session-123"}'),
+          test_case = json('{"vars":{"zebra":"z","apple":"a"}}')
+        WHERE eval_id = '${eval_.id}'`,
+      );
+      await db.run(`UPDATE evals SET vars = json('[]') WHERE id = '${eval_.id}'`);
+
+      const reloadedEval = await Eval.findById(eval_.id);
+      const result = await reloadedEval!.getTablePage({ filters: [] });
+
+      expect(reloadedEval!.vars).toEqual(['apple', 'zebra']);
+      expect(result.head.vars).toEqual(['apple', 'zebra', 'sessionId']);
+    });
+
+    it('should add sessionId to vars header when metadata.sessionId exists but not in vars', async () => {
+      const eval_ = await EvalFactory.create({ numResults: 1 });
+
+      // Set metadata.sessionId on the result
+      const db = await getDb();
+      await db.run(
+        `UPDATE eval_results SET metadata = json('{"sessionId":"session-123"}') WHERE eval_id = '${eval_.id}'`,
+      );
+
+      const result = await eval_.getTablePage({ filters: [] });
+
+      // sessionId should be added to vars header
+      expect(result.head.vars).toContain('sessionId');
+    });
+
+    it('should add sessionId to vars header when metadata.sessionIds array exists', async () => {
+      const eval_ = await EvalFactory.create({ numResults: 1 });
+
+      // Set metadata.sessionIds array on the result (multi-turn strategy format)
+      const db = await getDb();
+      await db.run(
+        `UPDATE eval_results SET metadata = json('{"sessionIds":["session-a","session-b","session-c"]}') WHERE eval_id = '${eval_.id}'`,
+      );
+
+      const result = await eval_.getTablePage({ filters: [] });
+
+      // sessionId should be added to vars header
+      expect(result.head.vars).toContain('sessionId');
+    });
+
+    it('should not add sessionId to vars header when already in testCase.vars', async () => {
+      const eval_ = await EvalFactory.create({ numResults: 1 });
+
+      // Set both metadata.sessionIds and testCase.vars.sessionId
+      const db = await getDb();
+      await db.run(
+        `UPDATE eval_results SET
+          metadata = json('{"sessionIds":["session-a","session-b"]}'),
+          test_case = json('{"vars":{"state":"colorado","sessionId":"user-session"}}')
+        WHERE eval_id = '${eval_.id}'`,
+      );
+
+      // Force refresh the eval vars (we need to reload the eval for accurate state)
+      const reloadedEval = await Eval.findById(eval_.id);
+      expect(reloadedEval).toBeDefined();
+
+      const result = await reloadedEval!.getTablePage({ filters: [] });
+
+      // sessionId should be in vars header since it's in testCase.vars
+      // The check is that the vars header includes sessionId but not duplicated
+      const sessionIdCount = result.head.vars.filter((v) => v === 'sessionId').length;
+      expect(sessionIdCount).toBeLessThanOrEqual(1);
+    });
+
+    it('should handle empty sessionIds array (should not add sessionId header)', async () => {
+      const eval_ = await EvalFactory.create({ numResults: 1 });
+
+      // Set empty sessionIds array
+      const db = await getDb();
+      await db.run(
+        `UPDATE eval_results SET metadata = json('{"sessionIds":[]}') WHERE eval_id = '${eval_.id}'`,
+      );
+
+      const result = await eval_.getTablePage({ filters: [] });
+
+      // sessionId should NOT be in vars header since sessionIds is empty
+      expect(result.head.vars).not.toContain('sessionId');
+    });
+
+    it('should handle both sessionIds array and sessionId (sessionIds takes precedence for header check)', async () => {
+      const eval_ = await EvalFactory.create({ numResults: 1 });
+
+      // Set both sessionIds array and sessionId
+      const db = await getDb();
+      await db.run(
+        `UPDATE eval_results SET metadata = json('{"sessionId":"single","sessionIds":["multi-1","multi-2"]}') WHERE eval_id = '${eval_.id}'`,
+      );
+
+      const result = await eval_.getTablePage({ filters: [] });
+
+      // sessionId should be in vars header
+      expect(result.head.vars).toContain('sessionId');
+    });
+
+    it('should handle multiple results with varying sessionId/sessionIds configurations', async () => {
+      const eval_ = await EvalFactory.create({ numResults: 3 });
+
+      const db = await getDb();
+      // Result 0: Has sessionIds array (multi-turn)
+      await db.run(
+        `UPDATE eval_results SET metadata = json('{"sessionIds":["multi-0a","multi-0b"]}') WHERE eval_id = '${eval_.id}' AND test_idx = 0`,
+      );
+      // Result 1: Has single sessionId
+      await db.run(
+        `UPDATE eval_results SET metadata = json('{"sessionId":"single-1"}') WHERE eval_id = '${eval_.id}' AND test_idx = 1`,
+      );
+      // Result 2: No sessionId or sessionIds
+      await db.run(
+        `UPDATE eval_results SET metadata = json('{}') WHERE eval_id = '${eval_.id}' AND test_idx = 2`,
+      );
+
+      const result = await eval_.getTablePage({ filters: [] });
+
+      // sessionId should be in vars header (at least one result has it)
+      expect(result.head.vars).toContain('sessionId');
+    });
+
+    it('should not add sessionId to header when no results have sessionId or sessionIds', async () => {
+      const eval_ = await EvalFactory.create({ numResults: 2 });
+
+      // Set empty metadata on all results
+      const db = await getDb();
+      await db.run(
+        `UPDATE eval_results SET metadata = json('{"otherField":"value"}') WHERE eval_id = '${eval_.id}'`,
+      );
+
+      const result = await eval_.getTablePage({ filters: [] });
+
+      // sessionId should NOT be in vars header
+      expect(result.head.vars).not.toContain('sessionId');
+    });
+  });
+
+  describe('parameterization verification', () => {
+    it('should use parameterized queries for filter field and value', async () => {
+      // Both metric and metadata filters now use json_each(...) WHERE key = ${field}
+      // AND value = ${value}, so user-controlled `field` and `value` are bound as
+      // parameters rather than interpolated. The "filters by metadata with special
+      // characters in field names" test above exercises this against the live DB —
+      // no string-escaping helper is needed because nothing reaches sql.raw().
+      const attackField = "field'; DROP TABLE evals; --";
+      const eval_ = await EvalFactory.create({ numResults: 1 });
+      await expect(
+        eval_.getTablePage({
+          filters: [
+            JSON.stringify({
+              type: 'metadata',
+              field: attackField,
+              operator: 'equals',
+              value: 'whatever',
+              logicOperator: 'AND',
+            }),
+          ],
+        }),
+      ).resolves.toBeDefined();
+    });
+  });
+});

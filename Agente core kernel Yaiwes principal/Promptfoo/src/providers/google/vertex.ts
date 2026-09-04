@@ -1,0 +1,1376 @@
+import { createHmac } from 'crypto';
+
+import { getCache, isCacheEnabled } from '../../cache';
+import cliState from '../../cliState';
+import { getEnvString } from '../../envars';
+import logger from '../../logger';
+import {
+  type GenAISpanContext,
+  type GenAISpanResult,
+  withGenAISpan,
+} from '../../tracing/genaiTracer';
+import { fetchWithProxy } from '../../util/fetch/index';
+import { maybeLoadFromExternalFile } from '../../util/file';
+import { renderVarsInObject } from '../../util/index';
+import { isValidJson } from '../../util/json';
+import { loadYaml } from '../../util/yamlLoad';
+import {
+  applyClaudeRegionalPremium,
+  calculateAnthropicCost,
+  clampMaxTokensForThinkingBudget,
+  claudeThinkingConsumesTokens,
+  getTokenUsage,
+  isSamplingParamsDeprecatedClaudeModel,
+  normalizeClaudeThinkingConfig,
+  outputFromMessage,
+  parseMessages,
+} from '../anthropic/util';
+import { getRequestTimeoutMs, parseChatPrompt } from '../shared';
+import { GoogleGenericProvider, type GoogleProviderOptions } from './base';
+import { getVertexApiHostForRegion } from './shared';
+import {
+  calculateGoogleCostFromUsage,
+  collectGroundingMetadata,
+  formatCandidateContents,
+  geminiFormatAndSystemInstructions,
+  getCandidate,
+  getGoogleClient,
+  loadCredentials,
+  mergeGoogleCompletionOptions,
+  mergeParts,
+  normalizeGeminiAudio,
+  normalizeSafetySettings,
+  parseConfigSystemInstruction,
+  removeDeprecatedGeminiGenerationParams,
+  removeGoogleFunctionDeclarations,
+  resolveGoogleToolConfig,
+  resolveProjectId,
+} from './util';
+
+import type { EnvOverrides } from '../../types/env';
+import type {
+  ApiEmbeddingProvider,
+  CallApiContextParams,
+  GuardrailResponse,
+  ProviderEmbeddingResponse,
+  ProviderResponse,
+  TokenUsage,
+} from '../../types/index';
+import type {
+  ClaudeRequest,
+  ClaudeResponse,
+  ClaudeThinkingConfig,
+  CompletionOptions,
+  GoogleProviderConfig,
+} from './types';
+import type {
+  GeminiApiResponse,
+  GeminiErrorResponse,
+  GeminiFormat,
+  GeminiResponseData,
+  Palm2ApiResponse,
+} from './util';
+
+// Type for Google API errors - using 'any' to avoid gaxios dependency
+type GaxiosError = any;
+
+// Vertex retains the Sonnet 4.5 1M preview and its >200K pricing tier. Native Anthropic and
+// Bedrock Sonnet 4.5 requests are capped at 200K, so only this provider opts into these rates.
+const VERTEX_CLAUDE_SONNET_4_5_MODELS = new Set([
+  'claude-sonnet-4-5',
+  'claude-sonnet-4-5-20250929',
+  'claude-sonnet-4-5-latest',
+]);
+const VERTEX_CLAUDE_SONNET_4_5_LONG_CONTEXT_PRICING = {
+  threshold: 200_000,
+  input: 6 / 1e6,
+  output: 22.5 / 1e6,
+};
+
+function applyVertexClaudeLongContextPricing(
+  modelName: string,
+  config: GoogleProviderConfig,
+  inputTokens?: number,
+  cacheReadTokens?: number,
+  cacheCreationTokens?: number,
+): GoogleProviderConfig {
+  const effectiveInputTokens =
+    (inputTokens ?? 0) + (cacheReadTokens ?? 0) + (cacheCreationTokens ?? 0);
+  if (
+    !VERTEX_CLAUDE_SONNET_4_5_MODELS.has(modelName) ||
+    effectiveInputTokens <= VERTEX_CLAUDE_SONNET_4_5_LONG_CONTEXT_PRICING.threshold
+  ) {
+    return config;
+  }
+
+  // `cost` already supplies both rates and intentionally overrides tier-specific pricing.
+  if (config.cost != null) {
+    return config;
+  }
+
+  return {
+    ...config,
+    inputCost: config.inputCost ?? VERTEX_CLAUDE_SONNET_4_5_LONG_CONTEXT_PRICING.input,
+    outputCost: config.outputCost ?? VERTEX_CLAUDE_SONNET_4_5_LONG_CONTEXT_PRICING.output,
+  };
+}
+
+type VertexEmbeddingPredictResponse = {
+  predictions?: Array<{
+    embeddings?: {
+      values?: number[];
+      statistics?: {
+        token_count?: number;
+      };
+    };
+  }>;
+};
+
+type VertexEmbeddingProviderConfig = GoogleProviderConfig & {
+  autoTruncate?: boolean;
+};
+
+function getVertexApiHost(
+  region: string,
+  configApiHost?: string,
+  envOverrides?: EnvOverrides,
+): string {
+  return (
+    configApiHost ||
+    envOverrides?.VERTEX_API_HOST ||
+    getEnvString('VERTEX_API_HOST') ||
+    getVertexApiHostForRegion(region)
+  );
+}
+
+function getVertexBodyCacheKey(prefix: string, body: unknown, apiHost: string): string {
+  const serialized = typeof body === 'string' ? body : JSON.stringify(body);
+  return `${prefix}:${createHmac('sha256', 'promptfoo:vertex:cache-key:v1')
+    .update(apiHost)
+    .update('\0')
+    .update(serialized)
+    .digest('hex')}`;
+}
+
+/**
+ * Vertex AI provider for Gemini, Claude, Llama, and Palm2 models.
+ *
+ * Extends GoogleGenericProvider for shared functionality like MCP integration,
+ * authentication management, and resource cleanup.
+ */
+export class VertexChatProvider extends GoogleGenericProvider {
+  constructor(modelName: string, options: GoogleProviderOptions = {}) {
+    // Force vertex mode for Vertex AI provider
+    super(modelName, {
+      ...options,
+      config: { ...options.config, vertexai: true },
+    });
+  }
+
+  /**
+   * Get the Vertex AI API host based on region.
+   * Public for use by integrations like Adaline Gateway.
+   */
+  getApiHost(): string {
+    const region = this.getRegion();
+    return (
+      this.config.apiHost ||
+      this.env?.VERTEX_API_HOST ||
+      getEnvString('VERTEX_API_HOST') ||
+      getVertexApiHostForRegion(region)
+    );
+  }
+
+  /**
+   * Get the API version for Vertex AI.
+   */
+  private getApiVersion(): string {
+    return (
+      this.config.apiVersion ||
+      this.env?.VERTEX_API_VERSION ||
+      getEnvString('VERTEX_API_VERSION') ||
+      'v1'
+    );
+  }
+
+  /**
+   * Get the publisher for the model.
+   */
+  private getPublisher(): string {
+    return (
+      this.config.publisher ||
+      this.env?.VERTEX_PUBLISHER ||
+      getEnvString('VERTEX_PUBLISHER') ||
+      'google'
+    );
+  }
+
+  /**
+   * Get the API endpoint URL for Vertex AI.
+   * Note: For Gemini, the actual endpoint is constructed dynamically based on mode.
+   */
+  getApiEndpoint(action?: string): string {
+    // This provides a default endpoint - actual endpoints are model-specific
+    const actionSuffix = action ? `:${action}` : '';
+    return `https://${this.getApiHost()}/${this.getApiVersion()}/publishers/${this.getPublisher()}/models/${this.modelName}${actionSuffix}`;
+  }
+
+  /**
+   * Get authentication headers for Vertex AI.
+   * For OAuth mode, this returns minimal headers; the client handles auth.
+   * For express mode, the API key is passed via x-goog-api-key header for improved security.
+   */
+  async getAuthHeaders(): Promise<Record<string, string>> {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...this.config.headers,
+    };
+
+    // In express mode, add the API key to headers
+    if (this.isExpressMode()) {
+      const apiKey = this.getApiKey();
+      if (apiKey) {
+        headers['x-goog-api-key'] = apiKey;
+      }
+    }
+
+    return headers;
+  }
+
+  /**
+   * Helper method to get Google client with credentials support.
+   * Public for use by integrations like Adaline Gateway.
+   */
+  async getClientWithCredentials() {
+    const credentials = loadCredentials(this.config.credentials);
+    const { client } = await getGoogleClient({
+      credentials,
+      googleAuthOptions: this.config.googleAuthOptions,
+      scopes: this.config.scopes,
+      keyFilename: this.config.keyFilename,
+    });
+    return client;
+  }
+
+  async callApi(prompt: string, context?: CallApiContextParams): Promise<ProviderResponse> {
+    // Determine the system based on model name
+    const system = this.modelName.includes('claude')
+      ? 'vertex:anthropic'
+      : this.modelName.includes('gemini')
+        ? 'vertex:gemini'
+        : this.modelName.includes('llama')
+          ? 'vertex:llama'
+          : 'vertex:palm2';
+
+    // Set up tracing context
+    const spanContext: GenAISpanContext = {
+      system,
+      operationName: 'chat',
+      model: this.modelName,
+      providerId: this.id(),
+      temperature: this.config.temperature,
+      topP: this.config.topP,
+      maxTokens: this.config.maxOutputTokens || this.config.max_tokens,
+      testIndex: context?.testIdx ?? (context?.test?.vars?.__testIdx as number | undefined),
+      promptLabel: context?.prompt?.label,
+      // W3C Trace Context for linking to evaluation trace
+      traceparent: context?.traceparent,
+    };
+
+    // Result extractor to set response attributes on the span
+    const resultExtractor = (response: ProviderResponse): GenAISpanResult => {
+      const result: GenAISpanResult = {};
+      if (response.tokenUsage) {
+        result.tokenUsage = {
+          prompt: response.tokenUsage.prompt,
+          completion: response.tokenUsage.completion,
+          total: response.tokenUsage.total,
+        };
+      }
+      return result;
+    };
+
+    return withGenAISpan(spanContext, () => this.callApiInternal(prompt, context), resultExtractor);
+  }
+
+  private async callApiInternal(
+    prompt: string,
+    context?: CallApiContextParams,
+  ): Promise<ProviderResponse> {
+    if (this.modelName.includes('claude')) {
+      return this.callClaudeApi(prompt, context);
+    } else if (this.modelName.includes('gemini')) {
+      return this.callGeminiApi(prompt, context);
+    } else if (this.modelName.includes('llama')) {
+      return this.callLlamaApi(prompt, context);
+    }
+    return this.callPalm2Api(prompt);
+  }
+
+  async callClaudeApi(prompt: string, context?: CallApiContextParams): Promise<ProviderResponse> {
+    // Support YAML chat prompts (legacy format used by parseChatPrompt)
+    let normalizedPrompt = prompt;
+    if (prompt.trim().startsWith('- role:')) {
+      try {
+        const parsed = loadYaml(prompt);
+        normalizedPrompt = JSON.stringify(parsed);
+      } catch (err) {
+        return { error: `Chat Completion prompt is not a valid YAML string: ${err}` };
+      }
+    }
+
+    const { system, extractedMessages, thinking } = parseMessages(normalizedPrompt);
+
+    // Merge config.systemInstruction (if set) with the system instruction extracted from the prompt.
+    let mergedSystem = system;
+    const parsedConfigInstruction = parseConfigSystemInstruction(
+      this.config.systemInstruction,
+      context?.vars,
+    );
+    if (parsedConfigInstruction) {
+      const configSystemBlocks: Array<{ type: 'text'; text: string }> = [];
+      for (const part of parsedConfigInstruction.parts) {
+        if (part.text) {
+          configSystemBlocks.push({ type: 'text', text: part.text });
+        }
+      }
+      if (configSystemBlocks.length > 0) {
+        mergedSystem = [...configSystemBlocks, ...(mergedSystem || [])];
+      }
+    }
+
+    const apiHost = this.getApiHost();
+    const apiHostUrl = `https://${apiHost}`;
+    const normalizedApiHostname = URL.canParse(apiHostUrl) ? new URL(apiHostUrl).hostname : '';
+    const allowGenerationFallback =
+      /^(?:[a-z0-9-]+-)?aiplatform(?:\.mtls)?\.googleapis\.com$/i.test(normalizedApiHostname);
+    const samplingParamsDeprecated = isSamplingParamsDeprecatedClaudeModel(this.modelName, {
+      allowGenerationFallback,
+    });
+    const requestedThinkingConfig: ClaudeThinkingConfig | undefined =
+      this.config.thinking || (thinking as ClaudeThinkingConfig | undefined);
+    const effort = this.config.effort;
+    const thinkingConfig: ClaudeThinkingConfig | undefined = normalizeClaudeThinkingConfig(
+      this.modelName,
+      requestedThinkingConfig,
+      effort,
+      { allowGenerationFallback },
+    );
+    // Thinking shares the max_tokens budget with the answer, and Opus 5 thinks even with no
+    // `thinking` field — so the 512 default would truncate ordinary replies.
+    const thinkingConsumesTokens = claudeThinkingConsumesTokens(this.modelName, thinkingConfig);
+
+    let maxTokens = this.config.max_tokens || this.config.maxOutputTokens || 0;
+    if (!maxTokens) {
+      maxTokens = thinkingConsumesTokens ? 2048 : 512;
+    }
+    maxTokens = clampMaxTokensForThinkingBudget(maxTokens, thinkingConfig);
+
+    // Newer Claude models deprecate manual sampling controls at the model
+    // level — the underlying Anthropic API returns 400 for any request that
+    // pins `temperature`, `top_p`, or `top_k`. Vertex forwards the request body
+    // verbatim to rawPredict, so suppress all three here too.
+    const resolvedTemperature = samplingParamsDeprecated ? undefined : this.config.temperature;
+    const resolvedTopP = samplingParamsDeprecated
+      ? undefined
+      : this.config.top_p || this.config.topP;
+    const resolvedTopK = samplingParamsDeprecated
+      ? undefined
+      : this.config.top_k || this.config.topK;
+
+    const body: ClaudeRequest = {
+      anthropic_version:
+        this.config.anthropicVersion || this.config.anthropic_version || 'vertex-2023-10-16',
+      stream: false,
+      max_tokens: maxTokens,
+      temperature: resolvedTemperature,
+      top_p: resolvedTopP,
+      top_k: resolvedTopK,
+      ...(mergedSystem ? { system: mergedSystem } : {}),
+      ...(thinkingConfig ? { thinking: thinkingConfig } : {}),
+      // Claude on Vertex accepts output_config.effort the same way the Anthropic API does;
+      // without this an `effort` in config was silently dropped and every request ran at the
+      // service default, quietly invalidating effort sweeps.
+      ...(effort ? { output_config: { effort } } : {}),
+      messages: extractedMessages as ClaudeRequest['messages'],
+    };
+
+    // Default off the *effective* thinking state, not just an explicit `thinking` block, so a
+    // thinks-by-default model (Opus 5) renders reasoning like the Anthropic path does. Today
+    // this is a no-op — those responses carry an empty thinking block because `display`
+    // defaults to `omitted`, and outputFromMessage drops empty thinking either way — but it
+    // keeps the two paths consistent if that default ever changes, as it did in 4.6 -> 4.7.
+    const showThinking = this.config.showThinking ?? thinkingConsumesTokens;
+
+    const cache = await getCache();
+    const cacheKey = getVertexBodyCacheKey(
+      `vertex:claude:${this.modelName}:showThinking=${showThinking}`,
+      body,
+      apiHost,
+    );
+
+    let cachedResponse;
+    if (isCacheEnabled()) {
+      cachedResponse = await cache.get(cacheKey);
+      if (cachedResponse) {
+        const parsedCachedResponse = JSON.parse(cachedResponse as string);
+        const tokenUsage = parsedCachedResponse.tokenUsage as TokenUsage;
+        if (tokenUsage) {
+          tokenUsage.cached = tokenUsage.total;
+        }
+        logger.debug('Returning cached Vertex Claude response', {
+          model: this.modelName,
+          cacheKey,
+        });
+        return { ...parsedCachedResponse, cached: true };
+      }
+    }
+
+    let data: ClaudeResponse;
+    try {
+      const client = await this.getClientWithCredentials();
+      const projectId = await this.getProjectId();
+      const url = `https://${apiHost}/v1/projects/${projectId}/locations/${this.getRegion()}/publishers/anthropic/models/${this.modelName}:rawPredict`;
+
+      const res = await client.request({
+        url,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8',
+        },
+        data: body,
+        timeout: getRequestTimeoutMs(),
+      });
+
+      data = res.data as ClaudeResponse;
+    } catch (err) {
+      const error = err as GaxiosError;
+      if (error.response && error.response.data) {
+        logger.debug(`Claude API error:\n${JSON.stringify(error.response.data)}`);
+        return {
+          error: `API call error: ${JSON.stringify(error.response.data)}`,
+        };
+      }
+      logger.debug(`Claude API error:\n${JSON.stringify(err)}`);
+      return {
+        error: `API call error: ${String(err)}`,
+      };
+    }
+
+    try {
+      const output = outputFromMessage(data as any, showThinking);
+
+      if (!output) {
+        return {
+          error: `No output found in Claude API response: ${JSON.stringify(data)}`,
+        };
+      }
+
+      const tokenUsage: TokenUsage = {
+        ...getTokenUsage(data, false),
+        numRequests: 1,
+      };
+
+      // Normalize Vertex model names (e.g. claude-3-5-sonnet-v2@20241022 → claude-3-5-sonnet-20241022)
+      const normalizedModelName = this.modelName.replace(/-v\d+@/, '-').replace('@', '-');
+
+      // Regional and multi-region Vertex endpoints bill Claude 4.5+ models at a premium
+      // over the global endpoint (see isClaudeRegionalPremiumModel).
+      const pricingConfig =
+        this.getRegion() === 'global'
+          ? this.config
+          : applyClaudeRegionalPremium(normalizedModelName, this.config);
+      const effectivePricingConfig = applyVertexClaudeLongContextPricing(
+        normalizedModelName,
+        pricingConfig,
+        data.usage?.input_tokens,
+        data.usage?.cache_read_input_tokens,
+        data.usage?.cache_creation_input_tokens,
+      );
+      const response = {
+        cached: false,
+        output,
+        tokenUsage,
+        cost: calculateAnthropicCost(
+          normalizedModelName,
+          effectivePricingConfig,
+          data.usage?.input_tokens,
+          data.usage?.output_tokens,
+          data.usage?.cache_read_input_tokens,
+          data.usage?.cache_creation_input_tokens,
+        ),
+      };
+
+      if (isCacheEnabled()) {
+        await cache.set(cacheKey, JSON.stringify(response));
+      }
+
+      return response;
+    } catch (err) {
+      return {
+        error: `Claude API response error: ${String(err)}. Response data: ${JSON.stringify(data)}`,
+      };
+    }
+  }
+
+  /**
+   * Check if express mode should be used (API key without OAuth).
+   * Express mode uses a simplified endpoint format without project/location.
+   *
+   * Express mode is automatic when an API key is available - users don't need
+   * to think about it. Just provide an API key and it works.
+   *
+   * Express mode is used when:
+   * 1. API key is available (VERTEX_API_KEY, GOOGLE_API_KEY, or config.apiKey)
+   * 2. User hasn't explicitly disabled it with `expressMode: false`
+   * 3. No OAuth/ADC credentials are configured (OAuth takes priority)
+   */
+  private isExpressMode(): boolean {
+    const hasApiKey = Boolean(this.getApiKey());
+    const explicitlyDisabled = this.config.expressMode === false;
+
+    // Check if OAuth/ADC credentials are explicitly configured - they take priority
+    const hasOAuthConfig = Boolean(
+      this.config.credentials ||
+        this.config.keyFilename ||
+        this.config.googleAuthOptions?.keyFilename ||
+        this.config.googleAuthOptions?.credentials,
+    );
+
+    // Auto-enable express mode when API key is available AND no OAuth config
+    // OAuth credentials take priority over express mode
+    return hasApiKey && !explicitlyDisabled && !hasOAuthConfig;
+  }
+
+  async callGeminiApi(prompt: string, context?: CallApiContextParams): Promise<ProviderResponse> {
+    if (this.initializationPromise != null) {
+      await this.initializationPromise;
+    }
+
+    // Merge configs from the provider and the prompt
+    const config = mergeGoogleCompletionOptions(
+      this.config,
+      context?.prompt?.config as Partial<CompletionOptions> | undefined,
+    );
+
+    // https://cloud.google.com/vertex-ai/docs/generative-ai/model-reference/gemini#gemini-pro
+    const { contents, systemInstruction } = geminiFormatAndSystemInstructions(
+      prompt,
+      context?.vars,
+      config.systemInstruction,
+      { useAssistantRole: config.useAssistantRole },
+    );
+
+    const { toolConfig, toolsDisabled } = resolveGoogleToolConfig(config);
+    // Get all tools (MCP + config tools) using base class method
+    const allTools = await this.getAllTools(context, {
+      skipExecutableToolFiles: toolsDisabled,
+    });
+    const requestTools = toolsDisabled ? removeGoogleFunctionDeclarations(allTools) : allTools;
+    const {
+      service_tier: passthroughServiceTier,
+      tools: passthroughTools,
+      ...passthrough
+    } = config.passthrough || {};
+    const requestPassthroughTools =
+      toolsDisabled && passthroughTools !== undefined
+        ? removeGoogleFunctionDeclarations(passthroughTools)
+        : passthroughTools;
+    // https://ai.google.dev/api/rest/v1/models/streamGenerateContent
+    const body = {
+      contents: contents as GeminiFormat,
+      generationConfig: {
+        context: config.context,
+        examples: config.examples,
+        stopSequences: config.stopSequences,
+        temperature: config.temperature,
+        maxOutputTokens: config.maxOutputTokens,
+        topP: config.topP,
+        topK: config.topK,
+        ...config.generationConfig,
+        ...(this.modelName.includes('-tts') && {
+          response_modalities: undefined,
+          responseModalities: config.generationConfig?.responseModalities ??
+            config.generationConfig?.response_modalities?.map((modality) =>
+              modality.toUpperCase(),
+            ) ?? ['AUDIO'],
+          speechConfig: config.generationConfig?.speechConfig ?? {
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } },
+          },
+        }),
+      },
+      ...(config.safetySettings
+        ? { safetySettings: normalizeSafetySettings(config.safetySettings) }
+        : {}),
+      ...(toolConfig ? { toolConfig } : {}),
+      ...(requestTools.length > 0 ? { tools: requestTools } : {}),
+      ...(systemInstruction ? { systemInstruction } : {}),
+      ...(config.service_tier ? { serviceTier: config.service_tier } : {}),
+      ...passthrough,
+      // Normalize a single-object passthrough `tools` value to a one-element array and
+      // always merge with requestTools so config/MCP tools aren't dropped and `tools`
+      // stays the array shape the Gemini API requires.
+      ...(requestPassthroughTools === undefined
+        ? {}
+        : {
+            tools: [
+              ...requestTools,
+              ...(Array.isArray(requestPassthroughTools)
+                ? requestPassthroughTools
+                : [requestPassthroughTools]),
+            ],
+          }),
+      ...(passthroughServiceTier ? { serviceTier: passthroughServiceTier } : {}),
+      // Model Armor integration: inject template configuration for prompt/response screening
+      // See: https://cloud.google.com/security-command-center/docs/model-armor-vertex-integration
+      ...(config.modelArmor &&
+        (config.modelArmor.promptTemplate || config.modelArmor.responseTemplate) && {
+          model_armor_config: {
+            ...(config.modelArmor.promptTemplate && {
+              prompt_template_name: config.modelArmor.promptTemplate,
+            }),
+            ...(config.modelArmor.responseTemplate && {
+              response_template_name: config.modelArmor.responseTemplate,
+            }),
+          },
+        }),
+    };
+    body.generationConfig = removeDeprecatedGeminiGenerationParams(
+      this.modelName,
+      body.generationConfig,
+    );
+
+    if (config.responseSchema) {
+      if (body.generationConfig.response_schema) {
+        throw new Error(
+          '`responseSchema` provided but `generationConfig.response_schema` already set.',
+        );
+      }
+
+      let schema = maybeLoadFromExternalFile(
+        renderVarsInObject(config.responseSchema, context?.vars),
+      );
+
+      // Parse JSON string if it's a string (not loaded from file)
+      if (typeof schema === 'string') {
+        try {
+          schema = JSON.parse(schema);
+        } catch (error) {
+          throw new Error(`Invalid JSON in responseSchema: ${error}`);
+        }
+      }
+
+      // Apply variable substitution to the loaded schema
+      schema = renderVarsInObject(schema, context?.vars);
+
+      body.generationConfig.response_schema = schema;
+      body.generationConfig.response_mime_type = 'application/json';
+    }
+
+    const cache = await getCache();
+    const apiHost = this.getApiHost();
+    const cacheKey = getVertexBodyCacheKey(`vertex:${this.modelName}`, body, apiHost);
+
+    let response;
+    let cachedResponse;
+    if (isCacheEnabled()) {
+      cachedResponse = await cache.get(cacheKey);
+      if (cachedResponse) {
+        const parsedCachedResponse = JSON.parse(cachedResponse as string);
+        const tokenUsage = parsedCachedResponse.tokenUsage as TokenUsage;
+        if (tokenUsage) {
+          tokenUsage.cached = tokenUsage.total;
+        }
+        logger.debug('Returning cached Vertex Gemini response', {
+          model: this.modelName,
+          cacheKey,
+        });
+        response = { ...parsedCachedResponse, cached: true };
+      }
+    }
+    if (response === undefined) {
+      let data;
+      try {
+        // Default to non-streaming (generateContent) since:
+        // 1. Model Armor floor settings only work with non-streaming endpoint
+        // 2. Promptfoo collects full responses for evaluation anyway
+        // Set streaming: true to use streamGenerateContent if needed
+        const endpoint = config.streaming === true ? 'streamGenerateContent' : 'generateContent';
+
+        // Check if we should use express mode (API key without OAuth)
+        if (this.isExpressMode()) {
+          // Express mode: use simplified endpoint with API key in header
+          const url = `https://${apiHost}/${this.getApiVersion()}/publishers/${this.getPublisher()}/models/${this.modelName}:${endpoint}`;
+
+          const res = await fetchWithProxy(url, {
+            method: 'POST',
+            headers: await this.getAuthHeaders(),
+            body: JSON.stringify(body),
+            signal: AbortSignal.timeout(getRequestTimeoutMs()),
+          });
+
+          if (!res.ok) {
+            const errorData = await res.json().catch(() => null);
+            logger.debug(`Gemini API express mode error:\n${JSON.stringify(errorData)}`);
+            return {
+              error: `API call error: ${res.status} ${res.statusText}${errorData ? `: ${JSON.stringify(errorData)}` : ''}`,
+            };
+          }
+
+          data = (await res.json()) as GeminiApiResponse;
+        } else {
+          // Standard mode: use OAuth and full endpoint
+          const client = await this.getClientWithCredentials();
+          const projectId = await this.getProjectId();
+          const url = `https://${apiHost}/${this.getApiVersion()}/projects/${projectId}/locations/${this.getRegion()}/publishers/${this.getPublisher()}/models/${
+            this.modelName
+          }:${endpoint}`;
+          const res = await client.request({
+            url,
+            method: 'POST',
+            data: body,
+            timeout: getRequestTimeoutMs(),
+          });
+          data = res.data as GeminiApiResponse;
+        }
+      } catch (err) {
+        const geminiError = err as GaxiosError;
+        if (
+          geminiError.response &&
+          geminiError.response.data &&
+          geminiError.response.data[0] &&
+          geminiError.response.data[0].error
+        ) {
+          const errorDetails = geminiError.response.data[0].error;
+          const code = errorDetails.code;
+          const message = errorDetails.message;
+          const status = errorDetails.status;
+          logger.error(`Gemini API error:\n${JSON.stringify(errorDetails)}`);
+          return {
+            error: `API call error: Status ${status}, Code ${code}, Message:\n\n${message}`,
+          };
+        }
+        logger.debug(`Gemini API error:\n${JSON.stringify(err)}`);
+        return {
+          error: `API call error: ${String(err)}`,
+        };
+      }
+
+      try {
+        // Normalize response: non-streaming returns single object, streaming returns array
+        const normalizedData = Array.isArray(data) ? data : [data];
+
+        const dataWithError = normalizedData as GeminiErrorResponse[];
+        const error = dataWithError[0]?.error;
+        if (error) {
+          return {
+            error: `Error ${error.code}: ${error.message}`,
+          };
+        }
+        const dataWithResponse = normalizedData as GeminiResponseData[];
+        let output;
+        for (const datum of dataWithResponse) {
+          // Check for blockReason first (before getCandidate) since blocked responses have no candidates
+          if (datum.promptFeedback?.blockReason) {
+            // Handle Model Armor blocks with detailed guardrails information
+            const isModelArmor = datum.promptFeedback.blockReason === 'MODEL_ARMOR';
+            const blockReasonMessage =
+              datum.promptFeedback.blockReasonMessage ||
+              `Content was blocked due to ${isModelArmor ? 'Model Armor' : 'safety settings'}: ${datum.promptFeedback.blockReason}`;
+
+            const tokenUsage = {
+              total: datum.usageMetadata?.totalTokenCount || 0,
+              prompt: datum.usageMetadata?.promptTokenCount || 0,
+              completion: datum.usageMetadata?.candidatesTokenCount || 0,
+            };
+
+            // Build guardrails response with Model Armor details
+            const guardrails: GuardrailResponse = {
+              flagged: true,
+              flaggedInput: true,
+              flaggedOutput: false,
+              reason: blockReasonMessage,
+            };
+
+            // Return as output (not error) so guardrails assertions can evaluate the block:
+            // - In redteam mode: refusals are successes (model correctly refused harmful content)
+            // - In non-redteam mode: allows guardrails/not-guardrails assertions to run
+            // The guardrails object (flagged=true) indicates the block, metadata has details
+            return {
+              output: blockReasonMessage,
+              tokenUsage,
+              guardrails,
+              metadata: {
+                modelArmor: isModelArmor
+                  ? {
+                      blockReason: datum.promptFeedback.blockReason,
+                      ...(datum.promptFeedback.blockReasonMessage && {
+                        blockReasonMessage: datum.promptFeedback.blockReasonMessage,
+                      }),
+                    }
+                  : undefined,
+              },
+            };
+          }
+
+          const candidate = getCandidate(datum);
+          const safetyFinishReasons = [
+            'SAFETY',
+            'PROHIBITED_CONTENT',
+            'RECITATION',
+            'BLOCKLIST',
+            'SPII',
+            'IMAGE_SAFETY',
+          ];
+          if (candidate.finishReason && safetyFinishReasons.includes(candidate.finishReason)) {
+            const finishReason = `Content was blocked due to safety settings with finish reason: ${candidate.finishReason}.`;
+            const tokenUsage = {
+              total: datum.usageMetadata?.totalTokenCount || 0,
+              prompt: datum.usageMetadata?.promptTokenCount || 0,
+              completion: datum.usageMetadata?.candidatesTokenCount || 0,
+            };
+            // Build guardrails response for safety blocks
+            const guardrails: GuardrailResponse = {
+              flagged: true,
+              flaggedInput: false,
+              flaggedOutput: true,
+              reason: finishReason,
+            };
+            if (cliState.config?.redteam) {
+              // Refusals are not errors during redteams, they're actually successes.
+              return { output: finishReason, tokenUsage, guardrails };
+            }
+            return { error: finishReason, guardrails };
+          } else if (candidate.finishReason && candidate.finishReason === 'MAX_TOKENS') {
+            // MAX_TOKENS is treated as a successful completion with the generated output
+            if (candidate.content?.parts) {
+              output = mergeParts(output, formatCandidateContents(candidate));
+            }
+            const outputTokens = datum.usageMetadata?.candidatesTokenCount || 0;
+            logger.debug(`Gemini API: MAX_TOKENS reached`, {
+              finishReason: candidate.finishReason,
+              outputTokens,
+              totalTokens: datum.usageMetadata?.totalTokenCount || 0,
+            });
+            // Continue processing - do not return error
+          } else if (candidate.finishReason && candidate.finishReason !== 'STOP') {
+            logger.error(`Gemini API error due to finish reason: ${candidate.finishReason}.`);
+            // e.g. MALFORMED_FUNCTION_CALL
+            return {
+              error: `Finish reason ${candidate.finishReason}: ${JSON.stringify(data)}`,
+            };
+          } else if (candidate.content?.parts) {
+            output = mergeParts(output, formatCandidateContents(candidate));
+          } else {
+            return {
+              error: `No output found in response: ${JSON.stringify(data)}`,
+            };
+          }
+        }
+
+        const lastData = dataWithResponse[dataWithResponse.length - 1];
+        const promptTokenCount = lastData.usageMetadata?.promptTokenCount;
+        const completionTokenCount = lastData.usageMetadata?.candidatesTokenCount;
+        const thoughtsTokenCount = lastData.usageMetadata?.thoughtsTokenCount;
+        const tokenUsage = {
+          total: lastData.usageMetadata?.totalTokenCount || 0,
+          prompt: (promptTokenCount || 0) + (lastData.usageMetadata?.toolUsePromptTokenCount ?? 0),
+          completion: completionTokenCount || 0,
+          ...(lastData.usageMetadata?.cachedContentTokenCount !== undefined && {
+            cached: lastData.usageMetadata.cachedContentTokenCount,
+          }),
+          ...(thoughtsTokenCount !== undefined && {
+            completionDetails: {
+              reasoning: thoughtsTokenCount,
+              acceptedPrediction: 0,
+              rejectedPrediction: 0,
+            },
+          }),
+        };
+        // Include thinking tokens in output cost - Google bills them as output tokens
+        const completionForCost =
+          completionTokenCount == null
+            ? undefined
+            : completionTokenCount + (thoughtsTokenCount ?? 0);
+        const cost = calculateGoogleCostFromUsage(
+          this.modelName,
+          { ...config, region: this.getRegion() },
+          promptTokenCount,
+          completionForCost,
+          true,
+          lastData.usageMetadata,
+        );
+        const audio = normalizeGeminiAudio(output);
+
+        response = {
+          cached: false,
+          output,
+          ...(audio && { audio }),
+          tokenUsage,
+          cost,
+          metadata: {},
+        };
+
+        const grounding = collectGroundingMetadata(dataWithResponse);
+        if (Object.keys(grounding).length > 0) {
+          response.metadata = { ...grounding };
+        }
+
+        if (isCacheEnabled()) {
+          await cache.set(cacheKey, JSON.stringify(response));
+        }
+      } catch (err) {
+        return {
+          error: `Gemini API response error: ${String(err)}. Response data: ${JSON.stringify(data)}`,
+        };
+      }
+    }
+    try {
+      // Handle function tool callbacks
+      if (!toolsDisabled && config.functionToolCallbacks && isValidJson(response.output)) {
+        const structured_output = JSON.parse(response.output);
+        if (structured_output.functionCall) {
+          const results = [];
+          const functionName = structured_output.functionCall.name;
+          if (config.functionToolCallbacks[functionName]) {
+            try {
+              const functionResult = await this.executeFunctionCallback(
+                functionName,
+                JSON.stringify(
+                  typeof structured_output.functionCall.args === 'string'
+                    ? JSON.parse(structured_output.functionCall.args)
+                    : structured_output.functionCall.args,
+                ),
+                config,
+                structured_output.functionCall.id,
+              );
+              results.push(functionResult);
+            } catch (error) {
+              logger.error(`Error executing function ${functionName}: ${error}`);
+            }
+          }
+          if (results.length > 0) {
+            response = {
+              ...response,
+              output: results.join('\n'),
+            };
+          }
+        }
+      }
+    } catch (err) {
+      return {
+        error: `Tool callback error: ${String(err)}.`,
+      };
+    }
+    return response;
+  }
+
+  async callPalm2Api(prompt: string): Promise<ProviderResponse> {
+    const instances = parseChatPrompt(prompt, [
+      {
+        messages: [
+          {
+            author: 'user',
+            content: prompt,
+          },
+        ],
+      },
+    ]);
+
+    const body = {
+      instances,
+      parameters: {
+        context: this.config.context,
+        examples: this.config.examples,
+        safetySettings: normalizeSafetySettings(this.config.safetySettings),
+        stopSequences: this.config.stopSequences,
+        temperature: this.config.temperature,
+        maxOutputTokens: this.config.maxOutputTokens,
+        topP: this.config.topP,
+        topK: this.config.topK,
+      },
+    };
+
+    const cache = await getCache();
+    const apiHost = this.getApiHost();
+    const cacheKey = getVertexBodyCacheKey(`vertex:palm2:${this.modelName}`, body, apiHost);
+
+    let cachedResponse;
+    if (isCacheEnabled()) {
+      cachedResponse = await cache.get(cacheKey);
+      if (cachedResponse) {
+        const parsedCachedResponse = JSON.parse(cachedResponse as string);
+        const tokenUsage = parsedCachedResponse.tokenUsage as TokenUsage;
+        if (tokenUsage) {
+          tokenUsage.cached = tokenUsage.total;
+        }
+        logger.debug('Returning cached Vertex Palm2 response', {
+          model: this.modelName,
+          cacheKey,
+        });
+        return { ...parsedCachedResponse, cached: true };
+      }
+    }
+
+    let data: Palm2ApiResponse;
+    try {
+      const client = await this.getClientWithCredentials();
+      const projectId = await this.getProjectId();
+      const url = `https://${apiHost}/${this.getApiVersion()}/projects/${projectId}/locations/${this.getRegion()}/publishers/${this.getPublisher()}/models/${
+        this.modelName
+      }:predict`;
+      const res = await client.request({
+        url,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        data: body,
+        timeout: getRequestTimeoutMs(),
+      });
+      data = res.data as Palm2ApiResponse;
+    } catch (err) {
+      return {
+        error: `API call error: ${JSON.stringify(err)}`,
+      };
+    }
+
+    try {
+      if (data.error) {
+        return {
+          error: `Error ${data.error.code}: ${data.error.message}`,
+        };
+      }
+      const prediction = data.predictions?.[0];
+      if (!prediction?.candidates?.length) {
+        return {
+          error: `No valid predictions returned from API: ${JSON.stringify(data)}`,
+        };
+      }
+      const output = prediction.candidates[0].content;
+
+      const response = {
+        output,
+        cached: false,
+      };
+
+      if (isCacheEnabled()) {
+        await cache.set(cacheKey, JSON.stringify(response));
+      }
+
+      return response;
+    } catch (err) {
+      return {
+        error: `API response error: ${String(err)}: ${JSON.stringify(data)}`,
+      };
+    }
+  }
+
+  async callLlamaApi(prompt: string, _context?: CallApiContextParams): Promise<ProviderResponse> {
+    // Validate region for Llama models (only available in us-central1)
+    const region = this.getRegion();
+    if (region !== 'us-central1') {
+      return {
+        error: `Llama models are only available in the us-central1 region. Current region: ${region}. Please set region: 'us-central1' in your configuration.`,
+      };
+    }
+
+    // Parse the chat prompt into Llama format
+    const messages = parseChatPrompt(prompt, [
+      {
+        role: 'user',
+        content: prompt,
+      },
+    ]);
+
+    // Define proper type for Llama model safety settings
+    interface LlamaModelSafetySettings {
+      enabled: boolean;
+      llama_guard_settings: Record<string, unknown>;
+    }
+
+    // Validate llama_guard_settings if provided
+    const llamaGuardSettings = this.config.llamaConfig?.safetySettings?.llama_guard_settings;
+    if (
+      llamaGuardSettings !== undefined &&
+      (typeof llamaGuardSettings !== 'object' || llamaGuardSettings === null)
+    ) {
+      return {
+        error: `Invalid llama_guard_settings: must be an object, received ${typeof llamaGuardSettings}`,
+      };
+    }
+
+    // Extract safety settings from config - default to enabled if not specified
+    const modelSafetySettings: LlamaModelSafetySettings = {
+      enabled: this.config.llamaConfig?.safetySettings?.enabled !== false, // Default to true
+      llama_guard_settings: llamaGuardSettings || {},
+    };
+
+    // Prepare the request body for Llama models
+    const body = {
+      model: `meta/${this.modelName}`,
+      messages,
+      max_tokens: this.config.maxOutputTokens || 1024,
+      stream: false,
+      temperature: this.config.temperature,
+      top_p: this.config.topP,
+      top_k: this.config.topK,
+      extra_body: {
+        google: {
+          model_safety_settings: modelSafetySettings,
+        },
+      },
+    };
+
+    const cache = await getCache();
+    const apiHost = this.getApiHost();
+    const cacheKey = getVertexBodyCacheKey(`vertex:llama:${this.modelName}`, body, apiHost);
+    logger.debug('Preparing to call Llama API', {
+      model: this.modelName,
+      region: this.getRegion(),
+      messageCount: messages.length,
+      maxTokens: body.max_tokens,
+      temperature: body.temperature,
+      topP: body.top_p,
+      topK: body.top_k,
+      safetySettingsEnabled: modelSafetySettings.enabled,
+      llamaGuardSettingCount: Object.keys(modelSafetySettings.llama_guard_settings).length,
+      cacheKey,
+    });
+
+    let cachedResponse;
+    if (isCacheEnabled()) {
+      cachedResponse = await cache.get(cacheKey);
+      if (cachedResponse) {
+        const parsedCachedResponse = JSON.parse(cachedResponse as string);
+        const tokenUsage = parsedCachedResponse.tokenUsage as TokenUsage;
+        if (tokenUsage) {
+          tokenUsage.cached = tokenUsage.total;
+        }
+        logger.debug('Returning cached Vertex Llama response', {
+          model: this.modelName,
+          cacheKey,
+        });
+        return { ...parsedCachedResponse, cached: true };
+      }
+    }
+
+    // Define the expected response structure
+    interface LlamaResponse {
+      choices?: Array<{
+        message: {
+          content: string;
+        };
+      }>;
+      usage?: {
+        total_tokens: number;
+        prompt_tokens: number;
+        completion_tokens: number;
+      };
+    }
+
+    let data: LlamaResponse;
+    try {
+      const client = await this.getClientWithCredentials();
+      const projectId = await this.getProjectId();
+      // Llama models use a different endpoint format
+      const url = `https://${apiHost}/v1beta1/projects/${projectId}/locations/${this.getRegion()}/endpoints/openapi/chat/completions`;
+
+      const res = await client.request({
+        url,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8',
+        },
+        data: body,
+        timeout: getRequestTimeoutMs(),
+      });
+
+      data = res.data as LlamaResponse;
+      logger.debug('Llama API response', {
+        choiceCount: data.choices?.length ?? 0,
+        hasUsage: data.usage !== undefined,
+        totalTokens: data.usage?.total_tokens,
+        promptTokens: data.usage?.prompt_tokens,
+        completionTokens: data.usage?.completion_tokens,
+      });
+    } catch (err) {
+      const error = err as GaxiosError;
+      if (error.response && error.response.data) {
+        logger.debug('Llama API error', {
+          status: error.response.status,
+          statusText: error.response.statusText,
+          hasResponseData: error.response.data !== undefined,
+        });
+        return {
+          error: `API call error: ${JSON.stringify(error.response.data)}`,
+        };
+      }
+      logger.debug('Llama API error', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return {
+        error: `API call error: ${String(err)}`,
+      };
+    }
+
+    try {
+      // Extract the completion text from the response
+      let output = '';
+      if (data.choices && data.choices.length > 0) {
+        output = data.choices[0].message.content;
+      }
+
+      if (!output) {
+        return {
+          error: `No output found in Llama API response: ${JSON.stringify(data)}`,
+        };
+      }
+
+      // Extract token usage information if available
+      const tokenUsage: TokenUsage = {
+        total: data.usage?.total_tokens || 0,
+        prompt: data.usage?.prompt_tokens || 0,
+        completion: data.usage?.completion_tokens || 0,
+        numRequests: 1,
+      };
+
+      const response = {
+        cached: false,
+        output,
+        tokenUsage,
+      };
+
+      if (isCacheEnabled()) {
+        await cache.set(cacheKey, JSON.stringify(response));
+      }
+
+      return response;
+    } catch (err) {
+      return {
+        error: `Llama API response error: ${String(err)}. Response data: ${JSON.stringify(data)}`,
+      };
+    }
+  }
+
+  // cleanup() is inherited from GoogleGenericProvider
+}
+
+export class VertexEmbeddingProvider implements ApiEmbeddingProvider {
+  modelName: string;
+  config: VertexEmbeddingProviderConfig;
+  env?: EnvOverrides;
+
+  constructor(modelName: string, options: GoogleProviderOptions = {}) {
+    this.modelName = modelName;
+    this.config = options.config || {};
+    this.env = options.env;
+  }
+
+  /**
+   * Helper method to get Google client with credentials support
+   */
+  async getClientWithCredentials() {
+    const credentials = loadCredentials(this.config.credentials);
+    const { client } = await getGoogleClient({
+      credentials,
+      googleAuthOptions: this.config.googleAuthOptions,
+      scopes: this.config.scopes,
+      keyFilename: this.config.keyFilename,
+    });
+    return client;
+  }
+
+  id() {
+    return `vertex:${this.modelName}`;
+  }
+
+  getRegion(): string {
+    return this.config.region || 'us-central1';
+  }
+
+  getApiVersion(): string {
+    return this.config.apiVersion || 'v1';
+  }
+
+  getApiHost(): string {
+    return getVertexApiHost(this.getRegion(), this.config.apiHost, this.env);
+  }
+
+  async getProjectId(): Promise<string> {
+    return await resolveProjectId(this.config, this.env);
+  }
+
+  async callApi(): Promise<ProviderResponse> {
+    throw new Error('Vertex API does not provide text inference.');
+  }
+
+  async callEmbeddingApi(input: string): Promise<ProviderEmbeddingResponse> {
+    // See https://cloud.google.com/vertex-ai/generative-ai/docs/embeddings/get-text-embeddings#get_text_embeddings_for_a_snippet_of_text
+    const body = {
+      instances: [{ content: input }],
+      parameters: {
+        autoTruncate: this.config.autoTruncate || false,
+      },
+    };
+
+    let data: VertexEmbeddingPredictResponse = {};
+    try {
+      const client = await this.getClientWithCredentials();
+      const projectId = await this.getProjectId();
+      const url = `https://${this.getApiHost()}/${this.getApiVersion()}/projects/${projectId}/locations/${this.getRegion()}/publishers/google/models/${
+        this.modelName
+      }:predict`;
+      const res = await client.request({
+        url,
+        method: 'POST',
+        data: body,
+      });
+      data = res.data as VertexEmbeddingPredictResponse;
+    } catch (err) {
+      logger.error(`Vertex API call error: ${err}`);
+      throw err;
+    }
+
+    logger.debug(`Vertex embeddings API response: ${JSON.stringify(data)}`);
+
+    const prediction = data.predictions?.[0];
+    const embeddingData = prediction?.embeddings;
+    if (!embeddingData?.values) {
+      const errorMsg = `No valid embeddings returned from API: ${JSON.stringify(data)}`;
+      logger.error(errorMsg);
+      throw new Error(errorMsg);
+    }
+
+    return {
+      embedding: embeddingData.values,
+      tokenUsage: {
+        total: embeddingData.statistics?.token_count ?? 0,
+        numRequests: 1,
+      },
+    };
+  }
+}
+
+// Gemini 3.1 Pro preview is available through Vertex AI's global endpoint.
+const DEFAULT_VERTEX_MODEL = 'gemini-3.1-pro-preview';
+const DEFAULT_VERTEX_REGION = 'global';
+const DEFAULT_VERTEX_EMBEDDING_MODEL = 'gemini-embedding-001';
+
+export function getGoogleVertexEmbeddingProvider(env?: EnvOverrides) {
+  return new VertexEmbeddingProvider(DEFAULT_VERTEX_EMBEDDING_MODEL, { env });
+}
+
+export function getGoogleVertexProviders(env?: EnvOverrides) {
+  const gradingProvider = new VertexChatProvider(DEFAULT_VERTEX_MODEL, {
+    env,
+    config: { region: DEFAULT_VERTEX_REGION },
+  });
+  return {
+    embeddingProvider: getGoogleVertexEmbeddingProvider(env),
+    gradingJsonProvider: gradingProvider,
+    gradingProvider,
+    suggestionsProvider: gradingProvider,
+    synthesizeProvider: gradingProvider,
+  };
+}

@@ -1,0 +1,106 @@
+package cqrs
+
+import (
+	"context"
+	"database/sql"
+	"time"
+
+	"github.com/inngest/inngest/pkg/enums"
+
+	"github.com/google/uuid"
+)
+
+type App struct {
+	ID          uuid.UUID
+	Name        string
+	SdkLanguage string
+	SdkVersion  string
+	Framework   sql.NullString
+	Metadata    map[string]string
+	Status      string
+	Error       sql.NullString
+	Checksum    string
+	CreatedAt   time.Time
+	DeletedAt   time.Time
+	Url         string
+	Method      string
+	AppVersion  string
+}
+
+type AppManager interface {
+	AppReader
+	AppWriter
+}
+
+type AppReader interface {
+	// GetApps returns active apps unless the filter requests archived apps.
+	GetApps(ctx context.Context, envID uuid.UUID, filter *FilterAppParam) ([]*App, error)
+	// GetAppByChecksum returns an app by checksum.
+	GetAppByChecksum(ctx context.Context, envID uuid.UUID, checksum string) (*App, error)
+	// GetAppByURL returns an app by URL
+	GetAppByURL(ctx context.Context, envID uuid.UUID, url string) (*App, error)
+	// GetAppByName returns an app by name
+	GetAppByName(ctx context.Context, envID uuid.UUID, name string) (*App, error)
+	// GetAllApps returns all apps.
+	GetAllApps(ctx context.Context, envID uuid.UUID) ([]*App, error)
+
+	GetAppByID(ctx context.Context, id uuid.UUID) (*App, error)
+}
+
+type AppCreator interface {
+	// UpsertApp creates or updates an app. The conflict key is the ID, which
+	// must always exist.
+	UpsertApp(ctx context.Context, arg UpsertAppParams) (*App, error)
+
+	// UpsertAppByName creates or updates an app keyed by name. The conflict
+	// target is the partial unique index apps_name_active_key on (name)
+	// WHERE archived_at IS NULL AND name <> ''. On conflict, the existing
+	// row's id is preserved, so an SDK re-sync adopts an existing active
+	// row regardless of how its id was originally minted (e.g., legacy
+	// URL-derived ids from <v1.15).
+	UpsertAppByName(ctx context.Context, arg UpsertAppParams) (*App, error)
+}
+
+type AppWriter interface {
+	AppCreator
+
+	// UpdateAppError sets an app error.  A nil string
+	// clears the app error.
+	UpdateAppError(ctx context.Context, arg UpdateAppErrorParams) (*App, error)
+	// UpdateAppURL
+	UpdateAppURL(ctx context.Context, arg UpdateAppURLParams) (*App, error)
+	// DeleteApp deletes an app.
+	DeleteApp(ctx context.Context, id uuid.UUID) error
+}
+
+type UpsertAppParams struct {
+	ID          uuid.UUID
+	Name        string
+	SdkLanguage string
+	SdkVersion  string
+	Framework   sql.NullString
+	Metadata    string
+	Status      string
+	Error       sql.NullString
+	Checksum    string
+	Url         string
+	Method      string
+	AppVersion  string
+}
+
+type UpdateAppErrorParams struct {
+	ID    uuid.UUID
+	Error sql.NullString
+}
+
+type UpdateAppURLParams struct {
+	ID  uuid.UUID
+	Url string
+}
+
+type FilterAppParam struct {
+	Method   *enums.AppMethod
+	Cursor   uuid.UUID
+	Limit    int
+	Archived bool
+}

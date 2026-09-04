@@ -1,0 +1,3697 @@
+syntax = "proto3";
+package api.v2;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+import "third_party/google/api/httpbody.proto";
+import "api/v2/sandbox.proto";
+import "third_party/google/api/annotations.proto";
+import "third_party/google/api/field_behavior.proto";
+import "api/v2/options.proto";
+import "third_party/protoc-gen-openapiv2/options/annotations.proto";
+
+option go_package = "github.com/inngest/inngest/proto/gen/api/v2;apiv2";
+
+option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
+  info: {
+    title: "Inngest REST API v2"
+    version: "2.0.0"
+    description: "The v2 API delivers a significantly improved developer experience with consistent design patterns and enhanced functionality."
+  }
+  host: "api.inngest.com"
+  base_path: "/v2"
+  schemes: HTTPS
+  security_definitions: {
+    security: {
+      key: "BearerAuth"
+      value: {
+        type: TYPE_API_KEY
+        in: IN_HEADER
+        name: "Authorization"
+        description: "Bearer token authentication. Format: `Bearer {key}`"
+      }
+    }
+  }
+  tags: { name: "Account"      description: "Manage your account" }
+  tags: { name: "Environments" description: "Create and manage environments" }
+  tags: { name: "Keys"         description: "Manage event and signing keys" }
+  tags: { name: "Webhooks"     description: "Create and manage inbound webhooks" }
+  tags: { name: "Apps"         description: "Sync and manage" }
+  tags: { name: "Events"       description: "Send events" }
+  tags: { name: "Functions"    description: "Invoke and manage functions" }
+  tags: { name: "Runs"         description: "Inspect function runs" }
+  tags: { name: "Insights"     description: "Query event and function data" }
+  tags: { name: "Sandboxes"    description: "Create and manage isolated compute sandboxes" }
+  tags: { name: "Experiments"  description: "Inspect experiment variants and aggregates" }
+  tags: { name: "Sessions"     description: "Inspect session-grouped runs" }
+  tags: { name: "Partner API"  description: "Partner account management" }
+};
+
+
+service V2 {
+  rpc Health(HealthRequest) returns (HealthResponse) {
+    option (google.api.http) = {
+      get: "/health"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "Health check"
+      tags: "Internal"
+      description: "Returns the health status of the API service"
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+      responses: {
+        key: "401"
+        value: {
+          description: "Unauthorized - authentication required"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "500"
+        value: {
+          description: "Internal Server Error"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+    };
+  }
+
+  // Internal method to ensure ErrorResponse schema generation (not exposed via HTTP).
+  // The HTTP annotation is required for protoc-gen-openapiv2 to include ErrorResponse
+  // in the swagger definitions. This path is stripped by the convert-openapi tool.
+  rpc _SchemaOnly(HealthRequest) returns (ErrorResponse) {
+    option (google.api.http) = {
+      get: "/_internal/schema-only"
+    };
+  }
+
+  rpc CreatePartnerAccount(CreateAccountRequest) returns (CreateAccountResponse) {
+    option (google.api.http) = {
+      post: "/partner/accounts",
+      body : "*"
+    };
+    option (authz) = {
+      require_authz: true
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "Create partner account"
+      description: "Creates a sub-account (if you have partner access)"
+      tags: "Partner API"
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+      responses: {
+        key: "201"
+        value: {
+          description: "Account successfully created"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2CreateAccountResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "400"
+        value: {
+          description: "Bad Request - invalid input data"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "401"
+        value: {
+          description: "Unauthorized - authentication required"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "403"
+        value: {
+          description: "Forbidden - Insufficient permissions"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "409"
+        value: {
+          description: "Conflict - account already exists"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "500"
+        value: {
+          description: "Internal Server Error"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+    };
+  }
+
+  rpc CreateEnv(CreateEnvRequest) returns (CreateEnvResponse) {
+    option (google.api.http) = {
+      post: "/envs",
+      body : "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "Create environment"
+      description: "Create custom environment"
+      tags: "Environments"
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+      responses: {
+        key: "201"
+        value: {
+          description: "Env successfully created"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2CreateEnvResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "400"
+        value: {
+          description: "Bad Request - invalid input data"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "401"
+        value: {
+          description: "Unauthorized - authentication required"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "403"
+        value: {
+          description: "Forbidden - Insufficient permissions"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "409"
+        value: {
+          description: "Conflict - account already exists"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "500"
+        value: {
+          description: "Internal Server Error"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+    };
+  }
+
+  rpc FetchPartnerAccounts(FetchAccountsRequest) returns (FetchAccountsResponse) {
+    option (google.api.http) = {
+      get: "/partner/accounts"
+    };
+    option (authz) = {
+      require_authz: true
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "List partner accounts"
+      description: "Lists sub-accounts (if you have partner access)"
+      tags: "Partner API"
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+      responses: {
+        key: "200"
+        value: {
+          description: "List of accounts"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2FetchAccountsResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "400"
+        value: {
+          description: "Bad Request - invalid query parameters"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "401"
+        value: {
+          description: "Unauthorized - authentication required"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "403"
+        value: {
+          description: "Forbidden - insufficient permissions"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "500"
+        value: {
+          description: "Internal Server Error"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+    };
+  }
+
+  rpc FetchAccount(FetchAccountRequest) returns (FetchAccountResponse) {
+    option (google.api.http) = {
+      get: "/account"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "Get account"
+      description: "Returns the account for the authenticated user"
+      tags: "Account"
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+      responses: {
+        key: "200"
+        value: {
+          description: "Account"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2FetchAccountResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "401"
+        value: {
+          description: "Unauthorized - authentication required"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "403"
+        value: {
+          description: "Forbidden - Insufficient permissions"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "500"
+        value: {
+          description: "Internal Server Error"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+    };
+  }
+
+  rpc FetchAccountEnvs(FetchAccountEnvsRequest) returns (FetchAccountEnvsResponse) {
+    option (google.api.http) = {
+      get: "/envs"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "List environments"
+      description: "List of all custom environments."
+      tags: "Environments"
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+      responses: {
+        key: "200"
+        value: {
+          description: "List of account environments"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2FetchAccountEnvsResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "400"
+        value: {
+          description: "Bad Request - invalid query parameters"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "401"
+        value: {
+          description: "Unauthorized - authentication required"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "403"
+        value: {
+          description: "Forbidden - insufficient permissions"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "404"
+        value: {
+          description: "Not Found - account not found"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "500"
+        value: {
+          description: "Internal Server Error"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+    };
+  }
+
+  rpc FetchAccountEventKeys(FetchAccountEventKeysRequest) returns (FetchAccountEventKeysResponse) {
+    option (google.api.http) = {
+      get: "/keys/events"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "List account event keys"
+      tags: "Keys"
+      description: "Lists event keys for a specific account, optionally filtered by environment. If the environment header isn't specified, this returns the default production environment's keys."
+      parameters: {
+        headers: {
+          name: "X-Inngest-Env"
+          description: "Filter event keys by environment (e.g., 'production', 'staging', 'development')"
+          type: STRING
+          required: false
+        }
+      }
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+      responses: {
+        key: "200"
+        value: {
+          description: "List of account event keys"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2FetchAccountEventKeysResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "400"
+        value: {
+          description: "Bad Request - invalid query parameters"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "401"
+        value: {
+          description: "Unauthorized - authentication required"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "403"
+        value: {
+          description: "Forbidden - insufficient permissions"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "404"
+        value: {
+          description: "Not Found - account not found"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "500"
+        value: {
+          description: "Internal Server Error"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+    };
+  }
+
+  rpc FetchAccountSigningKeys(FetchAccountSigningKeysRequest) returns (FetchAccountSigningKeysResponse) {
+    option (google.api.http) = {
+      get: "/keys/signing"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "List account signing keys"
+      tags: "Keys"
+      description: "Lists signing keys for a specific account, optionally filtered by environment.  If the environment header isn't specified, this returns the default production environment's keys."
+      parameters: {
+        headers: {
+          name: "X-Inngest-Env"
+          description: "Filter signing keys by environment (e.g., 'production', 'staging', 'development')"
+          type: STRING
+          required: false
+        }
+      }
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+      responses: {
+        key: "200"
+        value: {
+          description: "List of account signing keys"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2FetchAccountSigningKeysResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "400"
+        value: {
+          description: "Bad Request - invalid query parameters"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "401"
+        value: {
+          description: "Unauthorized - authentication required"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "403"
+        value: {
+          description: "Forbidden - insufficient permissions"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "404"
+        value: {
+          description: "Not Found - account not found"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "500"
+        value: {
+          description: "Internal Server Error"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+    };
+  }
+
+  rpc CreateWebhook(CreateWebhookRequest) returns (CreateWebhookResponse) {
+    option (google.api.http) = {
+      post: "/env/webhooks",
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "Create webhook"
+      description: "Creates a new webhook for receiving events"
+      tags: "Webhooks"
+      parameters: {
+        headers: {
+          name: "X-Inngest-Env"
+          description: "Target environment for the webhook (e.g., 'production', 'staging', 'development')"
+          type: STRING
+          required: true
+        }
+      }
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+      responses: {
+        key: "201"
+        value: {
+          description: "Webhook successfully created"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2CreateWebhookResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "400"
+        value: {
+          description: "Bad Request - invalid input data"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "401"
+        value: {
+          description: "Unauthorized - authentication required"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "403"
+        value: {
+          description: "Forbidden - insufficient permissions"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "409"
+        value: {
+          description: "Conflict - webhook with same URL already exists"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "422"
+        value: {
+          description: "Unprocessable Entity - business logic validation failed"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "500"
+        value: {
+          description: "Internal Server Error"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+    };
+  }
+
+  rpc ListWebhooks(ListWebhooksRequest) returns (ListWebhooksResponse) {
+    option (google.api.http) = {
+      get: "/env/webhooks"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "List webhooks"
+      description: "Lists all webhooks in the specified environment"
+      tags: "Webhooks"
+      parameters: {
+        headers: {
+          name: "X-Inngest-Env"
+          description: "Target environment for the webhooks (e.g., 'production', 'staging', 'development')"
+          type: STRING
+          required: true
+        }
+      }
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+      responses: {
+        key: "200"
+        value: {
+          description: "List of webhooks"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ListWebhooksResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "400"
+        value: {
+          description: "Bad Request - invalid query parameters"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "401"
+        value: {
+          description: "Unauthorized - authentication required"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "403"
+        value: {
+          description: "Forbidden - insufficient permissions"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "500"
+        value: {
+          description: "Internal Server Error"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+    };
+  }
+
+  rpc PatchEnv(PatchEnvRequest) returns (PatchEnvsResponse) {
+    option (google.api.http) = {
+      patch: "/envs/{id}",
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "Update environment"
+      description: "Partially updates an environment. Only the provided fields will be modified."
+      tags: "Environments"
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+      responses: {
+        key: "200"
+        value: {
+          description: "Environment successfully updated"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2PatchEnvsResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "400"
+        value: {
+          description: "Bad Request - invalid input data"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "401"
+        value: {
+          description: "Unauthorized - authentication required"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "403"
+        value: {
+          description: "Forbidden - insufficient permissions"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "404"
+        value: {
+          description: "Not Found - environment not found"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "422"
+        value: {
+          description: "Unprocessable Entity - business logic validation failed"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "500"
+        value: {
+          description: "Internal Server Error"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+    };
+  }
+
+  rpc GetFunctionRun(GetFunctionRunRequest) returns (GetFunctionRunResponse) {
+    option (google.api.http) = {
+      get: "/runs/{run_id}"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "Get function run"
+      tags: "Runs"
+      tags: "Beta"
+      description: "Fetches the canonical run summary for a single function run"
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+    };
+  }
+
+  rpc ListRuns(ListRunsRequest) returns (ListRunsResponse) {
+    option (google.api.http) = {
+      get: "/runs"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "List runs"
+      tags: "Runs"
+      tags: "Beta"
+      description: "Lists runs in the authenticated environment, optionally filtered by app and function IDs"
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+    };
+  }
+
+  rpc ListFunctionRuns(ListFunctionRunsRequest) returns (ListFunctionRunsResponse) {
+    option (google.api.http) = {
+      get: "/apps/{app_id}/functions/{function_id}/runs"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "List runs for a function"
+      tags: "Runs"
+      tags: "Beta"
+      description: "Lists runs for one function in the authenticated environment"
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+    };
+  }
+
+  rpc GetEventRuns(GetEventRunsRequest) returns (GetEventRunsResponse) {
+    option (google.api.http) = {
+      get: "/events/{event_id}/runs"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "Get event runs"
+      tags: "Runs"
+      tags: "Beta"
+      description: "Lists function runs triggered by a specific event"
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+    };
+  }
+
+  rpc Rerun(RerunRequest) returns (RerunResponse) {
+    option (google.api.http) = {
+      post: "/runs/{run_id}/rerun"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "Rerun function run"
+      tags: "Runs"
+      tags: "Beta"
+      description: "Creates a new run using the original run's triggering event data"
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+    };
+  }
+
+  rpc CancelRun(CancelRunRequest) returns (CancelRunResponse) {
+    option (google.api.http) = {
+      post: "/runs/{run_id}/cancel"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "Cancel function run"
+      tags: "Runs"
+      tags: "Beta"
+      description: "Cancels an in-progress function run"
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+    };
+  }
+
+  rpc GetApp(GetAppRequest) returns (GetAppResponse) {
+    option (google.api.http) = {
+      get: "/apps/{app_id}"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "Get app"
+      tags: "Apps"
+      tags: "Beta"
+      description: "Fetches details for a single app, including sync metadata and function count"
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+    };
+  }
+
+  rpc GetApps(GetAppsRequest) returns (GetAppsResponse) {
+    option (google.api.http) = {
+      get: "/apps"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "Get apps"
+      tags: "Apps"
+      tags: "Beta"
+      description: "Lists active apps in the authenticated environment. Set archived to true to list archived apps instead."
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+    };
+  }
+
+  rpc CreateSandbox(CreateSandboxRequest) returns (CreateSandboxResponse) {
+    option (google.api.http) = {
+      post: "/sandboxes"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "Create a sandbox"
+      tags: "Sandboxes"
+      tags: "Beta"
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+    };
+  }
+
+  rpc ListSandboxes(ListSandboxesRequest) returns (ListSandboxesResponse) {
+    option (google.api.http) = { get: "/sandboxes" };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "List sandboxes"
+      tags: "Sandboxes"
+      tags: "Beta"
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+    };
+  }
+
+  rpc GetSandbox(GetSandboxRequest) returns (GetSandboxResponse) {
+    option (google.api.http) = { get: "/sandboxes/{sandbox_id}" };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "Get a sandbox"
+      tags: "Sandboxes"
+      tags: "Beta"
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+    };
+  }
+
+  rpc DestroySandbox(DestroySandboxRequest) returns (DestroySandboxResponse) {
+    option (google.api.http) = { delete: "/sandboxes/{sandbox_id}" };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "Destroy a sandbox"
+      tags: "Sandboxes"
+      tags: "Beta"
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+    };
+  }
+
+  rpc ExecSandbox(ExecSandboxRequest) returns (ExecSandboxResponse) {
+    option (google.api.http) = {
+      post: "/sandboxes/{sandbox_id}/exec"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "Execute a command in a sandbox"
+      tags: "Sandboxes"
+      tags: "Beta"
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+    };
+  }
+
+  rpc StreamSandboxLogs(StreamSandboxLogsRequest) returns (stream StreamSandboxLogsResponse) {
+    option (google.api.http) = { get: "/sandboxes/{sandbox_id}/logs" };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "Stream sandbox logs"
+      tags: "Sandboxes"
+      tags: "Beta"
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+    };
+  }
+
+  rpc WriteSandboxFile(WriteSandboxFileRequest) returns (WriteSandboxFileResponse) {
+    option (google.api.http) = {
+      put: "/sandboxes/{sandbox_id}/files"
+      body: "body"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "Write a sandbox file"
+      tags: "Sandboxes"
+      tags: "Beta"
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+    };
+  }
+
+  rpc ReadSandboxFile(ReadSandboxFileRequest) returns (stream google.api.HttpBody) {
+    option (google.api.http) = { get: "/sandboxes/{sandbox_id}/files" };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "Read a sandbox file"
+      tags: "Sandboxes"
+      tags: "Beta"
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+    };
+  }
+
+  rpc StartSandboxProcess(StartSandboxProcessRequest) returns (StartSandboxProcessResponse) {
+    option (google.api.http) = {
+      post: "/sandboxes/{sandbox_id}/processes"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "Start a sandbox process"
+      tags: "Sandboxes"
+      tags: "Beta"
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+    };
+  }
+
+  rpc ListSandboxProcesses(ListSandboxProcessesRequest) returns (ListSandboxProcessesResponse) {
+    option (google.api.http) = { get: "/sandboxes/{sandbox_id}/processes" };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "List sandbox processes"
+      tags: "Sandboxes"
+      tags: "Beta"
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+    };
+  }
+
+  rpc GetSandboxProcess(GetSandboxProcessRequest) returns (GetSandboxProcessResponse) {
+    option (google.api.http) = { get: "/sandboxes/{sandbox_id}/processes/{process_id}" };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "Get a sandbox process"
+      tags: "Sandboxes"
+      tags: "Beta"
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+    };
+  }
+
+  rpc SignalSandboxProcess(SignalSandboxProcessRequest) returns (SignalSandboxProcessResponse) {
+    option (google.api.http) = {
+      post: "/sandboxes/{sandbox_id}/processes/{process_id}/signals"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "Signal a sandbox process"
+      tags: "Sandboxes"
+      tags: "Beta"
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+    };
+  }
+
+  rpc WaitSandboxProcess(WaitSandboxProcessRequest) returns (WaitSandboxProcessResponse) {
+    option (google.api.http) = { post: "/sandboxes/{sandbox_id}/processes/{process_id}/wait" };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "Wait for a sandbox process"
+      tags: "Sandboxes"
+      tags: "Beta"
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+    };
+  }
+
+  rpc GetSandboxProcessOutput(GetSandboxProcessOutputRequest) returns (GetSandboxProcessOutputResponse) {
+    option (google.api.http) = { get: "/sandboxes/{sandbox_id}/processes/{process_id}/output" };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "Get sandbox process output"
+      tags: "Sandboxes"
+      tags: "Beta"
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+    };
+  }
+
+  rpc StreamSandboxProcessOutput(StreamSandboxProcessOutputRequest) returns (stream StreamSandboxProcessOutputResponse) {
+    option (google.api.http) = { get: "/sandboxes/{sandbox_id}/processes/{process_id}/output/stream" };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "Stream sandbox process output"
+      tags: "Sandboxes"
+      tags: "Beta"
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+    };
+  }
+
+  rpc CreateScore(CreateScoreRequest) returns (CreateScoreResponse) {
+    option (google.api.http) = {
+      post: "/runs/{run_id}/scores",
+      body: "scores"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "Create score"
+      tags: "Runs"
+      tags: "Beta"
+      description: "Submits one or more named scores for a function run, or for specific steps when step IDs are provided. Scores are recorded as run metadata and aggregated for experiments."
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+    };
+  }
+
+  rpc SyncApp(SyncAppRequest) returns (SyncAppResponse) {
+    option (google.api.http) = {
+      post: "/apps/{app_id}/syncs",
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "Sync app"
+      tags: "Apps"
+      tags: "Beta"
+      description: "Sync an app at the provided URL."
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+      responses: {
+        key: "200"
+        value: {
+          description: "App sync completed successfully or the app was already up to date"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2SyncAppResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "400"
+        value: {
+          description: "Bad Request - invalid input data"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "401"
+        value: {
+          description: "Unauthorized - authentication required"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "403"
+        value: {
+          description: "Forbidden - insufficient permissions"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "404"
+        value: {
+          description: "Not Found - environment not found"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "422"
+        value: {
+          description: "Unprocessable Entity - sync failed. The response body is still SyncAppResponse and includes the persisted deploy plus a coded error under data.latestSync.error."
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2SyncAppResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "500"
+        value: {
+          description: "Internal Server Error"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+    };
+  }
+
+  rpc GetFunctionTrace(GetFunctionTraceRequest) returns (GetFunctionTraceResponse) {
+    option (google.api.http) = {
+      get: "/runs/{run_id}/trace"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "Get function trace"
+      tags: "Runs"
+      tags: "Beta"
+      description: "Fetches the trace tree for a single function run"
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+    };
+  }
+
+  rpc GetFunction(GetFunctionRequest) returns (GetFunctionResponse) {
+    option (google.api.http) = {
+      get: "/apps/{app_id}/functions/{function_id}"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "Get function"
+      description: "Fetches function configuration and status details for a function within an app"
+      tags: "Functions"
+      tags: "Beta"
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+    };
+  }
+
+  rpc GetFunctions(GetFunctionsRequest) returns (GetFunctionsResponse) {
+    option (google.api.http) = {
+      get: "/apps/{app_id}/functions"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "Get functions"
+      description: "Lists function configuration and status details for an app"
+      tags: "Functions"
+      tags: "Beta"
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+    };
+  }
+
+  rpc SendEvent(SendEventRequest) returns (SendEventResponse) {
+    option (google.api.http) = {
+      post: "/events",
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "Send event"
+      description: "Sends one event for testing and debugging. The request accepts the name, data, user, id, and ts fields; send batches and other Event API fields through an Inngest SDK or the Event API. This endpoint uses REST API rate limits and is not intended for high-volume ingestion. Use the returned event ID with the event runs endpoint to inspect any function runs triggered by the event."
+      tags: "Events"
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+      responses: {
+        key: "200"
+        value: {
+          description: "Event accepted"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2SendEventResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "400"
+        value: {
+          description: "Bad Request - invalid event data"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "401"
+        value: {
+          description: "Unauthorized - authentication required"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "403"
+        value: {
+          description: "Forbidden - events cannot be sent to the selected environment"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "413"
+        value: {
+          description: "Payload Too Large - request body exceeds the endpoint limit"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "429"
+        value: {
+          description: "Too Many Requests - API rate limit exceeded. The request was rejected and no event was sent."
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "500"
+        value: {
+          description: "Internal Server Error"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+    };
+  }
+
+  rpc InvokeFunction(InvokeFunctionRequest) returns (InvokeFunctionResponse) {
+    option (google.api.http) = {
+      post: "/apps/{app_id}/functions/{function_id}/invoke",
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "Invoke function"
+      description: "Invokes a function, executing the function either asynchronously or synchronously based on the mode parameter in the request body"
+      tags: "Functions"
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+      responses: {
+        key: "200"
+        value: {
+          description: "Function invoked synchronously and has finished executing"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2InvokeFunctionResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "201"
+        value: {
+          description: "Function invoked asynchronously"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2InvokeFunctionResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "202"
+        value: {
+          description: "Function invoked synchronously but has not yet finished executing"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2InvokeFunctionResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "400"
+        value: {
+          description: "Bad Request - invalid input data"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "401"
+        value: {
+          description: "Unauthorized - authentication required"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "403"
+        value: {
+          description: "Forbidden - insufficient permissions"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "404"
+        value: {
+          description: "Not Found - function not found"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "409"
+        value: {
+          description: "Conflict - this function has already been invoked using the given idempotency key.  Note that this returns the previously invoked run's data."
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2InvokeFunctionResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "422"
+        value: {
+          description: "Unprocessable Entity - function was rate limited, debounced, skipped, or otherwise could not be invoked"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "429"
+        value: {
+          description: "Too Many Requests - API rate limit exceeded.  The request was entirely rejected, and no function was invoked."
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "500"
+        value: {
+          description: "Internal Server Error"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+    };
+  }
+
+  rpc ListInsightsTables(ListInsightsTablesRequest) returns (ListInsightsTablesResponse) {
+    option (google.api.http) = {
+      get: "/insights/tables"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "List insights tables"
+      tags: "Insights"
+      tags: "Beta"
+      description: "Lists the available tables that can be queried via the Insights query endpoint."
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+      responses: {
+        key: "200"
+        value: {
+          description: "List of available insights tables"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ListInsightsTablesResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "401"
+        value: {
+          description: "Unauthorized - authentication required"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "403"
+        value: {
+          description: "Forbidden - insufficient permissions"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "500"
+        value: {
+          description: "Internal Server Error"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+    };
+  }
+
+  rpc ListInsightsEventSchemas(ListInsightsEventSchemasRequest) returns (ListInsightsEventSchemasResponse) {
+    option (google.api.http) = {
+      get: "/insights/events/schemas"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "List event type schemas"
+      tags: "Insights"
+      tags: "Beta"
+      description: "Returns a paginated list of event type schemas, where each schema describes the shape of a specific event's data as nested JSON."
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+      responses: {
+        key: "200"
+        value: {
+          description: "Paginated list of event type schemas"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ListInsightsEventSchemasResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "400"
+        value: {
+          description: "Bad Request - invalid query parameters"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "401"
+        value: {
+          description: "Unauthorized - authentication required"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "403"
+        value: {
+          description: "Forbidden - insufficient permissions"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "500"
+        value: {
+          description: "Internal Server Error"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+    };
+  }
+
+  rpc QueryInsightsPrompt(QueryInsightsPromptRequest) returns (QueryInsightsPromptResponse) {
+    option (google.api.http) = {
+      post: "/insights/query/prompt",
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "Generate insights query from prompt"
+      tags: "Insights"
+      tags: "Beta"
+      description: "Translates a natural language prompt into an Insights SQL query."
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+      responses: {
+        key: "200"
+        value: {
+          description: "Query generated successfully"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2QueryInsightsPromptResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "400"
+        value: {
+          description: "Bad Request - invalid input data"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "401"
+        value: {
+          description: "Unauthorized - authentication required"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "403"
+        value: {
+          description: "Forbidden - insufficient permissions"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "422"
+        value: {
+          description: "Unprocessable Entity - prompt could not be translated into a valid query"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "500"
+        value: {
+          description: "Internal Server Error"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+    };
+  }
+
+  rpc QueryInsights(QueryInsightsRequest) returns (QueryInsightsResponse) {
+    option (google.api.http) = {
+      post: "/insights/query",
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "Query insights"
+      tags: "Insights"
+      tags: "Beta"
+      description: "Query Insights using the provided SQL query."
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+      responses: {
+        key: "200"
+        value: {
+          description: "Query executed successfully"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2QueryInsightsResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "400"
+        value: {
+          description: "Bad Request - invalid input data"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "401"
+        value: {
+          description: "Unauthorized - authentication required"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "403"
+        value: {
+          description: "Forbidden - insufficient permissions"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "404"
+        value: {
+          description: "Not Found - environment not found"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "422"
+        value: {
+          description: "Unprocessable Entity - Query validation or execution failed."
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+      responses: {
+        key: "500"
+        value: {
+          description: "Internal Server Error"
+          schema: {
+            json_schema: {
+              ref: "#/definitions/v2ErrorResponse"
+            }
+          }
+        }
+      }
+    };
+  }
+
+  rpc ListExperiments(ListExperimentsRequest) returns (ListExperimentsResponse) {
+    option (google.api.http) = {
+      get: "/experiments"
+      additional_bindings: {
+        get: "/apps/{app_id}/functions/{function_id}/experiments"
+      }
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "List experiments"
+      tags: "Experiments"
+      tags: "Beta"
+      description: "Lists observed experiments in the authenticated environment. Use the nested app and function route to scope results to one function."
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+    };
+  }
+
+  rpc GetExperiment(GetExperimentRequest) returns (GetExperimentResponse) {
+    option (google.api.http) = {
+      get: "/apps/{app_id}/functions/{function_id}/experiments/{experiment_id=**}"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "Get experiment aggregates"
+      tags: "Experiments"
+      tags: "Beta"
+      description: "Fetches variant run counts and score aggregates for one experiment on one function."
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+    };
+  }
+
+  rpc ListSessionKeys(ListSessionKeysRequest) returns (ListSessionKeysResponse) {
+    option (google.api.http) = {
+      get: "/sessions"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "List session keys"
+      tags: "Sessions"
+      tags: "Beta"
+      description: "Lists session keys observed in the authenticated environment."
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+    };
+  }
+
+  rpc ListSessions(ListSessionsRequest) returns (ListSessionsResponse) {
+    option (google.api.http) = {
+      get: "/sessions/{session_key}"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "List sessions"
+      tags: "Sessions"
+      tags: "Beta"
+      description: "Lists session IDs for one session key in the authenticated environment."
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+    };
+  }
+
+  rpc ListSessionRuns(ListSessionRunsRequest) returns (ListSessionRunsResponse) {
+    option (google.api.http) = {
+      get: "/sessions/{session_key}/{session_id=**}/runs"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "List session runs"
+      tags: "Sessions"
+      tags: "Beta"
+      description: "Lists runs associated with one session ID in the authenticated environment."
+      security: {
+        security_requirement: {
+          key: "BearerAuth"
+          value: {}
+        }
+      }
+    };
+  }
+}
+
+message HealthRequest {
+  // Empty request message for health check
+}
+
+message FetchAccountRequest {
+  // Empty request message for fetching current account
+}
+
+message HealthResponse {
+  HealthData data = 1;
+  ResponseMetadata metadata = 2;
+}
+
+message HealthData {
+  string status = 1;
+}
+
+message Error {
+  string code = 1;
+  string message = 2;
+}
+
+message ErrorResponse {
+  repeated Error errors = 1;
+}
+
+message ResponseMetadata {
+  google.protobuf.Timestamp fetched_at = 1;
+  google.protobuf.Timestamp cached_until = 2;
+  TimeRange time_range = 3;
+}
+
+message TimeRange {
+  google.protobuf.Timestamp from = 1;
+  google.protobuf.Timestamp until = 2;
+}
+
+enum FunctionRunStatus {
+  FUNCTION_RUN_STATUS_UNSPECIFIED = 0;
+  FUNCTION_RUN_STATUS_QUEUED = 1;
+  FUNCTION_RUN_STATUS_RUNNING = 2;
+  FUNCTION_RUN_STATUS_COMPLETED = 3;
+  FUNCTION_RUN_STATUS_FAILED = 4;
+  FUNCTION_RUN_STATUS_CANCELLED = 5;
+}
+
+enum TraceSpanStatus {
+  TRACE_SPAN_STATUS_UNKNOWN = 0;
+  TRACE_SPAN_STATUS_RUNNING = 1;
+  TRACE_SPAN_STATUS_COMPLETED = 2;
+  TRACE_SPAN_STATUS_FAILED = 3;
+  TRACE_SPAN_STATUS_WAITING = 4;
+  TRACE_SPAN_STATUS_CANCELLED = 5;
+  TRACE_SPAN_STATUS_SKIPPED = 6;
+}
+
+enum TraceStepOp {
+  TRACE_STEP_OP_UNSPECIFIED = 0;
+  TRACE_STEP_OP_RUN = 1;
+  TRACE_STEP_OP_SLEEP = 2;
+  TRACE_STEP_OP_WAIT_FOR_EVENT = 3;
+  TRACE_STEP_OP_INVOKE = 4;
+  TRACE_STEP_OP_SEND_EVENT = 5;
+  TRACE_STEP_OP_AI_GATEWAY = 6;
+  TRACE_STEP_OP_WAIT_FOR_SIGNAL = 7;
+}
+
+message FunctionRef {
+  string id = 1;
+  string name = 2;
+  AppRef app = 3;
+}
+
+message AppRef {
+  string id = 1;
+}
+
+enum FunctionTriggerType {
+  FUNCTION_TRIGGER_TYPE_UNSPECIFIED = 0;
+  FUNCTION_TRIGGER_TYPE_EVENT = 1;
+  FUNCTION_TRIGGER_TYPE_CRON = 2;
+}
+
+enum FunctionConcurrencyScope {
+  FUNCTION_CONCURRENCY_SCOPE_UNSPECIFIED = 0;
+  FUNCTION_CONCURRENCY_SCOPE_ACCOUNT = 1;
+  FUNCTION_CONCURRENCY_SCOPE_ENVIRONMENT = 2;
+  FUNCTION_CONCURRENCY_SCOPE_FUNCTION = 3;
+}
+
+enum FunctionSingletonMode {
+  FUNCTION_SINGLETON_MODE_UNSPECIFIED = 0;
+  FUNCTION_SINGLETON_MODE_SKIP = 1;
+  FUNCTION_SINGLETON_MODE_CANCEL = 2;
+}
+
+message FunctionApp {
+  string id = 1;
+  reserved 2, 3, 4;
+  reserved "external_id", "name", "latest_sync";
+}
+
+message FunctionTrigger {
+  FunctionTriggerType type = 1;
+  string value = 2;
+  optional string if = 3;
+}
+
+message FunctionFailureHandler {
+  string slug = 1;
+  string name = 2;
+}
+
+message FunctionCancellationConfiguration {
+  string event = 1;
+  optional string timeout = 2;
+  optional string condition = 3;
+}
+
+message FunctionRetryConfiguration {
+  int32 value = 1;
+  optional bool is_default = 2;
+}
+
+message FunctionEventsBatchConfiguration {
+  int32 max_size = 1;
+  string timeout = 2;
+  optional string key = 3;
+}
+
+message FunctionConcurrencyLimitConfiguration {
+  int32 value = 1;
+  optional bool is_plan_limit = 2;
+}
+
+message FunctionConcurrencyConfiguration {
+  FunctionConcurrencyScope scope = 1;
+  FunctionConcurrencyLimitConfiguration limit = 2;
+  optional string key = 3;
+}
+
+message FunctionRateLimitConfiguration {
+  int32 limit = 1;
+  string period = 2;
+  optional string key = 3;
+}
+
+message FunctionDebounceConfiguration {
+  string period = 1;
+  optional string key = 2;
+}
+
+message FunctionThrottleConfiguration {
+  int32 burst = 1;
+  optional string key = 2;
+  int32 limit = 3;
+  string period = 4;
+}
+
+message FunctionSingletonConfiguration {
+  FunctionSingletonMode mode = 1;
+  optional string key = 2;
+}
+
+message FunctionConfiguration {
+  repeated FunctionCancellationConfiguration cancellations = 1;
+  FunctionRetryConfiguration retries = 2;
+  optional string priority = 3;
+  optional FunctionEventsBatchConfiguration events_batch = 4;
+  repeated FunctionConcurrencyConfiguration concurrency = 5;
+  optional FunctionRateLimitConfiguration rate_limit = 6;
+  optional FunctionDebounceConfiguration debounce = 7;
+  optional FunctionThrottleConfiguration throttle = 8;
+  optional FunctionSingletonConfiguration singleton = 9;
+}
+
+message Function {
+  string id = 1;
+  string name = 2;
+  string slug = 3;
+  bool is_paused = 4;
+  bool is_archived = 5;
+  FunctionApp app = 6;
+  repeated FunctionTrigger triggers = 7;
+  optional FunctionFailureHandler failure_handler = 8;
+  FunctionConfiguration configuration = 9;
+}
+
+message RunTrigger {
+  repeated string event_ids = 1;
+  optional string event_name = 2;
+  bool is_batch = 3;
+  optional string batch_id = 4;
+  optional string cron_schedule = 5;
+}
+
+message FunctionRun {
+  string id = 1;
+  FunctionRef function = 2;
+  AppRef app = 3;
+  FunctionRunStatus status = 4;
+  google.protobuf.Timestamp queued_at = 5;
+  optional google.protobuf.Timestamp started_at = 6;
+  optional google.protobuf.Timestamp ended_at = 7;
+  optional uint64 duration_ms = 8;
+  RunTrigger trigger = 9;
+  optional google.protobuf.Struct output = 10;
+}
+
+message GetFunctionRunRequest {
+  string run_id = 1;
+  optional bool include_output = 2;
+}
+
+message GetFunctionRunResponse {
+  FunctionRun data = 1;
+  ResponseMetadata metadata = 2;
+}
+
+message GetEventRunsRequest {
+  string event_id = 1;
+  optional bool include_output = 2;
+  optional string cursor = 3 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Pagination cursor from previous response"
+    }
+  ];
+  optional int32 limit = 4 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Number of runs to return per page (min: 1, max: 40)"
+      default: "20"
+    }
+  ];
+}
+
+message GetEventRunsResponse {
+  repeated FunctionRun data = 1;
+  ResponseMetadata metadata = 2;
+  Page page = 3;
+}
+
+message RerunRequest {
+  string run_id = 1;
+  optional RerunFromStep from_step = 2 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Step rerun options. stepId is the user-defined step name. The optional input field must be an array."
+    }
+  ];
+}
+
+message RerunFromStep {
+  string step_id = 1 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "User-defined step name to rerun from"
+      example: "\"step-1\""
+    }
+  ];
+  optional google.protobuf.ListValue input = 2 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Optional replacement step input as a JSON array"
+      example: "[{\"foo\": \"bar\"}]"
+    }
+  ];
+}
+
+message RerunResponse {
+  RerunData data = 1;
+  ResponseMetadata metadata = 2;
+}
+
+message RerunData {
+  string run_id = 1 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "New run ID created by the rerun"
+      example: "\"01hp1zx8m3ng9vp6qn0xk7j4cy\""
+    }
+  ];
+}
+
+message TraceSpanMetadata {
+  string scope = 1;
+  string kind = 2;
+  map<string, string> values = 3;
+  google.protobuf.Timestamp updated_at = 4;
+}
+
+message TraceSpan {
+  string id = 1;
+  string name = 2;
+  TraceSpanStatus status = 3;
+  optional TraceStepOp step_op = 4;
+  optional string step_id = 5;
+  optional uint64 duration_ms = 6;
+  google.protobuf.Timestamp queued_at = 7;
+  optional google.protobuf.Timestamp started_at = 8;
+  optional google.protobuf.Timestamp ended_at = 9;
+  optional google.protobuf.Struct input = 10;
+  optional google.protobuf.Struct output = 11;
+  repeated TraceSpanMetadata metadata = 12;
+  repeated TraceSpan children = 13;
+}
+
+message FunctionTrace {
+  string run_id = 1;
+  TraceSpan root_span = 2;
+}
+
+message GetFunctionTraceRequest {
+  string run_id = 1;
+  optional bool include_output = 2;
+}
+
+message GetFunctionTraceResponse {
+  FunctionTrace data = 1;
+  ResponseMetadata metadata = 2;
+}
+
+message GetFunctionRequest {
+  string app_id = 1;
+  string function_id = 2;
+}
+
+message GetFunctionResponse {
+  Function data = 1;
+  ResponseMetadata metadata = 2;
+}
+
+enum AppMethod {
+  APP_METHOD_UNSPECIFIED = 0;
+  APP_METHOD_SERVE = 1;
+  APP_METHOD_CONNECT = 2;
+  APP_METHOD_API = 3;
+}
+
+message App {
+  reserved 5, 6, 7, 8, 13;
+  reserved "sdk_language", "sdk_version", "framework", "url", "error";
+
+  string id = 1 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "The user-defined app ID"
+      example: "\"my-app\""
+    }
+  ];
+  string name = 2 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "App name"
+      example: "\"my-app\""
+    }
+  ];
+  AppMethod method = 3 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "How the app communicates with Inngest"
+    }
+  ];
+  optional string app_version = 4 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "User-defined app version, if set"
+    }
+  ];
+  google.protobuf.Timestamp created_at = 9 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Timestamp when the app was first synced"
+    }
+  ];
+  bool is_archived = 10 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Whether the app is archived"
+    }
+  ];
+  optional google.protobuf.Timestamp archived_at = 11 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Timestamp when the app was archived (if archived)"
+    }
+  ];
+  int32 function_count = 12 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Number of functions in the app"
+    }
+  ];
+  optional AppSync latest_sync = 14 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Latest sync metadata for the app, if available"
+    }
+  ];
+}
+
+message AppSync {
+  reserved 2, 3, 10;
+  reserved "started_at", "completed_at", "function_count";
+
+  optional string status = 1 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Status of the latest sync. `success` and `duplicate` are successful terminal states. `duplicate` means the sync payload matched the previous successful sync, so no function configuration changes were applied. `error` is a failed terminal state, and `pending` means the sync is still in progress."
+      enum: "pending"
+      enum: "success"
+      enum: "error"
+      enum: "duplicate"
+    }
+  ];
+  optional google.protobuf.Timestamp synced_at = 11 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Timestamp for the latest sync, if available"
+    }
+  ];
+  optional string sdk_language = 4 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Language of the SDK that synced the app"
+      example: "\"typescript\""
+    }
+  ];
+  optional string sdk_version = 5 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Version of the SDK that synced the app"
+      example: "\"3.22.0\""
+    }
+  ];
+  optional string framework = 6 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Framework used by the app, if reported by the SDK"
+      example: "\"nextjs\""
+    }
+  ];
+  optional string url = 7 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "URL of the Inngest endpoint in the app, if synced via URL"
+      example: "\"https://example.com/api/inngest\""
+    }
+  ];
+  optional string error = 8 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Most recent sync or connectivity error for the app, if any"
+    }
+  ];
+  optional string app_version = 9 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "App version reported by the latest sync, if set"
+    }
+  ];
+}
+
+message GetAppRequest {
+  string app_id = 1 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "The user-defined app ID"
+      example: "\"my-app\""
+    }
+  ];
+}
+
+message GetAppResponse {
+  App data = 1;
+  ResponseMetadata metadata = 2;
+}
+
+message GetAppsRequest {
+  optional string cursor = 1 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Pagination cursor from previous response"
+    }
+  ];
+  optional int32 limit = 2 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Number of apps to return per page (min: 1, max: 100)"
+      default: "20"
+    }
+  ];
+  optional bool archived = 3 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Whether to return archived apps instead of active apps"
+      default: "false"
+    }
+  ];
+}
+
+message GetAppsResponse {
+  repeated App data = 1;
+  ResponseMetadata metadata = 2;
+  Page page = 3;
+}
+
+message GetFunctionsRequest {
+  string app_id = 1;
+  optional string cursor = 2 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Pagination cursor from previous response"
+    }
+  ];
+  optional int32 limit = 3 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Number of functions to return per page (min: 1, max: 100)"
+      default: "20"
+    }
+  ];
+}
+
+message GetFunctionsResponse {
+  repeated Function data = 1;
+  ResponseMetadata metadata = 2;
+  Page page = 3;
+}
+
+message CreateAccountRequest {
+  string email = 1;
+  optional string name = 2;
+}
+
+message CreateAccountResponse {
+  CreateAccountData data = 1;
+  ResponseMetadata metadata = 2;
+}
+
+message CreateEnvRequest {
+  string name = 1;
+  optional string id = 2;
+}
+
+message CreateEnvResponse {
+  Env data = 1;
+  ResponseMetadata metadata = 2;
+}
+
+enum EnvType {
+  PRODUCTION = 0;
+  TEST = 1;
+  BRANCH = 2;
+}
+
+message Env {
+  string id = 1;
+  string name = 2;
+  EnvType type = 3;
+  google.protobuf.Timestamp createdAt = 4;
+  bool isArchived = 5;
+}
+
+message CreateAccountData {
+  string id = 1;
+  string email = 2;
+  string name = 3;
+  string apiKey = 4;
+  google.protobuf.Timestamp createdAt = 5;
+  google.protobuf.Timestamp updatedAt = 6;
+}
+
+message FetchAccountsRequest {
+  optional string cursor = 1 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Pagination cursor from previous response"
+    }
+  ];
+  optional int32 limit = 2 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Number of accounts to return per page (min: 1, max: 1000)"
+      default: "20"
+    }
+  ];
+}
+
+message FetchAccountsResponse {
+  repeated Account data = 1;
+  ResponseMetadata metadata = 2;
+  Page page = 3;
+}
+
+message FetchAccountResponse {
+  Account data = 1;
+  ResponseMetadata metadata = 2;
+}
+
+message Account {
+  string id = 1;
+  string email = 2;
+  string name = 3;
+  google.protobuf.Timestamp createdAt = 4;
+  google.protobuf.Timestamp updatedAt = 5;
+}
+
+message Page {
+  optional string cursor = 1;
+  bool hasMore = 2;
+  int32 limit = 3;
+}
+
+message FetchAccountEventKeysRequest {
+  optional string cursor = 1 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Pagination cursor from previous response"
+    }
+  ];
+  optional int32 limit = 2 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Number of event keys to return per page (min: 1, max: 100)"
+      default: "20"
+    }
+  ];
+}
+
+message FetchAccountEventKeysResponse {
+  repeated EventKey data = 1;
+  ResponseMetadata metadata = 2;
+  Page page = 3;
+}
+
+message EventKey {
+  string id = 1;
+  string name = 2;
+  string environment = 3;
+  string key = 4;
+  google.protobuf.Timestamp createdAt = 5;
+}
+
+message FetchAccountEnvsRequest {
+  optional string cursor = 1 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Pagination cursor from previous response"
+    }
+  ];
+  optional int32 limit = 2 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Number of environments to return per page (min: 1, max: 250)"
+      default: "50"
+    }
+  ];
+}
+
+message FetchAccountEnvsResponse {
+  repeated Env data = 1;
+  ResponseMetadata metadata = 2;
+  Page page = 3;
+}
+
+message FetchAccountSigningKeysRequest {
+  optional string cursor = 1 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Pagination cursor from previous response"
+    }
+  ];
+  optional int32 limit = 2 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Number of signing keys to return per page (min: 1, max: 100)"
+      default: "20"
+    }
+  ];
+}
+
+message FetchAccountSigningKeysResponse {
+  repeated SigningKey data = 1;
+  ResponseMetadata metadata = 2;
+  Page page = 3;
+}
+
+message SigningKey {
+  string id = 1;
+  string name = 2;
+  string environment = 3;
+  string key = 4;
+  google.protobuf.Timestamp createdAt = 5;
+}
+
+message CreateWebhookRequest {
+  string name = 1 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Descriptive name for the webhook"
+      example: "\"Payment Processing Webhook\""
+    }
+  ];
+  string transform = 2 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "The inline JS transform function for incoming events"
+      example: "\"function transform(evt, headers = {}, queryParams = {}, raw = '') { return { name: 'webhook/request.received', data: evt }; }\""
+    }
+  ];
+  optional string response = 3 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Optional inline JS function which is called to respond to GET requests"
+      example: "\"function respond(body, headers) { return { status: 200, headers: {}, body: JSON.parse(body)?.challenge } };\""
+    }
+  ];
+  optional EventFilter event_filter = 4 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Optional event filtering configuration"
+    }
+  ];
+}
+
+message CreateWebhookResponse {
+  Webhook data = 1;
+  ResponseMetadata metadata = 2;
+}
+
+enum FilterType {
+  ALLOW = 0;
+  DENY = 1;
+}
+
+message EventFilter {
+  repeated string events = 1 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Allow or deny specific events, e.g. 'orders/payment.created', or 'orders/*' for all orders. Only events in this list will be either allowed or denied."
+      example: "[\"orders/payment.created\", \"orders/*\"]"
+    }
+  ];
+  FilterType filter = 2 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Either allow only the events requested, or deny the specific events listed"
+    }
+  ];
+}
+
+message ListWebhooksRequest {
+  optional string cursor = 1 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Pagination cursor from previous response"
+    }
+  ];
+  optional int32 limit = 2 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Number of webhooks to return per page (min: 1, max: 100)"
+      default: "20"
+    }
+  ];
+}
+
+message ListWebhooksResponse {
+  repeated Webhook data = 1;
+  ResponseMetadata metadata = 2;
+  Page page = 3;
+}
+
+message Webhook {
+  string id = 1;
+  string name = 2;
+  string url = 3;
+  string transform = 4;
+  optional string response = 5;
+  optional EventFilter event_filter = 6;
+  string environment = 7;
+  google.protobuf.Timestamp createdAt = 8;
+  google.protobuf.Timestamp updatedAt = 9;
+}
+
+message PatchEnvRequest {
+  string id = 1 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "The ID of the environment to update"
+    }
+  ];
+  optional bool isArchived = 2 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Updates the archived status of the environment. Set to true to archive the environment or false to unarchive it."
+    }
+  ];
+}
+
+message PatchEnvsResponse {
+  Env data = 1;
+  ResponseMetadata metadata = 2;
+}
+
+message SendEventRequest {
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Event name"
+      example: "\"app/user.created\""
+    }
+  ];
+  optional google.protobuf.Struct data = 2 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "JSON object containing event data"
+      example: "{\"userId\": \"01H08WQHKQ9H8S7F7NQGQ0M1NZ\"}"
+    }
+  ];
+  optional google.protobuf.Struct user = 3 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Deprecated user data. Put user data in the data field instead."
+      example: "{\"id\": \"01H08WQHKQ9H8S7F7NQGQ0M1NZ\", \"email\": \"ada@example.com\"}"
+    }
+  ];
+  optional string id = 4 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Optional event ID used for idempotency when scheduling function runs"
+      example: "\"user-created-01H08WQHKQ9H8S7F7NQGQ0M1NZ\""
+    }
+  ];
+  optional int64 ts = 5 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Optional event timestamp as Unix time in milliseconds. Defaults to the current time."
+      example: "1754496000000"
+    }
+  ];
+}
+
+message SendEventResponse {
+  SendEventData data = 1;
+  ResponseMetadata metadata = 2;
+}
+
+message SendEventData {
+  string event_id = 1 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Internal event ID assigned by Inngest"
+      example: "\"01K1QQ3VQ8R3M8QX4D51J8G7XH\""
+    }
+  ];
+}
+
+message InvokeFunctionRequest {
+  string function_id = 1 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "The ID of the function to invoke"
+      example: "\"my-app-hello-world\""
+    }
+  ];
+  google.protobuf.Struct data = 2 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "JSON object containing the input data for the function"
+      example: "{\"message\": \"Hello, World!\"}"
+    }
+  ];
+  optional string idempotency_key = 3 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Optional idempotency key to handle duplicate requests within a given idempotency period."
+      example: "\"user-action-123\""
+    }
+  ];
+  string app_id = 4 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "The ID of the app containing the function"
+      example: "\"my-app\""
+    }
+  ];
+}
+
+message InvokeFunctionResponse {
+  InvokeFunctionData data = 1;
+  ResponseMetadata metadata = 2;
+}
+
+message InvokeFunctionData {
+  string run_id = 1 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Unique identifier for this function execution"
+      example: "\"01hp1zx8m3ng9vp6qn0xk7j4cy\""
+    }
+  ];
+  google.protobuf.Timestamp queued_at = 2 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Timestamp when the function execution was enqueued"
+    }
+  ];
+  optional google.protobuf.Timestamp started_at = 3 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Timestamp when the function execution started (if started)"
+    }
+  ];
+  optional google.protobuf.Timestamp completed_at = 4 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Timestamp when the function execution completed (if finished)"
+    }
+  ];
+  optional string result = 5 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "JSON string containing the function result (only available for completed synchronous invocations)"
+      example: "\"{\\\"success\\\": true, \\\"data\\\": \\\"Hello, World!\\\"}\""
+    }
+  ];
+  optional string error = 6 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Error message if the function execution failed"
+    }
+  ];
+}
+
+message CreateScoreRequest {
+  string run_id = 1 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Run ID (ULID) of the function run to score"
+      example: "\"01JLW1NNJ69KCD1KMJEXAMPLE0\""
+    }
+  ];
+  repeated CreateScoreInput scores = 2 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Scores to record for the run. The REST request body is this array. Writes are applied in order and are not atomic; if a later score fails, earlier scores may already be recorded. Score writes are best-effort: run and step targets are not validated before writing, and scores for targets that do not exist may not surface in queries. Maximum 100 scores."
+    }
+  ];
+}
+
+message CreateScoreInput {
+  string name = 1 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Score name; must be at most 128 UTF-8 bytes"
+      example: "\"accuracy\""
+    }
+  ];
+  google.protobuf.Value value = 2 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Score value; must be a finite number or a boolean"
+      example: "0.95"
+    }
+  ];
+  optional string step_id = 3 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Optional SDK step ID; attaches the score to a specific step instead of the run. Step targets are recorded best-effort and are not validated before writing."
+      example: "\"generate-summary\""
+    }
+  ];
+  optional ScoreExperiment experiment = 4 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Optional experiment context. When provided, the score is recorded with the same experiment metadata emitted by the SDK's score.experiment API. Experiment scores must be run-scoped for experiment aggregate and detail APIs."
+    }
+  ];
+}
+
+message ScoreExperiment {
+  string id = 1 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Experiment ID"
+      example: "\"model-routing\""
+    }
+  ];
+  string variant = 2 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Experiment variant"
+      example: "\"baseline\""
+    }
+  ];
+}
+
+message CreateScoreResponse {
+  repeated Score data = 1;
+  ResponseMetadata metadata = 2;
+}
+
+message Score {
+  string run_id = 1 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Run ID the score was recorded against"
+    }
+  ];
+  string name = 2 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Score name"
+    }
+  ];
+  google.protobuf.Value value = 3 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Score value"
+    }
+  ];
+  optional string step_id = 4 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Step ID the score was recorded against, if step-scoped"
+    }
+  ];
+  optional ScoreExperiment experiment = 5 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Experiment context the score was recorded against, if provided"
+    }
+  ];
+}
+
+message SyncAppRequest {
+  string app_id = 1 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "App ID"
+      example: "\"my-app\""
+    }
+  ];
+  string url = 2 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "URL for the Inngest endpoint in the app"
+      example: "\"https://example.com/api/inngest\""
+    }
+  ];
+}
+
+message SyncAppResponse {
+  SyncAppData data = 1;
+  ResponseMetadata metadata = 2;
+}
+
+message SyncAppData {
+  string id = 1 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "ID"
+    }
+  ];
+  string status = 2 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Status of the sync. `success` and `duplicate` are successful terminal states. `duplicate` means the sync payload matched the previous successful sync, so no function configuration changes were applied. `error` is a failed terminal state, and `pending` means the sync is still in progress."
+      enum: "pending"
+      enum: "success"
+      enum: "error"
+      enum: "duplicate"
+    }
+  ];
+  string app_id = 3 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "App ID"
+    }
+  ];
+  optional SyncAppError error = 4 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Error, including a code and message"
+    }
+  ];
+}
+
+message SyncAppError {
+  string code = 1;
+  string message = 2;
+}
+
+message QueryInsightsRequest {
+  string query = 1 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "The insights query to execute, written in modified ClickHouse SQL"
+    }
+  ];
+}
+
+message QueryInsightsResponse {
+  QueryInsightsData data = 1;
+  ResponseMetadata metadata = 2;
+}
+
+message QueryInsightsData {
+  repeated InsightsOutputColumn columns = 1 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Column metadata for the insights query result"
+    }
+  ];
+  repeated InsightsRow rows = 2 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Rows of the insights query result, where each row contains a list of values corresponding to the columns"
+    }
+  ];
+  repeated InsightsDiagnostic diagnostics = 3 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Any non-fatal diagnostics related to the insights query execution"
+    }
+  ];
+}
+
+message InsightsOutputColumn {
+  string name = 1 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Name of the column in the insights query result"
+    }
+  ];
+  InsightsOutputColumnType type = 2 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Data type of the column (e.g., 'string', 'number', 'boolean')"
+    }
+  ];
+}
+
+enum InsightsOutputColumnType {
+  VALUE_TYPE_UNSPECIFIED = 0;
+  STRING = 1;
+  NUMBER = 2;
+  BOOLEAN = 3;
+  DATETIME = 4;
+  COMPLEX = 5;
+}
+
+message InsightsRow {
+  repeated google.protobuf.Value values = 1 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Values for a single row of the insights query result, where each value corresponds to a column. The value is represented as a JSON object to allow for flexible typing (e.g., string, number, boolean, etc.)"
+    }
+  ];
+}
+
+message InsightsDiagnostic {
+  InsightsDiagnosticSeverity severity = 1 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Severity level of the diagnostic (e.g., 'error', 'warning', 'info')"
+    }
+  ];
+  string code = 2 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Machine-readable code representing the type of diagnostic"
+    }
+  ];
+  string message = 3 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Human-readable message describing the diagnostic"
+    }
+  ];
+  optional InsightsDiagnosticPosition position = 4 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Optional position in the query string where the diagnostic applies, useful for pointing out syntax errors or other issues in the query"
+    }
+  ];
+}
+
+enum InsightsDiagnosticSeverity {
+  SEVERITY_UNSPECIFIED = 0;
+  ERROR = 1;
+  WARNING = 2;
+  INFO = 3;
+}
+
+message InsightsDiagnosticPosition {
+  int32 start = 1 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Starting character index in the query string where the diagnostic applies"
+    }
+  ];
+  int32 end = 2 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Ending character index in the query string where the diagnostic applies"
+    }
+  ];
+  string context = 3 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Snippet of the query string around the position to provide context for the diagnostic"
+    }
+  ];
+}
+
+message ListInsightsTablesRequest {
+  // Empty request message for listing available insights tables
+}
+
+message ListInsightsTablesResponse {
+  repeated InsightsTable data = 1 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "List of available tables that can be queried via the Insights query endpoint"
+    }
+  ];
+  ResponseMetadata metadata = 2;
+}
+
+message InsightsTable {
+  string name = 1 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Name of the table, used when writing queries"
+      example: "\"function_runs\""
+    }
+  ];
+  string description = 2 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Human-readable description of the table and its contents"
+    }
+  ];
+  repeated InsightsTableColumn columns = 3 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Columns available in this table"
+    }
+  ];
+}
+
+message InsightsTableColumn {
+  string name = 1 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Name of the column in the insights table"
+    }
+  ];
+  string description = 2 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Human-readable description of the column and the data it contains"
+    }
+  ];
+  string type = 3 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Data type of the column (e.g., 'String', 'Int64', 'Array(String)', etc.)"
+    }
+  ];
+}
+
+message QueryInsightsPromptRequest {
+  string prompt = 1 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Natural language description of the query to generate"
+      example: "\"Show me the top 10 functions by failure rate in the last 7 days\""
+    }
+  ];
+}
+
+message QueryInsightsPromptResponse {
+  QueryInsightsPromptData data = 1;
+  ResponseMetadata metadata = 2;
+}
+
+message QueryInsightsPromptData {
+  string sql = 1 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "The generated Insights SQL query"
+      example: "\"SELECT function_id, COUNT(*) AS total, countIf(status = 'Failed') AS failures, failures / total AS failure_rate FROM function_runs WHERE started_at >= now() - INTERVAL 7 DAY GROUP BY function_id ORDER BY failure_rate DESC LIMIT 10\""
+    }
+  ];
+  string summary = 2 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "A natural language summary of the generated query, useful for explaining the query's intent to agents"
+      example: "\"This query retrieves the top 10 functions with the highest failure rate over the past week, showing the total number of runs, number of failures, and calculated failure rate for each function.\""
+    }
+  ];
+}
+
+message ListInsightsEventSchemasRequest {
+  optional string cursor = 1 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Pagination cursor from previous response"
+    }
+  ];
+  optional int32 limit = 2 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Number of event schemas to return per page (min: 1, max: 100)"
+      default: "20"
+    }
+  ];
+}
+
+message ListInsightsEventSchemasResponse {
+  repeated InsightsEventSchema data = 1 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Paginated list of event type schemas"
+    }
+  ];
+  ResponseMetadata metadata = 2;
+  Page page = 3;
+}
+
+message InsightsEventSchema {
+  string name = 1 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Event type name"
+      example: "\"orders/payment.created\""
+    }
+  ];
+  google.protobuf.Struct schema = 2 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "JSON Schema describing the shape of this event's data, represented as a nested JSON object"
+    }
+  ];
+}
+
+message ListExperimentsRequest {
+  optional string cursor = 1 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Pagination cursor from previous response"
+    }
+  ];
+  optional int32 limit = 2 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Number of experiments to return per page (min: 1, max: 100)"
+      default: "20"
+    }
+  ];
+  string app_id = 3;
+  string function_id = 4;
+  optional google.protobuf.Timestamp from = 5;
+  optional google.protobuf.Timestamp until = 6;
+}
+
+message ListExperimentsResponse {
+  repeated Experiment data = 1;
+  ResponseMetadata metadata = 2;
+  Page page = 3;
+}
+
+message Experiment {
+  string id = 1;
+  FunctionRef function = 2;
+  string selection_strategy = 3;
+  repeated string variants = 4;
+  int32 variant_count = 5;
+  int32 total_runs = 6;
+  google.protobuf.Timestamp first_seen = 7;
+  google.protobuf.Timestamp last_seen = 8;
+}
+
+message GetExperimentRequest {
+  string function_id = 1;
+  string experiment_id = 2;
+  optional string variant = 3 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Optional variant name to restrict the aggregate response."
+    }
+  ];
+  string app_id = 4;
+  optional google.protobuf.Timestamp from = 5;
+  optional google.protobuf.Timestamp until = 6;
+}
+
+message GetExperimentResponse {
+  ExperimentDetail data = 1;
+  ResponseMetadata metadata = 2;
+}
+
+message ExperimentDetail {
+  string id = 1;
+  repeated ExperimentVariantMetrics variants = 2;
+  repeated ExperimentVariantWeight variant_weights = 3;
+  google.protobuf.Timestamp first_seen = 4;
+  google.protobuf.Timestamp last_seen = 5;
+  string selection_strategy = 6;
+}
+
+message ExperimentVariantMetrics {
+  string variant_name = 1;
+  int32 run_count = 2;
+  repeated ExperimentVariantMetric metrics = 3;
+}
+
+message ExperimentVariantMetric {
+  string key = 1;
+  double avg = 2;
+  double min = 3;
+  double max = 4;
+}
+
+message ExperimentVariantWeight {
+  string variant_name = 1;
+  double weight = 2;
+}
+
+message ListSessionKeysRequest {
+  optional string search = 1;
+  optional string cursor = 2 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Pagination cursor from previous response"
+    }
+  ];
+  optional int32 limit = 3 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Number of sessions to return per page (min: 1, max: 100)"
+      default: "20"
+    }
+  ];
+}
+
+message ListSessionKeysResponse {
+  repeated SessionKey data = 1;
+  ResponseMetadata metadata = 2;
+  Page page = 3;
+}
+
+message SessionKey {
+  string id = 1;
+  google.protobuf.Timestamp created_at = 2;
+}
+
+message ListSessionsRequest {
+  string session_key = 1;
+  optional string search = 2;
+  optional string cursor = 3 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Pagination cursor from previous response"
+    }
+  ];
+  optional int32 limit = 4 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Number of sessions to return per page (min: 1, max: 100)"
+      default: "20"
+    }
+  ];
+  optional google.protobuf.Timestamp from = 5;
+  optional google.protobuf.Timestamp until = 6;
+}
+
+message ListSessionsResponse {
+  repeated SessionGroup data = 1;
+  ResponseMetadata metadata = 2;
+  Page page = 3;
+}
+
+message SessionGroup {
+  string id = 1;
+  int32 run_count = 2;
+  int32 failed_run_count = 3;
+  double failure_rate = 4;
+  google.protobuf.Timestamp last_active_at = 5;
+  repeated FunctionRef functions = 6;
+}
+
+message ListSessionRunsRequest {
+  string session_key = 1;
+  string session_id = 2;
+  optional string cursor = 3 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Pagination cursor from previous response"
+    }
+  ];
+  optional int32 limit = 4 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Number of session runs to return per page (min: 1, max: 100)"
+      default: "20"
+    }
+  ];
+  optional google.protobuf.Timestamp from = 5;
+  optional google.protobuf.Timestamp until = 6;
+}
+
+message ListSessionRunsResponse {
+  repeated SessionRun data = 1;
+  ResponseMetadata metadata = 2;
+  Page page = 3;
+}
+
+message SessionRun {
+  string id = 1;
+  FunctionRef function = 2;
+  optional string event_name = 3;
+  FunctionRunStatus status = 4;
+  google.protobuf.Timestamp queued_at = 5;
+  optional google.protobuf.Timestamp started_at = 6;
+  optional google.protobuf.Timestamp ended_at = 7;
+}
+
+message ListRunsRequest {
+  optional bool include_output = 1;
+  optional string cursor = 2 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Pagination cursor from previous response"
+    }
+  ];
+  optional int32 limit = 3 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Number of runs to return per page (min: 1, max: 100)"
+      default: "20"
+    }
+  ];
+  optional google.protobuf.Timestamp from = 4 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Inclusive start of the run time range"
+    }
+  ];
+  optional google.protobuf.Timestamp until = 5 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Inclusive end of the run time range"
+    }
+  ];
+  string time_field = 6 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Run timestamp field used for filtering and ordering. Accepts queuedAt, startedAt, or endedAt. Snake case aliases such as QUEUED_AT, STARTED_AT, and ENDED_AT are also accepted."
+      default: "queuedAt"
+    }
+  ];
+  repeated string status = 7 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Statuses to include, using response status values such as COMPLETED, FAILED, RUNNING, QUEUED, or CANCELLED"
+    }
+  ];
+  repeated string app_id = 8 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "App IDs to include"
+    }
+  ];
+  repeated string function_id = 9 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Function IDs to include"
+    }
+  ];
+  optional bool is_deferred = 10 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Whether to include only deferred or non-deferred runs"
+    }
+  ];
+  string order = 11 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Sort direction. Accepts ASC or DESC."
+      default: "DESC"
+    }
+  ];
+}
+
+message ListFunctionRunsRequest {
+  string app_id = 1;
+  string function_id = 2;
+  optional bool include_output = 3;
+  optional string cursor = 4 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Pagination cursor from previous response"
+    }
+  ];
+  optional int32 limit = 5 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Number of runs to return per page (min: 1, max: 100)"
+      default: "20"
+    }
+  ];
+  optional google.protobuf.Timestamp from = 6 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Inclusive start of the run time range"
+    }
+  ];
+  optional google.protobuf.Timestamp until = 7 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Inclusive end of the run time range"
+    }
+  ];
+  string time_field = 8 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Run timestamp field used for filtering and ordering. Accepts queuedAt, startedAt, or endedAt. Snake case aliases such as QUEUED_AT, STARTED_AT, and ENDED_AT are also accepted."
+      default: "queuedAt"
+    }
+  ];
+  repeated string status = 9 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Statuses to include, using response status values such as COMPLETED, FAILED, RUNNING, QUEUED, or CANCELLED"
+    }
+  ];
+  optional bool is_deferred = 10 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Whether to include only deferred or non-deferred runs"
+    }
+  ];
+  string order = 11 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Sort direction. Accepts ASC or DESC."
+      default: "DESC"
+    }
+  ];
+}
+
+message ListRunsResponse {
+  repeated FunctionRun data = 1;
+  ResponseMetadata metadata = 2;
+  Page page = 3;
+}
+
+message ListFunctionRunsResponse {
+  repeated FunctionRun data = 1;
+  ResponseMetadata metadata = 2;
+  Page page = 3;
+}
+
+message CancelRunRequest {
+  string run_id = 1;
+}
+
+message CancelRunResponse {
+  CancelRunData data = 1;
+  ResponseMetadata metadata = 2;
+}
+
+message CancelRunData {
+  string run_id = 1 [
+    (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+      description: "Cancelled run ID"
+      example: "\"01hp1zx8m3ng9vp6qn0xk7j4cy\""
+    }
+  ];
+}
