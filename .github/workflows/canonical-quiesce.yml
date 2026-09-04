@@ -24,7 +24,7 @@ jobs:
           set -euo pipefail
           repo="$GITHUB_REPOSITORY"
           now="$(date -u +%s)"
-          canceled=0
+          handled=0
           for status in in_progress queued; do
             gh api "repos/${repo}/actions/runs?status=${status}&per_page=100" --paginate \
               --jq '.workflow_runs[] | [.id,.path,.created_at] | @tsv' |
@@ -42,18 +42,21 @@ jobs:
                   ;;
               esac
               if [ "$stale" = true ] || [ "$duplicate" = true ]; then
-                echo "cancel id=$id status=$status age_seconds=$age path=$path"
+                echo "handle id=$id status=$status age_seconds=$age path=$path"
                 if gh api --method POST "repos/${repo}/actions/runs/${id}/cancel"; then
-                  canceled=$((canceled+1))
-                else
-                  echo "normal cancel rejected; trying force-cancel id=$id"
-                  if gh api --method POST "repos/${repo}/actions/runs/${id}/force-cancel"; then
-                    canceled=$((canceled+1))
-                  else
-                    echo "FORCE_CANCEL_GAP id=$id path=$path"
+                  handled=$((handled+1)); continue
+                fi
+                if gh api --method POST "repos/${repo}/actions/runs/${id}/force-cancel"; then
+                  handled=$((handled+1)); continue
+                fi
+                if [ "$age" -gt 1209600 ]; then
+                  echo "cancel endpoints rejected stale run; deleting run id=$id"
+                  if gh api --method DELETE "repos/${repo}/actions/runs/${id}"; then
+                    handled=$((handled+1)); continue
                   fi
                 fi
+                echo "STALE_RUN_CONTROL_GAP id=$id path=$path"
               fi
             done
           done
-          echo "QUIESCED canceled=${canceled}"
+          echo "QUIESCED handled=${handled}"
