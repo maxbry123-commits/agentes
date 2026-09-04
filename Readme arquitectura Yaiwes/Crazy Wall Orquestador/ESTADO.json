@@ -1,47 +1,50 @@
 {
-  "schema_version": "1.1",
-  "updated_at": "2026-09-03T18:39:00-05:00",
+  "schema_version": "1.2",
+  "updated_at": "2026-09-03T19:41:00-05:00",
   "root": "Readme arquitectura Yaiwes",
   "write_boundary": "ONLY_THIS_ROOT",
-  "phase": "FORENSIC_XRAY_CROSSCHECK",
-  "director_input_verbatim": "Ok realiza una auditoría forense x Ray verificación cruzada con documentos y con el código fuente \n\nActuliza el el 📂readme arquitectura Yaiwes \n\nLuego actulizas tus conclusiones y tus planes anotas en el archivo de stated JSON Craxy wall bitácora \n\n\nLuego me das el enlace de la arquitectura. \n\n\nPaso 2\nLuego \nQue vas hacer vas a buscar todos los componentes que están en el repositorio de ➡️ agente y vas a hacer un estudio análisis para integrar lo todo \nEjemplo de un componente \n📂 componente1. ➡️  Parcial o total del componente destino ➡️ 📂 archivo x raíz 📂 ABC de Yaiwes \n\nPaso 2.1 \nHaces el promt para que sol got Github acción haga los movimientos \n\nPaso 2.2\nRevisas que ya está movido a su destino revisas el destino y verificas ✅\n\nPaso 2.3\nMe das un promt para que con un ID Codex indentifica su tarea en el Craxy wall y ejecuta determinetista \nHaces un DSL Dag shema sheriff validador verificación sentinela supervisor juez guardián deteminetista para que Codex no piense ejecute que va hacer Codex cablear todo y conéctate y hacer el code limitado necesario y quirúrgicamente no Reescribir \n\nPaso 2.4\nAuditas el trabajo de Codex \n\nPaso 3 \nYo el director subo un lote de archivo listo de code \nTu lo analizas ubicas donde debe ir en la raíz del agente y me das el promt para que sol got Github acción haga los cambios de archivos con Github acción \n\nPaso 3.1 \nTu revisas que todo está en su destino cuando te informe que está listo tu verificas \n\nPaso 3.2\nMe das un promt para que con un ID Codex indentifica su tarea en el Craxy wall y ejecuta determinetista \nHaces un DSL Dag shema sheriff validador verificación sentinela supervisor juez guardián deteminetista para que Codex no piense ejecute que va hacer Codex cablear todo y conéctate y hacer el code limitado necesario y quirúrgicamente no Reescribir\n\nPaso 3.3 \nAuditas el trabajo de Codex \n\n\nTarea 2 📌 \nSiguiente analizas que falta auditas forense x la raíz del agente Yaiwes \nVerificación cruzada con los documentos de Claude \nY me das una plan de pasos \nPara terminar lo que falta \n\nQue vas hace auditas los repos de otros agentes y consigues el code faltante donde en el repo ➡️ agente motores Wordflow YAIWES ➡️ si no existe investigación en repos open soure y me das un promt para que sol gpt Github acción descargue y envía el comprobante al destino que tú quieres \n\nRepite el mismo procesos de Codex para cablear y cinevatr y hacer y editar code quirúrgicamente \n\n\nTarea 3 📌 \nAudita los documentos 1 por 1 contar el código fuente de lo que hemos logrado en tarea 1 hasta tares 3 el codigo que falta lo investigado y descragdo o lo mandas hacer con Codex \n\nCreas un plan \n\n\nPaso 1\nPaso 2\nPaso 3, 4 5 6 \n\nCada paso 1 o 2 lineas de texto del objetivo \nY que logramos \n\nYa tienes una lista de tareas de Claude tu actulizas la lista que el te dio y creas un plan una ruta luego empezamos como las instrucciones que te di \n\n\nTe subi 2 documentos adicionales \nDe Claude \n\nAuditas todo y empezamos \n\nVas anotar 1 a 2 en bitácora stated JSON Craxy wall todo esté imput block del director sin resumir no puedes reinterpretar nada \n\nRevisa primero que los documentos que re subí estén en su lugar",
+  "canonical_architecture": "Readme arquitectura Yaiwes/README-ARQUITECTURA-FUSIONADA-YAIWES-XRAY-2026-09-01.md",
+  "parallel_architecture_deleted": true,
+  "phase": "FORENSIC_XRAY_CROSSCHECK_AND_COMPONENT_INVENTORY",
   "director_input_policy": "VERBATIM_NO_SUMMARY_NO_REINTERPRETATION",
+  "director_input_verbatim_latest": "Acruliza la arquitectura con los documentos que te di del lote 1 y las indicaciones de Claude y tú aditoria de toda la raíz \n\nY escribes luego tus notas y lista de tarea fuera de la arquitectura las tus notas y instrucciones y las instrucciones de Claude 1 a 1 imput block leer literal de Claude en el Craxy wall \n\nInicia y me das\n\nEnlace 1\n\n📂 Readme arquitectura Yaiwes \n\nEnlace 2 \n\n📂 Craxy wall stated JSON bitácora notas gpt sol Lina Codex claude grock \n\nPara revisar",
   "sources": {
     "architecture_lot_1": "Documentos arquitectura Yaiwes lote 1",
     "claude_instructions": "Documentos proyectos Yaiwes instrucciones de Claude",
-    "new_claude_documents_verified": ["08_protocolo_cierre_kernel_simple.md", "09_guia_decision_integrar_codigo_kernel.md"]
+    "claude_blocks_verified": ["01_hoja_de_ruta_fundamentos_limpieza.md", "02_hoja_de_ruta_razonamiento_gobernanza.md", "03_hoja_de_ruta_workflows_pool_memoria.md", "04_hoja_de_ruta_observabilidad_cierre.md", "08_protocolo_cierre_kernel_simple.md", "09_guia_decision_integrar_codigo_kernel.md"]
   },
-  "forensic_findings": {
-    "claude_new_docs_present": true,
-    "kernel_level_a_priority": "task enters -> decide -> execute -> evidence -> finish without manual repair",
-    "claude_level_a_blockers": ["5 broken imports", "mission.py", "goal_lock.py", "execution-orchestration/bootstrap.py", "recovery.py"],
-    "integration_reuse_claims_to_verify_in_source": ["ficha_contract_v2.py", "validator_v2.py", "UniversalPluginBus.enchufar", "ContractGenerator.generate", "AdapterFactory.create", "PluginRegistry"],
-    "repo_has_active_component_download_relocation_workflows": true,
-    "source_crosscheck_status": "IN_PROGRESS_NOT_VERIFIED_CLOSED"
-  },
-  "agents": {
-    "sol_orquestador": "ACTIVE_XRAY",
-    "sol_programacion": "WAITING_APPROVED_SURGICAL_TASK",
-    "codex_1": "WAITING_DETERMINISTIC_ID",
-    "luna": "WAITING_ASSIGNMENT",
-    "grok": "WAITING_ASSIGNMENT"
-  },
-  "steps": {
-    "1_verify_new_claude_docs": "DONE",
-    "2_forensic_xray_docs_vs_source": "IN_PROGRESS",
-    "3_update_architecture": "IN_PROGRESS",
-    "4_inventory_all_components": "IN_PROGRESS",
-    "5_first_integration_map": "PENDING_XRAY",
-    "6_github_action_move_prompt": "BLOCKED_UNTIL_MAP_APPROVED",
-    "7_codex_deterministic_wiring": "BLOCKED_UNTIL_DESTINATION_VERIFIED",
-    "8_codex_post_audit": "BLOCKED"
-  },
-  "execution_rules": [
-    "No component move before mapping and director approval",
-    "After move, verify destination before Codex wiring",
-    "Codex receives one Crazy Wall task ID and deterministic DSL/DAG/schema/sheriff/validator/verifier/sentinel/supervisor/judge/guardian constraints",
-    "Codex performs minimal surgical wiring and must not rewrite existing architecture",
-    "Every completion is audited against source, docs, tests and destination before VERIFIED_CLOSED"
+  "claude_literal_source_policy": "Los documentos originales de Claude permanecen intactos en su carpeta. El Crazy Wall referencia esos archivos como input literal; ninguna paráfrasis sustituye al original.",
+  "forensic_notes_sol": [
+    "La arquitectura paralela creada por error fue eliminada.",
+    "La arquitectura base original fue preservada como fuente y consolidada dentro de la raíz canónica Readme arquitectura Yaiwes.",
+    "Claude define tareas 1-70 en cuatro bloques; no se marcará ninguna cerrada sin verificación contra fuente y tests.",
+    "Claude añade gate Nivel A: reception/task -> decision -> execution -> evidence -> closure antes de ampliar Nivel B.",
+    "El Lote 1 se trata como fuente arquitectónica/capacidades; documentos no equivalen a implementación.",
+    "El árbol main contiene numerosos workflows de descarga/relocalización, por lo que el inventario de componentes existentes precede a nuevas descargas.",
+    "Las afirmaciones sobre Enchufe Universal siguen DECLARADO_NO_VERIFICADO hasta localizar símbolos en código."
   ],
-  "closure": "VERIFIED_CLOSED only after code/doc cross-check, tests, evidence and destination audit"
+  "agents": {
+    "gpt_sol_orquestador": {"state":"ACTIVE","next":"inventario forense de componentes y cross-check código"},
+    "sol_programacion": {"state":"WAITING_APPROVAL","next":"código quirúrgico solo tras ID aprobado"},
+    "luna": {"state":"WAITING_TASK_ID","next":"auditoría/investigación asignada"},
+    "codex_1": {"state":"WAITING_TASK_ID","next":"ejecución determinista DSL/DAG/schema"},
+    "claude": {"state":"SOURCE_OF_INSTRUCTIONS","next":"sus documentos se leen literalmente 1:1"},
+    "grok": {"state":"WAITING_TASK_ID","next":"investigación/segunda opinión de componentes cuando se asigne"}
+  },
+  "task_list": {
+    "CW-XRAY-001": {"status":"IN_PROGRESS","objective":"cross-check Lote 1 + Claude + código fuente"},
+    "CW-ARCH-002": {"status":"DONE_INITIAL_UPDATE","objective":"consolidar única arquitectura canónica dentro de Readme arquitectura Yaiwes"},
+    "CW-COMP-003": {"status":"IN_PROGRESS","objective":"inventariar componentes repo agentes y mapear total/parcial/adaptador/rechazo a destino YAIWES"},
+    "CW-MOVE-004": {"status":"BLOCKED_DIRECTOR_APPROVAL","objective":"prompt Sol GPT GitHub Action para movimientos aprobados"},
+    "CW-CODEX-005": {"status":"BLOCKED_DESTINATION_VERIFICATION","objective":"ID Codex con DSL DAG schema sheriff validator verifier sentinel supervisor judge guardian"},
+    "CW-AUDIT-006": {"status":"BLOCKED","objective":"auditoría post-Codex y VERIFIED_CLOSED"}
+  },
+  "claude_roadmap": {
+    "tasks_1_15":"Fundamentos y limpieza kernel",
+    "tasks_16_35":"Reasoning y governance",
+    "tasks_36_55":"Workflows, pool paralelo y memoria",
+    "tasks_56_70":"Observabilidad, testing y cierre v1",
+    "status":"PENDING_1_TO_1_SOURCE_VERIFICATION"
+  },
+  "closure": "VERIFIED_CLOSED only after source localization, correct destination, wiring, relevant tests, evidence and doc cross-check"
 }
