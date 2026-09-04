@@ -1,0 +1,97 @@
+{
+  "schema": "yaiwes.normal-git-split.v1",
+  "source_relative_path": "math-shepherd.jsonl",
+  "source_sha256": "bbe67ca2e1d551734e100297349779b597ddfa9fd7655364ea1f99cc23beb4b6",
+  "source_bytes": 793059998,
+  "chunk_max_bytes": 47185920,
+  "parts": [
+    {
+      "name": "part-0001.bin",
+      "bytes": 47185920,
+      "sha256": "881411fdc105426ea981ade5f86674cc9cb58d36f3330cae74221e22c1859b04"
+    },
+    {
+      "name": "part-0002.bin",
+      "bytes": 47185920,
+      "sha256": "e2b165af6627b59e8786796d710dea8d37754a6155dd3e5a2d4adcc8ac9fe023"
+    },
+    {
+      "name": "part-0003.bin",
+      "bytes": 47185920,
+      "sha256": "63cbcc8e049ad7b26db6aebd9470bbb868f85e829729dfc0e26f5811520ca566"
+    },
+    {
+      "name": "part-0004.bin",
+      "bytes": 47185920,
+      "sha256": "ed0e3a4ce82b9fa06e4bf105e0814c36fb60f3eabffceef2c96c74341a36de3e"
+    },
+    {
+      "name": "part-0005.bin",
+      "bytes": 47185920,
+      "sha256": "70e9efda9dda9bd54060b9d3a80ffae84123ace647f8029941d47609e4485c29"
+    },
+    {
+      "name": "part-0006.bin",
+      "bytes": 47185920,
+      "sha256": "d0706ca1dcc57114fb9e4a87197ab51b66b632554844ebcba3fed39b5a445092"
+    },
+    {
+      "name": "part-0007.bin",
+      "bytes": 47185920,
+      "sha256": "e7b9aa3071223b162d704f81fa0bac741d2845922230492af34f266e4eefdd57"
+    },
+    {
+      "name": "part-0008.bin",
+      "bytes": 47185920,
+      "sha256": "409d24f16715cacfed5b74a3ee44be77afd7af04c08734abf538b94129dea67e"
+    },
+    {
+      "name": "part-0009.bin",
+      "bytes": 47185920,
+      "sha256": "76dd142ecbfb25604662004340a93615ee206b5775d89388cdd271af41ad4012"
+    },
+    {
+      "name": "part-0010.bin",
+      "bytes": 47185920,
+      "sha256": "ccddf25e7a306abec0d374dfb9827d4c19a37a4ce29ca4a1182316c7e0c54218"
+    },
+    {
+      "name": "part-0011.bin",
+      "bytes": 47185920,
+      "sha256": "72fb196ca5d042a6b3cdb5e8b7db97312f02099d2caf0e1b65b96da3417c0b43"
+    },
+    {
+      "name": "part-0012.bin",
+      "bytes": 47185920,
+      "sha256": "eb3dea955b3e81e694ff2daf7a2d470c6797bc5f4574c685996295765466d36d"
+    },
+    {
+      "name": "part-0013.bin",
+      "bytes": 47185920,
+      "sha256": "53d51e5ba825c281fb832635a2dc43e447dda086a3ab03cc922d1d5f32392603"
+    },
+    {
+      "name": "part-0014.bin",
+      "bytes": 47185920,
+      "sha256": "df0916df1ba3798257345f88a10f4d28f0323dc8ff2fffe25fc94c85d4f3bd62"
+    },
+    {
+      "name": "part-0015.bin",
+      "bytes": 47185920,
+      "sha256": "7b219cebc35b6d11bcad2a8cf5c472a4552295605c5d982d664817f647b0feb0"
+    },
+    {
+      "name": "part-0016.bin",
+      "bytes": 47185920,
+      "sha256": "fb3e1cc4414a0a623bc35b46700c133bc7362025868732b2d2c1b23fdf5628b6"
+    },
+    {
+      "name": "part-0017.bin",
+      "bytes": 38085278,
+      "sha256": "40705de2c087e428b4d7ffe82f2a85bd34ff5896de63331f1a9d7c8227bb0d1f"
+    }
+  ],
+  "reconstruction": "concatenate parts in listed order",
+  "recovery_source": "https://huggingface.co/datasets/peiyi9979/Math-Shepherd",
+  "recovery_source_commit": "c6042b88f2050c0ff35587de21185a8476176a2a"
+}

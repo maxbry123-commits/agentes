@@ -1,0 +1,19 @@
+{
+  "schema": "yaiwes.dataset.pointer-recovery.v1",
+  "slug": "Math-Shepherd",
+  "policy": "NO_GIT_LFS",
+  "pointer_evidence": "source ZIP members",
+  "recovery_source": "https://huggingface.co/datasets/peiyi9979/Math-Shepherd",
+  "recovery_source_commit": "c6042b88f2050c0ff35587de21185a8476176a2a",
+  "files": [
+    {
+      "path": "math-shepherd.jsonl",
+      "mode": "verified_split",
+      "bytes": 793059998,
+      "sha256": "bbe67ca2e1d551734e100297349779b597ddfa9fd7655364ea1f99cc23beb4b6",
+      "parts": 17,
+      "status": "RECOVERED"
+    }
+  ],
+  "verdict": "VERIFIED"
+}

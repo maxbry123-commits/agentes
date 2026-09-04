@@ -1,0 +1,62 @@
+{
+  "schema": "yaiwes.normal-git-split.v1",
+  "source_relative_path": "prm800k/data/phase2_train.jsonl",
+  "source_sha256": "1110237feeb51d1bc200cb37b8f965cfdc1036eac7d506094049366fe7dc1089",
+  "source_bytes": 456135365,
+  "chunk_max_bytes": 47185920,
+  "parts": [
+    {
+      "name": "part-0001.bin",
+      "bytes": 47185920,
+      "sha256": "61ccd740fe039dc04a4be5c0257b7b04fc2a1b20fdc90fa4a3a7de01d224bd58"
+    },
+    {
+      "name": "part-0002.bin",
+      "bytes": 47185920,
+      "sha256": "fa4de021f78fa48d3b2943daf0e32c34fa2e1e4cfa16871162d1eed17fbf9695"
+    },
+    {
+      "name": "part-0003.bin",
+      "bytes": 47185920,
+      "sha256": "5874ab4bce42e61cd06ebb23b56525d0465595721196b8e857e0fa5aa4d70cbe"
+    },
+    {
+      "name": "part-0004.bin",
+      "bytes": 47185920,
+      "sha256": "4812b1a4697f864a058d1db45f4bc4b875c2acf7a719af76d102122c6534afcb"
+    },
+    {
+      "name": "part-0005.bin",
+      "bytes": 47185920,
+      "sha256": "38998e18b9d4bf0606d9ae15eefe475e1862990dc0818d9450224bc8fd151db8"
+    },
+    {
+      "name": "part-0006.bin",
+      "bytes": 47185920,
+      "sha256": "e5626dc5145ed1f93e4f790523f0069f45218b821fe56e23e0d85d20427ec3ee"
+    },
+    {
+      "name": "part-0007.bin",
+      "bytes": 47185920,
+      "sha256": "d8cd35730e6e3077c115a3128b3007710b8cefa783cc9b2f7966f8734bf77fea"
+    },
+    {
+      "name": "part-0008.bin",
+      "bytes": 47185920,
+      "sha256": "97356641f5a82abd2b76da2643757372eb2972114482a991abfc481f1431f6fc"
+    },
+    {
+      "name": "part-0009.bin",
+      "bytes": 47185920,
+      "sha256": "4007dd9370fc8cfee127291e922abec4c940dd0d3af655c1097dbddb3a5fbd73"
+    },
+    {
+      "name": "part-0010.bin",
+      "bytes": 31462085,
+      "sha256": "f28f972f8ee88fa2b6f7b179dfbad685a4d426936818b22bc3bff51841d090c6"
+    }
+  ],
+  "reconstruction": "concatenate parts in listed order",
+  "recovery_source": "https://huggingface.co/datasets/Mai0313/prm800k",
+  "recovery_source_commit": "6d38cda87e33f59d2a7ec63c3002984ed4f8e98b"
+}
