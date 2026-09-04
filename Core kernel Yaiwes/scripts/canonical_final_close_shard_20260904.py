@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import argparse, hashlib, sys
+import argparse, hashlib, os, sys
 import canonical_final_close_20260904 as c
 
 def install_filter(index,count):
@@ -25,6 +25,8 @@ def main():
     if a.shard_count<1 or not 0<=a.shard_index<a.shard_count: return 2
     install_filter(a.shard_index,a.shard_count)
     if a.emit_sparse: c.emit_sparse(); return 0
-    if a.repair: return c.repair_all()
+    if a.repair:
+        os.environ['GITHUB_RUN_ID']=os.environ.get('GITHUB_RUN_ID','local')+f'-s{a.shard_index}'
+        return c.repair_all()
     return 2
 if __name__=='__main__': sys.exit(main())
