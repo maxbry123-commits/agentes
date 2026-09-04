@@ -1,50 +1,141 @@
 {
-  "schema_version": "1.2",
-  "updated_at": "2026-09-03T19:41:00-05:00",
+  "schema_version": "1.3",
+  "updated_at": "2026-09-03T20:42:00-05:00",
   "root": "Readme arquitectura Yaiwes",
   "write_boundary": "ONLY_THIS_ROOT",
-  "canonical_architecture": "Readme arquitectura Yaiwes/README-ARQUITECTURA-FUSIONADA-YAIWES-XRAY-2026-09-01.md",
-  "parallel_architecture_deleted": true,
-  "phase": "FORENSIC_XRAY_CROSSCHECK_AND_COMPONENT_INVENTORY",
+  "canonical_architecture": "Readme arquitectura Yaiwes/README.md",
+  "architecture_policy": "ONLY_CANONICAL_README_EDITABLE_FOR_ARCHITECTURE",
+  "phase": "FORENSIC_XRAY_COMPONENT_MAPPING",
   "director_input_policy": "VERBATIM_NO_SUMMARY_NO_REINTERPRETATION",
-  "director_input_verbatim_latest": "Acruliza la arquitectura con los documentos que te di del lote 1 y las indicaciones de Claude y tú aditoria de toda la raíz \n\nY escribes luego tus notas y lista de tarea fuera de la arquitectura las tus notas y instrucciones y las instrucciones de Claude 1 a 1 imput block leer literal de Claude en el Craxy wall \n\nInicia y me das\n\nEnlace 1\n\n📂 Readme arquitectura Yaiwes \n\nEnlace 2 \n\n📂 Craxy wall stated JSON bitácora notas gpt sol Lina Codex claude grock \n\nPara revisar",
+  "director_input_literal_file": "Crazy Wall Orquestador/INPUT-DIRECTOR-LITERAL.md",
+  "claude_input_literal_root": "Crazy Wall Orquestador/INPUT-CLAUDE-LITERAL/",
+  "master_plan": "Crazy Wall Orquestador/PLAN-MAESTRO-DIRECTOR-CLAUDE.md",
+  "architecture_task_list_moved_out": true,
   "sources": {
     "architecture_lot_1": "Documentos arquitectura Yaiwes lote 1",
     "claude_instructions": "Documentos proyectos Yaiwes instrucciones de Claude",
-    "claude_blocks_verified": ["01_hoja_de_ruta_fundamentos_limpieza.md", "02_hoja_de_ruta_razonamiento_gobernanza.md", "03_hoja_de_ruta_workflows_pool_memoria.md", "04_hoja_de_ruta_observabilidad_cierre.md", "08_protocolo_cierre_kernel_simple.md", "09_guia_decision_integrar_codigo_kernel.md"]
-  },
-  "claude_literal_source_policy": "Los documentos originales de Claude permanecen intactos en su carpeta. El Crazy Wall referencia esos archivos como input literal; ninguna paráfrasis sustituye al original.",
-  "forensic_notes_sol": [
-    "La arquitectura paralela creada por error fue eliminada.",
-    "La arquitectura base original fue preservada como fuente y consolidada dentro de la raíz canónica Readme arquitectura Yaiwes.",
-    "Claude define tareas 1-70 en cuatro bloques; no se marcará ninguna cerrada sin verificación contra fuente y tests.",
-    "Claude añade gate Nivel A: reception/task -> decision -> execution -> evidence -> closure antes de ampliar Nivel B.",
-    "El Lote 1 se trata como fuente arquitectónica/capacidades; documentos no equivalen a implementación.",
-    "El árbol main contiene numerosos workflows de descarga/relocalización, por lo que el inventario de componentes existentes precede a nuevas descargas.",
-    "Las afirmaciones sobre Enchufe Universal siguen DECLARADO_NO_VERIFICADO hasta localizar símbolos en código."
-  ],
-  "agents": {
-    "gpt_sol_orquestador": {"state":"ACTIVE","next":"inventario forense de componentes y cross-check código"},
-    "sol_programacion": {"state":"WAITING_APPROVAL","next":"código quirúrgico solo tras ID aprobado"},
-    "luna": {"state":"WAITING_TASK_ID","next":"auditoría/investigación asignada"},
-    "codex_1": {"state":"WAITING_TASK_ID","next":"ejecución determinista DSL/DAG/schema"},
-    "claude": {"state":"SOURCE_OF_INSTRUCTIONS","next":"sus documentos se leen literalmente 1:1"},
-    "grok": {"state":"WAITING_TASK_ID","next":"investigación/segunda opinión de componentes cuando se asigne"}
-  },
-  "task_list": {
-    "CW-XRAY-001": {"status":"IN_PROGRESS","objective":"cross-check Lote 1 + Claude + código fuente"},
-    "CW-ARCH-002": {"status":"DONE_INITIAL_UPDATE","objective":"consolidar única arquitectura canónica dentro de Readme arquitectura Yaiwes"},
-    "CW-COMP-003": {"status":"IN_PROGRESS","objective":"inventariar componentes repo agentes y mapear total/parcial/adaptador/rechazo a destino YAIWES"},
-    "CW-MOVE-004": {"status":"BLOCKED_DIRECTOR_APPROVAL","objective":"prompt Sol GPT GitHub Action para movimientos aprobados"},
-    "CW-CODEX-005": {"status":"BLOCKED_DESTINATION_VERIFICATION","objective":"ID Codex con DSL DAG schema sheriff validator verifier sentinel supervisor judge guardian"},
-    "CW-AUDIT-006": {"status":"BLOCKED","objective":"auditoría post-Codex y VERIFIED_CLOSED"}
+    "claude_literal_copies": [
+      "01_hoja_de_ruta_fundamentos_limpieza.md",
+      "02_hoja_de_ruta_razonamiento_gobernanza.md",
+      "03_hoja_de_ruta_workflows_pool_memoria.md",
+      "04_hoja_de_ruta_observabilidad_cierre.md",
+      "05_arquitectura_completa_fables.md",
+      "06_componentes_open_source_investigados.md",
+      "07_hoja_de_ruta_loops_multiapi_memoria_chat.md",
+      "08_protocolo_cierre_kernel_simple.md",
+      "09_guia_decision_integrar_codigo_kernel.md"
+    ]
   },
   "claude_roadmap": {
-    "tasks_1_15":"Fundamentos y limpieza kernel",
-    "tasks_16_35":"Reasoning y governance",
-    "tasks_36_55":"Workflows, pool paralelo y memoria",
-    "tasks_56_70":"Observabilidad, testing y cierre v1",
-    "status":"PENDING_1_TO_1_SOURCE_VERIFICATION"
+    "tasks_1_15": "Fundamentos y limpieza kernel",
+    "tasks_16_35": "Reasoning y governance",
+    "tasks_36_55": "Workflows, pool paralelo y memoria",
+    "tasks_56_70": "Observabilidad, testing y cierre v1",
+    "tasks_71_90": "Loops, Multi-API, memoria 20M y chat",
+    "literal_status": "COPIED_1_TO_1_IN_CRAZY_WALL",
+    "execution_status": "REQUIRES_SOURCE_VERIFICATION_PER_TASK"
   },
-  "closure": "VERIFIED_CLOSED only after source localization, correct destination, wiring, relevant tests, evidence and doc cross-check"
+  "forensic_findings": {
+    "goal_lock": {
+      "status": "REAL_REUSE_DO_NOT_REWRITE",
+      "path": "extensions/wordflow/engine/goal_lock.py",
+      "evidence": "GoalLock immutable contract, create_goal_lock, verify_lock_integrity, validate_against_lock"
+    },
+    "wordflow_kernel_checkpoint": {
+      "status": "REAL_PARTIAL_WIRING",
+      "path": "extensions/wordflow_kernel/checkpoint.py"
+    },
+    "wordflow_kernel_registry": {
+      "status": "REAL_PARTIAL_WIRING",
+      "path": "extensions/wordflow_kernel/engine_registry.py"
+    },
+    "wordflow_kernel_fail_closed": {
+      "status": "REAL_PARTIAL_WIRING",
+      "path": "extensions/wordflow_kernel/fail_closed.py"
+    },
+    "ficha_v2": {
+      "status": "REAL",
+      "path": "extensions/wordflow_kernel/ficha.v2.json"
+    },
+    "bootstrap": {
+      "status": "PARTIAL_CANONICAL_UNRESOLVED",
+      "paths_seen": ["extensions/wordflow_kernel/bootstrap_fake.py", "extensions/wordflow_kernel/bootstrap_multi.py", "extensions/wordflow_kernel/bootstrap_v1.py"]
+    },
+    "validator_v2": "DECLARED_NOT_VERIFIED_EXPECTED_PATH_404",
+    "UniversalPluginBus": "DECLARED_NOT_VERIFIED_EXACT_SEARCH_NO_MATCH",
+    "ContractGenerator": "DECLARED_NOT_VERIFIED_EXACT_SEARCH_NO_MATCH",
+    "AdapterFactory": "DECLARED_NOT_VERIFIED_EXACT_SEARCH_NO_MATCH",
+    "PluginRegistry": "DECLARED_NOT_VERIFIED_EXACT_SEARCH_NO_MATCH",
+    "mission_py": "NOT_LOCATED_BY_NOMINAL_SEARCH",
+    "global_verdict": "FAIL_CLOSED_PARTIAL"
+  },
+  "architecture_update": {
+    "status": "UPDATED",
+    "task_tables_removed": true,
+    "lote_1_integrated_as_architecture_source": true,
+    "claude_01_09_integrated_as_architecture_source": true,
+    "current_source_audit_integrated": true,
+    "important_correction": "Claude 08 says create goal_lock.py, but current source contains a real implementation; architecture mandates reuse/reference instead of rewrite"
+  },
+  "agents": {
+    "gpt_sol_orquestador": {
+      "state": "ACTIVE",
+      "next": "complete component inventory and produce first component-to-destination integration map"
+    },
+    "sol_programacion": {
+      "state": "WAITING_APPROVAL",
+      "next": "surgical code only after approved task ID"
+    },
+    "luna": {
+      "state": "WAITING_TASK_ID",
+      "next": "forensic comparison/integration research when assigned"
+    },
+    "codex_1": {
+      "state": "WAITING_DESTINATION_VERIFICATION",
+      "next": "deterministic DSL/DAG/schema wiring after movement verification"
+    },
+    "claude": {
+      "state": "LITERAL_SOURCE_IMPORTED",
+      "next": "each instruction cross-checked against source before execution"
+    },
+    "grok": {
+      "state": "WAITING_TASK_ID",
+      "next": "component/OSS second opinion where needed"
+    }
+  },
+  "task_list": {
+    "CW-XRAY-001": {
+      "status": "IN_PROGRESS",
+      "objective": "cross-check Lote 1 + Claude + current source code"
+    },
+    "CW-ARCH-002": {
+      "status": "DONE",
+      "objective": "update only canonical Readme arquitectura Yaiwes/README.md and remove task backlog from architecture"
+    },
+    "CW-LITERAL-003": {
+      "status": "DONE",
+      "objective": "store Director and Claude inputs literally 1:1 in Crazy Wall"
+    },
+    "CW-PLAN-004": {
+      "status": "DONE",
+      "objective": "master plan based on Director + Claude"
+    },
+    "CW-COMP-005": {
+      "status": "IN_PROGRESS",
+      "objective": "inventory all repo components and classify TOTAL/PARTIAL/ADAPTER/REJECT with exact YAIWES destination"
+    },
+    "CW-MOVE-006": {
+      "status": "BLOCKED_DIRECTOR_APPROVAL",
+      "objective": "Sol GPT GitHub Action prompt for approved file movements"
+    },
+    "CW-CODEX-007": {
+      "status": "BLOCKED_DESTINATION_VERIFICATION",
+      "objective": "Codex deterministic DSL DAG schema sheriff validator verifier sentinel supervisor judge guardian wiring"
+    },
+    "CW-AUDIT-008": {
+      "status": "BLOCKED",
+      "objective": "post-Codex forensic audit and VERIFIED_CLOSED"
+    }
+  },
+  "closure": "VERIFIED_CLOSED only after source localization, approved destination, physical move verification, surgical wiring, relevant tests, evidence and document cross-check"
 }
