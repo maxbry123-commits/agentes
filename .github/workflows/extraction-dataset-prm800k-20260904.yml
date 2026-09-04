@@ -1,0 +1,69 @@
+name: Extraction dataset PRM800K 2026-09-04
+run-name: Dataset PRM800K • ${{ github.run_id }}
+on:
+  workflow_dispatch:
+  repository_dispatch:
+    types: [extraction-dataset-prm800k]
+  push:
+    branches: [main]
+    paths: ['.github/workflows/extraction-dataset-prm800k-20260904.yml']
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: extraction-dataset-prm800k-main
+  cancel-in-progress: false
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 480
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/**
+            /forensics/extraction/**
+            /Agente core kernel Yaiwes principal/PRM800K_*.zip
+            /Agente core kernel Yaiwes principal/PRM800K/**
+      - name: NO-LFS runner policy
+        run: |
+          git config --local filter.lfs.clean cat
+          git config --local filter.lfs.smudge cat
+          git config --local --unset-all filter.lfs.process || true
+          git config --local filter.lfs.required false
+      - name: Wait for active salvage writers
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 180); do
+            a=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?status=in_progress&per_page=100" --jq '[.workflow_runs[] | select(.path | startswith(".github/workflows/extraction-lfs-salvage-shard-"))] | length')
+            q=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?status=queued&per_page=100" --jq '[.workflow_runs[] | select(.path | startswith(".github/workflows/extraction-lfs-salvage-shard-"))] | length')
+            [ $((a+q)) -eq 0 ] && exit 0
+            sleep 30
+          done
+          exit 75
+      - name: Recover and verify exact dataset bytes
+        run: |
+          set -euo pipefail
+          git fetch origin main && git reset --hard origin/main
+          python3 scripts/extract_dataset_independent_repair_20260904.py --slug PRM800K
+      - name: Publish recovery
+        run: |
+          set -euo pipefail
+          git add -A -- 'Agente core kernel Yaiwes principal/PRM800K' forensics/extraction
+          python3 -c 'import subprocess,sys,pathlib; m=b"version https://git-lfs.github.com/spec/v1\n"; ps=subprocess.check_output(["git","diff","--cached","--name-only","-z"]).split(b"\0"); bad=[str(pathlib.Path(p.decode("utf-8","surrogateescape"))) for p in ps if p and pathlib.Path(p.decode("utf-8","surrogateescape")).is_file() and pathlib.Path(p.decode("utf-8","surrogateescape")).read_bytes()[:1024].startswith(m)]; print(bad); sys.exit(73 if bad else 0)'
+          git diff --cached --quiet && exit 0
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m "fix(extraction): recover PRM800K dataset [run ${GITHUB_RUN_ID}]"
+          for a in 1 2 3 4 5; do git fetch origin main && git rebase --autostash origin/main && git push --no-verify origin HEAD:main && exit 0; sleep $((a*10)); done
+          exit 41
+      - name: Independent read-back
+        run: |
+          git fetch origin main && git reset --hard origin/main
+          python3 scripts/extract_dataset_independent_repair_20260904.py --slug PRM800K --verify-only
