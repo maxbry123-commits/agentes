@@ -1,0 +1,68 @@
+name: Yaiwes canonical closure watchdog
+run-name: Yaiwes canonical watchdog • ${{ github.run_id }}
+on:
+  workflow_dispatch:
+  repository_dispatch: {types: [canonical-watchdog-round]}
+  push:
+    branches: [main]
+    paths: ['.github/workflows/canonical-watchdog.yml']
+permissions: {contents: write, actions: write}
+concurrency: {group: yaiwes-canonical-watchdog, cancel-in-progress: false}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 480
+    steps:
+      - name: Wait for canonical workers
+        env: {GH_TOKEN: '${{ github.token }}'}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for n in $(seq 1 180); do
+            active=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?status=in_progress&per_page=100" --paginate --jq "[.workflow_runs[] | select(.id != ${GITHUB_RUN_ID}) | select(.path | startswith(\".github/workflows/canonical-\"))] | length")
+            queued=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?status=queued&per_page=100" --paginate --jq "[.workflow_runs[] | select(.id != ${GITHUB_RUN_ID}) | select(.path | startswith(\".github/workflows/canonical-\"))] | length")
+            if [ $((active+queued)) -eq 0 ]; then exit 0; fi
+            echo "WAIT canonical=$((active+queued))"
+            sleep 30
+          done
+          exit 75
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /Core kernel Yaiwes/Componentes recuperados A/**
+            /Core kernel Yaiwes/Componentes recuperados B/**
+            /Core kernel Yaiwes/scripts/**
+            /Documentos proyectos Yaiwes/Evidencias extracción histórica/**
+      - name: Final canonical audit and loop
+        env: {GH_TOKEN: '${{ github.token }}'}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ln -s 'Core kernel Yaiwes/Componentes recuperados A' 'Agente core kernel Yaiwes principal'
+          ln -s 'Core kernel Yaiwes/Componentes recuperados B' 'core kernel Yaiwes principal'
+          mkdir -p forensics
+          ln -s '../Documentos proyectos Yaiwes/Evidencias extracción histórica/extraction' forensics/extraction
+          python3 'Core kernel Yaiwes/scripts/extract_guardian_repair_20260903.py' --audit-only | tee /tmp/audit-result.json
+          read -r GAPS RETRYABLE BLOCKED <<< "$(python3 -c 'import json; d=json.load(open("/tmp/audit-result.json")); c=d.get("counts",{}); print(c.get("remaining",0),c.get("retryable",0),c.get("blocked",0))')"
+          rm -f 'Agente core kernel Yaiwes principal' 'core kernel Yaiwes principal'
+          rm -rf forensics
+          git add -A -- 'Documentos proyectos Yaiwes/Evidencias extracción histórica'
+          if ! git diff --cached --quiet; then
+            git config user.name github-actions[bot]
+            git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+            git commit -m "audit(extraction): canonical watchdog [run ${GITHUB_RUN_ID}]"
+            for a in 1 2 3 4 5; do git fetch origin main && git rebase --autostash origin/main && git push --no-verify origin HEAD:main && break; sleep $((a*10)); done
+          fi
+          echo "REMAINING_GAPS=$GAPS RETRYABLE_GAPS=$RETRYABLE BLOCKED_GAPS=$BLOCKED"
+          if [ "$GAPS" -eq 0 ]; then echo VERIFIED_CLOSED; exit 0; fi
+          [ "$RETRYABLE" -eq 0 ] || gh api --method POST "repos/${GITHUB_REPOSITORY}/dispatches" -f event_type=canonical-retry-round
+          if [ "$BLOCKED" -gt 0 ]; then
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/dispatches" -f event_type=canonical-lfs-round
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/dispatches" -f event_type=canonical-dataset-round
+          fi
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/dispatches" -f event_type=canonical-watchdog-round

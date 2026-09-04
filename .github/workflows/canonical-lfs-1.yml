@@ -1,0 +1,14 @@
+name: Yaiwes canonical LFS salvage 1
+on:
+  workflow_dispatch:
+  repository_dispatch: {types: [canonical-lfs-round]}
+  push:
+    branches: [main]
+    paths: ['.github/workflows/canonical-lfs-1.yml']
+permissions: {contents: write, actions: write}
+concurrency: {group: yaiwes-canonical-lfs-1, cancel-in-progress: false}
+jobs:
+  run:
+    uses: ./.github/workflows/_canonical-worker.yml
+    with: {mode: lfs, shard_index: 1, shard_count: 3}
+    permissions: {contents: write, actions: write}

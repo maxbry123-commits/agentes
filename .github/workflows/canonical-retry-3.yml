@@ -1,0 +1,14 @@
+name: Yaiwes canonical retry 3
+on:
+  workflow_dispatch:
+  repository_dispatch: {types: [canonical-retry-round]}
+  push:
+    branches: [main]
+    paths: ['.github/workflows/canonical-retry-3.yml']
+permissions: {contents: write, actions: write}
+concurrency: {group: yaiwes-canonical-retry-3, cancel-in-progress: false}
+jobs:
+  run:
+    uses: ./.github/workflows/_canonical-worker.yml
+    with: {mode: retry, shard_index: 3, shard_count: 4}
+    permissions: {contents: write, actions: write}

@@ -1,0 +1,1540 @@
+{
+  "schema": "yaiwes.extraction.guardian.v2",
+  "run_id": "33812735496",
+  "archive_groups": 287,
+  "processed": [
+    {
+      "slug": "MCP-Servers",
+      "target": "core kernel Yaiwes principal/MCP-Servers",
+      "status": "EXTRACTED_VERIFIED",
+      "parts": 1,
+      "part_sha256": {
+        "core kernel Yaiwes principal/MCP-Servers_0001.zip": "b663c6590666b3208424507fe4445f8d07ea2ebf5758638f48b6d750a11bbfac"
+      },
+      "copied": 152,
+      "mirrors": [],
+      "files": 152,
+      "bytes": 1475470,
+      "tree_sha256": "6cdbfb8727b80dc7df6227ec03c80f51d0f1eda1ef184508e6173111c62457c5"
+    },
+    {
+      "slug": "Guidance",
+      "target": "core kernel Yaiwes principal/Guidance",
+      "status": "EXTRACTED_VERIFIED",
+      "parts": 2,
+      "part_sha256": {
+        "core kernel Yaiwes principal/Guidance_0001.zip": "11fea971bc90317768b3a9fa3d82598161ad6843144e4f9c62708680c379083e",
+        "core kernel Yaiwes principal/Guidance_0002.zip": "2501d75f40c141bc3327cbcb35d08accc6b96f02c847ac3e2a165cc897d99b8c"
+      },
+      "copied": 326,
+      "mirrors": [],
+      "files": 326,
+      "bytes": 38251533,
+      "tree_sha256": "fc0dca8420c90b67eb98f69b1552e28ba8dcb06893a22075da21036c9e09d5d1"
+    },
+    {
+      "slug": "Huginn",
+      "target": "core kernel Yaiwes principal/Huginn",
+      "status": "EXTRACTED_VERIFIED",
+      "parts": 1,
+      "part_sha256": {
+        "core kernel Yaiwes principal/Huginn_0001.zip": "e9ece90a8f26d48cb6e0ee2e665751174912429317b21ea5f625d2aced1e209e"
+      },
+      "copied": 82,
+      "mirrors": [],
+      "files": 82,
+      "bytes": 1473656,
+      "tree_sha256": "a828e83f6ab9052706aff245be29190840d5146196f9c17d0a8fc27937c27bc6"
+    },
+    {
+      "slug": "XState",
+      "target": "core kernel Yaiwes principal/XState",
+      "status": "EXTRACTED_VERIFIED",
+      "parts": 1,
+      "part_sha256": {
+        "core kernel Yaiwes principal/XState_0001.zip": "25fd0ca93c12451e3ff07ac89f19edb18963110bec0695a52b8f2be25a54e699"
+      },
+      "copied": 918,
+      "mirrors": [],
+      "files": 918,
+      "bytes": 7599192,
+      "tree_sha256": "6de8a3dc77f5178bb6fd6c02361ad4d963f5c8fb22216cdf36b002062e59330c"
+    },
+    {
+      "slug": "BullMQ",
+      "target": "core kernel Yaiwes principal/BullMQ",
+      "status": "EXTRACTED_VERIFIED",
+      "parts": 1,
+      "part_sha256": {
+        "core kernel Yaiwes principal/BullMQ_0001.zip": "976d0d047ff31feefc03892ef7c70ad04c272360f5ca081eb5f22ae2aca7c2d4"
+      },
+      "copied": 981,
+      "mirrors": [],
+      "files": 981,
+      "bytes": 10475373,
+      "tree_sha256": "fe8244b08a3dba9d50bb513ece59e429570913138dec6f4a9f2364169b82719e"
+    },
+    {
+      "slug": "MCP-TypeScript-SDK",
+      "target": "core kernel Yaiwes principal/MCP-TypeScript-SDK",
+      "status": "EXTRACTED_VERIFIED",
+      "parts": 1,
+      "part_sha256": {
+        "core kernel Yaiwes principal/MCP-TypeScript-SDK_0001.zip": "1560c8ee231d8748d44c647e930ac27d6cd8461813a46bca52bb3588e2d6b361"
+      },
+      "copied": 1132,
+      "mirrors": [],
+      "files": 1132,
+      "bytes": 10303012,
+      "tree_sha256": "43eea8559824e516427c397c67270a7ec238f3c2c8595ddc6d8bf05cddbb33b4"
+    },
+    {
+      "slug": "backoff",
+      "target": "core kernel Yaiwes principal/backoff",
+      "status": "EXTRACTED_VERIFIED",
+      "parts": 1,
+      "part_sha256": {
+        "core kernel Yaiwes principal/backoff_0001.zip": "fc55e431eb8da512b3e1931b53f97a93f62f97dc1b3d3049bfe869992cbcdd8f"
+      },
+      "copied": 28,
+      "mirrors": [],
+      "files": 28,
+      "bytes": 108094,
+      "tree_sha256": "481b8da3973c77780edac9978afef0744484d8b32d6624577758185e0adf53f5"
+    },
+    {
+      "slug": "OpenTelemetry-Collector",
+      "target": "core kernel Yaiwes principal/OpenTelemetry-Collector",
+      "status": "EXTRACTED_VERIFIED",
+      "parts": 1,
+      "part_sha256": {
+        "core kernel Yaiwes principal/OpenTelemetry-Collector_0001.zip": "14fd4190269670c4acd8152c4f91e69c4b5d504e1814b979bb0c7b662e3ff9d4"
+      },
+      "copied": 2814,
+      "mirrors": [],
+      "files": 2814,
+      "bytes": 11257817,
+      "tree_sha256": "f8d467f29609c3fc9c5f19a6ab9eac45e73dd9f4d114357c1ace1efbe0e91540"
+    },
+    {
+      "slug": "Argo-Workflows",
+      "target": "core kernel Yaiwes principal/Argo-Workflows",
+      "status": "EXTRACTED_VERIFIED",
+      "parts": 2,
+      "part_sha256": {
+        "core kernel Yaiwes principal/Argo-Workflows_0001.zip": "49b5d3a9f6f7ed1c870e661a7a41415f9e9fa44cd82014ab84a61818bff7257f",
+        "core kernel Yaiwes principal/Argo-Workflows_0002.zip": "1e889bc7d3000c6aaedcb4a61209478c5f5763c29ac49c4318b7343bd54268ea"
+      },
+      "copied": 3062,
+      "mirrors": [],
+      "files": 3061,
+      "bytes": 83370613,
+      "tree_sha256": "d4ab8eddd9b374f3eaddf7c7b62e97be3d79db372ac939db1b550a06243994f7"
+    },
+    {
+      "slug": "etcd",
+      "target": "core kernel Yaiwes principal/etcd",
+      "status": "EXTRACTED_VERIFIED",
+      "parts": 1,
+      "part_sha256": {
+        "core kernel Yaiwes principal/etcd_0001.zip": "d9d07d4b3cdf7f34aee7e65d09ef459c377d70db1e19451392ec830794914ee4"
+      },
+      "copied": 1499,
+      "mirrors": [],
+      "files": 1499,
+      "bytes": 15164759,
+      "tree_sha256": "71b0e24fff6dafd106ea5730dab9d5a9def1f65da5931a10e680c0f6398026db"
+    }
+  ],
+  "failures": [],
+  "remaining_gaps": [
+    {
+      "slug": "Cerbos",
+      "target": "core kernel Yaiwes principal/Cerbos",
+      "mirror": null
+    },
+    {
+      "slug": "Prometheus-Evaluator-LM",
+      "target": "core kernel Yaiwes principal/Prometheus-Evaluator-LM",
+      "mirror": null
+    },
+    {
+      "slug": "Microsoft-AutoGen",
+      "target": "core kernel Yaiwes principal/Microsoft-AutoGen",
+      "mirror": null
+    },
+    {
+      "slug": "TruLens",
+      "target": "core kernel Yaiwes principal/TruLens",
+      "mirror": null
+    },
+    {
+      "slug": "Microsoft-Agent-Framework",
+      "target": "core kernel Yaiwes principal/Microsoft-Agent-Framework",
+      "mirror": null
+    },
+    {
+      "slug": "AG2",
+      "target": "core kernel Yaiwes principal/AG2",
+      "mirror": null
+    },
+    {
+      "slug": "Guardrails-AI",
+      "target": "core kernel Yaiwes principal/Guardrails-AI",
+      "mirror": null
+    },
+    {
+      "slug": "Syft",
+      "target": "core kernel Yaiwes principal/Syft",
+      "mirror": null
+    },
+    {
+      "slug": "Stamina",
+      "target": "core kernel Yaiwes principal/Stamina",
+      "mirror": null
+    },
+    {
+      "slug": "Cronie",
+      "target": "core kernel Yaiwes principal/Cronie",
+      "mirror": null
+    },
+    {
+      "slug": "VM_logo",
+      "target": "core kernel Yaiwes principal/VM_logo",
+      "mirror": null
+    },
+    {
+      "slug": "APScheduler",
+      "target": "Agente core kernel Yaiwes principal/APScheduler",
+      "mirror": null
+    },
+    {
+      "slug": "Lean4",
+      "target": "Agente core kernel Yaiwes principal/Lean4",
+      "mirror": null
+    },
+    {
+      "slug": "Grafana",
+      "target": "Agente core kernel Yaiwes principal/Grafana",
+      "mirror": null
+    },
+    {
+      "slug": "Ajv",
+      "target": "Agente core kernel Yaiwes principal/Ajv",
+      "mirror": null
+    },
+    {
+      "slug": "Instructor",
+      "target": "Agente core kernel Yaiwes principal/Instructor",
+      "mirror": null
+    },
+    {
+      "slug": "Langfuse",
+      "target": "Agente core kernel Yaiwes principal/Langfuse",
+      "mirror": null
+    },
+    {
+      "slug": "Open-Policy-Agent",
+      "target": "Agente core kernel Yaiwes principal/Open-Policy-Agent",
+      "mirror": null
+    },
+    {
+      "slug": "Cerberus",
+      "target": "Agente core kernel Yaiwes principal/Cerberus",
+      "mirror": null
+    },
+    {
+      "slug": "Self-Refine",
+      "target": "Agente core kernel Yaiwes principal/Self-Refine",
+      "mirror": null
+    },
+    {
+      "slug": "OpenClaw",
+      "target": "Agente core kernel Yaiwes principal/OpenClaw",
+      "mirror": null
+    },
+    {
+      "slug": "LlamaIndex",
+      "target": "Agente core kernel Yaiwes principal/LlamaIndex",
+      "mirror": null
+    },
+    {
+      "slug": "autogen",
+      "target": "Agente core kernel Yaiwes principal/autogen",
+      "mirror": null
+    },
+    {
+      "slug": "Prefect",
+      "target": "Agente core kernel Yaiwes principal/Prefect",
+      "mirror": null
+    },
+    {
+      "slug": "OpenMythos",
+      "target": "Agente core kernel Yaiwes principal/OpenMythos",
+      "mirror": null
+    },
+    {
+      "slug": "Dagster",
+      "target": "Agente core kernel Yaiwes principal/Dagster",
+      "mirror": null
+    },
+    {
+      "slug": "LM-Evaluation-Harness",
+      "target": "Agente core kernel Yaiwes principal/LM-Evaluation-Harness",
+      "mirror": null
+    },
+    {
+      "slug": "crewAI",
+      "target": "Agente core kernel Yaiwes principal/crewAI",
+      "mirror": null
+    },
+    {
+      "slug": "Envoy",
+      "target": "Agente core kernel Yaiwes principal/Envoy",
+      "mirror": null
+    },
+    {
+      "slug": "OpenThoughts",
+      "target": "Agente core kernel Yaiwes principal/OpenThoughts",
+      "mirror": null
+    },
+    {
+      "slug": "Zep",
+      "target": "Agente core kernel Yaiwes principal/Zep",
+      "mirror": null
+    },
+    {
+      "slug": "ThoughtSource",
+      "target": "Agente core kernel Yaiwes principal/ThoughtSource",
+      "mirror": null
+    },
+    {
+      "slug": "Pydantic",
+      "target": "Agente core kernel Yaiwes principal/Pydantic",
+      "mirror": null
+    },
+    {
+      "slug": "SOUL-md",
+      "target": "Agente core kernel Yaiwes principal/SOUL-md",
+      "mirror": null
+    },
+    {
+      "slug": "Cerbos",
+      "target": "Agente core kernel Yaiwes principal/Cerbos",
+      "mirror": null
+    },
+    {
+      "slug": "LiteLLM",
+      "target": "Agente core kernel Yaiwes principal/LiteLLM",
+      "mirror": null
+    },
+    {
+      "slug": "gVisor",
+      "target": "Agente core kernel Yaiwes principal/gVisor",
+      "mirror": null
+    },
+    {
+      "slug": "DeepEval",
+      "target": "Agente core kernel Yaiwes principal/DeepEval",
+      "mirror": null
+    },
+    {
+      "slug": "Apache-Airflow",
+      "target": "Agente core kernel Yaiwes principal/Apache-Airflow",
+      "mirror": null
+    },
+    {
+      "slug": "Inspect-AI",
+      "target": "Agente core kernel Yaiwes principal/Inspect-AI",
+      "mirror": null
+    },
+    {
+      "slug": "OpenAI-Skills",
+      "target": "Agente core kernel Yaiwes principal/OpenAI-Skills",
+      "mirror": null
+    },
+    {
+      "slug": "Promptfoo",
+      "target": "Agente core kernel Yaiwes principal/Promptfoo",
+      "mirror": null
+    },
+    {
+      "slug": "TaskWeaver",
+      "target": "Agente core kernel Yaiwes principal/TaskWeaver",
+      "mirror": null
+    },
+    {
+      "slug": "Z3",
+      "target": "Agente core kernel Yaiwes principal/Z3",
+      "mirror": null
+    },
+    {
+      "slug": "vLLM-Semantic-Router",
+      "target": "Agente core kernel Yaiwes principal/vLLM-Semantic-Router",
+      "mirror": null
+    },
+    {
+      "slug": "PostHog",
+      "target": "Agente core kernel Yaiwes principal/PostHog",
+      "mirror": null
+    },
+    {
+      "slug": "FastMCP",
+      "target": "Agente core kernel Yaiwes principal/FastMCP",
+      "mirror": null
+    },
+    {
+      "slug": "RQ",
+      "target": "Agente core kernel Yaiwes principal/RQ",
+      "mirror": null
+    },
+    {
+      "slug": "Camunda",
+      "target": "Agente core kernel Yaiwes principal/Camunda",
+      "mirror": null
+    },
+    {
+      "slug": "BAML",
+      "target": "Agente core kernel Yaiwes principal/BAML",
+      "mirror": null
+    },
+    {
+      "slug": "Hugging-Face-Skills",
+      "target": "Agente core kernel Yaiwes principal/Hugging-Face-Skills",
+      "mirror": null
+    },
+    {
+      "slug": "LangChain",
+      "target": "Agente core kernel Yaiwes principal/LangChain",
+      "mirror": null
+    },
+    {
+      "slug": "Inngest",
+      "target": "Agente core kernel Yaiwes principal/Inngest",
+      "mirror": null
+    },
+    {
+      "slug": "json-logic-py",
+      "target": "Agente core kernel Yaiwes principal/json-logic-py",
+      "mirror": null
+    },
+    {
+      "slug": "Tree-of-Thoughts",
+      "target": "Agente core kernel Yaiwes principal/Tree-of-Thoughts",
+      "mirror": null
+    },
+    {
+      "slug": "HelpSteer2",
+      "target": "Agente core kernel Yaiwes principal/HelpSteer2",
+      "mirror": null
+    },
+    {
+      "slug": "E2B",
+      "target": "Agente core kernel Yaiwes principal/E2B",
+      "mirror": null
+    },
+    {
+      "slug": "ClawHub",
+      "target": "Agente core kernel Yaiwes principal/ClawHub",
+      "mirror": null
+    },
+    {
+      "slug": "transitions",
+      "target": "Agente core kernel Yaiwes principal/transitions",
+      "mirror": null
+    },
+    {
+      "slug": "AWS-Step-Functions-DS-SDK",
+      "target": "Agente core kernel Yaiwes principal/AWS-Step-Functions-DS-SDK",
+      "mirror": null
+    },
+    {
+      "slug": "Kong",
+      "target": "Agente core kernel Yaiwes principal/Kong",
+      "mirror": null
+    },
+    {
+      "slug": "OpenLLMetry",
+      "target": "Agente core kernel Yaiwes principal/OpenLLMetry",
+      "mirror": null
+    },
+    {
+      "slug": "Trigger-dev",
+      "target": "Agente core kernel Yaiwes principal/Trigger-dev",
+      "mirror": null
+    },
+    {
+      "slug": "RouteLLM",
+      "target": "Agente core kernel Yaiwes principal/RouteLLM",
+      "mirror": null
+    },
+    {
+      "slug": "Flagsmith",
+      "target": "Agente core kernel Yaiwes principal/Flagsmith",
+      "mirror": null
+    },
+    {
+      "slug": "PRM800K",
+      "target": "Agente core kernel Yaiwes principal/PRM800K",
+      "mirror": null
+    },
+    {
+      "slug": "Zen-Engine",
+      "target": "Agente core kernel Yaiwes principal/Zen-Engine",
+      "mirror": null
+    },
+    {
+      "slug": "Semantic-Router",
+      "target": "Agente core kernel Yaiwes principal/Semantic-Router",
+      "mirror": null
+    },
+    {
+      "slug": "Semantic-Kernel",
+      "target": "Agente core kernel Yaiwes principal/Semantic-Kernel",
+      "mirror": null
+    },
+    {
+      "slug": "Cognee",
+      "target": "Agente core kernel Yaiwes principal/Cognee",
+      "mirror": null
+    },
+    {
+      "slug": "Luigi",
+      "target": "Agente core kernel Yaiwes principal/Luigi",
+      "mirror": null
+    },
+    {
+      "slug": "business-rules",
+      "target": "Agente core kernel Yaiwes principal/business-rules",
+      "mirror": null
+    },
+    {
+      "slug": "Flowable",
+      "target": "Agente core kernel Yaiwes principal/Flowable",
+      "mirror": null
+    },
+    {
+      "slug": "TruLens",
+      "target": "Agente core kernel Yaiwes principal/TruLens",
+      "mirror": null
+    },
+    {
+      "slug": "Celery",
+      "target": "Agente core kernel Yaiwes principal/Celery",
+      "mirror": null
+    },
+    {
+      "slug": "Marshmallow",
+      "target": "Agente core kernel Yaiwes principal/Marshmallow",
+      "mirror": null
+    },
+    {
+      "slug": "Dramatiq",
+      "target": "Agente core kernel Yaiwes principal/Dramatiq",
+      "mirror": null
+    },
+    {
+      "slug": "MCP-Python-SDK",
+      "target": "Agente core kernel Yaiwes principal/MCP-Python-SDK",
+      "mirror": null
+    },
+    {
+      "slug": "Soul-Spec-Antonio",
+      "target": "Agente core kernel Yaiwes principal/Soul-Spec-Antonio",
+      "mirror": null
+    },
+    {
+      "slug": "Mem0",
+      "target": "Agente core kernel Yaiwes principal/Mem0",
+      "mirror": null
+    },
+    {
+      "slug": "Dapr",
+      "target": "Agente core kernel Yaiwes principal/Dapr",
+      "mirror": null
+    },
+    {
+      "slug": "Microsoft-Agent-Framework",
+      "target": "Agente core kernel Yaiwes principal/Microsoft-Agent-Framework",
+      "mirror": null
+    },
+    {
+      "slug": "Unleash",
+      "target": "Agente core kernel Yaiwes principal/Unleash",
+      "mirror": null
+    },
+    {
+      "slug": "Prometheus",
+      "target": "Agente core kernel Yaiwes principal/Prometheus",
+      "mirror": null
+    },
+    {
+      "slug": "sqlite-vec",
+      "target": "Agente core kernel Yaiwes principal/sqlite-vec",
+      "mirror": null
+    },
+    {
+      "slug": "Caddy",
+      "target": "Agente core kernel Yaiwes principal/Caddy",
+      "mirror": null
+    },
+    {
+      "slug": "Dagu",
+      "target": "Agente core kernel Yaiwes principal/Dagu",
+      "mirror": null
+    },
+    {
+      "slug": "Huey",
+      "target": "Agente core kernel Yaiwes principal/Huey",
+      "mirror": null
+    },
+    {
+      "slug": "Zod",
+      "target": "Agente core kernel Yaiwes principal/Zod",
+      "mirror": null
+    },
+    {
+      "slug": "NeMo-Guardrails",
+      "target": "Agente core kernel Yaiwes principal/NeMo-Guardrails",
+      "mirror": null
+    },
+    {
+      "slug": "VictoriaMetrics",
+      "target": "Agente core kernel Yaiwes principal/VictoriaMetrics",
+      "mirror": null
+    },
+    {
+      "slug": "Cedar",
+      "target": "Agente core kernel Yaiwes principal/Cedar",
+      "mirror": null
+    },
+    {
+      "slug": "Git",
+      "target": "Agente core kernel Yaiwes principal/Git",
+      "mirror": null
+    },
+    {
+      "slug": "Haystack",
+      "target": "Agente core kernel Yaiwes principal/Haystack",
+      "mirror": null
+    },
+    {
+      "slug": "Kata-Containers",
+      "target": "Agente core kernel Yaiwes principal/Kata-Containers",
+      "mirror": null
+    },
+    {
+      "slug": "Apache-APISIX",
+      "target": "Agente core kernel Yaiwes principal/Apache-APISIX",
+      "mirror": null
+    },
+    {
+      "slug": "Cloudflare-Workers-SDK",
+      "target": "Agente core kernel Yaiwes principal/Cloudflare-Workers-SDK",
+      "mirror": null
+    },
+    {
+      "slug": "OpenR",
+      "target": "Agente core kernel Yaiwes principal/OpenR",
+      "mirror": null
+    },
+    {
+      "slug": "Coconut",
+      "target": "Agente core kernel Yaiwes principal/Coconut",
+      "mirror": null
+    },
+    {
+      "slug": "Outlines",
+      "target": "Agente core kernel Yaiwes principal/Outlines",
+      "mirror": null
+    },
+    {
+      "slug": "Burr",
+      "target": "Agente core kernel Yaiwes principal/Burr",
+      "mirror": null
+    },
+    {
+      "slug": "dspy",
+      "target": "Agente core kernel Yaiwes principal/dspy",
+      "mirror": null
+    },
+    {
+      "slug": "Phoenix",
+      "target": "Agente core kernel Yaiwes principal/Phoenix",
+      "mirror": null
+    },
+    {
+      "slug": "Graph-of-Thoughts",
+      "target": "Agente core kernel Yaiwes principal/Graph-of-Thoughts",
+      "mirror": null
+    },
+    {
+      "slug": "Azure-Durable-Functions",
+      "target": "Agente core kernel Yaiwes principal/Azure-Durable-Functions",
+      "mirror": null
+    },
+    {
+      "slug": "OpenCoconut",
+      "target": "Agente core kernel Yaiwes principal/OpenCoconut",
+      "mirror": null
+    },
+    {
+      "slug": "Letta",
+      "target": "Agente core kernel Yaiwes principal/Letta",
+      "mirror": null
+    },
+    {
+      "slug": "txtai",
+      "target": "Agente core kernel Yaiwes principal/txtai",
+      "mirror": null
+    },
+    {
+      "slug": "Chroma",
+      "target": "Agente core kernel Yaiwes principal/Chroma",
+      "mirror": null
+    },
+    {
+      "slug": "OpenThoughts-Agent",
+      "target": "Agente core kernel Yaiwes principal/OpenThoughts-Agent",
+      "mirror": null
+    },
+    {
+      "slug": "SoulSpec-clawsouls",
+      "target": "Agente core kernel Yaiwes principal/SoulSpec-clawsouls",
+      "mirror": null
+    },
+    {
+      "slug": "Restate",
+      "target": "Agente core kernel Yaiwes principal/Restate",
+      "mirror": null
+    },
+    {
+      "slug": "Temporal",
+      "target": "Agente core kernel Yaiwes principal/Temporal",
+      "mirror": null
+    },
+    {
+      "slug": "Portkey-AI-Gateway",
+      "target": "Agente core kernel Yaiwes principal/Portkey-AI-Gateway",
+      "mirror": null
+    },
+    {
+      "slug": "Guidance",
+      "target": "Agente core kernel Yaiwes principal/Guidance",
+      "mirror": null
+    },
+    {
+      "slug": "Huginn",
+      "target": "Agente core kernel Yaiwes principal/Huginn",
+      "mirror": null
+    },
+    {
+      "slug": "Tenacity",
+      "target": "Agente core kernel Yaiwes principal/Tenacity",
+      "mirror": null
+    },
+    {
+      "slug": "OpenAI-Evals",
+      "target": "Agente core kernel Yaiwes principal/OpenAI-Evals",
+      "mirror": null
+    },
+    {
+      "slug": "MCP-Go",
+      "target": "Agente core kernel Yaiwes principal/MCP-Go",
+      "mirror": null
+    },
+    {
+      "slug": "Math-Shepherd",
+      "target": "Agente core kernel Yaiwes principal/Math-Shepherd",
+      "mirror": null
+    },
+    {
+      "slug": "NVIDIA-Garak",
+      "target": "Agente core kernel Yaiwes principal/NVIDIA-Garak",
+      "mirror": null
+    },
+    {
+      "slug": "SWE-agent",
+      "target": "Agente core kernel Yaiwes principal/SWE-agent",
+      "mirror": null
+    },
+    {
+      "slug": "nsjail",
+      "target": "Agente core kernel Yaiwes principal/nsjail",
+      "mirror": null
+    },
+    {
+      "slug": "Graphiti",
+      "target": "Agente core kernel Yaiwes principal/Graphiti",
+      "mirror": null
+    },
+    {
+      "slug": "Ouroboros",
+      "target": "Agente core kernel Yaiwes principal/Ouroboros",
+      "mirror": null
+    },
+    {
+      "slug": "ProcessBench",
+      "target": "Agente core kernel Yaiwes principal/ProcessBench",
+      "mirror": null
+    },
+    {
+      "slug": "OpenTelemetry-Collector",
+      "target": "Agente core kernel Yaiwes principal/OpenTelemetry-Collector",
+      "mirror": null
+    },
+    {
+      "slug": "OpenHands",
+      "target": "Agente core kernel Yaiwes principal/OpenHands",
+      "mirror": null
+    },
+    {
+      "slug": "Argo-Workflows",
+      "target": "Agente core kernel Yaiwes principal/Argo-Workflows",
+      "mirror": null
+    },
+    {
+      "slug": "LangGraph",
+      "target": "Agente core kernel Yaiwes principal/LangGraph",
+      "mirror": null
+    },
+    {
+      "slug": "Python-jsonschema",
+      "target": "Agente core kernel Yaiwes principal/Python-jsonschema",
+      "mirror": null
+    },
+    {
+      "slug": "UltraFeedback",
+      "target": "Agente core kernel Yaiwes principal/UltraFeedback",
+      "mirror": null
+    },
+    {
+      "slug": "Hypothesis",
+      "target": "Agente core kernel Yaiwes principal/Hypothesis",
+      "mirror": null
+    },
+    {
+      "slug": "Guardrails-AI",
+      "target": "Agente core kernel Yaiwes principal/Guardrails-AI",
+      "mirror": null
+    },
+    {
+      "slug": "CodeUltraFeedback",
+      "target": "Agente core kernel Yaiwes principal/CodeUltraFeedback",
+      "mirror": null
+    }
+  ],
+  "retryable_gaps": [
+    {
+      "slug": "Guardrails-AI",
+      "target": "core kernel Yaiwes principal/Guardrails-AI",
+      "mirror": null
+    },
+    {
+      "slug": "Syft",
+      "target": "core kernel Yaiwes principal/Syft",
+      "mirror": null
+    },
+    {
+      "slug": "Stamina",
+      "target": "core kernel Yaiwes principal/Stamina",
+      "mirror": null
+    },
+    {
+      "slug": "Cronie",
+      "target": "core kernel Yaiwes principal/Cronie",
+      "mirror": null
+    },
+    {
+      "slug": "VM_logo",
+      "target": "core kernel Yaiwes principal/VM_logo",
+      "mirror": null
+    },
+    {
+      "slug": "APScheduler",
+      "target": "Agente core kernel Yaiwes principal/APScheduler",
+      "mirror": null
+    },
+    {
+      "slug": "Lean4",
+      "target": "Agente core kernel Yaiwes principal/Lean4",
+      "mirror": null
+    },
+    {
+      "slug": "Grafana",
+      "target": "Agente core kernel Yaiwes principal/Grafana",
+      "mirror": null
+    },
+    {
+      "slug": "Ajv",
+      "target": "Agente core kernel Yaiwes principal/Ajv",
+      "mirror": null
+    },
+    {
+      "slug": "Instructor",
+      "target": "Agente core kernel Yaiwes principal/Instructor",
+      "mirror": null
+    },
+    {
+      "slug": "Langfuse",
+      "target": "Agente core kernel Yaiwes principal/Langfuse",
+      "mirror": null
+    },
+    {
+      "slug": "Open-Policy-Agent",
+      "target": "Agente core kernel Yaiwes principal/Open-Policy-Agent",
+      "mirror": null
+    },
+    {
+      "slug": "Cerberus",
+      "target": "Agente core kernel Yaiwes principal/Cerberus",
+      "mirror": null
+    },
+    {
+      "slug": "Self-Refine",
+      "target": "Agente core kernel Yaiwes principal/Self-Refine",
+      "mirror": null
+    },
+    {
+      "slug": "OpenClaw",
+      "target": "Agente core kernel Yaiwes principal/OpenClaw",
+      "mirror": null
+    },
+    {
+      "slug": "LlamaIndex",
+      "target": "Agente core kernel Yaiwes principal/LlamaIndex",
+      "mirror": null
+    },
+    {
+      "slug": "autogen",
+      "target": "Agente core kernel Yaiwes principal/autogen",
+      "mirror": null
+    },
+    {
+      "slug": "Prefect",
+      "target": "Agente core kernel Yaiwes principal/Prefect",
+      "mirror": null
+    },
+    {
+      "slug": "OpenMythos",
+      "target": "Agente core kernel Yaiwes principal/OpenMythos",
+      "mirror": null
+    },
+    {
+      "slug": "Dagster",
+      "target": "Agente core kernel Yaiwes principal/Dagster",
+      "mirror": null
+    },
+    {
+      "slug": "LM-Evaluation-Harness",
+      "target": "Agente core kernel Yaiwes principal/LM-Evaluation-Harness",
+      "mirror": null
+    },
+    {
+      "slug": "crewAI",
+      "target": "Agente core kernel Yaiwes principal/crewAI",
+      "mirror": null
+    },
+    {
+      "slug": "Envoy",
+      "target": "Agente core kernel Yaiwes principal/Envoy",
+      "mirror": null
+    },
+    {
+      "slug": "OpenThoughts",
+      "target": "Agente core kernel Yaiwes principal/OpenThoughts",
+      "mirror": null
+    },
+    {
+      "slug": "Zep",
+      "target": "Agente core kernel Yaiwes principal/Zep",
+      "mirror": null
+    },
+    {
+      "slug": "ThoughtSource",
+      "target": "Agente core kernel Yaiwes principal/ThoughtSource",
+      "mirror": null
+    },
+    {
+      "slug": "Pydantic",
+      "target": "Agente core kernel Yaiwes principal/Pydantic",
+      "mirror": null
+    },
+    {
+      "slug": "SOUL-md",
+      "target": "Agente core kernel Yaiwes principal/SOUL-md",
+      "mirror": null
+    },
+    {
+      "slug": "LiteLLM",
+      "target": "Agente core kernel Yaiwes principal/LiteLLM",
+      "mirror": null
+    },
+    {
+      "slug": "gVisor",
+      "target": "Agente core kernel Yaiwes principal/gVisor",
+      "mirror": null
+    },
+    {
+      "slug": "DeepEval",
+      "target": "Agente core kernel Yaiwes principal/DeepEval",
+      "mirror": null
+    },
+    {
+      "slug": "Apache-Airflow",
+      "target": "Agente core kernel Yaiwes principal/Apache-Airflow",
+      "mirror": null
+    },
+    {
+      "slug": "Inspect-AI",
+      "target": "Agente core kernel Yaiwes principal/Inspect-AI",
+      "mirror": null
+    },
+    {
+      "slug": "OpenAI-Skills",
+      "target": "Agente core kernel Yaiwes principal/OpenAI-Skills",
+      "mirror": null
+    },
+    {
+      "slug": "Promptfoo",
+      "target": "Agente core kernel Yaiwes principal/Promptfoo",
+      "mirror": null
+    },
+    {
+      "slug": "TaskWeaver",
+      "target": "Agente core kernel Yaiwes principal/TaskWeaver",
+      "mirror": null
+    },
+    {
+      "slug": "Z3",
+      "target": "Agente core kernel Yaiwes principal/Z3",
+      "mirror": null
+    },
+    {
+      "slug": "vLLM-Semantic-Router",
+      "target": "Agente core kernel Yaiwes principal/vLLM-Semantic-Router",
+      "mirror": null
+    },
+    {
+      "slug": "PostHog",
+      "target": "Agente core kernel Yaiwes principal/PostHog",
+      "mirror": null
+    },
+    {
+      "slug": "FastMCP",
+      "target": "Agente core kernel Yaiwes principal/FastMCP",
+      "mirror": null
+    },
+    {
+      "slug": "RQ",
+      "target": "Agente core kernel Yaiwes principal/RQ",
+      "mirror": null
+    },
+    {
+      "slug": "Camunda",
+      "target": "Agente core kernel Yaiwes principal/Camunda",
+      "mirror": null
+    },
+    {
+      "slug": "BAML",
+      "target": "Agente core kernel Yaiwes principal/BAML",
+      "mirror": null
+    },
+    {
+      "slug": "Hugging-Face-Skills",
+      "target": "Agente core kernel Yaiwes principal/Hugging-Face-Skills",
+      "mirror": null
+    },
+    {
+      "slug": "LangChain",
+      "target": "Agente core kernel Yaiwes principal/LangChain",
+      "mirror": null
+    },
+    {
+      "slug": "Inngest",
+      "target": "Agente core kernel Yaiwes principal/Inngest",
+      "mirror": null
+    },
+    {
+      "slug": "json-logic-py",
+      "target": "Agente core kernel Yaiwes principal/json-logic-py",
+      "mirror": null
+    },
+    {
+      "slug": "Tree-of-Thoughts",
+      "target": "Agente core kernel Yaiwes principal/Tree-of-Thoughts",
+      "mirror": null
+    },
+    {
+      "slug": "HelpSteer2",
+      "target": "Agente core kernel Yaiwes principal/HelpSteer2",
+      "mirror": null
+    },
+    {
+      "slug": "E2B",
+      "target": "Agente core kernel Yaiwes principal/E2B",
+      "mirror": null
+    },
+    {
+      "slug": "ClawHub",
+      "target": "Agente core kernel Yaiwes principal/ClawHub",
+      "mirror": null
+    },
+    {
+      "slug": "transitions",
+      "target": "Agente core kernel Yaiwes principal/transitions",
+      "mirror": null
+    },
+    {
+      "slug": "AWS-Step-Functions-DS-SDK",
+      "target": "Agente core kernel Yaiwes principal/AWS-Step-Functions-DS-SDK",
+      "mirror": null
+    },
+    {
+      "slug": "Kong",
+      "target": "Agente core kernel Yaiwes principal/Kong",
+      "mirror": null
+    },
+    {
+      "slug": "OpenLLMetry",
+      "target": "Agente core kernel Yaiwes principal/OpenLLMetry",
+      "mirror": null
+    },
+    {
+      "slug": "Trigger-dev",
+      "target": "Agente core kernel Yaiwes principal/Trigger-dev",
+      "mirror": null
+    },
+    {
+      "slug": "RouteLLM",
+      "target": "Agente core kernel Yaiwes principal/RouteLLM",
+      "mirror": null
+    },
+    {
+      "slug": "Flagsmith",
+      "target": "Agente core kernel Yaiwes principal/Flagsmith",
+      "mirror": null
+    },
+    {
+      "slug": "PRM800K",
+      "target": "Agente core kernel Yaiwes principal/PRM800K",
+      "mirror": null
+    },
+    {
+      "slug": "Zen-Engine",
+      "target": "Agente core kernel Yaiwes principal/Zen-Engine",
+      "mirror": null
+    },
+    {
+      "slug": "Semantic-Router",
+      "target": "Agente core kernel Yaiwes principal/Semantic-Router",
+      "mirror": null
+    },
+    {
+      "slug": "Semantic-Kernel",
+      "target": "Agente core kernel Yaiwes principal/Semantic-Kernel",
+      "mirror": null
+    },
+    {
+      "slug": "Cognee",
+      "target": "Agente core kernel Yaiwes principal/Cognee",
+      "mirror": null
+    },
+    {
+      "slug": "Luigi",
+      "target": "Agente core kernel Yaiwes principal/Luigi",
+      "mirror": null
+    },
+    {
+      "slug": "business-rules",
+      "target": "Agente core kernel Yaiwes principal/business-rules",
+      "mirror": null
+    },
+    {
+      "slug": "Flowable",
+      "target": "Agente core kernel Yaiwes principal/Flowable",
+      "mirror": null
+    },
+    {
+      "slug": "Celery",
+      "target": "Agente core kernel Yaiwes principal/Celery",
+      "mirror": null
+    },
+    {
+      "slug": "Marshmallow",
+      "target": "Agente core kernel Yaiwes principal/Marshmallow",
+      "mirror": null
+    },
+    {
+      "slug": "Dramatiq",
+      "target": "Agente core kernel Yaiwes principal/Dramatiq",
+      "mirror": null
+    },
+    {
+      "slug": "MCP-Python-SDK",
+      "target": "Agente core kernel Yaiwes principal/MCP-Python-SDK",
+      "mirror": null
+    },
+    {
+      "slug": "Soul-Spec-Antonio",
+      "target": "Agente core kernel Yaiwes principal/Soul-Spec-Antonio",
+      "mirror": null
+    },
+    {
+      "slug": "Mem0",
+      "target": "Agente core kernel Yaiwes principal/Mem0",
+      "mirror": null
+    },
+    {
+      "slug": "Dapr",
+      "target": "Agente core kernel Yaiwes principal/Dapr",
+      "mirror": null
+    },
+    {
+      "slug": "Unleash",
+      "target": "Agente core kernel Yaiwes principal/Unleash",
+      "mirror": null
+    },
+    {
+      "slug": "Prometheus",
+      "target": "Agente core kernel Yaiwes principal/Prometheus",
+      "mirror": null
+    },
+    {
+      "slug": "sqlite-vec",
+      "target": "Agente core kernel Yaiwes principal/sqlite-vec",
+      "mirror": null
+    },
+    {
+      "slug": "Caddy",
+      "target": "Agente core kernel Yaiwes principal/Caddy",
+      "mirror": null
+    },
+    {
+      "slug": "Dagu",
+      "target": "Agente core kernel Yaiwes principal/Dagu",
+      "mirror": null
+    },
+    {
+      "slug": "Huey",
+      "target": "Agente core kernel Yaiwes principal/Huey",
+      "mirror": null
+    },
+    {
+      "slug": "Zod",
+      "target": "Agente core kernel Yaiwes principal/Zod",
+      "mirror": null
+    },
+    {
+      "slug": "NeMo-Guardrails",
+      "target": "Agente core kernel Yaiwes principal/NeMo-Guardrails",
+      "mirror": null
+    },
+    {
+      "slug": "VictoriaMetrics",
+      "target": "Agente core kernel Yaiwes principal/VictoriaMetrics",
+      "mirror": null
+    },
+    {
+      "slug": "Cedar",
+      "target": "Agente core kernel Yaiwes principal/Cedar",
+      "mirror": null
+    },
+    {
+      "slug": "Git",
+      "target": "Agente core kernel Yaiwes principal/Git",
+      "mirror": null
+    },
+    {
+      "slug": "Haystack",
+      "target": "Agente core kernel Yaiwes principal/Haystack",
+      "mirror": null
+    },
+    {
+      "slug": "Kata-Containers",
+      "target": "Agente core kernel Yaiwes principal/Kata-Containers",
+      "mirror": null
+    },
+    {
+      "slug": "Apache-APISIX",
+      "target": "Agente core kernel Yaiwes principal/Apache-APISIX",
+      "mirror": null
+    },
+    {
+      "slug": "Cloudflare-Workers-SDK",
+      "target": "Agente core kernel Yaiwes principal/Cloudflare-Workers-SDK",
+      "mirror": null
+    },
+    {
+      "slug": "OpenR",
+      "target": "Agente core kernel Yaiwes principal/OpenR",
+      "mirror": null
+    },
+    {
+      "slug": "Coconut",
+      "target": "Agente core kernel Yaiwes principal/Coconut",
+      "mirror": null
+    },
+    {
+      "slug": "Outlines",
+      "target": "Agente core kernel Yaiwes principal/Outlines",
+      "mirror": null
+    },
+    {
+      "slug": "Burr",
+      "target": "Agente core kernel Yaiwes principal/Burr",
+      "mirror": null
+    },
+    {
+      "slug": "dspy",
+      "target": "Agente core kernel Yaiwes principal/dspy",
+      "mirror": null
+    },
+    {
+      "slug": "Phoenix",
+      "target": "Agente core kernel Yaiwes principal/Phoenix",
+      "mirror": null
+    },
+    {
+      "slug": "Graph-of-Thoughts",
+      "target": "Agente core kernel Yaiwes principal/Graph-of-Thoughts",
+      "mirror": null
+    },
+    {
+      "slug": "Azure-Durable-Functions",
+      "target": "Agente core kernel Yaiwes principal/Azure-Durable-Functions",
+      "mirror": null
+    },
+    {
+      "slug": "OpenCoconut",
+      "target": "Agente core kernel Yaiwes principal/OpenCoconut",
+      "mirror": null
+    },
+    {
+      "slug": "Letta",
+      "target": "Agente core kernel Yaiwes principal/Letta",
+      "mirror": null
+    },
+    {
+      "slug": "txtai",
+      "target": "Agente core kernel Yaiwes principal/txtai",
+      "mirror": null
+    },
+    {
+      "slug": "Chroma",
+      "target": "Agente core kernel Yaiwes principal/Chroma",
+      "mirror": null
+    },
+    {
+      "slug": "OpenThoughts-Agent",
+      "target": "Agente core kernel Yaiwes principal/OpenThoughts-Agent",
+      "mirror": null
+    },
+    {
+      "slug": "SoulSpec-clawsouls",
+      "target": "Agente core kernel Yaiwes principal/SoulSpec-clawsouls",
+      "mirror": null
+    },
+    {
+      "slug": "Restate",
+      "target": "Agente core kernel Yaiwes principal/Restate",
+      "mirror": null
+    },
+    {
+      "slug": "Temporal",
+      "target": "Agente core kernel Yaiwes principal/Temporal",
+      "mirror": null
+    },
+    {
+      "slug": "Portkey-AI-Gateway",
+      "target": "Agente core kernel Yaiwes principal/Portkey-AI-Gateway",
+      "mirror": null
+    },
+    {
+      "slug": "Guidance",
+      "target": "Agente core kernel Yaiwes principal/Guidance",
+      "mirror": null
+    },
+    {
+      "slug": "Huginn",
+      "target": "Agente core kernel Yaiwes principal/Huginn",
+      "mirror": null
+    },
+    {
+      "slug": "Tenacity",
+      "target": "Agente core kernel Yaiwes principal/Tenacity",
+      "mirror": null
+    },
+    {
+      "slug": "OpenAI-Evals",
+      "target": "Agente core kernel Yaiwes principal/OpenAI-Evals",
+      "mirror": null
+    },
+    {
+      "slug": "MCP-Go",
+      "target": "Agente core kernel Yaiwes principal/MCP-Go",
+      "mirror": null
+    },
+    {
+      "slug": "Math-Shepherd",
+      "target": "Agente core kernel Yaiwes principal/Math-Shepherd",
+      "mirror": null
+    },
+    {
+      "slug": "NVIDIA-Garak",
+      "target": "Agente core kernel Yaiwes principal/NVIDIA-Garak",
+      "mirror": null
+    },
+    {
+      "slug": "SWE-agent",
+      "target": "Agente core kernel Yaiwes principal/SWE-agent",
+      "mirror": null
+    },
+    {
+      "slug": "nsjail",
+      "target": "Agente core kernel Yaiwes principal/nsjail",
+      "mirror": null
+    },
+    {
+      "slug": "Graphiti",
+      "target": "Agente core kernel Yaiwes principal/Graphiti",
+      "mirror": null
+    },
+    {
+      "slug": "Ouroboros",
+      "target": "Agente core kernel Yaiwes principal/Ouroboros",
+      "mirror": null
+    },
+    {
+      "slug": "ProcessBench",
+      "target": "Agente core kernel Yaiwes principal/ProcessBench",
+      "mirror": null
+    },
+    {
+      "slug": "OpenTelemetry-Collector",
+      "target": "Agente core kernel Yaiwes principal/OpenTelemetry-Collector",
+      "mirror": null
+    },
+    {
+      "slug": "OpenHands",
+      "target": "Agente core kernel Yaiwes principal/OpenHands",
+      "mirror": null
+    },
+    {
+      "slug": "Argo-Workflows",
+      "target": "Agente core kernel Yaiwes principal/Argo-Workflows",
+      "mirror": null
+    },
+    {
+      "slug": "LangGraph",
+      "target": "Agente core kernel Yaiwes principal/LangGraph",
+      "mirror": null
+    },
+    {
+      "slug": "Python-jsonschema",
+      "target": "Agente core kernel Yaiwes principal/Python-jsonschema",
+      "mirror": null
+    },
+    {
+      "slug": "UltraFeedback",
+      "target": "Agente core kernel Yaiwes principal/UltraFeedback",
+      "mirror": null
+    },
+    {
+      "slug": "Hypothesis",
+      "target": "Agente core kernel Yaiwes principal/Hypothesis",
+      "mirror": null
+    },
+    {
+      "slug": "Guardrails-AI",
+      "target": "Agente core kernel Yaiwes principal/Guardrails-AI",
+      "mirror": null
+    },
+    {
+      "slug": "CodeUltraFeedback",
+      "target": "Agente core kernel Yaiwes principal/CodeUltraFeedback",
+      "mirror": null
+    }
+  ],
+  "blocked_gaps": [
+    {
+      "slug": "Cerbos",
+      "target": "core kernel Yaiwes principal/Cerbos",
+      "mirror": null,
+      "code": "SOURCE_LFS_POINTER_GAP",
+      "detail": "SOURCE_LFS_POINTER_GAP:docs/modules/ROOT/assets/images/how_cerbos_works.png,docs/modules/ROOT/assets/images/request_00.png,docs/modules/ROOT/assets/images/request_01.png,docs/modules/ROOT/assets/images/request_02.png,docs/modules/ROOT/assets/images/try_cerbos_hub.png,docs/modules/api/assets/images/csharp.svg,docs/modules/api/assets/images/dot-net.svg,docs/modules/api/assets/images/go.svg,docs/modules/api/assets/images/java.svg,docs/modules/api/assets/images/javascript.svg,docs/modules/api/assets/images/laravel.svg,docs/modules/api/assets/images/php.svg,docs/modules/api/assets/images/python.svg,docs/modules/api/assets/images/ruby.svg,docs/modules/api/assets/images/rust.svg,docs/modules/cli/assets/images/decisions-tui.png,docs/modules/configuration/images/cerbos_hub.svg,docs/modules/deployment/assets/images/daemonset_deployment.png,docs/modules/deployment/assets/images/service_deployment.png,docs/modules/deployment/assets/images/sidecar_deployment.png",
+      "evidence": "forensics/extraction/repair-33801870254.json"
+    },
+    {
+      "slug": "Prometheus-Evaluator-LM",
+      "target": "core kernel Yaiwes principal/Prometheus-Evaluator-LM",
+      "mirror": null,
+      "code": "SOURCE_LFS_POINTER_GAP",
+      "detail": "SOURCE_LFS_POINTER_GAP:Prometheus-Evaluator-LM/train/sample_train_data.json",
+      "evidence": "forensics/extraction/repair-33801870254.json"
+    },
+    {
+      "slug": "Microsoft-AutoGen",
+      "target": "core kernel Yaiwes principal/Microsoft-AutoGen",
+      "mirror": null,
+      "code": "SOURCE_LFS_POINTER_GAP",
+      "detail": "SOURCE_LFS_POINTER_GAP:Microsoft-AutoGen/autogen-landing.jpg,Microsoft-AutoGen/dotnet/nuget/icon.png,Microsoft-AutoGen/dotnet/resource/images/background.png,Microsoft-AutoGen/dotnet/resource/images/square.png,Microsoft-AutoGen/dotnet/samples/dev-team/docs/images/github-sk-dev-team.png,Microsoft-AutoGen/dotnet/samples/dev-team/docs/images/new-codespace.png,Microsoft-AutoGen/dotnet/samples/dev-team/docs/images/overview.png,Microsoft-AutoGen/dotnet/samples/dev-team/docs/images/solution-explorer.png,Microsoft-AutoGen/dotnet/test/AutoGen.Anthropic.Tests/images/square.png,Microsoft-AutoGen/dotnet/test/AutoGen.Ollama.Tests/images/image.png,Microsoft-AutoGen/dotnet/test/AutoGen.Ollama.Tests/images/square.png,Microsoft-AutoGen/dotnet/test/AutoGen.Tests/ApprovalTests/square.png,Microsoft-AutoGen/dotnet/website/images/articles/CreateAgentWithTools/single-turn-tool-call-with-auto-invoke.png,Microsoft-AutoGen/dotnet/website/images/articles/CreateAgentWithTools/single-turn-tool-call-without-auto-invoke.png,Microsoft-AutoGen/dotnet/website/images/articles/CreateUserProxyAgent/image-1.png,Microsoft-AutoGen/dotnet/website/images/articles/DynamicGroupChat/dynamicChat.gif,Microsoft-AutoGen/dotnet/website/images/articles/PrintMessageMiddleware/printMessage.png,Microsoft-AutoGen/dotnet/website/images/articles/PrintMessageMiddleware/streamingoutput.gif,Microsoft-AutoGen/dotnet/website/images/articles/SequentialGroupChat/SearcherSummarizer.gif,Microsoft-AutoGen/dotnet/website/images/articles/UseAutoGenAsModelinAGStudio/FinalStepsA.png",
+      "evidence": "forensics/extraction/repair-33790596274.json"
+    },
+    {
+      "slug": "TruLens",
+      "target": "core kernel Yaiwes principal/TruLens",
+      "mirror": null,
+      "code": "SOURCE_LFS_POINTER_GAP",
+      "detail": "SOURCE_LFS_POINTER_GAP:TruLens/docs/assets/favicon/android-chrome-192x192.png,TruLens/docs/assets/favicon/android-chrome-512x512.png,TruLens/docs/assets/favicon/apple-touch-icon.png,TruLens/docs/assets/favicon/favicon-16x16.png,TruLens/docs/assets/favicon/favicon-32x32.png,TruLens/docs/assets/favicon/mstile-144x144.png,TruLens/docs/assets/favicon/mstile-150x150.png,TruLens/docs/assets/favicon/mstile-310x150.png,TruLens/docs/assets/favicon/mstile-310x310.png,TruLens/docs/assets/favicon/mstile-70x70.png,TruLens/docs/assets/images/Chain_Explore.png,TruLens/docs/assets/images/Evaluations.png,TruLens/docs/assets/images/Honest_Harmless_Helpful_Evals.png,TruLens/docs/assets/images/Leaderboard.png,TruLens/docs/assets/images/Neural_Network_Explainability.png,TruLens/docs/assets/images/RAG_Triad.png,TruLens/docs/assets/images/Range_of_Feedback_Functions.png,TruLens/docs/assets/images/TruLens_Architecture.png,TruLens/docs/assets/images/appui/apps.png,TruLens/docs/assets/images/appui/blank_session.png",
+      "evidence": "forensics/extraction/repair-33808212626.json"
+    },
+    {
+      "slug": "Microsoft-Agent-Framework",
+      "target": "core kernel Yaiwes principal/Microsoft-Agent-Framework",
+      "mirror": null,
+      "code": "SOURCE_LFS_POINTER_GAP",
+      "detail": "SOURCE_LFS_POINTER_GAP:python/packages/lab/lightning/assets/train_math_agent.png,python/packages/lab/lightning/assets/train_tau2_agent.png",
+      "evidence": "forensics/extraction/repair-33808212626.json"
+    },
+    {
+      "slug": "AG2",
+      "target": "core kernel Yaiwes principal/AG2",
+      "mirror": null,
+      "code": "SOURCE_LFS_POINTER_GAP",
+      "detail": "SOURCE_LFS_POINTER_GAP:website/docs/_blogs/2026-03-16-AG2-Beta/img/ag2-beta-banner.webp,website/docs/_blogs/2026-03-16-AG2-Beta/img/agent-chat.png,website/docs/_blogs/2026-03-16-AG2-Beta/img/agent-history.png,website/docs/_blogs/2026-05-12-LiveAgent/img/live-agent-hero.png,website/docs/_blogs/2026-05-14-AG2-Action-Driven-Network/img/n1-banner.webp,website/docs/_blogs/2026-05-14-AG2-Action-Driven-Network/img/n1-consulting.webp,website/docs/_blogs/2026-05-14-AG2-Action-Driven-Network/img/n1-conversation.webp,website/docs/_blogs/2026-05-14-AG2-Action-Driven-Network/img/n1-discussion.webp,website/docs/_blogs/2026-05-14-AG2-Action-Driven-Network/img/n1-mismatch.webp,website/docs/_blogs/2026-05-14-AG2-Action-Driven-Network/img/n1-primitives.webp,website/docs/_blogs/2026-05-14-AG2-Action-Driven-Network/img/n1-workflow.webp,website/docs/_blogs/2026-05-15-AG2-Network-Choreography-Dial/img/n2-audience.webp,website/docs/_blogs/2026-05-15-AG2-Network-Choreography-Dial/img/n2-banner-animated.webp,website/docs/_blogs/2026-05-15-AG2-Network-Choreography-Dial/img/n2-centerpiece.webp,website/docs/_blogs/2026-05-15-AG2-Network-Choreography-Dial/img/n2-dial.webp,website/docs/_blogs/2026-05-15-AG2-Network-Choreography-Dial/img/n2-expectations.webp,website/docs/_blogs/2026-05-15-AG2-Network-Choreography-Dial/img/n2-transitions.webp,website/docs/_blogs/2026-05-16-AG2-Network-What-Survives/img/n3-audit.webp,website/docs/_blogs/2026-05-16-AG2-Network-What-Survives/img/n3-banner-animated.webp,website/docs/_blogs/2026-05-16-AG2-Network-What-Survives/img/n3-identity.webp",
+      "evidence": "forensics/extraction/repair-33804138584.json"
+    },
+    {
+      "slug": "Cerbos",
+      "target": "Agente core kernel Yaiwes principal/Cerbos",
+      "mirror": null,
+      "code": "SOURCE_LFS_POINTER_GAP",
+      "detail": "SOURCE_LFS_POINTER_GAP:docs/modules/ROOT/assets/images/how_cerbos_works.png,docs/modules/ROOT/assets/images/request_00.png,docs/modules/ROOT/assets/images/request_01.png,docs/modules/ROOT/assets/images/request_02.png,docs/modules/ROOT/assets/images/try_cerbos_hub.png,docs/modules/api/assets/images/csharp.svg,docs/modules/api/assets/images/dot-net.svg,docs/modules/api/assets/images/go.svg,docs/modules/api/assets/images/java.svg,docs/modules/api/assets/images/javascript.svg,docs/modules/api/assets/images/laravel.svg,docs/modules/api/assets/images/php.svg,docs/modules/api/assets/images/python.svg,docs/modules/api/assets/images/ruby.svg,docs/modules/api/assets/images/rust.svg,docs/modules/cli/assets/images/decisions-tui.png,docs/modules/configuration/images/cerbos_hub.svg,docs/modules/deployment/assets/images/daemonset_deployment.png,docs/modules/deployment/assets/images/service_deployment.png,docs/modules/deployment/assets/images/sidecar_deployment.png",
+      "evidence": "forensics/extraction/repair-33801870254.json"
+    },
+    {
+      "slug": "TruLens",
+      "target": "Agente core kernel Yaiwes principal/TruLens",
+      "mirror": null,
+      "code": "SOURCE_LFS_POINTER_GAP",
+      "detail": "SOURCE_LFS_POINTER_GAP:TruLens/docs/assets/favicon/android-chrome-192x192.png,TruLens/docs/assets/favicon/android-chrome-512x512.png,TruLens/docs/assets/favicon/apple-touch-icon.png,TruLens/docs/assets/favicon/favicon-16x16.png,TruLens/docs/assets/favicon/favicon-32x32.png,TruLens/docs/assets/favicon/mstile-144x144.png,TruLens/docs/assets/favicon/mstile-150x150.png,TruLens/docs/assets/favicon/mstile-310x150.png,TruLens/docs/assets/favicon/mstile-310x310.png,TruLens/docs/assets/favicon/mstile-70x70.png,TruLens/docs/assets/images/Chain_Explore.png,TruLens/docs/assets/images/Evaluations.png,TruLens/docs/assets/images/Honest_Harmless_Helpful_Evals.png,TruLens/docs/assets/images/Leaderboard.png,TruLens/docs/assets/images/Neural_Network_Explainability.png,TruLens/docs/assets/images/RAG_Triad.png,TruLens/docs/assets/images/Range_of_Feedback_Functions.png,TruLens/docs/assets/images/TruLens_Architecture.png,TruLens/docs/assets/images/appui/apps.png,TruLens/docs/assets/images/appui/blank_session.png",
+      "evidence": "forensics/extraction/repair-33808212626.json"
+    },
+    {
+      "slug": "Microsoft-Agent-Framework",
+      "target": "Agente core kernel Yaiwes principal/Microsoft-Agent-Framework",
+      "mirror": null,
+      "code": "SOURCE_LFS_POINTER_GAP",
+      "detail": "SOURCE_LFS_POINTER_GAP:python/packages/lab/lightning/assets/train_math_agent.png,python/packages/lab/lightning/assets/train_tau2_agent.png",
+      "evidence": "forensics/extraction/repair-33808212626.json"
+    }
+  ],
+  "counts": {
+    "remaining": 135,
+    "retryable": 126,
+    "blocked": 9,
+    "processed": 10
+  },
+  "verdict": "GAPS_PENDING"
+}

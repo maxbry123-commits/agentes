@@ -1,0 +1,83 @@
+name: Yaiwes canonical reusable worker
+on:
+  workflow_call:
+    inputs:
+      mode: {required: true, type: string}
+      shard_index: {required: false, type: number, default: 0}
+      shard_count: {required: false, type: number, default: 1}
+      slug: {required: false, type: string, default: ''}
+permissions:
+  contents: write
+  actions: write
+jobs:
+  worker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 480
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /Core kernel Yaiwes/Componentes recuperados A/**
+            /Core kernel Yaiwes/Componentes recuperados B/**
+            /Core kernel Yaiwes/scripts/**
+            /Documentos proyectos Yaiwes/Evidencias extracción histórica/**
+      - name: Canonical runtime compatibility
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config --local filter.lfs.clean cat
+          git config --local filter.lfs.smudge cat
+          git config --local --unset-all filter.lfs.process || true
+          git config --local filter.lfs.required false
+          ln -s 'Core kernel Yaiwes/Componentes recuperados A' 'Agente core kernel Yaiwes principal'
+          ln -s 'Core kernel Yaiwes/Componentes recuperados B' 'core kernel Yaiwes principal'
+          mkdir -p forensics
+          ln -s '../Documentos proyectos Yaiwes/Evidencias extracción histórica/extraction' forensics/extraction
+      - name: Execute canonical worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          case '${{ inputs.mode }}' in
+            retry) python3 'Core kernel Yaiwes/scripts/extract_guardian_hash_shard_canonical_20260904.py' --shard-index '${{ inputs.shard_index }}' --shard-count '${{ inputs.shard_count }}' --limit 40 ;;
+            lfs) python3 'Core kernel Yaiwes/scripts/extract_guardian_lfs_hash_shard_canonical_20260904.py' --shard-index '${{ inputs.shard_index }}' --shard-count '${{ inputs.shard_count }}' ;;
+            dataset) python3 'Core kernel Yaiwes/scripts/extract_dataset_independent_repair_20260904.py' --slug '${{ inputs.slug }}' ;;
+            *) echo 'UNKNOWN_MODE' >&2; exit 2 ;;
+          esac
+      - name: Remove compatibility aliases
+        if: always()
+        shell: bash
+        run: |
+          rm -f 'Agente core kernel Yaiwes principal' 'core kernel Yaiwes principal'
+          rm -rf forensics
+      - name: Publish canonical result
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -A -- 'Core kernel Yaiwes/Componentes recuperados A' 'Core kernel Yaiwes/Componentes recuperados B' 'Documentos proyectos Yaiwes/Evidencias extracción histórica'
+          python3 - <<'PY'
+          import pathlib,subprocess,sys
+          marker=b'version https://git-lfs.github.com/spec/v1\n'
+          paths=subprocess.check_output(['git','diff','--cached','--name-only','-z']).split(b'\0')
+          bad=[]
+          for raw in paths:
+              if not raw: continue
+              p=pathlib.Path(raw.decode('utf-8','surrogateescape'))
+              if p.is_file() and p.read_bytes()[:1024].startswith(marker): bad.append(str(p))
+          if bad:
+              print('SOURCE_LFS_POINTER_GAP\n'+'\n'.join(bad)); sys.exit(73)
+          PY
+          git diff --cached --quiet && exit 0
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m "fix(extraction): canonical ${{ inputs.mode }} worker [run ${GITHUB_RUN_ID}]"
+          for attempt in 1 2 3 4 5; do
+            if git fetch origin main && git rebase --autostash origin/main && git push --no-verify origin HEAD:main; then exit 0; fi
+            test "$attempt" -lt 5 || exit 41
+            sleep $((attempt*10))
+          done

@@ -1,0 +1,14 @@
+name: Yaiwes canonical dataset HelpSteer2
+on:
+  workflow_dispatch:
+  repository_dispatch: {types: [canonical-dataset-round]}
+  push:
+    branches: [main]
+    paths: ['.github/workflows/canonical-dataset-helpsteer2.yml']
+permissions: {contents: write, actions: write}
+concurrency: {group: yaiwes-canonical-dataset-helpsteer2, cancel-in-progress: false}
+jobs:
+  run:
+    uses: ./.github/workflows/_canonical-worker.yml
+    with: {mode: dataset, slug: HelpSteer2}
+    permissions: {contents: write, actions: write}
