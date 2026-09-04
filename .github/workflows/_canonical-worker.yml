@@ -22,11 +22,99 @@ jobs:
           filter: blob:none
           sparse-checkout-cone-mode: false
           sparse-checkout: |
-            /Core kernel Yaiwes/Componentes recuperados A/**
-            /Core kernel Yaiwes/Componentes recuperados B/**
-            /Core kernel Yaiwes/scripts/**
-            /Documentos proyectos Yaiwes/Evidencias extracción histórica/**
+            /Core kernel Yaiwes/scripts/
+            /Documentos proyectos Yaiwes/Evidencias extracción histórica/
+      - id: select
+        name: Select only this worker's component paths
+        env:
+          MODE: ${{ inputs.mode }}
+          SHARD_INDEX: ${{ inputs.shard_index }}
+          SHARD_COUNT: ${{ inputs.shard_count }}
+          DATASET_SLUG: ${{ inputs.slug }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib,json,os,pathlib,re,subprocess
+          E=pathlib.Path('Documentos proyectos Yaiwes/Evidencias extracción histórica/extraction')
+          A='Core kernel Yaiwes/Componentes recuperados A'; B='Core kernel Yaiwes/Componentes recuperados B'
+          mode=os.environ['MODE']; idx=int(os.environ['SHARD_INDEX']); count=int(os.environ['SHARD_COUNT']); dslug=os.environ.get('DATASET_SLUG','')
+          def load(p):
+              try: return json.loads(p.read_text())
+              except Exception: return None
+          baselines=[]
+          for p in E.glob('repair-*.json'):
+              d=load(p)
+              if d and isinstance(d.get('remaining_gaps'),list) and isinstance(d.get('retryable_gaps'),list) and isinstance(d.get('blocked_gaps'),list):
+                  try: rid=int(d.get('run_id') or re.search(r'(\d+)',p.stem).group(1))
+                  except Exception: rid=0
+                  baselines.append((rid,p,d))
+          if not baselines: raise SystemExit('NO_FULL_GUARDIAN_BASELINE')
+          _,bp,base=max(baselines,key=lambda x:x[0])
+          done=set(); hard={}
+          for p in E.glob('canonical-*.json'):
+              d=load(p) or {}
+              for r in d.get('processed',[]):
+                  if r.get('slug') and r.get('target'): done.add((r['target'],r['slug']))
+              for f in d.get('failures',[]):
+                  if f.get('slug') and f.get('target'):
+                      code=str(f.get('error','')).split(':',1)[0]
+                      if f.get('retryable') is False or p.name.startswith('canonical-lfs-'): hard[(f['target'],f['slug'])]=code
+          for p in E.glob('dataset-recovery-*.json'):
+              d=load(p) or {}; slug=d.get('slug')
+              if slug and d.get('verdict')=='VERIFIED': done.add((f'Agente core kernel Yaiwes principal/{slug}',slug))
+          def bucket(row):
+              key=(row.get('target','')+'\0'+row.get('slug','')).encode()
+              return int(hashlib.sha256(key).hexdigest()[:16],16)%count
+          if mode=='retry':
+              rows=[]
+              for r in base.get('retryable_gaps',[]):
+                  k=(r.get('target'),r.get('slug'))
+                  if not all(k) or k in done or k in hard or bucket(r)!=idx: continue
+                  rows.append(r)
+              rows=sorted(rows,key=lambda r:(r['target'].lower(),r['slug'].lower()))[:6]
+          elif mode=='lfs':
+              cand={}
+              for r in base.get('blocked_gaps',[]):
+                  if r.get('code')=='SOURCE_LFS_POINTER_GAP' and r.get('slug') not in {'HelpSteer2','PRM800K','Math-Shepherd'}:
+                      cand[(r.get('target'),r.get('slug'))]=r
+              for k,code in hard.items():
+                  if code=='SOURCE_LFS_POINTER_GAP' and k[1] not in {'HelpSteer2','PRM800K','Math-Shepherd'}:
+                      cand[k]={'target':k[0],'slug':k[1]}
+              rows=[r for k,r in cand.items() if k not in done and bucket(r)==idx]
+              rows=sorted(rows,key=lambda r:(r['target'].lower(),r['slug'].lower()))[:4]
+          elif mode=='dataset':
+              rows=[] if (f'Agente core kernel Yaiwes principal/{dslug}',dslug) in done else [{'target':f'Agente core kernel Yaiwes principal/{dslug}','slug':dslug}]
+          else: raise SystemExit('UNKNOWN_MODE')
+          def root_for(target):
+              if target.startswith('Agente core kernel Yaiwes principal/'): return A
+              if target.startswith('core kernel Yaiwes principal/'): return B
+              raise SystemExit('UNKNOWN_TARGET:'+target)
+          patterns=['/Core kernel Yaiwes/scripts/','/Documentos proyectos Yaiwes/Evidencias extracción histórica/']
+          selected=[]
+          child_cache={}
+          for r in rows:
+              root=root_for(r['target']); slug=r['slug']; selected.append({'target':r['target'],'slug':slug,'root':root})
+              if root not in child_cache:
+                  txt=subprocess.check_output(['git','ls-tree','--name-only',f'HEAD:{root}'],text=True)
+                  child_cache[root]=txt.splitlines()
+              rx=re.compile(r'^'+re.escape(slug)+r'(?:_[0-9]{4})?\.zip$',re.I)
+              zips=[n for n in child_cache[root] if rx.match(n)]
+              if not zips: raise SystemExit(f'SOURCE_ARCHIVE_GAP:{root}:{slug}')
+              patterns.extend('/'+root+'/'+z for z in zips)
+              patterns.append('/'+root+'/'+slug+'/')
+          pathlib.Path('/tmp/sparse-patterns.txt').write_text('\n'.join(dict.fromkeys(patterns))+'\n')
+          pathlib.Path('/tmp/selection.json').write_text(json.dumps({'baseline':bp.name,'mode':mode,'selected':selected},indent=2)+'\n')
+          print(json.dumps({'baseline':bp.name,'mode':mode,'selected':selected},ensure_ascii=False))
+          PY
+          if [ "$(python3 -c 'import json; print(len(json.load(open("/tmp/selection.json"))["selected"]))')" -eq 0 ]; then
+            echo 'skip=true' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo 'skip=false' >> "$GITHUB_OUTPUT"
+          git sparse-checkout set --no-cone --stdin < /tmp/sparse-patterns.txt
       - name: Canonical runtime compatibility
+        if: steps.select.outputs.skip != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -39,38 +127,36 @@ jobs:
           mkdir -p forensics
           ln -s '../Documentos proyectos Yaiwes/Evidencias extracción histórica/extraction' forensics/extraction
       - name: Execute canonical worker
+        if: steps.select.outputs.skip != 'true'
         shell: bash
         run: |
           set -euo pipefail
           case '${{ inputs.mode }}' in
-            retry) python3 'Core kernel Yaiwes/scripts/extract_guardian_hash_shard_canonical_20260904.py' --shard-index '${{ inputs.shard_index }}' --shard-count '${{ inputs.shard_count }}' --limit 40 ;;
+            retry) python3 'Core kernel Yaiwes/scripts/extract_guardian_hash_shard_canonical_20260904.py' --shard-index '${{ inputs.shard_index }}' --shard-count '${{ inputs.shard_count }}' ;;
             lfs) python3 'Core kernel Yaiwes/scripts/extract_guardian_lfs_hash_shard_canonical_20260904.py' --shard-index '${{ inputs.shard_index }}' --shard-count '${{ inputs.shard_count }}' ;;
             dataset) python3 'Core kernel Yaiwes/scripts/extract_dataset_independent_repair_20260904.py' --slug '${{ inputs.slug }}' ;;
-            *) echo 'UNKNOWN_MODE' >&2; exit 2 ;;
+            *) exit 2 ;;
           esac
       - name: Remove compatibility aliases
-        if: always()
+        if: always() && steps.select.outputs.skip != 'true'
         shell: bash
         run: |
           rm -f 'Agente core kernel Yaiwes principal' 'core kernel Yaiwes principal'
           rm -rf forensics
       - name: Publish canonical result
-        if: success()
+        if: success() && steps.select.outputs.skip != 'true'
         shell: bash
         run: |
           set -euo pipefail
-          git add -A -- 'Core kernel Yaiwes/Componentes recuperados A' 'Core kernel Yaiwes/Componentes recuperados B' 'Documentos proyectos Yaiwes/Evidencias extracción histórica'
+          git add -A --sparse -- 'Core kernel Yaiwes/Componentes recuperados A' 'Core kernel Yaiwes/Componentes recuperados B' 'Documentos proyectos Yaiwes/Evidencias extracción histórica'
           python3 - <<'PY'
           import pathlib,subprocess,sys
-          marker=b'version https://git-lfs.github.com/spec/v1\n'
-          paths=subprocess.check_output(['git','diff','--cached','--name-only','-z']).split(b'\0')
-          bad=[]
-          for raw in paths:
+          marker=b'version https://git-lfs.github.com/spec/v1\n'; bad=[]
+          for raw in subprocess.check_output(['git','diff','--cached','--name-only','-z']).split(b'\0'):
               if not raw: continue
               p=pathlib.Path(raw.decode('utf-8','surrogateescape'))
               if p.is_file() and p.read_bytes()[:1024].startswith(marker): bad.append(str(p))
-          if bad:
-              print('SOURCE_LFS_POINTER_GAP\n'+'\n'.join(bad)); sys.exit(73)
+          if bad: print('SOURCE_LFS_POINTER_GAP\n'+'\n'.join(bad)); sys.exit(73)
           PY
           git diff --cached --quiet && exit 0
           git config user.name github-actions[bot]

@@ -18,12 +18,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for n in $(seq 1 180); do
-            active=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?status=in_progress&per_page=100" --paginate --jq "[.workflow_runs[] | select(.id != ${GITHUB_RUN_ID}) | select(.path | startswith(\".github/workflows/canonical-\"))] | length")
-            queued=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?status=queued&per_page=100" --paginate --jq "[.workflow_runs[] | select(.id != ${GITHUB_RUN_ID}) | select(.path | startswith(\".github/workflows/canonical-\"))] | length")
+          for n in $(seq 1 240); do
+            active=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?status=in_progress&per_page=100" --paginate --jq "[.workflow_runs[] | select(.id != ${GITHUB_RUN_ID}) | select(.path | startswith(\".github/workflows/canonical-\")) | select(.path != \".github/workflows/canonical-watchdog.yml\") | select(.path != \".github/workflows/canonical-quiesce.yml\")] | length")
+            queued=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?status=queued&per_page=100" --paginate --jq "[.workflow_runs[] | select(.id != ${GITHUB_RUN_ID}) | select(.path | startswith(\".github/workflows/canonical-\")) | select(.path != \".github/workflows/canonical-watchdog.yml\") | select(.path != \".github/workflows/canonical-quiesce.yml\")] | length")
             if [ $((active+queued)) -eq 0 ]; then exit 0; fi
-            echo "WAIT canonical=$((active+queued))"
-            sleep 30
+            echo "WAIT canonical=$((active+queued))"; sleep 30
           done
           exit 75
       - uses: actions/checkout@v4
@@ -34,35 +33,92 @@ jobs:
           filter: blob:none
           sparse-checkout-cone-mode: false
           sparse-checkout: |
-            /Core kernel Yaiwes/Componentes recuperados A/**
-            /Core kernel Yaiwes/Componentes recuperados B/**
-            /Core kernel Yaiwes/scripts/**
-            /Documentos proyectos Yaiwes/Evidencias extracción histórica/**
-      - name: Final canonical audit and loop
+            /Documentos proyectos Yaiwes/Evidencias extracción histórica/
+      - id: audit
+        name: Consolidate evidence and classify remaining gaps
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,pathlib,re,os
+          E=pathlib.Path('Documentos proyectos Yaiwes/Evidencias extracción histórica/extraction')
+          def load(p):
+              try:return json.loads(p.read_text())
+              except Exception:return None
+          bases=[]
+          for p in E.glob('repair-*.json'):
+              d=load(p)
+              if d and isinstance(d.get('remaining_gaps'),list) and isinstance(d.get('retryable_gaps'),list) and isinstance(d.get('blocked_gaps'),list):
+                  try: rid=int(d.get('run_id') or re.search(r'(\d+)',p.stem).group(1))
+                  except Exception: rid=0
+                  bases.append((rid,p,d))
+          if not bases: raise SystemExit('NO_FULL_GUARDIAN_BASELINE')
+          _,bp,base=max(bases,key=lambda x:x[0])
+          done=set(); failures={}
+          for p in E.glob('canonical-*.json'):
+              d=load(p) or {}
+              for r in d.get('processed',[]):
+                  if r.get('slug') and r.get('target'): done.add((r['target'],r['slug']))
+              for f in d.get('failures',[]):
+                  if f.get('slug') and f.get('target'): failures[(f['target'],f['slug'])]=str(f.get('error','')).split(':',1)[0]
+          for p in E.glob('dataset-recovery-*.json'):
+              d=load(p) or {}; slug=d.get('slug')
+              if slug and d.get('verdict')=='VERIFIED': done.add((f'Agente core kernel Yaiwes principal/{slug}',slug))
+          base_rows={}
+          retry_keys=set(); blocked={}
+          for r in base.get('remaining_gaps',[]):
+              k=(r.get('target'),r.get('slug'))
+              if all(k): base_rows[k]=r
+          for r in base.get('retryable_gaps',[]):
+              k=(r.get('target'),r.get('slug'))
+              if all(k): retry_keys.add(k)
+          for r in base.get('blocked_gaps',[]):
+              k=(r.get('target'),r.get('slug'))
+              if all(k): blocked[k]=r.get('code','BLOCKED')
+          unresolved=[]; retry=[]; lfs=[]; datasets=[]; unknown=[]
+          for k,r in sorted(base_rows.items()):
+              if k in done: continue
+              code=failures.get(k) or blocked.get(k)
+              row={'target':k[0],'slug':k[1],'code':code}
+              unresolved.append(row)
+              if k[1] in {'HelpSteer2','PRM800K','Math-Shepherd'}: datasets.append(row)
+              elif code=='SOURCE_LFS_POINTER_GAP': lfs.append(row)
+              elif k in retry_keys and not code: retry.append(row)
+              elif k in retry_keys and code not in {'SOURCE_LFS_POINTER_GAP'}: retry.append(row) if code is None else unknown.append(row)
+              else: unknown.append(row)
+          report={'schema':'yaiwes.canonical.watchdog.v2','run_id':os.getenv('GITHUB_RUN_ID','local'),'baseline':bp.name,'baseline_remaining':len(base_rows),'verified_done':len(base_rows)-len(unresolved),'remaining_gaps':unresolved,'retryable':retry,'lfs_salvage':lfs,'datasets':datasets,'unknown_blocked':unknown,'counts':{'remaining':len(unresolved),'retryable':len(retry),'lfs':len(lfs),'datasets':len(datasets),'unknown':len(unknown)},'verdict':'VERIFIED_CLOSED' if not unresolved else 'GAPS_PENDING'}
+          out=E/f"canonical-watchdog-{os.getenv('GITHUB_RUN_ID','local')}.json"; out.write_text(json.dumps(report,indent=2,ensure_ascii=False)+'\n'); print(json.dumps(report,ensure_ascii=False))
+          pathlib.Path('/tmp/watchdog.json').write_text(json.dumps(report))
+          PY
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          d=json.load(open('/tmp/watchdog.json')); c=d['counts']
+          print('remaining='+str(c['remaining'])); print('retryable='+str(c['retryable'])); print('lfs='+str(c['lfs'])); print('datasets='+str(c['datasets'])); print('unknown='+str(c['unknown']))
+          PY
+      - name: Publish watchdog evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -A --sparse -- 'Documentos proyectos Yaiwes/Evidencias extracción histórica'
+          git diff --cached --quiet && exit 0
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m "audit(extraction): canonical watchdog [run ${GITHUB_RUN_ID}]"
+          for a in 1 2 3 4 5; do
+            if git fetch origin main && git rebase --autostash origin/main && git push --no-verify origin HEAD:main; then exit 0; fi
+            test "$a" -lt 5 || exit 41; sleep $((a*10))
+          done
+      - name: Continue repair loop
+        if: steps.audit.outputs.remaining != '0'
         env: {GH_TOKEN: '${{ github.token }}'}
         shell: bash
         run: |
           set -euo pipefail
-          ln -s 'Core kernel Yaiwes/Componentes recuperados A' 'Agente core kernel Yaiwes principal'
-          ln -s 'Core kernel Yaiwes/Componentes recuperados B' 'core kernel Yaiwes principal'
-          mkdir -p forensics
-          ln -s '../Documentos proyectos Yaiwes/Evidencias extracción histórica/extraction' forensics/extraction
-          python3 'Core kernel Yaiwes/scripts/extract_guardian_repair_20260903.py' --audit-only | tee /tmp/audit-result.json
-          read -r GAPS RETRYABLE BLOCKED <<< "$(python3 -c 'import json; d=json.load(open("/tmp/audit-result.json")); c=d.get("counts",{}); print(c.get("remaining",0),c.get("retryable",0),c.get("blocked",0))')"
-          rm -f 'Agente core kernel Yaiwes principal' 'core kernel Yaiwes principal'
-          rm -rf forensics
-          git add -A -- 'Documentos proyectos Yaiwes/Evidencias extracción histórica'
-          if ! git diff --cached --quiet; then
-            git config user.name github-actions[bot]
-            git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-            git commit -m "audit(extraction): canonical watchdog [run ${GITHUB_RUN_ID}]"
-            for a in 1 2 3 4 5; do git fetch origin main && git rebase --autostash origin/main && git push --no-verify origin HEAD:main && break; sleep $((a*10)); done
-          fi
-          echo "REMAINING_GAPS=$GAPS RETRYABLE_GAPS=$RETRYABLE BLOCKED_GAPS=$BLOCKED"
-          if [ "$GAPS" -eq 0 ]; then echo VERIFIED_CLOSED; exit 0; fi
-          [ "$RETRYABLE" -eq 0 ] || gh api --method POST "repos/${GITHUB_REPOSITORY}/dispatches" -f event_type=canonical-retry-round
-          if [ "$BLOCKED" -gt 0 ]; then
-            gh api --method POST "repos/${GITHUB_REPOSITORY}/dispatches" -f event_type=canonical-lfs-round
-            gh api --method POST "repos/${GITHUB_REPOSITORY}/dispatches" -f event_type=canonical-dataset-round
-          fi
+          if [ '${{ steps.audit.outputs.unknown }}' != '0' ]; then echo 'UNKNOWN_BLOCKED_GAPS_REQUIRE_TARGETED_REPAIR'; exit 73; fi
+          [ '${{ steps.audit.outputs.retryable }}' = '0' ] || gh api --method POST "repos/${GITHUB_REPOSITORY}/dispatches" -f event_type=canonical-retry-round
+          [ '${{ steps.audit.outputs.lfs }}' = '0' ] || gh api --method POST "repos/${GITHUB_REPOSITORY}/dispatches" -f event_type=canonical-lfs-round
+          [ '${{ steps.audit.outputs.datasets }}' = '0' ] || gh api --method POST "repos/${GITHUB_REPOSITORY}/dispatches" -f event_type=canonical-dataset-round
           gh api --method POST "repos/${GITHUB_REPOSITORY}/dispatches" -f event_type=canonical-watchdog-round
+      - name: Verified closure
+        if: steps.audit.outputs.remaining == '0'
+        run: echo VERIFIED_CLOSED

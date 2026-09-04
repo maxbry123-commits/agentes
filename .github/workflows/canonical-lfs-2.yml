@@ -1,3 +1,4 @@
+# sparse-v2
 name: Yaiwes canonical LFS salvage 2
 on:
   workflow_dispatch:
