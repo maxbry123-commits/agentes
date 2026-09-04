@@ -1,0 +1,161 @@
+/* Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.flowable.eventregistry.json.converter;
+
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.function.Supplier;
+
+import org.flowable.eventregistry.model.EventModel;
+import org.flowable.eventregistry.model.EventPayload;
+
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
+
+/**
+ * @author Tijs Rademakers
+ * @author Filip Hrisafov
+ */
+public class EventJsonConverter {
+
+    protected Supplier<ObjectMapper> objectMapperSupplier;
+
+    public EventJsonConverter() {
+        this(JsonMapper::shared);
+    }
+
+    public EventJsonConverter(Supplier<ObjectMapper> objectMapperSupplier) {
+        this.objectMapperSupplier = objectMapperSupplier;
+    }
+
+    public EventModel convertToEventModel(String modelJson) {
+        try {
+            JsonNode modelNode = objectMapperSupplier.get().readTree(modelJson);
+            EventModel eventModel = new EventModel();
+
+            eventModel.setKey(modelNode.path("key").stringValue(null));
+            eventModel.setName(modelNode.path("name").stringValue(null));
+            
+            JsonNode payloadNode = modelNode.path("payload");
+
+            if (payloadNode.isArray()) {
+                for (JsonNode node : payloadNode) {
+                    String name = node.path("name").stringValue(null);
+                    String type = node.path("type").stringValue(null);
+
+                    EventPayload payload = new EventPayload(name, type);
+                    if (node.path("isFullPayload").asBoolean(false)) {
+                        payload.setFullPayload(true);
+                    } else {
+                        payload.setCorrelationParameter(node.path("correlationParameter").asBoolean(false));
+                        payload.setHeader(node.path("header").asBoolean(false));
+                        payload.setMetaParameter(node.path("metaParameter").asBoolean(false));
+                    }
+                    
+                    processExtensionProperties(node, payload);
+
+                    eventModel.addPayload(payload);
+                }
+            }
+
+            JsonNode correlationParameters = modelNode.path("correlationParameters");
+            if (correlationParameters.isArray()) {
+                for (JsonNode correlationPayloadNode : correlationParameters) {
+                    String name = correlationPayloadNode.path("name").stringValue(null);
+                    String type = correlationPayloadNode.path("type").stringValue(null);
+                    EventPayload payload = eventModel.addCorrelation(name, type);
+                    
+                    processExtensionProperties(correlationPayloadNode, payload);
+                }
+            }
+
+            return eventModel;
+            
+        } catch (Exception e) {
+            throw new FlowableEventJsonException("Error reading event json", e);
+        }
+    }
+
+    public String convertToJson(EventModel definition) {
+        ObjectMapper objectMapper = objectMapperSupplier.get();
+        ObjectNode modelNode = objectMapper.createObjectNode();
+
+        if (definition.getKey() != null) {
+            modelNode.put("key", definition.getKey());
+        }
+
+        if (definition.getName() != null) {
+            modelNode.put("name", definition.getName());
+        }
+        
+        Collection<EventPayload> payload = definition.getPayload();
+        if (!payload.isEmpty()) {
+            ArrayNode payloadNode = modelNode.putArray("payload");
+            for (EventPayload eventPayload : payload) {
+                ObjectNode eventPayloadNode = payloadNode.addObject();
+                if (eventPayload.getName() != null) {
+                    eventPayloadNode.put("name", eventPayload.getName());
+                }
+
+                if (eventPayload.getType() != null) {
+                    eventPayloadNode.put("type", eventPayload.getType());
+                }
+                
+                if (eventPayload.isHeader() && !eventPayload.isFullPayload()) {
+                    eventPayloadNode.put("header", true);
+                }
+
+                if (eventPayload.isCorrelationParameter() && !eventPayload.isFullPayload()) {
+                    eventPayloadNode.put("correlationParameter", true);
+                }
+                
+                if (eventPayload.isFullPayload()) {
+                    eventPayloadNode.put("isFullPayload", true);
+                }
+
+                if (eventPayload.isMetaParameter()) {
+                    eventPayloadNode.put("metaParameter", true);
+                }
+                
+                if (eventPayload.getExtensionProperties() != null && !eventPayload.getExtensionProperties().isEmpty()) {
+                    ObjectNode extensionPropNode = eventPayloadNode.putObject("extensionProperties");
+                    for (String propName : eventPayload.getExtensionProperties().keySet()) {
+                        extensionPropNode.put(propName, eventPayload.getExtensionProperties().get(propName));
+                    }
+                }
+            }
+        }
+
+        try {
+            return objectMapper.writeValueAsString(modelNode);
+        } catch (Exception e) {
+            throw new FlowableEventJsonException("Error writing event json", e);
+        }
+    }
+    
+    protected void processExtensionProperties(JsonNode node, EventPayload payload) {
+        JsonNode extensionNodes = node.path("extensionProperties");
+        if (extensionNodes != null && !extensionNodes.isMissingNode()) {
+            Map<String, String> extensionPropertyMap = new HashMap<>();
+            for (String extensionName : extensionNodes.propertyNames()) {
+                extensionPropertyMap.put(extensionName, extensionNodes.get(extensionName).asString());
+            }
+            
+            payload.setExtensionProperties(extensionPropertyMap);
+        }
+    }
+}

@@ -1,0 +1,261 @@
+---
+build:
+  list: never
+  publishResources: false
+  render: never
+sitemap:
+  disable: true
+---
+This chapter describes the configuration sections used to run VictoriaMetrics Anomaly Detection, or [`vmanomaly`](https://docs.victoriametrics.com/anomaly-detection/):
+
+- [Model(s) section](https://docs.victoriametrics.com/anomaly-detection/components/models/) - Required
+- [Reader section](https://docs.victoriametrics.com/anomaly-detection/components/reader/) - Required
+- [Scheduler(s) section](https://docs.victoriametrics.com/anomaly-detection/components/scheduler/) - Required
+- [Writer section](https://docs.victoriametrics.com/anomaly-detection/components/writer/) - Required
+- [Monitoring section](https://docs.victoriametrics.com/anomaly-detection/components/monitoring/) -  Optional
+- [Settings section](https://docs.victoriametrics.com/anomaly-detection/components/settings/) - Optional
+- [Server section](https://docs.victoriametrics.com/anomaly-detection/components/server/) - Optional
+
+> The service validates its configuration at startup{{% available_from "v1.7.2" anomaly %}}. Check the container logs for validation errors and use the sections above for field descriptions and examples.
+
+> Component classes{{% available_from "v1.13.0" anomaly %}} can be referenced by short aliases instead of full import paths. For example, `model.zscore.ZscoreModel` becomes `zscore`, `reader.vm.VmReader` becomes `vm`, and `scheduler.periodic.PeriodicScheduler` becomes `periodic`.
+
+> `preset` modes are available {{% available_from "v1.13.0" anomaly %}} for `vmanomaly`. Please find the guide [here](https://docs.victoriametrics.com/anomaly-detection/presets/).
+
+## Components interaction
+
+Below, you will find an example illustrating how the components of `vmanomaly` interact with each other and with a VictoriaMetrics or VictoriaLogs/VictoriaTraces datasource.
+
+> [Reader](https://docs.victoriametrics.com/anomaly-detection/components/reader/#vm-reader) and [Writer](https://docs.victoriametrics.com/anomaly-detection/components/writer/#vm-writer) also support [multitenancy](https://docs.victoriametrics.com/victoriametrics/cluster-victoriametrics/#multitenancy), so you can read/write from/to different locations - see `tenant_id` param description.
+
+{{% content "vmanomaly-components-diagram.md" %}}
+
+## Example config
+
+The following minimal configuration demonstrates current many-to-many model, query, and scheduler mapping:
+
+```yaml
+settings:
+  n_workers: 4  # number of workers to run models in parallel
+  native_threads_per_worker: 0  # automatically divide container-aware CPU capacity across workers
+  anomaly_score_outside_data_range: 5.0  # default anomaly score for anomalies outside expected data range
+  restore_state: True  # restore state from previous run, if available
+  retention:  # how long to keep stale models on disk/in memory
+    ttl: "1d"  # time-to-live duration, if the model was not used for inference within this duration, it will be considered stale
+    check_interval: "1h"  # how often to check for stale models and remove them
+
+# how and when to run the models is defined by schedulers
+# https://docs.victoriametrics.com/anomaly-detection/components/scheduler/
+schedulers:
+  periodic_online:  # alias
+    class: 'periodic' # scheduler class
+    infer_every: "30s"  # how often to produce anomaly scores for new data
+    scatter_infer_jobs: true  # distribute infer jobs evenly across the infer interval to reduce synchronized bursts
+    fit_every: "1000d"  # bootstrap-only schedule; use a finite cadence if accumulated state must be reset
+    fit_window: "3d"  # how much historical data to use for fit stage
+    start_from: "00:00"  # align the bootstrap fit to midnight in the configured timezone
+    tz: "Europe/Kyiv"  # timezone to use for start_from
+  periodic_online_weekly:
+    class: 'periodic'
+    infer_every: "15m"
+    scatter_infer_jobs: true
+    fit_every: "1000d"  # bootstrap-only schedule; use a finite cadence if accumulated state must be reset
+    fit_window: "14d"
+    # if no start_from is specified, jobs will start immediately after service starts
+
+# what model types and with what hyperparams to run on your data
+# https://docs.victoriametrics.com/anomaly-detection/components/models/
+models:
+  zscore:  # we can set up alias for model
+    class: 'zscore_online'  # model class
+    z_threshold: 3.5
+    decay: 0.99  # weight for data points value should be in (0, 1], 1 means to give equal weight to all data
+    provide_series: ['anomaly_score', 'y', 'yhat', 'yhat_upper']  # what series to produce as output of the model
+    queries: ['host_network_receive_errors']  # what queries to run particular model on
+    schedulers: ['periodic_online']  # will be fit once, used for infer every 30s
+    clip_predictions: True  # clip predictions to expected data range, i.e. [0, inf] for this query `host_network_receive_errors
+  envelope_weekly: # we can set up alias for model
+    class: 'temporal_envelope'
+    alpha: 0.005  # adapt the trend while using the bootstrap-only fit schedule
+    loss_reactivity: 3  # allow new deviations to update the envelope
+    provide_series: ['anomaly_score', 'y', 'yhat', 'yhat_lower', 'yhat_upper']
+    queries: ['cpu_seconds_total']
+    schedulers: ['periodic_online_weekly']  # fit on two weekly cycles, then update online every 15m
+    anomaly_score_outside_data_range: 1.5  # override default anomaly score outside expected data range
+    clip_predictions: True  # clip predictions to expected data range, i.e. [0, inf] for this query `cpu_seconds_total`
+    seasonalities: ['hod_smooth', 'dow_smooth']
+
+# where to read data from
+# https://docs.victoriametrics.com/anomaly-detection/components/reader/#vm-reader
+reader:
+  class: 'vm'
+  datasource_url: "https://play.victoriametrics.com/"
+  tenant_id: "0:0"
+  sampling_period: "30s"  # what data resolution to fetch from VictoriaMetrics' /query_range endpoint
+  workers: 0  # automatically choose bounded datasource concurrency
+  latency_offset: '1ms'
+  query_from_last_seen_timestamp: False
+  tz: "UTC"  # timezone to use for queries without explicit timezone
+  "offset": "0s"  # offset to apply to all queries, e.g. to account for data delays, can be overridden on per-query basis
+  queries:  # aliases to MetricsQL expressions
+    cpu_seconds_total:
+      expr: 'avg(rate(node_cpu_seconds_total[5m])) by (mode)' 
+      # step: '30s'  # if not set, will be equal to reader-level sampling_period
+      data_range: [0, 'inf']  # query-level business policy from v1.30.2
+      detection_direction: 'above_expected'  # query-level from v1.30.2; detect spikes only
+      min_dev_from_expected: [0.01, 0.01]  # query-level from v1.30.2
+    host_network_receive_errors:
+      expr: 'rate(node_network_receive_errs_total[3m]) / rate(node_network_receive_packets_total[3m])'
+      step: '15m'  # here we override per-query `sampling_period` to request way less data from VM TSDB
+      data_range: [0, 'inf']  # query-level business policy from v1.30.2
+      detection_direction: 'above_expected'  # query-level from v1.30.2; detect spikes only
+      min_dev_from_expected: 0.0  # query-level from v1.30.2; absolute-deviation filtering is disabled
+
+# where to write data to
+# https://docs.victoriametrics.com/anomaly-detection/components/writer/
+writer:
+  datasource_url: "http://victoriametrics:8428/"
+  tenant_id: "0:0"  # for VictoriaMetrics cluster, can support "multitenant"
+  # https://docs.victoriametrics.com/anomaly-detection/components/writer/#metrics-formatting
+  metric_format:
+    __name__: $VAR
+    for: $QUERY_KEY
+    
+
+# enable self-monitoring in pull and/or push mode
+# https://docs.victoriametrics.com/anomaly-detection/components/monitoring/
+monitoring:
+  # pull: # Enable /metrics endpoint.
+  #   addr: "0.0.0.0"
+  #   port: 8490
+
+  push: # Enable pushing self-monitoring metrics
+    url: "http://victoriametrics:8428"
+    push_frequency: "15m"  # how often to push self-monitoring metrics
+
+# configure vmanomaly server and UI settings
+# https://docs.victoriametrics.com/anomaly-detection/components/server/
+server:
+  port: 8490
+  path_prefix: '/vmanomaly'  # optional path prefix for all HTTP routes
+  max_concurrent_tasks: 4  # maximum number of concurrent anomaly detection tasks processed by backend
+  use_reader_connection_settings: True  # if True, use reader's datasource_url and credentials for UI requests to datasource
+  uvicorn_config:  # optional Uvicorn server configuration
+    log_level: 'warning'
+```
+
+## Hot reload
+
+> This feature is better used in conjunction with [stateful service](https://docs.victoriametrics.com/anomaly-detection/components/settings/#state-restoration) to preserve the state of the models and schedulers between restarts and reuse what can be reused, thus avoiding unnecessary re-training of models, re-initialization of schedulers and re-reading of data.
+
+{{% available_from "v1.25.0" anomaly %}} The service supports hot reload of configuration files, applying changes without an explicit restart. Enable it with the `--watch` [CLI argument](https://docs.victoriametrics.com/anomaly-detection/quickstart/#command-line-arguments). The `vmanomaly_config_reload_enabled` [self-monitoring metric](https://docs.victoriametrics.com/anomaly-detection/components/monitoring/#startup-metrics) is `1` when hot reload is enabled and `0` otherwise.
+
+> [!WARNING]
+> File system event-based hot reload has been deprecated {{% deprecated_from "v1.29.5" anomaly %}} in favor of content-based polling with configurable `-configCheckInterval` due to reliability issues with Kubernetes ConfigMap symlink rotations and other filesystems where event delivery can be inconsistent. If you were using file system event-based hot reload, please switch to content-based polling by enabling `--watch` flag and configuring `-configCheckInterval` as needed.
+
+### How it works
+
+The service checks watched `.yml` and `.yaml` files at the `-configCheckInterval` interval (default `30s`){{% available_from "v1.29.5" anomaly %}}. When it detects a content change, it waits for the debounce window, rebuilds the [global configuration](https://docs.victoriametrics.com/anomaly-detection/scaling-vmanomaly/#global-configuration), and reinitializes the components. The `vmanomaly_config_reloads_total` metric is incremented with `status="success"` or `status="failure"`; validation failures are also logged.
+
+> If the reload fails, the service will log an error message indicating the reason for the failure, and the **previous configuration will remain active until a successful reload occurs** to preserve the service's stability. This means that if there are errors in the new configuration, the service will continue to operate with the last valid configuration until the issues are resolved.
+
+In a [sharded setup](https://docs.victoriametrics.com/anomaly-detection/scaling-vmanomaly/#horizontal-scalability), each global configuration change recalculates the current shard's assignment. {{% available_from "v1.30.4" anomaly %}} A shard with no runnable assignment remains live and idle. If a later reload assigns work, it restores compatible model state when available, creates schedulers, and starts executing tasks without a process restart. See the [idle-shard lifecycle](https://docs.victoriametrics.com/anomaly-detection/scaling-vmanomaly/#idle-shards-and-topology-changes).
+
+Hot reload uses the sharding topology supplied through environment variables at process startup. Changing shard count, member index, replication factor, or assignment strategy requires an orchestration rollout or process restart. With `ROUND_ROBIN`, inserting or deleting an entity may move a suffix of the canonical ordered sub-configurations; `RENDEZVOUS` preserves unrelated assignments while the shard set remains unchanged. See [assignment strategy guidance](https://docs.victoriametrics.com/anomaly-detection/scaling-vmanomaly/#horizontal-scalability).
+
+### Example
+
+For simplicity, let a service be run on a config file named `config.yaml` with the following content:
+
+```yaml
+settings:
+  n_workers: 4  # number of workers to run models in parallel
+  anomaly_score_outside_data_range: 5.0  # default anomaly score for anomalies outside expected data range
+  restore_state: True  # restore state from previous run, if available
+
+schedulers:
+  periodic:
+    class: 'periodic'
+    infer_every: "30s"
+    fit_every: "1000d"  # bootstrap-only schedule; use a finite cadence if accumulated state must be reset
+    fit_window: "24h"
+
+reader:
+  datasource_url: "https://play.victoriametrics.com/"
+  tenant_id: "0:0"
+  class: 'vm'
+  sampling_period: "30s"
+  queries:
+    cpu_seconds_total:
+      expr: 'avg(rate(node_cpu_seconds_total[5m])) by (mode)'
+      data_range: [0, 'inf']
+      # step: '30s'  # if not set, will be equal to reader-level sampling_period
+    host_network_receive_errors:
+      expr: 'rate(node_network_receive_errs_total[3m]) / rate(node_network_receive_packets_total[3m])'
+      step: '15s'
+      data_range: [0, 'inf']
+  
+models:
+  zscore:
+    class: 'zscore_online'
+    z_threshold: 3.5
+    decay: 0.99  # gives more weight to recent data points, value should be in (0, 1], 1 means to give equal weight to all data
+    provide_series: ['anomaly_score']
+    # if queries are not specified, all queries from reader will be used
+    # if schedulers are not specified, all schedulers will be used
+
+writer:
+  datasource_url: "http://victoriametrics:8428/"
+  tenant_id: "0:0"
+
+monitoring:
+  push:
+    url: "http://victoriametrics:8428"
+    push_frequency: "15m"
+```
+
+Suppose after 15m since service startup, there was a change to the query expression and frequency for `node_cpu_seconds_total` query in `reader.queries`:
+
+```yaml
+# ... (rest of the config remains unchanged)
+reader:
+  # ... (rest of the reader config remains unchanged)
+  queries:
+    cpu_seconds_total:
+      expr: 'avg(rate(node_cpu_seconds_total[10m])) by (mode)'  # changed lookback period
+      data_range: [0, 'inf']
+      step: '60s'  # changed step
+# ... (rest of the config remains unchanged)
+```
+
+After saving the changes, hot reload will automatically detect the changes in `config.yaml` and attempt to reload the configuration. As the changes are valid, the service will log a success message and increment the `vmanomaly_config_reloads_total` metric with `status="success"` label:
+
+- All the model instances of class `zscore_online`, that were trained on `host_network_receive_errors` can be reused as they are still valid and "fresh" for making inference on new datapoints until the next `fit_every` happens.
+- All the model instances of class `zscore_online`, that were trained on `cpu_seconds_total` will be re-trained with the new query expression and frequency, as old model instances are not valid anymore.
+
+
+## Environment variables
+
+{{% available_from "v1.25.0" anomaly %}} Environment variables can be referenced directly in the configuration files using scalar string placeholders `%{ENV_NAME}`. This allows for dynamic configuration based on environment variables, which is particularly useful for managing sensitive information like API keys or database credentials while still making it accessible to the service.
+
+For example, `VMANOMALY_URL` environment variable can be set to `http://localhost:8428` and then used in the configuration file in reader [section](https://docs.victoriametrics.com/anomaly-detection/components/reader/#vm-reader) as `datasource_url: %{VMANOMALY_URL}`.
+
+> If referenced environment variable is not set or there is a typo, **the placeholder will not be replaced** which may lead to errors during configuration validation or endpoints probing failure. It is recommended to ensure that all required environment variables are set before starting the service.
+
+### Example
+
+```yaml
+reader:
+  class: 'vm'
+  datasource_url: %{VMANOMALY_URL}  # will be replaced with the value of VMANOMALY_URL environment variable
+  tenant_id: %{VMANOMALY_TENANT_ID}  # will be replaced with the value of VMANOMALY_TENANT_ID environment variable
+  bearer_token: %{VMANOMALY_BEARER_TOKEN}  # will be replaced with the value of VMANOMALY_BEARER_TOKEN environment variable
+  sampling_period: "30s"
+
+writer:
+  datasource_url: %{VMANOMALY_URL}  # will be replaced with the value of VMANOMALY_URL environment variable
+  tenant_id: %{VMANOMALY_TENANT_ID}  # will be replaced with the value of VMANOMALY_TENANT_ID environment variable
+  bearer_token: %{VMANOMALY_BEARER_TOKEN}  # will be replaced with the value of VMANOMALY_BEARER_TOKEN environment variable
+
+# other config sections ...
+```

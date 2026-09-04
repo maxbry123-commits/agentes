@@ -1,0 +1,457 @@
+/*
+Copyright 2021 The Dapr Authors
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+    http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package operator
+
+import (
+	"bytes"
+	"context"
+	"crypto/tls"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"strings"
+	"time"
+
+	argov1alpha1 "github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
+	"github.com/go-logr/logr"
+	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
+	ctrl "sigs.k8s.io/controller-runtime"
+	ctrlcache "sigs.k8s.io/controller-runtime/pkg/cache"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	"sigs.k8s.io/controller-runtime/pkg/webhook"
+
+	componentsapi "github.com/dapr/dapr/pkg/apis/components/v1alpha1"
+	configurationapi "github.com/dapr/dapr/pkg/apis/configuration/v1alpha1"
+	httpendpointsapi "github.com/dapr/dapr/pkg/apis/httpEndpoint/v1alpha1"
+	mcpserverapi "github.com/dapr/dapr/pkg/apis/mcpserver/v1alpha1"
+	resiliencyapi "github.com/dapr/dapr/pkg/apis/resiliency/v1alpha1"
+	subscriptionsapiV1alpha1 "github.com/dapr/dapr/pkg/apis/subscriptions/v1alpha1"
+	subapi "github.com/dapr/dapr/pkg/apis/subscriptions/v2alpha1"
+	wfaclapi "github.com/dapr/dapr/pkg/apis/workflowaccesspolicy/v1alpha1"
+	"github.com/dapr/dapr/pkg/healthz"
+	"github.com/dapr/dapr/pkg/modes"
+	"github.com/dapr/dapr/pkg/operator/api"
+	operatorcache "github.com/dapr/dapr/pkg/operator/cache"
+	"github.com/dapr/dapr/pkg/operator/handlers"
+	"github.com/dapr/dapr/pkg/security"
+	"github.com/dapr/kit/concurrency"
+	"github.com/dapr/kit/crypto/spiffe"
+	"github.com/dapr/kit/logger"
+	"github.com/dapr/kit/ptr"
+)
+
+var log = logger.NewLogger("dapr.operator")
+
+// Operator is an Dapr Kubernetes Operator for managing components and sidecar lifecycle.
+type Operator interface {
+	Start(ctx context.Context) error
+}
+
+// Options contains the options for `NewOperator`.
+type Options struct {
+	Config                              string
+	LeaderElection                      bool
+	WatchdogEnabled                     bool
+	WatchdogInterval                    time.Duration
+	WatchdogMaxRestartsPerMin           int
+	WatchNamespace                      string
+	ServiceReconcilerEnabled            bool
+	ArgoRolloutServiceReconcilerEnabled bool
+	WatchdogCanPatchPodLabels           bool
+	TrustAnchorsFile                    string
+	APIPort                             int
+	APIListenAddress                    string
+	WebhookServerPort                   int
+	WebhookServerListenAddress          string
+	Healthz                             healthz.Healthz
+
+	// CacheSyncPeriod optionally overrides the controller-runtime informer
+	// resync period (default 10h). Zero leaves the default in place. Primarily
+	// used by integration tests to exercise resync behaviour deterministically.
+	CacheSyncPeriod time.Duration
+}
+
+type operator struct {
+	apiServer api.Server
+
+	config       *Config
+	mgr          ctrl.Manager
+	podMetaCache ctrlcache.Cache
+	secProvider  security.Provider
+
+	secHealthz       healthz.Target
+	apiServerHealthz healthz.Target
+	webhookHealthz   healthz.Target
+	cacheHealthz     healthz.Target
+}
+
+// NewOperator returns a new Dapr Operator.
+func NewOperator(ctx context.Context, opts Options) (Operator, error) {
+	conf, err := ctrl.GetConfig()
+	if err != nil {
+		return nil, fmt.Errorf("unable to get controller runtime configuration, err: %s", err)
+	}
+
+	config, err := LoadConfiguration(ctx, opts.Config, conf)
+	if err != nil {
+		return nil, fmt.Errorf("unable to load configuration, config: %s, err: %w", opts.Config, err)
+	}
+
+	secProvider, err := security.New(ctx, security.Options{
+		SentryAddress:           config.SentryAddress,
+		ControlPlaneTrustDomain: config.ControlPlaneTrustDomain,
+		ControlPlaneNamespace:   security.CurrentNamespace(),
+		TrustAnchorsFile:        &opts.TrustAnchorsFile,
+		AppID:                   "dapr-operator",
+		// mTLS is always enabled for the operator.
+		MTLSEnabled: true,
+		Mode:        modes.KubernetesMode,
+		Healthz:     opts.Healthz,
+		// The operator serves CRD conversion / validating / mutating webhooks
+		// to the Kubernetes API server, which on some cloud distributions
+		// rejects Ed25519 serving certs.
+		KeyAlgorithm: ptr.Of(spiffe.KeyAlgorithmRSA),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	watchdogPodSelector := getSideCarInjectedNotExistsSelector()
+
+	var cacheSyncPeriod *time.Duration
+	if opts.CacheSyncPeriod > 0 {
+		cacheSyncPeriod = &opts.CacheSyncPeriod
+	}
+
+	scheme, err := buildScheme(opts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build operator scheme: %w", err)
+	}
+
+	mgr, err := ctrl.NewManager(conf, ctrl.Options{
+		Logger: logr.Discard(),
+		Scheme: scheme,
+		WebhookServer: webhook.NewServer(webhook.Options{
+			Host: opts.WebhookServerListenAddress,
+			Port: opts.WebhookServerPort,
+			TLSOpts: []func(*tls.Config){
+				func(tlsConfig *tls.Config) {
+					sec, sErr := secProvider.Handler(ctx)
+					// Error here means that the context has been cancelled before security
+					// is ready.
+					if sErr != nil {
+						return
+					}
+					*tlsConfig = *sec.TLSServerConfigNoClientAuth()
+				},
+			},
+		}),
+		HealthProbeBindAddress: "0",
+		Metrics: metricsserver.Options{
+			BindAddress: "0",
+		},
+		LeaderElection:                opts.LeaderElection,
+		LeaderElectionID:              "operator.dapr.io",
+		NewCache:                      operatorcache.GetFilteredCache(opts.WatchNamespace, watchdogPodSelector, cacheSyncPeriod),
+		LeaderElectionReleaseOnCancel: true,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("unable to start manager: %w", err)
+	}
+	mgrClient := mgr.GetClient()
+
+	// A dedicated metadata-only pod cache used to resolve, server side, which
+	// configuration is assigned to a connecting sidecar from its pod's
+	// dapr.io/config annotation. Kept separate from the manager cache (which holds
+	// typed pods for the watchdog) because a cache can only hold one informer per
+	// GVK, and metadata-only watches avoid transferring/retaining pod specs.
+	podMetaCache, err := operatorcache.NewPodMetadataCache(operatorcache.PodMetadataCacheOptions{
+		RestConfig: conf,
+		Namespace:  opts.WatchNamespace,
+		SyncPeriod: cacheSyncPeriod,
+		HTTPClient: mgr.GetHTTPClient(),
+		Mapper:     mgr.GetRESTMapper(),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("unable to create pod metadata cache: %w", err)
+	}
+
+	if opts.WatchdogEnabled {
+		if !opts.LeaderElection {
+			log.Warn("Leadership election is forcibly enabled when the Dapr Watchdog is enabled")
+		}
+		wd := &DaprWatchdog{
+			client:            mgrClient,
+			interval:          opts.WatchdogInterval,
+			maxRestartsPerMin: opts.WatchdogMaxRestartsPerMin,
+			canPatchPodLabels: opts.WatchdogCanPatchPodLabels,
+			podSelector:       watchdogPodSelector,
+		}
+		if err := mgr.Add(wd); err != nil {
+			return nil, fmt.Errorf("unable to add watchdog controller: %w", err)
+		}
+	} else {
+		log.Infof("Dapr Watchdog is not enabled")
+	}
+
+	if opts.ServiceReconcilerEnabled {
+		daprHandler := handlers.NewDaprHandlerWithOptions(mgr, &handlers.Options{
+			ArgoRolloutServiceReconcilerEnabled: opts.ArgoRolloutServiceReconcilerEnabled,
+			MTLSEnabled:                         config.MTLSEnabled,
+		})
+		if err := daprHandler.Init(ctx); err != nil {
+			return nil, fmt.Errorf("unable to initialize handler: %w", err)
+		}
+	}
+
+	return &operator{
+		mgr:              mgr,
+		podMetaCache:     podMetaCache,
+		secProvider:      secProvider,
+		config:           config,
+		secHealthz:       opts.Healthz.AddTarget("operator-security"),
+		apiServerHealthz: opts.Healthz.AddTarget("operator-api-server"),
+		webhookHealthz:   opts.Healthz.AddTarget("operator-webhook"),
+		cacheHealthz:     opts.Healthz.AddTarget("operator-cache"),
+		apiServer: api.NewAPIServer(api.Options{
+			Client:        mgr.GetClient(),
+			Cache:         mgr.GetCache(),
+			PodReader:     podMetaCache,
+			Security:      secProvider,
+			Port:          opts.APIPort,
+			ListenAddress: opts.APIListenAddress,
+		}),
+	}, nil
+}
+
+func (o *operator) Start(ctx context.Context) error {
+	log.Info("Dapr Operator is starting")
+
+	/*
+		Make sure to set `ENABLE_WEBHOOKS=false` when we run locally.
+	*/
+	enableConversionWebhooks := !strings.EqualFold(os.Getenv("ENABLE_WEBHOOKS"), "false")
+	if enableConversionWebhooks {
+		err := ctrl.NewWebhookManagedBy(o.mgr).
+			For(&subscriptionsapiV1alpha1.Subscription{}).
+			Complete()
+		if err != nil {
+			return fmt.Errorf("unable to create webhook Subscriptions v1alpha1: %w", err)
+		}
+		err = ctrl.NewWebhookManagedBy(o.mgr).
+			For(&subapi.Subscription{}).
+			Complete()
+		if err != nil {
+			return fmt.Errorf("unable to create webhook Subscriptions v2alpha1: %w", err)
+		}
+	}
+
+	caBundleCh := make(chan []byte)
+
+	runner := concurrency.NewRunnerManager(
+		o.secProvider.Run,
+		func(ctx context.Context) error {
+			// Wait for webhook certificates to be ready before starting the manager.
+			_, rErr := o.secProvider.Handler(ctx)
+			if rErr != nil {
+				return rErr
+			}
+			o.secHealthz.Ready()
+			return o.mgr.Start(ctx)
+		},
+		func(ctx context.Context) error {
+			if rErr := o.apiServer.Ready(ctx); rErr != nil {
+				return fmt.Errorf("API server did not become ready in time: %w", rErr)
+			}
+			o.apiServerHealthz.Ready()
+			log.Infof("Dapr Operator started")
+			<-ctx.Done()
+			return nil
+		},
+		func(ctx context.Context) error {
+			if !enableConversionWebhooks {
+				<-ctx.Done()
+				return nil
+			}
+			sec, rErr := o.secProvider.Handler(ctx)
+			if rErr != nil {
+				return rErr
+			}
+			sec.WatchTrustAnchors(ctx, caBundleCh)
+			return nil
+		},
+		func(ctx context.Context) error {
+			if !enableConversionWebhooks {
+				o.webhookHealthz.Ready()
+				<-ctx.Done()
+				return nil
+			}
+
+			sec, rErr := o.secProvider.Handler(ctx)
+			if rErr != nil {
+				return rErr
+			}
+
+			caBundle, rErr := sec.CurrentTrustAnchors(ctx)
+			if rErr != nil {
+				return rErr
+			}
+
+			for {
+				rErr = o.patchConversionWebhooksInCRDs(ctx, caBundle, o.mgr.GetConfig(), "subscriptions.dapr.io")
+				if rErr != nil {
+					return rErr
+				}
+
+				o.webhookHealthz.Ready()
+
+				select {
+				case caBundle = <-caBundleCh:
+				case <-ctx.Done():
+					return nil
+				}
+			}
+		},
+		func(ctx context.Context) error {
+			log.Info("Starting API server")
+			rErr := o.apiServer.Run(ctx)
+			if rErr != nil {
+				return fmt.Errorf("failed to start API server: %w", rErr)
+			}
+			return nil
+		},
+		// Run the pod metadata cache on every replica (not just the leader), since
+		// the API server serves configuration updates from all replicas.
+		o.podMetaCache.Start,
+		func(ctx context.Context) error {
+			if !o.mgr.GetCache().WaitForCacheSync(ctx) {
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
+				return errors.New("cache failed to sync")
+			}
+			// Gate readiness on the pod metadata cache too, so the operator is not
+			// reported ready (and so, in Kubernetes, not added to the Service
+			// endpoints sidecars connect through) until it can resolve a connecting
+			// sidecar's assigned configuration. This avoids a startup window where
+			// appAssignedConfiguration lists an unsynced, empty pod cache and
+			// resolves "", silently streaming no configuration updates.
+			if !o.podMetaCache.WaitForCacheSync(ctx) {
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
+				return errors.New("pod metadata cache failed to sync")
+			}
+			o.cacheHealthz.Ready()
+			<-ctx.Done()
+			return nil
+		},
+	)
+
+	return runner.Run(ctx)
+}
+
+// Patches the conversion webhooks in the specified CRDs to set the TLS configuration (including namespace and CA bundle)
+func (o *operator) patchConversionWebhooksInCRDs(ctx context.Context, caBundle []byte, conf *rest.Config, crdNames ...string) error {
+	clientSet, err := apiextensionsclient.NewForConfig(conf)
+	if err != nil {
+		return fmt.Errorf("could not get API extension client: %v", err)
+	}
+
+	crdClient := clientSet.ApiextensionsV1().CustomResourceDefinitions()
+
+	for _, crdName := range crdNames {
+		crd, err := crdClient.Get(ctx, crdName, v1.GetOptions{})
+		if err != nil {
+			return fmt.Errorf("could not get CRD %q: %v", crdName, err)
+		}
+
+		if crd == nil ||
+			crd.Spec.Conversion == nil ||
+			crd.Spec.Conversion.Webhook == nil ||
+			crd.Spec.Conversion.Webhook.ClientConfig == nil {
+			return fmt.Errorf("crd %q does not have an existing webhook client config. Applying resources of this type will fail", crdName)
+		}
+
+		if crd.Spec.Conversion.Webhook.ClientConfig.Service != nil &&
+			crd.Spec.Conversion.Webhook.ClientConfig.Service.Namespace == security.CurrentNamespace() &&
+			crd.Spec.Conversion.Webhook.ClientConfig.CABundle != nil &&
+			bytes.Equal(crd.Spec.Conversion.Webhook.ClientConfig.CABundle, caBundle) {
+			log.Infof("Conversion webhook for %q is up to date", crdName)
+
+			continue
+		}
+
+		// This code mimics:
+		// kubectl patch crd "subscriptions.dapr.io" --type='json' -p [{'op': 'replace', 'path': '/spec/conversion/webhook/clientConfig/service/namespace', 'value':'${namespace}'},{'op': 'add', 'path': '/spec/conversion/webhook/clientConfig/caBundle', 'value':'${caBundle}'}]"
+		type patchValue struct {
+			Op    string `json:"op"`
+			Path  string `json:"path"`
+			Value any    `json:"value"`
+		}
+		payload := []patchValue{{
+			Op:    "replace",
+			Path:  "/spec/conversion/webhook/clientConfig/service/namespace",
+			Value: security.CurrentNamespace(),
+		}, {
+			Op:    "replace",
+			Path:  "/spec/conversion/webhook/clientConfig/caBundle",
+			Value: caBundle,
+		}}
+
+		payloadJSON, err := json.Marshal(payload)
+		if err != nil {
+			return fmt.Errorf("could not marshal webhook spec: %w", err)
+		}
+		if _, err := crdClient.Patch(ctx, crdName, types.JSONPatchType, payloadJSON, v1.PatchOptions{}); err != nil {
+			return fmt.Errorf("failed to patch webhook in CRD %q: %v", crdName, err)
+		}
+
+		log.Infof("Successfully patched webhook in CRD %q", crdName)
+	}
+
+	return nil
+}
+
+func buildScheme(opts Options) (*runtime.Scheme, error) {
+	builders := []func(*runtime.Scheme) error{
+		clientgoscheme.AddToScheme,
+		componentsapi.AddToScheme,
+		configurationapi.AddToScheme,
+		resiliencyapi.AddToScheme,
+		httpendpointsapi.AddToScheme,
+		mcpserverapi.AddToScheme,
+		subscriptionsapiV1alpha1.AddToScheme,
+		subapi.AddToScheme,
+		wfaclapi.AddToScheme,
+	}
+
+	if opts.ArgoRolloutServiceReconcilerEnabled {
+		builders = append(builders, argov1alpha1.AddToScheme)
+	}
+
+	errs := make([]error, len(builders))
+	scheme := runtime.NewScheme()
+	for i, builder := range builders {
+		errs[i] = builder(scheme)
+	}
+
+	return scheme, errors.Join(errs...)
+}

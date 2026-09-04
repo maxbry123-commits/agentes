@@ -1,0 +1,104 @@
+#
+# Copyright 2023 The Dapr Authors
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#     http://www.apache.org/licenses/LICENSE-2.0
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+name: dapr-standalone-validation
+
+on:
+  # Manual trigger
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+      - release-*
+      - feature/*
+    tags:
+      - v*
+  pull_request:
+    branches:
+      - master
+      - release-*
+      - feature/*
+  merge_group:
+
+permissions: {}
+
+jobs:
+  validate-virt-mem:
+    name: Standalone validations
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      GOOS: linux
+      GOARCH: amd64
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+      - name: Upgrade pip
+        run: |
+          python3 -m ensurepip --upgrade
+          python3 -m pip install --upgrade pip
+      - name: Install required Python packages
+        run: |
+          python3 -m pip install numpy scipy requests
+      - name: Install latest Dapr CLI
+        uses: dapr/.github/.github/actions/setup-dapr-cli@main
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Initialize with latest Dapr runtime
+        run: dapr init --slim
+      - name: Check out code
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.ref }}
+      - name: Set up Go
+        id: setup-go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: "go.mod"
+      - name: Build Dapr's sidecar
+        run: |
+          git status
+          make ./dist/${GOOS}_${GOARCH}/release/daprd
+      - name: Determine baseline ref
+        id: baseline-ref
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "ref=${{ github.base_ref }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" = "merge_group" ]; then
+            echo "ref=${{ github.event.merge_group.base_sha }}" >> $GITHUB_OUTPUT
+          elif [ -n "${{ github.event.before }}" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+            echo "ref=${{ github.event.before }}" >> $GITHUB_OUTPUT
+          else
+            echo "ref=$(git rev-parse HEAD~1)" >> $GITHUB_OUTPUT
+          fi
+      - name: "Check out baseline code at ${{ steps.baseline-ref.outputs.ref }}"
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ steps.baseline-ref.outputs.ref }}
+          path: .baseline
+      - name: "Build baseline daprd from ${{ steps.baseline-ref.outputs.ref }}"
+        run: |
+          cd .baseline
+          git status
+          make ./dist/${GOOS}_${GOARCH}/release/daprd
+          cd ..
+      - name: Validate sidecar's basic resource utilization
+        env:
+          SECONDS_FOR_PROCESS_TO_RUN: 30
+          LIMIT_DELTA_BINARY_SIZE: 7168  # KB (7 MB)
+        run: ./.github/scripts/validate_sidecar_resources.py

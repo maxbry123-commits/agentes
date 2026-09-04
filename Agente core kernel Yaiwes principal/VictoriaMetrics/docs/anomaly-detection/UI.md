@@ -1,0 +1,873 @@
+---
+weight: 2
+title: UI
+description: "Built-in vmui-like UI for exploring anomaly detection results."
+menu:
+  docs:
+    parent: "anomaly-detection"
+    identifier: "vmanomaly-ui"
+    weight: 2
+    title: UI
+tags:
+  - metrics
+  - enterprise
+  - ui
+aliases:
+- /anomaly-detection/ui.html
+- /anomaly-detection/ui
+- /anomaly-detection/UI
+- /anomaly-detection/UI/
+---
+
+## Introduction
+
+{{% available_from "v1.26.0" anomaly %}} `vmanomaly` includes a built-in [vmui-like](https://docs.victoriametrics.com/victoriametrics/single-server-victoriametrics/#vmui) [UI](https://en.wikipedia.org/wiki/Graphical_user_interface) for exploring queries, comparing anomaly detection models, and tuning model or domain settings before production deployment.
+
+![vmanomaly-ui-overview](vmanomaly-ui-overview.webp)
+
+## Accessing the UI
+
+The UI is available at `http://<vmanomaly-host>:8490` by default. Change the port with `server.port` in the [configuration file](https://docs.victoriametrics.com/anomaly-detection/components/):
+
+```yaml
+server:
+  port: 8490
+
+# other vmanomaly configuration sections, e.g. schedulers, models, reader, writer, etc.
+```
+
+For impactful parameters please refer to [optimize resource usage](#optimize-resource-usage) section of this page.
+
+## Playgrounds
+
+Try the UI with preconfigured queries and models in the public VictoriaMetrics, VictoriaLogs, and VictoriaTraces playgrounds:
+
+{{% collapse name="Playground on VictoriaMetrics Datasource" %}}
+
+<div class="position-relative mb-3">
+  <button
+    type="button"
+    class="btn btn-primary btn-sm position-absolute top-0 end-0 m-2"
+    style="z-index: 2;"
+    onclick="document.getElementById('vmui-playground-vmanomaly-metrics')?.requestFullscreen?.()"
+  >
+    Fullscreen
+  </button>
+
+  <iframe
+    id="vmui-playground-vmanomaly-metrics"
+    title="VictoriaMetrics Anomaly Detection Playground (Metrics)"
+    allow="fullscreen"
+    loading="lazy"
+    class="w-100 border rounded"
+    style="height: 400px; background: white;"
+    src="https://play-vmanomaly.victoriametrics.com/metrics/"
+  ></iframe>
+</div>
+
+{{% /collapse %}}
+
+{{% collapse name="Playground on VictoriaLogs Datasource" %}}
+
+<div class="position-relative mb-3">
+  <button
+    type="button"
+    class="btn btn-primary btn-sm position-absolute top-0 end-0 m-2"
+    style="z-index: 2;"
+    onclick="document.getElementById('vmui-playground-vmanomaly-logs')?.requestFullscreen?.()"
+  >
+    Fullscreen
+  </button>
+
+  <iframe
+    id="vmui-playground-vmanomaly-logs"
+    title="VictoriaMetrics Anomaly Detection Playground (Logs)"
+    allow="fullscreen"
+    loading="lazy"
+    class="w-100 border rounded"
+    style="height: 400px; background: white;"
+    src="https://play-vmanomaly.victoriametrics.com/logs/"
+  ></iframe>
+</div>
+
+{{% /collapse %}}
+
+{{% collapse name="Playground on VictoriaTraces Datasource" %}}
+
+<div class="position-relative mb-3">
+  <button
+    type="button"
+    class="btn btn-primary btn-sm position-absolute top-0 end-0 m-2"
+    style="z-index: 2;"
+    onclick="document.getElementById('vmui-playground-vmanomaly-traces')?.requestFullscreen?.()"
+  >
+    Fullscreen
+  </button>
+
+  <iframe
+    id="vmui-playground-vmanomaly-traces"
+    title="VictoriaMetrics Anomaly Detection Playground (Traces)"
+    allowfullscreen
+    allow="fullscreen"
+    loading="lazy"
+    class="w-100 border rounded"
+    style="height: 400px; background: white;"
+    src="https://play-vmanomaly.victoriametrics.com/traces/"
+  ></iframe>
+</div>
+
+{{% /collapse %}}
+
+## Authentication
+
+> [!TIP]
+{{% available_from "v1.29.2" anomaly %}} You can proxy connection settings to UI, defined in [reader](https://docs.victoriametrics.com/anomaly-detection/components/reader/#config-parameters) section of the configuration file, so that UI can connect to the data sources with the same settings (e.g. credentials, TLS, etc.). Set `server.use_reader_connection_settings` [arg](https://docs.victoriametrics.com/anomaly-detection/components/server/#parameters) to `true` in the configuration file to enable this feature, and UI will automatically use the connection settings from the reader configuration when connecting to the data sources. If `pass auth headers` option is enabled in the UI settings, it will take precedence over the reader-wise settings. See [example configuration](https://docs.victoriametrics.com/anomaly-detection/components/server/#example-configuration) for details.
+
+
+{{% available_from "v1.27.0" anomaly %}} The vmanomaly UI supports proxying authentication headers from [v1.1.0](#v110) and onwards.
+
+Consider using [vmauth](https://docs.victoriametrics.com/victoriametrics/vmauth/) in front of both vmanomaly (UI and API) and data sources (VictoriaMetrics / VictoriaLogs) to enforce end-to-end setup for accessing the data from the UI.
+
+> Please refer to [config format](https://docs.victoriametrics.com/victoriametrics/vmauth/#auth-config) of `vmauth` and check [generic proxy example for different backends](https://docs.victoriametrics.com/victoriametrics/vmauth/#generic-http-proxy-for-different-backends)
+
+Use the following example configuration snippet for `vmauth` to proxy auth headers to VictoriaMetrics, VictoriaLogs and vmanomaly instances:
+
+```yaml
+users:
+  - username: '<username>'
+    password: '<password>'
+    url_map:
+      - src_hosts:
+          - "metrics.local.some-domain.net"
+        url_prefix: "http://victoriametrics:8428"
+      - src_hosts:
+          - "vl.local.some-domain.net"
+        url_prefix: "http://victorialogs:9428"
+      - src_hosts:
+          - "vmanomaly.local.some-domain.net"
+        url_prefix: "http://vmanomaly:8490"
+        keep_original_host: true
+```
+
+Then, on [settings panel](#settings-panel) of the UI, set the URLs accordingly, also check the option to forward auth headers to the datasource:
+
+![vmanomaly-ui-sections-settings](vmanomaly-ui-sections-settings.webp)
+{class="w-50 mx-auto"}
+
+### Pre-configured Datasource
+
+{{% available_from "v1.28.2" anomaly %}} For a shared deployment with a fixed datasource, set these environment variables at `vmanomaly` startup. The UI then hides its datasource selectors:
+
+- `VMANOMALY_UI_DATASOURCE_URL` - to set static datasource URL
+- `VMANOMALY_UI_DATASOURCE_TYPE` - to set datasource type, supported options are `vm` for VictoriaMetrics, `vmlogs` for both VictoriaLogs and VictoriaTraces.
+
+Example usage:
+```shell
+export VMANOMALY_UI_DATASOURCE_URL=https://play.victoriametrics.com/select/0:0/prometheus
+export VMANOMALY_UI_DATASOURCE_TYPE=vm
+```
+
+Start `vmanomaly` as usual. All UI queries will use the configured datasource:
+
+![vmanomaly-ui-preconfigured-datasource-1](vmanomaly-ui-preconfigured-datasource-1.webp)
+
+## Preset
+
+Vmanomaly can be deployed in efficient "UI mode" [preset](https://docs.victoriametrics.com/anomaly-detection/presets/#ui), with as simple configuration as:
+
+```yaml
+preset: ui
+```
+
+This will start vmanomaly instance with a no-operation schedulers, readers, models and the other components, and **will only enable the UI for interactive exploration of anomaly detection models**, so all the resources are dedicated to the UI and no resources are wasted on other components, such as production jobs of anomaly detection (retrieving metrics, running models, writing results, etc.).
+
+The best applications of this mode are:
+- Deploy vmanomaly UI as a service to hide the deployment complexity and allow internal users to explore anomaly detection models and their configurations, without the need to run any production jobs of anomaly detection.
+- When there is a quick need to explore and validate anomaly detection models and their configurations before deploying them in production jobs, at minimal resource usage.
+
+
+> However, the UI can be **combined with existing production jobs of anomaly detection, as it is available in non-blocking mode for all running vmanomaly instances** {{% available_from "v1.26.0" anomaly %}}, regardless of the preset or configuration used, just at a cost of increased resource usage.
+
+## AI Assistance
+
+{{% available_from "v1.29.0" anomaly %}} Copilot is an AI assistant built into the vmanomaly UI. It understands current anomaly detection configuration in the UI and helps iterate faster and obtain better results - without leaving the UI, searching the docs manually, or being an expert in anomaly detection.
+
+### What you can do with Copilot
+
+- **Ask questions** about any model (e.g. [Temporal Envelope](https://docs.victoriametrics.com/anomaly-detection/components/models/#temporal-envelope), [Online Seasonal Quantile](https://docs.victoriametrics.com/anomaly-detection/components/models/#online-seasonal-quantile), or [Online Z-score](https://docs.victoriametrics.com/anomaly-detection/components/models/#online-z-score) - parameters, trade-offs, when to use each)
+- **Improve detection quality** - describe what's wrong ("too many false positives", "missing spikes") and Copilot reads the config, searches the docs, and proposes a validated configuration change to fix the issue.
+- **Get config suggestions inline** - suggestions appear as interactive cards with an explanation and a YAML diff; click **Apply** to write the change directly to your current settings, or **Decline** to keep the conversation going.
+- {{% available_from "v1.30.0" anomaly %}} **Profile and tune the real query** - with [mcp-vmanomaly](#mcp-tools-server) connected, Copilot can inspect bounded time-series characteristics, recommend an online model, start an asynchronous autotune task, and apply its validated query and model suggestions.
+
+### How it works
+
+Copilot appears as a **chat popup** anchored to the bottom-right corner of the page. The panel is resizable by dragging its left edge, and can be opened or closed by clicking the respective icon.
+
+> [!TIP] Copilot is context-aware
+> It reads your active model, scheduler, and anomaly settings from the UI automatically, so you don't need to paste your config manually. {{% available_from "v1.29.2" anomaly %}} It also can read and modify full UI settings, such as data source URL, query parameters, scheduler settings, and more, to provide better suggestions.
+
+### Configuration
+
+AI Assistant is disabled by default; enable it with `VMANOMALY_COPILOT_ENABLED=true`, then configure credentials for the selected LLM provider and **explicitly set** `VMANOMALY_COPILOT_MODEL` to the exact model Copilot should use. Do not rely on an implicit default model being selected. Once enabled and configured, Copilot will appear as a chat popup in the bottom-right corner of the UI.
+
+
+Supported providers and model formats:
+
+- **Anthropic** - set `ANTHROPIC_API_KEY`; model format: `anthropic:<model>`
+  - Examples: `claude-haiku-4-5`, `claude-sonnet-5`; see [full list](https://platform.claude.com/docs/en/about-claude/models/overview#latest-models-comparison)
+- **OpenAI** - set `OPENAI_API_KEY`; model format: `openai:<model>` or `openai-responses:<model>`
+  - Examples: `gpt-5-mini`, `gpt-5.2`; see [full list](https://platform.openai.com/docs/models)
+  - {{% available_from "v1.29.1" anomaly %}} OpenAI-compatible non-OpenAI providers are supported through `OPENAI_BASE_URL` + `OPENAI_API_KEY`
+  - {{% available_from "v1.29.1" anomaly %}} Azure OpenAI is supported through `AZURE_OPENAI_ENDPOINT` + `OPENAI_API_VERSION` + `AZURE_OPENAI_API_KEY` (or `AZURE_OPENAI_AD_TOKEN`); do not set both `OPENAI_BASE_URL` and `AZURE_OPENAI_ENDPOINT`
+- {{% available_from "v1.29.1" anomaly %}} **Google** - model format: `google-gla:<model>` or `google-vertex:<model>`
+  - Use `GOOGLE_API_KEY` for `google-gla`; for `google-vertex`, use Application Default Credentials, a service account (`GOOGLE_APPLICATION_CREDENTIALS`), or `GOOGLE_API_KEY`
+  - Example: `google-gla:gemini-2.5-pro-preview`
+- {{% available_from "v1.29.1" anomaly %}} **AWS Bedrock** - use AWS credentials or an IAM role; model format: `bedrock:<model>`
+  - Preferred: set `AWS_BEARER_TOKEN_BEDROCK` and `AWS_DEFAULT_REGION`
+  - Alternative: set `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_DEFAULT_REGION` (add `AWS_SESSION_TOKEN` if using a session token)
+  - Example: `bedrock:anthropic.claude-sonnet-4-5-20250929-v1:0`
+- {{% available_from "v1.29.1" anomaly %}} **OpenRouter** - set `OPENROUTER_API_KEY`; model format: `openrouter:<model>`
+  - Example: `openrouter:anthropic/claude-sonnet-4-5`
+
+Set the credentials matching your selected provider:
+
+```bash
+# Anthropic
+export ANTHROPIC_API_KEY=your_key_here
+
+# OpenAI
+export OPENAI_API_KEY=your_key_here
+
+# OpenAI-compatible non-OpenAI providers
+export OPENAI_BASE_URL=https://api.example.com/v1
+export OPENAI_API_KEY=your_key_here
+
+# Azure OpenAI
+export AZURE_OPENAI_ENDPOINT=https://example.openai.azure.com
+export OPENAI_API_VERSION=2024-10-21
+export AZURE_OPENAI_API_KEY=your_key_here
+# or: export AZURE_OPENAI_AD_TOKEN=your_entra_token
+
+# Google Generative Language API
+export GOOGLE_API_KEY=your_key_here
+
+# Google Vertex AI service account
+export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+# or use Application Default Credentials: gcloud auth application-default login
+
+# OpenRouter
+export OPENROUTER_API_KEY=your_key_here
+
+# AWS Bedrock (preferred: bearer token)
+export AWS_BEARER_TOKEN_BEDROCK=your_bearer_token
+export AWS_DEFAULT_REGION=us-east-1
+# AWS Bedrock (alternative: access key pair or IAM role)
+# export AWS_ACCESS_KEY_ID=your_access_key
+# export AWS_SECRET_ACCESS_KEY=your_secret_key
+# export AWS_DEFAULT_REGION=us-east-1
+# export AWS_SESSION_TOKEN=your_session_token  # if using a session token
+```
+
+Explicitly set the model Copilot should use:
+
+```bash
+export VMANOMALY_COPILOT_MODEL=openai:gpt-5-mini
+```
+
+For example, if a smaller OpenAI model is desired, set:
+
+```bash
+export VMANOMALY_COPILOT_MODEL=openai:gpt-5-nano
+```
+
+### MCP tools server
+
+Connects Copilot to [mcp-vmanomaly](https://github.com/VictoriaMetrics/mcp-vmanomaly) for full tool access (built-in docs, models configuration and validation, alerts recommendation, service healthchecks, etc.). Full [tools list](https://github.com/VictoriaMetrics/mcp-vmanomaly?tab=readme-ov-file#toolset):
+
+> [!NOTE]
+> Only `http` [mode](https://github.com/VictoriaMetrics/mcp-vmanomaly?tab=readme-ov-file#modes) is supported. Set `VMANOMALY_MCP_SERVER_URL` to the MCP server HTTP endpoint. The server must be reachable from within the vmanomaly container.
+
+For example:
+
+```bash
+export VMANOMALY_MCP_SERVER_URL=http://localhost:8081/mcp
+```
+
+Use `localhost` only when the vmanomaly process can reach the MCP server on its own loopback interface (for example, both running on the host). If vmanomaly runs in a separate Docker container, use a reachable container or host address instead.
+
+**Example**: if using Docker, run `mcp-vmanomaly` and vmanomaly UI in the same Docker network so they can reach each other by container name:
+
+```bash
+docker network create vmanomaly-network
+
+docker run -d --rm \
+  --name mcp-vmanomaly \
+  --network vmanomaly-network \
+  -e VMANOMALY_ENDPOINT=http://vmanomaly-instance:8490 \
+  -e MCP_SERVER_MODE=http \
+  -e MCP_LISTEN_ADDR=:8081 \
+  ghcr.io/victoriametrics/mcp-vmanomaly
+
+docker run -it --rm \
+  --name vmanomaly-instance \
+  --network vmanomaly-network \
+  -e VMANOMALY_COPILOT_ENABLED=true \
+  -e OPENAI_API_KEY="$OPENAI_API_KEY" \
+  -e VMANOMALY_COPILOT_MODEL=openai:gpt-5-mini \
+  -e VMANOMALY_MCP_SERVER_URL=http://mcp-vmanomaly:8081/mcp \
+  -p 8080:8080 \
+  -p 8490:8490 \
+  victoriametrics/vmanomaly:v1.30.4 \
+  vmanomaly_config.yaml
+```
+
+
+## UI Navigation
+
+The UI has four main areas:
+
+- [**Query Explorer**](#query-explorer): A vmui-like interface for typing and executing MetricsQL/LogsQL queries to visualize data.
+- [**Model Panel**](#model-panel): A form for editing anomaly detection model hyperparameters and applying domain knowledge settings.
+- [**Visualization Panel**](#visualization-panel): A space for visualizing model performance and anomalies.
+- [**Settings Panel**](#settings-panel): A section for configuring global settings and preferences for the vmanomaly UI, including data source configuration.
+
+### Query Explorer
+
+Use Query Explorer to run MetricsQL or LogsQL queries and visualize input data.
+
+![vmanomaly-ui-sections-explore](vmanomaly-ui-sections-explore.webp)
+
+Users can:
+- Enter, autocomplete, prettify and execute queries to retrieve and plot the data from the configured data source (see [settings panel](#settings-panel) for data source configuration).
+- Adjust the (inference) time range and resolution (step) for data visualization and anomaly detection purposes.
+- Access query history and saved queries for quick access to frequently used queries.
+- Switch tenants (if data source supports multi-tenancy) and access [settings panel](#settings-panel) for global UI configuration.
+
+[Back to UI navigation](#ui-navigation)
+
+### Visualization Panel
+
+The Visualization Panel displays either raw query results or model output, depending on the selected action.
+
+After selecting **Execute Query**:
+
+![vmanomaly-ui-sections-plot-area-query-mode](vmanomaly-ui-sections-plot-area-query-mode.webp)
+
+All returned series appear in one vmui-like plot with zooming and panning.
+
+After selecting **Detect Anomalies**:
+
+![vmanomaly-ui-sections-plot-area-detect-mode](vmanomaly-ui-sections-plot-area-detect-mode.webp)
+
+The plot groups model output by input series and compares actual values (`y`) with predictions (`yhat`), confidence intervals (`yhat_lower`, `yhat_upper`), and detected anomalies. Hover over an anomaly marker to inspect its score and labels.
+
+Toggle individual output series from the legend.
+
+{{% available_from "v1.29.2" anomaly %}} Enable **Business Boundaries** to overlay the configured [detection direction](https://docs.victoriametrics.com/anomaly-detection/components/models/#detection-direction) and combined [absolute](https://docs.victoriametrics.com/anomaly-detection/components/models/#minimal-deviation-from-expected) and [relative](https://docs.victoriametrics.com/anomaly-detection/components/models/#minimal-relative-deviation-from-expected) minimum-deviation bands. Toggle individual bands from the legend or all bands with the main control.
+
+[Back to UI navigation](#ui-navigation)
+
+### Model Panel
+
+![vmanomaly-ui-sections-model](vmanomaly-ui-sections-model.webp)
+
+The Model Panel provides:
+
+- Scheduling controls such as **Fit Every**, **Fit Window**, and {{% available_from "v1.28.0" anomaly %}} **Infer Every** for imitating [production scheduling](https://docs.victoriametrics.com/anomaly-detection/components/scheduler/#periodic-scheduler).
+- An override for the default [anomaly detection threshold](https://docs.victoriametrics.com/anomaly-detection/faq/#what-is-anomaly-score) of `1.0`.
+- Actions for running or canceling detection, downloading results, and exporting model configurations or example alerting rules.
+
+> {{% available_from "v1.28.0" anomaly %}} For [online models](https://docs.victoriametrics.com/anomaly-detection/components/models/#online-models), combine **Exact** mode with **Infer Every** to reproduce causal production micro-batches. This gives a more representative backtest at the cost of additional computation.
+
+A form-based menu configures model hyperparameters and domain knowledge:
+
+- Model selection, for example Temporal Envelope or Online MAD.
+![vmanomaly-ui-model-config-menu](vmanomaly-ui-model-config-menu.webp)
+- A wizard with **model-agnostic settings** such as detection direction, data range, clipping, and minimum deviation, plus the selected model's hyperparameters. {{% available_from "v1.27.0" anomaly %}} Press **Tab** to autocomplete suggested values.
+  <a class="content-image d-flex justify-content-center" data-bs-target="#image-modal" data-bs-toggle="modal" href="/anomaly-detection/vmanomaly-ui-model-config-wizard.webp"><img alt="vmanomaly-ui-model-config-wizard" class="w-75 mx-auto" src="/anomaly-detection/vmanomaly-ui-model-config-wizard.webp" style="min-width: 0;" /></a>
+
+[Back to UI navigation](#ui-navigation)
+
+### Settings Panel
+
+The vmui-like "Settings" panel allows users to configure global settings and preferences for the vmanomaly UI, including:
+
+- Server URL (vmanomaly)
+- Datasource URL (VictoriaMetrics, VictoriaLogs)
+- Timezone
+- UI Theme
+- {{% available_from "v1.27.0" anomaly %}} Auth Headers forwarding to datasource (VictoriaMetrics, VictoriaLogs). 
+
+![vmanomaly-ui-sections-settings](vmanomaly-ui-sections-settings.webp)
+{class="w-50 mx-auto"}
+
+[Back to navigation](#ui-navigation)
+
+## Configuration Sharing
+
+Based on the needs, either 
+- Full UI state can be [shared via URL](#url-sharing)
+- Or model part / full service configuration can be [viewed and exported in production-ready YAML format](#yaml-configuration).
+
+[Default state](#default-state) can simplify both sharing and experimentation by preconfiguring the UI state on vmanomaly startup.
+
+### URL Sharing
+
+Similarly to vmui, vmanomaly UI supports **configuration sharing via URL** by encoding the UI state in the URL. This allows users to share their UI state (including queries, time ranges, model type and hyperparameters, and other settings) by copying and sharing the URL from the browser's address bar.
+
+Once the desired UI state is set up (query, time range, model configuration, etc.), the URL can be copied from the browser's address bar and shared with others, who can then open the URL in their browsers to see the same UI state (given that the data source is accessible to them).
+
+![vmanomaly-ui-state-sharing-url](vmanomaly-ui-state-sharing-url.webp)
+
+<p></p>
+<p>Example URL content:</p>
+
+```shellhelp
+http://localhost:8490/vmui/#/?anomaly_threshold=1.0&fit_window=1d&fit_every=7d&g0.range_input=7d&g0.end_input=2025-09-30T16%3A56%3A13&g0.relative_time=last_7_days&g0.tab=0&g0.tenantID=0&datasourceUrl=https%3A%2F%2Fplay.victoriametrics.com%2Fselect%2F0%2Fprometheus&g0.expr=sum%28rate%28node_cpu_seconds_total%7Bmode%3D%7E%22%28softirq%7Cuser%7Ciowait%29%22%7D%5B10m%5D%29%29+by+%28container%2C+mode%29&g0.step_input=30m&model_config=%257B%2522modelType%2522%253A%2522rolling_quantile%2522%252C%2522settings%2522%253A%257B%2522detection_direction%2522%253A%2522above_expected%2522%252C%2522data_range%2522%253A%255B0%252C100%255D%252C%2522scale%2522%253A%255B1%252C1%255D%252C%2522clip_predictions%2522%253Atrue%252C%2522min_dev_from_expected%2522%253A%255B0%252C6%255D%252C%2522anomaly_score_outside_data_range%2522%253A1.01%252C%2522quantile%2522%253A0.9%252C%2522window_steps%2522%253A48%257D%252C%2522modelSpec%2522%253A%257B%2522class_name%2522%253A%2522rolling_quantile%2522%252C%2522class%2522%253A%2522model.rolling_quantile.RollingQuantileModel%2522%252C%2522detection_direction%2522%253A%2522above_expected%2522%252C%2522data_range%2522%253A%255B0%252C100%255D%252C%2522scale%2522%253A%255B1%252C1%255D%252C%2522clip_predictions%2522%253Atrue%252C%2522min_dev_from_expected%2522%253A%255B0%252C6%255D%252C%2522anomaly_score_outside_data_range%2522%253A1.01%252C%2522window_steps%2522%253A48%252C%2522quantile%2522%253A0.9%257D%252C%2522isValidated%2522%253Atrue%257D
+```
+
+### Default State
+
+{{% available_from "v1.28.5" anomaly %}} It is possible to preconfigure the default UI state via url-encoded `ui_default_state` parameter, so that `/vmui/` opens with the intended model settings, time range, query and other parameters, which improves user experience by allowing direct access to specific views without manual configuration each time, including state sharing or faster experimentation for internal teams.
+
+This parameter can be set in `server` [section](https://docs.victoriametrics.com/anomaly-detection/components/server/) of the [configuration file](https://docs.victoriametrics.com/anomaly-detection/components/) using the `ui_default_state` parameter. 
+
+> Default state is static by nature, so changing it requires either vmanomaly service restart or enabling [hot-reload mode](https://docs.victoriametrics.com/anomaly-detection/components/#hot-reload) via `--watch` flag.
+
+Example usage (based on [UI preset](#preset) mode):
+
+```yaml
+preset: ui
+# other sections, if needed e.g. settings
+
+server:
+  ui_default_state: '#/?anomaly_threshold=1.0&anomaly_consecutive=true&fit_window=3d'
+  # other server parameters, if needed e.g. port, max_concurrent_tasks, etc.
+```
+
+After that, accessing `http://<vmanomaly-host>:<port>/vmui/` (e.g. `http://localhost:8490/vmui/`) will open the UI with the preconfigured default state: `anomaly_threshold=1.0`, consecutive anomaly mode turned on and `fit_window=3d` given the example above.
+
+> Please refer to [URL sharing](#url-sharing) section for details on how to construct and copy the desired UI state URL.
+
+### YAML Configuration
+
+Once the configuration is set up and saved in the UI (selected model type and validated hyperparameters), equivalent configuration in production-ready YAML format can be obtained by:
+
+Accessing the "YAML" Tab in the model configuration section
+![vmanomaly-ui-model-config-menu](vmanomaly-ui-model-config-menu.webp)
+![vmanomaly-ui-model-config-yaml-tab](vmanomaly-ui-model-config-menu-yaml-tab.webp)
+
+
+Clicking the "Show Config" button to access (model-only or full) configuration and hitting "Download" button to get the configuration as a YAML file.
+
+![vmanomaly-ui-open-config-btn](vmanomaly-ui-open-config-btn.webp)
+
+![vmanomaly-ui-open-config-menu](vmanomaly-ui-open-config-menu.webp)
+
+## Optimize Resource Usage
+
+Based on expected usage patterns (quick experiments, internal team serving, number of users, etc.) it is recommended to tune resource usage by adjusting the following parameters in the `server` [section](https://docs.victoriametrics.com/anomaly-detection/components/server/#parameters) and `settings` [section](https://docs.victoriametrics.com/anomaly-detection/components/settings/) of the configuration file:
+
+```yaml
+server:
+  # Port for the UI server (default: 8490)
+  port: 8490
+  # Limit on concurrent tasks to manage UI load (default: 2) 
+  max_concurrent_tasks: 2
+
+settings:
+  # Number of workers for single job speed-ups (default: 1)
+  n_workers: 2
+  # Adjust logging levels to reduce verbosity  
+  logger_levels: 
+    vmanomaly: WARNING
+    reader: INFO
+    model: INFO
+    # ...
+```
+
+`max_concurrent_tasks` limits the number of concurrent tasks (e.g. running anomaly detection on queried data) to avoid overloading the UI when multiple users are using it simultaneously, and `n_workers` [option](https://docs.victoriametrics.com/anomaly-detection/components/settings/#parallelization) controls the number of workers for parallel processing of single tasks (e.g. running anomaly detection on queried data faster).
+
+Please note that numbers <= 0 for `n_workers` mean number of available CPU cores, and these workers would be shared with other components of vmanomaly, such as production jobs of anomaly detection (retrieving metrics, running models, writing results, etc.), if they are enabled.
+
+### Preset Usage
+
+If using the `ui` preset, just specify:
+
+```yaml
+preset: ui
+
+server:
+  # Port for the UI server (default: 8490)
+  port: 8490
+  # Limit on concurrent tasks to manage UI load (default: 2)
+  max_concurrent_tasks: 5
+  # path_prefix: /my-app  # optional, available from v1.28.4
+  # To locate the UI at http://<vmanomaly-host>:8490/my-app/vmui/
+
+settings:
+  # Number of workers for single job speed-ups (default: 1)
+  n_workers: 2
+  # Adjust logging levels to reduce verbosity
+  logger_levels:
+    vmanomaly: WARNING
+    # ...
+```
+
+in instance configuration file, it will be recursively merged with preset pre-filled configuration to produce the final configuration.
+
+### Mixed Usage
+
+If mixing the UI alongside production jobs of anomaly detection is expected, it is recommended to adjust the parameters to optimize resource usage, as well as configuring the `reader` and `writer` components appropriately for the production jobs.
+
+```yaml
+
+settings:
+  # Number of workers for mixed usage (numbers <= 0 mean number of available CPU cores)
+  n_workers: -1        
+  # Adjust logging levels to reduce verbosity
+  logger_levels:
+    vmanomaly: WARNING
+    reader: INFO
+    model: INFO
+    writer: INFO
+    # ...
+
+server:
+  # Port for the UI server (default: 8490)
+  port: 8490
+  # Limit on concurrent tasks to manage UI load (default: 2)
+  max_concurrent_tasks: 5
+  # override server's configured URL path prefix for all HTTP routes
+  # e.g. locate the UI at http://<vmanomaly-host>:8490/my-app/vmui/
+  # available from v1.28.4
+  # path_prefix: /my-app
+
+# other production components, e.g. schedulers, models, reader, writer, etc.
+```
+
+## Example Usage
+
+Run vmanomaly in `ui` preset mode (experimenting) with a configuration file `config.yaml` (see [preset usage](#preset-usage) section for details):
+
+```yaml
+preset: ui
+
+# other optional server/settings parameters, e.g. port, max_concurrent_tasks, n_workers, logger_levels, etc.
+```
+
+using one of the [deployment methods](https://docs.victoriametrics.com/anomaly-detection/quickstart/#how-to-install-and-run-vmanomaly) in a [QuickStart guide](https://docs.victoriametrics.com/anomaly-detection/quickstart/), e.g. via Docker.
+
+Retrieve the UI at `http://<vmanomaly-host>:<port>` (e.g. at `http://localhost:8490` if running locally with default port) and start exploring anomaly detection models and their configurations interactively.
+
+### Explore Input Data
+
+Start by entering valid MetricsQL/LogsQL queries in the Query Explorer to visualize the data from the configured data source (see [settings panel](#settings-panel) for data source configuration) - that's the data on which anomaly detection models will be applied.
+
+Set appropriate tenants (if data source supports multi-tenancy) and access [settings panel](#settings-panel) for global UI configuration, if needed.
+
+Set up the time range and resolution (step) for data visualization and anomaly detection purposes - e.g. last 7 days with 30m step, especially if the data has daily/weekly seasonality. Also, set the step according to the desired granularity of anomaly detection results (e.g. 30m step for 30m granularity) which itself is based on alerting needs and latency requirements.
+
+![vmanomaly-ui-sections-explore](vmanomaly-ui-sections-explore.webp)
+
+Pay attention to trends, seasonality, noise, outliers, and other patterns in the data, which can influence the choice of anomaly detection model and its hyperparameters. Use [Temporal Envelope](https://docs.victoriametrics.com/anomaly-detection/components/models/#temporal-envelope) for complex data with trend or calendar patterns, and [Online MAD](https://docs.victoriametrics.com/anomaly-detection/components/models/#online-mad) for simple, mostly stationary data where robustness to outliers matters.
+
+![vmanomaly-ui-sections-plot-area-query-mode](vmanomaly-ui-sections-plot-area-query-mode.webp)
+
+
+### Select and Configure Model
+
+Choose an appropriate anomaly detection model from the Model Panel based on the characteristics of the data and the specific requirements (domain knowledge) of the use case.
+
+![vmanomaly-ui-sections-model](vmanomaly-ui-sections-model.webp)
+
+Set the "Fit Every" and "Fit Window" parameters to control how often and over what time window the model is retrained on new data to imitate production behavior - e.g. fit every 7 days on a rolling window of last 14 days.
+
+{{% available_from "v1.28.0" anomaly %}} Set the "Infer Every" and toggle "Exact" mode parameters for [online models](https://docs.victoriametrics.com/anomaly-detection/components/models/#online-models) to imitate production inference behavior - e.g. infer every = 1h with step = 1m will result in exact mode for hourly micro-batches of up to 60 1m datapoints.
+
+Tune the model hyperparameters and apply domain knowledge settings using the form-based menu in the Model Panel. See (i) tooltips for parameter descriptions and [model documentation](https://docs.victoriametrics.com/anomaly-detection/components/models/) link for recommended values and guidelines.
+
+![vmanomaly-ui-model-config-wizard](vmanomaly-ui-model-config-wizard.webp)
+{class="w-75 mx-auto"}
+
+For example, for a **MAD online** [model](https://docs.victoriametrics.com/anomaly-detection/components/models/#online-mad), that should be run on a query, returning per-mode CPU utilization (as fractions of 1, data range `[0, 1]`), where you are interested in capturing **spikes of at least 6% deviations** from expected behavior:
+
+Set the **model-agnostic** parameters to encode the domain knowledge:
+- [detection direction](https://docs.victoriametrics.com/anomaly-detection/components/models/#detection-direction) to `above expected` for capturing high anomalies (spikes)
+- data range to `[0, 1]` for CPU utilization fractions and proper prediction clipping
+- [minimum deviation from expected](https://docs.victoriametrics.com/anomaly-detection/components/models/#minimal-deviation-from-expected) to `[0, 0.06]` for capturing spikes of at least 6% deviations in magnitude
+- (optionally) [anomaly score outside data range](https://docs.victoriametrics.com/anomaly-detection/components/models/#score-outside-data-range) to `5.0` for automatically marking values outside data range as anomalies (e.g. to catch improper query returning CPU > 100% or < 0%)
+- [clip predictions](https://docs.victoriametrics.com/anomaly-detection/components/models/#clip-predictions) to `true` for avoiding nonsensical predictions outside data range
+- [scale](https://docs.victoriametrics.com/anomaly-detection/components/models/#scale) to `[1, 1]` unless you will see improper width of confidence intervals from the experiments (e.g. too wide/narrow) given the model-specific hyperparameters and false positives/negatives observed in the results.
+
+Set the **model-specific** hyperparameters:
+- `threshold` to `3` for capturing significant deviations
+- `decay` to `0.995` for adapting to changing data patterns reasonably fast.
+
+Check the parameters for validity and consistency by hitting the "Validate" button, which will also provide warnings if some parameters are inconsistent (e.g. decay is set outside of `[0, 1]` range or `threshold` is set to a negative value), then hit "Save" to apply the changes.
+
+### Detect Anomalies
+
+Hit the "Detect Anomalies" button to run anomaly detection on the queried data with the selected model and its configuration.
+
+> The long running task (e.g. detection on misconfigured query returning too much metrics) can be canceled by hitting the "Cancel" button.
+
+![vmanomaly-ui-sections-plot-area-detect-mode](vmanomaly-ui-sections-plot-area-detect-mode.webp)
+
+Iterate over the legend to view **individual vmanomaly output** (e.g. actual values, expected values, confidence intervals, anomalies, etc.) for different series returned by the query.
+
+Iterate over **returned timeseries by query** to see how the model performed on different series, and whether the detected anomalies make sense in the context of the data and the use case (their % of total points, magnitude, duration, etc.).
+
+> {{% available_from "v1.28.2" anomaly %}} Starting from [v1.4.0](#v140) The timeseries are now sortable in the legend by clicking on the respective column headers (both label- and statistics-based columns are supported, e.g., sort by series name, anomaly count). Press "Table View" toggle to use this feature.
+
+Until satisfied with the results, finetune the model hyperparameters and domain knowledge settings in the Model Panel (or change the model type), and rerun anomaly detection on the queried data.
+
+Once satisfied with the results, do the following.
+
+>  Many tabs can be opened in parallel in the browser, so multiple experiments can be run in parallel, and the results can be compared by switching between tabs. Local settings (e.g. queries, time ranges, model configurations, etc.) are preserved in each tab, so different experiments do not interfere with each other.
+
+### Work with Results
+
+If the **results** do not look good, the model hyperparameters and domain knowledge settings can be further finetuned in the Model Panel, and anomaly detection can be [rerun on the queried](#detect-anomalies) data until satisfactory results are achieved.
+
+If the **results** look good, but should be shared with others first, timeseries can be downloaded as files by hitting the respective button in the Model Panel. See also [configuration sharing](#configuration-sharing) section for details.
+
+If the **results** look good and the **model configuration should be deployed in production jobs of anomaly detection**, the equivalent configuration in production-ready YAML format can be obtained by accessing the "YAML" Tab in the model configuration section and hitting the "Show Config" button to access (model-only or full) configuration to download/copy as a YAML file.
+
+![vmanomaly-ui-open-config-menu](vmanomaly-ui-open-config-menu.webp)
+
+{{% available_from "v1.28.0" anomaly %}} **Example alerting rules are generated** based on the current UI configuration. Hit the "Example Alert" button in the Model Panel to access and copy/download an example of parametrized [vmalert](https://docs.victoriametrics.com/victoriametrics/vmalert/) alerting rule snippet in YAML format to finetune and use in production alerting setup.
+
+![vmanomaly-ui-example-alert-btn](vmanomaly-ui-example-alert-btn.webp)
+
+![vmanomaly-ui-example-alert-menu](vmanomaly-ui-example-alert-menu.webp)
+
+## Changelog
+
+{{% collapse name="Release history" %}}
+
+### v1.8.3
+Released: 2026-08-27
+
+Recommended vmanomaly version: [v1.30.4](https://docs.victoriametrics.com/anomaly-detection/changelog/#v1304)
+
+- IMPROVEMENT: Fresh anomaly investigations default to the online univariate Temporal Envelope, and the model selector lists online models before offline alternatives.
+
+- BUGFIX: AI-suggested business settings remain synchronized with both the model wizard and the generated model configuration.
+
+- BUGFIX: Advanced model drop-downs display the selected option label instead of the control's internal numeric option position while preserving correctly typed configuration values.
+
+### v1.8.2
+Released: 2026-08-13
+
+vmanomaly version: [v1.30.2](https://docs.victoriametrics.com/anomaly-detection/changelog/#v1302)
+
+- BUGFIX: Fixed tenant discovery for VictoriaMetrics datasource URLs containing `/select/multitenant/prometheus`. The UI now loads available numeric tenants from `/admin/tenants` and can switch the datasource URL from `multitenant` to the selected tenant.
+
+### v1.8.1
+Released: 2026-08-06
+
+vmanomaly version: [v1.30.1](https://docs.victoriametrics.com/anomaly-detection/changelog/#v1301)
+
+- IMPROVEMENT: Model settings are validated and normalized when applied. Invalid drafts remain open with actionable feedback, and advanced-setting summaries open the corresponding editor directly.
+
+- BUGFIX: Server-query counts load when the query drawer opens, and numeric model fields preserve valid scalar and range values while reporting parsing errors on blur.
+
+- BUGFIX: The anomaly visualization empty state now follows the active theme instead of using light-theme colors in dark mode.
+
+- BUGFIX: Tenant selection now follows the datasource URL resolved by the server, avoiding an incorrect switch to tenant `0` when it is unavailable.
+
+### v1.8.0
+Released: 2026-07-23
+
+vmanomaly version: [v1.30.0](https://docs.victoriametrics.com/anomaly-detection/changelog/#v1300)
+
+- FEATURE: UX Improvements, refreshed interface with clearer model and query forms, inline configuration previews, and fullscreen chart controls.
+
+- FEATURE: Server (production-running) models and queries can be accessed and selected from the UI, with a new "Queries" button, while model selection now includes a drop-down for server-configured scheduled models in model wizard.
+
+- IMPROVEMENT: Boosted [AI Copilot](#ai-assistance) stability and suggestions quality, aligned with MCP/skills toolset, and proper handling of canceled or incomplete tool calls.
+
+- IMPROVEMENT: Added query prettification and stable value formatting, including platform-aware keyboard-shortcut hints.
+
+- IMPROVEMENT: Results now visibly switch to an out-of-date state after the query, time range, or model configuration changes. The action updates to rerun detection and remains visible in both expanded and collapsed model views.
+
+- IMPROVEMENT: Chart range navigation commits one query on interaction completion instead of issuing many intermediate requests.
+
+- IMPROVEMENT: Compact consecutive identical [AI Copilot](#ai-assistance) tool calls, keep query/model/anomaly suggestions synchronized, and recover cleanly from canceled or incomplete tool calls.
+
+- BUGFIX: Fixed exact UI backtesting across multiple fit cycles and for auto-tuned online wrappers, preventing *duplicate or missing predictions* while retaining causal model updates and restoration of compatible legacy auto-tuned state.
+
+- BUGFIX: Kept automatic trailing-slash redirects for configured path prefixes and `/vmui` relative to the public origin, preventing internal backend hostnames from leaking through reverse proxies such as `vmauth`.
+
+### v1.7.2
+Released: 2026-06-25
+
+vmanomaly version: [v1.29.7](https://docs.victoriametrics.com/anomaly-detection/changelog/#v1297)
+
+- FEATURE: Added controls for selecting server-configured scheduled models (drop-down inside [model wizard](#model-panel)) and browsing scheduled queries from the running vmanomaly instance ("Queries" button, "scheduled queries" tab).
+
+- IMPROVEMENT: Surfaced datasource fetch failures from ad-hoc VMUI raw queries as query-level errors instead of returning a successful empty result that triggers a generic "No match" warning. Now the user can see the actual error message from the datasource (e.g. "unauthorized", "not found", etc.) and take appropriate action.
+
+- BUGFIX: Fixed [UI/query-server](#settings-panel) handling of VictoriaMetrics datasource URLs that already include `/select/multitenant/prometheus`. Such URLs are now recognized as cluster datasource URLs, preserving the multitenant path when proxying VMUI requests and allowing `server.use_reader_connection_settings` to reuse [configured reader credentials for authenticated datasources](#authentication).
+
+- BUGFIX: Fixed [settings](#settings-panel) inputs for server and datasource URLs so editing, deleting, or pasting text is no longer immediately reverted to the previous value before applying changes.
+
+- BUGFIX: Fixed [model wizard](#model-panel) settings for [`IsolationForestModel`](https://docs.victoriametrics.com/anomaly-detection/components/models/#isolation-forest-multivariate) `contamination`, allowing decimal float values such as `0.1` or `0,1` to be typed or pasted without being collapsed to `0`, while preserving the `"auto"` value.
+
+### v1.7.1
+Released: 2026-06-11
+
+vmanomaly version: [v1.29.5](https://docs.victoriametrics.com/anomaly-detection/changelog/#v1295)
+
+- FEATURE: Added bulk Apply/Decline actions for [Copilot](#ai-assistance) chat suggestions.
+
+- BUGFIX: Fixed modal windows closing when the mouse is released outside the window during text selection.
+
+- BUGFIX: Fixed tooltip hover behavior so tooltips do not disappear while the cursor moves into the hover content.
+
+### v1.7.0
+Released: 2026-05-15
+
+vmanomaly version: [v1.29.4](https://docs.victoriametrics.com/anomaly-detection/changelog/#v1294)
+
+- FEATURE: Improved [AI Copilot](#ai-assistance) to 
+  - support textual attachments, such as configuration files, query examples, model outputs, etc.
+  - operate with current time when suggesting time range changes, e.g. "current month" or "from the beginning of the last month until now"
+- FEATURE: improve infer jobs scheduled from UI to
+  - run 2-100x faster for [online models](https://docs.victoriametrics.com/anomaly-detection/components/models/#online-models) depending on a configuration vs [1.6.1](#v161) timings
+  - show stage-aware progress bar, e.g. "getting data", "fitting model", "inferring on chunk".
+- IMPROVEMENT: "Advanced Options" design is improved, section is collapsed by default to save vertical space, yet can be encoded as always open in UI state URL.
+- IMPROVEMENT: dropdowns in UI are now searchable and constrained in size for better UX, especially when many options are available (e.g. models list, tenants list, etc.).
+- BUGFIX: in generated config ("Show Config" menu)
+  - special YAML values (like `-.inf`, `.inf`, `.nan`) are now properly quoted and formatted to avoid JSON converting issues when copied to Kubernetes CRs, which previously led to rejection of the manifest before vmanomaly can consume it.
+  - with Data Source selected as "Logs/Traces" `reader.class` is now correctly set to `vlogs` (previously `vm`) in generated config, when "model only" toggle is turned off.
+- BUGFIX: now "Hide Common Labels" toggle in "Table View" works correctly and does not show common labels in the legend columns when turned on.
+- BUGFIX: "Prettify query" now works correctly for "Metrics" datasources.
+
+### v1.6.1
+Released: 2026-04-16
+
+vmanomaly version: [v1.29.3](https://docs.victoriametrics.com/anomaly-detection/changelog/#v1293)
+
+- IMPROVEMENT: Consecutive anomalies (when "streaks" option is enabled) are now grouped in the Visualization Panel as a single anomaly line instead of multiple dots for reduced visual noise and better representation of prolonged anomalous periods, while still showing the exact anomaly score and labels on hover.
+
+- IMPROVEMENT: Raw query results now refresh automatically after time range changes; yet anomaly detection results are preserved until "Detect Anomalies" button is hit again, to avoid recalculating anomalies on the new time range without explicit user action, which could be costly if the new time range is large and the model is complex.
+
+- IMPROVEMENT: Table legend view is now enabled by default for sorting and filtering enablement.
+
+- BUGFIX: Generated config and example alert outputs now preserve configured fit/infer values correctly and avoid invalid float-based duration strings in generated YAML, which could lead to data validation errors if copied to production configuration without adjustments.
+
+- BUGFIX: Fixed multiple confusing anomaly UI behaviors around scheduler fields (fit_every, infer_every) and generated artifacts.
+
+- BUGFIX: Chart y-axis range is now updating after legend series selection (regression introduced in v1.6.0).
+
+### v1.6.0
+Released: 2026-04-02
+
+vmanomaly version: [v1.29.2](https://docs.victoriametrics.com/anomaly-detection/changelog/#v1292)
+
+- FEATURE: Now AI assistant can see and modify main UI components state (queries, time range, model configuration, etc.) to provide more contextual and accurate suggestions and actions.
+
+- FEATURE: Added support for UI to use reader-wise settings (credentials, TLS, etc.) for connecting to data sources, which otherwise would require having `vmauth` in front of both UI and data sources, just for the UI to be able to connect to them. See [Authentication](#authentication) section for details.
+
+### v1.5.1
+Released: 2026-03-25
+
+vmanomaly version: [v1.29.1](https://docs.victoriametrics.com/anomaly-detection/changelog/#v1291)
+
+- FEATURE: GCP/AWS/OpenRouter Copilot LLM providers are now supported in addition to OpenAI and Anthropic, for more choice and flexibility in AI assistance. See [AI Assistance](#ai-assistance) section for details on supported providers and configuration.
+
+- BUGFIX: Now Visualization Panel correctly switches in between "query" and "detect" modes when respective buttons are hit in the [Visualization Panel](#visualization-panel), without showing stale results from the previous mode, once running anomaly detection task is explicitly cancelled (regression introduced in [v1.5.0](#v150)).
+
+- BUGFIX: Fixed an issue with [crypto.randomUUID](https://developer.mozilla.org/en-US/docs/Web/API/Crypto/randomUUID) introduced in [v1.29.0](https://docs.victoriametrics.com/anomaly-detection/changelog/#v1290) in [UI copilot](https://docs.victoriametrics.com/anomaly-detection/ui/#ai-assistance) that led to the front app showing a blank page.
+
+### v1.5.0
+Released: 2026-03-05
+
+vmanomaly version: [v1.29.0](https://docs.victoriametrics.com/anomaly-detection/changelog/#v1290)
+
+- FEATURE: Allowed AI assistance use for documentation Q&A, model configuration suggestion and application, optionally backed by [MCP Server tools](https://github.com/VictoriaMetrics/mcp-vmanomaly/tree/main). Please refer to [AI Assistance](https://docs.victoriametrics.com/anomaly-detection/ui/#ai-assistance) section for details.
+- FEATURE: Added filtering of timeseries in the Visualization Panel by labels and statistics (e.g. anomaly count) to focus on the most relevant series when many series are returned by the query.
+- BUGFIX: Fixed missing datapoints in [BacktestingScheduler](https://docs.victoriametrics.com/anomaly-detection/components/scheduler/#backtesting-scheduler) windows combined with [exact mode](https://docs.victoriametrics.com/anomaly-detection/components/scheduler/#defining-inference-timeframe-1), leading to "gaps" in plotted predictions and scores.
+
+### v1.4.3
+Released: 2026-02-09
+
+vmanomaly version: [v1.28.7](https://docs.victoriametrics.com/anomaly-detection/changelog/#v1287)
+
+- Update color palette in dark theme for more contrast and better visibility of anomalies and confidence intervals in the Visualization Panel.
+
+- Align Model Panel content to improve layout for smaller screens and embedded documentation.
+
+### v1.4.2
+Released: 2026-01-17
+
+vmanomaly version: [v1.28.5](https://docs.victoriametrics.com/anomaly-detection/changelog/#v1285)
+
+- Enable preconfigured default UI state via url-encoded `ui_default_state`, so `/vmui/` opens with the intended model settings, time range, query and other parameters. This improves user experience by allowing direct access to specific views without manual configuration each time. See [Default State](https://docs.victoriametrics.com/anomaly-detection/ui/#default-state) section for details.
+
+- Enable autocomplete for VictoriaLogs / VictoriaTraces data sources in query input area.
+
+### v1.4.1
+Released: 2026-01-12
+
+vmanomaly version: [v1.28.4](https://docs.victoriametrics.com/anomaly-detection/changelog/#v1284)
+
+- FEATURE: Allow `path_prefix` parameter to override the server's configured URL path prefix for all HTTP routes. This is useful when the UI is served behind a reverse proxy that modifies the base path. For example, if the server is configured with `path_prefix: /my-app`, accessing the UI at `/my-app/` will work correctly even if the proxy serves it at a different base path. It can be set in the `server` [section](https://docs.victoriametrics.com/anomaly-detection/components/server/#parameters) of the configuration file.
+
+### v1.4.0
+Released: 2025-12-11
+
+vmanomaly version: [v1.28.2](https://docs.victoriametrics.com/anomaly-detection/changelog/#v1282)
+
+- FEATURE: Added an option to show **consecutive anomalies** (if N points in a row exceed anomaly threshold T) in the Visualization Panel, to reduce visual clutter when many anomalies are detected in a row. The option is available as "Streaks" button in the [Model Panel](#model-panel). Respective "streaks: N" stats appears in legend for each series. Example alerting rule's `for` parameter is adjusted accordingly if streaks are used.
+- FEATURE: Timeseries are now sortable in the legend of the [Visualization Panel](#visualization-panel) by clicking on the respective column headers (both label- and statistics-based columns are supported, e.g., sort by series name, anomaly count).
+- IMPROVEMENT: It's now possible to pre-configure datasource, so the UI users cannot re-configure datasource from UI or change its type. Suitable for internal team-serving deployments. Please refer to [pre-configured datasource](#pre-configured-datasource) section for details.
+
+### v1.3.0
+Released: 2025-12-01
+
+vmanomaly version: [v1.28.1](https://docs.victoriametrics.com/anomaly-detection/changelog/#v1281)
+
+- FEATURE: [Forecasting mode](https://docs.victoriametrics.com/anomaly-detection/faq/#forecasting) is now available in the UI for models that support it (e.g., `Prophet`), allowing users to visualize model predictions into the future (alongside with confidence intervals). Please use "forecast offsets" parameter in the wizard to set the desired forecast horizon(s).
+- IMPROVEMENT: Plot area in the Visualization Panel now supports vertical resizing by dragging its right bottom border, followed by respective recalculations of the tick grid of both y-axes.
+- IMPROVEMENT: Added explicit versioning information in the UI footer, showing the current service and UI versions for easier tracking and debugging.
+- IMPROVEMENT: Tooltips inside [model wizard menu](#model-panel) are now persistent upon (i) icon click and rendered as markdown. To close the tooltip, click outside of it or on the icon again.
+
+### v1.2.0
+Released: 2025-11-17
+
+vmanomaly version: [v1.28.0](https://docs.victoriametrics.com/anomaly-detection/changelog/#v1280)
+
+- FEATURE: Added "exact" mode to use in combination with "infer every" control for [online models](https://docs.victoriametrics.com/anomaly-detection/components/models/#online-models) such as `mad_online` or `quantile_online`, to provide unbiased estimates of how production scheduler would perform anomaly detection on incoming data streams. In "exact" mode, the model is updated exactly at every "infer every" micro-batch interval, at a cost of increased computation time. See [model panel](#model-panel) for details.
+
+- FEATURE: Added "Example Alert" button in the [Model Panel](#model-panel) to provide an example of parametrized [vmalert](https://docs.victoriametrics.com/victoriametrics/vmalert/) alerting rule snippet based on the current UI configuration.
+
+- IMPROVEMENT: Added support for clipboard copy in addition to existing file download of the model/service configuration in YAML format from the [Model Panel](#model-panel) configuration menu.
+
+### v1.1.0
+Released: 2025-10-31
+
+vmanomaly version: [v1.27.0](https://docs.victoriametrics.com/anomaly-detection/changelog/#v1270)
+
+> A bug, found in [v1.27.0](https://docs.victoriametrics.com/anomaly-detection/changelog/#v1270) that prevents "Detect Anomalies" button ([model panel](#model-panel)) from working has been fixed in the patch release [v1.27.1](https://docs.victoriametrics.com/anomaly-detection/changelog/#v1271). Please do the upgrade.
+
+- FEATURE: Added support of auth headers, that can be forwarded from vmanomaly to datasources configured in the UI (VictoriaMetrics, VictoriaLogs), see [authentication](#authentication) for details.
+
+- FEATURE: queries (`config.reader.queries.[xxx].expr` values) if [mixed mode is used](#mixed-usage) are read from the server reader config on the first UI initialization, to ease the exploration of existing production queries without the need to retype them in the UI. Press "show history" button next to "execute query" button (in the [Query Explorer](#query-explorer) section) and choose the tab "Server Queries".
+
+- IMPROVEMENT: autocomplete of example parameters for model param fields by hitting Tab key in the [Model Settings wizard](#model-panel), e.g. hitting Tab in the "detection direction" field will cycle through the available options.
+
+- IMPROVEMENT: anomaly threshold element on [Model Panel](#model-panel) is now reactive - no need to refit a model ("Detect Anomalies" button) to see the effect from changed anomaly threshold value.
+
+- IMPROVEMENT: datasource value is initialized from the server reader config (on the first UI initialization) if [mixed mode is used](#mixed-usage). Can be reset to the default value anytime by hitting the "Reset to Default" button next to the datasource field in the [Settings Panel](#settings-panel).
+
+### v1.0.0
+Released: 2025-10-02
+
+vmanomaly version: [v1.26.0](https://docs.victoriametrics.com/anomaly-detection/changelog/#v1260)
+
+Initial public release of the vmanomaly UI.
+
+{{% /collapse %}}

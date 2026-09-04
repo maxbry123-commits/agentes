@@ -1,0 +1,268 @@
+<?xml version="1.0" encoding="UTF-8" ?> 
+
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd"> 
+  
+<mapper namespace="org.flowable.eventregistry.impl.persistence.entity.EventDefinitionEntityImpl">
+  
+  <!-- DEFINITION INSERT -->
+
+  <insert id="insertEventDefinition" parameterType="org.flowable.eventregistry.impl.persistence.entity.EventDefinitionEntityImpl">
+    insert into ${prefix}FLW_EVENT_DEFINITION(ID_, CATEGORY_, NAME_, KEY_, VERSION_, DEPLOYMENT_ID_, 
+    	RESOURCE_NAME_, DESCRIPTION_, TENANT_ID_)
+    values (#{id, jdbcType=VARCHAR},
+            #{category, jdbcType=NVARCHAR},
+            #{name, jdbcType=NVARCHAR},
+            #{key, jdbcType=VARCHAR}, 
+            #{version, jdbcType=INTEGER}, 
+            #{deploymentId, jdbcType=VARCHAR},
+            #{resourceName, jdbcType=NVARCHAR},
+            #{description, jdbcType=NVARCHAR},
+            #{tenantId, jdbcType=VARCHAR})
+  </insert>
+  
+  <insert id="bulkInsertEventDefinition" parameterType="java.util.List">
+    insert into ${prefix}FLW_EVENT_DEFINITION(ID_, CATEGORY_, NAME_, KEY_, VERSION_, DEPLOYMENT_ID_, RESOURCE_NAME_, DESCRIPTION_, TENANT_ID_)
+    values 
+    <foreach collection="list" item="eventDefinition" index="index" separator=",">
+        (#{eventDefinition.id, jdbcType=VARCHAR},
+         #{eventDefinition.category, jdbcType=NVARCHAR},
+         #{eventDefinition.name, jdbcType=NVARCHAR},
+         #{eventDefinition.key, jdbcType=VARCHAR}, 
+         #{eventDefinition.version, jdbcType=INTEGER},
+         #{eventDefinition.deploymentId, jdbcType=VARCHAR},
+         #{eventDefinition.resourceName, jdbcType=NVARCHAR},
+         #{eventDefinition.description, jdbcType=NVARCHAR},
+         #{eventDefinition.tenantId, jdbcType=VARCHAR})
+    </foreach>
+  </insert>
+  
+  <insert id="bulkInsertEventDefinition" databaseId="oracle" parameterType="java.util.List">
+    INSERT ALL
+    <foreach collection="list" item="eventDefinition" index="index">
+        INTO ${prefix}FLW_EVENT_DEFINITION(ID_, CATEGORY_, NAME_, KEY_, VERSION_, DEPLOYMENT_ID_, RESOURCE_NAME_, DESCRIPTION_, TENANT_ID_) VALUES 
+        (#{eventDefinition.id, jdbcType=VARCHAR},
+         #{eventDefinition.category, jdbcType=NVARCHAR},
+         #{eventDefinition.name, jdbcType=NVARCHAR},
+         #{eventDefinition.key, jdbcType=VARCHAR}, 
+         #{eventDefinition.version, jdbcType=INTEGER},
+         #{eventDefinition.deploymentId, jdbcType=VARCHAR},
+         #{eventDefinition.resourceName, jdbcType=NVARCHAR},
+         #{eventDefinition.description, jdbcType=NVARCHAR},
+         #{eventDefinition.tenantId, jdbcType=VARCHAR})                        
+    </foreach>
+    SELECT * FROM dual
+  </insert>
+  
+  <!-- DEFINITION UPDATE -->
+
+  <update id="updateEventDefinition" parameterType="org.flowable.eventregistry.impl.persistence.entity.EventDefinitionEntityImpl">
+    update ${prefix}FLW_EVENT_DEFINITION
+    <set>
+        CATEGORY_ = #{category, jdbcType=NVARCHAR},
+    </set>
+    where ID_ = #{id, jdbcType=VARCHAR}
+  </update>
+  
+  <update id="updateEventDefinitionTenantIdForDeploymentId" parameterType="java.util.Map">
+    update ${prefix}FLW_EVENT_DEFINITION set
+      TENANT_ID_ = #{tenantId, jdbcType=VARCHAR}
+    where
+      DEPLOYMENT_ID_ = #{deploymentId, jdbcType=VARCHAR}
+  </update>
+
+  <!-- DEFINITION DELETE -->
+
+  <delete id="deleteEventDefinitionsByDeploymentId" parameterType="string">
+    delete from ${prefix}FLW_EVENT_DEFINITION where DEPLOYMENT_ID_ = #{deploymentId, jdbcType=VARCHAR} 
+  </delete>
+  
+  <!-- FORM DEFINITION RESULTMAP -->
+
+  <resultMap id="eventDefinitionResultMap" type="org.flowable.eventregistry.impl.persistence.entity.EventDefinitionEntityImpl">
+    <id property="id" column="ID_" jdbcType="VARCHAR" />
+    <result property="category" column="CATEGORY_" jdbcType="NVARCHAR" />
+    <result property="name" column="NAME_" jdbcType="NVARCHAR"/>
+    <result property="key" column="KEY_" jdbcType="VARCHAR" />
+    <result property="version" column="VERSION_" jdbcType="INTEGER"/>
+    <result property="deploymentId" column="DEPLOYMENT_ID_" jdbcType="VARCHAR"/>
+    <result property="resourceName" column="RESOURCE_NAME_" jdbcType="NVARCHAR"/>
+    <result property="tenantId" column="TENANT_ID_" jdbcType="VARCHAR" />
+    <result property="description" column="DESCRIPTION_" jdbcType="NVARCHAR" />
+  </resultMap>
+
+  <!-- DEFINITION SELECT -->
+
+  <select id="selectEventDefinition" parameterType="string" resultMap="eventDefinitionResultMap">
+    select * from ${prefix}FLW_EVENT_DEFINITION where ID_ = #{id, jdbcType=VARCHAR}
+  </select>
+
+  <select id="selectEventDefinitionById" parameterType="string" resultMap="eventDefinitionResultMap">
+    select * from ${prefix}FLW_EVENT_DEFINITION where ID_ = #{id, jdbcType=VARCHAR}
+  </select>
+
+  <select id="selectEventDefinitionsByQueryCriteria" parameterType="org.flowable.eventregistry.impl.EventDefinitionQueryImpl" resultMap="eventDefinitionResultMap">
+    <if test="needsPaging">${limitBefore}</if>
+    SELECT RES.* <if test="needsPaging">${limitBetween}</if>
+    <include refid="selectEventDefinitionsByQueryCriteriaSql"/>
+    ${orderBy}
+    <if test="needsPaging">${limitAfter}</if>
+  </select>
+
+  <select id="selectEventDefinitionCountByQueryCriteria" parameterType="org.flowable.eventregistry.impl.EventDefinitionQueryImpl" resultType="long">
+    select count(RES.ID_)
+    <include refid="selectEventDefinitionsByQueryCriteriaSql"/>
+  </select>
+  
+  <sql id="selectEventDefinitionsByQueryCriteriaSql">  
+    from ${prefix}FLW_EVENT_DEFINITION RES
+    <where>
+      <if test="id != null">
+        RES.ID_ = #{id, jdbcType=VARCHAR}
+      </if>
+      <if test="ids != null and ids">
+        and RES.ID_ in
+        <foreach item="id" index="index" collection="ids" open="(" separator="," close=")">
+          #{id, jdbcType=VARCHAR}
+        </foreach>
+      </if>
+      <if test="category != null">
+        and RES.CATEGORY_ = #{category, jdbcType=NVARCHAR}
+      </if>
+      <if test="categoryLike != null">
+        and RES.CATEGORY_ like #{categoryLike, jdbcType=NVARCHAR}
+      </if>
+      <if test="categoryNotEquals != null">
+        and ( RES.CATEGORY_ &lt;&gt; #{categoryNotEquals, jdbcType=NVARCHAR} OR RES.CATEGORY_ is null )
+      </if>
+      <if test="name != null">
+        and RES.NAME_ = #{name, jdbcType=NVARCHAR}
+      </if>
+      <if test="nameLike != null">
+        and RES.NAME_ like #{nameLike, jdbcType=NVARCHAR}
+      </if>
+      <if test="nameLikeIgnoreCase != null">
+        and lower(RES.NAME_) like lower(#{nameLikeIgnoreCase, jdbcType=NVARCHAR}${wildcardEscapeClause})
+      </if>
+      <if test="key != null">
+        and RES.KEY_ = #{key, jdbcType=VARCHAR}
+      </if>
+      <if test="keyLike != null">
+        and RES.KEY_ like #{keyLike, jdbcType=VARCHAR}
+      </if>
+      <if test="keyLikeIgnoreCase != null">
+        and lower(RES.KEY_) like lower(#{keyLikeIgnoreCase, jdbcType=VARCHAR}${wildcardEscapeClause})
+      </if>
+      <if test="version != null">
+        and RES.VERSION_ = #{version, jdbcType=INTEGER}
+      </if>
+      <if test="versionGt != null">
+        and RES.VERSION_ &gt; #{versionGt, jdbcType=INTEGER}
+      </if>
+      <if test="versionGte != null">
+        and RES.VERSION_ &gt;= #{versionGte, jdbcType=INTEGER}
+      </if>
+      <if test="versionLt != null">
+        and RES.VERSION_ &lt; #{versionLt, jdbcType=INTEGER}
+      </if>
+      <if test="versionLte != null">
+        and RES.VERSION_ &lt;= #{versionLte, jdbcType=INTEGER}
+      </if>
+      <if test="resourceName != null">
+        and RES.RESOURCE_NAME_ = #{resourceName, jdbcType=NVARCHAR}
+      </if>
+      <if test="resourceNameLike != null">
+        and RES.RESOURCE_NAME_ like #{resourceNameLike, jdbcType=NVARCHAR}
+      </if>
+      <if test="deploymentId != null">
+        and RES.DEPLOYMENT_ID_ = #{deploymentId, jdbcType=VARCHAR}
+      </if>
+      <if test="deploymentIds != null and !deploymentIds.empty">
+        and RES.DEPLOYMENT_ID_ in
+        <foreach item="deploymentId" index="index" collection="deploymentIds" open="(" separator="," close=")">
+          #{deploymentId, jdbcType=VARCHAR}
+        </foreach>
+      </if>
+      <if test="parentDeploymentId != null">
+          and EXISTS (select 1 from ${prefix}FLW_EVENT_DEPLOYMENT D where D.PARENT_DEPLOYMENT_ID_ = #{parentDeploymentId, jdbcType=VARCHAR} and D.ID_ = RES.DEPLOYMENT_ID_)
+      </if>
+      <if test="latest">
+        and RES.VERSION_ = (select max(VERSION_) from ${prefix}FLW_EVENT_DEFINITION where KEY_ = RES.KEY_ 
+             <if test="tenantId != null">
+               and TENANT_ID_ = #{tenantId, jdbcType=VARCHAR}
+             </if>
+             <if test="tenantIdLike != null">
+               and TENANT_ID_ like #{tenantIdLike, jdbcType=VARCHAR}
+             </if>
+             <if test="withoutTenantId">
+               and (TENANT_ID_ = '' or TENANT_ID_ is null)
+             </if>
+             <if test="tenantId == null and tenantIdLike == null and !withoutTenantId">
+               and ( (TENANT_ID_ IS NOT NULL and TENANT_ID_ = RES.TENANT_ID_) or (TENANT_ID_ IS NULL and RES.TENANT_ID_ IS NULL) )
+             </if>
+        )
+      </if>
+      <if test="tenantId != null">
+        and RES.TENANT_ID_ = #{tenantId, jdbcType=VARCHAR}
+      </if>
+      <if test="tenantIdLike != null">
+        and RES.TENANT_ID_ like #{tenantIdLike, jdbcType=VARCHAR}
+      </if>
+      <if test="withoutTenantId">
+        and (RES.TENANT_ID_ = '' or RES.TENANT_ID_ is null)
+      </if>
+    </where>
+  </sql>
+    
+  <select id="selectEventDefinitionByDeploymentAndKey" parameterType="map" resultMap="eventDefinitionResultMap">
+    select * 
+    from ${prefix}FLW_EVENT_DEFINITION 
+    where DEPLOYMENT_ID_ = #{deploymentId, jdbcType=VARCHAR}
+      and KEY_ = #{eventDefinitionKey, jdbcType=VARCHAR}
+      and (TENANT_ID_ = '' or TENANT_ID_ is null)
+  </select>
+  
+   <select id="selectEventDefinitionByDeploymentAndKeyAndTenantId" parameterType="map" resultMap="eventDefinitionResultMap">
+    select * 
+    from ${prefix}FLW_EVENT_DEFINITION 
+    where DEPLOYMENT_ID_ = #{deploymentId, jdbcType=VARCHAR}
+      and KEY_ = #{eventDefinitionKey, jdbcType=VARCHAR}
+      and TENANT_ID_ = #{tenantId, jdbcType=VARCHAR}
+  </select>
+    
+  <select id="selectEventDefinitionsByKeyAndVersion" parameterType="org.flowable.common.engine.impl.db.ListQueryParameterObject" resultMap="eventDefinitionResultMap">
+    select *
+    from ${prefix}FLW_EVENT_DEFINITION 
+    where KEY_ = #{parameter.eventDefinitionKey, jdbcType=VARCHAR} and VERSION_ = #{parameter.eventVersion, jdbcType=INTEGER} and (TENANT_ID_ = '' or TENANT_ID_ is null)
+  </select>
+    
+  
+   <select id="selectEventDefinitionsByKeyAndVersionAndTenantId" parameterType="org.flowable.common.engine.impl.db.ListQueryParameterObject" resultMap="eventDefinitionResultMap">
+    select *
+    from ${prefix}FLW_EVENT_DEFINITION 
+    where KEY_ = #{parameter.eventDefinitionKey, jdbcType=VARCHAR} and VERSION_ = #{parameter.eventVersion, jdbcType=INTEGER} and TENANT_ID_ = #{parameter.tenantId, jdbcType=VARCHAR}
+  </select>
+    
+  <select id="selectLatestEventDefinitionByKey" parameterType="string" resultMap="eventDefinitionResultMap">
+    select *
+    from ${prefix}FLW_EVENT_DEFINITION 
+    where KEY_ = #{eventDefinitionKey, jdbcType=VARCHAR} and
+          (TENANT_ID_ = ''  or TENANT_ID_ is null) and
+          VERSION_ = (select max(VERSION_) from ${prefix}FLW_EVENT_DEFINITION where KEY_ = #{eventDefinitionKey, jdbcType=VARCHAR} and (TENANT_ID_ = '' or TENANT_ID_ is null))
+  </select>
+  
+  <select id="selectLatestEventDefinitionByKeyAndTenantId" parameterType="map" resultMap="eventDefinitionResultMap">
+    select *
+    from ${prefix}FLW_EVENT_DEFINITION 
+    where KEY_ = #{eventDefinitionKey, jdbcType=VARCHAR} and
+          TENANT_ID_ = #{tenantId, jdbcType=VARCHAR} and
+          VERSION_ = (select max(VERSION_) from ${prefix}FLW_EVENT_DEFINITION where KEY_ = #{eventDefinitionKey, jdbcType=VARCHAR} and TENANT_ID_ = #{tenantId, jdbcType=VARCHAR})
+  </select>
+  
+  <select id="selectEventDefinitionByNativeQuery" parameterType="java.util.Map" resultMap="eventDefinitionResultMap">
+    <include refid="org.flowable.common.engine.db.selectByNativeQuery"/>
+  </select>
+
+  <select id="selectEventDefinitionCountByNativeQuery" parameterType="java.util.Map" resultType="long">
+    ${sql}
+  </select>
+</mapper>

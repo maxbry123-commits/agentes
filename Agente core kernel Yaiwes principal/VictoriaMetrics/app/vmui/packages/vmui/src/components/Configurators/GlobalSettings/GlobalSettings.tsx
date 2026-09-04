@@ -1,0 +1,152 @@
+import { forwardRef, useImperativeHandle, useRef } from "preact/compat";
+import ServerConfigurator from "./ServerConfigurator/ServerConfigurator";
+import { ArrowDownIcon, SettingsIcon } from "../../Main/Icons";
+import Button from "../../Main/Button/Button";
+import Modal from "../../Main/Modal/Modal";
+import "./style.scss";
+import Tooltip from "../../Main/Tooltip/Tooltip";
+import LimitsConfigurator from "./LimitsConfigurator/LimitsConfigurator";
+import { getAppModeEnable } from "../../../utils/app-mode";
+import classNames from "classnames";
+import TimezonesPicker from "./Timezones/TimezonesPicker";
+import ThemeControl from "../ThemeControl/ThemeControl";
+import useDeviceDetect from "../../../hooks/useDeviceDetect";
+import useBoolean from "../../../hooks/useBoolean";
+import BrowserTabController from "./BrowserTabController/BrowserTabController";
+import LegendCollapseController from "./LegendCollapseController/LegendCollapseController";
+
+const title = "Settings";
+
+export interface ChildComponentHandle {
+  handleApply: () => void;
+}
+
+export interface GlobalSettingsHandle {
+  open: () => void;
+}
+
+const GlobalSettings = forwardRef<GlobalSettingsHandle>((_, ref) => {
+  const { isMobile } = useDeviceDetect();
+
+  const appModeEnable = getAppModeEnable();
+
+  const serverSettingRef = useRef<ChildComponentHandle>(null);
+  const limitsSettingRef = useRef<ChildComponentHandle>(null);
+
+  const {
+    value: open,
+    setTrue: handleOpen,
+    setFalse: handleClose,
+  } = useBoolean(false);
+
+  const handleApply = () => {
+    serverSettingRef.current && serverSettingRef.current.handleApply();
+    limitsSettingRef.current && limitsSettingRef.current.handleApply();
+    handleClose();
+  };
+
+  const controls = [
+    {
+      show: !appModeEnable,
+      component: <ServerConfigurator
+        ref={serverSettingRef}
+        onClose={handleClose}
+      />
+    },
+    {
+      show: true,
+      component: <TimezonesPicker/>
+    },
+    {
+      show: true,
+      component: <LimitsConfigurator
+        ref={limitsSettingRef}
+        onClose={handleClose}
+      />
+    },
+    {
+      show: true,
+      component: <LegendCollapseController/>
+    },
+    {
+      show: !appModeEnable,
+      component: <ThemeControl/>
+    },
+    {
+      show: true,
+      component: <BrowserTabController/>
+    },
+  ].filter(control => control.show);
+
+  useImperativeHandle(ref, () => ({
+    open: handleOpen,
+  }));
+
+  return <>
+    {isMobile ? (
+      <div
+        className="vm-mobile-option"
+        onClick={handleOpen}
+      >
+        <span className="vm-mobile-option__icon"><SettingsIcon/></span>
+        <div className="vm-mobile-option-text">
+          <span className="vm-mobile-option-text__label">{title}</span>
+        </div>
+        <span className="vm-mobile-option__arrow"><ArrowDownIcon/></span>
+      </div>
+    ) : (
+      <Tooltip title={title}>
+        <Button
+          className={classNames({
+            "vm-header-button": !appModeEnable
+          })}
+          variant="contained"
+          color="primary"
+          startIcon={<SettingsIcon/>}
+          onClick={handleOpen}
+          ariaLabel="settings"
+        />
+      </Tooltip>
+    )}
+    {open && (
+      <Modal
+        title={title}
+        onClose={handleClose}
+      >
+        <div
+          className={classNames({
+            "vm-server-configurator": true,
+            "vm-server-configurator_mobile": isMobile
+          })}
+        >
+          {controls.map((control, index) => (
+            <div
+              className="vm-server-configurator__input"
+              key={index}
+            >
+              {control.component}
+            </div>
+          ))}
+          <div className="vm-server-configurator-footer">
+            <Button
+              color="error"
+              variant="outlined"
+              onClick={handleClose}
+            >
+              Cancel
+            </Button>
+            <Button
+              color="primary"
+              variant="contained"
+              onClick={handleApply}
+            >
+              Apply
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    )}
+  </>;
+});
+
+export default GlobalSettings;

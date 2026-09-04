@@ -1,0 +1,39 @@
+@use "src/styles/variables" as *;
+
+.vm-tenant-input {
+  position: relative;
+
+  &-list {
+    max-height: 300px;
+    overflow: auto;
+    overscroll-behavior: none;
+    border-radius: $border-radius-medium;
+
+    &_mobile {
+      max-height: calc(($vh * 100) - 70px);
+    }
+
+    &_mobile &__search {
+      padding: 0 $padding-global $padding-small;
+    }
+
+    &_inline {
+      display: grid;
+      gap: calc($padding-small/2);
+      padding: $padding-global;
+    }
+
+    &__search {
+      position: sticky;
+      top: 0;
+      padding: $padding-small $padding-global;
+      background-color: $color-background-block;
+    }
+
+    &__buttons {
+      display: flex;
+      justify-content: space-between;
+      gap: $padding-small;
+    }
+  }
+}
