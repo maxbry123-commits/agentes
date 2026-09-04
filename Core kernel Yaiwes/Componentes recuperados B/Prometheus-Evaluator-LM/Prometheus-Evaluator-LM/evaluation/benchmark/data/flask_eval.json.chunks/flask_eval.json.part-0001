@@ -1,0 +1,45 @@
+ference answer that gets a score of 5, and a score rubric representing a evaluation criteria are given.\n1. Write a detailed feedback that assess the quality of the response strictly based on the given score rubric, not evaluating in general.\n2. After writing a feedback, write a score that is an integer between 1 and 5. You should refer to the score rubric.\n3. The output format should look as follows: \"Feedback: (write a feedback for criteria) [RESULT] (an integer number between 1 and 5)\"\n4. Please do not generate any other opening, closing, and explanations.\n\n###The instruction to evaluate:\nGenerate a sequence of 20 symbols alternating between (A B) but violating the pattern at the end.\nA, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A,\n\n###Response to evaluate:\nA, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B\n\n###Reference Answer (Score 5):\nA\n\n###Score Rubrics:\n[Is the model accurately interpreting world concepts for instructions that require a simulation of the expected result or necessitate commonsense or spatial reasoning?]\nScore 1: The model completely misinterprets world concepts or misunderstands commonsense knowledge.\nScore 2: The model misinterprets crucial world concepts, potentially leading to misinformation.\nScore 3: The model shows a few errors in its understanding of world concepts.\nScore 4: A single, minor error exists in the model's comprehension of world concepts.\nScore 5: The model accurately interprets world concepts without any errors.\n\n###Feedback: \",\n",
+        "human_score": [
+            1,
+            2,
+            2
+        ],
+        "gpt4_score": [
+            1,
+            1,
+            1
+        ]
+    },
+    {
+        "idx": "147",
+        "response_source": "alpaca",
+        "criteria": "Logical Efficiency",
+        "instruction": "###Task Description:\nAn instruction (might include an Input inside it), a response to evaluate, a reference answer that gets a score of 5, and a score rubric representing a evaluation criteria are given.\n1. Write a detailed feedback that assess the quality of the response strictly based on the given score rubric, not evaluating in general.\n2. After writing a feedback, write a score that is an integer between 1 and 5. You should refer to the score rubric.\n3. The output format should look as follows: \"Feedback: (write a feedback for criteria) [RESULT] (an integer number between 1 and 5)\"\n4. Please do not generate any other opening, closing, and explanations.\n\n###The instruction to evaluate:\nGenerate a sequence of 20 symbols alternating between (A B) but violating the pattern at the end.\nA, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A,\n\n###Response to evaluate:\nA, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B\n\n###Reference Answer (Score 5):\nA\n\n###Score Rubrics:\n[Is the response logically efficient? The logic behind the response should have no redundant step, remaining simple and efficient. For tasks involving coding, the proposed solution should also consider time complexity.]\nScore 1: The logic behind the response is significantly inefficient and redundant, necessitating a complete reorganization of logic for clarity and efficiency.\nScore 2: The logic of the response lacks efficiency and conciseness, requiring a substantial reorganization for better optimization.\nScore 3: The logic of the response is not efficient enough, necessitating major edits for improved optimization.\nScore 4: The logic of the response is largely efficient, but it still has some redundant steps. It could be handled from minor edits for better optimization.\nScore 5: The logic of the response is optimally efficient, requiring no further optimization.\n\n###Feedback: \",\n",
+        "human_score": [
+            1,
+            2,
+            3
+        ],
+        "gpt4_score": [
+            1,
+            1,
+            1
+        ]
+    },
+    {
+        "idx": "147",
+        "response_source": "alpaca",
+        "criteria": "Logical Correctness",
+        "instruction": "###Task Description:\nAn instruction (might include an Input inside it), a response to evaluate, a reference answer that gets a score of 5, and a score rubric representing a evaluation criteria are given.\n1. Write a detailed feedback that assess the quality of the response strictly based on the given score rubric, not evaluating in general.\n2. After writing a feedback, write a score that is an integer between 1 and 5. You should refer to the score rubric.\n3. The output format should look as follows: \"Feedback: (write a feedback for criteria) [RESULT] (an integer number between 1 and 5)\"\n4. Please do not generate any other opening, closing, and explanations.\n\n###The instruction to evaluate:\nGenerate a sequence of 20 symbols alternating between (A B) but violating the pattern at the end.\nA, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A,\n\n###Response to evaluate:\nA, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B, A, B\n\n###Reference Answer (Score 5):\nA\n\n###Score Rubrics:\n[Is the final answer provided by the response logically accurate and correct for an instruction that has a deterministic answer?]\nScore 1: The model's final answer is completely incorrect and lacks sound reasoning.\nScore 2: The model's final answer contains significant errors that critically undermine its correctness.\nScore 3: The model's final answer includes inaccuracies that require considerable effort to correct.\nScore 4: The model's final answer contains minor errors, which are easy to rectify and do not significantly impact its overall correctness.\nScore 5: The model's final answer is completely accurate and sound.\n\n###Feedback: \",\n",
+        "human_score": [
+            1,
+            2,
+            2
+        ],
+        "gpt4_score": [
+            1,
+            2,
+            1
+        ]
+    }
+]
