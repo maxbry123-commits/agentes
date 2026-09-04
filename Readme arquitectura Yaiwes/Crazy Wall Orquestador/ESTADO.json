@@ -1,26 +1,47 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "updated_at": "2026-09-03T18:39:00-05:00",
   "root": "Readme arquitectura Yaiwes",
   "write_boundary": "ONLY_THIS_ROOT",
-  "phase": "XRAY_AND_ROADMAP",
+  "phase": "FORENSIC_XRAY_CROSSCHECK",
+  "director_input_verbatim": "Ok realiza una auditoría forense x Ray verificación cruzada con documentos y con el código fuente \n\nActuliza el el 📂readme arquitectura Yaiwes \n\nLuego actulizas tus conclusiones y tus planes anotas en el archivo de stated JSON Craxy wall bitácora \n\n\nLuego me das el enlace de la arquitectura. \n\n\nPaso 2\nLuego \nQue vas hacer vas a buscar todos los componentes que están en el repositorio de ➡️ agente y vas a hacer un estudio análisis para integrar lo todo \nEjemplo de un componente \n📂 componente1. ➡️  Parcial o total del componente destino ➡️ 📂 archivo x raíz 📂 ABC de Yaiwes \n\nPaso 2.1 \nHaces el promt para que sol got Github acción haga los movimientos \n\nPaso 2.2\nRevisas que ya está movido a su destino revisas el destino y verificas ✅\n\nPaso 2.3\nMe das un promt para que con un ID Codex indentifica su tarea en el Craxy wall y ejecuta determinetista \nHaces un DSL Dag shema sheriff validador verificación sentinela supervisor juez guardián deteminetista para que Codex no piense ejecute que va hacer Codex cablear todo y conéctate y hacer el code limitado necesario y quirúrgicamente no Reescribir \n\nPaso 2.4\nAuditas el trabajo de Codex \n\nPaso 3 \nYo el director subo un lote de archivo listo de code \nTu lo analizas ubicas donde debe ir en la raíz del agente y me das el promt para que sol got Github acción haga los cambios de archivos con Github acción \n\nPaso 3.1 \nTu revisas que todo está en su destino cuando te informe que está listo tu verificas \n\nPaso 3.2\nMe das un promt para que con un ID Codex indentifica su tarea en el Craxy wall y ejecuta determinetista \nHaces un DSL Dag shema sheriff validador verificación sentinela supervisor juez guardián deteminetista para que Codex no piense ejecute que va hacer Codex cablear todo y conéctate y hacer el code limitado necesario y quirúrgicamente no Reescribir\n\nPaso 3.3 \nAuditas el trabajo de Codex \n\n\nTarea 2 📌 \nSiguiente analizas que falta auditas forense x la raíz del agente Yaiwes \nVerificación cruzada con los documentos de Claude \nY me das una plan de pasos \nPara terminar lo que falta \n\nQue vas hace auditas los repos de otros agentes y consigues el code faltante donde en el repo ➡️ agente motores Wordflow YAIWES ➡️ si no existe investigación en repos open soure y me das un promt para que sol gpt Github acción descargue y envía el comprobante al destino que tú quieres \n\nRepite el mismo procesos de Codex para cablear y cinevatr y hacer y editar code quirúrgicamente \n\n\nTarea 3 📌 \nAudita los documentos 1 por 1 contar el código fuente de lo que hemos logrado en tarea 1 hasta tares 3 el codigo que falta lo investigado y descragdo o lo mandas hacer con Codex \n\nCreas un plan \n\n\nPaso 1\nPaso 2\nPaso 3, 4 5 6 \n\nCada paso 1 o 2 lineas de texto del objetivo \nY que logramos \n\nYa tienes una lista de tareas de Claude tu actulizas la lista que el te dio y creas un plan una ruta luego empezamos como las instrucciones que te di \n\n\nTe subi 2 documentos adicionales \nDe Claude \n\nAuditas todo y empezamos \n\nVas anotar 1 a 2 en bitácora stated JSON Craxy wall todo esté imput block del director sin resumir no puedes reinterpretar nada \n\nRevisa primero que los documentos que re subí estén en su lugar",
+  "director_input_policy": "VERBATIM_NO_SUMMARY_NO_REINTERPRETATION",
   "sources": {
     "architecture_lot_1": "Documentos arquitectura Yaiwes lote 1",
-    "claude_instructions": "Documentos proyectos Yaiwes instrucciones de Claude"
+    "claude_instructions": "Documentos proyectos Yaiwes instrucciones de Claude",
+    "new_claude_documents_verified": ["08_protocolo_cierre_kernel_simple.md", "09_guia_decision_integrar_codigo_kernel.md"]
+  },
+  "forensic_findings": {
+    "claude_new_docs_present": true,
+    "kernel_level_a_priority": "task enters -> decide -> execute -> evidence -> finish without manual repair",
+    "claude_level_a_blockers": ["5 broken imports", "mission.py", "goal_lock.py", "execution-orchestration/bootstrap.py", "recovery.py"],
+    "integration_reuse_claims_to_verify_in_source": ["ficha_contract_v2.py", "validator_v2.py", "UniversalPluginBus.enchufar", "ContractGenerator.generate", "AdapterFactory.create", "PluginRegistry"],
+    "repo_has_active_component_download_relocation_workflows": true,
+    "source_crosscheck_status": "IN_PROGRESS_NOT_VERIFIED_CLOSED"
   },
   "agents": {
-    "sol_orquestador": "ACTIVE",
-    "sol_programacion": "WAITING_PLAN",
-    "codex_1": "WAITING_ASSIGNMENT",
+    "sol_orquestador": "ACTIVE_XRAY",
+    "sol_programacion": "WAITING_APPROVED_SURGICAL_TASK",
+    "codex_1": "WAITING_DETERMINISTIC_ID",
     "luna": "WAITING_ASSIGNMENT",
     "grok": "WAITING_ASSIGNMENT"
   },
   "steps": {
-    "1_update_architecture": "IN_PROGRESS",
-    "2_claude_gap_roadmap": "IN_PROGRESS",
-    "3_work_skills": "IN_PROGRESS",
-    "4_external_components_xray": "PENDING_APPROVAL_PLAN"
+    "1_verify_new_claude_docs": "DONE",
+    "2_forensic_xray_docs_vs_source": "IN_PROGRESS",
+    "3_update_architecture": "IN_PROGRESS",
+    "4_inventory_all_components": "IN_PROGRESS",
+    "5_first_integration_map": "PENDING_XRAY",
+    "6_github_action_move_prompt": "BLOCKED_UNTIL_MAP_APPROVED",
+    "7_codex_deterministic_wiring": "BLOCKED_UNTIL_DESTINATION_VERIFIED",
+    "8_codex_post_audit": "BLOCKED"
   },
-  "rule": "No orchestration artifacts may be written outside Readme arquitectura Yaiwes. No component integration is executed before user approval.",
+  "execution_rules": [
+    "No component move before mapping and director approval",
+    "After move, verify destination before Codex wiring",
+    "Codex receives one Crazy Wall task ID and deterministic DSL/DAG/schema/sheriff/validator/verifier/sentinel/supervisor/judge/guardian constraints",
+    "Codex performs minimal surgical wiring and must not rewrite existing architecture",
+    "Every completion is audited against source, docs, tests and destination before VERIFIED_CLOSED"
+  ],
   "closure": "VERIFIED_CLOSED only after code/doc cross-check, tests, evidence and destination audit"
 }
