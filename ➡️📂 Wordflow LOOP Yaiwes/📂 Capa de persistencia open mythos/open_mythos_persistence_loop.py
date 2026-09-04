@@ -1,30 +1,41 @@
-"""Capa de persistencia recurrente para Wordflow LOOP Yaiwes.
+"""Persistencia determinista Wordflow LOOP Yaiwes.
 
-Mecanismo adoptado de OpenMythos: Prelude -> Recurrent Block -> Coda.
-No copia el modelo neuronal: aplica el patrón al estado de workflow.
-El bucle es determinista y está limitado a 20 iteraciones.
+Patrón fuente: OpenMythos Prelude -> Recurrent Block -> Coda.
+Adaptación NO neuronal: el INPUT/contrato original se reinserta en cada ciclo.
+Cuando una verificación falla, exige exactamente 20 alternativas de recuperación
+antes de reintentar. No hay llamadas LLM en esta capa.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from hashlib import sha256
-from typing import Callable, Generic, TypeVar
+from typing import Callable, Generic, Sequence, TypeVar
 
 T = TypeVar("T")
 
 
 @dataclass(frozen=True)
 class PersistenceContract:
-    max_loops: int = 20
-    require_stable_evidence: bool = True
+    recurrent_depth: int = 20
+    recovery_alternatives: int = 20
+    require_evidence: bool = True
+
+
+@dataclass
+class CycleEvidence(Generic[T]):
+    cycle: int
+    state: T
+    state_hash: str
+    passed: bool
+    recovery_count: int = 0
 
 
 @dataclass
 class PersistenceTrace(Generic[T]):
     prelude: T
-    states: list[T] = field(default_factory=list)
-    evidence_hashes: list[str] = field(default_factory=list)
+    cycles: list[CycleEvidence[T]] = field(default_factory=list)
     coda: T | None = None
+    closed: bool = False
 
 
 def _digest(value: object) -> str:
@@ -35,43 +46,65 @@ def run_persistence_loop(
     input_state: T,
     prelude: Callable[[T], T],
     recurrent_step: Callable[[T, T, int], T],
+    verify_refute: Callable[[T], bool],
+    research_20: Callable[[T, T], Sequence[T]],
+    apply_recovery: Callable[[T, Sequence[T]], T],
     coda: Callable[[T], T],
-    is_complete: Callable[[T], bool],
     contract: PersistenceContract = PersistenceContract(),
 ) -> PersistenceTrace[T]:
-    """Prelude once, recurrent persistence up to 20x, Coda once.
+    """Ejecuta Prelude una vez, persistencia recurrente y Coda al cerrar.
 
-    The original prelude state is reinjected into every recurrent step so the
-    task contract cannot silently drift. No LLM call exists in this layer.
+    Cada ciclo reinyecta ``anchor`` para impedir deriva del objetivo. Si falla
+    verify/refute, ``research_20`` debe producir exactamente 20 alternativas;
+    la selección/aplicación la hace ``apply_recovery`` de forma determinista.
+    El bloque continúa hasta PASS; recurrent_depth=20 define la profundidad
+    repetitiva por ronda, no una afirmación de rendimiento 20x.
     """
-    if contract.max_loops != 20:
-        raise ValueError("Wordflow persistence contract requires exactly 20 max loops")
+    if contract.recurrent_depth != 20 or contract.recovery_alternatives != 20:
+        raise ValueError("Contrato exige profundidad 20 y 20 alternativas de recuperación")
 
     anchor = prelude(input_state)
     trace = PersistenceTrace(prelude=anchor)
     current = anchor
+    cycle = 0
 
-    for iteration in range(1, contract.max_loops + 1):
+    while True:
+        cycle += 1
+        iteration = ((cycle - 1) % contract.recurrent_depth) + 1
         current = recurrent_step(current, anchor, iteration)
-        trace.states.append(current)
-        trace.evidence_hashes.append(_digest(current))
-        if is_complete(current):
+        passed = bool(verify_refute(current))
+        recovery_count = 0
+
+        if not passed:
+            alternatives = tuple(research_20(current, anchor))
+            recovery_count = len(alternatives)
+            if recovery_count != contract.recovery_alternatives:
+                raise RuntimeError(
+                    f"research_20 debe devolver 20 alternativas; devolvió {recovery_count}"
+                )
+            current = apply_recovery(current, alternatives)
+            passed = bool(verify_refute(current))
+
+        trace.cycles.append(
+            CycleEvidence(cycle, current, _digest(current), passed, recovery_count)
+        )
+        if passed:
+            trace.coda = coda(current)
+            trace.closed = True
             break
 
-    trace.coda = coda(current)
-    if contract.require_stable_evidence and not trace.evidence_hashes:
-        raise RuntimeError("Persistence loop produced no evidence")
+    if contract.require_evidence and not trace.cycles:
+        raise RuntimeError("Persistencia sin evidencia")
     return trace
 
 
-# Universal Plug hook: the bus/adapter may discover this descriptor without
-# coupling this layer to the kernel implementation.
 PLUGIN_CONTRACT = {
     "plugin_id": "wordflow.persistence.open_mythos_loop",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "entrypoint": "run_persistence_loop",
     "deterministic": True,
     "llm_allowed": False,
-    "max_loops": 20,
-    "pattern": "prelude_recurrent_coda",
+    "recurrent_depth": 20,
+    "recovery_alternatives": 20,
+    "pattern": "prelude_recurrent_coda_with_input_reinjection",
 }
