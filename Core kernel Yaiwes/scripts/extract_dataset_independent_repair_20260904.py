@@ -2,7 +2,7 @@
 """Recover required dataset bytes without Git LFS and prove source identity."""
 import argparse, hashlib, json, os, re, shutil, tempfile, time, urllib.request, zipfile
 from pathlib import Path, PurePosixPath
-ROOT=Path("Agente core kernel Yaiwes principal"); LFS=b"version https://git-lfs.github.com/spec/v1\n"; CHUNK=90*1024*1024
+ROOT=Path("Agente core kernel Yaiwes principal"); LFS=b"version https://git-lfs.github.com/spec/v1\n"; CHUNK=45*1024*1024
 CONFIG={
  "HelpSteer2":{"target":ROOT/"HelpSteer2","base":"https://huggingface.co/datasets/nvidia/HelpSteer2/resolve/990b2711a36180dd19d9c94b8627844866f8982a","source":"https://huggingface.co/datasets/nvidia/HelpSteer2","source_commit":"990b2711a36180dd19d9c94b8627844866f8982a","allowed":{"disagreements/disagreements.jsonl.gz","preference/preference.jsonl.gz","train.jsonl.gz","validation.jsonl.gz"}},
  "PRM800K":{"target":ROOT/"PRM800K","base":"https://huggingface.co/datasets/Mai0313/prm800k/resolve/6d38cda87e33f59d2a7ec63c3002984ed4f8e98b","source":"https://huggingface.co/datasets/Mai0313/prm800k","source_commit":"6d38cda87e33f59d2a7ec63c3002984ed4f8e98b","allowed":{"prm800k/data/phase1_test.jsonl","prm800k/data/phase1_train.jsonl","prm800k/data/phase2_test.jsonl","prm800k/data/phase2_train.jsonl","prm800k/math_splits/test.jsonl","prm800k/math_splits/train.jsonl"}},
