@@ -55,7 +55,8 @@ Cadena obligatoria: `goals 12/12 → INPUT literal/registro aprobado → priorid
 - Extracción→Ficha: recuperar requisito→ID/origen/objetivo/dependencia/destino/contrato/tarea/evidence.
 - Skill GitHub Action / deploy-router: recuperar DO_NOT_REWRITE_CODE, COPY_THEN_SURGICAL_EDIT, SHA locks, provenance, descarga/extracción, read-back y seguridad de COPY/MOVE.
 
-## Recuperación por capa
+## Recuperación por capa — HISTÓRICO, NO AUTORIDAD DE IDs
+Este bloque conserva la numeración histórica pre-corrección y NO gobierna IDs de capa. La autoridad canónica de IDs es README 0–24 hasta que Tarea 1/2 aplique el delta quirúrgico de renumeración.
 0 Gobierno: restaurar INPUT/mission/trace/goals/state antes de todo.
 1 Investigación: restaurar consulta, fuentes, dedup/ranking y URLs/SHA.
 2 X-Ray documental: restaurar documento, requisitos, Council12, gaps e IDs.
@@ -84,6 +85,40 @@ Cadena obligatoria: `goals 12/12 → INPUT literal/registro aprobado → priorid
 
 ## Contrato de recuperación por nodo
 1 registrar node_id/mission_id/trace_id/INPUT o approved-record/source_refs/destino/SHA previo/evidence esperado; 2 checkpoint pre-mutation; 3 una tarea; 4 verificar/refutar; 5 FAIL conserva evidencia y genera exactamente 20 alternativas distintas; 6 rank REUSE>COPY/MOVE>PATCH>ADAPTER>GENERATE; 7 aplicar delta nuevo autorizado; 8 retest; 9 rollback por SHA/commit, nunca memoria; 10 actualizar STATE/CHECKPOINT/Crazy Wall; 11 DONE solo con evidence_hash+prueba+trazabilidad; 12 secretos solo secret_ref.
+
+## CONSTITUCIÓN DEL DIRECTOR — MIRROR JSON
+```json
+{
+  "schema": "tel.workflow/v3",
+  "mode": "fail-closed",
+  "mandatory_read_update": ["HANDOFF", "README", "STATE", "CHECKPOINT", "RECOVERY", "CRAZY_WALL"],
+  "governance_goals_14": [
+    "G01 INPUT literal+hash sin reinterpretar",
+    "G02 reconciliar seis anclas obligatorias",
+    "G03 bloquear y trazar 11 objetivos",
+    "G04 una instrucción=un nodo",
+    "G05 12 goals entrada+12 salida",
+    "G06 prioridades antes de ejecutar",
+    "G07 plan/destino/evidencia antes del delta",
+    "G08 cola 1x1",
+    "G09 verificar/refutar y LOOP ante fallo",
+    "G10 investigar 10 vías y hasta 20 soluciones por GAP",
+    "G11 REUSE>COPY/MOVE>PATCH>ADAPTER>GENERATE",
+    "G12 auditor 3x+Council12+auditor salida12+3 refutaciones",
+    "G13 actualizar anclas por cada avance real",
+    "G14 cross-check global+checks reales antes de cerrar"
+  ],
+  "project_objectives_11": ["O01 LOOP horario", "O02 investigar código", "O03 COPY/REUSE", "O04 plugins", "O05 cinco pasadas+GAPs", "O06 tareas agentes", "O07 espejo agentes", "O08 HF/3 procesadores", "O09 storage", "O10 APIs secret_ref", "O11 auditoría/tests/cierre"],
+  "input_goals_12": ["identificar_objetivo", "congelar_input_y_hash", "enumerar_alcance", "resolver_repo_rama_ruta_version", "capturar_restricciones", "capturar_autorizacion", "inventariar_dependencias", "inventariar_fuentes", "definir_evidencia_admisible", "definir_pre_post_condiciones", "fijar_formato_y_destino_salida", "compilar_cada_paso_como_nodo"],
+  "output_goals_12": ["ejecutar_exacto_el_contrato", "preservar_trazabilidad_literal", "producir_artefactos_validos", "demostrar_pruebas_reproducibles", "cruzar_fuentes", "resolver_contradicciones", "cerrar_sin_supuestos", "registrar_url_version_sha_run_id", "mantener_ledger_encadenado", "reparar_y_reverificar_gap", "cumplir_control_de_salida", "cerrar_solo_con_12_12_verify_final_y_zero_gaps"],
+  "ask_consilio_12": ["¿Qué afirmo?", "¿Qué evidencia lo demuestra?", "¿Qué podría demostrar que estoy equivocado?", "¿Estoy mirando la fuente correcta?", "¿La ruta/versión coincide?", "¿Existe realmente?", "¿Hay otra explicación?", "¿Qué dependencia falta?", "¿Puedo reproducirlo?", "¿El resultado contradice algo?", "¿Qué GAP permanece?", "¿Qué evidencia permite cerrar?"],
+  "pipeline": ["SHERIFF", "VALIDATOR", "SIMULATE", "RESEARCH", "RANK", "EXECUTE", "SENTINEL", "VERIFY", "SUPERVISOR", "JUDGE", "GUARDIAN", "CODA"],
+  "repeat_check": {"max_runs": 10, "pure_deterministic_runs": 1, "purpose": "detect_flakiness"},
+  "research_funnel": {"steps": ["chat", "codigo", "comunidad", "filtra", "dedup", "rank+URL"], "solution_paths_on_gap": 10, "candidate_target": 20},
+  "loop": {"rule": "NO_STOP_WHILE_GAP", "fail_restart": "RESEARCH", "max_recurrences_per_node": 100, "no_scope_escalation": true},
+  "final_verification": {"sin_checks": "INCONCLUSIVE", "todos_pasan": "VERIFIED_CLOSED", "alguno_falla": "CLOSED_UNVERIFIED"}
+}
+```
 
 ## Fail-closed
 Divergencia entre README/LEDGER/ANEXO/XRAY-CORRECCIÓN/STATE/CHECKPOINT/Recovery/Crazy Wall/HANDOFF/AGENTS, fuente ausente para el nodo activo, instrucción reinterpretada o evidencia inexistente => `GAP`; volver al LOOP, no avanzar. La reconciliación documental Parte 1–4 está PASS; implementación/runtime permanece independiente.
