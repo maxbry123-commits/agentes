@@ -94,5 +94,27 @@ Esta bitácora registra progreso humano-legible; `STATE.json` registra estado es
 - No se ejecutó Tarea 2, no se copió/movió código y no se modificó runtime/arquitectura física.
 - Veredicto Tarea 1: `PASS_DOCUMENTAL_PRESENTATION_READY / AWAITING_DIRECTOR_APPROVAL`.
 
+## EVENTO CW-0009 — CONSTITUCIÓN DEL DIRECTOR + AUTORIZACIÓN TAREAS 1/2/3
+- INPUT actual leído como autorización explícita para Salida 1 → Salida 2 → Salida 3.
+- Se fija la interpretación literal no inventada: `14 goals de gobierno` controlan `11 objetivos operativos`; no se crean tres objetivos de proyecto adicionales.
+- JSON constitucional replicado en STATE + CHECKPOINT + RECOVERY + Crazy Wall; HANDOFF/README siguen como anclas obligatorias y no se crean notas nuevas fuera de las rutas autorizadas.
+- Checkpoint activo: `WFLOOP-CONSTITUTION-0007`.
+- Pipeline obligatorio: `SHERIFF→VALIDATOR→SIMULATE→RESEARCH→RANK→EXECUTE→SENTINEL→VERIFY→SUPERVISOR→JUDGE→GUARDIAN→CODA→verify_final`.
+- GAP: vuelve a RESEARCH; investigar 10 vías, hasta 20 soluciones distintas; no repetir ciegamente delta fallido; cola 1×1.
+- Después de cada salida: X-Ray + 12 goals/12 Consil + 5 anti-alucinación + 5 anti-omisión + 5 plan + 5 foco objetivos.
+
+```json
+{
+  "schema": "tel.workflow/v3",
+  "mode": "fail-closed",
+  "governance_goals_14": ["G01 input literal+hash", "G02 reconciliar anclas", "G03 trazar 11 objetivos", "G04 1 instrucción=1 nodo", "G05 12/12 goals", "G06 prioridades", "G07 plan+evidence", "G08 cola1x1", "G09 verify/refute+LOOP", "G10 research10/20soluciones", "G11 REUSE>COPY>PATCH>ADAPTER>GENERATE", "G12 auditor3x+Council12+output12+3refutaciones", "G13 actualizar anclas", "G14 cross-check+verify_final"],
+  "project_objectives_11": ["O01 LOOP horario", "O02 investigar código", "O03 COPY/REUSE", "O04 plugins", "O05 5 pasadas+GAPs", "O06 tareas agentes", "O07 espejo agentes", "O08 HF/3 procesadores", "O09 storage", "O10 APIs secret_ref", "O11 auditoría/tests/cierre"],
+  "ask_consilio_12": ["¿Qué afirmo?", "¿Qué evidencia lo demuestra?", "¿Qué podría demostrar que estoy equivocado?", "¿Estoy mirando la fuente correcta?", "¿La ruta/versión coincide?", "¿Existe realmente?", "¿Hay otra explicación?", "¿Qué dependencia falta?", "¿Puedo reproducirlo?", "¿El resultado contradice algo?", "¿Qué GAP permanece?", "¿Qué evidencia permite cerrar?"],
+  "loop": {"NO_STOP_WHILE_GAP": true, "max_recurrences": 100, "research_paths": 10, "candidate_target": 20},
+  "repeat_check": {"max_runs": 10, "pure_deterministic_runs": 1},
+  "final_verification": {"sin_checks": "INCONCLUSIVE", "todos_pasan": "VERIFIED_CLOSED", "alguno_falla": "CLOSED_UNVERIFIED"}
+}
+```
+
 ## SIGUIENTE EVENTO PERMITIDO
-Solo después de aprobación explícita del Director: Tarea 2 — verificación cruzada de 5 pasadas. Sin aprobación, no iniciar Tarea 2 ni construcción física.
+Tarea 1 + Tarea 2 en una sola corrida de auditoría/corrección quirúrgica; después Tarea 3 y los 11 objetivos, sin saltar GAPs.
