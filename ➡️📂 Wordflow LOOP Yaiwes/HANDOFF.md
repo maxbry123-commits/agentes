@@ -8,37 +8,49 @@ Ruta: `➡️📂 Wordflow LOOP Yaiwes/HANDOFF.md`
 ## ESTADO ACTUAL
 - Contrato: `tel.workflow/v3`
 - Modo: `FAIL_CLOSED_LOOP`
-- Estado: `INSTRUCTION_RECORD_PARTS_1_4_RECONCILED`
-- Checkpoint activo: `WFLOOP-INSTRUCTION-0005`
+- Estado: `CONSTITUTION_LOCKED_TASK1_TASK2_TASK3_AUTHORIZED`
+- Checkpoint activo: `WFLOOP-CONSTITUTION-0007`
 - README blob: `1a38ec24570e7298e36b6ad20ee6caa5578f2239`
+- STATE blob: `20f1c2c52d4f1313aa39b13a2fa1ed675c77e3a3`
+- CHECKPOINT blob: `24dcf2d7b443352bbaa8a1f9cf489091c5ea3724`
+- RECOVERY blob: `67a4fa4d613276d5a3564c393819196dceb1cff3`
+- Crazy Wall blob: `050078cdf8cc7b66f0cc306b9153e8171acad988`
 - Parte 1: `PENDING_IMPLEMENTATION_LITERAL_INPUT_VERIFIED`
 - Parte 2: `READY_INPUT014_MAPPED_TO_ARCHIVO_DOWNLOAD_1`
 - Parte 3: `PENDING_IMPLEMENTATION_APPROVED_CANONICAL_RECORD`
 - Parte 4: `PENDING_IMPLEMENTATION_LITERAL_APPROVAL_CANONICAL_MAP`
 - Registro documental/aprobaciones Partes 1–4: `PASS_CANONICAL_EVIDENCE`
-- Auditoría vigente de corrección: `AUDITORIA-XRAY-CORRECCION-1A1.md`
-- Auditoría X-Ray anterior: histórica/pre-corrección.
+- Tareas autorizadas por Director: `TASK1 + TASK2 + TASK3`
+- Tarea 4 canónica: `NO_REGISTRADA`
 - Implementación física global: NO cerrada.
-- LOOP horario: `NOT_ACTIVE`
+- LOOP horario: `PENDING_CREATE_IN_TASK3`
 - Plugins externos autorizados: GitHub y Hugging Face únicamente.
 
+## LEY / CONSTITUCIÓN ACTIVA
+Antes de continuar se deben leer y reconciliar `HANDOFF + README + STATE + CHECKPOINT + RECOVERY + Crazy Wall`; un nuevo INPUT del Director se trata literal, no se reinterpreta. No se crean notas adicionales fuera de las rutas autorizadas; todo avance real actualiza las anclas.
+
+Interpretación fijada: `14 goals de gobierno` controlan `11 objetivos operativos`; no se inventan tres objetivos adicionales.
+
 ## CADENA OBLIGATORIA
-`GOALS 12/12 → leer INPUT BLOCK literal/registro aprobado sin reinterpretar → prioridades → plan → cola 1×1 → verifica/refuta + 20 soluciones si falla → analiza/LOOP → auditor instrucciones ×3 → auditor salida 12 pasos → 3 refutaciones → verificación cruzada global → checklist/salida`
+`GOALS 12/12 → INPUT literal/registro aprobado sin reinterpretar → prioridades → plan → cola 1×1 → verifica/refuta → GAP? research 10 vías + hasta 20 soluciones distintas → delta distinto → LOOP → auditor instrucciones ×3 → Council12 → auditor salida 12 → 3 refutaciones → X-Ray/cross-check global → checklist → CODA → verify_final(checks reales)`.
+
+## POST-SALIDA OBLIGATORIA
+`X-Ray + 12 goals/12 Consil + 5 anti-alucinación + 5 anti-omisión + 5 plan + 5 foco en los 11 objetivos`.
 
 ## ORDEN DE LECTURA PARA CODEX/GPT
 1. Este `HANDOFF.md`.
-2. `AGENTS.md`.
-3. `PIPELINE/00_METODO_TRABAJO_Y_ARQUITECTURA.md`.
-4. `PIPELINE/FORENSIC_CODE_AUDIT.md`.
-5. `PIPELINE/ADVANCED_ENGINEERING_STANDARD_V3.md`.
-6. `Readme arquitectura Yaiwes/README.md`.
-7. README Wordflow LOOP Yaiwes.
-8. `Crazy Wall Orquestador/LEDGER-CANONICO-PARTES-1-4.md`.
-9. `Crazy Wall Orquestador/AUDITORIA-XRAY-CORRECCION-1A1.md` — auditoría vigente.
-10. `STATE.json`.
-11. `CHECKPOINT.json`.
-12. `RECOVERY-PATCH.md`.
-13. `BITACORA-CRAZY-WALL.md`.
+2. README Wordflow LOOP Yaiwes.
+3. `STATE.json`.
+4. `CHECKPOINT.json`.
+5. `RECOVERY-PATCH.md`.
+6. `BITACORA-CRAZY-WALL.md`.
+7. `AGENTS.md`.
+8. `PIPELINE/00_METODO_TRABAJO_Y_ARQUITECTURA.md`.
+9. `PIPELINE/FORENSIC_CODE_AUDIT.md`.
+10. `PIPELINE/ADVANCED_ENGINEERING_STANDARD_V3.md`.
+11. `Readme arquitectura Yaiwes/README.md`.
+12. `Crazy Wall Orquestador/LEDGER-CANONICO-PARTES-1-4.md`.
+13. `Crazy Wall Orquestador/AUDITORIA-XRAY-CORRECCION-1A1.md` — auditoría vigente.
 14. `ANEXO-01-PLAN-CAPAS-FUENTES-RECOVERY.md`.
 15. `AUDITORIA-XRAY-PLAN-5-PASADAS.md` solo como evidencia histórica pre-corrección.
 16. Fuentes exactas cableadas al nodo antes de ejecutar.
@@ -91,4 +103,4 @@ PIPELINE estándar V3:
 https://github.com/maxbry123-commits/agentes/blob/main/PIPELINE/ADVANCED_ENGINEERING_STANDARD_V3.md
 
 ## VERDAD OPERATIVA
-La inconsistencia documental sobre Partes 3/4 y las tres rutas 404 de `AGENTS.md` quedó corregida con evidencia Git. La auditoría vigente es `AUDITORIA-XRAY-CORRECCION-1A1.md`; el X-Ray anterior queda histórico. Esto cierra el GAP de registro de instrucciones/aprobaciones, no los GAPs de implementación física, wiring, runtime, tests, Hugging Face compute, storage, APIs o deploy.
+Partes 1–4 tienen autoridad documental canónica. El JSON constitucional está activo y replicado en cuatro anclas. Tarea 1/2 deben corregir cualquier divergencia documental restante antes de Tarea 3. Implementación, wiring, runtime, HF compute, storage, APIs y cierre E2E siguen requiriendo evidencia propia.
