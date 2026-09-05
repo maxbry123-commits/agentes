@@ -84,5 +84,15 @@ Esta bitácora registra progreso humano-legible; `STATE.json` registra estado es
 - Resultado documental de instrucciones/aprobaciones Parte 1–4: `PASS_CANONICAL_EVIDENCE`.
 - Regla de verdad: esto NO convierte implementación física, HF compute, storage, bindings, E2E o deploy en `VERIFIED_CLOSED`.
 
+## EVENTO CW-0008 — TAREA 1 / SALIDA 1 — MAPA 25 CAPAS PRESENTADO
+- Orden: `Ok inicia tarea 1`.
+- Se releen HANDOFF, AGENTS.md, método/forense/estándar PIPELINE, Arquitectura YAIWES, README Wordflow, ledger Partes 1–4, STATE/CHECKPOINT/Recovery/Crazy Wall y fuentes principales de Arquitectura Wordflow, Chat A/B, UOOS1, UOOS2 y Deploy v2.
+- Se detecta una discrepancia de numeración: el README canónico usa 25 capas `0–24` con Capa 1 = Intake/GoalLock, mientras `ANEXO-01` conserva una numeración histórica desplazada. Para Tarea 1, el README queda fijado como única autoridad de IDs de capa; el anexo no gobierna numeración.
+- Se crea `TAREA-1-SALIDA-1-ARQUITECTURA-CAPAS.md`, commit `84e6b661d4f2efe9c35fdc2facc6ec148054a41d`, con las 25 capas canónicas, microflujos, fuentes, 12 goals entrada/salida, auditor instrucciones ×3, 3 refutaciones y cross-check.
+- STATE actualizado a `TASK1_PRESENTED_AWAITING_DIRECTOR_APPROVAL`.
+- CHECKPOINT actualizado a `WFLOOP-TASK1-0006`.
+- No se ejecutó Tarea 2, no se copió/movió código y no se modificó runtime/arquitectura física.
+- Veredicto Tarea 1: `PASS_DOCUMENTAL_PRESENTATION_READY / AWAITING_DIRECTOR_APPROVAL`.
+
 ## SIGUIENTE EVENTO PERMITIDO
-Director revisa la corrección o autoriza el siguiente nodo de implementación. Toda ejecución continúa con checkpoint pre-mutation, cola 1×1 y evidencia real.
+Solo después de aprobación explícita del Director: Tarea 2 — verificación cruzada de 5 pasadas. Sin aprobación, no iniciar Tarea 2 ni construcción física.
