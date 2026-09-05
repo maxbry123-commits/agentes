@@ -4,7 +4,8 @@
 - README: `➡️📂 Wordflow LOOP Yaiwes/➡️📂 readme wordflow loop Yaiwes.md`
 - LEDGER PARTES 1–4: `➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/LEDGER-CANONICO-PARTES-1-4.md`
 - ANEXO PLAN: `➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/ANEXO-01-PLAN-CAPAS-FUENTES-RECOVERY.md`
-- AUDITORÍA X-RAY 5 PASADAS: `➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/AUDITORIA-XRAY-PLAN-5-PASADAS.md`
+- AUDITORÍA X-RAY CORRECCIÓN 1:1 — VIGENTE: `➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/AUDITORIA-XRAY-CORRECCION-1A1.md`
+- AUDITORÍA X-RAY 5 PASADAS — HISTÓRICA PRE-CORRECCIÓN: `➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/AUDITORIA-XRAY-PLAN-5-PASADAS.md`
 - STATE: `➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/STATE.json`
 - CHECKPOINT: `➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/CHECKPOINT.json`
 - BITÁCORA: `➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/BITACORA-CRAZY-WALL.md`
@@ -13,7 +14,7 @@
 
 ## Norma de reanudación — 3 pasadas antes de ejecutar
 1. Pasada 1: leer README + LEDGER PARTES 1–4; usar INPUT literal cuando existe y registro aprobado inmutable cuando el contrato fue aprobado en Git; no reconstruir wording histórico desde memoria.
-2. Pasada 2: leer STATE + CHECKPOINT + Crazy Wall + ANEXO + AUDITORÍA X-RAY; reconciliar nodo, pendientes, SHAs, evidencia y recovery. Divergencia = GAP.
+2. Pasada 2: leer STATE + CHECKPOINT + Crazy Wall + ANEXO + AUDITORÍA X-RAY CORRECCIÓN 1:1 vigente; usar el X-Ray 5 pasadas anterior solo como evidencia histórica. Reconciliar nodo, pendientes, SHAs, evidencia y recovery. Divergencia = GAP.
 3. Pasada 3: releer documentos fuente del nodo listados en CHECKPOINT y las autoridades de `AGENTS.md`; cruzar documento↔plan↔código; ausencia de soporte = GAP.
 
 Cadena obligatoria: `goals 12/12 → INPUT literal/registro aprobado → prioridades → plan → cola 1×1 → verifica/refuta + 20 soluciones → analiza/LOOP → auditor instrucciones ×3 → auditor salida 12 → 3 refutaciones → verificación global → checklist/salida`.
@@ -85,4 +86,4 @@ Cadena obligatoria: `goals 12/12 → INPUT literal/registro aprobado → priorid
 1 registrar node_id/mission_id/trace_id/INPUT o approved-record/source_refs/destino/SHA previo/evidence esperado; 2 checkpoint pre-mutation; 3 una tarea; 4 verificar/refutar; 5 FAIL conserva evidencia y genera exactamente 20 alternativas distintas; 6 rank REUSE>COPY/MOVE>PATCH>ADAPTER>GENERATE; 7 aplicar delta nuevo autorizado; 8 retest; 9 rollback por SHA/commit, nunca memoria; 10 actualizar STATE/CHECKPOINT/Crazy Wall; 11 DONE solo con evidence_hash+prueba+trazabilidad; 12 secretos solo secret_ref.
 
 ## Fail-closed
-Divergencia entre README/LEDGER/ANEXO/XRAY/STATE/CHECKPOINT/Recovery/Crazy Wall/HANDOFF/AGENTS, fuente ausente para el nodo activo, instrucción reinterpretada o evidencia inexistente => `GAP`; volver al LOOP, no avanzar. La reconciliación documental Parte 1–4 está PASS; implementación/runtime permanece independiente.
+Divergencia entre README/LEDGER/ANEXO/XRAY-CORRECCIÓN/STATE/CHECKPOINT/Recovery/Crazy Wall/HANDOFF/AGENTS, fuente ausente para el nodo activo, instrucción reinterpretada o evidencia inexistente => `GAP`; volver al LOOP, no avanzar. La reconciliación documental Parte 1–4 está PASS; implementación/runtime permanece independiente.
