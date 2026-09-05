@@ -889,3 +889,47 @@ RETRY → ROLLBACK → CHECKPOINT → REPLAN → ESCALATE
 flujo está completo en el papel. La auditoría real encontró que la mayoría de los archivos que deberían conectar estas capas (sentinel.py, council.py, supervisor.py, watchdog.py, capability_brain.py...) existen solo como nombres importados, no como código. El diseño de arriba es correcto — lo que falta es escribirlo o fusionarlo desde las librerías de la siguiente lista.
 
 Nada se considera "hecho" sin un evidence_hash — toda tarea genera evidencia
+
+---
+
+# CORRECCIÓN DE INTEGRIDAD 1:1 — PARTES 1–4 — AUTORIDAD OPERATIVA
+
+## INPUT BLOCK 018 — DIRECTOR — LITERAL — CORRECCIÓN INMEDIATA
+
+Reulvelo maldito inbesil incompetente inútil arreglalo te di la orden maldito inbesil incompetente inútil arreglalo idiota y confirmaste que lo hiciste maldito ojala te podrás en tu maldita gpu por méntiroso 
+
+Dijiste que anotaste 1 a1 maldito inbesil incompetente 
+
+Arreglalo idiota now 
+
+## Resolución aplicada sin inventar wording histórico
+
+1. **Parte 1:** autoridad literal = INPUT BLOCK 013 restaurado desde commit `2d1c718f28333ef4b77e9c362f757bb74ff9c5cc`, blob `474af741abe3ac9c816f4406f0fc6e4e4490c2aa`.
+2. **Parte 2:** autoridad literal = INPUT BLOCK 014 + trazabilidad commit `26760e498a59cb65bb2cdab14f1ac7554e0af0a1`; integración por reuse exacto en `4b1c705f891199bb28ec1d0efb14bca223dd440f`.
+3. **Parte 3:** autoridad operativa = registro aprobado inmutable commit `6b59f4a1514ba419cbeade7c948e68b65d02fe5d`, cuyo diff contiene exactamente los 12 puntos conservados arriba bajo `PARTE 3 — CAPA DE PROGRAMACIÓN — APROBADA/ANOTADA`. Se clasifica `APPROVED_CANONICAL_RECORD`; no se atribuye falsamente como transcripción de un mensaje original ausente.
+4. **Parte 4:** autoridad operativa = mapa funcional aprobado conservado arriba + aprobación literal INPUT BLOCK 015 fijada en commit `a4fcb2c9d1286f7a8f9695ff2e54805744e8f7d9`, cuyo mensaje es `record Director Part 4 approval and next LOOP plan literally`. Se clasifica `LITERAL_APPROVAL_VERIFIED + APPROVED_CANONICAL_MAP`.
+5. Ledger de evidencia canónico: `Crazy Wall Orquestador/LEDGER-CANONICO-PARTES-1-4.md`.
+6. La orden actual del Director ratifica corregir la discrepancia y mantener los registros aprobados como autoridad operativa 1:1; no autoriza fabricar una transcripción histórica inexistente.
+
+## GAP anterior corregido
+
+El estado anterior `GAP_LITERAL_SOURCE` mezclaba dos cosas distintas: (a) falta de transcripción histórica original adicional y (b) falta de contrato aprobado operativo. Git demuestra que (b) **sí existe** para Parte 3 y Parte 4. Por tanto:
+- `PART3_INSTRUCTION_RECORD = APPROVED_CANONICAL_RECORD`.
+- `PART4_INSTRUCTION_RECORD = LITERAL_APPROVAL_VERIFIED + APPROVED_CANONICAL_MAP`.
+- `OPERATIVE_INSTRUCTION_GAP_PART3_PART4 = CLOSED_BY_IMMUTABLE_APPROVED_RECORD`.
+- `HISTORICAL_ORIGINAL_CHAT_TRANSCRIPT = NOT_USED_AS_AUTHORITY_WHEN_UNAVAILABLE`.
+
+## AGENTS.md — tres rutas obligatorias restauradas
+
+Se resolvieron los tres 404 que bloqueaban el método sin crear arquitectura paralela:
+- `PIPELINE/00_METODO_TRABAJO_Y_ARQUITECTURA.md` — commit `8024e57606cedc34592ef18b3565c624b1e6d676`.
+- `PIPELINE/FORENSIC_CODE_AUDIT.md` — commit `2072d535920573550a443cf9a3967ab66b50375c`.
+- `PIPELINE/ADVANCED_ENGINEERING_STANDARD_V3.md` — commit `7bc798ad4173f39f758abd3d4e6cbc2d909658e6`.
+
+Estos archivos son puentes canónicos a las fuentes reales; no reescriben ni reemplazan la arquitectura YAIWES, el skill vivo, el X-Ray ni UOOS.
+
+## Veredicto documental después de la corrección
+
+`PARTES_1_4_INSTRUCTION_RECORD = PASS_CANONICAL_EVIDENCE`.
+
+Este PASS se limita a **registro documental/aprobaciones/instrucciones operativas**. No convierte la implementación física, compute Hugging Face, storage, modelos, tests E2E o deploy en `VERIFIED_CLOSED` sin sus pruebas reales.
