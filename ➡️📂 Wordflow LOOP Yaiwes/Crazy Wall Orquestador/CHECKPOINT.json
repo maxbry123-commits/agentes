@@ -1,12 +1,102 @@
 {
-  "checkpoint_id": "WFLOOP-PLAN-0001",
+  "checkpoint_id": "WFLOOP-BUILD-0001",
+  "contract": "tel.workflow/v3",
   "readme_anchor": "➡️📂 Wordflow LOOP Yaiwes/➡️📂 readme wordflow loop Yaiwes.md",
   "state_anchor": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/STATE.json",
-  "status": "PLANNING",
-  "current_node": "PLAN_MASTER",
-  "completed": ["PARTE_2_SOURCE_BATCH", "PARTE_3_DESIGN_NOTED", "PARTE_4_DESIGN_APPROVED"],
-  "pending": ["PARTE_1_IMPLEMENTATION", "PARTE_3_IMPLEMENTATION", "PARTE_4_IMPLEMENTATION", "PLAN_DIRECTOR_APPROVAL", "CROSS_CHECK_4X", "REFUTE_3X", "ASK_CONSIL_12", "CODE_RESEARCH", "COPY_REUSE", "PLUGIN_WIRING", "AGENT_MIRROR", "HF_COMPUTE", "STORAGE", "MODEL_SECRET_BINDINGS", "AUDIT_TEST"],
-  "evidence": [],
-  "recovery": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/RECOVERY-PATCH.md",
-  "closure_rule": "Only VERIFIED_CLOSED when all nodes have evidence_hash and real checks pass"
+  "crazy_wall_anchor": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/BITACORA-CRAZY-WALL.md",
+  "recovery_anchor": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/RECOVERY-PATCH.md",
+  "status": "LOOP_ACTIVE",
+  "current_node": "PLAN_AND_SOURCE_RECONCILIATION",
+  "instruction_chain": [
+    "GOALS_12_12",
+    "READ_INPUT_BLOCK_LITERAL_NO_INTERPRET",
+    "PRIORITIES",
+    "PLAN",
+    "QUEUE_1x1",
+    "VERIFY_REFUTE_PLUS_20_SOLUTIONS",
+    "ANALYZE_AND_LOOP_ON_FAIL",
+    "INSTRUCTION_AUDIT_3X",
+    "OUTPUT_GOALS_AUDIT_12",
+    "REFUTATIONS_3",
+    "GLOBAL_CROSS_CHECK_LOOP",
+    "CHECKLIST_OUTPUT"
+  ],
+  "source_documents": [
+    {
+      "id": "SRC-README",
+      "path": "➡️📂 Wordflow LOOP Yaiwes/➡️📂 readme wordflow loop Yaiwes.md",
+      "extract": ["INPUT BLOCKS literales", "Partes 1-4", "norma LOOP", "capas/nodos", "destinos", "restricciones", "gates de autorización"]
+    },
+    {
+      "id": "SRC-ARCH-WORDFLOW",
+      "path": "➡️📂 Wordflow LOOP Yaiwes/📂 archivos download/📂Archivo download 2/📌✅😀Arquitectura para hacer el código Wordflow.md",
+      "extract": ["arquitectura de programación", "clasificación componente/ruta", "contratos", "método de programación", "trazabilidad", "gaps de código y wiring"]
+    },
+    {
+      "id": "SRC-CHAT-A-B",
+      "path": "➡️📂 Wordflow LOOP Yaiwes/📂 archivos download/📂Archivo download 2/PROMPT_MAESTRO_CHAT_A_CHAT_B_VERSION_MADURA.md",
+      "extract": ["10 auditorías de entrada", "INPUT_BLOCK+Sentinel", "MissionContract+GoalLock", "Ask Council 12", "Architecture/DAG/ROOT_MAP/Dependency Map", "REUSE>PATCH>ADAPT>GENERATE", "tasks <=2000 LOC", "bloques <=500 LOC", "EvidencePacket", "formato de salida"]
+    },
+    {
+      "id": "SRC-UOOS-1",
+      "path": "➡️📂 Wordflow LOOP Yaiwes/📂 archivos download/📂Archivo download 2/UOOS_v2_ PARTE 1 con este docimentl clude o minimax o cualquier Ai me da los documentos para yo ejecutar con el agente que yo quiero clude code o Open claw AUTORUN-1.md",
+      "extract": ["B1 Manifest", "B2 state.json", "B3 nodos DSL", "B4 DAG", "B5 loops L01-L11", "B6 Tribunal", "B7 construcción/despliegue", "B8 Recovery", "leyes L01-L15", "state machine por eventos", "evidencia obligatoria"]
+    },
+    {
+      "id": "SRC-UOOS-2",
+      "path": "➡️📂 Wordflow LOOP Yaiwes/📂 archivos download/📂Archivo download 2/UOOS_PARTE2_v3_  con este documento es el promt DSL universal para que el agente ejecute los documentos del código de ouss parte 1 RUNTIME.md",
+      "extract": ["E01-E12 ejecución estricta", "RT00-RT04 boot", "RT10-RT45 ciclo por nodo", "RT80 recovery gate", "RT90 cierre", "idempotencia", "capabilities", "memoria mínima", "Tribunal", "auditoría", "resume desde checkpoint"]
+    },
+    {
+      "id": "SRC-DEPLOY",
+      "path": "➡️📂 Wordflow LOOP Yaiwes/📂 archivos download/📂Archivo download 2/DESPLIEGUE-DETERMINISTA-UNIVERSAL-v2.md",
+      "extract": ["deploy_config.yaml", "dry-run", "plan.json", "SIN_REGLA=FAIL", "secret blocking", "deploy idempotente", "semver+CHANGELOG", "push", "verificación remota", "evidence.json", "0% LLM"]
+    },
+    {
+      "id": "SRC-PIPELINE-NCT",
+      "path": "➡️📂 Wordflow LOOP Yaiwes/📂 archivos download/📂Archivo download 2/GUIA_MAESTRA_PIPELINE_NCT_v2.html",
+      "extract": ["auditoría viva", "21 fases reales", "fuentes por fase", "3 pasadas+3 revisiones+cross-check", "mapeo Pipeline→UOOS 1/2", "despliegue determinista"]
+    },
+    {
+      "id": "SRC-PROGRAMMING-POOL",
+      "path": "➡️📂 Wordflow LOOP Yaiwes/📂 archivos download/📂Archivo download 2/INSTRUCCIONES_GROK_OPCION_A.md",
+      "extract": ["code-programming-engine compartido", "ProgrammingInstance", "InstancePool", "capability registration", "classifier hook", "usage metering", "idempotency", "heartbeat/watchdog", "fallback chain", "schemas pendientes"]
+    },
+    {
+      "id": "SRC-PLUGIN-BUS",
+      "path": "➡️📂 Wordflow LOOP Yaiwes/📂 archivos download/📂Archivo download 2/🔌 enchufe universal parte 1 fusion fables Kimi k 3 universal_plugin_bus_v2_integrated.py",
+      "extract": ["registry", "adapter", "mount", "shadow/hotswap", "plugin routing", "riesgos de ejecución dinámica a bloquear/aislar"]
+    },
+    {
+      "id": "SRC-FICHA",
+      "path": "➡️📂 Wordflow LOOP Yaiwes/📂 archivos download/📂Archivo download 2/🔌✅ enchufe universal parte 2 fusión de Kimi k 3 y fables ficha_contract_v2.py",
+      "extract": ["Ficha/contrato", "I/O", "invariantes", "seguridad", "sandbox", "versionado", "gobernanza", "recovery"]
+    },
+    {
+      "id": "SRC-UNIVERSAL-CONTRACT",
+      "path": "➡️📂 Wordflow LOOP Yaiwes/📂 archivos download/📂Archivo download 2/🏗️🏗️🔌🔌 JSON para IA (DSL _ MAXBRY _ YAIWES _ NCT) este es el enchufe de todas las fichas de code del sofware el p...rdicacion para Ai y luego texto libre para mí y luego el Jason code del enchufe 🔌 🔌 🔌 🔌 🔌.md",
+      "extract": ["artifact_id/version/hash", "registry metadata", "consume/expone", "determinismo/idempotencia", "permissions/limits/sandbox", "ejecucion.kind/transport/fallback", "result schemas", "dependencies", "governance ledger"]
+    },
+    {
+      "id": "SRC-EXTRACTION-FICHA",
+      "path": "➡️📂 Wordflow LOOP Yaiwes/📂 archivos download/📂Archivo download 2/🎯🎯🎯promt de extracción de información convierte el docuemento los item en una ficha ejecutable para llevarla para hacer  code 🎯🎯🎯🎯🎯🧩🧩🧩🧩🏗️🏗️🏗️🏗️🏗️🏗️.md",
+      "extract": ["documento→item→ficha ejecutable", "IDs", "objetivos", "dependencias", "trazabilidad documental", "salida para programación"]
+    },
+    {
+      "id": "SRC-GHA-SKILL",
+      "url": "https://github.com/maxbry123-commits/agentes/tree/c789e5fe635e220230ffc759d86dc3bbb8e261d4/skills/skills%20Github%20acci%C3%B3n",
+      "extract": ["DO_NOT_REWRITE_CODE", "COPY_THEN_SURGICAL_EDIT", "locks/SHA", "descarga/extracción", "provenance", "read-back"]
+    }
+  ],
+  "completed": ["PARTE_2_SOURCE_BATCH", "PARTE_3_DESIGN_NOTED", "PARTE_4_DESIGN_APPROVED", "PLAN_DOCUMENTAL_4X", "REFUTE_3X", "ASK_CONSIL_12"],
+  "pending": ["RESTORE_ALL_LITERAL_INPUTS_IN_CURRENT_README", "PLAN_CROSS_CHECK_3X_CURRENT", "PARTE_1_IMPLEMENTATION", "PARTE_3_IMPLEMENTATION", "PARTE_4_IMPLEMENTATION", "CODE_RESEARCH", "COPY_REUSE", "PLUGIN_WIRING", "AGENT_MIRROR", "HF_COMPUTE", "STORAGE", "MODEL_SECRET_BINDINGS", "AUDIT_TEST"],
+  "evidence": [
+    "README current blob d06dbe42bf4bc0a7c4d32502bab74671c8809b57",
+    "historical literal ledger blob 474af741abe3ac9c816f4406f0fc6e4e4490c2aa",
+    "deploy doc blob 3a0e39b61b30ce244aadc3337e1446afff61917b",
+    "Chat A/B doc blob a9606ed0154ad5e7a72b6ffbe43d225e2ea448a3",
+    "UOOS1 blob 0874a14dcad274d4dbf058721b60af5da3d79fe8",
+    "UOOS2 blob bf8cf9c24b899cc67dd56a449ee7999ab8f4c0a8"
+  ],
+  "closure_rule": "No DONE/INTEGRATED without real evidence_hash, source path/URL/SHA and verification result"
 }
