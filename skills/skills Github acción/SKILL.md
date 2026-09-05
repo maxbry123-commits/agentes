@@ -203,23 +203,6 @@ verdict: VERIFIED_CLOSED
 
 No declares `100% PASS` si hay job activo, GAP, colisión, SHA no verificado, enlace roto o evidencia incompleta.
 
-## 13. Auditor externo y autorreparación
-
-El workflow que descarga o extrae nunca puede certificarse a sí mismo como cierre final. Para destinos de código utilizable crea dos workflows nuevos y separados:
-
-1. **Repair Guardian:** procesa únicamente grupos ZIP cuyo árbol extraído no exista, conserva los archivos comprimidos, rechaza Zip Slip, symlinks y colisiones, publica por lotes pequeños y hace read-back.
-2. **Watchdog Auditor:** se ejecuta manualmente y por calendario; usa permisos de contenido en solo lectura, realiza cuatro pasadas (`Action/logs`, `SHA/CRC`, `árbol+destino`, `read-back+manifiesto`) y activa el Repair Guardian mediante `repository_dispatch` solo si hay GAPS.
-
-Reglas obligatorias:
-
-- `COMPLETE` en un manifiesto de descarga solo significa archivo adquirido; no significa `EXTRACTED_TREE`.
-- Un ZIP válido no demuestra que el código esté instalado.
-- `EXTRACTED_VERIFIED` requiere al menos un archivo real no ZIP en la ruta exacta, hash determinista del árbol y, cuando exista mirror, verificación independiente del mirror.
-- El productor y el auditor usan `concurrency.group` diferentes y `cancel-in-progress: false`.
-- El reparador limita cada corrida; si quedan GAPS se vuelve a despachar sin reactivar workflows antiguos.
-- Un `GITHUB_TOKEN` que hace push no activa normalmente otros workflows. Para encadenar usa explícitamente `workflow_dispatch` o `repository_dispatch`, con `actions: write`, y conserva un límite de cierre para evitar recursión infinita.
-- No declares `VERIFIED_CLOSED` hasta que el auditor independiente reporte `remaining_gaps=0`, `failures=0`, `active_jobs=0` y confirme la ruta final solicitada.
-
 ## 14. Guardia NO-LFS y resiliencia de descarga/extracción
 
 Regla inmutable: **Git LFS está prohibido** para esta cadena. No instalar, ejecutar, hacer fetch/pull/push con `git lfs`, no usar `lfs.allowincompletepush` y no aceptar punteros LFS como archivos extraídos válidos. `actions/checkout` con `lfs: false` es obligatorio, pero no demuestra por sí solo ausencia de filtros heredados.
@@ -252,7 +235,7 @@ Antes de escribir en destino valida todos los miembros del archivo: CRC, rutas a
 - `retryable(network|timeout|non-fast-forward)` → repair nuevo con máximo tres intentos por causa.
 - lote parcial correcto con GAPS restantes → `repository_dispatch` del siguiente repair acotado.
 - `SOURCE_LFS_POINTER_GAP|GIT_BLOB_LIMIT_GAP|COLLISION_BLOCKED|UNSAFE_ZIP` → no repetir el mismo push; registrar GAP y esperar reparación de causa.
-- El finalizador/auditor debe ejecutarse con `if: always()` o job separado equivalente para que un fallo de push no mate el bucle ni omita el checkpoint.
+- El finalizador debe ejecutarse con `if: always()` o job separado equivalente para que un fallo de push no mate el bucle ni omita el checkpoint.
 - Nunca declarar `VERIFIED_CLOSED` sin read-back independiente y `remaining_gaps=0`.
 - No ejecutes `git diff --check`, autoformat, trim de whitespace ni normalización de contenido sobre árboles copiados/descargados; el payload debe conservar bytes fuente. Los validadores estructurales solo pueden inspeccionar, no reescribir ni bloquear por estilo.
 
@@ -276,7 +259,7 @@ Para el LOOP de GitHub Actions:
 - el finalizador se ejecuta con `if: always()`;
 - un GAP no reintentable se persiste y no genera redispatch ciego;
 - si push + read-back pasan y quedan GAPs reintentables, despacha el siguiente lote;
-- cierre únicamente con `remaining_gaps=0`, `remaining_source_pointers=0`, `missing_required_files=0`, `oversized_blobs=0`, read-back PASS y auditor independiente.
+- cierre únicamente con `remaining_gaps=0`, `remaining_source_pointers=0`, `missing_required_files=0`, `oversized_blobs=0`, read-back PASS y verificación final independiente.
 
 ## 16. Hardening de archivos, límites y reproducibilidad
 
@@ -305,15 +288,14 @@ Para HTTP/API:
 - aplica backoff acotado solo a errores transitorios;
 - no repitas mutaciones a ciegas y no conviertas 403/404/422 en retry infinito.
 
-## 17. Supervisor único, Sentinel pasivo y LOOP sin tormenta de dispatch
+## 17. Supervisor único y LOOP sin tormenta de dispatch
 
-Una cadena de recuperación tiene **una sola autoridad de mutación/dispatch por destino**. No permitas que Repair Guardian, Watchdog Auditor, Sentinel y Supervisor despachen reparaciones simultáneamente para el mismo `repository + branch + destination_root`.
+Una cadena de recuperación tiene **una sola autoridad de mutación/dispatch por destino**. No permitas que Repair Guardian, Watchdog verificador, Sentinel y Supervisor despachen reparaciones simultáneamente para el mismo `repository + branch + destination_root`.
 
 Roles:
 
 - **Repair Guardian / Single Writer:** único escritor del árbol y único proceso que puede publicar el lote actual.
 - **Supervisor:** único actor autorizado para decidir el siguiente `repository_dispatch` cuando termina el lote y el read-back confirma que quedan GAPs reintentables.
-- **Watchdog Auditor / Sentinel:** solo inspeccionan estado, jobs, logs, hashes, árbol, destino y read-back. No despachan si ya existe Supervisor activo para la misma cadena.
 - **Judge/Guardian de cierre:** solo certifica; nunca muta ni reabre trabajo.
 
 Reglas anti-duplicación:
@@ -323,7 +305,7 @@ Reglas anti-duplicación:
 3. Usa un `concurrency.group` estable por `repository + branch + destination_root`; `cancel-in-progress: false`.
 4. Runs cancelados por exclusión de concurrencia no cuentan como fallo de contenido; clasifícalos `CONCURRENCY_SUPERSEDED`.
 5. No uses simultáneamente auto-dispatch del Repair Guardian y dispatch del Watchdog para la misma cadena.
-6. Un Sentinel externo o tarea horaria puede auditar, pero no debe crear una segunda cola de escritores.
+6. Una tarea horaria externa puede revisar estado, pero no debe crear una segunda cola de escritores.
 
 ### Read-back después de un push válido
 
@@ -337,7 +319,7 @@ Clasificación:
 
 - commit alcanzable y archivos/hashes correctos → `READ_BACK_CONTROL_GAP`; repara solo el control/checkpoint.
 - commit ausente → `PUSH_VISIBILITY_GAP`; verifica ref/branch antes de cualquier retry.
-- contenido remoto distinto → `READ_BACK_CONTENT_MISMATCH`; bloquear y auditar colisión/origen.
+- contenido remoto distinto → `READ_BACK_CONTENT_MISMATCH`; bloquear y revisar colisión/origen.
 - no vuelvas a adquirir ZIP si el archivo existente y su SHA ya están verificados.
 
 El finalizador debe conservar evidencia aunque falle el control posterior al push. Usa `if: always()` y separa `content_result` de `control_result`.
@@ -360,13 +342,13 @@ El Supervisor solo puede emitir otro dispatch cuando:
 
 Debe detener el LOOP automático cuando:
 
-- `remaining_gaps=0` → pasar a auditor independiente;
+- `remaining_gaps=0` → pasar a verificador independiente;
 - `retryable_gaps=0 AND blocked_gaps>0` → `GAPS_PENDING_NONRETRYABLE`;
 - `active_writer_jobs>0` → esperar sin duplicar;
 - `read_back!=PASS` → reparar primero el control/read-back;
 - cualquier intento de LFS → `SOURCE_LFS_POINTER_GAP` o GAP de política, sin workaround.
 
-`VERIFIED_CLOSED` requiere además `active_jobs=0`, cero colisiones/failures, SHA/CRC/tree/destination/read-back PASS y auditor independiente PASS.
+`VERIFIED_CLOSED` requiere además `active_jobs=0`, cero colisiones/failures, SHA/CRC/tree/destination/read-back PASS y verificación final independiente PASS.
 
 ## 18. Métodos de MOVE/COPY/DELETE en el mismo repositorio
 
@@ -422,7 +404,7 @@ Reglas universales:
 
 ### Autorización de escritura por alcance
 
-Por defecto, investigación, lectura de árbol, inspección de Actions, logs, manifests, hashes y comparación son **solo lectura**. Una orden para investigar o auditar no autoriza mutaciones.
+Por defecto, investigación, lectura de árbol, inspección de Actions, logs, manifests, hashes y comparación son **solo lectura**. Una orden para investigar o revisar no autoriza mutaciones.
 
 - No crear, actualizar, borrar, mover ni renombrar ningún archivo fuera de la ruta o conjunto de rutas que el usuario autorice explícitamente.
 - Autorizar la actualización de este `SKILL.md` no autoriza tocar workflows, scripts, manifests, componentes, índices, documentación ni evidencias.
@@ -486,7 +468,7 @@ Cada split debe incluir manifest con orden, SHA256 y bytes de cada parte, SHA256
 
 ### Watchdog de runs >24 h
 
-Un run `in_progress` o `queued` con edad superior a 24 h es una anomalía de control que requiere auditoría inmediata. No se clasifica automáticamente como GAP de componente.
+Un run `in_progress` o `queued` con edad superior a 24 h es una anomalía de control que requiere revisión inmediata. No se clasifica automáticamente como GAP de componente.
 
 Secuencia:
 
@@ -500,4 +482,4 @@ Secuencia:
 
 ### Cierre probado del patrón
 
-El patrón correcto se considera probado cuando todos los publishers seriales pasan, el verificador independiente pasa, el read-back pasa y `remaining_component_gaps=0`. El número de shards pendientes no equivale al número de tareas funcionales pendientes: un cierre puede tener 4 shards y, tras terminar todos, quedar únicamente auditoría/read-back; o puede quedar cero tareas si el verificador final ya certificó `VERIFIED_CLOSED`.
+El patrón correcto se considera probado cuando todos los publishers seriales pasan, el verificador independiente pasa, el read-back pasa y `remaining_component_gaps=0`. El número de shards pendientes no equivale al número de tareas funcionales pendientes: un cierre puede tener 4 shards y, tras terminar todos, quedar únicamente revisión/read-back; o puede quedar cero tareas si el verificador final ya certificó `VERIFIED_CLOSED`.
