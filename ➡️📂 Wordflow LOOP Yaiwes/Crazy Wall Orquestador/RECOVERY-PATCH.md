@@ -3,16 +3,35 @@
 ## Anclas canónicas
 - README: `➡️📂 Wordflow LOOP Yaiwes/➡️📂 readme wordflow loop Yaiwes.md`
 - ANEXO PLAN: `➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/ANEXO-01-PLAN-CAPAS-FUENTES-RECOVERY.md`
+- AUDITORÍA X-RAY 5 PASADAS: `➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/AUDITORIA-XRAY-PLAN-5-PASADAS.md`
 - STATE: `➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/STATE.json`
 - CHECKPOINT: `➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/CHECKPOINT.json`
 - BITÁCORA: `➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/BITACORA-CRAZY-WALL.md`
+- HANDOFF: `➡️📂 Wordflow LOOP Yaiwes/HANDOFF.md`
 
 ## Norma de reanudación — 3 pasadas antes de ejecutar
 1. Pasada 1: leer INPUT BLOCK activo en README literal 1:1; extraer solo acciones autorizadas, prohibiciones, formato y destino; no reinterpretar.
-2. Pasada 2: leer STATE + CHECKPOINT + Crazy Wall + ANEXO; reconciliar nodo, pendientes, SHAs, evidencia y recovery. Divergencia = GAP.
+2. Pasada 2: leer STATE + CHECKPOINT + Crazy Wall + ANEXO + AUDITORÍA X-RAY; reconciliar nodo, pendientes, SHAs, evidencia y recovery. Divergencia = GAP.
 3. Pasada 3: releer documentos fuente del nodo listados en CHECKPOINT; cruzar documento↔plan↔código; ausencia de soporte = GAP.
 
 Cadena obligatoria: `goals 12/12 → INPUT literal → prioridades → plan → cola 1×1 → verifica/refuta + 20 soluciones → analiza/LOOP → auditor instrucciones ×3 → auditor salida 12 → 3 refutaciones → verificación global → checklist/salida`.
+
+## Recuperación literal prioritaria después de X-Ray
+1. README actual restauró físicamente INPUT BLOCKS 010–013 desde blob histórico `474af741abe3ac9c816f4406f0fc6e4e4490c2aa`.
+2. Parte 2 usa INPUT 014 literal y su mapeo histórico a `📂 archivos download/📂Archivo download 1` en commit `26760e498a59cb65bb2cdab14f1ac7554e0af0a1`.
+3. Parte 3: si aparece una fuente real del mensaje definitorio original, copiarla 1:1 como nuevo INPUT BLOCK, sin reemplazar el contrato aprobado ya registrado. Mientras no exista fuente: `GAP_LITERAL_SOURCE`.
+4. Parte 4: conservar mapa aprobado + INPUT 015; si aparece la instrucción definitoria detallada original, copiarla 1:1 como nuevo INPUT BLOCK. Mientras no exista fuente: `GAP_LITERAL_SOURCE`.
+5. Nunca reconstruir un literal desde resumen/memoria.
+
+## Deltas de consistencia X-Ray que deben preservarse
+- Director 12/12 prevalece para este Wordflow sobre la sección 10/10 del documento de arquitectura; ambas fuentes siguen trazadas.
+- “DSL” = contrato declarativo existente YAML/JSON/schema; `ADDITIONAL_DSL: FORBIDDEN`; no inventar sintaxis nueva.
+- Límites simultáneos: UOOS `≤200 líneas/archivo` cuando corresponda; Chat A/B `≤500 LOC/bloque`; `≤2000 LOC/task`.
+- Cola del plan actual = `1×1`; paralelismo solo en fase futura autorizada por DAG/contrato/Director.
+- Plugins externos autorizados: solo `GitHub` y `Hugging Face`; demás bloqueados.
+- Candidate code: análisis estático/AST; ejecución dinámica (`exec()` o equivalente) bloqueada hasta sandbox+security PASS.
+- Usage metering: debe persistir en ledger append-only antes de estado INTEGRATED.
+- Deploy: `plan.json` + gates + push + verificación remota + `evidence.json`; sin ello no existe PASS.
 
 ## Recuperación detallada por fuente
 - README: recuperar INPUT BLOCKS literales, Partes 1–4, autorización, prohibiciones, formato `➡️📂 Capa N` + microflujo, destinos, gates, cadena LOOP, política no reinterpretar.
@@ -58,7 +77,7 @@ Cadena obligatoria: `goals 12/12 → INPUT literal → prioridades → plan → 
 1 registrar node_id/mission_id/trace_id/INPUT/source_refs/destino/SHA previo/evidence esperado; 2 checkpoint pre-mutation; 3 una tarea; 4 verificar/refutar; 5 FAIL conserva evidencia y genera exactamente 20 alternativas distintas; 6 rank REUSE>COPY/MOVE>PATCH>ADAPTER>GENERATE; 7 aplicar delta nuevo autorizado; 8 retest; 9 rollback por SHA/commit, nunca memoria; 10 actualizar STATE/CHECKPOINT/Crazy Wall; 11 DONE solo con evidence_hash+prueba+trazabilidad; 12 secretos solo secret_ref.
 
 ## Ledger literal
-Ancla histórica: commit `2d1c718f28333ef4b77e9c362f757bb74ff9c5cc`, blob `474af741abe3ac9c816f4406f0fc6e4e4490c2aa`. Si falta un INPUT, restaurarlo literalmente desde Git y anexar posteriores sin resumir.
+Ancla histórica: commit `2d1c718f28333ef4b77e9c362f757bb74ff9c5cc`, blob `474af741abe3ac9c816f4406f0fc6e4e4490c2aa`. La recuperación física 010–013 ya se realizó en README main; no borrar ni resumir esos bloques.
 
 ## Fail-closed
-Divergencia entre README/ANEXO/STATE/CHECKPOINT/Recovery/Crazy Wall, fuente ausente, instrucción reinterpretada o evidencia inexistente => `GAP`; volver al LOOP, no avanzar.
+Divergencia entre README/ANEXO/XRAY/STATE/CHECKPOINT/Recovery/Crazy Wall/HANDOFF, fuente ausente, instrucción reinterpretada o evidencia inexistente => `GAP`; volver al LOOP, no avanzar.
