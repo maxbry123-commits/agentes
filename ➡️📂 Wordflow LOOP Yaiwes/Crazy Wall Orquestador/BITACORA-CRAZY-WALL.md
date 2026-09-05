@@ -38,5 +38,15 @@ Esta bitácora registra progreso humano-legible; `STATE.json` registra estado es
 11. Prompt extracción documento→Ficha → requisito documental→ID/ficha/tarea trazable.
 12. Skill GitHub Acción → DO_NOT_REWRITE_CODE / COPY_THEN_SURGICAL_EDIT / locks SHA / extracción/provenance/read-back.
 
+## EVENTO CW-0004 — PLAN DETALLADO CABLEADO Y VALIDADO
+- Anexo operativo creado: `ANEXO-01-PLAN-CAPAS-FUENTES-RECOVERY.md`.
+- Checkpoint actualizado a `WFLOOP-BUILD-0002` y contiene 13 fuentes con qué extraer de cada una, 25 capas/nodos, anclas, pre-mutation fields y siguiente nodo permitido.
+- Recovery actualizado con reanudación 3 pasadas, recuperación por cada fuente y por cada capa 0–24, rollback por SHA/commit y prohibición de reconstruir de memoria.
+- STATE actualizado a `PLAN_PRESENTATION_READY`.
+- Validación registrada: 12 goals entrada, 12 salida, Ask Consil 12/12, auditor de instrucciones 3 pasadas, 4 verificaciones del plan, 3 refutaciones y verificación cruzada global documental.
+- Resultado: `PASS_PLAN_DOCUMENTAL`; NO significa implementación física de Parte 1/3/4 ni `VERIFIED_CLOSED`.
+- Política de plugins: únicamente GitHub y Hugging Face están autorizados externamente; cualquier otro plugin requiere autorización explícita.
+- LOOP horario solicitado: sigue `PENDING_PLATFORM_AUTOMATION_CREATION`; los intentos anteriores no se crearon y no se consideran activos.
+
 ## SIGUIENTE EVENTO PERMITIDO
-Tras tres pasadas de reconciliación de README/STATE/checkpoint/fuentes, ejecutar únicamente el siguiente nodo pendiente de la cola 1×1 y registrar evidencia real. No cerrar por presencia de archivos.
+Presentar al Director el plan por capas con microflujo; tras aprobación, ejecutar únicamente el siguiente nodo pendiente de la cola 1×1 con checkpoint pre-mutation y evidencia real.
