@@ -326,6 +326,93 @@ Es el estándar que permite conectar todas las neuronas de software de MAXBRY co
   ]
 }
 
+---
 
+## Extensión operativa YAIWES · X-Ray / A-B-C · 2026-09-05
 
-
+```json
+{
+  "schema": "yaiwes.integration.audit/v1",
+  "mode": "fail-closed",
+  "source_of_truth": {
+    "architecture": "Readme arquitectura Yaiwes/README.md",
+    "physical_target": "Agente Yaiwes principal/",
+    "audit_root": "Core kernel Yaiwes/"
+  },
+  "xray_required": [
+    "estructura_fisica",
+    "codigo_real",
+    "imports_dependencias",
+    "contratos_io",
+    "workflow_real",
+    "estado_persistencia",
+    "seguridad_permisos",
+    "llm_vs_code",
+    "riesgos",
+    "duplicados",
+    "compatibilidad",
+    "conexion_yaiwes"
+  ],
+  "output_per_component": [
+    "1_nombre_componente",
+    "2_funcion_objetivo_workflow",
+    "3_aporte_a_yaiwes",
+    "4_opcion_A_B_C",
+    "5_validacion_por_que_A_B_C",
+    "6_destino_exacto_conexion_conservar_podar_adaptar",
+    "7_evidencia_ruta_sha_url"
+  ],
+  "classification": {
+    "A": "subagente/hijo autónomo con objetivo, estado, herramientas, delegación o lifecycle propio",
+    "B": "workflow o pool reutilizable de ejecución/orquestación sin agencia independiente",
+    "C": "capacidad/kernel modular; separar responsabilidades y buscar aproximadamente 90% determinista / 10% LLM cuando el LLM sea necesario",
+    "insufficient_evidence": "GAP/NO_DETERMINABLE"
+  },
+  "modularity": {
+    "monolith_allowed": false,
+    "kernel_units": ["Kernel 1", "Kernel 2", "Kernel 3", "Kernel N"],
+    "each_unit_requires": ["contract", "slot", "dependencies", "security", "lifecycle", "healthcheck", "evidence"],
+    "connection": ["handoff", "router", "integrator", "UniversalPluginBus"]
+  },
+  "universal_plug_lane": [
+    "preserve_origin",
+    "static_xray",
+    "ContractGenerator",
+    "ficha",
+    "validator_v2",
+    "AdapterFactory",
+    "PluginRegistry_slot",
+    "router_handoff",
+    "shadow_test",
+    "swap_activation"
+  ],
+  "security_gaps_to_close": [
+    "no ejecutar candidate code antes de controles estáticos de seguridad",
+    "reconciliar universal_module_contract v1.5 con ficha/contrato v2.0"
+  ],
+  "research_funnel": [
+    "chat_history",
+    "official_code_repo_docs",
+    "developer_community",
+    "filter",
+    "deduplicate",
+    "rank_with_url_and_date"
+  ],
+  "loop": {
+    "goals": "12/12",
+    "queue": "1x1",
+    "instruction_audit_repetitions": 3,
+    "gap_research_paths": 10,
+    "intensive_research_steps": 12,
+    "solution_candidates": 20,
+    "refutations": 3,
+    "global_crosscheck": true,
+    "no_stop_while_gap": true,
+    "no_scope_escalation": true
+  },
+  "closure": {
+    "without_real_evidence": "GAP",
+    "valid_states": ["VERIFIED_CLOSED", "CLOSED_UNVERIFIED", "INCONCLUSIVE"]
+  }
+}
+```
