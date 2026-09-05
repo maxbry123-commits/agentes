@@ -38,6 +38,11 @@
   "plan": {
     "nodes": 25,
     "source_documents_wired": 13,
+    "source_inventory_verified": true,
+    "source_inventory_scope": [
+      "➡️📂 Wordflow LOOP Yaiwes/📂 archivos download/📂Archivo download 2 @ main",
+      "skills/skills Github acción @ c789e5fe635e220230ffc759d86dc3bbb8e261d4"
+    ],
     "plan_verifications_completed": 4,
     "plan_refutations_completed": 3,
     "ask_consil_completed": 12,
@@ -50,6 +55,6 @@
   "evidence_policy": "No DONE/INTEGRATED without real evidence_hash, source path/URL/SHA and verification result",
   "secrets_policy": "API keys are references to secret stores only; never stored in README, STATE, logs or source",
   "plugin_policy": "Only GitHub and Hugging Face are explicitly authorized external plugins; other plugin actions require explicit authorization",
-  "hourly_loop": "PENDING_PLATFORM_AUTOMATION_CREATION",
+  "hourly_loop": "NOT_ACTIVE",
   "next_state": "DIRECTOR_REVIEW_PLAN_THEN_BUILD_NEXT_PENDING_NODE"
 }
