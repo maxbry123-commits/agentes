@@ -357,7 +357,6 @@ Esto evita que memoria/estado queden acoplados a un modelo o loop específico.
 Generador y evaluador no deben ser la misma instancia/contexto cuando el resultado requiera juicio. El cierre exige criterios objetivos, tests y evidencia. `Judge`/`Verifier` no sustituyen tests deterministas cuando éstos son posibles.
 
 ## 13. Gaps arquitectónicos activos tras esta pasada
-
 1. Cerrar la traza Nivel A desde entrypoint hasta evidencia.
 2. Verificar/corregir los cinco imports señalados por Claude en sus rutas actuales, sin asumir que siguen rotos.
 3. Localizar o materializar `mission.py`/contrato de misión canónico reutilizando implementaciones existentes si existen bajo otro nombre.
@@ -1007,3 +1006,129 @@ Agente core kernel Yaiwes principal/                ZIP de componentes; no runti
 6. [R6 — Wordflow Code](https://github.com/maxbry123-commits/agentes/blob/main/AUDITORIA-RAIZ-R6-WORDFLOW-CODE-XRAY-2026-09-01.md)
 
 Los HTML originales utilizados como mapa permanecen preservados y enlazados desde el índice.
+
+---
+
+# NORMA / LEY 1 DE TRABAJO ARQUITECTÓNICO · X-RAY + INTEGRACIÓN A/B/C · 2026-09-05
+
+Esta ley es obligatoria para toda auditoría, recuperación, poda e integración de componentes en YAIWES. No sustituye la arquitectura previa: fija el método de decisión e integración que debe aplicarse sobre ella.
+
+## 1. Auditoría X-Ray componente por componente
+
+Toda pieza candidata se analiza desde su código real y no desde su nombre o README. El X-Ray mínimo comprende: estructura física, archivos ejecutables, imports/dependencias, contratos e I/O, workflow real, estado/persistencia, seguridad/permisos, uso de LLM frente a código, riesgos, duplicados, compatibilidad y puntos de conexión con YAIWES. Si la evidencia no permite demostrar una propiedad, se registra `GAP / NO_DETERMINABLE`.
+
+## 2. Clasificación arquitectónica A / B / C
+
+- **Opción A — subagente/hijo:** solo cuando el componente conserva agencia autónoma: objetivo, estado, herramientas, delegación, memoria/lifecycle o ciclo operativo propio que no conviene desmontar. Debe ejecutarse aislado bajo `execution-engine-pool/` / `agent-fleet-parallelism/`, nunca dentro del microkernel.
+- **Opción B — workflow/pool:** cuando el valor reside en una secuencia reproducible de pasos, coordinación o conjunto de ejecutores intercambiables/paralelos. El destino natural es `multi-workflow-engine/`, `execution-orchestration/` o `execution-engine-pool/` según responsabilidad.
+- **Opción C — capacidad/kernel modular:** cuando conviene podar el componente y conservar funciones útiles como unidades independientes. El objetivo operativo es aproximadamente **90% determinista / 10% LLM**, no una prohibición absoluta del LLM. Si el mismo resultado puede producirse con código, se prefiere código; el LLM se reserva para ambigüedad, investigación, generación o juicio no reducible.
+
+Ninguna pieza se fuerza a A/B/C sin evidencia suficiente.
+
+## 3. Aporte obligatorio a YAIWES
+
+La clasificación no basta. Para cada componente debe demostrarse qué aporta específicamente a YAIWES: capacidad nueva, mejora, GAP que cubre, pieza existente que complementa o reemplaza, reducción de riesgo/coste/latencia, aumento de determinismo, resiliencia, seguridad, paralelismo, memoria, observabilidad o calidad. Si no aporta valor no redundante, se rechaza o archiva.
+
+## 4. Modularidad obligatoria — nunca monolítica
+
+La Opción C no autoriza crear un kernel gigante. Las capacidades se separan como `Kernel 1 / Kernel 2 / Kernel 3 / Kernel N` o módulos equivalentes, cada uno con contrato, slot, dependencias, seguridad, lifecycle, healthcheck y evidencia. La conexión entre unidades ocurre por handoff/router/integrador/ABI; una unidad que falla no debe tumbar el microkernel si su función puede vivir fuera de él.
+
+## 5. Enchufe Universal — carril único de integración
+
+```text
+ORIGEN PRESERVADO
+→ X-RAY ESTÁTICO
+→ ContractGenerator / extracción de contrato
+→ FICHA
+→ validator_v2
+→ AdapterFactory si hay incompatibilidad
+→ PluginRegistry / SLOT
+→ router + handoff + integrador
+→ shadow-test
+→ swap / activación
+→ evidencia
+```
+
+El código original permanece intacto cuando un adaptador basta. Ningún candidato puede ejecutar código antes de superar análisis estático, permisos, sandbox/mount-guard y controles de seguridad. El GAP conocido entre contrato universal v1.5 y ficha/contrato v2.0 debe reconciliarse antes de declarar el Enchufe Universal como cerrado.
+
+## 6. Investigación y prueba
+
+Por cada nodo: construir consulta desde el texto literal → revisar chat/historial → código/repositorios/docs oficiales → comunidad de desarrolladores como señal secundaria → filtrar → deduplicar → rankear conservando URL/fecha/SHA. Prioridad: código oficial > chat/skills > comunidad. Sin URL/evidencia real no existe cierre.
+
+## 7. Formato obligatorio de salida por componente
+
+Cada componente debe presentarse individualmente, sin agrupar varios en una sola línea:
+
+1. **Nombre del componente** — nombre y ruta real.
+2. **Función / objetivo / workflow** — qué hace realmente y cómo fluye entrada→procesamiento/decisión→salida; dependencias, estado, seguridad y LLM/code.
+3. **Qué aporta a YAIWES** — valor nuevo, GAP cubierto y relación con capacidades ya existentes.
+4. **Opción A / B / C** — veredicto explícito.
+5. **Validación de por qué A/B/C** — evidencia concreta que demuestra la clasificación; si no basta: `GAP / NO_DETERMINABLE`.
+6. **Destino exacto y conexión** — ruta en `Agente Yaiwes principal/`, qué se conserva/poda/adapta y cómo entra mediante router/handoff/Enchufe Universal.
+7. **Evidencia** — ruta, SHA, test/log y URL real cuando exista.
+
+Al terminar toda la raíz se produce una lista global `Componente → aporte → A/B/C → validación → destino → GAP`, seguida de tres refutaciones y veredicto X-Ray.
+
+## LOOP obligatorio asociado
+
+`GOALS 12/12 → prioridades → plan → cola 1×1 → verifica/refuta + soluciones → auditor instrucciones ×3 → GAP: 10 vías de investigación → persistencia/CODA/comunidad → Ask Consil → 12 pasos de investigación intensiva → 20 soluciones → 3 refutaciones → verificación cruzada global → checklist/salida`.
+
+Reglas duras: `NO STOP WHILE GAP`, `NO SCOPE ESCALATION`, un INPUT literal = un nodo, no reinterpretar el nodo, no integrar/mover antes de cerrar la clasificación, y no declarar `VERIFIED_CLOSED` sin evidencia falsificable real.
+
+### JSON operativo de la Norma/Ley 1
+
+```json
+{
+  "schema": "yaiwes.architecture.work-law/v1",
+  "mode": "fail-closed",
+  "canonical_architecture": "Readme arquitectura Yaiwes/README.md",
+  "physical_target": "Agente Yaiwes principal/",
+  "audit_root": "Core kernel Yaiwes/",
+  "classification": {
+    "A": "autonomous_child_agent",
+    "B": "workflow_or_execution_pool",
+    "C": "modular_capability_or_kernel_unit_targeting_approx_90pct_code_10pct_llm",
+    "insufficient": "GAP_NO_DETERMINABLE"
+  },
+  "required_component_output": [
+    "name",
+    "function_objective_workflow",
+    "contribution_to_yaiwes",
+    "option_A_B_C",
+    "classification_validation",
+    "exact_destination_and_connection",
+    "evidence_path_sha_url"
+  ],
+  "modularity": {
+    "monolith": false,
+    "units": ["Kernel 1", "Kernel 2", "Kernel 3", "Kernel N"],
+    "required": ["contract", "slot", "dependencies", "security", "lifecycle", "healthcheck", "evidence"],
+    "connect_via": ["handoff", "router", "integrator", "UniversalPluginBus"]
+  },
+  "universal_plug": [
+    "preserve_origin",
+    "static_xray",
+    "ContractGenerator",
+    "ficha",
+    "validator_v2",
+    "AdapterFactory",
+    "PluginRegistry_slot",
+    "router_handoff",
+    "shadow_test",
+    "swap_activation"
+  ],
+  "research": ["chat_history", "official_code_docs", "developer_community", "filter", "deduplicate", "rank_url_date"],
+  "loop": {
+    "goals": "12/12",
+    "queue": "1x1",
+    "instruction_audits": 3,
+    "gap_research_paths": 10,
+    "intensive_research_steps": 12,
+    "solution_candidates": 20,
+    "refutations": 3,
+    "global_crosscheck": true,
+    "no_stop_while_gap": true,
+    "no_scope_escalation": true
+  }
+}
+```
