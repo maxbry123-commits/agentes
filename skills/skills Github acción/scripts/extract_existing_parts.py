@@ -1,5 +1,4 @@
 import hashlib
-import os
 import re
 import shutil
 import stat
@@ -7,6 +6,9 @@ import sys
 import tempfile
 import zipfile
 from pathlib import Path, PurePosixPath
+
+LFS_POINTER_PREFIX = b"version https://git-lfs.github.com/spec/v1\n"
+GIT_BLOB_LIMIT = 100 * 1024 * 1024
 
 
 def die(msg: str) -> None:
@@ -25,6 +27,13 @@ def sha256(path: Path) -> str:
     return h.hexdigest()
 
 
+def is_lfs_pointer(path: Path) -> bool:
+    if path.stat().st_size > 1024:
+        return False
+    with path.open("rb") as f:
+        return f.read(1024).startswith(LFS_POINTER_PREFIX)
+
+
 def safe_member(info: zipfile.ZipInfo) -> PurePosixPath:
     name = info.filename.replace("\\", "/")
     if not name or "\x00" in name or name.startswith("/") or re.match(r"^[A-Za-z]:", name):
@@ -41,8 +50,7 @@ def safe_member(info: zipfile.ZipInfo) -> PurePosixPath:
 def tree_hash(root: Path) -> str:
     h = hashlib.sha256()
     for p in sorted(x for x in root.rglob("*") if x.is_file() and x.name != "SOURCE_SHA256SUMS.txt"):
-        rel = p.relative_to(root).as_posix().encode()
-        h.update(rel + b"\0")
+        h.update(p.relative_to(root).as_posix().encode() + b"\0")
         h.update(bytes.fromhex(sha256(p)))
     return h.hexdigest()
 
@@ -93,6 +101,11 @@ def main() -> None:
         staged_files = sorted(p for p in staged_component.rglob("*") if p.is_file())
         if not staged_files:
             die(f"EMPTY_TREE_GAP: {component}")
+        for src in staged_files:
+            if src.stat().st_size >= GIT_BLOB_LIMIT:
+                die(f"GIT_BLOB_LIMIT_GAP: {src.relative_to(staged_component)}={src.stat().st_size}")
+            if is_lfs_pointer(src):
+                die(f"SOURCE_LFS_POINTER_GAP: {src.relative_to(staged_component)}")
 
         destination = root / component
         if destination.exists():
