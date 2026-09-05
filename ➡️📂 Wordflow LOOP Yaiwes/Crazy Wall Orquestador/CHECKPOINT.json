@@ -2,26 +2,27 @@
   "checkpoint_id": "WFLOOP-XRAY-0004",
   "contract": "tel.workflow/v3",
   "readme_anchor": "➡️📂 Wordflow LOOP Yaiwes/➡️📂 readme wordflow loop Yaiwes.md",
+  "readme_sha": "fed000b54a80fd6dd9b7cea21097043e289d73f6",
   "annex_plan": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/ANEXO-01-PLAN-CAPAS-FUENTES-RECOVERY.md",
   "xray_audit": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/AUDITORIA-XRAY-PLAN-5-PASADAS.md",
   "state_anchor": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/STATE.json",
   "crazy_wall_anchor": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/BITACORA-CRAZY-WALL.md",
   "recovery_anchor": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/RECOVERY-PATCH.md",
   "handoff_anchor": "➡️📂 Wordflow LOOP Yaiwes/HANDOFF.md",
-  "status": "XRAY_5_PASS_AUDITED_PATCH_PENDING_LITERAL_GAPS",
-  "current_node": "README_LITERAL_RECONCILIATION",
+  "status": "XRAY_5_PASS_PATCH_APPLIED_WITH_LITERAL_GAPS",
+  "current_node": "LITERAL_SOURCE_GAP_RECOVERY",
   "instruction_chain": ["GOALS_12_12","READ_INPUT_BLOCK_LITERAL_NO_INTERPRET","PRIORITIES","PLAN","QUEUE_1x1","VERIFY_REFUTE_PLUS_20_SOLUTIONS","ANALYZE_AND_LOOP_ON_FAIL","INSTRUCTION_AUDIT_3X","OUTPUT_GOALS_AUDIT_12","REFUTATIONS_3","GLOBAL_CROSS_CHECK_LOOP","CHECKLIST_OUTPUT"],
   "pre_mutation_required": ["node_id","mission_id","trace_id","literal_input_block","goals_input_12","source_refs_path_url_sha","dependencies","exact_destination","previous_blob_or_commit","expected_evidence","rollback_sha"],
   "xray_passes": [
-    {"pass":1,"scope":"ledger literal/chat/aprobaciones","result":"FAIL_FOUND","gap":"README main no contiene físicamente INPUT 010-013; Parte3/4 literal definitorio completo no demostrado"},
-    {"pass":2,"scope":"arquitectura Wordflow vs plan","result":"PASS_WITH_DELTA","gap":"documento usa 10/10 goals en sección; Director exige 12/12; registrar precedencia"},
-    {"pass":3,"scope":"Chat A/B + UOOS vs plan","result":"PASS_WITH_DELTA","gap":"aclarar DSL=YAML/JSON existente; armonizar límites 200 archivo / 500 bloque / 2000 task; cola actual 1x1"},
-    {"pass":4,"scope":"plugins/programación/despliegue","result":"PASS_WITH_DELTA","gap":"allowlist GitHub+HuggingFace; bloquear ejecución dinámica; usage metering persistente; deploy exige evidence.json"},
-    {"pass":5,"scope":"plan vs checkpoint/recovery/state/CrazyWall/HANDOFF","result":"PASS_WITH_GAPS","gap":"plan documental no equivale a implementación; literal gaps impiden VERIFIED_CLOSED"}
+    {"pass":1,"scope":"ledger literal/chat/aprobaciones","result":"PATCHED_WITH_RESIDUAL_GAPS","evidence":"INPUT 010-013 restored physically from historical blob; Part3/4 original defining literal sources still not demonstrated"},
+    {"pass":2,"scope":"arquitectura Wordflow vs plan","result":"PATCHED","evidence":"Director 12/12 precedence recorded without altering source document 10/10 section"},
+    {"pass":3,"scope":"Chat A/B + UOOS vs plan","result":"PATCHED","evidence":"DSL=existing YAML/JSON/schema; limits 200 file / 500 block / 2000 task; current queue 1x1"},
+    {"pass":4,"scope":"plugins/programación/despliegue","result":"PATCHED","evidence":"GitHub+HuggingFace allowlist; dynamic candidate exec blocked; persistent usage ledger required; deploy requires evidence.json"},
+    {"pass":5,"scope":"plan vs checkpoint/recovery/state/CrazyWall/HANDOFF","result":"PASS_WITH_LITERAL_GAPS","evidence":"anchors reconciled after patch; plan remains documentary, implementation not verified"}
   ],
   "source_documents": [
-    {"id":"SRC-README-CURRENT","path":"➡️📂 Wordflow LOOP Yaiwes/➡️📂 readme wordflow loop Yaiwes.md","sha":"d06dbe42bf4bc0a7c4d32502bab74671c8809b57"},
-    {"id":"SRC-README-HISTORICAL","commit":"2d1c718f28333ef4b77e9c362f757bb74ff9c5cc","blob":"474af741abe3ac9c816f4406f0fc6e4e4490c2aa","use":"restore exact INPUT 010-013 without reinterpretation"},
+    {"id":"SRC-README-CURRENT","path":"➡️📂 Wordflow LOOP Yaiwes/➡️📂 readme wordflow loop Yaiwes.md","sha":"fed000b54a80fd6dd9b7cea21097043e289d73f6"},
+    {"id":"SRC-README-HISTORICAL","commit":"2d1c718f28333ef4b77e9c362f757bb74ff9c5cc","blob":"474af741abe3ac9c816f4406f0fc6e4e4490c2aa","use":"exact INPUT 010-013 restored without reinterpretation"},
     {"id":"SRC-PART2-AUTH","commit":"44f2ece801e5591837238577e04ac8f39d301b57","use":"literal integration authorization"},
     {"id":"SRC-PART2-RESTORE","commit":"26760e498a59cb65bb2cdab14f1ac7554e0af0a1","use":"maps INPUT014 to Archivo download 1 integration"},
     {"id":"SRC-PART3-COMMIT","commit":"6b59f4a1514ba419cbeade7c948e68b65d02fe5d","use":"approved Part3 operational contract; not proof of original literal user message"},
@@ -31,18 +32,18 @@
     {"id":"SRC-UOOS-2","sha":"bf8cf9c24b899cc67dd56a449ee7999ab8f4c0a8"},
     {"id":"SRC-DEPLOY","sha":"3a0e39b61b30ce244aadc3337e1446afff61917b"}
   ],
-  "required_readme_deltas": [
-    "restore INPUT 010-013 literally from historical blob",
-    "map Part1=INPUT013 and Part2=INPUT014/Archivo download1",
-    "mark Part3 and detailed Part4 original literal as GAP_LITERAL_SOURCE unless real source is recovered",
-    "record precedence Director 12/12 over document 10/10",
-    "record DSL as existing YAML/JSON declarative contract, no additional syntax",
-    "record limits 200 lines/file, 500 LOC/code-block, 2000 LOC/task",
-    "record external plugin allowlist GitHub + Hugging Face only",
-    "record persistent usage ledger requirement"
+  "applied_readme_deltas": [
+    "INPUT 010-013 restored literally from historical blob",
+    "Part1=INPUT013 and Part2=INPUT014/Archivo download1 mapped",
+    "Part3 and detailed Part4 original literal marked GAP_LITERAL_SOURCE unless real source is recovered",
+    "Director 12/12 precedence recorded over document 10/10",
+    "DSL recorded as existing YAML/JSON declarative contract, no additional syntax",
+    "limits recorded as 200 lines/file, 500 LOC/code-block, 2000 LOC/task",
+    "external plugin allowlist recorded as GitHub + Hugging Face only",
+    "persistent usage ledger requirement recorded"
   ],
-  "validation": {"xray_passes_completed":5,"refutations_completed":5,"result":"PASS_WITH_LITERAL_GAPS"},
-  "parts": {"parte_1":"PENDING_IMPLEMENTATION","parte_2":"READY","parte_3":"PENDING_IMPLEMENTATION","parte_4":"PENDING_IMPLEMENTATION"},
-  "next_node":"SURGICAL_README_LITERAL_RESTORE_AND_DELTA_PATCH",
+  "validation": {"xray_passes_completed":5,"refutations_completed":5,"post_patch_reconciliation":true,"result":"PASS_WITH_LITERAL_GAPS"},
+  "parts": {"parte_1":"PENDING_IMPLEMENTATION_LITERAL_INPUT_RESTORED","parte_2":"READY_INPUT014_MAPPED_TO_ARCHIVO_DOWNLOAD_1","parte_3":"PENDING_IMPLEMENTATION_GAP_LITERAL_SOURCE","parte_4":"PENDING_IMPLEMENTATION_GAP_LITERAL_SOURCE"},
+  "next_node":"RECOVER_LITERAL_PART3_PART4_SOURCE_OR_DIRECTOR_REVIEW_CORRECTED_PLAN",
   "closure_rule":"No VERIFIED_CLOSED while GAP_LITERAL_SOURCE or implementation/test gaps remain"
 }
