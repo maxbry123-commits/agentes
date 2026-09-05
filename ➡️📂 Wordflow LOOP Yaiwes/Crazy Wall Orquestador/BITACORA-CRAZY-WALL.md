@@ -53,9 +53,23 @@ Esta bitácora registra progreso humano-legible; `STATE.json` registra estado es
 - Pasada 3: inventario real de `📂Archivo download 2` leído desde GitHub `main`; se verificaron allí los documentos principales y los archivos de programación/Enchufe/Ficha/contrato/prompt de extracción usados por el plan.
 - Fuente adicional `skills/skills Github acción` verificada en el commit `c789e5fe635e220230ffc759d86dc3bbb8e261d4`; existen `SKILL.md`, `README.md`, `ADVERTENCIA-CODE.json`, assets/references/scripts y carpetas de copiar/mover/descargar-extracción.
 - Evidencia de SHAs del intake: Arquitectura Wordflow `a08dc64b902465cb1549ed3607cbfe1d737e5d1f`; Chat A/B `a9606ed0154ad5e7a72b6ffbe43d225e2ea448a3`; UOOS1 `0874a14dcad274d4dbf058721b60af5da3d79fe8`; UOOS2 `bf8cf9c24b899cc67dd56a449ee7999ab8f4c0a8`; Deploy `3a0e39b61b30ce244aadc3337e1446afff61917b`; Pipeline NCT `f40b0a4634733891efdb430958dae9ca59ff2427`; Programming Pool doc `c0a97179e55b042ca6356daf3f5b6fae738fbae7`; PluginBus `c017bb2c1a09c8bb738e1774d656d59340ab56d5`; Ficha `a72508027cc2458553ef6a2255a9aa33d9a77a21`; contrato universal `aa023a5c5124eb574bcaa63d0b69607f1d18590c`; extracción→Ficha `c49b693dfad9e8331a4f84fa069c38a61ec2ad60`.
-- Checkpoint actual: `WFLOOP-BUILD-0003`; todos los source_refs principales quedaron fijados con SHA/ref.
+- Checkpoint histórico en ese momento: `WFLOOP-BUILD-0003`; source_refs principales fijados con SHA/ref.
 - Resultado de la validación del PLAN: `PASS_PLAN_DOCUMENTAL`.
-- GAPs que permanecen explícitos y no se ocultaron: implementación física Parte 1/3/4, agentes programadores definitivos, compute HF real, almacenamiento, bindings de modelos y E2E final.
+- GAPs que permanecían explícitos: implementación física Parte 1/3/4, agentes programadores definitivos, compute HF real, almacenamiento, bindings de modelos y E2E final.
+
+## EVENTO CW-0006 — AUDITORÍA FORENSE X-RAY 5 PASADAS + RESTAURACIÓN LITERAL
+- Orden del Director: auditar plan/chat/documentos en 5 pasadas, refutar cada pasada y editar solo faltantes sin reescribir fuentes.
+- Se creó `AUDITORIA-XRAY-PLAN-5-PASADAS.md` con 5 pasadas y 5 refutaciones.
+- PASADA 1 encontró que README main no contenía físicamente INPUT 010–013; se restauraron literalmente desde blob histórico `474af741abe3ac9c816f4406f0fc6e4e4490c2aa` sin reinterpretación.
+- PASADA 2 detectó diferencia documental 10/10 goals vs instrucción Director 12/12; se registró precedencia Director 12/12 sin alterar la fuente.
+- PASADA 3 detectó ambigüedad DSL y límites; quedó fijado: DSL = YAML/JSON/schema existente, sin sintaxis nueva; 200 líneas/archivo, 500 LOC/bloque, 2000 LOC/task; cola actual 1×1.
+- PASADA 4 confirmó deploy 0% LLM y añadió fail-closed: solo GitHub/Hugging Face autorizados, ejecución dinámica de candidato bloqueada hasta static-AST+sandbox+security PASS, usage metering requiere ledger persistente, deploy sin `evidence.json` no es PASS.
+- PASADA 5 reconcilió README + CHECKPOINT + RECOVERY + STATE + Crazy Wall + HANDOFF.
+- README actualizado: blob `fed000b54a80fd6dd9b7cea21097043e289d73f6`, commit `3d49c55e5d3af050a979ac4de65283587089ad17`.
+- Checkpoint actual: `WFLOOP-XRAY-0004`.
+- STATE actual: `XRAY_5_PASS_COMPLETE_WITH_LITERAL_GAPS`.
+- GAPS literales fail-closed: no se demostró una fuente literal completa del mensaje definitorio original de Parte 3; tampoco del mensaje detallado definitorio de Parte 4 anterior a INPUT 015. No se fabrican desde resumen.
+- Estado documental: `PASS_WITH_LITERAL_GAPS`, no `VERIFIED_CLOSED`.
 
 ## SIGUIENTE EVENTO PERMITIDO
-Presentar al Director el plan por capas con microflujo; tras aprobación, ejecutar únicamente el siguiente nodo pendiente de la cola 1×1 con checkpoint pre-mutation y evidencia real.
+Recuperar fuente literal real de Parte 3/Parte 4 si existe y copiarla 1:1; en ausencia de evidencia, mantener `GAP_LITERAL_SOURCE`. La implementación física sigue separada del cierre documental.
