@@ -248,3 +248,66 @@ def verify_final(state: dict, checks: dict) -> dict:
         └─────────────────────────────────────────┬─────────────────────────────────────
                                                     ▼
                                     VERIFIED_CLOSED | CLOSED_UNVERIFIED | INCONCLUSIVE
+
+
+# === ACTUALIZACIÓN 2026-09-05 · NORMA/LEY 1 DE AUDITORÍA E INTEGRACIÓN YAIWES ===
+# Esta actualización es obligatoria para toda auditoría X-Ray e integración de componentes.
+
+work_system_update:
+  source_of_truth:
+    architecture: "Readme arquitectura Yaiwes/README.md"
+    physical_target: "Agente Yaiwes principal/"
+    audit_root: "Core kernel Yaiwes/"
+  xray_scope_per_component:
+    - estructura_fisica
+    - archivos_codigo
+    - imports_dependencias
+    - contratos_io
+    - workflow_real
+    - estado_persistencia
+    - seguridad_permisos
+    - llm_vs_code
+    - riesgos
+    - duplicados
+    - compatibilidad
+    - conexion_yaiwes
+  required_result_per_component:
+    - nombre_componente
+    - funcion_objetivo_workflow
+    - aporte_a_yaiwes
+    - opcion_A_B_C
+    - validacion_por_que_A_B_C
+    - destino_exacto_en_agente_yaiwes_principal
+    - conservar_podar_adaptar
+    - evidencia_ruta_sha_url
+  classification:
+    A: "subagente/hijo autónomo; requiere objetivo/estado/herramientas/delegación/lifecycle propios"
+    B: "workflow o pool reutilizable; secuencia/ejecución/orquestación sin agencia independiente"
+    C: "capacidad/kernel modular; separar responsabilidades y buscar ≈90% determinista / ≈10% LLM cuando el LLM sea necesario"
+    insufficient: "GAP/NO_DETERMINABLE; nunca forzar A/B/C sin evidencia"
+  modularity_law:
+    monolith: false
+    pattern: ["Kernel 1", "Kernel 2", "Kernel 3", "Kernel N"]
+    each_unit_requires: [contrato, slot, dependencias, seguridad, lifecycle, healthcheck, evidencia]
+    connection: [handoff, router, integrador, Enchufe_Universal]
+  universal_plug_lane:
+    order: [origen, xray_estatico, ContractGenerator, ficha, validator_v2, AdapterFactory, PluginRegistry_slot, router_handoff, shadow_test, swap_activacion]
+    preserve_original: true
+    gap_checks: ["exec() antes de controles de seguridad", "reconciliar contrato v1.5 vs v2.0"]
+  research_funnel:
+    order: [chat_historial, codigo_repo_docs_oficiales, comunidad_desarrolladores, filtrar, deduplicar, rankear_URL_fecha]
+    rank: [codigo_oficial, chat_skills, comunidad]
+    no_real_url: GAP
+  loop_literal:
+    order: [GOALS_12_12, prioridades, plan, cola_1x1, verifica_refuta_soluciones, auditor_instrucciones_x3, GAP_10_vias, persistencia_CODA_comunidad, Ask_Consil, investigacion_intensiva_12_pasos, soluciones_20, refutaciones_3, verificacion_cruzada_global, checklist_salida]
+    no_stop_while_gap: true
+    no_scope_escalation: true
+  output_contract:
+    per_component_order:
+      1: nombre
+      2: funcion_objetivo_workflow
+      3: aporte_a_yaiwes
+      4: opcion_A_B_C
+      5: validacion_por_que
+      6: destino_exacto_y_conexion
+    global_close: [lista_integracion_global, tres_refutaciones, veredicto_xray]
