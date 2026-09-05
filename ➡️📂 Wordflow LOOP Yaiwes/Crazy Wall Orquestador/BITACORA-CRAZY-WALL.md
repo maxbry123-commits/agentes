@@ -118,3 +118,10 @@ Esta bitácora registra progreso humano-legible; `STATE.json` registra estado es
 
 ## SIGUIENTE EVENTO PERMITIDO
 Tarea 1 + Tarea 2 en una sola corrida de auditoría/corrección quirúrgica; después Tarea 3 y los 11 objetivos, sin saltar GAPs.
+
+## EVENTO CW-0010 — O01 LOOP HORARIO CHATGPT VERIFICADO
+- Objetivo: `O01 Crear y mantener LOOP horario con checkpoint/STATE/Crazy Wall/recovery`.
+- Evidencia operativa: tarea programada `Wordflow LOOP Yaiwes` leída de vuelta como `enabled=true`, `FREQ=HOURLY`, `timing_mode=exact_schedule`, zona `America/Bogota`.
+- Restricción preservada: no se reactivó GitHub Action antiguo y no se solicitó plugin/conector no autorizado.
+- STATE: `TASK1_TASK2_PASS_TASK3_O01_VERIFIED`; CHECKPOINT: `WFLOOP-O01-0010`.
+- Resultado: O01 PASS operativo; siguiente nodo permitido `TASK3_O02_CODE_RESEARCH`.
