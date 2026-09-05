@@ -63,12 +63,10 @@ def package(slug,root):
         subprocess.run(['unzip','-tq',str(q)],check=True); out.append((q,size))
     shutil.rmtree(stage,ignore_errors=True); return out
 def push(label):
-    for attempt in range(1,4):
-        try:
-            run(['git','fetch','origin','main']); run(['git','rebase','origin/main']); run(['git','push','--no-verify','origin','HEAD:main']); print(f'PUSH PASS {label} attempt {attempt}'); return
-        except subprocess.CalledProcessError:
-            if attempt==3: raise
-            time.sleep(attempt*2)
+    try:
+        run(['git','push','--no-verify','origin','HEAD:main']); print(f'PUSH PASS {label}')
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f'PUBLISH_SNAPSHOT_STALE_GAP: push rejected for {label}; rebuild from fresh origin/main; rebase/merge forbidden') from e
 def commit(n,label):
     if not n:return
     run(['git','add',str(DEST)])
