@@ -11,23 +11,133 @@
   "xray_audit_current": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/AUDITORIA-XRAY-CORRECCION-1A1.md",
   "crazy_wall": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/BITACORA-CRAZY-WALL.md",
   "checkpoint": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/CHECKPOINT.json",
-  "checkpoint_id": "WFLOOP-TASK1-0006",
+  "checkpoint_id": "WFLOOP-CONSTITUTION-0007",
   "recovery_patch": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/RECOVERY-PATCH.md",
   "handoff": "➡️📂 Wordflow LOOP Yaiwes/HANDOFF.md",
   "mode": "FAIL_CLOSED_LOOP",
-  "status": "TASK1_PRESENTED_AWAITING_DIRECTOR_APPROVAL",
-  "current_node": "DIRECTOR_APPROVAL_TASK1_LAYER_MAP",
+  "status": "CONSTITUTION_LOCKED_TASK1_TASK2_TASK3_AUTHORIZED",
+  "current_node": "TASK1_TASK2_RECOVERY_AUDIT",
   "canonical_layer_numbering": {
     "source": "README_CANONICAL",
     "range": "0-24",
     "nodes": 25,
     "annex_numbering": "HISTORICAL_NON_AUTHORITATIVE_FOR_LAYER_IDS"
   },
-  "parts": {
-    "parte_1": "PENDING_IMPLEMENTATION_LITERAL_INPUT_VERIFIED",
-    "parte_2": "READY_INPUT014_MAPPED_TO_ARCHIVO_DOWNLOAD_1",
-    "parte_3": "PENDING_IMPLEMENTATION_APPROVED_CANONICAL_RECORD",
-    "parte_4": "PENDING_IMPLEMENTATION_LITERAL_APPROVAL_CANONICAL_MAP"
+  "constitution": {
+    "version": "DIRECTOR-CONSTITUTION-2026-09-04",
+    "literal_input_rule": "NEW_DIRECTOR_INPUT_MUST_BE_READ_LITERAL_NO_REINTERPRET",
+    "mandatory_read_update_before_continue": [
+      "HANDOFF.md",
+      "README_WORDFLOW",
+      "STATE.json",
+      "CHECKPOINT.json",
+      "RECOVERY-PATCH.md",
+      "BITACORA-CRAZY-WALL.md"
+    ],
+    "file_creation_policy": "NO_NEW_NOTES_OUTSIDE_CRAZY_WALL_OR_CANONICAL_README; CHECKPOINT/RECOVERY_ANNEXES_ONLY_WHEN_EXPLICITLY_REQUIRED",
+    "all_artifacts_must_be_wired": true,
+    "one_instruction_one_node": true,
+    "queue": "1x1",
+    "no_scope_escalation": true,
+    "no_stop_while_gap": true,
+    "max_recurrences_per_node": 100,
+    "fourteen_governance_goals": [
+      "G01 Leer y congelar el INPUT literal del Director con hash, sin reinterpretar",
+      "G02 Reconciliar README, HANDOFF, STATE, CHECKPOINT, RECOVERY y Crazy Wall antes de continuar",
+      "G03 Mantener bloqueados y trazables los 11 objetivos operativos hasta cierre con evidencia",
+      "G04 Compilar cada instrucción literal como un nodo independiente con dependencia y autorización",
+      "G05 Completar 12 goals de entrada y 12 goals de salida antes de cerrar cualquier nodo",
+      "G06 Fijar prioridades explícitas antes de ejecutar",
+      "G07 Planificar el delta, precondiciones, postcondiciones, destino y evidencia esperada",
+      "G08 Ejecutar cola 1x1 y un solo delta autorizado por iteración",
+      "G09 Verificar y refutar cada intento; fallo conserva evidencia y vuelve al LOOP",
+      "G10 Investigar 10 vías y producir/rankear hasta 20 soluciones distintas cuando exista GAP",
+      "G11 Aplicar REUSE>COPY/MOVE>PATCH>ADAPTER>GENERATE y no repetir ciegamente el delta fallido",
+      "G12 Auditar instrucciones 3x, Council12, auditor de salida 12 y tres refutaciones antes de avanzar",
+      "G13 Actualizar STATE/CHECKPOINT/RECOVERY/Crazy Wall y trazabilidad después de cada avance real",
+      "G14 Cerrar solo con verificación cruzada global, checks falsificables y evidencia reproducible"
+    ],
+    "project_objectives_11": [
+      "O01 Crear y mantener LOOP horario con checkpoint/STATE/Crazy Wall/recovery",
+      "O02 Investigar código fuente necesario en repos autorizados y OSS cuando aplique",
+      "O03 Copiar/reusar código faltante por SHA al destino sin reescribir lógica existente",
+      "O04 Cablear plugins mediante Ficha/contrato→adapter/plugin→registry→health→evidence",
+      "O05 Ejecutar verificación documental 5 pasadas y análisis de GAPs/integración de tareas",
+      "O06 Crear lista de tareas para agentes con ID/objetivo/contexto/rutas/dependencias/LOC/tests/evidence",
+      "O07 Integrar y espejar agentes de programación con engine bindings/adapters y mismo contrato",
+      "O08 Conectar repositorios con Hugging Face/3 procesadores con health y prueba real",
+      "O09 Integrar Graphiti/Grapify/SQL/HF storage mediante contratos separados",
+      "O10 Integrar APIs/modelos solo por secret_ref con health/budget/timeout/fallback",
+      "O11 Auditoría final y tests; cierre solo con evidencia real, GAP vuelve al LOOP"
+    ],
+    "input_goals_12": [
+      "identificar_objetivo",
+      "congelar_input_y_hash",
+      "enumerar_alcance",
+      "resolver_repo_rama_ruta_version",
+      "capturar_restricciones",
+      "capturar_autorizacion",
+      "inventariar_dependencias",
+      "inventariar_fuentes_chat_docs_archivos_codigo_logs",
+      "definir_evidencia_admisible",
+      "definir_pre_post_condiciones",
+      "fijar_formato_y_destino_salida",
+      "compilar_cada_paso_como_nodo"
+    ],
+    "output_goals_12": [
+      "ejecutar_exacto_el_contrato",
+      "preservar_trazabilidad_literal",
+      "producir_artefactos_validos",
+      "demostrar_pruebas_reproducibles",
+      "cruzar_fuentes_chat_docs_archivos_codigo_logs",
+      "resolver_contradicciones",
+      "cerrar_sin_supuestos",
+      "registrar_url_version_sha_run_id",
+      "mantener_ledger_encadenado",
+      "reparar_y_reverificar_gap",
+      "cumplir_control_de_salida",
+      "cerrar_solo_con_12_12_verify_final_y_zero_gaps"
+    ],
+    "ask_consilio_12": [
+      "¿Qué afirmo?",
+      "¿Qué evidencia lo demuestra?",
+      "¿Qué podría demostrar que estoy equivocado?",
+      "¿Estoy mirando la fuente correcta?",
+      "¿La ruta/versión coincide?",
+      "¿Existe realmente?",
+      "¿Hay otra explicación?",
+      "¿Qué dependencia falta?",
+      "¿Puedo reproducirlo?",
+      "¿El resultado contradice algo?",
+      "¿Qué GAP permanece?",
+      "¿Qué evidencia permite cerrar?"
+    ],
+    "post_output_audits": {
+      "anti_hallucination_5": ["fuente_real", "ruta_sha_real", "no_claim_sin_test", "no_memoria_como_prueba", "contradicciones_resueltas"],
+      "anti_omission_5": ["input_completo", "dependencias", "destinos", "prohibiciones", "evidencia_esperada"],
+      "plan_alignment_5": ["nodo_correcto", "cola_1x1", "delta_autorizado", "checkpoint_actualizado", "next_node_valido"],
+      "objective_focus_5": ["objetivo_11_mapeado", "avance_demostrado", "gap_registrado", "no_scope_creep", "cierre_falsificable"]
+    },
+    "pipeline": ["SHERIFF", "VALIDATOR", "SIMULATE", "RESEARCH", "RANK", "EXECUTE", "SENTINEL", "VERIFY", "SUPERVISOR", "JUDGE", "GUARDIAN", "CODA"],
+    "research_funnel": {
+      "steps": ["chat_historial", "codigo_oficial", "comunidad", "filtrar", "deduplicar", "rankear_url_fecha"],
+      "minimum_solution_paths_on_gap": 10,
+      "candidate_target": 20,
+      "priority": ["codigo_oficial", "skills", "chat_historial", "comunidad"],
+      "insufficient_evidence_if_no_real_url": true
+    },
+    "repeat_check": {
+      "max_runs": 10,
+      "deterministic_pure_check_runs": 1,
+      "purpose": "detectar_flakiness_real_no_fabricar_evidencia",
+      "require_stable_across_runs_for_repeated_real_checks": true
+    },
+    "final_verification": {
+      "requires_real_falsifiable_check": true,
+      "no_checks": "INCONCLUSIVE",
+      "all_pass": "VERIFIED_CLOSED",
+      "any_fail": "CLOSED_UNVERIFIED"
+    }
   },
   "instruction_chain": {
     "goals_input_output": 12,
@@ -37,24 +147,29 @@
     "queue_mode": "1x1",
     "verify_refute": true,
     "alternatives_on_fail": 20,
+    "research_solution_paths": 10,
     "instruction_audit_passes": 3,
     "output_audit_steps": 12,
     "refutations": 3,
     "global_cross_check": true,
     "checklist_output": true
   },
-  "task_1_validation": {
-    "parts_1_4_reconciled": true,
-    "layers_presented": 25,
-    "source_docs_reread": ["ARCH_YAIWES","ARCH_WORDFLOW","CHAT_A_B","UOOS1","UOOS2","DEPLOY_V2","AGENTS_PIPELINE"],
-    "instruction_audit_passes": 3,
-    "refutations": 3,
-    "runtime_mutation_performed": false,
-    "result": "PASS_DOCUMENTAL_PRESENTATION_READY"
+  "parts": {
+    "parte_1": "PENDING_IMPLEMENTATION_LITERAL_INPUT_VERIFIED",
+    "parte_2": "READY_INPUT014_MAPPED_TO_ARCHIVO_DOWNLOAD_1",
+    "parte_3": "PENDING_IMPLEMENTATION_APPROVED_CANONICAL_RECORD",
+    "parte_4": "PENDING_IMPLEMENTATION_LITERAL_APPROVAL_CANONICAL_MAP"
+  },
+  "task_authorization": {
+    "task_1": true,
+    "task_2": true,
+    "task_3": true,
+    "task_4": false,
+    "task_4_reason": "NO_CANONICAL_TASK4_REGISTERED"
   },
   "evidence_policy": "No DONE/INTEGRATED without real evidence_hash, source path/URL/SHA and verification result",
   "secrets_policy": "API keys are references only; never stored in README, STATE, logs or source",
   "plugin_policy": "Only GitHub and Hugging Face are authorized external plugins; all others blocked unless Director explicitly authorizes",
-  "hourly_loop": "NOT_ACTIVE",
-  "next_state": "IF_DIRECTOR_APPROVES_TASK1_THEN_TASK2_FIVE_PASS_CROSS_VERIFICATION"
+  "hourly_loop": "PENDING_CREATE_IN_TASK3",
+  "next_state": "RUN_TASK1_AND_TASK2_AUDIT_THEN_TASK3_11_OBJECTIVES"
 }
