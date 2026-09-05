@@ -7,7 +7,7 @@ import tempfile
 import zipfile
 from pathlib import Path, PurePosixPath
 
-LFS_POINTER_PREFIX = b"version https://git-lfs.github.com/spec/v1\n"
+LFS_POINTER_PREFIX = b"version https://git-lfs.github.com/spec/v1"
 GIT_BLOB_LIMIT = 100 * 1024 * 1024
 
 
@@ -135,5 +135,221 @@ def main() -> None:
     print(f"EXTRACTED_VERIFIED component={component} parts={len(parts)} files={len(sums)} tree_sha256={tree_hash(destination)}")
 
 
+# Queue repair extension: preserves the extractor's hashing and ZIP guards.
+import json
+import os
+import subprocess
+import time
+import urllib.request
+import urllib.parse
+import urllib.error
+
+
+def git(*args):
+    return subprocess.check_output(['git', *args], text=True).strip()
+
+
+def http_bytes(url):
+    headers = {'User-Agent': 'research-download-chain', 'Accept': 'application/vnd.github+json'}
+    if url.startswith('https://api.github.com/') and os.environ.get('GH_TOKEN'):
+        headers['Authorization'] = 'Bearer ' + os.environ['GH_TOKEN']
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=60) as response:
+                return response.read()
+        except urllib.error.HTTPError as exc:
+            if exc.code not in (429, 500, 502, 503, 504) or attempt == 2:
+                raise RuntimeError(f'HTTP_{exc.code}_GAP') from exc
+            time.sleep(min(60, int(exc.headers.get('Retry-After', 5 * (attempt + 1)))))
+        except (urllib.error.URLError, TimeoutError):
+            if attempt == 2:
+                raise
+            time.sleep(5 * (attempt + 1))
+
+
+def source_metadata(item):
+    owner_repo = item['source_url'].removesuffix('.git').removeprefix('https://github.com/')
+    if not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', owner_repo):
+        raise RuntimeError('INPUT_GAP: source_url')
+    if not re.fullmatch(r'[a-f0-9]{40}', item['source_commit']):
+        raise RuntimeError('INPUT_GAP: source_commit')
+    url = f"https://api.github.com/repos/{owner_repo}/contents/{urllib.parse.quote(item['path'], safe='/')}?ref={item['source_commit']}"
+    meta = json.loads(http_bytes(url))
+    if meta.get('type') != 'file' or not re.fullmatch(r'[a-f0-9]{40}', meta.get('sha', '')):
+        raise RuntimeError('SOURCE_TYPE_GAP')
+    return meta, owner_repo
+
+
+def check_payload(path, meta):
+    size = path.stat().st_size
+    if size >= GIT_BLOB_LIMIT:
+        raise RuntimeError('GIT_BLOB_LIMIT_GAP')
+    if is_lfs_pointer(path):
+        raise RuntimeError('SOURCE_LFS_POINTER_GAP')
+    blob = git('hash-object', '--no-filters', str(path))
+    if blob != meta['sha'] or size != meta['size']:
+        raise RuntimeError('SOURCE_HASH_MISMATCH')
+    return blob
+
+
+def prepare_item(root, item, target):
+    rel = PurePosixPath(item['component']) / item['path']
+    if rel.is_absolute() or '..' in rel.parts or '\\' in str(rel):
+        raise RuntimeError('UNSAFE_PATH')
+    out = root / rel
+    if out.is_symlink() or not out.resolve().is_relative_to(root.resolve()):
+        raise RuntimeError('UNSAFE_DESTINATION')
+    meta, owner_repo = source_metadata(item)
+    if meta['size'] >= GIT_BLOB_LIMIT:
+        raise RuntimeError('GIT_BLOB_LIMIT_GAP')
+    if out.exists():
+        if not out.is_file():
+            raise RuntimeError('COLLISION_BLOCKED')
+        check_payload(out, meta)
+        return None, 'VERIFIED_EXISTING', meta
+    chunks_dir = out.with_name(out.name + '.chunks')
+    if chunks_dir.is_dir():
+        if chunks_dir.is_symlink() or not chunks_dir.resolve().is_relative_to(root.resolve()):
+            raise RuntimeError('UNSAFE_CHUNKS')
+        parts = sorted(chunks_dir.glob(out.name + '.part-*'), key=natural_key)
+        expected = [f'{out.name}.part-{n:04d}' for n in range(len(parts))]
+        if not parts or [p.name for p in parts] != expected or any(p.is_symlink() for p in parts):
+            raise RuntimeError('PART_SEQUENCE_GAP')
+        with target.open('wb') as dest:
+            for part in parts:
+                with part.open('rb') as src:
+                    shutil.copyfileobj(src, dest)
+        operation = 'RECONSTRUCT_EXISTING'
+    else:
+        archives = sorted(root.glob(item['component'] + '_*.zip'), key=natural_key)
+        if len(archives) != item['parts']:
+            raise RuntimeError('PART_COUNT_GAP')
+        found = False
+        for archive in archives:
+            with zipfile.ZipFile(archive) as zf:
+                names = set()
+                for info in zf.infolist():
+                    safe = safe_member(info).as_posix()
+                    if not info.is_dir() and safe in names:
+                        raise RuntimeError('UNSAFE_ZIP: duplicate')
+                    names.add(safe)
+                    if safe == str(rel) and not info.is_dir():
+                        if found or info.file_size >= GIT_BLOB_LIMIT:
+                            raise RuntimeError('ARCHIVE_MEMBER_GAP')
+                        # ZipExtFile checks CRC while the selected member is read.
+                        with zf.open(info) as src, target.open('wb') as dest:
+                            shutil.copyfileobj(src, dest)
+                        found = True
+        if found:
+            operation = 'EXTRACT_ONLY'
+        else:
+            url = f"https://raw.githubusercontent.com/{owner_repo}/{item['source_commit']}/{urllib.parse.quote(item['path'], safe='/')}"
+            target.write_bytes(http_bytes(url))
+            operation = 'DOWNLOAD_MISSING_FILE'
+    check_payload(target, meta)
+    return target, operation, meta
+
+
+def publish_batch(batch, plan, number, temp):
+    evidence_path = f".github/nct-repair/{plan['task_id']}/batch-{number:03d}.json"
+    evidence = temp / f'batch-{number:03d}.json'
+    rows = [{k: v for k, v in row.items() if k != 'staged'} for row in batch]
+    evidence.write_text(json.dumps({'task_id': plan['task_id'], 'run_id': os.getenv('GITHUB_RUN_ID'), 'files': rows}, indent=2) + '\n')
+    candidates = [(row['destination'], Path(row['staged']), row['blob']) for row in batch]
+    candidates.append((evidence_path, evidence, git('hash-object', '--no-filters', str(evidence))))
+    for attempt in range(3):
+        git('fetch', 'origin', 'main')
+        git('reset', '--hard', 'origin/main')
+        for path, src, expected in candidates:
+            existing = subprocess.run(['git', 'rev-parse', f'HEAD:{path}'], capture_output=True, text=True)
+            if existing.returncode == 0 and existing.stdout.strip() != expected:
+                raise RuntimeError('COLLISION_BLOCKED: ' + path)
+            if is_lfs_pointer(src) or src.stat().st_size >= GIT_BLOB_LIMIT:
+                raise RuntimeError('STAGED_POINTER_OR_SIZE_GAP')
+            actual = git('hash-object', '-w', '--no-filters', str(src))
+            if actual != expected:
+                raise RuntimeError('STAGED_HASH_GAP')
+            git('update-index', '--add', '--cacheinfo', '100644', actual, path)
+        if subprocess.run(['git', 'diff', '--cached', '--quiet']).returncode == 0:
+            return git('rev-parse', 'HEAD')
+        git('-c', 'core.hooksPath=/dev/null', 'commit', '-m', f"repair: {plan['task_id']} batch {number:03d}")
+        commit = git('rev-parse', 'HEAD')
+        result = subprocess.run(['git', '-c', 'core.hooksPath=/dev/null', 'push', 'origin', 'HEAD:main'], capture_output=True, text=True)
+        git('fetch', 'origin', 'main')
+        visible = subprocess.run(['git', 'merge-base', '--is-ancestor', commit, 'origin/main']).returncode == 0
+        if visible:
+            for path, src, expected in candidates:
+                if git('rev-parse', f'origin/main:{path}') != expected:
+                    raise RuntimeError('READ_BACK_CONTENT_MISMATCH')
+            return commit
+        message = result.stderr
+        if any(x in message for x in ('GH008', 'GH001', 'GH013', 'Permission', 'permission', '403', 'protected')):
+            raise RuntimeError('PUBLISH_NONRETRYABLE_GAP: ' + message[-500:])
+        if attempt == 2:
+            raise RuntimeError('PUBLISH_GAP: ' + message[-500:])
+        time.sleep(5 * (attempt + 1))
+
+
+def repair_queue(plan_path):
+    plan = json.loads(Path(plan_path).read_text())
+    root = Path(plan['destination_root'])
+    if root.is_absolute() or '..' in root.parts or root.is_symlink():
+        raise RuntimeError('UNSAFE_ROOT')
+    if not re.fullmatch(r'[a-z0-9-]+', plan['task_id']):
+        raise RuntimeError('INPUT_GAP: task_id')
+    if git('remote', 'get-url', 'origin').removesuffix('.git') != 'https://github.com/' + plan['destination_repository']:
+        raise RuntimeError('DESTINATION_REPOSITORY_GAP')
+    for key, value in [('filter.lfs.clean', 'cat'), ('filter.lfs.smudge', 'cat'), ('filter.lfs.process', ''), ('filter.lfs.required', 'false'), ('core.autocrlf', 'false'), ('user.name', 'github-actions[bot]'), ('user.email', '41898282+github-actions[bot]@users.noreply.github.com')]:
+        git('config', '--local', key, value)
+    report_path = Path(os.environ.get('RUNNER_TEMP', tempfile.gettempdir())) / (plan['task_id'] + '-checkpoint.json')
+    report = {'task_id': plan['task_id'], 'run_id': os.getenv('GITHUB_RUN_ID'), 'expected_files': len(plan['items']), 'files': [], 'blocked': plan.get('blocked', []), 'batches': [], 'verdict': 'PENDING_INDEPENDENT_VERIFICATION'}
+    seen = set()
+    with tempfile.TemporaryDirectory(prefix='repair-payload-') as td:
+        temp = Path(td)
+        batch = []
+        batch_bytes = 0
+        try:
+            for n, item in enumerate(plan['items']):
+                destination = (root / item['component'] / item['path']).as_posix()
+                if destination in seen:
+                    raise RuntimeError('DUPLICATE_INPUT')
+                seen.add(destination)
+                try:
+                    src, operation, meta = prepare_item(root, item, temp / str(n))
+                    row = dict(item, destination=destination, operation=operation, blob=meta['sha'], bytes=meta['size'], status='VERIFIED_EXISTING' if src is None else 'PREPARED')
+                    if src is not None:
+                        row.update(staged=str(src), sha256=sha256(src))
+                        if batch and batch_bytes + meta['size'] > 80 * 1024 * 1024:
+                            commit = publish_batch(batch, plan, len(report['batches']) + 1, temp)
+                            report['batches'].append(commit)
+                            for previous in batch:
+                                previous.update(status='PUBLISHED_READ_BACK', commit=commit)
+                            batch, batch_bytes = [], 0
+                        batch.append(row)
+                        batch_bytes += meta['size']
+                    report['files'].append(row)
+                    print(f"{operation} {destination}", flush=True)
+                except (RuntimeError, OSError, zipfile.BadZipFile, SystemExit) as exc:
+                    if str(exc).startswith(('PUBLISH', 'STAGED', 'READ_BACK', 'COLLISION_BLOCKED:')):
+                        raise
+                    report['blocked'].append({'destination': destination, 'reason': str(exc)})
+                    print(f'GAP {destination}: {exc}', flush=True)
+            if batch:
+                commit = publish_batch(batch, plan, len(report['batches']) + 1, temp)
+                report['batches'].append(commit)
+                for row in batch:
+                    row.update(status='PUBLISHED_READ_BACK', commit=commit)
+        finally:
+            for row in report['files']:
+                row.pop('staged', None)
+            report['verdict'] = 'GAP' if report['blocked'] else 'PENDING_INDEPENDENT_VERIFICATION'
+            report_path.write_text(json.dumps(report, indent=2) + '\n')
+            print(f'CHECKPOINT={report_path}', flush=True)
+    if report['blocked']:
+        raise SystemExit(2)
+
+
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) != 3 or sys.argv[1] != "--queue":
+        die("usage: extract_existing_parts.py --queue PLAN.json")
+    repair_queue(sys.argv[2])

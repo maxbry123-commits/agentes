@@ -23,7 +23,11 @@
     "count historical/control rows as new component gaps",
     "declare VERIFIED_CLOSED without independent read-back"
   ],
-  "gap_classes": ["remaining_component_gaps", "control_gaps", "historical_baseline_rows"],
+  "gap_classes": [
+    "remaining_component_gaps",
+    "control_gaps",
+    "historical_baseline_rows"
+  ],
   "publish_policy": {
     "writers_per_destination": 1,
     "snapshot": "fresh origin/main",
@@ -40,13 +44,21 @@
     "active_jobs=0"
   ],
   "exact_code_locks": {
-    "Code Github acción descargar y extracción/gha-download-extract.yml": "4e64ca02c2bc970dc4cd246a2a43ec2fdb7b4e62",
+    "Code Github acción descargar y extracción/gha-download-extract.yml": "f5f182358ca54b38c800b366f674e79bf1f7bf16",
     "Code Github acción descargar y extracción/FORENSIC-PASS-research-download-chain-final.yml": "9ffd682ec9491741a8f49e4a7f8bb385aa62c2ee",
     "Code Github acción descargar y extracción/FORENSIC-PASS-research_download_chain.py": "b629f9a7844a4752ff7c28b844b83e7f1d99ccb1",
     "Code Github acción descargar y extracción/research_download_chain.py": "1504bbc7ec780a351beb105df884180c9ae2c666",
     "Copiar lotes de archivos/gha-copy-files.yml": "81b4b8c63af58ee52be2d6b1fabe3c4dedb01644",
     "Copiar lotes de archivos/gha-copy-skill-example.yml": "d6e27767e5e23c35ff41cc5c6afc7afd8db2e42f",
     "Mover lotes de archivos/gha-move-files.yml": "07b8d71a83d52307d27c09b5832388853ceba8c0",
-    "Mover lotes de archivos/gha-move-root-or-files.yml": "570a06331bea41cd618eff7d882d396947d52bc2"
+    "Mover lotes de archivos/gha-move-root-or-files.yml": "570a06331bea41cd618eff7d882d396947d52bc2",
+    "Code Github acción descargar y extracción/extract_existing_parts.py": "ef3cef1c8026191c8b06276b4cfe531da45b408e"
+  },
+  "repair_example": {
+    "version": "3.8.0",
+    "code_origin_blob": "082e6f63980aff5e457837a3030af37892a7e069",
+    "entrypoint": "extract_existing_parts.py --queue PLAN.json",
+    "legacy_packers": "ARCHIVE_ONLY; not authorized for new extraction repairs",
+    "logic_patch": "Explicitly authorized maintenance; copy corrected example unchanged into destination"
   }
 }

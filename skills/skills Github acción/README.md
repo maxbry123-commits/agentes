@@ -60,3 +60,11 @@ El código de ejemplo **no se redacta otra vez desde cero**. El agente debe copi
 - `Mover lotes de archivos/` — ejemplos exactos para mover archivo/lote/raíz con autorización de retiro.
 
 Los SHA de los locks exactos están registrados en `ADVERTENCIA-CODE.json`; si un SHA cambia, Luna debe detenerse y auditar antes de ejecutar.
+
+### 2026-09-05 — v3.8.0 / reparación limitada al contenido faltante
+
+Se conserva el skill existente y se añade la sección 20. El ejemplo de reparación reutiliza las funciones de hash y seguridad ZIP de `nct-core/scripts/skill-lock/extract_existing_parts.py`, blob `082e6f63980aff5e457837a3030af37892a7e069`, con una extensión de cola autorizada: reconstrucción de fragmentos, búsqueda de archivos en ZIP y descarga puntual si están omitidos. La copia en destino debe coincidir byte a byte con el ejemplo corregido aquí, sin reutilizar workflows fallidos.
+
+Historial revisado: [run 33979081020](https://github.com/maxbry123-commits/nct-core/actions/runs/33979081020) publicó 38 componentes y falló al llegar al puntero LFS de Cline; [run 33978706279](https://github.com/maxbry123-commits/nct-core/actions/runs/33978706279) encontró además fallo de publicación masiva. Un estado global failure no vuelve ausentes los componentes ya publicados.
+
+Las correcciones y fuentes de comunidad/documentación están en la sección 20. No se promete eliminar todo fallo posible: se eliminan los reintentos ciegos, se preservan los avances comprobados y se registra la causa restante.

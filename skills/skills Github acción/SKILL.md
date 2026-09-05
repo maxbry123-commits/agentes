@@ -3,7 +3,7 @@ name: research-download-chain
 description: Copia, descarga+extrae, reubica y verifica componentes mediante GitHub Actions y APIs Git de GitHub con deduplicación, fuente fijada, SHA, ZIP por partes, manifiesto y recuperación aislada de GAPS. Úsalo cuando YAIWES, Luna u otro agente deba incorporar o reorganizar código sin reescribirlo.
 metadata:
   type: workflow
-  version: "3.7.0"
+  version: "3.8.0"
 ---
 
 # Research Download Chain
@@ -483,3 +483,20 @@ Secuencia:
 ### Cierre probado del patrón
 
 El patrón correcto se considera probado cuando todos los publishers seriales pasan, el verificador independiente pasa, el read-back pasa y `remaining_component_gaps=0`. El número de shards pendientes no equivale al número de tareas funcionales pendientes: un cierre puede tener 4 shards y, tras terminar todos, quedar únicamente revisión/read-back; o puede quedar cero tareas si el verificador final ya certificó `VERIFIED_CLOSED`.
+
+## 20. Reparación ejecutable de archivos pendientes — 2026-09-05
+
+El ejemplo vigente para reparar archivos faltantes es `Code Github acción descargar y extracción/gha-download-extract.yml` junto con `extract_existing_parts.py --queue PLAN.json`. Copiar ambos desde el mismo commit y verificar sus locks; no volver a ejecutar workflows históricos. Los empaquetadores `research_download_chain.py` y `FORENSIC-PASS-research_download_chain.py` son ejemplos históricos de ARCHIVE_ONLY, no motores de extracción ni plantillas autorizadas para esta reparación.
+
+- `.chunks` no equivale al archivo original. Reconstruir partes consecutivas conservando los fragmentos; comparar tamaño y blob Git del archivo con la fuente fijada antes de publicar.
+- Para un archivo ausente sin fragmentos, buscar primero el miembro exacto en los ZIP existentes. Descargar solo ese archivo desde el commit fijado cuando esté ausente también del ZIP. No sustituir repositorios ni inventar fuentes.
+- Conservar toda ruta ya existente; cualquier diferencia bloquea ese archivo. Los permisos/enlaces, submódulos, licencias o contenido que no estén incluidos en PLAN permanecen pendientes explícitos.
+- El plan enumera archivos y fuentes; un lote de IDs sin URL/ruta/commit es INPUT_GAP, nunca una descarga ni una implementación.
+- Un único job procesa secuencialmente y publica lotes de hasta 80 MiB; un archivo mayor se aísla y ningún blob >=100 MiB se publica. Cada lote tiene un commit y un manifiesto propio.
+- Usar `hash-object --no-filters` y `update-index` para conservar CRLF, binarios y archivos ignorados; comparar identidad staged y remota. No normalizar ni borrar archivos del componente.
+- En conflicto, reconstruir el lote sobre origin/main fresco dentro del runner; no rebasear payload generado. Máximo tres intentos transitorios. GH008, permisos, colisión o hash distinto detienen al escritor.
+- Un fallo posterior al push no autoriza repetir la adquisición: comprobar primero alcanzabilidad y blobs remotos. El checkpoint se conserva con `if: always()` como artifact incluso en fallo; un GAP no se transforma en éxito.
+- Los bloqueos conocidos se aíslan y no disparan automáticamente otro run. El verificador externo recibe run, commits, artifact y destino; el productor nunca emite VERIFIED_CLOSED.
+- `cancel-in-progress: false` protege el trabajo en curso, pero la cola predeterminada solo retiene un pendiente. Preferir una cola interna secuencial; `queue: max` es una alternativa documentada cuando hacen falta múltiples runs pendientes.
+
+Fuentes primarias consultadas: [concurrencia GitHub](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency), [discusión de la comunidad sobre pendientes cancelados](https://github.com/orgs/community/discussions/41518), [conflictos fast-forward](https://docs.github.com/en/get-started/using-git/dealing-with-non-fast-forward-errors), [ZipFile y CRC](https://docs.python.org/3/library/zipfile.html).
