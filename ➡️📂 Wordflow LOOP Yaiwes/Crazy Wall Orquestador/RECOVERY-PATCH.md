@@ -121,3 +121,10 @@ Cadena obligatoria: `goals 12/12 → INPUT literal/registro aprobado → priorid
 
 ## Fail-closed
 Divergencia entre README/LEDGER/ANEXO/XRAY-CORRECCIÓN/STATE/CHECKPOINT/Recovery/Crazy Wall/HANDOFF/AGENTS, fuente ausente para el nodo activo, instrucción reinterpretada o evidencia inexistente => `GAP`; volver al LOOP, no avanzar. La reconciliación documental Parte 1–4 está PASS; implementación/runtime permanece independiente.
+
+## O01 — recovery actual
+- Estado: `PASS_HOURLY_CHATGPT_WATCHDOG_ACTIVE`.
+- Checkpoint: `WFLOOP-O01-0010`.
+- Evidencia: watchdog ChatGPT `Wordflow LOOP Yaiwes` activo con `FREQ=HOURLY`, `exact_schedule`, `America/Bogota`.
+- Restricciones: no reactivar GitHub Actions antiguos; no solicitar plugins/conectores no autorizados.
+- Reanudación siguiente: `TASK3_O02_CODE_RESEARCH`.
