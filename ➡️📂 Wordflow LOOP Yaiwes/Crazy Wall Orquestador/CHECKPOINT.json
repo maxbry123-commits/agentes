@@ -1,0 +1,12 @@
+{
+  "checkpoint_id": "WFLOOP-PLAN-0001",
+  "readme_anchor": "➡️📂 Wordflow LOOP Yaiwes/➡️📂 readme wordflow loop Yaiwes.md",
+  "state_anchor": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/STATE.json",
+  "status": "PLANNING",
+  "current_node": "PLAN_MASTER",
+  "completed": ["PARTE_2_SOURCE_BATCH", "PARTE_3_DESIGN_NOTED", "PARTE_4_DESIGN_APPROVED"],
+  "pending": ["PARTE_1_IMPLEMENTATION", "PARTE_3_IMPLEMENTATION", "PARTE_4_IMPLEMENTATION", "PLAN_DIRECTOR_APPROVAL", "CROSS_CHECK_4X", "REFUTE_3X", "ASK_CONSIL_12", "CODE_RESEARCH", "COPY_REUSE", "PLUGIN_WIRING", "AGENT_MIRROR", "HF_COMPUTE", "STORAGE", "MODEL_SECRET_BINDINGS", "AUDIT_TEST"],
+  "evidence": [],
+  "recovery": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/RECOVERY-PATCH.md",
+  "closure_rule": "Only VERIFIED_CLOSED when all nodes have evidence_hash and real checks pass"
+}
