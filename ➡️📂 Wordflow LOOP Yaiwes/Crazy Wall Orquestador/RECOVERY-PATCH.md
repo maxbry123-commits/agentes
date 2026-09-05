@@ -2,26 +2,33 @@
 
 ## Anclas canónicas
 - README: `➡️📂 Wordflow LOOP Yaiwes/➡️📂 readme wordflow loop Yaiwes.md`
+- LEDGER PARTES 1–4: `➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/LEDGER-CANONICO-PARTES-1-4.md`
 - ANEXO PLAN: `➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/ANEXO-01-PLAN-CAPAS-FUENTES-RECOVERY.md`
 - AUDITORÍA X-RAY 5 PASADAS: `➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/AUDITORIA-XRAY-PLAN-5-PASADAS.md`
 - STATE: `➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/STATE.json`
 - CHECKPOINT: `➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/CHECKPOINT.json`
 - BITÁCORA: `➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/BITACORA-CRAZY-WALL.md`
 - HANDOFF: `➡️📂 Wordflow LOOP Yaiwes/HANDOFF.md`
+- AGENTS: `AGENTS.md`
 
 ## Norma de reanudación — 3 pasadas antes de ejecutar
-1. Pasada 1: leer INPUT BLOCK activo en README literal 1:1; extraer solo acciones autorizadas, prohibiciones, formato y destino; no reinterpretar.
+1. Pasada 1: leer README + LEDGER PARTES 1–4; usar INPUT literal cuando existe y registro aprobado inmutable cuando el contrato fue aprobado en Git; no reconstruir wording histórico desde memoria.
 2. Pasada 2: leer STATE + CHECKPOINT + Crazy Wall + ANEXO + AUDITORÍA X-RAY; reconciliar nodo, pendientes, SHAs, evidencia y recovery. Divergencia = GAP.
-3. Pasada 3: releer documentos fuente del nodo listados en CHECKPOINT; cruzar documento↔plan↔código; ausencia de soporte = GAP.
+3. Pasada 3: releer documentos fuente del nodo listados en CHECKPOINT y las autoridades de `AGENTS.md`; cruzar documento↔plan↔código; ausencia de soporte = GAP.
 
-Cadena obligatoria: `goals 12/12 → INPUT literal → prioridades → plan → cola 1×1 → verifica/refuta + 20 soluciones → analiza/LOOP → auditor instrucciones ×3 → auditor salida 12 → 3 refutaciones → verificación global → checklist/salida`.
+Cadena obligatoria: `goals 12/12 → INPUT literal/registro aprobado → prioridades → plan → cola 1×1 → verifica/refuta + 20 soluciones → analiza/LOOP → auditor instrucciones ×3 → auditor salida 12 → 3 refutaciones → verificación global → checklist/salida`.
 
-## Recuperación literal prioritaria después de X-Ray
-1. README actual restauró físicamente INPUT BLOCKS 010–013 desde blob histórico `474af741abe3ac9c816f4406f0fc6e4e4490c2aa`.
-2. Parte 2 usa INPUT 014 literal y su mapeo histórico a `📂 archivos download/📂Archivo download 1` en commit `26760e498a59cb65bb2cdab14f1ac7554e0af0a1`.
-3. Parte 3: si aparece una fuente real del mensaje definitorio original, copiarla 1:1 como nuevo INPUT BLOCK, sin reemplazar el contrato aprobado ya registrado. Mientras no exista fuente: `GAP_LITERAL_SOURCE`.
-4. Parte 4: conservar mapa aprobado + INPUT 015; si aparece la instrucción definitoria detallada original, copiarla 1:1 como nuevo INPUT BLOCK. Mientras no exista fuente: `GAP_LITERAL_SOURCE`.
-5. Nunca reconstruir un literal desde resumen/memoria.
+## Autoridad de instrucciones Parte 1–4 — corregida
+1. Parte 1: INPUT 013 literal, commit `2d1c718f28333ef4b77e9c362f757bb74ff9c5cc`, blob `474af741abe3ac9c816f4406f0fc6e4e4490c2aa`.
+2. Parte 2: INPUT 014 literal; mapeo commit `26760e498a59cb65bb2cdab14f1ac7554e0af0a1`; integración reuse commit `4b1c705f891199bb28ec1d0efb14bca223dd440f`.
+3. Parte 3: usar exactamente el registro aprobado del commit `6b59f4a1514ba419cbeade7c948e68b65d02fe5d`; el diff contiene el contrato de 12 puntos preservado en README. Estado operativo: `APPROVED_CANONICAL_RECORD`.
+4. Parte 4: usar mapa funcional aprobado del README + INPUT 015 literal; commit `a4fcb2c9d1286f7a8f9695ff2e54805744e8f7d9` registra literalmente la aprobación y plan siguiente. Estado operativo: `LITERAL_APPROVAL_VERIFIED + APPROVED_CANONICAL_MAP`.
+5. La ausencia de una transcripción histórica adicional no autoriza inventarla ni invalida un contrato ya aprobado y fijado por commit. Para ejecución manda el registro aprobado inmutable.
+
+## AGENTS.md — rutas obligatorias restauradas
+- `PIPELINE/00_METODO_TRABAJO_Y_ARQUITECTURA.md` — commit `8024e57606cedc34592ef18b3565c624b1e6d676` — read-back PASS.
+- `PIPELINE/FORENSIC_CODE_AUDIT.md` — commit `2072d535920573550a443cf9a3967ab66b50375c` — read-back PASS.
+- `PIPELINE/ADVANCED_ENGINEERING_STANDARD_V3.md` — commit `7bc798ad4173f39f758abd3d4e6cbc2d909658e6` — read-back PASS.
 
 ## Deltas de consistencia X-Ray que deben preservarse
 - Director 12/12 prevalece para este Wordflow sobre la sección 10/10 del documento de arquitectura; ambas fuentes siguen trazadas.
@@ -34,7 +41,8 @@ Cadena obligatoria: `goals 12/12 → INPUT literal → prioridades → plan → 
 - Deploy: `plan.json` + gates + push + verificación remota + `evidence.json`; sin ello no existe PASS.
 
 ## Recuperación detallada por fuente
-- README: recuperar INPUT BLOCKS literales, Partes 1–4, autorización, prohibiciones, formato `➡️📂 Capa N` + microflujo, destinos, gates, cadena LOOP, política no reinterpretar.
+- README: recuperar INPUT BLOCKS literales, Partes 1–4, autorizaciones/prohibiciones, formato `➡️📂 Capa N` + microflujo, destinos, gates, cadena LOOP, política no reinterpretar.
+- Ledger Partes 1–4: resolver autoridad exacta por commit para cada parte; no usar resumen de memoria.
 - Arquitectura Wordflow: recuperar clasificación WORKFLOW/CORE/KERNEL/RAZONAMIENTO/CONTROL/MEMORIA/EJECUCIÓN/TEST/PERSISTENCIA/OPTIMIZACIÓN, destino estructural, programación modular, contratos, trazabilidad y gaps.
 - Chat A/B: recuperar 10 auditorías, INPUT+Sentinel, MissionContract+GoalLock, Council12, Analysis/Architecture/DAG/ROOT_MAP/Dependencies, REUSE>PATCH>ADAPT>GENERATE, límites LOC, task contract, EvidencePacket.
 - UOOS1: recuperar B1-B8, L01-L15, DSL, DAG, loops, Tribunal, state events, checkpoint, rollback, evidence, anti-scope-creep y reproducibilidad.
@@ -44,7 +52,7 @@ Cadena obligatoria: `goals 12/12 → INPUT literal → prioridades → plan → 
 - Programming Pool: recuperar ProgrammingInstance, InstancePool, classifier, registry, metering, idempotency, watchdog, fallback, queue y schemas.
 - Plugin/Ficha/Contrato: recuperar registry, adapter, mount, shadow/hotswap, I/O, invariantes, permisos, sandbox, dependencies, versionado, health, fallback, recovery, governance y `ejecucion.kind`; bloquear ejecución dinámica no validada.
 - Extracción→Ficha: recuperar requisito→ID/origen/objetivo/dependencia/destino/contrato/tarea/evidence.
-- Skill GitHub Action: recuperar DO_NOT_REWRITE_CODE, COPY_THEN_SURGICAL_EDIT, SHA locks, provenance, descarga/extracción, read-back.
+- Skill GitHub Action / deploy-router: recuperar DO_NOT_REWRITE_CODE, COPY_THEN_SURGICAL_EDIT, SHA locks, provenance, descarga/extracción, read-back y seguridad de COPY/MOVE.
 
 ## Recuperación por capa
 0 Gobierno: restaurar INPUT/mission/trace/goals/state antes de todo.
@@ -74,10 +82,7 @@ Cadena obligatoria: `goals 12/12 → INPUT literal → prioridades → plan → 
 24 Archivo: restaurar commit/hash final y puntero histórico.
 
 ## Contrato de recuperación por nodo
-1 registrar node_id/mission_id/trace_id/INPUT/source_refs/destino/SHA previo/evidence esperado; 2 checkpoint pre-mutation; 3 una tarea; 4 verificar/refutar; 5 FAIL conserva evidencia y genera exactamente 20 alternativas distintas; 6 rank REUSE>COPY/MOVE>PATCH>ADAPTER>GENERATE; 7 aplicar delta nuevo autorizado; 8 retest; 9 rollback por SHA/commit, nunca memoria; 10 actualizar STATE/CHECKPOINT/Crazy Wall; 11 DONE solo con evidence_hash+prueba+trazabilidad; 12 secretos solo secret_ref.
-
-## Ledger literal
-Ancla histórica: commit `2d1c718f28333ef4b77e9c362f757bb74ff9c5cc`, blob `474af741abe3ac9c816f4406f0fc6e4e4490c2aa`. La recuperación física 010–013 ya se realizó en README main; no borrar ni resumir esos bloques.
+1 registrar node_id/mission_id/trace_id/INPUT o approved-record/source_refs/destino/SHA previo/evidence esperado; 2 checkpoint pre-mutation; 3 una tarea; 4 verificar/refutar; 5 FAIL conserva evidencia y genera exactamente 20 alternativas distintas; 6 rank REUSE>COPY/MOVE>PATCH>ADAPTER>GENERATE; 7 aplicar delta nuevo autorizado; 8 retest; 9 rollback por SHA/commit, nunca memoria; 10 actualizar STATE/CHECKPOINT/Crazy Wall; 11 DONE solo con evidence_hash+prueba+trazabilidad; 12 secretos solo secret_ref.
 
 ## Fail-closed
-Divergencia entre README/ANEXO/XRAY/STATE/CHECKPOINT/Recovery/Crazy Wall/HANDOFF, fuente ausente, instrucción reinterpretada o evidencia inexistente => `GAP`; volver al LOOP, no avanzar.
+Divergencia entre README/LEDGER/ANEXO/XRAY/STATE/CHECKPOINT/Recovery/Crazy Wall/HANDOFF/AGENTS, fuente ausente para el nodo activo, instrucción reinterpretada o evidencia inexistente => `GAP`; volver al LOOP, no avanzar. La reconciliación documental Parte 1–4 está PASS; implementación/runtime permanece independiente.
