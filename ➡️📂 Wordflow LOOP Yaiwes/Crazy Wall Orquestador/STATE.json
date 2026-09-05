@@ -1,0 +1,26 @@
+{
+  "contract": "tel.workflow/v3",
+  "project": "Wordflow LOOP Yaiwes",
+  "canonical_readme": "➡️📂 Wordflow LOOP Yaiwes/➡️📂 readme wordflow loop Yaiwes.md",
+  "crazy_wall": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/BITACORA-CRAZY-WALL.md",
+  "checkpoint": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/CHECKPOINT.json",
+  "recovery_patch": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/RECOVERY-PATCH.md",
+  "mode": "FAIL_CLOSED_LOOP",
+  "status": "PLANNING",
+  "parts": {
+    "parte_1": "PENDING",
+    "parte_2": "READY",
+    "parte_3": "PENDING_IMPLEMENTATION",
+    "parte_4": "PENDING_IMPLEMENTATION"
+  },
+  "node_rule": "1 instruccion literal = 1 nodo; cada nodo conserva origen, contrato, checkpoint y evidence_hash",
+  "execution_rule": "12 goals input + 12 goals output + 12 Ask Consil + plan + queue 1x1 + verify/refute + 20 alternatives on failure + global LOOP + checklist",
+  "verification_plan": {
+    "plan_verifications": 4,
+    "plan_refutations": 3,
+    "document_cross_checks": 5
+  },
+  "evidence_policy": "No DONE/INTEGRATED without real evidence_hash, source path/URL/SHA and verification result",
+  "secrets_policy": "API keys are references to secret stores only; never stored in README, STATE, logs or source",
+  "next_state": "AWAITING_DIRECTOR_PLAN_APPROVAL"
+}
