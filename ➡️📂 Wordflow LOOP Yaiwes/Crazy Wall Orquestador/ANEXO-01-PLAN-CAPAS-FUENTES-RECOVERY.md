@@ -8,6 +8,7 @@
 - CHECKPOINT: `Crazy Wall Orquestador/CHECKPOINT.json`.
 - RECOVERY: `Crazy Wall Orquestador/RECOVERY-PATCH.md`.
 - BITÁCORA: `Crazy Wall Orquestador/BITACORA-CRAZY-WALL.md`.
+- Regla de IDs: este anexo usa exactamente la numeración canónica `0–24` del README; divergencia futura = GAP.
 
 ## Cadena obligatoria por nodo
 `goals 12/12 → revisar INPUT BLOCK literal sin interpretar → prioridades → planifica → cola 1×1 → verifica/refuta + 20 soluciones → analiza; si falla LOOP → auditor instrucciones 3x → auditor salida 12 pasos → 3 refutaciones (input/tareas/cumplimiento) → verificación cruzada global → checklist + salida`.
@@ -56,82 +57,82 @@ Extraer: cada requisito como item con ID; documento/origen; cita/ruta; objetivo;
 ### SRC-GHA-SKILL — Skill GitHub Acción
 Extraer: `DO_NOT_REWRITE_CODE`; `COPY_THEN_SURGICAL_EDIT`; reutilización por blob/SHA; locks; provenance; descarga/extracción; validación; read-back; comparar SHA fuente/destino; cambios quirúrgicos solo en cableado/plugin autorizado.
 
-## Arquitectura por capas/nodos y microflujos
+## Arquitectura por capas/nodos y microflujos — CANÓNICA 0–24
 
-### ➡️📂 Capa 0 — Gobierno, INPUT literal y ledger
-`INPUT BLOCK literal → hash/trace/mission → 12 goals entrada → autorización explícita → STATE/CHECKPOINT/RECOVERY/Crazy Wall → gate`; sin autorización o divergencia = GAP.
+### ➡️📂 Capa 0 — Gobierno, ledger, STATE, CHECKPOINT y Recovery
+`INPUT literal → mission/trace/node → STATE → checkpoint pre-mutation → ledger/Crazy Wall → Sheriff → allow/block → evidence → checkpoint post-step`.
 
-### ➡️📂 Capa 1 — Investigación
-`objetivo bloqueado → fuentes internas/chat → repos código → comunidad secundaria → filtrar/dedup → rank → URL/SHA/fecha → conclusión`; REUSE primero.
+### ➡️📂 Capa 1 — Intake, InputBlockReader, objetivo y GOAL_LOCK
+`input → InputBlockReader/hash-chain → extracción literal → goal-dual-driver → GOAL_LOCK → 12/12 goals → MissionContract → PASS/GAP`; no fusionar instrucciones ni inventar metas.
 
-### ➡️📂 Capa 2 — Auditoría forense X-Ray documental
-`documento → 12 goals entrada → 12 Ask Consil → extracción de requisitos → comparación con arquitectura → comparación con código → buscar información relacionada/mejor versión → requisito inexistente = nuevo objetivo → IDs/tareas trazables → 12 goals salida`.
+### ➡️📂 Capa 2 — Investigación
+`consulta literal → chat/historial → repos/código interno → repos Maxbry → OSS/docs/PyPI/Papers With Code → comunidad secundaria → filtrar/dedup/rank → URL/ruta/SHA/licencia/fecha`; REUSE primero.
 
-### ➡️📂 Capa 3 — Auditoría X-Ray de código
-`objetivo documental → ruta esperada → buscar en raíz proyecto → repos Maxbry → agentes motores Wordflow YAIWES → router → orquestador/auditor/memoria → clasificar existente/parcial/ausente → evidence`.
+### ➡️📂 Capa 3 — Auditoría forense X-Ray documental
+`índice/documento → lectura real → 12 goals → extracción → clasificación → fusión → auditoría consistencia/cobertura → Council12 → qué código debe existir → localizar → GAP=nuevo objetivo/tarea`.
 
-### ➡️📂 Capa 4 — Adquisición/copia/movimiento
-`pieza elegida → licencia/provenance/SHA → checkpoint pre-mutation → COPY por blob/SHA → destino → read-back → hash fuente==destino → evidence`; no reescribir.
+### ➡️📂 Capa 4 — Auditoría forense X-Ray de código
+`requisito documental → ruta esperada → búsqueda global → código/imports/contracts/tests → documento↔código → WIRED|PARTIAL|STUB|GAP → task ID`.
 
-### ➡️📂 Capa 5 — GitHub Action descarga/extracción
-`repo fuente → skill GHA → lock SHA → descarga/clonado → validación LFS/ZIP/manifiesto → extracción → provenance → read-back → evidence`; aplicar mejoras canónicas del skill.
+### ➡️📂 Capa 5 — REUSE / copiar / mover
+`candidato → SHA origen → procedencia/licencia → compatibilidad → COPY exacto → SHA destino → compare/read-back → evidence`; `REUSE > COPY/MOVE > PATCH PEQUEÑO > ADAPTER > GENERATE DELTA`.
 
-### ➡️📂 Capa 6 — Evolución de capacidades
-`gap → calificar necesidad → investigar capacidad existente → propuesta → autorización → adquisición → sandbox → mount → verificación → registro`; reutilizar workflow evolución ya existente.
+### ➡️📂 Capa 6 — Adquisición GitHub Action / descarga y extracción
+`source list → GitHub Action → lock SHA → download/clone → validar archive/LFS/hash → extracción → provenance manifest → scan → staging → evidence`; descarga ≠ integración.
 
-### ➡️📂 Capa 7 — Clasificador de programación
-`requisito → WORKFLOW|CORE/KERNEL|RAZONAMIENTO|CONTROL|MEMORIA|EJECUCIÓN|TEST|PERSISTENCIA|OPTIMIZACIÓN → ruta destino → contrato → skill requerido`; no programar antes de clasificar.
+### ➡️📂 Capa 7 — Evolución de capacidades
+`GAP → classify target → research reuse → Council12 → proposal → Director gate → acquire → sandbox → mount → verify`.
 
-### ➡️📂 Capa 8 — Catálogo determinista 105
-`necesidad → catálogo → PyPI/repo referencia → madurez/licencia/tests → Ficha `kind: code` → registry → llamada Python directa`; LLM no reemplaza algoritmo determinista.
+### ➡️📂 Capa 8 — Clasificador arquitectónico de programación
+`task → WORKFLOW|CORE/KERNEL|RAZONAMIENTO|CONTROL|MEMORIA|EJECUCIÓN|TEST|PERSISTENCIA|OPTIMIZACIÓN → destino → blast radius → complexity/profile → capability?`.
 
-### ➡️📂 Capa 9 — Arquitecto Chat A
-`10 auditorías → INPUT+Sentinel → MissionContract+GoalLock → Council12 → análisis → arquitectura → DAG → ROOT_MAP → Dependency Map → REUSE/PATCH/ADAPT/GENERATE → task contracts → entrega a ejecutor`.
+### ➡️📂 Capa 9 — Reasoning modules deterministas / catálogo 105
+`problema → expert_panel_router → capability match → función Python determinista → output → verify`; solo falta real → `kind: llm`.
 
-### ➡️📂 Capa 10 — Ejecutor Chat B / programación
-`task contract único → preflight → skill/capability → sandbox → implementar delta limitado → tests → EvidencePacket → devolver`; no replanifica, no cambia alcance.
+### ➡️📂 Capa 10 — Arquitecto Chat A / Council
+`10 auditorías → INPUT/Sentinel → MissionContract/GoalLock → Council12 → análisis → arquitectura → DAG YAML/JSON → ROOT_MAP → dependencies → tasks ≤2000 LOC`.
 
-### ➡️📂 Capa 11 — Espejo/pool de agentes
-`task_classifier → ProgrammingInstance → InstancePool → capacidad → agente primario → 2 fallos/no PASS → agente espejo → mismo contrato → Tribunal`; agentes concretos quedan pendientes de decisión del Director salvo OpenClaw/Hermes para auditoría documental.
+### ➡️📂 Capa 11 — Ejecutor Chat B / motor de programación
+`TaskContract único → classifier → ProgrammingInstance → sandbox/worktree → reuse/delta → tests → EvidencePacket → retorno a Chat A`; no rediseñar; ≤500 LOC/bloque.
 
-### ➡️📂 Capa 12 — Enchufe Universal/Ficha
-`artefacto → Ficha → invariantes → I/O → permisos/sandbox → adapter/plugin → registry → health/fallback → mount/shadow/hotswap → evidence`.
+### ➡️📂 Capa 12 — Espejo y registro de agentes de programación
+`capability registry → engine_binding → adapter gateway → agente elegido → mismo contrato → result normalization → EvidencePacket → Tribunal`.
 
-### ➡️📂 Capa 13 — Scheduler/cola
-`DAG topológico → prioridad → dependencias → cola 1×1 por instrucción actual → timeout/deadline → locks → idempotencia → siguiente elegible`; concurrencia solo cuando contrato futuro lo autorice.
+### ➡️📂 Capa 13 — Enchufe Universal + Ficha/Contrato
+`candidate → static AST analysis → Ficha → invariants/I-O/permissions → sandbox → Tribunal → adapter/plugin → registry → health/fallback → telemetry → evidence → mount`.
 
-### ➡️📂 Capa 14 — Persistencia/LOOP
-`checkpoint → ejecutar nodo → evidencia fresca? NO→GAP→20 alternativas distintas→nuevo delta→retry; SÍ→CODA→verify_final`; resume desde último checkpoint, no desde cero.
+### ➡️📂 Capa 14 — Orquestación / Scheduler / Time-Wheel / cola 1×1
+`DAG → topological sort → priority/dependencies → scheduler → timeout/deadline → locks → queue 1×1 → dispatch → heartbeat/watchdog → event`.
 
-### ➡️📂 Capa 15 — Heartbeat/watchdog/memoria
-`heartbeat → snapshot → deadline/watchdog → detectar colgado → recovery → memoria jerárquica/graph/vector/cache según capacidad validada → consolidación`; niveles de memoria se tratan como capacidades a demostrar, no nombres suficientes.
+### ➡️📂 Capa 15 — Persistencia LOOP / OpenMythos adaptado
+`anchor original → intento → verify/refute → FAIL? 20 alternativas distintas → seleccionar delta nuevo → checkpoint/recovery → retry → PASS → Coda`.
 
-### ➡️📂 Capa 16 — Maker-Checker/Tribunal
-`maker output → checker documental → checker código → verificación cruzada → Judge/Guardian → score/criterios objetivos → PASS/GAP`; nada cerrado por autodeclaración del ejecutor.
+### ➡️📂 Capa 16 — Heartbeat, memoria y mecanismos
+`heartbeat → snapshot → stale/deadline check → Sentinel/watchdog → retry/circuit-breaker → checkpoint/recovery → resume → memoria validada`; nombres de capacidades no prueban implementación.
 
-### ➡️📂 Capa 17 — UOOS Parte 1 documental
-`B1 Manifest → B2 State → B3 DSL nodos → B4 DAG → B5 L01-L11 → B6 Tribunal → B7 construcción/despliegue → B8 Recovery`.
+### ➡️📂 Capa 17 — Auditoría adversarial + cruzada + Maker-Checker + Tribunal
+`maker output → adversarial audit → documento↔código → checker independiente → Judge/VerdictAuthority → Guardian → PASS? evidence_hash : LOOP`.
 
-### ➡️📂 Capa 18 — UOOS Parte 2 runtime
-`RT00→01→02→03→04→RT10→11→12→13→14→20→30→31→40→41→42→43→44→45`; fallo→RT80; todos DONE→RT90.
+### ➡️📂 Capa 18 — UOOS Parte 1 / diseño ejecutable
+`B1 Manifest → B2 State → B3 nodos DSL → B4 DAG → B5 loops → B6 Tribunal → B7 construcción/despliegue → B8 Recovery`.
 
-### ➡️📂 Capa 19 — Despliegue determinista
-`deploy_config → dry-run → plan.json → regla/secret gates → validar → copiar/sincronizar → commit → semver/CHANGELOG → push → verificar remoto → evidence.json`; destino `Agente Yaiwes principal`; 0% LLM.
+### ➡️📂 Capa 19 — UOOS Parte 2 / runtime
+`RT00→01→02→03→04 → RT10→11→12→13→14→20→30→31→40→41→42→43→44→45`; fallo→`RT80`; todos DONE→`RT90`.
 
-### ➡️📂 Capa 20 — Compute Hugging Face
-`inventario real conectores → verificar 3 procesadores/recursos → contrato de conexión → health → scheduler/resource broker → prueba mínima → evidence`; no declarar conectado sin prueba real.
+### ➡️📂 Capa 20 — Despliegue determinista
+`deploy_config.yaml → dry-run → plan.json → SIN_REGLA/secret gates → validar → copy/sync → commit → semver/CHANGELOG → push → verify remoto → evidence.json`; 0% LLM en decisiones de despliegue.
 
-### ➡️📂 Capa 21 — Almacenamiento/memoria externa
-`requisito → auditar Graphiti/Grapify/SQL/HF disponibles → schema/ownership → adapter → persistencia → consistencia → recovery → test → evidence`; cada backend se valida por separado.
+### ➡️📂 Capa 21 — Integración repos Maxbry ↔ Hugging Face compute
+`inventario repos → capability map → credential refs → verificar 3 procesadores/runtime → resource broker/leases → adapter → test mínimo → telemetry/evidence`; no afirmar conexión sin prueba real.
 
-### ➡️📂 Capa 22 — Multi-API/modelos/secretos
-`capacidad requerida → router → secret_ref → proveedor/modelo → health/rate limit → fallback → usage ledger → circuit breaker → evidence`; nunca guardar API keys en repo/README/log.
+### ➡️📂 Capa 22 — Almacenamiento y memoria externa
+`data class → Graphiti|Grapify|SQL|HF storage disponibles? → schema/ownership → adapter → write/read consistency → backup/checkpoint → test/evidence`.
 
-### ➡️📂 Capa 23 — Auditoría E2E y cierre
-`reception → mission → decision → execution → evidence → deployment cuando aplique → closure → X-Ray final → SBOM/secret scan → tests → evidence_hash → 12 goals salida → CLOSED solo con 100% PASS`.
+### ➡️📂 Capa 23 — APIs/modelos y secretos
+`capability requerida → secret_ref → adapter/gateway → allowed provider/model → timeout/budget/rate limit → health → fallback/circuit breaker → usage ledger → evidence`; nunca guardar API keys en repo/README/log.
 
-### ➡️📂 Capa 24 — Archivo/continuidad
-`estado final → checkpoint final → Merkle/hash/commit → archivar históricos → Crazy Wall → próximo objetivo`; permite recuperación exacta y evita reconstrucción de memoria.
+### ➡️📂 Capa 24 — Auditoría final, E2E, SBOM y cierre
+`unit → contract → integration → E2E reception→mission→decision→execution→evidence→closure → secret scan → SBOM → placeholder/stub audit → 4 verificaciones → 3 refutaciones → 5 cross-checks → VerdictAuthority → checkpoint final/commit histórico`; cierre solo `VERIFIED_CLOSED` con evidencia real.
 
 ## Auditoría previa a presentación
 ### Verificación 1 — instrucciones
@@ -155,4 +156,4 @@ Todo nodo debe poder restaurarse por SHA/commit y tener STATE/CHECKPOINT/Recover
 1 capas separadas; 2 microflujo por capa; 3 fuentes cableadas; 4 trazabilidad; 5 DSL/DAG/schema exigidos; 6 Sheriff/Validator/Verifier; 7 Sentinel/Supervisor/Judge/Guardian; 8 checkpoint/recovery; 9 state/Crazy Wall; 10 gates de evidencia; 11 LOOP/refutación; 12 formato de presentación Director.
 
 ## Estado
-Este anexo documenta y cablea el PLAN. No convierte por sí mismo capas pendientes en implementación PASS. Parte 2 permanece READY; Parte 1/3/4 requieren construcción/verificación según STATE.
+Numeración de capas reconciliada 1:1 con README canónico: `0–24`, 25 nodos. Este anexo documenta y cablea el PLAN; no convierte por sí mismo implementación/runtime en PASS.
