@@ -1,64 +1,64 @@
 {
-  "checkpoint_id": "WFLOOP-CONSTITUTION-0007",
+  "checkpoint_id": "WFLOOP-CODA-0009",
   "contract": "tel.workflow/v3",
   "readme_anchor": "➡️📂 Wordflow LOOP Yaiwes/➡️📂 readme wordflow loop Yaiwes.md",
   "readme_sha": "1a38ec24570e7298e36b6ad20ee6caa5578f2239",
   "state_anchor": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/STATE.json",
-  "state_sha": "20f1c2c52d4f1313aa39b13a2fa1ed675c77e3a3",
+  "state_sha": "50c322a4741a657668699d8ff6ee10d095a83ebf",
   "crazy_wall_anchor": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/BITACORA-CRAZY-WALL.md",
   "recovery_anchor": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/RECOVERY-PATCH.md",
   "handoff_anchor": "➡️📂 Wordflow LOOP Yaiwes/HANDOFF.md",
   "instruction_ledger": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/LEDGER-CANONICO-PARTES-1-4.md",
-  "status": "CONSTITUTION_LOCKED_PRE_TASK1_TASK2_TASK3",
-  "current_node": "TASK1_TASK2_RECOVERY_AUDIT",
+  "status": "TASK1_TASK2_PASS_TASK3_ACTIVE_GAP_RESEARCH",
+  "current_node": "TASK3_O01_HOURLY_LOOP_GAP_RESEARCH",
   "director_constitution": {
-    "mandatory_read_update": ["HANDOFF", "README", "STATE", "CHECKPOINT", "RECOVERY", "CRAZY_WALL"],
     "literal_input_no_reinterpret": true,
-    "no_new_notes_outside_authorized_anchors": true,
-    "governance_goals_count": 14,
-    "project_objectives_count": 11,
+    "audit_after_every_output": true,
     "input_goals_count": 12,
     "output_goals_count": 12,
+    "post_output_goal_checks": 20,
+    "document_audit_goals_count": 12,
+    "total_goal_checks_before_coda": 56,
     "ask_consilio_count": 12,
+    "coda_goals_count": 6,
+    "refutations": 3,
     "queue": "1x1",
     "gap_research_solution_paths": 10,
     "gap_candidate_target": 20,
-    "instruction_audit_passes": 3,
-    "refutations": 3,
     "repeat_check_max": 10,
-    "pipeline": ["SHERIFF", "VALIDATOR", "SIMULATE", "RESEARCH", "RANK", "EXECUTE", "SENTINEL", "VERIFY", "SUPERVISOR", "JUDGE", "GUARDIAN", "CODA"],
-    "final_verification": ["INCONCLUSIVE", "VERIFIED_CLOSED", "CLOSED_UNVERIFIED"]
+    "pipeline": ["SHERIFF", "VALIDATOR", "SIMULATE", "RESEARCH", "RANK", "EXECUTE", "SENTINEL", "VERIFY", "SUPERVISOR", "JUDGE", "GUARDIAN", "CODA"]
   },
-  "governance_goals_14": [
-    "G01 INPUT literal+hash sin reinterpretar",
-    "G02 reconciliar seis anclas obligatorias",
-    "G03 bloquear y trazar 11 objetivos",
-    "G04 una instrucción=un nodo",
-    "G05 12 goals entrada+12 salida",
-    "G06 prioridades antes de ejecutar",
-    "G07 plan/destino/evidencia antes del delta",
-    "G08 cola 1x1",
-    "G09 verificar/refutar y LOOP ante fallo",
-    "G10 investigar 10 vías y hasta 20 soluciones por GAP",
-    "G11 REUSE>COPY/MOVE>PATCH>ADAPTER>GENERATE",
-    "G12 auditor 3x+Council12+auditor salida12+3 refutaciones",
-    "G13 actualizar STATE/CHECKPOINT/RECOVERY/Crazy Wall por avance",
-    "G14 cross-check global+checks reales antes de cerrar"
+  "coda_loop_rule": {
+    "prelude": ["INPUT_LITERAL", "literal_sha256", "contract_sha256", "node_id", "goal_lock", "checkpoint"],
+    "recurrent_block": "SAME_NODE_PLUS_FIXED_PRELUDE_REINJECTION",
+    "audit_gate": ["56_GOALS_CHECKS", "12_ASK_CONSIL", "3_REFUTATIONS", "GLOBAL_CROSS_CHECK", "C01_C06"],
+    "fail": "GAP→persist failure/checkpoint/failed delta→RESEARCH→distinct delta→same node",
+    "pass": "CODA→verify_final independent",
+    "verify_final_fail": "CLOSED_UNVERIFIED_OR_INCONCLUSIVE→reactivate LOOP persistence"
+  },
+  "coda_goals_6": [
+    "C01 preserve exact INPUT/contract/node/goal across recurrence",
+    "C02 persist GAP/checkpoint/failure evidence/failed delta before retry",
+    "C03 restart RESEARCH with distinct delta and no scope/node escalation",
+    "C04 CODA only after 56 goals + 12 Consil + 3 refutations + cross-check PASS",
+    "C05 verify_final independent and falsifiable",
+    "C06 failed final verification reactivates persistence/LOOP"
   ],
-  "project_objectives_11": [
-    "O01 LOOP horario",
-    "O02 investigar código",
-    "O03 COPY/REUSE",
-    "O04 cablear plugins",
-    "O05 cinco pasadas+GAP integration",
-    "O06 tareas para agentes",
-    "O07 espejo agentes",
-    "O08 Hugging Face/3 procesadores",
-    "O09 Graphiti/Grapify/SQL/HF storage",
-    "O10 APIs/modelos por secret_ref",
-    "O11 auditoría/tests/cierre"
-  ],
-  "task_authorization": {"task_1": true, "task_2": true, "task_3": true, "task_4": false},
-  "next_node": "TASK1_AND_TASK2_SINGLE_RUN_THEN_TASK3",
-  "closure_rule": "No PASS without evidence; any GAP returns to RESEARCH/LOOP with a different delta"
+  "task_1_2": {
+    "task_1": "PASS_DOCUMENTAL_LAYER_MAP_0_24",
+    "task_2": "PASS_FIVE_PASS_CROSS_CHECK",
+    "annex_sha": "98bf143bf7f28ec447317e2e0c8a42ecbc06232e",
+    "recovery_sha_before_coda_sync": "50868f28a0dcd953d609e78660114262f42aaa81"
+  },
+  "task_3": {
+    "O01": "GAP_RESEARCH",
+    "O02": "RUNNING_INVENTORY",
+    "blocking_facts": [
+      "canonical-watchdog.yml has repository_dispatch loop but no hourly cron",
+      "Director forbids reactivating previous GitHub Actions",
+      "current main tree has no extensions/wordflow nor goal_lock.py despite architecture README historical declaration"
+    ]
+  },
+  "next_node": "SYNC_RECOVERY_HANDOFF_CRAZYWALL_READMES_THEN_CONTINUE_O02",
+  "closure_rule": "No PASS without evidence; any failed goal/Council/refutation/cross-check returns to RESEARCH/LOOP with a different delta"
 }
