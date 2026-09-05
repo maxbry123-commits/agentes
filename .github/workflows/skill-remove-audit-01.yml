@@ -1,0 +1,70 @@
+name: Skill Remove Audit 01
+run-name: Skill Remove Audit 01 • ${{ github.sha }}
+
+on:
+  push:
+    paths:
+      - '.github/workflows/skill-remove-audit-01.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: skill-github-action-remove-audit-01
+  cancel-in-progress: false
+
+jobs:
+  remove-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+      - name: Remove only embedded audit machinery
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('skills/skills Github acción/SKILL.md')
+          text = path.read_text(encoding='utf-8')
+          start_marker = '## 13. Auditor externo y autorreparación\n'
+          end_marker = '## 14. Guardia NO-LFS y resiliencia de descarga/extracción\n'
+          if text.count(start_marker) != 1 or text.count(end_marker) != 1:
+              raise SystemExit('SKILL_STRUCTURE_GAP: section markers not unique')
+          start = text.index(start_marker)
+          end = text.index(end_marker)
+          if end <= start:
+              raise SystemExit('SKILL_STRUCTURE_GAP: invalid section order')
+          text = text[:start] + end_marker + text[end + len(end_marker):]
+
+          text = text.replace('El finalizador/auditor debe ejecutarse', 'El finalizador debe ejecutarse')
+          text = text.replace(' y auditor independiente.', ' y verificación final independiente.')
+          text = text.replace(' y auditor independiente PASS.', ' y verificación final independiente PASS.')
+          text = text.replace('## 17. Supervisor único, Sentinel pasivo y LOOP sin tormenta de dispatch',
+                              '## 17. Supervisor único y LOOP sin tormenta de dispatch')
+          text = re.sub(r'^- \*\*Watchdog Auditor / Sentinel:\*\*.*\n', '', text, flags=re.MULTILINE)
+          text = text.replace('Un Sentinel externo o tarea horaria puede auditar, pero no debe crear una segunda cola de escritores.',
+                              'Una tarea horaria externa puede revisar estado, pero no debe crear una segunda cola de escritores.')
+          text = text.replace('investigar o auditar', 'investigar o revisar')
+          text = text.replace('requiere auditoría inmediata', 'requiere revisión inmediata')
+          text = re.sub(r'\bauditor independiente\b', 'verificador independiente', text, flags=re.IGNORECASE)
+          text = re.sub(r'\bauditoría\b', 'revisión', text, flags=re.IGNORECASE)
+          text = re.sub(r'\bauditar\b', 'revisar', text, flags=re.IGNORECASE)
+          text = re.sub(r'\bauditor\b', 'verificador', text, flags=re.IGNORECASE)
+
+          if re.search(r'auditor', text, flags=re.IGNORECASE):
+              raise SystemExit('AUDIT_REMOVAL_GAP: auditor token remains')
+          path.write_text(text, encoding='utf-8')
+          PY
+          git diff --check -- 'skills/skills Github acción/SKILL.md'
+          git diff --exit-code --quiet -- 'skills/skills Github acción/SKILL.md' && { echo 'NO_CHANGE_GAP'; exit 41; }
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- 'skills/skills Github acción/SKILL.md'
+          git commit -m 'fix(skill): remove embedded auditor machinery'
+          git push --no-verify origin HEAD:main
