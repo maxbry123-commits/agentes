@@ -65,11 +65,24 @@ Esta bitácora registra progreso humano-legible; `STATE.json` registra estado es
 - PASADA 3 detectó ambigüedad DSL y límites; quedó fijado: DSL = YAML/JSON/schema existente, sin sintaxis nueva; 200 líneas/archivo, 500 LOC/bloque, 2000 LOC/task; cola actual 1×1.
 - PASADA 4 confirmó deploy 0% LLM y añadió fail-closed: solo GitHub/Hugging Face autorizados, ejecución dinámica de candidato bloqueada hasta static-AST+sandbox+security PASS, usage metering requiere ledger persistente, deploy sin `evidence.json` no es PASS.
 - PASADA 5 reconcilió README + CHECKPOINT + RECOVERY + STATE + Crazy Wall + HANDOFF.
-- README actualizado: blob `fed000b54a80fd6dd9b7cea21097043e289d73f6`, commit `3d49c55e5d3af050a979ac4de65283587089ad17`.
-- Checkpoint actual: `WFLOOP-XRAY-0004`.
-- STATE actual: `XRAY_5_PASS_COMPLETE_WITH_LITERAL_GAPS`.
-- GAPS literales fail-closed: no se demostró una fuente literal completa del mensaje definitorio original de Parte 3; tampoco del mensaje detallado definitorio de Parte 4 anterior a INPUT 015. No se fabrican desde resumen.
-- Estado documental: `PASS_WITH_LITERAL_GAPS`, no `VERIFIED_CLOSED`.
+- README de esa pasada: blob `fed000b54a80fd6dd9b7cea21097043e289d73f6`, commit `3d49c55e5d3af050a979ac4de65283587089ad17`.
+- Checkpoint de esa pasada: `WFLOOP-XRAY-0004`.
+- Resultado histórico de esa pasada: `PASS_WITH_LITERAL_GAPS`.
+
+## EVENTO CW-0007 — CORRECCIÓN 1:1 + CIERRE DE GAP OPERATIVO DE INSTRUCCIONES
+- Orden actual del Director: corregir la contradicción entre “anotado 1:1” y el posterior `GAP_LITERAL_SOURCE`.
+- Se creó `LEDGER-CANONICO-PARTES-1-4.md`, fijando la autoridad exacta de cada Parte por INPUT/commit.
+- Parte 1: INPUT 013 literal, commit `2d1c718...`, blob `474af741...`.
+- Parte 2: INPUT 014 literal + mapping `26760e4...` + integración reuse `4b1c705...`.
+- Parte 3: registro aprobado inmutable `6b59f4a1514ba419cbeade7c948e68b65d02fe5d`; su diff contiene exactamente el contrato de 12 puntos conservado en README. Estado operativo: `APPROVED_CANONICAL_RECORD`.
+- Parte 4: mapa funcional aprobado + INPUT 015 literal; commit `a4fcb2c9d1286f7a8f9695ff2e54805744e8f7d9` registra literalmente aprobación y plan. Estado: `LITERAL_APPROVAL_VERIFIED + APPROVED_CANONICAL_MAP`.
+- README corregido: commit `85e04e5ae3875be209a377ff913e7399de029fea`, blob `1a38ec24570e7298e36b6ad20ee6caa5578f2239`; incluye INPUT BLOCK 018 literal y resolución de evidencia.
+- Se restauraron las 3 rutas obligatorias antes 404 de `AGENTS.md`: `PIPELINE/00_METODO_TRABAJO_Y_ARQUITECTURA.md` (`8024e576...`), `PIPELINE/FORENSIC_CODE_AUDIT.md` (`2072d535...`) y `PIPELINE/ADVANCED_ENGINEERING_STANDARD_V3.md` (`7bc798ad...`); read-back 3/3 PASS.
+- STATE actualizado a `INSTRUCTION_RECORD_PARTS_1_4_RECONCILED`.
+- CHECKPOINT actualizado a `WFLOOP-INSTRUCTION-0005`.
+- RECOVERY actualizado para usar literal cuando existe y approved canonical record cuando ese registro aprobado es la evidencia Git disponible.
+- Resultado documental de instrucciones/aprobaciones Parte 1–4: `PASS_CANONICAL_EVIDENCE`.
+- Regla de verdad: esto NO convierte implementación física, HF compute, storage, bindings, E2E o deploy en `VERIFIED_CLOSED`.
 
 ## SIGUIENTE EVENTO PERMITIDO
-Recuperar fuente literal real de Parte 3/Parte 4 si existe y copiarla 1:1; en ausencia de evidencia, mantener `GAP_LITERAL_SOURCE`. La implementación física sigue separada del cierre documental.
+Director revisa la corrección o autoriza el siguiente nodo de implementación. Toda ejecución continúa con checkpoint pre-mutation, cola 1×1 y evidencia real.
