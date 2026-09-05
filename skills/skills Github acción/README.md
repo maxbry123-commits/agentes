@@ -47,6 +47,10 @@ Hallazgos obligatorios para Luna y cualquier agente:
 7. `PUSH_PASS` no equivale a cierre: exige read-back independiente, hashes/rutas correctos, `remaining_component_gaps=0` y `active_jobs=0`.
 8. Un run `queued|in_progress` >24 h es `STALE_RUN_CONTROL_GAP`, no un nuevo GAP de componente.
 
+### Punto operativo confirmado — trigger exclusivo por workflow
+
+Ya confirmé un punto operativo importante: no existe una acción de “dispatch” conectada aquí, así que voy a disparar cada workflow con un archivo **trigger exclusivo**. Eso evita reactivar workflows viejos o que los 11 nuevos se ejecuten uno sobre otros.
+
 ## Código ejemplo inmutable
 
 El código de ejemplo **no se redacta otra vez desde cero**. El agente debe copiar el archivo exacto de esta raíz y editar únicamente campos quirúrgicos autorizados (TASK_ID, origen/ref, rutas, destino, operación, manifiesto/checkpoint y grupo de concurrencia). Antes de usar cualquier ejemplo debe leer `ADVERTENCIA-CODE.json`.
