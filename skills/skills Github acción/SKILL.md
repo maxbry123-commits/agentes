@@ -290,7 +290,7 @@ Para HTTP/API:
 
 ## 17. Supervisor único y LOOP sin tormenta de dispatch
 
-Una cadena de recuperación tiene **una sola autoridad de mutación/dispatch por destino**. No permitas que Repair Guardian, Watchdog verificador, Sentinel y Supervisor despachen reparaciones simultáneamente para el mismo `repository + branch + destination_root`.
+Una cadena de recuperación tiene **una sola autoridad de mutación/dispatch por destino**. No permitas que múltiples autoridades despachen reparaciones simultáneamente para el mismo `repository + branch + destination_root`.
 
 Roles:
 
@@ -304,7 +304,7 @@ Reglas anti-duplicación:
 2. Si existe uno activo, registra `ACTIVE_REPAIR_EXISTS` y no crees otro.
 3. Usa un `concurrency.group` estable por `repository + branch + destination_root`; `cancel-in-progress: false`.
 4. Runs cancelados por exclusión de concurrencia no cuentan como fallo de contenido; clasifícalos `CONCURRENCY_SUPERSEDED`.
-5. No uses simultáneamente auto-dispatch del Repair Guardian y dispatch del Watchdog para la misma cadena.
+5. No uses simultáneamente múltiples fuentes de dispatch para la misma cadena.
 6. Una tarea horaria externa puede revisar estado, pero no debe crear una segunda cola de escritores.
 
 ### Read-back después de un push válido
@@ -466,7 +466,7 @@ Git normal bloquea blobs de 100 MiB y GitHub advierte a partir de 50 MiB. Para p
 
 Cada split debe incluir manifest con orden, SHA256 y bytes de cada parte, SHA256/bytes del original y procedimiento de reconstrucción. No confundas un split verificado con el archivo original reconstruido: el cierre debe declarar qué representación quedó instalada.
 
-### Watchdog de runs >24 h
+### Control de runs >24 h
 
 Un run `in_progress` o `queued` con edad superior a 24 h es una anomalía de control que requiere revisión inmediata. No se clasifica automáticamente como GAP de componente.
 
