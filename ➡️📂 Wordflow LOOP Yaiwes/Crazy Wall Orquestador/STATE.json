@@ -4,18 +4,25 @@
   "canonical_readme": "➡️📂 Wordflow LOOP Yaiwes/➡️📂 readme wordflow loop Yaiwes.md",
   "canonical_readme_sha": "1a38ec24570e7298e36b6ad20ee6caa5578f2239",
   "instruction_ledger": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/LEDGER-CANONICO-PARTES-1-4.md",
+  "task_1_output": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/TAREA-1-SALIDA-1-ARQUITECTURA-CAPAS.md",
+  "task_1_output_commit": "84e6b661d4f2efe9c35fdc2facc6ec148054a41d",
   "annex_plan": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/ANEXO-01-PLAN-CAPAS-FUENTES-RECOVERY.md",
   "xray_audit_historical": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/AUDITORIA-XRAY-PLAN-5-PASADAS.md",
   "xray_audit_current": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/AUDITORIA-XRAY-CORRECCION-1A1.md",
-  "xray_audit_current_commit": "ae8663801803c0c15b5ef333bfa6254a7b230fdc",
   "crazy_wall": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/BITACORA-CRAZY-WALL.md",
   "checkpoint": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/CHECKPOINT.json",
-  "checkpoint_id": "WFLOOP-INSTRUCTION-0005",
+  "checkpoint_id": "WFLOOP-TASK1-0006",
   "recovery_patch": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/RECOVERY-PATCH.md",
   "handoff": "➡️📂 Wordflow LOOP Yaiwes/HANDOFF.md",
   "mode": "FAIL_CLOSED_LOOP",
-  "status": "INSTRUCTION_RECORD_PARTS_1_4_RECONCILED",
-  "current_node": "DIRECTOR_REVIEW_OR_NEXT_IMPLEMENTATION_NODE",
+  "status": "TASK1_PRESENTED_AWAITING_DIRECTOR_APPROVAL",
+  "current_node": "DIRECTOR_APPROVAL_TASK1_LAYER_MAP",
+  "canonical_layer_numbering": {
+    "source": "README_CANONICAL",
+    "range": "0-24",
+    "nodes": 25,
+    "annex_numbering": "HISTORICAL_NON_AUTHORITATIVE_FOR_LAYER_IDS"
+  },
   "parts": {
     "parte_1": "PENDING_IMPLEMENTATION_LITERAL_INPUT_VERIFIED",
     "parte_2": "READY_INPUT014_MAPPED_TO_ARCHIVO_DOWNLOAD_1",
@@ -36,34 +43,18 @@
     "global_cross_check": true,
     "checklist_output": true
   },
-  "instruction_evidence": {
-    "parte_1": {"status":"LITERAL_GIT_VERIFIED","commit":"2d1c718f28333ef4b77e9c362f757bb74ff9c5cc","blob":"474af741abe3ac9c816f4406f0fc6e4e4490c2aa","input":"013"},
-    "parte_2": {"status":"LITERAL_GIT_VERIFIED","input":"014","mapping_commit":"26760e498a59cb65bb2cdab14f1ac7554e0af0a1","integration_commit":"4b1c705f891199bb28ec1d0efb14bca223dd440f"},
-    "parte_3": {"status":"APPROVED_CANONICAL_RECORD","commit":"6b59f4a1514ba419cbeade7c948e68b65d02fe5d","rule":"use exact approved 12-point Git record; do not fabricate unavailable historical wording"},
-    "parte_4": {"status":"LITERAL_APPROVAL_VERIFIED_APPROVED_CANONICAL_MAP","commit":"a4fcb2c9d1286f7a8f9695ff2e54805744e8f7d9","input":"015"}
-  },
-  "pipeline_authority": {
-    "agents_md": "AGENTS.md",
-    "work_method": {"path":"PIPELINE/00_METODO_TRABAJO_Y_ARQUITECTURA.md","commit":"8024e57606cedc34592ef18b3565c624b1e6d676","verified_readback":true},
-    "forensic_audit": {"path":"PIPELINE/FORENSIC_CODE_AUDIT.md","commit":"2072d535920573550a443cf9a3967ab66b50375c","verified_readback":true},
-    "engineering_standard": {"path":"PIPELINE/ADVANCED_ENGINEERING_STANDARD_V3.md","commit":"7bc798ad4173f39f758abd3d4e6cbc2d909658e6","verified_readback":true}
-  },
-  "resume_protocol": {
-    "read_passes_before_each_iteration": 3,
-    "pass_1": "README + canonical Part 1-4 instruction ledger",
-    "pass_2": "STATE + CHECKPOINT + Recovery + Crazy Wall + ANEXO + current XRay correction audit",
-    "pass_3": "source documents wired in CHECKPOINT/RECOVERY"
-  },
-  "validation": {
-    "xray_historical_passes_completed": 5,
-    "xray_current_correction_audit": "PASS",
-    "instruction_record_parts_1_4": "PASS_CANONICAL_EVIDENCE",
-    "agents_md_required_paths": "PASS_3_OF_3_PRESENT",
-    "implementation_verified": false
+  "task_1_validation": {
+    "parts_1_4_reconciled": true,
+    "layers_presented": 25,
+    "source_docs_reread": ["ARCH_YAIWES","ARCH_WORDFLOW","CHAT_A_B","UOOS1","UOOS2","DEPLOY_V2","AGENTS_PIPELINE"],
+    "instruction_audit_passes": 3,
+    "refutations": 3,
+    "runtime_mutation_performed": false,
+    "result": "PASS_DOCUMENTAL_PRESENTATION_READY"
   },
   "evidence_policy": "No DONE/INTEGRATED without real evidence_hash, source path/URL/SHA and verification result",
   "secrets_policy": "API keys are references only; never stored in README, STATE, logs or source",
   "plugin_policy": "Only GitHub and Hugging Face are authorized external plugins; all others blocked unless Director explicitly authorizes",
   "hourly_loop": "NOT_ACTIVE",
-  "next_state": "DIRECTOR_REVIEW_OR_EXECUTE_NEXT_AUTHORIZED_IMPLEMENTATION_NODE"
+  "next_state": "IF_DIRECTOR_APPROVES_TASK1_THEN_TASK2_FIVE_PASS_CROSS_VERIFICATION"
 }
