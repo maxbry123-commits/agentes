@@ -12,14 +12,14 @@
   "xray_audit_current": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/AUDITORIA-XRAY-CORRECCION-1A1.md",
   "crazy_wall": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/BITACORA-CRAZY-WALL.md",
   "checkpoint": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/CHECKPOINT.json",
-  "checkpoint_id": "WFLOOP-CODA-0009",
+  "checkpoint_id": "WFLOOP-O01-0010",
   "recovery_patch": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/RECOVERY-PATCH.md",
   "recovery_patch_sha": "50868f28a0dcd953d609e78660114262f42aaa81",
   "handoff": "➡️📂 Wordflow LOOP Yaiwes/HANDOFF.md",
   "handoff_sha": "d2a5b8383082bfef4f1451ebfea857cd39908fd9",
   "mode": "FAIL_CLOSED_LOOP",
-  "status": "TASK1_TASK2_PASS_TASK3_ACTIVE_GAP_RESEARCH",
-  "current_node": "TASK3_O01_HOURLY_LOOP_GAP_RESEARCH",
+  "status": "TASK1_TASK2_PASS_TASK3_O01_VERIFIED",
+  "current_node": "TASK3_O01_HOURLY_LOOP_VERIFIED",
   "canonical_layer_numbering": {
     "source": "README_CANONICAL",
     "range": "0-24",
@@ -109,8 +109,8 @@
   },
   "task_authorization": {"task_1": true, "task_2": true, "task_3": true, "task_4": false, "task_4_reason": "NO_CANONICAL_TASK4_REGISTERED"},
   "objective_progress": {
-    "O01": "GAP_RESEARCH",
-    "O02": "RUNNING_INVENTORY",
+    "O01": "PASS_HOURLY_CHATGPT_WATCHDOG_ACTIVE",
+    "O02": "PENDING_NEXT",
     "O03": "PENDING",
     "O04": "PENDING",
     "O05": "PENDING",
@@ -122,13 +122,20 @@
     "O11": "PENDING"
   },
   "observed_gaps": {
-    "GAP_CHECKPOINT_DIVERGENCE": "CHECKPOINT was WFLOOP-CONSTITUTION-0007 while STATE was TASK3-0008; repair authorized and in progress",
-    "GAP_O01_HOURLY_LOOP": "Existing canonical-watchdog has dispatch loop but no hourly cron; earlier Director prohibition forbids reactivating old GitHub Actions; requires distinct authorized mechanism",
     "GAP_RUNTIME_PATHS": "Current main tree does not contain extensions/wordflow or goal_lock.py despite architecture README declaring those historical runtime paths; classify as source/current-tree divergence until alternate source is located"
+  },
+  "o01_evidence": {
+    "scheduler": "ChatGPT scheduled task",
+    "schedule": "FREQ=HOURLY",
+    "timing_mode": "exact_schedule",
+    "timezone": "America/Bogota",
+    "enabled": true,
+    "verification": "automation state read-back confirmed enabled before STATE mutation",
+    "plugin_requests": "FORBIDDEN_UNLESS_DIRECTOR_AUTHORIZES"
   },
   "evidence_policy": "No DONE/INTEGRATED without real evidence_hash, source path/URL/SHA and verification result",
   "secrets_policy": "API keys are references only; never stored in README, STATE, logs or source",
-  "plugin_policy": "Only GitHub and Hugging Face are authorized external plugins; all others blocked unless Director explicitly authorizes",
-  "hourly_loop": "GAP_RESEARCH_NO_GOOGLE_NO_OLD_ACTION_REACTIVATION",
-  "next_state": "SYNC_CHECKPOINT_RECOVERY_HANDOFF_CRAZYWALL_THEN_CONTINUE_TASK3_O02"
+  "plugin_policy": "Only already-authorized/available tools may be used; no connector/plugin access request unless Director explicitly authorizes",
+  "hourly_loop": "ACTIVE_CHATGPT_AUTOMATION_HOURLY",
+  "next_state": "TASK3_O02_CODE_RESEARCH"
 }
