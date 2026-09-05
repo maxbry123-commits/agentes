@@ -5,7 +5,9 @@
   "canonical_readme_sha": "1a38ec24570e7298e36b6ad20ee6caa5578f2239",
   "instruction_ledger": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/LEDGER-CANONICO-PARTES-1-4.md",
   "annex_plan": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/ANEXO-01-PLAN-CAPAS-FUENTES-RECOVERY.md",
-  "xray_audit": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/AUDITORIA-XRAY-PLAN-5-PASADAS.md",
+  "xray_audit_historical": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/AUDITORIA-XRAY-PLAN-5-PASADAS.md",
+  "xray_audit_current": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/AUDITORIA-XRAY-CORRECCION-1A1.md",
+  "xray_audit_current_commit": "ae8663801803c0c15b5ef333bfa6254a7b230fdc",
   "crazy_wall": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/BITACORA-CRAZY-WALL.md",
   "checkpoint": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/CHECKPOINT.json",
   "checkpoint_id": "WFLOOP-INSTRUCTION-0005",
@@ -49,11 +51,12 @@
   "resume_protocol": {
     "read_passes_before_each_iteration": 3,
     "pass_1": "README + canonical Part 1-4 instruction ledger",
-    "pass_2": "STATE + CHECKPOINT + Recovery + Crazy Wall + ANEXO + XRay audit",
+    "pass_2": "STATE + CHECKPOINT + Recovery + Crazy Wall + ANEXO + current XRay correction audit",
     "pass_3": "source documents wired in CHECKPOINT/RECOVERY"
   },
   "validation": {
-    "xray_passes_completed": 5,
+    "xray_historical_passes_completed": 5,
+    "xray_current_correction_audit": "PASS",
     "instruction_record_parts_1_4": "PASS_CANONICAL_EVIDENCE",
     "agents_md_required_paths": "PASS_3_OF_3_PRESENT",
     "implementation_verified": false
