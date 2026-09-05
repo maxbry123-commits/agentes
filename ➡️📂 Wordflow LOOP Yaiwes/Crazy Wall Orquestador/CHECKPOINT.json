@@ -5,7 +5,9 @@
   "readme_sha": "1a38ec24570e7298e36b6ad20ee6caa5578f2239",
   "instruction_ledger": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/LEDGER-CANONICO-PARTES-1-4.md",
   "annex_plan": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/ANEXO-01-PLAN-CAPAS-FUENTES-RECOVERY.md",
-  "xray_audit": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/AUDITORIA-XRAY-PLAN-5-PASADAS.md",
+  "xray_audit_historical": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/AUDITORIA-XRAY-PLAN-5-PASADAS.md",
+  "xray_audit_current": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/AUDITORIA-XRAY-CORRECCION-1A1.md",
+  "xray_audit_current_commit": "ae8663801803c0c15b5ef333bfa6254a7b230fdc",
   "state_anchor": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/STATE.json",
   "crazy_wall_anchor": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/BITACORA-CRAZY-WALL.md",
   "recovery_anchor": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/RECOVERY-PATCH.md",
@@ -26,8 +28,9 @@
     {"path":"PIPELINE/ADVANCED_ENGINEERING_STANDARD_V3.md","commit":"7bc798ad4173f39f758abd3d4e6cbc2d909658e6","readback":"PASS"}
   ],
   "validation": {
-    "xray_passes_completed":5,
-    "refutations_completed":5,
+    "xray_historical_passes_completed":5,
+    "xray_current_correction_audit":"PASS",
+    "refutations_current_correction":3,
     "post_patch_reconciliation":true,
     "part_1_4_instruction_record":"PASS_CANONICAL_EVIDENCE",
     "agents_md_paths":"PASS_3_OF_3",
