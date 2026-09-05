@@ -3,7 +3,7 @@
 ## Anclas canónicas
 - README: `➡️📂 Wordflow LOOP Yaiwes/➡️📂 readme wordflow loop Yaiwes.md`
 - LEDGER PARTES 1–4: `➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/LEDGER-CANONICO-PARTES-1-4.md`
-- ANEXO PLAN: `➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/ANEXO-01-PLAN-CAPAS-FUENTES-RECOVERY.md`
+- ANEXO PLAN: `➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/ANEXO-01-PLAN-CAPAS-FUENTES-RECOVERY.md` blob `98bf143bf7f28ec447317e2e0c8a42ecbc06232e`
 - AUDITORÍA X-RAY CORRECCIÓN 1:1 — VIGENTE: `➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/AUDITORIA-XRAY-CORRECCION-1A1.md`
 - AUDITORÍA X-RAY 5 PASADAS — HISTÓRICA PRE-CORRECCIÓN: `➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/AUDITORIA-XRAY-PLAN-5-PASADAS.md`
 - STATE: `➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/STATE.json`
@@ -55,33 +55,32 @@ Cadena obligatoria: `goals 12/12 → INPUT literal/registro aprobado → priorid
 - Extracción→Ficha: recuperar requisito→ID/origen/objetivo/dependencia/destino/contrato/tarea/evidence.
 - Skill GitHub Action / deploy-router: recuperar DO_NOT_REWRITE_CODE, COPY_THEN_SURGICAL_EDIT, SHA locks, provenance, descarga/extracción, read-back y seguridad de COPY/MOVE.
 
-## Recuperación por capa — HISTÓRICO, NO AUTORIDAD DE IDs
-Este bloque conserva la numeración histórica pre-corrección y NO gobierna IDs de capa. La autoridad canónica de IDs es README 0–24 hasta que Tarea 1/2 aplique el delta quirúrgico de renumeración.
-0 Gobierno: restaurar INPUT/mission/trace/goals/state antes de todo.
-1 Investigación: restaurar consulta, fuentes, dedup/ranking y URLs/SHA.
-2 X-Ray documental: restaurar documento, requisitos, Council12, gaps e IDs.
-3 X-Ray código: restaurar objetivo, rutas buscadas y evidencia de existente/parcial/ausente.
-4 Copia/move: restaurar SHA fuente/destino y blob previo.
-5 GitHub Action: restaurar repo/ref/lock/manifiesto/provenance.
-6 Evolución: restaurar gap/capacidad/propuesta/autorización/sandbox.
-7 Clasificador: restaurar tipo y ruta destino antes de programar.
-8 Catálogo105: restaurar algoritmo/fuente/licencia/tests/Ficha kind:code.
-9 Arquitecto A: restaurar MissionContract/GoalLock/DAG/ROOT_MAP/task contract.
-10 Ejecutor B: restaurar nodo único, sandbox, delta, tests/EvidencePacket.
-11 Espejo agentes: restaurar primario/intentos/causa fallo/contrato idéntico.
-12 Enchufe/Ficha: restaurar ficha/adapter/registry/mount/health/evidence.
-13 Scheduler: restaurar DAG/cola/locks/idempotencia/deadline.
-14 Persistencia LOOP: restaurar último checkpoint y estrategia fallida; siguiente retry usa delta distinto.
-15 Heartbeat: restaurar snapshot/deadline/watchdog/memoria validada.
-16 Tribunal: restaurar maker output, checker results, score y evidencia.
-17 UOOS1: restaurar B1-B8 coherentes.
-18 UOOS2: restaurar último RT/checkpoint; no reiniciar DONE.
-19 Deploy: restaurar plan/dry-run/commit previo; rollback por Git.
-20 HF compute: restaurar inventario/conector/health/resources; no afirmar conexión sin prueba.
-21 Storage: restaurar backend/schema/adapter/consistencia/checkpoint.
-22 Multi-API: restaurar secret_ref/router/health/fallback/metering; nunca valor secreto.
-23 E2E: restaurar caso de prueba, etapa fallida y evidence chain.
-24 Archivo: restaurar commit/hash final y puntero histórico.
+## Recuperación por capa — CANÓNICA README 0–24
+0 Gobierno: restaurar INPUT/mission/trace/goals/STATE/CHECKPOINT/ledger/recovery antes de todo.
+1 Intake/GoalLock: restaurar INPUT literal/hash, objetivo primario, secundarios, MissionContract y 12/12 goals.
+2 Investigación: restaurar consulta, chat/repos/OSS/comunidad, dedup/ranking y URL/SHA/fecha.
+3 X-Ray documental: restaurar documento, requisitos, Council12, gaps e IDs.
+4 X-Ray código: restaurar requisito, rutas, imports/contracts/tests y estado WIRED|PARTIAL|STUB|GAP.
+5 REUSE/copiar/mover: restaurar SHA fuente/destino, procedencia y read-back.
+6 GitHub Action: restaurar repo/ref/lock/manifiesto/provenance/extracción.
+7 Evolución: restaurar gap/capacidad/propuesta/autorización/sandbox/mount.
+8 Clasificador: restaurar tipo, complejidad y ruta destino antes de programar.
+9 Catálogo105: restaurar algoritmo/fuente/licencia/tests/Ficha kind:code.
+10 Arquitecto A: restaurar MissionContract/GoalLock/Council12/DAG/ROOT_MAP/task contract.
+11 Ejecutor B: restaurar nodo único, sandbox/worktree, delta, tests/EvidencePacket.
+12 Espejo agentes: restaurar engine_binding/adapter/agente/result contract/evidence.
+13 Enchufe/Ficha: restaurar ficha/invariantes/adapter/registry/health/evidence/mount.
+14 Scheduler: restaurar DAG/toposort/cola1x1/locks/idempotencia/deadline/watchdog.
+15 Persistencia LOOP: restaurar anchor, último checkpoint, estrategia fallida y siguiente delta distinto.
+16 Heartbeat/memoria: restaurar snapshot/deadline/watchdog/circuit-breaker/memoria validada.
+17 Maker-Checker/Tribunal: restaurar maker output, auditorías, checker, Judge/Guardian y evidencia.
+18 UOOS1: restaurar B1-B8 coherentes.
+19 UOOS2: restaurar último RT/checkpoint; no reiniciar DONE; fallo→RT80; cierre→RT90.
+20 Deploy: restaurar deploy_config/plan/dry-run/commit previo/verificación remota/evidence.json.
+21 HF compute: restaurar inventario/conector/health/3 procesadores/resource broker; no afirmar conexión sin prueba.
+22 Storage: restaurar Graphiti/Grapify/SQL/HF backend/schema/adapter/consistencia/checkpoint.
+23 APIs: restaurar secret_ref/router/provider/health/budget/fallback/metering; nunca valor secreto.
+24 Auditoría final: restaurar caso unit/contract/integration/E2E, SBOM/secret scan, 4 verificaciones, 3 refutaciones, 5 cross-checks, verdict y checkpoint final.
 
 ## Contrato de recuperación por nodo
 1 registrar node_id/mission_id/trace_id/INPUT o approved-record/source_refs/destino/SHA previo/evidence esperado; 2 checkpoint pre-mutation; 3 una tarea; 4 verificar/refutar; 5 FAIL conserva evidencia y genera exactamente 20 alternativas distintas; 6 rank REUSE>COPY/MOVE>PATCH>ADAPTER>GENERATE; 7 aplicar delta nuevo autorizado; 8 retest; 9 rollback por SHA/commit, nunca memoria; 10 actualizar STATE/CHECKPOINT/Crazy Wall; 11 DONE solo con evidence_hash+prueba+trazabilidad; 12 secretos solo secret_ref.
