@@ -17,7 +17,7 @@ El ledger literal completo y válido anterior se conserva íntegro en Git en el 
 
 ## INPUT BLOCK 014 — DIRECTOR — LITERAL
 
-Ok te mandé auditar todo hasta el code integralo   
+Ok te mandé auditar todo hasta el code integralo  
 Envía copias el lote de archivo que necesitas y solo reescribe la parte del plugins y cableas lo metes en una capa o donde corresponda revisa la arquitectura del documento md si falta algo agun code lo resuelves   resuelves es  
 
 Y lo llevas directo al destino de la estructura raíz de el wordflow lo puedes mover todo
@@ -933,3 +933,129 @@ Estos archivos son puentes canónicos a las fuentes reales; no reescriben ni ree
 `PARTES_1_4_INSTRUCTION_RECORD = PASS_CANONICAL_EVIDENCE`.
 
 Este PASS se limita a **registro documental/aprobaciones/instrucciones operativas**. No convierte la implementación física, compute Hugging Face, storage, modelos, tests E2E o deploy en `VERIFIED_CLOSED` sin sus pruebas reales.
+
+---
+
+# MÉTODO CANÓNICO DE BÚSQUEDA DE CÓDIGO EN GITHUB — WORDFLOW LOOP YAIWES
+
+## Objetivo
+Encontrar código fuente real que cubra un GAP literal del Wordflow antes de generar código nuevo. La salida válida de una búsqueda es un candidato verificable con `repo + ruta + símbolo/función + SHA/commit + evidencia de comportamiento`; un README o nombre parecido no basta.
+
+## Orden obligatorio de búsqueda
+`GAP literal → chat/historial → GitHub Code Search en repos autorizados → abrir código real → árbol/rutas si el índice falla → tests/referencias → commits/historial → OSS GitHub → docs oficiales → comunidad secundaria → filtrar → deduplicar → rankear → elegir candidato → O03 copy/reuse`.
+
+## Funnel de 20 métodos de GitHub Code Search
+1. **Término simple:** buscar un identificador concreto. Ejemplo: `resume_checkpoint`.
+2. **Frase exacta:** usar comillas para preservar secuencia. Ejemplo: `"resume_attempt_offset"`.
+3. **AND implícito:** varios términos deben aparecer. Ejemplo: `checkpoint input_hash node_id`.
+4. **OR:** variantes equivalentes. Ejemplo: `retry OR resume OR reinject`.
+5. **NOT:** excluir ruido. Ejemplo: `retry NOT documentation` o excluir docs mediante path cuando el motor lo soporte.
+6. **Paréntesis/agrupación:** combinar alternativas. Ejemplo conceptual: `(retry OR fallback) AND attempt`.
+7. **Scope por repositorio:** buscar solo en `maxbry123-commits/Agentes-motores-Wordflow-YAIWES` usando el selector de repo del buscador/API.
+8. **Scope multi-repo:** repetir la misma consulta contra los repos autorizados y fusionar resultados deduplicados.
+9. **Scope por owner/org:** limitar a `maxbry123-commits` cuando se investiga código ya descargado/propio.
+10. **Scope por lenguaje:** priorizar `language:python` o el filtro equivalente del buscador cuando el GAP sea Python.
+11. **Filtro de ruta:** `path:loop`, `path:runtime`, `path:tests`, `path:scheduler`, `path:recovery`.
+12. **Filtro por extensión/nombre de archivo:** `*.py`, `runner.py`, `retry*.py`, `checkpoint*.py`; cuando Code Search permita regex de path, usarlo.
+13. **Búsqueda de símbolo:** `symbol:dispatch_once`, `symbol:resume_run`, `symbol:select_next_task` o búsqueda literal del nombre si el conector no expone qualifier `symbol:`.
+14. **Regex de símbolo/contenido:** patrones como `/resume.*checkpoint/`, `/select.*next.*task/`, `/attempted.*strateg/` cuando la interfaz de GitHub Code Search admita regex.
+15. **Búsqueda solo en contenido:** localizar expresiones como `attempted_strategies`, `input_hash`, `resume_checkpoint_id`, `single worker`, `task_failed`.
+16. **Buscar tests primero:** `path:tests resume`, `path:tests retry`, `path:tests dispatch_once`; los tests suelen revelar API, invariantes y comportamiento exacto.
+17. **Buscar mensajes de error/log:** una cadena única como `another lookup would repeat the previous attempt`, `retry: another writer advanced the run`, `no verify command declared` puede localizar el módulo exacto.
+18. **Definition/References/call sites:** desde un símbolo encontrado seguir definición, callers, callees, imports y tests para comprobar que está cableado y no es código muerto.
+19. **Commit/history search:** si el código no está en default branch, buscar commits por símbolo, mensaje o concepto y abrir el archivo fijado por commit SHA.
+20. **Árbol Git recursivo + fetch directo:** si Code Search devuelve cero/incomplete, listar el árbol del repo, filtrar nombres/rutas y abrir blobs/archivos directamente. Cero resultados del índice NO demuestra ausencia.
+
+## Comandos/patrones de consulta para los GAP actuales
+### GAP A — reinyección del mismo INPUT_BLOCK/nodo
+- `resume checkpoint input_hash node_id`
+- `"resume_checkpoint_id"`
+- `"resume_attempt_offset"`
+- `input_hash checkpoint attempt`
+- `symbol:resume_run`
+- `symbol:/resume.*/`
+- `/resume.*checkpoint/`
+- `path:tests resume checkpoint`
+- mensajes/identificadores: `with_updated_data preserves resume`, `re-drive`, `checkpoint provenance`, `stable_hash`.
+
+### GAP B — GAP engine / delta distinto al fallido
+- `"attempted_strategies"`
+- `retry fallback strategy`
+- `strategy not attempted`
+- `failed strategy next strategy`
+- `failure memory attempted`
+- `NO_EFFECTIVE_FALLBACK`
+- `/attempted.*strateg/`
+- `path:tests fallback strategy`
+- buscar funciones `_next_strategy`, `decide`, `record_strategy`, `fallback_chain`.
+- criterio obligatorio: el siguiente intento debe cambiar materialmente consulta/top-k/pipeline/delta/estrategia o detenerse; repetir exactamente el intento anterior = FAIL.
+
+### GAP C — cola literal determinista 1×1
+- `"dispatch_once"`
+- `"select_next_task"`
+- `first pending task dependencies`
+- `single worker queue`
+- `serial job queue`
+- `asyncio.Queue single worker`
+- `active_jobs always 0 or 1`
+- `path:runtime queue`
+- `path:tests dispatch_once`
+- criterio obligatorio: una invocación procesa como máximo un nodo/tarea durable y preserva orden/dependencias.
+
+## Cuando GitHub Code Search falla o está incompleto
+1. Registrar `SEARCH_INDEX_INCOMPLETE`, no `CODE_ABSENT`.
+2. Obtener árbol Git recursivo del repo/commit.
+3. Filtrar rutas por tokens del GAP: `retry`, `resume`, `checkpoint`, `runner`, `queue`, `scheduler`, `state`, `recovery`, `evidence`, `validator`, `watchdog`.
+4. Abrir archivo/blob directamente.
+5. Buscar dentro del archivo el símbolo relevante.
+6. Seguir imports/callers/tests.
+7. Fijar evidencia por SHA/commit para evitar deriva de `main`.
+8. Solo tras árbol + historial + fuentes alternativas sin candidato marcar `insufficient_evidence`.
+
+## Búsqueda por GitHub REST/API cuando aplique
+- Código: `GET /search/code?q=<consulta>+repo:<owner/repo>`.
+- Árbol: `GET /repos/<owner>/<repo>/git/trees/<tree_sha>?recursive=1`.
+- Archivo: `GET /repos/<owner>/<repo>/contents/<path>?ref=<sha|branch|tag>`.
+- Blob: `GET /repos/<owner>/<repo>/git/blobs/<blob_sha>`.
+- Commit: `GET /repos/<owner>/<repo>/commits/<sha>`.
+- Commits por texto: Search Commits / búsqueda del conector con término no vacío.
+- Comparación: `GET /repos/<owner>/<repo>/compare/<base>...<head>`.
+Estas rutas son métodos de investigación/lectura; la mutación sigue los gates de O03 y el skill de GitHub acción cuando corresponda.
+
+## Verificación de cada candidato
+Por cada resultado registrar:
+- `GAP_ID`.
+- `source_repo`.
+- `source_path`.
+- `source_commit_sha` y, cuando esté disponible, `blob_sha`.
+- símbolo/clase/función concreta.
+- fragmento/comportamiento que satisface el GAP.
+- callers/callees relevantes.
+- tests relacionados.
+- compatibilidad con determinismo/cola 1×1/fail-closed.
+- dependencias/imports requeridos.
+- clasificación `EXISTE | PARCIAL | GAP`.
+- decisión `REUSE | COPY | PATCH | ADAPTER | DESCARTAR`.
+
+## Deduplicación y ranking
+1. Deduplicar misma implementación vendorizada/repetida por `repo/path/SHA` y por comportamiento equivalente.
+2. Prioridad: código ya presente en repos autorizados del Director > copia ya descargada en `Agentes-motores-Wordflow-YAIWES` > repo OSS externo > docs > comunidad.
+3. Preferencia de delta: `REUSE > COPY/MOVE > PATCH QUIRÚRGICO > ADAPTER > GENERATE`.
+4. Un candidato con nombre correcto pero sin implementación/test/call site no gana ranking.
+5. Un código adaptativo/branching se descarta del kernel si viola el contrato determinista aunque sea técnicamente sofisticado.
+
+## Transición O02 → O03
+O02 solo cierra cuando cada GAP requerido tiene candidato exacto o evidencia suficiente de ausencia. Después O03:
+`source repo/path/SHA → leer destino → copiar exacto → comparar bytes/hash → editar solo imports/rutas/contrato si es imprescindible → test/read-back → registrar destination SHA/diff/evidence`.
+No se reescribe lógica ya existente. No se declara PASS por haber creado/copied un archivo; debe existir verificación real.
+
+## Fuentes canónicas del método
+- GitHub Code Search syntax: `https://docs.github.com/en/search-github/github-code-search/understanding-github-code-search-syntax`
+- GitHub searching code: `https://docs.github.com/en/search-github/searching-on-github/searching-code`
+- GitHub REST search: `https://docs.github.com/en/rest/search/search`
+- Git database trees: `https://docs.github.com/en/rest/git/trees`
+- Repository contents: `https://docs.github.com/en/rest/repos/contents`
+
+## Regla LOOP aplicada a búsqueda
+`GAP literal → 12/12 goals → consulta exacta → GitHub Search → abrir código → verificar/refutar → si falla cambiar técnica/consulta/ruta → no repetir delta ciego → dedup/rank → candidato → auditor instrucciones×3 → 3 refutaciones → verify_final → checkpoint`.
+Cada corrida de investigación tiene objetivo operativo de 5 minutos y límite absoluto de 10 minutos; al corte se guarda GAP/checkpoint y la próxima corrida continúa desde una técnica distinta a la fallida.
