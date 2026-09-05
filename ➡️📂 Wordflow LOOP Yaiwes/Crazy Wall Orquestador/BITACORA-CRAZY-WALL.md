@@ -46,7 +46,16 @@ Esta bitácora registra progreso humano-legible; `STATE.json` registra estado es
 - Validación registrada: 12 goals entrada, 12 salida, Ask Consil 12/12, auditor de instrucciones 3 pasadas, 4 verificaciones del plan, 3 refutaciones y verificación cruzada global documental.
 - Resultado: `PASS_PLAN_DOCUMENTAL`; NO significa implementación física de Parte 1/3/4 ni `VERIFIED_CLOSED`.
 - Política de plugins: únicamente GitHub y Hugging Face están autorizados externamente; cualquier otro plugin requiere autorización explícita.
-- LOOP horario solicitado: sigue `PENDING_PLATFORM_AUTOMATION_CREATION`; los intentos anteriores no se crearon y no se consideran activos.
+- LOOP horario solicitado: no está activo.
+
+## EVENTO CW-0005 — VALIDACIÓN REAL DE INVENTARIO DE FUENTES
+- Pasada 1: README actual leído nuevamente; INPUT BLOCK 017 conserva la norma literal de no reinterpretación y cadena obligatoria.
+- Pasada 2: STATE + CHECKPOINT `WFLOOP-BUILD-0002` + RECOVERY + Crazy Wall + ANEXO reconciliados; todos apuntan a las mismas anclas y al nodo `PLAN_LAYERED_ARCHITECTURE`.
+- Pasada 3: inventario real de `📂Archivo download 2` leído desde GitHub `main`; se verificaron allí los documentos principales y los archivos de programación/Enchufe/Ficha/contrato/prompt de extracción usados por el plan.
+- Fuente adicional `skills/skills Github acción` verificada en el commit `c789e5fe635e220230ffc759d86dc3bbb8e261d4`; existen `SKILL.md`, `README.md`, `ADVERTENCIA-CODE.json`, assets/references/scripts y carpetas de copiar/mover/descargar-extracción.
+- Evidencia de SHAs del intake: Arquitectura Wordflow `a08dc64b902465cb1549ed3607cbfe1d737e5d1f`; Chat A/B `a9606ed0154ad5e7a72b6ffbe43d225e2ea448a3`; UOOS1 `0874a14dcad274d4dbf058721b60af5da3d79fe8`; UOOS2 `bf8cf9c24b899cc67dd56a449ee7999ab8f4c0a8`; Deploy `3a0e39b61b30ce244aadc3337e1446afff61917b`; Pipeline NCT `f40b0a4634733891efdb430958dae9ca59ff2427`; Programming Pool doc `c0a97179e55b042ca6356daf3f5b6fae738fbae7`; PluginBus `c017bb2c1a09c8bb738e1774d656d59340ab56d5`; Ficha `a72508027cc2458553ef6a2255a9aa33d9a77a21`; contrato universal `aa023a5c5124eb574bcaa63d0b69607f1d18590c`; extracción→Ficha `c49b693dfad9e8331a4f84fa069c38a61ec2ad60`.
+- Resultado de la validación del PLAN: `PASS_PLAN_DOCUMENTAL`.
+- GAPs que permanecen explícitos y no se ocultaron: implementación física Parte 1/3/4, agentes programadores definitivos, compute HF real, almacenamiento, bindings de modelos y E2E final.
 
 ## SIGUIENTE EVENTO PERMITIDO
 Presentar al Director el plan por capas con microflujo; tras aprobación, ejecutar únicamente el siguiente nodo pendiente de la cola 1×1 con checkpoint pre-mutation y evidencia real.
