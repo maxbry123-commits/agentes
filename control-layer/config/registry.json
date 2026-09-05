@@ -1,0 +1,6 @@
+{
+  "actions": ["EXEC", "COPY", "VALIDATE", "REPORT"],
+  "validators": ["schema", "security", "dag", "sheriff"],
+  "roles": ["architecture", "backend_primary_executor", "backend_recovery", "backend_repair", "backend_final_repair"],
+  "groups": ["backend", "frontend", "workflow"]
+}

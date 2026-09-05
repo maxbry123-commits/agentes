@@ -1,0 +1,5 @@
+# PROJECT/config/token_ref.yaml — D9
+schema_version: "2.0"
+kind: TOKEN_REF
+token_env: GITHUB_TOKEN
+# PROHIBIDO valor en claro. Solo nombre de variable de entorno / secret manager.

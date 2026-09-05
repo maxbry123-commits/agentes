@@ -1,0 +1,37 @@
+# CapabilityRequest — loop pide capacidad, no agente concreto v1
+# SOURCE: Loop → Capability → Router → Agent/Model/Tool
+
+$schema: capability_request.schema/v1
+required: [request_id, run_id, capability, issued_at]
+
+fields:
+  request_id: {type: string}
+  run_id: {type: string}
+  capability:
+    type: enum
+    values:
+      - code_generation
+      - code_review
+      - debugging
+      - testing
+      - validation
+      - web_search
+      - github_search
+      - reasoning
+      - planning
+      - research
+      - documentation
+      - image_generation
+      - database_query
+      - deploy
+      - recovery
+  constraints: {type: object, default: {}}   # e.g. {lang: python, max_tokens: 4000}
+  priority: {type: enum, values: [critical, normal, background], default: normal}
+  issued_at: {type: string}
+  resolved_by: {type: string, optional: true}  # agent_id o model_id tras Router
+  status: {type: enum, values: [pending, resolved, failed, cancelled], default: pending}
+
+rules:
+  - Loop Engine NUNCA selecciona agent_id directo para trabajo
+  - Router resuelve capability → agent/model usando registry
+  - resolved_by se rellena solo tras resolución del Router

@@ -1,0 +1,39 @@
+# LoopCommand — comandos externos desde Control Layer v1
+# SOURCE: interrupción externa · Supervisor → Engine
+
+$schema: loop_command.schema/v1
+required: [command, run_id, issued_at]
+
+fields:
+  command:
+    type: enum
+    values:
+      - START
+      - CANCEL
+      - PAUSE
+      - RESUME
+      - RETRY
+      - ABORT
+      - FORCE_CHECKPOINT
+      - REOPEN          # solo desde FAILED/ESCALATED con autoridad
+  run_id: {type: string}
+  issued_by: {type: string}     # control|supervisor|director|system
+  reason: {type: string, optional: true}
+  payload: {type: object, default: {}}
+  issued_at: {type: string}     # ISO-8601
+  idempotency_key: {type: string, optional: true}
+
+mapping_to_state:
+  START: CREATED → LOCKED → RUNNING
+  CANCEL: * → CANCELLED
+  PAUSE: RUNNING|CHECKPOINT → PAUSED
+  RESUME: PAUSED → RUNNING
+  RETRY: FAILED → RUNNING (si policy permite)
+  ABORT: * → FAILED
+  FORCE_CHECKPOINT: RUNNING → CHECKPOINT
+  REOPEN: FAILED|ESCALATED → LOCKED (requiere issued_by director|supervisor)
+
+rules:
+  - unknown command → reject
+  - command on terminal state (CLOSED) → reject except REOPEN path
+  - every accepted command emits LoopEvent COMMAND_APPLIED

@@ -1,0 +1,51 @@
+# LoopEvent — event sourcing lite v1
+# SOURCE: desacoplar Memory/Graph · replay · auditoría
+# Append-only. Engine emite; adapters consumen.
+
+$schema: loop_event.schema/v1
+required: [event_id, run_id, type, timestamp, prev_hash]
+
+fields:
+  event_id: {type: string}
+  run_id: {type: string}
+  type:
+    type: enum
+    values:
+      - LOOP_CREATED
+      - LOOP_LOCKED
+      - PHASE_STARTED
+      - PHASE_COMPLETED
+      - ACTION_EXECUTED
+      - OUTPUT_CREATED
+      - VALIDATION_PASSED
+      - VALIDATION_FAILED
+      - DETECTOR_FIRED
+      - POLICY_DECIDED
+      - REPAIR_STARTED
+      - REPAIR_COMPLETED
+      - CHECKPOINT_CREATED
+      - DECISION_MADE
+      - LOOP_CONTINUED
+      - LOOP_COMPLETED
+      - LOOP_FAILED
+      - LOOP_ESCALATED
+      - LOOP_CANCELLED
+      - LOOP_PAUSED
+      - LOOP_RESUMED
+      - COMMAND_APPLIED
+      - BUDGET_WARNING
+      - BUDGET_EXCEEDED
+      - HEARTBEAT
+  phase: {type: string, optional: true}
+  iteration: {type: integer, optional: true}
+  payload: {type: object, default: {}}
+  actor: {type: string, default: system}   # system|agent|control|supervisor
+  timestamp: {type: string}                # ISO-8601
+  prev_hash: {type: string}                # sha256 del evento anterior ("" si primero)
+  hash: {type: string}                     # sha256(event_id+run_id+type+payload+prev_hash)
+
+rules:
+  - events are immutable after append
+  - hash chain must verify on read
+  - MemoryPlugin / GraphPlugin subscribe by type
+  - Loop Engine never calls memory/graph APIs directly — only emit events

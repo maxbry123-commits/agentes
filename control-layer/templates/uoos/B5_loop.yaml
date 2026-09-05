@@ -1,0 +1,77 @@
+# D5 Loop template v2.0 — alineado a contratos Loop Engine
+# SOURCE: loops/contracts/* · engine · phases · policy · recovery · budget · risk
+# Copiar a loops/<id>.yaml por proyecto. Engine reutilizable multiagente.
+
+schema_version: "2.0"
+
+loop:
+  id: L01                              # L01-L11 | LOOP-XXXX | custom
+  version: "2.0.0"
+  proposito: "Planificación"
+  level: tarea                         # micro | tarea | fase | proyecto
+  autonomy: L4                         # L1..L6 (ref LOP v100)
+  strategy: sequential                 # sequential | parallel | adversarial | consensus
+
+  # 9 fases — orden fijo; required = Sheriff frena si falta/falla
+  phases:
+    - {id: leer_anclas, required: true,  ia_allowed: false}
+    - {id: plan,        required: false, ia_allowed: true}
+    - {id: ejecutar,    required: true,  ia_allowed: true}
+    - {id: medir,       required: false, ia_allowed: false}
+    - {id: validar,     required: true,  ia_allowed: false}
+    - {id: reparar,     required: false, ia_allowed: true}
+    - {id: evidencia,   required: true,  ia_allowed: false}
+    - {id: checkpoint,  required: false, ia_allowed: false}
+    - {id: decidir,     required: true,  ia_allowed: false}
+
+  detectors:
+    - stall
+    - oscillation
+    - regression
+    - drift
+    - budget
+    - timeout
+    - invalid_output
+    - contract_violation
+    - no_progress
+
+  progress:
+    kind: numeric                      # numeric|boolean|tests|validation|evidence
+    threshold: 0.1                     # score 0-1; < threshold → stall signal
+
+  budgets:
+    level: tarea                       # hereda LEVEL_DEFAULTS si campos 0
+    token_budget: 0
+    time_budget_seg: 0
+    iteration_budget: 8
+    tool_call_budget: 0
+    model_call_budget: 0
+    retry_budget: 2
+
+  recovery:
+    max_repair: 2
+    actions_allowed:
+      - RETRY
+      - REPAIR
+      - CHANGE_STRATEGY
+      - ROLLBACK
+      - CHECKPOINT
+      - ESCALATE
+      - ABORT
+
+  risk:
+    default_level: low                 # low|medium|high
+    human_gate_on_high: true
+
+  plugins:
+    memory: {ref: memory.default, required: false}
+    graph:  {ref: graph.default,  required: false}
+
+  goal_lock_ref: null                  # goal_id congelado pre-loop
+  policy_ref: loops/policy/default_policy.yaml
+
+rules:
+  same_attempt_twice: PROHIBIDO
+  hash_identical_twice: stall
+  engine_emits_events_only: true       # no llama memory/graph directo
+  detect_neq_decide: true              # detectors → policy

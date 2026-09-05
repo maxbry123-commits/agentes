@@ -1,0 +1,94 @@
+{
+  "schema_version": "2.0",
+  "kind": "PROJECT_STATE",
+  "_doc": "D2 state.json — SOLO estado vivo. Identidad→D1. Agentes→D3. Loops runs→loop_data. NO definiciones.",
+  "project_id": "",
+  "updated_at": "",
+  "version": 0,
+
+  "project_status": "pending",
+  "desired_status": "pending",
+
+  "active_tasks": {},
+  "_task_shape": {
+    "task_id": "TASK-001",
+    "agent_id": "",
+    "loop_id": null,
+    "run_id": null,
+    "goal_id": null,
+    "status": "pending",
+    "started_at": null,
+    "updated_at": "",
+    "attempts": 0,
+    "last_error": null,
+    "checkpoint_id": null,
+    "evidence_ref": null,
+    "progress_score": null
+  },
+
+  "agents_runtime": {},
+  "_agent_runtime_shape": {
+    "status": "idle",
+    "current_task": null,
+    "last_heartbeat": null
+  },
+
+  "loops": {
+    "active_run_ids": [],
+    "last_closed_run_id": null
+  },
+
+  "global": {
+    "certified": false,
+    "blocked": false,
+    "blocking_reason": null,
+    "current_workflow": null,
+    "current_dag": null,
+    "human_gate": null
+  },
+
+  "recovery": {
+    "pending": [],
+    "last_recovery_at": null,
+    "dlq_count": 0
+  },
+
+  "transitions_allowed": {
+    "project": [
+      "pending → running",
+      "running → blocked",
+      "blocked → running",
+      "running → completed",
+      "running → failed",
+      "* → cancelled"
+    ],
+    "task": [
+      "pending → running",
+      "running → validating",
+      "validating → done",
+      "running → failed",
+      "validating → failed",
+      "failed → recovered",
+      "recovered → running",
+      "* → cancelled"
+    ],
+    "forbidden": [
+      "failed → done",
+      "cancelled → done",
+      "completed → running"
+    ]
+  },
+
+  "status_enum": {
+    "project": ["pending", "running", "blocked", "completed", "failed", "cancelled"],
+    "task": ["pending", "running", "validating", "done", "failed", "recovered", "cancelled"],
+    "agent": ["idle", "busy", "cooldown", "dead"]
+  },
+
+  "_sheriff": {
+    "must_match_project_id_d1": true,
+    "no_agent_definitions_here": true,
+    "version_monotonic": true,
+    "desired_vs_current": "anthropic-style separation"
+  }
+}
