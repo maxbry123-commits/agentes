@@ -16,6 +16,8 @@ Ruta: `➡️📂 Wordflow LOOP Yaiwes/HANDOFF.md`
 - Parte 3: `PENDING_IMPLEMENTATION_APPROVED_CANONICAL_RECORD`
 - Parte 4: `PENDING_IMPLEMENTATION_LITERAL_APPROVAL_CANONICAL_MAP`
 - Registro documental/aprobaciones Partes 1–4: `PASS_CANONICAL_EVIDENCE`
+- Auditoría vigente de corrección: `AUDITORIA-XRAY-CORRECCION-1A1.md`
+- Auditoría X-Ray anterior: histórica/pre-corrección.
 - Implementación física global: NO cerrada.
 - LOOP horario: `NOT_ACTIVE`
 - Plugins externos autorizados: GitHub y Hugging Face únicamente.
@@ -32,12 +34,14 @@ Ruta: `➡️📂 Wordflow LOOP Yaiwes/HANDOFF.md`
 6. `Readme arquitectura Yaiwes/README.md`.
 7. README Wordflow LOOP Yaiwes.
 8. `Crazy Wall Orquestador/LEDGER-CANONICO-PARTES-1-4.md`.
-9. `STATE.json`.
-10. `CHECKPOINT.json`.
-11. `RECOVERY-PATCH.md`.
-12. `BITACORA-CRAZY-WALL.md`.
-13. `ANEXO-01-PLAN-CAPAS-FUENTES-RECOVERY.md` + auditoría X-Ray.
-14. Fuentes exactas cableadas al nodo antes de ejecutar.
+9. `Crazy Wall Orquestador/AUDITORIA-XRAY-CORRECCION-1A1.md` — auditoría vigente.
+10. `STATE.json`.
+11. `CHECKPOINT.json`.
+12. `RECOVERY-PATCH.md`.
+13. `BITACORA-CRAZY-WALL.md`.
+14. `ANEXO-01-PLAN-CAPAS-FUENTES-RECOVERY.md`.
+15. `AUDITORIA-XRAY-PLAN-5-PASADAS.md` solo como evidencia histórica pre-corrección.
+16. Fuentes exactas cableadas al nodo antes de ejecutar.
 
 ## AUTORIDAD PARTES 1–4
 - Parte 1: INPUT 013 literal — commit `2d1c718f28333ef4b77e9c362f757bb74ff9c5cc`, blob `474af741abe3ac9c816f4406f0fc6e4e4490c2aa`.
@@ -59,6 +63,9 @@ https://github.com/maxbry123-commits/agentes/blob/main/%E2%9E%A1%EF%B8%8F%F0%9F%
 LEDGER Partes 1–4:
 https://github.com/maxbry123-commits/agentes/blob/main/%E2%9E%A1%EF%B8%8F%F0%9F%93%82%20Wordflow%20LOOP%20Yaiwes/Crazy%20Wall%20Orquestador/LEDGER-CANONICO-PARTES-1-4.md
 
+AUDITORÍA X-RAY CORRECCIÓN 1:1 — VIGENTE:
+https://github.com/maxbry123-commits/agentes/blob/main/%E2%9E%A1%EF%B8%8F%F0%9F%93%82%20Wordflow%20LOOP%20Yaiwes/Crazy%20Wall%20Orquestador/AUDITORIA-XRAY-CORRECCION-1A1.md
+
 STATE:
 https://github.com/maxbry123-commits/agentes/blob/main/%E2%9E%A1%EF%B8%8F%F0%9F%93%82%20Wordflow%20LOOP%20Yaiwes/Crazy%20Wall%20Orquestador/STATE.json
 
@@ -71,7 +78,7 @@ https://github.com/maxbry123-commits/agentes/blob/main/%E2%9E%A1%EF%B8%8F%F0%9F%
 CRAZY WALL:
 https://github.com/maxbry123-commits/agentes/blob/main/%E2%9E%A1%EF%B8%8F%F0%9F%93%82%20Wordflow%20LOOP%20Yaiwes/Crazy%20Wall%20Orquestador/BITACORA-CRAZY-WALL.md
 
-X-RAY 5 PASADAS:
+X-RAY 5 PASADAS — HISTÓRICO PRE-CORRECCIÓN:
 https://github.com/maxbry123-commits/agentes/blob/main/%E2%9E%A1%EF%B8%8F%F0%9F%93%82%20Wordflow%20LOOP%20Yaiwes/Crazy%20Wall%20Orquestador/AUDITORIA-XRAY-PLAN-5-PASADAS.md
 
 PIPELINE método:
@@ -84,4 +91,4 @@ PIPELINE estándar V3:
 https://github.com/maxbry123-commits/agentes/blob/main/PIPELINE/ADVANCED_ENGINEERING_STANDARD_V3.md
 
 ## VERDAD OPERATIVA
-La inconsistencia documental sobre Partes 3/4 y las tres rutas 404 de `AGENTS.md` quedó corregida con evidencia Git. Esto cierra el GAP de **registro de instrucciones/aprobaciones**, no los GAPs de implementación física, wiring, runtime, tests, Hugging Face compute, storage, APIs o deploy.
+La inconsistencia documental sobre Partes 3/4 y las tres rutas 404 de `AGENTS.md` quedó corregida con evidencia Git. La auditoría vigente es `AUDITORIA-XRAY-CORRECCION-1A1.md`; el X-Ray anterior queda histórico. Esto cierra el GAP de registro de instrucciones/aprobaciones, no los GAPs de implementación física, wiring, runtime, tests, Hugging Face compute, storage, APIs o deploy.
