@@ -3,7 +3,7 @@ name: research-download-chain
 description: Copia, descarga+extrae, reubica y verifica componentes mediante GitHub Actions y APIs Git de GitHub con deduplicación, fuente fijada, SHA, ZIP por partes, manifiesto y recuperación aislada de GAPS. Úsalo cuando YAIWES, Luna u otro agente deba incorporar o reorganizar código sin reescribirlo.
 metadata:
   type: workflow
-  version: "3.8.0"
+  version: "3.8.1"
 ---
 
 # Research Download Chain
@@ -12,12 +12,14 @@ Ejecuta, no te limites a explicar. Conserva el alcance literal y usa una sola mo
 
 ## 1. Entrada obligatoria
 
+**Regla de destino inmutable:** el destino lo proporciona el usuario. Este skill, sus plantillas, scripts, historial, repositorios, workflows o tareas anteriores **nunca** pueden inventar, inferir, heredar, completar ni sustituir `destination_repository`, `destination_branch` o `destination_root`. Los valores del bloque siguiente son únicamente nombres de campos/placeholders, no destinos predeterminados. Si cualquiera falta, es ambiguo o no fue dado explícitamente por el usuario para la tarea vigente, detente con `INPUT_GAP` y pide el destino una sola vez antes de mutar. Una vez recibido, cópialo literalmente y no lo cambies.
+
 Antes de mutar, construye este objeto y detente con `INPUT_GAP` si falta un campo:
 
 ```yaml
-destination_repository: owner/repo
-destination_branch: main
-destination_root: ruta/exacta
+destination_repository: <USER_SUPPLIED_REPOSITORY>
+destination_branch: <USER_SUPPLIED_BRANCH>
+destination_root: <USER_SUPPLIED_EXACT_PATH>
 components:
   - name: nombre-canónico
     source_url: https://github.com/owner/repo
