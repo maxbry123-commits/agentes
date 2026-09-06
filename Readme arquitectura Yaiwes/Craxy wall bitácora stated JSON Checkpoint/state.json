@@ -1,7 +1,7 @@
 {
   "contract": "tel.workflow/v3",
-  "mode": "fail-closed",
-  "updated_at": "2026-09-06T16:35:49-05:00",
+  "mode": "FAIL_CLOSED_LOOP",
+  "updated_at": "2026-09-06T17:09:46-05:00",
   "director_scope": {
     "audit_source": "Core kernel Yaiwes/",
     "architecture_source": "Readme arquitectura Yaiwes/README.md",
@@ -45,28 +45,55 @@
       "verification_run": 34061366845,
       "verification_job": 101562375081,
       "verification_repeats": 10
+    },
+    {
+      "root_node": "Componentes recuperados A",
+      "component": "Apache-APISIX",
+      "classification": "C",
+      "status": "VERIFIED_CLOSED",
+      "destination": "Agente Yaiwes principal/mesh-routing-collaboration/apisix-api-gateway/",
+      "source_tree_sha": "ddf503025af470522c0893633ec5a1a6cd5d486b",
+      "move_commit": "ceda29c79c9a33fe054ec81e1da318b95c6d584d",
+      "verification_commit": "5bce9fddd39da3f4f7b2d79d1f6ab2c428e75c6d",
+      "verification_run": 34062622979,
+      "verification_job": 101565736973,
+      "verification_repeats": 10,
+      "verification_url": "https://github.com/maxbry123-commits/agentes/actions/runs/34062622979"
     }
   ],
   "active": {
     "root_node": "Componentes recuperados A",
-    "component": "Apache-APISIX",
-    "step": 2,
+    "component": "Apache-Airflow",
+    "step": "VERIFY_REPAIR_LOOP",
     "classification": "B",
-    "checkpoint": "PENDING_MOVE_AND_OPENRESTY_RUNTIME_GATE",
-    "destination": "Agente Yaiwes principal/mesh-routing-collaboration/apisix-api-gateway/",
-    "gaps": ["OPENRESTY_RUNTIME_GATE_PENDING"]
+    "checkpoint": "RUNTIME_REPAIR_PRESENT_VERIFY_FINAL_PENDING",
+    "destination": "Agente Yaiwes principal/execution-orchestration/dag-executor/apache-airflow/",
+    "move_commit": "341ec322890e54d2ba1e817a13421821359f9a32",
+    "failed_run": 34062982102,
+    "failed_job": 101566717765,
+    "failure": "ModuleNotFoundError: No module named 'airflow._shared.configuration'",
+    "distinct_strategy_deltas": [
+      "5e17050c55497f226f755a4993b348ce92366dc1",
+      "478a723b5c605150368550e043cc4d3ef82e5598"
+    ],
+    "gaps": [
+      "AIRFLOW_CURRENT_REPAIR_SHA_HAS_NO_VERIFICATION_RUN",
+      "AIRFLOW_PYC_ARTIFACT_HYGIENE_FLAG"
+    ]
   },
   "batch": {
     "size": 5,
     "components": ["Ajv", "Apache-APISIX", "Apache-Airflow", "Argo-Workflows", "Azure-Durable-Functions"],
-    "verified_closed": 1,
+    "verified_closed": 2,
     "in_progress": 1,
-    "pending": 3
+    "pending": 2,
+    "next_batch_locked": true
   },
   "watchdog": {
     "status": "ACTIVE",
     "purpose": "hourly component LOOP with state/checkpoint/bitacora persistence"
   },
-  "completion_rule": "Only VERIFIED_CLOSED with route/diff/SHA/log/URL evidence",
-  "gap_policy": "GAP -> RESEARCH distinct delta -> EXECUTE -> CODA -> verify_final; no stop/no escalate"
+  "completion_rule": "Only VERIFIED_CLOSED with route/diff/SHA/test/log/URL evidence",
+  "gap_policy": "GAP -> RESEARCH distinct delta -> EXECUTE -> CODA -> verify_final; no stop/no escalate",
+  "next_action": "Airflow only: audit repaired source hygiene, obtain a real verification run for 478a723b5c605150368550e043cc4d3ef82e5598 or a newer repair SHA, require runtime 10/10 PASS, then persist closure before Argo-Workflows"
 }
