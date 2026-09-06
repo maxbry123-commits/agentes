@@ -45,18 +45,21 @@ jobs:
           set -euo pipefail
           D="$PWD/Agente Yaiwes principal/mesh-routing-collaboration/apisix-api-gateway"
           docker run --rm \
+            --user root \
             -v "$D:/workspace:ro" \
             -v "$D/apisix:/usr/local/apisix/apisix:ro" \
             --entrypoint /bin/bash \
             apache/apisix:3.18.0-debian \
             -lc '
               set -euo pipefail
+              id
               cd /workspace
+              ls -l ./bin/apisix
               openresty -V >/tmp/openresty-version.txt 2>&1
               grep -qi openresty /tmp/openresty-version.txt
               test "$(grep -c "VERSION = \"3.18.0\"" /usr/local/apisix/apisix/core/version.lua)" -eq 1
               for i in $(seq 1 10); do
-                out=$(./bin/apisix version 2>&1)
+                out=$(bash ./bin/apisix version 2>&1)
                 echo "$out"
                 echo "$out" | grep -F "3.18.0"
                 /usr/local/openresty/luajit/bin/luajit -e '\''package.path="/usr/local/apisix/?.lua;/usr/local/apisix/deps/share/lua/5.1/?.lua;/usr/local/apisix/deps/share/lua/5.1/?/init.lua;"..package.path; local v=require("apisix.core.version"); assert(v.VERSION=="3.18.0"); print(v.VERSION)'\''
