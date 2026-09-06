@@ -52,10 +52,11 @@ jobs:
             apache/apisix:3.18.0-debian \
             -lc '
               set -euo pipefail
+              export PATH="/usr/local/openresty/bin:/usr/local/openresty/luajit/bin:/usr/local/openresty/nginx/sbin:$PATH"
               id
               cd /workspace
               ls -l ./bin/apisix
-              openresty -V >/tmp/openresty-version.txt 2>&1
+              /usr/local/openresty/bin/openresty -V >/tmp/openresty-version.txt 2>&1
               grep -qi openresty /tmp/openresty-version.txt
               test "$(grep -c "VERSION = \"3.18.0\"" /usr/local/apisix/apisix/core/version.lua)" -eq 1
               for i in $(seq 1 10); do
