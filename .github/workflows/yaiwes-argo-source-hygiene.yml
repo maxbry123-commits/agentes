@@ -1,0 +1,60 @@
+name: YAIWES Argo Source Hygiene
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/yaiwes-argo-source-hygiene.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  hygiene:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            Core kernel Yaiwes/Componentes recuperados A/Argo-Workflows/Argo-Workflows
+            Agente Yaiwes principal/execution-orchestration/dag-executor/argo-workflows
+          sparse-checkout-cone-mode: false
+          fetch-depth: 1
+      - name: Return tests and docs to source
+        shell: bash
+        run: |
+          set -euo pipefail
+          DST='Agente Yaiwes principal/execution-orchestration/dag-executor/argo-workflows'
+          SRC='Core kernel Yaiwes/Componentes recuperados A/Argo-Workflows/Argo-Workflows'
+          test -d "$DST/workflow"
+          while IFS= read -r -d '' f; do
+            rel="${f#$DST/}"
+            mkdir -p "$SRC/$(dirname "$rel")"
+            mv "$f" "$SRC/$rel"
+          done < <(find "$DST" -type f -name '*_test.go' -print0)
+          while IFS= read -r -d '' d; do
+            rel="${d#$DST/}"
+            mkdir -p "$SRC/$(dirname "$rel")"
+            mv "$d" "$SRC/$rel"
+          done < <(find "$DST" -depth -type d -name testdata -print0)
+          while IFS= read -r -d '' f; do
+            rel="${f#$DST/}"
+            [ "$rel" = 'README.md' ] && continue
+            mkdir -p "$SRC/$(dirname "$rel")"
+            mv "$f" "$SRC/$rel"
+          done < <(find "$DST" -type f \( -name '*.md' -o -name 'AGENTS.md' \) -print0)
+          test -z "$(find "$DST" -type f -name '*_test.go' -print -quit)"
+          test -z "$(find "$DST" -type d -name testdata -print -quit)"
+          git diff --check
+      - name: Commit hygiene
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add 'Core kernel Yaiwes/Componentes recuperados A/Argo-Workflows/Argo-Workflows' 'Agente Yaiwes principal/execution-orchestration/dag-executor/argo-workflows'
+          git diff --cached --check
+          git commit -m 'fix(yaiwes): keep Argo runtime only in integrated Wordflow'
+          git pull --rebase origin main
+          git push origin HEAD:main
