@@ -31,3 +31,15 @@
 - Verificación final real: run `34055059156` = `success`; instalación de dependencias PASS, `py_compile` PASS y suite Yaiwes repetida 10× PASS.
 - Veredicto APScheduler: `VERIFIED_CLOSED`.
 - Próximo componente 1×1 dentro de `Componentes recuperados A`: `AWS-Step-Functions-DS-SDK` → `PENDING_XRAY`; no se inicia en este mismo ciclo.
+
+## 2026-09-06 — AWS-Step-Functions-DS-SDK Paso 1 + movimiento Paso 2
+- INPUT/GOALS/cola releídos desde plan, checkpoint, state, bitácora y arquitectura canónica antes de actuar.
+- X-Ray de código fuente real: `stepfunctions/steps/states.py` implementa State, Pass, Succeed, Fail, Wait, Choice, Parallel, Map, Task, Chain, Graph y validación; `workflow/stepfunctions.py` administra creación, actualización, ejecución, eventos, output y stop vía boto3.
+- Clasificación: **B** — workflow/orquestador de máquinas de estado; no es agente A ni capacidad aislada C.
+- Destino arquitectónico validado: `Agente Yaiwes principal/execution-orchestration/state-machine-executor/aws-step-functions-ds-sdk/`.
+- Movimiento físico ejecutado: `src/stepfunctions` y `tests` salieron del origen y fueron materializados en destino; README upstream, docs, ZIP y auxiliares quedaron fuera del Wordflow. Commit: `e7541c54575521d96a106e51e12f2a46e574eda8`.
+- Nuevo Wordflow: `stepfunctions/`, `tests/`, `adapter.py`, `README.md` Yaiwes, `ficha.aws_step_functions.v2.json`, `WIRING.json`, `requirements.runtime.txt`.
+- Cableado declarado contra Universal Plugin Bus v2 + Ficha Contract v2; adapter import-safe con exports `graph_to_dict`, `graph_to_json` y `workflow_factory`.
+- Pasadas X-Ray detectaron GAP reales antes del cierre: `self.type is 'Choice'` usa identidad en vez de igualdad; `Workflow.__init__` usa `tags=[]`; `Chain.__init__` usa `steps=[]`.
+- El README canónico exige edición quirúrgica y la interfaz GitHub disponible reemplaza archivos completos; por fail-closed no se reescribió el README de 58KB. Nota arquitectónica queda `PENDING_SURGICAL_EDIT` hasta poder preservar bytes y aplicar delta seguro.
+- Verificación 10× todavía no ejecutada; componente permanece `MOVED_WIRED_XRAY_GAP`. No se avanza al siguiente componente.
