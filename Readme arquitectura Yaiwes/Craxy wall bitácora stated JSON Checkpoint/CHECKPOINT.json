@@ -1,6 +1,6 @@
 {
   "schema": "yaiwes.checkpoint/v1",
-  "updated_at": "2026-09-06T16:35:49-05:00",
+  "updated_at": "2026-09-06T16:37:48-05:00",
   "repository": "maxbry123-commits/agentes",
   "scope": "Core kernel Yaiwes/",
   "phase": "BATCH_5_ACTIVE",
@@ -49,8 +49,11 @@
     "ajv_verification_repeats": 10,
     "ajv_move_diff": "GitHub compare reports lib/package.json/tsconfig.json as renamed source->destination and upstream README as removed",
     "ajv_xray_improvement": "verification workflow changed to sparse-checkout after full-repo checkout bottleneck",
+    "ajv_persistence_workflow_run": 34061638069,
+    "ajv_persistence_job": 101563087465,
+    "ajv_persistence_commit": "61422f6b2",
     "verification_repeats": 10,
-    "architecture_update": "AJV_SURGICAL_APPEND_PENDING"
+    "architecture_update": "SURGICAL_APPEND_VERIFIED"
   },
   "loop": {
     "input_literal": true,
