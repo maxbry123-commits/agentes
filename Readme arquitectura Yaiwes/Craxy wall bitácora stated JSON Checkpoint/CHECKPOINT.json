@@ -1,22 +1,28 @@
 {
   "schema": "yaiwes.checkpoint/v1",
-  "updated_at": "2026-09-06T13:23:00-05:00",
+  "updated_at": "2026-09-06T14:30:00-05:00",
   "repository": "maxbry123-commits/agentes",
   "scope": "Core kernel Yaiwes/",
-  "phase": "STEP_2_POST_MOVE_XRAY",
+  "phase": "STEP_1_NEXT_COMPONENT",
   "root_node_index": 1,
   "root_node": "Componentes recuperados A",
-  "approved_component": "APScheduler",
-  "status": "MOVED_WIRED_REVIEW_10X_PENDING",
+  "completed_component": "APScheduler",
+  "status": "VERIFIED_CLOSED",
   "tasks": {
     "rename_crazy_wall": "VERIFIED_CLOSED",
     "write_plan_state_checkpoint_bitacora": "VERIFIED_CLOSED",
     "watchdog_hourly": "ACTIVE",
-    "apscheduler_step_2": "MOVED_WIRED_REVIEW_10X_PENDING"
+    "apscheduler_step_2": "VERIFIED_CLOSED"
   },
   "evidence": {
     "rename_commit": "1e724bdc40f26f386490686ccd2858e32636ae42",
     "apscheduler_move_commit": "8a5c87b9b8ee79acab3de31e36a5eeb85d558d80",
+    "adapter_fix_commit": "2e48f4a04bbed13a83c03df8a5ed3963ab339648",
+    "runtime_requirements_commit": "6f10e3001ed37a34394c5770b17dbbb8a64e706c",
+    "verification_fix_commit": "8477e86437b76e94432a797cab9ff66e7efbb60f",
+    "verification_run": 34055059156,
+    "verification_conclusion": "success",
+    "verification_repeats": 10,
     "destination": "Agente Yaiwes principal/execution-orchestration/task-classifier-scheduler/",
     "source_runtime_removed": "Core kernel Yaiwes/Componentes recuperados A/APScheduler/APScheduler/src",
     "source_tests_removed": "Core kernel Yaiwes/Componentes recuperados A/APScheduler/APScheduler/tests"
@@ -29,5 +35,6 @@
     "real_check_repeats_max": 10,
     "fail_closed": true
   },
-  "next_action": "Run the 10 post-move source-code X-Ray passes; apply only evidence-backed improvements; then validate plugin bus contract and E2E"
+  "next_component": "AWS-Step-Functions-DS-SDK",
+  "next_action": "Start Step 1 X-Ray on AWS-Step-Functions-DS-SDK only; classify A/B/C from source code before any move"
 }
