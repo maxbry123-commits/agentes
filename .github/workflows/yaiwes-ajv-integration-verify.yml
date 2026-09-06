@@ -17,6 +17,11 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            Agente Yaiwes principal/definition-registry/schema-contracts/ajv
+          sparse-checkout-cone-mode: false
+          fetch-depth: 1
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
