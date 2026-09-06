@@ -1,0 +1,12 @@
+{
+  "component":"Azure-Durable-Functions",
+  "classification":"B",
+  "adapter":"adapter.py",
+  "ficha":"ficha.azure-durable-functions.v2.json",
+  "plugin_bus":"../../../kernel-principal/extension-kernel/plugin-bus/universal_plugin_bus_v2_integrated.py",
+  "ficha_contract":"../../../kernel-principal/extension-kernel/plugin-bus/ficha_contract_v2.py",
+  "transport":"stdio",
+  "runtime":"dotnet",
+  "fail_closed":true,
+  "direct_kernel_import":false
+}

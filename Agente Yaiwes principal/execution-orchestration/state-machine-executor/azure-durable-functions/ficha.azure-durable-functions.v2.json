@@ -1,0 +1,14 @@
+{
+  "artifact_id":"yaiwes.workflow.azure_durable_functions","version":"1.0.0","estado":"testing","contract_hash":"","tribunal_case_id":"YAIWES-AZURE-DURABLE-001",
+  "contrato":{"rol":"state_machine_orchestrator","consume":{"datatype":{"family":"workflow","type":"state_machine_definition","version":1}},"expone":{"datatype":{"family":"workflow","type":"durable_runtime","version":1}},"input_map":{},"output_map":{}},
+  "ejecucion":{"kind":"code","transport":"stdio","runtime_type":"compute","entry_point":"adapter:runtime_command","llm_ratio":0.0,"idempotente":true},
+  "seguridad":{"sandbox":"process_container","permisos":[],"limites":{"timeout_ms":120000,"deadline_ms":180000}},
+  "firma":{"gpg_key_id":"PENDIENTE"},"categoria":"pipeline","etapa":"E",
+  "repeticion":{"max":3,"condicion":"si_falla_verificacion"},"repite_en":["VERIFY"],
+  "activacion":{"eventos":["yaiwes.state_machine.requested"],"wake_words":[],"condicion":""},
+  "presupuesto":{"n0":{"max_tokens":1,"max_ms":120000,"max_costo_usd":0.000001}},
+  "telemetria":{"metricas":["tiempo","errores","orchestrations","activities","replays"],"span_otel":true},
+  "evidencia":{"produce":["L1_static","L2_build","L3_repeat"],"destino":"runtime/evidence/"},
+  "failover":{"sustituible_por":[],"compensacion":"fail_closed"},"salud":{"metodo":"source_probe","heartbeat_interval_s":30},
+  "trazas":{"task_id_requerido":true,"trace_id_requerido":true}
+}
