@@ -59,3 +59,4 @@ jobs:
                 python -c "from adapter import source_probe, dag_factory; probe=source_probe(); assert probe[\"airflow_file\"].startswith(\"/workspace/src/\"), probe; name=\"yaiwes_airflow_${i}\"; dag=dag_factory(name, schedule=None); assert dag.dag_id == name; assert dag.schedule is None; print(\"AIRFLOW_RUNTIME_PASS_${i}/10\")"
               done
             '
+# retrigger after shared-runtime repair and bytecode cleanup
