@@ -56,11 +56,16 @@ jobs:
               id
               cd /workspace
               ls -l ./bin/apisix
-              /usr/local/openresty/bin/openresty -V >/tmp/openresty-version.txt 2>&1
-              grep -qi openresty /tmp/openresty-version.txt
+              test -x /usr/local/openresty/bin/openresty
+              or_out=$(/usr/local/openresty/bin/openresty -V 2>&1 || true)
+              echo "$or_out"
+              echo "$or_out" | grep -qi openresty
               test "$(grep -c "VERSION = \"3.18.0\"" /usr/local/apisix/apisix/core/version.lua)" -eq 1
               for i in $(seq 1 10); do
-                out=$(bash ./bin/apisix version 2>&1)
+                if ! out=$(bash -x ./bin/apisix version 2>&1); then
+                  echo "$out"
+                  exit 1
+                fi
                 echo "$out"
                 echo "$out" | grep -F "3.18.0"
                 /usr/local/openresty/luajit/bin/luajit -e '\''package.path="/usr/local/apisix/?.lua;/usr/local/apisix/deps/share/lua/5.1/?.lua;/usr/local/apisix/deps/share/lua/5.1/?/init.lua;"..package.path; local v=require("apisix.core.version"); assert(v.VERSION=="3.18.0"); print(v.VERSION)'\''
