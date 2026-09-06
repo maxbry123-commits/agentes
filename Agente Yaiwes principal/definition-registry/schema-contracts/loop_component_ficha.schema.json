@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "yaiwes://schema/loop-component-ficha/v1",
+  "title": "YAIWES Loop Component Ficha",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id", "contract", "capability", "source", "destination",
+    "inputs", "outputs", "fail_closed", "health", "evidence"
+  ],
+  "properties": {
+    "id": {"type": "string", "minLength": 1},
+    "contract": {"const": "tel.workflow/v3"},
+    "capability": {"type": "string", "minLength": 1},
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repo", "path", "sha", "decision"],
+      "properties": {
+        "repo": {"type": "string"},
+        "path": {"type": "string"},
+        "sha": {"type": "string", "minLength": 7},
+        "decision": {"enum": ["REUSE", "COPY", "PATCH", "ADAPTER", "COPY+ADAPTER"]}
+      }
+    },
+    "destination": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha"],
+      "properties": {
+        "path": {"type": "string"},
+        "sha": {"type": "string", "minLength": 7}
+      }
+    },
+    "inputs": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+    "outputs": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+    "fail_closed": {"type": "boolean", "const": true},
+    "health": {"type": "string", "minLength": 1},
+    "evidence": {"type": "array", "items": {"type": "string"}, "minItems": 1}
+  }
+}
