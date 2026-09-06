@@ -1,0 +1,11 @@
+{
+  "component": "AWS-Step-Functions-DS-SDK",
+  "classification": "B",
+  "adapter": "Agente Yaiwes principal/execution-orchestration/state-machine-executor/aws-step-functions-ds-sdk/adapter.py",
+  "ficha": "Agente Yaiwes principal/execution-orchestration/state-machine-executor/aws-step-functions-ds-sdk/ficha.aws_step_functions.v2.json",
+  "plugin_bus": "Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus/universal_plugin_bus_v2_integrated.py",
+  "ficha_contract": "Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus/ficha_contract_v2.py",
+  "runtime_package": "Agente Yaiwes principal/execution-orchestration/state-machine-executor/aws-step-functions-ds-sdk/stepfunctions",
+  "tests": "Agente Yaiwes principal/execution-orchestration/state-machine-executor/aws-step-functions-ds-sdk/tests",
+  "fail_closed": true
+}
