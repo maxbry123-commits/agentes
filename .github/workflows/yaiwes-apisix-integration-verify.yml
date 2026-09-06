@@ -1,0 +1,65 @@
+name: YAIWES Apache APISIX Integration Verify
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'Agente Yaiwes principal/mesh-routing-collaboration/apisix-api-gateway/**'
+      - '.github/workflows/yaiwes-apisix-integration-verify.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            Agente Yaiwes principal/mesh-routing-collaboration/apisix-api-gateway
+            Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus
+          sparse-checkout-cone-mode: false
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Static contract gate
+        working-directory: Agente Yaiwes principal/mesh-routing-collaboration/apisix-api-gateway
+        run: |
+          python verify_integration.py
+          python -m py_compile adapter.py verify_integration.py runtime_smoke.py
+          test -f '../../kernel-principal/extension-kernel/plugin-bus/universal_plugin_bus_v2_integrated.py'
+          test -f '../../kernel-principal/extension-kernel/plugin-bus/ficha_contract_v2.py'
+
+      - name: Pull matching APISIX runtime
+        run: docker pull apache/apisix:3.18.0-debian
+
+      - name: OpenResty and moved-code runtime 10x
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="$PWD/Agente Yaiwes principal/mesh-routing-collaboration/apisix-api-gateway"
+          docker run --rm \
+            -v "$D:/workspace:ro" \
+            -v "$D/apisix:/usr/local/apisix/apisix:ro" \
+            --entrypoint /bin/bash \
+            apache/apisix:3.18.0-debian \
+            -lc '
+              set -euo pipefail
+              cd /workspace
+              openresty -V >/tmp/openresty-version.txt 2>&1
+              grep -qi openresty /tmp/openresty-version.txt
+              test "$(grep -c "VERSION = \"3.18.0\"" /usr/local/apisix/apisix/core/version.lua)" -eq 1
+              for i in $(seq 1 10); do
+                out=$(./bin/apisix version 2>&1)
+                echo "$out"
+                echo "$out" | grep -F "3.18.0"
+                /usr/local/openresty/luajit/bin/luajit -e '\''package.path="/usr/local/apisix/?.lua;/usr/local/apisix/deps/share/lua/5.1/?.lua;/usr/local/apisix/deps/share/lua/5.1/?/init.lua;"..package.path; local v=require("apisix.core.version"); assert(v.VERSION=="3.18.0"); print(v.VERSION)'\''
+                echo "APISIX_RUNTIME_PASS_${i}/10"
+              done
+            '
