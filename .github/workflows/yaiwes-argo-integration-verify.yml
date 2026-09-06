@@ -70,4 +70,4 @@ jobs:
             python -c "from adapter import source_probe; p=source_probe(); assert p['module']=='github.com/argoproj/argo-workflows/v4'"
             echo "ARGO_RUNTIME_PASS_${i}/10"
           done
-# retrigger after surgical server/auth + server/utils repair
+# retrigger after server/auth + server/utils + server/cache + server/types repair
