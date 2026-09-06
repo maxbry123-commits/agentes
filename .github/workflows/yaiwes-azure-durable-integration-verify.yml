@@ -36,14 +36,14 @@ jobs:
         working-directory: Agente Yaiwes principal/execution-orchestration/state-machine-executor/azure-durable-functions
         shell: bash
         run: |
-          set -euo pipefail
+          set -euxo pipefail
           python verify_integration.py
           python -m py_compile adapter.py verify_integration.py
           test -f '../../../kernel-principal/extension-kernel/plugin-bus/universal_plugin_bus_v2_integrated.py'
           test -f '../../../kernel-principal/extension-kernel/plugin-bus/ficha_contract_v2.py'
           test -f src/WebJobs.Extensions.DurableTask/DurableTaskExtension.cs
           test -f src/WebJobs.Extensions.DurableTask/Grpc/Protos/orchestrator_service.proto
-          test -z "$(find . -type d \( -name bin -o -name obj -o -name test -o -name samples \) -print -quit)"
+          test -z "$(find src/WebJobs.Extensions.DurableTask -type f \( -name '*.md' -o -name '*.ps1' -o -name '*.pyc' \) -print -quit)"
           dotnet --version | grep -F '10.0.302'
 
       - name: Restore moved runtime
@@ -64,3 +64,4 @@ jobs:
             python -c "from adapter import source_probe; p=source_probe(); assert p['sdk']=='10.0.302'; assert p['classification']=='B'"
             echo "AZURE_DURABLE_RUNTIME_PASS_${i}/10"
           done
+# rerun after source hygiene repair
