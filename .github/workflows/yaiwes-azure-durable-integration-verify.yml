@@ -44,7 +44,7 @@ jobs:
           test -f src/WebJobs.Extensions.DurableTask/DurableTaskExtension.cs
           test -f src/WebJobs.Extensions.DurableTask/Grpc/Protos/orchestrator_service.proto
           test -z "$(find src/WebJobs.Extensions.DurableTask -type f \( -name '*.md' -o -name '*.ps1' -o -name '*.pyc' \) -print -quit)"
-          dotnet --version | grep -F '10.0.302'
+          dotnet --list-sdks | grep -F '10.0.302 ['
 
       - name: Restore moved runtime
         working-directory: Agente Yaiwes principal/execution-orchestration/state-machine-executor/azure-durable-functions
@@ -64,4 +64,4 @@ jobs:
             python -c "from adapter import source_probe; p=source_probe(); assert p['sdk']=='10.0.302'; assert p['classification']=='B'"
             echo "AZURE_DURABLE_RUNTIME_PASS_${i}/10"
           done
-# rerun after source hygiene repair
+# rerun after SDK detection harness repair
