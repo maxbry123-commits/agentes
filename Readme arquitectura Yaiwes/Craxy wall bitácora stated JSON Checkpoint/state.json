@@ -1,33 +1,14 @@
 {
   "contract": "tel.workflow/v3",
   "mode": "fail-closed",
-  "updated_at": "2026-09-06T14:30:00-05:00",
+  "updated_at": "2026-09-06T15:21:00-05:00",
   "director_scope": {
     "audit_source": "Core kernel Yaiwes/",
     "architecture_source": "Readme arquitectura Yaiwes/README.md",
     "integration_root": "Agente Yaiwes principal/"
   },
   "queue": [
-    "Componentes recuperados A",
-    "Componentes recuperados B",
-    "Download code Yaiwes",
-    "Download code",
-    "Metodo de trabajo",
-    "Método de trabajo",
-    "Refactoria",
-    "TASK-GAPS",
-    "agente-yaiwes",
-    "agents",
-    "code-programming-engine",
-    "control-layer",
-    "extensions",
-    "groups",
-    "loop_catalog.json",
-    "memory",
-    "scripts",
-    "tools",
-    "wordflow",
-    "workflows archivados 2026-09-04"
+    "Componentes recuperados A", "Componentes recuperados B", "Download code Yaiwes", "Download code", "Metodo de trabajo", "Método de trabajo", "Refactoria", "TASK-GAPS", "agente-yaiwes", "agents", "code-programming-engine", "control-layer", "extensions", "groups", "loop_catalog.json", "memory", "scripts", "tools", "wordflow", "workflows archivados 2026-09-04"
   ],
   "completed_components": [
     {
@@ -44,10 +25,18 @@
   "active": {
     "root_node": "Componentes recuperados A",
     "component": "AWS-Step-Functions-DS-SDK",
-    "step": 1,
-    "classification": null,
-    "checkpoint": "PENDING_XRAY",
-    "destination": null
+    "step": 2,
+    "classification": "B",
+    "checkpoint": "MOVED_WIRED_XRAY_GAP",
+    "destination": "Agente Yaiwes principal/execution-orchestration/state-machine-executor/aws-step-functions-ds-sdk/",
+    "move_commit": "e7541c54575521d96a106e51e12f2a46e574eda8",
+    "gaps": [
+      "identity-comparison-choice",
+      "mutable-default-workflow-tags",
+      "mutable-default-chain-steps",
+      "architecture-surgical-note-pending",
+      "verification-10x-pending"
+    ]
   },
   "watchdog": {
     "status": "ACTIVE",
