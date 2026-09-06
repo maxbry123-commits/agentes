@@ -1,0 +1,10 @@
+{
+  "artifact_id":"yaiwes.workflow.apache_airflow",
+  "classification":"B",
+  "fail_closed":true,
+  "adapter":"Agente Yaiwes principal/execution-orchestration/dag-executor/apache-airflow/adapter.py",
+  "ficha":"Agente Yaiwes principal/execution-orchestration/dag-executor/apache-airflow/ficha.airflow.v2.json",
+  "plugin_bus":"Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus/universal_plugin_bus_v2_integrated.py",
+  "ficha_contract":"Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus/ficha_contract_v2.py",
+  "entry_point":"adapter:dag_factory"
+}
