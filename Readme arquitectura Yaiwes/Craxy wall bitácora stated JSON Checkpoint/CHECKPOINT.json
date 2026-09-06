@@ -1,12 +1,12 @@
 {
   "schema": "yaiwes.checkpoint/v1",
-  "updated_at": "2026-09-06T15:47:00-05:00",
+  "updated_at": "2026-09-06T16:35:49-05:00",
   "repository": "maxbry123-commits/agentes",
   "scope": "Core kernel Yaiwes/",
-  "phase": "READY_FOR_NEXT_COMPONENT",
+  "phase": "BATCH_5_ACTIVE",
   "root_node_index": 1,
   "root_node": "Componentes recuperados A",
-  "completed_component": "AWS-Step-Functions-DS-SDK",
+  "completed_component": "Ajv",
   "status": "VERIFIED_CLOSED",
   "tasks": {
     "rename_crazy_wall": "VERIFIED_CLOSED",
@@ -15,7 +15,20 @@
     "apscheduler_step_2": "VERIFIED_CLOSED",
     "aws_step_functions_step_1": "VERIFIED_CLOSED",
     "aws_step_functions_step_2_move": "VERIFIED_CLOSED",
-    "aws_step_functions_step_2_xray": "VERIFIED_CLOSED"
+    "aws_step_functions_step_2_xray": "VERIFIED_CLOSED",
+    "ajv_step_1_xray": "VERIFIED_CLOSED",
+    "ajv_step_2_move": "VERIFIED_CLOSED",
+    "ajv_step_2_xray_10x": "VERIFIED_CLOSED",
+    "ajv_step_3_verify": "VERIFIED_CLOSED",
+    "apisix_step_1_xray": "VERIFIED_CLOSED",
+    "apisix_step_2_move": "ACTIVE_LOOP"
+  },
+  "batch": {
+    "size": 5,
+    "components": ["Ajv", "Apache-APISIX", "Apache-Airflow", "Argo-Workflows", "Azure-Durable-Functions"],
+    "verified_closed": 1,
+    "active": "Apache-APISIX",
+    "pending": ["Apache-Airflow", "Argo-Workflows", "Azure-Durable-Functions"]
   },
   "evidence": {
     "apscheduler_verification_run": 34055059156,
@@ -26,16 +39,18 @@
     "aws_step_functions_repair_run": 34058918363,
     "aws_step_functions_verification_commit": "c11d033314e63600d7b71291eebba5438b1fd6c9",
     "aws_step_functions_verification_run": 34059002899,
+    "ajv_classification": "C",
+    "ajv_destination": "Agente Yaiwes principal/definition-registry/schema-contracts/ajv/",
+    "ajv_source_code_tree": "0c002b98c6d6560c7fbca0de1a1bc5573953a5ce",
+    "ajv_move_commit": "95713304ee644b053efed4c9947af75bf71fd87c",
+    "ajv_verification_workflow_commit": "b69d38dc8500164849a82daa21c15d98705655b5",
+    "ajv_verification_run": 34061366845,
+    "ajv_verification_job": 101562375081,
+    "ajv_verification_repeats": 10,
+    "ajv_move_diff": "GitHub compare reports lib/package.json/tsconfig.json as renamed source->destination and upstream README as removed",
+    "ajv_xray_improvement": "verification workflow changed to sparse-checkout after full-repo checkout bottleneck",
     "verification_repeats": 10,
-    "destination": "Agente Yaiwes principal/execution-orchestration/state-machine-executor/aws-step-functions-ds-sdk/",
-    "source_runtime_removed": "Core kernel Yaiwes/Componentes recuperados A/AWS-Step-Functions-DS-SDK/AWS-Step-Functions-DS-SDK/src",
-    "source_tests_removed": "Core kernel Yaiwes/Componentes recuperados A/AWS-Step-Functions-DS-SDK/AWS-Step-Functions-DS-SDK/tests",
-    "xray_repairs": [
-      "State.next Choice comparison changed from identity to equality",
-      "Workflow.__init__ tags mutable default replaced by None + per-instance list",
-      "Chain.__init__ steps mutable default replaced by None + per-instance list"
-    ],
-    "architecture_update": "SURGICAL_APPEND_VERIFIED"
+    "architecture_update": "AJV_SURGICAL_APPEND_PENDING"
   },
   "loop": {
     "input_literal": true,
@@ -45,7 +60,7 @@
     "real_check_repeats_max": 10,
     "fail_closed": true
   },
-  "active_component": null,
-  "next_component": "Ajv",
-  "next_action": "Start Step 1 only for Ajv: X-Ray real source code, determine function/objective/workflow, classify A/B/C, validate destination from canonical architecture, then persist evidence before any move"
+  "active_component": "Apache-APISIX",
+  "next_component": "Apache-APISIX",
+  "next_action": "Revalidate current main; integrate only useful APISIX runtime code into Agente Yaiwes principal/mesh-routing-collaboration/apisix-api-gateway using Universal Plugin Bus/Ficha v2; verify real OpenResty runtime or keep GAP fail-closed"
 }
