@@ -1,0 +1,51 @@
+name: YAIWES Argo Cache Types Repair
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/yaiwes-argo-cache-types-repair.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            Core kernel Yaiwes/Componentes recuperados A/Argo-Workflows/Argo-Workflows/server
+            Agente Yaiwes principal/execution-orchestration/dag-executor/argo-workflows
+          sparse-checkout-cone-mode: false
+          fetch-depth: 1
+      - name: Move cache and types runtime only
+        shell: bash
+        run: |
+          set -euo pipefail
+          SRC='Core kernel Yaiwes/Componentes recuperados A/Argo-Workflows/Argo-Workflows'
+          DST='Agente Yaiwes principal/execution-orchestration/dag-executor/argo-workflows'
+          for d in cache types; do
+            test -d "$SRC/server/$d"
+            test ! -e "$DST/server/$d"
+            mkdir -p "$DST/server"
+            mv "$SRC/server/$d" "$DST/server/$d"
+          done
+          for d in "$DST/server/cache" "$DST/server/types"; do
+            while IFS= read -r -d '' f; do rel="${f#$DST/}"; mkdir -p "$SRC/$(dirname "$rel")"; mv "$f" "$SRC/$rel"; done < <(find "$d" -type f -name '*_test.go' -print0)
+            while IFS= read -r -d '' td; do rel="${td#$DST/}"; mkdir -p "$SRC/$(dirname "$rel")"; mv "$td" "$SRC/$rel"; done < <(find "$d" -depth -type d -name testdata -print0)
+            while IFS= read -r -d '' f; do rel="${f#$DST/}"; mkdir -p "$SRC/$(dirname "$rel")"; mv "$f" "$SRC/$rel"; done < <(find "$d" -type f \( -name '*.md' -o -name 'AGENTS.md' \) -print0)
+          done
+          git diff --check
+      - name: Commit repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add 'Core kernel Yaiwes/Componentes recuperados A/Argo-Workflows/Argo-Workflows/server' 'Agente Yaiwes principal/execution-orchestration/dag-executor/argo-workflows/server'
+          git commit -m 'fix(yaiwes): move Argo cache and types runtime packages'
+          git pull --rebase origin main
+          git push origin HEAD:main
