@@ -224,7 +224,7 @@ class State(Block):
         # By design, Choice states do not have the Next field. When used in a chain, the subsequent step becomes the
         # default choice that executes if none of the specified rules match.
         # See language spec for more info: https://states-language.net/spec.html#choice-state
-        if self.type is 'Choice':
+        if self.type == 'Choice':
             if self.default is not None:
                 logger.warning(f'Chaining Choice state: Overwriting {self.state_id}\'s current default_choice ({self.default.state_id}) with {next_step.state_id}')
             self.default_choice(next_step)
@@ -656,11 +656,12 @@ class Chain(object):
     Chain is a logical group of states, that resembles a linked list. The start state is the head of the *Chain* and the end state is the tail of the *Chain*.
     """
 
-    def __init__(self, steps=[]):
+    def __init__(self, steps=None):
         """
         Args:
             steps (list(State), optional): List of states to be chained in-order. (default: [])
         """
+        steps = [] if steps is None else steps
         if not isinstance(steps, list):
             raise TypeError("Chain takes a 'list' of steps. You provided an input that is not a list.")
         self.steps = []

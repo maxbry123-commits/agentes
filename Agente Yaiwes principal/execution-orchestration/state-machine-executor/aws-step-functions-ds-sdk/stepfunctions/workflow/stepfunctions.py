@@ -142,7 +142,7 @@ class Workflow(object):
             client=client
         )
 
-    def __init__(self, name, definition, role, tags=[], execution_input=None, timeout_seconds=None, comment=None, version=None, state_machine_arn=None, format_json=True, client=None):
+    def __init__(self, name, definition, role, tags=None, execution_input=None, timeout_seconds=None, comment=None, version=None, state_machine_arn=None, format_json=True, client=None):
         """
         Args:
             name (str): The name of the workflow. A name must not contain:
@@ -178,7 +178,7 @@ class Workflow(object):
             )
         self.name = name
         self.role = role
-        self.tags = tags
+        self.tags = [] if tags is None else tags
         self.workflow_input = execution_input
 
         if client:

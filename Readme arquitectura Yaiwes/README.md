@@ -1132,3 +1132,14 @@ Reglas duras: `NO STOP WHILE GAP`, `NO SCOPE ESCALATION`, un INPUT literal = un 
   }
 }
 ```
+
+
+## Integración quirúrgica — AWS Step Functions Data Science SDK
+<!-- YAIWES_COMPONENT_AWS_STEP_FUNCTIONS_DS_SDK -->
+- **Clasificación:** B — workflow/orquestador de máquinas de estado.
+- **Destino:** `Agente Yaiwes principal/execution-orchestration/state-machine-executor/aws-step-functions-ds-sdk/`.
+- **Capacidades incorporadas:** construcción/serialización de ASL, Choice/Parallel/Map/Task/Chain/Graph, administración de workflows/ejecuciones mediante boto3 y validación de grafos.
+- **Microflujo:** definición State/Chain ➡️ Graph valida/serializa ➡️ adapter YAIWES ➡️ contrato/ficha v2 ➡️ Universal Plugin Bus ➡️ state-machine-executor ➡️ evidencia/verificación.
+- **Cableado:** `WIRING.json` + `ficha.aws_step_functions.v2.json` enlazan el Wordflow con `kernel-principal/extension-kernel/plugin-bus/`.
+- **Mejoras X-Ray post-movimiento:** comparación Choice por igualdad y defaults mutables `Chain.steps`/`Workflow.tags` eliminados.
+- **Regla:** solo código útil en runtime; README upstream, ZIP, docs y auxiliares no forman parte del Wordflow integrado.
