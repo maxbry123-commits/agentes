@@ -1,0 +1,85 @@
+name: YAIWES AWS Step Functions Surgical Repair
+
+on:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-aws-stepfunctions-repair.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            Agente Yaiwes principal/execution-orchestration/state-machine-executor/aws-step-functions-ds-sdk
+            Readme arquitectura Yaiwes/README.md
+          sparse-checkout-cone-mode: false
+      - name: Apply exact surgical deltas
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          root = Path('Agente Yaiwes principal/execution-orchestration/state-machine-executor/aws-step-functions-ds-sdk')
+          states = root / 'stepfunctions/steps/states.py'
+          workflow = root / 'stepfunctions/workflow/stepfunctions.py'
+          architecture = Path('Readme arquitectura Yaiwes/README.md')
+
+          text = states.read_text(encoding='utf-8')
+          old = "if self.type is 'Choice':"
+          assert text.count(old) == 1, f'identity comparison occurrence count={text.count(old)}'
+          text = text.replace(old, "if self.type == 'Choice':", 1)
+
+          old = '    def __init__(self, steps=[]):'
+          assert text.count(old) == 1, f'Chain mutable default occurrence count={text.count(old)}'
+          text = text.replace(old, '    def __init__(self, steps=None):', 1)
+          old = '        if not isinstance(steps, list):\n'
+          assert text.count(old) >= 1
+          replacement = '        steps = [] if steps is None else steps\n        if not isinstance(steps, list):\n'
+          chain_pos = text.index('class Chain(object):')
+          before, after = text[:chain_pos], text[chain_pos:]
+          assert old in after
+          after = after.replace(old, replacement, 1)
+          states.write_text(before + after, encoding='utf-8')
+
+          text = workflow.read_text(encoding='utf-8')
+          old = 'role, tags=[], execution_input=None'
+          assert text.count(old) == 1, f'Workflow mutable tags default occurrence count={text.count(old)}'
+          text = text.replace(old, 'role, tags=None, execution_input=None', 1)
+          old = '        self.tags = tags\n'
+          assert text.count(old) == 1
+          text = text.replace(old, '        self.tags = [] if tags is None else tags\n', 1)
+          workflow.write_text(text, encoding='utf-8')
+
+          marker = '<!-- YAIWES_COMPONENT_AWS_STEP_FUNCTIONS_DS_SDK -->'
+          arch = architecture.read_text(encoding='utf-8')
+          if marker not in arch:
+              note = '''\n\n## Integración quirúrgica — AWS Step Functions Data Science SDK\n'''+marker+'''\n- **Clasificación:** B — workflow/orquestador de máquinas de estado.\n- **Destino:** `Agente Yaiwes principal/execution-orchestration/state-machine-executor/aws-step-functions-ds-sdk/`.\n- **Capacidades incorporadas:** construcción/serialización de ASL, Choice/Parallel/Map/Task/Chain/Graph, administración de workflows/ejecuciones mediante boto3 y validación de grafos.\n- **Microflujo:** definición State/Chain ➡️ Graph valida/serializa ➡️ adapter YAIWES ➡️ contrato/ficha v2 ➡️ Universal Plugin Bus ➡️ state-machine-executor ➡️ evidencia/verificación.\n- **Cableado:** `WIRING.json` + `ficha.aws_step_functions.v2.json` enlazan el Wordflow con `kernel-principal/extension-kernel/plugin-bus/`.\n- **Mejoras X-Ray post-movimiento:** comparación Choice por igualdad y defaults mutables `Chain.steps`/`Workflow.tags` eliminados.\n- **Regla:** solo código útil en runtime; README upstream, ZIP, docs y auxiliares no forman parte del Wordflow integrado.\n'''
+              architecture.write_text(arch + note, encoding='utf-8')
+          PY
+      - name: Verify surgical delta only
+        run: |
+          git diff --check
+          git diff -- 'Agente Yaiwes principal/execution-orchestration/state-machine-executor/aws-step-functions-ds-sdk/stepfunctions/steps/states.py' \
+            'Agente Yaiwes principal/execution-orchestration/state-machine-executor/aws-step-functions-ds-sdk/stepfunctions/workflow/stepfunctions.py' \
+            'Readme arquitectura Yaiwes/README.md'
+      - name: Commit repaired code and architecture note
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            'Agente Yaiwes principal/execution-orchestration/state-machine-executor/aws-step-functions-ds-sdk/stepfunctions/steps/states.py' \
+            'Agente Yaiwes principal/execution-orchestration/state-machine-executor/aws-step-functions-ds-sdk/stepfunctions/workflow/stepfunctions.py' \
+            'Readme arquitectura Yaiwes/README.md'
+          if git diff --cached --quiet; then
+            echo 'No delta required'
+          else
+            git commit -m 'fix(yaiwes): harden AWS Step Functions integration'
+            git push
+          fi
