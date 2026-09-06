@@ -1,0 +1,79 @@
+name: YAIWES Apache Airflow Integration Verify
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'Agente Yaiwes principal/execution-orchestration/dag-executor/apache-airflow/**'
+      - '.github/workflows/yaiwes-airflow-integration-verify.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            Agente Yaiwes principal/execution-orchestration/dag-executor/apache-airflow
+            Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus
+          sparse-checkout-cone-mode: false
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Static contract gate
+        working-directory: Agente Yaiwes principal/execution-orchestration/dag-executor/apache-airflow
+        run: |
+          python verify_integration.py
+          python -m py_compile adapter.py verify_integration.py
+          python -m compileall -q src/airflow/models src/airflow/dag_processing src/airflow/jobs
+          test -f '../../../kernel-principal/extension-kernel/plugin-bus/universal_plugin_bus_v2_integrated.py'
+          test -f '../../../kernel-principal/extension-kernel/plugin-bus/ficha_contract_v2.py'
+
+      - name: Pull official Airflow dependency environment
+        run: docker pull apache/airflow:3.3.1-python3.12
+
+      - name: Moved source runtime 10x
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="$PWD/Agente Yaiwes principal/execution-orchestration/dag-executor/apache-airflow"
+          docker run --rm \
+            --user airflow \
+            -v "$D:/workspace:ro" \
+            -w /workspace \
+            -e PYTHONPATH=/workspace/src \
+            --entrypoint /bin/bash \
+            apache/airflow:3.3.1-python3.12 \
+            -lc '
+              set -euo pipefail
+              python - <<"PY"
+from pathlib import Path
+import airflow
+p = Path(airflow.__file__).resolve()
+print("AIRFLOW_SOURCE", p)
+assert str(p).startswith("/workspace/src/"), p
+PY
+              for i in $(seq 1 10); do
+                python - "$i" <<"PY"
+import sys
+from pathlib import Path
+from adapter import source_probe, dag_factory
+idx = int(sys.argv[1])
+probe = source_probe()
+assert probe["airflow_file"].startswith("/workspace/src/"), probe
+name = f"yaiwes_airflow_{idx}"
+dag = dag_factory(name, schedule=None)
+assert dag.dag_id == name, dag.dag_id
+assert dag.schedule is None
+print(f"AIRFLOW_RUNTIME_PASS_{idx}/10")
+PY
+              done
+            '
