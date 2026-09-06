@@ -41,5 +41,5 @@ jobs:
           for i in $(seq 1 10); do
             echo "YAIWES APScheduler verification pass $i/10"
             python -m pytest -q \
-              'Agente Yaiwes principal/execution-orchestration/task-classifier-scheduler/tests/test_yaiwes_integration.py'
+              'Agente Yaiwes principal/execution-orchestration/task-classifier-scheduler/verification/test_yaiwes_integration.py'
           done
