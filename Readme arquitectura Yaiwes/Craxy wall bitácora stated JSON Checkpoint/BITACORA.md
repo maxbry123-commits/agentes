@@ -43,3 +43,14 @@
 - Pasadas X-Ray detectaron GAP reales antes del cierre: `self.type is 'Choice'` usa identidad en vez de igualdad; `Workflow.__init__` usa `tags=[]`; `Chain.__init__` usa `steps=[]`.
 - El README canónico exige edición quirúrgica y la interfaz GitHub disponible reemplaza archivos completos; por fail-closed no se reescribió el README de 58KB. Nota arquitectónica queda `PENDING_SURGICAL_EDIT` hasta poder preservar bytes y aplicar delta seguro.
 - Verificación 10× todavía no ejecutada; componente permanece `MOVED_WIRED_XRAY_GAP`. No se avanza al siguiente componente.
+
+## 2026-09-06 — AWS-Step-Functions-DS-SDK X-Ray cierre
+- Se creó un delta quirúrgico automatizado; run `34058918363` = `success` y produjo commit `637eadee85c7bfcc7c05f7ae5137114dc67d09d5`.
+- Reparación 1: `State.next` cambió comparación `is 'Choice'` por igualdad `== 'Choice'`.
+- Reparación 2: `Chain.__init__` dejó de usar `steps=[]`; ahora usa `None` y crea lista por instancia.
+- Reparación 3: `Workflow.__init__` dejó de usar `tags=[]`; ahora usa `None` y crea lista por instancia.
+- La misma operación añadió de forma aditiva y marcada la nota de arquitectura AWS Step Functions a `Readme arquitectura Yaiwes/README.md`, sin sustituir el contenido previo.
+- Se creó verificación X-Ray aislada del Wordflow: compila runtime/core, audita identidad de strings, defaults mutables del núcleo, adapter import-safe, targets de `WIRING.json` y ficha v2.
+- Run final `34059002899` = `success`; `py_compile` PASS y suite de integración ejecutada **10× PASS**.
+- Veredicto: `AWS-Step-Functions-DS-SDK = VERIFIED_CLOSED`.
+- Estado/Checkpoint avanzados al siguiente componente 1×1: `Ajv` → `PENDING_XRAY`.
