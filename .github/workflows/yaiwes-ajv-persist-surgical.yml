@@ -1,0 +1,140 @@
+name: YAIWES Ajv Surgical Persistence
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/yaiwes-ajv-persist-surgical.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  persist:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            Readme arquitectura Yaiwes/README.md
+            Readme arquitectura Yaiwes/Craxy wall bitácora stated JSON Checkpoint
+          sparse-checkout-cone-mode: false
+          fetch-depth: 1
+      - name: Append persistence blocks without rewriting existing bytes
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          root = Path('Readme arquitectura Yaiwes')
+          wall = root / 'Craxy wall bitácora stated JSON Checkpoint'
+
+          def append_once(path: Path, marker: str, block: str) -> None:
+              raw = path.read_bytes()
+              if marker.encode() in raw:
+                  print(f'SKIP_EXISTING {path} {marker}')
+                  return
+              suffix = b'' if raw.endswith(b'\n') else b'\n'
+              path.write_bytes(raw + suffix + b'\n' + block.encode('utf-8'))
+              print(f'APPENDED {path} {marker}')
+
+          append_once(
+              wall / 'BITACORA.md',
+              '<!-- YAIWES_AJV_VERIFIED_CLOSED -->',
+              '''<!-- YAIWES_AJV_VERIFIED_CLOSED -->
+          ## 2026-09-06 — Ajv Paso 1/2/3 VERIFIED_CLOSED
+          - X-Ray del código fuente real `lib/` confirmó Ajv como capacidad **C** determinista de compilación/validación JSON Schema/JTD, sin LLM.
+          - Destino arquitectónico: `Agente Yaiwes principal/definition-registry/schema-contracts/ajv/`.
+          - MOVE real: commit `95713304ee644b053efed4c9947af75bf71fd87c`; GitHub compare reconoce `lib/*`, `package.json` y `tsconfig.json` como `renamed` origen→destino y README upstream como `removed`.
+          - Wordflow Yaiwes añadido: `adapter.py`, `yaiwes_bridge.js`, `WIRING.json`, `ficha.ajv.v2.json`, `verify_integration.py` y README Yaiwes nuevo.
+          - Cableado fail-closed: Universal Plugin Bus v2 + Ficha Contract v2; `llm_ratio=0.0`, ejecución aislada por subprocess/stdio.
+          - GAP real de rendimiento: el primer CI quedó retenido en checkout completo del repo; StrategyDelta aplicado: sparse-checkout del Wordflow Ajv.
+          - Verificación final: workflow commit `b69d38dc8500164849a82daa21c15d98705655b5`, run `34061366845`, job `101562375081` = SUCCESS.
+          - Gates PASS: contrato estático, instalación, build Ajv 8.20.0 y validación válida/inválida `10/10` (`AJV_RUNTIME_PASS_1/10` … `10/10`).
+          - Advertencias de dependencias de desarrollo obsoletas quedaron registradas como mantenimiento futuro; no produjeron fallo de build/runtime.
+          - Veredicto: `Ajv = VERIFIED_CLOSED`. Siguiente componente del lote: `Apache-APISIX`.
+          '''.strip() + '\n'
+          )
+
+          append_once(
+              wall / 'PLAN-DE-TRABAJO-COMPONENTES.md',
+              '<!-- YAIWES_BATCH5_STATUS_20260906 -->',
+              '''<!-- YAIWES_BATCH5_STATUS_20260906 -->
+          ## Lote activo de 5 — estado verificable
+          1. Ajv — **VERIFIED_CLOSED** — C — destino `definition-registry/schema-contracts/ajv/` — move `95713304...` — run `34061366845` 10× PASS.
+          2. Apache-APISIX — **ACTIVE_LOOP** — B — destino `mesh-routing-collaboration/apisix-api-gateway/` — Paso 1 X-Ray cerrado; MOVE/runtime OpenResty pendientes.
+          3. Apache-Airflow — **PENDING** — B — destino propuesto `execution-orchestration/dag-executor/apache-airflow/`.
+          4. Argo-Workflows — **PENDING** — B — destino propuesto `execution-orchestration/dag-executor/argo-workflows/`.
+          5. Azure-Durable-Functions — **PENDING** — B — destino propuesto `execution-orchestration/state-machine-executor/azure-durable-functions/`.
+
+          Regla del lote: cada componente mantiene evidencia/estado independiente; el lote solo cierra `5/5 VERIFIED_CLOSED`.
+          '''.strip() + '\n'
+          )
+
+          recovery = wall / 'RECOVERY.md'
+          if not recovery.exists():
+              recovery.write_text('''# RECOVERY — Integración componentes YAIWES
+
+          <!-- YAIWES_RECOVERY_V1 -->
+          Contrato: `tel.workflow/v3` · modo `FAIL_CLOSED_LOOP`.
+
+          ## Último cierre recuperable
+          - Componente: `Ajv`
+          - Estado: `VERIFIED_CLOSED`
+          - Destino: `Agente Yaiwes principal/definition-registry/schema-contracts/ajv/`
+          - MOVE commit: `95713304ee644b053efed4c9947af75bf71fd87c`
+          - CI final commit: `b69d38dc8500164849a82daa21c15d98705655b5`
+          - Run: `34061366845`
+          - Job: `101562375081`
+          - Repeticiones runtime: `10/10 PASS`
+
+          ## Reanudación exacta
+          - Nodo raíz: `Core kernel Yaiwes/Componentes recuperados A`
+          - Componente activo: `Apache-APISIX`
+          - Clasificación: `B`
+          - Destino: `Agente Yaiwes principal/mesh-routing-collaboration/apisix-api-gateway/`
+          - Próximo gate: mover solo código runtime útil, cablear Universal Plugin Bus/Ficha v2 y verificar runtime OpenResty real.
+          - GAP abierto: `OPENRESTY_RUNTIME_GATE_PENDING`.
+
+          ## Regla de recuperación
+          Releer `README arquitectura` + `PLAN` + `CHECKPOINT.json` + `state.json` + `BITACORA.md`; validar HEAD/diffs/runs; si la evidencia diverge, volver a RESEARCH con StrategyDelta distinto. Nunca reconstruir estado por suposición.
+          ''', encoding='utf-8')
+              print(f'CREATED {recovery}')
+          else:
+              print(f'RECOVERY_EXISTS {recovery}')
+
+          append_once(
+              root / 'README.md',
+              '<!-- YAIWES_CAPABILITY_AJV_V1 -->',
+              '''<!-- YAIWES_CAPABILITY_AJV_V1 -->
+          ## Incorporación quirúrgica — Ajv / schema-contracts
+          - **Capacidad:** `Ajv` — clasificación **C**, validación determinista JSON Schema/JTD, `llm_ratio=0.0`.
+          - **Ubicación canónica:** `Agente Yaiwes principal/definition-registry/schema-contracts/ajv/`.
+          - **Microflujo:** `Schema + data ➡️ adapter.py ➡️ proceso Node aislado ➡️ Ajv compile ➡️ validate ➡️ {valid, errors} ➡️ evidencia`.
+          - **Conexión:** únicamente `WIRING.json` + `ficha.ajv.v2.json` hacia Universal Plugin Bus v2/Ficha Contract v2; el kernel no importa Ajv directamente.
+          - **Código movido:** `lib/`, `package.json`, `tsconfig.json`; README upstream eliminado del origen; docs/benchmark/spec/scripts no fueron trasladados.
+          - **Evidencia:** MOVE `95713304ee644b053efed4c9947af75bf71fd87c`; CI `34061366845`; build + validación válida/inválida `10/10 PASS`.
+          - **Estado:** `VERIFIED_CLOSED`.
+          - **Persistencia operativa vigente:** `Readme arquitectura Yaiwes/Craxy wall bitácora stated JSON Checkpoint/`; esta nota sustituye para nuevas operaciones cualquier referencia histórica a `Crazy Wall Orquestador` sin reescribir secciones anteriores.
+          '''.strip() + '\n'
+          )
+          PY
+      - name: Verify only additive persistence changes
+        shell: bash
+        run: |
+          git diff --check
+          git diff -- Readme\ arquitectura\ Yaiwes/README.md
+          test -f 'Readme arquitectura Yaiwes/Craxy wall bitácora stated JSON Checkpoint/RECOVERY.md'
+          grep -F '<!-- YAIWES_CAPABILITY_AJV_V1 -->' 'Readme arquitectura Yaiwes/README.md'
+          grep -F '<!-- YAIWES_AJV_VERIFIED_CLOSED -->' 'Readme arquitectura Yaiwes/Craxy wall bitácora stated JSON Checkpoint/BITACORA.md'
+      - name: Commit persistence delta
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add 'Readme arquitectura Yaiwes/README.md' 'Readme arquitectura Yaiwes/Craxy wall bitácora stated JSON Checkpoint/BITACORA.md' 'Readme arquitectura Yaiwes/Craxy wall bitácora stated JSON Checkpoint/PLAN-DE-TRABAJO-COMPONENTES.md' 'Readme arquitectura Yaiwes/Craxy wall bitácora stated JSON Checkpoint/RECOVERY.md'
+          git diff --cached --quiet && exit 0
+          git commit -m 'docs(yaiwes): persist Ajv closure surgically'
+          git push origin HEAD:main
