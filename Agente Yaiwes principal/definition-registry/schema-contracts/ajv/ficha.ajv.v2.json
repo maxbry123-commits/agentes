@@ -1,0 +1,14 @@
+{
+  "artifact_id":"yaiwes.capability.ajv","version":"1.0.0","estado":"testing","contract_hash":"","tribunal_case_id":"YAIWES-AJV-001",
+  "contrato":{"rol":"validate","consume":{"datatype":{"family":"contract","type":"json_schema_and_data","version":1}},"expone":{"datatype":{"family":"contract","type":"validation_result","version":1}},"input_map":{},"output_map":{}},
+  "ejecucion":{"kind":"code","transport":"subprocess_stdio","runtime_type":"compute","entry_point":"adapter:validate_json_schema","llm_ratio":0.0,"idempotente":true},
+  "seguridad":{"sandbox":"process","permisos":[],"limites":{"timeout_ms":10000,"deadline_ms":15000}},
+  "firma":{"gpg_key_id":"PENDIENTE"},"categoria":"schema-validation","etapa":"V",
+  "repeticion":{"max":3,"condicion":"si_falla_verificacion"},"repite_en":["VALIDATE"],
+  "activacion":{"eventos":["yaiwes.contract.validation.requested"],"wake_words":[],"condicion":""},
+  "presupuesto":{"n0":{"max_tokens":1,"max_ms":10000,"max_costo_usd":0.000001}},
+  "telemetria":{"metricas":["tiempo","errores","validaciones"],"span_otel":true},
+  "evidencia":{"produce":["L1_static","L2_build","L3_runtime"],"destino":"runtime/evidence/"},
+  "failover":{"sustituible_por":[],"compensacion":"fail_closed"},"salud":{"metodo":"exec","heartbeat_interval_s":30},
+  "trazas":{"task_id_requerido":true,"trace_id_requerido":true}
+}
