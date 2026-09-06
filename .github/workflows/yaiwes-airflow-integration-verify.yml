@@ -54,26 +54,8 @@ jobs:
             apache/airflow:3.3.1-python3.12 \
             -lc '
               set -euo pipefail
-              python - <<"PY"
-from pathlib import Path
-import airflow
-p = Path(airflow.__file__).resolve()
-print("AIRFLOW_SOURCE", p)
-assert str(p).startswith("/workspace/src/"), p
-PY
+              python -c "from pathlib import Path; import airflow; p=Path(airflow.__file__).resolve(); print(\"AIRFLOW_SOURCE\", p); assert str(p).startswith(\"/workspace/src/\"), p"
               for i in $(seq 1 10); do
-                python - "$i" <<"PY"
-import sys
-from pathlib import Path
-from adapter import source_probe, dag_factory
-idx = int(sys.argv[1])
-probe = source_probe()
-assert probe["airflow_file"].startswith("/workspace/src/"), probe
-name = f"yaiwes_airflow_{idx}"
-dag = dag_factory(name, schedule=None)
-assert dag.dag_id == name, dag.dag_id
-assert dag.schedule is None
-print(f"AIRFLOW_RUNTIME_PASS_{idx}/10")
-PY
+                python -c "from adapter import source_probe, dag_factory; probe=source_probe(); assert probe[\"airflow_file\"].startswith(\"/workspace/src/\"), probe; name=\"yaiwes_airflow_${i}\"; dag=dag_factory(name, schedule=None); assert dag.dag_id == name; assert dag.schedule is None; print(\"AIRFLOW_RUNTIME_PASS_${i}/10\")"
               done
             '
