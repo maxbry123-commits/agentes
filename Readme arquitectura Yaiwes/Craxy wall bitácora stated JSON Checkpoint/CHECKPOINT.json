@@ -1,0 +1,26 @@
+{
+  "schema": "yaiwes.checkpoint/v1",
+  "updated_at": "2026-09-06T12:57:00-05:00",
+  "repository": "maxbry123-commits/agentes",
+  "scope": "Core kernel Yaiwes/",
+  "phase": "STEP_2_INTEGRATION",
+  "root_node_index": 1,
+  "root_node": "Componentes recuperados A",
+  "approved_component": "APScheduler",
+  "status": "READY_FOR_STEP_2",
+  "tasks": {
+    "rename_crazy_wall": "IN_PROGRESS",
+    "write_plan_state_checkpoint_bitacora": "IN_PROGRESS",
+    "watchdog_hourly": "PENDING_AUTOMATION",
+    "apscheduler_step_2": "READY"
+  },
+  "loop": {
+    "input_literal": true,
+    "goals_required": 12,
+    "instruction_audits": 3,
+    "refutations_required": 3,
+    "real_check_repeats_max": 10,
+    "fail_closed": true
+  },
+  "next_action": "Complete Crazy Wall rename, create watchdog, then execute APScheduler Step 2"
+}
