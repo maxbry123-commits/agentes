@@ -1,7 +1,7 @@
 {
   "contract": "tel.workflow/v3",
   "mode": "fail-closed",
-  "updated_at": "2026-09-06T13:23:00-05:00",
+  "updated_at": "2026-09-06T14:30:00-05:00",
   "director_scope": {
     "audit_source": "Core kernel Yaiwes/",
     "architecture_source": "Readme arquitectura Yaiwes/README.md",
@@ -29,14 +29,25 @@
     "wordflow",
     "workflows archivados 2026-09-04"
   ],
+  "completed_components": [
+    {
+      "root_node": "Componentes recuperados A",
+      "component": "APScheduler",
+      "classification": "B",
+      "status": "VERIFIED_CLOSED",
+      "destination": "Agente Yaiwes principal/execution-orchestration/task-classifier-scheduler/",
+      "move_commit": "8a5c87b9b8ee79acab3de31e36a5eeb85d558d80",
+      "verification_run": 34055059156,
+      "verification_repeats": 10
+    }
+  ],
   "active": {
     "root_node": "Componentes recuperados A",
-    "component": "APScheduler",
-    "step": 2,
-    "classification": "B",
-    "checkpoint": "MOVED_WIRED_REVIEW_10X_PENDING",
-    "destination": "Agente Yaiwes principal/execution-orchestration/task-classifier-scheduler/",
-    "move_commit": "8a5c87b9b8ee79acab3de31e36a5eeb85d558d80"
+    "component": "AWS-Step-Functions-DS-SDK",
+    "step": 1,
+    "classification": null,
+    "checkpoint": "PENDING_XRAY",
+    "destination": null
   },
   "watchdog": {
     "status": "ACTIVE",
