@@ -71,3 +71,13 @@ Un componente es un agente o software open source descargado. Carpetas contenedo
 - Nodo raíz activo: `Componentes recuperados A`.
 - Componente aprobado para Paso 2: `APScheduler`.
 - Estado: `READY_FOR_STEP_2`.
+
+<!-- YAIWES_BATCH5_STATUS_20260906 -->
+## Lote activo de 5 — estado verificable
+1. Ajv — **VERIFIED_CLOSED** — C — destino `definition-registry/schema-contracts/ajv/` — move `95713304...` — run `34061366845` 10× PASS.
+2. Apache-APISIX — **ACTIVE_LOOP** — B — destino `mesh-routing-collaboration/apisix-api-gateway/` — Paso 1 X-Ray cerrado; MOVE/runtime OpenResty pendientes.
+3. Apache-Airflow — **PENDING** — B — destino propuesto `execution-orchestration/dag-executor/apache-airflow/`.
+4. Argo-Workflows — **PENDING** — B — destino propuesto `execution-orchestration/dag-executor/argo-workflows/`.
+5. Azure-Durable-Functions — **PENDING** — B — destino propuesto `execution-orchestration/state-machine-executor/azure-durable-functions/`.
+
+Regla del lote: cada componente mantiene evidencia/estado independiente; el lote solo cierra `5/5 VERIFIED_CLOSED`.

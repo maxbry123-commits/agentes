@@ -54,3 +54,16 @@
 - Run final `34059002899` = `success`; `py_compile` PASS y suite de integración ejecutada **10× PASS**.
 - Veredicto: `AWS-Step-Functions-DS-SDK = VERIFIED_CLOSED`.
 - Estado/Checkpoint avanzados al siguiente componente 1×1: `Ajv` → `PENDING_XRAY`.
+
+<!-- YAIWES_AJV_VERIFIED_CLOSED -->
+## 2026-09-06 — Ajv Paso 1/2/3 VERIFIED_CLOSED
+- X-Ray del código fuente real `lib/` confirmó Ajv como capacidad **C** determinista de compilación/validación JSON Schema/JTD, sin LLM.
+- Destino arquitectónico: `Agente Yaiwes principal/definition-registry/schema-contracts/ajv/`.
+- MOVE real: commit `95713304ee644b053efed4c9947af75bf71fd87c`; GitHub compare reconoce `lib/*`, `package.json` y `tsconfig.json` como `renamed` origen→destino y README upstream como `removed`.
+- Wordflow Yaiwes añadido: `adapter.py`, `yaiwes_bridge.js`, `WIRING.json`, `ficha.ajv.v2.json`, `verify_integration.py` y README Yaiwes nuevo.
+- Cableado fail-closed: Universal Plugin Bus v2 + Ficha Contract v2; `llm_ratio=0.0`, ejecución aislada por subprocess/stdio.
+- GAP real de rendimiento: el primer CI quedó retenido en checkout completo del repo; StrategyDelta aplicado: sparse-checkout del Wordflow Ajv.
+- Verificación final: workflow commit `b69d38dc8500164849a82daa21c15d98705655b5`, run `34061366845`, job `101562375081` = SUCCESS.
+- Gates PASS: contrato estático, instalación, build Ajv 8.20.0 y validación válida/inválida `10/10` (`AJV_RUNTIME_PASS_1/10` … `10/10`).
+- Advertencias de dependencias de desarrollo obsoletas quedaron registradas como mantenimiento futuro; no produjeron fallo de build/runtime.
+- Veredicto: `Ajv = VERIFIED_CLOSED`. Siguiente componente del lote: `Apache-APISIX`.

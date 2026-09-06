@@ -1143,3 +1143,14 @@ Reglas duras: `NO STOP WHILE GAP`, `NO SCOPE ESCALATION`, un INPUT literal = un 
 - **Cableado:** `WIRING.json` + `ficha.aws_step_functions.v2.json` enlazan el Wordflow con `kernel-principal/extension-kernel/plugin-bus/`.
 - **Mejoras X-Ray post-movimiento:** comparación Choice por igualdad y defaults mutables `Chain.steps`/`Workflow.tags` eliminados.
 - **Regla:** solo código útil en runtime; README upstream, ZIP, docs y auxiliares no forman parte del Wordflow integrado.
+
+<!-- YAIWES_CAPABILITY_AJV_V1 -->
+## Incorporación quirúrgica — Ajv / schema-contracts
+- **Capacidad:** `Ajv` — clasificación **C**, validación determinista JSON Schema/JTD, `llm_ratio=0.0`.
+- **Ubicación canónica:** `Agente Yaiwes principal/definition-registry/schema-contracts/ajv/`.
+- **Microflujo:** `Schema + data ➡️ adapter.py ➡️ proceso Node aislado ➡️ Ajv compile ➡️ validate ➡️ {valid, errors} ➡️ evidencia`.
+- **Conexión:** únicamente `WIRING.json` + `ficha.ajv.v2.json` hacia Universal Plugin Bus v2/Ficha Contract v2; el kernel no importa Ajv directamente.
+- **Código movido:** `lib/`, `package.json`, `tsconfig.json`; README upstream eliminado del origen; docs/benchmark/spec/scripts no fueron trasladados.
+- **Evidencia:** MOVE `95713304ee644b053efed4c9947af75bf71fd87c`; CI `34061366845`; build + validación válida/inválida `10/10 PASS`.
+- **Estado:** `VERIFIED_CLOSED`.
+- **Persistencia operativa vigente:** `Readme arquitectura Yaiwes/Craxy wall bitácora stated JSON Checkpoint/`; esta nota sustituye para nuevas operaciones cualquier referencia histórica a `Crazy Wall Orquestador` sin reescribir secciones anteriores.
