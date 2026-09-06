@@ -67,3 +67,21 @@
 - Gates PASS: contrato estático, instalación, build Ajv 8.20.0 y validación válida/inválida `10/10` (`AJV_RUNTIME_PASS_1/10` … `10/10`).
 - Advertencias de dependencias de desarrollo obsoletas quedaron registradas como mantenimiento futuro; no produjeron fallo de build/runtime.
 - Veredicto: `Ajv = VERIFIED_CLOSED`. Siguiente componente del lote: `Apache-APISIX`.
+
+<!-- YAIWES_APISIX_VERIFIED_CLOSED -->
+## 2026-09-06 — Apache APISIX cierre verificable
+- El código movido en `ceda29c79c9a33fe054ec81e1da318b95c6d584d` vive en `Agente Yaiwes principal/mesh-routing-collaboration/apisix-api-gateway/`; provenance fija upstream Apache APISIX 3.18.0 y source tree `ddf503025af470522c0893633ec5a1a6cd5d486b`.
+- Se reconciliaron dos descripciones: el plan antiguo lo marcaba B, pero el artefacto real `WIRING.json`/Ficha/adapter y su papel de gateway modular en `mesh-routing-collaboration` demuestran clasificación **C**. Se conserva GitHub/código ejecutable como verdad canónica.
+- Primer verify `34062305744` falló. Se probaron deltas distintos de runtime/permisos/OpenResty/LuaRocks; el SHA final de reparación es `5bce9fddd39da3f4f7b2d79d1f6ab2c428e75c6d`.
+- Verificación final real: run `34062622979`, job `101565736973` = SUCCESS; static gate PASS, imagen `apache/apisix:3.18.0-debian` PASS, OpenResty PASS, APISIX 3.18.0 leído desde el código movido y `APISIX_RUNTIME_PASS_1/10` … `APISIX_RUNTIME_PASS_10/10`.
+- URL: `https://github.com/maxbry123-commits/agentes/actions/runs/34062622979`.
+- Veredicto: `Apache-APISIX = VERIFIED_CLOSED`.
+
+<!-- YAIWES_AIRFLOW_ACTIVE_GAP -->
+## 2026-09-06 — Apache Airflow ACTIVE_LOOP / GAP
+- MOVE físico real: `341ec322890e54d2ba1e817a13421821359f9a32` → `Agente Yaiwes principal/execution-orchestration/dag-executor/apache-airflow/`; clasificación B y cableado Universal Plugin Bus/Ficha v2 presentes.
+- Run reparado de workflow `34062982102`, job `101566717765`: static contract gate PASS y pull de `apache/airflow:3.3.1-python3.12` PASS, pero runtime FAIL al importar código movido: `ModuleNotFoundError: No module named 'airflow._shared.configuration'`.
+- No se reintentó idéntico delta: se añadió una reparación quirúrgica de shared runtime en `5e17050c55497f226f755a4993b348ce92366dc1` y se movieron dependencias `_shared` en `478a723b5c605150368550e043cc4d3ef82e5598`.
+- Verificación fresh sobre SHA `478a723b...`: GitHub Actions devuelve `0` runs. Por tanto **NO PASS**; `verify_final` sigue pendiente.
+- FLAG adicional observado en el diff de reparación: se incorporaron `__pycache__/*.pyc`; deben retirarse o justificarse antes del cierre para preservar higiene de fuente/runtime.
+- Estado del lote: `2/5 VERIFIED_CLOSED`; Airflow activo; Argo Workflows y Azure Durable Functions bloqueados por cola 1×1; siguiente lote de 5 no autorizado todavía.
