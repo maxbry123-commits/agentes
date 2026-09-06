@@ -20,3 +20,14 @@
 - Nuevo Wordflow contiene `apscheduler/`, `tests/`, `adapter.py`, `ficha.apscheduler.v2.json`, `WIRING.json` y README Yaiwes propio; placeholder eliminado.
 - Cableado apunta al bus central `kernel-principal/extension-kernel/plugin-bus/universal_plugin_bus_v2_integrated.py` y a `ficha_contract_v2.py`.
 - Estado fail-closed: `MOVED_WIRED_REVIEW_10X_PENDING`; APScheduler sigue en `testing` hasta las 10 pasadas X-Ray + validación E2E.
+
+## 2026-09-06 — APScheduler Paso 2/3 VERIFIED_CLOSED
+- X-Ray post-movimiento detectó que faltaba declarar dependencias runtime; se creó `requirements.runtime.txt` desde la evidencia de `pyproject.toml` recuperado. Commit: `6f10e3001ed37a34394c5770b17dbbb8a64e706c`.
+- X-Ray de contrato detectó que `adapter.py` dependía de `__file__` durante import top-level y no era seguro para la inspección por `ContractGenerator.exec`; se volvió lazy/import-safe. Commit: `2e48f4a04bbed13a83c03df8a5ed3963ab339648`.
+- Se añadió verificación Yaiwes aislada para: inspección de exports, factories sync/async, validación de ficha v2 y existencia de targets de `WIRING.json`.
+- Primer run `34054916991` expuso checkout completo demasiado pesado; se aplicó sparse checkout del Wordflow + plugin-bus.
+- Run `34054967782` compiló correctamente pero falló por contaminación del `conftest.py` upstream; el test Yaiwes fue aislado fuera del árbol upstream.
+- Run posterior reveló un fallo del loader de prueba con dataclasses; se corrigió registrando el módulo dinámico en `sys.modules`. Commit final de test: `8477e86437b76e94432a797cab9ff66e7efbb60f`.
+- Verificación final real: run `34055059156` = `success`; instalación de dependencias PASS, `py_compile` PASS y suite Yaiwes repetida 10× PASS.
+- Veredicto APScheduler: `VERIFIED_CLOSED`.
+- Próximo componente 1×1 dentro de `Componentes recuperados A`: `AWS-Step-Functions-DS-SDK` → `PENDING_XRAY`; no se inicia en este mismo ciclo.
