@@ -5,18 +5,18 @@ Objetivo final: convertir documentos/proyectos YAIWES en requisitos trazables, t
 
 ## Cola maestra 30 tareas
 
-| # | Objetivo | Tarea | Dependencia | Evidencia mínima de cierre | Estado inicial |
+| # | Objetivo | Tarea | Dependencia | Evidencia mínima de cierre | Estado |
 |---|---|---|---|---|---|
-| 01 | O02 | Reconciliar HANDOFF + README Wordflow + README arquitectura + STATE + CHECKPOINT + RECOVERY + Crazy Wall contra el objetivo real y roles actuales de agentes | O01 | rutas+SHA+cross-check | EN_CURSO |
-| 02 | O02 | Consolidar inventario de código candidato ya localizado para cola 1x1, resume/checkpoint, input_hash y estrategia distinta | 01 | repo+ruta+blob SHA+función | PENDIENTE |
-| 03 | O02 | Verificar `Loop Engineer/loop/runner.py` como candidato canónico de cola 1x1 | 02 | read-back+SHA+símbolos | PENDIENTE |
-| 04 | O02 | Verificar `Loop Engineer/loop/runcontrol.py` para pause/resume event-sourced | 02 | read-back+SHA+símbolos | PENDIENTE |
-| 05 | O02 | Verificar candidato de identidad/reinyección con checkpoint provenance | 02 | read-back+SHA+tests | PENDIENTE |
-| 06 | O02 | Verificar candidato de `input_hash + node_id + attempt + checkpoint` | 02 | read-back+SHA+tests | PENDIENTE |
-| 07 | O02 | Verificar candidato de memoria de estrategias fallidas y delta distinto | 02 | read-back+SHA+test repetición | PENDIENTE |
-| 08 | O02 | Mapear cada candidato a capa destino exacta del Wordflow/Yaiwes sin monolito | 03-07 | source→dest manifest | PENDIENTE |
-| 09 | O02 | Crear manifiesto de provenance/compatibilidad/imports/dependencias para candidatos seleccionados | 08 | manifest+SHA+decisión REUSE/COPY/PATCH/ADAPTER | PENDIENTE |
-| 10 | O03 | Copiar/reusar módulo 1x1 seleccionado por SHA al destino modular | 09 | source SHA+dest SHA/read-back | PENDIENTE |
+| 01 | O02 | Reconciliar HANDOFF + README Wordflow + README arquitectura + STATE + CHECKPOINT + RECOVERY + Crazy Wall contra el objetivo real y roles actuales de agentes | O01 | rutas+SHA+cross-check | VERIFIED_CLOSED |
+| 02 | O02 | Consolidar inventario de código candidato ya localizado para cola 1x1, resume/checkpoint, input_hash y estrategia distinta | 01 | repo+ruta+blob SHA+función | VERIFIED_CLOSED |
+| 03 | O02 | Verificar `Loop Engineer/loop/runner.py` como candidato canónico de cola 1x1 | 02 | read-back+SHA+símbolos | VERIFIED_CLOSED |
+| 04 | O02 | Verificar `Loop Engineer/loop/runcontrol.py` para pause/resume event-sourced | 02 | read-back+SHA+símbolos | VERIFIED_CLOSED |
+| 05 | O02 | Verificar candidato de identidad/reinyección con checkpoint provenance | 02 | read-back+SHA+tests/pattern | VERIFIED_CLOSED |
+| 06 | O02 | Verificar candidato de `input_hash + node_id + attempt + checkpoint` | 02 | read-back+SHA+contract | VERIFIED_CLOSED |
+| 07 | O02 | Verificar candidato de memoria de estrategias fallidas y delta distinto | 02 | read-back+SHA+repetition guard | VERIFIED_CLOSED |
+| 08 | O02 | Mapear cada candidato a capa destino exacta del Wordflow/Yaiwes sin monolito | 03-07 | source→dest manifest | VERIFIED_CLOSED |
+| 09 | O02 | Crear manifiesto de provenance/compatibilidad/imports/dependencias para candidatos seleccionados | 08 | manifest+SHA+decisión REUSE/COPY/PATCH/ADAPTER | VERIFIED_CLOSED |
+| 10 | O03 | Copiar/reusar módulo 1x1 seleccionado por SHA al destino modular | 09 | source SHA+dest SHA/read-back | EN_CURSO |
 | 11 | O03 | Copiar/reusar módulo pause/resume seleccionado por SHA | 09 | source SHA+dest SHA/read-back | PENDIENTE |
 | 12 | O03 | Copiar/reusar módulo identidad/checkpoint seleccionado por SHA | 09 | source SHA+dest SHA/read-back | PENDIENTE |
 | 13 | O03 | Copiar/reusar módulo `input_hash/node_state` seleccionado por SHA | 09 | source SHA+dest SHA/read-back | PENDIENTE |
@@ -37,6 +37,9 @@ Objetivo final: convertir documentos/proyectos YAIWES en requisitos trazables, t
 | 28 | O11 | Ejecutar tests unitarios/integración/E2E del pipeline documento→code→plugin→verify | 25-27 | logs+tests+artifacts | PENDIENTE |
 | 29 | O11 | Repetir checks reales inestables hasta 10x, verificar recovery/crash/idempotencia/no duplicate effects | 28 | stable_across_runs+recovery evidence | PENDIENTE |
 | 30 | O11 | Auditoría final Council/3 refutaciones/cross-check/verify_final; cerrar o generar siguiente lote 30 únicamente de GAPs reales restantes | 29 | VERIFIED_CLOSED o GAP/INCONCLUSIVE con evidencia | PENDIENTE |
+
+## Evidencia T02–T09
+`Crazy Wall Orquestador/CODE-CANDIDATE-MANIFEST-PLAN30.md` creado en commit `30cc51999e1fc783fcc667135edd8c446f29f9cd` con provenance source→SHA→destino→decisión.
 
 ## Reglas de ejecución por tarea
 `INPUT literal → GOALS 12/12 → prioridades → plan → cola1x1 → execute delta → verify/refute → GAP? research 10 vías/hasta 20 soluciones → StrategyDelta distinto → Council12 → auditor instrucciones×3 → 12 goals salida → 3 refutaciones → cross-check → CODA → verify_final → persistir STATE/CHECKPOINT/BITACORA/PLAN/RECOVERY`.
