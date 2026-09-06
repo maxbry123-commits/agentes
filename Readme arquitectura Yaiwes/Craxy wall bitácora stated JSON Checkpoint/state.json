@@ -1,7 +1,7 @@
 {
   "contract": "tel.workflow/v3",
   "mode": "fail-closed",
-  "updated_at": "2026-09-06T15:47:00-05:00",
+  "updated_at": "2026-09-06T16:35:49-05:00",
   "director_scope": {
     "audit_source": "Core kernel Yaiwes/",
     "architecture_source": "Readme arquitectura Yaiwes/README.md",
@@ -32,16 +32,36 @@
       "repair_run": 34058918363,
       "verification_run": 34059002899,
       "verification_repeats": 10
+    },
+    {
+      "root_node": "Componentes recuperados A",
+      "component": "Ajv",
+      "classification": "C",
+      "status": "VERIFIED_CLOSED",
+      "destination": "Agente Yaiwes principal/definition-registry/schema-contracts/ajv/",
+      "source_code_tree": "0c002b98c6d6560c7fbca0de1a1bc5573953a5ce",
+      "move_commit": "95713304ee644b053efed4c9947af75bf71fd87c",
+      "verification_workflow_commit": "b69d38dc8500164849a82daa21c15d98705655b5",
+      "verification_run": 34061366845,
+      "verification_job": 101562375081,
+      "verification_repeats": 10
     }
   ],
   "active": {
     "root_node": "Componentes recuperados A",
-    "component": "Ajv",
-    "step": 1,
-    "classification": null,
-    "checkpoint": "PENDING_XRAY",
-    "destination": null,
-    "gaps": []
+    "component": "Apache-APISIX",
+    "step": 2,
+    "classification": "B",
+    "checkpoint": "PENDING_MOVE_AND_OPENRESTY_RUNTIME_GATE",
+    "destination": "Agente Yaiwes principal/mesh-routing-collaboration/apisix-api-gateway/",
+    "gaps": ["OPENRESTY_RUNTIME_GATE_PENDING"]
+  },
+  "batch": {
+    "size": 5,
+    "components": ["Ajv", "Apache-APISIX", "Apache-Airflow", "Argo-Workflows", "Azure-Durable-Functions"],
+    "verified_closed": 1,
+    "in_progress": 1,
+    "pending": 3
   },
   "watchdog": {
     "status": "ACTIVE",
