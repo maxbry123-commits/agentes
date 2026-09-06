@@ -1,25 +1,39 @@
 from __future__ import annotations
 
 import sys
+from importlib import import_module
 from pathlib import Path
 from typing import Any
 
-_BASE = Path(__file__).resolve().parent
-if str(_BASE) not in sys.path:
-    sys.path.insert(0, str(_BASE))
 
-from apscheduler import AsyncScheduler, Scheduler, TaskDefaults  # noqa: E402
+def _ensure_component_path() -> None:
+    """Expose the vendored APScheduler package only when the adapter is invoked."""
+    module_file = globals().get("__file__")
+    if not module_file:
+        return
+
+    base = Path(module_file).resolve().parent
+    if str(base) not in sys.path:
+        sys.path.insert(0, str(base))
 
 
-def build_scheduler(*, async_mode: bool = False, **kwargs: Any) -> Scheduler | AsyncScheduler:
+def _symbols() -> tuple[type[Any], type[Any], type[Any]]:
+    _ensure_component_path()
+    module = import_module("apscheduler")
+    return module.Scheduler, module.AsyncScheduler, module.TaskDefaults
+
+
+def build_scheduler(*, async_mode: bool = False, **kwargs: Any) -> Any:
     """Create the YAIWES scheduler backend without starting it."""
-    scheduler_cls = AsyncScheduler if async_mode else Scheduler
+    scheduler, async_scheduler, _ = _symbols()
+    scheduler_cls = async_scheduler if async_mode else scheduler
     return scheduler_cls(**kwargs)
 
 
-def build_task_defaults(**kwargs: Any) -> TaskDefaults:
+def build_task_defaults(**kwargs: Any) -> Any:
     """Create validated APScheduler task defaults for the orchestration layer."""
-    return TaskDefaults(**kwargs)
+    _, _, task_defaults = _symbols()
+    return task_defaults(**kwargs)
 
 
 def capability() -> dict[str, Any]:
@@ -31,4 +45,5 @@ def capability() -> dict[str, Any]:
         "async": True,
         "side_effect_free_factory": True,
         "activation": "director_gate",
+        "contract_inspection_safe": True,
     }
