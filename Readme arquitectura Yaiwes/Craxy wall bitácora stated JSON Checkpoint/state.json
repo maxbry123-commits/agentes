@@ -1,7 +1,7 @@
 {
   "contract": "tel.workflow/v3",
   "mode": "fail-closed",
-  "updated_at": "2026-09-06T12:57:00-05:00",
+  "updated_at": "2026-09-06T13:23:00-05:00",
   "director_scope": {
     "audit_source": "Core kernel Yaiwes/",
     "architecture_source": "Readme arquitectura Yaiwes/README.md",
@@ -34,7 +34,13 @@
     "component": "APScheduler",
     "step": 2,
     "classification": "B",
-    "checkpoint": "READY_FOR_STEP_2"
+    "checkpoint": "MOVED_WIRED_REVIEW_10X_PENDING",
+    "destination": "Agente Yaiwes principal/execution-orchestration/task-classifier-scheduler/",
+    "move_commit": "8a5c87b9b8ee79acab3de31e36a5eeb85d558d80"
+  },
+  "watchdog": {
+    "status": "ACTIVE",
+    "purpose": "hourly component LOOP with state/checkpoint/bitacora persistence"
   },
   "completion_rule": "Only VERIFIED_CLOSED with route/diff/SHA/log/URL evidence",
   "gap_policy": "GAP -> RESEARCH distinct delta -> EXECUTE -> CODA -> verify_final; no stop/no escalate"
