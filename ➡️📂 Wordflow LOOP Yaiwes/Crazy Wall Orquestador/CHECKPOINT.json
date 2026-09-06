@@ -1,16 +1,22 @@
 {
-  "checkpoint_id": "WFLOOP-O01-0010",
+  "checkpoint_id": "WFLOOP-PLAN30-0012",
   "contract": "tel.workflow/v3",
   "readme_anchor": "➡️📂 Wordflow LOOP Yaiwes/➡️📂 readme wordflow loop Yaiwes.md",
-  "readme_sha": "1a38ec24570e7298e36b6ad20ee6caa5578f2239",
+  "readme_sha": "e95067810c5b4d31dd59d7349e49a1aade2ec3cb",
   "state_anchor": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/STATE.json",
-  "state_sha": "bb0d1608c2b899eccf64fa0dd52d7eb9e26ee3e9",
+  "state_sha": "ce398af57cf1226e21238a07478ac521e4179165",
   "crazy_wall_anchor": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/BITACORA-CRAZY-WALL.md",
+  "crazy_wall_sha": "fdc53d81bfc45aad757a75251428b6875ce74beb",
   "recovery_anchor": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/RECOVERY-PATCH.md",
+  "recovery_sha": "394056f75cc5f2f5add1a742f142eed2faa666d7",
   "handoff_anchor": "➡️📂 Wordflow LOOP Yaiwes/HANDOFF.md",
   "instruction_ledger": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/LEDGER-CANONICO-PARTES-1-4.md",
-  "status": "TASK1_TASK2_PASS_TASK3_O01_VERIFIED",
-  "current_node": "TASK3_O01_HOURLY_LOOP_VERIFIED",
+  "plan_30_anchor": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/PLAN-LOOP-30-TAREAS.md",
+  "plan_30_sha": "72fdb8beb80adda3e04408f2726475f1459acc49",
+  "plan_programacion_anchor": "➡️📂 Wordflow LOOP Yaiwes/PLAN-PROGRAMACION-11-OBJETIVOS-Y-AGENTES.md",
+  "plan_programacion_sha": "fda6e95055765f6f588bff319e60abcae833c4c2",
+  "status": "PLAN30_T01_RECONCILED_T02_ACTIVE",
+  "current_node": "PLAN30_T02_CODE_CANDIDATE_INVENTORY",
   "director_constitution": {
     "literal_input_no_reinterpret": true,
     "audit_after_every_output": true,
@@ -52,16 +58,26 @@
   },
   "task_3": {
     "O01": "PASS_HOURLY_CHATGPT_WATCHDOG_ACTIVE",
-    "O02": "PENDING_NEXT",
+    "O02": "IN_PROGRESS_PLAN30",
     "evidence": [
       "ChatGPT scheduled task read-back: enabled=true",
       "schedule FREQ=HOURLY",
       "timing_mode=exact_schedule",
       "timezone=America/Bogota",
-      "no old GitHub Action reactivated",
-      "no unauthorized plugin request permitted"
+      "PLAN30 commit 280baff243346ea905937f7d0679d005f054f231",
+      "PLAN30 blob 72fdb8beb80adda3e04408f2726475f1459acc49",
+      "STATE commit 6420b16cc94c98039d86aedca6e3f23a808c7ca4",
+      "Crazy Wall commit d8803340b9f605fb83233b576cf9c077295abd47"
     ]
   },
-  "next_node": "TASK3_O02_CODE_RESEARCH",
+  "plan30": {
+    "total": 30,
+    "closed": [1],
+    "in_progress": [2],
+    "pending_count": 28,
+    "next_after_current": 3,
+    "regenerate_next_30_only_after_task30_verify_final": true
+  },
+  "next_node": "PLAN30_T02_CODE_CANDIDATE_INVENTORY",
   "closure_rule": "No PASS without evidence; any failed goal/Council/refutation/cross-check returns to RESEARCH/LOOP with a different delta"
 }
