@@ -74,10 +74,12 @@ Un componente es un agente o software open source descargado. Carpetas contenedo
 
 <!-- YAIWES_BATCH5_STATUS_20260906 -->
 ## Lote activo de 5 — estado verificable
-1. Ajv — **VERIFIED_CLOSED** — C — destino `definition-registry/schema-contracts/ajv/` — move `95713304...` — run `34061366845` 10× PASS.
-2. Apache-APISIX — **ACTIVE_LOOP** — B — destino `mesh-routing-collaboration/apisix-api-gateway/` — Paso 1 X-Ray cerrado; MOVE/runtime OpenResty pendientes.
-3. Apache-Airflow — **PENDING** — B — destino propuesto `execution-orchestration/dag-executor/apache-airflow/`.
-4. Argo-Workflows — **PENDING** — B — destino propuesto `execution-orchestration/dag-executor/argo-workflows/`.
-5. Azure-Durable-Functions — **PENDING** — B — destino propuesto `execution-orchestration/state-machine-executor/azure-durable-functions/`.
+1. Ajv — **VERIFIED_CLOSED** — C — destino `Agente Yaiwes principal/definition-registry/schema-contracts/ajv/` — MOVE `95713304ee644b053efed4c9947af75bf71fd87c` — run `34061366845` 10× PASS.
+2. Apache-APISIX — **VERIFIED_CLOSED** — C — destino `Agente Yaiwes principal/mesh-routing-collaboration/apisix-api-gateway/` — MOVE `ceda29c79c9a33fe054ec81e1da318b95c6d584d` — verify/fix SHA `5bce9fddd39da3f4f7b2d79d1f6ab2c428e75c6d` — run `34062622979`, job `101565736973`, OpenResty + moved runtime `10/10` PASS. Clasificación operativa reconciliada B→C usando código/cableado real como verdad canónica.
+3. Apache-Airflow — **ACTIVE_LOOP / GAP** — B — destino `Agente Yaiwes principal/execution-orchestration/dag-executor/apache-airflow/` — MOVE `341ec322890e54d2ba1e817a13421821359f9a32` — run `34062982102`: static gate PASS, runtime FAIL (`ModuleNotFoundError: airflow._shared.configuration`). StrategyDelta distinto aplicado en `5e17050c55497f226f755a4993b348ce92366dc1` + `478a723b5c605150368550e043cc4d3ef82e5598`; **verify_final pendiente** porque no existe run sobre `478a723b...` o posterior. FLAG adicional: revisar/remover `__pycache__/*.pyc` introducidos por la reparación antes del cierre.
+4. Argo-Workflows — **PENDING** — B — destino propuesto `Agente Yaiwes principal/execution-orchestration/dag-executor/argo-workflows/`; no iniciar hasta cerrar Airflow.
+5. Azure-Durable-Functions — **PENDING** — B — destino propuesto `Agente Yaiwes principal/execution-orchestration/state-machine-executor/azure-durable-functions/`; no iniciar hasta cerrar Airflow/Argo según cola 1×1.
 
-Regla del lote: cada componente mantiene evidencia/estado independiente; el lote solo cierra `5/5 VERIFIED_CLOSED`.
+**Estado de lote:** `2/5 VERIFIED_CLOSED`. No se permite avanzar al siguiente lote de 5. Airflow mantiene el nodo activo bajo `FAIL_CLOSED_LOOP`.
+
+Regla del lote: cada componente mantiene evidencia/estado independiente; el lote solo cierra `5/5 VERIFIED_CLOSED` con ruta/diff/SHA/test/log/URL falsificable.
