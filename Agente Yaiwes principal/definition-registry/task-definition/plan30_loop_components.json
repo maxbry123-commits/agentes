@@ -1,0 +1,86 @@
+{
+  "contract": "tel.workflow/v3",
+  "schema": "../schema-contracts/loop_component_ficha.schema.json",
+  "components": [
+    {
+      "id": "loop.serial_dispatch.v1",
+      "contract": "tel.workflow/v3",
+      "capability": "deterministic.queue.1x1",
+      "source": {
+        "repo": "maxbry123-commits/Agentes-motores-Wordflow-YAIWES",
+        "path": "Loop Engineer/Loop-Engineer/loop/runner.py",
+        "sha": "daa32a5d6dfeb0d21a975b8a5b8384d68a8aa08e",
+        "decision": "COPY+ADAPTER"
+      },
+      "destination": {
+        "path": "Agente Yaiwes principal/execution-orchestration/deterministic-execution/serial_dispatch.py",
+        "sha": "77017b70239cedcce26f1df4a076272572f0927b"
+      },
+      "inputs": ["ordered tasks", "durable_done"],
+      "outputs": ["zero-or-one selected task", "dispatch_once result"],
+      "fail_closed": true,
+      "health": "select_next_task returns only first dependency-satisfied pending task",
+      "evidence": ["tests/test_plan30_loop_runtime.py::test_serial_dispatch_selects_first_runnable_and_only_once"]
+    },
+    {
+      "id": "loop.run_control.v1",
+      "contract": "tel.workflow/v3",
+      "capability": "durability.pause_resume",
+      "source": {
+        "repo": "maxbry123-commits/Agentes-motores-Wordflow-YAIWES",
+        "path": "Loop Engineer/Loop-Engineer/loop/runcontrol.py",
+        "sha": "2c6aff845c97b600d4b3851b5ee9a6e0ee23defb",
+        "decision": "ADAPTER"
+      },
+      "destination": {
+        "path": "Agente Yaiwes principal/state-events-durability/checkpoint-recovery/run_control_adapter.py",
+        "sha": "aa4f62571044d873e3969bc7f747bfc83e3047a6"
+      },
+      "inputs": ["RunControlStore", "run_id", "checkpoint"],
+      "outputs": ["RunControlResult"],
+      "fail_closed": true,
+      "health": "resume rejects non-paused or checkpoint mismatch",
+      "evidence": ["tests/test_plan30_loop_runtime.py::test_pause_resume_requires_exact_checkpoint"]
+    },
+    {
+      "id": "loop.resume_identity.v1",
+      "contract": "tel.workflow/v3",
+      "capability": "durability.literal_input_identity",
+      "source": {
+        "repo": "dta-au/elspeth",
+        "path": "src/elspeth/contracts/identity.py + audit.py",
+        "sha": "720d441336434d227c2a00caaac100db48a07d5c",
+        "decision": "ADAPTER"
+      },
+      "destination": {
+        "path": "Agente Yaiwes principal/state-events-durability/checkpoint-recovery/resume_identity.py",
+        "sha": "dc440bd180194d6cef2bf1b38b1ef1b85138ef0b"
+      },
+      "inputs": ["run_id", "node_id", "literal INPUT_BLOCK", "checkpoint_id"],
+      "outputs": ["immutable ResumeIdentity", "input_hash", "attempt"],
+      "fail_closed": true,
+      "health": "resume requires identical node_id/input_hash/checkpoint_id",
+      "evidence": ["tests/test_plan30_loop_runtime.py::test_resume_identity_preserves_literal_input_and_checkpoint"]
+    },
+    {
+      "id": "loop.strategy_delta.v1",
+      "contract": "tel.workflow/v3",
+      "capability": "governance.retry.distinct_delta",
+      "source": {
+        "repo": "Alex-v-p/indexer-core",
+        "path": "packages/rag_core/retrieval/retry/rules.py",
+        "sha": "efcfcb20f09117504b00f682ada1bfff2b04b649",
+        "decision": "ADAPTER"
+      },
+      "destination": {
+        "path": "Agente Yaiwes principal/control-governance/strategy_delta_guard.py",
+        "sha": "46efd22bd7b5ac3c22cc5ca084788d46b4b5b16b"
+      },
+      "inputs": ["strategy_id", "delta", "attempted_strategies", "failed_delta_hashes"],
+      "outputs": ["StrategyDeltaDecision"],
+      "fail_closed": true,
+      "health": "repeated strategy or failed delta_hash is rejected",
+      "evidence": ["tests/test_plan30_loop_runtime.py::test_strategy_delta_rejects_repeated_strategy_or_delta"]
+    }
+  ]
+}
