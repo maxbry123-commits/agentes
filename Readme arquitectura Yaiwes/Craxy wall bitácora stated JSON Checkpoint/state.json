@@ -1,7 +1,7 @@
 {
   "contract": "tel.workflow/v3",
   "mode": "fail-closed",
-  "updated_at": "2026-09-06T15:21:00-05:00",
+  "updated_at": "2026-09-06T15:47:00-05:00",
   "director_scope": {
     "audit_source": "Core kernel Yaiwes/",
     "architecture_source": "Readme arquitectura Yaiwes/README.md",
@@ -20,23 +20,28 @@
       "move_commit": "8a5c87b9b8ee79acab3de31e36a5eeb85d558d80",
       "verification_run": 34055059156,
       "verification_repeats": 10
+    },
+    {
+      "root_node": "Componentes recuperados A",
+      "component": "AWS-Step-Functions-DS-SDK",
+      "classification": "B",
+      "status": "VERIFIED_CLOSED",
+      "destination": "Agente Yaiwes principal/execution-orchestration/state-machine-executor/aws-step-functions-ds-sdk/",
+      "move_commit": "e7541c54575521d96a106e51e12f2a46e574eda8",
+      "repair_commit": "637eadee85c7bfcc7c05f7ae5137114dc67d09d5",
+      "repair_run": 34058918363,
+      "verification_run": 34059002899,
+      "verification_repeats": 10
     }
   ],
   "active": {
     "root_node": "Componentes recuperados A",
-    "component": "AWS-Step-Functions-DS-SDK",
-    "step": 2,
-    "classification": "B",
-    "checkpoint": "MOVED_WIRED_XRAY_GAP",
-    "destination": "Agente Yaiwes principal/execution-orchestration/state-machine-executor/aws-step-functions-ds-sdk/",
-    "move_commit": "e7541c54575521d96a106e51e12f2a46e574eda8",
-    "gaps": [
-      "identity-comparison-choice",
-      "mutable-default-workflow-tags",
-      "mutable-default-chain-steps",
-      "architecture-surgical-note-pending",
-      "verification-10x-pending"
-    ]
+    "component": "Ajv",
+    "step": 1,
+    "classification": null,
+    "checkpoint": "PENDING_XRAY",
+    "destination": null,
+    "gaps": []
   },
   "watchdog": {
     "status": "ACTIVE",
