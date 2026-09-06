@@ -1,31 +1,35 @@
 {
   "schema": "yaiwes.checkpoint/v1",
-  "updated_at": "2026-09-06T14:30:00-05:00",
+  "updated_at": "2026-09-06T15:21:00-05:00",
   "repository": "maxbry123-commits/agentes",
   "scope": "Core kernel Yaiwes/",
-  "phase": "STEP_1_NEXT_COMPONENT",
+  "phase": "STEP_2_XRAY_GAP",
   "root_node_index": 1,
   "root_node": "Componentes recuperados A",
   "completed_component": "APScheduler",
-  "status": "VERIFIED_CLOSED",
+  "status": "GAP",
   "tasks": {
     "rename_crazy_wall": "VERIFIED_CLOSED",
     "write_plan_state_checkpoint_bitacora": "VERIFIED_CLOSED",
     "watchdog_hourly": "ACTIVE",
-    "apscheduler_step_2": "VERIFIED_CLOSED"
+    "apscheduler_step_2": "VERIFIED_CLOSED",
+    "aws_step_functions_step_1": "VERIFIED_CLOSED",
+    "aws_step_functions_step_2_move": "VERIFIED_CLOSED",
+    "aws_step_functions_step_2_xray": "GAP"
   },
   "evidence": {
-    "rename_commit": "1e724bdc40f26f386490686ccd2858e32636ae42",
-    "apscheduler_move_commit": "8a5c87b9b8ee79acab3de31e36a5eeb85d558d80",
-    "adapter_fix_commit": "2e48f4a04bbed13a83c03df8a5ed3963ab339648",
-    "runtime_requirements_commit": "6f10e3001ed37a34394c5770b17dbbb8a64e706c",
-    "verification_fix_commit": "8477e86437b76e94432a797cab9ff66e7efbb60f",
-    "verification_run": 34055059156,
-    "verification_conclusion": "success",
-    "verification_repeats": 10,
-    "destination": "Agente Yaiwes principal/execution-orchestration/task-classifier-scheduler/",
-    "source_runtime_removed": "Core kernel Yaiwes/Componentes recuperados A/APScheduler/APScheduler/src",
-    "source_tests_removed": "Core kernel Yaiwes/Componentes recuperados A/APScheduler/APScheduler/tests"
+    "apscheduler_verification_run": 34055059156,
+    "aws_step_functions_classification": "B",
+    "aws_step_functions_move_commit": "e7541c54575521d96a106e51e12f2a46e574eda8",
+    "destination": "Agente Yaiwes principal/execution-orchestration/state-machine-executor/aws-step-functions-ds-sdk/",
+    "source_runtime_removed": "Core kernel Yaiwes/Componentes recuperados A/AWS-Step-Functions-DS-SDK/AWS-Step-Functions-DS-SDK/src",
+    "source_tests_removed": "Core kernel Yaiwes/Componentes recuperados A/AWS-Step-Functions-DS-SDK/AWS-Step-Functions-DS-SDK/tests",
+    "xray_findings": [
+      "State.next uses identity comparison: self.type is 'Choice'; must use equality",
+      "Workflow.__init__ uses mutable default tags=[]",
+      "Chain.__init__ uses mutable default steps=[]"
+    ],
+    "architecture_update": "PENDING_SURGICAL_EDIT"
   },
   "loop": {
     "input_literal": true,
@@ -35,6 +39,7 @@
     "real_check_repeats_max": 10,
     "fail_closed": true
   },
+  "active_component": "AWS-Step-Functions-DS-SDK",
   "next_component": "AWS-Step-Functions-DS-SDK",
-  "next_action": "Start Step 1 X-Ray on AWS-Step-Functions-DS-SDK only; classify A/B/C from source code before any move"
+  "next_action": "Continue same component only: patch X-Ray findings, surgically append architecture note without rewriting README, run build/contract/integration verification up to 10x, then close or LOOP again"
 }
