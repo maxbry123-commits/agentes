@@ -16,6 +16,12 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          filter: blob:none
+          sparse-checkout: |
+            Agente Yaiwes principal/execution-orchestration/task-classifier-scheduler
+            Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus
+          sparse-checkout-cone-mode: false
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
