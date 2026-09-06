@@ -1,9 +1,16 @@
 {
-  "schema":"yaiwes.integration-evidence/v1",
-  "component":"Apache-APISIX",
-  "classification":"C",
-  "source_version":"3.18.0",
-  "runtime":"OpenResty+LuaJIT",
-  "verification_repeats":10,
-  "status":"PENDING_CI"
+  "schema": "yaiwes.integration-evidence/v1",
+  "component": "Apache-APISIX",
+  "classification": "C",
+  "source_version": "3.18.0",
+  "runtime": "OpenResty+LuaJIT",
+  "source_tree_sha": "ddf503025af470522c0893633ec5a1a6cd5d486b",
+  "move_commit": "ceda29c79c9a33fe054ec81e1da318b95c6d584d",
+  "verification_commit": "5bce9fddd39da3f4f7b2d79d1f6ab2c428e75c6d",
+  "verification_run": 34062622979,
+  "verification_job": 101565736973,
+  "verification_repeats": 10,
+  "verification_url": "https://github.com/maxbry123-commits/agentes/actions/runs/34062622979",
+  "runtime_evidence": "APISIX_RUNTIME_PASS_1/10..10/10",
+  "status": "VERIFIED_CLOSED"
 }
