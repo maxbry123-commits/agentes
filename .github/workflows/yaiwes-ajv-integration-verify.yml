@@ -1,0 +1,53 @@
+name: YAIWES Ajv Integration Verify
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'Agente Yaiwes principal/definition-registry/schema-contracts/ajv/**'
+      - '.github/workflows/yaiwes-ajv-integration-verify.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Static contract gate
+        working-directory: Agente Yaiwes principal/definition-registry/schema-contracts/ajv
+        run: python verify_integration.py
+      - name: Install build dependencies
+        working-directory: Agente Yaiwes principal/definition-registry/schema-contracts/ajv
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Build Ajv
+        working-directory: Agente Yaiwes principal/definition-registry/schema-contracts/ajv
+        run: npm run build
+      - name: Runtime valid-invalid 10x
+        working-directory: Agente Yaiwes principal/definition-registry/schema-contracts/ajv
+        run: |
+          python - <<'PY'
+          from adapter import validate_json_schema
+          schema = {
+              'type': 'object',
+              'required': ['x'],
+              'properties': {'x': {'type': 'integer'}},
+              'additionalProperties': False,
+          }
+          for i in range(10):
+              good = validate_json_schema(schema, {'x': i})
+              bad = validate_json_schema(schema, {'x': 'bad'})
+              assert good['valid'] is True, (i, good)
+              assert bad['valid'] is False, (i, bad)
+              assert isinstance(bad['errors'], list) and bad['errors'], (i, bad)
+              print(f'AJV_RUNTIME_PASS_{i+1}/10')
+          PY
