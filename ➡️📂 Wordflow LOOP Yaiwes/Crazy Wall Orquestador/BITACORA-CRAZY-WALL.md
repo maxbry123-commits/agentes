@@ -125,3 +125,19 @@ Tarea 1 + Tarea 2 en una sola corrida de auditoría/corrección quirúrgica; des
 - Restricción preservada: no se reactivó GitHub Action antiguo y no se solicitó plugin/conector no autorizado.
 - STATE: `TASK1_TASK2_PASS_TASK3_O01_VERIFIED`; CHECKPOINT: `WFLOOP-O01-0010`.
 - Resultado: O01 PASS operativo; siguiente nodo permitido `TASK3_O02_CODE_RESEARCH`.
+
+## EVENTO CW-0011 — PLAN LOOP 30 TAREAS ACTIVADO
+- Orden literal: planificar al menos 30 tareas siguientes y ejecutar el plan en modo LOOP.
+- Plan creado: `Crazy Wall Orquestador/PLAN-LOOP-30-TAREAS.md`.
+- Commit: `280baff243346ea905937f7d0679d005f054f231`; blob: `72fdb8beb80adda3e04408f2726475f1459acc49`.
+- Primera escritura chocó con `409` por avance concurrente de `main`; se verificó que el destino seguía ausente y se reintentó sobre HEAD fresco. Segundo intento PASS; no se pisó historial.
+- STATE actualizado en commit `6420b16cc94c98039d86aedca6e3f23a808c7ca4`, blob `ce398af57cf1226e21238a07478ac521e4179165`.
+- Cola: 30 tareas, 1×1; T01 EN_CURSO; 29 pendientes; regeneración de otro lote 30 solo después de T30/verify_final y únicamente desde GAPs reales restantes.
+
+## EVENTO CW-0012 — T01 RECONCILIACIÓN DE ANCLAS / OBJETIVO / ROLES
+- Se releen y cruzan: HANDOFF, README Wordflow, README arquitectura YAIWES, STATE, CHECKPOINT, RECOVERY, Crazy Wall y `PLAN-PROGRAMACION-11-OBJETIVOS-Y-AGENTES.md`.
+- README Wordflow actual: blob `e95067810c5b4d31dd59d7349e49a1aade2ec3cb`; README arquitectura actual: blob `ca1cd008d9b81601a0b5399148dec7c27f2c8162`.
+- Plan de programación actual: blob `fda6e95055765f6f588bff319e60abcae833c4c2`; fija objetivo real documentos→tareas→code ejecutable→microkernel→plugins→tests→auditoría→E2E y roles Council/ejecución/reparación/auditoría.
+- Recovery actual: blob `394056f75cc5f2f5add1a742f142eed2faa666d7`; CHECKPOINT previo: blob `5bfa8f5d1f355972714a8a0959ba888ecc8f70b2`.
+- Resultado del cross-check: objetivo y 11 metas son compatibles; las anclas antiguas necesitan sincronizar el nuevo PLAN30/checkpoint, pero no existe contradicción arquitectónica que bloquee O02.
+- Siguiente delta permitido: actualizar CHECKPOINT/Recovery con PLAN30 y pasar a T02 inventario de código candidato.
