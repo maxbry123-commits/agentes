@@ -1,0 +1,9 @@
+{
+  "schema":"yaiwes.integration-evidence/v1",
+  "component":"Apache-APISIX",
+  "classification":"C",
+  "source_version":"3.18.0",
+  "runtime":"OpenResty+LuaJIT",
+  "verification_repeats":10,
+  "status":"PENDING_CI"
+}

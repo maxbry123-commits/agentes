@@ -1,0 +1,18 @@
+# runtime-only provenance
+source_repository: https://github.com/apache/apisix
+source_version: 3.18.0
+source_tree_sha: ddf503025af470522c0893633ec5a1a6cd5d486b
+moved_runtime:
+  - apisix/
+  - bin/
+  - utils/
+  - Makefile
+  - apisix-master-0.rockspec
+excluded_from_wordflow:
+  - README.md
+  - docs/
+  - t/
+  - benchmark/
+  - example/
+  - ci/
+  - docker/

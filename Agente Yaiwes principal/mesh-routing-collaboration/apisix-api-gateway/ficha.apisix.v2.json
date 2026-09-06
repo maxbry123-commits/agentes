@@ -1,0 +1,14 @@
+{
+  "artifact_id":"yaiwes.capability.apache_apisix","version":"1.0.0","estado":"testing","contract_hash":"","tribunal_case_id":"YAIWES-APISIX-001",
+  "contrato":{"rol":"route_gateway","consume":{"datatype":{"family":"routing","type":"api_request_and_policy","version":1}},"expone":{"datatype":{"family":"routing","type":"gateway_result","version":1}},"input_map":{},"output_map":{}},
+  "ejecucion":{"kind":"code","transport":"subprocess","runtime_type":"compute","entry_point":"adapter:version","llm_ratio":0.0,"idempotente":true},
+  "seguridad":{"sandbox":"process_container","permisos":["network_runtime"],"limites":{"timeout_ms":30000,"deadline_ms":45000}},
+  "firma":{"gpg_key_id":"PENDIENTE"},"categoria":"api-gateway-routing","etapa":"E",
+  "repeticion":{"max":3,"condicion":"si_falla_verificacion"},"repite_en":["VERIFY"],
+  "activacion":{"eventos":["yaiwes.gateway.requested"],"wake_words":[],"condicion":""},
+  "presupuesto":{"n0":{"max_tokens":1,"max_ms":30000,"max_costo_usd":0.000001}},
+  "telemetria":{"metricas":["tiempo","errores","routes","upstreams"],"span_otel":true},
+  "evidencia":{"produce":["L1_static","L2_runtime","L3_repeat"],"destino":"runtime/evidence/"},
+  "failover":{"sustituible_por":[],"compensacion":"fail_closed"},"salud":{"metodo":"exec_version","heartbeat_interval_s":30},
+  "trazas":{"task_id_requerido":true,"trace_id_requerido":true}
+}

@@ -1,0 +1,10 @@
+{
+  "artifact_id":"yaiwes.capability.apache_apisix",
+  "classification":"C",
+  "fail_closed":true,
+  "adapter":"Agente Yaiwes principal/mesh-routing-collaboration/apisix-api-gateway/adapter.py",
+  "ficha":"Agente Yaiwes principal/mesh-routing-collaboration/apisix-api-gateway/ficha.apisix.v2.json",
+  "plugin_bus":"Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus/universal_plugin_bus_v2_integrated.py",
+  "ficha_contract":"Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus/ficha_contract_v2.py",
+  "entry_point":"adapter:version"
+}
