@@ -53,22 +53,22 @@ jobs:
             -lc '
               set -euo pipefail
               export PATH="/usr/local/openresty/bin:/usr/local/openresty/luajit/bin:/usr/local/openresty/nginx/sbin:$PATH"
+              export LUA_PATH="/usr/local/apisix/deps/share/lua/5.1/?.lua;/usr/local/apisix/deps/share/lua/5.1/?/init.lua;;"
+              export LUA_CPATH="/usr/local/apisix/deps/lib64/lua/5.1/?.so;/usr/local/apisix/deps/lib/lua/5.1/?.so;;"
               id
               cd /workspace
-              ls -l ./bin/apisix
               test -x /usr/local/openresty/bin/openresty
               or_out=$(/usr/local/openresty/bin/openresty -V 2>&1 || true)
-              echo "$or_out"
               echo "$or_out" | grep -qi openresty
               test "$(grep -c "VERSION = \"3.18.0\"" /usr/local/apisix/apisix/core/version.lua)" -eq 1
               for i in $(seq 1 10); do
-                if ! out=$(bash -x ./bin/apisix version 2>&1); then
+                if ! out=$(bash ./bin/apisix version 2>&1); then
                   echo "$out"
+                  find /usr/local/apisix/deps -iname "*lyaml*" -o -iname "yaml.so" | head -20 || true
                   exit 1
                 fi
-                echo "$out"
                 echo "$out" | grep -F "3.18.0"
-                /usr/local/openresty/luajit/bin/luajit -e '\''package.path="/usr/local/apisix/?.lua;/usr/local/apisix/deps/share/lua/5.1/?.lua;/usr/local/apisix/deps/share/lua/5.1/?/init.lua;"..package.path; local v=require("apisix.core.version"); assert(v.VERSION=="3.18.0"); print(v.VERSION)'\''
+                /usr/local/openresty/luajit/bin/luajit -e '\''package.path="/usr/local/apisix/?.lua;"..package.path; local v=require("apisix.core.version"); assert(v.VERSION=="3.18.0"); print(v.VERSION)'\''
                 echo "APISIX_RUNTIME_PASS_${i}/10"
               done
             '
