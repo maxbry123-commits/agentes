@@ -1,0 +1,82 @@
+name: YAIWES Step3 Universal Plug Auditor API
+run-name: YAIWES Step3 Auditor • ${{ github.event_name }} • ${{ github.sha }}
+
+on:
+  workflow_run:
+    workflows: ["YAIWES Step3 Universal Plug Wire"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: yaiwes-step3-universal-auditor-readonly
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Verify fixed plug provenance, six slots and evidence via API
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, json, os, urllib.parse, urllib.request
+          repo=os.environ['GH_REPO']; token=os.environ['GH_TOKEN']; root='➡️📂 Wordflow LOOP Yaiwes/wordflow_loop'
+          headers={'Authorization':'Bearer '+token,'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'}
+          def obj(path):
+              u='https://api.github.com/repos/'+repo+'/contents/'+urllib.parse.quote(path,safe='/')+'?ref=main'
+              with urllib.request.urlopen(urllib.request.Request(u,headers=headers),timeout=30) as r: return json.load(r)
+          def raw(path):
+              x=obj(path); assert x['type']=='file'; return base64.b64decode(x['content']),x['sha']
+          gaps=[]
+          fixed={
+            'plugins/universal_plugin_bus_v2_integrated.py':'c017bb2c1a09c8bb738e1774d656d59340ab56d5',
+            'plugins/ficha_contract_v2.py':'b27f14b4d64f77bccf53a893c49b6f20bd58e745',
+            'registry/capability_registration.py':'d205e86d0379844162e612317b2737ed8b62ece9',
+          }
+          for rel,expected in fixed.items():
+              _,sha=raw(root+'/'+rel)
+              print(rel,'blob=',sha)
+              if sha!=expected: gaps.append(rel+':blob_mismatch')
+          registry_raw,registry_blob=raw(root+'/registry/plugin_registry.json')
+          evidence_raw,evidence_blob=raw(root+'/evidence/STEP3_UNIVERSAL_WIRING.json')
+          reg=json.loads(registry_raw); ev=json.loads(evidence_raw)
+          expected_slugs=['langgraph','temporal_python','prefect','hatchet_python','redun','loop_engineer']
+          if reg.get('active_count')!=6: gaps.append('registry_active_count')
+          rows=reg.get('registrations',[])
+          if len(rows)!=6: gaps.append('registry_rows')
+          for r in rows:
+              if r.get('status')!='ACTIVE' or r.get('health') is not True: gaps.append(r.get('slug','?')+':inactive_or_unhealthy')
+              if 'L2_build' not in r.get('evidence_levels',[]): gaps.append(r.get('slug','?')+':missing_L2')
+          if ev.get('status')!='PASS_REAL' or ev.get('registered')!=6 or ev.get('healthy')!=6: gaps.append('step3_evidence')
+          if ev.get('raw_vendor_exec_by_contract_generator') is not False: gaps.append('vendor_exec_guard')
+          for slug in expected_slugs:
+              a,a_sha=raw(root+f'/adapters/{slug}_adapter.py')
+              try: compile(a.decode('utf-8'),slug+'_adapter.py','exec')
+              except Exception as e: gaps.append(slug+':compile:'+repr(e))
+              c,c_sha=raw(root+f'/contracts/ficha.{slug}.v2.json')
+              m=json.loads(c)
+              if m.get('artifact_id')!='yaiwes.plugins.'+slug: gaps.append(slug+':artifact_id')
+              print(slug,'adapter_blob=',a_sha[:12],'ficha_blob=',c_sha[:12])
+          comp_raw,_=raw(root+'/registry/component_catalog.json'); conn_raw,_=raw(root+'/registry/connect_catalog.json')
+          if len(json.loads(comp_raw).get('components',[]))!=6: gaps.append('component_catalog_count')
+          if len(json.loads(conn_raw).get('connections',[]))!=6: gaps.append('connect_catalog_count')
+          print('registry_blob='+registry_blob)
+          print('evidence_blob='+evidence_blob)
+          print('fixed_plug_provenance=' + ('PASS' if not gaps else 'FAIL'))
+          print('registry_health_6=' + ('PASS' if not gaps else 'FAIL'))
+          print('adapter_contracts_6=' + ('PASS' if not gaps else 'FAIL'))
+          print('catalog_wiring_6=' + ('PASS' if not gaps else 'FAIL'))
+          print(f'remaining_gaps={len(gaps)}')
+          if gaps:
+              print('\n'.join(gaps)); raise SystemExit(1)
+          print('STEP3_AUDITOR=VERIFIED_CLOSED 6/6')
+          PY
