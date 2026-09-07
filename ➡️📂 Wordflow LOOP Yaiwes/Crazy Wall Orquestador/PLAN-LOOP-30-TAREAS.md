@@ -1,6 +1,6 @@
 # PLAN LOOP — 30 TAREAS — Wordflow LOOP Yaiwes
 
-Contrato: `tel.workflow/v3` · modo `FAIL_CLOSED_LOOP` · cola `1x1`.
+Contrato: `tel.workflow/v4` · modo `FAIL_CLOSED_EXECUTION_LOOP` · cola `1x1`.
 Objetivo final: convertir documentos/proyectos YAIWES en requisitos trazables, tareas de programación, código ejecutable modular integrado en el microkernel YAIWES, plugins/cableado, tests, reparación, auditoría, persistencia, recovery y evidencia E2E.
 
 ## Cola maestra 30 tareas
