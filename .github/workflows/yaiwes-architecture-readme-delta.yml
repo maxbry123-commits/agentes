@@ -9,6 +9,9 @@ on:
 permissions:
   contents: write
 
+env:
+  DELTA_B64: IyMgMjYuIEludGVncmFjaW9uZXMgVkVSSUZJRURfQ0xPU0VEIOKAlCBjb21wb25lbnRlcyAx4oCTNSDCtyAyMDI2LTA5LTA3CgpFc3RhIHNlY2Npw7NuIGVzIHVuIGRlbHRhIGFkaXRpdm87IHByZXNlcnZhIMOtbnRlZ3JhbWVudGUgbGEgYXJxdWl0ZWN0dXJhIGFudGVyaW9yLiBMb3MgY2luY28gY29tcG9uZW50ZXMgZnVlcm9uIHJldmFsaWRhZG9zIGNvbnRyYSBjw7NkaWdvIHJlYWwsIGludGVncmFkb3MgZW4gZGVzdGlub3MgbW9kdWxhcmVzIGRlIGBBZ2VudGUgWWFpd2VzIHByaW5jaXBhbC9gLCBjb25lY3RhZG9zIG1lZGlhbnRlIEZhYmxlcyAvIEZpY2hhIENvbnRyYWN0IHYyIC8gVW5pdmVyc2FsIFBsdWdpbiBCdXMgeSB2ZXJpZmljYWRvcyBkZXNwdcOpcyBkZWwgTU9WRSBmw61zaWNvIGRlc2RlIGBDb3JlIGtlcm5lbCBZYWl3ZXMvQ29tcG9uZW50ZXMgcmVjdXBlcmFkb3MgQS9gLgoKfCBDb21wb25lbnRlIHwgQS9CL0MgfCBEZXN0aW5vIGNhbsOzbmljbyB8IEZ1bmNpw7NuIGRlbnRybyBkZSBZQUlXRVMgfCBJbnRlZ3JhY2nDs24gfAp8LS0tfC0tLXwtLS18LS0tfC0tLXwKfCBBUFNjaGVkdWxlciB8IEIgfCBgZXhlY3V0aW9uLW9yY2hlc3RyYXRpb24vdGFzay1jbGFzc2lmaWVyLXNjaGVkdWxlci9gIHwgc2NoZWR1bGluZyBzeW5jL2FzeW5jLCBqb2JzLCBlamVjdXRvcmVzIHkgY29udHJvbCB0ZW1wb3JhbCB8IGFkYXB0ZXIgKyBGaWNoYSB2MiArIFdJUklORyArIGBVbml2ZXJzYWxQbHVnaW5CdXMuZW5jaHVmYXIoKWAgfAp8IEFXUy1TdGVwLUZ1bmN0aW9ucy1EUy1TREsgfCBCIHwgYGV4ZWN1dGlvbi1vcmNoZXN0cmF0aW9uL3N0YXRlLW1hY2hpbmUtZXhlY3V0b3IvYXdzLXN0ZXAtZnVuY3Rpb25zLWRzLXNkay9gIHwgY29tcG9zaWNpw7NuIGRlIFN0YXRlL0NoYWluL0dyYXBoIHkgZGVmaW5pY2lvbmVzIEFTTCB8IGFkYXB0ZXIgKyBGaWNoYSB2MiArIFdJUklORyArIGBVbml2ZXJzYWxQbHVnaW5CdXMuZW5jaHVmYXIoKWAgfAp8IEFqdiB8IEMgfCBgZGVmaW5pdGlvbi1yZWdpc3RyeS9zY2hlbWEtY29udHJhY3RzL2Fqdi9gIHwgdmFsaWRhY2nDs24gZGV0ZXJtaW5pc3RhIEpTT04gU2NoZW1hL0pURCB8IGJyaWRnZS9hZGFwdGVyICsgRmljaGEgdjIgKyBXSVJJTkcgKyBgVW5pdmVyc2FsUGx1Z2luQnVzLmVuY2h1ZmFyKClgIHwKfCBBcGFjaGUgQVBJU0lYIHwgQyB8IGBtZXNoLXJvdXRpbmctY29sbGFib3JhdGlvbi9hcGlzaXgtYXBpLWdhdGV3YXkvYCB8IEFQSSBnYXRld2F5LCByb3V0aW5nLCBwbHVnaW5zIHkgdXBzdHJlYW1zIHwgYWRhcHRlciBmYWlsLWNsb3NlZCArIEZpY2hhIHYyICsgV0lSSU5HICsgYFVuaXZlcnNhbFBsdWdpbkJ1cy5lbmNodWZhcigpYCB8CnwgQXBhY2hlIEFpcmZsb3cgfCBCIHwgYGV4ZWN1dGlvbi1vcmNoZXN0cmF0aW9uL2RhZy1leGVjdXRvci9hcGFjaGUtYWlyZmxvdy9gIHwgREFHIHJ1bnRpbWUsIHNjaGVkdWxpbmcgeSBlamVjdWNpw7NuL29ycXVlc3RhY2nDs24gZGUgdGFyZWFzIHwgYWRhcHRlciArIEZpY2hhIHYyICsgV0lSSU5HICsgYFVuaXZlcnNhbFBsdWdpbkJ1cy5lbmNodWZhcigpYCB8CgojIyMgRXZpZGVuY2lhIGRlIGNpZXJyZSBkZWwgbG90ZSAxCgotIE1PVkUvZGVkdXBsaWNhY2nDs24gZsOtc2ljYTogY29tbWl0IGBmZTI1ZmM3OGUzOGYyNGMxNGQ2NGZkNWI1MWNlMGZlYWI2NjhhMTAyYDsgbG9zIGNpbmNvIGRpcmVjdG9yaW9zIGRlIGPDs2RpZ28gcmVjdXBlcmFkbyBmdWVyb24gcmV0aXJhZG9zIGRlc3B1w6lzIGRlIHZlcmlmaWNhciBzdXMgZGVzdGlub3MuIExvcyBaSVAgZGUgcmVjdXBlcmFjacOzbiBubyBzZSBpbnRlZ3Jhcm9uIG5pIG1vdmllcm9uLgotIExpY2VuY2lhcy9OT1RJQ0UgdXBzdHJlYW0gZnVlcm9uIHByZXNlcnZhZG9zIGVuIGNhZGEgZGVzdGlubyBjdWFuZG8gY29ycmVzcG9uZMOtYS4KLSBWZXJpZmljYWNpw7NuIGNvbmp1bnRhIHBvc3QtTU9WRTogd29ya2Zsb3cgYFlBSVdFUyBGaXJzdCBGaXZlIFBsdWdpbiBCdXMgVmVyaWZ5YCwgcnVuIGAzNDA5MDk2ODQzNWAsIGBTVUNDRVNTYC4KLSBFbCBnYXRlIGNvbmp1bnRvIGVqZWN1dGEgZWwgbW9udGFqZSBkZSBsb3MgY2luY28gbWVkaWFudGUgYFVuaXZlcnNhbFBsdWdpbkJ1cy5lbmNodWZhcigpYCBkaWV6IHZlY2VzIHkgZXhpZ2UgcmVnaXN0cm8gYEFDVElWRWAsIGV2aWRlbmNpYSBMMiwgaGVhcnRiZWF0L2hlYWx0aCwgYWN0aXZhY2nDs24geSB0ZWxlbWV0csOtYS4KLSBMYXMgcHJ1ZWJhcyBydW50aW1lIGVzcGVjw61maWNhcyBwcmV2aWFzIGRlIEFQU2NoZWR1bGVyLCBBV1MgU3RlcCBGdW5jdGlvbnMsIEFqdiwgQVBJU0lYIHkgQWlyZmxvdyBzZSBjb25zZXJ2YW4gY29tbyBldmlkZW5jaWEgY29tcGxlbWVudGFyaWE7IHByZXNlbmNpYSBkZSBjYXJwZXRhIG8gRmljaGEgcG9yIHPDrSBzb2xhIG5vIGN1ZW50YSBjb21vIGNpZXJyZS4KCioqRXN0YWRvIGFycXVpdGVjdMOzbmljbyBkZWwgbG90ZToqKiBgVkVSSUZJRURfQ0xPU0VEYCBwYXJhIGNvbXBvbmVudGVzIDHigJM1LiBDdWFscXVpZXIgcmVncmVzacOzbiBwb3N0ZXJpb3IgcmVhYnJlIGVsIG5vZG8gY29ycmVzcG9uZGllbnRlIGVuIG1vZG8gZmFpbC1jbG9zZWQuCg==
+
 jobs:
   append-delta:
     runs-on: ubuntu-latest
@@ -24,32 +27,10 @@ jobs:
           MARKER='## 26. Integraciones VERIFIED_CLOSED — componentes 1–5 · 2026-09-07'
           if grep -Fq "$MARKER" "$FILE"; then
             echo 'ARCHITECTURE_DELTA_ALREADY_PRESENT'
-            exit 0
+          else
+            printf '\n' >> "$FILE"
+            printf '%s' "$DELTA_B64" | base64 -d >> "$FILE"
           fi
-          cat >> "$FILE" <<'EOF'
-
-## 26. Integraciones VERIFIED_CLOSED — componentes 1–5 · 2026-09-07
-
-Esta sección es un delta aditivo; preserva íntegramente la arquitectura anterior. Los cinco componentes fueron revalidados contra código real, integrados en destinos modulares de `Agente Yaiwes principal/`, conectados mediante Fables / Ficha Contract v2 / Universal Plugin Bus y verificados después del MOVE físico desde `Core kernel Yaiwes/Componentes recuperados A/`.
-
-| Componente | A/B/C | Destino canónico | Función dentro de YAIWES | Integración |
-|---|---|---|---|---|
-| APScheduler | B | `execution-orchestration/task-classifier-scheduler/` | scheduling sync/async, jobs, ejecutores y control temporal | adapter + Ficha v2 + WIRING + `UniversalPluginBus.enchufar()` |
-| AWS-Step-Functions-DS-SDK | B | `execution-orchestration/state-machine-executor/aws-step-functions-ds-sdk/` | composición de State/Chain/Graph y definiciones ASL | adapter + Ficha v2 + WIRING + `UniversalPluginBus.enchufar()` |
-| Ajv | C | `definition-registry/schema-contracts/ajv/` | validación determinista JSON Schema/JTD | bridge/adapter + Ficha v2 + WIRING + `UniversalPluginBus.enchufar()` |
-| Apache APISIX | C | `mesh-routing-collaboration/apisix-api-gateway/` | API gateway, routing, plugins y upstreams | adapter fail-closed + Ficha v2 + WIRING + `UniversalPluginBus.enchufar()` |
-| Apache Airflow | B | `execution-orchestration/dag-executor/apache-airflow/` | DAG runtime, scheduling y ejecución/orquestación de tareas | adapter + Ficha v2 + WIRING + `UniversalPluginBus.enchufar()` |
-
-### Evidencia de cierre del lote 1
-
-- MOVE/deduplicación física: commit `fe25fc78e38f24c14d64fd5b51ce0feab668a102`; los cinco directorios de código recuperado fueron retirados después de verificar sus destinos. Los ZIP de recuperación no se integraron ni movieron.
-- Licencias/NOTICE upstream fueron preservados en cada destino cuando correspondía.
-- Verificación conjunta post-MOVE: workflow `YAIWES First Five Plugin Bus Verify`, run `34090968435`, `SUCCESS`.
-- El gate conjunto ejecuta el montaje de los cinco mediante `UniversalPluginBus.enchufar()` diez veces y exige registro `ACTIVE`, evidencia L2, heartbeat/health, activación y telemetría.
-- Las pruebas runtime específicas previas de APScheduler, AWS Step Functions, Ajv, APISIX y Airflow se conservan como evidencia complementaria; presencia de carpeta o Ficha por sí sola no cuenta como cierre.
-
-**Estado arquitectónico del lote:** `VERIFIED_CLOSED` para componentes 1–5. Cualquier regresión posterior reabre el nodo correspondiente en modo fail-closed.
-EOF
       - name: Commit surgical README update
         shell: bash
         run: |
