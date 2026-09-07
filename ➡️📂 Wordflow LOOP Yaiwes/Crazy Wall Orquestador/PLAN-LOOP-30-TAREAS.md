@@ -42,7 +42,9 @@ Objetivo final: convertir documentos/proyectos YAIWES en requisitos trazables, t
 - T10–T15: `EVIDENCE-PLAN30-T10-T15.md` blob `f8a5db43fb0cc9e1712620c75b579229c7bad14a`.
 - T10 source `daa32a5d6dfeb0d21a975b8a5b8384d68a8aa08e` → dest `77017b70239cedcce26f1df4a076272572f0927b`.
 - Test blob `e1b1e3a4e4ca79e5dee00d5676a6038c6426bc31`, commit `3b7f0cec153ef03656f76dcd693c17fe061f7a78`, resultado registrado `5 passed in 0.06s`.
-- Evidence hash: `1c580531ccb6570c2dd8a7a396a6559c86a388c0c7c2eb6da065be5b63bf5119`.
+- T16 parcial: `EVIDENCE-PLAN30-T16-PARTIAL.md`; 4 Fichas Contract v2 materializadas y read-back PASS, pero ejecución exacta del validador canónico quedó bloqueada por resolución de red; T16 NO se cierra.
+- T16 evidence hash: `75e2ec13ccfac3d24344a30ba4cfeb438164b2d24ea737bdf46fd97e0bf9b5a6`.
+- Evidence hash previo T10–T15: `1c580531ccb6570c2dd8a7a396a6559c86a388c0c7c2eb6da065be5b63bf5119`.
 
 Cadena obligatoria: `INPUT literal → GOALS12 → prioridades → plan → cola1x1 → delta → verify/refute → GAP research10/hasta20 + StrategyDelta distinto → Council12 → auditor×3 → output12 → refutaciones×3 → cross-check → CODA → verify_final → persistencia`.
 No PASS por presencia: exigir ruta+SHA/diff+test/log/URL+evidence.
