@@ -1,0 +1,58 @@
+# Copied from skill-locked gha-download-extract.yml / FORENSIC-PASS template.
+# Surgical edits: task id, script, destination-scoped concurrency and one-shot push trigger.
+name: YAIWES LOOP5 Download Extract
+run-name: YAIWES LOOP5 Download Extract • ${{ github.event_name }} • ${{ github.sha }}
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-loop5-download-extract.yml'
+
+permissions:
+  contents: write
+
+env:
+  GIT_LFS_SKIP_SMUDGE: "1"
+  GIT_LFS_SKIP_PUSH: "1"
+  GIT_LFS_SKIP_DOWNLOAD: "1"
+  GIT_TERMINAL_PROMPT: "0"
+
+concurrency:
+  group: yaiwes-loop5-maxbry123-agentes-wordflow-loop-open-source-5
+  cancel-in-progress: false
+
+jobs:
+  download-extract:
+    name: Download + EXTRACTED_TREE 5 LOOP code roots
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - name: Checkout fresh main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 2
+          lfs: false
+      - name: Execute deterministic skill chain
+        shell: bash
+        env:
+          GIT_LFS_SKIP_SMUDGE: "1"
+          GIT_LFS_SKIP_PUSH: "1"
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          set -euo pipefail
+          git config --local filter.lfs.clean cat
+          git config --local filter.lfs.smudge cat
+          git config --local filter.lfs.process ''
+          git config --local filter.lfs.required false
+          git config --local core.compression 0
+          python3 scripts/yaiwes_loop5_download_extract.py
+      - name: Producer summary
+        if: always()
+        shell: bash
+        run: |
+          echo "skill_source=c789e5fe635e220230ffc759d86dc3bbb8e261d4"
+          echo "operation=DOWNLOAD+EXTRACTED_TREE"
+          echo "expected_components=5"
+          echo "destination=➡️📂 Wordflow LOOP Yaiwes/📂 archivos download/📂 LOOP open source 5"
