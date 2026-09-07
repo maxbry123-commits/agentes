@@ -36,5 +36,5 @@ text = path.read_text(encoding="utf-8")
 if marker in text:
     print("marker already present; no change")
 else:
-    path.write_text(text.rstrip() + block + "\n", encoding="utf-8")
+    path.write_text(text.rstrip() + block.rstrip() + "\n", encoding="utf-8")
     print("surgical append prepared")
