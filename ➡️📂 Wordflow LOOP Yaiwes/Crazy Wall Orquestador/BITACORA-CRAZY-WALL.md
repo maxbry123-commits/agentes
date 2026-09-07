@@ -96,3 +96,14 @@ Fecha: `2026-09-06T21:55:00-05:00`.
 - CHECKPOINT sincronizado: `WFLOOP-PLAN30-0016-TRACEABILITY`; commit `a88354f9fe9cdfcf402cc6f2feea4d29de9c34e5`; blob `72d59df0e141a51557dc9a3ca9e64524a31075a0`.
 - Estado de tareas no fue inflado: T01–T15 `VERIFIED_CLOSED`; T16 `EN_CURSO`; T17–T30 `PENDIENTE`; 50% PLAN30.
 - Próximo nodo permanece `PLAN30_T16_FICHA_CONTRACTS`; el nuevo trabajo documental no sustituye el verify_final pendiente.
+
+## EVENTO CW-0017 — RECONCILIACIÓN OPERATIVA v4 / T17
+Fecha: `2026-09-07T05:22:56-05:00`.
+- Contrato operativo vigente `tel.workflow/v4`; modo `FAIL_CLOSED_EXECUTION_LOOP`; exactamente 4 pasos del Director y cola `1×1`.
+- Evidencia posterior prevalece sobre snapshots históricos: PLAN/STATE/CHECKPOINT/RECOVERY demuestran T01–T16 `VERIFIED_CLOSED`, T17 `EN_CURSO`, T18–T30 `PENDIENTE`, 16/30 = 53.33%.
+- T16 no se reabre: evidencia real preservada, run `34075371938`, job `101600311787`, resultado `YAIWES_T16_CANONICAL_VERIFY=PASS 4/4`.
+- STATE blob `f2ebd5931676c7afd285438603785a723ca5d260`; CHECKPOINT blob `414a16d0b43206fbe01dcf6aa677c20dfeb79539`; PLAN blob `185986bfdd6dea4cf9e9beeb85e5c68f171e8324`; RECOVERY blob `c51d5eb026c8fd309408d342ccd973abc1caa2fa`.
+- GAP activo único del nodo: Capability Registry runtime compatible aún no demostrado; presencia de `definition-registry` no cuenta como wiring ni integración.
+- No se ejecutó wiring, copia ni generación en esta corrida; este delta corrige únicamente persistencia stale de BITÁCORA sin alterar historia previa.
+- HEAD pre-delta verificado `f71ac32b582858c9301da43328f6375a840d7938`; política `NO_FORCE_GIT` respetada.
+- Siguiente delta autorizado: `RESEARCH_REUSE` de Capability Registry runtime en fuentes autorizadas y selección de un único candidato reusable antes de cualquier wiring.
