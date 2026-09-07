@@ -1,12 +1,13 @@
 {
-  "contract":"tel.workflow/v3",
-  "project":"Wordflow LOOP Yaiwes",
-  "mode":"FAIL_CLOSED_LOOP",
-  "status":"PLAN30_T16_FICHA_V2_PARTIAL_GAP",
-  "current_node":"PLAN30_T16_FICHA_CONTRACTS",
-  "checkpoint_id":"WFLOOP-PLAN30-0014",
-  "history_previous_state_blob":"2a9719db24f280c25dc0fdd6e048470d6f50866c",
-  "project_objectives_11":[
+  "contract": "tel.workflow/v3",
+  "project": "Wordflow LOOP Yaiwes",
+  "mode": "FAIL_CLOSED_LOOP",
+  "status": "PLAN30_T16_FICHA_V2_PARTIAL_GAP",
+  "current_node": "PLAN30_T16_FICHA_CONTRACTS",
+  "checkpoint_id": "WFLOOP-PLAN30-0014",
+  "history_previous_state_blob": "2a9719db24f280c25dc0fdd6e048470d6f50866c",
+  "last_traceability_update": "2026-09-06T20:53:00-05:00",
+  "project_objectives_11": [
     "O01 Crear y mantener LOOP horario con checkpoint/STATE/Crazy Wall/recovery",
     "O02 Investigar código fuente necesario en repos autorizados y OSS cuando aplique",
     "O03 Copiar/reusar código faltante por SHA al destino sin reescribir lógica existente",
@@ -19,10 +20,163 @@
     "O10 Integrar APIs/modelos solo por secret_ref con health/budget/timeout/fallback",
     "O11 Auditoría final y tests; cierre solo con evidencia real, GAP vuelve al LOOP"
   ],
-  "objective_progress":{"O01":"VERIFIED_CLOSED","O02":"VERIFIED_CLOSED","O03":"VERIFIED_CLOSED","O04":"IN_PROGRESS_T16","O05":"PENDING","O06":"PENDING","O07":"PENDING","O08":"PENDING","O09":"PENDING","O10":"PENDING","O11":"PENDING"},
-  "loop_plan_30":{"total_tasks":30,"queue":"1x1","verified_closed":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],"in_progress":[16],"pending":[17,18,19,20,21,22,23,24,25,26,27,28,29,30],"verified_progress_percent":50},
-  "evidence":{"previous_artifact":"➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/EVIDENCE-PLAN30-T10-T15.md","t16_artifact":"➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/EVIDENCE-PLAN30-T16-PARTIAL.md","t16_evidence_hash":"75e2ec13ccfac3d24344a30ba4cfeb438164b2d24ea737bdf46fd97e0bf9b5a6","ficha_blobs":["bc885059ed0a97f73aad02572853d1b0a4f8117d","7fdb64b7a21fe51c278dcc907b09eb800f2a2770","4ce82a32faa939177dd22603f097402e9b9e6ed9","44aeb5cb48db6d42499bc940e47e912942d7fd40"],"provenance_schema_blob":"5c3aa0b42fb9737baeb1f151a933fa83cc72c27d","provenance_registry_blob":"5274c96b79a4862d4081be18b80c1c0b09d9607a","canonical_validator_commit":"37bef3a8a8f6dadca067638b8ea0c32995fc1d63","canonical_validator_blob":"b27f14b4d64f77bccf53a893c49b6f20bd58e745"},
-  "gaps_flags":["T16 previo confundía descriptor provenance con Ficha Contract v2; delta separado aplicado","Ejecución exacta del validador canónico aún pendiente por fallo de resolución de red del runtime local","T17 bloqueado hasta verify_final 4/4 de Ficha Contract v2"],
-  "governance":{"input_goals":12,"output_goals":12,"ask_consilio":12,"instruction_audits":3,"refutations":3,"research_paths_on_gap_min":10,"candidate_solutions_on_gap_max":20,"repeat_unstable_checks_max":10,"deterministic_checks_runs":1,"priority":["REUSE","COPY_MOVE","SURGICAL_PATCH","ADAPTER","GENERATE"]},
-  "closure_rule":"No PASS por presencia; GAP vuelve al LOOP con StrategyDelta distinto."
+  "objective_progress": {
+    "O01": "VERIFIED_CLOSED",
+    "O02": "VERIFIED_CLOSED",
+    "O03": "VERIFIED_CLOSED",
+    "O04": "IN_PROGRESS_T16",
+    "O05": "PENDING",
+    "O06": "PENDING",
+    "O07": "PENDING",
+    "O08": "PENDING",
+    "O09": "PENDING",
+    "O10": "PENDING",
+    "O11": "PENDING"
+  },
+  "loop_plan_30": {
+    "total_tasks": 30,
+    "queue": "1x1",
+    "verified_closed": [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],
+    "in_progress": [16],
+    "pending": [17,18,19,20,21,22,23,24,25,26,27,28,29,30],
+    "verified_progress_percent": 50
+  },
+  "task_plan": {
+    "path": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/PLAN-LOOP-30-TAREAS.md",
+    "url": "https://github.com/maxbry123-commits/agentes/blob/main/%E2%9E%A1%EF%B8%8F%F0%9F%93%82%20Wordflow%20LOOP%20Yaiwes/Crazy%20Wall%20Orquestador/PLAN-LOOP-30-TAREAS.md",
+    "blob": "f424800e8724599247011c87cafeeca0f8f0598c",
+    "current_task": {
+      "id": 16,
+      "objective": "O04",
+      "name": "Crear/ajustar Ficha/contrato de módulos integrados",
+      "status": "EN_CURSO",
+      "next_delta": "Ejecutar el validador canónico exacto Ficha Contract v2 contra 4/4 Fichas y registrar stdout/veredicto + cross-check de paths"
+    },
+    "pending_tasks": [
+      {"id":17,"objective":"O04","task":"Cablear adapters/plugins a registry"},
+      {"id":18,"objective":"O04","task":"Health/evidence hooks fail-closed"},
+      {"id":19,"objective":"O05","task":"5 pasadas docs↔arquitectura↔code↔contratos↔tests"},
+      {"id":20,"objective":"O06","task":"Contratos de tareas de agentes"},
+      {"id":21,"objective":"O07","task":"Cablear OpenCode"},
+      {"id":22,"objective":"O07","task":"Cablear OpenHands"},
+      {"id":23,"objective":"O07","task":"Cablear Claude Code + Mimo Code"},
+      {"id":24,"objective":"O07","task":"Auditores + Council12 + embudo"},
+      {"id":25,"objective":"O08","task":"HF/3 procesadores con health real"},
+      {"id":26,"objective":"O09","task":"Graphiti/Grapify/SQL/HF storage"},
+      {"id":27,"objective":"O10","task":"APIs/modelos por secret_ref"},
+      {"id":28,"objective":"O11","task":"Tests unitarios/integración/E2E"},
+      {"id":29,"objective":"O11","task":"Checks inestables hasta 10x + recovery/idempotencia"},
+      {"id":30,"objective":"O11","task":"Auditoría final + verify_final"}
+    ]
+  },
+  "component_traceability": [
+    {
+      "id": "C01",
+      "capability": "serial_dispatch_queue_1x1",
+      "source_repo": "maxbry123-commits/Agentes-motores-Wordflow-YAIWES",
+      "source_path": "Loop Engineer/Loop-Engineer/loop/runner.py",
+      "source_blob": "daa32a5d6dfeb0d21a975b8a5b8384d68a8aa08e",
+      "source_url": "https://github.com/maxbry123-commits/Agentes-motores-Wordflow-YAIWES/blob/main/Loop%20Engineer/Loop-Engineer/loop/runner.py",
+      "destination_path": "Agente Yaiwes principal/execution-orchestration/deterministic-execution/serial_dispatch.py",
+      "destination_blob": "77017b70239cedcce26f1df4a076272572f0927b",
+      "task": "T10",
+      "status": "VERIFIED_CLOSED"
+    },
+    {
+      "id": "C02",
+      "capability": "pause_resume_event_sourced",
+      "source_repo": "maxbry123-commits/Agentes-motores-Wordflow-YAIWES",
+      "source_path": "Loop Engineer/Loop-Engineer/loop/runcontrol.py",
+      "source_blob": "2c6aff845c97b600d4b3851b5ee9a6e0ee23defb",
+      "source_url": "https://github.com/maxbry123-commits/Agentes-motores-Wordflow-YAIWES/blob/main/Loop%20Engineer/Loop-Engineer/loop/runcontrol.py",
+      "destination_path": "Agente Yaiwes principal/state-events-durability/checkpoint-recovery/run_control_adapter.py",
+      "destination_blob": "aa4f62571044d873e3969bc7f747bfc83e3047a6",
+      "task": "T11",
+      "status": "VERIFIED_CLOSED"
+    },
+    {
+      "id": "C03_C04",
+      "capability": "resume_identity_input_hash_checkpoint",
+      "source_repo": "dta-au/elspeth",
+      "source_commit": "720d441336434d227c2a00caaac100db48a07d5c",
+      "source_files": [
+        {"path":"src/elspeth/contracts/identity.py","blob":"98b791e350e3a2829fb2c2977cc0fbc25beb4321","url":"https://github.com/dta-au/elspeth/blob/720d441336434d227c2a00caaac100db48a07d5c/src/elspeth/contracts/identity.py"},
+        {"path":"src/elspeth/contracts/audit.py","blob":"c89a5d9d2354ae549845aeab9a90cc3ab14f853e","url":"https://github.com/dta-au/elspeth/blob/720d441336434d227c2a00caaac100db48a07d5c/src/elspeth/contracts/audit.py"}
+      ],
+      "destination_path": "Agente Yaiwes principal/state-events-durability/checkpoint-recovery/resume_identity.py",
+      "destination_blob": "dc440bd180194d6cef2bf1b38b1ef1b85138ef0b",
+      "tasks": ["T12","T13"],
+      "status": "VERIFIED_CLOSED"
+    },
+    {
+      "id": "C05",
+      "capability": "strategy_delta_no_identical_retry",
+      "source_repo": "Alex-v-p/indexer-core",
+      "source_commit": "efcfcb20f09117504b00f682ada1bfff2b04b649",
+      "source_path": "packages/rag_core/retrieval/retry/rules.py",
+      "source_blob": "7704a6bd73d8b073df88651bbaf232f1f3dbfd6b",
+      "source_url": "https://github.com/Alex-v-p/indexer-core/blob/efcfcb20f09117504b00f682ada1bfff2b04b649/packages/rag_core/retrieval/retry/rules.py",
+      "destination_path": "Agente Yaiwes principal/control-governance/strategy_delta_guard.py",
+      "destination_blob": "46efd22bd7b5ac3c22cc5ca084788d46b4b5b16b",
+      "task": "T14",
+      "status": "VERIFIED_CLOSED"
+    },
+    {
+      "id": "TEST_T10_T15",
+      "capability": "plan30_loop_runtime_tests",
+      "path": "Agente Yaiwes principal/tests/test_plan30_loop_runtime.py",
+      "blob": "e1b1e3a4e4ca79e5dee00d5676a6038c6426bc31",
+      "commit": "3b7f0cec153ef03656f76dcd693c17fe061f7a78",
+      "result": "5 passed in 0.06s",
+      "evidence_path": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/EVIDENCE-PLAN30-T10-T15.md",
+      "evidence_blob": "f8a5db43fb0cc9e1712620c75b579229c7bad14a",
+      "status": "VERIFIED_CLOSED"
+    },
+    {
+      "id": "FICHA_VALIDATOR_V2",
+      "capability": "ficha_contract_v2_validator",
+      "source_path": "skills/research-download-chain/assets/plugin-bus/ficha_contract_v2.py",
+      "source_commit": "37bef3a8a8f6dadca067638b8ea0c32995fc1d63",
+      "source_blob": "b27f14b4d64f77bccf53a893c49b6f20bd58e745",
+      "task": "T16",
+      "status": "SOURCE_VERIFIED_EXECUTION_PENDING"
+    }
+  ],
+  "ficha_contract_v2": {
+    "serial_dispatch_blob": "bc885059ed0a97f73aad02572853d1b0a4f8117d",
+    "run_control_blob": "7fdb64b7a21fe51c278dcc907b09eb800f2a2770",
+    "resume_identity_blob": "4ce82a32faa939177dd22603f097402e9b9e6ed9",
+    "strategy_delta_blob": "44aeb5cb48db6d42499bc940e47e912942d7fd40",
+    "provenance_schema_blob": "5c3aa0b42fb9737baeb1f151a933fa83cc72c27d",
+    "provenance_registry_blob": "5274c96b79a4862d4081be18b80c1c0b09d9607a",
+    "status": "T16_IN_PROGRESS_VERIFY_FINAL_PENDING"
+  },
+  "evidence": {
+    "previous_artifact": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/EVIDENCE-PLAN30-T10-T15.md",
+    "t16_artifact": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/EVIDENCE-PLAN30-T16-PARTIAL.md",
+    "t16_evidence_hash": "75e2ec13ccfac3d24344a30ba4cfeb438164b2d24ea737bdf46fd97e0bf9b5a6",
+    "ficha_blobs": ["bc885059ed0a97f73aad02572853d1b0a4f8117d","7fdb64b7a21fe51c278dcc907b09eb800f2a2770","4ce82a32faa939177dd22603f097402e9b9e6ed9","44aeb5cb48db6d42499bc940e47e912942d7fd40"],
+    "provenance_schema_blob": "5c3aa0b42fb9737baeb1f151a933fa83cc72c27d",
+    "provenance_registry_blob": "5274c96b79a4862d4081be18b80c1c0b09d9607a",
+    "canonical_validator_commit": "37bef3a8a8f6dadca067638b8ea0c32995fc1d63",
+    "canonical_validator_blob": "b27f14b4d64f77bccf53a893c49b6f20bd58e745"
+  },
+  "gaps_flags": [
+    "T16 previo confundía descriptor provenance con Ficha Contract v2; delta separado aplicado",
+    "Ejecución exacta del validador canónico aún pendiente por fallo de resolución de red del runtime local",
+    "T17 bloqueado hasta verify_final 4/4 de Ficha Contract v2"
+  ],
+  "governance": {
+    "input_goals": 12,
+    "output_goals": 12,
+    "ask_consilio": 12,
+    "instruction_audits": 3,
+    "refutations": 3,
+    "research_paths_on_gap_min": 10,
+    "candidate_solutions_on_gap_max": 20,
+    "repeat_unstable_checks_max": 10,
+    "deterministic_checks_runs": 1,
+    "priority": ["REUSE","COPY_MOVE","SURGICAL_PATCH","ADAPTER","GENERATE"]
+  },
+  "closure_rule": "No PASS por presencia; GAP vuelve al LOOP con StrategyDelta distinto."
 }
