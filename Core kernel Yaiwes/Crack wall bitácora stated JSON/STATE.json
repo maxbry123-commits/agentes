@@ -14,25 +14,32 @@
   "historical_ledger": "Core kernel Yaiwes/Crack wall bitácora stated JSON.md",
   "rule": "historical VERIFIED_CLOSED claims require physical revalidation before acceptance",
   "components_total": 20,
-  "current_batch": [
+  "verified_closed": [
     "APScheduler",
     "AWS-Step-Functions-DS-SDK",
     "Ajv",
     "Apache-APISIX",
     "Apache-Airflow"
   ],
-  "current_boundary": "SHOW_INTEGRATION_PROPOSALS_AND_WAIT_FOR_DIRECTOR_APPROVAL",
+  "current_batch": [
+    "Argo-Workflows",
+    "Azure-Durable-Functions",
+    "BAML",
+    "Burr",
+    "Caddy"
+  ],
+  "current_boundary": "SHOW_COMPONENTS_6_10_ANALYSIS_AND_WAIT_FOR_DIRECTOR_APPROVAL",
   "status_by_component": {
-    "APScheduler": "CLOSED_UNVERIFIED_AWAITING_APPROVAL",
-    "AWS-Step-Functions-DS-SDK": "CLOSED_UNVERIFIED_AWAITING_APPROVAL",
-    "Ajv": "CLOSED_UNVERIFIED_AWAITING_APPROVAL",
-    "Apache-APISIX": "CLOSED_UNVERIFIED_AWAITING_APPROVAL",
-    "Apache-Airflow": "CLOSED_UNVERIFIED_AWAITING_APPROVAL",
-    "Argo-Workflows": "PENDING",
-    "Azure-Durable-Functions": "PENDING",
-    "BAML": "PENDING",
-    "Burr": "PENDING",
-    "Caddy": "PENDING",
+    "APScheduler": "VERIFIED_CLOSED",
+    "AWS-Step-Functions-DS-SDK": "VERIFIED_CLOSED",
+    "Ajv": "VERIFIED_CLOSED",
+    "Apache-APISIX": "VERIFIED_CLOSED",
+    "Apache-Airflow": "VERIFIED_CLOSED",
+    "Argo-Workflows": "ANALYZED_HISTORICAL_DESTINATION_FOUND_AWAITING_APPROVAL",
+    "Azure-Durable-Functions": "ANALYZED_HISTORICAL_DESTINATION_FOUND_AWAITING_APPROVAL",
+    "BAML": "ANALYZED_AWAITING_APPROVAL",
+    "Burr": "ANALYZED_AWAITING_APPROVAL",
+    "Caddy": "ANALYZED_AWAITING_APPROVAL",
     "Camunda": "PENDING",
     "Cedar": "PENDING",
     "Celery": "PENDING",
@@ -44,18 +51,43 @@
     "Coconut": "PENDING",
     "CodeUltraFeedback": "PENDING"
   },
-  "common_gaps_first_five": [
-    "upstream/original source remains physically present in Core kernel Yaiwes/Componentes recuperados A, so historical MOVE claims are not accepted as true MOVE closure",
-    "reviewed integration tests validate runtime/adapters/fichas/wiring paths but do not demonstrate UniversalPluginBus.enchufar() registration plus health/evidence for the component"
-  ],
-  "component_specific_notes": {
-    "APScheduler": "real sync/async scheduler source and adapter exist; historical Actions run 34055059156 succeeded 10x; bus registration not demonstrated",
-    "AWS-Step-Functions-DS-SDK": "real State/Graph/Workflow code and adapter exist; Actions run 34059002899 succeeded; bus registration not demonstrated",
-    "Ajv": "real JSON Schema/JTD compiler-validator source exists; Actions run 34061366845 built and validated valid/invalid cases 10x; bus registration not demonstrated",
-    "Apache-APISIX": "real OpenResty/Lua gateway source exists; Actions run 34062622979 validated APISIX 3.18.0 runtime 10x; bus registration not demonstrated",
-    "Apache-Airflow": "real DAG/scheduler source exists; Actions run 34065546339 created/probed DAG runtime 10x; bus registration and full DAG execution through YAIWES are not demonstrated"
+  "first_five_evidence": {
+    "true_move_commit": "fe25fc78e38f24c14d64fd5b51ce0feab668a102",
+    "pre_move_real_bus_run": 34090833967,
+    "post_move_real_bus_run": 34090968435,
+    "post_move_bus_result": "SUCCESS_10X",
+    "architecture_readme_blob_sha": "712fe58d6910e5aad212999acfa8672a92cb5b33",
+    "architecture_append_main_commit": "50e8061a34e56c311d19204adfc2ab3ff75594a8",
+    "architecture_append_run": 34091902593
   },
-  "approval_required_before_new_move_or_wiring": true,
+  "next_five_findings": {
+    "Argo-Workflows": {
+      "classification": "B",
+      "proposed_target": "Agente Yaiwes principal/execution-orchestration/dag-executor/argo-workflows/",
+      "note": "historical destination already exists with runtime, adapter, Ficha and WIRING; revalidate instead of duplicating"
+    },
+    "Azure-Durable-Functions": {
+      "classification": "B",
+      "proposed_target": "Agente Yaiwes principal/execution-orchestration/state-machine-executor/azure-durable-functions/",
+      "note": "historical destination already exists; Worker.Extensions.DurableTask contains substantial orchestration runtime and must be revalidated instead of duplicated"
+    },
+    "BAML": {
+      "classification": "C",
+      "proposed_target": "Agente Yaiwes principal/definition-registry/domain-specific-contracts/baml/",
+      "note": "compiler/runtime for typed LLM functions and response parsing; new integration proposal"
+    },
+    "Burr": {
+      "classification": "B",
+      "proposed_target": "Agente Yaiwes principal/execution-orchestration/state-machine-executor/burr/",
+      "note": "graph/state/application/persistence workflow framework; new integration proposal"
+    },
+    "Caddy": {
+      "classification": "C",
+      "proposed_target": "Agente Yaiwes principal/mesh-routing-collaboration/caddy-gateway/",
+      "note": "modular HTTP/TLS/config gateway runtime; new integration proposal"
+    }
+  },
+  "approval_required_before_components_6_10_move_or_wiring": true,
   "readme_architecture_rewrite_forbidden": true,
-  "next_delta": "Director reviews and approves the five integration proposals; only then execute MOVE/dedup + Universal Plugin Bus registration + verification + surgical architecture README update"
+  "next_delta": "Director reviews components 6-10 analysis; after approval revalidate Argo/Azure existing integrations and integrate BAML/Burr/Caddy without duplication"
 }
