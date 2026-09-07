@@ -1,14 +1,14 @@
 {
-  "checkpoint_id":"WFLOOP-PLAN30-0013",
+  "checkpoint_id":"WFLOOP-PLAN30-0014",
   "contract":"tel.workflow/v3",
   "mode":"FAIL_CLOSED_LOOP",
-  "history_previous_checkpoint_blob":"b475216feb63544aac9ec22ee86a1ef3fcb06b5f",
-  "status":"T10_T15_RECONCILED_T16_ACTIVE",
+  "history_previous_checkpoint_blob":"4aa6da9cacad6741501c10f222459f7364c7cb78",
+  "status":"T16_FICHA_V2_PARTIAL_GAP",
   "current_node":"PLAN30_T16_FICHA_CONTRACTS",
   "queue":"1x1",
   "plan30":{"total":30,"verified_closed":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],"in_progress":[16],"pending_count":14,"next_after_current":17,"verified_progress_percent":50},
-  "anchors_read":{"handoff_blob":"d2a5b8383082bfef4f1451ebfea857cd39908fd9","readme_wordflow_blob":"e95067810c5b4d31dd59d7349e49a1aade2ec3cb","readme_architecture_blob":"63bde3b1b4ccf495e03782f67edafabc130f48b7","state_before_blob":"ce398af57cf1226e21238a07478ac521e4179165","checkpoint_before_blob":"b475216feb63544aac9ec22ee86a1ef3fcb06b5f","recovery_before_blob":"394056f75cc5f2f5add1a742f142eed2faa666d7","bitacora_before_blob":"fdc53d81bfc45aad757a75251428b6875ce74beb","plan_before_blob":"eb8cabdf557cdb7863db516dd303d0ade93257b2"},
-  "evidence":{"artifact":"➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/EVIDENCE-PLAN30-T10-T15.md","artifact_blob":"f8a5db43fb0cc9e1712620c75b579229c7bad14a","serial_dispatch_path":"Agente Yaiwes principal/execution-orchestration/deterministic-execution/serial_dispatch.py","serial_dispatch_blob":"77017b70239cedcce26f1df4a076272572f0927b","source_blob":"daa32a5d6dfeb0d21a975b8a5b8384d68a8aa08e","tests_path":"Agente Yaiwes principal/tests/test_plan30_loop_runtime.py","tests_blob":"e1b1e3a4e4ca79e5dee00d5676a6038c6426bc31","tests_commit":"3b7f0cec153ef03656f76dcd693c17fe061f7a78","recorded_result":"5 passed in 0.06s","evidence_hash":"1c580531ccb6570c2dd8a7a396a6559c86a388c0c7c2eb6da065be5b63bf5119"},
-  "fail_closed_notes":["T10 y test hicieron read-back y coinciden con evidence artifact","No afirmar ejecución nueva de tests en esta corrida","T17 bloqueado hasta verify_final propio de T16"],
+  "evidence":{"artifact":"➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/EVIDENCE-PLAN30-T16-PARTIAL.md","evidence_hash":"75e2ec13ccfac3d24344a30ba4cfeb438164b2d24ea737bdf46fd97e0bf9b5a6","ficha_blobs":{"serial_dispatch":"bc885059ed0a97f73aad02572853d1b0a4f8117d","run_control":"7fdb64b7a21fe51c278dcc907b09eb800f2a2770","resume_identity":"4ce82a32faa939177dd22603f097402e9b9e6ed9","strategy_delta":"44aeb5cb48db6d42499bc940e47e912942d7fd40"},"descriptor_schema_blob":"5c3aa0b42fb9737baeb1f151a933fa83cc72c27d","descriptor_registry_blob":"5274c96b79a4862d4081be18b80c1c0b09d9607a","canonical_validator_commit":"37bef3a8a8f6dadca067638b8ea0c32995fc1d63","canonical_validator_blob":"b27f14b4d64f77bccf53a893c49b6f20bd58e745"},
+  "checks":{"github_readback_4_of_4":"PASS","visible_v2_invariants_local_4_of_4":"PASS","canonical_validator_exact_execution":"BLOCKED_NETWORK_RESOLUTION"},
+  "fail_closed_notes":["Descriptor provenance no sustituye Ficha Contract v2","T16 permanece EN_CURSO hasta ejecución exacta del validador y verify_final","T17 bloqueado"],
   "next_node":"PLAN30_T16_FICHA_CONTRACTS"
 }
