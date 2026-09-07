@@ -1,22 +1,28 @@
 # ➡️📂 README arquitectura Wordflow LOOP Yaiwes
 
-Contrato: `tel.workflow/v3`  
-Modo: `FAIL_CLOSED_LOOP`  
+Contrato histórico de este documento: `tel.workflow/v3`  
+Modo histórico: `FAIL_CLOSED_LOOP`  
+**Método operativo vigente para nuevas ejecuciones:** `tel.workflow/v4` / `FAIL_CLOSED_EXECUTION_LOOP`  
 Arquitectura: modular, determinista por defecto, no monolítica.  
-Estado: `ACTIVE_LOOP / PLAN30_T16_FICHA_CONTRACTS`  
-Progreso verificado: `15/30 = 50%`.
+Estado registrado por este snapshot: `ACTIVE_LOOP / PLAN30_T16_FICHA_CONTRACTS`  
+Progreso registrado por este snapshot: `15/30 = 50%`.
+
+> **Capa metodológica v4:** este README conserva estado/arquitectura histórica y no se usa para degradar evidencia posterior. Antes de ejecutar cualquier nodo nuevo, leer `GUIA-MAESTRA-EJECUCION-LOOP-V4-WORDFLOW-YAIWES.md`, luego reconciliar STATE/CHECKPOINT/PLAN/RECOVERY contra HEAD/evidencia real. La guía replica el **método de trabajo** auditado en UI YAIWES; no replica su proyecto, backlog ni arquitectura.
 
 ## 1. Fuentes de verdad / orden de lectura
 1. `HANDOFF.md`.
-2. Este README arquitectura actual.
-3. README histórico `➡️📂 readme wordflow loop Yaiwes.md` — ledger literal/recuperación.
-4. `Crazy Wall Orquestador/TRAZABILIDAD-PROYECTO-WORDFLOW-YAIWES.md` — X-Ray source→SHA→destino→evidencia + 5 pasadas chat.
-5. `STATE.json`.
-6. `CHECKPOINT.json`.
-7. `RECOVERY-PATCH.md`.
-8. `BITACORA-CRAZY-WALL.md`.
-9. `PLAN-LOOP-30-TAREAS.md`.
-10. evidencia exacta del nodo activo.
+2. `GUIA-MAESTRA-EJECUCION-LOOP-V4-WORDFLOW-YAIWES.md` — contrato operativo v4 para nuevas ejecuciones.
+3. Este README arquitectura actual/histórico.
+4. README histórico `➡️📂 readme wordflow loop Yaiwes.md` — ledger literal/recuperación.
+5. `Crazy Wall Orquestador/TRAZABILIDAD-PROYECTO-WORDFLOW-YAIWES.md` — X-Ray source→SHA→destino→evidencia + 5 pasadas chat.
+6. `STATE.json`.
+7. `CHECKPOINT.json`.
+8. `RECOVERY-PATCH.md`.
+9. `BITACORA-CRAZY-WALL.md`.
+10. `PLAN-LOOP-30-TAREAS.md`.
+11. evidencia exacta del nodo activo.
+
+Persistencia operativa más reciente del repositorio también puede vivir en `Readme arquitectura Yaiwes/Craxy wall bitácora stated JSON Checkpoint/`; el agente debe resolver cuál ancla está vigente leyendo HEAD y evidencia, no por antigüedad aparente.
 
 Divergencia entre anclas = `GAP`; reconciliar antes de mutar.
 
@@ -119,7 +125,7 @@ Separación obligatoria: `contracts/ adapters/ plugins/ registry/ loader/ guards
 - PluginBus dinámico no se declara seguro/integrado hasta aislamiento/guardas/tests.
 
 ## 7. Objetivos O01–O11
-| Objetivo | Definición | Estado |
+| Objetivo | Definición | Estado del snapshot histórico |
 |---|---|---|
 | O01 | LOOP/watchdog + checkpoint/STATE/Crazy Wall/recovery | VERIFIED_CLOSED |
 | O02 | investigación de código fuente | VERIFIED_CLOSED |
@@ -133,8 +139,10 @@ Separación obligatoria: `contracts/ adapters/ plugins/ registry/ loader/ guards
 | O10 | APIs/modelos secret_ref | PENDING |
 | O11 | tests/auditoría/E2E | PENDING |
 
+> Estos estados no deben usarse sin reconciliación fresca: `estado real > snapshot documental > memoria/inferencia`.
+
 ## 8. Plan T01→T30
-T01–T15 `VERIFIED_CLOSED`; T16 `EN_CURSO`; T17–T30 `PENDIENTE`.
+Snapshot histórico: T01–T15 `VERIFIED_CLOSED`; T16 `EN_CURSO`; T17–T30 `PENDIENTE`.
 
 T16: Ficha Contract v2 4 capacidades.  
 T17: adapters/plugins→registry.  
@@ -176,7 +184,7 @@ Fichas:
 - resume_identity `4ce82a32faa939177dd22603f097402e9b9e6ed9`
 - strategy_delta `44aeb5cb48db6d42499bc940e47e912942d7fd40`
 
-GAP: falta ejecución exacta del validador 4/4 + stdout/veredicto + path cross-check; T17 bloqueado hasta cierre.
+GAP registrado por este snapshot: falta ejecución exacta del validador 4/4 + stdout/veredicto + path cross-check; T17 bloqueado hasta cierre. **Antes de actuar, v4 obliga a comprobar evidencia posterior y no repetir trabajo ya cerrado.**
 
 ## 11. Agentes / Council
 - OpenCode: writer/executor.
@@ -208,7 +216,7 @@ Antes de avanzar responder con evidencia:
 4. ¿sigo plan/objetivo?
 5. ¿verify/refute de lo realizado pasó?
 
-Si se pierde rumbo: reconstruir contexto desde `HANDOFF + README + STATE + CHECKPOINT + RECOVERY + BITACORA` y retomar último checkpoint válido.
+Si se pierde rumbo: reconstruir contexto desde `HANDOFF + README + STATE + CHECKPOINT + RECOVERY + BITACORA + guía v4 + HEAD real` y retomar último checkpoint válido.
 
 ## 14. Persistencia
 Cada cambio real reconcilia según alcance:
@@ -222,3 +230,19 @@ Solo `VERIFIED_CLOSED` cuando exista:
 `documento → requisito → task contract → engine/agente → código → repair → Ficha/plugin/registry → ejecución real → auditoría → test independiente → STATE/CHECKPOINT/evidence → output`.
 
 Si falta evidencia: `GAP/INCONCLUSIVE`, nunca falso PASS.
+
+---
+
+## 16. Cableado del método operativo v4
+
+Guía canónica de método:
+
+`➡️📂 Wordflow LOOP Yaiwes/GUIA-MAESTRA-EJECUCION-LOOP-V4-WORDFLOW-YAIWES.md`
+
+Origen auditado:
+
+`maxbry123-commits/frontend` → `UI YAIWES/readme arquitectura UI YAIWES/GUIA-MAESTRA-EJECUCION-LOOP-SOL-UI-YAIWES.md` → blob `7aa569945037a228f36eeed1747b7557b1adc5b6`.
+
+Read-back inicial de la guía Wordflow: blob `d54bf5e2158ff8d926fc95246ea2fc7d94c5ff5a`.
+
+La guía v4 gobierna **cómo trabajar**; este README gobierna **qué arquitectura/objetivos tiene Wordflow**. Ninguna regla de UI YAIWES se convierte automáticamente en requisito funcional de Wordflow. Ante conflicto metodológico, manda la instrucción literal v4 del Director; ante conflicto de estado, manda el repo/evidencia real.
