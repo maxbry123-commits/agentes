@@ -1,5 +1,17 @@
 # PLAN DE TRABAJO — COMPONENTES YAIWES
 
+## Método de ejecución vigente
+
+Para **nuevas operaciones** de este plan, el método de trabajo obligatorio es `tel.workflow/v4` / `FAIL_CLOSED_EXECUTION_LOOP`, definido en:
+
+`➡️📂 Wordflow LOOP Yaiwes/GUIA-MAESTRA-EJECUCION-LOOP-V4-WORDFLOW-YAIWES.md`
+
+Provenance: método adaptado desde `maxbry123-commits/frontend` → `UI YAIWES/readme arquitectura UI YAIWES/GUIA-MAESTRA-EJECUCION-LOOP-SOL-UI-YAIWES.md`, blob fuente `7aa569945037a228f36eeed1747b7557b1adc5b6`.
+
+Esta vinculación **no cambia ni reconcilia por sí sola** los estados de componentes de este archivo. Los registros v3 siguientes se conservan como historial/snapshot de su ciclo original; el agente que continúe debe leer repo/HEAD/evidencia real y reconciliar cualquier staleness antes de mutar.
+
+Cadena v4 de ejecución: `STATE_READ → HEAD_CHECK → RESEARCH_REUSE → PLAN_1×1 → EXECUTE_DELTA → VALIDATE → VERIFY_REAL → JUDGE → PERSIST → NEXT`.
+
 ## Alcance fijo
 Destino de auditoría: `Core kernel Yaiwes/`.
 Integración destino: estructura canónica bajo `Agente Yaiwes principal/`, determinada siempre leyendo `Readme arquitectura Yaiwes/README.md` antes de mover código.
@@ -80,6 +92,6 @@ Un componente es un agente o software open source descargado. Carpetas contenedo
 4. Argo-Workflows — **PENDING** — B — destino propuesto `Agente Yaiwes principal/execution-orchestration/dag-executor/argo-workflows/`; no iniciar hasta cerrar Airflow.
 5. Azure-Durable-Functions — **PENDING** — B — destino propuesto `Agente Yaiwes principal/execution-orchestration/state-machine-executor/azure-durable-functions/`; no iniciar hasta cerrar Airflow/Argo según cola 1×1.
 
-**Estado de lote:** `2/5 VERIFIED_CLOSED`. No se permite avanzar al siguiente lote de 5. Airflow mantiene el nodo activo bajo `FAIL_CLOSED_LOOP`.
+**Estado de lote:** `2/5 VERIFIED_CLOSED`. No se permite avanzar al siguiente lote de 5. Airflow mantiene el nodo activo bajo el snapshot histórico registrado en este archivo; antes de continuarlo, v4 obliga a reconciliar con HEAD/STATE/evidencia fresca.
 
 Regla del lote: cada componente mantiene evidencia/estado independiente; el lote solo cierra `5/5 VERIFIED_CLOSED` con ruta/diff/SHA/test/log/URL falsificable.
