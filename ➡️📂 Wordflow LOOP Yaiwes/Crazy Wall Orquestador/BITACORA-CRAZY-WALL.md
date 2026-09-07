@@ -40,3 +40,47 @@ Historial anterior recuperable por blob `fdc53d81bfc45aad757a75251428b6875ce74be
 
 ## CROSS-CHECK / CODA
 PRELUDE/CODA persistido como `WFLOOP-PLAN30-0014`. STATE/CHECKPOINT/PLAN/RECOVERY/BITACORA reconciliados con evidencia T16 parcial. Estado global `ACTIVE_LOOP`.
+
+## EVENTO CW-0015 — TRAZABILIDAD DE COMPONENTES + COLA PENDIENTE
+Fecha de actualización: `2026-09-06T20:53:00-05:00`.
+Contrato `tel.workflow/v3`; modo `FAIL_CLOSED_LOOP`; no cambia el cierre previo: T01–T15 `VERIFIED_CLOSED`, T16 `EN_CURSO`, progreso verificado `50%`.
+
+### Componentes seleccionados / reutilizados
+1. **Serial dispatch / cola 1×1** — origen `maxbry123-commits/Agentes-motores-Wordflow-YAIWES/Loop Engineer/Loop-Engineer/loop/runner.py`; blob origen `daa32a5d6dfeb0d21a975b8a5b8384d68a8aa08e`; URL `https://github.com/maxbry123-commits/Agentes-motores-Wordflow-YAIWES/blob/main/Loop%20Engineer/Loop-Engineer/loop/runner.py`; destino `Agente Yaiwes principal/execution-orchestration/deterministic-execution/serial_dispatch.py`; blob destino `77017b70239cedcce26f1df4a076272572f0927b`; estado `VERIFIED_CLOSED` por T10.
+2. **Pause/resume event-sourced** — origen `maxbry123-commits/Agentes-motores-Wordflow-YAIWES/Loop Engineer/Loop-Engineer/loop/runcontrol.py`; blob origen `2c6aff845c97b600d4b3851b5ee9a6e0ee23defb`; URL `https://github.com/maxbry123-commits/Agentes-motores-Wordflow-YAIWES/blob/main/Loop%20Engineer/Loop-Engineer/loop/runcontrol.py`; destino `Agente Yaiwes principal/state-events-durability/checkpoint-recovery/run_control_adapter.py`; blob destino `aa4f62571044d873e3969bc7f747bfc83e3047a6`; estado `VERIFIED_CLOSED` por T11.
+3. **Identidad/reinyección + input_hash/checkpoint** — patrones fuente `dta-au/elspeth/src/elspeth/contracts/identity.py` blob `98b791e350e3a2829fb2c2977cc0fbc25beb4321` y `src/elspeth/contracts/audit.py` blob `c89a5d9d2354ae549845aeab9a90cc3ab14f853e`, commit `720d441336434d227c2a00caaac100db48a07d5c`; URLs `https://github.com/dta-au/elspeth/blob/720d441336434d227c2a00caaac100db48a07d5c/src/elspeth/contracts/identity.py` y `https://github.com/dta-au/elspeth/blob/720d441336434d227c2a00caaac100db48a07d5c/src/elspeth/contracts/audit.py`; destino YAIWES `resume_identity.py`; blob destino `dc440bd180194d6cef2bf1b38b1ef1b85138ef0b`; T12/T13 `VERIFIED_CLOSED`.
+4. **StrategyDelta / impedir retry idéntico** — patrón fuente `Alex-v-p/indexer-core/packages/rag_core/retrieval/retry/rules.py`; commit `efcfcb20f09117504b00f682ada1bfff2b04b649`; blob origen `7704a6bd73d8b073df88651bbaf232f1f3dbfd6b`; URL `https://github.com/Alex-v-p/indexer-core/blob/efcfcb20f09117504b00f682ada1bfff2b04b649/packages/rag_core/retrieval/retry/rules.py`; destino `Agente Yaiwes principal/control-governance/strategy_delta_guard.py`; blob destino `46efd22bd7b5ac3c22cc5ca084788d46b4b5b16b`; T14 `VERIFIED_CLOSED`.
+5. **Test de integración del lote T10–T15** — destino `Agente Yaiwes principal/tests/test_plan30_loop_runtime.py`; blob `e1b1e3a4e4ca79e5dee00d5676a6038c6426bc31`; commit `3b7f0cec153ef03656f76dcd693c17fe061f7a78`; evidencia registrada: `5 passed in 0.06s`; artifact `EVIDENCE-PLAN30-T10-T15.md` blob `f8a5db43fb0cc9e1712620c75b579229c7bad14a`.
+
+### Ficha Contract v2 / T16
+6. **Validador canónico Ficha Contract v2** — fuente `skills/research-download-chain/assets/plugin-bus/ficha_contract_v2.py`; commit `37bef3a8a8f6dadca067638b8ea0c32995fc1d63`; blob `b27f14b4d64f77bccf53a893c49b6f20bd58e745`; estado `SOURCE_VERIFIED / EXECUTION_PENDING`.
+7. Ficha `serial_dispatch`: `Agente Yaiwes principal/execution-orchestration/deterministic-execution/ficha.serial_dispatch.v2.json`; blob `bc885059ed0a97f73aad02572853d1b0a4f8117d`.
+8. Ficha `run_control`: `Agente Yaiwes principal/state-events-durability/checkpoint-recovery/ficha.run_control.v2.json`; blob `7fdb64b7a21fe51c278dcc907b09eb800f2a2770`.
+9. Ficha `resume_identity`: `Agente Yaiwes principal/state-events-durability/checkpoint-recovery/ficha.resume_identity.v2.json`; blob `4ce82a32faa939177dd22603f097402e9b9e6ed9`.
+10. Ficha `strategy_delta`: `Agente Yaiwes principal/control-governance/ficha.strategy_delta.v2.json`; blob `44aeb5cb48db6d42499bc940e47e912942d7fd40`.
+11. Descriptor provenance schema blob `5c3aa0b42fb9737baeb1f151a933fa83cc72c27d`; registry blob `5274c96b79a4862d4081be18b80c1c0b09d9607a`.
+
+### Objetivos canónicos O01–O11
+O01 LOOP/watchdog persistente; O02 investigación de código; O03 copy/reuse por SHA; O04 Ficha→adapter/plugin→registry→health→evidence; O05 verificación documental 5 pasadas; O06 contratos de tareas de agentes; O07 agentes de programación/council; O08 HF/3 procesadores; O09 Graphiti/Grapify/SQL/HF storage; O10 APIs/modelos por `secret_ref`; O11 tests/auditoría/cierre E2E.
+Estado: O01–O03 `VERIFIED_CLOSED`; O04 `IN_PROGRESS_T16`; O05–O11 `PENDING`.
+
+### Cola pendiente PLAN30
+- T16 `EN_CURSO`: ejecutar el validador canónico exacto contra las 4 Fichas, registrar stdout/veredicto y cross-check de paths.
+- T17: cablear adapters/plugins al registry.
+- T18: health/evidence hooks fail-closed.
+- T19: 5 pasadas docs↔arquitectura↔code↔contratos↔tests.
+- T20: contratos de tareas de agentes.
+- T21: cablear OpenCode.
+- T22: cablear OpenHands.
+- T23: cablear Claude Code + Mimo Code.
+- T24: auditores + Council12 + embudo.
+- T25: HF/3 procesadores con health real.
+- T26: Graphiti/Grapify/SQL/HF storage.
+- T27: APIs/modelos por `secret_ref`.
+- T28: tests unitarios/integración/E2E.
+- T29: checks inestables hasta 10× + recovery/idempotencia.
+- T30: auditoría final + `verify_final`.
+
+Plan canónico / enlace de tareas: `https://github.com/maxbry123-commits/agentes/blob/main/%E2%9E%A1%EF%B8%8F%F0%9F%93%82%20Wordflow%20LOOP%20Yaiwes/Crazy%20Wall%20Orquestador/PLAN-LOOP-30-TAREAS.md`.
+Próximo nodo 1×1: `PLAN30_T16_FICHA_CONTRACTS`.
+Estado global al registrar este evento: `ACTIVE_LOOP`; no se declara T16 cerrada sin ejecución exacta del validador canónico.
