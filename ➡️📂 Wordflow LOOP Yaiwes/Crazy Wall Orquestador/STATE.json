@@ -1,155 +1,28 @@
 {
-  "contract": "tel.workflow/v3",
-  "project": "Wordflow LOOP Yaiwes",
-  "canonical_readme": "➡️📂 Wordflow LOOP Yaiwes/➡️📂 readme wordflow loop Yaiwes.md",
-  "canonical_readme_sha": "1a38ec24570e7298e36b6ad20ee6caa5578f2239",
-  "instruction_ledger": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/LEDGER-CANONICO-PARTES-1-4.md",
-  "task_1_output": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/TAREA-1-SALIDA-1-ARQUITECTURA-CAPAS.md",
-  "task_1_output_commit": "84e6b661d4f2efe9c35fdc2facc6ec148054a41d",
-  "annex_plan": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/ANEXO-01-PLAN-CAPAS-FUENTES-RECOVERY.md",
-  "annex_plan_sha": "98bf143bf7f28ec447317e2e0c8a42ecbc06232e",
-  "xray_audit_historical": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/AUDITORIA-XRAY-PLAN-5-PASADAS.md",
-  "xray_audit_current": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/AUDITORIA-XRAY-CORRECCION-1A1.md",
-  "crazy_wall": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/BITACORA-CRAZY-WALL.md",
-  "checkpoint": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/CHECKPOINT.json",
-  "checkpoint_id": "WFLOOP-PLAN30-0011",
-  "recovery_patch": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/RECOVERY-PATCH.md",
-  "recovery_patch_sha": "50868f28a0dcd953d609e78660114262f42aaa81",
-  "handoff": "➡️📂 Wordflow LOOP Yaiwes/HANDOFF.md",
-  "handoff_sha": "d2a5b8383082bfef4f1451ebfea857cd39908fd9",
-  "mode": "FAIL_CLOSED_LOOP",
-  "status": "TASK1_PLAN30_ACTIVE_TASK2_EXECUTION_STARTED",
-  "current_node": "PLAN30_T01_RECONCILIATION",
-  "canonical_layer_numbering": {
-    "source": "README_CANONICAL",
-    "range": "0-24",
-    "nodes": 25,
-    "annex_numbering": "CANONICAL_0_24_RECONCILED",
-    "recovery_numbering": "CANONICAL_0_24_RECONCILED"
-  },
-  "constitution": {
-    "version": "DIRECTOR-CONSTITUTION-2026-09-05-CODA",
-    "literal_input_rule": "NEW_DIRECTOR_INPUT_MUST_BE_READ_LITERAL_NO_REINTERPRET",
-    "mandatory_read_update_before_continue": ["HANDOFF.md", "README_WORDFLOW", "STATE.json", "CHECKPOINT.json", "RECOVERY-PATCH.md", "BITACORA-CRAZY-WALL.md"],
-    "file_creation_policy": "NO_NEW_NOTES_OUTSIDE_CRAZY_WALL_OR_CANONICAL_README; CHECKPOINT/RECOVERY_ANNEXES_ONLY_WHEN_EXPLICITLY_REQUIRED",
-    "all_artifacts_must_be_wired": true,
-    "one_instruction_one_node": true,
-    "queue": "1x1",
-    "no_scope_escalation": true,
-    "no_stop_while_gap": true,
-    "max_recurrences_per_node": 100,
-    "project_objectives_11": [
-      "O01 Crear y mantener LOOP horario con checkpoint/STATE/Crazy Wall/recovery",
-      "O02 Investigar código fuente necesario en repos autorizados y OSS cuando aplique",
-      "O03 Copiar/reusar código faltante por SHA al destino sin reescribir lógica existente",
-      "O04 Cablear plugins mediante Ficha/contrato→adapter/plugin→registry→health→evidence",
-      "O05 Ejecutar verificación documental 5 pasadas y análisis de GAPs/integración de tareas",
-      "O06 Crear lista de tareas para agentes con ID/objetivo/contexto/rutas/dependencias/LOC/tests/evidence",
-      "O07 Integrar y espejar agentes de programación con engine bindings/adapters y mismo contrato",
-      "O08 Conectar repositorios con Hugging Face/3 procesadores con health y prueba real",
-      "O09 Integrar Graphiti/Grapify/SQL/HF storage mediante contratos separados",
-      "O10 Integrar APIs/modelos solo por secret_ref con health/budget/timeout/fallback",
-      "O11 Auditoría final y tests; cierre solo con evidencia real, GAP vuelve al LOOP"
-    ],
-    "input_goals_12": [
-      "¿Cuál es el objetivo literal?", "¿Cuál es el INPUT y su hash?", "¿Cuál es el alcance exacto?", "¿Cuál repo/rama/ruta/versión aplica?", "¿Qué restricciones aplican?", "¿Qué autorización existe?", "¿Qué dependencias son obligatorias?", "¿Qué fuentes reales existen?", "¿Qué evidencia es admisible?", "¿Cuáles son las pre/postcondiciones?", "¿Cuál es formato/destino de salida?", "¿Cada instrucción quedó compilada como nodo?"
-    ],
-    "output_goals_12": [
-      "¿Ejecuté exactamente el contrato?", "¿Preservé literal y trazabilidad?", "¿Los artefactos son válidos?", "¿Las pruebas son reproducibles?", "¿Crucé chat/docs/archivos/código/logs?", "¿Resolví contradicciones?", "¿Cerré sin supuestos?", "¿Registré URL/versión/SHA/run_id?", "¿El ledger permanece íntegro?", "¿Reparé y reverifiqué cada GAP?", "¿Cumplí formato e instrucciones?", "¿12/12 + zero_gaps + verify_final permiten cierre?"
-    ],
-    "post_output_goals": {
-      "anti_hallucination_5": ["¿Afirmé algo sin evidencia?", "¿Inventé archivo/ruta/API/estado?", "¿Confundí plan con implementación?", "¿Usé memoria donde debía leer fuente?", "¿Declaré PASS sin check falsificable?"],
-      "anti_omission_5": ["¿Omití una instrucción?", "¿Omití un nodo?", "¿Omití una dependencia?", "¿Omití evidencia?", "¿Omití recovery/checkpoint?"],
-      "plan_alignment_5": ["¿Sigo el orden literal?", "¿Mantengo cola 1x1?", "¿El delta pertenece al nodo?", "¿Evité escalar alcance?", "¿El siguiente paso coincide con DAG/plan?"],
-      "objective_focus_5": ["¿El trabajo aporta a uno de los 11 objetivos?", "¿Está identificado cuál?", "¿Evité desviar la prioridad?", "¿El estado real está registrado?", "¿Evité avanzar dejando ese objetivo con GAP?"]
-    },
-    "document_audit_goals_12": [
-      "¿Leí documentos reales?", "¿Usé la versión correcta?", "¿Extraje requisitos completos?", "¿Cada requisito tiene ID?", "¿Está en arquitectura?", "¿Está en código?", "¿Existen contrato/schema/DSL/DAG?", "¿Existen Sheriff/Validator/Verifier?", "¿Existen Sentinel/Supervisor/Judge/Guardian?", "¿STATE/CHECKPOINT/RECOVERY/CrazyWall coinciden?", "¿Qué falta?", "¿La evidencia permite PASS o exige GAP?"
-    ],
-    "ask_consilio_12": ["¿Qué afirmo?", "¿Qué evidencia lo demuestra?", "¿Qué podría demostrar que estoy equivocado?", "¿Estoy mirando la fuente correcta?", "¿La ruta/versión coincide?", "¿Existe realmente?", "¿Hay otra explicación?", "¿Qué dependencia falta?", "¿Puedo reproducirlo?", "¿El resultado contradice algo?", "¿Qué GAP permanece?", "¿Qué evidencia permite cerrar?"],
-    "coda_goals_6": [
-      "C01 ¿La recurrencia conserva exactamente INPUT literal, contrato, nodo y objetivo original sin deriva?",
-      "C02 ¿Si falla auditoría quedaron persistidos GAP, checkpoint, evidencia del fallo y estrategia/delta fallido?",
-      "C03 ¿El nuevo intento vuelve a RESEARCH con solución/delta distinto sin escalar alcance ni saltar nodo?",
-      "C04 ¿CODA consolida solo después de 56 GOALS/checks + 12 Consil + 3 refutaciones + cross-check en PASS?",
-      "C05 ¿verify_final usa checks reales independientes de CODA?",
-      "C06 ¿Si verify_final falla retorna CLOSED_UNVERIFIED/INCONCLUSIVE y reactiva persistencia/LOOP en vez de declarar terminado?"
-    ],
-    "audit_after_every_output": true,
-    "coda_loop_rule": {
-      "prelude": ["INPUT_LITERAL", "literal_sha256", "contract_sha256", "node_id", "goal_lock", "checkpoint"],
-      "recurrent_block": "SAME_NODE_PLUS_FIXED_PRELUDE_REINJECTION",
-      "audit_gate": ["56_GOALS_CHECKS", "12_ASK_CONSIL", "3_REFUTATIONS", "GLOBAL_CROSS_CHECK", "C01_C06"],
-      "on_fail": {"verdict": "GAP", "persist": ["failure_evidence", "checkpoint", "failed_strategy", "delta_sha256"], "restart": "RESEARCH", "require_distinct_delta": true, "no_scope_escalation": true, "no_node_advance": true},
-      "on_pass": {"next": "CODA", "then": "VERIFY_FINAL_INDEPENDENT"},
-      "verify_final_fail": {"verdict": "CLOSED_UNVERIFIED_OR_INCONCLUSIVE", "action": "REACTIVATE_LOOP_PERSISTENCE"},
-      "openmythos_mapping": "PRELUDE→RECURRENT_BLOCK_xT→CODA; checkpoint/GAP/research retry are Yaiwes operational adaptation"
-    },
-    "pipeline": ["SHERIFF", "VALIDATOR", "SIMULATE", "RESEARCH", "RANK", "EXECUTE", "SENTINEL", "VERIFY", "SUPERVISOR", "JUDGE", "GUARDIAN", "CODA"],
-    "research_funnel": {"steps": ["chat_historial", "codigo_oficial", "comunidad", "filtrar", "deduplicar", "rankear_url_fecha"], "minimum_solution_paths_on_gap": 10, "candidate_target": 20, "priority": ["codigo_oficial", "skills", "chat_historial", "comunidad"], "insufficient_evidence_if_no_real_url": true},
-    "repeat_check": {"max_runs": 10, "deterministic_pure_check_runs": 1, "purpose": "detectar_flakiness_real_no_fabricar_evidencia", "require_stable_across_runs_for_repeated_real_checks": true},
-    "final_verification": {"requires_real_falsifiable_check": true, "no_checks": "INCONCLUSIVE", "all_pass": "VERIFIED_CLOSED", "any_fail": "CLOSED_UNVERIFIED"}
-  },
-  "instruction_chain": {"goals_input_output": 12, "post_output_goals_checks": 56, "ask_consilio": 12, "coda_goals": 6, "read_input_literal_no_interpret": true, "priorities": true, "plan": true, "queue_mode": "1x1", "verify_refute": true, "alternatives_on_fail": 20, "research_solution_paths": 10, "instruction_audit_passes": 3, "refutations": 3, "global_cross_check": true, "checklist_output": true},
-  "parts": {
-    "parte_1": "PENDING_IMPLEMENTATION_LITERAL_INPUT_VERIFIED",
-    "parte_2": "READY_INPUT014_MAPPED_TO_ARCHIVO_DOWNLOAD_1",
-    "parte_3": "PENDING_IMPLEMENTATION_APPROVED_CANONICAL_RECORD",
-    "parte_4": "PENDING_IMPLEMENTATION_LITERAL_APPROVAL_CANONICAL_MAP"
-  },
-  "task_1_2_validation": {
-    "task_1": "PASS_DOCUMENTAL_LAYER_MAP_0_24",
-    "task_2": "PASS_FIVE_PASS_CROSS_CHECK",
-    "passes": {"P1_LITERAL_PARTS_1_4": "PASS_CANONICAL_EVIDENCE", "P2_ARCHITECTURE_LAYER_MAP": "PASS_25_OF_25", "P3_CHAT_A_B_UOOS": "PASS_CONTRACT_ALIGNMENT", "P4_PLUGIN_DEPLOY_SECURITY": "PASS_GATES_PRESERVED", "P5_ANCHORS_RECOVERY_STATE": "PASS_AFTER_ANNEX_RECOVERY_DELTA"},
-    "refutations": 3,
-    "instruction_audit_passes": 3,
-    "annex_delta_commit": "c9711aaa858de57ccf5e938fa89f4f970c34e7d3",
-    "recovery_delta_commit": "5490c497ed1f90891be7cde7d9d7772f2dd7a735",
-    "remaining_documentary_numbering_gaps": 0
-  },
-  "task_authorization": {"task_1": true, "task_2": true, "task_3": true, "task_4": false, "task_4_reason": "NO_CANONICAL_TASK4_REGISTERED"},
-  "objective_progress": {
-    "O01": "PASS_HOURLY_CHATGPT_WATCHDOG_ACTIVE",
-    "O02": "IN_PROGRESS_PLAN30_T01",
-    "O03": "PENDING",
-    "O04": "PENDING",
-    "O05": "PENDING",
-    "O06": "PENDING",
-    "O07": "PENDING",
-    "O08": "PENDING",
-    "O09": "PENDING",
-    "O10": "PENDING",
-    "O11": "PENDING"
-  },
-  "observed_gaps": {
-    "GAP_RUNTIME_PATHS": "Current main tree does not contain extensions/wordflow or goal_lock.py despite architecture README declaring those historical runtime paths; classify as source/current-tree divergence until alternate source is located",
-    "GAP_CONCURRENT_WRITER_409": "Initial PLAN-LOOP-30-TAREAS create collided with concurrent branch advancement; verified target absent and retried on fresh HEAD successfully"
-  },
-  "o01_evidence": {
-    "scheduler": "ChatGPT scheduled task",
-    "schedule": "FREQ=HOURLY",
-    "timing_mode": "exact_schedule",
-    "timezone": "America/Bogota",
-    "enabled": true,
-    "verification": "automation state read-back confirmed enabled before STATE mutation",
-    "plugin_requests": "FORBIDDEN_UNLESS_DIRECTOR_AUTHORIZES"
-  },
-  "loop_plan_30": {
-    "path": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/PLAN-LOOP-30-TAREAS.md",
-    "commit": "280baff243346ea905937f7d0679d005f054f231",
-    "blob_sha": "72fdb8beb80adda3e04408f2726475f1459acc49",
-    "total_tasks": 30,
-    "queue": "1x1",
-    "closed": 0,
-    "in_progress": [1],
-    "pending": 29,
-    "current_task": "01_RECONCILIAR_ANCLAS_OBJETIVO_REAL_ROLES_AGENTES",
-    "next_task": "02_CONSOLIDAR_INVENTARIO_CODE_CANDIDATO",
-    "regenerate_rule": "After task 30 verify_final, if project still has evidence-backed GAPs, generate next batch of 30 only from remaining real GAPs"
-  },
-  "evidence_policy": "No DONE/INTEGRATED without real evidence_hash, source path/URL/SHA and verification result",
-  "secrets_policy": "API keys are references only; never stored in README, STATE, logs or source",
-  "plugin_policy": "Only already-authorized/available tools may be used; no connector/plugin access request unless Director explicitly authorizes",
-  "hourly_loop": "ACTIVE_CHATGPT_AUTOMATION_HOURLY",
-  "next_state": "PLAN30_T01_RECONCILIATION"
+  "contract":"tel.workflow/v3",
+  "project":"Wordflow LOOP Yaiwes",
+  "mode":"FAIL_CLOSED_LOOP",
+  "status":"PLAN30_T10_T15_RECONCILED_T16_ACTIVE",
+  "current_node":"PLAN30_T16_FICHA_CONTRACTS",
+  "checkpoint_id":"WFLOOP-PLAN30-0013",
+  "history_previous_state_blob":"ce398af57cf1226e21238a07478ac521e4179165",
+  "project_objectives_11":[
+    "O01 Crear y mantener LOOP horario con checkpoint/STATE/Crazy Wall/recovery",
+    "O02 Investigar código fuente necesario en repos autorizados y OSS cuando aplique",
+    "O03 Copiar/reusar código faltante por SHA al destino sin reescribir lógica existente",
+    "O04 Cablear plugins mediante Ficha/contrato→adapter/plugin→registry→health→evidence",
+    "O05 Ejecutar verificación documental 5 pasadas y análisis de GAPs/integración de tareas",
+    "O06 Crear lista de tareas para agentes con ID/objetivo/contexto/rutas/dependencias/LOC/tests/evidence",
+    "O07 Integrar y espejar agentes de programación con engine bindings/adapters y mismo contrato",
+    "O08 Conectar repositorios con Hugging Face/3 procesadores con health y prueba real",
+    "O09 Integrar Graphiti/Grapify/SQL/HF storage mediante contratos separados",
+    "O10 Integrar APIs/modelos solo por secret_ref con health/budget/timeout/fallback",
+    "O11 Auditoría final y tests; cierre solo con evidencia real, GAP vuelve al LOOP"
+  ],
+  "objective_progress":{"O01":"VERIFIED_CLOSED","O02":"VERIFIED_CLOSED","O03":"VERIFIED_CLOSED","O04":"IN_PROGRESS_T16","O05":"PENDING","O06":"PENDING","O07":"PENDING","O08":"PENDING","O09":"PENDING","O10":"PENDING","O11":"PENDING"},
+  "loop_plan_30":{"total_tasks":30,"queue":"1x1","verified_closed":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],"in_progress":[16],"pending":[17,18,19,20,21,22,23,24,25,26,27,28,29,30],"verified_progress_percent":50},
+  "evidence":{"artifact":"➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/EVIDENCE-PLAN30-T10-T15.md","artifact_blob":"f8a5db43fb0cc9e1712620c75b579229c7bad14a","t10_source_blob":"daa32a5d6dfeb0d21a975b8a5b8384d68a8aa08e","t10_dest_blob":"77017b70239cedcce26f1df4a076272572f0927b","test_blob":"e1b1e3a4e4ca79e5dee00d5676a6038c6426bc31","test_commit":"3b7f0cec153ef03656f76dcd693c17fe061f7a78","recorded_result":"5 passed in 0.06s","evidence_hash":"1c580531ccb6570c2dd8a7a396a6559c86a388c0c7c2eb6da065be5b63bf5119"},
+  "gaps_flags":["HANDOFF conserva estado histórico atrasado","No hubo test nuevo en esta reconciliación; cierre T10-T15 usa evidencia previa + read-back de blobs"],
+  "governance":{"input_goals":12,"output_goals":12,"ask_consilio":12,"instruction_audits":3,"refutations":3,"research_paths_on_gap_min":10,"candidate_solutions_on_gap_max":20,"repeat_unstable_checks_max":10,"deterministic_checks_runs":1,"priority":["REUSE","COPY_MOVE","SURGICAL_PATCH","ADAPTER","GENERATE"]},
+  "closure_rule":"No PASS por presencia; GAP vuelve al LOOP con StrategyDelta distinto."
 }
