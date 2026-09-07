@@ -1,11 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "yaiwes://schema/loop-component-ficha/v1",
-  "title": "YAIWES Loop Component Ficha",
+  "$id": "yaiwes://schema/loop-component-provenance/v1",
+  "title": "YAIWES Loop Component Provenance Descriptor",
+  "description": "Provenance descriptor for PLAN30 components. ficha_path MUST point to the actual Ficha Contract v2 JSON; this schema does not replace Ficha Contract v2.",
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "id", "contract", "capability", "source", "destination",
+    "id", "contract", "capability", "source", "destination", "ficha_path",
     "inputs", "outputs", "fail_closed", "health", "evidence"
   ],
   "properties": {
@@ -32,6 +33,7 @@
         "sha": {"type": "string", "minLength": 7}
       }
     },
+    "ficha_path": {"type": "string", "pattern": "^Agente Yaiwes principal/.+ficha\\..+\\.v2\\.json$"},
     "inputs": {"type": "array", "items": {"type": "string"}, "minItems": 1},
     "outputs": {"type": "array", "items": {"type": "string"}, "minItems": 1},
     "fail_closed": {"type": "boolean", "const": true},
