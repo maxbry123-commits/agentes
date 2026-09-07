@@ -1,0 +1,50 @@
+name: YAIWES First Five Plugin Bus Verify
+
+on:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-first-five-plugin-bus-verify.yml'
+      - 'Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus/**'
+      - 'Agente Yaiwes principal/execution-orchestration/task-classifier-scheduler/**'
+      - 'Agente Yaiwes principal/execution-orchestration/state-machine-executor/aws-step-functions-ds-sdk/**'
+      - 'Agente Yaiwes principal/definition-registry/schema-contracts/ajv/**'
+      - 'Agente Yaiwes principal/mesh-routing-collaboration/apisix-api-gateway/**'
+      - 'Agente Yaiwes principal/execution-orchestration/dag-executor/apache-airflow/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          filter: blob:none
+          sparse-checkout: |
+            Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus
+            Agente Yaiwes principal/execution-orchestration/task-classifier-scheduler
+            Agente Yaiwes principal/execution-orchestration/state-machine-executor/aws-step-functions-ds-sdk
+            Agente Yaiwes principal/definition-registry/schema-contracts/ajv
+            Agente Yaiwes principal/mesh-routing-collaboration/apisix-api-gateway
+            Agente Yaiwes principal/execution-orchestration/dag-executor/apache-airflow
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pytest
+        run: python -m pip install pytest
+      - name: Compile universal bus integration test
+        run: |
+          python -m py_compile \
+            'Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus/universal_plugin_bus_v2_integrated.py' \
+            'Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus/verification/test_yaiwes_first_five_mounts.py'
+      - name: Mount all five through UniversalPluginBus ten times
+        run: |
+          for i in $(seq 1 10); do
+            echo "FIRST_FIVE_PLUGIN_BUS_PASS_${i}/10"
+            python -m pytest -q \
+              'Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus/verification/test_yaiwes_first_five_mounts.py'
+          done
