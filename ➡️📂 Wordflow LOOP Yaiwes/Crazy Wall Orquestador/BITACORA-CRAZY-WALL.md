@@ -84,3 +84,15 @@ Estado: O01–O03 `VERIFIED_CLOSED`; O04 `IN_PROGRESS_T16`; O05–O11 `PENDING`.
 Plan canónico / enlace de tareas: `https://github.com/maxbry123-commits/agentes/blob/main/%E2%9E%A1%EF%B8%8F%F0%9F%93%82%20Wordflow%20LOOP%20Yaiwes/Crazy%20Wall%20Orquestador/PLAN-LOOP-30-TAREAS.md`.
 Próximo nodo 1×1: `PLAN30_T16_FICHA_CONTRACTS`.
 Estado global al registrar este evento: `ACTIVE_LOOP`; no se declara T16 cerrada sin ejecución exacta del validador canónico.
+
+## EVENTO CW-0016 — TRAZABILIDAD FORENSE TOTAL + README ARQUITECTURA + HANDOFF
+Fecha: `2026-09-06T21:55:00-05:00`.
+- Se corrigió el GAP de CW-0015: la trazabilidad ya no se limita a componentes seleccionados; incluye T01→T30 y candidatos `SELECTED / REFERENCE / REJECTED` con repo/ruta/commit/blob/URL/destino/decisión/evidencia.
+- Ledger nuevo: `Crazy Wall Orquestador/TRAZABILIDAD-PROYECTO-WORDFLOW-YAIWES.md`; commit `64e2c3875a6e30ca9332028dffe89c2c01952116`.
+- Incluye C01–C05, Ficha v2, dependencias investigadas de Loop Engineer, candidatos adicionales Elspeth y Supreme-Agent, fuentes revisadas sin selección y roles/agentes T21–T24.
+- README arquitectónico actual creado sin destruir el README histórico: `➡️📂 README arquitectura Wordflow LOOP Yaiwes.md`; commit `02022e8e1e4856f41f358c290a889f7c527c8df3`.
+- HANDOFF actualizado desde estado constitucional histórico a continuidad real PLAN30/T16: commit `fd73c1e17678c8a613cbbab5e8741419bc134fb3`; blob `454ea0bb099d428ae4213dbb2be91c41cd32e088`.
+- STATE sincronizado: commit `3d6b354210bea1ae43a37a7d0ebe97763f8720b2`; blob `7b713ba042ecde42029e9b053a01003292ee34ae`.
+- CHECKPOINT sincronizado: `WFLOOP-PLAN30-0016-TRACEABILITY`; commit `a88354f9fe9cdfcf402cc6f2feea4d29de9c34e5`; blob `72d59df0e141a51557dc9a3ca9e64524a31075a0`.
+- Estado de tareas no fue inflado: T01–T15 `VERIFIED_CLOSED`; T16 `EN_CURSO`; T17–T30 `PENDIENTE`; 50% PLAN30.
+- Próximo nodo permanece `PLAN30_T16_FICHA_CONTRACTS`; el nuevo trabajo documental no sustituye el verify_final pendiente.
