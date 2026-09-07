@@ -17,8 +17,14 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
+        with:
+          filter: blob:none
+          sparse-checkout: |
+            claude-mcp-b
+          sparse-checkout-cone-mode: true
 
       - name: Install Hugging Face CLI
         run: |
