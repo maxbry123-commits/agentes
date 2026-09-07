@@ -10,11 +10,21 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: claude-mcp-b-ci
+  cancel-in-progress: true
+
 jobs:
   validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
+        with:
+          filter: blob:none
+          sparse-checkout: |
+            claude-mcp-b
+          sparse-checkout-cone-mode: true
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
