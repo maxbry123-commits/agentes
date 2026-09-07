@@ -1,14 +1,24 @@
 {
-  "checkpoint_id":"WFLOOP-PLAN30-0014",
+  "checkpoint_id":"WFLOOP-PLAN30-0016-TRACEABILITY",
   "contract":"tel.workflow/v3",
   "mode":"FAIL_CLOSED_LOOP",
-  "history_previous_checkpoint_blob":"4aa6da9cacad6741501c10f222459f7364c7cb78",
-  "status":"T16_FICHA_V2_PARTIAL_GAP",
+  "history_previous_checkpoint_blob":"d2fe3a8d08e3ba2453bd65c8e36d0055492e09db",
+  "status":"T16_FICHA_V2_PARTIAL_GAP_TRACEABILITY_SYNCED",
   "current_node":"PLAN30_T16_FICHA_CONTRACTS",
   "queue":"1x1",
   "plan30":{"total":30,"verified_closed":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],"in_progress":[16],"pending_count":14,"next_after_current":17,"verified_progress_percent":50},
+  "documentation_checkpoint":{
+    "traceability_path":"➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/TRAZABILIDAD-PROYECTO-WORDFLOW-YAIWES.md",
+    "traceability_commit":"64e2c3875a6e30ca9332028dffe89c2c01952116",
+    "architecture_readme_path":"➡️📂 Wordflow LOOP Yaiwes/➡️📂 README arquitectura Wordflow LOOP Yaiwes.md",
+    "architecture_readme_commit":"02022e8e1e4856f41f358c290a889f7c527c8df3",
+    "handoff_path":"➡️📂 Wordflow LOOP Yaiwes/HANDOFF.md",
+    "handoff_commit":"fd73c1e17678c8a613cbbab5e8741419bc134fb3",
+    "historic_readme_path":"➡️📂 Wordflow LOOP Yaiwes/➡️📂 readme wordflow loop Yaiwes.md",
+    "historic_readme_blob":"e95067810c5b4d31dd59d7349e49a1aade2ec3cb"
+  },
   "evidence":{"artifact":"➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/EVIDENCE-PLAN30-T16-PARTIAL.md","evidence_hash":"75e2ec13ccfac3d24344a30ba4cfeb438164b2d24ea737bdf46fd97e0bf9b5a6","ficha_blobs":{"serial_dispatch":"bc885059ed0a97f73aad02572853d1b0a4f8117d","run_control":"7fdb64b7a21fe51c278dcc907b09eb800f2a2770","resume_identity":"4ce82a32faa939177dd22603f097402e9b9e6ed9","strategy_delta":"44aeb5cb48db6d42499bc940e47e912942d7fd40"},"descriptor_schema_blob":"5c3aa0b42fb9737baeb1f151a933fa83cc72c27d","descriptor_registry_blob":"5274c96b79a4862d4081be18b80c1c0b09d9607a","canonical_validator_commit":"37bef3a8a8f6dadca067638b8ea0c32995fc1d63","canonical_validator_blob":"b27f14b4d64f77bccf53a893c49b6f20bd58e745"},
-  "checks":{"github_readback_4_of_4":"PASS","visible_v2_invariants_local_4_of_4":"PASS","canonical_validator_exact_execution":"BLOCKED_NETWORK_RESOLUTION"},
-  "fail_closed_notes":["Descriptor provenance no sustituye Ficha Contract v2","T16 permanece EN_CURSO hasta ejecución exacta del validador y verify_final","T17 bloqueado"],
+  "checks":{"github_readback_4_of_4":"PASS","visible_v2_invariants_local_4_of_4":"PASS","canonical_validator_exact_execution":"BLOCKED_NETWORK_RESOLUTION","traceability_T01_T30":"SYNCED","architecture_readme_current":"CREATED","handoff_current":"UPDATED"},
+  "fail_closed_notes":["Descriptor provenance no sustituye Ficha Contract v2","T16 permanece EN_CURSO hasta ejecución exacta del validador y verify_final","T17 bloqueado","README histórico se conserva sin reescribir; README arquitectura actual es ancla adicional"],
   "next_node":"PLAN30_T16_FICHA_CONTRACTS"
 }
