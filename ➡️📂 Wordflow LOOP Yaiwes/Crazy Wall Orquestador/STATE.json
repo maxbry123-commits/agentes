@@ -2,11 +2,11 @@
   "contract": "tel.workflow/v3",
   "project": "Wordflow LOOP Yaiwes",
   "mode": "FAIL_CLOSED_LOOP",
-  "status": "PLAN30_T16_FICHA_V2_PARTIAL_GAP",
+  "status": "PLAN30_T16_FICHA_V2_PARTIAL_GAP_TRACEABILITY_SYNCED",
   "current_node": "PLAN30_T16_FICHA_CONTRACTS",
-  "checkpoint_id": "WFLOOP-PLAN30-0014",
-  "history_previous_state_blob": "2a9719db24f280c25dc0fdd6e048470d6f50866c",
-  "last_traceability_update": "2026-09-06T20:53:00-05:00",
+  "checkpoint_id": "WFLOOP-PLAN30-0016-TRACEABILITY",
+  "history_previous_state_blob": "5becfd1ca8e1ba5d2aa0f8c5a75db9ef0d5e728d",
+  "last_traceability_update": "2026-09-06T21:55:00-05:00",
   "project_objectives_11": [
     "O01 Crear y mantener LOOP horario con checkpoint/STATE/Crazy Wall/recovery",
     "O02 Investigar código fuente necesario en repos autorizados y OSS cuando aplique",
@@ -40,6 +40,31 @@
     "in_progress": [16],
     "pending": [17,18,19,20,21,22,23,24,25,26,27,28,29,30],
     "verified_progress_percent": 50
+  },
+  "canonical_documents": {
+    "historic_readme": {
+      "path": "➡️📂 Wordflow LOOP Yaiwes/➡️📂 readme wordflow loop Yaiwes.md",
+      "blob": "e95067810c5b4d31dd59d7349e49a1aade2ec3cb",
+      "role": "literal historical ledger and recovery anchor"
+    },
+    "architecture_readme": {
+      "path": "➡️📂 Wordflow LOOP Yaiwes/➡️📂 README arquitectura Wordflow LOOP Yaiwes.md",
+      "commit": "02022e8e1e4856f41f358c290a889f7c527c8df3",
+      "url": "https://github.com/maxbry123-commits/agentes/blob/main/%E2%9E%A1%EF%B8%8F%F0%9F%93%82%20Wordflow%20LOOP%20Yaiwes/%E2%9E%A1%EF%B8%8F%F0%9F%93%82%20README%20arquitectura%20Wordflow%20LOOP%20Yaiwes.md",
+      "role": "current architecture and executable plan"
+    },
+    "traceability": {
+      "path": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/TRAZABILIDAD-PROYECTO-WORDFLOW-YAIWES.md",
+      "commit": "64e2c3875a6e30ca9332028dffe89c2c01952116",
+      "url": "https://github.com/maxbry123-commits/agentes/blob/main/%E2%9E%A1%EF%B8%8F%F0%9F%93%82%20Wordflow%20LOOP%20Yaiwes/Crazy%20Wall%20Orquestador/TRAZABILIDAD-PROYECTO-WORDFLOW-YAIWES.md",
+      "scope": "T01-T30 + selected/reference/rejected components + source SHA URLs + destinations + evidence"
+    },
+    "handoff": {
+      "path": "➡️📂 Wordflow LOOP Yaiwes/HANDOFF.md",
+      "commit": "fd73c1e17678c8a613cbbab5e8741419bc134fb3",
+      "blob": "454ea0bb099d428ae4213dbb2be91c41cd32e088",
+      "url": "https://github.com/maxbry123-commits/agentes/blob/main/%E2%9E%A1%EF%B8%8F%F0%9F%93%82%20Wordflow%20LOOP%20Yaiwes/HANDOFF.md"
+    }
   },
   "task_plan": {
     "path": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/PLAN-LOOP-30-TAREAS.md",
@@ -99,10 +124,6 @@
       "capability": "resume_identity_input_hash_checkpoint",
       "source_repo": "dta-au/elspeth",
       "source_commit": "720d441336434d227c2a00caaac100db48a07d5c",
-      "source_files": [
-        {"path":"src/elspeth/contracts/identity.py","blob":"98b791e350e3a2829fb2c2977cc0fbc25beb4321","url":"https://github.com/dta-au/elspeth/blob/720d441336434d227c2a00caaac100db48a07d5c/src/elspeth/contracts/identity.py"},
-        {"path":"src/elspeth/contracts/audit.py","blob":"c89a5d9d2354ae549845aeab9a90cc3ab14f853e","url":"https://github.com/dta-au/elspeth/blob/720d441336434d227c2a00caaac100db48a07d5c/src/elspeth/contracts/audit.py"}
-      ],
       "destination_path": "Agente Yaiwes principal/state-events-durability/checkpoint-recovery/resume_identity.py",
       "destination_blob": "dc440bd180194d6cef2bf1b38b1ef1b85138ef0b",
       "tasks": ["T12","T13"],
@@ -115,34 +136,23 @@
       "source_commit": "efcfcb20f09117504b00f682ada1bfff2b04b649",
       "source_path": "packages/rag_core/retrieval/retry/rules.py",
       "source_blob": "7704a6bd73d8b073df88651bbaf232f1f3dbfd6b",
-      "source_url": "https://github.com/Alex-v-p/indexer-core/blob/efcfcb20f09117504b00f682ada1bfff2b04b649/packages/rag_core/retrieval/retry/rules.py",
       "destination_path": "Agente Yaiwes principal/control-governance/strategy_delta_guard.py",
       "destination_blob": "46efd22bd7b5ac3c22cc5ca084788d46b4b5b16b",
       "task": "T14",
       "status": "VERIFIED_CLOSED"
-    },
-    {
-      "id": "TEST_T10_T15",
-      "capability": "plan30_loop_runtime_tests",
-      "path": "Agente Yaiwes principal/tests/test_plan30_loop_runtime.py",
-      "blob": "e1b1e3a4e4ca79e5dee00d5676a6038c6426bc31",
-      "commit": "3b7f0cec153ef03656f76dcd693c17fe061f7a78",
-      "result": "5 passed in 0.06s",
-      "evidence_path": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/EVIDENCE-PLAN30-T10-T15.md",
-      "evidence_blob": "f8a5db43fb0cc9e1712620c75b579229c7bad14a",
-      "status": "VERIFIED_CLOSED"
-    },
-    {
-      "id": "FICHA_VALIDATOR_V2",
-      "capability": "ficha_contract_v2_validator",
-      "source_path": "skills/research-download-chain/assets/plugin-bus/ficha_contract_v2.py",
-      "source_commit": "37bef3a8a8f6dadca067638b8ea0c32995fc1d63",
-      "source_blob": "b27f14b4d64f77bccf53a893c49b6f20bd58e745",
-      "task": "T16",
-      "status": "SOURCE_VERIFIED_EXECUTION_PENDING"
     }
   ],
+  "forensic_traceability_scope": {
+    "selected_components": "recorded in STATE and full ledger",
+    "loop_engineer_supporting_files": "full ledger only; REFERENCE/DEPENDENCY_CONTEXT",
+    "elspeth_additional_candidates": "full ledger only; REFERENCE/PATTERN",
+    "supreme_agent_candidates": "full ledger only; REJECTED_AS_PRIMARY/REFERENCE_ONLY",
+    "all_details_url": "https://github.com/maxbry123-commits/agentes/blob/main/%E2%9E%A1%EF%B8%8F%F0%9F%93%82%20Wordflow%20LOOP%20Yaiwes/Crazy%20Wall%20Orquestador/TRAZABILIDAD-PROYECTO-WORDFLOW-YAIWES.md"
+  },
   "ficha_contract_v2": {
+    "validator_commit": "37bef3a8a8f6dadca067638b8ea0c32995fc1d63",
+    "validator_blob": "b27f14b4d64f77bccf53a893c49b6f20bd58e745",
+    "validator_url": "https://github.com/maxbry123-commits/agentes/blob/37bef3a8a8f6dadca067638b8ea0c32995fc1d63/skills/research-download-chain/assets/plugin-bus/ficha_contract_v2.py",
     "serial_dispatch_blob": "bc885059ed0a97f73aad02572853d1b0a4f8117d",
     "run_control_blob": "7fdb64b7a21fe51c278dcc907b09eb800f2a2770",
     "resume_identity_blob": "4ce82a32faa939177dd22603f097402e9b9e6ed9",
@@ -152,18 +162,15 @@
     "status": "T16_IN_PROGRESS_VERIFY_FINAL_PENDING"
   },
   "evidence": {
-    "previous_artifact": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/EVIDENCE-PLAN30-T10-T15.md",
+    "t10_t15_artifact": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/EVIDENCE-PLAN30-T10-T15.md",
+    "t10_t15_blob": "f8a5db43fb0cc9e1712620c75b579229c7bad14a",
+    "t10_t15_test_result": "5 passed in 0.06s",
     "t16_artifact": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/EVIDENCE-PLAN30-T16-PARTIAL.md",
-    "t16_evidence_hash": "75e2ec13ccfac3d24344a30ba4cfeb438164b2d24ea737bdf46fd97e0bf9b5a6",
-    "ficha_blobs": ["bc885059ed0a97f73aad02572853d1b0a4f8117d","7fdb64b7a21fe51c278dcc907b09eb800f2a2770","4ce82a32faa939177dd22603f097402e9b9e6ed9","44aeb5cb48db6d42499bc940e47e912942d7fd40"],
-    "provenance_schema_blob": "5c3aa0b42fb9737baeb1f151a933fa83cc72c27d",
-    "provenance_registry_blob": "5274c96b79a4862d4081be18b80c1c0b09d9607a",
-    "canonical_validator_commit": "37bef3a8a8f6dadca067638b8ea0c32995fc1d63",
-    "canonical_validator_blob": "b27f14b4d64f77bccf53a893c49b6f20bd58e745"
+    "t16_evidence_hash": "75e2ec13ccfac3d24344a30ba4cfeb438164b2d24ea737bdf46fd97e0bf9b5a6"
   },
   "gaps_flags": [
     "T16 previo confundía descriptor provenance con Ficha Contract v2; delta separado aplicado",
-    "Ejecución exacta del validador canónico aún pendiente por fallo de resolución de red del runtime local",
+    "Ejecución exacta del validador canónico aún pendiente",
     "T17 bloqueado hasta verify_final 4/4 de Ficha Contract v2"
   ],
   "governance": {
