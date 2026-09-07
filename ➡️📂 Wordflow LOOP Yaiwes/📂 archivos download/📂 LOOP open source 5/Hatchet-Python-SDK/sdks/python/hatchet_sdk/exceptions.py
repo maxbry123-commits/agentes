@@ -1,0 +1,223 @@
+import json
+import traceback
+from typing import cast
+
+from hatchet_sdk.engine_version import MinEngineVersion
+
+
+class NonDeterminismError(Exception):
+    def __init__(
+        self, task_external_id: str, invocation_count: int, message: str, node_id: int
+    ) -> None:
+        self.task_external_id = task_external_id
+        self.invocation_count = invocation_count
+        self.message = message
+        self.node_id = node_id
+
+        detail = (
+            message
+            if message
+            else f"Non-determinism detected in task {task_external_id} on invocation {invocation_count} at node {node_id}"
+        )
+
+        super().__init__(
+            f"{detail}\nCheck out our documentation for more details on expectations of durable tasks: https://docs.hatchet.run/v1/patterns"
+        )
+
+
+class InvalidDependencyError(Exception):
+    pass
+
+
+class NonRetryableException(Exception):  # noqa: N818
+    pass
+
+
+class DedupeViolationError(Exception):
+    """Raised by the Hatchet library to indicate that a workflow has already been run with this deduplication value."""
+
+
+class IdempotencyCollisionError(Exception):
+    def __init__(self, existing_run_external_id: str) -> None:
+        super().__init__()
+        self.existing_run_external_id = existing_run_external_id
+
+
+class BulkTriggerIdempotencyCollisionError(Exception):
+    def __init__(
+        self,
+        successful_workflow_run_external_ids: list[str],
+        collisions: list[IdempotencyCollisionError],
+    ) -> None:
+        super().__init__()
+        self.successful_workflow_run_external_ids = successful_workflow_run_external_ids
+        self.collisions = collisions
+
+
+TASK_RUN_ERROR_METADATA_KEY = "__hatchet_error_metadata__"
+
+
+class TaskRunError(Exception):
+    def __init__(
+        self,
+        exc: str,
+        exc_type: str,
+        trace: str,
+        task_run_external_id: str | None,
+    ) -> None:
+        self.exc = exc
+        self.exc_type = exc_type
+        self.trace = trace
+        self.task_run_external_id = task_run_external_id
+
+    def __str__(self) -> str:
+        return self.serialize(include_metadata=False)
+
+    def __repr__(self) -> str:
+        return str(self)
+
+    def serialize(self, include_metadata: bool) -> str:
+        exc_type = self.exc_type.replace(": ", ":::")
+        exc = self.exc.replace("\n", "\\\n")
+        header = f"{exc_type}: {exc}" if exc_type and exc else f"{exc_type}{exc}"
+        result = (
+            f"{header}\n{self.trace}"
+            if header and self.trace
+            else f"{header}{self.trace}"
+        )
+        if result == "":
+            return result
+
+        if include_metadata:
+            metadata = json.dumps(
+                {
+                    TASK_RUN_ERROR_METADATA_KEY: {
+                        "task_run_external_id": self.task_run_external_id,
+                    }
+                },
+                indent=None,
+            )
+            return result + "\n\n" + metadata
+
+        return result
+
+    @classmethod
+    def _extract_metadata(cls, serialized: str) -> tuple[str, dict[str, str | None]]:
+        metadata = serialized.split("\n")[-1]
+
+        try:
+            parsed = json.loads(metadata)
+
+            if (
+                TASK_RUN_ERROR_METADATA_KEY in parsed
+                and "task_run_external_id" in parsed[TASK_RUN_ERROR_METADATA_KEY]
+            ):
+                serialized = serialized.replace(metadata, "").strip()
+                return serialized, cast(
+                    dict[str, str | None], parsed[TASK_RUN_ERROR_METADATA_KEY]
+                )
+
+            return serialized, {}
+        except json.JSONDecodeError:
+            return serialized, {}
+
+    @classmethod
+    def _unpack_serialized_error(cls, serialized: str) -> tuple[str | None, str, str]:
+        serialized, metadata = cls._extract_metadata(serialized)
+
+        external_id = metadata.get("task_run_external_id", None)
+        header, trace = serialized.split("\n", 1)
+
+        return external_id, header, trace
+
+    @classmethod
+    def deserialize(cls, serialized: str) -> "TaskRunError":
+        if not serialized:
+            return cls(
+                exc="",
+                exc_type="",
+                trace="",
+                task_run_external_id=None,
+            )
+
+        task_run_external_id = None
+
+        try:
+            task_run_external_id, header, trace = cls._unpack_serialized_error(
+                serialized
+            )
+
+            exc_type, exc = header.split(": ", 1)
+        except ValueError:
+            ## If we get here, we saw an error that was not serialized how we expected,
+            ## but was also not empty. So we return it as-is and use `HatchetError` as the type.
+            return cls(
+                exc=serialized,
+                exc_type="HatchetError",
+                trace="",
+                task_run_external_id=task_run_external_id,
+            )
+
+        exc_type = exc_type.replace(":::", ": ")
+        exc = exc.replace("\\\n", "\n")
+
+        return cls(
+            exc=exc,
+            exc_type=exc_type,
+            trace=trace,
+            task_run_external_id=task_run_external_id,
+        )
+
+    @classmethod
+    def from_exception(
+        cls, exc: Exception, task_run_external_id: str | None
+    ) -> "TaskRunError":
+        return cls(
+            exc=str(exc),
+            exc_type=type(exc).__name__,
+            trace="".join(
+                traceback.format_exception(type(exc), exc, exc.__traceback__)
+            ),
+            task_run_external_id=task_run_external_id,
+        )
+
+
+class FailedTaskRunExceptionGroup(ValueError):  # noqa: N818
+    def __init__(self, message: str, exceptions: list[TaskRunError]):
+        self.message = message
+        self.exceptions = exceptions
+
+        super().__init__(message)
+
+    def __str__(self) -> str:
+        result = [self.message.strip()]
+
+        for i, exc in enumerate(self.exceptions, 1):
+            result.append(f"\n--- Exception {i} ---")
+            result.append(str(exc))
+
+        return "\n".join(result)
+
+
+class LoopAlreadyRunningError(Exception):
+    pass
+
+
+class IllegalTaskOutputError(Exception):
+    pass
+
+
+class LifespanSetupError(Exception):
+    pass
+
+
+class EvictionNotSupportedError(NonRetryableException):
+    """Raised when an eviction policy is configured against an engine version
+    that does not support durable-task eviction."""
+
+    def __init__(self, engine_version: str | None = None) -> None:
+        version_info = f" (engine version: {engine_version})" if engine_version else ""
+        super().__init__(
+            f"Eviction policies require engine >= {MinEngineVersion.DURABLE_EVICTION}{version_info}. "
+            "Please upgrade your Hatchet engine or remove the eviction policy from your task."
+        )
