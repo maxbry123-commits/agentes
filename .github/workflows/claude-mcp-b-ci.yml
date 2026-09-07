@@ -56,15 +56,28 @@ jobs:
           MCP_PUBLIC_BASE_URL: http://127.0.0.1:7860
           PORT: '7860'
         run: |
+          set -eu
           python app.py > /tmp/claude-mcp-b.log 2>&1 &
           SERVER_PID=$!
           trap 'kill $SERVER_PID 2>/dev/null || true' EXIT
+          READY=0
           for i in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:7860/.well-known/oauth-protected-resource >/tmp/protected.json 2>/dev/null; then
+            if curl -fsS http://127.0.0.1:7860/.well-known/oauth-protected-resource/mcp >/tmp/protected.json 2>/dev/null; then
+              READY=1
               break
+            fi
+            if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+              echo 'Server exited before discovery became ready' >&2
+              cat /tmp/claude-mcp-b.log >&2
+              exit 1
             fi
             sleep 1
           done
+          if [ "$READY" != 1 ]; then
+            echo 'OAuth discovery did not become ready' >&2
+            cat /tmp/claude-mcp-b.log >&2
+            exit 1
+          fi
           cat /tmp/protected.json
           grep -q 'authorization_servers' /tmp/protected.json
           HTTP_CODE=$(curl -sS -o /tmp/mcp-response -w '%{http_code}' http://127.0.0.1:7860/mcp || true)
