@@ -40,3 +40,5 @@ jobs:
           git add -- 'Readme arquitectura Yaiwes/README.md'
           git commit -m 'docs(yaiwes): append verified component integration ledger'
           git push
+
+# retrigger after EOF normalization
