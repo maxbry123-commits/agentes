@@ -1,14 +1,14 @@
 {
   "artifact_id":"yaiwes.workflow.apache_airflow","version":"1.0.0","estado":"testing","contract_hash":"","tribunal_case_id":"YAIWES-AIRFLOW-001",
-  "contrato":{"rol":"dag_orchestrator","consume":{"datatype":{"family":"workflow","type":"dag_definition","version":1}},"expone":{"datatype":{"family":"workflow","type":"dag_runtime","version":1}},"input_map":{},"output_map":{}},
-  "ejecucion":{"kind":"code","transport":"python","runtime_type":"compute","entry_point":"adapter:dag_factory","llm_ratio":0.0,"idempotente":true},
-  "seguridad":{"sandbox":"process_container","permisos":[],"limites":{"timeout_ms":30000,"deadline_ms":45000}},
-  "firma":{"gpg_key_id":"PENDIENTE"},"categoria":"dag-orchestration","etapa":"E",
-  "repeticion":{"max":3,"condicion":"si_falla_verificacion"},"repite_en":["VERIFY"],
+  "contrato":{"rol":"transform","consume":{"datatype":{"family":"workflow","type":"dag_definition","version":1}},"expone":{"datatype":{"family":"workflow","type":"dag_runtime","version":1}},"input_map":{},"output_map":{}},
+  "ejecucion":{"kind":"code","transport":"importlib","runtime_type":"compute","entry_point":"adapter:dag_factory","llm_ratio":0.0,"idempotente":true},
+  "seguridad":{"sandbox":"container","permisos":[],"limites":{"timeout_ms":30000,"deadline_ms":45000}},
+  "firma":{"gpg_key_id":"PENDIENTE"},"categoria":"pipeline","etapa":"E",
+  "repeticion":{"max":3,"condicion":"si_falla_verificacion"},"repite_en":["EXEC_STATE"],
   "activacion":{"eventos":["yaiwes.dag.requested"],"wake_words":[],"condicion":""},
   "presupuesto":{"n0":{"max_tokens":1,"max_ms":30000,"max_costo_usd":0.000001}},
   "telemetria":{"metricas":["tiempo","errores","dag_id","tasks"],"span_otel":true},
   "evidencia":{"produce":["L1_static","L2_runtime","L3_repeat"],"destino":"runtime/evidence/"},
-  "failover":{"sustituible_por":[],"compensacion":"fail_closed"},"salud":{"metodo":"source_probe","heartbeat_interval_s":30},
+  "failover":{"sustituible_por":[],"compensacion":"fail_closed"},"salud":{"metodo":"exec","heartbeat_interval_s":30},
   "trazas":{"task_id_requerido":true,"trace_id_requerido":true}
 }
