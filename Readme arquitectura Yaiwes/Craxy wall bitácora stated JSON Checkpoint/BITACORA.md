@@ -85,3 +85,19 @@
 - Verificación fresh sobre SHA `478a723b...`: GitHub Actions devuelve `0` runs. Por tanto **NO PASS**; `verify_final` sigue pendiente.
 - FLAG adicional observado en el diff de reparación: se incorporaron `__pycache__/*.pyc`; deben retirarse o justificarse antes del cierre para preservar higiene de fuente/runtime.
 - Estado del lote: `2/5 VERIFIED_CLOSED`; Airflow activo; Argo Workflows y Azure Durable Functions bloqueados por cola 1×1; siguiente lote de 5 no autorizado todavía.
+
+<!-- YAIWES_METHOD_UI_REPLICATION_V4_20260906 -->
+## 2026-09-06 — Método UI YAIWES replicado como método Wordflow LOOP v4 — NO proyecto UI
+- INPUT literal del Director: revisar `frontend/UI YAIWES`, replicar **el método de trabajo**, no el proyecto; leer raíces `readme arquitectura UI YAIWES` + `bitácora stated JSON Craxy wall plan checkpoint`, incorporar la guía y cablearla a Wordflow LOOP YAIWES.
+- Auditoría física fuente completada: 10 archivos en `UI YAIWES/readme arquitectura UI YAIWES/`, 8 archivos operativos en `UI YAIWES/bitácora stated JSON Craxy wall plan checkpoint/` y el README raíz UI.
+- Guía fuente: `GUIA-MAESTRA-EJECUCION-LOOP-SOL-UI-YAIWES.md`, blob `7aa569945037a228f36eeed1747b7557b1adc5b6`.
+- Guía Wordflow publicada: `➡️📂 Wordflow LOOP Yaiwes/GUIA-MAESTRA-EJECUCION-LOOP-V4-WORDFLOW-YAIWES.md`; commit inicial `479430c43b334e0857bcff70e37cc729d561121d`; read-back blob `d54bf5e2158ff8d926fc95246ea2fc7d94c5ff5a`.
+- Contrato del método para nuevas operaciones: `tel.workflow/v4` / `FAIL_CLOSED_EXECUTION_LOOP`.
+- Se copiaron reglas de ejecución reusable: boot por STATE/CHECKPOINT/PLAN/RECOVERY/BITACORA + HEAD, Sheriff, Research/Reuse, Plan 1×1, anti-stall, Executor, Validator, Verify Real, Judge, StrategyDelta, Sentinel, Supervisor, Guardian, concurrencia sin force y persistencia.
+- Se excluyeron explícitamente del traslado: arquitectura UI, P01–P08, Action 124, componentes, owners y backlog UI.
+- Drift fuente documentado: guía UI v4 vs artefactos UI posteriores v3; no se importó ese estado. Para Wordflow manda la instrucción literal v4 del Director.
+- `state.json` recibió solo metadata `execution_method`; el snapshot de componentes se preservó y quedó marcado como no reconciliado por este nodo. Commit `d961011d72fdce4260373bd8738e0dc63d46a61c`.
+- `CHECKPOINT.json` recibió handoff v4/boot/recovery sin alterar las tareas históricas. Commit `b6351b7c96acfb5ca09c40fa74db774d5ae7cb9c`.
+- `PLAN-DE-TRABAJO-COMPONENTES.md` quedó vinculado a la guía v4 sin inflar ni modificar cierres de componentes. Commit `db7e69219d45d54efe6f239b5d2fe02d1941aead`.
+- `RECOVERY.md` quedó actualizado con recuperación v4 y regla de reconciliar staleness contra HEAD antes de retomar. Commit `b97b35e0db7bee9873c05c5e8c536d03031b260e`.
+- Regla final de este evento: **método replicado ≠ proyecto replicado; documentación de método ≠ progreso de componentes**.
