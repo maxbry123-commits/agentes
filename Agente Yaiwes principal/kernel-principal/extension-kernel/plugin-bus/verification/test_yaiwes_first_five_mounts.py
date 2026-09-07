@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 PLUGIN_BUS = Path(__file__).resolve().parents[1]
-YAIWES_ROOT = PLUGIN_BUS.parents[3]
+YAIWES_ROOT = PLUGIN_BUS.parents[2]
 if str(PLUGIN_BUS) not in sys.path:
     sys.path.insert(0, str(PLUGIN_BUS))
 
