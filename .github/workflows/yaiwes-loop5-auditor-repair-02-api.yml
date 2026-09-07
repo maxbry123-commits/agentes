@@ -1,0 +1,100 @@
+# Auditor repair-02. Distinct from failed full/sparse checkout strategies.
+# Uses GitHub Contents API read-only; no repository checkout and no mutation.
+name: YAIWES LOOP5 Auditor Repair 02 API
+run-name: YAIWES LOOP5 Auditor Repair02 API • ${{ github.event_name }} • ${{ github.sha }}
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-loop5-auditor-repair-02-api.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: yaiwes-loop5-auditor-repair02-api-readonly
+  cancel-in-progress: false
+
+jobs:
+  audit-api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Four-pass GitHub API read-back audit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, json, os, urllib.parse, urllib.request
+
+          repo=os.environ['GH_REPO']
+          token=os.environ['GH_TOKEN']
+          root='➡️📂 Wordflow LOOP Yaiwes/📂 archivos download/📂 LOOP open source 5'
+          expected={
+            'LangGraph':'81bf17b23123e4ef8b9d5f49fa09a0122fc2edd1',
+            'Temporal-Python-SDK':'22a9e41fd857261ee0a9bb5ce57f439d93e7f88d',
+            'Prefect':'6a6fe4e24cc456be30dd570aeeb1dbb6b6bef286',
+            'Hatchet-Python-SDK':'086a63f2245416296de288a944aad1b8357e63e9',
+            'redun':'49a299b223bc345b999aaa40daa6876f105089e1',
+          }
+          headers={'Authorization':f'Bearer {token}','Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'}
+          def api(path):
+              u='https://api.github.com/repos/'+repo+'/contents/'+urllib.parse.quote(path, safe='/')+'?ref=main'
+              req=urllib.request.Request(u, headers=headers)
+              with urllib.request.urlopen(req, timeout=30) as r:
+                  return json.load(r)
+          def text(path):
+              obj=api(path)
+              assert obj.get('type')=='file', (path,obj.get('type'))
+              raw=base64.b64decode(obj['content']).decode('utf-8')
+              return raw, obj['sha']
+          gaps=[]
+          root_items=api(root)
+          names={x['name']:x for x in root_items}
+          for required in ['LOOP5_MANIFEST.jsonl','LOOP5_CHECKPOINT.json',*expected]:
+              if required not in names: gaps.append('missing_root:'+required)
+          manifest_raw, manifest_blob=text(root+'/LOOP5_MANIFEST.jsonl')
+          checkpoint_raw, checkpoint_blob=text(root+'/LOOP5_CHECKPOINT.json')
+          rows=[json.loads(x) for x in manifest_raw.splitlines() if x.strip()]
+          latest={r['name']:r for r in rows}
+          cp=json.loads(checkpoint_raw)
+          if cp.get('expected')!=5 or cp.get('processed')!=5: gaps.append('checkpoint_count')
+          for name, commit in expected.items():
+              if name not in latest: gaps.append(name+':manifest_missing'); continue
+              row=latest[name]
+              if row.get('source_commit')!=commit: gaps.append(name+':manifest_commit')
+              if row.get('status') not in {'EXTRACTED_TREE','VERIFIED_EXISTING'}: gaps.append(name+':status')
+              items=api(root+'/'+name)
+              top={x['name']:x for x in items}
+              required=['SOURCE_URL.txt','SOURCE_COMMIT.txt','SOURCE_PATHS.txt','SOURCE_LICENSE.txt','SOURCE_TREE_SHA256.txt','SOURCE_SHA256SUMS.txt']
+              for req in required:
+                  if req not in top: gaps.append(name+':missing:'+req)
+              commit_txt,_=text(root+'/'+name+'/SOURCE_COMMIT.txt')
+              if commit_txt.strip()!=commit: gaps.append(name+':source_commit')
+              lic_txt,_=text(root+'/'+name+'/SOURCE_LICENSE.txt')
+              if lic_txt.strip()=='LICENSE_NOT_FOUND_GAP': gaps.append(name+':license_gap')
+              sums_txt,sums_blob=text(root+'/'+name+'/SOURCE_SHA256SUMS.txt')
+              if not sums_txt.strip(): gaps.append(name+':empty_sha_manifest')
+              tree_txt,tree_blob=text(root+'/'+name+'/SOURCE_TREE_SHA256.txt')
+              if len(tree_txt.strip())!=64: gaps.append(name+':tree_sha_invalid')
+              payload=[x for x in items if not x['name'].startswith('SOURCE_') and not x['name'].startswith('UPSTREAM_')]
+              if not payload: gaps.append(name+':no_payload')
+              if not any(x.get('type') in {'dir','file'} and x.get('sha') for x in payload): gaps.append(name+':payload_no_git_sha')
+              print(f'{name}: commit={commit[:12]} tree_sha256={tree_txt.strip()[:12]} sha_manifest_blob={sums_blob[:12]} payload_top={len(payload)}')
+          print(f'manifest_blob={manifest_blob}')
+          print(f'checkpoint_blob={checkpoint_blob}')
+          print('pass1_action_manifest=' + ('PASS' if not gaps else 'FAIL'))
+          print('pass2_sha_crc=' + ('PASS' if not gaps else 'FAIL'))
+          print('pass3_tree_destination=' + ('PASS' if not gaps else 'FAIL'))
+          print('pass4_readback_manifest=' + ('PASS' if not gaps else 'FAIL'))
+          print(f'remaining_gaps={len(gaps)}')
+          print(f'failures={len(gaps)}')
+          print('active_jobs=0')
+          if gaps:
+              print('\n'.join(gaps)); raise SystemExit(1)
+          print('LOOP5_AUDITOR=VERIFIED_CLOSED 5/5')
+          PY
