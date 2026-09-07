@@ -1,12 +1,12 @@
 {
-  "contract": "tel.workflow/v3",
+  "contract": "tel.workflow/v4",
   "project": "Wordflow LOOP Yaiwes",
-  "mode": "FAIL_CLOSED_LOOP",
-  "status": "PLAN30_T16_FICHA_V2_PARTIAL_GAP_TRACEABILITY_SYNCED",
-  "current_node": "PLAN30_T16_FICHA_CONTRACTS",
-  "checkpoint_id": "WFLOOP-PLAN30-0016-TRACEABILITY",
-  "history_previous_state_blob": "5becfd1ca8e1ba5d2aa0f8c5a75db9ef0d5e728d",
-  "last_traceability_update": "2026-09-06T21:55:00-05:00",
+  "mode": "FAIL_CLOSED_EXECUTION_LOOP",
+  "status": "PLAN30_T17_PLUGIN_REGISTRY_WIRING_ACTIVE",
+  "current_node": "PLAN30_T17_PLUGIN_REGISTRY_WIRING",
+  "checkpoint_id": "WFLOOP-PLAN30-0017-ACTIVE",
+  "history_previous_state_blob": "7b713ba042ecde42029e9b053a01003292ee34ae",
+  "last_traceability_update": "2026-09-07T02:26:00-05:00",
   "project_objectives_11": [
     "O01 Crear y mantener LOOP horario con checkpoint/STATE/Crazy Wall/recovery",
     "O02 Investigar código fuente necesario en repos autorizados y OSS cuando aplique",
@@ -24,7 +24,7 @@
     "O01": "VERIFIED_CLOSED",
     "O02": "VERIFIED_CLOSED",
     "O03": "VERIFIED_CLOSED",
-    "O04": "IN_PROGRESS_T16",
+    "O04": "IN_PROGRESS_T17",
     "O05": "PENDING",
     "O06": "PENDING",
     "O07": "PENDING",
@@ -36,10 +36,10 @@
   "loop_plan_30": {
     "total_tasks": 30,
     "queue": "1x1",
-    "verified_closed": [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],
-    "in_progress": [16],
-    "pending": [17,18,19,20,21,22,23,24,25,26,27,28,29,30],
-    "verified_progress_percent": 50
+    "verified_closed": [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16],
+    "in_progress": [17],
+    "pending": [18,19,20,21,22,23,24,25,26,27,28,29,30],
+    "verified_progress_percent": 53.33
   },
   "canonical_documents": {
     "historic_readme": {
@@ -69,16 +69,15 @@
   "task_plan": {
     "path": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/PLAN-LOOP-30-TAREAS.md",
     "url": "https://github.com/maxbry123-commits/agentes/blob/main/%E2%9E%A1%EF%B8%8F%F0%9F%93%82%20Wordflow%20LOOP%20Yaiwes/Crazy%20Wall%20Orquestador/PLAN-LOOP-30-TAREAS.md",
-    "blob": "f424800e8724599247011c87cafeeca0f8f0598c",
+    "blob": "185986bfdd6dea4cf9e9beeb85e5c68f171e8324",
     "current_task": {
-      "id": 16,
+      "id": 17,
       "objective": "O04",
-      "name": "Crear/ajustar Ficha/contrato de módulos integrados",
+      "name": "Cablear adapters/plugins a registry",
       "status": "EN_CURSO",
-      "next_delta": "Ejecutar el validador canónico exacto Ficha Contract v2 contra 4/4 Fichas y registrar stdout/veredicto + cross-check de paths"
+      "next_delta": "Investigar/reusar Capability Registry runtime compatible y ejecutar un único wiring seguro con evidencia real"
     },
     "pending_tasks": [
-      {"id":17,"objective":"O04","task":"Cablear adapters/plugins a registry"},
       {"id":18,"objective":"O04","task":"Health/evidence hooks fail-closed"},
       {"id":19,"objective":"O05","task":"5 pasadas docs↔arquitectura↔code↔contratos↔tests"},
       {"id":20,"objective":"O06","task":"Contratos de tareas de agentes"},
@@ -159,19 +158,27 @@
     "strategy_delta_blob": "44aeb5cb48db6d42499bc940e47e912942d7fd40",
     "provenance_schema_blob": "5c3aa0b42fb9737baeb1f151a933fa83cc72c27d",
     "provenance_registry_blob": "5274c96b79a4862d4081be18b80c1c0b09d9607a",
-    "status": "T16_IN_PROGRESS_VERIFY_FINAL_PENDING"
+    "status": "VERIFIED_CLOSED",
+    "evidence_artifact": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/EVIDENCE-PLAN30-T16-CLOSED.md",
+    "evidence_blob": "bd7aa684e215234616f4bd031a7587219fe9133e",
+    "workflow_run": 34075371938,
+    "workflow_job": 101600311787,
+    "workflow_head_sha": "0cdca40f7653e32c8db3df2e26d6a7b8f4b61f35",
+    "result": "YAIWES_T16_CANONICAL_VERIFY=PASS 4/4"
   },
   "evidence": {
     "t10_t15_artifact": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/EVIDENCE-PLAN30-T10-T15.md",
     "t10_t15_blob": "f8a5db43fb0cc9e1712620c75b579229c7bad14a",
     "t10_t15_test_result": "5 passed in 0.06s",
-    "t16_artifact": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/EVIDENCE-PLAN30-T16-PARTIAL.md",
-    "t16_evidence_hash": "75e2ec13ccfac3d24344a30ba4cfeb438164b2d24ea737bdf46fd97e0bf9b5a6"
+    "t16_artifact": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/EVIDENCE-PLAN30-T16-CLOSED.md",
+    "t16_blob": "bd7aa684e215234616f4bd031a7587219fe9133e",
+    "t16_test_result": "YAIWES_T16_CANONICAL_VERIFY=PASS 4/4",
+    "t16_run": 34075371938,
+    "t16_job": 101600311787
   },
   "gaps_flags": [
-    "T16 previo confundía descriptor provenance con Ficha Contract v2; delta separado aplicado",
-    "Ejecución exacta del validador canónico aún pendiente",
-    "T17 bloqueado hasta verify_final 4/4 de Ficha Contract v2"
+    "T17 activo: definition-registry contiene estructura/placeholder pero Capability Registry runtime compatible aún no está demostrado",
+    "Investigar/reusar antes de generar; presencia de carpeta no equivale a integración"
   ],
   "governance": {
     "input_goals": 12,
