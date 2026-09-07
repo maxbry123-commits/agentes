@@ -14,28 +14,6 @@
   "historical_ledger": "Core kernel Yaiwes/Crack wall bitácora stated JSON.md",
   "rule": "historical VERIFIED_CLOSED claims require physical revalidation before acceptance",
   "components_total": 20,
-  "components": [
-    "APScheduler",
-    "AWS-Step-Functions-DS-SDK",
-    "Ajv",
-    "Apache-APISIX",
-    "Apache-Airflow",
-    "Argo-Workflows",
-    "Azure-Durable-Functions",
-    "BAML",
-    "Burr",
-    "Caddy",
-    "Camunda",
-    "Cedar",
-    "Celery",
-    "Cerberus",
-    "Cerbos",
-    "Chroma",
-    "ClawHub",
-    "Cloudflare-Workers-SDK",
-    "Coconut",
-    "CodeUltraFeedback"
-  ],
   "current_batch": [
     "APScheduler",
     "AWS-Step-Functions-DS-SDK",
@@ -43,13 +21,13 @@
     "Apache-APISIX",
     "Apache-Airflow"
   ],
-  "current_boundary": "XRAY_AND_SHOW_INTEGRATION_PROPOSAL_BEFORE_PHYSICAL_INTEGRATION",
+  "current_boundary": "SHOW_INTEGRATION_PROPOSALS_AND_WAIT_FOR_DIRECTOR_APPROVAL",
   "status_by_component": {
-    "APScheduler": "VERIFYING_HISTORICAL_INTEGRATION",
-    "AWS-Step-Functions-DS-SDK": "PENDING_XRAY",
-    "Ajv": "PENDING_XRAY",
-    "Apache-APISIX": "PENDING_XRAY",
-    "Apache-Airflow": "PENDING_XRAY",
+    "APScheduler": "CLOSED_UNVERIFIED_AWAITING_APPROVAL",
+    "AWS-Step-Functions-DS-SDK": "CLOSED_UNVERIFIED_AWAITING_APPROVAL",
+    "Ajv": "CLOSED_UNVERIFIED_AWAITING_APPROVAL",
+    "Apache-APISIX": "CLOSED_UNVERIFIED_AWAITING_APPROVAL",
+    "Apache-Airflow": "CLOSED_UNVERIFIED_AWAITING_APPROVAL",
     "Argo-Workflows": "PENDING",
     "Azure-Durable-Functions": "PENDING",
     "BAML": "PENDING",
@@ -66,7 +44,18 @@
     "Coconut": "PENDING",
     "CodeUltraFeedback": "PENDING"
   },
+  "common_gaps_first_five": [
+    "upstream/original source remains physically present in Core kernel Yaiwes/Componentes recuperados A, so historical MOVE claims are not accepted as true MOVE closure",
+    "reviewed integration tests validate runtime/adapters/fichas/wiring paths but do not demonstrate UniversalPluginBus.enchufar() registration plus health/evidence for the component"
+  ],
+  "component_specific_notes": {
+    "APScheduler": "real sync/async scheduler source and adapter exist; historical Actions run 34055059156 succeeded 10x; bus registration not demonstrated",
+    "AWS-Step-Functions-DS-SDK": "real State/Graph/Workflow code and adapter exist; Actions run 34059002899 succeeded; bus registration not demonstrated",
+    "Ajv": "real JSON Schema/JTD compiler-validator source exists; Actions run 34061366845 built and validated valid/invalid cases 10x; bus registration not demonstrated",
+    "Apache-APISIX": "real OpenResty/Lua gateway source exists; Actions run 34062622979 validated APISIX 3.18.0 runtime 10x; bus registration not demonstrated",
+    "Apache-Airflow": "real DAG/scheduler source exists; Actions run 34065546339 created/probed DAG runtime 10x; bus registration and full DAG execution through YAIWES are not demonstrated"
+  },
   "approval_required_before_new_move_or_wiring": true,
   "readme_architecture_rewrite_forbidden": true,
-  "next_delta": "Audit APScheduler physical destination, wiring, source provenance and evidence"
+  "next_delta": "Director reviews and approves the five integration proposals; only then execute MOVE/dedup + Universal Plugin Bus registration + verification + surgical architecture README update"
 }
