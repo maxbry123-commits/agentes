@@ -3,13 +3,10 @@ title: Maxbry Claude GitHub Backup MCP
 emoji: 🔁
 colorFrom: indigo
 colorTo: blue
-sdk: gradio
-sdk_version: 6.26.0
-python_version: 3.12
-app_file: app.py
+sdk: docker
+app_port: 7860
 hf_oauth: true
 hf_oauth_expiration_minutes: 43200
-suggested_hardware: zero-a10g
 pinned: false
 ---
 
@@ -21,13 +18,17 @@ Independent backup path for **Claude Chat/Web**, not Claude Code.
 Claude Chat
    │ MCP + OAuth
    ▼
-Hugging Face Space (this app)
+Hugging Face Docker Space (this app)
    │ dedicated PAT stored only as Space Secret
    ▼
 GitHub REST API
    ▼
 maxbry123-commits/* repositories
 ```
+
+## Why Docker
+
+This is a standalone FastMCP HTTP service, so Docker Spaces are the native Hugging Face option for an arbitrary HTTP/FastAPI-style endpoint on port 7860. It avoids depending on Gradio's generated MCP schema and keeps this backup path under our control.
 
 ## Why this exists
 
