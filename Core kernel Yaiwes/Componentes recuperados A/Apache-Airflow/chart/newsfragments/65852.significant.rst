@@ -1,1 +1,0 @@
-Log Groomer in Celery workers is now only dependent on ``workers.celery.logGroomerSidecar.enabled`` flag.

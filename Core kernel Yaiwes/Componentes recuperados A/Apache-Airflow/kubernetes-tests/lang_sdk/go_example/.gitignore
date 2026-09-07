@@ -1,3 +1,0 @@
-# Build output and the module/build cache used by the in-Docker bundle build.
-/bin/
-/.home/
