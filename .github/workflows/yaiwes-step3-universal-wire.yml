@@ -1,0 +1,95 @@
+name: YAIWES Step3 Universal Plug Wire
+run-name: YAIWES Step3 Wire • ${{ github.event_name }} • ${{ github.sha }}
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-step3-universal-wire.yml'
+
+permissions:
+  contents: write
+
+env:
+  GIT_LFS_SKIP_SMUDGE: "1"
+  GIT_TERMINAL_PROMPT: "0"
+
+concurrency:
+  group: yaiwes-step3-universal-wire-writer
+  cancel-in-progress: false
+
+jobs:
+  wire:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Sparse checkout current Wordflow state
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 2
+          lfs: false
+          sparse-checkout: |
+            scripts/yaiwes_step3_wire_universal.py
+            ➡️📂 Wordflow LOOP Yaiwes/wordflow_loop
+            ➡️📂 Wordflow LOOP Yaiwes/📂 archivos download/📂 LOOP open source 5/LangGraph/SOURCE_COMMIT.txt
+            ➡️📂 Wordflow LOOP Yaiwes/📂 archivos download/📂 LOOP open source 5/Temporal-Python-SDK/SOURCE_COMMIT.txt
+            ➡️📂 Wordflow LOOP Yaiwes/📂 archivos download/📂 LOOP open source 5/Prefect/SOURCE_COMMIT.txt
+            ➡️📂 Wordflow LOOP Yaiwes/📂 archivos download/📂 LOOP open source 5/Hatchet-Python-SDK/SOURCE_COMMIT.txt
+            ➡️📂 Wordflow LOOP Yaiwes/📂 archivos download/📂 LOOP open source 5/redun/SOURCE_COMMIT.txt
+            .github/workflows/yaiwes-step3-universal-wire.yml
+          sparse-checkout-cone-mode: false
+      - name: Checkout Director fixed package
+        uses: actions/checkout@v4
+        with:
+          repository: maxbry123-commits/agentes
+          ref: ce2e72ba62549f6fcc1eec0ca16cb982ffdbb05d
+          path: _src/package
+          fetch-depth: 1
+          lfs: false
+          persist-credentials: false
+          sparse-checkout: |
+            ➡️📂 Wordflow LOOP Yaiwes/📂 archivos download/📂Archivo download 2/🔌 enchufe universal parte 1 fusion fables Kimi k 3 universal_plugin_bus_v2_integrated.py
+            ➡️📂 Wordflow LOOP Yaiwes/📂 archivos download/📂Archivo download 2/capability_registration.py
+          sparse-checkout-cone-mode: false
+      - name: Checkout canonical Ficha v2 validator
+        uses: actions/checkout@v4
+        with:
+          repository: maxbry123-commits/agentes
+          ref: 37bef3a8a8f6dadca067638b8ea0c32995fc1d63
+          path: _src/ficha
+          fetch-depth: 1
+          lfs: false
+          persist-credentials: false
+          sparse-checkout: |
+            skills/research-download-chain/assets/plugin-bus/ficha_contract_v2.py
+          sparse-checkout-cone-mode: false
+      - name: Copy exact Director plug files and wire six safe adapters
+        shell: bash
+        run: |
+          set -euo pipefail
+          WF='➡️📂 Wordflow LOOP Yaiwes/wordflow_loop'
+          mkdir -p "$WF/plugins" "$WF/registry"
+          cp -a '_src/package/➡️📂 Wordflow LOOP Yaiwes/📂 archivos download/📂Archivo download 2/🔌 enchufe universal parte 1 fusion fables Kimi k 3 universal_plugin_bus_v2_integrated.py' "$WF/plugins/universal_plugin_bus_v2_integrated.py"
+          cp -a '_src/package/➡️📂 Wordflow LOOP Yaiwes/📂 archivos download/📂Archivo download 2/capability_registration.py' "$WF/registry/capability_registration.py"
+          cp -a '_src/ficha/skills/research-download-chain/assets/plugin-bus/ficha_contract_v2.py' "$WF/plugins/ficha_contract_v2.py"
+          test "$(git hash-object "$WF/plugins/universal_plugin_bus_v2_integrated.py")" = 'c017bb2c1a09c8bb738e1774d656d59340ab56d5'
+          test "$(git hash-object "$WF/plugins/ficha_contract_v2.py")" = 'b27f14b4d64f77bccf53a893c49b6f20bd58e745'
+          test "$(git hash-object "$WF/registry/capability_registration.py")" = 'd205e86d0379844162e612317b2737ed8b62ece9'
+          python3 scripts/yaiwes_step3_wire_universal.py
+          python3 -m py_compile "$WF"/plugins/*.py "$WF"/adapters/*.py "$WF"/registry/capability_registration.py
+      - name: Commit wiring with no-force concurrency guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          WF='➡️📂 Wordflow LOOP Yaiwes/wordflow_loop'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- "$WF/adapters" "$WF/contracts" "$WF/plugins" "$WF/registry" "$WF/evidence"
+          git diff --cached --quiet && echo 'NO_CHANGE VERIFIED_EXISTING' && exit 0
+          git commit -m 'wire(yaiwes): connect six LOOP donors through Universal Plugin Bus v2'
+          git fetch origin main
+          remote=$(git rev-parse origin/main)
+          parent=$(git rev-parse HEAD^)
+          test "$remote" = "$parent" || { echo "CONCURRENT_WRITE_GAP remote=$remote parent=$parent"; exit 75; }
+          git push --no-verify origin HEAD:main
