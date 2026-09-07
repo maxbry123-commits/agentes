@@ -18,10 +18,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          sparse-checkout: |
-            Agente Yaiwes principal/execution-orchestration/state-machine-executor/azure-durable-functions
-            Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus
-          sparse-checkout-cone-mode: false
           fetch-depth: 1
 
       - uses: actions/setup-python@v5
