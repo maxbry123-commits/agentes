@@ -54,10 +54,18 @@ def verified_rm(path: Path) -> None:
         base.run("git", "rm", "-r", "-f", str(path))
 
 
+def move_caddy_runtime_dependency() -> None:
+    """Move the internal notify package required directly by caddy.go."""
+    source = base.SRC / "Caddy/notify"
+    destination = Y / "mesh-routing-collaboration/caddy-gateway/notify"
+    if source.exists() and not destination.exists():
+        base.mv(source, destination)
+
+
 def prepare() -> None:
-    # StrategyDelta: MOVE/prepare useful code but defer all source deduplication.
-    # The workflow reaches persist() only after all five runtime probes and the
-    # canonical UniversalPluginBus 10x gate pass, matching the physical-close law.
+    # StrategyDelta: MOVE the missing Caddy internal runtime dependency while
+    # keeping all source-root deduplication deferred until runtime + bus PASS.
+    move_caddy_runtime_dependency()
     base.rm = defer_rm
     base.prepare()
     normalize_generated_fichas()
