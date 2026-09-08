@@ -12,7 +12,7 @@ permissions:
 
 concurrency:
   group: yaiwes-wordflow-3step-move
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   move:
@@ -23,6 +23,28 @@ jobs:
           ref: main
           fetch-depth: 2
           lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/workflows/yaiwes-3step-move.yml
+            /➡️📂 Wordflow LOOP Yaiwes/📂 archivos download/📂 LOOP open source 5/
+            /➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/donors/loop_engineer/
+            /➡️📂 Wordflow LOOP Yaiwes/📂 archivos download/📂Archivo download 2/capability_registration.py
+            /➡️📂 Wordflow LOOP Yaiwes/📂 archivos download/📂Archivo download 2/classifier_hook.py
+            /➡️📂 Wordflow LOOP Yaiwes/📂 archivos download/📂Archivo download 2/instance_pool.py
+            /➡️📂 Wordflow LOOP Yaiwes/📂 archivos download/📂Archivo download 2/programming_instance.py
+            /➡️📂 Wordflow LOOP Yaiwes/📂 archivos download/📂Archivo download 2/usage_metering.py
+            /Agente Yaiwes principal/execution-orchestration/dag-executor/langgraph/
+            /Agente Yaiwes principal/execution-orchestration/dag-executor/prefect/
+            /Agente Yaiwes principal/execution-orchestration/dag-executor/hatchet-python-sdk/
+            /Agente Yaiwes principal/execution-orchestration/dag-executor/redun/
+            /Agente Yaiwes principal/execution-orchestration/state-machine-executor/temporal-python-sdk/
+            /Agente Yaiwes principal/execution-orchestration/deterministic-execution/loop-engineer/
+            /Agente Yaiwes principal/kernel-principal/extension-kernel/capability-registry/capability_registration.py
+            /Agente Yaiwes principal/execution-orchestration/classifier-scheduler/classifier_hook.py
+            /Agente Yaiwes principal/execution-engine-pool/instance_pool.py
+            /Agente Yaiwes principal/execution-orchestration/programming-pipeline/programming_instance.py
+            /Agente Yaiwes principal/observability/usage_metering.py
 
       - name: Move LOOP engines and project runtime files
         shell: bash
@@ -45,13 +67,13 @@ jobs:
             local from="$1" to="$2"
             test -d "$from"
             test ! -e "$to"
-            git mv "$from" "$to"
+            git mv --sparse "$from" "$to"
           }
           move_file() {
             local from="$1" to="$2"
             test -f "$from"
             test ! -e "$to"
-            git mv "$from" "$to"
+            git mv --sparse "$from" "$to"
           }
 
           move_dir "$SRC/LangGraph" 'Agente Yaiwes principal/execution-orchestration/dag-executor/langgraph'
