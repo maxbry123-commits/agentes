@@ -88,14 +88,57 @@ jobs:
       - name: Persist verified state and architecture delta
         run: python .github/scripts/yaiwes_integrate_second_five_v2.py persist
 
-      - name: Commit verified integration
+      - name: Commit verified integration from frozen payload
+        env:
+          YAIWES_REMOTE_BRANCH: main
         run: |
+          set -euo pipefail
           git config user.name 'YAIWES LOOP'
           git config user.email 'actions@users.noreply.github.com'
           git add -A
           git diff --cached --check
-          git commit -m 'feat(yaiwes): MOVE and verify components 6-10 via universal bus'
-          git pull --rebase origin main
-          git push origin HEAD:main
+
+          PAYLOAD="$RUNNER_TEMP/yaiwes-second-five.payload.patch"
+          FINAL="$RUNNER_TEMP/yaiwes-second-five-final"
+          git diff --cached --binary > "$PAYLOAD"
+          test -s "$PAYLOAD"
+
+          git fetch origin "$YAIWES_REMOTE_BRANCH"
+          rm -rf "$FINAL"
+          git worktree add --detach "$FINAL" "origin/$YAIWES_REMOTE_BRANCH"
+          git -C "$FINAL" apply --index --binary "$PAYLOAD"
+          git -C "$FINAL" diff --cached --check
+
+          while IFS= read -r -d '' p; do
+            head -c 200 "$FINAL/$p" 2>/dev/null | grep -q 'version https://git-lfs.github.com/spec/v1' && {
+              echo "LFS_POINTER_FORBIDDEN: $p" >&2
+              exit 41
+            } || true
+            size=$(git -C "$FINAL" cat-file -s ":$p")
+            if [ "$size" -ge 100000000 ]; then
+              echo "GIT_BLOB_GE_100_MIB: $p size=$size" >&2
+              exit 42
+            fi
+          done < <(git -C "$FINAL" diff --cached --name-only -z --diff-filter=ACMR)
+
+          git -C "$FINAL" config user.name 'YAIWES LOOP'
+          git -C "$FINAL" config user.email 'actions@users.noreply.github.com'
+          git -C "$FINAL" commit -m 'feat(yaiwes): MOVE and verify components 6-10 via universal bus'
+          FINAL_SHA=$(git -C "$FINAL" rev-parse HEAD)
+          git -C "$FINAL" push origin "HEAD:$YAIWES_REMOTE_BRANCH"
+          echo "FINAL_SHA=$FINAL_SHA" >> "$GITHUB_ENV"
+
+      - name: Independent remote read-back
+        env:
+          YAIWES_REMOTE_BRANCH: main
+        run: |
+          set -euo pipefail
+          READBACK="$RUNNER_TEMP/yaiwes-second-five-readback"
+          rm -rf "$READBACK"
+          git clone --filter=blob:none --no-checkout "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git" "$READBACK"
+          git -C "$READBACK" fetch origin "$YAIWES_REMOTE_BRANCH"
+          REMOTE_SHA=$(git -C "$READBACK" rev-parse "origin/$YAIWES_REMOTE_BRANCH")
+          test "$REMOTE_SHA" = "$FINAL_SHA"
+          echo "READ_BACK_PASS sha=$REMOTE_SHA"
 
 # reconciliation trigger: revalidate physical evidence for canonical components 6-10
