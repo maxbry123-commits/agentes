@@ -158,6 +158,8 @@ jobs:
           set -euo pipefail
           D="$PWD/Agente Yaiwes principal/control-governance/policy-guardrails-permissions/cerbos"
           cd "$D"
+          go mod tidy
+          git diff -- go.mod go.sum || true
           go test ./internal/engine -run '^$'
           echo CERBOS_RUNTIME_PASS
 
