@@ -1,3 +1,4 @@
+# retry: Ficha v2 positive-budget invariant fixed in wiring script
 name: YAIWES 3-Step Step2 WIRE
 run-name: YAIWES Step2 WIRE • ${{ github.sha }}
 
