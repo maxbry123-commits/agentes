@@ -19,6 +19,14 @@ MANIFESTS = [
     (Y / "mesh-routing-collaboration/caddy-gateway/ficha.caddy.v2.json", "transversal", "T"),
 ]
 
+SOURCE_ROOTS = [
+    base.SRC / "Argo-Workflows",
+    base.SRC / "Azure-Durable-Functions",
+    base.SRC / "BAML",
+    base.SRC / "Burr",
+    base.SRC / "Caddy",
+]
+
 
 def normalize_generated_fichas() -> None:
     for path, categoria, etapa in MANIFESTS:
@@ -35,28 +43,31 @@ def normalize_generated_fichas() -> None:
         path.write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
-def force_transactional_rm(path: Path) -> None:
-    """Deduplicate only in the ephemeral verification workspace.
+def defer_rm(path: Path) -> None:
+    """Keep recovered sources until every runtime and bus gate has passed."""
+    return None
 
-    Git can reject `git rm -r` after earlier `git mv` operations because the
-    index and HEAD intentionally differ during the same transaction. `-f`
-    permits that staged dedup; nothing reaches main unless every runtime probe,
-    the canonical bus 10x gate, persist step, commit and push subsequently pass.
-    """
+
+def verified_rm(path: Path) -> None:
+    """Deduplicate only after runtime + UniversalPluginBus verification."""
     if path.exists():
         base.run("git", "rm", "-r", "-f", str(path))
 
 
 def prepare() -> None:
-    # StrategyDelta: keep the canonical base integration logic, changing only
-    # the index-safety behavior that can abort Prepare MOVE before verification.
-    base.rm = force_transactional_rm
+    # StrategyDelta: MOVE/prepare useful code but defer all source deduplication.
+    # The workflow reaches persist() only after all five runtime probes and the
+    # canonical UniversalPluginBus 10x gate pass, matching the physical-close law.
+    base.rm = defer_rm
     base.prepare()
     normalize_generated_fichas()
     base.run("git", "add", str(Y), str(base.SRC))
 
 
 def persist() -> None:
+    # Deduplicate recovered origins only after the complete verification gate.
+    for source_root in SOURCE_ROOTS:
+        verified_rm(source_root)
     base.persist()
 
 
