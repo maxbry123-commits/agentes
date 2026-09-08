@@ -1,0 +1,230 @@
+name: Core Kernel Yaiwes 10 Download Extract
+run-name: Core Kernel Yaiwes 10 • ${{ github.sha }}
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/core-kernel-yaiwes-10-download-extract-20260908.yml'
+
+permissions:
+  contents: write
+
+env:
+  TASK_ID: core-kernel-yaiwes-10-download-extract-20260908
+  QUEUE_FILE: scripts/core-kernel-yaiwes-10-download-extract-20260908/QUEUE.json
+  DEST: Core kernel Yaiwes
+  SKILL_REF: c789e5fe635e220230ffc759d86dc3bbb8e261d4
+  GIT_TERMINAL_PROMPT: '0'
+
+concurrency:
+  group: maxbry123-commits-agentes-main-core-kernel-yaiwes-10
+  cancel-in-progress: false
+
+jobs:
+  queue-10:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - name: Checkout destination main NO-LFS
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+
+      - name: Preflight immutable skill and exact queue
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(python3 -c 'import json;print(json.load(open("'"$QUEUE_FILE"'"))["expected_components"])')" = "10"
+          test "$(python3 -c 'import json;print(json.load(open("'"$QUEUE_FILE"'"))["destination_root"])')" = "$DEST"
+          mkdir -p "$RUNNER_TEMP/skill-lock" "$RUNNER_TEMP/sources" "$RUNNER_TEMP/checkpoints"
+          curl -fL --retry 3 --retry-delay 3 \
+            "https://raw.githubusercontent.com/maxbry123-commits/agentes/${SKILL_REF}/skills/skills%20Github%20acci%C3%B3n/SKILL.md" \
+            -o "$RUNNER_TEMP/skill-lock/SKILL.md"
+          grep -Fq 'version: "3.7.0"' "$RUNNER_TEMP/skill-lock/SKILL.md"
+          grep -Fq 'EXTRACTED_TREE' "$RUNNER_TEMP/skill-lock/SKILL.md"
+          grep -Fq 'Git LFS está prohibido' "$RUNNER_TEMP/skill-lock/SKILL.md"
+          git config --local filter.lfs.clean cat
+          git config --local filter.lfs.smudge cat
+          git config --local filter.lfs.process ''
+          git config --local filter.lfs.required false
+          git config --local core.autocrlf false
+
+      - name: Process 10 components sequentially with pinned source SHA
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          : > "$RUNNER_TEMP/gaps.tsv"
+          : > "$RUNNER_TEMP/verified.tsv"
+          python3 - "$QUEUE_FILE" > "$RUNNER_TEMP/queue.tsv" <<'PY'
+          import json,sys
+          q=json.load(open(sys.argv[1],encoding='utf-8'))
+          for c in q['components']:
+              print(f"{c['director_index']}\t{c['slug']}\t{c['source_url']}")
+          PY
+
+          while IFS=$'\t' read -r idx slug url; do
+            echo "===== QUEUE ${idx}/10: ${slug} ====="
+            if [[ "$url" != https://github.com/* ]]; then
+              printf '%s\t%s\t%s\n' "$idx" "$slug" "SOURCE_PROVIDER_GAP:$url" >> "$RUNNER_TEMP/gaps.tsv"
+              echo "GAP ${slug}: source is not a GitHub repository; no substitute invented"
+              continue
+            fi
+            pinned="$(git ls-remote "$url" HEAD | awk 'NR==1{print $1}')"
+            if [[ ! "$pinned" =~ ^[0-9a-f]{40}$ ]]; then
+              printf '%s\t%s\tSOURCE_REF_GAP\n' "$idx" "$slug" >> "$RUNNER_TEMP/gaps.tsv"
+              continue
+            fi
+            src="$RUNNER_TEMP/sources/$slug"
+            rm -rf "$src"
+            set +e
+            git -c filter.lfs.smudge= -c filter.lfs.clean= -c filter.lfs.process= -c filter.lfs.required=false \
+              clone --depth 1 --single-branch --no-tags "$url" "$src"
+            rc=$?
+            set -e
+            if [[ $rc -ne 0 ]]; then
+              printf '%s\t%s\tCLONE_GAP\n' "$idx" "$slug" >> "$RUNNER_TEMP/gaps.tsv"
+              continue
+            fi
+            actual="$(git -C "$src" rev-parse HEAD)"
+            if [[ "$actual" != "$pinned" ]]; then
+              printf '%s\t%s\tSOURCE_REF_MOVED_GAP:%s:%s\n' "$idx" "$slug" "$pinned" "$actual" >> "$RUNNER_TEMP/gaps.tsv"
+              rm -rf "$src"; continue
+            fi
+            rm -rf "$src/.git"
+            set +e
+            python3 - "$src" <<'PY'
+          import pathlib,sys,os
+          root=pathlib.Path(sys.argv[1])
+          lim=100*1024*1024
+          prefix=b'version https://git-lfs.github.com/spec/v1'
+          for p in root.rglob('*'):
+              if p.is_symlink():
+                  target=os.readlink(p)
+                  resolved=(p.parent/target).resolve()
+                  if not resolved.is_relative_to(root.resolve()): raise SystemExit('UNSAFE_SOURCE_SYMLINK:'+str(p))
+                  continue
+              if not p.is_file(): continue
+              if p.stat().st_size >= lim: raise SystemExit('GIT_BLOB_LIMIT_GAP:'+str(p))
+              if p.stat().st_size <= 1024 and p.read_bytes().startswith(prefix): raise SystemExit('SOURCE_LFS_POINTER_GAP:'+str(p))
+          PY
+            guard_rc=$?
+            set -e
+            if [[ $guard_rc -ne 0 ]]; then
+              printf '%s\t%s\tSOURCE_GUARD_GAP\n' "$idx" "$slug" >> "$RUNNER_TEMP/gaps.tsv"
+              rm -rf "$src"; continue
+            fi
+            out="$DEST/$slug"
+            if [[ -e "$out" ]]; then
+              if [[ -f "$out/SOURCE_URL.txt" && -f "$out/SOURCE_COMMIT.txt" ]] && \
+                 [[ "$(tr -d '\r\n' < "$out/SOURCE_URL.txt")" = "$url" ]] && \
+                 [[ "$(tr -d '\r\n' < "$out/SOURCE_COMMIT.txt")" = "$pinned" ]]; then
+                echo "VERIFIED_EXISTING $slug"
+                printf '%s\t%s\tVERIFIED_EXISTING\t%s\n' "$idx" "$slug" "$pinned" >> "$RUNNER_TEMP/verified.tsv"
+                rm -rf "$src"; continue
+              fi
+              printf '%s\t%s\tCOLLISION_BLOCKED:%s\n' "$idx" "$slug" "$out" >> "$RUNNER_TEMP/gaps.tsv"
+              rm -rf "$src"; continue
+            fi
+            mkdir -p "$out"
+            cp -a "$src/." "$out/"
+            printf '%s\n' "$url" > "$out/SOURCE_URL.txt"
+            printf '%s\n' "$pinned" > "$out/SOURCE_COMMIT.txt"
+            python3 - "$out" <<'PY'
+          import hashlib,pathlib,sys
+          root=pathlib.Path(sys.argv[1])
+          rows=[]
+          for p in sorted(x for x in root.rglob('*') if x.is_file() and x.name!='SOURCE_SHA256SUMS.txt'):
+              h=hashlib.sha256()
+              with p.open('rb') as f:
+                  for b in iter(lambda:f.read(1024*1024),b''): h.update(b)
+              rows.append(f"{h.hexdigest()}  {p.relative_to(root).as_posix()}\n")
+          (root/'SOURCE_SHA256SUMS.txt').write_text(''.join(rows),encoding='utf-8')
+          PY
+            git add -- "$out"
+            printf '%s\t%s\tEXTRACTED_TREE\t%s\n' "$idx" "$slug" "$pinned" >> "$RUNNER_TEMP/verified.tsv"
+            rm -rf "$src"
+          done < "$RUNNER_TEMP/queue.tsv"
+
+          python3 - "$RUNNER_TEMP/verified.tsv" "$RUNNER_TEMP/gaps.tsv" "$DEST/_acquisition_core_kernel_10_checkpoint.json" <<'PY'
+          import json,pathlib,sys,os
+          v=pathlib.Path(sys.argv[1]).read_text().splitlines(); g=pathlib.Path(sys.argv[2]).read_text().splitlines()
+          data={'task_id':'core-kernel-yaiwes-10-download-extract-20260908','run_id':os.getenv('GITHUB_RUN_ID'),'verified_rows':v,'gaps':g,'expected_components':10,'verified_components':len(v),'gap_count':len(g),'verdict':'ACTIVE_LOOP' if g else 'PENDING_READ_BACK'}
+          pathlib.Path(sys.argv[3]).write_text(json.dumps(data,indent=2)+'\n')
+          PY
+
+          if ! git diff --cached --quiet; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git commit -m 'build(core-kernel): acquire pinned component batch'
+            for n in 1 2 3; do
+              git fetch origin main
+              if git rebase --autostash origin/main && git -c core.hooksPath=/dev/null push origin HEAD:main; then break; fi
+              test "$n" -lt 3 || exit 41
+              sleep $((n*5))
+            done
+          fi
+
+      - name: Verify exact destination read-back
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git reset --hard origin/main
+          python3 - "$QUEUE_FILE" "$DEST" "$RUNNER_TEMP/gaps.tsv" "$RUNNER_TEMP/verify-final.json" <<'PY'
+          import hashlib,json,pathlib,sys
+          q=json.load(open(sys.argv[1],encoding='utf-8')); root=pathlib.Path(sys.argv[2]); prior=pathlib.Path(sys.argv[3]); out=pathlib.Path(sys.argv[4])
+          results=[]; verified=0
+          for c in q['components']:
+              d=root/c['slug']; reasons=[]
+              if not c['source_url'].startswith('https://github.com/'):
+                  reasons.append('SOURCE_PROVIDER_GAP')
+              elif not d.is_dir(): reasons.append('DESTINATION_MISSING')
+              else:
+                  for f in ('SOURCE_URL.txt','SOURCE_COMMIT.txt','SOURCE_SHA256SUMS.txt'):
+                      if not (d/f).is_file(): reasons.append('TRACE_MISSING:'+f)
+                  sums=d/'SOURCE_SHA256SUMS.txt'
+                  if sums.is_file():
+                      for line in sums.read_text(encoding='utf-8',errors='replace').splitlines():
+                          if not line.strip(): continue
+                          try: digest,rel=line.split('  ',1); p=d/rel
+                          except ValueError: reasons.append('SUM_FORMAT_GAP'); break
+                          if not p.is_file(): reasons.append('READ_BACK_MISSING:'+rel); break
+                          h=hashlib.sha256()
+                          with p.open('rb') as fh:
+                              for b in iter(lambda:fh.read(1024*1024),b''): h.update(b)
+                          if h.hexdigest()!=digest: reasons.append('READ_BACK_HASH_GAP:'+rel); break
+              if not reasons: verified+=1
+              results.append({'index':c['director_index'],'slug':c['slug'],'status':'VERIFIED' if not reasons else 'GAP','reasons':reasons})
+          gaps=[x for x in prior.read_text().splitlines() if x.strip()] if prior.exists() else []
+          summary={'expected':10,'verified':verified,'pending_or_gap':10-verified,'producer_gaps':gaps,'destination_root':str(root),'results':results,'verdict':'PENDING_INDEPENDENT_AUDITOR' if verified==10 and not gaps else 'ACTIVE_LOOP'}
+          out.write_text(json.dumps(summary,indent=2)+'\n')
+          print(json.dumps(summary))
+          PY
+
+      - name: Preserve checkpoints
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-kernel-yaiwes-10-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/verify-final.json
+            ${{ runner.temp }}/gaps.tsv
+            ${{ runner.temp }}/verified.tsv
+          if-no-files-found: warn
+
+      - name: Fail closed until all 10 verified
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          verified=$(python3 -c 'import json,os;print(json.load(open(os.environ["RUNNER_TEMP"]+"/verify-final.json"))["verified"])')
+          test "$verified" -eq 10
+          test ! -s "$RUNNER_TEMP/gaps.tsv"
+          echo '10/10 producer read-back PASS; independent watchdog audit still required.'
