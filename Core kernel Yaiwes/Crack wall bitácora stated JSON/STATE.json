@@ -130,5 +130,78 @@
     ],
     "next_gate": "SELECTED_PATHS_FROM_REAL_SOURCE_TREE",
     "source_of_truth": "physical_repo_state"
+  },
+  "watchdog_programming_system_v2": {
+    "status": "PENDING_XRAY_AND_INTEGRATION",
+    "task_id": "YAIWES-WATCHDOG-PROGRAMMING-V2",
+    "destination": "Core kernel Yaiwes/",
+    "plan": "Core kernel Yaiwes/Crack wall bitácora stated JSON/PLAN-WATCHDOG-PROGRAMMING-V2.json",
+    "memory_doc": "Core kernel Yaiwes/readme-memoria.md",
+    "components": [
+      {
+        "name": "APScheduler",
+        "role": "TIME_AUTHORITY",
+        "status": "PENDING"
+      },
+      {
+        "name": "Workalendar",
+        "role": "WORK_CALENDAR",
+        "status": "PENDING"
+      },
+      {
+        "name": "Celery",
+        "role": "SIMPLE_JOB_WORKERS",
+        "status": "PENDING"
+      },
+      {
+        "name": "Redis",
+        "role": "EVENT_TRANSPORT",
+        "status": "PENDING"
+      },
+      {
+        "name": "Hatchet",
+        "role": "DURABLE_LONG_JOB",
+        "status": "PENDING"
+      },
+      {
+        "name": "Dagu",
+        "role": "MULTI_STEP_JOB",
+        "status": "PENDING"
+      },
+      {
+        "name": "PostgreSQL",
+        "role": "DURABLE_SOURCE_OF_TRUTH",
+        "status": "PENDING"
+      },
+      {
+        "name": "pgvector",
+        "role": "SEMANTIC_MEMORY",
+        "status": "PENDING"
+      },
+      {
+        "name": "gVisor",
+        "role": "SANDBOX_ISOLATION",
+        "status": "PENDING"
+      },
+      {
+        "name": "S3-Compatible-Backblaze-B2",
+        "role": "ARTIFACT_SNAPSHOTS",
+        "status": "PENDING"
+      }
+    ],
+    "lanes": {
+      "deterministic": "user strict workflow -> DSL/DAG/schema/system contract -> deterministic execution",
+      "adaptive": "goal -> YAIWES reasoning -> dynamic plan/loops/research -> pre-execution review -> controlled execution"
+    },
+    "research_pending": [
+      "small LOOP/step engines",
+      "cascade/waterfall task planning",
+      "research engines inside task loop",
+      "pre-execution reasoning/replan gate",
+      "Claude Cowork/Claude Code concepts",
+      "Grok Automations/Grok Bot concepts",
+      "open-source UI modules for chat integration"
+    ],
+    "source_of_truth": "physical_repo_state"
   }
 }

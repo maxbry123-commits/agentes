@@ -1205,15 +1205,35 @@ Esta sección es un delta aditivo; preserva íntegramente la arquitectura anteri
 **Estado arquitectónico del lote:** `VERIFIED_CLOSED` para componentes 1–5. Cualquier regresión posterior reabre el nodo correspondiente en modo fail-closed.
 
 <!-- YAIWES_MULTI_WATCHDOG_BACKEND_V1 -->
-## Integración — Sistema adaptativo Multi-Watchdog / programación de tareas — PENDIENTE
+## Integración — Sistema adaptativo Watchdog / programación, memoria y sandbox — PENDIENTE
 
-**Estado:** `PENDIENTE` hasta descarga `EXTRACTED_TREE`, adapter/Ficha v2/WIRING, runtime real, UniversalPluginBus, health/evidence, memoria+sandbox y read-back independiente.
+**Estado:** `PENDIENTE` hasta X-Ray de código, adquisición/extracción cuando aplique, adapter/Ficha v2/WIRING, runtime real, UniversalPluginBus, health/evidence, memoria+sandbox y read-back independiente.
 
 **Bitácora activa:** [Crack wall bitácora stated JSON / STATE.json](https://github.com/maxbry123-commits/agentes/blob/main/Core%20kernel%20Yaiwes/Crack%20wall%20bit%C3%A1cora%20stated%20JSON/STATE.json)
 
-**Flujo horizontal:** `Tarea programada → Registry → Scheduler/Trigger → Priority Queue → Workflow Adapter → Worker/Sandbox → Checkpoint → Resultado/Evidence`.
+**Plan activo:** [PLAN-WATCHDOG-PROGRAMMING-V2.json](https://github.com/maxbry123-commits/agentes/blob/main/Core%20kernel%20Yaiwes/Crack%20wall%20bit%C3%A1cora%20stated%20JSON/PLAN-WATCHDOG-PROGRAMMING-V2.json)
 
-**Flujo transversal:** `Agente → planifica/divide → selecciona workflow por duración/durabilidad/prioridad/paralelismo → memoria persistente → ejecución fan-out/fan-in → recovery → estado → UI event stream`.
+**Memoria del Watchdog:** [readme-memoria.md](https://github.com/maxbry123-commits/agentes/blob/main/Core%20kernel%20Yaiwes/readme-memoria.md)
 
-**Backends aprobados:** Windmill · Kestra · Apache DolphinScheduler · Rundeck · Temporal · Prefect · Dagu · Cronicle · Hatchet · Trigger.dev.
+### Componentes pendientes aprobados para estudio/integración
 
+1. **APScheduler** — autoridad del tiempo: jobs inmediatos, futuros, recurrentes, cron/calendario y persistencia de schedules.
+2. **Workalendar** — política de horario laboral: días hábiles, festivos y calendarios para decidir si una ejecución corresponde.
+3. **Celery** — pool distribuido de ejecución: workers, queues, retries y fan-out de jobs simples.
+4. **Redis** — transporte/eventos rápidos: Streams, consumer groups, locks/leases y señalización de workers; no es la memoria canónica.
+5. **Hatchet** — ejecución durable para trabajos largos: retries, pasos persistentes, recovery y workers de larga duración.
+6. **Dagu** — workflow multi-paso para una tarea programada compleja: dependencias, pequeños DAG/LOOP operativos, pausa y aprobación humana.
+7. **PostgreSQL** — fuente durable de verdad para Watchdogs, schedules, runs, checkpoints, idempotencia, outbox y estado.
+8. **pgvector** — memoria semántica sobre PostgreSQL para recuperar contexto/conocimiento relevante del trabajo.
+9. **gVisor** — aislamiento de sandbox para ejecutar código/herramientas reduciendo el blast radius sobre el host.
+10. **S3 compatible / Backblaze B2** — almacenamiento de artefactos, snapshots y workspaces pesados recuperables.
+
+### Separación de responsabilidades
+
+`APScheduler = cuándo` · `Workalendar = si corresponde trabajar` · `Celery = worker simple` · `Redis = transporte rápido` · `Hatchet = durable largo` · `Dagu = multi-paso` · `PostgreSQL = verdad durable` · `pgvector = memoria semántica` · `gVisor = aislamiento` · `S3/B2 = artefactos/snapshots`.
+
+**Flujo horizontal:** `Tarea programada → calendario → scheduler → cola → clasificador → Celery | Hatchet | Dagu → sandbox → agente/modelo → checkpoint → resultado/evidence`.
+
+**Flujo transversal:** `Chat/UI → Watchdog Registry → PostgreSQL → APScheduler → Redis/colas → runtime seleccionado → Memory Orchestrator → sandbox aislado → Sheriff/Judge → checkpoint/recovery → UI event stream`.
+
+**Regla de fallo:** `FAIL ≠ RESET`; localizar → checkpoint → rollback/reparar o fork → reanudar. Se persiste estado operativo verificable; no se guarda chain-of-thought privado.

@@ -1,0 +1,77 @@
+{
+  "schema": "yaiwes.watchdog-programming-plan/v2",
+  "status": "ACTIVE_LOOP",
+  "goal": "Programar y supervisar tareas simples, durables y multi-paso con memoria persistente, sandbox y dos vías de planificación: determinista y adaptativa.",
+  "queue": [
+    "X-Ray 10 componentes base",
+    "investigar motores de LOOP/cascada/research/replan",
+    "seleccionar 3 OSS por GAP adicional",
+    "investigar UI modular para chat",
+    "definir contratos WatchdogTask/Run/Checkpoint/Approval",
+    "integrar 1x1 y probar",
+    "cablear UniversalPluginBus + health/evidence",
+    "cerrar PENDIENTE solo con read-back"
+  ],
+  "base_components": [
+    {
+      "name": "APScheduler",
+      "role": "TIME_AUTHORITY",
+      "state": "PENDING"
+    },
+    {
+      "name": "Workalendar",
+      "role": "WORK_CALENDAR",
+      "state": "PENDING"
+    },
+    {
+      "name": "Celery",
+      "role": "SIMPLE_JOB_WORKERS",
+      "state": "PENDING"
+    },
+    {
+      "name": "Redis",
+      "role": "EVENT_TRANSPORT",
+      "state": "PENDING"
+    },
+    {
+      "name": "Hatchet",
+      "role": "DURABLE_LONG_JOB",
+      "state": "PENDING"
+    },
+    {
+      "name": "Dagu",
+      "role": "MULTI_STEP_JOB",
+      "state": "PENDING"
+    },
+    {
+      "name": "PostgreSQL",
+      "role": "DURABLE_SOURCE_OF_TRUTH",
+      "state": "PENDING"
+    },
+    {
+      "name": "pgvector",
+      "role": "SEMANTIC_MEMORY",
+      "state": "PENDING"
+    },
+    {
+      "name": "gVisor",
+      "role": "SANDBOX_ISOLATION",
+      "state": "PENDING"
+    },
+    {
+      "name": "S3-Compatible-Backblaze-B2",
+      "role": "ARTIFACT_SNAPSHOTS",
+      "state": "PENDING"
+    }
+  ],
+  "acceptance": [
+    "schedule persistente y timezone-aware",
+    "priority queue y backpressure",
+    "simple/durable/multi-step routing",
+    "checkpoint + resume + idempotency",
+    "sandbox aislado + heartbeat + recovery",
+    "memoria operativa estructurada sin chain-of-thought privado",
+    "UI con estado, historial, approvals y event stream",
+    "evidencia física y tests reales"
+  ]
+}
