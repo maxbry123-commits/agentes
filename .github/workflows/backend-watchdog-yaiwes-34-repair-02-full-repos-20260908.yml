@@ -1,0 +1,47 @@
+name: Backend Watchdog YAIWES Repair 02 Full Repos
+run-name: Backend Watchdog Repair 02 Full Repos • ${{ github.sha }}
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/backend-watchdog-yaiwes-34-repair-02-full-repos-20260908.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: maxbry123-commits-agentes-backend-watchdog-repair-02-full-repos
+  cancel-in-progress: false
+jobs:
+  repair-full-repos:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+      - name: Execute complete-repository repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config --local filter.lfs.clean cat
+          git config --local filter.lfs.smudge cat
+          git config --local filter.lfs.process ''
+          git config --local filter.lfs.required false
+          python3 scripts/backend_watchdog_full_repo_repair_02.py
+      - name: Independent local gate
+        if: always()
+        shell: bash
+        run: |
+          git fetch origin main
+          git reset --hard origin/main
+          test -f 'Core kernel Yaiwes/Backend watchdog workflow adaptativo/FULL_REPO_REPAIR_02.json'
+          python3 - <<'PY'
+          import json
+          p='Core kernel Yaiwes/Backend watchdog workflow adaptativo/FULL_REPO_REPAIR_02.json'
+          d=json.load(open(p))
+          assert d['expected']==34
+          assert d['verified']==34, d
+          assert d['gaps']==[], d
+          print('READBACK_PASS 34/34')
+          PY
