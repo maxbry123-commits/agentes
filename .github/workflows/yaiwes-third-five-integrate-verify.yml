@@ -60,6 +60,19 @@ jobs:
         with:
           go-version: '1.27.0'
 
+      - name: Apply StrategyDelta for staged cleanup
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('.github/scripts/yaiwes_integrate_third_five.py')
+          s=p.read_text(encoding='utf-8')
+          s=s.replace('run("git", "rm", "-r", str(junk))','run("git", "rm", "-r", "-f", str(junk))')
+          s=s.replace('run("git", "rm", "-r", str(p))','run("git", "rm", "-r", "-f", str(p))')
+          p.write_text(s,encoding='utf-8')
+          print('STRATEGY_DELTA_STAGED_CLEANUP_APPLIED')
+          PY
+
       - name: Prepare MOVE and integration surfaces
         run: python .github/scripts/yaiwes_integrate_third_five.py prepare
 
@@ -67,7 +80,7 @@ jobs:
         shell: bash
         run: |
           python - <<'PY'
-          import importlib.util, json, sys
+          import json, sys
           from pathlib import Path
           repo=Path.cwd()
           bus=repo/'Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus'
