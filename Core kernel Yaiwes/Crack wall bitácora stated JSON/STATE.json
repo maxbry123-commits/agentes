@@ -22,29 +22,29 @@
     "Apache-Airflow"
   ],
   "current_batch": [
-    "Argo-Workflows",
-    "Azure-Durable-Functions",
-    "BAML",
-    "Burr",
-    "Caddy"
+    "Camunda",
+    "Cedar",
+    "Celery",
+    "Cerberus",
+    "Cerbos"
   ],
-  "current_boundary": "SHOW_COMPONENTS_6_10_ANALYSIS_AND_WAIT_FOR_DIRECTOR_APPROVAL",
+  "current_boundary": "EXECUTE_APPROVED_11_TO_15",
   "status_by_component": {
     "APScheduler": "VERIFIED_CLOSED",
     "AWS-Step-Functions-DS-SDK": "VERIFIED_CLOSED",
     "Ajv": "VERIFIED_CLOSED",
     "Apache-APISIX": "VERIFIED_CLOSED",
     "Apache-Airflow": "VERIFIED_CLOSED",
-    "Argo-Workflows": "ANALYZED_HISTORICAL_DESTINATION_FOUND_AWAITING_APPROVAL",
-    "Azure-Durable-Functions": "ANALYZED_HISTORICAL_DESTINATION_FOUND_AWAITING_APPROVAL",
-    "BAML": "ANALYZED_AWAITING_APPROVAL",
-    "Burr": "ANALYZED_AWAITING_APPROVAL",
-    "Caddy": "ANALYZED_AWAITING_APPROVAL",
-    "Camunda": "PENDING",
-    "Cedar": "PENDING",
-    "Celery": "PENDING",
-    "Cerberus": "PENDING",
-    "Cerbos": "PENDING",
+    "Argo-Workflows": "RECONCILE_PHYSICAL_EVIDENCE",
+    "Azure-Durable-Functions": "RECONCILE_PHYSICAL_EVIDENCE",
+    "BAML": "RECONCILE_PHYSICAL_EVIDENCE",
+    "Burr": "RECONCILE_PHYSICAL_EVIDENCE",
+    "Caddy": "RECONCILE_PHYSICAL_EVIDENCE",
+    "Camunda": "APPROVED_FOR_INTEGRATION",
+    "Cedar": "APPROVED_FOR_INTEGRATION",
+    "Celery": "APPROVED_FOR_INTEGRATION",
+    "Cerberus": "APPROVED_FOR_INTEGRATION",
+    "Cerbos": "APPROVED_FOR_INTEGRATION",
     "Chroma": "PENDING",
     "ClawHub": "PENDING",
     "Cloudflare-Workers-SDK": "PENDING",
@@ -60,34 +60,19 @@
     "architecture_append_main_commit": "50e8061a34e56c311d19204adfc2ab3ff75594a8",
     "architecture_append_run": 34091902593
   },
-  "next_five_findings": {
-    "Argo-Workflows": {
-      "classification": "B",
-      "proposed_target": "Agente Yaiwes principal/execution-orchestration/dag-executor/argo-workflows/",
-      "note": "historical destination already exists with runtime, adapter, Ficha and WIRING; revalidate instead of duplicating"
+  "approved_batch_11_15": {
+    "director_approval": true,
+    "queue": ["Camunda", "Cedar", "Celery", "Cerberus", "Cerbos"],
+    "destinations": {
+      "Camunda": "Agente Yaiwes principal/execution-orchestration/state-machine-executor/camunda/",
+      "Cedar": "Agente Yaiwes principal/definition-registry/authorization-model/cedar/",
+      "Celery": "Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/celery/",
+      "Cerberus": "Agente Yaiwes principal/definition-registry/schema-contracts/cerberus/",
+      "Cerbos": "Agente Yaiwes principal/control-governance/policy-guardrails-permissions/cerbos/"
     },
-    "Azure-Durable-Functions": {
-      "classification": "B",
-      "proposed_target": "Agente Yaiwes principal/execution-orchestration/state-machine-executor/azure-durable-functions/",
-      "note": "historical destination already exists; Worker.Extensions.DurableTask contains substantial orchestration runtime and must be revalidated instead of duplicated"
-    },
-    "BAML": {
-      "classification": "C",
-      "proposed_target": "Agente Yaiwes principal/definition-registry/domain-specific-contracts/baml/",
-      "note": "compiler/runtime for typed LLM functions and response parsing; new integration proposal"
-    },
-    "Burr": {
-      "classification": "B",
-      "proposed_target": "Agente Yaiwes principal/execution-orchestration/state-machine-executor/burr/",
-      "note": "graph/state/application/persistence workflow framework; new integration proposal"
-    },
-    "Caddy": {
-      "classification": "C",
-      "proposed_target": "Agente Yaiwes principal/mesh-routing-collaboration/caddy-gateway/",
-      "note": "modular HTTP/TLS/config gateway runtime; new integration proposal"
-    }
+    "close_gate": "MOVE destination + provenance + adapter + Ficha Contract v2 + WIRING + Universal Plugin Bus + health/evidence + real runtime/test + source dedup + architecture README append"
   },
-  "approval_required_before_components_6_10_move_or_wiring": true,
+  "approval_required_before_components_11_15_move_or_wiring": false,
   "readme_architecture_rewrite_forbidden": true,
-  "next_delta": "Director reviews components 6-10 analysis; after approval revalidate Argo/Azure existing integrations and integrate BAML/Burr/Caddy without duplication"
+  "next_delta": "Integrate Camunda 1x1; only after PASS continue Cedar, Celery, Cerberus and Cerbos"
 }
