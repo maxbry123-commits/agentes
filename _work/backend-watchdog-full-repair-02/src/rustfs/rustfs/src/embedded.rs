@@ -1,0 +1,447 @@
+// Copyright 2024 RustFS Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+//! Embedded RustFS server for integration testing.
+//!
+//! Start a fully-functional S3-compatible server in-process without Docker
+//! or child processes. Perfect for integration tests that need a local S3
+//! endpoint.
+//!
+//! # Quick start
+//!
+//! ```rust,no_run
+//! use rustfs::embedded::{find_available_port, RustFSServerBuilder};
+//!
+//! #[tokio::main]
+//! async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+//!     let port = find_available_port()?;
+//!     let server = RustFSServerBuilder::new()
+//!         .address(format!("127.0.0.1:{port}"))
+//!         .access_key("rustfsadmin")
+//!         .secret_key("rustfsadmin")
+//!         .build()
+//!         .await?;
+//!
+//!     println!("S3 endpoint: {}", server.endpoint());
+//!     // ... use any S3 client ...
+//!     server.shutdown().await;
+//!     Ok(())
+//! }
+//! ```
+//!
+//! # Multi-instance support
+//!
+//! Multiple `RustFSServer`s may coexist in one process on different ports and
+//! volumes (backlog#1052). Each server is fully isolated: its own storage
+//! layer, request-path dispatch, root credentials, IAM domain, and bucket
+//! namespace. Two servers with different credentials each authenticate their
+//! own clients, and neither can see the other's buckets or objects.
+
+use crate::server::ShutdownHandle;
+use crate::startup_embedded::{EmbeddedStartedServer, EmbeddedStartupArgs, EmbeddedStartupError, run_embedded_startup};
+use crate::startup_lifecycle::embedded_endpoint_address;
+use crate::startup_server::find_embedded_available_port;
+use crate::startup_shutdown::{
+    EmbeddedRuntimeOwner, register_embedded_runtime_owner, run_embedded_server_drop_cleanup, run_embedded_server_shutdown,
+    run_embedded_shutdown_cleanup,
+};
+use std::net::SocketAddr;
+use std::path::PathBuf;
+use tokio_util::sync::CancellationToken;
+
+#[cfg(feature = "e2e-test-hooks")]
+use std::sync::{Mutex, OnceLock};
+#[cfg(feature = "e2e-test-hooks")]
+use tokio::sync::oneshot;
+
+#[cfg(feature = "e2e-test-hooks")]
+struct EmbeddedStartupHook {
+    port: u16,
+    http_bound: oneshot::Sender<()>,
+    release: oneshot::Receiver<()>,
+}
+
+#[cfg(feature = "e2e-test-hooks")]
+static EMBEDDED_STARTUP_HOOK: OnceLock<Mutex<Option<EmbeddedStartupHook>>> = OnceLock::new();
+
+/// Test-only gate for the point after an embedded HTTP listener binds and
+/// before its application context is installed.
+#[cfg(feature = "e2e-test-hooks")]
+#[doc(hidden)]
+pub struct EmbeddedStartupBarrier {
+    http_bound: oneshot::Receiver<()>,
+    release: Option<oneshot::Sender<()>>,
+}
+
+#[cfg(feature = "e2e-test-hooks")]
+impl EmbeddedStartupBarrier {
+    /// Wait until the next embedded server has bound its HTTP listener.
+    pub async fn wait_until_http_bound(&mut self) {
+        (&mut self.http_bound)
+            .await
+            .expect("embedded startup hook must signal after binding HTTP");
+    }
+
+    /// Allow the paused embedded startup to install its application context.
+    pub fn release(mut self) {
+        if let Some(release) = self.release.take() {
+            let _ = release.send(());
+        }
+    }
+}
+
+#[cfg(feature = "e2e-test-hooks")]
+impl Drop for EmbeddedStartupBarrier {
+    fn drop(&mut self) {
+        if let Some(release) = self.release.take() {
+            let _ = release.send(());
+        }
+    }
+}
+
+/// Pause the embedded startup for `port` after its HTTP listener binds.
+#[cfg(feature = "e2e-test-hooks")]
+#[doc(hidden)]
+pub fn pause_embedded_startup_after_http_bind(port: u16) -> EmbeddedStartupBarrier {
+    let (http_bound_tx, http_bound) = oneshot::channel();
+    let (release, release_rx) = oneshot::channel();
+    let hook = EmbeddedStartupHook {
+        port,
+        http_bound: http_bound_tx,
+        release: release_rx,
+    };
+    let mut active_hook = EMBEDDED_STARTUP_HOOK
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .expect("embedded startup hook lock must not be poisoned");
+    assert!(active_hook.replace(hook).is_none(), "only one embedded startup hook may be active");
+
+    EmbeddedStartupBarrier {
+        http_bound,
+        release: Some(release),
+    }
+}
+
+#[cfg(feature = "e2e-test-hooks")]
+pub(crate) async fn wait_for_embedded_startup_hook(port: u16) {
+    let hook = {
+        let mut active_hook = EMBEDDED_STARTUP_HOOK
+            .get_or_init(|| Mutex::new(None))
+            .lock()
+            .expect("embedded startup hook lock must not be poisoned");
+        active_hook.take_if(|hook| hook.port == port)
+    };
+    if let Some(hook) = hook {
+        let _ = hook.http_bound.send(());
+        let _ = hook.release.await;
+    }
+}
+
+/// Error type for embedded server operations.
+#[derive(Debug)]
+pub enum ServerError {
+    /// A server has already been started in this process.
+    AlreadyStarted,
+    /// The server failed to initialize.
+    Init(String),
+    /// An I/O error occurred.
+    Io(std::io::Error),
+}
+
+impl std::fmt::Display for ServerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ServerError::AlreadyStarted => write!(
+                f,
+                "A RustFS server has already been started in this process. \
+                 Only one embedded server is supported due to global state."
+            ),
+            ServerError::Init(msg) => write!(f, "RustFS initialization failed: {msg}"),
+            ServerError::Io(e) => write!(f, "I/O error: {e}"),
+        }
+    }
+}
+
+impl std::error::Error for ServerError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            ServerError::Io(e) => Some(e),
+            _ => None,
+        }
+    }
+}
+
+impl From<std::io::Error> for ServerError {
+    fn from(e: std::io::Error) -> Self {
+        ServerError::Io(e)
+    }
+}
+
+impl From<EmbeddedStartupError> for ServerError {
+    fn from(err: EmbeddedStartupError) -> Self {
+        match err {
+            EmbeddedStartupError::AlreadyStarted => ServerError::AlreadyStarted,
+            EmbeddedStartupError::Init(message) => ServerError::Init(message),
+            EmbeddedStartupError::Io(err) => ServerError::Io(err),
+        }
+    }
+}
+
+/// Builder for configuring and starting an embedded RustFS server.
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// # async fn example() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+/// use rustfs::embedded::RustFSServerBuilder;
+///
+/// let server = RustFSServerBuilder::new()
+///     .address("127.0.0.1:9100")
+///     .access_key("mykey")
+///     .secret_key("mysecret")
+///     .volume("/tmp/rustfs-data")
+///     .build()
+///     .await?;
+/// # Ok(())
+/// # }
+/// ```
+pub struct RustFSServerBuilder {
+    startup_args: EmbeddedStartupArgs,
+}
+
+impl Default for RustFSServerBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl RustFSServerBuilder {
+    /// Create a new builder with sensible defaults.
+    ///
+    /// Defaults:
+    /// - address: `"127.0.0.1:9000"`
+    /// - access_key / secret_key: `"rustfsadmin"`
+    /// - region: `"us-east-1"`
+    /// - A temporary directory is created automatically for data storage
+    ///
+    /// Use [`find_available_port`] to pick a free port when the default is
+    /// not suitable.
+    pub fn new() -> Self {
+        Self {
+            startup_args: EmbeddedStartupArgs::new_default(),
+        }
+    }
+
+    /// Set the listen address (e.g. `"127.0.0.1:9000"`).
+    ///
+    /// Use [`find_available_port`] to obtain a free port when the default is
+    /// not suitable. Port `0` is **not** supported because startup requires
+    /// a concrete listen address and port during initialization.
+    ///
+    /// The bound address is available via [`RustFSServer::address`] after
+    /// [`build`](Self::build), but that is too late for the earlier
+    /// initialization that depends on the configured address.
+    pub fn address(mut self, addr: impl Into<String>) -> Self {
+        self.startup_args.set_address(addr.into());
+        self
+    }
+
+    /// Set the S3 access key (default: `"rustfsadmin"`).
+    pub fn access_key(mut self, key: impl Into<String>) -> Self {
+        self.startup_args.set_access_key(key.into());
+        self
+    }
+
+    /// Set the S3 secret key (default: `"rustfsadmin"`).
+    pub fn secret_key(mut self, key: impl Into<String>) -> Self {
+        self.startup_args.set_secret_key(key.into());
+        self
+    }
+
+    /// Set the AWS region (default: `"us-east-1"`).
+    pub fn region(mut self, region: impl Into<String>) -> Self {
+        self.startup_args.set_region(region.into());
+        self
+    }
+
+    /// Add a data volume path.
+    ///
+    /// If no volumes are added, a temporary directory with a single drive is
+    /// created automatically (and cleaned up on [`RustFSServer::shutdown`]).
+    pub fn volume(mut self, path: impl Into<String>) -> Self {
+        self.startup_args.push_volume(path.into());
+        self
+    }
+
+    /// Set multiple volume paths at once, replacing any previously set volumes.
+    pub fn volumes(mut self, paths: Vec<String>) -> Self {
+        self.startup_args.set_volumes(paths);
+        self
+    }
+
+    /// Build and start the embedded server.
+    ///
+    /// Returns a [`RustFSServer`] handle that provides the endpoint URL and
+    /// a [`shutdown`](RustFSServer::shutdown) method.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ServerError::AlreadyStarted`] only if another startup is
+    /// currently mid-flight in this process (the guard now serializes
+    /// concurrent startups instead of rejecting the second server). After the
+    /// first server finishes starting, subsequent servers are allowed.
+    pub async fn build(self) -> Result<RustFSServer, ServerError> {
+        self.do_build().await
+    }
+
+    async fn do_build(self) -> Result<RustFSServer, ServerError> {
+        let mut runtime_owner = register_embedded_runtime_owner().await;
+        match run_embedded_startup(self.startup_args).await {
+            Ok(started) => Ok(RustFSServer::from_started(started, runtime_owner)),
+            Err(err) => {
+                if let Some(cleanup) = runtime_owner.release() {
+                    run_embedded_shutdown_cleanup(cleanup).await;
+                }
+                Err(err.into())
+            }
+        }
+    }
+}
+
+impl RustFSServer {
+    fn from_started(started: EmbeddedStartedServer, runtime_owner: EmbeddedRuntimeOwner) -> Self {
+        Self {
+            address: started.bound_addr,
+            access_key: started.access_key,
+            secret_key: started.secret_key,
+            region: started.region,
+            shutdown_handle: Some(started.shutdown_handle),
+            cancel_token: started.cancel_token,
+            temp_dir: started.temp_dir,
+            runtime_owner: Some(runtime_owner),
+        }
+    }
+}
+
+/// A running embedded RustFS server.
+///
+/// Use [`endpoint`](Self::endpoint) to get the HTTP URL for S3 clients.
+/// Call [`shutdown`](Self::shutdown) to stop the server and clean up resources.
+///
+/// Dropping the server performs best-effort synchronous cleanup and may leave
+/// async or process-global subsystems running until process exit.
+pub struct RustFSServer {
+    address: SocketAddr,
+    access_key: String,
+    secret_key: String,
+    region: String,
+    shutdown_handle: Option<ShutdownHandle>,
+    cancel_token: CancellationToken,
+    temp_dir: Option<PathBuf>,
+    runtime_owner: Option<EmbeddedRuntimeOwner>,
+}
+
+impl RustFSServer {
+    fn endpoint_address(&self) -> SocketAddr {
+        embedded_endpoint_address(self.address)
+    }
+
+    /// The HTTP endpoint URL (e.g. `"http://127.0.0.1:54321"`).
+    ///
+    /// Pass this to your S3 client's `endpoint_url` setting.
+    pub fn endpoint(&self) -> String {
+        format!("http://{}", self.endpoint_address())
+    }
+
+    /// The bound socket address.
+    pub fn address(&self) -> SocketAddr {
+        self.address
+    }
+
+    /// The configured access key.
+    pub fn access_key(&self) -> &str {
+        &self.access_key
+    }
+
+    /// The configured secret key.
+    pub fn secret_key(&self) -> &str {
+        &self.secret_key
+    }
+
+    /// The configured region.
+    pub fn region(&self) -> &str {
+        &self.region
+    }
+
+    /// Gracefully stop the server and clean up resources.
+    pub async fn shutdown(mut self) {
+        self.do_shutdown().await;
+    }
+
+    async fn do_shutdown(&mut self) {
+        let Some(runtime_owner) = self.runtime_owner.take() else {
+            return;
+        };
+        let runtime = runtime_owner.cleanup_runtime_handle();
+        run_embedded_server_shutdown(
+            &runtime,
+            &self.cancel_token,
+            &mut self.shutdown_handle,
+            &mut self.temp_dir,
+            Some(runtime_owner),
+        )
+        .await;
+    }
+}
+
+impl Drop for RustFSServer {
+    fn drop(&mut self) {
+        let Some(runtime_owner) = self.runtime_owner.take() else {
+            return;
+        };
+        let runtime = runtime_owner.cleanup_runtime_handle();
+        run_embedded_server_drop_cleanup(
+            &runtime,
+            &self.cancel_token,
+            &mut self.shutdown_handle,
+            &mut self.temp_dir,
+            Some(runtime_owner),
+        );
+    }
+}
+
+/// Find an available TCP port on localhost.
+///
+/// Binds to port `0`, reads the OS-assigned port, then releases the socket.
+/// The port is **best-effort**: another process could claim it before RustFS
+/// binds (TOCTOU), but in practice this is reliable for testing.
+///
+/// Use with [`RustFSServerBuilder::address`]:
+///
+/// ```rust,no_run
+/// use rustfs::embedded::{find_available_port, RustFSServerBuilder};
+///
+/// async fn example() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+///     let port = find_available_port()?;
+///     let server = RustFSServerBuilder::new()
+///         .address(format!("127.0.0.1:{port}"))
+///         .build()
+///         .await?;
+///     println!("Listening on port {port}");
+///      Ok(())
+///  }
+/// ```
+pub fn find_available_port() -> Result<u16, std::io::Error> {
+    find_embedded_available_port()
+}

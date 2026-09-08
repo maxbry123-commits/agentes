@@ -1,0 +1,43 @@
+// Copyright 2024 RustFS Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+//! Application layer module entry.
+//! Concrete use-case modules will be introduced incrementally in Phase 3.
+
+pub mod admin_usecase;
+pub(crate) mod bucket_list_through;
+pub mod bucket_usecase;
+pub mod context;
+pub(crate) mod metadata_route;
+pub mod multipart_usecase;
+pub mod object;
+pub(crate) mod object_data_cache;
+pub(crate) mod object_traffic_health;
+pub mod object_usecase;
+pub(crate) mod runtime_sources;
+mod select_object;
+pub(crate) mod storage_api;
+
+#[cfg(test)]
+mod capacity_dirty_scope_test;
+#[cfg(test)]
+mod data_usage_snapshot_gating_test;
+#[cfg(test)]
+mod delete_objects_stat_gating_test;
+#[cfg(test)]
+pub(crate) mod gating_test_env;
+#[cfg(test)]
+mod lifecycle_transition_api_test;
+#[cfg(test)]
+mod put_prelookup_gating_test;

@@ -1,0 +1,129 @@
+# Copyright 2024 RustFS Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+[package]
+name = "rustfs-kms"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+homepage.workspace = true
+description = "Key Management Service for RustFS, providing secure key generation, storage, and object encryption capabilities."
+keywords = ["kms", "encryption", "key-management", "rustfs", "security"]
+categories = ["cryptography", "web-programming", "authentication"]
+
+[lints]
+workspace = true
+
+[dependencies]
+hotpath.workspace = true
+# Core dependencies
+async-trait = { workspace = true }
+tokio = { workspace = true, features = ["fs", "io-util", "macros", "rt-multi-thread", "sync", "time"] }
+uuid = { workspace = true, features = ["serde", "v4", "fast-rng", "macro-diagnostics"] }
+jiff = { workspace = true, features = ["serde"] }
+serde = { workspace = true, features = ["derive"] }
+# Observes fields a persisted-format deserialization ignored, per the
+# repository rule that formats too compatibility-bound for
+# deny_unknown_fields must at least warn (AGENTS.md).
+serde_ignored = { workspace = true }
+serde_json = { workspace = true, features = ["raw_value"] }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+# Operation metrics emitted by the retry policy engine (crate::policy).
+metrics = { workspace = true }
+
+# Cryptography
+aes-gcm = { workspace = true, features = ["rand_core"] }
+argon2 = { workspace = true }
+chacha20poly1305 = { workspace = true }
+rand = { workspace = true, features = ["serde"] }
+base64-simd = { workspace = true }
+hex-simd = { workspace = true }
+sha2 = { workspace = true }
+subtle = { workspace = true }
+zeroize = { workspace = true, features = ["derive"] }
+
+# Configuration and storage
+url = { workspace = true }
+tempfile = { workspace = true }
+
+# Caching
+moka = { workspace = true, features = ["future"] }
+
+# Additional dependencies
+md-5 = { workspace = true }
+arc-swap = { workspace = true }
+rustfs-utils = { workspace = true, features = ["http"] }
+rustfs-security-governance = { workspace = true }
+# `EventName` for KMS audit records. A leaf crate with no rustfs dependencies,
+# so the audit sink can live outside this crate without a second, drifting
+# copy of the event vocabulary.
+rustfs-s3-types = { workspace = true }
+
+# HTTP client for Vault
+# `rustls` named explicitly: `reqwest::Identity::from_pem` (Vault mTLS) is only
+# available on the rustls TLS backend, and relying on another crate's feature
+# unification to enable it would break silently if that crate changed.
+reqwest = { workspace = true, features = ["rustls"] }
+vaultrs = { workspace = true }
+# vaultrs surfaces transport-level failures as wrapped rustify errors; the
+# operation policy needs the concrete type to classify them for retry decisions.
+rustify = { workspace = true }
+tokio-util = { workspace = true }
+
+# AWS KMS backend. Credentials come from the standard aws-config provider chain
+# (environment, shared profile, IMDS/container roles); this crate never handles
+# AWS credential material itself.
+aws-config = { workspace = true }
+aws-sdk-kms = { workspace = true, default-features = false, features = ["default-https-client", "rt-tokio"] }
+# SdkError variants and raw HTTP status are needed to classify AWS failures for
+# the operation policy's retry decisions.
+aws-smithy-runtime-api = { workspace = true, features = ["http-1x"] }
+aws-smithy-types = { workspace = true }
+
+[dev-dependencies]
+anyhow = { workspace = true }
+# Debugging recorder for asserting emitted metrics in tests.
+metrics-util = { workspace = true, features = ["debugging"] }
+insta = { workspace = true, features = ["yaml", "json"] }
+tempfile = { workspace = true }
+temp-env = { workspace = true, features = ["async_closure"] }
+rcgen = { workspace = true }
+# "net" backs the scripted loopback Vault used by the policy wiring tests.
+tokio = { workspace = true, features = ["net", "test-util"] }
+# Replays canned AWS KMS HTTP exchanges so the AWS backend tests stay offline.
+aws-smithy-http-client = { workspace = true, default-features = false, features = ["test-util"] }
+http = { workspace = true }
+# Captures warning events in format-compatibility tests without installing a
+# process-wide subscriber.
+tracing-subscriber = { workspace = true, features = ["fmt"] }
+
+[features]
+default = []
+hotpath = [
+    "hotpath/hotpath",
+    "hotpath/tokio",
+    "hotpath/reqwest-0-13",
+    "rustfs-security-governance/hotpath",
+    "rustfs-utils/hotpath",
+]
+hotpath-alloc = [
+    "hotpath",
+    "hotpath/hotpath-alloc",
+    "rustfs-security-governance/hotpath-alloc",
+    "rustfs-utils/hotpath-alloc",
+]
+hotpath-cpu = ["hotpath", "hotpath/hotpath-cpu", "rustfs-security-governance/hotpath-cpu", "rustfs-utils/hotpath-cpu"]

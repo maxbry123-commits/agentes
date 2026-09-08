@@ -1,0 +1,1849 @@
+#!/usr/bin/env python3
+"""Machine-readable Iceberg engine compatibility helpers for RustFS S3 Tables."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import shlex
+import urllib.parse
+from collections import OrderedDict
+from io import StringIO
+from typing import Any
+
+DEFAULT_PYICEBERG_VERSION = "0.10.0"
+DEFAULT_SPARK_VERSION = "3.5.4"
+DEFAULT_ICEBERG_VERSION = "1.7.1"
+DEFAULT_SCALA_VERSION = "2.12"
+DEFAULT_TRINO_VERSION = "477"
+DEFAULT_DUCKDB_VERSION = "1.5.5"
+DEFAULT_SNOWFLAKE_CLIENT_VERSION = "operator-recorded"
+DEFAULT_DATABEND_VERSION = "operator-recorded"
+DEFAULT_TRINO_SERVER = "http://127.0.0.1:8080"
+DEFAULT_DATABEND_DSN = "databend://root:@127.0.0.1:8000/default"
+LIVE_EVIDENCE_SCHEMA = "rustfs-s3tables-live-conformance-evidence"
+LIVE_EVIDENCE_SCHEMA_VERSION = 1
+LIVE_EVIDENCE_REQUIRED_FIELDS = [
+    "schema",
+    "schema_version",
+    "client_name",
+    "client_version",
+    "scenario",
+    "rustfs_build",
+    "git_sha",
+    "catalog_backing",
+    "endpoint",
+    "warehouse",
+    "rest_path",
+    "namespace",
+    "table",
+    "metadata_location",
+    "run_timestamp_utc",
+    "operator",
+    "expected_status",
+    "observed_status",
+    "row_count",
+    "cleanup_result",
+    "claim",
+    "command",
+]
+LIVE_EVIDENCE_ALLOWED_CLAIMS = OrderedDict(
+    [
+        ("PyIceberg", ["automated-smoke"]),
+        ("Spark Iceberg REST catalog", ["manual-live-verified"]),
+        ("Trino Iceberg REST catalog", ["manual-live-read-verified"]),
+        ("DuckDB Iceberg", ["manual-live-read-verified", "automated-rest-catalog-smoke"]),
+        ("Databend", ["manual-live-s3-stage-verified"]),
+        ("Snowflake Open Catalog / Iceberg integrations", ["reference-only"]),
+    ]
+)
+LIVE_EVIDENCE_ROW_COUNT_CLIENTS = {
+    "PyIceberg",
+    "Spark Iceberg REST catalog",
+    "Trino Iceberg REST catalog",
+    "DuckDB Iceberg",
+}
+
+VENDOR_SPARK_PROFILES: dict[str, dict[str, str]] = {
+    "rustfs": {
+        "catalog_uri": "{endpoint}/iceberg",
+        "warehouse": "{warehouse}",
+        "rest_signing_name": "s3",
+        "s3_endpoint": "{endpoint}",
+        "s3_path_style_access": "true",
+    },
+    "rustfs-compat": {
+        "catalog_uri": "{endpoint}/_iceberg",
+        "warehouse": "{warehouse}",
+        "rest_signing_name": "s3tables",
+        "s3_endpoint": "{endpoint}",
+        "s3_path_style_access": "true",
+    },
+    "aws-s3tables": {
+        "catalog_uri": "https://s3tables.{region}.amazonaws.com/iceberg",
+        "warehouse": "arn:aws:s3tables:{region}:{account_id}:bucket/{table_bucket}",
+        "rest_signing_name": "s3tables",
+    },
+    "minio-aistor": {
+        "catalog_uri": "{endpoint}/_iceberg",
+        "warehouse": "{warehouse}",
+        "rest_signing_name": "s3tables",
+        "s3_endpoint": "{endpoint}",
+        "s3_path_style_access": "true",
+    },
+    "cloudflare-r2-data-catalog": {
+        "catalog_uri": "{catalog_uri}",
+        "warehouse": "{warehouse_name}",
+        "rest_signing_name": "s3",
+    },
+    "oss-tables": {
+        "catalog_uri": "{endpoint}/iceberg",
+        "warehouse": "acs:osstables:{region}:{account_id}:bucket/{table_bucket}",
+        "rest_signing_name": "osstables",
+        "s3_endpoint": "https://oss-{region}.aliyuncs.com",
+    },
+}
+
+
+def scenario(name: str, status: str, evidence: str) -> dict[str, str]:
+    return {
+        "name": name,
+        "status": status,
+        "evidence": evidence,
+    }
+
+
+def engine_compatibility_matrix() -> list[dict[str, Any]]:
+    return [
+        {
+            "client": "PyIceberg",
+            "status": "automated-smoke",
+            "entrypoint": "scripts/table-catalog/pyiceberg_smoke.py",
+            "scenarios": [
+                scenario("create-namespace", "automated", "PyIceberg catalog.create_namespace_if_not_exists/create_namespace"),
+                scenario("create-table", "automated", "PyIceberg catalog.create_table"),
+                scenario("append", "automated", "PyIceberg table.append with PyArrow rows"),
+                scenario("reload-table", "automated", "PyIceberg catalog.load_table after append"),
+                scenario("scan", "automated", "PyIceberg table.scan().to_arrow"),
+                scenario("drop-table", "automated-with-cleanup", "PyIceberg catalog.drop_table when --cleanup or --replace is set"),
+                scenario("commit-conflict", "direct-rest-probe-required", "catalog commit conflict remains a follow-up live probe"),
+            ],
+        },
+        {
+            "client": "Spark Iceberg REST catalog",
+            "status": "manual-live-harness",
+            "entrypoint": "scripts/table-catalog/engine_compatibility.py --print-live-conformance",
+            "scenarios": [
+                scenario("create-namespace", "manual-live-harness", "CREATE NAMESPACE IF NOT EXISTS"),
+                scenario("create-table", "manual-live-harness", "CREATE TABLE USING iceberg"),
+                scenario("append", "manual-live-harness", "INSERT INTO"),
+                scenario("reload-table", "manual-live-harness", "REFRESH TABLE and SELECT COUNT"),
+                scenario("drop-table", "manual-live-harness", "DROP TABLE and optional DROP NAMESPACE"),
+                scenario("commit-conflict", "manual-validation-required", "requires a two-writer Spark or REST conflict harness"),
+            ],
+        },
+        {
+            "client": "Trino Iceberg REST catalog",
+            "status": "manual-live-read-probe",
+            "entrypoint": "scripts/table-catalog/engine_compatibility.py --print-live-conformance",
+            "scenarios": [
+                scenario("catalog-load", "manual-live-probe", "REST catalog properties generated by the live conformance helper"),
+                scenario("read-table", "manual-live-probe", "SELECT from a table created by PyIceberg or Spark"),
+                scenario("write-table", "not-claimed", "Trino write compatibility is not claimed by this harness"),
+            ],
+        },
+        {
+            "client": "DuckDB Iceberg",
+            "status": "automated-smoke",
+            "entrypoint": "scripts/table-catalog/duckdb_smoke.py",
+            "scenarios": [
+                scenario("metadata-read", "automated", "read the final metadata location through DuckDB iceberg_scan"),
+                scenario("catalog-attach", "automated", "attach `/iceberg` with s3 signing and `/_iceberg` with s3tables signing"),
+                scenario("read-table", "automated", "read a PyIceberg-created table through the attached catalog"),
+                scenario("write-table", "automated", "exercise single-table DDL, DML, schema evolution, snapshots, and PyIceberg cross-read"),
+                scenario("unsupported-boundaries", "automated", "verify staged create, purge, and format v3 fail closed"),
+                scenario("multi-table-mode", "automated", "verify DuckDB can avoid the multi-table commit endpoint without claiming cross-table atomicity"),
+            ],
+        },
+        {
+            "client": "StarRocks Iceberg REST catalog",
+            "status": "documented-read-path",
+            "entrypoint": "scripts/table-catalog/README.md",
+            "scenarios": [
+                scenario("catalog-load", "manual-validation-required", "REST catalog configuration reference"),
+                scenario("read-table", "manual-validation-required", "external catalog read-path verification only"),
+                scenario("write-table", "not-claimed", "StarRocks write/commit compatibility is not claimed"),
+            ],
+        },
+        {
+            "client": "Snowflake Open Catalog / Iceberg integrations",
+            "status": "manual-reference-probe",
+            "entrypoint": "scripts/table-catalog/engine_compatibility.py --print-live-conformance",
+            "scenarios": [
+                scenario("external-volume", "manual-reference-probe", "operator-adapted external volume/catalog integration SQL template"),
+                scenario("catalog-load", "not-claimed", "reference only until a repeatable external integration harness exists"),
+            ],
+        },
+        {
+            "client": "Databend",
+            "status": "manual-live-s3-stage-probe",
+            "entrypoint": "scripts/table-catalog/engine_compatibility.py --print-live-conformance",
+            "scenarios": [
+                scenario("s3-data-plane-read", "manual-live-probe", "S3 stage/data-plane read probe for table data files"),
+                scenario("iceberg-rest-catalog", "not-claimed", "Databend REST catalog integration is not claimed"),
+            ],
+        },
+    ]
+
+
+def normalized_endpoint(endpoint: str) -> str:
+    return endpoint.rstrip("/")
+
+
+def normalized_rest_path(rest_path: str) -> str:
+    stripped = rest_path.strip()
+    if not stripped:
+        raise ValueError("REST catalog path cannot be empty")
+    if not stripped.startswith("/"):
+        stripped = f"/{stripped}"
+    return stripped.rstrip("/")
+
+
+def vendor_profile_context(
+    *,
+    endpoint: str,
+    warehouse: str,
+    region: str,
+    account_id: str,
+    table_bucket: str,
+    catalog_uri: str | None,
+    warehouse_name: str | None,
+) -> dict[str, str]:
+    endpoint = normalized_endpoint(endpoint)
+    return {
+        "account_id": account_id,
+        "catalog_uri": (catalog_uri or f"{endpoint}/iceberg").rstrip("/"),
+        "endpoint": endpoint,
+        "region": region,
+        "table_bucket": table_bucket,
+        "warehouse": warehouse,
+        "warehouse_name": warehouse_name or warehouse,
+    }
+
+
+def vendor_profile_value(profile: str, key: str, context: dict[str, str]) -> str:
+    try:
+        template = VENDOR_SPARK_PROFILES[profile][key]
+    except KeyError as err:
+        raise ValueError(f"unknown vendor profile field: {profile}.{key}") from err
+    return template.format(**context).rstrip("/")
+
+
+def spark_catalog_config(
+    *,
+    endpoint: str,
+    warehouse: str,
+    access_key: str,
+    secret_key: str,
+    region: str,
+    catalog_name: str,
+    rest_path: str,
+    rest_signing_name: str,
+) -> OrderedDict[str, str]:
+    endpoint = normalized_endpoint(endpoint)
+    rest_path = normalized_rest_path(rest_path)
+    prefix = f"spark.sql.catalog.{catalog_name}"
+    return OrderedDict(
+        [
+            (prefix, "org.apache.iceberg.spark.SparkCatalog"),
+            (f"{prefix}.type", "rest"),
+            (f"{prefix}.uri", f"{endpoint}{rest_path}"),
+            (f"{prefix}.warehouse", warehouse),
+            (f"{prefix}.prefix", warehouse),
+            (f"{prefix}.io-impl", "org.apache.iceberg.aws.s3.S3FileIO"),
+            (f"{prefix}.s3.endpoint", endpoint),
+            (f"{prefix}.s3.path-style-access", "true"),
+            (f"{prefix}.rest.sigv4-enabled", "true"),
+            (f"{prefix}.rest.signing-name", rest_signing_name),
+            (f"{prefix}.rest.signing-region", region),
+            (f"{prefix}.s3.access-key-id", access_key),
+            (f"{prefix}.s3.secret-access-key", secret_key),
+        ]
+    )
+
+
+def spark_vendor_catalog_config(
+    *,
+    profile: str,
+    endpoint: str,
+    warehouse: str,
+    access_key: str,
+    secret_key: str,
+    region: str,
+    catalog_name: str,
+    account_id: str,
+    table_bucket: str,
+    catalog_uri: str | None,
+    warehouse_name: str | None,
+    rest_path: str | None = None,
+    rest_signing_name: str | None = None,
+) -> OrderedDict[str, str]:
+    context = vendor_profile_context(
+        endpoint=endpoint,
+        warehouse=warehouse,
+        region=region,
+        account_id=account_id,
+        table_bucket=table_bucket,
+        catalog_uri=catalog_uri,
+        warehouse_name=warehouse_name,
+    )
+    profile_defaults = VENDOR_SPARK_PROFILES.get(profile)
+    if profile_defaults is None:
+        raise ValueError(f"unknown vendor profile: {profile}")
+    configured_catalog_uri = vendor_profile_value(profile, "catalog_uri", context)
+    if rest_path is not None:
+        configured_catalog_uri = f"{normalized_endpoint(endpoint)}{normalized_rest_path(rest_path)}"
+    config = spark_catalog_config(
+        endpoint=endpoint,
+        warehouse=vendor_profile_value(profile, "warehouse", context),
+        access_key=access_key,
+        secret_key=secret_key,
+        region=region,
+        catalog_name=catalog_name,
+        rest_path="/iceberg",
+        rest_signing_name=rest_signing_name or profile_defaults["rest_signing_name"],
+    )
+    prefix = f"spark.sql.catalog.{catalog_name}"
+    config[f"{prefix}.uri"] = configured_catalog_uri
+    if "s3_endpoint" in profile_defaults:
+        config[f"{prefix}.s3.endpoint"] = vendor_profile_value(profile, "s3_endpoint", context)
+    else:
+        config.pop(f"{prefix}.s3.endpoint", None)
+        config.pop(f"{prefix}.s3.access-key-id", None)
+        config.pop(f"{prefix}.s3.secret-access-key", None)
+    if "s3_path_style_access" in profile_defaults:
+        config[f"{prefix}.s3.path-style-access"] = profile_defaults["s3_path_style_access"]
+    else:
+        config.pop(f"{prefix}.s3.path-style-access", None)
+    return config
+
+
+def quote_spark_identifier(identifier: str) -> str:
+    if not identifier or "`" in identifier or "\n" in identifier or "\r" in identifier:
+        raise ValueError("Spark identifier must be non-empty and must not contain backticks or newlines")
+    return f"`{identifier}`"
+
+
+def quote_double_identifier(identifier: str) -> str:
+    if not identifier or '"' in identifier or "\n" in identifier or "\r" in identifier:
+        raise ValueError("SQL identifier must be non-empty and must not contain double quotes or newlines")
+    return f'"{identifier}"'
+
+
+def spark_table_identifier(catalog_name: str, namespace: str, table: str) -> str:
+    return ".".join(
+        [
+            catalog_name,
+            quote_spark_identifier(namespace),
+            quote_spark_identifier(table),
+        ]
+    )
+
+
+def spark_sql_smoke(
+    *,
+    catalog_name: str,
+    namespace: str,
+    table: str,
+    cleanup: bool = False,
+) -> str:
+    namespace_identifier = f"{catalog_name}.{quote_spark_identifier(namespace)}"
+    table_identifier = spark_table_identifier(catalog_name, namespace, table)
+    statements = [
+        f"CREATE NAMESPACE IF NOT EXISTS {namespace_identifier};",
+        f"DROP TABLE IF EXISTS {table_identifier};",
+        f"CREATE TABLE {table_identifier} (id BIGINT, payload STRING) USING iceberg;",
+        f"INSERT INTO {table_identifier} VALUES (1, 'alpha'), (2, 'beta');",
+        f"REFRESH TABLE {table_identifier};",
+        f"SELECT COUNT(*) AS row_count FROM {table_identifier};",
+    ]
+    if cleanup:
+        statements.extend(
+            [
+                f"DROP TABLE IF EXISTS {table_identifier};",
+                f"DROP NAMESPACE IF EXISTS {namespace_identifier};",
+            ]
+        )
+    return "\n".join(statements) + "\n"
+
+
+def shell_join(parts: list[str]) -> str:
+    return " ".join(shlex.quote(part) for part in parts)
+
+
+def sql_string(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
+def safe_file_segment(value: str) -> str:
+    safe = re.sub(r"[^A-Za-z0-9._-]+", "-", value).strip("-")
+    return safe or "value"
+
+
+def spark_packages(*, spark_version: str, iceberg_version: str, scala_version: str) -> str:
+    spark_minor = ".".join(spark_version.split(".")[:2])
+    return ",".join(
+        [
+            f"org.apache.iceberg:iceberg-spark-runtime-{spark_minor}_{scala_version}:{iceberg_version}",
+            f"org.apache.iceberg:iceberg-aws-bundle:{iceberg_version}",
+        ]
+    )
+
+
+def spark_sql_command(*, packages: str, config: OrderedDict[str, str], sql_file: str) -> str:
+    parts = ["spark-sql", "--packages", packages]
+    for key, value in config.items():
+        parts.extend(["--conf", f"{key}={value}"])
+    parts.extend(["-f", sql_file])
+    return shell_join(parts)
+
+
+def trino_catalog_properties(
+    *,
+    endpoint: str,
+    warehouse: str,
+    access_key: str,
+    secret_key: str,
+    region: str,
+    rest_path: str,
+    rest_signing_name: str,
+) -> str:
+    endpoint = normalized_endpoint(endpoint)
+    rest_path = normalized_rest_path(rest_path)
+    properties = OrderedDict(
+        [
+            ("connector.name", "iceberg"),
+            ("iceberg.catalog.type", "rest"),
+            ("iceberg.rest-catalog.uri", f"{endpoint}{rest_path}"),
+            ("iceberg.rest-catalog.warehouse", warehouse),
+            ("iceberg.rest-catalog.security", "SIGV4"),
+            ("iceberg.rest-catalog.signing-name", rest_signing_name),
+            ("iceberg.security", "read_only"),
+            ("fs.native-s3.enabled", "true"),
+            ("s3.endpoint", endpoint),
+            ("s3.path-style-access", "true"),
+            ("s3.aws-access-key", access_key),
+            ("s3.aws-secret-key", secret_key),
+        ]
+    )
+    return "\n".join(f"{key}={value}" for key, value in properties.items()) + "\n"
+
+
+def trino_sql_probe(*, namespace: str, table: str) -> str:
+    return f"SELECT COUNT(*) AS row_count FROM {quote_double_identifier(namespace)}.{quote_double_identifier(table)};"
+
+
+def trino_command(*, server: str, catalog_name: str, namespace: str, table: str) -> str:
+    return shell_join(
+        [
+            "trino",
+            "--server",
+            server,
+            "--catalog",
+            catalog_name,
+            "--schema",
+            namespace,
+            "--execute",
+            trino_sql_probe(namespace=namespace, table=table),
+        ]
+    )
+
+
+def default_metadata_location(*, warehouse: str) -> str:
+    return f"s3://{warehouse}/tables/<table-id>/metadata/<current>.metadata.json"
+
+
+def duckdb_sql_probe(
+    *,
+    endpoint: str,
+    access_key: str,
+    secret_key: str,
+    region: str,
+    metadata_location: str,
+) -> str:
+    parsed = re.match(r"^(https?)://(.+)$", normalized_endpoint(endpoint))
+    if not parsed:
+        raise ValueError("DuckDB probe endpoint must include http:// or https://")
+    scheme, endpoint_without_scheme = parsed.groups()
+    statements = [
+        "INSTALL httpfs;",
+        "LOAD httpfs;",
+        "INSTALL iceberg;",
+        "LOAD iceberg;",
+        f"SET s3_endpoint={sql_string(endpoint_without_scheme)};",
+        f"SET s3_access_key_id={sql_string(access_key)};",
+        f"SET s3_secret_access_key={sql_string(secret_key)};",
+        f"SET s3_region={sql_string(region)};",
+        "SET s3_url_style='path';",
+        f"SET s3_use_ssl={'true' if scheme == 'https' else 'false'};",
+        f"SELECT COUNT(*) AS row_count FROM iceberg_scan({sql_string(metadata_location)});",
+    ]
+    return "\n".join(statements) + "\n"
+
+
+def duckdb_rest_catalog_sql(
+    *,
+    endpoint: str,
+    warehouse: str,
+    access_key: str,
+    secret_key: str,
+    region: str,
+    catalog_name: str,
+    namespace: str,
+    table: str,
+    rest_path: str,
+    rest_signing_name: str,
+) -> str:
+    parsed = re.match(r"^(https?)://(.+)$", normalized_endpoint(endpoint))
+    if not parsed:
+        raise ValueError("DuckDB REST catalog endpoint must include http:// or https://")
+    scheme, endpoint_without_scheme = parsed.groups()
+    rest_path = normalized_rest_path(rest_path)
+    catalog_identifier = quote_double_identifier(catalog_name)
+    table_identifier = ".".join(
+        [catalog_identifier, quote_double_identifier(namespace), quote_double_identifier(table)]
+    )
+    statements = [
+        "INSTALL httpfs;",
+        "LOAD httpfs;",
+        "INSTALL iceberg;",
+        "LOAD iceberg;",
+        "CREATE OR REPLACE SECRET rustfs_s3 (",
+        "  TYPE s3,",
+        "  PROVIDER config,",
+        f"  KEY_ID {sql_string(access_key)},",
+        f"  SECRET {sql_string(secret_key)},",
+        f"  REGION {sql_string(region)},",
+        f"  ENDPOINT {sql_string(endpoint_without_scheme)},",
+        "  URL_STYLE 'path',",
+        f"  USE_SSL {'true' if scheme == 'https' else 'false'},",
+        f"  SCOPE {sql_string(f's3://{warehouse}')}",
+        ");",
+        f"ATTACH {sql_string(warehouse)} AS {catalog_identifier} (",
+        "  TYPE iceberg,",
+        f"  ENDPOINT {sql_string(f'{normalized_endpoint(endpoint)}{rest_path}')},",
+        "  AUTHORIZATION_TYPE 'sigv4',",
+        "  SECRET 'rustfs_s3',",
+        f"  SIGV4_REGION {sql_string(region)},",
+        f"  SIGV4_SERVICE {sql_string(rest_signing_name)},",
+        "  ACCESS_DELEGATION_MODE 'none',",
+        "  STAGE_CREATE_TABLES false,",
+        "  SKIP_CREATE_TABLE_METADATA_UPDATES true,",
+        "  DISABLE_MULTI_TABLE_COMMIT true,",
+        "  REMOVE_FILES_ON_DELETE false,",
+        "  PURGE_REQUESTED false,",
+        "  SUPPORT_NESTED_NAMESPACES false",
+        ");",
+        f"SELECT COUNT(*) AS row_count FROM {table_identifier};",
+    ]
+    return "\n".join(statements) + "\n"
+
+
+def duckdb_command(*, sql_file: str = "/tmp/rustfs-s3tables-duckdb-read.sql") -> str:
+    return shell_join(["duckdb", "-c", f".read {sql_file}"])
+
+
+def snowflake_sql_template(*, endpoint: str, warehouse: str, rest_path: str, namespace: str, table: str) -> str:
+    catalog_uri = f"{normalized_endpoint(endpoint)}{normalized_rest_path(rest_path)}"
+    statements = [
+        "-- Reference template: replace credentials and storage integration names before running.",
+        "CREATE OR REPLACE EXTERNAL VOLUME rustfs_s3tables_volume",
+        f"  STORAGE_LOCATIONS = ((NAME = 'rustfs' STORAGE_PROVIDER = 'S3' STORAGE_BASE_URL = {sql_string(f's3://{warehouse}/')}));",
+        "CREATE OR REPLACE CATALOG INTEGRATION rustfs_s3tables_catalog",
+        "  CATALOG_SOURCE = ICEBERG_REST",
+        "  TABLE_FORMAT = ICEBERG",
+        f"  REST_CONFIG = (CATALOG_URI = {sql_string(catalog_uri)})",
+        "  ENABLED = TRUE;",
+        "CREATE OR REPLACE ICEBERG TABLE rustfs_s3tables_probe",
+        f"  CATALOG = 'rustfs_s3tables_catalog' CATALOG_NAMESPACE = {sql_string(namespace)} CATALOG_TABLE_NAME = {sql_string(table)}",
+        "  EXTERNAL_VOLUME = 'rustfs_s3tables_volume';",
+        "SELECT COUNT(*) AS row_count FROM rustfs_s3tables_probe;",
+    ]
+    return "\n".join(statements) + "\n"
+
+
+def databend_sql_probe(*, endpoint: str, warehouse: str, access_key: str, secret_key: str) -> str:
+    statements = [
+        "CREATE STAGE IF NOT EXISTS rustfs_s3tables_stage",
+        f"  URL = {sql_string(f's3://{warehouse}/tables/')}",
+        "  CONNECTION = (",
+        f"    ACCESS_KEY_ID = {sql_string(access_key)}",
+        f"    SECRET_ACCESS_KEY = {sql_string(secret_key)}",
+        f"    ENDPOINT_URL = {sql_string(normalized_endpoint(endpoint))}",
+        "    ENABLE_VIRTUAL_HOST_STYLE = 'false'",
+        "  );",
+        "SELECT COUNT(*) AS row_count",
+        "FROM @rustfs_s3tables_stage",
+        "  (PATTERN => '.*[.]parquet', FILE_FORMAT => (TYPE => PARQUET));",
+    ]
+    return "\n".join(statements) + "\n"
+
+
+def databend_command(*, dsn: str) -> str:
+    return shell_join(["databend-sql", "--dsn", dsn, "-f", "/tmp/rustfs-s3tables-databend-stage.sql"])
+
+
+def rest_api_prefix(rest_path: str) -> str:
+    prefix = normalized_rest_path(rest_path)
+    if not prefix.endswith("/v1"):
+        prefix = f"{prefix}/v1"
+    return prefix
+
+
+def rest_path_segment(value: str) -> str:
+    return urllib.parse.quote(value, safe="")
+
+
+def warehouse_catalog_path(*, warehouse: str, rest_path: str, suffix: str = "") -> str:
+    return f"{rest_api_prefix(rest_path)}/{rest_path_segment(warehouse)}{suffix}"
+
+
+def table_catalog_path(*, warehouse: str, namespace: str, table: str, rest_path: str, suffix: str = "") -> str:
+    return (
+        f"{rest_api_prefix(rest_path)}/{rest_path_segment(warehouse)}"
+        f"/namespaces/{rest_path_segment(namespace)}/tables/{rest_path_segment(table)}{suffix}"
+    )
+
+
+def live_conformance_evidence(
+    *,
+    warehouse: str,
+    namespace: str,
+    table: str,
+    rest_path: str,
+    metadata_location: str,
+    cleanup: bool,
+) -> OrderedDict[str, Any]:
+    return OrderedDict(
+        [
+            ("result", "operator-recorded"),
+            (
+                "required_run_metadata",
+                [
+                    "rustfs_build",
+                    "git_sha",
+                    "catalog_backing",
+                    "endpoint",
+                    "warehouse",
+                    "rest_path",
+                    "namespace",
+                    "table",
+                    "metadata_location",
+                    "client_name",
+                    "client_version",
+                    "run_timestamp_utc",
+                    "operator",
+                    "expected_status",
+                    "observed_status",
+                    "row_count",
+                    "cleanup_result",
+                ],
+            ),
+            (
+                "result_table_template",
+                [
+                    OrderedDict(
+                        [
+                            ("client", "PyIceberg"),
+                            ("scenario", "create-append-reload-scan-direct-rest-probes"),
+                            ("expected_status", "pass"),
+                            ("expected_row_count", 2),
+                            ("claim_after_pass", "automated-smoke"),
+                        ]
+                    ),
+                    OrderedDict(
+                        [
+                            ("client", "Spark Iceberg REST catalog"),
+                            ("scenario", "create-namespace-create-table-append-refresh-count-cleanup"),
+                            ("expected_status", "pass"),
+                            ("expected_row_count", 2),
+                            ("claim_after_pass", "manual-live-verified"),
+                        ]
+                    ),
+                    OrderedDict(
+                        [
+                            ("client", "Trino Iceberg REST catalog"),
+                            ("scenario", "read-count-existing-table"),
+                            ("expected_status", "pass"),
+                            ("expected_row_count", 2),
+                            ("claim_after_pass", "manual-live-read-verified"),
+                            ("write_claim_after_pass", "not-claimed"),
+                        ]
+                    ),
+                    OrderedDict(
+                        [
+                            ("client", "DuckDB Iceberg"),
+                            ("scenario", "rest-catalog-single-table-read-write-cross-engine-negative-boundaries"),
+                            ("expected_status", "pass"),
+                            ("expected_row_count", 2),
+                            ("claim_after_pass", "automated-rest-catalog-smoke"),
+                            ("write_claim_after_pass", "single-table-automated-smoke"),
+                        ]
+                    ),
+                    OrderedDict(
+                        [
+                            ("client", "Databend"),
+                            ("scenario", "s3-stage-read-table-data-files"),
+                            ("expected_status", "pass"),
+                            ("claim_after_pass", "manual-live-s3-stage-verified"),
+                            ("iceberg_rest_catalog_claim_after_pass", "not-claimed"),
+                        ]
+                    ),
+                    OrderedDict(
+                        [
+                            ("client", "Snowflake Open Catalog / Iceberg integrations"),
+                            ("scenario", "operator-adapted-external-volume-reference"),
+                            ("expected_status", "operator-recorded"),
+                            ("claim_after_pass", "reference-only"),
+                            ("live_rustfs_interoperability_after_pass", "not-claimed"),
+                        ]
+                    ),
+                ],
+            ),
+            (
+                "promotion_rules",
+                [
+                    "Keep PyIceberg and DuckDB automated claims tied to their repeatable smoke entrypoints and recorded client versions.",
+                    "Promote Spark only to manual-live-verified when the exact RustFS build, Spark version, Iceberg version, SQL output, and row_count are recorded.",
+                    "Keep Trino write compatibility not-claimed after its read probe and do not broaden DuckDB beyond the automated single-table scenarios.",
+                    "Do not promote Snowflake or vendor catalog interoperability from a generated template without a repeatable live run.",
+                    "Treat manual-live failures as compatibility findings and keep the previous public claim boundary.",
+                ],
+            ),
+            (
+                "target",
+                OrderedDict(
+                    [
+                        ("warehouse", warehouse),
+                        ("namespace", namespace),
+                        ("table", table),
+                        ("rest_path", rest_path),
+                        ("metadata_location", metadata_location),
+                        ("cleanup", cleanup),
+                    ]
+                ),
+            ),
+        ]
+    )
+
+
+def live_conformance_evidence_schema() -> OrderedDict[str, Any]:
+    return OrderedDict(
+        [
+            ("schema", LIVE_EVIDENCE_SCHEMA),
+            ("schema_version", LIVE_EVIDENCE_SCHEMA_VERSION),
+            ("required_fields", LIVE_EVIDENCE_REQUIRED_FIELDS.copy()),
+            ("claim_promotion", OrderedDict((client, claims.copy()) for client, claims in LIVE_EVIDENCE_ALLOWED_CLAIMS.items())),
+            (
+                "fail_closed_rules",
+                [
+                    "missing required field rejects the evidence record",
+                    "rustfs_build, git_sha, catalog_backing, and client_version must be recorded before claim promotion",
+                    "observed_status must match expected_status before any claim can be promoted",
+                    "expected_status must be pass before any claim can be promoted",
+                    "read-only probes cannot promote write compatibility",
+                    "PyIceberg, Spark, Trino, and DuckDB pass evidence must record row_count=2",
+                    "reference-only providers remain reference-only without a repeatable live run",
+                ],
+            ),
+        ]
+    )
+
+
+def live_conformance_evidence_record(
+    *,
+    client_name: str,
+    client_version: str,
+    scenario: str,
+    rustfs_build: str,
+    git_sha: str,
+    catalog_backing: str,
+    endpoint: str,
+    warehouse: str,
+    rest_path: str,
+    namespace: str,
+    table: str,
+    metadata_location: str,
+    run_timestamp_utc: str,
+    operator: str,
+    expected_status: str,
+    observed_status: str,
+    row_count: int,
+    cleanup_result: str,
+    claim: str,
+    command: str,
+) -> OrderedDict[str, Any]:
+    return OrderedDict(
+        [
+            ("schema", LIVE_EVIDENCE_SCHEMA),
+            ("schema_version", LIVE_EVIDENCE_SCHEMA_VERSION),
+            ("client_name", client_name),
+            ("client_version", client_version),
+            ("scenario", scenario),
+            ("rustfs_build", rustfs_build),
+            ("git_sha", git_sha),
+            ("catalog_backing", catalog_backing),
+            ("endpoint", normalized_endpoint(endpoint)),
+            ("warehouse", warehouse),
+            ("rest_path", normalized_rest_path(rest_path)),
+            ("namespace", namespace),
+            ("table", table),
+            ("metadata_location", metadata_location),
+            ("run_timestamp_utc", run_timestamp_utc),
+            ("operator", operator),
+            ("expected_status", expected_status),
+            ("observed_status", observed_status),
+            ("row_count", row_count),
+            ("cleanup_result", cleanup_result),
+            ("claim", claim),
+            ("command", command),
+        ]
+    )
+
+
+def require_non_empty_string(record: dict[str, Any], field: str) -> str:
+    value = record.get(field)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"live conformance evidence field {field} must be a non-empty string")
+    return value
+
+
+def require_operator_recorded_value(record: dict[str, Any], field: str) -> str:
+    value = require_non_empty_string(record, field)
+    if value == "operator-recorded":
+        raise ValueError(f"live conformance evidence field {field} must be recorded for claim promotion")
+    return value
+
+
+def validate_live_conformance_evidence(record: dict[str, Any]) -> OrderedDict[str, Any]:
+    for field in LIVE_EVIDENCE_REQUIRED_FIELDS:
+        if field not in record:
+            raise ValueError(f"live conformance evidence is missing required field {field}")
+    if record["schema"] != LIVE_EVIDENCE_SCHEMA:
+        raise ValueError("live conformance evidence schema does not match RustFS S3 Tables evidence schema")
+    if record["schema_version"] != LIVE_EVIDENCE_SCHEMA_VERSION:
+        raise ValueError("live conformance evidence schema_version is not supported")
+
+    client_name = require_non_empty_string(record, "client_name")
+    claim = require_non_empty_string(record, "claim")
+    allowed_claims = LIVE_EVIDENCE_ALLOWED_CLAIMS.get(client_name)
+    if allowed_claims is None:
+        raise ValueError(f"live conformance evidence client_name is not recognized: {client_name}")
+    if claim not in allowed_claims:
+        raise ValueError(f"live conformance evidence claim {claim} is not allowed for {client_name}")
+
+    expected_status = require_non_empty_string(record, "expected_status")
+    observed_status = require_non_empty_string(record, "observed_status")
+    if expected_status != "pass":
+        raise ValueError("live conformance evidence expected_status must be pass for claim promotion")
+    if observed_status != expected_status:
+        raise ValueError("live conformance evidence observed_status does not match expected_status")
+
+    for field in [
+        "client_version",
+        "rustfs_build",
+        "git_sha",
+        "catalog_backing",
+    ]:
+        require_operator_recorded_value(record, field)
+
+    for field in [
+        "scenario",
+        "endpoint",
+        "warehouse",
+        "rest_path",
+        "namespace",
+        "table",
+        "metadata_location",
+        "run_timestamp_utc",
+        "operator",
+        "cleanup_result",
+        "command",
+    ]:
+        require_non_empty_string(record, field)
+
+    row_count = record["row_count"]
+    if not isinstance(row_count, int) or row_count < 0:
+        raise ValueError("live conformance evidence row_count must be a non-negative integer")
+    if expected_status == "pass" and client_name in LIVE_EVIDENCE_ROW_COUNT_CLIENTS and row_count != 2:
+        raise ValueError("live conformance evidence row_count must be 2 for successful table smoke/read probes")
+
+    return OrderedDict(
+        [
+            ("status", "accepted"),
+            ("client_name", client_name),
+            ("scenario", record["scenario"]),
+            ("claim", claim),
+            ("metadata_location", record["metadata_location"]),
+            ("row_count", row_count),
+        ]
+    )
+
+
+def production_operations_guide(
+    *,
+    endpoint: str,
+    warehouse: str,
+    namespace: str,
+    table: str,
+    rest_path: str,
+) -> OrderedDict[str, Any]:
+    endpoint = normalized_endpoint(endpoint)
+    table_base = table_catalog_path(warehouse=warehouse, namespace=namespace, table=table, rest_path=rest_path)
+    pyiceberg_smoke_command = shell_join(
+        [
+            "python3",
+            "scripts/table-catalog/pyiceberg_smoke.py",
+            "--profile",
+            "rustfs",
+            "--endpoint",
+            endpoint,
+            "--bucket",
+            warehouse,
+            "--namespace",
+            namespace,
+            "--table",
+            table,
+            "--rest-path",
+            rest_path,
+            "--replace",
+            "--cleanup",
+        ]
+    )
+    live_conformance_command = shell_join(
+        [
+            "python3",
+            "scripts/table-catalog/engine_compatibility.py",
+            "--endpoint",
+            endpoint,
+            "--warehouse",
+            warehouse,
+            "--namespace",
+            namespace,
+            "--table",
+            table,
+            "--rest-path",
+            rest_path,
+            "--print-live-conformance",
+            "--cleanup",
+        ]
+    )
+    return OrderedDict(
+        [
+            ("claim_boundary", "Iceberg REST Catalog S3 Tables implementation"),
+            (
+                "target",
+                OrderedDict(
+                    [
+                        ("endpoint", endpoint),
+                        ("warehouse", warehouse),
+                        ("namespace", namespace),
+                        ("table", table),
+                        ("rest_path", rest_path),
+                    ]
+                ),
+            ),
+            (
+                "sections",
+                [
+                    OrderedDict(
+                        [
+                            ("name", "live-client-conformance"),
+                            ("objective", "Record repeatable client evidence before expanding engine compatibility claims."),
+                            (
+                                "commands",
+                                [
+                                    pyiceberg_smoke_command,
+                                    live_conformance_command,
+                                ],
+                            ),
+                            (
+                                "required_evidence",
+                                [
+                                    "RustFS build and git SHA",
+                                    "catalog backing mode",
+                                    "client name and version",
+                                    "generated command or SQL",
+                                    "expected and observed status",
+                                    "row_count or response status",
+                                    "current metadata location",
+                                ],
+                            ),
+                            (
+                                "pass_criteria",
+                                [
+                                    "PyIceberg append/reload/scan returns row_count=2",
+                                    "Spark manual/live run returns row_count=2 before cleanup",
+                                    "read-only engines do not claim write compatibility",
+                                ],
+                            ),
+                            (
+                                "fail_closed_signals",
+                                [
+                                    "missing run metadata",
+                                    "manual-live run fails",
+                                    "client writes are attempted through a read-only probe",
+                                ],
+                            ),
+                        ]
+                    ),
+                    OrderedDict(
+                        [
+                            ("name", "catalog-backing-cutover"),
+                            ("objective", "Verify durable backing readiness before selecting a non-object-backed catalog mode."),
+                            ("commands", [f"GET {warehouse_catalog_path(warehouse=warehouse, rest_path=rest_path, suffix='/catalog/migration')}"]),
+                            (
+                                "required_evidence",
+                                [
+                                    "migration dry-run response",
+                                    "commit recovery blockers",
+                                    "idempotency index readiness",
+                                    "warehouse prefix index readiness",
+                                    "rollback configuration",
+                                ],
+                            ),
+                            (
+                                "pass_criteria",
+                                [
+                                    "blockers is empty",
+                                    "recommended actions are completed",
+                                    "object-backed catalog backup exists before cutover",
+                                ],
+                            ),
+                            (
+                                "fail_closed_signals",
+                                [
+                                    "non-empty blockers",
+                                    "recoverable commit gaps require repair",
+                                    "warehouse prefix index is missing or stale",
+                                ],
+                            ),
+                        ]
+                    ),
+                    OrderedDict(
+                        [
+                            ("name", "maintenance-operations"),
+                            ("objective", "Validate controlled maintenance without claiming a continuous in-process scheduler."),
+                            (
+                                "commands",
+                                [
+                                    f"POST {table_base}/maintenance/metadata",
+                                    f"GET {table_base}/maintenance/jobs/{{job}}",
+                                ],
+                            ),
+                            (
+                                "required_evidence",
+                                [
+                                    "dry-run report before delete or rewrite",
+                                    "current pointer re-read",
+                                    "audit-events for planning and worker transitions",
+                                    "quarantine status for failed jobs",
+                                    "safe-window configuration",
+                                ],
+                            ),
+                            (
+                                "pass_criteria",
+                                [
+                                    "unreachable object deletion candidates pass safety-window checks",
+                                    "rewrite groups stay partition-local and sort-order-local",
+                                    "delete-file or row-level maintenance remains manual review",
+                                ],
+                            ),
+                            (
+                                "fail_closed_signals",
+                                [
+                                    "stale maintenance plan",
+                                    "quarantine required",
+                                    "row-level delete file rewrite requested",
+                                    "missing referenced object",
+                                ],
+                            ),
+                        ]
+                    ),
+                    OrderedDict(
+                        [
+                            ("name", "recovery-and-disaster-rehearsal"),
+                            ("objective", "Exercise operator recovery paths without moving the table pointer unexpectedly."),
+                            (
+                                "commands",
+                                [
+                                    f"GET {table_base}/catalog/diagnostics",
+                                    f"POST {table_base}/catalog/recovery",
+                                    "python3 scripts/table-catalog/failure_coverage.py --print-disaster-recovery-rehearsal",
+                                ],
+                            ),
+                            (
+                                "required_evidence",
+                                [
+                                    "catalog export baseline",
+                                    "diagnostics recovery status",
+                                    "safe repair result",
+                                    "rollback or import response when used",
+                                    "post-recovery loadTable result",
+                                ],
+                            ),
+                            (
+                                "pass_criteria",
+                                [
+                                    "safe repair does not move the current pointer",
+                                    "rollback/import uses normal catalog validation",
+                                    "post-recovery loadTable returns the expected metadata location",
+                                ],
+                            ),
+                            (
+                                "fail_closed_signals",
+                                [
+                                    "manual-review diagnostics",
+                                    "stale rollback or import conflict",
+                                    "post-recovery data-plane policy failure",
+                                ],
+                            ),
+                        ]
+                    ),
+                    OrderedDict(
+                        [
+                            ("name", "permissions-and-credentials"),
+                            ("objective", "Verify table policy and credential vending cannot bypass table warehouse scope."),
+                            (
+                                "commands",
+                                [
+                                    "python3 scripts/table-catalog/pyiceberg_smoke.py --profile rustfs-vended-credentials --replace --cleanup",
+                                    f"GET {table_base}/credentials",
+                                ],
+                            ),
+                            (
+                                "required_evidence",
+                                [
+                                    "catalog principal permissions",
+                                    "vended credential expiration",
+                                    "warehouse prefix scope",
+                                    "inside-prefix S3 put/head/get/delete result",
+                                    "outside-prefix deny result",
+                                ],
+                            ),
+                            (
+                                "pass_criteria",
+                                [
+                                    "default credentials response is empty unless vending is enabled",
+                                    "vended credentials work inside the exact table prefix",
+                                    "vended credentials are denied outside the exact table prefix",
+                                ],
+                            ),
+                            (
+                                "fail_closed_signals",
+                                [
+                                    "long-lived storage secret returned by catalog",
+                                    "prefix mismatch",
+                                    "outside-prefix object access succeeds",
+                                ],
+                            ),
+                        ]
+                    ),
+                    OrderedDict(
+                        [
+                            ("name", "unsupported-claim-governance"),
+                            ("objective", "Keep release language aligned with verified RustFS behavior."),
+                            (
+                                "commands",
+                                [
+                                    "python3 scripts/table-catalog/pyiceberg_smoke.py --print-unsupported-inventory",
+                                    "python3 scripts/table-catalog/engine_compatibility.py --print-engine-matrix",
+                                ],
+                            ),
+                            (
+                                "not_claimed",
+                                [
+                                    "full AWS S3 Tables control-plane API parity",
+                                    "full MinIO AIStor private extension parity",
+                                    "full Cloudflare R2 Data Catalog interoperability",
+                                    "active-active multi-region table writes",
+                                    "multi-table transactions",
+                                    "built-in SQL query execution",
+                                    "Delta Lake or Hudi table format support",
+                                    "end-to-end SQL row-level DML validation",
+                                ],
+                            ),
+                            (
+                                "required_evidence",
+                                [
+                                    "support matrix status label",
+                                    "unsupported inventory entry",
+                                    "live evidence before any promotion",
+                                ],
+                            ),
+                            (
+                                "pass_criteria",
+                                [
+                                    "public claim wording matches support matrix status",
+                                    "reference profiles stay reference-only without live evidence",
+                                ],
+                            ),
+                            (
+                                "fail_closed_signals",
+                                [
+                                    "vendor parity wording without recorded live evidence",
+                                    "manual probe documented as automated support",
+                                ],
+                            ),
+                        ]
+                    ),
+                ],
+            ),
+        ]
+    )
+
+
+def audit_provider(
+    *,
+    profile: str,
+    display_name: str,
+    source: str,
+    catalog_base_path: str,
+    warehouse_shape: str,
+    signing_name: str,
+    auth_model: str,
+    rustfs_claim: str,
+    not_claimed: list[str],
+    notes: list[str],
+) -> OrderedDict[str, Any]:
+    return OrderedDict(
+        [
+            ("profile", profile),
+            ("display_name", display_name),
+            ("source", source),
+            ("catalog_base_path", catalog_base_path),
+            ("warehouse_shape", warehouse_shape),
+            ("signing_name", signing_name),
+            ("auth_model", auth_model),
+            ("rustfs_claim", rustfs_claim),
+            (
+                "audit_categories",
+                [
+                    "iceberg-rest-routes",
+                    "request-response-fields",
+                    "error-shapes",
+                    "permission-actions",
+                    "maintenance-semantics",
+                    "credential-vending",
+                    "client-live-run",
+                ],
+            ),
+            ("not_claimed", not_claimed),
+            ("notes", notes),
+        ]
+    )
+
+
+def validation_step(name: str, evidence: list[str]) -> OrderedDict[str, Any]:
+    return OrderedDict(
+        [
+            ("name", name),
+            ("status", "manual-audit-required"),
+            ("evidence", evidence),
+        ]
+    )
+
+
+def vendor_compatibility_audit() -> OrderedDict[str, Any]:
+    return OrderedDict(
+        [
+            ("claim_boundary", "reference profiles and gap audit"),
+            ("source_last_checked", "2026-07-05"),
+            ("promotion_policy", "live evidence required before compatibility claims expand"),
+            (
+                "providers",
+                [
+                    audit_provider(
+                        profile="aws-s3tables",
+                        display_name="Amazon S3 Tables Iceberg REST endpoint",
+                        source="https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-tables-integrating-open-source.html",
+                        catalog_base_path="/iceberg",
+                        warehouse_shape="arn:aws:s3tables:{region}:{account_id}:bucket/{table_bucket}",
+                        signing_name="s3tables",
+                        auth_model="sigv4-s3tables-iam",
+                        rustfs_claim="profile-generator-only",
+                        not_claimed=[
+                            "full AWS S3 Tables compatibility",
+                            "AWS Glue Iceberg REST endpoint parity",
+                            "Lake Formation governance parity",
+                            "CloudTrail event parity",
+                        ],
+                        notes=[
+                            "S3 Tables uses a table bucket ARN as the Iceberg REST prefix.",
+                            "S3 Tables only supports single-level namespaces.",
+                            "REST operations map to s3tables IAM actions and CloudTrail event names.",
+                        ],
+                    ),
+                    audit_provider(
+                        profile="minio-aistor",
+                        display_name="MinIO AIStor Tables",
+                        source="https://docs.min.io/aistor/developers/aistor-tables/aistor-tables-api/",
+                        catalog_base_path="/_iceberg",
+                        warehouse_shape="{warehouse}",
+                        signing_name="s3tables",
+                        auth_model="sigv4-s3tables-pbac",
+                        rustfs_claim="alias-smoke-plus-profile-generator",
+                        not_claimed=[
+                            "private-extension-parity",
+                            "full AIStor PBAC action parity",
+                            "AIStor engine compatibility matrix parity",
+                        ],
+                        notes=[
+                            "AIStor serves the Iceberg REST catalog from the S3 endpoint under /_iceberg.",
+                            "Catalog authentication uses SigV4 with service name s3tables.",
+                            "The RustFS /_iceberg alias is a compatibility surface, not a claim of all AIStor extensions.",
+                        ],
+                    ),
+                    audit_provider(
+                        profile="cloudflare-r2-data-catalog",
+                        display_name="Cloudflare R2 Data Catalog",
+                        source="https://developers.cloudflare.com/r2/data-catalog/manage-catalogs/",
+                        catalog_base_path="provider-catalog-uri",
+                        warehouse_shape="{warehouse_name}",
+                        signing_name="s3",
+                        auth_model="api-token",
+                        rustfs_claim="profile-generator-only",
+                        not_claimed=[
+                            "full Cloudflare R2 Data Catalog interoperability",
+                            "managed-maintenance-parity",
+                            "Cloudflare API token policy parity",
+                        ],
+                        notes=[
+                            "Enabling a Cloudflare catalog returns a Catalog URI and Warehouse name.",
+                            "Cloudflare documents optional compaction and snapshot expiration management.",
+                            "RustFS generates reference connection shapes but does not claim live Cloudflare interoperability.",
+                        ],
+                    ),
+                    audit_provider(
+                        profile="oss-tables",
+                        display_name="Alibaba Cloud OSS Tables",
+                        source="https://www.alibabacloud.com/help/en/oss/user-guide/spark-access-oss-tables",
+                        catalog_base_path="/iceberg",
+                        warehouse_shape="acs:osstables:{region}:{account_id}:bucket/{table_bucket}",
+                        signing_name="osstables",
+                        auth_model="sigv4-osstables",
+                        rustfs_claim="profile-generator-only",
+                        not_claimed=[
+                            "full Alibaba OSS Tables interoperability",
+                            "provider-error-code-parity",
+                            "Alibaba RAM policy parity",
+                            "internal-network-endpoint parity",
+                        ],
+                        notes=[
+                            "OSS Tables documents public and internal Iceberg REST endpoints.",
+                            "Spark configuration uses an acs:osstables warehouse ARN and rest.signing-name=osstables.",
+                            "RustFS reference profiles must not imply live OSS Tables interoperability without a recorded run.",
+                        ],
+                    ),
+                ],
+            ),
+            (
+                "required_validation_steps",
+                [
+                    validation_step(
+                        "route-and-field-shape",
+                        [
+                            "request path",
+                            "request fields",
+                            "response fields",
+                            "pagination fields",
+                            "unsupported route response",
+                        ],
+                    ),
+                    validation_step(
+                        "error-response-shape",
+                        [
+                            "HTTP status",
+                            "error code",
+                            "error message",
+                            "conflict response body",
+                            "not found response body",
+                        ],
+                    ),
+                    validation_step(
+                        "permission-action-mapping",
+                        [
+                            "catalog action",
+                            "table bucket resource",
+                            "namespace resource",
+                            "table resource",
+                            "ordinary S3 data-plane action",
+                        ],
+                    ),
+                    validation_step(
+                        "maintenance-behavior",
+                        [
+                            "compaction support",
+                            "snapshot expiration support",
+                            "orphan cleanup support",
+                            "scheduler behavior",
+                            "manual-review boundary",
+                        ],
+                    ),
+                    validation_step(
+                        "credential-model",
+                        [
+                            "catalog authentication",
+                            "data-plane authentication",
+                            "credential vending response",
+                            "temporary credential scope",
+                            "token expiration",
+                        ],
+                    ),
+                    validation_step(
+                        "client-live-run",
+                        [
+                            "client name",
+                            "client version",
+                            "RustFS build",
+                            "catalog backing",
+                            "expected status",
+                            "observed status",
+                        ],
+                    ),
+                ],
+            ),
+            (
+                "global_not_claimed",
+                [
+                    "full AWS S3 Tables compatibility",
+                    "full MinIO AIStor private extension parity",
+                    "full Cloudflare R2 Data Catalog interoperability",
+                    "full Alibaba OSS Tables interoperability",
+                    "vendor-managed governance parity",
+                    "vendor-managed maintenance parity",
+                ],
+            ),
+        ]
+    )
+
+
+def live_conformance_harness(
+    *,
+    endpoint: str,
+    warehouse: str,
+    access_key: str,
+    secret_key: str,
+    region: str,
+    catalog_name: str,
+    namespace: str,
+    table: str,
+    rest_path: str,
+    rest_signing_name: str,
+    pyiceberg_version: str,
+    spark_version: str,
+    iceberg_version: str,
+    scala_version: str,
+    trino_version: str = DEFAULT_TRINO_VERSION,
+    trino_server: str = DEFAULT_TRINO_SERVER,
+    duckdb_version: str = DEFAULT_DUCKDB_VERSION,
+    snowflake_client_version: str = DEFAULT_SNOWFLAKE_CLIENT_VERSION,
+    databend_version: str = DEFAULT_DATABEND_VERSION,
+    databend_dsn: str = DEFAULT_DATABEND_DSN,
+    metadata_location: str | None = None,
+    cleanup: bool = False,
+) -> OrderedDict[str, Any]:
+    endpoint = normalized_endpoint(endpoint)
+    rest_path = normalized_rest_path(rest_path)
+    metadata_location = metadata_location or default_metadata_location(warehouse=warehouse)
+    sql_file = f"/tmp/rustfs-s3tables-{safe_file_segment(namespace)}-{safe_file_segment(table)}-spark.sql"
+    spark_config = spark_catalog_config(
+        endpoint=endpoint,
+        warehouse=warehouse,
+        access_key=access_key,
+        secret_key=secret_key,
+        region=region,
+        catalog_name=catalog_name,
+        rest_path=rest_path,
+        rest_signing_name=rest_signing_name,
+    )
+    sql = spark_sql_smoke(catalog_name=catalog_name, namespace=namespace, table=table, cleanup=cleanup)
+    packages = spark_packages(spark_version=spark_version, iceberg_version=iceberg_version, scala_version=scala_version)
+    trino_properties = trino_catalog_properties(
+        endpoint=endpoint,
+        warehouse=warehouse,
+        access_key=access_key,
+        secret_key=secret_key,
+        region=region,
+        rest_path=rest_path,
+        rest_signing_name=rest_signing_name,
+    )
+    duckdb_sql = duckdb_sql_probe(
+        endpoint=endpoint,
+        access_key=access_key,
+        secret_key=secret_key,
+        region=region,
+        metadata_location=metadata_location,
+    )
+    duckdb_rest_sql = duckdb_rest_catalog_sql(
+        endpoint=endpoint,
+        warehouse=warehouse,
+        access_key=access_key,
+        secret_key=secret_key,
+        region=region,
+        catalog_name=catalog_name,
+        namespace=namespace,
+        table=table,
+        rest_path=rest_path,
+        rest_signing_name=rest_signing_name,
+    )
+    snowflake_sql = snowflake_sql_template(
+        endpoint=endpoint,
+        warehouse=warehouse,
+        rest_path=rest_path,
+        namespace=namespace,
+        table=table,
+    )
+    databend_sql = databend_sql_probe(endpoint=endpoint, warehouse=warehouse, access_key=access_key, secret_key=secret_key)
+    pyiceberg_command = shell_join(
+        [
+            "python3",
+            "scripts/table-catalog/pyiceberg_smoke.py",
+            "--endpoint",
+            endpoint,
+            "--access-key",
+            access_key,
+            "--secret-key",
+            secret_key,
+            "--bucket",
+            warehouse,
+            "--namespace",
+            namespace,
+            "--table",
+            table,
+            "--rest-path",
+            rest_path,
+            "--rest-signing-name",
+            rest_signing_name,
+            "--replace",
+            *([] if not cleanup else ["--cleanup"]),
+        ]
+    )
+    return OrderedDict(
+        [
+            ("mode", "manual-or-ci-optional"),
+            ("ci_gate", "RUSTFS_TABLE_CATALOG_LIVE_CONFORMANCE=1"),
+            (
+                "prerequisites",
+                [
+                    "RustFS endpoint is reachable",
+                    "table bucket can be created or reused",
+                    "Python, PyIceberg, PyArrow, boto3, Spark, and Iceberg Spark runtime packages are available",
+                ],
+            ),
+            (
+                "expected_results",
+                OrderedDict(
+                    [
+                        ("namespace", namespace),
+                        ("table", table),
+                        ("row_count", 2),
+                        ("cleanup", cleanup),
+                    ]
+                ),
+            ),
+            (
+                "evidence",
+                live_conformance_evidence(
+                    warehouse=warehouse,
+                    namespace=namespace,
+                    table=table,
+                    rest_path=rest_path,
+                    metadata_location=metadata_location,
+                    cleanup=cleanup,
+                ),
+            ),
+            (
+                "clients",
+                [
+                    OrderedDict(
+                        [
+                            ("name", "PyIceberg"),
+                            ("status", "automated-smoke"),
+                            ("version", pyiceberg_version),
+                            ("install", shell_join(["python3", "-m", "pip", "install", f"pyiceberg[pyarrow]=={pyiceberg_version}", "boto3"])),
+                            ("command", pyiceberg_command),
+                            ("expected", "append two rows, reload the table, scan row_count=2, and run direct REST catalog probes"),
+                        ]
+                    ),
+                    OrderedDict(
+                        [
+                            ("name", "Spark Iceberg REST catalog"),
+                            ("status", "manual-live-harness"),
+                            ("spark_version", spark_version),
+                            ("iceberg_version", iceberg_version),
+                            ("scala_version", scala_version),
+                            ("packages", packages),
+                            ("spark_config", spark_config),
+                            ("sql_file", sql_file),
+                            (
+                                "prepare_sql",
+                                shell_join(
+                                    [
+                                        "python3",
+                                        "scripts/table-catalog/engine_compatibility.py",
+                                        "--print-spark-sql",
+                                        "--namespace",
+                                        namespace,
+                                        "--table",
+                                        table,
+                                        "--catalog-name",
+                                        catalog_name,
+                                        *([] if not cleanup else ["--cleanup"]),
+                                    ]
+                                )
+                                + f" > {shlex.quote(sql_file)}",
+                            ),
+                            ("sql", sql),
+                            ("command", spark_sql_command(packages=packages, config=spark_config, sql_file=sql_file)),
+                            ("expected", "Spark SQL SELECT COUNT(*) returns row_count=2 before optional cleanup"),
+                        ]
+                    ),
+                    OrderedDict(
+                        [
+                            ("name", "Trino Iceberg REST catalog"),
+                            ("status", "manual-live-read-probe"),
+                            ("version", trino_version),
+                            ("catalog_file", f"/tmp/{safe_file_segment(catalog_name)}.properties"),
+                            ("catalog_properties", trino_properties),
+                            ("sql", trino_sql_probe(namespace=namespace, table=table)),
+                            ("command", trino_command(server=trino_server, catalog_name=catalog_name, namespace=namespace, table=table)),
+                            ("expected", "SELECT COUNT(*) returns row_count=2 for a table already written by PyIceberg or Spark"),
+                            ("write_compatibility", "not-claimed"),
+                        ]
+                    ),
+                    OrderedDict(
+                        [
+                            ("name", "DuckDB Iceberg"),
+                            ("status", "automated-smoke"),
+                            ("version", duckdb_version),
+                            ("metadata_location", metadata_location),
+                            ("sql_file", "/tmp/rustfs-s3tables-duckdb-read.sql"),
+                            ("sql", duckdb_sql),
+                            ("command", duckdb_command()),
+                            ("expected", "iceberg_scan returns row_count=2 when metadata_location points at the current Iceberg metadata JSON"),
+                            ("rest_catalog_sql_file", "/tmp/rustfs-s3tables-duckdb-rest.sql"),
+                            ("rest_catalog_sql", duckdb_rest_sql),
+                            (
+                                "rest_catalog_command",
+                                duckdb_command(sql_file="/tmp/rustfs-s3tables-duckdb-rest.sql"),
+                            ),
+                            (
+                                "rest_catalog_expected",
+                                "generic Iceberg REST ATTACH returns row_count=2 for an existing RustFS table",
+                            ),
+                            ("rest_catalog_write_compatibility", "single-table-automated-smoke"),
+                            ("write_compatibility", "single-table-automated-smoke"),
+                        ]
+                    ),
+                    OrderedDict(
+                        [
+                            ("name", "Snowflake Open Catalog / Iceberg integrations"),
+                            ("status", "manual-reference-probe"),
+                            ("client_version", snowflake_client_version),
+                            ("sql", snowflake_sql),
+                            ("expected", "operator-adapted reference query returns row_count=2 after external volume and catalog integration setup"),
+                            ("live_rustfs_interoperability", "not-claimed"),
+                        ]
+                    ),
+                    OrderedDict(
+                        [
+                            ("name", "Databend"),
+                            ("status", "manual-live-s3-stage-probe"),
+                            ("version", databend_version),
+                            ("sql_file", "/tmp/rustfs-s3tables-databend-stage.sql"),
+                            ("sql", databend_sql),
+                            ("command", databend_command(dsn=databend_dsn)),
+                            ("expected", "S3 stage read probe returns row_count for Parquet data files under the table warehouse"),
+                            ("iceberg_rest_catalog", "not-claimed"),
+                        ]
+                    ),
+                ],
+            ),
+        ]
+    )
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Print RustFS S3 Tables Iceberg engine compatibility helpers.")
+    parser.add_argument("--endpoint", default="http://127.0.0.1:9000")
+    parser.add_argument("--access-key", default="rustfsadmin")
+    parser.add_argument("--secret-key", default="rustfsadmin")
+    parser.add_argument("--region", default="us-east-1")
+    parser.add_argument("--warehouse", default="rustfs-s3table-smoke")
+    parser.add_argument("--profile", choices=sorted(VENDOR_SPARK_PROFILES), default="rustfs")
+    parser.add_argument("--account-id", default="000000000000")
+    parser.add_argument("--table-bucket", default="rustfs-s3table-smoke")
+    parser.add_argument("--catalog-uri")
+    parser.add_argument("--warehouse-name")
+    parser.add_argument("--namespace", default="smoke")
+    parser.add_argument("--table", default="events")
+    parser.add_argument("--catalog-name", default="rustfs")
+    parser.add_argument("--rest-path")
+    parser.add_argument("--rest-signing-name")
+    parser.add_argument("--pyiceberg-version", default=DEFAULT_PYICEBERG_VERSION)
+    parser.add_argument("--spark-version", default=DEFAULT_SPARK_VERSION)
+    parser.add_argument("--iceberg-version", default=DEFAULT_ICEBERG_VERSION)
+    parser.add_argument("--scala-version", default=DEFAULT_SCALA_VERSION)
+    parser.add_argument("--trino-version", default=DEFAULT_TRINO_VERSION)
+    parser.add_argument("--trino-server", default=DEFAULT_TRINO_SERVER)
+    parser.add_argument("--duckdb-version", default=DEFAULT_DUCKDB_VERSION)
+    parser.add_argument("--snowflake-client-version", default=DEFAULT_SNOWFLAKE_CLIENT_VERSION)
+    parser.add_argument("--databend-version", default=DEFAULT_DATABEND_VERSION)
+    parser.add_argument("--databend-dsn", default=DEFAULT_DATABEND_DSN)
+    parser.add_argument("--metadata-location")
+    parser.add_argument("--cleanup", action="store_true")
+    parser.add_argument("--print-engine-matrix", action="store_true")
+    parser.add_argument("--print-vendor-audit", action="store_true")
+    parser.add_argument("--print-live-conformance", action="store_true")
+    parser.add_argument("--print-live-evidence-schema", action="store_true")
+    parser.add_argument("--print-operations-guide", action="store_true")
+    parser.add_argument("--print-spark-config", action="store_true")
+    parser.add_argument("--print-spark-sql", action="store_true")
+    parser.add_argument("--print-duckdb-rest-sql", action="store_true")
+    return parser.parse_args(argv)
+
+
+def print_json(document: Any, output: StringIO | None = None) -> None:
+    text = json.dumps(document, indent=2, sort_keys=True)
+    if output is None:
+        print(text)
+    else:
+        output.write(f"{text}\n")
+
+
+def cli_json(argv: list[str]) -> str:
+    output = StringIO()
+    run(parse_args(argv), output)
+    return output.getvalue()
+
+
+def run(args: argparse.Namespace, output: StringIO | None = None) -> None:
+    printed = False
+    if args.print_engine_matrix:
+        print_json({"engine_compatibility": engine_compatibility_matrix()}, output)
+        printed = True
+    if args.print_vendor_audit:
+        print_json({"vendor_compatibility_audit": vendor_compatibility_audit()}, output)
+        printed = True
+    if args.print_spark_config:
+        print_json(
+            {
+                "spark_config": spark_vendor_catalog_config(
+                    profile=args.profile,
+                    endpoint=args.endpoint,
+                    warehouse=args.warehouse,
+                    access_key=args.access_key,
+                    secret_key=args.secret_key,
+                    region=args.region,
+                    catalog_name=args.catalog_name,
+                    account_id=args.account_id,
+                    table_bucket=args.table_bucket,
+                    catalog_uri=args.catalog_uri,
+                    warehouse_name=args.warehouse_name,
+                    rest_path=args.rest_path,
+                    rest_signing_name=args.rest_signing_name,
+                )
+            },
+            output,
+        )
+        printed = True
+    if args.print_live_conformance:
+        print_json(
+            {
+                "live_conformance": live_conformance_harness(
+                    endpoint=args.endpoint,
+                    warehouse=args.warehouse,
+                    access_key=args.access_key,
+                    secret_key=args.secret_key,
+                    region=args.region,
+                    catalog_name=args.catalog_name,
+                    namespace=args.namespace,
+                    table=args.table,
+                    rest_path=args.rest_path or "/iceberg",
+                    rest_signing_name=args.rest_signing_name or "s3",
+                    pyiceberg_version=args.pyiceberg_version,
+                    spark_version=args.spark_version,
+                    iceberg_version=args.iceberg_version,
+                    scala_version=args.scala_version,
+                    trino_version=args.trino_version,
+                    trino_server=args.trino_server,
+                    duckdb_version=args.duckdb_version,
+                    snowflake_client_version=args.snowflake_client_version,
+                    databend_version=args.databend_version,
+                    databend_dsn=args.databend_dsn,
+                    metadata_location=args.metadata_location,
+                    cleanup=args.cleanup,
+                )
+            },
+            output,
+        )
+        printed = True
+    if args.print_live_evidence_schema:
+        print_json({"live_conformance_evidence_schema": live_conformance_evidence_schema()}, output)
+        printed = True
+    if args.print_operations_guide:
+        print_json(
+            {
+                "production_operations_guide": production_operations_guide(
+                    endpoint=args.endpoint,
+                    warehouse=args.warehouse,
+                    namespace=args.namespace,
+                    table=args.table,
+                    rest_path=args.rest_path or "/iceberg",
+                )
+            },
+            output,
+        )
+        printed = True
+    if args.print_spark_sql:
+        sql = spark_sql_smoke(
+            catalog_name=args.catalog_name,
+            namespace=args.namespace,
+            table=args.table,
+            cleanup=args.cleanup,
+        )
+        if output is None:
+            print(sql, end="")
+        else:
+            output.write(sql)
+        printed = True
+    if args.print_duckdb_rest_sql:
+        sql = duckdb_rest_catalog_sql(
+            endpoint=args.endpoint,
+            warehouse=args.warehouse,
+            access_key=args.access_key,
+            secret_key=args.secret_key,
+            region=args.region,
+            catalog_name=args.catalog_name,
+            namespace=args.namespace,
+            table=args.table,
+            rest_path=args.rest_path or "/iceberg",
+            rest_signing_name=args.rest_signing_name or "s3",
+        )
+        if output is None:
+            print(sql, end="")
+        else:
+            output.write(sql)
+        printed = True
+    if not printed:
+        print_json({"engine_compatibility": engine_compatibility_matrix()}, output)
+
+
+def main() -> None:
+    run(parse_args())
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,463 @@
+# Copyright 2024 RustFS Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Full ceph/s3-tests sweep against RustFS.
+#
+# The per-PR compatibility gate lives in ci.yml (job s3-implemented-tests) and
+# runs only the implemented_tests.txt whitelist. This workflow complements it:
+#
+#   - Scheduled weekly full sweep (TEST_SCOPE=all): runs the ENTIRE upstream
+#     suite and reports promotion candidates. Regressions, unclassified tests,
+#     incomplete execution, and infrastructure errors fail the job; classified
+#     failures for not-yet-implemented features remain informational.
+#   - Non-blocking upstream HEAD canary: collects current upstream node IDs and
+#     reports new, removed, duplicate, or overlapping classifications without
+#     making upstream drift a release gate.
+#   - Manual runs (workflow_dispatch): same, with configurable mode/scope.
+#
+# All test execution is delegated to scripts/s3-tests/run.sh (single source of
+# truth, also used locally and by the PR gate). This workflow only provisions
+# the server topology: a single node, or a real 4-node distributed cluster
+# (erasure-coded across nodes) behind an HAProxy round-robin load balancer.
+#
+# Runner infrastructure (ci-1, backlog#1149): this sweep needs BOTH a working
+# Docker daemon (to build the source image and run the single/multi topologies)
+# AND a Python toolchain with pip (for awscurl/tox and the pytest harness).
+# It previously ran on the self-hosted `sm-standard-4` label, which is served
+# by heterogeneous runners: some scheduled runs landed on minimal pods that
+# had neither `pip` (bare python3, `No module named pip`) nor `docker.sock`,
+# so "Install Python tools" died before any test executed (all 15 recorded
+# runs failed). Two changes make the infra assumptions explicit instead of
+# trusting drifting runner state:
+#   1. Pin to GitHub-hosted `ubuntu-latest`, which reliably ships Docker,
+#      docker compose, python3 and pip (no self-hosted fleet drift).
+#   2. Set up Python explicitly (actions/setup-python) before any pip usage,
+#      so the workflow stays correct even if the runner image changes.
+# The PR gate (ci.yml s3-implemented-tests) is unaffected: it avoids Docker
+# via DEPLOY_MODE=binary and defers all pip setup to run.sh's self-bootstrap.
+
+name: e2e-s3tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      test-mode:
+        description: "Server topology"
+        required: true
+        type: choice
+        default: "single"
+        options:
+          - single
+          - multi
+      scope:
+        description: "Test scope: full upstream suite or implemented whitelist"
+        required: true
+        type: choice
+        default: "all"
+        options:
+          - all
+          - implemented
+      xdist:
+        description: "pytest-xdist workers. '0' to disable."
+        required: false
+        default: "4"
+      maxfail:
+        description: "Stop after N failures. '0' to run everything."
+        required: false
+        default: "0"
+      shard-count:
+        description: "Exact-node-ID shard count for a targeted manual run"
+        required: false
+        default: "1"
+        type: choice
+        options:
+          - "1"
+          - "2"
+          - "4"
+      shard-index:
+        description: "Zero-based shard index for a targeted manual run"
+        required: false
+        default: "0"
+      markexpr:
+        description: "Optional pytest -m expression"
+        required: false
+        default: ""
+      testexpr:
+        description: "Optional pytest -k expression"
+        required: false
+        default: ""
+  schedule:
+    # Weekly full sweep (Sunday 02:00 UTC): full suite, run against BOTH the
+    # single-node and the 4-node distributed topologies (matrix below).
+    - cron: "19 2 * * 0"
+
+env:
+  # main user
+  S3_ACCESS_KEY: rustfsadmin-ci
+  S3_SECRET_KEY: rustfssecret-ci
+  # alt user (must be different from main for many s3-tests)
+  S3_ALT_ACCESS_KEY: rustfsalt
+  S3_ALT_SECRET_KEY: rustfsalt
+
+  S3_REGION: us-east-1
+  S3_HOST: 127.0.0.1
+  S3_PORT: "9000"
+
+  RUST_LOG: info
+  PLATFORM: linux/amd64
+  BUILDX_CACHE_SCOPE: rustfs-e2e-s3tests-source
+
+  # Scheduled runs have no inputs; default to a full sweep.
+  TEST_SCOPE: ${{ github.event.inputs.scope || 'all' }}
+  XDIST: ${{ github.event.inputs.xdist || '4' }}
+  MAXFAIL: ${{ github.event.inputs.maxfail || '0' }}
+  MARKEXPR: ${{ github.event.inputs.markexpr || '' }}
+  TESTEXPR: ${{ github.event.inputs.testexpr || '' }}
+  S3_SHARD_COUNT: ${{ github.event_name == 'schedule' && '4' || github.event.inputs.shard-count || '1' }}
+  TEST_TIMEOUT: "300"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event.inputs['test-mode'] || 'single' }}
+  cancel-in-progress: true
+
+# Only alert-on-failure needs more than read access; it declares its own
+# job-level `issues: write`.
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  s3tests:
+    name: s3tests (${{ matrix.test-mode }}, shard ${{ matrix.shard-index }})
+    # GitHub-hosted: reliably provides Docker + docker compose + python3/pip.
+    # See the header note (ci-1) for why the self-hosted sm-standard-4 label
+    # was abandoned. Scheduled failures are handled by alert-on-failure below.
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        # Scheduled sweeps cover both topologies; manual runs use the input.
+        test-mode: ${{ github.event_name == 'schedule' && fromJSON('["single", "multi"]') || fromJSON(format('["{0}"]', github.event.inputs.test-mode || 'single')) }}
+        shard-index: ${{ github.event_name == 'schedule' && fromJSON('[0, 1, 2, 3]') || fromJSON(format('[{0}]', github.event.inputs.shard-index || '0')) }}
+    env:
+      TEST_MODE: ${{ matrix.test-mode }}
+      S3_SHARD_INDEX: ${{ matrix.shard-index }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+
+      # Provision Python explicitly rather than trusting the runner image to
+      # ship a working pip (ci-1: a bare python3 without pip is what broke the
+      # scheduled sweep). Keeps the workflow correct across runner drift.
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip downloads
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-e2e-s3tests-${{ hashFiles('.github/workflows/e2e-s3tests.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-e2e-s3tests-
+
+      - name: Install Python tools
+        run: |
+          python3 -m pip install --user --upgrade pip "awscurl==0.44" "tox==4.60.0"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Verify Python tools
+        run: |
+          test "$(python3 -c 'import importlib.metadata as m; print(m.version("awscurl"))')" = "0.44"
+          test "$(python3 -c 'import importlib.metadata as m; print(m.version("tox"))')" = "4.60.0"
+
+      - name: Enable buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Build RustFS image (source, cached)
+        run: |
+          DOCKER_BUILDKIT=1 docker buildx build --load \
+            --platform "${PLATFORM}" \
+            --cache-from "type=gha,scope=${BUILDX_CACHE_SCOPE}" \
+            --cache-to "type=gha,mode=max,scope=${BUILDX_CACHE_SCOPE}" \
+            -t rustfs-ci \
+            -f Dockerfile.source .
+
+      - name: Start single RustFS
+        if: env.TEST_MODE == 'single'
+        run: |
+          SSE_KEY="$(head -c 32 /dev/zero | base64 -w0)"
+          docker network inspect rustfs-net >/dev/null 2>&1 || docker network create rustfs-net
+          docker rm -f rustfs-single >/dev/null 2>&1 || true
+          # The four disks share one physical device on the runner (a single
+          # loopback filesystem), so the local physical-disk-independence guard
+          # would refuse to start. Bypass it — this is the CI use case the guard
+          # explicitly sanctions via RUSTFS_UNSAFE_BYPASS_DISK_CHECK.
+          docker run -d --name rustfs-single \
+            --network rustfs-net \
+            -p "${S3_PORT}:9000" \
+            -e RUSTFS_ADDRESS=0.0.0.0:9000 \
+            -e RUSTFS_ACCESS_KEY="${S3_ACCESS_KEY}" \
+            -e RUSTFS_SECRET_KEY="${S3_SECRET_KEY}" \
+            -e RUSTFS_SSE_S3_MASTER_KEY="${SSE_KEY}" \
+            -e RUSTFS_VOLUMES="/data/rustfs{0...3}" \
+            -e RUSTFS_UNSAFE_BYPASS_DISK_CHECK=true \
+            -v /tmp/rustfs-single:/data \
+            rustfs-ci
+
+      - name: Start 4-node distributed cluster
+        if: env.TEST_MODE == 'multi'
+        run: |
+          SSE_KEY="$(head -c 32 /dev/zero | base64 -w0)"
+          # A real distributed deployment: every node lists all endpoints in
+          # RUSTFS_VOLUMES so data is erasure-coded ACROSS nodes. Do not use
+          # node-local volume paths here — that would create four independent
+          # single-node stores behind the load balancer.
+          cat > compose.yml <<EOF
+          x-rustfs-node: &rustfs-node
+            image: rustfs-ci
+            networks: [rustfs-net]
+            environment:
+              RUSTFS_ADDRESS: "0.0.0.0:9000"
+              RUSTFS_ACCESS_KEY: ${S3_ACCESS_KEY}
+              RUSTFS_SECRET_KEY: ${S3_SECRET_KEY}
+              RUSTFS_SSE_S3_MASTER_KEY: "${SSE_KEY}"
+              RUSTFS_VOLUMES: "http://rustfs{1...4}:9000/data/rustfs{0...3}"
+              # Each node's four disks share one physical device inside its
+              # container, so bypass the local physical-disk-independence guard
+              # (the CI use case it explicitly sanctions).
+              RUSTFS_UNSAFE_BYPASS_DISK_CHECK: "true"
+
+          services:
+            rustfs1:
+              <<: *rustfs-node
+              hostname: rustfs1
+              volumes: [rustfs1-data:/data]
+            rustfs2:
+              <<: *rustfs-node
+              hostname: rustfs2
+              volumes: [rustfs2-data:/data]
+            rustfs3:
+              <<: *rustfs-node
+              hostname: rustfs3
+              volumes: [rustfs3-data:/data]
+            rustfs4:
+              <<: *rustfs-node
+              hostname: rustfs4
+              volumes: [rustfs4-data:/data]
+            lb:
+              image: haproxy:2.9
+              hostname: lb
+              networks: [rustfs-net]
+              ports:
+                - "${S3_PORT}:9000"
+              volumes:
+                - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+          networks:
+            rustfs-net:
+              name: rustfs-net
+          volumes:
+            rustfs1-data:
+            rustfs2-data:
+            rustfs3-data:
+            rustfs4-data:
+          EOF
+
+          cat > haproxy.cfg <<'EOF'
+          global
+            log stdout format raw local0 info
+
+          defaults
+            mode http
+            log global
+            log-format '%ci:%cp [%tr] %ft %b/%s %TR/%Tw/%Tc/%Tr/%Ta %ST %B %tsc %HM %HP'
+            timeout connect 5s
+            timeout client  30s
+            timeout server  30s
+
+          frontend fe_s3
+            bind *:9000
+            option http-buffer-request
+            default_backend be_s3
+
+          backend be_s3
+            balance roundrobin
+            server s1 rustfs1:9000 check
+            server s2 rustfs2:9000 check
+            server s3 rustfs3:9000 check
+            server s4 rustfs4:9000 check
+          EOF
+
+          docker compose -f compose.yml up -d
+
+      - name: Wait for RustFS ready
+        run: |
+          for _ in {1..120}; do
+            if curl -sf "http://${S3_HOST}:${S3_PORT}/health/ready" >/dev/null 2>&1; then
+              echo "RustFS is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Health check timed out" >&2
+          if [ "${TEST_MODE}" = "single" ]; then
+            docker logs rustfs-single || true
+          else
+            docker compose -f compose.yml logs --tail=200 || true
+          fi
+          exit 1
+
+      - name: Run ceph s3-tests
+        run: |
+          DEPLOY_MODE=existing \
+          TEST_MODE="${TEST_MODE}" \
+          TEST_SCOPE="${TEST_SCOPE}" \
+          XDIST="${XDIST}" \
+          MAXFAIL="${MAXFAIL}" \
+          MARKEXPR="${MARKEXPR}" \
+          TESTEXPR="${TESTEXPR}" \
+          ./scripts/s3-tests/run.sh
+
+      - name: Publish compatibility report
+        if: always()
+        run: |
+          REPORT="artifacts/s3tests-${TEST_MODE}/compat-report.md"
+          if [ -f "${REPORT}" ]; then
+            cat "${REPORT}" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Collect RustFS logs
+        if: always()
+        run: |
+          mkdir -p "artifacts/rustfs-${TEST_MODE}"
+          if [ "${TEST_MODE}" = "single" ]; then
+            docker logs rustfs-single > "artifacts/rustfs-${TEST_MODE}/rustfs.log" 2>&1 || true
+            docker inspect rustfs-single > "artifacts/rustfs-${TEST_MODE}/inspect.json" || true
+          else
+            docker compose -f compose.yml logs --no-color > "artifacts/rustfs-${TEST_MODE}/cluster.log" 2>&1 || true
+          fi
+
+      - name: Upload artifacts
+        if: always() && env.ACT != 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: s3tests-${{ env.TEST_MODE }}-shard-${{ matrix.shard-index }}
+          path: artifacts/**
+
+  upstream-head-canary:
+    name: Upstream HEAD classification canary
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12"
+
+      - name: Install collection tool
+        run: |
+          python3 -m pip install --user "tox==4.60.0"
+          python3 - <<'PY'
+          from importlib.metadata import version
+
+          assert version("tox") == "4.60.0"
+          PY
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Compare upstream HEAD classifications
+        id: upstream-compare
+        run: |
+          ARTIFACT_DIR="artifacts/s3tests-upstream-head"
+          UPSTREAM_DIR="${RUNNER_TEMP}/s3-tests-upstream"
+          mkdir -p "${ARTIFACT_DIR}"
+          git clone --depth 1 https://github.com/ceph/s3-tests.git "${UPSTREAM_DIR}"
+          git -C "${UPSTREAM_DIR}" rev-parse HEAD > "${ARTIFACT_DIR}/upstream-sha.txt"
+          cp "${UPSTREAM_DIR}/s3tests.conf.SAMPLE" "${UPSTREAM_DIR}/s3tests.conf"
+          (
+            cd "${UPSTREAM_DIR}"
+            S3TEST_CONF="${UPSTREAM_DIR}/s3tests.conf" tox -- \
+              -q --collect-only s3tests/functional/test_s3.py \
+              -m "not rustfs_never_marker"
+          ) 2>&1 | tee "${ARTIFACT_DIR}/collect.log"
+          grep -E '^s3tests/functional/test_s3\.py::' \
+            "${ARTIFACT_DIR}/collect.log" > "${ARTIFACT_DIR}/collected-nodeids.txt"
+          python3 scripts/s3-tests/report_compat.py \
+            --lists-dir scripts/s3-tests \
+            --collected-nodeids "${ARTIFACT_DIR}/collected-nodeids.txt" \
+            --check-classifications-only 2>&1 | tee "${ARTIFACT_DIR}/classification-drift.txt"
+
+      - name: Publish canary report
+        if: always()
+        env:
+          CANARY_OUTCOME: ${{ steps.upstream-compare.outcome }}
+        run: |
+          {
+            echo "## ceph/s3-tests upstream HEAD canary"
+            echo
+            if [ -f artifacts/s3tests-upstream-head/upstream-sha.txt ]; then
+              echo "Upstream HEAD: $(cat artifacts/s3tests-upstream-head/upstream-sha.txt)"
+            fi
+            echo
+            echo '```text'
+            if [ -s artifacts/s3tests-upstream-head/classification-drift.txt ]; then
+              cat artifacts/s3tests-upstream-head/classification-drift.txt
+            elif [ "${CANARY_OUTCOME}" != "success" ]; then
+              echo "Canary did not complete; inspect the collection log artifact."
+            else
+              echo "No classification drift detected."
+            fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload canary artifacts
+        if: always() && env.ACT != 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: s3tests-upstream-head
+          path: artifacts/s3tests-upstream-head/**
+          retention-days: 14
+
+  alert-on-failure:
+    name: Alert on scheduled failure
+    needs: [s3tests]
+    # `always()` is required: without it this job is skipped when a needed
+    # job fails. Alerts only for scheduled runs (backlog#1149 ci-8) — manual
+    # dispatch failures are already watched by a human.
+    if: always() && github.event_name == 'schedule' && contains(needs.*.result, 'failure')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+      - name: Open or update failure-tracking issue
+        uses: ./.github/actions/schedule-failure-issue
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}

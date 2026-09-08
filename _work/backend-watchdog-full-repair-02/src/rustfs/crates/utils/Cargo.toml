@@ -1,0 +1,96 @@
+# Copyright 2024 RustFS Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+[package]
+name = "rustfs-utils"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+homepage.workspace = true
+description = "Utility functions and data structures for RustFS, providing essential features like hashing, compression, and network utilities."
+keywords = ["utilities", "hashing", "compression", "network", "rustfs"]
+categories = ["web-programming", "development-tools", "cryptography"]
+
+[dependencies]
+hotpath.workspace = true
+base64-simd = { workspace = true, optional = true }
+blake2 = { workspace = true, optional = true }
+brotli = { workspace = true, optional = true }
+bytes = { workspace = true, optional = true, features = ["serde"] }
+crc-fast = { workspace = true, optional = true }
+flate2 = { workspace = true, optional = true }
+futures = { workspace = true, optional = true }
+hex-simd = { workspace = true, optional = true }
+highway = { workspace = true, optional = true }
+hmac = { workspace = true, optional = true }
+http = { workspace = true, optional = true }
+hyper = { workspace = true, optional = true, features = ["http2", "http1", "server"] }
+local-ip-address = { workspace = true, optional = true }
+lz4 = { workspace = true, optional = true }
+md-5 = { workspace = true, optional = true }
+netif = { workspace = true, optional = true }
+regex = { workspace = true, optional = true }
+reqwest = { workspace = true, optional = true }
+rustix = { workspace = true, optional = true, features = ["fs"] }
+serde = { workspace = true, optional = true, features = ["derive"] }
+sha1 = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
+convert_case = { workspace = true, optional = true }
+siphasher = { workspace = true, optional = true }
+snap = { workspace = true, optional = true }
+tempfile = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true, features = ["io-util", "net", "time"] }
+tracing = { workspace = true }
+transform-stream = { workspace = true, optional = true }
+url = { workspace = true, optional = true }
+zstd = { workspace = true, optional = true }
+
+[dev-dependencies]
+criterion = { workspace = true, features = ["html_reports"] }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt"] }
+temp-env = { workspace = true }
+proptest = "1"
+
+[[bench]]
+name = "hash_hotpath_benchmark"
+harness = false
+
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true, optional = true, features = ["Win32_Storage_FileSystem"] }
+
+[lints]
+workspace = true
+
+[features]
+default = ["ip"]  # features that are enabled by default
+hotpath = ["hotpath/hotpath", "hotpath/tokio", "hotpath/futures", "hotpath/reqwest-0-13"]
+hotpath-alloc = ["hotpath", "hotpath/hotpath-alloc"]
+hotpath-cpu = ["hotpath", "hotpath/hotpath-cpu"]
+ip = ["dep:local-ip-address"]  # ip characteristics and their dependencies
+net = ["ip", "dep:url", "dep:netif", "dep:futures", "dep:transform-stream", "dep:bytes", "dep:hyper", "dep:tokio"]  # network features with DNS resolver
+egress = ["ip", "dep:reqwest", "dep:tokio", "dep:url"]
+io = ["dep:tokio"]
+path = []  # path manipulation features
+compress = ["dep:flate2", "dep:brotli", "dep:snap", "dep:lz4", "dep:zstd"]
+string = ["dep:regex"]
+crypto = ["dep:base64-simd", "dep:hex-simd", "dep:hmac", "dep:hyper", "dep:sha1", "dep:sha2"]
+hash = ["dep:highway", "dep:md-5", "dep:sha2", "dep:blake2", "dep:serde", "dep:siphasher", "dep:hex-simd", "dep:crc-fast"]
+os = ["dep:rustix", "dep:tempfile", "dep:windows"]  # operating system utilities
+integration = []  # integration test features
+http = ["dep:convert_case", "dep:http", "dep:regex"]
+obj = ["http"] # object storage features
+full = ["ip", "net", "egress", "io", "hash", "os", "integration", "path", "crypto", "string", "compress", "http", "obj"]  # all features

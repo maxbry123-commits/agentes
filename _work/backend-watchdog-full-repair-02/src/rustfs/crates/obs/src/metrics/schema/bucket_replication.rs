@@ -1,0 +1,528 @@
+// Copyright 2024 RustFS Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use crate::{MetricDescriptor, MetricName, new_counter_md, new_gauge_md, subsystems};
+use std::sync::LazyLock;
+
+/// Bucket level replication metric descriptor
+pub const BUCKET_L: &str = "bucket";
+/// Replication operation
+pub const OPERATION_L: &str = "operation";
+/// Replication proxy result
+pub const RESULT_L: &str = "result";
+/// Replication target ARN
+pub const TARGET_ARN_L: &str = "target_arn";
+/// Replication range
+pub const RANGE_L: &str = "range";
+
+const PROXIED_PUT_REQUESTS_TOTAL: &str = "proxied_put_requests_total";
+const PROXIED_PUT_REQUESTS_FAILURES: &str = "proxied_put_requests_failures";
+const RESYNC_STARTED_TOTAL: &str = "resync_started_total";
+const RESYNC_COMPLETED_TOTAL: &str = "resync_completed_total";
+const RESYNC_FAILED_TOTAL: &str = "resync_failed_total";
+const RESYNC_CANCELED_TOTAL: &str = "resync_canceled_total";
+const RESYNC_DURATION_MS_TOTAL: &str = "resync_duration_ms_total";
+const CURRENT_BACKLOG_COUNT: &str = "current_backlog_count";
+const CURRENT_BACKLOG_BYTES: &str = "current_backlog_bytes";
+const CURRENT_TARGET_BACKLOG_COUNT: &str = "current_target_backlog_count";
+const CURRENT_TARGET_BACKLOG_BYTES: &str = "current_target_backlog_bytes";
+const DURABLE_MRF_AVAILABLE: &str = "durable_mrf_available";
+const DURABLE_MRF_BACKLOG_COUNT: &str = "durable_mrf_backlog_count";
+const DURABLE_MRF_BACKLOG_BYTES: &str = "durable_mrf_backlog_bytes";
+const DURABLE_MRF_TARGET_BACKLOG_COUNT: &str = "durable_mrf_target_backlog_count";
+const DURABLE_MRF_TARGET_BACKLOG_BYTES: &str = "durable_mrf_target_backlog_bytes";
+const MRF_PENDING_COUNT: &str = "mrf_pending_count";
+const MRF_PENDING_BYTES: &str = "mrf_pending_bytes";
+const MRF_DROPPED_COUNT: &str = "mrf_dropped_count";
+const MRF_MISSED_COUNT: &str = "mrf_missed_count";
+const MRF_FLUSH_FAILURES: &str = "mrf_flush_failures";
+const MRF_LAST_FLUSH_DURATION_MILLIS: &str = "mrf_last_flush_duration_millis";
+const TARGET_SENT_BYTES: &str = "target_sent_bytes";
+const TARGET_SENT_COUNT: &str = "target_sent_count";
+const TARGET_TOTAL_FAILED_BYTES: &str = "target_total_failed_bytes";
+const TARGET_TOTAL_FAILED_COUNT: &str = "target_total_failed_count";
+const TARGET_LAST_MIN_FAILED_BYTES: &str = "target_last_min_failed_bytes";
+const TARGET_LAST_MIN_FAILED_COUNT: &str = "target_last_min_failed_count";
+const TARGET_LAST_HOUR_FAILED_BYTES: &str = "target_last_hour_failed_bytes";
+const TARGET_LAST_HOUR_FAILED_COUNT: &str = "target_last_hour_failed_count";
+
+const BUCKET_TARGET_LABELS: [&str; 2] = [BUCKET_L, TARGET_ARN_L];
+
+pub static BUCKET_REPL_LAST_HR_FAILED_BYTES_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_gauge_md(
+        MetricName::LastHourFailedBytes,
+        "Total number of bytes failed at least once to replicate in the last hour on a bucket",
+        &[BUCKET_L],
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_TARGET_LAST_HOUR_FAILED_BYTES_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_gauge_md(
+        MetricName::from(TARGET_LAST_HOUR_FAILED_BYTES),
+        "Total number of bytes failed at least once to replicate in the last hour on a bucket and target ARN",
+        &BUCKET_TARGET_LABELS,
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_LAST_HR_FAILED_COUNT_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_gauge_md(
+        MetricName::LastHourFailedCount,
+        "Total number of objects which failed replication in the last hour on a bucket",
+        &[BUCKET_L],
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_TARGET_LAST_HOUR_FAILED_COUNT_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_gauge_md(
+        MetricName::from(TARGET_LAST_HOUR_FAILED_COUNT),
+        "Total number of objects which failed replication in the last hour on a bucket and target ARN",
+        &BUCKET_TARGET_LABELS,
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_LAST_MIN_FAILED_BYTES_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_gauge_md(
+        MetricName::LastMinFailedBytes,
+        "Total number of bytes failed at least once to replicate in the last full minute on a bucket",
+        &[BUCKET_L],
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_TARGET_LAST_MIN_FAILED_BYTES_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_gauge_md(
+        MetricName::from(TARGET_LAST_MIN_FAILED_BYTES),
+        "Total number of bytes failed at least once to replicate in the last full minute on a bucket and target ARN",
+        &BUCKET_TARGET_LABELS,
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_LAST_MIN_FAILED_COUNT_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_gauge_md(
+        MetricName::LastMinFailedCount,
+        "Total number of objects which failed replication in the last full minute on a bucket",
+        &[BUCKET_L],
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_TARGET_LAST_MIN_FAILED_COUNT_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_gauge_md(
+        MetricName::from(TARGET_LAST_MIN_FAILED_COUNT),
+        "Total number of objects which failed replication in the last full minute on a bucket and target ARN",
+        &BUCKET_TARGET_LABELS,
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_LATENCY_MS_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_gauge_md(
+        MetricName::LatencyMilliSec,
+        "Replication latency on a bucket in milliseconds",
+        &[BUCKET_L, OPERATION_L, RANGE_L, TARGET_ARN_L],
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_CURRENT_BACKLOG_BYTES_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_gauge_md(
+        MetricName::from(CURRENT_BACKLOG_BYTES),
+        "Current number of bytes admitted to the in-memory replication worker queues for a bucket",
+        &[BUCKET_L],
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_CURRENT_BACKLOG_COUNT_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_gauge_md(
+        MetricName::from(CURRENT_BACKLOG_COUNT),
+        "Current number of objects admitted to the in-memory replication worker queues for a bucket",
+        &[BUCKET_L],
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_CURRENT_TARGET_BACKLOG_COUNT_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_gauge_md(
+        MetricName::from(CURRENT_TARGET_BACKLOG_COUNT),
+        "Current number of target-scoped operations admitted to in-memory replication worker queues for a bucket and target ARN",
+        &[BUCKET_L, TARGET_ARN_L],
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_CURRENT_TARGET_BACKLOG_BYTES_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_gauge_md(
+        MetricName::from(CURRENT_TARGET_BACKLOG_BYTES),
+        "Current bytes in target-scoped operations admitted to in-memory replication worker queues for a bucket and target ARN",
+        &[BUCKET_L, TARGET_ARN_L],
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_DURABLE_MRF_AVAILABLE_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_gauge_md(
+        MetricName::from(DURABLE_MRF_AVAILABLE),
+        "Whether the durable MRF backlog snapshot is available for this bucket on this node",
+        &[BUCKET_L],
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_DURABLE_MRF_BACKLOG_COUNT_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_gauge_md(
+        MetricName::from(DURABLE_MRF_BACKLOG_COUNT),
+        "Current number of objects in the durable MRF backlog file for a bucket on this node",
+        &[BUCKET_L],
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_DURABLE_MRF_BACKLOG_BYTES_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_gauge_md(
+        MetricName::from(DURABLE_MRF_BACKLOG_BYTES),
+        "Current bytes in the durable MRF backlog file for a bucket on this node",
+        &[BUCKET_L],
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_DURABLE_MRF_TARGET_BACKLOG_COUNT_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_gauge_md(
+        MetricName::from(DURABLE_MRF_TARGET_BACKLOG_COUNT),
+        "Current number of target-scoped operations in the durable MRF backlog file for a bucket and target ARN on this node",
+        &[BUCKET_L, TARGET_ARN_L],
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_DURABLE_MRF_TARGET_BACKLOG_BYTES_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_gauge_md(
+        MetricName::from(DURABLE_MRF_TARGET_BACKLOG_BYTES),
+        "Current bytes in target-scoped operations in the durable MRF backlog file for a bucket and target ARN on this node",
+        &[BUCKET_L, TARGET_ARN_L],
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_MRF_PENDING_COUNT_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_gauge_md(
+        MetricName::from(MRF_PENDING_COUNT),
+        "Current number of MRF entries waiting to be flushed to the durable recovery file for a bucket on this node",
+        &[BUCKET_L],
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_MRF_PENDING_BYTES_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_gauge_md(
+        MetricName::from(MRF_PENDING_BYTES),
+        "Current bytes represented by MRF entries waiting to be flushed to the durable recovery file for a bucket on this node",
+        &[BUCKET_L],
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_MRF_DROPPED_COUNT_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_counter_md(
+        MetricName::from(MRF_DROPPED_COUNT),
+        "Total number of MRF entries dropped after the bounded pending backlog cap was reached for a bucket on this node",
+        &[BUCKET_L],
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_MRF_MISSED_COUNT_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_counter_md(
+        MetricName::from(MRF_MISSED_COUNT),
+        "Total number of MRF entries that could not be admitted to the save channel for a bucket on this node",
+        &[BUCKET_L],
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_MRF_FLUSH_FAILURES_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_counter_md(
+        MetricName::from(MRF_FLUSH_FAILURES),
+        "Total number of durable MRF flush failures observed while a bucket had pending MRF entries on this node",
+        &[BUCKET_L],
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_MRF_LAST_FLUSH_DURATION_MILLIS_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_gauge_md(
+        MetricName::from(MRF_LAST_FLUSH_DURATION_MILLIS),
+        "Duration in milliseconds of the last durable MRF flush that touched pending entries for a bucket on this node",
+        &[BUCKET_L],
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_PROXIED_DELETE_TAGGING_REQUESTS_TOTAL_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_counter_md(
+        MetricName::ProxiedDeleteTaggingRequestsTotal,
+        "Number of DELETE tagging requests proxied to replication target",
+        &[BUCKET_L],
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_PROXIED_GET_REQUESTS_FAILURES_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_counter_md(
+        MetricName::ProxiedGetRequestsFailures,
+        "Number of failures in GET requests proxied to replication target",
+        &[BUCKET_L],
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_PROXIED_GET_REQUESTS_TOTAL_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_counter_md(
+        MetricName::ProxiedGetRequestsTotal,
+        "Number of GET requests proxied to replication target",
+        &[BUCKET_L],
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_PROXIED_GET_TAGGING_REQUESTS_FAILURES_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_counter_md(
+        MetricName::ProxiedGetTaggingRequestFailures,
+        "Number of failures in GET tagging requests proxied to replication target",
+        &[BUCKET_L],
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_PROXIED_GET_TAGGING_REQUESTS_TOTAL_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_counter_md(
+        MetricName::ProxiedGetTaggingRequestsTotal,
+        "Number of GET tagging requests proxied to replication target",
+        &[BUCKET_L],
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_PROXIED_HEAD_REQUESTS_FAILURES_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_counter_md(
+        MetricName::ProxiedHeadRequestsFailures,
+        "Number of failures in HEAD requests proxied to replication target",
+        &[BUCKET_L],
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_PROXIED_HEAD_REQUESTS_TOTAL_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_counter_md(
+        MetricName::ProxiedHeadRequestsTotal,
+        "Number of HEAD requests proxied to replication target",
+        &[BUCKET_L],
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_PROXIED_PUT_TAGGING_REQUESTS_FAILURES_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_counter_md(
+        MetricName::ProxiedPutTaggingRequestFailures,
+        "Number of failures in PUT tagging requests proxied to replication target",
+        &[BUCKET_L],
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_PROXIED_PUT_REQUESTS_FAILURES_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_counter_md(
+        MetricName::from(PROXIED_PUT_REQUESTS_FAILURES),
+        "Number of failures in PUT requests proxied to replication target",
+        &[BUCKET_L],
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_PROXIED_PUT_REQUESTS_TOTAL_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_counter_md(
+        MetricName::from(PROXIED_PUT_REQUESTS_TOTAL),
+        "Number of PUT requests proxied to replication target",
+        &[BUCKET_L],
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_PROXIED_PUT_TAGGING_REQUESTS_TOTAL_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_counter_md(
+        MetricName::ProxiedPutTaggingRequestsTotal,
+        "Number of PUT tagging requests proxied to replication target",
+        &[BUCKET_L],
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_SENT_BYTES_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_counter_md(
+        MetricName::SentBytes,
+        "Total number of bytes replicated to the target",
+        &[BUCKET_L],
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_TARGET_SENT_BYTES_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_counter_md(
+        MetricName::from(TARGET_SENT_BYTES),
+        "Total number of bytes replicated to a bucket replication target ARN",
+        &BUCKET_TARGET_LABELS,
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_SENT_COUNT_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_counter_md(
+        MetricName::SentCount,
+        "Total number of objects replicated to the target",
+        &[BUCKET_L],
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_TARGET_SENT_COUNT_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_counter_md(
+        MetricName::from(TARGET_SENT_COUNT),
+        "Total number of objects replicated to a bucket replication target ARN",
+        &BUCKET_TARGET_LABELS,
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_RESYNC_STARTED_TOTAL_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_counter_md(
+        MetricName::from(RESYNC_STARTED_TOTAL),
+        "Total number of bucket replication resync runs started",
+        &[BUCKET_L],
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_RESYNC_COMPLETED_TOTAL_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_counter_md(
+        MetricName::from(RESYNC_COMPLETED_TOTAL),
+        "Total number of bucket replication resync runs completed",
+        &[BUCKET_L],
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_RESYNC_FAILED_TOTAL_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_counter_md(
+        MetricName::from(RESYNC_FAILED_TOTAL),
+        "Total number of bucket replication resync runs failed",
+        &[BUCKET_L],
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_RESYNC_CANCELED_TOTAL_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_counter_md(
+        MetricName::from(RESYNC_CANCELED_TOTAL),
+        "Total number of bucket replication resync runs canceled",
+        &[BUCKET_L],
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_RESYNC_DURATION_MS_TOTAL_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_counter_md(
+        MetricName::from(RESYNC_DURATION_MS_TOTAL),
+        "Total elapsed time of finished bucket replication resync runs in milliseconds",
+        &[BUCKET_L],
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_TOTAL_FAILED_BYTES_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_counter_md(
+        MetricName::TotalFailedBytes,
+        "Total number of bytes failed at least once to replicate since server start",
+        &[BUCKET_L],
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_TARGET_TOTAL_FAILED_BYTES_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_counter_md(
+        MetricName::from(TARGET_TOTAL_FAILED_BYTES),
+        "Total number of bytes failed at least once to replicate since server start by bucket and target ARN",
+        &BUCKET_TARGET_LABELS,
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_TOTAL_FAILED_COUNT_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_counter_md(
+        MetricName::TotalFailedCount,
+        "Total number of objects which failed replication since server start",
+        &[BUCKET_L],
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_TARGET_TOTAL_FAILED_COUNT_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_counter_md(
+        MetricName::from(TARGET_TOTAL_FAILED_COUNT),
+        "Total number of objects which failed replication since server start by bucket and target ARN",
+        &BUCKET_TARGET_LABELS,
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_BANDWIDTH_LIMIT_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_gauge_md(
+        MetricName::BandwidthLimitBytesPerSecond,
+        "Configured bandwidth limit for replication in bytes per second",
+        &[BUCKET_L, TARGET_ARN_L],
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_BANDWIDTH_CURRENT_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_gauge_md(
+        MetricName::BandwidthCurrentBytesPerSecond,
+        "Current replication bandwidth in bytes per second (EWMA)",
+        &[BUCKET_L, TARGET_ARN_L],
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_PROXIED_DELETE_TAGGING_REQUESTS_FAILURES_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_counter_md(
+        MetricName::ProxiedDeleteTaggingRequestFailures,
+        "Number of failures in DELETE tagging requests proxied to replication target",
+        &[BUCKET_L],
+        subsystems::BUCKET_REPLICATION,
+    )
+});
+
+pub static BUCKET_REPL_PROXY_REQUESTS_TOTAL_MD: LazyLock<MetricDescriptor> = LazyLock::new(|| {
+    new_counter_md(
+        MetricName::Custom("proxy_requests_total".to_string()),
+        "Total number of bucket replication proxy requests by operation and result",
+        &[BUCKET_L, OPERATION_L, RESULT_L],
+        subsystems::BUCKET_REPLICATION,
+    )
+});

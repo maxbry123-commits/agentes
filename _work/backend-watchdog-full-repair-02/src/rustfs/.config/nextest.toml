@@ -1,0 +1,667 @@
+# nextest configuration for RustFS.
+#
+experimental = ["setup-scripts"]
+
+# Serialize the ecstore tests that share the process-wide disk registry or
+# exercise a multi-disk commit handoff across nextest process boundaries.
+#
+#   * store::bucket::tests::bucket_delete_* share process/global state (disk
+#     registry, lock client) and race make_bucket into InsufficientWriteQuorum
+#     when run concurrently with other ecstore tests.
+#   * bucket_lifecycle_ops::tests::concurrent_resend_same_part_commits_one_generation
+#     uses the shared multipart fixture and a deterministic uploadId-lock
+#     handoff, so it must not overlap another process mutating that fixture.
+#   * bucket::metadata_sys::tests::concurrent_config_writes_from_separate_nodes_do_not_lose_writes
+#     uses the shared transaction lock and must not overlap other ecstore tests.
+#
+# serial_test's #[serial] attribute does NOT serialize these across runs:
+# nextest executes each test in its own process, where the in-process
+# serial_test mutex has no effect. A nextest test-group with max-threads = 1 is
+# the mechanism that actually serializes across nextest's process boundary.
+#
+# ---------------------------------------------------------------------------
+# Profiles
+# ---------------------------------------------------------------------------
+# The `default` profile is what local `cargo nextest run` uses. It NEVER
+# retries: a red test locally means a real failure to investigate, not noise to
+# paper over. The `ci` profile (below) is the strict CI gate: global
+# retries = 0 so a new race's first occurrence is never masked, plus a
+# narrowly-scoped quarantine list (retries = 2) for tests with a tracked OPEN
+# flake issue. Flake policy lives in docs/testing/README.md.
+
+[test-groups]
+ecstore-serial-flaky = { max-threads = 1 }
+embedded-test-ports = { max-threads = 1 }
+e2e-vault = { max-threads = 1 }
+
+# Reliability / fault-injection e2e tests each spawn a single-node 4-disk RustFS
+# server and manipulate its disk directories at runtime (crates/e2e_test:
+# reliability_disk_fault_test, degraded_read_eof_regression_test / dist-13, and
+# replacement_privileged_e2e_test when explicitly run as root on Linux). They
+# are correct in isolation but resource-heavy; serialize them under nextest's
+# process boundary (serial_test's #[serial] does not cross it) so several 4-disk
+# servers never run at once. The e2e-full merge/main lane picks these up;
+# they are deliberately NOT in the fast PR `e2e-smoke` filter.
+e2e-reliability = { max-threads = 1 }
+e2e-inline-boundaries = { max-threads = 1 }
+e2e-cluster-nightly = { max-threads = 1 }
+
+# Deep async storage futures are composed into tests across several crates.
+# Keep the test stack bounded but above libtest's 2 MiB default.
+[scripts.setup.ecstore-base-stack]
+command = ['sh', '-c', 'echo RUST_MIN_STACK=4194304 >> "$NEXTEST_ENV"']
+
+# These exact regression scenarios build deep async storage futures that exceed
+# libtest's 2 MiB spawned-thread stack on Linux. Give only their test processes
+# the same 32 MiB stack already used by the crate's dedicated large-stack tests.
+[scripts.setup.ecstore-large-stack]
+command = ['sh', '-c', 'echo RUST_MIN_STACK=33554432 >> "$NEXTEST_ENV"']
+
+# The serial ILM selection builds the same deep storage futures in both the
+# lifecycle transition module and scanner integration binary. Different tests
+# in each have overflowed first across otherwise unrelated CI runs.
+[scripts.setup.lifecycle-large-stack]
+command = ['sh', '-c', 'echo RUST_MIN_STACK=33554432 >> "$NEXTEST_ENV"']
+
+# --- default profile (local): serialize the flaky groups, never retry --------
+[[profile.default.scripts]]
+filter = 'package(rustfs-ecstore) & test(/^(bucket::lifecycle::bucket_lifecycle_ops::tests::manual_transition_worker_result_recovery_marks_unknown_for_corrupt_marker|services::rebalance::entry::tests::real_rebalance_run_fence_loss_blocks_multipart_publication|store::init::tests::(batch_transitioned_delete_uses_free_version_per_item|decommission_entry_(allows_free_version_consumed_before_source_lock|rejects_subquorum_free_version_conflict_and_retains_source|skips_cleanup_only_marker_when_free_version_is_present)|dispatched_tier_delete_recovery_(checks_later_pool_then_commits_after_source_removal|finds_directory_source_on_encoded_set|retains_journal_on_source_metadata_error)|force_tier_remove_blocks_on_physical_free_version_hidden_by_other_pool|legacy_unknown_transition_delete_falls_back_for_single_batch_and_blocks_prefix|multi_pool_(recursive_prefix_rejects_legacy_or_hidden_merge_loser_before_delete|same_remote_tuple_(batch|single)_delete_waits_for_all_sources|same_tuple_recursive_prefix_uses_one_journal_owner|transitioned_delete_persists_one_free_version_per_remote_tuple)|recursive_prefix_partial_(pool|set)_failure_keeps_prepared_cleanup_owners|restored_transitioned_delete_uses_free_version_as_cleanup_owner|stable_transitioned_recursive_prefix_delete_uses_journal_owners|suspended_null_transition_delete_uses_free_version_as_sole_owner|tier_mutation_peer_handler_applies_prepare_commit_and_abort_idempotently|transition_response_loss_persists_unknown_outcome_for_provider_recovery|transition_transaction_recovery_(drops_record_after_confirmed_local_commit|keeps_cleanup_pending_local_commit)|transitioned_delete_(free_version_replays_after_store_restart|local_quorum_failure_rolls_back_without_cleanup_owner|uses_free_version_as_cleanup_owner)|versioned_delete_marker_keeps_transitioned_source_and_remote_object|versioned_explicit_transition_delete_preserves_other_version_then_allows_bucket_delete))$/)'
+setup = 'ecstore-large-stack'
+
+[[profile.default.scripts]]
+filter = 'package(rustfs-ecstore) | package(rustfs-s3select-api) | package(rustfs-scanner) | (package(rustfs) & test(/^(app::multipart_usecase::tests::concurrent_completions_share_durable_bucket_quota_reservations|app::object::delete::tests::compressed_delete_requests_update_observed_usage_without_releasing_quota_floor|app::object::internal_put::tests::internal_multipart_roundtrip_completes_and_abort_leaves_nothing|app::object::restore::tests::execute_restore_object_maps_failures_to_typed_s3_errors|storage::access::tests::(delete_object_access_captures_authorized_bucket_incarnation|copy_operations_reject_recreated_source_bucket_after_authorization|request_slot_keeps_bucket_policy_bound_to_its_store))$/))'
+setup = 'ecstore-base-stack'
+
+[[profile.default.scripts]]
+filter = 'binary(lifecycle_integration_test) | (package(rustfs) & test(/^app::lifecycle_transition_api_test::/))'
+setup = 'lifecycle-large-stack'
+
+[[profile.default.overrides]]
+filter = 'package(rustfs-ecstore) & (test(concurrent_resend_same_part_commits_one_generation) | test(concurrent_config_writes_from_separate_nodes_do_not_lose_writes) | test(/^store::bucket::tests::bucket_delete_(mark_delete|purge_removes|default_s3_delete)/))'
+test-group = 'ecstore-serial-flaky'
+
+# Serialize the multipart crash-consistency scenarios (dist-2, backlog#1150):
+# each spawns a 4-disk hermetic erasure set and drives full staged-upload +
+# commit + GET cycles — the same cross-disk-commit IO shape that made
+# concurrent_resend load-sensitive. Preventive serialization only, no retries.
+# The matching ci-profile override is after [profile.ci].
+[[profile.default.overrides]]
+filter = 'package(rustfs-ecstore) & test(/^set_disk::ops::multipart::tests::crash_consistency::/)'
+test-group = 'ecstore-serial-flaky'
+
+# Serialize the heal result-report tests. Every test in the module builds a
+# real-disk (TempDir-backed) hermetic erasure set and drives MiB-scale writes
+# plus deep-scan heal — the same load-sensitive cross-disk IO shape as the
+# crash_consistency scenarios above. Under a heavily parallel run a single
+# disk's IO can fail while write quorum still holds, which flips per-disk
+# readback and aggregate-outcome assertions nondeterministically (different
+# tests each round; all pass standalone). Preventive serialization only, no
+# retries. The matching ci-profile override is after [profile.ci].
+[[profile.default.overrides]]
+filter = 'package(rustfs-ecstore) & test(/^set_disk::ops::heal::heal_result_report_tests::/)'
+test-group = 'ecstore-serial-flaky'
+
+# Serialize the metadata-cache generation-retirement pair. Both carry
+# #[serial(metadata_cache_invalidation_probe)] — a no-op across nextest's
+# process boundary — and assert get_object_metadata_cache generation
+# semantics on a 4-disk hermetic set, the same load-sensitive shape that
+# forced the transition matrix tests into this group. Preventive
+# serialization only, no retries. The matching ci-profile override is after
+# [profile.ci].
+[[profile.default.overrides]]
+filter = 'package(rustfs-ecstore) & test(retires_cached_snapshot)'
+test-group = 'ecstore-serial-flaky'
+
+# The production-handler relocation regression builds an isolated 8-disk,
+# 2-pool store and commits a 72 MiB multipart object. Keep that cross-disk IO
+# from overlapping the ecstore commit fixtures above.
+[[profile.default.overrides]]
+filter = 'package(rustfs) & test(execute_get_object_resumes_from_relocated_pool_without_splicing_body)'
+test-group = 'ecstore-serial-flaky'
+
+# Embedded integration-test binaries discover an ephemeral port and release
+# the probe listener before RustFS binds it. Serialize that cross-process
+# TOCTOU window; retries would only hide real startup failures.
+[[profile.default.overrides]]
+filter = 'package(rustfs) & (binary(/^embedded.*_test$/) | binary(admin_diagnostic_capability_e2e))'
+test-group = 'embedded-test-ports'
+
+# Serialize the durable manual-transition checkpoint test across nextest's
+# process boundary; it mutates bucket lifecycle metadata and is not quarantined.
+[[profile.default.overrides]]
+filter = 'package(rustfs-ecstore) & test(manual_transition_page_checkpoint_persists_durable_job_progress)'
+test-group = 'ecstore-serial-flaky'
+
+# Serialize the transition matrix tests. They build a 4-disk hermetic erasure
+# set, populate the get_object_metadata_cache, and assert generation lifecycle
+# semantics. serial_test's #[serial] has no effect across nextest's process
+# boundary, so concurrent execution races the shared metadata-cache generation
+# counter and causes spurious "metadata read should publish the generation"
+# panics. Preventive serialization, no retries.
+[[profile.default.overrides]]
+filter = 'package(rustfs-ecstore) & test(set_disk::transition_matrix_tests::)'
+test-group = 'ecstore-serial-flaky'
+
+# The durable ILM decommission regressions build isolated multi-pool stores and
+# deliberately take source or target disks offline while checking fencing.
+[[profile.default.overrides]]
+filter = 'package(rustfs-ecstore) & (test(decommission_migrates_and_verifies_registered_durable_ilm_records) | test(decommission_durable_ilm_target_read_error_is_not_masked_by_peer_success) | test(decommission_durable_ilm_terminal_receipt_recovers_failed_source_cleanup) | test(decommission_durable_ilm_receipt_pagination_fails_closed_on_second_page) | test(decommission_durable_ilm_recovery_keeps_multiple_active_sources))'
+test-group = 'ecstore-serial-flaky'
+
+# Decommission entry and marker/barrier tests share process-wide fault hooks and
+# deterministic commit barriers. Keep the whole init decommission family in one
+# nextest group; serial_test alone cannot isolate separate test processes.
+[[profile.default.overrides]]
+filter = 'package(rustfs-ecstore) & test(/^store::init::tests::(decommission_|suspended_.*decommission)$/)'
+test-group = 'ecstore-serial-flaky'
+
+# Serialize the bucket-incarnation / lifecycle-fence tests. They drive
+# init_bucket_metadata_sys and bucket_metadata_sys_of, i.e. process-global
+# OnceLock state that serial_test's #[serial] cannot protect across nextest's
+# process boundary, and they delete+recreate buckets — the same shape that
+# raced into InsufficientWriteQuorum in backlog#937. Preventive only, no
+# retries. The matching ci-profile override is after [profile.ci].
+[[profile.default.overrides]]
+filter = 'package(rustfs-ecstore) & (test(bucket_delete_waits_for_config_mutation_fence) | test(stale_config_request_cannot_mutate_a_recreated_bucket) | test(disk_incarnation_read_detects_stale_cache_until_peer_reload) | test(lifecycle_expiry_fails_closed_on_corrupt_object_lock_metadata) | test(expiry_configs_are_resolved_from_the_owning_store))'
+test-group = 'ecstore-serial-flaky'
+
+# Serialize the default-off dst-dir fsync group-commit tests. They use
+# process-global test hooks/registry to deterministically freeze fsync batches;
+# no retries, just one at a time under nextest too.
+[[profile.default.overrides]]
+filter = 'package(rustfs-ecstore) & test(dst_dir_fsync_group_commit)'
+test-group = 'ecstore-serial-flaky'
+
+# Serialize the 4-disk reliability / degraded-read e2e tests (see the
+# e2e-reliability test-group note above). The matching ci-profile override is at
+# the end of the file, after [profile.ci] is declared.
+[[profile.default.overrides]]
+filter = 'package(e2e_test) & test(/^(reliability_disk_fault|degraded_read_eof_regression|replacement_privileged_e2e)_test::/)'
+test-group = 'e2e-reliability'
+
+[[profile.default.overrides]]
+filter = 'package(e2e_test) & test(/^inline_fast_path_cluster_test::/)'
+test-group = 'e2e-inline-boundaries'
+
+# 4-node 4-drive distributed Actions suite: each case starts four rustfs
+# processes and up to sixteen data directories. Serialize across nextest's
+# process boundary so several 4x4 clusters never overlap.
+[[profile.default.overrides]]
+filter = 'package(e2e_test) & test(/^distributed::/)'
+test-group = 'e2e-cluster-nightly'
+
+# Vault KMS tests share the fixed dev-server port 8200. serial_test's #[serial]
+# does not cross nextest process boundaries, so keep every Vault-backed test in
+# one group.
+[[profile.default.overrides]]
+filter = 'package(e2e_test) & (test(/^kms::kms_vault_test::/) | test(/^kms::kms_rekey_sweep_test::/) | test(/^kms::configured_roundtrip_test::test_configured_vault_kms_admin_and_versioned_cleanup$/))'
+test-group = 'e2e-vault'
+
+# ---------------------------------------------------------------------------
+# ci profile — the strict CI gate (ci.yml `cargo nextest run --profile ci`)
+# ---------------------------------------------------------------------------
+[profile.ci]
+# Strict: a new race must fail on its first occurrence, never be retried away.
+retries = 0
+# Report every failure in one run instead of bailing on the first.
+fail-fast = false
+
+[profile.ci.junit]
+# Emitted to target/nextest/ci/junit.xml; uploaded as a CI artifact.
+# Tests that pass only after a quarantine retry are marked `flaky` here — that
+# marker is the observable signal the flake policy is built around.
+path = "junit.xml"
+
+[[profile.ci.scripts]]
+filter = 'package(rustfs-ecstore) & test(/^(bucket::lifecycle::bucket_lifecycle_ops::tests::manual_transition_worker_result_recovery_marks_unknown_for_corrupt_marker|services::rebalance::entry::tests::real_rebalance_run_fence_loss_blocks_multipart_publication|store::init::tests::(batch_transitioned_delete_uses_free_version_per_item|decommission_entry_(allows_free_version_consumed_before_source_lock|rejects_subquorum_free_version_conflict_and_retains_source|skips_cleanup_only_marker_when_free_version_is_present)|dispatched_tier_delete_recovery_(checks_later_pool_then_commits_after_source_removal|finds_directory_source_on_encoded_set|retains_journal_on_source_metadata_error)|force_tier_remove_blocks_on_physical_free_version_hidden_by_other_pool|legacy_unknown_transition_delete_falls_back_for_single_batch_and_blocks_prefix|multi_pool_(recursive_prefix_rejects_legacy_or_hidden_merge_loser_before_delete|same_remote_tuple_(batch|single)_delete_waits_for_all_sources|same_tuple_recursive_prefix_uses_one_journal_owner|transitioned_delete_persists_one_free_version_per_remote_tuple)|recursive_prefix_partial_(pool|set)_failure_keeps_prepared_cleanup_owners|restored_transitioned_delete_uses_free_version_as_cleanup_owner|stable_transitioned_recursive_prefix_delete_uses_journal_owners|suspended_null_transition_delete_uses_free_version_as_sole_owner|tier_mutation_peer_handler_applies_prepare_commit_and_abort_idempotently|transition_response_loss_persists_unknown_outcome_for_provider_recovery|transition_transaction_recovery_(drops_record_after_confirmed_local_commit|keeps_cleanup_pending_local_commit)|transitioned_delete_(free_version_replays_after_store_restart|local_quorum_failure_rolls_back_without_cleanup_owner|uses_free_version_as_cleanup_owner)|versioned_delete_marker_keeps_transitioned_source_and_remote_object|versioned_explicit_transition_delete_preserves_other_version_then_allows_bucket_delete))$/)'
+setup = 'ecstore-large-stack'
+
+[[profile.ci.scripts]]
+filter = 'package(rustfs-ecstore) | package(rustfs-s3select-api) | package(rustfs-scanner) | (package(rustfs) & test(/^(app::multipart_usecase::tests::concurrent_completions_share_durable_bucket_quota_reservations|app::object::delete::tests::compressed_delete_requests_update_observed_usage_without_releasing_quota_floor|app::object::internal_put::tests::internal_multipart_roundtrip_completes_and_abort_leaves_nothing|app::object::restore::tests::execute_restore_object_maps_failures_to_typed_s3_errors|storage::access::tests::(delete_object_access_captures_authorized_bucket_incarnation|copy_operations_reject_recreated_source_bucket_after_authorization|request_slot_keeps_bucket_policy_bound_to_its_store))$/))'
+setup = 'ecstore-base-stack'
+
+[[profile.ci.scripts]]
+filter = 'binary(lifecycle_integration_test) | (package(rustfs) & test(/^app::lifecycle_transition_api_test::/))'
+setup = 'lifecycle-large-stack'
+
+# ===========================================================================
+# QUARANTINE — flaky tests granted retries = 2 under the ci profile ONLY.
+#
+# RULES (enforced by review, see docs/testing/README.md):
+#   * Every entry MUST link exactly one OPEN issue tracking the flake.
+#   * An entry stays until the issue is fixed (test made robust) or the test is
+#     deleted — 30-day policy. No entry may exist without a live issue link.
+#
+# Each entry also re-declares the `ecstore-serial-flaky` test-group so the
+# serialization holds under the ci profile (nextest evaluates a named
+# profile's own overrides list, not the default profile's).
+# ===========================================================================
+
+# QUARANTINE: OPEN backlog#937 — store::bucket::tests::bucket_delete_* race
+# make_bucket into InsufficientWriteQuorum via shared global state under load.
+[[profile.ci.overrides]]
+filter = 'package(rustfs-ecstore) & test(/^store::bucket::tests::bucket_delete_(mark_delete|purge_removes|default_s3_delete)/)'
+test-group = 'ecstore-serial-flaky'
+retries = 2
+
+# Keep deterministic ECStore write handoffs isolated across nextest processes.
+[[profile.ci.overrides]]
+filter = 'package(rustfs-ecstore) & (test(concurrent_resend_same_part_commits_one_generation) | test(concurrent_config_writes_from_separate_nodes_do_not_lose_writes))'
+test-group = 'ecstore-serial-flaky'
+
+# QUARANTINE: OPEN rustfs#4690 — walk_dir stall-budget accounting test depends
+# on producer/consumer timing windows that stretch past the budget on loaded
+# CI runners (regression test for rustfs#4644; failed on a zero-Rust-diff PR).
+[[profile.ci.overrides]]
+filter = 'package(rustfs-ecstore) & test(walk_dir_does_not_charge_consumer_backpressure_to_the_stall_budget)'
+retries = 2
+
+# Serialize the relocated-pool GET resume regression under the ci profile too
+# (see the matching default-profile override near the top). No longer a
+# quarantine: the fixture race (rustfs#6701/rustfs#6703) was fixed by #6707,
+# which made the staging tolerate quorum-tolerated disk gaps; only the 8-disk
+# cross-disk-IO serialization remains.
+[[profile.ci.overrides]]
+filter = 'package(rustfs) & test(execute_get_object_resumes_from_relocated_pool_without_splicing_body)'
+test-group = 'ecstore-serial-flaky'
+
+# Serialize the 4-disk reliability / degraded-read e2e tests under the ci
+# profile too (see the e2e-reliability test-group note near the top). Not a
+# quarantine: no retries, just single-threaded so several 4-disk servers never
+# run concurrently when e2e-full runs the suite.
+[[profile.ci.overrides]]
+filter = 'package(e2e_test) & test(/^(reliability_disk_fault|degraded_read_eof_regression|replacement_privileged_e2e)_test::/)'
+test-group = 'e2e-reliability'
+
+# Serialize the multipart crash-consistency scenarios under the ci profile too
+# (see the matching default-profile override near the top). Not a quarantine:
+# no retries, just serialized 4-disk cross-disk-commit IO.
+[[profile.ci.overrides]]
+filter = 'package(rustfs-ecstore) & test(/^set_disk::ops::multipart::tests::crash_consistency::/)'
+test-group = 'ecstore-serial-flaky'
+
+# Serialize the heal result-report tests under the ci profile too (see the
+# matching default-profile override near the top). Not a quarantine: no
+# retries, just serialized real-disk heal IO.
+[[profile.ci.overrides]]
+filter = 'package(rustfs-ecstore) & test(/^set_disk::ops::heal::heal_result_report_tests::/)'
+test-group = 'ecstore-serial-flaky'
+
+# Serialize the metadata-cache generation-retirement pair under the ci
+# profile too (see the matching default-profile override near the top). Not a
+# quarantine: no retries.
+[[profile.ci.overrides]]
+filter = 'package(rustfs-ecstore) & test(retires_cached_snapshot)'
+test-group = 'ecstore-serial-flaky'
+
+# Match the default-profile embedded test isolation without quarantining or
+# retrying failures in CI.
+[[profile.ci.overrides]]
+filter = 'package(rustfs) & (binary(/^embedded.*_test$/) | binary(admin_diagnostic_capability_e2e))'
+test-group = 'embedded-test-ports'
+
+# Serialize the durable manual-transition checkpoint test under the ci profile
+# too. No retries: failures stay visible.
+[[profile.ci.overrides]]
+filter = 'package(rustfs-ecstore) & test(manual_transition_page_checkpoint_persists_durable_job_progress)'
+test-group = 'ecstore-serial-flaky'
+
+# Serialize the transition matrix tests under the ci profile too (see the
+# matching default-profile override near the top). No retries.
+[[profile.ci.overrides]]
+filter = 'package(rustfs-ecstore) & test(set_disk::transition_matrix_tests::)'
+test-group = 'ecstore-serial-flaky'
+
+[[profile.ci.overrides]]
+filter = 'package(rustfs-ecstore) & (test(decommission_migrates_and_verifies_registered_durable_ilm_records) | test(decommission_durable_ilm_target_read_error_is_not_masked_by_peer_success) | test(decommission_durable_ilm_terminal_receipt_recovers_failed_source_cleanup) | test(decommission_durable_ilm_receipt_pagination_fails_closed_on_second_page) | test(decommission_durable_ilm_recovery_keeps_multiple_active_sources))'
+test-group = 'ecstore-serial-flaky'
+
+[[profile.ci.overrides]]
+filter = 'package(rustfs-ecstore) & test(/^store::init::tests::(decommission_|suspended_.*decommission)$/)'
+test-group = 'ecstore-serial-flaky'
+
+# Serialize the bucket-incarnation / lifecycle-fence tests under the ci profile
+# too (see the matching default-profile override near the top). No retries.
+[[profile.ci.overrides]]
+filter = 'package(rustfs-ecstore) & (test(bucket_delete_waits_for_config_mutation_fence) | test(stale_config_request_cannot_mutate_a_recreated_bucket) | test(disk_incarnation_read_detects_stale_cache_until_peer_reload) | test(lifecycle_expiry_fails_closed_on_corrupt_object_lock_metadata) | test(expiry_configs_are_resolved_from_the_owning_store))'
+test-group = 'ecstore-serial-flaky'
+
+[[profile.ci.overrides]]
+filter = 'package(rustfs-ecstore) & test(dst_dir_fsync_group_commit)'
+test-group = 'ecstore-serial-flaky'
+
+# ---------------------------------------------------------------------------
+# e2e-smoke profile — PR smoke subset of the e2e_test crate (backlog#1149 ci-4)
+# ---------------------------------------------------------------------------
+# PR smoke subset of the e2e_test crate (backlog#1149 ci-4). This profile is
+# the single wiring mechanism for e2e tests in CI: other suites join by
+# extending this filter (or a sibling profile), never by adding ad-hoc e2e
+# jobs to ci.yml. Admission criteria (see crates/e2e_test/README.md): fast,
+# single-node topology, no external dependencies (no awscurl / Vault / fixed
+# ports / pre-started server), no #[ignore].
+#
+# Each e2e test spawns its own rustfs server on a random port with an isolated
+# temp dir (crates/e2e_test/src/common.rs), so the subset is parallel-safe.
+#
+# Replication failure harness (backlog#1147 repl-8): the first clause admits
+# its four in-process fake-target self-tests. They bind random loopback ports,
+# use no external service, and finish in under a second.
+#
+# Replication PR subset (backlog#1147 repl-1): the second clause admits the 20
+# FAST bucket-replication tests from replication_extension_test — the
+# target-registration / replication-check / list / remove / delete admin paths
+# that validate config synchronously and never wait for asynchronous
+# replication convergence. Each spawns its own single-node rustfs server(s) on
+# random ports (source, plus an independent single-node target for the pair
+# checks — NOT a cluster), so the subset stays parallel-safe and single-digit
+# seconds. The data-plane tests that poll for convergence and all
+# `_real_dual_node` / `_real_single_node`
+# site-replication tests run in the [profile.e2e-repl-nightly] lane below, NOT
+# here. This allowlist is the single source of truth for the PR/nightly split:
+# the nightly profile derives its set as "the replication module MINUS this
+# allowlist", so any new replication test lands in nightly by default (never
+# silently unrun) until it is explicitly blessed as fast here. Keep the two
+# regexes byte-identical. The committed profile selection digests make changes
+# visible in CI; list current membership with `cargo nextest list -p e2e_test
+# --profile <profile>` (platform-dependent; see docs/testing/README.md).
+# HISTORY (2026-07-11): the 20 fast tests were briefly pulled out of this lane
+# (#4724) because they set a loopback (127.0.0.1) replication target that the
+# SSRF egress guard rejected on every PR after repl-1 (#4712). That is fixed —
+# the guard now honours an off-by-default opt-in and this suite's source servers
+# set it (RUSTFS_REPLICATION_ALLOW_LOOPBACK_TARGET) — so the allowlist below is
+# restored.
+#
+# Security negative-auth subset (backlog#1151 sec-5): the three attacker-facing
+# S3 auth-rejection suites join the first clause above by module name —
+# presigned_negative (sec-2), negative_sigv4 (sec-1, header SigV4), and
+# admin_auth (sec-4, admin gate + root-credential lifecycle). All three use
+# RustFSTestEnvironment on a random port and are parallel-safe, so they meet the
+# smoke admission criteria unchanged. This is the wiring step that makes those
+# merged suites actually execute on every PR (they were dead until listed here).
+# A rename that drops any of them out of this filter would silently thin the
+# security gate with no CI signal, so scripts/check_security_smoke_count.sh owns
+# a count-floor guard over exactly this subset (infra-12 mechanism, floor in
+# .config/security-smoke-floor.txt), invoked from the e2e-tests job in ci.yml.
+# NOT here by topology: the GHSA-3p3x FTPS/WebDAV constant-time e2e
+# (protocols::test_protocol_core_suite) binds fixed ports and needs the
+# ftps,webdav features, so it cannot join this random-port, default-feature
+# profile; its GHSA-r5qv sibling is a unit test that already runs in the
+# test-and-lint `--all --exclude e2e_test` pass. See
+# docs/testing/security-regressions.md for the full CI-execution map.
+#
+# ILM tiering main path (backlog#1148 ilm-7): the `reliant::tiering::` clause
+# admits the hermetic transition e2e. Like the fast replication pair checks it
+# spawns a second independent single-node server (the cold RustFS tier), not a
+# cluster, so it keeps the lane's parallel-safe / no-external-dependency
+# properties. The RustFS warm backend has no loopback guard (that guard is
+# replication-only), so it needs no opt-in env for its 127.0.0.1 tier target.
+#
+# Disk compression (backlog#1848): the `compression` module joins the smoke
+# lane so the multipart disk-compression roundtrips (restored after
+# rustfs/rustfs#5169 disabled them) have PR-lane signal, not just merge-gate.
+# Single-node servers on random ports with isolated temp dirs — meets the
+# admission criteria unchanged.
+#
+# On-demand migration GA (backlog#2163 ODM-16): three named cases join the
+# lane, one per user-visible contract of the feature — a GET miss that pulls
+# the object and persists it locally, a HEAD miss that answers from the source
+# and stores nothing, and the admin config/status pair that must redact the
+# source secret. Each spawns one single-node rustfs server plus the in-process
+# fake S3 source (`fake_s3_target`, already in the first clause), so they meet
+# the admission criteria unchanged; measured at 15.8 s / 15.8 s / 15.9 s, which
+# is entirely the shared server startup and overlaps the lane's other tests.
+# The rest of `on_demand_migration::{get_basic,interaction,backfill,
+# harness_self}_test` stays in e2e-full and the fault / concurrency /
+# real-source modules stay in e2e-nightly; this is an allowlist, not a module
+# clause, so a new ODM test never lands here silently.
+#
+# Scanner authoritative usage publication (backlog#2213): data_usage_test is
+# the PR-lane e2e coverage for scanner usage snapshots consumed by quota and
+# admin surfaces. It uses the same single-node, random-port, isolated-temp-dir
+# fixture as the existing smoke modules.
+[profile.e2e-smoke]
+default-filter = """
+    package(e2e_test) & (
+        test(/^(delete_marker_migration_semantics|version_id_regression|list_objects_v2_pagination|list_object_versions_regression|list_objects_duplicates|list_buckets_double_slash|list_buckets_auth|list_buckets_iam_filter|leading_slash_key|special_chars|create_bucket_region|delete_objects_versioning|head_object_consistency|head_object_range|copy_object_metadata|copy_object_tagging|copy_source_invalid_date|content_encoding|compression|multipart_storage_class|storage_class_capability|ssec_copy|anonymous_access|bucket_policy_check|presigned_negative|negative_sigv4|admin_auth|notification_webhook|tls_hot_reload|console_smoke|admin_iam_crud|admin_pools|sts_query_compat|data_usage)_test::|^fake_s3_target::/)
+        | test(/^replication_extension_test::(test_replication_check_succeeds_with_remote_target|test_replication_check_rejects_target_without_object_lock|test_set_remote_target_rejects_unversioned_source_bucket|test_replication_check_rejects_unversioned_source_bucket|test_replication_check_rejects_missing_replication_config|test_replication_check_rejects_invalid_bucket|test_set_remote_target_rejects_same_bucket_on_same_deployment|test_set_remote_target_rejects_unversioned_target_bucket|test_set_remote_target_update_requires_arn|test_set_remote_target_update_rejects_missing_target|test_set_remote_target_rejects_invalid_target_url|test_set_remote_target_rejects_self_signed_https_target_without_skip_tls_verify|test_set_remote_target_rejects_private_ca_https_target_without_ca_cert_pem|test_list_remote_targets_rejects_empty_bucket|test_list_remote_targets_rejects_invalid_bucket|test_remove_remote_target_rejects_missing_target|test_remove_remote_target_rejects_missing_arn|test_remove_remote_target_rejects_invalid_bucket|test_remove_remote_target_rejects_target_used_by_replication|test_delete_bucket_replication_removes_remote_target)$/)
+        | test(/^reliant::lifecycle::/)
+        | test(/^reliant::tiering::/)
+        | test(/^on_demand_migration::(get_basic_test::(get_miss_pulls_inline_and_serves_locally_afterwards|head_miss_answers_from_the_source_without_persisting)|interaction_test::test_odm_admin_config_is_redacted_and_status_counts_match_the_source)$/)
+    )
+"""
+fail-fast = false
+
+[profile.e2e-smoke.junit]
+path = "junit.xml"
+
+# The pagination boundary cases can stall when a server/listing regression
+# prevents the continuation request from completing. Keep the timeout scoped
+# to those known failure modes so legitimate lifecycle/tiering waits retain
+# their test-level timing budget.
+[[profile.e2e-smoke.overrides]]
+filter = 'package(e2e_test) & test(/^list_objects_v2_pagination_test::tests::(test_list_objects_v2_delimiter_small_page_traverses_all|test_list_objects_v2_max_keys_above_limit_returns_token|test_list_objects_v2_maxkeys_above_limit_with_delimiter)$/)'
+slow-timeout = { period = "60s", terminate-after = 2, grace-period = "10s" }
+
+# ---------------------------------------------------------------------------
+# e2e-repl-nightly profile — scheduled full replication e2e lane (repl-1)
+# ---------------------------------------------------------------------------
+# backlog#1147 repl-1 (deps: ci-4). Runs the SLOW / cross-process replication
+# tests that are unfit for the per-PR e2e-smoke gate:
+#
+#   * 2 remote-target TLS validation tests.
+#   * 15 bucket-replication data-plane/helper tests — they PUT/delete objects
+#     and poll until source and target converge; two replicate over HTTPS,
+#     six pin SSE replication contracts (managed SSE-S3/SSE-KMS re-encrypt on
+#     the target incl. multipart and the resync path, SSE-C and
+#     target-without-KMS stay fail-closed), and one guards event/history
+#     observers.
+#   * 13 `_real_dual_node` site-replication tests — each spawns TWO full rustfs
+#     servers and drives the cross-process site-replication control plane.
+#   * 1 `_real_three_node` site-replication test.
+#   * 1 `_real_single_node` service-account round-trip test.
+#
+# The set is defined as "everything in replication_extension_test that is NOT
+# in the e2e-smoke PR allowlist above" (the negated clause is byte-identical to
+# the allowlist), so a newly added replication test automatically runs here
+# until it is explicitly promoted to the fast PR subset — no replication test
+# is ever silently left out of CI.
+#
+# replication_target_matrix_test (the outbound target matrix: every object
+# shape against every remote-target failure mode the fake target models) runs
+# here in full; its expectation table pins known-red cells to open issues.
+#
+# #[serial] does NOT serialize under nextest (process-per-test; see the file
+# header). These tests need no cross-test serialization: each spawns its own
+# server(s) on random ports with isolated temp dirs, so they are parallel-safe
+# by construction — the same property the e2e-smoke subset relies on. If load
+# on the runner surfaces a real flake, quarantine the specific test with an
+# OPEN issue link (ci-10 / backlog#937 policy), never blanket-retry or exclude.
+#
+# Wired by .github/workflows/e2e-replication-nightly.yml (schedule +
+# workflow_dispatch), which builds the rustfs binary once, installs awscurl so
+# the STS dual-node test actually exercises its path (the test fails when
+# awscurl is absent), and routes scheduled failures
+# through .github/actions/schedule-failure-issue (ci-8). Explicit division of
+# labor with e2e-full: these tests run only in the consolidated nightly
+# workflow, not in the merge/main lane.
+[profile.e2e-repl-nightly]
+default-filter = """
+    package(e2e_test)
+    & (test(/^replication_extension_test::/) | test(/^replication_target_matrix_test::/))
+    & !test(/^replication_extension_test::(test_replication_check_succeeds_with_remote_target|test_replication_check_rejects_target_without_object_lock|test_set_remote_target_rejects_unversioned_source_bucket|test_replication_check_rejects_unversioned_source_bucket|test_replication_check_rejects_missing_replication_config|test_replication_check_rejects_invalid_bucket|test_set_remote_target_rejects_same_bucket_on_same_deployment|test_set_remote_target_rejects_unversioned_target_bucket|test_set_remote_target_update_requires_arn|test_set_remote_target_update_rejects_missing_target|test_set_remote_target_rejects_invalid_target_url|test_set_remote_target_rejects_self_signed_https_target_without_skip_tls_verify|test_set_remote_target_rejects_private_ca_https_target_without_ca_cert_pem|test_list_remote_targets_rejects_empty_bucket|test_list_remote_targets_rejects_invalid_bucket|test_remove_remote_target_rejects_missing_target|test_remove_remote_target_rejects_missing_arn|test_remove_remote_target_rejects_invalid_bucket|test_remove_remote_target_rejects_target_used_by_replication|test_delete_bucket_replication_removes_remote_target)$/)
+"""
+fail-fast = false
+
+[profile.e2e-repl-nightly.junit]
+# Emitted to target/nextest/e2e-repl-nightly/junit.xml; uploaded by the nightly
+# workflow as the failure-triage artifact.
+path = "junit.xml"
+
+# ---------------------------------------------------------------------------
+# e2e-nightly profile — destructive multi-process cluster fault domains
+# ---------------------------------------------------------------------------
+# These eight modules are deliberately outside e2e-full's merge budget. Each
+# starts a real multi-process or multi-disk topology and exercises node/disk
+# loss, quorum, cleanup, notification fan-in, or admin-timeout behavior. The
+# consolidated nightly workflow runs them serially to avoid resource
+# starvation; failures are never retried.
+#
+# heal_erasure_disk_rebuild_test also runs in e2e-full so core heal rebuild
+# regressions are caught no later than the merge/main lane. It remains here for
+# nightly serial coverage with the other cluster fault domains.
+#
+# On-demand migration (backlog#2158 ODM-11) joins by the second clause: the
+# fault matrix waits out the 30 s circuit-breaker window, the concurrency
+# matrix drives 100-deep bursts, and the real-source cases start a second
+# (loop guard: a third) RustFS process. They are too slow or too heavy for
+# the merge budget; `on_demand_migration::{get_basic,interaction}_test` stay
+# in e2e-full, which excludes exactly these three modules.
+[profile.e2e-nightly]
+default-filter = """
+    package(e2e_test)
+    & (
+        test(/^(admin_timeout_regression_test|cluster_concurrency_test|cluster_multidrive_pool_test|degraded_listing_availability_test|heal_erasure_disk_rebuild_test|namespace_lock_quorum_test|object_lambda_test|stale_multipart_cleanup_cluster_test)::/)
+        | test(/^on_demand_migration::(concurrency_test|fault_test|real_source_test)::/)
+    )
+"""
+fail-fast = false
+
+[profile.e2e-nightly.junit]
+path = "junit.xml"
+
+[[profile.e2e-nightly.overrides]]
+filter = 'package(e2e_test)'
+test-group = 'e2e-cluster-nightly'
+
+# ---------------------------------------------------------------------------
+# e2e-distributed profile — 4-node 4-disk Actions suite
+# ---------------------------------------------------------------------------
+# Storage-sensitive PR / nightly / dispatch lane owned by
+# .github/workflows/e2e-distributed.yml.
+# Each case starts four rustfs processes (and for site replication, two
+# clusters). Upgrade cases also require RUSTFS_UPGRADE_SOURCE_BINARY.
+# Serialized via e2e-cluster-nightly with no retries.
+[profile.e2e-distributed]
+default-filter = 'package(e2e_test) & test(/^distributed::/)'
+fail-fast = false
+# Decommission / rebalance cases poll for up to 180s with little stdout.
+slow-timeout = { period = "120s", terminate-after = 6 }
+
+[profile.e2e-distributed.junit]
+path = "junit.xml"
+
+[[profile.e2e-distributed.overrides]]
+filter = 'package(e2e_test)'
+test-group = 'e2e-cluster-nightly'
+
+# ---------------------------------------------------------------------------
+# e2e-odm-interop profile — on-demand migration provider interop lane (ODM-20)
+# ---------------------------------------------------------------------------
+# backlog#2167. Report-only, scheduled, never a required check; wired by
+# .github/workflows/on-demand-migration-interop.yml.
+#
+# The four cases in `on_demand_migration::interop_test` take their source from
+# the environment (`RUSTFS_ODM_INTEROP_*`, documented on the constants in
+# `crates/e2e_test/src/on_demand_migration/common.rs`), so the same bodies run
+# against the in-process fake source locally and against a MinIO container or a
+# real cloud provider in the lane. The cloud jobs narrow this profile with their
+# own `-E` filter to the three-case minimum (GET miss, HEAD miss, merged list
+# pagination) and pass `--no-tests=fail` so a rename cannot silently select
+# nothing; the MinIO job runs the whole profile, backfill included.
+#
+# These cases are deliberately absent from every other lane: without an
+# interop source they only re-prove what `get_basic_test` and
+# `list_through_test` already cover in e2e-smoke and e2e-full. The committed
+# selection digest is the guard against a rename dropping one of them.
+[profile.e2e-odm-interop]
+default-filter = 'package(e2e_test) & test(/^on_demand_migration::interop_test::/)'
+fail-fast = false
+
+[profile.e2e-odm-interop.junit]
+# Emitted to target/nextest/e2e-odm-interop/junit.xml; the lane uploads it and
+# reconciles it against the per-case JSON report entries.
+path = "junit.xml"
+
+# ---------------------------------------------------------------------------
+# e2e-protocols profile — serial protocol lane
+# ---------------------------------------------------------------------------
+# The suite owns fixed ports, so the nightly workflow runs this exact profile
+# with one nextest worker.
+[profile.e2e-protocols]
+default-filter = 'package(e2e_test) & test(/^protocols::/)'
+fail-fast = false
+
+[profile.e2e-protocols.junit]
+path = "junit.xml"
+
+# ---------------------------------------------------------------------------
+# e2e-full profile — merge-gate full single-node e2e lane (backlog#1149 ci-5)
+# ---------------------------------------------------------------------------
+# The merge gate (ci.yml `e2e-full` job: push main + merge_group +
+# workflow_dispatch). Runs the user-visible KMS, object-lock, multipart-auth,
+# quota, checksum, encryption,
+# security-boundary, ... — that the fast PR `e2e-smoke` subset deliberately
+# skips. Budget <= 45 min; authority for the suite count is `cargo nextest list
+# --profile e2e-full -p e2e_test` (platform-dependent; see docs/testing/README.md).
+#
+# The filter is "the whole e2e_test crate MINUS the sets owned by other lanes":
+#   * protocols:: — FTPS/SFTP/WebDAV, run from the dedicated protocol profile
+#     with one worker because the suite owns fixed ports.
+#   * cluster suites that spin up a RustFSTestClusterEnvironment
+#     (cluster_concurrency, cluster_multidrive_pool, stale_multipart_cleanup_cluster,
+#     namespace_lock_quorum, admin_timeout_regression, object_lambda) — too
+#     heavy for the merge budget; they run in the e2e-nightly serial
+#     cluster-fault lane. heal_erasure_disk_rebuild is intentionally not
+#     excluded here because backlog#2213 promotes core heal rebuild coverage to
+#     this merge/main lane while retaining nightly coverage.
+#   * distributed:: — 4-node 4-disk Actions suite (S3, lock, versioning,
+#     replication, quota, observability, expand/decommission/rebalance, site
+#     replication, chaos, upgrade history/IAM). Owns [profile.e2e-distributed] and
+#     .github/workflows/e2e-distributed.yml.
+#   * on_demand_migration::interop_test — the ODM-20 provider interoperability
+#     cases, which are meaningless without a source: they run in the dedicated
+#     [profile.e2e-odm-interop] lane below, where the workflow points them at a
+#     MinIO container or a real cloud provider. Excluding them here also keeps
+#     this profile's committed selection digest stable.
+#   * replication_extension_test — repl-1 already splits it into the PR
+#     `e2e-smoke` (20 fast) and `e2e-repl-nightly` (56 slow) lanes and reserves
+#     it for those, so e2e-full does not double-run it.
+#   * #[ignore]d tests — nextest skips them by default (no --run-ignored); the
+#     manual-localhost:9000 reliant tests are ci-13's migration.
+#
+# Each e2e test spawns its own single-node rustfs server on a random port with
+# an isolated temp dir (crates/e2e_test/src/common.rs), so the set is
+# parallel-safe — the same property e2e-smoke relies on. The exceptions are the
+# 4-disk reliability / degraded-read fault-injection tests and the fixed-port
+# Vault tests, both serialized below.
+[profile.e2e-full]
+default-filter = """
+    package(e2e_test)
+    & !test(/^protocols::/)
+    & !test(/^(admin_timeout_regression_test|cluster_concurrency_test|cluster_multidrive_pool_test|degraded_listing_availability_test|namespace_lock_quorum_test|object_lambda_test|stale_multipart_cleanup_cluster_test)::/)
+    & !test(/^distributed::/)
+    & !test(/^replication_extension_test::/)
+    & !test(/^replication_target_matrix_test::/)
+    & !test(/^on_demand_migration::(concurrency_test|fault_test|interop_test|real_source_test)::/)
+"""
+fail-fast = false
+
+[profile.e2e-full.junit]
+# Emitted to target/nextest/e2e-full/junit.xml; uploaded by the e2e-full job.
+path = "junit.xml"
+
+# Serialize the 4-disk reliability / degraded-read e2e tests under e2e-full too
+# (see the e2e-reliability test-group note near the top of this file). Not a
+# quarantine: no retries, just single-threaded so several 4-disk servers never
+# run concurrently.
+[[profile.e2e-full.overrides]]
+filter = 'package(e2e_test) & test(/^(reliability_disk_fault|degraded_read_eof_regression|replacement_privileged_e2e)_test::/)'
+test-group = 'e2e-reliability'
+
+[[profile.e2e-full.overrides]]
+filter = 'package(e2e_test) & test(/^inline_fast_path_cluster_test::/)'
+test-group = 'e2e-inline-boundaries'
+
+[[profile.e2e-full.overrides]]
+filter = 'package(e2e_test) & (test(/^kms::kms_vault_test::/) | test(/^kms::kms_rekey_sweep_test::/) | test(/^kms::configured_roundtrip_test::test_configured_vault_kms_admin_and_versioned_cleanup$/))'
+test-group = 'e2e-vault'

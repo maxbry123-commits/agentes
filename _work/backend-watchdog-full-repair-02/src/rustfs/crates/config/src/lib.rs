@@ -1,0 +1,74 @@
+// Copyright 2024 RustFS Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#[cfg(feature = "constants")]
+pub mod constants;
+#[cfg(feature = "constants")]
+pub use constants::api::*;
+#[cfg(feature = "constants")]
+pub use constants::app::*;
+#[cfg(feature = "constants")]
+pub use constants::body_limits::*;
+#[cfg(feature = "constants")]
+pub use constants::capacity::*;
+#[cfg(feature = "constants")]
+pub use constants::compress::*;
+#[cfg(feature = "constants")]
+pub use constants::console::*;
+#[cfg(feature = "constants")]
+pub use constants::drive::*;
+#[cfg(feature = "constants")]
+pub use constants::env::*;
+#[cfg(feature = "constants")]
+pub use constants::heal::*;
+#[cfg(feature = "constants")]
+pub use constants::health::*;
+#[cfg(feature = "constants")]
+pub use constants::internode::*;
+#[cfg(feature = "constants")]
+pub use constants::object::*;
+#[cfg(feature = "constants")]
+pub use constants::profiler::*;
+#[cfg(feature = "constants")]
+pub use constants::protocols::*;
+#[cfg(feature = "constants")]
+pub use constants::proxy::*;
+#[cfg(feature = "constants")]
+pub use constants::quota::*;
+#[cfg(feature = "constants")]
+pub use constants::runtime::*;
+#[cfg(feature = "constants")]
+pub use constants::scanner::*;
+#[cfg(feature = "constants")]
+pub use constants::targets::*;
+#[cfg(feature = "constants")]
+pub use constants::tls::*;
+#[cfg(feature = "constants")]
+pub use constants::workload::*;
+#[cfg(feature = "constants")]
+pub use constants::zero_copy::*;
+#[cfg(feature = "constants")]
+pub mod oidc {
+    pub use super::constants::oidc::*;
+}
+#[cfg(feature = "audit")]
+pub mod audit;
+#[cfg(feature = "notify")]
+pub mod notify;
+#[cfg(feature = "observability")]
+pub mod observability;
+#[cfg(feature = "opa")]
+pub mod opa;
+#[cfg(feature = "server-config-model")]
+pub mod server_config;

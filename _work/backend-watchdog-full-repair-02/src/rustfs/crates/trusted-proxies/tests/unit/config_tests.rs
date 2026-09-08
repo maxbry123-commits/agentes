@@ -1,0 +1,193 @@
+// Copyright 2024 RustFS Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use axum::http::HeaderMap;
+use rustfs_config::{
+    DEFAULT_TRUSTED_PROXY_PROXIES, ENV_TRUSTED_PROXY_EXTRA_PROXIES, ENV_TRUSTED_PROXY_IPS, ENV_TRUSTED_PROXY_MAX_HOPS,
+    ENV_TRUSTED_PROXY_PROXIES, ENV_TRUSTED_PROXY_VALIDATION_MODE,
+};
+use rustfs_trusted_proxies::{ConfigLoader, ProxyValidator, TrustedProxy, TrustedProxyConfig, ValidationMode};
+use serial_test::serial;
+use std::net::{IpAddr, SocketAddr};
+
+#[test]
+#[serial]
+fn test_config_loader_default() {
+    // Clean up environment variables explicitly to ensure clean state
+    temp_env::with_vars_unset(
+        vec![
+            ENV_TRUSTED_PROXY_PROXIES,
+            ENV_TRUSTED_PROXY_VALIDATION_MODE,
+            ENV_TRUSTED_PROXY_MAX_HOPS,
+        ],
+        || {
+            let config = ConfigLoader::from_env_or_default();
+            assert_eq!(config.server_addr.port(), 9000);
+            assert!(!config.proxy.proxies.is_empty());
+            assert_eq!(config.proxy.validation_mode, ValidationMode::HopByHop);
+            assert!(config.proxy.enable_rfc7239);
+            assert_eq!(config.proxy.max_hops, 10);
+        },
+    );
+}
+
+#[test]
+#[serial]
+fn test_config_loader_env_vars() {
+    // Use temp_env to ensure environment variables are cleaned up even if test fails
+    temp_env::with_vars(
+        vec![
+            (ENV_TRUSTED_PROXY_PROXIES, Some("192.168.1.0/24,10.0.0.0/8")),
+            (ENV_TRUSTED_PROXY_VALIDATION_MODE, Some("strict")),
+            (ENV_TRUSTED_PROXY_MAX_HOPS, Some("5")),
+        ],
+        || {
+            let config = ConfigLoader::from_env();
+
+            if let Ok(config) = config {
+                assert_eq!(config.server_addr.port(), 9000);
+                assert_eq!(config.proxy.validation_mode, ValidationMode::Strict);
+                assert_eq!(config.proxy.max_hops, 5);
+            } else {
+                panic!("Failed to load configuration from environment variables");
+            }
+        },
+    );
+}
+
+#[test]
+fn test_trusted_proxy_config() {
+    let proxies = vec![
+        TrustedProxy::Single("192.168.1.1".parse().unwrap()),
+        TrustedProxy::Cidr("10.0.0.0/8".parse().unwrap()),
+    ];
+
+    let config = TrustedProxyConfig::new(proxies, ValidationMode::Strict, true, 10, true, vec![]);
+
+    assert_eq!(config.proxies.len(), 2);
+    assert_eq!(config.validation_mode, ValidationMode::Strict);
+    assert!(config.enable_rfc7239);
+    assert_eq!(config.max_hops, 10);
+    assert!(config.enable_chain_continuity_check);
+
+    let test_ip: IpAddr = "192.168.1.1".parse().unwrap();
+    let test_socket_addr = std::net::SocketAddr::new(test_ip, 8080);
+    assert!(config.is_trusted(&test_socket_addr));
+
+    let test_ip2: IpAddr = "10.0.1.1".parse().unwrap();
+    let test_socket_addr2 = std::net::SocketAddr::new(test_ip2, 8080);
+    assert!(config.is_trusted(&test_socket_addr2));
+}
+
+#[test]
+fn test_trusted_proxy_contains() {
+    let single_proxy = TrustedProxy::Single("192.168.1.1".parse().unwrap());
+    let test_ip: IpAddr = "192.168.1.1".parse().unwrap();
+    let test_ip2: IpAddr = "192.168.1.2".parse().unwrap();
+
+    assert!(single_proxy.contains(&test_ip));
+    assert!(!single_proxy.contains(&test_ip2));
+
+    let cidr_proxy = TrustedProxy::Cidr("192.168.1.0/24".parse().unwrap());
+    assert!(cidr_proxy.contains(&test_ip));
+    assert!(cidr_proxy.contains(&test_ip2));
+
+    let test_ip3: IpAddr = "192.168.2.1".parse().unwrap();
+    assert!(!cidr_proxy.contains(&test_ip3));
+}
+
+#[test]
+fn test_private_network_check() {
+    let config = TrustedProxyConfig::new(
+        Vec::new(),
+        ValidationMode::Lenient,
+        true,
+        10,
+        true,
+        vec!["10.0.0.0/8".parse().unwrap(), "192.168.0.0/16".parse().unwrap()],
+    );
+
+    let private_ip: IpAddr = "10.0.1.1".parse().unwrap();
+    let private_ip2: IpAddr = "192.168.1.1".parse().unwrap();
+    let public_ip: IpAddr = "8.8.8.8".parse().unwrap();
+
+    assert!(config.is_private_network(&private_ip));
+    assert!(config.is_private_network(&private_ip2));
+    assert!(!config.is_private_network(&public_ip));
+}
+
+#[test]
+fn test_default_values() {
+    // The default trusted set is loopback-only. Private/RFC1918 ranges must not
+    // be trusted unless an operator explicitly adds them.
+    assert_eq!(DEFAULT_TRUSTED_PROXY_PROXIES, "127.0.0.1,::1");
+}
+
+#[test]
+#[serial]
+fn test_default_config_does_not_trust_private_peer() {
+    // Under the DEFAULT configuration the trusted set is loopback-only, so a
+    // peer from a private range must not be treated as a trusted proxy.
+    temp_env::with_vars_unset(
+        vec![
+            ENV_TRUSTED_PROXY_PROXIES,
+            ENV_TRUSTED_PROXY_EXTRA_PROXIES,
+            ENV_TRUSTED_PROXY_IPS,
+        ],
+        || {
+            let config = ConfigLoader::from_env_or_default().proxy;
+
+            let loopback = SocketAddr::new(IpAddr::from([127, 0, 0, 1]), 9000);
+            assert!(config.is_trusted(&loopback), "loopback must remain trusted by default");
+
+            let private_peer = SocketAddr::new(IpAddr::from([10, 1, 2, 3]), 9000);
+            assert!(
+                !config.is_trusted(&private_peer),
+                "private-range peer must not be trusted under the default config"
+            );
+        },
+    );
+}
+
+#[test]
+#[serial]
+fn test_default_config_ignores_spoofed_forwarded_from_private_peer() {
+    // A peer from a private range (10.1.2.3) sending a spoofed X-Forwarded-For
+    // must NOT override the socket peer, because private ranges are no longer
+    // trusted under the default configuration.
+    temp_env::with_vars_unset(
+        vec![
+            ENV_TRUSTED_PROXY_PROXIES,
+            ENV_TRUSTED_PROXY_EXTRA_PROXIES,
+            ENV_TRUSTED_PROXY_IPS,
+        ],
+        || {
+            let config = ConfigLoader::from_env_or_default().proxy;
+            let validator = ProxyValidator::new(config, None);
+
+            let peer_addr = Some(SocketAddr::new(IpAddr::from([10, 1, 2, 3]), 9000));
+            let mut headers = HeaderMap::new();
+            headers.insert("x-forwarded-for", "203.0.113.10".parse().unwrap());
+
+            let info = validator.validate_request(peer_addr, &headers).unwrap();
+
+            assert!(!info.is_from_trusted_proxy, "private peer must not be a trusted proxy by default");
+            assert_eq!(
+                info.real_ip,
+                IpAddr::from([10, 1, 2, 3]),
+                "spoofed X-Forwarded-For must not override the socket peer"
+            );
+        },
+    );
+}

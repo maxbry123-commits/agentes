@@ -1,0 +1,238 @@
+// Copyright 2024 RustFS Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use super::types::{LegalHoldStatus, ObjectLegalHold, ObjectRetention, RetentionMode};
+use rustfs_utils::http::headers::{
+    AMZ_OBJECT_LOCK_LEGAL_HOLD_LOWER, AMZ_OBJECT_LOCK_MODE_LOWER, AMZ_OBJECT_LOCK_RETAIN_UNTIL_DATE_LOWER,
+};
+use std::collections::HashMap;
+use time::{OffsetDateTime, format_description};
+
+const _ERR_MALFORMED_BUCKET_OBJECT_CONFIG: &str = "invalid bucket object lock config";
+const _ERR_INVALID_RETENTION_DATE: &str = "date must be provided in ISO 8601 format";
+const _ERR_PAST_OBJECTLOCK_RETAIN_DATE: &str = "the retain until date must be in the future";
+const _ERR_UNKNOWN_WORMMODE_DIRECTIVE: &str = "unknown WORM mode directive";
+const _ERR_OBJECTLOCK_MISSING_CONTENT_MD5: &str =
+    "content-MD5 HTTP header is required for Put Object requests with Object Lock parameters";
+const _ERR_OBJECTLOCK_INVALID_HEADERS: &str =
+    "x-amz-object-lock-retain-until-date and x-amz-object-lock-mode must both be supplied";
+const _ERR_MALFORMED_XML: &str = "the XML you provided was not well-formed or did not validate against our published schema";
+
+pub fn utc_now_ntp() -> OffsetDateTime {
+    OffsetDateTime::now_utc()
+}
+
+pub fn get_object_retention_meta(meta: &HashMap<String, String>) -> ObjectRetention {
+    // The persisted metadata keys are the lowercase wire header names.
+    let mode_str = meta.get(AMZ_OBJECT_LOCK_MODE_LOWER);
+
+    let Some(mode_str) = mode_str else {
+        return ObjectRetention::default();
+    };
+
+    // If mode is invalid, return empty retention (don't panic)
+    let Some(mode) = parse_ret_mode(mode_str.as_str()) else {
+        return ObjectRetention::default();
+    };
+
+    let till_str = meta.get(AMZ_OBJECT_LOCK_RETAIN_UNTIL_DATE_LOWER);
+
+    let retain_until_date =
+        till_str.and_then(|s| OffsetDateTime::parse(s, &format_description::well_known::Iso8601::DEFAULT).ok());
+
+    ObjectRetention {
+        mode: Some(mode),
+        retain_until_date,
+    }
+}
+
+pub fn get_object_legalhold_meta(meta: &HashMap<String, String>) -> ObjectLegalHold {
+    let hold_str = meta.get(AMZ_OBJECT_LOCK_LEGAL_HOLD_LOWER);
+
+    ObjectLegalHold {
+        status: hold_str.and_then(|s| parse_legalhold_status(s)),
+    }
+}
+
+/// Parse retention mode string into [`RetentionMode`].
+/// Returns None for invalid/unknown mode strings instead of panicking.
+pub fn parse_ret_mode(mode_str: &str) -> Option<RetentionMode> {
+    RetentionMode::parse(mode_str)
+}
+
+/// Parse legal hold status string into [`LegalHoldStatus`].
+/// Returns None for invalid/unknown status strings instead of panicking.
+pub fn parse_legalhold_status(hold_str: &str) -> Option<LegalHoldStatus> {
+    LegalHoldStatus::parse(hold_str)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_ret_mode_valid() {
+        // Test uppercase
+        let mode = parse_ret_mode("GOVERNANCE");
+        assert!(mode.is_some());
+        assert_eq!(mode.unwrap().as_str(), RetentionMode::GOVERNANCE);
+
+        let mode = parse_ret_mode("COMPLIANCE");
+        assert!(mode.is_some());
+        assert_eq!(mode.unwrap().as_str(), RetentionMode::COMPLIANCE);
+
+        // Test lowercase
+        let mode = parse_ret_mode("governance");
+        assert!(mode.is_some());
+        assert_eq!(mode.unwrap().as_str(), RetentionMode::GOVERNANCE);
+
+        let mode = parse_ret_mode("compliance");
+        assert!(mode.is_some());
+        assert_eq!(mode.unwrap().as_str(), RetentionMode::COMPLIANCE);
+
+        // Test mixed case
+        let mode = parse_ret_mode("Governance");
+        assert!(mode.is_some());
+        assert_eq!(mode.unwrap().as_str(), RetentionMode::GOVERNANCE);
+    }
+
+    #[test]
+    fn test_parse_ret_mode_invalid() {
+        // Test invalid values return None instead of panicking
+        assert!(parse_ret_mode("INVALID").is_none());
+        assert!(parse_ret_mode("").is_none());
+        assert!(parse_ret_mode("gov").is_none());
+        assert!(parse_ret_mode("comp").is_none());
+    }
+
+    #[test]
+    fn test_parse_legalhold_status_valid() {
+        // Test uppercase
+        let status = parse_legalhold_status("ON");
+        assert!(status.is_some());
+        assert_eq!(status.unwrap().as_str(), LegalHoldStatus::ON);
+
+        let status = parse_legalhold_status("OFF");
+        assert!(status.is_some());
+        assert_eq!(status.unwrap().as_str(), LegalHoldStatus::OFF);
+
+        // Test lowercase
+        let status = parse_legalhold_status("on");
+        assert!(status.is_some());
+        assert_eq!(status.unwrap().as_str(), LegalHoldStatus::ON);
+
+        let status = parse_legalhold_status("off");
+        assert!(status.is_some());
+        assert_eq!(status.unwrap().as_str(), LegalHoldStatus::OFF);
+    }
+
+    #[test]
+    fn test_parse_legalhold_status_invalid() {
+        // Test invalid values return None instead of panicking
+        assert!(parse_legalhold_status("INVALID").is_none());
+        assert!(parse_legalhold_status("").is_none());
+        assert!(parse_legalhold_status("true").is_none());
+        assert!(parse_legalhold_status("false").is_none());
+    }
+
+    #[test]
+    fn test_get_object_retention_meta_empty() {
+        let meta = HashMap::new();
+        let retention = get_object_retention_meta(&meta);
+        assert!(retention.mode.is_none());
+        assert!(retention.retain_until_date.is_none());
+    }
+
+    #[test]
+    fn test_get_object_retention_meta_with_mode() {
+        let mut meta = HashMap::new();
+        meta.insert("x-amz-object-lock-mode".to_string(), "GOVERNANCE".to_string());
+        let retention = get_object_retention_meta(&meta);
+        assert!(retention.mode.is_some());
+        assert_eq!(retention.mode.unwrap().as_str(), RetentionMode::GOVERNANCE);
+        assert!(retention.retain_until_date.is_none());
+    }
+
+    #[test]
+    fn test_get_object_retention_meta_with_invalid_mode() {
+        let mut meta = HashMap::new();
+        meta.insert("x-amz-object-lock-mode".to_string(), "INVALID_MODE".to_string());
+        let retention = get_object_retention_meta(&meta);
+        // Invalid mode should return empty retention, not panic
+        assert!(retention.mode.is_none());
+        assert!(retention.retain_until_date.is_none());
+    }
+
+    #[test]
+    fn test_get_object_retention_meta_with_date() {
+        let mut meta = HashMap::new();
+        meta.insert("x-amz-object-lock-mode".to_string(), "COMPLIANCE".to_string());
+        meta.insert("x-amz-object-lock-retain-until-date".to_string(), "2030-01-01T00:00:00Z".to_string());
+        let retention = get_object_retention_meta(&meta);
+        assert!(retention.mode.is_some());
+        assert_eq!(retention.mode.unwrap().as_str(), RetentionMode::COMPLIANCE);
+        assert!(retention.retain_until_date.is_some());
+    }
+
+    /// backlog#1733 g-key-002: the persisted literal keys must still be read
+    /// through the current header constants, or WORM metadata fails open.
+    #[test]
+    fn persisted_compliance_lock_metadata_remains_effective() {
+        let mut meta = HashMap::new();
+        meta.insert("x-amz-object-lock-mode".to_string(), "COMPLIANCE".to_string());
+        meta.insert("x-amz-object-lock-retain-until-date".to_string(), "9999-01-01T00:00:00Z".to_string());
+        meta.insert("x-amz-object-lock-legal-hold".to_string(), "ON".to_string());
+
+        let retention = get_object_retention_meta(&meta);
+        assert_eq!(retention.mode.as_ref().map(|mode| mode.as_str()), Some(RetentionMode::COMPLIANCE));
+        assert!(retention.retain_until_date.is_some(), "persisted retention date must remain readable");
+
+        let legal_hold = get_object_legalhold_meta(&meta);
+        assert_eq!(legal_hold.status.as_ref().map(|status| status.as_str()), Some(LegalHoldStatus::ON));
+    }
+
+    #[test]
+    fn test_get_object_legalhold_meta_empty() {
+        let meta = HashMap::new();
+        let legalhold = get_object_legalhold_meta(&meta);
+        assert!(legalhold.status.is_none());
+    }
+
+    #[test]
+    fn test_get_object_legalhold_meta_on() {
+        let mut meta = HashMap::new();
+        meta.insert("x-amz-object-lock-legal-hold".to_string(), "ON".to_string());
+        let legalhold = get_object_legalhold_meta(&meta);
+        assert!(legalhold.status.is_some());
+        assert_eq!(legalhold.status.unwrap().as_str(), LegalHoldStatus::ON);
+    }
+
+    #[test]
+    fn test_get_object_legalhold_meta_off() {
+        let mut meta = HashMap::new();
+        meta.insert("x-amz-object-lock-legal-hold".to_string(), "OFF".to_string());
+        let legalhold = get_object_legalhold_meta(&meta);
+        assert!(legalhold.status.is_some());
+        assert_eq!(legalhold.status.unwrap().as_str(), LegalHoldStatus::OFF);
+    }
+
+    #[test]
+    fn test_get_object_legalhold_meta_invalid() {
+        let mut meta = HashMap::new();
+        meta.insert("x-amz-object-lock-legal-hold".to_string(), "INVALID".to_string());
+        let legalhold = get_object_legalhold_meta(&meta);
+        // Invalid status should return None, not panic
+        assert!(legalhold.status.is_none());
+    }
+}

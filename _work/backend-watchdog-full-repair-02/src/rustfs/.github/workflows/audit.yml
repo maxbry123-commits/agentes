@@ -1,0 +1,210 @@
+# Copyright 2024 RustFS Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: Security Audit
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '**/Cargo.toml'
+      - '**/Cargo.lock'
+      - 'deny.toml'
+      - '.github/actions/**'
+      - '.github/workflows/**'
+      - 'scripts/release/create_or_update_release.sh'
+      - 'scripts/release/package_versions.sh'
+      - 'scripts/test_package_versions.sh'
+      - 'scripts/security/check_performance_ab_workflow.sh'
+      - 'scripts/security/check_preview_release_workflow.sh'
+      - 'scripts/security/check_tier_artifact_workflow.sh'
+      - 'scripts/security/check_workflow_pins.sh'
+  pull_request:
+    types: [ opened, synchronize, reopened, closed ]
+    branches: [ main ]
+    paths:
+      - '**/Cargo.toml'
+      - '**/Cargo.lock'
+      - 'deny.toml'
+      - '.github/actions/**'
+      - '.github/workflows/**'
+      - 'scripts/release/create_or_update_release.sh'
+      - 'scripts/release/package_versions.sh'
+      - 'scripts/test_package_versions.sh'
+      - 'scripts/security/check_performance_ab_workflow.sh'
+      - 'scripts/security/check_preview_release_workflow.sh'
+      - 'scripts/security/check_tier_artifact_workflow.sh'
+      - 'scripts/security/check_workflow_pins.sh'
+  schedule:
+    # Daily, not weekly. This schedule exists to catch RustSec advisories
+    # published against an unchanged dependency tree; at weekly cadence a new
+    # advisory could sit unnoticed for seven days. The check list is unchanged —
+    # splitting it into a light daily advisories-only run and a weekly full run
+    # would create runs where sources/bans/licenses go unverified.
+    - cron: '23 3 * * *' # Daily 03:23 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Event-scoped groups: merges to main must not cancel the weekly scheduled
+# run (same rationale as ci.yml).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'schedule' }}
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  cancel-closed-pr-runs:
+    name: Cancel Closed PR Runs
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Explain cancellation run
+        run: echo "PR closed; this run only cancels older runs in the same concurrency group."
+
+  # RustSec advisory scanning is covered by the `advisories` check of
+  # cargo-deny below; a separate cargo-audit job would duplicate the same
+  # database lookup with a second ignore list to maintain.
+  cargo-deny:
+    name: Cargo Deny
+    if: github.event_name != 'pull_request' || github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+
+      # cargo-deny compiles nothing, so the full setup composite (apt packages,
+      # protoc, flatc, nextest, rustfmt/clippy) was pure overhead here. It does
+      # still need a real cargo: `cargo deny check` runs `cargo metadata`, and
+      # Cargo.toml pins datafusion and s3s as git dependencies, which must be
+      # materialised into ~/.cargo/git — a cold clone is hundreds of MB, so the
+      # cache stays.
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+
+      # Was relying on the composite's default, which used to be "true": every
+      # PR touching Cargo.toml/Cargo.lock saved a second, PR-scoped copy of this
+      # cache and pushed the main-scoped lanes out of the 10GB quota. The
+      # default is now "false", but state it explicitly — see
+      # scripts/security/check_cache_save_if.sh.
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          # Same reasoning as the setup composite: true archives every
+          # dependency's unpacked source tree.
+          cache-all-crates: false
+          cache-on-failure: true
+          shared-key: rustfs-cargo-deny
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Install cargo-deny
+        uses: taiki-e/install-action@bffeee26d4db9be238a4ea78d8826604ebcb594d # v2
+        with:
+          tool: cargo-deny
+
+      - name: Run cargo-deny
+        run: cargo deny check --hide-inclusion-graph advisories sources bans licenses
+
+  workflow-pin-report:
+    name: Workflow Pin Report
+    if: github.event_name != 'pull_request' || github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+
+      - name: Report unpinned GitHub Actions
+        run: ./scripts/security/check_workflow_pins.sh --enforce
+
+      - name: Check setup cache-save-if is explicit
+        run: ./scripts/security/check_cache_save_if.sh
+
+      - name: Check every job declares a timeout
+        run: ./scripts/security/check_job_timeouts.sh
+
+      - name: Check checkouts clear their credentials
+        run: ./scripts/security/check_persist_credentials.sh
+
+      - name: Check preview release workflow policy
+        run: ./scripts/security/check_preview_release_workflow.sh
+
+      - name: Check performance A/B workflow trust boundary
+        run: ./scripts/security/check_performance_ab_workflow.sh
+
+      - name: Check tier evidence workflow isolation
+        run: ./scripts/security/check_tier_artifact_workflow.sh
+
+      - name: Check package version contract
+        run: ./scripts/test_package_versions.sh
+
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: github.event_name == 'pull_request' && github.event.action != 'closed'
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+
+      - name: Dependency Review
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5
+        with:
+          fail-on-severity: moderate
+          allow-ghsas: GHSA-2f9f-gq7v-9h6m
+          # rustfs-uring is a first-party Apache-2.0 crate, now published on
+          # crates.io (backlog#1104) rather than pulled as a git dependency.
+          # Scope the allow to the exact pinned version so a version bump forces a
+          # conscious re-review of the license/provenance claim (backlog#1181).
+          allow-dependencies-licenses: pkg:cargo/rustfs-uring@0.1.0
+          comment-summary-in-pr: always
+
+  alert-on-failure:
+    name: Alert on scheduled failure
+    # dependency-review is deliberately excluded: it only runs on pull_request,
+    # so it can never contribute a failure to a scheduled run.
+    needs: [cargo-deny, workflow-pin-report]
+    # A scheduled cargo-deny failure usually means the dependency tree just
+    # matched a newly published advisory — the single most important signal this
+    # workflow produces, and until now it was only visible to whoever happened to
+    # open the Actions tab. Same ci-8 mechanism coverage.yml and
+    # e2e-replication-nightly.yml already use.
+    if: always() && github.event_name == 'schedule' && contains(needs.*.result, 'failure')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+      - name: Open or update failure-tracking issue
+        uses: ./.github/actions/schedule-failure-issue
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}

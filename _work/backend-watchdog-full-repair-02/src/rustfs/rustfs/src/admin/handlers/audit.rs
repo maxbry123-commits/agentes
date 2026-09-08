@@ -1,0 +1,897 @@
+// Copyright 2024 RustFS Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use crate::admin::{
+    auth::authorize_admin_request,
+    handlers::audit_runtime_config::{load_server_config_from_store, update_audit_config_and_reload},
+    handlers::target_descriptor::{
+        AdminTargetSpec, EndpointKey, RuntimeHealthStatus, TargetEndpointSource, admin_target_spec_from_builtin,
+        build_enabled_target_kvs, build_json_response, collect_runtime_statuses, extract_supported_target_params,
+        merge_target_endpoints as shared_merge_target_endpoints, target_module_disabled_reason,
+        target_mutation_block_reason as shared_target_mutation_block_reason,
+    },
+    router::{AdminOperation, Operation, S3Router},
+};
+use crate::server::{
+    ADMIN_PREFIX, is_audit_module_enabled, refresh_audit_module_enabled, refresh_persisted_module_switches_from_store,
+};
+use http::StatusCode;
+use hyper::Method;
+use matchit::Params;
+use rustfs_audit::audit_system;
+use rustfs_config::audit::AUDIT_ROUTE_PREFIX;
+use rustfs_config::server_config::Config;
+use rustfs_config::{AUDIT_DEFAULT_DIR, MAX_ADMIN_REQUEST_BODY_SIZE};
+use rustfs_policy::policy::action::{Action, AdminAction};
+use rustfs_targets::catalog::builtin::builtin_audit_target_admin_descriptors;
+use s3s::{Body, S3Request, S3Response, S3Result, s3_error};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::LazyLock;
+use tracing::{error, info, warn};
+
+const LOG_COMPONENT_ADMIN_API: &str = "admin_api";
+const LOG_SUBSYSTEM_AUDIT_TARGET: &str = "audit_target";
+const EVENT_ADMIN_REQUEST_REJECTED: &str = "admin_request_rejected";
+const EVENT_ADMIN_REQUEST_FAILED: &str = "admin_request_failed";
+const EVENT_ADMIN_RESPONSE_EMITTED: &str = "admin_response_emitted";
+const EVENT_ADMIN_OPERATION_BLOCKED: &str = "admin_operation_blocked";
+
+macro_rules! log_audit_target_operation_blocked {
+    ($operation:expr, Some($target_type:expr), Some($target_name:expr), $reason:expr) => {
+        warn!(
+            event = EVENT_ADMIN_OPERATION_BLOCKED,
+            component = LOG_COMPONENT_ADMIN_API,
+            subsystem = LOG_SUBSYSTEM_AUDIT_TARGET,
+            operation = $operation,
+            result = "blocked",
+            target_type = $target_type,
+            target_name = $target_name,
+            reason = $reason,
+            "admin request rejected"
+        );
+    };
+    ($operation:expr, None, None, $reason:expr) => {
+        warn!(
+            event = EVENT_ADMIN_OPERATION_BLOCKED,
+            component = LOG_COMPONENT_ADMIN_API,
+            subsystem = LOG_SUBSYSTEM_AUDIT_TARGET,
+            operation = $operation,
+            result = "blocked",
+            reason = $reason,
+            "admin request rejected"
+        );
+    };
+}
+
+macro_rules! log_audit_target_body_read_failed {
+    ($target_type:expr, $target_name:expr, $err:expr) => {
+        warn!(
+            event = EVENT_ADMIN_REQUEST_REJECTED,
+            component = LOG_COMPONENT_ADMIN_API,
+            subsystem = LOG_SUBSYSTEM_AUDIT_TARGET,
+            operation = "set_audit_target_config",
+            result = "rejected",
+            reason = "request_body_read_failed",
+            target_type = $target_type,
+            target_name = $target_name,
+            error = %$err,
+            "admin request rejected"
+        );
+    };
+}
+
+macro_rules! log_audit_target_body_decode_failed {
+    ($target_type:expr, $target_name:expr, $err:expr) => {
+        warn!(
+            event = EVENT_ADMIN_REQUEST_REJECTED,
+            component = LOG_COMPONENT_ADMIN_API,
+            subsystem = LOG_SUBSYSTEM_AUDIT_TARGET,
+            operation = "set_audit_target_config",
+            result = "rejected",
+            reason = "request_body_decode_failed",
+            target_type = $target_type,
+            target_name = $target_name,
+            error = %$err,
+            "admin request rejected"
+        );
+    };
+}
+
+macro_rules! log_audit_target_config_updated {
+    ($operation:expr, $target_type:expr, $target_name:expr) => {
+        info!(
+            event = EVENT_ADMIN_RESPONSE_EMITTED,
+            component = LOG_COMPONENT_ADMIN_API,
+            subsystem = LOG_SUBSYSTEM_AUDIT_TARGET,
+            operation = $operation,
+            result = "success",
+            target_type = $target_type,
+            target_name = $target_name,
+            "admin response emitted"
+        );
+    };
+}
+
+macro_rules! log_audit_target_request_failed {
+    ($operation:expr, $reason:expr, Some($target_type:expr), Some($target_name:expr), $err:expr) => {
+        error!(
+            event = EVENT_ADMIN_REQUEST_FAILED,
+            component = LOG_COMPONENT_ADMIN_API,
+            subsystem = LOG_SUBSYSTEM_AUDIT_TARGET,
+            operation = $operation,
+            result = "failed",
+            reason = $reason,
+            target_type = $target_type,
+            target_name = $target_name,
+            error = %$err,
+            "admin request failed"
+        );
+    };
+    ($operation:expr, $reason:expr, None, None, $err:expr) => {
+        error!(
+            event = EVENT_ADMIN_REQUEST_FAILED,
+            component = LOG_COMPONENT_ADMIN_API,
+            subsystem = LOG_SUBSYSTEM_AUDIT_TARGET,
+            operation = $operation,
+            result = "failed",
+            reason = $reason,
+            error = %$err,
+            "admin request failed"
+        );
+    };
+}
+
+pub fn register_audit_target_route(r: &mut S3Router<AdminOperation>) -> std::io::Result<()> {
+    r.insert(
+        Method::GET,
+        format!("{}{}", ADMIN_PREFIX, "/v3/audit/target/list").as_str(),
+        AdminOperation(&ListAuditTargets {}),
+    )?;
+
+    r.insert(
+        Method::PUT,
+        format!("{}{}", ADMIN_PREFIX, "/v3/audit/target/{target_type}/{target_name}").as_str(),
+        AdminOperation(&AuditTargetConfig {}),
+    )?;
+
+    r.insert(
+        Method::DELETE,
+        format!("{}{}", ADMIN_PREFIX, "/v3/audit/target/{target_type}/{target_name}/reset").as_str(),
+        AdminOperation(&RemoveAuditTarget {}),
+    )?;
+
+    Ok(())
+}
+
+#[derive(Debug, Deserialize)]
+pub struct KeyValue {
+    pub key: String,
+    pub value: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AuditTargetBody {
+    pub key_values: Vec<KeyValue>,
+}
+
+#[derive(Serialize, Debug)]
+struct AuditEndpoint {
+    account_id: String,
+    service: String,
+    status: String,
+    health_state: String,
+    health_reason: String,
+    source: TargetEndpointSource,
+}
+
+#[derive(Serialize, Debug)]
+struct AuditEndpointsResponse {
+    audit_endpoints: Vec<AuditEndpoint>,
+}
+
+static AUDIT_TARGET_SPECS: LazyLock<Vec<AdminTargetSpec>> = LazyLock::new(|| {
+    builtin_audit_target_admin_descriptors()
+        .into_iter()
+        .map(|descriptor| admin_target_spec_from_builtin(&descriptor))
+        .collect()
+});
+
+fn audit_target_specs() -> &'static [AdminTargetSpec] {
+    &AUDIT_TARGET_SPECS
+}
+
+/// The pre-check keeps these endpoints' historical missing-credentials message;
+/// the shared gate reports "get cred failed".
+async fn authorize_audit_admin_request(req: &S3Request<Body>, action: AdminAction) -> S3Result<()> {
+    if req.credentials.is_none() {
+        return Err(s3_error!(InvalidRequest, "credentials not found"));
+    }
+    authorize_admin_request(req, vec![Action::AdminAction(action)]).await?;
+    Ok(())
+}
+
+fn audit_target_mutation_block_reason(config: &Config, target_type: &str, target_name: &str) -> S3Result<Option<String>> {
+    shared_target_mutation_block_reason(
+        audit_target_specs(),
+        AUDIT_ROUTE_PREFIX,
+        config,
+        target_type,
+        target_name,
+        "audit target",
+    )
+}
+
+async fn audit_target_operation_block_reason(action: &str) -> Option<String> {
+    if let Err(err) = refresh_persisted_module_switches_from_store().await {
+        warn!(
+            event = EVENT_ADMIN_REQUEST_REJECTED,
+            component = LOG_COMPONENT_ADMIN_API,
+            subsystem = LOG_SUBSYSTEM_AUDIT_TARGET,
+            operation = "reload_persisted_module_switches",
+            result = "failed",
+            error = %err,
+            "admin request rejected"
+        );
+    }
+    refresh_audit_module_enabled();
+    target_module_disabled_reason("audit", rustfs_config::ENV_AUDIT_ENABLE, is_audit_module_enabled(), action)
+}
+
+fn merge_audit_endpoints(
+    config: &Config,
+    runtime_statuses: HashMap<EndpointKey, RuntimeHealthStatus>,
+) -> S3Result<Vec<AuditEndpoint>> {
+    Ok(
+        shared_merge_target_endpoints(audit_target_specs(), AUDIT_ROUTE_PREFIX, config, runtime_statuses)?
+            .into_iter()
+            .map(|endpoint| AuditEndpoint {
+                account_id: endpoint.account_id,
+                service: endpoint.service,
+                status: endpoint.status,
+                health_state: endpoint.health_state,
+                health_reason: endpoint.health_reason,
+                source: endpoint.source,
+            })
+            .collect(),
+    )
+}
+
+fn extract_target_params<'a>(params: &'a Params<'_, '_>) -> S3Result<(&'a str, &'a str)> {
+    extract_supported_target_params(audit_target_specs(), params, "audit")
+}
+
+pub struct AuditTargetConfig {}
+
+#[async_trait::async_trait]
+impl Operation for AuditTargetConfig {
+    async fn call(&self, req: S3Request<Body>, params: Params<'_, '_>) -> S3Result<S3Response<(StatusCode, Body)>> {
+        let (target_type, target_name) = extract_target_params(&params)?;
+
+        authorize_audit_admin_request(&req, AdminAction::SetBucketTargetAction).await?;
+        if let Some(reason) = audit_target_operation_block_reason("managing audit targets from the console").await {
+            log_audit_target_operation_blocked!("set_audit_target_config", Some(target_type), Some(target_name), &reason);
+            return Err(s3_error!(InvalidRequest, "{reason}"));
+        }
+        let config_snapshot = load_server_config_from_store().await?;
+        if let Some(reason) = audit_target_mutation_block_reason(&config_snapshot, target_type, target_name)? {
+            log_audit_target_operation_blocked!("set_audit_target_config", Some(target_type), Some(target_name), &reason);
+            return Err(s3_error!(InvalidRequest, "{reason}"));
+        }
+
+        let mut input = req.input;
+        let body_bytes = input.store_all_limited(MAX_ADMIN_REQUEST_BODY_SIZE).await.map_err(|e| {
+            log_audit_target_body_read_failed!(target_type, target_name, e);
+            s3_error!(InvalidRequest, "failed to read request body")
+        })?;
+
+        let audit_body: AuditTargetBody = serde_json::from_slice(&body_bytes).map_err(|e| {
+            log_audit_target_body_decode_failed!(target_type, target_name, e);
+            s3_error!(InvalidArgument, "invalid json body for audit target config: {}", e)
+        })?;
+
+        let specs = audit_target_specs();
+        let kvs = build_enabled_target_kvs(
+            specs,
+            audit_body.key_values.iter().map(|kv| (kv.key.as_str(), kv.value.as_str())),
+            target_type,
+            AUDIT_DEFAULT_DIR,
+            "audit target",
+        )
+        .await?;
+
+        let mutation_target_type = target_type.to_lowercase();
+        let mutation_target_name = target_name.to_lowercase();
+        update_audit_config_and_reload(audit_target_specs(), move |config| {
+            config
+                .0
+                .entry(mutation_target_type.clone())
+                .or_default()
+                .insert(mutation_target_name.clone(), kvs.clone());
+            true
+        })
+        .await
+        .inspect_err(|e| {
+            log_audit_target_request_failed!(
+                "set_audit_target_config",
+                "update_audit_config_failed",
+                Some(target_type),
+                Some(target_name),
+                e
+            );
+        })?;
+        log_audit_target_config_updated!("set_audit_target_config", target_type, target_name);
+
+        Ok(build_json_response(StatusCode::OK, Body::empty(), req.headers.get("x-request-id")))
+    }
+}
+
+pub struct ListAuditTargets {}
+
+#[async_trait::async_trait]
+impl Operation for ListAuditTargets {
+    async fn call(&self, req: S3Request<Body>, _params: Params<'_, '_>) -> S3Result<S3Response<(StatusCode, Body)>> {
+        authorize_audit_admin_request(&req, AdminAction::GetBucketTargetAction).await?;
+
+        let mut runtime_statuses = HashMap::new();
+        if let Some(system) = audit_system() {
+            runtime_statuses = collect_runtime_statuses(system.get_target_values().await).await;
+        }
+
+        let config = load_server_config_from_store().await?;
+        let audit_endpoints = merge_audit_endpoints(&config, runtime_statuses)?;
+        let data = serde_json::to_vec(&AuditEndpointsResponse { audit_endpoints }).map_err(|e| {
+            log_audit_target_request_failed!("list_audit_targets", "serialize_audit_targets_failed", None, None, e);
+            s3_error!(InternalError, "failed to serialize audit targets: {}", e)
+        })?;
+
+        Ok(build_json_response(StatusCode::OK, Body::from(data), req.headers.get("x-request-id")))
+    }
+}
+
+pub struct RemoveAuditTarget {}
+
+#[async_trait::async_trait]
+impl Operation for RemoveAuditTarget {
+    async fn call(&self, req: S3Request<Body>, params: Params<'_, '_>) -> S3Result<S3Response<(StatusCode, Body)>> {
+        let (target_type, target_name) = extract_target_params(&params)?;
+
+        authorize_audit_admin_request(&req, AdminAction::SetBucketTargetAction).await?;
+        if let Some(reason) = audit_target_operation_block_reason("managing audit targets from the console").await {
+            log_audit_target_operation_blocked!("remove_audit_target_config", Some(target_type), Some(target_name), &reason);
+            return Err(s3_error!(InvalidRequest, "{reason}"));
+        }
+        let config_snapshot = load_server_config_from_store().await?;
+        if let Some(reason) = audit_target_mutation_block_reason(&config_snapshot, target_type, target_name)? {
+            log_audit_target_operation_blocked!("remove_audit_target_config", Some(target_type), Some(target_name), &reason);
+            return Err(s3_error!(InvalidRequest, "{reason}"));
+        }
+
+        let mutation_target_type = target_type.to_lowercase();
+        let mutation_target_name = target_name.to_lowercase();
+        update_audit_config_and_reload(audit_target_specs(), move |config| {
+            let mut changed = false;
+            if let Some(targets) = config.0.get_mut(&mutation_target_type) {
+                if targets.remove(&mutation_target_name).is_some() {
+                    changed = true;
+                }
+                if targets.is_empty() {
+                    config.0.remove(&mutation_target_type);
+                }
+            }
+            changed
+        })
+        .await
+        .inspect_err(|e| {
+            log_audit_target_request_failed!(
+                "remove_audit_target_config",
+                "update_audit_config_failed",
+                Some(target_type),
+                Some(target_name),
+                e
+            );
+        })?;
+        log_audit_target_config_updated!("remove_audit_target_config", target_type, target_name);
+
+        Ok(build_json_response(StatusCode::OK, Body::empty(), req.headers.get("x-request-id")))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::admin::handlers::target_descriptor::collect_validated_key_values as shared_collect_validated_key_values;
+    use matchit::Router;
+    use rustfs_config::audit::{AUDIT_AMQP_SUB_SYS, AUDIT_KAFKA_SUB_SYS, AUDIT_WEBHOOK_KEYS, AUDIT_WEBHOOK_SUB_SYS};
+    use rustfs_config::server_config::{KV, KVS};
+    use rustfs_config::{DEFAULT_DELIMITER, ENABLE_KEY, ENV_PREFIX};
+    use serial_test::serial;
+    use std::collections::{HashMap, HashSet};
+    use temp_env::{with_var, with_vars, with_vars_unset};
+
+    fn enabled_kvs(value: &str) -> KVS {
+        KVS(vec![KV {
+            key: ENABLE_KEY.to_string(),
+            value: value.to_string(),
+            hidden_if_empty: false,
+        }])
+    }
+
+    fn online_health() -> RuntimeHealthStatus {
+        RuntimeHealthStatus {
+            status: "online".to_string(),
+            state: "online".to_string(),
+            reason: "reachable".to_string(),
+        }
+    }
+
+    fn with_audit_webhook_target_env_cleared<F>(target_name: &str, f: F)
+    where
+        F: FnOnce(),
+    {
+        let target_name = target_name.to_ascii_uppercase();
+        let mut env_keys = vec![format!(
+            "{ENV_PREFIX}{}{DEFAULT_DELIMITER}{}{DEFAULT_DELIMITER}{target_name}",
+            AUDIT_WEBHOOK_SUB_SYS.to_ascii_uppercase(),
+            ENABLE_KEY.to_ascii_uppercase(),
+        )];
+
+        for key in AUDIT_WEBHOOK_KEYS {
+            let env_key = format!(
+                "{ENV_PREFIX}{}{DEFAULT_DELIMITER}{}{DEFAULT_DELIMITER}{target_name}",
+                AUDIT_WEBHOOK_SUB_SYS.to_ascii_uppercase(),
+                key.to_ascii_uppercase(),
+            );
+            if !env_keys.contains(&env_key) {
+                env_keys.push(env_key);
+            }
+        }
+
+        with_vars_unset(env_keys, f);
+    }
+
+    #[test]
+    #[serial]
+    fn merge_audit_endpoints_marks_config_env_and_mixed_sources() {
+        let config = Config(HashMap::from([(
+            AUDIT_WEBHOOK_SUB_SYS.to_string(),
+            HashMap::from([
+                ("mixed-target".to_string(), enabled_kvs("on")),
+                ("config-target".to_string(), enabled_kvs("on")),
+            ]),
+        )]));
+
+        with_vars(
+            [
+                ("RUSTFS_AUDIT_WEBHOOK_ENDPOINT_MIXED-TARGET", Some("https://example.com/hook")),
+                ("RUSTFS_AUDIT_WEBHOOK_ENABLE_ENV-ONLY", Some("on")),
+                ("RUSTFS_AUDIT_WEBHOOK_ENDPOINT_ENV-ONLY", Some("https://example.com/env")),
+            ],
+            || {
+                let runtime = HashMap::from([
+                    (("mixed-target".to_string(), "webhook".to_string()), online_health()),
+                    (("env-only".to_string(), "webhook".to_string()), online_health()),
+                ]);
+                let merged = merge_audit_endpoints(&config, runtime).expect("merge audit endpoints");
+
+                let mixed = merged
+                    .iter()
+                    .find(|entry| entry.account_id == "mixed-target")
+                    .expect("mixed target should be present");
+                assert_eq!(mixed.source, TargetEndpointSource::Mixed);
+
+                let env_only = merged
+                    .iter()
+                    .find(|entry| entry.account_id == "env-only")
+                    .expect("env-only target should be present");
+                assert_eq!(env_only.source, TargetEndpointSource::Env);
+
+                let config_only = merged
+                    .iter()
+                    .find(|entry| entry.account_id == "config-target")
+                    .expect("config target should be present");
+                assert_eq!(config_only.source, TargetEndpointSource::Config);
+            },
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn merge_audit_endpoints_marks_kafka_env_and_mixed_sources() {
+        let config = Config(HashMap::from([(
+            AUDIT_KAFKA_SUB_SYS.to_string(),
+            HashMap::from([("mixed-kafka".to_string(), enabled_kvs("on"))]),
+        )]));
+
+        with_vars(
+            [
+                ("RUSTFS_AUDIT_KAFKA_ENABLE_MIXED-KAFKA", Some("on")),
+                ("RUSTFS_AUDIT_KAFKA_BROKERS_MIXED-KAFKA", Some("127.0.0.1:9092")),
+                ("RUSTFS_AUDIT_KAFKA_ENABLE_ENV-KAFKA", Some("on")),
+                ("RUSTFS_AUDIT_KAFKA_BROKERS_ENV-KAFKA", Some("127.0.0.1:9093")),
+            ],
+            || {
+                let runtime = HashMap::from([
+                    (("mixed-kafka".to_string(), "kafka".to_string()), online_health()),
+                    (("env-kafka".to_string(), "kafka".to_string()), online_health()),
+                ]);
+                let merged = merge_audit_endpoints(&config, runtime).expect("merge audit endpoints");
+
+                let mixed = merged
+                    .iter()
+                    .find(|entry| entry.account_id == "mixed-kafka" && entry.service == "kafka")
+                    .expect("mixed kafka target should be present");
+                assert_eq!(mixed.source, TargetEndpointSource::Mixed);
+
+                let env_only = merged
+                    .iter()
+                    .find(|entry| entry.account_id == "env-kafka" && entry.service == "kafka")
+                    .expect("env kafka target should be present");
+                assert_eq!(env_only.source, TargetEndpointSource::Env);
+            },
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn merge_audit_endpoints_marks_amqp_env_and_mixed_sources() {
+        let config = Config(HashMap::from([(
+            AUDIT_AMQP_SUB_SYS.to_string(),
+            HashMap::from([("mixed-amqp".to_string(), enabled_kvs("on"))]),
+        )]));
+
+        with_vars(
+            [
+                ("RUSTFS_AUDIT_AMQP_ENABLE_MIXED-AMQP", Some("on")),
+                ("RUSTFS_AUDIT_AMQP_URL_MIXED-AMQP", Some("amqp://127.0.0.1:5672/%2f")),
+                ("RUSTFS_AUDIT_AMQP_ENABLE_ENV-AMQP", Some("on")),
+                ("RUSTFS_AUDIT_AMQP_URL_ENV-AMQP", Some("amqp://127.0.0.1:5672/%2f")),
+            ],
+            || {
+                let runtime = HashMap::from([
+                    (("mixed-amqp".to_string(), "amqp".to_string()), online_health()),
+                    (("env-amqp".to_string(), "amqp".to_string()), online_health()),
+                ]);
+                let merged = merge_audit_endpoints(&config, runtime).expect("merge audit endpoints");
+
+                let mixed = merged
+                    .iter()
+                    .find(|entry| entry.account_id == "mixed-amqp" && entry.service == "amqp")
+                    .expect("mixed amqp target should be present");
+                assert_eq!(mixed.source, TargetEndpointSource::Mixed);
+
+                let env_only = merged
+                    .iter()
+                    .find(|entry| entry.account_id == "env-amqp" && entry.service == "amqp")
+                    .expect("env amqp target should be present");
+                assert_eq!(env_only.source, TargetEndpointSource::Env);
+            },
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn audit_target_mutation_block_reason_rejects_env_managed_target() {
+        with_vars(
+            [
+                ("RUSTFS_AUDIT_WEBHOOK_ENABLE_PRIMARY", Some("on")),
+                ("RUSTFS_AUDIT_WEBHOOK_ENDPOINT_PRIMARY", Some("https://example.com/hook")),
+            ],
+            || {
+                let config = Config(HashMap::new());
+                let reason = audit_target_mutation_block_reason(&config, AUDIT_WEBHOOK_SUB_SYS, "primary")
+                    .expect("audit target mutation block reason");
+                assert!(reason.is_some());
+                assert!(reason.unwrap().contains("managed by environment variables"));
+            },
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn audit_target_operation_block_reason_requires_audit_module_enable() {
+        with_var(rustfs_config::ENV_AUDIT_ENABLE, Some("false"), || {
+            let reason =
+                futures::executor::block_on(audit_target_operation_block_reason("managing audit targets from the console"));
+            assert!(reason.is_some());
+            assert!(reason.unwrap().contains("set RUSTFS_AUDIT_ENABLE=true"));
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn audit_target_operation_block_reason_allows_when_audit_module_enabled() {
+        with_var(rustfs_config::ENV_AUDIT_ENABLE, Some("true"), || {
+            assert!(
+                futures::executor::block_on(audit_target_operation_block_reason("managing audit targets from the console"))
+                    .is_none()
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn audit_target_mutation_block_reason_rejects_mixed_target() {
+        with_var("RUSTFS_AUDIT_WEBHOOK_ENDPOINT_PRIMARY", Some("https://example.com/hook"), || {
+            let config = Config(HashMap::from([(
+                AUDIT_WEBHOOK_SUB_SYS.to_string(),
+                HashMap::from([("primary".to_string(), enabled_kvs("on"))]),
+            )]));
+            let reason = audit_target_mutation_block_reason(&config, AUDIT_WEBHOOK_SUB_SYS, "primary")
+                .expect("audit target mutation block reason");
+            assert!(reason.is_some());
+            assert!(reason.unwrap().contains("both persisted config and environment variables"));
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn merge_audit_endpoints_marks_disabled_config_with_env_override_as_mixed() {
+        let config = Config(HashMap::from([(
+            AUDIT_WEBHOOK_SUB_SYS.to_string(),
+            HashMap::from([("mixed-disabled".to_string(), enabled_kvs("off"))]),
+        )]));
+
+        with_vars(
+            [
+                ("RUSTFS_AUDIT_WEBHOOK_ENABLE_MIXED-DISABLED", Some("on")),
+                ("RUSTFS_AUDIT_WEBHOOK_ENDPOINT_MIXED-DISABLED", Some("https://example.com/hook")),
+            ],
+            || {
+                let merged = merge_audit_endpoints(&config, HashMap::new()).expect("merge audit endpoints");
+                let mixed = merged
+                    .iter()
+                    .find(|entry| entry.account_id == "mixed-disabled")
+                    .expect("mixed target should be present");
+                assert_eq!(mixed.source, TargetEndpointSource::Mixed);
+                assert_eq!(mixed.status, "offline");
+            },
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn merge_audit_endpoints_includes_env_only_target_without_runtime_status() {
+        let config = Config(HashMap::new());
+
+        with_vars(
+            [
+                ("RUSTFS_AUDIT_WEBHOOK_ENABLE_ENV-ONLY", Some("on")),
+                ("RUSTFS_AUDIT_WEBHOOK_ENDPOINT_ENV-ONLY", Some("https://example.com/env")),
+            ],
+            || {
+                let merged = merge_audit_endpoints(&config, HashMap::new()).expect("merge audit endpoints");
+                let env_only = merged
+                    .iter()
+                    .find(|entry| entry.account_id == "env-only")
+                    .expect("env-only target should be present");
+                assert_eq!(env_only.source, TargetEndpointSource::Env);
+                assert_eq!(env_only.status, "offline");
+            },
+        );
+    }
+
+    #[test]
+    fn collect_validated_key_values_rejects_duplicate_keys() {
+        let allowed_keys: HashSet<&str> = ["endpoint", "auth_token"].into_iter().collect();
+        let key_values = [
+            KeyValue {
+                key: "endpoint".to_string(),
+                value: "https://example.com/one".to_string(),
+            },
+            KeyValue {
+                key: "endpoint".to_string(),
+                value: "https://example.com/two".to_string(),
+            },
+        ];
+
+        let err = shared_collect_validated_key_values(
+            key_values.iter().map(|kv| (kv.key.as_str(), kv.value.as_str())),
+            &allowed_keys,
+            AUDIT_WEBHOOK_SUB_SYS,
+            "audit target",
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("duplicate key"));
+    }
+
+    #[test]
+    fn collect_validated_key_values_rejects_unsupported_key() {
+        let allowed_keys: HashSet<&str> = AUDIT_WEBHOOK_KEYS.iter().copied().collect();
+        let key_values = [KeyValue {
+            key: "not_a_real_key".to_string(),
+            value: "/tmp/rustfs-audit".to_string(),
+        }];
+
+        let err = shared_collect_validated_key_values(
+            key_values.iter().map(|kv| (kv.key.as_str(), kv.value.as_str())),
+            &allowed_keys,
+            AUDIT_WEBHOOK_SUB_SYS,
+            "audit target",
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("not allowed for audit target type"));
+    }
+
+    #[test]
+    fn extract_target_params_rejects_missing_or_unsupported_values() {
+        let mut root_router = Router::new();
+        root_router.insert("/", ()).expect("route should insert");
+        let missing_type_params = root_router.at("/").expect("route should match");
+        let missing_type = extract_target_params(&missing_type_params.params).unwrap_err();
+        assert!(missing_type.to_string().contains("missing required parameter: 'target_type'"));
+
+        let mut full_router = Router::new();
+        full_router
+            .insert("/v3/audit/target/{target_type}/{target_name}", ())
+            .expect("route should insert");
+        let unsupported_type_params = full_router
+            .at("/v3/audit/target/audit_unknown/primary")
+            .expect("route should match");
+        let unsupported_type = extract_target_params(&unsupported_type_params.params).unwrap_err();
+        assert!(unsupported_type.to_string().contains("unsupported audit target type"));
+
+        let supported_kafka_params = full_router
+            .at("/v3/audit/target/audit_kafka/primary")
+            .expect("route should match");
+        let (target_type, target_name) =
+            extract_target_params(&supported_kafka_params.params).expect("audit kafka target should be supported");
+        assert_eq!(target_type, AUDIT_KAFKA_SUB_SYS);
+        assert_eq!(target_name, "primary");
+
+        let supported_amqp_params = full_router
+            .at("/v3/audit/target/audit_amqp/primary")
+            .expect("route should match");
+        let (target_type, target_name) =
+            extract_target_params(&supported_amqp_params.params).expect("audit amqp target should be supported");
+        assert_eq!(target_type, AUDIT_AMQP_SUB_SYS);
+        assert_eq!(target_name, "primary");
+
+        let mut partial_router = Router::new();
+        partial_router
+            .insert("/v3/audit/target/{target_type}", ())
+            .expect("route should insert");
+        let missing_name_params = partial_router
+            .at("/v3/audit/target/audit_webhook")
+            .expect("route should match");
+        let missing_name = extract_target_params(&missing_name_params.params).unwrap_err();
+        assert!(missing_name.to_string().contains("missing required parameter: 'target_name'"));
+    }
+
+    #[test]
+    #[serial]
+    fn merge_audit_endpoints_marks_mixed_with_case_insensitive_instance_id() {
+        let config = Config(HashMap::from([(
+            AUDIT_WEBHOOK_SUB_SYS.to_string(),
+            HashMap::from([("PrimaryCase".to_string(), enabled_kvs("on"))]),
+        )]));
+
+        with_vars(
+            [
+                ("RUSTFS_AUDIT_WEBHOOK_ENABLE_PRIMARYCASE", Some("on")),
+                ("RUSTFS_AUDIT_WEBHOOK_ENDPOINT_PRIMARYCASE", Some("https://example.com/hook")),
+            ],
+            || {
+                let runtime = HashMap::from([(("PrimaryCase".to_string(), "webhook".to_string()), online_health())]);
+                let merged = merge_audit_endpoints(&config, runtime).expect("merge audit endpoints");
+                let mixed = merged
+                    .iter()
+                    .find(|entry| entry.account_id == "PrimaryCase" && entry.service == "webhook")
+                    .expect("mixed target should be present");
+                assert_eq!(mixed.source, TargetEndpointSource::Mixed);
+            },
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn audit_target_mutation_block_reason_allows_case_insensitive_config_target_lookup() {
+        let config = Config(HashMap::from([(
+            AUDIT_WEBHOOK_SUB_SYS.to_string(),
+            HashMap::from([("PrimaryCase".to_string(), enabled_kvs("on"))]),
+        )]));
+
+        with_audit_webhook_target_env_cleared("primarycase", || {
+            assert!(
+                audit_target_mutation_block_reason(&config, AUDIT_WEBHOOK_SUB_SYS, "primarycase")
+                    .expect("audit target mutation block reason")
+                    .is_none()
+            );
+        });
+    }
+
+    #[test]
+    fn audit_target_mutation_block_reason_allows_runtime_only_target() {
+        with_audit_webhook_target_env_cleared("primary", || {
+            let config = Config(HashMap::new());
+            assert!(
+                audit_target_mutation_block_reason(&config, AUDIT_WEBHOOK_SUB_SYS, "primary")
+                    .expect("audit target mutation block reason")
+                    .is_none()
+            );
+        });
+    }
+
+    /// These endpoints authorize through the shared admin gate, which reports
+    /// "get cred failed" for a credential-less request. The pre-check keeps the
+    /// message they have always returned (rustfs/backlog#1829).
+    #[tokio::test]
+    async fn audit_target_gate_keeps_its_missing_credentials_message() {
+        let req = S3Request {
+            input: Body::from(String::new()),
+            method: Method::PUT,
+            uri: http::Uri::from_static("/rustfs/admin/v3/audit/target"),
+            headers: http::HeaderMap::new(),
+            extensions: http::Extensions::new(),
+            credentials: None,
+            region: None,
+            service: None,
+            trailing_headers: None,
+        };
+
+        let err = authorize_audit_admin_request(&req, AdminAction::SetBucketTargetAction)
+            .await
+            .expect_err("a request without credentials must be rejected");
+        assert_eq!(err.code(), &s3s::S3ErrorCode::InvalidRequest);
+        assert_eq!(err.message(), Some("credentials not found"));
+    }
+
+    #[test]
+    fn audit_target_handlers_require_admin_authorization_contract() {
+        let src = include_str!("audit.rs");
+        let put_block = extract_block_between_markers(src, "impl Operation for AuditTargetConfig", "pub struct ListAuditTargets");
+        let list_block =
+            extract_block_between_markers(src, "impl Operation for ListAuditTargets", "pub struct RemoveAuditTarget");
+        let delete_block = extract_block_between_markers(src, "impl Operation for RemoveAuditTarget", "#[cfg(test)]");
+
+        for block in [put_block, list_block, delete_block] {
+            assert!(
+                !block.contains(".enter()"),
+                "async audit handlers must rely on request-future instrumentation instead of holding span guards across awaits"
+            );
+        }
+
+        assert!(
+            put_block.contains("authorize_audit_admin_request(&req, AdminAction::SetBucketTargetAction).await?;"),
+            "audit target writes should require SetBucketTargetAction"
+        );
+        assert!(
+            put_block.contains("audit_target_operation_block_reason(\"managing audit targets from the console\")"),
+            "audit target writes should reject requests when the audit module is disabled"
+        );
+        assert!(
+            list_block.contains("authorize_audit_admin_request(&req, AdminAction::GetBucketTargetAction).await?;"),
+            "audit target list should require GetBucketTargetAction"
+        );
+        assert!(
+            delete_block.contains("authorize_audit_admin_request(&req, AdminAction::SetBucketTargetAction).await?;"),
+            "audit target deletion should require SetBucketTargetAction"
+        );
+        assert!(
+            delete_block.contains("audit_target_operation_block_reason(\"managing audit targets from the console\")"),
+            "audit target deletion should reject requests when the audit module is disabled"
+        );
+    }
+
+    fn extract_block_between_markers<'a>(src: &'a str, start_marker: &str, end_marker: &str) -> &'a str {
+        let start = src
+            .find(start_marker)
+            .unwrap_or_else(|| panic!("Expected marker `{start_marker}` in source"));
+        let after_start = &src[start..];
+        let end = after_start
+            .find(end_marker)
+            .unwrap_or_else(|| panic!("Expected end marker `{end_marker}` in source"));
+        &after_start[..end]
+    }
+}
