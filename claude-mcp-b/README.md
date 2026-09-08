@@ -5,8 +5,7 @@ colorFrom: indigo
 colorTo: blue
 sdk: docker
 app_port: 7860
-hf_oauth: true
-hf_oauth_expiration_minutes: 43200
+hf_oauth: false
 pinned: false
 ---
 
@@ -16,50 +15,35 @@ Independent backup path for **Claude Chat/Web**, not Claude Code.
 
 ```text
 Claude Chat
-   │ MCP + OAuth
+   │ MCP (no HF sign-in)
    ▼
 Hugging Face Docker Space (this app)
-   │ dedicated PAT stored only as Space Secret
+   │ dedicated GitHub PAT stored only as Space Secret
    ▼
 GitHub REST API
    ▼
 maxbry123-commits/* repositories
 ```
 
-## Why Docker
-
-This is a standalone FastMCP HTTP service, so Docker Spaces are the native Hugging Face option for an arbitrary HTTP/FastAPI-style endpoint on port 7860. It avoids depending on Gradio's generated MCP schema and keeps this backup path under our control.
-
-## Why this exists
-
-The primary connector uses GitHub's official remote MCP and OAuth. This backup deliberately does **not** call the hosted GitHub MCP endpoint, so an outage or write-permission regression in that path does not disable this one.
-
 ## Required Space Secret
 
 Set exactly one GitHub credential in the Space **Settings → Variables and secrets**:
 
-- `GITHUB_PERSONAL_ACCESS_TOKEN` = dedicated fine-grained PAT created for this backup MCP.
+- `GITHUB_PERSONAL_ACCESS_TOKEN` = dedicated GitHub PAT for this backup MCP.
 
 Never commit the PAT to this repository, a README, a workflow, or a Claude conversation.
 
-## Optional Space variables
+## Optional Space variable
 
 - `GITHUB_DEFAULT_OWNER=maxbry123-commits`
-- `MCP_ALLOWED_HF_USERS=COMAND-CENTER-1`
-
-The server rejects authenticated Hugging Face users other than those listed in `MCP_ALLOWED_HF_USERS`.
 
 ## Claude custom connector
 
-After the Space is running, use:
+Use:
 
 - Name: `GitHub Backup HF`
 - MCP URL: `https://comand-center-1-claude-github-mcp-backup.hf.space/mcp`
-- Requires sign-in: **ON**
-- OAuth Client ID: leave empty
-- OAuth Client Secret: leave empty
-
-The exact `*.hf.space` hostname must be verified after the Space is created; do not treat the example URL as certified until then.
+- Requires sign-in: **OFF**
 
 ## Verification order
 
@@ -72,4 +56,4 @@ The exact `*.hf.space` hostname must be verified after the Space is created; do 
 
 ## Capability
 
-Convenience tools cover repository listing, file read/write/delete, branch create/delete, issue creation, PR creation and repository deletion. `github_api` is the full REST fallback for operations not wrapped by a convenience tool. Effective authority is always limited by the dedicated PAT's GitHub permissions.
+Convenience tools cover repository listing, file read/write/delete, branch create/delete, issue creation, PR creation and repository deletion. `github_api` is the full REST fallback for operations not wrapped by a convenience tool. Effective authority is limited by the GitHub PAT stored in the Space secret.
