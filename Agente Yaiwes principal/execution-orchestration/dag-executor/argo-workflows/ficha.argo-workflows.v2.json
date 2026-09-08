@@ -4,7 +4,7 @@
   "ejecucion":{"kind":"code","transport":"stdio","runtime_type":"compute","entry_point":"adapter:runtime_command","llm_ratio":0.0,"idempotente":true},
   "seguridad":{"sandbox":"process_container","permisos":[],"limites":{"timeout_ms":60000,"deadline_ms":90000}},
   "firma":{"gpg_key_id":"PENDIENTE"},"categoria":"pipeline","etapa":"E",
-  "repeticion":{"max":3,"condicion":"si_falla_verificacion"},"repite_en":["VERIFY"],
+  "repeticion":{"max":3,"condicion":"si_falla_verificacion"},"repite_en":["EXEC_STATE"],
   "activacion":{"eventos":["yaiwes.dag.requested"],"wake_words":[],"condicion":""},
   "presupuesto":{"n0":{"max_tokens":1,"max_ms":60000,"max_costo_usd":0.000001}},
   "telemetria":{"metricas":["tiempo","errores","workflow","reconcile"],"span_otel":true},
