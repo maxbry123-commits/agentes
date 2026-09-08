@@ -1,0 +1,24 @@
+# Code quality for DS
+name: 'cq4ds'
+version: '1.0.0'
+config-version: 2
+
+# provfile in `profiles.yaml`
+profile: 'cq4ds'
+
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+target-path: "target"  # directory which will store compiled SQL files
+clean-targets:         # directories to be removed by `dbt clean`
+  - "target"
+  - "dbt_packages"
+
+models:
+  cq4ds:
+    # Config indicated by + and applies to all files under models/example/
+    +materialized: table

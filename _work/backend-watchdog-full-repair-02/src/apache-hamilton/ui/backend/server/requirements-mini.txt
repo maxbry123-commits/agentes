@@ -1,0 +1,8 @@
+aiofiles
+aiohttp
+colorlog
+django
+django-extensions
+django-ninja>=1.1.0
+passlib
+psycopg2-binary

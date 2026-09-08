@@ -1,0 +1,759 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+# /// script
+# dependencies = [
+#   "build",
+#   "flit",
+#   "twine",
+# ]
+# ///
+
+import argparse
+import glob
+import hashlib
+import os
+import shutil
+import subprocess
+import sys
+import tarfile
+import tempfile
+import zipfile
+
+# --- Configuration ---
+PROJECT_SHORT_NAME = "hamilton"
+
+# Package configurations: each Hamilton package has its own settings
+PACKAGE_CONFIGS = {
+    "hamilton": {
+        "name": "apache-hamilton",
+        "working_dir": ".",
+        "version_file": "hamilton/version.py",
+        "version_pattern": r"VERSION = \((\d+), (\d+), (\d+)(, \"(\w+)\")?\)",
+        "version_extractor": lambda match: f"{match.group(1)}.{match.group(2)}.{match.group(3)}",
+    },
+    "sdk": {
+        "name": "apache-hamilton-sdk",
+        "working_dir": "ui/sdk",
+        "version_file": "ui/sdk/pyproject.toml",
+        "version_pattern": r'version\s*=\s*"(\d+\.\d+\.\d+)"',
+        "version_extractor": lambda match: match.group(1),
+    },
+    "lsp": {
+        "name": "apache-hamilton-lsp",
+        "working_dir": "dev_tools/language_server",
+        "version_file": "dev_tools/language_server/pyproject.toml",
+        "version_pattern": r'version\s*=\s*"(\d+\.\d+\.\d+)"',
+        "version_extractor": lambda match: match.group(1),
+    },
+    "contrib": {
+        "name": "apache-hamilton-contrib",
+        "working_dir": "contrib",
+        "version_file": "contrib/pyproject.toml",
+        "version_pattern": r'version\s*=\s*"(\d+\.\d+\.\d+)"',
+        "version_extractor": lambda match: match.group(1),
+    },
+    "ui": {
+        "name": "apache-hamilton-ui",
+        "working_dir": "ui/backend",
+        "version_file": "ui/backend/pyproject.toml",
+        "version_pattern": r'version\s*=\s*"(\d+\.\d+\.\d+)"',
+        "version_extractor": lambda match: match.group(1),
+    },
+}
+
+# Legacy configuration (kept for backward compatibility with single VERSION_FILE references)
+VERSION_FILE = "hamilton/version.py"
+VERSION_PATTERN = r"VERSION = \((\d+), (\d+), (\d+)(, \"(\w+)\")?\)"
+
+
+def get_version_from_file(package_config: dict) -> str:
+    """Get the version from a file using package-specific configuration."""
+    import re
+
+    file_path = package_config["version_file"]
+    pattern = package_config["version_pattern"]
+    extractor = package_config["version_extractor"]
+
+    with open(file_path) as f:
+        content = f.read()
+    match = re.search(pattern, content)
+    if match:
+        # Check for RC in the match (only for main hamilton package)
+        if len(match.groups()) >= 5 and match.group(5):
+            raise ValueError("Do not commit RC to the version file.")
+        version = extractor(match)
+        return version
+    raise ValueError(f"Could not find version in {file_path}")
+
+
+def check_prerequisites():
+    """Checks for necessary command-line tools and Python modules."""
+    print("Checking for required tools...")
+    required_tools = ["git", "gpg", "svn", "twine"]
+    for tool in required_tools:
+        if shutil.which(tool) is None:
+            print(f"Error: '{tool}' not found. Please install it and ensure it's in your PATH.")
+            sys.exit(1)
+
+    try:
+        import build  # noqa:F401
+
+        print("Python 'build' module found.")
+    except ImportError:
+        print(
+            "Error: The 'build' module is not installed. Please install it with 'pip install build'."
+        )
+        sys.exit(1)
+
+    print("All required tools found.")
+
+
+def update_version(package_config: dict, version, rc_num):
+    """Updates the version number in the specified file."""
+    import re
+
+    version_file = package_config["version_file"]
+    pattern = package_config["version_pattern"]
+
+    print(f"Updating version in {version_file} to {version} RC{rc_num}...")
+    try:
+        with open(version_file, "r") as f:
+            content = f.read()
+
+        # Only the main hamilton package uses the tuple format with RC
+        if package_config["name"] == "apache-hamilton":
+            major, minor, patch = version.split(".")
+            if int(rc_num) >= 0:
+                new_version_tuple = f'VERSION = ({major}, {minor}, {patch}, "RC{rc_num}")'
+            else:
+                new_version_tuple = f"VERSION = ({major}, {minor}, {patch})"
+            new_content = re.sub(pattern, new_version_tuple, content)
+        else:
+            # Other packages use pyproject.toml with simple version string
+            # For now, we don't update these with RC numbers in pyproject.toml
+            print(
+                f"Note: Version updates for {package_config['name']} are manual in pyproject.toml"
+            )
+            return True
+
+        if new_content == content:
+            print("Error: Could not find or replace version string. Check your VERSION_PATTERN.")
+            return False
+
+        with open(version_file, "w") as f:
+            f.write(new_content)
+
+        print("Version updated successfully.")
+        return True
+
+    except FileNotFoundError:
+        print(f"Error: {version_file} not found.")
+        return False
+    except Exception as e:
+        print(f"An error occurred while updating the version: {e}")
+        return False
+
+
+def verify_wheel_with_twine(wheel_path: str) -> bool:
+    """Validates wheel metadata using twine check."""
+    print(f"Validating wheel with twine: {wheel_path}")
+    try:
+        result = subprocess.run(
+            ["twine", "check", wheel_path],
+            capture_output=True,
+            text=True,
+        )
+        print(result.stdout)
+        if result.returncode != 0:
+            print(f"twine check failed:\n{result.stderr}")
+            return False
+        print("Wheel passed twine validation.")
+        return True
+    except Exception as e:
+        print(f"Error running twine check: {e}")
+        return False
+
+
+def sign_artifacts(archive_name: str) -> list[str] | None:
+    """Creates signed files for the designated artifact."""
+    files = []
+    # Sign the tarball with GPG. The user must have a key configured.
+    try:
+        subprocess.run(
+            ["gpg", "--armor", "--output", f"{archive_name}.asc", "--detach-sig", archive_name],
+            check=True,
+        )
+        files.append(f"{archive_name}.asc")
+        print(f"Created GPG signature: {archive_name}.asc")
+    except subprocess.CalledProcessError as e:
+        print(f"Error signing tarball: {e}")
+        print(
+            "Tip: if you don't have a GPG key configured, re-run with --no-sign (and optionally\n"
+            "--no-upload) to skip signing and SVN upload (useful for local testing).\n"
+            "To set up a GPG key for real releases:\n"
+            "  1. gpg --gen-key\n"
+            "  2. gpg --list-secret-keys   # note your KEYID\n"
+            "  3. gpg --armor --export <KEYID> >> KEYS\n"
+            "  4. Set default-key <KEYID> in ~/.gnupg/gpg.conf if you have multiple keys.\n"
+            "  5. Upload your key fingerprint to id.apache.org before voting."
+        )
+        return None
+
+    # Generate SHA512 checksum.
+    sha512_hash = hashlib.sha512()
+    with open(archive_name, "rb") as f:
+        while True:
+            data = f.read(65536)
+            if not data:
+                break
+            sha512_hash.update(data)
+
+    with open(f"{archive_name}.sha512", "w") as f:
+        f.write(f"{sha512_hash.hexdigest()}\n")
+    print(f"Created SHA512 checksum: {archive_name}.sha512")
+    files.append(f"{archive_name}.sha512")
+    return files
+
+
+def _modify_wheel_for_apache_release(original_wheel: str, new_wheel_path: str, package_name: str):
+    """Helper to modify the wheel for apache release.
+
+    # Flit somehow builds something incorrectly.
+    # 1. change PKG-INFO's first line to be `Metadata-Version: 2.4`
+    # 2. make sure the second line is `Name: {package_name}`
+    # 3. remove the `Import-Name:` line from PKG-INFO.
+
+    :param original_wheel: Path to the original wheel.
+    :param new_wheel_path: Path to the new wheel to create.
+    :param package_name: The Apache package name (e.g., 'apache-hamilton')
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Unzip the wheel
+        with zipfile.ZipFile(original_wheel, "r") as zip_ref:
+            zip_ref.extractall(tmpdir)
+
+        # Find the .dist-info directory
+        dist_info_dirs = glob.glob(os.path.join(tmpdir, "*.dist-info"))
+        if not dist_info_dirs:
+            raise ValueError(f"Could not find .dist-info directory in {original_wheel}")
+        dist_info_dir = dist_info_dirs[0]
+        pkg_info = os.path.join(dist_info_dir, "PKG-INFO")
+
+        _modify_pkg_info_file(pkg_info, package_name)
+
+        # Create the new wheel
+        with zipfile.ZipFile(new_wheel_path, "w", zipfile.ZIP_DEFLATED) as zip_ref:
+            for root, _, files in os.walk(tmpdir):
+                for file in files:
+                    zip_ref.write(
+                        os.path.join(root, file), os.path.relpath(os.path.join(root, file), tmpdir)
+                    )
+
+
+def _modify_pkg_info_file(pkg_info_path: str, package_name: str):
+    """
+    Flit somehow builds something incorrectly.
+    1. change PKG-INFO's first line to be `Metadata-Version: 2.4`
+    2. make sure the second line is `Name: {package_name}`
+    3. remove the `Import-Name:` line from PKG-INFO if present.
+    """
+    with open(pkg_info_path, "r") as f:
+        lines = f.readlines()
+
+    new_lines = []
+    for i, line in enumerate(lines):
+        if i == 0:
+            new_lines.append("Metadata-Version: 2.4\n")
+        elif i == 1:
+            new_lines.append(f"Name: {package_name}\n")
+        elif line.startswith("Import-Name:"):
+            continue  # Skip this line
+        else:
+            new_lines.append(line)
+
+    with open(pkg_info_path, "w") as f:
+        f.writelines(new_lines)
+
+
+def _modify_tarball_for_apache_release(
+    original_tarball: str, new_tarball_path: str, package_name: str
+):
+    """Helper to modify the tarball for apache release.
+
+    # Flit somehow builds something incorrectly.
+    # 1. change PKG-INFO's first line to be `Metadata-Version: 2.4`
+    # 2. make sure the second line is `Name: {package_name}`
+    # 3. remove the `Import-Name:` line from PKG-INFO.
+
+    :param original_tarball: Path to the original tarball.
+    :param new_tarball_path: Path to the new tarball to create.
+    :param package_name: The Apache package name (e.g., 'apache-hamilton')
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Extract the tarball
+        with tarfile.open(original_tarball, "r:gz") as tar:
+            tar.extractall(path=tmpdir)
+
+        # Modify the PKG-INFO file
+        # The extracted tarball has a single directory inside.
+        extracted_dir = os.path.join(tmpdir, os.listdir(tmpdir)[0])
+        pkg_info_path = os.path.join(extracted_dir, "PKG-INFO")
+
+        _modify_pkg_info_file(pkg_info_path, package_name)
+
+        # Create the new tarball
+        with tarfile.open(new_tarball_path, "w:gz") as tar:
+            tar.add(extracted_dir, arcname=os.path.basename(extracted_dir))
+
+
+def create_release_artifacts(package_config: dict, version, no_sign: bool = False) -> list[str]:
+    """Creates the source tarball, GPG signature, and checksums using flit build."""
+    package_name = package_config["name"]
+    working_dir = package_config["working_dir"]
+
+    print(f"Creating release artifacts for {package_name} with 'flit build'...")
+
+    # Save current directory and change to package working directory
+    original_dir = os.getcwd()
+    if working_dir != ".":
+        os.chdir(working_dir)
+
+    try:
+        # Clean the dist directory before building.
+        if os.path.exists("dist"):
+            shutil.rmtree("dist")
+
+        # For the UI package, build sdist first (without frontend assets),
+        # then build frontend, then build wheel (with frontend assets).
+        # This keeps compiled JS/CSS out of the source tarball (avoiding
+        # third-party license obligations) while including them in the wheel.
+        if package_name == "apache-hamilton-ui":
+            # Step 1: Build sdist without frontend assets
+            try:
+                subprocess.run(
+                    ["flit", "build", "--no-use-vcs", "--format", "sdist"],
+                    check=True,
+                )
+                print("Source distribution created successfully (without frontend).")
+            except subprocess.CalledProcessError as e:
+                print(f"Error creating source distribution: {e}")
+                return None
+
+            # Step 2: Build frontend and copy to hamilton_ui/build/
+            print("Building UI frontend (npm install + npm run build)...")
+            frontend_dir = os.path.join(original_dir, "ui", "frontend")
+            build_target = os.path.join("hamilton_ui", "build")
+            try:
+                subprocess.run(
+                    ["npm", "install", "--prefix", frontend_dir],
+                    check=True,
+                )
+                subprocess.run(
+                    ["npm", "run", "build", "--prefix", frontend_dir],
+                    check=True,
+                )
+                # Generate third-party license attributions for the bundled
+                # frontend dependencies (required since the wheel ships
+                # compiled JS/CSS). Writes build/THIRD-PARTY-LICENSES.txt.
+                subprocess.run(
+                    ["npm", "run", "licenses", "--prefix", frontend_dir],
+                    check=True,
+                )
+                # Copy built assets to hamilton_ui/build/
+                if os.path.exists(build_target):
+                    shutil.rmtree(build_target)
+                # Vite outputs to frontend/dist/, CRA outputs to frontend/build/
+                frontend_build = os.path.join(frontend_dir, "dist")
+                if not os.path.exists(frontend_build):
+                    frontend_build = os.path.join(frontend_dir, "build")
+                shutil.copytree(frontend_build, build_target)
+                print(f"Frontend built and copied to {build_target}")
+            except (subprocess.CalledProcessError, FileNotFoundError) as e:
+                print(f"Error building frontend: {e}")
+                print("Ensure Node.js and npm are installed.")
+                return None
+
+            # Step 3: Build wheel (includes frontend assets via package data)
+            try:
+                subprocess.run(
+                    ["flit", "build", "--no-use-vcs", "--format", "wheel"],
+                    check=True,
+                )
+                print("Wheel created successfully (with frontend assets).")
+            except subprocess.CalledProcessError as e:
+                print(f"Error creating wheel: {e}")
+                return None
+        else:
+            # Non-UI packages: build both sdist and wheel in one step
+            try:
+                subprocess.run(
+                    ["flit", "build", "--no-use-vcs"],
+                    check=True,
+                )
+                print("Source distribution created successfully.")
+            except subprocess.CalledProcessError as e:
+                print(f"Error creating source distribution: {e}")
+                return None
+
+        # Find the created tarball in the dist directory.
+        # Convert package name with underscores for file naming
+        package_file_name = package_name.replace("-", "_")
+        expected_tar_ball = f"dist/{package_file_name}-{version.lower()}.tar.gz"
+        tarball_path = glob.glob(expected_tar_ball)
+
+        if len(tarball_path) != 1:
+            print(
+                f"Error: Expected exactly 1 tarball matching {expected_tar_ball}, "
+                f"found {len(tarball_path)}."
+            )
+            if os.path.exists("dist"):
+                print("Contents of 'dist' directory:")
+                for item in os.listdir("dist"):
+                    print(f"- {item}")
+            raise ValueError(f"Could not find the generated source tarball: {expected_tar_ball}")
+        tarball_file = tarball_path[0]
+
+        # Copy the tarball to be {package-name}-{version}-incubating-src.tar.gz
+        # Use -src suffix to distinguish source distribution from wheel (convenience package)
+        new_tar_ball = f"dist/{package_name}-{version.lower()}-incubating-src.tar.gz"
+        _modify_tarball_for_apache_release(tarball_file, new_tar_ball, package_name)
+        # Remove original flit tarball (only keep the incubating copy)
+        os.remove(tarball_file)
+        archive_name = new_tar_ball
+        print(f"Found source tarball: {archive_name}")
+        if no_sign:
+            print("Skipping GPG signing (--no-sign).")
+            new_tar_ball_signed = []
+        else:
+            new_tar_ball_signed = sign_artifacts(archive_name)
+            if new_tar_ball_signed is None:
+                raise ValueError("Could not sign the main release artifacts.")
+
+        # Wheel keeps its original PEP 427 filename (no -incubating suffix)
+        expected_wheel = f"dist/{package_file_name}-{version.lower()}-py3-none-any.whl"
+        wheel_path = glob.glob(expected_wheel)
+        if len(wheel_path) != 1:
+            raise ValueError(
+                f"Expected exactly 1 wheel matching {expected_wheel}, found {len(wheel_path)}."
+            )
+        wheel_file = wheel_path[0]
+
+        # Verify wheel with twine before signing
+        if not verify_wheel_with_twine(wheel_file):
+            raise ValueError("Wheel failed twine validation.")
+
+        if no_sign:
+            wheel_signed_files = []
+        else:
+            wheel_signed_files = sign_artifacts(wheel_file)
+
+        files_to_upload = [new_tar_ball, *new_tar_ball_signed, wheel_file, *wheel_signed_files]
+        # Return absolute paths: the caller (svn_upload) runs from the repo root,
+        # but these paths are relative to the package working_dir we chdir'd into.
+        return [os.path.abspath(f) for f in files_to_upload]
+
+    finally:
+        # Always return to original directory
+        os.chdir(original_dir)
+
+
+def svn_upload(package_name: str, version, rc_num, files_to_import: list[str], apache_id):
+    """Uploads the artifacts to the ASF dev distribution repository.
+
+    files_to_import: Get the files to import (tarball, asc, sha512).
+    """
+    print("Uploading artifacts to ASF SVN...")
+    # Include package name in SVN path for multi-package support
+    svn_path = f"https://dist.apache.org/repos/dist/dev/incubator/{PROJECT_SHORT_NAME}/{package_name}/{version}-RC{rc_num}"
+
+    try:
+        # Create a new directory for the release candidate.
+        # Tolerate an already-existing directory (e.g. re-running after a
+        # partial upload): mkdir failing because the path exists is not fatal,
+        # we still want to import the files below.
+        print(
+            f"Creating directory for {package_name} {version}-incubating-RC{rc_num}... at {svn_path}"
+        )
+        mkdir_result = subprocess.run(
+            [
+                "svn",
+                "mkdir",
+                "--parents",
+                "-m",
+                f"Creating directory for {package_name} {version}-incubating-RC{rc_num}",
+                svn_path,
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if mkdir_result.returncode != 0:
+            if "already exists" in (mkdir_result.stderr or ""):
+                print(f"Directory already exists at {svn_path}, continuing to import files.")
+            else:
+                print(f"Error creating SVN directory: {mkdir_result.stderr.strip()}")
+                return None
+
+        # Use svn import for the new directory.
+        for file_path in files_to_import:
+            subprocess.run(
+                [
+                    "svn",
+                    "import",
+                    file_path,
+                    f"{svn_path}/{os.path.basename(file_path)}",
+                    "-m",
+                    f"Adding {os.path.basename(file_path)}",
+                    "--username",
+                    apache_id,
+                ],
+                check=True,
+            )
+            print(f"Imported {file_path} to {svn_path}")
+
+        print(f"Artifacts successfully uploaded to: {svn_path}")
+        return svn_path
+
+    except subprocess.CalledProcessError as e:
+        print(f"Error during SVN upload: {e}")
+        print("Make sure you have svn access configured for your Apache ID.")
+        return None
+
+
+def generate_email_template(package_name: str, version, rc_num, svn_url):
+    """Generates the content for the [VOTE] email."""
+    print("Generating email template...")
+    version_with_incubating = f"{version}-incubating"
+    tag = f"{package_name}-v{version}"
+
+    email_content = f"""[VOTE] Release Apache {PROJECT_SHORT_NAME} - {package_name} {version_with_incubating} (release candidate {rc_num})
+
+Hi all,
+
+This is a call for a vote on releasing Apache {PROJECT_SHORT_NAME} {package_name} {version_with_incubating},
+release candidate {rc_num}.
+
+This release includes the following changes (see CHANGELOG for details):
+- [List key changes here]
+
+The artifacts for this release candidate can be found at:
+{svn_url}
+
+The Git tag to be voted upon is:
+{tag}
+
+The release hash is:
+[Insert git commit hash here]
+
+
+Release artifacts are signed with the following key:
+[Insert your GPG key ID here]
+The KEYS file is available at:
+https://downloads.apache.org/incubator/{PROJECT_SHORT_NAME}/KEYS
+
+Please download, verify, and test the release candidate.
+
+For testing, please run some of the examples, scripts/qualify.sh has
+a sampling of them to run.
+
+The vote will run for a minimum of 72 hours.
+Please vote:
+
+[ ] +1 Release this package as Apache {PROJECT_SHORT_NAME} {package_name} {version_with_incubating}
+[ ] +0 No opinion
+[ ] -1 Do not release this package because... (Please provide a reason)
+
+Checklist for reference:
+[ ] Incubating in name.
+[ ] Download links are valid.
+[ ] Checksums and signatures.
+[ ] LICENSE/NOTICE/DISCLAIMER files exist
+[ ] No unexpected binary files
+[ ] All source files have ASF headers
+[ ] Can compile from source
+
+On behalf of the Apache {PROJECT_SHORT_NAME} PPMC,
+[Your Name]
+"""
+    print("\n" + "=" * 80)
+    print("EMAIL TEMPLATE (COPY AND PASTE TO YOUR MAILING LIST)")
+    print("=" * 80)
+    print(email_content)
+    print("=" * 80)
+
+
+def main():
+    """
+    ### How to Use the Updated Script
+
+    1.  **Install the `flit` module**:
+        ```bash
+        pip install flit
+        ```
+    2.  **Configure the Script**: The script now supports multiple Hamilton packages.
+        Available packages: hamilton, sdk, lsp, contrib, ui
+    3.  **Prerequisites**:
+        * You must have `git`, `gpg`, `svn`, and the `flit` Python module installed.
+        * Your GPG key and SVN access must be configured for your Apache ID.
+    4.  **Run the Script**:
+        Open your terminal, navigate to the root of your project directory, and run the script
+        with the desired package, version, release candidate number, and Apache ID.
+
+    Note: if you have multiple gpg keys, specify the default in ~/.gnupg/gpg.conf add a line with `default-key <KEYID>`.
+
+    Use --no-sign (-ns) to skip GPG signing (e.g., when a key is not available locally).
+    This implicitly sets --no-upload, since unsigned artifacts must never be published.
+    Use --no-upload (-nu) alone to build and sign without publishing (e.g., to rehearse signing).
+
+    Examples:
+        python apache_release_helper.py --package hamilton 1.89.0 0 your_apache_id
+        python apache_release_helper.py --package sdk 0.8.0 0 your_apache_id
+        python apache_release_helper.py --package lsp 0.1.0 0 your_apache_id
+        python apache_release_helper.py --package contrib 0.0.8 0 your_apache_id
+        python apache_release_helper.py --package ui 0.0.17 0 your_apache_id
+        python apache_release_helper.py -ns --package ui 0.0.18 0
+    """
+    parser = argparse.ArgumentParser(
+        description="Automates parts of the Apache release process for Hamilton packages."
+    )
+    parser.add_argument(
+        "--package",
+        required=True,
+        choices=list(PACKAGE_CONFIGS.keys()),
+        help="Which Hamilton package to release (hamilton, sdk, lsp, contrib, ui)",
+    )
+    parser.add_argument("version", help="The new release version (e.g., '1.0.0').")
+    parser.add_argument("rc_num", help="The release candidate number (e.g., '0' for RC0).")
+    parser.add_argument(
+        "apache_id",
+        nargs="?",
+        default=None,
+        help="Your Apache user ID. Required unless --no-upload is set.",
+    )
+    parser.add_argument(
+        "-ns",
+        "--no-sign",
+        action="store_true",
+        help="Skip GPG signing. Unsigned artifacts cannot be used for an official release vote.",
+    )
+    parser.add_argument(
+        "-nu",
+        "--no-upload",
+        action="store_true",
+        help="Skip git tagging and SVN upload. Useful for validating the build locally.",
+    )
+    args = parser.parse_args()
+
+    if args.no_sign:
+        args.no_upload = True  # never upload unsigned artifacts
+
+    package_key = args.package
+    version = args.version
+    rc_num = args.rc_num
+    apache_id = args.apache_id
+
+    if not args.no_upload and not apache_id:
+        parser.error("apache_id is required unless --no-upload (or --no-sign) is set.")
+
+    # Get package configuration
+    package_config = PACKAGE_CONFIGS[package_key]
+    package_name = package_config["name"]
+
+    print(f"\n{'=' * 80}")
+    print(f"  Apache Hamilton Release Helper - {package_name}")
+    print(f"{'=' * 80}\n")
+
+    check_prerequisites()
+
+    # Validate version matches what's in the version file
+    current_version = get_version_from_file(package_config)
+    print(f"Current version in {package_config['version_file']}: {current_version}")
+    if current_version != version:
+        print("Update the version in the version file to match the expected version.")
+        sys.exit(1)
+
+    # Create git tag (from repo root)
+    tag_name = f"{package_name}-v{version}-incubating-RC{rc_num}"
+    if args.no_upload:
+        print(f"\n[--no-upload] Skipping git tag creation: {tag_name}")
+    else:
+        print(f"\nChecking for git tag '{tag_name}'...")
+        try:
+            # Check if the tag already exists
+            existing_tag = subprocess.check_output(["git", "tag", "-l", tag_name]).decode().strip()
+            if existing_tag == tag_name:
+                print(f"Git tag '{tag_name}' already exists.")
+                response = input(
+                    "Do you want to continue without creating a new tag? (y/n): "
+                ).lower()
+                if response != "y":
+                    print("Aborting.")
+                    sys.exit(1)
+            else:
+                # Tag does not exist, create it
+                print(f"Creating git tag '{tag_name}'...")
+                subprocess.run(["git", "tag", tag_name], check=True)
+                print(f"Git tag {tag_name} created.")
+        except subprocess.CalledProcessError as e:
+            print(f"Error checking or creating Git tag: {e}")
+            sys.exit(1)
+
+    # Create artifacts
+    print(f"\n{'=' * 80}")
+    print("  Building Release Artifacts")
+    print(f"{'=' * 80}\n")
+    files_to_upload = create_release_artifacts(package_config, version, no_sign=args.no_sign)
+    if not files_to_upload:
+        sys.exit(1)
+
+    if args.no_upload:
+        print(f"\n{'=' * 80}")
+        print("  [--no-upload] Skipping SVN upload")
+        print(f"{'=' * 80}\n")
+        print("Artifacts built successfully:")
+        for f in files_to_upload:
+            print(f"  {f}")
+        if args.no_sign:
+            print("\nNote: artifacts are unsigned and cannot be used for an official release vote.")
+    else:
+        # Upload artifacts
+        print(f"\n{'=' * 80}")
+        print("  Uploading to Apache SVN")
+        print(f"{'=' * 80}\n")
+        # NOTE: You MUST have your SVN client configured to use your Apache ID and have permissions.
+        svn_url = svn_upload(package_name, version, rc_num, files_to_upload, apache_id)
+        if not svn_url:
+            sys.exit(1)
+
+        # Generate email
+        print(f"\n{'=' * 80}")
+        print("  Vote Email Template")
+        print(f"{'=' * 80}\n")
+        generate_email_template(package_name, version, rc_num, svn_url)
+
+        print("\n" + "=" * 80)
+        print("  Process Complete!")
+        print("=" * 80)
+        print("\nNext steps:")
+        print(f"1. Push the git tag: git push origin {tag_name}")
+        print("2. Copy the email template above and send to dev@hamilton.apache.org")
+        print("3. Wait for votes (minimum 72 hours)")
+        print("\n")
+
+
+if __name__ == "__main__":
+    main()

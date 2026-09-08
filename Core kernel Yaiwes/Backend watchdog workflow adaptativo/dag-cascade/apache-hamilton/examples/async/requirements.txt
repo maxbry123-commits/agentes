@@ -1,0 +1,4 @@
+aiohttp
+apache-hamilton
+fastapi
+uvicorn

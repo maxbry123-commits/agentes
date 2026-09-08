@@ -1,0 +1,4 @@
+apache-hamilton[visualization]
+feast
+jupyter
+pandas

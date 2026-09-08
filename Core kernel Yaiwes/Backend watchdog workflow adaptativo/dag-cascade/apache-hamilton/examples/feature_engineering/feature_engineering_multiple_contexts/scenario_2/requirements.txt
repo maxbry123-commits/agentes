@@ -1,0 +1,6 @@
+aiohttp
+apache-hamilton
+fastapi
+pandas
+pandera
+uvicorn

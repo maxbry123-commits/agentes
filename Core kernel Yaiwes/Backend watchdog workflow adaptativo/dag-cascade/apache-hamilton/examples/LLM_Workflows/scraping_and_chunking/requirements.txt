@@ -1,0 +1,6 @@
+apache-hamilton[visualization]
+langchain
+langchain-core
+# optionally install Ray, or Dask, or both
+# apache-hamilton[ray]
+# apache-hamilton[dask]
