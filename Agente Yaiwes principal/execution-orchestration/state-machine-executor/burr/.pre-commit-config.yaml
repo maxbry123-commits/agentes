@@ -1,0 +1,89 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+# pre-commit hooks require a user to have installed `pre-commit`:
+#   $ brew install pre-commit
+# Then install the hooks within the repo:
+#   $ cd /PATH/TO/REPO
+#   $ pre-commit install
+
+exclude: '^telemetry/ui|^burr/tracking/server/demo_data(/|$)'
+repos:
+  - repo: https://github.com/ambv/black
+    rev: 23.11.0
+    hooks:
+      - id: black
+        args: [--line-length=100]
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+        # burr/examples is a symlink. trailing-whitespace would mangle the
+        # link target text (treating "../examples" as a "trailing whitespace"
+        # situation) and break the symlink.
+        exclude: '^burr/examples$'
+      # ensures files are either empty or end with a blank line.
+      # NOTE: burr/examples is excluded — end-of-file-fixer will append "\n"
+      # to the symlink target turning "../examples" into "../examples\n",
+      # which makes the symlink unresolvable on strict consumers (Apache RAT
+      # and several Linux tarball extractors). See PR #748.
+      - id: end-of-file-fixer
+        exclude: '^burr/examples$'
+      # sorts requirements
+      - id: requirements-txt-fixer
+      # valid python file
+      - id: check-ast
+  # isort python package import sorting
+  - repo: https://github.com/pycqa/isort
+    rev: '5.12.0'
+    hooks:
+      - id: isort
+        args:
+          [
+            '--profile',
+            'black',
+            '--line-length=100',
+            '--known-local-folder',
+            'examples',
+            '--known-local-folder',
+            'tests',
+            '-p',
+            'burr',
+          ]
+  - repo: https://github.com/pycqa/flake8
+    rev: 6.1.0
+    hooks:
+      - id: flake8
+  - repo: local
+    # This is a bit of a hack, but its the easiest way to get it to all run together
+    # https://stackoverflow.com/questions/64001471/pylint-with-pre-commit-and-esllint-with-husky
+    hooks:
+    -   id: frontend-lint-staged
+        name: frontend-lint-staged
+        language: system
+        entry: npx --prefix telemetry/ui lint-staged
+        pass_filenames: false
+        always_run: true
+    -   id: check-asf-headers
+        name: Check ASF license headers
+        language: python
+        entry: python scripts/check_asf_headers.py
+        # Run on Python, YAML, and shell files — the source types that must
+        # carry the Apache 2.0 header. Exclusions are read from .rat-excludes
+        # at runtime so known third-party files are automatically respected.
+        types_or: [python, yaml, shell]
+        pass_filenames: true

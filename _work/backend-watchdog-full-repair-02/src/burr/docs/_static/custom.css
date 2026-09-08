@@ -1,0 +1,102 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+/* Enable line wrapping for code blocks */
+.highlight pre {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+/* Custom styles for the Apache footer */
+.apache-footer {
+    background-color: var(--color-background-secondary) !important;
+    color: var(--color-foreground-secondary) !important;
+    padding: 1.5rem;
+    margin-top: 2rem;
+    border-top: 1px solid var(--color-background-border);
+}
+
+.apache-footer p {
+    color: var(--color-foreground-secondary) !important;
+    margin: 0.5rem 0;
+    font-size: 0.9em;
+}
+
+.apache-footer a {
+    color: var(--color-link) !important;
+    text-decoration: none;
+    border-bottom: 1px solid var(--color-link-underline);
+}
+
+.apache-footer a:hover {
+    color: var(--color-link--hover) !important;
+    border-bottom-color: var(--color-link-underline--hover);
+}
+
+/* Base styles that apply to all modes */
+.apache-footer .apache-incubator-logo {
+    width: 200px !important;
+    height: auto !important;
+    margin: 0 auto 1rem auto;
+    display: block;
+}
+
+/* Light mode - make logo dark */
+[data-theme="light"] .apache-footer .apache-incubator-logo {
+    filter: invert(0.9) brightness(0.2) contrast(1.2);
+}
+
+/* Dark mode - use original colors */
+[data-theme="dark"] .apache-footer .apache-incubator-logo {
+    filter: none !important;
+}
+
+/* Override bottom page icons */
+.bottom-of-page .icons svg {
+    width: 1.5rem !important;
+    height: 1.5rem !important;
+    color: var(--color-foreground-muted) !important;
+}
+
+/* Dark mode overrides */
+[data-theme="dark"] .apache-footer {
+    background-color: var(--color-background-secondary) !important;
+}
+
+[data-theme="dark"] .apache-footer a {
+    color: var(--color-link) !important;
+}
+
+/* Sidebar brand: logo inline with title */
+.sidebar-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-direction: row;
+}
+
+.sidebar-brand img {
+    height: 1.5rem;
+    width: auto;
+    margin: 0;
+}
+
+.sidebar-brand .sidebar-brand-text {
+    margin: 0;
+}

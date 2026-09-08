@@ -1,0 +1,84 @@
+#<!--
+#     Licensed to the Apache Software Foundation (ASF) under one
+#     or more contributor license agreements.  See the NOTICE file
+#     distributed with this work for additional information
+#     regarding copyright ownership.  The ASF licenses this file
+#     to you under the Apache License, Version 2.0 (the
+#     "License"); you may not use this file except in compliance
+#     with the License.  You may obtain a copy of the License at
+#
+#       http://www.apache.org/licenses/LICENSE-2.0
+#
+#     Unless required by applicable law or agreed to in writing,
+#     software distributed under the License is distributed on an
+#     "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+#     KIND, either express or implied.  See the License for the
+#     specific language governing permissions and limitations
+#     under the License.
+#-->
+name: documentation
+
+on:
+  push:
+    branches:
+      - main # Triggers the workflow on push events to the main branch
+  pull_request:
+    # Triggers the workflow on pull request events for any branch
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+concurrency: ci-${{ github.ref }}
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    env:
+      PR_PATH: pull/${{github.event.number}}
+      BASE_URL: https://burr.apache.org/pull/${{github.event.number}}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: |
+          pip install -e ".[documentation]"
+      - name: Sphinx build
+        run: |
+          sphinx-build docs -b dirhtml _build
+          echo "burr.apache.org" > _build/CNAME # keep the cname file which this clobbers -- todo, unhardcode
+      - name: Comment on PR
+        uses: hasura/comment-progress@v2.3.0
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          number: ${{ github.event.number }}
+          id: deploy-preview
+          message: "Starting deployment of preview ⏳..."
+      - name: Build PR preview website
+        uses: peaceiris/actions-gh-pages@v4
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: _build/
+          destination_dir: ${{ env.PR_PATH }} # TODO you need to set this if you're using a custom domain. Otherwise you can remove it.
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        with:
+          publish_branch: gh-pages
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: _build/
+          keep_files: true # Add this line to keep existing files in the gh-pages branch
+      - name: Update comment
+        uses: hasura/comment-progress@v2.3.0
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          number: ${{ github.event.number }}
+          id: deploy-preview
+          message: "A preview of ${{ github.event.after }} is uploaded and can be seen here:\n\n ✨ ${{ env.BASE_URL }} ✨\n\nChanges may take a few minutes to propagate. Since this is a preview of production, content with `draft: true` will not be rendered. The source is here: https://github.com/${{ github.repository }}/tree/gh-pages/${{ env.PR_PATH }}/"

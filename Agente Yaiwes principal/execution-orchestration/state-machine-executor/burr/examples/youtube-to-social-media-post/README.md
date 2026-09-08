@@ -1,0 +1,31 @@
+<!--
+     Licensed to the Apache Software Foundation (ASF) under one
+     or more contributor license agreements.  See the NOTICE file
+     distributed with this work for additional information
+     regarding copyright ownership.  The ASF licenses this file
+     to you under the Apache License, Version 2.0 (the
+     "License"); you may not use this file except in compliance
+     with the License.  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+     Unless required by applicable law or agreed to in writing,
+     software distributed under the License is distributed on an
+     "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+     KIND, either express or implied.  See the License for the
+     specific language governing permissions and limitations
+     under the License.
+-->
+
+# Build trustworthy LLM agents & applications for production with Instructor + Burr
+
+The challenge with large language models (LLMs) is handling the 5% of the time they say crazy things. Being able to debug why an output is bad and having tools for fixing are critical requirements for making LLM features / agents trustworthy and available to users.
+
+In this example, you'll learn how `instructor` can make LLMs reliability produce structured outputs, and how `burr` helps you introspect, debug, and create tests for your application.
+
+While a LLM/agent demo takes a few lines of code, production user-facing features aren't as simple. To be trustworthy, they need to work as intended consistently, requiring much more scrutiny and the right instrumentation. Your agent won't be perfect from the start, and tools should help you improve it iteratively and ship updates with confidence.
+
+Building our app with Burr provides several benefits that we'll detail next:
+- **Observability**: monitor in real-time and log the execution of your `Application` and view it in Burr's web user interface
+- **Persistence**: At any point, you can save the application `State`. This allows you to create user sessions (e.g., the conversation history menu in ChatGPT), which helps developers investigate bugs, iterate over possible code paths, and generate test cases to create guardrails.
+- **Portability**: your `Application` can run in a notebook, as a script, as a web service, or anywhere Python runs. We'll show how to use Burr with [FastAPI](https://fastapi.tiangolo.com/).
