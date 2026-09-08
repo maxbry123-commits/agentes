@@ -1,0 +1,42 @@
+name: Core Kernel Yaiwes Repair 01 License Trace
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/core-kernel-yaiwes-10-repair-01-license-trace-20260908.yml']
+permissions:
+  contents: write
+concurrency:
+  group: core-kernel-yaiwes-repair-01-license-trace
+  cancel-in-progress: false
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+      - name: Repair proven provenance gap
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f 'skills/skills Github acción/SKILL.md'
+          grep -Fq 'SOURCE_LICENSE.txt' 'skills/skills Github acción/SKILL.md'
+          python3 scripts/core-kernel-yaiwes-10-download-extract-20260908/repair_license_trace.py
+          git add -- 'Core kernel Yaiwes'
+          if ! git diff --cached --quiet; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git commit -m 'repair(core-kernel): restore license provenance for extracted components'
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
+      - name: Read-back
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git reset --hard origin/main
+          python3 scripts/core-kernel-yaiwes-10-download-extract-20260908/repair_license_trace.py --verify
