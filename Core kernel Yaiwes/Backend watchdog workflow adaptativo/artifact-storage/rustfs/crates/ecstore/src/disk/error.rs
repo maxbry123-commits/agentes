@@ -1,0 +1,1433 @@
+// Copyright 2024 RustFS Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use rustfs_io_metrics::internode_metrics::INTERNODE_OPERATION_PUT_FILE_STREAM;
+use rustfs_rio::{InternodeHttpError, InternodeHttpErrorKind};
+use std::error::Error as StdError;
+use std::hash::{Hash, Hasher};
+use std::io::{self};
+use std::path::PathBuf;
+
+pub type Error = DiskError;
+pub type Result<T> = core::result::Result<T, Error>;
+
+const METACACHE_OUTPUT_STREAM_CLOSED: &str = "metacache output stream closed";
+pub(crate) const HEAL_DANGLING_DELETE_GRACE_MESSAGE: &str = "dangling object deletion deferred by heal grace window";
+
+/// Marker carried by a shard-read `io::Error` when the underlying reader can
+/// no longer be realigned after a fresh remote open failed.  The marker is
+/// deliberately separate from the `ErrorKind`: a terminal read must retire
+/// its reader, while its original typed disk error and I/O kind still need to
+/// survive quorum/error mapping.
+#[derive(Debug)]
+pub(crate) struct TerminalReadError {
+    source: DiskError,
+}
+
+#[derive(Debug)]
+struct DanglingDeleteGraceError {
+    retry_after_secs: i64,
+    grace_secs: i64,
+}
+
+// DiskError == StorageErr
+#[derive(Debug, thiserror::Error)]
+pub enum DiskError {
+    #[error("maximum versions exceeded, please delete few versions to proceed")]
+    MaxVersionsExceeded,
+
+    #[error("unexpected error")]
+    Unexpected,
+
+    #[error("corrupted format")]
+    CorruptedFormat,
+
+    #[error("corrupted backend")]
+    CorruptedBackend,
+
+    #[error("unformatted disk error")]
+    UnformattedDisk,
+
+    #[error("inconsistent drive found")]
+    InconsistentDisk,
+
+    #[error("drive does not support O_DIRECT")]
+    UnsupportedDisk,
+
+    #[error("drive path full")]
+    DiskFull,
+
+    #[error("disk not a dir")]
+    DiskNotDir,
+
+    #[error("disk not found")]
+    DiskNotFound,
+
+    #[error("drive still did not complete the request")]
+    DiskOngoingReq,
+
+    #[error("drive is part of root drive, will not be used")]
+    DriveIsRoot,
+
+    #[error("remote drive is faulty")]
+    FaultyRemoteDisk,
+
+    #[error("drive is faulty")]
+    FaultyDisk,
+
+    #[error("drive access denied")]
+    DiskAccessDenied,
+
+    #[error("file not found")]
+    FileNotFound,
+
+    #[error("file version not found")]
+    FileVersionNotFound,
+
+    #[error("too many open files, please increase 'ulimit -n'")]
+    TooManyOpenFiles,
+
+    #[error("file name too long")]
+    FileNameTooLong,
+
+    #[error("volume already exists")]
+    VolumeExists,
+
+    #[error("not of regular file type")]
+    IsNotRegular,
+
+    #[error("path not found")]
+    PathNotFound,
+
+    #[error("volume not found")]
+    VolumeNotFound,
+
+    #[error("volume is not empty")]
+    VolumeNotEmpty,
+
+    #[error("volume access denied")]
+    VolumeAccessDenied,
+
+    #[error("disk access denied")]
+    FileAccessDenied,
+
+    #[error("file is corrupted")]
+    FileCorrupt,
+
+    #[error("short write")]
+    ShortWrite,
+
+    #[error("bit-rot hash algorithm is invalid")]
+    BitrotHashAlgoInvalid,
+
+    /// Never constructed locally by RustFS (only reachable through wire
+    /// decoding, and no current node sends it). The wire code is kept for
+    /// cross-version compatibility — do not renumber or remove (backlog#1831).
+    #[error("Rename across devices not allowed, please fix your backend configuration")]
+    CrossDeviceLink,
+
+    #[error("less data available than what was requested")]
+    LessData,
+
+    #[error("more data was sent than what was advertised")]
+    MoreData,
+
+    #[error("outdated XL meta")]
+    OutdatedXLMeta,
+
+    #[error("part missing or corrupt")]
+    PartMissingOrCorrupt,
+
+    #[error("No healing is required")]
+    NoHealRequired,
+
+    #[error("method not allowed")]
+    MethodNotAllowed,
+
+    #[error("erasure write quorum")]
+    ErasureWriteQuorum,
+
+    #[error("erasure read quorum")]
+    ErasureReadQuorum,
+
+    #[error("io error {0}")]
+    Io(#[source] io::Error),
+
+    /// Never constructed locally by RustFS (only reachable through wire
+    /// decoding, and no current node sends it). The wire code is kept for
+    /// cross-version compatibility — do not renumber or remove (backlog#1831).
+    #[error("source stalled")]
+    SourceStalled,
+
+    #[error("timeout")]
+    Timeout,
+
+    #[error("invalid path")]
+    InvalidPath,
+
+    /// Internode RPC client acquisition failed (channel build, auth setup, or
+    /// the peer is marked offline). The detail is diagnostic only: equality and
+    /// hashing use the wire code alone, so N disks failing for this same cause
+    /// land in one `reduce_errs` quorum bucket regardless of per-peer detail
+    /// (backlog#1845). Keep the detail in the rendered message — substring
+    /// classifiers (network needles, heal recoverability) read it from there.
+    #[error("remote rpc client unavailable: {0}")]
+    RemoteClientUnavailable(String),
+}
+
+impl TerminalReadError {
+    pub(crate) fn new(source: DiskError) -> Self {
+        Self { source }
+    }
+
+    fn into_source(self) -> DiskError {
+        self.source
+    }
+}
+
+impl std::fmt::Display for TerminalReadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.source.fmt(f)
+    }
+}
+
+impl StdError for TerminalReadError {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        Some(&self.source)
+    }
+}
+
+impl std::fmt::Display for DanglingDeleteGraceError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{HEAL_DANGLING_DELETE_GRACE_MESSAGE}; retry_after_secs={}; grace_secs={}",
+            self.retry_after_secs, self.grace_secs
+        )
+    }
+}
+
+impl StdError for DanglingDeleteGraceError {}
+
+fn classify_internode_missing_error(error: &InternodeHttpError) -> Option<DiskError> {
+    if error.is_remote_file_not_found() {
+        return Some(DiskError::FileNotFound);
+    }
+    if error.is_remote_volume_not_found() {
+        return Some(DiskError::VolumeNotFound);
+    }
+    None
+}
+
+fn internode_write_error_is_retryable(error: &InternodeHttpError) -> bool {
+    error.kind().is_retryable()
+        || (matches!(error.kind(), InternodeHttpErrorKind::HttpStatus(status) if status.as_u16() == 409)
+            && error.context().operation() == Some(INTERNODE_OPERATION_PUT_FILE_STREAM))
+}
+
+fn io_error_contains_retryable_internode_write(error: &io::Error) -> bool {
+    error
+        .get_ref()
+        .and_then(|source| source.downcast_ref::<InternodeHttpError>())
+        .is_some_and(internode_write_error_is_retryable)
+}
+
+/// Wrap a terminal shard-read failure without changing its typed
+/// classification.  Timeout-like disk errors retain `TimedOut`; other errors
+/// retain their inner I/O kind or use `Other` when no more specific kind exists.
+pub(crate) fn terminal_read_error_to_io(error: DiskError) -> io::Error {
+    let kind = match &error {
+        DiskError::Io(inner) => inner.kind(),
+        DiskError::SourceStalled | DiskError::Timeout => io::ErrorKind::TimedOut,
+        DiskError::DiskNotFound
+        | DiskError::FileNotFound
+        | DiskError::FileVersionNotFound
+        | DiskError::PathNotFound
+        | DiskError::VolumeNotFound => io::ErrorKind::NotFound,
+        DiskError::DiskAccessDenied | DiskError::FileAccessDenied | DiskError::VolumeAccessDenied => {
+            io::ErrorKind::PermissionDenied
+        }
+        DiskError::DiskFull => io::ErrorKind::StorageFull,
+        DiskError::FileCorrupt | DiskError::PartMissingOrCorrupt | DiskError::BitrotHashAlgoInvalid => io::ErrorKind::InvalidData,
+        _ => io::ErrorKind::Other,
+    };
+    io::Error::new(kind, TerminalReadError::new(error))
+}
+
+/// Whether an I/O error marks a shard reader as terminal for adaptive decode.
+pub(crate) fn is_terminal_read_error(error: &io::Error) -> bool {
+    error
+        .get_ref()
+        .is_some_and(|source| source.downcast_ref::<TerminalReadError>().is_some())
+}
+
+impl From<crate::erasure::coding::ErasureConstructionError> for DiskError {
+    fn from(error: crate::erasure::coding::ErasureConstructionError) -> Self {
+        Self::Io(error.into_io_error())
+    }
+}
+
+impl DiskError {
+    pub fn other<E>(error: E) -> Self
+    where
+        E: Into<Box<dyn std::error::Error + Send + Sync>>,
+    {
+        DiskError::Io(std::io::Error::other(error))
+    }
+
+    pub(crate) fn dangling_delete_grace(retry_after_secs: i64, grace_secs: i64) -> Self {
+        DiskError::other(DanglingDeleteGraceError {
+            retry_after_secs,
+            grace_secs,
+        })
+    }
+
+    pub fn is_dangling_delete_grace(&self) -> bool {
+        matches!(self, DiskError::Io(io_error) if Self::io_error_is_dangling_delete_grace(io_error))
+    }
+
+    pub fn io_error_is_dangling_delete_grace(io_error: &io::Error) -> bool {
+        io_error
+            .get_ref()
+            .is_some_and(|source| source.downcast_ref::<DanglingDeleteGraceError>().is_some())
+            || io_error.to_string().contains(HEAL_DANGLING_DELETE_GRACE_MESSAGE)
+    }
+
+    pub(crate) fn metacache_output_stream_closed() -> Self {
+        DiskError::Io(std::io::Error::new(std::io::ErrorKind::BrokenPipe, METACACHE_OUTPUT_STREAM_CLOSED))
+    }
+
+    pub(crate) fn is_metacache_output_stream_closed(&self) -> bool {
+        matches!(
+            self,
+            DiskError::Io(io_error)
+                if io_error.kind() == std::io::ErrorKind::BrokenPipe
+                    && io_error.to_string() == METACACHE_OUTPUT_STREAM_CLOSED
+        )
+    }
+
+    pub(crate) fn contains_io_error_kind(&self, kind: std::io::ErrorKind) -> bool {
+        match self {
+            DiskError::Io(io_error) => io_error_chain_contains_kind(io_error, kind),
+            _ => false,
+        }
+    }
+
+    pub fn is_all_not_found(errs: &[Option<DiskError>]) -> bool {
+        for err in errs.iter() {
+            if let Some(err) = err {
+                if err == &DiskError::FileNotFound || err == &DiskError::FileVersionNotFound {
+                    continue;
+                }
+
+                return false;
+            }
+
+            return false;
+        }
+
+        !errs.is_empty()
+    }
+
+    pub fn is_err_object_not_found(err: &DiskError) -> bool {
+        matches!(err, &DiskError::FileNotFound) || matches!(err, &DiskError::VolumeNotFound)
+    }
+
+    pub fn is_err_version_not_found(err: &DiskError) -> bool {
+        matches!(err, &DiskError::FileVersionNotFound)
+    }
+
+    pub fn is_retryable_internode_write_failure(&self) -> bool {
+        match self {
+            DiskError::Io(io_error) => io_error_contains_retryable_internode_write(io_error),
+            _ => false,
+        }
+    }
+
+    pub fn internode_http_error_kind(&self) -> Option<InternodeHttpErrorKind> {
+        match self {
+            DiskError::Io(io_error) => io_error
+                .get_ref()
+                .and_then(|source| source.downcast_ref::<InternodeHttpError>())
+                .map(InternodeHttpError::kind),
+            _ => None,
+        }
+    }
+
+    pub fn is_internode_http_status(&self, status: u16) -> bool {
+        matches!(
+            self.internode_http_error_kind(),
+            Some(InternodeHttpErrorKind::HttpStatus(actual)) if actual.as_u16() == status
+        )
+    }
+
+    // /// If all errors are of the same fatal disk error type, returns the corresponding error.
+    // /// Otherwise, returns Ok.
+    // pub fn check_disk_fatal_errs(errs: &[Option<Error>]) -> Result<()> {
+    //     if DiskError::UnsupportedDisk.count_errs(errs) == errs.len() {
+    //         return Err(DiskError::UnsupportedDisk.into());
+    //     }
+
+    //     if DiskError::FileAccessDenied.count_errs(errs) == errs.len() {
+    //         return Err(DiskError::FileAccessDenied.into());
+    //     }
+
+    //     if DiskError::DiskNotDir.count_errs(errs) == errs.len() {
+    //         return Err(DiskError::DiskNotDir.into());
+    //     }
+
+    //     Ok(())
+    // }
+
+    // pub fn count_errs(&self, errs: &[Option<Error>]) -> usize {
+    //     errs.iter()
+    //         .filter(|&err| match err {
+    //             None => false,
+    //             Some(e) => self.is(e),
+    //         })
+    //         .count()
+    // }
+
+    // pub fn quorum_unformatted_disks(errs: &[Option<Error>]) -> bool {
+    //     DiskError::UnformattedDisk.count_errs(errs) > (errs.len() / 2)
+    // }
+
+    // pub fn should_init_erasure_disks(errs: &[Option<Error>]) -> bool {
+    //     DiskError::UnformattedDisk.count_errs(errs) == errs.len()
+    // }
+
+    // // Check if the error is a disk error
+    // pub fn is(&self, err: &DiskError) -> bool {
+    //     if let Some(e) = err.downcast_ref::<DiskError>() {
+    //         e == self
+    //     } else {
+    //         false
+    //     }
+    // }
+}
+
+impl From<rustfs_filemeta::Error> for DiskError {
+    fn from(e: rustfs_filemeta::Error) -> Self {
+        match e {
+            rustfs_filemeta::Error::Io(e) => DiskError::Io(e),
+            rustfs_filemeta::Error::FileNotFound => DiskError::FileNotFound,
+            rustfs_filemeta::Error::FileVersionNotFound => DiskError::FileVersionNotFound,
+            rustfs_filemeta::Error::FileCorrupt => DiskError::FileCorrupt,
+            rustfs_filemeta::Error::MethodNotAllowed => DiskError::MethodNotAllowed,
+            rustfs_filemeta::Error::MaxVersionsExceeded => DiskError::MaxVersionsExceeded,
+            e => DiskError::other(e),
+        }
+    }
+}
+
+fn io_error_chain_contains_kind(io_error: &std::io::Error, kind: std::io::ErrorKind) -> bool {
+    if io_error.kind() == kind {
+        return true;
+    }
+
+    let mut source = StdError::source(io_error);
+    while let Some(err) = source {
+        if let Some(io_error) = err.downcast_ref::<std::io::Error>()
+            && io_error.kind() == kind
+        {
+            return true;
+        }
+        if let Some(disk_error) = err.downcast_ref::<DiskError>()
+            && disk_error.contains_io_error_kind(kind)
+        {
+            return true;
+        }
+        source = err.source();
+    }
+
+    false
+}
+
+impl From<std::io::Error> for DiskError {
+    fn from(e: std::io::Error) -> Self {
+        if let Some(error) = e.get_ref().and_then(|source| source.downcast_ref::<InternodeHttpError>()) {
+            if error.is_remote_file_not_found() {
+                return DiskError::FileNotFound;
+            }
+            if error.is_remote_volume_not_found() {
+                return DiskError::VolumeNotFound;
+            }
+        }
+        let e = match e.downcast::<TerminalReadError>() {
+            Ok(terminal_error) => {
+                let source = terminal_error.into_source();
+                if let DiskError::Io(io_error) = &source
+                    && let Some(internode_error) = io_error
+                        .get_ref()
+                        .and_then(|source| source.downcast_ref::<InternodeHttpError>())
+                    && let Some(classified) = classify_internode_missing_error(internode_error)
+                {
+                    return classified;
+                }
+                return source;
+            }
+            Err(e) => e,
+        };
+        match e.downcast::<DiskError>() {
+            Ok(disk_error) => disk_error,
+            // Mirror `From<io::Error> for StorageError`: a StorageError boxed
+            // through `From<StorageError> for io::Error` must recover its typed
+            // classification instead of degrading to `DiskError::Io`, which
+            // quorum aggregation (`reduce_errs`) would count as a distinct error.
+            Err(io_error) => match io_error.downcast::<crate::error::StorageError>() {
+                Ok(storage_error) => storage_error.narrow_to_disk().unwrap_or_else(DiskError::other),
+                Err(io_error) => DiskError::Io(io_error),
+            },
+        }
+    }
+}
+
+impl From<DiskError> for std::io::Error {
+    fn from(e: DiskError) -> Self {
+        match e {
+            DiskError::Io(io_error) => io_error,
+            e => std::io::Error::other(e),
+        }
+    }
+}
+
+/// The single in-band representation of a failed internode RPC: it carries the
+/// typed `tonic::Status` so failure classifiers can read the gRPC code instead
+/// of substring-matching the rendered message (see `is_network_like_status`).
+/// Both `DiskError` and `StorageError` wrap statuses in this type, so one
+/// downcast recovers the status regardless of which error the status was
+/// converted into first.
+pub(crate) struct RpcStatusError(tonic::Status);
+
+impl RpcStatusError {
+    pub(crate) fn status(&self) -> &tonic::Status {
+        &self.0
+    }
+}
+
+impl From<tonic::Status> for RpcStatusError {
+    fn from(status: tonic::Status) -> Self {
+        Self(status)
+    }
+}
+
+impl std::fmt::Display for RpcStatusError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(&self.0, f)
+    }
+}
+
+/// `tonic::Status`'s own `Debug` prints its `MetadataMap`, i.e. every response
+/// header and trailer the peer sent. Those are remote-controlled and can carry
+/// credentials injected by a proxy in front of the peer, so keep them out of
+/// anything that reaches a log.
+impl std::fmt::Debug for RpcStatusError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RpcStatusError")
+            .field("code", &self.0.code())
+            .field("message", &self.0.message())
+            .finish()
+    }
+}
+
+impl StdError for RpcStatusError {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        Some(&self.0)
+    }
+}
+
+impl From<tonic::Status> for DiskError {
+    fn from(e: tonic::Status) -> Self {
+        DiskError::Io(io::Error::other(RpcStatusError(e)))
+    }
+}
+
+impl From<rustfs_protos::proto_gen::node_service::Error> for DiskError {
+    fn from(e: rustfs_protos::proto_gen::node_service::Error) -> Self {
+        if let Some(err) = DiskError::from_u32(e.code) {
+            match err {
+                DiskError::Io(_) => DiskError::other(e.error_info),
+                DiskError::RemoteClientUnavailable(_) => DiskError::RemoteClientUnavailable(e.error_info),
+                err => err,
+            }
+        } else {
+            DiskError::other(e.error_info)
+        }
+    }
+}
+
+impl From<DiskError> for rustfs_protos::proto_gen::node_service::Error {
+    fn from(e: DiskError) -> Self {
+        rustfs_protos::proto_gen::node_service::Error {
+            code: e.to_u32(),
+            error_info: e.to_string(),
+        }
+    }
+}
+
+impl From<serde_json::Error> for DiskError {
+    fn from(e: serde_json::Error) -> Self {
+        DiskError::other(e)
+    }
+}
+
+impl From<rmp_serde::encode::Error> for DiskError {
+    fn from(e: rmp_serde::encode::Error) -> Self {
+        DiskError::other(e)
+    }
+}
+
+impl From<rmp_serde::decode::Error> for DiskError {
+    fn from(e: rmp_serde::decode::Error) -> Self {
+        DiskError::other(e)
+    }
+}
+
+impl From<rmp::encode::ValueWriteError> for DiskError {
+    fn from(e: rmp::encode::ValueWriteError) -> Self {
+        DiskError::other(e)
+    }
+}
+
+impl From<rmp::decode::ValueReadError> for DiskError {
+    fn from(e: rmp::decode::ValueReadError) -> Self {
+        DiskError::other(e)
+    }
+}
+
+impl From<std::string::FromUtf8Error> for DiskError {
+    fn from(e: std::string::FromUtf8Error) -> Self {
+        DiskError::other(e)
+    }
+}
+
+impl From<rmp::decode::NumValueReadError> for DiskError {
+    fn from(e: rmp::decode::NumValueReadError) -> Self {
+        DiskError::other(e)
+    }
+}
+
+impl From<tokio::task::JoinError> for DiskError {
+    fn from(e: tokio::task::JoinError) -> Self {
+        DiskError::other(e)
+    }
+}
+
+impl Clone for DiskError {
+    fn clone(&self) -> Self {
+        match self {
+            DiskError::Io(io_error) => DiskError::Io(std::io::Error::new(io_error.kind(), io_error.to_string())),
+            DiskError::MaxVersionsExceeded => DiskError::MaxVersionsExceeded,
+            DiskError::Unexpected => DiskError::Unexpected,
+            DiskError::CorruptedFormat => DiskError::CorruptedFormat,
+            DiskError::CorruptedBackend => DiskError::CorruptedBackend,
+            DiskError::UnformattedDisk => DiskError::UnformattedDisk,
+            DiskError::InconsistentDisk => DiskError::InconsistentDisk,
+            DiskError::UnsupportedDisk => DiskError::UnsupportedDisk,
+            DiskError::DiskFull => DiskError::DiskFull,
+            DiskError::DiskNotDir => DiskError::DiskNotDir,
+            DiskError::DiskNotFound => DiskError::DiskNotFound,
+            DiskError::DiskOngoingReq => DiskError::DiskOngoingReq,
+            DiskError::DriveIsRoot => DiskError::DriveIsRoot,
+            DiskError::FaultyRemoteDisk => DiskError::FaultyRemoteDisk,
+            DiskError::FaultyDisk => DiskError::FaultyDisk,
+            DiskError::DiskAccessDenied => DiskError::DiskAccessDenied,
+            DiskError::FileNotFound => DiskError::FileNotFound,
+            DiskError::FileVersionNotFound => DiskError::FileVersionNotFound,
+            DiskError::TooManyOpenFiles => DiskError::TooManyOpenFiles,
+            DiskError::FileNameTooLong => DiskError::FileNameTooLong,
+            DiskError::VolumeExists => DiskError::VolumeExists,
+            DiskError::IsNotRegular => DiskError::IsNotRegular,
+            DiskError::PathNotFound => DiskError::PathNotFound,
+            DiskError::VolumeNotFound => DiskError::VolumeNotFound,
+            DiskError::VolumeNotEmpty => DiskError::VolumeNotEmpty,
+            DiskError::VolumeAccessDenied => DiskError::VolumeAccessDenied,
+            DiskError::FileAccessDenied => DiskError::FileAccessDenied,
+            DiskError::FileCorrupt => DiskError::FileCorrupt,
+            DiskError::BitrotHashAlgoInvalid => DiskError::BitrotHashAlgoInvalid,
+            DiskError::CrossDeviceLink => DiskError::CrossDeviceLink,
+            DiskError::LessData => DiskError::LessData,
+            DiskError::MoreData => DiskError::MoreData,
+            DiskError::OutdatedXLMeta => DiskError::OutdatedXLMeta,
+            DiskError::PartMissingOrCorrupt => DiskError::PartMissingOrCorrupt,
+            DiskError::NoHealRequired => DiskError::NoHealRequired,
+            DiskError::MethodNotAllowed => DiskError::MethodNotAllowed,
+            DiskError::ErasureWriteQuorum => DiskError::ErasureWriteQuorum,
+            DiskError::ErasureReadQuorum => DiskError::ErasureReadQuorum,
+            DiskError::ShortWrite => DiskError::ShortWrite,
+            DiskError::SourceStalled => DiskError::SourceStalled,
+            DiskError::Timeout => DiskError::Timeout,
+            DiskError::InvalidPath => DiskError::InvalidPath,
+            DiskError::RemoteClientUnavailable(detail) => DiskError::RemoteClientUnavailable(detail.clone()),
+        }
+    }
+}
+
+impl DiskError {
+    pub fn to_u32(&self) -> u32 {
+        match self {
+            DiskError::MaxVersionsExceeded => 0x01,
+            DiskError::Unexpected => 0x02,
+            DiskError::CorruptedFormat => 0x03,
+            DiskError::CorruptedBackend => 0x04,
+            DiskError::UnformattedDisk => 0x05,
+            DiskError::InconsistentDisk => 0x06,
+            DiskError::UnsupportedDisk => 0x07,
+            DiskError::DiskFull => 0x08,
+            DiskError::DiskNotDir => 0x09,
+            DiskError::DiskNotFound => 0x0A,
+            DiskError::DiskOngoingReq => 0x0B,
+            DiskError::DriveIsRoot => 0x0C,
+            DiskError::FaultyRemoteDisk => 0x0D,
+            DiskError::FaultyDisk => 0x0E,
+            DiskError::DiskAccessDenied => 0x0F,
+            DiskError::FileNotFound => 0x10,
+            DiskError::FileVersionNotFound => 0x11,
+            DiskError::TooManyOpenFiles => 0x12,
+            DiskError::FileNameTooLong => 0x13,
+            DiskError::VolumeExists => 0x14,
+            DiskError::IsNotRegular => 0x15,
+            DiskError::PathNotFound => 0x16,
+            DiskError::VolumeNotFound => 0x17,
+            DiskError::VolumeNotEmpty => 0x18,
+            DiskError::VolumeAccessDenied => 0x19,
+            DiskError::FileAccessDenied => 0x1A,
+            DiskError::FileCorrupt => 0x1B,
+            DiskError::BitrotHashAlgoInvalid => 0x1C,
+            DiskError::CrossDeviceLink => 0x1D,
+            DiskError::LessData => 0x1E,
+            DiskError::MoreData => 0x1F,
+            DiskError::OutdatedXLMeta => 0x20,
+            DiskError::PartMissingOrCorrupt => 0x21,
+            DiskError::NoHealRequired => 0x22,
+            DiskError::MethodNotAllowed => 0x23,
+            DiskError::Io(_) => 0x24,
+            DiskError::ErasureWriteQuorum => 0x25,
+            DiskError::ErasureReadQuorum => 0x26,
+            DiskError::ShortWrite => 0x27,
+            DiskError::SourceStalled => 0x28,
+            DiskError::Timeout => 0x29,
+            DiskError::InvalidPath => 0x2A,
+            DiskError::RemoteClientUnavailable(_) => 0x2B,
+        }
+    }
+
+    pub fn from_u32(error: u32) -> Option<Self> {
+        match error {
+            0x01 => Some(DiskError::MaxVersionsExceeded),
+            0x02 => Some(DiskError::Unexpected),
+            0x03 => Some(DiskError::CorruptedFormat),
+            0x04 => Some(DiskError::CorruptedBackend),
+            0x05 => Some(DiskError::UnformattedDisk),
+            0x06 => Some(DiskError::InconsistentDisk),
+            0x07 => Some(DiskError::UnsupportedDisk),
+            0x08 => Some(DiskError::DiskFull),
+            0x09 => Some(DiskError::DiskNotDir),
+            0x0A => Some(DiskError::DiskNotFound),
+            0x0B => Some(DiskError::DiskOngoingReq),
+            0x0C => Some(DiskError::DriveIsRoot),
+            0x0D => Some(DiskError::FaultyRemoteDisk),
+            0x0E => Some(DiskError::FaultyDisk),
+            0x0F => Some(DiskError::DiskAccessDenied),
+            0x10 => Some(DiskError::FileNotFound),
+            0x11 => Some(DiskError::FileVersionNotFound),
+            0x12 => Some(DiskError::TooManyOpenFiles),
+            0x13 => Some(DiskError::FileNameTooLong),
+            0x14 => Some(DiskError::VolumeExists),
+            0x15 => Some(DiskError::IsNotRegular),
+            0x16 => Some(DiskError::PathNotFound),
+            0x17 => Some(DiskError::VolumeNotFound),
+            0x18 => Some(DiskError::VolumeNotEmpty),
+            0x19 => Some(DiskError::VolumeAccessDenied),
+            0x1A => Some(DiskError::FileAccessDenied),
+            0x1B => Some(DiskError::FileCorrupt),
+            0x1C => Some(DiskError::BitrotHashAlgoInvalid),
+            0x1D => Some(DiskError::CrossDeviceLink),
+            0x1E => Some(DiskError::LessData),
+            0x1F => Some(DiskError::MoreData),
+            0x20 => Some(DiskError::OutdatedXLMeta),
+            0x21 => Some(DiskError::PartMissingOrCorrupt),
+            0x22 => Some(DiskError::NoHealRequired),
+            0x23 => Some(DiskError::MethodNotAllowed),
+            0x24 => Some(DiskError::Io(std::io::Error::other(String::new()))),
+            0x25 => Some(DiskError::ErasureWriteQuorum),
+            0x26 => Some(DiskError::ErasureReadQuorum),
+            0x27 => Some(DiskError::ShortWrite),
+            0x28 => Some(DiskError::SourceStalled),
+            0x29 => Some(DiskError::Timeout),
+            0x2A => Some(DiskError::InvalidPath),
+            0x2B => Some(DiskError::RemoteClientUnavailable(String::new())),
+            _ => None,
+        }
+    }
+}
+
+impl PartialEq for DiskError {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (DiskError::Io(e1), DiskError::Io(e2)) => e1.kind() == e2.kind() && e1.to_string() == e2.to_string(),
+            _ => self.to_u32() == other.to_u32(),
+        }
+    }
+}
+
+impl Eq for DiskError {}
+
+impl Hash for DiskError {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.to_u32().hash(state);
+    }
+}
+
+// NOTE: Remove commented out code later if not needed
+// Some error-related helper functions and complex error handling logic
+// is currently commented out to avoid complexity. These can be re-enabled
+// when needed for specific disk quorum checking and error aggregation logic.
+
+/// Context wrapper for file access errors
+#[derive(Debug, thiserror::Error)]
+pub struct FileAccessDeniedWithContext {
+    pub path: PathBuf,
+    #[source]
+    pub source: io::Error,
+}
+
+impl std::fmt::Display for FileAccessDeniedWithContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "file access denied for path: {}", self.path.display())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    #[test]
+    fn terminal_read_error_preserves_kind_and_disk_classification() {
+        let timeout = terminal_read_error_to_io(DiskError::Timeout);
+        assert_eq!(timeout.kind(), io::ErrorKind::TimedOut);
+        assert!(is_terminal_read_error(&timeout));
+        assert!(matches!(DiskError::from(timeout), DiskError::Timeout));
+
+        let missing = terminal_read_error_to_io(DiskError::FileNotFound);
+        assert_eq!(missing.kind(), io::ErrorKind::NotFound);
+        assert!(is_terminal_read_error(&missing));
+        assert!(matches!(DiskError::from(missing), DiskError::FileNotFound));
+
+        let reset = terminal_read_error_to_io(DiskError::Io(io::Error::new(io::ErrorKind::ConnectionReset, "connection reset")));
+        assert_eq!(reset.kind(), io::ErrorKind::ConnectionReset);
+        assert!(is_terminal_read_error(&reset));
+        assert!(matches!(DiskError::from(reset), DiskError::Io(error) if error.kind() == io::ErrorKind::ConnectionReset));
+
+        for (remote_error, expected) in [
+            (rustfs_rio::new_test_remote_file_not_found_http_io_error(), DiskError::FileNotFound),
+            (rustfs_rio::new_test_remote_volume_not_found_http_io_error(), DiskError::VolumeNotFound),
+        ] {
+            let wrapped = terminal_read_error_to_io(DiskError::Io(remote_error));
+            assert_eq!(DiskError::from(wrapped), expected);
+        }
+    }
+
+    #[test]
+    fn other_preserves_erasure_construction_source_chain() {
+        use crate::erasure::coding::ErasureConstructionError;
+        use std::error::Error as _;
+
+        let error = DiskError::from(ErasureConstructionError::ModernEncoder {
+            source: rustfs_erasure_codec::Error::TooManyShards,
+        });
+        let io_source = error.source().expect("DiskError::Io must expose its io::Error source");
+        assert!(io_source.is::<io::Error>());
+        let construction_source = io_source
+            .source()
+            .expect("io::Error must expose the erasure construction error");
+        assert!(construction_source.is::<ErasureConstructionError>());
+        let encoder_source = construction_source
+            .source()
+            .expect("construction error must expose the encoder error");
+        assert!(encoder_source.is::<rustfs_erasure_codec::Error>());
+    }
+
+    #[test]
+    fn test_disk_error_variants() {
+        let errors = vec![
+            DiskError::MaxVersionsExceeded,
+            DiskError::Unexpected,
+            DiskError::CorruptedFormat,
+            DiskError::CorruptedBackend,
+            DiskError::UnformattedDisk,
+            DiskError::InconsistentDisk,
+            DiskError::UnsupportedDisk,
+            DiskError::DiskFull,
+            DiskError::DiskNotDir,
+            DiskError::DiskNotFound,
+            DiskError::DiskOngoingReq,
+            DiskError::DriveIsRoot,
+            DiskError::FaultyRemoteDisk,
+            DiskError::FaultyDisk,
+            DiskError::DiskAccessDenied,
+            DiskError::FileNotFound,
+            DiskError::FileVersionNotFound,
+            DiskError::TooManyOpenFiles,
+            DiskError::FileNameTooLong,
+            DiskError::VolumeExists,
+            DiskError::IsNotRegular,
+            DiskError::PathNotFound,
+            DiskError::VolumeNotFound,
+            DiskError::VolumeNotEmpty,
+            DiskError::VolumeAccessDenied,
+            DiskError::FileAccessDenied,
+            DiskError::FileCorrupt,
+            DiskError::ShortWrite,
+            DiskError::BitrotHashAlgoInvalid,
+            DiskError::CrossDeviceLink,
+            DiskError::LessData,
+            DiskError::MoreData,
+            DiskError::OutdatedXLMeta,
+            DiskError::PartMissingOrCorrupt,
+            DiskError::NoHealRequired,
+            DiskError::MethodNotAllowed,
+            DiskError::ErasureWriteQuorum,
+            DiskError::ErasureReadQuorum,
+        ];
+
+        for error in errors {
+            // Test error display
+            assert!(!error.to_string().is_empty());
+
+            // Test error conversion to u32 and back
+            let code = error.to_u32();
+            let converted_back = DiskError::from_u32(code);
+            assert!(converted_back.is_some());
+        }
+    }
+
+    #[test]
+    fn test_disk_error_other() {
+        let custom_error = DiskError::other("custom error message");
+        assert!(matches!(custom_error, DiskError::Io(_)));
+        // The error message format might vary, so just check it's not empty
+        assert!(!custom_error.to_string().is_empty());
+    }
+
+    #[test]
+    fn test_disk_error_from_io_error() {
+        let io_error = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
+        let disk_error = DiskError::from(io_error);
+        assert!(matches!(disk_error, DiskError::Io(_)));
+    }
+
+    #[test]
+    fn test_is_all_not_found() {
+        // Empty slice
+        assert!(!DiskError::is_all_not_found(&[]));
+
+        // All file not found
+        let all_not_found = vec![
+            Some(DiskError::FileNotFound),
+            Some(DiskError::FileVersionNotFound),
+            Some(DiskError::FileNotFound),
+        ];
+        assert!(DiskError::is_all_not_found(&all_not_found));
+
+        // Mixed errors
+        let mixed_errors = vec![
+            Some(DiskError::FileNotFound),
+            Some(DiskError::DiskNotFound),
+            Some(DiskError::FileNotFound),
+        ];
+        assert!(!DiskError::is_all_not_found(&mixed_errors));
+
+        // Contains None
+        let with_none = vec![Some(DiskError::FileNotFound), None, Some(DiskError::FileNotFound)];
+        assert!(!DiskError::is_all_not_found(&with_none));
+    }
+
+    #[test]
+    fn test_is_err_object_not_found() {
+        assert!(DiskError::is_err_object_not_found(&DiskError::FileNotFound));
+        assert!(DiskError::is_err_object_not_found(&DiskError::VolumeNotFound));
+        assert!(!DiskError::is_err_object_not_found(&DiskError::DiskNotFound));
+        assert!(!DiskError::is_err_object_not_found(&DiskError::FileCorrupt));
+    }
+
+    #[test]
+    fn test_is_err_version_not_found() {
+        assert!(DiskError::is_err_version_not_found(&DiskError::FileVersionNotFound));
+        assert!(!DiskError::is_err_version_not_found(&DiskError::FileNotFound));
+        assert!(!DiskError::is_err_version_not_found(&DiskError::VolumeNotFound));
+    }
+
+    #[test]
+    fn test_disk_error_to_u32_from_u32() {
+        let test_cases = vec![
+            (DiskError::MaxVersionsExceeded, 1),
+            (DiskError::Unexpected, 2),
+            (DiskError::CorruptedFormat, 3),
+            (DiskError::UnformattedDisk, 5),
+            (DiskError::DiskNotFound, 10),
+            (DiskError::FileNotFound, 16),
+            (DiskError::VolumeNotFound, 23),
+        ];
+
+        for (error, expected_code) in test_cases {
+            assert_eq!(error.to_u32(), expected_code);
+            assert_eq!(DiskError::from_u32(expected_code), Some(error));
+        }
+
+        // Test unknown error code
+        assert_eq!(DiskError::from_u32(999), None);
+    }
+
+    #[test]
+    fn test_disk_error_equality() {
+        assert_eq!(DiskError::FileNotFound, DiskError::FileNotFound);
+        assert_ne!(DiskError::FileNotFound, DiskError::VolumeNotFound);
+
+        let error1 = DiskError::other("test");
+        let error2 = DiskError::other("test");
+        // IO errors with the same message should be equal
+        assert_eq!(error1, error2);
+    }
+
+    #[test]
+    fn test_disk_error_clone() {
+        let original = DiskError::FileNotFound;
+        let cloned = original.clone();
+        assert_eq!(original, cloned);
+
+        let io_error = DiskError::other("test error");
+        let cloned_io = io_error.clone();
+        assert_eq!(io_error, cloned_io);
+    }
+
+    #[test]
+    fn test_disk_error_hash() {
+        let mut map = HashMap::new();
+        map.insert(DiskError::FileNotFound, "file not found");
+        map.insert(DiskError::VolumeNotFound, "volume not found");
+
+        assert_eq!(map.get(&DiskError::FileNotFound), Some(&"file not found"));
+        assert_eq!(map.get(&DiskError::VolumeNotFound), Some(&"volume not found"));
+        assert_eq!(map.get(&DiskError::DiskNotFound), None);
+    }
+
+    #[test]
+    fn test_error_conversions() {
+        // A plain io::Error carries no typed payload to recover, so it lands in
+        // `Io` rather than being guessed at from its kind — `NotFound` here must
+        // not silently become `FileNotFound`, which quorum aggregation counts as
+        // a different error (rustfs/backlog#1836).
+        let io_error = std::io::Error::new(std::io::ErrorKind::NotFound, "test");
+        let disk_error: DiskError = io_error.into();
+        match &disk_error {
+            DiskError::Io(inner) => assert_eq!(inner.kind(), std::io::ErrorKind::NotFound),
+            other => panic!("a plain io::Error must stay typed as Io, got {other:?}"),
+        }
+
+        // A typed DiskError boxed through io::Error round-trips back to itself
+        // instead of degrading to `Io`.
+        let boxed: std::io::Error = std::io::Error::other(DiskError::VolumeNotFound);
+        assert_eq!(DiskError::from(boxed), DiskError::VolumeNotFound);
+
+        // serde_json errors have no dedicated variant and fold into `other`,
+        // keeping the original message.
+        let json_str = r#"{"invalid": json}"#;
+        let json_error = serde_json::from_str::<serde_json::Value>(json_str).unwrap_err();
+        let json_message = json_error.to_string();
+        let disk_error: DiskError = json_error.into();
+        assert!(
+            disk_error.to_string().contains(&json_message),
+            "the json error message must survive the conversion: {disk_error}"
+        );
+    }
+
+    #[test]
+    fn test_file_access_denied_with_context() {
+        let path = PathBuf::from("/test/path");
+        let io_error = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "permission denied");
+
+        let context_error = FileAccessDeniedWithContext { path, source: io_error };
+
+        let display_str = format!("{context_error}");
+        assert!(display_str.contains("/test/path"));
+        assert!(display_str.contains("file access denied"));
+    }
+
+    #[test]
+    fn test_error_debug_format() {
+        let error = DiskError::FileNotFound;
+        let debug_str = format!("{error:?}");
+        assert_eq!(debug_str, "FileNotFound");
+
+        let io_error = DiskError::other("test error");
+        let debug_str = format!("{io_error:?}");
+        assert!(debug_str.contains("Io"));
+    }
+
+    #[test]
+    fn test_error_source() {
+        use std::error::Error;
+
+        let io_error = std::io::Error::new(std::io::ErrorKind::NotFound, "test");
+        let disk_error = DiskError::Io(io_error);
+
+        // DiskError should have a source
+        if let DiskError::Io(ref inner) = disk_error {
+            assert!(inner.source().is_none()); // std::io::Error typically doesn't have a source
+        }
+    }
+
+    #[test]
+    fn test_io_error_roundtrip_conversion() {
+        // Test DiskError -> std::io::Error -> DiskError roundtrip
+        let original_disk_errors = vec![
+            DiskError::FileNotFound,
+            DiskError::VolumeNotFound,
+            DiskError::DiskFull,
+            DiskError::FileCorrupt,
+            DiskError::MethodNotAllowed,
+        ];
+
+        for original_error in original_disk_errors {
+            // Convert to io::Error and back
+            let io_error: std::io::Error = original_error.clone().into();
+            let recovered_error: DiskError = io_error.into();
+
+            // For non-Io variants, they become Io(ErrorKind::Other) and then back to the original
+            match &original_error {
+                DiskError::Io(_) => {
+                    // Io errors should maintain their kind
+                    assert!(matches!(recovered_error, DiskError::Io(_)));
+                }
+                _ => {
+                    // Other errors become Io(Other) and then are recovered via downcast
+                    // The recovered error should be functionally equivalent
+                    assert_eq!(original_error.to_u32(), recovered_error.to_u32());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_io_error_with_disk_error_inside() {
+        // Test that io::Error containing DiskError can be properly converted back
+        let original_disk_error = DiskError::FileNotFound;
+        let io_with_disk_error = std::io::Error::other(original_disk_error.clone());
+
+        // Convert io::Error back to DiskError
+        let recovered_disk_error: DiskError = io_with_disk_error.into();
+        assert_eq!(original_disk_error, recovered_disk_error);
+    }
+
+    #[test]
+    fn test_io_error_with_storage_error_inside() {
+        use crate::error::StorageError;
+
+        // An io::Error boxing a disk-representable StorageError (as produced by
+        // `From<StorageError> for io::Error`) must recover the typed DiskError
+        // variant instead of degrading to an opaque DiskError::Io.
+        let io_with_storage_error: std::io::Error = StorageError::FaultyRemoteDisk.into();
+        let recovered: DiskError = io_with_storage_error.into();
+        assert_eq!(recovered, DiskError::FaultyRemoteDisk);
+
+        let io_with_storage_error: std::io::Error = StorageError::FileAccessDenied.into();
+        let recovered: DiskError = io_with_storage_error.into();
+        assert_eq!(recovered, DiskError::FileAccessDenied);
+
+        // A StorageError with no DiskError analog stays an opaque Io error.
+        let io_with_bucket_error: std::io::Error = StorageError::BucketNotFound("bucket".to_string()).into();
+        let recovered: DiskError = io_with_bucket_error.into();
+        assert!(matches!(recovered, DiskError::Io(_)));
+    }
+
+    #[test]
+    fn test_io_error_different_kinds() {
+        use std::io::ErrorKind;
+
+        let test_cases = vec![
+            (ErrorKind::NotFound, "file not found"),
+            (ErrorKind::PermissionDenied, "permission denied"),
+            (ErrorKind::ConnectionRefused, "connection refused"),
+            (ErrorKind::TimedOut, "timed out"),
+            (ErrorKind::InvalidInput, "invalid input"),
+        ];
+
+        for (kind, message) in test_cases {
+            let io_error = std::io::Error::new(kind, message);
+            let disk_error: DiskError = io_error.into();
+
+            // Should become DiskError::Io with the same kind and message
+            match disk_error {
+                DiskError::Io(inner_io) => {
+                    assert_eq!(inner_io.kind(), kind);
+                    assert!(inner_io.to_string().contains(message));
+                }
+                _ => panic!("Expected DiskError::Io variant"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_disk_error_to_io_error_preserves_information() {
+        let test_cases = vec![
+            DiskError::FileNotFound,
+            DiskError::VolumeNotFound,
+            DiskError::DiskFull,
+            DiskError::FileCorrupt,
+            DiskError::MethodNotAllowed,
+            DiskError::ErasureReadQuorum,
+            DiskError::ErasureWriteQuorum,
+        ];
+
+        for disk_error in test_cases {
+            let io_error: std::io::Error = disk_error.clone().into();
+
+            // Error message should be preserved
+            assert!(io_error.to_string().contains(&disk_error.to_string()));
+
+            // Should be able to downcast back to DiskError
+            let recovered_error = io_error.downcast::<DiskError>();
+            assert!(recovered_error.is_ok());
+            assert_eq!(recovered_error.unwrap(), disk_error);
+        }
+    }
+
+    #[test]
+    fn test_io_error_downcast_chain() {
+        // Test nested error downcasting chain
+        let original_disk_error = DiskError::FileNotFound;
+
+        // Create a chain: DiskError -> io::Error -> DiskError -> io::Error
+        let io_error1: std::io::Error = original_disk_error.clone().into();
+        let disk_error2: DiskError = io_error1.into();
+        let io_error2: std::io::Error = disk_error2.into();
+
+        // Final io::Error should still contain the original DiskError
+        let final_disk_error = io_error2.downcast::<DiskError>();
+        assert!(final_disk_error.is_ok());
+        assert_eq!(final_disk_error.unwrap(), original_disk_error);
+    }
+
+    #[test]
+    fn test_io_error_with_original_io_content() {
+        // Test DiskError::Io variant preserves original io::Error
+        let original_io = std::io::Error::new(std::io::ErrorKind::BrokenPipe, "broken pipe");
+        let disk_error = DiskError::Io(original_io);
+
+        let converted_io: std::io::Error = disk_error.into();
+        assert_eq!(converted_io.kind(), std::io::ErrorKind::BrokenPipe);
+        assert!(converted_io.to_string().contains("broken pipe"));
+    }
+
+    #[test]
+    fn test_wrapped_io_error_kind_detection() {
+        let filemeta_error = rustfs_filemeta::Error::Io(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "broken pipe"));
+        let disk_error = DiskError::from(filemeta_error);
+
+        assert!(disk_error.contains_io_error_kind(std::io::ErrorKind::BrokenPipe));
+        assert!(!disk_error.contains_io_error_kind(std::io::ErrorKind::TimedOut));
+    }
+
+    #[test]
+    fn test_internode_http_status_classification() {
+        let too_many_requests = DiskError::from(rustfs_rio::new_test_internode_http_io_error(
+            rustfs_rio::InternodeHttpErrorKind::HttpStatus(http::StatusCode::TOO_MANY_REQUESTS),
+        ));
+
+        assert!(too_many_requests.is_internode_http_status(429));
+        assert!(!too_many_requests.is_internode_http_status(500));
+        assert!(!DiskError::FileNotFound.is_internode_http_status(429));
+    }
+
+    #[test]
+    fn test_put_file_server_epoch_conflict_is_retryable_write_failure() {
+        let conflict = DiskError::from(rustfs_rio::new_test_internode_http_io_error(
+            rustfs_rio::InternodeHttpErrorKind::HttpStatus(http::StatusCode::CONFLICT),
+        ));
+        let bad_request = DiskError::from(rustfs_rio::new_test_internode_http_io_error(
+            rustfs_rio::InternodeHttpErrorKind::HttpStatus(http::StatusCode::BAD_REQUEST),
+        ));
+
+        assert!(conflict.is_retryable_internode_write_failure());
+        assert!(!bad_request.is_retryable_internode_write_failure());
+    }
+
+    #[tokio::test]
+    async fn read_stream_conflict_is_not_a_retryable_put_file_failure() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+                .await
+                .expect("bind isolated HTTP fixture");
+            let address = listener.local_addr().expect("fixture address");
+            let server = tokio::spawn(async move {
+                let (mut stream, _) = listener.accept().await.expect("accept read request");
+                let mut request = [0_u8; 4096];
+                let mut read = 0;
+                loop {
+                    let count = stream.read(&mut request[read..]).await.expect("read HTTP request");
+                    assert!(count > 0, "request ended before its complete headers");
+                    read += count;
+                    if request[..read].windows(4).any(|bytes| bytes == b"\r\n\r\n") {
+                        break;
+                    }
+                    assert!(read < request.len(), "fixture request headers exceed their budget");
+                }
+                stream
+                    .write_all(b"HTTP/1.1 409 Conflict\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                    .await
+                    .expect("send typed conflict response");
+            });
+            let error = match rustfs_rio::HttpReader::new(
+                format!("http://{address}/rustfs/rpc/read_file_stream"),
+                http::Method::GET,
+                http::HeaderMap::new(),
+                None,
+            )
+            .await
+            {
+                Ok(_) => panic!("HTTP 409 must fail the read"),
+                Err(error) => DiskError::from(error),
+            };
+            server.await.expect("fixture task should complete");
+            assert!(error.is_internode_http_status(409));
+            assert!(
+                !error.is_retryable_internode_write_failure(),
+                "read-operation 409 must not trigger put-file retry"
+            );
+        })
+        .await
+        .expect("isolated read-conflict test must finish within its budget");
+    }
+
+    #[test]
+    fn test_internode_missing_errors_preserve_disk_error_types() {
+        let file_missing = DiskError::from(rustfs_rio::new_test_remote_file_not_found_http_io_error());
+        let volume_missing = DiskError::from(rustfs_rio::new_test_remote_volume_not_found_http_io_error());
+        let unmarked_server_error = DiskError::from(rustfs_rio::new_test_internode_http_io_error(
+            rustfs_rio::InternodeHttpErrorKind::HttpStatus(http::StatusCode::INTERNAL_SERVER_ERROR),
+        ));
+
+        assert_eq!(file_missing, DiskError::FileNotFound);
+        assert_eq!(volume_missing, DiskError::VolumeNotFound);
+        assert!(matches!(unmarked_server_error, DiskError::Io(_)));
+    }
+
+    #[test]
+    fn test_metacache_output_stream_closed_classification_survives_clone() {
+        let disk_error = DiskError::metacache_output_stream_closed();
+        let cloned_error = disk_error.clone();
+
+        assert!(disk_error.is_metacache_output_stream_closed());
+        assert!(cloned_error.is_metacache_output_stream_closed());
+        assert_eq!(disk_error, cloned_error);
+    }
+
+    #[test]
+    fn test_error_display_preservation() {
+        let disk_errors = vec![
+            DiskError::MaxVersionsExceeded,
+            DiskError::CorruptedFormat,
+            DiskError::UnformattedDisk,
+            DiskError::DiskNotFound,
+            DiskError::FileAccessDenied,
+        ];
+
+        for disk_error in disk_errors {
+            let original_message = disk_error.to_string();
+            let io_error: std::io::Error = disk_error.clone().into();
+
+            // The io::Error should contain the original error message
+            assert!(io_error.to_string().contains(&original_message));
+        }
+    }
+
+    #[test]
+    fn remote_client_unavailable_buckets_ignore_per_peer_detail() {
+        // The reason this variant exists (backlog#1845): equality and hashing
+        // use the wire code alone, so N disks failing because their peer's
+        // client could not be built land in ONE reduce_errs bucket even though
+        // each carries different diagnostic detail.
+        let a = DiskError::RemoteClientUnavailable("connection refused to peer 1".to_string());
+        let b = DiskError::RemoteClientUnavailable("connection refused to peer 2".to_string());
+        assert_eq!(a, b);
+
+        let errors: Vec<Option<DiskError>> = (0..3)
+            .map(|peer| Some(DiskError::RemoteClientUnavailable(format!("transport error: peer {peer} unreachable"))))
+            .collect();
+        let (count, err) = crate::disk::error_reduce::reduce_errs(&errors, &[]);
+        assert_eq!(count, 3);
+        assert!(matches!(err, Some(DiskError::RemoteClientUnavailable(_))));
+    }
+
+    #[test]
+    fn remote_client_unavailable_display_keeps_detail_for_substring_classifiers() {
+        // Heal recoverability and the peer network classifiers read needles
+        // ("transport error", "connection refused", "temporarily offline")
+        // from the rendered message; the typed variant must keep feeding them.
+        let err = DiskError::RemoteClientUnavailable("transport error: connection refused".to_string());
+        let rendered = err.to_string();
+        assert!(rendered.contains("remote rpc client unavailable"));
+        assert!(rendered.contains("transport error: connection refused"));
+    }
+
+    #[test]
+    fn remote_client_unavailable_wire_roundtrip_keeps_variant_and_detail() {
+        let original = DiskError::RemoteClientUnavailable("dial tcp: connection refused".to_string());
+
+        let wire: rustfs_protos::proto_gen::node_service::Error = original.clone().into();
+        assert_eq!(wire.code, 0x2B);
+        assert_eq!(wire.error_info, "remote rpc client unavailable: dial tcp: connection refused");
+
+        let back: DiskError = wire.into();
+        // The variant (and therefore quorum bucketing) survives the hop; the
+        // detail gains the display prefix, mirroring the Io re-wrap behavior.
+        assert_eq!(back, original);
+        assert!(matches!(
+            &back,
+            DiskError::RemoteClientUnavailable(detail) if detail.contains("dial tcp: connection refused")
+        ));
+    }
+
+    #[test]
+    fn remote_client_unavailable_survives_layer_and_io_bridges() {
+        let original = DiskError::RemoteClientUnavailable("handshake timed out".to_string());
+
+        let storage: crate::error::StorageError = original.clone().into();
+        assert!(matches!(
+            &storage,
+            crate::error::StorageError::RemoteClientUnavailable(detail) if detail == "handshake timed out"
+        ));
+        let narrowed: DiskError = storage.narrow_to_disk().expect("typed variant must narrow");
+        assert_eq!(narrowed, original);
+        assert!(matches!(
+            &narrowed,
+            DiskError::RemoteClientUnavailable(detail) if detail == "handshake timed out"
+        ));
+
+        let io_err: std::io::Error = original.clone().into();
+        let recovered: DiskError = io_err.into();
+        assert_eq!(recovered, original);
+
+        let cloned = original.clone();
+        assert!(matches!(
+            &cloned,
+            DiskError::RemoteClientUnavailable(detail) if detail == "handshake timed out"
+        ));
+        assert_eq!(cloned, original);
+    }
+}

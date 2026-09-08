@@ -1,0 +1,267 @@
+// Copyright 2024 RustFS Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use std::time::Duration;
+
+use rustfs_obs::dial9::Dial9SessionGuard;
+
+#[inline]
+fn compute_default_thread_stack_size() -> usize {
+    if cfg!(debug_assertions) {
+        // Debug builds keep larger async futures and tracing state on the stack;
+        // scanner e2e paths need more headroom than the release runtime.
+        8 * rustfs_config::DEFAULT_THREAD_STACK_SIZE
+    } else if cfg!(target_os = "macos") {
+        // macOS is more conservative: many system libraries and backtracking are more "stack-eating"
+        2 * rustfs_config::DEFAULT_THREAD_STACK_SIZE
+    } else {
+        rustfs_config::DEFAULT_THREAD_STACK_SIZE
+    }
+}
+
+#[inline]
+fn mark_allocator_threadpool_thread() {
+    #[cfg(not(target_os = "windows"))]
+    rustfs_mimalloc::set_current_thread_in_threadpool();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_thread_stack_size_matches_build_profile() {
+        let default_stack = rustfs_config::DEFAULT_THREAD_STACK_SIZE;
+        let expected = if cfg!(debug_assertions) {
+            8 * default_stack
+        } else if cfg!(target_os = "macos") {
+            2 * default_stack
+        } else {
+            default_stack
+        };
+
+        assert_eq!(compute_default_thread_stack_size(), expected);
+    }
+}
+
+#[inline]
+fn detect_cores() -> usize {
+    // Uses cgroup-aware detection from cgroup_resources module
+    // Returns effective CPU cores considering cgroup limits and overrides
+    crate::cgroup_resources::container_resources().cpu_cores
+}
+
+#[inline]
+fn compute_default_worker_threads() -> usize {
+    // Cap at 16 worker threads for optimal small-object PUT performance.
+    // Now cgroup-aware: in containers, uses the container's CPU limit
+    detect_cores().min(16)
+}
+
+/// Default max_blocking_threads calculations based on sysinfo:
+/// 16 cores -> 1024; more than 16 cores are doubled by multiples:
+/// 1..=16 -> 1024, 17..=32 -> 2048, 33..=64 -> 4096, and so on.
+///
+/// For containerized environments with limited resources, this is capped
+/// to prevent excessive memory usage from thread stacks.
+fn compute_default_max_blocking_threads() -> usize {
+    const BASE_CORES: usize = rustfs_config::DEFAULT_WORKER_THREADS;
+    const BASE_THREADS: usize = rustfs_config::DEFAULT_MAX_BLOCKING_THREADS;
+    // Cap for small containers to prevent excessive memory usage
+    // Each blocking thread can use up to 1 MiB stack space
+    const SMALL_CONTAINER_MAX_THREADS: usize = 256;
+
+    let cores = detect_cores().min(16);
+
+    let mut threads = BASE_THREADS;
+    let mut threshold = BASE_CORES;
+
+    // When the number of cores exceeds the threshold, the number of threads is doubled for each doubling threshold
+    while cores > threshold {
+        threads = threads.saturating_mul(2);
+        threshold = threshold.saturating_mul(2);
+    }
+
+    // For small containers (<=4 cores), cap the blocking threads to prevent memory issues
+    // This prevents a 1 GiB container from allocating up to 1 GiB just for thread stacks
+    if cores <= 4 {
+        threads = threads.min(SMALL_CONTAINER_MAX_THREADS);
+    }
+
+    threads
+}
+
+/// Customize the Tokio runtime configuration
+/// These configurations can be adjusted by environment variables
+/// to optimize performance based on the deployment environment
+/// Custom Tokio runtime builder (can be fully overridden by ENV)
+/// - RUSTFS_RUNTIME_WORKER_THREADS
+/// - RUSTFS_RUNTIME_MAX_BLOCKING_THREADS
+/// - RUSTFS_RUNTIME_THREAD_STACK_SIZE
+/// - RUSTFS_RUNTIME_THREAD_KEEP_ALIVE
+/// - RUSTFS_RUNTIME_GLOBAL_QUEUE_INTERVAL
+/// - RUSTFS_RUNTIME_EVENT_INTERVAL
+/// - RUSTFS_RUNTIME_THREAD_NAME
+/// - RUSTFS_RUNTIME_MAX_IO_EVENTS_PER_TICK
+/// - RUSTFS_RUNTIME_THREAD_PRINT_ENABLED
+///
+/// Returns: Configured Tokio runtime builder
+/// # Panics
+/// Panics if environment variable values are invalid
+/// # Examples
+/// ```no_run
+/// // tokio_runtime_builder is pub(crate) - call it from within the rustfs binary:
+/// // let builder = tokio_runtime_builder();
+/// // let runtime = builder.build().expect("operation should succeed");
+/// ```
+pub fn tokio_runtime_builder() -> tokio::runtime::Builder {
+    let mut builder = tokio::runtime::Builder::new_multi_thread();
+
+    // Worker threads(Default physical cores)
+    let default_worker_threads = compute_default_worker_threads();
+    let worker_threads = rustfs_utils::get_env_usize(rustfs_config::ENV_WORKER_THREADS, default_worker_threads);
+    builder.worker_threads(worker_threads);
+
+    // Max blocking threads: Prioritize environment variables, otherwise the default value is dynamically calculated based on sysinfo
+    let default_max_blocking_threads = compute_default_max_blocking_threads();
+    let max_blocking_threads = rustfs_utils::get_env_usize(rustfs_config::ENV_MAX_BLOCKING_THREADS, default_max_blocking_threads);
+    builder.max_blocking_threads(max_blocking_threads);
+
+    // Thread stack size (environment variables first, followed by dynamic default by platform/build type)
+    let default_stack = compute_default_thread_stack_size();
+    let thread_stack_size = rustfs_utils::get_env_usize(rustfs_config::ENV_THREAD_STACK_SIZE, default_stack);
+    builder.thread_stack_size(thread_stack_size);
+
+    // Thread keep alive(Blocking the thread pool is kept alive)
+    let thread_keep_alive =
+        rustfs_utils::get_env_u64(rustfs_config::ENV_THREAD_KEEP_ALIVE, rustfs_config::DEFAULT_THREAD_KEEP_ALIVE);
+    builder.thread_keep_alive(Duration::from_secs(thread_keep_alive));
+
+    // Global queue interval(Task Fairness/Throughput Tradeoff)
+    let global_queue_interval =
+        rustfs_utils::get_env_u32(rustfs_config::ENV_GLOBAL_QUEUE_INTERVAL, rustfs_config::DEFAULT_GLOBAL_QUEUE_INTERVAL);
+    builder.global_queue_interval(global_queue_interval);
+
+    // Event interval(View the interval of I/O/timer events)
+    let event_interval = rustfs_utils::get_env_u32(rustfs_config::ENV_EVENT_INTERVAL, rustfs_config::DEFAULT_EVENT_INTERVAL);
+    builder.event_interval(event_interval);
+
+    // Thread name
+    let thread_name = rustfs_utils::get_env_str(rustfs_config::ENV_THREAD_NAME, rustfs_config::DEFAULT_THREAD_NAME);
+    builder.thread_name(thread_name.clone());
+
+    // Enable I/O driver and set the maximum number of I/O events per tick (nevents)
+    let max_io_events_per_tick =
+        rustfs_utils::get_env_usize(rustfs_config::ENV_MAX_IO_EVENTS_PER_TICK, rustfs_config::DEFAULT_MAX_IO_EVENTS_PER_TICK);
+    builder.enable_all().max_io_events_per_tick(max_io_events_per_tick);
+
+    let print_tokio_threads = print_tokio_thread_enable();
+    builder.on_thread_start(move || {
+        mark_allocator_threadpool_thread();
+        if print_tokio_threads {
+            tracing::trace!(thread_id = ?std::thread::current().id(), "worker thread started");
+        }
+    });
+
+    // Optional: Simple log of thread stop
+    if print_tokio_threads {
+        builder.on_thread_stop(|| {
+            tracing::trace!(thread_id = ?std::thread::current().id(), "worker thread stopped");
+        });
+    }
+    if !rustfs_obs::is_production_environment() {
+        println!(
+            "Starting Tokio runtime with configured parameters: worker_threads={}, max_blocking_threads={}, \
+             thread_stack_size={}, thread_keep_alive={}, global_queue_interval={}, event_interval={}, \
+             max_io_events_per_tick={}, thread_name={}",
+            worker_threads,
+            max_blocking_threads,
+            thread_stack_size,
+            thread_keep_alive,
+            global_queue_interval,
+            event_interval,
+            max_io_events_per_tick,
+            thread_name
+        );
+    }
+    builder
+}
+
+/// Whether to print tokio threads
+/// This can be useful for debugging purposes
+fn print_tokio_thread_enable() -> bool {
+    rustfs_utils::get_env_bool(rustfs_config::ENV_THREAD_PRINT_ENABLED, rustfs_config::DEFAULT_THREAD_PRINT_ENABLED)
+}
+
+/// Build the Tokio runtime, attaching dial9 telemetry when it is enabled.
+///
+/// The returned [`Dial9SessionGuard`] owns the telemetry session. It **must**
+/// be dropped before the process exits: dropping it flushes buffered events and
+/// seals the final trace segment. Parking it in a `static` would mean it is
+/// never dropped and the last events — usually the ones that explain a stall —
+/// are lost.
+///
+/// When telemetry is requested but cannot be built, this falls back to a
+/// standard runtime and returns `None` for the guard rather than failing
+/// startup. The `rustfs_dial9_active_sessions` metric reports that outcome.
+///
+/// # Returns
+///
+/// The runtime, plus `Some(guard)` when a telemetry session is recording.
+///
+/// # Errors
+///
+/// Returns [`BuildError::Runtime`] if the Tokio runtime builder itself fails.
+pub fn build_tokio_runtime() -> Result<(tokio::runtime::Runtime, Option<Dial9SessionGuard>), BuildError> {
+    if !rustfs_obs::dial9::is_enabled() {
+        let runtime = tokio_runtime_builder().build().map_err(BuildError::Runtime)?;
+        return Ok((runtime, None));
+    }
+
+    tracing::info!("Dial9 telemetry enabled, building TracedRuntime");
+    match rustfs_obs::dial9::build_traced_runtime(tokio_runtime_builder()) {
+        Ok((runtime, guard)) => {
+            tracing::info!("TracedRuntime created and recording");
+            Ok((runtime, Some(guard)))
+        }
+        Err(e) => {
+            tracing::warn!("Failed to build TracedRuntime: {e}; falling back to standard Tokio runtime");
+            let runtime = tokio_runtime_builder().build().map_err(BuildError::Runtime)?;
+            Ok((runtime, None))
+        }
+    }
+}
+
+/// Error type for runtime building failures.
+#[derive(Debug)]
+pub enum BuildError {
+    /// Tokio runtime creation failed
+    Runtime(std::io::Error),
+}
+
+impl std::fmt::Display for BuildError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BuildError::Runtime(e) => write!(f, "Failed to build Tokio runtime: {}", e),
+        }
+    }
+}
+
+impl std::error::Error for BuildError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            BuildError::Runtime(e) => Some(e),
+        }
+    }
+}

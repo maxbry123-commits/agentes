@@ -1,0 +1,17 @@
+[package]
+name = "restate-timer-queue"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+restate-workspace-hack = { workspace = true }
+
+futures = { workspace = true }
+tokio = { workspace = true, features = ["time"] }
+
+[lints]
+workspace = true

@@ -1,0 +1,128 @@
+package telemetry
+
+import (
+	"errors"
+	"fmt"
+	"strings"
+
+	"github.com/labstack/echo/v4"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
+
+	"github.com/hatchet-dev/hatchet/api/v1/server/middleware"
+	"github.com/hatchet-dev/hatchet/pkg/config/server"
+)
+
+type OTelMiddleware struct {
+	config *server.ServerConfig
+}
+
+func NewOTelMiddleware(config *server.ServerConfig) *OTelMiddleware {
+	return &OTelMiddleware{
+		config: config,
+	}
+}
+
+func (m *OTelMiddleware) Middleware() echo.MiddlewareFunc {
+	serviceName := m.config.OpenTelemetry.ServiceName
+	tracerProvider := otel.GetTracerProvider()
+
+	return otelecho.Middleware(serviceName,
+		otelecho.WithSkipper(func(c echo.Context) bool {
+			path := c.Path()
+			return path == "/api/ready" || path == "/api/live"
+		}),
+		otelecho.WithTracerProvider(tracerProvider),
+	)
+}
+
+// don't include oauthCallbackRoutes in telemetry
+var oauthCallbackRoutes = map[string]bool{
+	"/api/v1/users/github/callback": true,
+	"/api/v1/users/google/callback": true,
+	"/api/v1/users/slack/callback":  true,
+}
+
+// redact known-sensitive params
+var sensitiveQueryParams = map[string]struct{}{
+	"code":          {},
+	"state":         {},
+	"token":         {},
+	"access_token":  {},
+	"accesstoken":   {},
+	"refresh_token": {},
+	"refreshtoken":  {},
+	"api_key":       {},
+	"apikey":        {},
+	"secret":        {},
+	"client_secret": {},
+	"clientsecret":  {},
+	"password":      {},
+	"authorization": {},
+}
+
+func (m *OTelMiddleware) QueryParamMiddleware() echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			queryParams := c.QueryParams()
+
+			if len(queryParams) > 0 && !oauthCallbackRoutes[c.Path()] {
+				span := trace.SpanFromContext(c.Request().Context())
+
+				for name, values := range queryParams {
+					key := "url.query." + name
+
+					if _, isSensitive := sensitiveQueryParams[strings.ToLower(name)]; isSensitive {
+						span.SetAttributes(attribute.String(key, "<redacted>"))
+					} else if len(values) == 1 {
+						span.SetAttributes(attribute.String(key, values[0]))
+					} else {
+						span.SetAttributes(attribute.StringSlice(key, values))
+					}
+				}
+			}
+
+			return next(c)
+		}
+	}
+}
+
+// ErrorStatusMiddleware marks the current span as Error for any 4xx or 5xx response,
+// except 499, which records that the client disconnected rather than that the server
+// failed. otelecho only sets Error for 5xx (per OTel semantic conventions). This
+// middleware must be registered after otelecho so it runs inside the span. The OTel SDK
+// ignores attempts to downgrade from Error to Unset, so otelecho's subsequent
+// status-setting for 4xx is a no-op.
+func (m *OTelMiddleware) ErrorStatusMiddleware() echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			err := next(c)
+
+			span := trace.SpanFromContext(c.Request().Context())
+
+			statusCode := 0
+			if err != nil {
+				var he *echo.HTTPError
+				if errors.As(err, &he) {
+					statusCode = he.Code
+				}
+			}
+
+			if statusCode == 0 {
+				statusCode = c.Response().Status
+			}
+
+			if statusCode >= 400 && statusCode != middleware.StatusClientClosedRequest {
+				span.SetStatus(codes.Error, fmt.Sprintf("HTTP %d", statusCode))
+				if err != nil {
+					span.RecordError(err)
+				}
+			}
+
+			return err
+		}
+	}
+}

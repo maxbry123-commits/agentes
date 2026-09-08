@@ -1,0 +1,185 @@
+set -euo pipefail
+
+source .buildkite/hooks/libhook
+
+# Track job assignment and initialize completion time if this is the first job.
+JOB_ASSIGNED_FILE="/tmp/job_assigned"
+touch "${JOB_ASSIGNED_FILE}"
+LAST_JOB_COMPLETED_FILE="/tmp/last_job_completed_time"
+if [[ ! -f "${LAST_JOB_COMPLETED_FILE}" ]]; then
+  date +%s > "${LAST_JOB_COMPLETED_FILE}.tmp"
+  mv "${LAST_JOB_COMPLETED_FILE}.tmp" "${LAST_JOB_COMPLETED_FILE}"
+fi
+
+# Use a per-day bazel remote cache. As the cache object's TTL expires, they are
+# deleted on an ongoing basis. Such partial deletion can break the cache state.
+# Using per day cache will ensure that builds triggered on a certain day have
+# the full bazel remote cache to use. TTL of the cache must be >1 day.
+BAZEL_VERSION="$(cat images/default/bazelversion)"
+export BAZEL_REMOTE_CACHE="--remote_cache=https://storage.googleapis.com/gvisor-buildkite-bazel-cache/${BAZEL_VERSION}/$(date +%Y-%m-%d) --google_default_credentials"
+
+if POSIXLY_CORRECT=true df --local --output=pcent,ipcent,target | grep -vE '/snap/' | grep -qE '9[4-9]%|100%'; then
+  sudo df -h --local | sed -r 's/^/[df] /' >&2
+  kill_agent "Disk usage has reached critical level"
+fi
+
+# Kill the agent if clearing docker containers fails
+clear_docker_containers kill_agent
+
+if [[ "${BUILDKITE_PIPELINE_NAME:-}" == "Pipeline" ]]; then
+  # Check that the target branch exists.
+  git fetch origin "${BUILDKITE_BRANCH}" || {
+    echo "Branch ${BUILDKITE_BRANCH} no longer exists; it was probably deleted by the time we got to it." >&2
+    exit 1
+  }
+fi
+
+# Download any build-specific configuration that has been uploaded.
+# This allows top-level steps to override all subsequent steps.
+buildkite-agent artifact download 'tools/bazeldefs/*' . || true
+
+# Install packages we need. Docker must be installed and configured,
+# as should Go itself. We just install some extra bits and pieces.
+function install_pkgs() {
+  export DEBIAN_FRONTEND=noninteractive
+  while true; do
+    if sudo -E apt-get update -q && sudo -E apt-get install -qy "$@"; then
+      break
+    fi
+  done
+}
+install_pkgs make linux-libc-dev graphviz jq curl binutils gnupg gnupg-agent \
+  gcc pkg-config apt-transport-https ca-certificates \
+  software-properties-common rsync kmod systemd unzip
+
+# Install headers, only if available.
+if test -n "$(apt-cache search --names-only "^linux-headers-$(uname -r)$")"; then
+  install_pkgs "linux-headers-$(uname -r)"
+elif test -n "$(apt-cache search --names-only "^linux-gcp-headers-$(uname -r | cut -d- -f1-2)$")"; then
+  install_pkgs "linux-gcp-headers-$(uname -r | cut -d- -f1-2)"
+fi
+
+set -x
+
+# Setup for parallelization with PARTITION and TOTAL_PARTITIONS.
+export PARTITION=${BUILDKITE_PARALLEL_JOB:-0}
+PARTITION=$((${PARTITION}+1)) # 1-indexed, but PARALLEL_JOB is 0-indexed.
+export TOTAL_PARTITIONS=${BUILDKITE_PARALLEL_JOB_COUNT:-1}
+
+if [[ "${BUILDKITE_BRANCH}" =~ ^test/ ]]; then
+  # STABLE_VERSION depends on the most recent tag, so let's set the same tag
+  # for all tests changes to better utilize the bazel cache. We have to be sure
+  # that binaries depends only on code changes but not metadata such as commit
+  # id.
+
+  # LINT.IfChange
+  git tag -f buildkite-test-branch
+  # LINT.ThenChange(../../tools/make_release.sh)
+fi
+
+# LINT.IfChange
+export RUNTIME="buildkite_runtime"
+# LINT.ThenChange(post-command)
+if [ -d "/tmp/${RUNTIME}/" ]; then
+  sudo rm -rf "/tmp/${RUNTIME}/"
+fi
+
+# If running in a container, set the reload command appropriately.
+if [[ -x /tmp/buildkite-reload-host-docker/reload ]]; then
+  export DOCKER_RELOAD_COMMAND='/tmp/buildkite-reload-host-docker/reload'
+else
+  export DOCKER_RELOAD_COMMAND='sudo systemctl reload docker'
+fi
+
+if [[ "${BUILDKITE_PIPELINE_INSTALL_RUNTIME:-}" == "true" ]]; then
+  # Ensure Docker has experimental enabled, install runtimes.
+  echo 'Current Docker daemon configuration:' >&2
+  cat /etc/docker/daemon.json >&2
+  HAD_EXPERIMENTAL="$(cat /etc/docker/daemon.json | jq '.experimental')"
+  if [[ -n "${STAGED_BINARIES:-}" ]]; then
+    # Used `runsc` from STAGED_BINARIES instead of building it from scratch.
+    export BUILDKITE_STAGED_BINARIES_DIRECTORY="$(mktemp -d)"
+    gcloud storage cat "$STAGED_BINARIES" \
+      | tar -C "$BUILDKITE_STAGED_BINARIES_DIRECTORY" -zxvf -
+    chmod -R +x "$BUILDKITE_STAGED_BINARIES_DIRECTORY"
+    sudo "$BUILDKITE_STAGED_BINARIES_DIRECTORY/runsc" install \
+      --experimental=true --runtime="${RUNTIME}" \
+      -- "${RUNTIME_ARGS:-}"
+  else
+    make sudo TARGETS=//runsc:runsc \
+      ARGS="install --experimental=true --runtime=${RUNTIME} -- ${RUNTIME_ARGS:-}"
+  fi
+  if [[ "$HAD_EXPERIMENTAL" != true ]]; then
+    # WARNING: We may be running in a container when this command executes.
+    # This only makes sense if Docker's `live-restore` feature is enabled.
+    echo 'Restarting Docker daemon with this new configuration:' >&2
+    cat /etc/docker/daemon.json >&2
+    sudo systemctl restart docker
+  else
+    # If experimental-ness was already enabled, we don't need to restart, as the
+    # only thing we modified is the list of runtimes, which can be reloaded with
+    # just a SIGHUP.
+    echo 'Reloading Docker daemon with this new configuration:' >&2
+    cat /etc/docker/daemon.json >&2
+    bash -xc "$DOCKER_RELOAD_COMMAND"
+  fi
+fi
+
+# Helper for benchmarks, based on the branch.
+if test "${BUILDKITE_BRANCH}" = "master"; then
+  export BENCHMARKS_OFFICIAL=true
+else
+  export BENCHMARKS_OFFICIAL=false
+fi
+
+# Clear existing profiles.
+sudo rm -rf /tmp/profile
+
+# Allow to read dmesg for all users. It is required for the syslog test.
+sudo sysctl -w kernel.dmesg_restrict=0
+
+# Download credentials, if a release agent.
+case "${BUILDKITE_AGENT_META_DATA_QUEUE}" in
+  release|release-*)
+  # Pull down secrets.
+  gcloud secrets versions access --secret="repo-key" --format='get(payload.data)' latest | tr '_-' '/+' | base64 -d  > repo.key
+
+  # Configure the Docker credential helper (to push images).
+  gcloud auth configure-docker -q
+  gcloud auth configure-docker -q us-central1-docker.pkg.dev
+  ;;
+esac
+
+sudo sysctl -w kernel.print-fatal-signals=1
+
+pipeline_add_env() {
+  sed -i "/^env:/a\  $1: '$2'" .buildkite/pipeline.yaml
+}
+
+# Try to skip unaffected tests on pre-submits.
+# BUILDKITE_PIPELINE_ID is set only on the pipeline upload step.
+if [[ -n "${BUILDKITE_PIPELINE_ID}" ]]; then
+  if [[ "${BUILDKITE_BRANCH}" =~ ^test/ ]]; then  # For non-continuous tests only.
+    # Skip load-all-test-images tests if the change doesn't affect images.
+    if ./tools/builkite-check-paths.sh images/ tools/images.mk Makefile; then
+      echo "Skip load-all-test-images tests"
+      pipeline_add_env SKIP_LOADING_IMAGES 1
+    fi
+  fi
+
+  # Skip GPU tests if the change doesn't affect GPU functionality.
+  gpu_paths=(
+    images/gpu
+    pkg/abi/nvgpu
+    pkg/sentry/devices/nvproxy
+    pkg/test/dockerutil/gpu.go
+    runsc/specutils/nvidia.go
+    runsc/cmd/nvproxy
+    test/gpu
+    tools/nvidia_driver_differ
+  )
+  if ./tools/builkite-check-paths.sh "${gpu_paths[@]}"; then
+    echo "Skipping GPU tests"
+    pipeline_add_env SKIP_GPU_TESTS 1
+  fi
+fi

@@ -1,0 +1,69 @@
+[package]
+name = "restate-ingress-http"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[features]
+default = []
+options_schema = []
+
+[dependencies]
+restate-workspace-hack = { workspace = true }
+
+# Restate
+restate-core = { workspace = true }
+restate-util-time = { workspace = true, features = ["serde_with"] }
+restate-tracing-instrumentation = { workspace = true }
+restate-types = { workspace = true }
+restate-util-string = { workspace = true }
+
+anyhow = { workspace = true }
+bytes = { workspace = true }
+bytestring = { workspace = true }
+chrono = { workspace = true }
+codederror = { workspace = true }
+enumset = { workspace = true }
+futures = { workspace = true }
+http = { workspace = true }
+http-body = { workspace = true }
+http-body-util = { workspace = true }
+humantime = { workspace = true }
+hyper = { workspace = true, features = ["server"] }
+hyper-util = { workspace = true, features = ["http1", "http2", "server", "tokio", "service"] }
+metrics = { workspace = true }
+opentelemetry = { workspace = true }
+opentelemetry_sdk = { workspace = true }
+pin-project-lite = { workspace = true }
+serde = { workspace = true }
+serde_with = { workspace = true }
+serde_json = { workspace = true }
+strum = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tracing-opentelemetry = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true, features = ["rt"] }
+tower = { workspace = true, features = ["util"] }
+tower-http = { workspace = true, features = ["cors", "normalize-path", "trace", "limit"] }
+ulid = { workspace = true }
+url = { workspace = true }
+urlencoding = { workspace = true }
+
+[dev-dependencies]
+restate-core = { workspace = true, features = ["test-util"] }
+restate-hyper-uds = { workspace = true }
+restate-test-util = { workspace = true }
+restate-types = { workspace = true, features = ["test-util"] }
+
+hyper = { workspace = true, features = ["full"] }
+hyper-util = { workspace = true, features = ["full"] }
+mockall = { workspace = true }
+tempfile = { workspace = true }
+tracing-test = { workspace = true }
+
+[lints]
+workspace = true

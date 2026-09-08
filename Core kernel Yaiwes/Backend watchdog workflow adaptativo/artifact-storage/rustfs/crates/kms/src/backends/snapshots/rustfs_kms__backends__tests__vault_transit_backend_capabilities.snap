@@ -1,0 +1,17 @@
+---
+source: crates/kms/src/backends/mod.rs
+expression: capabilities_snapshot(backend.capabilities())
+---
+{
+  "decrypt": true,
+  "enable_disable": true,
+  "encrypt": true,
+  "generate_data_key": true,
+  "physical_delete": true,
+  "production_supported": true,
+  "rewrap": true,
+  "rotate": true,
+  "schedule_deletion": true,
+  "update_key_metadata": true,
+  "versioning": true
+}

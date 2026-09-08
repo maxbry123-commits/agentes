@@ -1,0 +1,4 @@
+pocketflow>=0.0.1
+openai>=1.0.0                # For LLM calls
+playwright>=1.40.0          # For driving a real browser
+PyYAML>=6.0.2               # For parsing the LLM's action

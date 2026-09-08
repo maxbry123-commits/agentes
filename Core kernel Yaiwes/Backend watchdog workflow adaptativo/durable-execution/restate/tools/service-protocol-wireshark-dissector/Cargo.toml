@@ -1,0 +1,25 @@
+[package]
+name = "service-protocol-wireshark-dissector"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# Dependencies needed to decode packets
+restate-service-protocol-v4 = { workspace = true, features = ["message-codec"] }
+restate-types = { workspace = true }
+restate-util-time = { workspace = true }
+
+bytes = { workspace = true }
+thiserror = { workspace = true }
+# Lua
+mlua = { version = "0.10.2", features = ["module", "macros", "lua54"] }
+
+[lints]
+workspace = true

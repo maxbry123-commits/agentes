@@ -1,0 +1,35 @@
+// import sleep from '@hatchet/util/sleep';
+import { hatchet } from '../hatchet-client';
+
+// > Durable Event
+export const durableEvent = hatchet.durableTask({
+  name: 'durable-event',
+  executionTimeout: '10m',
+  fn: async (_, ctx) => {
+    const res = await ctx.waitForEvent('user:update');
+
+    ctx.logger.info('res', { res });
+
+    return {
+      Value: 'done',
+    };
+  },
+});
+// !!
+
+export const durableEventWithFilter = hatchet.durableTask({
+  name: 'durable-event-with-filter',
+  executionTimeout: '10m',
+  fn: async (_, ctx) => {
+    // > Durable Event With Filter
+    const res = await ctx.waitForEvent('user:update', "input.userId == '1234'");
+    // !!
+
+    ctx.logger.info('res', { res });
+
+    return {
+      Value: 'done',
+    };
+  },
+});
+// !!

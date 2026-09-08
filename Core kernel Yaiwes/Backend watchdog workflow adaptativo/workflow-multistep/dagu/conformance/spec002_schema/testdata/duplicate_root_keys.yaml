@@ -1,0 +1,6 @@
+steps:
+  - name: first
+    run: echo executed > executed.txt
+steps:
+  - name: second
+    run: echo executed > executed.txt

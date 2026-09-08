@@ -1,0 +1,132 @@
+// Copyright (C) 2026 Yota Hamada
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+package fileutil
+
+import (
+	"os"
+	"path/filepath"
+	"runtime"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
+
+// TestReplaceFile verifies replacing existing and missing target files.
+func TestReplaceFile(t *testing.T) {
+	t.Parallel()
+
+	t.Run("overwrites existing target", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		source := filepath.Join(dir, "source.txt")
+		target := filepath.Join(dir, "target.txt")
+		require.NoError(t, os.WriteFile(source, []byte("new"), 0o600))
+		require.NoError(t, os.WriteFile(target, []byte("old"), 0o600))
+
+		require.NoError(t, ReplaceFile(source, target))
+
+		data, err := os.ReadFile(target)
+		require.NoError(t, err)
+		require.Equal(t, []byte("new"), data)
+		require.NoFileExists(t, source)
+	})
+
+	t.Run("creates missing target", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		source := filepath.Join(dir, "source.txt")
+		target := filepath.Join(dir, "target.txt")
+		require.NoError(t, os.WriteFile(source, []byte("new"), 0o600))
+
+		require.NoError(t, ReplaceFile(source, target))
+
+		data, err := os.ReadFile(target)
+		require.NoError(t, err)
+		require.Equal(t, []byte("new"), data)
+		require.NoFileExists(t, source)
+	})
+}
+
+func TestMkdirReadRenameAndRemove(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	nested := filepath.Join(dir, "nested", "directory")
+	source := filepath.Join(dir, "source.txt")
+	target := filepath.Join(dir, "target.txt")
+	require.NoError(t, MkdirAll(nested, 0o750))
+	require.DirExists(t, nested)
+	require.NoError(t, os.WriteFile(source, []byte("data"), 0o600))
+
+	entries, err := ReadDir(dir)
+	require.NoError(t, err)
+	require.Len(t, entries, 2)
+
+	info, err := Stat(source)
+	require.NoError(t, err)
+	require.Equal(t, int64(4), info.Size())
+
+	data, err := ReadFile(source)
+	require.NoError(t, err)
+	require.Equal(t, []byte("data"), data)
+
+	require.NoError(t, Rename(source, target))
+	require.NoFileExists(t, source)
+	require.FileExists(t, target)
+
+	require.NoError(t, Remove(target))
+	require.NoFileExists(t, target)
+}
+
+// TestRemoveAll verifies recursive removal and symlink handling.
+func TestRemoveAll(t *testing.T) {
+	t.Parallel()
+
+	t.Run("removes nested directory tree", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		target := filepath.Join(dir, "target")
+		nested := filepath.Join(target, "a", "b")
+		require.NoError(t, os.MkdirAll(nested, 0o750))
+		require.NoError(t, os.WriteFile(filepath.Join(target, "root.txt"), []byte("root"), 0o600))
+		require.NoError(t, os.WriteFile(filepath.Join(nested, "leaf.txt"), []byte("leaf"), 0o600))
+
+		require.NoError(t, RemoveAll(target))
+
+		require.NoDirExists(t, target)
+	})
+
+	t.Run("missing path is success", func(t *testing.T) {
+		t.Parallel()
+
+		require.NoError(t, RemoveAll(filepath.Join(t.TempDir(), "missing")))
+	})
+
+	t.Run("removes symlink without following target", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		external := filepath.Join(dir, "external")
+		require.NoError(t, os.MkdirAll(external, 0o750))
+		require.NoError(t, os.WriteFile(filepath.Join(external, "keep.txt"), []byte("keep"), 0o600))
+
+		target := filepath.Join(dir, "target")
+		require.NoError(t, os.MkdirAll(target, 0o750))
+		link := filepath.Join(target, "external-link")
+		if err := os.Symlink(external, link); err != nil {
+			if runtime.GOOS == "windows" {
+				t.Skipf("creating symlinks requires privilege on Windows: %v", err)
+			}
+			require.NoError(t, err)
+		}
+
+		require.NoError(t, RemoveAll(target))
+
+		require.NoDirExists(t, target)
+		require.FileExists(t, filepath.Join(external, "keep.txt"))
+	})
+}

@@ -1,0 +1,34 @@
+{{- if not .Values.persistence.enabled }}
+{{- fail "Dagu requires persistence.enabled=true." }}
+{{- end }}
+
+{{- if and (eq .Values.deploymentMode "distributed") (ne .Values.persistence.accessMode "ReadWriteMany") }}
+{{- fail (printf "distributed mode requires persistence.accessMode=ReadWriteMany; got %q" .Values.persistence.accessMode) }}
+{{- end }}
+
+{{- if empty .Values.persistence.existingClaim }}
+{{- $annotations := deepCopy .Values.persistence.annotations }}
+{{- $_ := unset $annotations "helm.sh/resource-policy" }}
+{{- if .Values.persistence.retain }}
+{{- $_ := set $annotations "helm.sh/resource-policy" "keep" }}
+{{- end }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "dagu.pvcName" . | quote }}
+  labels:
+    {{- include "dagu.labels" . | nindent 4 }}
+  {{- with $annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.size }}
+  {{- if .Values.persistence.storageClass }}
+  storageClassName: {{ .Values.persistence.storageClass }}
+  {{- end }}
+{{- end }}

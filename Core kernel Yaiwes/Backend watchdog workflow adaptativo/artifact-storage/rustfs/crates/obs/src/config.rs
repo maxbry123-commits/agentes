@@ -1,0 +1,512 @@
+// Copyright 2024 RustFS Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+//! Observability configuration for RustFS.
+//!
+//! All configuration is read from environment variables. The canonical list of
+//! variable names and their defaults lives in `rustfs-config/src/observability/mod.rs`.
+//!
+//! Two public structs are provided:
+//! - [`OtelConfig`] — the primary flat configuration that drives every backend.
+//! - [`AppConfig`] — a thin wrapper used when the config is embedded inside a
+//!   larger application configuration struct.
+
+use rustfs_config::observability::{
+    DEFAULT_OBS_ENVIRONMENT_PRODUCTION, DEFAULT_OBS_LOG_CLEANUP_INTERVAL_SECONDS, DEFAULT_OBS_LOG_COMPRESS_OLD_FILES,
+    DEFAULT_OBS_LOG_COMPRESSED_FILE_RETENTION_DAYS, DEFAULT_OBS_LOG_COMPRESSION_ALGORITHM, DEFAULT_OBS_LOG_DELETE_EMPTY_FILES,
+    DEFAULT_OBS_LOG_DRY_RUN, DEFAULT_OBS_LOG_GZIP_COMPRESSION_LEVEL, DEFAULT_OBS_LOG_MATCH_MODE,
+    DEFAULT_OBS_LOG_MAX_SINGLE_FILE_SIZE_BYTES, DEFAULT_OBS_LOG_MAX_TOTAL_SIZE_BYTES, DEFAULT_OBS_LOG_MIN_FILE_AGE_SECONDS,
+    DEFAULT_OBS_LOG_PARALLEL_COMPRESS, DEFAULT_OBS_LOG_PARALLEL_WORKERS, DEFAULT_OBS_LOG_ZSTD_COMPRESSION_LEVEL,
+    DEFAULT_OBS_LOG_ZSTD_FALLBACK_TO_GZIP, DEFAULT_OBS_LOG_ZSTD_WORKERS, ENV_OBS_ENDPOINT, ENV_OBS_ENDPOINT_HEADERS,
+    ENV_OBS_ENDPOINT_LOGS_HEADERS, ENV_OBS_ENDPOINT_LOGS_TIMEOUT_MILLIS, ENV_OBS_ENDPOINT_METRICS_HEADERS,
+    ENV_OBS_ENDPOINT_METRICS_TIMEOUT_MILLIS, ENV_OBS_ENDPOINT_TIMEOUT_MILLIS, ENV_OBS_ENDPOINT_TRACES_HEADERS,
+    ENV_OBS_ENDPOINT_TRACES_TIMEOUT_MILLIS, ENV_OBS_ENVIRONMENT, ENV_OBS_LOG_CLEANUP_INTERVAL_SECONDS,
+    ENV_OBS_LOG_COMPRESS_OLD_FILES, ENV_OBS_LOG_COMPRESSED_FILE_RETENTION_DAYS, ENV_OBS_LOG_COMPRESSION_ALGORITHM,
+    ENV_OBS_LOG_DELETE_EMPTY_FILES, ENV_OBS_LOG_DIRECTORY, ENV_OBS_LOG_DRY_RUN, ENV_OBS_LOG_ENDPOINT,
+    ENV_OBS_LOG_EXCLUDE_PATTERNS, ENV_OBS_LOG_FILENAME, ENV_OBS_LOG_GZIP_COMPRESSION_LEVEL, ENV_OBS_LOG_KEEP_FILES,
+    ENV_OBS_LOG_MATCH_MODE, ENV_OBS_LOG_MAX_SINGLE_FILE_SIZE_BYTES, ENV_OBS_LOG_MAX_TOTAL_SIZE_BYTES,
+    ENV_OBS_LOG_MIN_FILE_AGE_SECONDS, ENV_OBS_LOG_PARALLEL_COMPRESS, ENV_OBS_LOG_PARALLEL_WORKERS, ENV_OBS_LOG_ROTATION_TIME,
+    ENV_OBS_LOG_STDOUT_ENABLED, ENV_OBS_LOG_ZSTD_COMPRESSION_LEVEL, ENV_OBS_LOG_ZSTD_FALLBACK_TO_GZIP, ENV_OBS_LOG_ZSTD_WORKERS,
+    ENV_OBS_LOGGER_LEVEL, ENV_OBS_LOGS_EXPORT_ENABLED, ENV_OBS_METER_INTERVAL, ENV_OBS_METRIC_ENDPOINT,
+    ENV_OBS_METRICS_EXPORT_ENABLED, ENV_OBS_PROFILING_ENDPOINT, ENV_OBS_PROFILING_EXPORT_ENABLED, ENV_OBS_SAMPLE_RATIO,
+    ENV_OBS_SERVICE_NAME, ENV_OBS_SERVICE_VERSION, ENV_OBS_TRACE_ENDPOINT, ENV_OBS_TRACES_EXPORT_ENABLED, ENV_OBS_USE_STDOUT,
+};
+use rustfs_config::{
+    APP_NAME, DEFAULT_LOG_KEEP_FILES, DEFAULT_LOG_LEVEL, DEFAULT_LOG_ROTATION_TIME, DEFAULT_OBS_LOG_FILENAME,
+    DEFAULT_OBS_LOGS_EXPORT_ENABLED, DEFAULT_OBS_METRICS_EXPORT_ENABLED, DEFAULT_OBS_PROFILING_EXPORT_ENABLED,
+    DEFAULT_OBS_TRACES_EXPORT_ENABLED, ENVIRONMENT, METER_INTERVAL, SAMPLE_RATIO, SERVICE_VERSION, USE_STDOUT,
+};
+use rustfs_utils::{
+    get_env_bool, get_env_bool_with_aliases, get_env_f64, get_env_opt_bool, get_env_opt_str, get_env_opt_u64, get_env_str,
+    get_env_u64, get_env_usize,
+};
+use serde::{Deserialize, Serialize};
+use std::env;
+#[cfg(test)]
+use std::sync::{Mutex, OnceLock};
+
+const LEGACY_ENV_OBS_PROFILING_ENABLED: &str = "RUSTFS_OBS_PROFILING_ENABLED";
+
+fn get_env_nonempty_str(name: &str, default: &str) -> String {
+    match env::var(name) {
+        Ok(value) if !value.trim().is_empty() => value,
+        _ => default.to_string(),
+    }
+}
+
+/// Full observability configuration used by all telemetry backends.
+///
+/// Fields are grouped into three logical sections:
+///
+/// ## OpenTelemetry / OTLP export
+/// Controls whether and where traces, metrics, and logs are exported over the
+/// wire using the OTLP/HTTP protocol.
+///
+/// ## Local logging
+/// Controls the rolling-file appender: directory, filename, rotation policy,
+/// and the number of files to retain.
+///
+/// ## Log cleanup
+/// Controls the background cleanup task: size limits, compression, retention
+/// of compressed archives, exclusion patterns, and dry-run mode.
+///
+/// # Design Notes
+///
+/// - All fields are `Option<T>` to allow partial configuration via environment
+///   variables with sensible defaults provided by constants in `rustfs-config`.
+/// - `log_keep_files` is used to derive the rolling-appender's upper bound on
+///   retained files (if enabled) and to set the cleaner's retained-file ceiling.
+///
+/// # Example
+/// ```no_run
+/// use rustfs_obs::OtelConfig;
+///
+/// // Build from environment variables (typical production usage).
+/// let config = OtelConfig::new();
+///
+/// // Build with an explicit OTLP endpoint.
+/// let config = OtelConfig::extract_otel_config_from_env(
+///     Some("http://otel-collector:4318".to_string())
+/// );
+///
+/// // Compression related env mapping examples:
+/// // RUSTFS_OBS_LOG_COMPRESSION_ALGORITHM=zstd
+/// // RUSTFS_OBS_LOG_PARALLEL_COMPRESS=true
+/// // RUSTFS_OBS_LOG_PARALLEL_WORKERS=6
+/// ```
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct OtelConfig {
+    // ── OTLP export ──────────────────────────────────────────────────────────
+    /// Root OTLP/HTTP endpoint (e.g. `http://otel-collector:4318`).
+    /// Per-signal endpoints below take precedence when set.
+    pub endpoint: String,
+    /// Dedicated trace endpoint; overrides `endpoint` + `/v1/traces` fallback.
+    pub trace_endpoint: Option<String>,
+    /// Dedicated metrics endpoint; overrides `endpoint` + `/v1/metrics` fallback.
+    pub metric_endpoint: Option<String>,
+    /// Dedicated log endpoint; overrides `endpoint` + `/v1/logs` fallback.
+    pub log_endpoint: Option<String>,
+    /// Headers applied to all OTLP signals when using HTTP exporter.
+    /// Format: comma-separated `key=value` pairs with URL-encoded values, for
+    /// example: `Authorization=Bearer%20abc%20123,X-Scope-OrgID=my-tenant`.
+    /// URL-encode reserved characters in values such as spaces, commas, and `=`.
+    pub endpoint_headers: Option<String>,
+    /// Additional headers for traces; merged on top of `endpoint_headers`.
+    /// Uses the same comma-separated `key=value` format with URL-encoded values.
+    pub trace_headers: Option<String>,
+    /// Additional headers for metrics; merged on top of `endpoint_headers`.
+    /// Uses the same comma-separated `key=value` format with URL-encoded values.
+    pub metric_headers: Option<String>,
+    /// Additional headers for logs; merged on top of `endpoint_headers`.
+    /// Uses the same comma-separated `key=value` format with URL-encoded values.
+    pub log_headers: Option<String>,
+    /// Timeout (milliseconds) for all OTLP HTTP exports.
+    pub endpoint_timeout_millis: Option<u64>,
+    /// Timeout (milliseconds) for trace OTLP HTTP export.
+    pub trace_timeout_millis: Option<u64>,
+    /// Timeout (milliseconds) for metrics OTLP HTTP export.
+    pub metric_timeout_millis: Option<u64>,
+    /// Timeout (milliseconds) for log OTLP HTTP export.
+    pub log_timeout_millis: Option<u64>,
+    /// Dedicated profiling endpoint.
+    pub profiling_endpoint: Option<String>,
+    /// Whether to export distributed traces (default: `true`).
+    pub traces_export_enabled: Option<bool>,
+    /// Whether to export metrics (default: `true`).
+    pub metrics_export_enabled: Option<bool>,
+    /// Whether to export logs via OTLP (default: `true`).
+    pub logs_export_enabled: Option<bool>,
+    /// Whether to export profiles via pyroscope (default: `true`).
+    pub profiling_export_enabled: Option<bool>,
+    /// **[OTLP-only]** Mirror all signals to stdout in addition to OTLP export.
+    /// Only applies when an OTLP endpoint is configured.
+    pub use_stdout: Option<bool>,
+    /// Fraction of traces to sample, `0.0`–`1.0` (default: `1.0`).
+    pub sample_ratio: Option<f64>,
+    /// Metrics export interval in seconds (default: `30`).
+    pub meter_interval: Option<u64>,
+    /// OTel `service.name` attribute (default: `APP_NAME`).
+    pub service_name: Option<String>,
+    /// OTel `service.version` attribute (default: `SERVICE_VERSION`).
+    pub service_version: Option<String>,
+    /// Deployment environment tag, e.g. `production` or `development`.
+    pub environment: Option<String>,
+
+    // ── Local logging ─────────────────────────────────────────────────────────
+    /// Minimum log level directive (default: `error`).
+    /// Respects `RUST_LOG` syntax when set via environment.
+    pub logger_level: Option<String>,
+    /// When `true`, a stdout JSON layer is always attached regardless of the
+    /// active backend (default: `false` in production, `true` otherwise).
+    pub log_stdout_enabled: Option<bool>,
+    /// Directory where rolling log files are written.
+    /// When absent or empty, logging falls back to stdout-only mode.
+    pub log_directory: Option<String>,
+    /// Base name for log files (without date suffix), e.g. `rustfs`.
+    /// Used for both rolling-appender naming and cleanup scanning.
+    pub log_filename: Option<String>,
+    /// Rotation time granularity: `"minutely"`, `"hourly"`, or `"daily"`
+    /// (default: `"hourly"`; any unrecognized value falls back to `"daily"`).
+    pub log_rotation_time: Option<String>,
+    /// Number of rolling log files to retain (default: `30`).
+    /// Used by both the rolling-appender (as a loose upper bound) and the
+    /// background cleaner (as the minimum retention count).
+    pub log_keep_files: Option<usize>,
+
+    // ── Log cleanup ───────────────────────────────────────────────────────────
+    /// Hard ceiling on the total size (bytes) of all log files (default: 2 GiB).
+    pub log_max_total_size_bytes: Option<u64>,
+    /// Per-file size ceiling (bytes); `0` means unlimited (default: `0`).
+    pub log_max_single_file_size_bytes: Option<u64>,
+    /// Compress eligible files with gzip before deletion (default: `true`).
+    pub log_compress_old_files: Option<bool>,
+    /// Gzip compression level `1`–`9` (default: `6`).
+    pub log_gzip_compression_level: Option<u32>,
+    /// Compression algorithm: `gzip` or `zstd` (default: `zstd`).
+    pub log_compression_algorithm: Option<String>,
+    /// Enable crossbeam work-stealing parallel compression (default: `true`).
+    pub log_parallel_compress: Option<bool>,
+    /// Worker count for parallel compression (default: `6`).
+    pub log_parallel_workers: Option<usize>,
+    /// Zstd compression level `1`–`21` (default: `8`).
+    pub log_zstd_compression_level: Option<i32>,
+    /// Fallback to gzip when zstd compression fails (default: `true`).
+    pub log_zstd_fallback_to_gzip: Option<bool>,
+    /// Internal zstdmt workers per job (default: `1`).
+    pub log_zstd_workers: Option<usize>,
+    /// Delete compressed archives older than this many days; `0` = keep forever
+    /// (default: `30`).
+    pub log_compressed_file_retention_days: Option<u64>,
+    /// Comma-separated glob patterns for files that must never be cleaned up.
+    pub log_exclude_patterns: Option<String>,
+    /// Delete zero-byte log files during cleanup (default: `true`).
+    pub log_delete_empty_files: Option<bool>,
+    /// A file younger than this many seconds is never touched (default: `3600`).
+    pub log_min_file_age_seconds: Option<u64>,
+    /// How often the background cleanup task runs, in seconds (default: `1800`).
+    pub log_cleanup_interval_seconds: Option<u64>,
+    /// Log what *would* be deleted without actually removing anything
+    /// (default: `false`).
+    pub log_dry_run: Option<bool>,
+    /// File matching mode: "prefix" or "suffix" (default: "suffix").
+    pub log_match_mode: Option<String>,
+}
+
+impl OtelConfig {
+    /// Build an [`OtelConfig`] from environment variables.
+    ///
+    /// The optional `endpoint` argument sets the root OTLP endpoint. If it is
+    /// `None` or an empty string the value is read from the
+    /// `RUSTFS_OBS_ENDPOINT` environment variable instead.
+    ///
+    /// When no endpoint is configured at all, `use_stdout` is forced to `true`
+    /// so that logs are still visible during development.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use rustfs_obs::OtelConfig;
+    ///
+    /// // Read everything from env vars.
+    /// let config = OtelConfig::extract_otel_config_from_env(None);
+    ///
+    /// // Override the endpoint programmatically.
+    /// let config = OtelConfig::extract_otel_config_from_env(
+    ///     Some("http://localhost:4318".to_string())
+    /// );
+    /// ```
+    pub fn extract_otel_config_from_env(endpoint: Option<String>) -> OtelConfig {
+        let endpoint = match endpoint {
+            Some(ep) if !ep.is_empty() => ep,
+            _ => env::var(ENV_OBS_ENDPOINT).unwrap_or_default(),
+        };
+
+        // Force stdout when there is no remote endpoint so that operators
+        // always have *some* log output in the default configuration.
+        let use_stdout = if endpoint.is_empty() {
+            true
+        } else {
+            get_env_bool(ENV_OBS_USE_STDOUT, USE_STDOUT)
+        };
+
+        // The canonical log directory is resolved only when explicitly set via
+        // environment variable. When absent or empty, logging falls back to
+        // stdout-only mode (not file-rolling).
+        let log_directory = match std::env::var(ENV_OBS_LOG_DIRECTORY) {
+            Ok(val) if !val.is_empty() => Some(val),
+            _ => None,
+        };
+
+        // `log_keep_files` is the single source of truth for file retention count.
+        // It defaults to `DEFAULT_LOG_KEEP_FILES` (30).
+        let mut log_keep_files = get_env_usize(ENV_OBS_LOG_KEEP_FILES, DEFAULT_LOG_KEEP_FILES);
+        if log_keep_files == 0 {
+            log_keep_files = DEFAULT_LOG_KEEP_FILES;
+        }
+        let log_keep_files = Some(log_keep_files);
+
+        // `log_rotation_time` drives the rolling-appender rotation period.
+        let log_rotation_time = Some(get_env_str(ENV_OBS_LOG_ROTATION_TIME, DEFAULT_LOG_ROTATION_TIME));
+
+        OtelConfig {
+            // OTLP
+            endpoint,
+            trace_endpoint: get_env_opt_str(ENV_OBS_TRACE_ENDPOINT),
+            metric_endpoint: get_env_opt_str(ENV_OBS_METRIC_ENDPOINT),
+            log_endpoint: get_env_opt_str(ENV_OBS_LOG_ENDPOINT),
+            endpoint_headers: get_env_opt_str(ENV_OBS_ENDPOINT_HEADERS),
+            trace_headers: get_env_opt_str(ENV_OBS_ENDPOINT_TRACES_HEADERS),
+            metric_headers: get_env_opt_str(ENV_OBS_ENDPOINT_METRICS_HEADERS),
+            log_headers: get_env_opt_str(ENV_OBS_ENDPOINT_LOGS_HEADERS),
+            endpoint_timeout_millis: get_env_opt_u64(ENV_OBS_ENDPOINT_TIMEOUT_MILLIS),
+            trace_timeout_millis: get_env_opt_u64(ENV_OBS_ENDPOINT_TRACES_TIMEOUT_MILLIS),
+            metric_timeout_millis: get_env_opt_u64(ENV_OBS_ENDPOINT_METRICS_TIMEOUT_MILLIS),
+            log_timeout_millis: get_env_opt_u64(ENV_OBS_ENDPOINT_LOGS_TIMEOUT_MILLIS),
+            profiling_endpoint: get_env_opt_str(ENV_OBS_PROFILING_ENDPOINT),
+            traces_export_enabled: Some(get_env_bool(ENV_OBS_TRACES_EXPORT_ENABLED, DEFAULT_OBS_TRACES_EXPORT_ENABLED)),
+            metrics_export_enabled: Some(get_env_bool(ENV_OBS_METRICS_EXPORT_ENABLED, DEFAULT_OBS_METRICS_EXPORT_ENABLED)),
+            logs_export_enabled: Some(get_env_bool(ENV_OBS_LOGS_EXPORT_ENABLED, DEFAULT_OBS_LOGS_EXPORT_ENABLED)),
+            profiling_export_enabled: Some(get_env_bool_with_aliases(
+                ENV_OBS_PROFILING_EXPORT_ENABLED,
+                &[LEGACY_ENV_OBS_PROFILING_ENABLED],
+                DEFAULT_OBS_PROFILING_EXPORT_ENABLED,
+            )),
+            use_stdout: Some(use_stdout),
+            sample_ratio: Some(get_env_f64(ENV_OBS_SAMPLE_RATIO, SAMPLE_RATIO)),
+            meter_interval: Some(get_env_u64(ENV_OBS_METER_INTERVAL, METER_INTERVAL)),
+            service_name: Some(get_env_str(ENV_OBS_SERVICE_NAME, APP_NAME)),
+            service_version: Some(get_env_str(ENV_OBS_SERVICE_VERSION, SERVICE_VERSION)),
+            environment: Some(get_env_str(ENV_OBS_ENVIRONMENT, ENVIRONMENT)),
+            // Local logging
+            logger_level: Some(get_env_str(ENV_OBS_LOGGER_LEVEL, DEFAULT_LOG_LEVEL)),
+            log_stdout_enabled: get_env_opt_bool(ENV_OBS_LOG_STDOUT_ENABLED),
+            log_directory,
+            log_filename: Some(get_env_nonempty_str(ENV_OBS_LOG_FILENAME, DEFAULT_OBS_LOG_FILENAME)),
+            log_rotation_time,
+            log_keep_files,
+            // Log cleanup
+            log_max_total_size_bytes: Some(get_env_u64(ENV_OBS_LOG_MAX_TOTAL_SIZE_BYTES, DEFAULT_OBS_LOG_MAX_TOTAL_SIZE_BYTES)),
+            log_max_single_file_size_bytes: Some(get_env_u64(
+                ENV_OBS_LOG_MAX_SINGLE_FILE_SIZE_BYTES,
+                DEFAULT_OBS_LOG_MAX_SINGLE_FILE_SIZE_BYTES,
+            )),
+            log_compress_old_files: Some(get_env_bool(ENV_OBS_LOG_COMPRESS_OLD_FILES, DEFAULT_OBS_LOG_COMPRESS_OLD_FILES)),
+            log_gzip_compression_level: Some(get_env_u64(
+                ENV_OBS_LOG_GZIP_COMPRESSION_LEVEL,
+                DEFAULT_OBS_LOG_GZIP_COMPRESSION_LEVEL as u64,
+            ) as u32),
+            log_compression_algorithm: Some(get_env_str(
+                ENV_OBS_LOG_COMPRESSION_ALGORITHM,
+                DEFAULT_OBS_LOG_COMPRESSION_ALGORITHM,
+            )),
+            log_parallel_compress: Some(get_env_bool(ENV_OBS_LOG_PARALLEL_COMPRESS, DEFAULT_OBS_LOG_PARALLEL_COMPRESS)),
+            log_parallel_workers: Some(get_env_usize(ENV_OBS_LOG_PARALLEL_WORKERS, DEFAULT_OBS_LOG_PARALLEL_WORKERS)),
+            log_zstd_compression_level: Some(get_env_u64(
+                ENV_OBS_LOG_ZSTD_COMPRESSION_LEVEL,
+                DEFAULT_OBS_LOG_ZSTD_COMPRESSION_LEVEL as u64,
+            ) as i32),
+            log_zstd_fallback_to_gzip: Some(get_env_bool(
+                ENV_OBS_LOG_ZSTD_FALLBACK_TO_GZIP,
+                DEFAULT_OBS_LOG_ZSTD_FALLBACK_TO_GZIP,
+            )),
+            log_zstd_workers: Some(get_env_usize(ENV_OBS_LOG_ZSTD_WORKERS, DEFAULT_OBS_LOG_ZSTD_WORKERS)),
+            log_compressed_file_retention_days: Some(get_env_u64(
+                ENV_OBS_LOG_COMPRESSED_FILE_RETENTION_DAYS,
+                DEFAULT_OBS_LOG_COMPRESSED_FILE_RETENTION_DAYS,
+            )),
+            log_exclude_patterns: get_env_opt_str(ENV_OBS_LOG_EXCLUDE_PATTERNS),
+            log_delete_empty_files: Some(get_env_bool(ENV_OBS_LOG_DELETE_EMPTY_FILES, DEFAULT_OBS_LOG_DELETE_EMPTY_FILES)),
+            log_min_file_age_seconds: Some(get_env_u64(ENV_OBS_LOG_MIN_FILE_AGE_SECONDS, DEFAULT_OBS_LOG_MIN_FILE_AGE_SECONDS)),
+            log_cleanup_interval_seconds: Some(get_env_u64(
+                ENV_OBS_LOG_CLEANUP_INTERVAL_SECONDS,
+                DEFAULT_OBS_LOG_CLEANUP_INTERVAL_SECONDS,
+            )),
+            log_dry_run: Some(get_env_bool(ENV_OBS_LOG_DRY_RUN, DEFAULT_OBS_LOG_DRY_RUN)),
+            log_match_mode: Some(get_env_str(ENV_OBS_LOG_MATCH_MODE, DEFAULT_OBS_LOG_MATCH_MODE)),
+        }
+    }
+
+    /// Create a new [`OtelConfig`] populated entirely from environment variables.
+    ///
+    /// Equivalent to `OtelConfig::extract_otel_config_from_env(None)`.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use rustfs_obs::OtelConfig;
+    /// let config = OtelConfig::new();
+    /// ```
+    pub fn new() -> Self {
+        Self::extract_otel_config_from_env(None)
+    }
+}
+
+impl Default for OtelConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Top-level application configuration that embeds [`OtelConfig`].
+///
+/// Use this when the observability config lives inside a larger `AppConfig`
+/// struct, e.g. when deserialising from a config file that also contains other
+/// application settings.
+///
+/// # Example
+/// ```
+/// use rustfs_obs::AppConfig;
+///
+/// let config = AppConfig::new_with_endpoint(None);
+/// ```
+#[derive(Debug, Deserialize, Clone)]
+pub struct AppConfig {
+    pub observability: OtelConfig,
+}
+
+impl AppConfig {
+    /// Create an [`AppConfig`] with all observability settings read from the
+    /// environment (no explicit endpoint override).
+    pub fn new() -> Self {
+        Self {
+            observability: OtelConfig::default(),
+        }
+    }
+
+    /// Create an [`AppConfig`] with an explicit OTLP endpoint.
+    ///
+    /// # Arguments
+    /// * `endpoint` - Root OTLP/HTTP endpoint URL, or `None` to read from env.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use rustfs_obs::AppConfig;
+    ///
+    /// let config = AppConfig::new_with_endpoint(Some("http://localhost:4318".to_string()));
+    /// ```
+    pub fn new_with_endpoint(endpoint: Option<String>) -> Self {
+        Self {
+            observability: OtelConfig::extract_otel_config_from_env(endpoint),
+        }
+    }
+}
+
+impl Default for AppConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Returns `true` when the current runtime environment is `production`.
+///
+/// Reads the `RUSTFS_OBS_ENVIRONMENT` environment variable and compares it
+/// case-insensitively against the string `"production"`.
+pub fn is_production_environment() -> bool {
+    get_env_str(ENV_OBS_ENVIRONMENT, ENVIRONMENT).eq_ignore_ascii_case(DEFAULT_OBS_ENVIRONMENT_PRODUCTION)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    static PROFILING_ENV_TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+    fn with_profiling_env_lock<F>(f: F)
+    where
+        F: FnOnce(),
+    {
+        let _guard = PROFILING_ENV_TEST_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+        f();
+    }
+
+    fn extract_profiling_export_enabled() -> Option<bool> {
+        OtelConfig::extract_otel_config_from_env(None).profiling_export_enabled
+    }
+
+    #[test]
+    fn profiling_export_defaults_to_disabled_when_unset() {
+        with_profiling_env_lock(|| {
+            temp_env::with_var_unset(ENV_OBS_PROFILING_EXPORT_ENABLED, || {
+                temp_env::with_var_unset(LEGACY_ENV_OBS_PROFILING_ENABLED, || {
+                    assert_eq!(extract_profiling_export_enabled(), Some(DEFAULT_OBS_PROFILING_EXPORT_ENABLED));
+                });
+            });
+        });
+    }
+
+    #[test]
+    fn profiling_export_accepts_legacy_env_alias() {
+        with_profiling_env_lock(|| {
+            temp_env::with_var_unset(ENV_OBS_PROFILING_EXPORT_ENABLED, || {
+                temp_env::with_var(LEGACY_ENV_OBS_PROFILING_ENABLED, Some("true"), || {
+                    assert_eq!(extract_profiling_export_enabled(), Some(true));
+                });
+            });
+        });
+    }
+
+    #[test]
+    fn canonical_profiling_toggle_has_priority_over_legacy_alias() {
+        with_profiling_env_lock(|| {
+            temp_env::with_var(LEGACY_ENV_OBS_PROFILING_ENABLED, Some("true"), || {
+                temp_env::with_var(ENV_OBS_PROFILING_EXPORT_ENABLED, Some("false"), || {
+                    assert_eq!(extract_profiling_export_enabled(), Some(false));
+                });
+            });
+        });
+    }
+
+    #[test]
+    fn empty_log_filename_falls_back_to_default() {
+        with_profiling_env_lock(|| {
+            temp_env::with_var(ENV_OBS_LOG_FILENAME, Some(""), || {
+                let config = OtelConfig::extract_otel_config_from_env(None);
+                assert_eq!(config.log_filename.as_deref(), Some(DEFAULT_OBS_LOG_FILENAME));
+            });
+        });
+    }
+
+    #[test]
+    fn stdout_mirror_environment_preserves_unset_true_and_false() {
+        with_profiling_env_lock(|| {
+            temp_env::with_var_unset(ENV_OBS_LOG_STDOUT_ENABLED, || {
+                assert_eq!(OtelConfig::extract_otel_config_from_env(None).log_stdout_enabled, None);
+            });
+            temp_env::with_var(ENV_OBS_LOG_STDOUT_ENABLED, Some("true"), || {
+                assert_eq!(OtelConfig::extract_otel_config_from_env(None).log_stdout_enabled, Some(true));
+            });
+            temp_env::with_var(ENV_OBS_LOG_STDOUT_ENABLED, Some("false"), || {
+                assert_eq!(OtelConfig::extract_otel_config_from_env(None).log_stdout_enabled, Some(false));
+            });
+        });
+    }
+}

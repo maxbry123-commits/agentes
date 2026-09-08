@@ -1,0 +1,17 @@
+.venv
+.python-version
+__pycache__
+*.egg-info/
+.tox/
+docs/build/
+.idea
+.redun
+redun.db
+dist/
+build/
+scratch/
+.dmypy.json
+_tmp_typing_test_*.py
+.claude
+.cursor
+.DS_Store

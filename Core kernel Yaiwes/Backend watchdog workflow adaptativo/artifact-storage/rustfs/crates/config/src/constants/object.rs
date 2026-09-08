@@ -1,0 +1,923 @@
+// Copyright 2024 RustFS Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+/// Environment variable name for high concurrency threshold used in adaptive buffering.
+///
+/// - Purpose: When concurrent request count exceeds this threshold, the system enters a "high concurrency" optimization mode to reduce per-request buffer sizes.
+/// - Unit: request count (usize).
+/// - Semantics: High concurrency mode reduces per-request buffers (e.g., to a fraction of base size) to protect overall memory and fairness.
+/// - Example: `export RUSTFS_OBJECT_HIGH_CONCURRENCY_THRESHOLD=8`
+/// - Note: This affects buffering and I/O behavior, not cache capacity directly.
+pub const ENV_OBJECT_HIGH_CONCURRENCY_THRESHOLD: &str = "RUSTFS_OBJECT_HIGH_CONCURRENCY_THRESHOLD";
+
+/// Environment variable name for medium concurrency threshold used in adaptive buffering.
+///
+/// - Purpose: Define the boundary for "medium concurrency" where more moderate buffer adjustments apply.
+/// - Unit: request count (usize).
+/// - Semantics: In the medium range, buffers are reduced moderately to balance throughput and memory efficiency.
+/// - Example: `export RUSTFS_OBJECT_MEDIUM_CONCURRENCY_THRESHOLD=4`
+/// - Note: Tune this value based on target workload and hardware.
+pub const ENV_OBJECT_MEDIUM_CONCURRENCY_THRESHOLD: &str = "RUSTFS_OBJECT_MEDIUM_CONCURRENCY_THRESHOLD";
+
+/// Environment variable name for maximum concurrent disk reads for object operations.
+/// - Purpose: Limit the number of concurrent disk read operations for object reads to prevent I/O saturation.
+/// - Unit: request count (usize).
+/// - Semantics: Throttling disk reads helps maintain overall system responsiveness under load.
+/// - Example: `export RUSTFS_OBJECT_MAX_CONCURRENT_DISK_READS=16`
+/// - Note: This setting may interact with OS-level I/O scheduling and should be tuned based on hardware capabilities.
+pub const ENV_OBJECT_MAX_CONCURRENT_DISK_READS: &str = "RUSTFS_OBJECT_MAX_CONCURRENT_DISK_READS";
+
+/// Maximum concurrent requests before applying aggressive optimization.
+///
+/// When concurrent requests exceed this threshold (>8), the system switches to
+/// aggressive memory optimization mode, reducing buffer sizes to 40% of base size
+/// to prevent memory exhaustion and ensure fair resource allocation.
+///
+/// This helps maintain system stability under high load conditions.
+/// Default is set to 8 concurrent requests.
+pub const DEFAULT_OBJECT_HIGH_CONCURRENCY_THRESHOLD: usize = 8;
+
+/// Medium concurrency threshold for buffer size adjustment.
+///
+/// At this level (3-4 requests), buffers are reduced to 75% of base size to
+/// balance throughput and memory efficiency as load increases.
+///
+/// This helps maintain performance without overly aggressive memory reduction.
+///
+/// Default is set to 4 concurrent requests.
+pub const DEFAULT_OBJECT_MEDIUM_CONCURRENCY_THRESHOLD: usize = 4;
+
+/// Maximum concurrent disk reads for object operations.
+/// Limits the number of simultaneous disk read operations to prevent I/O saturation.
+///
+/// A higher value may improve throughput on high-performance storage,
+/// but could also lead to increased latency if the disk becomes overloaded.
+///
+/// Default is set to 64 concurrent reads.
+pub const DEFAULT_OBJECT_MAX_CONCURRENT_DISK_READS: usize = 64;
+
+/// Environment variable for the disk read permit wait timeout (seconds).
+/// - Purpose: Bound how long a GET waits for a disk read permit before proceeding without one.
+/// - Unit: seconds (u64). `0` waits indefinitely.
+/// - Example: `export RUSTFS_OBJECT_DISK_PERMIT_WAIT_TIMEOUT=5`
+pub const ENV_OBJECT_DISK_PERMIT_WAIT_TIMEOUT: &str = "RUSTFS_OBJECT_DISK_PERMIT_WAIT_TIMEOUT";
+
+/// Maximum time a GET request waits for a primary disk read permit (seconds).
+///
+/// Permits are held for the whole response body transfer, so slow clients can
+/// occupy all of them while the disks sit idle. Instead of stalling until the
+/// request-level timeout fires, a GET that waits longer than this falls through
+/// to a bounded degraded admission lane; if that lane is also full the request
+/// is rejected with `SlowDown`/503 rather than proceeding without any permit.
+/// Set to 0 to wait on the primary lane indefinitely (never degrade or reject).
+pub const DEFAULT_OBJECT_DISK_PERMIT_WAIT_TIMEOUT: u64 = 5;
+
+/// Environment variable for the bounded degraded disk-read admission lane size.
+/// - Purpose: Cap how many GETs may proceed after the primary disk-read permit
+///   pool is saturated, giving a hard upper bound on concurrent disk-active
+///   reads (primary cap + degraded cap) instead of an unbounded pass-through.
+/// - Unit: request count (usize). `0` means "mirror the primary cap", so the
+///   absolute hard cap defaults to twice the primary disk-read cap.
+/// - Example: `export RUSTFS_OBJECT_DISK_DEGRADED_READ_CAP=16`
+pub const ENV_OBJECT_DISK_DEGRADED_READ_CAP: &str = "RUSTFS_OBJECT_DISK_DEGRADED_READ_CAP";
+
+/// Size of the bounded degraded disk-read admission lane.
+///
+/// When the primary disk-read permit pool is saturated and a GET exceeds
+/// [`DEFAULT_OBJECT_DISK_PERMIT_WAIT_TIMEOUT`], it may take one permit from this
+/// bounded overflow lane instead of reading without any admission token. The
+/// total number of GETs performing disk-active reads is therefore hard-capped at
+/// `primary_cap + degraded_cap`; beyond that a GET is rejected with `SlowDown`.
+/// The default `0` mirrors the primary cap, so the hard cap is twice the primary
+/// disk-read concurrency.
+pub const DEFAULT_OBJECT_DISK_DEGRADED_READ_CAP: usize = 0;
+
+/// Skip bitrot hash verification on GetObject reads.
+///
+/// When enabled, GetObject reads skip the per-shard hash
+/// computation and comparison, reducing CPU usage on the read path.
+/// The background scanner still performs full integrity verification.
+/// Does not affect writes, heals, or scanner operations.
+///
+/// Default is false (verify on every read, matching pre-existing behavior).
+pub const ENV_OBJECT_GET_SKIP_BITROT_VERIFY: &str = "RUSTFS_OBJECT_GET_SKIP_BITROT_VERIFY";
+
+/// Default: bitrot verification is enabled on GetObject reads (do not skip).
+pub const DEFAULT_OBJECT_GET_SKIP_BITROT_VERIFY: bool = false;
+
+/// Request writing the complete remote-tier version state into object metadata.
+///
+/// This remains ineffective until
+/// [`ENV_TIER_REMOTE_VERSION_STATE_FLEET_CONFIRMED`] is also enabled.
+pub const ENV_TIER_REMOTE_VERSION_STATE_WRITE: &str = "RUSTFS_TIER_REMOTE_VERSION_STATE_WRITE";
+pub const DEFAULT_TIER_REMOTE_VERSION_STATE_WRITE: bool = false;
+
+/// Operator-attested fleet-wide confirmation for
+/// [`ENV_TIER_REMOTE_VERSION_STATE_WRITE`].
+///
+/// This flag is an operational contract, not automatic capability discovery.
+/// Operators may enable it only after every node that can write or read
+/// transitioned object metadata supports the remote version-state schema and
+/// semantics. Keeping the confirmation separate makes a single-node request or
+/// a writer whose local opt-in is removed fail closed.
+pub const ENV_TIER_REMOTE_VERSION_STATE_FLEET_CONFIRMED: &str = "RUSTFS_TIER_REMOTE_VERSION_STATE_FLEET_CONFIRMED";
+pub const DEFAULT_TIER_REMOTE_VERSION_STATE_FLEET_CONFIRMED: bool = false;
+
+const _: () = assert!(!DEFAULT_TIER_REMOTE_VERSION_STATE_WRITE);
+const _: () = assert!(!DEFAULT_TIER_REMOTE_VERSION_STATE_FLEET_CONFIRMED);
+
+/// Environment variable for remote tier TCP connect timeout in seconds.
+pub const ENV_TIER_REMOTE_CONNECT_TIMEOUT_SECS: &str = "RUSTFS_TIER_REMOTE_CONNECT_TIMEOUT_SECS";
+/// Default remote tier TCP connect timeout in seconds.
+pub const DEFAULT_TIER_REMOTE_CONNECT_TIMEOUT_SECS: u64 = 10;
+
+/// Environment variable for the remote tier request timeout in seconds.
+///
+/// This bounds upload/download request progress through response headers. The
+/// default is intentionally large so multi-TiB transition uploads keep their
+/// previous production budget while black-hole remotes no longer wait forever.
+pub const ENV_TIER_REMOTE_REQUEST_TIMEOUT_SECS: &str = "RUSTFS_TIER_REMOTE_REQUEST_TIMEOUT_SECS";
+/// Default remote tier request timeout in seconds.
+pub const DEFAULT_TIER_REMOTE_REQUEST_TIMEOUT_SECS: u64 = 24 * 60 * 60;
+
+/// Environment variable for remote tier response-body idle timeout in seconds.
+///
+/// The timer is re-armed on every non-empty response-body chunk, so slow but
+/// progressing remotes can continue while silent response bodies are cancelled.
+pub const ENV_TIER_REMOTE_RESPONSE_BODY_IDLE_TIMEOUT_SECS: &str = "RUSTFS_TIER_REMOTE_RESPONSE_BODY_IDLE_TIMEOUT_SECS";
+/// Default remote tier response-body idle timeout in seconds.
+pub const DEFAULT_TIER_REMOTE_RESPONSE_BODY_IDLE_TIMEOUT_SECS: u64 = 60;
+
+/// Request the object-transaction fencing contract used by storage-owned
+/// cleanup receipts and lock-window optimizations.
+///
+/// This is fail-closed: enabling the writer without a live fleet proof rejects
+/// the commit rather than silently using a legacy-safe path.
+pub const ENV_OBJECT_TRANSACTION_FENCING_WRITE: &str = "RUSTFS_OBJECT_TRANSACTION_FENCING_WRITE";
+pub const DEFAULT_OBJECT_TRANSACTION_FENCING_WRITE: bool = false;
+
+/// Operator-attested confirmation that every serving node understands the
+/// object transaction fencing contract.
+pub const ENV_OBJECT_TRANSACTION_FENCING_FLEET_CONFIRMED: &str = "RUSTFS_OBJECT_TRANSACTION_FENCING_FLEET_CONFIRMED";
+pub const DEFAULT_OBJECT_TRANSACTION_FENCING_FLEET_CONFIRMED: bool = false;
+
+const _: () = assert!(!DEFAULT_OBJECT_TRANSACTION_FENCING_WRITE);
+const _: () = assert!(!DEFAULT_OBJECT_TRANSACTION_FENCING_FLEET_CONFIRMED);
+
+/// Request preserving legacy per-part checksum metadata during data movement.
+///
+/// This remains ineffective until
+/// [`ENV_DATA_MOVEMENT_PART_CHECKSUMS_FLEET_CONFIRMED`] is also enabled.
+pub const ENV_DATA_MOVEMENT_PART_CHECKSUMS_WRITE: &str = "RUSTFS_DATA_MOVEMENT_PART_CHECKSUMS_WRITE";
+pub const DEFAULT_DATA_MOVEMENT_PART_CHECKSUMS_WRITE: bool = false;
+
+/// Operator-attested confirmation that every serving node understands the
+/// data-movement per-part checksum sidecar.
+pub const ENV_DATA_MOVEMENT_PART_CHECKSUMS_FLEET_CONFIRMED: &str = "RUSTFS_DATA_MOVEMENT_PART_CHECKSUMS_FLEET_CONFIRMED";
+pub const DEFAULT_DATA_MOVEMENT_PART_CHECKSUMS_FLEET_CONFIRMED: bool = false;
+
+const _: () = assert!(!DEFAULT_DATA_MOVEMENT_PART_CHECKSUMS_WRITE);
+const _: () = assert!(!DEFAULT_DATA_MOVEMENT_PART_CHECKSUMS_FLEET_CONFIRMED);
+
+/// Request writing pool metadata version 2.
+///
+/// This remains ineffective until [`ENV_POOL_META_V2_FLEET_CONFIRMED`] is also enabled.
+pub const ENV_POOL_META_V2_WRITE: &str = "RUSTFS_POOL_META_V2_WRITE";
+pub const DEFAULT_POOL_META_V2_WRITE: bool = false;
+
+/// Operator-attested confirmation that every pool metadata reader and writer understands version 2.
+pub const ENV_POOL_META_V2_FLEET_CONFIRMED: &str = "RUSTFS_POOL_META_V2_FLEET_CONFIRMED";
+pub const DEFAULT_POOL_META_V2_FLEET_CONFIRMED: bool = false;
+
+const _: () = assert!(!DEFAULT_POOL_META_V2_WRITE);
+const _: () = assert!(!DEFAULT_POOL_META_V2_FLEET_CONFIRMED);
+
+/// Request writing pool metadata version 3 with durable generations.
+///
+/// Existing deployments remain on their observed version until
+/// [`ENV_POOL_META_V3_FLEET_CONFIRMED`] is also enabled. Fresh deployments may
+/// initialize directly at version 3 because they have no legacy readers.
+pub const ENV_POOL_META_V3_WRITE: &str = "RUSTFS_POOL_META_V3_WRITE";
+pub const DEFAULT_POOL_META_V3_WRITE: bool = false;
+
+/// Operator-attested confirmation that every pool metadata reader and writer
+/// understands the version 3 generation and recovery protocol.
+pub const ENV_POOL_META_V3_FLEET_CONFIRMED: &str = "RUSTFS_POOL_META_V3_FLEET_CONFIRMED";
+pub const DEFAULT_POOL_META_V3_FLEET_CONFIRMED: bool = false;
+
+const _: () = assert!(!DEFAULT_POOL_META_V3_WRITE);
+const _: () = assert!(!DEFAULT_POOL_META_V3_FLEET_CONFIRMED);
+
+/// Maximum unpacked size accepted for one Snowball archive member.
+///
+/// The value is expressed in bytes. Invalid values use the default, while
+/// valid values are clamped to [`MAX_SNOWBALL_ENTRY_BYTES`].
+pub const ENV_SNOWBALL_MAX_ENTRY_BYTES: &str = "RUSTFS_SNOWBALL_MAX_ENTRY_BYTES";
+pub const DEFAULT_SNOWBALL_MAX_ENTRY_BYTES: u64 = 1024 * 1024 * 1024;
+pub const MAX_SNOWBALL_ENTRY_BYTES: u64 = 1024 * DEFAULT_SNOWBALL_MAX_ENTRY_BYTES;
+
+/// Maximum cumulative unpacked object bytes accepted from one Snowball
+/// archive request.
+///
+/// This does not include tar headers or bounded PAX metadata. The value is
+/// expressed in bytes and is clamped to
+/// [`MAX_SNOWBALL_UNPACKED_BYTES`].
+pub const ENV_SNOWBALL_MAX_UNPACKED_BYTES: &str = "RUSTFS_SNOWBALL_MAX_UNPACKED_BYTES";
+pub const DEFAULT_SNOWBALL_MAX_UNPACKED_BYTES: u64 = 10 * 1024 * 1024 * 1024;
+pub const MAX_SNOWBALL_UNPACKED_BYTES: u64 = 10 * 1024 * DEFAULT_SNOWBALL_MAX_ENTRY_BYTES;
+
+const _: () = assert!(DEFAULT_SNOWBALL_MAX_ENTRY_BYTES <= MAX_SNOWBALL_ENTRY_BYTES);
+const _: () = assert!(DEFAULT_SNOWBALL_MAX_UNPACKED_BYTES <= MAX_SNOWBALL_UNPACKED_BYTES);
+
+// =============================================================================
+// Concurrent Request Fix - Timeout and Backpressure Configuration
+// =============================================================================
+
+/// Environment variable for GetObject request timeout in seconds.
+///
+/// When a GetObject request exceeds this duration, it will be cancelled
+/// and return a 504 Gateway Timeout error. This prevents requests from
+/// hanging indefinitely due to deadlocks or resource exhaustion.
+///
+/// Default: 30 seconds (can be overridden by `RUSTFS_OBJECT_GET_TIMEOUT`).
+/// Set to 0 to disable timeout (not recommended for production).
+pub const ENV_OBJECT_GET_TIMEOUT: &str = "RUSTFS_OBJECT_GET_TIMEOUT";
+
+/// Default GetObject request timeout in seconds.
+///
+/// This value balances between allowing large object transfers to complete
+/// and preventing indefinite hangs. For 20-26MB objects with concurrent
+/// range reads, 30 seconds should be sufficient under normal conditions.
+pub const DEFAULT_OBJECT_GET_TIMEOUT: u64 = 30;
+
+/// Environment variable for disk read operation timeout in seconds.
+///
+/// Individual disk read operations that exceed this duration will be
+/// cancelled and treated as failures. This helps detect slow or hung
+/// disks without waiting indefinitely.
+///
+/// Default: 10 seconds (can be overridden by `RUSTFS_OBJECT_DISK_READ_TIMEOUT`).
+pub const ENV_OBJECT_DISK_READ_TIMEOUT: &str = "RUSTFS_OBJECT_DISK_READ_TIMEOUT";
+
+/// Default disk read timeout in seconds.
+pub const DEFAULT_OBJECT_DISK_READ_TIMEOUT: u64 = 10;
+
+/// Environment variable for the per-shard erasure write stall timeout (seconds).
+///
+/// A single shard write (or shard-writer shutdown) that makes no forward
+/// progress for longer than this budget is failed and its disk is dropped
+/// before commit, so a black-hole peer that accepts the connection but never
+/// drains the body cannot pin an otherwise-healthy write quorum forever
+/// (see `MultiWriter` in `erasure/coding/encode.rs`). The budget is re-armed on
+/// every shard write, so it bounds a *stall* rather than the total transfer
+/// time of a large object.
+///
+/// Unit: seconds (u64). `0` disables the stall deadline (previous behavior:
+/// wait indefinitely). Default: 30 seconds.
+pub const ENV_OBJECT_DISK_WRITE_STALL_TIMEOUT: &str = "RUSTFS_OBJECT_DISK_WRITE_STALL_TIMEOUT";
+
+/// Default per-shard erasure write stall timeout in seconds.
+pub const DEFAULT_OBJECT_DISK_WRITE_STALL_TIMEOUT: u64 = 30;
+
+/// Environment variable for the absolute per-object erasure write cap (seconds).
+///
+/// Optional administrator backstop against a "slow-drip" peer that produces
+/// just enough forward progress to reset the per-shard stall timeout on every
+/// block while never converging. When set, the shard writers for one object are
+/// engaged for at most this long in aggregate before a stalled writer is failed
+/// and dropped. It is disabled by default because a legitimate large upload
+/// over a slow-but-honest link must not be killed on total time alone; the
+/// per-shard stall timeout is the primary guarantee.
+///
+/// Unit: seconds (u64). `0` (default) disables the absolute cap.
+pub const ENV_OBJECT_DISK_WRITE_ABSOLUTE_CAP: &str = "RUSTFS_OBJECT_DISK_WRITE_ABSOLUTE_CAP";
+
+/// Default absolute per-object erasure write cap in seconds (`0` = disabled).
+pub const DEFAULT_OBJECT_DISK_WRITE_ABSOLUTE_CAP: u64 = 0;
+
+/// Enable foreground PutObject request admission.
+///
+/// This is an experimental, default-off foreground write backpressure gate for
+/// strict commit tail investigations. When disabled, PUTs follow the legacy
+/// path and only the existing request counters are updated.
+pub const ENV_PUT_FOREGROUND_ADMISSION_ENABLE: &str = "RUSTFS_PUT_FOREGROUND_ADMISSION_ENABLE";
+pub const DEFAULT_PUT_FOREGROUND_ADMISSION_ENABLE: bool = false;
+
+/// Maximum foreground PutObject requests admitted concurrently per process.
+///
+/// The limit is used only when [`ENV_PUT_FOREGROUND_ADMISSION_ENABLE`] is true.
+/// A value of `0` disables the gate even when the enable flag is present, so a
+/// partially configured rollout cannot reject every PUT.
+pub const ENV_PUT_FOREGROUND_ADMISSION_LIMIT: &str = "RUSTFS_PUT_FOREGROUND_ADMISSION_LIMIT";
+pub const DEFAULT_PUT_FOREGROUND_ADMISSION_LIMIT: usize = 0;
+
+/// Time in milliseconds a foreground PutObject waits for an admission permit.
+///
+/// Once this timeout expires the request fails before body ingest/storage
+/// mutation with S3 `SlowDown`/503. `0` means fail fast when the limit is full.
+pub const ENV_PUT_FOREGROUND_ADMISSION_WAIT_TIMEOUT_MS: &str = "RUSTFS_PUT_FOREGROUND_ADMISSION_WAIT_TIMEOUT_MS";
+pub const DEFAULT_PUT_FOREGROUND_ADMISSION_WAIT_TIMEOUT_MS: u64 = 0;
+
+const _: () = assert!(!DEFAULT_PUT_FOREGROUND_ADMISSION_ENABLE);
+
+/// Enable automatic foreground admission for large or unknown-size PutObject requests.
+///
+/// Unlike the strict experimental gate above, this default-on path only applies
+/// to requests that are large enough to create sustained erasure/RPC pressure.
+/// Small PUTs continue on the legacy path unless the strict gate is explicitly
+/// enabled.
+pub const ENV_PUT_LARGE_FOREGROUND_ADMISSION_ENABLE: &str = "RUSTFS_PUT_LARGE_FOREGROUND_ADMISSION_ENABLE";
+pub const DEFAULT_PUT_LARGE_FOREGROUND_ADMISSION_ENABLE: bool = true;
+
+/// Maximum automatic foreground write requests admitted concurrently per process.
+///
+/// `0` derives a conservative default from the local disk-read scheduler cap,
+/// currently clamped to protect the commit path without making ordinary high
+/// throughput uploads single-file.
+pub const ENV_PUT_LARGE_FOREGROUND_ADMISSION_LIMIT: &str = "RUSTFS_PUT_LARGE_FOREGROUND_ADMISSION_LIMIT";
+pub const DEFAULT_PUT_LARGE_FOREGROUND_ADMISSION_LIMIT: usize = 0;
+
+/// Minimum direct PutObject size that enters automatic foreground write admission.
+///
+/// Requests with an unknown size are treated as large because the write pressure
+/// cannot be bounded from headers.
+pub const ENV_PUT_LARGE_FOREGROUND_ADMISSION_MIN_SIZE_BYTES: &str = "RUSTFS_PUT_LARGE_FOREGROUND_ADMISSION_MIN_SIZE_BYTES";
+pub const DEFAULT_PUT_LARGE_FOREGROUND_ADMISSION_MIN_SIZE_BYTES: usize = 32 * 1024 * 1024;
+
+/// Minimum UploadPart size that enters automatic foreground write admission.
+///
+/// Multipart pressure is often many moderate-sized parts rather than one very
+/// large request. The default gates every multipart part through the same permit
+/// pool as large/unknown-size PutObject while keeping small direct PUTs on the
+/// legacy path.
+pub const ENV_PUT_MULTIPART_FOREGROUND_ADMISSION_MIN_SIZE_BYTES: &str =
+    "RUSTFS_PUT_MULTIPART_FOREGROUND_ADMISSION_MIN_SIZE_BYTES";
+pub const DEFAULT_PUT_MULTIPART_FOREGROUND_ADMISSION_MIN_SIZE_BYTES: usize = 0;
+
+/// Time in milliseconds an automatic foreground direct PutObject waits for a permit.
+///
+/// A short wait smooths transient bursts while still returning S3
+/// `SlowDown`/503 before body ingest when the node is already saturated.
+pub const ENV_PUT_LARGE_FOREGROUND_ADMISSION_WAIT_TIMEOUT_MS: &str = "RUSTFS_PUT_LARGE_FOREGROUND_ADMISSION_WAIT_TIMEOUT_MS";
+pub const DEFAULT_PUT_LARGE_FOREGROUND_ADMISSION_WAIT_TIMEOUT_MS: u64 = 250;
+
+/// Time in milliseconds a multipart UploadPart waits for a foreground write permit.
+///
+/// SDK-default multipart clients send every part of an upload concurrently, so
+/// a single node routinely sees several times more parts in flight than the
+/// permit pool allows. A queued part waits before body ingest, so the pool
+/// still bounds the number of parts being written, but the wait is not free:
+/// RustFS does not read the request body while the part is queued (hyper only
+/// sends `100 Continue` once the body is first polled, and the AWS SDKs send
+/// the body after a 1-3 s `Expect: 100-continue` grace anyway), so the
+/// client's socket write stalls once the kernel buffers fill, and whatever
+/// timeout the client or an intermediary has configured decides the outcome.
+/// botocore applies its `connect_timeout` (60 s) to the body write, the AWS
+/// SDK for Java v2 has a 30 s socket write timeout, and MinIO bounds the same
+/// wait with a 10 s request deadline. The wait must leave margin under the
+/// shortest of those, not merely fall below an SDK default, so the part
+/// receives S3 `SlowDown`/503 for the client to retry instead of losing its
+/// connection (issue #7385). `0` rejects immediately when the pool is full.
+pub const ENV_PUT_MULTIPART_FOREGROUND_ADMISSION_WAIT_TIMEOUT_MS: &str =
+    "RUSTFS_PUT_MULTIPART_FOREGROUND_ADMISSION_WAIT_TIMEOUT_MS";
+pub const DEFAULT_PUT_MULTIPART_FOREGROUND_ADMISSION_WAIT_TIMEOUT_MS: u64 = 10_000;
+
+// A queued part holds the client's body write open for the whole wait. The
+// shortest write timeout among mainstream S3 SDKs is the AWS SDK for Java v2's
+// 30 s socket write timeout; keep the compiled default at no more than a third
+// of it. This locks only the default; the environment variable may still raise
+// the wait past any client timeout.
+const _: () = assert!(DEFAULT_PUT_MULTIPART_FOREGROUND_ADMISSION_WAIT_TIMEOUT_MS * 3 <= 30_000);
+
+/// Maximum multipart UploadPart requests waiting for a foreground write permit per process.
+///
+/// Parts beyond this queue depth are rejected with S3 `SlowDown`/503 without
+/// waiting, so a genuinely saturated node still fails fast instead of holding
+/// an unbounded set of connections open for the whole wait timeout. Each
+/// queued HTTP/1 part also holds whatever unread body the client already
+/// pushed into that connection's kernel receive buffer, and a queued HTTP/2
+/// part holds up to its flow-control window in process memory, so the depth
+/// bounds socket and window memory as well as connections.
+/// `0` derives the depth from the permit limit.
+pub const ENV_PUT_MULTIPART_FOREGROUND_ADMISSION_MAX_PENDING: &str = "RUSTFS_PUT_MULTIPART_FOREGROUND_ADMISSION_MAX_PENDING";
+pub const DEFAULT_PUT_MULTIPART_FOREGROUND_ADMISSION_MAX_PENDING: usize = 0;
+
+const _: () = assert!(DEFAULT_PUT_LARGE_FOREGROUND_ADMISSION_ENABLE);
+
+/// Environment variable for minimum GetObject timeout in seconds.
+///
+/// When dynamic timeout calculation is enabled, this is the minimum timeout
+/// that will be used regardless of object size. This prevents excessively
+/// short timeouts for very small objects.
+///
+/// Default: 5 seconds (can be overridden by `RUSTFS_OBJECT_MIN_TIMEOUT`).
+pub const ENV_OBJECT_MIN_TIMEOUT: &str = "RUSTFS_OBJECT_MIN_TIMEOUT";
+
+/// Default minimum GetObject timeout: 5 seconds.
+pub const DEFAULT_OBJECT_MIN_TIMEOUT: u64 = 5;
+
+/// Environment variable for maximum GetObject timeout in seconds.
+///
+/// When dynamic timeout calculation is enabled, this is the maximum timeout
+/// that will be used regardless of object size. This prevents excessively
+/// long timeouts for very large objects.
+///
+/// Default: 300 seconds (5 minutes, can be overridden by `RUSTFS_OBJECT_MAX_TIMEOUT`).
+pub const ENV_OBJECT_MAX_TIMEOUT: &str = "RUSTFS_OBJECT_MAX_TIMEOUT";
+
+/// Default maximum GetObject timeout: 300 seconds (5 minutes).
+pub const DEFAULT_OBJECT_MAX_TIMEOUT: u64 = 300;
+
+/// Environment variable for default bytes per second for timeout estimation.
+///
+/// This value is used to estimate timeout duration based on object size when
+/// dynamic timeout calculation is enabled. The timeout is calculated as:
+/// (object_size / bytes_per_second) * buffer_factor
+///
+/// Default: 1048576 (1 MB/s, can be overridden by `RUSTFS_OBJECT_BYTES_PER_SECOND`).
+pub const ENV_OBJECT_BYTES_PER_SECOND: &str = "RUSTFS_OBJECT_BYTES_PER_SECOND";
+
+/// Default bytes per second for timeout estimation: 1 MB/s.
+pub const DEFAULT_OBJECT_BYTES_PER_SECOND: u64 = 1024 * 1024;
+
+/// Environment variable to enable dynamic timeout calculation.
+///
+/// When enabled, timeout is calculated based on object size and transfer speed
+/// rather than using a fixed timeout value. This provides better timeout
+/// handling for objects of varying sizes.
+///
+/// Default: true (enabled, can be overridden by `RUSTFS_OBJECT_DYNAMIC_TIMEOUT_ENABLE`).
+pub const ENV_OBJECT_DYNAMIC_TIMEOUT_ENABLE: &str = "RUSTFS_OBJECT_DYNAMIC_TIMEOUT_ENABLE";
+
+/// Default: dynamic timeout calculation is enabled.
+pub const DEFAULT_OBJECT_DYNAMIC_TIMEOUT_ENABLE: bool = true;
+
+/// Environment variable for duplex pipe buffer size in bytes.
+///
+/// The duplex pipe connects the disk read task to the HTTP response stream.
+/// A larger buffer reduces backpressure but increases memory usage.
+/// For large objects (20-26MB), a 4MB buffer provides good throughput.
+///
+/// Default: 4194304 (4 MB, can be overridden by `RUSTFS_OBJECT_DUPLEX_BUFFER_SIZE`).
+/// Minimum recommended: 1048576 (1 MB).
+pub const ENV_OBJECT_DUPLEX_BUFFER_SIZE: &str = "RUSTFS_OBJECT_DUPLEX_BUFFER_SIZE";
+
+/// Default duplex buffer size: 4 MB.
+///
+/// This is 4x larger than the original 1 MB buffer, providing better
+/// handling of large objects and reducing backpressure-related hangs.
+pub const DEFAULT_OBJECT_DUPLEX_BUFFER_SIZE: usize = 4 * 1024 * 1024;
+
+/// Environment variable for I/O buffer size in bytes.
+///
+/// This controls the buffer size used for individual I/O operations.
+/// A larger buffer improves throughput for sequential reads but may
+/// increase latency for small random reads.
+///
+/// Default: 131072 (128 KB, can be overridden by `RUSTFS_OBJECT_IO_BUFFER_SIZE`).
+pub const ENV_OBJECT_IO_BUFFER_SIZE: &str = "RUSTFS_OBJECT_IO_BUFFER_SIZE";
+
+/// Default I/O buffer size: 128 KB.
+pub const DEFAULT_OBJECT_IO_BUFFER_SIZE: usize = 128 * 1024;
+
+/// Environment variable to enable/disable lock optimization.
+///
+/// When enabled, read locks may be released before the reader is returned.
+/// Disable this only when streaming readers must keep the object namespace
+/// locked until EOF or drop.
+///
+/// Default: true (enabled, can be overridden by `RUSTFS_OBJECT_LOCK_OPTIMIZATION_ENABLE`).
+pub const ENV_OBJECT_LOCK_OPTIMIZATION_ENABLE: &str = "RUSTFS_OBJECT_LOCK_OPTIMIZATION_ENABLE";
+
+/// Default: lock optimization is enabled.
+pub const DEFAULT_OBJECT_LOCK_OPTIMIZATION_ENABLE: bool = true;
+
+/// Environment variable to enable/disable priority-based I/O scheduling.
+///
+/// When enabled, smaller requests (< 1MB) are given higher priority
+/// than larger requests (> 10MB), preventing "starvation" of small
+/// requests by large ones.
+///
+/// Default: true (enabled, can be overridden by `RUSTFS_OBJECT_PRIORITY_SCHEDULING_ENABLE`).
+pub const ENV_OBJECT_PRIORITY_SCHEDULING_ENABLE: &str = "RUSTFS_OBJECT_PRIORITY_SCHEDULING_ENABLE";
+
+/// Default: priority scheduling is enabled.
+pub const DEFAULT_OBJECT_PRIORITY_SCHEDULING_ENABLE: bool = true;
+
+/// Environment variable to enable/disable deadlock detection.
+///
+/// When enabled, the system monitors active requests and detects
+/// potential deadlock situations (circular lock wait chains).
+/// This has some performance overhead and is intended for debugging.
+///
+/// Default: false (disabled, can be overridden by `RUSTFS_OBJECT_DEADLOCK_DETECTION_ENABLE`).
+pub const ENV_OBJECT_DEADLOCK_DETECTION_ENABLE: &str = "RUSTFS_OBJECT_DEADLOCK_DETECTION_ENABLE";
+
+/// Default: deadlock detection is disabled for performance.
+pub const DEFAULT_OBJECT_DEADLOCK_DETECTION_ENABLE: bool = false;
+
+/// Environment variable for deadlock detection check interval in seconds.
+///
+/// How often the deadlock detector analyzes the lock wait graph.
+/// More frequent checks detect deadlocks faster but use more CPU.
+///
+/// Default: 5 seconds (can be overridden by `RUSTFS_OBJECT_DEADLOCK_CHECK_INTERVAL`).
+pub const ENV_OBJECT_DEADLOCK_CHECK_INTERVAL: &str = "RUSTFS_OBJECT_DEADLOCK_CHECK_INTERVAL";
+
+/// Default deadlock check interval: 5 seconds.
+pub const DEFAULT_OBJECT_DEADLOCK_CHECK_INTERVAL: u64 = 5;
+
+/// Environment variable for deadlock detection hang threshold in seconds.
+///
+/// Requests that have been running longer than this threshold are
+/// considered "potentially hung" and included in deadlock analysis.
+///
+/// Default: 10 seconds (can be overridden by `RUSTFS_OBJECT_DEADLOCK_HANG_THRESHOLD`).
+pub const ENV_OBJECT_DEADLOCK_HANG_THRESHOLD: &str = "RUSTFS_OBJECT_DEADLOCK_HANG_THRESHOLD";
+
+/// Default hang threshold: 10 seconds.
+pub const DEFAULT_OBJECT_DEADLOCK_HANG_THRESHOLD: u64 = 10;
+
+/// Environment variable for backpressure high watermark percentage.
+///
+/// When buffer usage exceeds this percentage, the system enters
+/// "high watermark" state and may apply backpressure to producers.
+///
+/// Default: 80 (80%, can be overridden by `RUSTFS_OBJECT_BACKPRESSURE_HIGH_WATERMARK`).
+pub const ENV_OBJECT_BACKPRESSURE_HIGH_WATERMARK: &str = "RUSTFS_OBJECT_BACKPRESSURE_HIGH_WATERMARK";
+
+/// Default high watermark: 80%.
+pub const DEFAULT_OBJECT_BACKPRESSURE_HIGH_WATERMARK: u32 = 80;
+
+/// Environment variable for backpressure low watermark percentage.
+///
+/// When buffer usage drops below this percentage after being in
+/// high watermark state, backpressure is released.
+///
+/// Default: 50 (50%, can be overridden by `RUSTFS_OBJECT_BACKPRESSURE_LOW_WATERMARK`).
+pub const ENV_OBJECT_BACKPRESSURE_LOW_WATERMARK: &str = "RUSTFS_OBJECT_BACKPRESSURE_LOW_WATERMARK";
+
+/// Default low watermark: 50%.
+pub const DEFAULT_OBJECT_BACKPRESSURE_LOW_WATERMARK: u32 = 50;
+
+/// Environment variable for lock acquisition timeout in seconds.
+///
+/// When a lock cannot be acquired within this duration, the operation
+/// will fail with a timeout error. This prevents indefinite waiting
+/// for locks that may never be released due to deadlocks.
+///
+/// Default: 5 seconds (can be overridden by `RUSTFS_OBJECT_LOCK_ACQUIRE_TIMEOUT`).
+pub const ENV_OBJECT_LOCK_ACQUIRE_TIMEOUT: &str = "RUSTFS_OBJECT_LOCK_ACQUIRE_TIMEOUT";
+
+/// Default lock acquisition timeout: 5 seconds.
+pub const DEFAULT_OBJECT_LOCK_ACQUIRE_TIMEOUT: u64 = 5;
+
+/// Environment variable for the experimental PUT commit namespace lock acquire timeout in milliseconds.
+///
+/// A value of `0` disables the experiment and keeps
+/// `RUSTFS_OBJECT_LOCK_ACQUIRE_TIMEOUT` as the timeout. This only bounds the
+/// `put_object_commit` namespace write-lock wait and is intended for #925
+/// tail-drain admission experiments.
+///
+/// Default: 0 milliseconds (disabled).
+pub const ENV_PUT_COMMIT_NAMESPACE_LOCK_ACQUIRE_TIMEOUT_MS: &str = "RUSTFS_PUT_COMMIT_NAMESPACE_LOCK_ACQUIRE_TIMEOUT_MS";
+
+/// Default: PUT commit namespace lock acquire timeout override is disabled.
+pub const DEFAULT_PUT_COMMIT_NAMESPACE_LOCK_ACQUIRE_TIMEOUT_MS: u64 = 0;
+
+/// Environment variable for remote namespace lock RPC transport timeout in milliseconds.
+///
+/// This timeout bounds the internode RPC call itself. It is intentionally
+/// separate from `RUSTFS_OBJECT_LOCK_ACQUIRE_TIMEOUT` and the distributed lock
+/// per-attempt acquire budget so short lock-contention windows do not become
+/// aggressive network deadlines.
+///
+/// Default: 3000 milliseconds (can be overridden by `RUSTFS_OBJECT_LOCK_RPC_TIMEOUT_MS`).
+pub const ENV_OBJECT_LOCK_RPC_TIMEOUT_MS: &str = "RUSTFS_OBJECT_LOCK_RPC_TIMEOUT_MS";
+
+/// Default remote lock RPC transport timeout: 3000 milliseconds.
+pub const DEFAULT_OBJECT_LOCK_RPC_TIMEOUT_MS: u64 = 3000;
+
+/// Environment variable to enable object namespace lock diagnostics.
+///
+/// When enabled, RustFS emits slow lock acquisition and long lock hold
+/// warnings for object-level namespace locks. This is intended for
+/// production debugging of contention on hot object keys.
+///
+/// Default: false (disabled, can be overridden by `RUSTFS_OBJECT_LOCK_DIAG_ENABLE`).
+pub const ENV_OBJECT_LOCK_DIAG_ENABLE: &str = "RUSTFS_OBJECT_LOCK_DIAG_ENABLE";
+
+/// Default: object lock diagnostics are disabled.
+pub const DEFAULT_OBJECT_LOCK_DIAG_ENABLE: bool = false;
+
+/// Environment variable for the slow object lock acquisition threshold in milliseconds.
+///
+/// When a read or write namespace lock takes at least this long to acquire,
+/// RustFS emits a warning with the operation name and object key.
+///
+/// Default: 500 milliseconds.
+pub const ENV_OBJECT_LOCK_DIAG_SLOW_ACQUIRE_MS: &str = "RUSTFS_OBJECT_LOCK_DIAG_SLOW_ACQUIRE_MS";
+
+/// Default slow object lock acquisition threshold: 500 milliseconds.
+pub const DEFAULT_OBJECT_LOCK_DIAG_SLOW_ACQUIRE_MS: u64 = 500;
+
+/// Environment variable for the long object lock hold threshold in milliseconds.
+///
+/// When a namespace lock guard is held for at least this long, RustFS emits
+/// a warning when the guard is dropped.
+///
+/// Default: 1000 milliseconds.
+pub const ENV_OBJECT_LOCK_DIAG_SLOW_HOLD_MS: &str = "RUSTFS_OBJECT_LOCK_DIAG_SLOW_HOLD_MS";
+
+/// Default long object lock hold threshold: 1000 milliseconds.
+pub const DEFAULT_OBJECT_LOCK_DIAG_SLOW_HOLD_MS: u64 = 1000;
+
+// ============================================================================
+// I/O priority scheduling configuration
+// ============================================================================
+
+/// Environment variable for I/O high priority size threshold in bytes.
+///
+/// Requests smaller than this threshold are classified as high priority.
+/// High priority requests are processed first to prevent starvation of small requests.
+///
+/// Default: 1048576 (1 MB, can be overridden by `RUSTFS_OBJECT_IO_HIGH_PRIORITY_SIZE_THRESHOLD`).
+pub const ENV_OBJECT_IO_HIGH_PRIORITY_SIZE_THRESHOLD: &str = "RUSTFS_OBJECT_IO_HIGH_PRIORITY_SIZE_THRESHOLD";
+
+/// Default high priority size threshold: 1 MB.
+pub const DEFAULT_OBJECT_IO_HIGH_PRIORITY_SIZE_THRESHOLD: usize = 1024 * 1024;
+
+/// Environment variable for I/O low priority size threshold in bytes.
+///
+/// Requests larger than this threshold are classified as low priority.
+/// Low priority requests are processed last to avoid blocking small requests.
+///
+/// Default: 10485760 (10 MB, can be overridden by `RUSTFS_OBJECT_IO_LOW_PRIORITY_SIZE_THRESHOLD`).
+pub const ENV_OBJECT_IO_LOW_PRIORITY_SIZE_THRESHOLD: &str = "RUSTFS_OBJECT_IO_LOW_PRIORITY_SIZE_THRESHOLD";
+
+/// Default low priority size threshold: 10 MB.
+pub const DEFAULT_OBJECT_IO_LOW_PRIORITY_SIZE_THRESHOLD: usize = 10 * 1024 * 1024;
+
+/// Environment variable for high priority queue capacity.
+///
+/// Maximum number of requests that can be queued in the high priority queue.
+///
+/// Default: 32 (can be overridden by `RUSTFS_OBJECT_IO_QUEUE_HIGH_CAPACITY`).
+pub const ENV_OBJECT_IO_QUEUE_HIGH_CAPACITY: &str = "RUSTFS_OBJECT_IO_QUEUE_HIGH_CAPACITY";
+
+/// Default high priority queue capacity: 32.
+pub const DEFAULT_OBJECT_IO_QUEUE_HIGH_CAPACITY: usize = 32;
+
+/// Environment variable for normal priority queue capacity.
+///
+/// Maximum number of requests that can be queued in the normal priority queue.
+///
+/// Default: 64 (can be overridden by `RUSTFS_OBJECT_IO_QUEUE_NORMAL_CAPACITY`).
+pub const ENV_OBJECT_IO_QUEUE_NORMAL_CAPACITY: &str = "RUSTFS_OBJECT_IO_QUEUE_NORMAL_CAPACITY";
+
+/// Default normal priority queue capacity: 64.
+pub const DEFAULT_OBJECT_IO_QUEUE_NORMAL_CAPACITY: usize = 64;
+
+/// Environment variable for low priority queue capacity.
+///
+/// Maximum number of requests that can be queued in the low priority queue.
+///
+/// Default: 16 (can be overridden by `RUSTFS_OBJECT_IO_QUEUE_LOW_CAPACITY`).
+pub const ENV_OBJECT_IO_QUEUE_LOW_CAPACITY: &str = "RUSTFS_OBJECT_IO_QUEUE_LOW_CAPACITY";
+
+/// Default low priority queue capacity: 16.
+pub const DEFAULT_OBJECT_IO_QUEUE_LOW_CAPACITY: usize = 16;
+
+/// Environment variable for starvation prevention check interval in milliseconds.
+///
+/// How often the system checks for starving low-priority requests.
+/// When a low-priority request has been waiting longer than the starvation threshold,
+/// it is promoted to normal priority.
+///
+/// Default: 100 ms (can be overridden by `RUSTFS_OBJECT_IO_STARVATION_PREVENTION_INTERVAL`).
+pub const ENV_OBJECT_IO_STARVATION_PREVENTION_INTERVAL: &str = "RUSTFS_OBJECT_IO_STARVATION_PREVENTION_INTERVAL";
+
+/// Default starvation prevention interval: 100 ms.
+pub const DEFAULT_OBJECT_IO_STARVATION_PREVENTION_INTERVAL: u64 = 100;
+
+/// Environment variable for starvation threshold in seconds.
+///
+/// Maximum time a low-priority request can wait before being promoted to normal priority.
+/// This prevents indefinite starvation of low-priority requests.
+///
+/// Default: 5 seconds (can be overridden by `RUSTFS_OBJECT_IO_STARVATION_THRESHOLD_SECS`).
+pub const ENV_OBJECT_IO_STARVATION_THRESHOLD_SECS: &str = "RUSTFS_OBJECT_IO_STARVATION_THRESHOLD_SECS";
+
+/// Default starvation threshold: 5 seconds.
+pub const DEFAULT_OBJECT_IO_STARVATION_THRESHOLD_SECS: u64 = 5;
+
+/// Environment variable for load sampling window size.
+///
+/// Number of recent samples used to calculate I/O load metrics.
+///
+/// Default: 100 samples (can be overridden by `RUSTFS_OBJECT_IO_LOAD_SAMPLE_WINDOW`).
+pub const ENV_OBJECT_IO_LOAD_SAMPLE_WINDOW: &str = "RUSTFS_OBJECT_IO_LOAD_SAMPLE_WINDOW";
+
+/// Default load sampling window: 100 samples.
+pub const DEFAULT_OBJECT_IO_LOAD_SAMPLE_WINDOW: usize = 100;
+
+/// Environment variable for high load wait time threshold in milliseconds.
+///
+/// When average wait time exceeds this threshold, the system is considered to be under high load.
+///
+/// Default: 50 ms (can be overridden by `RUSTFS_OBJECT_IO_LOAD_HIGH_THRESHOLD_MS`).
+pub const ENV_OBJECT_IO_LOAD_HIGH_THRESHOLD_MS: &str = "RUSTFS_OBJECT_IO_LOAD_HIGH_THRESHOLD_MS";
+
+/// Default high load threshold: 50 ms.
+pub const DEFAULT_OBJECT_IO_LOAD_HIGH_THRESHOLD_MS: u64 = 50;
+
+/// Environment variable for low load wait time threshold in milliseconds.
+///
+/// When average wait time is below this threshold, the system is considered to be under low load.
+///
+/// Default: 10 ms (can be overridden by `RUSTFS_OBJECT_IO_LOAD_LOW_THRESHOLD_MS`).
+pub const ENV_OBJECT_IO_LOAD_LOW_THRESHOLD_MS: &str = "RUSTFS_OBJECT_IO_LOAD_LOW_THRESHOLD_MS";
+
+/// Default low load threshold: 10 ms.
+pub const DEFAULT_OBJECT_IO_LOAD_LOW_THRESHOLD_MS: u64 = 10;
+
+/// Environment variable for enabling storage media detection for adaptive I/O scheduling.
+///
+/// When disabled, the scheduler falls back to `Unknown` storage media unless an explicit
+/// override is provided.
+///
+/// Default: true (can be overridden by `RUSTFS_OBJECT_IO_STORAGE_DETECTION_ENABLE`).
+pub const ENV_OBJECT_IO_STORAGE_DETECTION_ENABLE: &str = "RUSTFS_OBJECT_IO_STORAGE_DETECTION_ENABLE";
+
+/// Default storage media detection setting: enabled.
+pub const DEFAULT_OBJECT_IO_STORAGE_DETECTION_ENABLE: bool = true;
+
+/// Environment variable for overriding detected storage media.
+///
+/// Supported values: `nvme`, `ssd`, `hdd`, `unknown`.
+/// Empty value means auto-detect or fallback to `Unknown`.
+///
+/// Default: empty string (can be overridden by `RUSTFS_OBJECT_IO_STORAGE_MEDIA_OVERRIDE`).
+pub const ENV_OBJECT_IO_STORAGE_MEDIA_OVERRIDE: &str = "RUSTFS_OBJECT_IO_STORAGE_MEDIA_OVERRIDE";
+
+/// Default storage media override: no override.
+pub const DEFAULT_OBJECT_IO_STORAGE_MEDIA_OVERRIDE: &str = "";
+
+/// Environment variable for access-pattern history size.
+///
+/// Controls how many recent offset/length observations are used to classify
+/// sequential, random, or mixed reads.
+///
+/// Default: 8 (can be overridden by `RUSTFS_OBJECT_IO_PATTERN_HISTORY_SIZE`).
+pub const ENV_OBJECT_IO_PATTERN_HISTORY_SIZE: &str = "RUSTFS_OBJECT_IO_PATTERN_HISTORY_SIZE";
+
+/// Default access-pattern history size: 8 samples.
+pub const DEFAULT_OBJECT_IO_PATTERN_HISTORY_SIZE: usize = 8;
+
+/// Environment variable for sequential access step tolerance in bytes.
+///
+/// Small gaps between adjacent reads within this tolerance are still treated as sequential.
+///
+/// Default: 131072 bytes (128 KiB, can be overridden by `RUSTFS_OBJECT_IO_SEQUENTIAL_STEP_TOLERANCE_BYTES`).
+pub const ENV_OBJECT_IO_SEQUENTIAL_STEP_TOLERANCE_BYTES: &str = "RUSTFS_OBJECT_IO_SEQUENTIAL_STEP_TOLERANCE_BYTES";
+
+/// Default sequential step tolerance: 128 KiB.
+pub const DEFAULT_OBJECT_IO_SEQUENTIAL_STEP_TOLERANCE_BYTES: u64 = 128 * 1024;
+
+/// Environment variable for bandwidth EMA beta.
+///
+/// Lower values react faster to recent throughput changes while higher values smooth
+/// short-term fluctuations more aggressively.
+///
+/// Default: 0.1 (can be overridden by `RUSTFS_OBJECT_IO_BANDWIDTH_EMA_BETA`).
+pub const ENV_OBJECT_IO_BANDWIDTH_EMA_BETA: &str = "RUSTFS_OBJECT_IO_BANDWIDTH_EMA_BETA";
+
+/// Default bandwidth EMA beta: 0.1.
+pub const DEFAULT_OBJECT_IO_BANDWIDTH_EMA_BETA: f64 = 0.1;
+
+/// Environment variable for the low bandwidth threshold in bytes per second.
+///
+/// Observed throughput below this value causes the scheduler to be more conservative
+/// with buffer growth and read-ahead.
+///
+/// Default: 67108864 bytes/sec (64 MiB/s, can be overridden by `RUSTFS_OBJECT_IO_BANDWIDTH_LOW_THRESHOLD_BPS`).
+pub const ENV_OBJECT_IO_BANDWIDTH_LOW_THRESHOLD_BPS: &str = "RUSTFS_OBJECT_IO_BANDWIDTH_LOW_THRESHOLD_BPS";
+
+/// Default low bandwidth threshold: 64 MiB/s.
+pub const DEFAULT_OBJECT_IO_BANDWIDTH_LOW_THRESHOLD_BPS: u64 = 64 * 1024 * 1024;
+
+/// Environment variable for the high bandwidth threshold in bytes per second.
+///
+/// Observed throughput above this value allows the scheduler to be more aggressive
+/// for sequential workloads.
+///
+/// Default: 536870912 bytes/sec (512 MiB/s, can be overridden by `RUSTFS_OBJECT_IO_BANDWIDTH_HIGH_THRESHOLD_BPS`).
+pub const ENV_OBJECT_IO_BANDWIDTH_HIGH_THRESHOLD_BPS: &str = "RUSTFS_OBJECT_IO_BANDWIDTH_HIGH_THRESHOLD_BPS";
+
+/// Default high bandwidth threshold: 512 MiB/s.
+pub const DEFAULT_OBJECT_IO_BANDWIDTH_HIGH_THRESHOLD_BPS: u64 = 512 * 1024 * 1024;
+
+/// Environment variable for NVMe buffer cap in bytes.
+///
+/// Sequential reads on NVMe can scale up to this buffer cap.
+///
+/// Default: 2097152 bytes (2 MiB, can be overridden by `RUSTFS_OBJECT_IO_NVME_BUFFER_CAP`).
+pub const ENV_OBJECT_IO_NVME_BUFFER_CAP: &str = "RUSTFS_OBJECT_IO_NVME_BUFFER_CAP";
+
+/// Default NVMe buffer cap: 2 MiB.
+pub const DEFAULT_OBJECT_IO_NVME_BUFFER_CAP: usize = 2 * 1024 * 1024;
+
+/// Environment variable for SSD buffer cap in bytes.
+///
+/// Default: 1048576 bytes (1 MiB, can be overridden by `RUSTFS_OBJECT_IO_SSD_BUFFER_CAP`).
+pub const ENV_OBJECT_IO_SSD_BUFFER_CAP: &str = "RUSTFS_OBJECT_IO_SSD_BUFFER_CAP";
+
+/// Default SSD buffer cap: 1 MiB.
+pub const DEFAULT_OBJECT_IO_SSD_BUFFER_CAP: usize = 1024 * 1024;
+
+/// Environment variable for HDD buffer cap in bytes.
+///
+/// Default: 524288 bytes (512 KiB, can be overridden by `RUSTFS_OBJECT_IO_HDD_BUFFER_CAP`).
+pub const ENV_OBJECT_IO_HDD_BUFFER_CAP: &str = "RUSTFS_OBJECT_IO_HDD_BUFFER_CAP";
+
+/// Default HDD buffer cap: 512 KiB.
+pub const DEFAULT_OBJECT_IO_HDD_BUFFER_CAP: usize = 512 * 1024;
+
+/// Environment variable for disabling read-ahead under random or mixed access with concurrency.
+///
+/// When concurrent requests reach this threshold, random-heavy workloads stop using read-ahead.
+///
+/// Default: 4 (can be overridden by `RUSTFS_OBJECT_IO_RANDOM_READAHEAD_DISABLE_CONCURRENCY`).
+pub const ENV_OBJECT_IO_RANDOM_READAHEAD_DISABLE_CONCURRENCY: &str = "RUSTFS_OBJECT_IO_RANDOM_READAHEAD_DISABLE_CONCURRENCY";
+
+/// Default read-ahead disable concurrency threshold: 4.
+pub const DEFAULT_OBJECT_IO_RANDOM_READAHEAD_DISABLE_CONCURRENCY: usize = 4;
+
+#[cfg(test)]
+mod remote_version_state_tests {
+    #[test]
+    fn remote_version_state_gate_uses_stable_environment_names() {
+        assert_eq!(super::ENV_TIER_REMOTE_VERSION_STATE_WRITE, "RUSTFS_TIER_REMOTE_VERSION_STATE_WRITE");
+        assert_eq!(
+            super::ENV_TIER_REMOTE_VERSION_STATE_FLEET_CONFIRMED,
+            "RUSTFS_TIER_REMOTE_VERSION_STATE_FLEET_CONFIRMED"
+        );
+    }
+
+    #[test]
+    fn remote_tier_timeout_env_names_are_stable() {
+        assert_eq!(super::ENV_TIER_REMOTE_CONNECT_TIMEOUT_SECS, "RUSTFS_TIER_REMOTE_CONNECT_TIMEOUT_SECS");
+        assert_eq!(super::ENV_TIER_REMOTE_REQUEST_TIMEOUT_SECS, "RUSTFS_TIER_REMOTE_REQUEST_TIMEOUT_SECS");
+        assert_eq!(
+            super::ENV_TIER_REMOTE_RESPONSE_BODY_IDLE_TIMEOUT_SECS,
+            "RUSTFS_TIER_REMOTE_RESPONSE_BODY_IDLE_TIMEOUT_SECS"
+        );
+    }
+
+    #[test]
+    fn data_movement_part_checksum_gate_uses_stable_environment_names() {
+        assert_eq!(super::ENV_DATA_MOVEMENT_PART_CHECKSUMS_WRITE, "RUSTFS_DATA_MOVEMENT_PART_CHECKSUMS_WRITE");
+        assert_eq!(
+            super::ENV_DATA_MOVEMENT_PART_CHECKSUMS_FLEET_CONFIRMED,
+            "RUSTFS_DATA_MOVEMENT_PART_CHECKSUMS_FLEET_CONFIRMED"
+        );
+    }
+
+    #[test]
+    fn object_transaction_fencing_gate_uses_stable_environment_names() {
+        assert_eq!(super::ENV_OBJECT_TRANSACTION_FENCING_WRITE, "RUSTFS_OBJECT_TRANSACTION_FENCING_WRITE");
+        assert_eq!(
+            super::ENV_OBJECT_TRANSACTION_FENCING_FLEET_CONFIRMED,
+            "RUSTFS_OBJECT_TRANSACTION_FENCING_FLEET_CONFIRMED"
+        );
+    }
+
+    #[test]
+    fn pool_meta_v2_gate_uses_stable_environment_names() {
+        assert_eq!(super::ENV_POOL_META_V2_WRITE, "RUSTFS_POOL_META_V2_WRITE");
+        assert_eq!(super::ENV_POOL_META_V2_FLEET_CONFIRMED, "RUSTFS_POOL_META_V2_FLEET_CONFIRMED");
+    }
+
+    #[test]
+    fn pool_meta_v3_gate_uses_stable_environment_names() {
+        assert_eq!(super::ENV_POOL_META_V3_WRITE, "RUSTFS_POOL_META_V3_WRITE");
+        assert_eq!(super::ENV_POOL_META_V3_FLEET_CONFIRMED, "RUSTFS_POOL_META_V3_FLEET_CONFIRMED");
+    }
+
+    #[test]
+    fn snowball_limit_environment_names_are_stable() {
+        assert_eq!(super::ENV_SNOWBALL_MAX_ENTRY_BYTES, "RUSTFS_SNOWBALL_MAX_ENTRY_BYTES");
+        assert_eq!(super::ENV_SNOWBALL_MAX_UNPACKED_BYTES, "RUSTFS_SNOWBALL_MAX_UNPACKED_BYTES");
+    }
+}

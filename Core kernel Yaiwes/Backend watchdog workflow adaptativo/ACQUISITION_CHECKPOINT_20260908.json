@@ -1,0 +1,24 @@
+{
+  "task_id": "backend-watchdog-yaiwes-34-download-extract-20260908",
+  "run_id": "34204276716",
+  "verified_or_reused": 20,
+  "gaps": [
+    "1\tapscheduler\tREUSE_DESTINATION_GAP:Core kernel Yaiwes/Backend watchdog workflow adaptativo/time-scheduling/apscheduler",
+    "4\tcelery\tREUSE_DESTINATION_GAP:Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/celery",
+    "11\tburr\tREUSE_DESTINATION_GAP:Agente Yaiwes principal/execution-orchestration/state-machine-executor/burr",
+    "13\tapache-hamilton\tSOURCE_GUARD_GAP"
+  ],
+  "deferred_reference_selection": [
+    "25\topenhands\tREFERENCE_SELECT_ONLY\tCore kernel Yaiwes/Backend watchdog workflow adaptativo/cowork-reference/openhands",
+    "26\topenwork\tREFERENCE_SELECT_ONLY\tCore kernel Yaiwes/Backend watchdog workflow adaptativo/cowork-reference/openwork",
+    "27\topencowork\tREFERENCE_SELECT_ONLY\tCore kernel Yaiwes/Backend watchdog workflow adaptativo/cowork-reference/opencowork",
+    "28\tuseagent\tREFERENCE_SELECT_ONLY\tCore kernel Yaiwes/Backend watchdog workflow adaptativo/cowork-reference/useagent",
+    "29\tinterpreter-workstation\tREFERENCE_SELECT_ONLY\tCore kernel Yaiwes/Backend watchdog workflow adaptativo/cowork-reference/interpreter-workstation",
+    "30\tbotroster\tREFERENCE_SELECT_ONLY\tCore kernel Yaiwes/Backend watchdog workflow adaptativo/grokbot-reference/botroster",
+    "31\tguaca\tREFERENCE_SELECT_ONLY\tCore kernel Yaiwes/Backend watchdog workflow adaptativo/grokbot-reference/guaca",
+    "32\topenbot\tREFERENCE_SELECT_ONLY\tCore kernel Yaiwes/Backend watchdog workflow adaptativo/grokbot-reference/openbot",
+    "33\tcline\tREFERENCE_SELECT_ONLY\tCore kernel Yaiwes/Backend watchdog workflow adaptativo/grokbot-reference/cline",
+    "34\tcowork\tREFERENCE_SELECT_ONLY\tCore kernel Yaiwes/Backend watchdog workflow adaptativo/grokbot-reference/cowork"
+  ],
+  "verdict": "ACTIVE_LOOP"
+}

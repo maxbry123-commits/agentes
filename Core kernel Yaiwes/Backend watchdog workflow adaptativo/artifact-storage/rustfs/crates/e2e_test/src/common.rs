@@ -1,0 +1,2422 @@
+// Copyright 2024 RustFS Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+//! Common utilities for all E2E tests
+//!
+//! This module provides general-purpose functionality needed across
+//! different test modules, including:
+//! - RustFS server process management
+//! - AWS S3 client creation and configuration
+//! - Basic health checks and server readiness detection
+//! - Common test constants and utilities
+
+use aws_sdk_s3::config::{Credentials, Region};
+use aws_sdk_s3::{Client, Config};
+use aws_smithy_http_client::Builder as SmithyHttpClientBuilder;
+use http::header::{CONTENT_TYPE, HOST};
+use reqwest::Client as HttpClient;
+use reqwest::StatusCode;
+use rustfs_signer::constants::UNSIGNED_PAYLOAD;
+use rustfs_signer::sign_v4;
+use s3s::Body;
+use serde_json;
+use std::ffi::OsStr;
+use std::fs as stdfs;
+use std::io::ErrorKind;
+use std::net::SocketAddr;
+use std::path::{Path, PathBuf};
+use std::process::{Child, Command, Stdio};
+use std::sync::Once;
+use std::time::Duration;
+use tokio::fs;
+use tokio::net::TcpStream;
+use tokio::time::sleep;
+use tracing::{error, info, warn};
+use uuid::Uuid;
+use walkdir::WalkDir;
+
+// Common constants for all E2E tests
+pub const DEFAULT_ACCESS_KEY: &str = "rustfsadmin";
+pub const DEFAULT_SECRET_KEY: &str = "rustfsadmin";
+pub const ENV_RUSTFS_BUILD_FEATURES: &str = "RUSTFS_BUILD_FEATURES";
+pub(crate) const FAST_DATA_USAGE_SCANNER_ENV: &[(&str, &str)] =
+    &[("RUSTFS_SCANNER_CYCLE", "1"), ("RUSTFS_SCANNER_START_DELAY_SECS", "0")];
+pub const TEST_BUCKET: &str = "e2e-test-bucket";
+const RUSTFS_FULL_FEATURE: &str = "full";
+const TEST_PORT_MIN: u16 = 20_000;
+// Keep allocator ports below the ephemeral range used by bind(..., 0) test helpers.
+const TEST_PORT_RANGE: u16 = 10_000;
+const TEST_PORT_MIN_ENV: &str = "RUSTFS_E2E_TEST_PORT_MIN";
+const TEST_PORT_RANGE_ENV: &str = "RUSTFS_E2E_TEST_PORT_RANGE";
+const TEST_PORT_COUNTER_PATH: &str = "/tmp/rustfs_e2e_next_port";
+const TEST_PORT_LOCK_DIR: &str = "/tmp/rustfs_e2e_port_allocator.lock";
+const TEST_PORT_LOCK_STALE_AFTER: Duration = Duration::from_secs(30);
+
+fn capture_log_path(log_dir: &Path, temp_dir: &str) -> Option<PathBuf> {
+    let temp_name = Path::new(temp_dir).file_name()?.to_string_lossy();
+    Some(log_dir.join(format!("{temp_name}.log")))
+}
+
+fn configured_capture_log_path(temp_dir: &str) -> Option<String> {
+    let log_dir = std::env::var_os("RUSTFS_E2E_LOG_DIR")?;
+    if stdfs::create_dir_all(&log_dir).is_err() {
+        warn!(?log_dir, "failed to create configured E2E server log directory");
+        return None;
+    }
+
+    capture_log_path(Path::new(&log_dir), temp_dir).map(|path| path.to_string_lossy().into_owned())
+}
+
+struct PortAllocatorGuard;
+
+impl PortAllocatorGuard {
+    async fn acquire() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        loop {
+            match stdfs::create_dir(TEST_PORT_LOCK_DIR) {
+                Ok(()) => return Ok(Self),
+                Err(err) if err.kind() == ErrorKind::AlreadyExists => {
+                    remove_stale_port_allocator_lock();
+                    sleep(Duration::from_millis(10)).await;
+                }
+                Err(err) => return Err(err.into()),
+            }
+        }
+    }
+}
+
+impl Drop for PortAllocatorGuard {
+    fn drop(&mut self) {
+        let _ = stdfs::remove_dir(TEST_PORT_LOCK_DIR);
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct TestPortAllocatorConfig {
+    min: u16,
+    range: u16,
+}
+
+impl TestPortAllocatorConfig {
+    fn max_exclusive(self) -> u32 {
+        u32::from(self.min) + u32::from(self.range)
+    }
+
+    fn contains(self, port: &u16) -> bool {
+        (u32::from(self.min)..self.max_exclusive()).contains(&u32::from(*port))
+    }
+}
+
+fn parse_test_port_allocator_config(
+    min_override: Option<&str>,
+    range_override: Option<&str>,
+) -> Result<TestPortAllocatorConfig, Box<dyn std::error::Error + Send + Sync>> {
+    let min = match min_override {
+        Some(value) => value
+            .parse::<u16>()
+            .map_err(|err| format!("{TEST_PORT_MIN_ENV} must be a valid u16: {err}"))?,
+        None => TEST_PORT_MIN,
+    };
+    let range = match range_override {
+        Some(value) => value
+            .parse::<u16>()
+            .map_err(|err| format!("{TEST_PORT_RANGE_ENV} must be a valid u16: {err}"))?,
+        None => TEST_PORT_RANGE,
+    };
+    if range == 0 {
+        return Err(format!("{TEST_PORT_RANGE_ENV} must be greater than zero").into());
+    }
+    if min < 1024 {
+        return Err(format!("{TEST_PORT_MIN_ENV} must be at least 1024").into());
+    }
+    let max_exclusive = u32::from(min) + u32::from(range);
+    if max_exclusive > u32::from(u16::MAX) + 1 {
+        return Err(format!("{TEST_PORT_MIN_ENV} + {TEST_PORT_RANGE_ENV} exceeds u16 port space").into());
+    }
+    Ok(TestPortAllocatorConfig { min, range })
+}
+
+fn test_port_allocator_config() -> Result<TestPortAllocatorConfig, Box<dyn std::error::Error + Send + Sync>> {
+    parse_test_port_allocator_config(
+        std::env::var(TEST_PORT_MIN_ENV).ok().as_deref(),
+        std::env::var(TEST_PORT_RANGE_ENV).ok().as_deref(),
+    )
+}
+
+fn advance_test_port(port: u16, config: TestPortAllocatorConfig) -> u16 {
+    let offset = (port - config.min + 1) % config.range;
+    config.min + offset
+}
+
+fn seeded_test_port(config: TestPortAllocatorConfig) -> u16 {
+    let offset = (Uuid::new_v4().as_u128() % u128::from(config.range)) as u16;
+    config.min + offset
+}
+
+fn read_next_test_port(config: TestPortAllocatorConfig) -> u16 {
+    stdfs::read_to_string(TEST_PORT_COUNTER_PATH)
+        .ok()
+        .and_then(|value| value.trim().parse::<u16>().ok())
+        .filter(|port| config.contains(port))
+        .unwrap_or_else(|| seeded_test_port(config))
+}
+
+fn remove_stale_port_allocator_lock() {
+    let Ok(metadata) = stdfs::metadata(TEST_PORT_LOCK_DIR) else {
+        return;
+    };
+    let Ok(modified) = metadata.modified() else {
+        return;
+    };
+    if modified.elapsed().is_ok_and(|elapsed| elapsed > TEST_PORT_LOCK_STALE_AFTER) {
+        let _ = stdfs::remove_dir(TEST_PORT_LOCK_DIR);
+    }
+}
+
+fn write_next_test_port(port: u16) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    stdfs::write(TEST_PORT_COUNTER_PATH, port.to_string())?;
+    Ok(())
+}
+
+pub(crate) fn capture_command_logs(
+    command: &mut Command,
+    log_path: Option<&str>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let Some(log_path) = log_path else {
+        return Ok(());
+    };
+    let file = stdfs::OpenOptions::new().create(true).append(true).open(log_path)?;
+    let stderr_file = file.try_clone()?;
+    command.stdout(Stdio::from(file)).stderr(Stdio::from(stderr_file));
+    Ok(())
+}
+
+pub(crate) fn build_test_s3_config(
+    endpoint_url: &str,
+    access_key: &str,
+    secret_key: &str,
+    session_token: Option<&str>,
+    provider_name: &'static str,
+) -> Config {
+    let credentials = Credentials::new(access_key, secret_key, session_token.map(str::to_owned), None, provider_name);
+    let mut config = Config::builder()
+        .credentials_provider(credentials)
+        .region(Region::new("us-east-1"))
+        .endpoint_url(endpoint_url)
+        .force_path_style(true)
+        .behavior_version_latest();
+
+    if endpoint_url.starts_with("http://") {
+        config = config.http_client(SmithyHttpClientBuilder::new().build_http());
+    }
+
+    config.build()
+}
+
+pub(crate) fn build_test_sts_client(
+    endpoint_url: &str,
+    access_key: &str,
+    secret_key: &str,
+    session_token: Option<&str>,
+    provider_name: &'static str,
+) -> aws_sdk_sts::Client {
+    let mut config = aws_sdk_sts::Config::builder()
+        .credentials_provider(aws_sdk_sts::config::Credentials::new(
+            access_key,
+            secret_key,
+            session_token.map(str::to_owned),
+            None,
+            provider_name,
+        ))
+        .region(aws_sdk_sts::config::Region::new("us-east-1"))
+        .endpoint_url(endpoint_url)
+        .retry_config(aws_sdk_sts::config::retry::RetryConfig::standard().with_max_attempts(1))
+        .behavior_version_latest();
+
+    if endpoint_url.starts_with("http://") {
+        config = config.http_client(SmithyHttpClientBuilder::new().build_http());
+    }
+
+    aws_sdk_sts::Client::from_conf(config.build())
+}
+
+pub fn workspace_root() -> PathBuf {
+    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.pop(); // e2e_test
+    path.pop(); // crates
+    path
+}
+
+pub fn local_http_client() -> HttpClient {
+    HttpClient::builder()
+        .no_proxy()
+        .build()
+        .expect("failed to build local reqwest client")
+}
+
+pub(crate) fn signal_process(pid: u32, signal: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let output = Command::new("kill").arg(format!("-{signal}")).arg(pid.to_string()).output()?;
+    if output.status.success() {
+        return Ok(());
+    }
+
+    Err(format!("kill -{signal} {pid} failed: {}", String::from_utf8_lossy(&output.stderr)).into())
+}
+
+pub(crate) async fn signed_s3_request(
+    method: http::Method,
+    url: &str,
+    body: Option<String>,
+    content_type: Option<&str>,
+    access_key: &str,
+    secret_key: &str,
+) -> Result<reqwest::Response, Box<dyn std::error::Error + Send + Sync>> {
+    signed_s3_request_with_headers(method, url, body, content_type, access_key, secret_key, &http::HeaderMap::new()).await
+}
+
+pub(crate) async fn signed_s3_request_with_headers(
+    method: http::Method,
+    url: &str,
+    body: Option<String>,
+    content_type: Option<&str>,
+    access_key: &str,
+    secret_key: &str,
+    extra_headers: &http::HeaderMap,
+) -> Result<reqwest::Response, Box<dyn std::error::Error + Send + Sync>> {
+    signed_s3_request_with_session_token(
+        method,
+        url,
+        body,
+        content_type,
+        SigningCredentials {
+            access_key,
+            secret_key,
+            session_token: None,
+        },
+        extra_headers,
+    )
+    .await
+}
+
+struct SigningCredentials<'a> {
+    access_key: &'a str,
+    secret_key: &'a str,
+    session_token: Option<&'a str>,
+}
+
+async fn signed_s3_request_with_session_token(
+    method: http::Method,
+    url: &str,
+    body: Option<String>,
+    content_type: Option<&str>,
+    credentials: SigningCredentials<'_>,
+    extra_headers: &http::HeaderMap,
+) -> Result<reqwest::Response, Box<dyn std::error::Error + Send + Sync>> {
+    let uri = url.parse::<http::Uri>()?;
+    let authority = uri.authority().ok_or("S3 URL missing authority")?.to_string();
+    let mut request = http::Request::builder()
+        .method(method.clone())
+        .uri(uri)
+        .header(HOST, authority)
+        .header("x-amz-content-sha256", UNSIGNED_PAYLOAD);
+    if let Some(content_type) = content_type {
+        request = request.header(CONTENT_TYPE, content_type);
+    }
+    for (name, value) in extra_headers {
+        request = request.header(name, value);
+    }
+
+    let content_length = i64::try_from(body.as_ref().map_or(0, String::len)).map_err(|_| "S3 request body is too large")?;
+    let signed = sign_v4(
+        request.body(Body::empty())?,
+        content_length,
+        credentials.access_key,
+        credentials.secret_key,
+        credentials.session_token.unwrap_or_default(),
+        "us-east-1",
+    );
+
+    let mut request = local_http_client().request(method, url);
+    for (name, value) in signed.headers() {
+        request = request.header(name, value);
+    }
+    if let Some(body) = body {
+        request = request.body(body);
+    }
+    Ok(request.send().await?)
+}
+
+/// Signs and sends an admin HTTP request with the given credentials.
+pub(crate) async fn admin_request(
+    base_url: &str,
+    method: http::Method,
+    path_and_query: &str,
+    body: Option<String>,
+    access_key: &str,
+    secret_key: &str,
+) -> Result<(StatusCode, String), Box<dyn std::error::Error + Send + Sync>> {
+    admin_request_with_session_token(base_url, method, path_and_query, body, access_key, secret_key, None).await
+}
+
+pub(crate) async fn admin_request_with_session_token(
+    base_url: &str,
+    method: http::Method,
+    path_and_query: &str,
+    body: Option<String>,
+    access_key: &str,
+    secret_key: &str,
+    session_token: Option<&str>,
+) -> Result<(StatusCode, String), Box<dyn std::error::Error + Send + Sync>> {
+    let url = format!("{base_url}{path_and_query}");
+    let content_type = body.as_ref().map(|_| "application/json");
+    let response = signed_s3_request_with_session_token(
+        method,
+        &url,
+        body,
+        content_type,
+        SigningCredentials {
+            access_key,
+            secret_key,
+            session_token,
+        },
+        &http::HeaderMap::new(),
+    )
+    .await?;
+    let status = response.status();
+    let body = response.text().await?;
+    Ok((status, body))
+}
+
+/// Sends a root-credential admin request and returns its successful response body.
+pub(crate) async fn admin_ok(
+    env: &RustFSTestEnvironment,
+    method: http::Method,
+    path_and_query: &str,
+    body: Option<String>,
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    let (status, response_body) =
+        admin_request(&env.url, method.clone(), path_and_query, body, &env.access_key, &env.secret_key).await?;
+    if !status.is_success() {
+        return Err(format!("{method} {path_and_query} failed: {status} {response_body}").into());
+    }
+    Ok(response_body)
+}
+
+/// Resolve the RustFS binary relative to the workspace.
+pub fn rustfs_binary_path() -> PathBuf {
+    rustfs_binary_path_with_features(requested_rustfs_build_features().as_deref())
+}
+
+fn resolve_rustfs_binary_path(workspace: &Path, configured_target_dir: Option<&Path>) -> PathBuf {
+    let mut path = match configured_target_dir {
+        Some(path) if path.is_absolute() => path.to_path_buf(),
+        Some(path) => workspace.join(path),
+        None => workspace.join("target"),
+    };
+    path.push(if cfg!(debug_assertions) { "debug" } else { "release" });
+    path.push(format!("rustfs{}", std::env::consts::EXE_SUFFIX));
+    path
+}
+
+/// Resolve the RustFS binary relative to the workspace, optionally requesting build features.
+pub fn rustfs_binary_path_with_features(requested_features: Option<&str>) -> PathBuf {
+    if let Some(path) = std::env::var_os("CARGO_BIN_EXE_rustfs") {
+        return PathBuf::from(path);
+    }
+    let requested_features = requested_features.and_then(normalize_rustfs_build_features);
+
+    let workspace = workspace_root();
+    let configured_target_dir = std::env::var_os("CARGO_TARGET_DIR").map(PathBuf::from);
+    let binary_path = resolve_rustfs_binary_path(&workspace, configured_target_dir.as_deref());
+
+    let features_match = binary_features_match(&binary_path, requested_features.as_deref());
+    let source_is_newer = workspace_sources_newer_than_binary(&binary_path);
+    let can_reuse_inside_e2e = running_inside_e2e_test_binary() && requested_features.is_none() && features_match;
+    if binary_path.is_file() && features_match && (!source_is_newer || can_reuse_inside_e2e) {
+        if source_is_newer {
+            warn!(
+                "RustFS binary at {:?} appears older than workspace sources; reusing it inside cargo test to avoid nested builds",
+                binary_path
+            );
+        }
+        info!("Using existing RustFS binary at {:?}", binary_path);
+        return binary_path;
+    }
+
+    info!("Building RustFS binary to ensure it's up to date...");
+    build_rustfs_binary(requested_features.as_deref(), &binary_path);
+
+    info!("Using RustFS binary at {:?}", binary_path);
+    binary_path
+}
+
+fn workspace_sources_newer_than_binary(binary_path: &PathBuf) -> bool {
+    let Ok(binary_meta) = std::fs::metadata(binary_path) else {
+        return true;
+    };
+    let Ok(binary_modified) = binary_meta.modified() else {
+        return true;
+    };
+
+    let workspace = workspace_root();
+    let watch_roots = [
+        workspace.join("Cargo.toml"),
+        workspace.join("Cargo.lock"),
+        workspace.join("rustfs"),
+        workspace.join("crates"),
+    ];
+
+    watch_roots.iter().any(|path| path_is_newer_than(binary_modified, path))
+}
+
+fn running_inside_e2e_test_binary() -> bool {
+    std::env::var("CARGO_PKG_NAME").is_ok_and(|value| value == "e2e_test")
+}
+
+pub fn requested_rustfs_build_features() -> Option<String> {
+    std::env::var(ENV_RUSTFS_BUILD_FEATURES)
+        .ok()
+        .and_then(|value| normalize_rustfs_build_features(&value))
+}
+
+pub fn normalize_rustfs_build_features(features: &str) -> Option<String> {
+    let features = features
+        .split(',')
+        .map(str::trim)
+        .filter(|feature| !feature.is_empty())
+        .map(str::to_ascii_lowercase)
+        .collect::<Vec<_>>();
+
+    if features.is_empty() { None } else { Some(features.join(",")) }
+}
+
+pub fn rustfs_build_feature_enabled(requested_features: Option<&str>, required_feature: &str) -> bool {
+    let Some(requested_features) = requested_features.and_then(normalize_rustfs_build_features) else {
+        return true;
+    };
+
+    requested_features
+        .split(',')
+        .any(|feature| feature.eq_ignore_ascii_case(RUSTFS_FULL_FEATURE) || feature.eq_ignore_ascii_case(required_feature))
+}
+
+fn rustfs_binary_features_stamp_path(binary_path: &Path) -> PathBuf {
+    binary_path.with_extension("features")
+}
+
+fn binary_features_match(binary_path: &Path, requested_features: Option<&str>) -> bool {
+    let stamp_path = rustfs_binary_features_stamp_path(binary_path);
+    let recorded = stdfs::read_to_string(stamp_path)
+        .ok()
+        .and_then(|value| normalize_rustfs_build_features(&value));
+    let requested = requested_features.and_then(normalize_rustfs_build_features);
+
+    match requested.as_deref() {
+        Some(features) => recorded.as_deref() == Some(features),
+        None => recorded.is_none(),
+    }
+}
+
+fn path_is_newer_than(binary_modified: std::time::SystemTime, path: &Path) -> bool {
+    if path.is_file() {
+        return std::fs::metadata(path)
+            .and_then(|meta| meta.modified())
+            .map(|modified| modified > binary_modified)
+            .unwrap_or(false);
+    }
+
+    if !path.is_dir() {
+        return false;
+    }
+
+    WalkDir::new(path)
+        .into_iter()
+        .filter_entry(|entry| {
+            let name = entry.file_name();
+            name != OsStr::new("target") && name != OsStr::new(".git")
+        })
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_type().is_file())
+        .any(|entry| {
+            std::fs::metadata(entry.path())
+                .and_then(|meta| meta.modified())
+                .map(|modified| modified > binary_modified)
+                .unwrap_or(false)
+        })
+}
+
+/// Build the RustFS binary using cargo
+fn build_rustfs_binary(requested_features: Option<&str>, binary_path: &Path) {
+    let workspace = workspace_root();
+    info!("Building RustFS binary from workspace: {:?}", workspace);
+
+    let _profile = if cfg!(debug_assertions) {
+        info!("Building in debug mode");
+        "dev"
+    } else {
+        info!("Building in release mode");
+        "release"
+    };
+
+    let mut cmd = Command::new("cargo");
+    cmd.current_dir(&workspace).args(["build", "--bin", "rustfs"]);
+
+    if let Some(features) = requested_features {
+        cmd.arg("--features").arg(features);
+        info!("Building with features: {}", features);
+    }
+
+    if !cfg!(debug_assertions) {
+        cmd.arg("--release");
+    }
+
+    info!(
+        "Executing: cargo build --bin rustfs {}",
+        if cfg!(debug_assertions) { "" } else { "--release" }
+    );
+
+    let output = cmd.output().expect("Failed to execute cargo build command");
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        panic!("Failed to build RustFS binary. Error: {stderr}");
+    }
+
+    let stamp_path = rustfs_binary_features_stamp_path(binary_path);
+    if let Err(err) = stdfs::write(&stamp_path, requested_features.unwrap_or_default()) {
+        warn!("Failed to write RustFS feature stamp {:?}: {}", stamp_path, err);
+    }
+
+    info!("✅ RustFS binary built successfully");
+}
+
+fn awscurl_binary_path() -> PathBuf {
+    std::env::var_os("AWSCURL_PATH")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("awscurl"))
+}
+
+fn verify_awscurl_path(path: &Path) -> std::io::Result<()> {
+    let output = Command::new(path).arg("--help").output()?;
+    if output.status.success() {
+        return Ok(());
+    }
+
+    Err(std::io::Error::other(format!(
+        "awscurl prerequisite check failed: {}",
+        String::from_utf8_lossy(&output.stderr).trim()
+    )))
+}
+
+pub fn require_awscurl() -> std::io::Result<()> {
+    verify_awscurl_path(&awscurl_binary_path())
+}
+
+// Global initialization
+static INIT: Once = Once::new();
+
+/// Initialize tracing for all E2E tests
+pub fn init_logging() {
+    INIT.call_once(|| {
+        tracing_subscriber::fmt().with_env_filter("rustfs=info,e2e_test=debug").init();
+    });
+}
+
+/// RustFS server environment for E2E testing
+pub struct RustFSTestEnvironment {
+    pub temp_dir: String,
+    pub address: String,
+    pub url: String,
+    pub access_key: String,
+    pub secret_key: String,
+    pub process: Option<Child>,
+    /// When set, the spawned server's stdout+stderr are redirected (append) to
+    /// this file instead of being inherited by the test process. Lets a test
+    /// grep the child's logs (e.g. to confirm which GET reader path ran).
+    pub capture_log_path: Option<String>,
+}
+
+impl RustFSTestEnvironment {
+    /// Create a new test environment with unique temporary directory and port
+    pub async fn new() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let temp_dir = format!("/tmp/rustfs_e2e_test_{}", Uuid::new_v4());
+        fs::create_dir_all(&temp_dir).await?;
+        let capture_log_path = configured_capture_log_path(&temp_dir);
+
+        // Use a unique port for each test environment
+        let port = Self::find_available_port().await?;
+        let address = format!("127.0.0.1:{port}");
+        let url = format!("http://{address}");
+
+        Ok(Self {
+            temp_dir,
+            address,
+            url,
+            access_key: DEFAULT_ACCESS_KEY.to_string(),
+            secret_key: DEFAULT_SECRET_KEY.to_string(),
+            process: None,
+            capture_log_path,
+        })
+    }
+
+    /// Create a new test environment with specific address
+    pub async fn with_address(address: &str) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let temp_dir = format!("/tmp/rustfs_e2e_test_{}", Uuid::new_v4());
+        fs::create_dir_all(&temp_dir).await?;
+        let capture_log_path = configured_capture_log_path(&temp_dir);
+
+        let url = format!("http://{address}");
+
+        Ok(Self {
+            temp_dir,
+            address: address.to_string(),
+            url,
+            access_key: DEFAULT_ACCESS_KEY.to_string(),
+            secret_key: DEFAULT_SECRET_KEY.to_string(),
+            process: None,
+            capture_log_path,
+        })
+    }
+
+    /// Find an available port for the test
+    pub async fn find_available_port() -> Result<u16, Box<dyn std::error::Error + Send + Sync>> {
+        use std::net::TcpListener;
+        let _guard = PortAllocatorGuard::acquire().await?;
+        let config = test_port_allocator_config()?;
+        let mut next_port = read_next_test_port(config);
+
+        for _ in 0..config.range {
+            let port = next_port;
+            next_port = advance_test_port(next_port, config);
+            write_next_test_port(next_port)?;
+
+            if let Ok(listener) = TcpListener::bind(("127.0.0.1", port)) {
+                drop(listener);
+                return Ok(port);
+            }
+        }
+
+        Err("no available E2E test port found".into())
+    }
+
+    /// Kill any existing RustFS processes
+    pub async fn cleanup_existing_processes(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        info!("Cleaning up any existing RustFS processes for {}", self.address);
+
+        for pattern in [&self.address, &self.temp_dir] {
+            let output = Command::new("pkill").args(["-f", pattern]).output();
+
+            if let Ok(output) = output
+                && output.status.success()
+            {
+                info!("Killed existing RustFS processes matching: {}", pattern);
+                sleep(Duration::from_millis(250)).await;
+            }
+        }
+        Ok(())
+    }
+
+    fn build_start_args<'a>(&'a self, extra_args: Vec<&'a str>) -> Vec<&'a str> {
+        let mut args = vec![
+            "--address",
+            &self.address,
+            "--access-key",
+            &self.access_key,
+            "--secret-key",
+            &self.secret_key,
+        ];
+
+        args.extend(extra_args);
+        args.push(&self.temp_dir);
+        args
+    }
+
+    async fn start_rustfs_server_inner(
+        &mut self,
+        extra_args: Vec<&str>,
+        extra_env: &[(&str, &str)],
+        cleanup_existing: bool,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let binary_path = rustfs_binary_path();
+        self.start_rustfs_server_inner_with_binary(&binary_path, extra_args, extra_env, cleanup_existing)
+            .await
+    }
+
+    async fn start_rustfs_server_inner_with_binary(
+        &mut self,
+        binary_path: &Path,
+        extra_args: Vec<&str>,
+        extra_env: &[(&str, &str)],
+        cleanup_existing: bool,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        if cleanup_existing {
+            self.cleanup_existing_processes().await?;
+        }
+
+        let args = self.build_start_args(extra_args);
+
+        info!("Starting RustFS server with args: {:?}", args);
+
+        let mut command = Command::new(binary_path);
+        command.env("RUST_LOG", "rustfs=info,rustfs_notify=debug");
+        // The embedded console would bind the fixed default port :9001, which
+        // collides with unrelated local services (e.g. Docker Desktop). Tests
+        // that need the console can still override this via extra_env.
+        command.env("RUSTFS_CONSOLE_ENABLE", "false");
+        for (key, value) in extra_env {
+            command.env(key, value);
+        }
+        capture_command_logs(&mut command, self.capture_log_path.as_deref())?;
+        let process = command.args(&args).spawn()?;
+
+        self.process = Some(process);
+
+        // Wait for server to be ready
+        self.wait_for_server_ready().await?;
+
+        Ok(())
+    }
+
+    /// Start a specific RustFS binary against this environment's isolated
+    /// data directory. Upgrade tests use this to seed an old on-disk format
+    /// before restarting the same environment with the workspace binary.
+    pub async fn start_rustfs_server_from_binary(
+        &mut self,
+        binary_path: &Path,
+        extra_args: Vec<&str>,
+        extra_env: &[(&str, &str)],
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        self.start_rustfs_server_inner_with_binary(binary_path, extra_args, extra_env, true)
+            .await
+    }
+
+    /// Start RustFS server with basic configuration
+    pub async fn start_rustfs_server(&mut self, extra_args: Vec<&str>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        self.start_rustfs_server_inner(extra_args, &[], true).await
+    }
+
+    /// Start RustFS server with extra child-process environment variables.
+    pub async fn start_rustfs_server_with_env(
+        &mut self,
+        extra_args: Vec<&str>,
+        extra_env: &[(&str, &str)],
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        self.start_rustfs_server_inner(extra_args, extra_env, true).await
+    }
+
+    /// Start RustFS server without cleaning up other running RustFS processes.
+    ///
+    /// This is useful for tests that need multiple independent RustFS instances
+    /// alive at the same time.
+    pub async fn start_rustfs_server_without_cleanup(
+        &mut self,
+        extra_args: Vec<&str>,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        self.start_rustfs_server_inner(extra_args, &[], false).await
+    }
+
+    pub async fn start_rustfs_server_without_cleanup_with_env(
+        &mut self,
+        extra_env: &[(&str, &str)],
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        self.start_rustfs_server_inner(vec![], extra_env, false).await
+    }
+
+    /// Wait for RustFS server to be ready.
+    ///
+    /// A listening TCP port is not sufficient here: the process may accept
+    /// connections before the S3 stack is fully initialized, which causes
+    /// early requests to fail intermittently. Treat readiness as "S3 API
+    /// responds successfully" instead.
+    ///
+    /// Fails immediately if the spawned server process has already exited
+    /// (e.g. a port bind failure) instead of polling out the full timeout.
+    pub async fn wait_for_server_ready(&mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        info!("Waiting for RustFS server to be ready on {}", self.address);
+        let client = self.create_s3_client();
+
+        for i in 0..60 {
+            if let Some(process) = self.process.as_mut()
+                && let Ok(Some(status)) = process.try_wait()
+            {
+                return Err(format!("RustFS server process exited before becoming ready: {status}").into());
+            }
+
+            if TcpStream::connect(&self.address).await.is_ok() && client.list_buckets().send().await.is_ok() {
+                info!("✅ RustFS server is ready after {} attempts", i + 1);
+                return Ok(());
+            }
+
+            if i == 59 {
+                return Err("RustFS server failed to become ready within 60 seconds".into());
+            }
+
+            sleep(Duration::from_secs(1)).await;
+        }
+
+        Ok(())
+    }
+
+    /// Create an AWS S3 client configured for this RustFS instance
+    pub fn create_s3_client(&self) -> Client {
+        self.create_s3_client_with_credentials(&self.access_key, &self.secret_key)
+    }
+
+    /// Create an AWS S3 client with explicit credentials for this RustFS instance.
+    pub fn create_s3_client_with_credentials(&self, access_key: &str, secret_key: &str) -> Client {
+        Client::from_conf(build_test_s3_config(&self.url, access_key, secret_key, None, "e2e-test"))
+    }
+
+    /// Create test bucket
+    pub async fn create_test_bucket(&self, bucket_name: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let s3_client = self.create_s3_client();
+        s3_client.create_bucket().bucket(bucket_name).send().await?;
+        info!("Created test bucket: {}", bucket_name);
+        Ok(())
+    }
+
+    /// Delete test bucket
+    pub async fn delete_test_bucket(&self, bucket_name: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let s3_client = self.create_s3_client();
+        let _ = s3_client.delete_bucket().bucket(bucket_name).send().await;
+        info!("Deleted test bucket: {}", bucket_name);
+        Ok(())
+    }
+
+    /// Stop the RustFS server
+    pub fn stop_server(&mut self) {
+        if let Some(mut process) = self.process.take() {
+            info!("Stopping RustFS server");
+            if let Err(e) = process.kill() {
+                error!("Failed to kill RustFS process: {}", e);
+            } else {
+                let _ = process.wait();
+                info!("RustFS server stopped");
+            }
+        }
+    }
+
+    /// Restart this server in place, preserving its on-disk data directory,
+    /// listen address, and credentials.
+    ///
+    /// Failure-recovery tests (backlog#1147 repl-5) need the *same* instance to
+    /// come back up after a crash/stop with its persisted state intact:
+    /// per-object replication status in `xl.meta`, the MRF recovery file, and
+    /// resync metadata all live under `temp_dir`, which this method keeps. The
+    /// address is reused too (the server sets `SO_REUSEADDR`/`SO_REUSEPORT`), so
+    /// existing S3 clients keep working without reconfiguration.
+    ///
+    /// The previous process is stopped first. `cleanup_existing` is false so a
+    /// sibling server sharing the harness (e.g. a replication target on another
+    /// port) is left untouched — only this instance is recycled. Pass the same
+    /// `extra_args` / `extra_env` the instance was originally started with;
+    /// background tasks read their env once at startup.
+    pub async fn restart_server_preserving_data(
+        &mut self,
+        extra_args: Vec<&str>,
+        extra_env: &[(&str, &str)],
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        self.stop_server();
+        self.start_rustfs_server_inner(extra_args, extra_env, false).await
+    }
+}
+
+impl Drop for RustFSTestEnvironment {
+    fn drop(&mut self) {
+        self.stop_server();
+
+        // Clean up temp directory
+        if let Err(e) = std::fs::remove_dir_all(&self.temp_dir) {
+            warn!("Failed to clean up temp directory {}: {}", self.temp_dir, e);
+        }
+    }
+}
+
+/// Short-interval replication timing overrides for fast e2e runs
+/// (backlog#1147 repl-4).
+///
+/// Returns the full set of replication background-loop env vars with
+/// millisecond values so failure-recovery scenarios converge in seconds
+/// instead of the production defaults (health check 5s, MRF flush 10s,
+/// resync retry poll up to 60s). Pass to
+/// [`RustFSTestEnvironment::start_rustfs_server_with_env`] as
+/// `&replication_fast_env()`. The server reads each value once at background
+/// task startup, so the vars must be set before the process starts. Values
+/// below 10ms are clamped server-side to avoid busy-spin.
+pub fn replication_fast_env() -> Vec<(&'static str, &'static str)> {
+    // Env var names mirror `crates/ecstore/src/bucket/replication/replication_timing.rs`
+    // (this is a process-boundary contract: the vars are passed to the spawned
+    // server, not consumed in-process). The names are pinned by the
+    // `env_var_names_are_a_cross_process_contract` test in that module.
+    vec![
+        ("RUSTFS_REPL_HEALTH_CHECK_INTERVAL_MS", "200"),
+        ("RUSTFS_REPL_MRF_FLUSH_INTERVAL_MS", "100"),
+        ("RUSTFS_REPL_RESYNC_POLL_MAX_MS", "250"),
+    ]
+}
+
+async fn execute_awscurl_with_service(
+    url: &str,
+    method: &str,
+    body: Option<&str>,
+    access_key: &str,
+    secret_key: &str,
+    service: &str,
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    let mut args = vec![
+        "--fail-with-body",
+        "--service",
+        service,
+        "--region",
+        "us-east-1",
+        "--access_key",
+        access_key,
+        "--secret_key",
+        secret_key,
+        "-X",
+        method,
+        url,
+    ];
+
+    if let Some(body_content) = body {
+        args.extend(&["-d", body_content]);
+    }
+
+    info!("Executing awscurl: {} {} (service={})", method, url, service);
+    let awscurl_path = awscurl_binary_path();
+    let output = Command::new(&awscurl_path).args(&args).output()?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        return Err(format!("awscurl failed: stderr='{stderr}', stdout='{stdout}'").into());
+    }
+
+    let response = String::from_utf8_lossy(&output.stdout).to_string();
+    Ok(response)
+}
+
+/// Utility function to execute awscurl commands (SigV4 service `s3` for admin APIs).
+pub async fn execute_awscurl(
+    url: &str,
+    method: &str,
+    body: Option<&str>,
+    access_key: &str,
+    secret_key: &str,
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    execute_awscurl_with_service(url, method, body, access_key, secret_key, "s3").await
+}
+
+/// `POST` with SigV4 `--service sts` and explicit `Content-Type: application/x-www-form-urlencoded`.
+///
+/// RustFS `AssumeRole` is handled on `POST /` by the admin router; `is_match` requires this
+/// content type so s3s routes to the custom handler instead of `Unknown operation`.
+pub async fn awscurl_post_sts_form_urlencoded(
+    url: &str,
+    body: &str,
+    access_key: &str,
+    secret_key: &str,
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    let args = vec![
+        "--fail-with-body",
+        "--service",
+        "sts",
+        "--region",
+        "us-east-1",
+        "--access_key",
+        access_key,
+        "--secret_key",
+        secret_key,
+        "-H",
+        "Content-Type: application/x-www-form-urlencoded",
+        "-X",
+        "POST",
+        url,
+        "-d",
+        body,
+    ];
+
+    info!(
+        "Executing awscurl: POST {} (service=sts, Content-Type=application/x-www-form-urlencoded)",
+        url
+    );
+    let awscurl_path = awscurl_binary_path();
+    let output = Command::new(&awscurl_path).args(&args).output()?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        return Err(format!("awscurl failed: stderr='{stderr}', stdout='{stdout}'").into());
+    }
+
+    let response = String::from_utf8_lossy(&output.stdout).to_string();
+    Ok(response)
+}
+
+/// Helper function for POST requests
+pub async fn awscurl_post(
+    url: &str,
+    body: &str,
+    access_key: &str,
+    secret_key: &str,
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    execute_awscurl(url, "POST", Some(body), access_key, secret_key).await
+}
+
+/// Helper function for GET requests
+pub async fn awscurl_get(
+    url: &str,
+    access_key: &str,
+    secret_key: &str,
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    execute_awscurl(url, "GET", None, access_key, secret_key).await
+}
+
+/// Helper function for PUT requests
+pub async fn awscurl_put(
+    url: &str,
+    body: &str,
+    access_key: &str,
+    secret_key: &str,
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    execute_awscurl(url, "PUT", Some(body), access_key, secret_key).await
+}
+
+/// Helper function for DELETE requests
+pub async fn awscurl_delete(
+    url: &str,
+    access_key: &str,
+    secret_key: &str,
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    execute_awscurl(url, "DELETE", None, access_key, secret_key).await
+}
+
+/// Cluster topology declaration for a `RustFSTestClusterEnvironment`.
+///
+/// Describes how many nodes to launch, how many data drives each node exposes,
+/// and how those nodes are grouped into erasure pools. The topology drives both
+/// on-disk directory creation and the `RUSTFS_VOLUMES` string assembled for the
+/// node processes.
+///
+/// # Single-host expressibility constraints
+///
+/// The harness runs every node on `127.0.0.1` with a distinct port, so the
+/// `RUSTFS_VOLUMES` string can only use the two forms the server parser accepts
+/// on a single machine (verified against `ecstore` `DisksLayout::from_volumes`):
+///
+/// * **Single pool** — every `(node, drive)` endpoint listed explicitly, no
+///   ellipses. This is the legacy form and yields exactly one pool spanning all
+///   nodes and drives (`DistErasure`). Any `drives_per_node >= 1` works.
+/// * **Multiple pools** — one ellipses arg per pool. A pool argument is a single
+///   URL template, so it can enumerate several drives on *one* host but cannot
+///   enumerate multiple distinct-port hosts. A pool that spanned two localhost
+///   nodes would need a host ellipses (`127.0.0.1:900{0...1}`), which forces the
+///   *same* on-disk path across those ports and collides physically. Therefore
+///   every pool in a multi-pool topology owns exactly one node. In addition, the
+///   parser rejects a single-drive ellipses pool (`drive{0...0}`), so a
+///   multi-pool topology requires `drives_per_node >= 2`.
+///
+/// Genuine multi-node pools (a pool striped across several hosts) require real
+/// multi-host infrastructure and are deferred to the nightly cluster CI lane
+/// (backlog #1313 / #1314); they are intentionally not expressible here.
+#[derive(Clone, Debug)]
+pub struct ClusterTopology {
+    /// Number of node processes to launch.
+    pub node_count: usize,
+    /// Number of independent data drives (directories) each node exposes.
+    pub drives_per_node: usize,
+    /// Pool membership as a list of node-index groups. An empty vector means a
+    /// single pool spanning every node.
+    pub pools: Vec<Vec<usize>>,
+}
+
+impl ClusterTopology {
+    /// Single pool, one drive per node — identical to the historical
+    /// `RustFSTestClusterEnvironment::new` layout.
+    pub fn single_pool(node_count: usize) -> Self {
+        Self {
+            node_count,
+            drives_per_node: 1,
+            pools: Vec::new(),
+        }
+    }
+
+    /// Single pool with `drives_per_node` drives on every node. The pool spans
+    /// all nodes and all drives (one `DistErasure` pool).
+    pub fn single_pool_multidrive(node_count: usize, drives_per_node: usize) -> Self {
+        Self {
+            node_count,
+            drives_per_node,
+            pools: Vec::new(),
+        }
+    }
+
+    /// Multi-pool topology where every pool owns exactly one node. `pools` lists
+    /// the node index backing each pool (e.g. `vec![vec![0], vec![1]]` for a
+    /// two-pool cluster). Requires `drives_per_node >= 2` (see the type-level
+    /// note on single-host expressibility).
+    pub fn per_node_pools(drives_per_node: usize, pools: Vec<Vec<usize>>) -> Self {
+        let node_count = pools.iter().flatten().copied().max().map(|m| m + 1).unwrap_or(0);
+        Self {
+            node_count,
+            drives_per_node,
+            pools,
+        }
+    }
+
+    /// Normalized pool membership: an empty `pools` becomes a single pool over
+    /// all node indices.
+    fn normalized_pools(&self) -> Vec<Vec<usize>> {
+        if self.pools.is_empty() {
+            vec![(0..self.node_count).collect()]
+        } else {
+            self.pools.clone()
+        }
+    }
+
+    /// Validate that the topology is expressible on a single localhost machine.
+    fn validate(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        if self.node_count == 0 {
+            return Err("Node count must be greater than zero".into());
+        }
+        if self.drives_per_node == 0 {
+            return Err("drives_per_node must be greater than zero".into());
+        }
+
+        let pools = self.normalized_pools();
+
+        // Every referenced node index must be in range.
+        for (pool_idx, nodes) in pools.iter().enumerate() {
+            if nodes.is_empty() {
+                return Err(format!("pool {pool_idx} has no nodes").into());
+            }
+            for &n in nodes {
+                if n >= self.node_count {
+                    return Err(format!("pool {pool_idx} references node {n} but node_count is {}", self.node_count).into());
+                }
+            }
+        }
+
+        // Each node must belong to exactly one pool.
+        let mut seen = vec![0usize; self.node_count];
+        for nodes in &pools {
+            for &n in nodes {
+                seen[n] += 1;
+            }
+        }
+        for (n, count) in seen.iter().enumerate() {
+            match count {
+                0 => return Err(format!("node {n} is not assigned to any pool").into()),
+                1 => {}
+                _ => return Err(format!("node {n} is assigned to more than one pool").into()),
+            }
+        }
+
+        // Multi-pool constraints imposed by the single-host RUSTFS_VOLUMES syntax.
+        if pools.len() > 1 {
+            if self.drives_per_node < 2 {
+                return Err(
+                    "multi-pool topology requires drives_per_node >= 2 (the server parser rejects a single-drive ellipses pool)"
+                        .into(),
+                );
+            }
+            for (pool_idx, nodes) in pools.iter().enumerate() {
+                if nodes.len() != 1 {
+                    return Err(format!(
+                        "pool {pool_idx} spans {} nodes; a pool striped across multiple localhost nodes is not expressible (needs host ellipses, which collides on shared paths). Use one node per pool, or the nightly multi-host lane (backlog #1313/#1314).",
+                        nodes.len()
+                    )
+                    .into());
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+/// Represents a single RustFS server instance in a test cluster.
+///
+/// Each `ClusterNode` tracks the node's network address, base URL for
+/// S3-compatible requests, on-disk data directories, and the underlying
+/// child process handle when the node is running.
+pub struct ClusterNode {
+    pub address: String,
+    pub url: String,
+    /// Primary data directory for the node. For single-drive nodes this is the
+    /// node's only drive; for multi-drive nodes it is the first drive. Kept as a
+    /// stable field so existing single-drive tests continue to compile.
+    pub data_dir: String,
+    /// All data drives exposed by this node (`data_dirs[0] == data_dir`).
+    pub data_dirs: Vec<String>,
+    /// Index of the pool this node belongs to.
+    pub pool_idx: usize,
+    pub process: Option<Child>,
+}
+
+/// Test environment for managing a multi-node RustFS cluster.
+///
+/// `RustFSTestClusterEnvironment` is responsible for starting and stopping
+/// a group of `ClusterNode`s, managing their temporary storage directory,
+/// and providing the shared access and secret keys used by tests to
+/// interact with the cluster.
+pub struct RustFSTestClusterEnvironment {
+    pub nodes: Vec<ClusterNode>,
+    pub temp_dir: String,
+    pub access_key: String,
+    pub secret_key: String,
+    pub extra_env: Vec<(String, String)>,
+    pub node_extra_env: Vec<Vec<(String, String)>>,
+    pub node_capture_log_paths: Vec<Option<String>>,
+    pub topology: ClusterTopology,
+    /// Optional socket proxies used for the corresponding node's volume
+    /// endpoints. Proxies must be installed before [`Self::start`].
+    volume_proxy_addresses: Vec<Option<SocketAddr>>,
+}
+
+impl RustFSTestClusterEnvironment {
+    /// Create a new RustFS test cluster environment with the specified number of nodes.
+    ///
+    /// Generates a unique temporary root directory for the cluster, allocates an available TCP port
+    /// for each node, creates an independent data directory for every node, and initializes basic
+    /// cluster node configurations (node processes are not started at this stage).
+    ///
+    /// # Arguments
+    ///
+    /// * `node_count` - The number of nodes to create in the cluster, must be a positive integer
+    ///   (an empty cluster will cause errors in subsequent startup operations).
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Self)` - A new instance of `RustFSTestClusterEnvironment` with initialized node
+    ///   configurations and temporary directory info on success.
+    /// * `Err(Box<dyn Error + Send + Sync>)` - An error if any step fails, such as temporary
+    ///   directory creation failure or available port lookup failure.
+    pub async fn new(node_count: usize) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        Self::with_topology(ClusterTopology::single_pool(node_count)).await
+    }
+
+    /// Create a RustFS test cluster environment from an explicit topology.
+    ///
+    /// Allocates a unique temporary root directory, an available TCP port per
+    /// node, and one data directory per drive. The topology is validated up front
+    /// (node/pool assignment, single-host multi-pool constraints); node processes
+    /// are not started at this stage.
+    ///
+    /// When the topology exposes more than one local drive on a node (multi-drive
+    /// or multi-pool layouts), `RUSTFS_UNSAFE_BYPASS_DISK_CHECK=true` is added to
+    /// every node's environment: those drives live on the same temp filesystem, so
+    /// the server's distinct-physical-disk safety check would otherwise reject
+    /// startup. Single-drive single-pool clusters keep the historical environment
+    /// unchanged.
+    pub async fn with_topology(topology: ClusterTopology) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        topology.validate()?;
+
+        let temp_dir = format!("/tmp/rustfs_cluster_test_{}", Uuid::new_v4());
+        fs::create_dir_all(&temp_dir).await?;
+
+        // Map every node to its owning pool index.
+        let pools = topology.normalized_pools();
+        let mut pool_of_node = vec![0usize; topology.node_count];
+        for (pool_idx, nodes) in pools.iter().enumerate() {
+            for &n in nodes {
+                pool_of_node[n] = pool_idx;
+            }
+        }
+
+        let multidrive = topology.drives_per_node > 1;
+
+        let mut nodes = Vec::with_capacity(topology.node_count);
+        for (i, &pool_idx) in pool_of_node.iter().enumerate() {
+            let port = RustFSTestEnvironment::find_available_port().await?;
+            let address = format!("127.0.0.1:{}", port);
+            let url = format!("http://{}", address);
+
+            // Single-drive nodes keep the historical `{temp}/node{i}` path so
+            // existing tests (and their on-disk assertions) are unaffected.
+            // Multi-drive nodes nest one `drive{d}` directory per drive so the
+            // ellipses form `drive{0...N-1}` can address them.
+            let data_dirs: Vec<String> = if multidrive {
+                (0..topology.drives_per_node)
+                    .map(|d| format!("{}/node{}/drive{}", temp_dir, i, d))
+                    .collect()
+            } else {
+                vec![format!("{}/node{}", temp_dir, i)]
+            };
+            for dir in &data_dirs {
+                fs::create_dir_all(dir).await?;
+            }
+
+            nodes.push(ClusterNode {
+                address,
+                url,
+                data_dir: data_dirs[0].clone(),
+                data_dirs,
+                pool_idx,
+                process: None,
+            });
+        }
+
+        let mut extra_env = Vec::new();
+        extra_env.push(("RUSTFS_RPC_SECRET".to_string(), String::new()));
+        if multidrive {
+            extra_env.push(("RUSTFS_UNSAFE_BYPASS_DISK_CHECK".to_string(), "true".to_string()));
+        }
+
+        let node_count = topology.node_count;
+        Ok(Self {
+            nodes,
+            temp_dir,
+            access_key: "rustfs-cluster-test-access".to_string(),
+            secret_key: "rustfs-cluster-test-secret".to_string(),
+            extra_env,
+            node_extra_env: vec![Vec::new(); topology.node_count],
+            node_capture_log_paths: vec![None; topology.node_count],
+            topology,
+            volume_proxy_addresses: vec![None; node_count],
+        })
+    }
+
+    /// Add an extra environment variable applied to every cluster node process.
+    pub fn set_env<K, V>(&mut self, key: K, value: V)
+    where
+        K: Into<String>,
+        V: Into<String>,
+    {
+        self.extra_env.push((key.into(), value.into()));
+    }
+
+    /// Add an extra environment variable applied to a single cluster node.
+    pub fn set_node_env<K, V>(
+        &mut self,
+        node_idx: usize,
+        key: K,
+        value: V,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>
+    where
+        K: Into<String>,
+        V: Into<String>,
+    {
+        self.ensure_node_index(node_idx)?;
+        self.node_extra_env[node_idx].push((key.into(), value.into()));
+        Ok(())
+    }
+
+    /// Capture stdout+stderr for a single cluster node process.
+    pub fn set_node_capture_log_path<P>(
+        &mut self,
+        node_idx: usize,
+        path: P,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>
+    where
+        P: Into<String>,
+    {
+        self.ensure_node_index(node_idx)?;
+        self.node_capture_log_paths[node_idx] = Some(path.into());
+        Ok(())
+    }
+
+    fn ensure_node_index(&self, node_idx: usize) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        if node_idx >= self.nodes.len() {
+            return Err(format!("node_idx {node_idx} is invalid").into());
+        }
+        Ok(())
+    }
+
+    /// Build the `RUSTFS_VOLUMES` argument string for the cluster's topology.
+    ///
+    /// * **Single pool** — every `(node, drive)` endpoint is listed explicitly and
+    ///   space-joined. With no ellipses the server parser collapses them into one
+    ///   legacy pool spanning all nodes and drives.
+    /// * **Multiple pools** — each pool (exactly one node) contributes one ellipses
+    ///   argument `http://<addr><node-base>/drive{0...N-1}`; the space-separated
+    ///   arguments become one pool each.
+    ///
+    /// The server splits `RUSTFS_VOLUMES` on spaces (`value_delimiter = ' '`), which
+    /// this assembly matches, and the resulting layout is verified against the
+    /// `ecstore` parser in the unit tests below.
+    /// Public view of the assembled `RUSTFS_VOLUMES` string, so tests can assert
+    /// the pool/drive layout without starting node processes.
+    pub fn rustfs_volumes_arg(&self) -> String {
+        self.build_volumes_arg()
+    }
+
+    /// Start a socket proxy for one node's volume endpoints and route all
+    /// subsequent `RUSTFS_VOLUMES` references for that node through it.
+    ///
+    /// Call this before [`Self::start`], then use the returned proxy's
+    /// [`crate::fault_proxy::FaultProxy::set_mode`] to inject latency,
+    /// blackhole, or one-way partition faults. The node's own listen address
+    /// remains direct, so S3 clients can still reach it while peer disk/RPC
+    /// traffic is steered through the proxy.
+    pub async fn start_volume_proxy_for_node(
+        &mut self,
+        node_idx: usize,
+    ) -> Result<crate::fault_proxy::FaultProxy, Box<dyn std::error::Error + Send + Sync>> {
+        self.ensure_node_index(node_idx)?;
+        if self.volume_proxy_addresses[node_idx].is_some() {
+            return Err(format!("a volume proxy is already configured for node {node_idx}").into());
+        }
+        let target = self.nodes[node_idx].address.parse::<SocketAddr>()?;
+        let proxy = crate::fault_proxy::FaultProxy::start(target).await?;
+        self.volume_proxy_addresses[node_idx] = Some(proxy.local_addr());
+        Ok(proxy)
+    }
+
+    fn volume_address(&self, node_idx: usize) -> String {
+        self.volume_proxy_addresses[node_idx]
+            .map(|address| address.to_string())
+            .unwrap_or_else(|| self.nodes[node_idx].address.clone())
+    }
+
+    fn build_volumes_arg(&self) -> String {
+        let pools = self.topology.normalized_pools();
+
+        if pools.len() <= 1 {
+            // Single pool: explicit enumeration of every drive on every node.
+            return self
+                .nodes
+                .iter()
+                .enumerate()
+                .flat_map(|(node_idx, n)| {
+                    let address = self.volume_address(node_idx);
+                    n.data_dirs.iter().map(move |dir| format!("http://{}{}", address, dir))
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+        }
+
+        // Multi-pool: one ellipses argument per single-node pool. The drive
+        // directories are `<temp>/node{i}/drive{0..N-1}`, so the ellipses base is
+        // the shared parent of the node's drives.
+        pools
+            .iter()
+            .map(|nodes| {
+                let node_idx = nodes[0];
+                let node = &self.nodes[node_idx];
+                let base = node
+                    .data_dirs
+                    .first()
+                    .and_then(|d| d.rsplit_once('/').map(|(parent, _)| parent))
+                    .unwrap_or(&node.data_dir);
+                format!(
+                    "http://{}{}/drive{{0...{}}}",
+                    self.volume_address(node_idx),
+                    base,
+                    self.topology.drives_per_node - 1
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    /// Start all node processes in the RustFS cluster and wait for the cluster service to be ready.
+    ///
+    /// Spawns a RustFS binary process for each node with necessary environment variable configurations,
+    /// first waits for each node's TCP port to be reachable, then verifies the cluster's S3-compatible
+    /// service availability via the S3 API.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` - All nodes start successfully and the cluster S3 service is ready for requests.
+    /// * `Err(Box<dyn Error + Send + Sync>)` - An error if process spawning fails, TCP port readiness
+    ///   times out, or cluster service readiness times out.
+    pub async fn start(&mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let binary_path = rustfs_binary_path();
+        self.start_with_binary(&binary_path).await
+    }
+
+    /// Start every cluster node with a specific RustFS binary.
+    ///
+    /// Upgrade compatibility tests use this to initialize a cluster with a
+    /// pinned previous release before replacing nodes with the workspace build.
+    pub async fn start_with_binary(&mut self, binary_path: &Path) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let volumes_arg = self.build_volumes_arg();
+
+        for node_idx in 0..self.nodes.len() {
+            self.spawn_node(node_idx, binary_path, &volumes_arg)?;
+        }
+
+        for (i, node) in self.nodes.iter().enumerate() {
+            self.wait_for_node_ready(&node.address, i).await?;
+        }
+
+        for node_idx in 0..self.nodes.len() {
+            self.wait_for_node_service_ready(node_idx).await?;
+        }
+
+        Ok(())
+    }
+
+    /// Start one node process using the cluster's existing volume layout.
+    pub async fn start_node(&mut self, node_idx: usize) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let binary_path = rustfs_binary_path();
+        self.start_node_from_binary(node_idx, &binary_path).await
+    }
+
+    /// Start one stopped cluster node with a specific RustFS binary while
+    /// preserving the cluster's volume layout and that node's data directory.
+    pub async fn start_node_from_binary(
+        &mut self,
+        node_idx: usize,
+        binary_path: &Path,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let volumes_arg = self.build_volumes_arg();
+        self.spawn_node(node_idx, binary_path, &volumes_arg)?;
+
+        self.wait_for_node_ready(&self.nodes[node_idx].address, node_idx).await?;
+        self.wait_for_node_service_ready(node_idx).await?;
+        Ok(())
+    }
+
+    fn spawn_node(
+        &mut self,
+        node_idx: usize,
+        binary_path: &Path,
+        volumes_arg: &str,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        self.ensure_node_index(node_idx)?;
+        if self.nodes[node_idx].process.is_some() {
+            return Err(format!("cluster node {node_idx} is already running").into());
+        }
+        if !binary_path.is_file() {
+            return Err(format!("RustFS binary does not exist: {}", binary_path.display()).into());
+        }
+
+        let log_path = self.node_capture_log_paths[node_idx].clone();
+        let node = &mut self.nodes[node_idx];
+        info!("Starting cluster node {} on {} with {}", node_idx, node.address, binary_path.display());
+
+        let mut command = Command::new(binary_path);
+        command
+            .env("RUSTFS_VOLUMES", volumes_arg)
+            .env("RUSTFS_ADDRESS", &node.address)
+            .env("RUSTFS_ACCESS_KEY", &self.access_key)
+            .env("RUSTFS_SECRET_KEY", &self.secret_key)
+            .env("RUSTFS_CONSOLE_ENABLE", "false")
+            .env("RUST_LOG", "rustfs=info,rustfs_notify=debug");
+
+        for (key, value) in &self.extra_env {
+            command.env(key, value);
+        }
+        for (key, value) in &self.node_extra_env[node_idx] {
+            command.env(key, value);
+        }
+        capture_command_logs(&mut command, log_path.as_deref())?;
+
+        let process = command.current_dir(&node.data_dir).spawn()?;
+        node.process = Some(process);
+        Ok(())
+    }
+
+    /// Wait for a single cluster node's TCP port to become reachable (internal helper method).
+    ///
+    /// Attempts to establish a TCP connection to the node's address, retries up to 60 times
+    /// with a 1-second interval between attempts. Fails if the port is unreachable after all retries.
+    async fn wait_for_node_ready(&self, address: &str, idx: usize) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        for attempt in 0..60 {
+            if TcpStream::connect(address).await.is_ok() {
+                info!("Node {} ({}) TCP ready after {} attempts", idx, address, attempt + 1);
+                return Ok(());
+            }
+            sleep(Duration::from_secs(1)).await;
+        }
+        Err(format!("Node {} failed to become ready", idx).into())
+    }
+
+    /// Wait for a specific node's S3-compatible service to be ready (internal helper method).
+    ///
+    /// Verifies service availability by calling the S3 `list_buckets` API against the requested node,
+    /// retries up to 120 times with a 1-second interval between attempts.
+    async fn wait_for_node_service_ready(&self, node_idx: usize) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let client = self.create_s3_client(node_idx)?;
+
+        for attempt in 0..120 {
+            match client.list_buckets().send().await {
+                Ok(_) => {
+                    info!("Cluster node {} service ready after {} attempts", node_idx, attempt + 1);
+                    return Ok(());
+                }
+                Err(_) => {
+                    sleep(Duration::from_secs(1)).await;
+                }
+            }
+        }
+
+        Err(format!("Cluster node {} service failed to become ready", node_idx).into())
+    }
+
+    /// Create an S3 client configured to communicate with a specific cluster node.
+    ///
+    /// Configures the S3 client with the cluster's authentication credentials, a fixed `us-east-1` region,
+    /// the target node's endpoint URL, and enforces path-style access (required for RustFS S3 compatibility).
+    /// Performs a validity check on the node index before creating the client to avoid out-of-bounds errors.
+    ///
+    /// # Arguments
+    ///
+    /// * `node_idx` - The zero-based index of the target cluster node. Must be in the range `[0, total_nodes - 1]`.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Client)` - A fully configured AWS S3 `Client` instance for the specified node on success.
+    /// * `Err(Box<dyn Error + Send + Sync>)` - An error if the node index is invalid, or if the S3 client configuration fails.
+    pub fn create_s3_client(&self, node_idx: usize) -> Result<Client, Box<dyn std::error::Error + Send + Sync>> {
+        if node_idx >= self.nodes.len() {
+            return Err("node_idx is invalid".into());
+        }
+        Ok(Client::from_conf(build_test_s3_config(
+            &self.nodes[node_idx].url,
+            &self.access_key,
+            &self.secret_key,
+            None,
+            "cluster-test",
+        )))
+    }
+
+    /// Create S3 clients for all nodes in the RustFS cluster and collect them into a vector.
+    ///
+    /// Iterates over all cluster node indices, calls `create_s3_client` for each index, and aggregates
+    /// the resulting clients into a pre-allocated vector. Terminates immediately and returns an error
+    /// if any single node's S3 client creation fails (fails fast behavior).
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Vec<Client>)` - A vector of configured S3 `Client` instances (one per cluster node) on full success.
+    /// * `Err(Box<dyn Error + Send + Sync>)` - An error with a descriptive message if any client creation fails,
+    ///   including the underlying error from `create_s3_client`.
+    pub fn create_all_clients(&self) -> Result<Vec<Client>, Box<dyn std::error::Error + Send + Sync>> {
+        (0..self.nodes.len()).map(|i| self.create_s3_client(i)).try_fold(
+            Vec::with_capacity(self.nodes.len()),
+            |mut clients, result| match result {
+                Ok(client) => {
+                    clients.push(client);
+                    Ok(clients)
+                }
+                Err(e) => Err(format!("Failed to create S3 client for node: {}", e).into()),
+            },
+        )
+    }
+
+    /// Create a test S3 bucket in the RustFS cluster.
+    ///
+    /// Uses the S3 client of the first cluster node to call the S3 `create_bucket` API and
+    /// create a bucket with the specified name (follows S3 bucket naming conventions).
+    ///
+    /// # Arguments
+    ///
+    /// * `bucket_name` - The name of the bucket to create, must comply with S3 bucket naming
+    ///   rules (lowercase, no spaces, valid characters only).
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` - The test bucket is created successfully via the S3 API.
+    /// * `Err(Box<dyn Error + Send + Sync>)` - An error if the S3 `create_bucket` API call fails,
+    ///   such as invalid bucket name, insufficient permissions, or an unready cluster.
+    pub async fn create_test_bucket(&self, bucket_name: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let client = self.create_s3_client(0)?;
+        client.create_bucket().bucket(bucket_name).send().await?;
+        info!("Created test bucket: {}", bucket_name);
+        Ok(())
+    }
+
+    /// Stop all running node processes in the RustFS cluster.
+    ///
+    /// Iterates over all cluster nodes, attempts to kill the spawned RustFS process (if running),
+    /// and waits for the process to exit. Logs an error if process termination or waiting fails,
+    /// but does not panic (fails gracefully).
+    ///
+    /// This method is automatically called by the `Drop` trait when the cluster environment
+    /// is destroyed, and can also be called manually to stop the cluster early.
+    pub fn stop(&mut self) {
+        for (i, node) in self.nodes.iter_mut().enumerate() {
+            if let Some(mut process) = node.process.take() {
+                info!("Stopping cluster node {}", i);
+                if let Err(e) = process.kill() {
+                    error!("Failed to kill cluster node {}: {}", i, e);
+                }
+                if let Err(e) = process.wait() {
+                    error!("Failed to wait for cluster node {} to exit: {}", i, e);
+                }
+            }
+        }
+    }
+
+    /// Stop a single cluster node and wait for its process to exit.
+    pub fn stop_node(&mut self, node_idx: usize) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        self.ensure_node_index(node_idx)?;
+        let Some(mut process) = self.nodes[node_idx].process.take() else {
+            return Ok(());
+        };
+
+        info!("Stopping cluster node {}", node_idx);
+        process.kill()?;
+        process.wait()?;
+        Ok(())
+    }
+
+    /// Append a new single-node erasure pool to a stopped multi-pool cluster.
+    ///
+    /// Used to simulate pool expansion on localhost: every pool already owns
+    /// exactly one node with `drives_per_node >= 2` (the only multi-pool layout
+    /// the single-host `RUSTFS_VOLUMES` syntax can express). The new node is
+    /// allocated a fresh port and empty drive directories; callers must
+    /// [`Self::start`] afterwards so every process picks up the extended
+    /// volumes argument. Existing data directories are left untouched.
+    pub async fn append_single_node_pool(&mut self) -> Result<usize, Box<dyn std::error::Error + Send + Sync>> {
+        if self.nodes.iter().any(|node| node.process.is_some()) {
+            return Err("stop the cluster before appending a pool".into());
+        }
+        if self.topology.drives_per_node < 2 {
+            return Err(
+                "append_single_node_pool requires drives_per_node >= 2 (the server parser rejects a single-drive ellipses pool)"
+                    .into(),
+            );
+        }
+
+        let mut pools = self.topology.normalized_pools();
+        for (pool_idx, nodes) in pools.iter().enumerate() {
+            if nodes.len() != 1 {
+                return Err(format!(
+                    "pool {pool_idx} spans {} nodes; append_single_node_pool requires one node per pool",
+                    nodes.len()
+                )
+                .into());
+            }
+        }
+
+        let new_idx = self.nodes.len();
+        let port = RustFSTestEnvironment::find_available_port().await?;
+        let address = format!("127.0.0.1:{port}");
+        let data_dirs: Vec<String> = (0..self.topology.drives_per_node)
+            .map(|drive| format!("{}/node{}/drive{}", self.temp_dir, new_idx, drive))
+            .collect();
+        for dir in &data_dirs {
+            fs::create_dir_all(dir).await?;
+        }
+
+        self.nodes.push(ClusterNode {
+            url: format!("http://{address}"),
+            address,
+            data_dir: data_dirs[0].clone(),
+            data_dirs,
+            pool_idx: pools.len(),
+            process: None,
+        });
+        pools.push(vec![new_idx]);
+        self.topology.node_count = self.nodes.len();
+        self.topology.pools = pools;
+        self.node_extra_env.push(Vec::new());
+        self.node_capture_log_paths.push(None);
+        self.volume_proxy_addresses.push(None);
+
+        if !self.extra_env.iter().any(|(key, _)| key == "RUSTFS_UNSAFE_BYPASS_DISK_CHECK") {
+            self.extra_env
+                .push(("RUSTFS_UNSAFE_BYPASS_DISK_CHECK".to_string(), "true".to_string()));
+        }
+
+        Ok(new_idx)
+    }
+
+    /// Gracefully stop one cluster node and wait for its process to exit.
+    ///
+    /// This is intentionally separate from [`Self::stop_node`]: the latter is
+    /// a hard kill used by crash-recovery tests, while this path lets RustFS
+    /// complete its normal shutdown hooks before a test restarts the node.
+    pub async fn stop_node_gracefully(&mut self, node_idx: usize) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        self.ensure_node_index(node_idx)?;
+
+        #[cfg(unix)]
+        {
+            let Some(process) = self.nodes[node_idx].process.as_ref() else {
+                return Ok(());
+            };
+            let pid = process.id().to_string();
+            let signal_status = Command::new("kill").args(["-TERM", &pid]).status()?;
+            if !signal_status.success() {
+                return Err(format!("failed to send SIGTERM to cluster node {node_idx} (pid {pid})").into());
+            }
+
+            let mut process = self.nodes[node_idx]
+                .process
+                .take()
+                .ok_or_else(|| format!("cluster node {node_idx} process disappeared while stopping"))?;
+            let deadline = std::time::Instant::now() + Duration::from_secs(45);
+            loop {
+                if let Some(status) = process.try_wait()? {
+                    info!("Cluster node {} stopped gracefully with {}", node_idx, status);
+                    return Ok(());
+                }
+                if std::time::Instant::now() >= deadline {
+                    let _ = process.kill();
+                    let _ = process.wait();
+                    return Err(format!("cluster node {node_idx} did not stop gracefully within 45 seconds").into());
+                }
+                sleep(Duration::from_millis(100)).await;
+            }
+        }
+
+        #[cfg(not(unix))]
+        {
+            let _ = node_idx;
+            Err("graceful cluster-node stop is only supported on Unix E2E hosts".into())
+        }
+    }
+}
+
+impl Drop for RustFSTestClusterEnvironment {
+    /// Clean up the RustFS test cluster environment when the instance is dropped.
+    ///
+    /// Automatically calls the `stop` method to terminate all running node processes, then
+    /// attempts to delete the cluster's temporary root directory and all its contents.
+    /// Logs a warning if directory deletion fails (does not affect program exit).
+    fn drop(&mut self) {
+        self.stop();
+        if let Err(e) = std::fs::remove_dir_all(&self.temp_dir) {
+            warn!("Failed to clean up cluster temp directory {}: {}", self.temp_dir, e);
+        }
+    }
+}
+
+/// Send a SigV4-signed HTTP request and return the raw `reqwest::Response`.
+///
+/// Unlike [`signed_s3_request`], this variant accepts `body: Option<Vec<u8>>`
+/// (binary-safe) and reorders parameters so that `access_key`/`secret_key`
+/// appear before the body — matching the convention used by the replication
+/// extension and object-lambda e2e suites.
+pub(crate) async fn signed_request(
+    method: http::Method,
+    url: &str,
+    access_key: &str,
+    secret_key: &str,
+    body: Option<Vec<u8>>,
+    content_type: Option<&str>,
+) -> Result<reqwest::Response, Box<dyn std::error::Error + Send + Sync>> {
+    let uri = url.parse::<http::Uri>()?;
+    let authority = uri.authority().ok_or("request URL missing authority")?.to_string();
+    let mut request = http::Request::builder().method(method.clone()).uri(uri);
+    request = request.header(HOST, authority);
+    request = request.header("x-amz-content-sha256", UNSIGNED_PAYLOAD);
+    if let Some(content_type) = content_type {
+        request = request.header(CONTENT_TYPE, content_type);
+    }
+
+    let content_len = body.as_ref().map(|body| body.len() as i64).unwrap_or_default();
+    let signed = sign_v4(request.body(Body::empty())?, content_len, access_key, secret_key, "", "us-east-1");
+
+    let reqwest_method = reqwest::Method::from_bytes(method.as_str().as_bytes())?;
+    let client = local_http_client();
+    let mut request_builder = client.request(reqwest_method, url);
+    for (name, value) in signed.headers() {
+        request_builder = request_builder.header(name, value);
+    }
+    if let Some(body) = body {
+        request_builder = request_builder.body(body);
+    }
+
+    Ok(request_builder.send().await?)
+}
+
+/// Like [`signed_request`], but uses a caller-supplied `reqwest::Client`
+/// instead of the shared [`local_http_client`].
+pub(crate) async fn signed_request_with_client(
+    client: &reqwest::Client,
+    method: http::Method,
+    url: &str,
+    access_key: &str,
+    secret_key: &str,
+    body: Option<Vec<u8>>,
+    content_type: Option<&str>,
+) -> Result<reqwest::Response, Box<dyn std::error::Error + Send + Sync>> {
+    let uri = url.parse::<http::Uri>()?;
+    let authority = uri.authority().ok_or("request URL missing authority")?.to_string();
+    let mut request = http::Request::builder().method(method.clone()).uri(uri);
+    request = request.header(HOST, authority);
+    request = request.header("x-amz-content-sha256", UNSIGNED_PAYLOAD);
+    if let Some(content_type) = content_type {
+        request = request.header(CONTENT_TYPE, content_type);
+    }
+
+    let content_len = body.as_ref().map(|body| body.len() as i64).unwrap_or_default();
+    let signed = sign_v4(request.body(Body::empty())?, content_len, access_key, secret_key, "", "us-east-1");
+
+    let reqwest_method = reqwest::Method::from_bytes(method.as_str().as_bytes())?;
+    let mut request_builder = client.request(reqwest_method, url);
+    for (name, value) in signed.headers() {
+        request_builder = request_builder.header(name, value);
+    }
+    if let Some(body) = body {
+        request_builder = request_builder.body(body);
+    }
+
+    Ok(request_builder.send().await?)
+}
+
+/// Like [`signed_request`], but includes a `session_token` in the
+/// `x-amz-security-token` header and passes it to the SigV4 signer.
+pub(crate) async fn signed_request_with_session_token(
+    method: http::Method,
+    url: &str,
+    access_key: &str,
+    secret_key: &str,
+    session_token: &str,
+    body: Option<Vec<u8>>,
+    content_type: Option<&str>,
+) -> Result<reqwest::Response, Box<dyn std::error::Error + Send + Sync>> {
+    let uri = url.parse::<http::Uri>()?;
+    let authority = uri.authority().ok_or("request URL missing authority")?.to_string();
+    let mut request = http::Request::builder().method(method.clone()).uri(uri);
+    request = request.header(HOST, authority);
+    request = request.header("x-amz-content-sha256", UNSIGNED_PAYLOAD);
+    if !session_token.is_empty() {
+        request = request.header("x-amz-security-token", session_token);
+    }
+    if let Some(content_type) = content_type {
+        request = request.header(CONTENT_TYPE, content_type);
+    }
+
+    let content_len = body.as_ref().map(|body| body.len() as i64).unwrap_or_default();
+    let signed = sign_v4(
+        request.body(Body::empty())?,
+        content_len,
+        access_key,
+        secret_key,
+        session_token,
+        "us-east-1",
+    );
+
+    let reqwest_method = reqwest::Method::from_bytes(method.as_str().as_bytes())?;
+    let client = local_http_client();
+    let mut request_builder = client.request(reqwest_method, url);
+    for (name, value) in signed.headers() {
+        request_builder = request_builder.header(name, value);
+    }
+    if let Some(body) = body {
+        request_builder = request_builder.body(body);
+    }
+
+    Ok(request_builder.send().await?)
+}
+
+/// Create a new user via the admin API.
+pub(crate) async fn admin_create_user(
+    env: &RustFSTestEnvironment,
+    username: &str,
+    secret_key: &str,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    admin_create_user_via(AdminTransport::Signed, &env.url, &env.access_key, &env.secret_key, username, secret_key).await
+}
+
+/// Transport used by the shared admin-API helpers: in-process SigV4 signing
+/// via [`signed_request`], or the external `awscurl` binary (an independent
+/// SigV4 implementation exercised by the awscurl-gated suites).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum AdminTransport {
+    Signed,
+    Awscurl,
+}
+
+/// Execute an admin-API request against `base_url` with admin credentials over
+/// the chosen transport, failing on any non-success response.
+pub(crate) async fn admin_execute_at(
+    transport: AdminTransport,
+    method: http::Method,
+    base_url: &str,
+    admin_access_key: &str,
+    admin_secret_key: &str,
+    path_and_query: &str,
+    body: Option<&str>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let url = format!("{base_url}{path_and_query}");
+    match transport {
+        AdminTransport::Signed => {
+            let content_type = match body {
+                Some(body) if !body.is_empty() => Some("application/json"),
+                _ => None,
+            };
+            let response = signed_request(
+                method.clone(),
+                &url,
+                admin_access_key,
+                admin_secret_key,
+                body.map(|body| body.as_bytes().to_vec()),
+                content_type,
+            )
+            .await?;
+            if !response.status().is_success() {
+                let status = response.status();
+                let text = response.text().await.unwrap_or_default();
+                return Err(format!("{method} {path_and_query} failed: {status} {text}").into());
+            }
+        }
+        AdminTransport::Awscurl => {
+            execute_awscurl(&url, method.as_str(), body, admin_access_key, admin_secret_key).await?;
+        }
+    }
+    Ok(())
+}
+
+/// Create a new IAM user via the admin API over the chosen transport.
+pub(crate) async fn admin_create_user_via(
+    transport: AdminTransport,
+    base_url: &str,
+    admin_access_key: &str,
+    admin_secret_key: &str,
+    username: &str,
+    secret_key: &str,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let path = format!("/rustfs/admin/v3/add-user?accessKey={username}");
+    let body = serde_json::json!({"secretKey": secret_key, "status": "enabled"}).to_string();
+    admin_execute_at(
+        transport,
+        http::Method::PUT,
+        base_url,
+        admin_access_key,
+        admin_secret_key,
+        &path,
+        Some(&body),
+    )
+    .await
+}
+
+/// Install a canned policy via the admin API over the chosen transport.
+pub(crate) async fn admin_add_canned_policy_via(
+    transport: AdminTransport,
+    base_url: &str,
+    admin_access_key: &str,
+    admin_secret_key: &str,
+    policy_name: &str,
+    policy_json: &str,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let path = format!("/rustfs/admin/v3/add-canned-policy?name={policy_name}");
+    admin_execute_at(
+        transport,
+        http::Method::PUT,
+        base_url,
+        admin_access_key,
+        admin_secret_key,
+        &path,
+        Some(policy_json),
+    )
+    .await
+}
+
+/// Attach a canned policy to a user via the admin API over the chosen transport.
+pub(crate) async fn admin_attach_user_policy_via(
+    transport: AdminTransport,
+    base_url: &str,
+    admin_access_key: &str,
+    admin_secret_key: &str,
+    policy_name: &str,
+    username: &str,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let path = format!("/rustfs/admin/v3/set-user-or-group-policy?policyName={policy_name}&userOrGroup={username}&isGroup=false");
+    // `Some("")` preserves the historical wire shape on both transports: awscurl
+    // keeps sending `-d ''` and the signed path attaches an empty body with no
+    // content type.
+    admin_execute_at(
+        transport,
+        http::Method::PUT,
+        base_url,
+        admin_access_key,
+        admin_secret_key,
+        &path,
+        Some(""),
+    )
+    .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalizes_rustfs_build_features() {
+        assert_eq!(
+            normalize_rustfs_build_features(" SFTP, ftps ,, WebDAV "),
+            Some("sftp,ftps,webdav".to_string())
+        );
+        assert_eq!(normalize_rustfs_build_features(" , "), None);
+    }
+
+    #[test]
+    fn missing_awscurl_is_a_prerequisite_failure() {
+        let missing = std::env::temp_dir().join(format!("missing-awscurl-{}", Uuid::new_v4()));
+
+        let error = verify_awscurl_path(&missing).expect_err("a missing awscurl binary must fail the test prerequisite");
+
+        assert_eq!(error.kind(), ErrorKind::NotFound);
+    }
+
+    #[test]
+    fn available_awscurl_client_passes_prerequisite_check() {
+        let executable = std::env::current_exe().expect("the test executable should have a path");
+
+        verify_awscurl_path(&executable).expect("an available client with a working help command should pass");
+    }
+
+    #[test]
+    fn capture_log_path_uses_temp_directory_basename() {
+        assert_eq!(
+            capture_log_path(Path::new("/tmp/e2e-logs"), "/tmp/rustfs_e2e_test_abc"),
+            Some(PathBuf::from("/tmp/e2e-logs/rustfs_e2e_test_abc.log"))
+        );
+    }
+
+    #[test]
+    fn e2e_port_allocator_uses_default_range() {
+        assert_eq!(
+            parse_test_port_allocator_config(None, None).expect("default port allocator config"),
+            TestPortAllocatorConfig {
+                min: TEST_PORT_MIN,
+                range: TEST_PORT_RANGE
+            }
+        );
+    }
+
+    #[test]
+    fn e2e_port_allocator_accepts_explicit_test_range() {
+        let config = parse_test_port_allocator_config(Some("31000"), Some("128")).expect("explicit port range");
+
+        assert_eq!(advance_test_port(31127, config), 31000);
+        assert!(config.contains(&31000));
+        assert!(config.contains(&31127));
+        assert!(!config.contains(&31128));
+    }
+
+    #[test]
+    fn e2e_port_allocator_rejects_invalid_override() {
+        assert!(parse_test_port_allocator_config(Some("1023"), Some("1")).is_err());
+        assert!(parse_test_port_allocator_config(Some("65000"), Some("1000")).is_err());
+        assert!(parse_test_port_allocator_config(Some("31000"), Some("0")).is_err());
+        assert!(parse_test_port_allocator_config(Some("not-a-port"), Some("128")).is_err());
+    }
+
+    #[test]
+    fn resolves_rustfs_binary_in_configured_cargo_target_directory() {
+        let workspace = Path::new("workspace");
+        let profile = if cfg!(debug_assertions) { "debug" } else { "release" };
+        let binary = format!("rustfs{}", std::env::consts::EXE_SUFFIX);
+        assert_eq!(
+            resolve_rustfs_binary_path(workspace, None),
+            workspace.join("target").join(profile).join(&binary)
+        );
+        assert_eq!(
+            resolve_rustfs_binary_path(workspace, Some(Path::new("custom-target"))),
+            workspace.join("custom-target").join(profile).join(&binary)
+        );
+
+        let absolute = std::env::temp_dir().join("rustfs-e2e-custom-target");
+        assert_eq!(
+            resolve_rustfs_binary_path(workspace, Some(&absolute)),
+            absolute.join(profile).join(binary)
+        );
+    }
+
+    #[test]
+    fn full_feature_enables_any_required_feature() {
+        assert!(rustfs_build_feature_enabled(Some("full"), "sftp"));
+        assert!(rustfs_build_feature_enabled(Some("ftps, full"), "webdav"));
+    }
+
+    #[test]
+    fn binary_feature_stamp_matching_uses_normalized_features() {
+        let binary_path = std::env::temp_dir().join(format!("rustfs-feature-stamp-test-{}", Uuid::new_v4()));
+        let stamp_path = rustfs_binary_features_stamp_path(&binary_path);
+
+        stdfs::write(&stamp_path, " SFTP, ftps ").expect("write feature stamp");
+        assert!(binary_features_match(&binary_path, Some("sftp,ftps")));
+        assert!(binary_features_match(&binary_path, Some(" SFTP, FTPS ")));
+        assert!(!binary_features_match(&binary_path, Some("sftp")));
+
+        stdfs::remove_file(stamp_path).ok();
+    }
+
+    /// Build a cluster environment struct in-memory (no ports, no processes) so
+    /// that `build_volumes_arg` can be exercised as a pure string builder. Node
+    /// directories mirror what `with_topology` would create for the topology.
+    fn fake_cluster(topology: ClusterTopology) -> RustFSTestClusterEnvironment {
+        let temp_dir = "/tmp/rustfs_cluster_test_FAKE".to_string();
+        let pools = topology.normalized_pools();
+        let mut pool_of_node = vec![0usize; topology.node_count];
+        for (pool_idx, nodes) in pools.iter().enumerate() {
+            for &n in nodes {
+                pool_of_node[n] = pool_idx;
+            }
+        }
+        let multidrive = topology.drives_per_node > 1;
+
+        let nodes: Vec<ClusterNode> = (0..topology.node_count)
+            .map(|i| {
+                let address = format!("127.0.0.1:{}", 9000 + i);
+                let data_dirs: Vec<String> = if multidrive {
+                    (0..topology.drives_per_node)
+                        .map(|d| format!("{}/node{}/drive{}", temp_dir, i, d))
+                        .collect()
+                } else {
+                    vec![format!("{}/node{}", temp_dir, i)]
+                };
+                ClusterNode {
+                    url: format!("http://{}", address),
+                    address,
+                    data_dir: data_dirs[0].clone(),
+                    data_dirs,
+                    pool_idx: pool_of_node[i],
+                    process: None,
+                }
+            })
+            .collect();
+
+        let node_count = nodes.len();
+        RustFSTestClusterEnvironment {
+            nodes,
+            temp_dir,
+            access_key: DEFAULT_ACCESS_KEY.to_string(),
+            secret_key: DEFAULT_SECRET_KEY.to_string(),
+            extra_env: Vec::new(),
+            node_extra_env: vec![Vec::new(); topology.node_count],
+            node_capture_log_paths: vec![None; topology.node_count],
+            topology,
+            volume_proxy_addresses: vec![None; node_count],
+        }
+    }
+
+    #[test]
+    fn volumes_single_pool_single_drive_is_backward_compatible() {
+        // The historical layout: one explicit endpoint per node, space-joined,
+        // no ellipses, no `drive` sub-directory.
+        let env = fake_cluster(ClusterTopology::single_pool(4));
+        assert_eq!(
+            env.build_volumes_arg(),
+            "http://127.0.0.1:9000/tmp/rustfs_cluster_test_FAKE/node0 \
+             http://127.0.0.1:9001/tmp/rustfs_cluster_test_FAKE/node1 \
+             http://127.0.0.1:9002/tmp/rustfs_cluster_test_FAKE/node2 \
+             http://127.0.0.1:9003/tmp/rustfs_cluster_test_FAKE/node3"
+        );
+    }
+
+    #[test]
+    fn volumes_single_pool_multidrive_enumerates_every_drive() {
+        // 4 nodes x 2 drives -> 8 explicit endpoints, one legacy pool. No
+        // ellipses, so the server parser keeps this as a single DistErasure pool.
+        let env = fake_cluster(ClusterTopology::single_pool_multidrive(4, 2));
+        let expected = (0..4)
+            .flat_map(|i| {
+                (0..2).map(move |d| format!("http://127.0.0.1:{}/tmp/rustfs_cluster_test_FAKE/node{}/drive{}", 9000 + i, i, d))
+            })
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert_eq!(env.build_volumes_arg(), expected);
+        assert_eq!(env.build_volumes_arg().split(' ').count(), 8);
+    }
+
+    #[test]
+    fn volumes_two_pool_uses_one_ellipses_arg_per_pool() {
+        // Two single-node pools, 2 drives each -> two ellipses arguments. The
+        // server parser treats each space-separated ellipses arg as its own pool.
+        let env = fake_cluster(ClusterTopology::per_node_pools(2, vec![vec![0], vec![1]]));
+        assert_eq!(
+            env.build_volumes_arg(),
+            "http://127.0.0.1:9000/tmp/rustfs_cluster_test_FAKE/node0/drive{0...1} \
+             http://127.0.0.1:9001/tmp/rustfs_cluster_test_FAKE/node1/drive{0...1}"
+        );
+    }
+
+    #[test]
+    fn topology_rejects_multi_node_pool() {
+        // A pool striped across two localhost nodes is not expressible.
+        let err = ClusterTopology::per_node_pools(2, vec![vec![0, 1], vec![2, 3]])
+            .validate()
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("not expressible"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn topology_rejects_single_drive_multi_pool() {
+        // The server parser rejects a single-drive ellipses pool (`drive{0...0}`).
+        let err = ClusterTopology::per_node_pools(1, vec![vec![0], vec![1]])
+            .validate()
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("drives_per_node >= 2"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn topology_rejects_unassigned_and_duplicated_nodes() {
+        // Node 2 is never assigned to a pool.
+        let mut t = ClusterTopology::single_pool_multidrive(3, 2);
+        t.pools = vec![vec![0], vec![1]];
+        assert!(t.validate().unwrap_err().to_string().contains("not assigned"));
+
+        // Node 0 assigned twice.
+        let mut t = ClusterTopology::single_pool_multidrive(2, 2);
+        t.pools = vec![vec![0], vec![0]];
+        assert!(t.validate().unwrap_err().to_string().contains("more than one pool"));
+    }
+
+    #[test]
+    fn topology_single_pool_accepts_any_drive_count() {
+        assert!(ClusterTopology::single_pool(4).validate().is_ok());
+        assert!(ClusterTopology::single_pool_multidrive(4, 4).validate().is_ok());
+        assert!(ClusterTopology::single_pool_multidrive(1, 1).validate().is_ok());
+    }
+
+    #[tokio::test]
+    async fn volume_proxy_rewrites_cluster_volume_endpoint() {
+        let mut env = RustFSTestClusterEnvironment::new(1)
+            .await
+            .expect("cluster environment should allocate a node");
+        let direct = env.nodes[0].address.clone();
+        let proxy = env
+            .start_volume_proxy_for_node(0)
+            .await
+            .expect("volume proxy should bind before the target server starts");
+        let proxied = proxy.local_addr().to_string();
+        let volumes = env.rustfs_volumes_arg();
+
+        assert!(volumes.contains(&proxied), "volumes must use the proxy address: {volumes}");
+        assert!(!volumes.contains(&direct), "volumes must not retain the direct address: {volumes}");
+
+        proxy.shutdown().await;
+    }
+
+    #[test]
+    fn cluster_node_env_supports_per_node_overrides() {
+        let mut env = fake_cluster(ClusterTopology::single_pool(4));
+        env.set_node_env(2, "RUSTFS_INTERNODE_RPC_MSGPACK_ONLY", "true").unwrap();
+        assert_eq!(
+            env.node_extra_env[2].as_slice(),
+            [("RUSTFS_INTERNODE_RPC_MSGPACK_ONLY".to_string(), "true".to_string())]
+        );
+    }
+
+    #[test]
+    fn cluster_node_log_capture_supports_per_node_paths() {
+        let mut env = fake_cluster(ClusterTopology::single_pool(3));
+        env.set_node_capture_log_path(1, "/tmp/node1.log").unwrap();
+        assert_eq!(env.node_capture_log_paths[0], None);
+        assert_eq!(env.node_capture_log_paths[1], Some("/tmp/node1.log".to_string()));
+        assert_eq!(env.node_capture_log_paths[2], None);
+        assert!(env.set_node_capture_log_path(3, "/tmp/invalid.log").is_err());
+    }
+
+    #[test]
+    fn cluster_node_env_rejects_invalid_index() {
+        let mut env = fake_cluster(ClusterTopology::single_pool(4));
+        let err = env
+            .set_node_env(4, "RUSTFS_INTERNODE_RPC_MSGPACK_ONLY", "true")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("invalid"), "unexpected error: {err}");
+    }
+}

@@ -1,0 +1,610 @@
+// Copyright 2024 RustFS Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+//! Per-erasure-set disk-walk UNION enumerator for heal (backlog#920).
+//!
+//! B5's heal enumeration lists versions through the READ-QUORUM metadata view
+//! (`list_object_versions`), so a version present on FEWER than read-quorum disks
+//! is never enumerated and therefore never healed. This module walks each disk in
+//! the set directly (mirroring MinIO cmd/global-heal.go `healErasureSet`:
+//! `listPathRaw` with `objQuorum = 1` feeding `mergeXLV2Versions`) and surfaces
+//! every `(object, version)` present on ANY disk, feeding each to the existing
+//! per-version `SetDisks::heal_object`.
+
+use super::super::{
+    Arc, CancellationToken, DiskError, ListPathRawOptions, MetaCacheEntries, MetaCacheEntry, SetDisks, debug, disk, list_path_raw,
+};
+#[cfg(test)]
+use crate::disk::DiskAPI;
+use crate::object_api::ObjectInfo;
+#[cfg(test)]
+use rustfs_filemeta::FileMeta;
+use std::collections::HashSet;
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::time::Duration;
+
+/// Background walks skip the total timeout, so the per-read stall budget is what
+/// catches a drive that stops answering. Keep it generous: a heal walk is not
+/// latency-sensitive, and one slow read is not a dead drive.
+const BACKGROUND_WALKDIR_STALL_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// A single `(object, version)` unit surfaced by the disk-walk union enumerator.
+///
+/// `is_delete_marker` is OBSERVABILITY-ONLY (metrics / logging / e2e assertions);
+/// it must not gate healing logic — the delete-marker vs data path is chosen
+/// inside `ops/heal.rs` from the resolved latest metadata. `version_id` is
+/// normalized (nil/absent UUID => `None`).
+#[derive(Debug, Clone)]
+pub struct HealWalkVersion {
+    /// object key
+    pub name: String,
+    /// normalized version id (`None` when the version is nil/absent)
+    pub version_id: Option<String>,
+    /// version modification time as Unix nanoseconds
+    pub mod_time_unix_nanos: Option<i128>,
+    /// object snapshot for lifecycle evaluation
+    pub lifecycle_object_info: Option<ObjectInfo>,
+    /// whether this version is a delete marker (observability only)
+    pub is_delete_marker: bool,
+}
+
+/// One collected object (a single sorted key) with all its expanded versions.
+#[derive(Debug, Clone)]
+struct HealWalkObject {
+    name: String,
+    versions: Vec<HealWalkVersion>,
+}
+
+/// Shared collector fed by the `agreed`/`partial` callbacks of `list_path_raw`.
+/// `list_path_raw` emits at most one callback per distinct object key in sorted
+/// order, so each successful ingest corresponds to exactly one new object.
+struct HealWalkCollector {
+    bucket: String,
+    batch_objects: usize,
+    version_budget: usize,
+    include_lifecycle_object_info: bool,
+    objects: Mutex<Vec<HealWalkObject>>,
+    decode_error: Mutex<Option<DiskError>>,
+    version_total: AtomicUsize,
+    truncated: AtomicBool,
+    cancel: CancellationToken,
+}
+
+impl HealWalkCollector {
+    fn lock_objects(&self) -> disk::error::Result<std::sync::MutexGuard<'_, Vec<HealWalkObject>>> {
+        self.objects.lock().map_err(|_| {
+            self.cancel.cancel();
+            DiskError::FileCorrupt
+        })
+    }
+
+    fn record_decode_error(&self, error: rustfs_filemeta::Error) {
+        if let Ok(mut first_error) = self.decode_error.lock()
+            && first_error.is_none()
+        {
+            *first_error = Some(error.into());
+        }
+        self.cancel.cancel();
+    }
+
+    fn take_decode_error(&self) -> disk::error::Result<Option<DiskError>> {
+        self.decode_error.lock().map(|mut error| error.take()).map_err(|_| {
+            self.cancel.cancel();
+            DiskError::FileCorrupt
+        })
+    }
+
+    /// Expand one resolved entry into its versions and record it. Cancels the
+    /// walk once EITHER page bound (distinct object names OR expanded versions)
+    /// is met — always at a sorted object-key boundary so a heavily-versioned
+    /// object is never split across pages.
+    fn ingest(&self, entry: MetaCacheEntry) {
+        // Skip pure directory entries; they carry no versions to heal here.
+        if entry.is_dir() {
+            return;
+        }
+
+        // Expand to one HealWalkVersion per FileInfo. KEEP remote/transitioned and
+        // free-version records: their LOCAL xl.meta may still need healing.
+        let fiv = match entry.file_info_versions_with_free_versions(&self.bucket) {
+            Ok(fiv) => fiv,
+            Err(err) => {
+                self.record_decode_error(err);
+                return;
+            }
+        };
+
+        let mut versions = Vec::with_capacity(fiv.versions.len() + fiv.free_versions.len());
+        for fi in fiv.versions.iter().chain(fiv.free_versions.iter()) {
+            let version_uuid = fi.version_id.filter(|version_id| !version_id.is_nil());
+            let lifecycle_object_info = if self.include_lifecycle_object_info {
+                Some(ObjectInfo::from_file_info_with_version_id(fi, &self.bucket, &entry.name, version_uuid))
+            } else {
+                None
+            };
+            versions.push(HealWalkVersion {
+                name: entry.name.clone(),
+                // Normalize: nil/absent version id => None.
+                version_id: version_uuid.map(|u| u.to_string()),
+                mod_time_unix_nanos: fi.mod_time.map(|mod_time| mod_time.unix_timestamp_nanos()),
+                lifecycle_object_info,
+                is_delete_marker: fi.deleted,
+            });
+        }
+
+        if versions.is_empty() {
+            return;
+        }
+
+        let added = versions.len();
+        let (objs_len, ver_total) = {
+            let Ok(mut objects) = self.lock_objects() else {
+                return;
+            };
+            objects.push(HealWalkObject {
+                name: entry.name,
+                versions,
+            });
+            let objs_len = objects.len();
+            let ver_total = self.version_total.fetch_add(added, Ordering::SeqCst) + added;
+            (objs_len, ver_total)
+        };
+
+        // Bound at an object boundary (this object is fully included).
+        if objs_len >= self.batch_objects || ver_total >= self.version_budget {
+            self.truncated.store(true, Ordering::SeqCst);
+            self.cancel.cancel();
+        }
+    }
+
+    /// Collect versions from ALL partial entries across disks, deduplicate by
+    /// `(name, version_id)`, and record a single merged object. This ensures
+    /// that a version present on only a minority of disks (e.g. stale data on a
+    /// returning node that was deleted on the quorum) is surfaced for healing.
+    fn ingest_merged(&self, entries: &MetaCacheEntries) {
+        let mut name = String::new();
+        let mut seen = HashSet::new();
+        let mut versions = Vec::new();
+
+        for entry in entries.0.iter().flatten() {
+            if entry.is_dir() || entry.name.is_empty() {
+                continue;
+            }
+            if name.is_empty() {
+                name = entry.name.clone();
+            }
+            let fiv = match entry.file_info_versions_with_free_versions(&self.bucket) {
+                Ok(fiv) => fiv,
+                Err(err) => {
+                    debug!(entry = %entry.name, error = ?err, "heal disk-walk merged skipped entry with unreadable versions");
+                    continue;
+                }
+            };
+            for fi in fiv.versions.iter().chain(fiv.free_versions.iter()) {
+                let version_uuid = fi.version_id.filter(|version_id| !version_id.is_nil());
+                let vid = version_uuid.map(|u| u.to_string());
+                if seen.insert(vid.clone()) {
+                    let lifecycle_object_info = if self.include_lifecycle_object_info {
+                        Some(ObjectInfo::from_file_info_with_version_id(fi, &self.bucket, &entry.name, version_uuid))
+                    } else {
+                        None
+                    };
+                    versions.push(HealWalkVersion {
+                        name: entry.name.clone(),
+                        version_id: vid,
+                        mod_time_unix_nanos: fi.mod_time.map(|mod_time| mod_time.unix_timestamp_nanos()),
+                        lifecycle_object_info,
+                        is_delete_marker: fi.deleted,
+                    });
+                }
+            }
+        }
+
+        if versions.is_empty() || name.is_empty() {
+            return;
+        }
+
+        let added = versions.len();
+        let (objs_len, ver_total) = {
+            let Ok(mut objects) = self.lock_objects() else {
+                return;
+            };
+            objects.push(HealWalkObject { name, versions });
+            let objs_len = objects.len();
+            let ver_total = self.version_total.fetch_add(added, Ordering::SeqCst) + added;
+            (objs_len, ver_total)
+        };
+
+        if objs_len >= self.batch_objects || ver_total >= self.version_budget {
+            self.truncated.store(true, Ordering::SeqCst);
+            self.cancel.cancel();
+        }
+    }
+}
+
+/// Finalize a collected disk-walk page: compute the resume cursor and apply
+/// inclusive-forward de-overlap.
+///
+/// `next_forward` is derived from the PRE-de-overlap last collected object name
+/// (the walk's `forward_to` is inclusive, so the next page re-reads that exact
+/// key and drops it here). Leading objects whose name == `forward_to` are dropped
+/// to avoid re-healing the boundary object.
+fn finalize_heal_walk_page(
+    mut objects: Vec<HealWalkObject>,
+    forward_to: Option<&str>,
+    truncated: bool,
+) -> (Vec<HealWalkVersion>, Option<String>, bool) {
+    let next_forward = objects.last().map(|o| o.name.clone());
+
+    if let Some(fw) = forward_to {
+        while objects.first().map(|o| o.name.as_str()) == Some(fw) {
+            objects.remove(0);
+        }
+    }
+
+    let versions: Vec<HealWalkVersion> = objects.into_iter().flat_map(|o| o.versions).collect();
+
+    if truncated {
+        (versions, next_forward, true)
+    } else {
+        (versions, None, false)
+    }
+}
+
+impl SetDisks {
+    /// Walk every disk in this set and return one page of the cross-disk UNION of
+    /// versions (see module docs). Returns `(versions, next_forward, truncated)`.
+    ///
+    /// - `batch_objects` (>= 2) and `version_budget` are a DUAL page bound: the
+    ///   walk stops at the first sorted object-key boundary where EITHER the
+    ///   distinct-object-name count reaches `batch_objects` or the expanded
+    ///   version count reaches `version_budget`.
+    /// - `forward_to` resumes the walk (inclusive); the boundary object is
+    ///   de-overlapped here so no version is healed twice across pages.
+    ///
+    /// `min_disks: 1` means the page is produced from WHATEVER disks respond, so a
+    /// version on a single surviving disk is still surfaced.
+    pub(crate) async fn heal_walk_versions_page(
+        &self,
+        bucket: &str,
+        prefix: &str,
+        forward_to: Option<&str>,
+        batch_objects: usize,
+        version_budget: usize,
+        include_lifecycle_object_info: bool,
+    ) -> disk::error::Result<(Vec<HealWalkVersion>, Option<String>, bool)> {
+        assert!(batch_objects >= 2, "heal_walk_versions_page requires batch_objects >= 2");
+
+        let disks = self.get_disks_internal().await;
+
+        let collector = Arc::new(HealWalkCollector {
+            bucket: bucket.to_string(),
+            batch_objects,
+            version_budget: version_budget.max(1),
+            include_lifecycle_object_info,
+            objects: Mutex::new(Vec::new()),
+            decode_error: Mutex::new(None),
+            version_total: AtomicUsize::new(0),
+            truncated: AtomicBool::new(false),
+            cancel: CancellationToken::new(),
+        });
+
+        let agreed_collector = collector.clone();
+        let partial_collector = collector.clone();
+
+        let filter_prefix = if prefix.is_empty() { None } else { Some(prefix.to_string()) };
+
+        let opts = ListPathRawOptions {
+            disks,
+            bucket: bucket.to_string(),
+            path: String::new(),
+            recursive: true,
+            incl_deleted: true,
+            filter_prefix,
+            forward_to: forward_to.map(str::to_string),
+            min_disks: 1,
+            report_not_found: false,
+            per_disk_limit: 0,
+            skip_walkdir_total_timeout: true,
+            walkdir_stall_timeout: Some(BACKGROUND_WALKDIR_STALL_TIMEOUT),
+            agreed: Some(Box::new(move |entry: MetaCacheEntry| {
+                let collector = agreed_collector.clone();
+                Box::pin(async move {
+                    collector.ingest(entry);
+                })
+            })),
+            partial: Some(Box::new(move |entries: MetaCacheEntries, _errs: &[Option<DiskError>]| {
+                let collector = partial_collector.clone();
+                Box::pin(async move {
+                    // Collect versions from ALL entries across disks, not just the
+                    // winner of resolve_union. When a returning node carries a stale
+                    // version that was deleted on the quorum, resolve_union would
+                    // pick only one entry and lose the stale version, preventing
+                    // its cleanup during heal.
+                    collector.ingest_merged(&entries);
+                })
+            })),
+            finished: None,
+            ..Default::default()
+        };
+
+        // Drive the walk. A tolerated missing-path / not-found is treated as an
+        // empty page rather than an error (nothing to heal on this prefix).
+        let walk_result = list_path_raw(collector.cancel.clone(), opts).await;
+        if let Some(err) = collector.take_decode_error()? {
+            return Err(err);
+        }
+
+        match walk_result {
+            Ok(()) => {}
+            Err(DiskError::FileNotFound) | Err(DiskError::VolumeNotFound) => {
+                debug!(bucket, prefix, "heal disk-walk treated missing path as empty page");
+            }
+            Err(err) => return Err(err),
+        }
+
+        let objects = {
+            let mut objects = collector.lock_objects()?;
+            std::mem::take(&mut *objects)
+        };
+        let truncated = collector.truncated.load(Ordering::SeqCst);
+        Ok(finalize_heal_walk_page(objects, forward_to, truncated))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::set_disk::ops::object::hermetic_set_disks_support::hermetic_set_disks_isolated;
+    use rustfs_filemeta::{ChecksumAlgo, ErasureAlgo, FileMetaVersion, MetaObject, VersionType};
+    use time::OffsetDateTime;
+    use uuid::Uuid;
+
+    fn test_collector() -> Arc<HealWalkCollector> {
+        Arc::new(HealWalkCollector {
+            bucket: "bucket".to_string(),
+            batch_objects: 2,
+            version_budget: 2,
+            include_lifecycle_object_info: false,
+            objects: Mutex::new(Vec::new()),
+            decode_error: Mutex::new(None),
+            version_total: AtomicUsize::new(0),
+            truncated: AtomicBool::new(false),
+            cancel: CancellationToken::new(),
+        })
+    }
+
+    fn crc_valid_semantically_corrupt_entry(name: &str) -> MetaCacheEntry {
+        let mut metadata = FileMeta::new();
+        metadata
+            .add_version_filemata(FileMetaVersion {
+                version_type: VersionType::Object,
+                object: Some(MetaObject {
+                    version_id: Some(Uuid::new_v4()),
+                    erasure_algorithm: ErasureAlgo::ReedSolomon,
+                    erasure_m: 2,
+                    erasure_n: 2,
+                    erasure_block_size: 1 << 20,
+                    bitrot_checksum_algo: ChecksumAlgo::HighwayHash,
+                    part_numbers: vec![1, 2],
+                    part_sizes: vec![10],
+                    part_actual_sizes: vec![10, 20],
+                    mod_time: Some(OffsetDateTime::now_utc()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            })
+            .expect("corrupt test version should be accepted before semantic decoding");
+
+        MetaCacheEntry {
+            name: name.to_string(),
+            metadata: metadata.marshal_msg().expect("test metadata should encode with a valid CRC"),
+            ..Default::default()
+        }
+    }
+
+    fn version(name: &str, id: &str, dm: bool) -> HealWalkVersion {
+        HealWalkVersion {
+            name: name.to_string(),
+            version_id: Some(id.to_string()),
+            mod_time_unix_nanos: None,
+            lifecycle_object_info: None,
+            is_delete_marker: dm,
+        }
+    }
+
+    fn object_with_versions(name: &str, count: usize) -> HealWalkObject {
+        HealWalkObject {
+            name: name.to_string(),
+            versions: (0..count).map(|i| version(name, &format!("{name}-v{i}"), false)).collect(),
+        }
+    }
+
+    /// A single heavily-versioned object whose version count exceeds the budget
+    /// is returned WHOLE in one page (never split), and the page is flagged
+    /// truncated with a resume cursor pointing at that object.
+    #[test]
+    fn union_page_bounded_by_version_budget_on_heavily_versioned_object() {
+        let big = object_with_versions("big.bin", 50);
+        // The collector cancels AFTER completing the object, so the buffer holds
+        // exactly this one object even though 50 >> the version budget of 10.
+        let (versions, next_forward, truncated) = finalize_heal_walk_page(vec![big], None, true);
+
+        assert_eq!(versions.len(), 50, "the heavily-versioned object must not be split across pages");
+        assert!(truncated, "exceeding the version budget must mark the page truncated");
+        assert_eq!(
+            next_forward.as_deref(),
+            Some("big.bin"),
+            "resume cursor must point at the boundary object"
+        );
+    }
+
+    /// Inclusive-forward de-overlap: the boundary object re-read on the next page
+    /// (name == forward_to) is dropped, so its versions are not healed twice.
+    #[test]
+    fn union_page_de_overlaps_inclusive_forward_boundary() {
+        let a = object_with_versions("a.bin", 2);
+        let b = object_with_versions("b.bin", 3);
+        // forward_to == "a.bin": the walk re-reads a.bin (inclusive) then b.bin.
+        let (versions, next_forward, truncated) = finalize_heal_walk_page(vec![a, b], Some("a.bin"), true);
+
+        assert!(
+            versions.iter().all(|v| v.name == "b.bin"),
+            "the boundary object a.bin must be de-overlapped, got {versions:?}"
+        );
+        assert_eq!(versions.len(), 3);
+        assert_eq!(next_forward.as_deref(), Some("b.bin"));
+        assert!(truncated);
+    }
+
+    /// A non-truncated final page clears the resume cursor.
+    #[test]
+    fn union_page_non_truncated_clears_cursor() {
+        let a = object_with_versions("a.bin", 1);
+        let (versions, next_forward, truncated) = finalize_heal_walk_page(vec![a], None, false);
+        assert_eq!(versions.len(), 1);
+        assert_eq!(next_forward, None, "a complete final page must not carry a resume cursor");
+        assert!(!truncated);
+    }
+
+    /// `ingest_merged` must surface versions from ALL entries, not just the
+    /// winner of `resolve_union`. This covers the stale-object-after-reconnect
+    /// scenario (issue #5029): a returning node carries a data version that was
+    /// deleted on the quorum; `resolve_union` picks one entry and loses the
+    /// other, but `ingest_merged` must see both.
+    #[test]
+    fn ingest_merged_surfaces_versions_from_divergent_entries() {
+        use rustfs_filemeta::{FileInfo, FileMeta, MetaCacheEntries, MetaCacheEntry};
+        use time::OffsetDateTime;
+        use uuid::Uuid;
+
+        let t0 = OffsetDateTime::from_unix_timestamp(1_705_312_300).expect("valid timestamp");
+        let t1 = OffsetDateTime::from_unix_timestamp(1_705_312_400).expect("valid timestamp");
+
+        // Node3: stale data version (V1) — only present on one disk.
+        let make_entry = |name: &str, version_u128: u128, deleted: bool, ts: OffsetDateTime| -> MetaCacheEntry {
+            let mut fi = FileInfo::new(name, 4, 2);
+            fi.volume = "bucket".to_string();
+            fi.name = name.to_string();
+            fi.version_id = Some(Uuid::from_u128(version_u128));
+            fi.versioned = true;
+            fi.deleted = deleted;
+            fi.size = if deleted { 0 } else { 100 };
+            fi.mod_time = Some(ts);
+            fi.metadata = [("etag".to_string(), format!("etag-{version_u128:x}"))].into();
+
+            let mut meta = FileMeta::new();
+            meta.add_version(fi).expect("test metadata should accept version");
+            let encoded = meta.marshal_msg().expect("test metadata should marshal");
+
+            MetaCacheEntry {
+                name: name.to_string(),
+                metadata: encoded,
+                cached: Some(meta),
+                reusable: false,
+            }
+        };
+
+        let stale_entry = make_entry("a.txt", 0xBEEF, false, t0); // data version on returning node
+        let delete_entry = make_entry("a.txt", 0xCAFE, true, t1); // delete marker on quorum nodes
+
+        let collector = Arc::new(HealWalkCollector {
+            bucket: "bucket".to_string(),
+            batch_objects: 1000,
+            version_budget: 10_000,
+            include_lifecycle_object_info: false,
+            objects: Mutex::new(Vec::new()),
+            version_total: AtomicUsize::new(0),
+            decode_error: Mutex::new(None),
+            truncated: AtomicBool::new(false),
+            cancel: CancellationToken::new(),
+        });
+
+        // Simulate the partial callback: two entries with different versions.
+        let entries = MetaCacheEntries(vec![Some(stale_entry), Some(delete_entry.clone()), Some(delete_entry)]);
+        collector.ingest_merged(&entries);
+
+        let objects = collector.lock_objects().expect("mutex should not be poisoned");
+        assert_eq!(objects.len(), 1, "both entries share the same object name");
+        let versions = &objects[0].versions;
+        let version_ids: std::collections::HashSet<Option<String>> = versions.iter().map(|v| v.version_id.clone()).collect();
+        assert!(
+            version_ids.contains(&Some("00000000-0000-0000-0000-00000000beef".to_string())),
+            "ingest_merged must surface the stale data version from the returning node: {version_ids:?}"
+        );
+        assert!(
+            version_ids.contains(&Some("00000000-0000-0000-0000-00000000cafe".to_string())),
+            "ingest_merged must also surface the delete marker from the quorum: {version_ids:?}"
+        );
+        assert_eq!(versions.len(), 2, "exactly two unique versions must be collected");
+    }
+
+    #[test]
+    fn poisoned_collector_state_cancels_the_walk() {
+        let collector = test_collector();
+        let poison_target = Arc::clone(&collector);
+        let _ = std::thread::spawn(move || {
+            let _guard = poison_target.objects.lock().expect("fresh mutex should lock");
+            panic!("poison heal collector");
+        })
+        .join();
+
+        let error = collector.lock_objects().expect_err("poisoned collection must fail closed");
+        assert_eq!(error, DiskError::FileCorrupt);
+        assert!(collector.cancel.is_cancelled(), "a poisoned page collector must cancel its walk");
+        assert!(collector.objects.lock().is_err(), "poisoned state must remain fail-closed");
+    }
+
+    #[test]
+    fn semantic_decode_failure_records_error_and_cancels_walk() {
+        let collector = test_collector();
+        let entry = crc_valid_semantically_corrupt_entry("corrupt-object");
+
+        collector.ingest(entry);
+
+        let error = collector
+            .take_decode_error()
+            .expect("decode error state should remain readable")
+            .expect("semantic metadata corruption must be recorded");
+        assert_eq!(error, DiskError::FileCorrupt);
+        assert!(collector.cancel.is_cancelled(), "semantic metadata corruption must cancel the disk walk");
+    }
+
+    #[tokio::test]
+    async fn heal_walk_returns_crc_valid_semantic_decode_failure() {
+        let bucket = "bucket";
+        let object = "corrupt-object";
+        let (temp_dirs, disks, set_disks) = hermetic_set_disks_isolated(1).await;
+        disks[0].make_volume(bucket).await.expect("test bucket should be created");
+
+        let object_dir = temp_dirs[0].path().join(bucket).join(object);
+        tokio::fs::create_dir_all(&object_dir)
+            .await
+            .expect("test object directory should be created");
+        tokio::fs::write(
+            object_dir.join(crate::disk::STORAGE_FORMAT_FILE),
+            crc_valid_semantically_corrupt_entry(object).metadata,
+        )
+        .await
+        .expect("corrupt test metadata should be written");
+
+        let error = set_disks
+            .heal_walk_versions_page(bucket, "", None, 2, 2, false)
+            .await
+            .expect_err("semantic metadata corruption must fail the heal disk walk");
+
+        assert_eq!(error, DiskError::FileCorrupt);
+    }
+}

@@ -1,0 +1,80 @@
+from collections.abc import AsyncGenerator
+from typing import Any, ParamSpec, TypeVar
+
+from taskiq.abc.broker import AsyncBroker
+from taskiq.decor import AsyncTaskiqDecoratedTask
+from taskiq.exceptions import SharedBrokerListenError, SharedBrokerSendTaskError
+from taskiq.kicker import AsyncKicker
+from taskiq.message import BrokerMessage
+
+_ReturnType = TypeVar("_ReturnType")
+_Params = ParamSpec("_Params")
+
+
+class SharedDecoratedTask(AsyncTaskiqDecoratedTask[_Params, _ReturnType]):
+    """Decorator that is used with shared broker."""
+
+    def kicker(self) -> AsyncKicker[_Params, _ReturnType]:
+        """
+        This method updates getting default kicker.
+
+        In this method we want to get default broker from
+        our shared broker and send task to it, instead
+        of shared_broker.
+
+        :return: new kicker.
+        """
+        broker = getattr(self.broker, "_default_broker", None) or self.broker
+        return AsyncKicker(
+            task_name=self.task_name,
+            broker=broker,
+            labels=self.labels,
+            return_type=self.return_type,
+        )
+
+
+class AsyncSharedBroker(AsyncBroker):
+    """Broker for creating shared tasks."""
+
+    def __init__(self) -> None:
+        super().__init__(None)
+        self._default_broker: AsyncBroker | None = None
+        self.decorator_class = SharedDecoratedTask
+
+    def default_broker(self, new_broker: AsyncBroker) -> None:
+        """
+        Updates default broker.
+
+        :param new_broker: new async broker to kick tasks with.
+        """
+        self._default_broker = new_broker
+
+    async def kick(self, message: BrokerMessage) -> None:
+        """
+        Shared broker cannot kick tasks.
+
+        :param message: message to send.
+        :raises TaskiqError: if called.
+        """
+        raise SharedBrokerSendTaskError
+
+    async def listen(self) -> AsyncGenerator[bytes, None]:  # type: ignore
+        """
+        Shared broker cannot listen to tasks.
+
+        This method will throw an exception.
+
+        :raises TaskiqError: if called.
+        """
+        raise SharedBrokerListenError
+
+    def _register_task(
+        self,
+        task_name: str,
+        task: AsyncTaskiqDecoratedTask[Any, Any],
+    ) -> None:
+        self.global_task_registry[task_name] = task
+
+
+async_shared_broker = AsyncSharedBroker()
+shared_task = async_shared_broker.task

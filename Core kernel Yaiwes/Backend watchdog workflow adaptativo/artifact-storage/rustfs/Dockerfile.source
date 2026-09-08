@@ -1,0 +1,265 @@
+# syntax=docker/dockerfile:1.6
+# Copyright 2024 RustFS Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Multi-stage Dockerfile for RustFS - LOCAL DEVELOPMENT ONLY
+#
+# IMPORTANT: This Dockerfile builds RustFS from source for local development and testing.
+# CI/CD uses the production Dockerfile with prebuilt binaries instead.
+#
+# Example:
+#   docker build -f Dockerfile.source -t rustfs:dev-local .
+#   docker run --rm -p 9000:9000 rustfs:dev-local
+#
+# Supports cross-compilation for amd64 and arm64 via TARGETPLATFORM.
+
+ARG TARGETPLATFORM
+ARG BUILDPLATFORM
+ARG TARGETARCH
+ARG RUSTFS_BUILD_FEATURES=""
+
+# -----------------------------
+# Build stage
+# -----------------------------
+FROM rust:1.97.1-trixie AS builder
+
+# Re-declare args after FROM
+ARG TARGETPLATFORM
+ARG BUILDPLATFORM
+ARG TARGETARCH
+ARG RUSTFS_BUILD_FEATURES
+
+# Debug: print platforms
+RUN echo "Build info -> BUILDPLATFORM=${BUILDPLATFORM}, TARGETPLATFORM=${TARGETPLATFORM}"
+
+# Install build toolchain and headers
+# Use distro packages for protoc/flatc to avoid host-arch mismatch
+RUN set -eux; \
+    export DEBIAN_FRONTEND=noninteractive; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+    build-essential \
+    ca-certificates \
+    curl \
+    git \
+    pkg-config \
+    libssl-dev \
+    lld \
+    protobuf-compiler \
+    flatbuffers-compiler \
+    gcc-aarch64-linux-gnu \
+    gcc-x86-64-linux-gnu; \
+    rm -rf /var/lib/apt/lists/*
+
+# Optional: cross toolchain for aarch64 (only when targeting linux/arm64)
+RUN set -eux; \
+    target_platform="${TARGETPLATFORM:-}"; \
+    if [ -z "${target_platform}" ]; then \
+    case "$(uname -m)" in \
+    x86_64) target_platform="linux/amd64" ;; \
+    aarch64|arm64) target_platform="linux/arm64" ;; \
+    *) target_platform="linux/amd64" ;; \
+    esac; \
+    fi; \
+    if [ "${target_platform}" = "linux/arm64" ]; then \
+    export DEBIAN_FRONTEND=noninteractive; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends gcc-aarch64-linux-gnu; \
+    rm -rf /var/lib/apt/lists/*; \
+    fi
+
+# Add Rust targets for both arches (to support cross-builds on multi-arch runners)
+RUN set -eux; \
+    rustup target add x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu; \
+    rustup component add rust-std-x86_64-unknown-linux-gnu rust-std-aarch64-unknown-linux-gnu
+
+# Cross-compilation environment (used only when targeting aarch64)
+ENV CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+ENV CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc
+ENV CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++
+ENV CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=x86_64-linux-gnu-gcc
+ENV CC_x86_64_unknown_linux_gnu=x86_64-linux-gnu-gcc
+ENV CXX_x86_64_unknown_linux_gnu=x86_64-linux-gnu-g++
+ENV CARGO_TARGET_DIR=/usr/src/rustfs/target/docker-build
+
+WORKDIR /usr/src/rustfs
+
+# Layered copy to maximize caching:
+# 1) top-level manifests
+COPY Cargo.toml Cargo.lock ./
+# 2) workspace member manifests (adjust if workspace layout changes)
+COPY rustfs/Cargo.toml rustfs/Cargo.toml
+COPY crates/*/Cargo.toml crates/
+
+# Pre-fetch dependencies for better caching
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    cargo fetch --locked || true
+
+# 3) copy full sources (this is the main cache invalidation point)
+COPY . .
+
+# Generate static files
+
+RUN ./scripts/static.sh
+
+# Cargo build configuration for lean release artifacts
+ENV CARGO_NET_GIT_FETCH_WITH_CLI=true \
+    CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse \
+    CARGO_INCREMENTAL=0 \
+    CARGO_PROFILE_RELEASE_DEBUG=false \
+    CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO=off \
+    CARGO_PROFILE_RELEASE_STRIP=symbols
+
+# Generate protobuf/flatbuffers code (uses protoc/flatc from distro)
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/usr/src/rustfs/target/docker-build \
+    cargo run --bin gproto
+
+# Build RustFS (target depends on TARGETPLATFORM)
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/usr/src/rustfs/target/docker-build \
+    set -eux; \
+    rustup target add x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu; \
+    target_platform="${TARGETPLATFORM:-}"; \
+    if [ -z "${target_platform}" ]; then \
+    case "${TARGETARCH:-$(uname -m)}" in \
+    amd64|x86_64) target_platform="linux/amd64" ;; \
+    arm64|aarch64) target_platform="linux/arm64" ;; \
+    *) echo "Unsupported target architecture: ${TARGETARCH:-$(uname -m)}" >&2; exit 1 ;; \
+    esac; \
+    fi; \
+    case "${target_platform}" in \
+    linux/amd64) \
+    echo "Building for x86_64-unknown-linux-gnu"; \
+    if [ -n "${RUSTFS_BUILD_FEATURES}" ]; then \
+    cargo build --release --locked --target x86_64-unknown-linux-gnu --bin rustfs --features "${RUSTFS_BUILD_FEATURES}" -j "$(nproc)"; \
+    else \
+    cargo build --release --locked --target x86_64-unknown-linux-gnu --bin rustfs -j "$(nproc)"; \
+    fi; \
+    install -m 0755 "${CARGO_TARGET_DIR}/x86_64-unknown-linux-gnu/release/rustfs" /usr/local/bin/rustfs \
+    ;; \
+    linux/arm64) \
+    echo "Building for aarch64-unknown-linux-gnu"; \
+    if [ -n "${RUSTFS_BUILD_FEATURES}" ]; then \
+    cargo build --release --locked --target aarch64-unknown-linux-gnu --bin rustfs --features "${RUSTFS_BUILD_FEATURES}" -j "$(nproc)"; \
+    else \
+    cargo build --release --locked --target aarch64-unknown-linux-gnu --bin rustfs -j "$(nproc)"; \
+    fi; \
+    install -m 0755 "${CARGO_TARGET_DIR}/aarch64-unknown-linux-gnu/release/rustfs" /usr/local/bin/rustfs \
+    ;; \
+    *) \
+    echo "Unsupported target platform=${target_platform}" >&2; exit 1 \
+    ;; \
+    esac
+
+# -----------------------------
+# Development stage (keeps toolchain)
+# -----------------------------
+FROM builder AS dev
+
+ARG BUILD_DATE
+ARG VCS_REF
+
+LABEL name="RustFS (dev-source)" \
+    maintainer="RustFS Team" \
+    build-date="${BUILD_DATE}" \
+    vcs-ref="${VCS_REF}" \
+    description="RustFS - local development with Rust toolchain."
+
+# Install runtime dependencies that might be missing in partial builder
+# (builder already has build-essential, lld, etc.)
+WORKDIR /app
+
+ENV CARGO_INCREMENTAL=1
+
+# Ensure we have the same default env vars available
+ENV RUSTFS_VOLUMES="/data" \
+    RUST_LOG="warn" \
+    RUSTFS_OBS_LOG_DIRECTORY="/logs" \
+    RUSTFS_USERNAME="rustfs" \
+    RUSTFS_GROUPNAME="rustfs" \
+    RUSTFS_UID="10001" \
+    RUSTFS_GID="10001"
+
+# Note: We don't COPY source here because we expect it to be mounted at /app
+# We rely on cargo run to build and run
+EXPOSE 9000 9001
+
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["cargo", "run", "--bin", "rustfs", "--"]
+
+# -----------------------------
+# Runtime stage (Ubuntu minimal)
+# -----------------------------
+FROM ubuntu:26.04
+
+ARG BUILD_DATE
+ARG VCS_REF
+
+LABEL name="RustFS (dev-local)" \
+    maintainer="RustFS Team" \
+    build-date="${BUILD_DATE}" \
+    vcs-ref="${VCS_REF}" \
+    description="RustFS - local development image built from source (NOT for production)."
+
+# Minimal runtime deps: certificates + tzdata + coreutils (for chroot --userspec)
+RUN set -eux; \
+    export DEBIAN_FRONTEND=noninteractive; \
+    apt-get update; \
+    apt-get upgrade -y; \
+    apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    tzdata \
+    coreutils; \
+    rm -rf /var/lib/apt/lists/*
+
+# Create a conventional runtime user/group (final switch happens in entrypoint via chroot --userspec)
+RUN set -eux; \
+    groupadd -g 10001 rustfs; \
+    useradd -u 10001 -g rustfs -M -s /usr/sbin/nologin rustfs
+
+WORKDIR /app
+
+# Prepare data/log directories with sane defaults
+RUN set -eux; \
+    mkdir -p /data /logs; \
+    chown -R rustfs:rustfs /data /logs /app; \
+    chmod 0750 /data /logs
+
+# Copy the freshly built binary and the entrypoint
+COPY --from=builder /usr/local/bin/rustfs /usr/bin/rustfs
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /usr/bin/rustfs /entrypoint.sh
+
+# Default environment (override in docker run/compose as needed)
+ENV RUSTFS_VOLUMES="/data" \
+    RUST_LOG="warn" \
+    RUSTFS_USERNAME="rustfs" \
+    RUSTFS_GROUPNAME="rustfs" \
+    RUSTFS_UID="10001" \
+    RUSTFS_GID="10001"
+
+EXPOSE 9000
+VOLUME ["/data"]
+
+# Keep root here; entrypoint will drop privileges using chroot --userspec
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["/usr/bin/rustfs"]

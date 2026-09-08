@@ -1,0 +1,49 @@
+# Copyright 2024 RustFS Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+[package]
+name = "rustfs-config"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+homepage.workspace = true
+description = "Configuration management for RustFS, providing a centralized way to manage application settings and features."
+keywords = ["configuration", "settings", "management", "rustfs", "Minio"]
+categories = ["web-programming", "development-tools", "config"]
+
+[dependencies]
+hotpath.workspace = true
+const-str = { workspace = true, optional = true, features = ["std", "proc"] }
+serde = { workspace = true, optional = true, features = ["derive"] }
+serde_json = { workspace = true, optional = true, features = ["raw_value"] }
+
+[lints]
+workspace = true
+
+[features]
+default = ["constants"]
+hotpath = ["hotpath/hotpath"]
+hotpath-alloc = ["hotpath", "hotpath/hotpath-alloc"]
+hotpath-cpu = ["hotpath", "hotpath/hotpath-cpu"]
+audit = ["dep:const-str", "constants"]
+constants = ["dep:const-str"]
+notify = ["dep:const-str", "constants"]
+observability = ["constants"]
+opa = ["constants"]
+server-config-model = ["constants", "dep:serde", "dep:serde_json"]
+
+[lib]
+doctest = false

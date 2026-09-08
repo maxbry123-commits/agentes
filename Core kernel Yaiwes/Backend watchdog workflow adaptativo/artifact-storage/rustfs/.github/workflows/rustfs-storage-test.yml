@@ -1,0 +1,369 @@
+name: RustFS Storage Engine Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      rustfs_version:
+        description: 'RustFS release tag to test (e.g. 1.0.0-rc.4-preview.1)'
+        required: false
+        default: '1.0.0-rc.4-preview.1'
+      package_url:
+        description: 'Direct .deb URL (nightly/R2/dev). Overrides rustfs_version.'
+        required: false
+        type: string
+      topology:
+        description: 'Topology to run (all = SNSD, SNMD, MNMD)'
+        type: choice
+        options:
+          - all
+          - single-single
+          - single-multi
+          - multi-multi
+        default: all
+  repository_dispatch:
+    # Chain handoff: dispatched when the tier suite finishes.
+    types: [rustfs-chain-storage]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rustfs-shared-functional-tests
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  RUSTFS_ACCESS_KEY: ${{ secrets.RUSTFS_ACCESS_KEY }}
+  RUSTFS_SECRET_KEY: ${{ secrets.RUSTFS_SECRET_KEY }}
+  RUSTFS_NODES: ${{ secrets.RUSTFS_NODES || vars.RUSTFS_NODES }}
+  RUSTFS_SSH_USER: ${{ secrets.RUSTFS_SSH_USER || vars.RUSTFS_SSH_USER }}
+  RUSTFS_NIGHTLY_PACKAGE_URL: ${{ vars.RUSTFS_NIGHTLY_PACKAGE_URL || 'https://dl.rustfs.com/artifacts/rustfs/packages/nightly/rustfs-nightly-latest.deb' }}
+  PF_TESTING_GH_TOKEN: ${{ secrets.PF_TESTING_GH_TOKEN }}
+
+jobs:
+  storage-test:
+    runs-on: smoke-testing
+    timeout-minutes: 360
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch' }}
+    steps:
+      - name: Checkout repository (for report parser)
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+
+      - name: Initialize functional evidence
+        id: evidence
+        run: |
+          set -euo pipefail
+          umask 077
+          FUNCTIONAL_ARTIFACTS_DIR="${RUNNER_TEMP}/rustfs-storage-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          mkdir -- "${FUNCTIONAL_ARTIFACTS_DIR}" "${FUNCTIONAL_ARTIFACTS_DIR}-scratch"
+          {
+            printf 'FUNCTIONAL_ARTIFACTS_DIR=%s\n' "${FUNCTIONAL_ARTIFACTS_DIR}"
+            printf 'LOG_FILE=%s/suite.log\n' "${FUNCTIONAL_ARTIFACTS_DIR}"
+            printf 'REPORT_FILE=%s/report.md\n' "${FUNCTIONAL_ARTIFACTS_DIR}"
+            printf 'TMPDIR=%s-scratch\n' "${FUNCTIONAL_ARTIFACTS_DIR}"
+          } >> "${GITHUB_ENV}"
+
+      # auto-testing is private: clone it with the dedicated PF token (not
+      # GITHUB_TOKEN) and retry transient GitHub/network failures.
+      - name: Checkout auto-testing scripts (with retry)
+        env:
+          GH_TOKEN: ${{ secrets.PF_TESTING_GH_TOKEN }}
+        run: |
+          set -euo pipefail
+          rm -rf auto-testing
+          for attempt in 1 2 3 4 5; do
+            if gh repo clone rustfs/auto-testing auto-testing -- --depth 1 --quiet; then
+              echo "auto-testing cloned (attempt ${attempt})"
+              exit 0
+            fi
+            rm -rf auto-testing
+            echo "clone attempt ${attempt} failed; retrying in $((attempt * 15))s" >&2
+            sleep $((attempt * 15))
+          done
+          echo "ERROR: unable to clone rustfs/auto-testing after 5 attempts" >&2
+          exit 1
+
+      - name: Show environment
+        run: |
+          uname -a
+          jq --version
+          openssl version
+          df -h /data | tail -1
+
+      - name: Cleanup environment (before)
+        run: |
+          set -euo pipefail
+          read -r -a NODES <<< "${RUSTFS_NODES:-vm000 vm001 vm002}"
+          SSH_USER="${RUSTFS_SSH_USER:-azureuser}"
+          for node in "${NODES[@]}"; do
+            ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new "${SSH_USER}@${node}" '
+              set -euo pipefail
+              SUDO=""; [ "$(id -u)" -ne 0 ] && SUDO="sudo -n"
+              ${SUDO} systemctl stop rustfs 2>/dev/null || true
+              if ${SUDO} dpkg -l rustfs 2>/dev/null | grep -q "^ii"; then
+                ${SUDO} dpkg -P rustfs
+              fi
+              for i in 1 2 3 4; do ${SUDO} rm -rf /data/rustfs${i}/mnmd; done
+              ${SUDO} rm -rf /var/log/rustfs /var/lib/rustfs/kms /var/lib/rustfs/kms-backup
+            '
+          done
+
+      - name: Run storage engine suite
+        id: test
+        run: |
+          set -euo pipefail
+          chmod +x auto-testing/rustfs-storage-test.sh
+          PACKAGE_URL='${{ inputs.package_url }}'
+          RUSTFS_VERSION='${{ inputs.rustfs_version }}'
+          TOPOLOGY='${{ inputs.topology }}'
+          ARGS=(-y --log-file "${LOG_FILE}")
+          if [ "${TOPOLOGY}" = "all" ] || [ -z "${TOPOLOGY}" ] || [ "${TOPOLOGY}" = "null" ]; then
+            ARGS+=(--all-topologies)
+          else
+            ARGS+=(--topology "${TOPOLOGY}")
+          fi
+          if [ -n "${PACKAGE_URL}" ]; then
+            ARGS+=(--package-url "${PACKAGE_URL}")
+          elif [ -n "${RUSTFS_VERSION}" ]; then
+            ARGS+=(--version "${RUSTFS_VERSION}")
+          else
+            ARGS+=(--package-url "${RUSTFS_NIGHTLY_PACKAGE_URL}")
+          fi
+          ./auto-testing/rustfs-storage-test.sh "${ARGS[@]}"
+
+      - name: Generate report
+        if: ${{ always() && steps.evidence.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          PACKAGE_URL='${{ inputs.package_url }}'
+          RUSTFS_VERSION='${{ inputs.rustfs_version }}'
+          if [ -n "${PACKAGE_URL}" ]; then
+            PACKAGE_SOURCE="${PACKAGE_URL}"
+          elif [ -n "${RUSTFS_VERSION}" ]; then
+            PACKAGE_SOURCE="version ${RUSTFS_VERSION}"
+          else
+            PACKAGE_SOURCE="${RUSTFS_NIGHTLY_PACKAGE_URL}"
+          fi
+          read -r -a NODES <<< "${RUSTFS_NODES:-vm000 vm001 vm002}"
+          SSH_USER="${RUSTFS_SSH_USER:-azureuser}"
+          RUSTFS_VERSION_INFO="N/A"
+          if [ "${#NODES[@]}" -gt 0 ]; then
+            DETECTED_VERSION="$(ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new \
+              "${SSH_USER}@${NODES[0]}" 'rustfs --version' 2>/dev/null | tr -d '\r' | head -n 1 || true)"
+            if [ -n "${DETECTED_VERSION}" ]; then
+              RUSTFS_VERSION_INFO="${DETECTED_VERSION}"
+            fi
+          fi
+          CASE_TABLE="${FUNCTIONAL_ARTIFACTS_DIR}/cases.md"
+          CASE_RESULT=success
+          python3 scripts/functional_case_report.py "${LOG_FILE}" "${CASE_TABLE}" || CASE_RESULT=failure
+          RESULT=failure
+          if [ '${{ steps.test.outcome }}' = 'success' ] && [ "${CASE_RESULT}" = 'success' ]; then
+            RESULT=success
+          fi
+          {
+            echo "# RustFS storage engine test report"
+            echo ""
+            echo "- Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo "- Attempt: ${GITHUB_RUN_ATTEMPT}"
+            echo "- Workflow Commit: ${GITHUB_SHA}"
+            echo "- Trigger: ${{ github.event_name }}"
+            echo "- Package: ${PACKAGE_SOURCE}"
+            echo "- RustFS Version: ${RUSTFS_VERSION_INFO}"
+            echo "- Test Step Outcome: ${RESULT}"
+            echo "- Suite Step Outcome: ${{ steps.test.outcome }}"
+            echo ""
+            if [ "${RESULT}" = "success" ]; then
+              cat "${CASE_TABLE}"
+              echo ""
+              echo "## Log tail"
+              echo '```text'
+              tail -n 200 "${LOG_FILE}"
+              echo '```'
+            else
+              echo "The suite or evidence validation failed. See this run's artifact for partial case results and suite.log."
+            fi
+          } | tee "${REPORT_FILE}"
+          cat "${REPORT_FILE}" >> "${GITHUB_STEP_SUMMARY}"
+          [ "${RESULT}" = "success" ]
+
+      - name: Upload functional report to dashboard
+        if: ${{ always() && steps.evidence.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ env.PF_TESTING_GH_TOKEN }}
+          SUITE: storage
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "PF_TESTING_GH_TOKEN is not configured; skipping dashboard upload"
+            exit 0
+          fi
+          DATE="$(date -u +%Y-%m-%d)"
+          REPORT_PATH="functional-reports/${SUITE}/${DATE}.md"
+          # Base64-encode the report into a temp file and feed it to jq via
+          # --rawfile: large reports (e.g. pool) exceed the OS argv limit and
+          # make `jq --arg content "${CONTENT}"` fail with "Argument list too long".
+          B64_FILE="$(mktemp)"
+          python3 -c 'import base64,sys;print(base64.b64encode(open(sys.argv[1],"rb").read()).decode())' "${REPORT_FILE}" > "${B64_FILE}"
+          SHA="$(gh api "repos/rustfs/dashboard/contents/${REPORT_PATH}" -q '.sha' 2>/dev/null || true)"
+          if [ -n "${SHA}" ]; then
+            jq -n --arg msg "report(${SUITE}): ${DATE}" --rawfile content "${B64_FILE}" --arg sha "${SHA}" \
+              '{message:$msg, content:($content|rtrimstr("\n")), sha:$sha}' \
+              | gh api --method PUT "repos/rustfs/dashboard/contents/${REPORT_PATH}" --input - >/dev/null
+          else
+            jq -n --arg msg "report(${SUITE}): ${DATE}" --rawfile content "${B64_FILE}" \
+              '{message:$msg, content:($content|rtrimstr("\n"))}' \
+              | gh api --method PUT "repos/rustfs/dashboard/contents/${REPORT_PATH}" --input - >/dev/null
+          fi
+          rm -f "${B64_FILE}"
+
+      - name: File failure issue in rustfs/backlog
+        if: ${{ always() && (failure() || steps.test.outcome == 'failure' || steps.test.outcome == 'cancelled') }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.PF_TESTING_GH_TOKEN }}
+          EVIDENCE_OUTCOME: ${{ steps.evidence.outcome }}
+          SUITE: 'storage'
+          SUITE_LABEL: 'Storage engine'
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "PF_TESTING_GH_TOKEN is not configured; skipping backlog issue"
+            exit 0
+          fi
+          TITLE="[functional][${SUITE}] ${SUITE_LABEL} suite failed (run ${GITHUB_RUN_ID})"
+          EXISTING="$(gh issue list -R rustfs/backlog --state all \
+            --search "in:title \"run ${GITHUB_RUN_ID}\"" \
+            --json number --jq '.[].number' || true)"
+          if [ -n "${EXISTING}" ]; then
+            echo "backlog issue already exists for run ${GITHUB_RUN_ID}; skipping"
+            exit 0
+          fi
+          redact() {
+            sed -E \
+              -e 's/(RUSTFS_(ACCESS_KEY|SECRET_KEY)[=: ]+)[^[:space:]]+/\1[REDACTED]/Ig' \
+              -e 's/(Authorization:).*/\1 [REDACTED]/Ig' \
+              -e 's/(X-Amz-Signature=)[^&[:space:]]+/\1[REDACTED]/Ig' \
+              -e 's/^.*(password|secret|token)[=: ].*/[REDACTED SENSITIVE LINE]/Ig'
+          }
+          BODY_FILE="$(mktemp)"
+          {
+            echo "The **${SUITE_LABEL}** functional suite failed."
+            echo ""
+            echo "- Suite: \`${SUITE}\`"
+            echo "- Run: ${RUN_URL}"
+            echo "- Attempt: ${GITHUB_RUN_ATTEMPT}"
+            echo "- Workflow Commit: ${GITHUB_SHA}"
+            echo "- Trigger: ${GITHUB_EVENT_NAME}"
+            echo "- Date: $(date -u +%Y-%m-%d)"
+            echo ""
+            echo "## Report (errors and symptoms)"
+            echo ""
+            if [ "${EVIDENCE_OUTCOME}" = "success" ] && [ -s "${REPORT_FILE}" ]; then
+              redact < "${REPORT_FILE}"
+            elif [ "${EVIDENCE_OUTCOME}" = "success" ] && [ -s "${LOG_FILE:-}" ]; then
+              echo "(report file missing; log tail below)"
+              echo ""
+              tail -n 200 "${LOG_FILE}" | redact
+            else
+              echo "(no report or log file was produced)"
+            fi
+          } | head -c 55000 > "${BODY_FILE}"
+          gh label create functional-test -R rustfs/backlog --color d73a4a 2>/dev/null || true
+          if ! gh issue create -R rustfs/backlog --title "${TITLE}" \
+              --body-file "${BODY_FILE}" --label functional-test; then
+            gh issue create -R rustfs/backlog --title "${TITLE}" --body-file "${BODY_FILE}"
+          fi
+          echo "filed backlog issue for suite ${SUITE}"
+
+      - name: Upload report and logs
+        if: ${{ always() && steps.evidence.outcome == 'success' }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: rustfs-storage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ env.FUNCTIONAL_ARTIFACTS_DIR }}/report.md
+            ${{ env.FUNCTIONAL_ARTIFACTS_DIR }}/suite.log
+            ${{ env.FUNCTIONAL_ARTIFACTS_DIR }}/cases.md
+          if-no-files-found: error
+
+      - name: Cleanup environment (after)
+        if: always()
+        run: |
+          set -euo pipefail
+          read -r -a NODES <<< "${RUSTFS_NODES:-vm000 vm001 vm002}"
+          SSH_USER="${RUSTFS_SSH_USER:-azureuser}"
+          for node in "${NODES[@]}"; do
+            ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new "${SSH_USER}@${node}" '
+              set -euo pipefail
+              SUDO=""; [ "$(id -u)" -ne 0 ] && SUDO="sudo -n"
+              ${SUDO} systemctl stop rustfs 2>/dev/null || true
+              if ${SUDO} dpkg -l rustfs 2>/dev/null | grep -q "^ii"; then
+                ${SUDO} dpkg -P rustfs
+              fi
+              for i in 1 2 3 4; do ${SUDO} rm -rf /data/rustfs${i}/mnmd; done
+              ${SUDO} rm -rf /var/log/rustfs
+            '
+          done
+
+      - name: "Continue functional chain (next: Heal)"
+        # Only chain-triggered runs forward to the next suite; standalone
+        # workflow_dispatch runs stop after their own cleanup. A failed
+        # handoff must never pass silently: it retries, then files an alert
+        # issue in rustfs/backlog so a stalled chain is visible.
+        if: ${{ always() && github.event_name == 'repository_dispatch' }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.PF_TESTING_GH_TOKEN }}
+        run: |
+          set -uo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "PF_TESTING_GH_TOKEN is not configured; cannot dispatch the next suite" >&2
+            exit 1
+          fi
+          DISPATCHED=0
+          for attempt in 1 2 3; do
+            if gh api --method POST repos/rustfs/rustfs/dispatches \
+              -f event_type='rustfs-chain-heal' \
+              -F 'client_payload[from_suite]=storage'; then
+              echo "dispatched next suite Heal (attempt ${attempt})"
+              DISPATCHED=1
+              break
+            fi
+            echo "dispatch attempt ${attempt} failed; retrying in ${attempt}0s" >&2
+            sleep "${attempt}0"
+          done
+          if [ "${DISPATCHED:-0}" -ne 1 ]; then
+            echo "ERROR: functional chain stalled: could not dispatch Heal after 3 attempts" >&2
+            TITLE="[functional][chain] stalled after storage (run ${GITHUB_RUN_ID})"
+            BODY_FILE="$(mktemp)"
+            {
+              echo "The functional chain could not hand off from **storage** to **Heal** after 3 attempts."
+              echo ""
+              echo "- Failed suite job: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+              echo "- Expected next event: 'rustfs-chain-heal'"
+              echo "- Likely cause: PF_TESTING_GH_TOKEN lacks contents:write on rustfs/rustfs, or the GitHub API was unavailable."
+              echo "- Recovery: re-dispatch manually with"
+              FENCE="$(printf "\x60\x60\x60")"; echo "  ${FENCE}"
+              echo "  gh api --method POST repos/rustfs/rustfs/dispatches -f event_type='rustfs-chain-heal'"
+              FENCE="$(printf "\x60\x60\x60")"; echo "  ${FENCE}"
+            } > "${BODY_FILE}"
+            gh issue create -R rustfs/backlog --title "${TITLE}" \
+              --body-file "${BODY_FILE}" --label functional-test \
+              || gh issue create -R rustfs/backlog --title "${TITLE}" --body-file "${BODY_FILE}" \
+              || echo "could not file the stall alert issue either; check the token" >&2
+            exit 1
+          fi
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "RustFS storage engine suite failed"
+          echo "See the uploaded report and log artifacts for details."

@@ -1,0 +1,407 @@
+// Copyright 2024 RustFS Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+/// Check if MQTT Broker is available
+///
+/// # Arguments
+/// * `broker_url` - URL of MQTT Broker, for example `mqtt://localhost:1883`
+/// * `topic` - Topic for testing connections
+/// * `username` - Optional username for authentication
+/// * `password` - Optional password for authentication
+/// # Returns
+/// * `Ok(())` - If the connection is successful
+/// * `Err(TargetError)` - If the check fails.
+///   `TargetError::Configuration` indicates a bad configuration (invalid URL, TLS settings, etc.).
+///   Other variants indicate a connectivity or runtime failure.
+///
+/// # Example
+/// ```rust,no_run
+///  #[tokio::main]
+///  async fn main() {
+///     let result = rustfs_targets::check_mqtt_broker_available(
+///         "mqtt://localhost:1883",
+///         "test/topic",
+///         Some("myuser"),
+///         Some("mypass"),
+///     ).await;
+///     if result.is_ok() {
+///         println!("MQTT Broker is available");
+///     } else {
+///         println!("MQTT Broker is not available: {}", result.err().unwrap());
+///     }
+///  }
+/// ```
+///
+pub async fn check_mqtt_broker_available(
+    broker_url: &str,
+    topic: &str,
+    username: Option<&str>,
+    password: Option<&str>,
+) -> Result<(), crate::TargetError> {
+    use crate::target::mqtt::MQTTTlsConfig;
+
+    check_mqtt_broker_available_with_tls(broker_url, topic, username, password, &MQTTTlsConfig::default()).await
+}
+
+pub async fn check_mqtt_broker_available_with_tls(
+    broker_url: &str,
+    topic: &str,
+    username: Option<&str>,
+    password: Option<&str>,
+    tls: &crate::target::mqtt::MQTTTlsConfig,
+) -> Result<(), crate::TargetError> {
+    use crate::target::mqtt::build_mqtt_options;
+    use rumqttc::{AsyncClient, QoS};
+
+    let url =
+        crate::parse_url(broker_url).map_err(|e| crate::TargetError::Configuration(format!("Broker URL parsing failed: {e}")))?;
+    let url = url.url();
+
+    // build_mqtt_options returns TargetError directly; Configuration variants propagate as-is.
+    let mqtt_options = build_mqtt_options(
+        "rustfs_check".to_string(),
+        url,
+        username,
+        password,
+        tls,
+        std::time::Duration::from_secs(5),
+        None,
+    )?;
+    let (client, mut eventloop) = AsyncClient::builder(mqtt_options).capacity(1).build();
+
+    // Try to connect and subscribe
+    client
+        .subscribe(topic, QoS::AtLeastOnce)
+        .await
+        .map_err(|e| crate::TargetError::Network(format!("MQTT subscription failed: {e}")))?;
+    // Wait for eventloop to receive at least one event
+    match tokio::time::timeout(std::time::Duration::from_secs(3), eventloop.poll()).await {
+        Ok(Ok(_)) => Ok(()),
+        Ok(Err(e)) => Err(crate::TargetError::Network(format!("MQTT connection failed: {e}"))),
+        Err(_) => Err(crate::TargetError::Timeout("MQTT connection timed out".to_string())),
+    }
+}
+
+pub async fn check_nats_server_available(args: &crate::target::nats::NATSArgs) -> Result<(), crate::TargetError> {
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        let client = crate::target::nats::connect_nats(args).await?;
+        client
+            .flush()
+            .await
+            .map_err(|e| crate::TargetError::Network(format!("NATS connection check failed: {e}")))?;
+        // Validate the configured stream on the live connection before the drain closes it, so a
+        // missing or non-writable stream is rejected here rather than at first publish. The lookup is
+        // read-only and never creates a stream. The drain runs regardless of the validation outcome so
+        // the check connection is closed gracefully, and the validation error then propagates.
+        let validation = if args.jetstream_enable.unwrap_or(false) {
+            let mut context = async_nats::jetstream::new(client.clone());
+            // Match every other context construction site: the ack timeout is the per-operation await
+            // bound, so the validation get_stream lookup uses it rather than the library default.
+            context.set_timeout(std::time::Duration::from_secs(
+                args.jetstream_ack_timeout_secs
+                    .unwrap_or(rustfs_config::NATS_JETSTREAM_ACK_TIMEOUT_DEFAULT_SECS),
+            ));
+            crate::target::nats::validate_jetstream_stream(&context, args, "nats-check", None).await
+        } else {
+            Ok(())
+        };
+        client
+            .drain()
+            .await
+            .map_err(|e| crate::TargetError::Network(format!("Failed to close NATS check connection: {e}")))?;
+        validation
+    })
+    .await
+    .unwrap_or_else(|_| Err(crate::TargetError::Timeout("NATS connection timed out".to_string())))
+}
+
+pub async fn check_pulsar_broker_available(args: &crate::target::pulsar::PulsarArgs) -> Result<(), crate::TargetError> {
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        let client = crate::target::pulsar::connect_pulsar(args).await?;
+        client
+            .lookup_partitioned_topic(args.topic.clone())
+            .await
+            .map_err(|e| crate::TargetError::Network(format!("Pulsar topic lookup failed: {e}")))?;
+        Ok(())
+    })
+    .await
+    .unwrap_or_else(|_| Err(crate::TargetError::Timeout("Pulsar connection timed out".to_string())))
+}
+
+/// Probes a MySQL server for connectivity.
+///
+/// 1. Validates `args`.
+/// 2. Parses the DSN and builds a connection pool.
+/// 3. Runs `SELECT 1` to confirm credentials work.
+pub async fn check_mysql_server_available(args: &crate::target::mysql::MySqlArgs) -> Result<(), crate::TargetError> {
+    use crate::target::ensure_rustls_provider_installed;
+    use crate::target::mysql::{MySqlDsn, map_mysql_error};
+    use mysql_async::{Opts, OptsBuilder, Pool, SslOpts, prelude::Queryable};
+    use std::path::PathBuf;
+
+    args.validate()?;
+
+    let dsn = MySqlDsn::parse(&args.dsn_string)?;
+
+    let mut builder = OptsBuilder::default()
+        .user(Some(dsn.user.clone()))
+        .pass(Some(dsn.password.clone()))
+        .ip_or_hostname(dsn.host.clone())
+        .tcp_port(dsn.port)
+        .db_name(Some(dsn.database.clone()));
+
+    if dsn.tls {
+        ensure_rustls_provider_installed();
+        let mut ssl_opts = SslOpts::default();
+        if !args.tls_ca.is_empty() {
+            ssl_opts = ssl_opts.with_root_certs(vec![PathBuf::from(args.tls_ca.clone()).into()]);
+        }
+        if !args.tls_client_cert.is_empty() && !args.tls_client_key.is_empty() {
+            let identity = mysql_async::ClientIdentity::new(
+                PathBuf::from(args.tls_client_cert.clone()).into(),
+                PathBuf::from(args.tls_client_key.clone()).into(),
+            );
+            ssl_opts = ssl_opts.with_client_identity(Some(identity));
+        }
+        builder = builder.ssl_opts(Some(ssl_opts));
+    }
+
+    let pool = Pool::new(Opts::from(builder));
+    // Pool is dropped at scope exit; pool.disconnect() is deliberately
+    // avoided — integration tests show it hangs indefinitely, exceeding
+    // the 8s timeout. Drops handle cleanup without blocking.
+
+    let timeout = std::time::Duration::from_secs(8);
+    tokio::time::timeout(timeout, async {
+        let mut conn = pool
+            .get_conn()
+            .await
+            .map_err(|err| map_mysql_error(err, "MySQL connectivity probe failed to acquire connection"))?;
+        conn.query_drop("SELECT 1")
+            .await
+            .map_err(|err| map_mysql_error(err, "MySQL connectivity probe failed"))?;
+        Ok::<(), crate::TargetError>(())
+    })
+    .await
+    .unwrap_or_else(|_| Err(crate::TargetError::Timeout("MySQL connectivity probe timed out".to_string())))
+}
+
+/// Probes a PostgreSQL server for connectivity and verifies the configured
+/// table is readable.
+///
+/// Used by both the admin validation flow (pre-flight before persisting a
+/// target) and `PostgresTarget::init()` (runtime startup check). The probe is
+/// strictly read-only:
+///
+/// 1. Build a deadpool pool from `args` (cheap, no actual connection yet).
+/// 2. Check out a single connection.
+/// 3. Run `SELECT 1` to confirm the credentials work.
+/// 4. Run `SELECT 1 FROM <schema>.<table> LIMIT 0` to confirm the relation
+///    exists and the user has read permission. `LIMIT 0` ensures no rows are
+///    actually returned and no DML side effects occur.
+///
+/// The whole flow is wrapped in an 8s `tokio::time::timeout` so a stuck DNS
+/// resolver or TLS handshake cannot exhaust the admin layer's outer 10s
+/// timeout.
+pub async fn check_postgres_server_available(args: &crate::target::postgres::PostgresArgs) -> Result<(), crate::TargetError> {
+    use crate::target::postgres::{build_pool, map_pg_error, map_pool_error, table_probe_sql};
+
+    args.validate()?;
+
+    let timeout = std::time::Duration::from_secs(8);
+    tokio::time::timeout(timeout, async {
+        let pool = build_pool(args)?;
+        let client = pool
+            .get()
+            .await
+            .map_err(|e| map_pool_error(e, "PostgreSQL connectivity probe failed to acquire connection"))?;
+        client
+            .execute("SELECT 1", &[])
+            .await
+            .map_err(|e| map_pg_error(&e, "PostgreSQL liveness probe failed"))?;
+        let probe_sql = table_probe_sql(&args.schema, &args.table);
+        client
+            .execute(probe_sql.as_str(), &[])
+            .await
+            .map_err(|e| map_pg_error(&e, "PostgreSQL table probe failed"))?;
+        pool.close();
+        Ok::<(), crate::TargetError>(())
+    })
+    .await
+    .unwrap_or_else(|_| Err(crate::TargetError::Timeout("PostgreSQL connectivity probe timed out".to_string())))
+}
+
+pub async fn check_kafka_broker_available(args: &crate::target::kafka::KafkaArgs) -> Result<(), crate::TargetError> {
+    use rustfs_kafka_async::error::{ConnectionError, Error as KafkaError};
+    use rustfs_kafka_async::{AsyncProducer, AsyncProducerConfig, RequiredAcks};
+    use std::time::Duration;
+
+    args.validate()?;
+
+    let map_kafka_error = |err: KafkaError, context: &str| match err {
+        KafkaError::Connection(ConnectionError::NoHostReachable) => crate::TargetError::NotConnected,
+        KafkaError::Connection(ConnectionError::Timeout(_)) => crate::TargetError::Timeout(format!("{context}: {err}")),
+        KafkaError::Connection(_) => crate::TargetError::Network(format!("{context}: {err}")),
+        KafkaError::Config(_) => crate::TargetError::Configuration(format!("{context}: {err}")),
+        _ => crate::TargetError::Request(format!("{context}: {err}")),
+    };
+
+    let acks = match args.acks {
+        0 => RequiredAcks::None,
+        1 => RequiredAcks::One,
+        _ => RequiredAcks::All,
+    };
+
+    let mut config = AsyncProducerConfig::new()
+        .with_ack_timeout(Duration::from_secs(5))
+        .with_required_acks(acks);
+
+    if let Some(security) = args.security_config(false)? {
+        config = config.with_security(security);
+    }
+
+    tokio::time::timeout(Duration::from_secs(5), async {
+        let _ = AsyncProducer::from_hosts_with_config(args.brokers.clone(), config)
+            .await
+            .map_err(|err| map_kafka_error(err, "Kafka broker check failed to create producer"))?;
+        Ok(())
+    })
+    .await
+    .unwrap_or_else(|_| Err(crate::TargetError::Timeout("Kafka connection timed out".to_string())))
+}
+
+pub async fn check_redis_server_available(args: &crate::target::redis::RedisArgs) -> Result<(), crate::TargetError> {
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        let client = crate::target::redis::build_redis_client(args)?;
+        crate::target::redis::ping_redis_server(&client, args).await
+    })
+    .await
+    .unwrap_or_else(|_| Err(crate::TargetError::Timeout("Redis connection timed out".to_string())))
+}
+
+pub async fn check_amqp_broker_available(args: &crate::target::amqp::AMQPArgs) -> Result<(), crate::TargetError> {
+    match tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        let connection = crate::target::amqp::connect_amqp(args).await?;
+        if !connection.connection.status().connected() || !connection.channel.status().connected() {
+            return Err(crate::TargetError::NotConnected);
+        }
+        connection
+            .connection
+            .close(200, "OK".into())
+            .await
+            .map_err(|e| crate::TargetError::Network(format!("Failed to close AMQP check connection: {e}")))?;
+        Ok(())
+    })
+    .await
+    {
+        Ok(result) => result,
+        Err(_) => Err(crate::TargetError::Timeout("AMQP connection timed out".to_string())),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        TargetError,
+        target::{TargetType, kafka::KafkaArgs, mysql::MySqlArgs},
+    };
+
+    fn kafka_args() -> KafkaArgs {
+        KafkaArgs {
+            enable: true,
+            brokers: vec!["127.0.0.1:9092".to_string()],
+            topic: "rustfs-events".to_string(),
+            acks: 1,
+            tls_enable: false,
+            tls_ca: String::new(),
+            tls_client_cert: String::new(),
+            tls_client_key: String::new(),
+            sasl_enable: false,
+            sasl_mechanism: String::new(),
+            sasl_username: String::new(),
+            sasl_password: String::new(),
+            queue_dir: String::new(),
+            queue_limit: 100,
+            target_type: TargetType::NotifyEvent,
+        }
+    }
+
+    fn mysql_args() -> MySqlArgs {
+        MySqlArgs {
+            enable: true,
+            dsn_string: "rustfs:password@tcp(127.0.0.1:3306)/rustfs_events".to_string(),
+            table: "rustfs_events".to_string(),
+            format: "access".to_string(),
+            tls_ca: String::new(),
+            tls_client_cert: String::new(),
+            tls_client_key: String::new(),
+            queue_dir: String::new(),
+            queue_limit: 100,
+            max_open_connections: 2,
+            target_type: TargetType::NotifyEvent,
+        }
+    }
+
+    #[test]
+    fn check_kafka_broker_available_rejects_sasl_without_tls_before_connecting() {
+        let mut args = kafka_args();
+        args.sasl_enable = true;
+        args.sasl_username = "user".to_string();
+        args.sasl_password = "secret".to_string();
+
+        let err = tokio::runtime::Runtime::new()
+            .expect("runtime")
+            .block_on(check_kafka_broker_available(&args))
+            .expect_err("SASL without TLS should fail before opening a network connection");
+
+        match err {
+            TargetError::Configuration(msg) => assert!(msg.contains("requires tls_enable")),
+            other => panic!("expected configuration error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn check_mysql_server_available_rejects_invalid_table_before_connecting() {
+        let mut args = mysql_args();
+        args.table = "rustfs-events".to_string();
+
+        let err = tokio::runtime::Runtime::new()
+            .expect("runtime")
+            .block_on(check_mysql_server_available(&args))
+            .expect_err("invalid table should fail before opening a network connection");
+
+        match err {
+            TargetError::Configuration(msg) => assert!(msg.contains("not a valid identifier")),
+            other => panic!("expected configuration error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn check_mysql_server_available_rejects_unpaired_tls_client_fields_before_connecting() {
+        let mut args = mysql_args();
+        args.dsn_string = "rustfs:password@tcp(127.0.0.1:3306)/rustfs_events?tls=true".to_string();
+        args.tls_client_cert = "/etc/ssl/mysql/client.pem".to_string();
+
+        let err = tokio::runtime::Runtime::new()
+            .expect("runtime")
+            .block_on(check_mysql_server_available(&args))
+            .expect_err("unpaired TLS client fields should fail before opening a network connection");
+
+        match err {
+            TargetError::Configuration(msg) => assert!(msg.contains("must be specified together")),
+            other => panic!("expected configuration error, got {other:?}"),
+        }
+    }
+}

@@ -1,0 +1,24 @@
+# Copyright 2024 RustFS Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+[observability]
+endpoint = "http://localhost:4318" # Default is "http://localhost:4318" if not specified
+use_stdout = false # Output with stdout, true output, false no output
+sample_ratio = 1
+meter_interval = 30
+service_name = "rustfs"
+service_version = "0.1.0"
+environments = "develop"
+logger_level = "debug"
+local_logging_enabled = true # Default is false if not specified
