@@ -22,6 +22,7 @@ jobs:
           fetch-depth: 0
           filter: blob:none
           sparse-checkout: |
+            .github/scripts/yaiwes_integrate_second_five.py
             .github/workflows/yaiwes-second-five-integrate-verify.yml
             Core kernel Yaiwes/Componentes recuperados A/Argo-Workflows
             Core kernel Yaiwes/Componentes recuperados A/Azure-Durable-Functions
@@ -48,244 +49,47 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: MOVE approved code and create minimal YAIWES integration files
-        shell: bash
+      - name: Prepare MOVE in working tree
+        run: python .github/scripts/yaiwes_integrate_second_five.py prepare
+
+      - name: Runtime probe Argo Workflows
+        working-directory: Agente Yaiwes principal/execution-orchestration/dag-executor/argo-workflows
+        run: go test ./workflow/validate -run '^$'
+
+      - name: Runtime probe Azure Durable Functions
+        working-directory: Agente Yaiwes principal/execution-orchestration/state-machine-executor/azure-durable-functions
+        run: dotnet build src/WebJobs.Extensions.DurableTask/WebJobs.Extensions.DurableTask.csproj -f net10.0
+
+      - name: Runtime probe BAML
         run: |
-          set -euo pipefail
-          SRC='Core kernel Yaiwes/Componentes recuperados A'
-          Y='Agente Yaiwes principal'
+          cargo metadata --manifest-path 'Agente Yaiwes principal/definition-registry/domain-specific-contracts/baml/engine/Cargo.toml' --no-deps --format-version 1 >/tmp/baml-metadata.json
+          cargo check --manifest-path 'Agente Yaiwes principal/definition-registry/domain-specific-contracts/baml/engine/Cargo.toml' -p baml-runtime --locked
 
-          # 6 Argo — destination already materialized; fail closed before deleting origin.
-          ARGO="$Y/execution-orchestration/dag-executor/argo-workflows"
-          test -f "$ARGO/go.mod"
-          test -f "$ARGO/workflow/controller/controller.go"
-          test -f "$ARGO/adapter.py"
-          test -f "$ARGO/ficha.argo-workflows.v2.json"
-          test -f "$ARGO/WIRING.json"
-          if [ -d "$SRC/Argo-Workflows" ]; then
-            if [ -f "$SRC/Argo-Workflows/Argo-Workflows/LICENSE" ] && [ ! -e "$ARGO/UPSTREAM_LICENSE" ]; then
-              git mv "$SRC/Argo-Workflows/Argo-Workflows/LICENSE" "$ARGO/UPSTREAM_LICENSE"
-            fi
-            git rm -r "$SRC/Argo-Workflows"
-          fi
-
-          # 7 Azure Durable Functions — destination already materialized; fail closed before deleting origin.
-          AZ="$Y/execution-orchestration/state-machine-executor/azure-durable-functions"
-          test -f "$AZ/src/WebJobs.Extensions.DurableTask/WebJobs.Extensions.DurableTask.csproj"
-          test -f "$AZ/src/WebJobs.Extensions.DurableTask/DurableTaskExtension.cs"
-          test -f "$AZ/adapter.py"
-          test -f "$AZ/ficha.azure-durable-functions.v2.json"
-          test -f "$AZ/WIRING.json"
-          if [ -d "$SRC/Azure-Durable-Functions" ]; then
-            if [ -f "$SRC/Azure-Durable-Functions/LICENSE" ] && [ ! -e "$AZ/UPSTREAM_LICENSE" ]; then
-              git mv "$SRC/Azure-Durable-Functions/LICENSE" "$AZ/UPSTREAM_LICENSE"
-            fi
-            git rm -r "$SRC/Azure-Durable-Functions"
-          fi
-
-          # 8 BAML — only compiler/runtime engine, not docs/IDE/playground repo surface.
-          BAML="$Y/definition-registry/domain-specific-contracts/baml"
-          mkdir -p "$BAML"
-          if [ -d "$SRC/BAML/BAML/engine" ] && [ ! -e "$BAML/engine" ]; then
-            git mv "$SRC/BAML/BAML/engine" "$BAML/engine"
-          fi
-          if [ -f "$SRC/BAML/BAML/LICENSE" ] && [ ! -e "$BAML/UPSTREAM_LICENSE" ]; then
-            git mv "$SRC/BAML/BAML/LICENSE" "$BAML/UPSTREAM_LICENSE"
-          fi
-          test -f "$BAML/engine/Cargo.toml"
-          test -f "$BAML/engine/baml-runtime/Cargo.toml"
-          test -f "$BAML/engine/baml-compiler/Cargo.toml"
-          if [ -d "$SRC/BAML" ]; then git rm -r "$SRC/BAML"; fi
-
-          # 9 Burr — package + packaging metadata/license only; no docs/examples/website/tests.
-          BURR="$Y/execution-orchestration/state-machine-executor/burr"
-          mkdir -p "$BURR"
-          if [ -d "$SRC/Burr/burr" ] && [ ! -e "$BURR/burr" ]; then git mv "$SRC/Burr/burr" "$BURR/burr"; fi
-          for f in pyproject.toml setup.cfg LICENSE-wheel NOTICE DISCLAIMER; do
-            if [ -f "$SRC/Burr/$f" ] && [ ! -e "$BURR/$f" ]; then git mv "$SRC/Burr/$f" "$BURR/$f"; fi
-          done
-          if [ -f "$SRC/Burr/LICENSE" ] && [ ! -e "$BURR/UPSTREAM_LICENSE" ]; then git mv "$SRC/Burr/LICENSE" "$BURR/UPSTREAM_LICENSE"; fi
-          test -f "$BURR/burr/core/application.py"
-          test -f "$BURR/pyproject.toml"
-          if [ -d "$SRC/Burr" ]; then git rm -r "$SRC/Burr"; fi
-
-          # 10 Caddy — core runtime + config/cmd/internal/modules + module metadata/license, excluding tests/docs/repo CI.
-          CADDY="$Y/mesh-routing-collaboration/caddy-gateway"
-          mkdir -p "$CADDY"
-          for d in caddyconfig cmd internal modules; do
-            if [ -d "$SRC/Caddy/$d" ] && [ ! -e "$CADDY/$d" ]; then git mv "$SRC/Caddy/$d" "$CADDY/$d"; fi
-          done
-          for f in "$SRC/Caddy"/*.go; do
-            [ -e "$f" ] || continue
-            case "$f" in *_test.go) continue;; esac
-            git mv "$f" "$CADDY/$(basename "$f")"
-          done
-          for f in go.mod go.sum AUTHORS; do
-            if [ -f "$SRC/Caddy/$f" ] && [ ! -e "$CADDY/$f" ]; then git mv "$SRC/Caddy/$f" "$CADDY/$f"; fi
-          done
-          if [ -f "$SRC/Caddy/LICENSE" ] && [ ! -e "$CADDY/UPSTREAM_LICENSE" ]; then git mv "$SRC/Caddy/LICENSE" "$CADDY/UPSTREAM_LICENSE"; fi
-          test -f "$CADDY/caddy.go"
-          test -f "$CADDY/go.mod"
-          if [ -d "$SRC/Caddy" ]; then git rm -r "$SRC/Caddy"; fi
-
-          python <<'PY'
-          from pathlib import Path
-          import json
-
-          Y = Path('Agente Yaiwes principal')
-          bus_path = 'Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus/universal_plugin_bus_v2_integrated.py'
-
-          defs = [
-            (Y/'definition-registry/domain-specific-contracts/baml', 'BAML', 'yaiwes.capability.baml', 'YAIWES-BAML-001', 'typed_llm_contract_runtime', 'contract', 'typed_llm_function', 'typed_result', 'yaiwes.baml.requested', 'cargo_metadata'),
-            (Y/'execution-orchestration/state-machine-executor/burr', 'Burr', 'yaiwes.workflow.burr', 'YAIWES-BURR-001', 'state_machine_orchestrator', 'workflow', 'state_action', 'state_result', 'yaiwes.state_machine.burr.requested', 'python_import'),
-            (Y/'mesh-routing-collaboration/caddy-gateway', 'Caddy', 'yaiwes.capability.caddy', 'YAIWES-CADDY-001', 'http_tls_gateway', 'routing', 'gateway_config', 'gateway_runtime', 'yaiwes.gateway.caddy.requested', 'go_test'),
-          ]
-          for root, name, pid, case, role, family, itype, otype, event, health in defs:
-              root.mkdir(parents=True, exist_ok=True)
-              if name == 'BAML':
-                  adapter = '''from pathlib import Path\nROOT=Path(__file__).resolve().parent\ndef source_probe():\n    req=[ROOT/'engine/Cargo.toml',ROOT/'engine/baml-runtime/Cargo.toml',ROOT/'engine/baml-compiler/Cargo.toml',ROOT/'engine/llm-response-parser/Cargo.toml']\n    missing=[str(p) for p in req if not p.exists()]\n    if missing: raise RuntimeError({'missing':missing})\n    return {'component':'BAML','classification':'C','engine':str((ROOT/'engine').resolve())}\ndef runtime_command():\n    source_probe(); return ['cargo','metadata','--manifest-path',str(ROOT/'engine/Cargo.toml'),'--no-deps','--format-version','1']\n'''
-              elif name == 'Burr':
-                  adapter = '''from pathlib import Path\nimport sys\nROOT=Path(__file__).resolve().parent\ndef source_probe():\n    req=[ROOT/'pyproject.toml',ROOT/'burr/core/application.py',ROOT/'burr/core/graph.py',ROOT/'burr/core/state.py']\n    missing=[str(p) for p in req if not p.exists()]\n    if missing: raise RuntimeError({'missing':missing})\n    return {'component':'Burr','classification':'B','package':str((ROOT/'burr').resolve())}\ndef runtime_command():\n    source_probe(); return [sys.executable,'-c','from burr.core import State, GraphBuilder; s=State({"x":1}); assert s["x"]==1; print("BURR_RUNTIME_OK")']\n'''
-              else:
-                  adapter = '''from pathlib import Path\nROOT=Path(__file__).resolve().parent\ndef source_probe():\n    req=[ROOT/'go.mod',ROOT/'caddy.go',ROOT/'modules',ROOT/'caddyconfig']\n    missing=[str(p) for p in req if not p.exists()]\n    if missing: raise RuntimeError({'missing':missing})\n    return {'component':'Caddy','classification':'C','module':'github.com/caddyserver/caddy/v2'}\ndef runtime_command():\n    source_probe(); return ['go','test','.','-run','^$']\n'''
-              (root/'adapter.py').write_text(adapter, encoding='utf-8')
-              manifest = {
-                'artifact_id':pid,'version':'1.0.0','estado':'testing','contract_hash':'','tribunal_case_id':case,
-                'contrato':{'rol':role,'consume':{'datatype':{'family':family,'type':itype,'version':1}},'expone':{'datatype':{'family':family,'type':otype,'version':1}},'input_map':{},'output_map':{}},
-                'ejecucion':{'kind':'code','transport':'stdio','runtime_type':'compute','entry_point':'adapter:runtime_command','llm_ratio':0.0,'idempotente':True},
-                'seguridad':{'sandbox':'process_container','permisos':[],'limites':{'timeout_ms':120000,'deadline_ms':180000}},
-                'firma':{'gpg_key_id':'PENDIENTE'},'categoria':'pipeline' if name=='Burr' else 'kernel-capability','etapa':'E' if name!='BAML' else 'V',
-                'repeticion':{'max':3,'condicion':'si_falla_verificacion'},'repite_en':['VERIFY'],
-                'activacion':{'eventos':[event],'wake_words':[],'condicion':''},
-                'presupuesto':{'n0':{'max_tokens':1,'max_ms':120000,'max_costo_usd':0.000001}},
-                'telemetria':{'metricas':['tiempo','errores','reintentos'],'span_otel':True},
-                'evidencia':{'produce':['L1_static','L2_build','L3_runtime'],'destino':'runtime/evidence/'},
-                'failover':{'sustituible_por':[],'compensacion':'fail_closed'},'salud':{'metodo':health,'heartbeat_interval_s':30},
-                'trazas':{'task_id_requerido':True,'trace_id_requerido':True}
-              }
-              (root/f'ficha.{name.lower()}.v2.json').write_text(json.dumps(manifest, indent=2, ensure_ascii=False)+'\n', encoding='utf-8')
-              wiring={'component':name,'plugin_bus':bus_path,'ficha':f'ficha.{name.lower()}.v2.json','adapter':'adapter.py','activation_event':event,'fail_closed':True}
-              (root/'WIRING.json').write_text(json.dumps(wiring, indent=2, ensure_ascii=False)+'\n', encoding='utf-8')
-              (root/'README.md').write_text(f'# {name} — integración YAIWES\n\nClasificación: '+('B' if name=='Burr' else 'C')+'\n\nIntegración modular mediante Ficha Contract v2, WIRING y Universal Plugin Bus. El código upstream se conserva sin reescritura dentro de este destino; la lógica YAIWES vive en el adapter.\n', encoding='utf-8')
-
-          # Joint real-bus verification for 6–10.
-          vf=Y/'kernel-principal/extension-kernel/plugin-bus/verification/test_yaiwes_second_five_mounts.py'
-          vf.parent.mkdir(parents=True, exist_ok=True)
-          vf.write_text(r'''from __future__ import annotations
-import json, sys
-from pathlib import Path
-PLUGIN_BUS=Path(__file__).resolve().parents[1]
-YAIWES_ROOT=PLUGIN_BUS.parents[2]
-if str(PLUGIN_BUS) not in sys.path: sys.path.insert(0,str(PLUGIN_BUS))
-from universal_plugin_bus_v2_integrated import ComponentCandidate, PluginStatus, TargetConventions, UniversalPluginBus
-COMPONENTS=[
-('Argo-Workflows',YAIWES_ROOT/'execution-orchestration/dag-executor/argo-workflows','ficha.argo-workflows.v2.json','adapter.py'),
-('Azure-Durable-Functions',YAIWES_ROOT/'execution-orchestration/state-machine-executor/azure-durable-functions','ficha.azure-durable-functions.v2.json','adapter.py'),
-('BAML',YAIWES_ROOT/'definition-registry/domain-specific-contracts/baml','ficha.baml.v2.json','adapter.py'),
-('Burr',YAIWES_ROOT/'execution-orchestration/state-machine-executor/burr','ficha.burr.v2.json','adapter.py'),
-('Caddy',YAIWES_ROOT/'mesh-routing-collaboration/caddy-gateway','ficha.caddy.v2.json','adapter.py'),]
-def mount(root,ficha,adapter):
-    manifest=json.loads((root/ficha).read_text())
-    candidate=ComponentCandidate((root/adapter).read_text(),'python',[str((root/adapter).relative_to(YAIWES_ROOT))])
-    conv=TargetConventions('python','snake_case','mixed','gradual')
-    bus=UniversalPluginBus(); bus.add_tribunal_approval(manifest['tribunal_case_id'])
-    reg=bus.enchufar(manifest,candidate,conv,registered_by='yaiwes-integration-loop')
-    pid=manifest['artifact_id']; assert reg.plugin_id==pid; assert reg.status==PluginStatus.ACTIVE; assert bus.registry.get(pid) is reg
-    assert any(e['level']=='L2_build' for e in bus.evidence.get(pid)); bus.health.heartbeat(pid); assert bus.check_plugin_health(pid)
-    ev=manifest.get('activacion',{}).get('eventos',[])
-    if ev: assert bus.trigger_plugin(pid,ev[0],{})
-    assert bus.telemetry.get_spans()
-def test_second_five_real_bus():
-    for _,root,f,a in COMPONENTS: assert root.is_dir(); mount(root,f,a)
-''', encoding='utf-8')
-          PY
-
-          # Burr pyproject expects README.md; our integration README intentionally satisfies it.
-          git add "$Y" 'Core kernel Yaiwes/Componentes recuperados A'
-
-      - name: Runtime probes before commit
-        shell: bash
+      - name: Runtime probe Burr
         run: |
-          set -euo pipefail
-          Y='Agente Yaiwes principal'
-          python - <<'PY'
-          import importlib.util, subprocess
-          from pathlib import Path
-          roots=[
-          Path('Agente Yaiwes principal/execution-orchestration/dag-executor/argo-workflows'),
-          Path('Agente Yaiwes principal/execution-orchestration/state-machine-executor/azure-durable-functions'),
-          Path('Agente Yaiwes principal/definition-registry/domain-specific-contracts/baml'),
-          Path('Agente Yaiwes principal/execution-orchestration/state-machine-executor/burr'),
-          Path('Agente Yaiwes principal/mesh-routing-collaboration/caddy-gateway')]
-          for root in roots:
-              spec=importlib.util.spec_from_file_location('adapter_'+root.name.replace('-','_'),root/'adapter.py'); mod=importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
-              print(mod.source_probe())
-          PY
-          (cd "$Y/execution-orchestration/dag-executor/argo-workflows" && go test ./workflow/validate -run '^$')
-          (cd "$Y/execution-orchestration/state-machine-executor/azure-durable-functions" && dotnet build src/WebJobs.Extensions.DurableTask/WebJobs.Extensions.DurableTask.csproj -f net10.0 --no-restore || dotnet build src/WebJobs.Extensions.DurableTask/WebJobs.Extensions.DurableTask.csproj -f net10.0)
-          cargo metadata --manifest-path "$Y/definition-registry/domain-specific-contracts/baml/engine/Cargo.toml" --no-deps --format-version 1 >/tmp/baml-metadata.json
-          cargo check --manifest-path "$Y/definition-registry/domain-specific-contracts/baml/engine/Cargo.toml" -p baml-runtime --locked
-          python -m pip install -q -e "$Y/execution-orchestration/state-machine-executor/burr"
-          python - <<'PY'
-          from burr.core import State, GraphBuilder
-          s=State({'x':1}); assert s['x']==1
-          assert GraphBuilder() is not None
-          print('BURR_RUNTIME_OK')
-          PY
-          (cd "$Y/mesh-routing-collaboration/caddy-gateway" && go test . -run '^$')
+          python -m pip install -q -e 'Agente Yaiwes principal/execution-orchestration/state-machine-executor/burr'
+          python -c "from burr.core import State, GraphBuilder; s=State({'x':1}); assert s['x']==1; assert GraphBuilder() is not None; print('BURR_RUNTIME_OK')"
 
-      - name: Mount all second five through canonical UniversalPluginBus 10x
-        shell: bash
+      - name: Runtime probe Caddy
+        working-directory: Agente Yaiwes principal/mesh-routing-collaboration/caddy-gateway
+        run: go test . -run '^$'
+
+      - name: Mount all five through canonical UniversalPluginBus ten times
         run: |
-          set -euo pipefail
           python -m pip install -q pytest
           for i in $(seq 1 10); do
             echo "SECOND_FIVE_PLUGIN_BUS_PASS_${i}/10"
             python -m pytest -q 'Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus/verification/test_yaiwes_second_five_mounts.py'
           done
 
-      - name: Persist state and surgical architecture delta
-        shell: bash
-        run: |
-          set -euo pipefail
-          python <<'PY'
-          from pathlib import Path
-          import json
-          state=Path('Core kernel Yaiwes/Crack wall bitácora stated JSON/STATE.json')
-          data=json.loads(state.read_text())
-          names=['Argo-Workflows','Azure-Durable-Functions','BAML','Burr','Caddy']
-          sbc=data.setdefault('status_by_component',{})
-          for n in names: sbc[n]='VERIFIED_CLOSED'
-          data['current_batch']=['Camunda','Cedar','Celery','Cerberus','Cerbos']
-          data['current_boundary']='XRAY_11_TO_15_AND_WAIT_FOR_DIRECTOR_APPROVAL'
-          data['next_delta']='X-Ray Camunda, Cedar, Celery, Cerberus and Cerbos; do not integrate before Director approval'
-          data['approval_required_before_new_move_or_wiring']=True
-          data['second_five_evidence']={'move':'this commit','bus_test':'10x canonical UniversalPluginBus','runtime_tests':['Argo go test','Azure dotnet build','BAML cargo check baml-runtime','Burr real import/state','Caddy go test']}
-          state.write_text(json.dumps(data,indent=2,ensure_ascii=False)+'\n')
-          readme=Path('Readme arquitectura Yaiwes/README.md')
-          marker='## 27. Integraciones VERIFIED_CLOSED — componentes 6–10 · 2026-09-07'
-          if marker not in readme.read_text():
-              with readme.open('a',encoding='utf-8') as f:
-                  f.write('\n\n'+marker+'\n\n')
-                  f.write('- **Argo Workflows (B):** `execution-orchestration/dag-executor/argo-workflows/` — DAG/workflows Kubernetes, adapter + Ficha v2 + WIRING + Universal Plugin Bus.\n')
-                  f.write('- **Azure Durable Functions (B):** `execution-orchestration/state-machine-executor/azure-durable-functions/` — orquestación durable/state machines, adapter + Ficha v2 + WIRING + Universal Plugin Bus.\n')
-                  f.write('- **BAML (C):** `definition-registry/domain-specific-contracts/baml/` — compiler/runtime tipado de funciones LLM; engine Rust aislado y conectado por adapter.\n')
-                  f.write('- **Burr (B):** `execution-orchestration/state-machine-executor/burr/` — FSM/workflows stateful; paquete Python conectado por adapter.\n')
-                  f.write('- **Caddy (C):** `mesh-routing-collaboration/caddy-gateway/` — runtime modular HTTP/TLS/config; core Go conectado por adapter.\n')
-                  f.write('\n**Gate común:** runtime real por componente + montaje 10× mediante `UniversalPluginBus.enchufar()` + registry ACTIVE + health + evidence + telemetry.\n')
-          ledger=Path('Core kernel Yaiwes/Crack wall bitácora stated JSON/README.md')
-          with ledger.open('a',encoding='utf-8') as f:
-              f.write('\n\n## Cierre componentes 6–10\nArgo-Workflows, Azure-Durable-Functions, BAML, Burr y Caddy: `VERIFIED_CLOSED` tras MOVE/deduplicación, runtime real y gate 10× del Enchufe Universal. Los componentes 11–15 quedan exclusivamente en X-Ray hasta aprobación del Director.\n')
-          PY
-          git add 'Readme arquitectura Yaiwes/README.md' 'Core kernel Yaiwes/Crack wall bitácora stated JSON'
+      - name: Persist verified state and architecture delta
+        run: python .github/scripts/yaiwes_integrate_second_five.py persist
 
       - name: Commit verified integration
-        shell: bash
         run: |
-          set -euo pipefail
           git config user.name 'YAIWES LOOP'
           git config user.email 'actions@users.noreply.github.com'
-          git status --short
+          git add -A
           git diff --cached --check
           git commit -m 'feat(yaiwes): MOVE and verify components 6-10 via universal bus'
           git push origin HEAD:main
