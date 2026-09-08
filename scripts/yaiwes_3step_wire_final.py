@@ -131,11 +131,11 @@ def ficha(cfg: dict, adapter: str, slug: str) -> dict:
         "categoria": "pipeline",
         "etapa": "P",
         "perfiles": {"n0": {"habilitada": True, "iteraciones": 1, "simulaciones": 0, "criticas": 0, "muestras_k": 1}},
-        "presupuesto": {"n0": {"max_tokens": 0, "max_ms": 5000, "max_costo_usd": 0.0}},
+        "presupuesto": {"n0": {"max_tokens": 1, "max_ms": 5000, "max_costo_usd": 0.0}},
         "telemetria": {"metricas": ["tiempo", "errores", "health"], "span_otel": True},
         "evidencia": {"produce": ["L2_build", "L3_runtime"], "destino": "capability-registry/wordflow-loop-evidence/"},
         "failover": {"sustituible_por": [], "compensacion": "fail_closed"},
-        "salud": {"metodo": "heartbeat", "heartbeat_interval_s": 30},
+        "salud": {"metodo": "ping", "heartbeat_interval_s": 30},
     }
 
 
@@ -161,7 +161,6 @@ def main() -> None:
         if not p.is_file():
             raise RuntimeError(f"required canonical wiring file missing: {p}")
 
-    # Canonical owner-code fingerprints. No parallel bus is created.
     if git_blob_sha(bus_path) != "59fd1e10b65a2b92a282508afe07790fec26af27":
         raise RuntimeError("CANONICAL_BUS_BLOB_DRIFT")
     if git_blob_sha(ficha_path) != "b27f14b4d64f77bccf53a893c49b6f20bd58e745":
