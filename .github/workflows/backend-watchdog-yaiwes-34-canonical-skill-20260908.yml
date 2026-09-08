@@ -25,6 +25,22 @@ jobs:
         with:
           fetch-depth: 1
           lfs: false
+      - name: Copy immutable skill code and edit only sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 --retry-delay 5 'https://raw.githubusercontent.com/maxbry123-commits/agentes/c789e5fe635e220230ffc759d86dc3bbb8e261d4/skills/skills%20Github%20acci%C3%B3n/scripts/research_download_chain.py' -o /tmp/research_download_chain.py
+          python3 - <<'PY'
+          import json,re
+          from pathlib import Path
+          q=json.loads(Path('scripts/backend-watchdog-yaiwes-34-download-extract-20260908/QUEUE.json').read_text())
+          repos=[(f'{i:02d}',c['slug'],c['source_url'].rstrip('/')+'.git') for i,c in enumerate(q['components'],1)]
+          p=Path('/tmp/research_download_chain.py'); s=p.read_text()
+          s=re.sub(r"REPOS=\[.*?\]\n",'REPOS='+repr(repos)+'\n',s,count=1)
+          s=s.replace('QUEUE {number}/20:','QUEUE {number}/34:').replace('QUEUE COMPLETE: 20/20 repositories processed','QUEUE COMPLETE: 34/34 repositories processed')
+          p.write_text(s)
+          assert len(repos)==34
+          PY
       - name: Execute deterministic download chain
         shell: bash
         env:
@@ -37,4 +53,4 @@ jobs:
           git config --local filter.lfs.process ''
           git config --local filter.lfs.required false
           git config --local core.compression 0
-          python3 scripts/canonical-backend-watchdog-yaiwes-34-research_download_chain.py 'Core kernel Yaiwes/Backend watchdog workflow adaptativo/_canonical_download_34' '_work/backend-watchdog-yaiwes-34-canonical'
+          python3 /tmp/research_download_chain.py 'Core kernel Yaiwes/Backend watchdog workflow adaptativo/_canonical_download_34' '_work/backend-watchdog-yaiwes-34-canonical'
