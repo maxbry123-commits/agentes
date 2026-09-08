@@ -1,0 +1,31 @@
+[package]
+name = "restate-memory"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[features]
+default = []
+
+[dependencies]
+restate-workspace-hack = { workspace = true }
+
+restate-platform = { workspace = true }
+restate-util-bytecount = { workspace = true, features = ["serde", "schema"] }
+
+bytes = { workspace = true }
+futures = { workspace = true }
+metrics = { workspace = true }
+pin-project-lite = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros", "time", "test-util"] }
+
+[lints]
+workspace = true

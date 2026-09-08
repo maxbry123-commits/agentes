@@ -1,0 +1,95 @@
+// Copyright (c) 2023 - 2026 Restate Software, Inc., Restate GmbH.
+// All rights reserved.
+//
+// Use of this software is governed by the Business Source License
+// included in the LICENSE file.
+//
+// As of the Change Date specified in that file, in accordance with
+// the Business Source License, use of this software will be governed
+// by the Apache License, Version 2.0.
+
+use restate_storage_api::invocation_status_table::InvocationStatus;
+use restate_storage_api::journal_events::{EventView, WriteJournalEventsTable};
+use restate_types::identifiers::InvocationId;
+use restate_types::journal_events::raw::RawEvent;
+
+use crate::partition::processor::Processor;
+use crate::partition::state_machine::{CommandHandler, Error, StateMachineApplyContext};
+
+pub struct ApplyEventCommand<'e> {
+    pub invocation_id: &'e InvocationId,
+    pub invocation_status: &'e InvocationStatus,
+    pub event: RawEvent,
+}
+
+impl<'e, 'ctx: 'e, 's: 'ctx, S: WriteJournalEventsTable, P: Processor>
+    CommandHandler<&'ctx mut StateMachineApplyContext<'s, S, P>> for ApplyEventCommand<'e>
+{
+    async fn apply(self, ctx: &'ctx mut StateMachineApplyContext<'s, S, P>) -> Result<(), Error> {
+        let Some(journal_metadata) = self.invocation_status.get_journal_metadata() else {
+            // No journal, no events
+            return Ok(());
+        };
+
+        // To store the event, we need to give it a total order wrt journal.
+        let after_journal_entry_index = journal_metadata.length.saturating_sub(1);
+
+        // Store event
+        ctx.storage.put_journal_event(
+            self.invocation_id,
+            EventView {
+                append_time: ctx.record_created_at,
+                after_journal_entry_index,
+                event: self.event,
+            },
+            ctx.record_lsn.as_u64(),
+        )?;
+
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::partition::state_machine::tests::{TestEnv, fixtures};
+    use crate::partition::types::InvokerEffectKind;
+    use googletest::prelude::*;
+    use restate_types::journal_events::raw::RawEvent;
+    use restate_types::journal_events::{Event, TransientErrorEvent};
+    use restate_wal_protocol::v2::{Command, commands};
+    use restate_worker_api::invoker::Effect;
+
+    #[restate_core::test]
+    async fn store_event() {
+        let mut test_env = TestEnv::create().await;
+        let invocation_id = fixtures::mock_start_invocation(&mut test_env).await;
+        fixtures::mock_pinned_deployment_v5(&mut test_env, invocation_id).await;
+
+        let transient_error_event = TransientErrorEvent {
+            error_code: 501u16.into(),
+            error_message: "my bad".to_string(),
+            error_stacktrace: Some("something something".to_string()),
+            restate_doc_error_code: Some("RT0001".to_string()),
+            related_command_index: None,
+            related_command_name: Some("my command".to_string()),
+            related_command_type: None,
+        };
+
+        let _ = test_env
+            .apply(commands::InvokerEffectCommand::test_envelope(Effect {
+                invocation_id,
+                kind: InvokerEffectKind::JournalEvent {
+                    event: RawEvent::from(Event::TransientError(transient_error_event.clone()))
+                        .clone(),
+                },
+            }))
+            .await;
+
+        assert_that!(
+            test_env.read_journal_events(&invocation_id).await,
+            elements_are![eq(Event::TransientError(transient_error_event.clone()))]
+        );
+
+        test_env.shutdown().await;
+    }
+}

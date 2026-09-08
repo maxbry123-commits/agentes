@@ -1,0 +1,104 @@
+[package]
+name = "restate-core"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[features]
+default = []
+# Lightweight feature that enables ServiceMessage::fake_rpc() and ShardSender::send()
+# without pulling in tokio/test-util or restate-types/test-util. Intended for
+# benchmark tooling that needs to inject messages into service workers directly.
+message-util = []
+test-util = [
+  "message-util",
+  "restate-core-derive",
+  "restate-metadata-store/test-util",
+  "restate-types/test-util",
+  "tokio/test-util"
+]
+# Tokio task dumping. Not enabled by any of our binaries because dumping re-polls in-flight futures
+# which can panic (and abort the process) on current_thread runtimes.
+# See https://github.com/restatedev/restate/issues/5235
+taskdump = []
+
+[dependencies]
+restate-workspace-hack = { workspace = true }
+
+restate-core-derive = { workspace = true, optional = true }
+restate-futures-util = { workspace = true }
+restate-memory = { workspace = true }
+restate-metadata-store = { workspace = true }
+restate-platform = { workspace = true }
+restate-util-time = { workspace = true }
+restate-types = { workspace = true }
+restate-util-string = { workspace = true, features = ["metrics"] }
+
+ahash = { workspace = true }
+anyhow = { workspace = true }
+arc-swap = { workspace = true }
+assert2 = { workspace = true }
+async-trait = { workspace = true }
+axum = { workspace = true, default-features = false }
+bytes = { workspace = true }
+bytestring = { workspace = true }
+dashmap = { workspace = true }
+derive_more = { workspace = true, features = ["debug", "deref", "display", "from", "index", "index_mut", "into", "is_variant"] }
+prost-dto = { workspace = true }
+enum-map = { workspace = true }
+enumset = { workspace = true }
+futures = { workspace = true }
+http = { workspace = true }
+hyper = { workspace = true }
+hyper-util = { workspace = true, features = ["server-graceful", "server"] }
+itertools = { workspace = true }
+metrics = { workspace = true }
+parking_lot = { workspace = true }
+pin-project-lite = { workspace = true }
+prost = { workspace = true }
+rand = { workspace = true }
+serde = { workspace = true }
+serde_with = { workspace = true }
+static_assertions = { workspace = true }
+strum = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["tracing"] }
+tokio-rustls = { workspace = true }
+tokio-stream = { workspace = true, features = ["net"] }
+tokio-util = { workspace = true, features = ["net"] }
+tonic = { workspace = true, features = ["transport", "codegen", "gzip", "zstd", "router", "tls-ring"] }
+rustls = { workspace = true }
+wildmatch = { workspace = true }
+x509-parser = { workspace = true }
+tonic-prost = { workspace = true }
+tonic-reflection = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true, features = ["trace"] }
+tracing = { workspace = true }
+
+[build-dependencies]
+tonic-prost-build = { workspace = true }
+
+[dev-dependencies]
+restate-core = {path = ".", default-features = false, features = ["test-util"]}
+restate-core-derive = { workspace = true }
+restate-metadata-store = { workspace = true, features = ["test-util"] }
+restate-test-util = { workspace = true }
+
+googletest = { workspace = true }
+rcgen = { workspace = true }
+tempfile = { workspace = true }
+test-log = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-test = { workspace = true }
+
+[target.'cfg(all(target_os = "linux", any(target_arch = "aarch64", target_arch = "x86", target_arch = "x86_64")))'.dependencies]
+# tokio/taskdump hard-errors on unsupported targets, hence it cannot be pulled in by our `taskdump`
+# feature directly
+tokio = { workspace = true, features = ["taskdump"] }
+
+[lints]
+workspace = true

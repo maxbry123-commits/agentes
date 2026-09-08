@@ -1,0 +1,115 @@
+[package]
+name = "restate-cli"
+version = { workspace = true }
+authors = { workspace = true }
+description = "Restate CLI"
+edition = { workspace = true }
+license = { workspace = true }
+rust-version = { workspace = true }
+repository = { workspace = true }
+homepage = { workspace = true }
+publish = false
+default-run = "restate"
+build = "build.rs"
+
+[package.metadata.dist]
+dist = true
+formula = "restate"
+features = ["dev-cmd"]
+
+[features]
+default = ["cloud", "no-trace-logging"]
+# enables restate dev/up command
+dev-cmd = ["restate-lite", "mock-service-endpoint"]
+cloud = []
+no-trace-logging = ["tracing/max_level_trace", "tracing/release_max_level_debug"]
+
+[dependencies]
+restate-workspace-hack = { workspace = true }
+
+restate-admin-rest-model = { workspace = true }
+restate-cli-util = { workspace = true }
+restate-cloud-tunnel-client = { workspace = true }
+restate-limiter = { workspace = true, features = ["rule-book", "serde"] }
+restate-serde-util = { workspace = true }
+restate-util-string = { workspace = true }
+restate-util-time = { workspace = true }
+restate-futures-util = { workspace = true }
+restate-types = { workspace = true }
+restate-lite = { workspace = true, optional = true }
+mock-service-endpoint = { workspace = true, optional = true }
+
+anyhow = { workspace = true }
+arc-swap = { workspace = true }
+arrow = { workspace = true, features = ["ipc", "prettyprint", "json"] }
+axum = { workspace = true, default-features = false, features = ["http1", "http2", "query", "tokio"] }
+bytes = { workspace = true }
+base64 = { workspace = true }
+chrono = { workspace = true }
+chrono-humanize = { workspace = true }
+clap = { workspace = true, features = ["derive", "env", "wrap_help", "color", "std", "suggestions", "usage"] }
+clap-verbosity-flag = { workspace = true }
+clap_complete = { workspace = true }
+cling = { workspace = true }
+comfy-table = { workspace = true }
+const_format = { workspace = true }
+convert_case = "0.10"
+crossterm = { workspace = true }
+ctrlc = { version = "3.5.1" }
+dialoguer = { workspace = true }
+dirs = { version = "6.0" }
+figment = { version = "0.10.19", features = ["env", "toml"] }
+futures = { workspace = true }
+hickory-resolver = "0.26.1"
+http = { workspace = true }
+hyper = { workspace = true }
+hyper-util = { workspace = true }
+hyper-rustls = { workspace = true }
+humantime = { workspace = true }
+indicatif = "0.18.3"
+indoc = { version = "2.0.7" }
+itertools = { workspace = true }
+json-patch = "4.1.0"
+mnemonic = "1.1.1"
+octocrab = { workspace = true, features = ["stream"] }
+open = "5.3.3"
+rand = { workspace = true }
+reqwest = { workspace = true, default-features = false, features = ["json", "rustls-tls", "stream", "http2"] }
+rustls = { workspace = true, features = ["aws-lc-rs"]}
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_with = { workspace = true, features = ["hex"] }
+strum = { workspace = true }
+tempfile = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["fs"] }
+tokio-util = { workspace = true }
+toml = {workspace = true }
+toml_edit = "0.22.27"
+tower = { workspace = true }
+tracing = { workspace = true }
+url = { workspace = true }
+uuid = { workspace = true }
+zip = { version = "8.0" }
+
+
+[dev-dependencies]
+restate-cli-util = { workspace = true, features = ["test-util"] }
+
+[build-dependencies]
+vergen = { workspace = true, default-features = false, features = [
+    "build",
+    "git",
+    "gitcl",
+    "cargo",
+] }
+
+[lib]
+bench = false
+
+[[bin]]
+name = "restate"
+path = "src/main.rs"
+
+[lints]
+workspace = true
