@@ -62,3 +62,17 @@ Los 20 componentes se trabajan en tandas. La tanda actual contiene 5 y se proces
 Secuencia por cada uno:
 
 `X-Ray ➡️ mostrar integración propuesta al Director ➡️ aprobación ➡️ integración física ➡️ verificación ➡️ delta quirúrgico README arquitectura`.
+
+## Actualización operativa — tanda aprobada 11–15 · 2026-09-07
+
+El Director aprobó explícitamente la integración física de la siguiente tanda y ordenó continuar en LOOP hasta completar sus cinco integraciones:
+
+11. **Camunda** — B — destino a revalidar: `Agente Yaiwes principal/execution-orchestration/state-machine-executor/camunda/`.
+12. **Cedar** — C — destino a revalidar: `Agente Yaiwes principal/definition-registry/authorization-model/cedar/`.
+13. **Celery** — B — destino a revalidar: `Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/celery/`.
+14. **Cerberus** — C — destino a revalidar: `Agente Yaiwes principal/definition-registry/schema-contracts/cerberus/`.
+15. **Cerbos** — C — destino a revalidar: `Agente Yaiwes principal/control-governance/policy-guardrails-permissions/cerbos/`.
+
+Regla de ejecución vigente: `revalidar destino ➡️ MOVE código útil ➡️ adapter/Ficha v2/WIRING ➡️ Universal Plugin Bus/Fables ➡️ runtime/test real ➡️ deduplicar origen solo tras PASS ➡️ persistir evidencia ➡️ append quirúrgico al README arquitectura`.
+
+Estado al abrir esta tanda: `APPROVED_FOR_INTEGRATION`; ningún componente 11–15 puede convertirse en `VERIFIED_CLOSED` hasta demostrar ruta + SHA/diff + test/run/log + URL y read-back físico.
