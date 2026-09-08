@@ -35,7 +35,22 @@ def normalize_generated_fichas() -> None:
         path.write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
+def force_transactional_rm(path: Path) -> None:
+    """Deduplicate only in the ephemeral verification workspace.
+
+    Git can reject `git rm -r` after earlier `git mv` operations because the
+    index and HEAD intentionally differ during the same transaction. `-f`
+    permits that staged dedup; nothing reaches main unless every runtime probe,
+    the canonical bus 10x gate, persist step, commit and push subsequently pass.
+    """
+    if path.exists():
+        base.run("git", "rm", "-r", "-f", str(path))
+
+
 def prepare() -> None:
+    # StrategyDelta: keep the canonical base integration logic, changing only
+    # the index-safety behavior that can abort Prepare MOVE before verification.
+    base.rm = force_transactional_rm
     base.prepare()
     normalize_generated_fichas()
     base.run("git", "add", str(Y), str(base.SRC))
