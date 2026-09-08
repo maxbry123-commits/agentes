@@ -1,0 +1,74 @@
+---
+title: "Deploy to your cloud"
+description: "Run OpenWork in your AWS, Azure, or Google Cloud account with Kubernetes, Helm, and managed MySQL."
+---
+
+OpenWork's supported private-cloud shape uses the published Helm chart, a managed Kubernetes cluster, and a MySQL-compatible database in your own account. You control the network, DNS, certificates, database, backups, identity provider, and secrets; the chart deploys Den web, Den API, migrations, and the optional inference service.
+
+<CardGroup cols={3}>
+  <Card title="AWS" icon="cloud" href="/self-host/deploy-to-your-cloud/aws">
+    Deploy on EKS with Amazon RDS for MySQL.
+  </Card>
+  <Card title="Azure" icon="cloud" href="/self-host/deploy-to-your-cloud/azure">
+    Deploy on AKS with Azure Database for MySQL.
+  </Card>
+  <Card title="Google Cloud" icon="cloud" href="/self-host/deploy-to-your-cloud/google-cloud">
+    Deploy on GKE with Cloud SQL for MySQL.
+  </Card>
+</CardGroup>
+
+## Common architecture
+
+Every provider guide uses the same OpenWork boundaries:
+
+- Den web listens on port `3005` and serves the browser experience.
+- Den API listens on port `8788` and owns authentication, organizations, policy, and control-plane APIs.
+- A MySQL 8-compatible database stores shared control-plane state.
+- A migration Job runs before the application rollout.
+- The inference service is optional and disabled by default.
+- HTTPS hostnames expose web and API traffic through the provider's load-balancing layer.
+
+Use private database networking in production. Require TLS for public application traffic, encrypt storage and backups, and keep database and authentication secrets in the provider secret store or a Kubernetes Secret—not in a Helm values file.
+
+## Reverse-proxy client addresses
+
+Set `DEN_TRUSTED_PROXIES` on Den API to a comma-separated list of your reverse
+proxies' IP addresses or CIDRs (for example, `192.0.2.10,192.0.2.11`). Better Auth
+uses this list to resolve forwarded client addresses for authentication rate
+limits. Without it, clients can share a fallback rate-limit bucket.
+
+Only include the proxies you operate, not broad ranges containing clients. Your
+origin must accept traffic only from those proxies, and the proxies must overwrite
+or safely append forwarded headers. This setting interprets the forwarded chain;
+it cannot verify the direct sender. Leave it unset when there is no trusted proxy.
+Keep rate limiting enabled in production.
+
+## Deployment sequence
+
+1. Create the Kubernetes cluster and private MySQL database in compatible networks.
+2. Reserve the public address or load-balancer entry point.
+3. Create the database, database user, and Kubernetes namespace.
+4. Generate independent database, Better Auth, and Den encryption secrets.
+5. Prepare provider-specific Helm values for the web and API hostnames.
+6. Install or upgrade the chart and wait for the migration Job and workloads.
+7. Point DNS at the load balancer and verify trusted HTTPS.
+8. [Create the first administrator](/self-host/deploy-to-your-cloud/first-administrator).
+9. Configure SAML or OIDC SSO and invite or provision members.
+
+## Before you start
+
+You need:
+
+- a cloud account with permission to create Kubernetes, networking, load-balancing, managed MySQL, DNS, certificates, and secrets;
+- `kubectl` and Helm, plus the provider CLI and Kubernetes authentication plugin;
+- two DNS names, normally one for Den web and one for Den API;
+- a real email address for the initial owner;
+- a backup, restore, upgrade, and rollback plan.
+
+<Note>
+  The provider pages give the supported architecture and point to the repository's detailed operator runbooks for exact commands. Pin a chart version in production and use the runbook from the matching release or branch.
+</Note>
+
+## After deployment
+
+Use [Private network deployment](/start-here/private-network-deployment) when Den is reachable only through a VPN or private network. Review [Outbound network access](/start-here/outbound-network-access), [Certificate trust and proxies](/start-here/certificate-trust-and-proxies), and [Air-gapped deployment](/start-here/air-gapped-deployment) before restricting egress.

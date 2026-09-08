@@ -1,0 +1,29 @@
+---
+title: "Deploy on Google Cloud"
+description: "Run OpenWork on GKE Autopilot with Cloud SQL for MySQL."
+---
+
+The recommended Google Cloud path is Helm on a regional GKE Autopilot cluster with Cloud SQL for MySQL. Use GKE Ingress, a reserved global IP address, Google-managed certificates, and explicit backend health checks for Den web and Den API.
+
+## What Google Cloud manages
+
+- GKE control plane and Autopilot compute lifecycle
+- VPC networking, Cloud Load Balancing, firewall rules, and IAM
+- Cloud SQL for MySQL, encryption, backups, and failover
+- Cloud DNS and Google-managed certificates when you use those services
+
+The OpenWork chart manages Deployments, Services, ConfigMaps, Secret references, probes, the Ingress, and the database migration Job. GKE `BackendConfig` and `ManagedCertificate` resources are applied alongside the chart.
+
+## Google Cloud checklist
+
+1. Enable the Kubernetes Engine, Compute Engine, Cloud SQL Admin, and Service Networking APIs.
+2. Create a regional GKE Autopilot cluster and install `gke-gcloud-auth-plugin` if your Cloud SDK does not include it.
+3. Configure private services access and create Cloud SQL for MySQL with a private IP.
+4. Reserve a global IPv4 address and create the GKE health-check and certificate resources.
+5. Store `DATABASE_URL`, `BETTER_AUTH_SECRET`, and `DEN_DB_ENCRYPTION_KEY` in a Kubernetes Secret.
+6. Start from the chart's `values.gcp-ingress.yaml` example, install the chart, and verify migrations and readiness.
+7. Point both hostnames at the reserved address and wait for the managed certificate to become active.
+
+For exact `gcloud` commands, values, health checks, migration troubleshooting, verification, and cleanup, follow the [GKE operator runbook](https://github.com/different-ai/openwork/blob/dev/docs/gcp-gke-helm.md).
+
+Next: [Create the first administrator](/self-host/deploy-to-your-cloud/first-administrator).
