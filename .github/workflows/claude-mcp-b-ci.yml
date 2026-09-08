@@ -4,7 +4,7 @@ on:
   push:
     branches: [claude-mcp-write-test]
     paths:
-      - 'claude-mcp-b/**'
+      - 'coneccion huggueface Github/**'
       - '.github/workflows/claude-mcp-b-ci.yml'
 
 permissions:
@@ -23,71 +23,48 @@ jobs:
         with:
           filter: blob:none
           sparse-checkout: |
-            claude-mcp-b
+            coneccion huggueface Github
           sparse-checkout-cone-mode: true
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
           cache: pip
-          cache-dependency-path: claude-mcp-b/requirements.txt
+          cache-dependency-path: 'coneccion huggueface Github/requirements.txt'
       - name: Install pinned runtime
-        run: python -m pip install -r claude-mcp-b/requirements.txt
+        run: python -m pip install -r 'coneccion huggueface Github/requirements.txt'
       - name: Compile source
-        run: python -m py_compile claude-mcp-b/app.py
-      - name: Import server with non-secret test configuration
-        working-directory: claude-mcp-b
+        run: python -m py_compile 'coneccion huggueface Github/app.py'
+      - name: Import public MCP server
+        working-directory: 'coneccion huggueface Github'
         env:
-          OAUTH_CLIENT_ID: ci-placeholder
-          OAUTH_CLIENT_SECRET: ci-placeholder
-          MCP_PUBLIC_BASE_URL: https://example.invalid
+          GITHUB_PERSONAL_ACCESS_TOKEN: ci-placeholder
         run: |
           python - <<'PY'
           import app
           assert app.DEFAULT_OWNER == 'maxbry123-commits'
-          assert 'COMAND-CENTER-1' in app.ALLOWED_HF_USERS
           assert app.mcp.name == 'Maxbry GitHub Backup'
           print('IMPORT_PASS')
           PY
-      - name: HTTP OAuth discovery smoke test
-        working-directory: claude-mcp-b
+      - name: HTTP MCP no-auth smoke test
+        working-directory: 'coneccion huggueface Github'
         env:
-          OAUTH_CLIENT_ID: ci-placeholder
-          OAUTH_CLIENT_SECRET: ci-placeholder
-          MCP_PUBLIC_BASE_URL: http://127.0.0.1:7860
+          GITHUB_PERSONAL_ACCESS_TOKEN: ci-placeholder
           PORT: '7860'
         run: |
           set -eu
           python app.py > /tmp/claude-mcp-b.log 2>&1 &
           SERVER_PID=$!
           trap 'kill $SERVER_PID 2>/dev/null || true' EXIT
-          READY=0
-          for i in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:7860/.well-known/oauth-protected-resource/mcp >/tmp/protected.json 2>/dev/null; then
-              READY=1
-              break
-            fi
-            if ! kill -0 "$SERVER_PID" 2>/dev/null; then
-              echo 'Server exited before discovery became ready' >&2
-              cat /tmp/claude-mcp-b.log >&2
-              exit 1
-            fi
-            sleep 1
-          done
-          if [ "$READY" != 1 ]; then
-            echo 'OAuth discovery did not become ready' >&2
-            cat /tmp/claude-mcp-b.log >&2
-            exit 1
-          fi
-          cat /tmp/protected.json
-          grep -q 'authorization_servers' /tmp/protected.json
-          HTTP_CODE=$(curl -sS -o /tmp/mcp-response -w '%{http_code}' http://127.0.0.1:7860/mcp || true)
-          test "$HTTP_CODE" = "401" || test "$HTTP_CODE" = "405"
-          echo "HTTP_MCP_AUTH_GATE_PASS=$HTTP_CODE"
+          sleep 3
+          HTTP_CODE=$(curl -sS -o /tmp/mcp-response -w '%{http_code}' -H 'Accept: application/json, text/event-stream' http://127.0.0.1:7860/mcp || true)
+          test "$HTTP_CODE" = "400" || test "$HTTP_CODE" = "405"
+          ! grep -qi 'www-authenticate' /tmp/mcp-response || false
+          echo "HTTP_MCP_NO_AUTH_PASS=$HTTP_CODE"
       - name: Build Docker image
-        run: docker build -t claude-mcp-b:ci ./claude-mcp-b
+        run: docker build -t claude-mcp-b:ci 'coneccion huggueface Github'
       - name: Check no PAT is committed
         run: |
-          if grep -R -E 'github_pat_[A-Za-z0-9_]+|ghp_[A-Za-z0-9]+' claude-mcp-b --exclude='*.md'; then
+          if grep -R -E 'github_pat_[A-Za-z0-9_]+|ghp_[A-Za-z0-9]+' 'coneccion huggueface Github' --exclude='*.md'; then
             echo 'Possible GitHub token found in source' >&2
             exit 1
           fi

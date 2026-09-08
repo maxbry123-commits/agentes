@@ -4,7 +4,8 @@ on:
   push:
     branches: [claude-mcp-write-test]
     paths:
-      - 'claude-mcp-b/**'
+      - 'coneccion huggueface Github/**'
+      - '.github/workflows/deploy-claude-mcp-b.yml'
 
 permissions:
   contents: read
@@ -23,7 +24,7 @@ jobs:
         with:
           filter: blob:none
           sparse-checkout: |
-            claude-mcp-b
+            coneccion huggueface Github
           sparse-checkout-cone-mode: true
 
       - name: Install Hugging Face CLI
@@ -35,6 +36,6 @@ jobs:
         env:
           HF_OIDC_RESOURCE: spaces/COMAND-CENTER-1/claude-github-mcp-backup
         run: |
-          hf upload COMAND-CENTER-1/claude-github-mcp-backup ./claude-mcp-b . \
+          hf upload COMAND-CENTER-1/claude-github-mcp-backup './coneccion huggueface Github' . \
             --repo-type space \
             --commit-message "Deploy Claude MCP B from ${GITHUB_SHA::7}"
