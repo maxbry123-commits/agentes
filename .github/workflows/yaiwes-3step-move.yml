@@ -1,0 +1,94 @@
+name: YAIWES 3-Step Step1 MOVE
+run-name: YAIWES Step1 MOVE • ${{ github.sha }}
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-3step-move.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-wordflow-3step-move
+  cancel-in-progress: false
+
+jobs:
+  move:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 2
+          lfs: false
+
+      - name: Move LOOP engines and project runtime files
+        shell: bash
+        run: |
+          set -euo pipefail
+          SRC='➡️📂 Wordflow LOOP Yaiwes/📂 archivos download/📂 LOOP open source 5'
+          DONOR='➡️📂 Wordflow LOOP Yaiwes/wordflow_loop/donors/loop_engineer'
+          D2='➡️📂 Wordflow LOOP Yaiwes/📂 archivos download/📂Archivo download 2'
+
+          mkdir -p 'Agente Yaiwes principal/execution-orchestration/dag-executor'
+          mkdir -p 'Agente Yaiwes principal/execution-orchestration/state-machine-executor'
+          mkdir -p 'Agente Yaiwes principal/execution-orchestration/deterministic-execution'
+          mkdir -p 'Agente Yaiwes principal/kernel-principal/extension-kernel/capability-registry'
+          mkdir -p 'Agente Yaiwes principal/execution-orchestration/classifier-scheduler'
+          mkdir -p 'Agente Yaiwes principal/execution-engine-pool'
+          mkdir -p 'Agente Yaiwes principal/execution-orchestration/programming-pipeline'
+          mkdir -p 'Agente Yaiwes principal/observability'
+
+          move_dir() {
+            local from="$1" to="$2"
+            test -d "$from"
+            test ! -e "$to"
+            git mv "$from" "$to"
+          }
+          move_file() {
+            local from="$1" to="$2"
+            test -f "$from"
+            test ! -e "$to"
+            git mv "$from" "$to"
+          }
+
+          move_dir "$SRC/LangGraph" 'Agente Yaiwes principal/execution-orchestration/dag-executor/langgraph'
+          move_dir "$SRC/Prefect" 'Agente Yaiwes principal/execution-orchestration/dag-executor/prefect'
+          move_dir "$SRC/Hatchet-Python-SDK" 'Agente Yaiwes principal/execution-orchestration/dag-executor/hatchet-python-sdk'
+          move_dir "$SRC/redun" 'Agente Yaiwes principal/execution-orchestration/dag-executor/redun'
+          move_dir "$SRC/Temporal-Python-SDK" 'Agente Yaiwes principal/execution-orchestration/state-machine-executor/temporal-python-sdk'
+          move_dir "$DONOR" 'Agente Yaiwes principal/execution-orchestration/deterministic-execution/loop-engineer'
+
+          move_file "$D2/capability_registration.py" 'Agente Yaiwes principal/kernel-principal/extension-kernel/capability-registry/capability_registration.py'
+          move_file "$D2/classifier_hook.py" 'Agente Yaiwes principal/execution-orchestration/classifier-scheduler/classifier_hook.py'
+          move_file "$D2/instance_pool.py" 'Agente Yaiwes principal/execution-engine-pool/instance_pool.py'
+          move_file "$D2/programming_instance.py" 'Agente Yaiwes principal/execution-orchestration/programming-pipeline/programming_instance.py'
+          move_file "$D2/usage_metering.py" 'Agente Yaiwes principal/observability/usage_metering.py'
+
+          git status --short
+          git diff --cached --quiet && { echo 'NO_STAGED_MOVE'; exit 1; } || true
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'move(yaiwes): place LOOP engines and runtime project files in final structure'
+          git fetch origin main
+          test "$(git rev-parse HEAD^)" = "$(git rev-parse origin/main)"
+          git push origin HEAD:main
+
+      - name: Verify moved destinations
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d 'Agente Yaiwes principal/execution-orchestration/dag-executor/langgraph'
+          test -d 'Agente Yaiwes principal/execution-orchestration/dag-executor/prefect'
+          test -d 'Agente Yaiwes principal/execution-orchestration/dag-executor/hatchet-python-sdk'
+          test -d 'Agente Yaiwes principal/execution-orchestration/dag-executor/redun'
+          test -d 'Agente Yaiwes principal/execution-orchestration/state-machine-executor/temporal-python-sdk'
+          test -d 'Agente Yaiwes principal/execution-orchestration/deterministic-execution/loop-engineer'
+          test -f 'Agente Yaiwes principal/kernel-principal/extension-kernel/capability-registry/capability_registration.py'
+          test -f 'Agente Yaiwes principal/execution-orchestration/classifier-scheduler/classifier_hook.py'
+          test -f 'Agente Yaiwes principal/execution-engine-pool/instance_pool.py'
+          test -f 'Agente Yaiwes principal/execution-orchestration/programming-pipeline/programming_instance.py'
+          test -f 'Agente Yaiwes principal/observability/usage_metering.py'
+          echo 'YAIWES_STEP1_MOVE=PASS'
