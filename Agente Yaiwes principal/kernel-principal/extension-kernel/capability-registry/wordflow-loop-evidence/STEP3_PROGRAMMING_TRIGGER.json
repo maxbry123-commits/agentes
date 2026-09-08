@@ -1,0 +1,31 @@
+{
+  "step": 3,
+  "trigger": "github_actions",
+  "run_id": 34179064259,
+  "status": "PASS_REAL",
+  "registry_active": 11,
+  "engine_binding": "yaiwes.loop.loop_engineer",
+  "programming_cases": [
+    {
+      "case": "sum",
+      "handle": "c6e6b08f-c73b-4b8e-8c6f-41ce4213988c",
+      "status": "completed",
+      "code_bytes": 34
+    },
+    {
+      "case": "normalize",
+      "handle": "56955136-1418-4d09-a0eb-6f0801309c78",
+      "status": "completed",
+      "code_bytes": 67
+    },
+    {
+      "case": "classify",
+      "handle": "8cc1783e-ac1e-4831-8703-6bef0c315d85",
+      "status": "completed",
+      "code_bytes": 57
+    }
+  ],
+  "programming_cases_passed": 3,
+  "idempotency": "PASS",
+  "fail_closed_invalid_profile": "PASS"
+}
