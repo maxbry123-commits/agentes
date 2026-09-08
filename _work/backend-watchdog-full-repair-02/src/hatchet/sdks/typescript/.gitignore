@@ -1,0 +1,17 @@
+/dist
+/certs
+.e2e-worker.pid
+
+node_modules/
+
+openapi.yaml
+
+**/.env
+
+.idea
+
+.vscode
+
+**/version.ts
+
+src/version.ts
