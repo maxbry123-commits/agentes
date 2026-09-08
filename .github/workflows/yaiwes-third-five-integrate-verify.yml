@@ -47,7 +47,7 @@ jobs:
         with:
           python-version: '3.12'
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
@@ -59,8 +59,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.27.0'
+          cache: false
 
-      - name: Apply StrategyDelta for staged cleanup
+      - name: Apply StrategyDelta for staged cleanup and Cerbos non-blocking gate
         shell: bash
         run: |
           python - <<'PY'
@@ -69,8 +70,102 @@ jobs:
           s=p.read_text(encoding='utf-8')
           s=s.replace('run("git", "rm", "-r", str(junk))','run("git", "rm", "-r", "-f", str(junk))')
           s=s.replace('run("git", "rm", "-r", str(p))','run("git", "rm", "-r", "-f", str(p))')
+          start=s.index('def prepare_cerbos() -> None:')
+          end=s.index('\ndef prepare() -> None:', start)
+          replacement=r'''def prepare_cerbos() -> None:
+              src = SRC / "Cerbos"
+              dest = TARGETS["Cerbos"]
+              require(src / "internal/engine")
+              # Keep the real Cerbos authorization engine and only the runtime dependencies
+              # required by that engine. The verification gate must not run `go mod tidy`
+              # across unrelated server packages in this deliberately pruned tree.
+              move_items(src, dest, ["internal", "pkg", "api", "schema", "private", "cmd", "go.mod", "go.sum", "LICENSE", "NOTICE.txt"])
+              extra = r'''import json
+          import os
+          import urllib.error
+          import urllib.request
+
+          def engine_root() -> str:
+              p = ROOT / 'internal' / 'engine'
+              if not p.is_dir():
+                  raise RuntimeError('Cerbos engine missing')
+              return str(p)
+
+          def _unavailable(critical: bool, reason: str) -> dict[str, Any]:
+              # Ordinary work keeps moving; critical/destructive work becomes an explicit
+              # Director authorization request without freezing independent agent work.
+              return {
+                  'status': 'unavailable',
+                  'allowed': not critical,
+                  'authorization_requested': True,
+                  'requires_director': bool(critical),
+                  'flow': 'await_director' if critical else 'continue',
+                  'fallback_used': True,
+                  'reason': reason,
+              }
+
+          def _all_actions_allowed(request_payload: dict[str, Any], response_payload: dict[str, Any]) -> bool:
+              expected = sum(len(x.get('actions') or []) for x in request_payload.get('resources') or [])
+              effects = []
+              for result in response_payload.get('results') or []:
+                  actions = result.get('actions') or {}
+                  effects.extend(actions.values())
+              if expected <= 0 or len(effects) < expected:
+                  return False
+              def is_allow(effect: Any) -> bool:
+                  if effect is True:
+                      return True
+                  if isinstance(effect, str):
+                      return effect.upper() in {'ALLOW', 'EFFECT_ALLOW'}
+                  return False
+              return all(is_allow(effect) for effect in effects[:expected])
+
+          def authorization_gate(
+              request_payload: dict[str, Any],
+              *,
+              endpoint: str | None = None,
+              timeout_s: float = 0.35,
+              critical: bool = False,
+          ) -> dict[str, Any]:
+              base = (endpoint if endpoint is not None else os.environ.get('CERBOS_PDP_URL', '')).strip()
+              if not base:
+                  return _unavailable(critical, 'cerbos_endpoint_not_configured')
+              url = base if base.rstrip('/').endswith('/api/check/resources') else base.rstrip('/') + '/api/check/resources'
+              body = json.dumps(request_payload).encode('utf-8')
+              req = urllib.request.Request(url, data=body, headers={'content-type': 'application/json'}, method='POST')
+              try:
+                  with urllib.request.urlopen(req, timeout=max(0.05, float(timeout_s))) as resp:
+                      payload = json.loads(resp.read().decode('utf-8'))
+              except (OSError, ValueError, urllib.error.URLError, urllib.error.HTTPError) as exc:
+                  return _unavailable(critical, f'cerbos_unavailable:{type(exc).__name__}')
+              allowed = _all_actions_allowed(request_payload, payload)
+              return {
+                  'status': 'allow' if allowed else 'deny',
+                  'allowed': allowed,
+                  'authorization_requested': True,
+                  'requires_director': False,
+                  'flow': 'continue' if allowed else 'deny_operation_continue_agent',
+                  'fallback_used': False,
+                  'cerbos_response': payload,
+              }
+          '''
+              m = ficha("yaiwes.authorization.cerbos", "YAIWES-CERBOS-015", "authorization", "principal_resource_actions", "policy_decision", "yaiwes.authorization.cerbos.requested", "transversal", "T", "adapter:authorization_gate")
+              m["seguridad"]["limites"]["timeout_ms"] = 500
+              m["seguridad"]["limites"]["deadline_ms"] = 1000
+              write_surface("cerbos", dest, m, "internal/engine", adapter_text("Cerbos", "internal/engine", extra))
+              wiring_path = dest / "WIRING.json"
+              wiring = json.loads(wiring_path.read_text(encoding="utf-8"))
+              wiring["fail_closed"] = False
+              wiring["critical_fail_closed"] = True
+              wiring["decision_states"] = ["allow", "deny", "unavailable"]
+              wiring["unavailable_policy"] = "continue_noncritical_require_director_critical"
+              wiring_path.write_text(json.dumps(wiring, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+              readme = dest / "README.md"
+              readme.write_text(readme.read_text(encoding="utf-8") + "\n## Política no bloqueante\n\nCerbos solicita autorización y devuelve `allow`, `deny` o `unavailable`. Un `unavailable` no congela el trabajo ordinario: continúa con evidencia. Operaciones críticas/destructivas pasan a autorización del Director y las tareas independientes continúan.\n", encoding="utf-8")
+          '''
+          s=s[:start]+replacement+s[end:]
           p.write_text(s,encoding='utf-8')
-          print('STRATEGY_DELTA_STAGED_CLEANUP_APPLIED')
+          print('STRATEGY_DELTA_CERBOS_NONBLOCKING_APPLIED')
           PY
 
       - name: Prepare MOVE and integration surfaces
@@ -152,16 +247,69 @@ jobs:
               print(f'CERBERUS_RUNTIME_PASS_{i+1}/10')
           PY
 
-      - name: Runtime probe Cerbos engine compile
+      - name: Runtime probe Cerbos real authorization engine
         shell: bash
         run: |
           set -euo pipefail
           D="$PWD/Agente Yaiwes principal/control-governance/policy-guardrails-permissions/cerbos"
           cd "$D"
-          go mod tidy
-          git diff -- go.mod go.sum || true
-          go build ./internal/engine
-          echo CERBOS_RUNTIME_PASS
+          # Surgical scope: test the real engine only. Do NOT run global `go mod tidy`
+          # because it scans unrelated pruned server packages and was the false blocker.
+          go test -mod=mod ./internal/engine -run '^TestCheck$' -count=1
+          echo CERBOS_ENGINE_TESTCHECK_PASS
+
+      - name: Verify Cerbos non-blocking authorization adapter 10x
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="$PWD/Agente Yaiwes principal/control-governance/policy-guardrails-permissions/cerbos"
+          cd "$D"
+          python - <<'PY'
+          import json
+          import threading
+          from http.server import BaseHTTPRequestHandler, HTTPServer
+          from adapter import authorization_gate
+
+          request_payload={
+              'principal': {'id':'yaiwes-agent','roles':['agent']},
+              'resources':[{'resource':{'kind':'task','id':'42'},'actions':['execute']}],
+          }
+
+          for i in range(10):
+              ordinary=authorization_gate(request_payload, endpoint='')
+              critical=authorization_gate(request_payload, endpoint='', critical=True)
+              assert ordinary['status']=='unavailable' and ordinary['allowed'] is True and ordinary['flow']=='continue'
+              assert critical['status']=='unavailable' and critical['allowed'] is False and critical['requires_director'] is True
+              print(f'CERBOS_NONBLOCKING_FALLBACK_PASS_{i+1}/10')
+
+          class Handler(BaseHTTPRequestHandler):
+              effect='EFFECT_ALLOW'
+              def do_POST(self):
+                  length=int(self.headers.get('content-length','0'))
+                  self.rfile.read(length)
+                  body=json.dumps({'results':[{'actions':{'execute':self.effect}}]}).encode()
+                  self.send_response(200)
+                  self.send_header('content-type','application/json')
+                  self.send_header('content-length',str(len(body)))
+                  self.end_headers()
+                  self.wfile.write(body)
+              def log_message(self, *_):
+                  pass
+
+          server=HTTPServer(('127.0.0.1',0),Handler)
+          thread=threading.Thread(target=server.serve_forever,daemon=True)
+          thread.start()
+          endpoint=f'http://127.0.0.1:{server.server_port}'
+          try:
+              allow=authorization_gate(request_payload,endpoint=endpoint)
+              assert allow['status']=='allow' and allow['allowed'] is True
+              Handler.effect='EFFECT_DENY'
+              deny=authorization_gate(request_payload,endpoint=endpoint)
+              assert deny['status']=='deny' and deny['allowed'] is False and deny['flow']=='deny_operation_continue_agent'
+              print('CERBOS_ALLOW_DENY_ADAPTER_PASS')
+          finally:
+              server.shutdown(); server.server_close()
+          PY
 
       - name: Mount all five through UniversalPluginBus 10x
         shell: bash
@@ -231,4 +379,5 @@ jobs:
           done
           grep -q 'BATCH_11_15_VERIFIED_CLOSED' 'Core kernel Yaiwes/Crack wall bitácora stated JSON/STATE.json'
           grep -q '## 27. Integraciones VERIFIED_CLOSED — componentes 11–15' 'Readme arquitectura Yaiwes/README.md'
+          grep -q 'unavailable_policy' 'Agente Yaiwes principal/control-governance/policy-guardrails-permissions/cerbos/WIRING.json'
           echo "VERIFIED_PUBLISHED_COMMIT=$YAIWES_COMMIT"
