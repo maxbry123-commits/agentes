@@ -1,0 +1,123 @@
+# Copia quirúrgicamente adaptada de:
+# skills/skills Github acción/Code Github acción descargar y extracción/gha-download-extract.yml
+# lock canónico: 4e64ca02c2bc970dc4cd246a2a43ec2fdb7b4e62
+name: YAIWES Watchdog Backends Preflight v1
+run-name: YAIWES watchdog backends preflight • ${{ github.sha }}
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-watchdog-backends-preflight-v1.yml'
+      - '.github/scripts/yaiwes_watchdog_backends_preflight_v1.py'
+      - 'Core kernel Yaiwes/Backend watchdog workflow adaptativo/ACQUISITION_CONTRACT.json'
+
+permissions:
+  contents: write
+
+env:
+  GIT_LFS_SKIP_SMUDGE: "1"
+  GIT_LFS_SKIP_PUSH: "1"
+  GIT_LFS_SKIP_DOWNLOAD: "1"
+  GIT_TERMINAL_PROMPT: "0"
+
+concurrency:
+  group: maxbry123-commits-agentes-main-core-kernel-yaiwes-backend-watchdog-workflow-adaptativo-preflight-v1
+  cancel-in-progress: false
+
+jobs:
+  preflight-download-staging:
+    name: Pinned download staging + forensic inventory 10/10
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+
+      - name: Execute deterministic pinned preflight
+        shell: bash
+        env:
+          GIT_LFS_SKIP_SMUDGE: "1"
+          GIT_LFS_SKIP_PUSH: "1"
+          GIT_LFS_SKIP_DOWNLOAD: "1"
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          set -euo pipefail
+          git config --local filter.lfs.clean cat
+          git config --local filter.lfs.smudge cat
+          git config --local filter.lfs.process ''
+          git config --local filter.lfs.required false
+          git config --local core.compression 0
+          python3 .github/scripts/yaiwes_watchdog_backends_preflight_v1.py
+
+      - name: Stage only authorized preflight outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -- \
+            'Core kernel Yaiwes/Backend watchdog workflow adaptativo/preflight' \
+            'Core kernel Yaiwes/Crack wall bitácora stated JSON/STATE.json' \
+            'Readme arquitectura Yaiwes/README.md'
+
+      - name: Hard gate staged index NO-LFS and blob size
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import subprocess, sys
+          names=subprocess.check_output(['git','diff','--cached','--name-only','-z']).split(b'\0')
+          names=[n.decode() for n in names if n]
+          bad_lfs=[]; oversized=[]
+          for name in names:
+              blob=subprocess.check_output(['git','show',f':{name}'])
+              if blob.startswith(b'version https://git-lfs.github.com/spec/v1'):
+                  bad_lfs.append(name)
+              if len(blob) >= 100*1024*1024:
+                  oversized.append((name,len(blob)))
+          print('STAGED_FILES',len(names))
+          print('ZERO_LFS_POINTERS_IN_STAGED_INDEX', not bad_lfs, bad_lfs)
+          print('NO_GIT_BLOB_GE_100_MIB', not oversized, oversized)
+          if bad_lfs or oversized:
+              sys.exit(41)
+          PY
+
+      - name: Publish preflight evidence single-writer
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --cached --quiet; then
+            echo 'NO_NEW_PREFLIGHT_DELTA'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          BASE="$(git rev-parse HEAD)"
+          git fetch origin main
+          REMOTE="$(git rev-parse origin/main)"
+          if [ "$BASE" != "$REMOTE" ]; then
+            echo "PUBLISH_SNAPSHOT_CHANGED base=$BASE remote=$REMOTE"
+            exit 42
+          fi
+          git commit -m 'build(yaiwes): persist watchdog backend acquisition preflight'
+          git push --no-verify origin HEAD:main
+
+      - name: Read-back published preflight
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git show 'origin/main:Core kernel Yaiwes/Backend watchdog workflow adaptativo/preflight/PREFLIGHT_MANIFEST.jsonl' >/tmp/preflight.jsonl
+          test "$(wc -l </tmp/preflight.jsonl)" -eq 10
+          grep -q 'YAIWES_MULTI_WATCHDOG_BACKEND_V1' <(git show 'origin/main:Readme arquitectura Yaiwes/README.md')
+          python3 - <<'PY'
+          import json, subprocess
+          raw=subprocess.check_output(['git','show','origin/main:Core kernel Yaiwes/Crack wall bitácora stated JSON/STATE.json'], text=True)
+          d=json.loads(raw)
+          assert d['multi_watchdog_backend_v1']['components_expected']==10
+          print('READ_BACK_PASS')
+          PY
