@@ -1,0 +1,76 @@
+---
+title: Task composer
+description: Where a run begins. The composer at /agent/new, and the one Send, Steer, Stop control that also drives replies inside a session.
+sidebar:
+  order: 2
+---
+
+The composer is the single input surface for starting and steering work. It
+appears at `/agent/new` to start a task, and again inside a
+[session](/product/session-view) to reply to a live or settled run.
+
+## Starting a task
+
+At `/agent/new` a new task carries more than a prompt:
+
+| Control | What it sets |
+| --- | --- |
+| Prompt | The instruction, with file uploads attached inline. |
+| Engine | Which coding engine runs the turn (subject to the enabled set). |
+| Model | The model, when the engine exposes a choice. |
+| Repositories | The repositories bound to the run, plus a branch override. |
+| Pinned skill or playbook | A procedure pinned for this turn, so it is always in context. |
+
+There is no memory-scope control: runs always recall and capture against the
+organization memory scope.
+
+Starting a task submits to the run service, which creates a run inside a new
+thread. See [Request flow](/architecture/request-flow) for what happens next.
+
+## Slash commands
+
+Typing `/` as the first token opens the selected engine's real command catalog.
+The composer fetches the command list before any sandbox exists (`GET
+/api/commands?engine=...`) and clears it when you switch engines, so no stale
+commands from another engine mix in. The reply composer inside a session
+autocompletes the same way, labeling the catalog's source per engine (Claude
+commands, Codex commands). Selection only completes the text; the command
+executes engine-side verbatim once the run starts.
+
+## Send, Steer, Stop
+
+The composer's action button is a small state machine, so one control covers the
+whole lifecycle of a turn:
+
+<Steps>
+  <Step title="Send">
+    With no live run, the button sends the draft as a new turn.
+  </Step>
+  <Step title="Steer">
+    While a run is live, a non-empty draft turns the button into Steer: the
+    text becomes a reply that steers the running turn.
+  </Step>
+  <Step title="Stop">
+    While a run is live and the input is empty, the same button offers Stop.
+    The status pill above the input keeps a persistent Stop reachable even
+    while a Steer draft is being typed.
+  </Step>
+</Steps>
+
+A reply stores the raw user text and threads under the run; the backend composes
+the engine's context from recent turns. Prior turns are never stuffed into the
+stored prompt. See [Runs, threads, and
+commands](/concepts/runs-threads-commands).
+
+## Queued input
+
+If you send while a run is still working, the message is held as a queued turn
+rather than dropped. The session view shows a queue pill for pending input, so
+nothing you type is lost to timing.
+
+:::tip
+Because every submission carries an idempotency key, a double-click or a retry
+never starts the same work twice. A failed send reuses its key when you retry
+the same text, so the retry observes the original run instead of starting a
+duplicate. The composer is safe to lean on.
+:::

@@ -1,0 +1,52 @@
+# One-command bring-up of the TencentDB-Agent-Memory data plane (memory-core
+# gateway) that the useAgent backend consumes as its shared team-memory layer.
+#
+#   docker compose -f memory/docker-compose.yml up -d
+#
+# Then point the backend at it (see README.md § "Quick start" → backend/.env)
+# and it starts prepending relevant team memory to run context. Uses the public
+# multi-arch image; no build, no cloning the upstream repo.
+#
+# This runs ONLY memory-core (what the backend needs). For the Panel UI (:8125)
+# and Knowledge/Wiki service (:8424), use the upstream repo's full stack — see
+# README.md § "Full stack".
+services:
+  memory-core:
+    image: "${MEMORY_CORE_IMAGE:-agentmemory/memory-core@sha256:f9b286246d0e5020a7f0cb011b7074703d10b76b424a834a117482392f7bd424}"
+    container_name: skynet-memory-core
+    ports:
+      - "${MEMORY_CORE_BIND:-127.0.0.1}:${MEMORY_CORE_PORT:-8420}:8420"
+    environment:
+      TDAI_GATEWAY_PORT: "8420"
+      TDAI_GATEWAY_HOST: "0.0.0.0"
+      # Empty = auth disabled (fine for localhost). Set a strong secret before
+      # exposing beyond loopback, and set the backend's MEMORY_API_KEY to match.
+      TDAI_GATEWAY_API_KEY: "${MEMORY_CORE_GATEWAY_API_KEY:-}"
+      TDAI_DATA_DIR: "/data/tdai-memory"
+      # memory-core reads these environment variables ahead of the mounted
+      # config file. Keep the credential in the root-owned host env file; never
+      # bake it into this compose file or the image.
+      TDAI_LLM_BASE_URL: "${MEMORY_LLM_BASE_URL:-}"
+      TDAI_LLM_API_KEY: "${MEMORY_LLM_API_KEY:-}"
+      TDAI_LLM_MODEL: "${MEMORY_LLM_MODEL:-}"
+      TDAI_LLM_MAX_TOKENS: "${MEMORY_LLM_MAX_TOKENS:-8192}"
+      TDAI_LLM_TIMEOUT_MS: "${MEMORY_LLM_TIMEOUT_MS:-60000}"
+    volumes:
+      - ./tdai-gateway.yaml:/data/config/tdai-gateway.yaml:ro
+      - skynet-memory-core-data:/data/tdai-memory
+      # Source-language prompt overlays (see prompt-overrides/README.md): the
+      # upstream distillation prompts are written in Chinese and the extraction
+      # model follows the dominant prompt language, so Latin-script conversations got
+      # Chinese L1/L2/L3 memories. The image runs TS source through Node + tsx,
+      # so mounting patched files over /app/src takes effect directly.
+      - ./prompt-overrides/l1-extraction.ts:/app/src/core/prompts/l1-extraction.ts:ro
+      - ./prompt-overrides/language-policy.ts:/app/src/core/prompts/language-policy.ts:ro
+      - ./prompt-overrides/l1-dedup.ts:/app/src/core/prompts/l1-dedup.ts:ro
+      - ./prompt-overrides/scene-extraction.ts:/app/src/core/prompts/scene-extraction.ts:ro
+      - ./prompt-overrides/persona-generation.ts:/app/src/core/prompts/persona-generation.ts:ro
+      - ./runtime-overrides/l1-extractor.ts:/app/src/core/record/l1-extractor.ts:ro
+    restart: unless-stopped
+
+volumes:
+  # Memory lives in this Docker-managed volume, never in the repo.
+  skynet-memory-core-data:

@@ -1,0 +1,32 @@
+{
+  "name": "@useagent/agent-client",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./wire": "./src/wire.ts",
+    "./api": "./src/api.ts",
+    "./fleet": "./src/fleet.ts",
+    "./artifacts": "./src/artifacts.ts",
+    "./connection": "./src/connection.ts",
+    "./events": "./src/thread-events.ts",
+    "./execution-summary": "./src/execution-summary.ts",
+    "./integrations": "./src/integrations.ts",
+    "./org-changes": "./src/org-changes.ts",
+    "./provider-connections": "./src/provider-connections.ts",
+    "./store": "./src/thread-store.ts",
+    "./selectors": "./src/selectors.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@useagent/agent-harness": "file:../agent-harness",
+    "@useagent/artifact-workspace": "file:../artifact-workspace"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14"
+  }
+}

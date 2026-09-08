@@ -1,0 +1,27 @@
+useAgent
+Copyright (c) 2026 the useAgent authors
+
+This project is licensed under the GNU Affero General Public License v3.0
+(AGPL-3.0-only); see the LICENSE file at the repository root.
+
+This product includes software developed by third parties. Ported or adapted
+files carry their upstream attribution and license in per-file headers.
+
+- T3 Code (T3 Tools Inc, MIT) - https://t3.chat
+  Session chrome components in frontend/components/session-ui/ (work rows,
+  status pills, banners, copy affordances); each ported file carries the
+  upstream path and commit in its header.
+
+- Beautiful UI (Shane Levine / Turbo, MIT) - https://www.beautifului.dev
+  Vendored sources in frontend/vendor/beautiful-ui/ (manifest.json records the
+  upstream record, hash, and fetch time per component) and ports in
+  frontend/components/ai/, frontend/components/agent-ui/, and derived chat
+  surfaces in frontend/components/chat/.
+
+- BoardUI (free edition) - vendored UI foundations in frontend/components/base/
+  and frontend/styles/theme.css. Used under BoardUI's free-edition terms;
+  not covered by this repository's AGPL license.
+
+- prompt-kit and thinking-orbs (Jakub Antalik, MIT) - ported UI primitives in
+  frontend/components/prompt-kit/ and brand motion in
+  frontend/components/foundations/ (see per-folder READMEs).

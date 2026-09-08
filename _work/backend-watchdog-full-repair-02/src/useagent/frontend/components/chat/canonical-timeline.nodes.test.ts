@@ -1,0 +1,323 @@
+// Phase 1 pre-React gate: prove canonical<->legacy timeline equivalence for the node
+// types the protected 281-tool fixture does NOT exercise - assistant TEXT (single +
+// multi message), useAgent context MARKERS, and CHILD/subagent routing. Each scenario
+// runs the SAME synthetic frames+steps through legacy buildTimeline and through
+// translateOpenCode -> buildTimelineFromCanonical, and asserts identical (kind,key).
+
+import { describe, expect, test } from "bun:test";
+import { createNativeStore } from "./native-store";
+import { buildTimeline } from "./timeline";
+import { parseNativeFrame } from "./native-events";
+import { buildTimelineFromCanonical, type CanonicalEventLike } from "./canonical-timeline";
+import { translateOpenCode, type OpenCodeFrame, type OpenCodeStep } from "@useagent/agent-harness/opencode";
+import type { ApiStep } from "./types";
+
+type F = OpenCodeFrame;
+type S = OpenCodeStep;
+const ctx = { runId: "r", threadId: "r" };
+
+function frame(over: Partial<F> & { eventType: string; seq: number }): F {
+  return {
+    eventId: over.eventId ?? `e${over.seq}`,
+    seq: over.seq,
+    provider: over.provider ?? "opencode",
+    eventType: over.eventType,
+    native: { sessionId: "ses_root", parentSessionId: null, messageId: null, partId: null, callId: null, ...(over.native ?? {}) },
+    payload: over.payload ?? {},
+  };
+}
+function step(id: string, idx: number, native: Record<string, string>, kind = "command"): S {
+  return { id, idx, kind, code_json: JSON.stringify({ tool: "bash", type: "tool", native }) };
+}
+
+function snapshot(frames: F[], steps: S[]) {
+  const st = createNativeStore();
+  st.ingestAll(steps as unknown as ApiStep[], 0);
+  for (const raw of frames) {
+    const f = parseNativeFrame(raw);
+    if (f) st.ingestNative(f, 0);
+  }
+  return st.getSnapshot();
+}
+
+function bothWays(frames: F[], steps: S[]) {
+  const snap = snapshot(frames, steps);
+  const legacy = buildTimeline(snap, false) ?? [];
+  const stepsById = new Map(snap.steps.map((s) => [s.id, s]));
+  const { events } = translateOpenCode(frames, ctx, steps);
+  const canon = buildTimelineFromCanonical(events as unknown as CanonicalEventLike[], stepsById, false);
+  return { legacy, canon };
+}
+
+describe("canonical<->legacy node equivalence (synthetic text / markers / child)", () => {
+  test("assistant text interleaves with tools across TWO messages", () => {
+    const frames: F[] = [
+      frame({ eventType: "part.step-start", seq: 0, native: { messageId: "m1", partId: "ps1" } }),
+      frame({ eventType: "part.text", seq: 1, native: { messageId: "m1", partId: "pt1" }, payload: { text: "first" } }),
+      frame({ eventType: "part.tool.completed", seq: 2, native: { messageId: "m1", partId: "pc1", callId: "c1" }, payload: { type: "tool", tool: "bash" } }),
+      frame({ eventType: "part.step-finish", seq: 3, native: { messageId: "m1", partId: "pf1" } }),
+      frame({ eventType: "part.step-start", seq: 4, native: { messageId: "m2", partId: "ps2" } }),
+      frame({ eventType: "part.text", seq: 5, native: { messageId: "m2", partId: "pt2" }, payload: { text: "second" } }),
+      frame({ eventType: "part.tool.completed", seq: 6, native: { messageId: "m2", partId: "pc2", callId: "c2" }, payload: { type: "tool", tool: "bash" } }),
+      frame({ eventType: "part.step-finish", seq: 7, native: { messageId: "m2", partId: "pf2" } }),
+    ];
+    const steps: S[] = [
+      step("s1", 0, { sessionID: "ses_root", messageID: "m1", partID: "pc1", callID: "c1" }),
+      step("s2", 1, { sessionID: "ses_root", messageID: "m2", partID: "pc2", callID: "c2" }),
+    ];
+    const { legacy, canon } = bothWays(frames, steps);
+    expect(legacy.filter((n) => n.kind === "text").length).toBe(2); // scenario is non-vacuous
+    expect(legacy.filter((n) => n.kind === "tool").length).toBe(2);
+    expect(canon).toEqual(legacy); // FULL deep equality (H3), not only kind+key
+  });
+
+  test("skynet context markers lead the turn - FULL marker fidelity (every marker kind)", () => {
+    // Exercise EVERY TimelineMarker variant the useAgent lane can emit, each with its full
+    // field set (version/hash, source/itemCount/query, op/scope/failed/reconciled,
+    // deadlineMs), and assert the canonical marker node is DEEP-EQUAL to legacy - proving
+    // the reconstruction is lossless, never fabricated (H3, review issue #5).
+    const frames: F[] = [
+      frame({ eventType: "skill.loaded", seq: 0, provider: "skynet", native: {}, payload: { kind: "playbook", name: "Deploy", version: 7, contentHash: "abc123" } }),
+      frame({ eventType: "context.retrieved", seq: 1, provider: "skynet", native: {}, payload: { source: "memory", itemCount: 3, query: "how to deploy" } }),
+      frame({ eventType: "knowledge.retrieved", seq: 2, provider: "skynet-knowledge", native: {}, payload: { itemCount: 5 } }),
+      frame({ eventType: "memory.l0_accepted", seq: 3, provider: "skynet-memory", native: {}, payload: { op: "remember", scope: "personal", reconciled: true } }),
+      frame({ eventType: "memory.failed", seq: 4, provider: "skynet-memory", native: {}, payload: { op: "correct", scope: "org" } }),
+      frame({ eventType: "run.reconciling", seq: 5, provider: "skynet", native: {}, payload: { reason: "boot-restart", sinceMs: 1000, deadlineMs: 9999 } }),
+      frame({ eventType: "part.step-start", seq: 6, native: { messageId: "m1", partId: "ps1" } }),
+      frame({ eventType: "part.tool.completed", seq: 7, native: { messageId: "m1", partId: "pc1", callId: "c1" }, payload: { type: "tool", tool: "bash" } }),
+      frame({ eventType: "part.step-finish", seq: 8, native: { messageId: "m1", partId: "pf1" } }),
+    ];
+    const steps: S[] = [step("s1", 0, { sessionID: "ses_root", messageID: "m1", partID: "pc1", callID: "c1" })];
+    const { legacy, canon } = bothWays(frames, steps);
+    expect(legacy.filter((n) => n.kind === "marker").length).toBe(6); // all six markers rendered
+    expect(legacy[0].kind).toBe("marker"); // markers lead
+    // The exact typed marker bodies (skill playbook+version+hash, context+query, memory
+    // op+scope+reconciled, reconciling+deadline) must round-trip.
+    expect(canon).toEqual(legacy);
+  });
+
+  test("artifact creation and multiple deliveries reconcile into one identical node", () => {
+    const descriptor = {
+      id: "artifact-1",
+      name: "demo.png",
+      size_bytes: 2048,
+      sha256: "a".repeat(64),
+      content_type: "image/png",
+    };
+    const frames: F[] = [
+      frame({
+        eventType: "artifact.created",
+        seq: 0,
+        provider: "skynet",
+        native: {},
+        payload: descriptor,
+      }),
+      frame({
+        eventType: "artifact.delivered",
+        seq: 1,
+        provider: "skynet",
+        native: {},
+        payload: { ...descriptor, destination: "slack" },
+      }),
+      frame({
+        eventType: "artifact.delivered",
+        seq: 2,
+        provider: "skynet",
+        native: {},
+        payload: { ...descriptor, destination: "email" },
+      }),
+      frame({
+        eventType: "artifact.delivered",
+        seq: 3,
+        provider: "skynet",
+        native: {},
+        payload: { ...descriptor, destination: "slack" },
+      }),
+    ];
+    const { legacy, canon } = bothWays(frames, []);
+    expect(legacy).toEqual([
+      {
+        kind: "artifact",
+        key: "e0",
+        artifact: {
+          id: "artifact-1",
+          name: "demo.png",
+          bytes: 2048,
+          sha256: "a".repeat(64),
+          contentType: "image/png",
+          destinations: ["email", "slack"],
+        },
+      },
+    ]);
+    expect(canon).toEqual(legacy);
+  });
+
+  test("delivery before creation converges on the creation key and position", () => {
+    const descriptor = {
+      id: "artifact-1",
+      name: "demo.png",
+      size_bytes: 2048,
+      sha256: "a".repeat(64),
+      content_type: "image/png",
+    };
+    const frames: F[] = [
+      frame({
+        eventType: "artifact.delivered",
+        seq: 0,
+        provider: "skynet",
+        native: {},
+        payload: { ...descriptor, destination: "slack" },
+      }),
+      frame({
+        eventType: "artifact.created",
+        seq: 1,
+        provider: "skynet",
+        native: {},
+        payload: { ...descriptor, id: "artifact-2", name: "created-between.png" },
+      }),
+      frame({
+        eventType: "artifact.created",
+        seq: 2,
+        provider: "skynet",
+        native: {},
+        payload: descriptor,
+      }),
+    ];
+    const { legacy, canon } = bothWays(frames, []);
+    expect(legacy).toEqual([
+      {
+        kind: "artifact",
+        key: "e1",
+        artifact: {
+          id: "artifact-2",
+          name: "created-between.png",
+          bytes: 2048,
+          sha256: "a".repeat(64),
+          contentType: "image/png",
+        },
+      },
+      {
+        kind: "artifact",
+        key: "e2",
+        artifact: {
+          id: "artifact-1",
+          name: "demo.png",
+          bytes: 2048,
+          sha256: "a".repeat(64),
+          contentType: "image/png",
+          destinations: ["slack"],
+        },
+      },
+    ]);
+    expect(canon).toEqual(legacy);
+  });
+
+  // D1: ACP records ONE text part per assistant message (stable partId), UPSERTED with the
+  // cumulative text on every chunk. provider_events therefore holds ONE row (the final text), so
+  // canonicalization emits ONE message.delta -> ONE coherent text node with the EXACT full text -
+  // never one node per token/chunk (the token-per-line bug).
+  test("ACP cumulative one-part text renders ONE coherent block with the exact full text", () => {
+    const frames: F[] = [
+      frame({ eventType: "part.step-start", seq: 0, native: { messageId: "m1", partId: "msg_r_start" } }),
+      frame({ eventType: "part.text", seq: 1, native: { messageId: "m1", partId: "msg_r_text" }, payload: { text: "DONE C6MARK exact coherent text" } }),
+      frame({ eventType: "part.step-finish", seq: 2, native: { messageId: "m1", partId: "msg_r_finish" } }),
+    ];
+    const { canon } = bothWays(frames, []);
+    const text = canon.filter((n) => n.kind === "text");
+    expect(text.length).toBe(1); // ONE block, not one-per-chunk
+    expect((text[0] as { text: string }).text).toBe("DONE C6MARK exact coherent text"); // exact
+  });
+
+  test("ACP contiguous text bursts preserve narration -> tool -> answer order", () => {
+    const frames: F[] = [
+      frame({ eventType: "part.step-start", seq: 0, native: { messageId: "m_pre", partId: "pre_start" } }),
+      frame({ eventType: "part.text", seq: 1, native: { messageId: "m_pre", partId: "pre_text" }, payload: { text: "I'll check." } }),
+      frame({ eventType: "part.step-finish", seq: 2, native: { messageId: "m_pre", partId: "pre_finish" } }),
+      frame({ eventType: "part.step-start", seq: 3, native: { messageId: "m_tool", partId: "tool_start" } }),
+      frame({ eventType: "part.step-start", seq: 4, native: { messageId: "m_post", partId: "post_start" } }),
+      frame({ eventType: "part.text", seq: 5, native: { messageId: "m_post", partId: "post_text" }, payload: { text: "Done." } }),
+      frame({ eventType: "part.step-finish", seq: 6, native: { messageId: "m_post", partId: "post_finish" } }),
+    ];
+    const steps: S[] = [
+      step("tool", 0, { sessionID: "ses_root", messageID: "m_tool", partID: "tool_call", callID: "c1" }),
+    ];
+    const { canon } = bothWays(frames, steps);
+    expect(canon.map((node) => node.kind)).toEqual(["text", "tool", "text"]);
+    expect(canon.filter((node) => node.kind === "text").map((node) => node.text)).toEqual([
+      "I'll check.",
+      "Done.",
+    ]);
+  });
+
+  test("REGRESSION: a distinct text part per chunk (the OLD token-per-line bug) fragments into N nodes", () => {
+    const frames: F[] = [
+      frame({ eventType: "part.step-start", seq: 0, native: { messageId: "m1", partId: "s" } }),
+      frame({ eventType: "part.text", seq: 1, native: { messageId: "m1", partId: "t0" }, payload: { text: "DONE " } }),
+      frame({ eventType: "part.text", seq: 2, native: { messageId: "m1", partId: "t1" }, payload: { text: "C6MARK" } }),
+      frame({ eventType: "part.step-finish", seq: 3, native: { messageId: "m1", partId: "f" } }),
+    ];
+    const { canon } = bothWays(frames, []);
+    expect(canon.filter((n) => n.kind === "text").length).toBe(2); // fragmented - what the fix removes
+  });
+
+  test("reasoning ('thinking') renders a Thought node ahead of the answer - identical in both lanes", () => {
+    const frames: F[] = [
+      frame({ eventType: "part.reasoning", seq: 0, native: { messageId: "mr", partId: "pr" }, payload: { text: "let me think about this" } }),
+      frame({ eventType: "part.reasoning.completed", seq: 1, native: { messageId: "mr", partId: "prf" } }),
+      frame({ eventType: "part.step-start", seq: 2, native: { messageId: "m1", partId: "ps1" } }),
+      frame({ eventType: "part.text", seq: 3, native: { messageId: "m1", partId: "pt1" }, payload: { text: "the answer" } }),
+      frame({ eventType: "part.step-finish", seq: 4, native: { messageId: "m1", partId: "pf1" } }),
+    ];
+    const { legacy, canon } = bothWays(frames, []);
+    expect(legacy.filter((n) => n.kind === "reasoning").length).toBe(1); // non-vacuous
+    expect(legacy.map((n) => n.kind)).toEqual(["reasoning", "text"]); // thinking leads the answer
+    expect((legacy.find((n) => n.kind === "reasoning") as { text: string }).text).toBe("let me think about this");
+    expect(canon).toEqual(legacy); // FULL deep equality across lanes (H3)
+  });
+
+  test("bounded no-part segments recompose into one Thought and one answer without loss", () => {
+    const frames: F[] = [
+      frame({ eventType: "part.step-start", seq: 0, provider: "pi", native: { messageId: "m1" } }),
+      frame({ eventType: "part.reasoning", seq: 1, provider: "pi", native: { messageId: "m1" }, payload: { text: "Let " } }),
+      frame({ eventType: "part.reasoning", seq: 2, provider: "pi", native: { messageId: "m1" }, payload: { text: "me think" } }),
+      frame({ eventType: "part.text", seq: 3, provider: "pi", native: { messageId: "m1" }, payload: { text: "Final " } }),
+      frame({ eventType: "part.text", seq: 4, provider: "pi", native: { messageId: "m1" }, payload: { text: "answer" } }),
+      frame({ eventType: "part.step-finish", seq: 5, provider: "pi", native: { messageId: "m1" } }),
+    ];
+    const { legacy, canon } = bothWays(frames, []);
+    expect(legacy).toEqual([
+      { kind: "reasoning", key: "reasoning:m1", text: "Let me think" },
+      { kind: "text", key: "message:m1", text: "Final answer" },
+    ]);
+    expect(canon).toEqual(legacy);
+  });
+
+  test("child/subagent reasoning is routed OUT of the main timeline", () => {
+    const frames: F[] = [
+      frame({ eventType: "part.step-start", seq: 0, native: { messageId: "m1", partId: "ps1" } }),
+      frame({ eventType: "part.tool.completed", seq: 1, native: { messageId: "m1", partId: "pc1", callId: "c1" }, payload: { type: "tool", tool: "task", state: { status: "completed", output: '<task id="ses_child"></task>' } } }),
+      // child session reasoning (parentSessionId set) - must NOT appear in the main timeline
+      frame({ eventType: "part.reasoning", seq: 2, native: { sessionId: "ses_child", parentSessionId: "ses_root", messageId: "cmr", partId: "cpr" }, payload: { text: "child thinking" } }),
+      frame({ eventType: "part.step-finish", seq: 3, native: { messageId: "m1", partId: "pf1" } }),
+    ];
+    const steps: S[] = [step("s1", 0, { sessionID: "ses_root", messageID: "m1", partID: "pc1", callID: "c1" }, "command")];
+    const { legacy, canon } = bothWays(frames, steps);
+    expect(legacy.some((n) => n.kind === "reasoning")).toBe(false); // child thinking excluded
+    expect(canon).toEqual(legacy); // FULL deep equality (H3)
+  });
+
+  test("child/subagent text is routed OUT of the main timeline (only the parent tool row remains)", () => {
+    const frames: F[] = [
+      frame({ eventType: "part.step-start", seq: 0, native: { messageId: "m1", partId: "ps1" } }),
+      frame({ eventType: "part.tool.completed", seq: 1, native: { messageId: "m1", partId: "pc1", callId: "c1" }, payload: { type: "tool", tool: "task", state: { status: "completed", output: '<task id="ses_child"></task>' } } }),
+      // child session parts (parentSessionId set) - must NOT appear in the main timeline
+      frame({ eventType: "part.step-start", seq: 2, native: { sessionId: "ses_child", parentSessionId: "ses_root", messageId: "cm1", partId: "cps1" } }),
+      frame({ eventType: "part.text", seq: 3, native: { sessionId: "ses_child", parentSessionId: "ses_root", messageId: "cm1", partId: "cpt1" }, payload: { text: "child chatter" } }),
+      frame({ eventType: "part.step-finish", seq: 4, native: { messageId: "m1", partId: "pf1" } }),
+    ];
+    const steps: S[] = [step("s1", 0, { sessionID: "ses_root", messageID: "m1", partID: "pc1", callID: "c1" }, "command")];
+    const { legacy, canon } = bothWays(frames, steps);
+    expect(legacy.some((n) => n.kind === "text")).toBe(false); // child text excluded
+    expect(canon).toEqual(legacy); // FULL deep equality (H3)
+  });
+});

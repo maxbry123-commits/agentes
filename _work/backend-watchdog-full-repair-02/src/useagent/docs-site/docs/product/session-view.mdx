@@ -1,0 +1,93 @@
+---
+title: Session view
+description: The screen where a run comes alive. A structured timeline grammar plus a side rail of surfaces for the browser, terminal, files, diffs, agents, editors, and workpieces.
+sidebar:
+  order: 3
+---
+
+The session view at `/session/:id` is where you watch and steer a run. It renders
+the canonical event log through a consistent visual grammar, and hosts the panes
+that show the run's environment.
+
+## The timeline grammar
+
+Nothing in the timeline is raw JSON. Every step renders as a purpose-built card or
+row, so a run reads like a structured narrative:
+
+| Element | What it shows |
+| --- | --- |
+| Work-entry row | A tool call: icon, heading, a preview, a status, and an expandable body with the full output. |
+| Reasoning disclosure | A collapsible thinking segment, with a shimmer while it streams. |
+| Context-recall fold | The receipts for a turn: which skills, playbooks, memory, and knowledge were pulled in, folded behind a summary like "5 memory, 7 knowledge, 1 playbook". |
+| Plan and todo cards | A proposed plan or checklist, rendered as a disclosure. |
+| Approval cards | A gateway or provider-native permission request, with Approve and Deny wired to the approval lane through an optimistic pending-to-resolved transition. |
+| Question card | A provider-native question that blocks the turn until answered. It is not a new user message or run. |
+| Context-window meter | A slim ring meter for the turn's context usage, with a hover detail of percent and used versus maximum tokens. |
+| Per-file diff | A unified diff with a changed-files index and line stats, drawn only from patches recorded in the step payload. |
+| Git chip | A compact `owner/name:branch` badge for the run's bound repositories. |
+| Queue and status pills | Pending input, background work, and sync state. |
+| Provider status banner | A slim notice when the selected engine is not in the ready set. |
+| Failure banner | A quiet, one-line thread-level error when a run fails to start or crashes. |
+| Artifact card | A published artifact, shown after the answer text. |
+
+Within a turn the order is deliberate: the work happens first, the answer comes
+after. Repeated tool calls fold together while preserving their identity, so a
+long run stays scannable.
+
+## The side rail
+
+The right side of the session is one rail with seven surfaces. A surface
+chooser offers five of them (Browser, Terminal, Files, Diff, Agents); the rail
+also carries Editor and Workspace tabs:
+
+<CardGroup cols={2}>
+  <Card title="Browser" icon="monitor">
+    The sandbox desktop over noVNC (Xvfb, XFCE, x11vnc, noVNC), bridged through
+    the authenticated `/api/desktop-proxy` so the preview token never reaches
+    the browser. For runs that drive a GUI.
+  </Card>
+  <Card title="Terminal" icon="square-terminal">
+    The run's command steps stream as `$ command` lines with their captured
+    output. While the thread is live, an interactive shell attaches to the
+    thread's sandbox PTY over `WS /api/runs/:id/terminal`, so you type into the
+    same filesystem the agent works in.
+  </Card>
+  <Card title="Files" icon="folder-tree">
+    A streaming list of the files and artifacts the run produces, with
+    file-kind badges.
+  </Card>
+  <Card title="Diff" icon="git-compare">
+    Unified diffs drawn from real recorded patches. Available only when a real
+    patch exists.
+  </Card>
+  <Card title="Agents" icon="bot">
+    Status rows for nested subagent runs; clicking a row opens a per-agent
+    slide-over pane. Child sessions queue as serial turns on the thread, never
+    in parallel.
+  </Card>
+  <Card title="Editor" icon="file-pen">
+    A tab strip of every file the run touched, over an honest detail view: the
+    real body when the engine mirrored it, never fabricated source.
+  </Card>
+  <Card title="Workspace" icon="layout-panel-left">
+    Bounded workpiece editors for a document, spreadsheet, presentation, or
+    PDF, read-only for a produced artifact or live with save and export.
+  </Card>
+</CardGroup>
+
+## Live updates and recovery
+
+The session subscribes to a single thread-scoped SSE stream. On reconnect it
+receives a fresh durable snapshot rather than replaying from zero, so a flaky
+network resyncs cleanly. If the backend restarts under a live run, restart
+reconciliation re-probes the sandbox and streams the interim events back with a
+heartbeat. See [Events and streaming](/concepts/events-and-streaming) and
+[Sandboxes](/concepts/sandboxes-and-desktop#restart-reconciliation).
+
+:::note
+The timeline is not virtualized; it stays responsive by rendering less.
+Collapsed disclosures render their bodies only when opened, repeated tool calls
+fold behind a "+N previous tool calls" toggle, rows are memoized, and SSE
+bursts are batched into one flush per animation frame, so a run that emits
+thousands of steps stays scannable without freezing the tab.
+:::

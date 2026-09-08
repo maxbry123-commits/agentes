@@ -1,0 +1,422 @@
+// Thread-owned projection store (final_fix.md §4.6) — the lifetime + reconciliation
+// boundary for a whole useAgent conversation, NOT whichever run is selected.
+//
+// It does NOT reimplement native dedupe/child-attribution/sorting: each run's
+// projection is an INSTANCE of the existing per-run `createNativeStore`, and this
+// store is the thread-keyed OWNER that multiplexes many runs and aggregates their
+// snapshots. Adding/queueing/starting/settling a run mutates only that run's slice;
+// no run switch ever resets another run's tools, native frames, children, or
+// summary. Store lifetime changes only when the root thread id changes (the hook
+// recreates it), so a constant generation is sufficient here.
+
+import {
+  createCanonicalThreadStore,
+  type CanonicalThreadStore,
+  type CanonicalThreadEvent,
+  type ExecutionSummarySnapshot,
+} from "@useagent/agent-client";
+import type { StoredCanonicalEvent } from "./canonical-timeline";
+import type { NativeFrame } from "./native-events";
+import { createNativeStore, type NativeSnapshot, type NativeStore } from "./native-store";
+import { type ApiRun, type ApiStep, isLiveStatus, type RunStatus } from "./types";
+
+/** One run's view within the thread: its metadata + live/settled projection. */
+export interface ThreadRunView {
+  run: ApiRun;
+  status: RunStatus;
+  summary: string | null;
+  /** Transient live narration for this run; "" once settled. */
+  liveText: string;
+  /** Transient live provider "thinking" for this run, surfaced as a subdued
+   *  Thinking affordance ahead of the answer; "" once settled. */
+  liveReasoning: string;
+  /** The run's native-id projection (reused per-run native store snapshot). */
+  native: NativeSnapshot;
+  /** The run's canonical events, latest revision per eventId,
+   *  ordered by deliverySeq. Empty until the canonical lane populates; the render path
+   *  uses it only behind the canonical-timeline flag (legacy native lane is default). */
+  canonical: readonly StoredCanonicalEvent[];
+  /** H2: whether this run's canonicalization reached the durable `complete` record. The
+   *  render path trusts the canonical lane ONLY when true - provisional rows (still being
+   *  retried by the outbox) never drive the UI, so a partial snapshot can't render. */
+  canonicalComplete: boolean;
+  /** Store-owned execution summary scoped to this run's durable child lifecycle. */
+  executionSummary: ExecutionSummarySnapshot | null;
+}
+
+export interface ThreadSnapshot {
+  /** Every run in the thread, oldest→newest. */
+  runs: ApiRun[];
+  /** Per-run view keyed by runId. */
+  byId: ReadonlyMap<string, ThreadRunView>;
+  /** One incremental projection owned by this root thread store. */
+  executionSummary: ExecutionSummarySnapshot | null;
+}
+
+export interface ThreadStore {
+  subscribe(listener: () => void): () => void;
+  getSnapshot(): ThreadSnapshot;
+  getExecutionSummarySnapshot(): ExecutionSummarySnapshot | null;
+  /** Apply many mutations, then notify listeners ONCE. A burst of frames (e.g. an
+   *  SSE replay of hundreds of native frames when opening a long settled run) would
+   *  otherwise notify per frame → a full re-render + timeline rebuild each time
+   *  (O(n^2), the 600-frame run froze the tab for minutes). Batching folds the burst
+   *  into a single render, opencode-style "apply the burst, paint once". */
+  batch(apply: () => void): void;
+  /** Hydrate/reconcile the complete durable thread. Merges (never resets): adding
+   *  a run leaves every other run's slice intact. */
+  applySnapshot(runs: readonly ApiRun[]): void;
+  /** Upsert ONE run without replacing the others. */
+  upsertRun(run: ApiRun): void;
+  /** Upsert a step onto the addressed run only. */
+  applyStep(runId: string, step: ApiStep): void;
+  /** Append a transient live delta to the addressed run only. `kind` "reasoning"
+   *  feeds the live Thinking buffer; otherwise the answer narration buffer. */
+  applyDelta(runId: string, delta: string, kind?: "reasoning"): void;
+  /** Update the addressed run's native lane only (highest seq wins). */
+  applyNative(runId: string, frame: NativeFrame): void;
+  /** Add a canonical event to its run's lane (latest revision per eventId wins). */
+  applyCanonical(event: StoredCanonicalEvent): void;
+  /** Mark a run's canonicalization COMPLETE (H2): the render path may now trust its
+   *  canonical lane. Idempotent. */
+  markCanonicalComplete(runId: string): void;
+  /** Settle the addressed run and clear only its transient text. */
+  applyDone(runId: string, status: RunStatus): void;
+}
+
+export interface ThreadStoreOptions {
+  readonly rootThreadId?: string;
+  readonly executionSummaryEnabled?: boolean;
+}
+
+const EMPTY_SNAPSHOT: ThreadSnapshot = { runs: [], byId: new Map(), executionSummary: null };
+const EMPTY_EXECUTION_SUMMARY: ExecutionSummarySnapshot = {
+  version: 1,
+  children: [],
+  delegationEdges: [],
+};
+
+/** Shared frozen canonical lane for runs with no canonical events yet — one
+ *  identity, so an empty lane never invalidates a memoized timeline. */
+const EMPTY_CANONICAL: readonly StoredCanonicalEvent[] = Object.freeze([]);
+
+function executionSummaryForRun(
+  root: ExecutionSummarySnapshot | null,
+  runId: string,
+): ExecutionSummarySnapshot | null {
+  if (!root) return null;
+  const childIds = new Set(
+    root.children.filter((child) => child.runId === runId).map((child) => child.id),
+  );
+  if (childIds.size === 0) return EMPTY_EXECUTION_SUMMARY;
+  return {
+    version: 1,
+    children: root.children.filter((child) => childIds.has(child.id)),
+    delegationEdges: root.delegationEdges.filter((edge) => childIds.has(edge.childId)),
+  };
+}
+
+export function createThreadStore(options: ThreadStoreOptions = {}): ThreadStore {
+  // Ordered run ids (oldest→newest) + per-run slices.
+  const order: string[] = [];
+  const runs = new Map<string, ApiRun>();
+  const status = new Map<string, RunStatus>();
+  const summary = new Map<string, string | null>();
+  const liveText = new Map<string, string>();
+  const liveReasoning = new Map<string, string>();
+  const stores = new Map<string, NativeStore>();
+  // Canonical lane: per-run eventId -> latest-revision event.
+  const canonicalByRun = new Map<string, Map<string, StoredCanonicalEvent>>();
+  // H2: runs whose canonicalization reached the durable `complete` record (trustworthy).
+  const canonicalCompleteRuns = new Set<string>();
+  let executionSummaryAvailable = options.executionSummaryEnabled === true;
+  // Construct lazily on the first accepted canonical SSE event. Thread stores
+  // are seeded from a React state initializer, so eager construction here would
+  // put projector setup on the component render path even before any event can
+  // contribute to a summary.
+  let executionSummaryStore: CanonicalThreadStore | null = null;
+
+  const executionSummarySnapshot = (): ExecutionSummarySnapshot | null => {
+    if (!executionSummaryAvailable) return null;
+    return executionSummaryStore?.getExecutionSummary() ?? EMPTY_EXECUTION_SUMMARY;
+  };
+
+  const listeners = new Set<() => void>();
+  let snapshot: ThreadSnapshot | null = null;
+  // Per-run view identity is STABLE across snapshot rebuilds unless that run was
+  // actually mutated: every mutator marks its runId dirty, and getSnapshot()
+  // rebuilds only dirty runs' ThreadRunView objects, reusing the rest. With
+  // stable identities, memoized turn renders bail for every settled run while a
+  // sibling streams (previously every notify rebuilt EVERY run's view + timeline,
+  // O(thread) per SSE animation frame).
+  const viewCache = new Map<string, ThreadRunView>();
+  const dirty = new Set<string>();
+  // Sorted canonical projection per run, re-sorted only when applyCanonical
+  // lands a new revision for that run (not on every unrelated rebuild).
+  const canonicalSorted = new Map<string, readonly StoredCanonicalEvent[]>();
+
+  // Batch depth: while > 0, mutations invalidate the snapshot but defer the single
+  // listener flush to batch-end (so an SSE replay burst renders once, not per frame).
+  let batchDepth = 0;
+  let pendingNotify = false;
+  const flush = (): void => {
+    for (const l of listeners) l();
+  };
+  const notify = (): void => {
+    snapshot = null; // invalidate; rebuilt lazily on read
+    if (batchDepth > 0) {
+      pendingNotify = true;
+      return;
+    }
+    flush();
+  };
+  /** Mark one run's view stale, then notify. Every mutation is run-addressed. */
+  const touch = (runId: string): void => {
+    dirty.add(runId);
+    notify();
+  };
+
+  /** Ensure a run has a native store + an order slot (idempotent). */
+  const ensureStore = (runId: string): NativeStore => {
+    let s = stores.get(runId);
+    if (!s) {
+      s = createNativeStore();
+      stores.set(runId, s);
+    }
+    return s;
+  };
+
+  // A live payload is stronger evidence than a stale queued projection. The durable
+  // queued->running signal normally arrives first, but reconnect/replay races can deliver a
+  // step, text delta, or native frame before that metadata refresh. Promote only queued runs;
+  // late frames can never reopen a terminal run.
+  const markRunActive = (runId: string): void => {
+    if (status.get(runId) === "queued") status.set(runId, "running");
+  };
+
+  /** Scalar run-row compare (steps are compared by ingestAll): true when the
+   *  fresh read differs from the stored row. `updated_at` covers every DB write
+   *  to the row; status/summary are compared explicitly as the authoritative
+   *  fields the views project. */
+  const runRowChanged = (prev: ApiRun, next: ApiRun): boolean =>
+    prev.status !== next.status ||
+    prev.summary !== next.summary ||
+    prev.updated_at !== next.updated_at ||
+    (prev.engine_session_id ?? null) !== (next.engine_session_id ?? null) ||
+    prev.memory_scope !== next.memory_scope ||
+    prev.duration_ms !== next.duration_ms ||
+    (prev.uploads?.length ?? 0) !== (next.uploads?.length ?? 0);
+
+  /** Insert a NEW run id keeping `order` in canonical thread order (created_at,
+   *  then id - the backend's ordering; ISO timestamps compare lexicographically).
+   *  Arrival order is no longer chronological: windowed initial loading seeds the
+   *  root + tail first and merges older islands later, and `snapshot.runs` order
+   *  is load-bearing (the newest run anchors replies). Appends stay O(1). */
+  const insertOrdered = (run: ApiRun): void => {
+    let at = order.length;
+    while (at > 0) {
+      const prior = runs.get(order[at - 1]);
+      if (
+        !prior ||
+        prior.created_at < run.created_at ||
+        (prior.created_at === run.created_at && prior.id <= run.id)
+      ) {
+        break;
+      }
+      at--;
+    }
+    order.splice(at, 0, run.id);
+  };
+
+  /** Merge one run's durable projection into its slice (add if new). Returns
+   *  whether anything observable changed - an identical reconcile snapshot
+   *  keeps the stored run object (and so the run's view identity) untouched. */
+  const mergeRun = (run: ApiRun): boolean => {
+    const prev = runs.get(run.id);
+    if (!prev) insertOrdered(run);
+    // A fresh DB read is authoritative for durable steps; ingestAll merges (dedupe
+    // by native id / idx) and reports whether any step actually changed, so a
+    // live-enriched step is never regressed and an identical replay never
+    // invalidates this run's native projection.
+    const stepsChanged = ensureStore(run.id).ingestAll(run.steps, 0);
+    const changed =
+      !prev ||
+      stepsChanged ||
+      runRowChanged(prev, run) ||
+      // The maps can diverge from the stored row (live promotion, applyDone);
+      // the fresh read is authoritative, so divergence must merge.
+      status.get(run.id) !== run.status ||
+      summary.get(run.id) !== run.summary ||
+      // A settled run carrying leftover transient narration must clear it.
+      (!isLiveStatus(run.status) &&
+        ((liveText.get(run.id) ?? "") !== "" || (liveReasoning.get(run.id) ?? "") !== ""));
+    if (!changed) return false;
+    runs.set(run.id, run);
+    status.set(run.id, run.status);
+    summary.set(run.id, run.summary);
+    if (!liveText.has(run.id)) liveText.set(run.id, "");
+    if (!liveReasoning.has(run.id)) liveReasoning.set(run.id, "");
+    // A settled run carries no live narration; its summary/steps are the truth.
+    if (!isLiveStatus(run.status)) {
+      liveText.set(run.id, "");
+      liveReasoning.set(run.id, "");
+    }
+    return true;
+  };
+
+  return {
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+
+    batch(apply) {
+      batchDepth++;
+      try {
+        apply();
+      } finally {
+        batchDepth--;
+        if (batchDepth === 0 && pendingNotify) {
+          pendingNotify = false;
+          flush();
+        }
+      }
+    },
+
+    getSnapshot() {
+      if (snapshot) return snapshot;
+      if (order.length === 0) {
+        snapshot = EMPTY_SNAPSHOT;
+        return snapshot;
+      }
+      const runsList: ApiRun[] = [];
+      const executionSummary = executionSummarySnapshot();
+      // The top-level containers are fresh per rebuild (subscribers key effects
+      // off snapshot/byId identity); only the per-run VIEWS are reused.
+      const byId = new Map<string, ThreadRunView>();
+      for (const id of order) {
+        const run = runs.get(id);
+        if (!run) continue; // step/native arrived before its run frame — skip until it does
+        runsList.push(run);
+        let view = viewCache.get(id);
+        if (!view || dirty.has(id)) {
+          let canonical = canonicalSorted.get(id);
+          if (!canonical) {
+            const canonMap = canonicalByRun.get(id);
+            canonical = canonMap
+              ? [...canonMap.values()].sort((a, b) => a.deliverySeq - b.deliverySeq)
+              : EMPTY_CANONICAL;
+            canonicalSorted.set(id, canonical);
+          }
+          view = {
+            run,
+            status: status.get(id) ?? run.status,
+            summary: summary.get(id) ?? run.summary,
+            liveText: liveText.get(id) ?? "",
+            liveReasoning: liveReasoning.get(id) ?? "",
+            native: ensureStore(id).getSnapshot(),
+            canonical,
+            canonicalComplete: canonicalCompleteRuns.has(id),
+            executionSummary: executionSummaryForRun(executionSummary, id),
+          };
+          viewCache.set(id, view);
+        }
+        byId.set(id, view);
+      }
+      dirty.clear();
+      snapshot = { runs: runsList, byId, executionSummary };
+      return snapshot;
+    },
+
+    getExecutionSummarySnapshot() {
+      return executionSummarySnapshot();
+    },
+
+    applySnapshot(runsIn) {
+      let changed = false;
+      for (const run of runsIn) {
+        if (mergeRun(run)) {
+          dirty.add(run.id);
+          changed = true;
+        }
+      }
+      if (changed) notify();
+    },
+
+    upsertRun(run) {
+      if (mergeRun(run)) touch(run.id);
+    },
+
+    applyStep(runId, step) {
+      // ingest returns whether it changed - so we never rebuild the native snapshot
+      // just to detect a no-op (that before/after getSnapshot compare was O(n) per
+      // call, i.e. O(n^2) across a burst replay). Same suppression, no rebuild.
+      const wasQueued = status.get(runId) === "queued";
+      const changed = ensureStore(runId).ingest(step, 0);
+      if (step.kind !== "done") markRunActive(runId);
+      if (changed || (wasQueued && step.kind !== "done")) touch(runId);
+    },
+
+    applyDelta(runId, delta, kind) {
+      if (!delta) return;
+      markRunActive(runId);
+      if (kind === "reasoning") {
+        liveReasoning.set(runId, (liveReasoning.get(runId) ?? "") + delta);
+      } else {
+        liveText.set(runId, (liveText.get(runId) ?? "") + delta);
+      }
+      touch(runId);
+    },
+
+    applyNative(runId, frame) {
+      // Highest-seq-wins dedupe lives in ingestNative; it returns whether it applied,
+      // so a stale/duplicate frame is dropped WITHOUT a snapshot rebuild. This is the
+      // hot path on a settled-run replay (hundreds of frames) - keep it O(1)/frame.
+      const wasQueued = status.get(runId) === "queued";
+      const changed = ensureStore(runId).ingestNative(frame, 0);
+      markRunActive(runId);
+      if (changed || wasQueued) touch(runId);
+    },
+
+    applyCanonical(event) {
+      // Latest revision per eventId wins; a stale/duplicate revision is dropped
+      // WITHOUT a snapshot rebuild (hot path on a canonical replay burst).
+      let m = canonicalByRun.get(event.runId);
+      if (!m) {
+        m = new Map();
+        canonicalByRun.set(event.runId, m);
+      }
+      const prev = m.get(event.eventId);
+      if (prev && prev.revision >= event.revision) return;
+      if (executionSummaryAvailable) {
+        try {
+          executionSummaryStore ??= createCanonicalThreadStore({
+            threadId: options.rootThreadId,
+          });
+          executionSummaryStore.ingest(event as unknown as CanonicalThreadEvent);
+        } catch {
+          // Projection is additive. A malformed/cross-thread event disables the
+          // new read path without changing the accepted legacy canonical lane.
+          executionSummaryAvailable = false;
+          executionSummaryStore = null;
+        }
+      }
+      m.set(event.eventId, event);
+      canonicalSorted.delete(event.runId); // re-sort this run's lane on next read
+      touch(event.runId);
+    },
+
+    markCanonicalComplete(runId) {
+      if (canonicalCompleteRuns.has(runId)) return; // idempotent - no rebuild on a repeat
+      canonicalCompleteRuns.add(runId);
+      touch(runId);
+    },
+
+    applyDone(runId, nextStatus) {
+      status.set(runId, nextStatus);
+      liveText.set(runId, ""); // transient text is not reconnect truth
+      liveReasoning.set(runId, ""); // thinking is live-only, cleared on settle
+      touch(runId);
+    },
+  };
+}

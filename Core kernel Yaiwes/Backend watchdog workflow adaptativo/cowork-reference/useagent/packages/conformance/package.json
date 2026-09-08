@@ -1,0 +1,19 @@
+{
+  "name": "@useagent/conformance",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "benchmark:children": "bun run test/child-execution-benchmark.ts",
+    "benchmark:execution-summary": "bun run test/execution-summary-projector-benchmark.ts"
+  },
+  "dependencies": {
+    "@useagent/agent-client": "file:../agent-client",
+    "@useagent/agent-harness": "file:../agent-harness"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14"
+  }
+}

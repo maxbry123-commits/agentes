@@ -1,0 +1,64 @@
+---
+title: Verification
+description: The test and parity arsenal, from fast isolated-database suites to real engine journeys run against a release candidate.
+sidebar:
+  order: 3
+---
+
+Verification runs at two altitudes: deterministic suites that never touch a live
+system, and real journeys that exercise sandboxes and engines end to end.
+
+## Deterministic suites
+
+- **Backend suite** against an isolated throwaway database, so it never disturbs a
+  live one.
+- **Frontend suite** and the **shared package suites**.
+- **Root typecheck** across every package with `bun run typecheck`.
+
+These are fast, stable, and safe to run anywhere.
+
+## Full-stack and real journeys
+
+| Command | What it exercises |
+| --- | --- |
+| `cd backend && bun run e2e` | A mock full-stack pass including Slack and memory outbox delivery, and crash-survival stages. |
+| `cd backend && bun run e2e:real` | Real sandboxes end to end. |
+| `cd backend && bun run soak` | Storm coverage over the durable lanes. |
+| `bun backend/test/e2e/ui-sweep/sweep.ts` | Browser coverage of the rendered surfaces. |
+
+:::warning
+Real journeys create sandboxes. Delete and API-verify them after a run. The
+shared sandbox capacity is a finite, cross-session resource, so leftover
+sandboxes degrade everyone's runs.
+:::
+
+## Release parity canaries
+
+Before a candidate can ship, the guarded release runs **real engine journeys**
+against it, not mocks, and it runs them twice:
+
+1. **Candidate matrix.** The full parity matrix runs on the host against the
+   candidate, before it is publicly advertised.
+2. **Public re-run.** After the candidate is atomically activated, the hard
+   journeys rerun through the authenticated public APIs.
+
+The case matrix covers: `repo-clone`, `github-pr-detail`, `gcs-list`,
+`computer-browser`, `full-desktop`, `desktop-recording`, `artifact-publish`,
+`thread-resume`, `model-switch`, `subagent-fanout`, `web-search`,
+`automation-lifecycle`, `workpiece-deck`,
+`workpiece-sheet`, `workpiece-document`, `workpiece-pdf`,
+`cross-thread-memory`, `knowledge-search`, `skill-playbook`, and
+`inbound-attachment`.
+
+`PARITY_CASES` and `PARITY_ENGINES` can narrow one certification run to a
+targeted probe, but scoping never skips the gate itself, and the public re-run
+always executes the full case matrix.
+
+A candidate that fails a parity journey does not ship, and the lane rolls the
+environment back. See [Deployment lanes](/operations/deployment).
+
+:::note
+Parity is proved per engine and per credential mode. A subscription-only Codex
+release proves the connected account and native turn path; an API-key engine
+proves its mapped gateway provider.
+:::

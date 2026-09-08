@@ -1,0 +1,129 @@
+---
+title: Gateway, tools, and approvals
+description: The trust boundary that does privileged work for a sandbox, the capability tokens that bound it, the in-run tool families, and the human approval lane.
+sidebar:
+  order: 6
+---
+
+A sandbox is untrusted. Anything privileged, such as reading a repository,
+publishing an artifact, or using a provider account, happens on the trusted side
+through the gateway.
+
+<div style={{ background: "#ffffff", border: "1px solid #ebebeb", borderRadius: "12px", padding: "10px" }}>
+  <img
+    src="/diagrams/gateway-trust-boundary.svg"
+    alt="Trust boundary diagram: the untrusted sandbox calls the gateway process on port 3202 with MCP tools/call and a Bearer tool token; the gateway reaches Postgres through a restricted role, provider APIs with server-side keys, GitHub, GCS, and Slack; an approval loop turns a pending request into a one-shot argument-bound capability."
+    style={{ width: "100%", display: "block", borderRadius: "8px" }}
+  />
+</div>
+
+*The gateway process (:3202) is the only surface a sandbox can reach; credentials never cross the boundary, and human approval mints one-shot capabilities.*
+
+## Gateway
+
+A backend trust boundary that performs privileged work for a sandbox without
+placing long-lived provider or database credentials inside it. The sandbox asks;
+the gateway decides and acts.
+
+### Gateway process
+
+The gateway is a separate process, not a route inside the product backend. Its
+boot entry (`backend/src/gateway.ts`) serves a dedicated app on `GATEWAY_PORT`
+(default 3202) and can run under a restricted database role via
+`GATEWAY_DATABASE_URL`. The app deliberately has no session auth, org APIs,
+runs, secrets, or CORS; it mounts exactly two capability-authenticated
+surfaces, `/api/mcp/knowledge` and `/api/provider`
+(`backend/src/gateway-app.ts`). It is the only application that should sit
+behind the sandbox-reachable public origin.
+
+## Capability token
+
+A short-lived signed grant a run cannot mint for itself. There are two token
+families:
+
+- **Tool tokens** authorize MCP tool calls, binding the organization, user,
+  thread, run, scope, and expiry (`backend/src/knowledge/gateway/token.ts`).
+- **Provider tokens** authorize LLM traffic and additionally bind the engine
+  and provider (`backend/src/provider-gateway/token.ts`).
+
+Scope is `run` or `thread`. Thread scope exists because a resident engine
+session spans queued turns by the same user; outside a live turn both scopes
+fail closed, and the expiry bound is unchanged.
+
+## MCP tool
+
+A typed operation offered to an engine, such as searching knowledge, cloning a
+repository, controlling the desktop, or publishing an artifact.
+
+## Gateway tool families
+
+The full in-run tool surface an engine can call:
+
+| Family | What it does |
+| --- | --- |
+| Knowledge | Search organization knowledge, skills, playbooks, and automations. |
+| Context | Search and read run context (`context_search`, `context_read`). |
+| Knowledge drafts | Manage knowledge drafts (`knowledge_draft_*`); the writes are approval-gated. |
+| Memory | Remember and recall scoped facts across sessions. |
+| Skills | List and activate versioned procedures by exact id. |
+| Automations | Manage scheduled triggers, with an approval capability gating destructive operations. |
+| GitHub | Pull-request and issue reads bound to the run's repository. |
+| Repository | List and clone the organization's repositories (`github_repositories`, `github_clone_repository`). |
+| Blueprints | List, read, validate, and apply blueprint plans (`blueprint_list`, `blueprint_get`, `blueprint_validate`, `blueprint_apply_plan`). |
+| Child sessions | Create, list, inspect, and gather durable child sessions (`child_session_*`). |
+| Storage | List Google Cloud Storage bucket names (read-only); the service-account credential never leaves the control plane. |
+| Web | Web search. |
+| Desktop | Computer-use controls with screenshots, plus recording that publishes an MP4 artifact. |
+| Login | Guarded ephemeral login. |
+| Artifacts | Publish artifacts with absolute links. |
+| Workpieces | Create, update, and propose edits to editable workpieces (`workpiece_create`, `workpiece_update`, `workpiece_propose_edit`). |
+| Slack | Upload a file to the run's Slack thread (`slack_upload`). |
+| Gateway meta | Search, describe, and indirectly call gateway tools (`gateway_tools_search`, `gateway_tool_describe`, `gateway_tool_call`). |
+
+Some families are conditional: child-session tools are advertised only when the
+run's engine supports them, and the login and Slack tools only when enabled for
+the run. The MCP `tools/list` response is filtered per live run
+(`backend/src/knowledge/gateway/operation-registry.ts`, `mcp.ts`).
+
+:::tip
+**Every gated refusal names its remedy.** When a tool declines, it points at the
+exact skill, environment variable, or human approval path that would unblock it,
+so an agent can self-correct instead of fabricating a result.
+:::
+
+## Provider connection
+
+A user-owned API key or managed account identity, stored by the trusted backend.
+Metadata is visible to the UI; reusable secrets are write-only and never returned.
+API keys are resolved inside the signed provider gateway, never handed to a
+sandbox.
+
+## Approval lane
+
+Human-in-the-loop authorization for destructive or outward-facing gated
+operations:
+
+<Steps>
+  <Step title="The agent requests">
+    A run calls `approval_request` for a gated operation.
+  </Step>
+  <Step title="A card appears">
+    An approval card renders in the session timeline
+    (`frontend/components/chat/gateway-approval-card.tsx`).
+  </Step>
+  <Step title="A human decides">
+    An org member resolves it in the session view, served by
+    `backend/src/knowledge/gateway/approval-routes.ts`. A pending request moves
+    to approved, denied, or expired exactly once; every transition is guarded on
+    `status = 'pending'` (`approval-requests.ts`).
+  </Step>
+  <Step title="A one-shot capability is issued">
+    The agent's `approval_poll` receives a one-shot, argument-bound capability
+    exactly once. It can never be self-issued from inside a run.
+  </Step>
+</Steps>
+
+The approval lane is live and certified by the guarded release: a destructive
+gated tool pauses for the card, then resumes with the one-shot capability.
+Slack delivery of approval cards is deliberately deferred; the session timeline
+is the only approval surface today.
