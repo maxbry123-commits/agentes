@@ -1,35 +1,23 @@
-"""Claude Chat -> Hugging Face -> GitHub backup MCP.
+"""Public Claude Chat -> Hugging Face -> GitHub backup MCP.
 
-This server is intentionally independent from GitHub's hosted MCP endpoint.
-It talks to the GitHub REST API with a dedicated PAT stored only as a
-Hugging Face Space secret, while Claude authenticates to this MCP through
-Hugging Face OAuth.
+Authentication at the MCP layer is intentionally disabled to avoid repeated
+Hugging Face OAuth prompts in Claude. The GitHub PAT remains stored only as a
+Hugging Face Space secret and is never returned by any tool.
 """
 
 from __future__ import annotations
 
 import base64
-import hashlib
 import os
 from typing import Any, Literal
 from urllib.parse import quote
 
 import httpx
-from cryptography.fernet import Fernet
 from fastmcp import FastMCP
-from fastmcp.server.auth.providers.huggingface import HuggingFaceProvider
-from fastmcp.server.dependencies import get_access_token
-from key_value.aio.stores.filetree import FileTreeStore
-from key_value.aio.wrappers.encryption import FernetEncryptionWrapper
 
 GITHUB_API = "https://api.github.com"
 GITHUB_API_VERSION = "2022-11-28"
 DEFAULT_OWNER = os.getenv("GITHUB_DEFAULT_OWNER", "maxbry123-commits")
-ALLOWED_HF_USERS = {
-    item.strip()
-    for item in os.getenv("MCP_ALLOWED_HF_USERS", "COMAND-CENTER-1").split(",")
-    if item.strip()
-}
 
 
 def _required_env(name: str) -> str:
@@ -39,32 +27,12 @@ def _required_env(name: str) -> str:
     return value
 
 
-def _public_base_url() -> str:
-    explicit = os.getenv("MCP_PUBLIC_BASE_URL", "").strip().rstrip("/")
-    if explicit:
-        return explicit
-    host = os.getenv("SPACE_HOST", "").strip()
-    if not host:
-        raise RuntimeError("SPACE_HOST is missing; set MCP_PUBLIC_BASE_URL when running outside Hugging Face Spaces")
-    return f"https://{host}"
-
-
-def _require_authorized_hf_user() -> str:
-    token = get_access_token()
-    if token is None:
-        raise PermissionError("Authentication required")
-    username = str(token.claims.get("preferred_username") or "")
-    if username not in ALLOWED_HF_USERS:
-        raise PermissionError(f"Hugging Face user '{username}' is not allowed")
-    return username
-
-
 def _github_headers() -> dict[str, str]:
     return {
         "Authorization": f"Bearer {_required_env('GITHUB_PERSONAL_ACCESS_TOKEN')}",
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": GITHUB_API_VERSION,
-        "User-Agent": "maxbry-claude-chat-backup-mcp/1.0",
+        "User-Agent": "maxbry-claude-chat-backup-mcp/2.0",
     }
 
 
@@ -75,7 +43,6 @@ async def _github_request(
     json_body: Any | None = None,
     params: dict[str, Any] | None = None,
 ) -> Any:
-    _require_authorized_hf_user()
     if not path.startswith("/"):
         path = "/" + path
     async with httpx.AsyncClient(base_url=GITHUB_API, headers=_github_headers(), timeout=60.0) as client:
@@ -92,46 +59,22 @@ async def _github_request(
     return payload
 
 
-# Hugging Face automatically provisions these OAuth credentials when the
-# Space README contains `hf_oauth: true`.
-# Persist FastMCP OAuth registrations/tokens on the mounted HF bucket (/data)
-# so a 5-minute Space sleep/wake does not erase Claude's auth state.
-_oauth_secret = _required_env("OAUTH_CLIENT_SECRET")
-_storage_key = base64.urlsafe_b64encode(hashlib.sha256(_oauth_secret.encode("utf-8")).digest())
-_oauth_storage = FernetEncryptionWrapper(
-    key_value=FileTreeStore(directory="/data/fastmcp-oauth"),
-    fernet=Fernet(_storage_key),
-)
-
-auth = HuggingFaceProvider(
-    client_id=_required_env("OAUTH_CLIENT_ID"),
-    client_secret=_oauth_secret,
-    base_url=_public_base_url(),
-    required_scopes=["openid", "profile"],
-    valid_scopes=["openid", "profile"],
-    fastmcp_access_token_expiry_seconds=60 * 60 * 24 * 30,
-    jwt_signing_key=_oauth_secret,
-    client_storage=_oauth_storage,
-)
-
 mcp = FastMCP(
     name="Maxbry GitHub Backup",
     instructions=(
-        "Backup GitHub MCP for Claude Chat. It has intentionally broad GitHub write capability. "
+        "Public MCP endpoint for Claude Chat with GitHub capability supplied by a Space secret. "
         "Use explicit owner/repository/path values, read before destructive changes, and report GitHub SHAs."
     ),
-    auth=auth,
 )
 
 
 @mcp.tool
 async def connection_status() -> dict[str, Any]:
-    """Verify the authenticated HF caller and GitHub identity without exposing secrets."""
-    hf_user = _require_authorized_hf_user()
+    """Verify GitHub identity and secret presence without exposing the secret."""
     gh_user = await _github_request("GET", "/user")
     return {
         "ok": True,
-        "hf_user": hf_user,
+        "mcp_auth": "disabled",
         "github_login": gh_user.get("login"),
         "github_id": gh_user.get("id"),
         "default_owner": DEFAULT_OWNER,
@@ -199,7 +142,7 @@ async def create_or_update_file(
     branch: str | None = None,
     current_sha: str | None = None,
 ) -> Any:
-    """Create or fully replace a UTF-8 file. If current_sha is omitted, detect an existing file automatically."""
+    """Create or fully replace a UTF-8 file."""
     endpoint = f"/repos/{quote(owner, safe='')}/{quote(repository, safe='')}/contents/{quote(path, safe='/')}"
     if current_sha is None:
         try:
@@ -229,7 +172,7 @@ async def delete_file(
     branch: str | None = None,
     current_sha: str | None = None,
 ) -> Any:
-    """Delete a repository file. The current blob SHA is detected when omitted."""
+    """Delete a repository file."""
     endpoint = f"/repos/{quote(owner, safe='')}/{quote(repository, safe='')}/contents/{quote(path, safe='/')}"
     if current_sha is None:
         existing = await _github_request("GET", endpoint, params={"ref": branch} if branch else None)
@@ -310,7 +253,7 @@ async def create_pull_request(
 
 @mcp.tool
 async def delete_repository(repository: str, owner: str = DEFAULT_OWNER) -> Any:
-    """Permanently delete a repository. Requires Administration: write on the dedicated PAT."""
+    """Permanently delete a repository."""
     return await _github_request(
         "DELETE",
         f"/repos/{quote(owner, safe='')}/{quote(repository, safe='')}",
@@ -324,7 +267,7 @@ async def github_api(
     body: dict[str, Any] | None = None,
     params: dict[str, Any] | None = None,
 ) -> Any:
-    """Call an arbitrary api.github.com REST path with the dedicated PAT. This is the full-capability fallback tool."""
+    """Call an arbitrary api.github.com REST path with the dedicated PAT."""
     return await _github_request(method, path, json_body=body, params=params)
 
 
