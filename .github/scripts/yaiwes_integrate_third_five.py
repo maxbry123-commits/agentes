@@ -168,7 +168,9 @@ def prepare_cerbos() -> None:
     src = SRC / "Cerbos"
     dest = TARGETS["Cerbos"]
     require(src / "internal/engine")
-    move_items(src, dest, ["internal", "pkg", "api", "schema", "private", "go.mod", "go.sum", "LICENSE", "NOTICE.txt"])
+    # `internal/server/awslambda` imports cmd/cerbos/server, so cmd is a required
+    # runtime dependency for the Cerbos engine compile gate and must MOVE with it.
+    move_items(src, dest, ["internal", "pkg", "api", "schema", "private", "cmd", "go.mod", "go.sum", "LICENSE", "NOTICE.txt"])
     m = ficha("yaiwes.authorization.cerbos", "YAIWES-CERBOS-015", "authorization", "principal_resource_actions", "policy_decision", "yaiwes.authorization.cerbos.requested", "transversal", "T", "adapter:engine_root")
     write_surface("cerbos", dest, m, "internal/engine", adapter_text("Cerbos", "internal/engine", "def engine_root() -> str:\n    p = ROOT / 'internal' / 'engine'\n    if not p.is_dir(): raise RuntimeError('Cerbos engine missing')\n    return str(p)\n"))
 
@@ -179,7 +181,6 @@ def prepare() -> None:
 
 
 def finalize() -> None:
-    # Only called after every real runtime + UniversalPluginBus gate passed.
     for source_name in ["Camunda", "Cedar", "Celery", "Cerberus", "Cerbos"]:
         p = SRC / source_name
         if p.exists(): run("git", "rm", "-r", str(p))
