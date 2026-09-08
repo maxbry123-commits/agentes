@@ -61,7 +61,7 @@ jobs:
 
       - name: Runtime probe Azure Durable Functions
         working-directory: Agente Yaiwes principal/execution-orchestration/state-machine-executor/azure-durable-functions
-        run: dotnet build src/WebJobs.Extensions.DurableTask/WebJobs.Extensions.DurableTask.csproj -f net10.0 -p:EnableSourceControlManagerQueries=false -p:EnableSourceLink=false -p:ContinuousIntegrationBuild=false
+        run: dotnet build src/WebJobs.Extensions.DurableTask/WebJobs.Extensions.DurableTask.csproj -f net10.0 -p:EnableSourceControlManagerQueries=false -p:EnableSourceLink=false -p:ContinuousIntegrationBuild=false -p:SignAssembly=false -p:GeneratePackageOnBuild=false
 
       - name: Runtime probe BAML
         run: |
