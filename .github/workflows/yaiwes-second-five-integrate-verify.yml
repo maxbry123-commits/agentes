@@ -97,3 +97,5 @@ jobs:
           git commit -m 'feat(yaiwes): MOVE and verify components 6-10 via universal bus'
           git pull --rebase origin main
           git push origin HEAD:main
+
+# reconciliation trigger: revalidate physical evidence for canonical components 6-10
