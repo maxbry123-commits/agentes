@@ -1,0 +1,102 @@
+{
+  "schema": "yaiwes.research-download-chain.input.v1",
+  "task_id": "YAIWES-WATCHDOG-BACKENDS-10-V1",
+  "phase": "PREFLIGHT_DOWNLOAD_STAGING",
+  "destination_repository": "maxbry123-commits/agentes",
+  "destination_branch": "main",
+  "destination_root": "Core kernel Yaiwes/Backend watchdog workflow adaptativo",
+  "components": [
+    {
+      "name": "Windmill",
+      "source_url": "https://github.com/windmill-labs/windmill",
+      "source_ref": "621fac55abcd1859e8c8c06e5f4412e61bb85d59",
+      "mode": "DOWNLOAD",
+      "selected_paths": []
+    },
+    {
+      "name": "Kestra",
+      "source_url": "https://github.com/kestra-io/kestra",
+      "source_ref": "874a29b0d86531e642aeaab172d1ca3d93a169e2",
+      "mode": "DOWNLOAD",
+      "selected_paths": []
+    },
+    {
+      "name": "Apache-DolphinScheduler",
+      "source_url": "https://github.com/apache/dolphinscheduler",
+      "source_ref": "d8e266397562baa7397aaa669a88824ca7190294",
+      "mode": "DOWNLOAD",
+      "selected_paths": []
+    },
+    {
+      "name": "Rundeck",
+      "source_url": "https://github.com/rundeck/rundeck",
+      "source_ref": "1b944fd3ab24b2cedbe96de8e3cb3847113cd01e",
+      "mode": "DOWNLOAD",
+      "selected_paths": []
+    },
+    {
+      "name": "Temporal",
+      "source_url": "https://github.com/temporalio/temporal",
+      "source_ref": "990081baf768f664f98f734e3599f4c718895151",
+      "mode": "DOWNLOAD",
+      "selected_paths": []
+    },
+    {
+      "name": "Prefect",
+      "source_url": "https://github.com/PrefectHQ/prefect",
+      "source_ref": "6a6fe4e24cc456be30dd570aeeb1dbb6b6bef286",
+      "mode": "DOWNLOAD",
+      "selected_paths": []
+    },
+    {
+      "name": "Dagu",
+      "source_url": "https://github.com/dagucloud/dagu",
+      "source_ref": "79747252180ee17f451267d7e2e098e219a04722",
+      "mode": "DOWNLOAD",
+      "selected_paths": []
+    },
+    {
+      "name": "Cronicle",
+      "source_url": "https://github.com/jhuckaby/Cronicle",
+      "source_ref": "2ccc0f59510c4f197dec0d650f9f423212552589",
+      "mode": "DOWNLOAD",
+      "selected_paths": []
+    },
+    {
+      "name": "Hatchet",
+      "source_url": "https://github.com/hatchet-dev/hatchet",
+      "source_ref": "4be0bdc7b96c33579f134d859960d4345035cd40",
+      "mode": "DOWNLOAD",
+      "selected_paths": []
+    },
+    {
+      "name": "Trigger.dev",
+      "source_url": "https://github.com/triggerdotdev/trigger.dev",
+      "source_ref": "ed37e19c9f70495ba2a067245f8a4a83aaace2c3",
+      "mode": "DOWNLOAD",
+      "selected_paths": []
+    }
+  ],
+  "rules": {
+    "overwrite": false,
+    "delete": false,
+    "reactivate_old_workflows": false,
+    "single_writer": true,
+    "git_lfs": "PROHIBITED",
+    "delivery_mode": "EXTRACTED_TREE_AFTER_PREFLIGHT",
+    "publisher": "SERIAL"
+  },
+  "gates": [
+    "SOURCE_REF_FIXED",
+    "LICENSE_IDENTIFIED",
+    "ZERO_LFS_POINTERS",
+    "NO_GIT_BLOB_GE_100_MIB",
+    "TREE_INVENTORY_PASS",
+    "SELECTED_PATHS_APPROVED_BY_ARCHITECTURE",
+    "EXTRACTED_TREE",
+    "DETERMINISTIC_TREE_SHA256",
+    "READ_BACK_PASS",
+    "INDEPENDENT_AUDITOR_PASS"
+  ],
+  "status": "PENDIENTE_PREFLIGHT"
+}
