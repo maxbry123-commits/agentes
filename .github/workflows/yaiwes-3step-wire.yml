@@ -1,0 +1,86 @@
+name: YAIWES 3-Step Step2 WIRE
+run-name: YAIWES Step2 WIRE • ${{ github.sha }}
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/yaiwes-3step-wire.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-wordflow-3step-wire
+  cancel-in-progress: true
+
+jobs:
+  wire:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 2
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/workflows/yaiwes-3step-wire.yml
+            /scripts/yaiwes_3step_wire_final.py
+            /Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus/
+            /Agente Yaiwes principal/kernel-principal/extension-kernel/capability-registry/
+            /Agente Yaiwes principal/kernel-principal/extension-kernel/abi-mount/wordflow-loop/
+            /Agente Yaiwes principal/execution-orchestration/dag-executor/langgraph/SOURCE_COMMIT.txt
+            /Agente Yaiwes principal/execution-orchestration/dag-executor/prefect/SOURCE_COMMIT.txt
+            /Agente Yaiwes principal/execution-orchestration/dag-executor/hatchet-python-sdk/SOURCE_COMMIT.txt
+            /Agente Yaiwes principal/execution-orchestration/dag-executor/redun/SOURCE_COMMIT.txt
+            /Agente Yaiwes principal/execution-orchestration/state-machine-executor/temporal-python-sdk/SOURCE_COMMIT.txt
+            /Agente Yaiwes principal/execution-orchestration/deterministic-execution/loop-engineer/SOURCE_COMMIT.txt
+            /Agente Yaiwes principal/execution-orchestration/classifier-scheduler/classifier_hook.py
+            /Agente Yaiwes principal/execution-engine-pool/instance_pool.py
+            /Agente Yaiwes principal/execution-orchestration/programming-pipeline/programming_instance.py
+            /Agente Yaiwes principal/observability/usage_metering.py
+
+      - name: Wire moved components through canonical Universal Plugin Bus
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/yaiwes_3step_wire_final.py
+          python3 -m py_compile \
+            'Agente Yaiwes principal/kernel-principal/extension-kernel/abi-mount/wordflow-loop/'*.py \
+            'Agente Yaiwes principal/kernel-principal/extension-kernel/capability-registry/capability_registration.py'
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('Agente Yaiwes principal/kernel-principal/extension-kernel/capability-registry/wordflow_loop_plugin_registry.json')
+          d=json.loads(p.read_text())
+          assert d['active_count'] == 11, d
+          assert len(d['registrations']) == 11
+          assert all(r['status']=='ACTIVE' and r['health'] for r in d['registrations'])
+          print('YAIWES_STEP2_REGISTRY_VERIFY=PASS 11/11')
+          PY
+
+      - name: Commit wiring outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- \
+            'Agente Yaiwes principal/kernel-principal/extension-kernel/abi-mount/wordflow-loop' \
+            'Agente Yaiwes principal/kernel-principal/extension-kernel/capability-registry/wordflow-loop-contracts' \
+            'Agente Yaiwes principal/kernel-principal/extension-kernel/capability-registry/wordflow-loop-evidence' \
+            'Agente Yaiwes principal/kernel-principal/extension-kernel/capability-registry/wordflow_loop_plugin_registry.json'
+          if git diff --cached --quiet; then
+            echo 'NO_CHANGE VERIFIED_EXISTING'
+            exit 0
+          fi
+          git commit -m 'wire(yaiwes): connect moved LOOP runtime through Universal Plugin Bus'
+          git fetch origin main
+          test "$(git rev-parse HEAD^)" = "$(git rev-parse origin/main)"
+          git push origin HEAD:main
+
+      - name: Step2 conclusion
+        run: echo 'YAIWES_STEP2_WIRING=PASS_REAL'
