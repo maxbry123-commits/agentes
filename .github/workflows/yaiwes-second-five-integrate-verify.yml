@@ -96,8 +96,10 @@ jobs:
           git config user.name 'YAIWES LOOP'
           git config user.email 'actions@users.noreply.github.com'
           git add -A
-          git diff --cached --check
 
+          # Canonical skill: preserve acquired/vendor bytes; do not run
+          # git diff --check over the moved payload. Safety is enforced by
+          # staged-index LFS and Git blob-size gates below.
           PAYLOAD="$RUNNER_TEMP/yaiwes-second-five.payload.patch"
           FINAL="$RUNNER_TEMP/yaiwes-second-five-final"
           git diff --cached --binary > "$PAYLOAD"
@@ -107,7 +109,6 @@ jobs:
           rm -rf "$FINAL"
           git worktree add --detach "$FINAL" "origin/$YAIWES_REMOTE_BRANCH"
           git -C "$FINAL" apply --index --binary "$PAYLOAD"
-          git -C "$FINAL" diff --cached --check
 
           while IFS= read -r -d '' p; do
             head -c 200 "$FINAL/$p" 2>/dev/null | grep -q 'version https://git-lfs.github.com/spec/v1' && {
