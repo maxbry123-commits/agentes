@@ -4,6 +4,8 @@ on:
   push:
     paths:
       - '.github/workflows/yaiwes-second-five-integrate-verify.yml'
+      - '.github/scripts/yaiwes_integrate_second_five.py'
+      - '.github/scripts/yaiwes_integrate_second_five_v2.py'
 
 permissions:
   contents: write
@@ -23,6 +25,7 @@ jobs:
           filter: blob:none
           sparse-checkout: |
             .github/scripts/yaiwes_integrate_second_five.py
+            .github/scripts/yaiwes_integrate_second_five_v2.py
             .github/workflows/yaiwes-second-five-integrate-verify.yml
             Core kernel Yaiwes/Componentes recuperados A/Argo-Workflows
             Core kernel Yaiwes/Componentes recuperados A/Azure-Durable-Functions
@@ -50,7 +53,7 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Prepare MOVE in working tree
-        run: python .github/scripts/yaiwes_integrate_second_five.py prepare
+        run: python .github/scripts/yaiwes_integrate_second_five_v2.py prepare
 
       - name: Runtime probe Argo Workflows
         working-directory: Agente Yaiwes principal/execution-orchestration/dag-executor/argo-workflows
@@ -83,7 +86,7 @@ jobs:
           done
 
       - name: Persist verified state and architecture delta
-        run: python .github/scripts/yaiwes_integrate_second_five.py persist
+        run: python .github/scripts/yaiwes_integrate_second_five_v2.py persist
 
       - name: Commit verified integration
         run: |
@@ -92,4 +95,5 @@ jobs:
           git add -A
           git diff --cached --check
           git commit -m 'feat(yaiwes): MOVE and verify components 6-10 via universal bus'
+          git pull --rebase origin main
           git push origin HEAD:main
