@@ -1,0 +1,104 @@
+{
+  "artifact_id": "wordflow.subsheriff.acquire_os",
+  "version": "2.0.0",
+  "estado": "testing",
+  "categoria": "transversal",
+  "etapa": "T",
+
+  "contrato": {
+    "rol": "service",
+    "consume": null,
+    "expone": {
+      "datatype": {"family": "infra_artifact", "type": "universal_acquisition_manifest", "version": 2},
+      "schema_uri": "contracts/acquire_os_manifest.schema.json"
+    }
+  },
+
+  "ejecucion": {
+    "kind": "code",
+    "transport": "stdio",
+    "runtime_type": "hybrid",
+    "llm_ratio": 0.05,
+    "idempotente": true,
+    "entry_point": "control-layer/subsheriffs/acquire_os/acquire_os_core/core.py",
+    "_nota_llm_ratio": "no es 0 puro: T-005/DISCOVERY_GOAL_6 (G2/G3) lee la gu\u00eda oficial de instalaci\u00f3n con asistencia de lenguaje natural, bajo extracci\u00f3n schema-in/schema-out. El resto del pipeline (T-000 a T-004, T-006 a T-011, y el motor de 28 nodos de T-008) es 100% determinista, LLM_CONTROL=DENY."
+  },
+
+  "perfiles": {
+    "n0": {"habilitada": true, "iteraciones": 1},
+    "n1": {"habilitada": true, "iteraciones": 1},
+    "n2": {"habilitada": true, "iteraciones": 1},
+    "n3": {"habilitada": true, "iteraciones": 1},
+    "n4": {"habilitada": true, "iteraciones": 1},
+    "n5": {"habilitada": true, "iteraciones": 1}
+  },
+
+  "repeticion": {"max": 2, "condicion": "si_falla_verificacion", "backoff": "1000*2^n+rand(0,1000)"},
+  "repite_en": [],
+
+  "activacion": {
+    "eventos": ["wordflow.sheriff.request:acquire_os"],
+    "wake_words": [],
+    "condicion": "manual_approval_gate OR council_scheduled_infra_task",
+    "gramatica_de_invocacion": "descarga {nombre_o_url} destino repo {destino_repo}"
+  },
+
+  "presupuesto": {
+    "n0": {"max_ms": 5400000, "max_costo_usd": 0.50},
+    "n1": {"max_ms": 5400000, "max_costo_usd": 0.50},
+    "n2": {"max_ms": 5400000, "max_costo_usd": 0.50},
+    "n3": {"max_ms": 5400000, "max_costo_usd": 0.50},
+    "n4": {"max_ms": 5400000, "max_costo_usd": 0.50},
+    "n5": {"max_ms": 5400000, "max_costo_usd": 0.50},
+    "_nota": "5400000ms=90min cubre el peor caso: Discovery+adquisici\u00f3n+build+publish de un monorepo grande. costo_usd cubre solo los tokens de G2/G3, el resto no consume LLM."
+  },
+
+  "telemetria": {
+    "metricas": ["tiempo", "errores", "reintentos", "nodos_completados",
+      "pin_verificado", "source_type", "ask_council_disparados",
+      "checks_skipped_expected", "checks_failed"],
+    "span_otel": true
+  },
+
+  "evidencia": {
+    "produce": ["L1_static", "L2_build", "L3_runtime"],
+    "destino": "runtime/evidence/acquire_os/{mission_id}/"
+  },
+
+  "failover": {"sustituible_por": [], "compensacion": "ESCALATE_TO_DIRECTOR_ON_FAIL"},
+
+  "seguridad": {
+    "sandbox": "container",
+    "permisos": [
+      "network:github.com", "network:huggingface.co",
+      "fs:agents/{artifact}/", "exec:git", "exec:pnpm|uv|bun|go|pip|cargo (seg\u00fan recipe.toolchain)",
+      "github_scope:contents:read", "github_scope:contents:write (solo en T-009 PUBLISHER)",
+      "huggingface_scope:read (solo si source_type=hf_hub y gated)"
+    ],
+    "limites": {"timeout_ms": 5400000, "deadline_ms": 6000000, "max_memoria_mb": 4096},
+    "auth_ttl": {"github_seg": 1800, "huggingface_seg": 1800,
+      "_regla": "el token NUNCA se persiste en disco/state.json/journal — vive solo en memoria del proceso ejecutor durante el TTL",
+      "_politica_expiracion": "CONFIRMADO: si el token expira a mitad de una misi\u00f3n, el sistema SIEMPRE vuelve a pedir el token expl\u00edcitamente al Director (T-000/T-001 se re-disparan) — nunca se renueva solo, incluso si hubiera un refresh token disponible"},
+    "mission_lock_ttl_seg": 900,
+    "ficha_testing_ttl_dias": 30
+  },
+
+  "salud": {"metodo": "exec", "heartbeat_interval_s": 60},
+
+  "firma": {"gpg_key_id": "PENDIENTE", "revocation_ref": "contracts/revocation_list.json"},
+
+  "trazas": {"task_id_requerido": true, "trace_id_requerido": true},
+
+  "_documentos_relacionados": {
+    "manifest": "A1_PROJECT_MANIFEST.md",
+    "state_schema": "A2_state.schema.json",
+    "nodos_maestros": "A3_DSL_NODOS.md",
+    "dag": "A4_DAG-001.md",
+    "loops": "A5_LOOPS.md",
+    "tribunal": "A6_TRIBUNAL.md",
+    "plan_despliegue": "A7_PLAN_DESPLIEGUE.md",
+    "recovery": "A8_RECOVERY.md",
+    "runtime": "A9_RUNTIME.md",
+    "codigo": "A10 (acquire_os_core/: core.py, verify.py, build.py, promote.py)"
+  }
+}

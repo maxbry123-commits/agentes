@@ -1,0 +1,54 @@
+# Recipe OpenClaw — extraída LITERAL de la guía oficial from-source
+# Fuentes: https://github.com/openclaw/openclaw/blob/main/docs/install/index.md
+#          tag v2026.7.1-2 → commit 0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c
+#
+# Regla: ningún campo inventado por analogía. Comandos = los de la guía oficial.
+
+recipe:
+  artifact_id: "wordflow.module.openclaw"
+  source_type: "git_native"
+
+  pin:
+    repository: "https://github.com/openclaw/openclaw.git"
+    tag: "v2026.7.1-2"
+    commit: "0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c"
+
+  toolchain:
+    manager: "pnpm"
+    version_check_command: ["pnpm", "--version"]
+    # La guía oficial no fija una versión mínima exacta de pnpm en el from-source
+    # path; packageManager del repo se verifica en runtime. expected_version null
+    # → 08_VERIFY_TOOLCHAIN_PIN = SKIPPED_EXPECTED si el motor lo trata así,
+    # o se rellena tras leer package.json del checkout (no antes).
+    expected_version: null
+    node_requirement: "22.22.3+ | 24.15+ | 25.9+"  # literal docs oficiales
+
+  dependencies:
+    lockfile_path: "pnpm-lock.yaml"
+    install_command: ["pnpm", "install", "--frozen-lockfile"]
+
+  build:
+    commands:
+      - ["pnpm", "build"]
+      - ["pnpm", "ui:build"]
+    outputs:
+      - "dist"
+      - "dist/control-ui"
+
+  install:
+    method: "link"
+    commands:
+      - ["pnpm", "link", "--global"]
+    verify_target_command: ["which", "openclaw"]
+
+  verify:
+    commands:
+      - ["openclaw", "--version"]
+      # doctor y gateway status requieren runtime/daemon; se dejan para
+      # post-promoción en entorno real, no forzados aquí sin entorno.
+
+  # Notas de trazabilidad (no forman parte del schema ejecutable del motor)
+  _fuente_oficial:
+    - "docs/install/index.md — From source"
+    - "git clone + pnpm install && pnpm build && pnpm ui:build + pnpm link --global"
+  _pin_origen: "documento instalación OpenClaw + git ls-remote peeled tag v2026.7.1-2"
