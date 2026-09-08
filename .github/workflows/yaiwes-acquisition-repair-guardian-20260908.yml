@@ -1,0 +1,94 @@
+name: YAIWES Acquisition Repair Guardian 20260908
+run-name: YAIWES Acquisition Repair Guardian • ${{ github.run_id }}
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/trigger/agentes-acquisition-guardian.trigger'
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: agentes-yaiwes-acquisition-repair-guardian
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 480
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+      - uses: actions/checkout@v4
+        with:
+          repository: maxbry123-commits/frontend
+          ref: abb4d17fdcd50dce3cf08d7f529dfeea7cde31af
+          path: _guardian_source
+          fetch-depth: 1
+          lfs: false
+      - name: Copy existing Guardian and edit paths surgically
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p _work
+          cp _guardian_source/scripts/extract_guardian_repair_20260903.py _work/guardian.py
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('_work/guardian.py'); s=p.read_text()
+          old='MAPS = [{"src":"📂componentes open soure fromtend/Fromtend code","dst":"📂componentes open soure fromtend/Fromtend code","layout":"flat"},{"src":"📂componentes open soure fromtend/UI YAIWES","dst":"📂componentes open soure fromtend/UI YAIWES","layout":"flat","mirror":"UI YAIWES/Interface YAIWES ui/ENGINE ADAPTER"}]'
+          new='MAPS = [{"src":"Core kernel Yaiwes/_canonical_download_10","dst":"Core kernel Yaiwes","layout":"flat"},{"src":"Core kernel Yaiwes/Backend watchdog workflow adaptativo/_canonical_download_34","dst":"Core kernel Yaiwes/Backend watchdog workflow adaptativo","layout":"flat"}]'
+          if old not in s: raise SystemExit('GUARDIAN_COPY_ANCHOR_GAP')
+          s=s.replace(old,new,1)
+          anchor='def copy_no_overwrite(src, dst):\n'
+          restore='''def restore_chunks(stage):\n    m=stage/"SPLIT_FILES.json"\n    if not m.exists(): return\n    records=json.loads(m.read_text())\n    for r in records:\n        parts=stage/Path(r["chunks_dir"]); target=stage/Path(r["path"]); target.parent.mkdir(parents=True,exist_ok=True)\n        with target.open("wb") as w:\n            for p in sorted(parts.glob("*.part-*")): w.write(p.read_bytes())\n        if target.stat().st_size!=int(r["bytes"]): raise RuntimeError("CHUNK_REBUILD_GAP:"+r["path"])\n        shutil.rmtree(parts)\n    m.unlink()\n\n'''
+          s=s.replace(anchor,restore+anchor,1)
+          s=s.replace('''        state=tree_state(payload)\n        if not state["files"]:\n''','''        restore_chunks(payload)\n        state=tree_state(payload)\n        if not state["files"]:\n''',1)
+          p.write_text(s)
+          print('GUARDIAN_COPY_PASS')
+          PY
+      - name: Enforce NO-LFS
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config --local filter.lfs.clean cat
+          git config --local filter.lfs.smudge cat
+          git config --local --unset-all filter.lfs.process || true
+          git config --local filter.lfs.required false
+      - name: Extract safely
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 _work/guardian.py --limit 10 | tee extraction-result.json
+      - name: Publish and read-back
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -A -- 'Core kernel Yaiwes' 'forensics/extraction'
+          python3 -c 'import subprocess,sys,pathlib; marker=b"version https://git-lfs.github.com/spec/v1\n"; ps=subprocess.check_output(["git","diff","--cached","--name-only","-z"]).split(b"\0"); bad=[]; overs=[]
+for b in ps:
+ p=pathlib.Path(b.decode("utf-8","surrogateescape")) if b else None
+ if p and p.is_file():
+  if p.read_bytes()[:1024].startswith(marker): bad.append(str(p))
+  if p.stat().st_size>=100*1024*1024: overs.append(str(p))
+print("SOURCE_LFS_POINTER_GAP",bad) if bad else None; print("GIT_BLOB_LIMIT_GAP",overs) if overs else None; sys.exit(73 if bad or overs else 0)'
+          if ! git diff --cached --quiet; then
+            git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git commit -m "fix(extraction): agentes YAIWES canonical guardian [run ${GITHUB_RUN_ID}]"
+            for attempt in 1 2 3; do git fetch origin main && git rebase --autostash origin/main && git push --no-verify origin HEAD:main && break; test "$attempt" -lt 3 || exit 41; sleep $((attempt*10)); done
+          fi
+          git fetch origin main; git reset --hard origin/main
+          python3 _work/guardian.py --audit-only | tee audit-result.json
+          python3 - <<'PY'
+          import json,sys
+          d=json.load(open('audit-result.json')); c=d.get('counts',{})
+          print('remaining_gaps=',c.get('remaining')); print('retryable=',c.get('retryable')); print('blocked=',c.get('blocked'))
+          if c.get('remaining',0): sys.exit(73)
+          print('GUARDIAN_READ_BACK_PASS')
+          PY
