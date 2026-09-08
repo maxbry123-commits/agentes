@@ -1,0 +1,78 @@
+{{define "base"}}
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="{{ basePath }}/assets/favicon.ico" />
+    <title>{{ navbarTitle }}</title>
+    <script>
+      function getConfig() {
+        return {
+          apiURL: "{{ apiURL }}",
+          basePath: "{{ basePath }}",
+          title: "{{ navbarTitle }}",
+          navbarColor: "{{ navbarColor }}",
+          version: "{{ version }}",
+          tz: "{{ tz }}",
+          tzOffsetInSec: +"{{ tzOffsetInSec }}",
+          maxDashboardPageLimit: +"{{ maxDashboardPageLimit }}",
+          remoteNodes: "{{ remoteNodes }}",
+          initialWorkspaces: (() => { try { return JSON.parse('{{ js initialWorkspacesJSON }}'); } catch { return []; } })(),
+          authMode: "{{ authMode }}",
+          setupRequired: "{{ setupRequired }}" === "true",
+          oidcEnabled: "{{ oidcEnabled }}" === "true",
+          oidcButtonLabel: "{{ js oidcButtonLabel }}",
+          proxyEnabled: "{{ proxyEnabled }}" === "true",
+          proxyButtonLabel: "{{ js proxyButtonLabel }}",
+          terminalEnabled: "{{ terminalEnabled }}" === "true",
+          gitSyncEnabled: "{{ gitSyncEnabled }}" === "true",
+          permissions: {
+            writeDags: "{{ permissionsWriteDags }}" === "true",
+            runDags: "{{ permissionsRunDags }}" === "true",
+          },
+          updateAvailable: "{{ updateAvailable }}" === "true",
+          latestVersion: "{{ latestVersion }}",
+          license: {
+            valid: "{{ licenseValid }}" === "true",
+            plan: "{{ licensePlan }}",
+            expiry: "{{ licenseExpiry }}",
+            features: (() => { try { return JSON.parse('{{ licenseFeatures }}'); } catch { return []; } })(),
+            gracePeriod: "{{ licenseGracePeriod }}" === "true",
+            graceEndsAt: "{{ licenseGraceEndsAt }}",
+            community: "{{ licenseCommunity }}" === "true",
+            source: "{{ licenseSource }}",
+            warningCode: "{{ licenseWarningCode }}",
+            error: "{{ js licenseError }}",
+          },
+          paths: {
+            dagsDir: "{{ js pathDAGsDir }}",
+            logDir: "{{ js pathLogDir }}",
+            suspendFlagsDir: "{{ js pathSuspendFlagsDir }}",
+            adminLogsDir: "{{ js pathAdminLogsDir }}",
+            baseConfig: "{{ js pathBaseConfig }}",
+            wikiDir: "{{ js pathWikiDir }}",
+            docsDir: "{{ js pathDocsDir }}",
+            dagRunsDir: "{{ js pathDAGRunsDir }}",
+            queueDir: "{{ js pathQueueDir }}",
+            procDir: "{{ js pathProcDir }}",
+            serviceRegistryDir: "{{ js pathServiceRegistryDir }}",
+            configFileUsed: "{{ js pathConfigFileUsed }}",
+            usersDir: "{{ js pathUsersDir }}",
+            gitSyncDir: "{{ js pathGitSyncDir }}",
+            auditLogsDir: "{{ js pathAuditLogsDir }}",
+          },
+        };
+      }
+    </script>
+    <script
+      defer="defer"
+      src="{{ basePath }}/assets/bundle.js?v={{ assetVersion }}"
+    ></script>
+  </head>
+  <body>
+    {{template "content" .}}
+  </body>
+</html>
+{{ end }}
