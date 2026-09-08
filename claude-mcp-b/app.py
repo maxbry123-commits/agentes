@@ -9,14 +9,18 @@ Hugging Face OAuth.
 from __future__ import annotations
 
 import base64
+import hashlib
 import os
 from typing import Any, Literal
 from urllib.parse import quote
 
 import httpx
+from cryptography.fernet import Fernet
 from fastmcp import FastMCP
 from fastmcp.server.auth.providers.huggingface import HuggingFaceProvider
 from fastmcp.server.dependencies import get_access_token
+from key_value.aio.stores.filetree import FileTreeStore
+from key_value.aio.wrappers.encryption import FernetEncryptionWrapper
 
 GITHUB_API = "https://api.github.com"
 GITHUB_API_VERSION = "2022-11-28"
@@ -90,13 +94,24 @@ async def _github_request(
 
 # Hugging Face automatically provisions these OAuth credentials when the
 # Space README contains `hf_oauth: true`.
+# Persist FastMCP OAuth registrations/tokens on the mounted HF bucket (/data)
+# so a 5-minute Space sleep/wake does not erase Claude's auth state.
+_oauth_secret = _required_env("OAUTH_CLIENT_SECRET")
+_storage_key = base64.urlsafe_b64encode(hashlib.sha256(_oauth_secret.encode("utf-8")).digest())
+_oauth_storage = FernetEncryptionWrapper(
+    key_value=FileTreeStore(directory="/data/fastmcp-oauth"),
+    fernet=Fernet(_storage_key),
+)
+
 auth = HuggingFaceProvider(
     client_id=_required_env("OAUTH_CLIENT_ID"),
-    client_secret=_required_env("OAUTH_CLIENT_SECRET"),
+    client_secret=_oauth_secret,
     base_url=_public_base_url(),
     required_scopes=["openid", "profile"],
     valid_scopes=["openid", "profile"],
     fastmcp_access_token_expiry_seconds=60 * 60 * 24 * 30,
+    jwt_signing_key=_oauth_secret,
+    client_storage=_oauth_storage,
 )
 
 mcp = FastMCP(
