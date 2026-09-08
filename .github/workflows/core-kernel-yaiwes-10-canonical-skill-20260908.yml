@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   download-10-in-queue:
-    name: Download 10 sources sequentially
+    name: Download 9 repos + preserve 1 provider GAP
     runs-on: ubuntu-latest
     timeout-minutes: 330
     steps:
@@ -25,6 +25,25 @@ jobs:
         with:
           fetch-depth: 1
           lfs: false
+      - name: Copy immutable skill code and edit only sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 --retry-delay 5 'https://raw.githubusercontent.com/maxbry123-commits/agentes/c789e5fe635e220230ffc759d86dc3bbb8e261d4/skills/skills%20Github%20acci%C3%B3n/scripts/research_download_chain.py' -o /tmp/research_download_chain.py
+          python3 - <<'PY'
+          import json,re
+          from pathlib import Path
+          q=json.loads(Path('scripts/core-kernel-yaiwes-10-download-extract-20260908/QUEUE.json').read_text())
+          usable=[c for c in q['components'] if c.get('source_ref')!='PROVIDER_NON_GITHUB']
+          blocked=[c for c in q['components'] if c.get('source_ref')=='PROVIDER_NON_GITHUB']
+          assert len(usable)==9 and len(blocked)==1
+          repos=[(f'{i:02d}',c['slug'],c['source_url'].rstrip('/')+'.git') for i,c in enumerate(usable,1)]
+          p=Path('/tmp/research_download_chain.py'); s=p.read_text()
+          s=re.sub(r"REPOS=\[.*?\]\n",'REPOS='+repr(repos)+'\n',s,count=1)
+          s=s.replace('QUEUE {number}/20:','QUEUE {number}/9:').replace('QUEUE COMPLETE: 20/20 repositories processed','QUEUE COMPLETE: 9/9 repositories processed')
+          p.write_text(s)
+          Path('/tmp/SOURCE_PROVIDER_GAP.json').write_text(json.dumps({'status':'SOURCE_PROVIDER_GAP','component':blocked[0]},indent=2)+'\n')
+          PY
       - name: Execute deterministic download chain
         shell: bash
         env:
@@ -37,4 +56,5 @@ jobs:
           git config --local filter.lfs.process ''
           git config --local filter.lfs.required false
           git config --local core.compression 0
-          python3 scripts/canonical-core-kernel-yaiwes-10-research_download_chain.py 'Core kernel Yaiwes/_canonical_download_10' '_work/core-kernel-yaiwes-10-canonical'
+          python3 /tmp/research_download_chain.py 'Core kernel Yaiwes/_canonical_download_10' '_work/core-kernel-yaiwes-10-canonical'
+          cat /tmp/SOURCE_PROVIDER_GAP.json
