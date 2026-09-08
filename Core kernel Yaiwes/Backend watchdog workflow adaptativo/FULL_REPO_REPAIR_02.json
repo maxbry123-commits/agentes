@@ -1,0 +1,177 @@
+{
+  "expected": 34,
+  "verified": 34,
+  "gaps": [],
+  "verified_items": [
+    {
+      "slug": "apscheduler",
+      "commit": "e1afa7471d1fc2c3ea7a2b730ef68db20743774a",
+      "files": 100
+    },
+    {
+      "slug": "workalendar",
+      "commit": "b131f2b64377e951654652a9a32e72a34f34e88f",
+      "files": 200
+    },
+    {
+      "slug": "rocketry",
+      "commit": "8da223c743003166f5567a017b4ba3dfb34454ef",
+      "files": 363
+    },
+    {
+      "slug": "celery",
+      "commit": "de0806b701e51425186a5f49dd1827dc531722df",
+      "files": 828
+    },
+    {
+      "slug": "taskiq",
+      "commit": "c4b8666d9143f6f9f64569a463c57e14908043cd",
+      "files": 225
+    },
+    {
+      "slug": "redis",
+      "commit": "48cc562064dbb52ef3f9cc1a5aa32db6811f5871",
+      "files": 1860
+    },
+    {
+      "slug": "restate",
+      "commit": "a7a52535c501da476554988cbf27093790ec05e5",
+      "files": 1484
+    },
+    {
+      "slug": "dbos-python",
+      "commit": "833794f7a1138bacf75ff6d88647a33eb5e35e52",
+      "files": 137
+    },
+    {
+      "slug": "hatchet",
+      "commit": "4be0bdc7b96c33579f134d859960d4345035cd40",
+      "files": 4766
+    },
+    {
+      "slug": "dagu",
+      "commit": "79747252180ee17f451267d7e2e098e219a04722",
+      "files": 3157
+    },
+    {
+      "slug": "burr",
+      "commit": "69ba3bc58a2507e84535d27a008b949656a33302",
+      "files": 823
+    },
+    {
+      "slug": "pocketflow",
+      "commit": "f74d023f93607b8c3268133339a5e532a949898c",
+      "files": 537
+    },
+    {
+      "slug": "apache-hamilton",
+      "commit": "d55da91947da4a8036e35c8ed452e95b01028a09",
+      "files": 2300
+    },
+    {
+      "slug": "redun",
+      "commit": "49a299b223bc345b999aaa40daa6876f105089e1",
+      "files": 385
+    },
+    {
+      "slug": "smolagents",
+      "commit": "30bb1161095dbae2271e6bc3cc4c219cc3897a57",
+      "files": 185
+    },
+    {
+      "slug": "gpt-researcher",
+      "commit": "6f998577d547b1e54ec662dac63583aa11e3b84b",
+      "files": 820
+    },
+    {
+      "slug": "mindsearch",
+      "commit": "7952c5f8a956fe6a44228a6a7d528a35340e7c87",
+      "files": 117
+    },
+    {
+      "slug": "deerflow",
+      "commit": "dde131a808980fdd5b2bad8c258f1df9cb73a127",
+      "files": 2613
+    },
+    {
+      "slug": "postgresql",
+      "commit": "438f027238c0582e89d4c81e3f88d9b1d6d810d0",
+      "files": 7680
+    },
+    {
+      "slug": "pgvector",
+      "commit": "e48241b4dcc045b18902914f668d03d1d399dfbe",
+      "files": 158
+    },
+    {
+      "slug": "iii-sandbox",
+      "commit": "737e75e9a35fea4e65640abd24746ffdf71a8a4e",
+      "files": 239
+    },
+    {
+      "slug": "gvisor",
+      "commit": "93ed0053d1ee9501766a6159d60a520c1c005430",
+      "files": 4230
+    },
+    {
+      "slug": "firecracker",
+      "commit": "7699746649826d1dfcdde626b3131bac08f28e0d",
+      "files": 824
+    },
+    {
+      "slug": "rustfs",
+      "commit": "0db77be5c6811992d0bc9760b8d03785117ba7b7",
+      "files": 2648
+    },
+    {
+      "slug": "openhands",
+      "commit": "f7fb0c4b21f5ed726edbba8a6309634ef434b004",
+      "files": 2207
+    },
+    {
+      "slug": "openwork",
+      "commit": "4d0e30ab67a0c82a347dd7a1d4d190de22e81a78",
+      "files": 4171
+    },
+    {
+      "slug": "opencowork",
+      "commit": "237fcc5c77720334e62890571f741220cee9d8a0",
+      "files": 92
+    },
+    {
+      "slug": "useagent",
+      "commit": "b233c4697eadc4cf8cfe1e672806b944a54b2260",
+      "files": 1871
+    },
+    {
+      "slug": "interpreter-workstation",
+      "commit": "4e9fd4bd2a7ada8931e732d3a664a3e305b1381d",
+      "files": 2328
+    },
+    {
+      "slug": "botroster",
+      "commit": "f8b74de26024f8a00280d6284f10a5167475bfd1",
+      "files": 203
+    },
+    {
+      "slug": "guaca",
+      "commit": "3070a932384a48e8a1af4274644e53007684e0fe",
+      "files": 460
+    },
+    {
+      "slug": "openbot",
+      "commit": "7b94a0b802732e6491634160cf9ed3fcfb813424",
+      "files": 803
+    },
+    {
+      "slug": "cline",
+      "commit": "fc28a5fe3331a9304d5ffcae798e537094125ff4",
+      "files": 3894
+    },
+    {
+      "slug": "cowork",
+      "commit": "61785ee67c1b477cba91e915eea8574546b5efeb",
+      "files": 132
+    }
+  ]
+}
