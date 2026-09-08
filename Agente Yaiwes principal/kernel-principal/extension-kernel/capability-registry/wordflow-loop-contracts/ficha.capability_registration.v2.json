@@ -1,0 +1,80 @@
+{
+  "artifact_id": "yaiwes.runtime.capability_registration",
+  "version": "1.0.0",
+  "estado": "active",
+  "contract_hash": "sha256:e72eb738d94922b5067a25815dd9d3c8abb7b0ef4d43755e0ef886fb7b8e7f56",
+  "tribunal_case_id": "YAIWES-3STEP-CAPABILITY-REGISTRATION",
+  "contrato": {
+    "rol": "transform",
+    "consume": {
+      "datatype": {
+        "family": "json",
+        "type": "object",
+        "version": 1
+      }
+    },
+    "expone": {
+      "datatype": {
+        "family": "json",
+        "type": "object",
+        "version": 1
+      }
+    }
+  },
+  "ejecucion": {
+    "kind": "code",
+    "transport": "importlib",
+    "runtime_type": "compute",
+    "idempotente": true
+  },
+  "seguridad": {
+    "sandbox": "process",
+    "limites": {
+      "timeout_ms": 5000
+    }
+  },
+  "firma": {
+    "gpg_key_id": "YAIWES-3STEP"
+  },
+  "categoria": "pipeline",
+  "etapa": "P",
+  "perfiles": {
+    "n0": {
+      "habilitada": true,
+      "iteraciones": 1,
+      "simulaciones": 0,
+      "criticas": 0,
+      "muestras_k": 1
+    }
+  },
+  "presupuesto": {
+    "n0": {
+      "max_tokens": 1,
+      "max_ms": 5000,
+      "max_costo_usd": 0.0
+    }
+  },
+  "telemetria": {
+    "metricas": [
+      "tiempo",
+      "errores",
+      "health"
+    ],
+    "span_otel": true
+  },
+  "evidencia": {
+    "produce": [
+      "L2_build",
+      "L3_runtime"
+    ],
+    "destino": "capability-registry/wordflow-loop-evidence/"
+  },
+  "failover": {
+    "sustituible_por": [],
+    "compensacion": "fail_closed"
+  },
+  "salud": {
+    "metodo": "ping",
+    "heartbeat_interval_s": 30
+  }
+}

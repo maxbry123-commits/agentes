@@ -1,0 +1,9 @@
+{
+  "step": 2,
+  "status": "PASS_REAL",
+  "wired": 11,
+  "healthy": 11,
+  "canonical_bus_preserved": true,
+  "vendor_exec_during_registration": false,
+  "registry_merkle_root": "787cd7e83e58144b"
+}
