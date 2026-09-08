@@ -59,3 +59,36 @@ Por componente, sin rehacer lo que ya funciona:
 - Estado: `Core kernel Yaiwes/Crack wall bitácora stated JSON/STATE.json`.
 - Bitácora de esta revisión: este archivo.
 - Bitácora histórica preservada sin reescritura: `Core kernel Yaiwes/Crack wall bitácora stated JSON.md`.
+
+---
+
+## Tanda aprobada 11–15 — registro previo a integración · 2026-09-07
+
+**Aprobación del Director:** recibida explícitamente.  
+**Estado de esta tanda:** `APPROVED_FOR_INTEGRATION / ACTIVE_LOOP`.  
+**Regla:** actualizar esta bitácora antes de tocar código; luego cola 1×1 y cierre solo con evidencia real.
+
+| # | Componente | Clase | Origen a revalidar | Destino aprobado | Estado inicial |
+|---|---|---|---|---|---|
+| 11 | Camunda | B | `Core kernel Yaiwes/Componentes recuperados A/Camunda/` | `Agente Yaiwes principal/execution-orchestration/state-machine-executor/camunda/` | `APPROVED_FOR_INTEGRATION` |
+| 12 | Cedar | C | `Core kernel Yaiwes/Componentes recuperados A/Cedar/` | `Agente Yaiwes principal/definition-registry/authorization-model/cedar/` | `APPROVED_FOR_INTEGRATION` |
+| 13 | Celery | B | `Core kernel Yaiwes/Componentes recuperados A/Celery/` | `Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/celery/` | `APPROVED_FOR_INTEGRATION` |
+| 14 | Cerberus | C | `Core kernel Yaiwes/Componentes recuperados A/Cerberus/` | `Agente Yaiwes principal/definition-registry/schema-contracts/cerberus/` | `APPROVED_FOR_INTEGRATION` |
+| 15 | Cerbos | C | `Core kernel Yaiwes/Componentes recuperados A/Cerbos/` | `Agente Yaiwes principal/control-governance/policy-guardrails-permissions/cerbos/` | `APPROVED_FOR_INTEGRATION` |
+
+### Cola 1×1
+`Camunda ➡️ Cedar ➡️ Celery ➡️ Cerberus ➡️ Cerbos`.
+
+### Evidencia requerida por componente
+- origen y destino físico;
+- código útil realmente MOVED, no copiado;
+- LICENSE/provenance preservada cuando corresponda;
+- adapter + Ficha Contract v2 + WIRING;
+- `UniversalPluginBus.enchufar()`/registro canónico equivalente;
+- health/evidence;
+- import/build/runtime/test real;
+- SHA/diff/run/log/URL;
+- origen deduplicado únicamente después del PASS;
+- append quirúrgico en `Readme arquitectura Yaiwes/README.md`.
+
+Los estados antiguos de esta bitácora permanecen como trazabilidad histórica; esta sección posterior tiene precedencia para la tanda 11–15.
