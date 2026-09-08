@@ -1,0 +1,38 @@
+load("//tools:defs.bzl", "go_library", "go_test", "proto_library")
+
+package(
+    default_applicable_licenses = ["//:license"],
+    licenses = ["notice"],
+)
+
+proto_library(
+    name = "api",
+    srcs = [
+        "runtimeoptions.proto",
+    ],
+)
+
+go_library(
+    name = "runtimeoptions",
+    srcs = [
+        "runtimeoptions.go",
+        "runtimeoptions_cri.go",
+    ],
+    visibility = [
+        "//pkg/shim/v1:__subpackages__",
+        "//shim:__subpackages__",
+    ],
+    deps = ["@com_github_gogo_protobuf//proto:go_default_library"],
+)
+
+go_test(
+    name = "runtimeoptions_test",
+    size = "small",
+    srcs = ["runtimeoptions_test.go"],
+    library = ":runtimeoptions",
+    deps = [
+        "@com_github_containerd_containerd_api//runtime/task/v2:go_default_library",
+        "@com_github_containerd_typeurl_v2//:go_default_library",
+        "@org_golang_google_protobuf//encoding/prototext:go_default_library",
+    ],
+)

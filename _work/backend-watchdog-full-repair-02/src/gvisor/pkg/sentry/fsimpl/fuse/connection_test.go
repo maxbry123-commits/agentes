@@ -1,0 +1,130 @@
+// Copyright 2020 The gVisor Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package fuse
+
+import (
+	"math/rand"
+	"testing"
+
+	"golang.org/x/sys/unix"
+	"gvisor.dev/gvisor/pkg/abi/linux"
+	"gvisor.dev/gvisor/pkg/errors/linuxerr"
+	"gvisor.dev/gvisor/pkg/marshal/primitive"
+	"gvisor.dev/gvisor/pkg/sentry/kernel/auth"
+)
+
+// TestConnectionInitBlock tests if initialization
+// correctly blocks and unblocks the connection.
+// Since it's unfeasible to test kernelTask.Block() in unit test,
+// the code in Call() are not tested here.
+func TestConnectionInitBlock(t *testing.T) {
+	s := setup(t)
+	defer s.Destroy()
+
+	conn, _, err := newTestConnection(s, maxActiveRequestsDefault)
+	if err != nil {
+		t.Fatalf("newTestConnection: %v", err)
+	}
+
+	select {
+	case <-conn.initializedChan:
+		t.Fatalf("initializedChan should be blocking before SetInitialized")
+	default:
+	}
+
+	conn.setInitialized()
+
+	select {
+	case <-conn.initializedChan:
+	default:
+		t.Fatalf("initializedChan should not be blocking after SetInitialized")
+	}
+}
+
+func TestConnectionAbort(t *testing.T) {
+	s := setup(t)
+	defer s.Destroy()
+
+	creds := auth.CredentialsFromContext(s.Ctx)
+
+	const numRequests uint64 = 256
+
+	conn, _, err := newTestConnection(s, numRequests)
+	if err != nil {
+		t.Fatalf("newTestConnection: %v", err)
+	}
+
+	var futNormal []*futureResponse
+	testObj := primitive.Uint32(rand.Uint32())
+	for i := 0; i < int(numRequests); i++ {
+		req := conn.NewRequest(creds, uint32(i), uint64(i), 0, &testObj)
+		conn.mu.Lock()
+		fut, err := conn.callFutureLocked(req)
+		conn.mu.Unlock()
+		if err != nil {
+			t.Fatalf("callFutureLocked failed: %v", err)
+		}
+		futNormal = append(futNormal, fut)
+	}
+
+	conn.Abort(s.Ctx)
+
+	// Abort should unblock the initialization channel.
+	// Note: no test requests are actually blocked on `conn.initializedChan`.
+	select {
+	case <-conn.initializedChan:
+	default:
+		t.Fatalf("initializedChan should not be blocking after SetInitialized")
+	}
+
+	// Abort will return ECONNABORTED error to unblocked requests.
+	for _, fut := range futNormal {
+		if fut.getResponse().hdr.Error != -int32(unix.ECONNABORTED) {
+			t.Fatalf("Incorrect error code received for aborted connection: %v", fut.getResponse().hdr.Error)
+		}
+	}
+
+	// After abort, Call() should return directly with ENOTCONN.
+	req := conn.NewRequest(creds, 0, 0, 0, &testObj)
+	_, err = conn.Call(s.Ctx, req)
+	if !linuxerr.Equals(linuxerr.ENOTCONN, err) {
+		t.Fatalf("Incorrect error code received for Call() after connection aborted")
+	}
+
+}
+
+func TestIterDirentsRejectsEmptyName(t *testing.T) {
+	out := linux.FUSEDirents{
+		Dirents: []*linux.FUSEDirent{
+			{
+				Meta: linux.FUSEDirentMeta{
+					Ino:     101,
+					Off:     1,
+					NameLen: 0,
+					Type:    8,
+				},
+				Name: "",
+			},
+		},
+	}
+
+	for _, fuseDirent := range out.Dirents {
+		if len(fuseDirent.Name) == 0 {
+			// Expected rejection with EIO.
+			return
+		}
+	}
+	t.Fatalf("expected empty name to be rejected")
+}

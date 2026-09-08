@@ -1,0 +1,109 @@
+syntax = "proto3";
+
+package k8s_tester.test_cluster_config;
+
+import "google/protobuf/any.proto";
+
+// TestRangeSpec is a description of the test environment to be created. It is
+// the input of the setup step which creates the required clusters.
+message TestRangeSpec {
+  // Name for clusters. This name will be used as a template for all created
+  // clusters (e.g. my-cluster will have clusters named something like
+  // "my-cluster-0" with an ascending index). Cluster names are limited to
+  // 40 characters, so names will be truncated to fit this constraint.
+  string name = 1;
+
+  // A nodepool built with the runtime under test.
+  NodePool test_runtime = 2;
+
+  // clients is another nodepool in the cluster to use against the test_runtime.
+  // For example, in most client-server tests, the runtime under test is the
+  // server and the clients are the client. Clients always use the default
+  // runtime runc.
+  NodePool clients = 3;
+
+  // tertiary is a third nodepool in the cluster, used by some benchmarks that
+  // need it for isolation.
+  // For example, the WordPress benchmark needs to run the MySQL database on
+  // a separate machine in order to force network traffic to flow across the
+  // host's non-local network stack for a fair comparison between runsc/runc.
+  // The tertiary nodepool may use gVisor or runc as a runtime, depending on
+  // user configuration.
+  NodePool tertiary = 8;
+
+  // The default nodepool, not used for benchmarking at all but may be
+  // needed to be custom configured for cluster-wide compatibility reasons.
+  NodePool default_nodepool = 10;
+
+  // restore is an optional nodepool in the cluster, used as a restore target
+  // for benchmarks involving pod snapshots.
+  // If true, it will be configured in exactly the same way as the test_runtime
+  // nodepool, other than its name.
+  bool restore = 9;
+
+  // versions are the GKE patch versions to use for the clusters. The number
+  // of clusters created will be num(versions) * replicas.
+  repeated string versions = 4;
+
+  // zones are the availability zones in which to create clusters. clusters will
+  // be created in each zone in a round robin fashion until the requested amount
+  // of clusters is created. This is provided to expand quota.
+  // Note: please check that given zones actual have resources available (e.g
+  // ARM machines are not available in all zones).
+  repeated string zones = 5;
+
+  // project is the project under which clusters should be created.
+  string project = 6;
+
+  // project service account to use to create clusters.
+  string gke_service_account = 7;
+
+  // endpoint is the GKE API endpoint override to use.
+  string endpoint = 11;
+}
+
+// NodePool represents a set of Kubernetes nodes.
+message NodePool {
+  // Opaque implementation-specific nodepool config.
+  // In GKE, this is a google.container.v1.NodePool.
+  google.protobuf.Any node_pool = 1;
+}
+
+// TestRange contains the created clusters. This is an output from the setup
+// phase and an input for the test phase.
+message TestRange {
+  repeated Cluster clusters = 1;
+
+  // endpoint is the GKE API endpoint override used for the clusters in this
+  // test range.
+  string endpoint = 2;
+}
+
+// Cluster holds the created cluster and its credential file.
+message Cluster {
+  // Cluster name.
+  string cluster = 1;
+
+  // A kubectl config file that can be used to connect to the cluster.
+  string kubectl_config = 2;
+
+  // The kubectl context name within `kubectl_config` to use to connect
+  // to the cluster.
+  // If empty, the default context will be used.
+  string kubectl_context = 3;
+
+  // The GCP project ID that the cluster is in.
+  // Optional; only used for cluster management tasks (e.g. deletion).
+  // Leave empty for non-GCP clusters.
+  string gcp_project_id = 4;
+
+  // The GCP location that the cluster is created in.
+  // Optional; only used for cluster management tasks (e.g. deletion).
+  // Leave empty for non-GCP clusters.
+  string gcp_location = 5;
+
+  // The GKE API endpoint override used for the cluster.
+  // Optional; only used for cluster management tasks (e.g. deletion).
+  // Leave empty for non-GCP clusters or default endpoint.
+  string gcp_endpoint = 6;
+}

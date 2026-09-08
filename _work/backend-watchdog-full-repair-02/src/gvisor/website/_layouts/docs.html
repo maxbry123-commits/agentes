@@ -1,0 +1,63 @@
+---
+layout: base
+categories:
+  - Project
+  - User Guide
+  - SDK/API Reference
+  - Architecture Guide
+  - Compatibility
+---
+
+<div class="container">
+  <div class="row">
+    <div class="col-md-3">
+      <nav class="sidebar" id="sidebar-nav">
+        {% for category in layout.categories %}
+          <h3>{{ category }}</h3>
+          <ul class="sidebar-nav">
+          {% assign subcats = site.pages | where: 'layout', 'docs' | where: 'category', category | group_by: 'subcategory' | sort: 'name', 'first' %}
+          {% for subcategory in subcats %}
+            {% assign sorted_pages = subcategory.items | where: 'include_in_menu', true | sort: 'weight', 'last' %}
+            {% comment %}If all pages in the subcategory are excluded don't show it.{% endcomment %}
+            {% if sorted_pages.size > 0 %}
+              {% if subcategory.name != "" %}
+                {% assign cid = category | replace: "/", "-" | remove: " " | downcase %}
+                {% assign sid = subcategory.name | replace: "/", "-" | remove: " " | downcase %}
+                <li>
+                  {% comment %}
+                  If the current page is in the sub-category then set the collapsible to expanded.
+                  See: https://getbootstrap.com/docs/3.3/javascript/#collapse
+                  {% endcomment %}
+                  {% assign expanded = false %}
+                  {% for p in sorted_pages %}{% if page.url == p.url %}{% assign expanded = true %}{% endif %}{% endfor %}
+                  <a class="sidebar-nav-heading" data-toggle="collapse" href="#{{ cid }}-{{ sid }}" {% if expanded %}aria-expanded="true"{% else %}aria-expanded="false"{% endif %} aria-controls="{{ cid }}-{{ sid }}">{{ subcategory.name }}<span class="caret"></span></a>
+                  <ul class="collapse{% if expanded %} in{% endif %} sidebar-nav sidebar-submenu" id="{{ cid }}-{{ sid }}">
+              {% endif %}
+              {% for p in sorted_pages %}
+                <li{% if page.url == p.url %} class="active"{% endif %}><a href="{{ p.url }}">{{ p.title }}</a></li>
+              {% endfor %}
+              {% if subcategory.name != "" %}
+                </li>
+              </ul>
+              {% endif %}
+            {% endif %}
+          {% endfor %}
+          </ul>
+        {% endfor %}
+      </nav>
+    </div>
+
+    <div class="col-md-9">
+      <h1>{{ page.title }}</h1>
+      {% if page.editpath %}
+        <p>
+        <a href="https://github.com/google/gvisor/edit/master/{{page.editpath}}" target="_blank" rel="noopener"><i class="fa fa-edit fa-fw"></i> Edit this page</a>
+        <a href="https://github.com/google/gvisor/issues/new?title={{page.title | url_encode}}" target="_blank" rel="noopener"><i class="fab fa-github fa-fw"></i> Create issue</a>
+        </p>
+      {% endif %}
+      <div class="docs-content">
+      {{ content }}
+      </div>
+    </div>
+  </div>
+</div>
