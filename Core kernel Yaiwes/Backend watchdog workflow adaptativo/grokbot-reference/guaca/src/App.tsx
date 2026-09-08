@@ -1,0 +1,520 @@
+import { useCallback, useEffect, useState } from "react";
+
+import { AgentAvatar } from "./avatars/AgentAvatar";
+import { AgentEditor } from "./components/AgentEditor";
+import { AgentMenu, type MenuTarget } from "./components/AgentMenu";
+import { Cafeteria } from "./components/Cafeteria";
+import { Calendar } from "./components/Calendar";
+import { ChannelView } from "./components/ChannelView";
+import { ForYou } from "./components/ForYou";
+import { GroupEditor } from "./components/GroupEditor";
+import { Inspector } from "./components/Inspector";
+import { MobileNavigation } from "./components/MobileNavigation";
+import { Search } from "./components/Search";
+import { type Section, SettingsDialog } from "./components/SettingsDialog";
+import { Sidebar } from "./components/Sidebar";
+import { announcementFor } from "./lib/announce";
+import { applyAppearance, watchSystemSurface } from "./lib/appearance";
+import { api, notifyOperator, onMenubarAsk, onRevealRequest, onRuntimeEvent } from "./lib/ipc";
+import { bindingFor } from "./lib/keybinds";
+import { FEED_COALESCE_MS, presenceOf, samePresence } from "./lib/menubar";
+import { away, burst, markQuiet, quiet, shouldNotify } from "./lib/notify";
+import { useLiveAgents, useStore } from "./lib/store";
+import { attached, hosted } from "./lib/transport";
+import { type AgentCard, errorMessage, type Group, type UiEvent } from "./lib/types";
+import { followViewport } from "./lib/viewport";
+
+export default function App() {
+  useEffect(followViewport, []);
+  const agents = useLiveAgents();
+  const selected = useStore((s) => s.selected);
+  const settings = useStore((s) => s.settings);
+  const banner = useStore((s) => s.banner);
+  const setBanner = useStore((s) => s.setBanner);
+  const handoff = useStore((s) => s.handoff);
+  const setHandoff = useStore((s) => s.setHandoff);
+  const bootstrap = useStore((s) => s.bootstrap);
+  const applyEvent = useStore((s) => s.applyEvent);
+  const refreshAgents = useStore((s) => s.refreshAgents);
+  const select = useStore((s) => s.select);
+  const focusGroup = useStore((s) => s.focusGroup);
+  const loadChannel = useStore((s) => s.loadChannel);
+  const groups = useStore((s) => s.groups);
+  const railGroup = useStore((s) => s.railGroup);
+  const dropAgent = useStore((s) => s.dropAgent);
+  const prefs = useStore((s) => s.prefs);
+
+  /**
+   * Raises an operating system notification, when one is warranted.
+   *
+   * Reads the store at the moment of the event rather than closing over it. The
+   * subscription below is made once, on purpose, and a preference or a
+   * selection that has changed since then is the one that has to apply; a
+   * dependency on either would tear the event listener down and rebuild it
+   * every time the operator clicked a different agent.
+   */
+  const announce = useCallback((event: UiEvent) => {
+    const state = useStore.getState();
+    const said = announcementFor(
+      event,
+      (id) => state.agents.find((agent) => agent.id === id)?.name ?? "An agent",
+    );
+    if (!said) return;
+
+    const warranted = shouldNotify(said.kind, state.prefs.notify, {
+      away: away(),
+      // An announcement about no channel in particular is never held back for
+      // being about the wrong one.
+      onScreen:
+        event.type === "decisionReminder"
+          ? state.forYou
+          : said.channel === null || said.channel === state.selected,
+      quiet: quiet(),
+    });
+    if (!warranted || burst(said.key)) return;
+
+    void notifyOperator(said.title, said.body);
+  }, []);
+
+  const [editing, setEditing] = useState<AgentCard | "new" | null>(null);
+  const [editingGroup, setEditingGroup] = useState<Group | "new" | null>(null);
+  const [menu, setMenu] = useState<MenuTarget | null>(null);
+  const forYou = useStore((state) => state.forYou);
+  const showForYou = useStore((state) => state.showForYou);
+  const [showSettings, setShowSettings] = useState<Section | true | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [showCafeteria, setShowCafeteria] = useState(false);
+  const [showCalendar, setShowCalendar] = useState(false);
+  const [mobilePane, setMobilePane] = useState<"agents" | "conversation" | "details">(
+    "conversation",
+  );
+  const openConversation = useCallback(() => setMobilePane("conversation"), []);
+  const openDetails = useCallback(() => setMobilePane("details"), []);
+
+  // Search and notifications can select a channel without going through the rail.
+  useEffect(() => {
+    if (selected) setMobilePane("conversation");
+  }, [selected]);
+
+  // The three shortcuts that work wherever the operator is, matched against
+  // the same table the Shortcuts pane draws from, so a key listed there is a key
+  // that works. Everything else in that table belongs to the surface it acts
+  // on: see `lib/keybinds`.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const binding = bindingFor(event);
+      if (!binding) return;
+      event.preventDefault();
+
+      if (binding.id === "search") setSearching(true);
+      if (binding.id === "settings") setShowSettings(true);
+      if (binding.id === "shortcuts") setShowSettings("shortcuts");
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // The scale and the surface, written to the root element. Done here rather
+  // than where they are chosen so a reload draws them before the first paint of
+  // anything else, and re-run when the OS changes its mind, which only matters
+  // while the surface is set to follow it.
+  useEffect(() => {
+    applyAppearance(prefs.uiScale, prefs.surface);
+    return watchSystemSurface(() => applyAppearance(prefs.uiScale, prefs.surface));
+  }, [prefs.uiScale, prefs.surface]);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    // Subscribing is async, so a teardown can arrive before it resolves. Without
+    // this flag the listener leaks: StrictMode mounts twice in development, the
+    // first cleanup finds `unlisten` still undefined, and every stream delta is
+    // then applied by two listeners. That renders as text interleaved with
+    // itself, which looks like a model bug rather than a subscription bug.
+    let canceled = false;
+
+    let initialReadDone = false;
+    let refreshing = false;
+    let requested = false;
+    const refresh = async () => {
+      requested = true;
+      if (!initialReadDone || refreshing) return;
+      refreshing = true;
+      try {
+        while (requested && !canceled) {
+          requested = false;
+          await useStore.getState().resynchronize();
+        }
+      } catch (error) {
+        if (!canceled) setBanner({ tone: "error", text: errorMessage(error) });
+      } finally {
+        refreshing = false;
+      }
+    };
+
+    void (async () => {
+      // Subscribe before the first read so nothing that happens during startup
+      // is missed.
+      const stop = await onRuntimeEvent(
+        (event) => {
+          applyEvent(event);
+          announce(event);
+          // A read that overlapped a durable change may contain older rows.
+          // Read again after it completes; token deltas need no database read.
+          if (
+            refreshing &&
+            [
+              "messageAppended",
+              "agentsChanged",
+              "approvalRequested",
+              "approvalSettled",
+              "escalationRaised",
+              "escalationCleared",
+              "decisionsChanged",
+              "runSettled",
+            ].includes(event.type)
+          ) {
+            requested = true;
+          }
+        },
+        () => {
+          void refresh();
+        },
+      );
+      if (canceled) {
+        stop();
+        return;
+      }
+      unlisten = stop;
+
+      // Nothing interrupts the operator for the first few seconds. A routine
+      // whose slot passed while the app was closed is overdue and fires on the
+      // first tick, which is correct, but launching after a weekend away should
+      // not announce a weekend of schedule at once. All of it is on screen
+      // immediately either way; only the interruption waits.
+      markQuiet();
+
+      try {
+        await bootstrap();
+      } catch (error) {
+        setBanner({ tone: "error", text: errorMessage(error) });
+      } finally {
+        initialReadDone = true;
+        if (requested && !canceled) await refresh();
+        if (!canceled) setReady(true);
+      }
+    })();
+
+    return () => {
+      canceled = true;
+      unlisten?.();
+    };
+  }, [announce, applyEvent, bootstrap, setBanner]);
+
+  // The menu bar follows the window. While this window shows a box, the strip
+  // on this machine is handed the box's presence, coalesced, and only when it
+  // would draw differently; while it shows this machine, the strip reads the
+  // runtime itself and is told once to do so, because the process outlives
+  // the page and the last page may have left it fed.
+  useEffect(() => {
+    if (!hosted) {
+      void api.reportPresence(null).catch(() => {});
+      return;
+    }
+    if (!attached()) return;
+
+    let last = presenceOf(useStore.getState());
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const report = () => {
+      timer = null;
+      const next = presenceOf(useStore.getState());
+      if (samePresence(next, last)) return;
+      last = next;
+      void api.reportPresence(next).catch(() => {});
+    };
+    void api.reportPresence(last).catch(() => {});
+    const unsubscribe = useStore.subscribe(() => {
+      if (timer === null) timer = setTimeout(report, FEED_COALESCE_MS);
+    });
+    return () => {
+      unsubscribe();
+      if (timer !== null) clearTimeout(timer);
+    };
+  }, []);
+
+  // A click on a strip row that was drawn from a box. The act belongs to the
+  // box and this window holds the connection, so it does what the row said.
+  useEffect(() => {
+    if (!attached()) return;
+    let unlisten: (() => void) | undefined;
+    let canceled = false;
+    void (async () => {
+      const stop = await onMenubarAsk((ask) => {
+        const act =
+          ask.kind === "stopAll"
+            ? api.stopEverything()
+            : api.decideApproval(ask.approval, ask.decision);
+        void act.catch((error) => setBanner({ tone: "error", text: errorMessage(error) }));
+      });
+      if (canceled) {
+        stop();
+        return;
+      }
+      unlisten = stop;
+    })();
+    return () => {
+      canceled = true;
+      unlisten?.();
+    };
+  }, [setBanner]);
+
+  // A row in the menu bar, clicked. The window is already up by the time this
+  // lands; the only thing left is which channel it lands in, and the newest
+  // window of it is the right one: a request the strip offered is the last
+  // thing in the channel that raised it.
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let canceled = false;
+
+    void (async () => {
+      const stop = await onRevealRequest((target) => {
+        // Two destinations, and the crew is not a channel: `focusGroup` opens
+        // the crew and picks nobody in it, because a click that was about the
+        // crew must not put somebody's history on screen as a side effect.
+        if (target.kind === "forYou") useStore.getState().showForYou(true);
+        else if (target.kind === "crew") void focusGroup(target.id);
+        else void select(target.id);
+      });
+      if (canceled) {
+        stop();
+        return;
+      }
+      unlisten = stop;
+    })();
+
+    return () => {
+      canceled = true;
+      unlisten?.();
+    };
+  }, [focusGroup, select]);
+
+  /**
+   * Runs something on one agent and re-reads the roster.
+   *
+   * Both menu actions change a card the rail is drawing, and the runtime emits
+   * `agentsChanged` for each, but waiting for the round trip means the row does
+   * not move until the event lands. Refreshing here as well makes the click
+   * feel like it did something.
+   */
+  const onAgent = async (run: () => Promise<unknown>) => {
+    try {
+      await run();
+      await refreshAgents();
+    } catch (error) {
+      setBanner({ tone: "error", text: errorMessage(error) });
+    }
+  };
+
+  const openAgent = selected ? agents.find((a) => a.id === selected) : undefined;
+  const currentGroup = groups.find((group) => group.id === (openAgent?.groupId ?? railGroup));
+  // Read the same group-over-workspace provider and key choices as the backend.
+  const needsKey =
+    ready &&
+    settings !== null &&
+    (currentGroup?.inference.provider ?? settings.provider) === "compatible" &&
+    !currentGroup?.apiKeySet &&
+    !settings.apiKeySet;
+
+  return (
+    <div className="app" data-mobile-pane={openAgent ? mobilePane : "agents"}>
+      <MobileNavigation
+        onChats={() => setMobilePane("agents")}
+        onSearch={() => setSearching(true)}
+        onSettings={() => setShowSettings(true)}
+      />
+      <Sidebar
+        onOpenChannel={openConversation}
+        onEditAgent={(agent) => setEditing(agent)}
+        onOpenCafeteria={() => setShowCafeteria(true)}
+        onOpenCalendar={() => setShowCalendar(true)}
+        onEditGroup={(group) => setEditingGroup(group)}
+        onOpenSettings={() => setShowSettings(true)}
+        onOpenSearch={() => setSearching(true)}
+        onNewAgent={() => setEditing("new")}
+        onNewGroup={() => setEditingGroup("new")}
+        onOpenMenu={(agent, at) => setMenu({ agent, ...at })}
+      />
+
+      <main>
+        {needsKey && (
+          <div className="banner">
+            <span>Add an API key before your agents can reply.</span>
+            {/* Onto the pane that holds the key, rather than onto the first one
+                with the key two sections away. */}
+            <button type="button" className="btn" onClick={() => setShowSettings("provider")}>
+              Open settings
+            </button>
+          </div>
+        )}
+
+        {handoff && (
+          <div className="banner" role="status">
+            <span>
+              A sign-in is waiting in the tab that just opened. If none did,{" "}
+              <a href={handoff} target="_blank" rel="noopener noreferrer">
+                open it here
+              </a>
+              .
+            </span>
+            <button type="button" className="btn" onClick={() => setHandoff(null)}>
+              Dismiss
+            </button>
+          </div>
+        )}
+
+        {banner && (
+          <div className={banner.tone === "error" ? "banner banner--error" : "banner"}>
+            <span>{banner.text}</span>
+            <button type="button" className="btn btn--ghost" onClick={() => setBanner(null)}>
+              Dismiss
+            </button>
+          </div>
+        )}
+
+        {!ready ? (
+          <div className="empty" style={{ margin: "auto" }}>
+            <p className="empty__body">Starting up…</p>
+          </div>
+        ) : agents.length === 0 ? (
+          <div className="empty" style={{ margin: "auto" }}>
+            <span style={{ display: "inline-flex" }}>
+              <AgentAvatar avatar="orb" color="#5a7d99" size="lg" seed="empty-state" />
+            </span>
+            <h2 className="empty__title">No agents yet</h2>
+            <p className="empty__body">
+              Agents are the people in this workspace. You talk to them, and they can talk to each
+              other. Hire a few who are already set up, or write one from scratch.
+            </p>
+            <div style={{ display: "flex", gap: "0.5rem", justifyContent: "center" }}>
+              <button
+                type="button"
+                className="btn btn--primary"
+                onClick={() => setShowCafeteria(true)}
+              >
+                Open the cafeteria
+              </button>
+              <button type="button" className="btn" onClick={() => setEditing("new")}>
+                Create one agent
+              </button>
+            </div>
+          </div>
+        ) : selected === null ? (
+          // Nothing open. Reached by going inside a crew the open channel was
+          // not in, and by deleting the last agent that had one: both are the
+          // operator ending up somewhere with no conversation attached, and
+          // picking one for them would put an agent's history on screen as a
+          // side effect of a click that was about something else.
+          <div className="empty" style={{ margin: "auto" }}>
+            <p className="empty__body">Pick someone in the rail to open their channel.</p>
+          </div>
+        ) : (
+          <ChannelView
+            channel={selected}
+            onOpenMenu={(agent, at) => setMenu({ agent, ...at })}
+            onBack={() => setMobilePane("agents")}
+            onDetails={openDetails}
+          />
+        )}
+      </main>
+
+      {ready && agents.length > 0 && (
+        <Inspector
+          agent={openAgent}
+          onEditProfile={(agent) => setEditing(agent)}
+          onOpenActions={(agent, at) => setMenu({ agent, ...at })}
+          reveal={mobilePane === "details"}
+          onReveal={openDetails}
+          onHide={openConversation}
+        />
+      )}
+
+      {/* Outside `main` and after the panes, so nothing that scrolls can clip it
+          and no view change can unmount it. Before the dialogs, because a dialog
+          is modal and the one thing that should cover this. */}
+      {ready && forYou && <ForYou onClose={() => showForYou(false)} />}
+
+      {menu && (
+        <AgentMenu
+          target={menu}
+          groups={groups}
+          onClose={() => setMenu(null)}
+          onEditProfile={(agent) => setEditing(agent)}
+          onTogglePin={(agent) => void onAgent(() => api.setAgentPinned(agent.id, !agent.pinned))}
+          // Through the store rather than the API: a move lands the agent at
+          // the end of a group it is not in yet, which is a placement only the
+          // roster the rail is drawn from can work out.
+          onMoveToGroup={(agent, group) =>
+            void onAgent(() => dropAgent(agent.id, { kind: "group", id: group.id }))
+          }
+          onTogglePause={(agent) =>
+            void onAgent(() => api.setAgentPaused(agent.id, agent.lifecycle !== "paused"))
+          }
+          onDuplicate={(agent) =>
+            void onAgent(async () => {
+              const copy = await api.duplicateAgent(agent.id);
+              await refreshAgents();
+              await select(copy.id);
+            })
+          }
+          // The runtime announces the clear and the store re-reads whatever is
+          // open, but only once the event has been round-tripped. Reading here
+          // as well is what makes the click look like it did something.
+          onClearHistory={(agent) =>
+            void onAgent(async () => {
+              await api.clearChannel(agent.id);
+              await loadChannel(agent.id);
+            })
+          }
+          // Into the compost. The rail drops the row on the next roster read,
+          // and the pane is left where it was: what the agent said is still in
+          // every channel it said it in, and a view that emptied itself would
+          // read as the transcript having gone too.
+          onDelete={(agent) => void onAgent(() => api.deleteAgent(agent.id))}
+        />
+      )}
+
+      {editing && (
+        <AgentEditor
+          agent={editing === "new" ? undefined : editing}
+          onClose={() => setEditing(null)}
+        />
+      )}
+      {editingGroup && (
+        <GroupEditor
+          group={editingGroup === "new" ? undefined : editingGroup}
+          onClose={() => setEditingGroup(null)}
+        />
+      )}
+      {showCafeteria && <Cafeteria onClose={() => setShowCafeteria(false)} />}
+      {showCalendar && <Calendar onClose={() => setShowCalendar(false)} />}
+      {showSettings && (
+        <SettingsDialog
+          onClose={() => setShowSettings(null)}
+          section={showSettings === true ? undefined : showSettings}
+        />
+      )}
+      {searching && (
+        <Search
+          onOpenChannel={openConversation}
+          onClose={() => setSearching(false)}
+          onEditAgent={(agent) => setEditing(agent)}
+          onEditGroup={(group) => setEditingGroup(group)}
+          onNewAgent={() => setEditing("new")}
+          onNewGroup={() => setEditingGroup("new")}
+          onOpenCafeteria={() => setShowCafeteria(true)}
+          onOpenSettings={() => setShowSettings(true)}
+        />
+      )}
+    </div>
+  );
+}

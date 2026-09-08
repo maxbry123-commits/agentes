@@ -1,0 +1,2682 @@
+//! Schema migrations.
+//!
+//! Forward-only, numbered, and applied inside a transaction keyed on SQLite's
+//! `user_version`. No migration framework: the whole thing is a list and a
+//! loop, which is auditable in one screen and cannot drift from what actually
+//! ran.
+
+use rusqlite::{Connection, Transaction, TransactionBehavior};
+
+/// Ordered migrations. Append only. Never edit a shipped entry.
+const MIGRATIONS: &[(i32, &str)] = &[
+    (
+        1,
+        r#"
+CREATE TABLE agents (
+    id            TEXT    PRIMARY KEY,
+    name          TEXT    NOT NULL,
+    emoji         TEXT    NOT NULL,
+    color         TEXT    NOT NULL,
+    model         TEXT    NOT NULL,
+    system_prompt TEXT    NOT NULL,
+    skills        TEXT    NOT NULL DEFAULT '[]',
+    lifecycle     TEXT    NOT NULL,
+    version       INTEGER NOT NULL DEFAULT 1,
+    created_at    INTEGER NOT NULL,
+    updated_at    INTEGER NOT NULL
+);
+
+-- Names must be unique among agents you can still reach, but deleting an
+-- agent has to free its name for reuse. A partial index over the live rows
+-- expresses exactly that, without a nullable tombstone column.
+CREATE UNIQUE INDEX agents_live_name_unique
+    ON agents (lower(name))
+    WHERE lifecycle <> 'terminated';
+
+CREATE TABLE messages (
+    id          TEXT    PRIMARY KEY,
+    run_id      TEXT    NOT NULL,
+    channel_id  TEXT    NOT NULL,
+    from_kind   TEXT    NOT NULL,
+    from_agent  TEXT,
+    to_kind     TEXT    NOT NULL,
+    to_agent    TEXT,
+    parts       TEXT    NOT NULL,
+    trust       TEXT    NOT NULL,
+    hop         INTEGER NOT NULL DEFAULT 0,
+    expects_reply INTEGER NOT NULL DEFAULT 1,
+    cause       TEXT,
+    created_at  INTEGER NOT NULL
+);
+
+-- The transcript query: one channel, in order. `id` breaks ties so that two
+-- messages written in the same millisecond still have a stable order.
+CREATE INDEX messages_channel_time ON messages (channel_id, created_at, id);
+
+-- The activity feed: every agent-to-agent message, newest first. Partial so
+-- the index stays small when most traffic is with the operator.
+CREATE INDEX messages_inter_agent
+    ON messages (created_at DESC)
+    WHERE from_kind = 'agent' AND to_kind = 'agent';
+
+CREATE INDEX messages_run ON messages (run_id, created_at);
+"#,
+    ),
+    (
+        2,
+        r#"
+-- Avatars became hand-drawn characters, so the column no longer holds an
+-- emoji. Renaming keeps the schema honest about what it stores.
+ALTER TABLE agents RENAME COLUMN emoji TO avatar;
+"#,
+    ),
+    (
+        3,
+        r#"
+-- The activity view became a flow board covering the whole conversation, not
+-- just peer traffic, so the index that served the old feed no longer matches
+-- any query. The replacement covers the new one: everything except an agent's
+-- private activity records, newest first.
+DROP INDEX IF EXISTS messages_inter_agent;
+
+CREATE INDEX messages_flow
+    ON messages (created_at DESC, id DESC)
+    WHERE to_kind <> 'system';
+"#,
+    ),
+    (
+        4,
+        r#"
+CREATE TABLE groups (
+    id         TEXT    PRIMARY KEY,
+    name       TEXT    NOT NULL,
+    created_at INTEGER NOT NULL
+);
+
+CREATE UNIQUE INDEX groups_name_unique ON groups (lower(name));
+
+-- Every agent belongs to exactly one group, so there has to be one before the
+-- column can be NOT NULL. This id is fixed rather than generated: the default
+-- group is the one the UI hides while it is the only one, and a known id means
+-- that check never depends on row order.
+INSERT INTO groups (id, name, created_at)
+VALUES ('00000000-0000-4000-8000-000000000001', 'Everyone', 0);
+
+-- Rebuilt rather than ALTERed. SQLite refuses to ADD COLUMN when the column
+-- carries both a REFERENCES clause and a non-NULL default, so the alternative
+-- was to drop the foreign key and hope nothing ever writes a dangling group.
+-- The rebuild is the documented way to add a constraint, and `run` turns
+-- foreign key enforcement off around the whole migration sequence, which is
+-- what that procedure wants and what a migration cannot arrange for itself.
+CREATE TABLE agents_new (
+    id            TEXT    PRIMARY KEY,
+    name          TEXT    NOT NULL,
+    avatar        TEXT    NOT NULL,
+    color         TEXT    NOT NULL,
+    model         TEXT    NOT NULL,
+    system_prompt TEXT    NOT NULL,
+    skills        TEXT    NOT NULL DEFAULT '[]',
+    lifecycle     TEXT    NOT NULL,
+    version       INTEGER NOT NULL DEFAULT 1,
+    created_at    INTEGER NOT NULL,
+    updated_at    INTEGER NOT NULL,
+    group_id      TEXT    NOT NULL REFERENCES groups(id)
+);
+
+INSERT INTO agents_new
+    (id,name,avatar,color,model,system_prompt,skills,lifecycle,version,created_at,updated_at,group_id)
+SELECT id,name,avatar,color,model,system_prompt,skills,lifecycle,version,created_at,updated_at,
+       '00000000-0000-4000-8000-000000000001'
+  FROM agents;
+
+DROP TABLE agents;
+ALTER TABLE agents_new RENAME TO agents;
+
+CREATE INDEX agents_group ON agents (group_id);
+
+-- Names are addressable identifiers: an agent messages a peer by name, and
+-- resolution is scoped to the sender's group. Uniqueness has to be scoped the
+-- same way, or the scope of the index and the scope of the lookup disagree.
+-- Global uniqueness would also stop two isolated groups from each having a
+-- Manager, which is the obvious thing to want.
+CREATE UNIQUE INDEX agents_live_name_unique
+    ON agents (group_id, lower(name))
+    WHERE lifecycle <> 'terminated';
+"#,
+    ),
+    (
+        5,
+        r#"
+-- A group is where a crew's inference settings belong. One group can run on a
+-- local endpoint and another on a hosted one, and an agent inside a group still
+-- overrides the model for itself. NULL means "inherit", which is why these are
+-- nullable rather than defaulted: an empty string is a real value an operator
+-- could set, and the two must stay distinguishable.
+ALTER TABLE groups ADD COLUMN base_url      TEXT;
+ALTER TABLE groups ADD COLUMN api_key       TEXT;
+ALTER TABLE groups ADD COLUMN default_model TEXT;
+"#,
+    ),
+    (
+        6,
+        r#"
+-- The sandbox an agent uses as its computer. NULL means it has never been
+-- given one. Stored rather than looked up by label so a rename or a Daytona
+-- listing hiccup cannot detach an agent from work it left on a disk.
+ALTER TABLE agents ADD COLUMN sandbox_id TEXT;
+"#,
+    ),
+    (
+        7,
+        r#"
+-- Computers moved from Daytona to E2B, whose sandboxes have internet access
+-- without a plan upgrade. The ids left behind name sandboxes on a provider this
+-- build no longer talks to, so they are cleared rather than left to 404 on
+-- every check.
+UPDATE agents SET sandbox_id = NULL;
+"#,
+    ),
+    (
+        8,
+        r#"
+-- Sandboxes are now created locked: envd refuses commands without a token, and
+-- the public URLs refuse traffic without another. An id on its own no longer
+-- reaches anything, so the tokens live beside it.
+ALTER TABLE agents ADD COLUMN sandbox_envd_token    TEXT;
+ALTER TABLE agents ADD COLUMN sandbox_traffic_token TEXT;
+
+-- The sandboxes recorded before this have no tokens and cannot be reached, so
+-- they are released rather than left as ids that fail on every use.
+UPDATE agents SET sandbox_id = NULL;
+"#,
+    ),
+    (
+        9,
+        r#"
+-- An agent's own schedule. It sets these for itself, so the row belongs to the
+-- agent rather than to the operator.
+--
+-- `every_secs` NULL means it fires once and is done. A repeating routine keeps
+-- its row and moves `next_run_at` forward, so a schedule survives restarts:
+-- what is stored is when it is next due, not a timer someone has to hold.
+CREATE TABLE routines (
+    id          TEXT    PRIMARY KEY,
+    agent_id    TEXT    NOT NULL REFERENCES agents(id),
+    what        TEXT    NOT NULL,
+    every_secs  INTEGER,
+    next_run_at INTEGER NOT NULL,
+    last_run_at INTEGER,
+    created_at  INTEGER NOT NULL
+);
+
+-- The scheduler asks one question, repeatedly: what is due?
+CREATE INDEX routines_due ON routines (next_run_at);
+CREATE INDEX routines_agent ON routines (agent_id);
+"#,
+    ),
+    (
+        10,
+        r#"
+-- What each model call cost, as the provider counted it.
+--
+-- One row per call rather than a running total on the agent, because the
+-- question an operator actually has is which run burned the tokens, and a
+-- counter cannot answer it. Rows are small and a busy day is a few thousand.
+--
+-- `group_id` is denormalised on purpose: an agent can be moved between groups,
+-- and what a group spent while an agent was in it does not move with it.
+CREATE TABLE usage (
+    id         INTEGER PRIMARY KEY,
+    agent_id   TEXT    NOT NULL REFERENCES agents(id),
+    group_id   TEXT    NOT NULL,
+    run_id     TEXT    NOT NULL,
+    model      TEXT    NOT NULL,
+    prompt     INTEGER NOT NULL,
+    completion INTEGER NOT NULL,
+    created_at INTEGER NOT NULL
+);
+
+CREATE INDEX usage_group ON usage (group_id);
+CREATE INDEX usage_run ON usage (run_id);
+"#,
+    ),
+    (
+        11,
+        r#"
+-- Dollars, when the provider prices the call. NULL for a local server, which
+-- has nothing to charge: summing NULL as zero would quietly report that a crew
+-- ran for free.
+--
+-- Its own migration rather than a column in the one above, which had already
+-- run by the time this was wanted. A migration that has been applied anywhere
+-- is finished: editing it leaves databases that ran the old version with a
+-- schema no version number distinguishes from the new one.
+ALTER TABLE usage ADD COLUMN cost REAL;
+"#,
+    ),
+    (
+        12,
+        r#"
+-- Accounts a crew can reach. Two kinds in one table, because they are one
+-- concept to an operator and differ only in where the access physically lives.
+--
+-- `agent_id` is set for a sign-in and NULL for a key, and that is not a
+-- convenience: a sign-in is cookies on one machine's disk, so it belongs to
+-- that agent, while a key is a string any machine in the group can be handed.
+-- Modelling both as group-wide would tell three agents they are signed in to
+-- Gmail when one of them is.
+--
+-- `secret` holds a key's value. It never leaves this table except into the
+-- environment of a command running inside a sandbox: not into a prompt, not
+-- over IPC, not onto the sandbox's disk.
+CREATE TABLE connectors (
+    id           TEXT    PRIMARY KEY,
+    group_id     TEXT    NOT NULL REFERENCES groups(id),
+    agent_id     TEXT    REFERENCES agents(id),
+    kind         TEXT    NOT NULL,
+    service      TEXT    NOT NULL,
+    account      TEXT    NOT NULL,
+    url          TEXT    NOT NULL DEFAULT '',
+    env_var      TEXT    NOT NULL DEFAULT '',
+    secret       TEXT    NOT NULL DEFAULT '',
+    note         TEXT    NOT NULL DEFAULT '',
+    confirmed_at INTEGER,
+    created_at   INTEGER NOT NULL,
+    updated_at   INTEGER NOT NULL
+);
+
+-- The two questions asked of this table: what can this crew reach, and what
+-- does this agent's machine hold.
+CREATE INDEX connectors_group ON connectors (group_id);
+CREATE INDEX connectors_agent ON connectors (agent_id);
+
+-- One variable name per group. Two keys sharing a name is a machine where one
+-- of them silently wins, and which one depends on row order.
+CREATE UNIQUE INDEX connectors_env_unique
+    ON connectors (group_id, env_var)
+    WHERE kind = 'key';
+"#,
+    ),
+    (
+        13,
+        r#"
+-- Sign-ins stopped being something an operator declares. The browser already
+-- knows what it is logged in to, and Chrome's remote interface will say, so
+-- asking the machine beats asking the person: an agent signed in a moment ago
+-- advertises it without anybody recording anything.
+--
+-- That leaves `connectors` holding one kind, so the columns that only a
+-- declared sign-in used are gone. Rebuilt rather than ALTERed because dropping
+-- a column referenced by a partial index is not something SQLite will do in
+-- place, and because the rows that were sign-ins have to go: they are replaced
+-- by detection, not migrated into it.
+CREATE TABLE connectors_new (
+    id         TEXT    PRIMARY KEY,
+    group_id   TEXT    NOT NULL REFERENCES groups(id),
+    service    TEXT    NOT NULL,
+    account    TEXT    NOT NULL,
+    env_var    TEXT    NOT NULL,
+    secret     TEXT    NOT NULL DEFAULT '',
+    note       TEXT    NOT NULL DEFAULT '',
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+INSERT INTO connectors_new (id,group_id,service,account,env_var,secret,note,created_at,updated_at)
+SELECT id,group_id,service,account,env_var,secret,note,created_at,updated_at
+  FROM connectors WHERE kind = 'key';
+
+DROP TABLE connectors;
+ALTER TABLE connectors_new RENAME TO connectors;
+
+CREATE INDEX connectors_group ON connectors (group_id);
+CREATE UNIQUE INDEX connectors_env_unique ON connectors (group_id, env_var);
+
+-- What each machine's browser is signed in to, as last observed.
+--
+-- A cache of a fact that lives somewhere else, which is why the whole set for
+-- an agent is replaced on every scan rather than merged: a row that lingers
+-- after the operator logged out is worse than no row, because the crew keeps
+-- routing work to an agent that will hit a login wall.
+--
+-- `first_seen_at` survives a replace so "signed in since Tuesday" stays true
+-- across scans, and no cookie value is stored, ever: the name and the flags are
+-- the whole signal and a session token is exactly what must not be kept.
+CREATE TABLE signins (
+    agent_id      TEXT    NOT NULL REFERENCES agents(id),
+    domain        TEXT    NOT NULL,
+    service       TEXT    NOT NULL,
+    recognised    INTEGER NOT NULL DEFAULT 0,
+    first_seen_at INTEGER NOT NULL,
+    last_seen_at  INTEGER NOT NULL,
+    PRIMARY KEY (agent_id, domain)
+);
+
+CREATE INDEX signins_agent ON signins (agent_id);
+"#,
+    ),
+    (
+        14,
+        r#"
+-- What an agent asked the operator for permission to do, and what they said.
+--
+-- One table for both questions, because they are the same fact read at two
+-- times: `state` is the answer to "may it do this now", and a row that says
+-- alwaysAllow is the answer to "must it ask again". A separate grants table
+-- would let the two disagree about a decision the operator made once.
+--
+-- `summary` and `detail` are Guaca's own words for what was asked, written at
+-- request time and never rewritten: the transcript has to keep saying what the
+-- operator was actually shown, whatever the agent or its instructions became
+-- afterwards.
+CREATE TABLE approvals (
+    id         TEXT    PRIMARY KEY,
+    agent_id   TEXT    NOT NULL REFERENCES agents(id),
+    group_id   TEXT    NOT NULL,
+    run_id     TEXT    NOT NULL,
+    action     TEXT    NOT NULL,
+    summary    TEXT    NOT NULL,
+    detail     TEXT    NOT NULL DEFAULT '[]',
+    state      TEXT    NOT NULL,
+    created_at INTEGER NOT NULL,
+    decided_at INTEGER
+);
+
+-- The two questions asked of this table, both partial so they stay small: what
+-- is still waiting on the operator, and what has this agent already been let
+-- off asking about.
+CREATE INDEX approvals_pending ON approvals (created_at) WHERE state = 'pending';
+CREATE INDEX approvals_granted
+    ON approvals (agent_id, action)
+    WHERE state = 'alwaysAllow';
+"#,
+    ),
+    (
+        15,
+        r#"
+-- What the sender said this message was for.
+--
+-- `expects_reply` answers "is anybody waiting on your words", which is what
+-- makes cascades terminate. It was also being read as "is anybody asking you
+-- for anything", and those came apart the moment an agent could instruct a
+-- peer that had already answered: the instruction arrived with no reply
+-- expected, so the recipient was told nothing needed doing and said nothing. A
+-- real send to the operator's own address died exactly there.
+--
+-- Existing rows are courtesies by default, which is what they were: before
+-- this column no message could carry declared work.
+ALTER TABLE messages ADD COLUMN intent TEXT NOT NULL DEFAULT 'courtesy';
+"#,
+    ),
+    (
+        16,
+        r#"
+-- What makes a routine fire, and what to call it.
+--
+-- `every_secs` could say "every five hours" and could not say "every weekday"
+-- or "every month": one is not a fixed number of seconds and the other is four
+-- different numbers. Both are what an operator actually schedules, so the gap
+-- becomes one case of a trigger rather than the only thing a routine can have.
+--
+-- `fires` is text rather than a number because the trigger after these is
+-- "when a Linear issue is assigned to me", and that has to be a new value in
+-- this column instead of a new column. `every:N` keeps the old meaning exactly,
+-- so every existing row carries over unchanged.
+--
+-- `name` is blank on everything an agent set for itself, and blank stays legal:
+-- a routine with no name is titled by what it does.
+ALTER TABLE routines ADD COLUMN name TEXT NOT NULL DEFAULT '';
+ALTER TABLE routines ADD COLUMN fires TEXT NOT NULL DEFAULT 'once';
+
+UPDATE routines SET fires = 'every:' || every_secs WHERE every_secs IS NOT NULL;
+
+-- Dropped rather than left as a second place the same fact could be written.
+-- Neither index is on it, which is what makes this legal.
+ALTER TABLE routines DROP COLUMN every_secs;
+"#,
+    ),
+    (
+        17,
+        r#"
+-- Agents the operator keeps at the top of the rail.
+--
+-- On the agent rather than in a preferences blob because it is a fact about
+-- that agent and has to die with it: a name is free to reuse the moment an
+-- agent is deleted, and whoever takes it next must not inherit a pin.
+ALTER TABLE agents ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;
+"#,
+    ),
+    (
+        18,
+        r#"
+-- A routine that is set up but not running.
+--
+-- Distinct from deleting it: an operator turning something off for a week
+-- keeps the wording, the schedule and the history, and deleting was the only
+-- way to stop it. Existing routines are active, which is what they were.
+ALTER TABLE routines ADD COLUMN active INTEGER NOT NULL DEFAULT 1;
+
+-- What a routine actually did.
+--
+-- `last_run_at` on the routine answers "is this thing alive" in one number and
+-- stays; this answers "what has it been doing", which a single number cannot.
+-- A test run is recorded the same way and marked as one, because the operator
+-- asking whether it fired last Tuesday needs to know which of those they are
+-- looking at.
+--
+-- `run_id` is not a foreign key: runs are not a table, they are what ties
+-- together messages and usage rows, and this is the thread back to them.
+CREATE TABLE routine_runs (
+    id         INTEGER PRIMARY KEY,
+    routine_id TEXT    NOT NULL REFERENCES routines(id) ON DELETE CASCADE,
+    run_id     TEXT    NOT NULL,
+    kind       TEXT    NOT NULL,
+    at         INTEGER NOT NULL
+);
+
+-- The one question asked of it: what has this routine done lately.
+CREATE INDEX routine_runs_routine ON routine_runs (routine_id, at DESC);
+"#,
+    ),
+    (
+        19,
+        r#"
+-- One pair's exchange, for the thread the operator opens off a channel. A
+-- message from A to B is filed in B's channel and the reply in A's, so neither
+-- channel holds the back-and-forth and no existing index answers this. Ordered
+-- by sender so each direction is one range scan; the two are unioned by
+-- SQLite's OR optimisation. Partial for the same reason the old feed index
+-- was: most traffic is with the operator and does not belong here.
+CREATE INDEX messages_pair
+    ON messages (from_agent, to_agent, created_at DESC, id DESC)
+    WHERE from_kind = 'agent' AND to_kind = 'agent';
+"#,
+    ),
+    (
+        20,
+        r#"
+-- Where the operator put an agent in the rail.
+--
+-- The rail was ordered entirely by who spoke last, which is an order nobody
+-- chose and one that moves under the hand reaching for it. This column is the
+-- arrangement; activity now lends a row the top of its section while it works
+-- and gives the place back. On the agent for the same reason `pinned` is: it is
+-- a fact about that agent and has to die with it.
+--
+-- Backfilled in creation order, so an upgrade draws the rail it drew before,
+-- and distinct from the start, so the first drag has somewhere to land. Ties
+-- are still legal and are broken by `created_at`; a dense renumber on every
+-- move keeps them rare rather than impossible.
+ALTER TABLE agents ADD COLUMN rail_order INTEGER NOT NULL DEFAULT 0;
+
+UPDATE agents SET rail_order = (
+    SELECT COUNT(*)
+      FROM agents AS earlier
+     WHERE earlier.created_at < agents.created_at
+        OR (earlier.created_at = agents.created_at AND earlier.rowid < agents.rowid)
+);
+"#,
+    ),
+    (
+        21,
+        r#"
+-- A routine that is not waiting on a clock.
+--
+-- `fires` was made text so the trigger after the calendar ones would be a new
+-- value rather than a new column, and that half held. This is the other half:
+-- a trigger that is not a clock has no next firing at all, and `next_run_at`
+-- was NOT NULL, so the only ways to store one were a sentinel date or a second
+-- column. A sentinel is a date the operator eventually gets shown, and it is
+-- one bad comparison away from firing something meant to wait for Stripe.
+--
+-- NULL says it plainly, and it says it to the scheduler for free: SQL compares
+-- NULL to nothing, so `next_run_at <= now` skips these without the sweep
+-- knowing what kinds of trigger exist.
+--
+-- SQLite cannot drop NOT NULL in place, so the table is rebuilt. Every routine
+-- that exists today waits on a clock and carries its slot over unchanged.
+--
+-- The history survives the rebuild because migrations run on the bootstrap
+-- connection, where `foreign_keys` is off. With it on, `DROP TABLE routines`
+-- performs an implicit DELETE first and fires `routine_runs`' ON DELETE
+-- CASCADE, taking every recorded firing with it. That is the same reason the
+-- agents rebuild in migration 1 is written this way.
+CREATE TABLE routines_new (
+    id          TEXT    PRIMARY KEY,
+    agent_id    TEXT    NOT NULL REFERENCES agents(id),
+    name        TEXT    NOT NULL DEFAULT '',
+    what        TEXT    NOT NULL,
+    fires       TEXT    NOT NULL DEFAULT 'once',
+    active      INTEGER NOT NULL DEFAULT 1,
+    next_run_at INTEGER,
+    last_run_at INTEGER,
+    created_at  INTEGER NOT NULL
+);
+
+INSERT INTO routines_new (id,agent_id,name,what,fires,active,next_run_at,last_run_at,created_at)
+SELECT id,agent_id,name,what,fires,active,next_run_at,last_run_at,created_at FROM routines;
+
+DROP TABLE routines;
+ALTER TABLE routines_new RENAME TO routines;
+
+-- Both indexes go with the old table and are rebuilt. The due index is partial
+-- now: a routine with no slot is never an answer to "what is due", so it has no
+-- business in the index the scheduler reads on every tick.
+CREATE INDEX routines_due ON routines (next_run_at) WHERE next_run_at IS NOT NULL;
+CREATE INDEX routines_agent ON routines (agent_id);
+"#,
+    ),
+    (
+        22,
+        r#"
+-- An agent can be given a browser as well as a computer. They are different
+-- things on different providers: the computer is a Linux machine with a screen,
+-- worked by looking and pointing, and the browser is a hosted Chrome, worked by
+-- asking the page. Only the session id is kept. The socket that drives it and
+-- the URL the operator watches both change when a browser is replaced, so a
+-- stored copy of either is a pane pointed at something that has gone.
+ALTER TABLE agents ADD COLUMN browser_id TEXT;
+
+-- And each of those has its own cookie jar, so a sign-in belongs to one of them
+-- rather than to the agent. Rebuilt rather than altered, because the surface has
+-- to join the primary key: an agent signed in to LinkedIn in both places is two
+-- rows, and under the old key the second one could not be written. The scan of
+-- one surface must also replace only that surface's rows, or asking the computer
+-- what it holds would forget everything the browser reported.
+--
+-- Every existing row came from a machine, because that is all there was.
+CREATE TABLE signins_next (
+    agent_id      TEXT    NOT NULL REFERENCES agents(id),
+    surface       TEXT    NOT NULL,
+    domain        TEXT    NOT NULL,
+    service       TEXT    NOT NULL,
+    recognised    INTEGER NOT NULL DEFAULT 0,
+    first_seen_at INTEGER NOT NULL,
+    last_seen_at  INTEGER NOT NULL,
+    PRIMARY KEY (agent_id, surface, domain)
+);
+
+INSERT INTO signins_next (agent_id,surface,domain,service,recognised,first_seen_at,last_seen_at)
+SELECT agent_id,'computer',domain,service,recognised,first_seen_at,last_seen_at FROM signins;
+
+DROP TABLE signins;
+ALTER TABLE signins_next RENAME TO signins;
+
+-- Dropping the table took its index with it. The one question asked of this
+-- table is still "what does this agent reach".
+CREATE INDEX signins_agent ON signins (agent_id);
+"#,
+    ),
+    (
+        23,
+        r#"
+-- A group is where a crew's settings live. It already carried an endpoint, a
+-- key and a model; what was missing was the setting that decides which of those
+-- are even read. A group can now name the provider that pays for its turns, so
+-- one crew can run on a local server while another spends the ChatGPT plan, and
+-- the app settings are what a group falls back to rather than what it obeys.
+ALTER TABLE groups ADD COLUMN provider             TEXT;
+ALTER TABLE groups ADD COLUMN subscription_model   TEXT;
+ALTER TABLE groups ADD COLUMN request_timeout_secs INTEGER;
+
+-- And the loop guard, which is a statement about one crew's work rather than
+-- about the app: a pair drafting a document needs a handful of model calls, and
+-- a crew working a browser through a long form needs an order of magnitude
+-- more. NULL is inherit, per limit, so a group that has never been touched runs
+-- on exactly the numbers it ran on yesterday.
+ALTER TABLE groups ADD COLUMN max_hops           INTEGER;
+ALTER TABLE groups ADD COLUMN max_steps_per_run  INTEGER;
+ALTER TABLE groups ADD COLUMN max_fanout_per_call INTEGER;
+ALTER TABLE groups ADD COLUMN max_sends_per_pair INTEGER;
+ALTER TABLE groups ADD COLUMN max_tool_rounds    INTEGER;
+
+-- One model column became two, and the split changes what the old one means.
+-- It used to be "this group's model, whoever is paying"; it is now the model
+-- for a key-paid turn, with the new column beside it for a subscription-paid
+-- one. A group whose model is one of the subscription's own could only have
+-- been running on the subscription, so it is copied across and keeps running on
+-- what it was running on. The list is spelled out rather than read from the
+-- code because this is a statement about the models that existed on the day
+-- this migration ran, and it must not change when that list does.
+UPDATE groups
+   SET subscription_model = default_model
+ WHERE default_model IN
+       ('gpt-5.6-sol','gpt-5.6-terra','gpt-5.6-luna','gpt-5.5','gpt-5.4','gpt-5.4-mini');
+
+-- A group that named an endpoint or a key was taken to have chosen one, because
+-- until this column there was no way for it to say so. That reading is written
+-- down here rather than left as a guess in the code that resolves a turn: a
+-- guess there cannot be argued with, and it outvotes an operator who later
+-- chooses to follow the app settings with an endpoint still in the box.
+UPDATE groups
+   SET provider = 'compatible'
+ WHERE trim(coalesce(base_url, '')) <> '' OR trim(coalesce(api_key, '')) <> '';
+"#,
+    ),
+    (
+        24,
+        r#"
+-- Plugins: an MCP server a crew has signed in to, and the grant that signing in
+-- produced. Beside `connectors` rather than instead of it, because the two are
+-- different mechanisms with different blast radii: a connector is a secret the
+-- operator pasted that ends up in the environment of a sandbox, and a plugin is
+-- a grant Guaca holds and spends itself, on a call the machine never sees.
+--
+-- The grant columns are the reason this table is never selected whole. Nothing
+-- reads `access_token`, `refresh_token` or `client_secret` except the code that
+-- puts them on the wire back to the server that issued them, in the same way
+-- `connector_env` is the only reader of a connector's secret.
+CREATE TABLE plugins (
+    id             TEXT    PRIMARY KEY,
+    group_id       TEXT    NOT NULL REFERENCES groups(id),
+    -- The slug from `domain::plugin::PluginKind`, not a free-text service name.
+    -- The endpoint the runtime dials is derived from it, so a row naming
+    -- something that is not in that enum is a row nothing can use.
+    kind           TEXT    NOT NULL,
+    account        TEXT    NOT NULL DEFAULT '',
+    -- The server's own tool list, as it stood when the plugin was connected.
+    -- Kept rather than re-read, because `tools/list` on every turn is a network
+    -- round trip in front of every model call in the crew.
+    tools          TEXT    NOT NULL DEFAULT '[]',
+    client_id      TEXT    NOT NULL DEFAULT '',
+    client_secret  TEXT    NOT NULL DEFAULT '',
+    token_endpoint TEXT    NOT NULL DEFAULT '',
+    access_token   TEXT    NOT NULL DEFAULT '',
+    refresh_token  TEXT    NOT NULL DEFAULT '',
+    expires_at     INTEGER,
+    connected_at   INTEGER NOT NULL
+);
+
+CREATE INDEX plugins_group ON plugins (group_id);
+
+-- One of each per crew. Two grants for the same server would put two copies of
+-- every tool in front of the model, under names it cannot tell apart, and which
+-- of the two a call landed on would depend on row order.
+CREATE UNIQUE INDEX plugins_kind_unique ON plugins (group_id, kind);
+"#,
+    ),
+    (
+        25,
+        r#"
+-- Clerk was withdrawn from the plugin list. Its MCP server publishes two tools
+-- and both return SDK snippets, so it acted on nothing and nothing it returned
+-- was about the operator's account: it was documentation reached through a
+-- consent screen. `PluginKind::from_slug` no longer answers to `clerk`, so these
+-- rows are already invisible to every read; they are deleted rather than left
+-- because a row nothing can resolve still holds the group's slot in
+-- `plugins_kind_unique`, and a crew that reconnected a plugin under that name
+-- would fail on a conflict with a row the UI never showed them.
+--
+-- No grant is lost. Clerk's server authorised nobody, so the token columns on
+-- these rows are empty by construction.
+DELETE FROM plugins WHERE kind = 'clerk';
+"#,
+    ),
+    (
+        26,
+        r#"
+-- Cloudflare moved from `bindings.mcp.cloudflare.com` to `mcp.cloudflare.com`:
+-- from one product area of fifteen to the whole API behind `search` and
+-- `execute`. `PluginKind::endpoint` is what the runtime dials, so an existing
+-- row is now a grant issued by one server being spent against another.
+--
+-- Nothing on the row survives the move. The access and refresh tokens were
+-- issued by the old issuer and the new one will refuse them; the stored tool
+-- list names tools the new server does not have, and those are what the crew
+-- is offered on every turn until something re-reads them. Left in place, an
+-- agent calls `cloudflare__workers_list`, gets a 401 from a host it was never
+-- signed in to, and reports it as the operator's account being broken.
+--
+-- Deleted rather than blanked, because an empty row still holds the group's
+-- slot in `plugins_kind_unique`, and the tile the operator needs to click says
+-- "Connect" only when there is no row at all. Reconnecting is one click and one
+-- consent screen, and it is the only way to get a grant for the new server.
+DELETE FROM plugins WHERE kind = 'cloudflare';
+"#,
+    ),
+    (
+        27,
+        r#"
+-- Who in a crew may call a plugin, which until now was "all of them". A group
+-- signs in once and that was the whole decision, which only holds while a crew
+-- is uniform. A crew is not: agents run on different models at different
+-- competencies, and the one that files issues has no business holding the
+-- account that issues refunds.
+--
+-- 'everyone' is the default here and the default in `PluginAccess::from_row`,
+-- so every row that already exists keeps exactly the reach it had. Nothing an
+-- operator connected yesterday narrows because this migration ran.
+ALTER TABLE plugins ADD COLUMN access TEXT NOT NULL DEFAULT 'everyone';
+
+-- The named agents. Only ever populated while `access` is 'chosen': a write
+-- replaces the whole set, so flipping a plugin back to the whole crew leaves
+-- nothing behind claiming otherwise. Nothing here is a memory of a choice the
+-- operator has since changed.
+--
+-- No ON DELETE CASCADE. Foreign keys are off while migrations run, which is
+-- what SQLite's table-rebuild procedure wants, so a later migration deleting a
+-- plugin row would silently leave these behind; the deletes are written out at
+-- every call site instead, beside the ones that already remove a group's
+-- plugins and a retired agent's approvals.
+CREATE TABLE plugin_agents (
+    plugin_id TEXT NOT NULL REFERENCES plugins(id),
+    agent_id  TEXT NOT NULL REFERENCES agents(id),
+    PRIMARY KEY (plugin_id, agent_id)
+);
+
+-- Retiring an agent takes its permissions with it, and that read is by agent.
+CREATE INDEX plugin_agents_agent ON plugin_agents (agent_id);
+"#,
+    ),
+    (
+        28,
+        r#"
+-- A computer and a browser are the operator's to hand out, one agent at a
+-- time. Before this they belonged to the workspace: a key in settings meant
+-- every agent in it was offered `run_command`, `use_screen` and `browse`, and
+-- the first one to think of it made itself a machine. An operator who wanted a
+-- crew where one agent reads the web and the rest only talk had no way to say
+-- so, and no way to find out an agent had rented a machine except the bill.
+ALTER TABLE agents ADD COLUMN has_computer INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE agents ADD COLUMN has_browser  INTEGER NOT NULL DEFAULT 0;
+
+-- Backfilled from what each agent is holding rather than from the old rule.
+-- The old rule was "everyone", and applying it here would upgrade a workspace
+-- into exactly the state this column exists to end. What an agent already has
+-- is the one thing that cannot be taken away silently: its machine's disk and
+-- its browser profile are where the operator's sign-ins live, and an agent cut
+-- off from them reports accounts it can see and cannot reach.
+UPDATE agents SET has_computer = 1 WHERE sandbox_id IS NOT NULL;
+UPDATE agents SET has_browser  = 1 WHERE browser_id IS NOT NULL;
+"#,
+    ),
+    (
+        29,
+        r#"
+-- Which of a plugin's tools a crew may call, which until now was "all of
+-- them". Connecting a server was one decision covering everything it publishes,
+-- and a server does not publish one kind of thing: Stripe lists the call that
+-- reads an invoice beside the one that refunds it, and Neon lists `run_sql`
+-- beside the call that deletes a project. An operator who wanted the reading
+-- and not the writing had one control, and it was Disconnect.
+--
+-- The refusals are what is written down, not the permissions. A row here is a
+-- tool the operator switched off; everything else is on. That is the same
+-- reading `access` takes with 'everyone', and for the same reason: the default
+-- has to cover what nobody has seen yet. A vendor ships a tool between one
+-- connection and the next, and an allow-list would leave it switched off with
+-- nothing on screen saying a decision had been made about it.
+--
+-- Keyed by name rather than by an index into the stored list, because that
+-- list is replaced wholesale every time the plugin is connected again. An
+-- index would silently move a refusal onto whatever tool the vendor put in
+-- that position.
+--
+-- No ON DELETE CASCADE, for the reason `plugin_agents` has none: foreign keys
+-- are off while migrations run, so the deletes are written out at every call
+-- site instead.
+CREATE TABLE plugin_denied_tools (
+    plugin_id TEXT NOT NULL REFERENCES plugins(id),
+    tool      TEXT NOT NULL,
+    PRIMARY KEY (plugin_id, tool)
+);
+"#,
+    ),
+    (
+        30,
+        r#"
+-- Which authorized identity a plugin uses, for the one kind whose sign-in is
+-- the operator's Guaca account rather than its own.
+--
+-- A person can authorize the same provider twice: a work Google and a personal
+-- one are two grants at guaca.bot, with two ids, and revoking one says nothing
+-- about the other. Until now a group had no way to say which it meant, so both
+-- of an operator's crews reached whichever row came back first and the second
+-- account was unreachable.
+--
+-- Empty means unnamed, which is the account's default connection and is what
+-- every plugin connected before this column existed keeps doing. That matters:
+-- an upgrade must not silently repoint a working crew at a different mailbox.
+-- The endpoint is derived from it, so a value here is the difference between
+-- `/mcp` and `/mcp/<id>`.
+--
+-- Only meaningful for an account-backed kind. The other five sign in per group
+-- and their grant already names the identity it was issued to.
+ALTER TABLE plugins ADD COLUMN connection TEXT NOT NULL DEFAULT '';
+"#,
+    ),
+    (
+        31,
+        r#"
+-- A tool was on or off for the whole crew, and that is one answer short. Two
+-- agents share a plugin and want different halves of it: the one that triages
+-- the inbox reads and searches, and the one that answers it sends. Under the
+-- old shape the operator could give both of them everything, or take sending
+-- away from both, and there was nothing in between.
+--
+-- So a tool takes the same two-state answer a plugin already takes, one level
+-- down. 'everyone' is every agent the plugin itself reaches; 'chosen' is the
+-- named ones and nobody else, and the empty list is a real state — it is what
+-- the old table said, and it is where an operator stands for the second
+-- between narrowing a tool and ticking the first name.
+--
+-- The absence of a row is still the permission. A tool nobody has touched is
+-- on for whoever the plugin is on for, which is what every plugin connected
+-- before either control existed does and what a tool the vendor ships next
+-- month does. An allow-list over tools would switch that new tool off with
+-- nothing on screen saying a decision had been taken; an allow-list over
+-- *agents within a narrowed tool* is the opposite case and the right way
+-- round, because an agent hired next week must not inherit the one capability
+-- the operator went out of their way to fence off.
+CREATE TABLE plugin_tool_access (
+    plugin_id TEXT NOT NULL REFERENCES plugins(id),
+    tool      TEXT NOT NULL,
+    -- 'everyone' or 'chosen'. Compared, never parsed: see ACCESS_EVERYONE.
+    access    TEXT NOT NULL,
+    PRIMARY KEY (plugin_id, tool)
+);
+
+-- The named agents, per tool. Only ever populated while that tool's `access`
+-- is 'chosen', because a write replaces the whole set.
+--
+-- No ON DELETE CASCADE, for the reason `plugin_agents` has none: foreign keys
+-- are off while migrations run, so the deletes are written out at every call
+-- site instead.
+CREATE TABLE plugin_tool_agents (
+    plugin_id TEXT NOT NULL REFERENCES plugins(id),
+    tool      TEXT NOT NULL,
+    agent_id  TEXT NOT NULL REFERENCES agents(id),
+    PRIMARY KEY (plugin_id, tool, agent_id)
+);
+
+-- Retiring an agent takes its permissions with it, and that read is by agent.
+CREATE INDEX plugin_tool_agents_agent ON plugin_tool_agents (agent_id);
+
+-- Every refusal the old table held becomes a tool narrowed to nobody, which is
+-- the same decision written in the new shape: switched off for the crew, and
+-- one tick away from being switched on for one agent. Nothing an operator
+-- decided yesterday changes because this migration ran.
+INSERT INTO plugin_tool_access (plugin_id, tool, access)
+     SELECT plugin_id, tool, 'chosen' FROM plugin_denied_tools;
+
+DROP TABLE plugin_denied_tools;
+"#,
+    ),
+    (
+        32,
+        r#"
+-- The one British spelling left in the schema. Every other column this app
+-- wrote is American (`color` has been on `agents` since migration 1), and the
+-- Rust field and the IPC field this column feeds are `recognized` now, so
+-- without this the four statements in `store.rs` name a column spelled the
+-- other way and only positional row access hides it.
+--
+-- A rename, not a rebuild: nothing else references the column, and RENAME
+-- COLUMN leaves every row and the primary key exactly where they are.
+ALTER TABLE signins RENAME COLUMN recognised TO recognized;
+"#,
+    ),
+    (
+        33,
+        r#"
+-- An agent could stop and ask the operator two things, and both of them were
+-- "may I". There was no way to ask "which of these", so an agent that needed a
+-- judgment call wrote a message into a channel nobody was watching and then
+-- either guessed or stalled. In a workspace with a dozen crews that is the
+-- common case and it is invisible: nothing parks, nothing is counted, and the
+-- operator finds out when the work comes back wrong.
+--
+-- The machinery for stopping a turn on a person already exists in this table,
+-- so a question is a row in it rather than a second table with the same
+-- lifecycle. Two columns, and no third to say which kind a row is: `action`
+-- already discriminates, because a question stores the literal 'question'
+-- there and that is not one of the two protected actions. A separate `kind`
+-- column would be a second value that has to agree with the first, with
+-- nothing keeping them in step.
+--
+-- Neither index needs touching. `approvals_pending` is on `created_at` and a
+-- question waits exactly as a permission does; `approvals_granted` is
+-- `WHERE state = 'alwaysAllow'`, which a question can never reach, because
+-- there is no standing yes to a question and nothing to be let off asking.
+
+-- What the operator may pick, as a JSON array. NULL is a question that takes a
+-- written answer, and it is also every permission ever recorded, which is why
+-- this cannot be NOT NULL with a default of '[]': an empty list already means
+-- something on a question.
+ALTER TABLE approvals ADD COLUMN options TEXT;
+
+-- What they picked or wrote. Only ever set on a question: a verdict is a state
+-- and lives in `state`, so filling this in for one would be recording the same
+-- fact twice in two shapes.
+ALTER TABLE approvals ADD COLUMN answer TEXT;
+"#,
+    ),
+    (
+        34,
+        r#"
+-- A routine that must not land on an agent which is already working. Off for
+-- every routine that exists: a schedule an operator set last week goes on
+-- firing exactly as it has been.
+ALTER TABLE routines ADD COLUMN skip_if_working INTEGER NOT NULL DEFAULT 0;
+
+-- A skipped firing is a row in this history with no run behind it. `run_id` is
+-- the thread back to what a firing produced: the messages in the channel, the
+-- model calls on the bill. A firing that was deliberately not delivered
+-- produced neither, so the column has to be able to say so. An invented id
+-- would read back as a delivery that spent nothing, which is the one thing
+-- this history exists to tell apart.
+--
+-- SQLite cannot drop NOT NULL in place, so the table is rebuilt. Nothing
+-- references it, so the DROP takes nothing else with it; the index does not
+-- survive a rebuild and is made again below.
+CREATE TABLE routine_runs_new (
+    id         INTEGER PRIMARY KEY,
+    routine_id TEXT    NOT NULL REFERENCES routines(id) ON DELETE CASCADE,
+    run_id     TEXT,
+    kind       TEXT    NOT NULL,
+    at         INTEGER NOT NULL
+);
+
+INSERT INTO routine_runs_new (id,routine_id,run_id,kind,at)
+     SELECT id,routine_id,run_id,kind,at FROM routine_runs;
+
+DROP TABLE routine_runs;
+ALTER TABLE routine_runs_new RENAME TO routine_runs;
+
+CREATE INDEX routine_runs_routine ON routine_runs (routine_id, at DESC);
+"#,
+    ),
+    (
+        35,
+        r#"
+-- Until now `kind` was a slug out of a closed enum, and the address the runtime
+-- dialled was derived from it. That is still true of the six servers Guaca
+-- ships, and it stays true of them: where a vendor's server lives is a decision
+-- this build makes and re-makes on every release, so a stored copy would keep a
+-- crew dialling the old host after the vendor moved — which is the failure
+-- migration 26 exists to clean up after.
+--
+-- A server the operator added has nowhere else to keep it. `kind` holds the
+-- name they gave it, which is also the prefix its tools are called by, and this
+-- column holds the address. Empty means "the catalog knows where this is", so
+-- every row written before today keeps meaning exactly what it meant, and a row
+-- with neither a catalog slug nor an address is a row nothing can dial — which
+-- is what a newer build's plugin looks like after a downgrade, and is skipped
+-- rather than raised.
+--
+-- `plugins_kind_unique` needs no change and is doing more work than it was: it
+-- was one row per vendor per crew, and it is now also what stops two servers in
+-- one crew sharing a name, which would put two tool lists under one prefix and
+-- make which one a call landed on depend on row order.
+ALTER TABLE plugins ADD COLUMN endpoint TEXT NOT NULL DEFAULT '';
+"#,
+    ),
+    (
+        36,
+        r#"
+-- Headers the operator wrote, for a server they run themselves.
+--
+-- The third thing such a server can want after an address and a token, and the
+-- one the catalog never needs: an `X-API-Key` because that is where its
+-- framework looks, a pair of `Cf-Access-Client-*` because it is behind
+-- Cloudflare Access, a tenant id because one deployment serves several. None of
+-- them is discoverable, so there is nowhere for them to come from but the
+-- person who deployed the thing.
+--
+-- A grant column in everything but name. Every value here is a secret and this
+-- column is read by the one function that puts it on the wire, exactly as
+-- `access_token` is, and `Plugin` carries the names without the values for the
+-- same reason `connectors` does not return `secret`.
+--
+-- `'[]'` is a server that needs none, which is every row written before today
+-- and almost every row written after it.
+ALTER TABLE plugins ADD COLUMN headers TEXT NOT NULL DEFAULT '[]';
+"#,
+    ),
+    (
+        37,
+        r#"
+-- A directory on this machine that a crew may write code in. Scoped to the
+-- group like everything else an agent can see, and holding no secret: a path is
+-- not a credential, which is why it is a plain column and not the shape
+-- `connectors` uses.
+--
+-- `path` is stored canonical and without a trailing separator, so the index
+-- below can hold. Two spellings of one directory would be two repositories over
+-- one tree, each with its own reach, and the operator would fix one and wonder
+-- why nothing changed.
+CREATE TABLE repositories (
+    id         TEXT    PRIMARY KEY,
+    group_id   TEXT    NOT NULL REFERENCES groups(id),
+    name       TEXT    NOT NULL,
+    path       TEXT    NOT NULL,
+    note       TEXT    NOT NULL DEFAULT '',
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+CREATE UNIQUE INDEX repositories_group_path ON repositories (group_id, path);
+
+-- Which agents may work in one. Named, always: there is no row shape here that
+-- means everybody, because an agent hired next week must not inherit a working
+-- tree the operator handed to somebody in particular. `domain/repository.rs`
+-- argues it against the plugin tables next door, which do have an everybody and
+-- have a different reason to.
+CREATE TABLE repository_access (
+    repository_id TEXT NOT NULL REFERENCES repositories(id),
+    agent_id      TEXT NOT NULL REFERENCES agents(id),
+    PRIMARY KEY (repository_id, agent_id)
+);
+
+-- Retiring an agent takes its repositories with it, and that read is by agent.
+CREATE INDEX repository_access_agent ON repository_access (agent_id);
+"#,
+    ),
+    (
+        38,
+        r#"
+-- An agent works in at most one repository. That is a decision about
+-- coordination rather than about permissions: two agents on one codebase settle
+-- it between themselves in the crew they share, and one agent quietly holding
+-- two is a change whose shape nobody can see until it lands in both.
+--
+-- A column rather than the junction table it replaces, because the rule is
+-- "at most one" and a column is the only shape that cannot represent anything
+-- else. It also makes the rail a tree: the repository is a heading and its
+-- agents are under it, each drawn once, which a many-to-many cannot be.
+ALTER TABLE agents ADD COLUMN repository_id TEXT REFERENCES repositories(id);
+
+-- Whoever was named on one keeps it. An agent named on more than one keeps the
+-- first it was given: the rows are in the order the operator ticked them, so
+-- the first is the one they chose before there was a rule about it.
+UPDATE agents SET repository_id = (
+    SELECT repository_id FROM repository_access
+     WHERE repository_access.agent_id = agents.id
+     ORDER BY rowid LIMIT 1
+);
+
+DROP TABLE repository_access;
+"#,
+    ),
+    (
+        39,
+        r#"
+-- Working notes: what an agent is in the middle of, as against what it knows.
+--
+-- Memory is a file the agent rewrites, and that shape is right for what memory
+-- holds: a small page of durable belief, reconciled against itself on every
+-- write. It is the wrong shape for progress. A rewrite re-emits the whole page,
+-- and copying a stale line forward is cheaper than deciding to drop it, so
+-- progress written into memory ratchets: sixteen of this operator's twenty-three
+-- agents had a "Waiting on" or "Status" section, and a fifth of everything in
+-- every memory file was task state that had stopped being true.
+--
+-- So this is a table and not a second file, and the difference is the point.
+-- One row per note, appended, never rewritten. The oldest fall off on their own
+-- once there are enough of them, which means no agent ever has to decide to
+-- forget: the operation LLMs are measurably worst at is the one this store does
+-- not ask for.
+--
+-- A table rather than a file for a second reason. An append is a read-modify-
+-- write, and an agent's memory is written from every thread it holds, so an
+-- append to a file loses notes under exactly the concurrency this app has. An
+-- INSERT does not.
+CREATE TABLE working_notes (
+    id       INTEGER PRIMARY KEY,
+    agent_id TEXT    NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+    at       INTEGER NOT NULL,
+    body     TEXT    NOT NULL
+);
+
+-- The only question asked of it: what is this agent in the middle of. `id DESC`
+-- rather than `at DESC` because two notes from one turn share a timestamp, and
+-- the order they were written in is the order they are worth reading in.
+CREATE INDEX working_notes_agent ON working_notes (agent_id, id DESC);
+"#,
+    ),
+    (
+        40,
+        r#"
+-- Which coding harness a job in this directory starts.
+--
+-- Two programs, because a subscription is spent by the program it was issued to
+-- and by no other. `pi` holding an Anthropic OAuth credential and dialling the
+-- Messages API with it is refused with `You're out of extra usage` while
+-- `claude` on the same machine and the same account runs the work off the plan.
+-- An operator whose ChatGPT plan is spent and whose Claude plan is not cannot be
+-- helped by configuring one harness; they need the other program.
+--
+-- `'pi'` is what every row written before today was already running, so the
+-- default is a statement of fact rather than a preference. Unrecognized values
+-- read back as `pi` rather than failing the row: see `Harness::parse`.
+ALTER TABLE repositories ADD COLUMN harness TEXT NOT NULL DEFAULT 'pi';
+"#,
+    ),
+    (
+        41,
+        r#"
+-- When an agent was thrown out, for the thirty days it can still be pulled back.
+--
+-- Deleting used to be one act: the machines destroyed, the memory removed, the
+-- schedule, the sign-ins and every standing permission deleted, and the row
+-- marked terminated. All of it on a button an operator presses by accident, on
+-- an agent that had six months of memory in it, with nothing between the click
+-- and the loss but a menu item.
+--
+-- So the destructive half now waits. A delete stamps this column and stops the
+-- agent; everything it holds privately stays exactly where it is until the
+-- thirty days are up, at which point the old act runs in full. `NULL` is both
+-- ends of that: an agent nobody has deleted, and one whose wait is over and
+-- whose things are already gone. Which of the two a row is, its `lifecycle`
+-- says.
+--
+-- Nothing else changes about `terminated`, and that is why this is a column
+-- rather than a fourth lifecycle. An agent in the compost is unreachable,
+-- undiscoverable, out of the rail and out of every crew, exactly as a deleted
+-- one has always been: every query in the store that asks `lifecycle <>
+-- 'terminated'` is still asking the right question, including the partial
+-- index that frees the name. What the column adds is a way back, which nothing
+-- else was asking about.
+ALTER TABLE agents ADD COLUMN discarded_at INTEGER;
+"#,
+    ),
+    (
+        42,
+        r#"
+-- Whether a coding job in this directory stops before it reaches outside it.
+--
+-- A push, a pull request, a merge or a release is the operator's own name going
+-- somewhere git cannot take it back from. Until a job could be reached while it
+-- was running there was no way to ask about one, so every job did all of them
+-- unattended and the only boundary was the directory and the undo. There is a
+-- way now, and this is where an operator says they want it used here.
+--
+-- `'open'` is what every job before today did, so the default is a statement of
+-- fact rather than a preference. It is also the only safe default for a second
+-- reason: `coding::APPENDED_PROMPT` tells a job that nobody will answer a
+-- question, and a value that made that false everywhere at once would hold jobs
+-- on a desk in workspaces nobody is watching.
+--
+-- Unrecognized values read back as `open` rather than failing the row, which is
+-- `Harness::parse`'s reasoning plus one of its own: reading an unknown value as
+-- the asking variant would park jobs over a string a downgrade wrote.
+ALTER TABLE repositories ADD COLUMN gate TEXT NOT NULL DEFAULT 'open';
+"#,
+    ),
+    (
+        43,
+        r#"
+-- An escalation: work that has stopped and that only the operator can move.
+--
+-- There were two ways for an agent to reach a person and both of them park the
+-- turn inside a tool call, waiting ten minutes for an answer. Both are right
+-- for a decision the turn needs now. Neither is right for the case they kept
+-- being reached for anyway, which is an agent that cannot go on at all: a
+-- coding harness that will not start, a sign-in that has expired, a machine
+-- only the operator can touch. None of that is answerable inside a turn and
+-- none of it stops being true because ten minutes passed, so the agent wrote it
+-- into its channel instead, clearly, addressed to somebody who was not reading
+-- it. Five turns of one crew went that way before anybody noticed, and what
+-- made it invisible is that the three surfaces built for exactly this -- the
+-- count on a crew's circle, the desk, the menu bar -- are all fed from
+-- `approvals`. Nothing had parked, so all three said the workspace was fine.
+--
+-- Nothing parks here either, and that is the difference rather than an
+-- omission: the turn ends, no run booking is held, and so there is no window,
+-- no expiry, and no cost to a row staying open for two days. Nothing is
+-- answered either. Clearing is the operator saying they have dealt with it;
+-- what actually unblocks the agent is a message in the channel this row opens.
+--
+-- One open row per agent. An agent that hits the same wall on six turns must
+-- not fill the desk with six rows saying one thing, and must not be told to
+-- keep quiet either: the sixth raise restates the line, counts, and leaves
+-- `raised_at` exactly where it is. `raised_at` says how long this has been
+-- true, `times` says how many turns have hit it, and the pair is what says "a
+-- crew has been stuck for two days" rather than "an agent mentioned something".
+CREATE TABLE escalations (
+    id         TEXT    PRIMARY KEY,
+    agent_id   TEXT    NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+    group_id   TEXT    NOT NULL,
+    run_id     TEXT    NOT NULL,
+    summary    TEXT    NOT NULL,
+    raised_at  INTEGER NOT NULL,
+    said_at    INTEGER NOT NULL,
+    times      INTEGER NOT NULL DEFAULT 1,
+    cleared_at INTEGER
+);
+
+-- One open escalation per agent, enforced here rather than by whoever writes
+-- one. A second open row is the failure the desk exists to prevent, one level
+-- down: a queue that says six things when six is one thing said six times.
+CREATE UNIQUE INDEX escalations_open_per_agent
+    ON escalations (agent_id)
+    WHERE cleared_at IS NULL;
+
+-- What the desk, the crews' column and the menu bar all read: what is still
+-- open, oldest first. Partial, so it stays the size of the problem rather than
+-- the size of the history.
+CREATE INDEX escalations_open ON escalations (raised_at) WHERE cleared_at IS NULL;
+"#,
+    ),
+    (
+        44,
+        r#"
+-- Where a coding job in this directory actually runs.
+--
+-- Until today it ran in the linked directory, which is the operator's own
+-- checkout, and that made three things true at once. The job and the operator
+-- shared one branch. Two agents in one codebase could not work at the same
+-- time, because `Runtime::start_job` takes a lock per work tree and there was
+-- only ever one. And a job that opened a pull request left the tree standing on
+-- the branch it made, so the rail went on reporting a feature branch for the
+-- weeks after it landed.
+--
+-- `'own'` gives each agent a linked git worktree of its own, off the same
+-- repository, under the app's data directory. The operator's checkout is never
+-- checked out, never switched and never cleaned; Guaca owns the other tree and
+-- so can reset it to the default branch before every job.
+--
+-- `'shared'` is what every row written before today was doing, so that is what
+-- they are backfilled with. This is the one column in this table whose SQL
+-- default and whose Rust default disagree, and the disagreement is the point:
+-- `ALTER TABLE ... DEFAULT` only ever runs against rows that already exist, and
+-- moving somebody's jobs into a new directory is not an upgrade's decision to
+-- take. What a *new* repository gets is `Bench::default`, which is `own`, and
+-- `create_repository` always writes the value explicitly.
+--
+-- Unrecognized values read back as `shared` rather than failing the row, for
+-- `Harness::parse`'s reason and `Gate::parse`'s: reading a string a downgrade
+-- wrote as the variant that relocates work is the wrong direction to be wrong
+-- in.
+ALTER TABLE repositories ADD COLUMN bench TEXT NOT NULL DEFAULT 'shared';
+"#,
+    ),
+    (
+        45,
+        r#"
+-- Whether an agent's browser stops and asks before it acts in the operator's
+-- name.
+--
+-- The gate this switches off fires on a press or a typed line, on a site the
+-- browser holds a session for, in a turn that has already read a page. It was
+-- written for an agent working one inbox, where the grant it collects lasts the
+-- rest of the turn and the agent never leaves the domain. An agent doing
+-- research leaves it on every cycle: search, read a result off-domain, come
+-- back, ask again. The live report was a dialog every few seconds, which is a
+-- dialog answered without reading.
+--
+-- `'open'` for every row, new and old, because giving an agent a browser was
+-- already the decision about what that browser is signed in to. The SQL default
+-- and `Consent::default` agree here, unlike `bench` above: this is not an
+-- upgrade taking a decision, it is an upgrade recording the one the operator
+-- took when they handed over the browser.
+--
+-- `'askBeforeActing'` is per agent rather than per site because per site is the
+-- question nobody can answer. Which account may be posted to under which
+-- instruction is a thing the model is told; a column of domains cannot hold it.
+ALTER TABLE agents ADD COLUMN browser_consent TEXT NOT NULL DEFAULT 'open';
+"#,
+    ),
+    (
+        46,
+        r#"
+-- The crew's own calendar: dates it is answerable for.
+--
+-- Not the operator's real calendar, which is the Google plugin's job and is
+-- read rather than kept. This is the half nothing in the app held. An agent
+-- that learned a filing was due on the 15th, that a customer had moved a call,
+-- or that a contract lapsed at month end had three stores to choose from and
+-- all three were wrong: memory is what an agent knows and outlives the date, a
+-- working note expires on its own and carries no moment, and a routine is work
+-- the agent will do rather than a thing that is happening. What none of them
+-- can be read as is "what is coming", which is the one question a calendar
+-- answers.
+--
+-- Nothing here fires. A row is a fact, not a timer, and that is deliberate
+-- rather than unfinished: `routines` is the table that wakes an agent up, and
+-- folding the two together would turn every note about a customer's schedule
+-- into an agent running at 3am.
+--
+-- `group_id` is the wall and is why this table is not keyed on the agent. A
+-- crew shares one calendar, every agent in it reads the same list, and no agent
+-- can reach another crew's. It is `REFERENCES groups(id)` without a cascade,
+-- matching every other group-scoped table here: `Store::delete_group` takes the
+-- rows out itself, in order, because these foreign keys are enforced.
+--
+-- `agent_id` is nullable, and NULL is the operator's own writes rather than a
+-- deleted agent's: deleting an agent marks the row terminated and never removes
+-- it, so this cascade is the same standing belt every other agent-scoped table
+-- here wears. What is different is what a deletion does *not* do. A deleted
+-- agent's memory, schedule and working notes go with it because they are the
+-- agent's own; its occasions stay, because a board meeting does not stop
+-- happening when the agent that heard about it is let go, and the calendar it
+-- is on belongs to the crew.
+--
+-- `starts_at` is an instant for both kinds of row, and an all-day one holds
+-- local midnight of its day with `all_day` set. That is what lets one column,
+-- one index and one ORDER BY serve a deadline and a three o'clock call at once.
+-- Midnight alone could not: it is a real time somebody might have chosen, and a
+-- filing drawn as "12:00 AM" is a filing nobody reads as a deadline.
+--
+-- `minutes` is null for a moment with no stated end, which is most of them, and
+-- is always null when `all_day` is set. A day has no length to state.
+CREATE TABLE occasions (
+    id         TEXT    PRIMARY KEY,
+    group_id   TEXT    NOT NULL REFERENCES groups(id),
+    agent_id   TEXT    REFERENCES agents(id) ON DELETE SET NULL,
+    title      TEXT    NOT NULL,
+    detail     TEXT    NOT NULL DEFAULT '',
+    place      TEXT    NOT NULL DEFAULT '',
+    starts_at  INTEGER NOT NULL,
+    minutes    INTEGER,
+    all_day    INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+-- The two questions anything asks. The operator's view is every crew across a
+-- window of days, and an agent's is one crew across the fortnight in front of
+-- it; neither is served well by the other's index.
+CREATE INDEX occasions_when ON occasions (starts_at);
+CREATE INDEX occasions_crew ON occasions (group_id, starts_at);
+"#,
+    ),
+    (
+        47,
+        r#"
+-- An agent remembers its own replies wherever they were filed. The pair
+-- index orders by recipient before time, so it cannot bound a read of the
+-- newest messages written to all recipients without sorting the whole past.
+CREATE INDEX messages_author_time
+    ON messages (from_agent, created_at DESC, id DESC)
+    WHERE from_kind = 'agent';
+"#,
+    ),
+    (
+        48,
+        r#"
+-- Where a repository was cloned from, for the rows that were cloned at all.
+--
+-- NULL is a directory the operator picked on their own machine, which is what
+-- every row before this column was and what every desktop row still is. A
+-- value is a remote the workspace cloned for itself, into a directory of its
+-- own, which is how a box gets a repository: there is no directory anybody
+-- could have picked there. The credential that clone may hold is deliberately
+-- not in this table; it lives in a file beside the settings, named for the
+-- clone's directory, because this table is read into a type that crosses IPC.
+ALTER TABLE repositories ADD COLUMN remote TEXT;
+"#,
+    ),
+    (
+        49,
+        r#"
+-- A conversation accepted but not yet settled. The first delivery is the
+-- operator's recovery point; no side effect is automatically repeated.
+CREATE TABLE pending_runs (
+    run_id TEXT PRIMARY KEY,
+    message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE
+);
+"#,
+    ),
+    (
+        50,
+        r#"
+CREATE TABLE group_imports (
+    group_id TEXT PRIMARY KEY REFERENCES groups(id) ON DELETE CASCADE,
+    reconnect TEXT NOT NULL
+);
+"#,
+    ),
+    (
+        51,
+        r#"
+CREATE TABLE decisions (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+    group_id TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+    topic TEXT NOT NULL,
+    request TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('pending','answered','completed','withdrawn')),
+    answer TEXT,
+    outcome TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    due_at INTEGER,
+    remind_at INTEGER NOT NULL,
+    snoozed_until INTEGER,
+    delivery_run TEXT,
+    interrupted INTEGER NOT NULL DEFAULT 0
+);
+CREATE UNIQUE INDEX decisions_topic ON decisions(agent_id,topic);
+CREATE INDEX decisions_reminder ON decisions(remind_at) WHERE status IN ('pending','answered');
+"#,
+    ),
+    (
+        52,
+        r#"
+CREATE TABLE connector_agents (
+    connector_id TEXT NOT NULL REFERENCES connectors(id) ON DELETE CASCADE,
+    agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+    PRIMARY KEY (connector_id, agent_id)
+);
+-- Preserve access for the agents who already received these credentials.
+-- Future agents and newly created secrets require an explicit grant.
+INSERT INTO connector_agents (connector_id, agent_id)
+SELECT c.id, a.id FROM connectors c JOIN agents a ON a.group_id=c.group_id
+WHERE a.discarded_at IS NULL;
+"#,
+    ),
+];
+
+/// The group every agent starts in, and the one the UI keeps out of the way
+/// while it is the only one. Pinned so the check is an id comparison rather
+/// than a name match or a count.
+pub const DEFAULT_GROUP_ID: &str = "00000000-0000-4000-8000-000000000001";
+
+#[derive(Debug, thiserror::Error)]
+pub enum MigrationError {
+    #[error("migration {version} failed: {source}")]
+    Failed {
+        version: i32,
+        #[source]
+        source: rusqlite::Error,
+    },
+    #[error("database is at version {found}, newer than this build supports ({supported})")]
+    FromTheFuture { found: i32, supported: i32 },
+    #[error(transparent)]
+    Sqlite(#[from] rusqlite::Error),
+}
+
+pub fn latest_version() -> i32 {
+    MIGRATIONS.last().map(|(v, _)| *v).unwrap_or(0)
+}
+
+/// Applies every migration newer than the database's current `user_version`.
+///
+/// Safe to call on every startup, and safe to call from two processes at once:
+/// each migration runs inside an immediate transaction and the version is
+/// re-read after the write lock is held. Reading the version first and then
+/// opening a transaction would let two racing callers both see version 0 and
+/// both try to create the tables.
+pub fn run(conn: &mut Connection) -> Result<i32, MigrationError> {
+    // Foreign keys off for the duration, which is what SQLite's own procedure
+    // for rebuilding a table asks for and what a migration cannot do for
+    // itself: the pragma is a no-op inside a transaction, and every migration
+    // runs in one. With enforcement on, the `DROP TABLE` in a rebuild performs
+    // an implicit DELETE first and fires the ON DELETE CASCADE of everything
+    // pointing at that table, so migration 21 took every routine's recorded
+    // firings with it.
+    //
+    // Nothing is lost by it here. Migrations are DDL written in this file, not
+    // input, and the connection this runs on exists only to run them: the pool
+    // the app actually works through turns enforcement on for every connection
+    // in `Store::open`. Restored anyway, because tests call this directly.
+    let enforced: bool = conn.query_row("PRAGMA foreign_keys", [], |row| row.get(0))?;
+    if enforced {
+        conn.pragma_update(None, "foreign_keys", false)?;
+    }
+    let applied = apply(conn, latest_version());
+    if enforced {
+        // Best effort: whatever the migrations said is the answer worth having.
+        let _ = conn.pragma_update(None, "foreign_keys", true);
+    }
+    applied
+}
+
+fn has_remote(conn: &Connection) -> Result<bool, rusqlite::Error> {
+    conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM pragma_table_info('repositories') WHERE name='remote')",
+        [],
+        |row| row.get(0),
+    )
+}
+
+fn has_table(conn: &Connection, name: &str) -> Result<bool, rusqlite::Error> {
+    conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name=?1)",
+        [name],
+        |row| row.get(0),
+    )
+}
+
+fn apply(conn: &mut Connection, target: i32) -> Result<i32, MigrationError> {
+    loop {
+        // `Immediate` takes the write lock at BEGIN rather than at first write,
+        // so the loser waits here instead of failing partway through a batch.
+        let tx: Transaction<'_> = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let current: i32 = tx.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+
+        if current > target {
+            // Downgrading would silently corrupt data written by a newer build.
+            // Refusing is the only safe move.
+            return Err(MigrationError::FromTheFuture { found: current, supported: target });
+        }
+
+        // Before the hosting branch met main, 45 meant repositories.remote
+        // and 46 meant pending_runs. Repair that known lineage under the same
+        // write lock without decreasing user_version or editing main's SQL.
+        if matches!(current, 45 | 46) && has_remote(&tx)? {
+            let consent: bool = tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM pragma_table_info('agents') WHERE name='browser_consent')",
+                [], |row| row.get(0),
+            )?;
+            if !consent {
+                tx.execute_batch(MIGRATIONS.iter().find(|(v, _)| *v == 45).unwrap().1)?;
+            }
+            if current == 46 && !has_table(&tx, "occasions")? {
+                tx.execute_batch(MIGRATIONS.iter().find(|(v, _)| *v == 46).unwrap().1)?;
+            }
+        }
+
+        let Some((version, sql)) = MIGRATIONS.iter().find(|(v, _)| *v > current) else {
+            break;
+        };
+
+        // These two additions already exist on the old hosting lineage.
+        // Advancing their new slots must preserve its repository URLs and journal.
+        let already_present = (*version == 48 && has_remote(&tx)?)
+            || (*version == 49 && has_table(&tx, "pending_runs")?);
+        if !already_present {
+            tx.execute_batch(sql)
+                .map_err(|source| MigrationError::Failed { version: *version, source })?;
+        }
+        // `user_version` does not accept a bound parameter.
+        tx.pragma_update(None, "user_version", *version)?;
+        tx.commit()?;
+        tracing::info!(version, "applied migration");
+    }
+
+    Ok(target)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn memory() -> Connection {
+        Connection::open_in_memory().unwrap()
+    }
+
+    #[test]
+    fn desktop_and_hosting_lineages_upgrade_without_losing_data() {
+        for (version, hosting) in
+            [(44, false), (45, false), (46, false), (47, false), (45, true), (46, true)]
+        {
+            let mut conn = memory();
+            for (v, sql) in
+                MIGRATIONS.iter().take_while(|(v, _)| *v <= if hosting { 44 } else { version })
+            {
+                conn.execute_batch(sql).unwrap();
+                conn.pragma_update(None, "user_version", *v).unwrap();
+            }
+            if hosting {
+                conn.execute_batch("ALTER TABLE repositories ADD COLUMN remote TEXT;").unwrap();
+                if version == 46 {
+                    conn.execute_batch("CREATE TABLE pending_runs (run_id TEXT PRIMARY KEY, message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE);").unwrap();
+                    conn.execute("INSERT INTO messages (id,run_id,channel_id,from_kind,to_kind,parts,trust,hop,expects_reply,created_at) VALUES ('original-message','unfinished','channel','operator','system','[]','operator',0,0,0)", []).unwrap();
+                    conn.execute(
+                        "INSERT INTO pending_runs VALUES ('unfinished', 'original-message')",
+                        [],
+                    )
+                    .unwrap();
+                }
+                conn.pragma_update(None, "user_version", version).unwrap();
+            }
+            conn.execute("INSERT INTO repositories (id,group_id,name,path,note,created_at,updated_at) VALUES ('repo',?1,'Code','/repo','keep me',1,1)", [DEFAULT_GROUP_ID]).unwrap();
+            if hosting {
+                conn.execute(
+                    "UPDATE repositories SET remote='https://github.com/person/code.git'",
+                    [],
+                )
+                .unwrap();
+            }
+            if has_table(&conn, "occasions").unwrap() {
+                conn.execute("INSERT INTO occasions (id,group_id,title,starts_at,created_at,updated_at) VALUES ('meeting',?1,'Preserve my calendar',1,1,1)", [DEFAULT_GROUP_ID]).unwrap();
+            }
+            run(&mut conn).unwrap();
+            run(&mut conn).unwrap();
+            assert!(conn
+                .prepare("PRAGMA foreign_key_check")
+                .unwrap()
+                .query([])
+                .unwrap()
+                .next()
+                .unwrap()
+                .is_none());
+            assert_eq!(
+                conn.query_row("SELECT note FROM repositories WHERE id='repo'", [], |r| r
+                    .get::<_, String>(0))
+                    .unwrap(),
+                "keep me"
+            );
+            let remote: Option<String> = conn
+                .query_row("SELECT remote FROM repositories WHERE id='repo'", [], |r| r.get(0))
+                .unwrap();
+            assert_eq!(remote.as_deref(), hosting.then_some("https://github.com/person/code.git"));
+            assert!(has_table(&conn, "occasions").unwrap());
+            assert!(has_table(&conn, "pending_runs").unwrap());
+            conn.prepare("SELECT browser_consent FROM agents").unwrap();
+            if !hosting && version >= 46 {
+                assert_eq!(
+                    conn.query_row("SELECT title FROM occasions WHERE id='meeting'", [], |r| {
+                        r.get::<_, String>(0)
+                    })
+                    .unwrap(),
+                    "Preserve my calendar"
+                );
+            }
+            if hosting && version == 46 {
+                assert_eq!(
+                    conn.query_row(
+                        "SELECT message_id FROM pending_runs WHERE run_id='unfinished'",
+                        [],
+                        |r| r.get::<_, String>(0)
+                    )
+                    .unwrap(),
+                    "original-message"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_permission_recorded_before_questions_existed_is_still_a_permission() {
+        // The upgrade path, which no test that starts from a blank database can
+        // reach. Every request ever recorded has a NULL `options`, and NULL is
+        // also what a question that takes a written answer would store if the
+        // two were not told apart by `action`. Read as a question, every
+        // historical row would come back with no choices and no way to answer
+        // it, and `standing_grants` would refuse to parse the ones that were
+        // granted.
+        let mut conn = memory();
+        let tx = conn.transaction().unwrap();
+        for (version, sql) in MIGRATIONS.iter().take_while(|(v, _)| *v < 33) {
+            tx.execute_batch(sql).unwrap();
+            tx.pragma_update(None, "user_version", *version).unwrap();
+        }
+        tx.commit().unwrap();
+
+        conn.execute(
+            "INSERT INTO agents (id,name,avatar,color,model,system_prompt,skills,lifecycle,
+                                 version,created_at,updated_at,group_id)
+             VALUES ('a','A','avocado','#000','m','','[]','active',1,0,0,?1)",
+            rusqlite::params![DEFAULT_GROUP_ID],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO approvals (id,agent_id,group_id,run_id,action,summary,detail,state,
+                                    created_at)
+             VALUES ('ap','a',?1,'run','createAgent','Wants to hire','[]','alwaysAllow',0)",
+            rusqlite::params![DEFAULT_GROUP_ID],
+        )
+        .unwrap();
+
+        run(&mut conn).unwrap();
+
+        let (action, options, answer): (String, Option<String>, Option<String>) = conn
+            .query_row("SELECT action,options,answer FROM approvals WHERE id='ap'", [], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+            })
+            .unwrap();
+        assert_eq!(action, "createAgent", "an upgrade must not restate what was asked");
+        assert_eq!(options, None);
+        assert_eq!(answer, None, "nobody wrote an answer, so there must not be one");
+    }
+
+    #[test]
+    fn migrations_bring_a_blank_database_to_the_latest_version() {
+        let mut conn = memory();
+        assert_eq!(run(&mut conn).unwrap(), latest_version());
+        let version: i32 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(version, latest_version());
+    }
+
+    #[test]
+    fn running_twice_is_a_no_op() {
+        let mut conn = memory();
+        run(&mut conn).unwrap();
+        run(&mut conn).unwrap();
+        let tables: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('agents','messages')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(tables, 2);
+    }
+
+    #[test]
+    fn a_withdrawn_plugin_takes_its_rows_and_leaves_the_others() {
+        // The slot in `plugins_kind_unique` is the point: a row nothing can
+        // resolve is invisible to every read but still owns (group, kind), so a
+        // crew reconnecting under that name would fail on a conflict with a row
+        // the UI never drew for them.
+        let mut conn = memory();
+        // Staged by hand rather than with `apply`, which takes the next
+        // migration off the list without looking at the target and would run
+        // the one being tested.
+        for (version, sql) in MIGRATIONS.iter().filter(|(v, _)| *v < 25) {
+            conn.execute_batch(sql).unwrap();
+            conn.pragma_update(None, "user_version", *version).unwrap();
+        }
+        let insert = "INSERT INTO plugins (id,group_id,kind,account,tools,connected_at)
+                      VALUES (?1,?2,?3,'','[]',0)";
+        conn.execute(insert, rusqlite::params!["p1", DEFAULT_GROUP_ID, "clerk"]).unwrap();
+        conn.execute(insert, rusqlite::params!["p2", DEFAULT_GROUP_ID, "neon"]).unwrap();
+
+        run(&mut conn).unwrap();
+
+        let left: Vec<String> = conn
+            .prepare("SELECT kind FROM plugins ORDER BY kind")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(left, vec!["neon".to_string()]);
+    }
+
+    #[test]
+    fn a_plugin_that_changed_server_loses_the_grant_it_had_for_the_old_one() {
+        // Cloudflare's endpoint moved hosts, so the stored token was issued by
+        // an issuer the new server does not share and the stored tool list
+        // names tools it does not have. Both are read on every turn, and a row
+        // that survives is an agent calling a tool that 401s against a host
+        // nobody signed in to.
+        let mut conn = memory();
+        for (version, sql) in MIGRATIONS.iter().filter(|(v, _)| *v < 26) {
+            conn.execute_batch(sql).unwrap();
+            conn.pragma_update(None, "user_version", *version).unwrap();
+        }
+        let insert =
+            "INSERT INTO plugins (id,group_id,kind,account,tools,access_token,connected_at)
+                      VALUES (?1,?2,?3,'','[\"workers_list\"]','tok',0)";
+        conn.execute(insert, rusqlite::params!["p1", DEFAULT_GROUP_ID, "cloudflare"]).unwrap();
+        conn.execute(insert, rusqlite::params!["p2", DEFAULT_GROUP_ID, "linear"]).unwrap();
+
+        run(&mut conn).unwrap();
+
+        let left: Vec<String> = conn
+            .prepare("SELECT kind FROM plugins ORDER BY kind")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(left, vec!["linear".to_string()], "and only Cloudflare's");
+    }
+
+    #[test]
+    fn a_plugin_connected_before_agents_could_be_chosen_stays_the_whole_crew_s() {
+        // The one thing this migration must not do. A crew whose Neon sign-in
+        // worked yesterday has to work today, without the operator opening a
+        // panel they have never seen to re-grant what they already had.
+        let mut conn = memory();
+        for (version, sql) in MIGRATIONS.iter().filter(|(v, _)| *v < 27) {
+            conn.execute_batch(sql).unwrap();
+            conn.pragma_update(None, "user_version", *version).unwrap();
+        }
+        conn.execute(
+            "INSERT INTO plugins (id,group_id,kind,account,tools,connected_at)
+             VALUES ('p1',?1,'neon','','[]',0)",
+            rusqlite::params![DEFAULT_GROUP_ID],
+        )
+        .unwrap();
+
+        run(&mut conn).unwrap();
+
+        let access: String = conn
+            .query_row("SELECT access FROM plugins WHERE id='p1'", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(access, "everyone");
+        let named: i64 =
+            conn.query_row("SELECT count(*) FROM plugin_agents", [], |row| row.get(0)).unwrap();
+        assert_eq!(named, 0, "nobody was named, and nobody needs to be");
+    }
+
+    #[test]
+    fn a_plugin_connected_before_tools_could_be_switched_off_keeps_all_of_them() {
+        // The same thing this migration must not do, one axis over. Nothing is
+        // written down, and nothing written down is what "everything is on"
+        // means: the refusals are the rows.
+        let mut conn = memory();
+        for (version, sql) in MIGRATIONS.iter().filter(|(v, _)| *v < 29) {
+            conn.execute_batch(sql).unwrap();
+            conn.pragma_update(None, "user_version", *version).unwrap();
+        }
+        conn.execute(
+            "INSERT INTO plugins (id,group_id,kind,account,tools,connected_at)
+             VALUES ('p1',?1,'neon','','[{\"name\":\"run_sql\",\"description\":\"\",
+                                          \"inputSchema\":{}}]',0)",
+            rusqlite::params![DEFAULT_GROUP_ID],
+        )
+        .unwrap();
+
+        run(&mut conn).unwrap();
+
+        let off: i64 = conn
+            .query_row("SELECT count(*) FROM plugin_tool_access", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(off, 0, "a migration that switched anything off would break a working crew");
+    }
+
+    #[test]
+    fn a_plugin_connected_before_a_server_could_be_added_keeps_dialling_the_vendor() {
+        // Empty means "the catalog knows where this is", which is what every
+        // row written before today meant and has to go on meaning. A migration
+        // that backfilled the vendor's address into the column would freeze it
+        // there, and the next time a vendor moved, every crew connected before
+        // the move would keep dialling the old host with nothing on screen
+        // saying why their plugin had stopped working.
+        let mut conn = memory();
+        for (version, sql) in MIGRATIONS.iter().filter(|(v, _)| *v < 35) {
+            conn.execute_batch(sql).unwrap();
+            conn.pragma_update(None, "user_version", *version).unwrap();
+        }
+        conn.execute(
+            "INSERT INTO plugins (id,group_id,kind,account,tools,connected_at)
+             VALUES ('p1',?1,'neon','','[]',0)",
+            rusqlite::params![DEFAULT_GROUP_ID],
+        )
+        .unwrap();
+
+        run(&mut conn).unwrap();
+
+        let endpoint: String = conn
+            .query_row("SELECT endpoint FROM plugins WHERE id='p1'", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(endpoint, "", "an address in the row is one the build can no longer change");
+    }
+
+    #[test]
+    fn a_plugin_connected_before_headers_existed_sends_none() {
+        // `'[]'` and not `''`, because the column is read by parsing it. An
+        // empty string parses as nothing either way today, and would be a
+        // corrupt row the day anything decided to tell an unreadable column
+        // apart from an empty one.
+        let mut conn = memory();
+        for (version, sql) in MIGRATIONS.iter().filter(|(v, _)| *v < 36) {
+            conn.execute_batch(sql).unwrap();
+            conn.pragma_update(None, "user_version", *version).unwrap();
+        }
+        conn.execute(
+            "INSERT INTO plugins (id,group_id,kind,account,tools,connected_at)
+             VALUES ('p1',?1,'neon','','[]',0)",
+            rusqlite::params![DEFAULT_GROUP_ID],
+        )
+        .unwrap();
+
+        run(&mut conn).unwrap();
+
+        let headers: String = conn
+            .query_row("SELECT headers FROM plugins WHERE id='p1'", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(headers, "[]");
+    }
+
+    #[test]
+    fn a_tool_switched_off_before_agents_could_be_named_stays_off_for_all_of_them() {
+        // The other direction, and the one that would be silent. A refusal in
+        // the old table is a tool the operator switched off for the crew, which
+        // in the new shape is a tool narrowed to nobody. Dropped, or read as
+        // 'everyone', the migration hands `drop_project` back to every agent in
+        // the crew at the moment the file is opened by a newer build.
+        let mut conn = memory();
+        for (version, sql) in MIGRATIONS.iter().filter(|(v, _)| *v < 31) {
+            conn.execute_batch(sql).unwrap();
+            conn.pragma_update(None, "user_version", *version).unwrap();
+        }
+        conn.execute(
+            "INSERT INTO plugins (id,group_id,kind,account,tools,connected_at)
+             VALUES ('p1',?1,'neon','','[]',0)",
+            rusqlite::params![DEFAULT_GROUP_ID],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO plugin_denied_tools (plugin_id,tool) VALUES ('p1','drop_project')",
+            [],
+        )
+        .unwrap();
+
+        run(&mut conn).unwrap();
+
+        let access: String = conn
+            .query_row(
+                "SELECT access FROM plugin_tool_access WHERE plugin_id='p1' AND tool='drop_project'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(access, "chosen", "a refusal is a tool narrowed to nobody");
+        let named: i64 = conn
+            .query_row("SELECT count(*) FROM plugin_tool_agents", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(named, 0, "nobody is nobody: a name here would hand the tool to somebody");
+    }
+
+    #[test]
+    fn the_avatar_column_is_renamed_and_keeps_its_data() {
+        let mut conn = memory();
+        // Stop at version 1 so the rename can be observed happening.
+        let tx = conn.transaction().unwrap();
+        tx.execute_batch(MIGRATIONS[0].1).unwrap();
+        tx.pragma_update(None, "user_version", 1).unwrap();
+        tx.commit().unwrap();
+        conn.execute(
+            "INSERT INTO agents (id,name,emoji,color,model,system_prompt,skills,lifecycle,version,created_at,updated_at)
+             VALUES ('a','Manager','avocado','#000','m','','[]','active',1,0,0)",
+            [],
+        )
+        .unwrap();
+
+        run(&mut conn).unwrap();
+
+        let avatar: String =
+            conn.query_row("SELECT avatar FROM agents WHERE id='a'", [], |r| r.get(0)).unwrap();
+        assert_eq!(avatar, "avocado", "the rename must not drop the value");
+    }
+
+    #[test]
+    fn the_signin_column_is_renamed_and_keeps_its_data() {
+        // The rename is the entire migration, so a row written by an older
+        // build is the only thing that can show it renamed the column rather
+        // than rebuilding the table around it.
+        let mut conn = memory();
+        for (version, sql) in MIGRATIONS.iter().filter(|(v, _)| *v < 32) {
+            conn.execute_batch(sql).unwrap();
+            conn.pragma_update(None, "user_version", *version).unwrap();
+        }
+        conn.execute(
+            "INSERT INTO agents
+             (id,name,avatar,color,model,system_prompt,skills,lifecycle,version,
+              created_at,updated_at,group_id)
+             VALUES ('a','Manager','avocado','#000','m','','[]','active',1,0,0,?1)",
+            rusqlite::params![DEFAULT_GROUP_ID],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO signins
+             (agent_id,surface,domain,service,recognised,first_seen_at,last_seen_at)
+             VALUES ('a','computer','github.com','GitHub',1,7,9)",
+            [],
+        )
+        .unwrap();
+
+        run(&mut conn).unwrap();
+
+        let (service, recognized, since): (String, i64, i64) = conn
+            .query_row(
+                "SELECT service,recognized,first_seen_at FROM signins WHERE agent_id='a'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(service, "GitHub", "the rename must not drop the row");
+        assert_eq!(recognized, 1, "nor the value the renamed column was holding");
+        assert_eq!(since, 7, "nor when the sign-in was first seen");
+    }
+
+    #[test]
+    fn group_inference_settings_start_empty_and_mean_inherit() {
+        // NULL and "" have to stay distinguishable: one means "use the app
+        // default", the other is a value an operator deliberately blanked.
+        let mut conn = memory();
+        run(&mut conn).unwrap();
+        let model: Option<String> = conn
+            .query_row("SELECT default_model FROM groups WHERE id=?1", [DEFAULT_GROUP_ID], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(model, None, "a fresh group must inherit rather than pin a model");
+    }
+
+    #[test]
+    fn a_group_pinned_to_a_subscription_model_keeps_running_on_it() {
+        // The one column became two, and the split changed what the old one
+        // means. A group whose model is one of the subscription's own was being
+        // spent on the subscription; leaving it behind would move that crew to
+        // whatever the app happens to run, silently and on the next turn.
+        let mut conn = memory();
+        let tx = conn.transaction().unwrap();
+        for (version, sql) in MIGRATIONS.iter().take_while(|(v, _)| *v < 23) {
+            tx.execute_batch(sql).unwrap();
+            tx.pragma_update(None, "user_version", *version).unwrap();
+        }
+        tx.execute(
+            "INSERT INTO groups (id,name,created_at,default_model) VALUES ('g1','Plan',1,'gpt-5.4')",
+            [],
+        )
+        .unwrap();
+        tx.execute(
+            "INSERT INTO groups (id,name,created_at,default_model)
+             VALUES ('g2','Local',2,'local/qwen')",
+            [],
+        )
+        .unwrap();
+        tx.commit().unwrap();
+
+        run(&mut conn).unwrap();
+
+        let carried: Option<String> = conn
+            .query_row("SELECT subscription_model FROM groups WHERE id='g1'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(carried.as_deref(), Some("gpt-5.4"));
+
+        // And a model that belongs to an endpoint is left where it was: copying
+        // it would pin a crew to a model the subscription cannot run the moment
+        // anyone moved it across.
+        let untouched: Option<String> = conn
+            .query_row("SELECT subscription_model FROM groups WHERE id='g2'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(untouched, None);
+    }
+
+    #[test]
+    fn a_group_that_already_had_an_endpoint_is_written_down_as_choosing_one() {
+        // What it was doing yesterday, said out loud, so that nothing has to
+        // guess it tomorrow.
+        let mut conn = memory();
+        let tx = conn.transaction().unwrap();
+        for (version, sql) in MIGRATIONS.iter().take_while(|(v, _)| *v < 23) {
+            tx.execute_batch(sql).unwrap();
+            tx.pragma_update(None, "user_version", *version).unwrap();
+        }
+        tx.execute(
+            "INSERT INTO groups (id,name,created_at,base_url) VALUES ('g1','Local',1,'http://x/v1')",
+            [],
+        )
+        .unwrap();
+        tx.execute(
+            "INSERT INTO groups (id,name,created_at,api_key) VALUES ('g2','Keyed',2,'sk-x')",
+            [],
+        )
+        .unwrap();
+        tx.execute(
+            "INSERT INTO groups (id,name,created_at,default_model)
+             VALUES ('g3','Model only',3,'some/model')",
+            [],
+        )
+        .unwrap();
+        tx.commit().unwrap();
+
+        run(&mut conn).unwrap();
+
+        let provider = |id: &str| -> Option<String> {
+            conn.query_row("SELECT provider FROM groups WHERE id=?1", [id], |r| r.get(0)).unwrap()
+        };
+        assert_eq!(provider("g1").as_deref(), Some("compatible"));
+        assert_eq!(provider("g2").as_deref(), Some("compatible"));
+        // A group that only pinned a model never said anything about who pays,
+        // and must keep saying nothing.
+        assert_eq!(provider("g3"), None);
+    }
+
+    #[test]
+    fn group_limits_start_unset_and_mean_inherit() {
+        // A number here would be a limit nobody chose, and it would override the
+        // app's the first time either was retuned.
+        let mut conn = memory();
+        run(&mut conn).unwrap();
+        let (steps, provider): (Option<i64>, Option<String>) = conn
+            .query_row(
+                "SELECT max_steps_per_run, provider FROM groups WHERE id=?1",
+                [DEFAULT_GROUP_ID],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(steps, None);
+        assert_eq!(provider, None, "a fresh group is paid for however the app is");
+    }
+
+    #[test]
+    fn an_agent_that_already_had_a_machine_keeps_it_when_the_two_places_become_a_decision() {
+        // The upgrade cannot apply the old rule, because the old rule was
+        // "every agent in the workspace" and that is the state this column
+        // exists to end. It cannot apply the new default to everybody either:
+        // an agent already holding a machine is holding the operator's sign-ins
+        // on its disk, and one cut off from them reports accounts it can see
+        // and cannot reach. What it is holding is the only honest answer.
+        let mut conn = memory();
+        for (version, sql) in MIGRATIONS.iter().filter(|(v, _)| *v < 28) {
+            conn.execute_batch(sql).unwrap();
+            conn.pragma_update(None, "user_version", *version).unwrap();
+        }
+        let insert = "INSERT INTO agents
+                        (id,name,avatar,color,model,system_prompt,skills,lifecycle,version,
+                         created_at,updated_at,group_id,sandbox_id,browser_id)
+                      VALUES (?1,?2,'avocado','#7fb069','m','','[]','active',1,0,0,?3,?4,?5)";
+        let crew: [(&str, Option<&str>, Option<&str>); 3] = [
+            ("Runner", Some("sb-1"), None),
+            ("Reader", None, Some("kb-1")),
+            ("Talker", None, None),
+        ];
+        for (name, sandbox, browser) in crew {
+            conn.execute(insert, rusqlite::params![name, name, DEFAULT_GROUP_ID, sandbox, browser])
+                .unwrap();
+        }
+
+        run(&mut conn).unwrap();
+
+        let held = |name: &str| -> (i64, i64) {
+            conn.query_row(
+                "SELECT has_computer, has_browser FROM agents WHERE id=?1",
+                rusqlite::params![name],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap()
+        };
+        assert_eq!(held("Runner"), (1, 0), "a machine it is using is not taken away");
+        assert_eq!(held("Reader"), (0, 1), "and neither is a browser holding its cookies");
+        assert_eq!(
+            held("Talker"),
+            (0, 0),
+            "but an agent that never needed either is not handed both on upgrade"
+        );
+    }
+
+    #[test]
+    fn a_newer_database_is_refused_rather_than_downgraded() {
+        let mut conn = memory();
+        run(&mut conn).unwrap();
+        conn.pragma_update(None, "user_version", latest_version() + 5).unwrap();
+        assert!(matches!(run(&mut conn), Err(MigrationError::FromTheFuture { .. })));
+    }
+
+    #[test]
+    fn live_agent_names_are_unique_case_insensitively() {
+        let mut conn = memory();
+        run(&mut conn).unwrap();
+        let insert = "INSERT INTO agents (id,name,avatar,color,model,system_prompt,skills,lifecycle,version,created_at,updated_at,group_id)
+                      VALUES (?1,?2,'avocado','#000','m','','[]',?3,1,0,0,'00000000-0000-4000-8000-000000000001')";
+        conn.execute(insert, rusqlite::params!["a", "Manager", "active"]).unwrap();
+        let clash = conn.execute(insert, rusqlite::params!["b", "manager", "active"]);
+        assert!(clash.is_err(), "case-different duplicate must be rejected");
+    }
+
+    #[test]
+    fn deleting_an_agent_frees_its_name() {
+        let mut conn = memory();
+        run(&mut conn).unwrap();
+        let insert = "INSERT INTO agents (id,name,avatar,color,model,system_prompt,skills,lifecycle,version,created_at,updated_at,group_id)
+                      VALUES (?1,?2,'avocado','#000','m','','[]',?3,1,0,0,'00000000-0000-4000-8000-000000000001')";
+        conn.execute(insert, rusqlite::params!["a", "Manager", "terminated"]).unwrap();
+        conn.execute(insert, rusqlite::params!["b", "Manager", "active"])
+            .expect("a terminated agent must not hold its name hostage");
+    }
+
+    #[test]
+    fn existing_agents_are_moved_into_the_default_group() {
+        // The upgrade path that matters: a database written before groups
+        // existed must come out the other side with every agent in one.
+        let mut conn = memory();
+        let tx = conn.transaction().unwrap();
+        for (version, sql) in MIGRATIONS.iter().take(3) {
+            tx.execute_batch(sql).unwrap();
+            tx.pragma_update(None, "user_version", *version).unwrap();
+        }
+        tx.commit().unwrap();
+        conn.execute(
+            "INSERT INTO agents (id,name,avatar,color,model,system_prompt,skills,lifecycle,version,created_at,updated_at)
+             VALUES ('a','Manager','avocado','#000','m','','[]','active',1,0,0)",
+            [],
+        )
+        .unwrap();
+
+        run(&mut conn).unwrap();
+
+        let group: String =
+            conn.query_row("SELECT group_id FROM agents WHERE id='a'", [], |r| r.get(0)).unwrap();
+        assert_eq!(group, DEFAULT_GROUP_ID, "an agent must never be left without a group");
+    }
+
+    #[test]
+    fn agent_names_are_unique_per_group_rather_than_globally() {
+        // Two isolated groups each wanting a Manager is the ordinary case, and
+        // the old global index made it impossible.
+        let mut conn = memory();
+        run(&mut conn).unwrap();
+        conn.execute("INSERT INTO groups (id,name,created_at) VALUES ('g2','Research',0)", [])
+            .unwrap();
+        let insert = "INSERT INTO agents (id,name,avatar,color,model,system_prompt,skills,lifecycle,version,created_at,updated_at,group_id)
+                      VALUES (?1,?2,'avocado','#000','m','','[]','active',1,0,0,?3)";
+
+        conn.execute(insert, rusqlite::params!["a", "Manager", DEFAULT_GROUP_ID]).unwrap();
+        conn.execute(insert, rusqlite::params!["b", "Manager", "g2"])
+            .expect("the same name in another group must be allowed");
+        let clash = conn.execute(insert, rusqlite::params!["c", "manager", "g2"]);
+        assert!(clash.is_err(), "a duplicate inside one group must still be rejected");
+    }
+
+    #[test]
+    fn two_connectors_in_one_group_cannot_claim_the_same_variable() {
+        // Both would be written into the same machine's environment and one
+        // would win by row order, so the agent would be handed a token for an
+        // account nobody chose.
+        let mut conn = memory();
+        run(&mut conn).unwrap();
+        let insert = "INSERT INTO connectors (id,group_id,service,account,env_var,secret,note,created_at,updated_at)
+                      VALUES (?1,?2,?3,'me',?4,'s','',0,0)";
+
+        conn.execute(insert, rusqlite::params!["a", DEFAULT_GROUP_ID, "GitHub", "TOKEN"]).unwrap();
+        let clash =
+            conn.execute(insert, rusqlite::params!["b", DEFAULT_GROUP_ID, "Linear", "TOKEN"]);
+        assert!(clash.is_err(), "a duplicate variable name in one group must be rejected");
+
+        // Another group is another set of machines, so the same name is fine.
+        conn.execute("INSERT INTO groups (id,name,created_at) VALUES ('g2','Research',0)", [])
+            .unwrap();
+        conn.execute(insert, rusqlite::params!["c", "g2", "Linear", "TOKEN"])
+            .expect("groups do not share an environment");
+    }
+
+    #[test]
+    fn declared_sign_ins_are_dropped_rather_than_carried_into_detection() {
+        // A database written before sign-ins were detected holds rows an
+        // operator typed. Keeping them would mean the roster advertised an
+        // account nobody had checked against the machine, which is the claim
+        // detection exists to stop making. The credentials beside them stay.
+        let mut conn = memory();
+        let tx = conn.transaction().unwrap();
+        for (version, sql) in MIGRATIONS.iter().take(12) {
+            tx.execute_batch(sql).unwrap();
+            tx.pragma_update(None, "user_version", *version).unwrap();
+        }
+        tx.commit().unwrap();
+
+        let row = "INSERT INTO connectors (id,group_id,agent_id,kind,service,account,url,env_var,secret,note,created_at,updated_at)
+                   VALUES (?1,?2,?3,?4,?5,'me',?6,?7,?8,'',0,0)";
+        conn.execute(
+            row,
+            rusqlite::params![
+                "keep",
+                DEFAULT_GROUP_ID,
+                None::<String>,
+                "key",
+                "GitHub",
+                "",
+                "TOKEN",
+                "s"
+            ],
+        )
+        .unwrap();
+        conn.execute(
+            row,
+            rusqlite::params![
+                "drop",
+                DEFAULT_GROUP_ID,
+                None::<String>,
+                "signin",
+                "Gmail",
+                "https://x",
+                "",
+                ""
+            ],
+        )
+        .unwrap();
+
+        run(&mut conn).unwrap();
+
+        let kept: Vec<String> = conn
+            .prepare("SELECT id FROM connectors")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+        assert_eq!(kept, vec!["keep".to_string()], "only the credential survives");
+
+        // And the detected table is there and empty, waiting for a scan.
+        let signins: i64 =
+            conn.query_row("SELECT count(*) FROM signins", [], |r| r.get(0)).unwrap();
+        assert_eq!(signins, 0);
+    }
+
+    #[test]
+    fn an_existing_schedule_keeps_firing_on_exactly_the_gap_it_was_set_for() {
+        // The upgrade that could quietly change what a crew is already doing:
+        // a routine written as a number of seconds has to come out the other
+        // side saying the same thing, and a one-shot has to stay a one-shot.
+        let mut conn = memory();
+        let tx = conn.transaction().unwrap();
+        for (version, sql) in MIGRATIONS.iter().take(15) {
+            tx.execute_batch(sql).unwrap();
+            tx.pragma_update(None, "user_version", *version).unwrap();
+        }
+        tx.commit().unwrap();
+
+        conn.execute(
+            "INSERT INTO agents (id,name,avatar,color,model,system_prompt,skills,lifecycle,version,created_at,updated_at,group_id)
+             VALUES ('a','Manager','avocado','#000','m','','[]','active',1,0,0,?1)",
+            [DEFAULT_GROUP_ID],
+        )
+        .unwrap();
+        let row = "INSERT INTO routines (id,agent_id,what,every_secs,next_run_at,created_at)
+                   VALUES (?1,'a',?2,?3,0,0)";
+        conn.execute(row, rusqlite::params!["r1", "check the listings", Some(18_000)]).unwrap();
+        conn.execute(row, rusqlite::params!["r2", "wake me", None::<u32>]).unwrap();
+
+        run(&mut conn).unwrap();
+
+        let fires = |id: &str| -> String {
+            conn.query_row("SELECT fires FROM routines WHERE id=?1", [id], |r| r.get(0)).unwrap()
+        };
+        assert_eq!(fires("r1"), "every:18000", "a five-hour repeat stays a five-hour repeat");
+        assert_eq!(fires("r2"), "once", "a one-shot must not become a repeat");
+
+        let name: String =
+            conn.query_row("SELECT name FROM routines WHERE id='r1'", [], |r| r.get(0)).unwrap();
+        assert_eq!(name, "", "nothing invents a name for a routine an agent set");
+    }
+
+    #[test]
+    fn rebuilding_the_routines_table_keeps_every_schedule_and_its_history() {
+        // The one migration that drops a table other rows point at. With
+        // foreign keys on, DROP TABLE fires `routine_runs`' ON DELETE CASCADE
+        // and takes every recorded firing with it, so this checks the history
+        // is still there and the slots came over unchanged.
+        let mut conn = memory();
+        let tx = conn.transaction().unwrap();
+        for (version, sql) in MIGRATIONS.iter().take(20) {
+            tx.execute_batch(sql).unwrap();
+            tx.pragma_update(None, "user_version", *version).unwrap();
+        }
+        tx.commit().unwrap();
+
+        conn.execute(
+            "INSERT INTO agents (id,name,avatar,color,model,system_prompt,skills,lifecycle,version,created_at,updated_at,group_id)
+             VALUES ('a','Manager','avocado','#000','m','','[]','active',1,0,0,?1)",
+            [DEFAULT_GROUP_ID],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO routines (id,agent_id,name,what,fires,active,next_run_at,last_run_at,created_at)
+             VALUES ('r1','a','Sweep','check','weekdays',0,1750000000000,1740000000000,5)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO routine_runs (routine_id,run_id,kind,at) VALUES ('r1','run-1','test',7)",
+            [],
+        )
+        .unwrap();
+
+        run(&mut conn).unwrap();
+
+        let (name, fires, active, next, last, created): (String, String, i64, i64, i64, i64) = conn
+            .query_row(
+                "SELECT name,fires,active,next_run_at,last_run_at,created_at FROM routines
+                  WHERE id='r1'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            (name.as_str(), fires.as_str(), active, next, last, created),
+            ("Sweep", "weekdays", 0, 1750000000000, 1740000000000, 5),
+            "every column came over as it was, including being switched off"
+        );
+
+        let runs: i64 =
+            conn.query_row("SELECT count(*) FROM routine_runs", [], |r| r.get(0)).unwrap();
+        assert_eq!(runs, 1, "the history must not be cascaded away by the rebuild");
+
+        // And the point of the rebuild: a routine with no slot is now storable.
+        conn.execute(
+            "INSERT INTO routines (id,agent_id,name,what,fires,active,next_run_at,created_at)
+             VALUES ('r2','a','Dunning','chase','event:stripe/invoice.payment_failed',1,NULL,0)",
+            [],
+        )
+        .unwrap();
+        let due: i64 = conn
+            .query_row("SELECT count(*) FROM routines WHERE next_run_at <= ?1", [i64::MAX], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(due, 1, "and it is not due, however far ahead you look");
+    }
+
+    #[test]
+    fn an_existing_schedule_keeps_its_firings_and_lands_on_the_ordinary_rule() {
+        // Migration 34 rebuilds `routine_runs` to let a skipped firing say it
+        // had no run. The rows already in it are recorded history, so they have
+        // to come over exactly, and every routine written before the column
+        // existed has to keep firing the way it has been: skipping is a thing
+        // somebody asks for, never a default an upgrade applies.
+        let mut conn = memory();
+        let tx = conn.transaction().unwrap();
+        for (version, sql) in MIGRATIONS.iter().take_while(|(v, _)| *v < 34) {
+            tx.execute_batch(sql).unwrap();
+            tx.pragma_update(None, "user_version", *version).unwrap();
+        }
+        tx.commit().unwrap();
+
+        conn.execute(
+            "INSERT INTO agents (id,name,avatar,color,model,system_prompt,skills,lifecycle,version,created_at,updated_at,group_id)
+             VALUES ('a','Manager','avocado','#000','m','','[]','active',1,0,0,?1)",
+            [DEFAULT_GROUP_ID],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO routines (id,agent_id,name,what,fires,active,next_run_at,last_run_at,created_at)
+             VALUES ('r1','a','Sweep','check','weekdays',1,1750000000000,1740000000000,5)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO routine_runs (routine_id,run_id,kind,at) VALUES ('r1','run-1','scheduled',7)",
+            [],
+        )
+        .unwrap();
+
+        run(&mut conn).unwrap();
+
+        let skipping: i64 = conn
+            .query_row("SELECT skip_if_working FROM routines WHERE id='r1'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(skipping, 0, "an upgrade must not start dropping an operator's firings");
+
+        let (run_id, kind, at): (String, String, i64) = conn
+            .query_row("SELECT run_id,kind,at FROM routine_runs", [], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+            })
+            .unwrap();
+        assert_eq!((run_id.as_str(), kind.as_str(), at), ("run-1", "scheduled", 7));
+
+        // The point of the rebuild: a firing with nothing behind it is now
+        // storable, and the index that answers the only question asked of this
+        // table survived being dropped with it.
+        conn.execute(
+            "INSERT INTO routine_runs (routine_id,run_id,kind,at) VALUES ('r1',NULL,'skipped',9)",
+            [],
+        )
+        .unwrap();
+        let indexed: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM sqlite_master
+                  WHERE type='index' AND name='routine_runs_routine'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(indexed, 1, "a rebuild takes the index with it unless it is made again");
+
+        // And the cascade still points at the parent it did before the rename.
+        conn.pragma_update(None, "foreign_keys", true).unwrap();
+        conn.execute("DELETE FROM routines WHERE id='r1'", []).unwrap();
+        let left: i64 =
+            conn.query_row("SELECT count(*) FROM routine_runs", [], |r| r.get(0)).unwrap();
+        assert_eq!(left, 0, "history for a deleted routine is history nothing can draw");
+    }
+
+    #[test]
+    fn foreign_key_enforcement_is_off_only_while_migrations_run() {
+        // A rebuild needs it off; everything after this must not inherit that.
+        // The pool sets it per connection, but `run` is handed a connection
+        // somebody else keeps, and leaving it off there disables every cascade
+        // in the app.
+        let mut conn = memory();
+        conn.pragma_update(None, "foreign_keys", true).unwrap();
+        run(&mut conn).unwrap();
+        let on: bool = conn.query_row("PRAGMA foreign_keys", [], |r| r.get(0)).unwrap();
+        assert!(on, "enforcement has to come back on");
+    }
+
+    #[test]
+    fn an_existing_agent_is_not_pinned() {
+        let mut conn = memory();
+        run(&mut conn).unwrap();
+        conn.execute(
+            "INSERT INTO agents (id,name,avatar,color,model,system_prompt,skills,lifecycle,version,created_at,updated_at,group_id)
+             VALUES ('a','Manager','avocado','#000','m','','[]','active',1,0,0,?1)",
+            [DEFAULT_GROUP_ID],
+        )
+        .unwrap();
+        let pinned: i64 =
+            conn.query_row("SELECT pinned FROM agents WHERE id='a'", [], |r| r.get(0)).unwrap();
+        assert_eq!(pinned, 0, "an upgrade must not rearrange the rail");
+    }
+
+    #[test]
+    fn an_upgrade_arranges_the_rail_in_the_order_it_was_already_drawn() {
+        // The rail was ordered by who spoke last, and creation order underneath
+        // that. Backfilling anything else would rearrange a workspace the
+        // operator has been looking at for weeks, on launch, with no gesture.
+        let mut conn = memory();
+        let tx = conn.transaction().unwrap();
+        for (version, sql) in MIGRATIONS.iter().take_while(|(v, _)| *v < 20) {
+            tx.execute_batch(sql).unwrap();
+            tx.pragma_update(None, "user_version", *version).unwrap();
+        }
+        tx.commit().unwrap();
+
+        let row = "INSERT INTO agents (id,name,avatar,color,model,system_prompt,skills,lifecycle,version,created_at,updated_at,group_id)
+                   VALUES (?1,?1,'avocado','#000','m','','[]','active',1,?2,?2,?3)";
+        for (id, made) in [("late", 300), ("early", 100), ("middle", 200)] {
+            conn.execute(row, rusqlite::params![id, made, DEFAULT_GROUP_ID]).unwrap();
+        }
+
+        run(&mut conn).unwrap();
+
+        let arranged: Vec<(String, i64)> = conn
+            .prepare("SELECT id, rail_order FROM agents ORDER BY rail_order")
+            .unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+        assert_eq!(
+            arranged,
+            vec![("early".into(), 0), ("middle".into(), 1), ("late".into(), 2)],
+            "an upgrade must draw the rail it drew before, and give every row its own place"
+        );
+    }
+
+    #[test]
+    fn a_repository_linked_before_there_were_two_harnesses_keeps_running_pi() {
+        // The upgrade path, which no test starting from a blank database can
+        // reach. Every repository ever linked was started with `pi`, and a
+        // backfill that said anything else would silently move somebody's
+        // directory onto a program they have never signed in to, on launch,
+        // with no gesture.
+        let mut conn = memory();
+        let tx = conn.transaction().unwrap();
+        for (version, sql) in MIGRATIONS.iter().take_while(|(v, _)| *v < 40) {
+            tx.execute_batch(sql).unwrap();
+            tx.pragma_update(None, "user_version", *version).unwrap();
+        }
+        tx.commit().unwrap();
+
+        conn.execute(
+            "INSERT INTO repositories (id,group_id,name,path,note,created_at,updated_at)
+             VALUES ('r1',?1,'guaca','/dev/guaca','',1,1)",
+            rusqlite::params![DEFAULT_GROUP_ID],
+        )
+        .unwrap();
+
+        run(&mut conn).unwrap();
+
+        let harness: String = conn
+            .query_row("SELECT harness FROM repositories WHERE id='r1'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(harness, "pi", "an upgrade must not change what a directory starts");
+    }
+
+    #[test]
+    fn a_repository_linked_before_there_were_work_trees_keeps_working_where_it_did() {
+        // The one place `Bench`'s SQL default and its Rust default disagree, and
+        // the reason they have to. A new repository gets a worktree per agent,
+        // because that is the better arrangement and the operator is choosing it
+        // now. A repository already linked gets what it already had: moving
+        // somebody's jobs into a directory that has none of their installed
+        // dependencies in it, on launch, with no gesture, is not an upgrade's
+        // decision to take.
+        let mut conn = memory();
+        let tx = conn.transaction().unwrap();
+        for (version, sql) in MIGRATIONS.iter().take_while(|(v, _)| *v < 44) {
+            tx.execute_batch(sql).unwrap();
+            tx.pragma_update(None, "user_version", *version).unwrap();
+        }
+        tx.commit().unwrap();
+
+        conn.execute(
+            "INSERT INTO repositories (id,group_id,name,path,note,harness,gate,created_at,updated_at)
+             VALUES ('r1',?1,'guaca','/dev/guaca','','pi','open',1,1)",
+            rusqlite::params![DEFAULT_GROUP_ID],
+        )
+        .unwrap();
+
+        run(&mut conn).unwrap();
+
+        let bench: String = conn
+            .query_row("SELECT bench FROM repositories WHERE id='r1'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(bench, "shared", "an upgrade must not move where a directory's jobs run");
+    }
+
+    #[test]
+    fn an_agent_given_a_browser_before_this_column_existed_is_not_held_back_by_it() {
+        // The one direction this upgrade must not go. An operator who had
+        // agents on the web yesterday gets the same browser today: the column
+        // records the decision they already took, it does not take a new one.
+        let mut conn = memory();
+        let tx = conn.transaction().unwrap();
+        for (version, sql) in MIGRATIONS.iter().take_while(|(v, _)| *v < 45) {
+            tx.execute_batch(sql).unwrap();
+            tx.pragma_update(None, "user_version", *version).unwrap();
+        }
+        tx.commit().unwrap();
+
+        conn.execute(
+            "INSERT INTO agents (id,name,avatar,color,model,system_prompt,skills,lifecycle,
+                                 version,created_at,updated_at,group_id,has_browser)
+             VALUES ('a1','Researcher','orb','#7fb069','m','','[]','active',1,1,1,?1,1)",
+            rusqlite::params![DEFAULT_GROUP_ID],
+        )
+        .unwrap();
+
+        run(&mut conn).unwrap();
+
+        let consent: String = conn
+            .query_row("SELECT browser_consent FROM agents WHERE id='a1'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(consent, "open", "an upgrade must not start asking about work already running");
+    }
+
+    #[test]
+    fn a_failed_migration_leaves_the_version_untouched() {
+        // Simulates a half-applied migration by running a batch that fails
+        // partway. The transaction must roll the whole thing back.
+        let mut conn = memory();
+        let tx = conn.transaction().unwrap();
+        let result = tx.execute_batch("CREATE TABLE ok (x); CREATE TABLE ok (x);");
+        assert!(result.is_err());
+        drop(tx);
+        let version: i32 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(version, 0);
+        let leftover: i64 = conn
+            .query_row("SELECT count(*) FROM sqlite_master WHERE name='ok'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(leftover, 0, "rollback must remove the partially created table");
+    }
+}
