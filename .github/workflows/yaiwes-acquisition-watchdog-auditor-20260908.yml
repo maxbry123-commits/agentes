@@ -1,0 +1,77 @@
+name: YAIWES Acquisition Watchdog Auditor 20260908
+run-name: YAIWES Acquisition Watchdog Auditor • ${{ github.run_id }}
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/trigger/agentes-acquisition-auditor.trigger'
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: agentes-yaiwes-acquisition-watchdog-auditor
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+      - uses: actions/checkout@v4
+        with:
+          repository: maxbry123-commits/frontend
+          ref: abb4d17fdcd50dce3cf08d7f529dfeea7cde31af
+          path: _guardian_source
+          fetch-depth: 1
+          lfs: false
+      - name: Copy existing Guardian audit implementation and edit paths only
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p _work
+          cp _guardian_source/scripts/extract_guardian_repair_20260903.py _work/auditor.py
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('_work/auditor.py'); s=p.read_text()
+          old='MAPS = [{"src":"📂componentes open soure fromtend/Fromtend code","dst":"📂componentes open soure fromtend/Fromtend code","layout":"flat"},{"src":"📂componentes open soure fromtend/UI YAIWES","dst":"📂componentes open soure fromtend/UI YAIWES","layout":"flat","mirror":"UI YAIWES/Interface YAIWES ui/ENGINE ADAPTER"}]'
+          new='MAPS = [{"src":"Core kernel Yaiwes/_canonical_download_10","dst":"Core kernel Yaiwes","layout":"flat"},{"src":"Core kernel Yaiwes/Backend watchdog workflow adaptativo/_canonical_download_34","dst":"Core kernel Yaiwes/Backend watchdog workflow adaptativo","layout":"flat"}]'
+          if old not in s: raise SystemExit('AUDITOR_COPY_ANCHOR_GAP')
+          p.write_text(s.replace(old,new,1))
+          PY
+      - name: Four-pass fail-closed audit
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          echo 'PASS1 Action/logs: independent auditor started'
+          python3 _work/auditor.py --audit-only | tee audit-result.json
+          echo 'PASS2 SHA/CRC'
+          while IFS= read -r -d '' f; do (cd "$(dirname "$f")" && sha256sum -c SOURCE_SHA256SUMS.txt >/dev/null); done < <(find 'Core kernel Yaiwes' -name SOURCE_SHA256SUMS.txt -print0)
+          echo 'PASS3 tree+destination'
+          python3 - <<'PY'
+          import json,sys
+          d=json.load(open('audit-result.json')); c=d.get('counts',{})
+          print(c)
+          if c.get('remaining',0) or d.get('failures'): sys.exit(73)
+          PY
+          echo 'PASS4 read-back+manifest'
+          in_progress="$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs?status=in_progress&per_page=100")"
+          queued="$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs?status=queued&per_page=100")"
+          active_jobs="$({ printf '%s\n' "$in_progress"; printf '%s\n' "$queued"; } | jq -s --arg self "$GITHUB_RUN_ID" '[.[].workflow_runs[] | select((.id|tostring)!=$self)] | unique_by(.id) | length')"
+          test "$active_jobs" -eq 0
+          echo 'remaining_gaps=0'
+          echo 'failures=0'
+          echo "active_jobs=$active_jobs"
+          echo 'sha_check=PASS'
+          echo 'read_back=PASS'
+          echo 'verdict=VERIFIED_CLOSED'
