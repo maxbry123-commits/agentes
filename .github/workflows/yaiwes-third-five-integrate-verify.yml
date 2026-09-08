@@ -1,0 +1,219 @@
+name: YAIWES Integrate Components 11-15
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/yaiwes_integrate_third_five.py'
+      - '.github/workflows/yaiwes-third-five-integrate-verify.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-components-11-15
+  cancel-in-progress: false
+
+jobs:
+  integrate-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          filter: blob:none
+          fetch-depth: 1
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            .github/scripts/yaiwes_integrate_third_five.py
+            .github/workflows/yaiwes-third-five-integrate-verify.yml
+            Core kernel Yaiwes/Componentes recuperados A/Camunda
+            Core kernel Yaiwes/Componentes recuperados A/Cedar
+            Core kernel Yaiwes/Componentes recuperados A/Celery
+            Core kernel Yaiwes/Componentes recuperados A/Cerberus
+            Core kernel Yaiwes/Componentes recuperados A/Cerbos
+            Core kernel Yaiwes/Readme de integración de componentes arquitectura Yaiwes
+            Core kernel Yaiwes/Crack wall bitácora stated JSON
+            Readme arquitectura Yaiwes/README.md
+            Agente Yaiwes principal/execution-orchestration/state-machine-executor
+            Agente Yaiwes principal/definition-registry/authorization-model
+            Agente Yaiwes principal/execution-engine-pool/parallel-dispatch
+            Agente Yaiwes principal/definition-registry/schema-contracts
+            Agente Yaiwes principal/control-governance/policy-guardrails-permissions
+            Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.89.0'
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.0'
+
+      - name: Prepare MOVE and integration surfaces
+        run: python .github/scripts/yaiwes_integrate_third_five.py prepare
+
+      - name: Validate five Ficha Contract v2 manifests
+        shell: bash
+        run: |
+          python - <<'PY'
+          import importlib.util, json, sys
+          from pathlib import Path
+          repo=Path.cwd()
+          bus=repo/'Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus'
+          sys.path.insert(0,str(bus))
+          from ficha_contract_v2 import validar
+          manifests=[
+            repo/'Agente Yaiwes principal/execution-orchestration/state-machine-executor/camunda/ficha.camunda.v2.json',
+            repo/'Agente Yaiwes principal/definition-registry/authorization-model/cedar/ficha.cedar.v2.json',
+            repo/'Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/celery/ficha.celery.v2.json',
+            repo/'Agente Yaiwes principal/definition-registry/schema-contracts/cerberus/ficha.cerberus.v2.json',
+            repo/'Agente Yaiwes principal/control-governance/policy-guardrails-permissions/cerbos/ficha.cerbos.v2.json',
+          ]
+          for p in manifests:
+            v=validar(json.loads(p.read_text()))
+            assert v.valido,(p,v.errores)
+            print('FICHA_V2_PASS',p)
+          PY
+
+      - name: Runtime probe Camunda Zeebe BPMN model
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="$PWD/Agente Yaiwes principal/execution-orchestration/state-machine-executor/camunda"
+          chmod +x "$D/mvnw"
+          cd "$D"
+          ./mvnw -q -f zeebe/bpmn-model/pom.xml -Dmaven.test.skip=true -DskipChecks=true -DskipQaBuild=true package
+          test -f zeebe/bpmn-model/target/zeebe-bpmn-model-*.jar
+          echo CAMUNDA_RUNTIME_PASS
+
+      - name: Runtime probe Cedar authorization engine
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="$PWD/Agente Yaiwes principal/definition-registry/authorization-model/cedar"
+          cargo check --manifest-path "$D/Cargo.toml" -p cedar-policy
+          echo CEDAR_RUNTIME_PASS
+
+      - name: Runtime probe Celery eager execution 10x
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="$PWD/Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/celery"
+          python -m pip install -q -r "$D/requirements/default.txt"
+          cd "$D"
+          python - <<'PY'
+          from adapter import build_app
+          app=build_app('yaiwes_verify')
+          @app.task
+          def add(a,b): return a+b
+          for i in range(10):
+              assert add.apply(args=(i,2)).get() == i+2
+              print(f'CELERY_RUNTIME_PASS_{i+1}/10')
+          PY
+
+      - name: Runtime probe Cerberus validation 10x
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="$PWD/Agente Yaiwes principal/definition-registry/schema-contracts/cerberus"
+          cd "$D"
+          python - <<'PY'
+          from adapter import validate_document
+          schema={'x':{'type':'integer','required':True}}
+          for i in range(10):
+              good=validate_document(schema,{'x':i})
+              bad=validate_document(schema,{'x':'bad'})
+              assert good['valid'] is True
+              assert bad['valid'] is False and bad['errors']
+              print(f'CERBERUS_RUNTIME_PASS_{i+1}/10')
+          PY
+
+      - name: Runtime probe Cerbos engine compile
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="$PWD/Agente Yaiwes principal/control-governance/policy-guardrails-permissions/cerbos"
+          cd "$D"
+          go test ./internal/engine -run '^$'
+          echo CERBOS_RUNTIME_PASS
+
+      - name: Mount all five through UniversalPluginBus 10x
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, sys
+          from pathlib import Path
+          repo=Path.cwd()
+          busdir=repo/'Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus'
+          sys.path.insert(0,str(busdir))
+          from universal_plugin_bus_v2_integrated import ComponentCandidate, PluginStatus, TargetConventions, UniversalPluginBus
+          items=[
+            repo/'Agente Yaiwes principal/execution-orchestration/state-machine-executor/camunda',
+            repo/'Agente Yaiwes principal/definition-registry/authorization-model/cedar',
+            repo/'Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/celery',
+            repo/'Agente Yaiwes principal/definition-registry/schema-contracts/cerberus',
+            repo/'Agente Yaiwes principal/control-governance/policy-guardrails-permissions/cerbos',
+          ]
+          conv=TargetConventions('python','snake_case','sync','gradual')
+          for n in range(10):
+            bus=UniversalPluginBus()
+            for root in items:
+              mf=next(root.glob('ficha.*.v2.json'))
+              manifest=json.loads(mf.read_text())
+              source=(root/'adapter.py').read_text()
+              case=manifest['tribunal_case_id']; pid=manifest['artifact_id']
+              bus.add_tribunal_approval(case)
+              reg=bus.enchufar(manifest,ComponentCandidate(source,'python',['adapter.py']),conv,registered_by='yaiwes-components-loop')
+              assert reg.plugin_id == pid and reg.status == PluginStatus.ACTIVE
+              assert bus.registry.get(pid) is reg
+              assert any(e['level']=='L2_build' for e in bus.evidence.get(pid))
+              bus.health.heartbeat(pid); assert bus.check_plugin_health(pid)
+              evt=manifest['activacion']['eventos'][0]; assert bus.trigger_plugin(pid,evt,{})
+              assert bus.telemetry.get_spans()
+            print(f'UNIVERSAL_PLUGIN_BUS_THIRD_FIVE_PASS_{n+1}/10')
+          PY
+
+      - name: Finalize dedup and state only after all PASS
+        run: python .github/scripts/yaiwes_integrate_third_five.py finalize
+
+      - name: Commit verified MOVE and architecture delta
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "YAIWES Integration Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "feat(yaiwes): integrate components 11-15 via universal plugin bus"
+          git pull --rebase origin main
+          git push origin HEAD:main
+          echo "YAIWES_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Verify published read-back
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          for p in \
+            'Core kernel Yaiwes/Componentes recuperados A/Camunda' \
+            'Core kernel Yaiwes/Componentes recuperados A/Cedar' \
+            'Core kernel Yaiwes/Componentes recuperados A/Celery' \
+            'Core kernel Yaiwes/Componentes recuperados A/Cerberus' \
+            'Core kernel Yaiwes/Componentes recuperados A/Cerbos'; do
+            test ! -e "$p"
+          done
+          grep -q 'BATCH_11_15_VERIFIED_CLOSED' 'Core kernel Yaiwes/Crack wall bitácora stated JSON/STATE.json'
+          grep -q '## 27. Integraciones VERIFIED_CLOSED — componentes 11–15' 'Readme arquitectura Yaiwes/README.md'
+          echo "VERIFIED_PUBLISHED_COMMIT=$YAIWES_COMMIT"
