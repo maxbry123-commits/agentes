@@ -1,0 +1,83 @@
+{
+  "task_id": "YAIWES-WATCHDOG-BACKENDS-10-V1",
+  "index": 8,
+  "name": "Cronicle",
+  "slug": "cronicle",
+  "source_url": "https://github.com/jhuckaby/Cronicle",
+  "source_commit": "2ccc0f59510c4f197dec0d650f9f423212552589",
+  "mode": "DOWNLOAD",
+  "delivery": "EXTRACTED_TREE_AFTER_PREFLIGHT",
+  "file_count": 93,
+  "total_bytes": 1402832,
+  "max_blob": {
+    "path": "CHANGELOG.md",
+    "bytes": 128737
+  },
+  "top_level_inventory": {
+    ".github": {
+      "files": 4,
+      "bytes": 5800
+    },
+    ".npmignore": {
+      "files": 1,
+      "bytes": 56
+    },
+    "CHANGELOG.md": {
+      "files": 1,
+      "bytes": 128737
+    },
+    "CODE_OF_CONDUCT.md": {
+      "files": 1,
+      "bytes": 3219
+    },
+    "LICENSE.md": {
+      "files": 1,
+      "bytes": 1099
+    },
+    "README.md": {
+      "files": 1,
+      "bytes": 8102
+    },
+    "bin": {
+      "files": 14,
+      "bytes": 96668
+    },
+    "docs": {
+      "files": 9,
+      "bytes": 209113
+    },
+    "htdocs": {
+      "files": 32,
+      "bytes": 470018
+    },
+    "lib": {
+      "files": 17,
+      "bytes": 344999
+    },
+    "package-lock.json": {
+      "files": 1,
+      "bytes": 115875
+    },
+    "package.json": {
+      "files": 1,
+      "bytes": 1863
+    },
+    "sample_conf": {
+      "files": 10,
+      "bytes": 17283
+    }
+  },
+  "licenses": [
+    {
+      "path": "LICENSE.md",
+      "sha256": "3a552be6e693d173be5181414f5aea6781b1c0d1213b5aa647bb7752e11cd0a2",
+      "bytes": 1099
+    }
+  ],
+  "lfs_pointer_count": 0,
+  "lfs_pointers": [],
+  "oversized_blob_count": 0,
+  "oversized_blobs": [],
+  "deterministic_tree_sha256": "f86a136ac25a51f16012e26bb17849896a47ea4e48da67e56da0d7cf07f9f45c",
+  "status": "PREFLIGHT_PASS"
+}

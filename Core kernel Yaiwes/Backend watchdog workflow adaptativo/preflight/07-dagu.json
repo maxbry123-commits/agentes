@@ -1,0 +1,239 @@
+{
+  "task_id": "YAIWES-WATCHDOG-BACKENDS-10-V1",
+  "index": 7,
+  "name": "Dagu",
+  "slug": "dagu",
+  "source_url": "https://github.com/dagucloud/dagu",
+  "source_commit": "79747252180ee17f451267d7e2e098e219a04722",
+  "mode": "DOWNLOAD",
+  "delivery": "EXTRACTED_TREE_AFTER_PREFLIGHT",
+  "file_count": 3157,
+  "total_bytes": 39573610,
+  "max_blob": {
+    "path": "assets/images/dagu-demo.mp4",
+    "bytes": 3361381
+  },
+  "top_level_inventory": {
+    ".devcontainer": {
+      "files": 1,
+      "bytes": 356
+    },
+    ".dockerignore": {
+      "files": 1,
+      "bytes": 470
+    },
+    ".gitattributes": {
+      "files": 1,
+      "bytes": 11
+    },
+    ".github": {
+      "files": 19,
+      "bytes": 82150
+    },
+    ".gitignore": {
+      "files": 1,
+      "bytes": 631
+    },
+    ".golangci.yml": {
+      "files": 1,
+      "bytes": 1585
+    },
+    ".goreleaser.yaml": {
+      "files": 1,
+      "bytes": 1791
+    },
+    ".protolint.yaml": {
+      "files": 1,
+      "bytes": 103
+    },
+    ".vscode": {
+      "files": 3,
+      "bytes": 3308
+    },
+    "AGENTS.md": {
+      "files": 1,
+      "bytes": 5811
+    },
+    "CLAUDE.md": {
+      "files": 1,
+      "bytes": 5811
+    },
+    "CODE_OF_CONDUCT.md": {
+      "files": 1,
+      "bytes": 1841
+    },
+    "CONTRIBUTING.md": {
+      "files": 1,
+      "bytes": 2994
+    },
+    "Dockerfile": {
+      "files": 1,
+      "bytes": 4375
+    },
+    "Dockerfile.alpine": {
+      "files": 1,
+      "bytes": 2646
+    },
+    "Dockerfile.dev": {
+      "files": 1,
+      "bytes": 3575
+    },
+    "LICENSE": {
+      "files": 1,
+      "bytes": 35149
+    },
+    "LICENSING.md": {
+      "files": 1,
+      "bytes": 1420
+    },
+    "Makefile": {
+      "files": 1,
+      "bytes": 20211
+    },
+    "README.md": {
+      "files": 1,
+      "bytes": 50349
+    },
+    "README_SCHEMA.md": {
+      "files": 1,
+      "bytes": 15993
+    },
+    "SCHEMA_MIGRATION.md": {
+      "files": 1,
+      "bytes": 8016
+    },
+    "SECURITY.md": {
+      "files": 1,
+      "bytes": 1884
+    },
+    "api": {
+      "files": 4,
+      "bytes": 1994310
+    },
+    "assets": {
+      "files": 30,
+      "bytes": 13688311
+    },
+    "build-windows.sh": {
+      "files": 1,
+      "bytes": 779
+    },
+    "charts": {
+      "files": 23,
+      "bytes": 112585
+    },
+    "cmd": {
+      "files": 2,
+      "bytes": 8128
+    },
+    "codecov.yml": {
+      "files": 1,
+      "bytes": 865
+    },
+    "config": {
+      "files": 1,
+      "bytes": 117
+    },
+    "conformance": {
+      "files": 671,
+      "bytes": 538002
+    },
+    "cr.yaml": {
+      "files": 1,
+      "bytes": 90
+    },
+    "deploy": {
+      "files": 13,
+      "bytes": 25241
+    },
+    "doc.go": {
+      "files": 1,
+      "bytes": 404
+    },
+    "engine.go": {
+      "files": 1,
+      "bytes": 16361
+    },
+    "engine_test.go": {
+      "files": 1,
+      "bytes": 3231
+    },
+    "entrypoint.sh": {
+      "files": 1,
+      "bytes": 1815
+    },
+    "example_test.go": {
+      "files": 1,
+      "bytes": 1814
+    },
+    "examples": {
+      "files": 7,
+      "bytes": 7970
+    },
+    "executor.go": {
+      "files": 1,
+      "bytes": 2785
+    },
+    "go.mod": {
+      "files": 1,
+      "bytes": 27865
+    },
+    "go.sum": {
+      "files": 1,
+      "bytes": 164890
+    },
+    "internal": {
+      "files": 1620,
+      "bytes": 15876085
+    },
+    "llms.txt": {
+      "files": 1,
+      "bytes": 86061
+    },
+    "npm": {
+      "files": 30,
+      "bytes": 28484
+    },
+    "proto": {
+      "files": 6,
+      "bytes": 475647
+    },
+    "schemas": {
+      "files": 2,
+      "bytes": 320227
+    },
+    "scripts": {
+      "files": 9,
+      "bytes": 130213
+    },
+    "skills": {
+      "files": 10,
+      "bytes": 88490
+    },
+    "specs": {
+      "files": 56,
+      "bytes": 442768
+    },
+    "tools.go": {
+      "files": 1,
+      "bytes": 760
+    },
+    "ui": {
+      "files": 617,
+      "bytes": 5278832
+    }
+  },
+  "licenses": [
+    {
+      "path": "LICENSE",
+      "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+      "bytes": 35149
+    }
+  ],
+  "lfs_pointer_count": 0,
+  "lfs_pointers": [],
+  "oversized_blob_count": 0,
+  "oversized_blobs": [],
+  "deterministic_tree_sha256": "09dae10475313380790805395c829805b2105fbeddb386d3d4411c109419e011",
+  "status": "PREFLIGHT_PASS"
+}

@@ -1,0 +1,175 @@
+{
+  "task_id": "YAIWES-WATCHDOG-BACKENDS-10-V1",
+  "index": 6,
+  "name": "Prefect",
+  "slug": "prefect",
+  "source_url": "https://github.com/PrefectHQ/prefect",
+  "source_commit": "6a6fe4e24cc456be30dd570aeeb1dbb6b6bef286",
+  "mode": "DOWNLOAD",
+  "delivery": "EXTRACTED_TREE_AFTER_PREFLIGHT",
+  "file_count": 5369,
+  "total_bytes": 87472328,
+  "max_blob": {
+    "path": "src/integrations/prefect-github/prefect_github/schemas/graphql_schema.json",
+    "bytes": 4561834
+  },
+  "top_level_inventory": {
+    ".claude": {
+      "files": 9,
+      "bytes": 49611
+    },
+    ".dockerignore": {
+      "files": 1,
+      "bytes": 622
+    },
+    ".github": {
+      "files": 53,
+      "bytes": 194845
+    },
+    ".gitignore": {
+      "files": 1,
+      "bytes": 1364
+    },
+    ".gitmodules": {
+      "files": 1,
+      "bytes": 101
+    },
+    ".nvmrc": {
+      "files": 1,
+      "bytes": 8
+    },
+    ".pre-commit-config.yaml": {
+      "files": 1,
+      "bytes": 3137
+    },
+    ".prefectignore": {
+      "files": 1,
+      "bytes": 390
+    },
+    "AGENTS.md": {
+      "files": 1,
+      "bytes": 8743
+    },
+    "CODE_OF_CONDUCT.md": {
+      "files": 1,
+      "bytes": 3300
+    },
+    "Dockerfile": {
+      "files": 1,
+      "bytes": 8240
+    },
+    "Dockerfile.sqlite-builder": {
+      "files": 1,
+      "bytes": 1015
+    },
+    "LICENSE": {
+      "files": 1,
+      "bytes": 11357
+    },
+    "README.md": {
+      "files": 1,
+      "bytes": 8579
+    },
+    "REVIEW.md": {
+      "files": 1,
+      "bytes": 2945
+    },
+    "SECURITY.md": {
+      "files": 1,
+      "bytes": 1317
+    },
+    "benches": {
+      "files": 9,
+      "bytes": 34118
+    },
+    "client": {
+      "files": 9,
+      "bytes": 19743
+    },
+    "docs": {
+      "files": 1301,
+      "bytes": 46882985
+    },
+    "examples": {
+      "files": 9,
+      "bytes": 75789
+    },
+    "hatch_build.py": {
+      "files": 1,
+      "bytes": 1812
+    },
+    "integration-tests": {
+      "files": 26,
+      "bytes": 85737
+    },
+    "justfile": {
+      "files": 1,
+      "bytes": 8127
+    },
+    "load_testing": {
+      "files": 9,
+      "bytes": 12350
+    },
+    "plans": {
+      "files": 6,
+      "bytes": 189265
+    },
+    "pyproject.toml": {
+      "files": 1,
+      "bytes": 14626
+    },
+    "pyrightconfig-ci.json": {
+      "files": 1,
+      "bytes": 6076
+    },
+    "renovate.json": {
+      "files": 1,
+      "bytes": 680
+    },
+    "schemas": {
+      "files": 2,
+      "bytes": 192917
+    },
+    "scripts": {
+      "files": 40,
+      "bytes": 125951
+    },
+    "src": {
+      "files": 1468,
+      "bytes": 19716522
+    },
+    "tests": {
+      "files": 582,
+      "bytes": 10197836
+    },
+    "tools": {
+      "files": 1,
+      "bytes": 1751
+    },
+    "ui": {
+      "files": 151,
+      "bytes": 981551
+    },
+    "ui-v2": {
+      "files": 1674,
+      "bytes": 7350939
+    },
+    "uv.lock": {
+      "files": 1,
+      "bytes": 1277979
+    }
+  },
+  "licenses": [
+    {
+      "path": "LICENSE",
+      "sha256": "302c6c9fca2c024cdfc4a0b8082fdd2dc52453c0d92e4ca2859f261acdc08774",
+      "bytes": 11357
+    }
+  ],
+  "lfs_pointer_count": 0,
+  "lfs_pointers": [],
+  "oversized_blob_count": 0,
+  "oversized_blobs": [],
+  "deterministic_tree_sha256": "46d31665cc78e14e23f067bac9100a819e3a055b0260b43792625c2b103bc668",
+  "status": "PREFLIGHT_PASS"
+}

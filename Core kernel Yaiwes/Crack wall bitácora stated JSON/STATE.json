@@ -62,7 +62,13 @@
   },
   "approved_batch_11_15": {
     "director_approval": true,
-    "queue": ["Camunda", "Cedar", "Celery", "Cerberus", "Cerbos"],
+    "queue": [
+      "Camunda",
+      "Cedar",
+      "Celery",
+      "Cerberus",
+      "Cerbos"
+    ],
     "destinations": {
       "Camunda": "Agente Yaiwes principal/execution-orchestration/state-machine-executor/camunda/",
       "Cedar": "Agente Yaiwes principal/definition-registry/authorization-model/cedar/",
@@ -74,5 +80,55 @@
   },
   "approval_required_before_components_11_15_move_or_wiring": false,
   "readme_architecture_rewrite_forbidden": true,
-  "next_delta": "Integrate Camunda 1x1; only after PASS continue Cedar, Celery, Cerberus and Cerbos"
+  "next_delta": "Integrate Camunda 1x1; only after PASS continue Cedar, Celery, Cerberus and Cerbos",
+  "multi_watchdog_backend_v1": {
+    "status": "PENDIENTE_PREFLIGHT",
+    "task_id": "YAIWES-WATCHDOG-BACKENDS-10-V1",
+    "destination": "Core kernel Yaiwes/Backend watchdog workflow adaptativo",
+    "components_expected": 10,
+    "preflight_reports": [
+      {
+        "name": "Windmill",
+        "status": "PREFLIGHT_PASS"
+      },
+      {
+        "name": "Kestra",
+        "status": "PREFLIGHT_PASS"
+      },
+      {
+        "name": "Apache-DolphinScheduler",
+        "status": "PREFLIGHT_PASS"
+      },
+      {
+        "name": "Rundeck",
+        "status": "PREFLIGHT_PASS"
+      },
+      {
+        "name": "Temporal",
+        "status": "PREFLIGHT_PASS"
+      },
+      {
+        "name": "Prefect",
+        "status": "PREFLIGHT_PASS"
+      },
+      {
+        "name": "Dagu",
+        "status": "PREFLIGHT_PASS"
+      },
+      {
+        "name": "Cronicle",
+        "status": "PREFLIGHT_PASS"
+      },
+      {
+        "name": "Hatchet",
+        "status": "PREFLIGHT_PASS"
+      },
+      {
+        "name": "Trigger.dev",
+        "status": "PREFLIGHT_PASS"
+      }
+    ],
+    "next_gate": "SELECTED_PATHS_FROM_REAL_SOURCE_TREE",
+    "source_of_truth": "physical_repo_state"
+  }
 }

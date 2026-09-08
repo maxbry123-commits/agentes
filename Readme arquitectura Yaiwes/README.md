@@ -1203,3 +1203,17 @@ Esta sección es un delta aditivo; preserva íntegramente la arquitectura anteri
 - Las pruebas runtime específicas previas de APScheduler, AWS Step Functions, Ajv, APISIX y Airflow se conservan como evidencia complementaria; presencia de carpeta o Ficha por sí sola no cuenta como cierre.
 
 **Estado arquitectónico del lote:** `VERIFIED_CLOSED` para componentes 1–5. Cualquier regresión posterior reabre el nodo correspondiente en modo fail-closed.
+
+<!-- YAIWES_MULTI_WATCHDOG_BACKEND_V1 -->
+## Integración — Sistema adaptativo Multi-Watchdog / programación de tareas — PENDIENTE
+
+**Estado:** `PENDIENTE` hasta descarga `EXTRACTED_TREE`, adapter/Ficha v2/WIRING, runtime real, UniversalPluginBus, health/evidence, memoria+sandbox y read-back independiente.
+
+**Bitácora activa:** [Crack wall bitácora stated JSON / STATE.json](https://github.com/maxbry123-commits/agentes/blob/main/Core%20kernel%20Yaiwes/Crack%20wall%20bit%C3%A1cora%20stated%20JSON/STATE.json)
+
+**Flujo horizontal:** `Tarea programada → Registry → Scheduler/Trigger → Priority Queue → Workflow Adapter → Worker/Sandbox → Checkpoint → Resultado/Evidence`.
+
+**Flujo transversal:** `Agente → planifica/divide → selecciona workflow por duración/durabilidad/prioridad/paralelismo → memoria persistente → ejecución fan-out/fan-in → recovery → estado → UI event stream`.
+
+**Backends aprobados:** Windmill · Kestra · Apache DolphinScheduler · Rundeck · Temporal · Prefect · Dagu · Cronicle · Hatchet · Trigger.dev.
+

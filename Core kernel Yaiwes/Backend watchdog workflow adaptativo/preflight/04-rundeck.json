@@ -1,0 +1,227 @@
+{
+  "task_id": "YAIWES-WATCHDOG-BACKENDS-10-V1",
+  "index": 4,
+  "name": "Rundeck",
+  "slug": "rundeck",
+  "source_url": "https://github.com/rundeck/rundeck",
+  "source_commit": "1b944fd3ab24b2cedbe96de8e3cb3847113cd01e",
+  "mode": "DOWNLOAD",
+  "delivery": "EXTRACTED_TREE_AFTER_PREFLIGHT",
+  "file_count": 5492,
+  "total_bytes": 57567054,
+  "max_blob": {
+    "path": "rundeckapp/grails-spa/packages/ui-trellis/tests/data/fixtures/ExecLargeOutput.json",
+    "bytes": 4670288
+  },
+  "top_level_inventory": {
+    ".circleci": {
+      "files": 3,
+      "bytes": 46182
+    },
+    ".claude": {
+      "files": 31,
+      "bytes": 167376
+    },
+    ".github": {
+      "files": 21,
+      "bytes": 55033
+    },
+    ".gitignore": {
+      "files": 1,
+      "bytes": 1107
+    },
+    ".gitmodules": {
+      "files": 1,
+      "bytes": 125
+    },
+    ".nvmrc": {
+      "files": 1,
+      "bytes": 8
+    },
+    "CLAUDE.md": {
+      "files": 1,
+      "bytes": 4864
+    },
+    "CODE_OF_CONDUCT.md": {
+      "files": 1,
+      "bytes": 3220
+    },
+    "CONTRIBUTING.md": {
+      "files": 1,
+      "bytes": 1749
+    },
+    "LICENSE": {
+      "files": 1,
+      "bytes": 11357
+    },
+    "README.md": {
+      "files": 1,
+      "bytes": 5185
+    },
+    "SECURITY.md": {
+      "files": 1,
+      "bytes": 2059
+    },
+    "build.gradle": {
+      "files": 1,
+      "bytes": 26688
+    },
+    "build.yaml": {
+      "files": 1,
+      "bytes": 210
+    },
+    "config": {
+      "files": 1,
+      "bytes": 235
+    },
+    "core": {
+      "files": 1100,
+      "bytes": 4622061
+    },
+    "cve-suppress.xml": {
+      "files": 1,
+      "bytes": 7683
+    },
+    "docker": {
+      "files": 64,
+      "bytes": 86077
+    },
+    "encryption-core": {
+      "files": 6,
+      "bytes": 24564
+    },
+    "examples": {
+      "files": 91,
+      "bytes": 687508
+    },
+    "functional-test": {
+      "files": 427,
+      "bytes": 1346227
+    },
+    "gradle": {
+      "files": 9,
+      "bytes": 65644
+    },
+    "gradle.properties": {
+      "files": 1,
+      "bytes": 6224
+    },
+    "gradlew": {
+      "files": 1,
+      "bytes": 8733
+    },
+    "gradlew.bat": {
+      "files": 1,
+      "bytes": 2937
+    },
+    "grails-execution-mode-timer": {
+      "files": 43,
+      "bytes": 166267
+    },
+    "grails-job-kill-handler": {
+      "files": 19,
+      "bytes": 54027
+    },
+    "grails-metricsweb": {
+      "files": 16,
+      "bytes": 69303
+    },
+    "grails-persistlocale": {
+      "files": 11,
+      "bytes": 17484
+    },
+    "grails-repository": {
+      "files": 21,
+      "bytes": 74107
+    },
+    "grails-rundeck-data-shared": {
+      "files": 101,
+      "bytes": 175664
+    },
+    "grails-securityheaders": {
+      "files": 28,
+      "bytes": 62633
+    },
+    "grails-webhooks": {
+      "files": 33,
+      "bytes": 109321
+    },
+    "graphics": {
+      "files": 23,
+      "bytes": 286798
+    },
+    "packaging": {
+      "files": 39,
+      "bytes": 44366
+    },
+    "plugins": {
+      "files": 170,
+      "bytes": 1023220
+    },
+    "renovate.json": {
+      "files": 1,
+      "bytes": 10050
+    },
+    "rundeck-app-util": {
+      "files": 17,
+      "bytes": 21912
+    },
+    "rundeck-authz": {
+      "files": 131,
+      "bytes": 387286
+    },
+    "rundeck-data-models": {
+      "files": 73,
+      "bytes": 113227
+    },
+    "rundeck-repository": {
+      "files": 115,
+      "bytes": 453859
+    },
+    "rundeck-storage": {
+      "files": 55,
+      "bytes": 191441
+    },
+    "rundeckapp": {
+      "files": 2729,
+      "bytes": 46322097
+    },
+    "scripts": {
+      "files": 12,
+      "bytes": 29513
+    },
+    "settings.gradle": {
+      "files": 1,
+      "bytes": 2477
+    },
+    "setversion.sh": {
+      "files": 1,
+      "bytes": 9530
+    },
+    "test": {
+      "files": 83,
+      "bytes": 743431
+    },
+    "testbuild.groovy": {
+      "files": 1,
+      "bytes": 15238
+    },
+    "version.properties": {
+      "files": 1,
+      "bytes": 747
+    }
+  },
+  "licenses": [
+    {
+      "path": "LICENSE",
+      "sha256": "b40930bbcf80744c86c46a12bc9da056641d722716c378f5659b9e555ef833e1",
+      "bytes": 11357
+    }
+  ],
+  "lfs_pointer_count": 0,
+  "lfs_pointers": [],
+  "oversized_blob_count": 0,
+  "oversized_blobs": [],
+  "deterministic_tree_sha256": "5170f472d47a0768f1d9125b2991457a5127d0fdaf52467f7a67afabfab97bfe",
+  "status": "PREFLIGHT_PASS"
+}

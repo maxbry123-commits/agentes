@@ -1,0 +1,251 @@
+{
+  "task_id": "YAIWES-WATCHDOG-BACKENDS-10-V1",
+  "index": 10,
+  "name": "Trigger.dev",
+  "slug": "trigger-dev",
+  "source_url": "https://github.com/triggerdotdev/trigger.dev",
+  "source_commit": "ed37e19c9f70495ba2a067245f8a4a83aaace2c3",
+  "mode": "DOWNLOAD",
+  "delivery": "EXTRACTED_TREE_AFTER_PREFLIGHT",
+  "file_count": 6093,
+  "total_bytes": 69618445,
+  "max_blob": {
+    "path": "apps/webapp/app/components/primitives/tabler-sprite.svg",
+    "bytes": 2084586
+  },
+  "top_level_inventory": {
+    ".changeset": {
+      "files": 15,
+      "bytes": 11854
+    },
+    ".claude": {
+      "files": 20,
+      "bytes": 102434
+    },
+    ".configs": {
+      "files": 1,
+      "bytes": 922
+    },
+    ".cursor": {
+      "files": 9,
+      "bytes": 41223
+    },
+    ".cursorignore": {
+      "files": 1,
+      "bytes": 60
+    },
+    ".dockerignore": {
+      "files": 1,
+      "bytes": 487
+    },
+    ".env.example": {
+      "files": 1,
+      "bytes": 8162
+    },
+    ".gitattributes": {
+      "files": 1,
+      "bytes": 329
+    },
+    ".github": {
+      "files": 62,
+      "bytes": 182157
+    },
+    ".gitignore": {
+      "files": 1,
+      "bytes": 1542
+    },
+    ".gitmodules": {
+      "files": 1,
+      "bytes": 165
+    },
+    ".infisical.json": {
+      "files": 1,
+      "bytes": 46
+    },
+    ".nvmrc": {
+      "files": 1,
+      "bytes": 9
+    },
+    ".oxfmtrc.json": {
+      "files": 1,
+      "bytes": 809
+    },
+    ".oxlintrc.json": {
+      "files": 1,
+      "bytes": 6999
+    },
+    ".repo-ops-baseline": {
+      "files": 1,
+      "bytes": 0
+    },
+    ".server-changes": {
+      "files": 10,
+      "bytes": 5737
+    },
+    ".vouch.yml": {
+      "files": 1,
+      "bytes": 80
+    },
+    ".vscode": {
+      "files": 3,
+      "bytes": 3033
+    },
+    ".zed": {
+      "files": 1,
+      "bytes": 2254
+    },
+    "AGENTS.md": {
+      "files": 1,
+      "bytes": 14513
+    },
+    "CHANGESETS.md": {
+      "files": 1,
+      "bytes": 4058
+    },
+    "CLAUDE.md": {
+      "files": 1,
+      "bytes": 11
+    },
+    "CODE_OF_CONDUCT.md": {
+      "files": 1,
+      "bytes": 3023
+    },
+    "CONTRIBUTING.md": {
+      "files": 1,
+      "bytes": 16241
+    },
+    "DOCKER_INSTALLATION.md": {
+      "files": 1,
+      "bytes": 4742
+    },
+    "LICENSE": {
+      "files": 1,
+      "bytes": 10935
+    },
+    "ONBOARDING.md": {
+      "files": 1,
+      "bytes": 15599
+    },
+    "README.md": {
+      "files": 1,
+      "bytes": 9330
+    },
+    "RELEASE.md": {
+      "files": 1,
+      "bytes": 2696
+    },
+    "SECURITY.md": {
+      "files": 1,
+      "bytes": 2528
+    },
+    "ai": {
+      "files": 3,
+      "bytes": 9687
+    },
+    "ailogger-output.log": {
+      "files": 1,
+      "bytes": 0
+    },
+    "apps": {
+      "files": 2662,
+      "bytes": 19952508
+    },
+    "base-images": {
+      "files": 3,
+      "bytes": 9132
+    },
+    "depot.json": {
+      "files": 1,
+      "bytes": 25
+    },
+    "docker": {
+      "files": 25,
+      "bytes": 114935
+    },
+    "docs": {
+      "files": 535,
+      "bytes": 27873369
+    },
+    "hosting": {
+      "files": 43,
+      "bytes": 209245
+    },
+    "internal-packages": {
+      "files": 1779,
+      "bytes": 12005128
+    },
+    "knip.json": {
+      "files": 1,
+      "bytes": 2993
+    },
+    "lefthook.yml": {
+      "files": 1,
+      "bytes": 1439
+    },
+    "oxlint-plugins": {
+      "files": 3,
+      "bytes": 17343
+    },
+    "package.json": {
+      "files": 1,
+      "bytes": 7134
+    },
+    "packages": {
+      "files": 842,
+      "bytes": 7641081
+    },
+    "patches": {
+      "files": 12,
+      "bytes": 94398
+    },
+    "playwright.config.ts": {
+      "files": 1,
+      "bytes": 1661
+    },
+    "pnpm-lock.yaml": {
+      "files": 1,
+      "bytes": 1024427
+    },
+    "pnpm-workspace.yaml": {
+      "files": 1,
+      "bytes": 476
+    },
+    "rules": {
+      "files": 11,
+      "bytes": 82767
+    },
+    "scripts": {
+      "files": 16,
+      "bytes": 60849
+    },
+    "server.json": {
+      "files": 1,
+      "bytes": 910
+    },
+    "test-timings.json": {
+      "files": 1,
+      "bytes": 49779
+    },
+    "tests": {
+      "files": 4,
+      "bytes": 5097
+    },
+    "turbo.json": {
+      "files": 1,
+      "bytes": 2084
+    }
+  },
+  "licenses": [
+    {
+      "path": "LICENSE",
+      "sha256": "9e9e22db5ae77f7ce1119294d0386cbbab2791cc77fb68d97c90627d7d96c5e1",
+      "bytes": 10935
+    }
+  ],
+  "lfs_pointer_count": 0,
+  "lfs_pointers": [],
+  "oversized_blob_count": 0,
+  "oversized_blobs": [],
+  "deterministic_tree_sha256": "0b475d78ee087ecf3e0bdf4ec08f67985e1e048589a852cd30a842626dbe2e9f",
+  "status": "PREFLIGHT_PASS"
+}
