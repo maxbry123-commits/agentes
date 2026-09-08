@@ -1,0 +1,17 @@
+{
+  "schema": "yaiwes.extraction.guardian.v2",
+  "run_id": "34290905157",
+  "archive_groups": 0,
+  "processed": [],
+  "failures": [],
+  "remaining_gaps": [],
+  "retryable_gaps": [],
+  "blocked_gaps": [],
+  "counts": {
+    "remaining": 0,
+    "retryable": 0,
+    "blocked": 0,
+    "processed": 0
+  },
+  "verdict": "VERIFIED_CLOSED"
+}
