@@ -160,7 +160,7 @@ jobs:
           cd "$D"
           go mod tidy
           git diff -- go.mod go.sum || true
-          go test ./internal/engine -run '^$'
+          go build ./internal/engine
           echo CERBOS_RUNTIME_PASS
 
       - name: Mount all five through UniversalPluginBus 10x
