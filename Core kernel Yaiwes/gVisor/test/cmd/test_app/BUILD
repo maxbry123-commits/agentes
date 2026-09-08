@@ -1,0 +1,33 @@
+load("//tools:defs.bzl", "go_binary")
+
+package(
+    default_applicable_licenses = ["//:license"],
+    licenses = ["notice"],
+)
+
+go_binary(
+    name = "test_app",
+    testonly = 1,
+    srcs = [
+        "chardev.go",
+        "fds.go",
+        "hostinet_sr.go",
+        "main.go",
+        "xattr.go",
+        "zombies.go",
+    ],
+    features = ["fully_static_link"],
+    visibility = [
+        "//runsc/container:__pkg__",
+        "//test/syscalls/linux:__pkg__",
+    ],
+    deps = [
+        "//pkg/gvisordetect",
+        "//pkg/test/testutil",
+        "//pkg/unet",
+        "//runsc/flag",
+        "@com_github_creack_pty//:go_default_library",
+        "@com_github_google_subcommands//:go_default_library",
+        "@org_golang_x_sys//unix:go_default_library",
+    ],
+)

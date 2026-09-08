@@ -1,0 +1,89 @@
+module Hatchet
+  class Error < StandardError
+  end
+
+  # Create an OR condition group
+  def self.or_: (*untyped conditions) -> OrCondition
+
+  class Client
+    attr_reader config: Config
+
+    def initialize: (
+      ?debug: bool,
+      ?token: String,
+      ?tenant_id: String,
+      ?host_port: String,
+      ?server_url: String,
+      ?namespace: String,
+      ?logger: Logger,
+      ?listener_v2_timeout: Integer,
+      ?grpc_max_recv_message_length: Integer,
+      ?grpc_max_send_message_length: Integer,
+      ?worker_preset_labels: Hash[String, String],
+      ?tls_config: TLSConfig,
+      ?healthcheck: HealthcheckConfig
+    ) -> void
+
+    def rest_client: () -> untyped
+    def events: () -> Features::Events
+    def runs: () -> Features::Runs
+    def tenant: () -> Features::Tenant
+    def logs: () -> Features::Logs
+    def workers: () -> Features::Workers
+    def cel: () -> Features::CEL
+    def workflows: () -> Features::Workflows
+    def filters: () -> Features::Filters
+    def metrics: () -> Features::Metrics
+    def rate_limits: () -> Features::RateLimits
+    def cron: () -> Features::Cron
+    def scheduled: () -> Features::Scheduled
+
+    def workflow: (name: String, **untyped opts) -> Workflow
+    def task: (name: String, **untyped opts) { (Hash[String, untyped], Context) -> untyped } -> Task
+    def durable_task: (name: String, ?eviction_policy: EvictionPolicy?, **untyped opts) { (Hash[String, untyped], DurableContext) -> untyped } -> Task
+    def worker: (String name, **untyped opts) -> Worker
+
+    def logger: () -> Logger
+    def tenant_id: () -> String
+    def channel: () -> untyped
+    def dispatcher_grpc: () -> Clients::Grpc::Dispatcher
+    def admin_grpc: () -> Clients::Grpc::Admin
+    def event_grpc: () -> Clients::Grpc::EventClient
+    def workflow_run_listener: () -> WorkflowRunListener
+    def admin: () -> AdminClient
+  end
+
+  class AdminClient
+    def initialize: (client: Client) -> void
+
+    def trigger_workflow: (
+      Workflow | Task | String workflow_or_task,
+      Hash[String, untyped] input,
+      ?options: TriggerWorkflowOptions?
+    ) -> Hash[String, untyped]
+
+    def trigger_workflow_no_wait: (
+      Workflow | Task | String workflow_or_task,
+      Hash[String, untyped] input,
+      ?options: TriggerWorkflowOptions?
+    ) -> WorkflowRunRef
+
+    def trigger_workflow_many: (
+      Workflow | Task | String workflow_or_task,
+      Array[Hash[Symbol, untyped]] items,
+      ?return_exceptions: bool
+    ) -> Array[untyped]
+
+    def trigger_workflow_many_no_wait: (
+      Workflow | Task | String workflow_or_task,
+      Array[Hash[Symbol, untyped]] items
+    ) -> Array[WorkflowRunRef]
+
+    def schedule_workflow: (
+      Workflow | Task | String workflow,
+      Time time,
+      ?input: Hash[String, untyped],
+      ?options: TriggerWorkflowOptions?
+    ) -> untyped
+  end
+end

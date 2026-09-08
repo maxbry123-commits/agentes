@@ -1,0 +1,146 @@
+// Copyright (C) 2026 Yota Hamada
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+package scheduler
+
+import (
+	"context"
+	"os"
+	"syscall"
+	"testing"
+	"time"
+
+	"github.com/dagucloud/dagu/v2/internal/cmn/config"
+	"github.com/dagucloud/dagu/v2/internal/ir"
+	"github.com/stretchr/testify/require"
+)
+
+func TestWaitForTickSignalStopsScheduler(t *testing.T) {
+	t.Parallel()
+
+	sc := &Scheduler{
+		entryReader:    &staticEntryReader{},
+		quit:           make(chan any),
+		queueProcessor: NewQueueProcessor(nil, nil, nil, nil, config.Queues{}),
+		planner:        &TickPlanner{},
+	}
+
+	sig := make(chan os.Signal, 1)
+	timer := time.NewTimer(time.Hour)
+	defer timer.Stop()
+
+	sig <- syscall.SIGTERM
+	require.False(t, sc.waitForTick(context.Background(), sig, timer))
+
+	select {
+	case <-sc.quit:
+	default:
+		require.FailNow(t, "expected scheduler quit channel to close on signal")
+	}
+}
+
+func TestRunTickSafelyRecoversTickPanic(t *testing.T) {
+	t.Parallel()
+
+	sc, panicTriggered := newPanickingScheduler(t)
+
+	require.NotPanics(t, func() {
+		sc.runTickSafely(context.Background(), time.Now())
+	})
+	requirePanicTriggered(t, panicTriggered)
+}
+
+func TestCronLoopRecoversTickPanicAndKeepsRunning(t *testing.T) {
+	t.Parallel()
+
+	sc, panicTriggered := newPanickingScheduler(t)
+	sc.quit = make(chan any)
+	sc.clock = func() time.Time {
+		return time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	}
+	sig := make(chan os.Signal, 1)
+	done := make(chan struct{})
+	panicCh := make(chan any, 1)
+
+	go func() {
+		defer close(done)
+		defer func() {
+			if r := recover(); r != nil {
+				panicCh <- r
+			}
+		}()
+		sc.cronLoop(context.Background(), sig)
+	}()
+
+	defer func() {
+		select {
+		case <-sc.quit:
+		default:
+			close(sc.quit)
+		}
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			require.FailNow(t, "cronLoop did not stop")
+		}
+	}()
+
+	requirePanicTriggered(t, panicTriggered)
+	requireCronLoopRunning(t, sc, done, panicCh)
+
+	select {
+	case r := <-panicCh:
+		require.Failf(t, "cronLoop panic escaped", "%v", r)
+	case <-done:
+		require.FailNow(t, "cronLoop exited after tick panic")
+	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+func newPanickingScheduler(t *testing.T) (*Scheduler, <-chan struct{}) {
+	t.Helper()
+
+	panicTriggered := make(chan struct{}, 1)
+	planner := NewTickPlanner(TickPlannerConfig{
+		IsSuspended: func(context.Context, string) (bool, error) {
+			panicTriggered <- struct{}{}
+			panic("test tick panic")
+		},
+	})
+	require.NoError(t, planner.Init(t.Context(), testDAGEntries(&ir.DAG{Name: "panic-dag"})))
+
+	return &Scheduler{planner: planner}, panicTriggered
+}
+
+func requirePanicTriggered(t *testing.T, panicTriggered <-chan struct{}) {
+	t.Helper()
+
+	select {
+	case <-panicTriggered:
+	case <-time.After(time.Second):
+		require.FailNow(t, "scheduler tick did not reach panic dependency")
+	}
+}
+
+func requireCronLoopRunning(t *testing.T, sc *Scheduler, done <-chan struct{}, panicCh <-chan any) {
+	t.Helper()
+
+	deadline := time.After(time.Second)
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case r := <-panicCh:
+			require.Failf(t, "cronLoop panic escaped", "%v", r)
+		case <-done:
+			require.FailNow(t, "cronLoop exited before reporting running")
+		case <-deadline:
+			require.FailNow(t, "cronLoop did not report running")
+		case <-ticker.C:
+			if sc.IsRunning() {
+				return
+			}
+		}
+	}
+}

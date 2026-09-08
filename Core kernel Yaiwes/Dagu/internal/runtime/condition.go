@@ -1,0 +1,230 @@
+// Copyright (C) 2026 Yota Hamada
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+package runtime
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"os/exec"
+	"strings"
+
+	"github.com/dagucloud/dagu/v2/internal/cmn/cmdutil"
+	"github.com/dagucloud/dagu/v2/internal/cmn/stringutil"
+	cmnvalue "github.com/dagucloud/dagu/v2/internal/cmn/value"
+	"github.com/dagucloud/dagu/v2/internal/ir"
+)
+
+// Errors for condition evaluation
+var (
+	ErrConditionNotMet = fmt.Errorf("condition was not met")
+)
+
+// Error message for when not all conditions are met
+const ErrMsgOtherConditionNotMet = "other condition was not met"
+
+// EvaluateConditions evaluates conditions and returns their runtime results.
+func EvaluateConditions(ctx context.Context, shell []string, conditions []*ir.Condition) ([]ir.ConditionResult, error) {
+	results := conditionResults(conditions)
+	var lastErr error
+
+	for i := range conditions {
+		if err := EvalCondition(ctx, shell, conditions[i]); err != nil {
+			results[i].Error = err.Error()
+			lastErr = err
+		}
+	}
+
+	if lastErr != nil {
+		for i := range results {
+			if results[i].Error != "" {
+				continue
+			}
+			results[i].Error = ErrMsgOtherConditionNotMet
+		}
+	}
+
+	return results, lastErr
+}
+
+func conditionResults(conditions []*ir.Condition) []ir.ConditionResult {
+	if len(conditions) == 0 {
+		return nil
+	}
+	results := make([]ir.ConditionResult, len(conditions))
+	for i, condition := range conditions {
+		if condition != nil {
+			results[i].Condition = *condition
+		}
+	}
+	return results
+}
+
+// EvalCondition evaluates the condition and returns the actual value.
+// It returns an error if the evaluation failed or the condition is invalid.
+// If c.Negate is true, the result is inverted: the condition passes when it
+// would normally fail, and vice versa.
+func EvalCondition(ctx context.Context, shell []string, c *ir.Condition) error {
+	var err error
+	switch {
+	case c.Expected != "" && (c.Condition != "" || c.Eval != ""):
+		err = matchCondition(ctx, shell, c)
+	case c.Eval != "":
+		err = fmt.Errorf("expected is required when eval is set")
+
+	default:
+		err = evalCommand(ctx, shell, c)
+	}
+
+	// Apply negation if needed
+	if c.Negate {
+		if err == nil {
+			return fmt.Errorf("%w: condition matched but negate is true", ErrConditionNotMet)
+		}
+		// Only invert logical "not met" failures; keep evaluation/runtime errors.
+		if errors.Is(err, ErrConditionNotMet) {
+			return nil
+		}
+		// Evaluation or runtime error - don't swallow it
+		return err
+	}
+
+	return err
+}
+
+// matchCondition evaluates the condition and checks if it matches the expected value.
+// It returns an error if the condition was not met.
+func matchCondition(ctx context.Context, shell []string, c *ir.Condition) error {
+	raw := c.Condition
+	field := cmnvalue.ConditionRuntimeValueField("condition")
+	if c.Eval != "" {
+		raw = c.Eval
+		field = cmnvalue.ConditionEvalField("eval")
+		ctx = conditionEvalContext(ctx, shell)
+	}
+
+	evaluatedVal, err := resolveRuntimeString(ctx, raw, field)
+	if err != nil {
+		return fmt.Errorf("failed to evaluate the value: Error=%v", err)
+	}
+
+	// Get maxOutputSize from DAG configuration
+	var maxOutputSize = defaultMaxOutputSizeBytes
+	if rCtx := GetDAGContext(ctx); rCtx.DAG != nil && rCtx.DAG.MaxOutputSize > 0 {
+		maxOutputSize = rCtx.DAG.MaxOutputSize
+	}
+
+	matchOpts := []stringutil.MatchOption{
+		stringutil.WithExactMatch(),
+		stringutil.WithMaxBufferSize(maxOutputSize),
+	}
+
+	if stringutil.MatchPattern(ctx, evaluatedVal, []string{c.Expected}, matchOpts...) {
+		return nil
+	}
+	// Return an helpful error message if the condition is not met
+	return fmt.Errorf("%w: expected %q, got %q", ErrConditionNotMet, c.Expected, evaluatedVal)
+}
+
+func conditionEvalContext(ctx context.Context, shell []string) context.Context {
+	if len(shell) > 0 {
+		ctx = cmnvalue.WithCommandSubstitutionShell(ctx, shell)
+	}
+	if env, ok := conditionEnv(ctx); ok {
+		ctx = cmnvalue.WithCommandSubstitutionWorkingDir(ctx, env.WorkingDir)
+	}
+	return ctx
+}
+
+func evalCommand(ctx context.Context, shell []string, c *ir.Condition) error {
+	command := cmnvalue.CommandContext{
+		Target:          cmnvalue.CommandTargetLocal,
+		Shell:           shell,
+		ShellConfigured: len(shell) > 0,
+	}
+	commandToRun, err := resolveRuntimeString(ctx, c.Condition, cmnvalue.ConditionCommandField("condition", command))
+	if err != nil {
+		return fmt.Errorf("failed to evaluate command: %w", err)
+	}
+	workingDir := ""
+	if env, ok := conditionEnv(ctx); ok {
+		workingDir = env.WorkingDir
+	}
+	if len(shell) > 0 {
+		return runShellCommand(ctx, shell, commandToRun, workingDir)
+	}
+	return runDirectCommand(ctx, commandToRun, workingDir)
+}
+
+func conditionEnv(ctx context.Context) (Env, bool) {
+	if env, ok := LookupEnv(ctx); ok {
+		return env, true
+	}
+	rCtx, ok := LookupDAGContext(ctx)
+	if !ok || rCtx.DAG == nil {
+		return Env{}, false
+	}
+	return NewEnv(ctx, ir.Step{}), true
+}
+
+func runShellCommand(ctx context.Context, shell []string, commandToRun string, workingDir string) error {
+	args := make([]string, len(shell)-1)
+	copy(args, shell[1:])
+	args = appendShellCommandFlag(shell[0], args)
+	args = append(args, commandToRun)
+	cmd := exec.CommandContext(ctx, shell[0], args...) // nolint:gosec
+	cmd.Env = append(cmd.Env, AllEnvs(ctx)...)
+	if workingDir != "" {
+		cmd.Dir = workingDir
+	}
+	_, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("%w: %s", ErrConditionNotMet, err)
+	}
+	return nil
+}
+
+func appendShellCommandFlag(shell string, args []string) []string {
+	if hasShellCommandFlag(shell, args) {
+		return args
+	}
+	return append(args, cmdutil.ShellCommandFlag(shell))
+}
+
+func hasShellCommandFlag(shell string, args []string) bool {
+	for _, arg := range args {
+		switch {
+		case cmdutil.IsPowerShell(shell):
+			if strings.EqualFold(arg, "-Command") || strings.EqualFold(arg, "-C") {
+				return true
+			}
+		case cmdutil.IsCmdShell(shell):
+			if strings.EqualFold(arg, "/c") {
+				return true
+			}
+		case cmdutil.IsNixShell(shell):
+			if arg == "--run" {
+				return true
+			}
+		default:
+			if arg == "-c" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func runDirectCommand(ctx context.Context, commandToRun string, workingDir string) error {
+	cmd := exec.CommandContext(ctx, commandToRun)
+	cmd.Env = append(cmd.Env, AllEnvs(ctx)...)
+	if workingDir != "" {
+		cmd.Dir = workingDir
+	}
+	_, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("%w: %s", ErrConditionNotMet, err)
+	}
+	return nil
+}

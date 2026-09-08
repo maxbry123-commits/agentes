@@ -1,0 +1,715 @@
+// Copyright The runc Authors.
+// Copyright 2021 The gVisor Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//	https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+package cgroup
+
+import (
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"testing"
+
+	specs "github.com/opencontainers/runtime-spec/specs-go"
+	"gvisor.dev/gvisor/pkg/test/testutil"
+)
+
+var (
+	cgroupv2MountInfo    = `29 22 0:26 / /sys/fs/cgroup rw shared:4 - cgroup2 cgroup2 rw,seclabel,nsdelegate`
+	multipleCg2MountInfo = `34 28 0:29 / /sys/fs/cgroup rw,nosuid,nodev,noexec,relatime shared:8 - cgroup2 cgroup2 rw
+1479 28 0:29 / /run/some/module/cgroupv2 rw,relatime shared:650 - cgroup2 none rw
+`
+)
+
+func TestIO(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		spec  *specs.LinuxBlockIO
+		path  string
+		wants string
+	}{
+		{
+			name: "simple",
+			spec: &specs.LinuxBlockIO{
+				Weight: uint16Ptr(1),
+			},
+			path:  "io.weight",
+			wants: strconv.FormatUint(convertBlkIOToIOWeightValue(1), 10),
+		},
+		{
+			name: "throttlereadbps",
+			spec: &specs.LinuxBlockIO{
+				ThrottleReadBpsDevice: []specs.LinuxThrottleDevice{
+					makeLinuxThrottleDevice(1, 2, 3),
+				},
+			},
+			path:  "io.max",
+			wants: "1:2 rbps=3",
+		},
+		{
+			name: "throttlewritebps",
+			spec: &specs.LinuxBlockIO{
+				ThrottleWriteBpsDevice: []specs.LinuxThrottleDevice{
+					makeLinuxThrottleDevice(4, 5, 6),
+				},
+			},
+			path:  "io.max",
+			wants: "4:5 wbps=6",
+		},
+		{
+			name: "throttlereadiops",
+			spec: &specs.LinuxBlockIO{
+				ThrottleReadIOPSDevice: []specs.LinuxThrottleDevice{
+					makeLinuxThrottleDevice(7, 8, 9),
+				},
+			},
+			path:  "io.max",
+			wants: "7:8 riops=9",
+		},
+		{
+			name: "throttlewriteiops",
+			spec: &specs.LinuxBlockIO{
+				ThrottleWriteIOPSDevice: []specs.LinuxThrottleDevice{
+					makeLinuxThrottleDevice(10, 11, 12),
+				},
+			},
+			path:  "io.max",
+			wants: "10:11 wiops=12",
+		},
+		{
+			name:  "nil_values",
+			spec:  &specs.LinuxBlockIO{},
+			path:  "not_used",
+			wants: "",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			testutil.TmpDir()
+			dir, err := os.MkdirTemp(testutil.TmpDir(), "cgroup")
+			if err != nil {
+				t.Fatalf("error creating temporary directory: %v", err)
+			}
+			defer os.RemoveAll(dir)
+
+			fd, err := os.Create(filepath.Join(dir, tc.path))
+			if err != nil {
+				t.Fatalf("os.CreatTemp(): %v", err)
+			}
+			fd.Close()
+
+			spec := &specs.LinuxResources{
+				BlockIO: tc.spec,
+			}
+			ctrlr := io2{}
+			if err := ctrlr.set(spec, dir); err != nil {
+				t.Fatalf("ctrlr.set(): %v", err)
+			}
+
+			gotBytes, err := os.ReadFile(filepath.Join(dir, tc.path))
+			if err != nil {
+				t.Fatal(err.Error())
+			}
+			got := strings.TrimSuffix(string(gotBytes), "\n")
+			if got != tc.wants {
+				t.Errorf("wrong file content, file: %q, want: %q, got: %q", tc.path, tc.wants, got)
+			}
+		})
+	}
+}
+
+func TestLoadPathsCgroupv2(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		cgroups   string
+		mountinfo string
+		want      map[string]string
+		err       string
+	}{
+		{
+			name:      "cgroupv2",
+			cgroups:   "0::/docker/123",
+			mountinfo: cgroupv2MountInfo,
+			want: map[string]string{
+				"cgroup2": "docker/123",
+			},
+		},
+
+		{
+			name:      "cgroupv2-nested",
+			cgroups:   "0::/",
+			mountinfo: cgroupv2MountInfo,
+			want: map[string]string{
+				"cgroup2": ".",
+			},
+		},
+		{
+			name:      "multiple-cgv2",
+			cgroups:   "0::/system.slice/containerd.service\n",
+			mountinfo: multipleCg2MountInfo,
+			want: map[string]string{
+				"cgroup2": "system.slice/containerd.service",
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := strings.NewReader(tc.cgroups)
+			mountinfo := strings.NewReader(tc.mountinfo)
+			got, err := loadPathsHelper(r, mountinfo, true)
+			if len(tc.err) == 0 {
+				if err != nil {
+					t.Fatalf("Unexpected error: %v", err)
+				}
+			} else if !strings.Contains(err.Error(), tc.err) {
+				t.Fatalf("Wrong error message, want: *%s*, got: %v", tc.err, err)
+			}
+			for key, vWant := range tc.want {
+				vGot, ok := got[key]
+				if !ok {
+					t.Errorf("Missing controller %q", key)
+				}
+				if vWant != vGot {
+					t.Errorf("Wrong controller %q value, want: %q, got: %q", key, vWant, vGot)
+				}
+				delete(got, key)
+			}
+			for k, v := range got {
+				t.Errorf("Unexpected controller %q: %q", k, v)
+			}
+		})
+	}
+}
+
+func TestGetLimits(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		mem            string
+		cpu            string
+		expMem         uint64
+		expCPUQuota    int64
+		expCPUPeriod   int64
+		limitPath      string
+		path           string
+		writeParentCPU bool
+	}{
+		{
+			name:           "get limit from parent cgroup",
+			mem:            "150",
+			cpu:            "100 50",
+			limitPath:      "user.slice",
+			path:           "user.slice/container.scope",
+			expMem:         150,
+			expCPUQuota:    100,
+			expCPUPeriod:   50,
+			writeParentCPU: true,
+		},
+		{
+			name:           "get limit from leaf cgroup",
+			mem:            "150",
+			cpu:            "100 50",
+			limitPath:      "user.slice/container.scope",
+			path:           "user.slice/container.scope",
+			expMem:         150,
+			expCPUQuota:    100,
+			expCPUPeriod:   50,
+			writeParentCPU: true,
+		},
+		{
+			name:           "keep leaf period when parent cpu max is missing",
+			mem:            "150",
+			cpu:            "100 50",
+			limitPath:      "user.slice",
+			path:           "user.slice/container.scope",
+			expMem:         150,
+			expCPUQuota:    -1,
+			expCPUPeriod:   100000,
+			writeParentCPU: false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			testutil.TmpDir()
+			dir, err := os.MkdirTemp(testutil.TmpDir(), "cgroup")
+			if err != nil {
+				t.Fatalf("error creating temporary directory: %v", err)
+			}
+			defer os.RemoveAll(dir)
+
+			fullPath := filepath.Join(dir, tc.path)
+			if err := os.MkdirAll(fullPath, 0o777); err != nil {
+				t.Fatalf("os.MkdirAll(): %v", err)
+			}
+			cg := cgroupV2{
+				Mountpoint: dir,
+				Path:       tc.path,
+			}
+
+			if err := os.WriteFile(filepath.Join(dir, tc.path, "memory.max"), []byte("max"), 0o777); err != nil {
+				t.Fatalf("os.WriteFile(): %v", err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, tc.path, "cpu.max"), []byte("max 100000"), 0o777); err != nil {
+				t.Fatalf("os.WriteFile(): %v", err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, tc.limitPath, "memory.max"), []byte(tc.mem), 0o655); err != nil {
+				t.Fatalf("os.WriteFile(): %v", err)
+			}
+			if tc.writeParentCPU {
+				if err := os.WriteFile(filepath.Join(dir, tc.limitPath, "cpu.max"), []byte(tc.cpu), 0o655); err != nil {
+					t.Fatalf("os.WriteFile(): %v", err)
+				}
+			}
+
+			rawQuota, err := cg.CPUQuota()
+			if err != nil {
+				t.Fatalf("cg.CPUQuota(): %v", err)
+			}
+			if rawQuota != tc.expCPUQuota {
+				t.Errorf("cg.CPUQuota() = %d, want %d", rawQuota, tc.expCPUQuota)
+			}
+			rawPeriod, err := cg.CPUPeriod()
+			if err != nil {
+				t.Fatalf("cg.CPUPeriod(): %v", err)
+			}
+			if rawPeriod != tc.expCPUPeriod {
+				t.Errorf("cg.CPUPeriod() = %d, want %d", rawPeriod, tc.expCPUPeriod)
+			}
+			mem, err := cg.MemoryLimit()
+			if err != nil {
+				t.Fatalf("cg.MemoryLimit(): %v", err)
+			}
+			if mem != tc.expMem {
+				t.Errorf("cg.MemoryLimit() = %v, want %v", mem, tc.expMem)
+			}
+		})
+	}
+}
+
+func TestNumToStr(t *testing.T) {
+	cases := map[int64]string{
+		0:  "",
+		-1: "max",
+		10: "10",
+	}
+	for i, expected := range cases {
+		got := numToStr(i)
+		if got != expected {
+			t.Errorf("expected numToStr(%d) to be %q, got %q", i, expected, got)
+		}
+	}
+}
+
+func TestConvertBlkIOToIOWeightValue(t *testing.T) {
+	cases := map[uint16]uint64{
+		0:    0,
+		10:   1,
+		1000: 10000,
+	}
+	for i, expected := range cases {
+		got := convertBlkIOToIOWeightValue(i)
+		if got != expected {
+			t.Errorf("expected ConvertBlkIOToIOWeightValue(%d) to be %d, got %d", i, expected, got)
+		}
+	}
+}
+
+func TestConvertCPUSharesToCgroupV2Value(t *testing.T) {
+	cases := map[uint64]uint64{
+		0:      0,
+		2:      1,
+		262144: 10000,
+	}
+	for i, expected := range cases {
+		got := convertCPUSharesToCgroupV2Value(i)
+		if got != expected {
+			t.Errorf("expected ConvertCPUSharesToCgroupV2Value(%d) to be %d, got %d", i, expected, got)
+		}
+	}
+}
+
+func TestConvertMemorySwapToCgroupV2Value(t *testing.T) {
+	cases := []struct {
+		memswap, memory int64
+		expected        int64
+		expErr          bool
+	}{
+		{
+			memswap:  0,
+			memory:   0,
+			expected: 0,
+		},
+		{
+			memswap:  -1,
+			memory:   0,
+			expected: -1,
+		},
+		{
+			memswap:  -1,
+			memory:   -1,
+			expected: -1,
+		},
+		{
+			memswap: -2,
+			memory:  0,
+			expErr:  true,
+		},
+		{
+			memswap:  -1,
+			memory:   1000,
+			expected: -1,
+		},
+		{
+			memswap:  1000,
+			memory:   1000,
+			expected: 0,
+		},
+		{
+			memswap:  500,
+			memory:   200,
+			expected: 300,
+		},
+		{
+			memswap: 300,
+			memory:  400,
+			expErr:  true,
+		},
+		{
+			memswap: 300,
+			memory:  0,
+			expErr:  true,
+		},
+		{
+			memswap: 300,
+			memory:  -300,
+			expErr:  true,
+		},
+		{
+			memswap: 300,
+			memory:  -1,
+			expErr:  true,
+		},
+	}
+
+	for _, c := range cases {
+		swap, err := convertMemorySwapToCgroupV2Value(c.memswap, c.memory)
+		if c.expErr {
+			if err == nil {
+				t.Errorf("memswap: %d, memory %d, expected error, got %d, nil", c.memswap, c.memory, swap)
+			}
+			// no more checks
+			continue
+		}
+		if err != nil {
+			t.Errorf("memswap: %d, memory %d, expected success, got error %s", c.memswap, c.memory, err)
+		}
+		if swap != c.expected {
+			t.Errorf("memswap: %d, memory %d, expected %d, got %d", c.memswap, c.memory, c.expected, swap)
+		}
+	}
+}
+
+func TestInstallPrecreatedCgroupV2SetsMemorySwap(t *testing.T) {
+	dir, err := os.MkdirTemp(testutil.TmpDir(), "cgroup")
+	if err != nil {
+		t.Fatalf("error creating temporary directory: %v", err)
+	}
+	defer os.RemoveAll(dir)
+
+	cg := &cgroupV2{
+		Mountpoint:  dir,
+		Path:        "kubepods-pod",
+		Controllers: mandatoryControllers,
+	}
+	cgPath := filepath.Join(cg.Mountpoint, cg.Path)
+	if err := os.MkdirAll(cgPath, 0o777); err != nil {
+		t.Fatalf("os.MkdirAll(): %v", err)
+	}
+	for name, value := range map[string]string{
+		"memory.max":      "max",
+		"memory.swap.max": "max",
+	} {
+		if err := os.WriteFile(filepath.Join(cgPath, name), []byte(value), 0o666); err != nil {
+			t.Fatalf("os.WriteFile(%q): %v", name, err)
+		}
+	}
+
+	resources := &specs.LinuxResources{
+		Memory: &specs.LinuxMemory{
+			Limit: int64Ptr(1024),
+			Swap:  int64Ptr(1280),
+		},
+	}
+	if err := cg.Install(resources); err != nil {
+		t.Fatalf("Install(): %v", err)
+	}
+
+	gotSwap, err := os.ReadFile(filepath.Join(cgPath, "memory.swap.max"))
+	if err != nil {
+		t.Fatalf("ReadFile(memory.swap.max): %v", err)
+	}
+	if string(gotSwap) != "256" {
+		t.Errorf("memory.swap.max = %q, want %q", string(gotSwap), "256")
+	}
+
+	gotMemory, err := os.ReadFile(filepath.Join(cgPath, "memory.max"))
+	if err != nil {
+		t.Fatalf("ReadFile(memory.max): %v", err)
+	}
+	if string(gotMemory) != "max" {
+		t.Errorf("memory.max = %q, want %q", string(gotMemory), "max")
+	}
+}
+
+func TestParseCPUQuotaAndPeriod(t *testing.T) {
+	cases := []struct {
+		quota     string
+		expQuota  int64
+		expPeriod int64
+		expErr    bool
+	}{
+		{
+			quota:     "max 100000\n",
+			expQuota:  -1,
+			expPeriod: 100000,
+		},
+		{
+			quota:     "150000 100000",
+			expQuota:  150000,
+			expPeriod: 100000,
+		},
+		{
+			quota:  "-1",
+			expErr: true,
+		},
+	}
+
+	for _, c := range cases {
+		quota, period, err := parseCPUQuotaAndPeriod(c.quota)
+		if c.expErr {
+			if err == nil {
+				t.Errorf("quota: %q, expected error, got (%d, %d), nil", c.quota, quota, period)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("quota: %q, expected success, got error %s", c.quota, err)
+		}
+		if quota != c.expQuota || period != c.expPeriod {
+			t.Errorf("quota: %q, expected (%d, %d), got (%d, %d)", c.quota, c.expQuota, c.expPeriod, quota, period)
+		}
+	}
+}
+
+func TestUpdate(t *testing.T) {
+	for _, tc := range []struct {
+		name             string
+		initialCPUMax    string
+		initialMemMax    string
+		updatedResources *specs.LinuxResources
+		wantCPUQuota     int64
+		wantCPUPeriod    int64
+		wantMemory       uint64
+	}{
+		{
+			name:          "update cpu and memory",
+			initialCPUMax: "100 100",
+			initialMemMax: "1024",
+			updatedResources: &specs.LinuxResources{
+				CPU: &specs.LinuxCPU{
+					Quota:  int64Ptr(100),
+					Period: uint64Ptr(50),
+				},
+				Memory: &specs.LinuxMemory{
+					Limit: int64Ptr(2048),
+				},
+			},
+			wantCPUQuota:  100,
+			wantCPUPeriod: 50,
+			wantMemory:    2048,
+		},
+		{
+			name:          "update cpu only",
+			initialCPUMax: "100 100",
+			initialMemMax: "1024",
+			updatedResources: &specs.LinuxResources{
+				CPU: &specs.LinuxCPU{
+					Quota:  int64Ptr(150),
+					Period: uint64Ptr(50),
+				},
+			},
+			wantCPUQuota:  150,
+			wantCPUPeriod: 50,
+			wantMemory:    1024,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir, err := os.MkdirTemp(testutil.TmpDir(), "cgroup")
+			if err != nil {
+				t.Fatalf("error creating temporary directory: %v", err)
+			}
+			defer os.RemoveAll(dir)
+
+			cg := &cgroupV2{
+				Mountpoint:  dir,
+				Path:        "user.slice",
+				Controllers: mandatoryControllers,
+			}
+			if err := os.MkdirAll(filepath.Join(cg.Mountpoint, cg.Path), 0o777); err != nil {
+				t.Fatalf("os.MkdirAll(): %v", err)
+			}
+
+			if err := os.WriteFile(filepath.Join(cg.Mountpoint, cg.Path, "cpu.max"), []byte(tc.initialCPUMax), 0o777); err != nil {
+				t.Fatalf("os.WriteFile(): %v", err)
+			}
+			if err := os.WriteFile(filepath.Join(cg.Mountpoint, cg.Path, "memory.max"), []byte(tc.initialMemMax), 0o777); err != nil {
+				t.Fatalf("os.WriteFile(): %v", err)
+			}
+
+			if err := cg.Update(tc.updatedResources); err != nil {
+				t.Fatalf("Update(): %v", err)
+			}
+
+			cpuQuota, err := cg.CPUQuota()
+			if err != nil {
+				t.Fatalf("CPUQuota(): %v", err)
+			}
+			if cpuQuota != tc.wantCPUQuota {
+				t.Fatalf("After Update(), CPUQuota() = %d, want %d", cpuQuota, tc.wantCPUQuota)
+			}
+			cpuPeriod, err := cg.CPUPeriod()
+			if err != nil {
+				t.Fatalf("CPUPeriod(): %v", err)
+			}
+			if cpuPeriod != tc.wantCPUPeriod {
+				t.Fatalf("After Update(), CPUPeriod() = %d, want %d", cpuPeriod, tc.wantCPUPeriod)
+			}
+
+			mem, err := cg.MemoryLimit()
+			if err != nil {
+				t.Fatalf("MemoryLimit(): %v", err)
+			}
+			if mem != tc.wantMemory {
+				t.Fatalf("After Update(), MemoryLimit() = %d, want %d", mem, tc.wantMemory)
+			}
+		})
+	}
+}
+
+func TestUpdateUnified(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		resources *specs.LinuxResources
+		// pre-created files in the fake cgroup.
+		seedFiles []string
+		// expected file contents after Update()
+		wantFiles  map[string]string
+		wantErrSub string
+	}{
+		{
+			name: "sets arbitrary unified key",
+			resources: &specs.LinuxResources{
+				Unified: map[string]string{
+					"memory.high": "1000000",
+				},
+			},
+			seedFiles: []string{"memory.high"},
+			wantFiles: map[string]string{
+				"memory.high": "1000000",
+			},
+		},
+		{
+			name: "unified overrides controller-set value",
+			resources: &specs.LinuxResources{
+				Memory: &specs.LinuxMemory{
+					Limit: int64Ptr(2048),
+				},
+				Unified: map[string]string{
+					"memory.max": "4096",
+				},
+			},
+			seedFiles: []string{"memory.max"},
+			wantFiles: map[string]string{
+				"memory.max": "4096",
+			},
+		},
+		{
+			name: "rejects keys containing slashes",
+			resources: &specs.LinuxResources{
+				Unified: map[string]string{
+					"foo/bar": "1",
+				},
+			},
+			wantErrSub: "must be a file name",
+		},
+		{
+			name: "rejects keys without dot separator",
+			resources: &specs.LinuxResources{
+				Unified: map[string]string{
+					"nodot": "1",
+				},
+			},
+			wantErrSub: "must be in the form CONTROLLER.PARAMETER",
+		},
+		{
+			name: "reports unavailable controller",
+			resources: &specs.LinuxResources{
+				Unified: map[string]string{
+					"fake.knob": "1",
+				},
+			},
+			wantErrSub: `controller "fake" not available`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir, err := os.MkdirTemp(testutil.TmpDir(), "cgroup")
+			if err != nil {
+				t.Fatalf("error creating temporary directory: %v", err)
+			}
+			defer os.RemoveAll(dir)
+
+			cg := &cgroupV2{
+				Mountpoint:  dir,
+				Path:        "user.slice",
+				Controllers: mandatoryControllers,
+			}
+			cgPath := filepath.Join(cg.Mountpoint, cg.Path)
+			if err := os.MkdirAll(cgPath, 0o777); err != nil {
+				t.Fatalf("os.MkdirAll(): %v", err)
+			}
+			for _, f := range tc.seedFiles {
+				if err := os.WriteFile(filepath.Join(cgPath, f), nil, 0o666); err != nil {
+					t.Fatalf("os.WriteFile(%q): %v", f, err)
+				}
+			}
+
+			err = cg.Update(tc.resources)
+			if tc.wantErrSub != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErrSub) {
+					t.Fatalf("Update() error = %v, want substring %q", err, tc.wantErrSub)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Update(): %v", err)
+			}
+
+			for name, want := range tc.wantFiles {
+				got, err := os.ReadFile(filepath.Join(cgPath, name))
+				if err != nil {
+					t.Fatalf("ReadFile(%q): %v", name, err)
+				}
+				if string(got) != want {
+					t.Errorf("file %q = %q, want %q", name, string(got), want)
+				}
+			}
+		})
+	}
+}

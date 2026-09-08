@@ -1,0 +1,11 @@
+FROM nginx:1.25.1
+
+# Generate a bunch of relevant files.
+RUN mkdir -p /local && \
+        for size in 1 10 100 1024 10240; do \
+                dd if=/dev/zero of=/local/latin${size}k.txt count=${size} bs=1024; \
+        done && \
+        touch /local/index.html
+
+COPY ./nginx.conf       /etc/nginx/nginx.conf
+COPY ./nginx_gofer.conf /etc/nginx/nginx_gofer.conf

@@ -1,0 +1,316 @@
+package transformers
+
+import (
+	"math"
+	"time"
+
+	"github.com/google/uuid"
+
+	"github.com/hatchet-dev/hatchet/api/v1/server/oas/gen"
+	v1 "github.com/hatchet-dev/hatchet/pkg/repository"
+	"github.com/hatchet-dev/hatchet/pkg/repository/sqlcv1"
+)
+
+func WorkflowRunDataToV1TaskSummary(task *v1.WorkflowRunData, workflowIdsToNames map[uuid.UUID]string, actionId string, opts ...PayloadOption) gen.V1TaskSummary {
+	o := applyPayloadOptions(opts)
+
+	var finishedAt *time.Time
+
+	if task.FinishedAt.Valid {
+		finishedAt = &task.FinishedAt.Time
+	}
+
+	var startedAt *time.Time
+
+	if task.StartedAt.Valid {
+		startedAt = &task.StartedAt.Time
+	}
+
+	var durationPtr *int
+
+	if task.FinishedAt.Valid && task.StartedAt.Valid {
+		duration := int(task.FinishedAt.Time.Sub(task.StartedAt.Time).Milliseconds())
+		durationPtr = &duration
+	}
+
+	input := jsonToMap(task.Input)
+	var output map[string]interface{}
+	additionalMetadata := jsonToMap(task.AdditionalMetadata)
+	additionalMetadataPtr := &additionalMetadata
+	var payloadsRestricted *bool
+
+	if o.includePayloads {
+		if len(task.Output) > 0 {
+			output = jsonToMap(task.Output)
+		}
+	} else {
+		input = emptyJSON()
+		output = emptyJSON()
+		payloadsRestricted = boolPtr(true)
+	}
+
+	workflowVersionId := task.WorkflowVersionId
+
+	var taskId int
+	if task.TaskId != nil {
+		taskId = int(*task.TaskId)
+	}
+
+	var stepId uuid.UUID
+	if task.StepId != nil {
+		stepId = *task.StepId
+	} else {
+		stepId = uuid.Nil
+	}
+
+	var workflowName *string
+
+	if name, ok := workflowIdsToNames[task.WorkflowID]; ok {
+		workflowName = &name
+	}
+
+	retryCount := 0
+	if task.RetryCount != nil {
+		retryCount = *task.RetryCount
+	}
+	attempt := retryCount + 1
+
+	var parentTaskExternalId *uuid.UUID
+	if task.ParentTaskExternalId != nil {
+		parentTaskExternalIdValue := *task.ParentTaskExternalId
+		parentTaskExternalId = &parentTaskExternalIdValue
+	}
+
+	status, isEvicted := mapOlapStatus(string(task.ReadableStatus))
+
+	summary := gen.V1TaskSummary{
+		Metadata: gen.APIResourceMeta{
+			Id:        task.ExternalID.String(),
+			CreatedAt: task.InsertedAt.Time,
+			UpdatedAt: task.InsertedAt.Time,
+		},
+		CreatedAt:             task.CreatedAt.Time,
+		DisplayName:           task.DisplayName,
+		Duration:              durationPtr,
+		StartedAt:             startedAt,
+		FinishedAt:            finishedAt,
+		Input:                 input,
+		Output:                output,
+		AdditionalMetadata:    additionalMetadataPtr,
+		ErrorMessage:          &task.ErrorMessage,
+		Status:                status,
+		TenantId:              task.TenantID,
+		WorkflowId:            task.WorkflowID,
+		WorkflowVersionId:     &workflowVersionId,
+		TaskExternalId:        task.ExternalID,
+		TaskId:                taskId,
+		TaskInsertedAt:        task.InsertedAt.Time,
+		Type:                  gen.V1WorkflowTypeDAG,
+		WorkflowName:          workflowName,
+		StepId:                &stepId,
+		ActionId:              &actionId,
+		WorkflowRunExternalId: task.ExternalID,
+		RetryCount:            &retryCount,
+		Attempt:               &attempt,
+		ParentTaskExternalId:  parentTaskExternalId,
+		IdempotencyKey:        task.IdempotencyKey,
+		PayloadsRestricted:    payloadsRestricted,
+	}
+
+	if isEvicted {
+		summary.IsEvicted = &isEvicted
+	}
+
+	return summary
+}
+
+func ToWorkflowRunMany(
+	tasks []*v1.WorkflowRunData,
+	dagExternalIdToChildren map[uuid.UUID][]gen.V1TaskSummary,
+	taskIdToActionId map[int64]string,
+	workflowIdsToNames map[uuid.UUID]string,
+	total int, limit, offset int64,
+	opts ...PayloadOption,
+) gen.V1TaskSummaryList {
+	toReturn := make([]gen.V1TaskSummary, len(tasks))
+
+	for i, task := range tasks {
+		dagExternalId := task.ExternalID
+
+		actionId := ""
+
+		if task.TaskId != nil {
+			actionIdFromMap, ok := taskIdToActionId[*task.TaskId]
+
+			if ok {
+				actionId = actionIdFromMap
+			}
+		}
+
+		toReturn[i] = WorkflowRunDataToV1TaskSummary(task, workflowIdsToNames, actionId, opts...)
+
+		children, ok := dagExternalIdToChildren[dagExternalId]
+
+		if ok {
+			toReturn[i].Children = &children
+		}
+	}
+
+	currentPage := (offset / limit) + 1
+	nextPage := currentPage + 1
+	numPages := int64(math.Ceil(float64(total) / float64(limit)))
+
+	return gen.V1TaskSummaryList{
+		Rows: toReturn,
+		Pagination: gen.PaginationResponse{
+			CurrentPage: &currentPage,
+			NextPage:    &nextPage,
+			NumPages:    &numPages,
+		},
+	}
+}
+
+func PopulateTaskRunDataRowToV1TaskSummary(task *v1.TaskWithPayloads, workflowName *string, opts ...PayloadOption) gen.V1TaskSummary {
+	o := applyPayloadOptions(opts)
+	workflowVersionID := task.WorkflowVersionID
+
+	var finishedAt *time.Time
+
+	if task.FinishedAt.Valid {
+		finishedAt = &task.FinishedAt.Time
+	}
+
+	var startedAt *time.Time
+
+	if task.StartedAt.Valid {
+		startedAt = &task.StartedAt.Time
+	}
+
+	var durationPtr *int
+
+	if task.FinishedAt.Valid && task.StartedAt.Valid {
+		duration := int(task.FinishedAt.Time.Sub(task.StartedAt.Time).Milliseconds())
+		durationPtr = &duration
+	}
+
+	input := jsonToMap(task.InputPayload)
+	output := jsonToMap(task.OutputPayload)
+	additionalMetadata := jsonToMap(task.AdditionalMetadata)
+	additionalMetadataPtr := &additionalMetadata
+	var payloadsRestricted *bool
+
+	if !o.includePayloads {
+		input = emptyJSON()
+		output = emptyJSON()
+		payloadsRestricted = boolPtr(true)
+	}
+
+	stepId := task.StepID
+
+	retryCount := int(task.RetryCount)
+	attempt := retryCount + 1
+
+	taskStatus, isEvicted := mapOlapStatus(string(task.Status))
+
+	var idempotencyKey *string
+
+	if task.IdempotencyKey.Valid {
+		idempotencyKey = &task.IdempotencyKey.String
+	}
+
+	summary := gen.V1TaskSummary{
+		Metadata: gen.APIResourceMeta{
+			Id:        task.ExternalID.String(),
+			CreatedAt: task.InsertedAt.Time,
+			UpdatedAt: task.InsertedAt.Time,
+		},
+		CreatedAt:             task.InsertedAt.Time,
+		DisplayName:           task.DisplayName,
+		Duration:              durationPtr,
+		StartedAt:             startedAt,
+		FinishedAt:            finishedAt,
+		Input:                 input,
+		Output:                output,
+		AdditionalMetadata:    additionalMetadataPtr,
+		ErrorMessage:          &task.ErrorMessage.String,
+		Status:                taskStatus,
+		TenantId:              task.TenantID,
+		WorkflowId:            task.WorkflowID,
+		WorkflowVersionId:     &workflowVersionID,
+		Children:              nil,
+		TaskExternalId:        task.ExternalID,
+		TaskId:                int(task.ID),
+		TaskInsertedAt:        task.InsertedAt.Time,
+		Type:                  gen.V1WorkflowTypeTASK,
+		WorkflowName:          workflowName,
+		StepId:                &stepId,
+		ActionId:              &task.ActionID,
+		RetryCount:            &retryCount,
+		Attempt:               &attempt,
+		WorkflowRunExternalId: task.WorkflowRunID,
+		ParentTaskExternalId:  task.ParentTaskExternalID,
+		IdempotencyKey:        idempotencyKey,
+		PayloadsRestricted:    payloadsRestricted,
+	}
+
+	if isEvicted {
+		summary.IsEvicted = &isEvicted
+	}
+
+	return summary
+}
+
+func TaskRunDataRowToWorkflowRunsMany(
+	tasks []*v1.TaskWithPayloads,
+	taskIdToWorkflowName map[int64]string,
+	total int, limit, offset int64,
+	opts ...PayloadOption,
+) gen.V1TaskSummaryList {
+	toReturn := make([]gen.V1TaskSummary, len(tasks))
+
+	for i, task := range tasks {
+		workflowName := taskIdToWorkflowName[task.ID]
+		toReturn[i] = PopulateTaskRunDataRowToV1TaskSummary(task, &workflowName, opts...)
+	}
+
+	currentPage := (offset / limit) + 1
+	nextPage := currentPage + 1
+	numPages := int64(math.Ceil(float64(total) / float64(limit)))
+
+	return gen.V1TaskSummaryList{
+		Rows: toReturn,
+		Pagination: gen.PaginationResponse{
+			CurrentPage: &currentPage,
+			NextPage:    &nextPage,
+			NumPages:    &numPages,
+		},
+	}
+}
+
+func ToWorkflowRunDisplayNamesList(
+	displayNames []*sqlcv1.ListWorkflowRunDisplayNamesRow,
+) gen.V1WorkflowRunDisplayNameList {
+	result := make([]gen.V1WorkflowRunDisplayName, len(displayNames))
+
+	for i, record := range displayNames {
+		result[i] = gen.V1WorkflowRunDisplayName{
+			DisplayName: record.DisplayName,
+			Metadata: gen.APIResourceMeta{
+				Id:        record.ExternalID.String(),
+				CreatedAt: record.InsertedAt.Time,
+				UpdatedAt: record.InsertedAt.Time,
+			},
+		}
+	}
+
+	page := int64(1)
+
+	return gen.V1WorkflowRunDisplayNameList{
+		Rows: result,
+		Pagination: gen.PaginationResponse{
+			CurrentPage: &page,
+			NextPage:    nil,
+			NumPages:    &page,
+		},
+	}
+}

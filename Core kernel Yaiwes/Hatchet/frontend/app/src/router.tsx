@@ -1,0 +1,1235 @@
+import { config } from './config';
+import { NotFound } from './pages/error/components/not-found';
+import ErrorBoundary from './pages/error/index.tsx';
+import Root from './pages/root.tsx';
+import { userUniverseQuery } from './providers/user-universe';
+import api, { TenantMember } from '@/lib/api';
+import {
+  controlPlaneApi,
+  fetchControlPlaneStatus,
+  CONTROL_PLANE_TENANT_STORAGE_KEY,
+} from '@/lib/api/api';
+import { exchangeTokenQueryOptions } from '@/lib/api/exchange-token';
+import queryClient from '@/query-client';
+import {
+  RouterProvider,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  lazyRouteComponent,
+  redirect,
+} from '@tanstack/react-router';
+import { Outlet } from '@tanstack/react-router';
+import { FC } from 'react';
+import { validate } from 'uuid';
+import { z } from 'zod';
+
+const rootRoute = createRootRoute({
+  component: Root,
+  errorComponent: (props) => (
+    <Root>
+      <ErrorBoundary {...props} />
+    </Root>
+  ),
+  notFoundComponent: () => (
+    <Root>
+      <NotFound />
+    </Root>
+  ),
+});
+
+const authRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: 'auth',
+  loader: async () => {
+    const mod = await import('./pages/auth/no-auth');
+    if (mod.loader) {
+      return mod.loader();
+    }
+    return null;
+  },
+  component: () => (
+    <div className="h-full w-full overflow-y-auto overflow-x-hidden">
+      <Outlet />
+    </div>
+  ),
+});
+
+const authLoginRoute = createRoute({
+  getParentRoute: () => authRoute,
+  path: 'login',
+  component: lazyRouteComponent(() => import('./pages/auth/login'), 'default'),
+});
+
+const authRegisterRoute = createRoute({
+  getParentRoute: () => authRoute,
+  path: 'register',
+  component: lazyRouteComponent(
+    () => import('./pages/auth/register'),
+    'default',
+  ),
+});
+
+const onboardingVerifyRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: 'onboarding/verify-email',
+  loader: async () => {
+    const mod = await import('./pages/onboarding/verify-email');
+    if (mod.loader) {
+      return mod.loader({
+        request: new Request(window.location.href),
+        params: {},
+      } as never);
+    }
+    return null;
+  },
+  component: lazyRouteComponent(
+    () => import('./pages/onboarding/verify-email'),
+    'default',
+  ),
+});
+
+const redeemOffersRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: 'redeem',
+  component: lazyRouteComponent(() => import('./pages/redeem'), 'default'),
+});
+
+const organizationsRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: 'organizations/$organization',
+  component: lazyRouteComponent(() => import('./pages/main/v1'), 'default'),
+});
+
+const organizationSettingsLayoutRoute = createRoute({
+  getParentRoute: () => organizationsRoute,
+  path: 'settings',
+  component: lazyRouteComponent(
+    () => import('./pages/main/v1/settings/settings-layout'),
+    'default',
+  ),
+});
+
+const organizationsIndexRoute = createRoute({
+  getParentRoute: () => organizationSettingsLayoutRoute,
+  path: '/',
+  component: lazyRouteComponent(
+    () => import('./pages/organizations/$organization'),
+    'default',
+  ),
+});
+
+const organizationBillingRoute = createRoute({
+  getParentRoute: () => organizationSettingsLayoutRoute,
+  path: 'billing',
+  component: lazyRouteComponent(
+    () => import('./pages/organizations/$organization/billing'),
+    'default',
+  ),
+});
+
+const organizationTenantsRoute = createRoute({
+  getParentRoute: () => organizationSettingsLayoutRoute,
+  path: 'tenants',
+  component: lazyRouteComponent(
+    () => import('./pages/organizations/$organization/sections'),
+    'OrganizationTenantsPage',
+  ),
+});
+
+const organizationTeamRoute = createRoute({
+  getParentRoute: () => organizationSettingsLayoutRoute,
+  path: 'team',
+  component: lazyRouteComponent(
+    () => import('./pages/organizations/$organization/sections'),
+    'OrganizationTeamPage',
+  ),
+});
+
+const organizationMembersRoute = createRoute({
+  getParentRoute: () => organizationSettingsLayoutRoute,
+  path: 'members',
+  loader: ({ params }) => {
+    throw redirect({
+      to: appRoutes.organizationTeamRoute.to,
+      params,
+    });
+  },
+});
+
+const organizationTokensRoute = createRoute({
+  getParentRoute: () => organizationSettingsLayoutRoute,
+  path: 'tokens',
+  component: lazyRouteComponent(
+    () => import('./pages/organizations/$organization/sections'),
+    'OrganizationTokensPage',
+  ),
+});
+
+const organizationRegionsRoute = createRoute({
+  getParentRoute: () => organizationSettingsLayoutRoute,
+  path: 'regions',
+  component: lazyRouteComponent(
+    () => import('./pages/organizations/$organization/sections'),
+    'OrganizationRegionsPage',
+  ),
+});
+
+const organizationSsoRoute = createRoute({
+  getParentRoute: () => organizationSettingsLayoutRoute,
+  path: 'sso',
+  component: lazyRouteComponent(
+    () => import('./pages/organizations/$organization/sections'),
+    'OrganizationSsoPage',
+  ),
+});
+
+const organizationAuditLogRoute = createRoute({
+  getParentRoute: () => organizationSettingsLayoutRoute,
+  path: 'audit-log',
+  component: lazyRouteComponent(
+    () => import('./pages/organizations/$organization/sections'),
+    'OrganizationAuditLogPage',
+  ),
+});
+
+const organizationUserGroupsRoute = createRoute({
+  getParentRoute: () => organizationSettingsLayoutRoute,
+  path: 'user-groups',
+  loader: ({ params }) => {
+    throw redirect({
+      to: appRoutes.organizationTeamRoute.to,
+      params,
+    });
+  },
+});
+
+// Redirects for the pre-`/settings` organization URLs (e.g.
+// `/organizations/$organization/billing`) to their new canonical locations
+// under `/organizations/$organization/settings/*`.
+const organizationsIndexRedirectRoute = createRoute({
+  getParentRoute: () => organizationsRoute,
+  path: '/',
+  loader: ({ params }) => {
+    throw redirect({
+      to: appRoutes.organizationsIndexRoute.to,
+      params,
+    });
+  },
+});
+
+const organizationLegacyBillingRoute = createRoute({
+  getParentRoute: () => organizationsRoute,
+  path: 'billing',
+  loader: ({ params }) => {
+    throw redirect({
+      to: appRoutes.organizationBillingRoute.to,
+      params,
+    });
+  },
+});
+
+const organizationLegacyTenantsRoute = createRoute({
+  getParentRoute: () => organizationsRoute,
+  path: 'tenants',
+  loader: ({ params }) => {
+    throw redirect({
+      to: appRoutes.organizationTenantsRoute.to,
+      params,
+    });
+  },
+});
+
+const organizationLegacyTeamRoute = createRoute({
+  getParentRoute: () => organizationsRoute,
+  path: 'team',
+  loader: ({ params }) => {
+    throw redirect({
+      to: appRoutes.organizationTeamRoute.to,
+      params,
+    });
+  },
+});
+
+const organizationLegacyMembersRoute = createRoute({
+  getParentRoute: () => organizationsRoute,
+  path: 'members',
+  loader: ({ params }) => {
+    throw redirect({
+      to: appRoutes.organizationTeamRoute.to,
+      params,
+    });
+  },
+});
+
+const organizationLegacyUserGroupsRoute = createRoute({
+  getParentRoute: () => organizationsRoute,
+  path: 'user-groups',
+  loader: ({ params }) => {
+    throw redirect({
+      to: appRoutes.organizationTeamRoute.to,
+      params,
+    });
+  },
+});
+
+const organizationLegacyTokensRoute = createRoute({
+  getParentRoute: () => organizationsRoute,
+  path: 'tokens',
+  loader: ({ params }) => {
+    throw redirect({
+      to: appRoutes.organizationTokensRoute.to,
+      params,
+    });
+  },
+});
+
+const organizationLegacyRegionsRoute = createRoute({
+  getParentRoute: () => organizationsRoute,
+  path: 'regions',
+  loader: ({ params }) => {
+    throw redirect({
+      to: appRoutes.organizationRegionsRoute.to,
+      params,
+    });
+  },
+});
+
+const organizationLegacySsoRoute = createRoute({
+  getParentRoute: () => organizationsRoute,
+  path: 'sso',
+  loader: ({ params }) => {
+    throw redirect({
+      to: appRoutes.organizationSsoRoute.to,
+      params,
+    });
+  },
+});
+
+const organizationLegacyAuditLogRoute = createRoute({
+  getParentRoute: () => organizationsRoute,
+  path: 'audit-log',
+  loader: ({ params }) => {
+    throw redirect({
+      to: appRoutes.organizationAuditLogRoute.to,
+      params,
+    });
+  },
+});
+
+const tenantsRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: 'tenants',
+  component: lazyRouteComponent(() => import('./pages/main/v1'), 'default'),
+});
+
+const tenantsIndexRoute = createRoute({
+  getParentRoute: () => tenantsRoute,
+  path: '/',
+  component: lazyRouteComponent(() => import('./pages/tenants'), 'default'),
+});
+
+const organizationsNewRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: 'organizations/new',
+  component: lazyRouteComponent(
+    () => import('./pages/organizations/new'),
+    'default',
+  ),
+});
+
+const authenticatedRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/',
+  loader: async () => {
+    const mod = await import('./pages/authenticated');
+    return mod.loader({ request: new Request(window.location.href) });
+  },
+  component: lazyRouteComponent(
+    () => import('./pages/authenticated'),
+    'default',
+  ),
+  notFoundComponent: () => <NotFound />,
+});
+
+const onboardingCreateTenantRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: 'onboarding/create-tenant',
+  component: lazyRouteComponent(
+    () => import('./pages/onboarding/create-tenant'),
+    'default',
+  ),
+  loader: async () => {
+    const { isControlPlaneEnabled } = await fetchControlPlaneStatus();
+    return queryClient.fetchQuery(userUniverseQuery(isControlPlaneEnabled));
+  },
+});
+
+const onboardingCreateOrganizationRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: 'onboarding/create-organization',
+  component: lazyRouteComponent(
+    () => import('./pages/onboarding/create-organization'),
+    'default',
+  ),
+});
+
+const onboardingNoTenantsRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: 'onboarding/no-tenants',
+  component: lazyRouteComponent(
+    () => import('./pages/onboarding/no-tenants'),
+    'default',
+  ),
+});
+
+const onboardingInvitesRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: 'onboarding/invites',
+  loader: async () => {
+    const mod = await import('./pages/onboarding/invites');
+    if (mod.loader) {
+      return mod.loader({} as never);
+    }
+    return null;
+  },
+  component: lazyRouteComponent(
+    () => import('./pages/onboarding/invites'),
+    'default',
+  ),
+});
+
+const v1RedirectRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: 'v1/*',
+  loader: () => {
+    throw redirect({ to: appRoutes.authenticatedRoute.to });
+  },
+});
+
+async function getOrganizationIdForTenantInRouter(tenantId: string) {
+  const { isControlPlaneEnabled } = await fetchControlPlaneStatus();
+  if (!isControlPlaneEnabled) {
+    return null;
+  }
+
+  const universe = await queryClient.fetchQuery(
+    userUniverseQuery(isControlPlaneEnabled),
+  );
+
+  return (
+    universe.organizations?.find((org) =>
+      org.tenants.some((tenant) => tenant.id === tenantId),
+    )?.metadata.id ?? null
+  );
+}
+
+const tenantRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: 'tenants/$tenant',
+  loader: async ({ params }) => {
+    const { isControlPlaneEnabled } = await fetchControlPlaneStatus();
+
+    // Check membership first so an invalid/inaccessible tenant ID produces a
+    // 403 immediately, without triggering a tenantGet or exchangeTokenCreate
+    // call that would fail with a 400 for a non-UUID param.
+    const { data: memberships } = await (isControlPlaneEnabled
+      ? controlPlaneApi.tenantMembershipsList()
+      : api.tenantMembershipsList());
+
+    const hasAccess = Boolean(
+      memberships.rows?.some(
+        (m: TenantMember) => m.tenant?.metadata.id === params.tenant,
+      ),
+    );
+
+    if (!hasAccess) {
+      throw new Response('Forbidden', { status: 403, statusText: 'Forbidden' });
+    }
+
+    if (isControlPlaneEnabled) {
+      // Fetch the exchange token for this tenant using the authoritative ID
+      // from route params
+      await queryClient.fetchQuery(
+        exchangeTokenQueryOptions(params.tenant, () =>
+          controlPlaneApi
+            .exchangeTokenCreate(params.tenant)
+            .then((r) => r.data),
+        ),
+      );
+
+      // Place the full tenant object in localStorage, this is required by the interceptor
+      // before any subsequent API calls for this tenant
+      const fullTenant = (
+        await api.tenantGet(params.tenant, { xTenantId: params.tenant })
+      ).data;
+
+      localStorage.setItem(
+        CONTROL_PLANE_TENANT_STORAGE_KEY,
+        JSON.stringify(fullTenant),
+      );
+
+      // Populate the React Query cache so pages don't re-fetch immediately.
+      queryClient.setQueryData(['tenant:get', params.tenant], fullTenant);
+    } else {
+      await queryClient.fetchQuery({
+        queryKey: ['tenant:get', params.tenant],
+        queryFn: async () => (await api.tenantGet(params.tenant)).data,
+        retry: false,
+      });
+    }
+
+    return null;
+  },
+  component: lazyRouteComponent(() => import('./pages/main/v1'), 'default'),
+  notFoundComponent: () => <NotFound />,
+});
+
+const tenantIndexRedirectRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: '/',
+  loader: ({ params }) => {
+    throw redirect({ to: appRoutes.tenantRunsRoute.to, params });
+  },
+});
+
+const tenantEventsRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: 'events',
+  component: lazyRouteComponent(
+    () => import('./pages/main/v1/events'),
+    'default',
+  ),
+});
+
+const tenantLogsRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: 'logs',
+  component: lazyRouteComponent(
+    () => import('./pages/main/v1/logs'),
+    'default',
+  ),
+});
+
+const tenantFiltersRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: 'filters',
+  component: lazyRouteComponent(
+    () => import('./pages/main/v1/filters'),
+    'default',
+  ),
+});
+
+const tenantWebhooksRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: 'webhooks',
+  component: lazyRouteComponent(
+    () => import('./pages/main/v1/webhooks'),
+    'default',
+  ),
+});
+
+const tenantRateLimitsRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: 'rate-limits',
+  component: lazyRouteComponent(
+    () => import('./pages/main/v1/rate-limits'),
+    'default',
+  ),
+});
+
+const tenantScheduledRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: 'scheduled',
+  component: lazyRouteComponent(
+    () => import('./pages/main/v1/scheduled-runs'),
+    'default',
+  ),
+});
+
+const tenantCronJobsRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: 'cron-jobs',
+  component: lazyRouteComponent(
+    () => import('./pages/main/v1/recurring'),
+    'default',
+  ),
+});
+
+const tenantWorkflowsRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: 'workflows',
+  component: lazyRouteComponent(
+    () => import('./pages/main/v1/workflows'),
+    'default',
+  ),
+});
+
+const tenantWorkflowRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: 'workflows/$workflow',
+  component: lazyRouteComponent(
+    () => import('./pages/main/v1/workflows/$workflow'),
+    'default',
+  ),
+});
+
+const tenantOverviewRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: 'overview',
+  component: lazyRouteComponent(
+    () => import('./pages/main/v1/overview/index.tsx'),
+    'default',
+  ),
+});
+
+const tenantRunsRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: 'runs',
+  component: lazyRouteComponent(
+    () => import('./pages/main/v1/workflow-runs-v1/index.tsx'),
+    'default',
+  ),
+});
+
+const runSearchSchema = z.object({
+  wasRedirectedFromTrigger: z.boolean().optional(),
+});
+
+export const tenantRunRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: 'runs/$run',
+  component: lazyRouteComponent(
+    () => import('./pages/main/v1/workflow-runs-v1/$run'),
+    'default',
+  ),
+  validateSearch: runSearchSchema,
+});
+
+const tenantTaskRunsRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: 'task-runs/$run',
+  loader: ({ params }) => {
+    throw redirect({ to: appRoutes.tenantRunRoute.to, params });
+  },
+});
+
+const tenantWorkersRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: 'workers',
+  component: lazyRouteComponent(
+    () => import('./pages/main/v1/workers'),
+    'default',
+  ),
+});
+
+const tenantWorkersAllRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: 'workers/all',
+  loader: ({ params }) => {
+    throw redirect({ to: appRoutes.tenantWorkersRoute.to, params });
+  },
+});
+
+const tenantWorkerRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: 'workers/$worker',
+  component: lazyRouteComponent(
+    () => import('./pages/main/v1/workers/$worker'),
+    'default',
+  ),
+});
+
+const tenantManagedWorkersRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: 'managed-workers',
+  component: lazyRouteComponent(
+    () => import('./pages/main/v1/managed-workers/index.tsx'),
+    'default',
+  ),
+});
+
+const tenantManagedWorkersTemplateRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: 'managed-workers/demo-template',
+  component: lazyRouteComponent(
+    () => import('./pages/main/v1/managed-workers/demo-template/index.tsx'),
+    'default',
+  ),
+});
+
+const tenantManagedWorkersCreateRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: 'managed-workers/create',
+  component: lazyRouteComponent(
+    () => import('./pages/main/v1/managed-workers/create/index.tsx'),
+    'default',
+  ),
+});
+
+const tenantManagedWorkerRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: 'managed-workers/$managedWorker',
+  component: lazyRouteComponent(
+    () => import('./pages/main/v1/managed-workers/$managed-worker/index.tsx'),
+    'default',
+  ),
+});
+
+const tenantOrganizationsAndTenantsRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: 'organizations-and-tenants',
+  loader: ({ params }) => {
+    throw redirect({
+      to: appRoutes.tenantSettingsOrganizationRoute.to,
+      params,
+    });
+  },
+});
+
+const tenantSettingsOrganizationRoute = createRoute({
+  getParentRoute: () => tenantSettingsLayoutRoute,
+  path: 'organization',
+  loader: async ({ params }) => {
+    const orgId = await getOrganizationIdForTenantInRouter(params.tenant);
+
+    if (!orgId) {
+      throw redirect({
+        to: appRoutes.tenantsRoute.to,
+      });
+    }
+
+    throw redirect({
+      to: appRoutes.organizationsIndexRoute.to,
+      params: { organization: orgId },
+    });
+  },
+});
+
+const tenantSettingsLayoutRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: 'settings',
+  component: lazyRouteComponent(
+    () => import('./pages/main/v1/settings/settings-layout'),
+    'default',
+  ),
+});
+
+const tenantSettingsIndexRoute = createRoute({
+  getParentRoute: () => tenantSettingsLayoutRoute,
+  path: '/',
+  loader: ({ params }) => {
+    throw redirect({
+      to: appRoutes.tenantSettingsOverviewRoute.to,
+      params,
+    });
+  },
+});
+
+const tenantSettingsOverviewRoute = createRoute({
+  getParentRoute: () => tenantSettingsLayoutRoute,
+  path: 'overview',
+  component: lazyRouteComponent(
+    () => import('./pages/main/v1/tenant-settings/overview'),
+    'default',
+  ),
+});
+
+const tenantSettingsApiTokensRoute = createRoute({
+  getParentRoute: () => tenantSettingsLayoutRoute,
+  path: 'api-tokens',
+  component: lazyRouteComponent(
+    () => import('./pages/main/v1/tenant-settings/api-tokens'),
+    'default',
+  ),
+});
+
+const tenantSettingsGithubRoute = createRoute({
+  getParentRoute: () => tenantSettingsLayoutRoute,
+  path: 'github',
+  loader: ({ params }) => {
+    throw redirect({
+      to: appRoutes.tenantSettingsIntegrationsRoute.to,
+      params,
+    });
+  },
+});
+
+const tenantSettingsMembersRoute = createRoute({
+  getParentRoute: () => tenantSettingsLayoutRoute,
+  path: 'members',
+  component: lazyRouteComponent(
+    () => import('./pages/main/v1/tenant-settings/members'),
+    'default',
+  ),
+});
+
+const tenantSettingsAlertingRoute = createRoute({
+  getParentRoute: () => tenantSettingsLayoutRoute,
+  path: 'alerting',
+  loader: ({ params }) => {
+    throw redirect({
+      to: appRoutes.tenantSettingsIntegrationsRoute.to,
+      params,
+    });
+  },
+});
+
+const tenantSettingsBillingRoute = createRoute({
+  getParentRoute: () => tenantSettingsLayoutRoute,
+  path: 'billing-and-limits',
+  loader: async ({ params }) => {
+    const orgId = await getOrganizationIdForTenantInRouter(params.tenant);
+
+    if (!orgId) {
+      throw redirect({
+        to: appRoutes.tenantSettingsOverviewRoute.to,
+        params,
+      });
+    }
+
+    throw redirect({
+      to: appRoutes.organizationBillingRoute.to,
+      params: { organization: orgId },
+    });
+  },
+});
+
+const tenantSettingsIngestorsRoute = createRoute({
+  getParentRoute: () => tenantSettingsLayoutRoute,
+  path: 'ingestors',
+  loader: ({ params }) => {
+    throw redirect({
+      to: appRoutes.tenantSettingsIntegrationsRoute.to,
+      params,
+    });
+  },
+});
+
+const tenantSettingsIntegrationsRoute = createRoute({
+  getParentRoute: () => tenantSettingsLayoutRoute,
+  path: 'integrations',
+  component: lazyRouteComponent(
+    () => import('./pages/main/v1/tenant-settings/integrations'),
+    'default',
+  ),
+});
+
+const tenantLegacySettingsIndexRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: 'tenant-settings',
+  loader: ({ params }) => {
+    throw redirect({ to: appRoutes.tenantSettingsOverviewRoute.to, params });
+  },
+});
+
+const tenantLegacySettingsOverviewRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: 'tenant-settings/overview',
+  loader: ({ params }) => {
+    throw redirect({ to: appRoutes.tenantSettingsOverviewRoute.to, params });
+  },
+});
+
+const tenantLegacySettingsApiTokensRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: 'tenant-settings/api-tokens',
+  loader: ({ params }) => {
+    throw redirect({ to: appRoutes.tenantSettingsApiTokensRoute.to, params });
+  },
+});
+
+const tenantLegacySettingsGithubRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: 'tenant-settings/github',
+  loader: ({ params }) => {
+    throw redirect({
+      to: appRoutes.tenantSettingsIntegrationsRoute.to,
+      params,
+    });
+  },
+});
+
+const tenantLegacySettingsMembersRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: 'tenant-settings/members',
+  loader: ({ params }) => {
+    throw redirect({
+      to: appRoutes.tenantSettingsMembersRoute.to,
+      params,
+    });
+  },
+});
+
+const tenantLegacySettingsAlertingRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: 'tenant-settings/alerting',
+  loader: ({ params }) => {
+    throw redirect({
+      to: appRoutes.tenantSettingsIntegrationsRoute.to,
+      params,
+    });
+  },
+});
+
+const tenantLegacySettingsBillingRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: 'tenant-settings/billing-and-limits',
+  loader: async ({ params }) => {
+    const orgId = await getOrganizationIdForTenantInRouter(params.tenant);
+
+    if (!orgId) {
+      throw redirect({
+        to: appRoutes.tenantSettingsOverviewRoute.to,
+        params,
+      });
+    }
+
+    throw redirect({
+      to: appRoutes.organizationBillingRoute.to,
+      params: { organization: orgId },
+    });
+  },
+});
+
+const tenantSettingsResourceLimitsRoute = createRoute({
+  getParentRoute: () => tenantSettingsLayoutRoute,
+  path: 'resource-limits',
+  component: lazyRouteComponent(
+    () => import('./pages/main/v1/tenant-settings/resource-limits'),
+    'default',
+  ),
+});
+
+const tenantLegacySettingsIngestorsRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: 'tenant-settings/ingestors',
+  loader: ({ params }) => {
+    throw redirect({
+      to: appRoutes.tenantSettingsIntegrationsRoute.to,
+      params,
+    });
+  },
+});
+
+const tenantLegacySettingsIntegrationsRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: 'tenant-settings/integrations',
+  loader: ({ params }) => {
+    throw redirect({
+      to: appRoutes.tenantSettingsIntegrationsRoute.to,
+      params,
+    });
+  },
+});
+
+const tenantLegacySettingsOrganizationRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: 'tenant-settings/organization',
+  loader: ({ params }) => {
+    throw redirect({
+      to: appRoutes.tenantSettingsOrganizationRoute.to,
+      params,
+    });
+  },
+});
+
+const tenantWorkflowRunsRedirectRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: 'workflow-runs',
+  loader: ({ params }) => {
+    throw redirect({ to: appRoutes.tenantRunsRoute.to, params });
+  },
+});
+
+const tenantWorkflowRunRedirectRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: 'workflow-runs/$run',
+  loader: ({ params }) => {
+    throw redirect({ to: appRoutes.tenantRunsRoute.to, params });
+  },
+});
+
+const tenantTasksRedirectRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: 'tasks',
+  loader: ({ params }) => {
+    throw redirect({ to: appRoutes.tenantWorkflowsRoute.to, params });
+  },
+});
+
+const tenantTasksWorkflowRedirectRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: 'tasks/$workflow',
+  loader: ({ params }) => {
+    throw redirect({
+      to: appRoutes.tenantWorkflowRoute.to,
+      params,
+    });
+  },
+});
+
+// redirects for alerting - redirect old non-tenanted routes to tenanted routes
+// super janky using `any` since this breaks the types otherwise, since the routes
+// that might be landed on don't actually exist anymore in the route tree
+const workflowRunRedirectRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: 'workflow-runs/$run',
+  loader: ({ location, params }) => {
+    const tenantId: string | null | undefined =
+      (location.search as any)?.tenantId || (location.search as any)?.tenant;
+
+    const run: string | null | undefined = (params as any)?.run;
+
+    if (!tenantId || !run || !validate(run)) {
+      throw redirect({ to: appRoutes.authenticatedRoute.to });
+    }
+
+    throw redirect({
+      to: appRoutes.tenantRunRoute.to,
+      params: { tenant: tenantId, run },
+    });
+  },
+});
+
+const tenantSettingsRedirect = createRoute({
+  getParentRoute: () => rootRoute,
+  path: 'tenant-settings',
+  loader: ({ location }) => {
+    const tenantId: string | null | undefined =
+      (location.search as any)?.tenantId || (location.search as any)?.tenant;
+
+    if (!tenantId) {
+      throw redirect({ to: appRoutes.authenticatedRoute.to });
+    }
+
+    throw redirect({
+      to: appRoutes.tenantSettingsOverviewRoute.to,
+      params: { tenant: tenantId },
+    });
+  },
+});
+
+const tenantSettingsSubpathRedirect = createRoute({
+  getParentRoute: () => rootRoute,
+  path: 'tenant-settings/$',
+  loader: ({ params, location }) => {
+    const tenantId: string | null | undefined =
+      (location.search as any)?.tenantId || (location.search as any)?.tenant;
+
+    const subpath: string | null | undefined = (params as any)?._splat || '';
+    const allowedSubpaths = [
+      tenantSettingsAlertingRoute.path,
+      tenantSettingsApiTokensRoute.path,
+      tenantSettingsBillingRoute.path,
+      tenantSettingsGithubRoute.path,
+      tenantSettingsIngestorsRoute.path,
+      tenantSettingsIntegrationsRoute.path,
+      tenantSettingsMembersRoute.path,
+      tenantSettingsOrganizationRoute.path,
+      tenantSettingsOverviewRoute.path,
+    ].map((p) => p.split('/').pop());
+
+    if (!tenantId || !subpath || !allowedSubpaths.includes(subpath)) {
+      throw redirect({ to: appRoutes.authenticatedRoute.to });
+    }
+
+    throw redirect({
+      to: `/tenants/${tenantId}/settings/${subpath}`,
+    } as any);
+  },
+});
+
+const tenantRoutes = [
+  tenantEventsRoute,
+  tenantLogsRoute,
+  tenantFiltersRoute,
+  tenantWebhooksRoute,
+  tenantRateLimitsRoute,
+  tenantScheduledRoute,
+  tenantCronJobsRoute,
+  tenantWorkflowsRoute,
+  tenantWorkflowRoute,
+  tenantOverviewRoute,
+  tenantRunsRoute,
+  tenantRunRoute,
+  tenantTaskRunsRoute,
+  tenantWorkersRoute,
+  tenantWorkersAllRoute,
+  tenantWorkerRoute,
+  tenantManagedWorkersRoute,
+  tenantManagedWorkersTemplateRoute,
+  tenantManagedWorkersCreateRoute,
+  tenantManagedWorkerRoute,
+  tenantOrganizationsAndTenantsRoute,
+  tenantLegacySettingsIndexRoute,
+  tenantLegacySettingsOverviewRoute,
+  tenantLegacySettingsApiTokensRoute,
+  tenantLegacySettingsGithubRoute,
+  tenantLegacySettingsMembersRoute,
+  tenantLegacySettingsAlertingRoute,
+  tenantLegacySettingsBillingRoute,
+  tenantLegacySettingsIngestorsRoute,
+  tenantLegacySettingsIntegrationsRoute,
+  tenantLegacySettingsOrganizationRoute,
+  tenantSettingsLayoutRoute.addChildren([
+    tenantSettingsIndexRoute,
+    tenantSettingsOverviewRoute,
+    tenantSettingsApiTokensRoute,
+    tenantSettingsGithubRoute,
+    tenantSettingsMembersRoute,
+    tenantSettingsAlertingRoute,
+    tenantSettingsBillingRoute,
+    tenantSettingsResourceLimitsRoute,
+    tenantSettingsIngestorsRoute,
+    tenantSettingsIntegrationsRoute,
+    tenantSettingsOrganizationRoute,
+  ]),
+  tenantWorkflowRunsRedirectRoute,
+  tenantWorkflowRunRedirectRoute,
+  tenantTasksRedirectRoute,
+  tenantTasksWorkflowRedirectRoute,
+];
+
+const routeTree = rootRoute.addChildren([
+  authRoute.addChildren([authLoginRoute, authRegisterRoute]),
+  onboardingVerifyRoute,
+  authenticatedRoute.addChildren([
+    onboardingCreateTenantRoute,
+    onboardingCreateOrganizationRoute,
+    onboardingNoTenantsRoute,
+    onboardingInvitesRoute,
+    redeemOffersRoute,
+    organizationsRoute.addChildren([
+      organizationSettingsLayoutRoute.addChildren([
+        organizationsIndexRoute,
+        organizationBillingRoute,
+        organizationTenantsRoute,
+        organizationTeamRoute,
+        organizationMembersRoute,
+        organizationTokensRoute,
+        organizationRegionsRoute,
+        organizationSsoRoute,
+        organizationAuditLogRoute,
+        organizationUserGroupsRoute,
+      ]),
+      organizationsIndexRedirectRoute,
+      organizationLegacyBillingRoute,
+      organizationLegacyTenantsRoute,
+      organizationLegacyTeamRoute,
+      organizationLegacyMembersRoute,
+      organizationLegacyUserGroupsRoute,
+      organizationLegacyTokensRoute,
+      organizationLegacyRegionsRoute,
+      organizationLegacySsoRoute,
+      organizationLegacyAuditLogRoute,
+    ]),
+    organizationsNewRoute,
+    tenantsRoute.addChildren([tenantsIndexRoute]),
+    tenantRoute.addChildren([tenantIndexRedirectRoute, ...tenantRoutes]),
+  ]),
+  v1RedirectRoute,
+  workflowRunRedirectRoute,
+  tenantSettingsRedirect,
+  tenantSettingsSubpathRedirect,
+]);
+
+export const router = createRouter({
+  routeTree,
+  defaultPreload: 'intent',
+  basepath: config.BASE_PATH,
+});
+
+declare module '@tanstack/react-router' {
+  interface Register {
+    router: typeof router;
+  }
+}
+
+export const appRoutes = {
+  rootRoute,
+  authRoute,
+  authLoginRoute,
+  authRegisterRoute,
+  onboardingVerifyRoute,
+  redeemOffersRoute,
+  organizationsRoute,
+  organizationSettingsLayoutRoute,
+  organizationsIndexRoute,
+  organizationBillingRoute,
+  organizationTenantsRoute,
+  organizationTeamRoute,
+  organizationMembersRoute,
+  organizationTokensRoute,
+  organizationRegionsRoute,
+  organizationSsoRoute,
+  organizationAuditLogRoute,
+  organizationUserGroupsRoute,
+  organizationsIndexRedirectRoute,
+  organizationLegacyBillingRoute,
+  organizationLegacyTenantsRoute,
+  organizationLegacyTeamRoute,
+  organizationLegacyMembersRoute,
+  organizationLegacyUserGroupsRoute,
+  organizationLegacyTokensRoute,
+  organizationLegacyRegionsRoute,
+  organizationLegacySsoRoute,
+  organizationLegacyAuditLogRoute,
+  // The old `/organizations/$organization/settings/billing` redirect route was
+  // replaced by the live billing route at the same path; keep the key as an
+  // alias so existing consumers (e.g. the welcome modal) keep working.
+  organizationSettingsBillingRoute: organizationBillingRoute,
+  organizationsNewRoute,
+  tenantsRoute,
+  tenantsIndexRoute,
+  authenticatedRoute,
+  onboardingCreateTenantRoute,
+  onboardingCreateOrganizationRoute,
+  onboardingNoTenantsRoute,
+  onboardingInvitesRoute,
+  tenantRoute,
+  tenantEventsRoute,
+  tenantLogsRoute,
+  tenantFiltersRoute,
+  tenantWebhooksRoute,
+  tenantRateLimitsRoute,
+  tenantScheduledRoute,
+  tenantCronJobsRoute,
+  tenantWorkflowsRoute,
+  tenantWorkflowRoute,
+  tenantOverviewRoute,
+  tenantRunsRoute,
+  tenantRunRoute,
+  tenantTaskRunsRoute,
+  tenantWorkersRoute,
+  tenantWorkersAllRoute,
+  tenantWorkerRoute,
+  tenantManagedWorkersRoute,
+  tenantManagedWorkersTemplateRoute,
+  tenantManagedWorkersCreateRoute,
+  tenantManagedWorkerRoute,
+  tenantOrganizationsAndTenantsRoute,
+  tenantSettingsLayoutRoute,
+  tenantSettingsIndexRoute,
+  tenantSettingsOverviewRoute,
+  tenantSettingsApiTokensRoute,
+  tenantSettingsGithubRoute,
+  tenantSettingsMembersRoute,
+  tenantSettingsAlertingRoute,
+  tenantSettingsBillingRoute,
+  tenantSettingsResourceLimitsRoute,
+  tenantSettingsIngestorsRoute,
+  tenantSettingsIntegrationsRoute,
+  tenantSettingsOrganizationRoute,
+  tenantWorkflowRunsRedirectRoute,
+  tenantWorkflowRunRedirectRoute,
+  tenantTasksRedirectRoute,
+  tenantTasksWorkflowRedirectRoute,
+  workflowRunRedirectRoute,
+};
+
+const Router: FC = () => {
+  return <RouterProvider router={router} />;
+};
+
+export default Router;

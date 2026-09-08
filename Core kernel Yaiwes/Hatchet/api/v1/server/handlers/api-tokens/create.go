@@ -1,0 +1,64 @@
+package apitokens
+
+import (
+	"time"
+
+	"github.com/labstack/echo/v4"
+
+	"github.com/hatchet-dev/hatchet/api/v1/server/oas/apierrors"
+	"github.com/hatchet-dev/hatchet/api/v1/server/oas/gen"
+	"github.com/hatchet-dev/hatchet/pkg/analytics"
+	"github.com/hatchet-dev/hatchet/pkg/constants"
+	"github.com/hatchet-dev/hatchet/pkg/repository/sqlcv1"
+)
+
+func (a *APITokenService) ApiTokenCreate(ctx echo.Context, request gen.ApiTokenCreateRequestObject) (gen.ApiTokenCreateResponseObject, error) {
+	tenant := ctx.Get("tenant").(*sqlcv1.Tenant)
+
+	tenantId := tenant.ID
+
+	// validate the request
+	if apiErrors, err := a.config.Validator.ValidateAPI(request.Body); err != nil {
+		return nil, err
+	} else if apiErrors != nil {
+		return gen.ApiTokenCreate400JSONResponse(*apiErrors), nil
+	}
+
+	var expiresAt *time.Time
+
+	if request.Body.ExpiresIn != nil {
+		expiresIn, err := time.ParseDuration(*request.Body.ExpiresIn)
+
+		if err != nil {
+			return gen.ApiTokenCreate400JSONResponse(apierrors.NewAPIErrors("invalid expiration duration")), nil
+		}
+
+		e := time.Now().UTC().Add(expiresIn)
+
+		expiresAt = &e
+	}
+
+	token, err := a.config.Auth.JWTManager.GenerateTenantToken(ctx.Request().Context(), tenantId, request.Body.Name, false, expiresAt)
+
+	if err != nil {
+		return nil, err
+	}
+
+	ctx.Set(constants.ResourceIdKey.String(), token.TokenId.String())
+	ctx.Set(constants.ResourceTypeKey.String(), constants.ResourceTypeApiToken.String())
+
+	a.config.Analytics.Enqueue(
+		ctx.Request().Context(),
+		analytics.Token, analytics.Create,
+		token.TokenId.String(),
+		map[string]interface{}{
+			"name":       request.Body.Name,
+			"expires_at": expiresAt,
+		},
+	)
+
+	// This is the only time the token is sent over the API
+	return gen.ApiTokenCreate200JSONResponse{
+		Token: token.Token,
+	}, nil
+}
