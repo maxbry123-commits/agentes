@@ -1,0 +1,49 @@
+{
+  "contract": "tel.workflow/v4",
+  "project": "Wordflow LOOP Yaiwes",
+  "status": "READY_FOR_REAL_AGENT_TEST",
+  "tests_executed_by_this_closure": false,
+  "fleet_count": 18,
+  "council12_count": 12,
+  "routing": "deterministic_exact_id_then_slot_role",
+  "source_traceability": {
+    "vendored_or_located": 15,
+    "external_not_vendored": ["hermes", "muse_glimmer", "goose"],
+    "rule": "External operator runtimes do not receive invented repository paths. Their runtime binding remains fail-closed until configured."
+  },
+  "runtime_configuration": {
+    "http_env": {
+      "claude_code": {"url_env": "YAIWES_CLAUDE_CODE_URL", "token_env": "YAIWES_CLAUDE_CODE_TOKEN"},
+      "mimo_code": {"url_env": "YAIWES_MIMO_CODE_URL", "token_env": "YAIWES_MIMO_CODE_TOKEN"},
+      "openclaw": {"url_env": "YAIWES_OPENCLAW_URL", "token_env": "YAIWES_OPENCLAW_TOKEN"}
+    },
+    "command_env": {
+      "opencode": "YAIWES_OPENCODE_COMMAND",
+      "openhands": "YAIWES_OPENHANDS_COMMAND",
+      "codex": "YAIWES_CODEX_COMMAND",
+      "smolagents": "YAIWES_SMOLAGENTS_COMMAND",
+      "hermes": "YAIWES_HERMES_COMMAND",
+      "aider": "YAIWES_AIDER_COMMAND",
+      "muse_glimmer": "YAIWES_MUSE_GLIMMER_COMMAND",
+      "kimi_k": "YAIWES_KIMI_COMMAND",
+      "qwen_code": "YAIWES_QWEN_COMMAND",
+      "cline": "YAIWES_CLINE_COMMAND",
+      "goose": "YAIWES_GOOSE_COMMAND",
+      "agent_zero": "YAIWES_AGENT_ZERO_COMMAND",
+      "opendev": "YAIWES_OPENDEV_COMMAND",
+      "research_agent_lab": "YAIWES_RESEARCH_AGENT_LAB_COMMAND",
+      "mirothinker": "YAIWES_MIROTHINKER_COMMAND"
+    }
+  },
+  "pre_test_gates": {
+    "fleet_registry": "READY",
+    "agent_fleet_adapter": "READY",
+    "universal_plug_binding": "READY",
+    "unique_agent_ids": "VERIFIED_PREVIOUS_STEP3",
+    "council12": "VERIFIED_PREVIOUS_STEP3",
+    "fail_closed_without_runtime": "VERIFIED_PREVIOUS_STEP3",
+    "external_runtime_values": "OPERATOR_INJECTION_REQUIRED_AT_TEST_TIME"
+  },
+  "next_action": "INJECT_AUTHORIZED_RUNTIME_ENV_AND_RUN_REAL_AGENT_TESTS",
+  "closure_rule": "Repository-side preparation is closed. A runtime is never marked executed until its configured API/MCP/command is invoked with evidence."
+}
