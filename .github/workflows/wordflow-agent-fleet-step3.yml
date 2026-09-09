@@ -1,0 +1,83 @@
+name: Wordflow Agent Fleet STEP3 Verify
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/wordflow-agent-fleet-step3.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify-agent-fleet:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify deterministic fleet wiring
+        shell: bash
+        run: |
+          python - <<'PY'
+          import importlib.util, json, pathlib
+          root = pathlib.Path('.')
+          bind = root / 'Agente Yaiwes principal/execution-engine-pool/agent-bindings'
+          regp = bind / 'agent_fleet_registry.json'
+          adap = bind / 'agent_fleet_adapter.py'
+          healthp = bind / 'agent_fleet_health.json'
+          plugp = root / 'Agente Yaiwes principal/kernel-principal/extension-kernel/capability-registry/wordflow_loop_plugin_registry.json'
+          priorp = root / 'Agente Yaiwes principal/kernel-principal/extension-kernel/capability-registry/wordflow-loop-evidence/STEP3_PROGRAMMING_TRIGGER.json'
+
+          reg = json.loads(regp.read_text())
+          assert reg['contract'] == 'tel.workflow/v4'
+          assert reg['status'] == 'WIRED_UNTESTED'
+          assert len(reg['agents']) == 18
+          ids = [a['agent_id'] for a in reg['agents']]
+          assert len(ids) == len(set(ids)) == 18
+          assert len(reg['canonical_council12']) == 12
+          assert set(reg['canonical_council12']).issubset(ids)
+
+          spec = importlib.util.spec_from_file_location('agent_fleet_adapter', adap)
+          mod = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(mod)
+          fleet = mod.AgentFleetAdapter(regp)
+          assert fleet.resolve(role='writer')['agent_id'] == 'opencode'
+          assert fleet.resolve(role='repair')['agent_id'] == 'openhands'
+          assert fleet.resolve(role='flow_review')['agent_id'] == 'claude_code'
+          assert fleet.resolve(role='research')['agent_id'] == 'goose'
+          assert fleet.resolve(role='fallback_coder')['agent_id'] == 'opendev'
+
+          health = json.loads(healthp.read_text())
+          assert health['fleet_count'] == 18
+          assert health['tests_executed'] is False
+          assert all(x['wired'] for x in health['agents'])
+
+          unavailable = 0
+          for item in reg['agents']:
+              d = fleet.health_descriptor(item['agent_id'])
+              assert d['wired'] is True and d['fail_closed'] is True
+              if not d['runtime_configured']:
+                  unavailable += 1
+          assert unavailable >= 1
+          try:
+              fleet.invoke('opencode', {'task':'probe'}, timeout_s=1)
+          except mod.AgentBindingError as exc:
+              assert 'RUNTIME_UNAVAILABLE' in str(exc)
+          else:
+              raise AssertionError('opencode must fail closed without configured runtime')
+
+          plug = json.loads(plugp.read_text())
+          af = [x for x in plug['registrations'] if x['plugin_id'] == 'yaiwes.runtime.agent_fleet']
+          assert len(af) == 1 and af[0]['status'] == 'WIRED_UNTESTED'
+
+          prior = json.loads(priorp.read_text())
+          assert prior['status'] == 'PASS_REAL'
+          assert prior['programming_cases_passed'] == 3
+          assert prior['idempotency'] == 'PASS'
+          assert prior['fail_closed_invalid_profile'] == 'PASS'
+
+          print('WORDFLOW_AGENT_FLEET_STEP3=PASS')
+          print('fleet_count=18')
+          print('council12=12')
+          print(f'runtimes_unconfigured_fail_closed={unavailable}')
+          print('prior_programming_trigger=PASS_REAL_3_3')
+          PY
