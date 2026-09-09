@@ -1,0 +1,80 @@
+{
+  "artifact_id": "yaiwes.runtime.agent_fleet",
+  "version": "1.0.0",
+  "estado": "active",
+  "contract_hash": "sha256:0c09051c74ffc43ed052651456ad2b9b95e84cad76552efd14bfac8bd5f657c8",
+  "tribunal_case_id": "YAIWES-AGENT-FLEET-STEP2",
+  "contrato": {
+    "rol": "router",
+    "consume": {
+      "datatype": {
+        "family": "json",
+        "type": "object",
+        "version": 1
+      }
+    },
+    "expone": {
+      "datatype": {
+        "family": "json",
+        "type": "object",
+        "version": 1
+      }
+    }
+  },
+  "ejecucion": {
+    "kind": "code",
+    "transport": "importlib",
+    "runtime_type": "compute",
+    "idempotente": true
+  },
+  "seguridad": {
+    "sandbox": "process",
+    "limites": {
+      "timeout_ms": 120000
+    }
+  },
+  "firma": {
+    "gpg_key_id": "YAIWES-AGENT-FLEET"
+  },
+  "categoria": "agent-routing",
+  "etapa": "G",
+  "perfiles": {
+    "n0": {
+      "habilitada": true,
+      "iteraciones": 1,
+      "simulaciones": 0,
+      "criticas": 0,
+      "muestras_k": 1
+    }
+  },
+  "presupuesto": {
+    "n0": {
+      "max_tokens": 1,
+      "max_ms": 120000,
+      "max_costo_usd": 0.0
+    }
+  },
+  "telemetria": {
+    "metricas": ["routing", "health", "runtime_available", "fail_closed"],
+    "span_otel": true
+  },
+  "evidencia": {
+    "produce": ["L2_build", "L3_runtime"],
+    "destino": "capability-registry/wordflow-loop-evidence/"
+  },
+  "failover": {
+    "sustituible_por": [],
+    "compensacion": "fail_closed"
+  },
+  "salud": {
+    "metodo": "health_descriptor",
+    "heartbeat_interval_s": 30
+  },
+  "wiring": {
+    "adapter": "Agente Yaiwes principal/execution-engine-pool/agent-bindings/agent_fleet_adapter.py",
+    "registry": "Agente Yaiwes principal/execution-engine-pool/agent-bindings/agent_fleet_registry.json",
+    "registry_commit": "f2e99e193286043d8cd2ed5bd5310b5ea9b42c7c",
+    "step2_status": "WIRED_UNTESTED",
+    "tests_allowed_in_step2": false
+  }
+}
