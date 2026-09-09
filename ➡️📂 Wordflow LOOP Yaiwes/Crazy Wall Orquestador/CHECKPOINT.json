@@ -1,27 +1,35 @@
 {
-  "checkpoint_id": "WFLOOP-AGENTS-3STEP-0001",
+  "checkpoint_id": "WFLOOP-AGENTS-3STEP-0003-ACTIVE",
   "contract": "tel.workflow/v4",
   "mode": "FAIL_CLOSED_EXECUTION_LOOP",
   "status": "ACTIVE_3STEP_AGENT_INTEGRATION",
-  "current_node": "STEP1_AGENT_INDEX",
+  "current_node": "STEP3_AGENT_FLEET_VERIFY",
   "queue": "1x1",
-  "history_previous_checkpoint_blob": "414a16d0b43206fbe01dcf6aa677c20dfeb79539",
+  "history_previous_checkpoint_blob": "19f29fe6162d746e8a03df1a01581f041106bfc9",
   "steps": {
     "1": {
       "name": "Index agents in Agentes-motores-Wordflow-YAIWES",
-      "status": "PENDING",
+      "status": "VERIFIED_CLOSED",
       "output": "➡️📂 readme indice agentes.md",
+      "commit": "ba9596c5716f34926e23186330609d4238bd8ccd",
       "tests_allowed": false
     },
     "2": {
-      "name": "Show additional useful agents and wire necessary agents 1x1",
-      "status": "PENDING",
-      "tests_allowed": false,
-      "persist": ["README arquitectura", "STATE", "CHECKPOINT", "PLAN", "RECOVERY", "BITACORA", "HANDOFF"]
+      "name": "Wire necessary agents 1x1",
+      "status": "WIRED_UNTESTED",
+      "fleet_count": 18,
+      "registry_commit": "f2e99e193286043d8cd2ed5bd5310b5ea9b42c7c",
+      "ficha_commit": "c21c632a09d27098157d39b80e0ebd29fd72dad1",
+      "health_commit": "ff4f60a69bad684acb60e2239ffe72c2f6b0e20d",
+      "universal_plug_commit": "973a9ab800ea91ff0503efbd933428a693fdee50",
+      "tests_allowed": false
     },
     "3": {
-      "name": "Final Wordflow LOOP workflow/trigger tests",
-      "status": "PENDING",
+      "name": "Final Wordflow LOOP agent-fleet workflow test",
+      "status": "IN_PROGRESS",
+      "workflow": ".github/workflows/wordflow-agent-fleet-step3.yml",
+      "run_id": 34405553218,
+      "head_sha": "79e0a5d29313ff5620b136cf19c1e71eab776505",
       "tests_allowed": true
     }
   },
@@ -34,7 +42,13 @@
     "t16_run": 34075371938,
     "t16_result": "PASS_4_OF_4"
   },
+  "gaps": [
+    "Hermes source path not located in motor repo root index",
+    "Muse/Glimmer source path not located in motor repo root index",
+    "Goose source path not located in motor repo root index",
+    "External agent runtimes are not claimed executable until STEP3 runtime configuration evidence exists"
+  ],
   "hf_status": "IN_PROGRESS_EXTERNAL_WAIT_DIRECTOR",
-  "next_action": "Create agent index only; no code inspection and no tests",
+  "next_action": "Verify run 34405553218; repair only STEP3 test failure if any; otherwise persist PASS and promote agent_fleet plugin.",
   "recovery_entrypoint": "➡️📂 Wordflow LOOP Yaiwes/HANDOFF.md"
 }
