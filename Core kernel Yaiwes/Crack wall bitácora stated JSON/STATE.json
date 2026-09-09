@@ -144,7 +144,11 @@
     ],
     "current_step": "STEP_1_MOVE_1_20",
     "step1_workflow": ".github/workflows/yaiwes-step1-move-1-20.yml",
-    "step1_first_run": 34297538861,
+    "step1_active_run": 34299244917,
+    "step1_active_job": 102302447840,
+    "step2_workflow": ".github/workflows/yaiwes-step2-wire-prune-1-20.yml",
+    "step3_workflow": ".github/workflows/yaiwes-step3-test-1-20.yml",
+    "chain": "STEP1 success -> STEP2 automatic -> STEP3 automatic",
     "rule": "no extra phases; continue in LOOP until steps 1,2,3 complete"
   }
 }
