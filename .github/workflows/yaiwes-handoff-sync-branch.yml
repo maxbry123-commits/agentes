@@ -1,0 +1,83 @@
+name: YAIWES handoff sync branch
+
+on:
+  push:
+    branches:
+      - yaiwes-handoff-sync-20260908
+    paths:
+      - .github/workflows/yaiwes-handoff-sync-branch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: yaiwes-handoff-sync-20260908
+          fetch-depth: 1
+          lfs: false
+
+      - name: Update canonical files
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          arch=Path('Readme arquitectura Yaiwes/README.md')
+          marker='YAIWES_HANDOFF_INTEGRACION_1_20'
+          if marker not in arch.read_text(errors='ignore'):
+              with arch.open('a', encoding='utf-8') as f:
+                  f.write('\n\n<!-- YAIWES_HANDOFF_INTEGRACION_1_20 -->\n')
+                  f.write('## Handoff operativo — integración componentes 1–20\n\n')
+                  f.write('Fuente operativa del plan actual: [HANDOFF-INTEGRACION-1-20.md](./HANDOFF-INTEGRACION-1-20.md).\n\n')
+                  f.write('Contrato vigente único: `PASO 1 MOVE 1–20 → PASO 2 CABLEAR/PODAR 1×1 SIN TESTS → PASO 3 TESTS 1×1`.\n')
+
+          method=Path('Core kernel Yaiwes/Readme de integración de componentes arquitectura Yaiwes/README.md')
+          if marker not in method.read_text(errors='ignore'):
+              with method.open('a', encoding='utf-8') as f:
+                  f.write('\n\n<!-- YAIWES_HANDOFF_INTEGRACION_1_20 -->\n')
+                  f.write('## Contrato operativo actual — 3 pasos\n\n')
+                  f.write('Handoff canónico: `Readme arquitectura Yaiwes/HANDOFF-INTEGRACION-1-20.md`.\n\n')
+                  f.write('`PASO 1 MOVE 1–20 → PASO 2 CABLEAR/PODAR 1×1 SIN TESTS → PASO 3 TESTS 1×1`.\n')
+
+          state_p=Path('Core kernel Yaiwes/Crack wall bitácora stated JSON/STATE.json')
+          state=json.loads(state_p.read_text())
+          state['integration_1_20_handoff']={
+              'status':'ACTIVE_LOOP',
+              'handoff':'Readme arquitectura Yaiwes/HANDOFF-INTEGRACION-1-20.md',
+              'contract':['STEP_1_MOVE_1_20','STEP_2_WIRE_PRUNE_1X1_NO_TESTS','STEP_3_TEST_1X1'],
+              'current_step':'STEP_1_MOVE_1_20',
+              'step1_workflow':'.github/workflows/yaiwes-step1-move-1-20.yml',
+              'step1_run':34297538861,
+              'rule':'no extra phases; continue in LOOP until steps 1,2,3 complete'
+          }
+          state['current_boundary']='STEP_1_MOVE_1_20'
+          state['next_delta']='Finish STEP 1 MOVE for components 1-20; then STEP 2 wire/prune 1x1 without tests; then STEP 3 tests 1x1.'
+          state_p.write_text(json.dumps(state,ensure_ascii=False,indent=2)+'\n')
+
+          plan_p=Path('Core kernel Yaiwes/Crack wall bitácora stated JSON/PLAN-WATCHDOG-PROGRAMMING-V2.json')
+          if plan_p.exists():
+              plan=json.loads(plan_p.read_text())
+              plan['blocked_until']='YAIWES_COMPONENTS_1_20_STEP3_COMPLETE'
+              plan['handoff_dependency']='Readme arquitectura Yaiwes/HANDOFF-INTEGRACION-1-20.md'
+              plan['note']='Watchdog programming stack resumes only after the 1-20 three-step integration contract completes.'
+              plan_p.write_text(json.dumps(plan,ensure_ascii=False,indent=2)+'\n')
+          PY
+
+      - name: Commit branch updates
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -- 'Readme arquitectura Yaiwes/README.md' 'Core kernel Yaiwes/Readme de integración de componentes arquitectura Yaiwes/README.md' 'Core kernel Yaiwes/Crack wall bitácora stated JSON/STATE.json' 'Core kernel Yaiwes/Crack wall bitácora stated JSON/PLAN-WATCHDOG-PROGRAMMING-V2.json'
+          if ! git diff --cached --quiet; then
+            git commit -m 'docs(yaiwes): sync handoff into architecture state and plan'
+            git push origin HEAD:yaiwes-handoff-sync-20260908
+          fi
