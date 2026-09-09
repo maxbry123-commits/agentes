@@ -1,8 +1,14 @@
 {
   "schema": "yaiwes.watchdog-programming-plan/v2",
   "status": "ACTIVE_LOOP",
+  "blocked_until": "YAIWES_COMPONENTS_1_20_STEP3_COMPLETE",
+  "handoff_dependency": "Readme arquitectura Yaiwes/HANDOFF-INTEGRACION-1-20.md",
+  "note": "El stack Watchdog de programación continúa únicamente después de completar el contrato de integración 1-20 en tres pasos.",
   "goal": "Programar y supervisar tareas simples, durables y multi-paso con memoria persistente, sandbox y dos vías de planificación: determinista y adaptativa.",
   "queue": [
+    "Esperar cierre Paso 1 MOVE componentes 1-20",
+    "Esperar cierre Paso 2 cableado/poda 1x1 sin tests",
+    "Esperar cierre Paso 3 tests 1x1",
     "X-Ray 10 componentes base",
     "investigar motores de LOOP/cascada/research/replan",
     "seleccionar 3 OSS por GAP adicional",
