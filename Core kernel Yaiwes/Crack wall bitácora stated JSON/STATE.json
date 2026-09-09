@@ -28,7 +28,7 @@
     "Cerberus",
     "Cerbos"
   ],
-  "current_boundary": "EXECUTE_APPROVED_11_TO_15",
+  "current_boundary": "STEP_1_MOVE_1_20",
   "status_by_component": {
     "APScheduler": "VERIFIED_CLOSED",
     "AWS-Step-Functions-DS-SDK": "VERIFIED_CLOSED",
@@ -80,53 +80,23 @@
   },
   "approval_required_before_components_11_15_move_or_wiring": false,
   "readme_architecture_rewrite_forbidden": true,
-  "next_delta": "Integrate Camunda 1x1; only after PASS continue Cedar, Celery, Cerberus and Cerbos",
+  "next_delta": "Finish STEP 1 MOVE for components 1-20; then STEP 2 wire/prune 1x1 without tests; then STEP 3 tests 1x1.",
   "multi_watchdog_backend_v1": {
     "status": "PENDIENTE_PREFLIGHT",
     "task_id": "YAIWES-WATCHDOG-BACKENDS-10-V1",
     "destination": "Core kernel Yaiwes/Backend watchdog workflow adaptativo",
     "components_expected": 10,
     "preflight_reports": [
-      {
-        "name": "Windmill",
-        "status": "PREFLIGHT_PASS"
-      },
-      {
-        "name": "Kestra",
-        "status": "PREFLIGHT_PASS"
-      },
-      {
-        "name": "Apache-DolphinScheduler",
-        "status": "PREFLIGHT_PASS"
-      },
-      {
-        "name": "Rundeck",
-        "status": "PREFLIGHT_PASS"
-      },
-      {
-        "name": "Temporal",
-        "status": "PREFLIGHT_PASS"
-      },
-      {
-        "name": "Prefect",
-        "status": "PREFLIGHT_PASS"
-      },
-      {
-        "name": "Dagu",
-        "status": "PREFLIGHT_PASS"
-      },
-      {
-        "name": "Cronicle",
-        "status": "PREFLIGHT_PASS"
-      },
-      {
-        "name": "Hatchet",
-        "status": "PREFLIGHT_PASS"
-      },
-      {
-        "name": "Trigger.dev",
-        "status": "PREFLIGHT_PASS"
-      }
+      {"name": "Windmill", "status": "PREFLIGHT_PASS"},
+      {"name": "Kestra", "status": "PREFLIGHT_PASS"},
+      {"name": "Apache-DolphinScheduler", "status": "PREFLIGHT_PASS"},
+      {"name": "Rundeck", "status": "PREFLIGHT_PASS"},
+      {"name": "Temporal", "status": "PREFLIGHT_PASS"},
+      {"name": "Prefect", "status": "PREFLIGHT_PASS"},
+      {"name": "Dagu", "status": "PREFLIGHT_PASS"},
+      {"name": "Cronicle", "status": "PREFLIGHT_PASS"},
+      {"name": "Hatchet", "status": "PREFLIGHT_PASS"},
+      {"name": "Trigger.dev", "status": "PREFLIGHT_PASS"}
     ],
     "next_gate": "SELECTED_PATHS_FROM_REAL_SOURCE_TREE",
     "source_of_truth": "physical_repo_state"
@@ -138,56 +108,16 @@
     "plan": "Core kernel Yaiwes/Crack wall bitácora stated JSON/PLAN-WATCHDOG-PROGRAMMING-V2.json",
     "memory_doc": "Core kernel Yaiwes/readme-memoria.md",
     "components": [
-      {
-        "name": "APScheduler",
-        "role": "TIME_AUTHORITY",
-        "status": "PENDING"
-      },
-      {
-        "name": "Workalendar",
-        "role": "WORK_CALENDAR",
-        "status": "PENDING"
-      },
-      {
-        "name": "Celery",
-        "role": "SIMPLE_JOB_WORKERS",
-        "status": "PENDING"
-      },
-      {
-        "name": "Redis",
-        "role": "EVENT_TRANSPORT",
-        "status": "PENDING"
-      },
-      {
-        "name": "Hatchet",
-        "role": "DURABLE_LONG_JOB",
-        "status": "PENDING"
-      },
-      {
-        "name": "Dagu",
-        "role": "MULTI_STEP_JOB",
-        "status": "PENDING"
-      },
-      {
-        "name": "PostgreSQL",
-        "role": "DURABLE_SOURCE_OF_TRUTH",
-        "status": "PENDING"
-      },
-      {
-        "name": "pgvector",
-        "role": "SEMANTIC_MEMORY",
-        "status": "PENDING"
-      },
-      {
-        "name": "gVisor",
-        "role": "SANDBOX_ISOLATION",
-        "status": "PENDING"
-      },
-      {
-        "name": "S3-Compatible-Backblaze-B2",
-        "role": "ARTIFACT_SNAPSHOTS",
-        "status": "PENDING"
-      }
+      {"name": "APScheduler", "role": "TIME_AUTHORITY", "status": "PENDING"},
+      {"name": "Workalendar", "role": "WORK_CALENDAR", "status": "PENDING"},
+      {"name": "Celery", "role": "SIMPLE_JOB_WORKERS", "status": "PENDING"},
+      {"name": "Redis", "role": "EVENT_TRANSPORT", "status": "PENDING"},
+      {"name": "Hatchet", "role": "DURABLE_LONG_JOB", "status": "PENDING"},
+      {"name": "Dagu", "role": "MULTI_STEP_JOB", "status": "PENDING"},
+      {"name": "PostgreSQL", "role": "DURABLE_SOURCE_OF_TRUTH", "status": "PENDING"},
+      {"name": "pgvector", "role": "SEMANTIC_MEMORY", "status": "PENDING"},
+      {"name": "gVisor", "role": "SANDBOX_ISOLATION", "status": "PENDING"},
+      {"name": "S3-Compatible-Backblaze-B2", "role": "ARTIFACT_SNAPSHOTS", "status": "PENDING"}
     ],
     "lanes": {
       "deterministic": "user strict workflow -> DSL/DAG/schema/system contract -> deterministic execution",
@@ -203,5 +133,18 @@
       "open-source UI modules for chat integration"
     ],
     "source_of_truth": "physical_repo_state"
+  },
+  "integration_1_20_handoff": {
+    "status": "ACTIVE_LOOP",
+    "handoff": "Readme arquitectura Yaiwes/HANDOFF-INTEGRACION-1-20.md",
+    "contract": [
+      "STEP_1_MOVE_1_20",
+      "STEP_2_WIRE_PRUNE_1X1_NO_TESTS",
+      "STEP_3_TEST_1X1"
+    ],
+    "current_step": "STEP_1_MOVE_1_20",
+    "step1_workflow": ".github/workflows/yaiwes-step1-move-1-20.yml",
+    "step1_first_run": 34297538861,
+    "rule": "no extra phases; continue in LOOP until steps 1,2,3 complete"
   }
 }
