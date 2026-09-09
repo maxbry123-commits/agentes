@@ -45,21 +45,24 @@
 
 **Workflow:** `YAIWES STEP 1 - MOVE 1-20`  
 **Archivo:** `.github/workflows/yaiwes-step1-move-1-20.yml`  
-**Run iniciado:** `34297538861`  
-**Job:** `102297299664`  
+**Run activo optimizado:** `34299244917`  
+**Job:** `102302447840`  
 **Regla:** mover árboles originales a destino final y registrar en README arquitectura. Sin poda/cableado/tests.
 
 ## Paso 2 — Cableado y poda
 
-Se ejecuta solo después de confirmar los 20 destinos del Paso 1.  
-Cola estricta `1 → 20`, un componente por vez.  
-Cada componente: `destino físico → conservar runtime útil → podar solo sobrante → adapter/Ficha/WIRING/registry` según el carril YAIWES existente.  
+**Workflow:** `YAIWES STEP 2 - WIRE PRUNE 1-20 NO TESTS`  
+**Archivo:** `.github/workflows/yaiwes-step2-wire-prune-1-20.yml`  
+Se dispara automáticamente cuando Paso 1 termina `success`.  
+Cola estricta `1 → 20`; conserva runtime, añade/adopta adapter + Ficha v2 + WIRING y hace poda mínima segura.  
 **Prohibido testear en Paso 2.**
 
 ## Paso 3 — Tests
 
-Se ejecuta solo después de cerrar Paso 2 para los 20.  
-Cola estricta `1 → 20`, pruebas reales del runtime/cableado de cada componente y registro de evidencia en README arquitectura.
+**Workflow:** `YAIWES STEP 3 - TEST 1-20`  
+**Archivo:** `.github/workflows/yaiwes-step3-test-1-20.yml`  
+Se dispara automáticamente cuando Paso 2 termina `success`.  
+Cola estricta `1 → 20`; prueba adapter/Ficha/WIRING, import real del adapter y montaje mediante `UniversalPluginBus`, health/evidence, y publica reporte en README arquitectura.
 
 ## Enlaces canónicos
 
@@ -71,8 +74,19 @@ Cola estricta `1 → 20`, pruebas reales del runtime/cableado de cada componente
 - Memoria Watchdog: https://github.com/maxbry123-commits/agentes/blob/main/Core%20kernel%20Yaiwes/readme-memoria.md
 - Plan Watchdog programación: https://github.com/maxbry123-commits/agentes/blob/main/Core%20kernel%20Yaiwes/Crack%20wall%20bit%C3%A1cora%20stated%20JSON/PLAN-WATCHDOG-PROGRAMMING-V2.json
 - Workflow Paso 1: https://github.com/maxbry123-commits/agentes/blob/main/.github/workflows/yaiwes-step1-move-1-20.yml
-- Run Paso 1: https://github.com/maxbry123-commits/agentes/actions/runs/34297538861
-- Job Paso 1: https://github.com/maxbry123-commits/agentes/actions/runs/34297538861/job/102297299664
+- Run Paso 1 activo: https://github.com/maxbry123-commits/agentes/actions/runs/34299244917
+- Job Paso 1 activo: https://github.com/maxbry123-commits/agentes/actions/runs/34299244917/job/102302447840
+- Workflow Paso 2: https://github.com/maxbry123-commits/agentes/blob/main/.github/workflows/yaiwes-step2-wire-prune-1-20.yml
+- Workflow Paso 3: https://github.com/maxbry123-commits/agentes/blob/main/.github/workflows/yaiwes-step3-test-1-20.yml
+
+## Cómo continuar la tarea
+
+1. Leer este HANDOFF.
+2. Leer `Readme arquitectura Yaiwes/README.md`.
+3. Leer `STATE.json`.
+4. Continuar en el paso físico actual sin reiniciar trabajo cerrado.
+5. Si falla un componente, resolver dentro del mismo paso y seguir la cola.
+6. No iniciar ninguna tarea externa hasta cerrar `Paso 1 → Paso 2 → Paso 3`.
 
 ## Handoff operativo
 
