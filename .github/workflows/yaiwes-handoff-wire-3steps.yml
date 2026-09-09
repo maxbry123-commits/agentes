@@ -1,0 +1,109 @@
+name: YAIWES Handoff Wire - 3 Steps
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/yaiwes-handoff-wire-3steps.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-handoff-wire-3steps
+  cancel-in-progress: false
+
+jobs:
+  wire:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+
+      - name: Wire HANDOFF into canonical files
+        shell: bash
+        run: |
+          set -euo pipefail
+          ARCH='Readme arquitectura Yaiwes/README.md'
+          METHOD='Core kernel Yaiwes/Readme de integración de componentes arquitectura Yaiwes/README.md'
+          STATE='Core kernel Yaiwes/Crack wall bitácora stated JSON/STATE.json'
+          PLAN='Core kernel Yaiwes/Crack wall bitácora stated JSON/PLAN-WATCHDOG-PROGRAMMING-V2.json'
+          HANDOFF='Readme arquitectura Yaiwes/HANDOFF-INTEGRACION-1-20.md'
+
+          if ! grep -q 'YAIWES_HANDOFF_INTEGRACION_1_20' "$ARCH"; then
+            cat >> "$ARCH" <<'EOF'
+
+<!-- YAIWES_HANDOFF_INTEGRACION_1_20 -->
+## Handoff operativo — integración componentes 1–20
+
+Fuente operativa del plan actual: [HANDOFF-INTEGRACION-1-20.md](./HANDOFF-INTEGRACION-1-20.md).
+
+Contrato vigente único: `PASO 1 MOVE 1–20 → PASO 2 CABLEAR/PODAR 1×1 SIN TESTS → PASO 3 TESTS 1×1`.
+EOF
+          fi
+
+          if ! grep -q 'YAIWES_HANDOFF_INTEGRACION_1_20' "$METHOD"; then
+            cat >> "$METHOD" <<'EOF'
+
+<!-- YAIWES_HANDOFF_INTEGRACION_1_20 -->
+## Contrato operativo actual — 3 pasos
+
+Handoff canónico: [`Readme arquitectura Yaiwes/HANDOFF-INTEGRACION-1-20.md`](../../../Readme%20arquitectura%20Yaiwes/HANDOFF-INTEGRACION-1-20.md).
+
+`PASO 1 MOVE 1–20 → PASO 2 CABLEAR/PODAR 1×1 SIN TESTS → PASO 3 TESTS 1×1`.
+
+Mientras este contrato esté activo no se añaden fases adicionales.
+EOF
+          fi
+
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          state_p=Path('Core kernel Yaiwes/Crack wall bitácora stated JSON/STATE.json')
+          state=json.loads(state_p.read_text())
+          state['integration_1_20_handoff']={
+            'status':'ACTIVE_LOOP',
+            'handoff':'Readme arquitectura Yaiwes/HANDOFF-INTEGRACION-1-20.md',
+            'contract':['STEP_1_MOVE_1_20','STEP_2_WIRE_PRUNE_1X1_NO_TESTS','STEP_3_TEST_1X1'],
+            'current_step':'STEP_1_MOVE_1_20',
+            'step1_workflow':'.github/workflows/yaiwes-step1-move-1-20.yml',
+            'step1_run':34297538861,
+            'rule':'no extra phases; continue in LOOP until steps 1,2,3 complete'
+          }
+          state['current_boundary']='STEP_1_MOVE_1_20'
+          state['next_delta']='Finish STEP 1 MOVE for components 1-20; then STEP 2 wire/prune 1x1 without tests; then STEP 3 tests 1x1.'
+          state_p.write_text(json.dumps(state,ensure_ascii=False,indent=2)+'\n')
+
+          plan_p=Path('Core kernel Yaiwes/Crack wall bitácora stated JSON/PLAN-WATCHDOG-PROGRAMMING-V2.json')
+          if plan_p.exists():
+            plan=json.loads(plan_p.read_text())
+            plan['blocked_until']='YAIWES_COMPONENTS_1_20_STEP3_COMPLETE'
+            plan['handoff_dependency']='Readme arquitectura Yaiwes/HANDOFF-INTEGRACION-1-20.md'
+            plan['note']='Watchdog programming stack resumes only after the 1-20 three-step integration contract completes.'
+            plan_p.write_text(json.dumps(plan,ensure_ascii=False,indent=2)+'\n')
+          PY
+
+          test -f "$HANDOFF"
+
+      - name: Publish HANDOFF wiring
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- 'Readme arquitectura Yaiwes/README.md' \
+                     'Core kernel Yaiwes/Readme de integración de componentes arquitectura Yaiwes/README.md' \
+                     'Core kernel Yaiwes/Crack wall bitácora stated JSON/STATE.json' \
+                     'Core kernel Yaiwes/Crack wall bitácora stated JSON/PLAN-WATCHDOG-PROGRAMMING-V2.json'
+          if git diff --cached --quiet; then
+            echo 'HANDOFF_ALREADY_WIRED'
+            exit 0
+          fi
+          git commit -m 'docs(yaiwes): wire 1-20 three-step handoff into architecture and state'
+          git push origin HEAD:main
+          echo 'HANDOFF_WIRED'
