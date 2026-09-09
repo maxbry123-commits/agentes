@@ -18,12 +18,23 @@ jobs:
   move:
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout main
+      - name: Checkout main sparse
         uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: 1
           lfs: false
+          sparse-checkout: |
+            Core kernel Yaiwes/Componentes recuperados A
+            Agente Yaiwes principal/execution-orchestration
+            Agente Yaiwes principal/definition-registry
+            Agente Yaiwes principal/mesh-routing-collaboration
+            Agente Yaiwes principal/execution-engine-pool
+            Agente Yaiwes principal/control-governance
+            Agente Yaiwes principal/tools-models-memory-knowledge
+            Agente Yaiwes principal/kernel-principal
+            Agente Yaiwes principal/code-programming-engine
+            Readme arquitectura Yaiwes
 
       - name: STEP 1 - move original component trees only
         shell: bash
