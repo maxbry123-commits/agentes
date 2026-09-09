@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: yaiwes-step1-move-1-20-v2
+  group: yaiwes-step1-move-1-20-v3
   cancel-in-progress: false
 
 jobs:
@@ -121,5 +121,7 @@ jobs:
             exit 0
           fi
           git commit -m "move(yaiwes): STEP 1 move components 1-20 to final destinations"
+          git fetch origin main
+          git rebase origin/main
           git push origin HEAD:main
           echo 'STEP1_MOVE_PUBLISHED'
