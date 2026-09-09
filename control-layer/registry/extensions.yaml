@@ -1,0 +1,18 @@
+# extensions.yaml — registro de extensiones (SOURCE: KER + SALIDA_2 Idea 5)
+# El Meta Extension lee este archivo al iniciar.
+
+extensions:
+  - id: control_plane
+    version: "0.1.0"
+    path: control-layer
+    capabilities: [validate, decide, route, audit]
+
+  - id: enchufe
+    version: "2.0.0"
+    path: control-layer/enchufe
+    capabilities: [contract_validation, module_compatibility]
+
+  - id: adapters
+    version: "0.1.0"
+    path: control-layer/adapters
+    capabilities: [agent_bridge]

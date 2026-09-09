@@ -1,0 +1,19 @@
+dsl_version: 2.0
+execution:
+  mode: strict
+  deterministic: true
+  reasoning: false
+  inference: false
+  auto_fix: false
+  auto_retry: false
+security:
+  allow_delete_outside_workspace: false
+  allow_new_nodes: false
+  allow_dag_changes: false
+failure:
+  on_assert: stop
+  on_schema: reject
+  on_security: reject
+output:
+  format: json
+  schema: output_v2

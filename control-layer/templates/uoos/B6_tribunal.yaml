@@ -1,0 +1,72 @@
+# D6 Council / Tribunal — council/*.yaml v2.0
+# SOURCE: B6 tribunal · PIPELINE sello 10 roles · Wordflow Sheriff
+# Guía de gobernanza documental + contrato de votación. Runtime opcional.
+
+schema_version: "2.0"
+kind: COUNCIL_TRIBUNAL
+
+id: tribunal_default
+version: "1.0.0"
+project_id: ""
+
+umbral_score: 70
+min_approvals: 4
+max_consecutive_fails: 3
+
+# 10 roles de gobierno (PIPELINE) — poder: VETO | score | observe
+roles:
+  DSL:
+    pregunta: "¿cumple contratos/schemas declarados?"
+    poder: score
+  DAG:
+    pregunta: "¿se respetó orden depends_on / no_skip?"
+    poder: score
+  Schema:
+    pregunta: "¿output valida contra schema del nodo?"
+    poder: score
+  Sheriff:
+    pregunta: "¿violó limits.hard / forbidden_paths / invariantes?"
+    poder: VETO
+  Sentinela:
+    pregunta: "¿salió del sandbox / secretos / paths protegidos?"
+    poder: VETO
+  Juez:
+    pregunta: "¿output EXACTO al criterio_exito del contrato?"
+    poder: score
+  Supervisor:
+    pregunta: "¿eventos, lease, checkpoints coherentes?"
+    poder: score
+  Validador:
+    pregunta: "¿tests/lint/ejecución reales pasan?"
+    poder: score
+  Verificador:
+    pregunta: "¿evidencia reproducible por otro agente?"
+    poder: score
+  Orquestador:
+    pregunta: "¿handoffs y capabilities resueltas sin bypass?"
+    poder: score
+
+votacion:
+  veto_roles: [Sheriff, Sentinela]
+  score_roles: [DSL, DAG, Schema, Juez, Supervisor, Validador, Verificador, Orquestador]
+  regla: |
+    1 veto → REJECT → recovery/L04
+    score = promedio(score_roles activos)
+    PASS si score >= umbral_score Y approvals >= min_approvals
+    max_consecutive_fails → escalada Director (human_gate)
+
+evidence_required:
+  - nodo_id
+  - run_id
+  - timestamp
+  - que_se_hizo
+  - archivos_tocados
+  - tests
+  - score_tribunal
+  - delta_vs_anterior
+
+# Alineación loops: HumanGate / RiskEngine pueden consumir veto_roles
+align_loops:
+  human_gate_on_veto: true
+  map_validador_to_phase: validar
+  map_sheriff_to_phase: validar

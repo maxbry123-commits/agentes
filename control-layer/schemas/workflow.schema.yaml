@@ -1,0 +1,23 @@
+# workflow.schema — D4 dag/*.yaml
+# SOURCE: DAG = QUÉ FLUJO (no QUIÉN)
+
+$schema: workflow.schema/v1
+required: [id, version, nodes]
+
+fields:
+  id: string
+  version: string
+  project_id: string
+  nodes:
+    type: list
+    items:
+      id: string
+      depends_on: list
+      required_capabilities: {type: list, items: string, optional: true}
+  rules:
+    no_cycles: true
+    no_skip: true
+
+rules:
+  - depends_on ids must exist in nodes list or be resolvable
+  - required_capabilities used by Router (not hardcoded agent id)

@@ -1,0 +1,34 @@
+# MemoryPlugin — interface plugin memoria v1
+# SOURCE: scopes separados · Loop Engine solo emite eventos
+
+$schema: memory_plugin.schema/v1
+
+scopes:
+  - loop        # muere con el run
+  - task        # vive la tarea
+  - agent       # experiencias del agente
+  - project     # conocimiento compartido proyecto
+  - strategy    # strategy memory (task_type → what worked)
+
+interface:
+  append_event:
+    in: [event]           # LoopEvent
+    out: {ok: bool}
+  read_scope:
+    in: [scope, key, limit]
+    out: {items: list}
+  write_scope:
+    in: [scope, key, value, ttl_optional]
+    out: {ok: bool}
+  checkpoint:
+    in: [run_id, snapshot]
+    out: {checkpoint_id: string}
+  restore_checkpoint:
+    in: [checkpoint_id]
+    out: {snapshot: object}
+
+rules:
+  - Loop Engine NEVER imports concrete memory backend
+  - default adapter = NoOpMemoryPlugin (no-op seguro)
+  - scope loop auto-purged on CLOSED|FAILED|CANCELLED
+  - strategy scope written only by Policy/Recovery outcomes

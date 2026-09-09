@@ -1,0 +1,62 @@
+# D3 Agent — nodes/<id>.yaml v2.0
+# SOURCE: agent-manifest · Snap AGF · AGENT_SPEC · CrewAI · NodesLoader Wordflow
+# NODE = QUIÉN. Discovery escanea nodes/*.yaml → AgentAdapter.register_runtime
+# NO estado vivo (D2). NO DAG (D4).
+
+schema_version: "2.0"
+kind: AGENT_NODE
+
+id: backend                         # ^[a-z0-9][a-z0-9_-]*$ = agent_id
+version: "1.0.0"
+type: agent                         # agent | tool_agent | human_gate
+
+description: ""
+purpose: ""                         # 1 frase
+
+capabilities:                       # Router / CapabilityRequest
+  - code_generation
+  - debugging
+
+# Prioridad de resolución (menor = preferido)
+priority: 100
+
+adapter:
+  id: generic                       # temporal | openclaw | hermes | generic
+  entrypoint: null                  # módulo:función si aplica
+
+model:
+  preferred: ""
+  max_tokens: 0
+
+budget:
+  level: tarea                      # micro|tarea|fase|proyecto
+  tokens: 0
+  time_seg: 0
+  max_iterations: 8
+
+memory:
+  private: true
+  project: true
+  global: false
+
+permissions:
+  tools:
+    - repository
+    - tests
+  denied_tools: []
+
+safety:
+  side_effect_risk: medium          # low | medium | high
+  requires_human_review: false
+  network: false
+  irreversible: false
+
+scope:
+  project: current
+
+# Opcional: handoff documental (no runtime obligatorio)
+pipeline:
+  handoff_to: []
+  parallel_with: []
+
+notes: ""

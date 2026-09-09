@@ -1,0 +1,58 @@
+# LoopContext — contrato formal v1
+# SOURCE: arquitectura loops avanzada · aislamiento multiagente/multiproyecto
+# Un LoopContext por RUN. No es dueño del agente ni del proyecto.
+
+$schema: loop_context.schema/v1
+required:
+  - run_id
+  - loop_id
+  - project_id
+  - agent_id
+  - task_id
+  - goal_id
+  - iteration
+  - phase
+  - state
+  - created_at
+
+fields:
+  run_id: {type: string, pattern: "^R[a-zA-Z0-9_-]+$"}
+  loop_id: {type: string}           # template id L01 | LOOP-0001 | custom
+  project_id: {type: string}
+  agent_id: {type: string}
+  task_id: {type: string}
+  goal_id: {type: string}
+  parent_run_id: {type: string, optional: true, nullable: true}
+  tenant_id: {type: string, default: system}
+  session_id: {type: string, optional: true}
+
+  iteration: {type: integer, min: 0}
+  phase: {type: string}             # leer_anclas|plan|ejecutar|medir|validar|reparar|evidencia|checkpoint|decidir
+  state: {type: string}             # ver LoopState enum
+
+  inputs: {type: object, default: {}}
+  outputs: {type: object, default: {}}
+  evidence: {type: list, default: []}
+  metrics: {type: object, default: {}}
+  budgets: {type: object}           # ref Budget contract
+  errors: {type: list, default: []}
+  recovery_state: {type: object, default: {repair_count: 0}}
+
+  strategy: {type: string, default: sequential}  # sequential|parallel|adversarial|consensus
+  capability_requests: {type: list, default: []}
+
+  idempotency_key: {type: string, optional: true}
+  fingerprint: {type: string, optional: true}
+
+  timestamps:
+    created_at: {type: string}      # ISO-8601
+    updated_at: {type: string}
+    started_at: {type: string, optional: true}
+    closed_at: {type: string, optional: true}
+
+invariants:
+  - project_id never changes after CREATED
+  - agent_id never changes after CREATED
+  - goal_id never changes after LOCKED
+  - run_id immutable
+  - iteration only increases

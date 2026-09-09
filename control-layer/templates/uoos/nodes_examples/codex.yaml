@@ -1,0 +1,19 @@
+# Ejemplo — Codex / similar CLI coder
+schema_version: "2.0"
+kind: AGENT_NODE
+id: codex
+version: "1.0.0"
+type: agent
+purpose: "Code generation via Codex-compatible CLI"
+capabilities:
+  - code_generation
+  - debugging
+priority: 60
+adapter:
+  id: generic
+  entrypoint: "./wrappers/codex.sh"
+budget:
+  level: tarea
+  max_iterations: 12
+safety:
+  side_effect_risk: medium

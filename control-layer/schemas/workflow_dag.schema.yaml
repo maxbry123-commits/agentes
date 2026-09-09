@@ -1,0 +1,23 @@
+# D4 WORKFLOW_DAG schema v2
+$schema: workflow_dag.schema/v2
+kind: WORKFLOW_DAG
+required: [schema_version, kind, id, nodes, rules]
+
+fields:
+  schema_version: {const: "2.0"}
+  kind: {const: WORKFLOW_DAG}
+  id: {type: string}
+  type: {enum: [graph, chain]}
+  nodes:
+    item_required: [id, required_capabilities]
+    depends_on: {type: list}
+    on_fail: {enum: [recovery_default, skip, abort, human_gate]}
+    loop_strategy: {enum: [sequential, parallel, adversarial, consensus]}
+  rules:
+    required: [no_cycles, entry, exit]
+
+invariants:
+  - graph must be acyclic when no_cycles true
+  - every depends_on id exists in nodes
+  - entry node has depends_on []
+  - all required_capabilities resolvable via nodes/*.yaml (Sheriff)

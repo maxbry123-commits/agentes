@@ -1,0 +1,18 @@
+# D2 PROJECT_STATE schema v2
+$schema: project_state.schema/v2
+kind: PROJECT_STATE
+required: [schema_version, kind, project_id, project_status, version]
+
+fields:
+  schema_version: {const: "2.0"}
+  kind: {const: PROJECT_STATE}
+  project_id: {type: string, pattern: "^[a-z0-9][a-z0-9_-]{1,63}$"}
+  project_status: {enum: [pending, running, blocked, completed, failed, cancelled]}
+  desired_status: {enum: [pending, running, blocked, completed, failed, cancelled]}
+  version: {type: integer, minimum: 0}
+
+invariants:
+  - version increases on every write
+  - no agent capability definitions
+  - task status transitions only via transitions_allowed
+  - project_id == D1.project_id

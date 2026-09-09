@@ -1,0 +1,19 @@
+# D3 AGENT_NODE schema v2
+$schema: agent_node.schema/v2
+kind: AGENT_NODE
+required: [schema_version, kind, id, version, capabilities]
+
+fields:
+  schema_version: {const: "2.0"}
+  kind: {const: AGENT_NODE}
+  id: {type: string, pattern: "^[a-z0-9][a-z0-9_-]{0,63}$"}
+  capabilities: {type: list, min_items: 1}
+  type: {enum: [agent, tool_agent, human_gate]}
+  priority: {type: integer, minimum: 1, maximum: 1000}
+  safety.side_effect_risk: {enum: [low, medium, high]}
+  budget.level: {enum: [micro, tarea, fase, proyecto]}
+
+invariants:
+  - capabilities non-empty for NodesLoader register
+  - global memory requires sheriff allow
+  - high risk → requires_human_review recommended true

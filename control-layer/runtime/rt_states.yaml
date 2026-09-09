@@ -1,0 +1,39 @@
+# Máquina de estados RT-00 → RT-90 (UOOS Parte 2)
+# SOURCE: SALIDA_6
+# Transiciones fijas. Fallo en cualquier RT → RT-80 Recovery Gate.
+
+states:
+  RT-00: BOOT_VERSION
+  RT-01: INTEGRIDAD
+  RT-02: PREFLIGHT
+  RT-03: SKILLS_BOOTSTRAP
+  RT-04: RESUME_CHECK
+  # --- tras GO del Director ---
+  RT-10: SELECT
+  RT-11: IDEMPOTENCIA
+  RT-12: CAPABILITY
+  RT-13: MEMORIA_IN
+  RT-14: VALIDAR_INPUT
+  RT-20: EJECUTAR
+  RT-30: TRIBUNAL
+  RT-31: GOAL_CHECK
+  RT-40: ARTEFACTOS
+  RT-41: CONSISTENCIA
+  RT-42: AUDITORIA
+  RT-43: MEMORIA_OUT
+  RT-44: AUTOOPTIMIZAR
+  RT-45: ENTREGAR
+  RT-80: RECOVERY_GATE
+  RT-90: CIERRE_PROYECTO
+
+flow:
+  boot: [RT-00, RT-01, RT-02, RT-03, RT-04]
+  per_node: [RT-10, RT-11, RT-12, RT-13, RT-14, RT-20, RT-30, RT-31, RT-40, RT-41, RT-42, RT-43, RT-44, RT-45]
+  on_fail: RT-80
+  close: RT-90
+
+rules:
+  no_skip: true
+  no_return_to_previous_except_via_RT80: true
+  RT31_note: "Tribunal PASA ≠ nodo done; si goal incompleto → vuelve a planificar"
+  RT20_llm: "NUNCA usar LLM si existe herramienta determinista"

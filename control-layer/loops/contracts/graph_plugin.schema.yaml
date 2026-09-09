@@ -1,0 +1,40 @@
+# GraphPlugin — interface plugin grafo v1
+# SOURCE: eventos → adapters · experience graph ready
+
+$schema: graph_plugin.schema/v1
+
+interface:
+  upsert_node:
+    in: [node_type, node_id, attrs]
+    out: {ok: bool}
+  upsert_edge:
+    in: [from_id, to_id, relation, attrs]
+    out: {ok: bool}
+  query_similar:
+    in: [task_fingerprint, limit]
+    out: {trajectories: list}
+  on_event:
+    in: [event]           # LoopEvent subscription
+    out: {ok: bool}
+
+node_types:
+  - trajectory
+  - principle
+  - loop_run
+  - task
+  - agent
+  - strategy
+
+relations:
+  - depends_on
+  - produced_by
+  - similar_to
+  - corrected_by
+  - parent_of
+  - used_strategy
+
+rules:
+  - Loop Engine NEVER builds graph structure directly
+  - only on_event / upsert_* via adapter
+  - default = NoOpGraphPlugin
+  - query_similar feeds Strategy Memory selection (Fase 4+)
