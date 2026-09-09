@@ -14,11 +14,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          sparse-checkout: |
+            Agente Yaiwes principal/execution-engine-pool/agent-bindings
+            Agente Yaiwes principal/kernel-principal/extension-kernel/capability-registry/wordflow_loop_plugin_registry.json
+            Agente Yaiwes principal/kernel-principal/extension-kernel/capability-registry/wordflow-loop-evidence/STEP3_PROGRAMMING_TRIGGER.json
+          sparse-checkout-cone-mode: false
       - name: Verify deterministic fleet wiring
         shell: bash
         run: |
           python - <<'PY'
-          import importlib.util, json, pathlib
+          import importlib.util, json, pathlib, sys
           root = pathlib.Path('.')
           bind = root / 'Agente Yaiwes principal/execution-engine-pool/agent-bindings'
           regp = bind / 'agent_fleet_registry.json'
@@ -38,6 +45,7 @@ jobs:
 
           spec = importlib.util.spec_from_file_location('agent_fleet_adapter', adap)
           mod = importlib.util.module_from_spec(spec)
+          sys.modules[spec.name] = mod
           spec.loader.exec_module(mod)
           fleet = mod.AgentFleetAdapter(regp)
           assert fleet.resolve(role='writer')['agent_id'] == 'opencode'
@@ -82,4 +90,4 @@ jobs:
           print('prior_programming_trigger=PASS_REAL_3_3')
           PY
 
-# trigger: STEP3 run after workflow exists on main
+# strategy-delta: sparse checkout to avoid full-repo checkout stall
