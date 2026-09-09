@@ -14,12 +14,16 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout branch
+      - name: Checkout branch sparse
         uses: actions/checkout@v4
         with:
           ref: yaiwes-handoff-sync-20260908
           fetch-depth: 1
           lfs: false
+          sparse-checkout: |
+            Readme arquitectura Yaiwes
+            Core kernel Yaiwes/Readme de integración de componentes arquitectura Yaiwes
+            Core kernel Yaiwes/Crack wall bitácora stated JSON
 
       - name: Update canonical files
         shell: bash
