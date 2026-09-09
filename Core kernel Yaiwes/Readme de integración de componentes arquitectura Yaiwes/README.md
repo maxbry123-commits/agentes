@@ -76,3 +76,18 @@ El Director aprobó explícitamente la integración física de la siguiente tand
 Regla de ejecución vigente: `revalidar destino ➡️ MOVE código útil ➡️ adapter/Ficha v2/WIRING ➡️ Universal Plugin Bus/Fables ➡️ runtime/test real ➡️ deduplicar origen solo tras PASS ➡️ persistir evidencia ➡️ append quirúrgico al README arquitectura`.
 
 Estado al abrir esta tanda: `APPROVED_FOR_INTEGRATION`; ningún componente 11–15 puede convertirse en `VERIFIED_CLOSED` hasta demostrar ruta + SHA/diff + test/run/log + URL y read-back físico.
+
+---
+
+<!-- YAIWES_HANDOFF_INTEGRACION_1_20 -->
+## Contrato operativo actual — reemplazo temporal en 3 pasos
+
+**Este bloque prevalece sobre la secuencia histórica anterior mientras dure la integración 1–20.**
+
+Handoff canónico: [`Readme arquitectura Yaiwes/HANDOFF-INTEGRACION-1-20.md`](../../../Readme%20arquitectura%20Yaiwes/HANDOFF-INTEGRACION-1-20.md).
+
+1. **PASO 1 — MOVE 1–20:** mover los 20 componentes a su destino final con código original, sin reescribir, sin podar, sin cablear y sin tests.
+2. **PASO 2 — CABLEAR/PODAR 1×1 SIN TESTS:** solo después del MOVE 20/20, cablear y podar cada componente 1×1. Prohibido testear.
+3. **PASO 3 — TESTS 1×1:** solo después de terminar Paso 2 para los 20, ejecutar tests componente por componente.
+
+Reglas vigentes: `NO EXTRA PHASES` · `MOVE NO COPY dentro de agentes` · `NO TESTS antes de Paso 3` · `LOOP hasta cerrar 1→2→3`.
