@@ -1,80 +1,18 @@
 {
-  "contract": "tel.workflow/v4",
-  "project": "Wordflow LOOP Yaiwes",
-  "mode": "FAIL_CLOSED_EXECUTION_LOOP",
-  "status": "ACTIVE_3STEP_AGENT_INTEGRATION",
-  "current_node": "STEP3_AGENT_FLEET_VERIFY",
-  "checkpoint_id": "WFLOOP-AGENTS-3STEP-0003-ACTIVE",
-  "queue": "1x1",
-  "history_previous_state_blob": "3e4413d8169a360127e9dc96d61f051bc8485f62",
-  "director_active_patch": {
-    "exact_steps": 3,
-    "step_1": {
-      "id": "STEP1_AGENT_INDEX",
-      "status": "VERIFIED_CLOSED",
-      "repo": "maxbry123-commits/Agentes-motores-Wordflow-YAIWES",
-      "output": "➡️📂 readme indice agentes.md",
-      "commit": "ba9596c5716f34926e23186330609d4238bd8ccd",
-      "rules": ["locate_only", "no_code_tests"]
-    },
-    "step_2": {
-      "id": "STEP2_AGENT_WIRING_1X1",
-      "status": "WIRED_UNTESTED",
-      "fleet_count": 18,
-      "canonical_council_count": 12,
-      "adapter_commit": "1567d025656466df2c816ee4f52f404cbaca2e5a",
-      "registry_commit": "f2e99e193286043d8cd2ed5bd5310b5ea9b42c7c",
-      "ficha_commit": "c21c632a09d27098157d39b80e0ebd29fd72dad1",
-      "health_descriptor_commit": "ff4f60a69bad684acb60e2239ffe72c2f6b0e20d",
-      "universal_plug_registry_commit": "973a9ab800ea91ff0503efbd933428a693fdee50",
-      "tests_executed": false
-    },
-    "step_3": {
-      "id": "STEP3_AGENT_FLEET_VERIFY",
-      "status": "IN_PROGRESS",
-      "workflow": ".github/workflows/wordflow-agent-fleet-step3.yml",
-      "trigger_commit": "79e0a5d29313ff5620b136cf19c1e71eab776505",
-      "run_id": 34405553218,
-      "run_status": "in_progress",
-      "closure_requires": "completed/success + job/log evidence"
-    }
-  },
-  "verified_foundation_do_not_reopen": {
-    "loop5": ["LangGraph", "Temporal-Python-SDK", "Prefect", "Hatchet-Python-SDK", "redun"],
-    "move_commit": "26d0860ef23c3285ee60c63a5c9121fa45bb0ed1",
-    "runtime_wiring_commit": "da290e6200c9e82154ed917ce6bbc6194d423da3",
-    "programming_trigger_evidence_commit": "ebac5c5b10d03d5e828e8fae266af88eb7b9b3d3",
-    "programming_trigger_run": 34179064259,
-    "programming_trigger_status": "PASS_REAL",
-    "registry_active": 11,
-    "engine_binding": "yaiwes.loop.loop_engineer",
-    "programming_cases_passed": "3/3",
-    "idempotency": "PASS",
-    "fail_closed_invalid_profile": "PASS",
-    "t16_ficha_run": 34075371938,
-    "t16_ficha_result": "YAIWES_T16_CANONICAL_VERIFY=PASS 4/4"
-  },
-  "agent_fleet": {
-    "registry_path": "Agente Yaiwes principal/execution-engine-pool/agent-bindings/agent_fleet_registry.json",
-    "ficha_path": "Agente Yaiwes principal/kernel-principal/extension-kernel/capability-registry/wordflow-loop-contracts/ficha.agent_fleet.v2.json",
-    "health_path": "Agente Yaiwes principal/execution-engine-pool/agent-bindings/agent_fleet_health.json",
-    "plugin_id": "yaiwes.runtime.agent_fleet",
-    "plugin_status": "WIRED_UNTESTED",
-    "agents": ["opencode","openhands","claude_code","mimo_code","codex","smolagents","hermes","openclaw","aider","muse_glimmer","kimi_k","qwen_code","cline","goose","agent_zero","opendev","research_agent_lab","mirothinker"],
-    "source_unresolved": ["hermes","muse_glimmer","goose"],
-    "runtime_execution_status": "NOT_CLAIMED_UNTIL_STEP3"
-  },
-  "hugging_face": {
-    "status": "IN_PROGRESS_EXTERNAL_PER_DIRECTOR",
-    "action": "WAIT_FOR_DIRECTOR_READY_SIGNAL_BEFORE_TEST"
-  },
-  "legacy_plan30_snapshot": {
-    "verified_closed": [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16],
-    "legacy_in_progress": [17],
-    "verified_progress_percent": 53.33,
-    "note": "Historical PLAN30 state preserved. Current 3-step patch has precedence for agent integration."
-  },
-  "prohibitions": ["NO_STEP_4","NO_NEW_OSS_RESEARCH","NO_REDOWNLOAD_LOOP5","NO_TESTS_IN_STEP1_OR_STEP2","NO_PARALLEL_ARCHITECTURE","NO_FORCE_GIT","NO_FALSE_PASS"],
-  "next_action": "Verify run 34405553218; on failure repair only STEP3 failure; on success persist evidence and promote agent_fleet to ACTIVE without claiming unavailable external runtimes executed.",
-  "closure_rule": "STEP3 closes only with real workflow evidence. Wiring PASS does not equal successful execution of every external runtime."
+  "contract":"tel.workflow/v4",
+  "project":"Wordflow LOOP Yaiwes",
+  "mode":"FAIL_CLOSED_EXECUTION_LOOP",
+  "status":"VERIFIED_CLOSED_3STEP_AGENT_INTEGRATION",
+  "current_node":"STEP3_AGENT_FLEET_VERIFY_CLOSED",
+  "checkpoint_id":"WFLOOP-AGENTS-3STEP-0003-CLOSED",
+  "queue":"1x1",
+  "three_step_patch":{"step1":"VERIFIED_CLOSED","step2":"VERIFIED_CLOSED_WIRING","step3":"VERIFIED_CLOSED"},
+  "step1":{"index_repo":"maxbry123-commits/Agentes-motores-Wordflow-YAIWES","index_path":"➡️📂 readme indice agentes.md","commit":"ba9596c5716f34926e23186330609d4238bd8ccd"},
+  "step2":{"fleet_count":18,"council12":12,"adapter_commit":"1567d025656466df2c816ee4f52f404cbaca2e5a","registry_initial_commit":"f2e99e193286043d8cd2ed5bd5310b5ea9b42c7c","ficha_commit":"c21c632a09d27098157d39b80e0ebd29fd72dad1","health_initial_commit":"ff4f60a69bad684acb60e2239ffe72c2f6b0e20d","universal_plug_initial_commit":"973a9ab800ea91ff0503efbd933428a693fdee50"},
+  "step3":{"workflow":".github/workflows/wordflow-agent-fleet-step3.yml","run_id":34406268016,"job_id":102649876845,"head_sha":"05ce5fc43a599da1ae9e80f485450d52aede07a1","conclusion":"success","stdout":["WORDFLOW_AGENT_FLEET_STEP3=PASS","fleet_count=18","council12=12","runtimes_unconfigured_fail_closed=18","prior_programming_trigger=PASS_REAL_3_3"],"evidence_commit":"7a7b1a6af381dbdb4882d3d744ef392161dffdff","registry_promote_commit":"08b42de1136917ef0adc712155c583188c6b9085","fleet_registry_promote_commit":"f2f978a18cbeaeac8c99d35993a66a68bfdcef7f","health_promote_commit":"e05946c349ef79d26e036e8f2fb5ee15f77775e0"},
+  "agent_fleet":{"plugin_id":"yaiwes.runtime.agent_fleet","plugin_status":"ACTIVE","active_capability_registry_count":12,"agents":["opencode","openhands","claude_code","mimo_code","codex","smolagents","hermes","openclaw","aider","muse_glimmer","kimi_k","qwen_code","cline","goose","agent_zero","opendev","research_agent_lab","mirothinker"],"source_unresolved":["hermes","muse_glimmer","goose"],"external_runtime_execution":"NOT_CLAIMED","external_runtime_configuration_in_actions":"18_OF_18_UNCONFIGURED_EXPECTED_FAIL_CLOSED"},
+  "verified_foundation_do_not_reopen":{"move_commit":"26d0860ef23c3285ee60c63a5c9121fa45bb0ed1","runtime_wiring_commit":"da290e6200c9e82154ed917ce6bbc6194d423da3","programming_trigger_run":34179064259,"programming_trigger_status":"PASS_REAL_3_OF_3","t16_ficha_run":34075371938,"t16_ficha_result":"PASS_4_OF_4"},
+  "hugging_face":{"status":"IN_PROGRESS_EXTERNAL_PER_DIRECTOR","action":"WAIT_FOR_DIRECTOR_READY_SIGNAL"},
+  "remaining_gaps":["Hermes physical source not located in motor repo index","Muse/Glimmer physical source not located in motor repo index","Goose physical source not located in motor repo index","External agent runtimes require later command/url configuration before runtime execution can be claimed"],
+  "closure_rule":"The Director's exact 3-step agent block is closed. No Step 4 is created. Wiring/fail-closed PASS is distinct from executing external runtimes."
 }
