@@ -1,0 +1,45 @@
+name: YAIWES arch handoff link branch
+
+on:
+  push:
+    branches:
+      - yaiwes-arch-handoff-link-20260909
+    paths:
+      - .github/workflows/yaiwes-arch-handoff-link-branch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch sparse
+        uses: actions/checkout@v4
+        with:
+          ref: yaiwes-arch-handoff-link-20260909
+          fetch-depth: 1
+          lfs: false
+          sparse-checkout: |
+            Readme arquitectura Yaiwes
+
+      - name: Link handoff from architecture README
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE='Readme arquitectura Yaiwes/README.md'
+          if ! grep -q 'YAIWES_HANDOFF_INTEGRACION_1_20' "$FILE"; then
+            printf '\n\n<!-- YAIWES_HANDOFF_INTEGRACION_1_20 -->\n## Handoff operativo - integracion componentes 1-20\n\nPlan operativo actual: [HANDOFF-INTEGRACION-1-20.md](./HANDOFF-INTEGRACION-1-20.md).\n\nContrato vigente: `PASO 1 MOVE 1-20 -> PASO 2 CABLEAR/PODAR 1x1 SIN TESTS -> PASO 3 TESTS 1x1`.\n' >> "$FILE"
+          fi
+
+      - name: Commit branch update
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -- 'Readme arquitectura Yaiwes/README.md'
+          if ! git diff --cached --quiet; then
+            git commit -m 'docs(yaiwes): link integration handoff from architecture README'
+            git push origin HEAD:yaiwes-arch-handoff-link-20260909
+          fi

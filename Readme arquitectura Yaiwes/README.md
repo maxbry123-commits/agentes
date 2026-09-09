@@ -1237,3 +1237,11 @@ Esta sección es un delta aditivo; preserva íntegramente la arquitectura anteri
 **Flujo transversal:** `Chat/UI → Watchdog Registry → PostgreSQL → APScheduler → Redis/colas → runtime seleccionado → Memory Orchestrator → sandbox aislado → Sheriff/Judge → checkpoint/recovery → UI event stream`.
 
 **Regla de fallo:** `FAIL ≠ RESET`; localizar → checkpoint → rollback/reparar o fork → reanudar. Se persiste estado operativo verificable; no se guarda chain-of-thought privado.
+
+
+<!-- YAIWES_HANDOFF_INTEGRACION_1_20 -->
+## Handoff operativo - integracion componentes 1-20
+
+Plan operativo actual: [HANDOFF-INTEGRACION-1-20.md](./HANDOFF-INTEGRACION-1-20.md).
+
+Contrato vigente: `PASO 1 MOVE 1-20 -> PASO 2 CABLEAR/PODAR 1x1 SIN TESTS -> PASO 3 TESTS 1x1`.
