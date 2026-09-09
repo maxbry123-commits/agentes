@@ -1,0 +1,29 @@
+{
+  "contract": "tel.workflow/v4",
+  "step": 2,
+  "status": "WIRED_UNTESTED",
+  "tests_executed": false,
+  "fail_closed": true,
+  "fleet_count": 18,
+  "agents": [
+    {"agent_id":"opencode","wired":true,"runtime_status":"UNTESTED_STEP3"},
+    {"agent_id":"openhands","wired":true,"runtime_status":"UNTESTED_STEP3"},
+    {"agent_id":"claude_code","wired":true,"runtime_status":"UNTESTED_STEP3"},
+    {"agent_id":"mimo_code","wired":true,"runtime_status":"UNTESTED_STEP3"},
+    {"agent_id":"codex","wired":true,"runtime_status":"UNTESTED_STEP3"},
+    {"agent_id":"smolagents","wired":true,"runtime_status":"UNTESTED_STEP3"},
+    {"agent_id":"hermes","wired":true,"runtime_status":"UNTESTED_STEP3","source_status":"SOURCE_NOT_LOCATED_IN_REPO_ROOT_INDEX"},
+    {"agent_id":"openclaw","wired":true,"runtime_status":"UNTESTED_STEP3"},
+    {"agent_id":"aider","wired":true,"runtime_status":"UNTESTED_STEP3"},
+    {"agent_id":"muse_glimmer","wired":true,"runtime_status":"UNTESTED_STEP3","source_status":"SOURCE_NOT_LOCATED_IN_REPO_ROOT_INDEX"},
+    {"agent_id":"kimi_k","wired":true,"runtime_status":"UNTESTED_STEP3"},
+    {"agent_id":"qwen_code","wired":true,"runtime_status":"UNTESTED_STEP3"},
+    {"agent_id":"cline","wired":true,"runtime_status":"UNTESTED_STEP3"},
+    {"agent_id":"goose","wired":true,"runtime_status":"UNTESTED_STEP3","source_status":"SOURCE_NOT_LOCATED_IN_REPO_ROOT_INDEX"},
+    {"agent_id":"agent_zero","wired":true,"runtime_status":"UNTESTED_STEP3"},
+    {"agent_id":"opendev","wired":true,"runtime_status":"UNTESTED_STEP3"},
+    {"agent_id":"research_agent_lab","wired":true,"runtime_status":"UNTESTED_STEP3"},
+    {"agent_id":"mirothinker","wired":true,"runtime_status":"UNTESTED_STEP3"}
+  ],
+  "next": "STEP3_TRIGGER_AND_TESTS"
+}
