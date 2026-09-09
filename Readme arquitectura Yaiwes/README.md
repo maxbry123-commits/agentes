@@ -1279,3 +1279,34 @@ Contrato vigente: `PASO 1 MOVE 1-20 -> PASO 2 CABLEAR/PODAR 1x1 SIN TESTS -> PAS
 **Workflow MOVE:** `YAIWES STEP 1 - MOVE 1-20` · run `34299955216`.
 
 **Siguiente fase permitida:** Paso 2 únicamente después de que los 20 estén físicamente en destino.
+
+
+<!-- YAIWES_3_STEPS_STEP2_WIRE_PRUNE_1_20 -->
+## Paso 2/3 — Cableado y poda 1×1 SIN TESTS
+
+**Handoff:** [HANDOFF-INTEGRACION-1-20.md](./HANDOFF-INTEGRACION-1-20.md)
+
+| # | Componente | Cableado | Poda mínima |
+|---:|---|---|---|
+| 1 | APScheduler | `ALREADY_WIRED` | `-` |
+| 2 | AWS-Step-Functions-DS-SDK | `ALREADY_WIRED` | `-` |
+| 3 | Ajv | `ALREADY_WIRED` | `-` |
+| 4 | Apache-APISIX | `ALREADY_WIRED` | `-` |
+| 5 | Apache-Airflow | `ALREADY_WIRED` | `-` |
+| 6 | Argo-Workflows | `ALREADY_WIRED` | `-` |
+| 7 | Azure-Durable-Functions | `ALREADY_WIRED` | `-` |
+| 8 | BAML | `WIRED_NO_TEST` | `-` |
+| 9 | Burr | `WIRED_NO_TEST` | `.github` |
+| 10 | Caddy | `WIRED_NO_TEST` | `.github` |
+| 11 | Camunda | `WIRED_NO_TEST` | `-` |
+| 12 | Cedar | `WIRED_NO_TEST` | `.github` |
+| 13 | Celery | `WIRED_NO_TEST` | `.github` |
+| 14 | Cerberus | `WIRED_NO_TEST` | `.github` |
+| 15 | Cerbos | `WIRED_NO_TEST` | `.github` |
+| 16 | Chroma | `WIRED_NO_TEST` | `-` |
+| 17 | ClawHub | `WIRED_NO_TEST` | `-` |
+| 18 | Cloudflare-Workers-SDK | `WIRED_NO_TEST` | `.github` |
+| 19 | Coconut | `WIRED_NO_TEST` | `-` |
+| 20 | CodeUltraFeedback | `WIRED_NO_TEST` | `-` |
+
+**Regla:** en este paso no se ejecutaron tests.

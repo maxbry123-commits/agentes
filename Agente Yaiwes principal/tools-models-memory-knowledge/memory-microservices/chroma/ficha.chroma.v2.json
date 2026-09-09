@@ -1,0 +1,105 @@
+{
+  "artifact_id": "yaiwes.memory.chroma",
+  "version": "1.0.0",
+  "estado": "wired_no_test",
+  "contract_hash": "",
+  "tribunal_case_id": "YAIWES-16-CHROMA",
+  "contrato": {
+    "rol": "transform",
+    "consume": {
+      "datatype": {
+        "family": "memory",
+        "type": "request",
+        "version": 1
+      }
+    },
+    "expone": {
+      "datatype": {
+        "family": "memory",
+        "type": "result",
+        "version": 1
+      }
+    },
+    "input_map": {},
+    "output_map": {}
+  },
+  "ejecucion": {
+    "kind": "code",
+    "transport": "importlib",
+    "runtime_type": "compute",
+    "entry_point": "yaiwes_adapter.py:source_probe",
+    "llm_ratio": 0.0,
+    "idempotente": true
+  },
+  "seguridad": {
+    "sandbox": "process",
+    "permisos": [],
+    "limites": {
+      "timeout_ms": 30000,
+      "deadline_ms": 45000
+    }
+  },
+  "firma": {
+    "gpg_key_id": "PENDIENTE",
+    "revocation_ref": "contracts/revocation_list.json"
+  },
+  "categoria": "transversal",
+  "etapa": "T",
+  "perfiles": {
+    "n0": {
+      "habilitada": true,
+      "iteraciones": 1,
+      "simulaciones": 0,
+      "criticas": 0,
+      "muestras_k": 1
+    }
+  },
+  "repeticion": {
+    "max": 1,
+    "condicion": "nunca",
+    "backoff": "1000*2^n+rand(0,1000)"
+  },
+  "repite_en": [],
+  "activacion": {
+    "eventos": [
+      "yaiwes.memory.chroma.requested"
+    ],
+    "wake_words": [],
+    "condicion": ""
+  },
+  "presupuesto": {
+    "n0": {
+      "max_tokens": 1,
+      "max_ms": 30000,
+      "max_costo_usd": 1e-06
+    }
+  },
+  "telemetria": {
+    "metricas": [
+      "tiempo",
+      "errores",
+      "reintentos"
+    ],
+    "span_otel": true
+  },
+  "evidencia": {
+    "produce": [
+      "L1_static",
+      "L2_build",
+      "L3_runtime"
+    ],
+    "destino": "runtime/evidence/"
+  },
+  "failover": {
+    "sustituible_por": [],
+    "compensacion": "fail_closed"
+  },
+  "salud": {
+    "metodo": "source_probe",
+    "heartbeat_interval_s": 30
+  },
+  "trazas": {
+    "task_id_requerido": true,
+    "trace_id_requerido": true
+  }
+}
