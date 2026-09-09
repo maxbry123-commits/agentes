@@ -1,14 +1,40 @@
 {
-  "checkpoint_id":"WFLOOP-PLAN30-0017-ACTIVE",
-  "contract":"tel.workflow/v4",
-  "mode":"FAIL_CLOSED_EXECUTION_LOOP",
-  "history_previous_checkpoint_blob":"72d59df0e141a51557dc9a3ca9e64524a31075a0",
-  "status":"PLAN30_T17_PLUGIN_REGISTRY_WIRING_ACTIVE",
-  "current_node":"PLAN30_T17_PLUGIN_REGISTRY_WIRING",
-  "queue":"1x1",
-  "plan30":{"total":30,"verified_closed":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16],"in_progress":[17],"pending_count":13,"next_after_current":18,"verified_progress_percent":53.33},
-  "evidence":{"t16_artifact":"➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/EVIDENCE-PLAN30-T16-CLOSED.md","t16_blob":"bd7aa684e215234616f4bd031a7587219fe9133e","t16_run":34075371938,"t16_job":101600311787,"t16_result":"YAIWES_T16_CANONICAL_VERIFY=PASS 4/4","state_blob":"f2ebd5931676c7afd285438603785a723ca5d260","state_commit":"42edd7382a8a4e88c3c0d7aea1b323a5dfe855c1"},
-  "checks":{"contract_v4":"PASS","t16_verified_closed_preserved":"PASS","t17_active":"PASS","queue_1x1":"PASS"},
-  "gaps_flags":["T17 Capability Registry runtime compatible aún no demostrado","RECOVERY y BITACORA pendientes de reconciliación por deltas separados"],
-  "next_node":"PLAN30_T17_PLUGIN_REGISTRY_WIRING"
+  "checkpoint_id": "WFLOOP-AGENTS-3STEP-0001",
+  "contract": "tel.workflow/v4",
+  "mode": "FAIL_CLOSED_EXECUTION_LOOP",
+  "status": "ACTIVE_3STEP_AGENT_INTEGRATION",
+  "current_node": "STEP1_AGENT_INDEX",
+  "queue": "1x1",
+  "history_previous_checkpoint_blob": "414a16d0b43206fbe01dcf6aa677c20dfeb79539",
+  "steps": {
+    "1": {
+      "name": "Index agents in Agentes-motores-Wordflow-YAIWES",
+      "status": "PENDING",
+      "output": "➡️📂 readme indice agentes.md",
+      "tests_allowed": false
+    },
+    "2": {
+      "name": "Show additional useful agents and wire necessary agents 1x1",
+      "status": "PENDING",
+      "tests_allowed": false,
+      "persist": ["README arquitectura", "STATE", "CHECKPOINT", "PLAN", "RECOVERY", "BITACORA", "HANDOFF"]
+    },
+    "3": {
+      "name": "Final Wordflow LOOP workflow/trigger tests",
+      "status": "PENDING",
+      "tests_allowed": true
+    }
+  },
+  "foundation_evidence": {
+    "move_commit": "26d0860ef23c3285ee60c63a5c9121fa45bb0ed1",
+    "wiring_commit": "da290e6200c9e82154ed917ce6bbc6194d423da3",
+    "trigger_commit": "ebac5c5b10d03d5e828e8fae266af88eb7b9b3d3",
+    "trigger_run": 34179064259,
+    "trigger_result": "PASS_REAL_3_OF_3",
+    "t16_run": 34075371938,
+    "t16_result": "PASS_4_OF_4"
+  },
+  "hf_status": "IN_PROGRESS_EXTERNAL_WAIT_DIRECTOR",
+  "next_action": "Create agent index only; no code inspection and no tests",
+  "recovery_entrypoint": "➡️📂 Wordflow LOOP Yaiwes/HANDOFF.md"
 }
