@@ -5,15 +5,44 @@ Contrato: `tel.workflow/v4` · modo `FAIL_CLOSED_EXECUTION_LOOP` · cola `1×1`.
 ## PARCHE ACTIVO DEL DIRECTOR — EXACTAMENTE 3 PASOS
 Este bloque controla la ejecución actual y no crea un Paso 4.
 
-| Paso | Tarea | Estado | Restricciones |
+| Paso | Tarea | Estado | Evidencia |
 |---|---|---|---|
-| 1 | Ubicar agentes/componentes en `maxbry123-commits/Agentes-motores-Wordflow-YAIWES` y crear `➡️📂 readme indice agentes.md` | PENDIENTE | Solo inventario/nombres/rol general; no revisar código; no tests |
-| 2 | Mostrar agentes adicionales útiles y cablear solo los necesarios 1×1 mediante Enchufe Universal | PENDIENTE | Sin tests; actualizar README arquitectura + Crazy Wall/STATE/CHECKPOINT/PLAN/RECOVERY/BITACORA/HANDOFF; entregar enlaces visibles |
-| 3 | Ejecutar test final del Wordflow LOOP mediante workflow/trigger real | PENDIENTE | Solo después del cierre material del Paso 2 |
+| 1 | Ubicar agentes/componentes y crear `➡️📂 readme indice agentes.md` | VERIFIED_CLOSED | motor repo commit `ba9596c5716f34926e23186330609d4238bd8ccd` |
+| 2 | Mostrar agentes adicionales útiles y cablear solo los necesarios 1×1 mediante Enchufe Universal, sin tests | WIRED_UNTESTED | adapter `1567d025…`; registry `f2e99e19…`; Ficha `c21c632a…`; health `ff4f60a6…`; Universal Plug `973a9ab8…` |
+| 3 | Ejecutar test final del Wordflow LOOP mediante workflow/trigger real | IN_PROGRESS | workflow `.github/workflows/wordflow-agent-fleet-step3.yml`; run `34405553218`; head `79e0a5d29313ff5620b136cf19c1e71eab776505` |
 
-**Nodo actual:** `STEP1_AGENT_INDEX`.
+**Nodo actual:** `STEP3_AGENT_FLEET_VERIFY`.
 
 **Prohibido:** investigar OSS nuevos, re-descargar LOOP5, rehacer MOVE/runtime wiring ya verificado, tests en Paso 1/2, arquitectura paralela, `force git`, falso PASS.
+
+## PASO 2 — FLEET CABLEADO
+Fleet registry: `Agente Yaiwes principal/execution-engine-pool/agent-bindings/agent_fleet_registry.json`.
+
+18 bindings:
+1. OpenCode
+2. OpenHands
+3. Claude Code
+4. MiMo Code
+5. Codex
+6. SmolAgents
+7. Hermes
+8. OpenClaw
+9. Aider
+10. Muse/Glimmer
+11. Kimi K Code
+12. Qwen Code
+13. Cline
+14. Goose
+15. Agent-Zero
+16. OpenDev
+17. Research Agent Lab
+18. MiroThinker
+
+Council12 canónico: Claude Code, OpenClaw, Hermes, Codex, Aider, OpenCode, OpenHands, MiMo Code, Muse/Glimmer, Kimi, SmolAgents, Qwen.
+
+Adicionales seleccionados porque cubren huecos concretos sin duplicar Council: Agent-Zero=`fallback_worker`, OpenDev=`fallback_coder`, Research Agent Lab=`research`, MiroThinker=`reasoning/reviewer`.
+
+GAP de procedencia física que no invalida el binding fail-closed pero impide afirmar source integration: Hermes, Muse/Glimmer y Goose no fueron localizados como fuente exacta en el índice del repo motor.
 
 ## FUNDACIÓN YA VERIFICADA — NO REHACER
 - LOOP5: LangGraph, Temporal Python SDK, Prefect, Hatchet Python SDK, redun.
@@ -23,48 +52,39 @@ Este bloque controla la ejecución actual y no crea un Paso 4.
 - Ficha Contract v2 T16: run `34075371938`, `YAIWES_T16_CANONICAL_VERIFY=PASS 4/4`.
 
 ## MAPEO AL BACKLOG HISTÓRICO PLAN30
-El PLAN30 se conserva para trazabilidad. No se inflan estados por este parche documental.
+El PLAN30 se conserva para trazabilidad; el parche actual no borra historial.
 
-| # | Objetivo | Tarea | Estado histórico verificado |
+| # | Objetivo | Tarea | Estado reconciliado |
 |---|---|---|---|
-| 01 | O02 | Reconciliar anclas/objetivo/roles | VERIFIED_CLOSED |
-| 02 | O02 | Consolidar inventario de código candidato | VERIFIED_CLOSED |
-| 03 | O02 | Verificar runner 1x1 | VERIFIED_CLOSED |
-| 04 | O02 | Verificar pause/resume | VERIFIED_CLOSED |
-| 05 | O02 | Verificar identidad/reinyección | VERIFIED_CLOSED |
-| 06 | O02 | Verificar input_hash/node/attempt/checkpoint | VERIFIED_CLOSED |
-| 07 | O02 | Verificar strategy/failure-memory | VERIFIED_CLOSED |
-| 08 | O02 | Mapear candidatos a destino | VERIFIED_CLOSED |
-| 09 | O02 | Manifiesto provenance/compatibilidad | VERIFIED_CLOSED |
-| 10 | O03 | Reusar módulo cola 1x1 | VERIFIED_CLOSED |
-| 11 | O03 | Reusar módulo pause/resume | VERIFIED_CLOSED |
-| 12 | O03 | Reusar módulo identidad/checkpoint | VERIFIED_CLOSED |
-| 13 | O03 | Reusar módulo input_hash/node_state | VERIFIED_CLOSED |
-| 14 | O03 | Reusar strategy/failure-memory | VERIFIED_CLOSED |
-| 15 | O03 | Patches quirúrgicos necesarios | VERIFIED_CLOSED |
-| 16 | O04 | Crear/ajustar Ficha/contrato de módulos integrados | VERIFIED_CLOSED |
-| 17 | O04 | Cablear adapters/plugins a registry | ESTADO HISTÓRICO EN_CURSO; evidencia posterior de runtime wiring existe y no debe rehacerse |
-| 18 | O04 | Health/evidence hooks fail-closed | PENDIENTE histórico |
-| 19 | O05 | 5 pasadas docs↔arquitectura↔code↔contratos↔tests | PENDIENTE histórico |
-| 20 | O06 | Contratos de tareas de agentes | PENDIENTE; absorbido por Paso 2 cuando aplique |
-| 21 | O07 | Cablear OpenCode | PENDIENTE; Paso 2 |
-| 22 | O07 | Cablear OpenHands | PENDIENTE; Paso 2 |
-| 23 | O07 | Cablear Claude Code + Mimo Code | PENDIENTE; Paso 2 |
-| 24 | O07 | Auditores + Council12 + embudo | PENDIENTE; Paso 2 |
-| 25 | O08 | HF/3 procesadores con health real | EN CURSO EXTERNO SEGÚN DIRECTOR; esperar señal de listo |
-| 26 | O09 | Graphiti/Grapify/SQL/HF storage | PENDIENTE histórico; no ejecutar dentro del parche de 3 pasos salvo instrucción nueva |
-| 27 | O10 | APIs/modelos por secret_ref | PENDIENTE histórico; no ejecutar dentro del parche de 3 pasos salvo instrucción nueva |
-| 28 | O11 | Tests unit/integración/E2E | Paso 3 para el bloque actual |
-| 29 | O11 | Checks inestables hasta 10x + recovery | Solo si el test del Paso 3 lo requiere |
-| 30 | O11 | Auditoría final + verify_final | Cierre del Paso 3 si existe evidencia suficiente |
+| 01–16 | O02–O04 | trabajo histórico verificado | VERIFIED_CLOSED |
+| 17 | O04 | adapters/plugins→registry | evidencia posterior de runtime wiring existe; NO REHACER |
+| 18 | O04 | health/evidence hooks | cubierto parcialmente por runtime y fleet; cierre global pendiente de STEP3 |
+| 19 | O05 | verificación documental | fuera del bloque actual salvo persistencia requerida |
+| 20 | O06 | contratos tareas agentes | Ficha/registry fleet materializado en STEP2 |
+| 21 | O07 | OpenCode | WIRED_UNTESTED STEP2 |
+| 22 | O07 | OpenHands | WIRED_UNTESTED STEP2 |
+| 23 | O07 | Claude Code + Mimo Code | WIRED_UNTESTED STEP2 |
+| 24 | O07 | auditores + Council12 | WIRED_UNTESTED STEP2 |
+| 25 | O08 | HF/3 processors | EN CURSO EXTERNO; esperar Director |
+| 26–27 | O09–O10 | storage/APIs | fuera del bloque actual |
+| 28 | O11 | tests | STEP3 activo run `34405553218` |
+| 29 | O11 | estabilidad/recovery | solo reparar fallo que surja en STEP3 |
+| 30 | O11 | verify_final | cerrar solo con evidencia STEP3 |
 
-## LISTA DE AGENTES OBJETIVO DEL DIRECTOR
-OpenCode · OpenHands · Claude Code · MiMo Code · Codex/Codex CLI · Cline · Kimi K Code CLI · Hermes · OpenClaw · Aider · Muse/Glimmer Code · Smolagents/Smolange · Qwen Code CLI/GLM Code · Goose.
+## STEP3 — CRITERIO DE CIERRE
+El run debe demostrar:
+- registry fleet 18/18;
+- IDs únicos;
+- Council12 12/12;
+- routing determinista por slots/roles;
+- fail-closed cuando un runtime externo no está configurado;
+- `yaiwes.runtime.agent_fleet` conectado una sola vez al Universal Plug registry;
+- preservar evidencia del trigger real de programación 3/3.
 
-Esta lista es objetivo para localizar/cablear; `nombre/carpeta presente ≠ binding integrado`.
+No se exige fingir disponibilidad de CLIs/APIs externas ausentes en GitHub Actions. `WIRED + FAIL_CLOSED` puede pasar integración; `runtime externo ejecutado` solo se afirma si existe configuración y evidencia real.
 
 ## REGLA DE RECUPERACIÓN
-`HANDOFF → guía v4 → README arquitectura → STATE → CHECKPOINT → PLAN → RECOVERY → BITACORA → HEAD real → retomar primer Paso 1/2/3 sin evidencia`.
+`HANDOFF → guía v4 → README arquitectura → STATE → CHECKPOINT → PLAN → RECOVERY → BITACORA → HEAD real → run 34405553218`.
 
 ## SIGUIENTE DELTA EXACTO
-`STEP1_AGENT_INDEX`: revisar únicamente el inventario del repo `Agentes-motores-Wordflow-YAIWES` y crear `➡️📂 readme indice agentes.md`; no leer código y no ejecutar tests.
+Verificar run `34405553218`; si falla, reparar únicamente el fallo de STEP3 y relanzar; si success, persistir evidence y promover `yaiwes.runtime.agent_fleet` de `WIRED_UNTESTED` a `ACTIVE`.
