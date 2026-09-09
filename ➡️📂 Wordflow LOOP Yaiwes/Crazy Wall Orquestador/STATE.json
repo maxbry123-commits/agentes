@@ -3,30 +3,40 @@
   "project": "Wordflow LOOP Yaiwes",
   "mode": "FAIL_CLOSED_EXECUTION_LOOP",
   "status": "ACTIVE_3STEP_AGENT_INTEGRATION",
-  "current_node": "STEP1_AGENT_INDEX",
-  "checkpoint_id": "WFLOOP-AGENTS-3STEP-0001",
+  "current_node": "STEP3_AGENT_FLEET_VERIFY",
+  "checkpoint_id": "WFLOOP-AGENTS-3STEP-0003-ACTIVE",
   "queue": "1x1",
-  "history_previous_state_blob": "f2ebd5931676c7afd285438603785a723ca5d260",
+  "history_previous_state_blob": "3e4413d8169a360127e9dc96d61f051bc8485f62",
   "director_active_patch": {
     "exact_steps": 3,
     "step_1": {
       "id": "STEP1_AGENT_INDEX",
-      "status": "PENDING",
+      "status": "VERIFIED_CLOSED",
       "repo": "maxbry123-commits/Agentes-motores-Wordflow-YAIWES",
       "output": "➡️📂 readme indice agentes.md",
-      "rules": ["locate_only", "no_code_review", "no_tests"]
+      "commit": "ba9596c5716f34926e23186330609d4238bd8ccd",
+      "rules": ["locate_only", "no_code_tests"]
     },
     "step_2": {
       "id": "STEP2_AGENT_WIRING_1X1",
-      "status": "PENDING",
-      "action": "show additional useful agents and wire only necessary agents 1x1",
-      "wiring": "Task Contract/Ficha -> adapter/plugin -> registry/binding -> health descriptor",
-      "rules": ["no_tests", "reuse_existing_universal_plug", "update_all_work_docs", "visible_links"]
+      "status": "WIRED_UNTESTED",
+      "fleet_count": 18,
+      "canonical_council_count": 12,
+      "adapter_commit": "1567d025656466df2c816ee4f52f404cbaca2e5a",
+      "registry_commit": "f2e99e193286043d8cd2ed5bd5310b5ea9b42c7c",
+      "ficha_commit": "c21c632a09d27098157d39b80e0ebd29fd72dad1",
+      "health_descriptor_commit": "ff4f60a69bad684acb60e2239ffe72c2f6b0e20d",
+      "universal_plug_registry_commit": "973a9ab800ea91ff0503efbd933428a693fdee50",
+      "tests_executed": false
     },
     "step_3": {
-      "id": "STEP3_WORDFLOW_FINAL_TEST",
-      "status": "PENDING",
-      "action": "run final Wordflow LOOP workflow/trigger tests only after Step 2 is complete"
+      "id": "STEP3_AGENT_FLEET_VERIFY",
+      "status": "IN_PROGRESS",
+      "workflow": ".github/workflows/wordflow-agent-fleet-step3.yml",
+      "trigger_commit": "79e0a5d29313ff5620b136cf19c1e71eab776505",
+      "run_id": 34405553218,
+      "run_status": "in_progress",
+      "closure_requires": "completed/success + job/log evidence"
     }
   },
   "verified_foundation_do_not_reopen": {
@@ -44,23 +54,16 @@
     "t16_ficha_run": 34075371938,
     "t16_ficha_result": "YAIWES_T16_CANONICAL_VERIFY=PASS 4/4"
   },
-  "director_agent_target_list": [
-    "OpenCode",
-    "OpenHands",
-    "Claude Code",
-    "MiMo Code",
-    "Codex / Codex CLI",
-    "Cline",
-    "Kimi K Code CLI",
-    "Hermes",
-    "OpenClaw",
-    "Aider",
-    "Muse / Glimmer Code",
-    "Smolagents / Smolange",
-    "Qwen Code CLI / GLM Code",
-    "Goose"
-  ],
-  "agent_binding_status": "NOT_YET_VERIFIED_STEP1_STEP2_PENDING",
+  "agent_fleet": {
+    "registry_path": "Agente Yaiwes principal/execution-engine-pool/agent-bindings/agent_fleet_registry.json",
+    "ficha_path": "Agente Yaiwes principal/kernel-principal/extension-kernel/capability-registry/wordflow-loop-contracts/ficha.agent_fleet.v2.json",
+    "health_path": "Agente Yaiwes principal/execution-engine-pool/agent-bindings/agent_fleet_health.json",
+    "plugin_id": "yaiwes.runtime.agent_fleet",
+    "plugin_status": "WIRED_UNTESTED",
+    "agents": ["opencode","openhands","claude_code","mimo_code","codex","smolagents","hermes","openclaw","aider","muse_glimmer","kimi_k","qwen_code","cline","goose","agent_zero","opendev","research_agent_lab","mirothinker"],
+    "source_unresolved": ["hermes","muse_glimmer","goose"],
+    "runtime_execution_status": "NOT_CLAIMED_UNTIL_STEP3"
+  },
   "hugging_face": {
     "status": "IN_PROGRESS_EXTERNAL_PER_DIRECTOR",
     "action": "WAIT_FOR_DIRECTOR_READY_SIGNAL_BEFORE_TEST"
@@ -69,18 +72,9 @@
     "verified_closed": [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16],
     "legacy_in_progress": [17],
     "verified_progress_percent": 53.33,
-    "note": "Historical PLAN30 state preserved for traceability. Current Director 3-step patch controls execution order and does not claim additional PLAN30 closures until material evidence exists."
+    "note": "Historical PLAN30 state preserved. Current 3-step patch has precedence for agent integration."
   },
-  "prohibitions": [
-    "NO_STEP_4",
-    "NO_NEW_OSS_RESEARCH",
-    "NO_REDOWNLOAD_LOOP5",
-    "NO_CODE_REVIEW_IN_STEP1",
-    "NO_TESTS_IN_STEP1_OR_STEP2",
-    "NO_PARALLEL_ARCHITECTURE",
-    "NO_FORCE_GIT",
-    "NO_FALSE_PASS"
-  ],
-  "next_action": "STEP1: locate agents in Agentes-motores-Wordflow-YAIWES and create ➡️📂 readme indice agentes.md without inspecting code",
-  "closure_rule": "Step 1 index -> Step 2 wire necessary agents 1x1 without tests -> Step 3 final workflow/trigger test. Presence != integration."
+  "prohibitions": ["NO_STEP_4","NO_NEW_OSS_RESEARCH","NO_REDOWNLOAD_LOOP5","NO_TESTS_IN_STEP1_OR_STEP2","NO_PARALLEL_ARCHITECTURE","NO_FORCE_GIT","NO_FALSE_PASS"],
+  "next_action": "Verify run 34405553218; on failure repair only STEP3 failure; on success persist evidence and promote agent_fleet to ACTIVE without claiming unavailable external runtimes executed.",
+  "closure_rule": "STEP3 closes only with real workflow evidence. Wiring PASS does not equal successful execution of every external runtime."
 }
