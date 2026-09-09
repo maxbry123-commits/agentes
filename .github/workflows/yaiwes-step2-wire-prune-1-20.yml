@@ -1,0 +1,163 @@
+name: YAIWES STEP 2 - WIRE PRUNE 1-20 NO TESTS
+
+on:
+  workflow_run:
+    workflows: ['YAIWES STEP 1 - MOVE 1-20']
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-step2-wire-prune-1-20
+  cancel-in-progress: false
+
+jobs:
+  wire-prune:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout main sparse
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+          sparse-checkout: |
+            Agente Yaiwes principal/execution-orchestration
+            Agente Yaiwes principal/definition-registry
+            Agente Yaiwes principal/mesh-routing-collaboration
+            Agente Yaiwes principal/execution-engine-pool
+            Agente Yaiwes principal/control-governance
+            Agente Yaiwes principal/tools-models-memory-knowledge
+            Agente Yaiwes principal/kernel-principal
+            Agente Yaiwes principal/code-programming-engine
+            Readme arquitectura Yaiwes
+
+      - name: STEP 2 - cablear y podar 1x1 sin tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import json, shutil
+
+          ROOT=Path('Agente Yaiwes principal')
+          ARCH=Path('Readme arquitectura Yaiwes/README.md')
+          HANDOFF=Path('Readme arquitectura Yaiwes/HANDOFF-INTEGRACION-1-20.md')
+          if not HANDOFF.exists(): raise SystemExit('HANDOFF_MISSING')
+
+          items=[
+            (1,'APScheduler',ROOT/'execution-orchestration/task-classifier-scheduler','B','scheduler'),
+            (2,'AWS-Step-Functions-DS-SDK',ROOT/'execution-orchestration/state-machine-executor/aws-step-functions-ds-sdk','B','state_machine'),
+            (3,'Ajv',ROOT/'definition-registry/schema-contracts/ajv','C','schema_validation'),
+            (4,'Apache-APISIX',ROOT/'mesh-routing-collaboration/apisix-api-gateway','C','api_gateway'),
+            (5,'Apache-Airflow',ROOT/'execution-orchestration/dag-executor/apache-airflow','B','dag'),
+            (6,'Argo-Workflows',ROOT/'execution-orchestration/dag-executor/argo-workflows','B','dag'),
+            (7,'Azure-Durable-Functions',ROOT/'execution-orchestration/state-machine-executor/azure-durable-functions','B','state_machine'),
+            (8,'BAML',ROOT/'definition-registry/domain-specific-contracts/baml','C','contracts'),
+            (9,'Burr',ROOT/'execution-orchestration/state-machine-executor/burr','B','state_machine'),
+            (10,'Caddy',ROOT/'mesh-routing-collaboration/caddy-gateway','C','gateway'),
+            (11,'Camunda',ROOT/'execution-orchestration/state-machine-executor/camunda','B','workflow'),
+            (12,'Cedar',ROOT/'definition-registry/authorization-model/cedar','C','authorization'),
+            (13,'Celery',ROOT/'execution-engine-pool/parallel-dispatch/celery','B','task_dispatch'),
+            (14,'Cerberus',ROOT/'definition-registry/schema-contracts/cerberus','C','schema_validation'),
+            (15,'Cerbos',ROOT/'control-governance/policy-guardrails-permissions/cerbos','C','authorization'),
+            (16,'Chroma',ROOT/'tools-models-memory-knowledge/memory-microservices/chroma','C','memory'),
+            (17,'ClawHub',ROOT/'kernel-principal/extension-kernel/capability-registry/clawhub','C','capability_registry'),
+            (18,'Cloudflare-Workers-SDK',ROOT/'execution-engine-pool/adapter-layer/cloudflare-workers-sdk','B','edge_execution'),
+            (19,'Coconut',ROOT/'kernel-principal/reasoning-kernel/decision-on-demand/coconut','C','reasoning'),
+            (20,'CodeUltraFeedback',ROOT/'code-programming-engine/standards-forensic/code-ultrafeedback','C','code_quality'),
+          ]
+
+          rows=[]
+          for n,name,dest,cls,family in items:
+            if not dest.exists(): raise SystemExit(f'STEP2_DEST_MISSING:{n}:{name}:{dest}')
+
+            # Poda mínima y segura: metadatos CI/dev upstream, nunca runtime/licencias.
+            pruned=[]
+            for junk in ['.github','.circleci','.devcontainer']:
+              p=dest/junk
+              if p.exists():
+                shutil.rmtree(p)
+                pruned.append(junk)
+
+            wiring=dest/'WIRING.json'
+            existing=wiring.exists()
+            if not existing:
+              slug=''.join(ch.lower() if ch.isalnum() else '_' for ch in name).strip('_')
+              adapter=dest/'yaiwes_adapter.py'
+              adapter.write_text(
+                "from pathlib import Path\n\nROOT = Path(__file__).resolve().parent\n\n"
+                "def source_probe():\n"
+                "    if not ROOT.exists():\n"
+                "        raise RuntimeError('component root missing')\n"
+                f"    return {{'component': {name!r}, 'root': str(ROOT), 'exists': True}}\n",
+                encoding='utf-8'
+              )
+              manifest_name=f'ficha.{slug}.v2.json'
+              ficha={
+                'artifact_id':f'yaiwes.{family}.{slug}',
+                'version':'1.0.0','estado':'wired_no_test','contract_hash':'',
+                'tribunal_case_id':f'YAIWES-{n:02d}-{slug.upper()}',
+                'contrato':{
+                  'rol':'transform',
+                  'consume':{'datatype':{'family':family,'type':'request','version':1}},
+                  'expone':{'datatype':{'family':family,'type':'result','version':1}},
+                  'input_map':{},'output_map':{}
+                },
+                'ejecucion':{
+                  'kind':'code','transport':'importlib','runtime_type':'compute',
+                  'entry_point':'yaiwes_adapter.py:source_probe','llm_ratio':0.0,'idempotente':True
+                },
+                'seguridad':{'sandbox':'process','permisos':[],'limites':{'timeout_ms':30000,'deadline_ms':45000}},
+                'firma':{'gpg_key_id':'PENDIENTE','revocation_ref':'contracts/revocation_list.json'},
+                'categoria':'pipeline' if cls=='B' else 'transversal','etapa':'E' if cls=='B' else 'T',
+                'perfiles':{'n0':{'habilitada':True,'iteraciones':1,'simulaciones':0,'criticas':0,'muestras_k':1}},
+                'repeticion':{'max':1,'condicion':'nunca','backoff':'1000*2^n+rand(0,1000)'},
+                'repite_en':[],
+                'activacion':{'eventos':[f'yaiwes.{family}.{slug}.requested'],'wake_words':[],'condicion':''},
+                'presupuesto':{'n0':{'max_tokens':1,'max_ms':30000,'max_costo_usd':0.000001}},
+                'telemetria':{'metricas':['tiempo','errores','reintentos'],'span_otel':True},
+                'evidencia':{'produce':['L1_static','L2_build','L3_runtime'],'destino':'runtime/evidence/'},
+                'failover':{'sustituible_por':[],'compensacion':'fail_closed'},
+                'salud':{'metodo':'source_probe','heartbeat_interval_s':30},
+                'trazas':{'task_id_requerido':True,'trace_id_requerido':True}
+              }
+              (dest/manifest_name).write_text(json.dumps(ficha,indent=2,ensure_ascii=False)+'\n',encoding='utf-8')
+              wiring.write_text(json.dumps({
+                'component':name,'artifact_id':ficha['artifact_id'],'classification':cls,
+                'adapter':'yaiwes_adapter.py','manifest':manifest_name,
+                'plugin_bus':'Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus/universal_plugin_bus_v2_integrated.py',
+                'contract_validator':'Agente Yaiwes principal/kernel-principal/extension-kernel/plugin-bus/ficha_contract_v2.py',
+                'activation_state':'wired_no_test','fail_closed':True
+              },indent=2,ensure_ascii=False)+'\n',encoding='utf-8')
+            rows.append((n,name,'ALREADY_WIRED' if existing else 'WIRED_NO_TEST',','.join(pruned) if pruned else '-'))
+
+          marker='<!-- YAIWES_3_STEPS_STEP2_WIRE_PRUNE_1_20 -->'
+          text=ARCH.read_text(encoding='utf-8',errors='ignore')
+          if marker not in text:
+            with ARCH.open('a',encoding='utf-8') as f:
+              f.write('\n\n'+marker+'\n## Paso 2/3 — Cableado y poda 1×1 SIN TESTS\n\n')
+              f.write('**Handoff:** [HANDOFF-INTEGRACION-1-20.md](./HANDOFF-INTEGRACION-1-20.md)\n\n')
+              f.write('| # | Componente | Cableado | Poda mínima |\n|---:|---|---|---|\n')
+              for n,name,status,pruned in rows:
+                f.write(f'| {n} | {name} | `{status}` | `{pruned}` |\n')
+              f.write('\n**Regla:** en este paso no se ejecutaron tests.\n')
+          print('STEP2_WIRE_PRUNE_COMPLETE')
+          PY
+
+      - name: Publish STEP 2
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A -- 'Agente Yaiwes principal' 'Readme arquitectura Yaiwes/README.md'
+          if git diff --cached --quiet; then
+            echo 'STEP2_NO_CHANGES'
+          else
+            git commit -m 'wire(yaiwes): STEP 2 cablear y podar componentes 1-20 sin tests'
+            git push origin HEAD:main
+          fi
