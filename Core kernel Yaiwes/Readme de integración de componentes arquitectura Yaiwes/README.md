@@ -76,3 +76,10 @@ El Director aprobó explícitamente la integración física de la siguiente tand
 Regla de ejecución vigente: `revalidar destino ➡️ MOVE código útil ➡️ adapter/Ficha v2/WIRING ➡️ Universal Plugin Bus/Fables ➡️ runtime/test real ➡️ deduplicar origen solo tras PASS ➡️ persistir evidencia ➡️ append quirúrgico al README arquitectura`.
 
 Estado al abrir esta tanda: `APPROVED_FOR_INTEGRATION`; ningún componente 11–15 puede convertirse en `VERIFIED_CLOSED` hasta demostrar ruta + SHA/diff + test/run/log + URL y read-back físico.
+
+<!-- YAIWES_HANDOFF_INTEGRACION_1_20 -->
+## Contrato operativo actual — 3 pasos
+
+Handoff canónico: `Readme arquitectura Yaiwes/HANDOFF-INTEGRACION-1-20.md`.
+
+`PASO 1 MOVE 1–20 → PASO 2 CABLEAR/PODAR 1×1 SIN TESTS → PASO 3 TESTS 1×1`.

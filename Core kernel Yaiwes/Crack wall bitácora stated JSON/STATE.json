@@ -28,7 +28,7 @@
     "Cerberus",
     "Cerbos"
   ],
-  "current_boundary": "EXECUTE_APPROVED_11_TO_15",
+  "current_boundary": "STEP_1_MOVE_1_20",
   "status_by_component": {
     "APScheduler": "VERIFIED_CLOSED",
     "AWS-Step-Functions-DS-SDK": "VERIFIED_CLOSED",
@@ -80,7 +80,7 @@
   },
   "approval_required_before_components_11_15_move_or_wiring": false,
   "readme_architecture_rewrite_forbidden": true,
-  "next_delta": "Integrate Camunda 1x1; only after PASS continue Cedar, Celery, Cerberus and Cerbos",
+  "next_delta": "Finish STEP 1 MOVE for components 1-20; then STEP 2 wire/prune 1x1 without tests; then STEP 3 tests 1x1.",
   "multi_watchdog_backend_v1": {
     "status": "PENDIENTE_PREFLIGHT",
     "task_id": "YAIWES-WATCHDOG-BACKENDS-10-V1",
@@ -203,5 +203,18 @@
       "open-source UI modules for chat integration"
     ],
     "source_of_truth": "physical_repo_state"
+  },
+  "integration_1_20_handoff": {
+    "status": "ACTIVE_LOOP",
+    "handoff": "Readme arquitectura Yaiwes/HANDOFF-INTEGRACION-1-20.md",
+    "contract": [
+      "STEP_1_MOVE_1_20",
+      "STEP_2_WIRE_PRUNE_1X1_NO_TESTS",
+      "STEP_3_TEST_1X1"
+    ],
+    "current_step": "STEP_1_MOVE_1_20",
+    "step1_workflow": ".github/workflows/yaiwes-step1-move-1-20.yml",
+    "step1_run": 34297538861,
+    "rule": "no extra phases; continue in LOOP until steps 1,2,3 complete"
   }
 }

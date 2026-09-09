@@ -73,5 +73,8 @@
     "memoria operativa estructurada sin chain-of-thought privado",
     "UI con estado, historial, approvals y event stream",
     "evidencia física y tests reales"
-  ]
+  ],
+  "blocked_until": "YAIWES_COMPONENTS_1_20_STEP3_COMPLETE",
+  "handoff_dependency": "Readme arquitectura Yaiwes/HANDOFF-INTEGRACION-1-20.md",
+  "note": "Watchdog programming stack resumes only after the 1-20 three-step integration contract completes."
 }
