@@ -1,0 +1,111 @@
+name: YAIWES STEP 1 - MOVE 1-20
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/yaiwes-step1-move-1-20.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-step1-move-1-20
+  cancel-in-progress: false
+
+jobs:
+  move:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+
+      - name: STEP 1 - move original component trees only
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SRC='Core kernel Yaiwes/Componentes recuperados A'
+          ROOT='Agente Yaiwes principal'
+          ARCH='Readme arquitectura Yaiwes/README.md'
+          REPORT="$RUNNER_TEMP/yaiwes-step1-moves.txt"
+          : > "$REPORT"
+
+          move_if_needed() {
+            local num="$1" name="$2" source="$3" dest="$4"
+            if [ -e "$dest" ]; then
+              printf '%s|%s|ALREADY_AT_DESTINATION|%s\n' "$num" "$name" "$dest" >> "$REPORT"
+              return 0
+            fi
+            if [ ! -e "$source" ]; then
+              printf '%s|%s|SOURCE_MISSING|%s\n' "$num" "$name" "$source" >> "$REPORT"
+              return 1
+            fi
+            mkdir -p "$(dirname "$dest")"
+            git mv "$source" "$dest"
+            printf '%s|%s|MOVED|%s\n' "$num" "$name" "$dest" >> "$REPORT"
+          }
+
+          # 1-10: ya deben vivir en su destino final; no se reescribe ni se repite el MOVE.
+          move_if_needed 1  'APScheduler' "$SRC/APScheduler" "$ROOT/execution-orchestration/task-classifier-scheduler" || true
+          move_if_needed 2  'AWS-Step-Functions-DS-SDK' "$SRC/AWS-Step-Functions-DS-SDK" "$ROOT/execution-orchestration/state-machine-executor/aws-step-functions-ds-sdk" || true
+          move_if_needed 3  'Ajv' "$SRC/Ajv" "$ROOT/definition-registry/schema-contracts/ajv" || true
+          move_if_needed 4  'Apache-APISIX' "$SRC/Apache-APISIX" "$ROOT/mesh-routing-collaboration/apisix-api-gateway" || true
+          move_if_needed 5  'Apache-Airflow' "$SRC/Apache-Airflow" "$ROOT/execution-orchestration/dag-executor/apache-airflow" || true
+          move_if_needed 6  'Argo-Workflows' "$SRC/Argo-Workflows" "$ROOT/execution-orchestration/dag-executor/argo-workflows" || true
+          move_if_needed 7  'Azure-Durable-Functions' "$SRC/Azure-Durable-Functions" "$ROOT/execution-orchestration/state-machine-executor/azure-durable-functions" || true
+          move_if_needed 8  'BAML' "$SRC/BAML" "$ROOT/definition-registry/domain-specific-contracts/baml" || true
+          move_if_needed 9  'Burr' "$SRC/Burr" "$ROOT/execution-orchestration/state-machine-executor/burr" || true
+          move_if_needed 10 'Caddy' "$SRC/Caddy" "$ROOT/mesh-routing-collaboration/caddy-gateway" || true
+
+          # 11-20: mover árbol original completo. Sin poda, sin cableado, sin tests.
+          move_if_needed 11 'Camunda' "$SRC/Camunda" "$ROOT/execution-orchestration/state-machine-executor/camunda"
+          move_if_needed 12 'Cedar' "$SRC/Cedar" "$ROOT/definition-registry/authorization-model/cedar"
+          move_if_needed 13 'Celery' "$SRC/Celery" "$ROOT/execution-engine-pool/parallel-dispatch/celery" || true
+          move_if_needed 14 'Cerberus' "$SRC/Cerberus" "$ROOT/definition-registry/schema-contracts/cerberus"
+          move_if_needed 15 'Cerbos' "$SRC/Cerbos" "$ROOT/control-governance/policy-guardrails-permissions/cerbos"
+          move_if_needed 16 'Chroma' "$SRC/Chroma" "$ROOT/tools-models-memory-knowledge/memory-microservices/chroma"
+          move_if_needed 17 'ClawHub' "$SRC/ClawHub" "$ROOT/kernel-principal/extension-kernel/capability-registry/clawhub"
+          move_if_needed 18 'Cloudflare-Workers-SDK' "$SRC/Cloudflare-Workers-SDK" "$ROOT/execution-engine-pool/adapter-layer/cloudflare-workers-sdk"
+          move_if_needed 19 'Coconut' "$SRC/Coconut" "$ROOT/kernel-principal/reasoning-kernel/decision-on-demand/coconut"
+          move_if_needed 20 'CodeUltraFeedback' "$SRC/CodeUltraFeedback" "$ROOT/code-programming-engine/standards-forensic/code-ultrafeedback"
+
+          {
+            echo
+            echo '<!-- YAIWES_3_STEPS_STEP1_MOVE_1_20 -->'
+            echo '## Paso 1/3 — MOVE físico componentes 1–20'
+            echo
+            echo '**Regla de esta fase:** mover código original a destino final. Sin poda, sin cableado y sin tests.'
+            echo
+            echo '| # | Componente | Estado STEP 1 | Destino |'
+            echo '|---:|---|---|---|'
+            while IFS='|' read -r n name status path; do
+              echo "| $n | $name | \`$status\` | \`$path\` |"
+            done < "$REPORT"
+            echo
+            echo "**Workflow MOVE:** \`YAIWES STEP 1 - MOVE 1-20\` · run \`${GITHUB_RUN_ID}\`."
+            echo
+            echo '**Siguiente fase permitida:** Paso 2 únicamente después de que los 20 estén físicamente en destino.'
+          } >> "$ARCH"
+
+          cat "$REPORT"
+
+      - name: Publish STEP 1 movement
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A -- 'Agente Yaiwes principal' 'Core kernel Yaiwes/Componentes recuperados A' 'Readme arquitectura Yaiwes/README.md'
+          if git diff --cached --quiet; then
+            echo 'STEP1_NO_CHANGES'
+            exit 0
+          fi
+          git commit -m "move(yaiwes): STEP 1 move components 1-20 to final destinations"
+          git push origin HEAD:main
+          echo 'STEP1_MOVE_PUBLISHED'
