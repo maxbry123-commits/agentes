@@ -1,54 +1,14 @@
 {
-  "checkpoint_id": "WFLOOP-AGENTS-3STEP-0003-ACTIVE",
-  "contract": "tel.workflow/v4",
-  "mode": "FAIL_CLOSED_EXECUTION_LOOP",
-  "status": "ACTIVE_3STEP_AGENT_INTEGRATION",
-  "current_node": "STEP3_AGENT_FLEET_VERIFY",
-  "queue": "1x1",
-  "history_previous_checkpoint_blob": "19f29fe6162d746e8a03df1a01581f041106bfc9",
-  "steps": {
-    "1": {
-      "name": "Index agents in Agentes-motores-Wordflow-YAIWES",
-      "status": "VERIFIED_CLOSED",
-      "output": "➡️📂 readme indice agentes.md",
-      "commit": "ba9596c5716f34926e23186330609d4238bd8ccd",
-      "tests_allowed": false
-    },
-    "2": {
-      "name": "Wire necessary agents 1x1",
-      "status": "WIRED_UNTESTED",
-      "fleet_count": 18,
-      "registry_commit": "f2e99e193286043d8cd2ed5bd5310b5ea9b42c7c",
-      "ficha_commit": "c21c632a09d27098157d39b80e0ebd29fd72dad1",
-      "health_commit": "ff4f60a69bad684acb60e2239ffe72c2f6b0e20d",
-      "universal_plug_commit": "973a9ab800ea91ff0503efbd933428a693fdee50",
-      "tests_allowed": false
-    },
-    "3": {
-      "name": "Final Wordflow LOOP agent-fleet workflow test",
-      "status": "IN_PROGRESS",
-      "workflow": ".github/workflows/wordflow-agent-fleet-step3.yml",
-      "run_id": 34405553218,
-      "head_sha": "79e0a5d29313ff5620b136cf19c1e71eab776505",
-      "tests_allowed": true
-    }
-  },
-  "foundation_evidence": {
-    "move_commit": "26d0860ef23c3285ee60c63a5c9121fa45bb0ed1",
-    "wiring_commit": "da290e6200c9e82154ed917ce6bbc6194d423da3",
-    "trigger_commit": "ebac5c5b10d03d5e828e8fae266af88eb7b9b3d3",
-    "trigger_run": 34179064259,
-    "trigger_result": "PASS_REAL_3_OF_3",
-    "t16_run": 34075371938,
-    "t16_result": "PASS_4_OF_4"
-  },
-  "gaps": [
-    "Hermes source path not located in motor repo root index",
-    "Muse/Glimmer source path not located in motor repo root index",
-    "Goose source path not located in motor repo root index",
-    "External agent runtimes are not claimed executable until STEP3 runtime configuration evidence exists"
-  ],
-  "hf_status": "IN_PROGRESS_EXTERNAL_WAIT_DIRECTOR",
-  "next_action": "Verify run 34405553218; repair only STEP3 test failure if any; otherwise persist PASS and promote agent_fleet plugin.",
-  "recovery_entrypoint": "➡️📂 Wordflow LOOP Yaiwes/HANDOFF.md"
+  "checkpoint_id":"WFLOOP-AGENTS-3STEP-0003-CLOSED",
+  "contract":"tel.workflow/v4",
+  "mode":"FAIL_CLOSED_EXECUTION_LOOP",
+  "status":"VERIFIED_CLOSED_3STEP_AGENT_INTEGRATION",
+  "current_node":"STEP3_AGENT_FLEET_VERIFY_CLOSED",
+  "queue":"1x1",
+  "steps":{"1":{"status":"VERIFIED_CLOSED","index_commit":"ba9596c5716f34926e23186330609d4238bd8ccd"},"2":{"status":"VERIFIED_CLOSED_WIRING","fleet_count":18,"council12":12,"adapter_commit":"1567d025656466df2c816ee4f52f404cbaca2e5a","registry_commit":"f2e99e193286043d8cd2ed5bd5310b5ea9b42c7c","ficha_commit":"c21c632a09d27098157d39b80e0ebd29fd72dad1","health_commit":"ff4f60a69bad684acb60e2239ffe72c2f6b0e20d","plug_commit":"973a9ab800ea91ff0503efbd933428a693fdee50"},"3":{"status":"VERIFIED_CLOSED","run_id":34406268016,"job_id":102649876845,"head_sha":"05ce5fc43a599da1ae9e80f485450d52aede07a1","conclusion":"success","evidence_commit":"7a7b1a6af381dbdb4882d3d744ef392161dffdff"}},
+  "promotion":{"fleet_registry_commit":"f2f978a18cbeaeac8c99d35993a66a68bfdcef7f","health_commit":"e05946c349ef79d26e036e8f2fb5ee15f77775e0","universal_plug_commit":"08b42de1136917ef0adc712155c583188c6b9085","plugin_status":"ACTIVE","registry_active_count":12},
+  "gaps":["Hermes/Muse-Glimmer/Goose physical source unresolved","18 external runtimes unconfigured in Actions; fail-closed verified; runtime execution not claimed"],
+  "hf_status":"IN_PROGRESS_EXTERNAL_WAIT_DIRECTOR",
+  "next_action":"No action inside the closed 3-step block. Await Director instruction or HF-ready signal.",
+  "recovery_entrypoint":"➡️📂 Wordflow LOOP Yaiwes/HANDOFF.md"
 }
