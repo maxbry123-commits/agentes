@@ -1,248 +1,184 @@
 # ➡️📂 README arquitectura Wordflow LOOP Yaiwes
 
-Contrato histórico de este documento: `tel.workflow/v3`  
-Modo histórico: `FAIL_CLOSED_LOOP`  
-**Método operativo vigente para nuevas ejecuciones:** `tel.workflow/v4` / `FAIL_CLOSED_EXECUTION_LOOP`  
+Contrato operativo: `tel.workflow/v4`  
+Modo: `FAIL_CLOSED_EXECUTION_LOOP`  
 Arquitectura: modular, determinista por defecto, no monolítica.  
-Estado registrado por este snapshot: `ACTIVE_LOOP / PLAN30_T16_FICHA_CONTRACTS`  
-Progreso registrado por este snapshot: `15/30 = 50%`.
+Estado actual: `ACTIVE_3STEP_AGENT_INTEGRATION`  
+Nodo actual: `STEP1_AGENT_INDEX`  
+Cola: `1×1`.
 
-> **Capa metodológica v4:** este README conserva estado/arquitectura histórica y no se usa para degradar evidencia posterior. Antes de ejecutar cualquier nodo nuevo, leer `GUIA-MAESTRA-EJECUCION-LOOP-V4-WORDFLOW-YAIWES.md`, luego reconciliar STATE/CHECKPOINT/PLAN/RECOVERY contra HEAD/evidencia real. La guía replica el **método de trabajo** auditado en UI YAIWES; no replica su proyecto, backlog ni arquitectura.
+> Arquitectura detallada anterior preservada por blob `ee34fe643320b7ba8da5c8e26e79c3b417e8b750`. Esta reconciliación compacta el estado operativo actual sin borrar la trazabilidad histórica del repositorio.
 
-## 1. Fuentes de verdad / orden de lectura
-1. `HANDOFF.md`.
-2. `GUIA-MAESTRA-EJECUCION-LOOP-V4-WORDFLOW-YAIWES.md` — contrato operativo v4 para nuevas ejecuciones.
-3. Este README arquitectura actual/histórico.
-4. README histórico `➡️📂 readme wordflow loop Yaiwes.md` — ledger literal/recuperación.
-5. `Crazy Wall Orquestador/TRAZABILIDAD-PROYECTO-WORDFLOW-YAIWES.md` — X-Ray source→SHA→destino→evidencia + 5 pasadas chat.
-6. `STATE.json`.
-7. `CHECKPOINT.json`.
-8. `RECOVERY-PATCH.md`.
-9. `BITACORA-CRAZY-WALL.md`.
-10. `PLAN-LOOP-30-TAREAS.md`.
-11. evidencia exacta del nodo activo.
+## 1. Objetivo final
+`documentos/proyectos YAIWES → requisitos trazables → task contracts → código/agentes → Ficha/adapter/plugin → Capability Registry/binding → ejecución/repair → auditoría/tests → STATE/CHECKPOINT/evidence → E2E verificable`.
 
-Persistencia operativa más reciente del repositorio también puede vivir en `Readme arquitectura Yaiwes/Craxy wall bitácora stated JSON Checkpoint/`; el agente debe resolver cuál ancla está vigente leyendo HEAD y evidencia, no por antigüedad aparente.
+El Wordflow LOOP es el motor persistente que mantiene el trabajo hasta cierre real.
 
-Divergencia entre anclas = `GAP`; reconciliar antes de mutar.
+## 2. Método operativo
+Guía canónica:
+`➡️📂 Wordflow LOOP Yaiwes/GUIA-MAESTRA-EJECUCION-LOOP-V4-WORDFLOW-YAIWES.md`.
 
-## 2. Objetivo final
-`documentos/proyectos YAIWES → requisitos trazables → tareas de programación → reutilización/generación de código → Ficha/contrato → adapter/plugin → registry → agente/engine → ejecución → verification/repair → auditoría → STATE/CHECKPOINT/evidence → E2E verificable`.
+Leyes:
+- estado real > memoria/chat > inferencia;
+- sin evidencia = GAP;
+- archivo presente ≠ integrado;
+- código escrito ≠ ejecutado;
+- mock ≠ runtime real;
+- `NO_FORCE_GIT`;
+- `NO_MONOLITO`;
+- `NO_REHACER_TRABAJO_VERIFICADO`.
 
-El LOOP es el motor persistente que mantiene el trabajo hasta cierre real.
+## 3. Arquitectura por capas
+### A — Input/documentos
+`INPUT literal → schema → Mission/GoalLock → provenance`.
 
-## 3. LOOP1 global + LOOP2 por tarea
-### LOOP1 global
-En cada salida/corrida actualizar: objetivos, tareas cerradas/en curso/pendientes, GAP/flags, evidencia, cambios y siguiente nodo 1×1.
+### B — DSL/DAG/contratos
+`requisito → DAG/deps → Task Contract/Ficha → criterios success/failure`.
 
-### LOOP2 por tarea — cadena operacional
-1. INPUT_BLOCK literal, sin reinterpretar.
-2. GOALS 12/12 entrada.
-3. 2 prioridades.
-4. plan.
-5. cola 1×1.
-6. delta autorizado.
-7. verify/refute + análisis.
-8. fallo → LOOP, no falso cierre.
-9. auditor instrucciones ×3.
-10. GAP → investigar mínimo 10 vías y hasta 20 soluciones.
-11. seleccionar StrategyDelta materialmente distinto.
-12. comunidad/code como señal secundaria si fuentes oficiales no bastan.
-13. Council/Ask Consil 12 pasos.
-14. 12 pasos de investigación intensiva en GAP complejo.
-15. 6 cuestionamientos de causa.
-16. ejecutar solución permitida.
-17. verificar cumplimiento INPUT + LOOP.
-18. 3 refutaciones: INPUT, tarea/objetivos, LOOP.
-19. cross-check global.
-20. checklist/CODA.
-21. `verify_final`; si falla, reinyección LOOP.
-
-Política FLAG: bloqueo `🚩` permanece abierto; solo continuar otra tarea segura si no viola dependencias.
-
-Prioridad de implementación: `REUSE > COPY/MOVE > PATCH QUIRÚRGICO > ADAPTER > GENERATE`.
-
-## 4. Watchdog / Sentinela / Supervisor / Guardián
-Salida obligatoria de 10 líneas:
-1. avance % verificado;
-2. nodo actual;
-3. # cerradas;
-4. # en curso;
-5. # pendientes;
-6. # GAP/flags;
-7. evidencia nueva;
-8. cambios desde corrida anterior;
-9. siguiente acción 1×1;
-10. mini resumen Director + `VERIFIED_CLOSED | CLOSED_UNVERIFIED | INCONCLUSIVE | ACTIVE_LOOP`.
-
-No inflar porcentaje. Presencia ≠ integración.
-
-## 5. Arquitectura por capas
-### A — Input / documentos / Mission + GoalLock
-`INPUT literal → schema → MissionContract → GoalLock → provenance`.
-
-### B — DSL / DAG / contratos
-`requisito → DSL → DAG → deps → Ficha/contrato → success/failure criteria`.
-
-### C — Sheriff / gobierno
+### C — Sheriff/gobierno
 `contract → Sheriff → Validator → guards → policy → delta autorizado`.
 
 ### D — Kernel determinista
 `event loop → scheduler → runtime → registry/router → state`; kernel/control `0% LLM`.
 
 ### E — Execution orchestration
-`cola1×1/DAG-ready → execution manifest → capability select → dispatcher → checkpoint/recovery`.
+`cola 1×1/DAG-ready → manifest → capability select → dispatcher → checkpoint/recovery`.
 
-### F — Enchufe universal
-`Ficha v2 → adapter/plugin → Capability Registry → loader → health → evidence`.
+### F — Enchufe Universal
+`Ficha v2 → adapter/plugin → Capability Registry → loader/mount guard → binding → health/evidence`.
 
-### G — Code programming engine / agentes
-`task contract → engine binding → OpenCode execute → OpenHands review/repair → Claude/Mimo wiring review → auditors/council`.
+### G — Agentes/programación
+`Task Contract → engine binding → agente ejecutor/revisor/auditor → resultado normalizado → evidence`.
 
 ### H — Reasoning on demand
-`determinista? → algoritmo/capability code; si insuficiente → reasoning/model por contrato`.
+Primero algoritmo/código determinista; reasoning/model solo cuando no exista solución determinista suficiente.
 
 ### I — State/events/durability
 `input_hash + node_id + checkpoint + attempt + strategy/delta → store → recovery/idempotencia`.
 
 ### J — Memory/storage/tools/models
-`Graphiti/Grapify/SQL/HF storage + APIs secret_ref + budget/timeout/fallback`.
+Sistemas autorizados por contrato; modelos por `secret_ref`; health/budget/timeout/fallback.
 
-### K — Research/evidence/audit
-`fuente→URL/SHA → EvidencePacket → tests → refutaciones → cross-check → verify_final`.
+### K — Evidence/audit
+`fuente/URL/SHA → EvidencePacket → auditoría → tests → verify_final`.
 
 ### L — Output/E2E
-`documento→tarea→code→plugin→registry→ejecución→repair→audit→state/evidence→salida`.
+`documento → tarea → code/agente → plugin/registry → ejecución → repair → audit → state/evidence → salida`.
 
-Separación obligatoria: `contracts/ adapters/ plugins/ registry/ loader/ guards/ tests/`.
+Separación requerida: `contracts/ adapters/ plugins/ registry/ loader/ guards/ tests/`.
 
-## 6. Diseño aprobado adicional que no puede perderse
-- Catálogo de **105 capacidades/algoritmos deterministas**: capacidades Python reales, no prompts. Antes del cierre global se debe demostrar su inventario/registry/runtime o registrar GAP explícito.
-- Ruta conceptual candidata histórica: `reasoning_kernel/decision_on_demand/reasoning_modules/`.
-- `ejecucion.kind: code` para capacidades deterministas; `ejecucion.kind: llm` solo cuando no exista solución determinista suficiente.
-- `SKILL-CLASIFICAR-UBICAR-RECICLAR-CODE`: clasificar → ubicar → localizar/reutilizar → validar procedencia/licencia/contrato → Ficha → plugin → test → evidence.
-- Capa/estructura **OpenMythos/persistencia** debe ser auditada para determinar si está realmente integrada antes del cierre global.
-- PluginBus dinámico no se declara seguro/integrado hasta aislamiento/guardas/tests.
+## 4. Fundación LOOP ya verificada — NO REHACER
+### LOOP5
+- LangGraph
+- Temporal Python SDK
+- Prefect
+- Hatchet Python SDK
+- redun
 
-## 7. Objetivos O01–O11
-| Objetivo | Definición | Estado del snapshot histórico |
-|---|---|---|
-| O01 | LOOP/watchdog + checkpoint/STATE/Crazy Wall/recovery | VERIFIED_CLOSED |
-| O02 | investigación de código fuente | VERIFIED_CLOSED |
-| O03 | copy/reuse por SHA | VERIFIED_CLOSED |
-| O04 | Ficha→adapter/plugin→registry→health→evidence | IN_PROGRESS_T16 |
-| O05 | verificación documental 5 pasadas | PENDING |
-| O06 | task contracts agentes | PENDING |
-| O07 | integrar agentes/council | PENDING |
-| O08 | HF/3 procesadores | PENDING |
-| O09 | Graphiti/Grapify/SQL/HF storage | PENDING |
-| O10 | APIs/modelos secret_ref | PENDING |
-| O11 | tests/auditoría/E2E | PENDING |
+### Evidencia física
+- MOVE a estructura final: commit `26d0860ef23c3285ee60c63a5c9121fa45bb0ed1`.
+- Wiring runtime mediante Enchufe Universal: commit `da290e6200c9e82154ed917ce6bbc6194d423da3`.
+- Evidencia de trigger real: `Agente Yaiwes principal/kernel-principal/extension-kernel/capability-registry/wordflow-loop-evidence/STEP3_PROGRAMMING_TRIGGER.json`.
+- Commit evidencia: `ebac5c5b10d03d5e828e8fae266af88eb7b9b3d3`.
+- Run: `34179064259`.
+- Resultado: `PASS_REAL`, `registry_active=11`, `engine_binding=yaiwes.loop.loop_engineer`, `sum/normalize/classify=3/3 completed`, idempotencia PASS, fail-closed invalid profile PASS.
+- T16 Ficha Contract v2: run `34075371938`, `YAIWES_T16_CANONICAL_VERIFY=PASS 4/4`.
 
-> Estos estados no deben usarse sin reconciliación fresca: `estado real > snapshot documental > memoria/inferencia`.
+## 5. PARCHE ACTIVO DEL DIRECTOR — EXACTAMENTE 3 PASOS
 
-## 8. Plan T01→T30
-Snapshot histórico: T01–T15 `VERIFIED_CLOSED`; T16 `EN_CURSO`; T17–T30 `PENDIENTE`.
+### PASO 1 — Índice de agentes
+Origen: `maxbry123-commits/Agentes-motores-Wordflow-YAIWES`.
 
-T16: Ficha Contract v2 4 capacidades.  
-T17: adapters/plugins→registry.  
-T18: health/evidence/fail-closed.  
-T19: 5 pasadas docs↔arquitectura↔code↔contracts↔tests.  
-T20: task contracts agentes.  
-T21: OpenCode.  
-T22: OpenHands.  
-T23: Claude Code + Mimo Code.  
-T24: auditores + Council12 + embudo.  
-T25: HF/3 procesadores.  
-T26: Graphiti/Grapify/SQL/HF storage.  
-T27: APIs/modelos secret_ref.  
-T28: tests unit/integration/E2E.  
-T29: estabilidad ×10 + recovery/idempotencia/no duplicate effects.  
-T30: auditoría final + verify_final + **cerrar proyecto solo si no queda GAP; de lo contrario generar siguiente lote de 30**.
+Acciones autorizadas:
+- ubicar agentes/componentes existentes;
+- no revisar su código;
+- crear `➡️📂 readme indice agentes.md` en `main`;
+- registrar nombre y función/rol general.
 
-Regla de continuidad: al terminar T30, si cualquier objetivo/GAP/E2E permanece abierto, crear `T31–T60` desde evidencia real pendiente; después repetir lotes de 30 hasta `VERIFIED_CLOSED` global. No borrar historial ni reiniciar numeración.
+**Sin cableado. Sin tests.**
 
-## 9. Componentes integrados y provenance
-1. Serial dispatch: `runner.py` blob `daa32a5d6dfeb0d21a975b8a5b8384d68a8aa08e` → `serial_dispatch.py` blob `77017b70239cedcce26f1df4a076272572f0927b`.
-2. Pause/resume: `runcontrol.py` blob `2c6aff845c97b600d4b3851b5ee9a6e0ee23defb` → `run_control_adapter.py` blob `aa4f62571044d873e3969bc7f747bfc83e3047a6`.
-3. Resume identity/input hash: Elspeth commit `720d441336434d227c2a00caaac100db48a07d5c` → `resume_identity.py` blob `dc440bd180194d6cef2bf1b38b1ef1b85138ef0b`.
-4. StrategyDelta: indexer-core commit `efcfcb20f09117504b00f682ada1bfff2b04b649` → `strategy_delta_guard.py` blob `46efd22bd7b5ac3c22cc5ca084788d46b4b5b16b`.
-5. Test T10–T15: `test_plan30_loop_runtime.py` blob `e1b1e3a4e4ca79e5dee00d5676a6038c6426bc31`; resultado `5 passed in 0.06s`.
+### PASO 2 — Lista adicional + cableado 1×1
+- Mostrar al Director otros agentes del repo que puedan aportar al Wordflow LOOP.
+- Seleccionar únicamente los necesarios.
+- Cablear 1×1 por el Enchufe Universal existente:
+  `Task Contract/Ficha → adapter/plugin → registry/binding → health descriptor`.
+- No crear un bus paralelo.
+- No ejecutar tests.
+- Tras cada cableado relevante actualizar: arquitectura + STATE + CHECKPOINT + PLAN + RECOVERY + BITÁCORA + HANDOFF.
+- Entregar enlaces visibles de archivos y bindings.
 
-Trazabilidad forense completa SELECTED/REFERENCE/REJECTED:
-https://github.com/maxbry123-commits/agentes/blob/main/%E2%9E%A1%EF%B8%8F%F0%9F%93%82%20Wordflow%20LOOP%20Yaiwes/Crazy%20Wall%20Orquestador/TRAZABILIDAD-PROYECTO-WORDFLOW-YAIWES.md
+### PASO 3 — Test final
+Solo cuando el Paso 2 esté materialmente terminado:
+- lanzar workflow/trigger real del Wordflow LOOP;
+- comprobar bindings, ejecución, fail-closed y evidencia;
+- cerrar con run/job/status/conclusion/SHA/log/evidence.
 
-## 10. T16 — Ficha Contract v2
-Validador canónico:
-https://github.com/maxbry123-commits/agentes/blob/37bef3a8a8f6dadca067638b8ea0c32995fc1d63/skills/research-download-chain/assets/plugin-bus/ficha_contract_v2.py
+**No existe Paso 4 dentro de este parche.**
 
-Commit `37bef3a8a8f6dadca067638b8ea0c32995fc1d63`; blob `b27f14b4d64f77bccf53a893c49b6f20bd58e745`.
+## 6. Agentes objetivo del Director
+1. OpenCode — writer/executor.
+2. OpenHands — review/repair.
+3. Claude Code — flow/execution/wiring review + auditoría.
+4. MiMo Code — flow/execution/wiring review + auditoría.
+5. Codex / Codex CLI — implementación/debugging/auditoría.
+6. Cline — agente de programación; clasificar por inventario en Paso 1.
+7. Kimi K Code CLI — programación/revisión/Council.
+8. Hermes — worker auxiliar + auditor.
+9. OpenClaw — coordinador/worker auxiliar + auditor.
+10. Aider — edición/programación repo + Council.
+11. Muse / Glimmer Code — programación/revisión alternativa + Council.
+12. Smolagents / Smolange — auditor/revisión adicional.
+13. Qwen Code CLI / GLM Code — programación/contraste sujeto a presencia real.
+14. Goose — investigador/auxiliar; clasificar por inventario en Paso 1.
 
-Fichas:
-- serial_dispatch `bc885059ed0a97f73aad02572853d1b0a4f8117d`
-- run_control `7fdb64b7a21fe51c278dcc907b09eb800f2a2770`
-- resume_identity `4ce82a32faa939177dd22603f097402e9b9e6ed9`
-- strategy_delta `44aeb5cb48db6d42499bc940e47e912942d7fd40`
+`nombre/carpeta presente ≠ binding integrado`.
 
-GAP registrado por este snapshot: falta ejecución exacta del validador 4/4 + stdout/veredicto + path cross-check; T17 bloqueado hasta cierre. **Antes de actuar, v4 obliga a comprobar evidencia posterior y no repetir trabajo ya cerrado.**
+## 7. Hugging Face
+Estado comunicado por el Director: `EN CURSO` fuera de este parche.
 
-## 11. Agentes / Council
-- OpenCode: writer/executor.
-- OpenHands: review/repair.
-- Claude Code + Mimo Code: flow/execution/wiring review.
-- Auditores: Claude Code, Mimo Code, Codex, Smolange, Hermes, OpenClaw.
-- Council adicional: Aider, Muse/Glimmer Code, Kimi K Code CLI.
-- 12.º candidato: **Qwen Code CLI**, pendiente evidencia/autorización real.
-- Embudo: OpenHands + OpenCode.
+Regla: no tocar ni probar HF hasta que el Director indique que está listo.
 
-Presencia de agente ≠ binding/integración.
+## 8. PLAN30 histórico y mapeo del parche
+La evidencia histórica conserva T01–T16 `VERIFIED_CLOSED`. El snapshot PLAN30 anterior mantenía T17 activo y T18–T30 pendientes. La evidencia posterior del MOVE/wiring/trigger runtime no debe rehacerse.
 
-## 12. Fuentes / adquisición OSS
-Orden: chat/historial → componentes locales → repo `agentes` → `Agentes-motores-Wordflow-YAIWES` → router-universal → osquestador-auditor → repo/docs oficiales → comunidad secundaria.
+Para el bloque actual:
+- Paso 1 prepara inventario para O06/O07.
+- Paso 2 ejecuta el binding de agentes de O06/O07/T20–T24 que resulten necesarios.
+- Paso 3 cubre el test/verify del bloque actual y alimenta O11/T28–T30.
+- T25/HF espera señal del Director.
+- T26/T27 no se ejecutan dentro de este parche salvo nueva instrucción literal.
 
-Antes de programar: `repo+ruta+URL+commit/blob SHA+comportamiento+destino+decisión`.
+## 9. Prohibiciones actuales
+`NO_STEP_4`  
+`NO_NEW_OSS_RESEARCH`  
+`NO_REDOWNLOAD_LOOP5`  
+`NO_CODE_REVIEW_STEP1`  
+`NO_TEST_STEP1_STEP2`  
+`NO_PARALLEL_ARCHITECTURE`  
+`NO_FORCE_GIT`  
+`NO_FALSE_PASS`.
 
-Skill autorizado:
-https://github.com/maxbry123-commits/agentes/tree/c789e5fe635e220230ffc759d86dc3bbb8e261d4/skills/skills%20Github%20acci%C3%B3n
+## 10. Fuentes de verdad / recovery
+Orden:
+1. `HANDOFF.md`.
+2. guía v4.
+3. este README arquitectura.
+4. `Crazy Wall Orquestador/STATE.json`.
+5. `CHECKPOINT.json`.
+6. `PLAN-LOOP-30-TAREAS.md`.
+7. `RECOVERY-PATCH.md`.
+8. `BITACORA-CRAZY-WALL.md`.
+9. HEAD real / evidencia exacta del paso activo.
 
-No LFS; no reactivar workflows viejos; validar destino; `verify_final`.
-Plugins externos autorizados por este proyecto: GitHub y Hugging Face únicamente, salvo autorización literal posterior.
+Divergencia = GAP; nunca degradar evidencia posterior por un snapshot antiguo.
 
-## 13. Anti-alucinación / refutación
-Antes de avanzar responder con evidencia:
-1. ¿inventé algo?
-2. ¿seguí INPUT literal?
-3. ¿revisé fuentes de verdad?
-4. ¿sigo plan/objetivo?
-5. ¿verify/refute de lo realizado pasó?
+## 11. Siguiente acción exacta
+`STEP1_AGENT_INDEX`: revisar únicamente el inventario/nombres del repo `Agentes-motores-Wordflow-YAIWES` y crear `➡️📂 readme indice agentes.md`; no inspeccionar código y no ejecutar tests.
 
-Si se pierde rumbo: reconstruir contexto desde `HANDOFF + README + STATE + CHECKPOINT + RECOVERY + BITACORA + guía v4 + HEAD real` y retomar último checkpoint válido.
-
-## 14. Persistencia
-Cada cambio real reconcilia según alcance:
-`BITACORA + STATE + CHECKPOINT + PLAN + RECOVERY + README/HANDOFF`.
-
-Registro mínimo:
-`node_id + input_hash + checkpoint_id + attempt_id + strategy_id + delta_hash + cause + source_url + source_sha + destination + test/log + outcome`.
-
-## 15. Cierre global
-Solo `VERIFIED_CLOSED` cuando exista:
-`documento → requisito → task contract → engine/agente → código → repair → Ficha/plugin/registry → ejecución real → auditoría → test independiente → STATE/CHECKPOINT/evidence → output`.
-
-Si falta evidencia: `GAP/INCONCLUSIVE`, nunca falso PASS.
-
----
-
-## 16. Cableado del método operativo v4
-
-Guía canónica de método:
-
-`➡️📂 Wordflow LOOP Yaiwes/GUIA-MAESTRA-EJECUCION-LOOP-V4-WORDFLOW-YAIWES.md`
-
-Origen auditado:
-
-`maxbry123-commits/frontend` → `UI YAIWES/readme arquitectura UI YAIWES/GUIA-MAESTRA-EJECUCION-LOOP-SOL-UI-YAIWES.md` → blob `7aa569945037a228f36eeed1747b7557b1adc5b6`.
-
-Read-back inicial de la guía Wordflow: blob `d54bf5e2158ff8d926fc95246ea2fc7d94c5ff5a`.
-
-La guía v4 gobierna **cómo trabajar**; este README gobierna **qué arquitectura/objetivos tiene Wordflow**. Ninguna regla de UI YAIWES se convierte automáticamente en requisito funcional de Wordflow. Ante conflicto metodológico, manda la instrucción literal v4 del Director; ante conflicto de estado, manda el repo/evidencia real.
+## 12. Enlaces canónicos
+- HANDOFF: https://github.com/maxbry123-commits/agentes/blob/main/%E2%9E%A1%EF%B8%8F%F0%9F%93%82%20Wordflow%20LOOP%20Yaiwes/HANDOFF.md
+- STATE: https://github.com/maxbry123-commits/agentes/blob/main/%E2%9E%A1%EF%B8%8F%F0%9F%93%82%20Wordflow%20LOOP%20Yaiwes/Crazy%20Wall%20Orquestador/STATE.json
+- CHECKPOINT: https://github.com/maxbry123-commits/agentes/blob/main/%E2%9E%A1%EF%B8%8F%F0%9F%93%82%20Wordflow%20LOOP%20Yaiwes/Crazy%20Wall%20Orquestador/CHECKPOINT.json
+- PLAN: https://github.com/maxbry123-commits/agentes/blob/main/%E2%9E%A1%EF%B8%8F%F0%9F%93%82%20Wordflow%20LOOP%20Yaiwes/Crazy%20Wall%20Orquestador/PLAN-LOOP-30-TAREAS.md
+- RECOVERY: https://github.com/maxbry123-commits/agentes/blob/main/%E2%9E%A1%EF%B8%8F%F0%9F%93%82%20Wordflow%20LOOP%20Yaiwes/Crazy%20Wall%20Orquestador/RECOVERY-PATCH.md
+- BITÁCORA: https://github.com/maxbry123-commits/agentes/blob/main/%E2%9E%A1%EF%B8%8F%F0%9F%93%82%20Wordflow%20LOOP%20Yaiwes/Crazy%20Wall%20Orquestador/BITACORA-CRAZY-WALL.md
