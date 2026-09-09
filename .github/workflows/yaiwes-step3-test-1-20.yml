@@ -1,0 +1,166 @@
+name: YAIWES STEP 3 - TEST 1-20
+
+on:
+  workflow_run:
+    workflows: ['YAIWES STEP 2 - WIRE PRUNE 1-20 NO TESTS']
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: yaiwes-step3-test-1-20
+  cancel-in-progress: false
+
+jobs:
+  test-1x1:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout main sparse
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+          sparse-checkout: |
+            Agente Yaiwes principal/execution-orchestration
+            Agente Yaiwes principal/definition-registry
+            Agente Yaiwes principal/mesh-routing-collaboration
+            Agente Yaiwes principal/execution-engine-pool
+            Agente Yaiwes principal/control-governance
+            Agente Yaiwes principal/tools-models-memory-knowledge
+            Agente Yaiwes principal/kernel-principal
+            Agente Yaiwes principal/code-programming-engine
+            Readme arquitectura Yaiwes
+
+      - name: STEP 3 - test each component 1x1
+        id: tests
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import importlib.util, inspect, json, sys, traceback
+
+          ROOT=Path('Agente Yaiwes principal')
+          ARCH=Path('Readme arquitectura Yaiwes/README.md')
+          BUS_DIR=ROOT/'kernel-principal/extension-kernel/plugin-bus'
+          sys.path.insert(0,str(BUS_DIR.resolve()))
+          spec=importlib.util.spec_from_file_location('yaiwes_bus', BUS_DIR/'universal_plugin_bus_v2_integrated.py')
+          busmod=importlib.util.module_from_spec(spec); spec.loader.exec_module(busmod)
+
+          items=[
+            (1,'APScheduler',ROOT/'execution-orchestration/task-classifier-scheduler'),
+            (2,'AWS-Step-Functions-DS-SDK',ROOT/'execution-orchestration/state-machine-executor/aws-step-functions-ds-sdk'),
+            (3,'Ajv',ROOT/'definition-registry/schema-contracts/ajv'),
+            (4,'Apache-APISIX',ROOT/'mesh-routing-collaboration/apisix-api-gateway'),
+            (5,'Apache-Airflow',ROOT/'execution-orchestration/dag-executor/apache-airflow'),
+            (6,'Argo-Workflows',ROOT/'execution-orchestration/dag-executor/argo-workflows'),
+            (7,'Azure-Durable-Functions',ROOT/'execution-orchestration/state-machine-executor/azure-durable-functions'),
+            (8,'BAML',ROOT/'definition-registry/domain-specific-contracts/baml'),
+            (9,'Burr',ROOT/'execution-orchestration/state-machine-executor/burr'),
+            (10,'Caddy',ROOT/'mesh-routing-collaboration/caddy-gateway'),
+            (11,'Camunda',ROOT/'execution-orchestration/state-machine-executor/camunda'),
+            (12,'Cedar',ROOT/'definition-registry/authorization-model/cedar'),
+            (13,'Celery',ROOT/'execution-engine-pool/parallel-dispatch/celery'),
+            (14,'Cerberus',ROOT/'definition-registry/schema-contracts/cerberus'),
+            (15,'Cerbos',ROOT/'control-governance/policy-guardrails-permissions/cerbos'),
+            (16,'Chroma',ROOT/'tools-models-memory-knowledge/memory-microservices/chroma'),
+            (17,'ClawHub',ROOT/'kernel-principal/extension-kernel/capability-registry/clawhub'),
+            (18,'Cloudflare-Workers-SDK',ROOT/'execution-engine-pool/adapter-layer/cloudflare-workers-sdk'),
+            (19,'Coconut',ROOT/'kernel-principal/reasoning-kernel/decision-on-demand/coconut'),
+            (20,'CodeUltraFeedback',ROOT/'code-programming-engine/standards-forensic/code-ultrafeedback'),
+          ]
+
+          results=[]
+          for n,name,dest in items:
+            try:
+              if not dest.exists(): raise RuntimeError('destination missing')
+              wiring_p=dest/'WIRING.json'
+              if not wiring_p.exists(): raise RuntimeError('WIRING.json missing')
+              wiring=json.loads(wiring_p.read_text())
+              adapter_name=wiring.get('adapter','adapter.py')
+              manifest_name=wiring.get('manifest') or wiring.get('ficha')
+              if not manifest_name: raise RuntimeError('manifest/ficha missing in WIRING')
+              adapter_p=dest/adapter_name; manifest_p=dest/manifest_name
+              if not adapter_p.exists(): raise RuntimeError(f'adapter missing: {adapter_name}')
+              if not manifest_p.exists(): raise RuntimeError(f'manifest missing: {manifest_name}')
+              code=adapter_p.read_text(encoding='utf-8',errors='strict')
+              compile(code,str(adapter_p),'exec')
+              manifest=json.loads(manifest_p.read_text())
+
+              # Import real adapter surface.
+              m_spec=importlib.util.spec_from_file_location(f'yaiwes_component_{n}',adapter_p)
+              module=importlib.util.module_from_spec(m_spec); m_spec.loader.exec_module(module)
+              entry=(manifest.get('ejecucion') or {}).get('entry_point','')
+              fn_name=entry.split(':')[-1] if ':' in entry else ''
+              if fn_name and hasattr(module,fn_name):
+                fn=getattr(module,fn_name)
+                if callable(fn):
+                  sig=inspect.signature(fn)
+                  required=[p for p in sig.parameters.values() if p.default is inspect._empty and p.kind in (p.POSITIONAL_ONLY,p.POSITIONAL_OR_KEYWORD)]
+                  if not required:
+                    fn()
+              if hasattr(module,'source_probe') and callable(module.source_probe): module.source_probe()
+
+              # Mount through canonical UniversalPluginBus.
+              bus=busmod.UniversalPluginBus()
+              case=manifest.get('tribunal_case_id','')
+              bus.add_tribunal_approval(case)
+              cand=busmod.ComponentCandidate(source_code=code,language='python',file_paths=[adapter_name])
+              conv=busmod.TargetConventions(language='python',naming_style='snake_case',async_style='mixed',type_system='dynamic')
+              reg=bus.enchufar(manifest,cand,conv,registered_by='STEP3')
+              bus.health.heartbeat(reg.plugin_id)
+              if reg.status.value!='ACTIVE': raise RuntimeError('plugin not ACTIVE')
+              if not bus.check_plugin_health(reg.plugin_id): raise RuntimeError('health false')
+              if not bus.evidence.get(reg.plugin_id): raise RuntimeError('evidence missing')
+              results.append({'n':n,'name':name,'status':'PASS','detail':'adapter import + ficha + UniversalPluginBus ACTIVE + health/evidence'})
+              print(f'{n:02d} {name}: PASS')
+            except Exception as e:
+              results.append({'n':n,'name':name,'status':'FAIL','detail':f'{type(e).__name__}: {e}'})
+              print(f'{n:02d} {name}: FAIL: {type(e).__name__}: {e}')
+
+          report=Path('Readme arquitectura Yaiwes/STEP3-TEST-REPORT-1-20.json')
+          report.write_text(json.dumps({'run_id':'${{ github.run_id }}','results':results},indent=2,ensure_ascii=False)+'\n')
+          marker='<!-- YAIWES_3_STEPS_STEP3_TEST_1_20 -->'
+          text=ARCH.read_text(encoding='utf-8',errors='ignore')
+          if marker not in text:
+            with ARCH.open('a',encoding='utf-8') as f:
+              f.write('\n\n'+marker+'\n## Paso 3/3 — Tests 1×1 componentes 1–20\n\n')
+              f.write('Reporte: [STEP3-TEST-REPORT-1-20.json](./STEP3-TEST-REPORT-1-20.json)\n\n')
+              f.write('| # | Componente | Test | Detalle |\n|---:|---|---|---|\n')
+              for r in results:
+                f.write(f"| {r['n']} | {r['name']} | `{r['status']}` | {r['detail'].replace('|','/')} |\n")
+          if any(r['status']!='PASS' for r in results):
+            raise SystemExit('STEP3_HAS_FAILURES')
+          print('STEP3_ALL_20_PASS')
+          PY
+
+      - name: Publish STEP 3 report
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- 'Readme arquitectura Yaiwes/README.md' 'Readme arquitectura Yaiwes/STEP3-TEST-REPORT-1-20.json'
+          if git diff --cached --quiet; then
+            echo 'STEP3_REPORT_NO_CHANGES'
+          else
+            git commit -m 'test(yaiwes): STEP 3 results components 1-20'
+            git push origin HEAD:main
+          fi
+
+      - name: Enforce all 20 PASS
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json,sys
+          d=json.load(open('Readme arquitectura Yaiwes/STEP3-TEST-REPORT-1-20.json'))
+          bad=[r for r in d['results'] if r['status']!='PASS']
+          print('PASS',len(d['results'])-len(bad),'FAIL',len(bad))
+          if bad: sys.exit(1)
+          PY
