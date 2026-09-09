@@ -1,98 +1,45 @@
-# PLAN DE PROGRAMACIÓN — WORDFLOW LOOP YAIWES — 11 OBJETIVOS + AGENTES
+# PLAN DE PROGRAMACIÓN — WORDFLOW LOOP YAIWES — AGENTES
 
-Contrato operativo: `tel.workflow/v4`  
-Modo: `FAIL_CLOSED_EXECUTION_LOOP`  
-Estado actual: `ACTIVE_3STEP_AGENT_INTEGRATION / STEP3_AGENT_FLEET_VERIFY`  
-Historial anterior preservado por blob `478ad801e6da336c0b486f211e8749fc154957e9`.
+Contrato `tel.workflow/v4` · `FAIL_CLOSED_EXECUTION_LOOP`.
 
-## OBJETIVO FINAL
-`documentos/proyectos YAIWES → requisitos → task contracts → código/agentes → Ficha/adapter/plugin → registry/binding → ejecución/repair → auditoría/tests → STATE/CHECKPOINT/evidence → salida E2E verificable`.
+## PARCHE EXACTO DE 3 PASOS — VERIFIED_CLOSED
+1. **Índice agentes:** VERIFIED_CLOSED — motor commit `ba9596c5716f34926e23186330609d4238bd8ccd`.
+2. **Cableado 1×1 sin tests:** VERIFIED_CLOSED_WIRING — 18 bindings por Ficha/adapter/registry/health/Universal Plug.
+3. **Workflow/test:** VERIFIED_CLOSED — run `34406268016`, job `102649876845`, success.
 
-## PARCHE ACTIVO — SOLO 3 PASOS
-### PASO 1 — VERIFIED_CLOSED
-Índice del repo motor creado/reconciliado en `➡️📂 readme indice agentes.md`; commit `ba9596c5716f34926e23186330609d4238bd8ccd`.
+## FLEET PROGRAMACIÓN/AUDITORÍA
+OpenCode=writer/executor; OpenHands=review/repair; Claude Code+MiMo=flow/wiring review; Codex=auditor/debug; SmolAgents=auditor/council; OpenClaw=coordinator/auditor; Aider=editor/council; Kimi/Qwen/Muse-Glimmer=Council; Hermes=worker/auditor; Cline=coder auxiliar; Goose=research auxiliar; Agent-Zero=fallback worker; OpenDev=fallback coder; Research Agent Lab=research; MiroThinker=reasoning/reviewer.
 
-### PASO 2 — WIRED_UNTESTED
-Cableado 1×1 sin tests por la arquitectura existente:
-`Ficha v2 → AgentFleetAdapter → agent_fleet_registry → Universal Plug registry → health descriptor`.
+Council12: Claude Code, OpenClaw, Hermes, Codex, Aider, OpenCode, OpenHands, MiMo Code, Muse/Glimmer, Kimi, SmolAgents, Qwen.
 
-Evidencia:
-- adapter commit `1567d025656466df2c816ee4f52f404cbaca2e5a`, blob `3e88678073c895899ab05dac0dd1c0ecee3c817e`;
-- registry 18 agentes commit `f2e99e193286043d8cd2ed5bd5310b5ea9b42c7c`;
-- Ficha v2 commit `c21c632a09d27098157d39b80e0ebd29fd72dad1`;
-- health descriptor commit `ff4f60a69bad684acb60e2239ffe72c2f6b0e20d`, `tests_executed=false`;
-- Universal Plug registry commit `973a9ab800ea91ff0503efbd933428a693fdee50`.
+## CABLEADO
+`Task Contract/Ficha → AgentFleetAdapter → agent_fleet_registry → Universal Plug capability registry → health/evidence`.
 
-### PASO 3 — IN_PROGRESS
-Workflow `.github/workflows/wordflow-agent-fleet-step3.yml`, run `34405553218`, head `79e0a5d29313ff5620b136cf19c1e71eab776505`.
+El routing es determinista por ID explícito o primer slot numérico con rol exacto. Ningún LLM decide la ruta del fleet.
 
-Criterio: 18 IDs únicos, Council12 12/12, routing determinista, fail-closed, health descriptors, registro único en Universal Plug y preservación de trigger programación PASS_REAL 3/3.
+Commits:
+- adapter `1567d025656466df2c816ee4f52f404cbaca2e5a`;
+- registry inicial `f2e99e193286043d8cd2ed5bd5310b5ea9b42c7c`;
+- Ficha `c21c632a09d27098157d39b80e0ebd29fd72dad1`;
+- health inicial `ff4f60a69bad684acb60e2239ffe72c2f6b0e20d`;
+- Universal Plug wiring `973a9ab800ea91ff0503efbd933428a693fdee50`.
 
-## FLEET 18
-1. OpenCode — writer/executor/final reviewer.
-2. OpenHands — review/repair/final reviewer.
-3. Claude Code — flow/wiring review + auditor.
-4. MiMo Code — flow/wiring review + auditor.
-5. Codex — auditor/debug/code review.
-6. SmolAgents — auditor/council.
-7. Hermes — auditor/worker.
-8. OpenClaw — auditor/coordinator/gateway.
-9. Aider — editor/council.
-10. Muse/Glimmer Code — council/reviewer.
-11. Kimi K Code — council/reviewer.
-12. Qwen Code — council/reviewer.
-13. Cline — coder auxiliar.
-14. Goose — research auxiliar.
-15. Agent-Zero — fallback worker.
-16. OpenDev — fallback coder.
-17. Research Agent Lab — research.
-18. MiroThinker — reasoning/reviewer.
+## TEST FINAL
+Run `34406268016`; job `102649876845`; head `05ce5fc43a599da1ae9e80f485450d52aede07a1`; `completed/success`.
 
-## COUNCIL12
-Claude Code · OpenClaw · Hermes · Codex · Aider · OpenCode · OpenHands · MiMo Code · Muse/Glimmer · Kimi · SmolAgents · Qwen.
+`WORDFLOW_AGENT_FLEET_STEP3=PASS` · `fleet_count=18` · `council12=12` · `runtimes_unconfigured_fail_closed=18` · `prior_programming_trigger=PASS_REAL_3_3`.
 
-## ADICIONALES SELECCIONADOS
-- Agent-Zero: fallback worker.
-- OpenDev: fallback coder.
-- Research Agent Lab: research.
-- MiroThinker: reasoning/reviewer.
+Evidence commit `7a7b1a6af381dbdb4882d3d744ef392161dffdff`.
 
-No se añaden más dentro de este parche: el Council ya cubre consenso y estos cuatro llenan funciones concretas sin ampliar el alcance.
+Promoción final: registry fleet `f2f978a18cbeaeac8c99d35993a66a68bfdcef7f`; health `e05946c349ef79d26e036e8f2fb5ee15f77775e0`; Universal Plug `08b42de1136917ef0adc712155c583188c6b9085`; `yaiwes.runtime.agent_fleet=ACTIVE`; active_count=12.
 
-## GAP DE SOURCE / RUNTIME
-- Hermes: source exacto no localizado en el índice del repo motor.
-- Muse/Glimmer: source exacto no localizado.
-- Goose: source exacto no localizado.
-- Los tres conservan slot lógico fail-closed; no declarar integración física de source.
-- Los transportes externos usan solo variables de entorno; si no están configurados, STEP3 exige fallo cerrado y no inventa ejecución.
+## LÍMITE DE LA EVIDENCIA
+Hermes, Muse/Glimmer y Goose tienen source físico pendiente de localizar. Los 18 transportes externos estuvieron sin configuración en Actions; el test valida integración del wiring/routing y comportamiento fail-closed, **no ejecución remota de cada agente**.
 
-## 11 OBJETIVOS CANÓNICOS
-1. Investigar/localizar código cuando el Director lo autorice.
-2. Copiar/reutilizar código faltante con trazabilidad.
-3. Cablear mediante Ficha/adapter/plugin/registry/health/evidence.
-4. Verificar documentación↔arquitectura↔code↔contracts↔tests.
-5. Convertir GAPs reales en trabajo programable.
-6. Crear contratos de tareas de agentes.
-7. Integrar/cablear agentes de programación/auditoría.
-8. Integrar HF/3 procesadores cuando el Director lo entregue listo.
-9. Integrar memoria/storage autorizado cuando corresponda.
-10. Integrar modelos por `secret_ref` cuando corresponda.
-11. Ejecutar tests/auditoría/cierre E2E.
-
-El parche actual no autoriza ejecutar trabajo fuera de STEP1–STEP3.
-
-## FUNDACIÓN YA VERIFICADA — NO REHACER
-- 5 LOOP OSS: LangGraph, Temporal Python SDK, Prefect, Hatchet Python SDK, redun.
-- MOVE final `26d0860ef23c3285ee60c63a5c9121fa45bb0ed1`.
-- Wiring runtime `da290e6200c9e82154ed917ce6bbc6194d423da3`.
-- Trigger real `ebac5c5b10d03d5e828e8fae266af88eb7b9b3d3`, run `34179064259`, 3/3 PASS_REAL, idempotencia PASS, fail-closed PASS.
-- Ficha Contract v2 T16 run `34075371938`, PASS 4/4.
+## FUNDACIÓN NO REHACER
+LOOP5 + MOVE `26d0860…` + runtime wiring `da290e62…` + programming trigger run `34179064259` PASS_REAL 3/3 + T16 run `34075371938` PASS 4/4.
 
 ## HF
-`EN_CURSO` según Director; no tocar/probar hasta nueva señal.
+`EN_CURSO` según Director. Queda fuera del bloque cerrado hasta señal de listo.
 
-## PROHIBICIONES
-`NO_STEP_4 · NO_NEW_OSS_RESEARCH · NO_REDOWNLOAD_LOOP5 · NO_TEST_STEP1_STEP2 · NO_PARALLEL_ARCHITECTURE · NO_FORCE_GIT · NO_FALSE_PASS`.
-
-## SIGUIENTE ACCIÓN
-Verificar run `34405553218`; reparar únicamente un fallo de STEP3 si aparece; si PASS, persistir evidencia y promover `yaiwes.runtime.agent_fleet` a `ACTIVE`.
+No existe Paso 4. El próximo trabajo requiere nueva instrucción del Director.
