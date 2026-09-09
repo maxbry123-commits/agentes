@@ -2,195 +2,85 @@
   "contract": "tel.workflow/v4",
   "project": "Wordflow LOOP Yaiwes",
   "mode": "FAIL_CLOSED_EXECUTION_LOOP",
-  "status": "PLAN30_T17_PLUGIN_REGISTRY_WIRING_ACTIVE",
-  "current_node": "PLAN30_T17_PLUGIN_REGISTRY_WIRING",
-  "checkpoint_id": "WFLOOP-PLAN30-0017-ACTIVE",
-  "history_previous_state_blob": "7b713ba042ecde42029e9b053a01003292ee34ae",
-  "last_traceability_update": "2026-09-07T02:26:00-05:00",
-  "project_objectives_11": [
-    "O01 Crear y mantener LOOP horario con checkpoint/STATE/Crazy Wall/recovery",
-    "O02 Investigar código fuente necesario en repos autorizados y OSS cuando aplique",
-    "O03 Copiar/reusar código faltante por SHA al destino sin reescribir lógica existente",
-    "O04 Cablear plugins mediante Ficha/contrato→adapter/plugin→registry→health→evidence",
-    "O05 Ejecutar verificación documental 5 pasadas y análisis de GAPs/integración de tareas",
-    "O06 Crear lista de tareas para agentes con ID/objetivo/contexto/rutas/dependencias/LOC/tests/evidence",
-    "O07 Integrar y espejar agentes de programación con engine bindings/adapters y mismo contrato",
-    "O08 Conectar repositorios con Hugging Face/3 procesadores con health y prueba real",
-    "O09 Integrar Graphiti/Grapify/SQL/HF storage mediante contratos separados",
-    "O10 Integrar APIs/modelos solo por secret_ref con health/budget/timeout/fallback",
-    "O11 Auditoría final y tests; cierre solo con evidencia real, GAP vuelve al LOOP"
-  ],
-  "objective_progress": {
-    "O01": "VERIFIED_CLOSED",
-    "O02": "VERIFIED_CLOSED",
-    "O03": "VERIFIED_CLOSED",
-    "O04": "IN_PROGRESS_T17",
-    "O05": "PENDING",
-    "O06": "PENDING",
-    "O07": "PENDING",
-    "O08": "PENDING",
-    "O09": "PENDING",
-    "O10": "PENDING",
-    "O11": "PENDING"
+  "status": "ACTIVE_3STEP_AGENT_INTEGRATION",
+  "current_node": "STEP1_AGENT_INDEX",
+  "checkpoint_id": "WFLOOP-AGENTS-3STEP-0001",
+  "queue": "1x1",
+  "history_previous_state_blob": "f2ebd5931676c7afd285438603785a723ca5d260",
+  "director_active_patch": {
+    "exact_steps": 3,
+    "step_1": {
+      "id": "STEP1_AGENT_INDEX",
+      "status": "PENDING",
+      "repo": "maxbry123-commits/Agentes-motores-Wordflow-YAIWES",
+      "output": "➡️📂 readme indice agentes.md",
+      "rules": ["locate_only", "no_code_review", "no_tests"]
+    },
+    "step_2": {
+      "id": "STEP2_AGENT_WIRING_1X1",
+      "status": "PENDING",
+      "action": "show additional useful agents and wire only necessary agents 1x1",
+      "wiring": "Task Contract/Ficha -> adapter/plugin -> registry/binding -> health descriptor",
+      "rules": ["no_tests", "reuse_existing_universal_plug", "update_all_work_docs", "visible_links"]
+    },
+    "step_3": {
+      "id": "STEP3_WORDFLOW_FINAL_TEST",
+      "status": "PENDING",
+      "action": "run final Wordflow LOOP workflow/trigger tests only after Step 2 is complete"
+    }
   },
-  "loop_plan_30": {
-    "total_tasks": 30,
-    "queue": "1x1",
+  "verified_foundation_do_not_reopen": {
+    "loop5": ["LangGraph", "Temporal-Python-SDK", "Prefect", "Hatchet-Python-SDK", "redun"],
+    "move_commit": "26d0860ef23c3285ee60c63a5c9121fa45bb0ed1",
+    "runtime_wiring_commit": "da290e6200c9e82154ed917ce6bbc6194d423da3",
+    "programming_trigger_evidence_commit": "ebac5c5b10d03d5e828e8fae266af88eb7b9b3d3",
+    "programming_trigger_run": 34179064259,
+    "programming_trigger_status": "PASS_REAL",
+    "registry_active": 11,
+    "engine_binding": "yaiwes.loop.loop_engineer",
+    "programming_cases_passed": "3/3",
+    "idempotency": "PASS",
+    "fail_closed_invalid_profile": "PASS",
+    "t16_ficha_run": 34075371938,
+    "t16_ficha_result": "YAIWES_T16_CANONICAL_VERIFY=PASS 4/4"
+  },
+  "director_agent_target_list": [
+    "OpenCode",
+    "OpenHands",
+    "Claude Code",
+    "MiMo Code",
+    "Codex / Codex CLI",
+    "Cline",
+    "Kimi K Code CLI",
+    "Hermes",
+    "OpenClaw",
+    "Aider",
+    "Muse / Glimmer Code",
+    "Smolagents / Smolange",
+    "Qwen Code CLI / GLM Code",
+    "Goose"
+  ],
+  "agent_binding_status": "NOT_YET_VERIFIED_STEP1_STEP2_PENDING",
+  "hugging_face": {
+    "status": "IN_PROGRESS_EXTERNAL_PER_DIRECTOR",
+    "action": "WAIT_FOR_DIRECTOR_READY_SIGNAL_BEFORE_TEST"
+  },
+  "legacy_plan30_snapshot": {
     "verified_closed": [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16],
-    "in_progress": [17],
-    "pending": [18,19,20,21,22,23,24,25,26,27,28,29,30],
-    "verified_progress_percent": 53.33
+    "legacy_in_progress": [17],
+    "verified_progress_percent": 53.33,
+    "note": "Historical PLAN30 state preserved for traceability. Current Director 3-step patch controls execution order and does not claim additional PLAN30 closures until material evidence exists."
   },
-  "canonical_documents": {
-    "historic_readme": {
-      "path": "➡️📂 Wordflow LOOP Yaiwes/➡️📂 readme wordflow loop Yaiwes.md",
-      "blob": "e95067810c5b4d31dd59d7349e49a1aade2ec3cb",
-      "role": "literal historical ledger and recovery anchor"
-    },
-    "architecture_readme": {
-      "path": "➡️📂 Wordflow LOOP Yaiwes/➡️📂 README arquitectura Wordflow LOOP Yaiwes.md",
-      "commit": "02022e8e1e4856f41f358c290a889f7c527c8df3",
-      "url": "https://github.com/maxbry123-commits/agentes/blob/main/%E2%9E%A1%EF%B8%8F%F0%9F%93%82%20Wordflow%20LOOP%20Yaiwes/%E2%9E%A1%EF%B8%8F%F0%9F%93%82%20README%20arquitectura%20Wordflow%20LOOP%20Yaiwes.md",
-      "role": "current architecture and executable plan"
-    },
-    "traceability": {
-      "path": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/TRAZABILIDAD-PROYECTO-WORDFLOW-YAIWES.md",
-      "commit": "64e2c3875a6e30ca9332028dffe89c2c01952116",
-      "url": "https://github.com/maxbry123-commits/agentes/blob/main/%E2%9E%A1%EF%B8%8F%F0%9F%93%82%20Wordflow%20LOOP%20Yaiwes/Crazy%20Wall%20Orquestador/TRAZABILIDAD-PROYECTO-WORDFLOW-YAIWES.md",
-      "scope": "T01-T30 + selected/reference/rejected components + source SHA URLs + destinations + evidence"
-    },
-    "handoff": {
-      "path": "➡️📂 Wordflow LOOP Yaiwes/HANDOFF.md",
-      "commit": "fd73c1e17678c8a613cbbab5e8741419bc134fb3",
-      "blob": "454ea0bb099d428ae4213dbb2be91c41cd32e088",
-      "url": "https://github.com/maxbry123-commits/agentes/blob/main/%E2%9E%A1%EF%B8%8F%F0%9F%93%82%20Wordflow%20LOOP%20Yaiwes/HANDOFF.md"
-    }
-  },
-  "task_plan": {
-    "path": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/PLAN-LOOP-30-TAREAS.md",
-    "url": "https://github.com/maxbry123-commits/agentes/blob/main/%E2%9E%A1%EF%B8%8F%F0%9F%93%82%20Wordflow%20LOOP%20Yaiwes/Crazy%20Wall%20Orquestador/PLAN-LOOP-30-TAREAS.md",
-    "blob": "185986bfdd6dea4cf9e9beeb85e5c68f171e8324",
-    "current_task": {
-      "id": 17,
-      "objective": "O04",
-      "name": "Cablear adapters/plugins a registry",
-      "status": "EN_CURSO",
-      "next_delta": "Investigar/reusar Capability Registry runtime compatible y ejecutar un único wiring seguro con evidencia real"
-    },
-    "pending_tasks": [
-      {"id":18,"objective":"O04","task":"Health/evidence hooks fail-closed"},
-      {"id":19,"objective":"O05","task":"5 pasadas docs↔arquitectura↔code↔contratos↔tests"},
-      {"id":20,"objective":"O06","task":"Contratos de tareas de agentes"},
-      {"id":21,"objective":"O07","task":"Cablear OpenCode"},
-      {"id":22,"objective":"O07","task":"Cablear OpenHands"},
-      {"id":23,"objective":"O07","task":"Cablear Claude Code + Mimo Code"},
-      {"id":24,"objective":"O07","task":"Auditores + Council12 + embudo"},
-      {"id":25,"objective":"O08","task":"HF/3 procesadores con health real"},
-      {"id":26,"objective":"O09","task":"Graphiti/Grapify/SQL/HF storage"},
-      {"id":27,"objective":"O10","task":"APIs/modelos por secret_ref"},
-      {"id":28,"objective":"O11","task":"Tests unitarios/integración/E2E"},
-      {"id":29,"objective":"O11","task":"Checks inestables hasta 10x + recovery/idempotencia"},
-      {"id":30,"objective":"O11","task":"Auditoría final + verify_final"}
-    ]
-  },
-  "component_traceability": [
-    {
-      "id": "C01",
-      "capability": "serial_dispatch_queue_1x1",
-      "source_repo": "maxbry123-commits/Agentes-motores-Wordflow-YAIWES",
-      "source_path": "Loop Engineer/Loop-Engineer/loop/runner.py",
-      "source_blob": "daa32a5d6dfeb0d21a975b8a5b8384d68a8aa08e",
-      "source_url": "https://github.com/maxbry123-commits/Agentes-motores-Wordflow-YAIWES/blob/main/Loop%20Engineer/Loop-Engineer/loop/runner.py",
-      "destination_path": "Agente Yaiwes principal/execution-orchestration/deterministic-execution/serial_dispatch.py",
-      "destination_blob": "77017b70239cedcce26f1df4a076272572f0927b",
-      "task": "T10",
-      "status": "VERIFIED_CLOSED"
-    },
-    {
-      "id": "C02",
-      "capability": "pause_resume_event_sourced",
-      "source_repo": "maxbry123-commits/Agentes-motores-Wordflow-YAIWES",
-      "source_path": "Loop Engineer/Loop-Engineer/loop/runcontrol.py",
-      "source_blob": "2c6aff845c97b600d4b3851b5ee9a6e0ee23defb",
-      "source_url": "https://github.com/maxbry123-commits/Agentes-motores-Wordflow-YAIWES/blob/main/Loop%20Engineer/Loop-Engineer/loop/runcontrol.py",
-      "destination_path": "Agente Yaiwes principal/state-events-durability/checkpoint-recovery/run_control_adapter.py",
-      "destination_blob": "aa4f62571044d873e3969bc7f747bfc83e3047a6",
-      "task": "T11",
-      "status": "VERIFIED_CLOSED"
-    },
-    {
-      "id": "C03_C04",
-      "capability": "resume_identity_input_hash_checkpoint",
-      "source_repo": "dta-au/elspeth",
-      "source_commit": "720d441336434d227c2a00caaac100db48a07d5c",
-      "destination_path": "Agente Yaiwes principal/state-events-durability/checkpoint-recovery/resume_identity.py",
-      "destination_blob": "dc440bd180194d6cef2bf1b38b1ef1b85138ef0b",
-      "tasks": ["T12","T13"],
-      "status": "VERIFIED_CLOSED"
-    },
-    {
-      "id": "C05",
-      "capability": "strategy_delta_no_identical_retry",
-      "source_repo": "Alex-v-p/indexer-core",
-      "source_commit": "efcfcb20f09117504b00f682ada1bfff2b04b649",
-      "source_path": "packages/rag_core/retrieval/retry/rules.py",
-      "source_blob": "7704a6bd73d8b073df88651bbaf232f1f3dbfd6b",
-      "destination_path": "Agente Yaiwes principal/control-governance/strategy_delta_guard.py",
-      "destination_blob": "46efd22bd7b5ac3c22cc5ca084788d46b4b5b16b",
-      "task": "T14",
-      "status": "VERIFIED_CLOSED"
-    }
+  "prohibitions": [
+    "NO_STEP_4",
+    "NO_NEW_OSS_RESEARCH",
+    "NO_REDOWNLOAD_LOOP5",
+    "NO_CODE_REVIEW_IN_STEP1",
+    "NO_TESTS_IN_STEP1_OR_STEP2",
+    "NO_PARALLEL_ARCHITECTURE",
+    "NO_FORCE_GIT",
+    "NO_FALSE_PASS"
   ],
-  "forensic_traceability_scope": {
-    "selected_components": "recorded in STATE and full ledger",
-    "loop_engineer_supporting_files": "full ledger only; REFERENCE/DEPENDENCY_CONTEXT",
-    "elspeth_additional_candidates": "full ledger only; REFERENCE/PATTERN",
-    "supreme_agent_candidates": "full ledger only; REJECTED_AS_PRIMARY/REFERENCE_ONLY",
-    "all_details_url": "https://github.com/maxbry123-commits/agentes/blob/main/%E2%9E%A1%EF%B8%8F%F0%9F%93%82%20Wordflow%20LOOP%20Yaiwes/Crazy%20Wall%20Orquestador/TRAZABILIDAD-PROYECTO-WORDFLOW-YAIWES.md"
-  },
-  "ficha_contract_v2": {
-    "validator_commit": "37bef3a8a8f6dadca067638b8ea0c32995fc1d63",
-    "validator_blob": "b27f14b4d64f77bccf53a893c49b6f20bd58e745",
-    "validator_url": "https://github.com/maxbry123-commits/agentes/blob/37bef3a8a8f6dadca067638b8ea0c32995fc1d63/skills/research-download-chain/assets/plugin-bus/ficha_contract_v2.py",
-    "serial_dispatch_blob": "bc885059ed0a97f73aad02572853d1b0a4f8117d",
-    "run_control_blob": "7fdb64b7a21fe51c278dcc907b09eb800f2a2770",
-    "resume_identity_blob": "4ce82a32faa939177dd22603f097402e9b9e6ed9",
-    "strategy_delta_blob": "44aeb5cb48db6d42499bc940e47e912942d7fd40",
-    "provenance_schema_blob": "5c3aa0b42fb9737baeb1f151a933fa83cc72c27d",
-    "provenance_registry_blob": "5274c96b79a4862d4081be18b80c1c0b09d9607a",
-    "status": "VERIFIED_CLOSED",
-    "evidence_artifact": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/EVIDENCE-PLAN30-T16-CLOSED.md",
-    "evidence_blob": "bd7aa684e215234616f4bd031a7587219fe9133e",
-    "workflow_run": 34075371938,
-    "workflow_job": 101600311787,
-    "workflow_head_sha": "0cdca40f7653e32c8db3df2e26d6a7b8f4b61f35",
-    "result": "YAIWES_T16_CANONICAL_VERIFY=PASS 4/4"
-  },
-  "evidence": {
-    "t10_t15_artifact": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/EVIDENCE-PLAN30-T10-T15.md",
-    "t10_t15_blob": "f8a5db43fb0cc9e1712620c75b579229c7bad14a",
-    "t10_t15_test_result": "5 passed in 0.06s",
-    "t16_artifact": "➡️📂 Wordflow LOOP Yaiwes/Crazy Wall Orquestador/EVIDENCE-PLAN30-T16-CLOSED.md",
-    "t16_blob": "bd7aa684e215234616f4bd031a7587219fe9133e",
-    "t16_test_result": "YAIWES_T16_CANONICAL_VERIFY=PASS 4/4",
-    "t16_run": 34075371938,
-    "t16_job": 101600311787
-  },
-  "gaps_flags": [
-    "T17 activo: definition-registry contiene estructura/placeholder pero Capability Registry runtime compatible aún no está demostrado",
-    "Investigar/reusar antes de generar; presencia de carpeta no equivale a integración"
-  ],
-  "governance": {
-    "input_goals": 12,
-    "output_goals": 12,
-    "ask_consilio": 12,
-    "instruction_audits": 3,
-    "refutations": 3,
-    "research_paths_on_gap_min": 10,
-    "candidate_solutions_on_gap_max": 20,
-    "repeat_unstable_checks_max": 10,
-    "deterministic_checks_runs": 1,
-    "priority": ["REUSE","COPY_MOVE","SURGICAL_PATCH","ADAPTER","GENERATE"]
-  },
-  "closure_rule": "No PASS por presencia; GAP vuelve al LOOP con StrategyDelta distinto."
+  "next_action": "STEP1: locate agents in Agentes-motores-Wordflow-YAIWES and create ➡️📂 readme indice agentes.md without inspecting code",
+  "closure_rule": "Step 1 index -> Step 2 wire necessary agents 1x1 without tests -> Step 3 final workflow/trigger test. Presence != integration."
 }
