@@ -1245,3 +1245,37 @@ Esta sección es un delta aditivo; preserva íntegramente la arquitectura anteri
 Plan operativo actual: [HANDOFF-INTEGRACION-1-20.md](./HANDOFF-INTEGRACION-1-20.md).
 
 Contrato vigente: `PASO 1 MOVE 1-20 -> PASO 2 CABLEAR/PODAR 1x1 SIN TESTS -> PASO 3 TESTS 1x1`.
+
+<!-- YAIWES_3_STEPS_STEP1_MOVE_1_20 -->
+## Paso 1/3 — MOVE físico componentes 1–20
+
+**Handoff canónico:** [HANDOFF-INTEGRACION-1-20.md](./HANDOFF-INTEGRACION-1-20.md)
+
+**Regla de esta fase:** mover código original a destino final. Sin poda, sin cableado y sin tests.
+
+| # | Componente | Estado STEP 1 | Destino |
+|---:|---|---|---|
+| 1 | APScheduler | `ALREADY_AT_DESTINATION` | `Agente Yaiwes principal/execution-orchestration/task-classifier-scheduler` |
+| 2 | AWS-Step-Functions-DS-SDK | `ALREADY_AT_DESTINATION` | `Agente Yaiwes principal/execution-orchestration/state-machine-executor/aws-step-functions-ds-sdk` |
+| 3 | Ajv | `ALREADY_AT_DESTINATION` | `Agente Yaiwes principal/definition-registry/schema-contracts/ajv` |
+| 4 | Apache-APISIX | `ALREADY_AT_DESTINATION` | `Agente Yaiwes principal/mesh-routing-collaboration/apisix-api-gateway` |
+| 5 | Apache-Airflow | `ALREADY_AT_DESTINATION` | `Agente Yaiwes principal/execution-orchestration/dag-executor/apache-airflow` |
+| 6 | Argo-Workflows | `ALREADY_AT_DESTINATION` | `Agente Yaiwes principal/execution-orchestration/dag-executor/argo-workflows` |
+| 7 | Azure-Durable-Functions | `ALREADY_AT_DESTINATION` | `Agente Yaiwes principal/execution-orchestration/state-machine-executor/azure-durable-functions` |
+| 8 | BAML | `MOVED` | `Agente Yaiwes principal/definition-registry/domain-specific-contracts/baml` |
+| 9 | Burr | `ALREADY_AT_DESTINATION` | `Agente Yaiwes principal/execution-orchestration/state-machine-executor/burr` |
+| 10 | Caddy | `MOVED` | `Agente Yaiwes principal/mesh-routing-collaboration/caddy-gateway` |
+| 11 | Camunda | `MOVED` | `Agente Yaiwes principal/execution-orchestration/state-machine-executor/camunda` |
+| 12 | Cedar | `MOVED` | `Agente Yaiwes principal/definition-registry/authorization-model/cedar` |
+| 13 | Celery | `ALREADY_AT_DESTINATION` | `Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/celery` |
+| 14 | Cerberus | `MOVED` | `Agente Yaiwes principal/definition-registry/schema-contracts/cerberus` |
+| 15 | Cerbos | `MOVED` | `Agente Yaiwes principal/control-governance/policy-guardrails-permissions/cerbos` |
+| 16 | Chroma | `MOVED` | `Agente Yaiwes principal/tools-models-memory-knowledge/memory-microservices/chroma` |
+| 17 | ClawHub | `MOVED` | `Agente Yaiwes principal/kernel-principal/extension-kernel/capability-registry/clawhub` |
+| 18 | Cloudflare-Workers-SDK | `MOVED` | `Agente Yaiwes principal/execution-engine-pool/adapter-layer/cloudflare-workers-sdk` |
+| 19 | Coconut | `MOVED` | `Agente Yaiwes principal/kernel-principal/reasoning-kernel/decision-on-demand/coconut` |
+| 20 | CodeUltraFeedback | `MOVED` | `Agente Yaiwes principal/code-programming-engine/standards-forensic/code-ultrafeedback` |
+
+**Workflow MOVE:** `YAIWES STEP 1 - MOVE 1-20` · run `34299955216`.
+
+**Siguiente fase permitida:** Paso 2 únicamente después de que los 20 estén físicamente en destino.
