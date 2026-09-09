@@ -2,53 +2,69 @@
 
 Contrato operativo: `tel.workflow/v4`  
 Modo: `FAIL_CLOSED_EXECUTION_LOOP`  
-Estado actual: `ACTIVE_3STEP_AGENT_INTEGRATION`  
-Historial anterior preservado por blob `fda6e95055765f6f588bff319e60abcae833c4c2`.
+Estado actual: `ACTIVE_3STEP_AGENT_INTEGRATION / STEP3_AGENT_FLEET_VERIFY`  
+Historial anterior preservado por blob `478ad801e6da336c0b486f211e8749fc154957e9`.
 
 ## OBJETIVO FINAL
 `documentos/proyectos YAIWES → requisitos → task contracts → código/agentes → Ficha/adapter/plugin → registry/binding → ejecución/repair → auditoría/tests → STATE/CHECKPOINT/evidence → salida E2E verificable`.
 
-El LOOP mantiene el trabajo persistente; no sustituye el producto final.
+## PARCHE ACTIVO — SOLO 3 PASOS
+### PASO 1 — VERIFIED_CLOSED
+Índice del repo motor creado/reconciliado en `➡️📂 readme indice agentes.md`; commit `ba9596c5716f34926e23186330609d4238bd8ccd`.
 
-## PARCHE ACTIVO DEL DIRECTOR — SOLO 3 PASOS
+### PASO 2 — WIRED_UNTESTED
+Cableado 1×1 sin tests por la arquitectura existente:
+`Ficha v2 → AgentFleetAdapter → agent_fleet_registry → Universal Plug registry → health descriptor`.
 
-### PASO 1 — ÍNDICE
-- Repo: `maxbry123-commits/Agentes-motores-Wordflow-YAIWES`.
-- Ubicar agentes/componentes existentes sin revisar código.
-- Crear `➡️📂 readme indice agentes.md` en `main`.
-- Registrar nombre y función/rol general.
-- Sin cableado y sin tests.
+Evidencia:
+- adapter commit `1567d025656466df2c816ee4f52f404cbaca2e5a`, blob `3e88678073c895899ab05dac0dd1c0ecee3c817e`;
+- registry 18 agentes commit `f2e99e193286043d8cd2ed5bd5310b5ea9b42c7c`;
+- Ficha v2 commit `c21c632a09d27098157d39b80e0ebd29fd72dad1`;
+- health descriptor commit `ff4f60a69bad684acb60e2239ffe72c2f6b0e20d`, `tests_executed=false`;
+- Universal Plug registry commit `973a9ab800ea91ff0503efbd933428a693fdee50`.
 
-### PASO 2 — LISTA ADICIONAL + CABLEADO 1×1
-- Mostrar otros agentes del repo que puedan mejorar Wordflow LOOP.
-- Elegir únicamente los necesarios.
-- Cablear 1×1 mediante `Task Contract/Ficha → adapter/plugin → registry/binding → health descriptor`.
-- Reusar Enchufe Universal existente; no crear bus paralelo.
-- Sin tests.
-- Actualizar README arquitectura + STATE + CHECKPOINT + PLAN + RECOVERY + BITÁCORA + HANDOFF y entregar enlaces visibles.
+### PASO 3 — IN_PROGRESS
+Workflow `.github/workflows/wordflow-agent-fleet-step3.yml`, run `34405553218`, head `79e0a5d29313ff5620b136cf19c1e71eab776505`.
 
-### PASO 3 — TEST FINAL
-- Solo después de completar Paso 2.
-- Ejecutar workflow/trigger del Wordflow LOOP y pruebas finales reales.
-- Cierre con run/job/status/conclusion/SHA/log/evidence.
+Criterio: 18 IDs únicos, Council12 12/12, routing determinista, fail-closed, health descriptors, registro único en Universal Plug y preservación de trigger programación PASS_REAL 3/3.
 
-## AGENTES OBJETIVO ENTREGADOS POR EL DIRECTOR
-1. OpenCode — writer/executor.
-2. OpenHands — review/repair.
-3. Claude Code — revisión de flujo/ejecución/wiring + auditoría.
-4. MiMo Code — revisión de flujo/ejecución/wiring + auditoría.
-5. Codex / Codex CLI — implementación/debugging/auditoría técnica.
-6. Cline — agente de programación; rol exacto se clasifica en el índice sin inspección de código.
-7. Kimi K Code CLI — programación/revisión/Council.
-8. Hermes — worker auxiliar + auditor.
-9. OpenClaw — coordinador/worker auxiliar + auditor.
-10. Aider — edición/programación de repositorio + Council.
-11. Muse / Glimmer Code — programación/revisión alternativa + Council.
-12. Smolagents / Smolange — auditor/revisión adicional.
-13. Qwen Code CLI / GLM Code — programación/contraste; sujeto a presencia real.
-14. Goose — agente investigador/auxiliar; clasificar en índice.
+## FLEET 18
+1. OpenCode — writer/executor/final reviewer.
+2. OpenHands — review/repair/final reviewer.
+3. Claude Code — flow/wiring review + auditor.
+4. MiMo Code — flow/wiring review + auditor.
+5. Codex — auditor/debug/code review.
+6. SmolAgents — auditor/council.
+7. Hermes — auditor/worker.
+8. OpenClaw — auditor/coordinator/gateway.
+9. Aider — editor/council.
+10. Muse/Glimmer Code — council/reviewer.
+11. Kimi K Code — council/reviewer.
+12. Qwen Code — council/reviewer.
+13. Cline — coder auxiliar.
+14. Goose — research auxiliar.
+15. Agent-Zero — fallback worker.
+16. OpenDev — fallback coder.
+17. Research Agent Lab — research.
+18. MiroThinker — reasoning/reviewer.
 
-Presencia de carpeta/nombre ≠ integración. Binding solo se declara materializado después del Paso 2.
+## COUNCIL12
+Claude Code · OpenClaw · Hermes · Codex · Aider · OpenCode · OpenHands · MiMo Code · Muse/Glimmer · Kimi · SmolAgents · Qwen.
+
+## ADICIONALES SELECCIONADOS
+- Agent-Zero: fallback worker.
+- OpenDev: fallback coder.
+- Research Agent Lab: research.
+- MiroThinker: reasoning/reviewer.
+
+No se añaden más dentro de este parche: el Council ya cubre consenso y estos cuatro llenan funciones concretas sin ampliar el alcance.
+
+## GAP DE SOURCE / RUNTIME
+- Hermes: source exacto no localizado en el índice del repo motor.
+- Muse/Glimmer: source exacto no localizado.
+- Goose: source exacto no localizado.
+- Los tres conservan slot lógico fail-closed; no declarar integración física de source.
+- Los transportes externos usan solo variables de entorno; si no están configurados, STEP3 exige fallo cerrado y no inventa ejecución.
 
 ## 11 OBJETIVOS CANÓNICOS
 1. Investigar/localizar código cuando el Director lo autorice.
@@ -63,20 +79,20 @@ Presencia de carpeta/nombre ≠ integración. Binding solo se declara materializ
 10. Integrar modelos por `secret_ref` cuando corresponda.
 11. Ejecutar tests/auditoría/cierre E2E.
 
-El parche actual **no autoriza ejecutar otros objetivos fuera de los 3 pasos**.
+El parche actual no autoriza ejecutar trabajo fuera de STEP1–STEP3.
 
 ## FUNDACIÓN YA VERIFICADA — NO REHACER
 - 5 LOOP OSS: LangGraph, Temporal Python SDK, Prefect, Hatchet Python SDK, redun.
-- MOVE final commit `26d0860ef23c3285ee60c63a5c9121fa45bb0ed1`.
-- Wiring runtime commit `da290e6200c9e82154ed917ce6bbc6194d423da3`.
-- Trigger real commit `ebac5c5b10d03d5e828e8fae266af88eb7b9b3d3`, run `34179064259`, 3/3 programación PASS, idempotencia PASS, fail-closed PASS.
+- MOVE final `26d0860ef23c3285ee60c63a5c9121fa45bb0ed1`.
+- Wiring runtime `da290e6200c9e82154ed917ce6bbc6194d423da3`.
+- Trigger real `ebac5c5b10d03d5e828e8fae266af88eb7b9b3d3`, run `34179064259`, 3/3 PASS_REAL, idempotencia PASS, fail-closed PASS.
 - Ficha Contract v2 T16 run `34075371938`, PASS 4/4.
 
 ## HF
-Estado indicado por el Director: `EN CURSO`. No tocar/probar hasta que el Director indique que está listo.
+`EN_CURSO` según Director; no tocar/probar hasta nueva señal.
 
 ## PROHIBICIONES
-`NO_STEP_4 · NO_NEW_OSS_RESEARCH · NO_REDOWNLOAD_LOOP5 · NO_CODE_REVIEW_STEP1 · NO_TEST_STEP1_STEP2 · NO_PARALLEL_ARCHITECTURE · NO_FORCE_GIT · NO_FALSE_PASS`.
+`NO_STEP_4 · NO_NEW_OSS_RESEARCH · NO_REDOWNLOAD_LOOP5 · NO_TEST_STEP1_STEP2 · NO_PARALLEL_ARCHITECTURE · NO_FORCE_GIT · NO_FALSE_PASS`.
 
 ## SIGUIENTE ACCIÓN
-`STEP1_AGENT_INDEX`: crear el índice real de agentes del repo `Agentes-motores-Wordflow-YAIWES`, sin revisar su código y sin tests.
+Verificar run `34405553218`; reparar únicamente un fallo de STEP3 si aparece; si PASS, persistir evidencia y promover `yaiwes.runtime.agent_fleet` a `ACTIVE`.
