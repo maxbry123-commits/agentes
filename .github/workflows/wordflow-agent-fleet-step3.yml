@@ -81,3 +81,5 @@ jobs:
           print(f'runtimes_unconfigured_fail_closed={unavailable}')
           print('prior_programming_trigger=PASS_REAL_3_3')
           PY
+
+# trigger: STEP3 run after workflow exists on main
