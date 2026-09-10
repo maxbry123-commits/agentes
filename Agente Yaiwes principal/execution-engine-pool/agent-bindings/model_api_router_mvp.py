@@ -21,72 +21,170 @@ PROVIDERS = (
     Provider("groq", "https://api.groq.com/openai/v1", "GROQ_API_KEYS"),
 )
 
-PREFERENCE = {
-    "coding": ("kimi-k3", "deepseek-v4", "minimax-m3", "gpt-oss-120b", "qwen", "gemma-4-31b", "glm", "laguna"),
-    "reasoning": ("gpt-oss-120b", "kimi-k3", "deepseek-v4", "minimax-m3", "qwen", "glm"),
-    "review": ("gpt-oss-120b", "qwen", "kimi-k3", "minimax-m3"),
-    "general": ("gpt-oss-120b", "qwen", "kimi-k3", "minimax-m3", "gpt-oss-20b"),
-}
+# Director priority. All healthy routes for one family are exhausted before
+# the router advances to the next family. Any other discovered model is tail fallback.
+MODEL_PRIORITY: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("kimi_k", ("kimi-k3", "kimi-k2.6", "kimi-k2", "kimi")),
+    ("minimax", ("minimax-m3", "minimax-m2.7", "minimax")),
+    ("deepseek_v4_pro", ("deepseek-v4-pro",)),
+    ("deepseek_v4_flash", ("deepseek-v4-flash",)),
+    ("glm_5", ("glm-5.2", "glm-5", "glm5")),
+    ("meta_glimmer", ("muse-glimmer", "meta-glimmer", "glimmer")),
+    ("qwen_3_8", ("qwen3.8", "qwen-3.8", "qwen/qwen3.8")),
+    ("gpt_oss", ("gpt-oss-120b", "gpt-oss-20b", "gpt-oss")),
+)
 
 
 class ModelRouterMVP:
-    """Availability-first router. Secrets stay in environment variables only."""
+    """Availability-first, model-priority router for the YAIWES agent fleet.
+
+    Secrets are read from environment only. Discovery never exposes secret values.
+    Routing order is model family first, then provider/key alternatives. A route must
+    pass a lightweight live completion probe before an agent task is dispatched.
+    """
 
     def __init__(self) -> None:
         self.routes: list[dict[str, Any]] = []
+        self._health: dict[tuple[str, int, str], bool] = {}
 
     @staticmethod
     def _keys(provider: Provider) -> list[str]:
         return [value.strip() for value in environ.get(provider.secret_env, "").split(",") if value.strip()]
 
+    @staticmethod
+    def _family(model: str) -> tuple[int, str]:
+        low = model.lower()
+        for rank, (family, aliases) in enumerate(MODEL_PRIORITY):
+            if any(alias in low for alias in aliases):
+                return rank, family
+        return len(MODEL_PRIORITY), "other"
+
+    @staticmethod
+    def _public_route(route: dict[str, Any]) -> dict[str, Any]:
+        return {key: value for key, value in route.items() if key != "key"}
+
     def discover(self) -> dict[str, Any]:
+        """Query /models for every configured key and build the candidate pool."""
         self.routes = []
+        self._health = {}
         report: dict[str, Any] = {}
         for provider in PROVIDERS:
-            checks = []
+            checks: list[dict[str, Any]] = []
             for slot, key in enumerate(self._keys(provider), 1):
                 try:
                     client = OpenAI(api_key=key, base_url=provider.base_url)
                     models = sorted({item.id for item in client.models.list().data})
                     checks.append({"key_slot": slot, "status": "OK", "models": models})
                     for model in models:
-                        self.routes.append({"provider": provider.name, "key_slot": slot, "key": key, "model": model})
+                        rank, family = self._family(model)
+                        self.routes.append({
+                            "provider": provider.name,
+                            "key_slot": slot,
+                            "key": key,
+                            "model": model,
+                            "family": family,
+                            "priority": rank + 1,
+                        })
                 except Exception as exc:
                     checks.append({"key_slot": slot, "status": "ERROR", "error": type(exc).__name__})
             report[provider.name] = checks
-        return {"status": "OK" if self.routes else "NO_AVAILABLE_MODELS", "providers": report}
+        return {
+            "status": "OK" if self.routes else "NO_AVAILABLE_MODELS",
+            "providers": report,
+            "routes": [self._public_route(route) for route in self.candidates()],
+        }
+
+    def candidates(self) -> list[dict[str, Any]]:
+        provider_order = {"nvidia": 0, "cerebras": 1, "groq": 2}
+        return sorted(
+            self.routes,
+            key=lambda route: (
+                route["priority"],
+                route["family"],
+                provider_order.get(route["provider"], 99),
+                route["key_slot"],
+                route["model"].lower(),
+            ),
+        )
 
     @staticmethod
-    def _rank(model: str, capability: str) -> tuple[int, str]:
-        prefs = PREFERENCE.get(capability, PREFERENCE["general"])
-        low = model.lower()
-        for index, token in enumerate(prefs):
-            if token in low:
-                return index, low
-        return len(prefs), low
+    def _client(route: dict[str, Any]) -> OpenAI:
+        provider = next(item for item in PROVIDERS if item.name == route["provider"])
+        return OpenAI(api_key=route["key"], base_url=provider.base_url)
 
-    def candidates(self, capability: str) -> list[dict[str, Any]]:
-        order = {"nvidia": 0, "cerebras": 1, "groq": 2}
-        return sorted(self.routes, key=lambda r: (self._rank(r["model"], capability), order[r["provider"]], r["key_slot"]))
+    def probe_route(self, route: dict[str, Any]) -> bool:
+        """Confirm the listed model actually accepts an inference request."""
+        cache_key = (route["provider"], int(route["key_slot"]), route["model"])
+        if cache_key in self._health:
+            return self._health[cache_key]
+        try:
+            response = self._client(route).chat.completions.create(
+                model=route["model"],
+                messages=[{"role": "user", "content": "Reply only OK"}],
+                max_tokens=8,
+            )
+            healthy = bool(response.choices)
+        except Exception:
+            healthy = False
+        self._health[cache_key] = healthy
+        return healthy
 
-    def dispatch(self, task: dict[str, Any], offset: int = 0) -> dict[str, Any]:
-        capability = task.get("capability", "general")
-        candidates = self.candidates(capability)
-        if not candidates:
-            return {"status": "NO_ROUTE", "agent_id": task.get("agent_id")}
-        for route in candidates[offset:] + candidates[:offset]:
-            provider = next(item for item in PROVIDERS if item.name == route["provider"])
-            try:
-                client = OpenAI(api_key=route["key"], base_url=provider.base_url)
-                response = client.chat.completions.create(model=route["model"], messages=task["messages"], max_tokens=task.get("max_tokens", 512))
-                return {"status": "OK", "agent_id": task.get("agent_id"), "provider": route["provider"], "model": route["model"], "key_slot": route["key_slot"], "content": response.choices[0].message.content}
-            except Exception:
-                continue
-        return {"status": "ALL_ROUTES_FAILED", "agent_id": task.get("agent_id")}
+    @staticmethod
+    def _rotate_same_family(routes: list[dict[str, Any]], lane: int) -> list[dict[str, Any]]:
+        if not routes:
+            return routes
+        shift = lane % len(routes)
+        return routes[shift:] + routes[:shift]
 
-    def dispatch_parallel(self, tasks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def ordered_for_lane(self, lane: int = 0) -> list[dict[str, Any]]:
+        """Rotate APIs/keys inside each model family without breaking model priority."""
+        ordered = self.candidates()
+        result: list[dict[str, Any]] = []
+        for priority in sorted({route["priority"] for route in ordered}):
+            same_priority = [route for route in ordered if route["priority"] == priority]
+            result.extend(self._rotate_same_family(same_priority, lane))
+        return result
+
+    def dispatch(self, task: dict[str, Any], lane: int = 0) -> dict[str, Any]:
+        """Try healthy routes in strict model priority with provider/key failover."""
         if not self.routes:
             self.discover()
-        with ThreadPoolExecutor(max_workers=max(1, min(len(tasks), 16))) as pool:
-            futures = [pool.submit(self.dispatch, task, index % max(1, len(self.routes))) for index, task in enumerate(tasks)]
+        attempts: list[dict[str, Any]] = []
+        for route in self.ordered_for_lane(lane):
+            public = self._public_route(route)
+            if not self.probe_route(route):
+                attempts.append({**public, "status": "PROBE_FAILED"})
+                continue
+            try:
+                response = self._client(route).chat.completions.create(
+                    model=route["model"],
+                    messages=task["messages"],
+                    max_tokens=task.get("max_tokens", 512),
+                )
+                return {
+                    "status": "OK",
+                    "agent_id": task.get("agent_id"),
+                    "provider": route["provider"],
+                    "model": route["model"],
+                    "family": route["family"],
+                    "priority": route["priority"],
+                    "key_slot": route["key_slot"],
+                    "content": response.choices[0].message.content,
+                    "failed_attempts": attempts,
+                }
+            except Exception as exc:
+                attempts.append({**public, "status": "DISPATCH_FAILED", "error": type(exc).__name__})
+                self._health[(route["provider"], int(route["key_slot"]), route["model"])] = False
+        return {"status": "ALL_ROUTES_FAILED", "agent_id": task.get("agent_id"), "attempts": attempts}
+
+    def dispatch_parallel(self, tasks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Dispatch agents concurrently while preserving the same model priority."""
+        if not tasks:
+            return []
+        if not self.routes:
+            self.discover()
+        if not self.routes:
+            return [{"status": "NO_ROUTE", "agent_id": task.get("agent_id")} for task in tasks]
+        with ThreadPoolExecutor(max_workers=min(len(tasks), 16)) as pool:
+            futures = [pool.submit(self.dispatch, task, lane=index) for index, task in enumerate(tasks)]
             return [future.result() for future in futures]
