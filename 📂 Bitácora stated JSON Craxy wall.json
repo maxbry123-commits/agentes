@@ -1,0 +1,255 @@
+{
+  "schema": "yaiwes.crazy-wall.integration-watchdog/v3",
+  "updated_at": "2026-09-10",
+  "repository": "maxbry123-commits/agentes",
+  "branch": "main",
+  "mode": "FAIL_CLOSED_LOOP",
+  "source_of_truth_order": [
+    "physical_repo_state",
+    "fresh_readback_from_main",
+    "runtime_test_health_evidence",
+    "state_and_handoff",
+    "historical_docs",
+    "inference"
+  ],
+  "rules": {
+    "folder_is_not_integration": true,
+    "runner_without_push_is_not_integration": true,
+    "historical_verified_closed_requires_revalidation": true,
+    "upstream_source_rewrite_on_move_forbidden": true,
+    "integration_contract_exact_steps": 3,
+    "step2_tests_forbidden": true,
+    "no_step4": true,
+    "gap_policy": "resolve_inside_current_step_and_repeat"
+  },
+  "integration_1_20": {
+    "contract": [
+      {
+        "step": 1,
+        "name": "MOVE_PHYSICAL",
+        "goal": "move original component trees to canonical YAIWES destinations and prove them from main",
+        "forbidden": ["wire", "prune", "test", "rewrite_upstream"],
+        "close_gate": "destination_readback_20_of_20"
+      },
+      {
+        "step": 2,
+        "name": "WIRE_PRUNE_1X1_NO_TESTS",
+        "goal": "xray, classify A/B/C, add port/adapter/ficha/wiring/registry and minimal safe pruning",
+        "forbidden": ["tests", "destructive_runtime_pruning"],
+        "close_gate": "wire_prune_20_of_20"
+      },
+      {
+        "step": 3,
+        "name": "TEST_1X1",
+        "goal": "validate contract, import/build, mount, behavior, health, failure path and evidence",
+        "forbidden": ["claim_pass_without_evidence"],
+        "close_gate": "test_pass_20_of_20"
+      }
+    ],
+    "classification_options": {
+      "A": {
+        "name": "SUBAGENT_CHILD",
+        "criteria": ["own_goal", "own_lifecycle", "tools", "memory_or_context", "autonomous_decisions"],
+        "integration": "AgentPort -> policy/budget -> isolated runtime -> normalized result -> evidence"
+      },
+      "B": {
+        "name": "WORKFLOW_DAG_POOL",
+        "criteria": ["scheduler", "dag", "state_machine", "queue", "workers", "durable_execution", "multi_step", "loop"],
+        "integration": "TaskClassifier -> WorkflowPort/ExecutionPort -> engine -> normalized result -> evidence"
+      },
+      "C": {
+        "name": "MODULAR_CAPABILITY",
+        "criteria": ["single_capability", "validation", "policy", "storage", "memory", "routing", "research_utility", "sandbox_helper"],
+        "integration": "Adapter -> Ficha/Contract -> Registry -> UniversalPluginBus/Port -> evidence"
+      }
+    }
+  },
+  "watchdog_backend": {
+    "root": "Core kernel Yaiwes/Backend watchdog workflow adaptativo",
+    "status": "COMPONENTS_PRESENT_INTEGRATION_PENDING",
+    "canonical_base": [
+      {
+        "name": "APScheduler",
+        "role": "TIME_AUTHORITY",
+        "physical_status": "PRESENT",
+        "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/time-scheduling/apscheduler"
+      },
+      {
+        "name": "Workalendar",
+        "role": "WORK_CALENDAR",
+        "physical_status": "PRESENT",
+        "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/work-calendar/workalendar"
+      },
+      {
+        "name": "Celery",
+        "role": "SIMPLE_JOB_WORKERS",
+        "physical_status": "PRESENT_EXTERNAL_TO_WATCHDOG_ROOT_REFERENCE_REQUIRED",
+        "path": "Agente Yaiwes principal/execution-engine-pool/parallel-dispatch/celery"
+      },
+      {
+        "name": "Redis",
+        "role": "EVENT_TRANSPORT",
+        "physical_status": "PRESENT",
+        "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/event-plane/redis"
+      },
+      {
+        "name": "Hatchet",
+        "role": "DURABLE_LONG_JOB",
+        "physical_status": "PRESENT",
+        "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/durable-execution/hatchet"
+      },
+      {
+        "name": "Dagu",
+        "role": "MULTI_STEP_JOB",
+        "physical_status": "PRESENT",
+        "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/workflow-multistep/dagu"
+      },
+      {
+        "name": "PostgreSQL",
+        "role": "DURABLE_SOURCE_OF_TRUTH",
+        "physical_status": "PRESENT",
+        "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/persistent-state/postgresql"
+      },
+      {
+        "name": "pgvector",
+        "role": "SEMANTIC_MEMORY",
+        "physical_status": "PRESENT",
+        "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/persistent-memory/pgvector"
+      },
+      {
+        "name": "gVisor",
+        "role": "SANDBOX_ISOLATION",
+        "physical_status": "PRESENT",
+        "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/sandbox-isolation/gvisor"
+      },
+      {
+        "name": "S3-Compatible-Artifact-Storage",
+        "role": "ARTIFACT_SNAPSHOTS",
+        "physical_status": "RUSTFS_PRESENT_BACKBLAZE_B2_BINDING_NOT_DEMONSTRATED",
+        "path": "Core kernel Yaiwes/Backend watchdog workflow adaptativo/artifact-storage/rustfs"
+      }
+    ],
+    "additional_present_components": [
+      {"name": "Rocketry", "role": "SCHEDULER_ALTERNATIVE", "path": "time-scheduling/rocketry"},
+      {"name": "Taskiq", "role": "QUEUE_WORKER_ALTERNATIVE", "path": "queue-execution/taskiq"},
+      {"name": "DBOS Python", "role": "DURABLE_EXECUTION_ALTERNATIVE", "path": "durable-execution/dbos-python"},
+      {"name": "Restate", "role": "DURABLE_EXECUTION_ALTERNATIVE", "path": "durable-execution/restate"},
+      {"name": "PocketFlow", "role": "SMALL_LOOP", "path": "workflow-loop/pocketflow"},
+      {"name": "Apache Hamilton", "role": "FUNCTIONAL_DAG", "path": "dag-cascade/apache-hamilton"},
+      {"name": "redun", "role": "DAG_CASCADE_ALTERNATIVE", "path": "dag-cascade/redun"},
+      {"name": "smolagents", "role": "ADAPTIVE_PLANNING_CAPABILITY", "path": "adaptive-planning/smolagents"},
+      {"name": "DeerFlow", "role": "RESEARCH_ENGINE", "path": "research-engine/deerflow"},
+      {"name": "GPT-Researcher", "role": "RESEARCH_ENGINE", "path": "research-engine/gpt-researcher"},
+      {"name": "MindSearch", "role": "RESEARCH_ENGINE", "path": "research-engine/mindsearch"},
+      {"name": "Firecracker", "role": "HIGH_ISOLATION_SANDBOX", "path": "sandbox-isolation/firecracker"},
+      {"name": "iii-sandbox", "role": "SANDBOX_RUNTIME_CANDIDATE", "path": "sandbox-runtime/iii-sandbox"}
+    ],
+    "missing_integration_units": [
+      "WatchdogDefinition schema",
+      "WatchdogRun schema",
+      "WatchdogStep schema",
+      "Checkpoint schema",
+      "EventEnvelope",
+      "SchedulerPort",
+      "QueuePort",
+      "DurableExecutionPort",
+      "WorkflowPort",
+      "ResearchPort",
+      "PlanningPort",
+      "SandboxPort",
+      "StatePort",
+      "SemanticMemoryPort",
+      "ArtifactPort",
+      "Backblaze B2 provider adapter if B2 is selected",
+      "idempotency/lease/heartbeat common contract",
+      "retry/timeout/recovery common policy",
+      "health/evidence/readback gates"
+    ]
+  },
+  "watchdog_frontend": {
+    "repository": "maxbry123-commits/frontend",
+    "source_index": "📂 Indice fromtend componentes.md",
+    "status": "PARTIAL",
+    "present": [
+      {"name": "assistant-ui", "state": "EXTRACTED_COMPLETE", "role": "CHAT_AGENT_UI"},
+      {"name": "Dockview", "state": "EXTRACTED_COMPLETE", "role": "DOCKABLE_WORKSPACE"},
+      {"name": "xyflow", "state": "ZIP_ONLY_COMPLETE", "role": "WORKFLOW_DAG_CANVAS", "gap": "EXTRACTION_REQUIRED_BEFORE_INTEGRATION"}
+    ],
+    "not_demonstrated_missing": [
+      {"name": "FullCalendar", "role": "CALENDAR_SCHEDULE_UI"},
+      {"name": "TanStack Table", "role": "QUEUE_RUN_EVIDENCE_TABLE"},
+      {"name": "react-jsonschema-form", "role": "WATCHDOG_DEFINITION_FORM"},
+      {"name": "xterm.js", "role": "LOGS_SANDBOX_TERMINAL"},
+      {"name": "Monaco Editor", "role": "DSL_POLICY_CONFIG_EDITOR"},
+      {"name": "Apache ECharts", "role": "METRICS_HEALTH_VISUALIZATION"},
+      {"name": "dnd-kit", "role": "DRAG_DROP_STEPS"},
+      {"name": "Frappe Gantt", "role": "LONG_JOB_TIMELINE_OPTIONAL"}
+    ],
+    "ui_rule": "extend_UI_YAIWES_do_not_replace_chat"
+  },
+  "watchdog_workflow": [
+    "USER_OR_CHAT",
+    "WATCHDOG_DEFINITION",
+    "SCHEMA_VALIDATION",
+    "POLICY_SHERIFF",
+    "PERSIST_POSTGRESQL",
+    "REGISTER_SCHEDULER",
+    "DUE_EVENT",
+    "CREATE_RUN_IDEMPOTENCY_KEY",
+    "PRIORITY_QUEUE",
+    "TASK_CLASSIFIER",
+    "SELECT_ENGINE",
+    "ACQUIRE_LEASE",
+    "SANDBOX",
+    "LOAD_STATE_MEMORY",
+    "PRELINE_POLICY",
+    "EXECUTE",
+    "HEARTBEAT",
+    "CHECKPOINT",
+    "VERIFY",
+    "SAVE_RESULT_EVIDENCE",
+    "COMPLETE_RETRY_ROLLBACK_REPLAN",
+    "COMPUTE_NEXT_RUN"
+  ],
+  "parallelism": {
+    "rule": "registered_watchdogs_do_not_equal_active_processes",
+    "controls": [
+      "priority_queue",
+      "worker_pools",
+      "batching",
+      "sharding",
+      "fan_out_fan_in",
+      "backpressure",
+      "deduplication",
+      "idempotency",
+      "leases",
+      "dead_letter_queue",
+      "queue_depth_scaling",
+      "sandbox_isolation",
+      "agent_model_provider_limits"
+    ]
+  },
+  "recovery": {
+    "rule": "FAIL_NOT_EQUAL_RESET",
+    "sequence": [
+      "LOCALIZE",
+      "FREEZE_EVIDENCE",
+      "CHECKPOINT",
+      "CHECK_IDEMPOTENCY",
+      "RETRY_OR_STRATEGY_DELTA",
+      "ROLLBACK_OR_FORK_IF_REQUIRED",
+      "VERIFY",
+      "RESUME"
+    ]
+  },
+  "canonical_docs": [
+    "📂 Readme arquitectura Yaiwes.md",
+    "📂 Readme Handoff core integracion y wachdog.md",
+    "📂 Readme plan wachdog y trabajo en paralelo.md",
+    "Readme arquitectura Yaiwes/README.md",
+    "Readme arquitectura Yaiwes/HANDOFF-INTEGRACION-1-20.md",
+    "Core kernel Yaiwes/Crack wall bitácora stated JSON/STATE.json",
+    "Core kernel Yaiwes/Crack wall bitácora stated JSON/PLAN-WATCHDOG-PROGRAMMING-V2.json",
+    "PARCHE-RECUPERACION-CORE-INTEGRACION-WATCHDOG.md"
+  ]
+}
